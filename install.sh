@@ -31,5 +31,15 @@ if ! which gcloud > /dev/null; then
 		pubsub-emulator
 fi
 
+# install yarn global packages
+if ! which yarn > /dev/null; then
+    yarn global add \
+        gatsby-cli \
+        json-server \
+        prettier \
+        surge \
+        typescript
+fi
+
 make clean
 make deploy
