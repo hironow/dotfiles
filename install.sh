@@ -19,8 +19,17 @@ cd "$DOTPATH"
 if ! which brew > /dev/null; then 
     /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 fi
-
 brew bundle
+
+# install google cloud sdk
+if ! which gcloud > /dev/null; then
+    curl https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir=$HOME
+    gcloud components install \
+		app-engine-go \
+		beta \
+		cloud-datastore-emulator \
+		pubsub-emulator
+fi
 
 make clean
 make deploy
