@@ -23,7 +23,7 @@ brew bundle
 
 # install google cloud sdk
 if ! which gcloud > /dev/null; then
-    curl https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir=$HOME
+    curl https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir="$HOME"
     gcloud components install \
 		app-engine-go \
 		beta \
