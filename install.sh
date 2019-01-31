@@ -38,7 +38,8 @@ if ! which yarn > /dev/null; then
         json-server \
         prettier \
         surge \
-        typescript
+        typescript \
+        fx
 fi
 
 make clean
