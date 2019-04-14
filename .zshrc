@@ -6,6 +6,12 @@ export EDITOR=vim
 # direnv
 if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
 
+# goenv
+if which goenv > /dev/null; then
+    export PATH="$HOME/.goenv/bin:$PATH";
+    eval "$(goenv init -)";
+fi
+
 # golang
 if which go > /dev/null; then export PATH=$PATH:$(go env GOPATH)/bin; fi
 
