@@ -39,7 +39,8 @@ if ! which yarn > /dev/null; then
         prettier \
         surge \
         typescript \
-        fx
+        fx \
+        serverless
 fi
 
 make clean
