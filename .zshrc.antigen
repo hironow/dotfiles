@@ -1,4 +1,4 @@
-source ~/zsh/antigen.zsh
+source /usr/local/share/antigen/antigen.zsh
 
 # Load the oh-my-zsh's library.
 antigen use oh-my-zsh
@@ -18,7 +18,7 @@ antigen bundle zsh-users/zsh-autosuggestions
 antigen bundle zsh-users/zsh-completions
 
 # Load the theme.
-antigen theme https://github.com/denysdovhan/spaceship-zsh-theme spaceship
+antigen theme denysdovhan/spaceship-prompt
 
 # Tell Antigen that you're done.
 antigen apply
