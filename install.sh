@@ -40,7 +40,10 @@ if ! which yarn > /dev/null; then
         surge \
         typescript \
         fx \
-        serverless
+        serverless \
+        http-server \
+        mdx-deck \
+        tabtab
 fi
 
 make clean
