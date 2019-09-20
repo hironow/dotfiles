@@ -9,13 +9,16 @@ tap "homebrew/cask"
 tap "homebrew/cask-fonts"
 tap "homebrew/core"
 tap "kyoshidajp/ghkw"
+brew "aliyun-cli"
 brew "antigen"
 brew "python", link: false
 brew "awscli"
+brew "blueutil"
 brew "circleci"
 brew "colordiff"
 brew "delve"
 brew "direnv"
+brew "elixir"
 brew "ffmpeg"
 brew "gibo"
 brew "git-lfs"
@@ -39,6 +42,7 @@ brew "skaffold"
 brew "swig"
 brew "tree"
 brew "unrar"
+brew "watch"
 brew "watchman"
 brew "wget"
 brew "yarn", link: false
@@ -47,7 +51,7 @@ brew "aws/tap/aws-sam-cli"
 brew "cjbassi/gotop/gotop"
 brew "dart-lang/dart/dart"
 brew "goreleaser/tap/goreleaser"
-brew "heroku/brew/heroku", link: false
+brew "heroku/brew/heroku"
 brew "kyoshidajp/ghkw/ghkw"
 cask "betterzipql"
 cask "font-fira-code"
@@ -65,9 +69,11 @@ cask "quicklook-csv"
 cask "quicklook-json"
 cask "quicklookase"
 cask "suspicious-package"
+cask "virtualbox"
 cask "webpquicklook"
 mas "Bear", id: 1091189122
 mas "BetterSnapTool", id: 417375580
+mas "ComicViewer", id: 1455702185
 mas "CotEditor", id: 1024640650
 mas "Countdowns", id: 926707738
 mas "DaisyDisk", id: 411643860
