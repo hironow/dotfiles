@@ -1,5 +1,39 @@
-# antigen
-source ~/.zshrc.antigen
+# load zgen
+source "${HOME}/.zgen/zgen.zsh"
+
+# if the init script doesn't exist
+if ! zgen saved; then
+    echo "Creating a zgen save"
+
+    zgen oh-my-zsh
+
+    # plugins
+    zgen oh-my-zsh plugins/git
+    zgen oh-my-zsh plugins/sudo
+    zgen oh-my-zsh plugins/pip
+    zgen oh-my-zsh plugins/lein
+    zgen oh-my-zsh plugins/golang
+    zgen oh-my-zsh plugins/gradle
+    zgen oh-my-zsh plugins/command-not-found
+    zgen load zsh-users/zsh-syntax-highlighting
+    zgen load zsh-users/zsh-autosuggestions
+
+    # bulk load
+    zgen loadall <<EOPLUGINS
+        zsh-users/zsh-history-substring-search
+EOPLUGINS
+    # ^ can't indent this EOPLUGINS
+
+    # completions
+    zgen load zsh-users/zsh-completions src
+
+    # theme
+    zgen load denysdovhan/spaceship-prompt spaceship
+
+    # save all to init script
+    zgen save
+fi
+# --- loaded zgen
 
 export EDITOR=vim
 
@@ -40,3 +74,6 @@ export WASMER_DIR="$HOME/.wasmer"
 # tabtab source for slss package
 # uninstall by removing these lines or running `tabtab uninstall slss`
 [[ -f $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/slss.zsh ]] && . $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/slss.zsh
+
+# k8s
+source <(kubectl completion zsh)

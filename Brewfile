@@ -10,8 +10,7 @@ tap "homebrew/cask-fonts"
 tap "homebrew/core"
 tap "kyoshidajp/ghkw"
 brew "aliyun-cli"
-brew "antigen"
-brew "python", link: false
+brew "python"
 brew "awscli"
 brew "blueutil"
 brew "circleci"
@@ -30,11 +29,13 @@ brew "ideviceinstaller"
 brew "imagemagick"
 brew "ios-deploy"
 brew "jq"
+brew "kubernetes-cli", link: false
 brew "mas"
 brew "maven"
 brew "mecab"
 brew "mecab-ipadic"
 brew "mercurial"
+brew "minikube"
 brew "protobuf"
 brew "mitmproxy"
 brew "pipenv"
@@ -45,7 +46,7 @@ brew "unrar"
 brew "watch"
 brew "watchman"
 brew "wget"
-brew "yarn", link: false
+brew "yarn"
 brew "zsh"
 brew "aws/tap/aws-sam-cli"
 brew "cjbassi/gotop/gotop"
@@ -77,14 +78,15 @@ mas "ComicViewer", id: 1455702185
 mas "CotEditor", id: 1024640650
 mas "Countdowns", id: 926707738
 mas "DaisyDisk", id: 411643860
+mas "Day One", id: 1055511498
 mas "Deckset", id: 847496013
 mas "EtreCheck", id: 1423715984
 mas "Just Focus", id: 1142151959
 mas "Keynote", id: 409183694
+mas "Kindle", id: 405399194
 mas "LINE", id: 539883307
 mas "MindNode", id: 1289197285
 mas "Monosnap", id: 540348655
-mas "Mouseposé", id: 405904955
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "PopClip", id: 445189367
@@ -95,4 +97,3 @@ mas "The Unarchiver", id: 425424353
 mas "Total Video Converter Lite", id: 520374433
 mas "Transmit", id: 1436522307
 mas "Video Downloader for Safari", id: 1395156584
-mas "Xcode", id: 497799835
