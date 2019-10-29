@@ -1,12 +1,10 @@
 deploy: ## Create symlink to home directory
 	@ echo "==> Start to deploy dotfiles to home directory."
 	ln -s ~/dotfiles/.zshrc ~/.zshrc
-	ln -s ~/dotfiles/.zshrc.antigen ~/.zshrc.antigen
 
 clean: ## Remove the dot files and this repo
-	@ echo "Remove dot files in your home directory..."
+	@ echo "==> Remove dot files in your home directory..."
 	rm -vrf ~/.zshrc
-	rm -vrf ~/.zshrc.antigen
 
 circleci: ## CircleCI local execute
 	circleci config process .circleci/config.yml > .circleci/config-2.0.yml

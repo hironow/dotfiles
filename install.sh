@@ -4,6 +4,7 @@ set -eu
 DOTPATH=$HOME/dotfiles
 
 if [ ! -d "$DOTPATH" ]; then
+  git clone https://github.com/tarjoilija/zgen.git "${HOME}/.zgen"
   git clone https://github.com/hironow/dotfiles.git "$DOTPATH"
 else
   echo "$DOTPATH already downloaded. Updating..."
