@@ -25,27 +25,13 @@ brew bundle
 # install google cloud sdk
 if ! command -v gcloud >/dev/null; then
   curl https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir="$HOME"
-  gcloud components install \
-    app-engine-go \
-    beta \
-    cloud-datastore-emulator \
-    pubsub-emulator
 fi
 
+# install gcloud components
+make add-gcloud
+
 # install yarn global packages
-if ! command -v yarn >/dev/null; then
-  yarn global add \
-    gatsby-cli \
-    json-server \
-    prettier \
-    surge \
-    typescript \
-    fx \
-    serverless \
-    http-server \
-    mdx-deck \
-    tabtab
-fi
+make add-yarn-global
 
 make clean
 make deploy
