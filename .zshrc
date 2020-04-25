@@ -43,11 +43,6 @@ export PATH="/usr/local/sbin:$PATH"
 # direnv
 if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
 
-# goenv
-export GOENV_ROOT="$HOME/.goenv";
-export PATH="$HOME/.goenv/bin:$PATH";
-if which goenv > /dev/null; then eval "$(goenv init -)"; fi
-
 # golang
 if which go > /dev/null; then
     export PATH=$PATH:$(go env GOPATH)/bin;
