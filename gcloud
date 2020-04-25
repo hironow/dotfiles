@@ -6,3 +6,4 @@ bq
 cloud-datastore-emulator
 gsutil
 pubsub-emulator
+cloud-firestore-emulator

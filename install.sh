@@ -31,6 +31,8 @@ fi
 make add-gcloud
 
 # install yarn global packages
+npm update --global npm
+npm install --global yarn
 make add-yarn-global
 
 make clean
