@@ -15,39 +15,28 @@ tap "kyoshidajp/ghkw"
 tap "nektos/tap"
 tap "rs/tap"
 brew "aliyun-cli"
-brew "gdbm"
-brew "openssl@1.1"
-brew "python", link: false
-brew "awscli", link: false
+brew "awscli"
 brew "blueutil"
-brew "boost"
-brew "freetype"
-brew "fontconfig"
-brew "gettext", link: true
-brew "pcre"
-brew "circleci", link: false
+brew "circleci"
 brew "cmake"
 brew "colordiff"
 brew "direnv"
 brew "elixir"
-brew "webp"
+brew "python"
 brew "ffmpeg"
-brew "gd"
 brew "gibo"
 brew "git"
 brew "git-lfs"
-brew "goenv", args: ["HEAD"]
 brew "gradle"
 brew "graphviz"
+brew "grpcurl"
 brew "highlight"
 brew "httpie"
 brew "hugo"
 brew "libimobiledevice", args: ["HEAD"]
 brew "ideviceinstaller"
-brew "libheif"
 brew "imagemagick"
 brew "ios-deploy"
-brew "oniguruma"
 brew "jq"
 brew "kubernetes-cli"
 brew "libusbmuxd", args: ["HEAD"]
@@ -55,28 +44,28 @@ brew "mas"
 brew "maven"
 brew "mecab"
 brew "mecab-ipadic"
-brew "media-info", link: false
+brew "media-info"
 brew "mercurial"
-brew "minikube"
+brew "minikube", link: false
 brew "protobuf"
 brew "mitmproxy"
-brew "mysql", restart_service: true
+brew "mkcert"
+brew "nss", link: false
 brew "pdsh"
 brew "pipenv"
 brew "pwgen"
-brew "python@2"
 brew "redis"
 brew "ruby"
 brew "skaffold"
 brew "swig"
 brew "telnet"
+brew "terraform"
 brew "tree"
 brew "unrar"
 brew "vegeta"
 brew "watch"
 brew "watchman"
 brew "wget"
-brew "yarn"
 brew "zsh"
 brew "aws/tap/aws-sam-cli"
 brew "cjbassi/gotop/gotop"
@@ -124,7 +113,6 @@ mas "LINE", id: 539883307
 mas "Microsoft Remote Desktop", id: 1295203466
 mas "MindNode", id: 1289197285
 mas "Monosnap", id: 540348655
-mas "Mouseposé", id: 405904955
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
 mas "PopClip", id: 445189367
