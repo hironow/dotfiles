@@ -35,6 +35,8 @@ EOPLUGINS
 fi
 # --- loaded zgen
 
+export SPACESHIP_EXIT_CODE_SHOW=true
+
 export EDITOR=vim
 
 # homebrew
