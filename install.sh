@@ -20,14 +20,12 @@ cd "$DOTPATH"
 if ! command -v brew >/dev/null; then
   /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 fi
-brew bundle
+make add-brew
 
 # install google cloud sdk
 if ! command -v gcloud >/dev/null; then
   curl https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir="$HOME"
 fi
-
-# install gcloud components
 make add-gcloud
 
 # install yarn global packages
@@ -35,5 +33,6 @@ npm update --global npm
 npm install --global yarn
 make add-yarn-global
 
+make update-all
 make clean
 make deploy

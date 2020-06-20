@@ -1,6 +1,7 @@
 tap "aws/tap"
 tap "cjbassi/gotop"
 tap "dart-lang/dart"
+tap "github/gh"
 tap "go-delve/delve"
 tap "goreleaser/tap"
 tap "heroku/brew"
@@ -22,35 +23,33 @@ brew "cmake"
 brew "colordiff"
 brew "direnv"
 brew "elixir"
-brew "python"
 brew "ffmpeg"
 brew "gibo"
 brew "git"
 brew "git-lfs"
 brew "gradle"
+brew "python"
 brew "graphviz"
 brew "grpcurl"
 brew "highlight"
 brew "httpie"
 brew "hugo"
+brew "libusbmuxd"
 brew "libimobiledevice", args: ["HEAD"]
 brew "ideviceinstaller"
 brew "imagemagick"
 brew "ios-deploy"
 brew "jq"
-brew "kubernetes-cli"
-brew "libusbmuxd", args: ["HEAD"]
 brew "mas"
 brew "maven"
 brew "mecab"
 brew "mecab-ipadic"
 brew "media-info"
 brew "mercurial"
-brew "minikube", link: false
 brew "protobuf"
 brew "mitmproxy"
 brew "mkcert"
-brew "nss", link: false
+brew "nss"
 brew "pdsh"
 brew "pipenv"
 brew "pwgen"
@@ -70,6 +69,7 @@ brew "zsh"
 brew "aws/tap/aws-sam-cli"
 brew "cjbassi/gotop/gotop"
 brew "dart-lang/dart/dart"
+brew "github/gh/gh"
 brew "goreleaser/tap/goreleaser"
 brew "heroku/brew/heroku"
 brew "kentaro-m/md2confl/md2confl"
@@ -100,6 +100,7 @@ cask "wireshark"
 mas "Bear", id: 1091189122
 mas "BetterSnapTool", id: 417375580
 mas "ComicViewer", id: 1455702185
+mas "CommentScreen", id: 1450950860
 mas "CotEditor", id: 1024640650
 mas "Countdowns", id: 926707738
 mas "DaisyDisk", id: 411643860
@@ -113,14 +114,16 @@ mas "LINE", id: 539883307
 mas "Microsoft Remote Desktop", id: 1295203466
 mas "MindNode", id: 1289197285
 mas "Monosnap", id: 540348655
+mas "Mouseposé", id: 405904955
 mas "Numbers", id: 409203825
+mas "Oka Unarchiver", id: 1441507725
 mas "Pages", id: 409201541
 mas "PopClip", id: 445189367
 mas "Shazam", id: 897118787
 mas "Sip", id: 507257563
 mas "Slack", id: 803453959
+mas "Telegram Lite", id: 946399090
 mas "Total Video Converter Lite", id: 520374433
 mas "Transmit", id: 1436522307
 mas "Video Downloader for Safari", id: 1395156584
 mas "Xcode", id: 497799835
-mas "Zip File Unarchiver", id: 1441507725

@@ -45,12 +45,6 @@ export PATH="/usr/local/sbin:$PATH"
 # direnv
 if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
 
-# golang
-if which go > /dev/null; then
-    export PATH=$PATH:$(go env GOPATH)/bin;
-    export PATH=$PATH:$(go env GOROOT)/bin;
-fi
-
 # Google Cloud SDK
 if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
 if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then source "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
