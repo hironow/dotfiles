@@ -48,7 +48,8 @@ add-yarn-global: cmd-exists-yarn  ## Install yarn global packages
 # update set
 .PHONY: update-all
 update-all:  ## Install all
-	@make -j update-brew update-gcloud update-yarn-global
+	@make -j update-brew 
+	@make -j update-gcloud update-yarn-global
 
 .PHONY: update-brew
 update-brew: cmd-exists-brew  ## Update brew bundle
@@ -56,7 +57,7 @@ update-brew: cmd-exists-brew  ## Update brew bundle
 
 .PHONY: update-gcloud
 update-gcloud: cmd-exists-gcloud  ## Update gcloud components
-	@gcloud components update
+	@gcloud components update --quiet
 
 .PHONY: update-yarn-global
 update-yarn-global: cmd-exists-yarn  ## Update yarn global packages
