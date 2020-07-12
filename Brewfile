@@ -28,7 +28,6 @@ brew "gibo"
 brew "git"
 brew "git-lfs"
 brew "gradle"
-brew "python"
 brew "graphviz"
 brew "grpcurl"
 brew "highlight"
@@ -49,7 +48,7 @@ brew "mercurial"
 brew "protobuf"
 brew "mitmproxy"
 brew "mkcert"
-brew "nss"
+brew "nss", link: false
 brew "pdsh"
 brew "pipenv"
 brew "pwgen"
@@ -106,6 +105,7 @@ mas "Countdowns", id: 926707738
 mas "DaisyDisk", id: 411643860
 mas "Day One", id: 1055511498
 mas "Deckset", id: 847496013
+mas "Developer", id: 640199958
 mas "EtreCheck", id: 1423715984
 mas "Just Focus", id: 1142151959
 mas "Keynote", id: 409183694
@@ -114,7 +114,6 @@ mas "LINE", id: 539883307
 mas "Microsoft Remote Desktop", id: 1295203466
 mas "MindNode", id: 1289197285
 mas "Monosnap", id: 540348655
-mas "Mouseposé", id: 405904955
 mas "Numbers", id: 409203825
 mas "Oka Unarchiver", id: 1441507725
 mas "Pages", id: 409201541
