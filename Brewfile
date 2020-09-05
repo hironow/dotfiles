@@ -24,6 +24,7 @@ brew "colordiff"
 brew "direnv"
 brew "elixir"
 brew "ffmpeg"
+brew "gh"
 brew "gibo"
 brew "git"
 brew "git-lfs"
@@ -68,7 +69,6 @@ brew "zsh"
 brew "aws/tap/aws-sam-cli"
 brew "cjbassi/gotop/gotop"
 brew "dart-lang/dart/dart"
-brew "github/gh/gh"
 brew "goreleaser/tap/goreleaser"
 brew "heroku/brew/heroku"
 brew "kentaro-m/md2confl/md2confl"
@@ -125,4 +125,3 @@ mas "Telegram Lite", id: 946399090
 mas "Total Video Converter Lite", id: 520374433
 mas "Transmit", id: 1436522307
 mas "Video Downloader for Safari", id: 1395156584
-mas "Xcode", id: 497799835
