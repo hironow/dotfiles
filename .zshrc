@@ -46,7 +46,7 @@ export PATH="/usr/local/sbin:$PATH"
 if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
 
 # Google Cloud SDK
-export CLOUDSDK_PYTHON=python3.8
+export CLOUDSDK_PYTHON=/usr/local/opt/python@3.8/bin/python3
 if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
 if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then source "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
 
