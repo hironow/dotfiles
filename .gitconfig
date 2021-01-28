@@ -1,0 +1,10 @@
+[alias]
+        alias = !git config --get-regexp '^alias\\.' | sed 's/alias\\.\\([^ ]*\\) \\(.*\\)/\\1\\\t => \\2/' | sort
+        graph = log --graph -10 --branches --remotes --tags  --format=format:'%Cgreen%h %Creset• %<(75,trunc)%s (%cN, %cr) %Cred%d' --date-order
+        precommit = diff --cached --diff-algorithm=minimal -w
+        unmerged = diff --name-only --diff-filter=U
+        remotes = remote -v
+        firstcommit = commit --allow-empty -m 'initial commit'
+        aa = !git add .  && git add -u && git status
+        wip = commit -m 'wip'
+        ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
