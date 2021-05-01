@@ -49,7 +49,6 @@ if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
 if which anyenv > /dev/null; then eval "$(anyenv init -)"; fi
 
 # Google Cloud SDK
-export CLOUDSDK_PYTHON=/usr/local/opt/python@3.8/bin/python3
 if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
 if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then source "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
 
@@ -72,3 +71,6 @@ export WASMER_DIR="$HOME/.wasmer"
 
 # k8s
 source <(kubectl completion zsh)
+
+# solana
+export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
