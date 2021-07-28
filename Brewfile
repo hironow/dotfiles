@@ -50,13 +50,13 @@ brew "mecab-ipadic"
 brew "media-info"
 brew "mercurial"
 brew "minikube"
+brew "protobuf"
 brew "mitmproxy"
 brew "mkcert"
 brew "ncdu"
 brew "nss", link: false
 brew "pdsh"
 brew "pipenv"
-brew "protobuf"
 brew "pwgen"
 brew "redis"
 brew "ruby"
@@ -74,6 +74,7 @@ brew "watch"
 brew "watchman"
 brew "wget"
 brew "yarn"
+brew "youtube-dl"
 brew "zsh"
 brew "aws/tap/aws-sam-cli"
 brew "cjbassi/gotop/gotop"
@@ -116,6 +117,7 @@ mas "Day One", id: 1055511498
 mas "Deckset", id: 847496013
 mas "Developer", id: 640199958
 mas "EtreCheck", id: 1423715984
+mas "HP Smart", id: 1474276998
 mas "Just Focus", id: 1142151959
 mas "Keynote", id: 409183694
 mas "Kindle", id: 405399194
