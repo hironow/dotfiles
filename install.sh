@@ -10,8 +10,8 @@ else
   echo "$DOTPATH already downloaded. Updating..."
   cd "$DOTPATH"
   git stash
-  git checkout master
-  git pull origin master
+  git checkout main
+  git pull origin main
 fi
 
 cd "$DOTPATH"
