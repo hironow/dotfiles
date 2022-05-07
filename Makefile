@@ -41,15 +41,16 @@ add-brew: cmd-exists-brew  ## Install brew bundle
 add-gcloud: cmd-exists-gcloud  ## Install gcloud components
 	@gcloud components install `awk '{ORS=" "} {print}' gcloud`
 
-.PHONY: add-yarn-global
-add-yarn-global: cmd-exists-yarn  ## Install yarn global packages
-	@yarn global add `awk '{ORS=" "} {print}' yarn-global`
+.PHONY: add-pnpm-global
+add-pnpm-global: cmd-exists-pnpm  ## Install pnpm global packages
+	@pnpm add --global `awk '{ORS=" "} {print}' pnpm-global`
 
 # update set
 .PHONY: update-all
 update-all:  ## Install all
 	@make -j update-brew 
-	@make -j update-gcloud update-yarn-global
+	@make -j update-gcloud
+	@make -j update-pnpm-global
 
 .PHONY: update-brew
 update-brew: cmd-exists-brew  ## Update brew bundle
@@ -59,6 +60,6 @@ update-brew: cmd-exists-brew  ## Update brew bundle
 update-gcloud: cmd-exists-gcloud  ## Update gcloud components
 	@gcloud components update --quiet
 
-.PHONY: update-yarn-global
-update-yarn-global: cmd-exists-yarn  ## Update yarn global packages
-	@yarn global upgrade
+.PHONY: update-pnpm-global
+update-pnpm-global: cmd-exists-pnpm  ## Update pnpm global packages
+	@pnpm upgrade --global

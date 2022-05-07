@@ -1,2 +1,3 @@
 .circleci/config-2.0.yml
 Brewfile.lock.json
+*-debug.log
