@@ -28,11 +28,11 @@ if ! command -v gcloud >/dev/null; then
 fi
 make add-gcloud
 
-# install yarn global packages
-npm update --global npm
-npm install --global yarn
-make add-yarn-global
+# install pnpm global packages
+pnpm setup
+make add-pnpm-global
 
 make update-all
+
 make clean
 make deploy
