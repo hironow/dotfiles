@@ -1,5 +1,6 @@
 tap "aws/tap"
 tap "cjbassi/gotop"
+tap "dagger/tap"
 tap "dart-lang/dart"
 tap "github/gh"
 tap "go-delve/delve"
@@ -97,6 +98,7 @@ brew "youtube-dl"
 brew "zsh"
 brew "aws/tap/aws-sam-cli"
 brew "cjbassi/gotop/gotop"
+brew "dagger/tap/dagger"
 brew "dart-lang/dart/dart"
 brew "goreleaser/tap/goreleaser"
 brew "heroku/brew/heroku"
@@ -138,7 +140,6 @@ mas "Oka Unarchiver", id: 1441507725
 mas "Pages", id: 409201541
 mas "Sip", id: 507257563
 mas "Slack", id: 803453959
-mas "Telegram Lite", id: 946399090
 mas "Transmit", id: 1436522307
 mas "Video Downloader for Safari", id: 1395156584
 mas "Xcode", id: 497799835
