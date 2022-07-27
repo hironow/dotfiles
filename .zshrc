@@ -39,9 +39,6 @@ export SPACESHIP_EXIT_CODE_SHOW=true
 
 export EDITOR=vim
 
-# homebrew
-if which brew > /dev/null; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
-
 # direnv
 if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
 
