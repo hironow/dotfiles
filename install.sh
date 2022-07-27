@@ -32,7 +32,9 @@ fi
 make add-gcloud
 
 # install pnpm global packages
-pnpm setup
+if ! command -v pnpm >/dev/null; then
+  curl -fsSL https://get.pnpm.io/install.sh | sh -
+fi
 make add-pnpm-global
 
 make update-all
