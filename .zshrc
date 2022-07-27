@@ -39,6 +39,9 @@ export SPACESHIP_EXIT_CODE_SHOW=true
 
 export EDITOR=vim
 
+# local
+export PATH=$PATH:/usr/local/bin
+
 # direnv
 if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
 
