@@ -70,7 +70,7 @@ export WASMER_DIR="$HOME/.wasmer"
 [[ -f $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/slss.zsh ]] && . $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/slss.zsh
 
 # k8s
-source <(kubectl completion zsh)
+if which kubectl > /dev/null; then source <(kubectl completion zsh); fi
 
 # solana
 export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
