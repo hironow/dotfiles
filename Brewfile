@@ -126,20 +126,3 @@ cask "suspicious-package"
 cask "virtualbox"
 cask "webpquicklook"
 cask "wireshark"
-mas "Bear", id: 1091189122
-mas "BetterSnapTool", id: 417375580
-mas "DaisyDisk", id: 411643860
-mas "Deckset", id: 847496013
-mas "Developer", id: 640199958
-mas "HP Smart", id: 1474276998
-mas "Keynote", id: 409183694
-mas "Microsoft Remote Desktop", id: 1295203466
-mas "Monosnap", id: 540348655
-mas "Numbers", id: 409203825
-mas "Oka Unarchiver", id: 1441507725
-mas "Pages", id: 409201541
-mas "Sip", id: 507257563
-mas "Slack", id: 803453959
-mas "Transmit", id: 1436522307
-mas "Video Downloader for Safari", id: 1395156584
-mas "Xcode", id: 497799835
