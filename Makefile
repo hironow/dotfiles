@@ -62,4 +62,4 @@ update-gcloud: cmd-exists-gcloud  ## Update gcloud components
 
 .PHONY: update-pnpm-global
 update-pnpm-global: cmd-exists-pnpm  ## Update pnpm global packages
-	@pnpm upgrade --global
+	@pnpm update --global
