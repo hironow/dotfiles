@@ -86,3 +86,7 @@ export NVM_DIR="$HOME/.nvm"
 
 # java
 export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+
+# terraform
+autoload -U +X bashcompinit && bashcompinit
+complete -o nospace -C /opt/homebrew/bin/terraform terraform
