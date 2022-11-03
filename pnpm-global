@@ -10,3 +10,5 @@ surge
 typescript
 wscat
 firebase-tools
+@nestjs/cli
+jest-test-gen
