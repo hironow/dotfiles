@@ -63,3 +63,12 @@ update-gcloud: cmd-exists-gcloud  ## Update gcloud components
 .PHONY: update-pnpm-global
 update-pnpm-global: cmd-exists-pnpm  ## Update pnpm global packages
 	@pnpm update --global
+
+# check set
+.PHONY: check-npm-global
+check-npm-global: cmd-exists-npm  ## Check npm global packages
+	@npm list --location=global --depth=0
+
+.PHONY: check-pnpm-global
+check-pnpm-global: cmd-exists-pnpm  ## Check pnpm global packages
+	@pnpm ls --global --depth 0
