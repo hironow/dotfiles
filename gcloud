@@ -16,3 +16,5 @@ pkg
 pubsub-emulator
 skaffold
 terraform-tools
+log-streaming
+docker-credential-gcr
