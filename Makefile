@@ -65,10 +65,18 @@ update-pnpm-global: cmd-exists-pnpm  ## Update pnpm global packages
 	@pnpm update --global
 
 # check set
-.PHONY: check-npm-global
-check-npm-global: cmd-exists-npm  ## Check npm global packages
-	@npm list --location=global --depth=0
+.PHONY: check-brew
+check-brew: cmd-exists-brew  ## Check brew bundle
+	@brew list
+
+.PHONY: check-gcloud
+check-gcloud: cmd-exists-gcloud  ## Check gcloud components
+	@gcloud components list
 
 .PHONY: check-pnpm-global
 check-pnpm-global: cmd-exists-pnpm  ## Check pnpm global packages
 	@pnpm ls --global --depth 0
+
+.PHONY: check-npm-global
+check-npm-global: cmd-exists-npm  ## Check npm global packages
+	@npm list --location=global --depth=0
