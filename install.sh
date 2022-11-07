@@ -21,21 +21,16 @@ if ! command -v brew >/dev/null; then
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
-
-make add-brew
-
 # install google cloud sdk
 if ! command -v gcloud >/dev/null; then
   curl https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir="$HOME"
 fi
-make add-gcloud
-
 # install pnpm global packages
 if ! command -v pnpm >/dev/null; then
   curl -fsSL https://get.pnpm.io/install.sh | sh -
 fi
-make add-pnpm-global
 
+make add-all
 make update-all
 
 make clean
