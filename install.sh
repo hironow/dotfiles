@@ -27,7 +27,7 @@ if ! command -v gcloud >/dev/null; then
 fi
 # install pnpm global packages
 if ! command -v pnpm >/dev/null; then
-  curl -fsSL https://get.pnpm.io/install.sh | sh -
+  npm install -g pnpm
 fi
 
 make add-all
