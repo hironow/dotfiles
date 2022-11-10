@@ -77,7 +77,6 @@ brew "node"
 brew "node@16"
 brew "nss"
 brew "pdsh"
-brew "pnpm"
 brew "postgresql@14", restart_service: true
 brew "pwgen"
 brew "tcl-tk"
