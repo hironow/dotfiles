@@ -31,9 +31,7 @@ dump: cmd-exists-brew  ## Dump current brew bundle
 
 # add set
 add-all:  ## Install all
-	@make -j add-brew
-	@make -j add-gcloud
-	@make -j add-pnpm-global
+	@make -j 3 add-brew add-gcloud add-pnpm-global
 
 add-brew: cmd-exists-brew  ## Install brew bundle
 	brew bundle
@@ -46,9 +44,7 @@ add-pnpm-global: cmd-exists-pnpm  ## Install pnpm global packages
 
 # update set
 update-all:  ## Update all
-	@make -j update-brew 
-	@make -j update-gcloud
-	@make -j update-pnpm-global
+	@make -j 3 update-brew update-gcloud update-pnpm-global
 
 update-brew: cmd-exists-brew  ## Update brew bundle
 	brew update && brew upgrade && brew cleanup
