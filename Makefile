@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help deploy clean circleci dump add-all add-brew add-gcloud add-pnpm-global update-all update-brew update-gcloud update-pnpm-global check-brew check-gcloud check-pnpm-global check-npm-global
+.PHONY: help deploy clean dump add-all add-brew add-gcloud add-pnpm-global update-all update-brew update-gcloud update-pnpm-global check-brew check-gcloud check-pnpm-global check-npm-global
 
 help: ## Self-documented Makefile
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -20,11 +20,6 @@ deploy: ## Create symlink to home directory
 clean: ## Remove the dotfiles
 	@echo "==> Remove dotfiles in your home directory..."
 	rm -vrf ~/.zshrc
-
-circleci: cmd-exists-circleci  ## CircleCI local execute
-	circleci config process .circleci/config.yml > .circleci/config-2.0.yml
-	circleci local execute -c .circleci/config-2.0.yml --job shellcheck/check
-	rm .circleci/config-2.0.yml
 
 dump: cmd-exists-brew  ## Dump current brew bundle
 	rm Brewfile && brew bundle dump
