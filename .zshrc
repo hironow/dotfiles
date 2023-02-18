@@ -88,3 +88,6 @@ complete -o nospace -C /opt/homebrew/bin/terraform terraform
 
 # go
 export PATH="$HOME/go/bin:$PATH"
+
+# docker desktop
+if [ -f "$HOME/.docker/init-zsh.sh" ]; then source $HOME/.docker/init-zsh.sh; fi
