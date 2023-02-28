@@ -61,6 +61,7 @@ brew "libusbmuxd"
 brew "ideviceinstaller"
 brew "imagemagick"
 brew "ios-deploy"
+brew "ipfs", restart_service: true
 brew "jq"
 brew "k6"
 brew "kubectx"
