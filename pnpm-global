@@ -1,12 +1,9 @@
 apollo
 fx
-gatsby-cli
 http-server
 json-server
 mdx-deck
 prettier
-serverless
-surge
 typescript
 wscat
 firebase-tools
