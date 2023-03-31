@@ -6,4 +6,4 @@ bash -c "$(curl -L raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 
 ## TODO
 
-- [ ] github actions を dagger に置き換え
+* [ ] [chezmoi](https://www.chezmoi.io/comparison-table/) でリプレイス
