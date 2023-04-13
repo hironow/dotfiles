@@ -10,3 +10,4 @@ firebase-tools
 @nestjs/cli
 jest-test-gen
 wrangler
+@vivliostyle/cli
