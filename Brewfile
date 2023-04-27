@@ -67,6 +67,7 @@ brew "jq"
 brew "k6"
 brew "kubectx"
 brew "libssh"
+brew "llvm"
 brew "locust"
 brew "mas"
 brew "openjdk", link: true
