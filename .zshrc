@@ -95,3 +95,6 @@ if which github-copilot-cli > /dev/null; then eval "$(github-copilot-cli alias -
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 export PATH="$HOME/.poetry/bin:$PATH"
+
+# llvm
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
