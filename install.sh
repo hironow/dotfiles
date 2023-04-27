@@ -25,10 +25,6 @@ fi
 if ! command -v gcloud >/dev/null; then
   curl https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir="$HOME"
 fi
-# install pnpm global packages
-if ! command -v pnpm >/dev/null; then
-  npm install -g pnpm
-fi
 
 make add-all
 make update-all
