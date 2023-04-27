@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help deploy clean dump add-all add-brew add-gcloud add-pnpm-global update-all update-brew update-gcloud update-pnpm-global check-brew check-gcloud check-pnpm-global check-npm-global
+.PHONY: help deploy clean dump add-all add-brew add-gcloud add-npm-global update-all update-brew update-gcloud update-npm-global check-brew check-gcloud check-npm-global check-npm-global
 
 help: ## Self-documented Makefile
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -26,7 +26,7 @@ dump: cmd-exists-brew  ## Dump current brew bundle
 
 # add set
 add-all:  ## Install all
-	@make -j 3 add-brew add-gcloud add-pnpm-global
+	@make -j 3 add-brew add-gcloud add-npm-global
 
 add-brew: cmd-exists-brew  ## Install brew bundle
 	brew bundle
@@ -34,12 +34,12 @@ add-brew: cmd-exists-brew  ## Install brew bundle
 add-gcloud: cmd-exists-gcloud  ## Install gcloud components
 	gcloud components install `awk '{ORS=" "} {print}' gcloud`
 
-add-pnpm-global: cmd-exists-pnpm  ## Install pnpm global packages
-	pnpm add --global `awk '{ORS=" "} {print}' pnpm-global`
+add-npm-global: cmd-exists-npm  ## Install npm global packages
+	npm install --global `awk '{ORS=" "} {print}' npm-global`
 
 # update set
 update-all:  ## Update all
-	@make -j 3 update-brew update-gcloud update-pnpm-global
+	@make -j 3 update-brew update-gcloud update-npm-global
 
 update-brew: cmd-exists-brew  ## Update brew bundle
 	brew update && brew upgrade && brew cleanup
@@ -47,8 +47,8 @@ update-brew: cmd-exists-brew  ## Update brew bundle
 update-gcloud: cmd-exists-gcloud  ## Update gcloud components
 	gcloud components update --quiet
 
-update-pnpm-global: cmd-exists-pnpm  ## Update pnpm global packages
-	pnpm update --global
+update-npm-global: cmd-exists-npm  ## Update npm global packages
+	npm update --global
 
 # check set
 check-brew: cmd-exists-brew  ## Check brew bundle
@@ -57,8 +57,5 @@ check-brew: cmd-exists-brew  ## Check brew bundle
 check-gcloud: cmd-exists-gcloud  ## Check gcloud components
 	gcloud components list
 
-check-pnpm-global: cmd-exists-pnpm  ## Check pnpm global packages
-	pnpm ls --global --depth 0
-
 check-npm-global: cmd-exists-npm  ## Check npm global packages
-	npm list --location=global --depth=0
+	npm ls --global --depth 0

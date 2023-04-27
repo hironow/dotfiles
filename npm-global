@@ -11,3 +11,4 @@ firebase-tools
 jest-test-gen
 wrangler
 @vivliostyle/cli
+@githubnext/github-copilot-cli
