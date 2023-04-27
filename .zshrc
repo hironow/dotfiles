@@ -95,4 +95,3 @@ if which github-copilot-cli > /dev/null; then eval "$(github-copilot-cli alias -
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 export PATH="$HOME/.poetry/bin:$PATH"
-if which poetry > /dev/null; then poetry completions zsh > ~/.zfunc/_poetry; fi
