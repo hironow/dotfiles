@@ -12,7 +12,6 @@ gsutil
 kpt
 kubectl
 kubectl-oidc
-pkg
 pubsub-emulator
 skaffold
 terraform-tools
