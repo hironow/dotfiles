@@ -96,3 +96,6 @@ export PATH="/opt/homebrew/opt/curl/bin:$PATH"
 
 # poetry
 export PATH="$HOME/.local/bin:$PATH"
+
+# rye
+if [ -f "$HOME/.rye/env" ]; then  source $HOME/.rye/env; fi
