@@ -96,6 +96,26 @@ export PATH="/opt/homebrew/opt/curl/bin:$PATH"
 
 # poetry
 export PATH="$HOME/.local/bin:$PATH"
-
 # rye
-if [ -f "$HOME/.rye/env" ]; then  source $HOME/.rye/env; fi
+# if [ -f "$HOME/.rye/env" ]; then  source $HOME/.rye/env; fi
+# pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+if which pyenv > /dev/null; then
+    command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
+    eval "$(pyenv init -)"
+fi
+
+# anaconda
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/Users/nino/anaconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
+        . "$HOME/anaconda3/etc/profile.d/conda.sh"
+    else
+        export PATH="$HOME/anaconda3/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+
