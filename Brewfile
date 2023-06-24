@@ -92,6 +92,7 @@ brew "pdsh"
 brew "pinentry-mac"
 brew "postgresql@14", restart_service: true
 brew "pwgen"
+brew "pyenv"
 brew "tcl-tk"
 brew "python@3.8"
 brew "python@3.9"
