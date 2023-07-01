@@ -1,61 +1,86 @@
+include .env
+export
+
+COMMIT=$$(git describe --tags --always)
+OSNAME=${shell uname -s}
+
+LOCAL_BIN:=$(CURDIR)/bin
+PATH:=$(LOCAL_BIN):$(PATH)
+
+
+# default help
 .DEFAULT_GOAL := help
+.PHONY: help
 
-.PHONY: help deploy clean dump add-all add-brew add-gcloud add-npm-global update-all update-brew update-gcloud update-npm-global check-brew check-gcloud check-npm-global check-npm-global
+help: ## Display this help screen
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-help: ## Self-documented Makefile
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
-
+# utils
 cmd-exists-%:
-	@hash $(*) > /dev/null 2>&1 || \
-		(echo "ERROR: '$(*)' must be installed and available on your PATH."; exit 1)
+	@hash $(*) > /dev/null 2>&1 || (echo "ERROR: '$(*)' must be installed and available on your PATH."; exit 1)
 
 guard-%:
 	@if [ -z '${${*}}' ]; then echo 'ERROR: environment variable $* not set' && exit 1; fi
 
 
+# this repository specific
 deploy: ## Create symlink to home directory
 	@echo "==> Start to deploy dotfiles to home directory."
 	ln -s ~/dotfiles/.zshrc ~/.zshrc
+.PHONY: deploy
 
 clean: ## Remove the dotfiles
 	@echo "==> Remove dotfiles in your home directory..."
 	rm -vrf ~/.zshrc
+.PHONY: clean
 
 dump: cmd-exists-brew  ## Dump current brew bundle
 	rm Brewfile && brew bundle dump
+.PHONY: dump
 
 # add set
 add-all:  ## Install all
 	@make -j 3 add-brew add-gcloud add-npm-global
+.PHONY: add-all
 
 add-brew: cmd-exists-brew  ## Install brew bundle
 	brew bundle
+.PHONY: add-brew
 
 add-gcloud: cmd-exists-gcloud  ## Install gcloud components
 	gcloud components install `awk '{ORS=" "} {print}' gcloud`
+.PHONY: add-gcloud
 
-add-npm-global: cmd-exists-npm  ## Install npm global packages
+add-npm-g: cmd-exists-npm  ## Install npm global packages
 	npm install --global `awk '{ORS=" "} {print}' npm-global`
+.PHONY: add-npm-g
 
 # update set
 update-all:  ## Update all
 	@make -j 3 update-brew update-gcloud update-npm-global
+.PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
 	brew update && brew upgrade && brew cleanup
+.PHONY: update-brew
 
 update-gcloud: cmd-exists-gcloud  ## Update gcloud components
 	gcloud components update --quiet
+.PHONY: update-gcloud
 
-update-npm-global: cmd-exists-npm  ## Update npm global packages
+update-npm-g: cmd-exists-npm  ## Update npm global packages
 	npm update --global
+.PHONY: update-npm-g
 
 # check set
 check-brew: cmd-exists-brew  ## Check brew bundle
 	brew list
+.PHONY: check-brew
 
 check-gcloud: cmd-exists-gcloud  ## Check gcloud components
 	gcloud components list
+.PHONY: check-gcloud
 
-check-npm-global: cmd-exists-npm  ## Check npm global packages
+check-npm-g: cmd-exists-npm  ## Check npm global packages
 	npm ls --global --depth 0
+.PHONY: check-npm-g

@@ -1,4 +1,4 @@
 Brewfile.lock.json
 *-debug.log
-cue.mod/
 *.log
+.env
