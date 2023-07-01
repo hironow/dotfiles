@@ -40,7 +40,7 @@ dump: cmd-exists-brew  ## Dump current brew bundle
 
 # add set
 add-all:  ## Install all
-	@make -j 3 add-brew add-gcloud add-npm-global
+	@make -j 3 add-brew add-gcloud add-npm-g
 .PHONY: add-all
 
 add-brew: cmd-exists-brew  ## Install brew bundle
@@ -57,7 +57,7 @@ add-npm-g: cmd-exists-npm  ## Install npm global packages
 
 # update set
 update-all:  ## Update all
-	@make -j 3 update-brew update-gcloud update-npm-global
+	@make -j 3 update-brew update-gcloud update-npm-g
 .PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
