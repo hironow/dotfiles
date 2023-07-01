@@ -2,13 +2,11 @@ apollo
 fx
 http-server
 json-server
-mdx-deck
 prettier
 typescript
 wscat
 firebase-tools
 @nestjs/cli
-jest-test-gen
 wrangler
 @vivliostyle/cli
 @githubnext/github-copilot-cli
