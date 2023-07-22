@@ -9,3 +9,5 @@ firebase-tools
 wrangler
 @vivliostyle/cli
 @githubnext/github-copilot-cli
+json-schema-to-typescript
+pyright
