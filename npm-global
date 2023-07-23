@@ -11,3 +11,4 @@ wrangler
 @githubnext/github-copilot-cli
 json-schema-to-typescript
 pyright
+@thunderclient/cli
