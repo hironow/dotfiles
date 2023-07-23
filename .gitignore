@@ -2,3 +2,5 @@ Brewfile.lock.json
 *-debug.log
 *.log
 .env
+.env.*
+.venv

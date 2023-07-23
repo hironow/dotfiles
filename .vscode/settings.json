@@ -1,6 +1,7 @@
 {
   "files.exclude": {
-    "**/.idea": true
+    "**/.idea": true,
+    "**/.venv": true,
   },
   "cSpell.words": [
     "chezmoi",
