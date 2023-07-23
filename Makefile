@@ -35,7 +35,7 @@ clean: ## Remove the dotfiles
 .PHONY: clean
 
 dump: cmd-exists-brew  ## Dump current brew bundle
-	rm Brewfile && brew bundle dump
+	rm ./dump/Brewfile && cd ./dump && brew bundle dump && cd --
 .PHONY: dump
 
 # add set
@@ -48,11 +48,11 @@ add-brew: cmd-exists-brew  ## Install brew bundle
 .PHONY: add-brew
 
 add-gcloud: cmd-exists-gcloud  ## Install gcloud components
-	gcloud components install `awk '{ORS=" "} {print}' gcloud`
+	gcloud components install `awk '{ORS=" "} {print}' ./dump/gcloud`
 .PHONY: add-gcloud
 
 add-npm-g: cmd-exists-npm  ## Install npm global packages
-	npm install --global `awk '{ORS=" "} {print}' npm-global`
+	npm install --global `awk '{ORS=" "} {print}' ./dump/npm-global`
 .PHONY: add-npm-g
 
 # update set
