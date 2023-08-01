@@ -84,3 +84,10 @@ check-gcloud: cmd-exists-gcloud  ## Check gcloud components
 check-npm-g: cmd-exists-npm  ## Check npm global packages
 	npm ls --global --depth 0
 .PHONY: check-npm-g
+
+# database set
+connect-gcp-sql: cmd-exists-cloud_sql_proxy guard-GCP_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to GCP SQL
+	cloud_sql_proxy -instances=${GCP_SQL_INSTANCE}=tcp:${LOCAL_SQL_PORT}
+
+connect-firebase: cmd-exists-firebase  ## Connect to Firebase
+	firebase emulators:start --project 'local'
