@@ -4,9 +4,9 @@ source "${HOME}/.zgen/zgen.zsh"
 # if the init script doesn't exist
 if ! zgen saved; then
     echo "Creating a zgen save"
-
+    
     zgen oh-my-zsh
-
+    
     # plugins
     zgen oh-my-zsh plugins/git
     zgen oh-my-zsh plugins/sudo
@@ -17,19 +17,19 @@ if ! zgen saved; then
     zgen oh-my-zsh plugins/command-not-found
     zgen load zsh-users/zsh-syntax-highlighting
     zgen load zsh-users/zsh-autosuggestions
-
+    
     # bulk load
     zgen loadall <<EOPLUGINS
         zsh-users/zsh-history-substring-search
 EOPLUGINS
     # ^ can't indent this EOPLUGINS
-
+    
     # completions
     zgen load zsh-users/zsh-completions src
-
+    
     # theme
     zgen load denysdovhan/spaceship-prompt spaceship
-
+    
     # save all to init script
     zgen save
 fi
@@ -59,16 +59,6 @@ export PATH=$PATH:$HOME/Library/Android/sdk/platform-tools
 export WASMER_DIR="$HOME/.wasmer"
 [ -s "$WASMER_DIR/wasmer.sh" ] && source "$WASMER_DIR/wasmer.sh"  # This loads wasmer
 
-# tabtab source for serverless package
-# uninstall by removing these lines or running `tabtab uninstall serverless`
-[[ -f $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/serverless.zsh ]] && . $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/serverless.zsh
-# tabtab source for sls package
-# uninstall by removing these lines or running `tabtab uninstall sls`
-[[ -f $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/sls.zsh ]] && . $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/sls.zsh
-# tabtab source for slss package
-# uninstall by removing these lines or running `tabtab uninstall slss`
-[[ -f $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/slss.zsh ]] && . $HOME/.config/yarn/global/node_modules/serverless/node_modules/tabtab/.completions/slss.zsh
-
 # k8s
 if which kubectl > /dev/null; then source <(kubectl completion zsh); fi
 
@@ -97,6 +87,7 @@ export PATH="/opt/homebrew/opt/curl/bin:$PATH"
 # poetry
 export PATH="$HOME/.local/bin:$PATH"
 # rye
+# TODO: fix this
 # if [ -f "$HOME/.rye/env" ]; then  source $HOME/.rye/env; fi
 # pyenv
 export PYENV_ROOT="$HOME/.pyenv"
@@ -107,7 +98,8 @@ fi
 
 # anaconda
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/Users/nino/anaconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+CONDA_DIR=${CONDA_DIR:-"$HOME/anaconda3"}
+__conda_setup=$("$CONDA_DIR/bin/conda" 'shell.zsh' 'hook' 2> /dev/null)
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
@@ -119,3 +111,12 @@ else
 fi
 unset __conda_setup
 
+
+# alias
+_exists() {
+  command -v "$1" > /dev/null 2>&1
+}
+# use tldr as help util
+if _exists tldr; then
+  alias help="tldr"
+fi
