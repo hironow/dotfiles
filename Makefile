@@ -101,3 +101,8 @@ connect-gcp-sql: cmd-exists-cloud_sql_proxy guard-GCP_SQL_INSTANCE guard-LOCAL_S
 connect-firebase: cmd-exists-firebase  ## Connect to Firebase
 	firebase emulators:start --project 'local'
 .PHONY: connect-firebase
+
+# gcp set
+gcp-list: cmd-exists-gcloud  ## List GCP projects
+	gcloud config configurations list
+.PHONY: gcp-list
