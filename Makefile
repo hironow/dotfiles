@@ -103,6 +103,11 @@ connect-firebase: cmd-exists-firebase  ## Connect to Firebase
 .PHONY: connect-firebase
 
 # gcp set
-gcp-list: cmd-exists-gcloud  ## List GCP projects
+gcp-list: cmd-exists-gcloud  ## List GCP
 	gcloud config configurations list
 .PHONY: gcp-list
+
+# azure set
+azure-list: cmd-exists-az  ## List Azure
+	az account list --output table
+.PHONY: azure-list
