@@ -73,6 +73,14 @@ update-npm-g: cmd-exists-npm  ## Update npm global packages
 .PHONY: update-npm-g
 
 # check set
+check-path:  ## Check PATH
+	@echo $${PATH//:/\\n}
+.PHONY: check-path
+
+check-myip: ## Check my ip address
+	@ifconfig | sed -En "s/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p"
+.PHONY: check-myip
+
 check-brew: cmd-exists-brew  ## Check brew bundle
 	brew list
 .PHONY: check-brew
@@ -88,6 +96,8 @@ check-npm-g: cmd-exists-npm  ## Check npm global packages
 # database set
 connect-gcp-sql: cmd-exists-cloud_sql_proxy guard-GCP_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to GCP SQL
 	cloud_sql_proxy -instances=${GCP_SQL_INSTANCE}=tcp:${LOCAL_SQL_PORT}
+.PHONY: connect-gcp-sql
 
 connect-firebase: cmd-exists-firebase  ## Connect to Firebase
 	firebase emulators:start --project 'local'
+.PHONY: connect-firebase
