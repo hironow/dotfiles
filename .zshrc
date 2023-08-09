@@ -114,9 +114,11 @@ unset __conda_setup
 
 # alias
 _exists() {
-  command -v "$1" > /dev/null 2>&1
+    command -v "$1" > /dev/null 2>&1
 }
 # use tldr as help util
 if _exists tldr; then
-  alias help="tldr"
+    alias help="tldr"
 fi
+# use tailscale
+alias tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
