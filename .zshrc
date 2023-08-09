@@ -122,3 +122,5 @@ if _exists tldr; then
 fi
 # use tailscale
 alias tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+# use rustdesk
+alias rustdesk="/Applications/RustDesk.app/Contents/MacOS/rustdesk"
