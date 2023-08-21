@@ -111,3 +111,8 @@ gcp-list: cmd-exists-gcloud  ## List GCP
 azure-list: cmd-exists-az  ## List Azure
 	az account list --output table
 .PHONY: azure-list
+
+# aws set
+aws-list: cmd-exists-aws  ## List AWS
+	aws configure list
+.PHONY: aws-list
