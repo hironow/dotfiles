@@ -42,12 +42,6 @@ export EDITOR=vim
 # local
 export PATH=$PATH:/usr/local/bin
 
-# direnv
-if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
-
-# anyenv
-if which anyenv > /dev/null; then eval "$(anyenv init -)"; fi
-
 # Google Cloud SDK
 if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
 if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then source "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
@@ -84,17 +78,27 @@ if which github-copilot-cli > /dev/null; then eval "$(github-copilot-cli alias -
 # curl
 export PATH="/opt/homebrew/opt/curl/bin:$PATH"
 
-# poetry
-export PATH="$HOME/.local/bin:$PATH"
-# rye
-# TODO: fix this
-# if [ -f "$HOME/.rye/env" ]; then  source $HOME/.rye/env; fi
+# direnv
+if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
+
+# anyenv
+if which anyenv > /dev/null; then eval "$(anyenv init -)"; fi
+
+# nodenv
+if which nodenv > /dev/null; then eval "$(nodenv init -)"; fi
+
 # pyenv
 export PYENV_ROOT="$HOME/.pyenv"
 if which pyenv > /dev/null; then
     command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
     eval "$(pyenv init -)"
 fi
+
+# poetry
+export PATH="$HOME/.local/bin:$PATH"
+# rye
+# TODO: fix this
+# if [ -f "$HOME/.rye/env" ]; then  source $HOME/.rye/env; fi
 
 # anaconda
 # !! Contents within this block are managed by 'conda init' !!

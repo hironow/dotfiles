@@ -44,7 +44,7 @@ add-all:  ## Install all
 .PHONY: add-all
 
 add-brew: cmd-exists-brew  ## Install brew bundle
-	brew bundle
+	cd ./dump && brew bundle && cd --
 .PHONY: add-brew
 
 add-gcloud: cmd-exists-gcloud  ## Install gcloud components
