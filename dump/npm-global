@@ -13,3 +13,4 @@ json-schema-to-typescript
 pyright
 @thunderclient/cli
 tldr
+lint-staged
