@@ -81,6 +81,9 @@ check-myip: ## Check my ip address
 	@ifconfig | sed -En "s/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p"
 .PHONY: check-myip
 
+check-dockerport: cmd-exists-docker cmd-exists-jq ## Check docker port
+	@docker ps -q | xargs docker inspect | jq '.[] | {name: .Name, ports: .NetworkSettings.Ports}'
+
 check-brew: cmd-exists-brew  ## Check brew bundle
 	brew list
 .PHONY: check-brew
