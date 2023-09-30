@@ -13,6 +13,7 @@
     "oldstuff",
     "pycache",
     "thunderclient",
+    "typeorm",
     "typestubs",
     "venv",
     "vivliostyle"
