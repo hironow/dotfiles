@@ -128,3 +128,5 @@ fi
 alias tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 # use rustdesk
 alias rustdesk="/Applications/RustDesk.app/Contents/MacOS/rustdesk"
+# shortcut
+alias relogin='exec $SHELL -l'
