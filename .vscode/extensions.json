@@ -17,6 +17,8 @@
         "jeylanib.pinescript",
         "jebbs.plantuml",
         "esbenp.prettier-vscode",
-        "tailscale.vscode-tailscale"
+        "tailscale.vscode-tailscale",
+        "onflow.cadence",
+        "mikestead.dotenv"
     ]
 }
