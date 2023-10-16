@@ -23,6 +23,7 @@ tap "ory/tap"
 tap "rs/tap"
 tap "stripe/stripe-cli"
 tap "stripe/stripe-mock"
+tap "tufin/tufin"
 brew "act"
 brew "aliyun-cli"
 brew "anyenv"
@@ -136,6 +137,7 @@ brew "rs/tap/jaggr"
 brew "rs/tap/jplot"
 brew "stripe/stripe-cli/stripe"
 brew "stripe/stripe-mock/stripe-mock"
+brew "tufin/tufin/oasdiff"
 cask "exmancmd"
 cask "font-fira-code"
 cask "font-hack-nerd-font"
@@ -156,6 +158,7 @@ cask "webpquicklook"
 cask "wireshark"
 mas "Bear", id: 1091189122
 mas "BetterSnapTool", id: 417375580
+mas "Bitwarden", id: 1352778147
 mas "Brother P-touch Editor", id: 1453365242
 mas "Craft", id: 1487937127
 mas "DaisyDisk", id: 411643860
@@ -178,6 +181,7 @@ mas "Slack", id: 803453959
 mas "Tailscale", id: 1475387142
 mas "Telegram Lite", id: 946399090
 mas "Transmit", id: 1436522307
+mas "uBlacklist for Safari", id: 1547912640
 mas "WireGuard", id: 1451685025
 mas "Xcode", id: 497799835
 vscode "4ops.terraform"
@@ -302,9 +306,9 @@ vscode "ms-mssql.sql-bindings-vscode"
 vscode "ms-mssql.sql-database-projects-vscode"
 vscode "ms-ossdata.vscode-postgresql"
 vscode "ms-playwright.playwright"
-vscode "ms-pyright.pyright"
 vscode "ms-python.black-formatter"
 vscode "ms-python.isort"
+vscode "ms-python.mypy-type-checker"
 vscode "ms-python.python"
 vscode "ms-python.vscode-pylance"
 vscode "ms-toolsai.jupyter"
