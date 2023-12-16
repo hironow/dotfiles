@@ -15,3 +15,4 @@ pyright
 tldr
 lint-staged
 typeorm
+playwright

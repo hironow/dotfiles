@@ -96,6 +96,10 @@ check-npm-g: cmd-exists-npm  ## Check npm global packages
 	npm ls --global --depth 0
 .PHONY: check-npm-g
 
+check-rust: cmd-exists-rustc  ## Check rust config
+	rustc --print cfg
+.PHONY: check-rust
+
 # database set
 connect-gcp-sql: cmd-exists-cloud_sql_proxy guard-GCP_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to GCP SQL
 	cloud_sql_proxy -instances=${GCP_SQL_INSTANCE}=tcp:${LOCAL_SQL_PORT}
