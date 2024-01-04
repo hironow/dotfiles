@@ -71,6 +71,7 @@ brew "httpie"
 brew "hugo"
 brew "libusbmuxd"
 brew "ideviceinstaller"
+brew "libomp", link: true
 brew "imagemagick"
 brew "ios-deploy"
 brew "ipfs"
