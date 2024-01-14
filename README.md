@@ -4,6 +4,10 @@
 bash -c "$(curl -L raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ```
 
+```shell
+cp example.env .env
+```
+
 > [!NOTE]  
 > Mac以外(Windows、Linux)は未対応
 
