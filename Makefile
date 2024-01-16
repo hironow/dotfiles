@@ -123,3 +123,9 @@ azure-list: cmd-exists-az  ## List Azure
 aws-list: cmd-exists-aws  ## List AWS
 	aws configure list
 .PHONY: aws-list
+
+# ELT set
+elt-list: cmd-exists-dataform  ## List ELT as Dataform(GCP)
+	dataform listtables bigquery
+
+# ETL set TODO: Dataflow(GCP)
