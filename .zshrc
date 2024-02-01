@@ -13,6 +13,7 @@ if ! zgen saved; then
     zgen oh-my-zsh plugins/pip
     zgen oh-my-zsh plugins/lein
     zgen oh-my-zsh plugins/golang
+    zgen oh-my-zsh plugins/rust
     zgen oh-my-zsh plugins/gradle
     zgen oh-my-zsh plugins/command-not-found
     zgen load zsh-users/zsh-syntax-highlighting
@@ -42,6 +43,9 @@ export EDITOR=vim
 # local
 export PATH=$PATH:/usr/local/bin
 
+# homebrew
+if which brew > /dev/null; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
+
 # Google Cloud SDK
 if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
 if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then source "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
@@ -49,7 +53,7 @@ if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then source "$HOME/google
 # android studio (adb)
 export PATH=$PATH:$HOME/Library/Android/sdk/platform-tools
 
-# Wasmer
+# wasmer
 export WASMER_DIR="$HOME/.wasmer"
 [ -s "$WASMER_DIR/wasmer.sh" ] && source "$WASMER_DIR/wasmer.sh"  # This loads wasmer
 
@@ -139,5 +143,6 @@ fi
 alias tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 # use rustdesk
 alias rustdesk="/Applications/RustDesk.app/Contents/MacOS/rustdesk"
+
 # shortcut
 alias relogin='exec $SHELL -l'
