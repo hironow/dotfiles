@@ -118,7 +118,6 @@ brew "vegeta"
 brew "watch"
 brew "watchman"
 brew "wget"
-brew "youtube-dl"
 brew "yt-dlp"
 brew "zsh"
 brew "bufbuild/buf/buf"
@@ -162,7 +161,6 @@ mas "BetterSnapTool", id: 417375580
 mas "Bitwarden", id: 1352778147
 mas "Brother P-touch Editor", id: 1453365242
 mas "Craft", id: 1487937127
-mas "DaisyDisk", id: 411643860
 mas "Developer", id: 640199958
 mas "GarageBand", id: 682658836
 mas "HP Smart", id: 1474276998
@@ -176,7 +174,6 @@ mas "NordVPN", id: 905953485
 mas "Numbers", id: 409203825
 mas "Oka Unarchiver", id: 1441507725
 mas "Pages", id: 409201541
-mas "Prime Video", id: 545519333
 mas "Sip", id: 507257563
 mas "Slack", id: 803453959
 mas "Tailscale", id: 1475387142
