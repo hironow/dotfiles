@@ -18,6 +18,7 @@
         "esbenp.prettier-vscode",
         "tailscale.vscode-tailscale",
         "onflow.cadence",
-        "mikestead.dotenv"
+        "mikestead.dotenv",
+        "ms-toolsai.datawrangler"
     ]
 }
