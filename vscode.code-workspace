@@ -5,6 +5,14 @@
       "name": "dump"
     },
     {
+      "path": "./tools",
+      "name": "tools"
+    },
+    {
+      "path": "./win",
+      "name": "win"
+    },
+    {
       "path": "."
     }
   ],
