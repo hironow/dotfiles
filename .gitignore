@@ -7,4 +7,3 @@ Brewfile.lock.json
 venv
 __pycache__
 private/
-.envrc
