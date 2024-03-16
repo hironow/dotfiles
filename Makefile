@@ -28,6 +28,10 @@ guard-%:
 
 
 # this repository specific
+start: cmd-exists-code ## Open this repository with VSCode
+	@code vscode.code-workspace
+.PHONY: start
+
 deploy: ## Create symlink to home directory
 	@echo "==> Start to deploy dotfiles to home directory."
 	ln -s ~/dotfiles/.zshrc ~/.zshrc
@@ -131,5 +135,6 @@ aws-list: cmd-exists-aws  ## List AWS
 # ELT set
 elt-list: cmd-exists-dataform  ## List ELT as Dataform(GCP)
 	dataform listtables bigquery
+.PHONY: elt-list
 
 # ETL set TODO: Dataflow(GCP)
