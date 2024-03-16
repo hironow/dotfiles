@@ -10,7 +10,7 @@ bash -c "$(curl -L raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ## Edit
 
 ```shell
-code vscode.code-workspace
+make start
 ```
 
 ## TODO
