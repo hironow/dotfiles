@@ -6,12 +6,15 @@
     "**/__pycache__": true
   },
   "cSpell.words": [
+    "blobstorage",
     "chezmoi",
     "githubnext",
     "knollsoft",
     "kustomize",
     "oldstuff",
     "pycache",
+    "pytest",
+    "queuestorage",
     "thunderclient",
     "typeorm",
     "typestubs",
