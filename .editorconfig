@@ -31,3 +31,15 @@ indent_size = 2
 [{package.json,.travis.yml}]
 indent_style = space
 indent_size = 2
+
+# JSON Files
+[*.{json,jsonl}]
+indent_size = 2
+
+# YAML Files
+[*.{yml,yaml}]
+indent_size = 2
+
+# Markdown Files
+[*.{md,mdx}]
+trim_trailing_whitespace = false

@@ -16,3 +16,4 @@ tldr
 lint-staged
 typeorm
 playwright
+azurite
