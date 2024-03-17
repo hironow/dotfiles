@@ -1,9 +1,13 @@
 Brewfile.lock.json
-*-debug.log
-*.log
+
 .env
 .env.*
 .venv
 venv
 __pycache__
+
 private/
+
+*-debug.log
+*.log
+.azurite/

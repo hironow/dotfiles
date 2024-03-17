@@ -117,6 +117,10 @@ connect-firebase: cmd-exists-firebase  ## Connect to Firebase
 	firebase emulators:start --project 'local'
 .PHONY: connect-firebase
 
+connect-azurite: cmd-exists-azurite  ## Connect to azurite
+	azurite --silent --location .azurite --debug .azurite/debug.log
+.PHONY: connect-azurite
+
 # gcp set
 gcp-list: cmd-exists-gcloud  ## List GCP
 	gcloud config configurations list
@@ -127,7 +131,7 @@ azure-list: cmd-exists-az  ## List Azure
 	az account list --output table
 .PHONY: azure-list
 
-# aws set
+# aws set 
 aws-list: cmd-exists-aws  ## List AWS
 	aws configure list
 .PHONY: aws-list

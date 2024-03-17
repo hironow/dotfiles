@@ -16,5 +16,14 @@
       "path": "."
     }
   ],
-  "settings": {}
+  "settings": {
+    "files.exclude": {
+      "**/.azurite": true,
+      "**/__blobstorage__": true,
+      "**/__queuestorage__": true,
+      "**/.pytest_cache": true,
+      "**/.ruff_cache": true
+    },
+    "cSpell.words": ["blobstorage", "pytest", "queuestorage"]
+  }
 }
