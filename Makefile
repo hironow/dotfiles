@@ -148,7 +148,7 @@ elt-list: cmd-exists-dataform  ## List ELT as Dataform(GCP)
 # ETL set TODO: Dataflow(GCP)
 
 # version checks
-check-version-python: cmd-exists-python  ## Check Python version
+check-version-python: cmd-exists-python guard-EXPECTED_PYTHON_VERSION  ## Check Python version
 	@version=$$(python3 --version 2>&1 | awk '{print $$2}') ; \
 	if [ "$$version" != "$(EXPECTED_PYTHON_VERSION)" ]; then \
 		echo "ERROR: Expected Python version $(EXPECTED_PYTHON_VERSION), but found $$version"; \
@@ -156,18 +156,15 @@ check-version-python: cmd-exists-python  ## Check Python version
 	fi
 .PHONY: check-version-python
 
-check-version-nvcc: cmd-exists-nvcc  ## Check NVCC version
+check-version-nvcc: cmd-exists-nvcc guard-EXPECTED_NVCC_VERSION  ## Check NVCC version
 	@version=$$(nvcc --version | grep "release" | awk '{print $$6}' | cut -d ',' -f 1) ; \
-	if [ -z "$$version" ]; then \
-		echo "ERROR: nvcc is not installed or not in your PATH"; \
-		exit 1; \
-	elif [ "$$version" != "$(EXPECTED_NVCC_VERSION)" ]; then \
+	if [ "$$version" != "$(EXPECTED_NVCC_VERSION)" ]; then \
 		echo "ERROR: Expected NVCC version $(EXPECTED_NVCC_VERSION), but found $$version"; \
 		exit 1; \
 	fi
 .PHONY: check-version-nvcc
 
-check-version-conda: cmd-exists-conda  ## Check Conda version
+check-version-conda: cmd-exists-conda guard-EXPECTED_CONDA_VERSION  ## Check Conda version
 	@version=$$(conda --version 2>&1 | awk '{print $$2}') ; \
 	if [ "$$version" != "$(EXPECTED_CONDA_VERSION)" ]; then \
 		echo "ERROR: Expected Conda version $(EXPECTED_CONDA_VERSION), but found $$version"; \
@@ -175,7 +172,7 @@ check-version-conda: cmd-exists-conda  ## Check Conda version
 	fi
 .PHONY: check-version-conda
 
-check-version-torch: cmd-exists-python  ## Check PyTorch version
+check-version-torch: cmd-exists-python guard-EXPECTED_TORCH_VERSION  ## Check PyTorch version
 	@version=$$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null) ; \
 	if [ -z "$$version" ]; then \
 		echo "ERROR: PyTorch is not installed"; \
@@ -186,9 +183,9 @@ check-version-torch: cmd-exists-python  ## Check PyTorch version
 	fi
 .PHONY: check-version-torch
 
-check-versions:  ## Check versions for LLM
+check-versions-for-llm:  ## Check versions for LLM
 	@$(MAKE) check-version-python
 	@$(MAKE) check-version-nvcc
 	@$(MAKE) check-version-conda
 	@$(MAKE) check-version-torch
-.PHONY: check-versions
+.PHONY: check-versions-for-llm
