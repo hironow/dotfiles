@@ -183,5 +183,8 @@ check-version-torch: cmd-exists-python  ## Check PyTorch version
 .PHONY: check-version-torch
 
 check-versions:  ## Check versions for LLM
-	@make -j 4 check-version-python check-version-nvcc check-version-conda check-version-torch
+	@$(MAKE) check-version-python
+	@$(MAKE) check-version-nvcc
+	@$(MAKE) check-version-conda
+	@$(MAKE) check-version-torch
 .PHONY: check-versions
