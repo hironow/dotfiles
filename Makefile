@@ -148,7 +148,7 @@ elt-list: cmd-exists-dataform  ## List ELT as Dataform(GCP)
 # ETL set TODO: Dataflow(GCP)
 
 # version checks
-check-version-python: cmd-exists-python guard-EXPECTED_PYTHON_VERSION  ## Check Python version
+check-version-python: cmd-exists-python3 guard-EXPECTED_PYTHON_VERSION  ## Check Python version
 	@version=$$(python3 --version 2>&1 | awk '{print $$2}') ; \
 	if [ "$$version" != "$(EXPECTED_PYTHON_VERSION)" ]; then \
 		echo "ERROR: Expected Python version $(EXPECTED_PYTHON_VERSION), but found $$version"; \
