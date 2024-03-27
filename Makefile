@@ -173,7 +173,7 @@ check-version-conda: cmd-exists-conda guard-EXPECTED_CONDA_VERSION  ## Check Con
 .PHONY: check-version-conda
 
 check-version-torch: cmd-exists-python guard-EXPECTED_TORCH_VERSION  ## Check PyTorch version
-	@version=$$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null) ; \
+	@version=$$(python3 -c "import torch; print(torch.version.cuda)" 2>/dev/null) ; \
 	if [ -z "$$version" ]; then \
 		echo "ERROR: PyTorch is not installed"; \
 		exit 1; \
