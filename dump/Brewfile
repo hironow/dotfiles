@@ -35,7 +35,7 @@ brew "azure-cli"
 brew "bat"
 brew "blueutil"
 brew "boost"
-brew "glib"
+brew "glib", link: false
 brew "chezmoi"
 brew "cmake"
 brew "colordiff"
