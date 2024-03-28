@@ -48,9 +48,9 @@ dump: cmd-exists-brew  ## Dump current brew bundle
 
 # add set
 add-all:  ## Install all
-	@$(MAKE) add-brew
-	@$(MAKE) add-gcloud
-	@$(MAKE) add-npm-g
+	make add-brew
+	make add-gcloud
+	make add-npm-g
 .PHONY: add-all
 
 add-brew: cmd-exists-brew  ## Install brew bundle
@@ -67,9 +67,9 @@ add-npm-g: cmd-exists-npm  ## Install npm global packages
 
 # update set
 update-all:  ## Update all
-	@$(MAKE) update-brew
-	@$(MAKE) update-gcloud
-	@$(MAKE) update-npm-g
+	make update-brew
+	make update-gcloud
+	make update-npm-g
 .PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
@@ -173,7 +173,7 @@ check-version-conda: cmd-exists-conda guard-EXPECTED_CONDA_VERSION  ## Check Con
 .PHONY: check-version-conda
 
 check-version-torch: cmd-exists-python guard-EXPECTED_TORCH_VERSION  ## Check PyTorch version
-	@version=$$(python3 -c "import torch; print(torch.version.cuda)" 2>/dev/null) ; \
+	@version=$$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null) ; \
 	if [ -z "$$version" ]; then \
 		echo "ERROR: PyTorch is not installed"; \
 		exit 1; \
@@ -184,8 +184,8 @@ check-version-torch: cmd-exists-python guard-EXPECTED_TORCH_VERSION  ## Check Py
 .PHONY: check-version-torch
 
 check-versions-for-llm:  ## Check versions for LLM
-	@$(MAKE) check-version-python
-	@$(MAKE) check-version-nvcc
-	@$(MAKE) check-version-conda
-	@$(MAKE) check-version-torch
+	make check-version-python
+	make check-version-nvcc
+	make check-version-conda
+	make check-version-torch
 .PHONY: check-versions-for-llm
