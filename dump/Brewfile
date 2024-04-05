@@ -36,6 +36,7 @@ brew "bat"
 brew "blueutil"
 brew "boost"
 brew "glib", link: false
+brew "certifi"
 brew "chezmoi"
 brew "cmake"
 brew "colordiff"
