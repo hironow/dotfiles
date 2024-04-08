@@ -65,6 +65,11 @@ add-npm-g: cmd-exists-npm  ## Install npm global packages
 	npm install --global `awk '{ORS=" "} {print}' ./dump/npm-global`
 .PHONY: add-npm-g
 
+add-bun-g: cmd-exists-bun  ## Install bun global packages
+	bun install --global `awk '{ORS=" "} {print}' ./dump/npm-global`
+.PHONY: add-bun-g
+
+
 # update set
 update-all:  ## Update all
 	make update-brew
@@ -83,6 +88,12 @@ update-gcloud: cmd-exists-gcloud  ## Update gcloud components
 update-npm-g: cmd-exists-npm  ## Update npm global packages
 	npm update --global
 .PHONY: update-npm-g
+
+update-bun-g: cmd-exists-bun  ## Update bun global packages
+	bun upgrade
+	bun update --global
+.PHONY: update-bun-g
+
 
 # check set
 check-path:  ## Check PATH
@@ -108,9 +119,14 @@ check-npm-g: cmd-exists-npm  ## Check npm global packages
 	npm ls --global --depth 0
 .PHONY: check-npm-g
 
+check-bun-g: cmd-exists-bun  ## Check bun global packages
+	bun pm ls --global
+.PHONY: check-bun-g
+
 check-rust: cmd-exists-rustc  ## Check rust config
 	rustc --print cfg
 .PHONY: check-rust
+
 
 # database set
 connect-gcp-sql: cmd-exists-cloud_sql_proxy guard-GCP_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to GCP SQL
@@ -146,6 +162,7 @@ elt-list: cmd-exists-dataform  ## List ELT as Dataform(GCP)
 .PHONY: elt-list
 
 # ETL set TODO: Dataflow(GCP)
+
 
 # version checks
 check-version-python: cmd-exists-python3 guard-EXPECTED_PYTHON_VERSION  ## Check Python version
