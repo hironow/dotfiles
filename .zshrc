@@ -39,6 +39,7 @@ fi
 export SPACESHIP_EXIT_CODE_SHOW=true
 
 export EDITOR=vim
+export GPG_TTY=$(tty)
 
 # local
 export PATH=$PATH:/usr/local/bin
