@@ -52,6 +52,7 @@ add-all:  ## Install all
 	make add-brew
 	make add-gcloud
 	make add-npm-g
+	make add-bun-g
 .PHONY: add-all
 
 add-brew: cmd-exists-brew  ## Install brew bundle
@@ -76,6 +77,7 @@ update-all:  ## Update all
 	make update-brew
 	make update-gcloud
 	make update-npm-g
+	make update-bun-g
 .PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
