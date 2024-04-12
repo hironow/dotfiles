@@ -6,10 +6,11 @@ SHELL := $(shell which bash) # Use bash syntax to be consistent
 OS_NAME := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 ARCH_NAME_RAW := $(shell uname -m)
 
-COMMIT=$$(git describe --tags --always)
+GIT_ROOT := $(shell git rev-parse --show-toplevel)
+COMMIT := $(shell git describe --tags --always)
 
-LOCAL_BIN:=$(CURDIR)/bin
-PATH:=$(LOCAL_BIN):$(PATH)
+LOCAL_BIN := $(CURDIR)/bin
+PATH := $(LOCAL_BIN):$(PATH)
 
 
 # 'make' command will trigger the help target
