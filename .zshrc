@@ -36,6 +36,11 @@ EOPLUGINS
 fi
 # --- loaded zgen
 
+# func
+_cmd_exists() {
+    command -v "$1" > /dev/null 2>&1
+}
+
 export SPACESHIP_EXIT_CODE_SHOW=true
 
 export EDITOR=vim
@@ -45,7 +50,7 @@ export GPG_TTY=$(tty)
 export PATH=$PATH:/usr/local/bin
 
 # homebrew
-if which brew > /dev/null; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
+if _cmd_exists brew; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
 
 # Google Cloud SDK
 if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
@@ -59,7 +64,7 @@ export WASMER_DIR="$HOME/.wasmer"
 [ -s "$WASMER_DIR/wasmer.sh" ] && source "$WASMER_DIR/wasmer.sh"  # This loads wasmer
 
 # k8s
-if which kubectl > /dev/null; then source <(kubectl completion zsh); fi
+if _cmd_exists kubectl; then source <(kubectl completion zsh); fi
 
 # solana
 export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
@@ -78,7 +83,7 @@ export PATH="$HOME/go/bin:$PATH"
 if [ -f "$HOME/.docker/init-zsh.sh" ]; then source $HOME/.docker/init-zsh.sh; fi
 
 # github copilot cli
-if which github-copilot-cli > /dev/null; then eval "$(github-copilot-cli alias -- "$0")"; fi
+if _cmd_exists github-copilot-cli; then eval "$(github-copilot-cli alias -- "$0")"; fi
 
 # curl
 export PATH="/opt/homebrew/opt/curl/bin:$PATH"
@@ -94,7 +99,7 @@ if which nodenv > /dev/null; then eval "$(nodenv init -)"; fi
 
 # pyenv
 export PYENV_ROOT="$HOME/.pyenv"
-if which pyenv > /dev/null; then
+if _cmd_exists pyenv; then
     command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
     eval "$(pyenv init -)"
 fi
@@ -131,16 +136,13 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 . "$HOME/.cargo/env"
 
 # ngrok
-if command -v ngrok &>/dev/null; then
+if _cmd_exists ngrok; then
     eval "$(ngrok completion)"
 fi
 
 # alias
-_exists() {
-    command -v "$1" > /dev/null 2>&1
-}
 # use tldr as help util
-if _exists tldr; then
+if _cmd_exists tldr; then
     alias help="tldr"
 fi
 # use tailscale
