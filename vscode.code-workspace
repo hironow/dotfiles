@@ -24,6 +24,24 @@
       "**/.pytest_cache": true,
       "**/.ruff_cache": true
     },
-    "cSpell.words": ["blobstorage", "pytest", "queuestorage"]
+    "cSpell.words": [
+      "blobstorage",
+      "pytest",
+      "queuestorage"
+    ],
+    "favorites.resources": [
+      {
+        "filePath": "/Users/nino/dotfiles/.zshrc",
+        "group": "Default"
+      },
+      {
+        "filePath": "/Users/nino/dotfiles/Makefile",
+        "group": "Default"
+      },
+      {
+        "filePath": "/Users/nino/dotfiles/install.sh",
+        "group": "Default"
+      }
+    ]
   }
 }
