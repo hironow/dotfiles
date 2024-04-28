@@ -100,7 +100,7 @@ brew "nss"
 brew "pdsh"
 brew "pinentry-mac"
 brew "poppler"
-brew "postgresql@14", restart_service: true
+brew "postgresql@14"
 brew "pwgen"
 brew "redis"
 brew "ruby"
