@@ -3,7 +3,12 @@
     "**/.idea": true,
     "**/.venv": true,
     "**/venv": true,
-    "**/__pycache__": true
+    "**/__pycache__": true,
+    "**/.azurite": true,
+    "**/__blobstorage__": true,
+    "**/__queuestorage__": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true
   },
   "cSpell.words": [
     "blobstorage",
@@ -19,6 +24,11 @@
     "typeorm",
     "typestubs",
     "venv",
-    "vivliostyle"
+    "vivliostyle",
+    "blobstorage",
+    "istioctl",
+    "kustomize",
+    "pytest",
+    "queuestorage"
   ]
 }
