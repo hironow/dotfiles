@@ -26,6 +26,8 @@
     },
     "cSpell.words": [
       "blobstorage",
+      "istioctl",
+      "kustomize",
       "pytest",
       "queuestorage"
     ],
