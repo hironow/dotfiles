@@ -1,7 +1,6 @@
 {
     "recommendations": [
         "rangav.vscode-thunder-client",
-        "github.copilot",
         "github.copilot-chat",
         "github.vscode-github-actions",
         "github.copilot-labs",
