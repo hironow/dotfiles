@@ -140,6 +140,11 @@ if _cmd_exists ngrok; then
     eval "$(ngrok completion)"
 fi
 
+# copilot cli
+if _cmd_exists gh copilot alias; then
+    eval "$(gh copilot alias -- zsh)"
+fi
+
 # alias
 # use tldr as help util
 if _cmd_exists tldr; then
