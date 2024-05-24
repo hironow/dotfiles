@@ -65,6 +65,8 @@ export WASMER_DIR="$HOME/.wasmer"
 
 # k8s
 if _cmd_exists kubectl; then source <(kubectl completion zsh); fi
+# krew
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
 
 # solana
 export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
@@ -157,3 +159,7 @@ alias rustdesk="/Applications/RustDesk.app/Contents/MacOS/rustdesk"
 
 # shortcut
 alias relogin='exec $SHELL -l'
+if _cmd_exists kubectl; then
+    alias k="kubectl"
+fi
+
