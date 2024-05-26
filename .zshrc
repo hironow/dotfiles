@@ -96,6 +96,12 @@ if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
 # anyenv
 if which anyenv > /dev/null; then eval "$(anyenv init -)"; fi
 
+# mise
+if which mise > /dev/null; then 
+    eval "$(~/.local/bin/mise activate zsh)"
+    export PATH="$HOME/.local/share/mise/shims:$PATH"
+fi
+
 # nodenv
 if which nodenv > /dev/null; then eval "$(nodenv init -)"; fi
 
