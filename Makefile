@@ -51,7 +51,6 @@ dump: cmd-exists-brew  ## Dump current brew bundle
 add-all:  ## Install all
 	make add-brew
 	make add-gcloud
-	make add-npm-g
 	make add-bun-g
 .PHONY: add-all
 
@@ -63,10 +62,6 @@ add-gcloud: cmd-exists-gcloud  ## Install gcloud components
 	gcloud components install `awk '{ORS=" "} {print}' ./dump/gcloud`
 .PHONY: add-gcloud
 
-add-npm-g: cmd-exists-npm  ## Install npm global packages
-	npm install --global `awk '{ORS=" "} {print}' ./dump/npm-global`
-.PHONY: add-npm-g
-
 add-bun-g: cmd-exists-bun  ## Install bun global packages
 	bun install --global `awk '{ORS=" "} {print}' ./dump/npm-global`
 .PHONY: add-bun-g
@@ -76,7 +71,6 @@ add-bun-g: cmd-exists-bun  ## Install bun global packages
 update-all:  ## Update all
 	make update-brew
 	make update-gcloud
-	make update-npm-g
 	make update-bun-g
 .PHONY: update-all
 
@@ -88,12 +82,7 @@ update-gcloud: cmd-exists-gcloud  ## Update gcloud components
 	gcloud components update --quiet
 .PHONY: update-gcloud
 
-update-npm-g: cmd-exists-npm  ## Update npm global packages
-	npm update --global
-.PHONY: update-npm-g
-
 update-bun-g: cmd-exists-bun  ## Update bun global packages
-	bun upgrade
 	bun update --global
 .PHONY: update-bun-g
 
