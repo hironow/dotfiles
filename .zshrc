@@ -93,30 +93,14 @@ export PATH="/opt/homebrew/opt/curl/bin:$PATH"
 # direnv
 if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
 
-# anyenv
-if which anyenv > /dev/null; then eval "$(anyenv init -)"; fi
-
 # mise
 if which mise > /dev/null; then 
     eval "$(~/.local/bin/mise activate zsh)"
     export PATH="$HOME/.local/share/mise/shims:$PATH"
 fi
 
-# nodenv
-if which nodenv > /dev/null; then eval "$(nodenv init -)"; fi
-
-# pyenv
-export PYENV_ROOT="$HOME/.pyenv"
-if _cmd_exists pyenv; then
-    command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
-    eval "$(pyenv init -)"
-fi
-
 # poetry
 export PATH="$HOME/.local/bin:$PATH"
-# rye
-# TODO: fix this
-# if [ -f "$HOME/.rye/env" ]; then  source $HOME/.rye/env; fi
 
 # anaconda
 # !! Contents within this block are managed by 'conda init' !!
