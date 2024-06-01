@@ -1,5 +1,5 @@
-include .env
-export
+# include .env
+# export
 
 SHELL := $(shell which bash) # Use bash syntax to be consistent
 
