@@ -11,3 +11,5 @@ private/
 *-debug.log
 *.log
 .azurite/
+
+.mise.toml
