@@ -27,6 +27,10 @@ guard-%:
 
 
 # this repository specific
+install: cmd-exists-mise  ## Install this repository requirements
+	mise install
+.PHONY: install
+
 start: cmd-exists-code ## Open this repository with VSCode
 	@code vscode.code-workspace
 .PHONY: start
