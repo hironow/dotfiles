@@ -90,9 +90,6 @@ if _cmd_exists github-copilot-cli; then eval "$(github-copilot-cli alias -- "$0"
 # curl
 export PATH="/opt/homebrew/opt/curl/bin:$PATH"
 
-# direnv
-if which direnv > /dev/null; then eval "$(direnv hook zsh)"; fi
-
 # mise
 if which mise > /dev/null; then 
     eval "$(~/.local/bin/mise activate zsh)"
@@ -152,4 +149,6 @@ alias relogin='exec $SHELL -l'
 if _cmd_exists kubectl; then
     alias k="kubectl"
 fi
-
+if _cmd_exists mise; then
+    alias mx="mise x --"
+fi
