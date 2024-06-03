@@ -49,6 +49,11 @@ dump: cmd-exists-brew  ## Dump current brew bundle
 	rm ./dump/Brewfile && cd ./dump && brew bundle dump && cd --
 .PHONY: dump
 
+freeze: cmd-exists-uv  ## Freeze current python packages
+	uv pip freeze | uv pip compile - -o requirements.txt
+.PHONY: freeze
+
+
 # add set
 add-all:  ## Install all
 	make add-brew
