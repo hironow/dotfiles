@@ -57,7 +57,6 @@ freeze: cmd-exists-uv  ## Freeze current python packages
 # add set
 add-all:  ## Install all
 	make add-brew
-	make add-gcloud
 	make add-bun-g
 .PHONY: add-all
 
@@ -77,7 +76,6 @@ add-bun-g: cmd-exists-bun  ## Install bun global packages
 # update set
 update-all:  ## Update all
 	make update-brew
-	make update-gcloud
 	make update-bun-g
 .PHONY: update-all
 
@@ -163,7 +161,7 @@ elt-list: cmd-exists-dataform  ## List ELT as Dataform(GCP)
 # ETL set TODO: Dataflow(GCP)
 
 
-# version checks
+# version check
 check-version-python: cmd-exists-python3 guard-EXPECTED_PYTHON_VERSION  ## Check Python version
 	@version=$$(python3 --version 2>&1 | awk '{print $$2}') ; \
 	if [ "$$version" != "$(EXPECTED_PYTHON_VERSION)" ]; then \
@@ -198,10 +196,3 @@ check-version-torch: cmd-exists-python guard-EXPECTED_TORCH_VERSION  ## Check Py
 		exit 1; \
 	fi
 .PHONY: check-version-torch
-
-check-versions-for-llm:  ## Check versions for LLM
-	make check-version-python
-	make check-version-nvcc
-	make check-version-conda
-	make check-version-torch
-.PHONY: check-versions-for-llm
