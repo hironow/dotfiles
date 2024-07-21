@@ -134,6 +134,10 @@ if _cmd_exists gh copilot; then
     eval "$(gh copilot alias -- zsh)"
 fi
 
+# terramate
+complete -o nospace -C /opt/homebrew/bin/terramate terramate
+
+
 # alias
 # use tldr as help util
 if _cmd_exists tldr; then
@@ -152,3 +156,4 @@ fi
 if _cmd_exists mise; then
     alias mx="mise x --"
 fi
+
