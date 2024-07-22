@@ -1,0 +1,4 @@
+#:schema ./schema/mise.json
+
+[env]
+FOO = ".mise.local.toml"

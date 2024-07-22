@@ -1,0 +1,5 @@
+{
+  "name": "Rust",
+  "image": "ghcr.io/jdx/mise:dev",
+  "remoteUser": "root"
+}
