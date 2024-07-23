@@ -32,7 +32,7 @@ install: cmd-exists-mise  ## Install this repository requirements
 .PHONY: install
 
 start: cmd-exists-code ## Open this repository with VSCode
-	@code vscode.code-workspace
+	@code dotfiles.code-workspace
 .PHONY: start
 
 deploy: ## Create symlink to home directory

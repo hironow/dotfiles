@@ -120,6 +120,7 @@ brew "ta-lib"
 brew "tcl-tk"
 brew "telnet"
 brew "terraform"
+brew "terramate"
 brew "tfenv", link: false
 brew "tfsec"
 brew "tig"
