@@ -12,7 +12,3 @@ bash -c "$(curl -L raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ```shell
 make start
 ```
-
-## TODO
-
-* [ ] [chezmoi](https://www.chezmoi.io/comparison-table/) でリプレイス
