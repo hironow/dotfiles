@@ -19,6 +19,9 @@
   "settings": {
     "files.exclude": {
       "**/.uv": true,
-    }
+    },
+    "cSpell.words": [
+      "devcontainers"
+    ]
   }
 }
