@@ -1,2 +1,4 @@
+#:schema ./schema/mise.json
+
 [env]
 FOO = ".mise.dev.toml"
