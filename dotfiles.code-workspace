@@ -19,9 +19,16 @@
   "settings": {
     "files.exclude": {
       "**/.uv": true,
+      "**/node_modules": true,
+      "**/playwright-report": true,
+      "**/test-results": true,
     },
     "cSpell.words": [
-      "devcontainers"
+      "bunx",
+      "devcontainers",
+      "msedge",
+      "Todos",
+      "viewports"
     ]
   }
 }
