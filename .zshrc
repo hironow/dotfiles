@@ -91,7 +91,7 @@ if _cmd_exists github-copilot-cli; then eval "$(github-copilot-cli alias -- "$0"
 export PATH="/opt/homebrew/opt/curl/bin:$PATH"
 
 # mise
-if which mise > /dev/null; then 
+if _cmd_exists mise; then 
     eval "$(~/.local/bin/mise activate zsh)"
     export PATH="$HOME/.local/share/mise/shims:$PATH"
 fi

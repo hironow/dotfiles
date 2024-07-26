@@ -5,3 +5,5 @@ FOO = ".mise.local.toml"
 
 [tools]
 bun = "latest"
+rust = "latest"
+go = "latest"
