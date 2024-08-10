@@ -10,5 +10,5 @@ bash -c "$(curl -L raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ## Edit
 
 ```shell
-make start
+make edit
 ```
