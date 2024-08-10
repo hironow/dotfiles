@@ -58,6 +58,7 @@ freeze: cmd-exists-uv  ## Freeze current python packages
 add-all:  ## Install all
 	make add-brew
 	make add-bun-g
+	make add-gcloud
 .PHONY: add-all
 
 add-brew: cmd-exists-brew  ## Install brew bundle
@@ -65,7 +66,7 @@ add-brew: cmd-exists-brew  ## Install brew bundle
 .PHONY: add-brew
 
 add-gcloud: cmd-exists-gcloud  ## Install gcloud components
-	gcloud components install `awk '{ORS=" "} {print}' ./dump/gcloud`
+	sudo gcloud components install `awk '{ORS=" "} {print}' ./dump/gcloud`
 .PHONY: add-gcloud
 
 add-bun-g: cmd-exists-bun  ## Install bun global packages
@@ -74,9 +75,11 @@ add-bun-g: cmd-exists-bun  ## Install bun global packages
 
 
 # update set
-update-all:  ## Update all
+update-all cmd-exists-mise:  ## Update all
 	make update-brew
 	make update-bun-g
+	make update-gcloud
+	mise upgrade
 .PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
@@ -84,7 +87,7 @@ update-brew: cmd-exists-brew  ## Update brew bundle
 .PHONY: update-brew
 
 update-gcloud: cmd-exists-gcloud  ## Update gcloud components
-	gcloud components update --quiet
+	sudo gcloud components update --quiet
 .PHONY: update-gcloud
 
 update-bun-g: cmd-exists-bun  ## Update bun global packages
