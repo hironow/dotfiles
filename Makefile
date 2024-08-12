@@ -13,7 +13,6 @@ PATH := $(LOCAL_BIN):$(PATH)
 
 # 'make' command will trigger the help target
 .DEFAULT_GOAL := help
-
 help: ## Display this help screen
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
@@ -129,15 +128,15 @@ check-rust: cmd-exists-rustc  ## Check rust config
 
 
 # database set
-connect-gcp-sql: cmd-exists-cloud_sql_proxy guard-GCP_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to GCP SQL
+connect-gcp-sql: cmd-exists-cloud_sql_proxy guard-GCP_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to CloudSQL(GCP)
 	cloud_sql_proxy -instances=${GCP_SQL_INSTANCE}=tcp:${LOCAL_SQL_PORT}
 .PHONY: connect-gcp-sql
 
-connect-firebase: cmd-exists-firebase  ## Connect to Firebase
+connect-firebase: cmd-exists-firebase  ## Connect to Firebase(GCP)
 	firebase emulators:start --project 'local'
 .PHONY: connect-firebase
 
-connect-azurite: cmd-exists-azurite  ## Connect to azurite
+connect-azurite: cmd-exists-azurite  ## Connect to azurite(Azure)
 	azurite --silent --location .azurite --debug .azurite/debug.log
 .PHONY: connect-azurite
 
