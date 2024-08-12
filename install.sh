@@ -26,9 +26,6 @@ if ! command -v gcloud >/dev/null; then
   curl https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir="$HOME"
 fi
 
-# create .env file if it doesn't exist, and copy example.env
-[ -e .env ] || cp example.env .env
-
 # execute commands
 make add-all
 make update-all
