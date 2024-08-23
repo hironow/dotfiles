@@ -1,4 +1,5 @@
 # load zgen
+# !! zgen should be installed first !!
 source "${HOME}/.zgen/zgen.zsh"
 
 # if the init script doesn't exist
