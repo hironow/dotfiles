@@ -45,6 +45,14 @@ _file_exists() {
     [ -f $1 ]
 }
 
+_file_not_empty() {
+    [ -s $1 ]
+}
+
+_cmd_success() {
+    [ $? -eq 0 ]
+}
+
 export SPACESHIP_EXIT_CODE_SHOW=true
 
 export EDITOR=vim
@@ -65,7 +73,8 @@ export PATH=$PATH:$HOME/Library/Android/sdk/platform-tools
 
 # wasmer
 export WASMER_DIR="$HOME/.wasmer"
-[ -s "$WASMER_DIR/wasmer.sh" ] && source "$WASMER_DIR/wasmer.sh"  # This loads wasmer
+# This loads wasmer
+if _file_not_empty "$WASMER_DIR/wasmer.sh"; then source "$WASMER_DIR/wasmer.sh"; fi
 
 # k8s
 if _cmd_exists kubectl; then source <(kubectl completion zsh); fi
@@ -107,7 +116,7 @@ export PATH="$HOME/.local/bin:$PATH"
 # !! Contents within this block are managed by 'conda init' !!
 CONDA_DIR=${CONDA_DIR:-"$HOME/anaconda3"}
 __conda_setup=$("$CONDA_DIR/bin/conda" 'shell.zsh' 'hook' 2> /dev/null)
-if [ $? -eq 0 ]; then
+if _cmd_success; then
     eval "$__conda_setup"
 else
     if _file_exists "$HOME/anaconda3/etc/profile.d/conda.sh"; then
@@ -119,7 +128,7 @@ fi
 unset __conda_setup
 
 # bun completions
-[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
+if _file_not_empty "$HOME/.bun/_bun"; then source "$HOME/.bun/_bun"; fi
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
