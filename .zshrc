@@ -41,6 +41,10 @@ _cmd_exists() {
     command -v "$1" > /dev/null 2>&1
 }
 
+_file_exists() {
+    [ -f $1 ]
+}
+
 export SPACESHIP_EXIT_CODE_SHOW=true
 
 export EDITOR=vim
@@ -53,8 +57,8 @@ export PATH=$PATH:/usr/local/bin
 if _cmd_exists brew; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
 
 # Google Cloud SDK
-if [ -f "$HOME/google-cloud-sdk/path.zsh.inc" ]; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
-if [ -f "$HOME/google-cloud-sdk/completion.zsh.inc" ]; then source "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
+if _file_exists "$HOME/google-cloud-sdk/path.zsh.inc"; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
+if _file_exists "$HOME/google-cloud-sdk/completion.zsh.inc"; then source "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
 
 # android studio (adb)
 export PATH=$PATH:$HOME/Library/Android/sdk/platform-tools
@@ -82,7 +86,7 @@ complete -o nospace -C /opt/homebrew/bin/terraform terraform
 export PATH="$HOME/go/bin:$PATH"
 
 # docker desktop
-if [ -f "$HOME/.docker/init-zsh.sh" ]; then source $HOME/.docker/init-zsh.sh; fi
+if _file_exists "$HOME/.docker/init-zsh.sh"; then source "$HOME/.docker/init-zsh.sh"; fi
 
 # github copilot cli
 if _cmd_exists github-copilot-cli; then eval "$(github-copilot-cli alias -- "$0")"; fi
@@ -106,8 +110,8 @@ __conda_setup=$("$CONDA_DIR/bin/conda" 'shell.zsh' 'hook' 2> /dev/null)
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
-        . "$HOME/anaconda3/etc/profile.d/conda.sh"
+    if _file_exists "$HOME/anaconda3/etc/profile.d/conda.sh"; then
+        source "$HOME/anaconda3/etc/profile.d/conda.sh"
     else
         export PATH="$HOME/anaconda3/bin:$PATH"
     fi
@@ -122,7 +126,7 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 # cargo
-. "$HOME/.cargo/env"
+source "$HOME/.cargo/env"
 
 # ngrok
 if _cmd_exists ngrok; then
