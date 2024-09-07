@@ -7,8 +7,18 @@ bash -c "$(curl -L raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 > [!NOTE]  
 > Mac以外(Windows、Linux)は未対応
 
-## Edit
-
 ```shell
+# make
 make edit
+make update-all
+make dump
+
+# uv
+uv sync
+
+# mise
+mise set
+
+# make on mise
+x make
 ```
