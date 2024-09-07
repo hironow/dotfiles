@@ -7,16 +7,18 @@ _.path = ["./target/debug"]
 FOO = "bar"
 FOO_NUM = 1
 THIS_PROJECT = "{{config_root}}-{{cwd}}"
-GCP_SQL_INSTANCE = "project:us-central1:postgre"
-LOCAL_SQL_PORT = "15432"
-EXPECTED_PYTHON_VERSION = "3.10.8"
-EXPECTED_NVCC_VERSION = "11.2"
-EXPECTED_CONDA_VERSION = "23.9.0"
-EXPECTED_TORCH_VERSION = "1.8.1"
+
 
 [tools]
-python = { version = '3.11', virtualenv = '.venv' }
+python = "latest"
 bun = "latest"
+rust = "latest"
+go = "latest"
+node = "latest"
+terraform = "latest"
+direnv = "latest"
+jq = "latest"
+shellcheck = "latest"
 
 
 [plugins]

@@ -1,7 +1,7 @@
+# Homebrew
 Brewfile.lock.json
 
-.env
-.env.*
+# Python
 .venv
 venv
 __pycache__
@@ -10,6 +10,8 @@ private/
 
 *-debug.log
 *.log
+
+# Azure
 .azurite/
 
 # IaC
@@ -19,3 +21,6 @@ private/
 terraform.tfstate
 terraform.tfstate.backup
 *.tfplan
+
+# Cargo
+/target/
