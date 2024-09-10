@@ -16,7 +16,6 @@ rust = "latest"
 go = "latest"
 node = "latest"
 terraform = "latest"
-direnv = "latest"
 jq = "latest"
 shellcheck = "latest"
 
