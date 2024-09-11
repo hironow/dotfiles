@@ -160,7 +160,6 @@ cask "qlvideo"
 cask "quicklook-csv"
 cask "quicklook-json"
 cask "quicklookase"
-cask "rsyncui"
 cask "suspicious-package"
 cask "wireshark"
 mas "Bear", id: 1091189122
