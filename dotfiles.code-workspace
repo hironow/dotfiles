@@ -30,5 +30,10 @@
       "Todos",
       "viewports"
     ]
+  },
+  "extensions": {
+    "recommendations": [
+      "yoavbls.pretty-ts-errors"
+    ]
   }
 }
