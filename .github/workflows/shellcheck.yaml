@@ -3,13 +3,13 @@ name: CI
 on: [push]
 
 jobs:
-  shellcheck:
-    name: Shellcheck
+  lint:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-      - name: "Run shellcheck"
-        uses: ludeeus/action-shellcheck@master
+      - uses: jdx/mise-action@v2
         with:
-          ignore_names: .zshrc
+          experimental: true # [default: false] enable experimental features
+      - run: shellcheck scripts/*.sh
+      - run: shellcheck *.sh
