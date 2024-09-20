@@ -148,6 +148,9 @@ if _cmd_exists gh copilot; then
     eval "$(gh copilot alias -- zsh)"
 fi
 
+# crowdin
+export PATH="/opt/homebrew/opt/crowdin@4/bin:$PATH"
+
 # terramate
 complete -o nospace -C /opt/homebrew/bin/terramate terramate
 
