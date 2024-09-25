@@ -74,11 +74,12 @@ add-bun-g: cmd-exists-bun  ## Install bun global packages
 
 
 # update set
-update-all cmd-exists-mise:  ## Update all
+update-all cmd-exists-mise cmd-exists-gh:  ## Update all
 	make update-brew
 	make update-bun-g
 	make update-gcloud
 	mise upgrade
+	gh extension upgrade --all
 .PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
