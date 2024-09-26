@@ -9,11 +9,20 @@
       "name": "tools"
     },
     {
+      "path": "./e2e",
+      "name": "e2e"
+    },
+    {
+      "path": "./loadtest",
+      "name": "loadtest"
+    },
+    {
       "path": "./win",
       "name": "win"
     },
     {
-      "path": "."
+      "path": ".",
+      "name": "root"
     }
   ],
   "settings": {
