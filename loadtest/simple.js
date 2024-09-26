@@ -1,16 +1,24 @@
-import http from 'k6/http'
-import { sleep } from 'k6'
+import http from "k6/http";
+import { check, sleep } from "k6";
 
-// See https://grafana.com/docs/k6/latest/using-k6/k6-options/
+// Test configuration
 export const options = {
-  vus: 10,
-  duration: '30s',
-  cloud: {
-    name: 'YOUR TEST NAME',
+  thresholds: {
+    // Assert that 99% of requests finish within 3000ms.
+    http_req_duration: ["p(99) < 3000"],
   },
-}
+  // Ramp the number of virtual users up and down
+  stages: [
+    { duration: "30s", target: 15 },
+    { duration: "1m", target: 15 },
+    { duration: "20s", target: 0 },
+  ],
+};
 
+// Simulated user behavior
 export default function () {
-  http.get('https://test.k6.io')
-  sleep(1)
+  let res = http.get("https://test-api.k6.io/public/crocodiles/1/");
+  // Validate response status
+  check(res, { "status was 200": (r) => r.status == 200 });
+  sleep(1);
 }
