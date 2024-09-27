@@ -164,30 +164,6 @@ cask "quicklook-json"
 cask "quicklookase"
 cask "suspicious-package"
 cask "wireshark"
-mas "Bear", id: 1091189122
-mas "BetterSnapTool", id: 417375580
-mas "Bitwarden", id: 1352778147
-mas "Brother P-touch Editor", id: 1453365242
-mas "Craft", id: 1487937127
-mas "Developer", id: 640199958
-mas "GarageBand", id: 682658836
-mas "HP Smart", id: 1474276998
-mas "iMovie", id: 408981434
-mas "Keynote", id: 409183694
-mas "LINE", id: 539883307
-mas "Microsoft Remote Desktop", id: 1295203466
-mas "Monosnap", id: 540348655
-mas "NordVPN", id: 905953485
-mas "Numbers", id: 409203825
-mas "Oka Unarchiver", id: 1441507725
-mas "Pages", id: 409201541
-mas "Sip", id: 507257563
-mas "Slack", id: 803453959
-mas "Tailscale", id: 1475387142
-mas "Telegram Lite", id: 946399090
-mas "Transmit", id: 1436522307
-mas "uBlacklist for Safari", id: 1547912640
-mas "WireGuard", id: 1451685025
 vscode "1yib.rust-bundle"
 vscode "4ops.terraform"
 vscode "aaron-bond.better-comments"
