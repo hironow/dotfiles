@@ -20,3 +20,5 @@ azurite
 aicommits
 genkit
 har-to-k6
+@pwabuilder/cli
+web-push
