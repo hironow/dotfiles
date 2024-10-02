@@ -10,7 +10,6 @@ THIS_PROJECT = "{{config_root}}-{{cwd}}"
 
 
 [tools]
-python = "latest"
 bun = "latest"
 rust = "latest"
 go = "latest"
@@ -18,6 +17,7 @@ node = "latest"
 terraform = "latest"
 jq = "latest"
 shellcheck = "latest"
+python = "latest"
 
 
 [plugins]
