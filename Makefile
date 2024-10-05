@@ -162,18 +162,11 @@ elt-list: cmd-exists-dataform  ## List ELT as Dataform(GCP)
 	dataform listtables bigquery
 .PHONY: elt-list
 
-# ETL set TODO: Dataflow(GCP)
+# ETL set
+# TODO: Dataflow(GCP)
 
 
 # version check
-check-version-python: cmd-exists-python3 guard-EXPECTED_PYTHON_VERSION  ## Check Python version
-	@version=$$(python3 --version 2>&1 | awk '{print $$2}') ; \
-	if [ "$$version" != "$(EXPECTED_PYTHON_VERSION)" ]; then \
-		echo "ERROR: Expected Python version $(EXPECTED_PYTHON_VERSION), but found $$version"; \
-		exit 1; \
-	fi
-.PHONY: check-version-python
-
 check-version-nvcc: cmd-exists-nvcc guard-EXPECTED_NVCC_VERSION  ## Check NVCC version
 	@version=$$(nvcc --version | grep "release" | awk '{print $$6}' | cut -d ',' -f 1) ; \
 	if [ "$$version" != "$(EXPECTED_NVCC_VERSION)" ]; then \
@@ -181,14 +174,6 @@ check-version-nvcc: cmd-exists-nvcc guard-EXPECTED_NVCC_VERSION  ## Check NVCC v
 		exit 1; \
 	fi
 .PHONY: check-version-nvcc
-
-check-version-conda: cmd-exists-conda guard-EXPECTED_CONDA_VERSION  ## Check Conda version
-	@version=$$(conda --version 2>&1 | awk '{print $$2}') ; \
-	if [ "$$version" != "$(EXPECTED_CONDA_VERSION)" ]; then \
-		echo "ERROR: Expected Conda version $(EXPECTED_CONDA_VERSION), but found $$version"; \
-		exit 1; \
-	fi
-.PHONY: check-version-conda
 
 check-version-torch: cmd-exists-python guard-EXPECTED_TORCH_VERSION  ## Check PyTorch version
 	@version=$$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null) ; \
