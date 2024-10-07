@@ -13,8 +13,8 @@ make edit
 make update-all
 make dump
 
-# uv
-uv sync
+# uv on mise
+x uv sync
 
 # mise
 mise set
