@@ -22,3 +22,5 @@ genkit
 har-to-k6
 @pwabuilder/cli
 web-push
+@redocly/cli
+@mermaid-js/mermaid-cli
