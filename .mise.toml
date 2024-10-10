@@ -17,7 +17,7 @@ node = "latest"
 terraform = "latest"
 jq = "latest"
 shellcheck = "latest"
-python = "latest"
+python = "3.12"
 
 
 [plugins]
