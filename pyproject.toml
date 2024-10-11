@@ -26,6 +26,7 @@ dependencies = [
     "google-cloud-storage>=2.18.2",
     "pydantic-settings>=2.4.0",
     "opentelemetry-distro[otlp]>=0.48b0",
+    "tqdm>=4.66.5",
 ]
 
 [build-system]
