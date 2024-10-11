@@ -27,6 +27,7 @@ dependencies = [
     "pydantic-settings>=2.4.0",
     "opentelemetry-distro[otlp]>=0.48b0",
     "tqdm>=4.66.5",
+    "ruff>=0.6.2",
 ]
 
 [build-system]
