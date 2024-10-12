@@ -13,11 +13,11 @@ THIS_PROJECT = "{{config_root}}-{{cwd}}"
 bun = "latest"
 rust = "latest"
 go = "latest"
-node = "latest"
 terraform = "latest"
 jq = "latest"
 shellcheck = "latest"
 python = "3.12"
+node = "lts"
 
 
 [plugins]
