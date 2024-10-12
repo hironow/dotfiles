@@ -17,8 +17,8 @@
       "name": "loadtest"
     },
     {
-      "path": "./win",
-      "name": "win"
+      "path": "./notebooks",
+      "name": "notebooks"
     },
     {
       "path": ".",
