@@ -16,7 +16,7 @@ go = "latest"
 terraform = "latest"
 jq = "latest"
 shellcheck = "latest"
-python = "3.12"
+python = "3.13.0"
 node = "lts"
 
 
