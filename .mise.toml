@@ -18,6 +18,7 @@ python = "3.12"
 node = "lts"
 go = "1.23"
 rust = "1.81"
+ruby = "3.3"
 
 
 [plugins]
