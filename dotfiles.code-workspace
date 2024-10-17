@@ -17,6 +17,10 @@
       "name": "loadtest"
     },
     {
+      "path": "./stacks",
+      "name": "stacks"
+    },
+    {
       "path": "./notebooks",
       "name": "notebooks"
     },

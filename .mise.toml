@@ -3,10 +3,11 @@
 min_version = "2024.1.1"
 [env]
 _.file = [".env"]
-_.path = ["./target/debug"]
+_.path = ["./target/debug", "./node_modules/.bin"]
 FOO = "bar"
 FOO_NUM = 1
 THIS_PROJECT = "{{config_root}}-{{cwd}}"
+CERTIFICATES_DIR = "{{config_root}}/private/certificates/live/"
 
 
 [tools]
