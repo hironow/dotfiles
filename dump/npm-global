@@ -24,3 +24,4 @@ har-to-k6
 web-push
 @redocly/cli
 @mermaid-js/mermaid-cli
+@biomejs/biome

@@ -74,7 +74,7 @@ add-bun-g: cmd-exists-bun  ## Install bun global packages
 
 
 # update set
-update-all cmd-exists-mise cmd-exists-gh:  ## Update all
+update-all: cmd-exists-mise cmd-exists-gh  ## Update all
 	make update-brew
 	make update-bun-g
 	make update-gcloud
@@ -185,3 +185,9 @@ check-version-torch: cmd-exists-python guard-EXPECTED_TORCH_VERSION  ## Check Py
 		exit 1; \
 	fi
 .PHONY: check-version-torch
+
+
+# tls check
+check-localhost-tls: cmd-exists-mise cmd-exists-go  ## Check localhost serve TLS
+	mise x -- sudo go run scripts/simple-server/main.go
+.PHONY: check-localhost-tls

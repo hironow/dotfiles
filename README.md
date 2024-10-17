@@ -31,3 +31,4 @@ gh do -- mise set
 - [mise](https://github.com/jdx/mise)
 - [uv](https://github.com/astral-sh/uv)
 - [gh do](https://github.com/k1LoW/gh-do)
+- [localhost](https://blog.jxck.io/entries/2020-06-29/https-for-localhost.html)
