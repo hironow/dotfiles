@@ -172,6 +172,7 @@ if _cmd_exists kubectl; then
 fi
 if _cmd_exists mise; then
     alias x="mise x --"
+    alias mr="mise run --"
 fi
 if _cmd_exists terramate; then
     alias t="terramate"
