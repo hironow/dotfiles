@@ -152,7 +152,7 @@ fi
 export PATH="/opt/homebrew/opt/crowdin@4/bin:$PATH"
 
 # LM Studio CLI (lms)
-export PATH="$PATH:/Users/nino/.cache/lm-studio/bin"
+export PATH="$PATH:$HOME/.cache/lm-studio/bin"
 
 # terramate
 complete -o nospace -C /opt/homebrew/bin/terramate terramate
