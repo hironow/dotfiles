@@ -151,6 +151,9 @@ fi
 # crowdin
 export PATH="/opt/homebrew/opt/crowdin@4/bin:$PATH"
 
+# LM Studio CLI (lms)
+export PATH="$PATH:/Users/nino/.cache/lm-studio/bin"
+
 # terramate
 complete -o nospace -C /opt/homebrew/bin/terramate terramate
 
@@ -177,4 +180,3 @@ fi
 if _cmd_exists terramate; then
     alias t="terramate"
 fi
-
