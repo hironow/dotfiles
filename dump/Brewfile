@@ -28,8 +28,6 @@ tap "tufin/tufin"
 brew "act"
 brew "aliyun-cli"
 brew "openssl@3"
-brew "protobuf"
-brew "llvm"
 brew "aria2"
 brew "azure-cli"
 brew "libgit2@1.7"
@@ -45,10 +43,7 @@ brew "cmake"
 brew "colordiff"
 brew "concurrencykit"
 brew "curl"
-brew "dvc"
 brew "folly"
-brew "erlang"
-brew "elixir"
 brew "envchain"
 brew "fd"
 brew "unbound"
@@ -76,7 +71,6 @@ brew "hatch"
 brew "highlight"
 brew "htop"
 brew "httpie"
-brew "hugo"
 brew "libusbmuxd"
 brew "ideviceinstaller"
 brew "libomp", link: true
@@ -86,6 +80,7 @@ brew "ipfs"
 brew "k6"
 brew "kubectx"
 brew "livekit-cli"
+brew "llvm"
 brew "locust"
 brew "node"
 brew "marp-cli"
@@ -105,7 +100,9 @@ brew "pandoc"
 brew "pdsh"
 brew "pinentry-mac"
 brew "poppler"
+brew "portaudio"
 brew "postgresql@14"
+brew "protobuf"
 brew "pushpin"
 brew "pwgen"
 brew "redis"
@@ -156,7 +153,6 @@ cask "font-fira-code"
 cask "font-hack-nerd-font"
 cask "font-monaspace"
 cask "font-ricty-diminished"
-cask "ngrok"
 cask "qlcolorcode"
 cask "qlimagesize"
 cask "qlmarkdown"
@@ -169,7 +165,6 @@ cask "quicklookase"
 cask "suspicious-package"
 cask "wireshark"
 mas "Bear", id: 1091189122
-mas "BetterSnapTool", id: 417375580
 mas "Bitwarden", id: 1352778147
 mas "Brother P-touch Editor", id: 1453365242
 mas "Craft", id: 1487937127
@@ -178,6 +173,7 @@ mas "GarageBand", id: 682658836
 mas "HP Smart", id: 1474276998
 mas "iMovie", id: 408981434
 mas "Keynote", id: 409183694
+mas "Kindle", id: 302584613
 mas "LINE", id: 539883307
 mas "Microsoft Remote Desktop", id: 1295203466
 mas "Monosnap", id: 540348655
