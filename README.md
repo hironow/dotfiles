@@ -13,11 +13,11 @@ make edit
 make update-all
 make dump
 
-# uv on mise (use x)
-x uv sync
+# uv on mise
+mx uv sync
 
 # make on mise
-x make
+mx make
 
 # mise env
 mise set
