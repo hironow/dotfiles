@@ -24,3 +24,7 @@ terraform.tfstate.backup
 
 # Cargo
 /target/
+
+# IDE
+.idea/
+.vscode/
