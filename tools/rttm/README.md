@@ -3,5 +3,12 @@
 RTTM file tool.
 
 ```shell
-mx uv run python main.py sample.rttm output.eaf
+# Convert RTTM to EAF.
+mx uv run python to_eaf.py sample.rttm output.eaf
+
+# Visualize RTTM.
+mx uv run python visualize.py sample.rttm -o output.png
+
+# fmt.
+mx uv run ruff check --select I --fix && ruff format  
 ```
