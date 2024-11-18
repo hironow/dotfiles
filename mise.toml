@@ -22,6 +22,3 @@ ruby = "3.3"
 
 [plugins]
 nnnn = 'https://github.com/mise-plugins/rtx-nodejs#main'
-
-[alias.tiny]
-abc = '1'
