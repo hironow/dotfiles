@@ -1,4 +1,7 @@
 # ELAN files
 *.eaf
 *.pfsx
+*.bak
+
+# Image files
 *.png
