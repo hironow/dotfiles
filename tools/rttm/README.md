@@ -1,6 +1,6 @@
 # rttm
 
-RTTM file tool.
+RTTM file tool for [ELAN](https://archive.mpi.nl/tla/elan).
 
 ```shell
 # Convert RTTM to EAF.
