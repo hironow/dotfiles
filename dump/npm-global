@@ -25,3 +25,4 @@ web-push
 @redocly/cli
 @mermaid-js/mermaid-cli
 @biomejs/biome
+vercel
