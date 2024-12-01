@@ -1,4 +1,3 @@
-# env vars
 SHELL := $(shell which bash) # Use bash syntax to be consistent
 
 OS_NAME := $(shell uname -s | tr '[:upper:]' '[:lower:]')
