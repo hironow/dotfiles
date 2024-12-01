@@ -20,10 +20,14 @@ mx uv sync
 mx make
 
 # mise env
-mise set
-
+mx dotenvx run -- mise set
 # mise env with github credentials (use gh extension)
 gh do -- mise set
+
+# set env by dotenvx (encrypted)
+mx dotenvx set HELLO World
+# set env by mise (plain, unencrypted)
+mx mise set WORLD=hello
 ```
 
 ## references
@@ -32,3 +36,4 @@ gh do -- mise set
 - [uv](https://github.com/astral-sh/uv)
 - [gh do](https://github.com/k1LoW/gh-do)
 - [localhost](https://blog.jxck.io/entries/2020-06-29/https-for-localhost.html)
+- [dotenvx](https://dotenvx.com/)
