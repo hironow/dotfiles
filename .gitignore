@@ -6,8 +6,13 @@ Brewfile.lock.json
 venv
 __pycache__
 
+# private
 private/
 
+# env
+.env.keys
+
+# node
 *-debug.log
 *.log
 
