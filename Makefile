@@ -29,10 +29,6 @@ install: cmd-exists-mise  ## Install this repository requirements
 	mise install
 .PHONY: install
 
-edit: cmd-exists-code ## Open this repository with VSCode
-	@code dotfiles.code-workspace
-.PHONY: edit
-
 deploy: ## Create symlink to home directory
 	@echo "==> Start to deploy dotfiles to home directory."
 	ln -s ~/dotfiles/.zshrc ~/.zshrc
