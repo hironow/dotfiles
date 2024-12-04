@@ -44,10 +44,7 @@
       "**/__queuestorage__": true,
       "**/.pytest_cache": true,
       "**/.ruff_cache": true
-    },
-    "cSpell.words": [
-      "histappend"
-    ]
+    }
   },
   "extensions": {
     "recommendations": [
