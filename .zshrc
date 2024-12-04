@@ -203,7 +203,6 @@ setopt histignorespace           # skip cmds w/ leading space from history
 export HSTR_CONFIG=hicolor       # get more colors
 bindkey -s "\C-r" "\C-a hstr -- \C-j"     # bind hstr to Ctrl-r (for Vi mode check doc)
 export HSTR_TIOCSTI=y
-shopt -s histappend              # append new history items to HISTFILE
 export HISTCONTROL=ignorespace   # leading space commands do not go to history
 
 # sync history
