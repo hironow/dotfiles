@@ -186,6 +186,7 @@ fi
 export HISTFILE=~/.zsh_history
 export HISTSIZE=10000
 export SAVEHIST=10000
+export HISTFILESIZE=10000
 setopt APPEND_HISTORY
 setopt SHARE_HISTORY
 setopt HIST_IGNORE_DUPS
@@ -202,4 +203,8 @@ setopt histignorespace           # skip cmds w/ leading space from history
 export HSTR_CONFIG=hicolor       # get more colors
 bindkey -s "\C-r" "\C-a hstr -- \C-j"     # bind hstr to Ctrl-r (for Vi mode check doc)
 export HSTR_TIOCSTI=y
+shopt -s histappend              # append new history items to HISTFILE
+export HISTCONTROL=ignorespace   # leading space commands do not go to history
 
+# sync history
+export PROMPT_COMMAND="history -a; history -n; ${PROMPT_COMMAND}"
