@@ -5,7 +5,7 @@ prettier
 typescript
 wscat
 firebase-tools
-@nestjs/cli
+@next/codemod@latest
 wrangler
 @vivliostyle/cli
 @githubnext/github-copilot-cli
