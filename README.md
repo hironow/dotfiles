@@ -54,3 +54,4 @@ sudo mise x -- go run main.go
 - [localhost](https://blog.jxck.io/entries/2020-06-29/https-for-localhost.html)
 - [dotenvx](https://dotenvx.com/)
 - [browser toolbox](https://toolbox.googleapps.com/)
+- [smarthome webrtc tool](https://smarthome-webrtc-validator.withgoogle.com/)
