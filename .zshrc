@@ -1,6 +1,6 @@
 # load zgen
 # !! zgen should be installed first !!
-source "${HOME}/.zgen/zgen.zsh"
+source "$HOME/.zgen/zgen.zsh"
 
 # if the init script doesn't exist
 if ! zgen saved; then
@@ -61,9 +61,10 @@ export GPG_TTY=$(tty)
 
 # local
 export PATH=$PATH:/usr/local/bin
+export PATH=$PATH:$HOME/.local/bin
 
 # homebrew
-if _cmd_exists brew; then eval "$(/opt/homebrew/bin/brew shellenv)"; fi
+eval "$(/opt/homebrew/bin/brew shellenv)"
 
 # Google Cloud SDK
 if _file_exists "$HOME/google-cloud-sdk/path.zsh.inc"; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
@@ -80,20 +81,17 @@ if _file_not_empty "$WASMER_DIR/wasmer.sh"; then source "$WASMER_DIR/wasmer.sh";
 # k8s
 if _cmd_exists kubectl; then source <(kubectl completion zsh); fi
 # krew
-export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
-
-# solana
-export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+export PATH=$PATH:${KREW_ROOT:-$HOME/.krew}/bin
 
 # java
-export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+export PATH=$PATH:/opt/homebrew/opt/openjdk/bin
 
 # terraform
 autoload -U +X bashcompinit && bashcompinit
 complete -o nospace -C /opt/homebrew/bin/terraform terraform
 
 # go
-export PATH="$HOME/go/bin:$PATH"
+export PATH=$PATH:$HOME/go/bin
 
 # docker desktop
 if _file_exists "$HOME/.docker/init-zsh.sh"; then source "$HOME/.docker/init-zsh.sh"; fi
@@ -102,38 +100,13 @@ if _file_exists "$HOME/.docker/init-zsh.sh"; then source "$HOME/.docker/init-zsh
 if _cmd_exists github-copilot-cli; then eval "$(github-copilot-cli alias -- "$0")"; fi
 
 # curl
-export PATH="/opt/homebrew/opt/curl/bin:$PATH"
+export PATH=$PATH:/opt/homebrew/opt/curl/bin
 
 # mise
 if _cmd_exists mise; then 
     eval "$(~/.local/bin/mise activate zsh)"
-    export PATH="$HOME/.local/share/mise/shims:$PATH"
+    export PATH=$PATH:$HOME/.local/share/mise/shims
 fi
-
-# poetry
-export PATH="$HOME/.local/bin:$PATH"
-
-# anaconda
-# !! Contents within this block are managed by 'conda init' !!
-CONDA_DIR=${CONDA_DIR:-"$HOME/anaconda3"}
-__conda_setup=$("$CONDA_DIR/bin/conda" 'shell.zsh' 'hook' 2> /dev/null)
-if _cmd_success; then
-    eval "$__conda_setup"
-else
-    if _file_exists "$HOME/anaconda3/etc/profile.d/conda.sh"; then
-        source "$HOME/anaconda3/etc/profile.d/conda.sh"
-    else
-        export PATH="$HOME/anaconda3/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-
-# bun completions
-if _file_not_empty "$HOME/.bun/_bun"; then source "$HOME/.bun/_bun"; fi
-
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
 
 # cargo
 source "$HOME/.cargo/env"
@@ -149,10 +122,7 @@ if _cmd_exists gh copilot; then
 fi
 
 # crowdin
-export PATH="/opt/homebrew/opt/crowdin@4/bin:$PATH"
-
-# LM Studio CLI (lms)
-export PATH="$PATH:$HOME/.cache/lm-studio/bin"
+export PATH=$PATH:/opt/homebrew/opt/crowdin@4/bin
 
 # terramate
 complete -o nospace -C /opt/homebrew/bin/terramate terramate
