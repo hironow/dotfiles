@@ -116,7 +116,7 @@ brew "ripgrep-all"
 brew "ruby"
 brew "ruff"
 brew "skaffold"
-brew "sphinx-doc", link: false
+brew "sphinx-doc"
 brew "sqlc"
 brew "swig"
 brew "ta-lib"

@@ -74,7 +74,6 @@ update-all: cmd-exists-mise cmd-exists-gh  ## Update all
 	make update-bun-g
 	make update-gcloud
 	mise upgrade
-	mise x -- uv sync
 	gh extension upgrade --all
 .PHONY: update-all
 
