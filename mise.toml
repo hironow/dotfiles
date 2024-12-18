@@ -21,6 +21,9 @@ ruby = "3.3"
 
 
 [tasks]
-code = "code dotfiles.code-workspace"
 format = "echo 'TODO'"
 test = "echo 'TODO'"
+
+[tasks.code]
+run = "code dotfiles.code-workspace"
+alias = "c"
