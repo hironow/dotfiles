@@ -1,14 +1,16 @@
 {
-  "name": "e2e",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {},
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "devDependencies": {
-    "@playwright/test": "^1.45.3",
-    "@types/node": "^22.0.0"
-  }
+	"name": "e2e",
+	"version": "1.0.0",
+	"main": "index.js",
+	"scripts": {
+		"format": "bunx @biomejs/biome check --write ."
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"description": "",
+	"devDependencies": {
+		"@playwright/test": "^1.45.3",
+		"@types/node": "^22.10.2"
+	}
 }
