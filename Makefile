@@ -69,12 +69,13 @@ add-bun-g: cmd-exists-bun  ## Install bun global packages
 
 
 # update set
-update-all: cmd-exists-mise cmd-exists-gh  ## Update all
+update-all: cmd-exists-mise cmd-exists-gh cmd-exists-tldr  ## Update all
 	make update-brew
 	make update-bun-g
 	make update-gcloud
 	mise upgrade
 	gh extension upgrade --all
+	tldr --update
 .PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
@@ -148,7 +149,7 @@ azure-list: cmd-exists-az  ## List Azure
 
 # aws set 
 aws-list: cmd-exists-aws  ## List AWS
-	aws configure list
+	aws configure list-profiles
 .PHONY: aws-list
 
 # ELT set
