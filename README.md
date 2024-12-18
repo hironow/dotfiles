@@ -42,7 +42,7 @@ dig localhost.hironow.dev
 sudo certbot certonly --manual --preferred-challenges dns -d localhost.hironow.dev --config-dir ${config_root}/private/certificates
 
 # check simple-server for https localhost
-cd scripts/simple-server
+cd tools/simple-server
 sudo mise x -- go run main.go
 ```
 
