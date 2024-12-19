@@ -55,3 +55,4 @@ sudo mise x -- go run main.go
 - [dotenvx](https://dotenvx.com/)
 - [browser toolbox](https://toolbox.googleapps.com/)
 - [smarthome webrtc tool](https://smarthome-webrtc-validator.withgoogle.com/)
+- [trickle ice checker](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
