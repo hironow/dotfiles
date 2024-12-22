@@ -3,6 +3,7 @@
 source "$HOME/.zgen/zgen.zsh"
 
 # if the init script doesn't exist
+# update should be `zgen selfupdate` and `zgen update`
 if ! zgen saved; then
     echo "Creating a zgen save"
     
@@ -11,11 +12,8 @@ if ! zgen saved; then
     # plugins
     zgen oh-my-zsh plugins/git
     zgen oh-my-zsh plugins/sudo
-    zgen oh-my-zsh plugins/pip
-    zgen oh-my-zsh plugins/lein
     zgen oh-my-zsh plugins/golang
     zgen oh-my-zsh plugins/rust
-    zgen oh-my-zsh plugins/gradle
     zgen oh-my-zsh plugins/command-not-found
     zgen load zsh-users/zsh-syntax-highlighting
     zgen load zsh-users/zsh-autosuggestions
@@ -30,7 +28,8 @@ EOPLUGINS
     zgen load zsh-users/zsh-completions src
     
     # theme
-    zgen load denysdovhan/spaceship-prompt spaceship
+    zgen load mafredri/zsh-async
+    zgen load sindresorhus/pure
     
     # save all to init script
     zgen save
