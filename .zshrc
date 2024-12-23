@@ -138,7 +138,7 @@ alias tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 alias rustdesk="/Applications/RustDesk.app/Contents/MacOS/rustdesk"
 
 # shortcut
-alias relogin='exec $SHELL -l'
+alias relogin='source ~/.zshrc'
 if _cmd_exists kubectl; then
     alias k="kubectl"
 fi
