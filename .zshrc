@@ -59,8 +59,8 @@ export EDITOR=vim
 export GPG_TTY=$(tty)
 
 # local
-export PATH=$PATH:/usr/local/bin
-export PATH=$PATH:$HOME/.local/bin
+export PATH=/usr/local/bin:$PATH
+export PATH=$HOME/.local/bin:$PATH
 
 # homebrew
 eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -70,7 +70,7 @@ if _file_exists "$HOME/google-cloud-sdk/path.zsh.inc"; then source "$HOME/google
 if _file_exists "$HOME/google-cloud-sdk/completion.zsh.inc"; then source "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
 
 # android studio (adb)
-export PATH=$PATH:$HOME/Library/Android/sdk/platform-tools
+export PATH=$HOME/Library/Android/sdk/platform-tools:$PATH
 
 # wasmer
 export WASMER_DIR="$HOME/.wasmer"
@@ -80,17 +80,17 @@ if _file_not_empty "$WASMER_DIR/wasmer.sh"; then source "$WASMER_DIR/wasmer.sh";
 # k8s
 if _cmd_exists kubectl; then source <(kubectl completion zsh); fi
 # krew
-export PATH=$PATH:${KREW_ROOT:-$HOME/.krew}/bin
+export PATH=${KREW_ROOT:-$HOME/.krew}/bin:$PATH
 
 # java
-export PATH=$PATH:/opt/homebrew/opt/openjdk/bin
+export PATH=/opt/homebrew/opt/openjdk/bin:$PATH
 
 # terraform
 autoload -U +X bashcompinit && bashcompinit
 complete -o nospace -C /opt/homebrew/bin/terraform terraform
 
 # go
-export PATH=$PATH:$HOME/go/bin
+export PATH=$HOME/go/bin:$PATH
 
 # docker desktop
 if _file_exists "$HOME/.docker/init-zsh.sh"; then source "$HOME/.docker/init-zsh.sh"; fi
@@ -99,12 +99,13 @@ if _file_exists "$HOME/.docker/init-zsh.sh"; then source "$HOME/.docker/init-zsh
 if _cmd_exists github-copilot-cli; then eval "$(github-copilot-cli alias -- "$0")"; fi
 
 # curl
-export PATH=$PATH:/opt/homebrew/opt/curl/bin
+export PATH=/opt/homebrew/opt/curl/bin:$PATH
 
 # mise
 if _cmd_exists mise; then 
     eval "$(~/.local/bin/mise activate zsh)"
-    export PATH=$PATH:$HOME/.local/share/mise/shims
+    # mise uses shims, so by adding mise's shims to the beginning of PATH, mise's commands are executed prefer
+    export PATH=$HOME/.local/share/mise/shims:$PATH
 fi
 
 # cargo
@@ -121,7 +122,7 @@ if _cmd_exists gh copilot; then
 fi
 
 # crowdin
-export PATH=$PATH:/opt/homebrew/opt/crowdin@4/bin
+export PATH=/opt/homebrew/opt/crowdin@4/bin:$PATH
 
 # terramate
 complete -o nospace -C /opt/homebrew/bin/terramate terramate
