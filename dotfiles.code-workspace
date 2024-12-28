@@ -9,14 +9,6 @@
       "name": "tools"
     },
     {
-      "path": "./e2e",
-      "name": "e2e"
-    },
-    {
-      "path": "./loadtest",
-      "name": "loadtest"
-    },
-    {
       "path": "./stacks",
       "name": "stacks"
     },

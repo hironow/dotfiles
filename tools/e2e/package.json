@@ -3,13 +3,15 @@
 	"version": "1.0.0",
 	"main": "index.js",
 	"scripts": {
-		"format": "bunx @biomejs/biome check --write ."
+		"format": "biome check --write .",
+		"test": "playwright test --ui"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
 	"description": "",
 	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
 		"@playwright/test": "^1.45.3",
 		"@types/node": "^22.10.2"
 	}

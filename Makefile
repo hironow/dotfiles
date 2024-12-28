@@ -51,7 +51,7 @@ freeze: cmd-exists-uv  ## Freeze current python packages
 # add set
 add-all:  ## Install all
 	make add-brew
-	make add-bun-g
+	make add-pnpm-g
 	make add-gcloud
 .PHONY: add-all
 
@@ -63,15 +63,15 @@ add-gcloud: cmd-exists-gcloud  ## Install gcloud components
 	sudo gcloud components install `awk '{ORS=" "} {print}' ./dump/gcloud`
 .PHONY: add-gcloud
 
-add-bun-g: cmd-exists-bun  ## Install bun global packages
-	bun install --global `awk '{ORS=" "} {print}' ./dump/npm-global`
-.PHONY: add-bun-g
+add-pnpm-g: cmd-exists-pnpm  ## Install pnpm global packages
+	pnpm add --global `awk '{ORS=" "} {print}' ./dump/npm-global`
+.PHONY: add-pnpm-g
 
 
 # update set
 update-all: cmd-exists-mise cmd-exists-gh cmd-exists-tldr  ## Update all
 	make update-brew
-	make update-bun-g
+	make update-pnpm-g
 	make update-gcloud
 	mise upgrade
 	gh extension upgrade --all
@@ -86,9 +86,9 @@ update-gcloud: cmd-exists-gcloud  ## Update gcloud components
 	sudo gcloud components update --quiet
 .PHONY: update-gcloud
 
-update-bun-g: cmd-exists-bun  ## Update bun global packages
-	bun update --global
-.PHONY: update-bun-g
+update-pnpm-g: cmd-exists-pnpm  ## Update pnpm global packages
+	pnpm update --global
+.PHONY: update-pnpm-g
 
 
 # check set
@@ -115,9 +115,9 @@ check-npm-g: cmd-exists-npm  ## Check npm global packages
 	npm ls --global --depth 0
 .PHONY: check-npm-g
 
-check-bun-g: cmd-exists-bun  ## Check bun global packages
-	bun pm ls --global
-.PHONY: check-bun-g
+check-pnpm-g: cmd-exists-pnpm  ## Check pnpm global packages
+	pnpm list -g --depth=0
+.PHONY: check-pnpm-g
 
 check-rust: cmd-exists-rustc  ## Check rust config
 	rustc --print cfg

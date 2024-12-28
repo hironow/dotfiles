@@ -9,7 +9,6 @@ WORLD = "hello"
 
 
 [tools]
-bun = "latest"
 terraform = "latest"
 jq = "latest"
 shellcheck = "latest"
