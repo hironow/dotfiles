@@ -127,6 +127,12 @@ export PATH=/opt/homebrew/opt/crowdin@4/bin:$PATH
 # terramate
 complete -o nospace -C /opt/homebrew/bin/terramate terramate
 
+# pnpm
+export PNPM_HOME="$HOME/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH=$PNPM_HOME:$PATH ;;
+esac
 
 # alias
 # use tldr as help util
@@ -166,3 +172,11 @@ setopt HIST_SAVE_NO_DUPS
 setopt HIST_REDUCE_BLANKS
 setopt INC_APPEND_HISTORY
 setopt HIST_EXPIRE_DUPS_FIRST
+
+# pnpm
+export PNPM_HOME="/Users/nino/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
