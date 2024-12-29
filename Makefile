@@ -73,7 +73,8 @@ update-all: cmd-exists-mise cmd-exists-gh cmd-exists-tldr  ## Update all
 	make update-brew
 	make update-pnpm-g
 	make update-gcloud
-	mise upgrade
+	mise up
+	mise plugins up
 	gh extension upgrade --all
 	tldr --update
 .PHONY: update-all
