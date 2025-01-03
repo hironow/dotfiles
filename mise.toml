@@ -11,7 +11,7 @@ CERTIFICATES_DIR = "{{config_root}}/private/certificates/live/"
 [tools]
 terraform = "latest"
 shellcheck = "latest"
-python = "3.12"
+python = "3.13.1"
 node = "lts"
 go = "1.23"
 
