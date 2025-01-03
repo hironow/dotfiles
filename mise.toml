@@ -9,7 +9,6 @@ CERTIFICATES_DIR = "{{config_root}}/private/certificates/live/"
 
 
 [tools]
-terraform = "latest"
 shellcheck = "latest"
 python = "3.12"
 node = "lts"
@@ -23,3 +22,10 @@ test = "echo 'TODO'"
 [tasks.code]
 run = "code dotfiles.code-workspace"
 alias = "c"
+
+[tasks."stack:tf:ls"]
+run = "tofu workspace list"
+dir = "stacks/hironow"
+
+[tasks."stack:tm:ls"]
+run = "terramate list"
