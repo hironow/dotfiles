@@ -13,7 +13,7 @@ devDependencies:
     version: 1.49.1
   '@types/node':
     specifier: ^22.10.2
-    version: 22.10.2
+    version: 22.10.4
 
 packages:
 
@@ -113,8 +113,8 @@ packages:
       playwright: 1.49.1
     dev: true
 
-  /@types/node@22.10.2:
-    resolution: {integrity: sha512-Xxr6BBRCAOQixvonOye19wnzyDiUtTeqldOOmj3CkeblonbccA12PFwlufvRdrpjXxqnmUaeiU5EOA+7s5diUQ==}
+  /@types/node@22.10.4:
+    resolution: {integrity: sha512-99l6wv4HEzBQhvaU/UGoeBoCK61SCROQaCCGyQSgX2tEQ3rKkNZ2S7CEWnS/4s1LV+8ODdK21UeyR1fHP2mXug==}
     dependencies:
       undici-types: 6.20.0
     dev: true
