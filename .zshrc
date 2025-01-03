@@ -155,6 +155,7 @@ if _cmd_exists mise; then
 fi
 if _cmd_exists terramate; then
     alias t="terramate"
+    alias tr="terramate run --"
 fi
 
 
