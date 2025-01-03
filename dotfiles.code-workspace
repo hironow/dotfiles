@@ -52,7 +52,6 @@
       "trinm1709.dracula-theme-from-intellij",
       "editorconfig.editorconfig",
       "github.vscode-pull-request-github",
-      "ms-toolsai.jupyter",
       "k6.k6",
       "marp-team.marp-vscode",
       "jeylanib.pinescript",
@@ -61,6 +60,15 @@
       "mikestead.dotenv",
       "ms-toolsai.datawrangler",
       "github.copilot",
+      "azurite.azurite",
+      "crowdin.vscode-crowdin",
+      "golang.go",
+      "k--kato.intellij-idea-keybindings",
+      "ms-playwright.playwright",
+      "jspolancor.presentationmode",
+      "stripe.vscode-stripe",
+      "tauri-apps.tauri-vscode",
+      "vitest.explorer",
     ]
   }
 }
