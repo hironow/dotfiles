@@ -153,11 +153,13 @@ if _cmd_exists mise; then
     alias mx="mise exec --"
     alias mr="mise run"
 fi
-if _cmd_exists terramate; then
-    alias t="terramate"
-    alias tr="terramate run --"
+if _cmd_exists tofu; then
+    alias t="tofu"
 fi
-
+if _cmd_exists terramate; then
+    alias tm="terramate"
+    alias tmr="terramate run --"
+fi
 
 # history settings
 export HISTFILE=~/.zsh_history
