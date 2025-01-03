@@ -36,8 +36,9 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: 'CHANGEME: WORKLOAD IDENTITY PROVIDER ID'
-          service_account: 'CHANGEME: SERVICE ACCOUNT EMAIL'
+          # see: https://github.com/google-github-actions/auth?tab=readme-ov-file#preferred-direct-workload-identity-federation
+          project_id: 'gen-ai-hironow'
+          workload_identity_provider: 'projects/189612961347/locations/global/workloadIdentityPools/github/providers/my-repo'
 
       - name: Run Terraform init on all stacks
         id: init
