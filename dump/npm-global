@@ -1,7 +1,6 @@
 fx
 http-server
 json-server
-prettier
 typescript
 wscat
 firebase-tools
@@ -10,7 +9,6 @@ wrangler
 @vivliostyle/cli
 @githubnext/github-copilot-cli
 json-schema-to-typescript
-pyright
 @thunderclient/cli
 tldr
 lint-staged
@@ -26,3 +24,4 @@ web-push
 @mermaid-js/mermaid-cli
 @biomejs/biome
 vercel
+ajv-cli
