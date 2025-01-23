@@ -1,4 +1,3 @@
-app-engine-go
 package-go-module
 bq
 cloud-datastore-emulator
@@ -15,7 +14,6 @@ terraform-tools
 config-connector
 alpha
 beta
-app-engine-python
 gke-gcloud-auth-plugin
 kpt
 kubectl
