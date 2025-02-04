@@ -10,7 +10,7 @@ CERTIFICATES_DIR = "{{config_root}}/private/certificates/live/"
 
 [tools]
 shellcheck = "latest"
-python = "3.12"
+python = "3.13.2"
 node = "lts"
 go = "1.23"
 
