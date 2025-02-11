@@ -25,3 +25,4 @@ web-push
 @biomejs/biome
 vercel
 ajv-cli
+caniuse-cmd
