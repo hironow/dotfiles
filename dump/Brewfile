@@ -88,6 +88,7 @@ brew "libomp", link: true
 brew "imagemagick"
 brew "ios-deploy"
 brew "ipfs"
+brew "k6"
 brew "kind"
 brew "kubectx"
 brew "lcov"
