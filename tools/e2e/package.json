@@ -12,7 +12,12 @@
 	"description": "",
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
-		"@playwright/test": "^1.45.3",
-		"@types/node": "^22.10.2"
+		"@playwright/test": "^1.50.1",
+		"@types/node": "^22.13.5"
+	},
+	"pnpm": {
+		"ignoredBuiltDependencies": [
+			"@biomejs/biome"
+		]
 	}
 }
