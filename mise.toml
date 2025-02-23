@@ -1,4 +1,4 @@
-min_version = "2024.1.1"
+min_version = "2025.2.7"
 
 [env]
 # encrypted by dotenvx `dotenvx set HELLO value` or `dotenvx set NODE_ENV development --plain`
@@ -10,9 +10,9 @@ CERTIFICATES_DIR = "{{config_root}}/private/certificates/live/"
 
 [tools]
 shellcheck = "latest"
-python = "3.12"
+python = "3.13"
 node = "lts"
-go = "1.23"
+go = "1.24"
 
 
 [tasks]
