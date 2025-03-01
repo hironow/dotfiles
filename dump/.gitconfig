@@ -10,7 +10,7 @@
 	aa = !git add .  && git add -u && git status
 	wip = commit -m 'wip'
 	ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
-	ac = !git add -A && aicommits -a
+	ac = !git add -A && aicommit2 -a
 	ss = status --short --branch
 [diff]
 	algorithm = histogram
