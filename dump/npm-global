@@ -15,7 +15,7 @@ lint-staged
 typeorm
 playwright
 azurite
-aicommits
+aicommit2
 genkit
 har-to-k6
 @pwabuilder/cli
