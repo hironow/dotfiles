@@ -27,3 +27,4 @@ vercel
 ajv-cli
 caniuse-cmd
 apify-cli
+@vonage/cli
