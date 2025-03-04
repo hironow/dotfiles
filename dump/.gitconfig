@@ -1,5 +1,12 @@
+[column]
+	ui = auto
+
+[branch]
+	sort = -committerdate
+
 [init]
 	defaultBranch = main
+
 [alias]
 	alias = !git config --get-regexp '^alias\\.' | sed 's/alias\\.\\([^ ]*\\) \\(.*\\)/\\1\\\t => \\2/' | sort
 	graph = log --graph -10 --branches --remotes --tags  --format=format:'%Cgreen%h %Creset• %<(75,trunc)%s (%cN, %cr) %Cred%d' --date-order
@@ -12,19 +19,63 @@
 	ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
 	ac = !git add -A && aicommit2 -a
 	ss = status --short --branch
+
 [diff]
 	algorithm = histogram
-	colorMoved = dimmed-zebra
-[gpg]
-	program = gpg
+	colorMoved = plain
+	mnemonicPrefix = true
+	renames = true
+
+[push]
+	default = simple
+	autoSetupRemote = true
+	followTags = true
+
+[fetch]
+	prune = true
+	pruneTags = true
+	all = true
+
+[help]
+	autocorrect = prompt
+
 [commit]
 	gpgsign = true
+	verbose = true
+
+[rerere]
+	enabled = true
+	autoupdate = true
+
+[core]
+	excludesfile = ~/.gitignore
+	# fsmonitor = true
+	# untrackedCache = true
+
+[rebase]
+	autoSquash = true
+	autoStash = true
+	updateRefs = true
+
+[merge]
+	# (just 'diff3' if git version < 2.3)
+	# conflictstyle = zdiff3
+
+[pull]
+	# rebase = true
+
+[gpg]
+	program = gpg
+
 [filter "lfs"]
 	clean = git-lfs clean -- %f
 	smudge = git-lfs smudge -- %f
 	process = git-lfs filter-process
 	required = true
+
 [tag]
+	sort = version:refname
 	forceSignAnnotated = true
+
 [url "ssh://git@github.com"]
 	insteadOf = https://github.com
