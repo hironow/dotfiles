@@ -126,22 +126,22 @@ check-rust: cmd-exists-rustc  ## Check rust config
 
 
 # database set
-connect-gcp-sql: cmd-exists-cloud_sql_proxy guard-GCP_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to CloudSQL(GCP)
-	cloud_sql_proxy -instances=${GCP_SQL_INSTANCE}=tcp:${LOCAL_SQL_PORT}
-.PHONY: connect-gcp-sql
+connect-gcloud-sql: cmd-exists-cloud_sql_proxy guard-GCLOUD_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to CloudSQL(Google Cloud)
+	cloud_sql_proxy -instances=${GCLOUD_SQL_INSTANCE}=tcp:${LOCAL_SQL_PORT}
+.PHONY: connect-gcloud-sql
 
-connect-firebase: cmd-exists-firebase  ## Connect to Firebase(GCP)
+connect-firebase: cmd-exists-firebase  ## Connect to Firebase(Google Cloud)
 	firebase emulators:start --project 'local'
 .PHONY: connect-firebase
 
-connect-azurite: cmd-exists-azurite  ## Connect to azurite(Azure)
+connect-azurite: cmd-exists-azurite  ## Connect to Azurite (Azure)
 	azurite --silent --location .azurite --debug .azurite/debug.log
 .PHONY: connect-azurite
 
-# gcp set
-gcp-list: cmd-exists-gcloud  ## List GCP
+# gcloud set
+gcloud-list: cmd-exists-gcloud  ## List Google Cloud
 	gcloud config configurations list
-.PHONY: gcp-list
+.PHONY: gcloud-list
 
 # azure set
 azure-list: cmd-exists-az  ## List Azure
@@ -154,12 +154,12 @@ aws-list: cmd-exists-aws  ## List AWS
 .PHONY: aws-list
 
 # ELT set
-elt-list: cmd-exists-dataform  ## List ELT as Dataform(GCP)
+elt-list: cmd-exists-dataform  ## List ELT as Dataform(Google Cloud)
 	dataform listtables bigquery
 .PHONY: elt-list
 
 # ETL set
-# TODO: Dataflow(GCP)
+# TODO: Dataflow(Google Cloud)
 
 
 # version check
