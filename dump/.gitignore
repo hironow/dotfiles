@@ -24,3 +24,5 @@ log/
 *.log
 
 private/
+
+.env.keys
