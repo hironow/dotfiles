@@ -28,3 +28,5 @@ ajv-cli
 caniuse-cmd
 apify-cli
 @vonage/cli
+@anthropic-ai/claude-code
+@react-native-community/cli
