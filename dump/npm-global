@@ -30,3 +30,4 @@ apify-cli
 @vonage/cli
 @anthropic-ai/claude-code
 @react-native-community/cli
+netlify-cli
