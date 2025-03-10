@@ -31,3 +31,4 @@ apify-cli
 @anthropic-ai/claude-code
 @react-native-community/cli
 netlify-cli
+@e2b/cli
