@@ -77,6 +77,7 @@ update-all: cmd-exists-mise cmd-exists-gh cmd-exists-tldr  ## Update all
 	mise plugins up
 	gh extension upgrade --all
 	tldr --update
+	git ignore --update
 .PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
