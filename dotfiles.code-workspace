@@ -9,35 +9,10 @@
       "name": "tools"
     },
     {
-      "path": "./stacks",
-      "name": "stacks"
-    },
-    {
-      "path": "./notebooks",
-      "name": "notebooks"
-    },
-    {
       "path": ".",
       "name": "root"
     }
   ],
-  "settings": {
-    "files.exclude": {
-      "**/.uv": true,
-      "**/node_modules": true,
-      "**/playwright-report": true,
-      "**/test-results": true,
-      "**/.idea": true,
-      "**/.venv": true,
-      "**/venv": true,
-      "**/__pycache__": true,
-      "**/.azurite": true,
-      "**/__blobstorage__": true,
-      "**/__queuestorage__": true,
-      "**/.pytest_cache": true,
-      "**/.ruff_cache": true
-    }
-  },
   "extensions": {
     "recommendations": [
       "yoavbls.pretty-ts-errors",
