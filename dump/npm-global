@@ -32,3 +32,4 @@ apify-cli
 @react-native-community/cli
 netlify-cli
 @e2b/cli
+check-site-meta
