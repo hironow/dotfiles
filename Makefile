@@ -73,22 +73,31 @@ update-all: cmd-exists-mise cmd-exists-gh cmd-exists-tldr  ## Update all
 	make update-gcloud
 	make update-brew
 	make update-pnpm-g
+	@echo "◆ flutter..."
+	flutter upgrade
+	@echo "◆ mise..."
 	mise up
 	mise plugins up
+	@echo "◆ gh..."
 	gh extension upgrade --all
+	@echo "◆ tldr..."
 	tldr --update
+	@echo "◆ gitignore..."
 	git ignore --update
 .PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
+	@echo "◆ homebrew..."
 	brew update && brew upgrade && brew cleanup
 .PHONY: update-brew
 
 update-gcloud: cmd-exists-gcloud  ## Update gcloud components
+	@echo "◆ gcloud..."
 	sudo gcloud components update --quiet
 .PHONY: update-gcloud
 
 update-pnpm-g: cmd-exists-pnpm  ## Update pnpm global packages
+	@echo "◆ pnpm..."
 	pnpm update --global
 .PHONY: update-pnpm-g
 
