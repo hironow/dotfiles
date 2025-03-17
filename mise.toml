@@ -13,6 +13,7 @@ shellcheck = "latest"
 python = "3.13"
 node = "lts"
 go = "1.24"
+ruby = "latest"
 
 
 [tasks]
