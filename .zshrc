@@ -182,7 +182,11 @@ case ":$PATH:" in
   *":$PNPM_HOME:"*) ;;
   *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
-# pnpm end
+
+# flutter
+export PATH=$HOME/flutter/bin:$PATH
+export PATH=$HOME/.gem/bin:$PATH
+export PATH=$HOME/Library/Android/sdk/cmdline-tools/latest/bin:$PATH
 
 # Added by Windsurf
 export PATH="$HOME/.codeium/windsurf/bin:$PATH"
