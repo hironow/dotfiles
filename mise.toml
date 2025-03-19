@@ -21,7 +21,7 @@ format = "echo 'TODO'"
 test = "echo 'TODO'"
 
 [tasks.code]
-run = "code dotfiles.code-workspace"
+run = "code vs.code-workspace"
 alias = "c"
 
 [tasks."stack:tf:ls"]
