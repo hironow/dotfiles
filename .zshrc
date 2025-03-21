@@ -188,6 +188,9 @@ export PATH=$HOME/flutter/bin:$PATH
 export PATH=$HOME/.gem/bin:$PATH
 export PATH=$HOME/Library/Android/sdk/cmdline-tools/latest/bin:$PATH
 
+# dart pub global
+export PATH="$PATH":"$HOME/.pub-cache/bin"
+
 # Added by Windsurf
 export PATH="$HOME/.codeium/windsurf/bin:$PATH"
 
