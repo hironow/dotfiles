@@ -92,12 +92,6 @@ complete -o nospace -C /opt/homebrew/bin/terraform terraform
 # go
 export PATH=$HOME/go/bin:$PATH
 
-# docker desktop
-if _file_exists "$HOME/.docker/init-zsh.sh"; then source "$HOME/.docker/init-zsh.sh"; fi
-
-# github copilot cli
-if _cmd_exists github-copilot-cli; then eval "$(github-copilot-cli alias -- "$0")"; fi
-
 # curl
 export PATH=/opt/homebrew/opt/curl/bin:$PATH
 
@@ -199,4 +193,3 @@ fpath=($HOME/.docker/completions $fpath)
 autoload -Uz compinit
 compinit
 # End of Docker CLI completions
-
