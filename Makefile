@@ -134,6 +134,10 @@ check-rust: cmd-exists-rustc  ## Check rust config
 	rustc --print cfg
 .PHONY: check-rust
 
+check-dart-g: cmd-exists-dart  ## Check dart global packages
+	dart pub global list
+.PHONY: check-dart-g
+
 
 # database set
 connect-gcloud-sql: cmd-exists-cloud_sql_proxy guard-GCLOUD_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to CloudSQL(Google Cloud)
