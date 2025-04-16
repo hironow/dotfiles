@@ -34,3 +34,4 @@ netlify-cli
 @e2b/cli
 check-site-meta
 @openapi-contrib/json-schema-to-openapi-schema
+@openai/codex
