@@ -32,7 +32,7 @@ brew "bat"
 brew "blueutil"
 brew "boost"
 brew "glib"
-brew "node"
+brew "node", link: false
 brew "cdktf"
 brew "certifi"
 brew "certbot"
