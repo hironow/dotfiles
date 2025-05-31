@@ -73,8 +73,6 @@ update-all: cmd-exists-mise cmd-exists-gh cmd-exists-tldr  ## Update all
 	make update-gcloud
 	make update-brew
 	make update-pnpm-g
-	@echo "◆ flutter..."
-	flutter upgrade
 	@echo "◆ mise..."
 	mise up
 	mise plugins up
