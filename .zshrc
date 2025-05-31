@@ -177,15 +177,7 @@ case ":$PATH:" in
   *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 
-# flutter
-export PATH=$HOME/flutter/bin:$PATH
-export PATH=$HOME/.gem/bin:$PATH
-export PATH=$HOME/Library/Android/sdk/cmdline-tools/latest/bin:$PATH
-
-# dart pub global
-export PATH="$PATH":"$HOME/.pub-cache/bin"
-
-# Added by Windsurf
+# windsurf
 export PATH="$HOME/.codeium/windsurf/bin:$PATH"
 
 # The following lines have been added by Docker Desktop to enable Docker CLI completions.
