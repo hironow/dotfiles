@@ -105,29 +105,6 @@ fi
 # cargo
 source "$HOME/.cargo/env"
 
-# ngrok
-if _cmd_exists ngrok; then
-    eval "$(ngrok completion)"
-fi
-
-# copilot cli
-if _cmd_exists gh copilot; then
-    eval "$(gh copilot alias -- zsh)"
-fi
-
-# crowdin
-export PATH=/opt/homebrew/opt/crowdin@4/bin:$PATH
-
-# terramate
-complete -o nospace -C /opt/homebrew/bin/terramate terramate
-
-# pnpm
-export PNPM_HOME="$HOME/Library/pnpm"
-case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH=$PNPM_HOME:$PATH ;;
-esac
-
 # alias
 # use tldr as help util
 if _cmd_exists tldr; then
@@ -135,8 +112,6 @@ if _cmd_exists tldr; then
 fi
 # use tailscale
 alias tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-# use rustdesk
-alias rustdesk="/Applications/RustDesk.app/Contents/MacOS/rustdesk"
 
 # shortcut
 alias relogin='source ~/.zshrc'
@@ -169,19 +144,3 @@ setopt HIST_SAVE_NO_DUPS
 setopt HIST_REDUCE_BLANKS
 setopt INC_APPEND_HISTORY
 setopt HIST_EXPIRE_DUPS_FIRST
-
-# pnpm
-export PNPM_HOME="$HOME/Library/pnpm"
-case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH="$PNPM_HOME:$PATH" ;;
-esac
-
-# windsurf
-export PATH="$HOME/.codeium/windsurf/bin:$PATH"
-
-# The following lines have been added by Docker Desktop to enable Docker CLI completions.
-fpath=($HOME/.docker/completions $fpath)
-autoload -Uz compinit
-compinit
-# End of Docker CLI completions
