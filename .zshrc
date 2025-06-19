@@ -130,6 +130,11 @@ if _cmd_exists terramate; then
     alias tmr="terramate run --"
 fi
 
+# Git worktree navigation
+wgo() {
+    eval $(git wgo "$@")
+}
+
 # history settings
 export HISTFILE=~/.zsh_history
 export HISTSIZE=10000
