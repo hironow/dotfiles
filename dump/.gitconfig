@@ -54,17 +54,32 @@
 		echo \"Total: $(git worktree list | wc -l) worktrees\"; \
 	}; f"
 
-	# === Worktree移動（統合版） ===
+	# === Worktree移動（修正版） ===
 	wgo = "!f() { \
 		if [ -z \"$1\" ]; then \
-			selected=$(git worktree list | fzf --height=40% --reverse | awk '{print $1}'); \
+			if command -v fzf >/dev/null 2>&1; then \
+				selected=$(git worktree list | fzf --height=40% --reverse | awk '{print $1}'); \
+			else \
+				echo \"Select worktree:\"; \
+				git worktree list | nl -v 0; \
+				read -p \"Enter number (or branch name): \" choice; \
+				if [[ \"$choice\" =~ ^[0-9]+$ ]]; then \
+					selected=$(git worktree list | sed -n \"$((choice+1))p\" | awk '{print $1}'); \
+				else \
+					selected=$(git worktree list | grep \"\\[$choice\\]\" | awk '{print $1}'); \
+				fi; \
+			fi; \
 		elif [ \"$1\" = \"-\" ]; then \
 			branch=$(git reflog | grep 'checkout: moving from' | head -1 | sed 's/.*to //'); \
 			selected=$(git worktree list | grep \"\\[$branch\\]\" | awk '{print $1}'); \
 		else \
 			selected=$(git worktree list | grep \"\\[$1\\]\" | awk '{print $1}'); \
 		fi; \
-		[ -n \"$selected\" ] && cd \"$selected\" && exec $SHELL || echo \"Worktree not found\"; \
+		if [ -n \"$selected\" ]; then \
+			echo \"cd $selected\"; \
+		else \
+			echo \"echo 'Worktree not found'\"; \
+		fi; \
 	}; f"
 
 	# === Worktree削除 ===
