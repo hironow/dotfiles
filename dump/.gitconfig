@@ -8,17 +8,186 @@
 	defaultBranch = main
 
 [alias]
-	alias = !git config --get-regexp '^alias\\.' | sed 's/alias\\.\\([^ ]*\\) \\(.*\\)/\\1\\\t => \\2/' | sort
-	graph = log --graph -10 --branches --remotes --tags  --format=format:'%Cgreen%h %Creset• %<(75,trunc)%s (%cN, %cr) %Cred%d' --date-order
+	# === 基本操作 ===
+	aa = !git add . && git add -u && git status
+	ac = !git add -A && aicommit2 -a
+	ss = status --short --branch
+	wip = commit -m 'wip'
+	graph = log --graph -10 --branches --remotes --tags --format=format:'%Cgreen%h %Creset• %<(75,trunc)%s (%cN, %cr) %Cred%d' --date-order
+	ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
 	precommit = diff --cached --diff-algorithm=minimal -w
 	unmerged = diff --name-only --diff-filter=U
 	remotes = remote -v
 	firstcommit = commit --allow-empty -m 'initial commit'
-	aa = !git add .  && git add -u && git status
-	wip = commit -m 'wip'
-	ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
-	ac = !git add -A && aicommit2 -a
-	ss = status --short --branch
+
+	# === Worktree基本操作 ===
+	wt = "!f() { \
+		branch=${1:-$(git branch --show-current)}; \
+		base=$(basename $(pwd)); \
+		dir=\"../${base}-${branch//\\//-}\"; \
+		if git worktree add \"$dir\" \"$branch\" 2>/dev/null; then \
+			echo \"✅ Created worktree: $dir\"; \
+		else \
+			git worktree add -b \"$branch\" \"$dir\" && echo \"✅ Created new branch and worktree: $dir\"; \
+		fi; \
+		echo \"📁 cd $dir\"; \
+	}; f"
+
+	# === Worktree管理（統合版） ===
+	wst = "!f() { \
+		echo \"=== Git Worktrees ===\"; \
+		git worktree list | while read -r line; do \
+			dir=$(echo $line | awk '{print $1}'); \
+			branch=$(echo $line | awk '{print $3}' | tr -d '[]'); \
+			if [ -d \"$dir\" ]; then \
+				status=$(cd \"$dir\" && git status --porcelain | wc -l | tr -d ' '); \
+				if [ \"$status\" -gt 0 ]; then \
+					echo \"📝 $branch → $dir (uncommitted: $status files)\"; \
+				else \
+					echo \"✅ $branch → $dir\"; \
+				fi; \
+			else \
+				echo \"⚠️  $branch → $dir (missing directory)\"; \
+			fi; \
+		done; \
+		echo \"\"; \
+		echo \"Total: $(git worktree list | wc -l) worktrees\"; \
+	}; f"
+
+	# === Worktree移動（統合版） ===
+	wgo = "!f() { \
+		if [ -z \"$1\" ]; then \
+			selected=$(git worktree list | fzf --height=40% --reverse | awk '{print $1}'); \
+		elif [ \"$1\" = \"-\" ]; then \
+			branch=$(git reflog | grep 'checkout: moving from' | head -1 | sed 's/.*to //'); \
+			selected=$(git worktree list | grep \"\\[$branch\\]\" | awk '{print $1}'); \
+		else \
+			selected=$(git worktree list | grep \"\\[$1\\]\" | awk '{print $1}'); \
+		fi; \
+		[ -n \"$selected\" ] && cd \"$selected\" && exec $SHELL || echo \"Worktree not found\"; \
+	}; f"
+
+	# === Worktree削除 ===
+	wr = "!f() { \
+		if [ -z \"$1\" ]; then \
+			git worktree remove $(pwd) 2>/dev/null || echo \"Not in a worktree\"; \
+		else \
+			git worktree remove $(git worktree list --porcelain | grep -B2 \"branch refs/heads/$1\" | head -n1 | cut -d' ' -f2); \
+		fi; \
+	}; f"
+
+	wclean = "!f() { \
+		branch=$1; \
+		worktree=$(git worktree list --porcelain | grep -B2 \"branch refs/heads/$branch\" | head -n1 | cut -d' ' -f2); \
+		[ -n \"$worktree\" ] && git worktree remove \"$worktree\"; \
+		git branch -D \"$branch\" 2>/dev/null; \
+		echo \"Cleaned worktree and branch: $branch\"; \
+	}; f"
+
+	# === コミット&移動（統合版） ===
+	wtmove = "!f() { \
+		branch=$1; \
+		[ -z \"$branch\" ] && echo \"Usage: git wtmove <branch> [--wip|--ai|--stash]\" && return 1; \
+		case \"$2\" in \
+			--wip) git wip ;; \
+			--ai) git ac ;; \
+			--stash|*) git stash -u ;; \
+		esac; \
+		git wt \"$branch\"; \
+		[ \"$2\" = \"--stash\" ] || [ -z \"$2\" ] && git stash pop 2>/dev/null; \
+	}; f"
+
+	# === ワークフロー特化 ===
+	pr = "!f() { \
+		pr_number=$1; \
+		[ -z \"$pr_number\" ] && echo \"Usage: git pr <number>\" && return 1; \
+		branch=\"pr-$pr_number\"; \
+		git fetch origin pull/$pr_number/head:$branch && git wt $branch; \
+	}; f"
+
+	hotfix = "!f() { \
+		issue=$1; \
+		[ -z \"$issue\" ] && echo \"Usage: git hotfix <issue-id>\" && return 1; \
+		git wt hotfix/$issue; \
+	}; f"
+
+	wtemp = "!f() { \
+		branch=${1:-HEAD}; \
+		temp=\"temp-$(date +%s)\"; \
+		git worktree add \"../$(basename $(pwd))-$temp\" -d \"$branch\"; \
+		echo \"Created temporary worktree: $temp\"; \
+	}; f"
+
+	# === 一括操作 ===
+	wexec = "!f() { \
+		cmd=\"$@\"; \
+		git worktree list | awk '{print $1}' | while read dir; do \
+			echo \"=== $dir ===\"; \
+			(cd \"$dir\" && eval \"$cmd\"); \
+		done; \
+	}; f"
+
+	wpull = "!f() { git wexec git pull; }; f"
+
+	# === ユーティリティ ===
+	whealth = "!f() { \
+		echo \"=== Worktree Health Check ===\"; \
+		issues=0; \
+		git worktree list | while read -r line; do \
+			dir=$(echo $line | awk '{print $1}'); \
+			if [ ! -d \"$dir\" ]; then \
+				echo \"⚠️  Missing directory: $dir\"; \
+				issues=$((issues + 1)); \
+			fi; \
+		done; \
+		orphans=$(git worktree prune --dry-run 2>&1); \
+		[ -n \"$orphans\" ] && echo \"⚠️  Orphaned worktrees found:\" && echo \"$orphans\" && issues=$((issues + 1)); \
+		[ $issues -eq 0 ] && echo \"✅ All worktrees healthy\"; \
+	}; f"
+
+	wcp = "!f() { \
+		src=$1; dst=$2; file=$3; \
+		[ -z \"$file\" ] && echo \"Usage: git wcp <src-branch> <dst-branch> <file>\" && return 1; \
+		src_dir=$(git worktree list | grep \"\\[$src\\]\" | awk '{print $1}'); \
+		dst_dir=$(git worktree list | grep \"\\[$dst\\]\" | awk '{print $1}'); \
+		if [ -n \"$src_dir\" ] && [ -n \"$dst_dir\" ]; then \
+			cp \"$src_dir/$file\" \"$dst_dir/$file\" && echo \"Copied $file from $src to $dst\"; \
+		else \
+			echo \"Source or destination worktree not found\"; \
+		fi; \
+	}; f"
+
+	# === ヘルプ ===
+	alias = "!f() { \
+		echo \"=== Git Aliases (Optimized) ===\"; \
+		echo \"\"; \
+		echo \"📝 Basic:\"; \
+		echo \"  aa        - Add all files and show status\"; \
+		echo \"  ac        - Add all and AI commit\"; \
+		echo \"  ss        - Short status with branch\"; \
+		echo \"  wip       - Quick WIP commit\"; \
+		echo \"  graph     - Visual branch history\"; \
+		echo \"  ll        - Log with file changes\"; \
+		echo \"\"; \
+		echo \"🌳 Worktree:\"; \
+		echo \"  wt        - Create worktree (git wt [branch])\"; \
+		echo \"  wst       - Status of all worktrees with stats\"; \
+		echo \"  wgo       - Go to worktree (no arg=fzf, -=previous, name=direct)\"; \
+		echo \"  wr        - Remove worktree (current or specified)\"; \
+		echo \"  wclean    - Remove worktree AND delete branch\"; \
+		echo \"  whealth   - Check worktree health\"; \
+		echo \"\"; \
+		echo \"🚀 Workflow:\"; \
+		echo \"  wtmove    - Save changes and move (--wip/--ai/--stash)\"; \
+		echo \"  pr        - Checkout PR (git pr <number>)\"; \
+		echo \"  hotfix    - Create hotfix branch\"; \
+		echo \"  wtemp     - Create temporary worktree\"; \
+		echo \"\"; \
+		echo \"🔧 Operations:\"; \
+		echo \"  wexec     - Execute command in all worktrees\"; \
+		echo \"  wpull     - Pull all worktrees\"; \
+		echo \"  wcp       - Copy file between worktrees\"; \
+	}; f"
 
 [diff]
 	algorithm = histogram
