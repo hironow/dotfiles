@@ -100,6 +100,10 @@ if _cmd_exists mise; then
     eval "$(~/.local/bin/mise activate zsh)"
     # mise uses shims, so by adding mise's shims to the beginning of PATH, mise's commands are executed prefer
     export PATH=$HOME/.local/share/mise/shims:$PATH
+
+    # pnpm on mise
+    export PNPM_HOME="$HOME/.local/share/pnpm"
+    export PATH="$PNPM_HOME:$PATH"
 fi
 
 # cargo

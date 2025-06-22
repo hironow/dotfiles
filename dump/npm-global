@@ -36,3 +36,4 @@ check-site-meta
 @openapi-contrib/json-schema-to-openapi-schema
 @openai/codex
 cloudflare@latest
+mintlify
