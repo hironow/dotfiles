@@ -183,7 +183,7 @@ cask "quicklook-csv"
 cask "quicklook-json"
 cask "quicklookase"
 cask "suspicious-package"
-cask "wireshark"
+cask "wireshark-app"
 mas "Bear", id: 1091189122
 mas "Bitwarden", id: 1352778147
 mas "Brother P-touch Editor", id: 1453365242
