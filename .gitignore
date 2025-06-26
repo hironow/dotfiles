@@ -12,6 +12,7 @@ refs/
 
 # env
 .env.keys
+.env
 
 # node
 *-debug.log
