@@ -38,3 +38,4 @@ check-site-meta
 cloudflare@latest
 mintlify
 @google/gemini-cli
+@openai/codex
