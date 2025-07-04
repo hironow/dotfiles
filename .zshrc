@@ -58,17 +58,6 @@ export SPACESHIP_EXIT_CODE_SHOW=true
 export EDITOR=vim
 export GPG_TTY=$(tty)
 
-# mise
-if _cmd_exists mise; then 
-    eval "$(~/.local/bin/mise activate zsh)"
-    # mise uses shims, so by adding mise's shims to the beginning of PATH, mise's commands are executed prefer
-    export PATH=$HOME/.local/share/mise/shims:$PATH
-
-    # pnpm on mise
-    export PNPM_HOME="$HOME/.local/share/pnpm"
-    export PATH="$PNPM_HOME:$PATH"
-fi
-
 # homebrew
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
@@ -108,6 +97,18 @@ source "$HOME/.cargo/env"
 # local
 export PATH=/usr/local/bin:$PATH
 export PATH=$HOME/.local/bin:$PATH
+
+# mise
+if _cmd_exists mise; then 
+    eval "$(~/.local/bin/mise activate zsh)"
+    # mise uses shims, so by adding mise's shims to the beginning of PATH, mise's commands are executed prefer
+    export PATH=$HOME/.local/share/mise/shims:$PATH
+
+    # pnpm on mise
+    export PNPM_HOME="$HOME/.local/share/pnpm"
+    export PATH="$PNPM_HOME:$PATH"
+fi
+
 
 # alias
 # use tldr as help util
