@@ -15,7 +15,6 @@ lint-staged
 typeorm
 playwright
 azurite
-aicommit2
 genkit
 har-to-k6
 @pwabuilder/cli
@@ -39,3 +38,4 @@ cloudflare@latest
 mintlify
 @google/gemini-cli
 @openai/codex
+zx
