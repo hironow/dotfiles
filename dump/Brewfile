@@ -1,3 +1,4 @@
+tap "ariga/tap"
 tap "brewforge/extras"
 tap "bufbuild/buf"
 tap "cjbassi/gotop"
