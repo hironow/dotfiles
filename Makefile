@@ -23,6 +23,7 @@ cmd-exists-%:
 guard-%:
 	@if [ -z '${${*}}' ]; then echo 'ERROR: environment variable $* not set' && exit 1; fi
 
+##@ Project Management
 
 # this repository specific
 install: cmd-exists-mise  ## Install this repository requirements
@@ -47,6 +48,7 @@ freeze: cmd-exists-uv  ## Freeze current python packages
 	uv pip freeze | uv pip compile - -o requirements.txt
 .PHONY: freeze
 
+##@ Add sets
 
 # add set
 add-all:  ## Install all
@@ -67,6 +69,7 @@ add-pnpm-g: cmd-exists-pnpm  ## Install pnpm global packages
 	pnpm add --global `awk '{ORS=" "} {print}' ./dump/npm-global`
 .PHONY: add-pnpm-g
 
+##@ Update sets
 
 # update set
 update-all: cmd-exists-mise cmd-exists-gh cmd-exists-tldr  ## Update all
@@ -99,6 +102,7 @@ update-pnpm-g: cmd-exists-pnpm  ## Update pnpm global packages
 	pnpm update --global
 .PHONY: update-pnpm-g
 
+##@ Check sets
 
 # check set
 check-path:  ## Check PATH
@@ -136,6 +140,7 @@ check-dart-g: cmd-exists-dart  ## Check dart global packages
 	dart pub global list
 .PHONY: check-dart-g
 
+##@ Connect sets
 
 # database set
 connect-gcloud-sql: cmd-exists-cloud_sql_proxy guard-GCLOUD_SQL_INSTANCE guard-LOCAL_SQL_PORT  ## Connect to CloudSQL(Google Cloud)
@@ -149,6 +154,8 @@ connect-firebase: cmd-exists-firebase  ## Connect to Firebase(Google Cloud)
 connect-azurite: cmd-exists-azurite  ## Connect to Azurite (Azure)
 	azurite --silent --location .azurite --debug .azurite/debug.log
 .PHONY: connect-azurite
+
+##@ Cloud sets
 
 # gcloud set
 gcloud-list: cmd-exists-gcloud  ## List Google Cloud
@@ -173,6 +180,7 @@ elt-list: cmd-exists-dataform  ## List ELT as Dataform(Google Cloud)
 # ETL set
 # TODO: Dataflow(Google Cloud)
 
+##@ Version checks
 
 # version check
 check-version-nvcc: cmd-exists-nvcc guard-EXPECTED_NVCC_VERSION  ## Check NVCC version
@@ -194,6 +202,7 @@ check-version-torch: cmd-exists-python guard-EXPECTED_TORCH_VERSION  ## Check Py
 	fi
 .PHONY: check-version-torch
 
+##@ TLS checks
 
 # tls check
 check-localhost-tls: cmd-exists-mise cmd-exists-go  ## Check localhost serve TLS
