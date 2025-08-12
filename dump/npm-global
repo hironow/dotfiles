@@ -32,10 +32,11 @@ apify-cli
 netlify-cli
 @e2b/cli
 check-site-meta
-@openapi-contrib/json-schema-to-openapi-schema
+@openapi-contrib/json-schema-to-openapi-schema@3
 @openai/codex
 cloudflare@latest
 mintlify
 @google/gemini-cli
 @openai/codex
 zx
+@openapitools/openapi-generator-cli
