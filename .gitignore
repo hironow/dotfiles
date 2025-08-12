@@ -12,7 +12,7 @@ refs/
 
 # env
 .env.keys
-.env
+# .env use dotenvx
 
 # node
 *-debug.log
