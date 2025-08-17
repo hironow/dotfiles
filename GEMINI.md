@@ -64,31 +64,59 @@ The `emulator` directory contains a `docker-compose.yaml` file for setting up va
 * **Linting:** `ruff` is used for Python code linting.
 * **Shell Configuration:** `.zshrc` is managed as part of the dotfiles, with deployment handled by `make deploy`.
 
-## Git Aliases (Optimized)
+## Git Aliases (Compact)
 
-📝 Basic:
-  aa        - Add all files and show status
-  ac        - Add all and AI commit
-  ss        - Short status with branch
-  wip       - Quick WIP commit
-  graph     - Visual branch history
-  ll        - Log with file changes
+* **Basic**
+  * `aa`: Add all & status
+  * `ac`: Add all & AI commit
+  * `ss`: Short status
+  * `wip`: WIP commit
+  * `graph`: Branch history
+  * `ll`: Log w/ changes
 
-🌳 Worktree:
-  wt        - Create worktree (git wt [branch])
-  wst       - Status of all worktrees with stats
-  wgo       - Go to worktree (no arg=fzf, -=previous, name=direct)
-  wr        - Remove worktree (current or specified)
-  wclean    - Remove worktree AND delete branch
-  whealth   - Check worktree health
+* **Worktree**
+  * `wt`: Create
+  * `wst`: Status/stats
+  * `wgo`: Switch
+  * `wr`: Remove
+  * `wclean`: Remove & delete branch
+  * `whealth`: Health check
 
-🚀 Workflow:
-  wtmove    - Save changes and move (--wip/--ai/--stash)
-  pr        - Checkout PR (git pr <number>)
-  hotfix    - Create hotfix branch
-  wtemp     - Create temporary worktree
+* **Workflow**
+  * `wtmove`: Save & move
+  * `pr`: Checkout PR
+  * `hotfix`: Hotfix branch
+  * `wtemp`: Temp worktree
 
-🔧 Operations:
-  wexec     - Execute command in all worktrees
-  wpull     - Pull all worktrees
-  wcp       - Copy file between worktrees
+* **Ops**
+  * `wexec`: Run cmd all
+  * `wpull`: Pull all
+  * `wcp`: Copy file
+
+## Commonly Used `gh` Commands
+
+* **`gh pr view`**  
+  View pull request details or open in browser.  
+  Examples:  
+  * Terminal view: `gh pr view`  
+  * Open in browser: `gh pr view -w`  
+  * Specific PR: `gh pr view 123 -w`  
+  Options: `-w`/`--web` (browser), omit for terminal output.
+
+* **`gh pr checks`**  
+  Show CI status for a pull request.  
+  Examples:  
+  * Watch status: `gh pr checks --watch`  
+  * Custom interval: `gh pr checks --watch -i 3`  
+  * JSON output: `gh pr checks --json=name,state`
+
+* **`gh pr checkout`**  
+  Checkout a pull request locally.  
+  Example:  
+  * `gh pr checkout 456`
+
+* **`gh browse`**  
+  Open repository page in browser.  
+  Examples:  
+  * Main page: `gh browse`  
+  * Releases: `gh browse --release`
