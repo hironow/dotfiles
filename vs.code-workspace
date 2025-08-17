@@ -44,6 +44,7 @@
       "stripe.vscode-stripe",
       "tauri-apps.tauri-vscode",
       "vitest.explorer",
+      "anthropic.claude-code",
     ]
   }
 }
