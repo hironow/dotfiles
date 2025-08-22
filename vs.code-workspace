@@ -17,7 +17,6 @@
     "recommendations": [
       "yoavbls.pretty-ts-errors",
       "charliermarsh.ruff",
-      "biomejs.biome",
       "rangav.vscode-thunder-client",
       "github.copilot-chat",
       "github.vscode-github-actions",
