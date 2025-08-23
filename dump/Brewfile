@@ -128,7 +128,6 @@ brew "redis"
 brew "ripgrep"
 brew "ripgrep-all"
 brew "ruff"
-brew "rye"
 brew "semgrep"
 brew "shellcheck"
 brew "skaffold"
@@ -214,7 +213,6 @@ mas "Slack", id: 803453959
 mas "Tailscale", id: 1475387142
 mas "Telegram Lite", id: 946399090
 mas "Transmit", id: 1436522307
-mas "uBlacklist for Safari", id: 1547912640
 mas "WireGuard", id: 1451685025
 vscode "1yib.rust-bundle"
 vscode "4ops.terraform"
