@@ -85,6 +85,8 @@ update-all: cmd-exists-mise cmd-exists-gh cmd-exists-tldr  ## Update all
 	tldr --update
 	@echo "◆ gitignore..."
 	git ignore --update
+	@echo "◆ vscode extensions..."
+	code --update-extensions
 .PHONY: update-all
 
 update-brew: cmd-exists-brew  ## Update brew bundle
