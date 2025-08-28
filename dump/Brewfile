@@ -87,6 +87,7 @@ brew "helm"
 brew "highlight"
 brew "htop"
 brew "httpie"
+brew "huggingface-cli"
 brew "libusbmuxd"
 brew "ideviceinstaller"
 brew "libomp", link: true
