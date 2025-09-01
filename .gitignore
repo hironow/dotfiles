@@ -41,3 +41,6 @@ terraform.tfstate.backup
 
 # AI coding
 .serena/cache/
+
+# Model
+*.pt
