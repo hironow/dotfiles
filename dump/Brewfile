@@ -76,7 +76,6 @@ brew "git-ignore"
 brew "git-lfs"
 brew "golang-migrate"
 brew "goose"
-brew "openjdk", link: true
 brew "gradle"
 brew "grafana"
 brew "graphviz"
@@ -103,6 +102,7 @@ brew "livekit-cli"
 brew "llvm"
 brew "locust"
 brew "mas"
+brew "openjdk", link: true
 brew "maven"
 brew "mecab"
 brew "mecab-ipadic"
@@ -206,6 +206,7 @@ mas "iMovie", id: 408981434
 mas "Keynote", id: 409183694
 mas "Kindle", id: 302584613
 mas "LINE", id: 539883307
+mas "Messenger", id: 1480068668
 mas "Monosnap", id: 540348655
 mas "Numbers", id: 409203825
 mas "Oka Unarchiver", id: 1441507725
@@ -329,6 +330,7 @@ vscode "khaeransori.json2csv"
 vscode "kingwl.vscode-vitest-runner"
 vscode "kubernetes-tools.k8s"
 vscode "kumar-harsh.graphql-for-vscode"
+vscode "leanprover.lean4"
 vscode "linear.linear-connect"
 vscode "liuchao.go-struct-tag"
 vscode "llvm-vs-code-extensions.lldb-dap"
