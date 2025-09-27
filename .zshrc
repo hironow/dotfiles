@@ -100,7 +100,7 @@ export PATH=$HOME/.local/bin:$PATH
 
 # mise
 if _cmd_exists mise; then 
-    eval "$(~/.local/bin/mise activate zsh)"
+    eval "$(mise activate zsh)"
 fi
 
 # pnpm

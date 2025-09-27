@@ -15,6 +15,10 @@ just help
 just update-all
 just dump
 
+# diagnostics
+just doctor
+just validate-path-duplicates
+
 # uv on mise
 mx uv sync
 
@@ -30,6 +34,26 @@ gh do -- mise set
 mx dotenvx set HELLO World
 # set env by mise (plain, unencrypted)
 mx mise set WORLD=hello
+```
+
+### tests (docker required)
+
+```shell
+# run all sandbox tests
+just test
+
+# run by pytest marker (install/validate/versions/deploy/check)
+just test-mark marker=validate
+```
+
+### install options
+
+```shell
+# full install
+bash ./install.sh
+
+# lightweight (skip heavy tools)
+INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./install.sh
 ```
 
 ## setup

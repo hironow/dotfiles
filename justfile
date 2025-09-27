@@ -121,16 +121,15 @@ update-all:
 	just update-brew
 	just update-pnpm-g-safe
 	@echo "◆ mise..."
-	mise up
-	mise plugins up
+	@if command -v mise >/dev/null 2>&1; then mise up && mise plugins up; else echo 'mise not found; skip'; fi
 	@echo "◆ gh..."
-	gh extension upgrade --all
+	@if command -v gh >/dev/null 2>&1; then gh extension upgrade --all; else echo 'gh not found; skip'; fi
 	@echo "◆ tldr..."
-	tldr --update
+	@if command -v tldr >/dev/null 2>&1; then tldr --update; else echo 'tldr not found; skip'; fi
 	@echo "◆ gitignore..."
-	git ignore --update
+	@if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
 	@echo "◆ vscode extensions..."
-	code --update-extensions
+	@if command -v code >/dev/null 2>&1; then code --update-extensions; else echo 'code not found; skip'; fi
 
 # Update (all, safe): update pnpm individually; skip failures
 update-all-safe:
@@ -138,16 +137,15 @@ update-all-safe:
 	just update-brew
 	just update-pnpm-g-safe
 	@echo "◆ mise..."
-	mise up
-	mise plugins up
+	@if command -v mise >/dev/null 2>&1; then mise up && mise plugins up; else echo 'mise not found; skip'; fi
 	@echo "◆ gh..."
-	gh extension upgrade --all
+	@if command -v gh >/dev/null 2>&1; then gh extension upgrade --all; else echo 'gh not found; skip'; fi
 	@echo "◆ tldr..."
-	tldr --update
+	@if command -v tldr >/dev/null 2>&1; then tldr --update; else echo 'tldr not found; skip'; fi
 	@echo "◆ gitignore..."
-	git ignore --update
+	@if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
 	@echo "◆ vscode extensions..."
-	code --update-extensions
+	@if command -v code >/dev/null 2>&1; then code --update-extensions; else echo 'code not found; skip'; fi
 
 # Update: update and cleanup Homebrew
 update-brew:
@@ -202,7 +200,12 @@ check-myip:
 # Check: list Docker containers' ports
 check-dockerport:
 	# Check docker port
-	@docker ps -q | xargs docker inspect | jq '.[] | {name: .Name, ports: .NetworkSettings.Ports}'
+	@ids=$(docker ps -q); \
+	if [ -z "$ids" ]; then \
+	  echo '[]' | jq '.'; \
+	else \
+	  echo "$ids" | xargs docker inspect | jq '.[] | {name: .Name, ports: .NetworkSettings.Ports}'; \
+	fi
 
 # Check: list installed Homebrew packages
 check-brew:
