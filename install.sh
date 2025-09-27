@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 
-DOTPATH=$HOME/dotfiles
+DOTPATH=${DOTPATH:-$HOME/dotfiles}
 
 if [ ! -d "$DOTPATH" ]; then
   git clone https://github.com/tarjoilija/zgen.git "${HOME}/.zgen"

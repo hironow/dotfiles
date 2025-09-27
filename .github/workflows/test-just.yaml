@@ -1,0 +1,39 @@
+name: Just Sandbox Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run just tests in Docker sandbox
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup mise (tool versions)
+        uses: jdx/mise-action@v2
+        with:
+          experimental: true
+
+      - name: Show Docker and tool versions
+        run: |
+          docker version
+          just --version
+          uv --version || true
+
+      - name: Prebuild sandbox image (warm cache)
+        run: |
+          docker build -t dotfiles-just-sandbox:latest -f tests/docker/JustSandbox.Dockerfile .
+
+      - name: Run tests
+        run: |
+          just test

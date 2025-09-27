@@ -2,10 +2,10 @@
 
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-# デフォルト: ヘルプを表示
+# Default: show help
 default: help
 
-# ヘルプ: 利用可能なレシピを一覧表示
+# Help: list available recipes
 help:
 	@just --list --unsorted
 
@@ -14,27 +14,27 @@ help:
 # Project Management
 # ------------------------------
 
-# インストール: mise でツールをインストール
+# Install: setup tools via mise
 install:
 	# Install tools via mise (versions are managed in mise.toml)
 	mise install
 
-# デプロイ: dotfiles をホームに配置（.zshrc の symlink）
+# Deploy: symlink dotfiles to home (~/.zshrc)
 deploy:
 	@echo "==> Start to deploy dotfiles to home directory."
 	ln -sf ~/dotfiles/.zshrc ~/.zshrc
 
-# クリンナップ: 配置した dotfiles を削除（.zshrc）
+# Clean: remove deployed dotfiles (~/.zshrc)
 clean:
 	@echo "==> Remove dotfiles in your home directory..."
 	rm -vrf ~/.zshrc
 
-# ダンプ: Homebrew のバンドルを dump/ に出力
+# Dump: write Homebrew bundle into dump/
 dump:
 	# Dump current brew bundle
 	rm -f ./dump/Brewfile && (cd ./dump && brew bundle dump)
 
-# フリーズ: Python 依存を requirements.txt に固定（uv）
+# Freeze: pin Python deps to requirements.txt (uv)
 freeze:
 	# Freeze current python packages using uv
 	uv pip freeze | uv pip compile - -o requirements.txt
@@ -44,7 +44,7 @@ freeze:
 # Tests
 # ------------------------------
 
-# テスト: サンドボックスを準備して pytest 実行（詳細表示）
+# Test: build sandbox (if available) and run pytest (verbose)
 test:
 	@echo '🧪 Preparing Docker sandbox (if available)...'
 	@if command -v docker >/dev/null 2>&1; then \
@@ -62,13 +62,13 @@ test:
 # Formatting
 # ------------------------------
 
-# 整形: ruff の format を uvx で実行
+# Format: run ruff format via uvx
 ruff-format path="." opts="":
 	@echo '🔧 Formatting with ruff via uvx...'
 	uvx ruff format '{{path}}' {{opts}}
 	@echo '✅ Formatting done.'
 
-# 静的検査: ruff の check を uvx で実行
+# Lint: run ruff check via uvx
 ruff-check path="." opts="":
 	@echo '🔍 Checking with ruff via uvx...'
 	uvx ruff check '{{path}}' {{opts}}
@@ -79,23 +79,23 @@ ruff-check path="." opts="":
 # Add sets
 # ------------------------------
 
-# 追加(一括): gcloud/brew/pnpm のセットを導入
+# Add (all): install gcloud/brew/pnpm sets
 add-all:
 	just add-gcloud
 	just add-brew
 	just add-pnpm-g
 
-# 追加: Homebrew バンドルを導入
+# Add: install Homebrew bundle
 add-brew:
 	# Install brew bundle
 	(cd ./dump && brew bundle)
 
-# 追加: gcloud コンポーネントを導入
+# Add: install gcloud components
 add-gcloud:
 	# Install gcloud components
 	sudo gcloud components install $(awk '{ORS=" "} {print}' ./dump/gcloud)
 
-# 追加: pnpm のグローバルパッケージを導入
+# Add: install pnpm global packages
 add-pnpm-g:
 	# Install pnpm global packages
 	pnpm add --global $(awk '{ORS=" "} {print}' ./dump/npm-global)
@@ -105,11 +105,11 @@ add-pnpm-g:
 # Update sets
 # ------------------------------
 
-# 更新(一括): gcloud/brew/pnpm と各種ツールを更新
+# Update (all): update gcloud/brew/pnpm and tools (pnpm safe mode)
 update-all:
 	just update-gcloud
 	just update-brew
-	just update-pnpm-g
+	just update-pnpm-g-safe
 	@echo "◆ mise..."
 	mise up
 	mise plugins up
@@ -122,58 +122,95 @@ update-all:
 	@echo "◆ vscode extensions..."
 	code --update-extensions
 
-# 更新: Homebrew を更新・掃除
+# Update (all, safe): update pnpm individually; skip failures
+update-all-safe:
+	just update-gcloud
+	just update-brew
+	just update-pnpm-g-safe
+	@echo "◆ mise..."
+	mise up
+	mise plugins up
+	@echo "◆ gh..."
+	gh extension upgrade --all
+	@echo "◆ tldr..."
+	tldr --update
+	@echo "◆ gitignore..."
+	git ignore --update
+	@echo "◆ vscode extensions..."
+	code --update-extensions
+
+# Update: update and cleanup Homebrew
 update-brew:
 	@echo "◆ homebrew..."
 	brew update && brew upgrade && brew cleanup
 
-# 更新: gcloud コンポーネントを更新
+# Update: update gcloud components
 update-gcloud:
 	@echo "◆ gcloud..."
 	sudo gcloud components update --quiet
 
-# 更新: pnpm のグローバルパッケージを更新
+# Update: update pnpm global packages
 update-pnpm-g:
 	@echo "◆ pnpm..."
 	pnpm update --global
+
+# Update: safely update pnpm globals (per-package; skip failures)
+update-pnpm-g-safe:
+	@echo "◆ pnpm(safe)..."
+	@if command -v jq >/dev/null 2>&1; then \
+	  pkgs=$(pnpm list -g --depth 0 --json | jq -r '.[0].dependencies | keys[]' 2>/dev/null || true); \
+	  if [ -z "$$pkgs" ]; then echo 'No global packages found.'; exit 0; fi; \
+	  for p in $$pkgs; do echo "→ updating $$p"; pnpm add -g "$$p@latest" || echo "skip $$p"; done; \
+	else \
+	  echo '⚠️ jq not found; falling back to pnpm update --global (best effort)'; \
+	  pnpm update --global || true; \
+	fi
+	pnpm store prune || true
+
+# Repair: reset Homebrew state (rebase leftovers, inconsistencies)
+brew-repair:
+	@echo '🔧 brew update-reset + doctor'
+	brew update-reset
+	brew update --force --quiet
+	brew doctor || true
 
 
 # ------------------------------
 # Check sets
 # ------------------------------
 
-# 確認: PATH を1行ずつ表示
+# Check: print PATH entries
 check-path:
 	# Check PATH
 	@echo $${PATH//:/\\n}
 
-# 確認: ローカルIPアドレスを表示
+# Check: show local IP addresses
 check-myip:
 	# Check my ip address
 	@ifconfig | sed -En "s/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p"
 
-# 確認: Docker コンテナの公開ポートを一覧
+# Check: list Docker containers' ports
 check-dockerport:
 	# Check docker port
 	@docker ps -q | xargs docker inspect | jq '.[] | {name: .Name, ports: .NetworkSettings.Ports}'
 
-# 確認: Homebrew のインストール済みパッケージ
+# Check: list installed Homebrew packages
 check-brew:
 	brew list
 
-# 確認: gcloud コンポーネント一覧
+# Check: list gcloud components
 check-gcloud:
 	gcloud components list
 
-# 確認: npm グローバルパッケージ一覧
+# Check: list npm global packages
 check-npm-g:
 	npm ls --global --depth 0
 
-# 確認: pnpm グローバルパッケージ一覧
+# Check: list pnpm global packages
 check-pnpm-g:
 	pnpm list -g --depth=0
 
-# 確認: rustc の cfg を出力
+# Check: print rustc cfg
 check-rust:
 	rustc --print cfg
 
@@ -182,12 +219,14 @@ check-rust:
 # Validation
 # ------------------------------
 
-# 検証: PATH 内の重複コマンドを検出（影響のある順で表示）
+# Validate: detect duplicate command names in PATH (order matters)
 validate-path-duplicates:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	echo '🔎 Validating duplicate commands in PATH...'
-	IFS=':' read -r -a dirs <<< "$PATH"
+	# Allow overriding scan targets with VALIDATE_PATH; fallback to current PATH
+	scan_path="${VALIDATE_PATH:-$PATH}"
+	IFS=':' read -r -a dirs <<< "$scan_path"
 	shopt -s nullglob
 	lines=()
 	i=0
@@ -240,14 +279,14 @@ validate-path-duplicates:
 # Connect sets
 # ------------------------------
 
-# 接続: Cloud SQL (cloud_sql_proxy) へトンネル接続
+# Connect: tunnel to Cloud SQL (cloud_sql_proxy)
 connect-gcloud-sql:
 	# Requires env: GCLOUD_SQL_INSTANCE, LOCAL_SQL_PORT
 	[[ -n "${GCLOUD_SQL_INSTANCE:-}" ]] || { echo 'ERROR: environment variable GCLOUD_SQL_INSTANCE not set'; exit 1; }
 	[[ -n "${LOCAL_SQL_PORT:-}" ]] || { echo 'ERROR: environment variable LOCAL_SQL_PORT not set'; exit 1; }
 	cloud_sql_proxy -instances=${GCLOUD_SQL_INSTANCE}=tcp:${LOCAL_SQL_PORT}
 
-# 接続: Azurite をローカル起動
+# Connect: start Azurite locally
 connect-azurite:
 	azurite --silent --location .azurite --debug .azurite/debug.log
 
@@ -256,19 +295,19 @@ connect-azurite:
 # Cloud sets
 # ------------------------------
 
-# 一覧: gcloud のコンフィグ一覧
+# List: gcloud configurations
 gcloud-list:
 	gcloud config configurations list
 
-# 一覧: Azure アカウント一覧
+# List: Azure accounts
 azure-list:
 	az account list --output table
 
-# 一覧: AWS プロファイル一覧
+# List: AWS profiles
 aws-list:
 	aws configure list-profiles
 
-# 一覧: Dataform(BigQuery) テーブル一覧
+# List: Dataform (BigQuery) tables
 elt-list:
 	dataform listtables bigquery
 
@@ -277,12 +316,12 @@ elt-list:
 # Version checks
 # ------------------------------
 
-# バージョン確認: NVCC のバージョンを検証
+# Version check: verify NVCC version
 check-version-nvcc expected:
 	# Usage: just check-version-nvcc <EXPECTED_NVCC_VERSION>
 	version=$(nvcc --version | sed -n 's/.*release \([0-9.]*\).*/\1/p' | head -n1); if [ "${version}" != "{{expected}}" ]; then echo "ERROR: Expected NVCC version {{expected}}, but found ${version}"; exit 1; fi
 
-# バージョン確認: PyTorch のバージョンを検証
+# Version check: verify PyTorch version
 check-version-torch expected:
 	# Usage: just check-version-torch <EXPECTED_TORCH_VERSION>
 	version=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || true); if [ -z "${version}" ]; then echo "ERROR: PyTorch is not installed"; exit 1; elif [ "${version}" != "{{expected}}" ]; then echo "ERROR: Expected PyTorch version {{expected}}, but found ${version}"; exit 1; fi
@@ -292,7 +331,7 @@ check-version-torch expected:
 # TLS checks
 # ------------------------------
 
-# 確認: HTTPS ローカルサーバーを起動（Go）
+# Check: run local HTTPS server (Go)
 check-localhost-tls:
 	# Serve TLS on localhost using the Go simple-server
 	mise x -- sudo go run tools/simple-server/main.go
