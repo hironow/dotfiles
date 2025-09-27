@@ -1,0 +1,67 @@
+name: Just Sandbox Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run just tests in Docker sandbox
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Setup mise (tool versions)
+        uses: jdx/mise-action@v2
+        with:
+          experimental: true
+
+      - name: Show Docker and tool versions
+        run: |
+          docker version
+          just --version
+          uv --version || true
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Prebuild sandbox image (warm cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: tests/docker/JustSandbox.Dockerfile
+          tags: |
+            dotfiles-just-sandbox:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run tests
+        env:
+          PYTEST_ADDOPTS: --junitxml=pytest-report.xml
+        run: |
+          just test
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: pytest-report.xml

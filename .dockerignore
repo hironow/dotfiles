@@ -1,0 +1,36 @@
+# Keep Docker build context minimal and safe.
+# This file mirrors .gitignore entries and adds a few Docker-specific excludes.
+
+# --- Respect .gitignore ---
+Brewfile.lock.json
+.venv
+venv
+__pycache__
+.*_cache/
+private/
+refs/
+.env.keys
+.env.local
+.env.*.local
+*-debug.log
+*.log
+.azurite/
+.terraform
+.terraform.lock.hcl
+*.tfstate
+terraform.tfstate
+terraform.tfstate.backup
+*.tfplan
+/target/
+.idea/
+.vscode/
+.serena/cache/
+*.pt
+
+# --- Extra excludes for Docker builds ---
+.git
+.ruff_cache
+.mypy_cache
+.pytest_cache
+node_modules
+emulator/firebase/data/
