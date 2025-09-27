@@ -53,20 +53,54 @@ _cmd_success() {
     [ $? -eq 0 ]
 }
 
+path_has() {
+    case ":$PATH:" in
+        *":$1:"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+path_prepend() {
+    if [ -n "$1" ] && ! path_has "$1"; then
+        PATH="$1:$PATH"
+    fi
+}
+
+# Precedence tweaks
+# PNPM first for Node CLIs
+export PNPM_HOME="$HOME/Library/pnpm"
+path_prepend "$PNPM_HOME"
+
+# Prefer OrbStack Docker if present
+path_prepend "$HOME/.orbstack/bin"
+
 export SPACESHIP_EXIT_CODE_SHOW=true
 
 export EDITOR=vim
 export GPG_TTY=$(tty)
 
 # homebrew
-eval "$(/opt/homebrew/bin/brew shellenv)"
+if _cmd_exists brew; then 
+    eval "$(brew shellenv)"
+elif [ -x "/opt/homebrew/bin/brew" ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -x "$HOME/.linuxbrew/bin/brew" ]; then
+    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
+elif [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+fi
 
 # Google Cloud SDK
-if _file_exists "$HOME/google-cloud-sdk/path.zsh.inc"; then source "$HOME/google-cloud-sdk/path.zsh.inc"; fi
+# Source path setup only if PATH does not already contain the SDK bin to avoid duplicates
+if _file_exists "$HOME/google-cloud-sdk/path.zsh.inc"; then 
+    if ! path_has "$HOME/google-cloud-sdk/bin"; then 
+        source "$HOME/google-cloud-sdk/path.zsh.inc"
+    fi
+fi
 if _file_exists "$HOME/google-cloud-sdk/completion.zsh.inc"; then source "$HOME/google-cloud-sdk/completion.zsh.inc"; fi
 
 # android studio (adb)
-export PATH=$HOME/Library/Android/sdk/platform-tools:$PATH
+path_prepend "$HOME/Library/Android/sdk/platform-tools"
 
 # wasmer
 export WASMER_DIR="$HOME/.wasmer"
@@ -76,39 +110,32 @@ if _file_not_empty "$WASMER_DIR/wasmer.sh"; then source "$WASMER_DIR/wasmer.sh";
 # k8s
 if _cmd_exists kubectl; then source <(kubectl completion zsh); fi
 # krew
-export PATH=${KREW_ROOT:-$HOME/.krew}/bin:$PATH
+path_prepend "${KREW_ROOT:-$HOME/.krew}/bin"
 
 # java
-export PATH=/opt/homebrew/opt/openjdk/bin:$PATH
+path_prepend "/opt/homebrew/opt/openjdk/bin"
 
-# terraform
-autoload -U +X bashcompinit && bashcompinit
-complete -o nospace -C /opt/homebrew/bin/terraform terraform
+ 
 
 # go
-export PATH=$HOME/go/bin:$PATH
+path_prepend "$HOME/go/bin"
 
 # curl
-export PATH=/opt/homebrew/opt/curl/bin:$PATH
+path_prepend "/opt/homebrew/opt/curl/bin"
 
 # cargo
 source "$HOME/.cargo/env"
 
 # local
-export PATH=/usr/local/bin:$PATH
-export PATH=$HOME/.local/bin:$PATH
+path_prepend "/usr/local/bin"
+path_prepend "$HOME/.local/bin"
 
 # mise
 if _cmd_exists mise; then 
     eval "$(mise activate zsh)"
 fi
 
-# pnpm
-export PNPM_HOME="$HOME/Library/pnpm"
-case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH="$PNPM_HOME:$PATH" ;;
-esac
+ 
 
 # claude
 alias claude="$HOME/.claude/local/claude"

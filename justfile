@@ -189,8 +189,8 @@ brew-repair:
 
 # Check: print PATH entries
 check-path:
-	# Check PATH
-	@echo $${PATH//:/\\n}
+    # Check PATH
+    @printf '%s\n' "$PATH" | tr ':' '\n'
 
 # Check: show local IP addresses
 check-myip:
