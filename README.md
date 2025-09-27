@@ -16,6 +16,9 @@ just update-all
 just dump
 
 # diagnostics
+just self-check
+# run with quick validate tests (needs Docker)
+just self-check with_tests=1
 just doctor
 just validate-path-duplicates
 

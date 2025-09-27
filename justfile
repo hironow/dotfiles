@@ -57,6 +57,49 @@ test:
 	uvx pytest -v -ra tests/test_just_sandbox.py
 	@echo '✅ Tests finished.'
 
+# Self-check: quick, safe health checks with summary
+self-check with_tests="":
+	#!/usr/bin/env bash
+	set -u
+	echo '🔎 Running self-check...'
+	ok=0; warn=0; err=0
+	step_ok(){ printf 'OK   %s\n' "$1"; ok=$((ok+1)); }
+	step_warn(){ printf 'WARN %s\n' "$1"; warn=$((warn+1)); }
+	step_err(){ printf 'ERR  %s\n' "$1"; err=$((err+1)); }
+
+	# just is callable
+	if just --version >/dev/null 2>&1; then step_ok 'just available'; else step_err 'just missing'; fi
+
+	# doctor (should return 0; prints its own summary)
+	doc_out=$(just doctor 2>&1); rc=$?
+	printf '%s\n' "$doc_out"
+	if [ "$rc" -eq 0 ]; then step_ok 'doctor'; else step_err 'doctor failed'; fi
+
+	# PATH duplicates (treat rc=2 as WARN)
+	set +e
+	dup_out=$(just validate-path-duplicates 2>&1)
+	dup_rc=$?
+	set -e
+	case "$dup_rc" in
+	  0) step_ok 'path duplicates: none' ;;
+	  2) printf '%s\n' "$dup_out"; step_warn 'path duplicates: found' ;;
+	  *) printf '%s\n' "$dup_out"; step_warn 'path duplicates: validator error' ;;
+	esac
+
+	# Optional: run quick validate tests inside Docker if requested
+	if [ -n "{{with_tests}}" ]; then
+	  if command -v docker >/dev/null 2>&1; then
+	    echo '🧪 Running sandbox validate tests...'
+	    if just test-mark marker=validate; then step_ok 'tests: validate'; else step_err 'tests: validate failed'; fi
+	  else
+	    step_warn 'docker missing: skip tests'
+	  fi
+	fi
+
+	echo "Self-check summary: ok=$ok warn=$warn err=$err"
+	if [ "$err" -gt 0 ]; then exit 1; fi
+	:
+
 # Test (by marker): run tests filtered by -m MARKER
 test-mark marker="":
 	@echo '🧪 Running pytest with marker:' '{{marker}}'
