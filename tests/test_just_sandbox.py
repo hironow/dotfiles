@@ -297,6 +297,49 @@ def test_just_commands_sandbox(
 
 
 @pytest.mark.parametrize(
+    "name, script, expect_rc, expect_out, expect_err",
+    [
+        pytest.param(
+            "doctor_path_duplicates_warn",
+            "mkdir -p /tmp/x1 /tmp/x2 && printf '#!/bin/sh\necho hi\n' > /tmp/x1/foo && chmod +x /tmp/x1/foo && cp /tmp/x1/foo /tmp/x2/foo && export VALIDATE_PATH=/tmp/x1:/tmp/x2 && just doctor",
+            0,
+            "duplicate command names found",
+            "",
+            id="Doctor: PATH duplicates warn",
+            marks=pytest.mark.validate,
+        ),
+        pytest.param(
+            "pnpm_safe_fallback_without_jq",
+            "just update-pnpm-g-safe",
+            0,
+            "jq not found",
+            "",
+            id="Update: pnpm safe fallback",
+            marks=pytest.mark.check,
+        ),
+    ],
+)
+def test_additional_scenarios_sandbox(
+    docker_image, name, script, expect_rc, expect_out, expect_err
+):
+    result = run_in_sandbox(docker_image, script)
+    assert result.returncode == expect_rc, (
+        f"{name}: rc={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    if expect_out:
+        assert expect_out in result.stdout
+
+
+@pytest.mark.check
+def test_doctor_reports_just(docker_image):
+    # when
+    result = run_in_sandbox(docker_image, "just doctor")
+    # then
+    assert result.returncode == 0, f"doctor failed: rc={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert "OK   just" in result.stdout
+
+
+@pytest.mark.parametrize(
     "name, script, expect_rc, expect_out",
     [
         pytest.param(

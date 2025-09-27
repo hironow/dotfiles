@@ -306,6 +306,7 @@ doctor:
 	if has docker; then \
 	  if docker info >/dev/null 2>&1; then log_ok 'docker' 'daemon reachable'; else log_warn 'docker' 'cli present, daemon unreachable'; fi; \
 	else log_warn 'docker' 'missing'; fi
+	if has just; then log_ok 'just' "$(just --version 2>/dev/null || true)"; else log_warn 'just' 'missing'; fi
 	if has uv; then log_ok 'uv' "$(uv --version 2>/dev/null || true)"; else log_warn 'uv' 'missing'; fi
 	if has mise; then log_ok 'mise' "$(mise --version 2>/dev/null || true)"; else log_warn 'mise' 'missing'; fi
 	if has brew; then log_ok 'brew' "$(brew --version | head -n1 2>/dev/null || true)"; else log_warn 'brew' 'missing'; fi
@@ -314,9 +315,12 @@ doctor:
 	if has npm; then log_ok 'npm' "$(npm --version 2>/dev/null || true)"; else log_warn 'npm' 'missing'; fi
 	if has rustc; then log_ok 'rustc' "$(rustc --version 2>/dev/null || true)"; else log_warn 'rustc' 'missing'; fi
 
-	# PATH duplicates
-	dup_out=$(just validate-path-duplicates 2>&1 || true)
-	case $? in \
+	# PATH duplicates (capture exit without aborting the script)
+	set +e
+	dup_out=$(just validate-path-duplicates 2>&1)
+	rc=$?
+	set -e
+	case $rc in \
 	  0) log_ok 'PATH' 'no duplicate command names';; \
 	  2) log_warn 'PATH' 'duplicate command names found'; echo "$dup_out";; \
 	  *) log_warn 'PATH' 'validation error'; echo "$dup_out";; \
