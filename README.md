@@ -10,16 +10,23 @@ bash -c "$(curl -L raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ## usage
 
 ```shell
-# make
-make edit
-make update-all
-make dump
+# just (task runner)
+just help
+just update-all
+just dump
+
+# diagnostics
+just self-check
+# run with quick validate tests (needs Docker)
+just self-check with_tests=1
+just doctor
+just validate-path-duplicates
 
 # uv on mise
 mx uv sync
 
-# make on mise
-mx make
+# just on mise
+mx just --list
 
 # mise env
 mx dotenvx run -- mise set
@@ -30,6 +37,26 @@ gh do -- mise set
 mx dotenvx set HELLO World
 # set env by mise (plain, unencrypted)
 mx mise set WORLD=hello
+```
+
+### tests (docker required)
+
+```shell
+# run all sandbox tests
+just test
+
+# run by pytest marker (install/validate/versions/deploy/check)
+just test-mark marker=validate
+```
+
+### install options
+
+```shell
+# full install
+bash ./install.sh
+
+# lightweight (skip heavy tools)
+INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./install.sh
 ```
 
 ## setup
