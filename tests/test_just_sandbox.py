@@ -373,10 +373,3 @@ def test_doctor_sandbox(docker_image):
     result = run_in_sandbox(docker_image, "just doctor")
     assert result.returncode == 0, f"doctor failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     assert "Doctor summary:" in result.stdout
-
-    if expect_err:
-        # Some commands print to stdout; check combined for resilience
-        combined = result.stdout + "\n" + result.stderr
-        assert expect_err in combined, (
-            f"{name}: expected error message: {expect_err!r}\ncombined:\n{combined}"
-        )

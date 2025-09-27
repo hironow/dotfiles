@@ -254,6 +254,35 @@ validate-path-duplicates:
 	  echo "✅ No duplicate command names across PATH"
 	  exit 0
 	fi
+	printf '%s\n' "${lines[@]}" | LC_ALL=C sort -k1,1 -k2,2n | awk '
+	{
+	  name=$1; idx=$2;
+	  $1=""; $2="";
+	  sub(/^  */,"",$0);
+	  if (NR==1) { prev=name; n=0 }
+	  if (name!=prev) {
+	    if (n>1) {
+	      print "command: " prev;
+	      for (i=1;i<=n;i++) print "  " rec[i]
+	      dup++
+	    }
+	    n=0; prev=name
+	  }
+	  n++; rec[n]=idx ":" $0
+	}
+	END{
+	  if (n>1) {
+	    print "command: " prev;
+	    for (i=1;i<=n;i++) print "  " rec[i]
+	    dup++
+	  }
+	  if (dup>0) {
+	    print "⚠️  Found " dup " command(s) shadowed by PATH order"
+	    exit 2
+	  } else {
+	    print "✅ No duplicate command names across PATH"
+	  }
+	}'
 
 # Doctor: environment diagnostics and guardrails
 doctor:
@@ -293,35 +322,6 @@ doctor:
 	echo "Doctor summary: ok=$ok warn=$warn err=$err"
 	if [ "$err" -gt 0 ]; then exit 1; fi
 	:
-	printf '%s\n' "${lines[@]}" | LC_ALL=C sort -k1,1 -k2,2n | awk '
-	{
-	  name=$1; idx=$2;
-	  $1=""; $2="";
-	  sub(/^  */,"",$0);
-	  if (NR==1) { prev=name; n=0 }
-	  if (name!=prev) {
-	    if (n>1) {
-	      print "command: " prev;
-	      for (i=1;i<=n;i++) print "  " rec[i]
-	      dup++
-	    }
-	    n=0; prev=name
-	  }
-	  n++; rec[n]=idx ":" $0
-	}
-	END{
-	  if (n>1) {
-	    print "command: " prev;
-	    for (i=1;i<=n;i++) print "  " rec[i]
-	    dup++
-	  }
-	  if (dup>0) {
-	    print "⚠️  Found " dup " command(s) shadowed by PATH order"
-	    exit 2
-	  } else {
-	    print "✅ No duplicate command names across PATH"
-	  }
-	}'
 
 
 # ------------------------------
