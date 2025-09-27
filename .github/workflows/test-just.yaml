@@ -23,7 +23,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Setup mise (tool versions)
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v3
         with:
           experimental: true
 
