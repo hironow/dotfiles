@@ -8,3 +8,12 @@ dependencies = [
     "torchaudio>=2.3.1",
     "whisperlivekit>=0.2.7",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "install: tests for install.sh flows",
+    "validate: PATH validation tests",
+    "versions: software version check tests",
+    "deploy: deploy and idempotency tests",
+    "check: basic just check commands",
+]
