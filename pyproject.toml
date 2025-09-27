@@ -4,10 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "torchaudio>=2.3.1",
-    "whisperlivekit>=0.2.7",
-]
+dependencies = []
 
 [tool.pytest.ini_options]
 markers = [
