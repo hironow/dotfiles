@@ -26,9 +26,14 @@ if ! command -v gcloud >/dev/null; then
   curl https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir="$HOME"
 fi
 
-# execute commands
-make add-all
-make update-all
+# ensure just is available
+if ! command -v just >/dev/null; then
+  brew list just >/dev/null 2>&1 || brew install just
+fi
 
-make clean
-make deploy
+# execute commands via just
+just add-all
+just update-all
+
+just clean
+just deploy

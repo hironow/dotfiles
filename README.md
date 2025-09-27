@@ -10,16 +10,16 @@ bash -c "$(curl -L raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ## usage
 
 ```shell
-# make
-make edit
-make update-all
-make dump
+# just (task runner)
+just help
+just update-all
+just dump
 
 # uv on mise
 mx uv sync
 
-# make on mise
-mx make
+# just on mise
+mx just --list
 
 # mise env
 mx dotenvx run -- mise set
