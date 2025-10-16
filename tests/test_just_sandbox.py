@@ -398,6 +398,14 @@ def test_doctor_reports_just(docker_image):
             id="Check: rust cfg guarded",
             marks=pytest.mark.check,
         ),
+        pytest.param(
+            "Check: watchman guarded",
+            "if command -v watchman >/dev/null 2>&1; then just check-watchman; else echo skip-watchman; fi",
+            0,
+            "skip-watchman",
+            id="Check: watchman guarded",
+            marks=pytest.mark.check,
+        ),
     ],
 )
 def test_check_commands_sandbox(docker_image, name, script, expect_rc, expect_out):
