@@ -37,3 +37,4 @@ mintlify
 zx
 @openapitools/openapi-generator-cli
 markdownlint
+@openai/codex
