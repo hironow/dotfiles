@@ -138,7 +138,7 @@ probe_without_cli() {
 main() {
   # No arguments at present, keep for future options
   case "${1:-}" in
-    -*|--*) ;; # ignore unknowns for now
+    -*) ;; # ignore options for now
   esac
 
   if command -v watchman >/dev/null 2>&1; then
