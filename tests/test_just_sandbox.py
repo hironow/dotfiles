@@ -1,4 +1,3 @@
-import os
 import subprocess
 import textwrap
 from pathlib import Path
@@ -217,7 +216,15 @@ def _case_id(params):
 @pytest.mark.parametrize(
     "name, script, expect_rc, expect_out, expect_err",
     [
-        pytest.param("help_lists_targets", "just help", 0, "install", "", id="Help: lists targets", marks=pytest.mark.check),
+        pytest.param(
+            "help_lists_targets",
+            "just help",
+            0,
+            "install",
+            "",
+            id="Help: lists targets",
+            marks=pytest.mark.check,
+        ),
         pytest.param(
             "validate_path_duplicates",
             "mkdir -p /tmp/x1 /tmp/x2 && printf '#!/bin/sh\necho hi\n' > /tmp/x1/foo && chmod +x /tmp/x1/foo && cp /tmp/x1/foo /tmp/x2/foo && export PATH=/tmp/x1:/tmp/x2:$PATH && just validate-path-duplicates",
@@ -254,10 +261,42 @@ def _case_id(params):
             id="Deploy: idempotent",
             marks=pytest.mark.deploy,
         ),
-        pytest.param("install_sh_success", SCRIPT_INSTALL_SUCCESS, 0, "", "", id="Install: first run", marks=pytest.mark.install),
-        pytest.param("install_sh_rerun", SCRIPT_INSTALL_RERUN, 0, "", "", id="Install: rerun update path", marks=pytest.mark.install),
-        pytest.param("check_path_runs", "just check-path", 0, "\n", "", id="Check: path prints", marks=pytest.mark.check),
-        pytest.param("nvcc_version_ok", "just check-version-nvcc 12.3", 0, "", "", id="Versions: NVCC ok", marks=pytest.mark.versions),
+        pytest.param(
+            "install_sh_success",
+            SCRIPT_INSTALL_SUCCESS,
+            0,
+            "",
+            "",
+            id="Install: first run",
+            marks=pytest.mark.install,
+        ),
+        pytest.param(
+            "install_sh_rerun",
+            SCRIPT_INSTALL_RERUN,
+            0,
+            "",
+            "",
+            id="Install: rerun update path",
+            marks=pytest.mark.install,
+        ),
+        pytest.param(
+            "check_path_runs",
+            "just check-path",
+            0,
+            "\n",
+            "",
+            id="Check: path prints",
+            marks=pytest.mark.check,
+        ),
+        pytest.param(
+            "nvcc_version_ok",
+            "just check-version-nvcc 12.3",
+            0,
+            "",
+            "",
+            id="Versions: NVCC ok",
+            marks=pytest.mark.versions,
+        ),
         pytest.param(
             "nvcc_version_mismatch",
             "just check-version-nvcc 11.4",
@@ -335,7 +374,9 @@ def test_doctor_reports_just(docker_image):
     # when
     result = run_in_sandbox(docker_image, "just doctor")
     # then
-    assert result.returncode == 0, f"doctor failed: rc={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert result.returncode == 0, (
+        f"doctor failed: rc={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
     assert "OK   just" in result.stdout
 
 
@@ -422,5 +463,7 @@ def test_check_commands_sandbox(docker_image, name, script, expect_rc, expect_ou
 @pytest.mark.check
 def test_doctor_sandbox(docker_image):
     result = run_in_sandbox(docker_image, "just doctor")
-    assert result.returncode == 0, f"doctor failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert result.returncode == 0, (
+        f"doctor failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
     assert "Doctor summary:" in result.stdout
