@@ -8,4 +8,5 @@ dependencies = [
     "matplotlib>=3.9.2",
     "pympi-ling>=1.70.2",
     "ruff>=0.7.4",
+    "pytest>=8.0.0",
 ]
