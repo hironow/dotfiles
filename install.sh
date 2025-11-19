@@ -23,12 +23,16 @@ _eval_brew() {
 }
 
 DOTPATH=${DOTPATH:-$HOME/dotfiles}
+DOTFILES_REPO=${DOTFILES_REPO:-https://github.com/hironow/dotfiles.git}
 
 if [ ! -d "$DOTPATH" ]; then
   git clone https://github.com/tarjoilija/zgen.git "${HOME}/.zgen"
-  git clone https://github.com/hironow/dotfiles.git "$DOTPATH"
+  git clone "$DOTFILES_REPO" "$DOTPATH"
 else
   echo "$DOTPATH already downloaded. Updating..."
+  if [ -d "${HOME}/.zgen" ]; then
+    (cd "${HOME}/.zgen" && git pull)
+  fi
   cd "$DOTPATH"
   git stash
   git checkout main
@@ -61,6 +65,13 @@ if ! command -v just >/dev/null 2>&1; then
   # Try via brew when available
   if command -v brew >/dev/null 2>&1; then
     brew list just >/dev/null 2>&1 || brew install just || true
+  fi
+  
+  # Fallback: install via official script if still not found
+  if ! command -v just >/dev/null 2>&1; then
+    echo "[install] Installing just via curl..."
+    curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to "$HOME/.local/bin"
+    export PATH="$HOME/.local/bin:$PATH"
   fi
 fi
 

@@ -53,6 +53,9 @@ just test
 
 # run by pytest marker (install/validate/versions/deploy/check)
 just test-mark marker=validate
+
+# verify install.sh (docker required)
+just test-install
 ```
 
 ### install options
