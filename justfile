@@ -55,6 +55,12 @@ test:
     uvx pytest -v -ra tests/test_just_sandbox.py
     @echo '✅ Tests finished.'
 
+# Test (install): run install.sh verification in Docker
+test-install:
+    @echo '🧪 Running install.sh verification in Docker...'
+    docker build -f tests/docker/InstallTest.Dockerfile .
+    @echo '✅ Verification passed.'
+
 # Self-check: quick, safe health checks with summary
 self-check with_tests="":
     #!/usr/bin/env bash
@@ -112,17 +118,23 @@ test-mark marker="":
 # Formatting
 # ------------------------------
 
-# Format: run ruff format via uvx
-ruff-format path="." opts="":
-    @echo '🔧 Formatting with ruff via uvx...'
-    uvx ruff format '{{ path }}' {{ opts }}
-    @echo '✅ Formatting done.'
+# Format: run all formatters (Python, Prettier)
+format:
+    @echo '🔧 Formatting Python (ruff)...'
+    uvx ruff format . --exclude emulator
+    @echo '🔧 Formatting others (prettier)...'
+    git ls-files | grep -vE '^(emulator$|emulator/)' | xargs mise x -- prettier --write --ignore-unknown
+    @echo '✅ Format done.'
 
-# Lint: run ruff check via uvx
-ruff-check path="." opts="":
-    @echo '🔍 Checking with ruff via uvx...'
-    uvx ruff check '{{ path }}' {{ opts }}
-    @echo '✅ Check done.'
+# Lint: run all linters (Python, Shell, Prettier)
+lint:
+    @echo '🔍 Linting Python (ruff)...'
+    uvx ruff check . --fix --exclude emulator
+    @echo '🔍 Linting Shell (shellcheck)...'
+    git ls-files '*.sh' | grep -vE '^(emulator$|emulator/)' | xargs mise x -- shellcheck
+    @echo '🔍 Checking others (prettier)...'
+    git ls-files | grep -vE '^(emulator$|emulator/)' | xargs mise x -- prettier --check --ignore-unknown
+    @echo '✅ Lint done.'
 
 # ------------------------------
 # Add sets
