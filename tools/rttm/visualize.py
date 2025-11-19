@@ -1,51 +1,88 @@
 import argparse
+import logging
 import sys
+from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-def visualize_rttm(rttm_file: str, output_file: str | None = None):
+
+def visualize_rttm(
+    rttm_file: str, output_file: str | None = None, font_family: str | None = None
+) -> None:
     """
-    RTTMファイルを可視化します。
+    Visualize an RTTM file.
 
     Parameters:
-    rttm_file (str): 入力RTTMファイルのパス。
-    output_file (str): 可視化結果を保存するファイルのパス（オプション）。
+    rttm_file (str): Path to the input RTTM file.
+    output_file (str): Path to the output image file (optional).
+    font_family (str): Font family to use for the plot (optional).
     """
-    # 日本語フォントの設定
-    plt.rcParams["font.family"] = "Hiragino Sans"  # macOSの場合
-    # plt.rcParams['font.family'] = 'Noto Sans CJK JP'  # 他の環境の場合
+    # Set font family
+    if font_family:
+        plt.rcParams["font.family"] = font_family
+    elif sys.platform == "darwin":
+        plt.rcParams["font.family"] = "Hiragino Sans"
+    else:
+        plt.rcParams["font.family"] = "Noto Sans CJK JP"
 
-    # RTTMファイルの読み込み
+    rttm_path = Path(rttm_file)
+    if not rttm_path.exists():
+        logger.error(f"Input file not found: {rttm_file}")
+        sys.exit(1)
+
+    # Read RTTM file
     segments: list[dict[str, Any]] = []
     speakers: set[str] = set()
-    with open(rttm_file, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            tokens = line.split()
-            if len(tokens) < 9:
-                print(f"不正な行をスキップしました: {line}", file=sys.stderr)
-                continue
-            entry_type = tokens[0]
-            if entry_type != "SPEAKER":
-                continue
-            start_time = float(tokens[3])
-            duration = float(tokens[4])
-            end_time = start_time + duration
-            speaker = tokens[7]
-            speakers.add(speaker)
-            segments.append({"start": start_time, "end": end_time, "speaker": speaker})
 
-    # 話者ごとのY座標と色の割り当て
-    speakers = sorted(list(speakers))
-    y_positions = {speaker: i for i, speaker in enumerate(speakers)}
-    num_speakers = len(speakers)
+    try:
+        with open(rttm_path, "r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                tokens = line.split()
+                if len(tokens) < 9:
+                    logger.warning(f"Skipping malformed line {line_num}: {line}")
+                    continue
+                entry_type = tokens[0]
+                if entry_type != "SPEAKER":
+                    continue
 
-    # 色覚障害者に配慮したカラーパレットの定義
+                try:
+                    start_time = float(tokens[3])
+                    duration = float(tokens[4])
+                except ValueError:
+                    logger.warning(f"Invalid timing data on line {line_num}: {line}")
+                    continue
+
+                end_time = start_time + duration
+                speaker = tokens[7]
+                speakers.add(speaker)
+                segments.append(
+                    {"start": start_time, "end": end_time, "speaker": speaker}
+                )
+    except Exception as e:
+        logger.error(f"Failed to read RTTM file: {e}")
+        sys.exit(1)
+
+    if not segments:
+        logger.warning("No valid segments found in RTTM file.")
+        return
+
+    # Assign Y coordinates and colors for each speaker
+    sorted_speakers = sorted(list(speakers))
+    y_positions = {speaker: i for i, speaker in enumerate(sorted_speakers)}
+    num_speakers = len(sorted_speakers)
+
+    # Colorblind-friendly palette
     colorblind_friendly_colors = [
         "#0072B2",  # blue
         "#E69F00",  # orange
@@ -60,17 +97,17 @@ def visualize_rttm(rttm_file: str, output_file: str | None = None):
 
     speaker_colors = {
         speaker: cmap(i % len(colorblind_friendly_colors))
-        for i, speaker in enumerate(speakers)
+        for i, speaker in enumerate(sorted_speakers)
     }
 
-    # 重複領域の計算
+    # Calculate overlaps
     overlapping_segments = find_overlaps(segments)
 
-    # 図と軸の作成
-    fig_height = num_speakers + 1  # 重複領域の分を追加
+    # Create figure and axes
+    fig_height = max(4, num_speakers + 1)  # Ensure minimum height
     _, ax = plt.subplots(figsize=(12, fig_height))
 
-    # 各話者の発話区間をプロット
+    # Plot segments for each speaker
     for segment in segments:
         start = segment["start"]
         duration = segment["end"] - segment["start"]
@@ -79,8 +116,8 @@ def visualize_rttm(rttm_file: str, output_file: str | None = None):
         color = speaker_colors[speaker]
         ax.broken_barh([(start, duration)], (y_pos - 0.4, 0.8), facecolors=color)
 
-    # 重複領域をプロット（最下部の列）
-    overlap_y_pos = num_speakers  # 重複領域のY座標
+    # Plot overlaps (bottom row)
+    overlap_y_pos = num_speakers
     for overlap in overlapping_segments:
         start = overlap["start"]
         duration = overlap["end"] - overlap["start"]
@@ -91,37 +128,41 @@ def visualize_rttm(rttm_file: str, output_file: str | None = None):
             alpha=0.5,
         )
 
-    # ラベルとタイトルの設定
-    ax.set_xlabel("時間 (秒)")
+    # Set labels and title
+    ax.set_xlabel("Time (s)")
     ax.set_yticks(list(y_positions.values()) + [overlap_y_pos])
-    ax.set_yticklabels(speakers + ["重複領域"])
-    ax.set_title("RTTMファイルの可視化（重複領域を含む）")
+    ax.set_yticklabels(sorted_speakers + ["Overlap"])
+    ax.set_title("RTTM Visualization (including overlaps)")
 
-    # Y軸の範囲調整
-    ax.set_ylim(-1, fig_height)
+    # Adjust Y limits
+    ax.set_ylim(-1, num_speakers + 1)
 
-    # レイアウトの調整
+    # Adjust layout
     plt.tight_layout()
 
-    # グラフの表示または保存
+    # Show or save plot
     if output_file:
-        plt.savefig(output_file)
-        print(f"可視化結果を {output_file} に保存しました。")
+        try:
+            plt.savefig(output_file)
+            logger.info(f"Visualization saved to {output_file}")
+        except Exception as e:
+            logger.error(f"Failed to save visualization: {e}")
+            sys.exit(1)
     else:
         plt.show()
 
 
 def find_overlaps(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
-    セグメントのリストから重複している領域を検出します。
+    Find overlapping segments.
 
     Parameters:
-    segments (list): セグメントのリスト。
+    segments (list): List of segments.
 
     Returns:
-    overlaps (list): 重複領域のリスト。
+    overlaps (list): List of overlapping segments.
     """
-    # セグメントを開始時間でソート
+    # Sort segments by start time
     sorted_segments = sorted(segments, key=lambda x: x["start"])
     overlaps = []
     n = len(sorted_segments)
@@ -130,55 +171,57 @@ def find_overlaps(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
         current = sorted_segments[i]
         for j in range(i + 1, n):
             next_seg = sorted_segments[j]
-            # 重複の判定
+            # Check for overlap
             if current["end"] > next_seg["start"]:
-                # 重複領域の開始と終了を計算
+                # Calculate overlap range
                 overlap_start = max(current["start"], next_seg["start"])
                 overlap_end = min(current["end"], next_seg["end"])
                 overlaps.append({"start": overlap_start, "end": overlap_end})
-                # currentの終了時間を更新
+                # Update current end time to extend check
                 current["end"] = max(current["end"], next_seg["end"])
             else:
-                break  # 重複がない場合は次のセグメントへ
-    # 重複領域をマージ
+                break  # No more overlaps for this segment
+
+    # Merge overlaps
     merged_overlaps = merge_intervals(overlaps)
     return merged_overlaps
 
 
 def merge_intervals(intervals: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
-    重複している区間をマージします。
+    Merge overlapping intervals.
 
     Parameters:
-    intervals (list): 区間のリスト。
+    intervals (list): List of intervals.
 
     Returns:
-    merged (list): マージされた区間のリスト。
+    merged (list): List of merged intervals.
     """
     if not intervals:
         return []
-    # 区間を開始時間でソート
+    # Sort intervals by start time
     intervals.sort(key=lambda x: x["start"])
     merged = [intervals[0]]
     for current in intervals[1:]:
         last = merged[-1]
         if current["start"] <= last["end"]:
-            # 区間が重なっている場合、終了時間を更新
+            # Merge if overlapping
             last["end"] = max(last["end"], current["end"])
         else:
             merged.append(current)
     return merged
 
 
-def main():
-    parser = argparse.ArgumentParser(description="RTTMファイルを可視化します。")
-    parser.add_argument("rttm_file", help="入力RTTMファイル")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Visualize an RTTM file.")
+    parser.add_argument("rttm_file", help="Input RTTM file")
     parser.add_argument(
-        "-o", "--output_file", help="出力画像ファイル（省略可）", default=None
+        "-o", "--output_file", help="Output image file (optional)", default=None
     )
+    parser.add_argument("--font", help="Font family to use (optional)", default=None)
     args = parser.parse_args()
 
-    visualize_rttm(args.rttm_file, args.output_file)
+    visualize_rttm(args.rttm_file, args.output_file, args.font)
 
 
 if __name__ == "__main__":

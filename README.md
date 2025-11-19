@@ -82,6 +82,10 @@ cd tools/simple-server
 sudo mise x -- go run main.go
 ```
 
+## Tools
+
+- [Tools](./tools/README.md): Collection of utility scripts and tools (e.g., RTTM converter, simple server).
+
 ## references
 
 - [mise](https://github.com/jdx/mise)
