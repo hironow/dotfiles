@@ -1,7 +1,13 @@
 # dotfiles
 
+My configuration for Zsh, Mise, Just, and more.
+
+## Installation
+
+Requires `curl` and `git`.
+
 ```shell
-bash -c "$(curl -L raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ```
 
 > [!NOTE]  
