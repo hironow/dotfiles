@@ -158,6 +158,9 @@ if _cmd_exists mise; then
     alias mx="mise exec --"
     alias mr="mise run"
 fi
+if _cmd_exists just; then
+    alias j="just"
+fi
 if _cmd_exists tofu; then
     alias t="tofu"
 fi
