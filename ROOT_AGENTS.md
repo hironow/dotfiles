@@ -24,6 +24,67 @@
         <principle>Maintain high code quality throughout development</principle>
     </core-principles>
 
+    <tooling-standards>
+        <title>TOOLING STANDARDS</title>
+        <description>Mandatory tools and conventions for the project</description>
+        
+        <file-conventions>
+            <rule>YAML files: Always use `.yaml` extension (NOT `.yml`)</rule>
+            <example type="good">config.yaml, docker-compose.yaml, workflow.yaml</example>
+            <example type="bad">config.yml, docker-compose.yml, workflow.yml</example>
+        </file-conventions>
+        
+        <package-managers>
+            <python>
+                <tool>uv</tool>
+                <rule>Use uv exclusively for Python package management</rule>
+                <prohibited>pip, pip-tools, poetry, pipenv</prohibited>
+                <commands>
+                    <command purpose="install">uv sync</command>
+                    <command purpose="add dependency">uv add {package}</command>
+                    <command purpose="add dev dependency">uv add --dev {package}</command>
+                    <command purpose="run">uv run {command}</command>
+                </commands>
+            </python>
+            <nodejs>
+                <tool>pnpm</tool>
+                <rule>Use pnpm exclusively for Node.js package management</rule>
+                <prohibited>npm, yarn, bun</prohibited>
+                <commands>
+                    <command purpose="install">pnpm install</command>
+                    <command purpose="add dependency">pnpm add {package}</command>
+                    <command purpose="add dev dependency">pnpm add -D {package}</command>
+                    <command purpose="run script">pnpm run {script}</command>
+                </commands>
+            </nodejs>
+        </package-managers>
+        
+        <task-runner>
+            <tool>just (justfile)</tool>
+            <rule>Use just for task automation</rule>
+            <prohibited>make (Makefile), npm scripts for complex tasks</prohibited>
+            <file>justfile (no extension, lowercase)</file>
+            <example><![CDATA[
+# Run all tests
+test:
+    uv run pytest
+
+# Run linting
+lint:
+    uv run ruff check .
+    uv run mypy .
+
+# Format code
+fmt:
+    uv run ruff format .
+
+# Run e2e tests
+test-e2e:
+    uv run pytest tests/e2e/
+            ]]></example>
+        </task-runner>
+    </tooling-standards>
+
     <tdd-methodology>
         <title>TDD METHODOLOGY GUIDANCE</title>
         <step>Start by writing a failing test that defines a small increment of functionality</step>
@@ -83,6 +144,7 @@
         <required-tools>
             <tool name="ruff">Linting and formatting</tool>
             <tool name="mypy">Static type checking</tool>
+            <tool name="uv">Package management (see tooling-standards section)</tool>
         </required-tools>
         
         <ruff-configuration>
@@ -125,10 +187,10 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
         </mypy-requirements>
         
         <pre-commit-checks>
-            <step>Run `ruff check .` and fix all violations</step>
-            <step>Run `ruff format .` to ensure consistent formatting</step>
-            <step>Run `mypy .` and fix all type errors</step>
-            <step>Run tests to ensure no regressions</step>
+            <step>Run `just lint` or `uv run ruff check .` and fix all violations</step>
+            <step>Run `just fmt` or `uv run ruff format .` to ensure consistent formatting</step>
+            <step>Run `uv run mypy .` and fix all type errors</step>
+            <step>Run `just test` or `uv run pytest` to ensure no regressions</step>
         </pre-commit-checks>
     </python-tooling>
 
@@ -161,6 +223,11 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
             <dir path="tests/">All test code (unit, integration, e2e, scenario)</dir>
         </root-directories>
         
+        <root-files>
+            <file path="justfile">Task runner configuration (required)</file>
+            <file path="pyproject.toml">Python project configuration including ruff settings</file>
+        </root-files>
+        
         <rule>These directories MUST NOT be duplicated in subdirectories</rule>
         <rule>External dependencies (submodules, cloned repositories) are exempt from this rule</rule>
         
@@ -172,7 +239,7 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
             <dir path="tests/unit/">Unit tests - isolated component testing</dir>
             <dir path="tests/integration/">Integration tests - component interaction testing</dir>
             <dir path="tests/e2e/">End-to-end tests - full system testing with real dependencies</dir>
-            <dir path="tests/runn/">Scenario-based tests - API and workflow scenarios</dir>
+            <dir path="tests/runn/">Scenario-based tests - API and workflow scenarios (*.yaml files)</dir>
             <dir path="tests/utils/">Shared test utilities (only importable location)</dir>
         </test-subdirectories>
     </project-structure>
@@ -337,6 +404,7 @@ What forces are at play? What are we trying to achieve?}
         <title>scripts/ DIRECTORY GUIDELINES</title>
         <guideline>Scripts must be implemented to be idempotent</guideline>
         <guideline>Argument processing should be done early in the script</guideline>
+        <guideline>Prefer defining common tasks in justfile over individual scripts</guideline>
         <considerations>
             <item>Standardization and Error Prevention</item>
             <item>Developer Experience</item>
@@ -451,14 +519,14 @@ def test_api_endpoint(input_data, expected_status, expected_result):
         <description>runn is a scenario-based testing tool for API and CLI testing</description>
         
         <key-concepts>
-            <concept name="runbook">YAML-based scenario definition</concept>
+            <concept name="runbook">YAML-based scenario definition (use .yaml extension)</concept>
             <concept name="step">Individual action (HTTP request, command execution, etc.)</concept>
             <concept name="vars">Variables passed between steps</concept>
         </key-concepts>
         
         <file-structure>
-            <pattern>tests/runn/*.yml - Scenario files</pattern>
-            <pattern>tests/runn/vars/*.yml - Shared variables</pattern>
+            <pattern>tests/runn/*.yaml - Scenario files (NOT .yml)</pattern>
+            <pattern>tests/runn/vars/*.yaml - Shared variables (NOT .yml)</pattern>
         </file-structure>
         
         <guidelines>
@@ -478,8 +546,8 @@ def test_api_endpoint(input_data, expected_status, expected_result):
         <steps>
             <step number="1">Write a simple failing test for a small part of the feature</step>
             <step number="2">Implement the bare minimum to make it pass</step>
-            <step number="3">Run tests to confirm they pass (Green)</step>
-            <step number="4">Run ruff and mypy to ensure code quality</step>
+            <step number="3">Run tests to confirm they pass (Green): `just test`</step>
+            <step number="4">Run linting and type checks: `just lint`</step>
             <step number="5">Make any necessary structural changes (Tidy First), running tests after each change</step>
             <step number="6">Commit structural changes separately</step>
             <step number="7">Add another test for the next small increment of functionality</step>
@@ -489,6 +557,7 @@ def test_api_endpoint(input_data, expected_status, expected_result):
         <principle>Always write one test at a time, make it run, then improve structure</principle>
         <principle>Always run all tests (except long-running) each time</principle>
         <principle>Always run ruff and mypy before committing</principle>
+        <principle>Use just commands for common tasks</principle>
     </workflow>
 
     <workflow-example>
@@ -521,10 +590,14 @@ def validate_email(email: str) -> bool:
         <step number="3" phase="verify">
             <description>Run linting and type checks</description>
             <commands>
-                <command>ruff check .</command>
-                <command>ruff format .</command>
-                <command>mypy .</command>
+                <command>just lint</command>
+                <command>just fmt</command>
             </commands>
+            <alternative>
+                <command>uv run ruff check .</command>
+                <command>uv run ruff format .</command>
+                <command>uv run mypy .</command>
+            </alternative>
         </step>
         
         <step number="4" phase="refactor">
@@ -541,6 +614,7 @@ def validate_email(email: str) -> bool:
             <rule>Mark commits as [STRUCTURAL] or [BEHAVIORAL] in suggestions</rule>
             <rule>When proposing code changes, show the test first</rule>
             <rule>Always include type annotations in Python code suggestions</rule>
+            <rule>Use .yaml extension when creating YAML files, never .yml</rule>
         </response-format>
         
         <prohibited-actions>
@@ -550,6 +624,8 @@ def validate_email(email: str) -> bool:
             <action>Never suggest mocks in e2e tests</action>
             <action>Never suggest code that would fail ruff or mypy checks</action>
             <action>Never suggest modifying the ruff configuration</action>
+            <action>Never suggest using pip, npm, yarn, or make</action>
+            <action>Never use .yml extension for YAML files</action>
         </prohibited-actions>
         
         <encouraged-actions>
@@ -559,6 +635,9 @@ def validate_email(email: str) -> bool:
             <action>Recommend parameterized tests when multiple similar scenarios exist</action>
             <action>Include ruff and mypy verification steps in suggestions</action>
             <action>Suggest creating an ADR when proposing significant architectural changes</action>
+            <action>Use uv for Python package operations</action>
+            <action>Use pnpm for Node.js package operations</action>
+            <action>Use just commands for task automation</action>
         </encouraged-actions>
     </ai-assistant-directives>
 </development-guidelines>
