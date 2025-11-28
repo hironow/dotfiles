@@ -153,7 +153,7 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
         <description>Standard directories must exist only once at the repository root level</description>
         
         <root-directories>
-            <dir path="docs/">Documentation for current implementation only</dir>
+            <dir path="docs/">Documentation for current implementation and architecture decision records</dir>
             <dir path="experiments/">Research, preliminary experiments, exploratory implementations</dir>
             <dir path="output/">Generated artifacts and build outputs</dir>
             <dir path="examples/">Usage examples and sample code</dir>
@@ -163,6 +163,10 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
         
         <rule>These directories MUST NOT be duplicated in subdirectories</rule>
         <rule>External dependencies (submodules, cloned repositories) are exempt from this rule</rule>
+        
+        <docs-subdirectories>
+            <dir path="docs/adr/">Architecture Decision Records - immutable decision history</dir>
+        </docs-subdirectories>
         
         <test-subdirectories>
             <dir path="tests/unit/">Unit tests - isolated component testing</dir>
@@ -191,12 +195,87 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
         </validation>
         
         <prohibited-content>
-            <item>Historical context or "why we changed from X to Y"</item>
+            <item>Historical context or "why we changed from X to Y" (use ADR instead)</item>
             <item>Future plans or roadmap items</item>
             <item>TODO comments or planned improvements</item>
             <item>Deprecated feature descriptions</item>
         </prohibited-content>
+        
+        <exception>
+            <note>docs/adr/ is exempt from the "current state only" rule - see adr-guidelines section</note>
+        </exception>
     </docs-guidelines>
+
+    <adr-guidelines>
+        <title>docs/adr/ ARCHITECTURE DECISION RECORDS</title>
+        <description>Capture the "Why" behind significant decisions, as docs only capture the "What"</description>
+        
+        <purpose>
+            <point>Record architectural and design decisions with their context</point>
+            <point>Preserve the reasoning that led to current implementation choices</point>
+            <point>Help future developers understand non-obvious tradeoffs</point>
+        </purpose>
+        
+        <when-to-create>
+            <trigger>Introducing new technology or framework</trigger>
+            <trigger>Changing established patterns or conventions</trigger>
+            <trigger>Making non-obvious tradeoffs with significant consequences</trigger>
+            <trigger>Deprecating or replacing existing approaches</trigger>
+            <trigger>Decisions that future developers might question</trigger>
+        </when-to-create>
+        
+        <file-naming>
+            <pattern>docs/adr/NNNN-short-title.md</pattern>
+            <example>docs/adr/0001-use-fastapi-for-api-layer.md</example>
+            <example>docs/adr/0002-adopt-event-sourcing-pattern.md</example>
+            <rule>Use sequential numbering (0001, 0002, ...)</rule>
+            <rule>Use lowercase with hyphens for title</rule>
+        </file-naming>
+        
+        <template>
+            <format><![CDATA[
+# {NNNN}. {Title}
+
+**Date:** YYYY-MM-DD
+**Status:** Proposed / Accepted / Deprecated / Superseded by [NNNN]
+
+## Context
+
+{The problem and constraints at the time of this decision.
+What forces are at play? What are we trying to achieve?}
+
+## Decision
+
+{What we are doing. State the decision clearly and concisely.}
+
+## Consequences
+
+### Positive
+- {Benefit 1}
+- {Benefit 2}
+
+### Negative
+- {Tradeoff or downside 1}
+- {Tradeoff or downside 2}
+
+### Neutral
+- {Side effect or implication that is neither clearly positive nor negative}
+            ]]></format>
+        </template>
+        
+        <immutability>
+            <rule>ADRs are NEVER modified after acceptance (immutable history)</rule>
+            <rule>To change a decision, create a new ADR that supersedes the old one</rule>
+            <rule>Update the old ADR's status to "Superseded by [NNNN]" - this is the only allowed modification</rule>
+        </immutability>
+        
+        <relation-to-docs>
+            <distinction>Live docs (docs/*.md) describe the CURRENT state - the "What"</distinction>
+            <distinction>ADRs (docs/adr/*.md) describe the HISTORY of decisions - the "Why"</distinction>
+            <rule>When docs change due to a significant decision, create an ADR to capture the reasoning</rule>
+            <rule>ADRs complement docs - they do not replace them</rule>
+        </relation-to-docs>
+    </adr-guidelines>
 
     <experiments-guidelines>
         <title>experiments/ DIRECTORY GUIDELINES</title>
@@ -405,6 +484,7 @@ def test_api_endpoint(input_data, expected_status, expected_result):
             <step number="6">Commit structural changes separately</step>
             <step number="7">Add another test for the next small increment of functionality</step>
             <step number="8">Repeat until complete, committing behavioral changes separately</step>
+            <step number="9">If the change involves significant architectural decisions, create an ADR</step>
         </steps>
         <principle>Always write one test at a time, make it run, then improve structure</principle>
         <principle>Always run all tests (except long-running) each time</principle>
@@ -478,6 +558,7 @@ def validate_email(email: str) -> bool:
             <action>Point out missing test cases</action>
             <action>Recommend parameterized tests when multiple similar scenarios exist</action>
             <action>Include ruff and mypy verification steps in suggestions</action>
+            <action>Suggest creating an ADR when proposing significant architectural changes</action>
         </encouraged-actions>
     </ai-assistant-directives>
 </development-guidelines>
