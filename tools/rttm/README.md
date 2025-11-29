@@ -27,6 +27,7 @@ mx uv run python visualize.py input.rttm -o output.png
 ```
 
 Optional arguments:
+
 - `--font`: Specify a font family (e.g., "Arial"). Defaults to "Hiragino Sans" on macOS and "Noto Sans CJK JP" elsewhere.
 
 ### Development
