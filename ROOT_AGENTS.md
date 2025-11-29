@@ -617,6 +617,44 @@ def validate_email(email: str) -> bool:
             <rule>Use .yaml extension when creating YAML files, never .yml</rule>
         </response-format>
         
+        <ascii-art-guidelines>
+            <title>ASCII ART AND DIAGRAM GUIDELINES</title>
+            <description>Rules for creating text-based visualizations that render correctly</description>
+            
+            <character-restrictions>
+                <rule>Use ONLY ASCII characters (single-byte) in diagrams</rule>
+                <prohibited>Japanese (日本語), Chinese (中文), Korean (한국어), emoji (🔥), and other multi-byte characters</prohibited>
+                <reason>Multi-byte characters cause misalignment in monospace rendering</reason>
+            </character-restrictions>
+            
+            <legend-requirement>
+                <rule>ALWAYS include a legend directly below the ASCII art</rule>
+                <rule>Legend must provide Japanese translations unless explicitly instructed otherwise</rule>
+                <format>English term: Japanese translation</format>
+            </legend-requirement>
+            
+            <example><![CDATA[
++-------------------+
+|   Request Handler |
++-------------------+
+         |
+         v
++-------------------+
+|   Validator       |
++-------------------+
+         |
+         v
++-------------------+
+|   Repository      |
++-------------------+
+
+Legend / 凡例:
+- Request Handler: リクエストハンドラー
+- Validator: バリデーター
+- Repository: リポジトリ
+            ]]></example>
+        </ascii-art-guidelines>
+        
         <prohibited-actions>
             <action>Never suggest untested code for production</action>
             <action>Never mix structural and behavioral changes in one suggestion</action>
@@ -626,6 +664,7 @@ def validate_email(email: str) -> bool:
             <action>Never suggest modifying the ruff configuration</action>
             <action>Never suggest using pip, npm, yarn, or make</action>
             <action>Never use .yml extension for YAML files</action>
+            <action>Never use multi-byte characters (Japanese, Chinese, Korean, emoji) inside ASCII art diagrams</action>
         </prohibited-actions>
         
         <encouraged-actions>
@@ -638,6 +677,7 @@ def validate_email(email: str) -> bool:
             <action>Use uv for Python package operations</action>
             <action>Use pnpm for Node.js package operations</action>
             <action>Use just commands for task automation</action>
+            <action>Include Japanese legend below ASCII art diagrams</action>
         </encouraged-actions>
     </ai-assistant-directives>
 </development-guidelines>
