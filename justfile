@@ -23,6 +23,69 @@ deploy:
     @echo "==> Start to deploy dotfiles to home directory."
     ln -sf ~/dotfiles/.zshrc ~/.zshrc
 
+# Sync: copy ROOT_AGENTS.md to agent instruction files
+sync-agents:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo '🔄 Syncing ROOT_AGENTS.md to agent instruction files...'
+
+    # Source file
+    source="$HOME/dotfiles/ROOT_AGENTS.md"
+    if [ ! -f "$source" ]; then
+      echo "❌ Source file not found: $source"
+      exit 1
+    fi
+
+    # Target files (path:name pairs)
+    targets=(
+      "$HOME/.claude/CLAUDE.md:Claude"
+      "$HOME/.gemini/GEMINI.md:Gemini"
+      "$HOME/.codex/AGENTS.md:Codex"
+    )
+
+    # Process each target
+    for entry in "${targets[@]}"; do
+      target="${entry%%:*}"
+      name="${entry##*:}"
+      echo ""
+      echo "📋 Processing $name: $target"
+
+      # Ensure directory exists
+      dir=$(dirname "$target")
+      if [ ! -d "$dir" ]; then
+        echo "  → Creating directory: $dir"
+        mkdir -p "$dir"
+      fi
+
+      # Check if file exists and has differences
+      if [ -f "$target" ]; then
+        if diff -q "$source" "$target" >/dev/null 2>&1; then
+          echo "  ✅ Already in sync (no changes)"
+          continue
+        else
+          echo "  ⚠️  Differences detected"
+          echo ""
+          diff -u "$target" "$source" | head -20 || true
+          echo ""
+          read -p "  Overwrite $target? [y/N] " -n 1 -r
+          echo
+          if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "  ⏭️  Skipped"
+            continue
+          fi
+        fi
+      else
+        echo "  → File does not exist, will create"
+      fi
+
+      # Copy file
+      cp "$source" "$target"
+      echo "  ✅ Synced successfully"
+    done
+
+    echo ""
+    echo "✨ Sync completed!"
+
 # Clean: remove deployed dotfiles (~/.zshrc)
 clean:
     @echo "==> Remove dotfiles in your home directory..."
@@ -123,7 +186,7 @@ format:
     @echo '🔧 Formatting Python (ruff)...'
     uvx ruff format . --exclude emulator
     @echo '🔧 Formatting others (prettier)...'
-    git ls-files | grep -vE '^(emulator$|emulator/)' | xargs mise x -- prettier --write --ignore-unknown
+    git ls-files | grep -vE '^(emulator$|emulator/|ROOT_AGENTS\.md$)' | xargs mise x -- prettier --write --ignore-unknown
     @echo '✅ Format done.'
 
 # Lint: run all linters (Python, Shell, Prettier)
@@ -133,7 +196,7 @@ lint:
     @echo '🔍 Linting Shell (shellcheck)...'
     git ls-files '*.sh' | grep -vE '^(emulator$|emulator/)' | xargs mise x -- shellcheck
     @echo '🔍 Checking others (prettier)...'
-    git ls-files | grep -vE '^(emulator$|emulator/)' | xargs mise x -- prettier --check --ignore-unknown
+    git ls-files | grep -vE '^(emulator$|emulator/|ROOT_AGENTS\.md$)' | xargs mise x -- prettier --check --ignore-unknown
     @echo '✅ Lint done.'
 
 # ------------------------------
