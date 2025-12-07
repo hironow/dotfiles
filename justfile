@@ -502,3 +502,6 @@ check-version-torch expected:
 check-localhost-tls:
     # Serve TLS on localhost using the Go simple-server
     mise x -- sudo go run tools/simple-server/main.go
+
+semgrep:
+    uv run semgrep --config=auto .
