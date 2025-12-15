@@ -96,3 +96,27 @@ sudo mise x -- go run main.go
 - [browser toolbox](https://toolbox.googleapps.com/)
 - [smarthome webrtc tool](https://smarthome-webrtc-validator.withgoogle.com/)
 - [trickle ice checker](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
+
+## mcp setup
+
+```bash
+# root
+claude mcp add -s user chrome-devtools bunx chrome-devtools-mcp@latest
+claude mcp add -s user -t http deepwiki https://mcp.deepwiki.com/mcp
+claude mcp add -s user -t http bun https://bun.com/docs/mcp
+
+# per project
+## serena
+claude mcp add serena -- uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context claude-code --project "$(pwd)" --port 11111
+### after
+#### claude opened, go to http://localhost:24282/dashboard/index.html
+#### serena project index
+#### ref: https://oraios.github.io/serena/02-usage/040_workflow.html
+uvx --from git+https://github.com/oraios/serena serena project index
+#### help:
+uvx --from git+https://github.com/oraios/serena serena start-mcp-server --help
+#### global config
+code ~/.serena/serena_config.yml
+
+## ... anything
+```
