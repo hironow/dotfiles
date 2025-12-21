@@ -216,7 +216,6 @@ mas "Numbers", id: 409203825
 mas "Oka Unarchiver", id: 1441507725
 mas "Pages", id: 409201541
 mas "Reeder", id: 6475002485
-mas "Slack", id: 803453959
 mas "Tailscale", id: 1475387142
 mas "Telegram Lite", id: 946399090
 mas "Transmit", id: 1436522307
@@ -445,6 +444,7 @@ vscode "tomoki1207.pdf"
 vscode "trabpukcip.vscode-npm-scripts"
 vscode "trinm1709.dracula-theme-from-intellij"
 vscode "tyriar.sort-lines"
+vscode "uctakeoff.vscode-counter"
 vscode "ultram4rine.sqltools-clickhouse-driver"
 vscode "unifiedjs.vscode-mdx"
 vscode "usernamehw.errorlens"
@@ -462,3 +462,6 @@ go "cmd/go"
 go "cmd/gofmt"
 go "golang.org/x/tools/gopls"
 go "honnef.co/go/tools/cmd/staticcheck"
+cargo "bdk-cli"
+cargo "gen-license"
+cargo "wrkflw"
