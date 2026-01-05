@@ -505,3 +505,16 @@ check-localhost-tls:
 
 semgrep:
     uv run semgrep --config=auto .
+
+
+# CDP
+
+# Start Chrome Dev with remote debugging
+start-cdp:
+  @echo "Starting Chrome Dev with remote debugging on port 9222..."
+  "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-dev-profile"
+
+# Start Chrome Dev for debugging
+debug-cdp:
+  @echo "Starting Chrome Dev for debugging with remote debugging on port 9222..."
+  "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-debug-profile"
