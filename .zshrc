@@ -135,11 +135,6 @@ if _cmd_exists mise; then
     eval "$(mise activate zsh)"
 fi
 
- 
-
-# claude
-alias claude="$HOME/.claude/local/claude"
-
 
 # alias
 # use tldr as help util
@@ -168,6 +163,13 @@ if _cmd_exists terramate; then
     alias tm="terramate"
     alias tmr="terramate run --"
 fi
+
+
+# Claude Code
+alias cc='~/.local/bin/claude'
+alias cc-p='CLAUDE_CONFIG_DIR=~/.claude ~/.local/bin/claude'
+alias cc-w='CLAUDE_CONFIG_DIR=~/.claude-work-c ~/.local/bin/claude'
+
 
 # Git worktree navigation
 wgo() {
