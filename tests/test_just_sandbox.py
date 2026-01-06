@@ -236,7 +236,7 @@ def _case_id(params):
         ),
         pytest.param(
             "validate_no_duplicates",
-            "mkdir -p /tmp/only && printf '#!/bin/sh\necho ok\n' > /tmp/only/foo && chmod +x /tmp/only/foo && VALIDATE_PATH=/tmp/only /usr/bin/just validate-path-duplicates",
+            "mkdir -p /tmp/only && printf '#!/bin/sh\necho ok\n' > /tmp/only/foo && chmod +x /tmp/only/foo && VALIDATE_PATH=/tmp/only just validate-path-duplicates",
             0,
             "No duplicate command names across PATH",
             "",
