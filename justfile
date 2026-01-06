@@ -14,92 +14,44 @@ help:
 # ------------------------------
 
 # Install: setup tools via mise
+[group('Setup')]
 install:
     # Install tools via mise (versions are managed in mise.toml)
     mise install
 
 # Deploy: symlink dotfiles to home (~/.zshrc)
+[group('Setup')]
 deploy:
     @echo "==> Start to deploy dotfiles to home directory."
     ln -sf ~/dotfiles/.zshrc ~/.zshrc
 
-# Sync: copy ROOT_AGENTS.md to agent instruction files
+# Sync: copy ROOT_AGENTS files to agent instruction directories
+[group('Setup')]
 sync-agents:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo '🔄 Syncing ROOT_AGENTS.md to agent instruction files...'
+    @uv run scripts/sync_agents.py
 
-    # Source file
-    source="$HOME/dotfiles/ROOT_AGENTS.md"
-    if [ ! -f "$source" ]; then
-      echo "❌ Source file not found: $source"
-      exit 1
-    fi
+# Sync (preview): show what would be synced without making changes
+[group('Setup')]
+sync-agents-preview:
+    @uv run scripts/sync_agents.py --preview
 
-    # Target files (path:name pairs)
-    targets=(
-      "$HOME/.claude/CLAUDE.md:Claude"
-      "$HOME/.gemini/GEMINI.md:Gemini"
-      "$HOME/.codex/AGENTS.md:Codex"
-    )
-
-    # Process each target
-    for entry in "${targets[@]}"; do
-      target="${entry%%:*}"
-      name="${entry##*:}"
-      echo ""
-      echo "📋 Processing $name: $target"
-
-      # Ensure directory exists
-      dir=$(dirname "$target")
-      if [ ! -d "$dir" ]; then
-        echo "  → Creating directory: $dir"
-        mkdir -p "$dir"
-      fi
-
-      # Check if file exists and has differences
-      if [ -f "$target" ]; then
-        if diff -q "$source" "$target" >/dev/null 2>&1; then
-          echo "  ✅ Already in sync (no changes)"
-          continue
-        else
-          echo "  ⚠️  Differences detected"
-          echo ""
-          diff -u "$target" "$source" | head -20 || true
-          echo ""
-          read -p "  Overwrite $target? [y/N] " -n 1 -r
-          echo
-          if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "  ⏭️  Skipped"
-            continue
-          fi
-        fi
-      else
-        echo "  → File does not exist, will create"
-      fi
-
-      # Copy file
-      cp "$source" "$target"
-      echo "  ✅ Synced successfully"
-    done
-
-    echo ""
-    echo "✨ Sync completed!"
+# Sync (auto): sync all without prompts
+[group('Setup')]
+sync-agents-auto:
+    @uv run scripts/sync_agents.py --yes
 
 # Clean: remove deployed dotfiles (~/.zshrc)
+[group('Setup')]
 clean:
     @echo "==> Remove dotfiles in your home directory..."
     rm -vrf ~/.zshrc
 
 # Dump: write Homebrew bundle into dump/
+[group('Setup')]
 dump:
     # Dump current brew bundle
     rm -f ./dump/Brewfile && (cd ./dump && brew bundle dump)
 
-# Freeze: pin Python deps to requirements.txt (uv)
-freeze:
-    # Freeze current python packages using uv
-    uv pip freeze | uv pip compile - -o requirements.txt
 
 # ------------------------------
 # Tests
@@ -125,6 +77,7 @@ test-install:
     @echo '✅ Verification passed.'
 
 # Self-check: quick, safe health checks with summary
+[group('Setup')]
 self-check with_tests="":
     #!/usr/bin/env bash
     set -u
@@ -289,6 +242,7 @@ update-pnpm-g-safe:
     pnpm store prune || true
 
 # Repair: reset Homebrew state (rebase leftovers, inconsistencies)
+[group('Setup')]
 brew-repair:
     @echo '🔧 brew update-reset + doctor'
     brew update-reset
@@ -403,6 +357,7 @@ validate-path-duplicates:
     }'
 
 # Doctor: environment diagnostics and guardrails
+[group('Setup')]
 doctor:
     #!/usr/bin/env bash
     set -euo pipefail
