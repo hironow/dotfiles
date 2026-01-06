@@ -1,3 +1,6 @@
 [submodule "emulator"]
 	path = emulator
 	url = git@github.com:hironow/emulator-set.git
+[submodule "telemetry"]
+	path = telemetry
+	url = git@github.com:hironow/telemetry-set.git
