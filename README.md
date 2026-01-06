@@ -72,7 +72,7 @@ bash ./install.sh
 INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./install.sh
 ```
 
-## setup
+## setup for https localhost
 
 ```shell
 # check A record for localhost -> 127.0.0.1
@@ -104,11 +104,21 @@ sudo mise x -- go run main.go
 ## mcp setup
 
 ```bash
-# root
 claude mcp add -s user chrome-devtools bunx chrome-devtools-mcp@latest
 claude mcp add -s user -t http deepwiki https://mcp.deepwiki.com/mcp
-claude mcp add -s user -t http bun https://bun.com/docs/mcp
 
-# per project
-## ... anything
+# latest documentation MCP
+claude mcp add -s user -t http bun https://bun.com/docs/mcp
+```
+
+MCP catalog refs.
+
+- <https://hub.docker.com/u/mcp>
+- <https://mcpmarket.com/en/categories/official>
+
+## git setup
+
+```bash
+# avoid merge commits when pulling
+git config --global pull.rebase true
 ```
