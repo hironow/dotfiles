@@ -1,15 +1,4 @@
-# Sheldon (plugin manager)
-eval "$(sheldon source)"
-
-# Starship (prompt)
-eval "$(starship init zsh)"
-
-# zsh-autosuggestions performance settings
-ZSH_AUTOSUGGEST_MANUAL_REBIND=1
-ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
-ZSH_AUTOSUGGEST_STRATEGY=(history completion)
-
-# func
+# Helper functions
 _cmd_exists() {
     command -v "$1" > /dev/null 2>&1
 }
@@ -20,10 +9,6 @@ _file_exists() {
 
 _file_not_empty() {
     [ -s $1 ]
-}
-
-_cmd_success() {
-    [ $? -eq 0 ]
 }
 
 path_has() {
@@ -39,6 +24,30 @@ path_prepend() {
     fi
 }
 
+# Homebrew (must be early for sheldon/starship)
+if [ -x "/opt/homebrew/bin/brew" ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -x "$HOME/.linuxbrew/bin/brew" ]; then
+    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
+elif [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+fi
+
+# Sheldon (plugin manager)
+if _cmd_exists sheldon; then
+    eval "$(sheldon source)"
+fi
+
+# Starship (prompt)
+if _cmd_exists starship; then
+    eval "$(starship init zsh)"
+fi
+
+# zsh-autosuggestions performance settings
+ZSH_AUTOSUGGEST_MANUAL_REBIND=1
+ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
+ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+
 # Precedence tweaks
 # PNPM first for Node CLIs
 export PNPM_HOME="$HOME/Library/pnpm"
@@ -49,17 +58,6 @@ path_prepend "$HOME/.orbstack/bin"
 
 export EDITOR=vim
 export GPG_TTY=$(tty)
-
-# homebrew
-if _cmd_exists brew; then 
-    eval "$(brew shellenv)"
-elif [ -x "/opt/homebrew/bin/brew" ]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-elif [ -x "$HOME/.linuxbrew/bin/brew" ]; then
-    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
-elif [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-fi
 
 # Google Cloud SDK
 # Source path setup only if PATH does not already contain the SDK bin to avoid duplicates
