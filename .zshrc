@@ -126,6 +126,9 @@ path_prepend "/opt/homebrew/opt/curl/bin"
 # cargo
 source "$HOME/.cargo/env"
 
+# bun
+path_prepend "$HOME/.bun/bin"
+
 # local
 path_prepend "/usr/local/bin"
 path_prepend "$HOME/.local/bin"
