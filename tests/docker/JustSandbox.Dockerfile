@@ -17,6 +17,14 @@ RUN apk add --no-cache \
 # Install latest just (Alpine package is outdated and doesn't support [group()] syntax)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
+# Install sheldon (zsh plugin manager) - download pre-built binary
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then SHELDON_ARCH="x86_64-unknown-linux-musl"; \
+    elif [ "$ARCH" = "aarch64" ]; then SHELDON_ARCH="aarch64-unknown-linux-musl"; \
+    else echo "Unsupported arch: $ARCH" && exit 1; fi && \
+    SHELDON_VERSION=$(curl -fsSL https://api.github.com/repos/rossmacarthur/sheldon/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/') && \
+    curl -fsSL "https://github.com/rossmacarthur/sheldon/releases/download/${SHELDON_VERSION}/sheldon-${SHELDON_VERSION}-${SHELDON_ARCH}.tar.gz" | tar -xz -C /usr/local/bin
+
 ENV HOME=/root
 WORKDIR /root/dotfiles
 

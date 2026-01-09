@@ -11,5 +11,4 @@ jobs:
       - uses: jdx/mise-action@v3
         with:
           experimental: true # [default: false] enable experimental features
-      - run: shellcheck scripts/*.sh
       - run: shellcheck *.sh

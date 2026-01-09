@@ -1,42 +1,4 @@
-# load zgen
-# !! zgen should be installed first !!
-source "$HOME/.zgen/zgen.zsh"
-
-# if the init script doesn't exist
-# update should be `zgen selfupdate` and `zgen update`
-if ! zgen saved; then
-    echo "Creating a zgen save"
-    
-    zgen oh-my-zsh
-    
-    # plugins
-    zgen oh-my-zsh plugins/git
-    zgen oh-my-zsh plugins/sudo
-    zgen oh-my-zsh plugins/golang
-    zgen oh-my-zsh plugins/rust
-    zgen oh-my-zsh plugins/command-not-found
-    zgen load zsh-users/zsh-syntax-highlighting
-    zgen load zsh-users/zsh-autosuggestions
-    
-    # bulk load
-    zgen loadall <<EOPLUGINS
-        zsh-users/zsh-history-substring-search
-EOPLUGINS
-    # ^ can't indent this EOPLUGINS
-    
-    # completions
-    zgen load zsh-users/zsh-completions src
-    
-    # theme
-    zgen load mafredri/zsh-async
-    zgen load sindresorhus/pure
-    
-    # save all to init script
-    zgen save
-fi
-# --- loaded zgen
-
-# func
+# Helper functions
 _cmd_exists() {
     command -v "$1" > /dev/null 2>&1
 }
@@ -47,10 +9,6 @@ _file_exists() {
 
 _file_not_empty() {
     [ -s $1 ]
-}
-
-_cmd_success() {
-    [ $? -eq 0 ]
 }
 
 path_has() {
@@ -66,6 +24,30 @@ path_prepend() {
     fi
 }
 
+# Homebrew (must be early for sheldon/starship)
+if [ -x "/opt/homebrew/bin/brew" ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -x "$HOME/.linuxbrew/bin/brew" ]; then
+    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
+elif [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+fi
+
+# Sheldon (plugin manager)
+if _cmd_exists sheldon; then
+    eval "$(sheldon source)"
+fi
+
+# Starship (prompt)
+if _cmd_exists starship; then
+    eval "$(starship init zsh)"
+fi
+
+# zsh-autosuggestions performance settings
+ZSH_AUTOSUGGEST_MANUAL_REBIND=1
+ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
+ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+
 # Precedence tweaks
 # PNPM first for Node CLIs
 export PNPM_HOME="$HOME/Library/pnpm"
@@ -74,21 +56,8 @@ path_prepend "$PNPM_HOME"
 # Prefer OrbStack Docker if present
 path_prepend "$HOME/.orbstack/bin"
 
-export SPACESHIP_EXIT_CODE_SHOW=true
-
 export EDITOR=vim
 export GPG_TTY=$(tty)
-
-# homebrew
-if _cmd_exists brew; then 
-    eval "$(brew shellenv)"
-elif [ -x "/opt/homebrew/bin/brew" ]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-elif [ -x "$HOME/.linuxbrew/bin/brew" ]; then
-    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
-elif [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-fi
 
 # Google Cloud SDK
 # Source path setup only if PATH does not already contain the SDK bin to avoid duplicates
@@ -107,8 +76,16 @@ export WASMER_DIR="$HOME/.wasmer"
 # This loads wasmer
 if _file_not_empty "$WASMER_DIR/wasmer.sh"; then source "$WASMER_DIR/wasmer.sh"; fi
 
-# k8s
-if _cmd_exists kubectl; then source <(kubectl completion zsh); fi
+# k8s (cached completion for speed)
+if _cmd_exists kubectl; then
+    _kubectl_comp_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/kubectl_completion.zsh"
+    if [[ ! -f "$_kubectl_comp_cache" || ! -s "$_kubectl_comp_cache" ]]; then
+        mkdir -p "${_kubectl_comp_cache:h}"
+        kubectl completion zsh > "$_kubectl_comp_cache"
+    fi
+    source "$_kubectl_comp_cache"
+    unset _kubectl_comp_cache
+fi
 # krew
 path_prepend "${KREW_ROOT:-$HOME/.krew}/bin"
 
@@ -195,11 +172,39 @@ setopt INC_APPEND_HISTORY
 setopt HIST_EXPIRE_DUPS_FIRST
 
 
-# The following lines have been added by Docker Desktop to enable Docker CLI completions.
+# Completion system (optimized - only regenerate cache once per day)
 fpath=($HOME/.docker/completions $fpath)
 autoload -Uz compinit
-compinit
-# End of Docker CLI completions
+_comp_files=(${ZDOTDIR:-$HOME}/.zcompdump(Nm-20))
+if (( $#_comp_files )); then
+    compinit -C
+else
+    compinit
+fi
+unset _comp_files
+# Compile zcompdump in background for faster loading
+{
+    if [[ -s "${ZDOTDIR:-$HOME}/.zcompdump" && (! -s "${ZDOTDIR:-$HOME}/.zcompdump.zwc" || "${ZDOTDIR:-$HOME}/.zcompdump" -nt "${ZDOTDIR:-$HOME}/.zcompdump.zwc") ]]; then
+        zcompile "${ZDOTDIR:-$HOME}/.zcompdump"
+    fi
+} &!
+
+# fzf-tab (must be loaded after compinit)
+[[ -f ~/.local/share/fzf-tab/fzf-tab.plugin.zsh ]] && source ~/.local/share/fzf-tab/fzf-tab.plugin.zsh
+# fzf-tab config: preview with ls
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls -1 --color=always $realpath'
+zstyle ':fzf-tab:*' switch-group '<' '>'
+
+# fzf keybindings and completion (Ctrl+R for history search) - cached
+if _cmd_exists fzf; then
+    _fzf_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/fzf_init.zsh"
+    if [[ ! -f "$_fzf_cache" ]]; then
+        mkdir -p "${_fzf_cache:h}"
+        fzf --zsh > "$_fzf_cache"
+    fi
+    source "$_fzf_cache"
+    unset _fzf_cache
+fi
 
 # Added by Antigravity
 export PATH="$HOME/.antigravity/antigravity/bin:$PATH"

@@ -19,11 +19,21 @@ install:
     # Install tools via mise (versions are managed in mise.toml)
     mise install
 
-# Deploy: symlink dotfiles to home (~/.zshrc)
+# Deploy: symlink dotfiles to home and install plugins
 [group('Setup')]
 deploy:
     @echo "==> Start to deploy dotfiles to home directory."
     ln -sf ~/dotfiles/.zshrc ~/.zshrc
+    mkdir -p ~/.config/sheldon
+    ln -sf ~/dotfiles/sheldon-plugins.toml ~/.config/sheldon/plugins.toml
+    ln -sf ~/dotfiles/starship.toml ~/.config/starship.toml
+    @echo "==> Installing plugins..."
+    sheldon lock
+    @if [ ! -d ~/.local/share/fzf-tab ]; then \
+        echo "==> Installing fzf-tab..."; \
+        git clone --depth 1 https://github.com/Aloxaf/fzf-tab ~/.local/share/fzf-tab; \
+    fi
+    @echo "==> Deploy complete!"
 
 # Sync: copy ROOT_AGENTS files to agent instruction directories
 [group('Setup')]
@@ -40,11 +50,26 @@ sync-agents-preview:
 sync-agents-auto:
     @uv run scripts/sync_agents.py --yes
 
-# Clean: remove deployed dotfiles (~/.zshrc)
+# Clean: remove deployed dotfiles (~/.zshrc, ~/.config/sheldon/plugins.toml, ~/.config/starship.toml)
 [group('Setup')]
 clean:
     @echo "==> Remove dotfiles in your home directory..."
     rm -vrf ~/.zshrc
+    rm -vrf ~/.config/sheldon/plugins.toml
+    rm -vrf ~/.config/starship.toml
+
+# Clean cache: remove zsh-related caches (compinit, fzf, zoxide, kubectl, sheldon)
+[group('Setup')]
+clean-cache:
+    @echo "==> Remove zsh caches..."
+    rm -vrf ~/.cache/zsh/
+    rm -vrf ~/.zcompdump*
+    rm -vrf ~/.local/share/sheldon/
+    rm -vrf ~/.local/share/fzf-tab/
+
+# Clean all: remove both dotfiles and caches
+[group('Setup')]
+clean-all: clean clean-cache
 
 # Dump: write Homebrew bundle into dump/
 [group('Setup')]
@@ -292,11 +317,6 @@ check-pnpm-g:
 # Check: print rustc cfg
 check-rust:
     rustc --print cfg
-
-# Check: list Watchman watch roots (and pid)
-check-watchman:
-    @bash scripts/watchman-status.sh
-
 # ------------------------------
 # Validation
 # ------------------------------
