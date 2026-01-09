@@ -1,0 +1,74 @@
+# Starship prompt configuration
+# A minimal, fast prompt inspired by Pure
+
+format = """
+$hostname$directory$git_branch$git_status$python$nodejs$bun$golang$rust$gcloud
+$character"""
+
+right_format = "$cmd_duration"
+
+[character]
+success_symbol = "[>](purple)"
+error_symbol = "[>](red)"
+
+[directory]
+truncation_length = 3
+
+[git_branch]
+format = "[$branch]($style) "
+style = "bold green"
+truncation_length = 16
+truncation_symbol = "~"
+
+[git_status]
+format = '([$all_status$ahead_behind]($style))'
+style = "bold yellow"
+modified = "[M:$count](yellow) "
+staged = "[A:$count](green) "
+deleted = "[D:$count](red) "
+renamed = "[R:$count](cyan) "
+untracked = "[?:$count](blue) "
+conflicted = "[U:$count](bold red) "
+ahead = "[↑$count](green) "
+behind = "[↓$count](red) "
+diverged = "[↑$ahead_count↓$behind_count](yellow) "
+stashed = "[S:$count](purple) "
+
+[python]
+format = "[py${version}]($style) "
+version_format = "${raw}"
+style = "yellow"
+
+[nodejs]
+format = "[node${version}]($style) "
+version_format = "${raw}"
+style = "green"
+
+[bun]
+format = "[bun${version}]($style) "
+version_format = "${raw}"
+style = "white"
+
+[golang]
+format = "[go${version}]($style) "
+version_format = "${raw}"
+style = "cyan"
+
+[gcloud]
+format = "[gcp:$project]($style) "
+style = "blue"
+
+[hostname]
+ssh_only = true
+format = "[@$hostname]($style) "
+style = "bold dimmed white"
+
+[rust]
+format = "[rs${version}]($style) "
+version_format = "${raw}"
+style = "red"
+
+[cmd_duration]
+min_time = 2000
+format = "[took $duration]($style)"
+style = "dimmed white"
