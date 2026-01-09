@@ -1,1 +1,0 @@
-~/.claude/CLAUDE.md に従ってください:
