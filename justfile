@@ -493,3 +493,27 @@ start-cdp:
 debug-cdp:
   @echo "Starting Chrome Dev for debugging with remote debugging on port 9222..."
   "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-debug-profile"
+
+# ------------------------------
+# DNS Tools
+# ------------------------------
+
+# DNS: lookup all records for a domain
+[group('DNS')]
+dns-lookup domain:
+    @tools/dig-all.sh {{ domain }}
+
+# DNS: compare records across public DNS servers (Google, Cloudflare, Quad9)
+[group('DNS')]
+dns-compare domain:
+    @tools/dig-all.sh --compare {{ domain }}
+
+# DNS: check migration readiness (compare live vs target nameserver)
+[group('DNS')]
+dns-migrate-check domain target_ns:
+    @tools/dns-migration-check.sh {{ domain }} {{ target_ns }}
+
+# DNS: check propagation status across global DNS servers
+[group('DNS')]
+dns-propagation domain:
+    @tools/dns-migration-check.sh --propagation {{ domain }}
