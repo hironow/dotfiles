@@ -424,12 +424,12 @@ doctor:
 # Connect sets
 # ------------------------------
 
-# Connect: tunnel to Cloud SQL (cloud_sql_proxy)
+# Connect: tunnel to Cloud SQL (cloud-sql-proxy v2)
 connect-gcloud-sql:
     # Requires env: GCLOUD_SQL_INSTANCE, LOCAL_SQL_PORT
     [[ -n "${GCLOUD_SQL_INSTANCE:-}" ]] || { echo 'ERROR: environment variable GCLOUD_SQL_INSTANCE not set'; exit 1; }
     [[ -n "${LOCAL_SQL_PORT:-}" ]] || { echo 'ERROR: environment variable LOCAL_SQL_PORT not set'; exit 1; }
-    cloud_sql_proxy -instances=${GCLOUD_SQL_INSTANCE}=tcp:${LOCAL_SQL_PORT}
+    cloud-sql-proxy --port ${LOCAL_SQL_PORT} --private-ip ${GCLOUD_SQL_INSTANCE}
 
 # Connect: start Azurite locally
 connect-azurite:
