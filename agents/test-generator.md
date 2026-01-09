@@ -4,11 +4,7 @@ description: |
   TDDサイクルに従ってテストコードを生成する。
   失敗するテストを先に書き、最小限の実装を提案する。
 model: sonnet
-tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
+tools: Read, Grep, Glob, Write
 ---
 
 # Test Generator Agent

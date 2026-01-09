@@ -34,7 +34,7 @@ DOTFILES_DIR = Path.home() / "dotfiles"
 BASE_FILE = "ROOT_AGENTS.md"
 
 # Directories to sync directly (in addition to ROOT_AGENTS_* files)
-SYNC_DIRECTORIES = ["commands", "skills", "hooks", "agents"]
+SYNC_DIRECTORIES = ["commands", "skills", "agents"]
 
 
 @dataclass

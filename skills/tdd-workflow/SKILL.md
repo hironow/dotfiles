@@ -3,10 +3,7 @@ name: tdd-workflow
 description: |
   TDD（テスト駆動開発）のワークフローをガイドする。
   Red → Green → Refactor のサイクルに従って開発を進める。
-triggers:
-  - "TDDで実装"
-  - "テスト駆動"
-  - "Red Green Refactor"
+  「TDDで実装」「テスト駆動」などのキーワードで自動適用。
 ---
 
 # TDD Workflow Skill
