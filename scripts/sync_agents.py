@@ -33,6 +33,9 @@ from typing import Literal
 DOTFILES_DIR = Path.home() / "dotfiles"
 BASE_FILE = "ROOT_AGENTS.md"
 
+# Directories to sync directly (in addition to ROOT_AGENTS_* files)
+SYNC_DIRECTORIES = ["commands", "skills", "hooks", "agents"]
+
 
 @dataclass
 class AgentTarget:
@@ -92,9 +95,10 @@ def _convert_path(source_name: str) -> str:
 
 
 def _get_additional_sources(dotfiles_dir: Path) -> list[_SyncItem]:
-    """Get all ROOT_AGENTS_* files and directories."""
+    """Get all ROOT_AGENTS_* files/directories and SYNC_DIRECTORIES contents."""
     sources: list[_SyncItem] = []
 
+    # Legacy: ROOT_AGENTS_* files and directories
     for item in dotfiles_dir.iterdir():
         if item.name.startswith("ROOT_AGENTS_"):
             rel_path = _convert_path(item.name)
@@ -103,6 +107,19 @@ def _get_additional_sources(dotfiles_dir: Path) -> list[_SyncItem]:
                     source=item,
                     relative_path=rel_path,
                     is_directory=item.is_dir(),
+                )
+            )
+
+    # New: Direct directory structure (commands/, skills/, hooks/, agents/)
+    for dir_name in SYNC_DIRECTORIES:
+        dir_path = dotfiles_dir / dir_name
+        if dir_path.is_dir():
+            # Sync the entire directory
+            sources.append(
+                _SyncItem(
+                    source=dir_path,
+                    relative_path=dir_name,
+                    is_directory=True,
                 )
             )
 

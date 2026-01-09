@@ -317,11 +317,6 @@ check-pnpm-g:
 # Check: print rustc cfg
 check-rust:
     rustc --print cfg
-
-# Check: list Watchman watch roots (and pid)
-check-watchman:
-    @bash scripts/watchman-status.sh
-
 # ------------------------------
 # Validation
 # ------------------------------
