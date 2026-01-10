@@ -133,4 +133,11 @@ mv code ~/.local/bin/code-cli
 
 # login vscode tunnel
 ~/.local/bin/code-cli tunnel user login
+
+# check vscode tunnel initial setup
+code-cli tunnel --accept-server-license-terms --name test-my-wsl
+
+# start service
+code-cli tunnel service install
+code-cli tunnel status
 ```
