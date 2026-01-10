@@ -122,3 +122,15 @@ MCP catalog refs.
 # avoid merge commits when pulling
 git config --global pull.rebase true
 ```
+
+## win setup (WSL)
+
+```bash
+# install vscode cli for wsl
+curl -Lk 'https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64' -o vscode_cli.tar.gz
+tar -xzf vscode_cli.tar.gz
+mv code ~/.local/bin/code-cli
+
+# login vscode tunnel
+~/.local/bin/code-cli tunnel user login
+```
