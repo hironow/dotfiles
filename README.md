@@ -109,6 +109,7 @@ claude mcp add -s user -t http deepwiki https://mcp.deepwiki.com/mcp
 
 # latest documentation MCP
 claude mcp add -s user -t http bun https://bun.com/docs/mcp
+claude mcp add -s user -t http cloudflare https://docs.mcp.cloudflare.com/mcp
 ```
 
 MCP catalog refs.
