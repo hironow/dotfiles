@@ -517,3 +517,9 @@ dns-migrate-check domain target_ns:
 [group('DNS')]
 dns-propagation domain:
     @tools/dns-migration-check.sh --propagation {{ domain }}
+
+# DNS: scan for subdomain takeover vulnerabilities
+[group('DNS')]
+scan domain:
+    subfinder -d {{ domain }} | httpx -silent | nuclei -tags takeover
+    @echo "if you want check own subdomains, run: subfinder -d {{ domain }}"
