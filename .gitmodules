@@ -4,3 +4,39 @@
 [submodule "telemetry"]
 	path = telemetry
 	url = git@github.com:hironow/telemetry-set.git
+[submodule "protocols/UCP"]
+	path = protocols/UCP
+	url = git@github.com:Universal-Commerce-Protocol/ucp.git
+[submodule "protocols/AP2"]
+	path = protocols/AP2
+	url = git@github.com:google-agentic-commerce/AP2.git
+[submodule "protocols/A2A"]
+	path = protocols/A2A
+	url = git@github.com:a2aproject/A2A.git
+[submodule "protocols/MCP"]
+	path = protocols/MCP
+	url = git@github.com:modelcontextprotocol/modelcontextprotocol.git
+[submodule "protocols/OpenResponses"]
+	path = protocols/OpenResponses
+	url = git@github.com:openresponses/openresponses.git
+[submodule "protocols/AgentSkills"]
+	path = protocols/AgentSkills
+	url = git@github.com:agentskills/agentskills.git
+[submodule "protocols/A2UI"]
+	path = protocols/A2UI
+	url = git@github.com:google/A2UI.git
+[submodule "protocols/ACP"]
+	path = protocols/ACP
+	url = git@github.com:agentic-commerce-protocol/agentic-commerce-protocol.git
+[submodule "protocols/AG-UI"]
+	path = protocols/AG-UI
+	url = git@github.com:ag-ui-protocol/ag-ui.git
+[submodule "protocols/x402"]
+	path = protocols/x402
+	url = git@github.com:coinbase/x402.git
+[submodule "protocols/MCP-UI"]
+	path = protocols/MCP-UI
+	url = git@github.com:MCP-UI-Org/mcp-ui.git
+[submodule "protocols/ADP"]
+	path = protocols/ADP
+	url = git@github.com:neulab/agent-data-protocol.git
