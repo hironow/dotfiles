@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Skill(tdd-workflow)",
-      "Skill(brand-legal-review)"
+      "Skill(brand-legal-review)",
+      "Bash(git describe:*)"
     ]
   }
 }
