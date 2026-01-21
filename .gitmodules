@@ -40,3 +40,15 @@
 [submodule "protocols/ADP"]
 	path = protocols/ADP
 	url = git@github.com:neulab/agent-data-protocol.git
+[submodule "gcloud/mcp"]
+	path = gcloud/mcp
+	url = git@github.com:google/mcp.git
+[submodule "gcloud/adk-python"]
+	path = gcloud/adk-python
+	url = git@github.com:google/adk-python.git
+[submodule "gcloud/adk-go"]
+	path = gcloud/adk-go
+	url = git@github.com:google/adk-go.git
+[submodule "gcloud/adk-js"]
+	path = gcloud/adk-js
+	url = git@github.com:google/adk-js.git
