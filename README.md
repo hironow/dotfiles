@@ -111,6 +111,7 @@ claude mcp add -s user -t http deepwiki https://mcp.deepwiki.com/mcp
 claude mcp add -s user -t http bun https://bun.com/docs/mcp
 claude mcp add -s user -t http cloudflare https://docs.mcp.cloudflare.com/mcp
 claude mcp add -s user -t http vercel https://mcp.vercel.com
+claude mcp add -s user -t http livekit-docs https://docs.livekit.io/mcp
 
 # specific (needs copy for other agents' directory)
 bunx add-skill vercel-labs/agent-skills
