@@ -3,7 +3,32 @@
     "allow": [
       "Skill(tdd-workflow)",
       "Skill(brand-legal-review)",
-      "Bash(git describe:*)"
+      "Bash(git describe:*)",
+      "Bash(tree:*)",
+      "Bash(xargs ls:*)",
+      "Bash(ls:*)",
+      "Bash(xargs cat:*)",
+      "Bash(docker ps:*)",
+      "Bash(curl:*)",
+      "WebSearch",
+      "WebFetch(domain:qdrant.tech)",
+      "WebFetch(domain:neo4j.com)",
+      "WebFetch(domain:mlflow.org)",
+      "Bash(docker compose:*)",
+      "mcp__deepwiki__ask_question",
+      "WebFetch(domain:grafana.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Skill(document-skills:webapp-testing)",
+      "Bash(docker logs:*)",
+      "Bash(docker network inspect:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker inspect:*)",
+      "Bash(uv run:*)",
+      "mcp__cloudflare__search_cloudflare_documentation",
+      "WebFetch(domain:github.com)",
+      "Bash(nc:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)"
     ]
   }
 }
