@@ -28,7 +28,8 @@
       "WebFetch(domain:github.com)",
       "Bash(nc:*)",
       "Bash(gh run list:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(gh run watch:*)"
     ]
   }
 }
