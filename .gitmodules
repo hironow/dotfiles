@@ -52,3 +52,24 @@
 [submodule "gcloud/adk-js"]
 	path = gcloud/adk-js
 	url = git@github.com:google/adk-js.git
+[submodule "gcloud/gcloud-mcp"]
+	path = gcloud/gcloud-mcp
+	url = git@github.com:googleapis/gcloud-mcp.git
+[submodule "gcloud/google-analytics-mcp"]
+	path = gcloud/google-analytics-mcp
+	url = git@github.com:googleanalytics/google-analytics-mcp.git
+[submodule "gcloud/cloud-run-mcp"]
+	path = gcloud/cloud-run-mcp
+	url = git@github.com:GoogleCloudPlatform/cloud-run-mcp.git
+[submodule "gcloud/gke-mcp"]
+	path = gcloud/gke-mcp
+	url = git@github.com:GoogleCloudPlatform/gke-mcp.git
+[submodule "gcloud/mcp-security"]
+	path = gcloud/mcp-security
+	url = git@github.com:google/mcp-security.git
+[submodule "gcloud/genai-toolbox"]
+	path = gcloud/genai-toolbox
+	url = git@github.com:googleapis/genai-toolbox.git
+[submodule "gcloud/agent-starter-pack"]
+	path = gcloud/agent-starter-pack
+	url = git@github.com:GoogleCloudPlatform/agent-starter-pack.git
