@@ -9,6 +9,17 @@ default: help
 help:
     @just --list --unsorted
 
+# Define specific commands
+MARKDOWNLINT := "bun x markdownlint-cli2"
+PDOC := "uv run pdoc"
+
+lint-md:
+    @{{MARKDOWNLINT}} --fix "docs/**/*.md" "README.md" "experiments/**/*.md" "!submodules/**" "!sets/**" "!input/**" "!output/**"
+
+pdoc port="8888" pkg=".":
+    {{PDOC}} --port {{port}} {{pkg}}
+
+
 # ------------------------------
 # Project Management
 # ------------------------------
