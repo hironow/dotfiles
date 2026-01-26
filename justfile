@@ -523,3 +523,7 @@ dns-propagation domain:
 scan domain:
     subfinder -d {{ domain }} | httpx -silent | nuclei -tags takeover
     @echo "if you want check own subdomains, run: subfinder -d {{ domain }}"
+
+# Check free before access network
+check-free:
+    @sudo lsof -i -P -n +c 0 | grep LISTEN | grep -vE "127.0.0.1|\[::1\]|ControlCenter|rapportd|symptomsd|launchd" | column -t
