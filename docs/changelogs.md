@@ -30,6 +30,7 @@
 | HTTP binding URL から `/v1` 削除 | API パス変更 |
 
 #### 参考リンク
+
 - [A2A Specification](https://github.com/a2aproject/A2A)
 
 ---
@@ -48,6 +49,7 @@
 - **テーマシステム**: `styles` → `theme` にリネーム
 
 #### 参考リンク
+
 - [A2UI Specification](https://github.com/anthropics/A2UI)
 
 ---
@@ -78,6 +80,7 @@
 | `full_name` 代替追加 | buyer name フィールドの柔軟化 |
 
 #### 参考リンク
+
 - [ACP Protocol](https://agenticcommerce.dev)
 
 ---
@@ -91,15 +94,16 @@
 #### 主要な変更点
 
 - **データセットサポート**:
-  - SWE-Playground Trajectories
-  - Toucan-1.5M
-  - mini-coder trajectories
+    - SWE-Playground Trajectories
+    - Toucan-1.5M
+    - mini-coder trajectories
 - **MCP 統合**: エージェントツーリング連携
 - **マルチエージェント対応**: OpenHands, SWE-agent, AgentLab
 - **Pydantic 型安全性**: スキーマ検証強化
 - **TextObservation**: オプションの `name` フィールド追加
 
 #### 参考リンク
+
 - [ADP Protocol](https://github.com/neulab/agent-data-protocol)
 
 ---
@@ -119,10 +123,12 @@
 - **Android/Kotlin**: A2UI-4K 0.8.1、AGP 8.12.0
 
 #### 新規 SDK
+
 - **Dart SDK v0.1.0** (2026-01-21)
 - **Go SDK** (コミュニティ)
 
 #### 参考リンク
+
 - [AG-UI Protocol](https://github.com/ag-ui-protocol/ag-ui)
 
 ---
@@ -140,10 +146,11 @@
 #### 主要な変更点
 
 - **採用カルーセル更新**: 新パートナー追加
-  - Ona, Roo Code, Autohand Code, Piebald, Command Code
-  - Databricks, Mistral Vibe, pi
+    - Ona, Roo Code, Autohand Code, Piebald, Command Code
+    - Databricks, Mistral Vibe, pi
 
 #### 参考リンク
+
 - [AgentSkills](https://agentskills.io)
 
 ---
@@ -162,9 +169,11 @@
 - **ADK サンプル**: Gemini 2.5 Flash 対応サンプル
 
 #### パートナー
+
 - Global Payments, Tether, Solana, OKX
 
 #### 参考リンク
+
 - [AP2 Protocol](https://github.com/google-agentic-commerce/AP2)
 
 ---
@@ -185,9 +194,11 @@
 - **SDK 階層システム**: 明確な要件付き (SEP-1730)
 
 #### ガバナンス
+
 - 継承・修正手続きの確立 (SEP-2085)
 
 #### 参考リンク
+
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
 
 ---
@@ -213,6 +224,7 @@
 | v3.0.0 | 非推奨クライアント API 削除 |
 
 #### 参考リンク
+
 - [MCP-UI](https://github.com/idosal/mcp-ui)
 
 ---
@@ -227,6 +239,7 @@
 - **ドキュメント修正**: タイポ修正 (PR #4)
 
 #### 参考リンク
+
 - [OpenResponses](https://github.com/openrouter/openresponses)
 
 ---
@@ -250,6 +263,7 @@
 | `_meta.ucp.profile` 非推奨 (#89) | 標準 metadata へ移行 |
 
 #### 参考リンク
+
 - [UCP Protocol](https://github.com/anthropics/UCP)
 
 ---
@@ -268,10 +282,12 @@
 - **Go 実装**: facilitator エラーを定数化 (#993)
 
 #### 新規エコシステムパートナー
+
 - SocioLogic, SlinkyLayer, 1Pay.ing, x402r
 - BlockRun.AI, SolPay, Kobaru Facilitator
 
 #### 参考リンク
+
 - [x402 Protocol](https://github.com/x402-protocol/x402)
 
 ---
@@ -299,6 +315,7 @@
 | OpenTelemetry for BigQuery | カスタム `ContextVar` から OpenTelemetry に変更 |
 
 #### 参考リンク
+
 - [ADK Python](https://github.com/google/adk-python)
 
 ---
@@ -317,6 +334,7 @@
 - **FilterToolset ヘルパー**: ツールセットフィルタリング (#489)
 
 #### 参考リンク
+
 - [ADK Go](https://github.com/google/adk-go)
 
 ---
@@ -333,6 +351,7 @@
 - **Gemini 3 モデル**: BuiltInCodeExecutor でサポート
 
 #### 参考リンク
+
 - [ADK JS](https://github.com/google/adk-js)
 
 ---
@@ -348,6 +367,7 @@
 - **`aiplatform.user` ロール**: agent identity IAM 権限
 
 #### 参考リンク
+
 - [Agent Starter Pack](https://github.com/GoogleCloudPlatform/agent-starter-pack)
 
 ---
@@ -364,6 +384,7 @@
 - **MCP SDK 更新**: 1.24.3 → 1.25.2
 
 #### 参考リンク
+
 - [Cloud Run MCP](https://github.com/GoogleCloudPlatform/cloud-run-mcp)
 
 ---
@@ -381,6 +402,7 @@
 - **設定ファイル**: allow/deny リスト対応 (#236)
 
 #### 参考リンク
+
 - [gcloud-mcp](https://github.com/googleapis/gcloud-mcp)
 
 ---
@@ -397,6 +419,7 @@
 - **gosec セキュリティ修正**: 脆弱性対応
 
 #### 参考リンク
+
 - [GKE MCP](https://github.com/googleapis/gke-mcp)
 
 ---
@@ -412,6 +435,7 @@
 - **google-analytics-admin v0.27.0**: 依存関係更新
 
 #### 参考リンク
+
 - [Google Analytics MCP](https://github.com/googleanalytics/google-analytics-mcp)
 
 ---
@@ -425,6 +449,7 @@
 - **ドキュメントバッジ**: Blog, Codelab, Screencast
 
 #### 参考リンク
+
 - [Google Cloud MCP](https://github.com/google/mcp)
 
 ---
@@ -441,6 +466,7 @@
 - **Setup Skills 分離**: クライアント固有設定
 
 #### 参考リンク
+
 - [MCP Security](https://github.com/google/mcp-security)
 
 ---
@@ -466,6 +492,7 @@
 | cloudgda パラメータ更新 (#2288) | 説明・パラメータ名変更 |
 
 #### 参考リンク
+
 - [GenAI Toolbox](https://github.com/googleapis/genai-toolbox)
 
 ---
