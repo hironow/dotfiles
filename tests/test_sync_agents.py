@@ -202,27 +202,30 @@ def test_sync_agents_converts_underscore_to_path(docker_image):
     """Test that ROOT_AGENTS_xxx_yyy.md becomes xxx/yyy.md.
 
     Scenario:
-    - given: ROOT_AGENTS_commands_strict.md exists
+    - given: ROOT_AGENTS_hooks_formatter.md is created (legacy naming)
     - when: Run sync-agents
-    - then: File is synced to commands/strict.md
+    - then: File is synced to hooks/formatter.md
     """
     cmd = """
     set -euo pipefail
 
+    # Create a legacy-named file
+    echo "# Legacy Hook" > /root/dotfiles/ROOT_AGENTS_hooks_formatter.md
+
     # Verify source file exists
-    [ -f /root/dotfiles/ROOT_AGENTS_commands_strict.md ] && echo "source exists"
+    [ -f /root/dotfiles/ROOT_AGENTS_hooks_formatter.md ] && echo "source exists"
 
     # Run sync-agents
     cd /root/dotfiles && just sync-agents-auto
 
     # Verify converted path
-    [ -f /root/.claude/commands/strict.md ] && echo "commands/strict.md exists"
+    [ -f /root/.claude/hooks/formatter.md ] && echo "hooks/formatter.md exists"
     """
     result = _run_in_container(docker_image, cmd)
 
     # then: Path conversion works
     assert "source exists" in result.stdout
-    assert "commands/strict.md exists" in result.stdout
+    assert "hooks/formatter.md exists" in result.stdout
 
 
 def test_sync_agents_handles_directory_sources(docker_image):
@@ -443,7 +446,10 @@ def test_sync_agents_fails_without_base_file(docker_image):
     result = _run_in_container(docker_image, cmd, check=False)
 
     # then: Script fails with appropriate error
-    assert "Base file not found" in result.stdout or "script failed as expected" in result.stdout
+    assert (
+        "Base file not found" in result.stdout
+        or "script failed as expected" in result.stdout
+    )
 
 
 # =============================================================================
@@ -478,3 +484,245 @@ def test_sync_agents_syncs_to_all_agents(docker_image):
     assert "claude-work-a ok" in result.stdout
     assert "gemini ok" in result.stdout
     assert "codex ok" in result.stdout
+
+
+# =============================================================================
+# Per-Item Sync Tests (unmanaged items preserved)
+# =============================================================================
+
+
+def test_sync_agents_preserves_unmanaged_items_in_target(docker_image):
+    """Test that sync preserves items in target not managed by dotfiles.
+
+    Scenario:
+    - given: Target has an extra skill (e.g. a symlink-installed plugin)
+    - when: Run sync-agents
+    - then: The extra skill is preserved, dotfiles skills are synced
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a dotfiles skill
+    mkdir -p /root/dotfiles/skills/my-skill
+    echo "# My Skill" > /root/dotfiles/skills/my-skill/README.md
+
+    # First sync - creates target skills
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Add an extra item in target (simulating plugin install)
+    mkdir -p /root/.claude/skills/external-plugin
+    echo "# External Plugin" > /root/.claude/skills/external-plugin/README.md
+
+    # Run sync again
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify both exist
+    [ -f /root/.claude/skills/my-skill/README.md ] && echo "dotfiles skill preserved"
+    [ -f /root/.claude/skills/external-plugin/README.md ] && echo "external plugin preserved"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Both items exist
+    assert "dotfiles skill preserved" in result.stdout
+    assert "external plugin preserved" in result.stdout
+
+
+# =============================================================================
+# Import (symlink resolution) Tests
+# =============================================================================
+
+
+def test_sync_agents_imports_symlinked_skills_from_target(docker_image):
+    """Test that symlinks in target are resolved and imported to dotfiles.
+
+    Scenario:
+    - given: Target (~/.claude/skills/) has a symlink to an external skill
+    - when: Run sync-agents
+    - then: Symlink is resolved and real content is copied to dotfiles/skills/
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create an external skill directory (the symlink target)
+    mkdir -p /opt/external-skills/cool-plugin
+    echo "# Cool Plugin" > /opt/external-skills/cool-plugin/README.md
+    echo "skill content" > /opt/external-skills/cool-plugin/skill.md
+
+    # Set up ~/.claude/skills/ with a symlink to the external skill
+    mkdir -p /root/.claude/skills
+    ln -s /opt/external-skills/cool-plugin /root/.claude/skills/cool-plugin
+
+    # Verify symlink exists
+    [ -L /root/.claude/skills/cool-plugin ] && echo "symlink exists"
+
+    # Run sync-agents (import phase should detect and import the symlink)
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify the skill was imported to dotfiles
+    [ -d /root/dotfiles/skills/cool-plugin ] && echo "imported to dotfiles"
+    [ -f /root/dotfiles/skills/cool-plugin/README.md ] && echo "README imported"
+    [ -f /root/dotfiles/skills/cool-plugin/skill.md ] && echo "skill.md imported"
+
+    # Verify it's a real directory, not a symlink
+    [ ! -L /root/dotfiles/skills/cool-plugin ] && echo "not a symlink in dotfiles"
+
+    # Verify content
+    grep -q "Cool Plugin" /root/dotfiles/skills/cool-plugin/README.md && echo "content correct"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Symlink was resolved and imported
+    assert "symlink exists" in result.stdout
+    assert "imported to dotfiles" in result.stdout
+    assert "README imported" in result.stdout
+    assert "skill.md imported" in result.stdout
+    assert "not a symlink in dotfiles" in result.stdout
+    assert "content correct" in result.stdout
+
+
+def test_sync_agents_skips_non_symlink_items_during_import(docker_image):
+    """Test that non-symlink items in target are NOT imported.
+
+    Scenario:
+    - given: Target has a regular directory (not a symlink)
+    - when: Run sync-agents
+    - then: Regular directory is NOT imported to dotfiles
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Set up target with a regular (non-symlink) skill directory
+    mkdir -p /root/.claude/skills/manual-skill
+    echo "# Manual Skill" > /root/.claude/skills/manual-skill/README.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify the regular dir was NOT imported to dotfiles
+    if [ -d /root/dotfiles/skills/manual-skill ]; then
+        echo "ERROR: non-symlink was imported"
+    else
+        echo "non-symlink correctly skipped"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Non-symlink was not imported
+    assert "non-symlink correctly skipped" in result.stdout
+
+
+def test_sync_agents_skips_conflicting_symlink_import(docker_image):
+    """Test that symlinks conflicting with existing dotfiles items are skipped.
+
+    Scenario:
+    - given: dotfiles/skills/my-skill/ exists AND target has a symlink with same name but different content
+    - when: Run sync-agents
+    - then: Conflict is detected and import is skipped
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a skill in dotfiles
+    mkdir -p /root/dotfiles/skills/shared-skill
+    echo "# Dotfiles version" > /root/dotfiles/skills/shared-skill/README.md
+
+    # Create a different external version
+    mkdir -p /opt/external/shared-skill
+    echo "# External version (different)" > /opt/external/shared-skill/README.md
+
+    # Symlink in target to the external version
+    mkdir -p /root/.claude/skills
+    ln -s /opt/external/shared-skill /root/.claude/skills/shared-skill
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify dotfiles version was NOT overwritten
+    grep -q "Dotfiles version" /root/dotfiles/skills/shared-skill/README.md && echo "dotfiles version preserved"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Dotfiles version was preserved
+    assert "dotfiles version preserved" in result.stdout
+
+
+# =============================================================================
+# Bidirectional Sync Full Cycle Tests
+# =============================================================================
+
+
+def test_sync_agents_full_bidirectional_cycle(docker_image):
+    """Test full bidirectional sync: import symlink -> forward sync to all targets.
+
+    Scenario:
+    - given: An external skill is symlinked into ~/.claude/skills/
+    - when: Run sync-agents
+    - then: Skill is imported to dotfiles AND synced to all other targets
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create an external skill
+    mkdir -p /opt/plugins/awesome-plugin
+    echo "# Awesome Plugin" > /opt/plugins/awesome-plugin/README.md
+
+    # Symlink it into ~/.claude/skills/
+    mkdir -p /root/.claude/skills
+    ln -s /opt/plugins/awesome-plugin /root/.claude/skills/awesome-plugin
+
+    # Run sync-agents (should import + forward sync)
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify Phase 1: imported to dotfiles
+    [ -d /root/dotfiles/skills/awesome-plugin ] && echo "imported to dotfiles"
+    [ ! -L /root/dotfiles/skills/awesome-plugin ] && echo "real dir in dotfiles"
+
+    # Verify Phase 3: synced to other targets
+    [ -f /root/.gemini/skills/awesome-plugin/README.md ] && echo "synced to gemini"
+    [ -f /root/.codex/skills/awesome-plugin/README.md ] && echo "synced to codex"
+    [ -f /root/.claude-work-a/skills/awesome-plugin/README.md ] && echo "synced to claude-work-a"
+
+    # Run preview to confirm everything is in sync
+    cd /root/dotfiles && just sync-agents-preview 2>&1 | tail -3
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Full bidirectional cycle works
+    assert "imported to dotfiles" in result.stdout
+    assert "real dir in dotfiles" in result.stdout
+    assert "synced to gemini" in result.stdout
+    assert "synced to codex" in result.stdout
+    assert "synced to claude-work-a" in result.stdout
+
+
+def test_sync_agents_import_only_from_import_source(docker_image):
+    """Test that import only happens from agents with is_import_source=True.
+
+    Scenario:
+    - given: A symlink exists in ~/.gemini/skills/ (not an import source)
+    - when: Run sync-agents
+    - then: Symlink is NOT imported to dotfiles
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create an external skill symlinked into gemini (NOT an import source)
+    mkdir -p /opt/gemini-plugin/special
+    echo "# Gemini Plugin" > /opt/gemini-plugin/special/README.md
+    mkdir -p /root/.gemini/skills
+    ln -s /opt/gemini-plugin/special /root/.gemini/skills/special
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify the symlink was NOT imported to dotfiles
+    if [ -d /root/dotfiles/skills/special ]; then
+        echo "ERROR: imported from non-import-source"
+    else
+        echo "correctly skipped non-import-source"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: No import from non-import-source
+    assert "correctly skipped non-import-source" in result.stdout

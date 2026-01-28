@@ -3,7 +3,13 @@
 # requires-python = ">=3.12"
 # dependencies = []
 # ///
-"""Sync ROOT_AGENTS files to agent instruction directories.
+"""Bidirectional merge sync for agent instruction directories.
+
+Three-phase sync algorithm:
+    Phase 1: IMPORT  - Symlinks in import source (~/.claude) are resolved
+                       and copied into dotfiles as real files.
+    Phase 2: PLAN    - Diff dotfiles items against each target directory.
+    Phase 3: APPLY   - Per-item merge sync (unmanaged target items preserved).
 
 File naming convention:
     ROOT_AGENTS.md                      -> <agent>/AGENT.md (base file)
@@ -44,10 +50,11 @@ class AgentTarget:
     directory: Path
     name: str
     main_file: str
+    is_import_source: bool = False
 
 
 AGENTS: list[AgentTarget] = [
-    AgentTarget(Path.home() / ".claude", "Claude", "CLAUDE.md"),
+    AgentTarget(Path.home() / ".claude", "Claude", "CLAUDE.md", is_import_source=True),
     AgentTarget(Path.home() / ".claude-work-a", "Claude(Work-A)", "CLAUDE.md"),
     AgentTarget(Path.home() / ".claude-work-b", "Claude(Work-B)", "CLAUDE.md"),
     AgentTarget(Path.home() / ".claude-work-c", "Claude(Work-C)", "CLAUDE.md"),
@@ -94,6 +101,30 @@ def _convert_path(source_name: str) -> str:
     return result
 
 
+def _get_directory_items(dotfiles_dir: Path) -> list[_SyncItem]:
+    """Get individual items within SYNC_DIRECTORIES as sync items.
+
+    Instead of syncing entire directories (e.g. skills/), syncs each
+    child item (e.g. skills/tdd-workflow, skills/brand-legal-review)
+    individually. This preserves unmanaged items in the target.
+    """
+    sources: list[_SyncItem] = []
+    for dir_name in SYNC_DIRECTORIES:
+        dir_path = dotfiles_dir / dir_name
+        if not dir_path.is_dir():
+            continue
+        for child in dir_path.iterdir():
+            rel_path = f"{dir_name}/{child.name}"
+            sources.append(
+                _SyncItem(
+                    source=child,
+                    relative_path=rel_path,
+                    is_directory=child.is_dir(),
+                )
+            )
+    return sources
+
+
 def _get_additional_sources(dotfiles_dir: Path) -> list[_SyncItem]:
     """Get all ROOT_AGENTS_* files/directories and SYNC_DIRECTORIES contents."""
     sources: list[_SyncItem] = []
@@ -110,18 +141,8 @@ def _get_additional_sources(dotfiles_dir: Path) -> list[_SyncItem]:
                 )
             )
 
-    # New: Direct directory structure (commands/, skills/, hooks/, agents/)
-    for dir_name in SYNC_DIRECTORIES:
-        dir_path = dotfiles_dir / dir_name
-        if dir_path.is_dir():
-            # Sync the entire directory
-            sources.append(
-                _SyncItem(
-                    source=dir_path,
-                    relative_path=dir_name,
-                    is_directory=True,
-                )
-            )
+    # Direct directory structure (commands/, skills/, agents/)
+    sources.extend(_get_directory_items(dotfiles_dir))
 
     return sorted(sources, key=lambda x: x.relative_path)
 
@@ -157,7 +178,9 @@ def _sync_file(source: Path, target: Path) -> None:
 
 def _sync_directory(source: Path, target: Path) -> None:
     """Sync a directory (copy with overwrite)."""
-    if target.exists():
+    if target.is_symlink():
+        target.unlink()
+    elif target.exists():
         shutil.rmtree(target)
     shutil.copytree(source, target)
 
@@ -274,6 +297,120 @@ def _confirm(prompt: str) -> bool:
         return False
 
 
+# --- Import (target -> dotfiles) ---
+
+
+@dataclass
+class _ImportAction:
+    """Single import action: symlink in target to import into dotfiles."""
+
+    symlink_path: Path
+    resolved_path: Path
+    dotfiles_dest: Path
+    relative_path: str
+    is_directory: bool
+    status: Literal["import", "conflict", "exists"]
+
+
+@dataclass
+class _ImportPlan:
+    """Import plan for a single agent."""
+
+    agent: AgentTarget
+    items: list[_ImportAction]
+
+
+def _build_import_plan(dotfiles_dir: Path, agent: AgentTarget) -> _ImportPlan:
+    """Build import plan: detect symlinks in target's SYNC_DIRECTORIES.
+
+    Only symlinks are considered for import (regular files/dirs are ignored
+    to prevent re-importing previously deleted items).
+    """
+    actions: list[_ImportAction] = []
+
+    for dir_name in SYNC_DIRECTORIES:
+        target_dir = agent.directory / dir_name
+        if not target_dir.is_dir():
+            continue
+
+        for child in target_dir.iterdir():
+            if not child.is_symlink():
+                continue
+
+            rel_path = f"{dir_name}/{child.name}"
+            dotfiles_dest = dotfiles_dir / rel_path
+            resolved = child.resolve()
+
+            if not resolved.exists():
+                # Broken symlink, skip
+                continue
+
+            if dotfiles_dest.exists():
+                # Already exists in dotfiles
+                if resolved.is_dir():
+                    if _compare_directories(dotfiles_dest, resolved):
+                        status: Literal["import", "conflict", "exists"] = "exists"
+                    else:
+                        status = "conflict"
+                elif _compare_files(dotfiles_dest, resolved):
+                    status = "exists"
+                else:
+                    status = "conflict"
+            else:
+                status = "import"
+
+            actions.append(
+                _ImportAction(
+                    symlink_path=child,
+                    resolved_path=resolved,
+                    dotfiles_dest=dotfiles_dest,
+                    relative_path=rel_path,
+                    is_directory=resolved.is_dir(),
+                    status=status,
+                )
+            )
+
+    return _ImportPlan(agent=agent, items=actions)
+
+
+def _apply_import(plan: _ImportPlan) -> None:
+    """Apply import plan: resolve symlinks and copy to dotfiles."""
+    for action in plan.items:
+        if action.status != "import":
+            continue
+
+        icon = "📁" if action.is_directory else "📄"
+
+        if action.is_directory:
+            action.dotfiles_dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(action.resolved_path, action.dotfiles_dest, symlinks=False)
+        else:
+            action.dotfiles_dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(action.resolved_path, action.dotfiles_dest)
+
+        print(f"  ⬅️  {icon} {action.relative_path}: Imported")
+
+
+def _print_import_plan(plan: _ImportPlan, verbose: bool = False) -> bool:
+    """Print import plan. Returns True if there are items to import."""
+    has_imports = False
+
+    for action in plan.items:
+        icon = "📁" if action.is_directory else "📄"
+
+        if action.status == "import":
+            print(
+                f"  ⬅️  {icon} {action.relative_path} [IMPORT] <- {action.resolved_path}"
+            )
+            has_imports = True
+        elif action.status == "conflict":
+            print(f"  ⚠️  {icon} {action.relative_path} [CONFLICT] (skipped)")
+        elif verbose:
+            print(f"  ✅ {icon} {action.relative_path} [EXISTS]")
+
+    return has_imports
+
+
 # --- Public API ---
 
 
@@ -290,12 +427,23 @@ def preview_mode(dotfiles_dir: Path) -> None:
         print(f"❌ Error: Base file not found: {source_base}")
         sys.exit(1)
 
+    # Phase 1: Import preview
+    has_imports = False
+    import_sources = [a for a in AGENTS if a.is_import_source]
+    for agent in import_sources:
+        import_plan = _build_import_plan(dotfiles_dir, agent)
+        if import_plan.items:
+            print(f"\n⬅️  Import from {agent.name}: {agent.directory}")
+            if _print_import_plan(import_plan, verbose=True):
+                has_imports = True
+
+    # Phase 2-3: Forward sync preview
     additional = _get_additional_sources(dotfiles_dir)
     plans = [_build_sync_plan(dotfiles_dir, agent, additional) for agent in AGENTS]
 
     has_changes = _print_plan(plans, dotfiles_dir, verbose=True)
 
-    if has_changes:
+    if has_imports or has_changes:
         print("\n💡 Run without --preview to apply changes")
     else:
         print("\n✅ All files are already in sync!")
@@ -303,6 +451,11 @@ def preview_mode(dotfiles_dir: Path) -> None:
 
 def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
     """Sync mode: apply sync to all agent directories.
+
+    Three-phase algorithm:
+      Phase 1: IMPORT - symlinks in import sources -> dotfiles
+      Phase 2: PLAN  - diff dotfiles vs all targets
+      Phase 3: APPLY - dotfiles -> all targets (per-item merge)
 
     Args:
         dotfiles_dir: Path to dotfiles directory containing ROOT_AGENTS files.
@@ -315,6 +468,24 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
         print(f"❌ Error: Base file not found: {source_base}")
         sys.exit(1)
 
+    # Phase 1: Import symlinks from import sources into dotfiles
+    import_sources = [a for a in AGENTS if a.is_import_source]
+    has_imports = False
+    for agent in import_sources:
+        import_plan = _build_import_plan(dotfiles_dir, agent)
+        importable = [a for a in import_plan.items if a.status == "import"]
+        if importable:
+            print(f"\n⬅️  Importing from {agent.name}...")
+            _apply_import(import_plan)
+            has_imports = True
+        conflicts = [a for a in import_plan.items if a.status == "conflict"]
+        for c in conflicts:
+            print(f"  ⚠️  {c.relative_path}: Conflict (skipped)")
+
+    if has_imports:
+        print()
+
+    # Phase 2-3: Plan and apply forward sync
     additional = _get_additional_sources(dotfiles_dir)
     plans = [_build_sync_plan(dotfiles_dir, agent, additional) for agent in AGENTS]
 
