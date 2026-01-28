@@ -409,6 +409,7 @@ What forces are at play? What are we trying to achieve?}
 
     <scripts-guidelines>
         <title>scripts/ DIRECTORY GUIDELINES</title>
+        <guideline>Shell scripts must use `#!/usr/bin/env bash` as the shebang line for portability</guideline>
         <guideline>Scripts must be implemented to be idempotent</guideline>
         <guideline>Argument processing should be done early in the script</guideline>
         <guideline>Prefer defining common tasks in justfile over individual scripts</guideline>
