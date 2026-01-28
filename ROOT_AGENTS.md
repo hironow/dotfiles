@@ -47,15 +47,22 @@
                 </commands>
             </python>
             <nodejs>
-                <tool>pnpm</tool>
-                <rule>Use pnpm exclusively for Node.js package management</rule>
-                <prohibited>npm, yarn, bun</prohibited>
+                <tool>bun</tool>
+                <rule>Use bun as the default for Node.js package management</rule>
+                <rule>Exception: If pnpm-lock.yaml exists in the project, use pnpm instead of bun to respect the existing lockfile</rule>
+                <prohibited>npm, yarn</prohibited>
                 <commands>
+                    <command purpose="install">bun install</command>
+                    <command purpose="add dependency">bun add {package}</command>
+                    <command purpose="add dev dependency">bun add -D {package}</command>
+                    <command purpose="run script">bun run {script}</command>
+                </commands>
+                <fallback-commands note="Use only when pnpm-lock.yaml exists">
                     <command purpose="install">pnpm install</command>
                     <command purpose="add dependency">pnpm add {package}</command>
                     <command purpose="add dev dependency">pnpm add -D {package}</command>
                     <command purpose="run script">pnpm run {script}</command>
-                </commands>
+                </fallback-commands>
             </nodejs>
         </package-managers>
         
@@ -662,7 +669,7 @@ Legend / 凡例:
             <action>Never suggest mocks in e2e tests</action>
             <action>Never suggest code that would fail ruff or mypy checks</action>
             <action>Never suggest modifying the ruff configuration</action>
-            <action>Never suggest using pip, npm, yarn, or make</action>
+            <action>Never suggest using pip, npm, yarn, or make (pnpm is allowed only when pnpm-lock.yaml exists)</action>
             <action>Never use .yml extension for YAML files</action>
             <action>Never use multi-byte characters (Japanese, Chinese, Korean, emoji) inside ASCII art diagrams</action>
         </prohibited-actions>
@@ -675,7 +682,7 @@ Legend / 凡例:
             <action>Include ruff and mypy verification steps in suggestions</action>
             <action>Suggest creating an ADR when proposing significant architectural changes</action>
             <action>Use uv for Python package operations</action>
-            <action>Use pnpm for Node.js package operations</action>
+            <action>Use bun for Node.js package operations (use pnpm only when pnpm-lock.yaml exists)</action>
             <action>Use just commands for task automation</action>
             <action>Include Japanese legend below ASCII art diagrams</action>
         </encouraged-actions>
