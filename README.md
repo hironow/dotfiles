@@ -115,13 +115,23 @@ claude mcp add -s user -t http livekit-docs https://docs.livekit.io/mcp
 claude mcp add -s user -t http openai https://developers.openai.com/mcp
 
 # specific (needs copy for other agents' directory)
-bunx add-skill vercel-labs/agent-skills
 ```
 
 MCP catalog refs.
 
 - <https://hub.docker.com/u/mcp>
 - <https://mcpmarket.com/en/categories/official>
+
+## skill setup
+
+```bash
+bunx add-skill vercel-labs/agent-skills
+bunx skills add modelcontextprotocol/ext-apps
+```
+
+Skill catalog refs.
+
+- <https://skills.sh/>
 
 ## git setup
 
