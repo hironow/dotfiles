@@ -114,6 +114,8 @@ claude mcp add -s user -t http vercel https://mcp.vercel.com
 claude mcp add -s user -t http livekit-docs https://docs.livekit.io/mcp
 claude mcp add -s user -t http openai https://developers.openai.com/mcp
 
+# claude mcp add -s user -t http mcp-ui https://gitmcp.io/idosal/mcp-ui
+
 # specific (needs copy for other agents' directory)
 ```
 
