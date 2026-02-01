@@ -148,7 +148,9 @@ fi
 # Claude Code
 alias cc='~/.local/bin/claude'
 alias cc-p='CLAUDE_CONFIG_DIR=~/.claude ~/.local/bin/claude'
-alias cc-w='CLAUDE_CONFIG_DIR=~/.claude-work-c ~/.local/bin/claude'
+alias cc-a='CLAUDE_CONFIG_DIR=~/.claude-work-a ~/.local/bin/claude'
+alias cc-b='CLAUDE_CONFIG_DIR=~/.claude-work-b ~/.local/bin/claude'
+alias cc-c='CLAUDE_CONFIG_DIR=~/.claude-work-c ~/.local/bin/claude'
 
 
 # Git worktree navigation
