@@ -462,7 +462,7 @@ azure-list:
 aws-list:
     aws configure list-profiles
 
-# List: Dataform (BigQuery) tables
+# List: Dataform (BigQuery) tables, ELT (Extract, Load, Transform) not ETL (Extract, Transform, Load)
 elt-list:
     dataform listtables bigquery
 
