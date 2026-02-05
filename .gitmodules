@@ -73,3 +73,6 @@
 [submodule "gcloud/agent-starter-pack"]
 	path = gcloud/agent-starter-pack
 	url = git@github.com:GoogleCloudPlatform/agent-starter-pack.git
+[submodule "skills"]
+	path = skills
+	url = git@github.com:hironow/skills.git
