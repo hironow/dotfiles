@@ -217,6 +217,12 @@ add-pnpm-g:
 # Update sets
 # ------------------------------
 
+# Update: pull latest for my submodules (skills, emulator, telemetry)
+update-my-submodules:
+    @echo "◆ Updating own submodules..."
+    git submodule update --remote skills emulator telemetry
+    @echo "✅ Submodules updated."
+
 # Update (all): update gcloud/brew/pnpm and tools (pnpm safe mode)
 update-all:
     just update-gcloud
