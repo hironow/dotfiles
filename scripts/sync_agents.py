@@ -114,6 +114,8 @@ def _get_directory_items(dotfiles_dir: Path) -> list[_SyncItem]:
         if not dir_path.is_dir():
             continue
         for child in dir_path.iterdir():
+            if child.name == ".git":
+                continue
             rel_path = f"{dir_name}/{child.name}"
             sources.append(
                 _SyncItem(
