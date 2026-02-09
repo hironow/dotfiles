@@ -38,6 +38,9 @@ deploy:
     mkdir -p ~/.config/sheldon
     ln -sf ~/dotfiles/sheldon-plugins.toml ~/.config/sheldon/plugins.toml
     ln -sf ~/dotfiles/starship.toml ~/.config/starship.toml
+    ln -sf ~/dotfiles/tools/tmux/tmux.conf ~/.tmux.conf
+    mkdir -p ~/.config/ghostty
+    ln -sf ~/dotfiles/tools/ghostty-config ~/.config/ghostty/config
     @echo "==> Installing plugins..."
     sheldon lock
     @if [ ! -d ~/.local/share/fzf-tab ]; then \
@@ -68,6 +71,8 @@ clean:
     rm -vrf ~/.zshrc
     rm -vrf ~/.config/sheldon/plugins.toml
     rm -vrf ~/.config/starship.toml
+    rm -vrf ~/.tmux.conf
+    rm -vrf ~/.config/ghostty/config
 
 # Clean cache: remove zsh-related caches (compinit, fzf, zoxide, kubectl, sheldon)
 [group('Setup')]
