@@ -2,9 +2,12 @@
 theme = catppuccin-mocha.conf
 
 # Font
-font-family = Monaspace Neon NF, Ricty Diminished
-# font-feature = -dlig
-font-size = 13
+font-family = Monaspace Neon
+# font-family = Ricty Diminished
+# font-family = JetBrains Mono
+font-family = BIZ UDGothic
+font-feature = -dlig
+font-size = 15
 
 # Mac
 macos-window-shadow = false

@@ -76,3 +76,6 @@
 [submodule "skills"]
 	path = skills
 	url = git@github.com:hironow/skills.git
+[submodule "tools/tmux/plugins/tmux-resurrect"]
+	path = tools/tmux/plugins/tmux-resurrect
+	url = https://github.com/tmux-plugins/tmux-resurrect
