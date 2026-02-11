@@ -82,3 +82,6 @@
 [submodule "knowledge-work-plugins"]
 	path = knowledge-work-plugins
 	url = git@github.com:hironow/knowledge-work-plugins.git
+[submodule "protocols/webmcp-tools"]
+	path = protocols/webmcp-tools
+	url = git@github.com:GoogleChromeLabs/webmcp-tools.git
