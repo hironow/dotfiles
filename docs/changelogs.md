@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-02-04
+最終更新: 2026-02-11
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -22,6 +22,8 @@
 - **SDK後方互換性**: SDKレベルでの後方互換サポート追加
 - **American Spelling**: "cancelled" → "canceled" 統一 (#1283)
 - **Part構造簡素化**: FilePart/DataPart のフラット化
+- **仕様ドキュメント改善**: Proto Table表示のライブラリ活用 (#1427)、MTLS スキーマ修正 (#1462)、ストリーミング例修正 (#1458)
+- **v0.3.0→v1.0 変更ドキュメント**: 移行ガイド追加 (#1436)
 
 #### v0.4.0 の主要な変更点
 
@@ -68,9 +70,12 @@
 - **名前付きパラメータ関数検証**: バリデーション追加
 - **バージョンフィールド**: 仕様にバージョンフィールド追加
 - **Client/Server リスト実装**: 双方向のリスト機能
-- **スキーマURL修正**: a2ui.org でのスキーマ公開
 - **Windows対応**: Window コマンド構文修正
 - **新サンプル**: contact-lookup, orchestrator, rizzcharts
+- **仕様 v0.8.2 更新**: multiselect でのフィルタリングと型サポート (#604)
+- **正規表現サポート**: textfield コンポーネントの regex バリデーション (#605)
+- **コンポーネントショーケース**: 標準カタログのコンポーネント一覧エージェント (#596)
+- **gsutil 移行**: `gsutil` → `gcloud storage` コマンド移行 (#610)
 
 #### 参考リンク
 
@@ -80,7 +85,7 @@
 
 ### ACP (Agentic Commerce Protocol)
 
-**現行バージョン**: 2026-01-30
+**現行バージョン**: 継続的デプロイ（バージョンタグなし）
 
 **管理**: OpenAI & Stripe
 
@@ -90,6 +95,12 @@
 - **Payment Handlers Framework**: 構造化された支払いハンドラー（**破壊的変更**）
 - **Extensions Framework**: オプション・コンポーザブルな拡張機能
 - **Discount Extension**: リッチな割引コードサポート（初のACP拡張）
+- **3DS 認証フロー**: 3D Secure 認証フローのサンプル追加 (#78)
+- **バージョンミスマッチエラー**: `supported_versions` フィールド追加 (#99)
+- **`intervention_required`**: MessageError タイプに追加 (#118)
+- **認証プロバイダ指定**: マーチャントによる `authentication_provider` 指定 (#80)
+- **B2B 小数数量**: 小数点付き数量サポート (#3)
+- **PR バリデーター**: PR タイトル・説明のバリデーション自動化 (#126)
 
 #### 破壊的変更
 
@@ -98,6 +109,7 @@
 | Payment Handlers 導入 | 支払い方法IDから構造化ハンドラーへ移行必須 |
 | `items` → `line_items` | Create/Update リクエストのフィールド名変更 |
 | `currency` 必須化 | create リクエストで必須フィールドに |
+| `channel` フィールド削除 (#85) | `AuthenticationMetadata` からの削除 |
 
 #### 参考リンク
 
@@ -130,12 +142,15 @@
 
 #### 主要な変更点
 
+- **Kotlin SDK v0.2.7**: バージョン更新、macOS ランナーでの公開 (#1103)
+- **Ruby SDK**: フルプロトコル実装 (#865)
+- **マルチモーダル仕様**: multimodal spec 追加 (#1084)
+- **NX 移行**: Turbo から NX へビルドシステム移行 (#1092)
+- **tsdown ビルド**: ビルドツール更新 (#1071)
+- **stream FastAPI 修正**: ストリーム再生成修正 (#1098)
+- **ミドルウェアドキュメント改善**: ヘルパーガイダンス追加
 - **Dart SDK v0.1.0**: フルプロトコル実装、SSEストリーミング、イベントハンドリング
 - **ツール呼び出し重複排除**: 名前ベースから単一使用トラッキングへ (#1011)
-- **LRO修正**: 再開可能エージェントの長時間操作修正
-- **OpenResponses統合**: HFルーター、SSE/思考イベント、provider アーキテクチャ
-- **HITL改善**: 再開可能エージェントパターン強化
-- **Python 3.14サポート**: 新バージョン対応
 - **フレームワーク統合**: LangGraph, Mastra, CrewAI 対応
 - **状態管理**: JSON Patch デルタ (RFC 6902) サポート
 
@@ -159,10 +174,8 @@
 
 #### 主要な変更点
 
-- **採用カルーセル大幅更新**: 15+ 新ロゴ追加
-  - VT Code, Ona, Autohand Code, Roo Code, Mistral Vibe
-  - pi, Firebender, Piebald, Command Code, Databricks
-  - Mux, Agentman, TRAE, Spring AI
+- **Apache 2.0 ライセンス**: トップレベル LICENSE 追加 (#122)
+- **採用カルーセル更新**: Qodo, VT Code, Ona, Autohand Code, Roo Code, Mistral Vibe, pi, Firebender, Piebald, Command Code, Databricks, Mux 追加
 - **Windows インストール手順**: 追加
 - **モバイル対応ドキュメント**: レスポンシブ改善
 
@@ -187,7 +200,7 @@
 
 #### パートナー
 
-- Global Payments, Tether, Solana, OKX
+- Global Payments, Tether, Solana, OKX, Kite AI, Nexi
 
 #### 参考リンク
 
@@ -213,6 +226,13 @@
 - **OAuth Client Credentials** (SEP-1046): M2M 認可サポート
 - **SDK 階層システム** (SEP-1730): 明確な要件付き
 - **ガバナンス構造化**: Working Groups / Interest Groups フレームワーク
+- **Extensions フレームワーク** (SEP-2133, Final): 拡張機能ケイパビリティのスキーマ追加、ドキュメント整備
+- **MCP Apps サポート拡大**: Claude Desktop, MCPJam, Postman, VSCode, goose でのクライアントサポート
+- **ガバナンス継承手続き** (SEP-2085, Final): ガバナンスの承継と修正手続き
+- **SSRF セキュリティ**: SSRF 対策ドキュメント追加
+- **MCP Apps CSP**: アンバンドルアセット向け Content Security Policy 要件文書化
+- **Sampling ツールスコープ**: サンプリング `tools` がリクエストスコープであることを明確化
+- **UI バンドル不要**: UI をシングルファイルにバンドルする必要がないことを明確化
 
 #### マイナーアップデート
 
@@ -223,12 +243,7 @@
 - JSON Schema 2020-12 をデフォルトダイアレクトに
 - RFC 9728 OAuth 2.0 Protected Resource Metadata 準拠
 - Elicitation のプリミティブ型デフォルト値サポート
-
-#### 統計
-
-- 58 メンテナー、2,900+ コントリビューター
-- 2,000+ MCP サーバー登録
-- 毎週 100+ 新コントリビューター
+- Schema Reference の index-property-only 型スタイル改善
 
 #### 参考リンク
 
@@ -238,7 +253,7 @@
 
 ### MCP-UI
 
-**現行バージョン**: v6.0.0 (2026-01-26)
+**現行バージョン**: v6.0.1 (2026-02-06)
 
 #### 主要な変更点
 
@@ -246,6 +261,7 @@
 - **MIME タイプ変更**: コンテンツタイプ仕様更新
 - **Claude サポート追加**: サポートホストに Claude 追加
 - **React レンダラー**: MCP Apps 用 React レンダラー (v5.18.0)
+- **リンティング強制**: コード品質チェックの自動化 (#174)
 
 #### 破壊的変更
 
@@ -256,7 +272,7 @@
 
 #### 参考リンク
 
-- [MCP-UI](https://github.com/idosal/mcp-ui)
+- [MCP-UI](https://github.com/MCP-UI-Org/mcp-ui)
 
 ---
 
@@ -292,6 +308,8 @@
 - **uv 依存管理**: Python 依存管理を uv に移行 (#126)
 - **2層エラーハンドリング**: UCP ネゴシエーション失敗の処理改善
 - **Biome リンティング**: gitignore 対応
+- **サービストランスポート定義**: 名前変更とバージョニング (#154)
+- **Shopify TC 代表変更**: Lee Richmond → Aaron Glazer (#165)
 
 #### 参考リンク
 
@@ -305,11 +323,18 @@
 
 #### 主要な変更点
 
+- **MCP Go 統合**: x402 MCP サーバーの Go 実装 (#1132)
+- **MCP Python SDK サブモジュール**: Python SDK への MCP 統合 (#1131)
+- **MCP ペイメント選択修正**: MCP ラッパーでの支払い要件選択修正 (#1130)
+- **Hedera HTS FT**: exact payment scheme 実装 (#792)
+- **CloudFront Lambda Edge**: CDP ファシリテーター認証 (#1102)
+- **MegaETH メインネット**: EVM サポート追加 (#1089)
+- **payment-identifier 拡張**: ドキュメント追加 (#1097)
+- **429 リトライロジック**: `HTTPFacilitatorClient.getSupported()` のレート制限対応 (#1094)
 - **Go SDK エラーハンドリング刷新**: panic から適切なエラーハンドリングへリファクタ
 - **Permit2 exact EVM**: Go SDK でのアップグレード
 - **SIWX Extension**: Sign-In with X サポート
 - **Solana スループット改善**: memo ベースのユニーク性による決済スループット向上
-- **MCP 統合**: x402MCPClient/Server、ミドルウェア、サンプル追加
 - **Permit2 サポート**: クライアント、ファシリテーター、リソースサーバーSDK (#1031, #1038, #1041)
 - **Python SDK v2**: 新規 Python SDK (#841)
 - **SDK Hooks**: `onPaymentRequired`, `onProtectedRequest` フック (#1003, #1010, #1012)
@@ -318,7 +343,8 @@
 
 - Primer, Agently, ICPAY, SocioLogic, SlinkyLayer, 1Pay.ing
 - BlockRun.AI, SolPay, Kobaru Facilitator
-- auor.io, zauth (トラストインフラ), 0xmeta.ai
+- auor.io, zauth, 0xmeta.ai
+- AsterPay, dTelecom STT, Moltalyzer, x402lint, Foldset, clawdvine
 
 #### 参考リンク
 
@@ -330,9 +356,30 @@
 
 ### ADK Python
 
-**現行バージョン**: v1.23.0 (2026-01-22)
+**現行バージョン**: v1.24.1 (2026-02-06)
 
-#### 主要な変更点
+#### v1.24.x の主要な変更点
+
+- **Consolidated Event View**: Event タブ廃止、メッセージ行のクリック展開式に刷新
+- **A2UI v0.8 統合**: ADK parts を標準カタログ準拠の UI コンポーネントとして自動レンダリング
+- **キーボードナビゲーション**: 矢印キーによるアクセシビリティ向上
+- **関数呼び出しツールチップ**: 引数・レスポンス・状態変更の詳細表示
+- **エージェントオプティマイザ**: 最適化インターフェースの追加
+- **ツールセット認証**: `McpToolset`, `OpenAPIToolset` 等で認証サポート (#798f65d)
+- **McpToolset リソースアクセス**: MCP リソースへのユーザーアクセスメソッド追加
+- **OpenAPI ツール非同期化**: `RestApiTool` の非同期対応
+- **ライブモードスレッド分離**: ツール実行を別スレッドで実行可能に
+
+#### 未リリースの変更点
+
+- **外部アクセストークン**: Google credentials で外部渡しアクセストークンサポート
+- **`auto_create_session` フラグ**: `adk api_server` CLI 用
+- **`/health` / `/version` エンドポイント**: ADK Web サーバー用
+- **イベントデルタメモリ**: `add_events_to_memory` ファサード追加
+- **トークン閾値コンパクション**: 呼び出し後のイベント保持付きコンパクション
+- **ストリーミングレスポンス**: grounding/citation メタデータの伝搬修正
+
+#### v1.23.0 の主要な変更点
 
 - **自動セッション作成**: セッションが存在しない場合は自動作成
 - **`thinking_config`**: `generate_content_config` でサポート
@@ -342,23 +389,14 @@
 - **A2UI メッセージ変換**: A2A `DataPart` と ADK イベント間変換
 - **AgentEngineSandboxCodeExecutor**: `@experimental` 削除、安定版に
 - **JSON スキーマサポート**: ツール宣言で複数ツールタイプ対応
-- **会話分析 API ツールセット**: 新規追加
-- **Cloud Pub/Sub ハンドライトンツール**: 新規追加
-- **JSON ベース DB スキーマ**: DatabaseSessionService でマイグレーション付き新スキーマ
 - **`otel_to_cloud` フラグ**: `adk deploy agent_engine` コマンド用
-
-#### バグ修正
-
-- OAuth トークン期限切れ時のリフレッシュ修正
-- BigQuery analytics プラグインの instructions なしエージェント対応
-- ストリーミング関数呼び出しの適切なハンドリング
-- Cloud Run/GKE でのセッション管理改善
 
 #### 破壊的変更
 
 | 変更 | 影響 |
 |------|------|
-| OpenTelemetry for BigQuery | カスタム `ContextVar` から OpenTelemetry に変更 |
+| credential manager が `tool_context` を受け取るよう変更 (v1.24.0) | `callback_context` から `tool_context` への引数変更 |
+| OpenTelemetry for BigQuery (v1.23.0) | カスタム `ContextVar` から OpenTelemetry に変更 |
 
 #### 参考リンク
 
@@ -370,7 +408,7 @@
 
 **現行バージョン**: v0.4.0 (2026-01-30)
 
-#### 主要な変更点
+#### v0.4.0 の主要な変更点
 
 - **`WithContext` メソッド**: `agent.InvocationContext` でコンテキスト変更 (#526)
 - **Human-in-the-Loop 確認**: MCP ツールセットでの確認メカニズム (#523)
@@ -381,14 +419,23 @@
 - **FilterToolset ヘルパー**: ツールセットフィルタリング
 - **OpenTelemetry 改善**: `gen_ai.conversation.id` を OTEL スパンに含める
 
+#### 未リリースの変更点
+
+- **OpenTelemetry TracerProvider**: OTEL 設定と初期化 (#524)
+- **Function Call Modifier プラグイン**: 関数呼び出し変更プラグイン (#535)
+- **Preload Memory ツール**: メモリプリロードサポート (#527)
+- **Logging プラグイン**: ロギングプラグイン追加 (#534)
+- **コンソールリファクタ**: コンソール UI 改善 (#533)
+- **テレメトリ移行**: 旧テレメトリからの移行 (#529)
+
 #### バグ修正
 
+- `long_running_function_ids` のイベント生成時の受け渡し修正 (#553)
+- リモートエージェントの部分レスポンスによるデータ重複修正 (#545)
+- `RequestConfirmation` で `SkipSummarization` 設定しエージェントループ停止 (#544)
 - InvocationId の重複時置換修正 (#525)
 - MCP EOF エラー時の再接続修正 (#505)
-- 長時間オペレーションを A2A input-required タスクとして処理 (#499)
-- ストリーミングモードパラメータ修正
-- 複数ツール呼び出し時の状態変更修正
-- Web サーバーのグレースフルシャットダウン
+- temp state デルタのローカルセッション適用修正 (#537)
 
 #### 参考リンク
 
@@ -400,7 +447,7 @@
 
 **現行バージョン**: v0.3.0 (2026-01-30)
 
-#### 主要な変更点
+#### v0.3.0 の主要な変更点
 
 - **OpenTelemetry サポート**: Web サーバーでの観測性/テレメトリ
 - **Zod v3/v4 互換性**: 両バージョンサポート
@@ -410,10 +457,15 @@
 - **Gemini 3 モデルサポート**: BuiltInCodeExecutor 対応
 - **Husky プリコミット**: ESLint/Prettier 統合、API キー露出防止
 
-#### バグ修正
+#### 未リリースの変更点
 
-- ストリーミング処理修正
-- rootAgent getter 修正（Python SDK と動作統一、#95）
+- **ESM ネイティブ CLI**: CommonJS から ESM への移行 (#113)
+- **セッションサービスレジストリ**: CLI 連携 (#126)
+- **CLI version コマンド**: バージョン表示機能 (#115)
+- **state/stateデルタ対応**: API サーバーのリクエストボディパラメータ (#117)
+- **`instanceof` 置換**: `isBaseTool`/`isLlmAgent` ヘルパー使用 (#116)
+- **MCP SDK v1.26.0**: バンプ (#112)
+- **インテグレーションテスト**: テストインフラ整備 (#100)
 
 #### 参考リンク
 
@@ -423,23 +475,26 @@
 
 ### Agent Starter Pack
 
-**現行バージョン**: v0.33.1
+**現行バージョン**: v0.35.1
+
+#### v0.35.x の主要な変更点
+
+- **TypeScript ADK テンプレート**: `adk_ts` テンプレート追加 (#731)
+- **エージェント選択 UI 改善**: More Options サブメニューによる構造化 (#766)
+- **none デプロイメントターゲット**: デプロイなしオプション追加
+- **deploy/backend ターゲット除外**: deployment_target=none 時の Makefile 修正 (#773)
+
+#### v0.34.0 の主要な変更点
+
+- **GEMINI.md 言語別**: 言語ごとの GEMINI.md 生成
+- **eval evalsets**: 評価データセットサポート
+- **CI/CD ランナー修正**: `--auto-approve` 時の `cicd_runner` デフォルト値修正 (#770)
 
 #### v0.33.x の主要な変更点
 
 - **Java ADK テンプレート**: `adk_java` テンプレート追加 (v0.33.0)
 - **Auto-approve / CLI オーバーライド改善**: enhance コマンドの修正 (#745)
 - **Spring Boot Starter**: Java 25 互換性テストバージョン修正 (#753)
-- **ライセンス更新**: 2026年に更新
-- **コマンドチートシート**: 簡素化された README 生成
-- **google-cloud-aiplatform**: v1.130.0 にピン留め
-
-#### v0.32.x の主要な変更点
-
-- **display_name サポート**: langgraph を custom_a2a にリブランド (#737)
-- **upgrade コマンド**: 新バージョンへのプロジェクト更新 (#719)
-- **Go サポート**: upgrade コマンドで Go 対応 (#730)
-- **--set-secrets オプション**: deploy コマンドに追加 (#734)
 
 #### 参考リンク
 
@@ -453,11 +508,16 @@
 
 #### 主要な変更点
 
+- **OAuth サポート**: OAuth 認証統合 (#214)
 - **OAuth URL サポート**: OAuth 関連の GET URL 追加
 - **トークンベースクライアント**: token-based clients サポート (#206)
 - **SubmitBuild API**: デプロイ/ビルド時間の改善 (#198)
 - **クライアント生成リファクタ**: 生成処理の改善 (#201)
-- **セキュリティ修正**: lodash 4.17.23 へアップグレード (#209)
+
+#### セキュリティ修正
+
+- hono パッケージの脆弱性修正 (#215)
+- lodash 4.17.23 へアップグレード (#209)
 
 #### 参考リンク
 
@@ -467,12 +527,14 @@
 
 ### gcloud-mcp
 
-**現行バージョン**: v0.5.3
+**現行バージョン**: gcloud-mcp-v0.5.3
 
 #### 主要な変更点
 
-- **googleapis v170**: 依存関係更新
-- **MCP SDK v1.25.2**: SDK 更新
+- **googleapis v171**: 依存関係更新
+- **MCP SDK v1.26.0**: SDK 更新
+- **observability-mcp v0.2.3**: オブザーバビリティコンポーネント更新
+- **storage-mcp v0.3.2**: ストレージコンポーネント更新
 - **Windows 互換性**: リファクタリング (#342)
 - **フィルタリング精度**: 改善 (#320)
 - **設定ファイル**: allow/deny リスト対応 (#236)
@@ -485,9 +547,15 @@
 
 ### GKE MCP
 
-**現行バージョン**: v0.8.0 (2026-01-20)
+**現行バージョン**: v0.9.0
 
-#### 主要な変更点
+#### v0.9.0 の主要な変更点
+
+- **GKE Workload Security スキル**: ワークロードセキュリティ管理 (#172)
+- **クラスタ作成ベストプラクティス**: ドキュメント追加 (#177)
+- **Go 依存関係更新**: Go 1.25.6 へ更新 (#176)
+
+#### v0.8.0 の主要な変更点
 
 - **ComputeClasses スキル**: ComputeClasses 作成スキル (#175)
 - **GIQ V1 更新**: GIQ ツール指示を V1 gcloud コマンドに更新 (#174)
@@ -511,8 +579,15 @@
 #### 主要な変更点
 
 - **`list_property_annotations`**: 新ツール追加
+- **`run_report` 日付範囲スキーマ修正**: Codex CLI での失敗修正 (#67)
 - **google-analytics-data v0.20.0**: 依存関係更新
 - **google-analytics-admin v0.27.0**: 依存関係更新
+
+#### 未リリースの破壊的変更
+
+| 変更 | 影響 |
+|------|------|
+| パッケージ名を `analytics-mcp` にリネーム (#44) | インストールコマンドの変更が必要 |
 
 #### 参考リンク
 
@@ -524,9 +599,10 @@
 
 #### 主要な変更点
 
+- **Cloud Data MCP サンプル**: DK と Cloud SQL リモート MCP のラボ追加
 - **Chrome DevTools サーバー**: 新規 MCP サーバー追加
 - **Go 言語拡張**: Go サポート
-- **ドキュメントバッジ**: Blog, Codelab, Screencast
+- **README 強化**: バッジとデモ詳細の追加
 
 #### 参考リンク
 
@@ -540,10 +616,14 @@
 
 #### 主要な変更点
 
+- **キュレーテッドルール管理ツール**: Chronicle 検出ルールの管理ツール追加、ページネーションガイダンス
+- **Gemini CLI 拡張**: google-secops Gemini CLI extension、スキルとドキュメント追加
+- **スキル再構成**: runbook をスキルにインライン化、setup スキルをクライアント別に分離
+- **Adaptive Execution ドキュメント**: 追加
+- **gsutil 移行**: `gsutil` → `gcloud storage` コマンド移行
 - **Remote MCP サポート**: リモート MCP 対応 (#215)
 - **MREP URLs**: staging サーバー置換
 - **`list_cases` → `list_rules`**: メソッド名変更
-- **Setup Skills 分離**: クライアント固有設定
 
 #### 参考リンク
 
@@ -564,18 +644,25 @@
 - **`embeddingModel`**: MCP handler でサポート (#2310)
 - **BigQuery 設定可能化**: 最大行数設定 (#2262)
 - **Cloud SQL**: backup/restore/clone ツール追加 (#2141, #2171, #1845)
-- **Cloud Logging Admin**: 管理ツール追加 (#2137)
 - **Snowflake 統合**: ソースとツール統合 (#858)
-- **AlloyDB Omni**: データプレーンツール (#2340)
 - **PostgreSQL**: stats, roles, replication 等の新ツール
-- **MongoDB driver v2**: サポート
-- **Looker**: OAuth 対応強化
+- **Looker**: OAuth 対応強化、Validate Project ツール (#2430)
 - **Oracle OCI/Wallet**: サポート
 - **MariaDB ソース**: 統合追加
 - **Spanner**: list graphs サポート
 - **Serverless Spark**: `create_spark_batch`/`create_pyspark_batch` ツール
-- **Firebird SQL**: ソースサポート
 - **複数 prebuilt 設定結合**: サポート (#2295)
+
+#### 未リリースの変更点
+
+- **設定ファイル v2**: 設定ファイルフォーマットの v2 更新（**破壊的変更**） (#2369)
+- **CLI 直接ツール呼び出し**: CLI からのツール直接実行サポート (#2353)
+- **Agent Skills 生成**: ツールセットからのエージェントスキル自動生成 (#2392)
+- **Tool インターフェース変更**: `ParseParams()` 削除、`GetParameters()` 追加 (#2374, #2375)
+- **AlloyDB Omni データプレーンツール**: 新規追加 (#2340)
+- **Cloud Logging Admin**: ソース・ツール・ドキュメント追加 (#2137)
+- **マネージドコネクションプーリング**: ドキュメント追加 (#2425)
+- **LangChain 前後処理ドキュメント**: Python 向けドキュメント (#2378)
 
 #### 破壊的変更
 
@@ -597,24 +684,29 @@
 | 対象 | 変更内容 | 対応優先度 |
 |------|---------|-----------|
 | **A2A** | v1.0.0-rc: 非複雑ID構造、OAuth、Enum、Part簡素化等 | 高 |
-| **ACP** | Payment Handlers Framework 導入 | 高 |
+| **ACP** | Payment Handlers Framework 導入、`channel` フィールド削除 | 高 |
 | **MCP-UI** | v6.0.0 で MCP Apps へ移行、MIME タイプ変更 | 高 |
+| **ADK Python** | v1.24.0: credential manager 引数変更 (`callback_context` → `tool_context`) | 高 |
 | **AG-UI** | ADK Middleware で AG-UI tools 自動追加廃止 | 中 |
-| **ADK Python** | OpenTelemetry for BigQuery（ContextVar 廃止） | 中 |
+| **ADK Python** | v1.23.0: OpenTelemetry for BigQuery（ContextVar 廃止） | 中 |
 | **GenAI Toolbox** | Tool naming validation 強制化 | 中 |
+| **GenAI Toolbox** (未リリース) | 設定ファイル v2、Tool インターフェース変更 | 中 |
+| **Google Analytics MCP** (未リリース) | パッケージ名 `analytics-mcp` にリネーム | 低 |
 
 ### メジャーアップデート
 
-1. **A2A v1.0.0-rc** - Release Candidate、ガバナンス文書化、SDK後方互換サポート
-2. **MCP 2025-11-25-RC** - OpenID Connect、実験的タスク機能、ガバナンス構造化
-3. **Agent Starter Pack v0.33.1** - Java ADK テンプレート追加
-4. **GenAI Toolbox v0.26.0** - Snowflake, AlloyDB Omni, Firebird SQL 等の大量データソース統合
-5. **A2UI v0.10 開発開始** - v0.9 からのフォーク、新サンプル追加
-6. **UCP** - Block, Fiserv, Klarna, Splitit のエンドースドパートナー追加
+1. **ADK Python v1.24.1** - A2UI v0.8 統合、ツールセット認証、Consolidated Event View
+2. **Agent Starter Pack v0.35.1** - TypeScript ADK テンプレート追加、エージェント選択 UI 改善
+3. **GKE MCP v0.9.0** - Workload Security スキル追加
+4. **A2A v1.0.0-rc** - 仕様ドキュメント改善、v0.3.0→v1.0 移行ガイド
+5. **AG-UI** - Kotlin SDK v0.2.7、Ruby SDK 追加、マルチモーダル仕様
+6. **x402** - MCP Go/Python 統合拡大、Hedera HTS・MegaETH 対応
+7. **MCP** - SSRF セキュリティ文書、MCP Apps CSP 要件追加
 
 ### セキュリティ更新
 
-- **AG-UI**: aiohttp, urllib3, authlib, pyasn1, mcp, fastapi, starlette の脆弱性修正
-- **GKE MCP**: gosec セキュリティ修正、SECURITY.md 追加
-- **Cloud Run MCP**: lodash 4.17.23 へアップグレード
-- **MCP Security**: Remote MCP サポート（MREP URLs）
+- **MCP**: SSRF 対策ドキュメント追加
+- **Cloud Run MCP**: hono パッケージ脆弱性修正
+- **GKE MCP**: Workload Security スキル追加
+- **MCP Security**: キュレーテッドルール管理ツール、gsutil 移行
+- **ADK Python**: URI 内センシティブ情報のログ出力リダクション、クレデンシャルキー生成の安定化
