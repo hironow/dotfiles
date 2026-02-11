@@ -79,3 +79,6 @@
 [submodule "tools/tmux/plugins/tmux-resurrect"]
 	path = tools/tmux/plugins/tmux-resurrect
 	url = https://github.com/tmux-plugins/tmux-resurrect
+[submodule "knowledge-work-plugins"]
+	path = knowledge-work-plugins
+	url = git@github.com:hironow/knowledge-work-plugins.git
