@@ -113,6 +113,8 @@ path_prepend "$HOME/.local/bin"
 # mise
 if _cmd_exists mise; then 
     eval "$(mise activate zsh)"
+    # Keep mise-managed tool shims ahead of system toolchains (e.g. /usr/local/go/bin).
+    path_prepend "$HOME/.local/share/mise/shims"
 fi
 
 
@@ -210,3 +212,6 @@ fi
 
 # Added by Antigravity
 export PATH="$HOME/.antigravity/antigravity/bin:$PATH"
+
+# Re-assert mise shims at the front in case later PATH edits reorder entries.
+path_prepend "$HOME/.local/share/mise/shims"
