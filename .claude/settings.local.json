@@ -33,7 +33,8 @@
       "Bash(grep:*)",
       "Bash(git submodule status:*)",
       "Bash(git log:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(echo:*)"
     ],
     "deny": [
       "Read(.env.keys)",
