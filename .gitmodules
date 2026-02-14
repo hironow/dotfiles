@@ -85,3 +85,6 @@
 [submodule "protocols/webmcp-tools"]
 	path = protocols/webmcp-tools
 	url = git@github.com:GoogleChromeLabs/webmcp-tools.git
+[submodule "protocols/MCP-Apps"]
+	path = protocols/MCP-Apps
+	url = git@github.com:modelcontextprotocol/ext-apps.git
