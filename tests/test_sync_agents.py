@@ -580,13 +580,13 @@ def test_sync_agents_imports_symlinked_skills_from_target(docker_image):
     assert "content correct" in result.stdout
 
 
-def test_sync_agents_skips_non_symlink_items_during_import(docker_image):
-    """Test that non-symlink items in target are NOT imported.
+def test_sync_agents_imports_regular_directories(docker_image):
+    """Test that regular directories (not just symlinks) are imported.
 
     Scenario:
     - given: Target has a regular directory (not a symlink)
     - when: Run sync-agents
-    - then: Regular directory is NOT imported to dotfiles
+    - then: Regular directory IS imported to dotfiles
     """
     cmd = """
     set -euo pipefail
@@ -598,52 +598,65 @@ def test_sync_agents_skips_non_symlink_items_during_import(docker_image):
     # Run sync-agents
     cd /root/dotfiles && just sync-agents-auto
 
-    # Verify the regular dir was NOT imported to dotfiles
+    # Verify the regular dir WAS imported to dotfiles
     if [ -d /root/dotfiles/skills/manual-skill ]; then
-        echo "ERROR: non-symlink was imported"
+        echo "regular dir imported"
+        grep -q "Manual Skill" /root/dotfiles/skills/manual-skill/README.md && echo "content correct"
     else
-        echo "non-symlink correctly skipped"
+        echo "ERROR: regular dir was not imported"
     fi
+
+    # Verify it was also synced to other targets
+    [ -f /root/.gemini/skills/manual-skill/README.md ] && echo "synced to gemini"
     """
     result = _run_in_container(docker_image, cmd)
 
-    # then: Non-symlink was not imported
-    assert "non-symlink correctly skipped" in result.stdout
+    # then: Regular directory was imported and synced
+    assert "regular dir imported" in result.stdout
+    assert "content correct" in result.stdout
+    assert "synced to gemini" in result.stdout
 
 
-def test_sync_agents_skips_conflicting_symlink_import(docker_image):
-    """Test that symlinks conflicting with existing dotfiles items are skipped.
+def test_sync_agents_keeps_newer_dotfiles_over_older_symlink(docker_image):
+    """Test that newer dotfiles version wins over older symlink target.
 
     Scenario:
-    - given: dotfiles/skills/my-skill/ exists AND target has a symlink with same name but different content
+    - given: Target has a symlink to external content, dotfiles has newer version
     - when: Run sync-agents
-    - then: Conflict is detected and import is skipped
+    - then: Dotfiles version is preserved (newer wins)
     """
     cmd = """
     set -euo pipefail
 
-    # Create a skill in dotfiles
-    mkdir -p /root/dotfiles/skills/shared-skill
-    echo "# Dotfiles version" > /root/dotfiles/skills/shared-skill/README.md
-
-    # Create a different external version
+    # Create external version first (older)
     mkdir -p /opt/external/shared-skill
-    echo "# External version (different)" > /opt/external/shared-skill/README.md
+    echo "# External version (older)" > /opt/external/shared-skill/README.md
 
     # Symlink in target to the external version
     mkdir -p /root/.claude/skills
     ln -s /opt/external/shared-skill /root/.claude/skills/shared-skill
 
+    # Wait to ensure mtime difference
+    sleep 2
+
+    # Create newer version in dotfiles
+    mkdir -p /root/dotfiles/skills/shared-skill
+    echo "# Dotfiles version (newer)" > /root/dotfiles/skills/shared-skill/README.md
+
     # Run sync-agents
     cd /root/dotfiles && just sync-agents-auto
 
-    # Verify dotfiles version was NOT overwritten
-    grep -q "Dotfiles version" /root/dotfiles/skills/shared-skill/README.md && echo "dotfiles version preserved"
+    # Verify dotfiles version was preserved (it's newer)
+    grep -q "Dotfiles version (newer)" /root/dotfiles/skills/shared-skill/README.md && echo "dotfiles version preserved"
+
+    # Verify targets got the dotfiles version
+    grep -q "Dotfiles version (newer)" /root/.claude/skills/shared-skill/README.md && echo "claude got dotfiles version"
     """
     result = _run_in_container(docker_image, cmd)
 
     # then: Dotfiles version was preserved
     assert "dotfiles version preserved" in result.stdout
+    assert "claude got dotfiles version" in result.stdout
 
 
 # =============================================================================
@@ -726,3 +739,325 @@ def test_sync_agents_import_only_from_import_source(docker_image):
 
     # then: No import from non-import-source
     assert "correctly skipped non-import-source" in result.stdout
+
+
+# =============================================================================
+# Manifest and Deletion Sync Tests
+# =============================================================================
+
+
+def test_sync_agents_creates_manifest_on_first_run(docker_image):
+    """Test that .sync-manifest.json is auto-created on first run.
+
+    Scenario:
+    - given: No manifest file exists
+    - when: Run sync-agents
+    - then: Manifest is created with current dotfiles items
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Ensure no manifest exists
+    rm -f /root/dotfiles/.sync-manifest.json
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify manifest was created
+    [ -f /root/dotfiles/.sync-manifest.json ] && echo "manifest created"
+
+    # Verify manifest contains version and skills
+    grep -q '"version"' /root/dotfiles/.sync-manifest.json && echo "has version"
+    grep -q '"skills"' /root/dotfiles/.sync-manifest.json && echo "has skills key"
+    grep -q 'brand-legal-review' /root/dotfiles/.sync-manifest.json && echo "has brand-legal-review"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Manifest was created with items
+    assert "manifest created" in result.stdout
+    assert "has version" in result.stdout
+    assert "has skills key" in result.stdout
+    assert "has brand-legal-review" in result.stdout
+
+
+def test_sync_agents_deletes_removed_items_from_targets(docker_image):
+    """Test that items removed from dotfiles are deleted from all targets.
+
+    Scenario:
+    - given: A skill exists in dotfiles and is synced to targets
+    - when: Skill is removed from dotfiles and sync runs again
+    - then: Skill is deleted from all targets
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a skill in dotfiles
+    mkdir -p /root/dotfiles/skills/temp-skill
+    echo "# Temp Skill" > /root/dotfiles/skills/temp-skill/README.md
+
+    # First sync: distributes temp-skill to all targets
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify it was synced
+    [ -f /root/.claude/skills/temp-skill/README.md ] && echo "synced to claude"
+    [ -f /root/.gemini/skills/temp-skill/README.md ] && echo "synced to gemini"
+
+    # Now delete from dotfiles
+    rm -rf /root/dotfiles/skills/temp-skill
+
+    # Second sync: should delete from all targets
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify deletion
+    if [ -d /root/.claude/skills/temp-skill ]; then
+        echo "ERROR: not deleted from claude"
+    else
+        echo "deleted from claude"
+    fi
+    if [ -d /root/.gemini/skills/temp-skill ]; then
+        echo "ERROR: not deleted from gemini"
+    else
+        echo "deleted from gemini"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Skill was synced then deleted
+    assert "synced to claude" in result.stdout
+    assert "synced to gemini" in result.stdout
+    assert "deleted from claude" in result.stdout
+    assert "deleted from gemini" in result.stdout
+
+
+def test_sync_agents_does_not_reimport_deleted_items(docker_image):
+    """Test that items deleted from dotfiles are NOT re-imported from targets.
+
+    Scenario:
+    - given: A skill was imported, synced, then deleted from dotfiles
+    - when: Run sync-agents again
+    - then: The skill is NOT re-imported (manifest prevents it)
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create and import a skill via import source
+    mkdir -p /root/.claude/skills/ephemeral-skill
+    echo "# Ephemeral" > /root/.claude/skills/ephemeral-skill/README.md
+
+    # First sync: imports to dotfiles, syncs to targets
+    cd /root/dotfiles && just sync-agents-auto
+    [ -d /root/dotfiles/skills/ephemeral-skill ] && echo "initially imported"
+
+    # Delete from dotfiles (simulating intentional removal)
+    rm -rf /root/dotfiles/skills/ephemeral-skill
+
+    # Second sync: should NOT re-import, should delete from targets
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify NOT re-imported to dotfiles
+    if [ -d /root/dotfiles/skills/ephemeral-skill ]; then
+        echo "ERROR: re-imported to dotfiles"
+    else
+        echo "correctly not re-imported"
+    fi
+
+    # Verify deleted from claude (import source)
+    if [ -d /root/.claude/skills/ephemeral-skill ]; then
+        echo "ERROR: still in claude"
+    else
+        echo "deleted from claude"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Not re-imported and deleted from targets
+    assert "initially imported" in result.stdout
+    assert "correctly not re-imported" in result.stdout
+    assert "deleted from claude" in result.stdout
+
+
+def test_sync_agents_imports_from_codex(docker_image):
+    """Test that skills from ~/.codex/ (import source) are imported.
+
+    Scenario:
+    - given: A skill exists in ~/.codex/skills/ (an import source)
+    - when: Run sync-agents
+    - then: Skill is imported to dotfiles and synced to other targets
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a codex-native skill
+    mkdir -p /root/.codex/skills/codex-native
+    echo "# Codex Native" > /root/.codex/skills/codex-native/README.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify imported to dotfiles
+    [ -d /root/dotfiles/skills/codex-native ] && echo "imported to dotfiles"
+
+    # Verify synced to other targets
+    [ -f /root/.claude/skills/codex-native/README.md ] && echo "synced to claude"
+    [ -f /root/.gemini/skills/codex-native/README.md ] && echo "synced to gemini"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Codex skill was imported and synced
+    assert "imported to dotfiles" in result.stdout
+    assert "synced to claude" in result.stdout
+    assert "synced to gemini" in result.stdout
+
+
+def test_sync_agents_skips_hidden_directories(docker_image):
+    """Test that hidden directories (starting with .) are skipped.
+
+    Scenario:
+    - given: A hidden directory exists in ~/.codex/skills/.system/
+    - when: Run sync-agents
+    - then: Hidden directory is NOT imported
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a hidden directory in codex skills
+    mkdir -p /root/.codex/skills/.system/internal
+    echo "# Internal" > /root/.codex/skills/.system/internal/README.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify hidden dir was NOT imported
+    if [ -d /root/dotfiles/skills/.system ]; then
+        echo "ERROR: hidden dir was imported"
+    else
+        echo "hidden dir correctly skipped"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Hidden directory was skipped
+    assert "hidden dir correctly skipped" in result.stdout
+
+
+def test_sync_agents_replaces_symlinks_in_targets(docker_image):
+    """Test that symlinks in targets are replaced with real directories.
+
+    Scenario:
+    - given: A skill exists in dotfiles AND target has a symlink with same name
+    - when: Run sync-agents
+    - then: Symlink is replaced with a real directory copy
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a skill in dotfiles
+    mkdir -p /root/dotfiles/skills/real-skill
+    echo "# Real Skill" > /root/dotfiles/skills/real-skill/README.md
+
+    # Create a symlink in gemini pointing elsewhere
+    mkdir -p /opt/other/real-skill
+    echo "# Other" > /opt/other/real-skill/README.md
+    mkdir -p /root/.gemini/skills
+    ln -s /opt/other/real-skill /root/.gemini/skills/real-skill
+
+    # Verify it's a symlink before sync
+    [ -L /root/.gemini/skills/real-skill ] && echo "is symlink before"
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify symlink was replaced with real dir
+    if [ -L /root/.gemini/skills/real-skill ]; then
+        echo "ERROR: still a symlink"
+    else
+        echo "replaced with real dir"
+    fi
+    grep -q "Real Skill" /root/.gemini/skills/real-skill/README.md && echo "correct content"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Symlink was replaced
+    assert "is symlink before" in result.stdout
+    assert "replaced with real dir" in result.stdout
+    assert "correct content" in result.stdout
+
+
+def test_sync_agents_newer_import_source_wins_conflict(docker_image):
+    """Test that newer files in import source overwrite older dotfiles version.
+
+    Scenario:
+    - given: A skill exists in both dotfiles and import source with different content
+    - when: The import source version is newer (by mtime)
+    - then: The newer import source version overwrites dotfiles
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a skill in dotfiles (older version)
+    mkdir -p /root/dotfiles/skills/evolving-skill
+    echo "# Version 1" > /root/dotfiles/skills/evolving-skill/README.md
+
+    # First sync to distribute
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Wait to ensure mtime difference
+    sleep 2
+
+    # Edit the skill in import source (newer version)
+    echo "# Version 2 - Updated" > /root/.claude/skills/evolving-skill/README.md
+
+    # Run sync again
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify dotfiles was updated with newer version
+    grep -q "Version 2" /root/dotfiles/skills/evolving-skill/README.md && echo "dotfiles updated"
+
+    # Verify all targets got the newer version
+    grep -q "Version 2" /root/.gemini/skills/evolving-skill/README.md && echo "gemini updated"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Newer version won
+    assert "dotfiles updated" in result.stdout
+    assert "gemini updated" in result.stdout
+
+
+def test_sync_agents_older_import_source_loses_conflict(docker_image):
+    """Test that older files in import source do NOT overwrite newer dotfiles.
+
+    Scenario:
+    - given: A skill exists in both dotfiles and import source with different content
+    - when: The dotfiles version is newer (by mtime)
+    - then: Dotfiles version is preserved and pushed to targets
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a skill in import source first (older)
+    mkdir -p /root/.claude/skills/stable-skill
+    echo "# Old Version" > /root/.claude/skills/stable-skill/README.md
+
+    # Wait to ensure mtime difference
+    sleep 2
+
+    # Create newer version in dotfiles
+    mkdir -p /root/dotfiles/skills/stable-skill
+    echo "# New Version in Dotfiles" > /root/dotfiles/skills/stable-skill/README.md
+
+    # Run sync
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify dotfiles version was preserved
+    grep -q "New Version in Dotfiles" /root/dotfiles/skills/stable-skill/README.md && echo "dotfiles preserved"
+
+    # Verify targets got the dotfiles version (not the older import source version)
+    grep -q "New Version in Dotfiles" /root/.gemini/skills/stable-skill/README.md && echo "gemini got dotfiles version"
+    grep -q "New Version in Dotfiles" /root/.claude/skills/stable-skill/README.md && echo "claude got dotfiles version"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Dotfiles version was preserved
+    assert "dotfiles preserved" in result.stdout
+    assert "gemini got dotfiles version" in result.stdout
+    assert "claude got dotfiles version" in result.stdout
