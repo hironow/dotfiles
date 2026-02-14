@@ -41,6 +41,7 @@ terraform.tfstate.backup
 
 # AI coding
 .serena/cache/
+.sync-manifest.json
 
 # Model
 *.pt
