@@ -113,8 +113,12 @@ claude mcp add -s user -t http cloudflare https://docs.mcp.cloudflare.com/mcp
 claude mcp add -s user -t http vercel https://mcp.vercel.com
 claude mcp add -s user -t http livekit-docs https://docs.livekit.io/mcp
 claude mcp add -s user -t http openai https://developers.openai.com/mcp
-
-# claude mcp add -s user -t http mcp-ui https://gitmcp.io/idosal/mcp-ui
+# -- Google Cloud
+gcloud beta services mcp enable developerknowledge.googleapis.com --project=YOUR_PROJECT_ID
+gcloud services api-keys create --project=YOUR_PROJECT_ID --display-name="DK API Key"
+claude mcp add google-dev-knowledge -t http https://developerknowledge.googleapis.com/mcp --header "X-Goog-Api-Key: YOUR_API_KEY"
+# -- AWS
+claude mcp add -s user -t http aws-knowledge-mcp-server https://knowledge-mcp.global.api.aws
 
 # specific (needs copy for other agents' directory)
 ```
