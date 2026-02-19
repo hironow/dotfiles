@@ -56,7 +56,9 @@ path_prepend "$PNPM_HOME"
 # Prefer OrbStack Docker if present
 path_prepend "$HOME/.orbstack/bin"
 
+# Editor
 export EDITOR=vim
+# GPG agent support
 export GPG_TTY=$(tty)
 
 # Google Cloud SDK
@@ -215,3 +217,4 @@ export PATH="$HOME/.antigravity/antigravity/bin:$PATH"
 
 # Re-assert mise shims at the front in case later PATH edits reorder entries.
 path_prepend "$HOME/.local/share/mise/shims"
+
