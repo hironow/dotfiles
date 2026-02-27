@@ -252,7 +252,7 @@
 - **SDK 階層システム** (SEP-1730): 明確な要件付き
 - **ガバナンス構造化**: Working Groups / Interest Groups フレームワーク
 - **Extensions フレームワーク** (SEP-2133, Final): 拡張機能ケイパビリティのスキーマ追加
-- **MCP Apps サポート拡大**: Claude Desktop, MCPJam, Postman, VSCode, goose でのクライアントサポート
+- **MCP Apps サポート拡大**: Claude Desktop, ChatGPT, MCPJam, Postman, VSCode, goose, Copilot でのクライアントサポート
 - **ガバナンス継承手続き** (SEP-2085, Final): ガバナンスの承継と修正手続き
 - **SSRF セキュリティ**: SSRF 対策ドキュメント追加
 - **MCP Apps CSP**: アンバンドルアセット向け Content Security Policy 要件文書化
@@ -287,6 +287,11 @@
 - **audio/video サポート**: basic-host での audio/video サポート修正
 - **ドキュメント URL 更新**: `apps.extensions.modelcontextprotocol.io` ドメインへの移行
 - **Sheet Music App**: `audioSession.type` を playback に設定
+
+#### 未リリースの変更点
+
+- **SECURITY.md 追加**: GitHub Security Advisories ガイダンス (#472)
+- **npm start:stdio 修正**: サンプルサーバーの `npm run start:stdio` 修正 (#507)
 
 #### v1.0.1 の主要な変更点
 
@@ -445,6 +450,9 @@
 #### Python v2.2.0 の主要な変更点
 
 - **MCP Transport 統合の安定化**: Python MCP トランスポートの安定化
+- **camelCase シリアライゼーション修正**: `BaseX402Model` に `serialize_by_alias=True` 追加、仕様準拠の camelCase 出力がデフォルト化 (#1122)
+- **LocalAccount 自動ラップ**: `eth_account` の `LocalAccount` を `ExactEvmScheme` に渡す際の自動ラップ (#1122)
+- **SVM V1 クライアント署名修正**: `VersionedTransaction.populate()` で明示的署名スロット指定による "not enough signers" エラー修正
 
 #### 共通の変更点
 
