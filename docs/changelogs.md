@@ -66,9 +66,9 @@
 - **Prompt First 設計**: 構造化出力優先からプロンプト埋め込み優先へ哲学変更
 - **Web Renderers Data Model**: Web レンダラー向けデータモデルの完全実装 (#606)
 - **メッセージタイプ刷新**:
-  - `beginRendering` → `createSurface`
-  - `surfaceUpdate` → `updateComponents`
-  - 新規: `updateDataModel`, `deleteSurface`
+    - `beginRendering` → `createSurface`
+    - `surfaceUpdate` → `updateComponents`
+    - 新規: `updateDataModel`, `deleteSurface`
 - **コンポーネント構造簡素化**: キーベースラッパーからフラット構造へ
 - **モジュラースキーマ**: `common_types.json`, `server_to_client.json`, `standard_catalog.json` に分割
 - **Theme プロパティ**: `styles` → `theme` にリネーム

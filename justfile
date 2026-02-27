@@ -503,6 +503,32 @@ check-localhost-tls:
 semgrep:
     uv run semgrep --config=auto .
 
+# ------------------------------
+# Claude Code
+# ------------------------------
+
+# Skills: manage Claude Code skills via bunx
+# Usage: just skills ls              (default config)
+#        just env=a skills ls -g     (env: p=personal, a/b/c=work)
+env := ""
+
+skills *args:
+    #!/usr/bin/env bash
+    set -eu -o pipefail
+    config_dir=""
+    case "{{ env }}" in
+      p) config_dir="$HOME/.claude" ;;
+      a) config_dir="$HOME/.claude-work-a" ;;
+      b) config_dir="$HOME/.claude-work-b" ;;
+      c) config_dir="$HOME/.claude-work-c" ;;
+      "") ;;
+      *) echo "ERROR: unknown env '{{ env }}'. Use: p, a, b, c"; exit 1 ;;
+    esac
+    if [ -n "$config_dir" ]; then
+      CLAUDE_CONFIG_DIR="$config_dir" bunx skills {{ args }}
+    else
+      bunx skills {{ args }}
+    fi
 
 # CDP
 
