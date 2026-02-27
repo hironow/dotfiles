@@ -1,3 +1,4 @@
 [tools]
 just = "latest"
+markdownlint-cli2 = "latest"
 uv = "latest"
