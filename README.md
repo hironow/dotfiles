@@ -133,11 +133,6 @@ MCP catalog refs.
 
 ## skill setup
 
-```bash
-bunx skills add vercel-labs/agent-skills
-bunx skills add modelcontextprotocol/ext-apps
-```
-
 justfile経由で `CLAUDE_CONFIG_DIR` を切り替えつつ操作できる:
 
 ```bash
@@ -147,6 +142,11 @@ just env=a skills ls -g       # ~/.claude-work-a 向け
 just env=b skills ls -g       # ~/.claude-work-b 向け
 just env=c skills ls -g       # ~/.claude-work-c 向け
 just env=p skills ls -g       # ~/.claude (personal) 向け
+```
+
+```bash
+just skills add vercel-labs/agent-skills
+just skills add modelcontextprotocol/ext-apps
 ```
 
 Skill catalog refs.
