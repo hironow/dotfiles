@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-02-27
+最終更新: 2026-03-02
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -78,6 +78,8 @@
 
 #### 未リリースの変更点
 
+- **ミニマルカタログ**: 最小構成のカタログ追加 (#732)
+- **サーバーケイパビリティスキーマ**: トランスポート非依存の機能交換用スキーマ (#731)
 - **フレームワーク非依存データレイヤー**: Web コアライブラリのフレームワーク非依存データレイヤー実装
 - **カタログリネーム**: `standard_catalog` → `basic_catalog` にリネーム
 - **CallFunctionMessage**: `CallFunctionMessage` と `functionResponse` の追加
@@ -169,6 +171,8 @@
 - **Python UV 移行**: 大半の Python パッケージが UV パッケージマネージャーに移行 (#1130)
 - **adk-middleware v0.5.0**: ミドルウェアリリース (#1125)
 - **Gemini 3+ ストリーミング関数呼び出し**: ADK Middleware でのストリーミング関数呼び出し引数サポート (#1117)
+- **A2UI チャット統合**: `injectA2UITool` オプションと `MESSAGES_SNAPSHOT` マージ修正付き A2UI チャット統合 (#1177)
+- **MastraClient 型修正**: zod v3/v4 分離による MastraClient 型不一致の修正
 - **CI パフォーマンス改善**: CI plus ultra 速度改善 (#1144)
 - **Reasoning Spec**: 推論仕様追加 (#1050)
 - **Kotlin SDK v0.2.7**: バージョン更新、macOS ランナーでの公開 (#1103)
@@ -195,6 +199,7 @@
 
 - **Apache 2.0 ライセンス**: トップレベル LICENSE 追加 (#122)
 - **CONTRIBUTING.md**: コントリビューションガイド追加
+- **スクリプト利用ガイド**: スキル作成者向け "Using scripts" ガイド追加 (#196)
 - **採用カルーセル更新**: Laravel Boost, Emdash, OpenHands, Junie, Qodo, VT Code, Ona, Autohand Code, Roo Code, Mistral Vibe, pi, Firebender, Piebald, Command Code, Databricks, Mux 追加
 - **Windows インストール手順**: 追加
 - **モバイル対応ドキュメント**: レスポンシブ改善
@@ -234,8 +239,11 @@
 
 #### 主要な変更点
 
-- **SDK 階層評価**: Python SDK Tier 1, C# SDK Tier 1, Java SDK Tier 2, Swift SDK Tier 3, PHP SDK Tier 3 の評価追加
-- **MCP Apps Copilot 統合**: Copilot での MCP Apps クライアントサポート
+- **SDK 階層評価**: Python SDK Tier 1, C# SDK Tier 1, Go SDK Tier 1, Java SDK Tier 2, Swift SDK Tier 3, PHP SDK Tier 3 の評価追加
+- **Extensions トップレベルタブ**: Extensions を専用ページ付きトップレベルタブに昇格 (#2263)
+- **MCP 仕様プラグイン**: MCP 仕様参照用プラグイン追加 (#2214)
+- **デザイン原則ページ**: コミュニティセクションにデザイン原則ページ追加 (#2303)
+- **MCP Apps Copilot 統合**: Copilot / ChatGPT での MCP Apps クライアントサポート
 - **ext-apps ドキュメント URL 更新**: 新サブドメインへの移行
 - **実験的タスク機能**: アプリケーション駆動（リクエスター駆動）タスクアーキテクチャ、ポーリング付き状態追跡
 - **タスクライフサイクル**: "Getting Tasks"/"Polling Tasks" ガイダンス、TTL 明確化
@@ -290,6 +298,7 @@
 
 #### 未リリースの変更点
 
+- **pdf-server クライアントルート無視**: デフォルトでクライアントルートを無視 (#510)
 - **SECURITY.md 追加**: GitHub Security Advisories ガイダンス (#472)
 - **npm start:stdio 修正**: サンプルサーバーの `npm run start:stdio` 修正 (#507)
 
@@ -343,6 +352,7 @@
 
 #### 主要な変更点
 
+- **Llama Stack 統合**: Llama Stack インテグレーション追加 (#29)
 - **Databricks コミュニティ追加**: コミュニティセクションにロゴ追加
 - **logprobs オプション化**: logprobs をオプショナルに変更 (#45)
 - **API命名修正**: `Createresponse` → `createResponse` (#40)
@@ -508,6 +518,15 @@
 - **Pydantic 下限緩和**: 最小バージョン 2.7.0 に引き下げ
 - **LiteLLM 1.81+ 互換性**: ストリーミングレスポンスパース修正
 
+#### 未リリースの変更点
+
+- **BashTool**: スキルツールセットに BashTool 追加
+- **OTel `gen_ai.tool.definitions`**: 実験的セマンティック規約にツール定義追加
+- **OTel 推論オペレーション詳細イベント**: `gen_ai.client.inference.operation.details` イベント発行
+- **Bigtable `execute_sql`**: パラメータサポート追加
+- **最適化インフラ**: 最適化インフラと `LocalEvalService` 間のインターフェース追加
+- **Agent Engine Sandbox**: サンドボックスコードエグゼキューターの改善（TTL、セッション別サンドボックス）
+
 #### v1.25.1 の主要な変更点
 
 - **McpSessionManager 修正**: ピクリングロックエラーの修正（並行セッション操作時のシリアライゼーション問題）
@@ -562,6 +581,16 @@
 - temp state デルタのローカルセッション内適用修正
 - リモートエージェントの部分レスポンスデータ重複修正
 
+#### 未リリースの変更点
+
+- **Debug テレメトリリファクタ**: トレースアクセスの最適化 (#593)
+- **OTel ロガー初期化**: OTel ロガー初期化サポート (#573)
+- **OTel 構造化ロギング**: 構造化ロギング追加 (#552)
+- **Debug Endpoints adk-web 統合**: デバッグエンドポイントの adk-web 統合 (#597)
+- **A2A アーティファクトモード**: 非パーシャルイベントごとのアーティファクト (#599)
+- **RemoteAgent イベント順序修正**: 決定論的な集約イベント出力順序 (#603)
+- **SSE ハンドラー修正**: 不要な ResponseWriteHeader エラーの修正 (#531)
+
 #### v0.4.0 の主要な変更点
 
 - **`WithContext` メソッド**: `agent.InvocationContext` でコンテキスト変更 (#526)
@@ -604,6 +633,11 @@
 - LlmAgent での state 永続化修正
 - Runner ストリーミングとステートレス実行の実装
 - リクエストボディパラメータ（state/state delta）の処理改善
+
+#### 未リリースの変更点
+
+- **A2A Executor コンテキスト**: A2A 統合にエグゼキューターコンテキスト追加 (#166)
+- **A2A ↔ ADK イベント変換**: A2A と ADK イベント間の変換ユーティリティ (#165)
 
 #### v0.3.0 の主要な変更点
 
@@ -760,10 +794,11 @@
 
 ### MCP Security
 
-**現行バージョン**: secops-v0.5.3
+**現行バージョン**: secops-v0.6.0
 
-#### v0.5.3 の主要な変更点
+#### v0.6.0 の主要な変更点
 
+- **依存関係更新とバージョンバンプ**: 依存関係の更新と内部バージョン 0.5.4 へのバンプ
 - **Investigation 管理ツール**: 調査管理ツール追加（422行の新コード） (#220)
 - **Watchlist 管理ツール**: ウォッチリスト管理ツール追加 (#222)
 - **Advanced Rule Operations**: 高度なルール操作追加 (#229)
@@ -802,6 +837,11 @@
 
 #### 未リリースの変更点
 
+- **Looker LookML 開発ツール分離**: LookML 開発ツールを独立プリビルト設定に分離（**破壊的変更**） (#2559)
+- **Dataproc ソースとツール**: Dataproc ソースおよびクラスタ/ジョブの一覧・取得ツール (#2407)
+- **動的リロードポーリング**: 動的リロードにポーリングシステム追加 (#2466)
+- **Looker テスト・ビュー作成**: Get All LookML Tests、Run LookML Tests、Create View From Table ツール追加 (#2522)
+- **必須パラメータ null バリデーション**: 明示的 null 値の必須バリデーション強制 (#2519)
 - **Looker ディレクトリ管理**: ディレクトリの一覧・作成・削除ツール (#2488)
 - **Oracle DML 有効化**: Oracle DML 操作の有効化と配列型エラー修正 (#2323)
 - **GDA Cloud Go SDK 移行**: GDA ソースの Cloud Go SDK 使用リファクタ (#2313)
@@ -849,6 +889,7 @@
 | **ACP** | v2026-01-30: Payment Handlers Framework 導入、fulfillment 構造変更 | 高 |
 | **MCP-UI** | v6.0.0 で MCP Apps へ移行、MIME タイプ変更 | 高 |
 | **ADK Python** | v1.24.0: credential manager 引数変更、v1.23.0: OTEL BigQuery 移行 | 高 |
+| **GenAI Toolbox** (未リリース) | Looker LookML 開発ツールのプリビルト分離 | 高 |
 | **GenAI Toolbox** | v0.26.0: Tool naming validation 強制化 | 中 |
 | **Google Analytics MCP** (未リリース) | パッケージ名 `analytics-mcp` にリネーム | 低 |
 
@@ -859,7 +900,7 @@
 3. **ADK JS v0.4.0** - Database Session Service、ApigeeLlm、ESM ネイティブ CLI、FileArtifactService
 4. **x402 Go v2.4.1 / TS Core v2.5.0 / Python v2.2.0** - ERC20 Gas Sponsorship拡張、Permit2アップグレード、リトライ機構
 5. **MCP-Apps v1.1.2** - downloadFile機能、PDF Server強化、MCPB パッケージング
-6. **MCP Security secops-v0.5.3** - Investigation管理、Watchlist管理、Advanced Rule Operations
+6. **MCP Security secops-v0.6.0** - Investigation管理、Watchlist管理、Advanced Rule Operations、依存関係更新
 7. **Cloud Run MCP v1.9.0** - 依存関係更新と安定化
 8. **A2A v1.0.0-rc** - エンタープライズ標準化、マルチテナンシー、3プロトコルバインディング
 9. **ACP v2026-01-30** - Capability Negotiation、Payment Handlers、Extensions Framework
@@ -870,6 +911,7 @@
 - **MCP**: SSRF 対策ドキュメント追加、GitHub Security Advisories 統合
 - **Cloud Run MCP**: hono / lodash / qs / fast-xml-parser の脆弱性修正
 - **GKE MCP**: Workload Security スキル追加
-- **MCP Security**: Investigation/Watchlist管理、キュレーテッドルール管理ツール、Remote MCP、gsutil 移行
+- **MCP Security v0.6.0**: Investigation/Watchlist管理、キュレーテッドルール管理ツール、Remote MCP、gsutil 移行
+- **MCP**: デザイン原則ページ追加、Extensions トップレベルタブ化
 - **ADK Python**: クレデンシャルキー生成の安定化とクロスユーザーリーク防止、ID トークンサポート
 - **x402**: SIWX Settle Hook の undefined resource ガード追加
