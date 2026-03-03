@@ -39,3 +39,4 @@ zx
 markdownlint
 @smithery/cli
 @playwright/cli@latest
+@fission-ai/openspec@latest
