@@ -178,3 +178,23 @@ code-cli tunnel --accept-server-license-terms --name test-my-wsl
 code-cli tunnel service install
 code-cli tunnel status
 ```
+
+## dotenvx setup (for LLM)
+
+```bash
+# init
+sudo chmod 600 .env.keys
+dotenvx set HELLO "WORLD"
+
+# change to -rw-------
+sudo chmod 600 .env.keys
+
+# then: NG
+dotenvx decrypt --stdout
+EACCES: permission denied, open '.env.keys'
+
+# then: OK
+sudo dotenvx decrypt --stdout
+```
+
+As a defensive measure, I want to not trust the deny option of various agents (experimental).
