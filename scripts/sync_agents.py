@@ -128,6 +128,18 @@ def _is_excluded_child(parent_name: str, child_name: str) -> bool:
     return any(child_name.endswith(suffix) for suffix in suffixes)
 
 
+def _is_internal_symlink(path: Path, parent_dir: Path) -> bool:
+    """Check if a symlink points to a target within the same parent directory.
+
+    Used to skip symlinks created by link-learned-skills (e.g. skills/foo -> learned/foo).
+    """
+    try:
+        link_target = path.resolve()
+        return link_target.is_relative_to(parent_dir)
+    except (OSError, ValueError):
+        return False
+
+
 def _make_copytree_ignore() -> Callable[[str, list[str]], set[str]]:
     """Build an ignore function for shutil.copytree that skips excluded items."""
 
@@ -194,6 +206,8 @@ def _get_directory_items(dotfiles_dir: Path) -> list[_SyncItem]:
             continue
         for child in dir_path.iterdir():
             if child.name.startswith("."):
+                continue
+            if child.is_symlink():
                 continue
             rel_path = f"{dir_name}/{child.name}"
             sources.append(
@@ -527,6 +541,8 @@ def _build_import_plan(
             if child.name.startswith("."):
                 continue
             if _is_excluded_child(dir_name, child.name):
+                continue
+            if child.is_symlink() and _is_internal_symlink(child, target_dir):
                 continue
 
             rel_path = f"{dir_name}/{child.name}"
