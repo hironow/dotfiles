@@ -1156,3 +1156,485 @@ def test_sync_agents_does_not_import_workspace_dirs(docker_image):
     # then: Real skill imported, workspace excluded
     assert "real skill imported" in result.stdout
     assert "workspace correctly excluded" in result.stdout
+
+
+# =============================================================================
+# Agents Global Directory (~/.agents/) Sync Tests
+# =============================================================================
+
+
+def test_sync_agents_imports_from_agents_global(docker_image):
+    """Test that skills from ~/.agents/skills/ (import source) are imported.
+
+    Scenario:
+    - given: A skill exists in ~/.agents/skills/ but not in dotfiles
+    - when: Run sync-agents
+    - then: Skill is imported to dotfiles and synced to other targets
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a skill only in ~/.agents/skills/
+    mkdir -p /root/.agents/skills/global-only-skill
+    echo "# Global Only Skill" > /root/.agents/skills/global-only-skill/SKILL.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify imported to dotfiles
+    [ -d /root/dotfiles/skills/global-only-skill ] && echo "imported to dotfiles"
+    grep -q "Global Only Skill" /root/dotfiles/skills/global-only-skill/SKILL.md && echo "content correct"
+
+    # Verify synced to other targets
+    [ -f /root/.claude/skills/global-only-skill/SKILL.md ] && echo "synced to claude"
+    [ -f /root/.gemini/skills/global-only-skill/SKILL.md ] && echo "synced to gemini"
+    [ -f /root/.codex/skills/global-only-skill/SKILL.md ] && echo "synced to codex"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Skill was imported from ~/.agents/ and synced to all targets
+    assert "imported to dotfiles" in result.stdout
+    assert "content correct" in result.stdout
+    assert "synced to claude" in result.stdout
+    assert "synced to gemini" in result.stdout
+    assert "synced to codex" in result.stdout
+
+
+def test_sync_agents_syncs_dotfiles_skills_to_agents_global(docker_image):
+    """Test that dotfiles skills are synced TO ~/.agents/skills/.
+
+    Scenario:
+    - given: A skill exists in dotfiles but not in ~/.agents/skills/
+    - when: Run sync-agents
+    - then: Skill is synced to ~/.agents/skills/
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a skill in dotfiles
+    mkdir -p /root/dotfiles/skills/dotfiles-only-skill
+    echo "# Dotfiles Only" > /root/dotfiles/skills/dotfiles-only-skill/SKILL.md
+
+    # Ensure ~/.agents/skills/ exists but empty
+    mkdir -p /root/.agents/skills
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify synced to ~/.agents/skills/
+    [ -f /root/.agents/skills/dotfiles-only-skill/SKILL.md ] && echo "synced to agents global"
+    grep -q "Dotfiles Only" /root/.agents/skills/dotfiles-only-skill/SKILL.md && echo "content correct"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Skill was synced to ~/.agents/
+    assert "synced to agents global" in result.stdout
+    assert "content correct" in result.stdout
+
+
+def test_sync_agents_agents_global_only_syncs_skills(docker_image):
+    """Test that ~/.agents/ only receives skills/, not commands/ or agents/.
+
+    Scenario:
+    - given: dotfiles has commands/ and agents/ directories
+    - when: Run sync-agents
+    - then: Only skills/ is synced to ~/.agents/, not commands/ or agents/
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create commands and agents in dotfiles
+    mkdir -p /root/dotfiles/commands
+    echo "# Strict" > /root/dotfiles/commands/strict.md
+    mkdir -p /root/dotfiles/agents
+    echo "# Test Agent" > /root/dotfiles/agents/test-agent.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify commands/ was NOT synced to ~/.agents/
+    if [ -d /root/.agents/commands ]; then
+        echo "ERROR: commands synced to agents global"
+    else
+        echo "commands correctly excluded"
+    fi
+
+    # Verify agents/ was NOT synced to ~/.agents/
+    if [ -d /root/.agents/agents ]; then
+        echo "ERROR: agents synced to agents global"
+    else
+        echo "agents correctly excluded"
+    fi
+
+    # Verify skills/ WAS synced (if any exist)
+    [ -d /root/.agents/skills ] && echo "skills dir exists"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Only skills/ synced
+    assert "commands correctly excluded" in result.stdout
+    assert "agents correctly excluded" in result.stdout
+    assert "skills dir exists" in result.stdout
+
+
+def test_sync_agents_agents_global_no_base_file(docker_image):
+    """Test that ~/.agents/ does NOT receive a base file (CLAUDE.md etc).
+
+    Scenario:
+    - given: dotfiles has ROOT_AGENTS.md
+    - when: Run sync-agents
+    - then: No CLAUDE.md/AGENTS.md/GEMINI.md appears in ~/.agents/
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify no base file in ~/.agents/
+    if [ -f /root/.agents/CLAUDE.md ] || [ -f /root/.agents/AGENTS.md ] || [ -f /root/.agents/GEMINI.md ]; then
+        echo "ERROR: base file synced to agents global"
+    else
+        echo "no base file in agents global"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: No base file in ~/.agents/
+    assert "no base file in agents global" in result.stdout
+
+
+# =============================================================================
+# Learned Skills Symlink Tests (link-learned-skills integration)
+# =============================================================================
+
+
+def test_sync_agents_creates_symlinks_for_learned_skills(docker_image):
+    """Test that learned skills get symlinked to top-level skills/.
+
+    Scenario:
+    - given: dotfiles has skills/learned/my-skill/SKILL.md
+    - when: Run sync-agents
+    - then: skills/my-skill -> learned/my-skill symlink created in all targets
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a learned skill in dotfiles
+    mkdir -p /root/dotfiles/skills/learned/my-learned-skill
+    echo "---" > /root/dotfiles/skills/learned/my-learned-skill/SKILL.md
+    echo "name: my-learned-skill" >> /root/dotfiles/skills/learned/my-learned-skill/SKILL.md
+    echo "---" >> /root/dotfiles/skills/learned/my-learned-skill/SKILL.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify symlinks created in dotfiles
+    [ -L /root/dotfiles/skills/my-learned-skill ] && echo "dotfiles symlink created"
+    readlink /root/dotfiles/skills/my-learned-skill | grep -q "learned/my-learned-skill" && echo "dotfiles symlink target correct"
+
+    # Verify symlinks created in targets
+    [ -L /root/.claude/skills/my-learned-skill ] && echo "claude symlink created"
+    [ -L /root/.gemini/skills/my-learned-skill ] && echo "gemini symlink created"
+    [ -L /root/.codex/skills/my-learned-skill ] && echo "codex symlink created"
+
+    # Verify symlink is functional (can read through it)
+    [ -f /root/.claude/skills/my-learned-skill/SKILL.md ] && echo "claude symlink functional"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Symlinks created in dotfiles and all targets
+    assert "dotfiles symlink created" in result.stdout
+    assert "dotfiles symlink target correct" in result.stdout
+    assert "claude symlink created" in result.stdout
+    assert "gemini symlink created" in result.stdout
+    assert "codex symlink created" in result.stdout
+    assert "claude symlink functional" in result.stdout
+
+
+def test_sync_agents_skips_workspace_dirs_in_learned(docker_image):
+    """Test that -workspace directories in learned/ are not symlinked.
+
+    Scenario:
+    - given: learned/ contains both a skill and a -workspace directory
+    - when: Run sync-agents
+    - then: Skill is symlinked, workspace is NOT symlinked
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a learned skill and a workspace
+    mkdir -p /root/dotfiles/skills/learned/real-skill
+    echo "---" > /root/dotfiles/skills/learned/real-skill/SKILL.md
+    mkdir -p /root/dotfiles/skills/learned/real-skill-workspace/iteration-1
+    echo "workspace data" > /root/dotfiles/skills/learned/real-skill-workspace/iteration-1/data.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify skill IS symlinked
+    [ -L /root/.claude/skills/real-skill ] && echo "skill symlinked"
+
+    # Verify workspace is NOT symlinked at top level
+    if [ -L /root/.claude/skills/real-skill-workspace ]; then
+        echo "ERROR: workspace was symlinked"
+    else
+        echo "workspace not symlinked"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Skill symlinked, workspace not
+    assert "skill symlinked" in result.stdout
+    assert "workspace not symlinked" in result.stdout
+
+
+def test_sync_agents_skips_learned_dirs_without_skill_md(docker_image):
+    """Test that directories in learned/ without SKILL.md are not symlinked.
+
+    Scenario:
+    - given: learned/ contains a directory without SKILL.md
+    - when: Run sync-agents
+    - then: No symlink is created for it
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a directory in learned/ without SKILL.md
+    mkdir -p /root/dotfiles/skills/learned/no-skill-md
+    echo "# README" > /root/dotfiles/skills/learned/no-skill-md/README.md
+
+    # Create a valid one too for comparison
+    mkdir -p /root/dotfiles/skills/learned/valid-skill
+    echo "---" > /root/dotfiles/skills/learned/valid-skill/SKILL.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify valid skill IS symlinked
+    [ -L /root/.claude/skills/valid-skill ] && echo "valid skill symlinked"
+
+    # Verify no-skill-md is NOT symlinked
+    if [ -L /root/.claude/skills/no-skill-md ]; then
+        echo "ERROR: dir without SKILL.md was symlinked"
+    else
+        echo "no-skill-md correctly skipped"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Only valid skill symlinked
+    assert "valid skill symlinked" in result.stdout
+    assert "no-skill-md correctly skipped" in result.stdout
+
+
+def test_sync_agents_preserves_existing_learned_symlinks(docker_image):
+    """Test that existing symlinks are preserved (idempotent).
+
+    Scenario:
+    - given: Learned skill symlinks already exist
+    - when: Run sync-agents again
+    - then: Symlinks are preserved, no errors
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a learned skill
+    mkdir -p /root/dotfiles/skills/learned/stable-skill
+    echo "---" > /root/dotfiles/skills/learned/stable-skill/SKILL.md
+
+    # First sync
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify symlink created
+    [ -L /root/.claude/skills/stable-skill ] && echo "first run: symlink exists"
+
+    # Second sync (should be idempotent)
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify symlink still exists and is correct
+    [ -L /root/.claude/skills/stable-skill ] && echo "second run: symlink preserved"
+    readlink /root/.claude/skills/stable-skill | grep -q "learned/stable-skill" && echo "symlink target still correct"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Symlinks preserved across runs
+    assert "first run: symlink exists" in result.stdout
+    assert "second run: symlink preserved" in result.stdout
+    assert "symlink target still correct" in result.stdout
+
+
+def test_sync_agents_no_symlink_when_real_dir_exists(docker_image):
+    """Test that symlink is NOT created if a real (non-symlink) dir exists.
+
+    Scenario:
+    - given: skills/foo/ is a real directory AND learned/foo/ also exists
+    - when: Run sync-agents
+    - then: The real directory is preserved, no symlink replaces it
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a learned skill
+    mkdir -p /root/dotfiles/skills/learned/conflicting-skill
+    echo "---" > /root/dotfiles/skills/learned/conflicting-skill/SKILL.md
+    echo "learned version" >> /root/dotfiles/skills/learned/conflicting-skill/SKILL.md
+
+    # Also create a real (non-learned) skill with the same name
+    mkdir -p /root/dotfiles/skills/conflicting-skill
+    echo "# Real skill" > /root/dotfiles/skills/conflicting-skill/SKILL.md
+    echo "real version" >> /root/dotfiles/skills/conflicting-skill/SKILL.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify in target: should be a real directory, NOT a symlink
+    if [ -L /root/.claude/skills/conflicting-skill ]; then
+        echo "ERROR: symlink replaced real dir"
+    else
+        echo "real dir preserved"
+    fi
+
+    # Verify it has the real version content (from dotfiles/skills/, not learned/)
+    grep -q "real version" /root/.claude/skills/conflicting-skill/SKILL.md && echo "real content preserved"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Real directory preserved, no symlink
+    assert "real dir preserved" in result.stdout
+    assert "real content preserved" in result.stdout
+
+
+def test_sync_agents_no_learned_dir_no_error(docker_image):
+    """Test that sync works fine when learned/ directory doesn't exist.
+
+    Scenario:
+    - given: No skills/learned/ directory
+    - when: Run sync-agents
+    - then: No errors, sync completes normally
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Ensure no learned dir exists
+    rm -rf /root/dotfiles/skills/learned
+
+    # Create a regular skill
+    mkdir -p /root/dotfiles/skills/regular-skill
+    echo "# Regular" > /root/dotfiles/skills/regular-skill/SKILL.md
+
+    # Run sync-agents (should not error)
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify regular skill was synced
+    [ -f /root/.claude/skills/regular-skill/SKILL.md ] && echo "regular skill synced"
+    echo "no errors"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: No errors
+    assert "regular skill synced" in result.stdout
+    assert "no errors" in result.stdout
+
+
+def test_sync_agents_learned_symlinks_survive_resync(docker_image):
+    """Test that learned symlinks survive when learned/ content changes.
+
+    Scenario:
+    - given: A learned skill with symlink exists
+    - when: The learned skill content changes and sync runs again
+    - then: Symlink still works and points to updated content
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create initial learned skill
+    mkdir -p /root/dotfiles/skills/learned/evolving-skill
+    echo "# Version 1" > /root/dotfiles/skills/learned/evolving-skill/SKILL.md
+
+    # First sync
+    cd /root/dotfiles && just sync-agents-auto
+    [ -L /root/.claude/skills/evolving-skill ] && echo "symlink created"
+
+    # Update the learned skill content
+    echo "# Version 2" > /root/dotfiles/skills/learned/evolving-skill/SKILL.md
+
+    # Second sync
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify symlink still works and reflects new content
+    [ -L /root/.claude/skills/evolving-skill ] && echo "symlink preserved"
+    grep -q "Version 2" /root/.claude/skills/evolving-skill/SKILL.md && echo "content updated through symlink"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Symlink preserved and content accessible
+    assert "symlink created" in result.stdout
+    assert "symlink preserved" in result.stdout
+    assert "content updated through symlink" in result.stdout
+
+
+def test_sync_agents_learned_symlinks_in_dotfiles_itself(docker_image):
+    """Test that symlinks are also created in dotfiles/skills/ itself.
+
+    Scenario:
+    - given: dotfiles has skills/learned/my-skill/SKILL.md
+    - when: Run sync-agents
+    - then: dotfiles/skills/my-skill -> learned/my-skill symlink exists
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a learned skill
+    mkdir -p /root/dotfiles/skills/learned/dotfiles-linked-skill
+    echo "---" > /root/dotfiles/skills/learned/dotfiles-linked-skill/SKILL.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify symlink in dotfiles itself
+    [ -L /root/dotfiles/skills/dotfiles-linked-skill ] && echo "dotfiles symlink exists"
+    readlink /root/dotfiles/skills/dotfiles-linked-skill | grep -q "learned/dotfiles-linked-skill" && echo "relative symlink correct"
+
+    # Verify the symlink is functional
+    [ -f /root/dotfiles/skills/dotfiles-linked-skill/SKILL.md ] && echo "symlink functional"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Symlink exists in dotfiles
+    assert "dotfiles symlink exists" in result.stdout
+    assert "relative symlink correct" in result.stdout
+    assert "symlink functional" in result.stdout
+
+
+def test_sync_agents_agents_global_gets_learned_symlinks(docker_image):
+    """Test that ~/.agents/skills/ also gets learned skill symlinks.
+
+    Scenario:
+    - given: dotfiles has skills/learned/my-skill/SKILL.md
+    - when: Run sync-agents
+    - then: ~/.agents/skills/my-skill -> learned/my-skill symlink exists
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a learned skill
+    mkdir -p /root/dotfiles/skills/learned/agents-linked-skill
+    echo "---" > /root/dotfiles/skills/learned/agents-linked-skill/SKILL.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify learned/ was synced to ~/.agents/skills/
+    [ -d /root/.agents/skills/learned/agents-linked-skill ] && echo "learned synced"
+
+    # Verify symlink created in ~/.agents/skills/
+    [ -L /root/.agents/skills/agents-linked-skill ] && echo "agents symlink exists"
+    readlink /root/.agents/skills/agents-linked-skill | grep -q "learned/agents-linked-skill" && echo "agents symlink target correct"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Symlinks in ~/.agents/
+    assert "learned synced" in result.stdout
+    assert "agents symlink exists" in result.stdout
+    assert "agents symlink target correct" in result.stdout

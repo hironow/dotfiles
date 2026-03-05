@@ -530,42 +530,6 @@ skills *args:
       bunx skills {{ args }}
     fi
 
-# Skills: symlink learned skills to top-level so Claude Code discovers them
-# Workaround for Claude Code flat skill discovery (github.com/anthropics/claude-code/issues/10238)
-[group('Setup')]
-link-learned-skills:
-    #!/usr/bin/env bash
-    set -eu -o pipefail
-    targets=(
-      "$HOME/dotfiles"
-      "$HOME/.claude"
-      "$HOME/.claude-work-a"
-      "$HOME/.claude-work-b"
-      "$HOME/.claude-work-c"
-    )
-    for target in "${targets[@]}"; do
-      learned_dir="$target/skills/learned"
-      [ -d "$learned_dir" ] || continue
-      for skill_dir in "$learned_dir"/*/; do
-        [ -d "$skill_dir" ] || continue
-        skill_name="$(basename "$skill_dir")"
-        # Skip workspace directories
-        [[ "$skill_name" == *-workspace ]] && continue
-        # Skip if no SKILL.md
-        [ -f "$skill_dir/SKILL.md" ] || continue
-        link_path="$target/skills/$skill_name"
-        if [ -L "$link_path" ]; then
-          echo "  ok $target/skills/$skill_name (already linked)"
-        elif [ -e "$link_path" ]; then
-          echo "  SKIP $target/skills/$skill_name (non-symlink exists)"
-        else
-          ln -s "learned/$skill_name" "$link_path"
-          echo "  LINK $target/skills/$skill_name -> learned/$skill_name"
-        fi
-      done
-    done
-    echo "Done."
-
 # CDP
 
 # Start Chrome Dev with remote debugging
