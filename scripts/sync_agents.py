@@ -52,17 +52,42 @@ class AgentTarget:
 
     directory: Path
     name: str
-    main_file: str
+    main_file: str | None = None
     is_import_source: bool = False
+    sync_directories: list[str] | None = None
+
+    def get_sync_directories(self) -> list[str]:
+        """Return directories to sync for this agent."""
+        return (
+            self.sync_directories
+            if self.sync_directories is not None
+            else SYNC_DIRECTORIES
+        )
 
 
 AGENTS: list[AgentTarget] = [
-    AgentTarget(Path.home() / ".claude", "Claude", "CLAUDE.md", is_import_source=True),
-    AgentTarget(Path.home() / ".claude-work-a", "Claude(Work-A)", "CLAUDE.md"),
-    AgentTarget(Path.home() / ".claude-work-b", "Claude(Work-B)", "CLAUDE.md"),
-    AgentTarget(Path.home() / ".claude-work-c", "Claude(Work-C)", "CLAUDE.md"),
-    AgentTarget(Path.home() / ".gemini", "Gemini", "GEMINI.md"),
-    AgentTarget(Path.home() / ".codex", "Codex", "AGENTS.md", is_import_source=True),
+    AgentTarget(
+        Path.home() / ".claude", "Claude", main_file="CLAUDE.md", is_import_source=True
+    ),
+    AgentTarget(
+        Path.home() / ".claude-work-a", "Claude(Work-A)", main_file="CLAUDE.md"
+    ),
+    AgentTarget(
+        Path.home() / ".claude-work-b", "Claude(Work-B)", main_file="CLAUDE.md"
+    ),
+    AgentTarget(
+        Path.home() / ".claude-work-c", "Claude(Work-C)", main_file="CLAUDE.md"
+    ),
+    AgentTarget(Path.home() / ".gemini", "Gemini", main_file="GEMINI.md"),
+    AgentTarget(
+        Path.home() / ".codex", "Codex", main_file="AGENTS.md", is_import_source=True
+    ),
+    AgentTarget(
+        Path.home() / ".agents",
+        "Agents(Global)",
+        is_import_source=True,
+        sync_directories=["skills"],
+    ),
 ]
 
 MANIFEST_FILE = ".sync-manifest.json"
@@ -192,15 +217,17 @@ def _convert_path(source_name: str) -> str:
     return result
 
 
-def _get_directory_items(dotfiles_dir: Path) -> list[_SyncItem]:
-    """Get individual items within SYNC_DIRECTORIES as sync items.
+def _get_directory_items(
+    dotfiles_dir: Path, directories: list[str] | None = None
+) -> list[_SyncItem]:
+    """Get individual items within sync directories as sync items.
 
     Instead of syncing entire directories (e.g. skills/), syncs each
     child item (e.g. skills/tdd-workflow, skills/brand-legal-review)
     individually. This preserves unmanaged items in the target.
     """
     sources: list[_SyncItem] = []
-    for dir_name in SYNC_DIRECTORIES:
+    for dir_name in directories or SYNC_DIRECTORIES:
         dir_path = dotfiles_dir / dir_name
         if not dir_path.is_dir():
             continue
@@ -220,24 +247,29 @@ def _get_directory_items(dotfiles_dir: Path) -> list[_SyncItem]:
     return sources
 
 
-def _get_additional_sources(dotfiles_dir: Path) -> list[_SyncItem]:
-    """Get all ROOT_AGENTS_* files/directories and SYNC_DIRECTORIES contents."""
+def _get_additional_sources(
+    dotfiles_dir: Path, directories: list[str] | None = None
+) -> list[_SyncItem]:
+    """Get all ROOT_AGENTS_* files/directories and sync directory contents."""
+    target_dirs = directories or SYNC_DIRECTORIES
     sources: list[_SyncItem] = []
 
     # Legacy: ROOT_AGENTS_* files and directories
-    for item in dotfiles_dir.iterdir():
-        if item.name.startswith("ROOT_AGENTS_"):
-            rel_path = _convert_path(item.name)
-            sources.append(
-                _SyncItem(
-                    source=item,
-                    relative_path=rel_path,
-                    is_directory=item.is_dir(),
+    if directories is None:
+        # Only include ROOT_AGENTS_* when using default directories
+        for item in dotfiles_dir.iterdir():
+            if item.name.startswith("ROOT_AGENTS_"):
+                rel_path = _convert_path(item.name)
+                sources.append(
+                    _SyncItem(
+                        source=item,
+                        relative_path=rel_path,
+                        is_directory=item.is_dir(),
+                    )
                 )
-            )
 
     # Direct directory structure (commands/, skills/, agents/)
-    sources.extend(_get_directory_items(dotfiles_dir))
+    sources.extend(_get_directory_items(dotfiles_dir, target_dirs))
 
     return sorted(sources, key=lambda x: x.relative_path)
 
@@ -294,7 +326,7 @@ def _build_deletion_plan(
     """Detect items in manifest but not in dotfiles: should be deleted from targets."""
     deletions: list[_DeleteAction] = []
 
-    for dir_name in SYNC_DIRECTORIES:
+    for dir_name in agent.get_sync_directories():
         manifest_items = set(manifest.items.get(dir_name, []))
         dotfiles_dir_path = dotfiles_dir / dir_name
         dotfiles_items: set[str] = set()
@@ -368,35 +400,83 @@ def _sync_directory(source: Path, target: Path) -> None:
         shutil.copytree(source, target, ignore=_make_copytree_ignore())
 
 
+def _link_learned_skills(skills_dir: Path) -> None:
+    """Create symlinks for learned skills at the top-level skills directory.
+
+    For each directory in skills/learned/ that contains a SKILL.md,
+    creates a relative symlink: skills/<name> -> learned/<name>.
+
+    Skips:
+    - Directories ending with -workspace (skill-creator workspaces)
+    - Directories without SKILL.md
+    - When a non-symlink already exists at skills/<name>
+    """
+    learned_dir = skills_dir / "learned"
+    if not learned_dir.is_dir():
+        return
+
+    for skill_dir in learned_dir.iterdir():
+        if not skill_dir.is_dir():
+            continue
+        skill_name = skill_dir.name
+
+        # Skip workspace directories
+        if skill_name.endswith("-workspace"):
+            continue
+
+        # Skip directories without SKILL.md
+        if not (skill_dir / "SKILL.md").exists():
+            continue
+
+        link_path = skills_dir / skill_name
+
+        if link_path.is_symlink():
+            # Already linked, skip
+            continue
+
+        if link_path.exists():
+            # Non-symlink exists (real directory from dotfiles), skip
+            continue
+
+        # Create relative symlink: skills/<name> -> learned/<name>
+        link_path.symlink_to(Path("learned") / skill_name)
+
+
 def _build_sync_plan(
     dotfiles_dir: Path, agent: AgentTarget, additional_sources: list[_SyncItem]
 ) -> _SyncPlan:
     """Build sync plan for an agent."""
     actions: list[_SyncAction] = []
 
-    # Base file
-    source_base = dotfiles_dir / BASE_FILE
-    target_base = agent.directory / agent.main_file
+    # Base file (skip for agents without a main_file)
+    if agent.main_file is not None:
+        source_base = dotfiles_dir / BASE_FILE
+        target_base = agent.directory / agent.main_file
 
-    if not target_base.exists():
-        status: Literal["new", "changed", "synced"] = "new"
-    elif _compare_files(source_base, target_base):
-        status = "synced"
-    else:
-        status = "changed"
+        if not target_base.exists():
+            status: Literal["new", "changed", "synced"] = "new"
+        elif _compare_files(source_base, target_base):
+            status = "synced"
+        else:
+            status = "changed"
 
-    actions.append(
-        _SyncAction(
-            source=source_base,
-            target=target_base,
-            relative_path=agent.main_file,
-            is_directory=False,
-            status=status,
+        actions.append(
+            _SyncAction(
+                source=source_base,
+                target=target_base,
+                relative_path=agent.main_file,
+                is_directory=False,
+                status=status,
+            )
         )
-    )
 
-    # Additional sources
+    # Additional sources (filtered by agent's sync_directories if customized)
     for item in additional_sources:
+        # Skip items outside this agent's custom sync directories
+        if agent.sync_directories is not None:
+            item_dir = item.relative_path.split("/")[0]
+            if item_dir not in agent.sync_directories:
+                continue
         target_path = agent.directory / item.relative_path
 
         if target_path.is_symlink():
@@ -522,7 +602,7 @@ def _build_import_plan(
     """
     actions: list[_ImportAction] = []
 
-    for dir_name in SYNC_DIRECTORIES:
+    for dir_name in agent.get_sync_directories():
         target_dir = agent.directory / dir_name
         if not target_dir.is_dir():
             continue
@@ -815,6 +895,15 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
         manifest.items[dir_name] = sorted(current_items)
 
     _save_manifest(dotfiles_dir, manifest)
+
+    # Post-sync: create symlinks for learned skills
+    # (workaround for Claude Code flat skill discovery)
+    _link_learned_skills(dotfiles_dir / "skills")
+    for agent in AGENTS:
+        agent_skills_dir = agent.directory / "skills"
+        if agent_skills_dir.is_dir():
+            _link_learned_skills(agent_skills_dir)
+
     print("\n✨ Sync completed!")
 
 
