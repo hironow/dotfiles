@@ -31,8 +31,10 @@ import filecmp
 import json
 import shutil
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Callable
 from typing import Literal
 
 # --- Configuration ---
@@ -113,6 +115,29 @@ class _SyncPlan:
     deletions: list[_DeleteAction] = field(default_factory=list)
 
 
+# Patterns excluded from sync (skill-creator workspace directories, etc.)
+# Key = parent directory name, Value = list of suffixes to exclude
+EXCLUDE_PATTERNS: dict[str, list[str]] = {
+    "learned": ["-workspace"],  # learned/*-workspace are skill-creator workspaces
+}
+
+
+def _is_excluded_child(parent_name: str, child_name: str) -> bool:
+    """Check if a child item should be excluded from sync based on EXCLUDE_PATTERNS."""
+    suffixes = EXCLUDE_PATTERNS.get(parent_name, [])
+    return any(child_name.endswith(suffix) for suffix in suffixes)
+
+
+def _make_copytree_ignore() -> Callable[[str, list[str]], set[str]]:
+    """Build an ignore function for shutil.copytree that skips excluded items."""
+
+    def _ignore(directory: str, children: list[str]) -> set[str]:
+        dir_basename = Path(directory).name
+        return {c for c in children if _is_excluded_child(dir_basename, c)}
+
+    return _ignore
+
+
 # --- Private helper functions ---
 
 
@@ -132,9 +157,7 @@ def _load_manifest(dotfiles_dir: Path) -> _SyncManifest:
         if not dir_path.is_dir():
             continue
         children = sorted(
-            child.name
-            for child in dir_path.iterdir()
-            if not child.name.startswith(".")
+            child.name for child in dir_path.iterdir() if not child.name.startswith(".")
         )
         items[dir_name] = children
     return _SyncManifest(items=items)
@@ -213,15 +236,25 @@ def _compare_files(source: Path, target: Path) -> bool:
 
 
 def _compare_directories(source: Path, target: Path) -> bool:
-    """Compare two directories recursively. Returns True if identical."""
+    """Compare two directories recursively. Returns True if identical.
+
+    Excluded items (e.g. workspace dirs in learned/) are ignored in comparison.
+    """
     if not target.exists():
         return False
 
     dcmp = filecmp.dircmp(source, target)
-    if dcmp.left_only or dcmp.right_only or dcmp.diff_files:
+
+    dir_name = source.name
+    left_only = [f for f in dcmp.left_only if not _is_excluded_child(dir_name, f)]
+    right_only = [f for f in dcmp.right_only if not _is_excluded_child(dir_name, f)]
+
+    if left_only or right_only or dcmp.diff_files:
         return False
 
     for subdir in dcmp.common_dirs:
+        if _is_excluded_child(dir_name, subdir):
+            continue
         if not _compare_directories(source / subdir, target / subdir):
             return False
 
@@ -281,12 +314,44 @@ def _sync_file(source: Path, target: Path) -> None:
 
 
 def _sync_directory(source: Path, target: Path) -> None:
-    """Sync a directory (copy with overwrite)."""
+    """Sync a directory (copy with overwrite).
+
+    Preserves excluded items (e.g. workspace dirs) in the target.
+    """
     if target.is_symlink():
         target.unlink()
-    elif target.exists():
+        shutil.copytree(source, target, ignore=_make_copytree_ignore())
+        return
+
+    if target.exists():
+        # Preserve excluded items in a temp directory before replacing
+        preserved: list[tuple[str, Path]] = []
+        tmp_dir: Path | None = None
+
+        for child in target.iterdir():
+            if _is_excluded_child(target.name, child.name):
+                if tmp_dir is None:
+                    tmp_dir = Path(tempfile.mkdtemp(prefix="sync-preserve-"))
+                tmp_path = tmp_dir / child.name
+                shutil.move(str(child), str(tmp_path))
+                preserved.append((child.name, tmp_path))
+
         shutil.rmtree(target)
-    shutil.copytree(source, target)
+        shutil.copytree(source, target, ignore=_make_copytree_ignore())
+
+        # Restore preserved items
+        for name, tmp_path in preserved:
+            dest = target / name
+            if not dest.exists():
+                shutil.move(str(tmp_path), str(dest))
+            else:
+                shutil.rmtree(tmp_path) if tmp_path.is_dir() else tmp_path.unlink()
+
+        # Clean up temp dir
+        if tmp_dir is not None and tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+    else:
+        shutil.copytree(source, target, ignore=_make_copytree_ignore())
 
 
 def _build_sync_plan(
@@ -461,6 +526,8 @@ def _build_import_plan(
         for child in target_dir.iterdir():
             if child.name.startswith("."):
                 continue
+            if _is_excluded_child(dir_name, child.name):
+                continue
 
             rel_path = f"{dir_name}/{child.name}"
             dotfiles_dest = dotfiles_dir / rel_path
@@ -475,12 +542,10 @@ def _build_import_plan(
                 # Already exists in dotfiles
                 if resolved.is_dir():
                     if _compare_directories(dotfiles_dest, resolved):
-                        status: Literal[
-                            "import", "conflict", "exists", "deleted"
-                        ] = "exists"
-                    elif _get_newest_mtime(resolved) > _get_newest_mtime(
-                        dotfiles_dest
-                    ):
+                        status: Literal["import", "conflict", "exists", "deleted"] = (
+                            "exists"
+                        )
+                    elif _get_newest_mtime(resolved) > _get_newest_mtime(dotfiles_dest):
                         # Import source is newer: update dotfiles
                         status = "import"
                     else:
@@ -529,7 +594,12 @@ def _apply_import(plan: _ImportPlan) -> None:
             action.dotfiles_dest.parent.mkdir(parents=True, exist_ok=True)
             if action.dotfiles_dest.exists():
                 shutil.rmtree(action.dotfiles_dest)
-            shutil.copytree(action.resolved_path, action.dotfiles_dest, symlinks=False)
+            shutil.copytree(
+                action.resolved_path,
+                action.dotfiles_dest,
+                symlinks=False,
+                ignore=_make_copytree_ignore(),
+            )
         else:
             action.dotfiles_dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(action.resolved_path, action.dotfiles_dest)
@@ -556,8 +626,7 @@ def _print_import_plan(plan: _ImportPlan, verbose: bool = False) -> bool:
         elif action.status == "deleted":
             if verbose:
                 print(
-                    f"  ⏭️  {icon} {action.relative_path}"
-                    " [SKIP: deleted from dotfiles]"
+                    f"  ⏭️  {icon} {action.relative_path} [SKIP: deleted from dotfiles]"
                 )
         elif action.status == "conflict":
             print(f"  ⚠️  {icon} {action.relative_path} [CONFLICT] (skipped)")
@@ -724,9 +793,7 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
         current_items = set(manifest.items.get(dir_name, []))
         if dir_path.is_dir():
             dotfiles_names = {
-                c.name
-                for c in dir_path.iterdir()
-                if not c.name.startswith(".")
+                c.name for c in dir_path.iterdir() if not c.name.startswith(".")
             }
             current_items = current_items | dotfiles_names
         manifest.items[dir_name] = sorted(current_items)
