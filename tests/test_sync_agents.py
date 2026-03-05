@@ -1061,3 +1061,98 @@ def test_sync_agents_older_import_source_loses_conflict(docker_image):
     assert "dotfiles preserved" in result.stdout
     assert "gemini got dotfiles version" in result.stdout
     assert "claude got dotfiles version" in result.stdout
+
+
+# =============================================================================
+# Workspace Exclusion Tests (skill-creator workspace preservation)
+# =============================================================================
+
+
+def test_sync_agents_preserves_workspace_dirs_in_learned(docker_image):
+    """Test that -workspace dirs inside learned/ are preserved during sync.
+
+    Scenario:
+    - given: Target has learned/ with both real skills and -workspace dirs
+    - when: A managed skill inside learned/ changes and sync runs
+    - then: -workspace dirs are preserved, managed skills are updated
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a real skill in dotfiles learned/
+    mkdir -p /root/dotfiles/skills/learned/my-real-skill
+    echo "# My Real Skill v1" > /root/dotfiles/skills/learned/my-real-skill/SKILL.md
+
+    # First sync: distribute learned/ to targets
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify learned was synced
+    [ -f /root/.claude/skills/learned/my-real-skill/SKILL.md ] && echo "initial sync ok"
+
+    # Create workspace dirs in targets (simulating skill-creator)
+    mkdir -p /root/.claude/skills/learned/my-real-skill-workspace/iteration-1
+    echo "workspace data" > /root/.claude/skills/learned/my-real-skill-workspace/iteration-1/results.md
+    mkdir -p /root/.gemini/skills/learned/test-workspace/iteration-1
+    echo "gemini workspace" > /root/.gemini/skills/learned/test-workspace/iteration-1/data.md
+
+    # Update the real skill in dotfiles
+    echo "# My Real Skill v2" > /root/dotfiles/skills/learned/my-real-skill/SKILL.md
+
+    # Run sync again - should update skill but preserve workspace
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify managed skill was updated
+    grep -q "v2" /root/.claude/skills/learned/my-real-skill/SKILL.md && echo "skill updated"
+
+    # Verify workspace dirs were preserved
+    [ -d /root/.claude/skills/learned/my-real-skill-workspace ] && echo "claude workspace preserved"
+    [ -f /root/.claude/skills/learned/my-real-skill-workspace/iteration-1/results.md ] && echo "workspace contents intact"
+    [ -d /root/.gemini/skills/learned/test-workspace ] && echo "gemini workspace preserved"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Workspace dirs preserved, skills updated
+    assert "initial sync ok" in result.stdout
+    assert "skill updated" in result.stdout
+    assert "claude workspace preserved" in result.stdout
+    assert "workspace contents intact" in result.stdout
+    assert "gemini workspace preserved" in result.stdout
+
+
+def test_sync_agents_does_not_import_workspace_dirs(docker_image):
+    """Test that -workspace dirs are not imported from import sources.
+
+    Scenario:
+    - given: Import source has learned/ with -workspace dirs
+    - when: Run sync-agents
+    - then: -workspace dirs are NOT imported to dotfiles
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create learned dir with real skill in import source
+    mkdir -p /root/.claude/skills/learned/imported-skill
+    echo "# Imported Skill" > /root/.claude/skills/learned/imported-skill/SKILL.md
+
+    # Create workspace dir in import source (should NOT be imported)
+    mkdir -p /root/.claude/skills/learned/imported-skill-workspace/iteration-1
+    echo "workspace data" > /root/.claude/skills/learned/imported-skill-workspace/iteration-1/data.md
+
+    # Run sync-agents
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Verify real skill WAS imported
+    [ -d /root/dotfiles/skills/learned/imported-skill ] && echo "real skill imported"
+
+    # Verify workspace dir was NOT imported to dotfiles
+    if [ -d /root/dotfiles/skills/learned/imported-skill-workspace ]; then
+        echo "ERROR: workspace was imported"
+    else
+        echo "workspace correctly excluded"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Real skill imported, workspace excluded
+    assert "real skill imported" in result.stdout
+    assert "workspace correctly excluded" in result.stdout
