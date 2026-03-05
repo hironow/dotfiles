@@ -116,6 +116,9 @@ claude mcp add -s user -t http openai https://developers.openai.com/mcp
 # -- Google Cloud: https://developers.google.com/knowledge/mcp#gcloud-cli
 YOUR_PROJECT_ID=<your-project-id>
 gcloud beta services mcp enable developerknowledge.googleapis.com --project=$YOUR_PROJECT_ID
+# -- needs credentials setup
+# gcloud auth login
+# gcloud auth application-default login
 gcloud services api-keys create --project=$YOUR_PROJECT_ID --display-name="DK API Key"
 YOUR_API_KEY=<your-keyString>
 claude mcp add google-dev-knowledge -s user -t http https://developerknowledge.googleapis.com/mcp --header "X-Goog-Api-Key: $YOUR_API_KEY"
