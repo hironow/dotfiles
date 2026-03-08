@@ -41,3 +41,4 @@ markdownlint
 @playwright/cli@latest
 @fission-ai/openspec@latest
 @googleworkspace/cli
+@mariozechner/pi-coding-agent
