@@ -15,6 +15,7 @@ tap "fastly/tap"
 tap "github/gh"
 tap "go-delve/delve"
 tap "greymd/tools"
+tap "hironow/tap"
 tap "j178/tap"
 tap "k1low/tap"
 tap "kentaro-m/md2confl"
@@ -205,6 +206,7 @@ brew "dotenvx/brew/dotenvx"
 brew "fastly/tap/fastly"
 brew "greymd/tools/teip"
 brew "k1low/tap/gh-do"
+brew "k1low/tap/mo"
 brew "k1low/tap/runn"
 brew "kentaro-m/md2confl/md2confl"
 brew "kyoshidajp/ghkw/ghkw"
@@ -239,6 +241,25 @@ cask "orbstack"
 cask "suspicious-package"
 cask "warp"
 cask "wireshark-app"
+mas "Bear", id: 1091189122
+mas "Bitwarden", id: 1352778147
+mas "Brother P-touch Editor", id: 1453365242
+mas "Developer", id: 640199958
+mas "GarageBand", id: 682658836
+mas "iMovie", id: 408981434
+mas "Keynote", id: 409183694
+mas "Kindle", id: 302584613
+mas "LINE", id: 539883307
+mas "Messenger", id: 1480068668
+mas "Numbers", id: 409203825
+mas "Oka Unarchiver", id: 1441507725
+mas "Pages", id: 409201541
+mas "Reeder", id: 6475002485
+mas "Slack", id: 803453959
+mas "Tailscale", id: 1475387142
+mas "Telegram Lite", id: 946399090
+mas "Transmit", id: 1436522307
+mas "WireGuard", id: 1451685025
 vscode "1yib.rust-bundle"
 vscode "aaron-bond.better-comments"
 vscode "alexcvzz.vscode-sqlite"
