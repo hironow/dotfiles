@@ -150,6 +150,7 @@ just env=p skills ls -g       # ~/.claude (personal) 向け
 ```bash
 just skills add vercel-labs/agent-skills
 just skills add modelcontextprotocol/ext-apps
+just skills add wandb/skills
 ```
 
 Skill catalog refs.
