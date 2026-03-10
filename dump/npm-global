@@ -43,3 +43,5 @@ markdownlint
 @googleworkspace/cli
 @mariozechner/pi-coding-agent
 takt
+agent-browser
+appium
