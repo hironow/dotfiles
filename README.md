@@ -151,6 +151,9 @@ just env=p skills ls -g       # ~/.claude (personal) 向け
 just skills add vercel-labs/agent-skills
 just skills add modelcontextprotocol/ext-apps
 just skills add wandb/skills
+just skills add https://github.com/googleworkspace/cli
+# browser: https://github.com/vercel-labs/agent-browser?tab=readme-ov-file#agentsmd--claudemd
+just skills add vercel-labs/agent-browser
 ```
 
 Skill catalog refs.
