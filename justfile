@@ -521,8 +521,9 @@ skills *args:
       a) config_dir="$HOME/.claude-work-a" ;;
       b) config_dir="$HOME/.claude-work-b" ;;
       c) config_dir="$HOME/.claude-work-c" ;;
+      d) config_dir="$HOME/.claude-work-d" ;;
       "") ;;
-      *) echo "ERROR: unknown env '{{ env }}'. Use: p, a, b, c"; exit 1 ;;
+      *) echo "ERROR: unknown env '{{ env }}'. Use: p, a, b, c, d"; exit 1 ;;
     esac
     if [ -n "$config_dir" ]; then
       CLAUDE_CONFIG_DIR="$config_dir" bunx skills {{ args }}

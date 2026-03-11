@@ -144,6 +144,7 @@ just skills add <repo> --all  # スキル追加
 just env=a skills ls -g       # ~/.claude-work-a 向け
 just env=b skills ls -g       # ~/.claude-work-b 向け
 just env=c skills ls -g       # ~/.claude-work-c 向け
+just env=d skills ls -g       # ~/.claude-work-d 向け
 just env=p skills ls -g       # ~/.claude (personal) 向け
 ```
 
