@@ -205,3 +205,8 @@ sudo dotenvx decrypt --stdout
 ```
 
 As a defensive measure, I want to not trust the deny option of various agents (experimental).
+
+## markdown+
+
+- <https://docs.github.com/en/contributing/writing-for-github-docs/using-yaml-frontmatter>
+- <https://github.com/mdx-js/mdx>
