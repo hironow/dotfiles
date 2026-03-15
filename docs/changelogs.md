@@ -456,6 +456,7 @@
 #### v1.27.0 の主要な変更点
 
 **[Core]**
+
 - **A2A リクエストインターセプター**: `RemoteA2aAgent` に A2A リクエストインターセプター導入
 - **UiWidget**: `EventActions` に UiWidget 追加（実験的 UI Widgets 機能）
 - **AuthProviderRegistry**: `CredentialManager` 内のプラガブル認証統合
@@ -463,11 +464,13 @@
 - **SchemaUnion 出力スキーマ**: LLM Agent で全 `types.SchemaUnion` を `output_schema` としてサポート
 
 **[Models]**
+
 - **Anthropic PDF サポート**: Anthropic LLM で PDF ドキュメントサポート
 - **Anthropic ストリーミング**: Anthropic モデルのストリーミングサポート
 - **LiteLLM 出力スキーマ**: LiteLLM モデルでツールと出力スキーマの同時使用対応
 
 **[Tools]**
+
 - **GCS Skills**: Skills の GCS ファイルシステムサポート（テキスト・PDF、サンプルエージェント付き）
 - **MCP App UI Widgets**: MCPTool で MCP App UI ウィジェットサポート
 - **BigQuery Dataplex Catalog 検索ツール**: BigQuery ADK に追加
@@ -478,21 +481,25 @@
 - **OpenAPIToolset `preserve_property_names`**: プロパティ名保持オプション追加
 
 **[Optimization]**
+
 - **`adk optimize` コマンド**: 最適化コマンド追加
 - **GEPA Root Agent Prompt Optimizer**: ルートエージェントプロンプトオプティマイザー
 - **LocalEvalService 連携**: 最適化インフラと LocalEvalService 間のインターフェース
 
 **[Observability]**
+
 - **`gen_ai.agent.version` スパン属性**: 新規追加
 - **`gen_ai.tool.definitions`**: 実験的セマンティック規約にツール定義追加
 - **`gen_ai.client.inference.operation.details` イベント**: 実験的セマンティック規約
 - **ツール実行エラーコード**: OpenTelemetry スパンにキャプチャ
 
 **[Web]**
+
 - **HITL 改善**: Long-Running Functions にチャット内直接レスポンス
 - **アーティファクトレンダリング**: 再開時のアーティファクトレンダリング
 
 **[Integrations]**
+
 - **BigQuery プラグイン強化**: fork safety, auto views, trace continuity
 - **LangChain / CrewAI 統合**: integrations フォルダに移動
 - **A2A 実装刷新**: `A2aAgentExecutor` と `RemoteA2aAgent` の新実装
