@@ -124,6 +124,8 @@ YOUR_API_KEY=<your-keyString>
 claude mcp add google-dev-knowledge -s user -t http https://developerknowledge.googleapis.com/mcp --header "X-Goog-Api-Key: $YOUR_API_KEY"
 # -- AWS: https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server/
 claude mcp add -s user -t http aws-knowledge-mcp-server https://knowledge-mcp.global.api.aws
+# -- k6: https://grafana.com/docs/k6/latest/release-notes/v1.6.0/#introducing-mcp-k6-ai-assisted-k6-script-writing-mcp-k6
+claude mcp add --scope=user --transport=stdio k6 -- docker run --rm -i grafana/mcp-k6
 
 # specific (needs copy for other agents' directory) per project
 claude mcp add -s project -t http jaeger http://localhost:16687/mcp
