@@ -549,6 +549,43 @@ def test_api_endpoint(input_data, expected_status, expected_result):
         </naming>
     </runn-settings>
 
+    <planning-and-review-standards>
+        <title>IMPLEMENTATION PLANNING AND REVIEW</title>
+        <description>Mandatory review process using codex before presenting implementation plans to the user</description>
+        
+        <mandatory-rule>
+            <rule>Always perform a plan review using the `codex` command BEFORE presenting the plan to the user</rule>
+        </mandatory-rule>
+
+        <codex-configuration>
+            <recommended-model>gpt-5.3-codex</recommended-model>
+            <required-flags>-m {model}, --skip-git-repo-check</required-flags>
+            <prompt-discipline>
+                <must-include>瑣末な点へのクソリプはしないで。致命的な点だけ指摘して。</must-include>
+                <optimization-strategy>Gather latest information and URLs into a temporary file and include its path in the prompt to ensure accuracy and counter outdated model knowledge.</optimization-strategy>
+            </prompt-discipline>
+        </codex-configuration>
+
+        <review-commands>
+            <initial-review>
+                <description>First review request for a new plan</description>
+                <command><![CDATA[codex exec -m gpt-5.3-codex --skip-git-repo-check "このプランをレビューして。瑣末な点へのクソリプはしないで。致命的な点だけ指摘して: {plan_full_path} (ref: {CLAUDE.md full_path})"]]></command>
+            </initial-review>
+            <updated-review>
+                <description>Review request for an updated plan (requires context retention)</description>
+                <rule>Must use `resume --last` to maintain the context of the previous review</rule>
+                <command><![CDATA[codex exec resume --skip-git-repo-check --last -m gpt-5.3-codex "プランを更新したからレビューして。瑣末な点へのクソリプはしないで。致命的な点だけ指摘して: {plan_full_path} (ref: {CLAUDE.md full_path})"]]></command>
+            </updated-review>
+        </review-commands>
+
+        <error-handling>
+            <rate-limit>
+                <condition>If a rate limit error occurs (e.g., "ERROR: You've hit your usage limit..."), skip the codex review process</condition>
+                <example-error>ERROR: You've hit your usage limit. To get more access now, send a request to your admin or try again at Feb 27th, 2026 10:02 PM.</example-error>
+            </rate-limit>
+        </error-handling>
+    </planning-and-review-standards>
+
     <workflow>
         <title>EXAMPLE WORKFLOW</title>
         <steps>
