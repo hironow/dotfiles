@@ -219,3 +219,6 @@ export PATH="$HOME/.antigravity/antigravity/bin:$PATH"
 # Re-assert mise shims at the front in case later PATH edits reorder entries.
 path_prepend "$HOME/.local/share/mise/shims"
 
+
+# Vite+ bin (https://viteplus.dev)
+. "$HOME/.vite-plus/env"
