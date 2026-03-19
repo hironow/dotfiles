@@ -29,3 +29,4 @@ cursor-opacity = 0.8
 # Other
 mouse-hide-while-typing = true
 resize-overlay = never
+window-inherit-working-directory = true
