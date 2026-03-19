@@ -92,6 +92,28 @@ test-e2e:
         </task-runner>
     </tooling-standards>
 
+    <encoding-standards>
+        <title>EXTERNAL DATA AND ENCODING STANDARDS</title>
+        <description>Guidelines for handling character encoding in external data and web search results</description>
+        
+        <standard-tool>
+            <name>iconv</name>
+            <description>POSIX standard tool for character set conversion, pre-installed on most Linux/macOS environments</description>
+            <rule>Always use iconv to convert non-UTF-8 external data (especially legacy Japanese encodings) to UTF-8 before processing or analysis</rule>
+            <advantage>High reliability and standard availability without additional installation</advantage>
+            <commands>
+                <command purpose="Convert Shift-JIS to UTF-8">iconv -f SHIFT-JIS -t UTF-8 {input_file} > {output_file}</command>
+                <command purpose="Convert EUC-JP to UTF-8">iconv -f EUC-JP -t UTF-8 {input_file} > {output_file}</command>
+            </commands>
+        </standard-tool>
+
+        <web-search-handling>
+            <condition>When web search results or fetched HTML are unreadable due to encoding issues</condition>
+            <action>Identify the source encoding (e.g., Shift-JIS, EUC-JP) and apply iconv conversion immediately</action>
+            <goal>Ensure all text data processed within the development environment is strictly UTF-8 compliant</goal>
+        </web-search-handling>
+    </encoding-standards>
+
     <tdd-methodology>
         <title>TDD METHODOLOGY GUIDANCE</title>
         <step>Start by writing a failing test that defines a small increment of functionality</step>
