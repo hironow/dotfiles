@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-03-15
+最終更新: 2026-03-19
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -84,6 +84,9 @@
 - **フレームワーク非依存データレイヤー**: Web コアライブラリのフレームワーク非依存データレイヤー実装
 - **カタログリネーム**: `standard_catalog` → `basic_catalog` にリネーム
 - **CallFunctionMessage**: `CallFunctionMessage` と `functionResponse` の追加
+- **Angular v0.9 レンダラー**: Angular v0.9 Renderer 実装
+- **@a2ui/react バージョン分割**: バージョン付きサブディレクトリへのリファクタ (v0_8)
+- **MCP サーバー分割**: recipe A2UI over MCP と calculator MCP apps に分割
 
 #### 参考リンク
 
@@ -107,15 +110,18 @@
 #### 未リリースの変更点
 
 - **CODEOWNERS 設定**: ファウンディングメンテナーの定義
-- **ガバナンスモデル改訂**: ガバナンス構造の見直し
+- **ガバナンスモデル改訂**: TSC, DWGs を含むガバナンス構造の見直し
+- **Webhook Signing Replay Protection 強化**: リプレイ攻撃防止の強化 (#160)
+- **Delegated Authentication API**: マーチャント指定認証の API コントラクト (#93)
+- **Discovery Well-Known Document 実装**: Well-Known ドキュメントの実装
+- **MCP Transport Binding**: Agentic Checkout 向け MCP トランスポートバインディング
+- **PaymentHandler `display_name`**: PaymentHandler に表示名追加
+- **CLA 署名者追加**: Wix.com, commercetools が CLA 署名
+- **Discovery RFC リフレーム**: セラー用語への統一
 
 #### SEP（仕様拡張提案）進行中
 
-- **Webhook Signing with Replay Protection**: Webhook 署名とリプレイ攻撃防止
-- **Delegated Authentication**: エージェントからマーチャントへの認証委譲
 - **Payment Intent**: capture vs authorize の支払い意図拡張
-- **Discovery Well-Known Document**: ディスカバリー用 Well-Known ドキュメント
-- **MCP Transport Binding**: Agentic Checkout 向け MCP トランスポートバインディング
 - **Mandatory Idempotency Requirements**: 冪等性の要件と保証 (#121)
 - **Post-Purchase Lifecycle Tracking**: リッチな購入後ライフサイクル追跡 (#106)
 - **Seller-Backed Payment**: セラー独自決済方式サポート (#114)
@@ -171,8 +177,11 @@
 - **Claude Agent SDK 統合**: Claude Agent SDK インテグレーション追加 (#916)
 - **Langroid 統合**: Langroid フレームワーク統合と Dojo デモアプリ統合
 - **Bedrock Converse API 互換性**: LangGraphAgent での Bedrock Converse API 互換性修正 (#1300)
-- **langgraph python v0.0.26**: LangGraph Python リリース (#1301)
+- **langgraph python v0.0.27**: LangGraph Python リリース
+- **Python SDK v0.1.14**: Python SDK リリース
 - **Dojo CopilotKit パッケージ統合**: 不要な `@copilotkitnext/*` 依存削除
+- **Defensive Metadata Access**: メタデータアクセスの防御的改善
+- **State Streaming Middleware**: 状態ストリーミングミドルウェアのアラインメント
 - **LRO ツールコール ID リマッピング**: SSE ストリーミングでの Long-Running Operations ツールコール ID リマッピング
 - **REASONING イベント移行**: `THINKING_*` イベントから `REASONING_*` イベントへの移行（LangGraph）
 - **A2UI チャット統合**: `injectA2UITool` オプション付き A2UI チャット統合 (#1177)
@@ -199,7 +208,9 @@
 
 #### 主要な変更点
 
+- **クイックスタートガイド**: スキル作成者向けクイックスタートガイド追加
 - **ベストプラクティスガイド**: スキル作成者向けベストプラクティスガイド追加 (#224)
+- **Gotchas セクション**: よくあるハマりどころのドキュメント追加
 - **説明最適化ガイド**: スキル説明の最適化ガイド追加
 - **スキル評価ガイド**: スキル評価方法のガイド追加
 - **統合ガイダンス**: 統合ガイダンスドキュメント追加
@@ -248,6 +259,10 @@
 - **SDK 階層評価**: Python SDK Tier 1, C# SDK Tier 1, Go SDK Tier 1, Java SDK Tier 2, Swift SDK Tier 3, PHP SDK Tier 3 の評価追加
 - **Extensions トップレベルタブ**: Extensions を専用ページ付きトップレベルタブに昇格 (#2263)
 - **デザイン原則ページ**: コミュニティセクションにデザイン原則ページ追加 (#2303)
+- **MCP 1周年ブログ**: MCP 1周年と2025年11月リリースのブログ記事
+- **Tool Annotations ブログ**: Tool Annotations 解説ブログ記事 (2026-03-16)
+- **Contributor Ladder**: MCP Contributor Ladder (SEP-2148)
+- **Continue クライアント**: Continue クライアントアプリサポート追加
 - **MCP Apps サポート拡大**: Claude Desktop, ChatGPT, MCPJam, Postman, VSCode, goose, Copilot でのクライアントサポート
 - **実験的タスク機能**: アプリケーション駆動タスクアーキテクチャ、ポーリング付き状態追跡
 - **セキュリティ強化**: 外部認証サポート付き認可仕様の強化、GitHub Security Advisories 統合
@@ -265,11 +280,12 @@
 
 ### MCP-Apps
 
-**現行バージョン**: v1.2.2 (2026-03-12)
+**現行バージョン**: v1.2.2 (2026-03-17)
 
 #### v1.2.x の主要な変更点
 
 - **Zod v4 互換性修正**: `zod/v4` からのインポート修正（SDK の Zod API と一致） (#548)
+- **モバイルサポート改善**: map, PDF, threejs サンプルのモバイル対応 (#555)
 - **react-with-deps バンドル修正**: SDK+zod を react-with-deps に正しくバンドル (#539)
 - **E2E セキュリティテスト改善**: frames[] トラバーサルによる no-op セキュリティインジェクションテスト修正 (#540)
 - **npm ci キャッシュ改善**: CI パフォーマンス改善
@@ -340,9 +356,13 @@
 
 #### v2026-01-23 後の改善
 
+- **Identity Linking リデザイン**: メカニズムレジストリとケイパビリティ駆動スコープへの再設計（**破壊的変更**）
+- **Embedded Link Delegation**: 埋め込みリンク委譲拡張
 - **Eligibility Claims & Verification**: 適格性主張と検証コントラクト (#250)
-- **Authorization & Abuse Signals**: 認可と不正利用シグナル（**破壊的変更**） (#203)
+- **Authorization & Abuse Signals**: 認可と不正利用シグナルの形式化（**破壊的変更**） (#203)
 - **Discount Capability 拡張**: カートへの割引機能拡張 (#246)
+- **Totals Contract**: 合計金額コントラクトの形式化
+- **Warning Disclosure Contract**: 警告開示コントラクト拡張
 - **Catalog Search & Lookup**: 製品ディスカバリー用カタログ検索・参照機能 (#55)
 - **Business Logic エラーレスポンス**: checkout/cart のビジネスロジックエラーレスポンス
 - **`reverse_domain_name` 独立型化**: スタンドアロン型への昇格 (#260)
@@ -363,6 +383,7 @@
 
 | 変更 | 影響 |
 |------|------|
+| Identity Linking リデザイン | メカニズムレジストリとケイパビリティ駆動スコープへの再設計 |
 | Authorization & Abuse Signals (#203) | 認可シグナルの構造変更 |
 | Checkout スキーマリファクタ (#100) | チェックアウトスキーマの構造変更 |
 | Payments/Services/Capabilities 統一階層化 (#49) | 決済・サービス・能力の統一構造へ |
@@ -390,6 +411,8 @@
 - **Vercel AI SDK 移行**: 実験的マルチステップツール実行付き Vercel AI SDK への移行
 - **Pizza-maker デモ**: Pizza-maker デモとベーシック WebMCP zaMaker Evals 追加
 - **Industry Vertical Evals**: ヘルスケア、不動産、商業、旅行の業界別評価追加
+- **Sport Shop デモ**: スポーツショップデモの改善（カート管理、ナビゲーション、商品情報）
+- **Angular App デプロイ設定**: Angular アプリのデプロイ設定追加
 - **Chrome Extension v1.6**: 拡張機能バージョン更新 (#14)
 - **Model Context Tool Inspector**: サブモジュールとして追加
 
@@ -401,33 +424,37 @@
 
 ### x402 (Internet Native Payments)
 
-**現行バージョン**: Go v2.4.1 / Python v2.3.0 / TypeScript Core v2.5.0
+**現行バージョン**: Go v2.6.0 / Python v2.4.0 / TypeScript Core v2.7.0
 
-#### 未リリースの変更点
+#### Go v2.6.0 の主要な変更点
 
-- **ERC-7710 サポート**: exact_evm スキームでの ERC-7710 サポート仕様 (#732)
-- **Signed Offer & Receipt Extension**: オプショナルな署名付きオファー＆レシート拡張（ドラフト） (#935)
-- **Express スタイルルートパラメータ**: `:param` 形式の動的ルートパラメータサポート (#1313)
-- **Polygon メインネット**: CDP Facilitator に Polygon メインネットサポート追加 (#1564)
-- **Permit2 / Extensions SDK 改善**: Permit2 と Extensions SDK の改善 (#1487)
-- **Stellar ブロックチェーンサポート**: Stellar サポートドキュメント追加
-
-#### Go v2.4.x の主要な変更点
-
+- **Permit2 E2E テスト修正**: TypeScript サーバーの Permit2 E2E テスト修正
+- **Memo Instruction & SVM Scheme**: Memo インストラクションと SVM スキーム仕様改善
 - **ルート設定バリデーション**: 初期化時のルート設定検証 (#1364)
 - **リトライ with Exponential Backoff**: `GetSupported` の 429 レスポンスに対する指数バックオフリトライ (#1357)
 - **ERC20 Gas Sponsorship 拡張**: ガススポンサーシップ拡張実装 (#1336)
 
-#### Python v2.3.0 の主要な変更点
+#### Python v2.4.0 の主要な変更点
 
+- **無効な Facilitator レスポンス処理修正**: 無効レスポンスのハンドリング修正 (#1506)
 - **MCP Transport 統合の安定化**: Python MCP トランスポートの安定化
 - **camelCase シリアライゼーション修正**: 仕様準拠の camelCase 出力がデフォルト化 (#1122)
 
-#### TypeScript Core v2.5.x の主要な変更点
+#### TypeScript Core v2.7.0 の主要な変更点
 
+- **Permit2 シミュレーション**: Permit2 シミュレーション実装
+- **ERC-7710 サポート**: exact_evm スキームでの ERC-7710 サポート
+- **Extensions Overview ドキュメント**: Extensions 概要ドキュメント追加
 - **PAYMENT-RESPONSE ヘッダー**: 決済失敗レスポンスに `PAYMENT-RESPONSE` ヘッダー追加 (#1128)
 - **ERC20 Gas Sponsorship 拡張**: ガススポンサーシップ拡張実装 (#1328)
 - **Permit2 アップグレード**: 最新コントラクト状態に合わせた permit2 実装更新 (#1325)
+
+#### 未リリースの変更点
+
+- **Signed Offer & Receipt Extension**: オプショナルな署名付きオファー＆レシート拡張（ドラフト） (#935)
+- **Express スタイルルートパラメータ**: `:param` 形式の動的ルートパラメータサポート (#1313)
+- **Polygon メインネット**: CDP Facilitator に Polygon メインネットサポート追加 (#1564)
+- **Stellar ブロックチェーンサポート**: Stellar サポートドキュメント追加
 
 #### エコシステムパートナー（新規追加）
 
@@ -447,7 +474,14 @@
 
 ### ADK Python
 
-**現行バージョン**: v1.27.1 (2026-03-13)
+**現行バージョン**: v1.27.2 (2026-03-17)
+
+**注目**: v2.0.0a1 アルファ版がタグ付けされた。v2 系の開発が開始されている。
+
+#### v1.27.2 の主要な変更点
+
+- **Dataplex OAuth スコープ修正**: BigQueryToolset の Dataplex OAuth スコープ修正
+- **usage_metadata ハンドリング改善**: Vertex AI での usage_metadata 処理の改善
 
 #### v1.27.1 の主要な変更点
 
@@ -552,6 +586,11 @@
 
 #### 未リリースの変更点
 
+- **adk-web 最新版更新**: adk-web を最新バージョンに更新
+- **同期 OTEL 実装**: バッチスパン・ログプロセッサを同期 OTEL 実装に置換
+- **Launcher 依存除去**: Launcher 依存関係のリファクタ
+- **メモリサービス命名改善**: メモリサービスの命名規則改善
+- **インターリーブ thought/text 集約修正**: thought と text の集約バグ修正
 - **Debug テレメトリリファクタ**: トレースアクセスの最適化 (#593)
 - **OTel 構造化ロギング**: 構造化ロギング追加 (#552)
 - **Debug Endpoints adk-web 統合**: デバッグエンドポイントの adk-web 統合 (#597)
@@ -579,6 +618,12 @@
 - **テスト API サーバーヘルパー**: 統合テスト用ヘルパー追加 (#185)
 - **MikroORM リファクタリング**: セッションサービスのリファクタ
 
+#### 未リリースの変更点
+
+- **A2A Remote Agent**: A2A Remote Agent 統合改善
+- **Preload Memory Tool**: メモリプリロードツール追加
+- **Load Artifact Tools**: アーティファクトロードツール追加
+
 #### v0.4.0 の主要な変更点
 
 - **Database Session Service**: データベースセッションサービス追加
@@ -595,16 +640,20 @@
 
 ### Agent Starter Pack
 
-**現行バージョン**: v0.39.2 (2026-03-13)
+**現行バージョン**: v0.39.4 (2026-03-19)
 
 #### v0.39.x の主要な変更点
 
+- **GKE CloudBuild 引数修正**: 無効な GKE CloudBuild 引数の修正 (v0.39.4)
+- **Ruff Linting 修正**: テストとテンプレートの ruff linting エラー修正 (v0.39.3)
 - **GKE デプロイターゲット**: GKE をデプロイターゲットとして追加 (#833)
 - **CLI ウェルカムバナー刷新**: ASP ロゴ付きウェルカムバナーのリデザイン (#860)
 - **プロトタイプモード改善**: デフォルトで `deployment_target='none'` (#855)
 - **GKE Cloud SQL サポート修正**: GKE Cloud SQL サポートの修正 (#874)
 - **enhance 失敗修正**: プロトタイプからデプロイターゲットへの enhance 失敗修正 (#872)
 - **agentic_rag Vector Search 修正**: テンプレートバグ修正 (#866)
+- **安全なインクリメンタルインジェスション**: create-before-delete 戦略
+- **GKE CI/CD パイプライン改善**: datastore 環境変数と startup probe
 
 #### v0.38.0 の主要な変更点
 
@@ -630,6 +679,13 @@
 - **Run v1 クライアント**: googleapis ベースの Run v1 クライアント追加 (#236)
 - **統合テスト拡充**: Java, Node.js, Python プロジェクトの統合テスト追加 (#235, #237, #239)
 - **Hono 4.12.7**: 依存関係更新
+
+#### 未リリースの変更点
+
+- **Translate 機能**: run compose 向けの翻訳機能追加
+- **詳細サービス情報**: サービス情報取得時の詳細情報提供
+- **run-compose バイナリダウンロード**: run-compose バイナリのダウンロード機能
+- **fast-xml-parser 5.5.6**: 依存関係更新 (5.4.1 → 5.5.6)
 
 #### v1.9.0 の主要な変更点
 
@@ -673,8 +729,13 @@
 
 #### 未リリースの変更点
 
+- **Golden Image Finder スキル**: ゴールデンイメージ検索スキル追加
 - **Docker イメージサポート**: Docker イメージのサポート追加 (#183)
-- **Go 1.25.7**: Go バージョン更新 (#182)
+- **GKE Workload Scaling スキル**: ワークロードスケーリングスキル追加
+- **ComputeClasses スキル**: ComputeClasses 作成スキル追加
+- **golangci-lint CI 統合**: golangci-lint 設定と CI 統合
+- **SECURITY.md 追加**: セキュリティポリシー追加
+- **Go 1.25.8**: Go バージョン更新 (1.25.6 → 1.25.8)
 
 #### 参考リンク
 
@@ -805,7 +866,7 @@
 | **A2A** | v1.0.0: Push Notification Config 統合、`blocking`→`return_immediately`、仕様リファクタ | 高 |
 | **GenAI Toolbox** | v0.29.0: プリビルトツールセット再構成、テレメトリメトリクス更新 | 高 |
 | **MCP-UI** | v7.0.0: レガシー仕様の完全削除 | 高 |
-| **UCP** | Authorization & Abuse Signals の構造変更 | 高 |
+| **UCP** | Identity Linking リデザイン、Authorization & Abuse Signals の構造変更 | 高 |
 | **GenAI Toolbox** | v0.27.0: 設定ファイル v2 | 高 |
 | **ACP** | v2026-01-30: Payment Handlers Framework 導入 | 高 |
 | **ADK Python** | v1.24.0: credential manager 引数変更 | 中 |
@@ -814,18 +875,19 @@
 ### メジャーアップデート
 
 1. **A2A v1.0.0** - 正式リリース、仕様リファクタ、Push Notification統合、HTTP エラーマッピング改善
-2. **ADK Python v1.27.1** - A2Aインターセプター、Anthropicストリーミング、UiWidget、`adk optimize`コマンド、GCS Skills
+2. **ADK Python v1.27.2** - Dataplex OAuth修正、usage_metadata改善。**v2.0.0a1 アルファ版タグ付け**
 3. **ADK Go v0.6.0** - Apigeeモデル、RemoteAgentパーツ変換拡張、Replayプラグイン
 4. **ADK JS v0.2.4** - A2A統合、トークンベースコンテキストコンパクション
 5. **GenAI Toolbox v0.29.0** - プリビルトツールセット再構成（破壊的）、MongoDB/Serverless Sparkツール
 6. **MCP-UI v7.0.0** - レガシー仕様削除（破壊的）
-7. **MCP-Apps v1.2.2** - Zod v4互換性、ListServerResources API
+7. **MCP-Apps v1.2.2** - Zod v4互換性、モバイルサポート改善
 8. **MCP Security secops-v0.7.0** - Rule Exclusions管理ツール
-9. **Agent Starter Pack v0.39.2** - GKEデプロイターゲット、CLIバナー刷新
+9. **Agent Starter Pack v0.39.4** - GKE CloudBuild修正、ruff linting修正
 10. **Cloud Run MCP v1.10.0** - クライアント追加、統合テスト拡充
 11. **gcloud-mcp** - backupdr-mcp v0.1.0 新規追加
-12. **x402 Python v2.3.0** - MCP Transport安定化
+12. **x402** - Go v2.6.0 / Python v2.4.0 / TypeScript v2.7.0 に大幅アップデート
 13. **Google Analytics MCP v0.2.0** - ADKスキーマ修正、pipx対応
+14. **UCP** - Identity Linking リデザイン、Totals Contract 形式化
 
 ### 新規プロトコル統合
 
@@ -833,11 +895,13 @@
 2. **AG-UI + Langroid** - Langroid フレームワーク統合
 3. **A2UI + MCP Apps** - A2UI に MCP Apps を統合 (#748)
 4. **gcloud-mcp + Backup DR** - backupdr-mcp v0.1.0 新規サーバー
+5. **MCP Contributor Ladder** - MCP コミュニティ Contributor Ladder (SEP-2148)
 
 ### セキュリティ更新
 
 - **MCP Security v0.7.0**: Rule Exclusions 管理ツール追加
-- **MCP**: ブログサイトSEO改善、クライアント機能サポート更新
+- **GKE MCP**: SECURITY.md 追加
+- **MCP**: Tool Annotations ブログ、Contributor Ladder
 - **Cloud Run MCP v1.10.0**: Hono 4.12.7 依存関係更新
 - **ADK Python v1.27.0**: AuthProviderRegistry、OpenTelemetry ツール実行エラーコードキャプチャ
-- **x402**: ERC-7710 サポート仕様、Signed Offer & Receipt Extension（ドラフト）
+- **x402 v2.7.0**: ERC-7710 サポート、Permit2 シミュレーション実装
