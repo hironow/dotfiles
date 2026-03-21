@@ -1,6 +1,6 @@
 {
   "name": "autodesign",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Autonomous web design exploration plugin. Iteratively explores design variations under quality constraints using git-based keep/revert cycles, inspired by autoresearch.",
   "author": {
     "name": "hironow"

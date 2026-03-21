@@ -8,7 +8,7 @@ set -euo pipefail
 
 TARGET="$1"
 
-node -e "
+bun -e "
 const { JSDOM } = require('jsdom');
 const { Readability, isProbablyReaderable } = require('@mozilla/readability');
 const fs = require('fs');
