@@ -1,0 +1,9 @@
+{
+  "name": "autodesign",
+  "version": "0.1.0",
+  "description": "Autonomous web design exploration plugin. Iteratively explores design variations under quality constraints using git-based keep/revert cycles, inspired by autoresearch.",
+  "author": {
+    "name": "hironow"
+  },
+  "keywords": ["design", "exploration", "autonomous", "web", "quality", "a11y", "lighthouse"]
+}
