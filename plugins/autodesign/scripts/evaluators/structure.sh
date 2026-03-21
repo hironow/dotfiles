@@ -14,11 +14,11 @@ if [[ ! "$TARGET" =~ ^https?:// ]]; then
 fi
 
 # Run Pa11y
-result=$(npx --yes pa11y "$TARGET" --reporter json --runner axe --runner htmlcs 2>/dev/null || echo '[]')
+result=$(bun x pa11y "$TARGET" --reporter json --runner axe --runner htmlcs 2>/dev/null || echo '[]')
 
 # Count errors
-error_count=$(echo "$result" | node -e "
-  const data = JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8'));
+error_count=$(echo "$result" | bun -e "
+  const data = JSON.parse(await Bun.stdin.text());
   const issues = Array.isArray(data) ? data : (data.issues || []);
   const errors = issues.filter(i => i.type === 'error');
   console.log(errors.length);

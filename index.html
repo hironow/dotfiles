@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="dotfiles — a cross-platform developer environment setup powered by Zsh, Mise, Just, uv, and more." />
+  <meta name="author" content="hironow" />
+  <meta name="date" content="2026-03-21" />
+  <title>dotfiles · hironow</title>
+  <style>
+    /* ── Custom Properties ─────────────────────────────────────── */
+    :root {
+      --bg-base:        #0a0a0f;
+      --bg-layer:       #0f0f1a;
+      --glass-bg:       rgba(255, 255, 255, 0.06);
+      --glass-border:   rgba(255, 255, 255, 0.15);
+      --glass-hover:    rgba(255, 255, 255, 0.12);
+      --purple-400:     #a78bfa;
+      --purple-500:     #8b5cf6;
+      --purple-600:     #7c3aed;
+      --blue-400:       #60a5fa;
+      --blue-500:       #3b82f6;
+      --cyan-400:       #22d3ee;
+      --pink-400:       #f472b6;
+      --text-primary:   #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted:     #8899aa;
+      --radius-sm:      8px;
+      --radius-md:      16px;
+      --radius-lg:      24px;
+      --blur-md:        blur(16px);
+      --blur-lg:        blur(32px);
+      --shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(255,255,255,0.06) inset;
+      --shadow-glow-p:  0 0 40px rgba(139, 92, 246, 0.15);
+      --shadow-glow-b:  0 0 40px rgba(59, 130, 246, 0.15);
+      --transition:     all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      --font:           -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      --font-mono:      ui-monospace, "SF Mono", "Cascadia Code", "Fira Code", Menlo, monospace;
+    }
+
+    /* ── Reset ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: var(--font);
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* ── Ambient Background ────────────────────────────────────── */
+    .ambient {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .ambient-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.5;
+      animation: drift 20s ease-in-out infinite alternate;
+    }
+    .ambient-orb:nth-child(1) {
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, var(--purple-600), var(--purple-500) 40%, transparent 70%);
+      top: -150px; left: -100px;
+      animation-duration: 18s;
+    }
+    .ambient-orb:nth-child(2) {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, var(--blue-500), var(--blue-400) 40%, transparent 70%);
+      bottom: -80px; right: -60px;
+      animation-duration: 24s;
+      animation-delay: -6s;
+    }
+    .ambient-orb:nth-child(3) {
+      width: 350px; height: 350px;
+      background: radial-gradient(circle, var(--cyan-400), transparent 70%);
+      top: 40%; left: 55%;
+      animation-duration: 30s;
+      animation-delay: -12s;
+      opacity: 0.35;
+    }
+    .ambient-orb:nth-child(4) {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, var(--pink-400), transparent 70%);
+      top: 25%; right: -10%;
+      animation-duration: 22s;
+      animation-delay: -4s;
+      opacity: 0.3;
+    }
+    .ambient-orb:nth-child(5) {
+      width: 450px; height: 450px;
+      background: radial-gradient(circle, var(--purple-400), var(--blue-500) 50%, transparent 70%);
+      bottom: 30%; left: -5%;
+      animation-duration: 26s;
+      animation-delay: -10s;
+      opacity: 0.35;
+    }
+    @keyframes drift {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(30px, 20px) scale(1.08); }
+    }
+
+    /* ── Layout ────────────────────────────────────────────────── */
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+
+    /* ── Glass Panel ───────────────────────────────────────────── */
+    .glass {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      backdrop-filter: var(--blur-md) saturate(1.3);
+      -webkit-backdrop-filter: var(--blur-md) saturate(1.3);
+      box-shadow: var(--shadow-glass);
+    }
+
+    /* ── Nav ────────────────────────────────────────────────────── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 12px 0;
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      background: rgba(10, 10, 15, 0.50);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: var(--radius-lg);
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    }
+    .nav-logo {
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--purple-400), var(--blue-400));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.02em;
+    }
+    .nav-links {
+      display: flex;
+      gap: 8px;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-decoration: none;
+      padding: 5px 12px;
+      border-radius: var(--radius-sm);
+      transition: var(--transition);
+    }
+    .nav-links a:hover {
+      color: var(--text-primary);
+      background: var(--glass-hover);
+    }
+
+    /* ── Hero ───────────────────────────────────────────────────── */
+    .hero {
+      padding: 72px 0 56px;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--purple-400);
+      background: rgba(139, 92, 246, 0.12);
+      border: 1px solid rgba(139, 92, 246, 0.25);
+      border-radius: 100px;
+      padding: 4px 14px;
+      margin-bottom: 24px;
+      letter-spacing: 0.05em;
+    }
+    .hero-badge::before {
+      content: "";
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--purple-400);
+      box-shadow: 0 0 8px var(--purple-400);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .hero h1 {
+      font-size: clamp(2.8rem, 8vw, 5.5rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.05;
+      background: linear-gradient(135deg, #fff 20%, var(--purple-400) 55%, var(--blue-400) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 16px;
+    }
+    .hero-tagline {
+      font-size: clamp(1rem, 3vw, 1.25rem);
+      color: var(--text-secondary);
+      max-width: 520px;
+      margin: 0 auto 32px;
+      line-height: 1.7;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      background: linear-gradient(135deg, var(--purple-600), var(--blue-500));
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(139, 92, 246, 0.45);
+    }
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      color: var(--text-primary);
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      cursor: pointer;
+      transition: var(--transition);
+      backdrop-filter: var(--blur-md);
+      -webkit-backdrop-filter: var(--blur-md);
+    }
+    .btn-ghost:hover {
+      background: var(--glass-hover);
+      border-color: rgba(255,255,255,0.2);
+      transform: translateY(-2px);
+    }
+
+    /* ── Install Command ────────────────────────────────────────── */
+    .install-section {
+      padding: 0 0 64px;
+    }
+    .install-card {
+      padding: 28px 24px;
+      position: relative;
+    }
+    .install-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .install-cmd-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+    }
+    .install-cmd {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: clamp(0.65rem, 2.5vw, 0.82rem);
+      color: var(--cyan-400);
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+    .copy-btn {
+      flex-shrink: 0;
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 6px;
+      color: var(--purple-400);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 6px 14px;
+      cursor: pointer;
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+    .copy-btn:hover {
+      background: rgba(139, 92, 246, 0.28);
+      border-color: rgba(139, 92, 246, 0.5);
+    }
+    .copy-btn.copied {
+      color: var(--cyan-400);
+      background: rgba(34, 211, 238, 0.12);
+      border-color: rgba(34, 211, 238, 0.3);
+    }
+
+    /* ── Section Headers ────────────────────────────────────────── */
+    .section {
+      padding: 0 0 72px;
+    }
+    .section-header {
+      margin-bottom: 32px;
+    }
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--purple-400);
+      margin-bottom: 8px;
+    }
+    .section-title {
+      font-size: clamp(1.4rem, 4vw, 2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
+    .section-desc {
+      margin-top: 8px;
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      max-width: 560px;
+    }
+
+    /* ── Tool Stack ─────────────────────────────────────────────── */
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .tool-card {
+      padding: 18px 16px;
+      text-align: center;
+      cursor: default;
+      transition: var(--transition);
+    }
+    .tool-card:hover {
+      background: var(--glass-hover);
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-glass), var(--shadow-glow-p);
+    }
+    .tool-icon {
+      font-size: 1.6rem;
+      margin-bottom: 8px;
+      display: block;
+    }
+    .tool-name {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    .tool-desc {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* ── Feature Cards ──────────────────────────────────────────── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    .feature-card {
+      padding: 24px;
+      display: flex;
+      gap: 18px;
+      transition: var(--transition);
+    }
+    .feature-card:hover {
+      background: var(--glass-hover);
+      transform: translateX(4px);
+      box-shadow: var(--shadow-glass);
+    }
+    .feature-icon-wrap {
+      flex-shrink: 0;
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+    }
+    .feature-icon-wrap.purple {
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.25);
+    }
+    .feature-icon-wrap.blue {
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+    }
+    .feature-icon-wrap.cyan {
+      background: rgba(34, 211, 238, 0.12);
+      border: 1px solid rgba(34, 211, 238, 0.2);
+    }
+    .feature-icon-wrap.pink {
+      background: rgba(244, 114, 182, 0.12);
+      border: 1px solid rgba(244, 114, 182, 0.2);
+    }
+    .feature-content { flex: 1; }
+    .feature-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    .feature-desc {
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+    .feature-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .tag {
+      font-family: var(--font-mono);
+      font-size: 0.67rem;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 100px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--text-secondary);
+    }
+
+    /* ── Commands ───────────────────────────────────────────────── */
+    .commands-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .command-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 20px;
+      border-radius: var(--radius-sm);
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.07);
+      transition: var(--transition);
+      cursor: default;
+    }
+    .command-row:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(139, 92, 246, 0.25);
+    }
+    .command-row:hover .cmd-text {
+      color: var(--cyan-400);
+    }
+    .cmd-text {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--purple-400);
+      flex: 0 0 auto;
+      min-width: 140px;
+      transition: var(--transition);
+    }
+    .cmd-sep {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+    .cmd-desc {
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+    }
+
+    /* ── Badges ─────────────────────────────────────────────────── */
+    .badges-section {
+      padding: 0 0 64px;
+    }
+    .badges-card {
+      padding: 28px 24px;
+    }
+    .badges-inner {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .badge-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      transition: var(--transition);
+    }
+    .badge-item:hover { transform: translateY(-1px); }
+    .badge-item.green {
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.25);
+      color: #4ade80;
+    }
+    .badge-item.purple {
+      background: rgba(139, 92, 246, 0.12);
+      border: 1px solid rgba(139, 92, 246, 0.25);
+      color: var(--purple-400);
+    }
+    .badge-item.blue {
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      color: var(--blue-400);
+    }
+    .badge-item.cyan {
+      background: rgba(34, 211, 238, 0.10);
+      border: 1px solid rgba(34, 211, 238, 0.2);
+      color: var(--cyan-400);
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .badge-dot.pulse { animation: pulse 2s infinite; }
+
+    /* ── Footer ─────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--glass-border);
+      padding: 40px 0;
+    }
+    .footer-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: center;
+      text-align: center;
+    }
+    .footer-logo {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--purple-400), var(--blue-400));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .footer-desc {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      max-width: 380px;
+    }
+    .footer-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--purple-400);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 8px 18px;
+      border: 1px solid rgba(139, 92, 246, 0.25);
+      border-radius: 100px;
+      transition: var(--transition);
+    }
+    .footer-link:hover {
+      background: rgba(139, 92, 246, 0.1);
+      border-color: rgba(139, 92, 246, 0.4);
+      transform: translateY(-2px);
+    }
+    .footer-copy {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Scroll Animations ──────────────────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+
+    /* ── Responsive ─────────────────────────────────────────────── */
+    @media (min-width: 640px) {
+      .page { padding: 0 24px; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .commands-grid { grid-template-columns: 1fr; }
+      .footer-inner { flex-direction: row; justify-content: space-between; text-align: left; }
+    }
+
+    @media (min-width: 1024px) {
+      .page { padding: 0 32px; }
+      .tools-grid { grid-template-columns: repeat(4, 1fr); }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .hero { padding: 100px 0 72px; }
+    }
+
+    /* ── Skip Link ──────────────────────────────────────────────── */
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 16px;
+      padding: 8px 16px;
+      background: var(--purple-500);
+      color: #fff;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      z-index: 9999;
+      transition: top 0.2s;
+    }
+    .skip-link:focus {
+      top: 16px;
+    }
+
+    /* ── Divider ────────────────────────────────────────────────── */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
+      margin: 0 0 64px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Skip navigation -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Ambient background -->
+  <div class="ambient" aria-hidden="true">
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+    <div class="ambient-orb"></div>
+  </div>
+
+  <!-- Navigation -->
+  <nav aria-label="Primary navigation">
+    <div class="page">
+      <div class="nav-inner">
+        <span class="nav-logo">~/dotfiles</span>
+        <ul class="nav-links" role="list">
+          <li><a href="#tools">Tools</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#usage">Usage</a></li>
+          <li><a href="https://github.com/hironow/dotfiles" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main-content">
+    <div class="page">
+
+      <!-- Hero -->
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-badge" role="status" aria-label="Status: Active — Cross-platform, 2026">CROSS-PLATFORM · 2026</div>
+        <h1 id="hero-title">dotfiles</h1>
+        <p class="hero-tagline">
+          A modern, opinionated developer environment for Mac, Linux, and WSL —
+          fully automated, reproducible, and built for speed.
+        </p>
+        <p class="hero-meta" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:24px;">
+          By <span class="byline" rel="author">hironow</span> &mdash; Updated <time datetime="2026-03-21" pubdate>March 21, 2026</time>
+        </p>
+        <div class="hero-actions">
+          <a href="#install" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 2v9M4 7l4 4 4-4M2 14h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Quick Install
+          </a>
+          <a href="https://github.com/hironow/dotfiles" class="btn-ghost" target="_blank" rel="noopener noreferrer">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            View on GitHub
+          </a>
+        </div>
+      </section>
+
+      <!-- Install -->
+      <section class="install-section reveal" id="install" aria-labelledby="install-label">
+        <div class="glass install-card">
+          <div class="install-label" id="install-label">One-liner Install</div>
+          <div class="install-cmd-wrap">
+            <code class="install-cmd" id="install-cmd-text">bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"</code>
+            <button class="copy-btn" id="copy-btn" aria-label="Copy install command to clipboard" onclick="copyInstall()">Copy</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="divider" aria-hidden="true"></div>
+
+      <!-- Tool Stack -->
+      <section class="section reveal" id="tools" aria-labelledby="tools-title">
+        <div class="section-header">
+          <div class="section-label">Tool Stack</div>
+          <h2 class="section-title" id="tools-title">Modern CLI Arsenal</h2>
+          <p class="section-desc">Hand-picked tools that work in harmony across every shell session.</p>
+        </div>
+        <div class="tools-grid" role="list">
+          <article class="glass tool-card reveal reveal-delay-1" role="listitem">
+            <span class="tool-icon" aria-hidden="true">🐚</span>
+            <div class="tool-name">Zsh</div>
+            <div class="tool-desc">Powerful interactive shell with rich plugin ecosystem</div>
+          </article>
+          <article class="glass tool-card reveal reveal-delay-1" role="listitem">
+            <span class="tool-icon" aria-hidden="true">🛠️</span>
+            <div class="tool-name">Mise</div>
+            <div class="tool-desc">Polyglot runtime manager — Node, Python, Go and more</div>
+          </article>
+          <article class="glass tool-card reveal reveal-delay-2" role="listitem">
+            <span class="tool-icon" aria-hidden="true">⚡</span>
+            <div class="tool-name">Just</div>
+            <div class="tool-desc">Modern command runner with clean, readable justfiles</div>
+          </article>
+          <article class="glass tool-card reveal reveal-delay-2" role="listitem">
+            <span class="tool-icon" aria-hidden="true">🐍</span>
+            <div class="tool-name">uv</div>
+            <div class="tool-desc">Blazing-fast Python package manager written in Rust</div>
+          </article>
+          <article class="glass tool-card reveal reveal-delay-3" role="listitem">
+            <span class="tool-icon" aria-hidden="true">🔌</span>
+            <div class="tool-name">Sheldon</div>
+            <div class="tool-desc">Fast, lock-file-based Zsh plugin manager</div>
+          </article>
+          <article class="glass tool-card reveal reveal-delay-3" role="listitem">
+            <span class="tool-icon" aria-hidden="true">⭐</span>
+            <div class="tool-name">Starship</div>
+            <div class="tool-desc">Minimal, fast cross-shell prompt with rich context</div>
+          </article>
+          <article class="glass tool-card reveal reveal-delay-1" role="listitem">
+            <span class="tool-icon" aria-hidden="true">🔍</span>
+            <div class="tool-name">fzf</div>
+            <div class="tool-desc">General-purpose fuzzy finder for the terminal</div>
+          </article>
+          <article class="glass tool-card reveal reveal-delay-2" role="listitem">
+            <span class="tool-icon" aria-hidden="true">👻</span>
+            <div class="tool-name">Ghostty</div>
+            <div class="tool-desc">GPU-accelerated terminal emulator, native speed</div>
+          </article>
+        </div>
+      </section>
+
+      <div class="divider" aria-hidden="true"></div>
+
+      <!-- Features -->
+      <section class="section reveal" id="features" aria-labelledby="features-title">
+        <div class="section-header">
+          <div class="section-label">Features</div>
+          <h2 class="section-title" id="features-title">Everything Included</h2>
+          <p class="section-desc">From shell configuration to AI agent integration — batteries included.</p>
+        </div>
+        <div class="features-grid">
+          <article class="glass feature-card reveal reveal-delay-1">
+            <div class="feature-icon-wrap blue" aria-hidden="true">🌐</div>
+            <div class="feature-content">
+              <div class="feature-title">Cross-Platform Support</div>
+              <div class="feature-desc">Works natively on macOS, Linux distributions, and Windows Subsystem for Linux without modification.</div>
+              <div class="feature-tags">
+                <span class="tag">macOS</span>
+                <span class="tag">Linux</span>
+                <span class="tag">WSL</span>
+              </div>
+            </div>
+          </article>
+          <article class="glass feature-card reveal reveal-delay-2">
+            <div class="feature-icon-wrap purple" aria-hidden="true">⚡</div>
+            <div class="feature-content">
+              <div class="feature-title">Task Runner</div>
+              <div class="feature-desc">Unified task automation via <code style="font-family:var(--font-mono);color:var(--purple-400)">just</code> — consistent commands for install, deploy, test, and sync.</div>
+              <div class="feature-tags">
+                <span class="tag">just help</span>
+                <span class="tag">just install</span>
+                <span class="tag">just deploy</span>
+              </div>
+            </div>
+          </article>
+          <article class="glass feature-card reveal reveal-delay-1">
+            <div class="feature-icon-wrap cyan" aria-hidden="true">📦</div>
+            <div class="feature-content">
+              <div class="feature-title">Package Management</div>
+              <div class="feature-desc">Mise handles runtime versions; uv manages Python packages. Reproducible environments guaranteed.</div>
+              <div class="feature-tags">
+                <span class="tag">mise</span>
+                <span class="tag">uv</span>
+                <span class="tag">lock files</span>
+              </div>
+            </div>
+          </article>
+          <article class="glass feature-card reveal reveal-delay-2">
+            <div class="feature-icon-wrap purple" aria-hidden="true">🐚</div>
+            <div class="feature-content">
+              <div class="feature-title">Shell Configuration</div>
+              <div class="feature-desc">Opinionated Zsh setup with Sheldon for plugins and Starship for a beautiful, informative prompt.</div>
+              <div class="feature-tags">
+                <span class="tag">zsh</span>
+                <span class="tag">sheldon</span>
+                <span class="tag">starship</span>
+              </div>
+            </div>
+          </article>
+          <article class="glass feature-card reveal reveal-delay-1">
+            <div class="feature-icon-wrap pink" aria-hidden="true">🤖</div>
+            <div class="feature-content">
+              <div class="feature-title">MCP Servers</div>
+              <div class="feature-desc">Model Context Protocol server integration for AI-powered workflows directly from your terminal environment.</div>
+              <div class="feature-tags">
+                <span class="tag">MCP</span>
+                <span class="tag">AI agents</span>
+                <span class="tag">automation</span>
+              </div>
+            </div>
+          </article>
+          <article class="glass feature-card reveal reveal-delay-2">
+            <div class="feature-icon-wrap blue" aria-hidden="true">🔌</div>
+            <div class="feature-content">
+              <div class="feature-title">Skills &amp; Plugins</div>
+              <div class="feature-desc">Extensible plugin marketplace system for adding capabilities and integrations to your development workflow.</div>
+              <div class="feature-tags">
+                <span class="tag">plugins</span>
+                <span class="tag">skills</span>
+                <span class="tag">extensible</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <div class="divider" aria-hidden="true"></div>
+
+      <!-- Usage Commands -->
+      <section class="section reveal" id="usage" aria-labelledby="usage-title">
+        <div class="section-header">
+          <div class="section-label">Quick Usage</div>
+          <h2 class="section-title" id="usage-title">Common Commands</h2>
+          <p class="section-desc">All operations go through <code style="font-family:var(--font-mono);color:var(--purple-400)">just</code> — one interface to rule them all.</p>
+        </div>
+        <div class="commands-grid" role="list">
+          <div class="command-row reveal reveal-delay-1" role="listitem">
+            <span class="cmd-text">just help</span>
+            <span class="cmd-sep">·</span>
+            <span class="cmd-desc">Display all available commands and their descriptions</span>
+          </div>
+          <div class="command-row reveal reveal-delay-1" role="listitem">
+            <span class="cmd-text">just install</span>
+            <span class="cmd-sep">·</span>
+            <span class="cmd-desc">Bootstrap the full environment on a new machine</span>
+          </div>
+          <div class="command-row reveal reveal-delay-2" role="listitem">
+            <span class="cmd-text">just deploy</span>
+            <span class="cmd-sep">·</span>
+            <span class="cmd-desc">Apply dotfile changes to the current system</span>
+          </div>
+          <div class="command-row reveal reveal-delay-2" role="listitem">
+            <span class="cmd-text">just test</span>
+            <span class="cmd-sep">·</span>
+            <span class="cmd-desc">Run the full test suite to validate configuration</span>
+          </div>
+          <div class="command-row reveal reveal-delay-3" role="listitem">
+            <span class="cmd-text">just sync-agents</span>
+            <span class="cmd-sep">·</span>
+            <span class="cmd-desc">Synchronize AI agent configurations and MCP servers</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="divider" aria-hidden="true"></div>
+
+      <!-- CI Badges -->
+      <section class="badges-section reveal" aria-labelledby="badges-title">
+        <div class="glass badges-card">
+          <div class="section-label" id="badges-title" style="margin-bottom:16px">Status &amp; Info</div>
+          <div class="badges-inner" role="list">
+            <span class="badge-item green" role="listitem">
+              <span class="badge-dot pulse" aria-hidden="true"></span>
+              CI: passing
+            </span>
+            <span class="badge-item purple" role="listitem">
+              <span class="badge-dot" aria-hidden="true"></span>
+              Shell: Zsh
+            </span>
+            <span class="badge-item blue" role="listitem">
+              <span class="badge-dot" aria-hidden="true"></span>
+              Platform: cross-platform
+            </span>
+            <span class="badge-item cyan" role="listitem">
+              <span class="badge-dot" aria-hidden="true"></span>
+              License: MIT
+            </span>
+            <span class="badge-item purple" role="listitem">
+              <span class="badge-dot" aria-hidden="true"></span>
+              Powered by: mise · uv · just
+            </span>
+            <span class="badge-item green" role="listitem">
+              <span class="badge-dot" aria-hidden="true"></span>
+              MCP: enabled
+            </span>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /.page -->
+  </main>
+
+  <!-- Footer -->
+  <footer role="contentinfo">
+    <div class="page">
+      <div class="footer-inner">
+        <div>
+          <div class="footer-logo">~/dotfiles</div>
+          <p class="footer-desc">Modern developer environment by hironow. Open source and free forever.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;align-items:flex-end;">
+          <a href="https://github.com/hironow/dotfiles" class="footer-link" target="_blank" rel="noopener noreferrer" aria-label="View dotfiles on GitHub">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            github.com/hironow/dotfiles
+          </a>
+          <p class="footer-copy">&copy; 2026 hironow. MIT License.</p>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // ── Copy install command ──────────────────────────────────────
+    function copyInstall() {
+      const text = document.getElementById('install-cmd-text').textContent;
+      const btn  = document.getElementById('copy-btn');
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      }).catch(() => {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0;';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+
+    // ── Scroll reveal (IntersectionObserver) ─────────────────────
+    (function () {
+      if (!('IntersectionObserver' in window)) {
+        // Fallback: show all elements immediately
+        document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+        return;
+      }
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+      document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+    })();
+  </script>
+</body>
+</html>
