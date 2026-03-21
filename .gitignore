@@ -18,8 +18,17 @@ refs/
 .env.*.local
 
 # node
+node_modules/
+package.json
+package-lock.json
+bun.lock
 *-debug.log
 *.log
+
+# autodesign
+design-results.tsv
+design-config.yaml
+run.log
 
 # Azure
 .azurite/
