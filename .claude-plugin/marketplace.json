@@ -1,0 +1,30 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.schema.json",
+  "name": "hironow-plugins",
+  "owner": {
+    "name": "hironow"
+  },
+  "metadata": {
+    "description": "hironow's personal Claude Code plugins for autonomous research and expedition workflows",
+    "version": "1.0.0",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "autoresearch",
+      "source": "./plugins/autoresearch",
+      "description": "Autonomous experiment loop plugin inspired by karpathy/autoresearch. Iteratively modifies target code, evaluates against fixed metrics, and keeps only improvements via git-based keep/revert cycles.",
+      "version": "0.1.0",
+      "category": "research",
+      "tags": ["research", "optimization", "autonomous", "experiment", "tdd"]
+    },
+    {
+      "name": "paintress",
+      "source": "./plugins/paintress",
+      "description": "Autonomous TDD expedition agent with Gradient Gauge momentum, Lumina learning, and Review Gate. Picks Linear issues, implements fixes via TDD, and creates PRs.",
+      "version": "0.2.0",
+      "category": "development",
+      "tags": ["tdd", "linear", "autonomous", "expedition"]
+    }
+  ]
+}
