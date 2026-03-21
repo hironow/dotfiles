@@ -1,0 +1,53 @@
+tag: "mar21-dotfiles-dashboard"
+target_files:
+  - "index.html"
+eval_target: "index.html"
+eval_command: "bash /Users/nino/.claude/plugins/cache/hironow-plugins/autodesign/0.1.0/scripts/eval-composite.sh"
+metric_name: "composite_score"
+metric_direction: "higher"
+timeout_seconds: 90
+results_file: "design-results.tsv"
+initial_prompt: |
+  Create a single-page responsive HTML dashboard for a dotfiles repository.
+  Target: mobile-first, optimized for smartphone screens.
+  Design: 2026 glassmorphism trend — frosted glass panels, backdrop-filter blur,
+  subtle gradients, semi-transparent layers, soft shadows, and depth through layering.
+  Color scheme: dark base (#0a0a0f) with purple/blue glass accents.
+
+  The dashboard should showcase:
+  - Hero section with repository name "dotfiles" and tagline
+  - Tool stack overview (Zsh, Mise, Just, uv, Sheldon, Starship, fzf, Ghostty)
+  - Installation command with copy button (one-liner curl command)
+  - Feature cards: Cross-platform (Mac/Linux/WSL), Task Runner (just),
+    Package Management (mise+uv), Shell Config (zsh+sheldon+starship),
+    MCP Servers setup, Skills/Plugins system
+  - Quick usage commands section
+  - Test/CI badge area
+  - Footer with GitHub link
+
+  Tech requirements:
+  - Single self-contained HTML file (inline CSS + JS)
+  - No external dependencies (all fonts/icons inline or system)
+  - Responsive: mobile-first with breakpoints at 640px and 1024px
+  - Smooth scroll, subtle animations on scroll-in
+  - Accessible: proper semantic HTML, ARIA labels, contrast ratios
+  - viewport meta tag for mobile
+  - Use CSS custom properties for theming
+  - Prefer system font stack for fast loading
+evaluators:
+  structure: { enabled: true, weight: 0.25 }
+  readability: { enabled: true, weight: 0.25 }
+  lighthouse: { enabled: true, weight: 0.25 }
+  completeness: { enabled: true, weight: 0.25 }
+constraints:
+  structure_errors_max: 5
+  aeo_score_min: 40
+  lighthouse_avg_min: 60
+  completeness_score_min: 50
+exploration_axes:
+  - layout
+  - color
+  - typography
+  - animation
+  - spacing
+  - glassmorphism
