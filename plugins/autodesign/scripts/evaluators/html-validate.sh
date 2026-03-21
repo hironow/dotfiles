@@ -8,9 +8,9 @@ set -euo pipefail
 
 TARGET="$1"
 
-result=$(npx --yes html-validate "$TARGET" --formatter json 2>/dev/null || echo '{"results":[]}')
-errors=$(echo "$result" | node -e "
-  const data = JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8'));
+result=$(bun x html-validate "$TARGET" --formatter json 2>/dev/null || echo '{"results":[]}')
+errors=$(echo "$result" | bun -e "
+  const data = JSON.parse(await Bun.stdin.text());
   const results = data.results || [];
   let count = 0;
   for (const r of results) {

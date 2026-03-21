@@ -8,7 +8,7 @@ set -euo pipefail
 
 TARGET="$1"
 
-node -e "
+bun -e "
 const cheerio = require('cheerio');
 const fs = require('fs');
 
