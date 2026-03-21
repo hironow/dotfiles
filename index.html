@@ -24,7 +24,7 @@
       --pink-400:       #f472b6;
       --text-primary:   #f1f5f9;
       --text-secondary: #94a3b8;
-      --text-muted:     #475569;
+      --text-muted:     #8899aa;
       --radius-sm:      8px;
       --radius-md:      16px;
       --radius-lg:      24px;
@@ -620,6 +620,25 @@
       .hero { padding: 100px 0 72px; }
     }
 
+    /* ── Skip Link ──────────────────────────────────────────────── */
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 16px;
+      padding: 8px 16px;
+      background: var(--purple-500);
+      color: #fff;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      z-index: 9999;
+      transition: top 0.2s;
+    }
+    .skip-link:focus {
+      top: 16px;
+    }
+
     /* ── Divider ────────────────────────────────────────────────── */
     .divider {
       height: 1px;
@@ -629,6 +648,9 @@
   </style>
 </head>
 <body>
+
+  <!-- Skip navigation -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Ambient background -->
   <div class="ambient" aria-hidden="true">
@@ -652,12 +674,12 @@
     </div>
   </nav>
 
-  <main>
+  <main id="main-content">
     <div class="page">
 
       <!-- Hero -->
       <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-badge" aria-label="Status: Active">CROSS-PLATFORM · 2026</div>
+        <div class="hero-badge" role="status" aria-label="Status: Active — Cross-platform, 2026">CROSS-PLATFORM · 2026</div>
         <h1 id="hero-title">dotfiles</h1>
         <p class="hero-tagline">
           A modern, opinionated developer environment for Mac, Linux, and WSL —
