@@ -5,8 +5,8 @@
     "name": "hironow"
   },
   "metadata": {
-    "description": "hironow's personal Claude Code plugins for autonomous research and expedition workflows",
-    "version": "1.0.0",
+    "description": "hironow's personal Claude Code plugins for autonomous research, design exploration, and expedition workflows",
+    "version": "1.1.0",
     "pluginRoot": "./plugins"
   },
   "plugins": [
@@ -25,6 +25,14 @@
       "version": "0.2.0",
       "category": "development",
       "tags": ["tdd", "linear", "autonomous", "expedition"]
+    },
+    {
+      "name": "autodesign",
+      "source": "./plugins/autodesign",
+      "description": "Autonomous web design exploration plugin. Explores design variations under quality constraints using git-based keep/revert cycles with bundled evaluators for a11y, readability, performance, and completeness.",
+      "version": "0.1.0",
+      "category": "design",
+      "tags": ["design", "exploration", "autonomous", "web", "quality", "a11y", "lighthouse"]
     }
   ]
 }
