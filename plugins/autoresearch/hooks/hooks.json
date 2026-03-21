@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if an autoresearch experiment is active by looking for experiment-config.yaml in the working directory. If it exists, read the target_files field. If the tool is attempting to modify a file that is NOT in the target_files list and is NOT results.tsv and is NOT run.log, warn the user: 'WARNING: This file is outside the experiment target scope. Modifying non-target files during an experiment loop may invalidate results. Proceed with caution.' If experiment-config.yaml does not exist, allow the operation silently.",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
