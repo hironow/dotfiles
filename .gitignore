@@ -57,3 +57,10 @@ terraform.tfstate.backup
 
 # claude local settings
 .claude/*.local.*
+
+# paintress expedition state
+journal.tsv
+gradient.json
+lumina.md
+gommage.md
+continent-config.yaml
