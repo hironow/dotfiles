@@ -610,3 +610,9 @@ scan domain:
 # Check free before access network
 check-free:
     @sudo lsof -i -P -n +c 0 | grep LISTEN | grep -vE "127.0.0.1|\[::1\]|ControlCenter|rapportd|symptomsd|launchd" | column -t
+
+
+# Open docs and autoblogs in mo viewer (live-reload)
+docs-view:
+    mo --clear --no-open
+    mo --foreground -w 'docs/**/*.md' -w 'autoblogs/**/*.md'

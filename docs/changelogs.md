@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-03-19
+最終更新: 2026-03-23
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -72,6 +72,11 @@
 
 #### 未リリースの変更点
 
+- **Client Capabilities API**: MessageProcessor に Client Capabilities API 追加
+- **MCP Tool Call 実装**: Calculator App 向け MCP Tool Call 実装
+- **A2UI ストリーミングパーサー**: A2UI ストリーミングパーサー実装
+- **Client Reactive Surface State**: シグナルによるリアクティブサーフェスステート
+- **Client Data Model 同期**: クライアントデータモデル同期
 - **MCP Apps 統合**: A2UI に MCP Apps を統合 (#748)
 - **McpApps A2UI コンポーネント**: MCP Apps 用コンポーネント導入 (#801)
 - **React レンダラー**: React レンダラー実装 (#542)
@@ -109,6 +114,8 @@
 
 #### 未リリースの変更点
 
+- **CLA 署名プロセス改善**: CLA affirm プロセスと企業 CLA メタデータ追加
+- **運営モデル**: 運営モデルドキュメント追加
 - **CODEOWNERS 設定**: ファウンディングメンテナーの定義
 - **ガバナンスモデル改訂**: TSC, DWGs を含むガバナンス構造の見直し
 - **Webhook Signing Replay Protection 強化**: リプレイ攻撃防止の強化 (#160)
@@ -177,7 +184,9 @@
 - **Claude Agent SDK 統合**: Claude Agent SDK インテグレーション追加 (#916)
 - **Langroid 統合**: Langroid フレームワーク統合と Dojo デモアプリ統合
 - **Bedrock Converse API 互換性**: LangGraphAgent での Bedrock Converse API 互換性修正 (#1300)
+- **langgraph python/typescript v0.0.28**: LangGraph リリース（duplicate render 修正）
 - **langgraph python v0.0.27**: LangGraph Python リリース
+- **Dojo バックエンドサービス**: Dojo バックエンドとデプロイ設定 (render.yaml)
 - **Python SDK v0.1.14**: Python SDK リリース
 - **Dojo CopilotKit パッケージ統合**: 不要な `@copilotkitnext/*` 依存削除
 - **Defensive Metadata Access**: メタデータアクセスの防御的改善
@@ -208,6 +217,8 @@
 
 #### 主要な変更点
 
+- **Compatibility フィールドドキュメント**: スキルの互換性フィールドドキュメント追加
+- **ディレクトリ構造改善**: ディレクトリ構造の改善
 - **クイックスタートガイド**: スキル作成者向けクイックスタートガイド追加
 - **ベストプラクティスガイド**: スキル作成者向けベストプラクティスガイド追加 (#224)
 - **Gotchas セクション**: よくあるハマりどころのドキュメント追加
@@ -260,6 +271,8 @@
 - **Extensions トップレベルタブ**: Extensions を専用ページ付きトップレベルタブに昇格 (#2263)
 - **デザイン原則ページ**: コミュニティセクションにデザイン原則ページ追加 (#2303)
 - **MCP 1周年ブログ**: MCP 1周年と2025年11月リリースのブログ記事
+- **OIDC / エンタープライズ管理認可**: OIDC とエンタープライズ管理認可の更新
+- **ツールエラーハンドリング再構成**: ツールエラーハンドリングの整理
 - **Tool Annotations ブログ**: Tool Annotations 解説ブログ記事 (2026-03-16)
 - **Contributor Ladder**: MCP Contributor Ladder (SEP-2148)
 - **Continue クライアント**: Continue クライアントアプリサポート追加
@@ -281,6 +294,11 @@
 ### MCP-Apps
 
 **現行バージョン**: v1.2.2 (2026-03-17)
+
+#### 未リリースの変更点
+
+- **PDF Server アノテーション**: PDF アノテーション、interact ツール、ページ抽出機能
+- **UI 通知**: リクエストティアダウン時の UI 通知
 
 #### v1.2.x の主要な変更点
 
@@ -356,6 +374,9 @@
 
 #### v2026-01-23 後の改善
 
+- **Totals Change Message**: 合計金額変更メッセージ追加
+- **Checkout リクエストペイロード修正**: チェックアウトリクエストペイロードの修正
+- **Signatures Footnotes 修正**: 署名フットノートの修正
 - **Identity Linking リデザイン**: メカニズムレジストリとケイパビリティ駆動スコープへの再設計（**破壊的変更**）
 - **Embedded Link Delegation**: 埋め込みリンク委譲拡張
 - **Eligibility Claims & Verification**: 適格性主張と検証コントラクト (#250)
@@ -403,6 +424,10 @@
 
 #### 主要な変更点
 
+- **Order Tracking 宣言的デモ**: オーダートラッキングの宣言的デモ追加
+- **Ticket Booking サポート**: チケット予約サポート追加
+- **ツールパラメータ説明改善**: ツールパラメータの説明改善
+- **ツール登録解除**: `unregisterTool` 機能追加
 - **WebMCP 型共有**: WebMCP 型を共有ロケーションに移動
 - **webmcp-maze デモ**: 新規迷路デモプロジェクト追加
 - **WebMCP Flow**: アーキテクチャダイアグラムビルダー追加
@@ -418,13 +443,17 @@
 
 #### 参考リンク
 
-- [webmcp-tools](https://github.com/AugmentedWeb/webmcp-tools)
+- [webmcp-tools](https://github.com/GoogleChromeLabs/webmcp-tools)
 
 ---
 
 ### x402 (Internet Native Payments)
 
-**現行バージョン**: Go v2.6.0 / Python v2.4.0 / TypeScript Core v2.7.0
+**現行バージョン**: Go v2.6.0 / Python v2.5.0 / TypeScript Core v2.7.0
+
+#### 未リリースの Go 変更点
+
+- **Facilitator エラーメッセージ改善**: 登録スキームを含むエラーメッセージ改善
 
 #### Go v2.6.0 の主要な変更点
 
@@ -433,6 +462,11 @@
 - **ルート設定バリデーション**: 初期化時のルート設定検証 (#1364)
 - **リトライ with Exponential Backoff**: `GetSupported` の 429 レスポンスに対する指数バックオフリトライ (#1357)
 - **ERC20 Gas Sponsorship 拡張**: ガススポンサーシップ拡張実装 (#1336)
+
+#### Python v2.5.0 の主要な変更点
+
+- **Permit2 & Gas Sponsorship 拡張**: Python 向け Permit2 とガススポンサーシップ拡張
+- **Gitbooks Permit2 Python ドキュメント**: Permit2 Python ドキュメント追加
 
 #### Python v2.4.0 の主要な変更点
 
@@ -466,7 +500,7 @@
 
 #### 参考リンク
 
-- [x402 Protocol](https://github.com/x402-protocol/x402)
+- [x402 Protocol](https://github.com/coinbase/x402)
 
 ---
 
@@ -477,6 +511,10 @@
 **現行バージョン**: v1.27.2 (2026-03-17)
 
 **注目**: v2.0.0a1 アルファ版がタグ付けされた。v2 系の開発が開始されている。
+
+#### 未リリースの変更点 (v1.27.2 以降)
+
+main ブランチは v1.27.2 以降も活発に進行中（1111 コミット先行）。
 
 #### v1.27.2 の主要な変更点
 
@@ -586,10 +624,11 @@
 
 #### 未リリースの変更点
 
-- **adk-web 最新版更新**: adk-web を最新バージョンに更新
+- **メモリリクエスト/レスポンス命名リファクタ**: メモリサービスの命名規則改善
+- **自動セッション作成**: 自動セッション作成機能追加
+- **Progressive SSE ストリーミング**: プログレッシブ SSE ストリーミングと並列関数実行
 - **同期 OTEL 実装**: バッチスパン・ログプロセッサを同期 OTEL 実装に置換
 - **Launcher 依存除去**: Launcher 依存関係のリファクタ
-- **メモリサービス命名改善**: メモリサービスの命名規則改善
 - **インターリーブ thought/text 集約修正**: thought と text の集約バグ修正
 - **Debug テレメトリリファクタ**: トレースアクセスの最適化 (#593)
 - **OTel 構造化ロギング**: 構造化ロギング追加 (#552)
@@ -620,9 +659,11 @@
 
 #### 未リリースの変更点
 
-- **A2A Remote Agent**: A2A Remote Agent 統合改善
-- **Preload Memory Tool**: メモリプリロードツール追加
-- **Load Artifact Tools**: アーティファクトロードツール追加
+- **セッション状態永続化修正**: セッション状態の永続化修正
+- **A2A Remote Agent 改善**: A2A Remote Agent 統合改善、ユーティリティ関数追加
+- **Memory Tool Loading**: `LoadMemoryTool`, `LoadArtifactsTool` 追加
+- **ADK API サーバー改善**: API サーバーの機能拡充
+- **Schema テーブルハンドリング改善**: スキーマテーブルハンドリングの改善
 
 #### v0.4.0 の主要な変更点
 
@@ -641,6 +682,13 @@
 ### Agent Starter Pack
 
 **現行バージョン**: v0.39.4 (2026-03-19)
+
+#### 未リリースの変更点 (v0.39.4 以降)
+
+- **LangGraph デプロイタイムアウト修正**: LangGraph デプロイメントのタイムアウト修正
+- **GKE E2E テスト修正**: Go/TS エージェントの GKE E2E テスト解決
+- **安全なインクリメンタルインジェスション**: create-before-delete 戦略の改善
+- **BigQuery Analytics 設定**: create コマンドでの BigQuery analytics config の反映
 
 #### v0.39.x の主要な変更点
 
@@ -683,9 +731,10 @@
 #### 未リリースの変更点
 
 - **Translate 機能**: run compose 向けの翻訳機能追加
+- **cloud-run-mcp クライアント強化**: OSS Run MCP デプロイ用クライアント改善
 - **詳細サービス情報**: サービス情報取得時の詳細情報提供
 - **run-compose バイナリダウンロード**: run-compose バイナリのダウンロード機能
-- **fast-xml-parser 5.5.6**: 依存関係更新 (5.4.1 → 5.5.6)
+- **fast-xml-parser 5.5.7**: 依存関係更新 (5.5.6 → 5.5.7)
 
 #### v1.9.0 の主要な変更点
 
@@ -700,6 +749,11 @@
 ### gcloud-mcp
 
 **現行バージョン**: gcloud-mcp-v0.5.3 / storage-mcp-v0.3.3 / observability-mcp-v0.2.3
+
+#### 未リリースの変更点
+
+- **backupdr-mcp リリース準備**: release-please ブランチ更新
+- **依存関係更新**: fast-xml-parser 5.5.7、flatted 3.4.2
 
 #### 主要な変更点
 
@@ -719,15 +773,9 @@
 
 ### GKE MCP
 
-**現行バージョン**: v0.9.0
+**現行バージョン**: v0.10.0 (2026-03-23)
 
-#### v0.9.0 の主要な変更点
-
-- **GKE Workload Security スキル**: ワークロードセキュリティ管理 (#172)
-- **クラスタ作成ベストプラクティス**: ドキュメント追加 (#177)
-- **Go 依存関係更新**: Go 1.25.6 へ更新 (#176)
-
-#### 未リリースの変更点
+#### v0.10.0 の主要な変更点
 
 - **Golden Image Finder スキル**: ゴールデンイメージ検索スキル追加
 - **Docker イメージサポート**: Docker イメージのサポート追加 (#183)
@@ -736,6 +784,13 @@
 - **golangci-lint CI 統合**: golangci-lint 設定と CI 統合
 - **SECURITY.md 追加**: セキュリティポリシー追加
 - **Go 1.25.8**: Go バージョン更新 (1.25.6 → 1.25.8)
+- **非推奨 API 置換**: `ServerOption.HasTools/HasResources` を `Capabilities` に置換
+
+#### v0.9.0 の主要な変更点
+
+- **GKE Workload Security スキル**: ワークロードセキュリティ管理 (#172)
+- **クラスタ作成ベストプラクティス**: ドキュメント追加 (#177)
+- **Go 依存関係更新**: Go 1.25.6 へ更新 (#176)
 
 #### 参考リンク
 
@@ -810,7 +865,17 @@
 
 ### GenAI Toolbox
 
-**現行バージョン**: v0.29.0 (2026-03-13)
+**現行バージョン**: v0.30.0 (2026-03-20)
+
+#### v0.30.0 の主要な変更点
+
+- **`migrate` サブコマンド**: マイグレーションサブコマンド追加
+- **`serve` サブコマンド**: サーブサブコマンド追加
+- **One Skill per Toolset**: ツールセットごとに1スキルへの再構成
+- **Oracle DB MCP ツール**: Oracle DB サポート追加（MCP ツール）
+- **Looker `git_branch` ツール**: Looker git_branch ツールサポート追加
+- **Dataplex `search_entries` スコープ**: Dataplex search_entries ツールのスコープサポート
+- **パフォーマンス改善**: span の遅延処理、nil 安全性改善
 
 #### v0.29.0 の主要な変更点
 
@@ -874,34 +939,41 @@
 
 ### メジャーアップデート
 
-1. **A2A v1.0.0** - 正式リリース、仕様リファクタ、Push Notification統合、HTTP エラーマッピング改善
-2. **ADK Python v1.27.2** - Dataplex OAuth修正、usage_metadata改善。**v2.0.0a1 アルファ版タグ付け**
-3. **ADK Go v0.6.0** - Apigeeモデル、RemoteAgentパーツ変換拡張、Replayプラグイン
-4. **ADK JS v0.2.4** - A2A統合、トークンベースコンテキストコンパクション
-5. **GenAI Toolbox v0.29.0** - プリビルトツールセット再構成（破壊的）、MongoDB/Serverless Sparkツール
-6. **MCP-UI v7.0.0** - レガシー仕様削除（破壊的）
-7. **MCP-Apps v1.2.2** - Zod v4互換性、モバイルサポート改善
-8. **MCP Security secops-v0.7.0** - Rule Exclusions管理ツール
-9. **Agent Starter Pack v0.39.4** - GKE CloudBuild修正、ruff linting修正
-10. **Cloud Run MCP v1.10.0** - クライアント追加、統合テスト拡充
-11. **gcloud-mcp** - backupdr-mcp v0.1.0 新規追加
-12. **x402** - Go v2.6.0 / Python v2.4.0 / TypeScript v2.7.0 に大幅アップデート
-13. **Google Analytics MCP v0.2.0** - ADKスキーマ修正、pipx対応
-14. **UCP** - Identity Linking リデザイン、Totals Contract 形式化
+1. **GenAI Toolbox v0.30.0** - migrate/serve サブコマンド、One Skill per Toolset、Oracle DB MCP
+2. **GKE MCP v0.10.0** - Golden Image Finder、ComputeClasses、Docker イメージサポート
+3. **x402 Python v2.5.0** - Permit2 & Gas Sponsorship 拡張
+4. **A2A v1.0.0** - 正式リリース、仕様リファクタ、Push Notification統合、HTTP エラーマッピング改善
+5. **ADK Python v1.27.2** - Dataplex OAuth修正、usage_metadata改善。**v2.0.0a1 アルファ版タグ付け**
+6. **ADK Go v0.6.0** - Apigeeモデル、RemoteAgentパーツ変換拡張、Replayプラグイン
+7. **ADK JS v0.2.4** - A2A統合、トークンベースコンテキストコンパクション
+8. **GenAI Toolbox v0.29.0** - プリビルトツールセット再構成（破壊的）、MongoDB/Serverless Sparkツール
+9. **MCP-UI v7.0.0** - レガシー仕様削除（破壊的）
+10. **MCP-Apps v1.2.2** - Zod v4互換性、モバイルサポート改善
+11. **MCP Security secops-v0.7.0** - Rule Exclusions管理ツール
+12. **Agent Starter Pack v0.39.4** - GKE CloudBuild修正、ruff linting修正
+13. **Cloud Run MCP v1.10.0** - クライアント追加、統合テスト拡充
+14. **gcloud-mcp** - backupdr-mcp v0.1.0 新規追加
+15. **x402** - Go v2.6.0 / TypeScript v2.7.0 に大幅アップデート
+16. **Google Analytics MCP v0.2.0** - ADKスキーマ修正、pipx対応
+17. **UCP** - Identity Linking リデザイン、Totals Contract 形式化
 
 ### 新規プロトコル統合
 
 1. **AG-UI + Claude Agent SDK** - Claude Agent SDK インテグレーション (#916)
 2. **AG-UI + Langroid** - Langroid フレームワーク統合
-3. **A2UI + MCP Apps** - A2UI に MCP Apps を統合 (#748)
-4. **gcloud-mcp + Backup DR** - backupdr-mcp v0.1.0 新規サーバー
-5. **MCP Contributor Ladder** - MCP コミュニティ Contributor Ladder (SEP-2148)
+3. **AG-UI + Dojo** - Dojo バックエンドサービスとデプロイ設定
+4. **A2UI + MCP Apps** - A2UI に MCP Apps を統合 (#748)
+5. **A2UI + Client Capabilities API** - MessageProcessor に Client Capabilities API
+6. **gcloud-mcp + Backup DR** - backupdr-mcp v0.1.0 新規サーバー
+7. **MCP + OIDC/エンタープライズ認可** - OIDC とエンタープライズ管理認可の更新
+8. **MCP Contributor Ladder** - MCP コミュニティ Contributor Ladder (SEP-2148)
 
 ### セキュリティ更新
 
 - **MCP Security v0.7.0**: Rule Exclusions 管理ツール追加
-- **GKE MCP**: SECURITY.md 追加
-- **MCP**: Tool Annotations ブログ、Contributor Ladder
+- **MCP**: OIDC / エンタープライズ管理認可更新、ツールエラーハンドリング再構成
+- **GKE MCP v0.10.0**: SECURITY.md 追加、golangci-lint CI 統合
 - **Cloud Run MCP v1.10.0**: Hono 4.12.7 依存関係更新
 - **ADK Python v1.27.0**: AuthProviderRegistry、OpenTelemetry ツール実行エラーコードキャプチャ
-- **x402 v2.7.0**: ERC-7710 サポート、Permit2 シミュレーション実装
+- **x402 Python v2.5.0**: Permit2 & Gas Sponsorship 拡張
+- **x402 TypeScript v2.7.0**: ERC-7710 サポート、Permit2 シミュレーション実装
