@@ -87,6 +87,40 @@ clean-cache:
 [group('Setup')]
 clean-all: clean clean-cache
 
+# Clean work env: reset a claude-work-X directory (remove synced skills/commands/agents, empty CLAUDE.md)
+# Usage: just clean-work-env d
+[group('Setup')]
+clean-work-env target:
+    #!/usr/bin/env bash
+    set -eu -o pipefail
+    case "{{ target }}" in
+      a) config_dir="$HOME/.claude-work-a" ;;
+      b) config_dir="$HOME/.claude-work-b" ;;
+      c) config_dir="$HOME/.claude-work-c" ;;
+      d) config_dir="$HOME/.claude-work-d" ;;
+      *) echo "ERROR: unknown target '{{ target }}'. Use: a, b, c, d"; exit 1 ;;
+    esac
+    if [ ! -d "$config_dir" ]; then
+      echo "❌ $config_dir does not exist"
+      exit 1
+    fi
+    echo "🧹 Cleaning $config_dir ..."
+    echo "--- Emptying CLAUDE.md ---"
+    : > "$config_dir/CLAUDE.md"
+    echo "--- Removing skills/ ---"
+    rm -rf "$config_dir/skills"
+    echo "--- Removing commands/ ---"
+    rm -rf "$config_dir/commands"
+    echo "--- Removing agents/ ---"
+    rm -rf "$config_dir/agents"
+    echo "--- Removing plans/ ---"
+    rm -rf "$config_dir/plans"
+    echo "--- Removing session-env/ ---"
+    rm -rf "$config_dir/session-env"
+    echo "--- Removing shell-snapshots/ ---"
+    rm -rf "$config_dir/shell-snapshots"
+    echo "✅ $config_dir cleaned (plugins, projects, history preserved)"
+
 # Dump: write Homebrew bundle into dump/
 [group('Setup')]
 dump:

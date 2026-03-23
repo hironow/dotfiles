@@ -75,12 +75,12 @@ AGENTS: list[AgentTarget] = [
     AgentTarget(
         Path.home() / ".claude-work-b", "Claude(Work-B)", main_file="CLAUDE.md"
     ),
-    AgentTarget(
-        Path.home() / ".claude-work-c", "Claude(Work-C)", main_file="CLAUDE.md"
-    ),
-    AgentTarget(
-        Path.home() / ".claude-work-d", "Claude(Work-D)", main_file="CLAUDE.md"
-    ),
+    # AgentTarget(
+    #     Path.home() / ".claude-work-c", "Claude(Work-C)", main_file="CLAUDE.md"
+    # ),
+    # AgentTarget(
+    #     Path.home() / ".claude-work-d", "Claude(Work-D)", main_file="CLAUDE.md"
+    # ),
     AgentTarget(Path.home() / ".gemini", "Gemini", main_file="GEMINI.md"),
     AgentTarget(
         Path.home() / ".codex", "Codex", main_file="AGENTS.md", is_import_source=True
