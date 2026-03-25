@@ -1638,3 +1638,184 @@ def test_sync_agents_agents_global_gets_learned_symlinks(docker_image):
     assert "learned synced" in result.stdout
     assert "agents symlink exists" in result.stdout
     assert "agents symlink target correct" in result.stdout
+
+
+# =============================================================================
+# Orphan Detection and Override Tests
+# =============================================================================
+
+
+def test_sync_agents_orphans_shows_target_only_items(docker_image):
+    """Test that --orphans lists items existing only in the target.
+
+    Scenario:
+    - given: Non-import target has a skill not present in dotfiles
+    - when: Run sync-agents --orphans
+    - then: Orphan skill is listed in the output
+
+    Note: Orphans must be added to a non-import-source target (Work-A),
+    since import sources (Claude, Codex) would import new items into dotfiles.
+    """
+    cmd = """
+    set -euo pipefail
+
+    # First sync to establish baseline
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Add an orphan skill to a non-import target
+    mkdir -p /root/.claude-work-a/skills/orphan-test-skill
+    echo "# Orphan" > /root/.claude-work-a/skills/orphan-test-skill/SKILL.md
+
+    # Run orphans detection
+    cd /root/dotfiles && uv run scripts/sync_agents.py --orphans
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Orphan skill is detected
+    assert "orphan-test-skill" in result.stdout
+    assert "Target-Only Items" in result.stdout
+
+
+def test_sync_agents_orphans_clean_when_no_orphans(docker_image):
+    """Test that --orphans shows clean message when all in sync.
+
+    Scenario:
+    - given: All targets match dotfiles
+    - when: Run sync-agents --orphans
+    - then: Clean status message is shown
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Sync to establish baseline
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Run orphans detection (should be clean)
+    cd /root/dotfiles && uv run scripts/sync_agents.py --orphans
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: No orphans found
+    assert "No target-only items found" in result.stdout
+
+
+def test_sync_agents_override_removes_orphans(docker_image):
+    """Test that --override removes target-only items without prompts.
+
+    Scenario:
+    - given: Non-import target has orphan skills
+    - when: Run sync-agents --override
+    - then: Orphans are deleted, target matches dotfiles
+
+    Note: Uses Work-A (non-import-source) to avoid import phase interference.
+    """
+    cmd = """
+    set -euo pipefail
+
+    # First sync to establish baseline
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Add orphan skills to non-import target
+    mkdir -p /root/.claude-work-a/skills/orphan-alpha
+    echo "# Alpha" > /root/.claude-work-a/skills/orphan-alpha/SKILL.md
+    mkdir -p /root/.claude-work-a/skills/orphan-beta
+    echo "# Beta" > /root/.claude-work-a/skills/orphan-beta/SKILL.md
+
+    # Verify orphans exist
+    [ -d /root/.claude-work-a/skills/orphan-alpha ] && echo "orphan-alpha exists before"
+    [ -d /root/.claude-work-a/skills/orphan-beta ] && echo "orphan-beta exists before"
+
+    # Run override
+    cd /root/dotfiles && uv run scripts/sync_agents.py --override
+
+    # Verify orphans are gone
+    if [ -d /root/.claude-work-a/skills/orphan-alpha ]; then
+        echo "ERROR: orphan-alpha still exists"
+    else
+        echo "orphan-alpha removed"
+    fi
+    if [ -d /root/.claude-work-a/skills/orphan-beta ]; then
+        echo "ERROR: orphan-beta still exists"
+    else
+        echo "orphan-beta removed"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Orphans existed before and were removed
+    assert "orphan-alpha exists before" in result.stdout
+    assert "orphan-beta exists before" in result.stdout
+    assert "orphan-alpha removed" in result.stdout
+    assert "orphan-beta removed" in result.stdout
+
+
+def test_sync_agents_override_preserves_source_items(docker_image):
+    """Test that --override keeps items that exist in dotfiles.
+
+    Scenario:
+    - given: Non-import target has both dotfiles skills and orphans
+    - when: Run sync-agents --override
+    - then: Dotfiles skills remain, orphans are removed
+
+    Note: Uses Work-A (non-import-source) to avoid import phase interference.
+    """
+    cmd = """
+    set -euo pipefail
+
+    # Create a skill in dotfiles
+    mkdir -p /root/dotfiles/skills/my-real-skill
+    echo "# Real" > /root/dotfiles/skills/my-real-skill/SKILL.md
+
+    # First sync
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Add an orphan to the non-import target
+    mkdir -p /root/.claude-work-a/skills/orphan-only
+    echo "# Orphan" > /root/.claude-work-a/skills/orphan-only/SKILL.md
+
+    # Run override
+    cd /root/dotfiles && uv run scripts/sync_agents.py --override
+
+    # Verify: real skill preserved, orphan removed
+    [ -d /root/.claude-work-a/skills/my-real-skill ] && echo "real skill preserved"
+    if [ -d /root/.claude-work-a/skills/orphan-only ]; then
+        echo "ERROR: orphan still exists"
+    else
+        echo "orphan removed"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then
+    assert "real skill preserved" in result.stdout
+    assert "orphan removed" in result.stdout
+
+
+def test_sync_agents_preview_shows_orphans(docker_image):
+    """Test that --preview shows target-only items with TARGET-ONLY label.
+
+    Scenario:
+    - given: Non-import target has an orphan skill
+    - when: Run sync-agents --preview
+    - then: Orphan is shown with TARGET-ONLY label
+
+    Note: Uses Work-A (non-import-source) to avoid import phase interference.
+    """
+    cmd = """
+    set -euo pipefail
+
+    # First sync
+    cd /root/dotfiles && just sync-agents-auto
+
+    # Add an orphan to non-import target
+    mkdir -p /root/.claude-work-a/skills/preview-orphan
+    echo "# Preview" > /root/.claude-work-a/skills/preview-orphan/SKILL.md
+
+    # Run preview
+    cd /root/dotfiles && uv run scripts/sync_agents.py --preview
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    # then: Orphan shown with TARGET-ONLY label
+    assert "preview-orphan" in result.stdout
+    assert "TARGET-ONLY" in result.stdout
