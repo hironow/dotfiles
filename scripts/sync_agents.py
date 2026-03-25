@@ -132,6 +132,7 @@ class _DeleteAction:
     target: Path
     relative_path: str
     is_directory: bool
+    reason: str = "removed"  # "removed" (manifest-tracked) or "orphan" (target-only)
 
 
 @dataclass
@@ -356,6 +357,59 @@ def _build_deletion_plan(
     return deletions
 
 
+def _detect_target_only_items(
+    dotfiles_dir: Path, agent: AgentTarget, manifest: _SyncManifest
+) -> list[_DeleteAction]:
+    """Detect items in target directories that exist only in the target.
+
+    These are items not present in the dotfiles source and not tracked
+    in the manifest (manifest-tracked deletions are handled separately
+    by _build_deletion_plan).
+
+    Internal symlinks (e.g., learned skill links created by _link_learned_skills)
+    are excluded since they are auto-managed.
+    """
+    orphans: list[_DeleteAction] = []
+
+    for dir_name in agent.get_sync_directories():
+        target_dir = agent.directory / dir_name
+        source_dir = dotfiles_dir / dir_name
+
+        if not target_dir.is_dir():
+            continue
+
+        # All source names (including symlinks — they represent valid items)
+        source_names: set[str] = set()
+        if source_dir.is_dir():
+            for child in source_dir.iterdir():
+                if not child.name.startswith("."):
+                    source_names.add(child.name)
+
+        # Manifest-tracked items (handled by _build_deletion_plan)
+        manifest_items = set(manifest.items.get(dir_name, []))
+
+        for child in sorted(target_dir.iterdir(), key=lambda p: p.name):
+            if child.name.startswith("."):
+                continue
+            # Skip internal symlinks (managed by _link_learned_skills)
+            if child.is_symlink() and _is_internal_symlink(child, target_dir):
+                continue
+            # Skip items that exist in source or are manifest-tracked
+            if child.name in source_names or child.name in manifest_items:
+                continue
+
+            orphans.append(
+                _DeleteAction(
+                    target=child,
+                    relative_path=f"{dir_name}/{child.name}",
+                    is_directory=child.is_dir() and not child.is_symlink(),
+                    reason="orphan",
+                )
+            )
+
+    return orphans
+
+
 def _sync_file(source: Path, target: Path) -> None:
     """Sync a single file."""
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -555,7 +609,13 @@ def _print_plan(
 
         for deletion in plan.deletions:
             icon = "📁" if deletion.is_directory else "📄"
-            print(f"  🗑️  {icon} {deletion.relative_path} [DELETE]")
+            if deletion.reason == "orphan":
+                print(
+                    f"  🗑️  {icon} {deletion.relative_path}"
+                    " [TARGET-ONLY → will be removed]"
+                )
+            else:
+                print(f"  🗑️  {icon} {deletion.relative_path} [DELETE]")
             has_changes = True
 
     return has_changes
@@ -763,12 +823,15 @@ def preview_mode(dotfiles_dir: Path) -> None:
             if _print_import_plan(import_plan, verbose=True):
                 has_imports = True
 
-    # Phase 2-3: Forward sync + deletion preview
+    # Phase 2-3: Forward sync + deletion + orphan preview
     additional = _get_additional_sources(dotfiles_dir)
     plans: list[_SyncPlan] = []
     for agent in AGENTS:
         sync_plan = _build_sync_plan(dotfiles_dir, agent, additional)
         sync_plan.deletions = _build_deletion_plan(dotfiles_dir, agent, manifest)
+        sync_plan.deletions.extend(
+            _detect_target_only_items(dotfiles_dir, agent, manifest)
+        )
         plans.append(sync_plan)
 
     has_changes = _print_plan(plans, dotfiles_dir, verbose=True)
@@ -827,12 +890,15 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
     if has_imports:
         print()
 
-    # Phase 2-3: Plan and apply forward sync + deletions
+    # Phase 2-3: Plan and apply forward sync + deletions + orphans
     additional = _get_additional_sources(dotfiles_dir)
     plans: list[_SyncPlan] = []
     for agent in AGENTS:
         sync_plan = _build_sync_plan(dotfiles_dir, agent, additional)
         sync_plan.deletions = _build_deletion_plan(dotfiles_dir, agent, manifest)
+        sync_plan.deletions.extend(
+            _detect_target_only_items(dotfiles_dir, agent, manifest)
+        )
         plans.append(sync_plan)
 
     has_changes = _print_plan(plans, dotfiles_dir, verbose=False)
@@ -875,7 +941,14 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
         # Apply deletions
         for deletion in plan.deletions:
             icon = "📁" if deletion.is_directory else "📄"
-            if auto_yes or _confirm(f"  Delete {deletion.relative_path}?"):
+            if deletion.reason == "orphan":
+                prompt = (
+                    f"  Delete {deletion.relative_path}"
+                    " (target-only, not in dotfiles)?"
+                )
+            else:
+                prompt = f"  Delete {deletion.relative_path}?"
+            if auto_yes or _confirm(prompt):
                 if deletion.target.is_symlink():
                     deletion.target.unlink()
                 elif deletion.is_directory:
@@ -910,6 +983,39 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
     print("\n✨ Sync completed!")
 
 
+def orphans_mode(dotfiles_dir: Path) -> None:
+    """Show target-only items across all agent directories.
+
+    Lists items that exist in targets but not in the dotfiles source
+    or manifest. These would be removed during a full override sync.
+
+    Args:
+        dotfiles_dir: Path to dotfiles directory.
+    """
+    _print_header("Target-Only Items (Orphans)")
+
+    manifest = _load_manifest(dotfiles_dir)
+    total = 0
+
+    for agent in AGENTS:
+        orphans = _detect_target_only_items(dotfiles_dir, agent, manifest)
+        if not orphans:
+            continue
+
+        print(f"📋 {agent.name}: {agent.directory}")
+        for orphan in orphans:
+            icon = "📁" if orphan.is_directory else "📄"
+            print(f"  🗑️  {icon} {orphan.relative_path}")
+            total += 1
+        print()
+
+    if total == 0:
+        print("✅ No target-only items found. All targets match dotfiles.")
+    else:
+        print(f"Found {total} target-only item(s).")
+        print("💡 Run 'just sync-agents' to sync and confirm deletions.")
+
+
 def main() -> None:
     """CLI entry point for sync-agents."""
     parser = argparse.ArgumentParser(
@@ -928,6 +1034,16 @@ def main() -> None:
         help="Auto-confirm all changes (no prompts)",
     )
     parser.add_argument(
+        "--orphans",
+        action="store_true",
+        help="Show target-only items (not in dotfiles or manifest)",
+    )
+    parser.add_argument(
+        "--override",
+        action="store_true",
+        help="Full override: sync all items and remove orphans without prompts",
+    )
+    parser.add_argument(
         "--dotfiles",
         "-d",
         type=Path,
@@ -937,8 +1053,13 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.preview:
+    if args.orphans:
+        orphans_mode(args.dotfiles)
+    elif args.preview:
         preview_mode(args.dotfiles)
+    elif args.override:
+        print("⚡ Override mode: dotfiles → targets (no prompts)")
+        sync_mode(args.dotfiles, auto_yes=True)
     else:
         sync_mode(args.dotfiles, auto_yes=args.yes)
 

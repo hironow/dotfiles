@@ -64,6 +64,16 @@ sync-agents-preview:
 sync-agents-auto:
     @uv run scripts/sync_agents.py --yes
 
+# Sync (override): full replace — dotfiles wins, orphans removed, no prompts
+[group('Setup')]
+sync-agents-override:
+    @uv run scripts/sync_agents.py --override
+
+# Sync (orphans): show target-only items that would be removed
+[group('Setup')]
+sync-agents-orphans:
+    @uv run scripts/sync_agents.py --orphans
+
 # Clean: remove deployed dotfiles (~/.zshrc, ~/.config/sheldon/plugins.toml, ~/.config/starship.toml)
 [group('Setup')]
 clean:
