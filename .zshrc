@@ -222,3 +222,7 @@ path_prepend "$HOME/.local/share/mise/shims"
 
 # Vite+ bin (https://viteplus.dev)
 . "$HOME/.vite-plus/env"
+
+# guard for Python package index
+# see: https://shisho.dev/docs/ja/r/202603-takumi-guard-pypi/
+export PIP_INDEX_URL=https://pypi.flatt.tech/simple/
