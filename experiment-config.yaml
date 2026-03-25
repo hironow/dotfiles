@@ -1,0 +1,16 @@
+tag: "mar26-autoblogs"
+target_files:
+  - "autoblogs/2026-03-26-adk-go-v1.0.md"
+  - "autoblogs/2026-03-26-adk-python-security.md"
+  - "autoblogs/2026-03-26-mcp-apps-v1.3.md"
+  - "autoblogs/2026-03-26-ag-ui-v0.0.48.md"
+  - "autoblogs/2026-03-26-x402-multichain-expansion.md"
+  - "autoblogs/2026-03-26-cloud-run-mcp-v1.10.md"
+  - "autoblogs/2026-03-26-agentskills-ecosystem.md"
+  - "autoblogs/2026-03-26-ucp-breaking-changes.md"
+eval_command: "bash scripts/evaluate_blog.sh autoblogs"
+metric_name: "score"
+metric_direction: "higher"
+timeout_seconds: 120
+results_file: "results.tsv"
+baseline_description: "existing 2026-03-23 articles, score:82"
