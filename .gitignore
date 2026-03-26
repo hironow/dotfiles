@@ -1,29 +1,14 @@
 # Homebrew
 Brewfile.lock.json
 
-# Python
-.venv
-venv
-__pycache__
-.*_cache/
-
-# private
-private/
+# dotfiles-specific private
 refs/
-
-# env
 .env.keys
-# .env use dotenvx
-.env.local
-.env.*.local
 
-# node
-node_modules/
+# node lockfiles (not tracked in dotfiles)
 package.json
 package-lock.json
 bun.lock
-*-debug.log
-*.log
 
 # autodesign
 design-results.tsv
@@ -44,10 +29,6 @@ terraform.tfstate.backup
 # Cargo
 /target/
 
-# IDE
-.idea/
-.vscode/
-
 # AI coding
 .serena/cache/
 .sync-manifest.json
@@ -55,7 +36,7 @@ terraform.tfstate.backup
 # Model
 *.pt
 
-# claude local settings
+# claude local settings (broader than global)
 .claude/*.local.*
 
 # paintress expedition state

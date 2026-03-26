@@ -41,6 +41,8 @@ deploy:
     ln -sf ~/dotfiles/tools/tmux/tmux.conf ~/.tmux.conf
     mkdir -p ~/.config/ghostty
     ln -sf ~/dotfiles/tools/ghostty-config ~/.config/ghostty/config
+    mkdir -p ~/.config/git
+    cp ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
     @echo "==> Installing plugins..."
     sheldon lock
     @if [ ! -d ~/.local/share/fzf-tab ]; then \
@@ -131,11 +133,13 @@ clean-work-env target:
     rm -rf "$config_dir/shell-snapshots"
     echo "✅ $config_dir cleaned (plugins, projects, history preserved)"
 
-# Dump: write Homebrew bundle into dump/
+# Dump: write Homebrew bundle and global gitignore into dump/
 [group('Setup')]
 dump:
     # Dump current brew bundle
     rm -f ./dump/Brewfile && (cd ./dump && brew bundle dump)
+    # Dump global gitignore
+    cp ~/.config/git/ignore ./dump/gitignore-global
 
 
 # ------------------------------

@@ -1,0 +1,55 @@
+# --- AI & Tool Specific ---
+.claude/settings.local.json
+.cursor/
+.cline/
+.copilot/
+.indexing/
+
+# --- Local Secrets & Private (Safety Net) ---
+private/
+env.keys
+.env*.local
+*.pem
+*.key
+auth.json
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- IDEs ---
+.idea/
+.vscode/
+*.swp
+*~
+
+# --- Python (Modern: uv & cache) ---
+.venv/
+venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.uv/
+.python-version
+
+# --- Node.js / Web (Modern: Turbo & Next) ---
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Infrastructure ---
+.terraform/
+*.tfstate
+.devcontainer/local-features/
+
+# --- Logs ---
+log/
+*.log
