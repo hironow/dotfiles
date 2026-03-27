@@ -88,3 +88,6 @@
 [submodule "protocols/MCP-Apps"]
 	path = protocols/MCP-Apps
 	url = git@github.com:modelcontextprotocol/ext-apps.git
+[submodule "guardrails/semgrep"]
+	path = guardrails/semgrep
+	url = git@github.com:hironow/semgrep-guardrails.git
