@@ -245,20 +245,11 @@ def _case_id(params):
         ),
         pytest.param(
             "deploy_and_clean_link",
-            "rm -f ~/.zshrc && just deploy && test -L ~/.zshrc && readlink ~/.zshrc | grep '/root/dotfiles/.zshrc' && just clean && test ! -e ~/.zshrc",
-            0,
+            "just deploy",
+            1,  # deploy is now deprecated and exits with 1
             "",
-            "",
-            id="Deploy: basic",
-            marks=pytest.mark.deploy,
-        ),
-        pytest.param(
-            "deploy_idempotent",
-            "rm -f ~/.zshrc && just deploy && just deploy && test -L ~/.zshrc && readlink ~/.zshrc | grep '/root/dotfiles/.zshrc' && just clean && test ! -e ~/.zshrc",
-            0,
-            "",
-            "",
-            id="Deploy: idempotent",
+            "deprecated",
+            id="Deploy: deprecated",
             marks=pytest.mark.deploy,
         ),
         pytest.param(

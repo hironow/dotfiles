@@ -30,26 +30,13 @@ install:
     # Install tools via mise (versions are managed in mise.toml)
     mise install
 
-# Deploy: symlink dotfiles to home and install plugins
+# Deploy: DEPRECATED — use `just hm-switch` (Home Manager manages dotfile symlinks)
+# Legacy deploy kept as reference; see nix/dotfiles.nix for current symlink definitions.
 [group('Setup')]
 deploy:
-    @echo "==> Start to deploy dotfiles to home directory."
-    ln -sf ~/dotfiles/.zshrc ~/.zshrc
-    mkdir -p ~/.config/sheldon
-    ln -sf ~/dotfiles/sheldon-plugins.toml ~/.config/sheldon/plugins.toml
-    ln -sf ~/dotfiles/starship.toml ~/.config/starship.toml
-    ln -sf ~/dotfiles/tools/tmux/tmux.conf ~/.tmux.conf
-    mkdir -p ~/.config/ghostty
-    ln -sf ~/dotfiles/tools/ghostty-config ~/.config/ghostty/config
-    mkdir -p ~/.config/git
-    cp ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
-    @echo "==> Installing plugins..."
-    sheldon lock
-    @if [ ! -d ~/.local/share/fzf-tab ]; then \
-        echo "==> Installing fzf-tab..."; \
-        git clone --depth 1 https://github.com/Aloxaf/fzf-tab ~/.local/share/fzf-tab; \
-    fi
-    @echo "==> Deploy complete!"
+    @echo "⚠️  'just deploy' is deprecated. Use 'just hm-switch' instead."
+    @echo "    Home Manager now manages dotfile symlinks via nix/dotfiles.nix"
+    @exit 1
 
 # Sync: copy ROOT_AGENTS files to agent instruction directories
 [group('Setup')]
@@ -76,15 +63,12 @@ sync-agents-override:
 sync-agents-orphans:
     @uv run scripts/sync_agents.py --orphans
 
-# Clean: remove deployed dotfiles (~/.zshrc, ~/.config/sheldon/plugins.toml, ~/.config/starship.toml)
+# Clean: DEPRECATED — Home Manager manages dotfile symlinks
 [group('Setup')]
 clean:
-    @echo "==> Remove dotfiles in your home directory..."
-    rm -vrf ~/.zshrc
-    rm -vrf ~/.config/sheldon/plugins.toml
-    rm -vrf ~/.config/starship.toml
-    rm -vrf ~/.tmux.conf
-    rm -vrf ~/.config/ghostty/config
+    @echo "⚠️  'just clean' is deprecated. Home Manager manages dotfile symlinks."
+    @echo "    To remove HM generation: home-manager expire-generations '-1 day'"
+    @exit 1
 
 # Clean cache: remove zsh-related caches (compinit, fzf, zoxide, kubectl, sheldon)
 [group('Setup')]
@@ -95,9 +79,9 @@ clean-cache:
     rm -vrf ~/.local/share/sheldon/
     rm -vrf ~/.local/share/fzf-tab/
 
-# Clean all: remove both dotfiles and caches
+# Clean all: remove caches only (dotfile cleanup is now HM's job)
 [group('Setup')]
-clean-all: clean clean-cache
+clean-all: clean-cache
 
 # Clean work env: reset a claude-work-X directory (remove synced skills/commands/agents, empty CLAUDE.md)
 # Usage: just clean-work-env d
@@ -245,15 +229,16 @@ lint:
 # Add sets
 # ------------------------------
 
-# Add (all): install gcloud/brew/pnpm sets
+# Add (all): apply Nix Home Manager + install gcloud/brew/pnpm sets
 add-all:
+    just hm-switch
     just add-gcloud
     just add-brew
     just add-pnpm-g
 
-# Add: install Homebrew bundle
+# Add: install Homebrew bundle (cask/mas/vscode + non-nixpkgs CLI tools)
 add-brew:
-    # Install brew bundle
+    # Install brew bundle (Nix manages most CLI tools; see nix/packages.nix)
     (cd ./dump && brew bundle)
 
 # Add: install gcloud components
@@ -267,6 +252,58 @@ add-pnpm-g:
     pnpm add --global $(awk '{ORS=" "} {print}' ./dump/npm-global)
 
 # ------------------------------
+# Nix / Home Manager
+# ------------------------------
+
+# Nix: apply Home Manager configuration
+[group('Nix')]
+hm-switch:
+    #!/usr/bin/env bash
+    set -eu -o pipefail
+    system=$(nix eval --raw --impure --expr 'builtins.currentSystem')
+    username=$(whoami)
+    echo "Applying Home Manager for ${username}@${system}..."
+    home-manager switch --flake ".#${username}@${system}" --impure
+
+# Nix: build without activating (dry-run)
+[group('Nix')]
+hm-build:
+    #!/usr/bin/env bash
+    set -eu -o pipefail
+    system=$(nix eval --raw --impure --expr 'builtins.currentSystem')
+    username=$(whoami)
+    home-manager build --flake ".#${username}@${system}" --impure
+
+# Nix: show recent Home Manager generations
+[group('Nix')]
+hm-diff:
+    home-manager generations | head -5
+
+# Nix: update flake inputs (nixpkgs, home-manager)
+[group('Nix')]
+nix-update:
+    nix flake update
+
+# Nix: garbage collect old generations
+[group('Nix')]
+nix-gc:
+    nix-collect-garbage -d
+
+# Test: Home Manager config in Docker
+[group('Nix')]
+test-nix-hm:
+    docker build -f tests/docker/NixHomeManager.Dockerfile .
+
+# Test: install.sh in Docker
+[group('Nix')]
+test-nix-install:
+    docker build -f tests/docker/NixInstallTest.Dockerfile .
+
+# Test: all Nix tests
+[group('Nix')]
+test-nix: test-nix-hm test-nix-install
+
+# ------------------------------
 # Update sets
 # ------------------------------
 
@@ -276,8 +313,10 @@ update-my-submodules:
     git submodule update --remote skills emulator telemetry
     @echo "✅ Submodules updated."
 
-# Update (all): update gcloud/brew/pnpm and tools (pnpm safe mode)
+# Update (all): update nix/gcloud/brew/pnpm and tools (pnpm safe mode)
 update-all:
+    @echo "◆ nix flake..."
+    @if command -v nix >/dev/null 2>&1; then nix flake update && just hm-switch; else echo 'nix not found; skip'; fi
     just update-gcloud
     just update-brew
     just update-pnpm-g-safe
@@ -462,6 +501,8 @@ doctor:
     # Core
     if has bash; then log_ok 'bash' "$(bash --version | head -n1)"; else log_err 'bash' 'missing'; fi
     if has git; then log_ok 'git' "$(git --version 2>/dev/null || true)"; else log_err 'git' 'missing'; fi
+    if has nix; then log_ok 'nix' "$(nix --version 2>/dev/null || true)"; else log_err 'nix' 'missing (primary package manager)'; fi
+    if has home-manager; then log_ok 'home-manager' "$(home-manager --version 2>/dev/null || true)"; else log_warn 'home-manager' 'missing (run: nix run home-manager)'; fi
 
     # Optional tools
     if has docker; then \
