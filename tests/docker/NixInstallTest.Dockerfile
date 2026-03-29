@@ -29,6 +29,8 @@ ENV DOTFILES_REPO=/tmp/dotfiles-repo
 ENV INSTALL_SKIP_HOMEBREW=1
 ENV INSTALL_SKIP_GCLOUD=1
 ENV INSTALL_SKIP_ADD_UPDATE=1
+# home-manager requires USER to be set
+ENV USER=root
 
 # Run install.sh (installs Nix + applies Home Manager as root)
 RUN bash /tmp/dotfiles-repo/install.sh
