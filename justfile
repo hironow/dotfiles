@@ -501,7 +501,7 @@ doctor:
     # Core
     if has bash; then log_ok 'bash' "$(bash --version | head -n1)"; else log_err 'bash' 'missing'; fi
     if has git; then log_ok 'git' "$(git --version 2>/dev/null || true)"; else log_err 'git' 'missing'; fi
-    if has nix; then log_ok 'nix' "$(nix --version 2>/dev/null || true)"; else log_err 'nix' 'missing (primary package manager)'; fi
+    if has nix; then log_ok 'nix' "$(nix --version 2>/dev/null || true)"; else log_warn 'nix' 'missing (install via install.sh)'; fi
     if has home-manager; then log_ok 'home-manager' "$(home-manager --version 2>/dev/null || true)"; else log_warn 'home-manager' 'missing (run: nix run home-manager)'; fi
 
     # Optional tools
