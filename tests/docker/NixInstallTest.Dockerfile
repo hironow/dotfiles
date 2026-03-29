@@ -9,15 +9,11 @@ RUN apt-get update && apt-get install -y \
     xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user with sudo
-RUN useradd -m -s /bin/bash testuser && \
-    echo "testuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-USER testuser
-WORKDIR /home/testuser
+WORKDIR /root
 
 # Prepare "remote" repo
 RUN mkdir -p /tmp/dotfiles-repo
-COPY --chown=testuser:testuser . /tmp/dotfiles-repo
+COPY . /tmp/dotfiles-repo
 
 # Initialize git in the "remote" repo so it can be cloned
 RUN cd /tmp/dotfiles-repo && \
@@ -28,12 +24,13 @@ RUN cd /tmp/dotfiles-repo && \
     git commit -m "Initial commit"
 
 # Set environment variables — skip Homebrew, gcloud, and post-install steps
+# Nix and Home Manager ARE exercised (they are the point of this test)
+ENV DOTFILES_REPO=/tmp/dotfiles-repo
 ENV INSTALL_SKIP_HOMEBREW=1
 ENV INSTALL_SKIP_GCLOUD=1
 ENV INSTALL_SKIP_ADD_UPDATE=1
-ENV DOTFILES_REPO=/tmp/dotfiles-repo
 
-# Run install.sh from the "remote" source
+# Run install.sh (installs Nix + applies Home Manager as root)
 RUN bash /tmp/dotfiles-repo/install.sh
 
 # Verify Nix is installed
@@ -42,6 +39,7 @@ RUN . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh && nix --version
 # Verify dotfile symlinks are created by Home Manager
 RUN test -L ~/.zshrc
 RUN test -L ~/.config/starship.toml
+RUN test -L ~/.tmux.conf
 
 # Verify idempotency (second run)
 RUN bash /tmp/dotfiles-repo/install.sh
