@@ -52,10 +52,11 @@ cd "$DOTPATH"
 if [ -z "${INSTALL_SKIP_NIX:-}" ]; then
   if ! command -v nix >/dev/null 2>&1; then
     echo "[install] Installing Nix (Determinate Installer)..."
-    NIX_INSTALL_ARGS="install --no-confirm"
-    # Docker/containers lack systemd; use --init none
+    # Docker/containers lack systemd; use linux --init none
     if [ ! -d /run/systemd/system ]; then
-      NIX_INSTALL_ARGS="$NIX_INSTALL_ARGS linux --init none"
+      NIX_INSTALL_ARGS="install linux --init none --no-confirm"
+    else
+      NIX_INSTALL_ARGS="install --no-confirm"
     fi
     # shellcheck disable=SC2086
     curl --proto '=https' --tlsv1.2 -sSf -L \
