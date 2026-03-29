@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-03-26
+最終更新: 2026-03-29
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -72,6 +72,10 @@
 
 #### 未リリースの変更点
 
+- **Python SDK 改善**: Python SDK の改善
+- **依存関係更新 (CVE)**: google-adk 1.20.0 の CVE 対応を含む依存関係更新
+- **React バージョン固定**: パブリッシュ用 React バージョン固定設定
+- **MCP App 高さ改善**: MCP App の高さ処理改善
 - **Sandbox iframe リファクタ**: sandbox iframe を共有ディレクトリへ移行（ビルド設定更新）
 - **ComponentApi.schema 型推論改善**: ComponentApi.schema の型推論改善
 - **Extension 互換バージョン選択**: 最新互換バージョンの自動選択
@@ -181,7 +185,13 @@
 
 ### AG-UI (Agent-User Interaction Protocol)
 
-**現行バージョン**: v0.0.48 (2026-03-24)
+**現行バージョン**: release/2026-03-28
+
+#### release/2026-03-28 の主要な変更点
+
+- **リリース自動化**: リリース自動化パイプライン統合
+- **Dojo オートスケーリング修正**: エージェント例のスケーリング修正
+- **ADK ミドルウェア O(1) 最適化**: ADK ミドルウェアのルックアップパフォーマンス改善
 
 #### v0.0.48 の主要な変更点
 
@@ -277,8 +287,11 @@
 
 #### 未リリースの変更点
 
+- **Ruby SDK ドキュメント**: build-client ドキュメントに Ruby SDK サンプル追加
+- **SEP-2350 クライアントサイドスコープ蓄積**: クライアントサイドのスコープ蓄積に関する明確化
+- **RFC 8414 Well-Known URI 仕様**: RFC 8414 に基づく Well-Known URI 仕様の追加
+- **slash-commands PR ラベリング**: slash-commands の PR ラベリング自動化
 - **Triggers & Events ワーキンググループ**: Triggers & Events ワーキンググループチャーター追加
-- **Ruby SDK サンプル**: build-client ドキュメントに Ruby SDK サンプル追加
 - **マークダウンチェック CI 修正**: CI の Markdown チェック修正
 - **CodeQL ワークフロー権限修正**: CodeQL ワークフロー権限の修正
 
@@ -312,9 +325,15 @@
 
 ### MCP-Apps
 
-**現行バージョン**: v1.3.1 (2026-03-23)
+**現行バージョン**: v1.3.2 (2026-03-29)
 
-#### v1.3.x の主要な変更点
+#### v1.3.2 の主要な変更点
+
+- **auto-resize 水平スクロール修正**: 自動リサイズ時の水平スクロール破壊修正
+- **fullscreen size-changed スキップ修正**: フルスクリーンモードでの size-changed イベント修正
+- **ext-apps バージョンバンプ**: ext-apps を v1.3.2 に更新
+
+#### v1.3.1 の主要な変更点
 
 - **重複 PDF サーバープラグイン削除**: 重複した pdf-server プラグインを削除（正規コピーは knowledge-work-plugins に）
 - **PDF Server 強化**: アノテーション、interact ツール、ページ抽出機能
@@ -524,6 +543,11 @@
 
 #### 未リリースの変更点
 
+- **Go SDK `upto` パラメータ**: Go SDK に `upto` パラメータ追加
+- **E2E approve バグ修正**: E2E テストの承認バグ修正
+- **Facilitator 遅延初期化レースコンディション修正**: Facilitator の遅延初期化におけるレースコンディション解消
+- **ディスカバリースキーマメソッド強制**: ディスカバリースキーマでのメソッド強制
+- **アダプター自動ポピュレーション**: アダプターの自動ポピュレーション機能
 - **Signed Offer & Receipt Extension**: オプショナルな署名付きオファー＆レシート拡張（ドラフト） (#935)
 - **Express スタイルルートパラメータ**: `:param` 形式の動的ルートパラメータサポート (#1313)
 - **Polygon メインネット**: CDP Facilitator に Polygon メインネットサポート追加 (#1564)
@@ -547,9 +571,21 @@
 
 ### ADK Python
 
-**現行バージョン**: v1.27.4 (2026-03-24)
+**現行バージョン**: v1.28.0 (2026-03-26)
 
 **注目**: v2.0.0a1 アルファ版がタグ付けされた。v2 系の開発が開始されている。
+
+#### v1.28.0 の主要な変更点
+
+- **A2A lifespan パラメータ**: A2A lifespan パラメータサポート追加
+- **BigQuery 1P Toolset 移行**: BigQuery 1P ツールセットの移行
+- **Spanner Admin Toolset**: Spanner Admin ツールセット新規追加
+- **Slack 統合**: Slack インテグレーション追加
+- **SSE ストリーミング**: 適合テスト向け SSE ストリーミングサポート
+- **Anthropic thinking_blocks**: LiteLLM での Anthropic thinking_blocks フォーマットサポート
+- **MCP サンプリングコールバック**: MCP サンプリングコールバックサポート
+- **マルチターンタスクメトリクス**: success, trajectory, tool trajectory メトリクス追加
+- **モジュールインポート保護**: 任意モジュールインポートに対する保護追加（セキュリティ）
 
 #### v1.27.4 の主要な変更点
 
@@ -654,7 +690,11 @@
 
 #### 未リリースの変更点 (v1.0.0 以降)
 
+- **カスタムランナープロバイダー**: adka2a executor 向けカスタムランナープロバイダー
+- **GetArtifactVersion**: アーティファクトサービスに GetArtifactVersion メソッド追加
+- **再帰的エージェント検索**: 名前による再帰的エージェント検索
 - **ストリーミング応答集約修正**: エラー詳細と finish reason の保持修正
+- **適合テスト修正**: YAML フォーマットとプログレッシブ SSE 適合修正
 - **メモリリクエスト/レスポンス命名リファクタ**: メモリサービスの命名規則改善
 - **AutoCreateSession**: Runner で自動セッション作成機能追加
 - **Progressive SSE ストリーミング**: プログレッシブ SSE ストリーミングと並列関数実行
@@ -702,6 +742,8 @@
 
 #### 未リリースの変更点
 
+- **A2A クロス言語統合テスト**: A2A 統合テストの追加
+- **ネイティブアドオンエージェント依存**: ネイティブアドオンエージェント依存のサポート
 - **パストラバーサル防止**: FileArtifactService のパストラバーサル脆弱性修正 (CWE-22)
 - **A2A 統合 Enum 修正**: Agent Card トランスポートタイプの Enum 値修正
 - **セッション状態永続化修正**: セッション状態の永続化修正
@@ -778,6 +820,7 @@
 
 #### 未リリースの変更点
 
+- **AI モデルサポート**: run compose での AI モデルサポート追加
 - **Secrets Manager サポート**: compose デプロイメントでの Secrets Manager サポート
 - **ボリュームマウントサポート**: ボリュームマウント機能追加
 - **並列ビルド**: run compose での並列ビルドサポート
@@ -915,9 +958,18 @@
 
 ### GenAI Toolbox
 
-**現行バージョン**: v0.30.0 (2026-03-20)
+**現行バージョン**: v0.31.0 (2026-03-26)
 
-#### 未リリースの変更点 (v0.30.0 以降)
+#### v0.31.0 の主要な変更点
+
+- **`enable-api` フラグ**: API 有効化フラグの追加
+- **Protected Resource Metadata エンドポイント**: Protected Resource Metadata エンドポイント追加
+- **Manual PRM オーバーライド**: 手動 PRM オーバーライドサポート
+- **Dataplex ルックアップコンテキストツール**: Dataplex ルックアップコンテキストツール追加
+- **BigQuery impersonation**: BigQuery インパーソネーション機能
+- **UUID ベース分離**: UUID ベースのアイソレーション
+
+#### 未リリースの変更点 (v0.31.0 以降)
 
 - **API 統合リファクタ**: anubhav-api-consolidation ブランチでの API 統合作業進行中
 - **Native MCP AlloyDB**: ネイティブ MCP AlloyDB サポート開発中
@@ -996,20 +1048,19 @@
 
 ### メジャーアップデート
 
-1. **ADK Go v1.0.0** - 正式 v1.0.0 安定版リリース
-2. **ADK Python v1.27.4** - LiteLLM 脆弱バージョン除外、任意モジュールインポート防止（セキュリティ強化）。**v2.0.0a1 アルファ版タグ付け**
-3. **MCP-Apps v1.3.1** - PDF Server 強化、重複プラグイン削除、モバイル対応改善
-4. **AG-UI v0.0.48** - connectAgent() ハング修正、並列 LRO ツールコール、セッションキャッシュ改善
-5. **x402** - Go v2.7.0 (Fastify/Echo アダプター) / TypeScript v2.8.0 (Aptos サポート)
-6. **Agent Starter Pack v0.39.6** - Treeless sparse checkout によるリモートテンプレートクローン最適化
-7. **GenAI Toolbox v0.30.0** - migrate/serve サブコマンド、One Skill per Toolset、Oracle DB MCP
-8. **GKE MCP v0.10.0** - Golden Image Finder、ComputeClasses、Docker イメージサポート
-9. **A2A v1.0.0** - 正式リリース、仕様リファクタ、Push Notification統合、HTTP エラーマッピング改善
-10. **MCP-UI v7.0.0** - レガシー仕様削除（破壊的）
+1. **ADK Python v1.28.0** - A2A lifespan、BigQuery 1P移行、Spanner Admin、MCP サンプリングコールバック。**v2.0.0a1 アルファ版タグ付け**
+2. **ADK Go v1.0.0** - 正式 v1.0.0 安定版リリース
+3. **GenAI Toolbox v0.31.0** - enable-api フラグ、Protected Resource Metadata、BigQuery impersonation
+4. **AG-UI release/2026-03-28** - リリース自動化、ADK ミドルウェア O(1) 最適化
+5. **MCP-Apps v1.3.2** - auto-resize 水平スクロール修正、fullscreen 修正
+6. **A2A v1.0.0** - 正式リリース、仕様リファクタ、Push Notification統合、HTTP エラーマッピング改善
+7. **MCP-UI v7.0.0** - レガシー仕様削除（破壊的）
+8. **x402** - Go v2.7.0 (Fastify/Echo アダプター) / TypeScript v2.8.0 (Aptos サポート)
+9. **GKE MCP v0.10.0** - Golden Image Finder、ComputeClasses、Docker イメージサポート
+10. **Cloud Run MCP v1.10.0** - クライアント追加、統合テスト拡充、AI モデルサポート開発中
 11. **MCP Security secops-v0.7.0** - Rule Exclusions管理ツール
-12. **Cloud Run MCP v1.10.0** - クライアント追加、統合テスト拡充
-13. **gcloud-mcp** - backupdr-mcp v0.1.0 新規追加
-14. **UCP** - Identity Linking リデザイン、Totals Contract 形式化
+12. **gcloud-mcp** - backupdr-mcp v0.1.0 新規追加
+13. **UCP** - Identity Linking リデザイン、Totals Contract 形式化
 
 ### 新規プロトコル統合
 
@@ -1025,11 +1076,12 @@
 
 ### セキュリティ更新
 
+- **ADK Python v1.28.0**: モジュールインポート保護（v1.27.3 からの継続強化）
 - **ADK Python v1.27.3-v1.27.4**: 任意モジュールインポート防止、LiteLLM 脆弱バージョン除外
 - **ADK JS**: FileArtifactService パストラバーサル脆弱性修正 (CWE-22)
+- **x402**: Facilitator 遅延初期化レースコンディション修正
 - **MCP Security v0.7.0**: Rule Exclusions 管理ツール追加
-- **MCP**: OIDC / エンタープライズ管理認可更新、ツールエラーハンドリング再構成
+- **MCP**: OIDC / エンタープライズ管理認可更新、ツールエラーハンドリング再構成、RFC 8414 Well-Known URI
 - **GKE MCP v0.10.0**: SECURITY.md 追加、golangci-lint CI 統合
 - **Cloud Run MCP v1.10.0**: Hono 4.12.7 依存関係更新
 - **ADK Python v1.27.0**: AuthProviderRegistry、OpenTelemetry ツール実行エラーコードキャプチャ
-- **x402**: Go v2.7.0 / TypeScript v2.8.0 へアップデート、Aptos 対応
