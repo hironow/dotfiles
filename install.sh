@@ -26,6 +26,10 @@ _source_nix() {
   if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
     # shellcheck disable=SC1091
     . '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
+  elif [ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
+    # Single-user / --init none installs
+    # shellcheck disable=SC1091
+    . "$HOME/.nix-profile/etc/profile.d/nix.sh"
   fi
 }
 
@@ -48,8 +52,14 @@ cd "$DOTPATH"
 if [ -z "${INSTALL_SKIP_NIX:-}" ]; then
   if ! command -v nix >/dev/null 2>&1; then
     echo "[install] Installing Nix (Determinate Installer)..."
+    NIX_INSTALL_ARGS="install --no-confirm"
+    # Docker/containers lack systemd; use --init none
+    if [ ! -d /run/systemd/system ]; then
+      NIX_INSTALL_ARGS="$NIX_INSTALL_ARGS linux --init none"
+    fi
+    # shellcheck disable=SC2086
     curl --proto '=https' --tlsv1.2 -sSf -L \
-      https://install.determinate.systems/nix | sh -s -- install --no-confirm
+      https://install.determinate.systems/nix | sh -s -- $NIX_INSTALL_ARGS
     _source_nix
   else
     echo "[install] Nix already installed."
