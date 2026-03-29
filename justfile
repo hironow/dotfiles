@@ -327,7 +327,8 @@ update-pnpm-g:
 update-pnpm-g-safe:
     @echo "◆ pnpm(safe)..."
     @if command -v jq >/dev/null 2>&1; then \
-      pkgs=$(pnpm list -g --depth 0 --json | jq -r '.[0].dependencies | keys[]' 2>/dev/null || true); \
+      global_pkg_json="$(pnpm root -g 2>/dev/null)/../package.json"; \
+      pkgs=$(jq -r '.dependencies | keys[]' "$$global_pkg_json" 2>/dev/null || true); \
       if [ -z "$$pkgs" ]; then echo 'No global packages found.'; exit 0; fi; \
       for p in $$pkgs; do echo "→ updating $$p"; pnpm add -g "$$p@latest" || echo "skip $$p"; done; \
     else \
