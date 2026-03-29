@@ -10,6 +10,9 @@ package.json
 package-lock.json
 bun.lock
 
+# Nix
+result
+
 # autodesign
 design-results.tsv
 design-config.yaml
