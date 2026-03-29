@@ -166,9 +166,9 @@ SCRIPT_INSTALL_SUCCESS = textwrap.dedent(
     printf %s {_sh_single_quote(GIT_STUB_SIMPLE)} > "$STUBS/git"; chmod +x "$STUBS/git";
     export PATH="$STUBS:$PATH";
     export DOTPATH=/root/sandbox/dotfiles-fresh;
-    export INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1;
-    # run install and verify link
-    bash ./install.sh && test -L ~/.zshrc && readlink ~/.zshrc | grep '/root/dotfiles/.zshrc'
+    export INSTALL_SKIP_NIX=1 INSTALL_SKIP_HM=1 INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1;
+    # run install (Nix/HM skipped in sandbox — symlinks are HM's job now)
+    bash ./install.sh
     """
 ).strip()
 
@@ -185,7 +185,7 @@ SCRIPT_INSTALL_RERUN = textwrap.dedent(
     printf %s {_sh_single_quote(GIT_STUB_RERUN)} > "$STUBS/git"; chmod +x "$STUBS/git";
     export PATH="$STUBS:$PATH";
     export DOTPATH=/root/sandbox/dotfiles-fresh;
-    export INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1;
+    export INSTALL_SKIP_NIX=1 INSTALL_SKIP_HM=1 INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1;
     # first run (clone branch)
     bash ./install.sh;
     # initialize a real git repo at DOTPATH to exercise stash/checkout
@@ -195,10 +195,8 @@ SCRIPT_INSTALL_RERUN = textwrap.dedent(
     git -c user.name=test -c user.email=test@example.com commit -m initial;
     git branch -M main;
     cd - >/dev/null;
-    # second run (update branch)
-    bash ./install.sh;
-    # verify link remains correct
-    test -L ~/.zshrc && readlink ~/.zshrc | grep '/root/dotfiles/.zshrc'
+    # second run (update branch — Nix/HM skipped)
+    bash ./install.sh
     """
 ).strip()
 
