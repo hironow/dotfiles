@@ -53,3 +53,12 @@ yarn-error.log*
 # --- Logs ---
 log/
 *.log
+
+# --- Process IDs ---
+*.pid
+
+# --- Claude local settings (broader than global) ---
+.claude/*.local.*
+
+# --- marimo notebooks ---
+__marimo__/
