@@ -233,3 +233,10 @@ export PIP_INDEX_URL="https://pypi.flatt.tech/simple/"
 # Use uv for python packages where possible
 alias pip='uv pip'
 # --- End Security ---
+
+# Added by dbt Fusion extension (ensure dbt binary dir on PATH)
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+# Added by dbt Fusion extension
+alias dbtf="$HOME/.local/bin/dbt"
