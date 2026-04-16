@@ -31,6 +31,7 @@
 [submodule "protocols/AG-UI"]
 	path = protocols/AG-UI
 	url = git@github.com:ag-ui-protocol/ag-ui.git
+	ignore = dirty
 [submodule "protocols/x402"]
 	path = protocols/x402
 	url = git@github.com:coinbase/x402.git
