@@ -33,6 +33,14 @@
       "version": "0.1.0",
       "category": "design",
       "tags": ["design", "exploration", "autonomous", "web", "quality", "a11y", "lighthouse"]
+    },
+    {
+      "name": "autoreview",
+      "source": "./plugins/autoreview",
+      "description": "Autonomous code review plugin using guardrails/semgrep rules. Scans code, auto-fixes violations, and validates via git-based keep/revert cycles. Supports scan-fix and spec-review modes.",
+      "version": "0.1.0",
+      "category": "review",
+      "tags": ["review", "semgrep", "guardrails", "autonomous", "code-quality", "architecture"]
     }
   ]
 }
