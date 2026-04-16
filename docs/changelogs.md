@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-04-16
+最終更新: 2026-04-17
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -150,6 +150,12 @@
 ### AG-UI (Agent-User Interaction Protocol)
 
 **現行バージョン**: release/2026-04-15
+
+#### 未リリースの変更点（release/2026-04-15 以降）
+
+- **State Snapshot/Delta コンパクション**: run 単位で STATE_SNAPSHOT と STATE_DELTA イベントを単一の最終状態に圧縮、fast-json-patch (RFC 6902) によるデルタ適用 (#1535)
+- **LangGraph prepareRegenerateStream config 転送修正**: `prepareRegenerateStream` で `assistantConfig` と forwarded config を正しくマージするよう修正 (#1509)
+- **Python wheel パーミッション修正リバート**: 壊れた wheel ビルドを起こしていたパーミッション修正のリバート (#1508)
 
 #### release/2026-04-15 の主要な変更点
 
@@ -604,7 +610,11 @@
 
 ### Agent Starter Pack
 
-**現行バージョン**: v0.41.0
+**現行バージョン**: v0.41.1
+
+#### v0.41.1 の主要な変更点
+
+- **バージョンバンプ**: v0.41.1 へのバージョンバンプ (#944)
 
 #### v0.41.0 の主要な変更点
 
@@ -679,6 +689,11 @@
 
 **現行バージョン**: v0.11.0
 
+#### 未リリースの変更点（v0.11.0 以降）
+
+- **manifestgen リッチインストラクション埋め込み**: マニフェスト生成エージェントに包括的な生成インストラクションを埋め込み (#218)
+- **Hono 依存関係更新**: UI の Hono 4.12.12 → 4.12.14 (#237)
+
 #### v0.11.0 の主要な変更点
 
 - **MUI 依存関係最新化**: Material-UI 依存関係を最新バージョンに更新 (#233)
@@ -707,6 +722,7 @@
 
 #### v0.2.0 以降の変更点
 
+- **google-adk 最低バージョン更新 (セキュリティ)**: google-adk 最低バージョンを 1.28.1 に更新、脆弱性 GHSA-rg7c-g689-fr3x 対応 (#137)
 - **MCP スキーマ互換性改善**: MCP スキーマ互換性と LLM ガイダンスの改善
 - **ADK 移行**: Google ADK を使用するよう移行
 - **google-analytics-admin 更新**: v0.28.0 へ更新
@@ -773,6 +789,10 @@
 **現行バージョン**: v1.1.0 (2026-04-13)
 
 **注目**: v1.0.0 で安定版リリースに到達。[UPGRADING.md](https://github.com/googleapis/genai-toolbox/blob/main/UPGRADING.md) でのマイグレーションガイド参照。
+
+#### 未リリースの変更点（v1.1.0 以降）
+
+- **Dataplex Data Quality Scans 検索ツール**: Dataplex Data Quality Scans の検索・ディスカバリーツール追加。スキャン ID やテーブル名でのフィルタリング、ページネーション、ソート対応 (#2444)
 
 #### v1.1.0 の主要な変更点
 
@@ -848,12 +868,12 @@
 2. **ADK Python v1.30.0** - EnvironmentToolset (v1.29.0)、Gemma 4/Live avatar/Parameter Manager (v1.30.0)、**v2.0.0a3 アルファ版進行中**
 3. **UCP v2026-04-08** - 6件の破壊的変更を含む大型リリース。Get Order、Order currency 必須化、EP エラーコンベンション統一
 4. **ADK Go v1.1.0** - RequestProcessor インターフェース、EventArc/Pub/Sub、Skills パッケージ
-5. **AG-UI release/2026-04-15** - 毎週リリース継続。CVE-2026-25528 セキュリティ修正、AWS Strands/LangGraph 統合更新、A2UI v0.9 ミドルウェア
+5. **AG-UI release/2026-04-15** - 毎週リリース継続。CVE-2026-25528 セキュリティ修正、AWS Strands/LangGraph 統合更新、A2UI v0.9 ミドルウェア。未リリースで State Snapshot/Delta コンパクション追加
 6. **MCP-Apps v1.6.0** - Progress-based timeout reset
 7. **x402** - Go v2.9.0、Python v2.7.0、TS Core v2.10.0。Stable テストネット、Polygon メインネット
 8. **gcloud-mcp storage-mcp-v0.5.0** - 安全なダウンロードツール、カスタム User-Agent
 9. **GKE MCP v0.11.0** - MUI 最新化、CI 改善
-10. **Agent Starter Pack v0.41.0** - デフォルトリージョン us-east1 変更
+10. **Agent Starter Pack v0.41.1** - v0.41.1 バージョンバンプ
 
 ### 新規プロトコル統合
 
@@ -877,4 +897,5 @@
 - **x402**: HTTPFacilitatorClient リダイレクト修正、Facilitator signer ランダム選択修正
 - **MCP-Apps v1.4.0**: path-to-regexp ReDoS CVE 修正
 - **GKE MCP v0.10.0**: Shell Command Injection 修正（`ui/scripts/build.ts`）
+- **Google Analytics MCP**: google-adk 最低バージョン 1.28.1 更新（GHSA-rg7c-g689-fr3x 対応）
 - **MCP**: OIDC / エンタープライズ管理認可更新、SEP-2207 リフレッシュトークンガイダンス
