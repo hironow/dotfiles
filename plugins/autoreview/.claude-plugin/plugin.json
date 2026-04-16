@@ -1,0 +1,9 @@
+{
+  "name": "autoreview",
+  "version": "0.1.0",
+  "description": "Autonomous code review plugin using guardrails/semgrep rules. Iteratively scans code with Semgrep, auto-fixes violations, and validates via git-based keep/revert cycles. Supports scan-fix mode (existing code) and spec-review mode (type definitions and interfaces).",
+  "author": {
+    "name": "hironow"
+  },
+  "keywords": ["review", "semgrep", "guardrails", "autonomous", "code-quality", "architecture"]
+}
