@@ -157,6 +157,9 @@ alias cc-b='CLAUDE_CONFIG_DIR=~/.claude-work-b ~/.local/bin/claude'
 alias cc-c='CLAUDE_CONFIG_DIR=~/.claude-work-c ~/.local/bin/claude'
 alias cc-d='CLAUDE_CONFIG_DIR=~/.claude-work-d ~/.local/bin/claude'
 
+# eza for ls replacement
+alias ls='eza --icons --git'
+alias ll='eza -al --icons --git'
 
 # Git worktree navigation
 wgo() {
