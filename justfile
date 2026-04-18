@@ -24,6 +24,17 @@ pdoc port="8888" pkg=".":
 # Project Management
 # ------------------------------
 
+# Run meta semgrep rules against rule files (ROOT_AGENTS.md etc.)
+meta-semgrep:
+    semgrep --config .semgrep/rules/meta/ --error .
+
+# Verify meta rules themselves with their test annotations
+meta-semgrep-test:
+    semgrep --test --config .semgrep/rules/meta/
+
+# Full validation of rule files
+validate: meta-semgrep-test meta-semgrep
+
 # Install: setup tools via mise
 [group('Setup')]
 install:
