@@ -1,4 +1,15 @@
 <development-guidelines>
+    <self-reference-note>
+        This file intentionally references a small number of prohibited filenames
+        (e.g., Compose v1 deprecated names) inside `prohibited-filename` tags as
+        canonical examples of what NOT to use. When scanning a repository for
+        prohibited patterns (grep, semgrep, etc.), exclude this file explicitly:
+          - git grep: add `:(exclude)**/ROOT_AGENTS.md` or `:(exclude)**/AGENTS.md`
+          - semgrep: add `paths.exclude: [ROOT_AGENTS.md, AGENTS.md]` to the rule
+        The only literal occurrences of prohibited filenames in this file live
+        inside `prohibited-filename` tags under `file-conventions`.
+    </self-reference-note>
+
     <role>
         <title>ROLE AND EXPERTISE</title>
         <description>Senior software engineer following Kent Beck's Test-Driven Development (TDD) and Tidy First principles</description>
@@ -31,9 +42,16 @@
         <file-conventions>
             <rule>YAML files: Always use `.yaml` extension (NOT `.yml`)</rule>
             <example type="good">config.yaml, compose.yaml, workflow.yaml</example>
-            <example type="bad">config.yml, docker-compose.yml, workflow.yml</example>
-            <rule>Docker Compose files: Use `compose.yaml` (NOT `docker-compose.yaml` or `docker-compose.yml`)</rule>
-            <reason>Compose Specification (v2+) adopts `compose.yaml` as the canonical filename. `docker-compose.yaml` is the deprecated v1 convention.</reason>
+            <bad-examples>
+                <prohibited-filename>config.yml</prohibited-filename>
+                <prohibited-filename>workflow.yml</prohibited-filename>
+            </bad-examples>
+            <rule>Docker Compose files: Use `compose.yaml` as the canonical filename per the Compose Specification v2+.</rule>
+            <prohibited-filenames purpose="Compose v1 deprecated names (do NOT use)">
+                <prohibited-filename>docker-compose.yaml</prohibited-filename>
+                <prohibited-filename>docker-compose.yml</prohibited-filename>
+            </prohibited-filenames>
+            <reason>The Compose Specification (v2+) adopts `compose.yaml` as the canonical filename; the v1 filenames above are deprecated.</reason>
         </file-conventions>
 
         <package-managers>
@@ -336,7 +354,7 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
         <root-files>
             <file path="justfile">Task runner configuration (required, exactly one, at root)</file>
             <file path="pyproject.toml">Python project configuration including ruff settings</file>
-            <file path="compose.yaml" condition="when Docker is used">Docker Compose file (use `compose.yaml`, NOT `docker-compose.yaml`)</file>
+            <file path="compose.yaml" condition="when Docker is used">Docker Compose file (see file-conventions section for the canonical filename and deprecated alternatives).</file>
         </root-files>
 
         <rule>These directories MUST NOT be duplicated in subdirectories</rule>
@@ -1024,7 +1042,7 @@ def validate_email(email: str) -> bool:
             <rule>When proposing code changes, show the test first</rule>
             <rule>Always include type annotations in Python code suggestions</rule>
             <rule>Use .yaml extension when creating YAML files, never .yml</rule>
-            <rule>Use `compose.yaml` for Docker Compose files, never `docker-compose.yaml`</rule>
+            <rule>Use `compose.yaml` for Docker Compose files (see file-conventions section for deprecated alternatives)</rule>
         </response-format>
 
         <ascii-art-guidelines>
@@ -1074,7 +1092,7 @@ Legend / 凡例:
             <action>Never suggest modifying the ruff configuration</action>
             <action>Never suggest using pip, npm, yarn, or make (pnpm is allowed only when pnpm-lock.yaml exists)</action>
             <action>Never use .yml extension for YAML files</action>
-            <action>Never use `docker-compose.yaml` or `docker-compose.yml` as a filename; use `compose.yaml`</action>
+            <action>Never use Compose v1 deprecated filenames (listed in file-conventions section under prohibited-filenames); always use `compose.yaml`</action>
             <action>Never use `[STRUCTURAL]` or `[BEHAVIORAL]` tags in commit messages (use Conventional Commits types instead)</action>
             <action>Never create or update docs/intent.md with guessed intent; always clarify with the human first</action>
             <action>Never create multiple justfiles in subdirectories; there MUST be exactly one at the root</action>
