@@ -1,0 +1,38 @@
+rules:
+  - id: meta-compose-v1-filename-must-be-sentineled
+    message: |
+      Prohibited Compose v1 filename literal found outside a
+      <prohibited-filename>...</prohibited-filename> sentinel tag.
+
+      Rule files (ROOT_AGENTS.md, AGENTS.md, CLAUDE.md, .cursorrules)
+      MUST wrap every literal occurrence of deprecated filenames in
+      <prohibited-filename> tags. This keeps the file itself from
+      triggering the very rules it documents, and lets other Semgrep
+      rules safely exclude self-references.
+
+      Fix one of:
+        (a) Wrap as: <prohibited-filename>docker-compose.yaml</prohibited-filename>
+        (b) Replace the literal with a reference to the
+            file-conventions section (e.g., "see file-conventions").
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include:
+        - "**/AGENTS.md"
+        - "**/ROOT_AGENTS.md"
+        - "**/CLAUDE.md"
+        - "**/.cursorrules"
+    pattern-either:
+      - patterns:
+          - pattern-regex: '.*docker-compose\.yaml.*'
+          - pattern-not-regex: '<prohibited-filename>\s*docker-compose\.yaml\s*</prohibited-filename>'
+      - patterns:
+          - pattern-regex: '.*docker-compose\.yml.*'
+          - pattern-not-regex: '<prohibited-filename>\s*docker-compose\.yml\s*</prohibited-filename>'
+    metadata:
+      category: meta
+      purpose: rule-file-self-consistency
+      added: "2026-04-18"
+      related-doc: "ROOT_AGENTS.md <file-conventions>"
+      references:
+        - https://www.compose-spec.io/
