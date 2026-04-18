@@ -123,7 +123,9 @@ else
         fi
     done
     if ((${#to_remove[@]})); then
-        run pnpm rm -g "${to_remove[@]}"
+        # Run from $HOME to avoid projects that pin packageManager to npm/yarn
+        # (pnpm refuses to execute in such a working directory).
+        run env -C "$HOME" pnpm rm -g "${to_remove[@]}"
         for pkg in "${to_remove[@]}"; do log_ok "removed pnpm global: $pkg"; done
     else
         log_ok "nothing to remove"
