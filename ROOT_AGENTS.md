@@ -27,13 +27,15 @@
     <tooling-standards>
         <title>TOOLING STANDARDS</title>
         <description>Mandatory tools and conventions for the project</description>
-        
+
         <file-conventions>
             <rule>YAML files: Always use `.yaml` extension (NOT `.yml`)</rule>
-            <example type="good">config.yaml, docker-compose.yaml, workflow.yaml</example>
+            <example type="good">config.yaml, compose.yaml, workflow.yaml</example>
             <example type="bad">config.yml, docker-compose.yml, workflow.yml</example>
+            <rule>Docker Compose files: Use `compose.yaml` (NOT `docker-compose.yaml` or `docker-compose.yml`)</rule>
+            <reason>Compose Specification (v2+) adopts `compose.yaml` as the canonical filename. `docker-compose.yaml` is the deprecated v1 convention.</reason>
         </file-conventions>
-        
+
         <package-managers>
             <python>
                 <tool>uv</tool>
@@ -65,13 +67,21 @@
                 </fallback-commands>
             </nodejs>
         </package-managers>
-        
+
         <task-runner>
             <tool>just (justfile)</tool>
             <rule>Use just for task automation</rule>
-            <prohibited>make (Makefile), npm scripts for complex tasks</prohibited>
+            <rule>There MUST be exactly one justfile at the repository root. Do NOT create subdirectory justfiles.</rule>
+            <rule>The justfile MUST define `default: help` so that running `just` with no arguments prints the task list via `just --list`.</rule>
+            <prohibited>make (Makefile), npm scripts for complex tasks, multiple justfiles in subdirectories</prohibited>
             <file>justfile (no extension, lowercase)</file>
             <example><![CDATA[
+# Show available tasks (default)
+default: help
+
+help:
+    @just --list
+
 # Run all tests
 test:
     uv run pytest
@@ -88,6 +98,25 @@ fmt:
 # Run e2e tests
 test-e2e:
     uv run pytest tests/e2e/
+
+# Run semgrep (project-specific rules)
+semgrep:
+    semgrep --config .semgrep/rules/ --error
+
+# Start local observability stack (Jaeger)
+trace-up:
+    docker compose -f compose.yaml up -d jaeger
+
+# Stop local observability stack
+trace-down:
+    docker compose -f compose.yaml stop jaeger
+
+# Open Jaeger UI in browser
+trace-view:
+    @echo "Jaeger UI: http://localhost:16686"
+    @command -v open >/dev/null 2>&1 && open http://localhost:16686 || \
+     command -v xdg-open >/dev/null 2>&1 && xdg-open http://localhost:16686 || \
+     echo "Please open http://localhost:16686 manually"
             ]]></example>
         </task-runner>
     </tooling-standards>
@@ -95,7 +124,7 @@ test-e2e:
     <encoding-standards>
         <title>EXTERNAL DATA AND ENCODING STANDARDS</title>
         <description>Guidelines for handling character encoding in external data and web search results</description>
-        
+
         <standard-tool>
             <name>iconv</name>
             <description>POSIX standard tool for character set conversion, pre-installed on most Linux/macOS environments</description>
@@ -150,10 +179,59 @@ test-e2e:
             <condition>ALL compiler/linter warnings have been resolved</condition>
             <condition>ALL ruff checks pass with zero violations</condition>
             <condition>ALL mypy checks pass with zero errors</condition>
+            <condition>ALL semgrep rules under .semgrep/ pass with zero findings (when .semgrep/ exists)</condition>
             <condition>The change represents a single logical unit of work</condition>
-            <condition>Commit messages clearly state whether the commit contains structural or behavioral changes</condition>
+            <condition>Commit messages follow Conventional Commits v1.0.0 (https://www.conventionalcommits.org/en/v1.0.0/)</condition>
         </commit-conditions>
+
+        <conventional-commits>
+            <format><![CDATA[
+<type>(<scope>)<!>: <subject>
+
+<body>
+
+<footer>
+            ]]></format>
+
+            <type-to-tidy-first-mapping>
+                <description>Each Conventional Commit type is fixed to either STRUCTURAL or BEHAVIORAL. Mixing is forbidden.</description>
+                <behavioral-types>
+                    <type name="feat">New feature (behavior added)</type>
+                    <type name="fix">Bug fix (behavior corrected)</type>
+                    <type name="perf">Performance improvement (measurable behavior change)</type>
+                </behavioral-types>
+                <structural-types>
+                    <type name="refactor">Code restructuring without behavior change</type>
+                    <type name="style">Formatting, whitespace, naming (no behavior change)</type>
+                    <type name="test">Adding or fixing tests (no production behavior change)</type>
+                    <type name="docs">Documentation only</type>
+                    <type name="chore">Build tooling, dependency bumps without behavior impact</type>
+                    <type name="build">Build system or external dependency changes</type>
+                    <type name="ci">CI/CD configuration changes</type>
+                </structural-types>
+            </type-to-tidy-first-mapping>
+
+            <rules>
+                <rule>Subject line MUST be in imperative mood, lowercase, no trailing period, 72 chars max</rule>
+                <rule>Breaking changes use `!` after type/scope (e.g., `feat(api)!: remove v1 endpoint`) AND a `BREAKING CHANGE:` footer</rule>
+                <rule>Scope is optional but recommended for monorepos or multi-module projects (e.g., `feat(sightjack):`)</rule>
+                <rule>When a single logical change requires both structural and behavioral edits, split into two commits: structural first (e.g., `refactor:`), behavioral second (e.g., `feat:`)</rule>
+                <rule>Do NOT use `[STRUCTURAL]` or `[BEHAVIORAL]` tags in commit messages - the type prefix already encodes this</rule>
+            </rules>
+
+            <examples>
+                <example type="good">feat(auth): add refresh token rotation</example>
+                <example type="good">refactor(paintress): extract gauge tracker into dedicated module</example>
+                <example type="good">fix(d-mail): handle empty outbox on startup</example>
+                <example type="good">chore(deps): bump otelcol-contrib to 0.110.0</example>
+                <example type="bad">update stuff</example>
+                <example type="bad">feat: refactor auth and add new endpoint</example>
+                <example type="bad">[BEHAVIORAL] feat: add login</example>
+            </examples>
+        </conventional-commits>
+
         <best-practice>Use small, frequent commits rather than large, infrequent ones</best-practice>
+        <best-practice>One commit = one Conventional Commit type. If you need two types, you need two commits.</best-practice>
     </commit-discipline>
 
     <code-quality>
@@ -169,13 +247,13 @@ test-e2e:
     <python-tooling>
         <title>PYTHON TOOLING REQUIREMENTS</title>
         <description>Mandatory linting and type checking configuration for all Python code</description>
-        
+
         <required-tools>
             <tool name="ruff">Linting and formatting</tool>
             <tool name="mypy">Static type checking</tool>
             <tool name="uv">Package management (see tooling-standards section)</tool>
         </required-tools>
-        
+
         <ruff-configuration>
             <description>This configuration MUST be used in pyproject.toml</description>
             <config><![CDATA[
@@ -207,18 +285,19 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
             <rule>Do not modify this configuration without explicit approval</rule>
             <rule>All code must pass ruff check with zero violations before commit</rule>
         </ruff-configuration>
-        
+
         <mypy-requirements>
             <rule>All Python code must have type annotations</rule>
             <rule>mypy must pass with zero errors before commit</rule>
             <rule>Use strict mode where possible</rule>
             <rule>Avoid `# type: ignore` unless absolutely necessary with justification comment</rule>
         </mypy-requirements>
-        
+
         <pre-commit-checks>
             <step>Run `just lint` or `uv run ruff check .` and fix all violations</step>
             <step>Run `just fmt` or `uv run ruff format .` to ensure consistent formatting</step>
             <step>Run `uv run mypy .` and fix all type errors</step>
+            <step>Run `just semgrep` when `.semgrep/` exists, and fix all findings</step>
             <step>Run `just test` or `uv run pytest` to ensure no regressions</step>
         </pre-commit-checks>
     </python-tooling>
@@ -242,7 +321,7 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
     <project-structure>
         <title>PROJECT STRUCTURE RULES</title>
         <description>Standard directories must exist only once at the repository root level</description>
-        
+
         <root-directories>
             <dir path="docs/">Documentation for current implementation and architecture decision records</dir>
             <dir path="experiments/">Research, preliminary experiments, exploratory implementations</dir>
@@ -250,20 +329,41 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
             <dir path="examples/">Usage examples and sample code</dir>
             <dir path="scripts/">Development and utility scripts</dir>
             <dir path="tests/">All test code (unit, integration, e2e, scenario)</dir>
+            <dir path="docker/" condition="optional">Dockerfiles and Docker-related assets. Create ONLY when the project has multiple Dockerfiles (e.g., api.Dockerfile, worker.Dockerfile). For a single Dockerfile, keep it at the repository root.</dir>
+            <dir path=".semgrep/" condition="optional">Project-specific Semgrep rules (see semgrep-guidelines section)</dir>
         </root-directories>
-        
+
         <root-files>
-            <file path="justfile">Task runner configuration (required)</file>
+            <file path="justfile">Task runner configuration (required, exactly one, at root)</file>
             <file path="pyproject.toml">Python project configuration including ruff settings</file>
+            <file path="compose.yaml" condition="when Docker is used">Docker Compose file (use `compose.yaml`, NOT `docker-compose.yaml`)</file>
         </root-files>
-        
+
         <rule>These directories MUST NOT be duplicated in subdirectories</rule>
         <rule>External dependencies (submodules, cloned repositories) are exempt from this rule</rule>
-        
+
+        <docker-directory-rules>
+            <rule>If the project has ONE Dockerfile, place it at the repository root as `Dockerfile`</rule>
+            <rule>If the project has TWO OR MORE Dockerfiles, create `docker/` at the repository root and place all Dockerfiles inside (e.g., `docker/api.Dockerfile`, `docker/worker.Dockerfile`)</rule>
+            <rule>`compose.yaml` stays at the repository root regardless of Dockerfile count, and references `docker/*.Dockerfile` via `build.dockerfile`</rule>
+            <example><![CDATA[
+# Single-service project
+Dockerfile
+compose.yaml
+
+# Multi-service project
+docker/
+  api.Dockerfile
+  worker.Dockerfile
+  migration.Dockerfile
+compose.yaml
+            ]]></example>
+        </docker-directory-rules>
+
         <docs-subdirectories>
             <dir path="docs/adr/">Architecture Decision Records - immutable decision history</dir>
         </docs-subdirectories>
-        
+
         <test-subdirectories>
             <dir path="tests/unit/">Unit tests - isolated component testing</dir>
             <dir path="tests/integration/">Integration tests - component interaction testing</dir>
@@ -276,42 +376,43 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
     <docs-guidelines>
         <title>docs/ DIRECTORY GUIDELINES</title>
         <description>Documentation must reflect the current implementation state</description>
-        
+
         <principles>
             <principle>Document ONLY the current implementation - no historical information</principle>
             <principle>Do NOT include future tasks, TODOs, or planned features</principle>
             <principle>Documentation and implementation MUST be consistent at all times</principle>
             <principle>When code changes, corresponding docs MUST be updated in the same commit</principle>
         </principles>
-        
+
         <validation>
             <rule>Before any commit, verify docs match the current implementation</rule>
             <rule>Outdated documentation is considered a bug</rule>
             <rule>Use code references where possible to maintain accuracy</rule>
         </validation>
-        
+
         <prohibited-content>
             <item>Historical context or "why we changed from X to Y" (use ADR instead)</item>
             <item>Future plans or roadmap items</item>
             <item>TODO comments or planned improvements</item>
             <item>Deprecated feature descriptions</item>
         </prohibited-content>
-        
+
         <exception>
             <note>docs/adr/ is exempt from the "current state only" rule - see adr-guidelines section</note>
+            <note>docs/intent.md and docs/handover.md are exempt from the "current state only" rule - see intent-and-handover-guidelines section</note>
         </exception>
     </docs-guidelines>
 
     <adr-guidelines>
         <title>docs/adr/ ARCHITECTURE DECISION RECORDS</title>
         <description>Capture the "Why" behind significant decisions, as docs only capture the "What"</description>
-        
+
         <purpose>
             <point>Record architectural and design decisions with their context</point>
             <point>Preserve the reasoning that led to current implementation choices</point>
             <point>Help future developers understand non-obvious tradeoffs</point>
         </purpose>
-        
+
         <when-to-create>
             <trigger>Introducing new technology or framework</trigger>
             <trigger>Changing established patterns or conventions</trigger>
@@ -319,7 +420,7 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
             <trigger>Deprecating or replacing existing approaches</trigger>
             <trigger>Decisions that future developers might question</trigger>
         </when-to-create>
-        
+
         <file-naming>
             <pattern>docs/adr/NNNN-short-title.md</pattern>
             <example>docs/adr/0001-use-fastapi-for-api-layer.md</example>
@@ -327,7 +428,7 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
             <rule>Use sequential numbering (0001, 0002, ...)</rule>
             <rule>Use lowercase with hyphens for title</rule>
         </file-naming>
-        
+
         <template>
             <format><![CDATA[
 # {NNNN}. {Title}
@@ -358,13 +459,13 @@ What forces are at play? What are we trying to achieve?}
 - {Side effect or implication that is neither clearly positive nor negative}
             ]]></format>
         </template>
-        
+
         <immutability>
             <rule>ADRs are NEVER modified after acceptance (immutable history)</rule>
             <rule>To change a decision, create a new ADR that supersedes the old one</rule>
             <rule>Update the old ADR's status to "Superseded by [NNNN]" - this is the only allowed modification</rule>
         </immutability>
-        
+
         <relation-to-docs>
             <distinction>Live docs (docs/*.md) describe the CURRENT state - the "What"</distinction>
             <distinction>ADRs (docs/adr/*.md) describe the HISTORY of decisions - the "Why"</distinction>
@@ -373,17 +474,255 @@ What forces are at play? What are we trying to achieve?}
         </relation-to-docs>
     </adr-guidelines>
 
+    <intent-and-handover-guidelines>
+        <title>docs/intent.md AND docs/handover.md GUIDELINES</title>
+        <description>Human-authored intent and AI-and-human-readable handover notes. Exempt from the "current state only" rule in docs-guidelines.</description>
+
+        <intent-md>
+            <purpose>Capture the human requester's intent for the current work unit. This is the "Why we are doing this right now" that an AI agent or the next human needs to operate correctly.</purpose>
+            <path>docs/intent.md</path>
+
+            <mandatory-rule>
+                <rule>Before creating or updating docs/intent.md, the AI assistant MUST clarify ambiguous intent by asking the human directly. Do NOT guess, do NOT fill gaps with assumptions.</rule>
+                <rule>If any of the following are unclear, STOP and ask: goal, success criteria, scope boundaries, non-goals, constraints, deadlines, affected components, rollback conditions</rule>
+            </mandatory-rule>
+
+            <format><![CDATA[
+# Intent
+
+**Last updated:** YYYY-MM-DD
+**Requester:** {name}
+**Work unit:** {concise identifier, e.g., Linear issue ID}
+
+## Goal
+{One or two sentences. What outcome does the requester want?}
+
+## Success Criteria
+- {Observable, testable criterion 1}
+- {Observable, testable criterion 2}
+
+## Scope
+### In scope
+- {Item 1}
+
+### Out of scope (Non-goals)
+- {Item 1}
+
+## Constraints
+- {Technical, deadline, budget, compliance}
+
+## Open Questions
+- [ ] {Question to resolve before implementation}
+            ]]></format>
+
+            <lifecycle>
+                <rule>Update intent.md when the requester's intent changes (not every implementation detail)</rule>
+                <rule>Historical intent (superseded versions) lives in git history, not in the file</rule>
+            </lifecycle>
+        </intent-md>
+
+        <handover-md>
+            <purpose>The handover document for the NEXT actor (another AI session, a teammate, future self). Optimized to be read in under two minutes.</purpose>
+            <path>docs/handover.md</path>
+
+            <format><![CDATA[
+# Handover
+
+**Last updated:** YYYY-MM-DD HH:MM (timezone)
+**Updated by:** {human name or AI session id}
+
+## Current State
+{What is done. One paragraph.}
+
+## In Progress
+{What is actively being worked on. Include branch name, PR link, Linear issue.}
+
+## Next Actions
+1. {Concrete next step}
+2. {...}
+
+## Known Risks / Blockers
+- {Item and mitigation}
+
+## Context the Next Actor Needs
+- {Non-obvious gotchas, environment quirks, external dependencies}
+
+## Relevant Files and Commands
+- `path/to/file.py` - {why it matters}
+- `just {command}` - {what it does}
+            ]]></format>
+
+            <lifecycle>
+                <rule>Update handover.md at the end of every significant work session (session-level granularity, not commit-level)</rule>
+                <rule>handover.md is consumable both by humans and AI agents - write for both audiences</rule>
+                <rule>Do NOT duplicate content from intent.md; reference it instead</rule>
+            </lifecycle>
+        </handover-md>
+
+        <relationship>
+            <distinction>intent.md answers "Why are we doing this?"</distinction>
+            <distinction>handover.md answers "Where are we, and what's next?"</distinction>
+            <distinction>docs/*.md (other) answers "What does the current system do?"</distinction>
+            <distinction>docs/adr/*.md answers "Why did we decide X in the past?"</distinction>
+        </relationship>
+    </intent-and-handover-guidelines>
+
+    <semgrep-guidelines>
+        <title>.semgrep/ DIRECTORY GUIDELINES</title>
+        <description>Project-specific static analysis rules using Semgrep. Becomes critical as the codebase matures; start light at project inception and grow rules as patterns emerge.</description>
+
+        <philosophy>
+            <point>Semgrep rules codify the team's "unwritten rules" - things reviewers catch repeatedly in code review</point>
+            <point>Write a rule the SECOND time you catch the same issue in review (once is a coincidence, twice is a pattern)</point>
+            <point>Rules are lightweight at project start; ruleset density grows toward the middle of the project lifecycle when architectural patterns have stabilized</point>
+        </philosophy>
+
+        <directory-structure>
+            <pattern>.semgrep/rules/{category}/{rule-id}.yaml</pattern>
+            <pattern>.semgrep/tests/{category}/{rule-id}.{py|go|ts|...}</pattern>
+            <pattern>.semgrep/README.md - ruleset overview and how to add rules</pattern>
+        </directory-structure>
+
+        <rule-file-convention>
+            <rule>One semgrep rule per file; filename matches rule id</rule>
+            <rule>Use `.yaml` extension (never `.yml`)</rule>
+            <rule>Rule id format: `{project-prefix}-{category}-{short-name}` (e.g., `paintress-concurrency-unguarded-goroutine`)</rule>
+            <rule>Every rule MUST have a corresponding test file with at least one positive (matching) and one negative (non-matching) example</rule>
+        </rule-file-convention>
+
+        <rule-template><![CDATA[
+rules:
+  - id: paintress-concurrency-unguarded-goroutine
+    message: |
+      Launching a goroutine without passing a context.Context is forbidden.
+      Pass ctx explicitly so the caller can cancel.
+    severity: ERROR
+    languages: [go]
+    pattern: |
+      go func() {
+        ...
+      }()
+    metadata:
+      category: concurrency
+      added: "2026-04-18"
+      adr: docs/adr/NNNN-goroutine-context.md
+        ]]></rule-template>
+
+        <execution>
+            <rule>Add a `just semgrep` task that runs `semgrep --config .semgrep/rules/ --error`</rule>
+            <rule>Wire semgrep into CI as a required check before merge</rule>
+            <rule>Pre-commit: running semgrep is part of the standard pre-commit checks (alongside ruff and mypy)</rule>
+        </execution>
+
+        <when-to-add-a-rule>
+            <trigger>The same review comment has been made twice or more</trigger>
+            <trigger>An ADR decision needs mechanical enforcement (e.g., "always use Cloud SQL PostgreSQL, never Spanner")</trigger>
+            <trigger>A production incident's root cause is expressible as a code pattern</trigger>
+        </when-to-add-a-rule>
+
+        <when-not-to-add-a-rule>
+            <antitrigger>The pattern is better caught by a type checker (let mypy do its job)</antitrigger>
+            <antitrigger>The pattern is better caught by ruff (use ruff's built-in rules)</antitrigger>
+            <antitrigger>The rule would produce false positives frequently - tune or drop</antitrigger>
+        </when-not-to-add-a-rule>
+    </semgrep-guidelines>
+
+    <observability-standards>
+        <title>OBSERVABILITY STANDARDS (OpenTelemetry + Jaeger)</title>
+        <description>All services MUST emit telemetry via OpenTelemetry. Local development uses Jaeger (https://www.jaegertracing.io/) as the trace backend; production backends are decided per-project in an ADR.</description>
+
+        <scope>
+            <in-scope>Distributed tracing (traces + spans)</in-scope>
+            <in-scope>Structured logs correlated with trace_id / span_id</in-scope>
+            <in-scope>Metrics via OTLP when applicable</in-scope>
+            <out-of-scope>Non-OTel-compatible vendor SDKs (use OTel with an exporter instead)</out-of-scope>
+        </scope>
+
+        <instrumentation-rules>
+            <rule>Every service/binary MUST initialize an OTel TracerProvider at startup</rule>
+            <rule>Exporter MUST be OTLP (gRPC preferred: port 4317; HTTP fallback: port 4318)</rule>
+            <rule>Endpoint is configured via the standard env var `OTEL_EXPORTER_OTLP_ENDPOINT`</rule>
+            <rule>Service name is configured via `OTEL_SERVICE_NAME` and MUST match the tool/module name (e.g., `sightjack`, `paintress`, `amadeus`, `phonewave`, `dominator`)</rule>
+            <rule>Propagate W3C Trace Context across process boundaries (default in OTel SDKs)</rule>
+            <rule>Do NOT emit PII or secrets as span attributes; scrub before export</rule>
+        </instrumentation-rules>
+
+        <python-setup>
+            <packages>
+                <package>opentelemetry-api</package>
+                <package>opentelemetry-sdk</package>
+                <package>opentelemetry-exporter-otlp</package>
+                <package>opentelemetry-instrumentation-* (choose per framework: fastapi, httpx, sqlalchemy, ...)</package>
+            </packages>
+            <install-command>uv add opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp</install-command>
+        </python-setup>
+
+        <go-setup>
+            <packages>
+                <package>go.opentelemetry.io/otel</package>
+                <package>go.opentelemetry.io/otel/sdk</package>
+                <package>go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc</package>
+            </packages>
+        </go-setup>
+
+        <local-jaeger>
+            <description>Local trace viewing uses the Jaeger all-in-one container defined in compose.yaml.</description>
+            <compose-service><![CDATA[
+# compose.yaml (excerpt)
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+            ]]></compose-service>
+
+            <env-for-apps><![CDATA[
+# .env or shell
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+OTEL_SERVICE_NAME=paintress
+OTEL_TRACES_SAMPLER=parentbased_always_on
+            ]]></env-for-apps>
+
+            <justfile-tasks>
+                <rule>`just trace-up` starts Jaeger via `docker compose up -d jaeger`</rule>
+                <rule>`just trace-down` stops Jaeger</rule>
+                <rule>`just trace-view` opens http://localhost:16686 in the browser</rule>
+            </justfile-tasks>
+
+            <ui-url>http://localhost:16686</ui-url>
+        </local-jaeger>
+
+        <production>
+            <rule>Production exporter target is decided per-project and captured in an ADR (e.g., Cloud Trace, Grafana Tempo, Honeycomb)</rule>
+            <rule>Do NOT hard-code production endpoints; always use `OTEL_EXPORTER_OTLP_ENDPOINT`</rule>
+        </production>
+
+        <minimum-coverage>
+            <rule>Every inbound RPC/HTTP handler creates a root span</rule>
+            <rule>Every outbound RPC/HTTP client call creates a child span</rule>
+            <rule>Every message bus enqueue/dequeue (including D-Mail Protocol inbox/outbox writes) creates a span with `messaging.*` attributes</rule>
+            <rule>Every LLM call (Anthropic API, Gemini, etc.) creates a span with `gen_ai.*` attributes (model, input tokens, output tokens, latency)</rule>
+        </minimum-coverage>
+    </observability-standards>
+
     <experiments-guidelines>
         <title>experiments/ DIRECTORY GUIDELINES</title>
         <description>Research, preliminary experiments, and exploratory implementations</description>
-        
+
         <directory-structure>
             <pattern>experiments/README.md - Overview and experiment index</pattern>
             <pattern>experiments/YYYY-MM-DD_{experiment_name}.md - Experiment plan document</pattern>
             <pattern>experiments/run_{experiment_name}_benchmark.sh - Benchmark scripts</pattern>
             <pattern>experiments/test_{experiment_name}.py - Test scripts for experiments</pattern>
         </directory-structure>
-        
+
         <experiment-document-format>
             <section name="header">
                 <field>Date: YYYY-MM-DD</field>
@@ -399,7 +738,7 @@ What forces are at play? What are we trying to achieve?}
                 <field>Conclusion - Judgment and next actions</field>
             </section>
         </experiment-document-format>
-        
+
         <output-structure>
             <preprocessed-dir>
                 <description>Preprocessed data organized by experiment and resolution</description>
@@ -412,7 +751,7 @@ What forces are at play? What are we trying to achieve?}
                 <example>output/2024-11-24_vae_slicing_experiment/baseline_720p_steps20_cfg5.0.mp4</example>
             </output-dir>
         </output-structure>
-        
+
         <file-naming>
             <required>Experiment variable identifier (e.g., baseline vs sage_attention)</required>
             <recommended>Resolution (e.g., 480p, 720p)</recommended>
@@ -421,7 +760,7 @@ What forces are at play? What are we trying to achieve?}
             <recommended>Other experiment-specific parameters</recommended>
             <example>sage_attention_720p_steps20_cfg5.0.mp4</example>
         </file-naming>
-        
+
         <readme-maintenance>
             <rule>Keep experiment index table updated</rule>
             <rule>Summary results in README are for reference only - always check full experiment notes</rule>
@@ -446,7 +785,7 @@ What forces are at play? What are we trying to achieve?}
     <mock-policy>
         <title>MOCK USAGE POLICY</title>
         <description>Guidelines for mock usage across different test types</description>
-        
+
         <by-test-type>
             <unit-tests>
                 <policy>Minimize mock usage - prefer real code over mocks</policy>
@@ -483,14 +822,14 @@ What forces are at play? What are we trying to achieve?}
     <e2e-guidelines>
         <title>tests/e2e/ DIRECTORY GUIDELINES</title>
         <description>End-to-end tests verify the complete system with all real dependencies</description>
-        
+
         <principles>
             <principle>Test the system as a user would experience it</principle>
             <principle>All dependencies must be real - no mocks, stubs, or fakes</principle>
             <principle>Tests should be deterministic and repeatable</principle>
             <principle>Each test should be independent and not rely on other tests</principle>
         </principles>
-        
+
         <parameterized-tests>
             <rule>Use parameterized tests wherever possible to maximize coverage with minimal code</rule>
             <rule>Group related scenarios into single parameterized test functions</rule>
@@ -507,36 +846,36 @@ What forces are at play? What are we trying to achieve?}
 def test_api_endpoint(input_data, expected_status, expected_result):
     # given
     client = create_real_client()
-    
+
     # when
     response = client.post("/api/endpoint", json=input_data)
-    
+
     # then
     assert response.status_code == expected_status
     assert response.json() == expected_result
             ]]></example>
         </parameterized-tests>
-        
+
         <prohibited>
             <item>Mock objects of any kind</item>
             <item>Stub implementations</item>
             <item>Fake services or in-memory replacements</item>
             <item>Patching or monkey-patching</item>
         </prohibited>
-        
+
         <required>
             <item>Real database connections</item>
             <item>Real external service calls</item>
             <item>Real file system operations</item>
             <item>Real network communication</item>
         </required>
-        
+
         <test-structure>
             <phase name="given">Set up real preconditions with actual system state</phase>
             <phase name="when">Execute through the real system entry point</phase>
             <phase name="then">Verify real system state and outputs</phase>
         </test-structure>
-        
+
         <environment>
             <rule>Use dedicated test environment with real services</rule>
             <rule>Clean up test data after each test or test session</rule>
@@ -547,24 +886,24 @@ def test_api_endpoint(input_data, expected_status, expected_result):
     <runn-settings>
         <title>tests/runn/ SCENARIO TEST GUIDELINES</title>
         <description>runn is a scenario-based testing tool for API and CLI testing</description>
-        
+
         <key-concepts>
             <concept name="runbook">YAML-based scenario definition (use .yaml extension)</concept>
             <concept name="step">Individual action (HTTP request, command execution, etc.)</concept>
             <concept name="vars">Variables passed between steps</concept>
         </key-concepts>
-        
+
         <file-structure>
             <pattern>tests/runn/*.yaml - Scenario files (NOT .yml)</pattern>
             <pattern>tests/runn/vars/*.yaml - Shared variables (NOT .yml)</pattern>
         </file-structure>
-        
+
         <guidelines>
             <guideline>Scenarios are realistic and don't require same coverage as unit/integration tests</guideline>
             <guideline>A2A protocol compliance with JSON-RPC 2.0 specification</guideline>
             <guideline>Scenario tests should describe AI Agent actions from Agent perspective</guideline>
         </guidelines>
-        
+
         <naming>
             <example type="good">Agent requests task delegation</example>
             <example type="bad">POST to /jsonrpc endpoint</example>
@@ -574,7 +913,7 @@ def test_api_endpoint(input_data, expected_status, expected_result):
     <planning-and-review-standards>
         <title>IMPLEMENTATION PLANNING AND REVIEW</title>
         <description>Mandatory review process using codex before presenting implementation plans to the user</description>
-        
+
         <mandatory-rule>
             <rule>Always perform a plan review using the `codex` command BEFORE presenting the plan to the user</rule>
         </mandatory-rule>
@@ -614,38 +953,39 @@ def test_api_endpoint(input_data, expected_status, expected_result):
             <step number="1">Write a simple failing test for a small part of the feature</step>
             <step number="2">Implement the bare minimum to make it pass</step>
             <step number="3">Run tests to confirm they pass (Green): `just test`</step>
-            <step number="4">Run linting and type checks: `just lint`</step>
+            <step number="4">Run linting, type checks, and semgrep: `just lint` (include `just semgrep` when .semgrep/ exists)</step>
             <step number="5">Make any necessary structural changes (Tidy First), running tests after each change</step>
-            <step number="6">Commit structural changes separately</step>
+            <step number="6">Commit structural changes separately (Conventional Commits: refactor/style/test/docs/chore/build/ci)</step>
             <step number="7">Add another test for the next small increment of functionality</step>
-            <step number="8">Repeat until complete, committing behavioral changes separately</step>
+            <step number="8">Repeat until complete, committing behavioral changes separately (Conventional Commits: feat/fix/perf)</step>
             <step number="9">If the change involves significant architectural decisions, create an ADR</step>
+            <step number="10">Update docs/handover.md at end of session; update docs/intent.md if requester intent changed</step>
         </steps>
         <principle>Always write one test at a time, make it run, then improve structure</principle>
         <principle>Always run all tests (except long-running) each time</principle>
-        <principle>Always run ruff and mypy before committing</principle>
+        <principle>Always run ruff, mypy, and semgrep (when applicable) before committing</principle>
         <principle>Use just commands for common tasks</principle>
     </workflow>
 
     <workflow-example>
         <title>CONCRETE TDD EXAMPLE</title>
         <scenario>Adding a new validation function</scenario>
-        
+
         <step number="1" phase="red">
             <description>Write failing test</description>
             <code><![CDATA[
 def test_validate_email_rejects_missing_at_symbol():
     # given
     invalid_email = "userexample.com"
-    
+
     # when
     result = validate_email(invalid_email)
-    
+
     # then
     assert result is False
             ]]></code>
         </step>
-        
+
         <step number="2" phase="green">
             <description>Minimum implementation with type annotations</description>
             <code><![CDATA[
@@ -653,12 +993,13 @@ def validate_email(email: str) -> bool:
     return "@" in email
             ]]></code>
         </step>
-        
+
         <step number="3" phase="verify">
             <description>Run linting and type checks</description>
             <commands>
                 <command>just lint</command>
                 <command>just fmt</command>
+                <command>just semgrep  # when .semgrep/ exists</command>
             </commands>
             <alternative>
                 <command>uv run ruff check .</command>
@@ -666,40 +1007,42 @@ def validate_email(email: str) -> bool:
                 <command>uv run mypy .</command>
             </alternative>
         </step>
-        
+
         <step number="4" phase="refactor">
             <description>Structural improvement (separate commit)</description>
             <action>Extract to validation module if pattern emerges</action>
+            <commit-example>refactor(validation): extract email validator into dedicated module</commit-example>
         </step>
     </workflow-example>
 
     <ai-assistant-directives>
         <title>DIRECTIVES FOR AI ASSISTANT</title>
-        
+
         <response-format>
             <rule>Always indicate which TDD phase (Red/Green/Refactor) the suggestion belongs to</rule>
-            <rule>Mark commits as [STRUCTURAL] or [BEHAVIORAL] in suggestions</rule>
+            <rule>Propose commit messages in Conventional Commits format; the type prefix encodes STRUCTURAL vs BEHAVIORAL (see commit-discipline section)</rule>
             <rule>When proposing code changes, show the test first</rule>
             <rule>Always include type annotations in Python code suggestions</rule>
             <rule>Use .yaml extension when creating YAML files, never .yml</rule>
+            <rule>Use `compose.yaml` for Docker Compose files, never `docker-compose.yaml`</rule>
         </response-format>
-        
+
         <ascii-art-guidelines>
             <title>ASCII ART AND DIAGRAM GUIDELINES</title>
             <description>Rules for creating text-based visualizations that render correctly</description>
-            
+
             <character-restrictions>
                 <rule>Use ONLY ASCII characters (single-byte) in diagrams</rule>
                 <prohibited>Japanese (日本語), Chinese (中文), Korean (한국어), emoji (🔥), and other multi-byte characters</prohibited>
                 <reason>Multi-byte characters cause misalignment in monospace rendering</reason>
             </character-restrictions>
-            
+
             <legend-requirement>
                 <rule>ALWAYS include a legend directly below the ASCII art</rule>
                 <rule>Legend must provide Japanese translations unless explicitly instructed otherwise</rule>
                 <format>English term: Japanese translation</format>
             </legend-requirement>
-            
+
             <example><![CDATA[
 +-------------------+
 |   Request Handler |
@@ -721,7 +1064,7 @@ Legend / 凡例:
 - Repository: リポジトリ
             ]]></example>
         </ascii-art-guidelines>
-        
+
         <prohibited-actions>
             <action>Never suggest untested code for production</action>
             <action>Never mix structural and behavioral changes in one suggestion</action>
@@ -731,16 +1074,22 @@ Legend / 凡例:
             <action>Never suggest modifying the ruff configuration</action>
             <action>Never suggest using pip, npm, yarn, or make (pnpm is allowed only when pnpm-lock.yaml exists)</action>
             <action>Never use .yml extension for YAML files</action>
+            <action>Never use `docker-compose.yaml` or `docker-compose.yml` as a filename; use `compose.yaml`</action>
+            <action>Never use `[STRUCTURAL]` or `[BEHAVIORAL]` tags in commit messages (use Conventional Commits types instead)</action>
+            <action>Never create or update docs/intent.md with guessed intent; always clarify with the human first</action>
+            <action>Never create multiple justfiles in subdirectories; there MUST be exactly one at the root</action>
             <action>Never use multi-byte characters (Japanese, Chinese, Korean, emoji) inside ASCII art diagrams</action>
         </prohibited-actions>
-        
+
         <encouraged-actions>
             <action>Ask clarifying questions before writing code</action>
             <action>Suggest smaller increments if proposed change is large</action>
             <action>Point out missing test cases</action>
             <action>Recommend parameterized tests when multiple similar scenarios exist</action>
-            <action>Include ruff and mypy verification steps in suggestions</action>
+            <action>Include ruff, mypy, and semgrep verification steps in suggestions</action>
             <action>Suggest creating an ADR when proposing significant architectural changes</action>
+            <action>Suggest adding a semgrep rule when the same review comment appears twice</action>
+            <action>Suggest updating docs/handover.md at the end of a work session</action>
             <action>Use uv for Python package operations</action>
             <action>Use bun for Node.js package operations (use pnpm only when pnpm-lock.yaml exists)</action>
             <action>Use just commands for task automation</action>
