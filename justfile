@@ -393,6 +393,8 @@ check-rust:
 # ------------------------------
 
 # Validate: detect duplicate command names in PATH (order matters)
+# Structural duplicates (brew-vs-system, mise-install-vs-shim, etc.) are ignored
+# by design; only user-actionable duplicates are flagged.
 validate-path-duplicates:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -417,34 +419,65 @@ validate-path-duplicates:
       echo "✅ No duplicate command names across PATH"
       exit 0
     fi
-    printf '%s\n' "${lines[@]}" | LC_ALL=C sort -k1,1 -k2,2n | awk '
+    # Classify each path into a role. If ALL duplicate instances for a command
+    # fall into "structural" roles, the duplicate is considered acceptable
+    # (e.g. brew shadowing /usr/bin, mise-install paired with mise-shim).
+    printf '%s\n' "${lines[@]}" | LC_ALL=C sort -k1,1 -k2,2n | awk -v home="$HOME" '
+    function role(p,   r) {
+      # mise layout (installs + shims)
+      if (index(p, home "/.local/share/mise/installs/") == 1) return "structural"
+      if (p == home "/.local/share/mise/shims" || index(p, home "/.local/share/mise/shims/") == 1) return "structural"
+      # Homebrew (apple silicon) + opt/*/bin symlink farm + sbin
+      if (index(p, "/opt/homebrew/bin/") == 1) return "structural"
+      if (index(p, "/opt/homebrew/sbin/") == 1) return "structural"
+      if (index(p, "/opt/homebrew/opt/") == 1) return "structural"
+      # Homebrew cask bundle executables
+      if (p ~ /^\/Applications\/[^\/]+\.app\/Contents\//) return "structural"
+      # System paths (Apple default + cryptex + AppleInternal)
+      if (index(p, "/usr/bin/") == 1) return "structural"
+      if (index(p, "/bin/") == 1) return "structural"
+      if (index(p, "/usr/sbin/") == 1) return "structural"
+      if (index(p, "/sbin/") == 1) return "structural"
+      if (index(p, "/System/") == 1) return "structural"
+      if (index(p, "/Library/Apple/") == 1) return "structural"
+      if (index(p, "/var/run/com.apple.") == 1) return "structural"
+      # Nix profile layout
+      if (index(p, home "/.nix-profile/bin/") == 1) return "structural"
+      if (index(p, "/nix/var/nix/profiles/") == 1) return "structural"
+      return "user"
+    }
     {
       name=$1; idx=$2;
-      $1=""; $2="";
-      sub(/^  */,"",$0);
+      path=$3;
+      for (i=4; i<=NF; i++) path = path " " $i;
       if (NR==1) { prev=name; n=0 }
       if (name!=prev) {
-        if (n>1) {
-          print "command: " prev;
-          for (i=1;i<=n;i++) print "  " rec[i]
-          dup++
-        }
+        if (n>1) { emit() }
         n=0; prev=name
       }
-      n++; rec[n]=idx ":" $0
+      n++; rec[n]=idx ":" path; pr[n]=role(path)
     }
     END{
-      if (n>1) {
-        print "command: " prev;
-        for (i=1;i<=n;i++) print "  " rec[i]
-        dup++
-      }
-      if (dup>0) {
-        print "⚠️  Found " dup " command(s) shadowed by PATH order"
+      if (n>1) { emit() }
+      if (flagged>0) {
+        print "⚠️  Found " flagged " user-actionable duplicate(s) in PATH"
+        if (allowed>0) print "    (" allowed " structural duplicate(s) ignored)"
         exit 2
       } else {
-        print "✅ No duplicate command names across PATH"
+        if (allowed>0) print "✅ No user-actionable duplicates (" allowed " structural duplicate(s) ignored)"
+        else print "✅ No duplicate command names across PATH"
       }
+    }
+    function emit(   i, user_count) {
+      user_count=0
+      for (i=1;i<=n;i++) if (pr[i]=="user") user_count++
+      if (user_count==0) { allowed++; return }
+      print "command: " prev
+      for (i=1;i<=n;i++) {
+        tag = (pr[i]=="user") ? " [user]" : ""
+        print "  " rec[i] tag
+      }
+      flagged++
     }'
 
 # Doctor: environment diagnostics and guardrails
