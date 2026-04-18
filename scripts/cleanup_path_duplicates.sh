@@ -80,29 +80,28 @@ else
 fi
 
 # --- B: pnpm globals deduplication -------------------------------------------
-# These pnpm-installed CLIs also exist in brew. Keep brew, drop pnpm.
+# These pnpm-installed packages provide CLIs that also exist in brew.
+# Keep brew, drop pnpm. Listed as package names (not bin names) because
+# `pnpm rm -g` operates on package identifiers.
 declare -a PNPM_DUPES=(
-    azurite
-    firebase
+    "@githubnext/github-copilot-cli" # bin: github-copilot-cli
+    "@nestjs/cli"                    # bin: nest
+    "@playwright/cli"                # bin: playwright
+    "@thunderclient/cli"             # bins: tc, tc2
+    "@vivliostyle/cli"               # bin: vivliostyle
+    azurite                          # bins: azurite, azurite-*
+    firebase-tools                   # bin: firebase
     fx
-    github-copilot-cli
     http-server
+    json-schema-to-typescript # bin: json2ts
     json-server
-    json2ts
     lint-staged
-    nest
     playwright
-    prettier
     pyright
-    tc
-    tc2
     tldr
-    tsc
     typeorm
-    vivliostyle
-    vs
-    wrangler
-    wrangler2
+    typescript # bin: tsc
+    wrangler   # bins: wrangler, wrangler2
     wscat
 )
 
@@ -113,18 +112,21 @@ elif ! command -v pnpm > /dev/null 2>&1; then
     log_skip "pnpm not found in PATH"
 else
     log_section "B. pnpm globals dedup"
-    pnpm_home="${PNPM_HOME:-$HOME/Library/pnpm}"
+    # Snapshot installed globals so we can do idempotence by package name.
+    # Run from $HOME to avoid projects that pin packageManager to npm/yarn
+    # (pnpm refuses to execute in such a working directory).
+    installed=$(env -C "$HOME" pnpm ls -g --depth 0 --parseable 2> /dev/null || true)
     to_remove=()
     for pkg in "${PNPM_DUPES[@]}"; do
-        if [[ -e "$pnpm_home/$pkg" ]]; then
+        # `pnpm ls --parseable` prints paths like .../node_modules/<pkg>;
+        # match by trailing "/<pkg>" to support scoped names like @scope/name.
+        if grep -qE "/${pkg}\$" <<< "$installed"; then
             to_remove+=("$pkg")
         else
-            log_skip "$pkg (already absent)"
+            log_skip "$pkg (not installed)"
         fi
     done
     if ((${#to_remove[@]})); then
-        # Run from $HOME to avoid projects that pin packageManager to npm/yarn
-        # (pnpm refuses to execute in such a working directory).
         run env -C "$HOME" pnpm rm -g "${to_remove[@]}"
         for pkg in "${to_remove[@]}"; do log_ok "removed pnpm global: $pkg"; done
     else
