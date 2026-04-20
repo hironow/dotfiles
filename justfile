@@ -151,6 +151,8 @@ dump:
     rm -f ./dump/Brewfile && (cd ./dump && brew bundle dump)
     # Dump global gitignore
     cp ~/.config/git/ignore ./dump/gitignore-global
+    # Dump installed gcloud components (restore with: gcloud components install $(cat dump/gcloud))
+    gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u > ./dump/gcloud
 
 
 # ------------------------------
