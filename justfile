@@ -588,10 +588,12 @@ check-version-torch expected:
 # TLS checks
 # ------------------------------
 
-# Check: run local HTTPS server (Go)
-check-localhost-tls:
-    # Serve TLS on localhost using the Go simple-server
-    mise x -- sudo go run tools/simple-server/main.go
+# Check: run local HTTPS server (Go) on port 443
+# Access via https://localhost.hironow.dev/ (no port suffix required).
+# Requires sudo for privileged port binding and to read the root-owned
+# Let's Encrypt certificate files under private/certificates/live/.
+check-localhost-tls port="443":
+    sudo go run tools/simple-server/main.go -port {{ port }} -cert ./private/certificates/live/localhost.hironow.dev/fullchain.pem -key ./private/certificates/live/localhost.hironow.dev/privkey.pem -dir ./docs
 
 semgrep:
     uv run semgrep --config=auto .
