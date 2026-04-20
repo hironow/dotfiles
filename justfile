@@ -269,10 +269,23 @@ add-brew:
     # Install brew bundle
     (cd ./dump && brew bundle)
 
-# Add: install gcloud components
+# Add: install gcloud components from dump/gcloud (skips already-installed)
 add-gcloud:
-    # Install gcloud components
-    sudo gcloud components install $(awk '{ORS=" "} {print}' ./dump/gcloud)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dump="./dump/gcloud"
+    if [[ ! -s "$dump" ]]; then
+        echo "❌ $dump is missing or empty"; exit 1
+    fi
+    installed=$(gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u)
+    missing=$(comm -23 <(sort -u "$dump") <(echo "$installed"))
+    if [[ -z "$missing" ]]; then
+        echo "✅ all gcloud components in $dump are already installed"
+        exit 0
+    fi
+    echo "📦 installing missing gcloud components:"
+    echo "$missing" | sed 's/^/  - /'
+    sudo gcloud components install --quiet $missing
 
 # Add: install pnpm global packages
 add-pnpm-g:
