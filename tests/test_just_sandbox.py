@@ -467,3 +467,33 @@ def test_doctor_sandbox(docker_image):
         f"doctor failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
     assert "Doctor summary:" in result.stdout
+
+
+# The add-* recipes all share the same early guard:
+#   if the dump file is missing or empty, exit 1 with "missing or empty".
+# These tests cover that guard without needing gcloud/brew/pnpm in the
+# sandbox: the guard fires before any tool is invoked.
+@pytest.mark.parametrize(
+    "recipe, dump_file",
+    [
+        pytest.param("add-brew", "dump/Brewfile", id="add-brew guards empty Brewfile"),
+        pytest.param("add-gcloud", "dump/gcloud", id="add-gcloud guards empty dump"),
+        pytest.param(
+            "add-pnpm-g", "dump/npm-global", id="add-pnpm-g guards empty dump"
+        ),
+    ],
+)
+@pytest.mark.check
+def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
+    # given: the dump file is emptied
+    # when: the recipe is run
+    # then: it exits 1 with a clear "missing or empty" message
+    script = f": > {dump_file} && just {recipe}"
+    result = run_in_sandbox(docker_image, script)
+    assert result.returncode == 1, (
+        f"{recipe}: expected rc=1 for empty {dump_file}\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "missing or empty" in result.stdout, (
+        f"{recipe}: expected 'missing or empty' in stdout\nstdout:\n{result.stdout}"
+    )
