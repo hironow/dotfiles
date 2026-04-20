@@ -151,8 +151,11 @@ dump:
     rm -f ./dump/Brewfile && (cd ./dump && brew bundle dump)
     # Dump global gitignore
     cp ~/.config/git/ignore ./dump/gitignore-global
-    # Dump installed gcloud components (restore with: gcloud components install $(cat dump/gcloud))
+    # Dump installed gcloud components (restore with: just add-gcloud)
     gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u > ./dump/gcloud
+    # Dump installed pnpm globals (restore with: just add-pnpm-g)
+    # Use --json so only top-level deps are captured; --parseable would also include the .pnpm content-addressed store.
+    env -C "$HOME" pnpm ls -g --depth 0 --json 2>/dev/null | jq -r '.[0].dependencies | keys[]' | sort -u > ./dump/npm-global
 
 
 # ------------------------------
@@ -264,9 +267,14 @@ add-all:
     just add-brew
     just add-pnpm-g
 
-# Add: install Homebrew bundle
+# Add: install Homebrew bundle from dump/Brewfile (idempotent via brew bundle)
 add-brew:
-    # Install brew bundle
+    #!/usr/bin/env bash
+    set -euo pipefail
+    brewfile="./dump/Brewfile"
+    if [[ ! -s "$brewfile" ]]; then
+        echo "❌ $brewfile is missing or empty"; exit 1
+    fi
     (cd ./dump && brew bundle)
 
 # Add: install gcloud components from dump/gcloud (skips already-installed)
@@ -287,10 +295,27 @@ add-gcloud:
     echo "$missing" | sed 's/^/  - /'
     sudo gcloud components install --quiet $missing
 
-# Add: install pnpm global packages
+# Add: install pnpm globals from dump/npm-global (skips already-installed)
 add-pnpm-g:
-    # Install pnpm global packages
-    pnpm add --global $(awk '{ORS=" "} {print}' ./dump/npm-global)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dump="./dump/npm-global"
+    if [[ ! -s "$dump" ]]; then
+        echo "❌ $dump is missing or empty"; exit 1
+    fi
+    # Strip trailing @version (keep scoped "@scope/name" intact)
+    want=$(sed -E 's/(^.+)@[^@]+$/\1/' "$dump" | sort -u)
+    # Use --json so only top-level deps are captured (parseable would include the .pnpm store too).
+    installed=$(env -C "$HOME" pnpm ls -g --depth 0 --json 2>/dev/null | jq -r '.[0].dependencies | keys[]' | sort -u)
+    missing=$(comm -23 <(echo "$want") <(echo "$installed"))
+    if [[ -z "$missing" ]]; then
+        echo "✅ all pnpm globals in $dump are already installed"
+        exit 0
+    fi
+    echo "📦 installing missing pnpm globals:"
+    echo "$missing" | sed 's/^/  - /'
+    # pnpm refuses to run inside projects pinning packageManager; run from $HOME.
+    env -C "$HOME" pnpm add --global $missing
 
 # ------------------------------
 # Update sets
