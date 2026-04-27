@@ -2,6 +2,10 @@
 
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
+# External commands
+MARKDOWNLINT := "mise exec -- markdownlint-cli2"
+PDOC := "uv run pdoc"
+
 # Default: show help
 default: help
 
@@ -9,13 +13,12 @@ default: help
 help:
     @just --list --unsorted
 
-# Define specific commands
-MARKDOWNLINT := "bun x markdownlint-cli2"
-PDOC := "uv run pdoc"
-
+# Lint markdown files
+[group('Check')]
 lint-md:
     @{{MARKDOWNLINT}} --fix "docs/**/*.md" "README.md" "experiments/**/*.md" "!submodules/**" "!sets/**" "!input/**" "!output/**"
 
+[group('Check')]
 pdoc port="8888" pkg=".":
     {{PDOC}} --port {{port}} {{pkg}}
 
