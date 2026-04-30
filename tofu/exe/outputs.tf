@@ -51,3 +51,18 @@ output "vm_service_account_email" {
   description = "Service account email the VM runs as."
   value       = google_service_account.exe_coder.email
 }
+
+output "cloudflare_tunnel_id" {
+  description = "Argo Tunnel ID (also the CNAME target as <id>.cfargotunnel.com)."
+  value       = cloudflare_zero_trust_tunnel_cloudflared.exe.id
+}
+
+output "cloudflare_tunnel_cname" {
+  description = "CNAME target the DNS records point at."
+  value       = "${cloudflare_zero_trust_tunnel_cloudflared.exe.id}.cfargotunnel.com"
+}
+
+output "access_application_id" {
+  description = "Cloudflare Access Application ID protecting the Coder UI."
+  value       = cloudflare_zero_trust_access_application.coder.id
+}

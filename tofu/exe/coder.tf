@@ -93,7 +93,9 @@ locals {
     set -euo pipefail
 
     HOSTNAME='${local.vm_name}'
-    SECRET='${google_secret_manager_secret.exe_coder_authkey.secret_id}'
+    TS_SECRET='${google_secret_manager_secret.exe_coder_authkey.secret_id}'
+    CF_SECRET='${google_secret_manager_secret.tunnel_credentials.secret_id}'
+    CF_TUNNEL_ID='${cloudflare_zero_trust_tunnel_cloudflared.exe.id}'
     PROJECT='${var.gcp_project_id}'
 
     # Tailscale on Container-Optimized OS — install via the official
@@ -116,7 +118,7 @@ locals {
 
     # Fetch the tag:exe-coder auth key (latest version) from Secret Manager.
     AUTH_KEY="$(gcloud --quiet --project="$PROJECT" \
-      secrets versions access latest --secret="$SECRET")"
+      secrets versions access latest --secret="$TS_SECRET")"
 
     /usr/local/bin/tailscale up \
       --auth-key="$AUTH_KEY" \
@@ -124,6 +126,30 @@ locals {
       --ssh \
       --accept-routes=false \
       --advertise-tags='${local.tag_exe_coder}'
+
+    # cloudflared — pull credentials JSON from Secret Manager and run as a
+    # connector for the named tunnel. config_src = "cloudflare" means the
+    # ingress rules live in the Cloudflare dashboard / tofu state, so the
+    # daemon only needs --token-less credentials.
+    if ! command -v cloudflared >/dev/null 2>&1; then
+      mkdir -p /var/lib/cloudflared
+      curl -fsSL -o /usr/local/bin/cloudflared \
+        https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+      chmod +x /usr/local/bin/cloudflared
+    fi
+
+    install -m 0700 -d /etc/cloudflared
+    gcloud --quiet --project="$PROJECT" \
+      secrets versions access latest --secret="$CF_SECRET" \
+      > "/etc/cloudflared/$CF_TUNNEL_ID.json"
+    chmod 0600 "/etc/cloudflared/$CF_TUNNEL_ID.json"
+
+    if ! pgrep -x cloudflared >/dev/null 2>&1; then
+      /usr/local/bin/cloudflared tunnel \
+        --no-autoupdate \
+        --credentials-file "/etc/cloudflared/$CF_TUNNEL_ID.json" \
+        run "$CF_TUNNEL_ID" >/var/log/cloudflared.log 2>&1 &
+    fi
   EOT
 }
 
@@ -192,6 +218,7 @@ resource "google_compute_instance" "exe_coder" {
 
   depends_on = [
     google_secret_manager_secret_iam_member.exe_coder_authkey_reader,
+    google_secret_manager_secret_iam_member.tunnel_credentials_reader,
     google_compute_firewall.deny_all_ingress,
   ]
 }
