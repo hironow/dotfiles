@@ -31,6 +31,8 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-json
+        # devcontainer.json is JSONC (comments allowed); strict JSON parse fails.
+        exclude: '^\.devcontainer/devcontainer\.json$'
       - id: check-added-large-files
         args: ["--maxkb=1024"]
       - id: check-merge-conflict
