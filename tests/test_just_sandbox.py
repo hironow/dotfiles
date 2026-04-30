@@ -416,11 +416,14 @@ def test_doctor_reports_just(docker_image):
             marks=pytest.mark.check,
         ),
         pytest.param(
-            "Check: npm globals guarded",
-            "if command -v npm >/dev/null 2>&1; then just check-npm-g; else echo skip-npm; fi",
+            "Check: npm globals available",
+            # npm is shipped in the sandbox image (needed by mise's npm-backed
+            # tools), so the guard always falls through to the real recipe.
+            # `npm ls --global --depth 0` exits 0 even with no globals.
+            "just check-npm-g",
             0,
-            "skip-npm",
-            id="Check: npm globals guarded",
+            "",
+            id="Check: npm globals available",
             marks=pytest.mark.check,
         ),
         pytest.param(
@@ -503,29 +506,58 @@ def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
 # Format / Lint Recipe Tests
 # =============================================================================
 #
-# `just format` / `just lint` chain `uvx ruff` (Python) and `mise x -- ...`
-# (prettier / shellcheck). The sandbox image does not ship `mise`, so we
-# stub it as a no-op shim. This still exercises:
-#   - just recipe wiring (parse + step ordering)
-#   - the ruff invocation (real binary via uvx)
-#   - the shell pipeline (`git ls-files | grep ... | xargs ...`)
-# Prettier / shellcheck behavior itself is out of scope here.
+# `just format` / `just lint` chain `uvx ruff` (Python), `mise x -- shellcheck`
+# (lint only), and `mise x -- prettier` (both). The sandbox image ships mise,
+# and shellcheck is listed in mise.toml, so shellcheck runs for real here.
+#
+# Prettier is intentionally NOT in mise.toml (the team relies on host install
+# via brew/asdf), so we override `mise x -- prettier ...` with a no-op shim.
+# We do this by injecting a wrapper named `mise` earlier on PATH that:
+#   - intercepts the literal pattern `x -- prettier ...` and exits 0,
+#   - delegates everything else to the real /root/.local/bin/mise.
 
-_MISE_STUB = (
+# mise's tools (incl. shellcheck) are pre-installed in the sandbox image
+# (Dockerfile runs `mise trust && mise install` at build time). We only need
+# to override prettier — which is intentionally NOT in mise.toml — with a
+# no-op shim so `just format`/`just lint` finish cleanly without prettier.
+# Shellcheck runs for real via the pre-installed mise tool.
+#
+# MISE_OFFLINE=1 prevents mise from contacting GitHub at runtime to check
+# for newer "latest" versions. Without it, repeated test runs trip the
+# unauthenticated GitHub API rate limit and mise then fails to resolve
+# `shellcheck = "latest"`.
+_MISE_PRETTIER_STUB = (
+    "export MISE_OFFLINE=1 && "
     "mkdir -p /tmp/stubs && "
-    "printf '#!/bin/sh\\nexit 0\\n' > /tmp/stubs/mise && "
-    "chmod +x /tmp/stubs/mise && "
+    "printf '%s\\n' "
+    "'#!/bin/sh' "
+    "'if [ \"$1\" = x ] && [ \"$2\" = -- ] && [ \"$3\" = prettier ]; then exit 0; fi' "
+    "'exec /root/.local/bin/mise \"$@\"' "
+    "> /tmp/stubs/mise && chmod +x /tmp/stubs/mise && "
     "export PATH=/tmp/stubs:$PATH && "
 )
+
+# Backwards-compat alias used by older tests; same semantics now.
+_MISE_STUB = _MISE_PRETTIER_STUB
 
 # The sandbox image excludes .git via .dockerignore, so `git ls-files` would
 # fatal. Initialize a repo and stage everything so `git ls-files` returns the
 # tracked file list. Empty `git ls-files` output makes grep exit 1 (no match),
 # which would then break the pipeline under `set -e`.
+#
+# Submodule paths are intentionally NOT staged: in a real checkout, `git
+# ls-files` omits files inside submodules (each submodule is a pointer in
+# the parent repo). Without this, our throwaway `git init` would include
+# every submodule's .sh / file and cause shellcheck/prettier/ruff/... to
+# scan third-party code the recipes are designed to skip. We derive the
+# exclusion list dynamically from .gitmodules so nested submodules
+# (e.g. tools/tmux/plugins/tmux-resurrect) are covered too.
 _GIT_INIT = (
     "cd /root/dotfiles && "
     "git init -q && "
     "git config user.email t@e && git config user.name t && "
+    "git config --file .gitmodules --get-regexp path 2>/dev/null "
+    "| awk '{print $2\"/\"}' > .git/info/exclude && "
     "git add -A 2>/dev/null && "
 )
 
@@ -764,16 +796,20 @@ def test_just_add_all_fails_when_dumps_empty(docker_image):
 @pytest.mark.check
 def test_just_install_runs_mise_install(docker_image):
     """`just install` invokes `mise install` end-to-end and provisions the
-    tools listed in mise.toml. The sandbox image ships mise + nodejs/npm so
-    no stubs are needed.
+    tools listed in mise.toml.
 
-    First-run downloads npm packages (markdownlint-cli2, vp), so the test is
-    slower than the rest. rc=0 is the only assertion — pinning specific
-    tool versions is left to mise.toml.
+    The sandbox image pre-installs all mise.toml tools at build time
+    (single GitHub API hit). At test time we set MISE_OFFLINE=1 so mise
+    re-uses what's already installed instead of re-querying GitHub for
+    "latest" — repeated test runs would otherwise trip the unauthenticated
+    rate limit and fail.
     """
     # mise refuses to read an untrusted config; replicate the operator's
     # one-time `mise trust` step.
-    result = run_in_sandbox(docker_image, "mise trust >/dev/null 2>&1; just install")
+    result = run_in_sandbox(
+        docker_image,
+        "export MISE_OFFLINE=1; mise trust >/dev/null 2>&1; just install",
+    )
     assert result.returncode == 0, (
         f"just install failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )

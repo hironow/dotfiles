@@ -16,18 +16,34 @@ RUN apk add --no-cache \
     python3 \
     py3-pip \
     nodejs \
-    npm
+    npm \
+    shellcheck
 
-# Install latest just (Alpine package is outdated and doesn't support [group()] syntax)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
-
-# Install sheldon (zsh plugin manager) - download pre-built binary
+# Install latest just from GitHub releases (Alpine 3.19's just package is
+# outdated and doesn't support [group()] syntax, which our justfile uses).
+# We pin a specific version to avoid hitting GitHub API rate limits during
+# repeated test runs and to keep builds reproducible.
 RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then SHELDON_ARCH="x86_64-unknown-linux-musl"; \
-    elif [ "$ARCH" = "aarch64" ]; then SHELDON_ARCH="aarch64-unknown-linux-musl"; \
-    else echo "Unsupported arch: $ARCH" && exit 1; fi && \
-    SHELDON_VERSION=$(curl -fsSL https://api.github.com/repos/rossmacarthur/sheldon/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/') && \
-    curl -fsSL "https://github.com/rossmacarthur/sheldon/releases/download/${SHELDON_VERSION}/sheldon-${SHELDON_VERSION}-${SHELDON_ARCH}.tar.gz" | tar -xz -C /usr/local/bin
+    case "$ARCH" in \
+      x86_64)  JUST_ARCH="x86_64-unknown-linux-musl" ;; \
+      aarch64) JUST_ARCH="aarch64-unknown-linux-musl" ;; \
+      *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
+    esac && \
+    JUST_VERSION="1.40.0" && \
+    curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-${JUST_ARCH}.tar.gz" \
+      | tar -xz -C /usr/local/bin just
+
+# Install sheldon (zsh plugin manager) - download pre-built binary.
+# Version is pinned to avoid GitHub API rate limits during builds.
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+      x86_64)  SHELDON_ARCH="x86_64-unknown-linux-musl" ;; \
+      aarch64) SHELDON_ARCH="aarch64-unknown-linux-musl" ;; \
+      *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
+    esac && \
+    SHELDON_VERSION="0.8.4" && \
+    curl -fsSL "https://github.com/rossmacarthur/sheldon/releases/download/${SHELDON_VERSION}/sheldon-${SHELDON_VERSION}-${SHELDON_ARCH}.tar.gz" \
+      | tar -xz -C /usr/local/bin
 
 ENV HOME=/root
 WORKDIR /root/dotfiles
@@ -37,14 +53,22 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 
 # Install mise (rtx-style tool manager). Used by `just install`, `just lint-md`,
-# and the prettier/shellcheck steps in `just format`/`just lint`.
-# We install the binary only; tools listed in mise.toml are pulled on-demand
-# by tests that exercise `just install`.
+# and the shellcheck step in `just lint`. We install the binary only here;
+# the `just install` test below covers exercising `mise install` itself.
 RUN curl -fsSL https://mise.run | sh
 ENV PATH="/root/.local/bin:/root/.local/share/mise/shims:$PATH"
 
 # Copy repository contents into container (sandboxed workspace)
 COPY . /root/dotfiles
+
+# Pre-provision all tools listed in mise.toml at image build time. Must come
+# AFTER the COPY so mise can read mise.toml. This:
+#   1. prevents tests from being throttled by GitHub API rate limits when
+#      `mise install` runs at test time (each `latest` resolution = 1 API hit)
+#   2. records concrete versions in mise.lock so MISE_OFFLINE=1 at test time
+#      can reuse the installed binaries without re-querying GitHub
+# Both are pre-conditions for stable container-based recipe coverage.
+RUN mise trust mise.toml && touch mise.lock && mise install
 
 # Provide stub for nvcc with a realistic version string
 RUN printf '#!/bin/sh\necho "Cuda compilation tools, release 12.3, V12.3.52"\n' > /usr/local/bin/nvcc \
