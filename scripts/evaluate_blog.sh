@@ -17,6 +17,9 @@ CHANGELOG="docs/changelogs.md"
 count_matches() {
     local pattern="$1"
     local flags="${2:--oE}"
+    # `grep -c` is not equivalent here: with -o flag we want occurrence count
+    # (potentially multiple per line), not matching-line count.
+    # shellcheck disable=SC2126,SC2086
     grep $flags "$pattern" | wc -l | tr -d ' '
 }
 

@@ -25,6 +25,9 @@ if [[ ! "$TARGET" =~ ^https?:// ]]; then
   DIR="$(dirname "$ABS_PATH")"
   BASENAME="$(basename "$ABS_PATH")"
   PORT=18976
+  # lsof returns one PID per line; word-splitting is intentional so kill
+  # receives all of them as separate args.
+  # shellcheck disable=SC2046
   kill $(lsof -ti:$PORT) 2>/dev/null || true
   sleep 0.3
   python3 -m http.server $PORT --directory "$DIR" &>/dev/null &
