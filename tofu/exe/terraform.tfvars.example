@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars (gitignored) and fill in the real values.
+# Sensitive entries should ideally come from `gcloud secrets versions access`
+# at apply time rather than this file.
+
+# GCP — usually defaults are fine, override only for non-default project.
+gcp_project_id = "gen-ai-hironow"
+gcp_region     = "asia-northeast1"
+gcp_zone       = "asia-northeast1-a"
+
+# Domain — owns both the Coder UI host and the sandbox wildcard.
+domain            = "exe.hironow.dev"
+sandbox_subdomain = "sandbox.hironow.dev"
+cf_zone_name      = "hironow.dev"
+
+# Cloudflare account ID (NOT the API token). Find it at
+# https://dash.cloudflare.com/<account-id>/...
+cf_account_id = "REPLACE_ME"
+
+# Tailscale tailnet (e.g. "hironow365@github" or "<org>.ts.net").
+tailnet = "REPLACE_ME"
+
+# Access policy.
+owner_email = "hironow365@gmail.com"
+
+# VM sizing — leave as default for the cheap preemptible setup.
+machine_type      = "e2-small"
+preemptible       = true
+boot_disk_size_gb = 30
