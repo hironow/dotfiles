@@ -31,3 +31,23 @@ output "tailscale_keys_rotated_at" {
   description = "Timestamp of the most recent Tailscale auth-key rotation (driven by time_rotating)."
   value       = time_rotating.tailscale_keys.rfc3339
 }
+
+output "vm_name" {
+  description = "GCE instance name of the workspace VM (also its Tailscale hostname)."
+  value       = google_compute_instance.exe_coder.name
+}
+
+output "vm_zone" {
+  description = "GCE zone hosting the workspace VM."
+  value       = google_compute_instance.exe_coder.zone
+}
+
+output "vm_external_ip" {
+  description = "Ephemeral external IP of the workspace VM (egress + NAT only; no ingress allowed)."
+  value       = google_compute_instance.exe_coder.network_interface[0].access_config[0].nat_ip
+}
+
+output "vm_service_account_email" {
+  description = "Service account email the VM runs as."
+  value       = google_service_account.exe_coder.email
+}
