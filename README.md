@@ -86,6 +86,21 @@ cd tools/simple-server
 sudo mise x -- go run main.go
 ```
 
+## Dev Container
+
+This repo ships a [Dev Container](https://containers.dev/) that reuses the
+same Docker image CI builds (`tests/docker/JustSandbox.Dockerfile`). Open it
+to get an isolated environment with `just`, `mise`, `prek`, `ruff`,
+`shellcheck`, and `markdownlint-cli2` already provisioned — useful as an AI
+agent sandbox for `just fmt|lint|check|test`.
+
+- **Claude Code**: run `/devcontainer`
+- **VS Code / Cursor**: install the Dev Containers extension, then `Reopen in Container`
+- **JetBrains**: `File > Remote Development > Dev Containers`
+
+The `postCreateCommand` runs `mise trust && mise install && just install-hooks`,
+so prek hooks are wired into the clone automatically.
+
 ## Tools
 
 - [Tools](./tools/README.md): Collection of utility scripts and tools (e.g., RTTM converter, simple server).

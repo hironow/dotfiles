@@ -1,0 +1,58 @@
+// Dev Container Specification — https://containers.dev
+//
+// Reuses tests/docker/JustSandbox.Dockerfile (the same image CI builds)
+// so "what runs in CI" and "what the agent / IDE sees" stay aligned.
+//
+// Open via:
+//   - Claude Code:  /devcontainer
+//   - VS Code:      Reopen in Container
+//   - Cursor:       Reopen in Container
+//   - JetBrains:    File > Remote Development > Dev Containers
+{
+  "name": "dotfiles (just sandbox)",
+
+  "build": {
+    "dockerfile": "../tests/docker/JustSandbox.Dockerfile",
+    "context": "..",
+    "args": {
+      "BASE_IMAGE": "alpine:3.19"
+    }
+  },
+
+  // The Dockerfile sets WORKDIR /root/dotfiles. Bind-mount the host repo
+  // to the same path so the live workspace shadows the baked-in COPY.
+  "workspaceFolder": "/root/dotfiles",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/root/dotfiles,type=bind,consistency=cached",
+
+  // mise.lock baked at build time gets shadowed by the bind-mount, and the
+  // host repo intentionally does not check in mise.lock. Re-trust + re-install
+  // so MISE_OFFLINE callers (lint/test) find resolved versions. install-hooks
+  // wires prek into git for this clone.
+  "postCreateCommand": "mise trust mise.toml && touch mise.lock && mise install && just install-hooks",
+
+  // Pre-build step uses the same image CI builds, so the local first-open is
+  // fast when the user has already pulled or built dotfiles-just-sandbox.
+  "containerEnv": {
+    "MISE_OFFLINE": "1"
+  },
+
+  "remoteUser": "root",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "charliermarsh.ruff",
+        "timonwong.shellcheck",
+        "DavidAnson.vscode-markdownlint",
+        "skellock.just",
+        "hverlin.mise-vscode",
+        "tamasfe.even-better-toml",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "files.eol": "\n"
+      }
+    }
+  }
+}
