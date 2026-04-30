@@ -66,7 +66,7 @@ if ! command -v just >/dev/null 2>&1; then
   if command -v brew >/dev/null 2>&1; then
     brew list just >/dev/null 2>&1 || brew install just || true
   fi
-  
+
   # Fallback: install via official script if still not found
   if ! command -v just >/dev/null 2>&1; then
     echo "[install] Installing just via curl..."
