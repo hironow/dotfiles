@@ -38,6 +38,14 @@ def docker_image():
     if not DOCKERFILE.exists():
         pytest.skip("Sandbox Dockerfile missing; skipping.")
 
+    # In CI, the sandbox image is prebuilt by the workflow's
+    # `docker/build-push-action` step. We reuse it instead of rebuilding so
+    # that a build failure surfaces as a CI step error (not as a silent
+    # pytest.skip that lets the workflow report green).
+    if _image_exists(IMAGE):
+        yield IMAGE
+        return
+
     # when: build sandbox image using local workspace as build context
     build_cmd = [
         "docker",
@@ -52,36 +60,23 @@ def docker_image():
     ]
     result = _run(build_cmd, cwd=ROOT)
     if result.returncode != 0:
-        # Try a second attempt without pulling (if the base image exists locally)
-        fallback_cmd = [
-            "docker",
-            "build",
-            "-t",
-            IMAGE,
-            "-f",
-            str(DOCKERFILE),
-            "--build-arg",
-            "BASE_IMAGE=alpine:3.19",
-            ".",
-        ]
-        result2 = _run(fallback_cmd, cwd=ROOT)
-        if result2.returncode != 0:
-            msg = (
-                "Failed to build sandbox image. Ensure Docker is running and base image is available.\n"
-                "Hint: docker pull alpine:3.19 && just test-verbose\n\n"
-                "stdout-1:\n"
-                + result.stdout
-                + "\n\nstderr-1:\n"
-                + result.stderr
-                + "\n\nstdout-2:\n"
-                + result2.stdout
-                + "\n\nstderr-2:\n"
-                + result2.stderr
-            )
-            pytest.skip(msg)
+        msg = (
+            "Failed to build sandbox image. Ensure Docker is running and "
+            "base image is available.\n"
+            "Hint: docker pull alpine:3.19 && just test-verbose\n\n"
+            f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
+        )
+        # Fail loudly: skipping here masks build regressions on CI
+        # (image-build failures previously turned the suite into a no-op).
+        pytest.fail(msg)
 
     # then: image is available
     yield IMAGE
+
+
+def _image_exists(image: str) -> bool:
+    r = _run(["docker", "image", "inspect", image])
+    return r.returncode == 0
 
 
 def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
