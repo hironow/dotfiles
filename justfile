@@ -838,3 +838,93 @@ check-free:
 docs-view:
     mo --clear --no-open
     mo --foreground -w 'docs/**/*.md' -w 'autoblogs/**/*.md'
+
+# ------------------------------
+# exe.hironow.dev — OpenTofu wrapper recipes
+# ------------------------------
+#
+# All `exe-*` recipes operate on the tofu/exe stack. They:
+#   1. cd tofu/exe
+#   2. export TF_ENCRYPTION_PASSPHRASE from ~/.config/tofu/exe.passphrase
+#      so state encryption is transparent.
+#   3. require CLOUDFLARE_API_TOKEN and TAILSCALE_API_KEY in env
+#      (the recipe fails fast if either is unset, with a hint).
+#
+# First-time setup before any `exe-*` recipe:
+#   bash exe/scripts/bootstrap.sh
+#   cp tofu/exe/terraform.tfvars.example tofu/exe/terraform.tfvars
+#   $EDITOR tofu/exe/terraform.tfvars
+
+# Run the bootstrap (idempotent): enable APIs, create state bucket, generate passphrase.
+[group('Exe')]
+exe-bootstrap:
+    @bash exe/scripts/bootstrap.sh
+
+# tofu init for the exe stack.
+[group('Exe')]
+exe-init:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
+    cd tofu/exe && tofu init
+
+# tofu plan against the live state.
+[group('Exe')]
+exe-plan:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
+    cd tofu/exe && tofu plan
+
+# tofu apply (interactive — confirms the plan).
+[group('Exe')]
+exe-apply:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
+    cd tofu/exe && tofu apply
+
+# tofu destroy of the VM only (keeps tunnel/secrets; cheap recreate).
+[group('Exe')]
+exe-down:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
+    cd tofu/exe && tofu destroy \
+      -target=google_compute_instance.exe_coder
+
+# tofu destroy of every resource (VM, net, secrets, tunnel, DNS, Access).
+[group('Exe')]
+exe-down-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
+    cd tofu/exe && tofu destroy
+
+# tofu fmt -check + provider-only init + validate. No state access; safe.
+[group('Exe')]
+exe-validate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tofu/exe
+    tofu fmt -check -diff
+    tofu init -backend=false -input=false >/dev/null
+    tofu validate
+
+# tofu output (JSON for scripts).
+[group('Exe')]
+exe-output *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
+    cd tofu/exe && tofu output {{ args }}
