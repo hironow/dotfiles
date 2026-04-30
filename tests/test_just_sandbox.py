@@ -759,3 +759,23 @@ def test_just_add_all_fails_when_dumps_empty(docker_image):
     result = run_in_sandbox(docker_image, script)
     assert result.returncode != 0
     assert "missing or empty" in result.stdout
+
+
+@pytest.mark.check
+def test_just_install_runs_mise_install(docker_image):
+    """`just install` invokes `mise install` end-to-end and provisions the
+    tools listed in mise.toml. The sandbox image ships mise + nodejs/npm so
+    no stubs are needed.
+
+    First-run downloads npm packages (markdownlint-cli2, vp), so the test is
+    slower than the rest. rc=0 is the only assertion — pinning specific
+    tool versions is left to mise.toml.
+    """
+    # mise refuses to read an untrusted config; replicate the operator's
+    # one-time `mise trust` step.
+    result = run_in_sandbox(docker_image, "mise trust >/dev/null 2>&1; just install")
+    assert result.returncode == 0, (
+        f"just install failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    combined = result.stdout + result.stderr
+    assert "mise install" in combined

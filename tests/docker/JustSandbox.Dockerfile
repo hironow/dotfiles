@@ -1,7 +1,9 @@
 ARG BASE_IMAGE=alpine:3.19
 FROM ${BASE_IMAGE}
 
-# Install required tools: bash, coreutils, network utils, git, curl, python
+# Install required tools: bash, coreutils, network utils, git, curl, python.
+# nodejs+npm are needed because mise.toml lists npm-backed tools
+# (markdownlint-cli2, vp); without them `just install` fails to resolve.
 RUN apk add --no-cache \
     bash \
     coreutils \
@@ -12,7 +14,9 @@ RUN apk add --no-cache \
     curl \
     git \
     python3 \
-    py3-pip
+    py3-pip \
+    nodejs \
+    npm
 
 # Install latest just (Alpine package is outdated and doesn't support [group()] syntax)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
@@ -31,6 +35,13 @@ WORKDIR /root/dotfiles
 # Install uv for Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
+
+# Install mise (rtx-style tool manager). Used by `just install`, `just lint-md`,
+# and the prettier/shellcheck steps in `just format`/`just lint`.
+# We install the binary only; tools listed in mise.toml are pulled on-demand
+# by tests that exercise `just install`.
+RUN curl -fsSL https://mise.run | sh
+ENV PATH="/root/.local/bin:/root/.local/share/mise/shims:$PATH"
 
 # Copy repository contents into container (sandboxed workspace)
 COPY . /root/dotfiles
