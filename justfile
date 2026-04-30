@@ -32,12 +32,12 @@ pdoc port="8888" pkg=".":
 # Run meta semgrep rules against rule files (ROOT_AGENTS.md etc.)
 [group('Validation')]
 meta-semgrep:
-    semgrep --config .semgrep/rules/meta/ --error .
+    uvx semgrep --config .semgrep/rules/meta/ --error .
 
 # Verify meta rules themselves with their test annotations
 [group('Validation')]
 meta-semgrep-test:
-    semgrep --test --config .semgrep/rules/meta/
+    uvx semgrep --test --config .semgrep/rules/meta/
 
 # Full validation of rule files
 [group('Validation')]
@@ -271,23 +271,29 @@ test-mark marker="":
 # ------------------------------
 
 # Format: run all formatters (Python, Prettier)
+# Notes:
+#   - ruff excludes live in pyproject.toml ([tool.ruff] extend-exclude).
+#     Don't pass `--exclude` here: it would replace ruff's built-in defaults
+#     (.venv, __pycache__, dist, build, ...).
+#   - Use `git ls-files -z | xargs -0` to handle filenames with quotes/spaces.
+#   - `xargs -r` skips invocation when input is empty.
 [group('Format')]
 format:
     @echo '🔧 Formatting Python (ruff)...'
-    uvx ruff format . --exclude emulator
+    uvx ruff format .
     @echo '🔧 Formatting others (prettier)...'
-    git ls-files | grep -vE '^(emulator$|emulator/|ROOT_AGENTS\.md$)' | xargs mise x -- prettier --write --ignore-unknown
+    git ls-files -z | grep -zvE '^(emulator$|emulator/|ROOT_AGENTS\.md$)' | xargs -0 -r mise x -- prettier --write --ignore-unknown
     @echo '✅ Format done.'
 
 # Lint: run all linters (Python, Shell, Prettier)
 [group('Format')]
 lint:
     @echo '🔍 Linting Python (ruff)...'
-    uvx ruff check . --fix --exclude emulator
+    uvx ruff check . --fix
     @echo '🔍 Linting Shell (shellcheck)...'
-    git ls-files '*.sh' | grep -vE '^(emulator$|emulator/)' | xargs mise x -- shellcheck
+    git ls-files -z '*.sh' | grep -zvE '^(emulator$|emulator/)' | xargs -0 -r mise x -- shellcheck
     @echo '🔍 Checking others (prettier)...'
-    git ls-files | grep -vE '^(emulator$|emulator/|ROOT_AGENTS\.md$)' | xargs mise x -- prettier --check --ignore-unknown
+    git ls-files -z | grep -zvE '^(emulator$|emulator/|ROOT_AGENTS\.md$)' | xargs -0 -r mise x -- prettier --check --ignore-unknown
     @echo '✅ Lint done.'
 
 # ------------------------------
