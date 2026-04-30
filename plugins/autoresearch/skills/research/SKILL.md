@@ -32,14 +32,14 @@ Start an autonomous research experiment loop.
 
 ## Workflow
 
-### If no experiment-config.yaml exists:
+### If no experiment-config.yaml exists
 
 1. Invoke the setup-experiment skill to initialize the environment
 2. Guide the user through configuration
 3. Run baseline
 4. Begin the experiment loop
 
-### If experiment-config.yaml exists:
+### If experiment-config.yaml exists
 
 1. Read the config and validate all fields
 2. Check git branch state (create or resume experiment branch)

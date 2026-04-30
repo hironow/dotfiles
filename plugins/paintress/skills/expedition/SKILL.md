@@ -28,14 +28,18 @@ Invoke the `setup-continent` skill to initialize the expedition environment. Do 
 
 1. Read `continent-config.yaml` for target repository, Linear project, test command, and label filter
 2. **Read Gradient Gauge state**:
+
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gradient.py read gradient.json
    ```
+
    - If `gommage: true` → **HALT**. Report gommage condition to user (3+ consecutive failures or skips). Do NOT start any expeditions. Show recent failures and suggest corrective actions.
 3. **Extract Lumina patterns**:
+
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract-lumina.py journal.tsv
    ```
+
    Save the JSON output for prompt injection.
 4. Read `journal.tsv` to identify already-processed issues (skip them)
 
@@ -78,9 +82,11 @@ Priority hint: <priority_hint>
 11. Parse agent result (RESULT, ISSUE, COMMIT, PR, DESCRIPTION)
 12. Append result to `journal.tsv`
 13. **Update Gradient Gauge**:
+
     ```bash
     python3 ${CLAUDE_PLUGIN_ROOT}/scripts/gradient.py update gradient.json <status>
     ```
+
 14. **Review Gate** (if status is "success" AND PR was created AND `review_cmd` is configured):
     - Run `review_cmd` in the worktree directory
     - If exit code non-zero and review cycle < 3:
@@ -104,7 +110,7 @@ See `continent-config.yaml` format in the `setup-continent` skill.
 Tab-separated, git-untracked, append-only:
 
 ```
-issue	commit	status	pr_url	description
+issue commit status pr_url description
 ```
 
 Status values: `success`, `success:review-pending`, `fail:compile`, `fail:test`, `fail:timeout`, `skip:no-dod`, `skip:conflict`, `partial:no-pr`

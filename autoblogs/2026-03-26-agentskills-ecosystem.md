@@ -57,6 +57,7 @@ ADK Python v1.27.x (実行環境)
 ```
 
 Legend / 凡例:
+
 - Kiro IDE: Amazon が開発する AI ファースト統合開発環境
 - AgentSkills: エージェントスキルの仕様化と配布プラットフォーム
 - ADK Python: Google の Agent Development Kit（スキル実行環境）

@@ -23,6 +23,7 @@ Extracted from descriptions of `success` entries. When the same approach
 appears in 3+ successful expeditions, it becomes an Offensive Lumina.
 
 Format injected into prompt:
+
 ```
 [OK] Proven approach (Nx successful): <pattern>
 ```
@@ -33,6 +34,7 @@ Extracted from descriptions of `fail:*` entries. When the same failure
 reason appears in 2+ failed expeditions, it becomes a Defensive Lumina.
 
 Format injected into prompt:
+
 ```
 [WARN] Avoid — failed N times: <pattern>
 ```
@@ -78,6 +80,7 @@ Last 3 failures:
 ```
 
 If no patterns meet the threshold, inject:
+
 ```
 ## Lumina: No patterns detected yet. First expeditions build the knowledge base.
 ```

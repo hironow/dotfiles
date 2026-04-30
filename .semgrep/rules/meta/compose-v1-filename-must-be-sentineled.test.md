@@ -1,10 +1,16 @@
 # Test cases for meta-compose-v1-filename-must-be-sentineled
+
 #
+
 # Run: semgrep --test --config ../../../rules/meta/
+
 #
-# Convention:
-#   <!-- ruleid: <rule-id> --> on the line ABOVE an expected match
-#   <!-- ok:     <rule-id> --> on the line ABOVE an expected non-match
+
+# Convention
+
+# <!-- ruleid: <rule-id> --> on the line ABOVE an expected match
+
+# <!-- ok:     <rule-id> --> on the line ABOVE an expected non-match
 
 <!-- ok: meta-compose-v1-filename-must-be-sentineled -->
 <prohibited-filename>docker-compose.yaml</prohibited-filename>

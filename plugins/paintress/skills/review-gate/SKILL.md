@@ -16,6 +16,7 @@ code review and iterates on fixes up to 3 times.
 ## Trigger
 
 The Review Gate activates when:
+
 - Expedition status is `success`
 - A PR URL was created
 - `review_cmd` is configured in `continent-config.yaml` (non-empty)
@@ -46,11 +47,13 @@ REVIEW LOOP (max 3 cycles):
 In `continent-config.yaml`:
 
 Any command that:
+
 - Exits 0 when the code passes review
 - Exits non-zero when issues are found
 - Outputs actionable feedback on stdout
 
 Examples:
+
 ```yaml
 # Using codex
 review_cmd: "codex exec -m gpt-5.3-codex --skip-git-repo-check 'Review the diff on the current branch against main.'"
@@ -75,6 +78,7 @@ Agent(
 ```
 
 The agent should:
+
 1. Read the review feedback
 2. Fix the issues in the existing worktree
 3. Run tests to verify
@@ -91,6 +95,7 @@ The agent should:
 ## Journal Logging
 
 After the review gate completes, update the journal entry's status:
+
 - If review passed: keep `success`
 - If review gave up after 3 cycles: change to `success:review-pending`
 

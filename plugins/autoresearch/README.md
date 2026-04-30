@@ -49,6 +49,7 @@ This creates `experiment-config.yaml`, initializes `results.tsv`, and runs the b
 ### 3. Run
 
 The researcher agent autonomously runs experiments. Each cycle:
+
 - Modifies only designated target files
 - Evaluates against the fixed metric
 - Keeps improvements, reverts failures

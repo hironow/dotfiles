@@ -70,6 +70,7 @@ grep -q 'results.tsv' .gitignore 2>/dev/null || echo 'results.tsv' >> .gitignore
 
 Read all target files and evaluation harness files to build full understanding
 of the codebase before experimenting. Identify:
+
 - What can be changed (target files)
 - What must not be changed (evaluation, config, dependencies)
 - Current architecture and patterns
@@ -93,6 +94,7 @@ printf '%s\t%s\tkeep\tbaseline\n' "$(git rev-parse --short HEAD)" "<metric_value
 ### 7. Confirm and Go
 
 Present setup summary to the user:
+
 - Branch name
 - Target files
 - Evaluation command and metric
@@ -104,6 +106,7 @@ Once confirmed, hand off to the research-loop skill or researcher agent.
 ## Validation
 
 Before proceeding, verify:
+
 - [ ] Experiment branch created and checked out
 - [ ] experiment-config.yaml exists and is valid
 - [ ] results.tsv initialized with header

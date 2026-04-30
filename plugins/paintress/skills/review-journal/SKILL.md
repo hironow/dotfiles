@@ -69,6 +69,7 @@ Group failures by category and identify patterns:
 ### 5. Recommendations
 
 Based on patterns, suggest:
+
 - Which failure categories to investigate manually
 - Whether to retry failed issues with different approach
 - If success rate is below 50%, suggest config or scope adjustments
@@ -81,6 +82,7 @@ Present the report directly in conversation. Use markdown tables for structured 
 ## Script Utility
 
 For JSON output, run:
+
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/parse-journal.py <journal_file>
 ```

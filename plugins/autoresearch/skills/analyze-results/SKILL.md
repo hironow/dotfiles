@@ -29,6 +29,7 @@ Parse tab-separated columns: commit, metric, status, description.
 ### 2. Summary Statistics
 
 Calculate and report:
+
 - **Total experiments**: Count of all rows (excluding header)
 - **Outcomes**: Count of keep / discard / crash
 - **Keep rate**: keeps / total (higher suggests good hypothesis generation)
@@ -51,6 +52,7 @@ List all "keep" experiments in order, showing cumulative improvement:
 ### 4. Failure Analysis
 
 Identify patterns in discarded and crashed experiments:
+
 - What types of changes consistently fail?
 - Are there crash patterns (OOM, timeout, convergence)?
 - What experiment categories have the best keep rate?
@@ -58,6 +60,7 @@ Identify patterns in discarded and crashed experiments:
 ### 5. Recommendations
 
 Based on the analysis, suggest:
+
 - **Exploit**: Variations on successful experiments (fine-tune what worked)
 - **Explore**: Novel directions not yet tried
 - **Simplify**: Opportunities to reduce code while maintaining metrics

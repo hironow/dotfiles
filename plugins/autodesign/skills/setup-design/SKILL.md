@@ -74,11 +74,13 @@ Request each field value from the user if not obvious from context.
 ### 4. Verify eval_target Reachability
 
 For URL targets:
+
 ```bash
 curl -s -o /dev/null -w "%{http_code}" <eval_target>
 ```
 
 For file targets:
+
 ```bash
 test -f <eval_target> && echo "OK" || echo "NOT FOUND"
 ```
@@ -119,6 +121,7 @@ grep -q 'design-results.tsv' .gitignore 2>/dev/null || echo 'design-results.tsv'
 
 Read all target files and evaluation config to build full understanding
 of the design before exploring. Identify:
+
 - What can be changed (target files)
 - What must not be changed (evaluation, config, dependencies)
 - Current design patterns and architecture
@@ -147,6 +150,7 @@ initial generation and baseline recording.
 ### 9. Confirm and Go
 
 Present setup summary to the user:
+
 - Branch name
 - Target files
 - Evaluation target and command
@@ -160,6 +164,7 @@ Once confirmed, hand off to the design-loop skill or designer agent.
 ## Validation
 
 Before proceeding, verify:
+
 - [ ] Design branch created and checked out
 - [ ] design-config.yaml exists and is valid
 - [ ] eval_target is reachable

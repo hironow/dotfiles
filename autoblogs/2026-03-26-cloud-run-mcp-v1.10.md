@@ -89,6 +89,7 @@ Cloud Run サービス群
 ```
 
 Legend / 凡例:
+
 - DeployCompose: Docker Compose 定義を Cloud Run にデプロイする変換レイヤー
 - MCP サーバー: Model Context Protocol を実装したサービス
 - エージェントバックエンド: ADK Python/Go/JS を使用したエージェント実装

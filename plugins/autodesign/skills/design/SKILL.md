@@ -32,14 +32,14 @@ Start an autonomous web design exploration loop.
 
 ## Workflow
 
-### If no design-config.yaml exists:
+### If no design-config.yaml exists
 
 1. Invoke the setup-design skill to initialize the environment
 2. Guide the user through configuration
 3. Run baseline evaluation
 4. Begin the exploration loop
 
-### If design-config.yaml exists:
+### If design-config.yaml exists
 
 1. Read the config and validate all fields
 2. Check git branch state (create or resume `design/<tag>` branch)
@@ -81,6 +81,7 @@ Report progress so far before continuing.
 ## Configuration Reference
 
 See `design-config.yaml` fields:
+
 - `tag` — branch name suffix (`design/<tag>`)
 - `target_files` — files the designer may modify
 - `eval_target` — URL or file path to evaluate

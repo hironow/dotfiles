@@ -106,9 +106,7 @@ def parse_results(filepath: str, direction: str = "higher") -> dict:
         "absolute_improvement": round(raw_improvement, 6),
         "relative_improvement": round(relative_improvement, 2),
         "axis_breakdown": axis_breakdown,
-        "constraint_violations": {
-            k: dict(v) for k, v in constraint_patterns.items()
-        },
+        "constraint_violations": {k: dict(v) for k, v in constraint_patterns.items()},
         "kept_iterations": [
             {
                 "commit": r["commit"],

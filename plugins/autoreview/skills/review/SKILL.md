@@ -31,22 +31,24 @@ Start an autonomous code review loop.
 
 ## Workflow
 
-### If no review-config.yaml exists:
+### If no review-config.yaml exists
 
 1. Invoke the setup-review skill to initialize the environment
 2. Guide the user through mode selection and configuration
 3. Run baseline scan
 4. Begin the review loop
 
-### If review-config.yaml exists:
+### If review-config.yaml exists
 
 1. Read the config and validate all fields
 2. Check git branch state (create or resume review branch)
 3. Read review-results.tsv to understand current progress
 4. Resolve guardrails path:
+
    ```bash
    RULES=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-guardrails.sh")
    ```
+
 5. Determine which categories still need work
 6. Launch the reviewer agent to continue the review loop
 

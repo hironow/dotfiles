@@ -41,10 +41,18 @@ def parse_results(filepath: str, direction: str = "lower") -> dict:
 
     baseline = rows[0]["metric"] if rows else 0.0
     select_best = min if direction == "lower" else max
-    best_metric = select_best((r["metric"] for r in keeps), default=baseline) if keeps else baseline
+    best_metric = (
+        select_best((r["metric"] for r in keeps), default=baseline)
+        if keeps
+        else baseline
+    )
 
-    raw_improvement = baseline - best_metric if direction == "lower" else best_metric - baseline
-    relative_improvement = (raw_improvement / abs(baseline) * 100) if baseline != 0 else 0.0
+    raw_improvement = (
+        baseline - best_metric if direction == "lower" else best_metric - baseline
+    )
+    relative_improvement = (
+        (raw_improvement / abs(baseline) * 100) if baseline != 0 else 0.0
+    )
 
     return {
         "total_experiments": len(rows),

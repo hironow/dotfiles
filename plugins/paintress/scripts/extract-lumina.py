@@ -7,11 +7,38 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-STOP_WORDS = frozenset({
-    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "from", "is", "was", "are", "were", "be", "been",
-    "fix", "add", "update", "change", "modify", "remove", "delete",
-})
+STOP_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "is",
+        "was",
+        "are",
+        "were",
+        "be",
+        "been",
+        "fix",
+        "add",
+        "update",
+        "change",
+        "modify",
+        "remove",
+        "delete",
+    }
+)
 
 OFFENSIVE_THRESHOLD = 3
 DEFENSIVE_THRESHOLD = 2
@@ -44,7 +71,9 @@ def extract_lumina(journal_path: str) -> dict:
         for row in reader:
             entries.append(row)
 
-    successes = [e.get("description", "") for e in entries if e.get("status") == "success"]
+    successes = [
+        e.get("description", "") for e in entries if e.get("status") == "success"
+    ]
     failures = [e for e in entries if e.get("status", "").startswith("fail:")]
     failure_descs = [e.get("description", "") for e in failures]
 
@@ -64,10 +93,12 @@ def extract_lumina(journal_path: str) -> dict:
     recent_failures: list[dict[str, str]] = []
     for e in reversed(entries):
         if e.get("status", "").startswith("fail:"):
-            recent_failures.append({
-                "status": e.get("status", ""),
-                "description": e.get("description", ""),
-            })
+            recent_failures.append(
+                {
+                    "status": e.get("status", ""),
+                    "description": e.get("description", ""),
+                }
+            )
             if len(recent_failures) >= 3:
                 break
 
@@ -84,7 +115,9 @@ def format_markdown(lumina: dict) -> str:
     if lumina["offensive"]:
         lines.append("### Offensive (Proven Approaches)")
         for p in lumina["offensive"]:
-            lines.append(f"[OK] Proven approach ({p['count']}x successful): {p['pattern']}")
+            lines.append(
+                f"[OK] Proven approach ({p['count']}x successful): {p['pattern']}"
+            )
         lines.append("")
 
     if lumina["defensive"]:
@@ -100,7 +133,9 @@ def format_markdown(lumina: dict) -> str:
         lines.append("")
 
     if not lumina["offensive"] and not lumina["defensive"]:
-        lines.append("No patterns detected yet. First expeditions build the knowledge base.")
+        lines.append(
+            "No patterns detected yet. First expeditions build the knowledge base."
+        )
         lines.append("")
 
     return "\n".join(lines)
@@ -108,7 +143,10 @@ def format_markdown(lumina: dict) -> str:
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print("Usage: extract-lumina.py <journal.tsv> [--output lumina.md]", file=sys.stderr)
+        print(
+            "Usage: extract-lumina.py <journal.tsv> [--output lumina.md]",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     lumina = extract_lumina(sys.argv[1])
