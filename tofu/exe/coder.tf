@@ -150,6 +150,46 @@ locals {
         --credentials-file "/etc/cloudflared/$CF_TUNNEL_ID.json" \
         run "$CF_TUNNEL_ID" >/var/log/cloudflared.log 2>&1 &
     fi
+
+    # Coder OSS server — single-node SQLite mode. cos has /usr read-only,
+    # so the binary lives under /var/lib/coder and is symlinked into
+    # /usr/local/bin (writable on cos via the bind-mount overlay).
+    mkdir -p /var/lib/coder /var/lib/coder/data
+    if [[ ! -x /var/lib/coder/coder ]]; then
+      curl -fsSL -o /var/lib/coder/coder \
+        https://github.com/coder/coder/releases/latest/download/coder-linux-amd64
+      chmod +x /var/lib/coder/coder
+    fi
+    ln -sf /var/lib/coder/coder /usr/local/bin/coder
+
+    # Initial admin password — generated on first boot, persisted on the
+    # boot disk (which auto-deletes on tofu destroy). Change it via the
+    # Coder UI after first login.
+    if [[ ! -f /var/lib/coder/.admin_password ]]; then
+      head -c 24 /dev/urandom | base64 | tr -d '+/=' > /var/lib/coder/.admin_password
+      chmod 0600 /var/lib/coder/.admin_password
+    fi
+
+    if ! pgrep -x coder >/dev/null 2>&1; then
+      # All Coder config goes through CODER_* env vars. With
+      # CODER_PG_CONNECTION_URL empty, Coder runs an embedded
+      # PostgreSQL under the cache directory — single-node default.
+      env \
+        CODER_ACCESS_URL='https://${local.coder_host}' \
+        CODER_HTTP_ADDRESS='127.0.0.1:7080' \
+        CODER_TLS_ENABLE='false' \
+        CODER_WILDCARD_ACCESS_URL='${local.sandbox_host}' \
+        CODER_PG_CONNECTION_URL='' \
+        CODER_CACHE_DIRECTORY='/var/lib/coder/cache' \
+        CODER_TELEMETRY='false' \
+        CODER_TELEMETRY_TRACE='false' \
+        CODER_DISABLE_PASSWORD_AUTH='false' \
+        CODER_SECURE_AUTH_COOKIE='true' \
+        CODER_STRICT_TRANSPORT_SECURITY='31536000' \
+        CODER_STRICT_TRANSPORT_SECURITY_OPTIONS='includeSubDomains;preload' \
+        /var/lib/coder/coder server \
+        >/var/log/coder.log 2>&1 &
+    fi
   EOT
 }
 

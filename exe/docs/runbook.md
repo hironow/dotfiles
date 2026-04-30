@@ -50,9 +50,17 @@ After the first apply succeeds:
 
 1. Visit `https://exe.hironow.dev/` — should redirect to Cloudflare
    Access OIDC.
-2. Log in as `owner_email` — Coder UI is not yet installed, expect a
-   `502 Bad Gateway` from cloudflared until that commit lands.
-3. From a Tailscale-connected device, `ssh exe-coder` (Tailscale SSH).
+2. Log in as `owner_email` — the Coder UI loads (allow ~2 minutes on
+   first boot for the binary download + embedded postgres init).
+3. Retrieve the auto-generated admin password from the VM:
+
+   ```bash
+   gcloud compute ssh exe-coder --zone=asia-northeast1-a \
+     --command='sudo cat /var/lib/coder/.admin_password'
+   ```
+
+   Use it for the first login, then change it via the Coder UI.
+4. From a Tailscale-connected device, `ssh exe-coder` (Tailscale SSH).
 
 ## Daily operations
 

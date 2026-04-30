@@ -108,6 +108,26 @@ for secret in "${TS_SECRET_CODER}" "${TS_SECRET_AGENT}"; do
   fi
 done
 
+# ----- Coder server reachability (via Tailscale) ---------------------
+#
+# Coder listens on 127.0.0.1:7080 inside the VM. Reach it through
+# Tailscale SSH so we don't have to go through Cloudflare Access.
+
+if command -v tailscale >/dev/null 2>&1 && tailscale status --json >/dev/null 2>&1; then
+  if coder_status="$(tailscale ssh "${VM_NAME}" -- \
+        curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:7080/healthz 2>/dev/null)"; then
+    if [[ "${coder_status}" == "200" ]]; then
+      green "Coder: 127.0.0.1:7080/healthz returned 200"
+    else
+      yellow "Coder: 127.0.0.1:7080/healthz returned ${coder_status} (still booting?)"
+    fi
+  else
+    yellow "Coder: tailscale ssh to ${VM_NAME} failed; skipping Coder healthz"
+  fi
+else
+  yellow "Tailscale not available locally; skipping Coder healthz"
+fi
+
 # ----- Tailnet reachability (optional) -------------------------------
 
 if command -v tailscale >/dev/null 2>&1; then

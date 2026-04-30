@@ -31,7 +31,7 @@ This document describes the components currently provisioned by
                                   |  cloudflared --------+
                                   |  tailscaled          |
                                   |  Coder server (7080) |
-                                  |    (added later)     |
+                                  |  (embedded postgres) |
                                   +----------+-----------+
                                              |
                                              v
@@ -120,10 +120,10 @@ manually before declarative bind to avoid lockout.
 
 Three rules in `cloudflare_zero_trust_tunnel_cloudflared_config.exe`:
 
-1. `exe.hironow.dev` → `http://localhost:7080` (Coder UI; service not
-   yet installed — added in a later commit).
+1. `exe.hironow.dev` → `http://localhost:7080` (Coder UI).
 2. `*.sandbox.hironow.dev` → `http://localhost:8080` (placeholder for
-   the (P)ublic publish path; the listener at 8080 is also deferred).
+   the (P)ublic publish path; the listener at 8080 is deferred until
+   Coder workspace apps are wired up).
 3. catch-all → `http_status:404`.
 
 Both real routes have `http2_origin = true` and `no_tls_verify = true`
@@ -143,9 +143,35 @@ loopback).
 | GCS state bucket | Versioned, < 1 MB | < $0.10 |
 | **Total** | | **~$7–$10** |
 
+## Coder server
+
+Started by the VM startup-script as a background process (cos lacks
+systemd). Configuration is purely env-var driven:
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `CODER_ACCESS_URL` | `https://exe.hironow.dev` | URL clients use; matches the Argo Tunnel CNAME |
+| `CODER_HTTP_ADDRESS` | `127.0.0.1:7080` | Localhost-only; cloudflared forwards to it |
+| `CODER_TLS_ENABLE` | `false` | TLS terminates at Cloudflare edge |
+| `CODER_WILDCARD_ACCESS_URL` | `*.sandbox.hironow.dev` | Workspace app preview hostnames |
+| `CODER_PG_CONNECTION_URL` | empty | Triggers embedded PostgreSQL |
+| `CODER_CACHE_DIRECTORY` | `/var/lib/coder/cache` | Embedded postgres data + asset cache |
+| `CODER_TELEMETRY` / `CODER_TELEMETRY_TRACE` | `false` / `false` | Telemetry off |
+| `CODER_SECURE_AUTH_COOKIE` | `true` | Auth cookie set with Secure flag |
+| `CODER_STRICT_TRANSPORT_SECURITY` | `31536000` | One-year HSTS |
+| `CODER_STRICT_TRANSPORT_SECURITY_OPTIONS` | `includeSubDomains;preload` | Cover sandbox subdomains and qualify for HSTS preload |
+
+Binary lives at `/var/lib/coder/coder` (downloaded from the GitHub
+release on first boot) and is symlinked to `/usr/local/bin/coder`.
+Embedded postgres state and Coder data live under `/var/lib/coder/`,
+which is on the boot disk (auto-deletes only on `tofu destroy`).
+
+The first-boot admin password is generated to
+`/var/lib/coder/.admin_password` (mode 0600). Change it via the Coder
+UI immediately after first login.
+
 ## Out of scope (reserved for later commits)
 
-- Coder OSS server install on the VM (the listener at 7080).
 - `tailscale_acl` resource that binds the live ACL.
 - The `:8080` reverse-proxy that fans `*.sandbox.hironow.dev` to
   per-app ports — this is the (P)ublic publish path and is gated
