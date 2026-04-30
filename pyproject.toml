@@ -18,6 +18,10 @@ extend-exclude = [
     "protocols",
     "skills",
     "telemetry",
+    # `private/certificates/` is created by Let's Encrypt with mode 0700.
+    # Inside a bind-mounted dev container ruff cannot traverse it and aborts.
+    # Nothing under private/ is Python source anyway.
+    "private",
 ]
 
 [tool.pytest.ini_options]
