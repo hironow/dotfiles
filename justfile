@@ -928,3 +928,13 @@ exe-output *args:
     set -euo pipefail
     export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
     cd tofu/exe && tofu output {{ args }}
+
+# Post-deploy smoke checks (DNS, Access gate, VM state, secrets).
+[group('Exe')]
+exe-smoke:
+    @bash exe/scripts/smoke.sh
+
+# Staged destroy: stage=vm (default) | stack | nuke.
+[group('Exe')]
+exe-teardown stage="vm":
+    @bash exe/scripts/teardown.sh {{ stage }}
