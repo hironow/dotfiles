@@ -52,6 +52,7 @@ class AgentTarget:
 
     directory: Path
     name: str
+    key: str = ""
     main_file: str | None = None
     is_import_source: bool = False
     sync_directories: list[str] | None = None
@@ -67,31 +68,132 @@ class AgentTarget:
 
 AGENTS: list[AgentTarget] = [
     AgentTarget(
-        Path.home() / ".claude", "Claude", main_file="CLAUDE.md", is_import_source=True
+        Path.home() / ".claude",
+        "Claude",
+        key="claude",
+        main_file="CLAUDE.md",
+        is_import_source=True,
     ),
     AgentTarget(
-        Path.home() / ".claude-work-a", "Claude(Work-A)", main_file="CLAUDE.md"
+        Path.home() / ".claude-work-a",
+        "Claude(Work-A)",
+        key="work-a",
+        main_file="CLAUDE.md",
     ),
     AgentTarget(
-        Path.home() / ".claude-work-b", "Claude(Work-B)", main_file="CLAUDE.md"
+        Path.home() / ".claude-work-b",
+        "Claude(Work-B)",
+        key="work-b",
+        main_file="CLAUDE.md",
     ),
-    # AgentTarget(
-    #     Path.home() / ".claude-work-c", "Claude(Work-C)", main_file="CLAUDE.md"
-    # ),
-    # AgentTarget(
-    #     Path.home() / ".claude-work-d", "Claude(Work-D)", main_file="CLAUDE.md"
-    # ),
-    AgentTarget(Path.home() / ".gemini", "Gemini", main_file="GEMINI.md"),
     AgentTarget(
-        Path.home() / ".codex", "Codex", main_file="AGENTS.md", is_import_source=True
+        Path.home() / ".claude-work-c",
+        "Claude(Work-C)",
+        key="work-c",
+        main_file="CLAUDE.md",
+    ),
+    AgentTarget(
+        Path.home() / ".claude-work-d",
+        "Claude(Work-D)",
+        key="work-d",
+        main_file="CLAUDE.md",
+    ),
+    AgentTarget(
+        Path.home() / ".gemini",
+        "Gemini",
+        key="gemini",
+        main_file="GEMINI.md",
+    ),
+    AgentTarget(
+        Path.home() / ".codex",
+        "Codex",
+        key="codex",
+        main_file="AGENTS.md",
+        is_import_source=True,
     ),
     AgentTarget(
         Path.home() / ".agents",
         "Agents(Global)",
+        key="agents",
         is_import_source=True,
         sync_directories=["skills"],
     ),
 ]
+
+
+# Short and long aliases for selecting targets from the CLI.
+# Short aliases mirror the convention used by other recipes
+# (`just skills env=...`, `just clean-work-env <target>`).
+_TARGET_ALIASES: dict[str, str] = {
+    # claude (.claude)
+    "p": "claude",
+    "claude": "claude",
+    # claude-work-* (.claude-work-{a,b,c,d})
+    "a": "work-a",
+    "work-a": "work-a",
+    "b": "work-b",
+    "work-b": "work-b",
+    "c": "work-c",
+    "work-c": "work-c",
+    "d": "work-d",
+    "work-d": "work-d",
+    # gemini (.gemini)
+    "g": "gemini",
+    "gemini": "gemini",
+    # codex (.codex)
+    "x": "codex",
+    "codex": "codex",
+    # global agents (.agents)
+    "agents": "agents",
+}
+
+# Default selection when no targets are specified.
+# By design the personal claude (~/.claude) is the only target touched.
+_DEFAULT_TARGETS: tuple[str, ...] = ("claude",)
+
+
+def _resolve_targets(args: list[str]) -> list[str]:
+    """Resolve user-supplied identifiers to canonical AgentTarget keys.
+
+    Rules:
+        - Empty args -> default selection (claude only).
+        - "all" expands to every defined agent in AGENTS order.
+        - Comma-separated values are split (e.g. "p,a,b").
+        - Each token is matched against _TARGET_ALIASES.
+        - Unknown tokens raise ValueError.
+        - Order is preserved; duplicates are removed.
+    """
+    tokens: list[str] = []
+    for raw in args:
+        for piece in raw.split(","):
+            piece = piece.strip()
+            if piece:
+                tokens.append(piece)
+
+    if not tokens:
+        return list(_DEFAULT_TARGETS)
+
+    if any(t == "all" for t in tokens):
+        return [a.key for a in AGENTS]
+
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        if token not in _TARGET_ALIASES:
+            known = ", ".join(sorted(set(_TARGET_ALIASES.keys()) | {"all"}))
+            raise ValueError(f"unknown target '{token}'. Known: {known}")
+        key = _TARGET_ALIASES[token]
+        if key not in seen:
+            resolved.append(key)
+            seen.add(key)
+    return resolved
+
+
+def _select_agents(keys: list[str]) -> list[AgentTarget]:
+    """Filter AGENTS by selected keys, preserving AGENTS order."""
+    key_set = set(keys)
+    return [a for a in AGENTS if a.key in key_set]
+
 
 MANIFEST_FILE = ".sync-manifest.json"
 MANIFEST_VERSION = 1
@@ -798,12 +900,86 @@ def _print_import_plan(plan: _ImportPlan, verbose: bool = False) -> bool:
 # --- Public API ---
 
 
-def preview_mode(dotfiles_dir: Path) -> None:
+def import_only_mode(
+    dotfiles_dir: Path,
+    agents: list[AgentTarget] | None = None,
+    preview: bool = False,
+) -> None:
+    """Run Phase 1 (target -> dotfiles) only; skip forward sync and deletions.
+
+    Differs from sync_mode in two ways:
+      - Phase 2-3 (dotfiles -> target, orphan removal) is NOT executed.
+      - The `is_import_source` filter is dropped: every selected agent is
+        treated as a candidate import source.
+
+    Args:
+        dotfiles_dir: Path to dotfiles directory.
+        agents: Filtered subset of AGENTS to import from. None means default
+            selection (claude only).
+        preview: If True, only print the plan without applying changes.
+    """
+    if agents is None:
+        agents = _select_agents(list(_DEFAULT_TARGETS))
+
+    header = "Import Preview (Dry Run)" if preview else "Import (target -> dotfiles)"
+    _print_header(header)
+    print(f"🎯 Targets: {', '.join(a.key for a in agents) or '(none)'}")
+
+    manifest = _load_manifest(dotfiles_dir)
+
+    has_imports = False
+    for agent in agents:
+        plan = _build_import_plan(dotfiles_dir, agent, manifest)
+        if not plan.items:
+            continue
+
+        print(f"\n⬅️  Import from {agent.name}: {agent.directory}")
+        if preview:
+            if _print_import_plan(plan, verbose=True):
+                has_imports = True
+            continue
+
+        importable = [a for a in plan.items if a.status == "import"]
+        if importable:
+            _apply_import(plan)
+            for imported in importable:
+                dir_name = imported.relative_path.split("/")[0]
+                item_name = imported.relative_path.split("/", 1)[1]
+                manifest.items.setdefault(dir_name, [])
+                if item_name not in manifest.items[dir_name]:
+                    manifest.items[dir_name].append(item_name)
+            has_imports = True
+        for d in (a for a in plan.items if a.status == "deleted"):
+            print(f"  ⏭️  {d.relative_path}: Skipped (deleted from dotfiles)")
+        for c in (a for a in plan.items if a.status == "conflict"):
+            print(f"  ⚠️  {c.relative_path}: Conflict (skipped)")
+
+    if not preview:
+        # Persist manifest with newly imported items.
+        for dir_name in SYNC_DIRECTORIES:
+            current = set(manifest.items.get(dir_name, []))
+            manifest.items[dir_name] = sorted(current)
+        _save_manifest(dotfiles_dir, manifest)
+
+    if has_imports:
+        if preview:
+            print("\n💡 Run without --preview to apply imports")
+        else:
+            print("\n✨ Import completed!")
+    else:
+        print("\n✅ Nothing to import.")
+
+
+def preview_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) -> None:
     """Preview mode: show what would be synced without applying changes.
 
     Args:
         dotfiles_dir: Path to dotfiles directory containing ROOT_AGENTS files.
+        agents: Filtered subset of AGENTS to operate on. None means default
+            selection (claude only).
     """
+    if agents is None:
+        agents = _select_agents(list(_DEFAULT_TARGETS))
     _print_header("Sync Preview (Dry Run)")
 
     source_base = dotfiles_dir / BASE_FILE
@@ -811,11 +987,13 @@ def preview_mode(dotfiles_dir: Path) -> None:
         print(f"❌ Error: Base file not found: {source_base}")
         sys.exit(1)
 
+    print(f"🎯 Targets: {', '.join(a.key for a in agents) or '(none)'}")
+
     manifest = _load_manifest(dotfiles_dir)
 
-    # Phase 1: Import preview
+    # Phase 1: Import preview (only from selected import sources)
     has_imports = False
-    import_sources = [a for a in AGENTS if a.is_import_source]
+    import_sources = [a for a in agents if a.is_import_source]
     for agent in import_sources:
         import_plan = _build_import_plan(dotfiles_dir, agent, manifest)
         if import_plan.items:
@@ -826,7 +1004,7 @@ def preview_mode(dotfiles_dir: Path) -> None:
     # Phase 2-3: Forward sync + deletion + orphan preview
     additional = _get_additional_sources(dotfiles_dir)
     plans: list[_SyncPlan] = []
-    for agent in AGENTS:
+    for agent in agents:
         sync_plan = _build_sync_plan(dotfiles_dir, agent, additional)
         sync_plan.deletions = _build_deletion_plan(dotfiles_dir, agent, manifest)
         sync_plan.deletions.extend(
@@ -842,8 +1020,12 @@ def preview_mode(dotfiles_dir: Path) -> None:
         print("\n✅ All files are already in sync!")
 
 
-def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
-    """Sync mode: apply sync to all agent directories.
+def sync_mode(
+    dotfiles_dir: Path,
+    auto_yes: bool = False,
+    agents: list[AgentTarget] | None = None,
+) -> None:
+    """Sync mode: apply sync to selected agent directories.
 
     Manifest-based algorithm:
       Phase 1: IMPORT - new items in import sources -> dotfiles
@@ -853,8 +1035,13 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
     Args:
         dotfiles_dir: Path to dotfiles directory containing ROOT_AGENTS files.
         auto_yes: If True, skip confirmation prompts for changed files.
+        agents: Filtered subset of AGENTS to operate on. None means default
+            selection (claude only).
     """
+    if agents is None:
+        agents = _select_agents(list(_DEFAULT_TARGETS))
     print("🔄 Syncing Agent Instructions...")
+    print(f"🎯 Targets: {', '.join(a.key for a in agents) or '(none)'}")
 
     source_base = dotfiles_dir / BASE_FILE
     if not source_base.exists():
@@ -863,8 +1050,8 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
 
     manifest = _load_manifest(dotfiles_dir)
 
-    # Phase 1: Import from import sources into dotfiles
-    import_sources = [a for a in AGENTS if a.is_import_source]
+    # Phase 1: Import from selected import sources into dotfiles
+    import_sources = [a for a in agents if a.is_import_source]
     has_imports = False
     for agent in import_sources:
         import_plan = _build_import_plan(dotfiles_dir, agent, manifest)
@@ -893,7 +1080,7 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
     # Phase 2-3: Plan and apply forward sync + deletions + orphans
     additional = _get_additional_sources(dotfiles_dir)
     plans: list[_SyncPlan] = []
-    for agent in AGENTS:
+    for agent in agents:
         sync_plan = _build_sync_plan(dotfiles_dir, agent, additional)
         sync_plan.deletions = _build_deletion_plan(dotfiles_dir, agent, manifest)
         sync_plan.deletions.extend(
@@ -943,8 +1130,7 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
             icon = "📁" if deletion.is_directory else "📄"
             if deletion.reason == "orphan":
                 prompt = (
-                    f"  Delete {deletion.relative_path}"
-                    " (target-only, not in dotfiles)?"
+                    f"  Delete {deletion.relative_path} (target-only, not in dotfiles)?"
                 )
             else:
                 prompt = f"  Delete {deletion.relative_path}?"
@@ -975,7 +1161,7 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
     # Post-sync: create symlinks for learned skills
     # (workaround for Claude Code flat skill discovery)
     _link_learned_skills(dotfiles_dir / "skills")
-    for agent in AGENTS:
+    for agent in agents:
         agent_skills_dir = agent.directory / "skills"
         if agent_skills_dir.is_dir():
             _link_learned_skills(agent_skills_dir)
@@ -983,21 +1169,26 @@ def sync_mode(dotfiles_dir: Path, auto_yes: bool = False) -> None:
     print("\n✨ Sync completed!")
 
 
-def orphans_mode(dotfiles_dir: Path) -> None:
-    """Show target-only items across all agent directories.
+def orphans_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) -> None:
+    """Show target-only items across selected agent directories.
 
     Lists items that exist in targets but not in the dotfiles source
     or manifest. These would be removed during a full override sync.
 
     Args:
         dotfiles_dir: Path to dotfiles directory.
+        agents: Filtered subset of AGENTS to operate on. None means default
+            selection (claude only).
     """
+    if agents is None:
+        agents = _select_agents(list(_DEFAULT_TARGETS))
     _print_header("Target-Only Items (Orphans)")
+    print(f"🎯 Targets: {', '.join(a.key for a in agents) or '(none)'}")
 
     manifest = _load_manifest(dotfiles_dir)
     total = 0
 
-    for agent in AGENTS:
+    for agent in agents:
         orphans = _detect_target_only_items(dotfiles_dir, agent, manifest)
         if not orphans:
             continue
@@ -1019,11 +1210,13 @@ def orphans_mode(dotfiles_dir: Path) -> None:
 def main() -> None:
     """CLI entry point for sync-agents."""
     parser = argparse.ArgumentParser(
-        description="Sync ROOT_AGENTS files to agent instruction directories."
+        description=(
+            "Sync ROOT_AGENTS files to agent instruction directories. "
+            "By default ONLY ~/.claude is touched; pass targets to widen scope."
+        )
     )
     parser.add_argument(
         "--preview",
-        "-p",
         action="store_true",
         help="Preview mode: show what would be synced without making changes",
     )
@@ -1044,24 +1237,52 @@ def main() -> None:
         help="Full override: sync all items and remove orphans without prompts",
     )
     parser.add_argument(
+        "--import-only",
+        action="store_true",
+        help=(
+            "Import only (target -> dotfiles); skip forward sync. "
+            "All selected agents are treated as import sources, "
+            "regardless of the is_import_source flag."
+        ),
+    )
+    parser.add_argument(
         "--dotfiles",
         "-d",
         type=Path,
         default=DOTFILES_DIR,
         help=f"Path to dotfiles directory (default: {DOTFILES_DIR})",
     )
+    parser.add_argument(
+        "targets",
+        nargs="*",
+        help=(
+            "Targets to sync. Aliases: p=claude, a/b/c/d=work-a..d, g=gemini, "
+            "x=codex, agents=agents-global. Special: 'all'. "
+            "Default: claude (only ~/.claude is touched)."
+        ),
+    )
 
     args = parser.parse_args()
 
-    if args.orphans:
-        orphans_mode(args.dotfiles)
+    try:
+        keys = _resolve_targets(args.targets)
+    except ValueError as e:
+        print(f"❌ Error: {e}")
+        sys.exit(2)
+
+    selected = _select_agents(keys)
+
+    if args.import_only:
+        import_only_mode(args.dotfiles, agents=selected, preview=args.preview)
+    elif args.orphans:
+        orphans_mode(args.dotfiles, agents=selected)
     elif args.preview:
-        preview_mode(args.dotfiles)
+        preview_mode(args.dotfiles, agents=selected)
     elif args.override:
         print("⚡ Override mode: dotfiles → targets (no prompts)")
-        sync_mode(args.dotfiles, auto_yes=True)
+        sync_mode(args.dotfiles, auto_yes=True, agents=selected)
     else:
-        sync_mode(args.dotfiles, auto_yes=args.yes)
+        sync_mode(args.dotfiles, auto_yes=args.yes, agents=selected)
 
 
 if __name__ == "__main__":
