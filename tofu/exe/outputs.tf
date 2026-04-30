@@ -16,3 +16,18 @@ output "state_bucket" {
   description = "GCS bucket holding the encrypted tofu state."
   value       = local.state_bucket
 }
+
+output "tailscale_secret_coder" {
+  description = "Secret Manager resource name for the workspace VM Tailscale auth key."
+  value       = google_secret_manager_secret.exe_coder_authkey.name
+}
+
+output "tailscale_secret_agent" {
+  description = "Secret Manager resource name for the AI agent Tailscale auth key."
+  value       = google_secret_manager_secret.agent_authkey.name
+}
+
+output "tailscale_keys_rotated_at" {
+  description = "Timestamp of the most recent Tailscale auth-key rotation (driven by time_rotating)."
+  value       = time_rotating.tailscale_keys.rfc3339
+}

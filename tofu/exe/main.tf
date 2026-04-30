@@ -43,6 +43,10 @@ terraform {
       source  = "tailscale/tailscale"
       version = "~> 0.18"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.12"
+    }
   }
 }
 

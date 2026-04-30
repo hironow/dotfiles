@@ -1,0 +1,74 @@
+// Tailscale ACL for exe.hironow.dev.
+//
+// Pattern A: tag-based delegation. Apply via the Tailscale admin UI or
+// the tailscale_acl resource (added in a later commit once the policy
+// is exercised against a real tailnet).
+{
+  // ----- tag ownership -------------------------------------------------
+  // Only hironow's personal account can issue keys carrying these tags.
+  "tagOwners": {
+    "tag:owner":     ["autogroup:admin"],
+    "tag:exe-coder": ["autogroup:admin"],
+    "tag:agent":     ["autogroup:admin"],
+  },
+
+  // ----- access rules --------------------------------------------------
+  "acls": [
+    // Owner devices can reach anything in the tailnet.
+    {
+      "action": "accept",
+      "src":    ["tag:owner"],
+      "dst":    ["*:*"],
+    },
+
+    // The workspace VM can talk to itself (loopback over tailnet) and
+    // accept connections from owner + agent on the listed ports.
+    {
+      "action": "accept",
+      "src":    ["tag:exe-coder"],
+      "dst":    ["tag:exe-coder:*"],
+    },
+
+    // AI agents are confined to the workspace VM and only on the
+    // protocols they actually need:
+    //   22  : SSH for shell sessions
+    //   80  : HTTP preview (tailscale serve target)
+    //   443 : HTTPS preview (tailscale serve --https=443)
+    //   3000-3999 : dev-server port range (HMR, vite, next, etc.)
+    {
+      "action": "accept",
+      "src":    ["tag:agent"],
+      "dst":    ["tag:exe-coder:22,80,443,3000-3999"],
+    },
+  ],
+
+  // ----- ssh -----------------------------------------------------------
+  "ssh": [
+    // Owner can SSH into the workspace VM as root via Tailscale SSH
+    // (no separate key management needed).
+    {
+      "action": "accept",
+      "src":    ["tag:owner"],
+      "dst":    ["tag:exe-coder"],
+      "users":  ["autogroup:nonroot", "root"],
+    },
+    // Agents get SSH only as a non-root user (the workspace UID).
+    {
+      "action": "accept",
+      "src":    ["tag:agent"],
+      "dst":    ["tag:exe-coder"],
+      "users":  ["autogroup:nonroot"],
+    },
+  ],
+
+  // ----- node attributes ----------------------------------------------
+  // Enable tailscale serve / funnel only on the workspace VM, and
+  // restrict serve to tailnet only by default (funnel for public is
+  // deferred to the (P)ublic publish commit).
+  "nodeAttrs": [
+    {
+      "target": ["tag:exe-coder"],
+      "attr":   ["funnel"],
+    },
+  ],
+}
