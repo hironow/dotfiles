@@ -501,7 +501,7 @@ def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
 # Format / Lint Recipe Tests
 # =============================================================================
 #
-# `just format` / `just lint` chain `uvx ruff` (Python), `mise x -- shellcheck`
+# `just fmt` / `just lint` chain `uvx ruff` (Python), `mise x -- shellcheck`
 # (lint only), and `mise x -- prettier` (both). The sandbox image ships mise,
 # and shellcheck is listed in mise.toml, so shellcheck runs for real here.
 #
@@ -514,7 +514,7 @@ def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
 # mise's tools (incl. shellcheck) are pre-installed in the sandbox image
 # (Dockerfile runs `mise trust && mise install` at build time). We only need
 # to override prettier — which is intentionally NOT in mise.toml — with a
-# no-op shim so `just format`/`just lint` finish cleanly without prettier.
+# no-op shim so `just fmt`/`just lint` finish cleanly without prettier.
 # Shellcheck runs for real via the pre-installed mise tool.
 #
 # MISE_OFFLINE=1 prevents mise from contacting GitHub at runtime to check
@@ -526,7 +526,7 @@ _MISE_PRETTIER_STUB = (
     "mkdir -p /tmp/stubs && "
     "printf '%s\\n' "
     "'#!/bin/sh' "
-    "'if [ \"$1\" = x ] && [ \"$2\" = -- ] && [ \"$3\" = prettier ]; then exit 0; fi' "
+    '\'if [ "$1" = x ] && [ "$2" = -- ] && [ "$3" = prettier ]; then exit 0; fi\' '
     "'exec /root/.local/bin/mise \"$@\"' "
     "> /tmp/stubs/mise && chmod +x /tmp/stubs/mise && "
     "export PATH=/tmp/stubs:$PATH && "
@@ -564,19 +564,44 @@ def test_just_lint_passes_on_clean_tree(docker_image):
     assert result.returncode == 0, (
         f"just lint failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
-    assert "Linting Python (ruff)" in result.stdout
-    assert "Lint done" in result.stdout
+    assert "Python (ruff check" in result.stdout
+    assert "lint done" in result.stdout
 
 
 @pytest.mark.check
-def test_just_format_check_passes_on_clean_tree(docker_image):
-    """`just format` returns 0 on the as-shipped repo (ruff format applies cleanly)."""
-    result = run_in_sandbox(docker_image, _MISE_STUB + _GIT_INIT + "just format")
+def test_just_fmt_passes_on_clean_tree(docker_image):
+    """`just fmt` returns 0 on the as-shipped repo (ruff format applies cleanly)."""
+    result = run_in_sandbox(docker_image, _MISE_STUB + _GIT_INIT + "just fmt")
     assert result.returncode == 0, (
-        f"just format failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        f"just fmt failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
-    assert "Formatting Python (ruff)" in result.stdout
-    assert "Format done" in result.stdout
+    assert "Python (ruff format)" in result.stdout
+    assert "fmt done" in result.stdout
+
+
+@pytest.mark.check
+def test_just_check_passes_on_clean_tree(docker_image):
+    """`just check` is the strict gate (no writes). Must pass on as-shipped tree."""
+    result = run_in_sandbox(docker_image, _MISE_STUB + _GIT_INIT + "just check")
+    assert result.returncode == 0, (
+        f"just check failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "All checks passed" in result.stdout
+
+
+@pytest.mark.check
+def test_just_install_hooks_wires_prek_into_git(docker_image):
+    """`just install-hooks` runs `prek install` and writes a git pre-commit hook."""
+    script = (
+        _GIT_INIT
+        + "just install-hooks && "
+        + "[ -f .git/hooks/pre-commit ] && echo 'pre-commit hook present'"
+    )
+    result = run_in_sandbox(docker_image, script)
+    assert result.returncode == 0, (
+        f"install-hooks failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "pre-commit hook present" in result.stdout
 
 
 @pytest.mark.check
