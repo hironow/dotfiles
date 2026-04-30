@@ -66,29 +66,49 @@ deploy:
     @echo "==> Deploy complete!"
 
 # Sync: copy ROOT_AGENTS files to agent instruction directories
-[group('Setup')]
-sync-agents:
-    @uv run scripts/sync_agents.py
+# Default scope = .claude only. Pass targets to widen:
+#   just sync-agents               -> ~/.claude only
+#   just sync-agents a b           -> + ~/.claude-work-a, ~/.claude-work-b
+#   just sync-agents all           -> every defined agent
+# Aliases: p=claude, a/b/c/d=work-a..d, g=gemini, x=codex, agents=agents-global
+[group('Agents')]
+sync-agents *args:
+    @uv run scripts/sync_agents.py {{ args }}
 
 # Sync (preview): show what would be synced without making changes
-[group('Setup')]
-sync-agents-preview:
-    @uv run scripts/sync_agents.py --preview
+[group('Agents')]
+sync-agents-preview *args:
+    @uv run scripts/sync_agents.py --preview {{ args }}
 
-# Sync (auto): sync all without prompts
-[group('Setup')]
-sync-agents-auto:
-    @uv run scripts/sync_agents.py --yes
+# Sync (auto): sync without prompts (default scope = .claude only)
+[group('Agents')]
+sync-agents-auto *args:
+    @uv run scripts/sync_agents.py --yes {{ args }}
 
 # Sync (override): full replace — dotfiles wins, orphans removed, no prompts
-[group('Setup')]
-sync-agents-override:
-    @uv run scripts/sync_agents.py --override
+[group('Agents')]
+sync-agents-override *args:
+    @uv run scripts/sync_agents.py --override {{ args }}
 
 # Sync (orphans): show target-only items that would be removed
-[group('Setup')]
-sync-agents-orphans:
-    @uv run scripts/sync_agents.py --orphans
+[group('Agents')]
+sync-agents-orphans *args:
+    @uv run scripts/sync_agents.py --orphans {{ args }}
+
+# Import only: target -> dotfiles. No forward sync, no orphan removal.
+# Default scope = .claude only. Pass targets to widen (same aliases as sync-agents).
+# Every selected agent becomes an import source — is_import_source flag is ignored.
+#   just import-agents              -> from ~/.claude only
+#   just import-agents a b          -> from ~/.claude-work-a + b
+#   just import-agents all          -> from every defined agent
+[group('Agents')]
+import-agents *args:
+    @uv run scripts/sync_agents.py --import-only {{ args }}
+
+# Import only (preview): show what would be imported without writing
+[group('Agents')]
+import-agents-preview *args:
+    @uv run scripts/sync_agents.py --import-only --preview {{ args }}
 
 # Clean: remove deployed dotfiles (~/.zshrc, ~/.config/sheldon/plugins.toml, ~/.config/starship.toml)
 [group('Setup')]
@@ -115,7 +135,7 @@ clean-all: clean clean-cache
 
 # Clean work env: reset a claude-work-X directory (remove synced skills/commands/agents, empty CLAUDE.md)
 # Usage: just clean-work-env d
-[group('Setup')]
+[group('Agents')]
 clean-work-env target:
     #!/usr/bin/env bash
     set -eu -o pipefail
@@ -650,6 +670,7 @@ semgrep:
 #        just env=a skills ls -g     (env: p=personal, a/b/c=work)
 env := ""
 
+[group('Agents')]
 skills *args:
     #!/usr/bin/env bash
     set -eu -o pipefail
