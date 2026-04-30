@@ -48,3 +48,8 @@ continent-config.yaml
 
 # coding agents
 .pi/
+
+# Per-session intent + handover for AI agents (CLAUDE.md exempts these
+# from "current state only" but they are intentionally not committed).
+docs/intent.md
+docs/handover.md
