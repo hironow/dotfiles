@@ -4,3 +4,11 @@ markdownlint-cli2 = "latest"
 prek = "latest"
 uv = "latest"
 vp = "latest"
+
+# `~/.npmrc` may set `min-release-age=7` (7-day quarantine, mirrors
+# uv's `exclude-newer = "7 days"`). That blocks `mise install` of
+# brand-new npm-backed tools (e.g. vp). Override only for mise-driven
+# npm calls — the host npmrc is untouched, so app-level installs in
+# other repos still get the quarantine.
+[env]
+npm_config_min_release_age = "0"
