@@ -120,8 +120,8 @@ All git-untracked, in the same directory as `continent-config.yaml`:
 `journal.tsv` tracks all expedition results:
 
 ```
-issue	commit	status	pr_url	description
-MY-473	51b52b7	success	https://...	#123 partial axes handling
+issue commit status pr_url description
+MY-473 51b52b7 success https://... #123 partial axes handling
 ```
 
 Status values: `success`, `success:review-pending`, `fail:compile`, `fail:test`, `fail:timeout`, `skip:no-dod`, `skip:conflict`, `partial:no-pr`

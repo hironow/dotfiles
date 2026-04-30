@@ -379,7 +379,9 @@ def generate_changelog() -> str:
     lines.append("")
     lines.append(f"最終更新: {today}")
     lines.append("")
-    lines.append("各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。")
+    lines.append(
+        "各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。"
+    )
     lines.append("")
     lines.append("---")
     lines.append("")

@@ -106,6 +106,7 @@ LLM-based quality assessment against guardrails principles.
 ### 8. Confirm and Go
 
 Present setup summary:
+
 - Branch name and mode
 - Target paths and rule categories
 - Baseline findings count (scan-fix) or quality score (spec-review)
@@ -116,6 +117,7 @@ Once confirmed, hand off to the review skill or reviewer agent.
 ## Validation
 
 Before proceeding, verify:
+
 - [ ] Semgrep is installed and rules are accessible
 - [ ] Review branch created and checked out
 - [ ] review-config.yaml exists and is valid

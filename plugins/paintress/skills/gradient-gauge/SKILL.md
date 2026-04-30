@@ -43,16 +43,19 @@ Stored in `gradient.json` (git-untracked, same directory as journal.tsv):
 ## State Transitions
 
 ### On Success (status = "success")
+
 - **Charge**: `level = min(level + 1, 5)`
 - Reset `consecutive_failures = 0`
 - Reset `consecutive_skips = 0`
 
 ### On Skip (status starts with "skip:")
+
 - **Decay**: `level = max(level - 1, 0)`
 - Reset `consecutive_failures = 0`
 - Increment `consecutive_skips += 1`
 
 ### On Failure (status starts with "fail:" or "partial:")
+
 - **Discharge**: `level = 0`
 - Increment `consecutive_failures += 1`
 - Reset `consecutive_skips = 0`

@@ -39,6 +39,7 @@ Parse tab-separated columns (6 columns):
 ### 2. Summary Statistics
 
 Calculate and report:
+
 - **Total iterations**: Count of all rows (excluding header)
 - **Outcomes**: Count of keep / discard / constraint_fail / crash
 - **Keep rate**: keeps / total
@@ -66,6 +67,7 @@ Flag axes with zero attempts as unexplored.
 ### 6. Recommendations
 
 Based on the analysis, suggest:
+
 - **Exploit**: Variations on successful axes (fine-tune what worked)
 - **Explore**: Axes not yet tried
 - **Avoid**: Axis+constraint combinations that consistently fail

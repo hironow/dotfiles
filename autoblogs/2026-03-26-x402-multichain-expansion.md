@@ -90,6 +90,7 @@ Stellar
 ```
 
 Legend / 凡例:
+
 - EVM: Ethereum Virtual Machine — Solidity スマートコントラクト実行環境
 - SVM: Solana Virtual Machine — Rust/BPF ベースの高速実行環境
 - Move VM: Aptos/Sui で使われる Move 言語の実行環境

@@ -39,6 +39,7 @@ Accept rule extraction requests from any of these sources:
 ### 1. Identify the Pattern
 
 For review-results input:
+
 ```bash
 # Get the diff of a kept fix
 git show <commit> --stat
@@ -49,6 +50,7 @@ Analyze what changed. The "before" code is the violation pattern; the
 "after" code is the expected fix.
 
 For manual input, ask the user to provide:
+
 - A code example that SHOULD trigger the rule (true positive)
 - A code example that should NOT trigger (true negative)
 - Which languages the rule applies to
@@ -80,11 +82,13 @@ Consult `references/rule-templates.md` for complete template examples.
 ### 4. Write the Rule YAML
 
 Create the rule file at:
+
 ```
 <project>/.semgrep/<category>/<rule-name>-<language>.yaml
 ```
 
 Follow this structure:
+
 ```yaml
 rules:
   - id: <category>.<descriptive-name>-<language>
@@ -101,6 +105,7 @@ rules:
 ```
 
 Naming conventions for `id`:
+
 - Use the category as prefix: `naming.ambiguous-suffix-python`
 - Use hyphens for multi-word names
 - Append language suffix
@@ -108,6 +113,7 @@ Naming conventions for `id`:
 ### 5. Write Test File
 
 Create the test file at:
+
 ```
 <project>/.semgrep/tests/<category>/<language>/<test_name>_test.<ext>
 ```
@@ -115,6 +121,7 @@ Create the test file at:
 Extensions: `.py` for Python, `.ts` for TypeScript, `.go` for Go.
 
 Test file format — annotate each case with `ruleid` or `ok` comments:
+
 ```
 # ruleid: <rule-id>
 <code that SHOULD trigger the rule>
@@ -124,6 +131,7 @@ Test file format — annotate each case with `ruleid` or `ok` comments:
 ```
 
 Include at minimum:
+
 - 2-3 true positive cases (different variations of the bad pattern)
 - 2-3 true negative cases (similar but correct code)
 - Edge cases (framework exceptions, standard library usage)
@@ -131,6 +139,7 @@ Include at minimum:
 ### 6. Validate
 
 Run validation and tests:
+
 ```bash
 # Validate rule syntax
 semgrep --validate --config <rule-file>
@@ -145,6 +154,7 @@ adjust the pattern or test annotations.
 ### 7. Verify Against Codebase
 
 Run the new rule against the target codebase to check for false positives:
+
 ```bash
 semgrep --config <rule-file> <target_paths>
 ```

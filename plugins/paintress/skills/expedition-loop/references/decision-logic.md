@@ -9,6 +9,7 @@
 **Action**: Commit, create PR, log `success`.
 
 **Example**:
+
 ```
 Issue: #169 ValidateDMail rejects empty body
 Test: TestValidateDMail_EmptyBody_IsInvalid
@@ -23,6 +24,7 @@ Result: All tests pass on first run → success
 **Attempt 1 failure → read error → fix → retry**
 
 **Example**:
+
 ```
 Issue: #110 SanitizeTargets
 Attempt 1: Forgot to import "strings" → compilation error
@@ -37,6 +39,7 @@ Attempt 2: All tests pass → success
 **Action**: Log `fail:compile`, remove worktree, move on.
 
 **Example**:
+
 ```
 Issue: #116 TrimCheckHistory
 Attempt 1: Type mismatch in function signature
@@ -52,6 +55,7 @@ Decision: fail:compile — needs architectural review
 **Action**: Log `fail:test`, remove worktree, move on.
 
 **Example**:
+
 ```
 Issue: #142 DMailIdempotencyKey
 Attempt 1: Hash includes wrong fields
@@ -81,13 +85,13 @@ Decision: fail:test — needs deeper understanding of hash requirements
 ## Journal Entry Examples
 
 ```tsv
-issue	commit	status	pr_url	description
-MY-473	51b52b7	success	https://github.com/hironow/amadeus/pull/58	#123 partial axes handling
-MY-486	-	skip	-	#207 duplicate of #124
-MY-529	-	fail:compile	-	#053 type mismatch after 3 attempts
-MY-520	a23db96	success	https://github.com/hironow/amadeus/pull/58	#169 empty body guard
-MY-999	-	skip:no-dod	-	No DoD checklist in description
-MY-998	-	fail:timeout	-	Test hung after 120s
+issue commit status pr_url description
+MY-473 51b52b7 success https://github.com/hironow/amadeus/pull/58 #123 partial axes handling
+MY-486 - skip - #207 duplicate of #124
+MY-529 - fail:compile - #053 type mismatch after 3 attempts
+MY-520 a23db96 success https://github.com/hironow/amadeus/pull/58 #169 empty body guard
+MY-999 - skip:no-dod - No DoD checklist in description
+MY-998 - fail:timeout - Test hung after 120s
 ```
 
 ## Simplicity Criterion (from autoresearch)

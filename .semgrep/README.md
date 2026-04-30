@@ -58,11 +58,13 @@ Place this `.semgrep/` directory at the repo root, per project.
 If rules are shared across projects, reference a single source of truth:
 
 **Option 1 — symlink from dotfiles (simplest)**
+
 ```bash
 ln -s ~/dotfiles/.semgrep/rules/meta ~/work/myproject/.semgrep/rules/meta
 ```
 
 **Option 2 — git subtree** (when you want per-project divergence history)
+
 ```bash
 git subtree add --prefix .semgrep/rules/meta \
   git@github.com:hironow/dotfiles-semgrep.git main --squash

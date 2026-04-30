@@ -66,6 +66,7 @@ run evaluation, and decide whether to keep or revert the change.
 **Exploration Protocol:**
 
 Step 1 - Understand State:
+
 - Read design-config.yaml for parameters (target_files, eval_target, evaluators, constraints, axes)
 - Read design-results.tsv to see what has been tried and current best
 - Read target file(s) to understand current design implementation
@@ -73,25 +74,29 @@ Step 1 - Understand State:
 - Note constraint_fail entries to avoid repeating those axis+constraint patterns
 
 Step 2 - Form Hypothesis:
+
 - If the user provided a specific idea, implement that
 - Otherwise, analyze previous results to select an exploration axis:
-  - Prefer unexplored axes (zero entries in results)
-  - Deep-dive successful axes (high keep rate)
-  - Avoid axis+constraint combinations that repeatedly failed
+    - Prefer unexplored axes (zero entries in results)
+    - Deep-dive successful axes (high keep rate)
+    - Avoid axis+constraint combinations that repeatedly failed
 - One axis per iteration — never mix multiple axes
 - Be specific: "layout: convert hero to asymmetric 60/40 grid" not just "improve layout"
 
 Step 3 - Implement:
+
 - Modify ONLY the target files listed in design-config.yaml
 - Make a focused, minimal change within the chosen axis
 - NEVER modify evaluation scripts, config files, or dependencies
 - NEVER install new dependencies
 
 Step 4 - Commit:
+
 - Stage only the modified target files
 - Commit with message: "design(<axis>): <concise description>"
 
 Step 5 - Evaluate:
+
 - Run: `<eval_command> > run.log 2>&1`
 - Apply timeout: if run exceeds timeout_seconds, kill it
 - Extract: `grep "^composite_score:" run.log`
@@ -100,20 +105,23 @@ Step 5 - Evaluate:
 
 Step 6 - Decide (Two-Stage):
 Stage 1 — Constraint Check:
+
 - If constraint_violated is not "none": REVERT immediately (status: constraint_fail)
 - Record which constraint was violated
 
 Stage 2 — Score Comparison (only if constraints pass):
+
 - Parse the composite_score value
 - Compare with current best from design-results.tsv
 - Apply simplicity criterion:
-  - Improvement > 1% relative: keep
-  - Improvement 0.1%-1% with simple code: keep
-  - Improvement < 0.1% with added complexity: revert
-  - Code deletion with equal/better score: always keep
-  - No improvement or worse: revert
+    - Improvement > 1% relative: keep
+    - Improvement 0.1%-1% with simple code: keep
+    - Improvement < 0.1% with added complexity: revert
+    - Code deletion with equal/better score: always keep
+    - No improvement or worse: revert
 
 Step 7 - Record:
+
 - Append result to design-results.tsv (tab-separated, 6 columns):
   `<commit>\t<composite_score>\t<status>\t<constraint>\t<axis>\t<description>`
 - Status: "keep", "discard", "constraint_fail", or "crash"
@@ -121,6 +129,7 @@ Step 7 - Record:
 - For constraint_fail: record which constraint in column 4
 
 Step 8 - Git Action:
+
 - If keep: do nothing (commit stays, branch advances)
 - If discard, constraint_fail, or crash: `git reset --hard HEAD~1`
 
@@ -143,6 +152,7 @@ Step 8 - Git Action:
 **Output:**
 
 Return a concise report:
+
 ```
 ## Design Exploration Result
 - Axis: <which axis>
@@ -155,6 +165,7 @@ Return a concise report:
 ```
 
 **Critical Rules:**
+
 - NEVER modify files outside the target list
 - NEVER modify the evaluation command or scripts
 - NEVER skip logging to design-results.tsv

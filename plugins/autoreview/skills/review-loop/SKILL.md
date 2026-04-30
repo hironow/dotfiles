@@ -20,10 +20,12 @@ applied to one file (or a small group of related files).
 ### 1. Scan (Before)
 
 **scan-fix mode:**
+
 ```bash
 RULES=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-guardrails.sh")
 semgrep --config "${RULES}/<category>/" --json <target_file> 2>/dev/null
 ```
+
 Record `findings_before` count.
 
 **spec-review mode:**
@@ -70,6 +72,7 @@ matrix, special cases, and infinite loop prevention rules.
 ### 7. Record
 
 Append to review-results.tsv (tab-separated):
+
 ```
 <commit>\t<mode>\t<category>\t<file>\t<findings_before>\t<findings_after>\t<status>\t<description>
 ```
@@ -102,4 +105,5 @@ the limit, move to the next category regardless of remaining findings.
 ### Reference Files
 
 For the detailed keep/revert decision matrix:
+
 - **`references/decision-logic.md`** — Complete decision criteria for both modes

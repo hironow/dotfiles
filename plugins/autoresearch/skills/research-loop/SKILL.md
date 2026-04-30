@@ -74,11 +74,11 @@ Apply the **simplicity criterion** when deciding keep vs. revert:
 Log every experiment to `results.tsv` (tab-separated, git-untracked):
 
 ```
-commit	metric	status	description
-a1b2c3d	0.9500	keep	baseline
-b2c3d4e	0.9320	keep	increase learning rate
-c3d4e5f	0.9600	discard	switch activation function
-d4e5f6g	0.0000	crash	double model width (OOM)
+commit metric status description
+a1b2c3d 0.9500 keep baseline
+b2c3d4e 0.9320 keep increase learning rate
+c3d4e5f 0.9600 discard switch activation function
+d4e5f6g 0.0000 crash double model width (OOM)
 ```
 
 Columns: commit hash (7 chars), metric value (6 decimals), status (keep/discard/crash),
@@ -103,4 +103,5 @@ State persists externally in git history + results.tsv.
 ### Reference Files
 
 For detailed decision logic and criteria:
+
 - **`references/decision-logic.md`** - Complete keep/revert decision tree with examples

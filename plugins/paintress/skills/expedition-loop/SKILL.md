@@ -57,6 +57,7 @@ For detailed examples of each branch, see `references/decision-logic.md`.
 ## Reading the Issue
 
 Parse the Linear issue description for:
+
 - **DoD checklist**: Each `- [ ]` item is a requirement
 - **Files to Modify**: Specific source files mentioned
 - **Dependencies**: Other issues that must be done first
@@ -67,16 +68,19 @@ If the issue lacks a clear DoD, log `skip:no-dod` and move to the next issue.
 ## TDD Discipline
 
 ### RED Phase
+
 - Write ONE failing test that captures the bug or missing behavior
 - Test name should describe the expected behavior (e.g., `TestValidateEmail_RejectsEmpty`)
 - Run the test command to confirm it fails for the RIGHT reason
 
 ### GREEN Phase
+
 - Write the MINIMUM code to make the test pass
 - Do not add features beyond what the test requires
 - Do not refactor yet
 
 ### VERIFY Phase
+
 - Run the FULL test suite, not just the new test
 - All existing tests must continue to pass
 - If any test breaks, fix it before proceeding
@@ -110,24 +114,29 @@ EOF
 ## Error Recovery
 
 ### Compilation Error (attempt < 3)
+
 Read the error output carefully. Common causes:
+
 - Missing import → add import
 - Type mismatch → fix types
 - Undefined reference → check spelling and package
 
 ### Test Failure (attempt < 3)
+
 Read the test output. Common causes:
+
 - Wrong assertion value → re-read the DoD
 - Missing setup → add test fixture
 - Race condition → add synchronization
 
 ### Unrecoverable (attempt >= 3)
+
 Stop trying. Log the failure with the last error message. Remove the worktree. The issue stays in Backlog for manual attention.
 
 ## Learning from Journal
 
 Before starting a new expedition, read `journal.tsv` for patterns:
+
 - If multiple `fail:compile` entries → check for systemic build issues
 - If `fail:test` on related issues → look for shared dependencies
 - Success patterns inform approach for similar issues
-

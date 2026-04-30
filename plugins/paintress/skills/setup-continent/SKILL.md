@@ -41,6 +41,7 @@ Ask the user for each required field (provide defaults where possible):
 ### 2. Validate Inputs
 
 Before writing config:
+
 - Verify `repository` exists: `ls <repository>`
 - Verify `test_command` works: `cd <repository> && <test_command> 2>&1 | tail -5`
 - Verify Linear project exists: `list_issues(project=<linear_project>, limit=1)`
@@ -67,10 +68,11 @@ Write to the current working directory (where `/expedition` is invoked).
 Create with header only:
 
 ```
-issue	commit	status	pr_url	description
+issue commit status pr_url description
 ```
 
 Add the following to `.gitignore` if not already present (state files created during expeditions):
+
 - `journal.tsv` — expedition results log
 - `gradient.json` — Gradient Gauge momentum state
 - `lumina.md` — extracted learning patterns

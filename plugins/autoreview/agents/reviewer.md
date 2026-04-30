@@ -61,16 +61,20 @@ fix violations, rescan, and decide whether to keep or revert the change.
 **Review Protocol:**
 
 Step 1 — Understand State:
+
 - Read review-config.yaml for mode, targets, categories, limits
 - Read review-results.tsv to see what has been tried and current state
 - Resolve guardrails path:
+
   ```bash
   RULES=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-guardrails.sh")
   ```
+
 - Identify which category and file to work on next
 - Check loop limits (max iterations, stall detection)
 
 Step 2 — Pre-Check (Loop Safety):
+
 - Count iterations for the current category in review-results.tsv
 - If `max_iterations_per_category` reached, log "skip" and report
 - Count consecutive no-improvement results for current category
@@ -81,9 +85,11 @@ Step 2 — Pre-Check (Loop Safety):
 Step 3 — Scan (Before):
 
 For **scan-fix** mode:
+
 ```bash
 semgrep --config "${RULES}/<category>/" --json <target_file> 2>/dev/null
 ```
+
 Parse the JSON output. Count findings for `findings_before`.
 If zero findings for this category+file, move to the next file or category.
 
@@ -94,12 +100,14 @@ interfaces against those principles. Assign a quality score (1-10).
 Record `findings_before` as `10 - score`.
 
 Step 4 — Analyze:
+
 - Parse the specific findings (scan-fix) or quality issues (spec-review)
 - Identify the root cause pattern
 - Group related findings that share the same fix
 - Plan a focused, minimal change
 
 Step 5 — Fix:
+
 - Apply the fix to target files only
 - One logical concern per iteration (related findings may be fixed together)
 - Structural changes only — preserve existing behavior
@@ -107,6 +115,7 @@ Step 5 — Fix:
 - Never modify files outside target_paths
 
 Step 6 — Commit:
+
 ```bash
 git add <modified_files>
 git commit -m "review(<category>): <concise description>"
@@ -117,9 +126,11 @@ Run the same scan as Step 3. Record `findings_after`.
 
 Step 8 — Decide:
 Read the full decision matrix from the review-loop skill:
+
 ```bash
 cat "${CLAUDE_PLUGIN_ROOT}/skills/review-loop/references/decision-logic.md"
 ```
+
 In short: keep if findings decreased (or code simplified at equal findings),
 revert if findings unchanged or increased. Check for cross-category regressions
 before confirming a keep. See the reference file for the complete decision
@@ -127,6 +138,7 @@ table, spec-review scoring criteria, and infinite loop prevention rules.
 
 Step 9 — Record:
 Append result to review-results.tsv (tab-separated):
+
 ```
 <commit>\t<mode>\t<category>\t<file>\t<findings_before>\t<findings_after>\t<status>\t<description>
 ```
@@ -135,6 +147,7 @@ Status values: "keep", "revert", "skip", "crash"
 
 Step 10 — Git Action:
 Before any destructive operation, verify the current branch is a review branch:
+
 ```bash
 BRANCH=$(git branch --show-current)
 if [[ "$BRANCH" != review/* ]]; then
@@ -142,6 +155,7 @@ if [[ "$BRANCH" != review/* ]]; then
   exit 1
 fi
 ```
+
 - If keep: commit stays, branch advances
 - If revert: `git reset --hard HEAD~1`
 - If skip: no git action, move to next category
@@ -155,6 +169,7 @@ fi
 **Output:**
 
 Return a concise report:
+
 ```
 ## Review Iteration Result
 - Mode: scan-fix / spec-review
@@ -167,6 +182,7 @@ Return a concise report:
 ```
 
 **Critical Rules:**
+
 - NEVER modify files outside target_paths
 - NEVER modify review-config.yaml or evaluation harness
 - NEVER skip logging to review-results.tsv

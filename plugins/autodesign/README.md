@@ -52,6 +52,7 @@ This creates `design-config.yaml`, initializes `design-results.tsv`, and runs th
 ### 3. Run
 
 The designer agent autonomously explores design variations. Each cycle:
+
 - Selects an exploration axis (layout, color, typography, etc.)
 - Modifies only designated target files
 - Evaluates against quality constraints

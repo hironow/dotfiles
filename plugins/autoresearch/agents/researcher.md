@@ -66,50 +66,58 @@ code, run evaluation, and decide whether to keep or revert the change.
 **Experiment Protocol:**
 
 Step 1 - Understand State:
+
 - Read experiment-config.yaml for parameters
 - Read results.tsv to see what has been tried and current best
 - Read target file(s) to understand current implementation
 - Identify what changes have worked and what has failed
 
 Step 2 - Form Hypothesis:
+
 - If the user provided a specific idea, implement that
 - Otherwise, analyze previous results to identify promising directions
 - Prefer simple changes over complex ones
 - Consider: What has not been tried? What worked partially? What can be simplified?
 
 Step 3 - Implement:
+
 - Modify ONLY the target files listed in experiment-config.yaml
 - Make a focused, minimal change
 - NEVER modify evaluation harness, tests, or config files
 - NEVER install new dependencies
 
 Step 4 - Commit:
+
 - Stage only the modified target files
 - Commit with message: "experiment: <concise description of change>"
 
 Step 5 - Evaluate:
+
 - Run: `<eval_command> > run.log 2>&1`
 - Apply timeout: if run exceeds timeout_seconds, kill it
 - Extract metric: `grep "^<metric_name>:" run.log`
 - If grep is empty, the run crashed
 
 Step 6 - Decide:
+
 - Parse the metric value
 - Compare with current best from results.tsv
 - Apply simplicity criterion:
-  - Significant improvement (>1%): keep
-  - Small improvement with simple code: keep
-  - Small improvement with complex code: revert
-  - Code deletion with equal/better metric: always keep
-  - No improvement or worse: revert
+    - Significant improvement (>1%): keep
+    - Small improvement with simple code: keep
+    - Small improvement with complex code: revert
+    - Code deletion with equal/better metric: always keep
+    - No improvement or worse: revert
 
 Step 7 - Record:
+
 - Append result to results.tsv (tab-separated):
   `<commit>\t<metric>\t<status>\t<description>`
 - Status: "keep", "discard", or "crash"
 - For crashes: metric = 0.000000
 
 Step 8 - Git Action:
+
 - If keep: do nothing (commit stays, branch advances)
 - If discard or crash: `git reset --hard HEAD~1`
 
@@ -123,6 +131,7 @@ Step 8 - Git Action:
 **Output:**
 
 Return a concise report:
+
 ```
 ## Experiment Result
 - Hypothesis: <what was tried>
@@ -133,6 +142,7 @@ Return a concise report:
 ```
 
 **Critical Rules:**
+
 - NEVER modify files outside the target list
 - NEVER modify the evaluation command or harness
 - NEVER skip logging to results.tsv

@@ -67,6 +67,7 @@ Select one exploration axis per iteration. Strategy:
 ### Hypothesis Quality
 
 A good design hypothesis is:
+
 - **Specific**: "Change hero section to asymmetric 60/40 grid" not "improve layout"
 - **Minimal**: One focused change, not a full redesign
 - **Informed**: Based on results history (what worked, what failed)
@@ -110,11 +111,11 @@ exploration_axes:
 Log every iteration to design-results.tsv (tab-separated, 6 columns):
 
 ```
-commit	composite_score	status	constraint	axis	description
-a1b2c3d	78.500000	keep	-	baseline	initial design
-b2c3d4e	82.100000	keep	-	layout	asymmetric hero section
-c3d4e5f	0.000000	constraint_fail	structure	animation	parallax broke a11y
-d4e5f6g	80.300000	discard	-	color	dark palette attempt
+commit composite_score status constraint axis description
+a1b2c3d 78.500000 keep - baseline initial design
+b2c3d4e 82.100000 keep - layout asymmetric hero section
+c3d4e5f 0.000000 constraint_fail structure animation parallax broke a11y
+d4e5f6g 80.300000 discard - color dark palette attempt
 ```
 
 Status values: `keep`, `discard`, `constraint_fail`, `crash`
@@ -138,4 +139,5 @@ State persists externally in git history + design-results.tsv.
 ### Reference Files
 
 For detailed decision logic and criteria:
+
 - **`references/decision-logic.md`** - Complete keep/revert decision tree with examples

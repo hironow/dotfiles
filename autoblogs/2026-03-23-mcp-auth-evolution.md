@@ -16,6 +16,7 @@ Model Context Protocol (MCP) の最新の更新は、プロトコル仕様の技
 MCP バージョン 2025-11-25 において、OIDC (OpenID Connect) 統合が進んでいる。OpenID Connect Discovery 1.0 による認可サーバーディスカバリーが対応され、MCP サーバーが標準的な ID プロバイダーと連携できるようになった。外部認証サポート付き認可仕様の強化と GitHub Security Advisories 統合も含まれる。SSRF セキュリティ対策ドキュメントも同時に追加された。
 
 これまで MCP の認証は各実装に委ねられていたが、OIDC 統合により：
+
 - 企業の既存 IdP (Okta, Azure AD, Google Workspace) との統合が標準化
 - トークン管理のベストプラクティスがプロトコルレベルで定義
 - MCP クライアント間でのシングルサインオンが可能に
@@ -23,6 +24,7 @@ MCP バージョン 2025-11-25 において、OIDC (OpenID Connect) 統合が進
 ### エンタープライズ管理認可
 
 OIDC に加えて、エンタープライズ向けの管理認可機能が更新された。これは大規模組織で MCP サーバーを運用する際の：
+
 - 管理者による MCP サーバーアクセスの一元管理
 - ポリシーベースのツールアクセス制御
 - 監査ログの標準化
@@ -70,6 +72,7 @@ MCP-UI は client/v7.0.0 (2026-03-12) でレガシー仕様を完全削除（破
 ### SDK 階層評価
 
 SDK の Tier 評価も注目に値する：
+
 - **Tier 1**: Python SDK, C# SDK, Go SDK（最高レベルの互換性保証）
 - **Tier 2**: Java SDK
 - **Tier 3**: Swift SDK, PHP SDK
