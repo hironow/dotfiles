@@ -7,9 +7,11 @@ MARKDOWNLINT := "mise exec -- markdownlint-cli2"
 PDOC := "uv run pdoc"
 
 # Default: show help
+[group('Meta')]
 default: help
 
 # Help: list available recipes
+[group('Meta')]
 help:
     @just --list --unsorted
 
@@ -28,14 +30,17 @@ pdoc port="8888" pkg=".":
 # ------------------------------
 
 # Run meta semgrep rules against rule files (ROOT_AGENTS.md etc.)
+[group('Validation')]
 meta-semgrep:
     semgrep --config .semgrep/rules/meta/ --error .
 
 # Verify meta rules themselves with their test annotations
+[group('Validation')]
 meta-semgrep-test:
     semgrep --test --config .semgrep/rules/meta/
 
 # Full validation of rule files
+[group('Validation')]
 validate: meta-semgrep-test meta-semgrep
 
 # Install: setup tools via mise
@@ -186,6 +191,7 @@ dump:
 # ------------------------------
 
 # Test: build sandbox (if available) and run pytest (verbose)
+[group('Test')]
 test:
     @echo '🧪 Preparing Docker sandbox (if available)...'
     @if command -v docker >/dev/null 2>&1; then \
@@ -199,6 +205,7 @@ test:
     @echo '✅ Tests finished.'
 
 # Test (install): run install.sh verification in Docker
+[group('Test')]
 test-install:
     @echo '🧪 Running install.sh verification in Docker...'
     docker build -f tests/docker/InstallTest.Dockerfile .
@@ -249,6 +256,7 @@ self-check with_tests="":
     :
 
 # Test (by marker): run tests filtered by -m MARKER
+[group('Test')]
 test-mark marker="":
     @echo '🧪 Running pytest with marker:' '{{ marker }}'
     @if [ -n "{{ marker }}" ]; then \
@@ -263,6 +271,7 @@ test-mark marker="":
 # ------------------------------
 
 # Format: run all formatters (Python, Prettier)
+[group('Format')]
 format:
     @echo '🔧 Formatting Python (ruff)...'
     uvx ruff format . --exclude emulator
@@ -271,6 +280,7 @@ format:
     @echo '✅ Format done.'
 
 # Lint: run all linters (Python, Shell, Prettier)
+[group('Format')]
 lint:
     @echo '🔍 Linting Python (ruff)...'
     uvx ruff check . --fix --exclude emulator
@@ -285,12 +295,14 @@ lint:
 # ------------------------------
 
 # Add (all): install gcloud/brew/pnpm sets
+[group('Add')]
 add-all:
     just add-gcloud
     just add-brew
     just add-pnpm-g
 
 # Add: install Homebrew bundle from dump/Brewfile (idempotent via brew bundle)
+[group('Add')]
 add-brew:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -301,6 +313,7 @@ add-brew:
     (cd ./dump && brew bundle)
 
 # Add: install gcloud components from dump/gcloud (skips already-installed)
+[group('Add')]
 add-gcloud:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -319,6 +332,7 @@ add-gcloud:
     sudo gcloud components install --quiet $missing
 
 # Add: install pnpm globals from dump/npm-global (skips already-installed)
+[group('Add')]
 add-pnpm-g:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -345,12 +359,14 @@ add-pnpm-g:
 # ------------------------------
 
 # Update: pull latest for my submodules (skills, emulator, telemetry)
+[group('Update')]
 update-my-submodules:
     @echo "◆ Updating own submodules..."
     git submodule update --remote skills emulator telemetry
     @echo "✅ Submodules updated."
 
 # Update (all): update gcloud/brew/pnpm and tools (pnpm safe mode)
+[group('Update')]
 update-all:
     just update-gcloud
     just update-brew
@@ -367,6 +383,7 @@ update-all:
     @if command -v code >/dev/null 2>&1; then code --update-extensions; else echo 'code not found; skip'; fi
 
 # Update (all, safe): update pnpm individually; skip failures
+[group('Update')]
 update-all-safe:
     just update-gcloud
     just update-brew
@@ -383,21 +400,25 @@ update-all-safe:
     @if command -v code >/dev/null 2>&1; then code --update-extensions; else echo 'code not found; skip'; fi
 
 # Update: update and cleanup Homebrew
+[group('Update')]
 update-brew:
     @echo "◆ homebrew..."
     brew update && brew upgrade && brew cleanup
 
 # Update: update gcloud components
+[group('Update')]
 update-gcloud:
     @echo "◆ gcloud..."
     sudo gcloud components update --quiet
 
 # Update: update pnpm global packages
+[group('Update')]
 update-pnpm-g:
     @echo "◆ pnpm..."
     pnpm update --global
 
 # Update: safely update pnpm globals (per-package; skip failures)
+[group('Update')]
 update-pnpm-g-safe:
     @echo "◆ pnpm(safe)..."
     @if command -v jq >/dev/null 2>&1; then \
@@ -424,16 +445,19 @@ brew-repair:
 # ------------------------------
 
 # Check: print PATH entries
+[group('Check')]
 check-path:
     # Check PATH
     @printf '%s\n' "$PATH" | tr ':' '\n'
 
 # Check: show local IP addresses
+[group('Check')]
 check-myip:
     # Check my ip address
     @ifconfig | sed -En "s/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p"
 
 # Check: list Docker containers' ports
+[group('Check')]
 check-dockerport:
     # Check docker port
     @ids=$(docker ps -q); \
@@ -444,22 +468,27 @@ check-dockerport:
     fi
 
 # Check: list installed Homebrew packages
+[group('Check')]
 check-brew:
     brew list
 
 # Check: list gcloud components
+[group('Check')]
 check-gcloud:
     gcloud components list
 
 # Check: list npm global packages
+[group('Check')]
 check-npm-g:
     npm ls --global --depth 0
 
 # Check: list pnpm global packages
+[group('Check')]
 check-pnpm-g:
     pnpm list -g --depth=0
 
 # Check: print rustc cfg
+[group('Check')]
 check-rust:
     rustc --print cfg
 # ------------------------------
@@ -469,6 +498,7 @@ check-rust:
 # Validate: detect duplicate command names in PATH (order matters)
 # Structural duplicates (brew-vs-system, mise-install-vs-shim, etc.) are ignored
 # by design; only user-actionable duplicates are flagged.
+[group('Validation')]
 validate-path-duplicates:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -603,6 +633,7 @@ doctor:
 # ------------------------------
 
 # Connect: tunnel to Cloud SQL (cloud-sql-proxy v2)
+[group('Connect')]
 connect-gcloud-sql:
     # Requires env: GCLOUD_SQL_INSTANCE, LOCAL_SQL_PORT
     [[ -n "${GCLOUD_SQL_INSTANCE:-}" ]] || { echo 'ERROR: environment variable GCLOUD_SQL_INSTANCE not set'; exit 1; }
@@ -610,6 +641,7 @@ connect-gcloud-sql:
     cloud-sql-proxy --port ${LOCAL_SQL_PORT} --private-ip ${GCLOUD_SQL_INSTANCE}
 
 # Connect: start Azurite locally
+[group('Connect')]
 connect-azurite:
     azurite --silent --location .azurite --debug .azurite/debug.log
 
@@ -618,18 +650,22 @@ connect-azurite:
 # ------------------------------
 
 # List: gcloud configurations
+[group('Cloud')]
 gcloud-list:
     gcloud config configurations list
 
 # List: Azure accounts
+[group('Cloud')]
 azure-list:
     az account list --output table
 
 # List: AWS profiles
+[group('Cloud')]
 aws-list:
     aws configure list-profiles
 
 # List: Dataform (BigQuery) tables, ELT (Extract, Load, Transform) not ETL (Extract, Transform, Load)
+[group('Cloud')]
 elt-list:
     dataform listtables bigquery
 
@@ -638,11 +674,13 @@ elt-list:
 # ------------------------------
 
 # Version check: verify NVCC version
+[group('Check')]
 check-version-nvcc expected:
     # Usage: just check-version-nvcc <EXPECTED_NVCC_VERSION>
     version=$(nvcc --version | sed -n 's/.*release \([0-9.]*\).*/\1/p' | head -n1); if [ "${version}" != "{{ expected }}" ]; then echo "ERROR: Expected NVCC version {{ expected }}, but found ${version}"; exit 1; fi
 
 # Version check: verify PyTorch version
+[group('Check')]
 check-version-torch expected:
     # Usage: just check-version-torch <EXPECTED_TORCH_VERSION>
     version=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || true); if [ -z "${version}" ]; then echo "ERROR: PyTorch is not installed"; exit 1; elif [ "${version}" != "{{ expected }}" ]; then echo "ERROR: Expected PyTorch version {{ expected }}, but found ${version}"; exit 1; fi
@@ -655,9 +693,11 @@ check-version-torch expected:
 # Access via https://localhost.hironow.dev/ (no port suffix required).
 # Requires sudo for privileged port binding and to read the root-owned
 # Let's Encrypt certificate files under private/certificates/live/.
+[group('Check')]
 check-localhost-tls port="443":
     sudo go run tools/simple-server/main.go -port {{ port }} -cert ./private/certificates/live/localhost.hironow.dev/fullchain.pem -key ./private/certificates/live/localhost.hironow.dev/privkey.pem -dir ./docs
 
+[group('Validation')]
 semgrep:
     uv run semgrep --config=auto .
 
@@ -693,11 +733,13 @@ skills *args:
 # CDP
 
 # Start Chrome Dev with remote debugging
+[group('CDP')]
 start-cdp:
   @echo "Starting Chrome Dev with remote debugging on port 9222..."
   "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-dev-profile"
 
 # Start Chrome Dev for debugging
+[group('CDP')]
 debug-cdp:
   @echo "Starting Chrome Dev for debugging with remote debugging on port 9222..."
   "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-debug-profile"
@@ -733,11 +775,13 @@ scan domain:
     @echo "if you want check own subdomains, run: subfinder -d {{ domain }}"
 
 # Check free before access network
+[group('Check')]
 check-free:
     @sudo lsof -i -P -n +c 0 | grep LISTEN | grep -vE "127.0.0.1|\[::1\]|ControlCenter|rapportd|symptomsd|launchd" | column -t
 
 
 # Open docs and autoblogs in mo viewer (live-reload)
+[group('Docs')]
 docs-view:
     mo --clear --no-open
     mo --foreground -w 'docs/**/*.md' -w 'autoblogs/**/*.md'
