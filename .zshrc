@@ -63,8 +63,8 @@ export GPG_TTY=$(tty)
 
 # Google Cloud SDK
 # Source path setup only if PATH does not already contain the SDK bin to avoid duplicates
-if _file_exists "$HOME/google-cloud-sdk/path.zsh.inc"; then 
-    if ! path_has "$HOME/google-cloud-sdk/bin"; then 
+if _file_exists "$HOME/google-cloud-sdk/path.zsh.inc"; then
+    if ! path_has "$HOME/google-cloud-sdk/bin"; then
         source "$HOME/google-cloud-sdk/path.zsh.inc"
     fi
 fi
@@ -94,7 +94,7 @@ path_prepend "${KREW_ROOT:-$HOME/.krew}/bin"
 # java
 path_prepend "/opt/homebrew/opt/openjdk/bin"
 
- 
+
 
 # go
 path_prepend "$HOME/go/bin"
@@ -113,7 +113,7 @@ path_prepend "/usr/local/bin"
 path_prepend "$HOME/.local/bin"
 
 # mise
-if _cmd_exists mise; then 
+if _cmd_exists mise; then
     eval "$(mise activate zsh)"
     # Keep mise-managed tool shims ahead of system toolchains (e.g. /usr/local/go/bin).
     path_prepend "$HOME/.local/share/mise/shims"

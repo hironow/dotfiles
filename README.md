@@ -10,7 +10,7 @@ Requires `curl` and `git`.
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ```
 
-> [!NOTE]  
+> [!NOTE]
 > Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)へ対応
 
 ## usage
