@@ -6,6 +6,20 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
 
+# Submodules and external dependencies are exempt from local lint/format
+# (per project structure rules in ROOT_AGENTS.md / CLAUDE.md).
+# Sources of truth: `git config --file .gitmodules --get-regexp path`.
+[tool.ruff]
+extend-exclude = [
+    "emulator",
+    "gcloud",
+    "guardrails",
+    "knowledge-work-plugins",
+    "protocols",
+    "skills",
+    "telemetry",
+]
+
 [tool.pytest.ini_options]
 markers = [
     "install: tests for install.sh flows",
