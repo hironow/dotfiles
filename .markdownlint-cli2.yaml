@@ -1,1 +1,22 @@
 gitignore: true
+# Skip files that are intentionally outside the markdown lint scope:
+#   - ROOT_AGENTS.md is an XML-structured agent instruction file, not prose
+#     markdown; it is synced verbatim to CLAUDE.md / GEMINI.md / AGENTS.md.
+#   - Submodule directories check in as pointers but their contents are
+#     vendored markdown we do not own.
+#   - docs/changelogs.md is auto-generated.
+ignores:
+  - ROOT_AGENTS.md
+  - emulator/**
+  - gcloud/**
+  - guardrails/**
+  - knowledge-work-plugins/**
+  - protocols/**
+  - skills/**
+  - telemetry/**
+  - docs/changelogs.md
+  - node_modules/**
+  - .venv/**
+  - tools/rttm/.venv/**
+  - output/**
+  - private/**

@@ -270,31 +270,78 @@ test-mark marker="":
 # Formatting
 # ------------------------------
 
-# Format: run all formatters (Python, Prettier)
+# fmt: writes formatting fixes in place. Tool per language:
+#   - Python  : `uvx ruff format .` (excludes live in pyproject.toml)
+#   - Markdown: `markdownlint-cli2 --fix`
+#   - JS/TS   : `vp fmt` (only when a package.json is present at the root)
 # Notes:
-#   - ruff excludes live in pyproject.toml ([tool.ruff] extend-exclude).
-#     Don't pass `--exclude` here: it would replace ruff's built-in defaults
-#     (.venv, __pycache__, dist, build, ...).
-#   - Use `git ls-files -z | xargs -0` to handle filenames with quotes/spaces.
-#   - `xargs -r` skips invocation when input is empty.
-[group('Format')]
-format:
-    @echo '🔧 Formatting Python (ruff)...'
+#   - Don't pass `--exclude` to ruff: CLI replaces built-in defaults
+#     (.venv, __pycache__, dist, build, ...). Excludes belong in pyproject.toml.
+#   - Use `git ls-files -z | xargs -0 -r` for null-delimited, empty-safe pipes.
+[group('Lint')]
+fmt:
+    @echo '🔧 Python (ruff format)...'
     uvx ruff format .
-    @echo '🔧 Formatting others (prettier)...'
-    git ls-files -z | grep -zvE '^(emulator$|emulator/|ROOT_AGENTS\.md$)' | xargs -0 -r mise x -- prettier --write --ignore-unknown
-    @echo '✅ Format done.'
+    @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
+    git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2 --fix
+    @echo '🔧 JS/TS (vp fmt)...'
+    @if [ -f package.json ]; then mise x -- vp fmt; else echo 'no package.json; skip'; fi
+    @echo '✅ fmt done.'
 
-# Lint: run all linters (Python, Shell, Prettier)
-[group('Format')]
+# lint: report violations (auto-fixes where possible). Tool per language:
+#   - Python  : ruff check --fix
+#   - Shell   : shellcheck (no auto-fix)
+#   - Markdown: markdownlint-cli2 --fix
+#   - JS/TS   : vp lint
+[group('Lint')]
 lint:
-    @echo '🔍 Linting Python (ruff)...'
+    @echo '🔍 Python (ruff check --fix)...'
     uvx ruff check . --fix
-    @echo '🔍 Linting Shell (shellcheck)...'
-    git ls-files -z '*.sh' | grep -zvE '^(emulator$|emulator/)' | xargs -0 -r mise x -- shellcheck
-    @echo '🔍 Checking others (prettier)...'
-    git ls-files -z | grep -zvE '^(emulator$|emulator/|ROOT_AGENTS\.md$)' | xargs -0 -r mise x -- prettier --check --ignore-unknown
-    @echo '✅ Lint done.'
+    @echo '🔍 Shell (shellcheck)...'
+    git ls-files -z '*.sh' | xargs -0 -r mise x -- shellcheck
+    @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
+    git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2 --fix
+    @echo '🔍 JS/TS (vp lint)...'
+    @if [ -f package.json ]; then mise x -- vp lint; else echo 'no package.json; skip'; fi
+    @echo '✅ lint done.'
+
+# check: strict gate, never writes. Used by pre-push hook and CI.
+[group('Lint')]
+check:
+    @echo '🔎 Python (ruff format --check)...'
+    uvx ruff format --check .
+    @echo '🔎 Python (ruff check, no --fix)...'
+    uvx ruff check .
+    @echo '🔎 Shell (shellcheck)...'
+    git ls-files -z '*.sh' | xargs -0 -r mise x -- shellcheck
+    @echo '🔎 Markdown (markdownlint-cli2)...'
+    git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2
+    @echo '🔎 JS/TS (vp check)...'
+    @if [ -f package.json ]; then mise x -- vp check; else echo 'no package.json; skip'; fi
+    @echo '🔎 Meta-semgrep rules against rule files...'
+    uvx semgrep --config .semgrep/rules/meta/ --error .
+    @echo '✅ All checks passed.'
+
+# ------------------------------
+# prek (j178/prek) — Rust reimplementation of pre-commit
+# Install: just install-hooks  (== mise exec -- prek install)
+# Run:     just pre-commit     (== mise exec -- prek run --all-files)
+# ------------------------------
+
+# Install prek-managed git hooks once per clone
+[group('Lint')]
+install-hooks:
+    mise exec -- prek install
+
+# Run every prek hook against all files (matches what git invokes pre-commit)
+[group('Lint')]
+pre-commit:
+    mise exec -- prek run --all-files
+
+# CI-equivalent gate: prek hooks plus the full sandbox test suite
+[group('Lint')]
+check-all: pre-commit check test
+    @echo "✅ all checks passed"
 
 # ------------------------------
 # Add sets
