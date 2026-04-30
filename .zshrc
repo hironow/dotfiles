@@ -243,3 +243,6 @@ if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
 fi
 # Added by dbt Fusion extension
 alias dbtf="$HOME/.local/bin/dbt"
+
+# CF CLI completions
+[[ -f "$HOME/.config/cf/completions/_cf.zsh" ]] && source "$HOME/.config/cf/completions/_cf.zsh"
