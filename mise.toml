@@ -1,5 +1,6 @@
 [tools]
 just = "latest"
 markdownlint-cli2 = "latest"
+prek = "latest"
 uv = "latest"
 vp = "latest"

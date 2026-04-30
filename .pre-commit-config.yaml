@@ -1,0 +1,79 @@
+# prek (j178/prek) — Rust reimplementation of pre-commit
+# Install: just install-hooks  (== mise exec -- prek install)
+# Run:     just pre-commit     (== mise exec -- prek run --all-files)
+# Push gate (also runs pre-push stage hooks):
+#          just check-all      (== prek run --all-files + just check + just test)
+minimum_prek_version: "0.3.0"
+
+exclude: |
+  (?x)^(
+    emulator/|
+    gcloud/|
+    guardrails/|
+    knowledge-work-plugins/|
+    protocols/|
+    skills/|
+    telemetry/|
+    private/|
+    output/|
+    node_modules/|
+    \.venv/|
+    tools/rttm/\.venv/|
+    docs/changelogs\.md
+  )
+
+repos:
+  # Rust-native builtin hooks (fast, no external repo clone needed)
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # Local hooks delegate to just recipes so the same checks run from
+  # the CLI (`just fmt`, `just lint`, `just check`) and from prek.
+  - repo: local
+    hooks:
+      - id: just-fmt
+        name: just fmt
+        entry: just fmt
+        language: system
+        pass_filenames: false
+        files: '\.(py|sh|md|yaml|toml|json|html)$'
+        description: Auto-format Python (ruff) and other files (prettier).
+
+      - id: just-lint
+        name: just lint
+        entry: just lint
+        language: system
+        pass_filenames: false
+        files: '\.(py|sh|md|yaml|toml|json|html)$'
+        description: Lint Python (ruff --fix), shell (shellcheck), prettier --check.
+
+  # ======================================================================
+  # pre-push hooks (slower checks, run only on git push)
+  # ======================================================================
+
+  - repo: local
+    hooks:
+      - id: just-check
+        name: just check (strict, no writes)
+        entry: just check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        description: Strict gate — ruff format --check, ruff check, shellcheck, prettier --check, meta-semgrep.
+
+      - id: just-test
+        name: just test (sandbox + pytest)
+        entry: just test
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        description: Build the Docker sandbox image and run the sandbox test suite.
