@@ -52,6 +52,11 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # GITHUB_TOKEN bumps mise/aqua's GitHub API rate limit from 60 to
+          # 5000/hr, which is required for `mise install` during the build
+          # step (mise resolves "latest" against api.github.com).
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
 
       - name: Run tests
         env:

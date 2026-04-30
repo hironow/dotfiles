@@ -68,7 +68,16 @@ COPY . /root/dotfiles
 #   2. records concrete versions in mise.lock so MISE_OFFLINE=1 at test time
 #      can reuse the installed binaries without re-querying GitHub
 # Both are pre-conditions for stable container-based recipe coverage.
-RUN mise trust mise.toml && touch mise.lock && mise install
+#
+# `--mount=type=secret,id=github_token` lets the CI runner pass GITHUB_TOKEN
+# without baking it into the image. Without auth mise hits the 60-req/hr
+# unauthenticated GitHub API limit and the build fails on shared CI IPs.
+# Locally the secret is absent and the unauthenticated fetch is enough.
+RUN --mount=type=secret,id=github_token \
+    if [ -f /run/secrets/github_token ]; then \
+      export GITHUB_TOKEN="$(cat /run/secrets/github_token)"; \
+    fi && \
+    mise trust mise.toml && touch mise.lock && mise install
 
 # Provide stub for nvcc with a realistic version string
 RUN printf '#!/bin/sh\necho "Cuda compilation tools, release 12.3, V12.3.52"\n' > /usr/local/bin/nvcc \
