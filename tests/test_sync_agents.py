@@ -1725,7 +1725,7 @@ def test_sync_agents_orphans_shows_target_only_items(docker_image):
     echo "# Orphan" > /root/.claude-work-a/skills/orphan-test-skill/SKILL.md
 
     # Run orphans detection
-    cd /root/dotfiles && uv run scripts/sync_agents.py --orphans
+    cd /root/dotfiles && uv run scripts/sync_agents.py --orphans all
     """
     result = _run_in_container(docker_image, cmd)
 
@@ -1749,7 +1749,7 @@ def test_sync_agents_orphans_clean_when_no_orphans(docker_image):
     cd /root/dotfiles && just sync-agents-auto all
 
     # Run orphans detection (should be clean)
-    cd /root/dotfiles && uv run scripts/sync_agents.py --orphans
+    cd /root/dotfiles && uv run scripts/sync_agents.py --orphans all
     """
     result = _run_in_container(docker_image, cmd)
 
@@ -1784,7 +1784,7 @@ def test_sync_agents_override_removes_orphans(docker_image):
     [ -d /root/.claude-work-a/skills/orphan-beta ] && echo "orphan-beta exists before"
 
     # Run override
-    cd /root/dotfiles && uv run scripts/sync_agents.py --override
+    cd /root/dotfiles && uv run scripts/sync_agents.py --override all
 
     # Verify orphans are gone
     if [ -d /root/.claude-work-a/skills/orphan-alpha ]; then
@@ -1832,7 +1832,7 @@ def test_sync_agents_override_preserves_source_items(docker_image):
     echo "# Orphan" > /root/.claude-work-a/skills/orphan-only/SKILL.md
 
     # Run override
-    cd /root/dotfiles && uv run scripts/sync_agents.py --override
+    cd /root/dotfiles && uv run scripts/sync_agents.py --override all
 
     # Verify: real skill preserved, orphan removed
     [ -d /root/.claude-work-a/skills/my-real-skill ] && echo "real skill preserved"
@@ -1870,10 +1870,182 @@ def test_sync_agents_preview_shows_orphans(docker_image):
     echo "# Preview" > /root/.claude-work-a/skills/preview-orphan/SKILL.md
 
     # Run preview
-    cd /root/dotfiles && uv run scripts/sync_agents.py --preview
+    cd /root/dotfiles && uv run scripts/sync_agents.py --preview all
     """
     result = _run_in_container(docker_image, cmd)
 
     # then: Orphan shown with TARGET-ONLY label
     assert "preview-orphan" in result.stdout
     assert "TARGET-ONLY" in result.stdout
+
+
+# =============================================================================
+# Import-Only Mode Tests (just import-agents)
+# =============================================================================
+
+
+def test_import_agents_pulls_skill_from_target_into_dotfiles(docker_image):
+    """import-agents copies a target-side skill into dotfiles.
+
+    Scenario:
+    - given: A skill exists in ~/.claude/skills/ but not in dotfiles
+    - when: Run `just import-agents` (default scope = claude only)
+    - then: The skill is imported into dotfiles/skills/
+    """
+    cmd = """
+    set -euo pipefail
+
+    mkdir -p /root/.claude/skills/imported-from-claude
+    echo "# imported" > /root/.claude/skills/imported-from-claude/README.md
+
+    cd /root/dotfiles && just import-agents
+
+    [ -f /root/dotfiles/skills/imported-from-claude/README.md ] && echo "imported to dotfiles"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    assert "imported to dotfiles" in result.stdout
+
+
+def test_import_agents_does_not_forward_sync_to_targets(docker_image):
+    """import-agents must NOT push dotfiles content into targets (Phase 2-3 skipped).
+
+    Scenario:
+    - given: A skill exists in dotfiles but not in any target
+    - when: Run `just import-agents all`
+    - then: The skill stays only in dotfiles; targets are NOT created/updated
+    """
+    cmd = """
+    set -euo pipefail
+
+    mkdir -p /root/dotfiles/skills/dotfiles-only
+    echo "# dotfiles only" > /root/dotfiles/skills/dotfiles-only/README.md
+
+    cd /root/dotfiles && just import-agents all
+
+    [ -f /root/dotfiles/skills/dotfiles-only/README.md ] && echo "stayed in dotfiles"
+    [ ! -e /root/.claude/skills/dotfiles-only ] && echo "not pushed to claude"
+    [ ! -e /root/.claude-work-a/skills/dotfiles-only ] && echo "not pushed to work-a"
+    [ ! -e /root/.gemini/skills/dotfiles-only ] && echo "not pushed to gemini"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    assert "stayed in dotfiles" in result.stdout
+    assert "not pushed to claude" in result.stdout
+    assert "not pushed to work-a" in result.stdout
+    assert "not pushed to gemini" in result.stdout
+
+
+def test_import_agents_imports_from_non_import_source_target(docker_image):
+    """import-agents drops the is_import_source filter:
+    a skill in work-a or gemini is still pulled into dotfiles.
+
+    Scenario:
+    - given: A skill exists only in ~/.claude-work-a/skills/ (not an import source by flag)
+    - when: Run `just import-agents a` (explicitly select work-a)
+    - then: The skill is imported into dotfiles
+    """
+    cmd = """
+    set -euo pipefail
+
+    mkdir -p /root/.claude-work-a/skills/from-work-a
+    echo "# from work-a" > /root/.claude-work-a/skills/from-work-a/README.md
+
+    cd /root/dotfiles && just import-agents a
+
+    [ -f /root/dotfiles/skills/from-work-a/README.md ] && echo "imported from work-a"
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    assert "imported from work-a" in result.stdout
+
+
+def test_import_agents_preview_makes_no_changes(docker_image):
+    """import-agents-preview must not write anything (preview = dry run).
+
+    Scenario:
+    - given: A skill exists in target but not in dotfiles
+    - when: Run `just import-agents-preview`
+    - then: Plan is printed but dotfiles is unchanged
+    """
+    cmd = """
+    set -euo pipefail
+
+    mkdir -p /root/.claude/skills/preview-only-skill
+    echo "# preview" > /root/.claude/skills/preview-only-skill/README.md
+
+    cd /root/dotfiles && just import-agents-preview
+
+    if [ -d /root/dotfiles/skills/preview-only-skill ]; then
+        echo "ERROR: preview wrote to dotfiles"
+    else
+        echo "preview did not write"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    assert "preview did not write" in result.stdout
+    # the plan output should mention the skill as importable
+    assert "preview-only-skill" in result.stdout
+
+
+# =============================================================================
+# Override Recipe Tests (just sync-agents-override)
+# =============================================================================
+
+
+def test_just_sync_agents_override_removes_orphans_via_recipe(docker_image):
+    """`just sync-agents-override all` removes orphans without prompts.
+
+    Exercises the just recipe end-to-end (not the python script directly),
+    so a regression in the recipe wiring would be caught here.
+    """
+    cmd = """
+    set -euo pipefail
+
+    cd /root/dotfiles && just sync-agents-auto all
+
+    mkdir -p /root/.claude-work-a/skills/recipe-orphan
+    echo "# orphan" > /root/.claude-work-a/skills/recipe-orphan/SKILL.md
+
+    [ -d /root/.claude-work-a/skills/recipe-orphan ] && echo "orphan before"
+
+    cd /root/dotfiles && just sync-agents-override all
+
+    if [ -d /root/.claude-work-a/skills/recipe-orphan ]; then
+        echo "ERROR: orphan still exists"
+    else
+        echo "orphan removed by recipe"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    assert "orphan before" in result.stdout
+    assert "orphan removed by recipe" in result.stdout
+
+
+def test_just_sync_agents_override_default_scope_does_not_touch_work_a(docker_image):
+    """`just sync-agents-override` (no targets) honors the default scope:
+    out-of-scope agents (work-a) MUST NOT be touched, even by orphan removal.
+    """
+    cmd = """
+    set -euo pipefail
+
+    cd /root/dotfiles && just sync-agents-auto all
+
+    # Plant an orphan in work-a (out of default scope)
+    mkdir -p /root/.claude-work-a/skills/scope-orphan-work-a
+    echo "# w" > /root/.claude-work-a/skills/scope-orphan-work-a/SKILL.md
+
+    cd /root/dotfiles && just sync-agents-override
+
+    # work-a orphan must still be there (out of scope by default)
+    if [ -d /root/.claude-work-a/skills/scope-orphan-work-a ]; then
+        echo "work-a orphan preserved"
+    else
+        echo "ERROR: work-a touched outside default scope"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+
+    assert "work-a orphan preserved" in result.stdout

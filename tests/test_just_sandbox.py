@@ -497,3 +497,265 @@ def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
     assert "missing or empty" in result.stdout, (
         f"{recipe}: expected 'missing or empty' in stdout\nstdout:\n{result.stdout}"
     )
+
+
+# =============================================================================
+# Format / Lint Recipe Tests
+# =============================================================================
+#
+# `just format` / `just lint` chain `uvx ruff` (Python) and `mise x -- ...`
+# (prettier / shellcheck). The sandbox image does not ship `mise`, so we
+# stub it as a no-op shim. This still exercises:
+#   - just recipe wiring (parse + step ordering)
+#   - the ruff invocation (real binary via uvx)
+#   - the shell pipeline (`git ls-files | grep ... | xargs ...`)
+# Prettier / shellcheck behavior itself is out of scope here.
+
+_MISE_STUB = (
+    "mkdir -p /tmp/stubs && "
+    "printf '#!/bin/sh\\nexit 0\\n' > /tmp/stubs/mise && "
+    "chmod +x /tmp/stubs/mise && "
+    "export PATH=/tmp/stubs:$PATH && "
+)
+
+# The sandbox image excludes .git via .dockerignore, so `git ls-files` would
+# fatal. Initialize a repo and stage everything so `git ls-files` returns the
+# tracked file list. Empty `git ls-files` output makes grep exit 1 (no match),
+# which would then break the pipeline under `set -e`.
+_GIT_INIT = (
+    "cd /root/dotfiles && "
+    "git init -q && "
+    "git config user.email t@e && git config user.name t && "
+    "git add -A 2>/dev/null && "
+)
+
+
+@pytest.mark.check
+def test_just_lint_passes_on_clean_tree(docker_image):
+    """`just lint` returns 0 on the as-shipped repo (ruff finds no violations)."""
+    result = run_in_sandbox(docker_image, _MISE_STUB + _GIT_INIT + "just lint")
+    assert result.returncode == 0, (
+        f"just lint failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "Linting Python (ruff)" in result.stdout
+    assert "Lint done" in result.stdout
+
+
+@pytest.mark.check
+def test_just_format_check_passes_on_clean_tree(docker_image):
+    """`just format` returns 0 on the as-shipped repo (ruff format applies cleanly)."""
+    result = run_in_sandbox(docker_image, _MISE_STUB + _GIT_INIT + "just format")
+    assert result.returncode == 0, (
+        f"just format failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "Formatting Python (ruff)" in result.stdout
+    assert "Format done" in result.stdout
+
+
+@pytest.mark.check
+def test_just_lint_detects_ruff_violation(docker_image):
+    """`just lint` exits non-zero when a Python file has a ruff violation
+    that ruff cannot auto-fix.
+
+    Uses E741 (ambiguous variable name 'l'), which ruff reports but does NOT
+    auto-fix — so even with `--fix` the lint step fails.
+    """
+    script = (
+        _MISE_STUB
+        + _GIT_INIT
+        + "printf 'def f():\\n    l = 1\\n    return l\\n' > bad_lint.py && "
+        + "just lint"
+    )
+    result = run_in_sandbox(docker_image, script)
+    assert result.returncode != 0, (
+        "just lint should fail on E741 violation\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "E741" in result.stdout or "E741" in result.stderr
+
+
+# =============================================================================
+# clean-work-env Recipe Tests
+# =============================================================================
+
+
+@pytest.mark.check
+def test_just_clean_work_env_rejects_unknown_target(docker_image):
+    """`just clean-work-env x` for x not in {a,b,c,d} fails with a clear error."""
+    result = run_in_sandbox(docker_image, "just clean-work-env z")
+    assert result.returncode != 0
+    assert "unknown target" in result.stdout or "unknown target" in result.stderr
+
+
+@pytest.mark.check
+def test_just_clean_work_env_fails_when_dir_missing(docker_image):
+    """`just clean-work-env a` fails if ~/.claude-work-a does not exist."""
+    result = run_in_sandbox(
+        docker_image,
+        "rm -rf $HOME/.claude-work-a && just clean-work-env a",
+    )
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert "does not exist" in combined
+
+
+@pytest.mark.check
+def test_just_clean_work_env_resets_managed_paths_only(docker_image):
+    """`just clean-work-env a` empties CLAUDE.md and removes the managed
+    directories (skills/commands/agents/plans/session-env/shell-snapshots)
+    while preserving plugins/, projects/, and history files.
+    """
+    setup = (
+        "set -eu\n"
+        "d=$HOME/.claude-work-a\n"
+        "mkdir -p $d/skills/foo $d/commands $d/agents $d/plans $d/session-env "
+        "$d/shell-snapshots $d/plugins/keep-me $d/projects/keep-me\n"
+        "echo 'KEEP THIS' > $d/CLAUDE.md\n"
+        "echo 'foo skill' > $d/skills/foo/SKILL.md\n"
+        "echo 'cmd' > $d/commands/c.md\n"
+        "echo 'plan' > $d/plans/p.md\n"
+        "echo 'plugin file' > $d/plugins/keep-me/p.json\n"
+        "echo 'project file' > $d/projects/keep-me/x.json\n"
+        "echo 'history' > $d/.claude.json\n"
+        "just clean-work-env a\n"
+        "# inspect aftermath\n"
+        "[ -f $d/CLAUDE.md ] && [ ! -s $d/CLAUDE.md ] && echo 'claude_md emptied'\n"
+        "[ ! -e $d/skills ] && echo 'skills removed'\n"
+        "[ ! -e $d/commands ] && echo 'commands removed'\n"
+        "[ ! -e $d/agents ] && echo 'agents removed'\n"
+        "[ ! -e $d/plans ] && echo 'plans removed'\n"
+        "[ ! -e $d/session-env ] && echo 'session-env removed'\n"
+        "[ ! -e $d/shell-snapshots ] && echo 'shell-snapshots removed'\n"
+        "[ -d $d/plugins/keep-me ] && echo 'plugins preserved'\n"
+        "[ -d $d/projects/keep-me ] && echo 'projects preserved'\n"
+        "[ -f $d/.claude.json ] && echo 'history preserved'\n"
+    )
+    result = run_in_sandbox(docker_image, setup)
+    assert result.returncode == 0, (
+        f"rc={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    expected = [
+        "claude_md emptied",
+        "skills removed",
+        "commands removed",
+        "agents removed",
+        "plans removed",
+        "session-env removed",
+        "shell-snapshots removed",
+        "plugins preserved",
+        "projects preserved",
+        "history preserved",
+    ]
+    for line in expected:
+        assert line in result.stdout, f"missing: {line}\nfull stdout:\n{result.stdout}"
+
+
+# =============================================================================
+# Validation Recipe Tests (semgrep meta rules)
+# =============================================================================
+#
+# These exercise the rule-files-against-themselves workflow:
+#   - meta-semgrep      : run rules in .semgrep/rules/meta/ against the repo
+#   - meta-semgrep-test : verify the rules' own test annotations
+#   - validate          : composite of both
+#
+# semgrep is installed on demand via uvx, so the first run downloads it
+# (~75MB). Subsequent runs in the same container are cached.
+
+
+@pytest.mark.check
+def test_just_meta_semgrep_test_passes(docker_image):
+    """`just meta-semgrep-test` validates the meta rules' own test annotations."""
+    result = run_in_sandbox(
+        docker_image,
+        _GIT_INIT + "just meta-semgrep-test",
+    )
+    assert result.returncode == 0, (
+        f"meta-semgrep-test failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+@pytest.mark.check
+def test_just_meta_semgrep_clean_repo_passes(docker_image):
+    """`just meta-semgrep` returns 0 on the as-shipped repo (no findings)."""
+    result = run_in_sandbox(
+        docker_image,
+        _GIT_INIT + "just meta-semgrep",
+    )
+    assert result.returncode == 0, (
+        f"meta-semgrep failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+@pytest.mark.check
+def test_just_validate_runs_both_steps(docker_image):
+    """`just validate` chains meta-semgrep-test then meta-semgrep."""
+    result = run_in_sandbox(
+        docker_image,
+        _GIT_INIT + "just validate",
+    )
+    assert result.returncode == 0, (
+        f"validate failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+# =============================================================================
+# Misc Recipe Tests (default / clean-cache / clean-all / self-check / add-all)
+# =============================================================================
+
+
+@pytest.mark.check
+def test_just_default_lists_recipes(docker_image):
+    """`just` (no args) runs `default` which delegates to help (`just --list`)."""
+    result = run_in_sandbox(docker_image, "just")
+    assert result.returncode == 0, (
+        f"just default failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    # The list output should mention at least one known recipe.
+    assert "sync-agents" in result.stdout
+
+
+@pytest.mark.check
+def test_just_clean_cache_idempotent_on_missing_dirs(docker_image):
+    """`just clean-cache` succeeds even when target cache dirs do not exist."""
+    # Fresh container has none of these, so this exercises the "rm -vrf" on
+    # missing paths. rc must still be 0.
+    result = run_in_sandbox(docker_image, "just clean-cache")
+    assert result.returncode == 0, (
+        f"clean-cache failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "Remove zsh caches" in result.stdout
+
+
+@pytest.mark.check
+def test_just_clean_all_runs_clean_then_clean_cache(docker_image):
+    """`just clean-all` is a composite of `clean` + `clean-cache`. Both run."""
+    result = run_in_sandbox(docker_image, "just clean-all")
+    assert result.returncode == 0, (
+        f"clean-all failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    # Each child recipe prints a distinctive header.
+    assert "Remove dotfiles" in result.stdout
+    assert "Remove zsh caches" in result.stdout
+
+
+@pytest.mark.check
+def test_just_self_check_succeeds(docker_image):
+    """`just self-check` runs doctor + validate-path-duplicates with summary."""
+    result = run_in_sandbox(docker_image, "just self-check")
+    assert result.returncode == 0, (
+        f"self-check failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "Self-check summary:" in result.stdout
+
+
+@pytest.mark.check
+def test_just_add_all_fails_when_dumps_empty(docker_image):
+    """`just add-all` is a composite. With empty dump files it must fail at
+    the first add-* guard (rc=1, "missing or empty"), not silently succeed."""
+    script = (
+        ": > dump/Brewfile && : > dump/gcloud && : > dump/npm-global && just add-all"
+    )
+    result = run_in_sandbox(docker_image, script)
+    assert result.returncode != 0
+    assert "missing or empty" in result.stdout
