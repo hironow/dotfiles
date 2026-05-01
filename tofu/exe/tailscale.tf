@@ -54,6 +54,40 @@ resource "google_secret_manager_secret_version" "exe_coder_authkey" {
   secret_data = tailscale_tailnet_key.exe_coder.key
 }
 
+# --- workspace VM key -------------------------------------------------
+#
+# Auth key carrying tag:exe-workspace. Stamped on every Coder workspace
+# VM so it can join the tailnet and reach exe-coder.<tailnet>:7080
+# directly — no public CF Access edge hop. Reusable so a single key
+# brings up many concurrent workspaces; ephemeral so torn-down ones
+# auto-prune.
+
+resource "tailscale_tailnet_key" "exe_workspace" {
+  description   = "exe Coder workspace tailnet join key"
+  reusable      = true
+  ephemeral     = true
+  preauthorized = true
+  expiry        = 90 * 24 * 3600
+  tags          = [local.tag_exe_workspace]
+
+  lifecycle {
+    replace_triggered_by = [time_rotating.tailscale_keys.id]
+  }
+}
+
+resource "google_secret_manager_secret" "exe_workspace_authkey" {
+  secret_id = "${local.prefix}-tailscale-workspace-authkey"
+  labels    = local.common_labels
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "exe_workspace_authkey" {
+  secret      = google_secret_manager_secret.exe_workspace_authkey.id
+  secret_data = tailscale_tailnet_key.exe_workspace.key
+}
+
 # --- AI agent key -----------------------------------------------------
 #
 # Reusable so the same key can bring up multiple agent sessions; ACL

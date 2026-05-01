@@ -209,6 +209,45 @@ def test_tailscale_ssh_is_disabled(startup_script: str) -> None:
 
 
 @pytest.mark.exe
+def test_workspace_tailnet_auth_key_resource_present() -> None:
+    """B-plan tailnet routing: workspace VMs join the tailnet at boot
+    using a tag:exe-workspace auth key. The key MUST be:
+      - reusable (multiple workspace VMs share it)
+      - ephemeral (preempted/deleted VMs auto-prune from tailnet)
+      - rotated by time_rotating like the existing keys
+    The corresponding Secret Manager secret must exist so the
+    workspace VM's service account can read the key by name."""
+    ts_tf = ROOT / "tofu" / "exe" / "tailscale.tf"
+    text = ts_tf.read_text()
+
+    block = re.search(
+        r'resource\s+"tailscale_tailnet_key"\s+"exe_workspace"\s*\{(.*?)^\}',
+        text,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert block is not None, (
+        "tofu/exe/tailscale.tf must declare\n"
+        '  resource "tailscale_tailnet_key" "exe_workspace"'
+    )
+    body = block.group(1)
+    assert re.search(r"reusable\s*=\s*true", body), "auth key must be reusable"
+    assert re.search(r"ephemeral\s*=\s*true", body), (
+        "auth key must be ephemeral so preempted VMs auto-prune"
+    )
+    assert "tag_exe_workspace" in body or '"tag:exe-workspace"' in body, (
+        "auth key must carry tag:exe-workspace"
+    )
+
+    # Secret Manager mirror.
+    assert 'google_secret_manager_secret" "exe_workspace_authkey"' in text, (
+        "missing google_secret_manager_secret.exe_workspace_authkey"
+    )
+    assert 'google_secret_manager_secret_version" "exe_workspace_authkey"' in text, (
+        "missing matching _version resource"
+    )
+
+
+@pytest.mark.exe
 def test_acl_grants_exe_workspace_access_to_coder_listener() -> None:
     """B-plan tailnet routing: workspace VMs talk to the Coder server's
     HTTP listener over the tailnet (avoiding the public CF Access edge
