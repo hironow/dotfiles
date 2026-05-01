@@ -62,4 +62,5 @@ continent-config.yaml
 # from "current state only" but they are intentionally not committed).
 docs/intent.md
 docs/handover.md
+docs/setup.md
 node_modules
