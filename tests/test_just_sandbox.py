@@ -1,3 +1,4 @@
+import os
 import subprocess
 import textwrap
 from pathlib import Path
@@ -8,6 +9,20 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
+
+
+def _host_workspace_path() -> str:
+    """Resolve the path that the outer docker daemon will mount.
+
+    When tests run inside the dev container under docker-outside-of-
+    docker, `-v <src>:<dst>` is interpreted by the host daemon, so
+    <src> must be a HOST path. devcontainer.json exports the host
+    path as LOCAL_WORKSPACE_FOLDER for exactly this case.
+
+    When tests run on the host directly (no dev container), ROOT
+    already is a host path.
+    """
+    return os.environ.get("LOCAL_WORKSPACE_FOLDER", str(ROOT))
 
 
 def _run(
@@ -111,7 +126,7 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
             "run",
             "--rm",
             "-v",
-            f"{ROOT}:/root/dotfiles",
+            f"{_host_workspace_path()}:/root/dotfiles",
             "-w",
             "/root/dotfiles",
             image,

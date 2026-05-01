@@ -10,6 +10,7 @@ File naming convention:
     ROOT_AGENTS_hooks_formatter.py      -> <agent>/hooks/formatter.py
 """
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -18,6 +19,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
+
+
+def _host_workspace_path() -> str:
+    """See test_just_sandbox.py — surfaces host path for docker-outside-
+    of-docker bind mounts when tests run inside the dev container."""
+    return os.environ.get("LOCAL_WORKSPACE_FOLDER", str(ROOT))
 
 
 def _run(
@@ -110,7 +117,7 @@ def _run_in_container(
         "run",
         "--rm",
         "-v",
-        f"{ROOT}:/root/dotfiles",
+        f"{_host_workspace_path()}:/root/dotfiles",
         "-w",
         "/root/dotfiles",
         docker_image,

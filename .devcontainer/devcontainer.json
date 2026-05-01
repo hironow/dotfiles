@@ -59,7 +59,13 @@
 
   "containerEnv": {
     "MISE_OFFLINE": "1",
-    "PATH": "/root/.local/bin:/root/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    "PATH": "/root/.local/bin:/root/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    // Surfaces the HOST workspace path to processes inside the
+    // container. The pytest fixture reads this to bind-mount the
+    // workspace into one-shot sub-containers it spins up via
+    // docker-outside-of-docker (the outer daemon resolves -v
+    // sources against the host filesystem, not the container's).
+    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
   },
 
   "customizations": {
