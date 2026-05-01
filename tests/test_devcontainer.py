@@ -97,13 +97,22 @@ def test_devcontainer_declares_required_features(devcontainer: dict) -> None:
         + "\n  - ".join(sorted(features.keys()))
     )
 
-    # Trust-boundary guard: only Microsoft-curated features allowed.
-    bad = [f for f in features if not f.startswith("ghcr.io/devcontainers/features/")]
+    # Trust-boundary guard: only Microsoft-curated features OR
+    # local in-repo features (./<path>) allowed. Local features run
+    # the install script from this repo and are auditable in PR
+    # review, so they sit inside the trust boundary.
+    bad = [
+        f
+        for f in features
+        if not f.startswith("ghcr.io/devcontainers/features/")
+        and not f.startswith("./")
+    ]
     assert not bad, (
-        "devcontainer.json declares non-Microsoft features:\n  - "
+        "devcontainer.json declares non-Microsoft, non-local features:\n  - "
         + "\n  - ".join(bad)
-        + "\nOnly ghcr.io/devcontainers/features/* is allowed; install "
-        "non-listed tools via post-create.sh from vendor-official artifacts."
+        + "\nOnly `ghcr.io/devcontainers/features/*` (Microsoft) or "
+        "`./<repo-path>` (local feature) is allowed; community feature "
+        "registries are out of scope."
     )
 
 

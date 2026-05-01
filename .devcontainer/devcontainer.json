@@ -30,7 +30,12 @@
     },
     "ghcr.io/devcontainers/features/node:1": {
       "version": "lts"
-    }
+    },
+    // Local feature: in-repo install script that runs at BUILD time so
+    // gcloud / mise / uv / just / sheldon end up in the saved image
+    // (devcontainers/ci does not commit lifecycle command output).
+    // Source: .devcontainer/features/dotfiles-tools/{devcontainer-feature.json,install.sh}
+    "./features/dotfiles-tools": {}
   },
 
   "remoteUser": "root",
@@ -39,19 +44,11 @@
   "workspaceFolder": "/root/dotfiles",
   "workspaceMount": "source=${localWorkspaceFolder},target=/root/dotfiles,type=bind,consistency=cached",
 
-  // Vendor-official installers for tools not covered by Microsoft
-  // features. Each line uses the upstream-published installer from
-  // the project's own domain, so the trust boundary is the vendor.
-  //   - gcloud : Google Cloud SDK (sdk.cloud.google.com)
-  //   - mise   : jdx/mise (mise.run)
-  //   - uv     : Astral (astral.sh)
-  //   - just   : casey/just GitHub release tarball (musl-free debian binary)
-  //   - sheldon: rossmacarthur/sheldon GitHub release tarball
-  //
-  // Then mise install resolves mise.toml tools (markdownlint-cli2,
-  // prek, vp, ...) and just install-hooks wires prek into git.
-  // Runs once per container creation; devcontainers/ci pre-bakes it
-  // into the cached image so CI reuses the result.
+  // gcloud / mise / uv / just / sheldon are installed at BUILD time
+  // by the local `./features/dotfiles-tools` feature above and end
+  // up baked into the saved image. The runtime onCreate step only
+  // covers the bind-mount-dependent piece: resolving mise.toml
+  // (markdownlint-cli2, prek, vp, ...) into the cached mise store.
   "onCreateCommand": "bash .devcontainer/post-create.sh",
 
   // install-hooks wires prek into .git/hooks for the local-dev case.
