@@ -119,13 +119,18 @@ manually before declarative bind to avoid lockout.
 
 ## Tunnel ingress
 
-Three rules in `cloudflare_zero_trust_tunnel_cloudflared_config.exe`:
+Two rules in `cloudflare_zero_trust_tunnel_cloudflared_config.exe`:
 
-1. `exe.hironow.dev` → `http://localhost:7080` (Coder UI).
-2. `*.sandbox.hironow.dev` → `http://localhost:8080` (placeholder for
-   the (P)ublic publish path; the listener at 8080 is deferred until
-   Coder workspace apps are wired up).
-3. catch-all → `http_status:404`.
+1. `exe.hironow.dev` → `http://localhost:7080` (Coder UI, gated by
+   Cloudflare Access).
+2. catch-all → `http_status:404`.
+
+The `*.sandbox.hironow.dev` wildcard CNAME exists in DNS but has
+**no matching tunnel ingress rule** until the (P)ublic publish path
+lands with its own Cloudflare Access protection. Any request to
+`*.sandbox.hironow.dev` therefore returns the catch-all 404. This
+prevents a silent exposure if a process accidentally listens on
+:8080 inside the VM.
 
 Both real routes have `http2_origin = true` and `no_tls_verify = true`
 (localhost-only HTTP/2; TLS verification off because the origin is

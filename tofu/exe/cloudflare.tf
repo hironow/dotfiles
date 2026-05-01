@@ -90,15 +90,14 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "exe" {
           http2_origin  = true
         }
       },
-      {
-        hostname = local.sandbox_host
-        service  = "http://localhost:8080"
-        origin_request = {
-          no_tls_verify = true
-          http2_origin  = true
-        }
-      },
       # Catch-all 404. Required as the last entry.
+      #
+      # NOTE: the *.sandbox.hironow.dev route is intentionally NOT
+      # declared here. The (P)ublic publish path is deferred — until
+      # it lands with a Cloudflare Access app gating the wildcard,
+      # any tunnel ingress to :8080 would be a silent security hole.
+      # The wildcard DNS record in this file resolves to the tunnel
+      # but with no matching ingress rule it returns this 404.
       {
         service = "http_status:404"
       },

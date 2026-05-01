@@ -12,8 +12,26 @@
     "tag:agent":     ["autogroup:admin"],
   },
 
+  // ----- groups --------------------------------------------------------
+  // Break-glass identity. The owner email is whitelisted directly so
+  // that even if every owner device loses tag:owner (e.g. a tagged
+  // auth key expires and re-auth happens without the tag), a fresh
+  // device authenticated as hironow365@gmail.com still has full
+  // tailnet access. Combined with Tailscale's 24h ACL grace period,
+  // this is the secure-by-default lockout-prevention path.
+  "groups": {
+    "group:owners": ["hironow365@gmail.com"],
+  },
+
   // ----- access rules --------------------------------------------------
   "acls": [
+    // Break-glass: owner identity (independent of tag) -> *:*.
+    {
+      "action": "accept",
+      "src":    ["group:owners"],
+      "dst":    ["*:*"],
+    },
+
     // Owner devices can reach anything in the tailnet.
     {
       "action": "accept",
@@ -44,6 +62,13 @@
 
   // ----- ssh -----------------------------------------------------------
   "ssh": [
+    // Break-glass: owner identity can SSH as root regardless of tag.
+    {
+      "action": "accept",
+      "src":    ["group:owners"],
+      "dst":    ["tag:exe-coder"],
+      "users":  ["autogroup:nonroot", "root"],
+    },
     // Owner can SSH into the workspace VM as root via Tailscale SSH
     // (no separate key management needed).
     {

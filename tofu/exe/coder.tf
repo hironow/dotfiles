@@ -166,6 +166,11 @@ locals {
       > "/etc/cloudflared/$CF_TUNNEL_ID.json"
     chmod 0600 "/etc/cloudflared/$CF_TUNNEL_ID.json"
 
+    # The cloudflare apt package installs the binary at
+    # /usr/bin/cloudflared. Resolve dynamically so a future location
+    # change (or a manual /usr/local/bin override) does not silently
+    # break the unit.
+    CF_BIN="$(command -v cloudflared)"
     cat > /etc/systemd/system/cloudflared-exe.service <<UNIT
     [Unit]
     Description=cloudflared (exe.hironow.dev tunnel)
@@ -174,7 +179,7 @@ locals {
 
     [Service]
     Type=simple
-    ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate \
+    ExecStart=$CF_BIN tunnel --no-autoupdate \
       --credentials-file /etc/cloudflared/$CF_TUNNEL_ID.json \
       run $CF_TUNNEL_ID
     Restart=on-failure
@@ -213,6 +218,11 @@ locals {
       chmod 0600 /var/lib/coder/.admin_password
     fi
 
+    # Resolve the Coder binary location at runtime — install.sh drops
+    # it at /usr/bin/coder on Debian/Ubuntu, but the fallback path is
+    # /usr/local/bin/coder. Pin to whichever exists so the unit
+    # cannot drift.
+    CODER_BIN="$(command -v coder)"
     cat > /etc/systemd/system/coder.service <<UNIT
     [Unit]
     Description=Coder OSS server (exe.hironow.dev)
@@ -233,7 +243,7 @@ locals {
     Environment=CODER_SECURE_AUTH_COOKIE=true
     Environment=CODER_STRICT_TRANSPORT_SECURITY=31536000
     Environment=CODER_STRICT_TRANSPORT_SECURITY_OPTIONS=includeSubDomains;preload
-    ExecStart=/usr/bin/coder server
+    ExecStart=$CODER_BIN server
     Restart=on-failure
     RestartSec=10
     NoNewPrivileges=true
@@ -245,11 +255,6 @@ locals {
     [Install]
     WantedBy=multi-user.target
     UNIT
-    # If the binary lives at /usr/local/bin (fallback path) instead of
-    # /usr/bin, fix the unit before enabling.
-    if [[ -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]; then
-      sed -i 's|/usr/bin/coder|/usr/local/bin/coder|' /etc/systemd/system/coder.service
-    fi
     systemctl daemon-reload
     systemctl enable --now coder.service
   EOT
