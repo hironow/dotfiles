@@ -209,6 +209,44 @@ def test_tailscale_ssh_is_disabled(startup_script: str) -> None:
 
 
 @pytest.mark.exe
+def test_acl_grants_exe_workspace_access_to_coder_listener() -> None:
+    """B-plan tailnet routing: workspace VMs talk to the Coder server's
+    HTTP listener over the tailnet (avoiding the public CF Access edge
+    which has no service token from the workspace side). For that, the
+    ACL must:
+      - own a dedicated `tag:exe-workspace` (so workspace VMs can be
+        issued auth keys with a scope distinct from AI agents)
+      - allow `tag:exe-workspace -> tag:exe-coder:7080` (the Coder
+        HTTP listener port). Without this rule, packets from the
+        workspace to exe-coder.<tailnet>:7080 are dropped at the
+        tailnet ACL layer with no error message — workspaces silently
+        fail to download `/bin/coder-linux-amd64`.
+    """
+    acl_path = ROOT / "exe" / "tailscale" / "acl.hujson"
+    text = acl_path.read_text()
+
+    assert '"tag:exe-workspace"' in text, (
+        "tag:exe-workspace must be declared in tagOwners — without it the\n"
+        "tailscale_tailnet_key for the workspace VM cannot be issued."
+    )
+
+    # Find the acls list and check the pair-rule exists. Use a tolerant
+    # regex so a future formatter pass does not break the assertion.
+    rule = re.search(
+        r'"src"\s*:\s*\[\s*"tag:exe-workspace"\s*\]\s*,\s*'
+        r'"dst"\s*:\s*\[\s*"tag:exe-coder:[^"]*7080[^"]*"\s*\]',
+        text,
+        re.DOTALL,
+    )
+    assert rule is not None, (
+        "exe/tailscale/acl.hujson must contain an accept rule\n"
+        "  src: tag:exe-workspace -> dst: tag:exe-coder:<...,7080,...>\n"
+        "Required so the workspace VM can curl the Coder agent binary\n"
+        "from the server's tailnet IP on port 7080."
+    )
+
+
+@pytest.mark.exe
 def test_acl_has_no_ssh_block_or_only_empty() -> None:
     """If --ssh is off on the daemon, the ACL `ssh` key must be empty
     (or absent). Stale ssh rules are dead config that drifts away from
