@@ -165,12 +165,13 @@ export CF_ACCESS_CLIENT_ID="$(gcloud secrets versions access latest \
 export CF_ACCESS_CLIENT_SECRET="$(gcloud secrets versions access latest \
   --secret=exe-coder-cli-client-secret)"
 
+# Coder CLI parses --header on '='. Use 'Name=Value', NOT 'Name: Value'.
 coder login https://exe.hironow.dev --token <CODER_API_TOKEN> \
-  --header "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
-  --header "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+  --header "CF-Access-Client-Id=${CF_ACCESS_CLIENT_ID}" \
+  --header "CF-Access-Client-Secret=${CF_ACCESS_CLIENT_SECRET}"
 
-# Persist for shell session:
-export CODER_HEADER_COMMAND='printf "CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n" "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET"'
+# Persist for shell session (also '=' separator, not ':'):
+export CODER_HEADER_COMMAND='printf "CF-Access-Client-Id=%s\nCF-Access-Client-Secret=%s\n" "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET"'
 
 coder users list
 ```

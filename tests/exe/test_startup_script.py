@@ -249,6 +249,17 @@ def test_cdr_wrapper_present_and_executable() -> None:
     assert "exe-coder-cli-client-secret" in text
     assert "CODER_HEADER_COMMAND" in text
     assert "exec coder" in text
+    # Coder CLI parses headers on '='. 'Name: Value' fails with
+    #   create header transport: split header "..." had less than two parts
+    # Lock the '=' form so the regression cannot slip back in.
+    assert "CF-Access-Client-Id=" in text, (
+        "CODER_HEADER_COMMAND must emit 'CF-Access-Client-Id=...' "
+        "(equals sign, not colon)"
+    )
+    assert "CF-Access-Client-Secret=" in text
+    assert "CF-Access-Client-Id:" not in text, (
+        "Use '=' not ':' between header name and value (Coder CLI splits on '=')"
+    )
 
 
 @pytest.mark.exe
