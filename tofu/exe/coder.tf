@@ -52,6 +52,36 @@ resource "google_project_iam_member" "exe_coder_metric_writer" {
   member  = "serviceAccount:${google_service_account.exe_coder.email}"
 }
 
+# Coder server runs templates inside its embedded Terraform; the
+# templates create per-workspace GCE VMs and disks under THIS SA.
+# Without compute.instanceAdmin the very first 'terraform plan' on
+# the dotfiles-devcontainer template fails on the
+# 'google_compute_default_service_account' data read with:
+#
+#   Error 403: Required 'compute.projects.get' permission for
+#   'projects/gen-ai-hironow', forbidden
+#
+# Granting compute.instanceAdmin.v1 lets the SA read project
+# metadata and create / start / stop / delete VMs + disks.
+# iam.serviceAccountUser lets it assign the default compute SA
+# (the workspace runtime identity) to the new VMs.
+#
+# Trade-off (acknowledged): exe_coder is now a workspace lifecycle
+# admin for this project. Acceptable for a single-tenant personal
+# stack; in a multi-team Coder, a separate workspace-provisioner SA
+# is the right answer.
+resource "google_project_iam_member" "exe_coder_instance_admin" {
+  project = var.gcp_project_id
+  role    = "roles/compute.instanceAdmin.v1"
+  member  = "serviceAccount:${google_service_account.exe_coder.email}"
+}
+
+resource "google_project_iam_member" "exe_coder_sa_user" {
+  project = var.gcp_project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = "serviceAccount:${google_service_account.exe_coder.email}"
+}
+
 # ----- network --------------------------------------------------------
 #
 # A small dedicated VPC + subnet keeps the workspace blast radius
