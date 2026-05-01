@@ -89,7 +89,15 @@ def _image_exists(image: str) -> bool:
 
 
 def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
-    # Always run a one-shot container with bash -lc to preserve justfile semantics
+    # The dev container image (built by devcontainer.json) does NOT
+    # bake /root/dotfiles into its layers — that path is the bind
+    # mount target declared by `workspaceMount`. So a fresh
+    # `docker run` against the image starts with an empty /root,
+    # and `cd /root/dotfiles` fails with "No such file or directory".
+    #
+    # Re-create the bind mount manually for each one-shot test
+    # container, mirroring what the devcontainer CLI does at create
+    # time.
     full_script = textwrap.dedent(
         f"""
         set -e
@@ -102,6 +110,10 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
             "docker",
             "run",
             "--rm",
+            "-v",
+            f"{ROOT}:/root/dotfiles",
+            "-w",
+            "/root/dotfiles",
             image,
             "bash",
             "-lc",

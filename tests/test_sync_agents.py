@@ -102,10 +102,15 @@ def _run_in_container(
     Returns:
         CompletedProcess with stdout/stderr
     """
+    # /root/dotfiles is a bind mount in devcontainer.json, not a
+    # baked-in COPY layer. Re-create the mount for each one-shot
+    # container so the workspace is reachable.
     docker_cmd = [
         "docker",
         "run",
         "--rm",
+        "-v",
+        f"{ROOT}:/root/dotfiles",
         "-w",
         "/root/dotfiles",
         docker_image,
