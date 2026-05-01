@@ -131,19 +131,47 @@ If older deploys (before the fix) left stale `exe-coder-N` entries:
    active device automatically; downstream consumers do not need
    updating.
 
-## My laptop's `tailscale status` shows nothing
+## My laptop's `tailscale status` doesn't list `exe-coder`
 
-This usually means the laptop is signed out of the tailnet, not that
-the VM failed to join.
+If the device is **visible in <https://login.tailscale.com/admin/machines>**
+but absent from local `tailscale status`, the laptop is on the
+right tailnet but ACL rules are filtering peer visibility.
 
 ```bash
+# Sanity: same tailnet, same identity
 tailscale status --json | jq -r '.CurrentTailnet.Name'   # expected: hironow.github
 tailscale status --json | jq '.BackendState'             # expected: "Running"
-tailscale up                                              # if the above is wrong
+
+# Effective capabilities (admin / owner / etc.)
+tailscale status --json | jq '.Self.Capabilities'
+
+# Peer list (exe-coder should be in here once ACLs allow)
+tailscale status --json | jq '.Peer | [.[] | .HostName]'
+
+# Direct ping by MagicDNS name
+tailscale ping exe-coder
 ```
 
-If the laptop is in a different tailnet (work tailnet, etc.),
-`tailscale switch hironow.github` to switch.
+The ACL is set up with **two** break-glass rules so a user is
+guaranteed reach to `tag:exe-coder` regardless of how their identity
+got mapped:
+
+1. `autogroup:admin` — anyone with the admin role on this tailnet.
+   GitHub-OAuth tailnets like `hironow.github` produce identities of
+   the form `<gh-username>@github`, NOT the email used to sign in,
+   so this is the rule that actually matches.
+2. `group:owners = ["hironow365@gmail.com"]` — explicit email
+   allowlist as a redundant secondary path.
+
+If neither path produces visibility, force a re-fetch of the policy
+on the laptop:
+
+```bash
+tailscale down && tailscale up
+# or, to fully reset:
+sudo tailscale set --auto-update=false
+sudo tailscale logout && sudo tailscale up
+```
 
 ## Incident — Tailscale ACL locked me out
 

@@ -25,7 +25,19 @@
 
   // ----- access rules --------------------------------------------------
   "acls": [
-    // Break-glass: owner identity (independent of tag) -> *:*.
+    // Break-glass #1: anyone with the admin role on this tailnet
+    // -> *:*. Personal tailnets where the operator is admin (e.g.
+    // tailnet 'hironow.github' via GitHub login) are guaranteed to
+    // match here, even when the GitHub-derived login identity does
+    // not equal the email in group:owners (GitHub login produces
+    // '<gh-username>@github' rather than the gmail address).
+    {
+      "action": "accept",
+      "src":    ["autogroup:admin"],
+      "dst":    ["*:*"],
+    },
+    // Break-glass #2: explicit email allowlist for the owner. Stays
+    // in place for tailnets where the admin-role mapping changes.
     {
       "action": "accept",
       "src":    ["group:owners"],

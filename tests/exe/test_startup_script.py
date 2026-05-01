@@ -228,17 +228,25 @@ def test_acl_has_no_ssh_block_or_only_empty() -> None:
 
 
 @pytest.mark.exe
-def test_coder_telemetry_uses_only_enable_form(startup_script: str) -> None:
-    """Coder v2.31 deprecates CODER_TELEMETRY (no suffix) and
-    CODER_TELEMETRY_TRACE; the boolean control is CODER_TELEMETRY_ENABLE.
-    Either deprecated name triggers a startup warning, so lock the
-    'enable-only' form."""
-    # The script may legitimately contain CODER_TELEMETRY_ENABLE=...
-    # but must NOT contain a bare CODER_TELEMETRY= or CODER_TELEMETRY_TRACE=.
-    bad = re.findall(r"CODER_TELEMETRY(?:_TRACE)?=", startup_script)
-    assert bad == [], (
-        f"Found deprecated telemetry env(s) in startup_script: {bad}.\n"
-        "Use CODER_TELEMETRY_ENABLE only."
+def test_coder_telemetry_off_via_cli_flag(startup_script: str) -> None:
+    """Coder's serpent CLI library prints a 'WARN: CODER_TELEMETRY is
+    deprecated' line whenever a parsed option carries an
+    UseInstead-aliased env (CODER_TELEMETRY -> CODER_TELEMETRY_ENABLE).
+    Setting CODER_TELEMETRY_ENABLE in the unit was insufficient on
+    Coder v2.31 — the warning still fired. Use the --telemetry=false
+    CLI flag and drop the env entirely."""
+    # No CODER_TELEMETRY* env should be set (any of the family
+    # triggers the alias path).
+    bad_env = re.findall(
+        r"^\s*Environment=CODER_TELEMETRY[^=]*=", startup_script, re.MULTILINE
+    )
+    assert bad_env == [], (
+        f"Found CODER_TELEMETRY* env in unit: {bad_env}. Use the\n"
+        "--telemetry=false CLI flag on ExecStart instead."
+    )
+    # And the CLI flag must be present.
+    assert "--telemetry=false" in startup_script, (
+        "missing --telemetry=false on the coder ExecStart line"
     )
 
 
