@@ -62,13 +62,11 @@
   ],
 
   // ----- node attributes ----------------------------------------------
-  // Enable tailscale serve / funnel only on the workspace VM, and
-  // restrict serve to tailnet only by default (funnel for public is
-  // deferred to the (P)ublic publish commit).
-  "nodeAttrs": [
-    {
-      "target": ["tag:exe-coder"],
-      "attr":   ["funnel"],
-    },
-  ],
+  // Default-deny posture: no nodes are granted `funnel`. Public
+  // exposure (`*.sandbox.hironow.dev` via tailscale funnel) is the
+  // (P)ublic publish path and is deferred. When that commit lands it
+  // will explicitly add a `nodeAttrs` entry granting `funnel` to
+  // `tag:exe-coder`. Until then, `tailscale serve` (Tailnet-only)
+  // is the only publish mechanism.
+  "nodeAttrs": [],
 }
