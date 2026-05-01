@@ -388,7 +388,14 @@ def test_doctor_reports_just(docker_image):
         ),
         pytest.param(
             "Check: docker ports guarded",
-            "if command -v docker >/dev/null 2>&1; then just check-dockerport; else echo skip-docker; fi",
+            # docker-cli is installed in the dev container image (Coder's
+            # agent shells out to `docker ps`), but no dockerd runs inside
+            # the sandbox. Guard on actual daemon reachability so the
+            # CLI-without-daemon case is treated as 'no docker available'
+            # — which it effectively is for any operation that matters.
+            "if command -v docker >/dev/null 2>&1 && "
+            "docker info >/dev/null 2>&1; "
+            "then just check-dockerport; else echo skip-docker; fi",
             0,
             "skip-docker",
             id="Check: docker ports guarded",
