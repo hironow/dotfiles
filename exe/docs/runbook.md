@@ -115,6 +115,36 @@ just exe-apply
 just exe-smoke
 ```
 
+## Stale exe-coder devices in the tailnet
+
+`tailscale_tailnet_key.exe_coder` is `ephemeral = true`, so the VM
+self-removes from the tailnet on every stop (preemptible 24h cycle,
+manual `just exe-down`, `just exe-replace ...`). New boot creates a
+fresh device.
+
+If older deploys (before the fix) left stale `exe-coder-N` entries:
+
+1. Confirm the active device is *Connected* in
+   <https://login.tailscale.com/admin/machines>.
+2. For each stale `exe-coder-N` row, click the menu → **Remove device**.
+3. The MagicDNS name `exe-coder.<tailnet>.ts.net` resolves to the
+   active device automatically; downstream consumers do not need
+   updating.
+
+## My laptop's `tailscale status` shows nothing
+
+This usually means the laptop is signed out of the tailnet, not that
+the VM failed to join.
+
+```bash
+tailscale status --json | jq -r '.CurrentTailnet.Name'   # expected: hironow.github
+tailscale status --json | jq '.BackendState'             # expected: "Running"
+tailscale up                                              # if the above is wrong
+```
+
+If the laptop is in a different tailnet (work tailnet, etc.),
+`tailscale switch hironow.github` to switch.
+
 ## Incident — Tailscale ACL locked me out
 
 The `tailscale_acl` resource pushes `exe/tailscale/acl.hujson` on every

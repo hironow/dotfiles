@@ -61,30 +61,13 @@
   ],
 
   // ----- ssh -----------------------------------------------------------
-  "ssh": [
-    // Break-glass: owner identity can SSH as root regardless of tag.
-    {
-      "action": "accept",
-      "src":    ["group:owners"],
-      "dst":    ["tag:exe-coder"],
-      "users":  ["autogroup:nonroot", "root"],
-    },
-    // Owner can SSH into the workspace VM as root via Tailscale SSH
-    // (no separate key management needed).
-    {
-      "action": "accept",
-      "src":    ["tag:owner"],
-      "dst":    ["tag:exe-coder"],
-      "users":  ["autogroup:nonroot", "root"],
-    },
-    // Agents get SSH only as a non-root user (the workspace UID).
-    {
-      "action": "accept",
-      "src":    ["tag:agent"],
-      "dst":    ["tag:exe-coder"],
-      "users":  ["autogroup:nonroot"],
-    },
-  ],
+  // Tailscale SSH is intentionally OFF on this stack — the VM does
+  // not pass --ssh to `tailscale up`. SSH (when needed) goes through
+  // OpenSSH on the tailnet IP, authenticated by the operator's
+  // public key. Keeping no ssh block here matches that posture and
+  // removes the 'Tailscale SSH enabled, but access controls don't
+  // allow anyone to access this device' warning.
+  "ssh": [],
 
   // ----- node attributes ----------------------------------------------
   // Default-deny posture: no nodes are granted `funnel`. Public

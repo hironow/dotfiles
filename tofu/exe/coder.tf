@@ -147,10 +147,16 @@ locals {
     # under the same tags + hostname.
     AUTH_KEY="$(gcloud --quiet --project="$PROJECT" \
       secrets versions access latest --secret="$TS_SECRET")"
+    # Tailscale SSH (--ssh) is intentionally OFF.
+    # - Removes the dependency on a Tailscale-side ssh{} ACL block.
+    # - Closes the SSH-over-Tailscale-cert side door; if SSH is needed
+    #   it goes through OpenSSH (sshd.service) over the tailnet IP,
+    #   authenticated by the operator's public key.
+    # - Eliminates the 'Tailscale SSH enabled, but access controls
+    #   don't allow anyone to access this device' warning.
     tailscale up \
       --auth-key="$AUTH_KEY" \
       --hostname="$HOSTNAME_VM" \
-      --ssh \
       --accept-routes=false \
       --advertise-tags="$TS_TAG"
     unset AUTH_KEY
@@ -264,8 +270,12 @@ locals {
     Environment=CODER_WILDCARD_ACCESS_URL=$CODER_WILDCARD
     Environment=CODER_PG_CONNECTION_URL=
     Environment=CODER_CACHE_DIRECTORY=/var/lib/coder/cache
+    # CODER_TELEMETRY (without suffix) and CODER_TELEMETRY_TRACE are
+    # both deprecated in Coder v2.31; the boolean control collapsed to
+    # CODER_TELEMETRY_ENABLE only. Setting either deprecated name
+    # triggers 'WARN: CODER_TELEMETRY is deprecated, please use
+    # CODER_TELEMETRY_ENABLE instead'.
     Environment=CODER_TELEMETRY_ENABLE=false
-    Environment=CODER_TELEMETRY_TRACE=false
     Environment=CODER_DISABLE_PASSWORD_AUTH=false
     Environment=CODER_SECURE_AUTH_COOKIE=true
     Environment=CODER_STRICT_TRANSPORT_SECURITY=31536000

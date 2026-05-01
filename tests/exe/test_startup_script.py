@@ -171,6 +171,78 @@ def test_startup_script_extracts_cleanly(startup_script: str) -> None:
 
 
 @pytest.mark.exe
+def test_exe_coder_auth_key_is_ephemeral() -> None:
+    """The workspace VM auth-key MUST be ephemeral=true. Without it,
+    every preemptible 24h cycle (or every `just exe-replace`) leaves
+    a stale 'exe-coder-N' device in the tailnet. MagicDNS still
+    resolves to the active VM, but the admin UI accumulates dead
+    rows over weeks of operation, and the device count quota is
+    finite."""
+    tailscale_tf = (ROOT / "tofu" / "exe" / "tailscale.tf").read_text()
+    # Find the resource block, then assert ephemeral = true on it.
+    block = re.search(
+        r'resource "tailscale_tailnet_key" "exe_coder" \{(.*?)^\}',
+        tailscale_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert block is not None, "could not find exe_coder auth-key resource"
+    assert re.search(r"ephemeral\s*=\s*true", block.group(1)), (
+        "tailscale_tailnet_key.exe_coder must be ephemeral=true"
+    )
+
+
+@pytest.mark.exe
+def test_tailscale_ssh_is_disabled(startup_script: str) -> None:
+    """`tailscale up --ssh` activates Tailscale SSH, which requires a
+    matching ssh{} block in the ACL and exposes a parallel auth path.
+    The exe stack uses OpenSSH over the tailnet IP instead, so --ssh
+    must NOT appear on the tailscale-up line."""
+    m = re.search(
+        r"^\s*tailscale up\s+\\(.*?)\n\n", startup_script, re.DOTALL | re.MULTILINE
+    )
+    assert m is not None, "could not locate `tailscale up` invocation"
+    invocation = m.group(1)
+    assert "--ssh" not in invocation, (
+        "tailscale up must not include --ssh; OpenSSH-over-tailnet is the\n"
+        "supported path. See coder.tf comment."
+    )
+
+
+@pytest.mark.exe
+def test_acl_has_no_ssh_block_or_only_empty() -> None:
+    """If --ssh is off on the daemon, the ACL `ssh` key must be empty
+    (or absent). Stale ssh rules are dead config that drifts away from
+    the live posture."""
+    acl_path = ROOT / "exe" / "tailscale" / "acl.hujson"
+    text = acl_path.read_text()
+    # find any `"ssh": [` followed by non-empty rules
+    m = re.search(r'"ssh"\s*:\s*\[(.*?)\]', text, re.DOTALL)
+    assert m is not None, "expected `ssh` key (possibly empty)"
+    inner = m.group(1).strip()
+    # comments-only is OK; actual rule objects are not
+    inner_no_comments = re.sub(r"//[^\n]*", "", inner).strip()
+    assert "{" not in inner_no_comments, (
+        "exe/tailscale/acl.hujson `ssh` block must be empty when --ssh is\n"
+        "off on the VM. Found rules — remove them or re-enable --ssh."
+    )
+
+
+@pytest.mark.exe
+def test_coder_telemetry_uses_only_enable_form(startup_script: str) -> None:
+    """Coder v2.31 deprecates CODER_TELEMETRY (no suffix) and
+    CODER_TELEMETRY_TRACE; the boolean control is CODER_TELEMETRY_ENABLE.
+    Either deprecated name triggers a startup warning, so lock the
+    'enable-only' form."""
+    # The script may legitimately contain CODER_TELEMETRY_ENABLE=...
+    # but must NOT contain a bare CODER_TELEMETRY= or CODER_TELEMETRY_TRACE=.
+    bad = re.findall(r"CODER_TELEMETRY(?:_TRACE)?=", startup_script)
+    assert bad == [], (
+        f"Found deprecated telemetry env(s) in startup_script: {bad}.\n"
+        "Use CODER_TELEMETRY_ENABLE only."
+    )
+
+
+@pytest.mark.exe
 def test_coder_hsts_options_is_comma_separated(startup_script: str) -> None:
     """Coder's HSTS option parser rejects ';' as a separator with:
         error: coderd: setting hsts header failed: hsts: invalid

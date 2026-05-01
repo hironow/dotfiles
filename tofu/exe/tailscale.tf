@@ -23,9 +23,15 @@ resource "tailscale_tailnet_key" "exe_coder" {
   # Tailscale rejects '(', ')', ':' etc. in key descriptions with
   # 'description had invalid characters (400)'. Keep it alphanumeric
   # + spaces + hyphens only.
-  description   = "exe-coder workspace VM auto-join managed by tofu"
-  reusable      = true
-  ephemeral     = false
+  description = "exe-coder workspace VM auto-join managed by tofu"
+  reusable    = true
+  # ephemeral = true: when the VM stops (preemptible 24h auto-stop, or
+  # tofu destroy), Tailscale automatically removes the device from the
+  # tailnet. Without this every boot leaves an 'exe-coder-N' stale
+  # entry in the admin UI. MagicDNS (exe-coder.<tailnet>.ts.net) still
+  # resolves to the active VM each boot, so the tradeoff (IP changes
+  # per reboot) is invisible to consumers.
+  ephemeral     = true
   preauthorized = true
   expiry        = 90 * 24 * 3600 # 90 days
   tags          = [local.tag_exe_coder]
