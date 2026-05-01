@@ -25,9 +25,9 @@ This document describes the components currently provisioned by
                                   +----------------------+
                                   |  GCE VM exe-coder    |
                                   |  region: northeast1  |
-                                  |  cos-stable, e2-small|
-                                  |  preemptible         |
-                                  |                      |
+                                  |  Ubuntu 24.04 LTS    |
+                                  |  e2-small preemptible|
+                                  |  systemd-supervised  |
                                   |  cloudflared --------+
                                   |  tailscaled          |
                                   |  Coder server (7080) |
@@ -48,7 +48,8 @@ Legend / 凡例:
 - Access OIDC: Cloudflare Access の認証 (OIDC ベース)
 - Tailscale tag:agent: Agent 用に制限された Tailscale tag
 - exe-coder: workspace VM のホスト名 (Tailscale 上の名前と一致)
-- cos-stable: Container-Optimized OS (Google 提供)
+- Ubuntu 24.04 LTS: VM ベース OS (apt + systemd で daemon を管理)
+- systemd-supervised: tailscaled / cloudflared / coder を systemd unit として常駐
 - preemptible: 24 時間で自動停止する割引 VM
 ```
 

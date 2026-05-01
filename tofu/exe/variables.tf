@@ -79,9 +79,9 @@ variable "preemptible" {
 }
 
 variable "vm_image" {
-  description = "Boot image family for the workspace VM."
+  description = "Boot image family for the workspace VM. Ubuntu 24.04 LTS (noble) — chosen over cos-stable because cos forbids host-side execution outside /var/lib/{google,docker,toolbox} and ships without gcloud, both of which the startup-script needs."
   type        = string
-  default     = "projects/cos-cloud/global/images/family/cos-stable"
+  default     = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"
 }
 
 variable "boot_disk_size_gb" {

@@ -1,5 +1,5 @@
-# GCE workspace VM that hosts the Coder server (added in a later commit)
-# and the dev container (built from tests/docker/JustSandbox.Dockerfile).
+# GCE workspace VM that hosts the Coder server and the dev container
+# (built from tests/docker/JustSandbox.Dockerfile).
 #
 # Network model:
 #   - The VM has a public IP only so cloudflared can phone home; no
@@ -7,13 +7,20 @@
 #   - All inbound traffic to dev workloads flows through Tailscale
 #     (Pattern A) — no firewall rule for 22/80/443/3000-3999.
 #
-# Boot model:
-#   - cos-stable image keeps the host minimal and auto-updating.
-#   - Startup-script:
-#       1. Install Tailscale (apt-less; cos uses cloud-init's pull).
-#       2. Pull the workspace VM auth key from Secret Manager.
-#       3. tailscale up --auth-key=$KEY --hostname=exe-coder.
-#   - Coder server install is its own commit (feat(exe/coder): ...).
+# Boot model — Ubuntu 24.04 LTS (noble):
+#   - Earlier revisions used cos-stable; codex review flagged two
+#     fatal incompatibilities:
+#       1. cos mounts /var as noexec (binaries under /var/lib/coder
+#          cannot execute).
+#       2. cos has no gcloud on the host (it lives only in toolbox).
+#     Switching to Ubuntu LTS resolves both — gcloud installs cleanly
+#     via apt, /usr/local/bin is writable + executable, systemd is
+#     available for proper service supervision.
+#   - The startup-script is idempotent on every boot, including
+#     post-preemption auto-restarts.
+#   - Each daemon (tailscaled, cloudflared, coder) runs as a systemd
+#     unit so we get supervision, restart policy, and journald logs
+#     for free.
 
 # ----- service account -------------------------------------------------
 #
@@ -84,58 +91,73 @@ resource "google_compute_firewall" "deny_all_ingress" {
 locals {
   vm_name = "${local.prefix}-coder"
 
-  # Startup-script runs on every boot. It is idempotent: if Tailscale is
-  # already up with the right hostname, it no-ops. The auth key is
-  # fetched from Secret Manager via the VM's service account, so the
-  # plaintext never lands in the GCE metadata service.
+  # Startup-script runs on every boot. It is idempotent: if a daemon
+  # is already running with the desired config, the systemctl restart
+  # / start calls no-op or replay safely. Auth keys and tunnel
+  # credentials are fetched from Secret Manager via the VM's service
+  # account, so plaintext never lands in the GCE metadata service.
   startup_script = <<-EOT
     #!/usr/bin/env bash
     set -euo pipefail
 
-    HOSTNAME='${local.vm_name}'
+    HOSTNAME_VM='${local.vm_name}'
     TS_SECRET='${google_secret_manager_secret.exe_coder_authkey.secret_id}'
     CF_SECRET='${google_secret_manager_secret.tunnel_credentials.secret_id}'
     CF_TUNNEL_ID='${cloudflare_zero_trust_tunnel_cloudflared.exe.id}'
     PROJECT='${var.gcp_project_id}'
+    CODER_ACCESS_URL='https://${local.coder_host}'
+    CODER_WILDCARD='${local.sandbox_host}'
+    TS_TAG='${local.tag_exe_coder}'
 
-    # Tailscale on Container-Optimized OS — install via the official
-    # static binary tarball into /var (cos has /usr read-only).
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y
+    apt-get install -y --no-install-recommends \
+      apt-transport-https ca-certificates curl gnupg lsb-release jq
+
+    # ---- Google Cloud CLI (Ubuntu noble) ------------------------------
+    if ! command -v gcloud >/dev/null 2>&1; then
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/cloud.google.gpg
+      echo 'deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' \
+        > /etc/apt/sources.list.d/google-cloud-sdk.list
+      apt-get update -y
+      apt-get install -y --no-install-recommends google-cloud-cli
+    fi
+
+    # ---- Tailscale (apt repository) -----------------------------------
     if ! command -v tailscale >/dev/null 2>&1; then
-      mkdir -p /var/lib/tailscale /var/run/tailscale
-      curl -fsSL https://pkgs.tailscale.com/stable/tailscale_latest_amd64.tgz \
-        | tar -xz -C /var/lib/tailscale --strip-components=1
-      ln -sf /var/lib/tailscale/tailscale  /usr/local/bin/tailscale
-      ln -sf /var/lib/tailscale/tailscaled /usr/local/bin/tailscaled
+      curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
+        > /etc/apt/keyrings/tailscale.gpg
+      curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list \
+        > /etc/apt/sources.list.d/tailscale.list
+      apt-get update -y
+      apt-get install -y --no-install-recommends tailscale
     fi
 
-    if ! pgrep -x tailscaled >/dev/null 2>&1; then
-      /usr/local/bin/tailscaled \
-        --state=/var/lib/tailscale/tailscaled.state \
-        --socket=/var/run/tailscale/tailscaled.sock \
-        --tun=userspace-networking >/var/log/tailscaled.log 2>&1 &
-      sleep 2
-    fi
+    systemctl enable --now tailscaled
 
     # Fetch the tag:exe-coder auth key (latest version) from Secret Manager.
+    # Idempotent join: tailscale up is a no-op if already authenticated
+    # under the same tags + hostname.
     AUTH_KEY="$(gcloud --quiet --project="$PROJECT" \
       secrets versions access latest --secret="$TS_SECRET")"
-
-    /usr/local/bin/tailscale up \
+    tailscale up \
       --auth-key="$AUTH_KEY" \
-      --hostname="$HOSTNAME" \
+      --hostname="$HOSTNAME_VM" \
       --ssh \
       --accept-routes=false \
-      --advertise-tags='${local.tag_exe_coder}'
+      --advertise-tags="$TS_TAG"
+    unset AUTH_KEY
 
-    # cloudflared — pull credentials JSON from Secret Manager and run as a
-    # connector for the named tunnel. config_src = "cloudflare" means the
-    # ingress rules live in the Cloudflare dashboard / tofu state, so the
-    # daemon only needs --token-less credentials.
+    # ---- cloudflared (cloudflare apt repo) ----------------------------
     if ! command -v cloudflared >/dev/null 2>&1; then
-      mkdir -p /var/lib/cloudflared
-      curl -fsSL -o /usr/local/bin/cloudflared \
-        https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-      chmod +x /usr/local/bin/cloudflared
+      curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
+        > /etc/apt/keyrings/cloudflare-main.gpg
+      echo 'deb [signed-by=/etc/apt/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared noble main' \
+        > /etc/apt/sources.list.d/cloudflared.list
+      apt-get update -y
+      apt-get install -y --no-install-recommends cloudflared
     fi
 
     install -m 0700 -d /etc/cloudflared
@@ -144,23 +166,44 @@ locals {
       > "/etc/cloudflared/$CF_TUNNEL_ID.json"
     chmod 0600 "/etc/cloudflared/$CF_TUNNEL_ID.json"
 
-    if ! pgrep -x cloudflared >/dev/null 2>&1; then
-      /usr/local/bin/cloudflared tunnel \
-        --no-autoupdate \
-        --credentials-file "/etc/cloudflared/$CF_TUNNEL_ID.json" \
-        run "$CF_TUNNEL_ID" >/var/log/cloudflared.log 2>&1 &
-    fi
+    cat > /etc/systemd/system/cloudflared-exe.service <<UNIT
+    [Unit]
+    Description=cloudflared (exe.hironow.dev tunnel)
+    After=network-online.target
+    Wants=network-online.target
 
-    # Coder OSS server — single-node SQLite mode. cos has /usr read-only,
-    # so the binary lives under /var/lib/coder and is symlinked into
-    # /usr/local/bin (writable on cos via the bind-mount overlay).
-    mkdir -p /var/lib/coder /var/lib/coder/data
-    if [[ ! -x /var/lib/coder/coder ]]; then
-      curl -fsSL -o /var/lib/coder/coder \
-        https://github.com/coder/coder/releases/latest/download/coder-linux-amd64
-      chmod +x /var/lib/coder/coder
+    [Service]
+    Type=simple
+    ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate \
+      --credentials-file /etc/cloudflared/$CF_TUNNEL_ID.json \
+      run $CF_TUNNEL_ID
+    Restart=on-failure
+    RestartSec=10
+    NoNewPrivileges=true
+    ProtectSystem=strict
+    ProtectHome=true
+    PrivateTmp=true
+    ReadWritePaths=/etc/cloudflared
+
+    [Install]
+    WantedBy=multi-user.target
+    UNIT
+    systemctl daemon-reload
+    systemctl enable --now cloudflared-exe.service
+    systemctl restart cloudflared-exe.service
+
+    # ---- Coder OSS server ---------------------------------------------
+    install -m 0755 -d /var/lib/coder /var/lib/coder/cache
+    if [[ ! -x /usr/local/bin/coder ]]; then
+      curl -fsSL https://coder.com/install.sh | sh -s -- --terraform-no-pin
+      # The installer drops the binary at /usr/bin/coder on Debian/Ubuntu.
+      # Fall back to a direct download if the install method changes.
+      if [[ ! -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]; then
+        curl -fsSL -o /usr/local/bin/coder \
+          https://github.com/coder/coder/releases/latest/download/coder-linux-amd64
+        chmod 0755 /usr/local/bin/coder
+      fi
     fi
-    ln -sf /var/lib/coder/coder /usr/local/bin/coder
 
     # Initial admin password — generated on first boot, persisted on the
     # boot disk (which auto-deletes on tofu destroy). Change it via the
@@ -170,26 +213,45 @@ locals {
       chmod 0600 /var/lib/coder/.admin_password
     fi
 
-    if ! pgrep -x coder >/dev/null 2>&1; then
-      # All Coder config goes through CODER_* env vars. With
-      # CODER_PG_CONNECTION_URL empty, Coder runs an embedded
-      # PostgreSQL under the cache directory — single-node default.
-      env \
-        CODER_ACCESS_URL='https://${local.coder_host}' \
-        CODER_HTTP_ADDRESS='127.0.0.1:7080' \
-        CODER_TLS_ENABLE='false' \
-        CODER_WILDCARD_ACCESS_URL='${local.sandbox_host}' \
-        CODER_PG_CONNECTION_URL='' \
-        CODER_CACHE_DIRECTORY='/var/lib/coder/cache' \
-        CODER_TELEMETRY='false' \
-        CODER_TELEMETRY_TRACE='false' \
-        CODER_DISABLE_PASSWORD_AUTH='false' \
-        CODER_SECURE_AUTH_COOKIE='true' \
-        CODER_STRICT_TRANSPORT_SECURITY='31536000' \
-        CODER_STRICT_TRANSPORT_SECURITY_OPTIONS='includeSubDomains;preload' \
-        /var/lib/coder/coder server \
-        >/var/log/coder.log 2>&1 &
+    cat > /etc/systemd/system/coder.service <<UNIT
+    [Unit]
+    Description=Coder OSS server (exe.hironow.dev)
+    After=network-online.target
+    Wants=network-online.target
+
+    [Service]
+    Type=simple
+    Environment=CODER_ACCESS_URL=$CODER_ACCESS_URL
+    Environment=CODER_HTTP_ADDRESS=127.0.0.1:7080
+    Environment=CODER_TLS_ENABLE=false
+    Environment=CODER_WILDCARD_ACCESS_URL=$CODER_WILDCARD
+    Environment=CODER_PG_CONNECTION_URL=
+    Environment=CODER_CACHE_DIRECTORY=/var/lib/coder/cache
+    Environment=CODER_TELEMETRY=false
+    Environment=CODER_TELEMETRY_TRACE=false
+    Environment=CODER_DISABLE_PASSWORD_AUTH=false
+    Environment=CODER_SECURE_AUTH_COOKIE=true
+    Environment=CODER_STRICT_TRANSPORT_SECURITY=31536000
+    Environment=CODER_STRICT_TRANSPORT_SECURITY_OPTIONS=includeSubDomains;preload
+    ExecStart=/usr/bin/coder server
+    Restart=on-failure
+    RestartSec=10
+    NoNewPrivileges=true
+    ProtectSystem=full
+    ProtectHome=true
+    PrivateTmp=true
+    ReadWritePaths=/var/lib/coder
+
+    [Install]
+    WantedBy=multi-user.target
+    UNIT
+    # If the binary lives at /usr/local/bin (fallback path) instead of
+    # /usr/bin, fix the unit before enabling.
+    if [[ -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]; then
+      sed -i 's|/usr/bin/coder|/usr/local/bin/coder|' /etc/systemd/system/coder.service
     fi
+    systemctl daemon-reload
+    systemctl enable --now coder.service
   EOT
 }
 
