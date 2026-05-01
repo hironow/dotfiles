@@ -1,42 +1,62 @@
 // Dev Container Specification — https://containers.dev
 //
-// Reuses tests/docker/JustSandbox.Dockerfile (the same image CI builds)
-// so "what runs in CI" and "what the agent / IDE sees" stay aligned.
+// Single source of truth shared by three consumers:
+//   1. local IDE   — VS Code / Cursor / JetBrains "Reopen in Container"
+//   2. CI sandbox  — `devcontainers/ci` action in test-just.yaml
+//   3. Coder workspace — envbuilder reads this file on workspace boot
 //
-// Open via:
-//   - Claude Code:  /devcontainer
-//   - VS Code:      Reopen in Container
-//   - Cursor:       Reopen in Container
-//   - JetBrains:    File > Remote Development > Dev Containers
+// Migrating the base image / features here moves all three together.
+// Structural assertions live in tests/test_devcontainer.py.
 {
-  "name": "dotfiles (just sandbox)",
+  "name": "dotfiles",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
 
-  "build": {
-    "dockerfile": "../tests/docker/JustSandbox.Dockerfile",
-    "context": "..",
-    "args": {
-      "BASE_IMAGE": "alpine:3.19"
-    }
-  },
-
-  // The Dockerfile sets WORKDIR /root/dotfiles. Bind-mount the host repo
-  // to the same path so the live workspace shadows the baked-in COPY.
-  "workspaceFolder": "/root/dotfiles",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/root/dotfiles,type=bind,consistency=cached",
-
-  // mise.lock baked at build time gets shadowed by the bind-mount, and the
-  // host repo intentionally does not check in mise.lock. Re-trust + re-install
-  // so MISE_OFFLINE callers (lint/test) find resolved versions. install-hooks
-  // wires prek into git for this clone.
-  "postCreateCommand": "mise trust mise.toml && touch mise.lock && mise install && just install-hooks",
-
-  // Pre-build step uses the same image CI builds, so the local first-open is
-  // fast when the user has already pulled or built dotfiles-just-sandbox.
-  "containerEnv": {
-    "MISE_OFFLINE": "1"
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": false,
+      "installOhMyZsh": false,
+      "username": "root",
+      "uid": "automatic",
+      "gid": "automatic"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/google-cloud-cli:1": {
+      "installGkeGcloudAuthPlugin": false
+    },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "installTools": false
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers-extra/features/just:1": {},
+    "ghcr.io/jdx/devcontainer-mise:0": {},
+    "ghcr.io/va-h/devcontainers-features/uv:1": {}
   },
 
   "remoteUser": "root",
+  "containerUser": "root",
+
+  "workspaceFolder": "/root/dotfiles",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/root/dotfiles,type=bind,consistency=cached",
+
+  // mise.toml is bind-mounted from host; mise.lock is intentionally
+  // not checked in. Re-trust + install at create time so MISE_OFFLINE
+  // callers (just lint / just test) find resolved versions cached.
+  // Runs once per container; baked into prebuilt images by
+  // devcontainers/ci action when --cache-from is in play.
+  "onCreateCommand": "mise trust mise.toml && touch mise.lock && mise install",
+
+  // install-hooks wires prek into .git/hooks for this clone. Lives
+  // in postCreateCommand because it operates on the bind-mounted
+  // workspace, which is only ready after onCreate.
+  "postCreateCommand": "just install-hooks",
+
+  "containerEnv": {
+    "MISE_OFFLINE": "1"
+  },
 
   "customizations": {
     "vscode": {
