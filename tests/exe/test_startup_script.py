@@ -171,6 +171,25 @@ def test_startup_script_extracts_cleanly(startup_script: str) -> None:
 
 
 @pytest.mark.exe
+def test_coder_hsts_options_is_comma_separated(startup_script: str) -> None:
+    """Coder's HSTS option parser rejects ';' as a separator with:
+        error: coderd: setting hsts header failed: hsts: invalid
+               option: 'includeSubDomains;preload'. Must be 'preload'
+               and/or 'includeSubDomains'.
+    The HTTP HSTS *header* uses ';' between directives, but Coder's
+    input parser expects ',' or whitespace. Lock the comma form."""
+    m = re.search(
+        r"CODER_STRICT_TRANSPORT_SECURITY_OPTIONS=([^\s\n]+)",
+        startup_script,
+    )
+    assert m is not None, "missing CODER_STRICT_TRANSPORT_SECURITY_OPTIONS"
+    value = m.group(1)
+    assert ";" not in value, (
+        f"HSTS options must use ',' not ';' (Coder rejects ';'); got: {value!r}"
+    )
+
+
+@pytest.mark.exe
 def test_startup_script_bash_syntax(startup_script: str, tmp_path: Path) -> None:
     """bash -n: catches stray quotes, missing fi/done, etc."""
     script = tmp_path / "startup.sh"

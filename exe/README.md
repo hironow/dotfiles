@@ -35,14 +35,14 @@ at runtime.
 +-----------+       Tailscale (tag:agent)        +---------------+
 | AI Agent  |  ---------------------------->     |  Coder        |
 +-----------+                                    |  workspace    |
-                                                  |  on GCE       |
-+-----------+       Cloudflare Access             +---------------+
+                                                 |  on GCE       |
++-----------+       Cloudflare Access            +---------------+
 | hironow   |  ---------------------------->            ^
-| (laptop)  |  (Zero Trust, identity-aware)              |
-+-----------+                                             |
+| (laptop)  |  (Zero Trust, identity-aware)             |
++-----------+                                           |
                                                   reads .devcontainer/
-                                                          |
-                                                          v
+                                                        |
+                                                        v
                                                   +----------------+
                                                   | dotfiles repo  |
                                                   | JustSandbox    |

@@ -269,7 +269,7 @@ locals {
     Environment=CODER_DISABLE_PASSWORD_AUTH=false
     Environment=CODER_SECURE_AUTH_COOKIE=true
     Environment=CODER_STRICT_TRANSPORT_SECURITY=31536000
-    Environment=CODER_STRICT_TRANSPORT_SECURITY_OPTIONS=includeSubDomains;preload
+    Environment=CODER_STRICT_TRANSPORT_SECURITY_OPTIONS=includeSubDomains,preload
     ExecStart=$CODER_BIN server
     Restart=on-failure
     RestartSec=10
