@@ -203,7 +203,12 @@ locals {
     systemctl restart cloudflared-exe.service
 
     # ---- Coder OSS server ---------------------------------------------
-    install -m 0755 -d /var/lib/coder /var/lib/coder/cache
+    # Coder's embedded PostgreSQL refuses to run as root, so run the
+    # whole server under a dedicated system user.
+    if ! id coder >/dev/null 2>&1; then
+      useradd --system --home-dir /var/lib/coder --shell /usr/sbin/nologin coder
+    fi
+    install -m 0755 -o coder -g coder -d /var/lib/coder /var/lib/coder/cache
     if [[ ! -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]; then
       # Coder's install.sh references $HOME. The root startup-script
       # process inherits no HOME, so dash exits with
@@ -235,6 +240,7 @@ locals {
       head -c 24 /dev/urandom | base64 | tr -d '+/=' > /var/lib/coder/.admin_password
       chmod 0600 /var/lib/coder/.admin_password
     fi
+    chown -R coder:coder /var/lib/coder
 
     # Resolve the Coder binary location at runtime — install.sh drops
     # it at /usr/bin/coder on Debian/Ubuntu, but the fallback path is
@@ -249,13 +255,16 @@ locals {
 
     [Service]
     Type=simple
+    User=coder
+    Group=coder
+    Environment=HOME=/var/lib/coder
     Environment=CODER_ACCESS_URL=$CODER_ACCESS_URL
     Environment=CODER_HTTP_ADDRESS=127.0.0.1:7080
     Environment=CODER_TLS_ENABLE=false
     Environment=CODER_WILDCARD_ACCESS_URL=$CODER_WILDCARD
     Environment=CODER_PG_CONNECTION_URL=
     Environment=CODER_CACHE_DIRECTORY=/var/lib/coder/cache
-    Environment=CODER_TELEMETRY=false
+    Environment=CODER_TELEMETRY_ENABLE=false
     Environment=CODER_TELEMETRY_TRACE=false
     Environment=CODER_DISABLE_PASSWORD_AUTH=false
     Environment=CODER_SECURE_AUTH_COOKIE=true
@@ -266,7 +275,7 @@ locals {
     RestartSec=10
     NoNewPrivileges=true
     ProtectSystem=full
-    ProtectHome=true
+    ProtectHome=false
     PrivateTmp=true
     ReadWritePaths=/var/lib/coder
 
