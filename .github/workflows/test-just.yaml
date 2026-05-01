@@ -12,57 +12,31 @@ concurrency:
 
 jobs:
   test:
-    name: Run just tests in Docker sandbox
+    name: Run just tests in dev container
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
-
-      - name: Setup mise (tool versions)
-        uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      # Build the dev container declared by .devcontainer/devcontainer.json
+      # (debian-12 + features) and run `just test` inside it. The action
+      # handles BuildKit, GHA cache wiring, and feature resolution so the
+      # local IDE / Coder workspace / CI all consume the same image graph.
+      #
+      # imageName=dotfiles-just-sandbox tags the resulting image so the
+      # pytest fixture in tests/test_just_sandbox.py finds it via
+      # `docker image inspect` (no rebuild).
+      - name: Run just test inside dev container
+        uses: devcontainers/ci@b63b30de439b47a52267f241112c5b453b673db5 # v0.3.1900000449
         with:
-          experimental: true
-
-      - name: Show Docker and tool versions
-        run: |
-          docker version
-          just --version
-          uv --version || true
-
-      - name: Cache uv
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
-
-      - name: Prebuild sandbox image (warm cache)
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: tests/docker/JustSandbox.Dockerfile
-          tags: |
-            dotfiles-just-sandbox:latest
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          # GITHUB_TOKEN bumps mise/aqua's GitHub API rate limit from 60 to
-          # 5000/hr, which is required for `mise install` during the build
-          # step (mise resolves "latest" against api.github.com).
-          secrets: |
-            github_token=${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run tests
-        env:
-          PYTEST_ADDOPTS: --junitxml=pytest-report.xml
-        run: |
-          just test
+          imageName: dotfiles-just-sandbox
+          imageTag: latest
+          push: never
+          cacheFrom: ghcr.io/${{ github.repository_owner }}/dotfiles-just-sandbox
+          runCmd: just test
+          env: |
+            PYTEST_ADDOPTS=--junitxml=/root/dotfiles/pytest-report.xml
 
       - name: Upload test report
         if: always()

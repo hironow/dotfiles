@@ -6,7 +6,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCKERFILE = ROOT / "tests" / "docker" / "JustSandbox.Dockerfile"
+DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
 
 
@@ -29,46 +29,55 @@ def _docker_available() -> bool:
     return r.returncode == 0
 
 
+def _devcontainer_cli_available() -> bool:
+    r = _run(["devcontainer", "--version"])
+    return r.returncode == 0
+
+
 @pytest.fixture(scope="session")
 def docker_image():
-    # given: docker daemon and base image availability
+    # given: docker daemon and devcontainer.json availability
     if not _docker_available():
         pytest.skip("Docker is not available on host; skipping sandbox tests.")
 
-    if not DOCKERFILE.exists():
-        pytest.skip("Sandbox Dockerfile missing; skipping.")
+    if not DEVCONTAINER_JSON.exists():
+        pytest.skip("devcontainer.json missing; skipping.")
 
-    # In CI, the sandbox image is prebuilt by the workflow's
-    # `docker/build-push-action` step. We reuse it instead of rebuilding so
-    # that a build failure surfaces as a CI step error (not as a silent
-    # pytest.skip that lets the workflow report green).
+    # In CI, the dev container image is prebuilt by the
+    # `devcontainers/ci` action with imageName=dotfiles-just-sandbox.
+    # We reuse it instead of rebuilding so that a build failure surfaces
+    # as a CI step error (not as a silent pytest.skip that lets the
+    # workflow report green).
     if _image_exists(IMAGE):
         yield IMAGE
         return
 
-    # when: build sandbox image using local workspace as build context
+    # Local fallback: build the dev container image via the devcontainer
+    # CLI. Requires `npm i -g @devcontainers/cli` on the host.
+    if not _devcontainer_cli_available():
+        pytest.skip(
+            "Image 'dotfiles-just-sandbox:latest' not present and the "
+            "@devcontainers/cli is not installed on the host. Either "
+            "  npm i -g @devcontainers/cli\n"
+            "or pull the prebuilt CI image (when ghcr publish is enabled). "
+            "CI uses devcontainers/ci action, so this branch is only for "
+            "local pytest invocations."
+        )
+
     build_cmd = [
-        "docker",
+        "devcontainer",
         "build",
-        "-t",
+        "--workspace-folder",
+        str(ROOT),
+        "--image-name",
         IMAGE,
-        "-f",
-        str(DOCKERFILE),
-        "--build-arg",
-        "BASE_IMAGE=alpine:3.19",
-        ".",
     ]
     result = _run(build_cmd, cwd=ROOT)
     if result.returncode != 0:
-        msg = (
-            "Failed to build sandbox image. Ensure Docker is running and "
-            "base image is available.\n"
-            "Hint: docker pull alpine:3.19 && just test-verbose\n\n"
+        pytest.fail(
+            "Failed to build dev container image via devcontainer CLI.\n"
             f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
         )
-        # Fail loudly: skipping here masks build regressions on CI
-        # (image-build failures previously turned the suite into a no-op).
-        pytest.fail(msg)
 
     # then: image is available
     yield IMAGE
