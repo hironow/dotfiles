@@ -115,6 +115,43 @@ just exe-apply
 just exe-smoke
 ```
 
+## Logging in via the Coder CLI
+
+The Coder API sits behind Cloudflare Access; the CLI bypasses the
+interactive OIDC challenge by sending an Access **service token**
+(machine identity) on every request. Two-layer auth: CF Access
+service token *and* Coder session token.
+
+```bash
+# 1. Install the Coder CLI on the laptop.
+brew install coder/coder/coder
+# or: curl -fsSL https://coder.com/install.sh | sh
+
+# 2. Pull the CF Access service token from Secret Manager.
+export CF_ACCESS_CLIENT_ID="$(gcloud secrets versions access latest \
+  --secret=exe-coder-cli-client-id)"
+export CF_ACCESS_CLIENT_SECRET="$(gcloud secrets versions access latest \
+  --secret=exe-coder-cli-client-secret)"
+
+# 3. Log in to Coder. The browser flow opens; CF Access waves the
+#    request through because of the env headers above; Coder issues
+#    a session token; the CLI stores it under ~/.config/coderv2/.
+coder login https://exe.hironow.dev
+
+# 4. Day-to-day commands. Both env vars must be present each shell.
+coder users list
+coder workspaces list
+```
+
+To rotate the service token (e.g. on suspected compromise):
+
+```bash
+just exe-replace cloudflare_zero_trust_access_service_token.coder_cli
+just exe-apply
+# then re-export CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET on the
+# laptop from Secret Manager (the new versions have replaced the old).
+```
+
 ## `WARN: CODER_TELEMETRY is deprecated` in coder.service journal
 
 This is upstream noise from Coder's serpent CLI library. Telemetry is

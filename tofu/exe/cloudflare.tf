@@ -132,9 +132,13 @@ resource "cloudflare_dns_record" "sandbox_wildcard" {
 
 # ----- Access (Zero Trust) -------------------------------------------
 #
-# The Coder UI sits behind an Access Application. The single policy
-# allows owner_email only — anyone else gets the OIDC login screen and
-# then a deny.
+# Two policies attach to the Coder application:
+#   1. owner — the operator's email (browser/UI use)
+#   2. service_token — the Coder CLI's machine identity (CLI use)
+# The service-token path lets `coder login` and downstream CLI calls
+# pass through Cloudflare Access without an interactive OIDC challenge,
+# while still enforcing two-layer auth (CF Access service token AND
+# Coder session token).
 
 resource "cloudflare_zero_trust_access_policy" "coder_owner" {
   account_id = var.cf_account_id
@@ -148,6 +152,58 @@ resource "cloudflare_zero_trust_access_policy" "coder_owner" {
       }
     },
   ]
+}
+
+# Service token for the Coder CLI / agent. Issued + rotated by tofu;
+# the client_id and client_secret land in Secret Manager so the
+# operator (or a future agent runtime) reads them by name and never
+# pastes plaintext into a shell history file.
+
+resource "cloudflare_zero_trust_access_service_token" "coder_cli" {
+  account_id = var.cf_account_id
+  name       = "exe-coder-cli"
+}
+
+resource "cloudflare_zero_trust_access_policy" "coder_service_token" {
+  account_id = var.cf_account_id
+  name       = "coder cli service token"
+  # 'non_identity' is the canonical decision for Service Token-only
+  # rules; it allows the request without requiring an end-user identity.
+  decision = "non_identity"
+
+  include = [
+    {
+      service_token = {
+        token_id = cloudflare_zero_trust_access_service_token.coder_cli.id
+      }
+    },
+  ]
+}
+
+resource "google_secret_manager_secret" "coder_cli_client_id" {
+  secret_id = "${local.prefix}-coder-cli-client-id"
+  labels    = local.common_labels
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "coder_cli_client_id" {
+  secret      = google_secret_manager_secret.coder_cli_client_id.id
+  secret_data = cloudflare_zero_trust_access_service_token.coder_cli.client_id
+}
+
+resource "google_secret_manager_secret" "coder_cli_client_secret" {
+  secret_id = "${local.prefix}-coder-cli-client-secret"
+  labels    = local.common_labels
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "coder_cli_client_secret" {
+  secret      = google_secret_manager_secret.coder_cli_client_secret.id
+  secret_data = cloudflare_zero_trust_access_service_token.coder_cli.client_secret
 }
 
 resource "cloudflare_zero_trust_access_application" "coder" {
@@ -166,11 +222,18 @@ resource "cloudflare_zero_trust_access_application" "coder" {
   http_only_cookie_attribute = true
   same_site_cookie_attribute = "lax"
 
-  # Attach the standalone policy here (v5 model).
+  # Attach the standalone policies here (v5 model). precedence is
+  # the order Cloudflare evaluates allow/deny rules; lower wins. Both
+  # are 'allow' decisions, so order is informational rather than
+  # security-relevant.
   policies = [
     {
       id         = cloudflare_zero_trust_access_policy.coder_owner.id
       precedence = 1
+    },
+    {
+      id         = cloudflare_zero_trust_access_policy.coder_service_token.id
+      precedence = 2
     },
   ]
 }

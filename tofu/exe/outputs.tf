@@ -71,3 +71,13 @@ output "access_application_id" {
   description = "Cloudflare Access Application ID protecting the Coder UI."
   value       = cloudflare_zero_trust_access_application.coder.id
 }
+
+output "coder_cli_secret_client_id" {
+  description = "Secret Manager resource name for the Coder CLI Cloudflare Access client_id."
+  value       = google_secret_manager_secret.coder_cli_client_id.name
+}
+
+output "coder_cli_secret_client_secret" {
+  description = "Secret Manager resource name for the Coder CLI Cloudflare Access client_secret."
+  value       = google_secret_manager_secret.coder_cli_client_secret.name
+}
