@@ -4,6 +4,13 @@ FROM ${BASE_IMAGE}
 # Install required tools: bash, coreutils, network utils, git, curl, python.
 # nodejs+npm are needed because mise.toml lists npm-backed tools
 # (markdownlint-cli2, vp); without them `just install` fails to resolve.
+#
+# libc6-compat + gcompat: alpine ships musl libc, but several tools that
+# expect glibc are dropped into the same dev container — most notably
+# Coder's workspace agent ('./coder' inside an envbuilder-spawned
+# Coder workspace). Without the compat shim, executing the glibc
+# binary produces 'syntax error: unexpected newline' from sh trying
+# to interpret the ELF as a script. Both packages are tiny.
 RUN apk add --no-cache \
     bash \
     coreutils \
@@ -17,7 +24,9 @@ RUN apk add --no-cache \
     py3-pip \
     nodejs \
     npm \
-    shellcheck
+    shellcheck \
+    libc6-compat \
+    gcompat
 
 # Install latest just from GitHub releases (Alpine 3.19's just package is
 # outdated and doesn't support [group()] syntax, which our justfile uses).
