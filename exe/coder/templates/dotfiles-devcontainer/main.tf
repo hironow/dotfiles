@@ -43,8 +43,16 @@ terraform {
 
 provider "coder" {}
 
+# Provider-level zone is fixed to the stack's home zone so the
+# template-push preview plan can resolve a non-empty string. The
+# 'gcp_region' Coder parameter still drives the *workspace* zone,
+# but per-resource (see google_compute_instance.vm.zone). Without
+# this fallback, push fails with 'expected a non-empty string' on
+# the provider block because the parameter default does not
+# propagate at preview time.
 provider "google" {
-  zone    = module.gcp_region.value
+  region  = "asia-northeast1"
+  zone    = "asia-northeast1-a"
   project = var.project_id
 }
 
@@ -237,6 +245,10 @@ resource "envbuilder_cached_image" "cached" {
 resource "google_compute_instance" "vm" {
   name         = "coder-${lower(data.coder_workspace_owner.me.name)}-${lower(data.coder_workspace.me.name)}-root"
   machine_type = data.coder_parameter.instance_type.value
+  # Honour the operator's region pick at workspace creation. Falls
+  # back to the provider-level default ('asia-northeast1-a') only
+  # during the template-push preview when the parameter has no value.
+  zone = coalesce(module.gcp_region.value, "asia-northeast1-a")
 
   # data.coder_workspace_owner.me.name == "default" suppresses an
   # error during the first plan when no workspace is being created.
