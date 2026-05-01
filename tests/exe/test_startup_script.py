@@ -263,6 +263,27 @@ def test_cdr_wrapper_present_and_executable() -> None:
 
 
 @pytest.mark.exe
+def test_cdr_header_helper_present_and_executable() -> None:
+    """The cdr-header helper is what the Coder VS Code extension's
+    'Coder: Header Command' setting points at. It must be executable
+    and emit the CF Access service-token headers in 'Name=Value'
+    line-per-header format (key=value separated by '=', not ': ')."""
+    helper = ROOT / "exe" / "scripts" / "cdr-header"
+    assert helper.is_file(), f"missing helper: {helper}"
+    import os
+
+    assert os.access(helper, os.X_OK), f"not executable: {helper}"
+    text = helper.read_text()
+    assert "exe-coder-cli-client-id" in text
+    assert "exe-coder-cli-client-secret" in text
+    # The whole point: Coder VS Code extension wants 'key=value\n'.
+    assert "CF-Access-Client-Id=%s" in text, (
+        "cdr-header must emit 'CF-Access-Client-Id=<value>' in printf"
+    )
+    assert "CF-Access-Client-Secret=%s" in text
+
+
+@pytest.mark.exe
 def test_state_encryption_is_strict() -> None:
     """After the migration window closed (2026-05-01), all 4 sites
     that declare encryption posture must agree:

@@ -987,20 +987,26 @@ exe-teardown stage="vm":
 exe-test:
     uvx --with pytest pytest -v -m exe tests/exe/
 
-# Symlink exe/scripts/cdr into ~/.local/bin so 'cdr ...' is available
-# everywhere as a Coder CLI wrapper that injects Cloudflare Access
-# service-token headers from Secret Manager.
+# Symlink exe/scripts/cdr and cdr-header into ~/.local/bin.
+#   cdr        : Coder CLI wrapper, injects CF Access service-token headers
+#   cdr-header : same headers in 'key=value\n' form for the Coder VS Code
+#                extension's 'Coder: Header Command' setting
 [group('Exe')]
 exe-cdr-install:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "${HOME}/.local/bin"
-    src="$(pwd)/exe/scripts/cdr"
-    dst="${HOME}/.local/bin/cdr"
-    ln -sf "$src" "$dst"
-    echo "✓ symlinked: $dst -> $src"
+    for name in cdr cdr-header; do
+      src="$(pwd)/exe/scripts/$name"
+      dst="${HOME}/.local/bin/$name"
+      ln -sf "$src" "$dst"
+      echo "✓ symlinked: $dst -> $src"
+    done
     case ":$PATH:" in
       *":${HOME}/.local/bin:"*) ;;
       *) echo "  hint: add $${HOME}/.local/bin to PATH (e.g. in ~/.zshrc)" ;;
     esac
-    echo "  first use: cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"
+    echo "  first use:"
+    echo "    cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"
+    echo "    VS Code -> Settings -> Coder: Header Command ->"
+    echo "      ${HOME}/.local/bin/cdr-header"

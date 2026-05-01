@@ -157,6 +157,36 @@ the first `cdr login`, so subsequent commands need only the wrapper
 (which re-reads CF Access headers each invocation; rotated service-
 token credentials propagate within 5 minutes via the cache).
 
+### Coder VS Code extension
+
+The extension uses an external "Header Command" to inject extra HTTP
+headers into every Coder API request — perfect for the CF Access
+service token. After `just exe-cdr-install` symlinks the helper into
+`~/.local/bin/cdr-header`, configure the extension to call it:
+
+1. **Cmd+,** (macOS) / **Ctrl+,** to open Settings.
+2. Search **`Coder: Header Command`**.
+3. Set the value to the absolute path to `cdr-header`:
+
+   ```text
+   /Users/<you>/.local/bin/cdr-header
+   ```
+
+4. Save. Reload the window if the extension was already running.
+
+The extension invokes the script before each request, the script
+returns
+
+   ```text
+   CF-Access-Client-Id=<id>
+   CF-Access-Client-Secret=<secret>
+   ```
+
+(secrets fetched from Secret Manager and cached for 5 min in
+`~/.cache/exe-coder-cli/`), and the extension attaches those as HTTP
+headers. After this, `Remote-SSH` and the Coder dashboard inside
+VS Code work transparently.
+
 ### Manual flag form (if cdr is unavailable)
 
 ```bash
