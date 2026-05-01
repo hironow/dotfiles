@@ -10,11 +10,14 @@
 #   - default region      = asia (us+europe upstream)
 #   - default instance    = e2-small (e2-micro upstream — too small
 #                            for an envbuilder build, OOMs)
-#   - module agent ref    upstream's code-server / jetbrains modules
-#                          pointed at an undeclared identifier
-#                          (presumably copy/paste rot from an earlier
-#                          revision); we point them at the count-bound
-#                          dev resource (.dev[0]) instead.
+#   - browser IDE module the upstream gcp-devcontainer template ships
+#                          with `registry.coder.com/coder/<browser-ide>/coder`
+#                          as a sibling resource; we drop it because
+#                          alpine+musl trips its install script (binary
+#                          drops into ~/.local/bin then refuses to start
+#                          on 127.0.0.1:13337). Terminal-first is the
+#                          stated workflow; reintroduce a musl-friendly
+#                          browser IDE in a follow-up if the need arises.
 #   - dotfiles_uri param  added so workspaces auto-clone & install
 #                           hironow's personal dotfiles on top of the
 #                           devcontainer base.
@@ -422,15 +425,6 @@ resource "coder_agent" "dev" {
     timeout      = 5
     script       = "coder stat disk"
   }
-}
-
-# code-server — browser-based VS Code instance proxied through Coder.
-module "code-server" {
-  count    = data.coder_workspace.me.start_count
-  source   = "registry.coder.com/coder/code-server/coder"
-  version  = "~> 1.0"
-  agent_id = coder_agent.dev[0].id
-  order    = 1
 }
 
 resource "coder_metadata" "workspace_info" {

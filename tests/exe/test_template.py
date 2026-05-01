@@ -208,6 +208,30 @@ def test_template_startup_script_joins_tailnet() -> None:
 
 
 @pytest.mark.exe
+def test_template_does_not_use_code_server_module() -> None:
+    """Upstream `registry.coder.com/coder/code-server/coder` ships a
+    Linux x86_64 glibc binary; alpine + musl can sometimes load it
+    via libc6-compat / gcompat but the install path the module uses
+    (dropping the binary into ~/.local/bin and starting it on
+    127.0.0.1:13337) frequently fails on the dotfiles devcontainer,
+    producing 5-second-cadence 'connection refused on localhost:13337'
+    spam in the agent logs.
+
+    intent.md states the dev container is terminal-first ('cdr ssh
+    my-first-ws.dev' is the documented entry point); the code-server
+    browser UI is not part of the goal. Drop the module to silence
+    the noise. A future PR can reintroduce a music-friendly browser
+    IDE with a different module if the need arises.
+    """
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    assert "code-server" not in main_tf, (
+        "module.code-server has been removed from the template — see\n"
+        "test docstring for the rationale. If you need a browser IDE,\n"
+        "use a separate PR with a musl-compatible alternative."
+    )
+
+
+@pytest.mark.exe
 def test_template_no_undeclared_agent_reference() -> None:
     """Upstream's gcp-devcontainer starter referenced a non-existent
     `coder_agent.main` from the code-server / jetbrains modules — the
