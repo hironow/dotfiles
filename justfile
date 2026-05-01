@@ -988,3 +988,10 @@ exe-smoke:
 [group('Exe')]
 exe-teardown stage="vm":
     @bash exe/scripts/teardown.sh {{ stage }}
+
+# Run the startup-script e2e tests inside the Ubuntu 24.04 container.
+# Catches keyring-path / installer-flag / 404 / dash-HOME / non-root
+# postgres regressions BEFORE 'just exe-apply' burns 10 minutes on cloud.
+[group('Exe')]
+exe-test:
+    uvx --with pytest pytest -v -m exe tests/exe/

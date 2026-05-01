@@ -31,4 +31,5 @@ markers = [
     "versions: software version check tests",
     "deploy: deploy and idempotency tests",
     "check: basic just check commands",
+    "exe: e2e for tofu/exe startup-script (requires docker)",
 ]
