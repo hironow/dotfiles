@@ -32,6 +32,11 @@ output "tailscale_keys_rotated_at" {
   value       = time_rotating.tailscale_keys.rfc3339
 }
 
+output "tailscale_acl_id" {
+  description = "ID of the tailscale_acl resource (proves the live ACL has been bound to acl.hujson)."
+  value       = tailscale_acl.this.id
+}
+
 output "vm_name" {
   description = "GCE instance name of the workspace VM (also its Tailscale hostname)."
   value       = google_compute_instance.exe_coder.name

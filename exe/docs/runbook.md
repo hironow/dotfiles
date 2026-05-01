@@ -115,6 +115,31 @@ just exe-apply
 just exe-smoke
 ```
 
+## Incident — Tailscale ACL locked me out
+
+The `tailscale_acl` resource pushes `exe/tailscale/acl.hujson` on every
+`tofu apply`. A bad ACL can cut your operator devices out of the
+tailnet. Two safety nets:
+
+1. **Tailscale's built-in 24h grace period** — for 24 hours after a
+   destructive ACL change, an admin signed in to
+   <https://login.tailscale.com/admin/acls> can click "Revert" and
+   restore the previous policy. Use this first.
+2. **`lifecycle.prevent_destroy = true`** is set on
+   `tailscale_acl.this`, so `tofu destroy` cannot remove the ACL in
+   one go. To intentionally destroy, remove the lifecycle block in a
+   separate commit, then run destroy.
+
+If the grace period is gone:
+
+1. Sign in to the Tailscale admin UI from a device that already
+   carries `tag:owner` (laptop, phone). The UI itself is reachable
+   over the public internet via SSO; tailnet connectivity is not
+   required to log in.
+2. Edit the ACL JSON directly to add a permissive rule that lets your
+   current device class back in.
+3. Then fix the source acl.hujson and re-apply.
+
 ## Incident — Access policy locked me out
 
 If the Cloudflare Access policy is misconfigured and `owner_email` no

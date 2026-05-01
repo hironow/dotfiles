@@ -76,3 +76,31 @@ resource "google_secret_manager_secret_version" "agent_authkey" {
   secret      = google_secret_manager_secret.agent_authkey.id
   secret_data = tailscale_tailnet_key.agent.key
 }
+
+# --- ACL bind --------------------------------------------------------
+#
+# Wire exe/tailscale/acl.hujson into the live tailnet. Without this
+# resource, tag:agent keys would be issued under whatever ACL is
+# currently in the admin UI — which by default lets every member
+# device reach every other device. codex review flagged this as a
+# critical hole: the auth keys we issue declare scoped permissions,
+# but only the ACL actually enforces them.
+#
+# Lockout precautions:
+#   - overwrite_existing_content = true so the first apply does not
+#     stall on a divergent admin-UI ACL; declare tofu state as the
+#     truth.
+#   - lifecycle.prevent_destroy = true so a careless `tofu destroy`
+#     cannot wipe the ACL and lock the operator out of the tailnet
+#     in one move (must be removed manually).
+#   - Tailscale itself maintains a 24h grace period on ACL pushes;
+#     during that window an admin can revert from the UI.
+
+resource "tailscale_acl" "this" {
+  acl                        = file("${path.module}/../../exe/tailscale/acl.hujson")
+  overwrite_existing_content = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
