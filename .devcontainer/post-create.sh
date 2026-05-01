@@ -115,10 +115,15 @@ if ! command -v sheldon >/dev/null 2>&1; then
 fi
 
 # ---- mise.toml tools provisioning -----------------------------------
+# MISE_OFFLINE=1 is set in containerEnv to keep `just test` runs
+# hermetic. But the *first* `mise install` needs network to resolve
+# `latest` against the GitHub API and download tool binaries — so
+# we explicitly clear the flag here. After this script exits, the
+# containerEnv setting remains in force for every subsequent process.
 echo "[post-create] mise install (mise.toml tools)"
 cd /root/dotfiles
 mise trust mise.toml >/dev/null 2>&1 || true
 touch mise.lock
-mise install
+MISE_OFFLINE=0 mise install
 
 echo "[post-create] done"
