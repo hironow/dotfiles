@@ -861,11 +861,9 @@ exe-bootstrap:
     @bash exe/scripts/bootstrap.sh
 
 # Build the TF_ENCRYPTION HCL payload from the local passphrase.
-# State + plan encrypted with pbkdf2 + aes_gcm (matches the static
-# block in tofu/exe/main.tf). Used by every exe-* recipe that talks
-# to state. HCL form (NOT JSON) — JSON parsing is ambiguous in 1.11.
-# In a shebang recipe just passes the body to bash as-is, so bash
-# variables (`$pass`) work directly without `$$` escaping.
+# State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
+# Mirrors the static block in tofu/exe/main.tf. HCL form (NOT JSON);
+# JSON parsing is ambiguous in 1.11.
 _exe-encryption:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -877,20 +875,13 @@ _exe-encryption:
     method "aes_gcm" "default" {
       keys = key_provider.pbkdf2.default
     }
-    method "unencrypted" "migration" {}
     state {
       method   = method.aes_gcm.default
-      enforced = false
-      fallback {
-        method = method.unencrypted.migration
-      }
+      enforced = true
     }
     plan {
       method   = method.aes_gcm.default
-      enforced = false
-      fallback {
-        method = method.unencrypted.migration
-      }
+      enforced = true
     }
     EOF
 

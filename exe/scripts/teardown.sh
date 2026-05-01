@@ -45,20 +45,13 @@ key_provider "pbkdf2" "default" {
 method "aes_gcm" "default" {
   keys = key_provider.pbkdf2.default
 }
-method "unencrypted" "migration" {}
 state {
   method   = method.aes_gcm.default
-  enforced = false
-  fallback {
-    method = method.unencrypted.migration
-  }
+  enforced = true
 }
 plan {
   method   = method.aes_gcm.default
-  enforced = false
-  fallback {
-    method = method.unencrypted.migration
-  }
+  enforced = true
 }
 HCL
 )

@@ -228,6 +228,45 @@ def test_acl_has_no_ssh_block_or_only_empty() -> None:
 
 
 @pytest.mark.exe
+def test_state_encryption_is_strict() -> None:
+    """After the migration window closed (2026-05-01), all 4 sites
+    that declare encryption posture must agree:
+        tofu/exe/main.tf
+        justfile (_exe-encryption recipe)
+        exe/scripts/smoke.sh
+        exe/scripts/teardown.sh
+    The strict posture is: aes_gcm method only, enforced = true, no
+    'unencrypted' method, no fallback {...} block. Any of the four
+    drifting back to migration mode would silently re-open the
+    plaintext-state path, so lock all four together."""
+    targets = [
+        ROOT / "tofu" / "exe" / "main.tf",
+        ROOT / "justfile",
+        ROOT / "exe" / "scripts" / "smoke.sh",
+        ROOT / "exe" / "scripts" / "teardown.sh",
+    ]
+    for path in targets:
+        text = path.read_text()
+        # Restrict to the encryption block / heredoc only — comments
+        # mentioning the words are tolerated.
+        # We approximate by checking for the literal HCL syntax that
+        # would re-introduce the unencrypted path.
+        assert 'method "unencrypted"' not in text, (
+            f"{path}: 'method \"unencrypted\" ...' must not be declared "
+            "after migration ended."
+        )
+        assert "fallback {" not in text, (
+            f"{path}: encryption fallback block must not be present "
+            "after migration ended."
+        )
+        # And `enforced = true` must be present somewhere (encryption
+        # block); migration period had `enforced = false`.
+        assert re.search(r"enforced\s*=\s*true", text), (
+            f"{path}: encryption block must set enforced = true."
+        )
+
+
+@pytest.mark.exe
 def test_coder_telemetry_disabled_via_env() -> None:
     """Telemetry must be turned OFF. Coder accepts both:
         Environment=CODER_TELEMETRY_ENABLE=false  (env path)

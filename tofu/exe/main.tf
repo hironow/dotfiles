@@ -34,30 +34,24 @@ terraform {
   #
   # See docs/setup.md § "State encryption" for the operator-side
   # passphrase generation and TF_ENCRYPTION env-var details.
-  # State encryption — sentinel passphrase + migration fallback.
+  # State encryption — strict aes_gcm with sentinel passphrase.
   #
   # OpenTofu 1.11 merges this static block with TF_ENCRYPTION rather
-  # than replacing it, so the static block must already be in the
-  # current migration posture (enforced = false + unencrypted
-  # fallback) to avoid 'Unable to use unencrypted method since the
-  # enforced flag is set'. The recipe / script overrides only inject
-  # the real passphrase.
-  #
-  # Exiting migration mode is therefore a TWO-FILE change (committed
-  # together so the two cannot drift):
-  #   1. tofu/exe/main.tf — drop method "unencrypted" "migration",
-  #      drop both fallback {...}, set enforced = true.
-  #   2. justfile (_exe-encryption recipe) and
-  #      exe/scripts/{smoke,teardown}.sh — drop the same lines.
-  # See docs/setup.md § "How encryption is wired" for the verify
-  # command and the harden checklist.
+  # than replacing it, so the static block must agree with the
+  # operating posture. After the 2026-05-01 first apply confirmed
+  # encrypted state on GCS, the migration phase ended: the
+  # 'unencrypted.migration' method and the legacy fallback blocks
+  # are gone, and 'enforced = true' rejects any non-encrypted state
+  # from now on. Every just exe-* recipe and smoke/teardown script
+  # injects the real passphrase via TF_ENCRYPTION; without that,
+  # OpenTofu hits the sentinel and refuses to run (fail-closed).
   #
   # Why this matters: provider configs (CLOUDFLARE_API_TOKEN,
   # TAILSCALE_API_KEY) never land in state, but resource attributes
-  # do — including cloudflare_zero_trust_tunnel_cloudflared.exe.tunnel_secret,
+  # do — cloudflare_zero_trust_tunnel_cloudflared.exe.tunnel_secret,
   # tailscale_tailnet_key.*.key, random_id.tunnel_secret.b64_std,
-  # and every google_secret_manager_secret_version.secret_data.
-  # Without encryption those leak in plaintext under
+  # google_secret_manager_secret_version.*.secret_data. Without
+  # encryption these leak in plaintext under
   # gs://gen-ai-hironow-tofu-state.
   encryption {
     key_provider "pbkdf2" "default" {
@@ -66,20 +60,13 @@ terraform {
     method "aes_gcm" "default" {
       keys = key_provider.pbkdf2.default
     }
-    method "unencrypted" "migration" {}
     state {
       method   = method.aes_gcm.default
-      enforced = false
-      fallback {
-        method = method.unencrypted.migration
-      }
+      enforced = true
     }
     plan {
       method   = method.aes_gcm.default
-      enforced = false
-      fallback {
-        method = method.unencrypted.migration
-      }
+      enforced = true
     }
   }
 
