@@ -144,6 +144,19 @@ data "coder_parameter" "repo_url" {
   order        = 1
 }
 
+data "coder_parameter" "git_branch" {
+  name         = "git_branch"
+  display_name = "Git Branch"
+  description  = <<-EOF
+Branch to clone from repo_url. Leave blank for the repo's default
+(usually main). Set to e.g. 'feat/exe-hironow-dev' to test changes
+before they are merged into main.
+EOF
+  default      = ""
+  mutable      = true
+  order        = 6
+}
+
 data "coder_parameter" "dotfiles_uri" {
   name         = "dotfiles_uri"
   display_name = "Dotfiles URI"
@@ -172,6 +185,11 @@ locals {
 
   envbuilder_env = {
     "ENVBUILDER_GIT_URL" : data.coder_parameter.repo_url.value,
+    # Empty value = envbuilder honours the repo's default branch.
+    # Set this to e.g. 'feat/exe-hironow-dev' to test pre-merge
+    # changes (libc6-compat in Dockerfile, new tests, etc.) without
+    # waiting for a merge to main. Once merged, leave it blank.
+    "ENVBUILDER_GIT_BRANCH" : data.coder_parameter.git_branch.value,
     "CODER_AGENT_TOKEN" : try(coder_agent.dev[0].token, ""),
     "CODER_AGENT_URL" : data.coder_workspace.me.access_url,
     "ENVBUILDER_INIT_SCRIPT" : "echo ${base64encode(try(coder_agent.dev[0].init_script, ""))} | base64 -d | sh",

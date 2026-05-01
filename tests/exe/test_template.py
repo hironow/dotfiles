@@ -89,6 +89,40 @@ def test_template_repo_url_is_dotfiles() -> None:
 
 
 @pytest.mark.exe
+def test_template_git_branch_parameter_present_and_wired() -> None:
+    """envbuilder defaults to cloning the repo's default branch (main).
+    For pre-merge debugging (e.g. testing libc6-compat in Dockerfile
+    while the change is still on a feature branch), we expose a
+    'git_branch' Coder parameter and wire it into envbuilder via
+    ENVBUILDER_GIT_BRANCH. Both halves must stay in place — losing
+    either silently disables branch override and re-creates the
+    'image built from main, but the fix lives on a branch' class of
+    bug we hit during the Layer 2 boot up."""
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    import re
+
+    block = re.search(
+        r'data "coder_parameter" "git_branch" \{(.*?)^\}',
+        main_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert block is not None, "missing git_branch coder_parameter block"
+    body = block.group(1)
+    # Default must be empty so post-merge users get the repo's
+    # default branch without thinking about it.
+    assert re.search(r'default\s*=\s*""', body), (
+        "git_branch parameter default must be empty string"
+    )
+    # Wiring into envbuilder.
+    assert "ENVBUILDER_GIT_BRANCH" in main_tf, (
+        "ENVBUILDER_GIT_BRANCH not wired into envbuilder_env"
+    )
+    assert "data.coder_parameter.git_branch.value" in main_tf, (
+        "git_branch parameter is declared but never read"
+    )
+
+
+@pytest.mark.exe
 def test_template_no_undeclared_agent_reference() -> None:
     """Upstream's gcp-devcontainer starter referenced a non-existent
     `coder_agent.main` from the code-server / jetbrains modules — the
