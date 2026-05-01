@@ -26,6 +26,15 @@ terraform.tfstate
 terraform.tfstate.backup
 *.tfplan
 
+# exe.hironow.dev — local secrets / generated runtime files
+# (real values live in GCP Secret Manager; never commit plaintext)
+exe/**/*.local.*
+exe/cloudflared/cert.pem
+exe/cloudflared/*.json
+exe/tailscale/*.authkey
+tofu/exe/terraform.tfvars
+tofu/exe/*.auto.tfvars
+
 # Cargo
 /target/
 
@@ -53,4 +62,5 @@ continent-config.yaml
 # from "current state only" but they are intentionally not committed).
 docs/intent.md
 docs/handover.md
+docs/setup.md
 node_modules

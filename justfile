@@ -838,3 +838,175 @@ check-free:
 docs-view:
     mo --clear --no-open
     mo --foreground -w 'docs/**/*.md' -w 'autoblogs/**/*.md'
+
+# ------------------------------
+# exe.hironow.dev — OpenTofu wrapper recipes
+# ------------------------------
+#
+# All `exe-*` recipes operate on the tofu/exe stack. They:
+#   1. cd tofu/exe
+#   2. export TF_ENCRYPTION_PASSPHRASE from ~/.config/tofu/exe.passphrase
+#      so state encryption is transparent.
+#   3. require CLOUDFLARE_API_TOKEN and TAILSCALE_API_KEY in env
+#      (the recipe fails fast if either is unset, with a hint).
+#
+# First-time setup before any `exe-*` recipe:
+#   bash exe/scripts/bootstrap.sh
+#   cp tofu/exe/terraform.tfvars.example tofu/exe/terraform.tfvars
+#   $EDITOR tofu/exe/terraform.tfvars
+
+# Run the bootstrap (idempotent): enable APIs, create state bucket, generate passphrase.
+[group('Exe')]
+exe-bootstrap:
+    @bash exe/scripts/bootstrap.sh
+
+# Build the TF_ENCRYPTION HCL payload from the local passphrase.
+# State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
+# Mirrors the static block in tofu/exe/main.tf. HCL form (NOT JSON);
+# JSON parsing is ambiguous in 1.11.
+_exe-encryption:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pass=$(cat "${HOME}/.config/tofu/exe.passphrase")
+    cat <<EOF
+    key_provider "pbkdf2" "default" {
+      passphrase = "${pass}"
+    }
+    method "aes_gcm" "default" {
+      keys = key_provider.pbkdf2.default
+    }
+    state {
+      method   = method.aes_gcm.default
+      enforced = true
+    }
+    plan {
+      method   = method.aes_gcm.default
+      enforced = true
+    }
+    EOF
+
+# tofu init for the exe stack. (init talks only to the GCS backend
+# and the provider registry; CF / TS API tokens are not required yet.)
+[group('Exe')]
+exe-init:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu init
+
+# tofu plan against the live state.
+[group('Exe')]
+exe-plan:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu plan
+
+# tofu apply (interactive — full plan).
+[group('Exe')]
+exe-apply:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu apply
+
+# Common targets:
+#   just exe-replace google_compute_instance.exe_coder
+#     # re-run startup-script after VM image / metadata changes
+#   just exe-replace time_rotating.tailscale_keys
+#     # force-rotate Tailscale auth keys
+#   just exe-replace random_id.tunnel_secret
+#     # rotate cloudflared tunnel credentials
+# Force-replace one resource via tofu apply -replace=<target>.
+[group('Exe')]
+exe-replace target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu apply -replace={{ target }}
+
+# tofu destroy of the VM only (keeps tunnel/secrets; cheap recreate).
+[group('Exe')]
+exe-down:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu destroy \
+      -target=google_compute_instance.exe_coder
+
+# tofu destroy of every resource (VM, net, secrets, tunnel, DNS, Access).
+[group('Exe')]
+exe-down-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu destroy
+
+# tofu fmt -check + provider-only init + validate. No state access; safe.
+[group('Exe')]
+exe-validate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tofu/exe
+    tofu fmt -check -diff
+    tofu init -backend=false -input=false >/dev/null
+    tofu validate
+
+# tofu output (JSON for scripts).
+[group('Exe')]
+exe-output *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu output {{ args }}
+
+# Post-deploy smoke checks (DNS, Access gate, VM state, secrets).
+[group('Exe')]
+exe-smoke:
+    @bash exe/scripts/smoke.sh
+
+# Staged destroy: stage=vm (default) | stack | nuke.
+[group('Exe')]
+exe-teardown stage="vm":
+    @bash exe/scripts/teardown.sh {{ stage }}
+
+# Run the startup-script e2e tests inside the Ubuntu 24.04 container.
+# Catches keyring-path / installer-flag / 404 / dash-HOME / non-root
+# postgres regressions BEFORE 'just exe-apply' burns 10 minutes on cloud.
+[group('Exe')]
+exe-test:
+    uvx --with pytest pytest -v -m exe tests/exe/
+
+# Symlink exe/scripts/cdr and cdr-header into ~/.local/bin.
+#   cdr        : Coder CLI wrapper, injects CF Access service-token headers
+#   cdr-header : same headers in 'key=value\n' form for the Coder VS Code
+#                extension's 'Coder: Header Command' setting
+[group('Exe')]
+exe-cdr-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "${HOME}/.local/bin"
+    for name in cdr cdr-header; do
+      src="$(pwd)/exe/scripts/$name"
+      dst="${HOME}/.local/bin/$name"
+      ln -sf "$src" "$dst"
+      echo "✓ symlinked: $dst -> $src"
+    done
+    case ":$PATH:" in
+      *":${HOME}/.local/bin:"*) ;;
+      *) echo "  hint: add $${HOME}/.local/bin to PATH (e.g. in ~/.zshrc)" ;;
+    esac
+    echo "  first use:"
+    echo "    cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"
+    echo "    VS Code -> Settings -> Coder: Header Command ->"
+    echo "      ${HOME}/.local/bin/cdr-header"

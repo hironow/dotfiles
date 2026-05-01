@@ -1,0 +1,116 @@
+// Tailscale ACL for exe.hironow.dev.
+//
+// Pattern A: tag-based delegation. Apply via the Tailscale admin UI or
+// the tailscale_acl resource (added in a later commit once the policy
+// is exercised against a real tailnet).
+{
+  // ----- tag ownership -------------------------------------------------
+  // Only hironow's personal account can issue keys carrying these tags.
+  //
+  // Tags:
+  //   tag:owner          hironow's personal devices (laptop, phone)
+  //   tag:exe-coder      the Coder control-plane VM
+  //   tag:exe-workspace  Coder workspace VMs (created from templates).
+  //                       Talks to tag:exe-coder over the tailnet so it
+  //                       can fetch /bin/coder-linux-amd64 without
+  //                       hitting the public CF Access edge (which has
+  //                       no service token from the workspace side).
+  //   tag:agent          AI agents executing inside a workspace
+  "tagOwners": {
+    "tag:owner":         ["autogroup:admin"],
+    "tag:exe-coder":     ["autogroup:admin"],
+    "tag:exe-workspace": ["autogroup:admin"],
+    "tag:agent":         ["autogroup:admin"],
+  },
+
+  // ----- groups --------------------------------------------------------
+  // Break-glass identity. The owner email is whitelisted directly so
+  // that even if every owner device loses tag:owner (e.g. a tagged
+  // auth key expires and re-auth happens without the tag), a fresh
+  // device authenticated as hironow365@gmail.com still has full
+  // tailnet access. Combined with Tailscale's 24h ACL grace period,
+  // this is the secure-by-default lockout-prevention path.
+  "groups": {
+    "group:owners": ["hironow365@gmail.com"],
+  },
+
+  // ----- access rules --------------------------------------------------
+  "acls": [
+    // Break-glass #1: anyone with the admin role on this tailnet
+    // -> *:*. Personal tailnets where the operator is admin (e.g.
+    // tailnet 'hironow.github' via GitHub login) are guaranteed to
+    // match here, even when the GitHub-derived login identity does
+    // not equal the email in group:owners (GitHub login produces
+    // '<gh-username>@github' rather than the gmail address).
+    {
+      "action": "accept",
+      "src":    ["autogroup:admin"],
+      "dst":    ["*:*"],
+    },
+    // Break-glass #2: explicit email allowlist for the owner. Stays
+    // in place for tailnets where the admin-role mapping changes.
+    {
+      "action": "accept",
+      "src":    ["group:owners"],
+      "dst":    ["*:*"],
+    },
+
+    // Owner devices can reach anything in the tailnet.
+    {
+      "action": "accept",
+      "src":    ["tag:owner"],
+      "dst":    ["*:*"],
+    },
+
+    // The Coder control-plane VM can talk to itself (loopback over
+    // tailnet) and accept connections from owner + agent on the
+    // listed ports.
+    {
+      "action": "accept",
+      "src":    ["tag:exe-coder"],
+      "dst":    ["tag:exe-coder:*"],
+    },
+
+    // Coder workspace VMs reach the control plane (tag:exe-coder) over
+    // the tailnet for the agent binary download (port 7080) and the
+    // ongoing agent <-> server protocol (tailnet RPC, also 7080).
+    // Without this rule the workspace cannot fetch
+    // ${ACCESS_URL}/bin/coder-linux-amd64 from the internal endpoint
+    // and falls back to the public CF Access URL — which fails.
+    {
+      "action": "accept",
+      "src":    ["tag:exe-workspace"],
+      "dst":    ["tag:exe-coder:7080"],
+    },
+
+    // AI agents are confined to the workspace VM and only on the
+    // protocols they actually need:
+    //   22  : SSH for shell sessions
+    //   80  : HTTP preview (tailscale serve target)
+    //   443 : HTTPS preview (tailscale serve --https=443)
+    //   3000-3999 : dev-server port range (HMR, vite, next, etc.)
+    {
+      "action": "accept",
+      "src":    ["tag:agent"],
+      "dst":    ["tag:exe-coder:22,80,443,3000-3999"],
+    },
+  ],
+
+  // ----- ssh -----------------------------------------------------------
+  // Tailscale SSH is intentionally OFF on this stack — the VM does
+  // not pass --ssh to `tailscale up`. SSH (when needed) goes through
+  // OpenSSH on the tailnet IP, authenticated by the operator's
+  // public key. Keeping no ssh block here matches that posture and
+  // removes the 'Tailscale SSH enabled, but access controls don't
+  // allow anyone to access this device' warning.
+  "ssh": [],
+
+  // ----- node attributes ----------------------------------------------
+  // Default-deny posture: no nodes are granted `funnel`. Public
+  // exposure (`*.sandbox.hironow.dev` via tailscale funnel) is the
+  // (P)ublic publish path and is deferred. When that commit lands it
+  // will explicitly add a `nodeAttrs` entry granting `funnel` to
+  // `tag:exe-coder`. Until then, `tailscale serve` (Tailnet-only)
+  // is the only publish mechanism.
+  "nodeAttrs": [],
+}

@@ -1,0 +1,10 @@
+# Stack-local — root .gitignore already covers most of this, but keep
+# it scoped here too so accidental edits in this dir stay safe.
+terraform.tfvars
+*.auto.tfvars
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfplan
+crash.log
