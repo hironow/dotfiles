@@ -73,6 +73,37 @@ After the first apply succeeds:
 | Stop the VM (cheap pause) | `just exe-teardown vm` |
 | Recreate the VM | `just exe-apply` (idempotent) |
 
+## Coder workspace template
+
+Push the `dotfiles-devcontainer` template (or update an existing
+version):
+
+```bash
+cdr templates push exe-dotfiles-devcontainer \
+  -d exe/coder/templates/dotfiles-devcontainer \
+  --variable project_id=gen-ai-hironow \
+  --variable workspace_sa_email=$(just exe-output -raw exe_workspace_sa_email) \
+  --variable coder_internal_url=$(just exe-output -raw coder_internal_url) \
+  --message "<release note>" \
+  --yes
+```
+
+Create / update / delete a workspace:
+
+```bash
+cdr create my-ws --template exe-dotfiles-devcontainer --yes
+cdr ssh my-ws.dev
+cdr delete my-ws --yes
+```
+
+Pre-merge testing of dev container changes (otherwise envbuilder
+clones the repo's default branch):
+
+```bash
+cdr create my-ws --template exe-dotfiles-devcontainer \
+  --parameter git_branch=feat/<branch-name> --yes
+```
+
 ## Tailscale auth-key rotation
 
 The keys rotate automatically every 90 days because of:

@@ -18,27 +18,33 @@ This document describes the components currently provisioned by
 |  (browser)   |     | (Coder UI gate)|       |
 +--------------+     +-------+--------+       |
                              |                |
-+--------------+             |                |
-|  AI agent    |--(Tailscale tag:agent)--+    |
-|  (CLI)       |                         |    |
-+--------------+                         v    |
-                                  +----------------------+
-                                  |  GCE VM exe-coder    |
-                                  |  region: northeast1  |
-                                  |  Ubuntu 24.04 LTS    |
-                                  |  e2-small preemptible|
-                                  |  systemd-supervised  |
-                                  |  cloudflared --------+
-                                  |  tailscaled          |
-                                  |  Coder server (7080) |
-                                  |  (embedded postgres) |
-                                  +----------+-----------+
-                                             |
-                                             v
-                                  +----------------------+
-                                  | dev container        |
-                                  | JustSandbox.Dockerfile|
-                                  +----------------------+
+                             v                |
+                      +----------------------+
+                      | exe-coder VM         |
+                      | exe-vpc 10.10.0.0/24 |
+                      | debian-12, e2-small  |
+                      | tag:exe-coder        |
+                      | cloudflared, tailscaled|
+                      | Coder server         |
+                      | CODER_HTTP_ADDRESS=  |
+                      |   0.0.0.0:7080       |
+                      |  (embedded postgres) |
+                      +----------+-----------+
+                                 ^
+                                 | tailnet (WireGuard)
+                                 | http://exe-coder:7080
+                                 |  (MagicDNS resolves)
+                                 |
+                      +----------+-----------+
+                      | workspace VM(s)      |
+                      | default VPC          |
+                      | debian-12, e2-small  |
+                      | tag:exe-workspace    |
+                      | tailscaled           |
+                      | envbuilder image     |
+                      | -> alpine devcontainer|
+                      |    + Coder agent     |
+                      +----------------------+
 ```
 
 ```
@@ -46,11 +52,13 @@ Legend / 凡例:
 - Cloudflare Edge: Cloudflare のエッジ (DNS + Tunnel + Access)
 - Argo Tunnel: Cloudflare Tunnel (origin から発信する outbound 接続)
 - Access OIDC: Cloudflare Access の認証 (OIDC ベース)
-- Tailscale tag:agent: Agent 用に制限された Tailscale tag
-- exe-coder: workspace VM のホスト名 (Tailscale 上の名前と一致)
-- Ubuntu 24.04 LTS: VM ベース OS (apt + systemd で daemon を管理)
-- systemd-supervised: tailscaled / cloudflared / coder を systemd unit として常駐
-- preemptible: 24 時間で自動停止する割引 VM
+- exe-coder VM: control-plane (Coder server を常駐)
+- workspace VM: ユーザの Coder workspace (template が作る)
+- tag:exe-coder / tag:exe-workspace: Tailscale tag (ACL で関係を限定)
+- tailnet (WireGuard): exe-coder と workspace 間の internal channel
+- MagicDNS: tailnet 内 hostname 解決 (exe-coder → 100.x.x.x)
+- envbuilder image: alpine 上の dotfiles devcontainer (Layer 1 由来)
+- debian-12 / alpine: VM ホスト OS / dev container ベース
 ```
 
 ## Boundaries and trust
@@ -60,9 +68,11 @@ Legend / 凡例:
 | Public internet → CF edge | Untrusted → CDN | TLS 1.3 + Cloudflare WAF (default) |
 | CF edge → exe.hironow.dev origin | Untrusted → Owner identity | CF Access OIDC; only `owner_email` admitted |
 | CF edge → workspace VM | Edge → Origin | Argo Tunnel (outbound from VM, no inbound port open) |
-| Owner laptop → workspace VM | Owner identity | Tailscale `tag:owner` ACL allowing `*:*` |
-| AI agent → workspace VM | Restricted role | Tailscale `tag:agent` ACL allowing only ports 22, 80, 443, 3000-3999 on `tag:exe-coder` |
-| Workspace VM → GCP APIs | VM identity | Service account `exe-coder@…` with scoped IAM (Secret Manager accessor on two specific secrets, logging.logWriter, monitoring.metricWriter) |
+| Owner laptop → exe-coder | Owner identity | Tailscale `tag:owner` → `*:*` |
+| AI agent → exe-coder | Restricted role | Tailscale `tag:agent` → `tag:exe-coder:22,80,443,3000-3999` |
+| Workspace → exe-coder | Per-workspace role | Tailscale `tag:exe-workspace` → `tag:exe-coder:7080` (agent download + protocol) |
+| exe-coder → GCP APIs | VM identity | SA `exe-coder@…` (Secret Manager accessor on tailnet/tunnel secrets, compute.instanceAdmin, iam.serviceAccountUser, logging/monitoring) |
+| Workspace → GCP APIs | VM identity | SA `exe-workspace@…` (only the workspace authkey; logging/monitoring) |
 | Public internet → workspace VM | NONE | `deny_all_ingress` firewall + no public ports listening |
 
 ## State and secrets
@@ -70,7 +80,7 @@ Legend / 凡例:
 | Artifact | Location | Encryption |
 |---|---|---|
 | OpenTofu state | `gs://gen-ai-hironow-tofu-state/exe/` | tofu native (pbkdf2 + aes_gcm), passphrase at `~/.config/tofu/exe.passphrase` (mode 0600) |
-| Tailscale auth keys | Secret Manager: `exe-tailscale-coder-authkey`, `exe-tailscale-agent-authkey` | Google-managed (default) |
+| Tailscale auth keys | Secret Manager: `exe-tailscale-coder-authkey`, `exe-tailscale-agent-authkey`, `exe-tailscale-workspace-authkey` | Google-managed (default) |
 | Cloudflare tunnel credentials | Secret Manager: `exe-cloudflared-credentials` | Google-managed (default) |
 | Cloudflare API token | env var `CLOUDFLARE_API_TOKEN` (operator side, never persisted) | n/a |
 | Tailscale API key | env var `TAILSCALE_API_KEY` (operator side, never persisted) | n/a |
@@ -92,30 +102,22 @@ Egress is allowed by default (required for `tailscale up` and
 
 ## Permission model — Pattern A
 
-Three Tailscale tags govern reachability:
+Four Tailscale tags govern reachability:
 
 | Tag | Holder | Allowed destinations |
 |---|---|---|
 | `tag:owner` | hironow's personal devices | `*:*` (full tailnet) |
-| `tag:exe-coder` | the workspace VM itself | `tag:exe-coder:*` (loopback over tailnet) |
+| `tag:exe-coder` | the Coder control-plane VM | `tag:exe-coder:*` (loopback over tailnet) |
+| `tag:exe-workspace` | Coder workspace VMs | `tag:exe-coder:7080` (agent binary download + agent <-> server protocol) |
 | `tag:agent` | AI agents | `tag:exe-coder:22,80,443,3000-3999` |
 
-Auth keys (declared in [`tofu/exe/tailscale.tf`](../../tofu/exe/tailscale.tf)):
+Auth keys (in [`tofu/exe/tailscale.tf`](../../tofu/exe/tailscale.tf)):
+all reusable, ephemeral, preauthorized, 90-day expiry, rotated by
+`time_rotating`. The `exe-workspace` key `depends_on
+tailscale_acl.this` so its tag is in the live ACL before issuance.
 
-- `exe-coder` key: reusable, non-ephemeral, 90-day expiry,
-  preauthorized — used by VM startup-script.
-- `agent` key: reusable, **ephemeral** (abandoned sessions auto-prune
-  from the tailnet), 90-day expiry, preauthorized.
-
-A `time_rotating` resource with 90-day cadence triggers
-`replace_triggered_by` on both keys, so `tofu apply` rotates them.
-Old key versions are retained in Secret Manager so an in-flight
-session continues with the previous key.
-
-ACL document lives at
-[`exe/tailscale/acl.hujson`](../tailscale/acl.hujson). It is **not**
-wired to a `tailscale_acl` resource yet; the policy must be exercised
-manually before declarative bind to avoid lockout.
+ACL: [`exe/tailscale/acl.hujson`](../tailscale/acl.hujson), bound by
+`tailscale_acl.this` (`prevent_destroy`, `overwrite_existing_content`).
 
 ## Tunnel ingress
 
@@ -157,7 +159,7 @@ systemd). Configuration is purely env-var driven:
 | Variable | Value | Purpose |
 |---|---|---|
 | `CODER_ACCESS_URL` | `https://exe.hironow.dev` | URL clients use; matches the Argo Tunnel CNAME |
-| `CODER_HTTP_ADDRESS` | `127.0.0.1:7080` | Localhost-only; cloudflared forwards to it |
+| `CODER_HTTP_ADDRESS` | `0.0.0.0:7080` | Loopback for cloudflared + tun0 for workspace VMs. Public IP blocked at L3 by deny-all-ingress |
 | `CODER_TLS_ENABLE` | `false` | TLS terminates at Cloudflare edge |
 | `CODER_WILDCARD_ACCESS_URL` | `*.sandbox.hironow.dev` | Workspace app preview hostnames |
 | `CODER_PG_CONNECTION_URL` | empty | Triggers embedded PostgreSQL |
@@ -176,11 +178,25 @@ The first-boot admin password is generated to
 `/var/lib/coder/.admin_password` (mode 0600). Change it via the Coder
 UI immediately after first login.
 
-## Out of scope (reserved for later commits)
+## Workspace template — `dotfiles-devcontainer`
 
-- `tailscale_acl` resource that binds the live ACL.
-- The `:8080` reverse-proxy that fans `*.sandbox.hironow.dev` to
-  per-app ports — this is the (P)ublic publish path and is gated
-  behind the default-tailnet-only posture.
-- ADRs documenting the major decisions (Pattern A, OpenTofu over
-  Terraform, gcp-vm-container over gcp-devcontainer).
+Source: [`exe/coder/templates/dotfiles-devcontainer/`](../coder/templates/dotfiles-devcontainer/).
+Push via runbook. Per `cdr create`, a workspace VM lands in the
+project's `default` VPC and joins the tailnet as `tag:exe-workspace`.
+
+- `provider "coder" { url = "http://exe-coder:7080" }` overrides
+  `${ACCESS_URL}` per-template so the agent binary download
+  resolves over the tailnet (CF Access edge bypass-free).
+- `git_branch` parameter wires `ENVBUILDER_GIT_BRANCH` (default
+  empty = repo HEAD).
+- Agent startup_script exports `INSTALL_SKIP_HOMEBREW=1
+  INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1` so the alpine
+  dev container reaches `just deploy`.
+- Workspace VM runs as `exe-workspace@…` (not the default compute
+  SA). Only the workspace tailnet authkey is readable.
+
+## Out of scope
+
+- (P)ublic publish path (`*.sandbox.hironow.dev` reverse proxy).
+- Dev container base migration alpine → debian.
+- ADRs for Pattern A, OpenTofu choice, tailnet routing.
