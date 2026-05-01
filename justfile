@@ -992,8 +992,15 @@ exe-test:
 # service-token headers from Secret Manager.
 [group('Exe')]
 exe-cdr-install:
-    @mkdir -p $${HOME}/.local/bin
-    @ln -sf $$(pwd)/exe/scripts/cdr $${HOME}/.local/bin/cdr
-    @echo "✓ symlinked: $${HOME}/.local/bin/cdr -> $$(pwd)/exe/scripts/cdr"
-    @echo "  ensure $${HOME}/.local/bin is on PATH; first use:"
-    @echo "    cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "${HOME}/.local/bin"
+    src="$(pwd)/exe/scripts/cdr"
+    dst="${HOME}/.local/bin/cdr"
+    ln -sf "$src" "$dst"
+    echo "✓ symlinked: $dst -> $src"
+    case ":$PATH:" in
+      *":${HOME}/.local/bin:"*) ;;
+      *) echo "  hint: add $${HOME}/.local/bin to PATH (e.g. in ~/.zshrc)" ;;
+    esac
+    echo "  first use: cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"
