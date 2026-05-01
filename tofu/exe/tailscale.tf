@@ -20,7 +20,10 @@ resource "time_rotating" "tailscale_keys" {
 # --- workspace VM key -------------------------------------------------
 
 resource "tailscale_tailnet_key" "exe_coder" {
-  description   = "exe-coder workspace VM auto-join (managed by tofu)"
+  # Tailscale rejects '(', ')', ':' etc. in key descriptions with
+  # 'description had invalid characters (400)'. Keep it alphanumeric
+  # + spaces + hyphens only.
+  description   = "exe-coder workspace VM auto-join managed by tofu"
   reusable      = true
   ephemeral     = false
   preauthorized = true
@@ -52,7 +55,7 @@ resource "google_secret_manager_secret_version" "exe_coder_authkey" {
 # carry it.
 
 resource "tailscale_tailnet_key" "agent" {
-  description   = "AI agent restricted-role key (managed by tofu)"
+  description   = "AI agent restricted-role key managed by tofu"
   reusable      = true
   ephemeral     = true # agents come and go; auto-prune from tailnet
   preauthorized = true
