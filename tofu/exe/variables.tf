@@ -44,6 +44,11 @@ variable "cf_zone_name" {
   default     = "hironow.dev"
 }
 
+variable "cf_zone_id" {
+  description = "Cloudflare zone ID for cf_zone_name. Discovered via `cf zones list` once and pinned to avoid runtime data-source variability."
+  type        = string
+}
+
 variable "cf_account_id" {
   description = "Cloudflare account ID. Set via TF_VAR_cf_account_id; never committed."
   type        = string
