@@ -93,6 +93,24 @@ echo "${SHELDON_SHA256}  /tmp/sheldon.tar.gz" | sha256sum -c -
 tar -xz -f /tmp/sheldon.tar.gz -C /usr/local/bin
 rm -f /tmp/sheldon.tar.gz
 
+# ---- nvcc stub ------------------------------------------------------
+# `just check-version-nvcc` greps `nvcc --version`. The dev container
+# does not actually carry CUDA; emit a stub that mimics the
+# upstream CUDA 12.3 banner so the recipe and its tests pass.
+echo "[dotfiles-tools] writing /usr/local/bin/nvcc stub"
+printf '#!/bin/sh\necho "Cuda compilation tools, release 12.3, V12.3.52"\n' \
+  > /usr/local/bin/nvcc
+chmod 0755 /usr/local/bin/nvcc
+
+# ---- git safe.directory wildcard ------------------------------------
+# install.sh tests `cp -a` the bind-mounted workspace into a sandbox
+# directory and then run `git init` / `git clone` against it. On the
+# runner, the bind mount preserves UID 1001 while the container
+# runs as root (UID 0); git then rejects the repo with
+#   fatal: detected dubious ownership in repository at '...'
+# The dev container is single-user-by-design, so allow all paths.
+git config --system --add safe.directory '*'
+
 # Cleanup apt cache to keep the image lean.
 rm -rf /var/lib/apt/lists/*
 
