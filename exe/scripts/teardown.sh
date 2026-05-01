@@ -32,8 +32,7 @@ require() {
 require tofu
 
 [[ -f "${PASSPHRASE_FILE}" ]] || { red "missing ${PASSPHRASE_FILE}"; exit 1; }
-export TF_ENCRYPTION_PASSPHRASE
-TF_ENCRYPTION_PASSPHRASE="$(cat "${PASSPHRASE_FILE}")"
+# State encryption is currently disabled; see tofu/exe/main.tf.
 
 case "${STAGE}" in
   vm)

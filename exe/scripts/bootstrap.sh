@@ -69,14 +69,11 @@ else
   log "tofu encryption passphrase already exists: ${PASSPHRASE_FILE}"
 fi
 
+printf '\n\033[32m[bootstrap] done.\033[0m\n\n'
 cat <<EOF
-
-\033[32m[bootstrap] done.\033[0m
-
 Next steps:
-  cd tofu/exe
-  cp terraform.tfvars.example terraform.tfvars   # then edit secrets
-  export TF_ENCRYPTION_PASSPHRASE="\$(cat ${PASSPHRASE_FILE})"
-  tofu init
-  tofu plan
+  cp tofu/exe/terraform.tfvars.example tofu/exe/terraform.tfvars
+  \$EDITOR tofu/exe/terraform.tfvars            # cf_account_id, tailnet
+  just exe-init
+  just exe-plan                                 # needs CLOUDFLARE_API_TOKEN + TAILSCALE_API_KEY
 EOF

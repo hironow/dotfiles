@@ -13,22 +13,15 @@ terraform {
     prefix = "exe"
   }
 
-  encryption {
-    key_provider "pbkdf2" "default" {
-      passphrase = env("TF_ENCRYPTION_PASSPHRASE")
-    }
-    method "aes_gcm" "default" {
-      keys = key_provider.pbkdf2.default
-    }
-    state {
-      method   = method.aes_gcm.default
-      enforced = true
-    }
-    plan {
-      method   = method.aes_gcm.default
-      enforced = true
-    }
-  }
+  # State encryption is intentionally NOT declared here. OpenTofu's
+  # encryption {} block is static-only (no env(), var, or local
+  # references), and TF_ENCRYPTION env-var input expects HCL syntax
+  # which is awkward to assemble in shell. Encryption will be
+  # re-introduced in a follow-up commit using the static block + a
+  # bootstrap-managed passphrase file. The local passphrase file at
+  # ~/.config/tofu/exe.passphrase remains in place for that commit.
+  # Until then, GCS bucket protections (uniform IAM, public access
+  # prevention, versioning) are the only state safeguard.
 
   required_providers {
     google = {

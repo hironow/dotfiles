@@ -860,15 +860,13 @@ docs-view:
 exe-bootstrap:
     @bash exe/scripts/bootstrap.sh
 
-# tofu init for the exe stack.
+# tofu init for the exe stack. (init talks only to the GCS backend
+# and the provider registry; CF / TS API tokens are not required yet.)
 [group('Exe')]
 exe-init:
     #!/usr/bin/env bash
     set -euo pipefail
-    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
-    cd tofu/exe && tofu init
+    cd tofu/exe &&tofu init
 
 # tofu plan against the live state.
 [group('Exe')]
@@ -877,8 +875,7 @@ exe-plan:
     set -euo pipefail
     : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
-    cd tofu/exe && tofu plan
+    cd tofu/exe &&tofu plan
 
 # tofu apply (interactive — confirms the plan).
 [group('Exe')]
@@ -887,8 +884,7 @@ exe-apply:
     set -euo pipefail
     : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
-    cd tofu/exe && tofu apply
+    cd tofu/exe &&tofu apply
 
 # tofu destroy of the VM only (keeps tunnel/secrets; cheap recreate).
 [group('Exe')]
@@ -897,8 +893,7 @@ exe-down:
     set -euo pipefail
     : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
-    cd tofu/exe && tofu destroy \
+    cd tofu/exe &&tofu destroy \
       -target=google_compute_instance.exe_coder
 
 # tofu destroy of every resource (VM, net, secrets, tunnel, DNS, Access).
@@ -908,8 +903,7 @@ exe-down-all:
     set -euo pipefail
     : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
-    cd tofu/exe && tofu destroy
+    cd tofu/exe &&tofu destroy
 
 # tofu fmt -check + provider-only init + validate. No state access; safe.
 [group('Exe')]
@@ -926,8 +920,7 @@ exe-validate:
 exe-output *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    export TF_ENCRYPTION_PASSPHRASE="$$(cat $${HOME}/.config/tofu/exe.passphrase)"
-    cd tofu/exe && tofu output {{ args }}
+    cd tofu/exe &&tofu output {{ args }}
 
 # Post-deploy smoke checks (DNS, Access gate, VM state, secrets).
 [group('Exe')]

@@ -25,10 +25,11 @@ require tofu
 require gcloud
 require dig
 require curl
+require jq
 
 [[ -f "${PASSPHRASE_FILE}" ]] || { red "missing ${PASSPHRASE_FILE}; run 'just exe-bootstrap' first"; exit 1; }
-export TF_ENCRYPTION_PASSPHRASE
-TF_ENCRYPTION_PASSPHRASE="$(cat "${PASSPHRASE_FILE}")"
+# State encryption is currently disabled (see tofu/exe/main.tf comment).
+# When the encryption block is re-introduced, set TF_ENCRYPTION here.
 
 # ----- pull values from tofu state -----------------------------------
 
