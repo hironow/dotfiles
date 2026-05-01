@@ -32,7 +32,37 @@ require() {
 require tofu
 
 [[ -f "${PASSPHRASE_FILE}" ]] || { red "missing ${PASSPHRASE_FILE}"; exit 1; }
-# State encryption is currently disabled; see tofu/exe/main.tf.
+
+# Build the same TF_ENCRYPTION HCL the just _exe-encryption recipe
+# emits. teardown writes state (destroy operation), so this MUST be
+# set or tofu will refuse to operate post-encryption.
+pass="$(cat "${PASSPHRASE_FILE}")"
+export TF_ENCRYPTION
+TF_ENCRYPTION=$(cat <<HCL
+key_provider "pbkdf2" "default" {
+  passphrase = "${pass}"
+}
+method "aes_gcm" "default" {
+  keys = key_provider.pbkdf2.default
+}
+method "unencrypted" "migration" {}
+state {
+  method   = method.aes_gcm.default
+  enforced = false
+  fallback {
+    method = method.unencrypted.migration
+  }
+}
+plan {
+  method   = method.aes_gcm.default
+  enforced = false
+  fallback {
+    method = method.unencrypted.migration
+  }
+}
+HCL
+)
+unset pass
 
 case "${STAGE}" in
   vm)

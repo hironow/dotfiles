@@ -83,15 +83,20 @@ resource "time_rotating" "tailscale_keys" {
 }
 ```
 
-To force a rotation immediately:
+To force a rotation immediately, use `tofu apply -replace=...` via
+the `just` wrapper so `TF_ENCRYPTION` is set; calling `tofu` directly
+will fail with a state-decrypt error once encryption is active.
 
 ```bash
-cd tofu/exe
-tofu apply -replace=time_rotating.tailscale_keys
-cd -
+# Wraps tofu apply -replace with the encryption env-var.
+just exe-apply -- -replace=time_rotating.tailscale_keys
 just exe-apply        # picks up new keys, rebuilds VM if startup-script changed
 just exe-smoke
 ```
+
+> If `just exe-apply` does not yet accept positional flags in your
+> branch, run the rotation by editing `time_rotating.rotation_days`
+> to a smaller value (e.g. `30`) for one apply, then revert.
 
 Old key versions stay in Secret Manager. Destroy them only after
 confirming no agent or VM is still authenticated with them:
@@ -103,12 +108,12 @@ gcloud secrets versions destroy <N> --secret=exe-tailscale-coder-authkey
 
 ## Cloudflare tunnel credentials rotation
 
-The tunnel secret is a `random_id`. To rotate:
+The tunnel secret is a `random_id`. To rotate (use the `just`
+wrapper so `TF_ENCRYPTION` is supplied; raw `tofu apply` fails once
+state is encrypted):
 
 ```bash
-cd tofu/exe
-tofu apply -replace=random_id.tunnel_secret
-cd -
+just exe-apply -- -replace=random_id.tunnel_secret
 just exe-apply        # writes a new credentials JSON to Secret Manager
 just exe-teardown vm  # force VM restart so cloudflared picks up the new file
 just exe-apply

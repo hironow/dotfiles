@@ -28,8 +28,39 @@ require curl
 require jq
 
 [[ -f "${PASSPHRASE_FILE}" ]] || { red "missing ${PASSPHRASE_FILE}; run 'just exe-bootstrap' first"; exit 1; }
-# State encryption is currently disabled (see tofu/exe/main.tf comment).
-# When the encryption block is re-introduced, set TF_ENCRYPTION here.
+
+# Build the same TF_ENCRYPTION HCL the just _exe-encryption recipe
+# emits. tofu reads state to populate `tofu output`, so without this
+# every tofu invocation in this script would error with
+# "encountered encrypted payload without encrypted method configured"
+# once the first apply has flipped state to encrypted.
+pass="$(cat "${PASSPHRASE_FILE}")"
+export TF_ENCRYPTION
+TF_ENCRYPTION=$(cat <<HCL
+key_provider "pbkdf2" "default" {
+  passphrase = "${pass}"
+}
+method "aes_gcm" "default" {
+  keys = key_provider.pbkdf2.default
+}
+method "unencrypted" "migration" {}
+state {
+  method   = method.aes_gcm.default
+  enforced = false
+  fallback {
+    method = method.unencrypted.migration
+  }
+}
+plan {
+  method   = method.aes_gcm.default
+  enforced = false
+  fallback {
+    method = method.unencrypted.migration
+  }
+}
+HCL
+)
+unset pass
 
 # ----- pull values from tofu state -----------------------------------
 

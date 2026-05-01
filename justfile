@@ -901,7 +901,7 @@ exe-init:
     #!/usr/bin/env bash
     set -euo pipefail
     export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe &&tofu init
+    cd tofu/exe && tofu init
 
 # tofu plan against the live state.
 [group('Exe')]
@@ -911,17 +911,18 @@ exe-plan:
     : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe &&tofu plan
+    cd tofu/exe && tofu plan
 
-# tofu apply (interactive — confirms the plan).
+# tofu apply (interactive). Forward extra args after `--`,
+# e.g. `just exe-apply -- -replace=time_rotating.tailscale_keys`.
 [group('Exe')]
-exe-apply:
+exe-apply *args:
     #!/usr/bin/env bash
     set -euo pipefail
     : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe &&tofu apply
+    cd tofu/exe && tofu apply {{ args }}
 
 # tofu destroy of the VM only (keeps tunnel/secrets; cheap recreate).
 [group('Exe')]
@@ -931,7 +932,7 @@ exe-down:
     : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe &&tofu destroy \
+    cd tofu/exe && tofu destroy \
       -target=google_compute_instance.exe_coder
 
 # tofu destroy of every resource (VM, net, secrets, tunnel, DNS, Access).
@@ -942,7 +943,7 @@ exe-down-all:
     : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe &&tofu destroy
+    cd tofu/exe && tofu destroy
 
 # tofu fmt -check + provider-only init + validate. No state access; safe.
 [group('Exe')]
@@ -960,7 +961,7 @@ exe-output *args:
     #!/usr/bin/env bash
     set -euo pipefail
     export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe &&tofu output {{ args }}
+    cd tofu/exe && tofu output {{ args }}
 
 # Post-deploy smoke checks (DNS, Access gate, VM state, secrets).
 [group('Exe')]
