@@ -11,6 +11,12 @@ FROM ${BASE_IMAGE}
 # Coder workspace). Without the compat shim, executing the glibc
 # binary produces 'syntax error: unexpected newline' from sh trying
 # to interpret the ELF as a script. Both packages are tiny.
+#
+# docker-cli: Coder workspace agent polls `docker ps` to discover
+# DevContainer-mode children. The dockerd itself runs on the
+# envbuilder VM host (debian-12); we just need the CLI inside the
+# container so the agent's exec succeeds and the unix socket
+# (bind-mounted by the workspace template) does the rest.
 RUN apk add --no-cache \
     bash \
     coreutils \
@@ -26,7 +32,8 @@ RUN apk add --no-cache \
     npm \
     shellcheck \
     libc6-compat \
-    gcompat
+    gcompat \
+    docker-cli
 
 # Install latest just from GitHub releases (Alpine 3.19's just package is
 # outdated and doesn't support [group()] syntax, which our justfile uses).

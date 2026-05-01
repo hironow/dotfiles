@@ -900,6 +900,33 @@ def test_glibc_dynamic_loader_present(docker_image):
 
 
 @pytest.mark.check
+def test_dev_container_has_docker_cli(docker_image):
+    """Coder agent's DevContainer feature shells out to `docker ps`
+    every few seconds; on a workspace where this CLI is missing the
+    agent log fills with:
+
+      run docker ps: exit status 127: "/bin/ash: docker: not found"
+
+    and any UI 'Containers' tab returns HTTP 500. dockerd itself
+    runs on the envbuilder VM host (debian-12) and the unix socket
+    is bind-mounted into the dev container by the dotfiles
+    devcontainer template, so a CLI-only package is enough — we do
+    NOT need a daemon inside the container.
+
+    Wider 'install everything dotfiles symlinks expects' coverage
+    (zsh / starship / fzf / tmux / gh / gcloud) is deferred to the
+    Layer-1 base-image migration where the dev container moves from
+    alpine + musl to a glibc base; on alpine the apk repo lacks
+    several of those tools natively. See docs/handover.md."""
+    result = run_in_sandbox(docker_image, "apk info -e docker-cli")
+    assert result.returncode == 0, (
+        "alpine package 'docker-cli' is missing — Coder agent's\n"
+        "DevContainer probe will fail with 127 every poll.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+@pytest.mark.check
 def test_install_sh_has_executable_bit_in_git_index():
     """Coder's `coder dotfiles` (the per-workspace dotfiles loader)
     clones this repo and tries to run install.sh directly via exec —
