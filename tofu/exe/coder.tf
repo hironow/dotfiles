@@ -204,10 +204,16 @@ locals {
 
     # ---- Coder OSS server ---------------------------------------------
     install -m 0755 -d /var/lib/coder /var/lib/coder/cache
-    if [[ ! -x /usr/local/bin/coder ]]; then
-      curl -fsSL https://coder.com/install.sh | sh -s -- --terraform-no-pin
-      # The installer drops the binary at /usr/bin/coder on Debian/Ubuntu.
-      # Fall back to a direct download if the install method changes.
+    if [[ ! -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]; then
+      # Coder's install.sh references $HOME. The root startup-script
+      # process inherits no HOME, so dash exits with
+      # 'HOME: parameter not set' — pin one before piping.
+      export HOME=/root
+      curl -fsSL https://coder.com/install.sh \
+        | sh -s -- --terraform-no-pin || true
+      # If the installer's drop path or layout changes, fall back to
+      # the static GitHub release binary so a single point of failure
+      # does not abort the whole script.
       if [[ ! -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]; then
         curl -fsSL -o /usr/local/bin/coder \
           https://github.com/coder/coder/releases/latest/download/coder-linux-amd64
