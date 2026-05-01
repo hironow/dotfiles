@@ -900,6 +900,39 @@ def test_glibc_dynamic_loader_present(docker_image):
 
 
 @pytest.mark.check
+def test_install_sh_has_executable_bit_in_git_index():
+    """Coder's `coder dotfiles` (the per-workspace dotfiles loader)
+    clones this repo and tries to run install.sh directly via exec —
+    not 'bash install.sh'. If install.sh in the git index has mode
+    100644 instead of 100755, the exec fails with:
+
+      error: script "install.sh" does not have execute permissions
+
+    and dotfiles personalisation silently degrades. Local fs mode
+    is irrelevant — what matters is the *index mode*, because that
+    is what `git clone` reproduces on the workspace VM.
+
+    Reproduce the upstream check with `git ls-files -s`."""
+    import subprocess
+
+    repo_root = Path(__file__).resolve().parents[1]
+    out = subprocess.run(
+        ["git", "ls-files", "-s", "install.sh"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    # Output format: "<mode> <hash> <stage>\t<path>"
+    mode = out.stdout.split()[0]
+    assert mode == "100755", (
+        f"install.sh git index mode is {mode}, expected 100755.\n"
+        "Run: git update-index --chmod=+x install.sh && commit\n"
+        "Otherwise 'coder dotfiles' fails to exec the script after clone."
+    )
+
+
+@pytest.mark.check
 def test_glibc_binary_actually_runs(docker_image):
     """End-to-end: download a known-glibc tiny binary and exec it
     inside the alpine sandbox. If the shim is in place, exec
