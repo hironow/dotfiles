@@ -228,25 +228,30 @@ def test_acl_has_no_ssh_block_or_only_empty() -> None:
 
 
 @pytest.mark.exe
-def test_coder_telemetry_off_via_cli_flag(startup_script: str) -> None:
-    """Coder's serpent CLI library prints a 'WARN: CODER_TELEMETRY is
-    deprecated' line whenever a parsed option carries an
-    UseInstead-aliased env (CODER_TELEMETRY -> CODER_TELEMETRY_ENABLE).
-    Setting CODER_TELEMETRY_ENABLE in the unit was insufficient on
-    Coder v2.31 — the warning still fired. Use the --telemetry=false
-    CLI flag and drop the env entirely."""
-    # No CODER_TELEMETRY* env should be set (any of the family
-    # triggers the alias path).
-    bad_env = re.findall(
-        r"^\s*Environment=CODER_TELEMETRY[^=]*=", startup_script, re.MULTILINE
-    )
-    assert bad_env == [], (
-        f"Found CODER_TELEMETRY* env in unit: {bad_env}. Use the\n"
-        "--telemetry=false CLI flag on ExecStart instead."
-    )
-    # And the CLI flag must be present.
-    assert "--telemetry=false" in startup_script, (
-        "missing --telemetry=false on the coder ExecStart line"
+def test_coder_telemetry_disabled_via_env() -> None:
+    """Telemetry must be turned OFF. Coder accepts both:
+        Environment=CODER_TELEMETRY_ENABLE=false  (env path)
+        ExecStart=... --telemetry=false           (CLI flag path)
+    Both paths trip a serpent deprecation warning, but the env path
+    is the only one that actually works in cloud — the CLI flag path
+    additionally tripped a heredoc 'command not found' in GCE's
+    metadata-script-runner. Lock the env-only form."""
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+    assert re.search(
+        r"^\s*Environment=CODER_TELEMETRY_ENABLE=false\s*$",
+        coder_tf,
+        re.MULTILINE,
+    ), "CODER_TELEMETRY_ENABLE=false must be set in the coder.service unit"
+    # ExecStart line(s) must not pass --telemetry (CLI flag path
+    # tripped a 'command not found' regression in GCE's
+    # metadata-script-runner heredoc handling). Comments mentioning
+    # --telemetry as historical context are fine; only ExecStart= is
+    # scrutinised.
+    exec_lines = re.findall(r"^\s*ExecStart=.*$", coder_tf, re.MULTILINE)
+    bad = [line for line in exec_lines if "--telemetry" in line]
+    assert bad == [], (
+        f"ExecStart must not pass --telemetry=...: {bad}.\n"
+        "Use Environment=CODER_TELEMETRY_ENABLE=false instead."
     )
 
 
@@ -299,8 +304,11 @@ def test_startup_script_shellcheck(startup_script: str, tmp_path: Path) -> None:
 # talking to GCP / Tailscale / systemd. The unit files still get
 # written to /etc/systemd/system/ where systemd-analyze can verify
 # them.
-HARNESS_PRELUDE = r"""#!/usr/bin/env bash
-set -euo pipefail
+HARNESS_PRELUDE = r"""#!/bin/sh
+# Use POSIX-only set flags so this prelude runs under both bash and
+# dash (GCE's google_metadata_script_runner has been observed to
+# dispatch via /bin/sh in some configurations).
+set -eu
 
 # ---- mock gcloud --------------------------------------------------
 mkdir -p /opt/mock
@@ -351,6 +359,44 @@ export PATH="/opt/mock:${PATH}"
 # returns the real path. Mocks for gcloud/tailscale stay because the
 # script never installs gcloud (it's already on the host's apt repo).
 """
+
+
+@pytest.mark.exe
+@pytest.mark.skip(
+    reason=(
+        "startup_script uses `set -euo pipefail` (bash-only); a dash run "
+        "fails at line 2 before ever reaching the heredoc body. Cloud "
+        "(GCE google_metadata_script_runner) honours the bash shebang in "
+        "current testing, so dash dispatch is not exercised. Keep the "
+        "test scaffolding so a future config that drops bash-isms can "
+        "flip the skip and exercise the dash path."
+    )
+)
+def test_startup_script_runs_under_dash(
+    startup_script: str, docker_image: str, tmp_path: Path
+) -> None:
+    """Reserved-but-skipped test for the future case where the
+    startup_script becomes POSIX-portable. Until then, this stays as
+    documentation of the dash failure mode rather than as a live
+    assertion."""
+    harness = tmp_path / "run.sh"
+    harness.write_text(HARNESS_PRELUDE + "\n" + startup_script)
+
+    r = _run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{harness}:/work/run.sh:ro",
+            docker_image,
+            "dash",
+            "/work/run.sh",
+        ],
+        timeout=600,
+    )
+    assert r.returncode == 0, f"dash run failed:\n--- stderr ---\n{r.stderr[-2048:]}"
+    assert "command not found" not in (r.stdout + r.stderr)
 
 
 @pytest.mark.exe

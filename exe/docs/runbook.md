@@ -115,6 +115,24 @@ just exe-apply
 just exe-smoke
 ```
 
+## `WARN: CODER_TELEMETRY is deprecated` in coder.service journal
+
+This is upstream noise from Coder's serpent CLI library. Telemetry is
+in fact disabled (look for `telemetry disabled, unable to notify of
+security issues` in the same journal). Both escape paths trip the
+warning:
+
+- `Environment=CODER_TELEMETRY_ENABLE=false` (current) →
+  `WARN: CODER_TELEMETRY is deprecated`
+- `ExecStart=... --telemetry=false` (tried, reverted) →
+  `WARN: --telemetry-enable is deprecated`, plus a
+  `command not found` regression in GCE's metadata-script-runner
+  heredoc handling.
+
+The env path is the safer of the two and what the unit currently
+uses. Re-evaluate when Coder fixes the alias-warning logic in
+serpent (track upstream).
+
 ## Stale exe-coder devices in the tailnet
 
 `tailscale_tailnet_key.exe_coder` is `ephemeral = true`, so the VM

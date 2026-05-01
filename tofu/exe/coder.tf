@@ -270,20 +270,20 @@ locals {
     Environment=CODER_WILDCARD_ACCESS_URL=$CODER_WILDCARD
     Environment=CODER_PG_CONNECTION_URL=
     Environment=CODER_CACHE_DIRECTORY=/var/lib/coder/cache
-    # Telemetry is OFF via the `--telemetry` CLI flag on ExecStart.
-    # Coder's serpent CLI library emits a 'WARN: CODER_TELEMETRY is
-    # deprecated' line whenever it parses an option that carries a
-    # deprecated alias (UseInstead), even when the canonical env
-    # CODER_TELEMETRY_ENABLE is the only one set. The CLI flag path
-    # bypasses the env-alias warning entirely. (See
-    # codersdk/deployment.go where Env:'CODER_TELEMETRY' is kept for
-    # backwards compatibility with UseInstead pointing at the new
-    # name.)
+    Environment=CODER_TELEMETRY_ENABLE=false
     Environment=CODER_DISABLE_PASSWORD_AUTH=false
     Environment=CODER_SECURE_AUTH_COOKIE=true
     Environment=CODER_STRICT_TRANSPORT_SECURITY=31536000
     Environment=CODER_STRICT_TRANSPORT_SECURITY_OPTIONS=includeSubDomains,preload
-    ExecStart=$CODER_BIN server --telemetry=false
+    # Telemetry is OFF via CODER_TELEMETRY_ENABLE=false above.
+    # Coder's serpent CLI library still emits 'WARN: CODER_TELEMETRY
+    # is deprecated' at boot — that is upstream noise (telemetry is in
+    # fact disabled; see the 'telemetry disabled, unable to notify of
+    # security issues' journal line). Accept the noise; switching to
+    # the --telemetry CLI flag yielded a different deprecation warning
+    # and additionally tripped a heredoc-related 'command not found'
+    # in Cloud's metadata-script-runner. See runbook.md.
+    ExecStart=$CODER_BIN server
     Restart=on-failure
     RestartSec=10
     NoNewPrivileges=true
