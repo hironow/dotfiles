@@ -371,6 +371,7 @@ export GOOGLE_PROJECT=test-template-plan
 
 terraform plan -input=false -no-color -refresh=false \\
   -var "project_id=test-template-plan" \\
+  -var "workspace_sa_email=fake-workspace-sa@test-template-plan.iam.gserviceaccount.com" \\
   -out=/tmp/plan.bin
 
 terraform show -no-color /tmp/plan.bin | head -40
