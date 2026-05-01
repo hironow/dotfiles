@@ -913,16 +913,32 @@ exe-plan:
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu plan
 
-# tofu apply (interactive). Forward extra args after `--`,
-# e.g. `just exe-apply -- -replace=time_rotating.tailscale_keys`.
+# tofu apply (interactive — full plan).
 [group('Exe')]
-exe-apply *args:
+exe-apply:
     #!/usr/bin/env bash
     set -euo pipefail
     : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply {{ args }}
+    cd tofu/exe && tofu apply
+
+# Common targets:
+#   just exe-replace google_compute_instance.exe_coder
+#     # re-run startup-script after VM image / metadata changes
+#   just exe-replace time_rotating.tailscale_keys
+#     # force-rotate Tailscale auth keys
+#   just exe-replace random_id.tunnel_secret
+#     # rotate cloudflared tunnel credentials
+# Force-replace one resource via tofu apply -replace=<target>.
+[group('Exe')]
+exe-replace target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu apply -replace={{ target }}
 
 # tofu destroy of the VM only (keeps tunnel/secrets; cheap recreate).
 [group('Exe')]
