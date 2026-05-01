@@ -13,28 +13,65 @@ terraform {
     prefix = "exe"
   }
 
-  # PLACEHOLDER — state encryption is intentionally NOT declared here yet.
+  # State encryption.
   #
-  # Why this is a known gap, not a forgotten one:
-  # Provider configs (CLOUDFLARE_API_TOKEN, TAILSCALE_API_KEY) never
-  # land in state, but resource attributes do — including
-  #   - cloudflare_zero_trust_tunnel_cloudflared.exe.secret
-  #   - tailscale_tailnet_key.*.key
-  #   - random_id.tunnel_secret.b64_std
-  # Without `encryption {}`, those land in plaintext under
+  # The HCL block is static-only — env(), var, and locals are all
+  # forbidden inside it. The literal passphrase below is a sentinel
+  # that fails closed: every `just exe-*` recipe overrides this
+  # block via the TF_ENCRYPTION env-var (HCL payload assembled from
+  # ~/.config/tofu/exe.passphrase). Without that override, OpenTofu
+  # encrypts state with the sentinel, which the operator can no
+  # longer decrypt — i.e. the wrong-but-deterministic case is
+  # caught immediately rather than silently.
+  #
+  # Why this matters: provider configs (CLOUDFLARE_API_TOKEN,
+  # TAILSCALE_API_KEY) never land in state, but resource attributes
+  # do — including cloudflare_zero_trust_tunnel_cloudflared.exe.tunnel_secret,
+  # tailscale_tailnet_key.*.key, random_id.tunnel_secret.b64_std,
+  # and every google_secret_manager_secret_version.secret_data.
+  # Without encryption those leak in plaintext under
   # gs://gen-ai-hironow-tofu-state.
   #
-  # Until the encryption block is wired (separate commit), the state
-  # bucket protections (uniform IAM, public-access-prevention,
-  # versioning, no public IAM members) are the only safeguard, and
-  # the GCS bucket itself stores objects with Google-managed
-  # encryption-at-rest. That is acceptable for a single-tenant personal
-  # project but should NOT be exported to multi-operator setups.
-  #
-  # Plan to land it: HCL `encryption {}` block here with a literal
-  # sentinel passphrase, then TF_ENCRYPTION env-var override (HCL
-  # payload, not JSON) in the just exe-* recipes — see
-  # docs/setup.md § "Future: state encryption".
+  # See docs/setup.md § "State encryption" for the operator-side
+  # passphrase generation and TF_ENCRYPTION env-var details.
+  encryption {
+    key_provider "pbkdf2" "default" {
+      passphrase = "OVERRIDDEN_BY_TF_ENCRYPTION_ENV"
+    }
+    method "aes_gcm" "default" {
+      keys = key_provider.pbkdf2.default
+    }
+    # One-time migration ramp: existing unencrypted state files (e.g.
+    # the empty default.tfstate written by an earlier 'tofu init') are
+    # readable via the fallback. Every subsequent write encrypts. Drop
+    # this fallback in a later commit once the migration has been
+    # confirmed (state-only file present and decryptable with the new
+    # passphrase).
+    method "unencrypted" "migration" {}
+    # Migration mode (enforced = false). The fallback admits one
+    # existing unencrypted state file written by an earlier
+    # 'tofu init' before the encryption block existed. Every
+    # subsequent write is encrypted via aes_gcm.default. Once the
+    # state is confirmed encrypted on GCS (after the first apply),
+    # a follow-up commit will:
+    #   1. drop the unencrypted method + fallback,
+    #   2. set enforced = true,
+    # making the stack reject any non-encrypted state from then on.
+    state {
+      method   = method.aes_gcm.default
+      enforced = false
+      fallback {
+        method = method.unencrypted.migration
+      }
+    }
+    plan {
+      method   = method.aes_gcm.default
+      enforced = false
+      fallback {
+        method = method.unencrypted.migration
+      }
+    }
+  }
 
   required_providers {
     google = {
