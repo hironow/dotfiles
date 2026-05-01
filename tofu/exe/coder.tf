@@ -126,9 +126,14 @@ locals {
     fi
 
     # ---- Tailscale (apt repository) -----------------------------------
+    # Tailscale's published noble.tailscale-keyring.list pins
+    # signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg, so
+    # the keyring MUST be written there. Putting it under
+    # /etc/apt/keyrings/tailscale.gpg breaks apt with NO_PUBKEY 458CA832957F5868.
     if ! command -v tailscale >/dev/null 2>&1; then
+      install -m 0755 -d /usr/share/keyrings
       curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
-        > /etc/apt/keyrings/tailscale.gpg
+        > /usr/share/keyrings/tailscale-archive-keyring.gpg
       curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list \
         > /etc/apt/sources.list.d/tailscale.list
       apt-get update -y
