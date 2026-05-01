@@ -27,6 +27,16 @@ output "tailscale_secret_agent" {
   value       = google_secret_manager_secret.agent_authkey.name
 }
 
+output "tailscale_secret_workspace" {
+  description = "Secret Manager resource name for the Coder workspace Tailscale auth key."
+  value       = google_secret_manager_secret.exe_workspace_authkey.name
+}
+
+output "tailscale_secret_workspace_id" {
+  description = "Bare secret_id (no project prefix) for use in template variables."
+  value       = google_secret_manager_secret.exe_workspace_authkey.secret_id
+}
+
 output "tailscale_keys_rotated_at" {
   description = "Timestamp of the most recent Tailscale auth-key rotation (driven by time_rotating)."
   value       = time_rotating.tailscale_keys.rfc3339
@@ -55,6 +65,27 @@ output "vm_external_ip" {
 output "vm_service_account_email" {
   description = "Service account email the VM runs as."
   value       = google_service_account.exe_coder.email
+}
+
+output "exe_workspace_sa_email" {
+  description = <<-EOF
+Service account email stamped on Coder workspace VMs by the
+dotfiles-devcontainer template. Pass this to
+`cdr templates push --variable workspace_sa_email=...`.
+EOF
+  value       = google_service_account.exe_workspace.email
+}
+
+output "coder_internal_url" {
+  description = <<-EOF
+URL the Coder agent binary is downloaded from inside the workspace
+VM. Resolves over MagicDNS on the tailnet (the workspace VM joins
+with tag:exe-workspace at boot, then `exe-coder` resolves to the
+control-plane VM's tailnet IP automatically). Public CF Access edge
+is bypassed for this path. Pass to
+`cdr templates push --variable coder_internal_url=...`.
+EOF
+  value       = "http://${google_compute_instance.exe_coder.name}:7080"
 }
 
 output "cloudflare_tunnel_id" {
