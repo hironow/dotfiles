@@ -209,6 +209,66 @@ def test_tailscale_ssh_is_disabled(startup_script: str) -> None:
 
 
 @pytest.mark.exe
+def test_coder_http_address_listens_on_all_interfaces() -> None:
+    """B-plan tailnet routing: workspaces hit the Coder server's HTTP
+    listener via its tailnet IP (exe-coder.<tailnet>:7080), not via the
+    public CF Access edge. For that the listener MUST bind to all
+    interfaces, not loopback only.
+
+    127.0.0.1:7080 = only cloudflared can reach it (the original posture)
+    0.0.0.0:7080   = cloudflared + tailnet IP (the B-plan posture)
+
+    The deny-all-ingress firewall keeps the public IP blocked at L3,
+    so 0.0.0.0 here is safe — the only listeners that can actually
+    reach :7080 are localhost (cloudflared) and tun0 (tailscaled).
+    """
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+    assert "CODER_HTTP_ADDRESS=0.0.0.0:7080" in coder_tf, (
+        "coder.service must set CODER_HTTP_ADDRESS=0.0.0.0:7080 so the\n"
+        "Coder server listens on the tailnet interface as well as on\n"
+        "the loopback (cloudflared) interface."
+    )
+    assert "CODER_HTTP_ADDRESS=127.0.0.1:7080" not in coder_tf, (
+        "loopback-only listener detected. Workspaces hitting the\n"
+        "tailnet IP will time out. Switch to 0.0.0.0."
+    )
+
+
+@pytest.mark.exe
+def test_exe_workspace_sa_present_with_secret_reader() -> None:
+    """Workspace VMs must be able to fetch the tag:exe-workspace
+    tailnet auth key from Secret Manager at boot. That requires:
+      - a dedicated google_service_account.exe_workspace
+      - a google_secret_manager_secret_iam_member granting the SA
+        roles/secretmanager.secretAccessor on exe_workspace_authkey
+
+    Sharing the default compute SA was rejected because the default SA
+    is project-wide and granting it Secret Manager read on tailnet
+    keys widens the blast radius beyond this stack."""
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+
+    sa_block = re.search(
+        r'resource "google_service_account" "exe_workspace" \{(.*?)^\}',
+        coder_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert sa_block is not None, (
+        "missing google_service_account.exe_workspace in tofu/exe/coder.tf"
+    )
+
+    iam_block = re.search(
+        r'resource "google_secret_manager_secret_iam_member" '
+        r'"exe_workspace_authkey_reader" \{(.*?)^\}',
+        coder_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert iam_block is not None, (
+        "missing IAM grant — workspace SA cannot read the tailnet authkey"
+    )
+    assert "secretmanager.secretAccessor" in iam_block.group(1)
+
+
+@pytest.mark.exe
 def test_workspace_tailnet_auth_key_resource_present() -> None:
     """B-plan tailnet routing: workspace VMs join the tailnet at boot
     using a tag:exe-workspace auth key. The key MUST be:

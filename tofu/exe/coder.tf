@@ -33,6 +33,39 @@ resource "google_service_account" "exe_coder" {
   description  = "Service account for the exe-coder GCE VM (managed by tofu)."
 }
 
+# Service account stamped on Coder workspace VMs (the per-workspace
+# google_compute_instance.vm in the dotfiles-devcontainer template).
+# Carries the minimum permissions needed at boot:
+#   - read tag:exe-workspace tailnet authkey from Secret Manager
+# A dedicated SA (rather than reusing the project default compute SA)
+# keeps the Secret Manager grant scoped to this stack — the default SA
+# is project-wide and would extend the read permission to every other
+# workload running under it.
+resource "google_service_account" "exe_workspace" {
+  account_id   = "${local.prefix}-workspace"
+  display_name = "exe Coder workspace VM"
+  description  = "Service account for Coder workspace VMs (managed by tofu)."
+}
+
+resource "google_secret_manager_secret_iam_member" "exe_workspace_authkey_reader" {
+  secret_id = google_secret_manager_secret.exe_workspace_authkey.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.exe_workspace.email}"
+}
+
+# Logs/metrics so a preempted workspace VM still leaves a trail.
+resource "google_project_iam_member" "exe_workspace_log_writer" {
+  project = var.gcp_project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.exe_workspace.email}"
+}
+
+resource "google_project_iam_member" "exe_workspace_metric_writer" {
+  project = var.gcp_project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.exe_workspace.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "exe_coder_authkey_reader" {
   secret_id = google_secret_manager_secret.exe_coder_authkey.id
   role      = "roles/secretmanager.secretAccessor"
@@ -295,7 +328,16 @@ locals {
     Group=coder
     Environment=HOME=/var/lib/coder
     Environment=CODER_ACCESS_URL=$CODER_ACCESS_URL
-    Environment=CODER_HTTP_ADDRESS=127.0.0.1:7080
+    # Listen on all interfaces, not loopback only. cloudflared still
+    # reaches the server on 127.0.0.1:7080 for the public path; the
+    # tailnet IP (tun0) is what workspace VMs use to fetch
+    # /bin/coder-linux-amd64 and run the agent <-> server protocol
+    # without going through the public CF Access edge. The
+    # deny-all-ingress firewall keeps the GCE public IP blocked at L3,
+    # so the only sources that can dial 0.0.0.0:7080 are localhost
+    # (cloudflared) and the tailnet (peers permitted by ACL rule
+    # tag:exe-workspace -> tag:exe-coder:7080).
+    Environment=CODER_HTTP_ADDRESS=0.0.0.0:7080
     Environment=CODER_TLS_ENABLE=false
     Environment=CODER_WILDCARD_ACCESS_URL=$CODER_WILDCARD
     Environment=CODER_PG_CONNECTION_URL=
