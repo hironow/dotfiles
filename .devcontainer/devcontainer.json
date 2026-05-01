@@ -54,9 +54,11 @@
   // into the cached image so CI reuses the result.
   "onCreateCommand": "bash .devcontainer/post-create.sh",
 
-  // install-hooks wires prek into .git/hooks for this clone. Must run
-  // after onCreate so just/mise are on PATH.
-  "postCreateCommand": "just install-hooks",
+  // install-hooks wires prek into .git/hooks for the local-dev case.
+  // It is skipped silently in CI / Coder workspaces where the bind
+  // mount may not expose a writable .git/ that prek can introspect;
+  // those environments don't commit so hooks are not needed.
+  "postCreateCommand": "if [ -d /root/dotfiles/.git ]; then just install-hooks || echo '[post-create] install-hooks failed; non-fatal'; else echo '[post-create] no .git, skipping install-hooks'; fi",
 
   "containerEnv": {
     "MISE_OFFLINE": "1",
