@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# cdr — `coder` CLI wrapper that injects Cloudflare Access service-token
+# headers into every API request.
+#
+# Background: the Coder server at https://exe.hironow.dev sits behind
+# a Cloudflare Access application. Direct `coder login ...` fails with
+#
+#     create api key: invalid character '<' looking for beginning of value
+#
+# because the CLI parses CF Access's OIDC HTML interstitial as JSON.
+# Adding `--header "CF-Access-Client-Id: ..."` and
+# `--header "CF-Access-Client-Secret: ..."` (or the equivalent
+# CODER_HEADER_COMMAND env) sidesteps the OIDC challenge by
+# authenticating at the edge with a machine identity. This wrapper
+# does that automatically: pull the service-token credentials from
+# Secret Manager (cached for 5 min so daily `cdr workspaces list`
+# does not hammer GCP), export them, then exec `coder "$@"`.
+#
+# Usage (after running `just exe-cdr-install`):
+#   cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>
+#   cdr users list
+#   cdr templates list
+#
+# Required tools: gcloud, coder.
+
+set -euo pipefail
+
+CACHE_DIR="${HOME}/.cache/exe-coder-cli"
+CACHE_TTL_SEC="${CDR_CACHE_TTL_SEC:-300}"
+
+err() { printf '\033[31m[cdr]\033[0m %s\n' "$*" >&2; exit 1; }
+
+require() {
+  command -v "$1" >/dev/null 2>&1 || err "missing required tool: $1"
+}
+
+require gcloud
+require coder
+
+mkdir -p "${CACHE_DIR}"
+chmod 0700 "${CACHE_DIR}"
+
+# Cross-platform mtime (BSD stat on macOS, GNU stat on Linux).
+file_mtime() {
+  local f="$1"
+  if [[ "$(uname)" == "Darwin" ]]; then
+    stat -f %m "$f"
+  else
+    stat -c %Y "$f"
+  fi
+}
+
+refresh_secret_if_stale() {
+  local file="$1" secret_name="$2"
+  if [[ ! -f "${file}" ]] \
+     || [[ $(( $(date +%s) - $(file_mtime "${file}") )) -gt ${CACHE_TTL_SEC} ]]; then
+    gcloud secrets versions access latest --secret="${secret_name}" \
+      > "${file}.tmp"
+    chmod 0600 "${file}.tmp"
+    mv "${file}.tmp" "${file}"
+  fi
+}
+
+refresh_secret_if_stale "${CACHE_DIR}/client_id"     "exe-coder-cli-client-id"
+refresh_secret_if_stale "${CACHE_DIR}/client_secret" "exe-coder-cli-client-secret"
+
+CF_ACCESS_CLIENT_ID="$(<"${CACHE_DIR}/client_id")"
+CF_ACCESS_CLIENT_SECRET="$(<"${CACHE_DIR}/client_secret")"
+export CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET
+
+# Coder CLI evaluates this at every request and injects the resulting
+# header lines into the outgoing HTTP request. The shell that runs the
+# command inherits CF_ACCESS_CLIENT_* from this wrapper.
+# shellcheck disable=SC2016 # the $... must be expanded by the *Coder*
+# subshell at request time, not by this script at export time.
+export CODER_HEADER_COMMAND='printf "CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n" "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET"'
+
+exec coder "$@"

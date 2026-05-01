@@ -117,30 +117,62 @@ just exe-smoke
 
 ## Logging in via the Coder CLI
 
-The Coder API sits behind Cloudflare Access; the CLI bypasses the
-interactive OIDC challenge by sending an Access **service token**
-(machine identity) on every request. Two-layer auth: CF Access
-service token *and* Coder session token.
+Two-layer auth: every request must carry **(a) the Cloudflare Access
+service token** in HTTP headers AND **(b) the Coder session token**.
+The Coder CLI does NOT pass arbitrary headers by default. Use the
+`cdr` wrapper at [`exe/scripts/cdr`](../scripts/cdr) — it pulls the
+service-token credentials from Secret Manager (cached for 5 min),
+exports `CODER_HEADER_COMMAND`, then exec's `coder` with the original
+arguments.
+
+### Setup (once)
 
 ```bash
-# 1. Install the Coder CLI on the laptop.
+# 1. Install the Coder CLI.
 brew install coder/coder/coder
 # or: curl -fsSL https://coder.com/install.sh | sh
 
-# 2. Pull the CF Access service token from Secret Manager.
+# 2. Symlink the cdr wrapper into ~/.local/bin.
+just exe-cdr-install
+
+# 3. Issue a Coder API token in the UI:
+#    https://exe.hironow.dev/settings/tokens -> '+ Add token'
+#    Copy the token once (it is not shown again).
+
+# 4. First login. cdr handles all CF Access plumbing internally.
+cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>
+```
+
+### Day-to-day
+
+```bash
+cdr users list
+cdr templates list
+cdr workspaces list
+cdr ssh <workspace>
+```
+
+The Coder session token persists in `~/.config/coderv2/session` after
+the first `cdr login`, so subsequent commands need only the wrapper
+(which re-reads CF Access headers each invocation; rotated service-
+token credentials propagate within 5 minutes via the cache).
+
+### Manual flag form (if cdr is unavailable)
+
+```bash
 export CF_ACCESS_CLIENT_ID="$(gcloud secrets versions access latest \
   --secret=exe-coder-cli-client-id)"
 export CF_ACCESS_CLIENT_SECRET="$(gcloud secrets versions access latest \
   --secret=exe-coder-cli-client-secret)"
 
-# 3. Log in to Coder. The browser flow opens; CF Access waves the
-#    request through because of the env headers above; Coder issues
-#    a session token; the CLI stores it under ~/.config/coderv2/.
-coder login https://exe.hironow.dev
+coder login https://exe.hironow.dev --token <CODER_API_TOKEN> \
+  --header "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+  --header "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
 
-# 4. Day-to-day commands. Both env vars must be present each shell.
+# Persist for shell session:
+export CODER_HEADER_COMMAND='printf "CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n" "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET"'
+
 coder users list
-coder workspaces list
 ```
 
 To rotate the service token (e.g. on suspected compromise):

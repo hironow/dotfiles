@@ -986,3 +986,14 @@ exe-teardown stage="vm":
 [group('Exe')]
 exe-test:
     uvx --with pytest pytest -v -m exe tests/exe/
+
+# Symlink exe/scripts/cdr into ~/.local/bin so 'cdr ...' is available
+# everywhere as a Coder CLI wrapper that injects Cloudflare Access
+# service-token headers from Secret Manager.
+[group('Exe')]
+exe-cdr-install:
+    @mkdir -p $${HOME}/.local/bin
+    @ln -sf $$(pwd)/exe/scripts/cdr $${HOME}/.local/bin/cdr
+    @echo "✓ symlinked: $${HOME}/.local/bin/cdr -> $$(pwd)/exe/scripts/cdr"
+    @echo "  ensure $${HOME}/.local/bin is on PATH; first use:"
+    @echo "    cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"

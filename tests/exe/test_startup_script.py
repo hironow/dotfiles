@@ -228,6 +228,30 @@ def test_acl_has_no_ssh_block_or_only_empty() -> None:
 
 
 @pytest.mark.exe
+def test_cdr_wrapper_present_and_executable() -> None:
+    """The cdr wrapper at exe/scripts/cdr is the documented entry
+    point for using the Coder CLI behind Cloudflare Access. It must:
+      - exist as an executable file
+      - source CF_ACCESS_CLIENT_ID + CF_ACCESS_CLIENT_SECRET from
+        Secret Manager (the canonical 'exe-coder-cli-*' secret names)
+      - export CODER_HEADER_COMMAND so the inner coder process
+        injects the headers per-request
+      - exec coder so 'cdr' is a transparent passthrough
+    """
+    cdr = ROOT / "exe" / "scripts" / "cdr"
+    assert cdr.is_file(), f"missing wrapper: {cdr}"
+    import os
+
+    assert os.access(cdr, os.X_OK), f"wrapper not executable: {cdr}"
+    text = cdr.read_text()
+    # The exact secret names tofu/exe/cloudflare.tf creates.
+    assert "exe-coder-cli-client-id" in text
+    assert "exe-coder-cli-client-secret" in text
+    assert "CODER_HEADER_COMMAND" in text
+    assert "exec coder" in text
+
+
+@pytest.mark.exe
 def test_state_encryption_is_strict() -> None:
     """After the migration window closed (2026-05-01), all 4 sites
     that declare encryption posture must agree:
