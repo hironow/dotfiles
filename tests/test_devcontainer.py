@@ -72,17 +72,22 @@ def test_devcontainer_image_is_debian_bookworm(devcontainer: dict) -> None:
 REQUIRED_FEATURES = {
     "ghcr.io/devcontainers/features/common-utils:2",
     "ghcr.io/devcontainers/features/github-cli:1",
-    "ghcr.io/devcontainers/features/google-cloud-cli:1",
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1",
     "ghcr.io/devcontainers/features/python:1",
     "ghcr.io/devcontainers/features/node:1",
-    "ghcr.io/devcontainers-extra/features/just:1",
-    "ghcr.io/jdx/devcontainer-mise:0",
-    "ghcr.io/va-h/devcontainers-features/uv:1",
 }
 
 
 def test_devcontainer_declares_required_features(devcontainer: dict) -> None:
+    """All declared features MUST be Microsoft-curated
+    (`ghcr.io/devcontainers/features/*`). Community features
+    (devcontainers-extra, dhoeric, jdx, va-h, etc.) are blocked by
+    repo policy — see
+    docs/adr/0001-devcontainer-debian-features.md and the
+    `feedback_no_community_devcontainer_features` user memory.
+    Non-feature tools (gcloud, just, mise, uv, sheldon) are
+    installed by .devcontainer/post-create.sh from vendor-official
+    artifacts (apt repos with GPG, GitHub releases with SHA256)."""
     features = devcontainer.get("features", {})
     missing = REQUIRED_FEATURES - set(features.keys())
     assert not missing, (
@@ -90,6 +95,15 @@ def test_devcontainer_declares_required_features(devcontainer: dict) -> None:
         + "\n  - ".join(sorted(missing))
         + "\nDeclared:\n  - "
         + "\n  - ".join(sorted(features.keys()))
+    )
+
+    # Trust-boundary guard: only Microsoft-curated features allowed.
+    bad = [f for f in features if not f.startswith("ghcr.io/devcontainers/features/")]
+    assert not bad, (
+        "devcontainer.json declares non-Microsoft features:\n  - "
+        + "\n  - ".join(bad)
+        + "\nOnly ghcr.io/devcontainers/features/* is allowed; install "
+        "non-listed tools via post-create.sh from vendor-official artifacts."
     )
 
 
@@ -111,13 +125,24 @@ def test_devcontainer_workspace_folder_is_root_dotfiles(devcontainer: dict) -> N
     )
 
 
-def test_devcontainer_oncreate_runs_mise_install(devcontainer: dict) -> None:
-    """mise install is called once at container creation. Without
-    this, MISE_OFFLINE=1 callers (lint/test) fail because the
-    bind-mounted host repo intentionally omits mise.lock."""
+def test_devcontainer_oncreate_invokes_post_create_script(
+    devcontainer: dict,
+) -> None:
+    """onCreate delegates to .devcontainer/post-create.sh, which
+    installs vendor-official tools (gcloud / mise / uv / just /
+    sheldon) and resolves mise.toml. Keeping the long install logic
+    in a shell file under shellcheck/CI makes it auditable; the
+    JSON only references it."""
     cmd = devcontainer.get("onCreateCommand", "")
-    assert "mise" in cmd and "install" in cmd, (
-        f"onCreateCommand must run `mise install`, got: {cmd!r}"
+    assert "post-create.sh" in cmd, (
+        f"onCreateCommand must invoke post-create.sh, got: {cmd!r}"
+    )
+
+    post_create = ROOT / ".devcontainer" / "post-create.sh"
+    assert post_create.exists(), f"post-create.sh missing at {post_create}"
+    body = post_create.read_text()
+    assert "mise install" in body, (
+        "post-create.sh must run `mise install` to resolve mise.toml tools."
     )
 
 

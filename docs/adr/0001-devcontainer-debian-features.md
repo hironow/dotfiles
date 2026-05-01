@@ -39,8 +39,10 @@ musl/glibc seam.
 ## Decision
 
 Migrate the dev container to **debian-12 (bookworm)** with the
-official Microsoft devcontainer base image, and replace the
-imperative Dockerfile RUN steps with **devcontainer features**:
+official Microsoft devcontainer base image. Use Microsoft-curated
+**devcontainer features only**, and install everything else via
+**vendor-official artifacts** (apt repos with GPG, GitHub releases
+with SHA verification) from a single shell script:
 
 ```jsonc
 {
@@ -48,16 +50,30 @@ imperative Dockerfile RUN steps with **devcontainer features**:
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2":             { ... },
     "ghcr.io/devcontainers/features/github-cli:1":               {},
-    "ghcr.io/devcontainers/features/google-cloud-cli:1":         {},
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
     "ghcr.io/devcontainers/features/python:1":                   {},
-    "ghcr.io/devcontainers/features/node:1":                     {},
-    "ghcr.io/devcontainers-extra/features/just:1":               {},
-    "ghcr.io/jdx/devcontainer-mise:0":                           {},
-    "ghcr.io/va-h/devcontainers-features/uv:1":                  {}
-  }
+    "ghcr.io/devcontainers/features/node:1":                     {}
+  },
+  "onCreateCommand": "bash .devcontainer/post-create.sh"
 }
 ```
+
+`.devcontainer/post-create.sh` installs:
+
+| Tool | Source | Verification |
+|------|--------|--------------|
+| `gcloud`  | `packages.cloud.google.com/apt`     | apt repo GPG key |
+| `mise`    | `mise.jdx.dev/deb`                  | apt repo GPG key |
+| `uv`      | `astral-sh/uv` GitHub release       | `.tar.gz.sha256` sidecar |
+| `just`    | `casey/just` GitHub release         | `SHA256SUMS` bulk file |
+| `sheldon` | `rossmacarthur/sheldon` GitHub release | hardcoded SHA256 (vendor publishes none) |
+
+No `curl | bash` pipes — semgrep blocks them with CWE-95.
+Community devcontainer features (`devcontainers-extra`, `jdx`,
+`va-h`, `dhoeric`, etc.) are explicitly **out** of the trust
+boundary; only `ghcr.io/devcontainers/features/*` is allowed and
+the `tests/test_devcontainer.py::test_devcontainer_declares_required_features`
+assertion enforces this.
 
 `tests/docker/JustSandbox.Dockerfile` is **deleted**.
 `.devcontainer/devcontainer.json` becomes the single source of truth
@@ -94,10 +110,12 @@ the local IDE and Coder workspace consume.
   cold builds vs the flat Dockerfile. GHA cache from
   `cacheFrom: ghcr.io/<owner>/dotfiles-just-sandbox` recovers most of
   it on warm runs.
-- **Two non-Microsoft features in the dependency graph.**
-  `devcontainers-extra/just`, `jdx/devcontainer-mise`,
-  `va-h/devcontainers-features/uv` are community-maintained.
-  Ecosystem is healthy in 2026 but accept the supply-chain surface.
+- **Pinned versions in post-create.sh.** uv, just, sheldon are
+  pinned to specific tags; bumping them is a manual edit (or a
+  Dependabot PR if we add a tracker). The trade-off vs feature
+  auto-resolve is explicit and visible in code review.
+- **No vendor-published .sha256 for sheldon.** SHA is hardcoded per
+  arch; releases without a SUMS file get a manual review checkpoint.
 - **remoteUser=root preserved.** Switching to the debian base image's
   `vscode` non-root user requires updating ~30 test path assertions
   and `install.sh` `DOTPATH` handling. Queued as a follow-up; not

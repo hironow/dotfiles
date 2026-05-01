@@ -5,8 +5,11 @@
 //   2. CI sandbox  — `devcontainers/ci` action in test-just.yaml
 //   3. Coder workspace — envbuilder reads this file on workspace boot
 //
-// Migrating the base image / features here moves all three together.
-// Structural assertions live in tests/test_devcontainer.py.
+// Trust policy (see ADR 0001):
+//   - features: ONLY Microsoft-curated `ghcr.io/devcontainers/features/*`
+//   - everything else (gcloud, just, mise, uv) is installed by the
+//     **vendor's own upstream installer** in onCreateCommand. No
+//     community features in the dependency graph.
 {
   "name": "dotfiles",
   "image": "mcr.microsoft.com/devcontainers/base:bookworm",
@@ -21,19 +24,13 @@
       "gid": "automatic"
     },
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/google-cloud-cli:1": {
-      "installGkeGcloudAuthPlugin": false
-    },
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
     "ghcr.io/devcontainers/features/python:1": {
       "installTools": false
     },
     "ghcr.io/devcontainers/features/node:1": {
       "version": "lts"
-    },
-    "ghcr.io/devcontainers-extra/features/just:1": {},
-    "ghcr.io/jdx/devcontainer-mise:0": {},
-    "ghcr.io/va-h/devcontainers-features/uv:1": {}
+    }
   },
 
   "remoteUser": "root",
@@ -42,20 +39,28 @@
   "workspaceFolder": "/root/dotfiles",
   "workspaceMount": "source=${localWorkspaceFolder},target=/root/dotfiles,type=bind,consistency=cached",
 
-  // mise.toml is bind-mounted from host; mise.lock is intentionally
-  // not checked in. Re-trust + install at create time so MISE_OFFLINE
-  // callers (just lint / just test) find resolved versions cached.
-  // Runs once per container; baked into prebuilt images by
-  // devcontainers/ci action when --cache-from is in play.
-  "onCreateCommand": "mise trust mise.toml && touch mise.lock && mise install",
+  // Vendor-official installers for tools not covered by Microsoft
+  // features. Each line uses the upstream-published installer from
+  // the project's own domain, so the trust boundary is the vendor.
+  //   - gcloud : Google Cloud SDK (sdk.cloud.google.com)
+  //   - mise   : jdx/mise (mise.run)
+  //   - uv     : Astral (astral.sh)
+  //   - just   : casey/just GitHub release tarball (musl-free debian binary)
+  //   - sheldon: rossmacarthur/sheldon GitHub release tarball
+  //
+  // Then mise install resolves mise.toml tools (markdownlint-cli2,
+  // prek, vp, ...) and just install-hooks wires prek into git.
+  // Runs once per container creation; devcontainers/ci pre-bakes it
+  // into the cached image so CI reuses the result.
+  "onCreateCommand": "bash .devcontainer/post-create.sh",
 
-  // install-hooks wires prek into .git/hooks for this clone. Lives
-  // in postCreateCommand because it operates on the bind-mounted
-  // workspace, which is only ready after onCreate.
+  // install-hooks wires prek into .git/hooks for this clone. Must run
+  // after onCreate so just/mise are on PATH.
   "postCreateCommand": "just install-hooks",
 
   "containerEnv": {
-    "MISE_OFFLINE": "1"
+    "MISE_OFFLINE": "1",
+    "PATH": "/root/.local/bin:/root/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
   },
 
   "customizations": {
