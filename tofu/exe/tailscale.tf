@@ -70,6 +70,13 @@ resource "tailscale_tailnet_key" "exe_workspace" {
   expiry        = 90 * 24 * 3600
   tags          = [local.tag_exe_workspace]
 
+  # Tailscale rejects key issuance for a tag whose tagOwners is not
+  # yet in the live ACL (HTTP 400 "requested tags ... are invalid or
+  # not permitted"). Without this dependency the ACL update and the
+  # key creation are scheduled in parallel and the key sometimes
+  # races ahead. Force the ACL to apply first.
+  depends_on = [tailscale_acl.this]
+
   lifecycle {
     replace_triggered_by = [time_rotating.tailscale_keys.id]
   }

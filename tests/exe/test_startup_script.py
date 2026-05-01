@@ -306,6 +306,18 @@ def test_workspace_tailnet_auth_key_resource_present() -> None:
         "missing matching _version resource"
     )
 
+    # depends_on tailscale_acl.this — without this the first apply hits
+    # 'requested tags [tag:exe-workspace] are invalid or not permitted'
+    # because the key issuance races ahead of the ACL update.
+    assert re.search(
+        r"depends_on\s*=\s*\[\s*tailscale_acl\.this\s*\]",
+        body,
+    ), (
+        "tailscale_tailnet_key.exe_workspace must depend_on tailscale_acl.this\n"
+        "to avoid a race where the key is issued for a tag whose tagOwners\n"
+        "isn't in the live ACL yet."
+    )
+
 
 @pytest.mark.exe
 def test_acl_grants_exe_workspace_access_to_coder_listener() -> None:
