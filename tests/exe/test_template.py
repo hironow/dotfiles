@@ -208,6 +208,53 @@ def test_template_startup_script_joins_tailnet() -> None:
 
 
 @pytest.mark.exe
+def test_template_agent_startup_skips_install_segments_alpine_cannot_run() -> None:
+    """The agent startup_script runs `coder dotfiles -y URL`, which
+    git-clones the dotfiles repo and execs install.sh. install.sh
+    tries to install Homebrew + Google Cloud SDK + run brew/gcloud
+    bundle replays — all of which require glibc and are unavailable
+    on the alpine devcontainer.
+
+    install.sh honours three env vars to skip these stages:
+      INSTALL_SKIP_HOMEBREW=1   (skips Homebrew install)
+      INSTALL_SKIP_GCLOUD=1     (skips gcloud SDK install)
+      INSTALL_SKIP_ADD_UPDATE=1 (skips `just add-all` + `just update-all`,
+                                 both of which call brew/gcloud)
+
+    With all three set, install.sh still runs `just clean` + `just deploy`
+    (symlink ~/.zshrc, sheldon lock, fzf-tab clone, etc.) — the
+    actually-useful part of dotfiles personalisation. Without them
+    install.sh aborts at homebrew install with `set -eu` and the
+    workspace never finishes personalising.
+
+    This test locks all three env exports into the agent startup_script
+    so a future refactor cannot silently lose them and re-introduce
+    the failure."""
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    import re
+
+    # Find the coder_agent.dev startup_script body.
+    m = re.search(
+        r'resource "coder_agent" "dev" \{(.*?)^\}',
+        main_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert m is not None, "missing coder_agent.dev resource"
+    body = m.group(1)
+
+    for env_var in (
+        "INSTALL_SKIP_HOMEBREW",
+        "INSTALL_SKIP_GCLOUD",
+        "INSTALL_SKIP_ADD_UPDATE",
+    ):
+        assert f"export {env_var}=1" in body, (
+            f"coder_agent.dev startup_script must `export {env_var}=1`\n"
+            "before invoking `coder dotfiles`. Otherwise install.sh\n"
+            "aborts at homebrew install on the alpine devcontainer."
+        )
+
+
+@pytest.mark.exe
 def test_template_does_not_use_code_server_module() -> None:
     """Upstream `registry.coder.com/coder/code-server/coder` ships a
     Linux x86_64 glibc binary; alpine + musl can sometimes load it

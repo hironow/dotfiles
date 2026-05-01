@@ -396,8 +396,22 @@ resource "coder_agent" "dev" {
 
   # Personalisation: pull and install the operator's dotfiles on top
   # of whatever the devcontainer base image gives us.
+  #
+  # The dotfiles install.sh tries to install Homebrew + Google Cloud
+  # SDK + replay brew/gcloud bundle dumps — none of which work on
+  # alpine + musl (linuxbrew is glibc-only, gcloud SDK install path
+  # likewise; alpine's apk repo has no google-cloud-cli). install.sh
+  # honours three env vars to skip those segments; with all three
+  # set, the script still runs `just clean` + `just deploy` which
+  # produces the actually-valuable bits (~/.zshrc symlink, sheldon
+  # lock, starship config, fzf-tab clone, ...). Without them the
+  # script aborts at homebrew install via `set -eu` and the agent
+  # logs '[exe] dotfiles install failed; continuing' on every boot.
   startup_script = data.coder_parameter.dotfiles_uri.value == "" ? "" : <<-EOT
     set -eu
+    export INSTALL_SKIP_HOMEBREW=1
+    export INSTALL_SKIP_GCLOUD=1
+    export INSTALL_SKIP_ADD_UPDATE=1
     if command -v coder >/dev/null 2>&1; then
       coder dotfiles -y "${data.coder_parameter.dotfiles_uri.value}" || \
         echo "[exe] dotfiles install failed; continuing"
