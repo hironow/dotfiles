@@ -55,15 +55,19 @@ if ! command -v uv >/dev/null 2>&1; then
     aarch64) UV_TARGET="aarch64-unknown-linux-gnu" ;;
     *) echo "[post-create] unsupported arch: $ARCH" >&2; exit 1 ;;
   esac
-  UV_URL="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_TARGET}.tar.gz"
+  UV_FILE="uv-${UV_TARGET}.tar.gz"
+  UV_BASE="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}"
   echo "[post-create] installing uv ${UV_VERSION} (${UV_TARGET})"
-  curl -fsSL -o /tmp/uv.tar.gz "$UV_URL"
-  curl -fsSL -o /tmp/uv.tar.gz.sha256 "${UV_URL}.sha256"
-  ( cd /tmp && sha256sum -c uv.tar.gz.sha256 )
-  tar -xz -f /tmp/uv.tar.gz -C /tmp --strip-components=1
+  # The .sha256 sidecar references the file by its original name, so
+  # download into /tmp keeping the same basename and run sha256sum -c
+  # from that directory.
+  curl -fsSL -o "/tmp/${UV_FILE}" "${UV_BASE}/${UV_FILE}"
+  curl -fsSL -o "/tmp/${UV_FILE}.sha256" "${UV_BASE}/${UV_FILE}.sha256"
+  ( cd /tmp && sha256sum -c "${UV_FILE}.sha256" )
+  tar -xz -f "/tmp/${UV_FILE}" -C /tmp --strip-components=1
   install -m 0755 /tmp/uv /usr/local/bin/uv
   install -m 0755 /tmp/uvx /usr/local/bin/uvx
-  rm -f /tmp/uv.tar.gz /tmp/uv.tar.gz.sha256 /tmp/uv /tmp/uvx
+  rm -f "/tmp/${UV_FILE}" "/tmp/${UV_FILE}.sha256" /tmp/uv /tmp/uvx
 fi
 
 # ---- just (command runner) ------------------------------------------

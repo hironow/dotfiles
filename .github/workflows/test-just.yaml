@@ -33,7 +33,9 @@ jobs:
           imageName: dotfiles-just-sandbox
           imageTag: latest
           push: never
-          cacheFrom: ghcr.io/${{ github.repository_owner }}/dotfiles-just-sandbox
+          # cacheFrom is intentionally omitted until we wire up a
+          # publish step to ghcr.io. Adding a non-existent cacheFrom
+          # produced a 403 noise-warning at every run.
           runCmd: just test
           env: |
             PYTEST_ADDOPTS=--junitxml=/root/dotfiles/pytest-report.xml
