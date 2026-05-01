@@ -1,5 +1,7 @@
-# GCE workspace VM that hosts the Coder server and the dev container
-# (built from tests/docker/JustSandbox.Dockerfile).
+# GCE workspace VM that hosts the Coder server. Coder workspaces
+# spawned from this server pick up .devcontainer/devcontainer.json
+# from the cloned dotfiles repo via envbuilder, so the workspace
+# image stays in sync with what local IDE / CI build.
 #
 # Network model:
 #   - The VM has a public IP only so cloudflared can phone home; no

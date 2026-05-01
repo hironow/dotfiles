@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCKERFILE = ROOT / "tests" / "docker" / "JustSandbox.Dockerfile"
+DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
 
 
@@ -41,33 +41,48 @@ def _docker_available() -> bool:
     return r.returncode == 0
 
 
+def _devcontainer_cli_available() -> bool:
+    r = _run(["devcontainer", "--version"])
+    return r.returncode == 0
+
+
+def _image_exists(image: str) -> bool:
+    return _run(["docker", "image", "inspect", image]).returncode == 0
+
+
 @pytest.fixture(scope="module")
 def docker_image():
-    """Build Docker image for testing."""
-    # given: docker daemon availability
+    """Provide the dotfiles dev container image, mirroring
+    test_just_sandbox.py: reuse the CI-prebuilt image when present,
+    fall back to a local devcontainer build."""
     if not _docker_available():
         pytest.skip("Docker is not available; skipping e2e tests.")
 
-    if not DOCKERFILE.exists():
-        pytest.skip("Dockerfile missing; skipping e2e tests.")
+    if not DEVCONTAINER_JSON.exists():
+        pytest.skip("devcontainer.json missing; skipping e2e tests.")
 
-    # when: build test image
+    if _image_exists(IMAGE):
+        yield IMAGE
+        return
+
+    if not _devcontainer_cli_available():
+        pytest.skip(
+            "Image 'dotfiles-just-sandbox:latest' not present and the "
+            "@devcontainers/cli is not installed. Run "
+            "`npm i -g @devcontainers/cli` or rely on CI."
+        )
+
     build_cmd = [
-        "docker",
+        "devcontainer",
         "build",
-        "-t",
-        IMAGE,
-        "-f",
-        str(DOCKERFILE),
-        "--build-arg",
-        "BASE_IMAGE=alpine:3.19",
+        "--workspace-folder",
         str(ROOT),
+        "--image-name",
+        IMAGE,
     ]
     result = _run(build_cmd, cwd=ROOT)
-
-    # then: build succeeds
     if result.returncode != 0:
-        pytest.fail(f"Docker build failed: {result.stderr}")
+        pytest.fail(f"devcontainer build failed: {result.stderr}")
 
     yield IMAGE
 

@@ -1,9 +1,10 @@
 # Coder template — dotfiles devcontainer
 
 This template spawns a Coder workspace whose container image is the
-**dotfiles dev container** (`tests/docker/JustSandbox.Dockerfile` via
-`.devcontainer/devcontainer.json`). It is the realisation of the
-core `docs/intent.md` line item:
+**dotfiles dev container** declared by `.devcontainer/devcontainer.json`
+(debian-12 + devcontainer features). The same SoT is consumed by the
+local IDE and the CI sandbox, so all three environments stay aligned.
+It is the realisation of the core `docs/intent.md` line item:
 
 > Coder workspace whose container image **is** the dotfiles Dev
 > Container.

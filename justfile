@@ -190,15 +190,19 @@ dump:
 # Tests
 # ------------------------------
 
-# Test: build sandbox (if available) and run pytest (verbose)
+# Test: build dev container (if available) and run pytest (verbose).
+# Uses the @devcontainers/cli to produce dotfiles-just-sandbox:latest
+# from .devcontainer/devcontainer.json — same image CI builds via the
+# devcontainers/ci action.
 [group('Test')]
 test:
-    @echo '🧪 Preparing Docker sandbox (if available)...'
-    @if command -v docker >/dev/null 2>&1; then \
-    	echo '→ docker detected; building sandbox image'; \
-    	docker build -t dotfiles-just-sandbox:latest -f tests/docker/JustSandbox.Dockerfile . || echo '⚠️ sandbox build failed (tests may skip)'; \
+    @echo '🧪 Preparing dev container image (if devcontainer CLI is available)...'
+    @if command -v docker >/dev/null 2>&1 && command -v devcontainer >/dev/null 2>&1; then \
+    	echo '→ devcontainer CLI detected; building image'; \
+    	devcontainer build --workspace-folder . --image-name dotfiles-just-sandbox:latest || echo '⚠️ devcontainer build failed (tests may skip)'; \
     else \
-    	echo '⚠️ docker not found; tests may skip'; \
+    	echo '⚠️ docker or @devcontainers/cli not found; tests may skip'; \
+    	echo '   Hint: npm i -g @devcontainers/cli'; \
     fi
     @echo '🧪 Running pytest (verbose with skip reasons)...'
     uvx pytest -v -ra tests/test_just_sandbox.py
