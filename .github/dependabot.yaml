@@ -1,0 +1,14 @@
+# Dependabot keeps pinned-SHA `uses:` in .github/workflows up to date.
+# The `github-actions` ecosystem auto-rewrites both the SHA and the
+# trailing `# vX.Y.Z` comment, so manual rotation is unnecessary.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
