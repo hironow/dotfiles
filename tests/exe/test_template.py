@@ -123,6 +123,91 @@ def test_template_git_branch_parameter_present_and_wired() -> None:
 
 
 @pytest.mark.exe
+def test_template_provider_coder_has_internal_url_override() -> None:
+    """B-plan tailnet routing: the workspace VM downloads the agent
+    binary from `${ACCESS_URL}/bin/coder-linux-amd64`. ${ACCESS_URL}
+    is rendered server-side by Coder from `metadata.GetCoderUrl()`,
+    which prefers `provider "coder" { url = ... }` over the global
+    CODER_ACCESS_URL. Setting `url` to the tailnet-internal URL
+    routes the binary download through the tailnet, bypassing the
+    public CF Access edge. Without this override, workspaces hit
+    the public URL and fail OIDC.
+
+    See coder/coder provisioner/terraform/provision.go provisionEnv()."""
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    import re
+
+    block = re.search(r'provider "coder" \{(.*?)\}', main_tf, re.DOTALL)
+    assert block is not None, 'missing provider "coder" block'
+    body = block.group(1)
+    assert re.search(r"url\s*=", body), (
+        'provider "coder" block must set url = var.coder_internal_url\n'
+        "(or equivalent) so workspace agent downloads bypass CF Access."
+    )
+    assert "coder_internal_url" in main_tf, (
+        "template must declare a 'coder_internal_url' variable wired into "
+        "the provider 'coder' url"
+    )
+
+
+@pytest.mark.exe
+def test_template_workspace_sa_variable_present() -> None:
+    """Workspace VMs need a SA that can read the tailnet authkey from
+    Secret Manager. Hardcoding the SA email per-environment is brittle;
+    the operator stack already exports it as `exe_workspace_sa_email`.
+    The template MUST receive that value through a `workspace_sa_email`
+    variable and apply it on `google_compute_instance.vm`."""
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    import re
+
+    var_block = re.search(
+        r'variable "workspace_sa_email" \{(.*?)^\}',
+        main_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert var_block is not None, 'missing variable "workspace_sa_email"'
+
+    # The VM must consume it.
+    assert "var.workspace_sa_email" in main_tf, (
+        "google_compute_instance.vm must use var.workspace_sa_email\n"
+        "for its service_account.email — currently the template uses\n"
+        "data.google_compute_default_service_account.default which has\n"
+        "no Secret Manager Reader on the workspace authkey."
+    )
+
+
+@pytest.mark.exe
+def test_template_startup_script_joins_tailnet() -> None:
+    """The workspace VM's startup-script must:
+    - install tailscaled (apt-get install tailscale)
+    - fetch the tag:exe-workspace authkey from Secret Manager
+    - bring the device up under tag:exe-workspace before envbuilder
+      starts (envbuilder needs to reach exe-coder.<tailnet>:7080)
+    """
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+
+    # Look at the startup_script local — match the heredoc body.
+    import re
+
+    m = re.search(
+        r"startup_script\s*=\s*<<-META\s*\n(.*?)\n\s*META",
+        main_tf,
+        re.DOTALL,
+    )
+    assert m is not None, "could not locate startup_script <<-META block"
+    body = m.group(1)
+
+    assert "tailscale" in body, "startup_script must install tailscale"
+    assert "tailscale up" in body, "startup_script must run `tailscale up`"
+    assert "tag:exe-workspace" in body or "tag_exe_workspace" in body, (
+        "startup_script must advertise tag:exe-workspace"
+    )
+    assert "secrets versions access" in body, (
+        "startup_script must fetch the auth-key from Secret Manager"
+    )
+
+
+@pytest.mark.exe
 def test_template_no_undeclared_agent_reference() -> None:
     """Upstream's gcp-devcontainer starter referenced a non-existent
     `coder_agent.main` from the code-server / jetbrains modules — the

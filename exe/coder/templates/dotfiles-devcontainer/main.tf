@@ -41,7 +41,19 @@ terraform {
   }
 }
 
-provider "coder" {}
+# url overrides the deployment-wide CODER_ACCESS_URL on the workspace
+# side: every interpolation of `${ACCESS_URL}` in the bootstrap shell
+# script (most importantly the BINARY_URL the workspace VM uses to
+# fetch `/bin/coder-linux-amd64`) is rendered from this value, not
+# from the public URL. Pointed at the tailnet-internal endpoint so
+# the download bypasses the public CF Access edge — workspaces have
+# no service token and would otherwise receive the OIDC interstitial
+# HTML instead of the binary. See coder/coder
+# provisioner/terraform/provision.go provisionEnv() for the
+# server-side rendering path.
+provider "coder" {
+  url = var.coder_internal_url
+}
 
 # Provider-level zone is fixed to the stack's home zone so the
 # template-push preview plan can resolve a non-empty string. The
@@ -65,6 +77,38 @@ variable "project_id" {
   description = "GCP project hosting the workspace VMs. Stack default."
   type        = string
   default     = "gen-ai-hironow"
+}
+
+variable "coder_internal_url" {
+  description = <<-EOF
+URL workspaces use to reach the Coder server (agent binary download +
+agent-server protocol). Resolved over MagicDNS on the tailnet so this
+is typically 'http://exe-coder:7080'. Operator stack exports it as
+the 'coder_internal_url' tofu output; pass via:
+  cdr templates push --variable coder_internal_url=$(just exe-output coder_internal_url)
+EOF
+  type        = string
+  default     = "http://exe-coder:7080"
+}
+
+variable "workspace_sa_email" {
+  description = <<-EOF
+Service account email stamped on every workspace VM. Must have
+roles/secretmanager.secretAccessor on the tag:exe-workspace tailnet
+authkey secret. Operator stack exports it as 'exe_workspace_sa_email'.
+EOF
+  type        = string
+}
+
+variable "workspace_authkey_secret_id" {
+  description = <<-EOF
+Bare Secret Manager secret_id (no project prefix) holding the
+tag:exe-workspace tailnet authkey. The startup-script reads it via
+'gcloud secrets versions access latest --secret=...'. Operator stack
+exports it as 'tailscale_secret_workspace_id'.
+EOF
+  type        = string
+  default     = "exe-tailscale-workspace-authkey"
 }
 
 variable "cache_repo" {
@@ -213,6 +257,51 @@ locals {
       echo "${local.linux_user} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coder-user
     fi
 
+    # ---- Tailscale --------------------------------------------------
+    # Workspace VMs talk to the Coder control-plane VM
+    # (exe-coder:7080) over the tailnet. Without this step, the agent
+    # binary download from the bootstrap script falls back to the
+    # public CODER_ACCESS_URL which sits behind Cloudflare Access and
+    # returns OIDC interstitial HTML for unauthenticated requests —
+    # which the bootstrap script then 'chmod +x'es and tries to exec,
+    # producing 'syntax error: unexpected newline' and a workspace
+    # that never connects. See docs/handover.md for the full
+    # post-mortem. This is base image debian-12 (see google_compute_disk
+    # boot image), so apt is the install path.
+    if ! command -v tailscale >/dev/null 2>&1; then
+      install -m 0755 -d /usr/share/keyrings
+      curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
+        > /usr/share/keyrings/tailscale-archive-keyring.gpg
+      curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list \
+        > /etc/apt/sources.list.d/tailscale.list
+      apt-get update -y
+      apt-get install -y --no-install-recommends tailscale
+    fi
+    systemctl enable --now tailscaled
+
+    # Need gcloud to fetch the auth-key from Secret Manager. The base
+    # image does not ship it.
+    if ! command -v gcloud >/dev/null 2>&1; then
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/cloud.google.gpg
+      echo 'deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' \
+        > /etc/apt/sources.list.d/google-cloud-sdk.list
+      apt-get update -y
+      apt-get install -y --no-install-recommends google-cloud-cli
+    fi
+
+    AUTH_KEY="$(gcloud --quiet --project='${var.project_id}' \
+      secrets versions access latest --secret='${var.workspace_authkey_secret_id}')"
+    # tailscale up is idempotent: a no-op if already authenticated under
+    # the same hostname + tags.
+    tailscale up \
+      --auth-key="$AUTH_KEY" \
+      --hostname='${lower(data.coder_workspace.me.name)}-ws' \
+      --accept-routes=false \
+      --advertise-tags='tag:exe-workspace'
+    unset AUTH_KEY
+
     # Docker (host-side; envbuilder uses the host daemon).
     if ! command -v docker >/dev/null 2>&1; then
       curl -fsSL https://get.docker.com -o get-docker.sh
@@ -283,7 +372,7 @@ resource "google_compute_instance" "vm" {
   }
 
   service_account {
-    email  = data.google_compute_default_service_account.default.email
+    email  = var.workspace_sa_email
     scopes = ["cloud-platform"]
   }
 
