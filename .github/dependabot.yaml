@@ -1,14 +1,72 @@
-# Dependabot keeps pinned-SHA `uses:` in .github/workflows up to date.
-# The `github-actions` ecosystem auto-rewrites both the SHA and the
-# trailing `# vX.Y.Z` comment, so manual rotation is unnecessary.
+# Dependabot configuration.
+#
+# Scope rationale:
+#   - github-actions: rotates pinned-SHA `uses:` weekly so workflows stay
+#     current under the org's "require pinned SHA" Actions policy.
+#   - uv (tools/rttm): only place in this repo with real Python deps.
+#     Root pyproject.toml has empty `dependencies = []` so it's skipped.
+#   - docker (tests/docker): bumps base images for the sandbox/install/
+#     exe-startup test containers.
+#
+# Out of scope:
+#   - gitsubmodule: 31 submodules sync via scripts/sync_agents.py, not
+#     Dependabot.
+#   - root uv.lock: no runtime deps.
+#
+# Reviewer convention: hironow only — solo repo.
 version: 2
+
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
     open-pull-requests-limit: 5
     groups:
       github-actions:
         patterns:
           - "*"
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: chore(actions)
+    assignees:
+      - hironow
+
+  - package-ecosystem: uv
+    directory: /tools/rttm
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - python
+      - rttm
+    commit-message:
+      prefix: chore(rttm)
+    assignees:
+      - hironow
+
+  - package-ecosystem: docker
+    directories:
+      - /tests/docker
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: chore(docker)
+    assignees:
+      - hironow
