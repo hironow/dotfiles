@@ -129,6 +129,12 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
             f"{_host_workspace_path()}:/root/dotfiles",
             "-w",
             "/root/dotfiles",
+            # devcontainers/ci action bakes the dev container's
+            # containerEnv (including MISE_OFFLINE=1) into the saved
+            # image as ENV layer. Inner test containers want a fresh
+            # mise cache resolution, so override.
+            "-e",
+            "MISE_OFFLINE=0",
             image,
             "bash",
             "-lc",
