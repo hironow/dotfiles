@@ -96,13 +96,29 @@ cdr ssh my-ws.dev
 cdr delete my-ws --yes
 ```
 
-Pre-merge testing of dev container changes (otherwise envbuilder
-clones the repo's default branch):
+Pre-merge testing of dev container changes:
 
-```bash
-cdr create my-ws --template exe-dotfiles-devcontainer \
-  --parameter git_branch=feat/<branch-name> --yes
-```
+1. Push the branch and let `publish-devcontainer.yaml` build a
+   `:<sha>` image into Artifact Registry (or run a local
+   `devcontainer build` and push manually).
+2. Push a throwaway template version pinning that sha:
+
+   ```bash
+   cdr templates push exe-dotfiles-devcontainer \
+     -d exe/coder/templates/dotfiles-devcontainer \
+     --variable image=$(just exe-output -raw artifact_registry_repo)/devcontainer:<sha> \
+     --variable project_id=gen-ai-hironow \
+     --variable workspace_sa_email=$(just exe-output -raw exe_workspace_sa_email) \
+     --variable coder_internal_url=$(just exe-output -raw coder_internal_url) \
+     --yes
+   cdr create my-ws --template exe-dotfiles-devcontainer --yes
+   ```
+
+3. Once verified, push another version with `:main` to revert.
+
+The previous `git_branch` parameter (envbuilder-only) is gone:
+the prebuilt-image template doesn't clone at workspace boot;
+operator branch testing happens via the image tag instead.
 
 ## Tailscale auth-key rotation
 
