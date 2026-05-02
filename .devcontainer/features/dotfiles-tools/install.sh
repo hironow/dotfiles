@@ -253,7 +253,10 @@ vp = "0.1.20"
 "npm:@mariozechner/pi-coding-agent" = "0.72.1"
 EOF
 echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
-MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise install --config-file /etc/mise/config.toml
+(
+  cd /etc/mise
+  MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise install
+)
 MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 
 # Cleanup apt cache to keep the image lean.
