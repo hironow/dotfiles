@@ -213,6 +213,17 @@ common.
    should be prioritised even if it's out of scope for this
    ADR's primary refactor.
 
+   Additional concern at `coder.tf:290`: the install line is
+   `curl -fsSL https://coder.com/install.sh | sh || true`. The
+   `|| true` swallows any non-zero exit. Success is then probed
+   only via `[[ ! -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]`
+   to decide whether to run the fallback. A compromised CDN
+   could return a malicious script that exits 0 after writing
+   anything to `/usr/local/bin/coder`, and the fallback path
+   (`api.github.com/.../latest`) would be skipped. The pin
+   strategy for this row must address both the unverified
+   primary install AND the exit-code-suppressed failure mode.
+
 3. **Brewfile hygiene.** 531 lines of `tap` + `brew` + `cask`
    declarations include things the operator may no longer use. A
    `brew bundle cleanup` + commit pass is a separate cleanup PR
