@@ -62,7 +62,7 @@ import_apt_key_with_fingerprint() {
 echo "[dotfiles-tools] installing Google Cloud SDK from apt repo"
 import_apt_key_with_fingerprint \
   https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-  54A647F9048D5688D7DA2ABE6A030B21BA07F4FB \
+  35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3 \
   /usr/share/keyrings/cloud.google.gpg
 echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
   > /etc/apt/sources.list.d/google-cloud-sdk.list
@@ -75,7 +75,7 @@ echo "[dotfiles-tools] installing mise from apt repo"
 install -d -m 0755 /etc/apt/keyrings
 import_apt_key_with_fingerprint \
   https://mise.jdx.dev/gpg-key.pub \
-  7416A0D80087E5734F19E6E1F30FCDD11FA0E58D \
+  24853EC9F655CE80B48E6C3A8B81C9D17413A06D \
   /etc/apt/keyrings/mise-archive-keyring.gpg
 echo "deb [signed-by=/etc/apt/keyrings/mise-archive-keyring.gpg arch=amd64,arm64] https://mise.jdx.dev/deb stable main" \
   > /etc/apt/sources.list.d/mise.list
