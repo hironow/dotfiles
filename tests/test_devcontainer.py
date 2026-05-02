@@ -450,26 +450,38 @@ def test_image_mise_data_dir_is_opt_mise(saved_image: str) -> None:
 
 
 def test_image_mise_offline_install_works(saved_image: str) -> None:
-    """`MISE_OFFLINE=1 mise install` against a copy of the workspace
-    mise.toml must succeed inside the saved image. This proves that
-    the build-time-baked /opt/mise cache covers every pinned tool —
-    the prerequisite for ADR 0006 decision detail 5 (workspace
-    runtime MISE_OFFLINE=1 re-enable).
+    """`MISE_OFFLINE=1 mise install` against the workspace mise.toml
+    must succeed inside the saved image. This proves that the build-
+    time-baked /opt/mise cache covers every pinned tool — the
+    prerequisite for ADR 0006 decision detail 5 (workspace runtime
+    MISE_OFFLINE=1 re-enable).
 
-    We bind in the workspace mise.toml at runtime instead of using
-    the one already at /root/dotfiles, because that path is used by
-    other tests that may run in parallel and we don't want to
-    interfere with their `mise trust` state."""
-    # The image's MISE_TRUSTED_CONFIG_PATHS already trusts
-    # /root/dotfiles, so place our throwaway mise.toml there.
-    result = _run_in_image(
-        ". /etc/profile.d/dotfiles-mise.sh && "
-        "tmpd=$(mktemp -d /root/dotfiles/mise-offline-test.XXXXXX) && "
-        'cp /root/dotfiles/mise.toml "$tmpd/mise.toml" && '
-        'cd "$tmpd" && '
-        "MISE_OFFLINE=1 mise install 2>&1 && "
-        'rm -rf "$tmpd"'
+    The saved image does NOT contain /root/dotfiles (that's a
+    runtime bind-mount when the dev container is up). We synthesise
+    a minimal mise.toml inside /tmp/mise-runtime-check, override
+    MISE_TRUSTED_CONFIG_PATHS to include that path, and run `mise
+    install` against it offline."""
+    # Read the canonical mise.toml from the working tree and embed
+    # it via heredoc so the test stays SoT-aware: any pin change in
+    # the workspace mise.toml is reflected automatically.
+    mise_toml = (Path(__file__).resolve().parents[1] / "mise.toml").read_text(
+        encoding="utf-8"
     )
+    script = (
+        ". /etc/profile.d/dotfiles-mise.sh && "
+        "rm -rf /tmp/mise-runtime-check && "
+        "mkdir -p /tmp/mise-runtime-check && "
+        "cat > /tmp/mise-runtime-check/mise.toml <<'MISE_TOML_EOF'\n"
+        f"{mise_toml}\n"
+        "MISE_TOML_EOF\n"
+        "cd /tmp/mise-runtime-check && "
+        # Override the trusted-paths scope just for this invocation
+        # so mise reads the synthetic mise.toml. The image's default
+        # scope (/root/dotfiles + /root/sandbox/...) is untouched.
+        'MISE_TRUSTED_CONFIG_PATHS="/tmp/mise-runtime-check" '
+        "MISE_OFFLINE=1 mise install 2>&1"
+    )
+    result = _run_in_image(script)
     assert result.returncode == 0, (
         f"`MISE_OFFLINE=1 mise install` failed inside the saved image. "
         f"This means at least one pinned tool is missing from "
