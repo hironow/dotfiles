@@ -303,6 +303,11 @@ REQUIRED_TOOLS = (
     ("sheldon", "--version"),
     ("shellcheck", "--version"),
     ("jq", "--version"),
+    # node runtime pinned in mise.toml. Required by the 4 npm-
+    # backed AI CLIs below; their `#!/usr/bin/env node` shebang
+    # relies on node being on PATH (and inside /opt/mise so the
+    # workspace volume mount cannot mask it).
+    ("node", "--version"),
     # AI agent CLIs pinned in mise.toml (npm backend). The
     # workspace boots with these on PATH; operators authenticate
     # them on first use.
