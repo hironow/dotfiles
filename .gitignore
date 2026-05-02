@@ -19,8 +19,10 @@ run.log
 .azurite/
 
 # IaC
+# Terraform/OpenTofu lockfiles ARE committed (HashiCorp recommends
+# this for provider reproducibility). The runtime cache dir
+# `.terraform/` and state files stay ignored.
 .terraform
-.terraform.lock.hcl
 *.tfstate
 terraform.tfstate
 terraform.tfstate.backup
