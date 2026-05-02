@@ -28,6 +28,12 @@ terraform.tfstate
 terraform.tfstate.backup
 *.tfplan
 
+# mise lockfile is NOT committed per ADR 0006 Strategy A. The
+# workspace mise.toml is the single SoT for tool versions; mise.lock
+# is a per-machine resolution artifact that creates noise in
+# `git status` after every `mise install`.
+mise.lock
+
 # exe.hironow.dev — local secrets / generated runtime files
 # (real values live in GCP Secret Manager; never commit plaintext)
 exe/**/*.local.*
