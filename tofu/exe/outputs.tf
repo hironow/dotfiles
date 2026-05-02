@@ -112,3 +112,37 @@ output "coder_cli_secret_client_secret" {
   description = "Secret Manager resource name for the Coder CLI Cloudflare Access client_secret."
   value       = google_secret_manager_secret.coder_cli_client_secret.name
 }
+
+# ---- Image publish (Artifact Registry + WIF) -----------------------
+
+output "artifact_registry_repo" {
+  description = <<-EOF
+Fully-qualified Artifact Registry repository name where the dev
+container image is published. Coder template pulls
+`<repo>/devcontainer:<tag>`.
+EOF
+  value = format(
+    "%s-docker.pkg.dev/%s/%s",
+    google_artifact_registry_repository.dotfiles.location,
+    google_artifact_registry_repository.dotfiles.project,
+    google_artifact_registry_repository.dotfiles.name,
+  )
+}
+
+output "gcp_wif_provider_resource_name" {
+  description = <<-EOF
+Resource name of the Workload Identity provider that GitHub Actions
+authenticates against. Set this on the repo as the GCP_WIF_PROVIDER
+Actions variable: `gh variable set GCP_WIF_PROVIDER --body "<this value>"`.
+EOF
+  value       = google_iam_workload_identity_pool_provider.github.name
+}
+
+output "gcp_publish_sa_email" {
+  description = <<-EOF
+Email of the service account GitHub Actions impersonates to push
+images. Set this as the GCP_PUBLISH_SA repo variable:
+  `gh variable set GCP_PUBLISH_SA --body "<this value>"`.
+EOF
+  value       = google_service_account.gha_publish.email
+}

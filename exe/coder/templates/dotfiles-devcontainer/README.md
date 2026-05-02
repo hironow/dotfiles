@@ -1,47 +1,51 @@
-# Coder template — dotfiles devcontainer
+# Coder template — dotfiles devcontainer (prebuilt image)
 
 This template spawns a Coder workspace whose container image is the
 **dotfiles dev container** declared by `.devcontainer/devcontainer.json`
-(debian-12 + devcontainer features). The same SoT is consumed by the
-local IDE and the CI sandbox, so all three environments stay aligned.
-It is the realisation of the core `docs/intent.md` line item:
+(debian-12 + devcontainer features), prebuilt by CI and pulled from
+Artifact Registry. Same SoT as the local IDE and the CI sandbox, so
+all three environments stay aligned. Realises `docs/intent.md`:
 
 > Coder workspace whose container image **is** the dotfiles Dev
 > Container.
 
+ADR: `docs/adr/0002-coder-prebuilt-image.md`
+
 ## How it works
 
 ```
-+-------------+   ENVBUILDER_GIT_URL    +--------------+
-| Coder server|------------------------>|  envbuilder  |
-| (this stack)|                         |  (in a GCE   |
-+-------------+                         |   VM, host)  |
-                                        +------+-------+
-                                               |
-                                               v
-                                        +------+-------+
-                                        | spawn dev    |
-                                        | container    |
-                                        | from         |
-                                        | repo_url's   |
-                                        | .devcontainer|
-                                        +------+-------+
-                                               |
-                                               v
-                                        +--------------+
-                                        | coder_agent  |
-                                        | (inside the  |
-                                        |  container)  |
-                                        +--------------+
++----------------+   docker pull   +------------------+
+| Coder template |---------------->| Artifact Registry|
+| (this dir)     |                 |  asia-northeast1 |
++----------------+                 +------------------+
+        |                                  ^
+        |                                  | docker push
+        |                                  |
+        v                          +-------+----------+
++--------------+                   | publish-         |
+| Coder server |                   | devcontainer.yaml|
++--------------+                   | (GHA, WIF auth)  |
+        |                          +------------------+
+        v
++--------------+    docker run     +--------------+
+| Workspace VM |------------------>| dev container|
+| (debian-12)  |                   | (prebuilt)   |
++--------------+                   +--------------+
+                                          |
+                                          v
+                                   +--------------+
+                                   |  coder_agent |
+                                   +--------------+
 ```
 
-```
 Legend / 凡例:
-- ENVBUILDER_GIT_URL: envbuilder が clone する git repo
-- envbuilder: Coder 公式 OCI builder (kaniko-style)
-- dev container: .devcontainer/devcontainer.json を解釈して立ち上がる
+
+- Artifact Registry: GCP \<region\>-docker.pkg.dev/\<project\>/dotfiles
+- publish-devcontainer.yaml: GitHub Actions が main merge 時に image build & push
+- WIF auth: Workload Identity Federation, no SA keys
+- Workspace VM: GCE debian-12 + tailscaled + docker, pulls prebuilt image
+- dev container: 起動済みの devcontainer.json image をそのまま走らせる (no envbuilder)
 - coder_agent: workspace 内常駐の Coder agent (SSH / IDE)
-```
 
 ## Push
 
@@ -51,16 +55,17 @@ cdr templates push exe-dotfiles-devcontainer \
   --variable project_id=gen-ai-hironow \
   --variable workspace_sa_email=$(just exe-output -raw exe_workspace_sa_email) \
   --variable coder_internal_url=$(just exe-output -raw coder_internal_url) \
+  --variable image=$(just exe-output -raw artifact_registry_repo)/devcontainer:main \
   --yes
 ```
 
 | Variable | Default | Notes |
 |---|---|---|
 | `project_id` | `gen-ai-hironow` | GCP project for workspace VMs |
-| `workspace_sa_email` | (required) | from `just exe-output -raw exe_workspace_sa_email` |
+| `workspace_sa_email` | (required) | `just exe-output -raw exe_workspace_sa_email` |
 | `coder_internal_url` | `http://exe-coder:7080` | tailnet-internal URL the agent download resolves to |
 | `workspace_authkey_secret_id` | `exe-tailscale-workspace-authkey` | Secret Manager id for the tag:exe-workspace key |
-| `cache_repo` | `""` | Optional; pre-built devcontainer image cache |
+| `image` | `asia-northeast1-docker.pkg.dev/gen-ai-hironow/dotfiles/devcontainer:main` | prebuilt image; pin to `:<git-sha>` for reproducible workspaces |
 
 ## Create a workspace
 
@@ -73,16 +78,12 @@ Parameters (interactive on first create unless `--parameter` is passed):
 
 | Parameter | Default | Notes |
 |---|---|---|
-| `repo_url` | `https://github.com/hironow/dotfiles.git` | repo with `.devcontainer/` |
-| `git_branch` | `""` (= repo HEAD) | override branch for pre-merge testing |
-| `instance_type` | `e2-small` | `e2-micro` OOMs envbuilder |
-| `fallback_image` | `codercom/enterprise-base:ubuntu` | used if devcontainer build fails |
-| `devcontainer_builder` | `ghcr.io/coder/envbuilder:latest` | pin a digest in production |
-| `dotfiles_uri` | `https://github.com/hironow/dotfiles.git` | runs `coder dotfiles` on top of the dev container |
+| `instance_type` | `e2-small` | `e2-micro` is now viable (no envbuilder) |
+| `dotfiles_uri` | `https://github.com/hironow/dotfiles.git` | runs `coder dotfiles` on top of the prebuilt image |
 
 ## Smoke
 
 ```bash
-cdr workspaces list                # status: starting -> running
+cdr workspaces list                # status: starting -> running (~30-60s)
 cdr ssh my-ws.dev -- just --list   # JustSandbox recipes available
 ```
