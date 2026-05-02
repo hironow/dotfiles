@@ -79,45 +79,20 @@ Legend / 凡例:
 
 ### Why no tailscale CLI inside the workspace container
 
-The workspace VM joins the tailnet at the **host** layer (apt-
-installed `tailscale`, fingerprint-pinned per
-[`PR #61`](https://github.com/hironow/dotfiles/pull/61)). The dev
-container runs with `--network host`, so:
+The VM joins the tailnet at the host layer (apt-installed
+`tailscale`, fingerprint-pinned); `--network host` shares it
+with the container, so outbound (`curl http://gpu.tailnet:8080`)
+and tailnet-private inbound (`python -m http.server :8080` →
+`<vm>.tailnet:8080`) work without a CLI in the container.
 
-- **Outbound tailnet reach works without a CLI.** Container
-  processes can `curl http://gpu-host.tailnet:8080` directly —
-  the host's resolver handles MagicDNS, and the host's
-  WireGuard tunnel handles the transport.
-- **Inbound exposure works without a CLI.** A web server bound
-  inside the container (e.g. `python -m http.server :8080`) is
-  reachable at `<vm-host>.tailnet:8080` because of host-network
-  sharing. No `tailscale serve` needed for plain tailnet-private
-  access.
+The `tailscaled` Unix socket is a control-plane endpoint with
+**no per-command auth**. Mounting it would let any in-container
+process call `tailscale serve --funnel` (public exposure),
+`tailscale logout` (DoS), or `tailscale ssh` other nodes —
+unacceptable for an environment that runs AI agents.
 
-The `tailscale` CLI is intentionally NOT installed in the
-container, and the host's `/var/run/tailscale/tailscaled.sock`
-is intentionally NOT mounted. Reason: the socket is a
-control-plane endpoint with **no per-command auth**. Anything
-with socket access can `tailscale serve --funnel` (public
-internet exposure), `tailscale logout` (DoS the VM), or
-`tailscale ssh hironow@<other-node>` (lateral move using the
-VM's `tag:exe-workspace` identity, or worse, `tag:owner` via
-ACL escalation paths). For an environment that runs AI agents
-inside the container, granting that level of authority to any
-in-container process is unacceptable.
-
-If `tailscale serve --funnel` or other CLI-only operations are
-needed, run them from the **VM host shell** instead:
-
-```bash
-gcloud compute ssh coder-<owner>-<workspace>-root \
-  --zone=asia-northeast1-a \
-  --command='sudo tailscale serve --bg http://localhost:8080'
-```
-
-This requires explicit operator action (gcloud auth + sudo) and
-is auditable; an AI agent running inside the container cannot
-reach this path.
+CLI-only ops (`serve`, `funnel`) are run from the VM host shell;
+see [runbook.md](./runbook.md#tailscale-serve--tailscale-funnel-from-a-workspace).
 
 ## State and secrets
 
@@ -264,8 +239,3 @@ project's `default` VPC and joins the tailnet as `tag:exe-workspace`.
   SA). Holds `roles/secretmanager.secretAccessor` on the workspace
   tailnet authkey and `roles/artifactregistry.reader` on the
   dotfiles repo (for docker pull).
-
-## Out of scope
-
-- (P)ublic publish path (`*.sandbox.hironow.dev` reverse proxy).
-- ADRs for Pattern A, OpenTofu choice, tailnet routing.

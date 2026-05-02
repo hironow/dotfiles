@@ -109,21 +109,7 @@ cdr ssh my-ws.dev -- '
 
 ## Related docs
 
-- [`../../README.md`](../../README.md) — `exe/coder/` overview
-- [`../../../README.md`](../../../README.md) — `exe/` overview
-- [`../../../docs/architecture.md`](../../../docs/architecture.md)
-  — full exe.hironow.dev architecture and trust boundary table
-- [`../../../docs/runbook.md`](../../../docs/runbook.md)
-  — `cdr templates push` / pre-merge image-tag testing
-- [`../../../../README.md`](../../../../README.md) — top-level
-  repo README (architecture overview + doc tree)
-- [`../../../../docs/adr/0002-coder-prebuilt-image.md`](../../../../docs/adr/0002-coder-prebuilt-image.md)
-  — why prebuilt image instead of envbuilder
-- [`../../../../docs/adr/0004-workspace-tailnet-routing.md`](../../../../docs/adr/0004-workspace-tailnet-routing.md)
-  — why workspace VMs reach Coder over the tailnet (B-plan)
-- [`../../../../docs/adr/0005-install-path-rationalization.md`](../../../../docs/adr/0005-install-path-rationalization.md)
-  — install.sh OS dispatch + step\_\* helpers
-- [`../../../../docs/adr/0006-mise-version-pinning.md`](../../../../docs/adr/0006-mise-version-pinning.md)
-  — mise.toml pins + `MISE_DATA_DIR=/opt/mise` relocation
-- [`../../../../docs/adr/0007-coder-server-install-hardening.md`](../../../../docs/adr/0007-coder-server-install-hardening.md)
-  — Coder server install pinning
+- [`../../../docs/architecture.md`](../../../docs/architecture.md) — full exe.hironow.dev architecture
+- [`../../../docs/runbook.md`](../../../docs/runbook.md) — operator workflow
+- [`../../../../docs/adr/0002-coder-prebuilt-image.md`](../../../../docs/adr/0002-coder-prebuilt-image.md) — why prebuilt image
+- [`../../../../docs/adr/`](../../../../docs/adr/) — full ADR list

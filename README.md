@@ -48,13 +48,13 @@ Legend / 凡例:
 
 詳細は以下を参照:
 
-- [`docs/intent.md`](./docs/intent.md) — リクエスト元の意図
-- [`docs/adr/`](./docs/adr/) — Architecture Decision Records (0001–0007、debian-12 / prebuilt image / Actions 強化 / tailnet routing / install path / mise pin / Coder server hardening)
+- [`docs/adr/`](./docs/adr/) — Architecture Decision Records
 - [`exe/docs/architecture.md`](./exe/docs/architecture.md) — exe.hironow.dev 全体図 (Cloudflare + Tailscale + Coder + GCP)
 - [`exe/docs/runbook.md`](./exe/docs/runbook.md) — 運用手順 (operator workflow)
 - [`exe/coder/templates/dotfiles-devcontainer/README.md`](./exe/coder/templates/dotfiles-devcontainer/README.md) — Coder template の push / create
 - [`exe/scripts/README.md`](./exe/scripts/README.md) — `cdr` wrapper (CF Access service token 経由で `coder` CLI を実行)
 - [`tools/README.md`](./tools/README.md) — RTTM converter / simple server などの補助ツール
+- `docs/intent.md` — リクエスト元の意図 (operator-only, gitignored)
 
 ## Installation
 
@@ -65,7 +65,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/in
 ```
 
 > [!NOTE]
-> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)へ対応。Windows native (scoop) は OS dispatch hook のみで実装は TODO。
+> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)へ対応。Windows native (scoop) は未対応。
 > Mac は Homebrew が前提条件 (操作者が手動で先にインストール)、それ以降は install.sh が自動。
 
 ## usage
