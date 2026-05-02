@@ -231,11 +231,16 @@ SCRIPT_INSTALL_RERUN = textwrap.dedent(
     export INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_ADD_UPDATE=1;
     # first run (clone branch)
     bash ./install.sh;
-    # initialize a real git repo at DOTPATH to exercise stash/checkout
+    # Initialise a real git repo at DOTPATH to exercise stash/checkout.
+    # The DOTPATH dir was `cp -a`'d from /root/dotfiles which already
+    # contains a populated .git/ (the bind-mounted host repo). Wipe it
+    # first so `git init` produces a fresh empty repo and the
+    # subsequent commit has actual content to record.
     cd "$DOTPATH";
+    rm -rf .git;
     git init;
     git add -A;
-    git -c user.name=test -c user.email=test@example.com commit -m initial;
+    git -c user.name=test -c user.email=test@example.com commit -m initial --allow-empty;
     git branch -M main;
     cd - >/dev/null;
     # second run (update branch)
