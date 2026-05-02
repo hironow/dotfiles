@@ -280,28 +280,41 @@ locals {
       useradd --system --home-dir /var/lib/coder --shell /usr/sbin/nologin coder
     fi
     install -m 0755 -o coder -g coder -d /var/lib/coder /var/lib/coder/cache
-    if [[ ! -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]; then
-      # Coder's install.sh references $HOME. The root startup-script
-      # process inherits no HOME, so dash exits with
-      # 'HOME: parameter not set' — pin one before piping. Run without
-      # extra flags ('--terraform-no-pin' is unknown to install.sh and
-      # makes it exit 1).
-      export HOME=/root
-      curl -fsSL https://coder.com/install.sh | sh || true
+    if [[ ! -x /usr/local/bin/coder ]]; then
+      # Per ADR 0007 (Coder server install hardening): pinned-tag
+      # tarball install with sha256 verification. The previous
+      # piped-shell convenience installer and the GitHub-API
+      # latest-resolution fallback have both been removed; any
+      # failure in the steps below aborts the startup-script and
+      # the VM provisioning fails fast — preferable to coming up
+      # with an unverified or absent Coder binary.
+      coder_tag='${var.coder_version}'
+      coder_ver="$${coder_tag#v}"
+      coder_sha256='${var.coder_sha256}'
+      coder_tarball="coder_$${coder_ver}_linux_amd64.tar.gz"
+      coder_url="https://github.com/coder/coder/releases/download/$${coder_tag}/$${coder_tarball}"
 
-      # Fallback: pull the official tar.gz release. The asset filename
-      # embeds the version, so resolve it via the GitHub API. Either
-      # /usr/local/bin/coder or /usr/bin/coder ends up populated.
-      if [[ ! -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]; then
-        coder_tag="$(curl -fsSL https://api.github.com/repos/coder/coder/releases/latest \
-          | jq -r .tag_name)"
-        coder_ver="$${coder_tag#v}"
-        curl -fsSL -o /tmp/coder.tar.gz \
-          "https://github.com/coder/coder/releases/download/$${coder_tag}/coder_$${coder_ver}_linux_amd64.tar.gz"
-        tar -xz -C /usr/local/bin -f /tmp/coder.tar.gz coder
-        chmod 0755 /usr/local/bin/coder
-        rm -f /tmp/coder.tar.gz
+      curl -fsSL --proto '=https' --tlsv1.2 \
+        -o /tmp/$${coder_tarball} "$${coder_url}"
+      echo "$${coder_sha256}  /tmp/$${coder_tarball}" \
+        | sha256sum -c -
+
+      # Defense in depth: if gh is installed and authenticated on
+      # the VM, verify the SLSA provenance attestation BEFORE the
+      # tarball is consumed. Best-effort — the sha256 pin above is
+      # the primary integrity check. Mirrors the pattern used in
+      # .devcontainer/features/dotfiles-tools/install.sh for uv.
+      if command -v gh >/dev/null 2>&1 && \
+         { [ -n "$${GH_TOKEN:-}" ] || [ -n "$${GITHUB_TOKEN:-}" ] || \
+           gh auth status >/dev/null 2>&1; }; then
+        gh attestation verify "/tmp/$${coder_tarball}" \
+          --repo coder/coder >/dev/null 2>&1 || \
+          echo "[coder-bootstrap] gh attestation verify failed (sha256 still in force)" >&2
       fi
+
+      tar -xz -C /usr/local/bin -f /tmp/$${coder_tarball} coder
+      chmod 0755 /usr/local/bin/coder
+      rm -f /tmp/$${coder_tarball}
     fi
 
     # Initial admin password — generated on first boot, persisted on the
