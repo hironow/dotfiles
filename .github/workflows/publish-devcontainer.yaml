@@ -1,0 +1,83 @@
+name: Publish Dev Container Image
+
+# Build .devcontainer/devcontainer.json into an OCI image and push it to
+# Artifact Registry so the Coder workspace template
+# (exe/coder/templates/dotfiles-devcontainer) can pull a prebuilt image
+# instead of running envbuilder per workspace.
+#
+# Auth uses Workload Identity Federation: no long-lived service account
+# keys checked into secrets. The pool / provider / SA are managed by
+# tofu/exe/iam.tf — see also docs/adr/0002-coder-prebuilt-image.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .devcontainer/**
+      - .github/workflows/publish-devcontainer.yaml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # required for google-github-actions/auth via WIF
+
+env:
+  AR_REGION: asia-northeast1
+  AR_PROJECT: gen-ai-hironow
+  AR_REPO: dotfiles
+  AR_IMAGE: devcontainer
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_PUBLISH_SA }}
+
+      - name: Configure docker auth for Artifact Registry
+        run: |
+          gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev" --quiet
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          base="${AR_REGION}-docker.pkg.dev/${AR_PROJECT}/${AR_REPO}/${AR_IMAGE}"
+          # Mutable :main tag tracks HEAD of main; immutable :<sha> tag
+          # gives reproducible references the Coder template can pin.
+          {
+            echo "image_main=${base}:main"
+            echo "image_sha=${base}:${GITHUB_SHA::12}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push dev container image
+        uses: devcontainers/ci@b63b30de439b47a52267f241112c5b453b673db5 # v0.3.1900000449
+        with:
+          imageName: ${{ steps.tags.outputs.image_main }}
+          imageTag: latest
+          push: always
+          # The :main tag above is the rolling pointer; also tag the
+          # immutable :<sha> reference for repeatable rollbacks.
+          # devcontainers/ci pushes whatever imageName declares; we
+          # add the second tag manually after.
+          env: |
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag image with commit SHA
+        run: |
+          docker tag "${{ steps.tags.outputs.image_main }}" "${{ steps.tags.outputs.image_sha }}"
+          docker push "${{ steps.tags.outputs.image_sha }}"
+
+      - name: Summary
+        run: |
+          echo "::notice::published ${{ steps.tags.outputs.image_main }}"
+          echo "::notice::published ${{ steps.tags.outputs.image_sha }}"
