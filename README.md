@@ -24,14 +24,14 @@ differs.
            +----------+-----------+------------+-----------+
                                               |
                                               v
-                          +-----------------------------------+
+                          +-------------------------------------+
                           |  Single source of truth (this repo) |
                           |                                     |
                           |  - install.sh        (OS dispatch)  |
                           |  - mise.toml         (tool pins)    |
                           |  - .devcontainer/    (image SoT)    |
                           |  - dump/             (brew/gcloud)  |
-                          +-----------------------------------+
+                          +-------------------------------------+
 ```
 
 ```
@@ -41,7 +41,7 @@ Legend / 凡例:
 - Dev container: .devcontainer/devcontainer.json + features/dotfiles-tools をビルドした image (CI とローカル IDE で同一)
 - Coder workspace: exe.hironow.dev で立ち上がる cloud dev 環境。Artifact Registry 上の prebuilt image を docker pull する
 - install.sh OS dispatch: uname → mac / linux / windows で step_* 関数を切り替える (ADR 0005)
-- mise.toml: just / uv / prek / vp / markdownlint-cli2 を 3 OS 同一バージョンに pin (ADR 0006)
+- mise.toml: just / uv / prek / vp / markdownlint-cli2 / node + 5 AI CLI (codex / gemini / claude / copilot / pi) を 3 OS 同一バージョンに pin (ADR 0006)
 - .devcontainer/: dev container 仕様の SoT (debian-12 + Microsoft-curated features + ローカル feature)
 - Artifact Registry: GitHub Actions が main merge 時に WIF 認証で image push、Coder workspace VM が docker pull
 ```
@@ -150,9 +150,12 @@ features + local `dotfiles-tools` feature). The same file drives CI
 (prebuilt image pulled from Artifact Registry — no envbuilder per
 [ADR 0002](./docs/adr/0002-coder-prebuilt-image.md)), so all three
 environments stay aligned. Open it to get an isolated environment
-with `just`, `mise`, `prek`, `ruff`, `shellcheck`, and
-`markdownlint-cli2` already provisioned — useful as an AI agent
-sandbox for `just fmt|lint|check|test`.
+with `just`, `mise`, `prek`, `ruff`, `shellcheck`,
+`markdownlint-cli2`, Node.js 24, and 5 AI agent CLIs
+(`codex`, `gemini`, `claude`, `copilot`, `pi`) already provisioned
+— useful as an AI agent sandbox for `just fmt|lint|check|test`.
+Auth for the AI CLIs is operator-side and runs once per workspace;
+see [`exe/docs/runbook.md`](./exe/docs/runbook.md#ai-agent-cli-authentication).
 
 - **Claude Code**: run `/devcontainer`
 - **VS Code / Cursor**: install the Dev Containers extension, then `Reopen in Container`

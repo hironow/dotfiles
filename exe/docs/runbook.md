@@ -120,6 +120,77 @@ The previous `git_branch` parameter (envbuilder-only) is gone:
 the prebuilt-image template doesn't clone at workspace boot;
 operator branch testing happens via the image tag instead.
 
+## AI agent CLI authentication
+
+The dev container image (post-PR #65 / #66) ships with five AI
+agent CLIs pre-installed but **with no credentials baked in**.
+Each CLI needs the operator to authenticate once on first use of
+a workspace.
+
+### One-time per workspace
+
+| CLI | Auth command | Account / Provider | Token location |
+|---|---|---|---|
+| `codex` | `codex login` | OpenAI (ChatGPT account) | `~/.codex/` |
+| `gemini` | `gemini auth login` | Google (or `GEMINI_API_KEY` env, or shared `gcloud auth application-default`) | `~/.config/gcloud/` or `~/.gemini/` |
+| `claude` | run `claude`, then `/login` | Anthropic Console | `~/.claude/` |
+| `copilot` | `copilot auth` | GitHub (Copilot subscription required) | `~/.config/github-copilot/` |
+| `pi` | `pi auth` (per LLM provider API key) | OpenAI / Anthropic / etc. — multi-provider | `~/.config/pi/` |
+
+`/root` inside the container is bind-mounted to the host VM's
+`/home/<user>/`, which sits on a `auto_delete = false` boot disk
+— **token files persist across `cdr stop`, `cdr start`, `cdr
+restart`, and the preemptible 24h VM cycle.** Tokens are only
+lost when the workspace is `cdr delete`-d (disk destroyed).
+
+### CF Access edge consideration (browser-OAuth CLIs)
+
+`codex login`, `gemini auth login`, and `copilot auth` open a
+browser-based OAuth flow. The workspace itself is behind
+Cloudflare Access, so the OAuth callback **cannot be served from
+inside the container**. Modern CLIs work around this with the
+**device-code flow**:
+
+```text
+$ codex login
+Visit https://auth.openai.com/device and enter code: ABC-1234
+Waiting for authorization...
+```
+
+Complete the device-code flow in the operator's local browser.
+The CLI polls the provider's OAuth endpoint (outbound from the
+workspace, no inbound port required) and writes the token when
+the operator confirms in their browser.
+
+If a CLI offers no device-code flow, set the corresponding
+`*_API_KEY` env var instead (most CLIs accept that as an
+alternative auth):
+
+```bash
+export OPENAI_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-ant-...
+export GEMINI_API_KEY=...
+```
+
+Persist these by adding to `~/.zshrc.local` or use `dotenvx`
+(already on the image) for encrypted-at-rest secrets.
+
+### Smoke after auth
+
+```bash
+cdr ssh my-ws.dev -- '
+  codex --version
+  gemini --version
+  claude --version
+  copilot --version
+  pi --version
+  node --version    # /opt/mise/shims/node, runtime for the 4 npm-backed CLIs
+'
+```
+
+All five binaries are baked into `:main` images post-PR #66 and
+respond to `--version` without auth.
+
 ## `tailscale serve` / `tailscale funnel` from a workspace
 
 The workspace dev container intentionally does **not** ship the
