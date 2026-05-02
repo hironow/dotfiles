@@ -350,28 +350,38 @@ def test_image_profile_d_mise_env_is_scoped(saved_image: str) -> None:
     feature must scope MISE_TRUSTED_CONFIG_PATHS, not allowlist /root.
     A login shell sources it and then any mise process inherits the
     scoped value."""
+    # Source the file in a sub-shell and print ONLY the resolved
+    # variable. Greping the file body would false-match comments
+    # that mention earlier revisions of the value.
     result = _run_in_image(
-        "cat /etc/profile.d/dotfiles-mise.sh; "
-        # Source it ourselves to see the resolved env.
         ". /etc/profile.d/dotfiles-mise.sh && "
-        "echo MISE_TRUSTED_CONFIG_PATHS=$MISE_TRUSTED_CONFIG_PATHS"
+        'printf "%s\\n" "$MISE_TRUSTED_CONFIG_PATHS"'
     )
     assert result.returncode == 0, (
-        f"failed to read profile.d:\nstderr:\n{result.stderr}"
+        f"failed to source profile.d:\nstderr:\n{result.stderr}"
     )
-    body = result.stdout
-    assert "/root/dotfiles" in body, (
-        f"profile.d/dotfiles-mise.sh does not declare /root/dotfiles.\n{body}"
+    resolved = result.stdout.strip()
+    assert resolved, (
+        "profile.d/dotfiles-mise.sh did not export MISE_TRUSTED_CONFIG_PATHS."
     )
-    assert "/root/sandbox/dotfiles-fresh" in body, (
-        "profile.d/dotfiles-mise.sh does not declare "
-        f"/root/sandbox/dotfiles-fresh.\n{body}"
-    )
-    # Belt-and-braces: catch a regression to the broader value.
-    assert "MISE_TRUSTED_CONFIG_PATHS=/root\n" not in body, (
+    # Catch a regression to the broader value.
+    assert resolved != "/root", (
         "MISE_TRUSTED_CONFIG_PATHS regressed to /root in profile.d. "
         "GHSA-436v-8fw5-4mj8 / CVE-2026-35533 — keep the scoping tight."
     )
+    entries = resolved.split(":")
+    assert "/root/dotfiles" in entries, (
+        f"profile.d/dotfiles-mise.sh missing /root/dotfiles. Resolved: {resolved!r}"
+    )
+    assert "/root/sandbox/dotfiles-fresh" in entries, (
+        f"profile.d/dotfiles-mise.sh missing /root/sandbox/dotfiles-fresh. "
+        f"Resolved: {resolved!r}"
+    )
+    for entry in entries:
+        assert entry.startswith("/root/"), (
+            f"unexpected mise trust path {entry!r}; must be under /root/. "
+            f"Resolved: {resolved!r}"
+        )
 
 
 def test_image_devcontainer_metadata_smoke(saved_image: str) -> None:

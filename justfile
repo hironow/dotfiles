@@ -205,7 +205,7 @@ test:
     	echo '   Hint: npm i -g @devcontainers/cli'; \
     fi
     @echo '🧪 Running pytest (verbose with skip reasons)...'
-    uvx pytest -v -ra tests/test_just_sandbox.py
+    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py
     @echo '✅ Tests finished.'
 
 # Test (install): run install.sh verification in Docker
@@ -264,7 +264,7 @@ self-check with_tests="":
 test-mark marker="":
     @echo '🧪 Running pytest with marker:' '{{ marker }}'
     @if [ -n "{{ marker }}" ]; then \
-    	uvx pytest -v -ra -m '{{ marker }}' tests/test_just_sandbox.py; \
+    	uvx pytest -v -ra -m '{{ marker }}' tests/test_just_sandbox.py tests/test_devcontainer.py; \
     else \
     	echo 'Marker is empty. Usage: just test-mark marker=install'; \
     	exit 2; \
