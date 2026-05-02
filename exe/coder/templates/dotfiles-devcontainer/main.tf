@@ -225,11 +225,51 @@ locals {
     unset AUTH_KEY
 
     # ---- Docker -----------------------------------------------------
+    # Helper: import an apt-repo GPG key only after verifying its
+    # fingerprint. Without the pin a TOFU fetch from the same TLS
+    # endpoint that distributes the package would let a compromised
+    # mirror swap key + package in lock-step. Mirrors the helper at
+    # .devcontainer/features/dotfiles-tools/install.sh; positional
+    # arguments avoid bash $${var} that would conflict with terraform
+    # heredoc interpolation.
+    import_apt_key_with_fingerprint() {
+      # args: <url> <expected-fingerprint> <output-keyring-path>
+      rm -f /tmp/dotfiles-apt-key.armored /tmp/dotfiles-apt-key.gpg
+      curl -fsSL -o /tmp/dotfiles-apt-key.armored "$1"
+      gpg --no-default-keyring --keyring /tmp/dotfiles-apt-key.gpg \
+        --import /tmp/dotfiles-apt-key.armored 2>/dev/null
+      actual=$(gpg --no-default-keyring --keyring /tmp/dotfiles-apt-key.gpg \
+        --list-keys --with-colons | awk -F: '/^fpr:/ { print $10; exit }')
+      if [ "$actual" != "$2" ]; then
+        echo "[exe-bootstrap] GPG fingerprint mismatch for $1" >&2
+        echo "  expected: $2" >&2
+        echo "  actual:   $actual" >&2
+        rm -f /tmp/dotfiles-apt-key.armored /tmp/dotfiles-apt-key.gpg
+        exit 1
+      fi
+      install -m 0644 /tmp/dotfiles-apt-key.gpg "$3"
+      rm -f /tmp/dotfiles-apt-key.armored /tmp/dotfiles-apt-key.gpg
+    }
+
+    # Install docker via the official apt repository in place of
+    # the legacy curl-piped convenience script. The fingerprint is
+    # published at https://docs.docker.com/engine/install/debian/
+    # (groups of 8: 9DC85822 9FC7DD38 854AE2D8 8D81803C 0EBFCD88).
+    # Pinning closes the TOFU window that the convenience script
+    # would otherwise leave wide open (RCE on a CDN compromise).
     if ! command -v docker >/dev/null 2>&1; then
-      curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-      sh /tmp/get-docker.sh >/dev/null 2>&1
+      install -m 0755 -d /etc/apt/keyrings
+      import_apt_key_with_fingerprint \
+        https://download.docker.com/linux/debian/gpg \
+        9DC858229FC7DD38854AE2D88D81803C0EBFCD88 \
+        /etc/apt/keyrings/docker.gpg
+      echo "deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" \
+        > /etc/apt/sources.list.d/docker.list
+      apt-get update -y
+      apt-get install -y --no-install-recommends \
+        docker-ce docker-ce-cli containerd.io \
+        docker-buildx-plugin docker-compose-plugin
       usermod -aG docker ${local.linux_user}
-      rm -f /tmp/get-docker.sh
     fi
 
     # Configure docker to authenticate against Artifact Registry via
