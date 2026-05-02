@@ -28,6 +28,15 @@ resource "google_artifact_registry_repository_iam_member" "gha_writer" {
 }
 
 # ---- WIF pool ------------------------------------------------------
+# `import` block adopts an existing pool (created out-of-band on a
+# previous experiment in this project) into tofu state instead of
+# erroring with "Requested entity already exists" on first apply.
+# Safe to leave in place — `import` is idempotent post-adoption.
+import {
+  to = google_iam_workload_identity_pool.github
+  id = "projects/${var.gcp_project_id}/locations/global/workloadIdentityPools/github"
+}
+
 resource "google_iam_workload_identity_pool" "github" {
   project                   = var.gcp_project_id
   workload_identity_pool_id = "github"
