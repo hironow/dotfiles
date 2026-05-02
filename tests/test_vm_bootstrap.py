@@ -141,3 +141,71 @@ def test_main_tf_still_runs_docker_pull_and_run(main_tf_text: str) -> None:
     assert "docker pull" in main_tf_text, "docker pull step missing"
     assert "docker run" in main_tf_text, "docker run step missing"
     assert "auth configure-docker" in main_tf_text, "AR docker login step missing"
+
+
+# Tailscale apt-key fingerprint — observed via dnf/rpm signature
+# verification (Tailscale does not officially publish the fingerprint
+# as of 2026-05; tracked at github.com/tailscale/tailscale/issues/15221).
+# The 8-byte suffix matches NO_PUBKEY 458CA832957F5868 in apt errors.
+TAILSCALE_GPG_FINGERPRINT = "2596A99EAAB33821893C0A79458CA832957F5868"
+
+# Google Cloud apt-key fingerprint — published officially at
+# https://cloud.google.com/sdk/docs/install#deb. Operator-verified
+# at PR #53 time.
+GOOGLE_CLOUD_GPG_FINGERPRINT = "35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3"
+
+
+def test_main_tf_pins_tailscale_gpg_fingerprint(main_tf_text: str) -> None:
+    """Tailscale apt-key fingerprint must be hardcoded so a
+    compromised pkgs.tailscale.com cannot swap in a different signing
+    key on the workspace VM bootstrap."""
+    assert TAILSCALE_GPG_FINGERPRINT in main_tf_text, (
+        f"Tailscale GPG fingerprint {TAILSCALE_GPG_FINGERPRINT} missing "
+        f"from main.tf. Without the pin the apt key import is TOFU."
+    )
+
+
+def test_main_tf_pins_google_cloud_gpg_fingerprint(main_tf_text: str) -> None:
+    """Google Cloud apt-key fingerprint must be hardcoded; the same
+    value is used in feature install.sh and tofu/exe/coder.tf."""
+    assert GOOGLE_CLOUD_GPG_FINGERPRINT in main_tf_text, (
+        f"Google Cloud GPG fingerprint {GOOGLE_CLOUD_GPG_FINGERPRINT} "
+        f"missing from main.tf."
+    )
+
+
+def test_main_tf_does_not_install_tailscale_or_gcloud_via_unverified_curl(
+    main_tf_text: str,
+) -> None:
+    """The pre-PR pattern was a plain `curl ... > /usr/share/keyrings/...gpg`
+    with no fingerprint check. The post-fix path routes through
+    import_apt_key_with_fingerprint. Catch a regression that drops the
+    helper for either vendor."""
+    forbidden = [
+        # Plain pipe of pkgs.tailscale.com noarmor.gpg into a keyring.
+        r"curl[^\n]+pkgs\.tailscale\.com[^\n]+noarmor\.gpg[^\n]*>\s*/usr/share/keyrings",
+        # Plain dearmor pipe of packages.cloud.google.com apt-key.gpg
+        # into /etc/apt/keyrings.
+        r"curl[^\n]+packages\.cloud\.google\.com[^\n]+apt-key\.gpg[\s\S]{0,80}gpg\s+--dearmor",
+    ]
+    for pattern in forbidden:
+        assert not re.search(pattern, main_tf_text), (
+            f"main.tf still uses the unverified-curl pattern matching "
+            f"{pattern!r}. Replace with import_apt_key_with_fingerprint."
+        )
+
+
+def test_main_tf_helper_defined_once_at_top(main_tf_text: str) -> None:
+    """The import_apt_key_with_fingerprint helper must be defined
+    exactly once in the script (not duplicated per vendor block)."""
+    matches = re.findall(
+        r"^\s*import_apt_key_with_fingerprint\s*\(\s*\)\s*\{",
+        main_tf_text,
+        re.MULTILINE,
+    )
+    assert len(matches) == 1, (
+        f"import_apt_key_with_fingerprint should be defined exactly "
+        f"once in main.tf; found {len(matches)} definitions. "
+        f"Consolidate so all three vendors (tailscale, gcloud, docker) "
+        f"reuse the same helper."
+    )

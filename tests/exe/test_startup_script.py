@@ -812,3 +812,58 @@ def test_coder_install_attestation_verify_is_best_effort(startup_script: str) ->
         "Bootstrap should attempt gh attestation verify only when gh "
         "is installed and authenticated."
     )
+
+
+# ---------- ADR 0005 Open Q2 follow-up: apt key fingerprint pin ----
+
+# Same observed-not-officially-published value documented in
+# tests/test_vm_bootstrap.py.
+TAILSCALE_GPG_FINGERPRINT = "2596A99EAAB33821893C0A79458CA832957F5868"
+GOOGLE_CLOUD_GPG_FINGERPRINT = "35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3"
+
+
+@pytest.mark.exe
+def test_coder_tf_pins_tailscale_apt_key(startup_script: str) -> None:
+    """Control-plane VM bootstrap must verify the Tailscale apt key
+    fingerprint before adding the apt repo. Same hardening pattern
+    as the workspace VM (main.tf post-PR #57 + this PR)."""
+    assert TAILSCALE_GPG_FINGERPRINT in startup_script, (
+        f"coder.tf must pin Tailscale apt-key fingerprint {TAILSCALE_GPG_FINGERPRINT}."
+    )
+
+
+@pytest.mark.exe
+def test_coder_tf_pins_google_cloud_apt_key(startup_script: str) -> None:
+    """Control-plane VM bootstrap must verify the Google Cloud apt
+    key fingerprint."""
+    assert GOOGLE_CLOUD_GPG_FINGERPRINT in startup_script, (
+        f"coder.tf must pin Google Cloud apt-key fingerprint "
+        f"{GOOGLE_CLOUD_GPG_FINGERPRINT}."
+    )
+
+
+@pytest.mark.exe
+def test_coder_tf_helper_defined(startup_script: str) -> None:
+    """import_apt_key_with_fingerprint must be defined in the
+    control-plane startup_script."""
+    assert re.search(
+        r"^\s*import_apt_key_with_fingerprint\s*\(\s*\)\s*\{",
+        startup_script,
+        re.MULTILINE,
+    ), "coder.tf must define import_apt_key_with_fingerprint helper."
+
+
+@pytest.mark.exe
+def test_coder_tf_no_unverified_apt_key_curls(startup_script: str) -> None:
+    """The pre-PR pattern of `curl ... > /usr/share/keyrings/...gpg`
+    or `curl ... | gpg --dearmor -o /etc/apt/keyrings/...` for
+    Tailscale or Google Cloud must be gone."""
+    forbidden = [
+        r"curl[^\n]+pkgs\.tailscale\.com[^\n]+noarmor\.gpg[^\n]*>\s*/usr/share/keyrings",
+        r"curl[^\n]+packages\.cloud\.google\.com[^\n]+apt-key\.gpg[\s\S]{0,80}gpg\s+--dearmor",
+    ]
+    for pattern in forbidden:
+        assert not re.search(pattern, startup_script), (
+            f"coder.tf startup_script still uses the unverified-curl "
+            f"pattern matching {pattern!r}."
+        )
