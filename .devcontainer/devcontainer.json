@@ -65,7 +65,12 @@
     // workspace into one-shot sub-containers it spins up via
     // docker-outside-of-docker (the outer daemon resolves -v
     // sources against the host filesystem, not the container's).
-    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}",
+    // mise trust state lives under ~/.local/state/mise/trusted-configs
+    // and does not survive across `docker run --rm` test invocations.
+    // Pre-trust the workspace mise.toml via env var so each one-shot
+    // container starts trusted without writing per-user state.
+    "MISE_TRUSTED_CONFIG_PATHS": "/root/dotfiles"
   },
 
   "customizations": {

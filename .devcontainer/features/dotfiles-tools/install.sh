@@ -102,6 +102,20 @@ printf '#!/bin/sh\necho "Cuda compilation tools, release 12.3, V12.3.52"\n' \
   > /usr/local/bin/nvcc
 chmod 0755 /usr/local/bin/nvcc
 
+# ---- mise trust env via login profile -------------------------------
+# Inner one-shot containers spawned by the test fixture (`docker run
+# --rm dotfiles-just-sandbox bash -lc ...`) do NOT inherit the dev
+# container's containerEnv, so MISE_TRUSTED_CONFIG_PATHS must be
+# baked in. /etc/profile.d/*.sh is sourced by every login bash.
+echo "[dotfiles-tools] writing /etc/profile.d/dotfiles-mise.sh"
+cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'
+# Pre-trust the workspace mise.toml so `mise install` / `mise exec`
+# inside one-shot test containers does not error with
+# "Config files in ~/dotfiles/mise.toml are not trusted."
+export MISE_TRUSTED_CONFIG_PATHS=/root/dotfiles
+PROFILE
+chmod 0644 /etc/profile.d/dotfiles-mise.sh
+
 # ---- git safe.directory wildcard ------------------------------------
 # install.sh tests `cp -a` the bind-mounted workspace into a sandbox
 # directory and then run `git init` / `git clone` against it. On the

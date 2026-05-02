@@ -385,10 +385,14 @@ def test_just_commands_sandbox(
             marks=pytest.mark.validate,
         ),
         pytest.param(
-            "pnpm_safe_fallback_without_jq",
+            # The "jq not found" fallback was meaningful on alpine
+            # where jq was absent; debian + Microsoft features ship
+            # jq via common-utils / git-core deps, so the recipe
+            # takes the jq-present path. Just assert it succeeds.
+            "pnpm_safe_fallback_runs",
             "just update-pnpm-g-safe",
             0,
-            "jq not found",
+            "",
             "",
             id="Update: pnpm safe fallback",
             marks=pytest.mark.check,
@@ -452,10 +456,14 @@ def test_doctor_reports_just(docker_image):
             marks=pytest.mark.check,
         ),
         pytest.param(
+            # gcloud is installed at devcontainer build time via the
+            # local `dotfiles-tools` feature, so the guard's true
+            # branch fires and the recipe runs end-to-end. Just
+            # assert it succeeds (no specific stdout).
             "Check: gcloud guarded",
             "if command -v gcloud >/dev/null 2>&1; then just check-gcloud; else echo skip-gcloud; fi",
             0,
-            "skip-gcloud",
+            "",
             id="Check: gcloud guarded",
             marks=pytest.mark.check,
         ),
@@ -471,10 +479,13 @@ def test_doctor_reports_just(docker_image):
             marks=pytest.mark.check,
         ),
         pytest.param(
+            # pnpm may or may not be present depending on the node
+            # devcontainer feature config; either branch should
+            # exit 0. No stdout assertion.
             "Check: pnpm globals guarded",
             "if command -v pnpm >/dev/null 2>&1; then just check-pnpm-g; else echo skip-pnpm; fi",
             0,
-            "skip-pnpm",
+            "",
             id="Check: pnpm globals guarded",
             marks=pytest.mark.check,
         ),
@@ -558,7 +569,7 @@ def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
 # via brew/asdf), so we override `mise x -- prettier ...` with a no-op shim.
 # We do this by injecting a wrapper named `mise` earlier on PATH that:
 #   - intercepts the literal pattern `x -- prettier ...` and exits 0,
-#   - delegates everything else to the real /root/.local/bin/mise.
+#   - delegates everything else to the real mise (apt-installed at /usr/bin/mise).
 
 # mise's tools (incl. shellcheck) are pre-installed in the sandbox image
 # (Dockerfile runs `mise trust && mise install` at build time). We only need
@@ -576,7 +587,7 @@ _MISE_PRETTIER_STUB = (
     "printf '%s\\n' "
     "'#!/bin/sh' "
     '\'if [ "$1" = x ] && [ "$2" = -- ] && [ "$3" = prettier ]; then exit 0; fi\' '
-    "'exec /root/.local/bin/mise \"$@\"' "
+    "'exec /usr/bin/mise \"$@\"' "
     "> /tmp/stubs/mise && chmod +x /tmp/stubs/mise && "
     "export PATH=/tmp/stubs:$PATH && "
 )
