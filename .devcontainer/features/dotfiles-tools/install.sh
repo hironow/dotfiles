@@ -117,10 +117,11 @@ chmod 0755 /usr/local/bin/nvcc
 # picks it up.
 echo "[dotfiles-tools] writing /etc/profile.d/dotfiles-mise.sh"
 cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'
-# Pre-trust the workspace mise.toml so `mise install` / `mise exec`
+# Pre-trust any mise.toml under /root so `mise install` / `mise exec`
 # inside one-shot test containers does not error with
-# "Config files in ~/dotfiles/mise.toml are not trusted."
-export MISE_TRUSTED_CONFIG_PATHS=/root/dotfiles
+# "Config files in ... are not trusted."  Covers both the workspace
+# at /root/dotfiles and install.sh's DOTPATH at /root/sandbox/...
+export MISE_TRUSTED_CONFIG_PATHS=/root
 
 # Add mise's shim directory to PATH so tools managed by mise.toml
 # (prek, markdownlint-cli2, vp, ...) are reachable without a `mise
