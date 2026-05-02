@@ -48,27 +48,27 @@ jobs:
         run: |
           gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev" --quiet
 
-      - name: Compute image tags
+      - name: Compute image refs
         id: tags
         run: |
           base="${AR_REGION}-docker.pkg.dev/${AR_PROJECT}/${AR_REPO}/${AR_IMAGE}"
-          # Mutable :main tag tracks HEAD of main; immutable :<sha> tag
-          # gives reproducible references the Coder template can pin.
+          short_sha="${GITHUB_SHA::12}"
           {
+            echo "image_base=${base}"
             echo "image_main=${base}:main"
-            echo "image_sha=${base}:${GITHUB_SHA::12}"
+            echo "image_sha=${base}:${short_sha}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push dev container image
+      - name: Build and push dev container image (:main)
         uses: devcontainers/ci@b63b30de439b47a52267f241112c5b453b673db5 # v0.3.1900000449
         with:
-          imageName: ${{ steps.tags.outputs.image_main }}
-          imageTag: latest
+          # imageName must be the bare repo path (no :tag suffix);
+          # devcontainers/ci concatenates with imageTag. Earlier
+          # iteration packed `:main` into imageName and produced
+          # `<repo>:main:latest` — invalid reference format.
+          imageName: ${{ steps.tags.outputs.image_base }}
+          imageTag: main
           push: always
-          # The :main tag above is the rolling pointer; also tag the
-          # immutable :<sha> reference for repeatable rollbacks.
-          # devcontainers/ci pushes whatever imageName declares; we
-          # add the second tag manually after.
           env: |
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
