@@ -358,27 +358,24 @@ resource "coder_agent" "dev" {
   # Personalisation + workspace-side mise sync.
   #
   # `coder dotfiles` clones the operator's dotfiles repo into
-  # /root/dotfiles and runs install.sh. install.sh honours skip env
-  # vars to bypass Homebrew + brew/gcloud bundle replays — neither
-  # is wanted on a CI-style workspace. With both set, install.sh
-  # still runs `just clean` + `just deploy` (symlink ~/.zshrc,
-  # sheldon lock, starship config, fzf-tab clone, ...).
+  # /root/dotfiles and runs install.sh. install.sh's OS dispatch
+  # (per ADR 0005) auto-skips the Mac-only steps on Linux; the
+  # legacy INSTALL_SKIP_* env vars are kept here as belt-and-
+  # suspenders for older images that pre-date the OS dispatch.
   #
   # Then `mise install` runs against the workspace mise.toml so
-  # mise's install state (`~/.local/share/mise/installs/`) tracks
-  # what mise.toml asks for. The prebuilt image already has the
-  # tools at the same versions (the local devcontainer feature
-  # primes them at build time), but mise tracks installs by config
-  # path, so `mise current` would otherwise warn:
-  #   `mise WARN  just@1.50.0 is specified in ~/dotfiles/mise.toml,
-  #    but not installed`
-  # MISE_OFFLINE=0 is forced because the inherited containerEnv has
-  # MISE_OFFLINE=1 baked in — mise needs the registry to resolve
-  # `latest` before it can match against the cache.
+  # mise's install state tracks what mise.toml asks for. Per ADR
+  # 0006 the data dir is /opt/mise (set in the image's profile.d),
+  # which sits OUTSIDE the /home/<user>:/root volume mount, so the
+  # build-time-baked cache survives. With pinned versions in
+  # mise.toml + the cache reachable, MISE_OFFLINE=1 is honoured at
+  # workspace runtime — narrowing the trust surface (no per-
+  # workspace api.github.com / aqua-registry calls).
   startup_script = data.coder_parameter.dotfiles_uri.value == "" ? "" : <<-EOT
     set -eu
     export INSTALL_SKIP_HOMEBREW=1
     export INSTALL_SKIP_ADD_UPDATE=1
+    export MISE_DATA_DIR=/opt/mise
     if command -v coder >/dev/null 2>&1; then
       coder dotfiles -y "${data.coder_parameter.dotfiles_uri.value}" || \
         echo "[exe] dotfiles install failed; continuing"
@@ -387,7 +384,7 @@ resource "coder_agent" "dev" {
       (
         cd /root/dotfiles
         mise trust mise.toml >/dev/null 2>&1 || true
-        MISE_OFFLINE=0 mise install
+        MISE_OFFLINE=1 mise install
       ) || echo "[exe] mise install failed; tools fall back to baked-in image versions"
     fi
   EOT

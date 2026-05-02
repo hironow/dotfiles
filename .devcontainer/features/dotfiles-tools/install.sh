@@ -185,14 +185,22 @@ cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'
 # mise should be scoped tightly.
 export MISE_TRUSTED_CONFIG_PATHS=/root/dotfiles:/root/sandbox/dotfiles-fresh
 
+# Relocate mise's data directory (installs + shims + cache) outside
+# of $HOME per ADR 0006. The Coder workspace template binds
+# `/home/<user>:/root` for operator-state persistence, which masks
+# the build-time-baked $HOME/.local/share/mise. Putting the data
+# dir at /opt/mise keeps the cache out of the bind-mount path so
+# pinned versions are reachable at runtime without re-fetch.
+export MISE_DATA_DIR=/opt/mise
+
 # Add mise's shim directory to PATH so tools managed by mise.toml
 # (prek, markdownlint-cli2, vp, ...) are reachable without a `mise
 # exec` wrapper. Critical for git hooks installed by `prek install`
 # — the pre-commit hook execs `prek` directly and sh -c hooks do
 # not source profile.d again, so PATH must already carry the shim.
 case ":$PATH:" in
-  *":/root/.local/share/mise/shims:"*) ;;
-  *) export PATH="/root/.local/share/mise/shims:$PATH" ;;
+  *":/opt/mise/shims:"*) ;;
+  *) export PATH="/opt/mise/shims:$PATH" ;;
 esac
 PROFILE
 chmod 0644 /etc/profile.d/dotfiles-mise.sh
@@ -211,14 +219,21 @@ git config --system --add safe.directory /root/sandbox/dotfiles-fresh
 
 # ---- pre-install mise.toml tools ------------------------------------
 # Bake mise.toml's tool versions into the saved image so test
-# containers don't re-download every run. Versions pinned to what
-# mise resolves "latest" to today; mise install at runtime can
-# fetch newer versions if mise.toml advances.
-echo "[dotfiles-tools] pre-installing mise.toml tools at build time"
+# containers don't re-download every run. Versions in this prebuild
+# block MUST match the workspace mise.toml; the
+# tests/test_mise_pin_consistency.py check fails the build on
+# drift. Bump these together with mise.toml in dedicated PRs.
+#
+# Per ADR 0006 the data dir is /opt/mise, NOT $HOME/.local/share/mise.
+# The /home/<user>:/root volume mount on Coder workspaces would
+# otherwise mask everything we install here.
+install -d -m 0755 /opt/mise
+export MISE_DATA_DIR=/opt/mise
+echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise)"
 mkdir -p /tmp/mise-prebuild
 cat > /tmp/mise-prebuild/mise.toml <<'EOF'
 [tools]
-just = "1.50.0"
+just = "1.40.0"
 markdownlint-cli2 = "0.22.1"
 prek = "0.3.11"
 uv = "0.11.8"

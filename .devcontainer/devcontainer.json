@@ -59,7 +59,11 @@
 
   "containerEnv": {
     "MISE_OFFLINE": "1",
-    "PATH": "/root/.local/bin:/root/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    // mise data dir is relocated to /opt/mise per ADR 0006 so the
+    // Coder workspace `/home/<user>:/root` volume mount cannot mask
+    // the build-time-baked installs. Shims live alongside.
+    "MISE_DATA_DIR": "/opt/mise",
+    "PATH": "/root/.local/bin:/opt/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
     // Surfaces the HOST workspace path to processes inside the
     // container. The pytest fixture reads this to bind-mount the
     // workspace into one-shot sub-containers it spins up via
