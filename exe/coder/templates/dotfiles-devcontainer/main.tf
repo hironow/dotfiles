@@ -1,28 +1,30 @@
-# exe.hironow.dev workspace template — dotfiles devcontainer.
+# exe.hironow.dev workspace template — dotfiles devcontainer (prebuilt image).
 #
-# Adapted from coder/coder examples/templates/gcp-devcontainer.
+# Adapted from coder/coder examples/templates/gcp-vm-container.
 # Differences from upstream:
-#   - default repo_url    = https://github.com/hironow/dotfiles.git
-#                           (this stack's reason for existing — see
-#                            docs/intent.md "Coder workspace whose
-#                            container image IS the dotfiles Dev Container")
-#   - default project_id  = gen-ai-hironow
-#   - default region      = asia (us+europe upstream)
-#   - default instance    = e2-small (e2-micro upstream — too small
-#                            for an envbuilder build, OOMs)
-#   - browser IDE module the upstream gcp-devcontainer template ships
-#                          with `registry.coder.com/coder/<browser-ide>/coder`
-#                          as a sibling resource; we drop it. Terminal-
-#                          first is the stated workflow; reintroduce a
-#                          browser IDE in a follow-up if the need arises.
-#   - dotfiles_uri param  added so workspaces auto-clone & install
-#                           hironow's personal dotfiles on top of the
-#                           devcontainer base.
+#   - default project_id   = gen-ai-hironow
+#   - default region       = asia (us+europe upstream)
+#   - workspace VM is debian-12 (not COS) so apt-installed tailscaled
+#                            can run on the host and the workspace
+#                            container can reach exe-coder over the
+#                            tailnet — see B-plan in
+#                            docs/handover.md / docs/adr/0001.
+#   - prebuilt container image pulled from Artifact Registry; built
+#                            and pushed by the publish-devcontainer
+#                            workflow on each main merge. envbuilder
+#                            is no longer in the path
+#                            (docs/adr/0002-coder-prebuilt-image.md).
+#   - dotfiles_uri parameter retained — `coder dotfiles` still runs
+#                            the operator's personalisation on top
+#                            of the baked-in image.
 #
 # Push:
 #   cdr templates push exe-dotfiles-devcontainer \
 #     -d exe/coder/templates/dotfiles-devcontainer \
-#     --variable project_id=gen-ai-hironow
+#     --variable project_id=gen-ai-hironow \
+#     --variable workspace_sa_email=$(just exe-output -raw exe_workspace_sa_email) \
+#     --variable coder_internal_url=$(just exe-output -raw coder_internal_url) \
+#     --variable image=$(just exe-output -raw artifact_registry_repo)/devcontainer:main
 #
 # Create a workspace:
 #   cdr create my-ws --template exe-dotfiles-devcontainer
@@ -35,9 +37,6 @@ terraform {
     google = {
       source = "hashicorp/google"
     }
-    envbuilder = {
-      source = "coder/envbuilder"
-    }
   }
 }
 
@@ -48,27 +47,20 @@ terraform {
 # from the public URL. Pointed at the tailnet-internal endpoint so
 # the download bypasses the public CF Access edge — workspaces have
 # no service token and would otherwise receive the OIDC interstitial
-# HTML instead of the binary. See coder/coder
-# provisioner/terraform/provision.go provisionEnv() for the
-# server-side rendering path.
+# HTML instead of the binary.
 provider "coder" {
   url = var.coder_internal_url
 }
 
 # Provider-level zone is fixed to the stack's home zone so the
 # template-push preview plan can resolve a non-empty string. The
-# 'gcp_region' Coder parameter still drives the *workspace* zone,
-# but per-resource (see google_compute_instance.vm.zone). Without
-# this fallback, push fails with 'expected a non-empty string' on
-# the provider block because the parameter default does not
-# propagate at preview time.
+# 'gcp_region' Coder parameter still drives the *workspace* zone
+# per-resource (see google_compute_instance.vm.zone).
 provider "google" {
   region  = "asia-northeast1"
   zone    = "asia-northeast1-a"
   project = var.project_id
 }
-
-data "google_compute_default_service_account" "default" {}
 
 data "coder_workspace" "me" {}
 data "coder_workspace_owner" "me" {}
@@ -95,7 +87,9 @@ variable "workspace_sa_email" {
   description = <<-EOF
 Service account email stamped on every workspace VM. Must have
 roles/secretmanager.secretAccessor on the tag:exe-workspace tailnet
-authkey secret. Operator stack exports it as 'exe_workspace_sa_email'.
+authkey secret AND roles/artifactregistry.reader on the dotfiles
+Artifact Registry repo. Operator stack exports it as
+'exe_workspace_sa_email'.
 EOF
   type        = string
 }
@@ -111,17 +105,15 @@ EOF
   default     = "exe-tailscale-workspace-authkey"
 }
 
-variable "cache_repo" {
-  default     = ""
-  description = "(Optional) Container registry to cache devcontainer builds. Example: host.tld/path/to/repo."
+variable "image" {
+  description = <<-EOF
+OCI image reference the workspace runs as its dev container. Built
+by .github/workflows/publish-devcontainer.yaml from
+.devcontainer/devcontainer.json on each main merge. Operator can
+pin to an immutable :<sha> tag for stability or :main for rolling.
+EOF
   type        = string
-}
-
-variable "cache_repo_docker_config_path" {
-  default     = ""
-  description = "(Optional) Path to a docker config.json containing credentials to the cache repo."
-  sensitive   = true
-  type        = string
+  default     = "asia-northeast1-docker.pkg.dev/gen-ai-hironow/dotfiles/devcontainer:main"
 }
 
 # Region picker. asia is the home region for this stack; allow
@@ -141,6 +133,10 @@ data "coder_parameter" "instance_type" {
   order        = 2
   default      = "e2-small"
   option {
+    name  = "e2-micro (2C, 1G) — minimal"
+    value = "e2-micro"
+  }
+  option {
     name  = "e2-small (2C, 2G) — default"
     value = "e2-small"
   }
@@ -158,116 +154,44 @@ data "coder_parameter" "instance_type" {
   }
 }
 
-data "coder_parameter" "fallback_image" {
-  default      = "codercom/enterprise-base:ubuntu"
-  description  = "Image used if the devcontainer build fails (envbuilder fallback)."
-  display_name = "Fallback Image"
-  mutable      = true
-  name         = "fallback_image"
-  order        = 3
-}
-
-data "coder_parameter" "devcontainer_builder" {
-  description  = <<-EOF
-Image that builds the devcontainer (envbuilder). Pin a digest in
-production; :latest is convenient for personal stacks.
-EOF
-  display_name = "Devcontainer Builder"
-  mutable      = true
-  name         = "devcontainer_builder"
-  default      = "ghcr.io/coder/envbuilder:latest"
-  order        = 4
-}
-
-data "coder_parameter" "repo_url" {
-  name         = "repo_url"
-  display_name = "Repository URL"
-  default      = "https://github.com/hironow/dotfiles.git"
-  description  = "Git repo with .devcontainer/ — defaults to the dotfiles dev container the stack was designed around."
-  mutable      = true
-  order        = 1
-}
-
-data "coder_parameter" "git_branch" {
-  name         = "git_branch"
-  display_name = "Git Branch"
-  description  = <<-EOF
-Branch to clone from repo_url. Leave blank for the repo's default
-(usually main). Set to e.g. 'feat/exe-hironow-dev' to test changes
-before they are merged into main.
-EOF
-  default      = ""
-  mutable      = true
-  order        = 6
-}
-
 data "coder_parameter" "dotfiles_uri" {
   name         = "dotfiles_uri"
   display_name = "Dotfiles URI"
   description  = <<-EOF
-Personal dotfiles repo cloned + installed on top of the
-devcontainer base (Coder runs `dotfiles install` after the agent
+Personal dotfiles repo cloned + installed on top of the prebuilt
+container image (Coder runs `coder dotfiles` after the agent
 starts). Leave blank to skip.
 EOF
   default      = "https://github.com/hironow/dotfiles.git"
   mutable      = true
-  order        = 5
+  order        = 1
 }
 
-data "local_sensitive_file" "cache_repo_dockerconfigjson" {
-  count    = var.cache_repo_docker_config_path == "" ? 0 : 1
-  filename = var.cache_repo_docker_config_path
-}
-
-# Be careful when modifying the locals — they wire the agent token
-# and init script into envbuilder's environment.
 locals {
-  linux_user                 = lower(substr(data.coder_workspace_owner.me.name, 0, 32))
-  container_name             = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
-  devcontainer_builder_image = data.coder_parameter.devcontainer_builder.value
-  docker_config_json_base64  = try(data.local_sensitive_file.cache_repo_dockerconfigjson[0].content_base64, "")
+  linux_user     = lower(substr(data.coder_workspace_owner.me.name, 0, 32))
+  container_name = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
 
-  envbuilder_env = {
-    "ENVBUILDER_GIT_URL" : data.coder_parameter.repo_url.value,
-    # Empty value = envbuilder honours the repo's default branch.
-    # Set this to e.g. 'feat/exe-hironow-dev' to test pre-merge
-    # changes (libc6-compat in Dockerfile, new tests, etc.) without
-    # waiting for a merge to main. Once merged, leave it blank.
-    "ENVBUILDER_GIT_BRANCH" : data.coder_parameter.git_branch.value,
-    "CODER_AGENT_TOKEN" : try(coder_agent.dev[0].token, ""),
-    "CODER_AGENT_URL" : data.coder_workspace.me.access_url,
-    "ENVBUILDER_INIT_SCRIPT" : "echo ${base64encode(try(coder_agent.dev[0].init_script, ""))} | base64 -d | sh",
-    "ENVBUILDER_DOCKER_CONFIG_BASE64" : try(data.local_sensitive_file.cache_repo_dockerconfigjson[0].content_base64, ""),
-    "ENVBUILDER_FALLBACK_IMAGE" : data.coder_parameter.fallback_image.value,
-    "ENVBUILDER_CACHE_REPO" : var.cache_repo,
-    "ENVBUILDER_PUSH_IMAGE" : var.cache_repo == "" ? "" : "true",
-  }
-
-  docker_env_input       = try(envbuilder_cached_image.cached[0].env_map, local.envbuilder_env)
-  docker_env_list_base64 = base64encode(join("\n", [for k, v in local.docker_env_input : "${k}=${v}"]))
-  builder_image          = try(envbuilder_cached_image.cached[0].image, data.coder_parameter.devcontainer_builder.value)
-
+  # Startup script for the workspace VM. Brings the host onto the
+  # tailnet and then `docker run`s the prebuilt dev container image.
+  # Order matters: tailscale must come up before docker pull,
+  # because the agent binary download (BINARY_URL) is served by
+  # exe-coder over MagicDNS.
   startup_script = <<-META
     #!/usr/bin/env sh
     set -eux
 
-    # Workspace user.
     if ! id -u "${local.linux_user}" >/dev/null 2>&1; then
       useradd -m -s /bin/bash "${local.linux_user}"
       echo "${local.linux_user} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coder-user
     fi
 
     # ---- Tailscale --------------------------------------------------
-    # Workspace VMs talk to the Coder control-plane VM
-    # (exe-coder:7080) over the tailnet. Without this step, the agent
-    # binary download from the bootstrap script falls back to the
-    # public CODER_ACCESS_URL which sits behind Cloudflare Access and
-    # returns OIDC interstitial HTML for unauthenticated requests —
-    # which the bootstrap script then 'chmod +x'es and tries to exec,
-    # producing 'syntax error: unexpected newline' and a workspace
-    # that never connects. See docs/handover.md for the full
-    # post-mortem. This is base image debian-12 (see google_compute_disk
-    # boot image), so apt is the install path.
+    # Workspace VMs reach the Coder control-plane VM (exe-coder:7080)
+    # over the tailnet. Without this step, the agent binary download
+    # falls back to the public CF Access URL which returns OIDC
+    # interstitial HTML for unauthenticated requests — bootstrap
+    # would `chmod +x` it and exec, producing
+    # 'syntax error: unexpected newline'.
     if ! command -v tailscale >/dev/null 2>&1; then
       install -m 0755 -d /usr/share/keyrings
       curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
@@ -279,8 +203,8 @@ locals {
     fi
     systemctl enable --now tailscaled
 
-    # Need gcloud to fetch the auth-key from Secret Manager. The base
-    # image does not ship it.
+    # gcloud is needed to fetch the auth key from Secret Manager and
+    # to docker-login Artifact Registry below.
     if ! command -v gcloud >/dev/null 2>&1; then
       install -m 0755 -d /etc/apt/keyrings
       curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
@@ -293,8 +217,6 @@ locals {
 
     AUTH_KEY="$(gcloud --quiet --project='${var.project_id}' \
       secrets versions access latest --secret='${var.workspace_authkey_secret_id}')"
-    # tailscale up is idempotent: a no-op if already authenticated under
-    # the same hostname + tags.
     tailscale up \
       --auth-key="$AUTH_KEY" \
       --hostname='${lower(data.coder_workspace.me.name)}-ws' \
@@ -302,33 +224,43 @@ locals {
       --advertise-tags='tag:exe-workspace'
     unset AUTH_KEY
 
-    # Docker (host-side; envbuilder uses the host daemon).
+    # ---- Docker -----------------------------------------------------
     if ! command -v docker >/dev/null 2>&1; then
-      curl -fsSL https://get.docker.com -o get-docker.sh
-      sudo sh get-docker.sh >/dev/null 2>&1
-      sudo usermod -aG docker ${local.linux_user}
-      newgrp docker
+      curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+      sh /tmp/get-docker.sh >/dev/null 2>&1
+      usermod -aG docker ${local.linux_user}
+      rm -f /tmp/get-docker.sh
     fi
 
-    # Cache-repo docker config, if any.
-    if [ -n "${local.docker_config_json_base64}" ]; then
-      mkdir -p "/home/${local.linux_user}/.docker"
-      printf "%s" "${local.docker_config_json_base64}" | base64 -d | tee "/home/${local.linux_user}/.docker/config.json"
-      chown -R ${local.linux_user}:${local.linux_user} "/home/${local.linux_user}/.docker"
-    fi
+    # Configure docker to authenticate against Artifact Registry via
+    # the VM's attached service account (must have
+    # roles/artifactregistry.reader on the dotfiles repo).
+    gcloud --quiet auth configure-docker \
+      "$(echo '${var.image}' | cut -d/ -f1)"
 
-    # Container env (passed to envbuilder via --env-file).
-    printf "%s" "${local.docker_env_list_base64}" | base64 -d | tee "/home/${local.linux_user}/env.txt"
+    # ---- Pull and run the prebuilt dev container --------------------
+    docker pull '${var.image}'
 
-    # Fire envbuilder.
+    # The container's PID 1 is `coder agent` via init_script — the
+    # agent owns lifecycle, so we run --restart=unless-stopped to
+    # survive reboots. Bind /home so dotfiles persist across container
+    # restarts within the same VM lifetime.
+    install -d -m 0755 /home/${local.linux_user}
+    chown ${local.linux_user}:${local.linux_user} /home/${local.linux_user}
+
+    docker rm -f '${local.container_name}' >/dev/null 2>&1 || true
     docker run \
-      --rm \
-      --net=host \
-      -h ${lower(data.coder_workspace.me.name)} \
-      -v /home/${local.linux_user}/envbuilder:/workspaces \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      --env-file /home/${local.linux_user}/env.txt \
-      ${local.builder_image}
+      --detach \
+      --name '${local.container_name}' \
+      --network host \
+      --hostname '${lower(data.coder_workspace.me.name)}' \
+      --restart unless-stopped \
+      --volume "/home/${local.linux_user}:/root" \
+      --volume "/var/run/docker.sock:/var/run/docker.sock" \
+      --env "CODER_AGENT_TOKEN=${try(coder_agent.dev[0].token, "")}" \
+      --env "CODER_AGENT_URL=${var.coder_internal_url}" \
+      '${var.image}' \
+      sh -c 'echo ${base64encode(try(coder_agent.dev[0].init_script, ""))} | base64 -d | sh'
   META
 }
 
@@ -341,20 +273,12 @@ resource "google_compute_disk" "root" {
   }
 }
 
-resource "envbuilder_cached_image" "cached" {
-  count         = var.cache_repo == "" ? 0 : data.coder_workspace.me.start_count
-  builder_image = local.devcontainer_builder_image
-  git_url       = data.coder_parameter.repo_url.value
-  cache_repo    = var.cache_repo
-  extra_env     = local.envbuilder_env
-}
-
 resource "google_compute_instance" "vm" {
   name         = "coder-${lower(data.coder_workspace_owner.me.name)}-${lower(data.coder_workspace.me.name)}-root"
   machine_type = data.coder_parameter.instance_type.value
   # Honour the operator's region pick at workspace creation. Falls
-  # back to the provider-level default ('asia-northeast1-a') only
-  # during the template-push preview when the parameter has no value.
+  # back to the provider-level default during the template-push
+  # preview when the parameter has no value.
   zone = coalesce(module.gcp_region.value, "asia-northeast1-a")
 
   # data.coder_workspace_owner.me.name == "default" suppresses an
@@ -388,17 +312,16 @@ resource "coder_agent" "dev" {
   arch               = "amd64"
   auth               = "token"
   os                 = "linux"
-  dir                = "/workspaces/${trimsuffix(basename(data.coder_parameter.repo_url.value), ".git")}"
+  dir                = "/root/dotfiles"
   connection_timeout = 0
 
   # Personalisation: pull and install the operator's dotfiles on top
-  # of whatever the devcontainer base image gives us. install.sh
-  # honours skip env vars to bypass Homebrew install and the
-  # `just add-all` / `just update-all` brew/gcloud replays — neither
-  # is desired on a CI-style workspace. With both set, install.sh
-  # still runs `just clean` + `just deploy` (symlink ~/.zshrc, sheldon
-  # lock, starship config, fzf-tab clone, ...). gcloud arrives via
-  # the devcontainer feature so its install path no-ops naturally.
+  # of the baked-in image. install.sh honours skip env vars to bypass
+  # Homebrew and the brew/gcloud bundle replays — neither is desired
+  # on a CI-style workspace. With both set, install.sh still runs
+  # `just clean` + `just deploy` (symlink ~/.zshrc, sheldon lock,
+  # starship config, fzf-tab clone, ...). gcloud arrives via the
+  # devcontainer feature so its install path no-ops naturally.
   startup_script = data.coder_parameter.dotfiles_uri.value == "" ? "" : <<-EOT
     set -eu
     export INSTALL_SKIP_HOMEBREW=1
@@ -445,8 +368,8 @@ resource "coder_metadata" "workspace_info" {
     value = module.gcp_region.value
   }
   item {
-    key   = "repo"
-    value = data.coder_parameter.repo_url.value
+    key   = "image"
+    value = var.image
   }
 }
 

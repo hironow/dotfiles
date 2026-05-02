@@ -14,9 +14,9 @@ template directory in a clean container to catch:
   - References to undeclared resources (e.g. the well-known
     'coder_agent.main' typo we patched out of upstream)
 
-We deliberately do NOT exercise `terraform plan`, since that needs
-fake credentials for google + envbuilder + coder providers and
-attempts network calls to provider registries.
+`terraform plan` runs in a sub-test for deeper checks (zone
+propagation, parameter defaults, etc.); fake Google credentials
+keep it offline.
 """
 
 from __future__ import annotations
@@ -68,57 +68,92 @@ def test_template_main_tf_present() -> None:
 
 
 @pytest.mark.exe
-def test_template_repo_url_is_dotfiles() -> None:
-    """The whole point of this template: the default repo_url is the
-    dotfiles git URL. Locks the intent so a future PR cannot drop the
-    default and silently turn it into a generic envbuilder starter."""
+def test_template_image_default_points_to_artifact_registry() -> None:
+    """The whole point of this template: workspaces pull a prebuilt
+    dev container image from the stack's Artifact Registry repo,
+    instead of running envbuilder per workspace. The default image
+    string must reference asia-northeast1-docker.pkg.dev/gen-ai-hironow
+    so a future PR cannot silently turn it into a generic starter
+    pulling some other registry."""
     main_tf = (TEMPLATE_DIR / "main.tf").read_text()
-    # The 'default' line on the repo_url parameter.
     import re
 
     block = re.search(
-        r'data "coder_parameter" "repo_url" \{(.*?)^\}',
+        r'variable "image" \{(.*?)^\}',
         main_tf,
         re.DOTALL | re.MULTILINE,
     )
-    assert block is not None, "could not locate the repo_url parameter block"
+    assert block is not None, 'missing variable "image" block'
     body = block.group(1)
-    assert "github.com/hironow/dotfiles" in body, (
-        "repo_url default must point at the dotfiles repo"
+    assert "asia-northeast1-docker.pkg.dev/gen-ai-hironow/dotfiles" in body, (
+        "image variable default must reference the dotfiles Artifact "
+        "Registry repo at asia-northeast1-docker.pkg.dev/gen-ai-hironow/dotfiles."
     )
 
 
 @pytest.mark.exe
-def test_template_git_branch_parameter_present_and_wired() -> None:
-    """envbuilder defaults to cloning the repo's default branch (main).
-    For pre-merge debugging (e.g. testing libc6-compat in Dockerfile
-    while the change is still on a feature branch), we expose a
-    'git_branch' Coder parameter and wire it into envbuilder via
-    ENVBUILDER_GIT_BRANCH. Both halves must stay in place — losing
-    either silently disables branch override and re-creates the
-    'image built from main, but the fix lives on a branch' class of
-    bug we hit during the Layer 2 boot up."""
+def test_template_no_envbuilder() -> None:
+    """The envbuilder pattern was replaced by a prebuilt image on
+    docs/adr/0002-coder-prebuilt-image.md. Lock the migration: no
+    envbuilder provider, no envbuilder_cached_image resource, no
+    ENVBUILDER_* env vars in the actual HCL (comments mentioning
+    envbuilder by name in commit-message-style 'differences from
+    upstream' notes are acceptable)."""
+    raw = (TEMPLATE_DIR / "main.tf").read_text()
+    # Strip line- and block-comments before grepping so historical
+    # mentions in comment headers don't false-match.
+    import re
+
+    no_block_comments = re.sub(r"/\*.*?\*/", "", raw, flags=re.DOTALL)
+    code = "\n".join(
+        line
+        for line in no_block_comments.splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    forbidden_in_code = [
+        # provider {} block referencing the envbuilder source
+        'source = "coder/envbuilder"',
+        # the cached_image resource the prior template used
+        '"envbuilder_cached_image"',
+        # any ENVBUILDER_* env var name
+        "ENVBUILDER_",
+    ]
+    for needle in forbidden_in_code:
+        assert needle not in code, (
+            f"template still references {needle!r}; the envbuilder path "
+            "was retired in favour of prebuilt-image pull. See "
+            "docs/adr/0002-coder-prebuilt-image.md."
+        )
+
+
+@pytest.mark.exe
+def test_template_startup_script_pulls_and_runs_image() -> None:
+    """The new gcp-vm-container-style startup_script must:
+      - configure docker auth against Artifact Registry
+      - docker pull `var.image`
+      - docker run with the agent init script as its command
+    Without this chain the workspace VM would boot but the dev
+    container would never start."""
     main_tf = (TEMPLATE_DIR / "main.tf").read_text()
     import re
 
-    block = re.search(
-        r'data "coder_parameter" "git_branch" \{(.*?)^\}',
+    m = re.search(
+        r"startup_script\s*=\s*<<-META\s*\n(.*?)\n\s*META",
         main_tf,
-        re.DOTALL | re.MULTILINE,
+        re.DOTALL,
     )
-    assert block is not None, "missing git_branch coder_parameter block"
-    body = block.group(1)
-    # Default must be empty so post-merge users get the repo's
-    # default branch without thinking about it.
-    assert re.search(r'default\s*=\s*""', body), (
-        "git_branch parameter default must be empty string"
+    assert m is not None, "could not locate startup_script <<-META block"
+    body = m.group(1)
+    assert "gcloud --quiet auth configure-docker" in body, (
+        "startup_script must configure docker auth for Artifact Registry"
     )
-    # Wiring into envbuilder.
-    assert "ENVBUILDER_GIT_BRANCH" in main_tf, (
-        "ENVBUILDER_GIT_BRANCH not wired into envbuilder_env"
+    assert "docker pull" in body and "var.image" in body, (
+        "startup_script must docker pull '${var.image}' before running it"
     )
-    assert "data.coder_parameter.git_branch.value" in main_tf, (
-        "git_branch parameter is declared but never read"
+    assert "docker run" in body, "startup_script must docker run the prebuilt image"
+    assert "init_script" in body, (
+        "startup_script must invoke the coder_agent init_script as the "
+        "container command"
     )
 
 
@@ -181,8 +216,10 @@ def test_template_startup_script_joins_tailnet() -> None:
     """The workspace VM's startup-script must:
     - install tailscaled (apt-get install tailscale)
     - fetch the tag:exe-workspace authkey from Secret Manager
-    - bring the device up under tag:exe-workspace before envbuilder
-      starts (envbuilder needs to reach exe-coder.<tailnet>:7080)
+    - bring the device up under tag:exe-workspace BEFORE the dev
+      container starts. The container's CODER_AGENT_URL points at
+      exe-coder over MagicDNS, which only resolves once the host is
+      on the tailnet.
     """
     main_tf = (TEMPLATE_DIR / "main.tf").read_text()
 
@@ -376,11 +413,10 @@ def test_template_terraform_plan(tmp_path: Path) -> None:
 
     Why Terraform (not OpenTofu): the Coder server embeds Terraform,
     so 'cdr templates push' uses Terraform's registry. coder/coder
-    and coder/envbuilder are NOT mirrored to OpenTofu's registry.
-    Test-runner-side use of the Terraform binary is solely for
-    static analysis here; production deploys remain `tofu` (see
-    docs/intent.md OpenTofu constraint, scoped to the operator
-    stack at tofu/exe/).
+    is NOT mirrored to OpenTofu's registry. Test-runner-side use of
+    the Terraform binary is solely for static analysis here;
+    production deploys remain `tofu` (see docs/intent.md OpenTofu
+    constraint, scoped to the operator stack at tofu/exe/).
 
     Skipped if docker is unavailable."""
     if not _docker_available():
