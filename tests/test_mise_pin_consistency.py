@@ -160,9 +160,67 @@ def test_mise_toml_matches_feature_install_constant(
 def test_required_tools_are_present(mise_pins: dict[str, str]) -> None:
     """Sanity: the minimum set of tools the operator's flow depends
     on must be in mise.toml."""
-    required = {"uv", "just", "prek", "vp", "markdownlint-cli2"}
+    required = {
+        "uv",
+        "just",
+        "prek",
+        "vp",
+        "markdownlint-cli2",
+        # AI agent CLIs (npm-backend; the keys mise actually stores
+        # are the full `npm:<package>` strings).
+        "npm:@openai/codex",
+        "npm:@google/gemini-cli",
+        "npm:@anthropic-ai/claude-code",
+        "npm:@github/copilot",
+        "npm:@mariozechner/pi-coding-agent",
+    }
     missing = required - set(mise_pins)
     assert not missing, (
         f"mise.toml [tools] is missing required pins: {missing}. "
         f"Add them with concrete versions per ADR 0006."
+    )
+
+
+def test_prebuild_mise_toml_matches_workspace_mise_toml(
+    mise_pins: dict[str, str],
+) -> None:
+    """The dev container feature embeds a `/tmp/mise-prebuild/mise.toml`
+    via heredoc in `.devcontainer/features/dotfiles-tools/install.sh`.
+    That copy is the SoT mise actually consumes at image-build time; if
+    it drifts from the workspace `mise.toml` (the SoT operators see),
+    the image installs different versions than the repo claims.
+
+    This test parses the heredoc body out of the feature install.sh and
+    asserts every (key, version) pair matches the workspace mise.toml.
+    """
+    feature_text = FEATURE_INSTALL_SH.read_text(encoding="utf-8")
+    match = re.search(
+        r"cat > /tmp/mise-prebuild/mise\.toml <<'EOF'\n"
+        r"\[tools\]\n"
+        r"(?P<body>(?:.*\n)*?)"
+        r"EOF",
+        feature_text,
+    )
+    assert match is not None, (
+        "could not locate the /tmp/mise-prebuild/mise.toml heredoc in "
+        "feature install.sh"
+    )
+    prebuild_pins: dict[str, str] = {}
+    for line in match.group("body").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.match(r'"?([^"=\s]+)"?\s*=\s*"([^"]+)"', line)
+        if m:
+            prebuild_pins[m.group(1)] = m.group(2)
+
+    diffs = {
+        k: (prebuild_pins.get(k), mise_pins.get(k))
+        for k in set(prebuild_pins) | set(mise_pins)
+        if prebuild_pins.get(k) != mise_pins.get(k)
+    }
+    assert not diffs, (
+        f"prebuild mise.toml ↔ workspace mise.toml drift detected: "
+        f"{diffs}. ADR 0006 mandates these agree byte-for-byte. Bump "
+        f"both in the same PR."
     )

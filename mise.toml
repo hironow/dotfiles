@@ -13,6 +13,16 @@ uv = "0.11.8"
 # unrelated `vp` npm package). Pin to vite-plus's actual version.
 vp = "0.1.20"
 
+# AI agent CLIs. Installed at build time so the Coder workspace
+# boots with them ready on PATH; operators authenticate them on
+# first use (`codex login`, `claude /login`, `gemini auth`,
+# `copilot auth`, `pi auth`). Source: 2026-05 latest stable.
+"npm:@openai/codex" = "0.128.0"
+"npm:@google/gemini-cli" = "0.40.1"
+"npm:@anthropic-ai/claude-code" = "2.1.126"
+"npm:@github/copilot" = "1.0.40"
+"npm:@mariozechner/pi-coding-agent" = "0.72.1"
+
 # `~/.npmrc` may set `min-release-age=7` (7-day quarantine, mirrors
 # uv's `exclude-newer = "7 days"`). That blocks `mise install` of
 # brand-new npm-backed tools (e.g. vp). Override only for mise-driven

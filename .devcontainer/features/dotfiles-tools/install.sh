@@ -238,6 +238,11 @@ markdownlint-cli2 = "0.22.1"
 prek = "0.3.11"
 uv = "0.11.8"
 vp = "0.1.20"
+"npm:@openai/codex" = "0.128.0"
+"npm:@google/gemini-cli" = "0.40.1"
+"npm:@anthropic-ai/claude-code" = "2.1.126"
+"npm:@github/copilot" = "1.0.40"
+"npm:@mariozechner/pi-coding-agent" = "0.72.1"
 EOF
 (
   cd /tmp/mise-prebuild
