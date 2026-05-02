@@ -185,46 +185,6 @@ locals {
       echo "${local.linux_user} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coder-user
     fi
 
-    # ---- Tailscale --------------------------------------------------
-    # Workspace VMs reach the Coder control-plane VM (exe-coder:7080)
-    # over the tailnet. Without this step, the agent binary download
-    # falls back to the public CF Access URL which returns OIDC
-    # interstitial HTML for unauthenticated requests — bootstrap
-    # would `chmod +x` it and exec, producing
-    # 'syntax error: unexpected newline'.
-    if ! command -v tailscale >/dev/null 2>&1; then
-      install -m 0755 -d /usr/share/keyrings
-      curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
-        > /usr/share/keyrings/tailscale-archive-keyring.gpg
-      curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list \
-        > /etc/apt/sources.list.d/tailscale.list
-      apt-get update -y
-      apt-get install -y --no-install-recommends tailscale
-    fi
-    systemctl enable --now tailscaled
-
-    # gcloud is needed to fetch the auth key from Secret Manager and
-    # to docker-login Artifact Registry below.
-    if ! command -v gcloud >/dev/null 2>&1; then
-      install -m 0755 -d /etc/apt/keyrings
-      curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-        | gpg --dearmor -o /etc/apt/keyrings/cloud.google.gpg
-      echo 'deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' \
-        > /etc/apt/sources.list.d/google-cloud-sdk.list
-      apt-get update -y
-      apt-get install -y --no-install-recommends google-cloud-cli
-    fi
-
-    AUTH_KEY="$(gcloud --quiet --project='${var.project_id}' \
-      secrets versions access latest --secret='${var.workspace_authkey_secret_id}')"
-    tailscale up \
-      --auth-key="$AUTH_KEY" \
-      --hostname='${lower(data.coder_workspace.me.name)}-ws' \
-      --accept-routes=false \
-      --advertise-tags='tag:exe-workspace'
-    unset AUTH_KEY
-
-    # ---- Docker -----------------------------------------------------
     # Helper: import an apt-repo GPG key only after verifying its
     # fingerprint. Without the pin a TOFU fetch from the same TLS
     # endpoint that distributes the package would let a compromised
@@ -251,6 +211,62 @@ locals {
       rm -f /tmp/dotfiles-apt-key.armored /tmp/dotfiles-apt-key.gpg
     }
 
+    # ---- Tailscale --------------------------------------------------
+    # Workspace VMs reach the Coder control-plane VM (exe-coder:7080)
+    # over the tailnet. Without this step, the agent binary download
+    # falls back to the public CF Access URL which returns OIDC
+    # interstitial HTML for unauthenticated requests — bootstrap
+    # would `chmod +x` it and exec, producing
+    # 'syntax error: unexpected newline'.
+    # Tailscale apt-key fingerprint pin. Tailscale does not officially
+    # publish the fingerprint as of 2026-05 (see
+    # github.com/tailscale/tailscale/issues/15221). The value below is
+    # observed via dnf/rpm signature verification and was operator-
+    # verified against the live bookworm.noarmor.gpg endpoint. The
+    # 8-byte suffix matches the NO_PUBKEY 458CA832957F5868 error that
+    # apt would otherwise emit for an un-keyed repo (the same suffix
+    # is documented in the control-plane VM bootstrap at
+    # tofu/exe/coder.tf).
+    if ! command -v tailscale >/dev/null 2>&1; then
+      install -m 0755 -d /usr/share/keyrings
+      import_apt_key_with_fingerprint \
+        https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
+        2596A99EAAB33821893C0A79458CA832957F5868 \
+        /usr/share/keyrings/tailscale-archive-keyring.gpg
+      curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list \
+        > /etc/apt/sources.list.d/tailscale.list
+      apt-get update -y
+      apt-get install -y --no-install-recommends tailscale
+    fi
+    systemctl enable --now tailscaled
+
+    # gcloud is needed to fetch the auth key from Secret Manager and
+    # to docker-login Artifact Registry below. Fingerprint published
+    # by Google at https://cloud.google.com/sdk/docs/install#deb;
+    # operator-verified at PR #53 time and reused across all bootstrap
+    # paths (feature install.sh, control-plane coder.tf, and here).
+    if ! command -v gcloud >/dev/null 2>&1; then
+      install -m 0755 -d /etc/apt/keyrings
+      import_apt_key_with_fingerprint \
+        https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+        35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3 \
+        /etc/apt/keyrings/cloud.google.gpg
+      echo 'deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' \
+        > /etc/apt/sources.list.d/google-cloud-sdk.list
+      apt-get update -y
+      apt-get install -y --no-install-recommends google-cloud-cli
+    fi
+
+    AUTH_KEY="$(gcloud --quiet --project='${var.project_id}' \
+      secrets versions access latest --secret='${var.workspace_authkey_secret_id}')"
+    tailscale up \
+      --auth-key="$AUTH_KEY" \
+      --hostname='${lower(data.coder_workspace.me.name)}-ws' \
+      --accept-routes=false \
+      --advertise-tags='tag:exe-workspace'
+    unset AUTH_KEY
+
+    # ---- Docker -----------------------------------------------------
     # Install docker via the official apt repository in place of
     # the legacy curl-piped convenience script. The fingerprint is
     # published at https://docs.docker.com/engine/install/debian/

@@ -179,11 +179,42 @@ locals {
     apt-get install -y --no-install-recommends \
       apt-transport-https ca-certificates curl gnupg lsb-release jq
 
+    # Helper: import an apt-repo GPG key only after verifying its
+    # fingerprint. Without the pin a TOFU fetch from the same TLS
+    # endpoint that distributes the package would let a compromised
+    # mirror swap key + package in lock-step. Mirrors the helper at
+    # .devcontainer/features/dotfiles-tools/install.sh and the
+    # workspace template (post-PR #57). Positional args avoid bash
+    # $${var} that would conflict with terraform heredoc interpolation.
+    import_apt_key_with_fingerprint() {
+      # args: <url> <expected-fingerprint> <output-keyring-path>
+      rm -f /tmp/exe-apt-key.armored /tmp/exe-apt-key.gpg
+      curl -fsSL -o /tmp/exe-apt-key.armored "$1"
+      gpg --no-default-keyring --keyring /tmp/exe-apt-key.gpg \
+        --import /tmp/exe-apt-key.armored 2>/dev/null
+      actual=$(gpg --no-default-keyring --keyring /tmp/exe-apt-key.gpg \
+        --list-keys --with-colons | awk -F: '/^fpr:/ { print $10; exit }')
+      if [ "$actual" != "$2" ]; then
+        echo "[coder-bootstrap] GPG fingerprint mismatch for $1" >&2
+        echo "  expected: $2" >&2
+        echo "  actual:   $actual" >&2
+        rm -f /tmp/exe-apt-key.armored /tmp/exe-apt-key.gpg
+        exit 1
+      fi
+      install -m 0644 /tmp/exe-apt-key.gpg "$3"
+      rm -f /tmp/exe-apt-key.armored /tmp/exe-apt-key.gpg
+    }
+
     # ---- Google Cloud CLI (Ubuntu noble) ------------------------------
+    # Fingerprint published by Google at
+    # https://cloud.google.com/sdk/docs/install#deb. Operator-verified
+    # at PR #53 time and reused here.
     if ! command -v gcloud >/dev/null 2>&1; then
       install -m 0755 -d /etc/apt/keyrings
-      curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-        | gpg --dearmor -o /etc/apt/keyrings/cloud.google.gpg
+      import_apt_key_with_fingerprint \
+        https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+        35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3 \
+        /etc/apt/keyrings/cloud.google.gpg
       echo 'deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main' \
         > /etc/apt/sources.list.d/google-cloud-sdk.list
       apt-get update -y
@@ -195,10 +226,18 @@ locals {
     # signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg, so
     # the keyring MUST be written there. Putting it under
     # /etc/apt/keyrings/tailscale.gpg breaks apt with NO_PUBKEY 458CA832957F5868.
+    #
+    # Fingerprint pin: Tailscale does not officially publish the
+    # apt-key fingerprint as of 2026-05 (see github.com/tailscale/tailscale/issues/15221).
+    # The value below is observed via dnf/rpm signature verification and
+    # was operator-verified against the live noble.noarmor.gpg endpoint.
+    # The 8-byte suffix matches the NO_PUBKEY error documented above.
     if ! command -v tailscale >/dev/null 2>&1; then
       install -m 0755 -d /usr/share/keyrings
-      curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
-        > /usr/share/keyrings/tailscale-archive-keyring.gpg
+      import_apt_key_with_fingerprint \
+        https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
+        2596A99EAAB33821893C0A79458CA832957F5868 \
+        /usr/share/keyrings/tailscale-archive-keyring.gpg
       curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list \
         > /etc/apt/sources.list.d/tailscale.list
       apt-get update -y
