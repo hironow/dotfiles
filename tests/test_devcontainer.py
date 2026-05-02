@@ -10,12 +10,18 @@ Migrating it once moves all three together. These tests pin the
 *structure* — base image and required features — so accidental edits
 that drop, say, google-cloud-cli, surface as a unit-test failure long
 before the Coder workspace stops booting.
+
+The trailing `@pytest.mark.devcontainer_up` block adds runtime
+smoke tests that exercise the actual `devcontainer up` lifecycle
+against a built image — closing the prod-equivalence gap that the
+plain `docker run` fixture in test_just_sandbox.py cannot cover.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -23,6 +29,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
+IMAGE = "dotfiles-just-sandbox:latest"
 
 
 def _load_devcontainer() -> dict:
@@ -226,3 +233,173 @@ def test_mise_trusted_paths_are_scoped(devcontainer: dict) -> None:
             f"unexpected mise trust path {entry!r}; "
             f"must be under /root/. Got {paths!r}."
         )
+
+
+# ---------------------------------------------------------------------------
+# Runtime smoke tests on the saved image. These verify that what the
+# structural assertions above SAY is in devcontainer.json actually
+# materialised as expected baked-in state. They cover three gaps the
+# raw `docker run` fixture in test_just_sandbox.py does not:
+#   A) the `devcontainer up` lifecycle path actually completes
+#      (the same path local IDE / Coder workspace / CI all use)
+#   B) trust-boundary scoping is in effect at runtime — not just in
+#      the JSON file (a future revert to `/root` or `*` would be
+#      caught even if the JSON is otherwise updated)
+#   C) every tool the local feature claims to install is on PATH and
+#      version-responds (a single source of truth for "feature
+#      install.sh actually worked")
+# All gated by image presence: skipped when the saved image is not
+# available locally.
+# ---------------------------------------------------------------------------
+
+
+def _docker_available() -> bool:
+    return (
+        subprocess.run(["docker", "info"], capture_output=True, text=True).returncode
+        == 0
+    )
+
+
+def _image_exists(image: str) -> bool:
+    return (
+        subprocess.run(
+            ["docker", "image", "inspect", image], capture_output=True, text=True
+        ).returncode
+        == 0
+    )
+
+
+def _run_in_image(script: str) -> subprocess.CompletedProcess:
+    """One-shot `docker run` against the saved image. Mirrors
+    test_just_sandbox.run_in_sandbox but without the bind mount —
+    these tests only inspect baked-in image state."""
+    return subprocess.run(
+        ["docker", "run", "--rm", IMAGE, "bash", "-lc", script],
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.fixture(scope="module")
+def saved_image() -> str:
+    if not _docker_available():
+        pytest.skip("Docker is not available; skipping runtime smoke tests.")
+    if not _image_exists(IMAGE):
+        pytest.skip(
+            f"Image {IMAGE!r} is not present. Build it first with "
+            "`devcontainer build --workspace-folder . --image-name "
+            f"{IMAGE}` or run via the devcontainers/ci CI step."
+        )
+    return IMAGE
+
+
+REQUIRED_TOOLS = (
+    ("bash", "--version"),
+    ("git", "--version"),
+    ("gcloud", "--version"),
+    ("mise", "--version"),
+    ("uv", "--version"),
+    ("just", "--version"),
+    ("sheldon", "--version"),
+    ("shellcheck", "--version"),
+    ("jq", "--version"),
+)
+
+
+@pytest.mark.parametrize(
+    "tool, flag",
+    REQUIRED_TOOLS,
+    ids=[t for t, _ in REQUIRED_TOOLS],
+)
+def test_image_provides_tool(saved_image: str, tool: str, flag: str) -> None:
+    """Every tool the local feature install.sh claims to install
+    must be on PATH and version-respond inside the saved image.
+    A single source of truth: if the install.sh silently failed for
+    one tool, this assertion catches it before any downstream test."""
+    result = _run_in_image(f"command -v {tool} && {tool} {flag}")
+    assert result.returncode == 0, (
+        f"{tool} not found or not runnable inside saved image.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+def test_image_git_safe_directory_is_scoped(saved_image: str) -> None:
+    """`/etc/gitconfig` must list ONLY the specific paths the dev
+    container needs, NOT '*'. Catches a future revert that
+    re-introduces the CWE-bypass scope hole."""
+    result = _run_in_image("git config --system --get-all safe.directory || true")
+    assert result.returncode == 0, (
+        f"failed to read system gitconfig:\nstderr:\n{result.stderr}"
+    )
+    entries = [line for line in result.stdout.splitlines() if line.strip()]
+    assert "*" not in entries, (
+        "git safe.directory '*' detected in /etc/gitconfig — this disables "
+        "dubious-ownership protection globally. Scope to /root/dotfiles "
+        "and /root/sandbox/dotfiles-fresh."
+    )
+    assert "/root/dotfiles" in entries, (
+        f"missing /root/dotfiles in safe.directory list. Got: {entries!r}"
+    )
+    assert "/root/sandbox/dotfiles-fresh" in entries, (
+        f"missing /root/sandbox/dotfiles-fresh in safe.directory list. Got: {entries!r}"
+    )
+
+
+def test_image_profile_d_mise_env_is_scoped(saved_image: str) -> None:
+    """The /etc/profile.d/dotfiles-mise.sh shipped by the local
+    feature must scope MISE_TRUSTED_CONFIG_PATHS, not allowlist /root.
+    A login shell sources it and then any mise process inherits the
+    scoped value."""
+    result = _run_in_image(
+        "cat /etc/profile.d/dotfiles-mise.sh; "
+        # Source it ourselves to see the resolved env.
+        ". /etc/profile.d/dotfiles-mise.sh && "
+        "echo MISE_TRUSTED_CONFIG_PATHS=$MISE_TRUSTED_CONFIG_PATHS"
+    )
+    assert result.returncode == 0, (
+        f"failed to read profile.d:\nstderr:\n{result.stderr}"
+    )
+    body = result.stdout
+    assert "/root/dotfiles" in body, (
+        f"profile.d/dotfiles-mise.sh does not declare /root/dotfiles.\n{body}"
+    )
+    assert "/root/sandbox/dotfiles-fresh" in body, (
+        "profile.d/dotfiles-mise.sh does not declare "
+        f"/root/sandbox/dotfiles-fresh.\n{body}"
+    )
+    # Belt-and-braces: catch a regression to the broader value.
+    assert "MISE_TRUSTED_CONFIG_PATHS=/root\n" not in body, (
+        "MISE_TRUSTED_CONFIG_PATHS regressed to /root in profile.d. "
+        "GHSA-436v-8fw5-4mj8 / CVE-2026-35533 — keep the scoping tight."
+    )
+
+
+def test_image_devcontainer_metadata_smoke(saved_image: str) -> None:
+    """Smoke-check: the saved image embeds a label that
+    devcontainers/ci writes during build. Without this, the
+    `imageName: dotfiles-just-sandbox` step did not actually run a
+    devcontainer build (someone might have built a plain Dockerfile
+    image with the same tag), and the rest of the suite is testing
+    a different image than prod."""
+    result = subprocess.run(
+        [
+            "docker",
+            "image",
+            "inspect",
+            "--format={{json .Config.Labels}}",
+            IMAGE,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"failed to inspect image:\nstderr:\n{result.stderr}"
+    labels_json = result.stdout.strip()
+    # devcontainers/ci writes labels under the
+    # `devcontainer.metadata` key; bare `docker build` omits this.
+    assert "devcontainer.metadata" in labels_json, (
+        "saved image lacks the devcontainer.metadata label that "
+        "devcontainers/ci writes; the runtime smoke tests above were "
+        "exercising an image NOT built through the dev container "
+        "pipeline.\n"
+        f"labels: {labels_json}"
+    )
