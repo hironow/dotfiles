@@ -413,3 +413,85 @@ def test_image_devcontainer_metadata_smoke(saved_image: str) -> None:
         "pipeline.\n"
         f"labels: {labels_json}"
     )
+
+
+# ---------- ADR 0006 runtime: /opt/mise relocation ----------------
+
+
+def test_image_mise_data_dir_is_opt_mise(saved_image: str) -> None:
+    """A login shell must resolve MISE_DATA_DIR=/opt/mise (set by
+    /etc/profile.d/dotfiles-mise.sh) and the directory must exist
+    with the build-time installs/ tree underneath it.
+
+    This is the runtime invariant ADR 0006 decision detail 4 names
+    explicitly. A regression that relocates back to
+    $HOME/.local/share/mise breaks the gcp-vm-container template's
+    /home/<user>:/root volume mount contract: the cache disappears
+    on first workspace boot."""
+    result = _run_in_image(
+        ". /etc/profile.d/dotfiles-mise.sh && "
+        'printf "MISE_DATA_DIR=%s\\n" "$MISE_DATA_DIR" && '
+        "test -d /opt/mise/installs && "
+        "test -d /opt/mise/shims && "
+        'echo "installs+shims present"'
+    )
+    assert result.returncode == 0, (
+        f"runtime check for /opt/mise failed.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "MISE_DATA_DIR=/opt/mise" in result.stdout, (
+        f"profile.d did not export MISE_DATA_DIR=/opt/mise.\nstdout:\n{result.stdout}"
+    )
+    assert "installs+shims present" in result.stdout, (
+        "Either /opt/mise/installs or /opt/mise/shims is missing in the "
+        "saved image. Build-time `mise install` did not write to the "
+        "expected data dir."
+    )
+
+
+def test_image_mise_offline_install_works(saved_image: str) -> None:
+    """`MISE_OFFLINE=1 mise install` against the workspace mise.toml
+    must succeed inside the saved image. This proves that the build-
+    time-baked /opt/mise cache covers every pinned tool — the
+    prerequisite for ADR 0006 decision detail 5 (workspace runtime
+    MISE_OFFLINE=1 re-enable).
+
+    The saved image does NOT contain /root/dotfiles (that's a
+    runtime bind-mount when the dev container is up). We synthesise
+    a minimal mise.toml inside /tmp/mise-runtime-check, override
+    MISE_TRUSTED_CONFIG_PATHS to include that path, and run `mise
+    install` against it offline."""
+    # Read the canonical mise.toml from the working tree and embed
+    # it via heredoc so the test stays SoT-aware: any pin change in
+    # the workspace mise.toml is reflected automatically.
+    mise_toml = (Path(__file__).resolve().parents[1] / "mise.toml").read_text(
+        encoding="utf-8"
+    )
+    script = (
+        ". /etc/profile.d/dotfiles-mise.sh && "
+        "rm -rf /tmp/mise-runtime-check && "
+        "mkdir -p /tmp/mise-runtime-check && "
+        "cat > /tmp/mise-runtime-check/mise.toml <<'MISE_TOML_EOF'\n"
+        f"{mise_toml}\n"
+        "MISE_TOML_EOF\n"
+        "cd /tmp/mise-runtime-check && "
+        # Override the trusted-paths scope just for this invocation
+        # so mise reads the synthetic mise.toml. The image's default
+        # scope (/root/dotfiles + /root/sandbox/...) is untouched.
+        'MISE_TRUSTED_CONFIG_PATHS="/tmp/mise-runtime-check" '
+        "MISE_OFFLINE=1 mise install 2>&1"
+    )
+    result = _run_in_image(script)
+    assert result.returncode == 0, (
+        f"`MISE_OFFLINE=1 mise install` failed inside the saved image. "
+        f"This means at least one pinned tool is missing from "
+        f"/opt/mise/installs — workspace runtime would fail too.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    # mise prints "Installing ..." for tools it would fetch — under
+    # MISE_OFFLINE=1 it should not print that for any of them, since
+    # all are already cached.
+    assert "Installing" not in result.stdout, (
+        f"mise tried to fetch a tool under MISE_OFFLINE=1; that means "
+        f"the build-time prebuild missed it. mise output:\n{result.stdout}"
+    )

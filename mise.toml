@@ -1,9 +1,17 @@
 [tools]
-just = "latest"
-markdownlint-cli2 = "latest"
-prek = "latest"
-uv = "latest"
-vp = "latest"
+# Pinned versions per ADR 0006 (Accepted 2026-05-02). One pin
+# applies to Mac, Linux (dev container workspace), and Windows
+# (future scoop host). Bump these by hand in a dedicated PR; the
+# build-time consistency check in tests/test_mise_pin_consistency.py
+# fails the image build if these drift from the SHA-verified
+# constants in .devcontainer/features/dotfiles-tools/install.sh.
+just = "1.40.0"
+markdownlint-cli2 = "0.22.1"
+prek = "0.3.11"
+uv = "0.11.8"
+# `vp` is the mise registry alias for npm:vite-plus (NOT the
+# unrelated `vp` npm package). Pin to vite-plus's actual version.
+vp = "0.1.20"
 
 # `~/.npmrc` may set `min-release-age=7` (7-day quarantine, mirrors
 # uv's `exclude-newer = "7 days"`). That blocks `mise install` of
