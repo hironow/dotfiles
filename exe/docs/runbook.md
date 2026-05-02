@@ -120,6 +120,39 @@ The previous `git_branch` parameter (envbuilder-only) is gone:
 the prebuilt-image template doesn't clone at workspace boot;
 operator branch testing happens via the image tag instead.
 
+## `tailscale serve` / `tailscale funnel` from a workspace
+
+The workspace dev container intentionally does **not** ship the
+`tailscale` CLI, and the host's `tailscaled` Unix socket is not
+mounted into the container — see the rationale in
+[architecture.md](./architecture.md#why-no-tailscale-cli-inside-the-workspace-container).
+
+If you want to expose a workspace-side dev server over the
+tailnet (or via Tailscale Funnel for a public HTTPS URL), run
+the command from the **VM host shell**, not from inside the
+container:
+
+```bash
+# Tailnet-private exposure
+gcloud compute ssh coder-<owner>-<workspace>-root \
+  --zone=asia-northeast1-a \
+  --command='sudo tailscale serve --bg http://localhost:8080'
+
+# Public Funnel (HTTPS via Tailscale's funnel endpoint)
+gcloud compute ssh coder-<owner>-<workspace>-root \
+  --zone=asia-northeast1-a \
+  --command='sudo tailscale funnel --bg 8080'
+
+# Tear down
+gcloud compute ssh coder-<owner>-<workspace>-root \
+  --zone=asia-northeast1-a \
+  --command='sudo tailscale serve --reset'
+```
+
+This forces explicit, auditable operator action (gcloud auth +
+sudo) and prevents an AI agent inside the container from
+silently exposing a port to the public internet.
+
 ## Tailscale auth-key rotation
 
 The keys rotate automatically every 90 days because of:
