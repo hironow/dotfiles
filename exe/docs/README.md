@@ -9,9 +9,7 @@ Documentation for `exe.hironow.dev`.
 
 Architectural decisions go in [`../../docs/adr/`](../../docs/adr/)
 at the repository root — current state lives here, the "why" of
-each decision lives there. See
-[`docs-guidelines`](../../README.md) and
-[`adr-guidelines`](../../docs/adr/) in the project conventions.
+each decision lives there.
 
 ## Related docs
 
