@@ -52,8 +52,12 @@ just, markdownlint-cli2, prek, uv, vp.
 - **Mac-oriented core forces hatching for Linux.** install.sh
   always assumes brew + Google's interactive gcloud installer;
   Linux callers (Coder workspace, CI) toggle three skip env vars
-  (`INSTALL_SKIP_HOMEBREW`, `INSTALL_SKIP_GCLOUD` — recently
-  retired, `INSTALL_SKIP_ADD_UPDATE`) to make it usable.
+  (`INSTALL_SKIP_HOMEBREW`, `INSTALL_SKIP_GCLOUD`,
+  `INSTALL_SKIP_ADD_UPDATE`) to make it usable. The Coder agent
+  dropped `INSTALL_SKIP_GCLOUD` in PR #54 because gcloud is now
+  baked into the dev container image, but install.sh itself
+  still honours all three so the script remains usable from
+  callers that do not have gcloud pre-installed.
 
 - **Duplicate tool lists.** uv/just/sheldon are installed by both
   (2) [via tarball at devcontainer build time] and indirectly by
@@ -102,18 +106,17 @@ or pre-baked into the dev container image). Future
 
 ### Strategy β — Mac-only install.sh, Linux runs nothing
 
-Strip install.sh down to "Mac personal setup". Linux callers
-(Coder, CI) **stop calling install.sh entirely**. The dev container
-image already has every tool the workspace needs; the `coder
-dotfiles` invocation is replaced with a thin `coder dotfiles -y`
-invocation that ONLY does the symlink/sheldon work via a separate
-`bin/dotfiles-deploy` (calling `just clean && just deploy`).
+**WITHDRAWN after codex review.** The strategy hinged on telling
+Coder's `coder dotfiles` to run a custom command instead of
+install.sh. Upstream `coder dotfiles` does NOT expose a
+`--command` flag (per
+<https://coder.com/docs/reference/cli/dotfiles>); the only
+overrides are `--symlink-dir` and `--repo-dir`. Without a
+supported way to point `coder dotfiles` at a different
+entrypoint, β reduces to "rename install.sh and rely on Coder's
+fallback discovery" — which is brittle and undocumented.
 
-- Pros: **secure-by-default** posture wins — image is the SoT for
-  Linux tools, no runtime install at all.
-- Cons: `coder dotfiles` upstream contract assumes install.sh
-  exists; we'd need a wrapper. Loses the "same install path
-  everywhere" mental model.
+Keeping β here as historical context only. Pick α or γ.
 
 ### Strategy γ — OS-agnostic core + plugin directories (recommended)
 
@@ -157,20 +160,49 @@ common.
 
 ## Open questions to resolve before implementation
 
-1. **`coder dotfiles` integration.** Upstream contract is
-   "execute `install.sh` after clone." Do we keep install.sh as the
-   entrypoint and have it no-op on Linux when the dev container
-   already has everything (γ-friendly)? Or replace `coder dotfiles
-   -y` with `coder dotfiles -y --command "$DOTPATH/bin/dotfiles-deploy"`
-   (β-friendly)? Reading the Coder docs for `dotfiles_command`
-   parameter is the answer.
+1. **`coder dotfiles` integration.** Upstream contract per
+   <https://coder.com/docs/reference/cli/dotfiles> is:
 
-2. **gcloud installer trust.** Google publishes a Debian apt repo
-   (used in the local feature today) and an interactive `curl
-   https://sdk.cloud.google.com | bash` installer for Mac. The Mac
-   path is currently `curl | bash` against Google's CDN, no SHA
-   verification. Worth replacing with the `--package` install for
-   reproducibility.
+   ```sh
+   coder dotfiles --repo-dir <path> --symlink-dir <path> <git-url>
+   ```
+
+   - The flags `--symlink-dir` and `--repo-dir` exist; the
+     entrypoint script discovery is **not** overridable. After
+     `git clone`, Coder probes the repo for a known entrypoint
+     (install.sh, bootstrap.sh, etc.) and execs whichever it
+     finds first.
+   - `--repo-dir` defaults to a path relative to
+     `$CODER_CONFIG_DIR` (typically `~/.config/coderv2`), NOT
+     `$HOME/dotfiles` as the current main.tf assumes. The
+     observed clone path of `/root/dotfiles` is incidental
+     (a side-effect of how the agent's HOME and CODER_CONFIG_DIR
+     happen to land on this stack).
+   - Decision needed: pin `--repo-dir=$HOME/dotfiles` explicitly
+     in the agent startup script OR move every consumer to use
+     `$CODER_DOTFILES_REPO_DIR` env var.
+
+2. **Trust boundaries for runtime installers (host AND container).**
+   Open Question 2 is broader than "Mac gcloud installer." Audit
+   every `curl | bash` / `curl | sh` / unsigned tarball pipe in
+   the install paths, on both Mac and Linux:
+
+   | Path | Source | Verification |
+   |---|---|---|
+   | install.sh `brew` install | `raw.githubusercontent.com/Homebrew/install/HEAD/install.sh` (Mac) | none (curl+bash) |
+   | install.sh `gcloud` install | `sdk.cloud.google.com` (Mac) | none (curl+bash) |
+   | install.sh `just` fallback | `just.systems/install.sh` (cross-platform) | none |
+   | main.tf VM `tailscale` | `pkgs.tailscale.com` apt repo | apt key fetched fresh; not fingerprint-pinned |
+   | main.tf VM `gcloud` | `packages.cloud.google.com` apt repo | apt key fetched fresh; not fingerprint-pinned |
+   | main.tf VM `docker` | `get.docker.com` (curl+bash) | **none — TOFU on each VM boot** |
+   | feature install.sh `gcloud` apt | `packages.cloud.google.com` | **fingerprint pinned** ✅ (ADR 0001) |
+   | feature install.sh `mise` apt | `mise.jdx.dev` | **fingerprint pinned** ✅ (ADR 0001) |
+   | feature install.sh `uv`/`just`/`sheldon` | GitHub releases | **SHA verified** ✅ (ADR 0001) |
+
+   The dev container feature is the only path with consistent
+   verification. The other entrypoints inherit different
+   postures. Implementation must converge them or document the
+   asymmetry.
 
 3. **Brewfile hygiene.** 531 lines of `tap` + `brew` + `cask`
    declarations include things the operator may no longer use. A
@@ -196,6 +228,16 @@ common.
 6. **Windows readiness.** scoop + mise. Concretely: which
    tools in `dump/Brewfile` have scoop equivalents, and which need
    alternative installers (e.g. `gcloud` on Windows)?
+
+7. **mise version pinning strategy.** All five tools in mise.toml
+   currently say `= "latest"`. The dev container feature pre-bakes
+   resolved versions at build time (which `mise install` then
+   matches), but workspace runtime resolves "latest" against
+   GitHub fresh. CI reproducibility, supply-chain attestation, and
+   "build-time-only network" posture all depend on what we choose
+   here. Resolved in the follow-up
+   `docs/adr/0006-mise-version-pinning.md`; this ADR is blocked
+   until that one lands.
 
 ## Consequences (regardless of chosen strategy)
 
