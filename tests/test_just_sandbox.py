@@ -577,12 +577,15 @@ def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
 # no-op shim so `just fmt`/`just lint` finish cleanly without prettier.
 # Shellcheck runs for real via the pre-installed mise tool.
 #
-# MISE_OFFLINE=1 prevents mise from contacting GitHub at runtime to check
-# for newer "latest" versions. Without it, repeated test runs trip the
-# unauthenticated GitHub API rate limit and mise then fails to resolve
-# `shellcheck = "latest"`.
+# Each one-shot container starts with an empty mise cache for the
+# workspace tools, so `mise x -- shellcheck` (and friends) need the
+# network to resolve "latest" against the aqua-registry. We do NOT
+# set MISE_OFFLINE=1 here — GitHub Actions runners get an
+# authenticated 5000/hr token via the dev container's environment,
+# and the post-create.sh's `mise install` already populates the
+# cache for the dev container itself. In one-shot inner containers,
+# accept the ~5s warm-up.
 _MISE_PRETTIER_STUB = (
-    "export MISE_OFFLINE=1 && "
     "mkdir -p /tmp/stubs && "
     "printf '%s\\n' "
     "'#!/bin/sh' "
@@ -878,17 +881,13 @@ def test_just_install_runs_mise_install(docker_image):
     """`just install` invokes `mise install` end-to-end and provisions the
     tools listed in mise.toml.
 
-    The sandbox image pre-installs all mise.toml tools at build time
-    (single GitHub API hit). At test time we set MISE_OFFLINE=1 so mise
-    re-uses what's already installed instead of re-querying GitHub for
-    "latest" — repeated test runs would otherwise trip the unauthenticated
-    rate limit and fail.
+    Inner containers can't reuse MISE_OFFLINE=1 because their cache
+    is empty; let mise resolve "latest" online against an
+    authenticated GitHub token (CI runs are scoped to 5000/hr).
     """
-    # mise refuses to read an untrusted config; replicate the operator's
-    # one-time `mise trust` step.
     result = run_in_sandbox(
         docker_image,
-        "export MISE_OFFLINE=1; mise trust >/dev/null 2>&1; just install",
+        "mise trust >/dev/null 2>&1; just install",
     )
     assert result.returncode == 0, (
         f"just install failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"

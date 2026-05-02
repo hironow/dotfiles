@@ -102,17 +102,28 @@ printf '#!/bin/sh\necho "Cuda compilation tools, release 12.3, V12.3.52"\n' \
   > /usr/local/bin/nvcc
 chmod 0755 /usr/local/bin/nvcc
 
-# ---- mise trust env via login profile -------------------------------
+# ---- mise env via login profile -------------------------------------
 # Inner one-shot containers spawned by the test fixture (`docker run
 # --rm dotfiles-just-sandbox bash -lc ...`) do NOT inherit the dev
-# container's containerEnv, so MISE_TRUSTED_CONFIG_PATHS must be
-# baked in. /etc/profile.d/*.sh is sourced by every login bash.
+# container's containerEnv. Bake the mise env into /etc/profile.d so
+# every login shell (and its child processes, including git hooks)
+# picks it up.
 echo "[dotfiles-tools] writing /etc/profile.d/dotfiles-mise.sh"
 cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'
 # Pre-trust the workspace mise.toml so `mise install` / `mise exec`
 # inside one-shot test containers does not error with
 # "Config files in ~/dotfiles/mise.toml are not trusted."
 export MISE_TRUSTED_CONFIG_PATHS=/root/dotfiles
+
+# Add mise's shim directory to PATH so tools managed by mise.toml
+# (prek, markdownlint-cli2, vp, ...) are reachable without a `mise
+# exec` wrapper. Critical for git hooks installed by `prek install`
+# — the pre-commit hook execs `prek` directly and sh -c hooks do
+# not source profile.d again, so PATH must already carry the shim.
+case ":$PATH:" in
+  *":/root/.local/share/mise/shims:"*) ;;
+  *) export PATH="/root/.local/share/mise/shims:$PATH" ;;
+esac
 PROFILE
 chmod 0644 /etc/profile.d/dotfiles-mise.sh
 
