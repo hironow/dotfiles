@@ -10,11 +10,17 @@
 # Trust policy:
 #   - features in devcontainer.json: ONLY ghcr.io/devcontainers/features/* (Microsoft)
 #   - tools below: vendor-official artifacts only, NEVER `curl | bash`
-#       * gcloud:  Google apt repo (GPG-verified, packages.cloud.google.com)
-#       * mise:    jdx apt repo  (GPG-verified, mise.jdx.dev/deb)
-#       * uv:      astral-sh GitHub release + .sha256 sidecar
-#       * just:    casey/just GitHub release + SHA256SUMS bulk file
-#       * sheldon: rossmacarthur/sheldon GitHub release + pinned SHA256
+#       * gcloud:  Google apt repo (GPG signature + fingerprint pin)
+#       * mise:    jdx apt repo  (GPG signature + fingerprint pin)
+#       * uv:      .sha256 sidecar + GitHub attestation (SLSA provenance, sigstore)
+#       * just:    SHA256SUMS bulk file (no upstream signature; SHA only)
+#       * sheldon: pinned SHA256 hardcoded per arch (no upstream signature)
+#
+# The split is documented in docs/adr/0001-devcontainer-debian-features.md.
+# `gh attestation verify` covers uv because astral-sh signs releases via
+# GitHub Actions OIDC. casey/just and rossmacarthur/sheldon do not currently
+# publish SLSA attestations, so the SHA pin is the strongest assertion we
+# can make against artifact integrity until they do.
 set -euo pipefail
 
 ARCH=$(uname -m)
@@ -95,6 +101,18 @@ echo "[dotfiles-tools] installing uv ${UV_VERSION} (${UV_TARGET})"
 curl -fsSL -o "/tmp/${UV_FILE}" "${UV_BASE}/${UV_FILE}"
 curl -fsSL -o "/tmp/${UV_FILE}.sha256" "${UV_BASE}/${UV_FILE}.sha256"
 ( cd /tmp && sha256sum -c "${UV_FILE}.sha256" )
+# Defense in depth: astral-sh signs uv release artifacts via
+# GitHub Actions OIDC (sigstore-backed). `gh attestation verify`
+# checks the SLSA provenance attestation, closing the SHA-sidecar
+# TOFU window. Skipped only if `gh` is somehow missing — the
+# github-cli feature is in installsAfter so it is normally present.
+if command -v gh >/dev/null 2>&1; then
+  echo "[dotfiles-tools] verifying uv attestation (SLSA provenance)"
+  gh attestation verify "/tmp/${UV_FILE}" --repo astral-sh/uv \
+    --predicate-type "https://slsa.dev/provenance/v1"
+else
+  echo "[dotfiles-tools] gh CLI absent; uv attestation verify SKIPPED" >&2
+fi
 tar -xz -f "/tmp/${UV_FILE}" -C /tmp --strip-components=1
 install -m 0755 /tmp/uv /usr/local/bin/uv
 install -m 0755 /tmp/uvx /usr/local/bin/uvx
