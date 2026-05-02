@@ -315,13 +315,26 @@ resource "coder_agent" "dev" {
   dir                = "/root/dotfiles"
   connection_timeout = 0
 
-  # Personalisation: pull and install the operator's dotfiles on top
-  # of the baked-in image. install.sh honours skip env vars to bypass
-  # Homebrew and the brew/gcloud bundle replays — neither is desired
-  # on a CI-style workspace. With both set, install.sh still runs
-  # `just clean` + `just deploy` (symlink ~/.zshrc, sheldon lock,
-  # starship config, fzf-tab clone, ...). gcloud arrives via the
-  # devcontainer feature so its install path no-ops naturally.
+  # Personalisation + workspace-side mise sync.
+  #
+  # `coder dotfiles` clones the operator's dotfiles repo into
+  # /root/dotfiles and runs install.sh. install.sh honours skip env
+  # vars to bypass Homebrew + brew/gcloud bundle replays — neither
+  # is wanted on a CI-style workspace. With both set, install.sh
+  # still runs `just clean` + `just deploy` (symlink ~/.zshrc,
+  # sheldon lock, starship config, fzf-tab clone, ...).
+  #
+  # Then `mise install` runs against the workspace mise.toml so
+  # mise's install state (`~/.local/share/mise/installs/`) tracks
+  # what mise.toml asks for. The prebuilt image already has the
+  # tools at the same versions (the local devcontainer feature
+  # primes them at build time), but mise tracks installs by config
+  # path, so `mise current` would otherwise warn:
+  #   `mise WARN  just@1.50.0 is specified in ~/dotfiles/mise.toml,
+  #    but not installed`
+  # MISE_OFFLINE=0 is forced because the inherited containerEnv has
+  # MISE_OFFLINE=1 baked in — mise needs the registry to resolve
+  # `latest` before it can match against the cache.
   startup_script = data.coder_parameter.dotfiles_uri.value == "" ? "" : <<-EOT
     set -eu
     export INSTALL_SKIP_HOMEBREW=1
@@ -329,6 +342,13 @@ resource "coder_agent" "dev" {
     if command -v coder >/dev/null 2>&1; then
       coder dotfiles -y "${data.coder_parameter.dotfiles_uri.value}" || \
         echo "[exe] dotfiles install failed; continuing"
+    fi
+    if command -v mise >/dev/null 2>&1 && [ -f /root/dotfiles/mise.toml ]; then
+      (
+        cd /root/dotfiles
+        mise trust mise.toml >/dev/null 2>&1 || true
+        MISE_OFFLINE=0 mise install
+      ) || echo "[exe] mise install failed; tools fall back to baked-in image versions"
     fi
   EOT
 
