@@ -1,9 +1,23 @@
 # exe/docs/
 
-Documentation for `exe.hironow.dev` (added in subsequent commits):
+Documentation for `exe.hironow.dev`.
 
-- `architecture.md` — components, data flow, security boundaries
-- `runbook.md` — operational playbook (rotate keys, restart tunnel, scale VM)
+| File | Scope |
+|---|---|
+| [`architecture.md`](./architecture.md) | Components, data flow, security boundaries (Cloudflare + Tailscale + Coder + GCP) |
+| [`runbook.md`](./runbook.md) | Operational playbook (apply, smoke, rotate keys, push template, bump Coder) |
 
-Architectural decisions go in [`docs/adr/`](../../docs/adr/) at the
-repository root, not here.
+Architectural decisions go in [`../../docs/adr/`](../../docs/adr/)
+at the repository root — current state lives here, the "why" of
+each decision lives there. See
+[`docs-guidelines`](../../README.md) and
+[`adr-guidelines`](../../docs/adr/) in the project conventions.
+
+## Related docs
+
+- [`../README.md`](../README.md) — `exe/` directory layout
+- [`../coder/README.md`](../coder/README.md) — Coder template
+- [`../scripts/README.md`](../scripts/README.md) — `cdr` wrapper
+- [`../tailscale/README.md`](../tailscale/README.md) — ACL + tags
+- [`../cloudflared/README.md`](../cloudflared/README.md) — Tunnel
+- [`../../tofu/exe/README.md`](../../tofu/exe/README.md) — IaC

@@ -175,9 +175,13 @@ arguments.
 ### Setup (once)
 
 ```bash
-# 1. Install the Coder CLI.
+# 1. Install the Coder CLI via Homebrew. Mac is assumed to have
+#    Homebrew preinstalled (per ADR 0005). The upstream
+#    `curl https://coder.com/install.sh | sh` convenience installer
+#    is intentionally NOT recommended here — the same TOFU concerns
+#    that drove ADR 0007 on the control-plane VM apply to operator
+#    machines too.
 brew install coder/coder/coder
-# or: curl -fsSL https://coder.com/install.sh | sh
 
 # 2. Symlink the cdr wrapper into ~/.local/bin.
 just exe-cdr-install
