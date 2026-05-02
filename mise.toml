@@ -13,6 +13,17 @@ uv = "0.11.8"
 # unrelated `vp` npm package). Pin to vite-plus's actual version.
 vp = "0.1.20"
 
+# Node runtime. The npm-backed AI CLIs below have a `#!/usr/bin/env
+# node` shebang that needs node on PATH at *runtime*, not just at
+# the image-build time when mise installs them. The
+# `ghcr.io/devcontainers/features/node:1` feature in devcontainer.json
+# does install node into /usr/local/bin, but on Coder workspaces the
+# `/home/<user>:/root` volume mount can mask the symlink chain. Pin
+# node here so /opt/mise/installs/node/24.15.0/bin/node lives outside
+# the volume-mount path; mise's shim in /opt/mise/shims wins PATH
+# resolution against any bind-mount issue.
+node = "24.15.0"
+
 # AI agent CLIs. Installed at build time so the Coder workspace
 # boots with them ready on PATH; operators authenticate them on
 # first use (`codex login`, `claude /login`, `gemini auth`,

@@ -169,6 +169,8 @@ def test_required_tools_are_present(mise_pins: dict[str, str]) -> None:
         "prek",
         "vp",
         "markdownlint-cli2",
+        # node runtime — required by the npm-backed AI CLI shebangs.
+        "node",
         # AI agent CLIs (npm-backend; the keys mise actually stores
         # are the full `npm:<package>` strings).
         "npm:@openai/codex",
