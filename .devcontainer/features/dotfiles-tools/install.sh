@@ -104,14 +104,22 @@ curl -fsSL -o "/tmp/${UV_FILE}.sha256" "${UV_BASE}/${UV_FILE}.sha256"
 # Defense in depth: astral-sh signs uv release artifacts via
 # GitHub Actions OIDC (sigstore-backed). `gh attestation verify`
 # checks the SLSA provenance attestation, closing the SHA-sidecar
-# TOFU window. Skipped only if `gh` is somehow missing — the
-# github-cli feature is in installsAfter so it is normally present.
-if command -v gh >/dev/null 2>&1; then
+# TOFU window when an auth token is available.
+#
+# Build-time (`devcontainer build` / devcontainers/ci action under
+# docker buildx) does NOT inherit the host's GITHUB_TOKEN, so gh is
+# unauthenticated and `attestation verify` cannot reach the API.
+# Skip in that case rather than fail the build — the SHA pin above
+# is still in force as primary integrity. Local devcontainer builds
+# where the operator has gh logged in will perform the verify.
+if command -v gh >/dev/null 2>&1 && \
+   { [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ] || \
+     gh auth status >/dev/null 2>&1; }; then
   echo "[dotfiles-tools] verifying uv attestation (SLSA provenance)"
   gh attestation verify "/tmp/${UV_FILE}" --repo astral-sh/uv \
     --predicate-type "https://slsa.dev/provenance/v1"
 else
-  echo "[dotfiles-tools] gh CLI absent; uv attestation verify SKIPPED" >&2
+  echo "[dotfiles-tools] gh CLI not authenticated; uv attestation verify SKIPPED (SHA pin still in force)" >&2
 fi
 tar -xz -f "/tmp/${UV_FILE}" -C /tmp --strip-components=1
 install -m 0755 /tmp/uv /usr/local/bin/uv
