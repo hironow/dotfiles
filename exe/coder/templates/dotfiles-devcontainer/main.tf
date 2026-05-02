@@ -12,11 +12,8 @@
 #                            for an envbuilder build, OOMs)
 #   - browser IDE module the upstream gcp-devcontainer template ships
 #                          with `registry.coder.com/coder/<browser-ide>/coder`
-#                          as a sibling resource; we drop it because
-#                          alpine+musl trips its install script (binary
-#                          drops into ~/.local/bin then refuses to start
-#                          on 127.0.0.1:13337). Terminal-first is the
-#                          stated workflow; reintroduce a musl-friendly
+#                          as a sibling resource; we drop it. Terminal-
+#                          first is the stated workflow; reintroduce a
 #                          browser IDE in a follow-up if the need arises.
 #   - dotfiles_uri param  added so workspaces auto-clone & install
 #                           hironow's personal dotfiles on top of the
@@ -395,22 +392,16 @@ resource "coder_agent" "dev" {
   connection_timeout = 0
 
   # Personalisation: pull and install the operator's dotfiles on top
-  # of whatever the devcontainer base image gives us.
-  #
-  # The dotfiles install.sh tries to install Homebrew + Google Cloud
-  # SDK + replay brew/gcloud bundle dumps — none of which work on
-  # alpine + musl (linuxbrew is glibc-only, gcloud SDK install path
-  # likewise; alpine's apk repo has no google-cloud-cli). install.sh
-  # honours three env vars to skip those segments; with all three
-  # set, the script still runs `just clean` + `just deploy` which
-  # produces the actually-valuable bits (~/.zshrc symlink, sheldon
-  # lock, starship config, fzf-tab clone, ...). Without them the
-  # script aborts at homebrew install via `set -eu` and the agent
-  # logs '[exe] dotfiles install failed; continuing' on every boot.
+  # of whatever the devcontainer base image gives us. install.sh
+  # honours skip env vars to bypass Homebrew install and the
+  # `just add-all` / `just update-all` brew/gcloud replays — neither
+  # is desired on a CI-style workspace. With both set, install.sh
+  # still runs `just clean` + `just deploy` (symlink ~/.zshrc, sheldon
+  # lock, starship config, fzf-tab clone, ...). gcloud arrives via
+  # the devcontainer feature so its install path no-ops naturally.
   startup_script = data.coder_parameter.dotfiles_uri.value == "" ? "" : <<-EOT
     set -eu
     export INSTALL_SKIP_HOMEBREW=1
-    export INSTALL_SKIP_GCLOUD=1
     export INSTALL_SKIP_ADD_UPDATE=1
     if command -v coder >/dev/null 2>&1; then
       coder dotfiles -y "${data.coder_parameter.dotfiles_uri.value}" || \

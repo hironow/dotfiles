@@ -1,3 +1,4 @@
+import os
 import subprocess
 import textwrap
 from pathlib import Path
@@ -6,8 +7,22 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCKERFILE = ROOT / "tests" / "docker" / "JustSandbox.Dockerfile"
+DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
+
+
+def _host_workspace_path() -> str:
+    """Resolve the path that the outer docker daemon will mount.
+
+    When tests run inside the dev container under docker-outside-of-
+    docker, `-v <src>:<dst>` is interpreted by the host daemon, so
+    <src> must be a HOST path. devcontainer.json exports the host
+    path as LOCAL_WORKSPACE_FOLDER for exactly this case.
+
+    When tests run on the host directly (no dev container), ROOT
+    already is a host path.
+    """
+    return os.environ.get("LOCAL_WORKSPACE_FOLDER", str(ROOT))
 
 
 def _run(
@@ -29,46 +44,55 @@ def _docker_available() -> bool:
     return r.returncode == 0
 
 
+def _devcontainer_cli_available() -> bool:
+    r = _run(["devcontainer", "--version"])
+    return r.returncode == 0
+
+
 @pytest.fixture(scope="session")
 def docker_image():
-    # given: docker daemon and base image availability
+    # given: docker daemon and devcontainer.json availability
     if not _docker_available():
         pytest.skip("Docker is not available on host; skipping sandbox tests.")
 
-    if not DOCKERFILE.exists():
-        pytest.skip("Sandbox Dockerfile missing; skipping.")
+    if not DEVCONTAINER_JSON.exists():
+        pytest.skip("devcontainer.json missing; skipping.")
 
-    # In CI, the sandbox image is prebuilt by the workflow's
-    # `docker/build-push-action` step. We reuse it instead of rebuilding so
-    # that a build failure surfaces as a CI step error (not as a silent
-    # pytest.skip that lets the workflow report green).
+    # In CI, the dev container image is prebuilt by the
+    # `devcontainers/ci` action with imageName=dotfiles-just-sandbox.
+    # We reuse it instead of rebuilding so that a build failure surfaces
+    # as a CI step error (not as a silent pytest.skip that lets the
+    # workflow report green).
     if _image_exists(IMAGE):
         yield IMAGE
         return
 
-    # when: build sandbox image using local workspace as build context
+    # Local fallback: build the dev container image via the devcontainer
+    # CLI. Requires `npm i -g @devcontainers/cli` on the host.
+    if not _devcontainer_cli_available():
+        pytest.skip(
+            "Image 'dotfiles-just-sandbox:latest' not present and the "
+            "@devcontainers/cli is not installed on the host. Either "
+            "  npm i -g @devcontainers/cli\n"
+            "or pull the prebuilt CI image (when ghcr publish is enabled). "
+            "CI uses devcontainers/ci action, so this branch is only for "
+            "local pytest invocations."
+        )
+
     build_cmd = [
-        "docker",
+        "devcontainer",
         "build",
-        "-t",
+        "--workspace-folder",
+        str(ROOT),
+        "--image-name",
         IMAGE,
-        "-f",
-        str(DOCKERFILE),
-        "--build-arg",
-        "BASE_IMAGE=alpine:3.19",
-        ".",
     ]
     result = _run(build_cmd, cwd=ROOT)
     if result.returncode != 0:
-        msg = (
-            "Failed to build sandbox image. Ensure Docker is running and "
-            "base image is available.\n"
-            "Hint: docker pull alpine:3.19 && just test-verbose\n\n"
+        pytest.fail(
+            "Failed to build dev container image via devcontainer CLI.\n"
             f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
         )
-        # Fail loudly: skipping here masks build regressions on CI
-        # (image-build failures previously turned the suite into a no-op).
-        pytest.fail(msg)
 
     # then: image is available
     yield IMAGE
@@ -80,7 +104,15 @@ def _image_exists(image: str) -> bool:
 
 
 def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
-    # Always run a one-shot container with bash -lc to preserve justfile semantics
+    # The dev container image (built by devcontainer.json) does NOT
+    # bake /root/dotfiles into its layers — that path is the bind
+    # mount target declared by `workspaceMount`. So a fresh
+    # `docker run` against the image starts with an empty /root,
+    # and `cd /root/dotfiles` fails with "No such file or directory".
+    #
+    # Re-create the bind mount manually for each one-shot test
+    # container, mirroring what the devcontainer CLI does at create
+    # time.
     full_script = textwrap.dedent(
         f"""
         set -e
@@ -88,17 +120,31 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
         {script}
         """
     ).strip()
-    return _run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            image,
-            "bash",
-            "-lc",
-            full_script,
-        ]
-    )
+    docker_args = [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        f"{_host_workspace_path()}:/root/dotfiles",
+        "-w",
+        "/root/dotfiles",
+        # devcontainers/ci action bakes the dev container's
+        # containerEnv (including MISE_OFFLINE=1) into the saved
+        # image as ENV layer. Inner test containers want a fresh
+        # mise cache resolution, so override.
+        "-e",
+        "MISE_OFFLINE=0",
+    ]
+    # Forward GITHUB_TOKEN so mise's `latest` resolution against
+    # api.github.com hits the authenticated 5000/hr quota. CI
+    # surfaces it via the workflow's `env:` block; locally it is
+    # only set if the operator already has GH_TOKEN/GITHUB_TOKEN
+    # exported.
+    gh_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if gh_token:
+        docker_args.extend(["-e", f"GITHUB_TOKEN={gh_token}"])
+    docker_args.extend([image, "bash", "-lc", full_script])
+    return _run(docker_args)
 
 
 def _sh_single_quote(s: str) -> str:
@@ -161,7 +207,10 @@ SCRIPT_INSTALL_SUCCESS = textwrap.dedent(
     printf %s {_sh_single_quote(GIT_STUB_SIMPLE)} > "$STUBS/git"; chmod +x "$STUBS/git";
     export PATH="$STUBS:$PATH";
     export DOTPATH=/root/sandbox/dotfiles-fresh;
-    export INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1;
+    # gcloud is now installed via the google-cloud-cli devcontainer
+    # feature, so install.sh's `command -v gcloud` returns true and
+    # the install path no-ops naturally. No INSTALL_SKIP_GCLOUD needed.
+    export INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_ADD_UPDATE=1;
     # run install and verify link
     bash ./install.sh && test -L ~/.zshrc && readlink ~/.zshrc | grep '/root/dotfiles/.zshrc'
     """
@@ -180,14 +229,22 @@ SCRIPT_INSTALL_RERUN = textwrap.dedent(
     printf %s {_sh_single_quote(GIT_STUB_RERUN)} > "$STUBS/git"; chmod +x "$STUBS/git";
     export PATH="$STUBS:$PATH";
     export DOTPATH=/root/sandbox/dotfiles-fresh;
-    export INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1;
+    # gcloud is now installed via the google-cloud-cli devcontainer
+    # feature, so install.sh's `command -v gcloud` returns true and
+    # the install path no-ops naturally. No INSTALL_SKIP_GCLOUD needed.
+    export INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_ADD_UPDATE=1;
     # first run (clone branch)
     bash ./install.sh;
-    # initialize a real git repo at DOTPATH to exercise stash/checkout
+    # Initialise a real git repo at DOTPATH to exercise stash/checkout.
+    # The DOTPATH dir was `cp -a`'d from /root/dotfiles which already
+    # contains a populated .git/ (the bind-mounted host repo). Wipe it
+    # first so `git init` produces a fresh empty repo and the
+    # subsequent commit has actual content to record.
     cd "$DOTPATH";
+    rm -rf .git;
     git init;
     git add -A;
-    git -c user.name=test -c user.email=test@example.com commit -m initial;
+    git -c user.name=test -c user.email=test@example.com commit -m initial --allow-empty;
     git branch -M main;
     cd - >/dev/null;
     # second run (update branch)
@@ -343,10 +400,14 @@ def test_just_commands_sandbox(
             marks=pytest.mark.validate,
         ),
         pytest.param(
-            "pnpm_safe_fallback_without_jq",
+            # The "jq not found" fallback was meaningful on alpine
+            # where jq was absent; debian + Microsoft features ship
+            # jq via common-utils / git-core deps, so the recipe
+            # takes the jq-present path. Just assert it succeeds.
+            "pnpm_safe_fallback_runs",
             "just update-pnpm-g-safe",
             0,
-            "jq not found",
+            "",
             "",
             id="Update: pnpm safe fallback",
             marks=pytest.mark.check,
@@ -410,10 +471,14 @@ def test_doctor_reports_just(docker_image):
             marks=pytest.mark.check,
         ),
         pytest.param(
+            # gcloud is installed at devcontainer build time via the
+            # local `dotfiles-tools` feature, so the guard's true
+            # branch fires and the recipe runs end-to-end. Just
+            # assert it succeeds (no specific stdout).
             "Check: gcloud guarded",
             "if command -v gcloud >/dev/null 2>&1; then just check-gcloud; else echo skip-gcloud; fi",
             0,
-            "skip-gcloud",
+            "",
             id="Check: gcloud guarded",
             marks=pytest.mark.check,
         ),
@@ -429,10 +494,13 @@ def test_doctor_reports_just(docker_image):
             marks=pytest.mark.check,
         ),
         pytest.param(
+            # pnpm may or may not be present depending on the node
+            # devcontainer feature config; either branch should
+            # exit 0. No stdout assertion.
             "Check: pnpm globals guarded",
             "if command -v pnpm >/dev/null 2>&1; then just check-pnpm-g; else echo skip-pnpm; fi",
             0,
-            "skip-pnpm",
+            "",
             id="Check: pnpm globals guarded",
             marks=pytest.mark.check,
         ),
@@ -516,7 +584,7 @@ def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
 # via brew/asdf), so we override `mise x -- prettier ...` with a no-op shim.
 # We do this by injecting a wrapper named `mise` earlier on PATH that:
 #   - intercepts the literal pattern `x -- prettier ...` and exits 0,
-#   - delegates everything else to the real /root/.local/bin/mise.
+#   - delegates everything else to the real mise (apt-installed at /usr/bin/mise).
 
 # mise's tools (incl. shellcheck) are pre-installed in the sandbox image
 # (Dockerfile runs `mise trust && mise install` at build time). We only need
@@ -524,17 +592,20 @@ def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
 # no-op shim so `just fmt`/`just lint` finish cleanly without prettier.
 # Shellcheck runs for real via the pre-installed mise tool.
 #
-# MISE_OFFLINE=1 prevents mise from contacting GitHub at runtime to check
-# for newer "latest" versions. Without it, repeated test runs trip the
-# unauthenticated GitHub API rate limit and mise then fails to resolve
-# `shellcheck = "latest"`.
+# Each one-shot container starts with an empty mise cache for the
+# workspace tools, so `mise x -- shellcheck` (and friends) need the
+# network to resolve "latest" against the aqua-registry. We do NOT
+# set MISE_OFFLINE=1 here — GitHub Actions runners get an
+# authenticated 5000/hr token via the dev container's environment,
+# and the post-create.sh's `mise install` already populates the
+# cache for the dev container itself. In one-shot inner containers,
+# accept the ~5s warm-up.
 _MISE_PRETTIER_STUB = (
-    "export MISE_OFFLINE=1 && "
     "mkdir -p /tmp/stubs && "
     "printf '%s\\n' "
     "'#!/bin/sh' "
     '\'if [ "$1" = x ] && [ "$2" = -- ] && [ "$3" = prettier ]; then exit 0; fi\' '
-    "'exec /root/.local/bin/mise \"$@\"' "
+    "'exec /usr/bin/mise \"$@\"' "
     "> /tmp/stubs/mise && chmod +x /tmp/stubs/mise && "
     "export PATH=/tmp/stubs:$PATH && "
 )
@@ -825,17 +896,13 @@ def test_just_install_runs_mise_install(docker_image):
     """`just install` invokes `mise install` end-to-end and provisions the
     tools listed in mise.toml.
 
-    The sandbox image pre-installs all mise.toml tools at build time
-    (single GitHub API hit). At test time we set MISE_OFFLINE=1 so mise
-    re-uses what's already installed instead of re-querying GitHub for
-    "latest" — repeated test runs would otherwise trip the unauthenticated
-    rate limit and fail.
+    Inner containers can't reuse MISE_OFFLINE=1 because their cache
+    is empty; let mise resolve "latest" online against an
+    authenticated GitHub token (CI runs are scoped to 5000/hr).
     """
-    # mise refuses to read an untrusted config; replicate the operator's
-    # one-time `mise trust` step.
     result = run_in_sandbox(
         docker_image,
-        "export MISE_OFFLINE=1; mise trust >/dev/null 2>&1; just install",
+        "mise trust >/dev/null 2>&1; just install",
     )
     assert result.returncode == 0, (
         f"just install failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -845,92 +912,16 @@ def test_just_install_runs_mise_install(docker_image):
 
 
 # ---------------------------------------------------------------------------
-# glibc compatibility on the alpine base
-#
-# When the same Dockerfile is used as the base for a Coder workspace
-# (via the dotfiles-devcontainer template + envbuilder), envbuilder
-# drops a glibc-linked Coder agent into the image and tries to exec
-# it. Without libc6-compat / gcompat, alpine's musl loader can't
-# resolve the binary and /bin/sh ends up trying to interpret the
-# ELF header as a shell script:
-#
-#     ./coder: line 2: syntax error: unexpected newline
-#
-# The build itself succeeds — only the agent exec fails. So this is
-# a regression that 'just self-check', 'just lint', the unit tests,
-# and even the existing sandbox suite all pass through silently. The
-# tests below are explicitly there to lock the glibc shim in.
+# Dev container is now debian-12 (bookworm) with glibc native — the
+# alpine + musl + libc6-compat / gcompat shim era ended with the
+# Layer-1 base-image migration. Tests that asserted the shim's
+# presence (test_glibc_compat_packages_installed,
+# test_glibc_dynamic_loader_present, test_glibc_binary_actually_runs,
+# test_dev_container_has_docker_cli via apk) were dropped because the
+# debian image has glibc natively and provides docker-cli through the
+# devcontainer feature `docker-outside-of-docker`. The corresponding
+# regressions can no longer occur on this base.
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.check
-def test_glibc_compat_packages_installed(docker_image):
-    """`apk info -e <pkg>` returns 0 for installed packages."""
-    result = run_in_sandbox(
-        docker_image,
-        "apk info -e libc6-compat && apk info -e gcompat",
-    )
-    assert result.returncode == 0, (
-        "libc6-compat / gcompat must be installed in JustSandbox.Dockerfile.\n"
-        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
-
-
-@pytest.mark.check
-def test_glibc_dynamic_loader_present(docker_image):
-    """gcompat installs a symlink for the glibc dynamic loader at
-    /lib/ld-linux-<arch>.so.<N>. Without it, glibc binaries fail at
-    exec time with the 'syntax error' interpreter mis-detection.
-    Loader path is arch-specific:
-        amd64:   /lib/ld-linux-x86-64.so.2
-        arm64:   /lib/ld-linux-aarch64.so.1
-    The Mac dev box builds arm64 images, the GCE workspace runs
-    amd64 — both must work."""
-    script = """
-        arch=$(uname -m)
-        case "$arch" in
-          x86_64)  loader=/lib/ld-linux-x86-64.so.2 ;;
-          aarch64) loader=/lib/ld-linux-aarch64.so.1 ;;
-          *) echo "unsupported arch: $arch" >&2; exit 2 ;;
-        esac
-        test -e "$loader" || {
-          echo "glibc loader missing at $loader" >&2
-          exit 1
-        }
-    """
-    result = run_in_sandbox(docker_image, script)
-    assert result.returncode == 0, (
-        "glibc dynamic loader missing; glibc binaries (e.g. Coder workspace "
-        "agent) will fail at exec time. Was libc6-compat / gcompat removed?\n"
-        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
-
-
-@pytest.mark.check
-def test_dev_container_has_docker_cli(docker_image):
-    """Coder agent's DevContainer feature shells out to `docker ps`
-    every few seconds; on a workspace where this CLI is missing the
-    agent log fills with:
-
-      run docker ps: exit status 127: "/bin/ash: docker: not found"
-
-    and any UI 'Containers' tab returns HTTP 500. dockerd itself
-    runs on the envbuilder VM host (debian-12) and the unix socket
-    is bind-mounted into the dev container by the dotfiles
-    devcontainer template, so a CLI-only package is enough — we do
-    NOT need a daemon inside the container.
-
-    Wider 'install everything dotfiles symlinks expects' coverage
-    (zsh / starship / fzf / tmux / gh / gcloud) is deferred to the
-    Layer-1 base-image migration where the dev container moves from
-    alpine + musl to a glibc base; on alpine the apk repo lacks
-    several of those tools natively. See docs/handover.md."""
-    result = run_in_sandbox(docker_image, "apk info -e docker-cli")
-    assert result.returncode == 0, (
-        "alpine package 'docker-cli' is missing — Coder agent's\n"
-        "DevContainer probe will fail with 127 every poll.\n"
-        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
 
 
 @pytest.mark.check
@@ -963,68 +954,4 @@ def test_install_sh_has_executable_bit_in_git_index():
         f"install.sh git index mode is {mode}, expected 100755.\n"
         "Run: git update-index --chmod=+x install.sh && commit\n"
         "Otherwise 'coder dotfiles' fails to exec the script after clone."
-    )
-
-
-@pytest.mark.check
-def test_glibc_binary_actually_runs(docker_image):
-    """End-to-end: download a known-glibc tiny binary and exec it
-    inside the alpine sandbox. If the shim is in place, exec
-    succeeds and the binary's stdout is observed; if it is missing,
-    /bin/sh tries to interpret the ELF and we see
-    'syntax error: unexpected newline'.
-
-    We use the Coder CLI binary itself — that is the actual
-    binary that the Coder workspace agent consumes, so this test
-    catches the exact production failure mode.
-
-    Skipped if the network fetch fails (CI sandboxes occasionally
-    block GitHub releases); the symlink test above already gives
-    a static signal in that case."""
-    # Use a small, known-glibc-linked binary. coder-linux-amd64 is
-    # ~70 MB which is overkill; instead, we fetch a tiny glibc
-    # tool: 'just' itself ships musl variants, so we cheat with
-    # `getent` (already in libc6-compat) and a trivial check via
-    # ldd on the gcompat-provided loader symlink.
-    #
-    # The ELF magic test is the strongest cheap proof: invoke the
-    # loader directly with a non-glibc input and expect a clean
-    # error path (NOT a shell-interprets-as-script error).
-    script = """
-        # Resolve the arch-specific loader path.
-        arch=$(uname -m)
-        case "$arch" in
-          x86_64)  loader=/lib/ld-linux-x86-64.so.2 ;;
-          aarch64) loader=/lib/ld-linux-aarch64.so.1 ;;
-          *) echo "unsupported arch: $arch" >&2; exit 2 ;;
-        esac
-
-        if [ ! -e "$loader" ]; then
-          echo "no glibc loader at $loader" >&2
-          exit 1
-        fi
-
-        # gcompat's loader is actually a symlink to libgcompat.so.0,
-        # which when invoked directly prints a usage banner. Whether
-        # that banner says 'Usage:' / 'ld.so' / 'gcompat' depends on
-        # the version, so the strict assertion is just: invocation
-        # must NOT yield 'syntax error'. That literal string is what
-        # /bin/sh emits when fed an ELF, and is the exact regression
-        # we are guarding against.
-        out="$($loader --help 2>&1 || true)"
-        echo "$out" | head -5
-        if echo "$out" | grep -q 'syntax error'; then
-          echo "loader output contained 'syntax error' — ELF interpreted as script" >&2
-          exit 1
-        fi
-    """
-    result = run_in_sandbox(docker_image, script)
-    assert result.returncode == 0, (
-        "glibc binary execution path is broken in the alpine sandbox.\n"
-        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
-    assert "syntax error" not in (result.stdout + result.stderr), (
-        "Saw 'syntax error' from the loader test — the ELF is being "
-        "interpreted as a shell script, which is exactly the regression "
-        "that broke the Coder workspace agent on alpine."
     )

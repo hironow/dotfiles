@@ -10,14 +10,21 @@ File naming convention:
     ROOT_AGENTS_hooks_formatter.py      -> <agent>/hooks/formatter.py
 """
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCKERFILE = ROOT / "tests" / "docker" / "JustSandbox.Dockerfile"
+DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
+
+
+def _host_workspace_path() -> str:
+    """See test_just_sandbox.py — surfaces host path for docker-outside-
+    of-docker bind mounts when tests run inside the dev container."""
+    return os.environ.get("LOCAL_WORKSPACE_FOLDER", str(ROOT))
 
 
 def _run(
@@ -41,33 +48,48 @@ def _docker_available() -> bool:
     return r.returncode == 0
 
 
+def _devcontainer_cli_available() -> bool:
+    r = _run(["devcontainer", "--version"])
+    return r.returncode == 0
+
+
+def _image_exists(image: str) -> bool:
+    return _run(["docker", "image", "inspect", image]).returncode == 0
+
+
 @pytest.fixture(scope="module")
 def docker_image():
-    """Build Docker image for testing."""
-    # given: docker daemon availability
+    """Provide the dotfiles dev container image, mirroring
+    test_just_sandbox.py: reuse the CI-prebuilt image when present,
+    fall back to a local devcontainer build."""
     if not _docker_available():
         pytest.skip("Docker is not available; skipping e2e tests.")
 
-    if not DOCKERFILE.exists():
-        pytest.skip("Dockerfile missing; skipping e2e tests.")
+    if not DEVCONTAINER_JSON.exists():
+        pytest.skip("devcontainer.json missing; skipping e2e tests.")
 
-    # when: build test image
+    if _image_exists(IMAGE):
+        yield IMAGE
+        return
+
+    if not _devcontainer_cli_available():
+        pytest.skip(
+            "Image 'dotfiles-just-sandbox:latest' not present and the "
+            "@devcontainers/cli is not installed. Run "
+            "`npm i -g @devcontainers/cli` or rely on CI."
+        )
+
     build_cmd = [
-        "docker",
+        "devcontainer",
         "build",
-        "-t",
-        IMAGE,
-        "-f",
-        str(DOCKERFILE),
-        "--build-arg",
-        "BASE_IMAGE=alpine:3.19",
+        "--workspace-folder",
         str(ROOT),
+        "--image-name",
+        IMAGE,
     ]
     result = _run(build_cmd, cwd=ROOT)
-
-    # then: build succeeds
     if result.returncode != 0:
-        pytest.fail(f"Docker build failed: {result.stderr}")
+        pytest.fail(f"devcontainer build failed: {result.stderr}")
 
     yield IMAGE
 
@@ -87,17 +109,23 @@ def _run_in_container(
     Returns:
         CompletedProcess with stdout/stderr
     """
+    # /root/dotfiles is a bind mount in devcontainer.json, not a
+    # baked-in COPY layer. Re-create the mount for each one-shot
+    # container so the workspace is reachable. Forward GITHUB_TOKEN
+    # for the same reason as in test_just_sandbox.py.
     docker_cmd = [
         "docker",
         "run",
         "--rm",
+        "-v",
+        f"{_host_workspace_path()}:/root/dotfiles",
         "-w",
         "/root/dotfiles",
-        docker_image,
-        "bash",
-        "-c",
-        cmd,
     ]
+    gh_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if gh_token:
+        docker_cmd.extend(["-e", f"GITHUB_TOKEN={gh_token}"])
+    docker_cmd.extend([docker_image, "bash", "-c", cmd])
     result = _run(docker_cmd)
 
     if check and result.returncode != 0:

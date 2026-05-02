@@ -33,10 +33,10 @@ uvx pytest tests/e2e/ -v -k "directory"
 
 ### Test Environment
 
-- **Docker Image**: `dotfiles-just-sandbox:latest` (built from `tests/docker/JustSandbox.Dockerfile`)
-- **Base Image**: Alpine Linux 3.19
-- **Tools**: bash, just (latest), python3, uv
-- **Working Directory**: `/root/dotfiles` (repository contents copied)
+- **Docker Image**: `dotfiles-just-sandbox:latest` (built from `.devcontainer/devcontainer.json` via the `devcontainer` CLI)
+- **Base Image**: `mcr.microsoft.com/devcontainers/base:bookworm` (debian-12, glibc-native)
+- **Tools provisioned by features**: just, mise, uv, gh, gcloud, docker-cli, python, node, zsh
+- **Working Directory**: `/root/dotfiles` (bind-mounted from host repo)
 - **Container Lifecycle**: Each test runs in a fresh container (`--rm` flag)
 
 ### Test Isolation
@@ -161,11 +161,13 @@ def test_my_just_command(docker_image):
    docker info
    ```
 
-2. **Rebuild Image**: Force rebuild if Dockerfile changed
+2. **Rebuild Image**: Force rebuild if devcontainer.json changed
 
    ```bash
-   docker build -t dotfiles-just-sandbox:latest -f tests/docker/JustSandbox.Dockerfile .
+   devcontainer build --workspace-folder . --image-name dotfiles-just-sandbox:latest
    ```
+
+   Requires `npm i -g @devcontainers/cli` on the host.
 
 3. **Manual Container Run**: Test commands manually
 
@@ -192,7 +194,7 @@ Tests are designed to run in CI environments:
 
 | File | Description |
 |------|-------------|
-| `tests/docker/JustSandbox.Dockerfile` | Docker image definition |
+| `.devcontainer/devcontainer.json` | Dev container declaration (image + features) |
 | `scripts/sync_agents.py` | Python script for sync-agents (PEP 723) |
 | `justfile` | Commands being tested |
 | `ROOT_AGENTS.md` | Base agent instruction file |
