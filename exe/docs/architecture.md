@@ -40,10 +40,11 @@ This document describes the components currently provisioned by
                       | default VPC          |
                       | debian-12, e2-small  |
                       | tag:exe-workspace    |
-                      | tailscaled           |
-                      | envbuilder image     |
-                      | -> debian devcontainer|
-                      |    + Coder agent     |
+                      | tailscaled, docker   |
+                      | docker run prebuilt  |
+                      | dev container image  |
+                      | (from Artifact Reg)  |
+                      |   + Coder agent      |
                       +----------------------+
 ```
 
@@ -57,7 +58,7 @@ Legend / 凡例:
 - tag:exe-coder / tag:exe-workspace: Tailscale tag (ACL で関係を限定)
 - tailnet (WireGuard): exe-coder と workspace 間の internal channel
 - MagicDNS: tailnet 内 hostname 解決 (exe-coder → 100.x.x.x)
-- envbuilder image: dotfiles devcontainer (debian-12 + features)
+- prebuilt dev container image: GitHub Actions が main merge 時に build + push (Artifact Registry)、workspace VM は docker pull のみ。envbuilder は ADR 0002 で廃止
 - debian-12: VM ホスト OS / dev container ベース (共通)
 ```
 
@@ -154,7 +155,11 @@ loopback).
 ## Coder server
 
 Started by the VM startup-script as a background process (cos lacks
-systemd). Configuration is purely env-var driven:
+systemd). The Coder binary is fetched at the pinned
+`var.coder_version` and verified against `var.coder_sha256`
+(ADR 0007 supply-chain hardening — replaces the curl-piped install
+script and the GitHub-API `latest` fallback). Configuration is
+purely env-var driven:
 
 | Variable | Value | Purpose |
 |---|---|---|
@@ -169,10 +174,13 @@ systemd). Configuration is purely env-var driven:
 | `CODER_STRICT_TRANSPORT_SECURITY` | `31536000` | One-year HSTS |
 | `CODER_STRICT_TRANSPORT_SECURITY_OPTIONS` | `includeSubDomains;preload` | Cover sandbox subdomains and qualify for HSTS preload |
 
-Binary lives at `/var/lib/coder/coder` (downloaded from the GitHub
-release on first boot) and is symlinked to `/usr/local/bin/coder`.
-Embedded postgres state and Coder data live under `/var/lib/coder/`,
-which is on the boot disk (auto-deletes only on `tofu destroy`).
+Binary lives at `/usr/local/bin/coder` (extracted from the pinned
+release tarball at first boot, sha256-verified before extraction;
+`gh attestation verify` runs as defence-in-depth when gh is
+authenticated). Embedded postgres state and Coder data live under
+`/var/lib/coder/`, which is on the boot disk (auto-deletes only on
+`tofu destroy`). Bumping Coder is `var.coder_version` +
+`var.coder_sha256` + `just exe-apply` in lock-step.
 
 The first-boot admin password is generated to
 `/var/lib/coder/.admin_password` (mode 0600). Change it via the Coder
@@ -187,15 +195,26 @@ project's `default` VPC and joins the tailnet as `tag:exe-workspace`.
 - `provider "coder" { url = "http://exe-coder:7080" }` overrides
   `${ACCESS_URL}` per-template so the agent binary download
   resolves over the tailnet (CF Access edge bypass-free).
-- `git_branch` parameter wires `ENVBUILDER_GIT_BRANCH` (default
-  empty = repo HEAD).
+- VM startup_script installs three vendors via apt with **GPG
+  fingerprint pinning** for all three: Tailscale (observed
+  `2596A9...957F5868`), Google Cloud (`35BAA0...DC6315A3`),
+  Docker (`9DC858...0EBFCD88`). Mismatch fails the bootstrap
+  closed (no curl|bash, no `|| true`).
+- VM startup_script then `docker pull`s the prebuilt dev
+  container image from Artifact Registry, `docker run`s it with
+  `--volume /home/<user>:/root` (operator state persistence) and
+  `--network host` (tailnet visibility for the agent).
 - Agent startup_script exports `INSTALL_SKIP_HOMEBREW=1
-  INSTALL_SKIP_ADD_UPDATE=1` so dotfiles install.sh skips brew
-  install / brew-bundle replays and reaches `just deploy`. gcloud
-  arrives via the `google-cloud-cli` devcontainer feature so
-  install.sh's `command -v gcloud` short-circuits naturally.
+  INSTALL_SKIP_ADD_UPDATE=1` (belt-and-suspenders; ADR 0005
+  install.sh OS dispatch already auto-skips Mac-only steps on
+  Linux), then `MISE_OFFLINE=1 mise install` against the workspace
+  mise.toml. The mise data dir is `/opt/mise` (ADR 0006 relocation)
+  so the build-time-baked installs survive the `/root` overlay
+  mask.
 - Workspace VM runs as `exe-workspace@…` (not the default compute
-  SA). Only the workspace tailnet authkey is readable.
+  SA). Holds `roles/secretmanager.secretAccessor` on the workspace
+  tailnet authkey and `roles/artifactregistry.reader` on the
+  dotfiles repo (for docker pull).
 
 ## Out of scope
 

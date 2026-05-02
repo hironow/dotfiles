@@ -2,6 +2,60 @@
 
 My configuration for Zsh, Mise, Just, and more.
 
+## Architecture overview
+
+Three environments share one source of truth (`mise.toml` +
+`.devcontainer/devcontainer.json` + `install.sh`). Each runs the
+same tools at the same versions; only the install path per OS
+differs.
+
+```
+   +---------------+     +-----------------+     +------------------+
+   |   Mac host    |     |  Dev container  |     |  Coder workspace |
+   |  (daily       |     |  (CI sandbox    |     |  (exe.hironow.   |
+   |   driver)     |     |   + IDE)        |     |   dev)           |
+   +-------+-------+     +--------+--------+     +---------+--------+
+           |                      |                        |
+   brew + mise          devcontainer.json         docker pull prebuilt
+   (just deploy)        + features/                image (Artifact Reg.)
+                        dotfiles-tools             then docker run
+                                                   (--volume /home:/root)
+           |                      |                        |
+           +----------+-----------+------------+-----------+
+                                              |
+                                              v
+                          +-----------------------------------+
+                          |  Single source of truth (this repo) |
+                          |                                     |
+                          |  - install.sh        (OS dispatch)  |
+                          |  - mise.toml         (tool pins)    |
+                          |  - .devcontainer/    (image SoT)    |
+                          |  - dump/             (brew/gcloud)  |
+                          +-----------------------------------+
+```
+
+```
+Legend / 凡例:
+
+- Mac host: operator のメインマシン (Homebrew 前提)
+- Dev container: .devcontainer/devcontainer.json + features/dotfiles-tools をビルドした image (CI とローカル IDE で同一)
+- Coder workspace: exe.hironow.dev で立ち上がる cloud dev 環境。Artifact Registry 上の prebuilt image を docker pull する
+- install.sh OS dispatch: uname → mac / linux / windows で step_* 関数を切り替える (ADR 0005)
+- mise.toml: just / uv / prek / vp / markdownlint-cli2 を 3 OS 同一バージョンに pin (ADR 0006)
+- .devcontainer/: dev container 仕様の SoT (debian-12 + Microsoft-curated features + ローカル feature)
+- Artifact Registry: GitHub Actions が main merge 時に WIF 認証で image push、Coder workspace VM が docker pull
+```
+
+詳細は以下を参照:
+
+- [`docs/intent.md`](./docs/intent.md) — リクエスト元の意図
+- [`docs/adr/`](./docs/adr/) — Architecture Decision Records (0001–0007、debian-12 / prebuilt image / Actions 強化 / tailnet routing / install path / mise pin / Coder server hardening)
+- [`exe/docs/architecture.md`](./exe/docs/architecture.md) — exe.hironow.dev 全体図 (Cloudflare + Tailscale + Coder + GCP)
+- [`exe/docs/runbook.md`](./exe/docs/runbook.md) — 運用手順 (operator workflow)
+- [`exe/coder/templates/dotfiles-devcontainer/README.md`](./exe/coder/templates/dotfiles-devcontainer/README.md) — Coder template の push / create
+- [`exe/scripts/README.md`](./exe/scripts/README.md) — `cdr` wrapper (CF Access service token 経由で `coder` CLI を実行)
+- [`tools/README.md`](./tools/README.md) — RTTM converter / simple server などの補助ツール
+
 ## Installation
 
 Requires `curl` and `git`.
@@ -11,7 +65,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/in
 ```
 
 > [!NOTE]
-> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)へ対応
+> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)へ対応。Windows native (scoop) は OS dispatch hook のみで実装は TODO。
+> Mac は Homebrew が前提条件 (操作者が手動で先にインストール)、それ以降は install.sh が自動。
 
 ## usage
 
@@ -89,11 +144,14 @@ sudo mise x -- go run main.go
 ## Dev Container
 
 This repo ships a [Dev Container](https://containers.dev/) declared in
-`.devcontainer/devcontainer.json` (debian-12 + features). The same file
-drives CI (`devcontainers/ci` action) and the Coder workspace template
-(via envbuilder), so all three environments stay aligned. Open it to get
-an isolated environment with `just`, `mise`, `prek`, `ruff`, `shellcheck`,
-and `markdownlint-cli2` already provisioned — useful as an AI agent
+`.devcontainer/devcontainer.json` (debian-12 + Microsoft-curated
+features + local `dotfiles-tools` feature). The same file drives CI
+(`devcontainers/ci` action) and the Coder workspace template
+(prebuilt image pulled from Artifact Registry — no envbuilder per
+[ADR 0002](./docs/adr/0002-coder-prebuilt-image.md)), so all three
+environments stay aligned. Open it to get an isolated environment
+with `just`, `mise`, `prek`, `ruff`, `shellcheck`, and
+`markdownlint-cli2` already provisioned — useful as an AI agent
 sandbox for `just fmt|lint|check|test`.
 
 - **Claude Code**: run `/devcontainer`
