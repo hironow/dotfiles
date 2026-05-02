@@ -1,9 +1,13 @@
 # Stack-local — root .gitignore already covers most of this, but keep
 # it scoped here too so accidental edits in this dir stay safe.
+# .terraform.lock.hcl is intentionally NOT ignored: HashiCorp
+# recommends committing it for provider reproducibility, and Coder's
+# `coder templates push` includes it in the upload tar by design
+# (provisionersdk/archive.go) so a tracked lockfile gives all
+# operator machines the same provider plugin set.
 terraform.tfvars
 *.auto.tfvars
 .terraform/
-.terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
 *.tfplan
