@@ -16,18 +16,19 @@ agent's environment matches CI exactly.
 
 | Path | Purpose |
 |---|---|
-| `coder/` | Coder workspace template (Terraform) |
-| `cloudflared/` | Tunnel ingress config (cert + credentials live in Secret Manager) |
-| `tailscale/` | ACL (`acl.hujson`), tag definitions for `tag:owner` / `tag:agent` |
-| `scripts/` | Bootstrap, teardown, smoke-test scripts |
-| `docs/` | Architecture and runbook |
+| [`coder/`](./coder/) | Coder workspace template (gcp-vm-container, prebuilt image) |
+| [`cloudflared/`](./cloudflared/) | Tunnel ingress doc (rules live in OpenTofu) |
+| [`tailscale/`](./tailscale/) | ACL (`acl.hujson`), tag definitions for the four-tag Pattern A model |
+| [`scripts/`](./scripts/) | `cdr` CF-Access wrapper + bootstrap / teardown / smoke shell |
+| [`docs/`](./docs/) | [Architecture](./docs/architecture.md) + [Runbook](./docs/runbook.md) |
 
 ## Provisioning
 
-Infrastructure (GCE, IAM, Secret Manager, Cloudflare DNS, Tailscale auth
-keys) is declared in [`tofu/exe/`](../tofu/exe/) and applied with
-OpenTofu. This directory holds the artifacts the running stack consumes
-at runtime.
+Infrastructure (GCE, IAM, Secret Manager, Cloudflare DNS, Tailscale
+auth keys, Artifact Registry, Workload Identity Federation) is
+declared in [`../tofu/exe/`](../tofu/exe/) and applied with
+OpenTofu. This directory holds the runtime artifacts the stack
+consumes (template HCL, ACL, scripts).
 
 ## Architecture
 
@@ -56,3 +57,13 @@ Legend / 凡例:
 - Cloudflare Access: 認証付きリバースプロキシ
 - Zero Trust: ゼロトラストアクセス
 - dotfiles repo: 本リポジトリ
+
+## Related docs
+
+- [`docs/architecture.md`](./docs/architecture.md) — full
+  architecture with trust boundary table
+- [`docs/runbook.md`](./docs/runbook.md) — operator playbook
+- [`../docs/intent.md`](../docs/intent.md) — requester intent
+  (why this stack exists)
+- [`../docs/adr/`](../docs/adr/) — Architecture Decision Records
+- [`../tofu/exe/README.md`](../tofu/exe/README.md) — IaC overview

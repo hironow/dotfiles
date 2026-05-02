@@ -194,8 +194,26 @@ Tests are designed to run in CI environments:
 
 | File | Description |
 |------|-------------|
-| `.devcontainer/devcontainer.json` | Dev container declaration (image + features) |
-| `scripts/sync_agents.py` | Python script for sync-agents (PEP 723) |
-| `justfile` | Commands being tested |
-| `ROOT_AGENTS.md` | Base agent instruction file |
-| `ROOT_AGENTS_*.md` | Additional agent files (path-converted) |
+| [`../.devcontainer/devcontainer.json`](../.devcontainer/devcontainer.json) | Dev container declaration (image + features) |
+| [`../scripts/sync_agents.py`](../scripts/sync_agents.py) | Python script for sync-agents (PEP 723) |
+| [`../justfile`](../justfile) | Commands being tested |
+| [`../ROOT_AGENTS.md`](../ROOT_AGENTS.md) | Base agent instruction file |
+
+## Related docs
+
+- [`../README.md`](../README.md) — repo overview + architecture
+- [`../docs/adr/0001-devcontainer-debian-features.md`](../docs/adr/0001-devcontainer-debian-features.md)
+  — why debian-12 + curated features for the test container
+- [`../exe/docs/architecture.md`](../exe/docs/architecture.md)
+  — exe.hironow.dev (some tests under `tests/exe/` exercise its
+  IaC heredocs)
+
+> [!NOTE]
+> **Beyond `test_sync_agents.py`**: this directory now hosts many
+> more test files (devcontainer runtime smokes, install.sh OS
+> dispatch, mise pin consistency, /opt/mise relocation,
+> publish-workflow / cdr-wrapper / vm-bootstrap regressions, exe
+> startup-script extraction). The detailed walkthrough above is
+> kept for the original sync-agents flow; refer to each
+> `tests/test_*.py` file's module docstring for that test's
+> contract.
