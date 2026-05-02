@@ -1,8 +1,8 @@
 # 0006. mise tool version pinning strategy
 
 **Date:** 2026-05-02
-**Status:** Proposed
-**Blocks:** ADR 0005 (install path rationalization)
+**Status:** Accepted (2026-05-02)
+**Blocks:** ADR 0005 (install path rationalization) — accepted in same wave
 
 ## Context
 
@@ -157,21 +157,77 @@ Reproducibility comes from pinning the **image** rather than the
 
 ## Recommendation
 
-**Strategy A** (pin in mise.toml directly). It is the simplest
-change, gives a single SoT, and aligns with the existing pattern
-of explicit version constants elsewhere in this repo
-(`UV_VERSION="0.11.8"` in the local feature, action `@<sha> # vX.Y`
-pins in workflows, hardcoded SHA in sheldon install).
+## Decision (Accepted 2026-05-02)
+
+**Strategy A (modified)**: pin in `mise.toml` directly **AND**
+adopt mise's `system` backend on Linux so the build-time install
+path keeps its existing SHA + attestation verification. Strategy
+A's "single SoT for versions" goal is preserved without naively
+delegating fetches to mise.
+
+### Decision details
+
+1. **`mise.toml` is the SoT for tool versions.** Replace
+   `= "latest"` with concrete pins (e.g. `uv = "0.11.8"`).
+   Versions are **identical across Mac, Linux, and Windows** —
+   the same pin in `mise.toml` drives all three.
+
+2. **Mac host**: `mise install` runs against the pinned
+   `mise.toml`. Mise's normal backend (aqua / GitHub) is used.
+   The operator trusts mise + aqua's verification; no extra
+   SHA layer.
+
+3. **Linux build-time (dev container feature)**: the existing
+   verified-fetch path stays in
+   `.devcontainer/features/dotfiles-tools/install.sh` (uv via
+   `sha256sum -c` + `gh attestation verify`; just via
+   `SHA256SUMS`; sheldon via hardcoded SHA). `mise.toml` no
+   longer drives the install — instead, mise is invoked with
+   `mise use --system <tool>@<version>` so it picks up the
+   already-installed binaries on `$PATH`. This is the **system
+   backend** referenced above. Versions in `mise.toml` and the
+   feature-install hardcoded constants must agree; the
+   implementation PR adds a build-time check that fails the
+   image build on mismatch.
+
+4. **mise data-dir relocation to `/opt/mise`**. The current
+   workspace uses `--volume /home/<user>:/root` to persist
+   operator state, which masks the build-time-baked
+   `~/.local/share/mise/installs/`. Relocate the cache:
+   `MISE_DATA_DIR=/opt/mise` set in the dev container image
+   (via `/etc/profile.d/dotfiles-mise.sh` and `ENV` in the
+   Dockerfile). `/opt/mise` is outside the volume-mount so the
+   cache survives. FHS-wise `/opt` is the right home for
+   add-on package trees.
+
+5. **`MISE_OFFLINE=1` re-enabled at workspace runtime** once
+   the relocation is in place. The cache is no longer masked,
+   so mise can resolve pinned versions without network access.
+   This narrows the runtime trust surface (no per-workspace
+   call to api.github.com / aqua registries).
+
+### What stays in Strategy A
+
+- One pin file. No mise.lock.
+- Manual upgrade cadence (`mise upgrade` then commit the diff).
+- Strategy B (commit mise.lock) is rejected because of lock-
+  format churn and gitignore-policy overhead.
+
+## Recommendation (historical, retained for context)
+
+**Strategy A** (pin in mise.toml directly) was the original
+recommendation. The accepted decision (above) refines it with
+the system-backend approach to preserve verification.
 
 If the operator strongly prefers `latest` semantics on the Mac
-host, Strategy B is a viable alternative — but it introduces
-mise.lock as a new file in the repo and needs a one-time
-discussion about the gitignore policy.
+host, Strategy B was offered as a viable alternative — but it
+introduces mise.lock as a new file in the repo and needs a one-
+time discussion about the gitignore policy. Not chosen.
 
 After this ADR is accepted, ADR 0005 can pick Strategy γ + run
 `mise install` at build time with deterministic versions.
-Re-enabling `MISE_OFFLINE=1` at workspace runtime is gated on the
-volume-mount model resolution (see Open Question 3).
+Re-enabling `MISE_OFFLINE=1` at workspace runtime is unblocked
+by the cache relocation in Decision detail 4.
 
 **Build-time verification preservation (codex review 2026-05-02).**
 Strategy A's "drop the hardcoded `UV_VERSION` / `JUST_VERSION` /

@@ -1,7 +1,8 @@
 # 0005. Rationalise install paths across Mac host and Coder workspace (Linux)
 
 **Date:** 2026-05-02
-**Status:** Proposed
+**Status:** Accepted (2026-05-02)
+**Blocked by:** ADR 0006 (mise pinning) — accepted in same wave
 
 ## Context
 
@@ -293,16 +294,81 @@ common.
 - **`dump/gitignore-global`** stays where it is or moves to
   `install/common/`; cross-platform regardless.
 
-## Recommendation
+## Decision (Accepted 2026-05-02)
 
-**Strategy γ** (OS-agnostic core + plugin directories) is the
-recommended direction. It keeps the Mac flow intact, gives Linux a
-clear "no-op except sheldon/symlink" path that aligns with the
-secure-by-default posture from ADR 0002, and prepares cleanly for
-Windows.
+After discussion of the strategies above plus the codex review
+(see commit `a74fb63` + `3d373b0`), the operator and assistant
+chose a refinement of Strategy γ that keeps the existing single
+`install.sh` entry point but adds **OS dispatch with per-step
+helper functions**. The full plugin-directory tree (`install/{mac,
+linux,win}.d/*.sh`) is rejected as over-engineering for a one-
+operator-three-OS scope; functions inside one file are easier to
+read and maintain.
 
-Implementation should be a separate PR `feat/install-os-plugin-layout`
-that reorganises files, ports the Mac flow into `mac.d/`, drops
-`INSTALL_SKIP_*` env vars from the Coder template (they become
-unnecessary because Linux's `linux.d/` is empty), and adds
-characterization tests using the dev container.
+### Decision details
+
+1. **OS identification** at the top of `install.sh`:
+
+   ```sh
+   case "$(uname -s)" in
+     Darwin)               DOTFILES_OS=mac ;;
+     Linux)                DOTFILES_OS=linux ;;
+     MINGW*|MSYS*|CYGWIN*) DOTFILES_OS=windows ;;
+     *) echo "[install] unsupported OS: $(uname -s)" >&2; exit 1 ;;
+   esac
+   ```
+
+   Unknown OS → fail closed. WSL2 is detected as `Linux`
+   (uname-based detection, kernel-name-based WSL nuance is out
+   of scope).
+
+2. **Per-step helper functions** (`step_*`) that dispatch on
+   `DOTFILES_OS`. The current step list:
+
+   | Step | mac | linux | windows |
+   |---|---|---|---|
+   | `step_homebrew` | `curl \| bash` (Homebrew install) | skip (apt provides equivalents) | TODO (scoop bootstrap) |
+   | `step_symlink_dotfiles` | `just deploy` | `just deploy` | `just deploy` (git-bash) |
+   | `step_sheldon` | `sheldon lock` | `sheldon lock` | `sheldon lock` |
+   | `step_brew_bundle` | `just add-brew` | skip | TODO (scoop bundle) |
+   | `step_gcloud_components` | `just add-gcloud` | skip (build-time gcloud) | TODO (Windows gcloud) |
+   | `step_pnpm_globals` | `just add-pnpm-g` | `just add-pnpm-g` | `just add-pnpm-g` |
+   | `step_update_all` | `just update-all` | skip | TODO |
+
+3. **Existing `INSTALL_SKIP_*` env vars are kept** for operator
+   override. The combined skip predicate is:
+   `OS-says-skip OR env-var-says-skip` (OR, not AND).
+
+4. **Linuxbrew (a.k.a. Homebrew on Linux) is not adopted.**
+   Homebrew on Linux is officially supported (per
+   `docs.brew.sh/Homebrew-on-Linux`) and a one-line install
+   shared with macOS exists, but Linux build-time install via
+   apt + the dev container feature already reaches the same
+   tool set with stronger verification (SHA + SLSA attestation).
+   Adopting Linuxbrew would add multi-minute build cost and
+   image bloat for a parity that we already have via a different
+   path.
+
+5. **Windows is scoop-only** (no winget). Scope is dev-CLI tools
+   that scoop already covers; GUI-app management via winget is
+   out of scope for this dotfiles repo.
+
+### Out of scope (covered by separate ADRs)
+
+- **`tofu/exe/coder.tf` Coder-server install hardening** —
+  important enough to warrant its own decision, captured in
+  ADR 0007.
+- **mise version pinning + cache relocation** — captured in
+  ADR 0006.
+- **Windows step_* implementations** — ship as TODO stubs that
+  emit a "not yet implemented" warning and exit 1; concrete
+  implementations land in a future ADR when a Windows host is
+  actually used.
+
+## Recommendation (historical, retained for context)
+
+**Strategy γ** (OS-agnostic core + plugin directories) was the
+original recommendation. The accepted decision (above) is a
+refinement: keep the single-file entry point but add OS dispatch
+inside via `step_*` functions. The plugin-directory tree was
+rejected as over-engineering at this scope.
