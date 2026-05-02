@@ -192,9 +192,11 @@ common.
    | install.sh `brew` install | `raw.githubusercontent.com/Homebrew/install/HEAD/install.sh` (Mac) | none (curl+bash) |
    | install.sh `gcloud` install | `sdk.cloud.google.com` (Mac) | none (curl+bash) |
    | install.sh `just` fallback | `just.systems/install.sh` (cross-platform) | none |
+   | tofu/exe/coder.tf Coder server install | `coder.com/install.sh` (control-plane VM) | **none — curl+bash + `\|\| true`** |
+   | tofu/exe/coder.tf Coder server fallback | `api.github.com/repos/coder/coder/releases/latest` → tarball | **none — `latest` resolves at boot, no SHA/SLSA verify** |
    | main.tf VM `tailscale` | `pkgs.tailscale.com` apt repo | apt key fetched fresh; not fingerprint-pinned |
    | main.tf VM `gcloud` | `packages.cloud.google.com` apt repo | apt key fetched fresh; not fingerprint-pinned |
-   | main.tf VM `docker` | `get.docker.com` (curl+bash) | **none — TOFU on each VM boot** |
+   | main.tf VM `docker` | `download.docker.com` apt repo | **fingerprint pinned** ✅ (PR #57) |
    | feature install.sh `gcloud` apt | `packages.cloud.google.com` | **fingerprint pinned** ✅ (ADR 0001) |
    | feature install.sh `mise` apt | `mise.jdx.dev` | **fingerprint pinned** ✅ (ADR 0001) |
    | feature install.sh `uv`/`just`/`sheldon` | GitHub releases | **SHA verified** ✅ (ADR 0001) |
@@ -204,18 +206,30 @@ common.
    postures. Implementation must converge them or document the
    asymmetry.
 
+   The `tofu/exe/coder.tf` rows above are particularly load-
+   bearing: that VM is the control plane that issues workspace
+   tokens, so a compromised Coder binary on first boot would
+   compromise every workspace it later spawns. Pinning here
+   should be prioritised even if it's out of scope for this
+   ADR's primary refactor.
+
 3. **Brewfile hygiene.** 531 lines of `tap` + `brew` + `cask`
    declarations include things the operator may no longer use. A
    `brew bundle cleanup` + commit pass is a separate cleanup PR
    but should be flagged so install.sh's runtime is bounded.
 
-4. **`just add-all` semantics.** Currently install.sh calls
-   `just add-all` which re-dumps the host's installed brew/gcloud/
-   pnpm globals back into `dump/` files. This means a pristine
-   install.sh run on a half-set-up machine **mutates the dump/
-   files** and could commit drift. Should `just add-all` move
-   behind a `just sync-dumps` recipe that the operator runs
-   intentionally rather than as part of every install?
+4. **`dump/` mutation surface.** `install.sh` calls `just add-all`
+   which **only consumes** `dump/Brewfile`, `dump/gcloud-list.txt`,
+   `dump/pnpm-g.txt` (idempotent install). The actual mutator is
+   `just dump`, which is **operator-invoked manually** and rewrites
+   `dump/Brewfile` etc. with the current host state. That separation
+   is already correct — there is no install-path-side mutation to
+   fix here. The original premise of this question (an automatic
+   re-dump during install) was incorrect; flagged by codex review
+   2026-05-02. Remaining concern: should `just dump` gain a guard
+   against accidental commits of host-specific drift (e.g., a
+   pre-commit reminder that diff-noise in `dump/` indicates a
+   manual sync was performed)? — minor follow-up only.
 
 5. **mise.toml as SoT for npm-backed tools.** vp + markdownlint-cli2
    are installed via mise's npm backend, which fails inside the

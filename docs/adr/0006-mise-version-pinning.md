@@ -136,9 +136,18 @@ Reproducibility comes from pinning the **image** rather than the
    get pinned versions and have to opt in to upgrades. Acceptable
    trade-off?
 3. **`MISE_OFFLINE` in workspace runtime.** With Strategy A or
-   B, can we re-enable `MISE_OFFLINE=1` at runtime (no network
-   needed because all versions are pinned)? That would close the
-   trust-surface drift identified by codex review 3.
+   B, version pinning is a **necessary but not sufficient** condition
+   for re-enabling `MISE_OFFLINE=1`. The current
+   `--volume /home/hironow:/root` overlay in the gcp-vm-container
+   template **masks** the build-time-baked
+   `~/.local/share/mise/installs/` cache, so mise at runtime sees
+   an empty install dir and would have to re-fetch even pinned
+   versions — which `MISE_OFFLINE=1` would then refuse. Re-enabling
+   `MISE_OFFLINE=1` therefore depends on **first** resolving the
+   volume-mount model (don't mask `/root`, or pre-warm the mounted
+   `/home/<user>` cache before docker run, or relocate the cache).
+   Flagged by codex review 2026-05-02; treat as blocked until the
+   volume model is settled in the implementation PR.
 4. **Pinning npm-backed tools** (vp, markdownlint-cli2). mise's
    npm backend currently fails in the workspace because of the
    `/home/hironow:/root` overlay mask (ADR 0005 Open Q5). Strategy
@@ -160,8 +169,24 @@ mise.lock as a new file in the repo and needs a one-time
 discussion about the gitignore policy.
 
 After this ADR is accepted, ADR 0005 can pick Strategy γ + run
-`mise install` at build time with deterministic versions, and
-re-enable `MISE_OFFLINE=1` at runtime.
+`mise install` at build time with deterministic versions.
+Re-enabling `MISE_OFFLINE=1` at workspace runtime is gated on the
+volume-mount model resolution (see Open Question 3).
+
+**Build-time verification preservation (codex review 2026-05-02).**
+Strategy A's "drop the hardcoded `UV_VERSION` / `JUST_VERSION` /
+sheldon SHA blocks in feature install.sh" is **only safe if the
+implementation PR explicitly preserves** the SHA-256 sidecar
+checks and `gh attestation verify` calls that those blocks
+currently perform. Mise's pin alone proves "version X is
+installed", not "the binary tarball was authentic". The
+implementation PR must either (a) keep the verified-fetch path
+for those three tools and have mise consume the resulting
+`/usr/local/bin` symlinks via mise's `system` backend, or (b)
+add equivalent verification at the mise-fetch layer (e.g., mise
+backend with attestation hooks). Naive consolidation that simply
+removes the blocks and runs `mise install` is a security
+regression versus ADR 0001.
 
 ## Consequences (Strategy A, recommended)
 
@@ -169,8 +194,8 @@ re-enable `MISE_OFFLINE=1` at runtime.
 
 - **One SoT** for tool versions: mise.toml.
 - **Deterministic.** Identical results at build, on Mac, in CI.
-- **Re-enables `MISE_OFFLINE=1`** at workspace runtime, narrowing
-  the trust surface.
+- **Unblocks `MISE_OFFLINE=1`** evaluation at workspace runtime
+  (still gated on volume-mount model resolution; see Open Q3).
 
 ### Negative
 
