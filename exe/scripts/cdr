@@ -55,10 +55,22 @@ refresh_secret_if_stale() {
   local file="$1" secret_name="$2"
   if [[ ! -f "${file}" ]] \
      || [[ $(( $(date +%s) - $(file_mtime "${file}") )) -gt ${CACHE_TTL_SEC} ]]; then
-    gcloud secrets versions access latest --secret="${secret_name}" \
-      > "${file}.tmp"
-    chmod 0600 "${file}.tmp"
-    mv "${file}.tmp" "${file}"
+    # Stage to a mktemp under the cache dir, fchmod immediately, then
+    # write into it. This avoids the case where bash's redirect leaves
+    # zero-byte ${file}.tmp behind on `set -e` — chmod on a non-
+    # existent path then errored with "No such file or directory".
+    local tmp
+    tmp=$(mktemp "${CACHE_DIR}/.${secret_name}.XXXXXX")
+    chmod 0600 "${tmp}"
+    if ! gcloud secrets versions access latest --secret="${secret_name}" > "${tmp}"; then
+      rm -f "${tmp}"
+      err "failed to fetch secret ${secret_name} from Secret Manager. Run \`gcloud auth login\` and retry."
+    fi
+    if [[ ! -s "${tmp}" ]]; then
+      rm -f "${tmp}"
+      err "Secret Manager returned empty payload for ${secret_name}."
+    fi
+    mv "${tmp}" "${file}"
   fi
 }
 
