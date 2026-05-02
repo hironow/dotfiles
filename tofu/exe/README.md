@@ -10,9 +10,9 @@ OpenTofu stack provisioning `exe.hironow.dev`.
 | `gcp_region` | `asia-northeast1` | Primary region |
 | `gcp_zone` | `asia-northeast1-a` | Primary zone |
 | `domain` | `exe.hironow.dev` | Cloudflare-managed apex |
-| `tailnet` | (from `tailscale_token` secret) | Tailscale tailnet identifier |
+| `tailnet` | (from `terraform.tfvars`, e.g. `hironow.github`) | Tailscale tailnet identifier |
 | `coder_version` | `v2.31.11` | Pinned Coder server release tag (see [ADR 0007](../../docs/adr/0007-coder-server-install-hardening.md)) |
-| `coder_sha256` | `32cf14...8430` | Sha256 of `coder_<ver>_linux_amd64.tar.gz` from the release's `checksums.txt` |
+| `coder_sha256` | (see `variables.tf`) | Sha256 of `coder_<ver>_linux_amd64.tar.gz` from the release's `checksums.txt` |
 
 ## Files
 
@@ -21,13 +21,13 @@ OpenTofu stack provisioning `exe.hironow.dev`.
 | [`main.tf`](./main.tf) | Backend (GCS), providers, locals |
 | [`variables.tf`](./variables.tf) | Input variables (incl. Coder pin) |
 | [`outputs.tf`](./outputs.tf) | Workspace SA email, AR repo, control-plane URL |
-| [`coder.tf`](./coder.tf) | Control-plane VM startup_script (Coder server install + cloudflared + tailscaled, with apt-key fingerprint pin per [PR #61](https://github.com/hironow/dotfiles/pull/61)) |
+| [`coder.tf`](./coder.tf) | Control-plane VM startup_script (Coder server install + cloudflared + tailscaled, with apt-key fingerprint pin) |
 | [`tailscale.tf`](./tailscale.tf) | Tagged auth keys, ACL bootstrap, 90-day rotation |
 | [`cloudflare.tf`](./cloudflare.tf) | Tunnel + Access policy + DNS records |
 | [`artifact_registry.tf`](./artifact_registry.tf) | Dev container image AR repo (`devcontainer:main` + `devcontainer:<sha>`) |
 | [`iam.tf`](./iam.tf) | Workload Identity Federation (GHA → AR) + workspace SA |
 | [`locals.tf`](./locals.tf) | Hostnames, tag names |
-| [`.terraform.lock.hcl`](./.terraform.lock.hcl) | Provider plugin lockfile (tracked per [PR #62](https://github.com/hironow/dotfiles/pull/62)) |
+| [`.terraform.lock.hcl`](./.terraform.lock.hcl) | Provider plugin lockfile (tracked) |
 
 ## State
 
@@ -36,7 +36,7 @@ Backend: GCS bucket `gs://gen-ai-hironow-tofu-state/exe/`
 [`../../exe/scripts/bootstrap.sh`](../../exe/scripts/bootstrap.sh)).
 
 State encryption: native `tofu` state encryption (1.7+) with passphrase
-from `~/.config/tofu/exe.passphrase` (700 mode, gitignored).
+from `~/.config/tofu/exe.passphrase` (0600 mode, gitignored).
 
 ## Lifecycle
 
