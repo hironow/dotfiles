@@ -254,6 +254,12 @@ project's `default` VPC and joins the tailnet as `tag:exe-workspace`.
   mise.toml. The mise data dir is `/opt/mise` (ADR 0006 relocation)
   so the build-time-baked installs survive the `/root` overlay
   mask.
+- The image bakes the dotfiles tool set + 5 AI agent CLIs
+  (`codex`, `gemini`, `claude`, `copilot`, `pi`) + Node.js 24.15.0
+  for the npm-backed shebangs — all under `/opt/mise` so they
+  survive the volume mount. Auth is operator-side and runs once
+  per workspace; see the
+  [runbook](./runbook.md#ai-agent-cli-authentication).
 - Workspace VM runs as `exe-workspace@…` (not the default compute
   SA). Holds `roles/secretmanager.secretAccessor` on the workspace
   tailnet authkey and `roles/artifactregistry.reader` on the

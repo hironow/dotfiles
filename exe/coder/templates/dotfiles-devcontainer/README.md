@@ -81,11 +81,30 @@ Parameters (interactive on first create unless `--parameter` is passed):
 | `instance_type` | `e2-small` | `e2-micro` is now viable (no envbuilder) |
 | `dotfiles_uri` | `https://github.com/hironow/dotfiles.git` | runs `coder dotfiles` on top of the prebuilt image |
 
+## What's in the workspace image
+
+The prebuilt image bakes the dev container's `dotfiles-tools`
+feature, so a fresh workspace boots with these on PATH:
+
+| Category | Tools |
+|---|---|
+| Core | `just`, `mise`, `uv`, `sheldon`, `gcloud`, `git`, `docker` (cli-only) |
+| Lint / format | `ruff`, `shellcheck`, `markdownlint-cli2`, `prek` |
+| Runtime | `node` 24.15.0, `python` 3 (via mise/devcontainer) |
+| AI agent CLIs | `codex`, `gemini`, `claude`, `copilot`, `pi` (auth on first use — see [runbook](../../../docs/runbook.md#ai-agent-cli-authentication)) |
+
+Versions are pinned in [`mise.toml`](../../../../mise.toml) per
+[ADR 0006](../../../../docs/adr/0006-mise-version-pinning.md).
+
 ## Smoke
 
 ```bash
 cdr workspaces list                # status: starting -> running (~30-60s)
 cdr ssh my-ws.dev -- just --list   # JustSandbox recipes available
+cdr ssh my-ws.dev -- '
+  for cli in codex gemini claude copilot pi; do
+    printf "%s: " "$cli"; "$cli" --version 2>&1 | head -1
+  done'
 ```
 
 ## Related docs
