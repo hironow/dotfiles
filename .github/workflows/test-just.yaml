@@ -37,8 +37,14 @@ jobs:
           # publish step to ghcr.io. Adding a non-existent cacheFrom
           # produced a 403 noise-warning at every run.
           runCmd: just test
+          # Surface GITHUB_TOKEN inside the dev container so mise's
+          # `latest` resolution and any other GitHub-API caller hit
+          # the authenticated 5000/hr quota instead of the anonymous
+          # 60/hr limit. The pytest fixture passes it on to inner
+          # one-shot containers via `docker run -e GITHUB_TOKEN`.
           env: |
             PYTEST_ADDOPTS=--junitxml=/root/dotfiles/pytest-report.xml
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload test report
         if: always()

@@ -75,6 +75,12 @@ REQUIRED_FEATURES = {
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1",
     "ghcr.io/devcontainers/features/python:1",
     "ghcr.io/devcontainers/features/node:1",
+    # Local feature: build-time installer for gcloud/mise/uv/just/sheldon.
+    # Required because lifecycle commands (onCreate/postCreate) under
+    # devcontainers/ci do NOT commit back to the saved image, so
+    # build-time installation is the only way to ensure these tools
+    # appear in the test sandbox image.
+    "./features/dotfiles-tools",
 }
 
 
@@ -185,3 +191,38 @@ def test_devcontainer_does_not_reference_justsandbox_dockerfile(
         "devcontainer.json still references JustSandbox.Dockerfile; "
         "the file is removed in stage E of the migration."
     )
+
+
+def test_dotfiles_tools_feature_files_exist() -> None:
+    """The local feature must ship both the manifest and the
+    install script. devcontainer CLI silently ignores a feature
+    whose folder is missing one or the other."""
+    feature_dir = ROOT / ".devcontainer" / "features" / "dotfiles-tools"
+    manifest = feature_dir / "devcontainer-feature.json"
+    script = feature_dir / "install.sh"
+    assert manifest.is_file(), f"missing {manifest}"
+    assert script.is_file(), f"missing {script}"
+    # The script must be exec-bit set (devcontainer CLI calls it
+    # directly, not via `bash <path>`).
+    assert script.stat().st_mode & 0o100, (
+        f"{script} must be executable; run `chmod +x` on it."
+    )
+
+
+def test_mise_trusted_paths_are_scoped(devcontainer: dict) -> None:
+    """containerEnv MISE_TRUSTED_CONFIG_PATHS must NOT be a broad
+    ancestor like '/root' — that exposes the entire HOME tree as a
+    trusted mise config root (GHSA-436v-8fw5-4mj8 / CVE-2026-35533).
+    The migration scopes it to specific paths used by tests and the
+    workspace."""
+    paths = devcontainer.get("containerEnv", {}).get("MISE_TRUSTED_CONFIG_PATHS", "")
+    assert paths, "containerEnv must declare MISE_TRUSTED_CONFIG_PATHS"
+    assert paths != "/root", (
+        "MISE_TRUSTED_CONFIG_PATHS=/root is too broad (security regression). "
+        "Scope to /root/dotfiles and /root/sandbox/dotfiles-fresh."
+    )
+    for entry in paths.split(":"):
+        assert entry.startswith("/root/"), (
+            f"unexpected mise trust path {entry!r}; "
+            f"must be under /root/. Got {paths!r}."
+        )

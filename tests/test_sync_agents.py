@@ -111,7 +111,8 @@ def _run_in_container(
     """
     # /root/dotfiles is a bind mount in devcontainer.json, not a
     # baked-in COPY layer. Re-create the mount for each one-shot
-    # container so the workspace is reachable.
+    # container so the workspace is reachable. Forward GITHUB_TOKEN
+    # for the same reason as in test_just_sandbox.py.
     docker_cmd = [
         "docker",
         "run",
@@ -120,11 +121,11 @@ def _run_in_container(
         f"{_host_workspace_path()}:/root/dotfiles",
         "-w",
         "/root/dotfiles",
-        docker_image,
-        "bash",
-        "-c",
-        cmd,
     ]
+    gh_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if gh_token:
+        docker_cmd.extend(["-e", f"GITHUB_TOKEN={gh_token}"])
+    docker_cmd.extend([docker_image, "bash", "-c", cmd])
     result = _run(docker_cmd)
 
     if check and result.returncode != 0:

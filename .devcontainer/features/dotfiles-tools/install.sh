@@ -29,20 +29,54 @@ apt-get update -y
 apt-get install -y --no-install-recommends \
   apt-transport-https ca-certificates gnupg curl shellcheck jq
 
+# Helper: import an apt-repo GPG key only after verifying its
+# fingerprint. Without this, a TOFU fetch from the same TLS
+# endpoint that distributes the package would let a compromised
+# mirror swap key + package in lock-step. Fingerprints are
+# hardcoded below per vendor.
+import_apt_key_with_fingerprint() {
+  # args: <url> <expected-fingerprint> <output-keyring-path>
+  local url="$1" expected="$2" out="$3"
+  local tmp_armored="/tmp/dotfiles-apt-key.armored"
+  local tmp_keyring="/tmp/dotfiles-apt-key.gpg"
+  rm -f "$tmp_armored" "$tmp_keyring"
+  curl -fsSL -o "$tmp_armored" "$url"
+  gpg --no-default-keyring --keyring "$tmp_keyring" --import "$tmp_armored" 2>/dev/null
+  local actual
+  actual=$(gpg --no-default-keyring --keyring "$tmp_keyring" \
+    --list-keys --with-colons | awk -F: '/^fpr:/ { print $10; exit }')
+  if [ "$actual" != "$expected" ]; then
+    echo "[dotfiles-tools] GPG fingerprint mismatch for $url" >&2
+    echo "  expected: $expected" >&2
+    echo "  actual:   $actual" >&2
+    rm -f "$tmp_armored" "$tmp_keyring"
+    exit 1
+  fi
+  install -m 0644 "$tmp_keyring" "$out"
+  rm -f "$tmp_armored" "$tmp_keyring"
+}
+
 # ---- Google Cloud SDK -----------------------------------------------
+# Fingerprint published by Google at
+# https://cloud.google.com/sdk/docs/install#deb (apt-key fingerprint).
 echo "[dotfiles-tools] installing Google Cloud SDK from apt repo"
-curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-  | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+import_apt_key_with_fingerprint \
+  https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+  54A647F9048D5688D7DA2ABE6A030B21BA07F4FB \
+  /usr/share/keyrings/cloud.google.gpg
 echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
   > /etc/apt/sources.list.d/google-cloud-sdk.list
 apt-get update -y
 apt-get install -y --no-install-recommends google-cloud-cli
 
 # ---- mise (rtx-style version manager) -------------------------------
+# Fingerprint from https://mise.jdx.dev/installing-mise.html#apt.
 echo "[dotfiles-tools] installing mise from apt repo"
 install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://mise.jdx.dev/gpg-key.pub \
-  | gpg --dearmor -o /etc/apt/keyrings/mise-archive-keyring.gpg
+import_apt_key_with_fingerprint \
+  https://mise.jdx.dev/gpg-key.pub \
+  7416A0D80087E5734F19E6E1F30FCDD11FA0E58D \
+  /etc/apt/keyrings/mise-archive-keyring.gpg
 echo "deb [signed-by=/etc/apt/keyrings/mise-archive-keyring.gpg arch=amd64,arm64] https://mise.jdx.dev/deb stable main" \
   > /etc/apt/sources.list.d/mise.list
 apt-get update -y
@@ -117,11 +151,13 @@ chmod 0755 /usr/local/bin/nvcc
 # picks it up.
 echo "[dotfiles-tools] writing /etc/profile.d/dotfiles-mise.sh"
 cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'
-# Pre-trust any mise.toml under /root so `mise install` / `mise exec`
-# inside one-shot test containers does not error with
-# "Config files in ... are not trusted."  Covers both the workspace
-# at /root/dotfiles and install.sh's DOTPATH at /root/sandbox/...
-export MISE_TRUSTED_CONFIG_PATHS=/root
+# Pre-trust ONLY the workspace mise.toml and install.sh's sandbox
+# DOTPATH. Earlier revisions used MISE_TRUSTED_CONFIG_PATHS=/root
+# but that exposed the entire home tree as a trusted config path,
+# which is a wider trust boundary than the migration needs.
+# See GHSA-436v-8fw5-4mj8 / CVE-2026-35533 — trust paths under
+# mise should be scoped tightly.
+export MISE_TRUSTED_CONFIG_PATHS=/root/dotfiles:/root/sandbox/dotfiles-fresh
 
 # Add mise's shim directory to PATH so tools managed by mise.toml
 # (prek, markdownlint-cli2, vp, ...) are reachable without a `mise
@@ -135,14 +171,17 @@ esac
 PROFILE
 chmod 0644 /etc/profile.d/dotfiles-mise.sh
 
-# ---- git safe.directory wildcard ------------------------------------
+# ---- git safe.directory (scoped) ------------------------------------
 # install.sh tests `cp -a` the bind-mounted workspace into a sandbox
 # directory and then run `git init` / `git clone` against it. On the
 # runner, the bind mount preserves UID 1001 while the container
 # runs as root (UID 0); git then rejects the repo with
 #   fatal: detected dubious ownership in repository at '...'
-# The dev container is single-user-by-design, so allow all paths.
-git config --system --add safe.directory '*'
+# Earlier revisions allowlisted '*' which disabled the protection
+# globally. List only the specific paths the dev container ever
+# operates on instead.
+git config --system --add safe.directory /root/dotfiles
+git config --system --add safe.directory /root/sandbox/dotfiles-fresh
 
 # ---- pre-install mise.toml tools ------------------------------------
 # Bake mise.toml's tool versions into the saved image so test

@@ -120,27 +120,31 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
         {script}
         """
     ).strip()
-    return _run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "-v",
-            f"{_host_workspace_path()}:/root/dotfiles",
-            "-w",
-            "/root/dotfiles",
-            # devcontainers/ci action bakes the dev container's
-            # containerEnv (including MISE_OFFLINE=1) into the saved
-            # image as ENV layer. Inner test containers want a fresh
-            # mise cache resolution, so override.
-            "-e",
-            "MISE_OFFLINE=0",
-            image,
-            "bash",
-            "-lc",
-            full_script,
-        ]
-    )
+    docker_args = [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        f"{_host_workspace_path()}:/root/dotfiles",
+        "-w",
+        "/root/dotfiles",
+        # devcontainers/ci action bakes the dev container's
+        # containerEnv (including MISE_OFFLINE=1) into the saved
+        # image as ENV layer. Inner test containers want a fresh
+        # mise cache resolution, so override.
+        "-e",
+        "MISE_OFFLINE=0",
+    ]
+    # Forward GITHUB_TOKEN so mise's `latest` resolution against
+    # api.github.com hits the authenticated 5000/hr quota. CI
+    # surfaces it via the workflow's `env:` block; locally it is
+    # only set if the operator already has GH_TOKEN/GITHUB_TOKEN
+    # exported.
+    gh_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if gh_token:
+        docker_args.extend(["-e", f"GITHUB_TOKEN={gh_token}"])
+    docker_args.extend([image, "bash", "-lc", full_script])
+    return _run(docker_args)
 
 
 def _sh_single_quote(s: str) -> str:

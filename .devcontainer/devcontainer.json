@@ -68,10 +68,10 @@
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}",
     // mise trust state lives under ~/.local/state/mise/trusted-configs
     // and does not survive across `docker run --rm` test invocations.
-    // Pre-trust any mise.toml under /root via env var so each one-shot
-    // container starts trusted (covers /root/dotfiles AND
-    // install.sh's DOTPATH at /root/sandbox/dotfiles-fresh).
-    "MISE_TRUSTED_CONFIG_PATHS": "/root"
+    // Pre-trust ONLY the specific paths the dev container needs;
+    // a broader value like "/root" exposes too much under
+    // GHSA-436v-8fw5-4mj8 / CVE-2026-35533.
+    "MISE_TRUSTED_CONFIG_PATHS": "/root/dotfiles:/root/sandbox/dotfiles-fresh"
   },
 
   "customizations": {
