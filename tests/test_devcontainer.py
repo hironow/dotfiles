@@ -303,6 +303,14 @@ REQUIRED_TOOLS = (
     ("sheldon", "--version"),
     ("shellcheck", "--version"),
     ("jq", "--version"),
+    # AI agent CLIs pinned in mise.toml (npm backend). The
+    # workspace boots with these on PATH; operators authenticate
+    # them on first use.
+    ("codex", "--version"),
+    ("gemini", "--version"),
+    ("claude", "--version"),
+    ("copilot", "--version"),
+    ("pi", "--version"),
 )
 
 

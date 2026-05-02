@@ -227,24 +227,37 @@ git config --system --add safe.directory /root/sandbox/dotfiles-fresh
 # Per ADR 0006 the data dir is /opt/mise, NOT $HOME/.local/share/mise.
 # The /home/<user>:/root volume mount on Coder workspaces would
 # otherwise mask everything we install here.
+#
+# The config is also written to /etc/mise/config.toml (mise's
+# system-wide global config) so that shims resolve to the pinned
+# versions even when no project mise.toml is in CWD (e.g., during
+# test_image_provides_tool which docker-runs the bare image with
+# no workspace mount). When the workspace IS mounted with a project
+# mise.toml at /root/dotfiles, the project config takes precedence
+# over the global one — both must agree, which the consistency test
+# enforces.
 install -d -m 0755 /opt/mise
+install -d -m 0755 /etc/mise
 export MISE_DATA_DIR=/opt/mise
-echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise)"
-mkdir -p /tmp/mise-prebuild
-cat > /tmp/mise-prebuild/mise.toml <<'EOF'
+cat > /etc/mise/config.toml <<'EOF'
 [tools]
 just = "1.40.0"
 markdownlint-cli2 = "0.22.1"
 prek = "0.3.11"
 uv = "0.11.8"
 vp = "0.1.20"
+"npm:@openai/codex" = "0.128.0"
+"npm:@google/gemini-cli" = "0.40.1"
+"npm:@anthropic-ai/claude-code" = "2.1.126"
+"npm:@github/copilot" = "1.0.40"
+"npm:@mariozechner/pi-coding-agent" = "0.72.1"
 EOF
+echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (
-  cd /tmp/mise-prebuild
-  MISE_TRUSTED_CONFIG_PATHS=/tmp/mise-prebuild mise install
+  cd /etc/mise
+  MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise install
 )
-rm -rf /tmp/mise-prebuild
-MISE_TRUSTED_CONFIG_PATHS=/tmp mise reshim || true
+MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 
 # Cleanup apt cache to keep the image lean.
 rm -rf /var/lib/apt/lists/*
