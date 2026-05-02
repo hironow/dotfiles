@@ -8,9 +8,9 @@ self-hosted clone of [exe.dev](https://exe.dev) layered on top of:
 - **Cloudflare Tunnel + Access** — identity-aware reverse proxy
 
 The Coder workspace template references this repository's
-`.devcontainer/devcontainer.json` (built from
-`tests/docker/JustSandbox.Dockerfile`), so the agent's environment
-matches CI exactly.
+`.devcontainer/devcontainer.json` (image + features form on
+debian-12) — the same SoT consumed by local IDE and CI — so the
+agent's environment matches CI exactly.
 
 ## Layout
 

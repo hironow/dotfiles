@@ -42,7 +42,7 @@ This document describes the components currently provisioned by
                       | tag:exe-workspace    |
                       | tailscaled           |
                       | envbuilder image     |
-                      | -> alpine devcontainer|
+                      | -> debian devcontainer|
                       |    + Coder agent     |
                       +----------------------+
 ```
@@ -57,8 +57,8 @@ Legend / 凡例:
 - tag:exe-coder / tag:exe-workspace: Tailscale tag (ACL で関係を限定)
 - tailnet (WireGuard): exe-coder と workspace 間の internal channel
 - MagicDNS: tailnet 内 hostname 解決 (exe-coder → 100.x.x.x)
-- envbuilder image: alpine 上の dotfiles devcontainer (Layer 1 由来)
-- debian-12 / alpine: VM ホスト OS / dev container ベース
+- envbuilder image: dotfiles devcontainer (debian-12 + features)
+- debian-12: VM ホスト OS / dev container ベース (共通)
 ```
 
 ## Boundaries and trust
@@ -190,13 +190,14 @@ project's `default` VPC and joins the tailnet as `tag:exe-workspace`.
 - `git_branch` parameter wires `ENVBUILDER_GIT_BRANCH` (default
   empty = repo HEAD).
 - Agent startup_script exports `INSTALL_SKIP_HOMEBREW=1
-  INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1` so the alpine
-  dev container reaches `just deploy`.
+  INSTALL_SKIP_ADD_UPDATE=1` so dotfiles install.sh skips brew
+  install / brew-bundle replays and reaches `just deploy`. gcloud
+  arrives via the `google-cloud-cli` devcontainer feature so
+  install.sh's `command -v gcloud` short-circuits naturally.
 - Workspace VM runs as `exe-workspace@…` (not the default compute
   SA). Only the workspace tailnet authkey is readable.
 
 ## Out of scope
 
 - (P)ublic publish path (`*.sandbox.hironow.dev` reverse proxy).
-- Dev container base migration alpine → debian.
 - ADRs for Pattern A, OpenTofu choice, tailnet routing.

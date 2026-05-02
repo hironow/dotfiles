@@ -1,42 +1,78 @@
 // Dev Container Specification — https://containers.dev
 //
-// Reuses tests/docker/JustSandbox.Dockerfile (the same image CI builds)
-// so "what runs in CI" and "what the agent / IDE sees" stay aligned.
+// Single source of truth shared by three consumers:
+//   1. local IDE   — VS Code / Cursor / JetBrains "Reopen in Container"
+//   2. CI sandbox  — `devcontainers/ci` action in test-just.yaml
+//   3. Coder workspace — envbuilder reads this file on workspace boot
 //
-// Open via:
-//   - Claude Code:  /devcontainer
-//   - VS Code:      Reopen in Container
-//   - Cursor:       Reopen in Container
-//   - JetBrains:    File > Remote Development > Dev Containers
+// Trust policy (see ADR 0001):
+//   - features: ONLY Microsoft-curated `ghcr.io/devcontainers/features/*`
+//   - everything else (gcloud, just, mise, uv) is installed by the
+//     **vendor's own upstream installer** in onCreateCommand. No
+//     community features in the dependency graph.
 {
-  "name": "dotfiles (just sandbox)",
+  "name": "dotfiles",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
 
-  "build": {
-    "dockerfile": "../tests/docker/JustSandbox.Dockerfile",
-    "context": "..",
-    "args": {
-      "BASE_IMAGE": "alpine:3.19"
-    }
-  },
-
-  // The Dockerfile sets WORKDIR /root/dotfiles. Bind-mount the host repo
-  // to the same path so the live workspace shadows the baked-in COPY.
-  "workspaceFolder": "/root/dotfiles",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/root/dotfiles,type=bind,consistency=cached",
-
-  // mise.lock baked at build time gets shadowed by the bind-mount, and the
-  // host repo intentionally does not check in mise.lock. Re-trust + re-install
-  // so MISE_OFFLINE callers (lint/test) find resolved versions. install-hooks
-  // wires prek into git for this clone.
-  "postCreateCommand": "mise trust mise.toml && touch mise.lock && mise install && just install-hooks",
-
-  // Pre-build step uses the same image CI builds, so the local first-open is
-  // fast when the user has already pulled or built dotfiles-just-sandbox.
-  "containerEnv": {
-    "MISE_OFFLINE": "1"
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": false,
+      "installOhMyZsh": false,
+      "username": "root",
+      "uid": "automatic",
+      "gid": "automatic"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "installTools": false
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    // Local feature: in-repo install script that runs at BUILD time so
+    // gcloud / mise / uv / just / sheldon end up in the saved image
+    // (devcontainers/ci does not commit lifecycle command output).
+    // Source: .devcontainer/features/dotfiles-tools/{devcontainer-feature.json,install.sh}
+    "./features/dotfiles-tools": {}
   },
 
   "remoteUser": "root",
+  "containerUser": "root",
+
+  "workspaceFolder": "/root/dotfiles",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/root/dotfiles,type=bind,consistency=cached",
+
+  // gcloud / mise / uv / just / sheldon are installed at BUILD time
+  // by the local `./features/dotfiles-tools` feature above and end
+  // up baked into the saved image. The runtime onCreate step only
+  // covers the bind-mount-dependent piece: resolving mise.toml
+  // (markdownlint-cli2, prek, vp, ...) into the cached mise store.
+  "onCreateCommand": "bash .devcontainer/post-create.sh",
+
+  // install-hooks wires prek into .git/hooks for the local-dev case.
+  // It is skipped silently in CI / Coder workspaces where the bind
+  // mount may not expose a writable .git/ that prek can introspect;
+  // those environments don't commit so hooks are not needed.
+  "postCreateCommand": "if [ -d /root/dotfiles/.git ]; then just install-hooks || echo '[post-create] install-hooks failed; non-fatal'; else echo '[post-create] no .git, skipping install-hooks'; fi",
+
+  "containerEnv": {
+    "MISE_OFFLINE": "1",
+    "PATH": "/root/.local/bin:/root/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    // Surfaces the HOST workspace path to processes inside the
+    // container. The pytest fixture reads this to bind-mount the
+    // workspace into one-shot sub-containers it spins up via
+    // docker-outside-of-docker (the outer daemon resolves -v
+    // sources against the host filesystem, not the container's).
+    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}",
+    // mise trust state lives under ~/.local/state/mise/trusted-configs
+    // and does not survive across `docker run --rm` test invocations.
+    // Pre-trust ONLY the specific paths the dev container needs;
+    // a broader value like "/root" exposes too much under
+    // GHSA-436v-8fw5-4mj8 / CVE-2026-35533.
+    "MISE_TRUSTED_CONFIG_PATHS": "/root/dotfiles:/root/sandbox/dotfiles-fresh"
+  },
 
   "customizations": {
     "vscode": {

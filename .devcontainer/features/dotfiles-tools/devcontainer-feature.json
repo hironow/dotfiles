@@ -1,0 +1,14 @@
+{
+  "id": "dotfiles-tools",
+  "version": "1.0.0",
+  "name": "dotfiles tools (gcloud, mise, uv, just, sheldon)",
+  "description": "Installs the non-Microsoft-feature tools the dotfiles repo expects, all from vendor-official artifacts (apt repos with GPG, GitHub releases with SHA verification). Local feature so the install runs at devcontainer BUILD time and ends up baked into the saved image (lifecycle commands do not).",
+  "documentationURL": "https://github.com/hironow/dotfiles/blob/main/docs/adr/0001-devcontainer-debian-features.md",
+  "options": {},
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/devcontainers/features/python",
+    "ghcr.io/devcontainers/features/node",
+    "ghcr.io/devcontainers/features/github-cli"
+  ]
+}

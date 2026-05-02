@@ -88,11 +88,13 @@ sudo mise x -- go run main.go
 
 ## Dev Container
 
-This repo ships a [Dev Container](https://containers.dev/) that reuses the
-same Docker image CI builds (`tests/docker/JustSandbox.Dockerfile`). Open it
-to get an isolated environment with `just`, `mise`, `prek`, `ruff`,
-`shellcheck`, and `markdownlint-cli2` already provisioned — useful as an AI
-agent sandbox for `just fmt|lint|check|test`.
+This repo ships a [Dev Container](https://containers.dev/) declared in
+`.devcontainer/devcontainer.json` (debian-12 + features). The same file
+drives CI (`devcontainers/ci` action) and the Coder workspace template
+(via envbuilder), so all three environments stay aligned. Open it to get
+an isolated environment with `just`, `mise`, `prek`, `ruff`, `shellcheck`,
+and `markdownlint-cli2` already provisioned — useful as an AI agent
+sandbox for `just fmt|lint|check|test`.
 
 - **Claude Code**: run `/devcontainer`
 - **VS Code / Cursor**: install the Dev Containers extension, then `Reopen in Container`
