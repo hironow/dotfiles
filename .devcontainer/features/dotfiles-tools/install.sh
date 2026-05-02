@@ -20,10 +20,17 @@ set -euo pipefail
 ARCH=$(uname -m)
 export DEBIAN_FRONTEND=noninteractive
 
+# ---- system tools (shellcheck, jq) ----------------------------------
+# `just lint` / `just check` invoke `mise x -- shellcheck` which
+# falls through to system PATH. shellcheck and jq are apt packages,
+# install them up front.
+echo "[dotfiles-tools] installing apt prerequisites"
+apt-get update -y
+apt-get install -y --no-install-recommends \
+  apt-transport-https ca-certificates gnupg curl shellcheck jq
+
 # ---- Google Cloud SDK -----------------------------------------------
 echo "[dotfiles-tools] installing Google Cloud SDK from apt repo"
-apt-get update -y
-apt-get install -y --no-install-recommends apt-transport-https ca-certificates gnupg curl
 curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
   | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
 echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
@@ -135,6 +142,28 @@ chmod 0644 /etc/profile.d/dotfiles-mise.sh
 #   fatal: detected dubious ownership in repository at '...'
 # The dev container is single-user-by-design, so allow all paths.
 git config --system --add safe.directory '*'
+
+# ---- pre-install mise.toml tools ------------------------------------
+# Bake mise.toml's tool versions into the saved image so test
+# containers don't re-download every run. Versions pinned to what
+# mise resolves "latest" to today; mise install at runtime can
+# fetch newer versions if mise.toml advances.
+echo "[dotfiles-tools] pre-installing mise.toml tools at build time"
+mkdir -p /tmp/mise-prebuild
+cat > /tmp/mise-prebuild/mise.toml <<'EOF'
+[tools]
+just = "1.50.0"
+markdownlint-cli2 = "0.22.1"
+prek = "0.3.11"
+uv = "0.11.8"
+vp = "0.1.20"
+EOF
+(
+  cd /tmp/mise-prebuild
+  MISE_TRUSTED_CONFIG_PATHS=/tmp/mise-prebuild mise install
+)
+rm -rf /tmp/mise-prebuild
+MISE_TRUSTED_CONFIG_PATHS=/tmp mise reshim || true
 
 # Cleanup apt cache to keep the image lean.
 rm -rf /var/lib/apt/lists/*
