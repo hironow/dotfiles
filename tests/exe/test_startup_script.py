@@ -59,6 +59,11 @@ HCL_SUBSTITUTIONS: dict[str, str] = {
     r"\$\{local\.sandbox_host\}": "*.sandbox.hironow.dev",
     r"\$\{local\.tag_exe_coder\}": "tag:exe-coder",
     r"\$\{var\.gcp_project_id\}": "gen-ai-hironow",
+    # Coder server install pin (ADR 0007). The dummy values must be
+    # syntactically valid since the bash extracted from the heredoc
+    # is later passed through bash -n / shellcheck.
+    r"\$\{var\.coder_version\}": "v2.31.11",
+    r"\$\{var\.coder_sha256\}": "32cf14eeecc96190dbc66b6965a3bdd563eaecc0d811a690e1e0b65828484979",
     r"\$\{google_secret_manager_secret\.exe_coder_authkey\.secret_id\}": (
         "exe-tailscale-coder-authkey"
     ),
@@ -720,4 +725,90 @@ def test_systemd_units_validate(
         f"systemd unit verification failed.\n"
         f"--- stdout (last 4KB) ---\n{r.stdout[-4096:]}\n"
         f"--- stderr (last 4KB) ---\n{r.stderr[-4096:]}"
+    )
+
+
+# ---------- ADR 0007: Coder server install hardening ---------------
+
+
+@pytest.mark.exe
+def test_coder_install_does_not_pipe_remote_script(startup_script: str) -> None:
+    """ADR 0007: the bootstrap MUST NOT install Coder via
+    `curl https://coder.com/install.sh | sh` or any other remote-
+    script-piped-into-shell pattern. Replacement is a tag-pinned
+    tarball with sha256 verify."""
+    forbidden = [
+        r"coder\.com/install\.sh",
+        r"curl[^\n]*\|\s*sh\b",
+        r"curl[^\n]*\|\s*bash\b",
+        r"\|\| true",  # the masking exit-code pattern flagged by codex
+        r"releases/latest",  # the latest-resolution fallback
+    ]
+    for pattern in forbidden:
+        assert not re.search(pattern, startup_script), (
+            f"Coder install path still contains forbidden pattern "
+            f"{pattern!r}; ADR 0007 prohibits it. Use the pinned-tag "
+            f"+ sha256-verified path instead."
+        )
+
+
+@pytest.mark.exe
+def test_coder_install_uses_pinned_tag_and_sha256(startup_script: str) -> None:
+    """The bootstrap downloads Coder from a tag-pinned GitHub
+    release URL and verifies the resulting tarball against a
+    pinned sha256. Values flow through bash variables (coder_tag,
+    coder_sha256) populated from tofu vars at template-render
+    time; the dummy substitution fills them with ADR 0007 defaults."""
+    assert re.search(
+        r"coder_tag\s*=\s*['\"]v\d+\.\d+\.\d+['\"]",
+        startup_script,
+    ), "Coder install must assign coder_tag to a SemVer-v string."
+    assert re.search(
+        r"coder_sha256\s*=\s*['\"][0-9a-f]{64}['\"]",
+        startup_script,
+    ), "Coder install must assign coder_sha256 to a 64-hex digest."
+    assert "github.com/coder/coder/releases/download" in startup_script, (
+        "Coder install URL must point at the official GitHub releases path."
+    )
+    assert "sha256sum -c" in startup_script, (
+        "Coder install must call sha256sum -c against the pinned digest."
+    )
+
+
+@pytest.mark.exe
+def test_coder_variables_have_validation() -> None:
+    """The tofu variables that drive the Coder install MUST have
+    validation blocks so a mis-typed version or non-hex sha256 is
+    caught at `tofu plan` time, not at VM bootstrap time."""
+    variables_tf = (ROOT / "tofu" / "exe" / "variables.tf").read_text()
+    # coder_version: SemVer with leading 'v'
+    assert re.search(
+        r'variable\s+"coder_version"\s*\{[^}]*?validation\s*\{[^}]*?'
+        r"regex\([^)]*?v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+",
+        variables_tf,
+        re.DOTALL,
+    ), "var.coder_version must validate against a SemVer-with-v regex."
+    # coder_sha256: 64 lowercase hex chars
+    assert re.search(
+        r'variable\s+"coder_sha256"\s*\{[^}]*?validation\s*\{[^}]*?'
+        r"regex\([^)]*?\[0-9a-f\]\{64\}",
+        variables_tf,
+        re.DOTALL,
+    ), "var.coder_sha256 must validate against a 64-hex-char regex."
+
+
+@pytest.mark.exe
+def test_coder_install_attestation_verify_is_best_effort(startup_script: str) -> None:
+    """`gh attestation verify` MUST run only if gh is installed AND
+    authenticated, mirroring the dev container feature install.sh
+    pattern. The sha256 pin is the primary integrity check; missing
+    gh or unauthenticated gh must not block the install."""
+    # Look for the conditional block that gates gh attestation verify.
+    has_conditional_attestation = re.search(
+        r"command -v gh[\s\S]*?gh attestation verify",
+        startup_script,
+    )
+    assert has_conditional_attestation is not None, (
+        "Bootstrap should attempt gh attestation verify only when gh "
+        "is installed and authenticated."
     )
