@@ -1,7 +1,8 @@
 # 0005. Rationalise install paths across Mac host and Coder workspace (Linux)
 
 **Date:** 2026-05-02
-**Status:** Proposed
+**Status:** Accepted (2026-05-02)
+**Blocked by:** ADR 0006 (mise pinning) — accepted in same wave
 
 ## Context
 
@@ -192,9 +193,11 @@ common.
    | install.sh `brew` install | `raw.githubusercontent.com/Homebrew/install/HEAD/install.sh` (Mac) | none (curl+bash) |
    | install.sh `gcloud` install | `sdk.cloud.google.com` (Mac) | none (curl+bash) |
    | install.sh `just` fallback | `just.systems/install.sh` (cross-platform) | none |
+   | tofu/exe/coder.tf Coder server install | `coder.com/install.sh` (control-plane VM) | **none — curl+bash + `\|\| true`** |
+   | tofu/exe/coder.tf Coder server fallback | `api.github.com/repos/coder/coder/releases/latest` → tarball | **none — `latest` resolves at boot, no SHA/SLSA verify** |
    | main.tf VM `tailscale` | `pkgs.tailscale.com` apt repo | apt key fetched fresh; not fingerprint-pinned |
    | main.tf VM `gcloud` | `packages.cloud.google.com` apt repo | apt key fetched fresh; not fingerprint-pinned |
-   | main.tf VM `docker` | `get.docker.com` (curl+bash) | **none — TOFU on each VM boot** |
+   | main.tf VM `docker` | `download.docker.com` apt repo | **fingerprint pinned** ✅ (PR #57) |
    | feature install.sh `gcloud` apt | `packages.cloud.google.com` | **fingerprint pinned** ✅ (ADR 0001) |
    | feature install.sh `mise` apt | `mise.jdx.dev` | **fingerprint pinned** ✅ (ADR 0001) |
    | feature install.sh `uv`/`just`/`sheldon` | GitHub releases | **SHA verified** ✅ (ADR 0001) |
@@ -204,18 +207,41 @@ common.
    postures. Implementation must converge them or document the
    asymmetry.
 
+   The `tofu/exe/coder.tf` rows above are particularly load-
+   bearing: that VM is the control plane that issues workspace
+   tokens, so a compromised Coder binary on first boot would
+   compromise every workspace it later spawns. Pinning here
+   should be prioritised even if it's out of scope for this
+   ADR's primary refactor.
+
+   Additional concern at `coder.tf:290`: the install line is
+   `curl -fsSL https://coder.com/install.sh | sh || true`. The
+   `|| true` swallows any non-zero exit. Success is then probed
+   only via `[[ ! -x /usr/local/bin/coder && ! -x /usr/bin/coder ]]`
+   to decide whether to run the fallback. A compromised CDN
+   could return a malicious script that exits 0 after writing
+   anything to `/usr/local/bin/coder`, and the fallback path
+   (`api.github.com/.../latest`) would be skipped. The pin
+   strategy for this row must address both the unverified
+   primary install AND the exit-code-suppressed failure mode.
+
 3. **Brewfile hygiene.** 531 lines of `tap` + `brew` + `cask`
    declarations include things the operator may no longer use. A
    `brew bundle cleanup` + commit pass is a separate cleanup PR
    but should be flagged so install.sh's runtime is bounded.
 
-4. **`just add-all` semantics.** Currently install.sh calls
-   `just add-all` which re-dumps the host's installed brew/gcloud/
-   pnpm globals back into `dump/` files. This means a pristine
-   install.sh run on a half-set-up machine **mutates the dump/
-   files** and could commit drift. Should `just add-all` move
-   behind a `just sync-dumps` recipe that the operator runs
-   intentionally rather than as part of every install?
+4. **`dump/` mutation surface.** `install.sh` calls `just add-all`
+   which **only consumes** `dump/Brewfile`, `dump/gcloud-list.txt`,
+   `dump/pnpm-g.txt` (idempotent install). The actual mutator is
+   `just dump`, which is **operator-invoked manually** and rewrites
+   `dump/Brewfile` etc. with the current host state. That separation
+   is already correct — there is no install-path-side mutation to
+   fix here. The original premise of this question (an automatic
+   re-dump during install) was incorrect; flagged by codex review
+   2026-05-02. Remaining concern: should `just dump` gain a guard
+   against accidental commits of host-specific drift (e.g., a
+   pre-commit reminder that diff-noise in `dump/` indicates a
+   manual sync was performed)? — minor follow-up only.
 
 5. **mise.toml as SoT for npm-backed tools.** vp + markdownlint-cli2
    are installed via mise's npm backend, which fails inside the
@@ -268,16 +294,81 @@ common.
 - **`dump/gitignore-global`** stays where it is or moves to
   `install/common/`; cross-platform regardless.
 
-## Recommendation
+## Decision (Accepted 2026-05-02)
 
-**Strategy γ** (OS-agnostic core + plugin directories) is the
-recommended direction. It keeps the Mac flow intact, gives Linux a
-clear "no-op except sheldon/symlink" path that aligns with the
-secure-by-default posture from ADR 0002, and prepares cleanly for
-Windows.
+After discussion of the strategies above plus the codex review
+(see commit `a74fb63` + `3d373b0`), the operator and assistant
+chose a refinement of Strategy γ that keeps the existing single
+`install.sh` entry point but adds **OS dispatch with per-step
+helper functions**. The full plugin-directory tree (`install/{mac,
+linux,win}.d/*.sh`) is rejected as over-engineering for a one-
+operator-three-OS scope; functions inside one file are easier to
+read and maintain.
 
-Implementation should be a separate PR `feat/install-os-plugin-layout`
-that reorganises files, ports the Mac flow into `mac.d/`, drops
-`INSTALL_SKIP_*` env vars from the Coder template (they become
-unnecessary because Linux's `linux.d/` is empty), and adds
-characterization tests using the dev container.
+### Decision details
+
+1. **OS identification** at the top of `install.sh`:
+
+   ```sh
+   case "$(uname -s)" in
+     Darwin)               DOTFILES_OS=mac ;;
+     Linux)                DOTFILES_OS=linux ;;
+     MINGW*|MSYS*|CYGWIN*) DOTFILES_OS=windows ;;
+     *) echo "[install] unsupported OS: $(uname -s)" >&2; exit 1 ;;
+   esac
+   ```
+
+   Unknown OS → fail closed. WSL2 is detected as `Linux`
+   (uname-based detection, kernel-name-based WSL nuance is out
+   of scope).
+
+2. **Per-step helper functions** (`step_*`) that dispatch on
+   `DOTFILES_OS`. The current step list:
+
+   | Step | mac | linux | windows |
+   |---|---|---|---|
+   | `step_homebrew` | `curl \| bash` (Homebrew install) | skip (apt provides equivalents) | TODO (scoop bootstrap) |
+   | `step_symlink_dotfiles` | `just deploy` | `just deploy` | `just deploy` (git-bash) |
+   | `step_sheldon` | `sheldon lock` | `sheldon lock` | `sheldon lock` |
+   | `step_brew_bundle` | `just add-brew` | skip | TODO (scoop bundle) |
+   | `step_gcloud_components` | `just add-gcloud` | skip (build-time gcloud) | TODO (Windows gcloud) |
+   | `step_pnpm_globals` | `just add-pnpm-g` | `just add-pnpm-g` | `just add-pnpm-g` |
+   | `step_update_all` | `just update-all` | skip | TODO |
+
+3. **Existing `INSTALL_SKIP_*` env vars are kept** for operator
+   override. The combined skip predicate is:
+   `OS-says-skip OR env-var-says-skip` (OR, not AND).
+
+4. **Linuxbrew (a.k.a. Homebrew on Linux) is not adopted.**
+   Homebrew on Linux is officially supported (per
+   `docs.brew.sh/Homebrew-on-Linux`) and a one-line install
+   shared with macOS exists, but Linux build-time install via
+   apt + the dev container feature already reaches the same
+   tool set with stronger verification (SHA + SLSA attestation).
+   Adopting Linuxbrew would add multi-minute build cost and
+   image bloat for a parity that we already have via a different
+   path.
+
+5. **Windows is scoop-only** (no winget). Scope is dev-CLI tools
+   that scoop already covers; GUI-app management via winget is
+   out of scope for this dotfiles repo.
+
+### Out of scope (covered by separate ADRs)
+
+- **`tofu/exe/coder.tf` Coder-server install hardening** —
+  important enough to warrant its own decision, captured in
+  ADR 0007.
+- **mise version pinning + cache relocation** — captured in
+  ADR 0006.
+- **Windows step_* implementations** — ship as TODO stubs that
+  emit a "not yet implemented" warning and exit 1; concrete
+  implementations land in a future ADR when a Windows host is
+  actually used.
+
+## Recommendation (historical, retained for context)
+
+**Strategy γ** (OS-agnostic core + plugin directories) was the
+original recommendation. The accepted decision (above) is a
+refinement: keep the single-file entry point but add OS dispatch
+inside via `step_*` functions. The plugin-directory tree was
+rejected as over-engineering at this scope.

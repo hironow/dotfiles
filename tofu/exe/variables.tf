@@ -93,3 +93,28 @@ variable "boot_disk_size_gb" {
     error_message = "Disk must be between 20 and 200 GiB."
   }
 }
+
+# Coder server install — pinned per ADR 0007 (control-plane VM
+# supply-chain hardening). Operator bumps the tag and the matching
+# linux_amd64.tar.gz sha256 in lock-step. Sha256 is taken from the
+# release's checksums.txt asset:
+#   curl -fsSL https://github.com/coder/coder/releases/download/${ver}/coder_${ver#v}_checksums.txt
+variable "coder_version" {
+  description = "Coder server release tag (e.g. v2.31.11). Bump alongside coder_sha256."
+  type        = string
+  default     = "v2.31.11"
+  validation {
+    condition     = can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+$", var.coder_version))
+    error_message = "coder_version must be a SemVer tag with leading 'v', e.g. v2.31.11."
+  }
+}
+
+variable "coder_sha256" {
+  description = "Sha256 of coder_<version>_linux_amd64.tar.gz; from the release's checksums.txt."
+  type        = string
+  default     = "32cf14eeecc96190dbc66b6965a3bdd563eaecc0d811a690e1e0b65828484979"
+  validation {
+    condition     = can(regex("^[0-9a-f]{64}$", var.coder_sha256))
+    error_message = "coder_sha256 must be a lowercase 64-character hex sha256 digest."
+  }
+}
