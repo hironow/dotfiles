@@ -119,6 +119,16 @@ This makes VS Code emit the same `CF-Access-Client-Id=...` /
 `CF-Access-Client-Secret=...` headers `cdr` does, so the extension
 can reach `https://exe.hironow.dev` through Cloudflare Access.
 
+## Inspect the Coder DB via Cloud SQL Studio (read-only)
+
+For ad-hoc SQL against Coder's tables without SSHing into the VM,
+open Cloud SQL Studio in the GCP Console and authenticate with your
+own IAM identity (`hironow365@gmail.com`). The operator's IAM DB
+user is **read-only** — `SELECT` works, anything else returns
+`permission denied` (write traffic stays with `coder.service`). See
+[`runbook.md` › Inspect Coder data via Cloud SQL Studio](./runbook.md#inspect-coder-data-via-cloud-sql-studio)
+for the URL, query examples, and revocation procedure.
+
 ## Data persists across VM rebuilds
 
 Per [ADR 0010](../../docs/adr/0010-cloud-sql-postgres-for-coder.md)

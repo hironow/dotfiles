@@ -190,6 +190,48 @@ gcloud secrets versions list exe-tailscale-coder-authkey
 gcloud secrets versions destroy <N> --secret=exe-tailscale-coder-authkey
 ```
 
+## Inspect Coder data via Cloud SQL Studio
+
+For read-only debugging of Coder's internal tables (workspaces,
+templates, users, audit log, ...) without SSHing into the VM. Auth
+is the operator's personal IAM identity — actions land in audit log
+under `var.owner_email`, not the service account.
+
+1. Open <https://console.cloud.google.com/sql/instances/exe-coder-pg/studio?project=gen-ai-hironow>.
+2. Click **Open Cloud SQL Studio** → **Authenticate** → choose
+   **IAM authentication** with your account (`hironow365@gmail.com`).
+3. Database: `coder`. Run SQL — only SELECT works. Examples:
+
+   ```sql
+   SELECT id, name, owner_id, created_at, deleted
+     FROM workspaces ORDER BY created_at DESC LIMIT 20;
+
+   SELECT name, version, latest_template_version_id
+     FROM templates WHERE deleted = false;
+
+   SELECT email, username, created_at, last_seen_at
+     FROM users ORDER BY last_seen_at DESC NULLS LAST LIMIT 50;
+   ```
+
+If you try `INSERT` / `UPDATE` / `DELETE` / `CREATE` you get
+`permission denied` — that is by design (per ADR 0010 follow-up).
+Write operations belong to `coder.service` only.
+
+To revoke this access (e.g. on suspected compromise):
+
+```bash
+# 1. drop the project-level grant
+gcloud projects remove-iam-policy-binding gen-ai-hironow \
+  --member="user:hironow365@gmail.com" \
+  --role="roles/cloudsql.instanceUser"
+# 2. drop the DB user
+gcloud sql users delete hironow365@gmail.com \
+  --instance=exe-coder-pg --project=gen-ai-hironow
+```
+
+(`tofu apply` will recreate them next run; comment out the resources
+in `cloudsql.tf` first if you want the revocation to stick.)
+
 ## Cloud SQL backup and restore
 
 Per [ADR 0010](../../docs/adr/0010-cloud-sql-postgres-for-coder.md)
