@@ -78,6 +78,7 @@ HCL_SUBSTITUTIONS: dict[str, str] = {
         "gen-ai-hironow:asia-northeast1:exe-coder-pg"
     ),
     r"\$\{local\.cloud_sql_iam_db_user\}": "exe-coder@gen-ai-hironow.iam",
+    r"\$\{local\.cloud_sql_operator_db_user\}": "hironow365@gmail.com",
     r"\$\{local\.cloud_sql_private_ip\}": "10.130.224.3",
     r"\$\{google_secret_manager_secret\.postgres_admin\.secret_id\}": (
         "exe-postgres-admin-password"
@@ -1138,6 +1139,132 @@ def test_cloud_sql_resources_present() -> None:
 
 
 @pytest.mark.exe
+def test_operator_iam_db_user_provisioned_for_studio_access() -> None:
+    """ADR 0010 follow-up: an additional IAM DB user mapped to the
+    operator's personal email is provisioned so the operator can
+    inspect Coder's tables via Cloud SQL Studio (Console UI) without
+    impersonating the exe-coder@ service account.
+
+    Posture: the user is intended for *read-only debugging* — the
+    bootstrap GRANT step gives CONNECT + USAGE on schema public +
+    SELECT on existing and future tables, but NOT CREATE/INSERT/UPDATE.
+    Write traffic stays exclusive to coder.service via the SA user.
+    """
+    cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text()
+
+    # The operator user is a CLOUD_IAM_USER (individual email), not a
+    # CLOUD_IAM_SERVICE_ACCOUNT. Cloud SQL distinguishes the two by
+    # the `type` field; getting it wrong creates a user that cannot
+    # actually authenticate.
+    user_block = re.search(
+        r'resource\s+"google_sql_user"\s+"operator_iam"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert user_block is not None, (
+        "Missing google_sql_user.operator_iam — ADR 0010 follow-up\n"
+        "requires an IAM DB user mapped to the operator's personal\n"
+        "email so Cloud SQL Studio (Console UI) can authenticate as\n"
+        "the human, not the service account."
+    )
+    body = user_block.group(1)
+    assert re.search(r'type\s*=\s*"CLOUD_IAM_USER"', body), (
+        'operator_iam user MUST have type = "CLOUD_IAM_USER" (individual\n'
+        "email). CLOUD_IAM_SERVICE_ACCOUNT is the wrong type for a human."
+    )
+    assert "var.owner_email" in body, (
+        "operator_iam user name MUST come from var.owner_email so a\n"
+        "single source of truth drives both the CF Access allowlist and\n"
+        "the Cloud SQL DB user."
+    )
+    assert "time_sleep.cloud_sql_iam_role_settle" in body, (
+        "operator_iam MUST depend_on the same time_sleep as coder_iam —\n"
+        "both share the asynchronous cloudsql-iam-* role bootstrap race."
+    )
+
+    # Project-level IAM: operator needs roles/cloudsql.instanceUser to
+    # exchange ADC for a DB access token. (cloudsql.client is required
+    # only for proxy/cert path; Cloud SQL Studio handles that internally
+    # so we deliberately do NOT grant it here.)
+    instance_user_grant = re.search(
+        r'resource\s+"google_project_iam_member"\s+"operator_cloudsql_instance_user"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert instance_user_grant is not None, (
+        "Missing google_project_iam_member.operator_cloudsql_instance_user.\n"
+        "Without roles/cloudsql.instanceUser on the operator account,\n"
+        "Cloud SQL Studio's IAM-auth login fails closed."
+    )
+    grant_body = instance_user_grant.group(1)
+    assert "cloudsql.instanceUser" in grant_body
+    assert "user:" in grant_body, (
+        "operator IAM grant MUST use a `user:` member prefix (individual\n"
+        "principal), not `serviceAccount:`."
+    )
+    assert "var.owner_email" in grant_body, (
+        "operator IAM grant member MUST be derived from var.owner_email."
+    )
+
+
+@pytest.mark.exe
+def test_operator_iam_user_grants_are_read_only(startup_script: str) -> None:
+    """The operator's IAM DB user is provisioned for read-only audit.
+    The bootstrap GRANT step in coder.tf must give CONNECT + USAGE +
+    SELECT, but MUST NOT grant CREATE / INSERT / UPDATE / DELETE
+    privileges. Write traffic stays exclusive to coder.service via
+    the SA user (google_sql_user.coder_iam)."""
+    # The startup script picks the operator email from a shell var
+    # rendered from var.owner_email at apply time; spot-check a SELECT
+    # GRANT exists for it without the dangerous verbs.
+    assert "PG_OPERATOR_DB_USER=" in startup_script, (
+        "startup_script MUST export PG_OPERATOR_DB_USER (operator email)\n"
+        "before the GRANT block, mirroring PG_IAM_DB_USER for the SA."
+    )
+    # The GRANT line for the operator must be SELECT-shaped, not ALL.
+    assert re.search(
+        r'GRANT\s+CONNECT\s+ON\s+DATABASE\s+coder\s+TO\s+"\$PG_OPERATOR_DB_USER"',
+        startup_script,
+    ), "Missing CONNECT GRANT for the operator IAM DB user."
+    assert re.search(
+        r'GRANT\s+USAGE\s+ON\s+SCHEMA\s+public\s+TO\s+"\$PG_OPERATOR_DB_USER"',
+        startup_script,
+    ), "Missing USAGE GRANT on schema public for the operator IAM DB user."
+    assert re.search(
+        r"GRANT\s+SELECT\s+ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public\s+"
+        r'TO\s+"\$PG_OPERATOR_DB_USER"',
+        startup_script,
+    ), "Missing SELECT GRANT on all tables for the operator IAM DB user."
+    # Default privileges so SELECT also covers tables Coder creates
+    # AFTER the bootstrap (every Coder upgrade adds new tables).
+    assert re.search(
+        r"ALTER\s+DEFAULT\s+PRIVILEGES\s+IN\s+SCHEMA\s+public\s+"
+        r'GRANT\s+SELECT\s+ON\s+TABLES\s+TO\s+"\$PG_OPERATOR_DB_USER"',
+        startup_script,
+    ), (
+        "Missing ALTER DEFAULT PRIVILEGES ... GRANT SELECT for operator —\n"
+        "without it, tables Coder creates after the bootstrap are\n"
+        "invisible to the operator's read-only user."
+    )
+    # Negative pin: forbid CREATE / INSERT / UPDATE / DELETE / ALL on
+    # the operator user. Match only inside operator-targeted GRANT
+    # statements.
+    operator_grants = re.findall(
+        r"GRANT\s+(\w+(?:\s*,\s*\w+)*)\s+ON\s+[^;]*?"
+        r'TO\s+"\$PG_OPERATOR_DB_USER"',
+        startup_script,
+    )
+    assert operator_grants, "Found no operator-targeted GRANT statements"
+    for verbs in operator_grants:
+        for forbidden in ("CREATE", "INSERT", "UPDATE", "DELETE", "ALL"):
+            assert forbidden not in verbs.upper(), (
+                f"Operator IAM DB user MUST NOT receive {forbidden} —\n"
+                "this user is for read-only audit; write traffic stays\n"
+                "with coder.service via the SA user."
+            )
+
+
+@pytest.mark.exe
 def test_cloud_sql_proxy_install_pinned(startup_script: str) -> None:
     """CSAP install mirrors the ADR 0007 hardening pattern: pinned
     version + sha256 + sha256sum -c verification before install. The
@@ -1413,12 +1540,16 @@ def test_cloud_sql_security_posture_no_regression() -> None:
     )
 
     # Permitted google_sql_user resources:
-    #   - coder_iam (CLOUD_IAM_SERVICE_ACCOUNT) — runtime
+    #   - coder_iam (CLOUD_IAM_SERVICE_ACCOUNT) — runtime, full schema
+    #     access
+    #   - operator_iam (CLOUD_IAM_USER, var.owner_email) — read-only
+    #     audit via Cloud SQL Studio. SELECT only; no CREATE/INSERT/
+    #     UPDATE/DELETE per the bootstrap GRANTs in coder.tf
     #   - postgres (BUILT_IN, password) — bootstrap-only, grants the
-    #     IAM user CREATE on public schema once at VM start
-    # Anything beyond these two is a regression (no application
+    #     two IAM users their respective privileges once at VM start
+    # Anything beyond these three is a regression (no application
     # password account, no shared "coder" password user).
-    permitted_users = {"coder_iam", "postgres"}
+    permitted_users = {"coder_iam", "operator_iam", "postgres"}
     other_users = set(
         re.findall(
             r'resource\s+"google_sql_user"\s+"([^"]+)"',
@@ -1427,9 +1558,24 @@ def test_cloud_sql_security_posture_no_regression() -> None:
     )
     extra = other_users - permitted_users
     assert not extra, (
-        f"Only the IAM SA user (coder_iam) and the bootstrap-only\n"
-        f"postgres superuser are permitted. Found additional users:\n"
+        f"Only the IAM SA user (coder_iam), the read-only operator IAM\n"
+        f"user (operator_iam), and the bootstrap-only postgres superuser\n"
+        f"are permitted. Found additional users:\n"
         f"  {sorted(extra)!r}"
+    )
+
+    # operator_iam must be CLOUD_IAM_USER (not BUILT_IN, not SA).
+    op_block = re.search(
+        r'resource\s+"google_sql_user"\s+"operator_iam"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert op_block is not None
+    assert 'type = "BUILT_IN"' not in op_block.group(1), (
+        "operator_iam must NOT be BUILT_IN (no password user for the operator)."
+    )
+    assert 'type = "CLOUD_IAM_SERVICE_ACCOUNT"' not in op_block.group(1), (
+        "operator_iam must be CLOUD_IAM_USER (individual email), not a SA."
     )
 
     # --- Connection URL must NOT carry a real password --------------

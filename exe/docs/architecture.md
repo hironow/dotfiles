@@ -246,7 +246,9 @@ authenticates to Cloud SQL using the VM's `exe-coder@` SA with
 |---|---|
 | `google_sql_database_instance.coder` | `exe-coder-pg` instance, Postgres 16, ZONAL, private IP only, deletion_protection=true, `cloudsql.iam_authentication=on` flag |
 | `google_sql_database.coder` | Schema Coder writes to |
-| `google_sql_user.coder_iam` | IAM service-account user mapped to `exe-coder@`. NO password — auth is via OAuth tokens fetched by CSAP at connection time. |
+| `google_sql_user.coder_iam` | IAM service-account user mapped to `exe-coder@`. NO password — auth is via OAuth tokens fetched by CSAP at connection time. Schema-level GRANTs: CONNECT + USAGE/CREATE on schema public + ALL on tables/sequences (full read/write). |
+| `google_sql_user.operator_iam` | IAM individual-user mapped to `var.owner_email`. **Read-only audit user** for Cloud SQL Studio (Console UI). Schema-level GRANTs: CONNECT + USAGE on schema public + SELECT on tables/sequences only. No CREATE / INSERT / UPDATE / DELETE — write traffic stays exclusive to `coder.service` via `coder_iam`. |
+| `google_project_iam_member.operator_cloudsql_instance_user` | Grants `roles/cloudsql.instanceUser` to the operator's `user:` principal. Deliberately no `cloudsql.client` — Studio handles the transport internally and the smaller grant surface is fine. |
 | `google_compute_global_address.exe_psa_range` + `google_service_networking_connection.exe_psa` | /20 reserved + VPC peering for private IP — no public Cloud SQL IP, no firewall rule |
 | `roles/cloudsql.client` + `roles/cloudsql.instanceUser` on the VM SA | The two grants required for CSAP `--auto-iam-authn`: `client` for the TLS cert to dial the instance, `instanceUser` for the OAuth token exchange at the DB layer. |
 | `cloud-sql-proxy.service` (systemd, on the VM) | Listens on 127.0.0.1:5432, exec'd from `/usr/local/bin/cloud-sql-proxy --auto-iam-authn ...` (pinned `var.cloud_sql_proxy_version` + `var.cloud_sql_proxy_sha256`) |

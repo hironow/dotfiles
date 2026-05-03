@@ -178,6 +178,7 @@ locals {
     CSAP_URL='${local.cloud_sql_proxy_url}'
     PG_CONNECTION_NAME='${local.cloud_sql_connection_name}'
     PG_IAM_DB_USER='${local.cloud_sql_iam_db_user}'
+    PG_OPERATOR_DB_USER='${local.cloud_sql_operator_db_user}'
     PG_PRIVATE_IP='${local.cloud_sql_private_ip}'
     PG_ADMIN_SECRET='${google_secret_manager_secret.postgres_admin.secret_id}'
 
@@ -482,6 +483,16 @@ locals {
     GRANT USAGE, CREATE ON SCHEMA public TO "$PG_IAM_DB_USER";
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "$PG_IAM_DB_USER";
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "$PG_IAM_DB_USER";
+    -- Operator IAM DB user — read-only audit via Cloud SQL Studio.
+    -- Intentionally narrower than the SA user above: no CREATE on
+    -- schema, no ALL on tables/sequences. Write traffic stays
+    -- exclusive to coder.service via $PG_IAM_DB_USER.
+    GRANT CONNECT ON DATABASE coder TO "$PG_OPERATOR_DB_USER";
+    GRANT USAGE ON SCHEMA public TO "$PG_OPERATOR_DB_USER";
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO "$PG_OPERATOR_DB_USER";
+    GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO "$PG_OPERATOR_DB_USER";
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "$PG_OPERATOR_DB_USER";
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO "$PG_OPERATOR_DB_USER";
     SQL
     unset PG_ADMIN_PASSWORD
 
@@ -649,6 +660,7 @@ resource "google_compute_instance" "exe_coder" {
     google_project_iam_member.exe_coder_cloudsql_client,
     google_project_iam_member.exe_coder_cloudsql_instance_user,
     google_sql_user.coder_iam,
+    google_sql_user.operator_iam,
     google_sql_database.coder,
     # The privilege-bootstrap path needs the postgres BUILT_IN user
     # password + Secret Manager grant in place before the VM boots
