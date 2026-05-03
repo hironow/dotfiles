@@ -74,9 +74,18 @@ resource "google_monitoring_uptime_check_config" "exe_coder_healthz" {
     }
   }
 
-  # Single region (ASIA_PACIFIC) keeps cost and probe noise minimal
-  # while still covering the operator's primary access region.
-  selected_regions = ["ASIA_PACIFIC"]
+  # Cloud Monitoring uptime checks require **at least three**
+  # selected_regions (or none = all six). Three is the minimum the
+  # API accepts — picking a single region returns:
+  #   Error 400: selected_regions must include at least three locations
+  # Three regions also matches Cloud Monitoring's default "uptime"
+  # availability semantics (a check is "down" only when all probes
+  # fail, smoothing transient single-region edge issues).
+  selected_regions = [
+    "ASIA_PACIFIC", # primary — operator is in JP
+    "USA",
+    "EUROPE",
+  ]
 }
 
 # ----- alert policy: page on 2 consecutive uptime failures -----------

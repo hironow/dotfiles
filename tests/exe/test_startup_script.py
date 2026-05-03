@@ -1593,6 +1593,17 @@ def test_uptime_check_and_alert_present() -> None:
     assert "coder_cli_client_secret_for_uptime" in body
 
     # Notification channel: email to the operator (var.owner_email).
+    # selected_regions must contain at least three (GCP API floor).
+    # Apply fails with `Error 400: selected_regions must include at
+    # least three locations` if you try one or two regions.
+    sr_match = re.search(r"selected_regions\s*=\s*\[([^\]]*)\]", body, re.DOTALL)
+    assert sr_match is not None, "selected_regions must be declared"
+    region_count = len(re.findall(r'"[A-Z_]+"', sr_match.group(1)))
+    assert region_count >= 3, (
+        f"Cloud Monitoring uptime checks require >= 3 selected_regions; "
+        f"got {region_count}. The API rejects 1 or 2 with HTTP 400."
+    )
+
     chan_block = re.search(
         r'resource\s+"google_monitoring_notification_channel"\s+'
         r'"operator_email"\s*\{(.*?)^\}',
