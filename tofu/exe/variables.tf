@@ -118,3 +118,53 @@ variable "coder_sha256" {
     error_message = "coder_sha256 must be a lowercase 64-character hex sha256 digest."
   }
 }
+
+# Cloud SQL Postgres for Coder data plane (ADR 0010). Sizing is the
+# smallest tier with daily automated backup; sufficient for a
+# single-operator stack which is far below Coder's <1000-user
+# validated architecture floor.
+variable "cloud_sql_tier" {
+  description = "Cloud SQL machine tier."
+  type        = string
+  default     = "db-f1-micro"
+}
+
+variable "cloud_sql_postgres_version" {
+  description = "Cloud SQL Postgres major version."
+  type        = string
+  default     = "POSTGRES_16"
+}
+
+variable "cloud_sql_disk_size_gb" {
+  description = "Cloud SQL initial SSD disk size (auto-resize is enabled)."
+  type        = number
+  default     = 10
+  validation {
+    condition     = var.cloud_sql_disk_size_gb >= 10
+    error_message = "Cloud SQL disk must be >= 10 GiB."
+  }
+}
+
+# Cloud SQL Auth Proxy install — pinned per ADR 0007-style hardening
+# (control-plane VM supply-chain). Operator bumps version + sha256 in
+# lock-step. Source: https://github.com/GoogleCloudPlatform/cloud-sql-proxy
+# Sha256 is published on the GitHub release page as a table entry.
+variable "cloud_sql_proxy_version" {
+  description = "Cloud SQL Auth Proxy release tag (v2.x.y)."
+  type        = string
+  default     = "v2.21.3"
+  validation {
+    condition     = can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+$", var.cloud_sql_proxy_version))
+    error_message = "cloud_sql_proxy_version must be a SemVer tag with leading 'v', e.g. v2.21.3."
+  }
+}
+
+variable "cloud_sql_proxy_sha256" {
+  description = "Sha256 of cloud-sql-proxy.linux.amd64 (taken from the release page table)."
+  type        = string
+  default     = "46bef6dad3db3d10f07d69a1d76891d1a6aa942cc77b6f50369d9b8160a129e1"
+  validation {
+    condition     = can(regex("^[0-9a-f]{64}$", var.cloud_sql_proxy_sha256))
+    error_message = "cloud_sql_proxy_sha256 must be a lowercase 64-character hex sha256 digest."
+  }
+}

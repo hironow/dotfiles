@@ -1,0 +1,203 @@
+# 0010. Cloud SQL Postgres for Coder data plane
+
+**Date:** 2026-05-03
+**Status:** Proposed
+
+## Context
+
+Up to ADR 0009 the Coder server (provisioned per ADR 0007) ran with
+`CODER_PG_CONNECTION_URL` empty, which triggers Coder's bundled
+PostgreSQL. The bundled DB stores its data on the VM boot disk
+(`/var/lib/coder/`) which is provisioned with `auto_delete = true`
+in `tofu/exe/coder.tf`.
+
+Operationally that means **every VM replacement wipes the entire
+Coder data plane**: workspaces, templates, users, session tokens,
+API tokens, audit logs, and the auto-generated first-boot admin
+password. VM replacement happens whenever:
+
+- the VM startup-script changes (e.g. ADR 0007 hardening, ADR 0009
+  cron revert, the 2026-05-03 GNU-tar hotfix)
+- a SPOT-preempted instance fails to auto-restart
+- the operator runs `just exe-replace google_compute_instance.exe_coder`
+- a GCE maintenance event terminates a non-preemptible VM
+
+Across 24h on 2026-05-03 the VM was rebuilt three times for
+unrelated reasons (cron landed, cron retracted, tar bug fixed).
+Each rebuild silently re-zeroed the operator's templates, the
+admin user, and any in-flight workspaces. This is a recurring
+loss-of-state class incident, not a one-off.
+
+Coder's official guidance (`coder.com/docs/admin/infrastructure/`)
+is explicit:
+
+> "we recommend running an external PostgreSQL 13+ database for
+> production deployments"
+
+with `Cloud SQL for PostgreSQL` listed as the recommended GCP
+target. The bundled approach is acknowledged as "perfectly fine
+to run a production deployment this way" but the validated
+architectures (the smallest tier of which is <1000 users with
+2 vCPU / 8 GB RAM / 512 GB) all assume external Postgres.
+
+## Decision
+
+**Provision a Cloud SQL for PostgreSQL instance and point Coder at
+it via `CODER_PG_CONNECTION_URL`.**
+
+Concrete shape:
+
+### 1. Cloud SQL instance — `db-f1-micro`
+
+- Engine: **PostgreSQL 16** (current Coder-supported stable major
+  at v2.31.x).
+- Tier: **`db-f1-micro`** (shared-core, 0.6 GB RAM). Single-
+  operator stack falls well below Coder's <1000 users tier. This
+  is overkill for one user but is the smallest tier with daily
+  automated backup support.
+- Region: `asia-northeast1` (matches the VM and state bucket).
+- Availability: `ZONAL` (single zone — no HA on this tier and no
+  business case for HA on a personal stack).
+- Storage: 10 GB SSD with auto-resize enabled (10 GB → 20 GB →
+  ... up to a configured cap).
+- **Daily automated backup enabled.** Coder docs specifically
+  call out daily backups as a production requirement.
+- **`deletion_protection = true`** (mandatory). Without this, a
+  `tofu destroy` of the VM stack could take the database with it.
+  Operator has to flip the flag explicitly to delete.
+- Public IP: **disabled.** Private IP only via VPC peering to the
+  Service Networking range. The stack already has a custom VPC
+  (`exe-vpc`) with no inbound firewall; private IP keeps the DB
+  off the public internet entirely.
+
+### 2. Connection — Cloud SQL Auth Proxy v2 with IAM database auth
+
+The Coder VM runs `cloud-sql-proxy` v2 as a systemd service
+listening on `127.0.0.1:5432`, started with `--auto-iam-authn`.
+Coder server connects to the loopback socket; CSAP authenticates
+to Cloud SQL using the VM's service account ADC (`exe-coder@`)
+and **substitutes a short-lived OAuth access token for whatever
+password Coder sends**. There is no static password anywhere in
+the path.
+
+This is Google Cloud's published 2026 best practice for a GCE →
+Cloud SQL connection: IAM database authentication via CSAP is
+"strongly recommended over manual authentication and password-
+based authentication" (per
+docs.cloud.google.com/sql/docs/postgres/connect-overview).
+
+**Why CSAP + IAM database auth (not password / direct private IP):**
+
+- **No password to manage anywhere.** Token is short-lived (1
+  hour), refreshed transparently by CSAP. No Secret Manager
+  write, no rotation procedure, no operator burden.
+- **Identity is the GCE SA.** Auditing Cloud SQL connections
+  shows `exe-coder@` as the principal — there is no shared
+  service account masquerade.
+- **Two RBAC layers.** `roles/cloudsql.client` controls who can
+  open the proxy tunnel; `roles/cloudsql.instanceUser` controls
+  who can authenticate at the DB. Revoking either one stops the
+  Coder server's access fail-closed; we get defense in depth at
+  the cost of one extra IAM grant.
+- **Connector-style proxy survives Cloud SQL IP changes.** CSAP
+  resolves the instance connection name to current IP at every
+  reconnect.
+
+CSAP is pinned by version + sha256 in the same hardening pattern
+as the Coder server install (ADR 0007). Binary is fetched from
+the official Google Cloud Storage CDN at startup and verified
+against the pinned digest before installation.
+
+### 3. Credentials — IAM service-account user, no password anywhere
+
+The only Postgres user is an IAM service-account user provisioned
+by tofu:
+
+```hcl
+resource "google_sql_user" "coder_iam" {
+  name = trimsuffix(google_service_account.exe_coder.email,
+                    ".gserviceaccount.com")  # exe-coder@gen-ai-hironow.iam
+  instance = google_sql_database_instance.coder.name
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
+}
+```
+
+The Cloud SQL instance has the `cloudsql.iam_authentication`
+flag turned on so this user type can actually be used.
+
+Coder's connection URL (assembled in the VM startup-script and
+written to `/etc/default/coder` mode 0640 root:coder):
+
+```
+postgres://exe-coder%40gen-ai-hironow.iam:placeholder@127.0.0.1:5432/coder?sslmode=disable
+```
+
+The username is the SA email URL-encoded (`@` → `%40`); the
+"password" is a literal string `placeholder` that CSAP overwrites
+with the OAuth token before forwarding to Cloud SQL. `sslmode=disable`
+is correct because the encrypted leg is between CSAP and Cloud SQL,
+not between Coder and CSAP.
+
+There are NO password resources of any kind in the IaC:
+
+- No `random_password.coder_pg_password`
+- No `google_secret_manager_secret` for the password
+- No `google_secret_manager_secret_iam_member` for it either
+- Tests pin all three negatively so a regression cannot slip in
+  silently.
+
+### 4. No data migration
+
+The previous embedded-postgres data has already been wiped three
+times today across unrelated VM replacements, so there is nothing
+to migrate. The next `just exe-apply` after this ADR lands creates
+the Cloud SQL instance and points the VM at it from boot zero —
+the operator re-creates their templates / login / workspaces
+against the new (and now durable) data plane.
+
+## Consequences
+
+### Positive
+
+- **VM replacement no longer destroys data.** Templates, users,
+  workspaces, audit logs survive across `tofu apply` startup-
+  script changes, SPOT preempt, GCE maintenance, etc.
+- **Daily automated backup** for free via Cloud SQL. Restorable
+  to any point in the last 7 days (default retention) without
+  custom tooling.
+- **Coder-recommended posture.** Future Coder-side scaling
+  features that assume external PG are immediately available.
+- **Smaller blast radius** for VM-side bugs. The boot-disk wipe
+  no longer takes the data with it; only the binaries / cache
+  reset (which is desired on bootstrap-script edits).
+
+### Negative
+
+- **Cost:** ~$8/month for `db-f1-micro` + ~$1 for 10 GB SSD =
+  roughly **$9/month** added to the stack. Not free; offset by
+  not paying re-creation cost in operator time.
+- **More moving parts.** Two systemd services on the VM
+  (`cloud-sql-proxy.service` + `coder.service`) and explicit
+  ordering (`coder.service` waits for cloud-sql-proxy.service).
+- **Cold start latency.** A fresh `tofu apply` that recreates
+  both the Cloud SQL instance AND the VM takes a few extra
+  minutes (Cloud SQL creation is ~5 min). Not on the hot path
+  for normal VM replacements (DB stays up).
+- **Deletion is now a two-step.** `tofu destroy` of the exe stack
+  requires flipping `deletion_protection = false` on the Cloud
+  SQL instance first. This is a feature, not a bug.
+
+### Neutral
+
+- **VPC peering for Service Networking** is required for private
+  IP. The peering is owned implicitly by enabling the
+  `servicenetworking.googleapis.com` API and creating the
+  reserved IP range; no per-environment configuration once set up.
+- **Postgres major version (16) is fixed at instance-create
+  time.** Bumping to 17/18 later requires the standard
+  Cloud SQL upgrade workflow (in-place or new-instance + dump/
+  restore). Not free, but not blocked either.
+- **CSAP v2 is a separate supply-chain dependency** (Google-
+  signed, sha256-pinned). Adds one more vendor binary to the
+  bootstrap, in line with Coder + cloudflared + tailscale +
+  gcloud already on the VM.

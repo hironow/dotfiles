@@ -173,6 +173,11 @@ locals {
     CODER_ACCESS_URL='https://${local.coder_host}'
     CODER_WILDCARD='${local.sandbox_host}'
     TS_TAG='${local.tag_exe_coder}'
+    CSAP_VERSION='${var.cloud_sql_proxy_version}'
+    CSAP_SHA256='${var.cloud_sql_proxy_sha256}'
+    CSAP_URL='${local.cloud_sql_proxy_url}'
+    PG_CONNECTION_NAME='${local.cloud_sql_connection_name}'
+    PG_IAM_DB_USER='${local.cloud_sql_iam_db_user}'
 
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
@@ -368,6 +373,53 @@ locals {
       rm -rf "$${coder_extract_dir}" /tmp/$${coder_tarball}
     fi
 
+    # ---- Cloud SQL Auth Proxy v2 (ADR 0010) ----------------------------
+    # The Coder server reaches the managed Postgres via CSAP listening
+    # on 127.0.0.1:5432. CSAP authenticates to Cloud SQL using the VM
+    # SA's roles/cloudsql.client. Pinned by version + sha256 mirror of
+    # the ADR 0007 hardening pattern.
+    if [[ ! -x /usr/local/bin/cloud-sql-proxy ]]; then
+      curl -fsSL --proto '=https' --tlsv1.2 \
+        -o /tmp/cloud-sql-proxy "$CSAP_URL"
+      echo "$CSAP_SHA256  /tmp/cloud-sql-proxy" | sha256sum -c -
+      install -m 0755 /tmp/cloud-sql-proxy /usr/local/bin/cloud-sql-proxy
+      rm -f /tmp/cloud-sql-proxy
+    fi
+
+    cat > /etc/systemd/system/cloud-sql-proxy.service <<UNIT
+    [Unit]
+    Description=Cloud SQL Auth Proxy (Coder data plane, ADR 0010)
+    After=network-online.target
+    Wants=network-online.target
+    Before=coder.service
+
+    [Service]
+    Type=simple
+    User=coder
+    Group=coder
+    Environment=HOME=/var/lib/coder
+    # --auto-iam-authn=true: CSAP fetches a short-lived OAuth access
+    # token from the VM metadata server and injects it as the
+    # Postgres password at every connection. The "password" Coder
+    # sends in its connection URL is ignored (and is set to a
+    # placeholder; see /etc/default/coder).
+    ExecStart=/usr/local/bin/cloud-sql-proxy \
+      --address 127.0.0.1 --port 5432 \
+      --auto-iam-authn \
+      $PG_CONNECTION_NAME
+    Restart=on-failure
+    RestartSec=5
+    NoNewPrivileges=true
+    ProtectSystem=full
+    ProtectHome=true
+    PrivateTmp=true
+
+    [Install]
+    WantedBy=multi-user.target
+    UNIT
+    systemctl daemon-reload
+    systemctl enable --now cloud-sql-proxy.service
+
     # Initial admin password — generated on first boot, persisted on the
     # boot disk (which auto-deletes on tofu destroy). Change it via the
     # Coder UI after first login.
@@ -375,6 +427,26 @@ locals {
       head -c 24 /dev/urandom | base64 | tr -d '+/=' > /var/lib/coder/.admin_password
       chmod 0600 /var/lib/coder/.admin_password
     fi
+
+    # /etc/default/coder — holds CODER_PG_CONNECTION_URL. The "password"
+    # is a literal placeholder string: with --auto-iam-authn the proxy
+    # ignores whatever Coder sends and substitutes a fresh OAuth access
+    # token from the VM metadata server. The username is the IAM SA
+    # user provisioned in cloudsql.tf, URL-encoded so the '@' in the
+    # email does not collide with the URL grammar.
+    #
+    # File mode is 0640 root:coder for consistency with the rest of the
+    # systemd ecosystem (logs, state) — the URL itself contains no
+    # secret material here. The Coder UI still reads the URL via
+    # `coder.service`'s EnvironmentFile=.
+    PG_IAM_DB_USER_ENC="$(printf '%s' "$PG_IAM_DB_USER" | sed 's/@/%40/g')"
+    install -m 0640 -o root -g coder /dev/null /etc/default/coder
+    cat > /etc/default/coder <<DEFAULTS
+    CODER_PG_CONNECTION_URL=postgres://$PG_IAM_DB_USER_ENC:placeholder@127.0.0.1:5432/coder?sslmode=disable
+    DEFAULTS
+    chmod 0640 /etc/default/coder
+    chown root:coder /etc/default/coder
+
     chown -R coder:coder /var/lib/coder
 
     # Resolve the Coder binary location at runtime — install.sh drops
@@ -385,13 +457,20 @@ locals {
     cat > /etc/systemd/system/coder.service <<UNIT
     [Unit]
     Description=Coder OSS server (exe.hironow.dev)
-    After=network-online.target
+    After=network-online.target cloud-sql-proxy.service
     Wants=network-online.target
+    Requires=cloud-sql-proxy.service
 
     [Service]
     Type=simple
     User=coder
     Group=coder
+    # /etc/default/coder holds CODER_PG_CONNECTION_URL with the live
+    # Postgres password (mode 0640, root:coder). Sourced FIRST so any
+    # Environment= line below can override individual values for
+    # debugging. The leading dash makes the file optional so
+    # systemd-analyze verify on a clean container does not warn.
+    EnvironmentFile=-/etc/default/coder
     Environment=HOME=/var/lib/coder
     Environment=CODER_ACCESS_URL=$CODER_ACCESS_URL
     # Listen on all interfaces, not loopback only. cloudflared still
@@ -406,7 +485,9 @@ locals {
     Environment=CODER_HTTP_ADDRESS=0.0.0.0:7080
     Environment=CODER_TLS_ENABLE=false
     Environment=CODER_WILDCARD_ACCESS_URL=$CODER_WILDCARD
-    Environment=CODER_PG_CONNECTION_URL=
+    # CODER_PG_CONNECTION_URL is set via EnvironmentFile=/etc/default/coder
+    # (ADR 0010). Keeping no Environment= line here so EnvironmentFile is
+    # the unambiguous source of the value.
     Environment=CODER_CACHE_DIRECTORY=/var/lib/coder/cache
     Environment=CODER_TELEMETRY_ENABLE=false
     Environment=CODER_DISABLE_PASSWORD_AUTH=false
@@ -505,5 +586,12 @@ resource "google_compute_instance" "exe_coder" {
     google_secret_manager_secret_iam_member.exe_coder_authkey_reader,
     google_secret_manager_secret_iam_member.tunnel_credentials_reader,
     google_compute_firewall.deny_all_ingress,
+    # ADR 0010: VM startup_script connects to Cloud SQL via CSAP using
+    # IAM database authentication. Force ordering so the IAM DB user +
+    # SA roles + DB are all ready before the VM tries to bootstrap.
+    google_project_iam_member.exe_coder_cloudsql_client,
+    google_project_iam_member.exe_coder_cloudsql_instance_user,
+    google_sql_user.coder_iam,
+    google_sql_database.coder,
   ]
 }

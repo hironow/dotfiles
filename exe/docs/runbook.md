@@ -192,6 +192,92 @@ gcloud secrets versions list exe-tailscale-coder-authkey
 gcloud secrets versions destroy <N> --secret=exe-tailscale-coder-authkey
 ```
 
+## Cloud SQL backup and restore
+
+Per [ADR 0010](../../docs/adr/0010-cloud-sql-postgres-for-coder.md)
+the Coder data plane runs on a managed `db-f1-micro` instance with
+**daily automated backup + 7-day point-in-time recovery**. No
+manual action is required for backup; restore is gcloud-driven.
+
+### Inspect backups
+
+```bash
+gcloud sql backups list --instance=exe-coder-pg --project=gen-ai-hironow
+```
+
+### Restore from a backup (in-place)
+
+This OVERWRITES the running instance with the snapshot. Schedule a
+maintenance window first; expect the Coder UI to be unavailable
+for ~2 minutes while the restore completes.
+
+```bash
+# Pick a backup ID from the list above.
+gcloud sql backups restore <BACKUP_ID> \
+  --restore-instance=exe-coder-pg \
+  --project=gen-ai-hironow
+```
+
+### Restore to a NEW instance (point-in-time)
+
+Safer when investigating data loss — keeps the live instance
+intact, you can compare or switch over manually.
+
+```bash
+gcloud sql instances clone exe-coder-pg exe-coder-pg-recovery \
+  --point-in-time='2026-05-03T07:00:00.000Z' \
+  --project=gen-ai-hironow
+```
+
+To switch over: stop `coder.service` on the VM, point
+`/etc/default/coder` at the new connection string (or update
+`local.cloud_sql_connection_name` and `tofu apply`), then bring
+`coder.service` back up.
+
+## Cloud SQL Postgres credentials — no rotation needed
+
+Per ADR 0010 the Coder server uses **IAM database authentication**
+via the Cloud SQL Auth Proxy. The Postgres user is the VM's
+`exe-coder@` service account; CSAP requests a fresh OAuth access
+token from the VM metadata server at every connection. There is
+**no password to rotate** — the access token is short-lived (1
+hour) and refreshed by CSAP automatically.
+
+What this means in practice:
+
+- The IAM SA user resource (`google_sql_user.coder_iam`) is
+  effectively immutable from a credentials standpoint. Tofu
+  recreates it only when its name (the SA email) changes.
+- If you need to revoke Coder's access, drop one of the two SA
+  grants (`roles/cloudsql.client` or `roles/cloudsql.instanceUser`)
+  via tofu and re-apply. The next CSAP token request fails
+  closed.
+- If the VM SA is replaced (rare — typically for compromise
+  recovery), `tofu apply` recreates both the SA and the
+  `coder_iam` DB user; Coder reconnects on the new VM under the
+  new identity.
+
+For DEFENSE-IN-DEPTH rotation of the SA's underlying signing
+keys, there is no operator action — Google rotates the metadata
+server's signing material on its own schedule.
+
+## Cloud SQL deletion (and why it is two-step)
+
+`tofu destroy` does NOT delete the Cloud SQL instance: tofu
+respects `deletion_protection = true`. To actually delete:
+
+```bash
+# 1. Disable protection in the IaC.
+gsed -i 's/deletion_protection = true/deletion_protection = false/' tofu/exe/cloudsql.tf
+just exe-apply         # propagates the flag to the live instance
+
+# 2. Then run the destroy you actually want.
+just exe-teardown stack   # or just exe-down for VM-only
+```
+
+Re-enable `deletion_protection = true` immediately after if the
+DB is meant to stay around. This two-step is intentional.
+
 ## Cloudflare tunnel credentials rotation
 
 The tunnel secret is a `random_id`. Rotate via the `just exe-replace`
