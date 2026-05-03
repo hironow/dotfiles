@@ -22,12 +22,16 @@ This document describes the components currently provisioned by
                       +----------------------+
                       | exe-coder VM         |
                       | exe-vpc 10.10.0.0/24 |
-                      | debian-12, e2-small  |
+                      | ubuntu-24.04 LTS     |
+                      | e2-small, SPOT       |
                       | tag:exe-coder        |
-                      | cloudflared          |
-                      | tailscaled           |
-                      | cloud-sql-proxy      |
-                      | Coder server         |
+                      | systemd units:       |
+                      |   coder.service      |
+                      |   cloudflared-       |
+                      |     exe.service      |
+                      |   cloud-sql-proxy.   |
+                      |     service          |
+                      |   tailscaled         |
                       | CODER_HTTP_ADDRESS=  |
                       |   0.0.0.0:7080       |
                       +----+----+------------+
@@ -73,7 +77,8 @@ Legend / 凡例:
 - tailnet (WireGuard): exe-coder と workspace 間の internal channel
 - MagicDNS: tailnet 内 hostname 解決 (exe-coder → 100.x.x.x)
 - prebuilt dev container image: GitHub Actions が main merge 時に build + push (Artifact Registry)、workspace VM は docker pull のみ。envbuilder は ADR 0002 で廃止
-- debian-12: VM ホスト OS / dev container ベース (共通)
+- ubuntu-24.04 LTS: 制御プレーン VM (`exe-coder`) のホスト OS
+- debian-12: workspace VM のホスト OS、および dev container イメージのベース
 ```
 
 ## Boundaries and trust
@@ -86,7 +91,7 @@ Legend / 凡例:
 | Owner laptop → exe-coder | Owner identity | Tailscale `tag:owner` → `*:*` |
 | AI agent → exe-coder | Restricted role | Tailscale `tag:agent` → `tag:exe-coder:22,80,443,3000-3999` |
 | Workspace → exe-coder | Per-workspace role | Tailscale `tag:exe-workspace` → `tag:exe-coder:7080` (agent download + protocol) |
-| exe-coder → GCP APIs | VM identity | SA `exe-coder@…` (Secret Manager accessor on tailnet/tunnel secrets, compute.instanceAdmin, iam.serviceAccountUser, logging/monitoring) |
+| exe-coder → GCP APIs | VM identity | SA `exe-coder@…` (Secret Manager accessor on tailnet/tunnel/Postgres-admin secrets, `cloudsql.client` + `cloudsql.instanceUser` for CSAP `--auto-iam-authn`, `compute.instanceAdmin.v1`, `iam.serviceAccountUser`, `logging.logWriter`, `monitoring.metricWriter`) |
 | Workspace → GCP APIs | VM identity | SA `exe-workspace@…` (only the workspace authkey; logging/monitoring) |
 | Public internet → workspace VM | NONE | `deny_all_ingress` firewall + no public ports listening |
 | Workspace **container** → tailnet RPC | NONE (intentional) | `tailscaled` Unix socket is **not** mounted into the container; `tailscale` CLI is **not** installed in the dev container image |
@@ -188,12 +193,15 @@ loopback).
 
 ## Coder server
 
-Started by the VM startup-script as a background process (cos lacks
-systemd). The Coder binary is fetched at the pinned
-`var.coder_version` and verified against `var.coder_sha256`
-(ADR 0007 supply-chain hardening — replaces the curl-piped install
-script and the GitHub-API `latest` fallback). Configuration is
-purely env-var driven:
+Runs as a systemd unit (`/etc/systemd/system/coder.service`) on the
+ubuntu-24.04 control-plane VM. Three systemd units form the boot
+order: `tailscaled` (apt-installed) → `cloudflared-exe.service` and
+`cloud-sql-proxy.service` (both written by the startup-script) →
+`coder.service` (Requires both, EnvironmentFile-loaded). The Coder
+binary is fetched at the pinned `var.coder_version` and verified
+against `var.coder_sha256` (ADR 0007 supply-chain hardening —
+replaces the curl-piped install script and the GitHub-API `latest`
+fallback). Configuration is purely env-var driven:
 
 | Variable | Value | Purpose |
 |---|---|---|

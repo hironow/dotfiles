@@ -51,7 +51,9 @@ After the first apply succeeds:
 1. Visit `https://exe.hironow.dev/` — should redirect to Cloudflare
    Access OIDC.
 2. Log in as `owner_email` — the Coder UI loads (allow ~2 minutes on
-   first boot for the binary download + embedded postgres init).
+   first boot for the Coder binary download, sha256 verification,
+   and Cloud SQL Auth Proxy connection bootstrap; see architecture.md
+   §"Data plane — Cloud SQL Postgres" for the IAM-auth chain).
 3. Retrieve the auto-generated admin password from the VM:
 
    ```bash
@@ -115,10 +117,6 @@ Pre-merge testing of dev container changes:
    ```
 
 3. Once verified, push another version with `:main` to revert.
-
-The previous `git_branch` parameter (envbuilder-only) is gone:
-the prebuilt-image template doesn't clone at workspace boot;
-operator branch testing happens via the image tag instead.
 
 ## AI agent CLI authentication
 
@@ -580,8 +578,12 @@ once the VM is back).
 
 ## Cost monitoring
 
-GCS state bucket and Secret Manager are essentially free. The VM is
-the only meaningful cost line. To check this month's GCE spend:
+GCS state bucket, Secret Manager, and Cloud Monitoring uptime checks
+are essentially free. The two meaningful cost lines are the GCE VM
+(`exe-coder`, ~$5–7/mo on `e2-small` SPOT) and Cloud SQL
+(`exe-coder-pg`, ~$8–10/mo on `db-f1-micro` ZONAL with daily backup).
+See `architecture.md` §"Cost" for the full table. To check this
+month's spend:
 
 ```bash
 gcloud billing budgets list 2>/dev/null   # if budgets are configured

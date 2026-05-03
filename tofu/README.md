@@ -13,9 +13,10 @@ isolated stack with its own backend / state file.
 - Remote state in GCS bucket per stack; state encryption enabled.
 - `terraform.tfvars` is gitignored. Real values live in GCP Secret
   Manager and are wired in via `data "google_secret_manager_secret_version"`.
-- `.terraform.lock.hcl` IS tracked (HashiCorp recommends this; per
-  [PR #62](https://github.com/hironow/dotfiles/pull/62)). The
-  runtime cache dir `.terraform/` and state files stay ignored.
+- `.terraform.lock.hcl` IS tracked (HashiCorp recommends this so
+  every operator + CI run resolves the same provider plugin
+  versions). The runtime cache dir `.terraform/` and state files
+  stay ignored.
 - Run `tofu fmt -recursive` before commit.
 
 ## Related docs

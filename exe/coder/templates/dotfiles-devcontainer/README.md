@@ -1,15 +1,18 @@
-# Coder template — dotfiles devcontainer (prebuilt image)
+# Coder template — dotfiles-devcontainer (interactive prebuilt-image workspace)
 
-This template spawns a Coder workspace whose container image is the
-**dotfiles dev container** declared by `.devcontainer/devcontainer.json`
-(debian-12 + devcontainer features), prebuilt by CI and pulled from
-Artifact Registry. Same SoT as the local IDE and the CI sandbox, so
-all three environments stay aligned. Realises `docs/intent.md`:
+This template spawns a long-lived, interactive Coder workspace whose
+container image is the **dotfiles dev container** declared by
+`.devcontainer/devcontainer.json` (debian-12 + devcontainer features),
+prebuilt by GitHub Actions on each main merge and pulled from
+Artifact Registry. The same image is used by:
 
-> Coder workspace whose container image **is** the dotfiles Dev
-> Container.
+- the operator's local IDE (VS Code / Cursor / JetBrains via Dev
+  Containers extension), and
+- the CI sandbox in `.github/workflows/`,
 
-ADR: `docs/adr/0002-coder-prebuilt-image.md`
+so all three environments stay byte-identical.
+
+ADR: [`../../../../docs/adr/0002-coder-prebuilt-image.md`](../../../../docs/adr/0002-coder-prebuilt-image.md)
 
 ## How it works
 
@@ -96,16 +99,47 @@ feature, so a fresh workspace boots with these on PATH:
 Versions are pinned in [`mise.toml`](../../../../mise.toml) per
 [ADR 0006](../../../../docs/adr/0006-mise-version-pinning.md).
 
+## Lifecycle
+
+Unlike the sibling `dotfiles-job` template (which is one-shot), this
+template is meant for **long-lived interactive use**. There is no
+TTL set in the `.tf` source. To set one, the operator runs:
+
+```bash
+cdr templates edit exe-dotfiles-devcontainer --default-ttl 8h
+```
+
+Workspaces auto-stop after the TTL elapses; the boot disk is retained
+(`auto_delete = false` in `main.tf`) so a subsequent `cdr start` boots
+back into the same `/home/<user>` state.
+
+To delete a workspace explicitly:
+
+```bash
+cdr stop my-ws --yes
+cdr delete my-ws --yes
+```
+
 ## Smoke
 
 ```bash
 cdr workspaces list                # status: starting -> running (~30-60s)
-cdr ssh my-ws.dev -- just --list   # JustSandbox recipes available
+cdr ssh my-ws.dev -- just --list   # workspace recipes available
 cdr ssh my-ws.dev -- '
   for cli in codex gemini claude copilot pi; do
     printf "%s: " "$cli"; "$cli" --version 2>&1 | head -1
   done'
 ```
+
+## Differences from the sibling job template
+
+| Aspect | `dotfiles-devcontainer` (this) | `dotfiles-job` |
+|---|---|---|
+| Use case | Long-lived interactive IDE / SSH | One-shot headless command |
+| Interactive params | `instance_type`, `dotfiles_uri` | none |
+| Lifecycle | `default-ttl` via `cdr templates edit` | wrapper-trap (`cdr-job` `coder delete -y` on EXIT/INT/TERM) |
+| Hostname suffix | `-ws` | `-job` |
+| `coder dotfiles` install | yes (operator's repo on top of the prebuilt image) | no |
 
 ## Related docs
 
