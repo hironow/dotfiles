@@ -351,9 +351,21 @@ locals {
           echo "[coder-bootstrap] gh attestation verify failed (sha256 still in force)" >&2
       fi
 
-      tar -xz -C /usr/local/bin -f /tmp/$${coder_tarball} coder
-      chmod 0755 /usr/local/bin/coder
-      rm -f /tmp/$${coder_tarball}
+      # Extract via temp dir + install. The Coder release tarball stores
+      # all members with a leading "./" prefix (./coder, ./LICENSE, ...).
+      # GNU tar (Ubuntu 24.04 host) treats `tar -x ... coder` as an exact
+      # member-name match and fails with "Not found in archive" because
+      # the actual member is `./coder`. BSD tar normalizes the leading
+      # `./` so this only surfaces on the live VM, not on dev macs.
+      # Extracting to a temp dir + `install` is robust against future
+      # tarball layout changes (sub-directory, prefix tweaks) without
+      # tracking the specific member name.
+      coder_extract_dir="/tmp/coder-extract"
+      rm -rf "$${coder_extract_dir}"
+      mkdir -p "$${coder_extract_dir}"
+      tar -xz -C "$${coder_extract_dir}" -f /tmp/$${coder_tarball}
+      install -m 0755 "$${coder_extract_dir}/coder" /usr/local/bin/coder
+      rm -rf "$${coder_extract_dir}" /tmp/$${coder_tarball}
     fi
 
     # Initial admin password — generated on first boot, persisted on the

@@ -777,14 +777,23 @@ def test_coder_install_uses_pinned_tag_and_sha256(startup_script: str) -> None:
 
 @pytest.mark.exe
 def test_coder_variables_have_validation() -> None:
-    """The tofu variables that drive the Coder install MUST have
+    r"""The tofu variables that drive the Coder install MUST have
     validation blocks so a mis-typed version or non-hex sha256 is
-    caught at `tofu plan` time, not at VM bootstrap time."""
+    caught at `tofu plan` time, not at VM bootstrap time.
+
+    Note on the dot-escape level: HCL string `"\\."` is two literal
+    backslashes plus a dot in the source file (the regex receives
+    `\.`). Python's read_text() returns those two backslashes
+    verbatim, so the assertion regex must match `\\` (two backslashes)
+    + `.` — written as `\\\\\.` in a Python raw-string regex
+    (`\\\\` matches two literal backslashes, `\.` matches the dot).
+    The earlier `\\\.` form was off-by-one and false-negatived this
+    check on every run."""
     variables_tf = (ROOT / "tofu" / "exe" / "variables.tf").read_text()
     # coder_version: SemVer with leading 'v'
     assert re.search(
         r'variable\s+"coder_version"\s*\{[^}]*?validation\s*\{[^}]*?'
-        r"regex\([^)]*?v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+",
+        r"regex\([^)]*?v\[0-9\]\+\\\\\.\[0-9\]\+\\\\\.\[0-9\]\+",
         variables_tf,
         re.DOTALL,
     ), "var.coder_version must validate against a SemVer-with-v regex."
@@ -811,6 +820,66 @@ def test_coder_install_attestation_verify_is_best_effort(startup_script: str) ->
     assert has_conditional_attestation is not None, (
         "Bootstrap should attempt gh attestation verify only when gh "
         "is installed and authenticated."
+    )
+
+
+@pytest.mark.exe
+def test_coder_tarball_extract_does_not_use_bare_member_name(
+    startup_script: str,
+) -> None:
+    """Production bug 2026-05-03: the Coder release tarball stores all
+    members with a leading "./" prefix (./coder, ./LICENSE, ...). GNU
+    tar (Ubuntu 24.04 host) treats `tar -x ... coder` as an exact
+    member-name match and fails with "tar: coder: Not found in
+    archive". BSD tar (macOS dev) normalizes the leading `./` so the
+    bug only surfaces on the live VM, not on dev macs.
+
+    The result was a fatal startup_script abort on every fresh boot:
+    coder.service was never written, the Coder server never started,
+    and `https://exe.hironow.dev/` returned CF tunnel errors.
+
+    Fix: extract everything to a temp dir + `install` the binary into
+    /usr/local/bin. Robust against future tarball layout changes
+    (sub-directory, prefix tweaks) without tracking the specific
+    member name. This test pins that fix.
+    """
+    # Locate the Coder install block (between "# ---- Coder OSS server"
+    # and the systemctl that enables coder.service).
+    install_block_match = re.search(
+        r"# ---- Coder OSS server.*?systemctl enable --now coder\.service",
+        startup_script,
+        re.DOTALL,
+    )
+    assert install_block_match is not None, (
+        "could not locate the Coder OSS server install block"
+    )
+    install_block = install_block_match.group(0)
+
+    # Pin the fix: tar must NOT pass a bare 'coder' as a member-name
+    # argument anywhere within the install block.
+    bad_pattern = re.search(
+        r"tar\s+-xz?[a-z]*\s+[^\n]*?\s+coder(?:\s|$)",
+        install_block,
+    )
+    assert bad_pattern is None, (
+        "Coder install block uses `tar ... coder` — GNU tar treats this\n"
+        "as an exact member-name match and fails on the upstream tarball\n"
+        "(member is `./coder`, not `coder`). Use the temp-dir + `install`\n"
+        "pattern instead. See the 2026-05-03 production incident."
+    )
+
+    # Pin the recovery shape (positive): extract to a temp dir, then
+    # install into /usr/local/bin/coder.
+    assert "install -m 0755" in install_block, (
+        "install block should use `install -m 0755 .../coder /usr/local/bin/coder`\n"
+        "to copy the extracted binary atomically with mode."
+    )
+    assert re.search(
+        r"tar\s+-xz?[a-z]*\s+-C\s+[^\n]+\s+-f\s+[^\n]+(?<!\scoder)$",
+        install_block,
+        re.MULTILINE,
+    ), (
+        "install block should extract the whole tarball to a temp dir, not target a single member."
     )
 
 
