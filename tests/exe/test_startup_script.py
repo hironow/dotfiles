@@ -67,6 +67,9 @@ HCL_SUBSTITUTIONS: dict[str, str] = {
     r"\$\{google_secret_manager_secret\.exe_coder_authkey\.secret_id\}": (
         "exe-tailscale-coder-authkey"
     ),
+    r"\$\{google_secret_manager_secret\.exe_coder_admin_token\.secret_id\}": (
+        "exe-coder-admin-token"
+    ),
     r"\$\{google_secret_manager_secret\.tunnel_credentials\.secret_id\}": (
         "exe-cloudflared-credentials"
     ),
@@ -685,7 +688,8 @@ def test_systemd_units_validate(
     startup_script: str, docker_image: str, tmp_path: Path
 ) -> None:
     """After running the script, every unit file under
-    /etc/systemd/system/{cloudflared-exe.service,coder.service} must
+    /etc/systemd/system/{cloudflared-exe.service,coder.service,
+    coder-cron-heartbeat.service,coder-cron-heartbeat.timer} must
     pass `systemd-analyze verify`. Catches missing User=, bad
     ExecStart= path, malformed Environment=, etc."""
     harness = tmp_path / "run.sh"
@@ -696,16 +700,23 @@ def test_systemd_units_validate(
         + "\n\n"
         + "echo '--- generated units ---' >&2\n"
         + "for u in /etc/systemd/system/cloudflared-exe.service "
-        + "/etc/systemd/system/coder.service; do\n"
+        + "/etc/systemd/system/coder.service "
+        + "/etc/systemd/system/coder-cron-heartbeat.service "
+        + "/etc/systemd/system/coder-cron-heartbeat.timer; do\n"
         + '  if [[ -f "$u" ]]; then\n'
         + '    echo "=== $u ===" >&2\n'
         + '    cat "$u" >&2\n'
         + '    systemd-analyze verify "$u" 2>&1 || true\n'
         + "  fi\n"
         + "done\n"
-        + "# Hard-fail if either file is missing.\n"
+        + "# Hard-fail if any unit file is missing.\n"
         + "test -f /etc/systemd/system/cloudflared-exe.service\n"
         + "test -f /etc/systemd/system/coder.service\n"
+        + "test -f /etc/systemd/system/coder-cron-heartbeat.service\n"
+        + "test -f /etc/systemd/system/coder-cron-heartbeat.timer\n"
+        + "# coder-cron-run helper + defaults file must also exist.\n"
+        + "test -x /usr/local/bin/coder-cron-run\n"
+        + "test -f /etc/default/coder-cron\n"
     )
 
     r = _run(
@@ -866,4 +877,154 @@ def test_coder_tf_no_unverified_apt_key_curls(startup_script: str) -> None:
         assert not re.search(pattern, startup_script), (
             f"coder.tf startup_script still uses the unverified-curl "
             f"pattern matching {pattern!r}."
+        )
+
+
+# ---------- ADR 0008 step 3: systemd timer scaffolding ------------
+
+
+@pytest.mark.exe
+def test_admin_token_secret_resource_present() -> None:
+    """ADR 0008 step 3 requires a Secret Manager *shell* for the Coder
+    admin token. The value is operator-provided post-apply (chicken-
+    and-egg: the token can't be created until the Coder server is up),
+    so tofu declares only the resource + IAM grant."""
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+    secret = re.search(
+        r'resource\s+"google_secret_manager_secret"\s+"exe_coder_admin_token"\s*\{(.*?)^\}',
+        coder_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert secret is not None, (
+        "tofu/exe/coder.tf must declare\n"
+        '  resource "google_secret_manager_secret" "exe_coder_admin_token"'
+    )
+    assert "coder-admin-token" in secret.group(1), (
+        "secret_id should embed 'coder-admin-token' so it is\n"
+        "recognisable in the GCP console alongside the other exe-* secrets"
+    )
+
+    iam = re.search(
+        r'resource\s+"google_secret_manager_secret_iam_member"\s+'
+        r'"exe_coder_admin_token_reader"\s*\{(.*?)^\}',
+        coder_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert iam is not None, (
+        "missing IAM grant — Coder VM SA cannot read the admin token"
+    )
+    body = iam.group(1)
+    assert "secretmanager.secretAccessor" in body
+    assert "exe_coder.email" in body, (
+        "the reader must be the exe_coder VM SA, not exe_workspace"
+    )
+
+
+@pytest.mark.exe
+def test_admin_token_secret_has_no_version_resource() -> None:
+    """The admin token value is operator-managed post-apply, so tofu
+    MUST NOT declare a google_secret_manager_secret_version for
+    exe_coder_admin_token. If a version resource were added, tofu
+    would either need a placeholder value (defeating the operator-
+    managed model) or fail at plan time on a missing variable."""
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+    assert not re.search(
+        r'resource\s+"google_secret_manager_secret_version"\s+"exe_coder_admin_token"',
+        coder_tf,
+    ), (
+        "exe_coder_admin_token must remain operator-managed (no _version "
+        "resource). Operator runs `coder tokens create | gcloud secrets "
+        "versions add` after first apply."
+    )
+
+
+@pytest.mark.exe
+def test_coder_cron_run_helper_emitted(startup_script: str) -> None:
+    """The startup_script must drop /usr/local/bin/coder-cron-run, the
+    helper any future systemd .service unit calls to talk to the local
+    Coder API. Verify the bash heredoc that materialises it is present
+    and uses CODER_URL=http://127.0.0.1:7080 (loopback only — no CF
+    Access edge round-trip)."""
+    assert "/usr/local/bin/coder-cron-run" in startup_script, (
+        "coder.tf must write coder-cron-run helper to /usr/local/bin/"
+    )
+    assert "<<'HELPER'" in startup_script, (
+        "the helper heredoc must be QUOTED so inner $#, $@, $CODER_CRON_*\n"
+        "are written literally (not expanded by the outer bash)"
+    )
+    assert "http://127.0.0.1:7080" in startup_script, (
+        "coder-cron-run must hit the local Coder server (loopback) rather\n"
+        "than the public CF Access edge — the VM has no service token chain"
+    )
+    # Operator-onboarding pointer: when the helper fails (no token
+    # version yet), the error must point at the runbook so the operator
+    # knows what to do, not just 'gcloud failed'.
+    assert "exe/docs/runbook.md" in startup_script, (
+        "the helper's NOT_FOUND error path must reference the runbook"
+    )
+
+
+@pytest.mark.exe
+def test_coder_cron_defaults_file_emitted(startup_script: str) -> None:
+    """The helper reads CODER_CRON_SECRET_NAME and CODER_CRON_PROJECT
+    from /etc/default/coder-cron (so the helper itself stays
+    operator-readable plain bash). The startup_script must populate
+    that file from the bash variables set at the top of the script."""
+    assert "/etc/default/coder-cron" in startup_script
+    assert "CODER_CRON_SECRET_NAME=" in startup_script
+    assert "CODER_CRON_PROJECT=" in startup_script
+
+
+@pytest.mark.exe
+def test_heartbeat_units_emitted(startup_script: str) -> None:
+    """ADR 0008 step 3 ships a tiny .service + .timer pair that proves
+    the systemd timer mechanism on the VM works without depending on
+    the operator-side admin token setup. The .service is a one-shot
+    `logger` call; the .timer fires daily on a non-:00 minute with
+    Persistent=true so a missed run after VM reboot still fires."""
+    assert "coder-cron-heartbeat.service" in startup_script
+    assert "coder-cron-heartbeat.timer" in startup_script
+    # Off-the-hour minute avoids the cron thundering-herd (everyone
+    # runs at :00). RandomizedDelaySec adds further jitter.
+    assert "OnCalendar=*-*-* 09:17:00 UTC" in startup_script, (
+        "heartbeat timer must use a non-:00 minute with explicit UTC; the\n"
+        "Coder VM's TZ may not be UTC, and an unanchored 09:17 would drift"
+    )
+    assert "Persistent=true" in startup_script, (
+        "Persistent=true is REQUIRED so a missed run after VM reboot\n"
+        "(preempted SPOT instance, planned restart) still fires once on\n"
+        "the next boot — see ADR 0008"
+    )
+    assert "RandomizedDelaySec=" in startup_script, (
+        "RandomizedDelaySec is recommended jitter; remove only with cause"
+    )
+
+
+@pytest.mark.exe
+def test_heartbeat_does_not_call_coder_api(startup_script: str) -> None:
+    """The whole point of the heartbeat is that it runs WITHOUT the
+    admin token — that's the smoke validation. If a future change
+    wires the heartbeat through coder-cron-run, the heartbeat starts
+    failing silently when the operator has not yet uploaded the admin
+    token, which defeats the smoke purpose. Pin the simple form."""
+    # Locate the heartbeat .service heredoc body and inspect ExecStart.
+    m = re.search(
+        r"coder-cron-heartbeat\.service\s*<<UNIT(.*?)^UNIT",
+        startup_script,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert m is not None, "could not locate coder-cron-heartbeat.service heredoc"
+    unit_body = m.group(1)
+    exec_lines = [
+        ln for ln in unit_body.splitlines() if ln.lstrip().startswith("ExecStart=")
+    ]
+    assert exec_lines, "heartbeat .service must have an ExecStart= line"
+    for ln in exec_lines:
+        assert "coder-cron-run" not in ln, (
+            "heartbeat ExecStart must NOT call coder-cron-run; the heartbeat\n"
+            "is the auth-free smoke path. Real cron jobs (step 4) get their\n"
+            "own .service unit that calls coder-cron-run."
+        )
+        assert "/usr/bin/logger" in ln, (
+            "heartbeat ExecStart should use /usr/bin/logger (one-shot, journald-only)"
         )

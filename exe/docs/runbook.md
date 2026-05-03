@@ -192,6 +192,63 @@ gcloud secrets versions list exe-tailscale-coder-authkey
 gcloud secrets versions destroy <N> --secret=exe-tailscale-coder-authkey
 ```
 
+## Coder admin token for cron
+
+Per [ADR 0008](../../docs/adr/0008-event-driven-workspace-runner.md)
+the Coder VM runs a local systemd timer that calls the Coder API on
+`http://127.0.0.1:7080`. The helper at `/usr/local/bin/coder-cron-run`
+fetches an admin token from Secret Manager (`exe-coder-admin-token`)
+and exports it as `CODER_SESSION_TOKEN` for the duration of one
+`coder` invocation.
+
+Tofu creates the secret *shell* but cannot generate the value: the
+token comes from `coder tokens create`, which requires the Coder
+server to be running. So the operator runs this **once after the
+first apply**:
+
+```bash
+# Login on the Mac if not already (browser flow).
+cdr login https://exe.hironow.dev
+
+# Mint a long-lived token for cron use.
+cdr tokens create --lifetime 720h --name cron > /tmp/coder-cron-token
+# (4320h = 180 days; choose a lifetime that fits your rotation policy.)
+
+# Upload as the first version on the existing Secret Manager secret.
+gcloud secrets versions add exe-coder-admin-token \
+  --project=gen-ai-hironow \
+  --data-file=/tmp/coder-cron-token
+
+# Wipe the local copy.
+shred -u /tmp/coder-cron-token   # or rm -P on mac
+```
+
+Verify on the Coder VM:
+
+```bash
+ssh exe-coder.<tailnet>
+sudo /usr/local/bin/coder-cron-run users list
+```
+
+Expected: a JSON list of users, exit 0. If the helper exits 65 with a
+"failed to fetch" message, the secret has no version yet — re-run the
+`gcloud secrets versions add` step.
+
+The `coder-cron-heartbeat.timer` that ships with this stack does NOT
+use this token — it is a pure `logger` one-shot that proves the timer
+mechanism works without depending on operator-side setup. Inspect it
+on the VM with:
+
+```bash
+journalctl -u coder-cron-heartbeat --since today
+# expected: a single 'tick' line per day shortly after 09:17 UTC
+systemctl list-timers coder-cron-heartbeat.timer
+```
+
+To rotate the token, `coder tokens delete <id>` the old one, mint a
+new one, and `gcloud secrets versions add` again — the helper always
+reads `latest`.
+
 ## Cloudflare tunnel credentials rotation
 
 The tunnel secret is a `random_id`. Rotate via the `just exe-replace`
