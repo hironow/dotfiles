@@ -204,6 +204,25 @@ The first-boot admin password is generated to
 `/var/lib/coder/.admin_password` (mode 0600). Change it via the Coder
 UI immediately after first login.
 
+### On-VM cron (ADR 0008 step 3)
+
+The Coder VM also hosts the systemd-timer half of the event-driven
+runner ([ADR 0008](../../docs/adr/0008-event-driven-workspace-runner.md)).
+Two pieces ship in the VM startup_script:
+
+| File | Purpose |
+|---|---|
+| `/etc/default/coder-cron` | Env file with `CODER_CRON_SECRET_NAME` + `CODER_CRON_PROJECT`. Sourced by the helper. |
+| `/usr/local/bin/coder-cron-run` | Helper that fetches the admin token from Secret Manager (`exe-coder-admin-token`) and `exec`s `coder` against `http://127.0.0.1:7080`. Exits 65 with a runbook pointer if the token version is missing. |
+| `coder-cron-heartbeat.service` + `.timer` | Daily `logger` one-shot at 09:17 UTC (`Persistent=true`, `RandomizedDelaySec=300`). Pure smoke validation — does NOT call `coder-cron-run`, so it works before the operator sets up the admin token. |
+
+Concrete cron use cases (e.g., nightly `tofu plan` to GCS) get added
+as additional `.service` + `.timer` units in step 4. The helper +
+heartbeat scaffolding here is the building block.
+
+Operator one-time setup for the admin token is in
+[runbook.md › Coder admin token for cron](./runbook.md#coder-admin-token-for-cron).
+
 ## Workspace template — `dotfiles-devcontainer`
 
 Source: [`exe/coder/templates/dotfiles-devcontainer/`](../coder/templates/dotfiles-devcontainer/).
