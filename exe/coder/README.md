@@ -13,7 +13,8 @@ Workspace == CI environment because the same
 
 | Path | Purpose |
 |---|---|
-| [`templates/dotfiles-devcontainer/`](./templates/dotfiles-devcontainer/) | Active workspace template (`main.tf` + lockfile + README) |
+| [`templates/dotfiles-devcontainer/`](./templates/dotfiles-devcontainer/) | Long-lived interactive workspace template (`main.tf` + lockfile + README). Operator's daily IDE / SSH target. |
+| [`templates/dotfiles-job/`](./templates/dotfiles-job/) | Ephemeral one-shot headless runner template (`main.tf` + lockfile + README) per [ADR 0008](../../docs/adr/0008-event-driven-workspace-runner.md). Driven by the [`cdr-job`](../scripts/cdr-job) wrapper. |
 
 ## Related docs
 
