@@ -144,6 +144,63 @@ resource "google_sql_user" "coder_iam" {
   depends_on = [time_sleep.cloud_sql_iam_role_settle]
 }
 
+# ----- Postgres admin user (bootstrap-only) ---------------------------
+#
+# Why this exists: Postgres 15+ locks down the public schema by
+# default — newly-created users (including IAM SA users) cannot
+# CREATE TABLE in it. Coder server fails its initial schema
+# migration with "permission denied for schema public" until a
+# privileged role grants USAGE + CREATE on public to the IAM user.
+#
+# Cloud SQL's `postgres` BUILT_IN user holds `cloudsqlsuperuser`
+# and CAN issue those grants. Tofu sets a random password on it,
+# stores the password in Secret Manager, and the VM startup_script
+# uses it ONCE at first boot to bootstrap the IAM user's grants.
+# Coder server then runs entirely under IAM auth at runtime — the
+# postgres password is bootstrap-only.
+#
+# Threat model: the postgres password lives in Secret Manager
+# (mode 0600 on the secret resource, IAM-restricted to the VM
+# SA only). On the VM it is fetched once at startup, used in a
+# subprocess, then unset. Worst case if leaked: ability to
+# re-bootstrap the DB; coder.service runtime path remains pure
+# IAM auth.
+
+resource "random_password" "postgres_admin" {
+  length  = 32
+  special = false
+}
+
+resource "google_sql_user" "postgres" {
+  name     = "postgres"
+  instance = google_sql_database_instance.coder.name
+  password = random_password.postgres_admin.result
+  # Cloud SQL auto-creates the postgres BUILT_IN superuser on
+  # every Postgres instance; tofu's google_sql_user reconciles by
+  # setting our managed password. type defaults to BUILT_IN.
+
+  depends_on = [time_sleep.cloud_sql_iam_role_settle]
+}
+
+resource "google_secret_manager_secret" "postgres_admin" {
+  secret_id = "${local.prefix}-postgres-admin-password"
+  labels    = local.common_labels
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "postgres_admin" {
+  secret      = google_secret_manager_secret.postgres_admin.id
+  secret_data = random_password.postgres_admin.result
+}
+
+resource "google_secret_manager_secret_iam_member" "postgres_admin_reader" {
+  secret_id = google_secret_manager_secret.postgres_admin.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.exe_coder.email}"
+}
+
 # ----- IAM on the VM SA -----------------------------------------------
 # Two roles are required for IAM database authentication:
 #   roles/cloudsql.client       — TLS cert to dial the instance
@@ -173,6 +230,7 @@ resource "google_project_iam_member" "exe_coder_cloudsql_instance_user" {
 locals {
   cloud_sql_connection_name = google_sql_database_instance.coder.connection_name
   cloud_sql_iam_db_user     = google_sql_user.coder_iam.name
+  cloud_sql_private_ip      = google_sql_database_instance.coder.private_ip_address
   cloud_sql_proxy_url = format(
     "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/%s/cloud-sql-proxy.linux.amd64",
     var.cloud_sql_proxy_version,

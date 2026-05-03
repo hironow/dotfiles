@@ -178,6 +178,8 @@ locals {
     CSAP_URL='${local.cloud_sql_proxy_url}'
     PG_CONNECTION_NAME='${local.cloud_sql_connection_name}'
     PG_IAM_DB_USER='${local.cloud_sql_iam_db_user}'
+    PG_PRIVATE_IP='${local.cloud_sql_private_ip}'
+    PG_ADMIN_SECRET='${google_secret_manager_secret.postgres_admin.secret_id}'
 
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
@@ -433,6 +435,56 @@ locals {
       chmod 0600 /var/lib/coder/.admin_password
     fi
 
+    # ---- One-time IAM user privilege bootstrap ------------------------
+    # Postgres 15+ locks down the public schema by default — newly-
+    # created IAM SA users cannot CREATE TABLE there until a
+    # cloudsqlsuperuser-privileged role grants USAGE + CREATE on
+    # public. Coder's first migration fails closed without this,
+    # looping at "permission denied for schema public".
+    #
+    # Cloud SQL's `postgres` BUILT_IN superuser does the grant once.
+    # Connection goes via the Cloud SQL private IP directly (10.x.x.x)
+    # rather than through CSAP, because CSAP runs with
+    # --auto-iam-authn and would substitute an OAuth token for the
+    # postgres password. sslmode=require encrypts the connection
+    # without strict cert verification (sufficient inside the
+    # peered VPC).
+    #
+    # Idempotent: the GRANTs are no-ops on repeat. We always re-run
+    # so a future variable bump that re-applies the grants stays
+    # truthful — there is no marker file to inspect.
+    if ! command -v psql >/dev/null 2>&1; then
+      apt-get install -y --no-install-recommends postgresql-client
+    fi
+
+    PG_ADMIN_PASSWORD="$(gcloud --quiet --project="$PROJECT" \
+      secrets versions access latest --secret="$PG_ADMIN_SECRET")"
+
+    # Wait up to 60s for Cloud SQL to accept connections (in case the
+    # VM came up before the DB engine finished its own bootstrap).
+    for i in $(seq 1 30); do
+      if PGPASSWORD="$PG_ADMIN_PASSWORD" psql \
+            "host=$PG_PRIVATE_IP port=5432 user=postgres dbname=coder sslmode=require connect_timeout=5" \
+            -c '\q' 2>/dev/null; then
+        break
+      fi
+      sleep 2
+    done
+
+    # Run the privilege bootstrap. ON_ERROR_STOP=1 makes psql exit
+    # non-zero if any GRANT fails; we capture the rc but do not
+    # abort the script — coder.service will surface the symptom on
+    # its own next start if the bootstrap was insufficient.
+    PGPASSWORD="$PG_ADMIN_PASSWORD" psql \
+      "host=$PG_PRIVATE_IP port=5432 user=postgres dbname=coder sslmode=require" \
+      --set ON_ERROR_STOP=1 <<SQL
+    GRANT CONNECT ON DATABASE coder TO "$PG_IAM_DB_USER";
+    GRANT USAGE, CREATE ON SCHEMA public TO "$PG_IAM_DB_USER";
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "$PG_IAM_DB_USER";
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "$PG_IAM_DB_USER";
+    SQL
+    unset PG_ADMIN_PASSWORD
+
     # /etc/default/coder — holds CODER_PG_CONNECTION_URL. The "password"
     # is a literal placeholder string: with --auto-iam-authn the proxy
     # ignores whatever Coder sends and substitutes a fresh OAuth access
@@ -598,5 +650,12 @@ resource "google_compute_instance" "exe_coder" {
     google_project_iam_member.exe_coder_cloudsql_instance_user,
     google_sql_user.coder_iam,
     google_sql_database.coder,
+    # The privilege-bootstrap path needs the postgres BUILT_IN user
+    # password + Secret Manager grant in place before the VM boots
+    # (script fetches the password from the secret and uses psql to
+    # grant the IAM user CREATE on public schema).
+    google_sql_user.postgres,
+    google_secret_manager_secret_version.postgres_admin,
+    google_secret_manager_secret_iam_member.postgres_admin_reader,
   ]
 }
