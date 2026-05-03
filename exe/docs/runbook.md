@@ -215,7 +215,12 @@ under `var.owner_email`, not the service account.
 
 If you try `INSERT` / `UPDATE` / `DELETE` / `CREATE` you get
 `permission denied` — that is by design (per ADR 0010 follow-up).
-Write operations belong to `coder.service` only.
+Write operations belong to `coder.service` only. The operator's
+read-only access is implemented via the Postgres 14+ predefined
+role `pg_read_all_data` (Cloud SQL's `cloudsqlsuperuser` cannot
+issue per-table GRANTs on tables owned by another role, so the
+role-membership path is the only one that works without breaking
+the bootstrap script).
 
 To revoke this access (e.g. on suspected compromise):
 

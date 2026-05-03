@@ -1210,58 +1210,75 @@ def test_operator_iam_db_user_provisioned_for_studio_access() -> None:
 @pytest.mark.exe
 def test_operator_iam_user_grants_are_read_only(startup_script: str) -> None:
     """The operator's IAM DB user is provisioned for read-only audit.
-    The bootstrap GRANT step in coder.tf must give CONNECT + USAGE +
-    SELECT, but MUST NOT grant CREATE / INSERT / UPDATE / DELETE
-    privileges. Write traffic stays exclusive to coder.service via
-    the SA user (google_sql_user.coder_iam)."""
-    # The startup script picks the operator email from a shell var
-    # rendered from var.owner_email at apply time; spot-check a SELECT
-    # GRANT exists for it without the dangerous verbs.
+    The bootstrap step in coder.tf must give CONNECT on the database
+    + the predefined Postgres role pg_read_all_data (Postgres 14+),
+    but MUST NOT use the table-level GRANT pattern that caused the
+    2026-05-04 outage: cloudsqlsuperuser cannot GRANT SELECT on
+    tables owned by another role, so 'GRANT SELECT ON ALL TABLES
+    IN SCHEMA public' aborts startup_script with permission denied
+    and breaks coder.service writes. pg_read_all_data is grantable
+    via role membership and confers SELECT/USAGE on every relation
+    regardless of owner.
+    """
+    # Variable export.
     assert "PG_OPERATOR_DB_USER=" in startup_script, (
         "startup_script MUST export PG_OPERATOR_DB_USER (operator email)\n"
         "before the GRANT block, mirroring PG_IAM_DB_USER for the SA."
     )
-    # The GRANT line for the operator must be SELECT-shaped, not ALL.
+
+    # Required: CONNECT on the database (so the operator can attach
+    # at all) and pg_read_all_data role membership (covers SELECT on
+    # every relation owner-free).
     assert re.search(
         r'GRANT\s+CONNECT\s+ON\s+DATABASE\s+coder\s+TO\s+"\$PG_OPERATOR_DB_USER"',
         startup_script,
-    ), "Missing CONNECT GRANT for the operator IAM DB user."
+    ), "Missing CONNECT GRANT on database coder for the operator IAM DB user."
     assert re.search(
-        r'GRANT\s+USAGE\s+ON\s+SCHEMA\s+public\s+TO\s+"\$PG_OPERATOR_DB_USER"',
-        startup_script,
-    ), "Missing USAGE GRANT on schema public for the operator IAM DB user."
-    assert re.search(
-        r"GRANT\s+SELECT\s+ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public\s+"
-        r'TO\s+"\$PG_OPERATOR_DB_USER"',
-        startup_script,
-    ), "Missing SELECT GRANT on all tables for the operator IAM DB user."
-    # Default privileges so SELECT also covers tables Coder creates
-    # AFTER the bootstrap (every Coder upgrade adds new tables).
-    assert re.search(
-        r"ALTER\s+DEFAULT\s+PRIVILEGES\s+IN\s+SCHEMA\s+public\s+"
-        r'GRANT\s+SELECT\s+ON\s+TABLES\s+TO\s+"\$PG_OPERATOR_DB_USER"',
+        r'GRANT\s+pg_read_all_data\s+TO\s+"\$PG_OPERATOR_DB_USER"',
         startup_script,
     ), (
-        "Missing ALTER DEFAULT PRIVILEGES ... GRANT SELECT for operator —\n"
-        "without it, tables Coder creates after the bootstrap are\n"
-        "invisible to the operator's read-only user."
+        "Missing GRANT pg_read_all_data — this is the read-only role\n"
+        "the bootstrap MUST grant the operator (per Postgres 14+ docs +\n"
+        "Cloud SQL cloudsqlsuperuser permissions). Without it, the\n"
+        "operator cannot SELECT from any of Coder's tables."
     )
-    # Negative pin: forbid CREATE / INSERT / UPDATE / DELETE / ALL on
-    # the operator user. Match only inside operator-targeted GRANT
-    # statements.
+
+    # Negative pins: the buggy table-level GRANTs that caused the
+    # 2026-05-04 outage MUST NOT come back.
+    forbidden_table_level_patterns = [
+        r"GRANT\s+SELECT\s+ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public\s+"
+        r'TO\s+"\$PG_OPERATOR_DB_USER"',
+        r"ALTER\s+DEFAULT\s+PRIVILEGES.*?"
+        r'GRANT\s+SELECT\s+ON\s+TABLES\s+TO\s+"\$PG_OPERATOR_DB_USER"',
+    ]
+    for pattern in forbidden_table_level_patterns:
+        assert not re.search(pattern, startup_script, re.DOTALL), (
+            f"Forbidden GRANT pattern detected: {pattern}\n"
+            "cloudsqlsuperuser cannot GRANT SELECT on tables owned by\n"
+            "another role; this caused the 2026-05-04 outage. Use\n"
+            "GRANT pg_read_all_data instead."
+        )
+
+    # And the operator user must NEVER receive write privileges.
     operator_grants = re.findall(
-        r"GRANT\s+(\w+(?:\s*,\s*\w+)*)\s+ON\s+[^;]*?"
+        r"GRANT\s+(\w+(?:\s*,\s*\w+)*)\s+(?:ON\s+[^;]*?)?"
         r'TO\s+"\$PG_OPERATOR_DB_USER"',
         startup_script,
     )
     assert operator_grants, "Found no operator-targeted GRANT statements"
     for verbs in operator_grants:
-        for forbidden in ("CREATE", "INSERT", "UPDATE", "DELETE", "ALL"):
+        for forbidden in ("CREATE", "INSERT", "UPDATE", "DELETE"):
             assert forbidden not in verbs.upper(), (
                 f"Operator IAM DB user MUST NOT receive {forbidden} —\n"
                 "this user is for read-only audit; write traffic stays\n"
                 "with coder.service via the SA user."
             )
+    # Forbid bare ALL too, but only on operator-targeted lines (the
+    # SA user above is allowed to receive ALL).
+    assert not re.search(
+        r"GRANT\s+ALL\b[^;]*?TO\s+\"\$PG_OPERATOR_DB_USER\"",
+        startup_script,
+    ), "Operator IAM DB user MUST NOT receive ALL privileges."
 
 
 @pytest.mark.exe
