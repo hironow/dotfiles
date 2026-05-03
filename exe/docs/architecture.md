@@ -204,27 +204,6 @@ The first-boot admin password is generated to
 `/var/lib/coder/.admin_password` (mode 0600). Change it via the Coder
 UI immediately after first login.
 
-### On-VM cron (ADR 0008 step 3)
-
-The Coder VM also hosts the systemd-timer half of the event-driven
-runner ([ADR 0008](../../docs/adr/0008-event-driven-workspace-runner.md)).
-Two pieces ship in the VM startup_script:
-
-| File | Purpose |
-|---|---|
-| `/etc/default/coder-cron` | Env file with `CODER_CRON_SECRET_NAME` + `CODER_CRON_PROJECT`. Sourced by the helper. |
-| `/usr/local/bin/coder-cron-run` | Helper that fetches the admin token from Secret Manager (`exe-coder-admin-token`) and `exec`s `coder` against `http://127.0.0.1:7080`. Exits 65 with a runbook pointer if the token version is missing. |
-| `coder-cron-heartbeat.service` + `.timer` | Daily `logger` one-shot at 09:17 UTC (`Persistent=true`, `RandomizedDelaySec=300`). Pure smoke validation — does NOT call `coder-cron-run`, so it works before the operator sets up the admin token. |
-| `/usr/local/bin/coder-cron-spawn-job` | VM-side analog of `cdr-job`: generates a unique workspace name (prefix + UTC timestamp), calls `coder-cron-run create` with the dotfiles-job template, polls the agent's `lifecycle_state` until `ready` (= startup_script finished), then deletes the workspace via a trap handler. |
-| `coder-cron-tofu-plan.service` + `.timer` | Step 4 nightly use case (04:23 UTC, `Persistent=true`, `RandomizedDelaySec=600`). `bash -c` wraps the multi-step command so `&&` is shell-interpreted. The job clones dotfiles inside the workspace and runs `exe/scripts/cron-tofu-plan.sh`. |
-
-Operator one-time setup is in
-[runbook.md › Coder admin token for cron](./runbook.md#coder-admin-token-for-cron)
-(token) and
-[runbook.md › TF_ENCRYPTION passphrase for cron](./runbook.md#tf_encryption-passphrase-for-cron)
-(passphrase). The nightly `tofu plan` job inspection commands live in
-[runbook.md › Nightly tofu plan cron](./runbook.md#nightly-tofu-plan-cron).
-
 ## Workspace template — `dotfiles-devcontainer`
 
 Source: [`exe/coder/templates/dotfiles-devcontainer/`](../coder/templates/dotfiles-devcontainer/).

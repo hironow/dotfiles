@@ -67,9 +67,6 @@ HCL_SUBSTITUTIONS: dict[str, str] = {
     r"\$\{google_secret_manager_secret\.exe_coder_authkey\.secret_id\}": (
         "exe-tailscale-coder-authkey"
     ),
-    r"\$\{google_secret_manager_secret\.exe_coder_admin_token\.secret_id\}": (
-        "exe-coder-admin-token"
-    ),
     r"\$\{google_secret_manager_secret\.tunnel_credentials\.secret_id\}": (
         "exe-cloudflared-credentials"
     ),
@@ -688,8 +685,7 @@ def test_systemd_units_validate(
     startup_script: str, docker_image: str, tmp_path: Path
 ) -> None:
     """After running the script, every unit file under
-    /etc/systemd/system/{cloudflared-exe.service,coder.service,
-    coder-cron-heartbeat.service,coder-cron-heartbeat.timer} must
+    /etc/systemd/system/{cloudflared-exe.service,coder.service} must
     pass `systemd-analyze verify`. Catches missing User=, bad
     ExecStart= path, malformed Environment=, etc."""
     harness = tmp_path / "run.sh"
@@ -700,28 +696,16 @@ def test_systemd_units_validate(
         + "\n\n"
         + "echo '--- generated units ---' >&2\n"
         + "for u in /etc/systemd/system/cloudflared-exe.service "
-        + "/etc/systemd/system/coder.service "
-        + "/etc/systemd/system/coder-cron-heartbeat.service "
-        + "/etc/systemd/system/coder-cron-heartbeat.timer "
-        + "/etc/systemd/system/coder-cron-tofu-plan.service "
-        + "/etc/systemd/system/coder-cron-tofu-plan.timer; do\n"
+        + "/etc/systemd/system/coder.service; do\n"
         + '  if [[ -f "$u" ]]; then\n'
         + '    echo "=== $u ===" >&2\n'
         + '    cat "$u" >&2\n'
         + '    systemd-analyze verify "$u" 2>&1 || true\n'
         + "  fi\n"
         + "done\n"
-        + "# Hard-fail if any unit file is missing.\n"
+        + "# Hard-fail if either file is missing.\n"
         + "test -f /etc/systemd/system/cloudflared-exe.service\n"
         + "test -f /etc/systemd/system/coder.service\n"
-        + "test -f /etc/systemd/system/coder-cron-heartbeat.service\n"
-        + "test -f /etc/systemd/system/coder-cron-heartbeat.timer\n"
-        + "test -f /etc/systemd/system/coder-cron-tofu-plan.service\n"
-        + "test -f /etc/systemd/system/coder-cron-tofu-plan.timer\n"
-        + "# Helpers + defaults file must also exist.\n"
-        + "test -x /usr/local/bin/coder-cron-run\n"
-        + "test -x /usr/local/bin/coder-cron-spawn-job\n"
-        + "test -f /etc/default/coder-cron\n"
     )
 
     r = _run(
@@ -752,43 +736,20 @@ def test_coder_install_does_not_pipe_remote_script(startup_script: str) -> None:
     """ADR 0007: the bootstrap MUST NOT install Coder via
     `curl https://coder.com/install.sh | sh` or any other remote-
     script-piped-into-shell pattern. Replacement is a tag-pinned
-    tarball with sha256 verify.
-
-    The `|| true` ban is scoped to the Coder install block only — it
-    was flagged by codex as a way to mask the integrity check's exit
-    code there. `|| true` is a legitimate idiom in trap-cleanup
-    handlers (e.g. coder-cron-spawn-job's teardown) and elsewhere, so
-    we must not blanket-ban it across the whole script."""
-    # Globally forbidden patterns (apply to the entire script).
-    global_forbidden = [
+    tarball with sha256 verify."""
+    forbidden = [
         r"coder\.com/install\.sh",
         r"curl[^\n]*\|\s*sh\b",
         r"curl[^\n]*\|\s*bash\b",
+        r"\|\| true",  # the masking exit-code pattern flagged by codex
         r"releases/latest",  # the latest-resolution fallback
     ]
-    for pattern in global_forbidden:
+    for pattern in forbidden:
         assert not re.search(pattern, startup_script), (
             f"Coder install path still contains forbidden pattern "
             f"{pattern!r}; ADR 0007 prohibits it. Use the pinned-tag "
             f"+ sha256-verified path instead."
         )
-
-    # Scoped: extract the Coder install block (between '# ---- Coder
-    # OSS server' and the systemctl that enables coder.service) and
-    # ban `|| true` there only.
-    install_block = re.search(
-        r"# ---- Coder OSS server.*?systemctl enable --now coder\.service",
-        startup_script,
-        re.DOTALL,
-    )
-    assert install_block is not None, (
-        "could not locate the Coder OSS server install block"
-    )
-    assert "|| true" not in install_block.group(0), (
-        "Coder install block contains '|| true' — that pattern was used\n"
-        "to mask the sha256/attestation check exit code. ADR 0007 forbids\n"
-        "it within the install path; let the script fail closed instead."
-    )
 
 
 @pytest.mark.exe
@@ -906,321 +867,3 @@ def test_coder_tf_no_unverified_apt_key_curls(startup_script: str) -> None:
             f"coder.tf startup_script still uses the unverified-curl "
             f"pattern matching {pattern!r}."
         )
-
-
-# ---------- ADR 0008 step 3: systemd timer scaffolding ------------
-
-
-@pytest.mark.exe
-def test_admin_token_secret_resource_present() -> None:
-    """ADR 0008 step 3 requires a Secret Manager *shell* for the Coder
-    admin token. The value is operator-provided post-apply (chicken-
-    and-egg: the token can't be created until the Coder server is up),
-    so tofu declares only the resource + IAM grant."""
-    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
-    secret = re.search(
-        r'resource\s+"google_secret_manager_secret"\s+"exe_coder_admin_token"\s*\{(.*?)^\}',
-        coder_tf,
-        re.DOTALL | re.MULTILINE,
-    )
-    assert secret is not None, (
-        "tofu/exe/coder.tf must declare\n"
-        '  resource "google_secret_manager_secret" "exe_coder_admin_token"'
-    )
-    assert "coder-admin-token" in secret.group(1), (
-        "secret_id should embed 'coder-admin-token' so it is\n"
-        "recognisable in the GCP console alongside the other exe-* secrets"
-    )
-
-    iam = re.search(
-        r'resource\s+"google_secret_manager_secret_iam_member"\s+'
-        r'"exe_coder_admin_token_reader"\s*\{(.*?)^\}',
-        coder_tf,
-        re.DOTALL | re.MULTILINE,
-    )
-    assert iam is not None, (
-        "missing IAM grant — Coder VM SA cannot read the admin token"
-    )
-    body = iam.group(1)
-    assert "secretmanager.secretAccessor" in body
-    assert "exe_coder.email" in body, (
-        "the reader must be the exe_coder VM SA, not exe_workspace"
-    )
-
-
-@pytest.mark.exe
-def test_admin_token_secret_has_no_version_resource() -> None:
-    """The admin token value is operator-managed post-apply, so tofu
-    MUST NOT declare a google_secret_manager_secret_version for
-    exe_coder_admin_token. If a version resource were added, tofu
-    would either need a placeholder value (defeating the operator-
-    managed model) or fail at plan time on a missing variable."""
-    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
-    assert not re.search(
-        r'resource\s+"google_secret_manager_secret_version"\s+"exe_coder_admin_token"',
-        coder_tf,
-    ), (
-        "exe_coder_admin_token must remain operator-managed (no _version "
-        "resource). Operator runs `coder tokens create | gcloud secrets "
-        "versions add` after first apply."
-    )
-
-
-@pytest.mark.exe
-def test_coder_cron_run_helper_emitted(startup_script: str) -> None:
-    """The startup_script must drop /usr/local/bin/coder-cron-run, the
-    helper any future systemd .service unit calls to talk to the local
-    Coder API. Verify the bash heredoc that materialises it is present
-    and uses CODER_URL=http://127.0.0.1:7080 (loopback only — no CF
-    Access edge round-trip)."""
-    assert "/usr/local/bin/coder-cron-run" in startup_script, (
-        "coder.tf must write coder-cron-run helper to /usr/local/bin/"
-    )
-    assert "<<'HELPER'" in startup_script, (
-        "the helper heredoc must be QUOTED so inner $#, $@, $CODER_CRON_*\n"
-        "are written literally (not expanded by the outer bash)"
-    )
-    assert "http://127.0.0.1:7080" in startup_script, (
-        "coder-cron-run must hit the local Coder server (loopback) rather\n"
-        "than the public CF Access edge — the VM has no service token chain"
-    )
-    # Operator-onboarding pointer: when the helper fails (no token
-    # version yet), the error must point at the runbook so the operator
-    # knows what to do, not just 'gcloud failed'.
-    assert "exe/docs/runbook.md" in startup_script, (
-        "the helper's NOT_FOUND error path must reference the runbook"
-    )
-
-
-@pytest.mark.exe
-def test_coder_cron_defaults_file_emitted(startup_script: str) -> None:
-    """The helper reads CODER_CRON_SECRET_NAME and CODER_CRON_PROJECT
-    from /etc/default/coder-cron (so the helper itself stays
-    operator-readable plain bash). The startup_script must populate
-    that file from the bash variables set at the top of the script."""
-    assert "/etc/default/coder-cron" in startup_script
-    assert "CODER_CRON_SECRET_NAME=" in startup_script
-    assert "CODER_CRON_PROJECT=" in startup_script
-
-
-@pytest.mark.exe
-def test_heartbeat_units_emitted(startup_script: str) -> None:
-    """ADR 0008 step 3 ships a tiny .service + .timer pair that proves
-    the systemd timer mechanism on the VM works without depending on
-    the operator-side admin token setup. The .service is a one-shot
-    `logger` call; the .timer fires daily on a non-:00 minute with
-    Persistent=true so a missed run after VM reboot still fires."""
-    assert "coder-cron-heartbeat.service" in startup_script
-    assert "coder-cron-heartbeat.timer" in startup_script
-    # Off-the-hour minute avoids the cron thundering-herd (everyone
-    # runs at :00). RandomizedDelaySec adds further jitter.
-    assert "OnCalendar=*-*-* 09:17:00 UTC" in startup_script, (
-        "heartbeat timer must use a non-:00 minute with explicit UTC; the\n"
-        "Coder VM's TZ may not be UTC, and an unanchored 09:17 would drift"
-    )
-    assert "Persistent=true" in startup_script, (
-        "Persistent=true is REQUIRED so a missed run after VM reboot\n"
-        "(preempted SPOT instance, planned restart) still fires once on\n"
-        "the next boot — see ADR 0008"
-    )
-    assert "RandomizedDelaySec=" in startup_script, (
-        "RandomizedDelaySec is recommended jitter; remove only with cause"
-    )
-
-
-@pytest.mark.exe
-def test_heartbeat_does_not_call_coder_api(startup_script: str) -> None:
-    """The whole point of the heartbeat is that it runs WITHOUT the
-    admin token — that's the smoke validation. If a future change
-    wires the heartbeat through coder-cron-run, the heartbeat starts
-    failing silently when the operator has not yet uploaded the admin
-    token, which defeats the smoke purpose. Pin the simple form."""
-    # Locate the heartbeat .service heredoc body and inspect ExecStart.
-    m = re.search(
-        r"coder-cron-heartbeat\.service\s*<<UNIT(.*?)^UNIT",
-        startup_script,
-        re.DOTALL | re.MULTILINE,
-    )
-    assert m is not None, "could not locate coder-cron-heartbeat.service heredoc"
-    unit_body = m.group(1)
-    exec_lines = [
-        ln for ln in unit_body.splitlines() if ln.lstrip().startswith("ExecStart=")
-    ]
-    assert exec_lines, "heartbeat .service must have an ExecStart= line"
-    for ln in exec_lines:
-        assert "coder-cron-run" not in ln, (
-            "heartbeat ExecStart must NOT call coder-cron-run; the heartbeat\n"
-            "is the auth-free smoke path. Real cron jobs (step 4) get their\n"
-            "own .service unit that calls coder-cron-run."
-        )
-        assert "/usr/bin/logger" in ln, (
-            "heartbeat ExecStart should use /usr/bin/logger (one-shot, journald-only)"
-        )
-
-
-# ---------- ADR 0008 step 4: nightly tofu-plan cron ----------------
-
-
-@pytest.mark.exe
-def test_tofu_encryption_passphrase_secret_resource_present() -> None:
-    """ADR 0008 step 4: cron jobs that read the encrypted exe state
-    need the TF_ENCRYPTION passphrase. Tofu owns the secret SHELL +
-    IAM grant only — the value (the operator's local passphrase from
-    ~/.config/tofu/exe.passphrase) is uploaded once after first
-    apply, mirroring the admin-token pattern from step 3."""
-    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
-    secret = re.search(
-        r'resource\s+"google_secret_manager_secret"\s+"exe_tofu_encryption_passphrase"\s*\{(.*?)^\}',
-        coder_tf,
-        re.DOTALL | re.MULTILINE,
-    )
-    assert secret is not None, (
-        "tofu/exe/coder.tf must declare\n"
-        '  resource "google_secret_manager_secret" "exe_tofu_encryption_passphrase"'
-    )
-    assert "tofu-encryption-passphrase" in secret.group(1)
-
-    iam = re.search(
-        r'resource\s+"google_secret_manager_secret_iam_member"\s+'
-        r'"exe_tofu_encryption_passphrase_reader"\s*\{(.*?)^\}',
-        coder_tf,
-        re.DOTALL | re.MULTILINE,
-    )
-    assert iam is not None, "missing IAM grant for the encryption passphrase"
-    body = iam.group(1)
-    assert "secretmanager.secretAccessor" in body
-    # The READER must be the WORKSPACE SA (cron jobs run inside
-    # workspace VMs), NOT the Coder VM SA.
-    assert "exe_workspace.email" in body, (
-        "the encryption passphrase reader must be exe_workspace, not exe_coder\n"
-        "— cron jobs that need the passphrase run INSIDE workspace VMs"
-    )
-
-    # No _version resource: value is operator-managed.
-    assert not re.search(
-        r'resource\s+"google_secret_manager_secret_version"\s+"exe_tofu_encryption_passphrase"',
-        coder_tf,
-    ), "encryption passphrase value must remain operator-managed (no _version)"
-
-
-@pytest.mark.exe
-def test_workspace_state_bucket_iam_present() -> None:
-    """ADR 0008 step 4: the cron-tofu-plan job ships its plan
-    artifact to gs://<project>-tofu-state/jobs/<date>/. The workspace
-    SA must therefore have storage.objectAdmin on the state bucket.
-    The bucket is provisioned outside tofu (by exe/scripts/bootstrap.sh),
-    so the IAM resource references local.state_bucket by name."""
-    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
-    iam = re.search(
-        r'resource\s+"google_storage_bucket_iam_member"\s+'
-        r'"exe_workspace_state_bucket_admin"\s*\{(.*?)^\}',
-        coder_tf,
-        re.DOTALL | re.MULTILINE,
-    )
-    assert iam is not None, (
-        "tofu/exe/coder.tf must declare a google_storage_bucket_iam_member\n"
-        "granting roles/storage.objectAdmin on the state bucket to the\n"
-        "workspace SA"
-    )
-    body = iam.group(1)
-    assert "storage.objectAdmin" in body
-    assert "exe_workspace.email" in body
-    assert "local.state_bucket" in body, (
-        "use local.state_bucket so the bucket name stays consistent with\n"
-        "the bootstrap script and outputs.tf"
-    )
-
-
-@pytest.mark.exe
-def test_coder_cron_spawn_job_helper_emitted(startup_script: str) -> None:
-    """The startup_script must drop /usr/local/bin/coder-cron-spawn-job,
-    the VM-side analog of cdr-job. It generates a unique workspace
-    name (prefix + UTC timestamp), polls the agent's lifecycle_state,
-    and traps `coder-cron-run delete` on exit."""
-    assert "/usr/local/bin/coder-cron-spawn-job" in startup_script
-    # Must use coder-cron-run (the local-API helper), not cdr (which
-    # would try the CF Access edge from the VM and have no creds).
-    assert "coder-cron-run create" in startup_script
-    assert "coder-cron-run delete" in startup_script
-    # Trap-handler teardown is the primary safety net per ADR 0008.
-    assert "trap cleanup EXIT" in startup_script, (
-        "spawn-job must register a trap handler so SIGTERM / failure\n"
-        "still reaps the workspace"
-    )
-    # The polling loop must break on `ready` (the lifecycle_state for
-    # an ephemeral-job template after startup_script exits) — same
-    # fix that landed in cdr-job in PR #71.
-    assert "agent state=ready" in startup_script
-
-
-@pytest.mark.exe
-def test_coder_cron_tofu_plan_units_emitted(startup_script: str) -> None:
-    """The nightly tofu-plan .timer + .service units must be present."""
-    assert "coder-cron-tofu-plan.service" in startup_script
-    assert "coder-cron-tofu-plan.timer" in startup_script
-    # 04:23 UTC is off-the-hour and during operator's typical sleep
-    # window. Anchored to UTC because the VM's TZ is not guaranteed.
-    assert "OnCalendar=*-*-* 04:23:00 UTC" in startup_script
-    assert "Persistent=true" in startup_script
-    # The .service must use bash -c so the && is interpreted as a
-    # shell operator (systemd ExecStart treats && as a literal arg).
-    assert "/bin/bash -c" in startup_script, (
-        "coder-cron-tofu-plan.service must wrap the multi-step command\n"
-        "in /bin/bash -c — systemd ExecStart does not interpret && / |"
-    )
-    # The job invokes the workspace-side cron-tofu-plan.sh from the
-    # cloned dotfiles repo.
-    assert "exe/scripts/cron-tofu-plan.sh" in startup_script
-
-
-@pytest.mark.exe
-def test_cron_tofu_plan_script_present_and_executable() -> None:
-    """The workspace-side cron-tofu-plan.sh script must exist as an
-    executable file with a bash shebang. It runs INSIDE the
-    ephemeral workspace spawned by the systemd timer; the script
-    fetches the TF_ENCRYPTION passphrase from Secret Manager, runs
-    `tofu init && tofu plan`, and ships the artifacts to GCS."""
-    script = ROOT / "exe" / "scripts" / "cron-tofu-plan.sh"
-    assert script.is_file(), f"missing workspace-side script: {script}"
-    import os
-
-    assert os.access(script, os.X_OK), f"script not executable: {script}"
-    text = script.read_text()
-    assert text.startswith("#!/usr/bin/env bash"), (
-        "cron-tofu-plan.sh must use bash shebang"
-    )
-    # The script MUST use the Secret Manager secret name we provisioned
-    # in tofu (exe-tofu-encryption-passphrase), not a hard-coded
-    # passphrase or the on-disk file path.
-    assert "exe-tofu-encryption-passphrase" in text, (
-        "cron-tofu-plan.sh must fetch the passphrase from the Secret\n"
-        "Manager secret named exe-tofu-encryption-passphrase"
-    )
-    # Artifact destination must be the state bucket under jobs/<date>/.
-    assert "gs://" in text and "/jobs/" in text, (
-        "cron-tofu-plan.sh must ship artifacts to gs://<bucket>/jobs/<date>/"
-    )
-    # The script MUST exit 0 even on tofu plan failure so the
-    # diagnostic artifact still ships to GCS (operator visibility).
-    assert "exit 0" in text
-
-
-@pytest.mark.exe
-def test_cron_tofu_plan_script_passes_shellcheck() -> None:
-    """Lint cron-tofu-plan.sh with shellcheck (warning level)."""
-    if shutil.which("shellcheck") is None:
-        pytest.skip("shellcheck not available locally")
-    script = ROOT / "exe" / "scripts" / "cron-tofu-plan.sh"
-    r = _run(["shellcheck", "--severity=warning", str(script)])
-    assert r.returncode == 0, f"shellcheck warnings:\n{r.stdout}\n{r.stderr}"
-
-
-@pytest.mark.exe
-def test_mise_toml_pins_opentofu() -> None:
-    """ADR 0008 step 4 needs `tofu` baked into the workspace dev
-    container image. mise.toml is the SoT for image-time tool
-    versions; opentofu must be pinned there."""
-    mise_toml = (ROOT / "mise.toml").read_text()
-    assert re.search(r'^opentofu\s*=\s*"\d+\.\d+\.\d+"', mise_toml, re.MULTILINE), (
-        'mise.toml must pin opentofu = "<semver>"'
-    )

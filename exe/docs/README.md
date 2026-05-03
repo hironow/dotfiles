@@ -4,6 +4,7 @@ Documentation for `exe.hironow.dev`.
 
 | File | Scope |
 |---|---|
+| [`usage.md`](./usage.md) | User-facing quick reference for the four `cdr` commands (`cdr`, `cdr-job`, `cdr-exec`, `cdr-header`) — what each does and when to pick which |
 | [`architecture.md`](./architecture.md) | Components, data flow, security boundaries (Cloudflare + Tailscale + Coder + GCP) |
 | [`runbook.md`](./runbook.md) | Operational playbook (apply, smoke, rotate keys, push template, bump Coder) |
 

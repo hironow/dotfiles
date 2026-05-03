@@ -1,7 +1,7 @@
 # 0008. Event-driven Coder workspace runner (GHA-style without GHA)
 
 **Date:** 2026-05-03
-**Status:** Proposed
+**Status:** Superseded by [0009](./0009-retract-cron-trigger-from-adr-0008.md) (partial — trigger source 2 retracted)
 
 ## Context
 
