@@ -119,6 +119,21 @@ This makes VS Code emit the same `CF-Access-Client-Id=...` /
 `CF-Access-Client-Secret=...` headers `cdr` does, so the extension
 can reach `https://exe.hironow.dev` through Cloudflare Access.
 
+## Data persists across VM rebuilds
+
+Per [ADR 0010](../../docs/adr/0010-cloud-sql-postgres-for-coder.md)
+the Coder data plane lives on a managed Cloud SQL Postgres
+instance. Workspace lists, template versions, user accounts,
+audit logs all survive a `just exe-apply` that replaces the VM
+(startup_script bumps, SPOT preempt, GCE maintenance, ...). The
+only thing you need to re-do after a VM replace is the **first-
+boot admin password file** (`/var/lib/coder/.admin_password`)
+which is on the boot disk — your account record and email are
+preserved in Cloud SQL, so use the UI's password reset flow.
+
+For backup / restore / rotation see [`runbook.md` › Cloud SQL
+backup and restore](./runbook.md#cloud-sql-backup-and-restore).
+
 ## Cron is intentionally not provided
 
 The earlier ADR 0008 systemd-timer cron was retracted in

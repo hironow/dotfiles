@@ -24,17 +24,29 @@ This document describes the components currently provisioned by
                       | exe-vpc 10.10.0.0/24 |
                       | debian-12, e2-small  |
                       | tag:exe-coder        |
-                      | cloudflared, tailscaled|
+                      | cloudflared          |
+                      | tailscaled           |
+                      | cloud-sql-proxy      |
                       | Coder server         |
                       | CODER_HTTP_ADDRESS=  |
                       |   0.0.0.0:7080       |
-                      |  (embedded postgres) |
-                      +----------+-----------+
-                                 ^
-                                 | tailnet (WireGuard)
-                                 | http://exe-coder:7080
-                                 |  (MagicDNS resolves)
-                                 |
+                      +----+----+------------+
+                           |    |
+                           |    | psql via 127.0.0.1:5432
+                           |    | (CSAP -> private IP)
+                           |    v
+                           | +------------------+
+                           | | Cloud SQL        |
+                           | | Postgres 16      |
+                           | | db-f1-micro      |
+                           | | private IP only  |
+                           | | daily backup     |
+                           | +------------------+
+                           |
+                           | tailnet (WireGuard)
+                           | http://exe-coder:7080
+                           |  (MagicDNS resolves)
+                           |
                       +----------+-----------+
                       | workspace VM(s)      |
                       | default VPC          |
@@ -54,6 +66,8 @@ Legend / 凡例:
 - Argo Tunnel: Cloudflare Tunnel (origin から発信する outbound 接続)
 - Access OIDC: Cloudflare Access の認証 (OIDC ベース)
 - exe-coder VM: control-plane (Coder server を常駐)
+- Cloud SQL Postgres: Coder データプレーン (workspaces/templates/users 等を永続化、ADR 0010)
+- cloud-sql-proxy: Coder server から Cloud SQL への loopback proxy
 - workspace VM: ユーザの Coder workspace (template が作る)
 - tag:exe-coder / tag:exe-workspace: Tailscale tag (ACL で関係を限定)
 - tailnet (WireGuard): exe-coder と workspace 間の internal channel
@@ -162,13 +176,14 @@ loopback).
 | Item | Config | Approx. |
 |---|---|---|
 | GCE VM | e2-small, preemptible (24h), 30 GiB pd-balanced | $5–$7 |
+| Cloud SQL Postgres | db-f1-micro, 10 GB SSD, daily backup, ZONAL (ADR 0010) | $8–$10 |
 | Cloudflare Tunnel | Free | $0 |
 | Cloudflare Access | Free (Zero Trust, ≤ 50 users) | $0 |
 | Tailscale | Personal Free | $0 |
 | Secret Manager | < 10 secrets, low access frequency | < $1 |
 | Egress | Light interactive use | < $1 |
 | GCS state bucket | Versioned, < 1 MB | < $0.10 |
-| **Total** | | **~$7–$10** |
+| **Total** | | **~$15–$20** |
 
 ## Coder server
 
@@ -185,8 +200,8 @@ purely env-var driven:
 | `CODER_HTTP_ADDRESS` | `0.0.0.0:7080` | Loopback for cloudflared + tun0 for workspace VMs. Public IP blocked at L3 by deny-all-ingress |
 | `CODER_TLS_ENABLE` | `false` | TLS terminates at Cloudflare edge |
 | `CODER_WILDCARD_ACCESS_URL` | `*.sandbox.hironow.dev` | Workspace app preview hostnames |
-| `CODER_PG_CONNECTION_URL` | empty | Triggers embedded PostgreSQL |
-| `CODER_CACHE_DIRECTORY` | `/var/lib/coder/cache` | Embedded postgres data + asset cache |
+| `CODER_PG_CONNECTION_URL` | `postgres://coder:<pwd>@127.0.0.1:5432/coder?sslmode=disable` | Cloud SQL via CSAP loopback (ADR 0010). Loaded from `/etc/default/coder` (mode 0640 root:coder). |
+| `CODER_CACHE_DIRECTORY` | `/var/lib/coder/cache` | Coder asset cache (templates, static binaries) — postgres data lives in Cloud SQL |
 | `CODER_TELEMETRY` / `CODER_TELEMETRY_TRACE` | `false` / `false` | Telemetry off |
 | `CODER_SECURE_AUTH_COOKIE` | `true` | Auth cookie set with Secure flag |
 | `CODER_STRICT_TRANSPORT_SECURITY` | `31536000` | One-year HSTS |
@@ -195,14 +210,46 @@ purely env-var driven:
 Binary lives at `/usr/local/bin/coder` (extracted from the pinned
 release tarball at first boot, sha256-verified before extraction;
 `gh attestation verify` runs as defence-in-depth when gh is
-authenticated). Embedded postgres state and Coder data live under
-`/var/lib/coder/`, which is on the boot disk (auto-deletes only on
-`tofu destroy`). Bumping Coder is `var.coder_version` +
-`var.coder_sha256` + `just exe-apply` in lock-step.
+authenticated). Coder asset cache (templates, prebuilt binaries
+delivered to workspaces) lives under `/var/lib/coder/cache`,
+which is on the boot disk and auto-deletes on VM replace.
+**Persistent state (workspaces, templates, users, audit logs)
+lives in Cloud SQL** — see "Data plane" section below. Bumping
+Coder is `var.coder_version` + `var.coder_sha256` +
+`just exe-apply` in lock-step.
 
 The first-boot admin password is generated to
 `/var/lib/coder/.admin_password` (mode 0600). Change it via the Coder
-UI immediately after first login.
+UI immediately after first login. (The password file is on the boot
+disk so it does NOT survive VM replace; Cloud SQL preserves the
+admin's account record so the password can be reset via the UI's
+forgot-password flow against the same email.)
+
+### Data plane — Cloud SQL Postgres (ADR 0010)
+
+The Coder data plane runs on a managed `db-f1-micro` Postgres
+instance with daily automated backups. The Coder server connects
+via Cloud SQL Auth Proxy v2 listening on `127.0.0.1:5432`; CSAP
+authenticates to Cloud SQL using the VM's `exe-coder@` SA with
+`roles/cloudsql.client`.
+
+| Resource | Purpose |
+|---|---|
+| `google_sql_database_instance.coder` | `exe-coder-pg` instance, Postgres 16, ZONAL, private IP only, deletion_protection=true |
+| `google_sql_database.coder` + `google_sql_user.coder` | The schema Coder writes to + its login user |
+| `random_password.coder_pg_password` + Secret Manager | tofu-generated 32-char alphanumeric password, stored in `exe-coder-pg-password` secret |
+| `google_compute_global_address.exe_psa_range` + `google_service_networking_connection.exe_psa` | /20 reserved + VPC peering for private IP — no public Cloud SQL IP, no firewall rule |
+| `cloud-sql-proxy.service` (systemd, on the VM) | Listens on 127.0.0.1:5432, exec'd from `/usr/local/bin/cloud-sql-proxy` (pinned `var.cloud_sql_proxy_version` + `var.cloud_sql_proxy_sha256`) |
+| `/etc/default/coder` (mode 0640 root:coder) | Holds `CODER_PG_CONNECTION_URL` with the live password; loaded by `coder.service` via `EnvironmentFile=` |
+
+VM replacement (preempt, startup_script edit, GCE maintenance) no
+longer wipes the data plane: only the binaries / cache / first-
+boot admin password file reset. The DB stays up across all VM
+churn.
+
+Backup retention is 7 daily snapshots + point-in-time recovery
+(default 7 days of binary log). Restore + rotate procedures are
+in [runbook.md › Cloud SQL backup and restore](./runbook.md#cloud-sql-backup-and-restore).
 
 ## Workspace template — `dotfiles-devcontainer`
 
