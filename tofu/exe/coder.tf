@@ -74,6 +74,36 @@ resource "google_secret_manager_secret_iam_member" "exe_coder_authkey_reader" {
   member    = "serviceAccount:${google_service_account.exe_coder.email}"
 }
 
+# Coder admin token used by the Coder VM's local cron (systemd timer)
+# to call the Coder API on http://127.0.0.1:7080. Tofu creates the
+# Secret Manager *shell* only; the operator populates the value AFTER
+# the first `tofu apply` via:
+#
+#   coder login https://exe.hironow.dev   # via cdr / browser
+#   coder tokens create --lifetime 720h --name cron \
+#     | gcloud secrets versions add exe-coder-admin-token \
+#         --project=gen-ai-hironow --data-file=-
+#
+# Until the operator does this, /usr/local/bin/coder-cron-run exits
+# with a clear error (no version → gcloud returns NOT_FOUND). The
+# coder-cron-heartbeat.timer that ships with this commit deliberately
+# does NOT call coder-cron-run — it only uses /usr/bin/logger so the
+# timer mechanism can be smoke-validated before the operator wires up
+# any real cron job. See ADR 0008 Step 3 + exe/docs/runbook.md.
+resource "google_secret_manager_secret" "exe_coder_admin_token" {
+  secret_id = "${local.prefix}-coder-admin-token"
+  labels    = local.common_labels
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "exe_coder_admin_token_reader" {
+  secret_id = google_secret_manager_secret.exe_coder_admin_token.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.exe_coder.email}"
+}
+
 # Logs/metrics so a preempted VM still leaves a trail.
 resource "google_project_iam_member" "exe_coder_log_writer" {
   project = var.gcp_project_id
@@ -169,6 +199,7 @@ locals {
     TS_SECRET='${google_secret_manager_secret.exe_coder_authkey.secret_id}'
     CF_SECRET='${google_secret_manager_secret.tunnel_credentials.secret_id}'
     CF_TUNNEL_ID='${cloudflare_zero_trust_tunnel_cloudflared.exe.id}'
+    ADMIN_TOKEN_SECRET='${google_secret_manager_secret.exe_coder_admin_token.secret_id}'
     PROJECT='${var.gcp_project_id}'
     CODER_ACCESS_URL='https://${local.coder_host}'
     CODER_WILDCARD='${local.sandbox_host}'
@@ -423,6 +454,116 @@ locals {
     UNIT
     systemctl daemon-reload
     systemctl enable --now coder.service
+
+    # ---- ADR 0008 step 3: systemd timer scaffolding ------------------
+    # Two pieces ship together but serve different purposes:
+    #
+    #   1. /usr/local/bin/coder-cron-run — helper any future systemd
+    #      .service unit can invoke to call the local Coder API
+    #      (http://127.0.0.1:7080) authenticated with the admin token
+    #      from Secret Manager. Operator must populate the secret
+    #      version after first apply (see runbook). Until then, calling
+    #      the helper exits 65 with a clear pointer to the runbook.
+    #
+    #   2. coder-cron-heartbeat.service + .timer — pure-logger one-liner
+    #      that fires daily and writes to journald. Smoke validation
+    #      that the systemd timer mechanism itself works without
+    #      depending on the operator-side admin token setup. To inspect
+    #      on the VM:    journalctl -u coder-cron-heartbeat --since today
+    #
+    # Real cron jobs (tofu plan, lint, agent task) land in step 4 as
+    # additional .timer + .service units that DO call coder-cron-run.
+
+    # /etc/default/coder-cron — env file consumed by the helper. Keeps
+    # the secret name + project out of the helper's source so the
+    # helper itself is operator-readable plain bash.
+    cat > /etc/default/coder-cron <<DEFAULTS
+    CODER_CRON_SECRET_NAME=$ADMIN_TOKEN_SECRET
+    CODER_CRON_PROJECT=$PROJECT
+    DEFAULTS
+    chmod 0644 /etc/default/coder-cron
+
+    # /usr/local/bin/coder-cron-run — quoted heredoc so the inner
+    # bash variables (\$#, \$@, \$CODER_CRON_*) stay literal.
+    cat > /usr/local/bin/coder-cron-run <<'HELPER'
+    #!/usr/bin/env bash
+    # coder-cron-run — call the local Coder API from this VM with a
+    # short-lived admin token fetched from Secret Manager.
+    #
+    # Usage:
+    #   coder-cron-run <coder-cli-args...>
+    #
+    # Reads CODER_CRON_SECRET_NAME and CODER_CRON_PROJECT from
+    # /etc/default/coder-cron (set by tofu/exe/coder.tf startup_script
+    # at VM bootstrap). The admin token itself is created by the
+    # operator after first apply with `coder tokens create` and
+    # uploaded as a new Secret Manager version. See runbook.
+    set -euo pipefail
+
+    if [ "$#" -lt 1 ]; then
+      echo "usage: coder-cron-run <coder-cli-args...>" >&2
+      exit 64
+    fi
+
+    if [ -r /etc/default/coder-cron ]; then
+      # shellcheck disable=SC1091
+      . /etc/default/coder-cron
+    fi
+    : "$${CODER_CRON_SECRET_NAME:?CODER_CRON_SECRET_NAME is unset; check /etc/default/coder-cron}"
+    : "$${CODER_CRON_PROJECT:?CODER_CRON_PROJECT is unset; check /etc/default/coder-cron}"
+
+    if ! CODER_SESSION_TOKEN="$(gcloud --quiet \
+          --project="$CODER_CRON_PROJECT" \
+          secrets versions access latest \
+          --secret="$CODER_CRON_SECRET_NAME" 2>/dev/null)"; then
+      echo "[coder-cron-run] failed to fetch Coder admin token from Secret Manager." >&2
+      echo "[coder-cron-run] Operator action: see exe/docs/runbook.md" >&2
+      echo "[coder-cron-run] section 'Coder admin token for cron'." >&2
+      exit 65
+    fi
+    export CODER_SESSION_TOKEN
+    export CODER_URL='http://127.0.0.1:7080'
+
+    exec coder "$@"
+    HELPER
+    chmod 0755 /usr/local/bin/coder-cron-run
+
+    # coder-cron-heartbeat.service — one-shot logger; no Coder API
+    # call. Proves the timer fires; journald keeps the trail.
+    cat > /etc/systemd/system/coder-cron-heartbeat.service <<UNIT
+    [Unit]
+    Description=coder-cron heartbeat (ADR 0008 step 3 smoke)
+    After=network-online.target
+
+    [Service]
+    Type=oneshot
+    ExecStart=/usr/bin/logger -t coder-cron-heartbeat -- tick
+    NoNewPrivileges=true
+    ProtectSystem=full
+    ProtectHome=true
+    PrivateTmp=true
+    UNIT
+
+    # coder-cron-heartbeat.timer — daily at 09:17 UTC with up to 5 min
+    # of jitter. The off-the-hour minute (17 not 00) avoids cron
+    # thundering-herd; Persistent=true means a missed run after VM
+    # reboot still fires once on the next boot.
+    cat > /etc/systemd/system/coder-cron-heartbeat.timer <<UNIT
+    [Unit]
+    Description=Run coder-cron-heartbeat daily (ADR 0008 step 3)
+
+    [Timer]
+    OnCalendar=*-*-* 09:17:00 UTC
+    Persistent=true
+    RandomizedDelaySec=300
+    Unit=coder-cron-heartbeat.service
+
+    [Install]
+    WantedBy=timers.target
+    UNIT
+
+    systemctl daemon-reload
+    systemctl enable --now coder-cron-heartbeat.timer
   EOT
 }
 
