@@ -484,15 +484,31 @@ locals {
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "$PG_IAM_DB_USER";
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "$PG_IAM_DB_USER";
     -- Operator IAM DB user — read-only audit via Cloud SQL Studio.
-    -- Intentionally narrower than the SA user above: no CREATE on
-    -- schema, no ALL on tables/sequences. Write traffic stays
-    -- exclusive to coder.service via $PG_IAM_DB_USER.
+    --
+    -- Why pg_read_all_data instead of table-level GRANTs: the script
+    -- runs as the postgres BUILT_IN user (Cloud SQL's
+    -- cloudsqlsuperuser). cloudsqlsuperuser is NOT a Postgres
+    -- superuser and therefore cannot GRANT SELECT on tables owned by
+    -- another role. Coder's migrations create every table as
+    -- $PG_IAM_DB_USER, so a 'GRANT SELECT ON ALL TABLES IN SCHEMA
+    -- public TO operator' issued from postgres errors out with
+    -- 'permission denied for table schema_migrations' — and with
+    -- ON_ERROR_STOP=1, that aborts the rest of startup_script,
+    -- breaking the subsequent /etc/default/coder + coder.service
+    -- writes (real prod outage 2026-05-04).
+    --
+    -- The fix: grant the predefined role pg_read_all_data
+    -- (Postgres 14+, available on Cloud SQL Postgres 16). It
+    -- automatically confers SELECT and USAGE on every relation
+    -- regardless of owner, no per-table maintenance, and crucially
+    -- it can be granted by cloudsqlsuperuser via role membership
+    -- (which it CAN do, unlike per-table GRANT).
+    --
+    -- Posture remains the same: read-only. pg_read_all_data has no
+    -- write privilege built in; CONNECT is granted separately so
+    -- the operator can open the database in the first place.
     GRANT CONNECT ON DATABASE coder TO "$PG_OPERATOR_DB_USER";
-    GRANT USAGE ON SCHEMA public TO "$PG_OPERATOR_DB_USER";
-    GRANT SELECT ON ALL TABLES IN SCHEMA public TO "$PG_OPERATOR_DB_USER";
-    GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO "$PG_OPERATOR_DB_USER";
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "$PG_OPERATOR_DB_USER";
-    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO "$PG_OPERATOR_DB_USER";
+    GRANT pg_read_all_data TO "$PG_OPERATOR_DB_USER";
     SQL
     unset PG_ADMIN_PASSWORD
 
