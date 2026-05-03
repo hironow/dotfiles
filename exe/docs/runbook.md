@@ -540,6 +540,43 @@ then `just exe-apply`.
 
 After `nuke`, run `just exe-bootstrap` again to start over.
 
+## Healthz uptime monitoring
+
+Cloud Monitoring runs an uptime check against
+`https://exe.hironow.dev/healthz` every 5 minutes from the
+ASIA_PACIFIC region, carrying the same CF Access service-token
+headers `cdr` uses. Two consecutive failures (~10 min sustained)
+trigger an email alert to `var.owner_email`.
+
+Inspect:
+
+```bash
+# Last fired / pass rate / configured headers
+gcloud monitoring uptime-checks list --project=gen-ai-hironow
+
+# Alert policy state
+gcloud alpha monitoring policies list --project=gen-ai-hironow
+```
+
+Or in the GCP console: Monitoring → Uptime checks /
+Monitoring → Alerting.
+
+If you receive a `exe-coder-healthz down` email:
+
+1. `just exe-smoke` — DNS / Access gate / VM running / secrets
+2. `gcloud compute instances describe exe-coder ...` — VM status
+3. `gcloud sql instances describe exe-coder-pg ...` — DB status
+4. Cloud SQL logs:
+   `logName="projects/gen-ai-hironow/logs/cloudsql.googleapis.com%2Fpostgres.log"`
+5. The auto-close on the alert policy is 30 min — once healthz
+   recovers, the alert clears itself.
+
+To suppress alerts during planned maintenance (e.g. running
+`just exe-replace google_compute_instance.exe_coder`), the
+operator can either silence the policy via the GCP console or
+just expect a single false alert (it will auto-close in 30 min
+once the VM is back).
+
 ## Cost monitoring
 
 GCS state bucket and Secret Manager are essentially free. The VM is
