@@ -7,7 +7,6 @@
 # constants in .devcontainer/features/dotfiles-tools/install.sh.
 just = "1.40.0"
 markdownlint-cli2 = "0.22.1"
-opentofu = "1.11.6"
 prek = "0.3.11"
 uv = "0.11.8"
 # `vp` is the mise registry alias for npm:vite-plus (NOT the
