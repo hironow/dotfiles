@@ -2,6 +2,10 @@
 
 Operational scripts for `exe.hironow.dev`.
 
+For a user-facing **how / when to pick which `cdr` command** quick
+reference, see [`../docs/usage.md`](../docs/usage.md). This README
+documents the file-level layout.
+
 ## Files
 
 | Path | Purpose |
@@ -18,6 +22,8 @@ All scripts must be idempotent (per `scripts-guidelines` in CLAUDE.md).
 
 ## Related docs
 
+- [`../docs/usage.md`](../docs/usage.md) — `cdr` / `cdr-job` /
+  `cdr-exec` / `cdr-header` user-facing quick reference
 - [`../docs/runbook.md`](../docs/runbook.md) — day-to-day operator
   workflow (uses `cdr` for every Coder API call)
 - [`../docs/architecture.md`](../docs/architecture.md) — full
