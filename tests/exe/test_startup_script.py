@@ -64,7 +64,9 @@ HCL_SUBSTITUTIONS: dict[str, str] = {
     # is later passed through bash -n / shellcheck.
     r"\$\{var\.coder_version\}": "v2.31.11",
     r"\$\{var\.coder_sha256\}": "32cf14eeecc96190dbc66b6965a3bdd563eaecc0d811a690e1e0b65828484979",
-    # ADR 0010: Cloud SQL Auth Proxy + managed Postgres connection.
+    # ADR 0010: Cloud SQL Auth Proxy + managed Postgres + IAM
+    # database authentication. PG_IAM_DB_USER is the VM SA email
+    # minus the .gserviceaccount.com suffix per Cloud SQL convention.
     r"\$\{var\.cloud_sql_proxy_version\}": "v2.21.3",
     r"\$\{var\.cloud_sql_proxy_sha256\}": (
         "46bef6dad3db3d10f07d69a1d76891d1a6aa942cc77b6f50369d9b8160a129e1"
@@ -75,9 +77,7 @@ HCL_SUBSTITUTIONS: dict[str, str] = {
     r"\$\{local\.cloud_sql_connection_name\}": (
         "gen-ai-hironow:asia-northeast1:exe-coder-pg"
     ),
-    r"\$\{google_secret_manager_secret\.coder_pg_password\.secret_id\}": (
-        "exe-coder-pg-password"
-    ),
+    r"\$\{local\.cloud_sql_iam_db_user\}": "exe-coder@gen-ai-hironow.iam",
     r"\$\{google_secret_manager_secret\.exe_coder_authkey\.secret_id\}": (
         "exe-tailscale-coder-authkey"
     ),
@@ -587,10 +587,6 @@ case "$*" in
   *secrets*versions*access*--secret=exe-cloudflared-credentials*)
     echo '{"AccountTag":"a","TunnelID":"00000000-0000-0000-0000-000000000000","TunnelName":"exe-tunnel","TunnelSecret":"AAAA"}'
     ;;
-  *secrets*versions*access*--secret=exe-coder-pg-password*)
-    # ADR 0010: deterministic fake postgres password (32 char alphanum)
-    echo "fakepasswordfakepasswordfakepass"
-    ;;
   *)
     echo "gcloud mock: unhandled args: $*" >&2
     exit 0
@@ -968,14 +964,17 @@ def test_coder_tf_no_unverified_apt_key_curls(startup_script: str) -> None:
 
 @pytest.mark.exe
 def test_cloud_sql_resources_present() -> None:
-    """ADR 0010: tofu provisions a Cloud SQL Postgres instance, the
-    coder DB, the coder user, the password (random_password) +
-    Secret Manager version + IAM, the VPC peering for private IP,
-    and the cloudsql.client IAM grant for the VM SA."""
+    """ADR 0010 (2026 Cloud SQL best-practice): tofu provisions a
+    Cloud SQL Postgres instance, the coder DB, an IAM
+    service-account DB user, VPC peering for private IP, and BOTH
+    cloudsql.client + cloudsql.instanceUser IAM grants for the VM
+    SA. IAM database authentication is enabled via the
+    cloudsql.iam_authentication database flag — there is NO
+    password user, no random_password, no Secret Manager password
+    secret. CSAP runs with --auto-iam-authn=true and exchanges
+    ADC for a short-lived OAuth token at every connection."""
     cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text()
 
-    # Cloud SQL instance with deletion_protection + private IP +
-    # backup enabled.
     inst = re.search(
         r'resource\s+"google_sql_database_instance"\s+"coder"\s*\{(.*?)^\}',
         cloudsql_tf,
@@ -984,55 +983,85 @@ def test_cloud_sql_resources_present() -> None:
     assert inst is not None, "missing google_sql_database_instance.coder"
     body = inst.group(1)
     assert re.search(r"deletion_protection\s*=\s*true", body), (
-        "Cloud SQL instance MUST have deletion_protection = true so a\n"
-        "tofu destroy of the VM stack does not silently take the DB."
+        "Cloud SQL instance MUST have deletion_protection = true"
     )
     assert re.search(r"ipv4_enabled\s*=\s*false", body), (
         "Cloud SQL instance MUST have ipv4_enabled = false (private IP only)"
     )
     assert re.search(
         r"backup_configuration\s*\{[^{}]*?enabled\s*=\s*true", body, re.DOTALL
-    ), (
-        "Cloud SQL instance MUST enable automated backup (Coder docs\n"
-        "explicitly recommend daily backups for production)"
-    )
+    ), "Cloud SQL instance MUST enable automated backup"
     assert re.search(r"point_in_time_recovery_enabled\s*=\s*true", body), (
         "Cloud SQL instance MUST enable point_in_time_recovery"
     )
 
-    # DB + user + password resources.
-    assert 'resource "google_sql_database" "coder"' in cloudsql_tf
-    assert 'resource "google_sql_user" "coder"' in cloudsql_tf
-    assert 'resource "random_password" "coder_pg_password"' in cloudsql_tf
+    # IAM database authentication flag (mandatory for CSAP
+    # --auto-iam-authn). Without this, IAM auth fails closed.
+    assert re.search(
+        r'database_flags\s*\{[^{}]*?name\s*=\s*"cloudsql\.iam_authentication"'
+        r'[^{}]*?value\s*=\s*"on"',
+        body,
+        re.DOTALL,
+    ), (
+        "Cloud SQL instance MUST set database_flags cloudsql.iam_authentication=on\n"
+        "(2026 best practice — CSAP --auto-iam-authn requires this flag)."
+    )
 
-    # Secret Manager: tofu-managed version (unlike the operator-managed
-    # admin/passphrase patterns retracted in ADR 0009).
-    assert 'resource "google_secret_manager_secret" "coder_pg_password"' in cloudsql_tf
-    assert (
-        'resource "google_secret_manager_secret_version" "coder_pg_password"'
-        in cloudsql_tf
-    ), "the pg password value is tofu-generated; the _version resource must exist"
+    # DB + IAM SA user.
+    assert 'resource "google_sql_database" "coder"' in cloudsql_tf
+    iam_user_block = re.search(
+        r'resource\s+"google_sql_user"\s+"coder_iam"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert iam_user_block is not None, (
+        "Coder DB user MUST be provisioned as an IAM service-account user\n"
+        "(google_sql_user.coder_iam with type=CLOUD_IAM_SERVICE_ACCOUNT)"
+    )
+    assert re.search(
+        r'type\s*=\s*"CLOUD_IAM_SERVICE_ACCOUNT"', iam_user_block.group(1)
+    ), "coder_iam user MUST have type = CLOUD_IAM_SERVICE_ACCOUNT"
+
+    # Pin: there must be NO password resources of any kind. Catches a
+    # regression where someone re-introduces a password-based user.
+    assert "random_password" not in cloudsql_tf, (
+        "There must be NO random_password — IAM auth eliminates the password.\n"
+        "Google Cloud strongly recommends auto-iam-authn over password auth\n"
+        "(2026 Cloud SQL connection guidance)."
+    )
+    assert "coder_pg_password" not in cloudsql_tf, (
+        "There must be NO Postgres password secret — IAM auth eliminates it."
+    )
 
     # VPC peering for private IP.
     assert 'resource "google_compute_global_address" "exe_psa_range"' in cloudsql_tf
     assert 'resource "google_service_networking_connection" "exe_psa"' in cloudsql_tf
 
-    # IAM: VM SA can read the password + connect to Cloud SQL.
-    assert (
-        'resource "google_secret_manager_secret_iam_member" "coder_pg_password_reader"'
-        in cloudsql_tf
-    )
+    # IAM: VM SA needs BOTH cloudsql.client (proxy / cert) AND
+    # cloudsql.instanceUser (DB-level OAuth token exchange).
     assert (
         'resource "google_project_iam_member" "exe_coder_cloudsql_client"'
         in cloudsql_tf
     )
-    cloudsql_client_block = re.search(
+    assert (
+        'resource "google_project_iam_member" "exe_coder_cloudsql_instance_user"'
+        in cloudsql_tf
+    ), (
+        "VM SA MUST have roles/cloudsql.instanceUser. Without it, CSAP\n"
+        "connects but every login fails with 'password authentication failed'."
+    )
+    client_block = re.search(
         r'resource\s+"google_project_iam_member"\s+"exe_coder_cloudsql_client"\s*\{(.*?)^\}',
         cloudsql_tf,
         re.DOTALL | re.MULTILINE,
     )
-    assert cloudsql_client_block is not None
-    assert "cloudsql.client" in cloudsql_client_block.group(1)
+    assert client_block is not None and "cloudsql.client" in client_block.group(1)
+    user_block = re.search(
+        r'resource\s+"google_project_iam_member"\s+"exe_coder_cloudsql_instance_user"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert user_block is not None and "cloudsql.instanceUser" in user_block.group(1)
 
 
 @pytest.mark.exe
@@ -1075,6 +1104,14 @@ def test_cloud_sql_proxy_systemd_unit_emitted(startup_script: str) -> None:
         "CSAP must listen on 127.0.0.1:5432 (loopback only)"
     )
     assert "User=coder" in body, "CSAP must run as the coder system user"
+    # 2026 best practice: --auto-iam-authn so the proxy fetches a
+    # short-lived OAuth token from VM metadata at every connection
+    # and substitutes the password sent by the client. No password
+    # to manage anywhere.
+    assert "--auto-iam-authn" in body, (
+        "CSAP MUST run with --auto-iam-authn so Postgres login uses an\n"
+        "OAuth access token instead of a static password."
+    )
 
     # And coder.service must declare Requires + After cloud-sql-proxy.
     coder_unit = re.search(
@@ -1097,15 +1134,14 @@ def test_cloud_sql_proxy_systemd_unit_emitted(startup_script: str) -> None:
 def test_etc_default_coder_pg_url_is_envfile_not_unit_environment(
     startup_script: str,
 ) -> None:
-    """The pg connection URL contains the password and must NOT live
-    in the systemd unit file (which is mode 0644 + visible in
-    `systemctl show`). Instead, write it to /etc/default/coder
-    (mode 0640 root:coder) and have coder.service load it via
-    EnvironmentFile."""
+    """coder.service loads CODER_PG_CONNECTION_URL via
+    EnvironmentFile=/etc/default/coder, not via an inline
+    Environment= line. Even with IAM auth (no password in the URL),
+    keeping the URL in a config file is the cleaner separation —
+    the unit file stays static and the URL contents can change at
+    bootstrap time without re-rendering systemd."""
     assert "/etc/default/coder" in startup_script
 
-    # The unit file must NOT contain a non-empty
-    # Environment=CODER_PG_CONNECTION_URL= line.
     coder_unit = re.search(
         r"coder\.service\s*<<UNIT(.*?)^UNIT",
         startup_script,
@@ -1114,7 +1150,6 @@ def test_etc_default_coder_pg_url_is_envfile_not_unit_environment(
     assert coder_unit is not None
     cb = coder_unit.group(1)
 
-    # No legacy empty-default placeholder.
     assert "Environment=CODER_PG_CONNECTION_URL=" not in cb, (
         "coder.service unit must NOT contain Environment=CODER_PG_CONNECTION_URL=\n"
         "(value is loaded from /etc/default/coder via EnvironmentFile)"
@@ -1123,14 +1158,37 @@ def test_etc_default_coder_pg_url_is_envfile_not_unit_environment(
         "coder.service must load /etc/default/coder via EnvironmentFile="
     )
 
-    # The script writes the password into /etc/default/coder, not the
-    # unit file.
-    assert "PG_PASSWORD=" in startup_script
+    # 2026 IAM auth shape: URL uses the IAM SA username (URL-encoded
+    # @ -> %40) and a literal placeholder password. No real password
+    # ever appears in startup_script, /etc/default/coder, or any
+    # secret. CSAP --auto-iam-authn replaces the placeholder with a
+    # fresh OAuth token at connection time.
+    assert "PG_IAM_DB_USER=" in startup_script, (
+        "startup_script must declare PG_IAM_DB_USER from the local"
+    )
+    assert "%40" in startup_script, (
+        "the IAM SA username's @ must be URL-encoded as %40 in the URL"
+    )
+    assert ":placeholder@" in startup_script, (
+        "the password slot must be a literal 'placeholder' (CSAP swaps it\n"
+        "for an OAuth token when --auto-iam-authn is set)"
+    )
     assert "127.0.0.1:5432/coder?sslmode=disable" in startup_script, (
         "CODER_PG_CONNECTION_URL must point at the loopback CSAP listener\n"
         "(sslmode=disable is correct because CSAP terminates the encrypted\n"
         "leg between the proxy and the managed instance)"
     )
+
+    # No literal 'PG_PASSWORD' anywhere — IAM auth eliminates it.
+    assert "PG_PASSWORD" not in startup_script, (
+        "startup_script must not reference PG_PASSWORD anywhere — IAM\n"
+        "auth eliminates the password fetch + assembly path. Re-introducing\n"
+        "this would mean back-sliding from 2026 best practice."
+    )
+    assert (
+        "secrets versions access latest --secret=exe-coder-pg-password"
+        not in startup_script
+    ), "startup_script must not fetch a password secret — IAM auth eliminates it."
 
 
 @pytest.mark.exe
@@ -1144,4 +1202,174 @@ def test_bootstrap_enables_cloud_sql_apis() -> None:
     )
     assert "servicenetworking.googleapis.com" in bootstrap, (
         "bootstrap.sh must enable servicenetworking.googleapis.com (ADR 0010)"
+    )
+
+
+@pytest.mark.exe
+def test_cloud_sql_security_posture_no_regression() -> None:
+    """Bundle of security-posture invariants for the Cloud SQL data
+    plane (ADR 0010). Each item below has caused a real-world breach
+    or near-miss in published incidents; we pin them mechanically so
+    a careless edit cannot regress without a test failure.
+
+    Covered:
+    - VM SA must NOT hold cloudsql.admin / cloudsql.editor / cloudsqladmin
+      (privilege creep — the VM only needs client + instanceUser).
+    - Backup retention >= 7 days (Coder docs recommend daily backup;
+      one week is the minimum for a meaningful recovery window).
+    - VPC peering MUST target the exe VPC, not the project default
+      (catches a typo / copy-paste from another stack where the
+      peering would expose the DB to a wider network).
+    - CSAP install MUST use HTTPS + the official Google CDN host
+      (no mirror / no local file path / no http://).
+    - The Coder DB user MUST NOT be of type BUILT_IN (would mean a
+      password user snuck back in alongside or instead of IAM SA).
+    """
+    cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text()
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+
+    # --- Privilege creep ---------------------------------------------
+    forbidden_roles = [
+        "roles/cloudsql.admin",
+        "roles/cloudsql.editor",
+        "roles/cloudsqladmin",
+        "roles/owner",
+        "roles/editor",
+    ]
+    combined_iac = cloudsql_tf + "\n" + coder_tf
+    for role in forbidden_roles:
+        assert role not in combined_iac, (
+            f"VM SA / Cloud SQL IaC must not grant {role!r}. The Coder VM only\n"
+            f"needs cloudsql.client + cloudsql.instanceUser. Anything broader\n"
+            f"is a privilege creep regression."
+        )
+
+    # --- Backup retention >= 7 days ----------------------------------
+    inst = re.search(
+        r'resource\s+"google_sql_database_instance"\s+"coder"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert inst is not None
+    body = inst.group(1)
+    retained = re.search(r"retained_backups\s*=\s*(\d+)", body)
+    assert retained is not None, "must declare retained_backups"
+    assert int(retained.group(1)) >= 7, (
+        f"backup retention is {retained.group(1)} day(s); minimum is 7 days"
+    )
+    assert re.search(r'retention_unit\s*=\s*"COUNT"', body), (
+        "backup retention_unit must be COUNT (count of backups, not bytes)"
+    )
+
+    # --- VPC peering targets the exe VPC, not the default ------------
+    psa_block = re.search(
+        r'resource\s+"google_service_networking_connection"\s+"exe_psa"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert psa_block is not None
+    psa_body = psa_block.group(1)
+    assert "google_compute_network.exe.id" in psa_body, (
+        "VPC peering MUST reference google_compute_network.exe.id (the\n"
+        "stack-private VPC). Pointing at the project default VPC would\n"
+        "expose the DB IP to every other workload sharing that VPC."
+    )
+
+    # Same for the global address that backs the peering.
+    addr_block = re.search(
+        r'resource\s+"google_compute_global_address"\s+"exe_psa_range"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert addr_block is not None
+    assert "google_compute_network.exe.id" in addr_block.group(1)
+
+    # And the Cloud SQL instance's private_network reference.
+    private_net = re.search(
+        r"private_network\s*=\s*([^\s\n]+)",
+        body,
+    )
+    assert private_net is not None
+    assert "google_compute_network.exe.id" in private_net.group(1), (
+        "Cloud SQL instance.settings.ip_configuration.private_network MUST\n"
+        "reference google_compute_network.exe.id"
+    )
+
+    # --- CSAP supply chain: HTTPS + official Google CDN -------------
+    proxy_url_match = re.search(
+        r'cloud_sql_proxy_url\s*=\s*format\(\s*"([^"]+)"',
+        cloudsql_tf,
+    )
+    assert proxy_url_match is not None, "missing cloud_sql_proxy_url local"
+    proxy_url = proxy_url_match.group(1)
+    assert proxy_url.startswith("https://"), (
+        f"CSAP download URL must be HTTPS: got {proxy_url!r}"
+    )
+    assert "storage.googleapis.com/cloud-sql-connectors" in proxy_url, (
+        f"CSAP download URL must point at the official Google CDN: got {proxy_url!r}"
+    )
+
+    # --- DB user MUST be IAM SA only, never BUILT_IN ----------------
+    # Cloud SQL has three user types: BUILT_IN (password),
+    # CLOUD_IAM_USER (human IAM), CLOUD_IAM_SERVICE_ACCOUNT (SA).
+    # We require SA-only; pin negatively to catch the regression.
+    iam_user_block = re.search(
+        r'resource\s+"google_sql_user"\s+"coder_iam"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert iam_user_block is not None
+    assert 'type = "BUILT_IN"' not in iam_user_block.group(1), (
+        "Coder DB user must not be BUILT_IN (password). Use the\n"
+        "CLOUD_IAM_SERVICE_ACCOUNT type as ADR 0010 specifies."
+    )
+
+    # No other google_sql_user that might be of BUILT_IN type.
+    other_users = re.findall(
+        r'resource\s+"google_sql_user"\s+"([^"]+)"',
+        cloudsql_tf,
+    )
+    assert other_users == ["coder_iam"], (
+        f"Only the IAM SA user is allowed to be provisioned by tofu.\n"
+        f"Found additional users: {[u for u in other_users if u != 'coder_iam']!r}"
+    )
+
+    # --- Connection URL must NOT carry a real password --------------
+    # The password slot is a literal string 'placeholder'; CSAP swaps
+    # it for an OAuth token at connection time. Pattern:
+    #   CODER_PG_CONNECTION_URL=postgres://<USER>:placeholder@127.0.0.1:5432/...
+    pg_url_match = re.search(
+        r"CODER_PG_CONNECTION_URL=postgres://([^:\s]+):([^@\s]+)@",
+        coder_tf,
+    )
+    assert pg_url_match is not None, "could not find pg connection URL"
+    url_user, url_pass = pg_url_match.group(1), pg_url_match.group(2)
+
+    # Password slot must be the literal string 'placeholder'. Any
+    # other value (especially bash interpolations like $PG_PASSWORD)
+    # implies a real password is being assembled into the URL.
+    assert url_pass == "placeholder", (
+        f"connection URL password slot is {url_pass!r}, expected 'placeholder'.\n"
+        "Anything else implies a real password is being assembled into the URL,\n"
+        "which contradicts the --auto-iam-authn posture."
+    )
+
+    # User slot must be the URL-encoded IAM DB user variable, NOT a
+    # hard-coded username like 'coder'. The startup_script transforms
+    # PG_IAM_DB_USER -> PG_IAM_DB_USER_ENC via `sed s/@/%40/g`; the
+    # URL line then references the encoded form.
+    assert url_user == "$PG_IAM_DB_USER_ENC", (
+        f"connection URL user slot is {url_user!r}, expected\n"
+        "'$PG_IAM_DB_USER_ENC' (built from $PG_IAM_DB_USER via the\n"
+        "@ -> %40 sed transform). Hard-coded usernames bypass the\n"
+        "IAM SA mapping that CSAP --auto-iam-authn relies on."
+    )
+    # And the encoding transform must exist in the script.
+    assert re.search(
+        r"PG_IAM_DB_USER_ENC=.*?sed[^\n]*'s/@/%40/g'",
+        coder_tf,
+    ), (
+        "startup_script must URL-encode PG_IAM_DB_USER's '@' into '%40'\n"
+        "before assembling the postgres:// URL, otherwise libpq mis-parses\n"
+        "the URL grammar."
     )
