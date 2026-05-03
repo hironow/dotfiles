@@ -74,6 +74,44 @@ resource "google_secret_manager_secret_iam_member" "exe_coder_authkey_reader" {
   member    = "serviceAccount:${google_service_account.exe_coder.email}"
 }
 
+# TF_ENCRYPTION passphrase used by cron jobs that read the exe stack's
+# tofu state (e.g. nightly `tofu plan` per ADR 0008 step 4). The
+# passphrase value is operator-generated at bootstrap (lives at
+# ~/.config/tofu/exe.passphrase on the operator's Mac) and uploaded
+# here once after `just exe-apply`:
+#
+#   gcloud secrets versions add exe-tofu-encryption-passphrase \
+#     --project=gen-ai-hironow \
+#     --data-file=$HOME/.config/tofu/exe.passphrase
+#
+# Tofu owns only the secret shell + IAM grant; the value stays
+# operator-managed (re-uploading is the rotation path). Without a
+# version, the cron job fails closed with a runbook pointer.
+resource "google_secret_manager_secret" "exe_tofu_encryption_passphrase" {
+  secret_id = "${local.prefix}-tofu-encryption-passphrase"
+  labels    = local.common_labels
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "exe_tofu_encryption_passphrase_reader" {
+  secret_id = google_secret_manager_secret.exe_tofu_encryption_passphrase.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.exe_workspace.email}"
+}
+
+# Workspace SA → state bucket. Required so cron jobs that spawn
+# ephemeral workspaces can read the encrypted state and ship plan
+# artifacts to gs://<project>-tofu-state/jobs/<date>/. The bucket
+# itself lives outside tofu (created by exe/scripts/bootstrap.sh),
+# so the IAM grant is on the bucket name (resolved from local).
+resource "google_storage_bucket_iam_member" "exe_workspace_state_bucket_admin" {
+  bucket = local.state_bucket
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.exe_workspace.email}"
+}
+
 # Coder admin token used by the Coder VM's local cron (systemd timer)
 # to call the Coder API on http://127.0.0.1:7080. Tofu creates the
 # Secret Manager *shell* only; the operator populates the value AFTER
@@ -564,6 +602,142 @@ locals {
 
     systemctl daemon-reload
     systemctl enable --now coder-cron-heartbeat.timer
+
+    # ---- ADR 0008 step 4: nightly tofu-plan cron --------------------
+    # First real cron use case (after the heartbeat smoke). Spawns an
+    # ephemeral dotfiles-job workspace whose job_command runs
+    # exe/scripts/cron-tofu-plan.sh from the cloned dotfiles repo.
+    # Plan artifacts ship to gs://<project>-tofu-state/jobs/<date>/.
+    #
+    # Three new pieces:
+    #   1. /usr/local/bin/coder-cron-spawn-job — VM-side analog of
+    #      cdr-job: generates a unique workspace name, calls
+    #      coder-cron-run create, polls until the agent reports
+    #      ready, then deletes. Trap-handler delete on failure.
+    #   2. coder-cron-tofu-plan.service — calls the spawn-job
+    #      wrapper with a one-liner that clones dotfiles + execs
+    #      the cron-tofu-plan.sh script.
+    #   3. coder-cron-tofu-plan.timer — fires daily at 04:23 UTC
+    #      (off-the-hour minute, Persistent=true,
+    #      RandomizedDelaySec=600) so it runs while the operator is
+    #      typically asleep and out of contention with morning use.
+
+    cat > /usr/local/bin/coder-cron-spawn-job <<'SPAWN'
+    #!/usr/bin/env bash
+    # coder-cron-spawn-job — spawn an ephemeral exe-dotfiles-job
+    # workspace from the Coder VM, wait for the agent's startup_script
+    # (which IS the job) to finish, then delete the workspace.
+    #
+    # Usage:
+    #   coder-cron-spawn-job <name-prefix> <single-shell-command-string>
+    #
+    # The command MUST be a single argument (use bash -c '...' or
+    # explicit quoting to construct it from systemd ExecStart). The
+    # prefix is suffixed with -YYYYMMDD-HHMMSS to keep workspace names
+    # unique across runs. Workspace teardown happens in a trap handler
+    # so SIGTERM / failure still reaps the VM. Template-level
+    # default_ttl_ms + dormancy_threshold_ms remain the secondary +
+    # tertiary safety nets per ADR 0008.
+    set -euo pipefail
+
+    err() { printf '[coder-cron-spawn-job] ERROR: %s\n' "$*" >&2; exit 1; }
+    log() { printf '[coder-cron-spawn-job] %s\n' "$*" >&2; }
+
+    if [ "$#" -ne 2 ]; then
+      err "usage: coder-cron-spawn-job <name-prefix> <single-command-string>"
+    fi
+
+    SPAWN_TIMEOUT_SEC="$${CODER_CRON_SPAWN_TIMEOUT_SEC:-3600}" # 60 min
+
+    PREFIX="$1"
+    JOB_COMMAND="$2"
+    if ! [[ "$PREFIX" =~ ^[a-z0-9-]+$ ]]; then
+      err "name-prefix must match [a-z0-9-]+ (got: $PREFIX)"
+    fi
+    NAME="$${PREFIX}-$(date -u +%Y%m%d-%H%M%S)"
+
+    cleanup() {
+      local rc=$?
+      log "tearing down workspace '$NAME' (rc=$rc)"
+      coder-cron-run delete "$NAME" --yes >/dev/null 2>&1 || true
+    }
+    trap cleanup EXIT
+
+    log "creating workspace '$NAME' from template exe-dotfiles-job"
+    coder-cron-run create "$NAME" \
+      --template exe-dotfiles-job \
+      --parameter "job_command=$${JOB_COMMAND}" \
+      --yes
+
+    log "polling agent state (timeout $${SPAWN_TIMEOUT_SEC}s)"
+    START_TS=$(date +%s)
+    while true; do
+      STATUS_JSON="$(coder-cron-run show "$NAME" --output json 2>/dev/null || echo '{}')"
+      AGENT_STATE="$(jq -r '.latest_build.resources[]?.agents[]?.lifecycle_state // empty' \
+        <<<"$STATUS_JSON" | head -1)"
+
+      case "$AGENT_STATE" in
+        ready)
+          log "agent state=ready (startup_script finished); tearing down"
+          break
+          ;;
+        starting|created|"") ;;
+        start_timeout|start_error|shutdown_timeout|shutdown_error|off)
+          log "agent reached terminal state: $AGENT_STATE"
+          break
+          ;;
+      esac
+
+      NOW=$(date +%s)
+      if (( NOW - START_TS >= SPAWN_TIMEOUT_SEC )); then
+        log "wall-clock budget exceeded ($${SPAWN_TIMEOUT_SEC}s); aborting"
+        exit 124
+      fi
+      sleep 10
+    done
+
+    log "job '$NAME' completed; trap will delete the workspace"
+    SPAWN
+    chmod 0755 /usr/local/bin/coder-cron-spawn-job
+
+    cat > /etc/systemd/system/coder-cron-tofu-plan.service <<'UNIT'
+    [Unit]
+    Description=Nightly tofu plan via ephemeral Coder workspace (ADR 0008 step 4)
+    After=network-online.target coder.service
+    Wants=network-online.target
+
+    [Service]
+    Type=oneshot
+    EnvironmentFile=/etc/default/coder-cron
+    # systemd ExecStart does NOT interpret shell metacharacters, so
+    # the multi-step job goes through /bin/bash -c. Inside, the
+    # second arg to coder-cron-spawn-job is the single shell-string
+    # the workspace agent will exec via sh -c '...' once cloned.
+    ExecStart=/bin/bash -c '/usr/local/bin/coder-cron-spawn-job tofu-plan "git clone --depth 1 https://github.com/hironow/dotfiles.git /root/dotfiles && bash /root/dotfiles/exe/scripts/cron-tofu-plan.sh"'
+    NoNewPrivileges=true
+    ProtectSystem=full
+    ProtectHome=true
+    PrivateTmp=true
+    UNIT
+
+    cat > /etc/systemd/system/coder-cron-tofu-plan.timer <<UNIT
+    [Unit]
+    Description=Run nightly tofu plan (ADR 0008 step 4)
+
+    [Timer]
+    OnCalendar=*-*-* 04:23:00 UTC
+    Persistent=true
+    RandomizedDelaySec=600
+    Unit=coder-cron-tofu-plan.service
+
+    [Install]
+    WantedBy=timers.target
+    UNIT
+
+    systemctl daemon-reload
+    # Enabled on every boot; safe because each fire spawns a fresh
+    # workspace and the spawn-job wrapper traps teardown.
+    systemctl enable --now coder-cron-tofu-plan.timer
   EOT
 }
 
