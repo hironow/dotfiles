@@ -78,6 +78,10 @@ HCL_SUBSTITUTIONS: dict[str, str] = {
         "gen-ai-hironow:asia-northeast1:exe-coder-pg"
     ),
     r"\$\{local\.cloud_sql_iam_db_user\}": "exe-coder@gen-ai-hironow.iam",
+    r"\$\{local\.cloud_sql_private_ip\}": "10.130.224.3",
+    r"\$\{google_secret_manager_secret\.postgres_admin\.secret_id\}": (
+        "exe-postgres-admin-password"
+    ),
     r"\$\{google_secret_manager_secret\.exe_coder_authkey\.secret_id\}": (
         "exe-tailscale-coder-authkey"
     ),
@@ -587,6 +591,12 @@ case "$*" in
   *secrets*versions*access*--secret=exe-cloudflared-credentials*)
     echo '{"AccountTag":"a","TunnelID":"00000000-0000-0000-0000-000000000000","TunnelName":"exe-tunnel","TunnelSecret":"AAAA"}'
     ;;
+  *secrets*versions*access*--secret=exe-postgres-admin-password*)
+    # ADR 0010 IAM-user-bootstrap path: deterministic fake admin
+    # password (32 char alphanum) so the bootstrap loop can call
+    # psql against a (mocked) Postgres without exiting prematurely.
+    echo "fakepostgresadminpasswordfakepass"
+    ;;
   *)
     echo "gcloud mock: unhandled args: $*" >&2
     exit 0
@@ -602,6 +612,18 @@ cat > /opt/mock/tailscale <<'MOCK'
 exit 0
 MOCK
 chmod +x /opt/mock/tailscale
+
+# ---- mock psql for the IAM user privilege bootstrap step --------
+# The startup_script issues a wait-loop against psql followed by a
+# GRANT batch. Both must "succeed" so the script flows past them
+# without retrying for the full 60s timeout.
+cat > /opt/mock/psql <<'MOCK'
+#!/usr/bin/env bash
+# Capture invocation for visibility, then succeed.
+echo "psql mock $*" >> /var/log/psql-mock.log 2>/dev/null || true
+exit 0
+MOCK
+chmod +x /opt/mock/psql
 
 cat > /opt/mock/systemctl <<'MOCK'
 #!/usr/bin/env bash
@@ -1062,16 +1084,27 @@ def test_cloud_sql_resources_present() -> None:
         "internal role exists by the time the user is created."
     )
 
-    # Pin: there must be NO password resources of any kind. Catches a
-    # regression where someone re-introduces a password-based user.
-    assert "random_password" not in cloudsql_tf, (
-        "There must be NO random_password — IAM auth eliminates the password.\n"
-        "Google Cloud strongly recommends auto-iam-authn over password auth\n"
-        "(2026 Cloud SQL connection guidance)."
+    # Pin: there must be NO COMPILER-time password for the Coder
+    # runtime user. The IAM SA user must be auth'd via OAuth tokens.
+    # The only random_password permitted in this file is the
+    # `postgres_admin` BUILT_IN bootstrap-only password (used once
+    # at VM startup to grant CREATE on public to the IAM user; not
+    # used by coder.service at runtime).
+    assert 'random_password" "coder_pg_password"' not in cloudsql_tf, (
+        "There must be NO random_password.coder_pg_password — IAM auth\n"
+        "eliminates the Coder runtime password. Google Cloud strongly\n"
+        "recommends auto-iam-authn over password auth (2026 guidance)."
     )
-    assert "coder_pg_password" not in cloudsql_tf, (
-        "There must be NO Postgres password secret — IAM auth eliminates it."
+    assert 'google_secret_manager_secret" "coder_pg_password"' not in cloudsql_tf, (
+        "There must be NO Postgres password secret for the runtime user."
     )
+
+    # Cross-check: coder.tf must NOT pass any postgres password into
+    # the CODER_PG_CONNECTION_URL — that would defeat the IAM auth
+    # posture. The URL's password slot stays a literal 'placeholder'.
+    # (See test_etc_default_coder_pg_url_is_envfile_not_unit_environment
+    # for the URL-shape pin; here we just guard against the cloudsql.tf
+    # adding a non-bootstrap password resource.)
 
     # VPC peering for private IP.
     assert 'resource "google_compute_global_address" "exe_psa_range"' in cloudsql_tf
@@ -1226,16 +1259,24 @@ def test_etc_default_coder_pg_url_is_envfile_not_unit_environment(
         "leg between the proxy and the managed instance)"
     )
 
-    # No literal 'PG_PASSWORD' anywhere — IAM auth eliminates it.
-    assert "PG_PASSWORD" not in startup_script, (
-        "startup_script must not reference PG_PASSWORD anywhere — IAM\n"
-        "auth eliminates the password fetch + assembly path. Re-introducing\n"
-        "this would mean back-sliding from 2026 best practice."
+    # No literal 'PG_PASSWORD=' (the runtime variable) — IAM auth
+    # eliminates the runtime password fetch. The bootstrap path uses
+    # PG_ADMIN_PASSWORD which is conceptually different and allowed.
+    # Match exactly 'PG_PASSWORD=' so PG_ADMIN_PASSWORD does not
+    # false-positive as a substring.
+    assert "PG_PASSWORD=" not in startup_script, (
+        "startup_script must not declare PG_PASSWORD= — that was the\n"
+        "Coder runtime password fetch path. IAM auth eliminates it.\n"
+        "(The bootstrap path uses PG_ADMIN_PASSWORD; that is allowed.)"
     )
     assert (
         "secrets versions access latest --secret=exe-coder-pg-password"
         not in startup_script
-    ), "startup_script must not fetch a password secret — IAM auth eliminates it."
+    ), (
+        "startup_script must not fetch a Coder runtime password secret —\n"
+        "IAM auth eliminates it. (The bootstrap path fetches a separate\n"
+        "exe-postgres-admin-password secret; that is allowed.)"
+    )
 
 
 @pytest.mark.exe
@@ -1371,14 +1412,24 @@ def test_cloud_sql_security_posture_no_regression() -> None:
         "CLOUD_IAM_SERVICE_ACCOUNT type as ADR 0010 specifies."
     )
 
-    # No other google_sql_user that might be of BUILT_IN type.
-    other_users = re.findall(
-        r'resource\s+"google_sql_user"\s+"([^"]+)"',
-        cloudsql_tf,
+    # Permitted google_sql_user resources:
+    #   - coder_iam (CLOUD_IAM_SERVICE_ACCOUNT) — runtime
+    #   - postgres (BUILT_IN, password) — bootstrap-only, grants the
+    #     IAM user CREATE on public schema once at VM start
+    # Anything beyond these two is a regression (no application
+    # password account, no shared "coder" password user).
+    permitted_users = {"coder_iam", "postgres"}
+    other_users = set(
+        re.findall(
+            r'resource\s+"google_sql_user"\s+"([^"]+)"',
+            cloudsql_tf,
+        )
     )
-    assert other_users == ["coder_iam"], (
-        f"Only the IAM SA user is allowed to be provisioned by tofu.\n"
-        f"Found additional users: {[u for u in other_users if u != 'coder_iam']!r}"
+    extra = other_users - permitted_users
+    assert not extra, (
+        f"Only the IAM SA user (coder_iam) and the bootstrap-only\n"
+        f"postgres superuser are permitted. Found additional users:\n"
+        f"  {sorted(extra)!r}"
     )
 
     # --- Connection URL must NOT carry a real password --------------
@@ -1419,4 +1470,90 @@ def test_cloud_sql_security_posture_no_regression() -> None:
         "startup_script must URL-encode PG_IAM_DB_USER's '@' into '%40'\n"
         "before assembling the postgres:// URL, otherwise libpq mis-parses\n"
         "the URL grammar."
+    )
+
+
+@pytest.mark.exe
+def test_iam_user_privilege_bootstrap_emitted(startup_script: str) -> None:
+    """ADR 0010 incident 2026-05-03: Postgres 15+ locks down the
+    public schema by default — newly-created IAM SA users cannot
+    CREATE TABLE there until cloudsqlsuperuser grants USAGE +
+    CREATE on public. Without the grant, Coder server fails its
+    initial migration and loops forever at "permission denied for
+    schema public".
+
+    The startup_script bootstraps the IAM user's privileges once
+    via the postgres BUILT_IN superuser (random password,
+    bootstrap-only, fetched from Secret Manager). The connection
+    goes via private IP DIRECTLY (not through CSAP) because CSAP's
+    --auto-iam-authn would substitute an OAuth token for the
+    postgres password.
+
+    Pin the shape so a future careless edit cannot silently revert
+    to the broken state.
+    """
+    # The script installs psql if missing.
+    assert "postgresql-client" in startup_script, (
+        "startup_script must install postgresql-client before running\n"
+        "the IAM user privilege bootstrap"
+    )
+
+    # The admin password is fetched from Secret Manager.
+    assert "PG_ADMIN_SECRET=" in startup_script
+    assert "secrets versions access latest --secret=" in startup_script, (
+        "startup_script must fetch the postgres admin password from Secret Manager"
+    )
+
+    # The connection is direct private IP (not CSAP loopback) — the
+    # bootstrap needs to send a real password, which CSAP's
+    # --auto-iam-authn would intercept and replace.
+    assert "PG_PRIVATE_IP=" in startup_script, (
+        "startup_script must declare PG_PRIVATE_IP from the local"
+    )
+    assert "host=$PG_PRIVATE_IP" in startup_script, (
+        "bootstrap psql call must use the Cloud SQL private IP directly,\n"
+        "NOT 127.0.0.1 (CSAP loopback). CSAP's --auto-iam-authn would\n"
+        "swap the postgres password for an OAuth token."
+    )
+    assert "sslmode=require" in startup_script, (
+        "direct private-IP psql connections MUST use sslmode=require so\n"
+        "the password is not sent in plaintext over the VPC peer."
+    )
+
+    # The actual GRANT statements — the whole point of the bootstrap.
+    assert 'GRANT CONNECT ON DATABASE coder TO "$PG_IAM_DB_USER"' in startup_script
+    assert 'GRANT USAGE, CREATE ON SCHEMA public TO "$PG_IAM_DB_USER"' in startup_script
+
+    # PG_ADMIN_PASSWORD must be unset after use so a stray subprocess
+    # cannot inherit it from the environment. (Defense in depth.)
+    assert re.search(r"unset PG_ADMIN_PASSWORD", startup_script), (
+        "PG_ADMIN_PASSWORD must be `unset` after the bootstrap GRANT\n"
+        "so subsequent steps in the startup_script do not inherit it."
+    )
+
+
+@pytest.mark.exe
+def test_postgres_admin_user_is_bootstrap_only_not_runtime_path() -> None:
+    """The postgres BUILT_IN user with random_password is permitted
+    ONLY for the one-time bootstrap GRANT. coder.service must not
+    use it at runtime — that is the whole point of the IAM auth
+    pivot. Pin negatively: the postgres admin secret name must not
+    appear in CODER_PG_CONNECTION_URL or in /etc/default/coder."""
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+
+    # CODER_PG_CONNECTION_URL must reference the IAM SA user via
+    # PG_IAM_DB_USER_ENC, not the postgres admin user. Verify the
+    # admin secret name does not leak into the URL line.
+    pg_url_match = re.search(
+        r"CODER_PG_CONNECTION_URL=postgres://[^\s\n]+",
+        coder_tf,
+    )
+    assert pg_url_match is not None
+    pg_url = pg_url_match.group(0)
+    assert "postgres-admin-password" not in pg_url
+    assert "PG_ADMIN_PASSWORD" not in pg_url
+    assert ":placeholder@" in pg_url, (
+        "the URL password slot must remain the literal 'placeholder';\n"
+        "any other shape implies the postgres admin path leaked into\n"
+        "the runtime URL."
     )
