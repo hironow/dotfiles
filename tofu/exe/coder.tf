@@ -403,9 +403,14 @@ locals {
     # Postgres password at every connection. The "password" Coder
     # sends in its connection URL is ignored (and is set to a
     # placeholder; see /etc/default/coder).
+    # --private-ip: the Cloud SQL instance has ipv4_enabled=false
+    # (private IP only). Without this flag CSAP tries the public
+    # IP path first and fails with `instance does not have IP of
+    # type "PUBLIC"`.
     ExecStart=/usr/local/bin/cloud-sql-proxy \
       --address 127.0.0.1 --port 5432 \
       --auto-iam-authn \
+      --private-ip \
       $PG_CONNECTION_NAME
     Restart=on-failure
     RestartSec=5

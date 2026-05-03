@@ -1152,6 +1152,13 @@ def test_cloud_sql_proxy_systemd_unit_emitted(startup_script: str) -> None:
         "CSAP MUST run with --auto-iam-authn so Postgres login uses an\n"
         "OAuth access token instead of a static password."
     )
+    # Cloud SQL instance has ipv4_enabled=false (private IP only).
+    # Without --private-ip CSAP defaults to the public-IP path and
+    # fails with `instance does not have IP of type "PUBLIC"`.
+    assert "--private-ip" in body, (
+        "CSAP MUST run with --private-ip — the instance has no public\n"
+        "IP and CSAP defaults to PUBLIC otherwise (fails closed)."
+    )
 
     # And coder.service must declare Requires + After cloud-sql-proxy.
     coder_unit = re.search(
