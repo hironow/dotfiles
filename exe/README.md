@@ -20,7 +20,7 @@ agent's environment matches CI exactly.
 | [`cloudflared/`](./cloudflared/) | Tunnel ingress doc (rules live in OpenTofu) |
 | [`tailscale/`](./tailscale/) | ACL (`acl.hujson`), tag definitions for the four-tag Pattern A model |
 | [`scripts/`](./scripts/) | `cdr` CF-Access wrapper + bootstrap / teardown / smoke shell |
-| [`docs/`](./docs/) | [Architecture](./docs/architecture.md) + [Runbook](./docs/runbook.md) |
+| [`docs/`](./docs/) | [Usage](./docs/usage.md) + [Architecture](./docs/architecture.md) + [Runbook](./docs/runbook.md) |
 
 ## Provisioning
 
@@ -60,6 +60,8 @@ Legend / 凡例:
 
 ## Related docs
 
+- [`docs/usage.md`](./docs/usage.md) — `cdr` / `cdr-job` /
+  `cdr-exec` / `cdr-header` quick reference
 - [`docs/architecture.md`](./docs/architecture.md) — full
   architecture with trust boundary table
 - [`docs/runbook.md`](./docs/runbook.md) — operator playbook
