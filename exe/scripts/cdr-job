@@ -105,7 +105,16 @@ while true; do
   fi
 
   case "$AGENT_STATE" in
-    ready|starting|created|"") ;;
+    ready)
+      # `ready` for an ephemeral-job template means the agent's
+      # startup_script (which IS the job) has exited successfully
+      # — the agent process keeps running idly, but the job
+      # itself is done. Break out so the trap-handler can delete
+      # the workspace.
+      log "agent state=ready (startup_script finished); tearing down"
+      break
+      ;;
+    starting|created|"") ;;
     start_timeout|start_error|shutdown_timeout|shutdown_error|off)
       log "agent reached terminal state: $AGENT_STATE"
       break
