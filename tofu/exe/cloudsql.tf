@@ -60,6 +60,14 @@ resource "google_sql_database_instance" "coder" {
   deletion_protection = true
 
   settings {
+    # ENTERPRISE edition supports the legacy shared-core tiers
+    # (db-f1-micro, db-g1-small, db-custom-N-RAMMB). New instances
+    # default to ENTERPRISE_PLUS, which only accepts the more
+    # expensive db-perf-optimized-N-* tiers and rejects db-f1-micro
+    # at create time. Single-operator stack does not need EP
+    # features (Read Pools, sub-second failover, etc.); pin to
+    # ENTERPRISE so cloud_sql_tier remains a small/cheap value.
+    edition           = "ENTERPRISE"
     tier              = var.cloud_sql_tier
     availability_type = "ZONAL" # personal stack; no HA
     disk_type         = "PD_SSD"

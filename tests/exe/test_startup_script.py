@@ -1007,6 +1007,18 @@ def test_cloud_sql_resources_present() -> None:
         "(2026 best practice — CSAP --auto-iam-authn requires this flag)."
     )
 
+    # ENTERPRISE edition pin. New Cloud SQL instances default to
+    # ENTERPRISE_PLUS, which only accepts the more expensive
+    # db-perf-optimized-N-* tiers and REJECTS db-f1-micro at
+    # create time with "Invalid Tier ... for (ENTERPRISE_PLUS)
+    # Edition." Pinning ENTERPRISE keeps the small/cheap tiers
+    # available; single-operator stack does not need EP features.
+    assert re.search(r'edition\s*=\s*"ENTERPRISE"', body), (
+        'Cloud SQL instance MUST set edition = "ENTERPRISE" — without\n'
+        "this, new instances default to ENTERPRISE_PLUS which rejects\n"
+        "db-f1-micro at apply time."
+    )
+
     # DB + IAM SA user.
     assert 'resource "google_sql_database" "coder"' in cloudsql_tf
     iam_user_block = re.search(
