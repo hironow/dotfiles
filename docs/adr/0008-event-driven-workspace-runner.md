@@ -179,3 +179,61 @@ is killed mid-flight, the `dotfiles-job` template sets:
   wrapper as CI-style jobs; they just call `claude` / `codex`
   inside the workspace instead of `tofu plan`. No code path
   forks for "agent" vs "ci".
+
+## Amendment 2026-05-03 — warm-reuse path (cdr-exec)
+
+The first smoke run of `cdr-job` measured the boot tax for a
+pure-ephemeral run at **~6 minutes** (disk + VM creation 30s +
+debian apt install / docker pull / container init ~5 min). For
+short jobs (a 1-second `tofu plan` style command) that is 99%+
+overhead and unacceptable as a default pattern.
+
+Coder Prebuilds (the official warm pool feature) would address
+this but is **Premium-license-only** as of 2026-05; not adoptable
+on this single-operator stack.
+
+To keep `cdr-job`'s pure-ephemeral semantics intact while still
+offering a low-latency option, this ADR adds a **second wrapper
+`cdr-exec`** that targets an **existing long-lived workspace**
+(`coder start <ws>` if stopped, then `coder ssh <ws> -- <cmd>`).
+Trade-offs are explicit:
+
+| | `cdr-job` | `cdr-exec` |
+|---|---|---|
+| Workspace per call | new each time | one shared, long-lived |
+| Boot tax | ~6 min (cold) | ~10-30s (warm cache) |
+| State isolation | guaranteed | NOT guaranteed (`/tmp`, env, processes persist) |
+| Concurrency | unbounded | 1 per workspace |
+| Teardown | trap `coder delete` | none — workspace stays alive |
+
+Operators choose per call:
+
+- `cdr-job` for one-shot agent tasks, secret-handling commands,
+  or anything where a previous job's leftover state could be a
+  problem.
+- `cdr-exec` for repeated short jobs (`tofu plan`, `just lint`,
+  health checks) where boot tax dominates and isolation is not
+  meaningful.
+
+`cdr-job`'s polling loop also gained a fix in this amendment:
+the agent's `lifecycle_state` transitions to `ready` after a
+successful startup_script exit (the agent process keeps running
+idly), and the prior loop only broke on terminal/error states.
+The fix breaks on `ready` for ephemeral templates so the trap-
+handler delete fires immediately instead of after the wall-clock
+budget expires.
+
+Polling-fix detail: the smoke test on PR #70 hit the 30-minute
+budget despite the actual command finishing in <1s, because the
+loop kept seeing `lifecycle_state=ready` (which the prior case
+treated as "not yet"). The fix treats `ready` after start as
+"job done, tear down" for the ephemeral-job template.
+
+A long-lived runner workspace (`coder create runner --template
+exe-dotfiles-job --parameter job_command='sleep infinity' --yes`)
+plus `cdr-exec runner -- <cmd>` is the operational pattern this
+amendment enables. A dedicated `dotfiles-runner` template was
+considered but rejected for now: the existing `dotfiles-job`
+template, when given `sleep infinity` as the job_command, fills
+the role with no new IaC. We may add a dedicated template later
+if the runner needs different VM sizing or volume layout.

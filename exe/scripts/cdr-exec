@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# cdr-exec — run a command inside an EXISTING long-lived Coder
+# workspace (D2 warm-reuse pattern, see ADR 0008 amendment).
+#
+# Usage:
+#   cdr-exec <workspace-name> -- <command...>
+#
+# Example:
+#   cdr-exec runner -- 'cd /root/dotfiles/tofu/exe && just exe-plan'
+#
+# What this does:
+#   1. Reuse `cdr` for the CF Access service-token chain.
+#   2. `coder show <ws>` — verify workspace exists.
+#   3. If workspace is stopped, `coder start <ws>` and wait until
+#      the agent reaches `ready` (warm boot — disk + image cache
+#      survives, so this is ~10-30s vs ~6 min for a fresh create).
+#   4. `coder ssh <ws> -- 'sh -c "<command>"'` — exec inside the
+#      existing container. Output streams back; exit code is
+#      forwarded.
+#   5. The workspace is **NOT** stopped or deleted afterwards. The
+#      operator (or template autostop / dormancy) handles that.
+#
+# Trade-off vs `cdr-job` (per ADR 0008 amendment):
+#   - cdr-job: pure ephemeral, fresh VM each time, ~6 min boot tax,
+#     state isolation guaranteed
+#   - cdr-exec: warm reuse, ~10-30s boot tax, state may persist
+#     between invocations (/tmp, env vars, processes)
+#
+# Use cdr-exec when isolation does not matter and latency does
+# (e.g., quick `tofu plan`, repeated `just lint`). Use cdr-job
+# when isolation matters (one-shot agent task, secret-handling
+# command).
+#
+# Required tools: cdr (which requires gcloud + coder).
+
+set -euo pipefail
+
+err() { printf '\033[31m[cdr-exec]\033[0m %s\n' "$*" >&2; exit 1; }
+log() { printf '\033[36m[cdr-exec]\033[0m %s\n' "$*" >&2; }
+
+# Wall-clock budget for warm boot + exec. Override via env.
+CDR_EXEC_TIMEOUT_SEC="${CDR_EXEC_TIMEOUT_SEC:-1800}" # 30 min default
+
+if [[ $# -lt 3 ]] || [[ "$2" != "--" ]]; then
+  err "usage: cdr-exec <workspace-name> -- <command...>"
+fi
+
+WS_NAME="$1"
+shift 2
+EXEC_COMMAND="$*"
+
+if ! [[ "$WS_NAME" =~ ^[a-z0-9-]+$ ]]; then
+  err "workspace-name must match [a-z0-9-]+ (got: $WS_NAME)"
+fi
+
+command -v cdr >/dev/null 2>&1 || \
+  err "cdr not on PATH; run 'just exe-cdr-install' first"
+
+log "checking workspace '$WS_NAME'"
+WS_JSON="$(cdr show "$WS_NAME" --output json 2>/dev/null || true)"
+if [[ -z "$WS_JSON" ]] || [[ "$WS_JSON" == "null" ]]; then
+  err "workspace '$WS_NAME' does not exist; create it first with cdr create"
+fi
+
+WS_STATUS="$(jq -r '.latest_build.status // empty' <<<"$WS_JSON")"
+log "current status: ${WS_STATUS:-unknown}"
+
+case "$WS_STATUS" in
+  running)
+    log "workspace already running; skipping start"
+    ;;
+  stopped|"")
+    log "starting workspace (warm boot — disk + image cache survives)"
+    cdr start "$WS_NAME" --yes
+    ;;
+  starting|stopping|deleting|deleted|canceling|pending)
+    err "workspace is in transient state '$WS_STATUS'; retry once it settles"
+    ;;
+  *)
+    err "unexpected workspace status '$WS_STATUS'"
+    ;;
+esac
+
+# Wait until agent reaches `ready` (cdr start returns once the
+# build completes, but the agent may still be coming up).
+START_TS=$(date +%s)
+log "waiting for agent ready"
+while true; do
+  STATUS_JSON="$(cdr show "$WS_NAME" --output json 2>/dev/null || echo '{}')"
+  AGENT_STATE="$(jq -r '.latest_build.resources[]?.agents[]?.lifecycle_state // empty' <<<"$STATUS_JSON" | head -1)"
+
+  case "$AGENT_STATE" in
+    ready)
+      log "agent ready; exec'ing command"
+      break
+      ;;
+    starting|created|"") ;;
+    start_timeout|start_error|shutdown_timeout|shutdown_error|off)
+      err "agent reached terminal state '$AGENT_STATE' before becoming ready"
+      ;;
+  esac
+
+  NOW=$(date +%s)
+  if (( NOW - START_TS >= CDR_EXEC_TIMEOUT_SEC )); then
+    err "agent did not reach ready within ${CDR_EXEC_TIMEOUT_SEC}s"
+  fi
+
+  sleep 3
+done
+
+log "command: $EXEC_COMMAND"
+exec cdr ssh "$WS_NAME" -- sh -c "$EXEC_COMMAND"
