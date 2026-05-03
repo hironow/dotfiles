@@ -12,7 +12,7 @@ documents the file-level layout.
 |---|---|
 | [`cdr`](./cdr) | Wrapper around the upstream `coder` CLI. Fetches Cloudflare Access service-token credentials from Secret Manager (cached for 5 min), exports `CODER_HEADER_COMMAND`, then exec's `coder` with the original arguments. Symlinked into `~/.local/bin` via `just exe-cdr-install`. |
 | [`cdr-header`](./cdr-header) | Helper invoked by `cdr` via `CODER_HEADER_COMMAND` to emit the `CF-Access-*` headers Coder needs on every API call. |
-| [`cdr-job`](./cdr-job) | Run a single command in a fresh ephemeral Coder workspace per [ADR 0008](../../docs/adr/0008-event-driven-workspace-runner.md). Pure isolation, ~6 min boot tax. Trap-handler `coder delete` on exit. |
+| [`cdr-job`](./cdr-job) | Run a single command in a fresh ephemeral Coder workspace per [ADR 0008](../../docs/adr/0008-event-driven-workspace-runner.md) (status: Superseded by [0009](../../docs/adr/0009-retract-cron-trigger-from-adr-0008.md) partial — cron retracted, operator-pulled job runner retained). Pure isolation, ~6 min boot tax. Trap-handler `coder delete` on exit. |
 | [`cdr-exec`](./cdr-exec) | Run a command in an EXISTING long-lived workspace (warm reuse, ~10-30s start). State is NOT isolated between calls. See ADR 0008 amendment for the trade-off. |
 | [`bootstrap.sh`](./bootstrap.sh) | First-time provisioning helper (tofu apply + cloudflared tunnel login). Idempotent. |
 | [`teardown.sh`](./teardown.sh) | Destroys the GCE workspace VM and Coder template, retains Cloudflare + Tailscale state for re-bootstrap. Idempotent. |

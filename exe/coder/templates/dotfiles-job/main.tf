@@ -4,9 +4,15 @@
 # Differences from the sibling dotfiles-devcontainer template:
 #   - No interactive parameters. The caller passes the command to
 #     run via the `job_command` template parameter at create-time.
-#   - Short default_ttl_ms / dormancy_threshold_ms so a hung job
-#     does not leak the VM. The cdr-job wrapper additionally
-#     issues `coder delete -y` from a trap handler.
+#   - Lifecycle is owned entirely by the cdr-job wrapper:
+#       * `coder create --yes` blocks until the agent is up,
+#         streams the agent startup_script log, then issues
+#         `coder delete -y` from an EXIT/INT/TERM trap.
+#     This template does NOT set `default_ttl_ms`,
+#     `dormancy_threshold_ms`, or any auto-stop on the VM. If the
+#     wrapper is killed by SIGKILL or OOM (no trap fires), the
+#     job VM will leak — operator must `cdr delete <job-name> -y`
+#     manually. See ADR 0008 "Lifecycle and cost protection".
 #   - Same dev container image (`devcontainer:main`) so the job
 #     sees the same tool set the operator's interactive workspace
 #     does (mise pins, AI CLIs, gcloud, just, ...).
