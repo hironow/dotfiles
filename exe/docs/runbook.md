@@ -118,10 +118,6 @@ Pre-merge testing of dev container changes:
 
 3. Once verified, push another version with `:main` to revert.
 
-The previous `git_branch` parameter (envbuilder-only) is gone:
-the prebuilt-image template doesn't clone at workspace boot;
-operator branch testing happens via the image tag instead.
-
 ## AI agent CLI authentication
 
 Five AI CLIs ship in the image with **no credentials baked in**.
