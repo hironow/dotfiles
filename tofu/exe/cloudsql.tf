@@ -220,6 +220,50 @@ resource "google_project_iam_member" "exe_coder_cloudsql_instance_user" {
   member  = "serviceAccount:${google_service_account.exe_coder.email}"
 }
 
+# ----- Operator IAM DB user (read-only audit via Cloud SQL Studio) ----
+#
+# The exe-coder@ SA above is the runtime identity coder.service uses
+# for read/write traffic. For the operator to inspect the same data
+# (Coder workspace list, audit log, etc.) without impersonating that
+# SA, we provision a second IAM DB user mapped to the operator's
+# personal email (var.owner_email).
+#
+# Auth path:
+#   1. Operator opens Cloud Console -> SQL -> exe-coder-pg ->
+#      Cloud SQL Studio.
+#   2. Studio uses the operator's Console identity to mint a DB
+#      access token via the cloudsql.instanceUser project IAM grant
+#      below.
+#   3. Cloud SQL maps the token to this CLOUD_IAM_USER row and
+#      authenticates the connection.
+#
+# Posture: read-only. The bootstrap GRANT step in coder.tf gives
+# CONNECT + USAGE on schema public + SELECT on existing and future
+# tables — never CREATE / INSERT / UPDATE / DELETE. Write traffic
+# stays exclusive to coder.service via google_sql_user.coder_iam.
+#
+# We deliberately do NOT grant roles/cloudsql.client to the operator
+# at the project level: cloudsql.client is needed only for the
+# proxy/cert TLS path used by CSAP. Cloud SQL Studio handles its own
+# transport, so cloudsql.instanceUser alone is sufficient and the
+# attack surface stays smaller.
+
+resource "google_sql_user" "operator_iam" {
+  name     = var.owner_email
+  instance = google_sql_database_instance.coder.name
+  type     = "CLOUD_IAM_USER"
+
+  # Same race fix as coder_iam: the internal Cloud SQL IAM role is
+  # provisioned asynchronously after the instance reports READY.
+  depends_on = [time_sleep.cloud_sql_iam_role_settle]
+}
+
+resource "google_project_iam_member" "operator_cloudsql_instance_user" {
+  project = var.gcp_project_id
+  role    = "roles/cloudsql.instanceUser"
+  member  = "user:${var.owner_email}"
+}
+
 # ----- locals exposed to coder.tf --------------------------------------
 #
 # Connection name is what CSAP takes as instance argument. Format is
@@ -228,9 +272,10 @@ resource "google_project_iam_member" "exe_coder_cloudsql_instance_user" {
 # duplicating the trimsuffix logic.
 
 locals {
-  cloud_sql_connection_name = google_sql_database_instance.coder.connection_name
-  cloud_sql_iam_db_user     = google_sql_user.coder_iam.name
-  cloud_sql_private_ip      = google_sql_database_instance.coder.private_ip_address
+  cloud_sql_connection_name  = google_sql_database_instance.coder.connection_name
+  cloud_sql_iam_db_user      = google_sql_user.coder_iam.name
+  cloud_sql_operator_db_user = google_sql_user.operator_iam.name
+  cloud_sql_private_ip       = google_sql_database_instance.coder.private_ip_address
   cloud_sql_proxy_url = format(
     "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/%s/cloud-sql-proxy.linux.amd64",
     var.cloud_sql_proxy_version,
