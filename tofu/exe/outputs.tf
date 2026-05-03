@@ -167,3 +167,20 @@ operator diagnostics (e.g. `gcloud sql users list`).
 EOF
   value       = google_sql_user.coder_iam.name
 }
+
+output "uptime_check_name" {
+  description = <<-EOF
+Cloud Monitoring uptime check config resource name. Operator can
+inspect last fired, success rate, etc., via the GCP console
+Monitoring -> Uptime checks page.
+EOF
+  value       = google_monitoring_uptime_check_config.exe_coder_healthz.name
+}
+
+output "alert_policy_name" {
+  description = <<-EOF
+Cloud Monitoring alert policy that fires on sustained uptime
+check failure. Notifies var.owner_email.
+EOF
+  value       = google_monitoring_alert_policy.exe_coder_healthz_down.name
+}

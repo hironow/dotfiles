@@ -1557,3 +1557,81 @@ def test_postgres_admin_user_is_bootstrap_only_not_runtime_path() -> None:
         "any other shape implies the postgres admin path leaked into\n"
         "the runtime URL."
     )
+
+
+# ---------- Cloud Monitoring uptime check + alert (PR #?) -----------
+
+
+@pytest.mark.exe
+def test_uptime_check_and_alert_present() -> None:
+    """The Coder UI is gated by Cloud Access; uptime monitoring must
+    carry the same CF Access service-token headers `cdr` does.
+    Pin the shape so a future careless edit cannot silently weaken
+    the monitoring posture (e.g., drop the auth headers, switch to
+    a non-existent path, expand to a public endpoint that is gated
+    out, etc.)."""
+    monitoring_tf = (ROOT / "tofu" / "exe" / "monitoring.tf").read_text()
+
+    # Uptime check with the right shape.
+    uptime_block = re.search(
+        r'resource\s+"google_monitoring_uptime_check_config"\s+'
+        r'"exe_coder_healthz"\s*\{(.*?)^\}',
+        monitoring_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert uptime_block is not None, "missing exe_coder_healthz uptime check"
+    body = uptime_block.group(1)
+    assert 'path           = "/healthz"' in body or 'path = "/healthz"' in body
+    assert "use_ssl        = true" in body or "use_ssl = true" in body
+    assert "validate_ssl   = true" in body or "validate_ssl = true" in body
+
+    # Headers must include CF-Access-Client-Id + Secret, sourced
+    # from the same Secret Manager values cdr uses.
+    assert "CF-Access-Client-Id" in body
+    assert "CF-Access-Client-Secret" in body
+    assert "coder_cli_client_id_for_uptime" in body
+    assert "coder_cli_client_secret_for_uptime" in body
+
+    # Notification channel: email to the operator (var.owner_email).
+    chan_block = re.search(
+        r'resource\s+"google_monitoring_notification_channel"\s+'
+        r'"operator_email"\s*\{(.*?)^\}',
+        monitoring_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert chan_block is not None, "missing operator_email notification channel"
+    chan_body = chan_block.group(1)
+    assert 'type         = "email"' in chan_body or 'type = "email"' in chan_body
+    assert "var.owner_email" in chan_body, (
+        "notification channel must use var.owner_email so the operator's\n"
+        "email is the single source of truth (the same field that gates\n"
+        "Cloudflare Access)."
+    )
+
+    # Alert policy must reference the uptime check + the email channel.
+    alert_block = re.search(
+        r'resource\s+"google_monitoring_alert_policy"\s+'
+        r'"exe_coder_healthz_down"\s*\{(.*?)^\}',
+        monitoring_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert alert_block is not None
+    alert_body = alert_block.group(1)
+    assert "google_monitoring_uptime_check_config.exe_coder_healthz" in alert_body
+    assert "google_monitoring_notification_channel.operator_email.id" in alert_body, (
+        "alert policy MUST reference the operator email channel; without it\n"
+        "alerts fire silently into nothing."
+    )
+
+
+@pytest.mark.exe
+def test_bootstrap_enables_monitoring_api() -> None:
+    """The uptime check + alert policy live under
+    monitoring.googleapis.com; bootstrap must enable that API
+    before tofu init (we cannot create monitoring resources
+    without it)."""
+    bootstrap = (ROOT / "exe" / "scripts" / "bootstrap.sh").read_text()
+    assert "monitoring.googleapis.com" in bootstrap, (
+        "bootstrap.sh must enable monitoring.googleapis.com so the\n"
+        "uptime check + alert policy can be provisioned."
+    )
