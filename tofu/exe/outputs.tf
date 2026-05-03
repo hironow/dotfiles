@@ -158,11 +158,12 @@ EOF
   value       = google_sql_database_instance.coder.connection_name
 }
 
-output "cloud_sql_pg_password_secret" {
+output "cloud_sql_iam_db_user" {
   description = <<-EOF
-Secret Manager resource for the live Coder Postgres password.
-Tofu owns the value (random_password). Operator can rotate via
-`just exe-replace random_password.coder_pg_password` (ADR 0010).
+Postgres IAM database username for the Coder VM SA. Mapped to the
+`exe-coder@` GCP service account; CSAP exchanges that SA's ADC
+for an OAuth access token at every connection. Exposed for
+operator diagnostics (e.g. `gcloud sql users list`).
 EOF
-  value       = google_secret_manager_secret.coder_pg_password.name
+  value       = google_sql_user.coder_iam.name
 }

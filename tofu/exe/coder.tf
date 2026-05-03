@@ -177,7 +177,7 @@ locals {
     CSAP_SHA256='${var.cloud_sql_proxy_sha256}'
     CSAP_URL='${local.cloud_sql_proxy_url}'
     PG_CONNECTION_NAME='${local.cloud_sql_connection_name}'
-    PG_PASSWORD_SECRET='${google_secret_manager_secret.coder_pg_password.secret_id}'
+    PG_IAM_DB_USER='${local.cloud_sql_iam_db_user}'
 
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
@@ -398,9 +398,14 @@ locals {
     User=coder
     Group=coder
     Environment=HOME=/var/lib/coder
+    # --auto-iam-authn=true: CSAP fetches a short-lived OAuth access
+    # token from the VM metadata server and injects it as the
+    # Postgres password at every connection. The "password" Coder
+    # sends in its connection URL is ignored (and is set to a
+    # placeholder; see /etc/default/coder).
     ExecStart=/usr/local/bin/cloud-sql-proxy \
       --address 127.0.0.1 --port 5432 \
-      --auto-iam-authn=false \
+      --auto-iam-authn \
       $PG_CONNECTION_NAME
     Restart=on-failure
     RestartSec=5
@@ -423,20 +428,24 @@ locals {
       chmod 0600 /var/lib/coder/.admin_password
     fi
 
-    # /etc/default/coder — holds CODER_PG_CONNECTION_URL with the live
-    # Postgres password (fetched from Secret Manager). Mode 0640
-    # (root:coder) keeps the password readable only to the coder
-    # service user. coder.service uses EnvironmentFile= to pick this
-    # up. The unit file itself stays mode 0644 (no secret material).
-    PG_PASSWORD="$(gcloud --quiet --project="$PROJECT" \
-      secrets versions access latest --secret="$PG_PASSWORD_SECRET")"
+    # /etc/default/coder — holds CODER_PG_CONNECTION_URL. The "password"
+    # is a literal placeholder string: with --auto-iam-authn the proxy
+    # ignores whatever Coder sends and substitutes a fresh OAuth access
+    # token from the VM metadata server. The username is the IAM SA
+    # user provisioned in cloudsql.tf, URL-encoded so the '@' in the
+    # email does not collide with the URL grammar.
+    #
+    # File mode is 0640 root:coder for consistency with the rest of the
+    # systemd ecosystem (logs, state) — the URL itself contains no
+    # secret material here. The Coder UI still reads the URL via
+    # `coder.service`'s EnvironmentFile=.
+    PG_IAM_DB_USER_ENC="$(printf '%s' "$PG_IAM_DB_USER" | sed 's/@/%40/g')"
     install -m 0640 -o root -g coder /dev/null /etc/default/coder
     cat > /etc/default/coder <<DEFAULTS
-    CODER_PG_CONNECTION_URL=postgres://coder:$PG_PASSWORD@127.0.0.1:5432/coder?sslmode=disable
+    CODER_PG_CONNECTION_URL=postgres://$PG_IAM_DB_USER_ENC:placeholder@127.0.0.1:5432/coder?sslmode=disable
     DEFAULTS
     chmod 0640 /etc/default/coder
     chown root:coder /etc/default/coder
-    unset PG_PASSWORD
 
     chown -R coder:coder /var/lib/coder
 
@@ -577,13 +586,12 @@ resource "google_compute_instance" "exe_coder" {
     google_secret_manager_secret_iam_member.exe_coder_authkey_reader,
     google_secret_manager_secret_iam_member.tunnel_credentials_reader,
     google_compute_firewall.deny_all_ingress,
-    # ADR 0010: VM startup_script fetches the pg password and connects
-    # to Cloud SQL via CSAP. Force ordering so the secret + IAM + DB
-    # are all ready before the VM tries to bootstrap.
-    google_secret_manager_secret_iam_member.coder_pg_password_reader,
-    google_secret_manager_secret_version.coder_pg_password,
+    # ADR 0010: VM startup_script connects to Cloud SQL via CSAP using
+    # IAM database authentication. Force ordering so the IAM DB user +
+    # SA roles + DB are all ready before the VM tries to bootstrap.
     google_project_iam_member.exe_coder_cloudsql_client,
-    google_sql_user.coder,
+    google_project_iam_member.exe_coder_cloudsql_instance_user,
+    google_sql_user.coder_iam,
     google_sql_database.coder,
   ]
 }

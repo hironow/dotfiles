@@ -9,24 +9,23 @@
 # logs, admin password). This file decomposes the DB to a managed
 # Cloud SQL instance per Coder's official guidance.
 #
-# Connectivity
-# ------------
+# Connectivity + auth
+# -------------------
 # The instance has NO public IP. Coder reaches it via a Cloud SQL
-# Auth Proxy v2 systemd service running on the same VM
-# (loopback :5432). CSAP authenticates to the instance using the
-# VM's exe-coder@ service account (roles/cloudsql.client). VPC
-# peering to the Service Networking range gives the proxy a private
-# path; no firewall rule, no public exposure.
+# Auth Proxy v2 systemd service running on the same VM (loopback
+# :5432). Per Cloud SQL 2026 best practice, CSAP runs with
+# `--auto-iam-authn=true` and the only Postgres user is an IAM
+# service-account user mapped to the VM's exe-coder@ SA. There is
+# NO password anywhere — CSAP requests a short-lived OAuth access
+# token from the VM's metadata server and injects it as the password
+# at connection time. Nothing for the operator (or tofu) to rotate.
 #
-# Credentials
-# -----------
-# tofu generates a random 32-char alphanumeric password (no special
-# chars to keep the connection-string URL trivially safe), stores it
-# in Secret Manager, and grants the VM SA secretAccessor. The VM
-# fetches the value at boot and assembles
-# CODER_PG_CONNECTION_URL=postgres://coder:<pwd>@127.0.0.1:5432/coder?sslmode=disable
-# (sslmode=disable is correct: CSAP terminates the encrypted leg
-# between the proxy and the managed instance).
+# Required IAM on the VM SA:
+#   roles/cloudsql.client       — connect through CSAP (TLS cert)
+#   roles/cloudsql.instanceUser — authenticate as an IAM DB user
+#
+# VPC peering to the Service Networking range gives the proxy a
+# private path; no firewall rule, no public exposure.
 
 # ----- VPC peering for private IP --------------------------------------
 #
@@ -50,11 +49,6 @@ resource "google_service_networking_connection" "exe_psa" {
 }
 
 # ----- Cloud SQL instance ---------------------------------------------
-
-resource "random_password" "coder_pg_password" {
-  length  = 32
-  special = false # alphanumeric — keeps the postgres:// URL trivially safe
-}
 
 resource "google_sql_database_instance" "coder" {
   name             = "${local.prefix}-coder-pg"
@@ -90,6 +84,16 @@ resource "google_sql_database_instance" "coder" {
       private_network = google_compute_network.exe.id
     }
 
+    # Enable IAM database authentication. Required for the
+    # cloud_iam_service_account user resource below to be usable.
+    # Standard password auth still works for the cloudsqlsuperuser
+    # role if Cloud SQL adds it implicitly, but no password user is
+    # provisioned here.
+    database_flags {
+      name  = "cloudsql.iam_authentication"
+      value = "on"
+    }
+
     insights_config {
       query_insights_enabled = true
     }
@@ -105,34 +109,22 @@ resource "google_sql_database" "coder" {
   instance = google_sql_database_instance.coder.name
 }
 
-resource "google_sql_user" "coder" {
-  name     = "coder"
+# IAM service-account user. Postgres username convention for Cloud
+# SQL IAM SA users is "<sa-email-without-.gserviceaccount.com>" —
+# tofu has the bare account_id + project, we reconstruct that here.
+# Result: "exe-coder@gen-ai-hironow.iam"
+resource "google_sql_user" "coder_iam" {
+  name     = trimsuffix(google_service_account.exe_coder.email, ".gserviceaccount.com")
   instance = google_sql_database_instance.coder.name
-  password = random_password.coder_pg_password.result
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
 }
 
-# ----- Secret Manager: pg password ------------------------------------
-
-resource "google_secret_manager_secret" "coder_pg_password" {
-  secret_id = "${local.prefix}-coder-pg-password"
-  labels    = local.common_labels
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "coder_pg_password" {
-  secret      = google_secret_manager_secret.coder_pg_password.id
-  secret_data = random_password.coder_pg_password.result
-}
-
-resource "google_secret_manager_secret_iam_member" "coder_pg_password_reader" {
-  secret_id = google_secret_manager_secret.coder_pg_password.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.exe_coder.email}"
-}
-
-# ----- IAM: VM SA can connect to Cloud SQL via CSAP -------------------
+# ----- IAM on the VM SA -----------------------------------------------
+# Two roles are required for IAM database authentication:
+#   roles/cloudsql.client       — TLS cert to dial the instance
+#   roles/cloudsql.instanceUser — exchange ADC for a DB access token
+# Without instanceUser the proxy connects but every login fails with
+# "FATAL: pq: password authentication failed for user".
 
 resource "google_project_iam_member" "exe_coder_cloudsql_client" {
   project = var.gcp_project_id
@@ -140,13 +132,22 @@ resource "google_project_iam_member" "exe_coder_cloudsql_client" {
   member  = "serviceAccount:${google_service_account.exe_coder.email}"
 }
 
+resource "google_project_iam_member" "exe_coder_cloudsql_instance_user" {
+  project = var.gcp_project_id
+  role    = "roles/cloudsql.instanceUser"
+  member  = "serviceAccount:${google_service_account.exe_coder.email}"
+}
+
 # ----- locals exposed to coder.tf --------------------------------------
 #
-# Connection name is what CSAP takes as -i argument. Format is
-# "<project>:<region>:<instance>".
+# Connection name is what CSAP takes as instance argument. Format is
+# "<project>:<region>:<instance>". The IAM DB username is exposed as
+# a local so coder.tf can build CODER_PG_CONNECTION_URL without
+# duplicating the trimsuffix logic.
 
 locals {
   cloud_sql_connection_name = google_sql_database_instance.coder.connection_name
+  cloud_sql_iam_db_user     = google_sql_user.coder_iam.name
   cloud_sql_proxy_url = format(
     "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/%s/cloud-sql-proxy.linux.amd64",
     var.cloud_sql_proxy_version,
