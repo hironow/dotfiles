@@ -249,6 +249,73 @@ To rotate the token, `coder tokens delete <id>` the old one, mint a
 new one, and `gcloud secrets versions add` again — the helper always
 reads `latest`.
 
+## TF_ENCRYPTION passphrase for cron
+
+ADR 0008 step 4 introduces a nightly `tofu plan` job that reads the
+exe stack's encrypted state from a Coder workspace VM. The
+workspace cannot reach the operator's local
+`~/.config/tofu/exe.passphrase`, so the passphrase has to live in
+Secret Manager (`exe-tofu-encryption-passphrase`). Tofu provisions
+the secret shell + IAM grant; the operator uploads the value once:
+
+```bash
+gcloud secrets versions add exe-tofu-encryption-passphrase \
+  --project=gen-ai-hironow \
+  --data-file=$HOME/.config/tofu/exe.passphrase
+```
+
+To rotate, generate a new passphrase, re-encrypt local state with
+both passphrases (transient migration), upload the new one, then
+remove the old version. Until rotation tooling lands, the
+recommended path is "don't rotate unless you have to".
+
+The workspace SA (`exe-workspace`) holds
+`roles/secretmanager.secretAccessor` on this secret and
+`roles/storage.objectAdmin` on the state bucket — both granted by
+tofu (`tofu/exe/coder.tf`).
+
+## Nightly `tofu plan` cron
+
+`coder-cron-tofu-plan.timer` on the Coder VM fires daily at 04:23
+UTC (with up to 10 min of jitter). Each fire spawns an ephemeral
+`exe-dotfiles-job` workspace whose job_command:
+
+1. Clones the dotfiles repo to `/root/cron-tofu-plan`
+2. Fetches the TF_ENCRYPTION passphrase from Secret Manager
+3. Runs `tofu init && tofu plan -refresh=false -out=plan.bin`
+4. Ships `plan.bin` (binary), `plan.txt` (human-readable), and
+   `run.log` (full stdout) to
+   `gs://gen-ai-hironow-tofu-state/jobs/<YYYY-MM-DD>/tofu-plan-<HHMMSSZ>.{bin,txt,log}`
+
+`-refresh=false` is used because the workspace SA does not yet hold
+Cloudflare or Tailscale API tokens; refresh would fail there. Once
+those grants land, drop `-refresh=false` for a true plan.
+
+Inspection:
+
+```bash
+# What plans have been generated this week?
+gcloud storage ls gs://gen-ai-hironow-tofu-state/jobs/
+
+# Read the most recent run log + plan text.
+gcloud storage cat \
+  $(gcloud storage ls gs://gen-ai-hironow-tofu-state/jobs/$(date -u +%Y-%m-%d)/ \
+    | grep '\.log$' | tail -1)
+
+# On the Coder VM itself: spawn-job logs (one line per cron run).
+ssh exe-coder.<tailnet>
+journalctl -u coder-cron-tofu-plan --since today
+systemctl list-timers coder-cron-tofu-plan.timer
+```
+
+To force-fire outside the timer cadence (for smoke testing):
+
+```bash
+ssh exe-coder.<tailnet>
+sudo systemctl start coder-cron-tofu-plan.service
+journalctl -u coder-cron-tofu-plan -f
+```
+
 ## Cloudflare tunnel credentials rotation
 
 The tunnel secret is a `random_id`. Rotate via the `just exe-replace`

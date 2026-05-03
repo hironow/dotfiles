@@ -10,6 +10,7 @@ Operational scripts for `exe.hironow.dev`.
 | [`cdr-header`](./cdr-header) | Helper invoked by `cdr` via `CODER_HEADER_COMMAND` to emit the `CF-Access-*` headers Coder needs on every API call. |
 | [`cdr-job`](./cdr-job) | Run a single command in a fresh ephemeral Coder workspace per [ADR 0008](../../docs/adr/0008-event-driven-workspace-runner.md). Pure isolation, ~6 min boot tax. Trap-handler `coder delete` on exit. |
 | [`cdr-exec`](./cdr-exec) | Run a command in an EXISTING long-lived workspace (warm reuse, ~10-30s start). State is NOT isolated between calls. See ADR 0008 amendment for the trade-off. |
+| [`cron-tofu-plan.sh`](./cron-tofu-plan.sh) | Workspace-side script invoked by `coder-cron-tofu-plan.timer` (ADR 0008 step 4). Clones dotfiles, fetches `TF_ENCRYPTION` from Secret Manager, runs `tofu init && tofu plan -refresh=false`, ships artifacts to `gs://<project>-tofu-state/jobs/<date>/`. Always exits 0 so diagnostics ship even when tofu fails. |
 | [`bootstrap.sh`](./bootstrap.sh) | First-time provisioning helper (tofu apply + cloudflared tunnel login). Idempotent. |
 | [`teardown.sh`](./teardown.sh) | Destroys the GCE workspace VM and Coder template, retains Cloudflare + Tailscale state for re-bootstrap. Idempotent. |
 | [`smoke.sh`](./smoke.sh) | Post-deploy connectivity checks (Tailscale up, CF Access reachable, SSH reachable, Coder UI 200). Idempotent. |

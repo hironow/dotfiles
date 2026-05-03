@@ -243,6 +243,7 @@ cat > /etc/mise/config.toml <<'EOF'
 [tools]
 just = "1.40.0"
 markdownlint-cli2 = "0.22.1"
+opentofu = "1.11.6"
 prek = "0.3.11"
 uv = "0.11.8"
 vp = "0.1.20"
