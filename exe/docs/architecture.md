@@ -200,7 +200,7 @@ purely env-var driven:
 | `CODER_HTTP_ADDRESS` | `0.0.0.0:7080` | Loopback for cloudflared + tun0 for workspace VMs. Public IP blocked at L3 by deny-all-ingress |
 | `CODER_TLS_ENABLE` | `false` | TLS terminates at Cloudflare edge |
 | `CODER_WILDCARD_ACCESS_URL` | `*.sandbox.hironow.dev` | Workspace app preview hostnames |
-| `CODER_PG_CONNECTION_URL` | `postgres://coder:<pwd>@127.0.0.1:5432/coder?sslmode=disable` | Cloud SQL via CSAP loopback (ADR 0010). Loaded from `/etc/default/coder` (mode 0640 root:coder). |
+| `CODER_PG_CONNECTION_URL` | `postgres://<sa>%40<project>.iam:placeholder@127.0.0.1:5432/coder?sslmode=disable` | Cloud SQL via CSAP loopback (ADR 0010). The "password" is a literal `placeholder` — CSAP `--auto-iam-authn` swaps it for an OAuth token at every connection. Loaded from `/etc/default/coder`. |
 | `CODER_CACHE_DIRECTORY` | `/var/lib/coder/cache` | Coder asset cache (templates, static binaries) — postgres data lives in Cloud SQL |
 | `CODER_TELEMETRY` / `CODER_TELEMETRY_TRACE` | `false` / `false` | Telemetry off |
 | `CODER_SECURE_AUTH_COOKIE` | `true` | Auth cookie set with Secure flag |
@@ -235,12 +235,13 @@ authenticates to Cloud SQL using the VM's `exe-coder@` SA with
 
 | Resource | Purpose |
 |---|---|
-| `google_sql_database_instance.coder` | `exe-coder-pg` instance, Postgres 16, ZONAL, private IP only, deletion_protection=true |
-| `google_sql_database.coder` + `google_sql_user.coder` | The schema Coder writes to + its login user |
-| `random_password.coder_pg_password` + Secret Manager | tofu-generated 32-char alphanumeric password, stored in `exe-coder-pg-password` secret |
+| `google_sql_database_instance.coder` | `exe-coder-pg` instance, Postgres 16, ZONAL, private IP only, deletion_protection=true, `cloudsql.iam_authentication=on` flag |
+| `google_sql_database.coder` | Schema Coder writes to |
+| `google_sql_user.coder_iam` | IAM service-account user mapped to `exe-coder@`. NO password — auth is via OAuth tokens fetched by CSAP at connection time. |
 | `google_compute_global_address.exe_psa_range` + `google_service_networking_connection.exe_psa` | /20 reserved + VPC peering for private IP — no public Cloud SQL IP, no firewall rule |
-| `cloud-sql-proxy.service` (systemd, on the VM) | Listens on 127.0.0.1:5432, exec'd from `/usr/local/bin/cloud-sql-proxy` (pinned `var.cloud_sql_proxy_version` + `var.cloud_sql_proxy_sha256`) |
-| `/etc/default/coder` (mode 0640 root:coder) | Holds `CODER_PG_CONNECTION_URL` with the live password; loaded by `coder.service` via `EnvironmentFile=` |
+| `roles/cloudsql.client` + `roles/cloudsql.instanceUser` on the VM SA | The two grants required for CSAP `--auto-iam-authn`: `client` for the TLS cert to dial the instance, `instanceUser` for the OAuth token exchange at the DB layer. |
+| `cloud-sql-proxy.service` (systemd, on the VM) | Listens on 127.0.0.1:5432, exec'd from `/usr/local/bin/cloud-sql-proxy --auto-iam-authn ...` (pinned `var.cloud_sql_proxy_version` + `var.cloud_sql_proxy_sha256`) |
+| `/etc/default/coder` (mode 0640 root:coder) | Holds the IAM-shaped `CODER_PG_CONNECTION_URL`; loaded by `coder.service` via `EnvironmentFile=`. No real password anywhere — the URL's password slot is a literal `placeholder` string that CSAP swaps for a fresh token. |
 
 VM replacement (preempt, startup_script edit, GCE maintenance) no
 longer wipes the data plane: only the binaries / cache / first-
