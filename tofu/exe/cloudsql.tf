@@ -117,6 +117,19 @@ resource "google_sql_database" "coder" {
   instance = google_sql_database_instance.coder.name
 }
 
+# Cloud SQL provisions the internal `cloudsqliamserviceaccount`
+# Postgres role asynchronously after the instance reports READY,
+# while the IAM auth flag is being applied to the running engine.
+# Creating an IAM SA user before that role exists fails with:
+#   "role \"cloudsqliamserviceaccount\" does not exist"
+# A 60s sleep is the documented workaround in the google provider
+# tracker; longer than the typical settle time, short enough that
+# `tofu apply` users do not notice.
+resource "time_sleep" "cloud_sql_iam_role_settle" {
+  depends_on      = [google_sql_database_instance.coder]
+  create_duration = "60s"
+}
+
 # IAM service-account user. Postgres username convention for Cloud
 # SQL IAM SA users is "<sa-email-without-.gserviceaccount.com>" —
 # tofu has the bare account_id + project, we reconstruct that here.
@@ -125,6 +138,10 @@ resource "google_sql_user" "coder_iam" {
   name     = trimsuffix(google_service_account.exe_coder.email, ".gserviceaccount.com")
   instance = google_sql_database_instance.coder.name
   type     = "CLOUD_IAM_SERVICE_ACCOUNT"
+
+  # Wait for the asynchronous internal role creation. See the
+  # time_sleep above for the why.
+  depends_on = [time_sleep.cloud_sql_iam_role_settle]
 }
 
 # ----- IAM on the VM SA -----------------------------------------------

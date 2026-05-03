@@ -1034,6 +1034,34 @@ def test_cloud_sql_resources_present() -> None:
         r'type\s*=\s*"CLOUD_IAM_SERVICE_ACCOUNT"', iam_user_block.group(1)
     ), "coder_iam user MUST have type = CLOUD_IAM_SERVICE_ACCOUNT"
 
+    # Cloud SQL provisions the internal `cloudsqliamserviceaccount`
+    # Postgres role asynchronously after the instance reports READY.
+    # Creating an IAM SA user before that role exists fails with
+    # "role \"cloudsqliamserviceaccount\" does not exist". The
+    # documented workaround is a time_sleep between instance create
+    # and user create.
+    assert 'resource "time_sleep" "cloud_sql_iam_role_settle"' in cloudsql_tf, (
+        'Missing time_sleep "cloud_sql_iam_role_settle" — without it,\n'
+        "the first apply on a brand-new project hits a race condition\n"
+        'where google_sql_user.coder_iam fails with "role\n'
+        '\\"cloudsqliamserviceaccount\\" does not exist".'
+    )
+    sleep_block = re.search(
+        r'resource\s+"time_sleep"\s+"cloud_sql_iam_role_settle"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert sleep_block is not None
+    sleep_body = sleep_block.group(1)
+    assert "google_sql_database_instance.coder" in sleep_body, (
+        "time_sleep must depend_on google_sql_database_instance.coder"
+    )
+    # And the IAM user must wait on the sleep.
+    assert "time_sleep.cloud_sql_iam_role_settle" in iam_user_block.group(1), (
+        "google_sql_user.coder_iam MUST depend_on the time_sleep so the\n"
+        "internal role exists by the time the user is created."
+    )
+
     # Pin: there must be NO password resources of any kind. Catches a
     # regression where someone re-introduces a password-based user.
     assert "random_password" not in cloudsql_tf, (
