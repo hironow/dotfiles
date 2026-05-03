@@ -146,3 +146,24 @@ images. Set this as the GCP_PUBLISH_SA repo variable:
 EOF
   value       = google_service_account.gha_publish.email
 }
+
+output "cloud_sql_connection_name" {
+  description = <<-EOF
+Cloud SQL instance connection name in the
+`<project>:<region>:<instance>` form. Used by the Cloud SQL Auth
+Proxy on the Coder VM to dial the instance. Exposed for operator
+diagnostics (e.g. `gcloud sql instances describe`); the VM itself
+reads this via local.cloud_sql_connection_name (ADR 0010).
+EOF
+  value       = google_sql_database_instance.coder.connection_name
+}
+
+output "cloud_sql_iam_db_user" {
+  description = <<-EOF
+Postgres IAM database username for the Coder VM SA. Mapped to the
+`exe-coder@` GCP service account; CSAP exchanges that SA's ADC
+for an OAuth access token at every connection. Exposed for
+operator diagnostics (e.g. `gcloud sql users list`).
+EOF
+  value       = google_sql_user.coder_iam.name
+}

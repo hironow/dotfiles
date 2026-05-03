@@ -23,6 +23,8 @@ REQUIRED_APIS=(
   iam.googleapis.com
   iamcredentials.googleapis.com
   secretmanager.googleapis.com
+  servicenetworking.googleapis.com # ADR 0010: VPC peering for Cloud SQL private IP
+  sqladmin.googleapis.com          # ADR 0010: Cloud SQL Admin
   storage.googleapis.com
 )
 
