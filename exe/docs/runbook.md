@@ -543,10 +543,11 @@ After `nuke`, run `just exe-bootstrap` again to start over.
 ## Healthz uptime monitoring
 
 Cloud Monitoring runs an uptime check against
-`https://exe.hironow.dev/healthz` every 5 minutes from the
-ASIA_PACIFIC region, carrying the same CF Access service-token
-headers `cdr` uses. Two consecutive failures (~10 min sustained)
-trigger an email alert to `var.owner_email`.
+`https://exe.hironow.dev/healthz` every 5 minutes from three
+regions (ASIA_PACIFIC + USA + EUROPE — GCP API requires the
+minimum three), carrying the same CF Access service-token headers
+`cdr` uses. Two consecutive failures (~10 min sustained) trigger
+an email alert to `var.owner_email`.
 
 Inspect:
 

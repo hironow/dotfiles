@@ -177,7 +177,7 @@ loopback).
 |---|---|---|
 | GCE VM | e2-small, preemptible (24h), 30 GiB pd-balanced | $5–$7 |
 | Cloud SQL Postgres | db-f1-micro, 10 GB SSD, daily backup, ZONAL (ADR 0010) | $8–$10 |
-| Cloud Monitoring uptime + alert | 1 region (ASIA_PACIFIC), 5 min cadence, 1 email channel | < $0.10 |
+| Cloud Monitoring uptime + alert | 3 regions (ASIA_PACIFIC + USA + EUROPE — GCP API minimum), 5 min cadence, 1 email channel | ~$0.30 |
 | Cloudflare Tunnel | Free | $0 |
 | Cloudflare Access | Free (Zero Trust, ≤ 50 users) | $0 |
 | Tailscale | Personal Free | $0 |
