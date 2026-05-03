@@ -146,3 +146,23 @@ images. Set this as the GCP_PUBLISH_SA repo variable:
 EOF
   value       = google_service_account.gha_publish.email
 }
+
+output "cloud_sql_connection_name" {
+  description = <<-EOF
+Cloud SQL instance connection name in the
+`<project>:<region>:<instance>` form. Used by the Cloud SQL Auth
+Proxy on the Coder VM to dial the instance. Exposed for operator
+diagnostics (e.g. `gcloud sql instances describe`); the VM itself
+reads this via local.cloud_sql_connection_name (ADR 0010).
+EOF
+  value       = google_sql_database_instance.coder.connection_name
+}
+
+output "cloud_sql_pg_password_secret" {
+  description = <<-EOF
+Secret Manager resource for the live Coder Postgres password.
+Tofu owns the value (random_password). Operator can rotate via
+`just exe-replace random_password.coder_pg_password` (ADR 0010).
+EOF
+  value       = google_secret_manager_secret.coder_pg_password.name
+}

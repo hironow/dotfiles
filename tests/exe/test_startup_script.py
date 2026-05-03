@@ -64,6 +64,20 @@ HCL_SUBSTITUTIONS: dict[str, str] = {
     # is later passed through bash -n / shellcheck.
     r"\$\{var\.coder_version\}": "v2.31.11",
     r"\$\{var\.coder_sha256\}": "32cf14eeecc96190dbc66b6965a3bdd563eaecc0d811a690e1e0b65828484979",
+    # ADR 0010: Cloud SQL Auth Proxy + managed Postgres connection.
+    r"\$\{var\.cloud_sql_proxy_version\}": "v2.21.3",
+    r"\$\{var\.cloud_sql_proxy_sha256\}": (
+        "46bef6dad3db3d10f07d69a1d76891d1a6aa942cc77b6f50369d9b8160a129e1"
+    ),
+    r"\$\{local\.cloud_sql_proxy_url\}": (
+        "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.21.3/cloud-sql-proxy.linux.amd64"
+    ),
+    r"\$\{local\.cloud_sql_connection_name\}": (
+        "gen-ai-hironow:asia-northeast1:exe-coder-pg"
+    ),
+    r"\$\{google_secret_manager_secret\.coder_pg_password\.secret_id\}": (
+        "exe-coder-pg-password"
+    ),
     r"\$\{google_secret_manager_secret\.exe_coder_authkey\.secret_id\}": (
         "exe-tailscale-coder-authkey"
     ),
@@ -573,6 +587,10 @@ case "$*" in
   *secrets*versions*access*--secret=exe-cloudflared-credentials*)
     echo '{"AccountTag":"a","TunnelID":"00000000-0000-0000-0000-000000000000","TunnelName":"exe-tunnel","TunnelSecret":"AAAA"}'
     ;;
+  *secrets*versions*access*--secret=exe-coder-pg-password*)
+    # ADR 0010: deterministic fake postgres password (32 char alphanum)
+    echo "fakepasswordfakepasswordfakepass"
+    ;;
   *)
     echo "gcloud mock: unhandled args: $*" >&2
     exit 0
@@ -696,16 +714,23 @@ def test_systemd_units_validate(
         + "\n\n"
         + "echo '--- generated units ---' >&2\n"
         + "for u in /etc/systemd/system/cloudflared-exe.service "
-        + "/etc/systemd/system/coder.service; do\n"
+        + "/etc/systemd/system/coder.service "
+        + "/etc/systemd/system/cloud-sql-proxy.service; do\n"
         + '  if [[ -f "$u" ]]; then\n'
         + '    echo "=== $u ===" >&2\n'
         + '    cat "$u" >&2\n'
         + '    systemd-analyze verify "$u" 2>&1 || true\n'
         + "  fi\n"
         + "done\n"
-        + "# Hard-fail if either file is missing.\n"
+        + "# Hard-fail if any file is missing.\n"
         + "test -f /etc/systemd/system/cloudflared-exe.service\n"
         + "test -f /etc/systemd/system/coder.service\n"
+        + "test -f /etc/systemd/system/cloud-sql-proxy.service\n"
+        + "test -x /usr/local/bin/cloud-sql-proxy\n"
+        + "# /etc/default/coder must exist with the right perms (0640 root:coder).\n"
+        + "test -f /etc/default/coder\n"
+        + 'test "$(stat -c \'%U:%G:%a\' /etc/default/coder)" = "root:coder:640"\n'
+        + "grep -q '^CODER_PG_CONNECTION_URL=postgres://' /etc/default/coder\n"
     )
 
     r = _run(
@@ -936,3 +961,187 @@ def test_coder_tf_no_unverified_apt_key_curls(startup_script: str) -> None:
             f"coder.tf startup_script still uses the unverified-curl "
             f"pattern matching {pattern!r}."
         )
+
+
+# ---------- ADR 0010: Cloud SQL Postgres data plane ----------
+
+
+@pytest.mark.exe
+def test_cloud_sql_resources_present() -> None:
+    """ADR 0010: tofu provisions a Cloud SQL Postgres instance, the
+    coder DB, the coder user, the password (random_password) +
+    Secret Manager version + IAM, the VPC peering for private IP,
+    and the cloudsql.client IAM grant for the VM SA."""
+    cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text()
+
+    # Cloud SQL instance with deletion_protection + private IP +
+    # backup enabled.
+    inst = re.search(
+        r'resource\s+"google_sql_database_instance"\s+"coder"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert inst is not None, "missing google_sql_database_instance.coder"
+    body = inst.group(1)
+    assert re.search(r"deletion_protection\s*=\s*true", body), (
+        "Cloud SQL instance MUST have deletion_protection = true so a\n"
+        "tofu destroy of the VM stack does not silently take the DB."
+    )
+    assert re.search(r"ipv4_enabled\s*=\s*false", body), (
+        "Cloud SQL instance MUST have ipv4_enabled = false (private IP only)"
+    )
+    assert re.search(
+        r"backup_configuration\s*\{[^{}]*?enabled\s*=\s*true", body, re.DOTALL
+    ), (
+        "Cloud SQL instance MUST enable automated backup (Coder docs\n"
+        "explicitly recommend daily backups for production)"
+    )
+    assert re.search(r"point_in_time_recovery_enabled\s*=\s*true", body), (
+        "Cloud SQL instance MUST enable point_in_time_recovery"
+    )
+
+    # DB + user + password resources.
+    assert 'resource "google_sql_database" "coder"' in cloudsql_tf
+    assert 'resource "google_sql_user" "coder"' in cloudsql_tf
+    assert 'resource "random_password" "coder_pg_password"' in cloudsql_tf
+
+    # Secret Manager: tofu-managed version (unlike the operator-managed
+    # admin/passphrase patterns retracted in ADR 0009).
+    assert 'resource "google_secret_manager_secret" "coder_pg_password"' in cloudsql_tf
+    assert (
+        'resource "google_secret_manager_secret_version" "coder_pg_password"'
+        in cloudsql_tf
+    ), "the pg password value is tofu-generated; the _version resource must exist"
+
+    # VPC peering for private IP.
+    assert 'resource "google_compute_global_address" "exe_psa_range"' in cloudsql_tf
+    assert 'resource "google_service_networking_connection" "exe_psa"' in cloudsql_tf
+
+    # IAM: VM SA can read the password + connect to Cloud SQL.
+    assert (
+        'resource "google_secret_manager_secret_iam_member" "coder_pg_password_reader"'
+        in cloudsql_tf
+    )
+    assert (
+        'resource "google_project_iam_member" "exe_coder_cloudsql_client"'
+        in cloudsql_tf
+    )
+    cloudsql_client_block = re.search(
+        r'resource\s+"google_project_iam_member"\s+"exe_coder_cloudsql_client"\s*\{(.*?)^\}',
+        cloudsql_tf,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert cloudsql_client_block is not None
+    assert "cloudsql.client" in cloudsql_client_block.group(1)
+
+
+@pytest.mark.exe
+def test_cloud_sql_proxy_install_pinned(startup_script: str) -> None:
+    """CSAP install mirrors the ADR 0007 hardening pattern: pinned
+    version + sha256 + sha256sum -c verification before install. The
+    binary is fetched from the official Google Cloud Storage CDN."""
+    # The version + sha pinning lives in variables.tf; the install
+    # block in startup_script must consume them via the bash vars
+    # CSAP_VERSION / CSAP_SHA256 / CSAP_URL set at the top.
+    assert "CSAP_VERSION=" in startup_script
+    assert "CSAP_SHA256=" in startup_script
+    assert "CSAP_URL=" in startup_script
+    assert (
+        "storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy" in startup_script
+    )
+    assert "sha256sum -c" in startup_script
+    assert "/usr/local/bin/cloud-sql-proxy" in startup_script
+
+
+@pytest.mark.exe
+def test_cloud_sql_proxy_systemd_unit_emitted(startup_script: str) -> None:
+    """The cloud-sql-proxy.service unit must be present and ordered
+    BEFORE coder.service. coder.service requires it (so coder
+    restarts when the proxy restarts)."""
+    assert "cloud-sql-proxy.service" in startup_script
+
+    # Locate the unit body.
+    m = re.search(
+        r"cloud-sql-proxy\.service\s*<<UNIT(.*?)^UNIT",
+        startup_script,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert m is not None, "could not locate cloud-sql-proxy.service unit"
+    body = m.group(1)
+    assert "Before=coder.service" in body, (
+        "cloud-sql-proxy.service must declare Before=coder.service"
+    )
+    assert "127.0.0.1" in body and "5432" in body, (
+        "CSAP must listen on 127.0.0.1:5432 (loopback only)"
+    )
+    assert "User=coder" in body, "CSAP must run as the coder system user"
+
+    # And coder.service must declare Requires + After cloud-sql-proxy.
+    coder_unit = re.search(
+        r"coder\.service\s*<<UNIT(.*?)^UNIT",
+        startup_script,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert coder_unit is not None
+    cb = coder_unit.group(1)
+    assert "Requires=cloud-sql-proxy.service" in cb, (
+        "coder.service must Requires=cloud-sql-proxy.service so the\n"
+        "Coder server cannot run without its DB connection"
+    )
+    assert re.search(r"After=[^\n]*cloud-sql-proxy\.service", cb), (
+        "coder.service must order After=cloud-sql-proxy.service"
+    )
+
+
+@pytest.mark.exe
+def test_etc_default_coder_pg_url_is_envfile_not_unit_environment(
+    startup_script: str,
+) -> None:
+    """The pg connection URL contains the password and must NOT live
+    in the systemd unit file (which is mode 0644 + visible in
+    `systemctl show`). Instead, write it to /etc/default/coder
+    (mode 0640 root:coder) and have coder.service load it via
+    EnvironmentFile."""
+    assert "/etc/default/coder" in startup_script
+
+    # The unit file must NOT contain a non-empty
+    # Environment=CODER_PG_CONNECTION_URL= line.
+    coder_unit = re.search(
+        r"coder\.service\s*<<UNIT(.*?)^UNIT",
+        startup_script,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert coder_unit is not None
+    cb = coder_unit.group(1)
+
+    # No legacy empty-default placeholder.
+    assert "Environment=CODER_PG_CONNECTION_URL=" not in cb, (
+        "coder.service unit must NOT contain Environment=CODER_PG_CONNECTION_URL=\n"
+        "(value is loaded from /etc/default/coder via EnvironmentFile)"
+    )
+    assert "EnvironmentFile=" in cb and "/etc/default/coder" in cb, (
+        "coder.service must load /etc/default/coder via EnvironmentFile="
+    )
+
+    # The script writes the password into /etc/default/coder, not the
+    # unit file.
+    assert "PG_PASSWORD=" in startup_script
+    assert "127.0.0.1:5432/coder?sslmode=disable" in startup_script, (
+        "CODER_PG_CONNECTION_URL must point at the loopback CSAP listener\n"
+        "(sslmode=disable is correct because CSAP terminates the encrypted\n"
+        "leg between the proxy and the managed instance)"
+    )
+
+
+@pytest.mark.exe
+def test_bootstrap_enables_cloud_sql_apis() -> None:
+    """The Cloud SQL instance + Service Networking peering need two
+    new APIs enabled before the first tofu apply. Add them to the
+    bootstrap script's REQUIRED_APIS array."""
+    bootstrap = (ROOT / "exe" / "scripts" / "bootstrap.sh").read_text()
+    assert "sqladmin.googleapis.com" in bootstrap, (
+        "bootstrap.sh must enable sqladmin.googleapis.com (ADR 0010)"
+    )
+    assert "servicenetworking.googleapis.com" in bootstrap, (
+        "bootstrap.sh must enable servicenetworking.googleapis.com (ADR 0010)"
+    )
