@@ -903,8 +903,8 @@ exe-init:
 exe-plan:
     #!/usr/bin/env bash
     set -euo pipefail
-    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu plan
 
@@ -913,8 +913,8 @@ exe-plan:
 exe-apply:
     #!/usr/bin/env bash
     set -euo pipefail
-    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu apply
 
@@ -930,8 +930,8 @@ exe-apply:
 exe-replace target:
     #!/usr/bin/env bash
     set -euo pipefail
-    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu apply -replace={{ target }}
 
@@ -940,8 +940,8 @@ exe-replace target:
 exe-down:
     #!/usr/bin/env bash
     set -euo pipefail
-    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu destroy \
       -target=google_compute_instance.exe_coder
@@ -951,8 +951,8 @@ exe-down:
 exe-down-all:
     #!/usr/bin/env bash
     set -euo pipefail
-    : "$${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "$${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
+    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu destroy
 
@@ -1008,7 +1008,7 @@ exe-cdr-install:
     done
     case ":$PATH:" in
       *":${HOME}/.local/bin:"*) ;;
-      *) echo "  hint: add $${HOME}/.local/bin to PATH (e.g. in ~/.zshrc)" ;;
+      *) echo "  hint: add ${HOME}/.local/bin to PATH (e.g. in ~/.zshrc)" ;;
     esac
     echo "  first use:"
     echo "    cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"
