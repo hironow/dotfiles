@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# cdr-job — run a single command in an ephemeral Coder workspace
+# (the `dotfiles-job` template per ADR 0008) and tear it down.
+#
+# Usage:
+#   cdr-job <job-name> -- <command...>
+#
+# Example:
+#   cdr-job hello -- 'echo hello $(hostname); date'
+#   cdr-job tofu-plan -- 'cd /root/dotfiles/tofu/exe && just exe-plan'
+#
+# What this does:
+#   1. Reuse `cdr` (CF Access service-token wrapper) to call the
+#      Coder API.
+#   2. `coder create <job-name> --template exe-dotfiles-job
+#      --parameter job_command="<command...>" --yes` spins up an
+#      ephemeral workspace VM that pulls the dev container image
+#      and runs the command.
+#   3. `coder ssh <job-name> -- <command...>` is NOT used here —
+#      the agent's startup_script already runs the command. We
+#      poll `coder show` until the workspace transitions to
+#      "stopped" (agent exited) or until the wall-clock budget
+#      expires.
+#   4. `coder delete <job-name> --yes` runs in a `trap` so the
+#      workspace is reaped on success, failure, SIGINT, or
+#      SIGTERM.
+#
+# Failure-bound layers (per ADR 0008):
+#   - this trap-handler delete (primary)
+#   - template default_ttl_ms (secondary, server-side)
+#   - dormancy_threshold_ms (tertiary, server-side)
+#
+# Required tools: cdr (which requires gcloud + coder).
+
+set -euo pipefail
+
+err() { printf '\033[31m[cdr-job]\033[0m %s\n' "$*" >&2; exit 1; }
+log() { printf '\033[36m[cdr-job]\033[0m %s\n' "$*" >&2; }
+
+# Wall-clock budget for a single job run. Beyond this, cdr-job
+# kills its own polling loop and lets the trap delete the
+# workspace. Override via env if a particular job legitimately
+# needs longer.
+CDR_JOB_TIMEOUT_SEC="${CDR_JOB_TIMEOUT_SEC:-1800}" # 30 min default
+
+if [[ $# -lt 3 ]] || [[ "$2" != "--" ]]; then
+  err "usage: cdr-job <job-name> -- <command...>"
+fi
+
+JOB_NAME="$1"
+shift 2
+JOB_COMMAND="$*"
+
+# coder workspace names allow [a-z0-9-]; reject anything else
+# early so we don't get a confusing API error.
+if ! [[ "$JOB_NAME" =~ ^[a-z0-9-]+$ ]]; then
+  err "job-name must match [a-z0-9-]+ (got: $JOB_NAME)"
+fi
+
+require_cdr() {
+  command -v cdr >/dev/null 2>&1 || \
+    err "cdr not on PATH; run 'just exe-cdr-install' first"
+}
+require_cdr
+
+cleanup() {
+  local rc=$?
+  if [[ "${CDR_JOB_KEEP_ON_FAILURE:-}" == "1" ]] && [[ $rc -ne 0 ]]; then
+    log "leaving workspace '$JOB_NAME' alive (CDR_JOB_KEEP_ON_FAILURE=1, rc=$rc)"
+    log "manual cleanup: cdr delete $JOB_NAME --yes"
+    return
+  fi
+  log "tearing down workspace '$JOB_NAME' (rc=$rc)"
+  cdr delete "$JOB_NAME" --yes >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+log "creating workspace '$JOB_NAME' from template exe-dotfiles-job"
+log "  command: $JOB_COMMAND"
+
+# `coder create` blocks until the workspace agent connects, so
+# the command's startup_script has begun by the time this returns.
+cdr create "$JOB_NAME" \
+  --template exe-dotfiles-job \
+  --parameter "job_command=$JOB_COMMAND" \
+  --yes
+
+# Stream the agent's startup_script log until the agent reports
+# the script finished (workspace will then auto-stop).
+log "streaming job log (wall-clock budget: ${CDR_JOB_TIMEOUT_SEC}s)"
+START_TS=$(date +%s)
+LAST_LINE=0
+while true; do
+  # `coder show <name>` includes per-agent startup_script status.
+  # When script_state == "exited" the job has finished.
+  STATUS_JSON="$(cdr show "$JOB_NAME" --output json 2>/dev/null || echo '{}')"
+  AGENT_STATE="$(jq -r '.latest_build.resources[]?.agents[]?.lifecycle_state // empty' <<<"$STATUS_JSON" | head -1)"
+
+  # Tail new log lines.
+  LOG_LINES="$(cdr logs "$JOB_NAME" 2>/dev/null || true)"
+  TOTAL_LINES="$(echo "$LOG_LINES" | wc -l | tr -d ' ')"
+  if [[ "$TOTAL_LINES" -gt "$LAST_LINE" ]]; then
+    echo "$LOG_LINES" | sed -n "$((LAST_LINE + 1)),${TOTAL_LINES}p"
+    LAST_LINE="$TOTAL_LINES"
+  fi
+
+  case "$AGENT_STATE" in
+    ready|starting|created|"") ;;
+    start_timeout|start_error|shutdown_timeout|shutdown_error|off)
+      log "agent reached terminal state: $AGENT_STATE"
+      break
+      ;;
+  esac
+
+  NOW=$(date +%s)
+  if (( NOW - START_TS >= CDR_JOB_TIMEOUT_SEC )); then
+    log "wall-clock budget exceeded (${CDR_JOB_TIMEOUT_SEC}s); aborting"
+    exit 124
+  fi
+
+  sleep 5
+done
+
+log "job '$JOB_NAME' completed; trap-handler will delete the workspace"
