@@ -22,6 +22,7 @@ REQUIRED_APIS=(
   compute.googleapis.com
   iam.googleapis.com
   iamcredentials.googleapis.com
+  monitoring.googleapis.com        # uptime check + alert policy on healthz
   secretmanager.googleapis.com
   servicenetworking.googleapis.com # ADR 0010: VPC peering for Cloud SQL private IP
   sqladmin.googleapis.com          # ADR 0010: Cloud SQL Admin
