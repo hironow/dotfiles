@@ -57,9 +57,24 @@ resource "google_sql_database_instance" "coder" {
 
   # Mandatory: protects against tofu destroy taking the DB with it.
   # Operator must flip this to false explicitly to delete.
+  # This is the *Terraform-resource-level* guard — it only stops
+  # `tofu destroy`. The GCP API itself (Console / gcloud / direct
+  # REST) can still issue a delete. settings.deletion_protection_enabled
+  # below adds the second layer at the GCP API level so a deletion
+  # attempt from outside Terraform also fails.
   deletion_protection = true
 
   settings {
+    # GCP-API-level deletion protection. Two-layer best practice
+    # (2026 Cloud SQL Postgres). To delete the instance, the
+    # operator must:
+    #   1. flip this flag to false and `tofu apply`
+    #   2. flip the resource-level deletion_protection to false and apply
+    #   3. then `tofu destroy` the instance
+    # Each layer is independent, so a misclick / single-line
+    # diff in either field does not unlock destruction.
+    deletion_protection_enabled = true
+
     # ENTERPRISE edition supports the legacy shared-core tiers
     # (db-f1-micro, db-g1-small, db-custom-N-RAMMB). New instances
     # default to ENTERPRISE_PLUS, which only accepts the more

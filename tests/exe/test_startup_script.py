@@ -1008,6 +1008,17 @@ def test_cloud_sql_resources_present() -> None:
     assert re.search(r"deletion_protection\s*=\s*true", body), (
         "Cloud SQL instance MUST have deletion_protection = true"
     )
+    # Two-layer deletion protection: the resource-level
+    # deletion_protection above guards against `tofu destroy`, while
+    # settings.deletion_protection_enabled guards against the GCP API
+    # itself (gcloud / Console / direct REST). 2026 Cloud SQL best
+    # practice is to enable both — Terraform-only protection is
+    # bypassable from outside Terraform.
+    assert re.search(r"deletion_protection_enabled\s*=\s*true", body), (
+        "Cloud SQL instance MUST set settings.deletion_protection_enabled = true\n"
+        "as a second protection layer at the GCP API level (Console / gcloud\n"
+        "deletion is otherwise unprotected)."
+    )
     assert re.search(r"ipv4_enabled\s*=\s*false", body), (
         "Cloud SQL instance MUST have ipv4_enabled = false (private IP only)"
     )
