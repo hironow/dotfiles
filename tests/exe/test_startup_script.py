@@ -1527,8 +1527,13 @@ def test_cloud_sql_security_posture_no_regression() -> None:
     body = inst.group(1)
     retained = re.search(r"retained_backups\s*=\s*(\d+)", body)
     assert retained is not None, "must declare retained_backups"
-    assert int(retained.group(1)) >= 7, (
-        f"backup retention is {retained.group(1)} day(s); minimum is 7 days"
+    # 30 days is the 2026 Cloud SQL production guidance for
+    # compliance-grade safety nets — long enough to detect data
+    # corruption that wasn't immediately obvious (typical
+    # detection window for slow-burning bugs is 1–4 weeks).
+    assert int(retained.group(1)) >= 30, (
+        f"backup retention is {retained.group(1)} day(s); minimum is 30 days\n"
+        "(2026 production best practice for compliance-grade safety net)"
     )
     assert re.search(r'retention_unit\s*=\s*"COUNT"', body), (
         "backup retention_unit must be COUNT (count of backups, not bytes)"
