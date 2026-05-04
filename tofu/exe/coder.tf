@@ -413,11 +413,19 @@ locals {
     # --structured-logs: emit JSON lines instead of free text. journald
     # + Cloud Logging can then key on severity/error/message fields
     # for alerting rather than substring matching the message body.
+    # --health-check + --http-address=127.0.0.1: expose
+    # /startup, /readiness, /liveness on loopback :9090 so an
+    # external watchdog (or ExecStartPre on coder.service) can probe
+    # actual proxy readiness instead of just the systemd main-PID
+    # state. Loopback-only so the endpoints are not reachable from
+    # the tailnet IP.
     ExecStart=/usr/local/bin/cloud-sql-proxy \
       --address 127.0.0.1 --port 5432 \
       --auto-iam-authn \
       --private-ip \
       --structured-logs \
+      --health-check \
+      --http-address=127.0.0.1 \
       $PG_CONNECTION_NAME
     Restart=on-failure
     RestartSec=5

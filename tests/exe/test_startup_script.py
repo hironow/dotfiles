@@ -1357,6 +1357,26 @@ def test_cloud_sql_proxy_systemd_unit_emitted(startup_script: str) -> None:
         "Logging can parse severity/error fields (2026 production\n"
         "best practice)."
     )
+    # 2026 production best practice: enable the HTTP health-check
+    # endpoint so an external watchdog (or coder.service ExecStartPre)
+    # can probe /readiness before treating the proxy as up. Without
+    # this flag the only signal CSAP gives is the systemd unit's
+    # main-PID — a forked-but-stuck proxy looks healthy to systemd.
+    assert "--health-check" in body, (
+        "CSAP MUST run with --health-check so /startup, /readiness,\n"
+        "and /liveness are exposed for watchdogs and ExecStartPre\n"
+        "probes (2026 production best practice)."
+    )
+    # The health-check listener defaults to :9090. The unit must bind
+    # it to localhost so the endpoint is not exposed to the tailnet
+    # or any other interface.
+    assert re.search(r"--http-address[= ]\s*127\.0\.0\.1\b", body) or (
+        "--http-address=127.0.0.1" in body
+    ), (
+        "CSAP --health-check listener MUST bind to 127.0.0.1 so the\n"
+        "endpoints stay loopback-only (the tailnet IP would otherwise\n"
+        "expose /readiness / /liveness to every workspace)."
+    )
 
     # And coder.service must declare Requires + After cloud-sql-proxy.
     coder_unit = re.search(
