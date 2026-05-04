@@ -1347,6 +1347,16 @@ def test_cloud_sql_proxy_systemd_unit_emitted(startup_script: str) -> None:
         "CSAP MUST run with --private-ip — the instance has no public\n"
         "IP and CSAP defaults to PUBLIC otherwise (fails closed)."
     )
+    # 2026 production best practice: emit JSON-formatted structured
+    # logs so journald + Cloud Logging can parse fields (severity,
+    # timestamp, message, error) instead of free-text. Without this
+    # flag CSAP writes plain text and Cloud Logging cannot key on
+    # severity/error reliably.
+    assert "--structured-logs" in body, (
+        "CSAP MUST run with --structured-logs so journald and Cloud\n"
+        "Logging can parse severity/error fields (2026 production\n"
+        "best practice)."
+    )
 
     # And coder.service must declare Requires + After cloud-sql-proxy.
     coder_unit = re.search(

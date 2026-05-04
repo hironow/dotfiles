@@ -410,10 +410,14 @@ locals {
     # (private IP only). Without this flag CSAP tries the public
     # IP path first and fails with `instance does not have IP of
     # type "PUBLIC"`.
+    # --structured-logs: emit JSON lines instead of free text. journald
+    # + Cloud Logging can then key on severity/error/message fields
+    # for alerting rather than substring matching the message body.
     ExecStart=/usr/local/bin/cloud-sql-proxy \
       --address 127.0.0.1 --port 5432 \
       --auto-iam-authn \
       --private-ip \
+      --structured-logs \
       $PG_CONNECTION_NAME
     Restart=on-failure
     RestartSec=5
