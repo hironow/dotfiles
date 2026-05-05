@@ -12,6 +12,7 @@
 agent-browser
 ajv-cli
 caniuse-cmd
+cf
 check-site-meta
 cloudflare
 har-to-k6
