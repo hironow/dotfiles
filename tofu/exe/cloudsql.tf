@@ -57,9 +57,24 @@ resource "google_sql_database_instance" "coder" {
 
   # Mandatory: protects against tofu destroy taking the DB with it.
   # Operator must flip this to false explicitly to delete.
+  # This is the *Terraform-resource-level* guard — it only stops
+  # `tofu destroy`. The GCP API itself (Console / gcloud / direct
+  # REST) can still issue a delete. settings.deletion_protection_enabled
+  # below adds the second layer at the GCP API level so a deletion
+  # attempt from outside Terraform also fails.
   deletion_protection = true
 
   settings {
+    # GCP-API-level deletion protection. Two-layer best practice
+    # (2026 Cloud SQL Postgres). To delete the instance, the
+    # operator must:
+    #   1. flip this flag to false and `tofu apply`
+    #   2. flip the resource-level deletion_protection to false and apply
+    #   3. then `tofu destroy` the instance
+    # Each layer is independent, so a misclick / single-line
+    # diff in either field does not unlock destruction.
+    deletion_protection_enabled = true
+
     # ENTERPRISE edition supports the legacy shared-core tiers
     # (db-f1-micro, db-g1-small, db-custom-N-RAMMB). New instances
     # default to ENTERPRISE_PLUS, which only accepts the more
@@ -81,7 +96,14 @@ resource "google_sql_database_instance" "coder" {
       start_time                     = "18:00" # 18:00 UTC = 03:00 JST (off-hours)
       point_in_time_recovery_enabled = true
       backup_retention_settings {
-        retained_backups = 7 # 1 week of daily backups
+        # 30 daily backups (2026 Cloud SQL production guidance).
+        # Slow-burning data corruption (silent table truncations,
+        # off-by-one migrations, accidental UPDATEs without WHERE)
+        # is typically detected 1–4 weeks after the fact. 7 days
+        # leaves no margin against that detection window. 30 daily
+        # backups on a 10 GiB instance is still well under $1/month
+        # in storage.
+        retained_backups = 30
         retention_unit   = "COUNT"
       }
     }

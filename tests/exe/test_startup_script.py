@@ -1008,6 +1008,17 @@ def test_cloud_sql_resources_present() -> None:
     assert re.search(r"deletion_protection\s*=\s*true", body), (
         "Cloud SQL instance MUST have deletion_protection = true"
     )
+    # Two-layer deletion protection: the resource-level
+    # deletion_protection above guards against `tofu destroy`, while
+    # settings.deletion_protection_enabled guards against the GCP API
+    # itself (gcloud / Console / direct REST). 2026 Cloud SQL best
+    # practice is to enable both — Terraform-only protection is
+    # bypassable from outside Terraform.
+    assert re.search(r"deletion_protection_enabled\s*=\s*true", body), (
+        "Cloud SQL instance MUST set settings.deletion_protection_enabled = true\n"
+        "as a second protection layer at the GCP API level (Console / gcloud\n"
+        "deletion is otherwise unprotected)."
+    )
     assert re.search(r"ipv4_enabled\s*=\s*false", body), (
         "Cloud SQL instance MUST have ipv4_enabled = false (private IP only)"
     )
@@ -1336,6 +1347,36 @@ def test_cloud_sql_proxy_systemd_unit_emitted(startup_script: str) -> None:
         "CSAP MUST run with --private-ip — the instance has no public\n"
         "IP and CSAP defaults to PUBLIC otherwise (fails closed)."
     )
+    # 2026 production best practice: emit JSON-formatted structured
+    # logs so journald + Cloud Logging can parse fields (severity,
+    # timestamp, message, error) instead of free-text. Without this
+    # flag CSAP writes plain text and Cloud Logging cannot key on
+    # severity/error reliably.
+    assert "--structured-logs" in body, (
+        "CSAP MUST run with --structured-logs so journald and Cloud\n"
+        "Logging can parse severity/error fields (2026 production\n"
+        "best practice)."
+    )
+    # 2026 production best practice: enable the HTTP health-check
+    # endpoint so an external watchdog (or coder.service ExecStartPre)
+    # can probe /readiness before treating the proxy as up. Without
+    # this flag the only signal CSAP gives is the systemd unit's
+    # main-PID — a forked-but-stuck proxy looks healthy to systemd.
+    assert "--health-check" in body, (
+        "CSAP MUST run with --health-check so /startup, /readiness,\n"
+        "and /liveness are exposed for watchdogs and ExecStartPre\n"
+        "probes (2026 production best practice)."
+    )
+    # The health-check listener defaults to :9090. The unit must bind
+    # it to localhost so the endpoint is not exposed to the tailnet
+    # or any other interface.
+    assert re.search(r"--http-address[= ]\s*127\.0\.0\.1\b", body) or (
+        "--http-address=127.0.0.1" in body
+    ), (
+        "CSAP --health-check listener MUST bind to 127.0.0.1 so the\n"
+        "endpoints stay loopback-only (the tailnet IP would otherwise\n"
+        "expose /readiness / /liveness to every workspace)."
+    )
 
     # And coder.service must declare Requires + After cloud-sql-proxy.
     coder_unit = re.search(
@@ -1486,8 +1527,13 @@ def test_cloud_sql_security_posture_no_regression() -> None:
     body = inst.group(1)
     retained = re.search(r"retained_backups\s*=\s*(\d+)", body)
     assert retained is not None, "must declare retained_backups"
-    assert int(retained.group(1)) >= 7, (
-        f"backup retention is {retained.group(1)} day(s); minimum is 7 days"
+    # 30 days is the 2026 Cloud SQL production guidance for
+    # compliance-grade safety nets — long enough to detect data
+    # corruption that wasn't immediately obvious (typical
+    # detection window for slow-burning bugs is 1–4 weeks).
+    assert int(retained.group(1)) >= 30, (
+        f"backup retention is {retained.group(1)} day(s); minimum is 30 days\n"
+        "(2026 production best practice for compliance-grade safety net)"
     )
     assert re.search(r'retention_unit\s*=\s*"COUNT"', body), (
         "backup retention_unit must be COUNT (count of backups, not bytes)"
