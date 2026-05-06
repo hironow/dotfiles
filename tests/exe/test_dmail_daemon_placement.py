@@ -53,12 +53,39 @@ the test file.
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 MAIN_TF = ROOT / "exe" / "coder" / "templates" / "dotfiles-devcontainer" / "main.tf"
+
+# Reuse the same ubuntu-based image tests/exe/test_startup_script.py
+# builds. systemd-analyze ships with the systemd package installed
+# there, so we do not need a second Dockerfile.
+EXE_STARTUP_DOCKERFILE = ROOT / "tests" / "docker" / "ExeStartup.Dockerfile"
+EXE_STARTUP_IMAGE = "dotfiles-exe-startup:latest"
+
+
+def _run(
+    cmd: list[str],
+    timeout: int | None = None,
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        cmd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+    )
+
+
+def _docker_available() -> bool:
+    if shutil.which("docker") is None:
+        return False
+    return _run(["docker", "info"]).returncode == 0
 
 
 @pytest.fixture(scope="module")
@@ -230,16 +257,125 @@ def test_phonewave_state_dir_mounted_into_devcontainer(main_tf_text: str) -> Non
     )
 
 
-@pytest.mark.exe
-def test_dmail_units_pass_systemd_analyze() -> None:
-    """Heavy: extract each emitted unit file from the heredoc, render
-    it with dummy interpolations, run systemd-analyze verify inside
-    the ExeStartup container.
+@pytest.fixture(scope="module")
+def exe_startup_image() -> str:
+    """Build (or reuse) the ubuntu-based image that test_startup_script
+    .py also relies on. systemd-analyze comes from the systemd
+    package installed inside; we never start systemd, just invoke
+    the binary directly against unit files we mount in."""
+    if not _docker_available():
+        pytest.skip("docker not available; skipping systemd-analyze e2e")
+    r = _run(
+        [
+            "docker",
+            "build",
+            "-t",
+            EXE_STARTUP_IMAGE,
+            "-f",
+            str(EXE_STARTUP_DOCKERFILE),
+            str(ROOT),
+        ],
+        timeout=600,
+    )
+    if r.returncode != 0:
+        pytest.fail(
+            f"failed to build {EXE_STARTUP_IMAGE}\n"
+            f"stdout:\n{r.stdout}\nstderr:\n{r.stderr}"
+        )
+    return EXE_STARTUP_IMAGE
 
-    Stubbed out until Phase 2 lands the actual unit body — the static
-    checks above are sufficient to RED-pin the placement contract.
+
+@pytest.mark.exe
+@pytest.mark.parametrize("unit_name", ["dmail-receiver", "dmail-emitter"])
+def test_dmail_units_pass_systemd_analyze(
+    dmail_unit_bodies: dict[str, str],
+    exe_startup_image: str,
+    tmp_path: Path,
+    unit_name: str,
+) -> None:
+    """Each dmail unit body extracted from main.tf must pass
+    `systemd-analyze verify` inside the ExeStartup container. The
+    container exists only as a sandbox to run the binary; we never
+    boot systemd.
+
+    What this catches:
+      - malformed [Unit] / [Service] / [Install] section keys
+      - bad ExecStart= line continuation (the regex tests rely on
+        the body being well-formed; systemd-analyze is the
+        ground-truth parser)
+      - typo'd Restart=, RestartSec=, After= values
+      - missing /usr/bin/docker absolute path on ExecStart=
+      - Environment= keys whose value would not parse
+
+    What this does NOT catch (would require a live systemd inside
+    the container, which adds privileged + cgroup setup we are not
+    paying for):
+      - the unit's actual ability to start
+      - dependency cycles between After=/Requires= units that are
+        not on the system
+      - whether the image referenced by ExecStart= exists in
+        Artifact Registry (Phase 2 image build / publish)
+
+    The two units are checked independently via parametrize so a
+    failure on one names the offender clearly in pytest output.
     """
-    pytest.skip(
-        "Phase 2: enable after the systemd unit body lands. The static "
-        "checks in this file already pin the placement contract."
+    body = dmail_unit_bodies.get(unit_name, "")
+    assert body, (
+        f"{unit_name}.service unit body not found in main.tf — the "
+        f"static placement test would have caught this first, but "
+        f"this assertion guards the systemd-analyze step against "
+        f"silently passing on an empty body."
+    )
+
+    unit_path = tmp_path / f"{unit_name}.service"
+    unit_path.write_text(body)
+
+    # systemd-analyze short-circuits with "Unit docker.service not
+    # found" / "/usr/bin/docker not executable" before validating
+    # the unit's own syntax. Production VMs ship Docker Engine via
+    # apt; the test image does not. Inject a fake docker.service +
+    # /bin/true symlink at /usr/bin/docker INSIDE the container,
+    # then run verify. The fakes only satisfy the dependency parser
+    # — we never start systemd. This keeps tests/docker/
+    # ExeStartup.Dockerfile unchanged.
+    verify_script = (
+        "set -eu\n"
+        "install -d /etc/systemd/system\n"
+        # printf %b interprets the \\n escapes; %s would write a
+        # literal '\\n' and systemd-analyze would reject the file
+        # with 'Invalid section header'.
+        "printf '%b' "
+        "'[Unit]\\nDescription=fake docker for systemd-analyze\\n"
+        "[Service]\\nType=simple\\nExecStart=/bin/true\\n' "
+        "> /etc/systemd/system/docker.service\n"
+        "install -m 0755 /bin/true /usr/bin/docker\n"
+        f"exec systemd-analyze verify /work/{unit_name}.service\n"
+    )
+
+    r = _run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{unit_path}:/work/{unit_name}.service:ro",
+            "--entrypoint",
+            "bash",
+            exe_startup_image,
+            "-c",
+            verify_script,
+        ],
+        timeout=120,
+    )
+
+    # systemd-analyze prints findings to stderr and exits non-zero
+    # when something is unparseable. WARNING-level complaints
+    # (e.g. about Type=simple defaulting) come back on exit 0;
+    # those are surfaced in the assertion message for visibility
+    # but do not fail the test.
+    assert r.returncode == 0, (
+        f"systemd-analyze verify failed for {unit_name}.service.\n"
+        f"--- unit body ---\n{body}\n"
+        f"--- stdout ---\n{r.stdout}\n"
+        f"--- stderr ---\n{r.stderr}"
     )
