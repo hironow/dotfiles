@@ -98,3 +98,9 @@
 [submodule "protocols/NLIP"]
 	path = protocols/NLIP
 	url = git@github.com:nlip-project/nlip_spec.git
+[submodule "protocols/UTCP"]
+	path = protocols/UTCP
+	url = git@github.com:universal-tool-calling-protocol/utcp-specification.git
+[submodule "protocols/visa-trusted-agent-protocol"]
+	path = protocols/visa-trusted-agent-protocol
+	url = git@github.com:visa/trusted-agent-protocol.git

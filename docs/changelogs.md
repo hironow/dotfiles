@@ -645,6 +645,95 @@
 
 ---
 
+### UTCP (Universal Tool Calling Protocol)
+
+**現行バージョン**: v1.0（仕様として、 直近 spec commit 2026-05-05）
+
+**管理**: Universal Tool Calling Protocol コミュニティ（独立 OSS）
+
+**注目**: MCP の **構造的代替案 / 補完案**。 MCP が「proxy 経由でツール呼び出し」する一方、 UTCP は **agent が discovery 後に native endpoint (HTTP/gRPC/WebSocket/CLI) を直接叩く**設計で、 wrapper tax + latency を排除し、 既存の auth/billing/security をそのまま活かせる。 v1.0 で plugin-based 構成へ全面再設計。 直近の commit が 2026-05-05、 contributors data も daily 更新で活発。
+
+#### v1.0 の主要な特徴
+
+- **Plugin Architecture**: コア機能を pluggable component に分割、 modularity / testability / packaging 向上
+- **Multiple Protocol Support**: HTTP / CLI / WebSocket / Text / **MCP** をプラグイン経由でサポート（MCP も plugin として包摂）
+- **Enhanced Data Models**: Pydantic モデルへ統一、 包括的バリデーション
+- **Advanced Authentication**: API key / OAuth / カスタム auth など拡張認証
+- **Better Error Handling**: シナリオごとの specific exception 型
+- **Async/Await Support**: 完全非同期クライアントインタフェース
+- **Performance Optimizations**: クライアントとプロトコル実装の最適化
+- **OpenAPI 拡張**: agent-focused enhancements（tags、 average_response_size、 multi-protocol、 direct execution instructions）を OpenAPI に追加
+- **Dual license clarification**: 直近 commit でデュアルライセンス周りを整理
+
+#### 関連リポジトリ（org エコシステム）
+
+| リポ | 役割 |
+|------|------|
+| `utcp-specification` | 仕様本体（本サブモジュール） |
+| `python-utcp` | 公式 Python 実装 |
+| `typescript-utcp` | 公式 TypeScript 実装 |
+| `utcp-agent` | 5 行未満で API/native endpoint 直叩きできる ready-to-use agent |
+| `code-mode` | MCP/UTCP ツールを **コード実行経由** で呼び出す plug-and-play ライブラリ |
+
+#### MCP との位置関係
+
+| 観点 | MCP | UTCP |
+|------|-----|------|
+| 呼び出し方式 | proxy server (wrapper) 経由 | agent が native endpoint を直接 |
+| latency | wrapper hop あり | hop なし |
+| auth/billing | MCP server で再実装 | 既存システムを再利用 |
+| 互換性 | MCP プロトコル独自 | OpenAPI 拡張で既存 API 流用 |
+| MCP 取り込み | n/a | MCP プロトコルを plugin として包摂 |
+
+#### 参考リンク
+
+- [utcp-specification (GitHub)](https://github.com/universal-tool-calling-protocol/utcp-specification)
+- [Universal Tool Calling Protocol org](https://github.com/universal-tool-calling-protocol)
+- [www.utcp.io](https://www.utcp.io/)
+- [python-utcp](https://github.com/universal-tool-calling-protocol/python-utcp)
+- [typescript-utcp](https://github.com/universal-tool-calling-protocol/typescript-utcp)
+
+---
+
+### Visa Trusted Agent Protocol
+
+**現行バージョン**: 初期スペック + sample 実装（タグなし、 commit 6 件、 2026 年内に立ち上げ）
+
+**管理**: Visa Inc.（クレジットカード大手）
+
+**注目**: Agentic commerce での **agent identity / authorization 標準化**。 既存 `protocols/ACP` (OpenAI/Stripe) / `protocols/AP2` (Google) / `protocols/UCP` / `protocols/x402` の **identity 補完レイヤ** として位置。 大手金融プレイヤー（Visa）が回した数少ない agentic commerce identity 標準。
+
+#### 主要な特徴
+
+- **Cryptographic Identity Proof**: AI エージェントが merchant に対し、 自身の identity と user 委任権限を **暗号署名** で証明
+- **署名コンテンツ**: timestamp / unique session identifier / key identifier / algorithm identifier を含む（リプレイ防止）
+- **Context-Bound Security**: 全リクエストが merchant の **specific website + 操作中の正確なページ** に cryptographically lock。 認可の他所流用を不可能化
+- **Replay 攻撃防止**: time-sensitive elements でリクエスト毎にユニーク化、 1 回限り有効
+- **Customer / Payment Identifier 標準伝達**: 同意済み consumer の **PAR (Payment Account Reference)**、 verifiable consumer identifier、 loyalty number、 email、 phone などを query parameter 経由で merchant へ安全配信
+- **Browse / Payment 双方の認可**: ブラウジングと支払いそれぞれの操作種別ごとに署名 bound
+- **Anti-Fraud**: 認証済み agent と anonymous bot の区別を明確化、 chargeback / 不正取引削減
+
+#### 既存 commerce 系プロトコルとの位置関係
+
+| プロトコル | 担当領域 |
+|-----------|---------|
+| **ACP** (Agentic Commerce Protocol, OpenAI/Stripe) | Order / Cart / Payment Handler レイヤ |
+| **AP2** (Agent Payments Protocol, Google) | Payment Receipt / Payment method 統合 |
+| **UCP** (Universal Commerce Protocol) | Cart / Catalog / Order / Discount / Identity Linking |
+| **x402** (Coinbase) | Crypto-native HTTP payment |
+| **Visa Trusted Agent Protocol** | **Agent identity / authorization の cryptographic proof（merchant 側 verify）** |
+
+#### リポ構成
+
+- 仕様 + sample 実装 (Quick Start で multiple components)
+- **nonce validation サンプルコード** 追加済み（リプレイ防止検証実装の参考）
+
+#### 参考リンク
+
+- [visa/trusted-agent-protocol (GitHub)](https://github.com/visa/trusted-agent-protocol)
+
+---
+
 ### webmcp-tools
 
 **現行バージョン**: 継続的デプロイ（バージョンタグなし）
@@ -1380,6 +1469,8 @@
 
 | 対象 | 変更内容 | 対応優先度 |
 |------|---------|-----------|
+| **UTCP v1.0** (新規追跡, 直近 commit 2026-05-05) | MCP の構造的代替案（agent → native endpoint 直叩き）、 plugin architecture へ全面再設計 | 中 |
+| **Visa Trusted Agent Protocol** (新規追跡) | Agentic commerce での agent identity / authorization 標準。 cryptographic signature ベース | 中 |
 | **Gemini Cloud Assist MCP v0.8.0** (新規追跡, 2026-04-21) | Local Node.js → Remote MCP Server へ全面刷新、 v0.2.0 (local) は完全 deprecate | 高 |
 | **UCP v2026-04-08 後** | Identity Linking OAuth 2.0 foundation、capability-driven scopes（破壊的） | 高 |
 | **MCP-UI v7.1.0** (2026-05-01) | hostInfo / hostCapabilities props 追加、AppRenderer 対応 | 中 |
@@ -1403,6 +1494,8 @@
 
 ### メジャーアップデート
 
+0. **NEW: UTCP v1.0** (直近 commit 2026-05-05, 新規追跡開始) - Universal Tool Calling Protocol。 MCP が proxy 経由ツール呼び出しなのに対し、 agent が discovery 後 native endpoint (HTTP/gRPC/WebSocket/CLI) を直接叩く設計で wrapper tax 削減。 v1.0 で plugin-based 構成へ再設計、 MCP プロトコル自体も plugin として包摂。 Python / TypeScript / Go 公式実装あり
+0. **NEW: Visa Trusted Agent Protocol** (新規追跡開始) - Agentic commerce における agent identity / authorization の cryptographic 標準。 AI エージェントが merchant に対して timestamp / session id / key id を含む暗号署名で identity と user 委任権限を証明。 既存 ACP/AP2/UCP/x402 の identity 補完レイヤ
 0. **NEW: NLIP 1st edition** (Ecma 承認 2025-12-10, 新規追跡開始) - Ecma TC56 が標準化した natural-language application-level プロトコル。 ECMA-430 本体 + 4 binding (HTTP/WebSocket/AMQP/Security profiles) + TR/113 解説書の 6 文書構成。 ISO 提出済み (2026-01-25)、 Claude Skills 互換 reference 実装は 2026-02-28 予定
 0. **NEW: Gemini Cloud Assist MCP v0.8.0** (2026-04-21, 新規追跡開始) - GCP 環境を natural language で understand / manage / troubleshoot する MCP サーバー。 Local Node.js から Remote MCP Server architecture へ全面移行（**破壊的変更**）、 v0.2.0 (local) を完全 deprecate。 `designing-and-deploying-infrastructure` / `operating-google-cloud` skills 同梱。 現在 Private Preview (allowlist 制)
 1. **ADK Python v1.31.x → v1.32.0** (2026-04-30) - **新たな安定リリース**。Anthropic thinking blocks、native OpenTelemetry agentic metrics、event compaction tracing、GcpAuthProvider 2LO/3LO/API Key sample、Cold start ~25% 短縮、複数のセキュリティ修正（SSRF/RCE/credential isolation/PubSub user_id sanitization）。v2.0.0b1 (2026-04-21) と並走
@@ -1428,6 +1521,8 @@
 
 ### 新規プロトコル統合
 
+0. **UTCP (Universal Tool Calling Protocol)** - MCP の構造的代替案。 agent が proxy を介さず native endpoint を直接呼び出す。 既存 MCP は plugin として包摂され UTCP の中で共存可能
+0. **Visa Trusted Agent Protocol** - 大手金融プレイヤー (Visa) が回す agentic commerce identity 標準。 既存 ACP/AP2/UCP/x402 の identity 補完軸を埋める
 0. **NLIP (Natural Language Interaction Protocol)** - Ecma TC56 標準化、 ECMA-430〜434 + TR/113 構成。 既存ラインアップ（A2A: agent ↔ agent opaque / MCP: agent ↔ tool）と相補で natural-language application-level 通信を担当
 0. **Gemini Cloud Assist MCP** - GCP 環境の natural-language operation 用 MCP サーバー（Private Preview）。 既存 cloud-run-mcp / gke-mcp / gcloud-mcp と並ぶ「GCP オペレーショナル」軸の補完
 1. **AP2 v0.2.0** - V2 仕様正式リリース。X402 決済、Vertex AI 認証、UCP 連携、Go サンプル
