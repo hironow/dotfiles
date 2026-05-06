@@ -159,18 +159,28 @@ EOF
   default     = "asia-northeast1-docker.pkg.dev/gen-ai-hironow/runops/dmail-emitter:placeholder"
 }
 
-# Service account email for the dmail daemons. Per the runops-
-# gateway repo's tofu/iam_pubsub.tf, the SA must already have:
-#   - roles/pubsub.subscriber on dmail-inbound-receiver
-#   - roles/pubsub.publisher  on dmail-outbound
-#   - roles/cloudtrace.agent  (project-level)
-# The SA is `exe-coder@gen-ai-hironow.iam.gserviceaccount.com` in
-# the default deployment.
-variable "dmail_sa_email" {
-  description = "Service account email used by the dmail daemons (must already have the IAM bindings the runops-gateway repo applies in tofu/iam_pubsub.tf)."
-  type        = string
-  default     = "exe-coder@gen-ai-hironow.iam.gserviceaccount.com"
-}
+# Service account used by the dmail daemons: attached to the
+# workspace VM via google_compute_instance.vm.service_account
+# (var.workspace_sa_email — see line ~410). With --network host
+# on the docker run, dmail containers reach the GCE metadata
+# server at 169.254.169.254 and impersonate this SA at the gRPC
+# layer (cloud.google.com/go default credentials path).
+#
+# That means there is **no dedicated dmail_sa_email variable**.
+# The same exe-workspace SA that pulls the devcontainer image
+# from Artifact Registry also pulls dmail-receiver / dmail-emitter
+# images and runs the daemons. The SA must additionally have, per
+# the runops-gateway repo's tofu/iam_pubsub.tf and tofu/registry.tf:
+#
+#   - roles/pubsub.subscriber       on dmail-inbound-receiver
+#   - roles/pubsub.publisher        on dmail-outbound topic
+#   - roles/cloudtrace.agent        project-level
+#   - roles/artifactregistry.reader on the runops repo
+#
+# The runops-gateway repo's CI applies these against the SA email
+# the operator sets in its EXE_CODER_VM_SA_EMAIL GitHub variable
+# (variable name is preserved from ADR 0015 era; the *value* is the
+# workspace-VM SA per ADR 0023).
 
 # Pub/Sub topology + OTel target for the dmail daemons. Variables
 # rather than hard-coded literals so the same template can be
