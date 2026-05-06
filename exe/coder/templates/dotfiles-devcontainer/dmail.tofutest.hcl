@@ -29,6 +29,27 @@
 mock_provider "google" {}
 mock_provider "coder" {}
 
+# coder data sources auto-generate values that don't match the
+# google provider's resource-name regex (e.g. workspace.id contains
+# uppercase letters, disk name regex is lowercase-only). Pin
+# realistic lowercase-only values so plan completes and the actual
+# variable assertions can run.
+override_data {
+  target = data.coder_workspace.me
+  values = {
+    id          = "test-workspace-id"
+    name        = "test"
+    start_count = 1
+  }
+}
+
+override_data {
+  target = data.coder_workspace_owner.me
+  values = {
+    name = "test"
+  }
+}
+
 variables {
   workspace_sa_email = "exe-workspace@test-project.iam.gserviceaccount.com"
   coder_internal_url = "http://exe-coder:7080"

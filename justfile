@@ -347,12 +347,16 @@ pre-commit:
 check-all: pre-commit check test test-iac
     @echo "✅ all checks passed"
 
-# Run Terraform native tests for the Coder workspace template
+# Run OpenTofu native tests for the Coder workspace template
 # (variable defaults + image-tag pattern; see ADR 0024 in the
-# runops-gateway repo for the IaC test split rationale).
+# runops-gateway repo for the IaC test split rationale). Uses
+# `tofu test` rather than `terraform test` to keep the local
+# .terraform.lock.hcl on the opentofu registry that the rest of
+# the repo's tofu/exe stack uses; running `terraform test` here
+# rewrites the lock to the terraform.io registry.
 [group('Check')]
 test-iac:
-    @cd exe/coder/templates/dotfiles-devcontainer && terraform init -backend=false >/dev/null && terraform test
+    @cd exe/coder/templates/dotfiles-devcontainer && tofu init -backend=false >/dev/null && tofu test
 
 # ------------------------------
 # Add sets
