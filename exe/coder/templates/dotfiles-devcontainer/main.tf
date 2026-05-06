@@ -412,7 +412,26 @@ locals {
     # multiplexing on the Pub/Sub subscription is handled natively
     # by Pub/Sub load-balancing. See runops-gateway
     # experiments/2026-05-06_dotfiles-dmail-daemon-placement.md.
-    install -d -m 0755 /var/lib/phonewave/archive /var/lib/phonewave/outbox
+    # Mode 0777 because three processes with three different uids share
+    # this directory tree:
+    #   - devcontainer's linux_user (uid ~1000) — writes archive entries,
+    #     reads outbox entries from inside the 5pillars
+    #   - dmail-receiver container (USER nonroot:nonroot, uid 65532 from
+    #     gcr.io/distroless/static-debian12:nonroot per ADR 0023) —
+    #     writes outbox/<id>.md
+    #   - dmail-emitter container (same nonroot uid) — reads archive/
+    #
+    # ADR 0023 + Issue 0001 deploy verify (2026-05-06) hit
+    # 'permission denied: open /outbox/.tmp-...' because dmail
+    # containers under uid 65532 cannot write into a directory owned
+    # by uid 1000 with mode 0755. World-writable is acceptable here
+    # because the workspace VM is per-user, short-lived (ADR 0008),
+    # and the trust boundary is the tag:exe-workspace tailnet ACL —
+    # no untrusted process touches this path. If multi-tenant or
+    # long-lived workspaces become a concern, refactor to a shared
+    # group with setgid (the runops-gateway repo's ADR 0023 records
+    # this as a deferred negative consequence).
+    install -d -m 0777 /var/lib/phonewave/archive /var/lib/phonewave/outbox
     chown -R ${local.linux_user}:${local.linux_user} /var/lib/phonewave
 
     docker rm -f '${local.container_name}' >/dev/null 2>&1 || true
