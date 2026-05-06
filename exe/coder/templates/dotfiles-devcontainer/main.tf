@@ -556,8 +556,17 @@ EOF_DME
 }
 
 resource "google_compute_disk" "root" {
-  name  = "coder-${data.coder_workspace.me.id}-root"
-  type  = "pd-ssd"
+  name = "coder-${data.coder_workspace.me.id}-root"
+  type = "pd-ssd"
+  # 30 GB rather than the GCE default 10 GB. The startup-script
+  # pulls 3 OCI images (devcontainer, dmail-receiver, dmail-emitter)
+  # plus apt-installs tailscale + docker + gcloud SDK and pins a
+  # mise tool-set; 10 GB fills before the dmail containers can
+  # write into /var/lib/phonewave/outbox, surfacing as
+  # 'no space left on device' on the first dmail-receiver pull
+  # (Issue 0001 Phase 3 verify, 2026-05-06). 30 GB leaves
+  # comfortable headroom for the 5pillar archive too.
+  size  = 30
   image = "debian-cloud/debian-12"
   lifecycle {
     ignore_changes = all

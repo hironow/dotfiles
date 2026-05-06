@@ -800,6 +800,44 @@ OTEL_TRACES_SAMPLER=parentbased_always_on
         </considerations>
     </scripts-guidelines>
 
+    <iac-drift-policy>
+        <title>IaC DRIFT AVOIDANCE POLICY</title>
+        <description>Production infrastructure (GCP resources, IAM, Cloud Run revisions, Coder workspace VMs, etc.) MUST be managed exclusively through Infrastructure-as-Code (OpenTofu) and the standard PR + CD flow. Manual corrections via gcloud / cdr / kubectl etc. introduce drift between the live infra and the repo, and the next `tofu apply` either silently reverts the change or fails on unexpected state.</description>
+
+        <prohibited-actions>
+            <action>`gcloud compute disks resize` / `gcloud compute instances set-machine-type` etc. against any resource that is declared in `tofu/exe/` or `tofu/` — these mutate state that OpenTofu owns</action>
+            <action>`gcloud iam service-accounts add-iam-policy-binding` / `gcloud projects add-iam-policy-binding` for bindings that exist in `iam_*.tf` — IAM drift is the most common source of "works for me / fails in CI" issues</action>
+            <action>`gcloud secrets versions add` with content the IaC does not know about (operator MUST add only secrets the tofu has reserved a slot for)</action>
+            <action>`cdr workspaces update` / `cdr workspaces edit` to change parameters that should be expressed as `coder_parameter` defaults in the template — push the template, do not patch the running workspace</action>
+            <action>Editing live Cloud Run revisions through the GCP console (revision env vars, traffic split) when those are managed by `google_cloud_run_v2_service` / CD `gcloud run deploy`</action>
+        </prohibited-actions>
+
+        <allowed-exceptions>
+            <exception>One-off bootstrap actions BEFORE the IaC can manage the resource (e.g. `bootstrap.sh` creates the GCS state bucket; the bucket itself is then NOT managed by tofu — exempt by design)</exception>
+            <exception>Read-only debug commands (`gcloud compute ssh ... --command 'df -h'`, `gcloud compute instances get-serial-port-output`, `cdr show`, etc.)</exception>
+            <exception>Emergency rollback when CD itself is broken — operator opens an incident, runs the manual command, then immediately files a PR that brings the IaC back into sync</exception>
+            <exception>Interactive prompts that the IaC cannot pre-fill (e.g. `cdr create`'s GCP region selector when `coder/gcp-region` module insists on interactive selection — choose at create-time, do not edit the workspace afterwards)</exception>
+        </allowed-exceptions>
+
+        <recovery-when-drift-happens>
+            <step>If a manual change has already shipped (incident response, debugging gone too far, etc.), open a PR within the same session that reflects the change in the IaC. Do NOT leave the live state ahead of the repo overnight</step>
+            <step>If the IaC change cannot land immediately (e.g. waiting on review), record the drift in `docs/handover.md` (or the equivalent session-handover file) so the next operator does not blindly run `tofu apply` and revert the manual fix</step>
+            <step>If you are about to type a `gcloud ... update` / `gcloud ... resize` / equivalent and the affected resource is mentioned anywhere in `tofu/`, STOP. Open a PR instead. The 30-minute extra latency is cheaper than chasing a drift incident</step>
+        </recovery-when-drift-happens>
+
+        <how-to-detect-drift>
+            <signal>`tofu plan` shows changes you didn't write — someone (possibly future-you) hand-edited the live resource</signal>
+            <signal>CD's `Apply Infrastructure` step fails with "resource already exists" or "permission denied on existing resource" — IaC and live state disagree on ownership</signal>
+            <signal>A workspace VM or Cloud Run revision behaves differently from a same-template-version peer — runtime state was poked manually</signal>
+        </how-to-detect-drift>
+
+        <ai-assistant-directive>
+            <rule>When asked to fix a production issue, default to the IaC PR path. Suggest a manual `gcloud` / `cdr` command ONLY for one of the four allowed exceptions above</rule>
+            <rule>If a manual command is unavoidable (e.g. unblocking the operator before the IaC PR can merge), spell out the IaC follow-up in the same message: "this gcloud command bridges the gap; PR XYZ should land within the hour to capture it permanently"</rule>
+            <rule>Refuse to chain manual mutations. One emergency mutation is acceptable; a sequence of them is a signal that the IaC needs restructuring</rule>
+        </ai-assistant-directive>
+    </iac-drift-policy>
+
     <mock-policy>
         <title>MOCK USAGE POLICY</title>
         <description>Guidelines for mock usage across different test types</description>
