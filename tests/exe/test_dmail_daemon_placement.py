@@ -173,67 +173,19 @@ def dmail_unit_bodies_resolved(
     return resolved
 
 
-def test_main_tf_declares_dmail_receiver_image_variable(main_tf_text: str) -> None:
-    """An `dmail_receiver_image` template variable must exist so the
-    operator can pin a concrete tag at template-push time. Without it
-    the systemd unit body cannot reference the image without
-    hardcoding a registry path, which would couple dotfiles to a
-    specific GCP project."""
-    assert re.search(
-        r'variable\s+"dmail_receiver_image"\s*\{',
-        main_tf_text,
-    ), (
-        'Expected `variable "dmail_receiver_image"` block in main.tf. '
-        "See experiments/2026-05-06_dotfiles-dmail-daemon-placement.md "
-        "in the runops-gateway repo for the rationale."
-    )
-
-
-def test_main_tf_declares_dmail_emitter_image_variable(main_tf_text: str) -> None:
-    """Symmetric with the receiver: emitter image is operator-pinned."""
-    assert re.search(
-        r'variable\s+"dmail_emitter_image"\s*\{',
-        main_tf_text,
-    ), 'Expected `variable "dmail_emitter_image"` block in main.tf.'
-
-
-@pytest.mark.parametrize(
-    "var_name",
-    [
-        "pubsub_dmail_inbound_subscription",
-        "pubsub_dmail_outbound_topic",
-        "otel_exporter_otlp_endpoint",
-        "otel_traces_sampler_arg",
-    ],
-)
-def test_main_tf_declares_dmail_runtime_variable(
-    main_tf_text: str, var_name: str
-) -> None:
-    """Codex pre-push review #2 (2026-05-06) replaced four hardcoded
-    values in the dmail unit bodies with terraform variables. This
-    test pins each new variable's declaration so a future refactor
-    cannot silently delete one and reintroduce the misroute risk.
-
-    The four are:
-      - pubsub_dmail_inbound_subscription : receiver pull target
-      - pubsub_dmail_outbound_topic       : emitter publish target
-      - otel_exporter_otlp_endpoint       : OTLP gRPC endpoint
-      - otel_traces_sampler_arg           : sample ratio
-
-    Each must exist as a `variable "<name>" { ... }` block. Defaults
-    are not asserted here — the test_dmail_units_have_no_hardcoded
-    _gcp_identifiers test pins the *unit body* contract that they
-    flow through `${var.<name>}` interpolations; this test pins the
-    *declaration*."""
-    assert re.search(
-        rf'variable\s+"{var_name}"\s*\{{',
-        main_tf_text,
-    ), (
-        f'Expected `variable "{var_name}"` block in main.tf. '
-        f"Removing it would couple the dmail unit bodies back to a "
-        f"hardcoded literal — see codex review #2 in the runops-gateway "
-        f"experiments note."
-    )
+# NOTE: variable declaration / default-value tests live in
+# exe/coder/templates/dotfiles-devcontainer/dmail.tftest.hcl (run via
+# `terraform test`). They were intentionally removed from this file
+# in the IaC test split (see the runops-gateway repo's ADR 0024 +
+# experiments/2026-05-06_iac-test-strategy.md). Keep this file
+# focused on contracts terraform test cannot express:
+#
+#   - heredoc-embedded systemd unit body content (text contains)
+#   - hardcoded-literal scan
+#   - systemd-analyze verify on the resolved unit body
+#
+# If you find yourself adding a `variable "..."` declaration check
+# here, add it to dmail.tftest.hcl instead.
 
 
 def test_startup_script_writes_dmail_receiver_systemd_unit(main_tf_text: str) -> None:

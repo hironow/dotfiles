@@ -344,8 +344,15 @@ pre-commit:
 
 # CI-equivalent gate: prek hooks plus the full sandbox test suite
 [group('Lint')]
-check-all: pre-commit check test
+check-all: pre-commit check test test-iac
     @echo "✅ all checks passed"
+
+# Run Terraform native tests for the Coder workspace template
+# (variable defaults + image-tag pattern; see ADR 0024 in the
+# runops-gateway repo for the IaC test split rationale).
+[group('Check')]
+test-iac:
+    @cd exe/coder/templates/dotfiles-devcontainer && terraform init -backend=false >/dev/null && terraform test
 
 # ------------------------------
 # Add sets
