@@ -2,16 +2,17 @@ name: IaC Tests (OpenTofu)
 
 # Runs `just test-iac` for the Coder workspace template
 # (exe/coder/templates/dotfiles-devcontainer/) on every push and PR.
-# Matches the local 'just test-iac' recipe so CI and dev stay in
-# lockstep. ADR 0024 (in the runops-gateway repo) is the canonical
-# rationale for splitting IaC tests across `tofu test` (variable
-# defaults / validation) and pytest (heredoc body content,
-# systemd-analyze).
+# ADR 0024 (in the runops-gateway repo) is the canonical rationale
+# for splitting IaC tests across `tofu test` (variable defaults /
+# validation) and pytest (heredoc body content, systemd-analyze).
 #
-# Uses jdx/mise-action so the OpenTofu version is pinned via
-# mise.toml (= the same binary local devs and CI resolve), avoiding
-# the need to add opentofu/setup-opentofu to the repo's actions
-# allow list.
+# Uses opentofu/setup-opentofu rather than the devcontainer's
+# MISE_OFFLINE=1 environment because pinning OpenTofu through
+# mise.toml would require rebuilding the devcontainer base image
+# (the ADR-0006 flow), which is out of scope for this gate. The
+# action lives outside the dotfiles 'allow list' historically; the
+# operator added 'opentofu/setup-opentofu@*' to the repo's actions
+# allow list when this workflow first ran.
 
 on:
   push:
@@ -35,7 +36,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - uses: opentofu/setup-opentofu@fc711fa910b93cba0f3fbecaafc9f42fd0c411cb # v2.0.0
+        with:
+          tofu_version: 1.11.6
 
       - name: tofu test
         working-directory: exe/coder/templates/dotfiles-devcontainer
