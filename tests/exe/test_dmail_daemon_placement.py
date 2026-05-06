@@ -244,6 +244,42 @@ def test_phonewave_state_dir_volume_mounted_into_dmail_emitter(
     )
 
 
+def test_dmail_units_have_no_hardcoded_gcp_identifiers(
+    dmail_unit_bodies: dict[str, str],
+) -> None:
+    """The original implementation hardcoded 'gen-ai-hironow' /
+    'dmail-inbound-receiver' / 'dmail-outbound' / 'telemetry.googleapis
+    .com:443' directly into the systemd unit body. Codex pre-push
+    review #2 (2026-05-06) flagged this as a fatal misroute risk if
+    the template were ever pushed against a non-production project
+    (staging / sandbox), so each of those values now flows through
+    a template variable.
+
+    This test makes the regression visible: the unit body must not
+    contain raw GCP project IDs / topic names / endpoints — every
+    such value should appear as a `${var.<name>}` interpolation
+    instead. Pinning a stricter contract here is cheap because all
+    four candidate variables already have defaults that match
+    production, so no operator action is required to keep the
+    behaviour."""
+    forbidden_literals = (
+        "gen-ai-hironow",
+        "dmail-inbound-receiver",
+        "dmail-outbound",
+        "telemetry.googleapis.com:443",
+    )
+    failures: list[str] = []
+    for unit_name, body in dmail_unit_bodies.items():
+        for literal in forbidden_literals:
+            if literal in body:
+                failures.append(
+                    f"{unit_name}.service still contains the literal "
+                    f"'{literal}' — replace with the matching "
+                    f"${{var.<name>}} interpolation."
+                )
+    assert not failures, "\n".join(failures)
+
+
 def test_phonewave_state_dir_mounted_into_devcontainer(main_tf_text: str) -> None:
     """The same /var/lib/phonewave host dir must also be bind-mounted
     into the existing devcontainer (where 5pillars run). Without this
