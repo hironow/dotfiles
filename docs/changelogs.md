@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-04-29
+最終更新: 2026-05-07
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -62,6 +62,30 @@
 
 #### v0.9 後の変更点（web_core 0.9.2 含む）
 
+- **C++ Agent SDK 完全削除**: 全 C++ ソース・ビルド設定を削除 (#1335)
+- **Java Agent SDK 削除**: Java エージェント SDK 削除し Kotlin 実装にリファレンス (#1336)
+- **Slider 動的 aria-label**: コンポーネントプロパティの null チェック追加と Slider の dynamic aria-label 化 (#1345)
+- **prettier 自動インストール抑制**: フォーマット時に prettier インストール確認を求めない (#1342)
+- **リポジトリ全体のフォーマット強制**: 全リポでの自動フォーマット適用 (#1338)
+- **Kotlin 非決定テスト修正**: Kotlin の format check 追加と非決定テスト失敗の修正 (#1339)
+- **Surface model `any` 削除**: surface model generic fallback から `any` 除去、Angular component host 更新 (#1314)
+- **node プロパティ null check**: ランタイムエラー防止のための node プロパティ null チェック (#1334)
+- **Catalog コンポーネント strict type**: 必須プロパティ実装を強制する strict type 追加 (#1320)
+- **Checkbox value プロパティリネーム**: `checked` → `value` (#1332)
+- **モジュール名衝突解消**: 明示的修飾名による module name collision の解消 (#1329)
+- **Markdown-it npm 公開リリース**: markdown-it パッケージ初リリース (#1304)
+- **markdown-it dompurify 3.3.1 pin**: 企業プロキシ環境向けインストール問題の解決 (#1313)
+- **jsoncons による JSON Schema validation**: 堅牢な JSON schema validation のための jsoncons 統合 (#1274)
+- **A2uiCatalog glob パターンサポート**: ファイルパスマッチングの glob パターンサポートと conformance test 有効化 (#1273)
+- **Angular catalog コンポーネント props typing 改善**: (#1265)
+- **Python unit test の conformance test 移行**: 残りの Python ユニットテストを conformance test 化 (#1266)
+- **Kotlin unit test の conformance test 移行**: 残り Kotlin ユニットテストの移行 (#1301)
+- **MCP samples ディレクトリ再編**: a2ui-in-mcpapps サンプルプロジェクト追加 (#1323)
+- **AnyDuringSchemaAlignment alias 作成**: Angular `any` 問題追跡用 alias 追加 (#1310)
+- **未テスト platform 削除**: テスト対象外プラットフォームの削除 (#1308)
+- **URL hash navigation for Angular explorer**: Angular explorer の URL hash 移動実装 (#1269)
+- **sandbox iframe origin/Vite module pathing 修正**: sandboxed iframe の origin と Vite module パス問題解決 (#1318)
+- **Dart 飲食店 finder 追加**: Dart restaurant finder サンプル追加 (#1280)
 - **Angular Types namespace 削除**: v0.8 renderer から Types namespace 削除 (#1292)
 - **React typechecking 統合**: ビルドプロセスに型チェック統合 (#1284)
 - **Kotlin SDK conformance tests 統合**: Kotlin SDK と A2UI コンフォーマンステスト統合 (#1129)
@@ -123,6 +147,7 @@
 
 #### v2026-04-17 後の変更点
 
+- **Order Schema Post-Checkout SEP**: チェックアウト後の Order Schema アライメント SEP (#232)
 - **`UpsertProductsResponse` JSON Schema 追加**: feed JSON Schema バンドルに `UpsertProductsResponse` 追加 (#241)
 - **Meta TSC メンバー追加**: Meta を TSC メンバーに追加 (#236)
 - **Address.company 説明修正**: コピーペーストエラー修正 (#193)
@@ -180,6 +205,7 @@
 
 #### 最近の変更点
 
+- **Catalog データセットガイドライン**: Catalog dataset ガイドライン追加と PR レビューワークフロー導入 (#186)
 - **per-step reward フィールド追加**: Action / Observation スキーマに optional `reward: float | None` フィールド追加。RL トレーニングデータでの per-step reward 信号運搬対応。6 つの concrete action/observation type 全てに継承。デフォルト None で既存データセットへの影響なし (#183)
 - **CoderForge-Preview データセット追加**: コーディング系トラジェクトリーデータセット (#167)
 - **Nemotron Terminal Corpus データセット追加**: ターミナルコーパスデータセット (#165)
@@ -312,6 +338,8 @@
 
 #### v0.2.0 後の変更点
 
+- **uvlock 削除**: uv.lock を repository から除外 (#246)
+- **CHANGELOG.md 更新**: 0.2.0 リリースに合わせた CHANGELOG 更新 (#239)
 - **動画タイトル更新**: README 動画タイトル修正 (#238)
 - **CONTRIBUTING.md 更新**: コントリビューションガイドライン更新 (#240)
 
@@ -336,7 +364,23 @@
 
 **現行バージョン**: 2025-11-25
 
-#### 未リリースの変更点
+**注目**: 2025-11-25 タグで `2025-11-25-RC` から正式リリース昇格。HEAD はそれより先に進んでおり、Multi-Round Tool Result (MRTR) や Augmented Tool Call フローのドラフト schema/diagram が継続更新中。
+
+#### 2025-11-25 後の変更点（次回リリース向けドラフト）
+
+- **MRTR スキーマ整備**: `IncompleteResult` を `InputRequiredResult` に rename、Multi-Round Tool Result の draft/schema.mdx 修正
+- **Augmented Tool Call 拡張**: tasks augmented tool call フローのドキュメント更新
+- **elicitation/roots ダイアグラム更新**: elicitation diagrams と roots ページのリフレッシュ
+- **`requestState` 仕様改訂**: requestState ハンドリング要件のアップデート
+- **`URLElicitationRequired` エラー削除**: URL Elicitation 自体は MRTR 経由で継続サポート、エラーは廃止
+- **SEP リジェネレート**: prettier 適用 + SEP 再生成
+- **Core Maintainer Emeritus 移行**: Che Liu, Basil Hosmer を Core Maintainer Emeritus へ移動
+- **SDK Working Group チャーター**: SDK WG charter 追加 (#2662)、 work items を spec implementation と tiering に整理
+- **`#general-sdk-dev` Discord チャンネル化**: SDK WG 用 Discord チャンネル指定
+- **TypeScript 6.0.3 / eslint 10.3.0 / typescript-eslint 8.59.1**: 依存バンプ群 (#2610, #2676, #2677)
+- **Ruby client 明示的 connect サンプル**: Ruby client サンプルを明示的な connect 化 (#2685)
+
+#### 2025-11-25 の主要な変更点
 
 - **Interceptors WG チャーター**: Interceptors Working Group チャーター策定 (#2619)
 - **MCP クライアントベストプラクティス**: docs に MCP クライアントベストプラクティス追加 (#2582)
@@ -425,15 +469,16 @@
 
 ### MCP-UI
 
-**現行バージョン**: client/v7.0.0 (2026-03-12)
+**現行バージョン**: client/v7.1.0 (2026-05-01)
 
-#### v7.0.0 後の変更点
+#### v7.1.0 の主要な変更点
 
 - **`hostInfo`/`hostCapabilities` props**: `AppRenderer` に `hostInfo` と `hostCapabilities` props 追加 (#179)
 
 #### v7.0.0 の主要な変更点
 
 - **レガシー仕様削除**: レガシー仕様の完全削除（**破壊的変更**） (#185)
+- **major bump 修正**: semantic release で前回 commit が major bump 失敗していたため修正 (#187)
 
 #### 破壊的変更
 
@@ -446,6 +491,52 @@
 #### 参考リンク
 
 - [MCP-UI](https://github.com/MCP-UI-Org/mcp-ui)
+
+---
+
+### NLIP (Natural Language Interaction Protocol)
+
+**現行バージョン**: 1st edition (Ecma 承認 2025-12-10)
+
+**管理**: Ecma TC56 NLIP（Ecma International）
+
+**注目**: AI エージェント間および人間 ↔ AI エージェント間の **アプリケーション層通信プロトコル** の業界標準。 2025-12-10 に Ecma International が正式承認、 2026-01-25 に ISO へ提出済み。 Claude Skills 互換 reference 実装が 2026-02-28 公開予定（reference 実装側）。
+
+#### 1st edition 構成（全 6 文書）
+
+| 標準 | タイトル | 役割 |
+|------|---------|------|
+| **ECMA-430** | Natural Language Interaction Protocol (NLIP), 1st edition | プロトコル本体仕様（agent-to-agent / human-to-agent application-level） |
+| **ECMA-431** | NLIP over HTTP/HTTPS binding | HTTP/HTTPS バインディング |
+| **ECMA-432** | NLIP over WebSocket binding | WebSocket バインディング（CBOR + UTF-8 JSON フォールバック、 RFC 8949） |
+| **ECMA-433** | NLIP over AMQP binding | AMQP バインディング |
+| **ECMA-434** | Security profiles for NLIP | Agent Security Profiles（NLIP 適合実装に対する mandatory 要件） |
+| **ECMA TR/113** | Explanatory guide to NLIP | informative な解説書（design philosophy / use-cases / sample exchange） |
+
+#### リポジトリ構成（追跡対象）
+
+- **`nlip-project/nlip_spec`**: Ecma 承認版 1st edition の README index（本サブモジュール）
+- **`nlip-project/ecma_draft` / `ecma_draft1`**: First Draft 期のフィードバック収集リポ（履歴的）
+- **`nlip-project/documents`**: TC-56 NLIP 関連ドキュメント
+- **`nlip-project/security_guidelines`**: ECMA-434 のコンパニオン
+- **`nlip-project/nlip_spec_swarm` / `nlip_web` / `nlip_agents` / `kivy-chat-mach2`**: 参照実装系
+
+#### 主要な特徴
+
+- **マルチトランスポート対応**: HTTP/HTTPS / WebSocket / AMQP の 3 系統バインディング（用途に応じて選択可能）
+- **WebSocket × CBOR**: マルチモーダル通信のためのコンパクト・効率的バイナリエンコーディング、 JSON フォールバックも保証
+- **Security Profiles 標準化**: NLIP 適合を主張する実装には ECMA-434 への準拠が **mandatory**
+- **Royalty-free open source 標準**: Ecma International ガバナンスのもと royalty-free
+- **A2A / MCP との位置関係**: A2A は agent ↔ agent の opaque 通信、MCP は agent ↔ tool/data の通信。 NLIP は **agent ↔ agent / human ↔ agent の natural-language application-level** 通信を担当する補完的位置
+
+#### 参考リンク
+
+- [nlip_spec (GitHub)](https://github.com/nlip-project/nlip_spec)
+- [NLIP Project site](https://nlip-project.org/)
+- [Ecma International - ECMA-430](https://ecma-international.org/publications-and-standards/standards/ecma-430/)
+- [Ecma International - ECMA-431 (HTTP)](https://ecma-international.org/publications-and-standards/standards/ecma-431/)
+- [Ecma International - ECMA-432 (WebSocket)](https://ecma-international.org/publications-and-standards/standards/ecma-432/)
+- [Ecma International - ECMA-433 (AMQP)](https://ecma-international.org/publications-and-standards/standards/ecma-433/)
 
 ---
 
@@ -486,6 +577,13 @@
 
 #### v2026-04-08 後の変更点
 
+- **Identity Linking OAuth 2.0 基盤**: capability-driven scopes をベースとした identity linking の OAuth 2.0 foundation 追加（**破壊的変更**） (#354)
+- **attribution フィールド追加**: platform referral context 用の attribution フィールド追加 (#391)
+- **core-concepts 拡充**: 包括的な UCP プロトコル概要を core-concepts ドキュメントに統合 (#336)
+- **glossary / acronym 標準化**: 中央集約型の glossary と acronym standards 追加 (#241)
+- **deprecated checkout id 修正**: playground payload から deprecated checkout id を omit (#332)
+- **法人レジストリブロック**: corporate registries のブロック (#411)
+- **typo / formatting 修正**: index と versioning ドキュメントの typo 修正と formatting 改善 (#416)
 - **Twum Djin ガバナンス評議会追加**: Governance Council に Twum Djin 追加 (#395)
 - **Configure Site URL 共通アクション化**: CI ステップを composite action に抽出 (#382)
 - **拡張性・前方互換ガイドライン追加**: ドキュメントに extensibility と forward compatibility ガイドライン追加 (#290)
@@ -531,6 +629,7 @@
 
 | 変更 | 影響 |
 |------|------|
+| Identity Linking OAuth 2.0 foundation (#354, v2026-04-08 後) | capability-driven scopes へ移行、認可フロー再設計 |
 | `variant.selected_options` → `options` (#353) | variant フィールド名変更 |
 | Webhook フィールドヘッダー分離 (#342) | トランスポートスキーマ構造変更 |
 | EP エラーコンベンション統一 (#325) | エラーレスポンス形式変更 |
@@ -626,34 +725,60 @@
 
 ### ADK Python
 
-**現行バージョン**: v1.31.1 (stable) / v2.0.0b1 (beta)
+**現行バージョン**: v1.32.0 (stable, 2026-04-30) / v2.0.0b1 (beta)
 
-**注目**: v2.0.0 のベータ版 `v2.0.0b1` がタグ付けされた。v2 系の本格リリースが近づいている。v1 系は v1.31.1 まで進行。
+**注目**: 安定版が v1.32.0 にバージョンアップ（2026-04-30）。v2.0.0 ベータ版 `v2.0.0b1` (2026-04-21) はそのまま並行で進行中。HEAD は v1.32.0 後の hotfix 群を含む。
 
-#### 未リリースの変更点（v2.0.0b1 以降）
+#### v1.32.0 後の変更点（次回リリース向け）
+
+- **state_delta overwrite skip on function_response**: function_response 専用イベントでの state_delta 上書きスキップ
+- **CustomAuthScheme 未登録エラー明確化**: AuthProvider 未登録時に actionable error を投げる
+- **Gemini EAP モデル check**: Gemini EAP モデルでの builtin tools 確認
+- **ListSkillsTool 重複防止**: ListSkillsTool が利用可能な場合 skills を system instruction に重複追記しない
+- **`asyncio.sleep` 化**: イベントループブロック回避のため blocking sleep を asyncio.sleep に置換
+
+#### v1.32.0 の主要な変更点（2026-04-30）
 
 **[Security]**
 
-- **RCE 脆弱性修正 (nested YAML configs)**: ADK のネストされた YAML 設定経由の RCE 脆弱性修正（**重要なセキュリティ修正**）
-- **credentials isolation in context (race condition)**: 解決済み認証情報の context 内分離でレースコンディション/データ漏洩防止
+- **`load_web_page` SSRF / local-file アクセス修正**: load_web_page における SSRF とローカルファイルアクセス脆弱性修正 (0447e93)
+- **nested YAML configs RCE 修正**: ADK のネスト YAML 設定経由 RCE 脆弱性ブロック (74f235b)
+- **PubSub / Eventarc user_id sanitization**: PubSub サブスクリプション / Eventarc source 由来の user_id をサニタイズ (#5324, 0c4f157)
+- **credential isolation in auth context**: 解決済み認証情報の context 内分離（race condition / データ漏洩防止） (5578772)
+- **litellm cap >= 1.83.7**: CVE パッチを取り込むため litellm の最低バージョンを引き上げ (6d2ada8)
+- **Vertex RAG memory display name スコープ化**: scope 化 (784350d)
 
 **[Core / Features]**
 
-- **Native OpenTelemetry agentic metrics**: ネイティブ OpenTelemetry agentic メトリクス追加
-- **MCP tool エラー/transport クラッシュ graceful handling**: JSON-RPC エラー・トランスポートクラッシュを安全にハンドル
-- **ComputerUseToolset predefined function exclusion**: 事前定義関数の除外サポート
-- **BigQueryAgentAnalyticsPlugin credentials**: credentials パラメータ追加
-- **Apigee LLM refusal messages**: Apigee LLM での refusal メッセージ対応
-- **evaluate_full_response**: rubric-based evaluation に full response 評価オプション追加 (#5316)
-- **/run_live `save_live_blob` パラメータ**: `/run_live` エンドポイントに `save_live_blob` クエリパラメータ追加
-- **pre-commit 設定**: pre-commit configuration / scripts 導入
+- **Anthropic thinking blocks サポート**: Anthropic の thinking blocks フォーマット対応 (16952bd)
+- **adk deploy CLI express mode onboarding**: adk deploy CLI に express mode オンボーディング追加 (2b04996)
+- **native OpenTelemetry agentic metrics**: ネイティブ OpenTelemetry agentic メトリクス追加 (6942aac)
+- **event compaction OpenTelemetry tracing**: event compaction の OpenTelemetry tracing 追加 (c65dd55)
+- **GcpAuthProvider 2LO/3LO/API Key sample**: GcpAuthProvider 経由の 2LO/3LO/API Key auth サンプル追加 (909a8c2)
+- **ComputerUseToolset predefined function exclusion**: 事前定義関数の除外サポート (d760037)
+- **BigQueryAgentAnalyticsPlugin credentials**: credentials パラメータ追加 (34713fb)
+- **Apigee LLM refusal messages**: Apigee LLM での refusal メッセージ対応 (d6594a1)
+- **`save_live_blob` パラメータ**: /run_live エンドポイントに save_live_blob クエリパラメータ追加 (36ab8f1)
+- **MCP tool エラー/transport graceful handling**: ツール実行エラー・トランスポートクラッシュを安全に処理 (7744cfe)
+- **McpToolset credential_key 指定**: ユーザー定義の credential_key 対応 (282db87, #5103)
+- **SaveFilesAsArtifactsPlugin reference 抑止オプション**: メッセージにリファレンスファイルを attach させないオプション (987c809)
+- **BigQuery LLM cache メタデータロギング**: LLM cache メタデータを BigQuery に記録 (02deeb9)
+- **rubric-based eval `evaluate_full_response`**: full response 評価オプション (#5316, 7623ff1)
 
 **[Bug Fixes]**
 
-- **VertexAiSessionService list filters**: `user_id` リテラルの quote 修正
-- **ContextVar detach errors**: タスクキャンセル時の ContextVar detach エラーハンドリング
-- **mcp_tool bound token disabled**: bound token 無効化
-- **web oauth flow and trace view 修正**
+- **state_delta マージ時 list アキュムレート**: 並列ツール呼び出しの state_delta マージで list 値を accumulate (#5190)
+- **GcpAuthProvider Bearer scheme 大文字化**: capitalized Bearer に修正 (ad937fe)
+- **load_web_page 修正、google-genai 下限 bump**
+- **LoopAgent サブエージェント state リセット防止**: pause 時に sub-agent state をリセットしない (8846be5)
+- **VertexAiSessionService list filters quote 修正**: `user_id` リテラル quote 修正 (bdece00)
+- **safe-JSON serializer ValueError 捕捉**: 循環参照時の ValueError ハンドリング (#5412, 70a7add)
+- **bound token mcp_tool 無効化** / **web oauth flow と trace view 修正** / **schema RecursionError 修正**
+- **ReflectRetryToolPlugin 例外順序修正** / **mcp 最低バージョン 1.24.0 → 1.25.0 系**
+
+**[Performance]**
+
+- **lazy-load optional providers**: 任意 provider と auth chain の lazy-load によりコールドスタート約 25% 改善 (66bfedc)
 
 #### v1.31.1 / v1.31.0 の主要な変更点
 
@@ -755,6 +880,9 @@
 
 #### v1.2.0 後の変更点
 
+- **thought signature 伝搬修正**: mixed responses の最初の function call へ thought signature を伝搬 (#788)
+- **`gen_ai.usage` 属性リネーム**: experimental reasoning tokens 属性を `gen_ai.usage.*` に rename（OTel semantic conventions 整合） (#779)
+- **a2a-go/v2 対応**: ADK を a2a-go v2 に対応 (#701)
 - **stream_query simple text サポート**: full `genai.Content` ではなく simple text もサポート (#773)
 - **Agent Engine 既存インスタンス更新**: 既存 Agent Engine インスタンスの更新サポート (#755)
 - **runner manual session ID 削除＆自動生成**: runner で手動 session ID 入力を削除し自動生成を有効化 (#754)
@@ -802,6 +930,15 @@
 **現行バージョン**: v1.1.0 (main-v1.1.0)
 
 **注目**: v0.2.4 から大きくジャンプして v1.0.0 正式リリースに到達後、**v1.1.0** にてさらに UrlContextTool・Vertex AI Search Tool 追加、MCP プレフィックス処理修正等を含む短サイクルでのアップデート。
+
+#### v1.1.0 後の変更点（次回リリース向け）
+
+- **Google Maps tool**: 新規 Google Maps ツール追加 (#321)
+- **VertexRagRetrievalTool**: Vertex AI RAG Engine を使ったグラウンディング向け retrieval ツール (#277)
+- **stringifyContent / AgentTool thought parts フィルタ**: thought parts を出力からフィルタ (#323)
+- **Windows 互換性**: dev/build.js で unix `cp` を Node.js fs.cp に置換 (#318)
+- **MCPToolset.getTools() toolFilter 適用**: getTools() でも toolFilter を適用するよう修正 (#312, #313)
+- **StreamingResponseAggregator.close() drop 修正**: 最後のチャンクに candidates が無い場合の drop を修正 (#289, #311)
 
 #### v1.1.0 の主要な変更点
 
@@ -902,6 +1039,10 @@
 
 #### v1.10.0 後の変更点
 
+- **Docker Compose デプロイメントサポート**: docker compose deployments を Cloud Run へ展開可能に (#272)
+- **BUILD_ID ベース cloudbuild**: scheduled builds 向け BUILD_ID base の cloudbuild 追加 (#275)
+- **cloudbuild image location 修正**: イメージ配置のロケーション修正 (#273)
+- **README SKILL.md リンク修正**: (#276)
 - **Cloudbuild 設定**: `cloudbuild.yaml` 追加 (#269)
 - **Cloud Run skills**: cloud run skills 追加 (#267)
 - **named/bind ボリューム権限修正**: (#262)
@@ -958,9 +1099,67 @@
 
 ---
 
+### Gemini Cloud Assist MCP
+
+**現行バージョン**: v0.8.0 (2026-04-21)
+
+**注目**: ローカル Node.js 実装 (v0.2.0) を **完全 deprecate**、 Remote MCP Server 構成へアーキテクチャ全面刷新。 現在 **Private Preview** で allowlist 制（Google Cloud account team 経由でアクセス申請が必要）。
+
+#### v0.8.0 後の変更点（次回リリース向け）
+
+- **GitHub workflows cleanup / 修正**: CI ワークフローの整理 (a8c60dc)
+
+#### v0.8.0 の主要な変更点
+
+- **Remote MCP Server 化**: ローカル Node.js MCP server から **Remote MCP Server architecture** へ全面移行（**破壊的変更**） (d225f7b)
+- **ローカル Node.js server の完全 deprecate**: v0.2.0 の local server 完全廃止 (d5d860b)
+- **Private Preview ローンチ**: Gemini Cloud Assist remote MCP Server を Private Preview として正式公開
+- **Skills 群追加**: `designing-and-deploying-infrastructure`、 `operating-google-cloud` の 2 種類の Skill 定義追加
+- **README に deprecation notice / Private Preview notice 追加**: ローカル版 deprecation とリモート版アクセス申請手順を明示
+
+#### v0.2.0 / v0.1.x（legacy local Node.js）の主要な変更点
+
+- **npm パッケージ公開**: `@google-cloud/gemini-cloud-assist-mcp` を npm 公開 (e24e526)
+- **mcpName / インストール手順整備**: `mcpName` フィールド追加と Claude Desktop / npm パッケージ経由のインストール手順整備 (831c72e, 4a7afda)
+- **version sync スクリプト**: ツーリングへ追加 (94cc346)
+- **npm publish workflow**: GitHub Actions で npm publish 自動化 (6b00fa5)
+
+#### 破壊的変更
+
+| 変更 | 影響 |
+|------|------|
+| Local Node.js server → Remote MCP Server (v0.8.0) | クライアント設定をリモートエンドポイント参照に変更必須、ローカル install 系手順は無効化 |
+
+#### 参考リンク
+
+- [Gemini Cloud Assist MCP](https://github.com/GoogleCloudPlatform/gemini-cloud-assist-mcp)
+- [Use the Gemini Cloud Assist remote MCP server (Cloud Docs)](https://docs.cloud.google.com/cloud-assist/use-gemini-cloud-assist-mcp)
+
+---
+
 ### GKE MCP
 
-**現行バージョン**: v0.11.1
+**現行バージョン**: v0.12.0
+
+#### v0.12.0 後の変更点
+
+- **manifestgen に fetch model server versions 統合**: マニフェストエージェントに `giq_fetch_model_server_versions` を接続 (#302, #308)
+- **AI agent インストラクション追加**: README に AI agent 用 instructions 追加 (#317)
+- **生成 UI bundle merge ヘルパー gard**: 生成 HTML / merge helper を guard (#315, #316)
+- **CODEOWNERS 削除**: (#313)
+- **UI ビルド `npm install` 化**: `npm ci` から `npm install` に変更 (#310, #309 はロールバック)
+
+#### v0.12.0 の主要な変更点
+
+- **ADK Anthropic Claude アダプター実装**: LLM 抽象 factory + Anthropic Claude 用 ADK adapter (#280, #303)
+- **Node Pool 管理ツール追加**: GKE node pool の create/list/update 等の管理ツール (#282)
+- **新規 cluster ツール群＋GKE remote MCP 機能**: 新規クラスタ操作ツールと GKE remote MCP 連携 (#281)
+- **giq fetch_model_servers / fetch_profiles**: model servers と profiles の fetch ツールを実装し manifest agent と接続 (#284, #285, #290, #293, #279)
+- **manifestgen rename**: `giqTool` → `generateManifestTool` (#306)
+- **GKE AI TPU 接続障害トラブルシュート skill**: (#267)
+- **GKE AI トラブルシュート skill 作成ガイド**: (#268)
+- **dependency バンプ群**: google-cloud groups (#296), modelcontextprotocol/go-sdk 1.5→1.6 (#298), google.golang.org/api (#297), genai 1.54→1.55 (#299)
+- **auto-request-review 追加**: (#305)
 
 #### v0.11.1 後の変更点
 
@@ -1002,7 +1201,16 @@
 
 ### Google Analytics MCP
 
-**現行バージョン**: v0.2.0
+**現行バージョン**: v0.4.0
+
+#### v0.4.0 の主要な変更点
+
+- **tool call deadlock / stdout corruption 修正**: tool call の deadlock と stdout プロトコル汚染を解決 (#151)
+
+#### v0.3.0 の主要な変更点
+
+- **`run_funnel_report` ツール追加**: GA Data API v1alpha を使った funnel レポートツール (#127)
+- **ADK 開発向け Skills 追加**: ADK 開発の Skills 群を Google Analytics MCP に同梱 (#148)
 
 #### v0.2.0 以降の変更点
 
@@ -1064,6 +1272,8 @@
 
 #### v0.7.0 以降の変更点
 
+- **`list_parsers` ツール追加**: secops-mcp に `list_parsers` ツールを追加し、parser management の return type を標準化、pagination token 対応 (#252)
+- **pyink フォーマット適用**: parser_management.py に pyink フォーマット適用
 - **SOC ペルソナドキュメント**: SOC ペルソナをドキュメントに追加 (#245)
 - **gemini-extension.json 移動**: トップレベルへのリファクタ
 
@@ -1091,6 +1301,8 @@
 
 #### 未リリースの変更点（v1.1.0 以降）
 
+- **IPv6 ホストサポート (postgres)**: postgres ソースで `net.JoinHostPort` を使い IPv6 ホスト対応 (#3052)
+- **Looker OAuth + Gemini-CLI ドキュメント**: Looker の OAuth と Gemini-CLI 連携手順の詳細追加 (#3172)
 - **Cloud Storage バケット/オブジェクト管理ツール**: Cloud Storage ソースに bucket・object 管理ツール追加 (#3129)
 - **HTTPS/TLS リスナー対応**: HTTPS/TLS リスナーサポート追加 (#3126)
 - **pgx v5.9.2 セキュリティ更新**: `github.com/jackc/pgx/v5` を v5.9.2 へ（セキュリティ） (#3133)
@@ -1168,6 +1380,12 @@
 
 | 対象 | 変更内容 | 対応優先度 |
 |------|---------|-----------|
+| **Gemini Cloud Assist MCP v0.8.0** (新規追跡, 2026-04-21) | Local Node.js → Remote MCP Server へ全面刷新、 v0.2.0 (local) は完全 deprecate | 高 |
+| **UCP v2026-04-08 後** | Identity Linking OAuth 2.0 foundation、capability-driven scopes（破壊的） | 高 |
+| **MCP-UI v7.1.0** (2026-05-01) | hostInfo / hostCapabilities props 追加、AppRenderer 対応 | 中 |
+| **ADK Python v1.32.0** (2026-04-30) | SSRF / RCE / credential isolation 等のセキュリティ修正、Anthropic thinking blocks、native OTel agentic metrics | 高 |
+| **GKE MCP v0.12.0** | Anthropic Claude ADK adapter、node pool 管理ツール、新規 cluster ツール群 | 中 |
+| **Google Analytics MCP 0.4.0** | tool call deadlock 修正、`run_funnel_report` ツール、ADK Skills 追加 | 中 |
 | **AP2 v0.2.0** (2026-04-28) | V2 仕様正式リリース。v0.1.0 から 7 ヶ月ぶりの大型更新 | 高 |
 | **ADK JS v1.0.0 → v1.1.0** | UrlContextTool/Vertex AI Search Tool 追加、MCP プレフィックス strip 修正、AgentTool セッション再利用 | 中 |
 | **ADK Go v1.2.0** | Agent Engine 統合、Skill Source proxy 群、SkillToolset 実装、stream_query simple text サポート | 中 |
@@ -1185,23 +1403,33 @@
 
 ### メジャーアップデート
 
-1. **AP2 v0.1.0 → v0.2.0** (2026-04-28) - **V2 仕様正式リリース**。PaymentReceipt、X402 決済統合、Vertex AI 認証、Go サンプル、UCP 統合等を含む 7 ヶ月ぶりの大型リリース
-2. **ADK JS v1.0.0 → v1.1.0** - UrlContextTool（Gemini 2+ URL context）、Vertex AI Search Tool、MCP プレフィックス strip、AgentTool セッション再利用
-3. **ADK Go v1.1.0 → v1.2.0** - Agent Engine 統合、Skill Source proxy 群（merged/preload/single）、SkillToolset 実装、Toolsets RequestProcessor、stream_query simple text サポート
-4. **ADK Python v1.30.0 → v1.31.1 / v2.0.0b1** - v1.31.x で Parameter Manager/Secret Manager ユーザーエージェント、Firestore、Vertex AI Agent Engine Sandbox、`memories.ingest_events`。**v2.0.0 ベータ 1 (`v2.0.0b1`) タグ付け** で v2.0 本格リリースが近い
-5. **ACP v2026-01-30 → v2026-04-17** - Cart Capability、Product Feeds API、Marketing Consent、Markdown Content Specification、Payment Intent、Mandatory Idempotency 等。リリース後も `UpsertProductsResponse` JSON Schema 追加 (#241)、Meta TSC メンバー追加 (#236) など継続更新
-6. **AG-UI release/2026-04-22** - State Snapshot/Delta コンパクション (#1535)、AgentCapabilities Python SDK 追加、Strands/Mastra アダプター修正、LFS マイグレーション
-7. **MCP-Apps v1.7.0 → v1.7.1** - PDF Server lazy フォーム抽出 (#639)、キャッシュインスタンス間共有 (#637)、qr-server FastMCP host/port サポート (#372)
-8. **OpenResponses + Phase Compaction** - WebSocket モード実装に加えて compact response エンドポイント、phase parameter 追加
-9. **GenAI Toolbox v1.1.0 以降** - Cloud Storage バケット/オブジェクト管理ツール (#3129)、HTTPS/TLS リスナー (#3126)、pgx v5.9.2 セキュリティ更新 (#3133)
-10. **GKE MCP v0.11.0 → v0.11.1** - GIQ ツール manifest agent 統合、ADK 統合、backend vertex pool 抽象化
-11. **Agent Starter Pack v0.41.1 → v0.41.3** - langgraph-prebuilt pin、次世代プロジェクト「agents-cli」発表
-12. **UCP v2026-04-08 以降** - extensibility/forward compatibility ガイドライン (#290)、Twum Djin Governance Council 追加、create_cart `ucp_agent` 修正
-13. **gcloud-mcp storage-mcp-v0.5.1** - `delete_object` を destructive tools へ移動（セキュリティ強化）
-14. **ADP データセット拡充** - per-step reward フィールド (#183)、CoderForge-Preview, Nemotron Terminal Corpus, Toucan, Toucan-1.5M, mini-coder トラジェクトリーなど多数追加
+0. **NEW: NLIP 1st edition** (Ecma 承認 2025-12-10, 新規追跡開始) - Ecma TC56 が標準化した natural-language application-level プロトコル。 ECMA-430 本体 + 4 binding (HTTP/WebSocket/AMQP/Security profiles) + TR/113 解説書の 6 文書構成。 ISO 提出済み (2026-01-25)、 Claude Skills 互換 reference 実装は 2026-02-28 予定
+0. **NEW: Gemini Cloud Assist MCP v0.8.0** (2026-04-21, 新規追跡開始) - GCP 環境を natural language で understand / manage / troubleshoot する MCP サーバー。 Local Node.js から Remote MCP Server architecture へ全面移行（**破壊的変更**）、 v0.2.0 (local) を完全 deprecate。 `designing-and-deploying-infrastructure` / `operating-google-cloud` skills 同梱。 現在 Private Preview (allowlist 制)
+1. **ADK Python v1.31.x → v1.32.0** (2026-04-30) - **新たな安定リリース**。Anthropic thinking blocks、native OpenTelemetry agentic metrics、event compaction tracing、GcpAuthProvider 2LO/3LO/API Key sample、Cold start ~25% 短縮、複数のセキュリティ修正（SSRF/RCE/credential isolation/PubSub user_id sanitization）。v2.0.0b1 (2026-04-21) と並走
+2. **GKE MCP v0.11.1 → v0.12.0** - LLM 抽象 factory + Anthropic Claude ADK adapter、node pool 管理ツール、giq fetch_model_servers / fetch_profiles、GKE AI TPU トラブルシュート skill
+3. **Google Analytics MCP v0.2.0 → v0.4.0** - `run_funnel_report` ツール（Data API v1alpha）、ADK 用 Skills、tool call deadlock / stdout corruption 修正
+4. **MCP-UI v7.0.0 → v7.1.0** (2026-05-01) - AppRenderer に `hostInfo` / `hostCapabilities` props 追加
+5. **AP2 v0.1.0 → v0.2.0** (2026-04-28) - **V2 仕様正式リリース**。PaymentReceipt、X402 決済統合、Vertex AI 認証、Go サンプル、UCP 統合等を含む 7 ヶ月ぶりの大型リリース
+6. **ADK JS v1.0.0 → v1.1.0 + 後続** - UrlContextTool（Gemini 2+ URL context）、Vertex AI Search Tool、MCP プレフィックス strip、AgentTool セッション再利用、Google Maps tool、VertexRagRetrievalTool、MCPToolset.getTools toolFilter
+7. **ADK Go v1.1.0 → v1.2.0 + 後続** - Agent Engine 統合、Skill Source proxy 群（merged/preload/single）、SkillToolset 実装、Toolsets RequestProcessor、stream_query simple text サポート、a2a-go/v2 対応、`gen_ai.usage` 属性へリネーム
+8. **ADK Python v1.30.0 → v1.31.1 / v2.0.0b1** - v1.31.x で Parameter Manager/Secret Manager ユーザーエージェント、Firestore、Vertex AI Agent Engine Sandbox、`memories.ingest_events`。**v2.0.0 ベータ 1 (`v2.0.0b1`) タグ付け** で v2.0 本格リリースが近い
+9. **ACP v2026-01-30 → v2026-04-17 + 後続** - Cart Capability、Product Feeds API、Marketing Consent、Markdown Content Specification、Payment Intent、Mandatory Idempotency 等。リリース後も Order Schema Post-Checkout (#232)、`UpsertProductsResponse` JSON Schema 追加 (#241)、Meta TSC メンバー追加 (#236) など継続更新
+10. **AG-UI release/2026-04-22** - State Snapshot/Delta コンパクション (#1535)、AgentCapabilities Python SDK 追加、Strands/Mastra アダプター修正、LFS マイグレーション
+11. **MCP-Apps v1.7.0 → v1.7.1** - PDF Server lazy フォーム抽出 (#639)、キャッシュインスタンス間共有 (#637)、qr-server FastMCP host/port サポート (#372)
+12. **OpenResponses + Phase Compaction** - WebSocket モード実装に加えて compact response エンドポイント、phase parameter 追加
+13. **GenAI Toolbox v1.1.0 以降** - Cloud Storage バケット/オブジェクト管理ツール (#3129)、HTTPS/TLS リスナー (#3126)、pgx v5.9.2 セキュリティ更新 (#3133)、IPv6 ホスト対応 (#3052)
+14. **MCP 2025-11-25 後** - MRTR (Multi-Round Tool Result) スキーマ整備、`InputRequiredResult` への rename、Augmented Tool Call フロー、SDK Working Group チャーター
+15. **Agent Starter Pack v0.41.1 → v0.41.3** - langgraph-prebuilt pin、次世代プロジェクト「agents-cli」発表
+16. **UCP v2026-04-08 以降** - **Identity Linking OAuth 2.0 foundation (#354, 破壊的)**、attribution フィールド (#391)、core-concepts 拡充 (#336)、Twum Djin Governance Council 追加
+17. **gcloud-mcp storage-mcp-v0.5.1** - `delete_object` を destructive tools へ移動（セキュリティ強化）
+18. **ADP データセット拡充** - per-step reward フィールド (#183)、CoderForge-Preview, Nemotron Terminal Corpus, Toucan, Toucan-1.5M, mini-coder トラジェクトリー、Catalog dataset ガイドライン (#186) など多数追加
+19. **MCP Security secops-v0.7.0 後** - `list_parsers` ツール追加と return type 標準化 + pagination token 対応 (#252)
+20. **Cloud Run MCP v1.10.0 後** - docker compose deployments、BUILD_ID base scheduled cloudbuild、Cloud Run skills
 
 ### 新規プロトコル統合
 
+0. **NLIP (Natural Language Interaction Protocol)** - Ecma TC56 標準化、 ECMA-430〜434 + TR/113 構成。 既存ラインアップ（A2A: agent ↔ agent opaque / MCP: agent ↔ tool）と相補で natural-language application-level 通信を担当
+0. **Gemini Cloud Assist MCP** - GCP 環境の natural-language operation 用 MCP サーバー（Private Preview）。 既存 cloud-run-mcp / gke-mcp / gcloud-mcp と並ぶ「GCP オペレーショナル」軸の補完
 1. **AP2 v0.2.0** - V2 仕様正式リリース。X402 決済、Vertex AI 認証、UCP 連携、Go サンプル
 2. **ADK JS + UrlContextTool / Vertex AI Search Tool** - Gemini 2+ URL context grounding と Vertex AI Search ツール
 3. **ADK Go + Agent Engine** - Agent Engine 統合、既存インスタンス更新、自動 session ID 生成
@@ -1222,7 +1450,8 @@
 
 ### セキュリティ更新
 
-- **ADK Python (未リリース)**: **nested YAML configs 経由の RCE 脆弱性修正**、credentials isolation によるレースコンディション/データ漏洩防止
+- **ADK Python v1.32.0 (リリース済み, 2026-04-30)**: **`load_web_page` SSRF / local-file アクセス修正 (0447e93)**、**nested YAML configs 経由の RCE 脆弱性ブロック (74f235b)**、credential isolation in auth context (race condition / データ漏洩防止) (5578772)、PubSub サブスクリプション / Eventarc source 由来 user_id サニタイズ (#5324, 0c4f157)、litellm 最低バージョンを 1.83.7 へ引き上げ CVE パッチ取り込み (6d2ada8)、Vertex RAG memory display name スコープ化 (784350d)
+- **ADK Python (未リリース)**: 旧版で言及していた未リリース修正の多くは v1.32.0 に取り込み済み
 - **GenAI Toolbox (未リリース)**: pgx v5.9.2 セキュリティ更新 (#3133)、SSE hardcoded `*` allowed origin 削除 (#3054)、macOS SDK を内部 GCS バケットに移行 (#3025)、pytest v9.0.3 セキュリティ更新 (#3047)
 - **gcloud-mcp storage-mcp**: `delete_object` を safe → destructive tools へ移動（誤削除防止）
 - **A2UI**: Python google-adk 1.28.1 へ bump（セキュリティ）
