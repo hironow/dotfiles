@@ -79,3 +79,16 @@ repos:
         pass_filenames: false
         stages: [pre-push]
         description: Build the Docker sandbox image and run the sandbox test suite.
+
+      - id: just-test-iac
+        name: just test-iac (OpenTofu native tests)
+        entry: just test-iac
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        # ADR 0024 (runops-gateway repo): tofu test owns the variable
+        # default + validation contract for the Coder workspace template.
+        # Trigger only on Coder template HCL files so a docs-only push
+        # does not pay the tofu init+test cost.
+        files: '^exe/coder/templates/dotfiles-devcontainer/.*\.(tf|tofutest\.hcl)$'
+        description: Run `tofu test` against the Coder workspace template (exe/coder/templates/dotfiles-devcontainer/).

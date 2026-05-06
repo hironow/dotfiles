@@ -1,0 +1,45 @@
+name: IaC Tests (OpenTofu)
+
+# Runs `just test-iac` for the Coder workspace template
+# (exe/coder/templates/dotfiles-devcontainer/) on every push and PR.
+# Matches the local 'just test-iac' recipe so CI and dev stay in
+# lockstep. ADR 0024 (in the runops-gateway repo) is the canonical
+# rationale for splitting IaC tests across `tofu test` (variable
+# defaults / validation) and pytest (heredoc body content,
+# systemd-analyze).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-iac:
+    name: tofu test (Coder template)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: opentofu/setup-opentofu@fc711fa910b93cba0f3fbecaafc9f42fd0c411cb # v2.0.0
+        with:
+          tofu_version: latest
+
+      # Mirror the body of `just test-iac` rather than invoking just so
+      # this job stays runnable on a vanilla ubuntu image without the
+      # mise toolchain. The just recipe itself is what local
+      # contributors hit; the asserts are identical.
+      - name: tofu test
+        working-directory: exe/coder/templates/dotfiles-devcontainer
+        run: |
+          tofu init -backend=false
+          tofu test
