@@ -116,6 +116,103 @@ EOF
   default     = "asia-northeast1-docker.pkg.dev/gen-ai-hironow/dotfiles/devcontainer:main"
 }
 
+# dmail-receiver / dmail-emitter image references for the D-Mail
+# Protocol daemons (runops-gateway Issue 0001 + the 2026-05-06
+# placement experiment). These run on the workspace VM host OS as
+# systemd units that exec `docker run --rm` (auto-cleanup on exit;
+# supervision / restart is delegated to systemd Restart=on-failure
+# because `--rm` and `--restart` are mutually exclusive at the
+# docker-engine layer). They share /var/lib/phonewave/{archive,outbox}
+# with the devcontainer so
+# the 5pillars (paintress / amadeus / sightjack / dominator /
+# phonewave) and the dmail daemons see the same file system. Per-VM
+# = singleton — no emitter watch race; receiver multiplexing is
+# handled natively by Pub/Sub load-balancing on the same
+# subscription. The default points at a placeholder tag because the
+# images are built and published by the runops-gateway repo's CI
+# (Phase 2 of Issue 0001); operators flip the variable to the real
+# tag at template-push time once that pipeline is live.
+variable "dmail_receiver_image" {
+  description = <<-EOF
+OCI image reference for the runops-gateway dmail-receiver daemon.
+Pulls from Pub/Sub `dmail-inbound-receiver` and writes `<id>.md`
+files atomically into /outbox (bind-mounted to
+/var/lib/phonewave/outbox on the host). Built by the
+runops-gateway repo's CI; default is a placeholder until that
+pipeline lands. Override with:
+
+  cdr templates push --variable dmail_receiver_image=<...>
+EOF
+  type        = string
+  default     = "asia-northeast1-docker.pkg.dev/gen-ai-hironow/runops/dmail-receiver:placeholder"
+}
+
+variable "dmail_emitter_image" {
+  description = <<-EOF
+OCI image reference for the runops-gateway dmail-emitter daemon.
+fsnotify-watches /archive (bind-mounted to /var/lib/phonewave/
+archive on the host) and publishes new D-Mails to Pub/Sub
+`dmail-outbound`. Same lifecycle / publishing pipeline as
+dmail_receiver_image.
+EOF
+  type        = string
+  default     = "asia-northeast1-docker.pkg.dev/gen-ai-hironow/runops/dmail-emitter:placeholder"
+}
+
+# Service account used by the dmail daemons: attached to the
+# workspace VM via google_compute_instance.vm.service_account
+# (var.workspace_sa_email — see line ~410). With --network host
+# on the docker run, dmail containers reach the GCE metadata
+# server at 169.254.169.254 and impersonate this SA at the gRPC
+# layer (cloud.google.com/go default credentials path).
+#
+# That means there is **no dedicated dmail_sa_email variable**.
+# The same exe-workspace SA that pulls the devcontainer image
+# from Artifact Registry also pulls dmail-receiver / dmail-emitter
+# images and runs the daemons. The SA must additionally have, per
+# the runops-gateway repo's tofu/iam_pubsub.tf and tofu/registry.tf:
+#
+#   - roles/pubsub.subscriber       on dmail-inbound-receiver
+#   - roles/pubsub.publisher        on dmail-outbound topic
+#   - roles/cloudtrace.agent        project-level
+#   - roles/artifactregistry.reader on the runops repo
+#
+# The runops-gateway repo's CI applies these against the SA email
+# the operator sets in its EXE_CODER_VM_SA_EMAIL GitHub variable
+# (variable name is preserved from ADR 0015 era; the *value* is the
+# workspace-VM SA per ADR 0023).
+
+# Pub/Sub topology + OTel target for the dmail daemons. Variables
+# rather than hard-coded literals so the same template can be
+# pushed against a non-production project (e.g. staging) without
+# editing main.tf — codex pre-push review #2 (2026-05-06) called
+# out the original hardcoded 'gen-ai-hironow' / 'dmail-inbound-
+# receiver' / 'telemetry.googleapis.com:443' as a fatal misroute
+# risk if the template were ever reused.
+variable "pubsub_dmail_inbound_subscription" {
+  description = "Pub/Sub Pull subscription the dmail-receiver pulls from. Declared in the runops-gateway repo's tofu/subscriptions.tf (default name 'dmail-inbound-receiver'). Override only when deploying parallel D-Mail topologies in the same GCP project."
+  type        = string
+  default     = "dmail-inbound-receiver"
+}
+
+variable "pubsub_dmail_outbound_topic" {
+  description = "Pub/Sub topic the dmail-emitter publishes to. Declared in the runops-gateway repo's tofu/pubsub.tf (default name 'dmail-outbound')."
+  type        = string
+  default     = "dmail-outbound"
+}
+
+variable "otel_exporter_otlp_endpoint" {
+  description = "OTLP endpoint the dmail daemons ship spans to. Production default is the Google Cloud Trace gRPC ingest. Override to 'http://<host>:4317' to point at a local collector."
+  type        = string
+  default     = "telemetry.googleapis.com:443"
+}
+
+variable "otel_traces_sampler_arg" {
+  description = "Sample ratio passed to the parent-based traceidratio sampler in the dmail daemons. 1.0 = sample everything (development default); production typically 0.1 or lower."
+  type        = string
+  default     = "1.0"
+}
+
 # Region picker. asia is the home region for this stack; allow
 # us/europe as fallbacks for cross-region experimentation.
 module "gcp_region" {
@@ -304,6 +401,20 @@ locals {
     install -d -m 0755 /home/${local.linux_user}
     chown ${local.linux_user}:${local.linux_user} /home/${local.linux_user}
 
+    # Phonewave shared state. The 5pillars (paintress / amadeus /
+    # sightjack / dominator / phonewave) run inside the devcontainer
+    # and emit D-Mail files into /var/lib/phonewave/archive (read by
+    # dmail-emitter); they consume D-Mail files written by
+    # dmail-receiver into /var/lib/phonewave/outbox. All three
+    # processes (devcontainer, dmail-receiver, dmail-emitter) bind-
+    # mount the same host dir so they see the same file system.
+    # Per-VM = singleton, no emitter watch race; receiver
+    # multiplexing on the Pub/Sub subscription is handled natively
+    # by Pub/Sub load-balancing. See runops-gateway
+    # experiments/2026-05-06_dotfiles-dmail-daemon-placement.md.
+    install -d -m 0755 /var/lib/phonewave/archive /var/lib/phonewave/outbox
+    chown -R ${local.linux_user}:${local.linux_user} /var/lib/phonewave
+
     docker rm -f '${local.container_name}' >/dev/null 2>&1 || true
     docker run \
       --detach \
@@ -313,10 +424,115 @@ locals {
       --restart unless-stopped \
       --volume "/home/${local.linux_user}:/root" \
       --volume "/var/run/docker.sock:/var/run/docker.sock" \
+      --volume "/var/lib/phonewave:/var/lib/phonewave" \
       --env "CODER_AGENT_TOKEN=${try(coder_agent.dev[0].token, "")}" \
       --env "CODER_AGENT_URL=${var.coder_internal_url}" \
       '${var.image}' \
       sh -c 'echo ${base64encode(try(coder_agent.dev[0].init_script, ""))} | base64 -d | sh'
+
+    # ---- D-Mail Protocol daemons (Issue 0001) -----------------------
+    # Two host-OS systemd units that exec `docker run` against
+    # operator-pinned receiver / emitter images. The units:
+    #
+    #   - run as separate containers (one-service-per-container,
+    #     unlike supervisord-style multi-process containers);
+    #   - share /var/lib/phonewave/{outbox,archive} with the
+    #     devcontainer above so the 5pillars see the same files;
+    #   - use Restart=on-failure so a daemon crash auto-recovers
+    #     instead of silently draining the Pub/Sub backlog.
+    #
+    # The image variables default to placeholder tags; flip them
+    # at template-push time once the runops-gateway repo's CI
+    # publishes real images:
+    #
+    #   cdr templates push exe-dotfiles-devcontainer \
+    #     --variable dmail_receiver_image=<...>:<sha> \
+    #     --variable dmail_emitter_image=<...>:<sha>
+    #
+    # ExecStart-time `docker run --rm --name <fixed>` is racy if a
+    # previous unit instance is still around; ExecStartPre cleans
+    # up first (the `-` prefix lets it succeed on the first boot
+    # when no container exists yet).
+    docker pull '${var.dmail_receiver_image}' || \
+      echo "[exe-bootstrap] dmail-receiver image pull failed; service will retry on first start"
+    docker pull '${var.dmail_emitter_image}' || \
+      echo "[exe-bootstrap] dmail-emitter image pull failed; service will retry on first start"
+
+    cat > /etc/systemd/system/dmail-receiver.service <<'EOF_DMR'
+[Unit]
+Description=runops-gateway dmail-receiver (Pub/Sub -> phonewave outbox)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment=PUBSUB_PROJECT_ID=${var.project_id}
+Environment=PUBSUB_DMAIL_INBOUND_SUB=${var.pubsub_dmail_inbound_subscription}
+Environment=PHONEWAVE_OUTBOX_DIR=/outbox
+Environment=GOOGLE_CLOUD_PROJECT=${var.project_id}
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=${var.otel_exporter_otlp_endpoint}
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+Environment=OTEL_SERVICE_NAME=dmail-receiver
+Environment=OTEL_TRACES_SAMPLER=parentbased_traceidratio
+Environment=OTEL_TRACES_SAMPLER_ARG=${var.otel_traces_sampler_arg}
+ExecStartPre=-/usr/bin/docker rm -f dmail-receiver
+ExecStart=/usr/bin/docker run --rm --name dmail-receiver \
+  --network host \
+  -v /var/lib/phonewave/outbox:/outbox \
+  -e PUBSUB_PROJECT_ID -e PUBSUB_DMAIL_INBOUND_SUB \
+  -e PHONEWAVE_OUTBOX_DIR -e GOOGLE_CLOUD_PROJECT \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT -e OTEL_EXPORTER_OTLP_PROTOCOL \
+  -e OTEL_SERVICE_NAME -e OTEL_TRACES_SAMPLER -e OTEL_TRACES_SAMPLER_ARG \
+  ${var.dmail_receiver_image}
+ExecStop=/usr/bin/docker stop -t 10 dmail-receiver
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+EOF_DMR
+
+    cat > /etc/systemd/system/dmail-emitter.service <<'EOF_DME'
+[Unit]
+Description=runops-gateway dmail-emitter (phonewave archive -> Pub/Sub)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment=PUBSUB_PROJECT_ID=${var.project_id}
+Environment=PUBSUB_DMAIL_OUTBOUND_TOPIC=${var.pubsub_dmail_outbound_topic}
+Environment=PHONEWAVE_ARCHIVE_DIRS=/archive
+Environment=GOOGLE_CLOUD_PROJECT=${var.project_id}
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=${var.otel_exporter_otlp_endpoint}
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+Environment=OTEL_SERVICE_NAME=dmail-emitter
+Environment=OTEL_TRACES_SAMPLER=parentbased_traceidratio
+Environment=OTEL_TRACES_SAMPLER_ARG=${var.otel_traces_sampler_arg}
+ExecStartPre=-/usr/bin/docker rm -f dmail-emitter
+ExecStart=/usr/bin/docker run --rm --name dmail-emitter \
+  --network host \
+  -v /var/lib/phonewave/archive:/archive:ro \
+  -e PUBSUB_PROJECT_ID -e PUBSUB_DMAIL_OUTBOUND_TOPIC \
+  -e PHONEWAVE_ARCHIVE_DIRS -e GOOGLE_CLOUD_PROJECT \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT -e OTEL_EXPORTER_OTLP_PROTOCOL \
+  -e OTEL_SERVICE_NAME -e OTEL_TRACES_SAMPLER -e OTEL_TRACES_SAMPLER_ARG \
+  ${var.dmail_emitter_image}
+ExecStop=/usr/bin/docker stop -t 10 dmail-emitter
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+EOF_DME
+
+    systemctl daemon-reload
+    systemctl enable --now dmail-receiver.service || \
+      echo "[exe-bootstrap] dmail-receiver enable failed (placeholder image?); fix dmail_receiver_image and 'systemctl restart dmail-receiver'"
+    systemctl enable --now dmail-emitter.service || \
+      echo "[exe-bootstrap] dmail-emitter enable failed (placeholder image?); fix dmail_emitter_image and 'systemctl restart dmail-emitter'"
   META
 }
 
