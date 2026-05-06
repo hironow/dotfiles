@@ -92,3 +92,9 @@
 [submodule "guardrails/semgrep"]
 	path = guardrails/semgrep
 	url = git@github.com:hironow/semgrep-guardrails.git
+[submodule "gcloud/gemini-cloud-assist-mcp"]
+	path = gcloud/gemini-cloud-assist-mcp
+	url = git@github.com:GoogleCloudPlatform/gemini-cloud-assist-mcp.git
+[submodule "protocols/NLIP"]
+	path = protocols/NLIP
+	url = git@github.com:nlip-project/nlip_spec.git
