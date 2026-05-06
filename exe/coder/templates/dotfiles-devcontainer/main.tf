@@ -119,8 +119,11 @@ EOF
 # dmail-receiver / dmail-emitter image references for the D-Mail
 # Protocol daemons (runops-gateway Issue 0001 + the 2026-05-06
 # placement experiment). These run on the workspace VM host OS as
-# systemd units that exec `docker run --restart=unless-stopped`. They
-# share /var/lib/phonewave/{archive,outbox} with the devcontainer so
+# systemd units that exec `docker run --rm` (auto-cleanup on exit;
+# supervision / restart is delegated to systemd Restart=on-failure
+# because `--rm` and `--restart` are mutually exclusive at the
+# docker-engine layer). They share /var/lib/phonewave/{archive,outbox}
+# with the devcontainer so
 # the 5pillars (paintress / amadeus / sightjack / dominator /
 # phonewave) and the dmail daemons see the same file system. Per-VM
 # = singleton — no emitter watch race; receiver multiplexing is

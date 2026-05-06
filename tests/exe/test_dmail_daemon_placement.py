@@ -20,7 +20,9 @@ repo but delegates **deployment** to dotfiles. Issue 0001
 (`experiments/2026-05-06_dotfiles-dmail-daemon-placement.md`) settled
 the open question on placement:
 
-  workspace VM **host OS systemd** + `docker run --restart=unless-stopped`
+  workspace VM **host OS systemd** + `docker run --rm` (with systemd
+  Restart=on-failure for supervision — `--rm` and `--restart` are
+  mutually exclusive on docker so we delegate restart to systemd)
   for both daemons, sharing /var/lib/phonewave/{archive,outbox} into the
   devcontainer (where the 5pillars live) and into the dmail containers.
 
