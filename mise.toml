@@ -8,6 +8,11 @@
 just = "1.40.0"
 markdownlint-cli2 = "0.22.1"
 prek = "0.3.11"
+# OpenTofu — used by tofu/exe stack and (per ADR 0024 in the
+# runops-gateway repo) by `tofu test` against the Coder workspace
+# template. Pin so CI and local dev resolve the same binary. Bump
+# in a dedicated PR like the other tools above.
+opentofu = "1.11.6"
 uv = "0.11.8"
 # `vp` is the mise registry alias for npm:vite-plus (NOT the
 # unrelated `vp` npm package). Pin to vite-plus's actual version.
