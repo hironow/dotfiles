@@ -172,6 +172,37 @@ variable "dmail_sa_email" {
   default     = "exe-coder@gen-ai-hironow.iam.gserviceaccount.com"
 }
 
+# Pub/Sub topology + OTel target for the dmail daemons. Variables
+# rather than hard-coded literals so the same template can be
+# pushed against a non-production project (e.g. staging) without
+# editing main.tf — codex pre-push review #2 (2026-05-06) called
+# out the original hardcoded 'gen-ai-hironow' / 'dmail-inbound-
+# receiver' / 'telemetry.googleapis.com:443' as a fatal misroute
+# risk if the template were ever reused.
+variable "pubsub_dmail_inbound_subscription" {
+  description = "Pub/Sub Pull subscription the dmail-receiver pulls from. Declared in the runops-gateway repo's tofu/subscriptions.tf (default name 'dmail-inbound-receiver'). Override only when deploying parallel D-Mail topologies in the same GCP project."
+  type        = string
+  default     = "dmail-inbound-receiver"
+}
+
+variable "pubsub_dmail_outbound_topic" {
+  description = "Pub/Sub topic the dmail-emitter publishes to. Declared in the runops-gateway repo's tofu/pubsub.tf (default name 'dmail-outbound')."
+  type        = string
+  default     = "dmail-outbound"
+}
+
+variable "otel_exporter_otlp_endpoint" {
+  description = "OTLP endpoint the dmail daemons ship spans to. Production default is the Google Cloud Trace gRPC ingest. Override to 'http://<host>:4317' to point at a local collector."
+  type        = string
+  default     = "telemetry.googleapis.com:443"
+}
+
+variable "otel_traces_sampler_arg" {
+  description = "Sample ratio passed to the parent-based traceidratio sampler in the dmail daemons. 1.0 = sample everything (development default); production typically 0.1 or lower."
+  type        = string
+  default     = "1.0"
+}
+
 # Region picker. asia is the home region for this stack; allow
 # us/europe as fallbacks for cross-region experimentation.
 module "gcp_region" {
@@ -426,15 +457,15 @@ Requires=docker.service
 
 [Service]
 Type=simple
-Environment=PUBSUB_PROJECT_ID=gen-ai-hironow
-Environment=PUBSUB_DMAIL_INBOUND_SUB=dmail-inbound-receiver
+Environment=PUBSUB_PROJECT_ID=${var.project_id}
+Environment=PUBSUB_DMAIL_INBOUND_SUB=${var.pubsub_dmail_inbound_subscription}
 Environment=PHONEWAVE_OUTBOX_DIR=/outbox
-Environment=GOOGLE_CLOUD_PROJECT=gen-ai-hironow
-Environment=OTEL_EXPORTER_OTLP_ENDPOINT=telemetry.googleapis.com:443
+Environment=GOOGLE_CLOUD_PROJECT=${var.project_id}
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=${var.otel_exporter_otlp_endpoint}
 Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 Environment=OTEL_SERVICE_NAME=dmail-receiver
 Environment=OTEL_TRACES_SAMPLER=parentbased_traceidratio
-Environment=OTEL_TRACES_SAMPLER_ARG=1.0
+Environment=OTEL_TRACES_SAMPLER_ARG=${var.otel_traces_sampler_arg}
 ExecStartPre=-/usr/bin/docker rm -f dmail-receiver
 ExecStart=/usr/bin/docker run --rm --name dmail-receiver \
   --network host \
@@ -461,15 +492,15 @@ Requires=docker.service
 
 [Service]
 Type=simple
-Environment=PUBSUB_PROJECT_ID=gen-ai-hironow
-Environment=PUBSUB_DMAIL_OUTBOUND_TOPIC=dmail-outbound
+Environment=PUBSUB_PROJECT_ID=${var.project_id}
+Environment=PUBSUB_DMAIL_OUTBOUND_TOPIC=${var.pubsub_dmail_outbound_topic}
 Environment=PHONEWAVE_ARCHIVE_DIRS=/archive
-Environment=GOOGLE_CLOUD_PROJECT=gen-ai-hironow
-Environment=OTEL_EXPORTER_OTLP_ENDPOINT=telemetry.googleapis.com:443
+Environment=GOOGLE_CLOUD_PROJECT=${var.project_id}
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=${var.otel_exporter_otlp_endpoint}
 Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 Environment=OTEL_SERVICE_NAME=dmail-emitter
 Environment=OTEL_TRACES_SAMPLER=parentbased_traceidratio
-Environment=OTEL_TRACES_SAMPLER_ARG=1.0
+Environment=OTEL_TRACES_SAMPLER_ARG=${var.otel_traces_sampler_arg}
 ExecStartPre=-/usr/bin/docker rm -f dmail-emitter
 ExecStart=/usr/bin/docker run --rm --name dmail-emitter \
   --network host \
