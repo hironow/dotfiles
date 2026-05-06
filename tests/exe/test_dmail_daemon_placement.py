@@ -67,6 +67,24 @@ def main_tf_text() -> str:
     return MAIN_TF.read_text(encoding="utf-8")
 
 
+@pytest.fixture(scope="module")
+def dmail_unit_bodies(main_tf_text: str) -> dict[str, str]:
+    """Pull each `cat > /etc/systemd/system/<name>.service <<'EOF_xxx'`
+    heredoc body out of the startup_script. Keyed by unit basename
+    ('dmail-receiver' / 'dmail-emitter') so per-unit assertions can
+    operate on just that unit's content rather than the whole
+    main.tf — that lets ExecStart line continuations (\\) match
+    naturally without `[\\s\\S]{0,N}` regex acrobatics."""
+    bodies: dict[str, str] = {}
+    pattern = re.compile(
+        r"cat\s*>\s*/etc/systemd/system/(?P<name>[^.\s]+)\.service\s*<<'(?P<token>EOF_[A-Z]+)'\n(?P<body>.*?)\n(?P=token)",
+        re.DOTALL,
+    )
+    for match in pattern.finditer(main_tf_text):
+        bodies[match.group("name")] = match.group("body")
+    return bodies
+
+
 def test_main_tf_declares_dmail_receiver_image_variable(main_tf_text: str) -> None:
     """An `dmail_receiver_image` template variable must exist so the
     operator can pin a concrete tag at template-push time. Without it
@@ -129,18 +147,20 @@ def test_dmail_units_use_restart_on_failure(main_tf_text: str) -> None:
     )
 
 
-def test_dmail_receiver_unit_runs_docker_run(main_tf_text: str) -> None:
+def test_dmail_receiver_unit_runs_docker_run(
+    dmail_unit_bodies: dict[str, str],
+) -> None:
     """ExecStart for dmail-receiver must shell out to `docker run`. The
     dmail binary itself ships in an OCI image so the host OS does not
     need a Go toolchain — that decouples upgrades (image tag bump =
-    redeploy)."""
-    # Look for an ExecStart that invokes docker run inside the
-    # dmail-receiver unit body. The heredoc structure means we do not
-    # parse INI; instead match an ExecStart line that mentions both
-    # docker and the receiver image variable.
+    redeploy). systemd's `\\` line-continuation is allowed here:
+    the per-unit fixture returns just the unit body, so a regex that
+    spans the whole ExecStart= block is safe."""
+    body = dmail_unit_bodies.get("dmail-receiver", "")
+    assert body, "dmail-receiver.service unit body not found in main.tf"
     assert re.search(
-        r"ExecStart=[^\n]*docker[^\n]*run[^\n]*\$\{var\.dmail_receiver_image\}",
-        main_tf_text,
+        r"ExecStart=[\s\S]+?docker[\s\S]+?run[\s\S]+?\$\{var\.dmail_receiver_image\}",
+        body,
     ), (
         "Expected dmail-receiver unit ExecStart=... docker run "
         "${var.dmail_receiver_image} ... so the image is operator-"
@@ -149,10 +169,14 @@ def test_dmail_receiver_unit_runs_docker_run(main_tf_text: str) -> None:
     )
 
 
-def test_dmail_emitter_unit_runs_docker_run(main_tf_text: str) -> None:
+def test_dmail_emitter_unit_runs_docker_run(
+    dmail_unit_bodies: dict[str, str],
+) -> None:
+    body = dmail_unit_bodies.get("dmail-emitter", "")
+    assert body, "dmail-emitter.service unit body not found in main.tf"
     assert re.search(
-        r"ExecStart=[^\n]*docker[^\n]*run[^\n]*\$\{var\.dmail_emitter_image\}",
-        main_tf_text,
+        r"ExecStart=[\s\S]+?docker[\s\S]+?run[\s\S]+?\$\{var\.dmail_emitter_image\}",
+        body,
     ), (
         "Expected dmail-emitter unit ExecStart=... docker run "
         "${var.dmail_emitter_image} ..."
