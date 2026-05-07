@@ -213,6 +213,42 @@ variable "otel_traces_sampler_arg" {
   default     = "1.0"
 }
 
+# Issue #0010 — multi-project systemd env delivery. The workspace VM
+# fetches the active project list from the gateway HTTP admin endpoint
+# (runops-gateway #0012) and writes systemd drop-ins to switch
+# dmail-receiver / dmail-emitter into multi-mode. Both default to empty
+# so legacy single-mode deployments are unaffected; setting both
+# enables the dynamic-fetch path.
+variable "runops_gateway_url" {
+  description = <<-EOT
+    Base URL of the runops-gateway HTTP API used to fetch the active
+    multiplex project list at workspace boot. When empty the workspace
+    falls back to single-mode (PHONEWAVE_OUTBOX_DIR / PHONEWAVE_ARCHIVE_DIRS).
+    Must be HTTPS in production so admin tokens never traverse plaintext.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.runops_gateway_url == "" || startswith(var.runops_gateway_url, "https://")
+    error_message = "runops_gateway_url must be empty (single-mode fallback) or start with https:// (admin tokens must never traverse http)."
+  }
+}
+
+variable "runops_admin_token_secret_id" {
+  description = <<-EOT
+    Google Secret Manager secret name (resource id, no projects/ prefix)
+    that stores the gateway admin Bearer token. The startup script
+    reads this secret via `gcloud secrets versions access latest` and
+    exports it as RUNOPS_ADMIN_TOKEN for the multi-project env fetch
+    script. Empty disables the fetch path (single-mode fallback). The
+    workspace SA must have roles/secretmanager.secretAccessor on the
+    secret when this is set.
+  EOT
+  type        = string
+  default     = ""
+}
+
 # Region picker. asia is the home region for this stack; allow
 # us/europe as fallbacks for cross-region experimentation.
 module "gcp_region" {
