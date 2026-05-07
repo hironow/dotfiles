@@ -169,8 +169,11 @@ silently route every message to the DLQ.
 - **Permission policy tightening** for `~/projects/<id>/.phonewave/`
   beyond `chmod 0777` — depends on a future setgid-based shared-group
   redesign that also affects `/var/lib/phonewave`.
-- **CI for shellcheck on the boot hook** — the existing repo CI does
-  not run shellcheck; adding it is an unrelated change.
+
+shellcheck for the boot hook is **not** out of scope — the existing
+repo CI runs `just lint` (which invokes `shellcheck` on every tracked
+`*.sh` file) inside the dev container, so both `fetch-projects-env.sh`
+and its smoke harness are gated by the standard lint pipeline.
 
 ## References
 

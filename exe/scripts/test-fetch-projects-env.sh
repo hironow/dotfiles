@@ -29,64 +29,9 @@ setup_case() {
     emitter_drop="${emitter_dir}/env.conf"
 }
 
-# Spin up a tiny HTTP server backed by python so the script can curl
-# a controlled response. Returns the URL on stdout.
-spawn_mock_gateway() {
-    local body_file="$1" status_code="${2:-200}"
-    python3 - "${body_file}" "${status_code}" <<'PYEOF' &
-import http.server, sys, threading
-body_path = sys.argv[1]
-status = int(sys.argv[2])
-class Handler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        with open(body_path, "rb") as f:
-            data = f.read()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-    def log_message(self, *a, **kw):
-        return
-srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
-print(f"http://127.0.0.1:{srv.server_address[1]}", flush=True)
-srv.serve_forever()
-PYEOF
-    SERVER_PID=$!
-    # Read URL from python stdout via /proc fd is awkward; instead use
-    # the simpler approach: spawn synchronously and grab the URL.
-}
-
-# We use a helper that spawns + waits in a single call so the
-# concurrency dance is contained.
-run_with_mock_gateway() {
-    local body_file="$1"
-    local status_code="$2"
-    shift 2
-
-    # Start a background python server and capture its first stdout
-    # line (the URL).
-    local fifo=$(mktemp -u)
-    mkfifo "${fifo}"
-    python3 - "${body_file}" "${status_code}" >"${fifo}" 2>/dev/null &
-    local pid=$!
-    local server_url
-    server_url=$(head -n 1 "${fifo}")
-    rm -f "${fifo}"
-
-    # Run the SUT against the mock URL.
-    "$@" "${server_url}"
-    local rc=$?
-    kill "${pid}" 2>/dev/null || true
-    wait "${pid}" 2>/dev/null || true
-    return ${rc}
-}
-
-# Inline python — simpler than the helper above and avoids a fifo.
 mock_gateway_run() {
     local body_file="$1"
     local status_code="$2"
-    local extra_env="$3"
     setup_case
     local script
     script=$(cat <<PYEOF
@@ -133,7 +78,6 @@ PYEOF
         DROP_IN_RECEIVER_DIR="${receiver_dir}" \
         DROP_IN_EMITTER_DIR="${emitter_dir}" \
         FETCH_PROJECTS_NO_RELOAD=1 \
-        ${extra_env} \
         bash "${SUT}"
     local rc=$?
     kill "${pid}" 2>/dev/null || true
@@ -164,7 +108,7 @@ cat > "${body_file}" <<'EOF'
     {"id":"bar","github_org":"hironow","github_repo":"another","status":"active"}
 ]}
 EOF
-mock_gateway_run "${body_file}" 200 "" >/dev/null 2>&1
+mock_gateway_run "${body_file}" 200 >/dev/null 2>&1
 if grep -q "PHONEWAVE_OUTBOX_DIRS_BY_PROJECT=foo:" "${receiver_drop}" \
     && grep -q ",bar:" "${receiver_drop}" \
     && grep -q "PHONEWAVE_PEER_RECEIVER_MODE=multi" "${receiver_drop}"; then
@@ -199,7 +143,7 @@ cat > "${body_file}" <<'EOF'
     {"id":"valid_id-2","status":"active"}
 ]}
 EOF
-mock_gateway_run "${body_file}" 200 "" >/dev/null 2>&1
+mock_gateway_run "${body_file}" 200 >/dev/null 2>&1
 if grep -q "foo:" "${receiver_drop}" \
     && grep -q "valid_id-2:" "${receiver_drop}" \
     && ! grep -q "etc:" "${receiver_drop}" \
@@ -215,7 +159,7 @@ echo "Test 4: zero projects in registry → single-mode fallback"
 setup_case
 body_file="${case_dir}/body.json"
 echo '{"projects":[]}' > "${body_file}"
-mock_gateway_run "${body_file}" 200 "" >/dev/null 2>&1
+mock_gateway_run "${body_file}" 200 >/dev/null 2>&1
 if grep -q "Multi-mode disabled" "${receiver_drop}"; then
     pass "empty registry yields single-mode fallback"
 else
@@ -231,7 +175,7 @@ echo '{"error":"internal"}' > "${body_file}"
 # an empty list and the script falls back. This case mostly exercises
 # that "no projects extracted" path, which Test 4 also covers; we
 # include it here to make the matrix explicit.
-mock_gateway_run "${body_file}" 500 "" >/dev/null 2>&1
+mock_gateway_run "${body_file}" 500 >/dev/null 2>&1
 if grep -q "Multi-mode disabled" "${receiver_drop}"; then
     pass "HTTP 500 with non-projects body yields fallback"
 else
