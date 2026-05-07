@@ -975,7 +975,7 @@ def test_api_endpoint(input_data, expected_status, expected_result):
         </mandatory-rule>
 
         <codex-configuration>
-            <recommended-model>gpt-5.3-codex</recommended-model>
+            <recommended-model>gpt-5.5</recommended-model>
             <required-flags>-m {model}, --skip-git-repo-check</required-flags>
             <prompt-discipline>
                 <must-include>瑣末な点へのクソリプはしないで。致命的な点だけ指摘して。</must-include>
@@ -986,12 +986,12 @@ def test_api_endpoint(input_data, expected_status, expected_result):
         <review-commands>
             <initial-review>
                 <description>First review request for a new plan</description>
-                <command><![CDATA[codex exec -m gpt-5.3-codex --skip-git-repo-check "このプランをレビューして。瑣末な点へのクソリプはしないで。致命的な点だけ指摘して: {plan_full_path} (ref: {CLAUDE.md full_path})"]]></command>
+                <command><![CDATA[codex exec -m gpt-5.5 --skip-git-repo-check "このプランをレビューして。瑣末な点へのクソリプはしないで。致命的な点だけ指摘して: {plan_full_path} (ref: {CLAUDE.md full_path})"]]></command>
             </initial-review>
             <updated-review>
                 <description>Review request for an updated plan (requires context retention)</description>
                 <rule>Must use `resume --last` to maintain the context of the previous review</rule>
-                <command><![CDATA[codex exec resume --skip-git-repo-check --last -m gpt-5.3-codex "プランを更新したからレビューして。瑣末な点へのクソリプはしないで。致命的な点だけ指摘して: {plan_full_path} (ref: {CLAUDE.md full_path})"]]></command>
+                <command><![CDATA[codex exec resume --skip-git-repo-check --last -m gpt-5.5 "プランを更新したからレビューして。瑣末な点へのクソリプはしないで。致命的な点だけ指摘して: {plan_full_path} (ref: {CLAUDE.md full_path})"]]></command>
             </updated-review>
         </review-commands>
 

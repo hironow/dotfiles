@@ -56,7 +56,7 @@ Examples:
 
 ```yaml
 # Using codex
-review_cmd: "codex exec -m gpt-5.3-codex --skip-git-repo-check 'Review the diff on the current branch against main.'"
+review_cmd: "codex exec -m gpt-5.5 --skip-git-repo-check 'Review the diff on the current branch against main.'"
 
 # Using a custom linter
 review_cmd: "make lint && make typecheck"
