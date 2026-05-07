@@ -260,6 +260,28 @@ echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_D
 )
 MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 
+# pnpm 9+ requires PNPM_HOME on PATH; otherwise `pnpm list -g` /
+# `pnpm add -g` abort with "configured global bin directory ... is
+# not in PATH". devcontainer.json's `containerEnv` covers the IDE /
+# Coder workspace path, but the just sandbox tests run via `docker
+# run --rm bash -lc` which inherits ENV from the saved image layer
+# only — and dev container's containerEnv is applied at runtime, not
+# baked. Write a /etc/profile.d snippet so `bash -lc` (login shell)
+# sources it through /etc/profile -> /etc/profile.d/*.sh and the
+# PATH layout matches what `pnpm setup` would produce.
+echo "[dotfiles-tools] writing /etc/profile.d/pnpm.sh"
+mkdir -p /root/.local/share/pnpm
+cat > /etc/profile.d/pnpm.sh <<'PNPM_PROFILE'
+# pnpm 9+ global bin directory bootstrap (build-time baked).
+# Mirrors what `pnpm setup` would write to the user shell rc.
+export PNPM_HOME="/root/.local/share/pnpm"
+case ":${PATH}:" in
+  *":${PNPM_HOME}:"*) ;;
+  *) export PATH="${PNPM_HOME}:${PATH}" ;;
+esac
+PNPM_PROFILE
+chmod 0755 /etc/profile.d/pnpm.sh
+
 # Cleanup apt cache to keep the image lean.
 rm -rf /var/lib/apt/lists/*
 
