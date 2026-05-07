@@ -251,7 +251,7 @@ node = "24.15.0"
 "npm:@google/gemini-cli" = "0.40.1"
 "npm:@anthropic-ai/claude-code" = "2.1.126"
 "npm:@github/copilot" = "1.0.40"
-"npm:@mariozechner/pi-coding-agent" = "0.72.1"
+"npm:@earendil-works/pi-coding-agent" = "0.74.0"
 EOF
 echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (
