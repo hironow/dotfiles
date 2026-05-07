@@ -139,64 +139,6 @@
 
 ---
 
-### ACP (Agentic Commerce Protocol)
-
-**現行バージョン**: API Version 2026-04-17
-
-**管理**: OpenAI & Stripe
-
-#### v2026-04-17 後の変更点
-
-- **Order Schema Post-Checkout SEP**: チェックアウト後の Order Schema アライメント SEP (#232)
-- **`UpsertProductsResponse` JSON Schema 追加**: feed JSON Schema バンドルに `UpsertProductsResponse` 追加 (#241)
-- **Meta TSC メンバー追加**: Meta を TSC メンバーに追加 (#236)
-- **Address.company 説明修正**: コピーペーストエラー修正 (#193)
-- **`intervention_required` ドキュメント追加**: RFC エラーコードドキュメントに `intervention_required` 追加 (#143)
-- **intent traces examples**: 全 reason code の intent traces 例追加 (#151)
-- **Agentic Commerce Inc. CLA 署名**: Catalog 関連で Agentic Commerce Inc. を Corporate CLA 署名者に追加 (#226)
-
-#### v2026-04-17 の主要な変更点
-
-- **Cart Capability SEP**: Cart Capability 追加 (#188)
-- **Product Feeds API SEP**: Product Feeds API 追加 (#190)
-- **Marketing Consent SEP**: マーケティング同意フロー追加 (#199)
-- **Markdown Content Specification (CommonMark)**: Markdown コンテンツ仕様策定 (#212)
-- **Payment Intent (capture vs authorize)**: PaymentHandler `display_name` 含む支払い意図 (#130)
-- **Payment Handler 表示順序**: マーチャント提案の表示順序サポート (#133)
-- **Mandatory Idempotency Requirements**: 冪等性要件と保証の義務化 SEP (#121)
-- **Rich Post-Purchase Lifecycle Tracking**: Order スキーマに購入後ライフサイクル追跡追加 (#106)
-- **Discovery RFC seller terminology**: discovery RFC を seller 用語に再構成 (#176)
-- **TSC Operating Model**: TSC 運営モデルドキュメント追加 (#184)
-- **CLA 署名者追加**: Meta Platforms, Affirm, PayPal, Agentic Commerce (Catalog) が CLA 署名
-- **`risk_signals` 仕様修正**: `delegate_payment` で空の risk_signals を許可 (#214)
-- **ガバナンスモデル改訂**: TSC, DWGs を含むガバナンス構造の見直し (#173)
-- **Webhook Signing Replay Protection 強化**: リプレイ攻撃防止の強化 (#160)
-- **Delegated Authentication API**: マーチャント指定認証の API コントラクト (#93)
-- **Discovery Well-Known Document 実装**: (#137)
-- **MCP Transport Binding**: Agentic Checkout 向け MCP トランスポートバインディング (#139)
-
-#### v2026-01-30 の主要な変更点
-
-- **Capability Negotiation**: エージェントとセラー間の機能ネゴシエーション
-- **Payment Handlers Framework**: 構造化された支払いハンドラー（**破壊的変更**）
-- **Extensions Framework**: オプション・コンポーザブルな拡張機能
-- **Discount Extension**: リッチな割引コードサポート（初のACP拡張）
-
-#### 破壊的変更
-
-| 変更 | 影響 |
-|------|------|
-| Payment Handlers 導入 (v2026-01-30) | 支払い方法IDから構造化ハンドラーへ移行必須 |
-| `items` → `line_items` | Create/Update リクエストのフィールド名変更 |
-| `currency` 必須化 | create リクエストで必須フィールドに |
-| `channel` フィールド削除 (#85) | `AuthenticationMetadata` からの削除 |
-
-#### 参考リンク
-
-- [ACP Protocol](https://agenticcommerce.dev)
-
----
-
 ### ADP (Agent Data Protocol)
 
 **現行バージョン**: 継続的デプロイ（バージョンタグなし）
@@ -325,38 +267,6 @@
 #### 参考リンク
 
 - [AgentSkills](https://agentskills.io)
-
----
-
-### AP2 (Agent Payments Protocol)
-
-**現行バージョン**: v0.2.0 (2026-04-28)
-
-**管理**: Google Agentic Commerce
-
-**注目**: 2026-04-28 に **v0.2.0 リリース**。`Release of V2 (#233)` として AP2 V2 仕様の正式リリースに到達。
-
-#### v0.2.0 後の変更点
-
-- **uvlock 削除**: uv.lock を repository から除外 (#246)
-- **CHANGELOG.md 更新**: 0.2.0 リリースに合わせた CHANGELOG 更新 (#239)
-- **動画タイトル更新**: README 動画タイトル修正 (#238)
-- **CONTRIBUTING.md 更新**: コントリビューションガイドライン更新 (#240)
-
-#### v0.1.0 → v0.2.0 の主要な変更点
-
-- **AP2 V2 リリース**: V2 仕様の正式リリース (#233)
-- **PaymentReceipt**: トランザクション確認オブジェクト実装 (#110)
-- **X402 決済**: x402 payment method 統合（Python サンプル） (#121)
-- **Go サンプル**: スタンドアロン Go 実装例 (#101)
-- **Vertex AI 認証**: Google API キーに加えて Vertex AI 認証サポート追加 (#48)
-- **X-A2A-Extensions ヘッダーロギング**: サーバーミドルウェアでヘッダーロギング (#29)
-- **UCP 統合ドキュメント**: Universal Commerce Protocol 連携 (#138)
-- **Kite AI / Global Payments / Tether / Solana / OKX / Nexi**: 多数のパートナー追加
-
-#### 参考リンク
-
-- [AP2 Protocol](https://github.com/google-agentic-commerce/AP2)
 
 ---
 
@@ -571,6 +481,195 @@
 
 ---
 
+### UTCP (Universal Tool Calling Protocol)
+
+**現行バージョン**: v1.0（仕様として、 直近 spec commit 2026-05-05）
+
+**管理**: Universal Tool Calling Protocol コミュニティ（独立 OSS）
+
+**注目**: MCP の **構造的代替案 / 補完案**。 MCP が「proxy 経由でツール呼び出し」する一方、 UTCP は **agent が discovery 後に native endpoint (HTTP/gRPC/WebSocket/CLI) を直接叩く**設計で、 wrapper tax + latency を排除し、 既存の auth/billing/security をそのまま活かせる。 v1.0 で plugin-based 構成へ全面再設計。 直近の commit が 2026-05-05、 contributors data も daily 更新で活発。
+
+#### v1.0 の主要な特徴
+
+- **Plugin Architecture**: コア機能を pluggable component に分割、 modularity / testability / packaging 向上
+- **Multiple Protocol Support**: HTTP / CLI / WebSocket / Text / **MCP** をプラグイン経由でサポート（MCP も plugin として包摂）
+- **Enhanced Data Models**: Pydantic モデルへ統一、 包括的バリデーション
+- **Advanced Authentication**: API key / OAuth / カスタム auth など拡張認証
+- **Better Error Handling**: シナリオごとの specific exception 型
+- **Async/Await Support**: 完全非同期クライアントインタフェース
+- **Performance Optimizations**: クライアントとプロトコル実装の最適化
+- **OpenAPI 拡張**: agent-focused enhancements（tags、 average_response_size、 multi-protocol、 direct execution instructions）を OpenAPI に追加
+- **Dual license clarification**: 直近 commit でデュアルライセンス周りを整理
+
+#### 関連リポジトリ（org エコシステム）
+
+| リポ | 役割 |
+|------|------|
+| `utcp-specification` | 仕様本体（本サブモジュール） |
+| `python-utcp` | 公式 Python 実装 |
+| `typescript-utcp` | 公式 TypeScript 実装 |
+| `utcp-agent` | 5 行未満で API/native endpoint 直叩きできる ready-to-use agent |
+| `code-mode` | MCP/UTCP ツールを **コード実行経由** で呼び出す plug-and-play ライブラリ |
+
+#### MCP との位置関係
+
+| 観点 | MCP | UTCP |
+|------|-----|------|
+| 呼び出し方式 | proxy server (wrapper) 経由 | agent が native endpoint を直接 |
+| latency | wrapper hop あり | hop なし |
+| auth/billing | MCP server で再実装 | 既存システムを再利用 |
+| 互換性 | MCP プロトコル独自 | OpenAPI 拡張で既存 API 流用 |
+| MCP 取り込み | n/a | MCP プロトコルを plugin として包摂 |
+
+#### 参考リンク
+
+- [utcp-specification (GitHub)](https://github.com/universal-tool-calling-protocol/utcp-specification)
+- [Universal Tool Calling Protocol org](https://github.com/universal-tool-calling-protocol)
+- [www.utcp.io](https://www.utcp.io/)
+- [python-utcp](https://github.com/universal-tool-calling-protocol/python-utcp)
+- [typescript-utcp](https://github.com/universal-tool-calling-protocol/typescript-utcp)
+
+---
+
+### webmcp-tools
+
+**現行バージョン**: 継続的デプロイ（バージョンタグなし）
+
+**管理**: Google Chrome Labs
+
+#### 最近の変更点
+
+- **autocomplete values 追加**: name/phone form フィールドへの autocomplete 値追加 (#159, #160)
+- **Leather Bag デモ修正**: Leather Bag デモのイメージ修正 (#155)
+- **registered-purchase 機能**: registered-purchase 機能追加 (#149)
+- **unregisterTool 削除**: unregisterTool 呼び出し削除 (#153)
+- **untrustedContentHint 追加**: `shared/types/webmcp.d.ts` に untrustedContentHint 追加 (#152)
+- **Pizza toppings 修正**: (#150)
+- **Live demo リンクフォーマット修正**: README の live demo リンクフォーマット修正
+- **Flight Search flexible routes**: フライト検索のフレキシブルルート対応・one-way/round-trip 対応 (#141)
+- **Flight Search build 修正**: return flight properties をオプショナル化 (#144)
+- **french-bistro demo Lighthouse 改善**: Lighthouse audit スコア改善
+- **Morning ritual coffee demo**: persistent state と index entry 付きで実装（一時的に revert 状態）
+- **Maze player trail animation 修正**: 迷路プレイヤーの軌跡アニメーション修正 (#133)
+- **Label `for` attribute オプション**: アクセシビリティ改善 (#146)
+- **依存関係更新**: Hono 4.12.14、basic-ftp 5.3.0、protobufjs 7.5.5、vite 8.0.5、vite 7.3.2 等
+
+#### 主要な変更点
+
+- **Order Tracking 宣言的デモ**: オーダートラッキングの宣言的デモ追加
+- **Ticket Booking サポート**: チケット予約サポート追加
+- **webmcp-maze デモ**: 新規迷路デモプロジェクト追加
+- **WebMCP Flow**: アーキテクチャダイアグラムビルダー追加
+- **Vercel AI SDK 移行**: 実験的マルチステップツール実行付き Vercel AI SDK への移行
+- **Sport Shop デモ**: スポーツショップデモの改善
+
+#### 参考リンク
+
+- [webmcp-tools](https://github.com/GoogleChromeLabs/webmcp-tools)
+
+---
+
+## Payments / Agentic Commerce
+
+決済 / agentic commerce 関連プロトコルとその仕様。 既存の generic protocols と分離して管理（`payments/` ディレクトリ配下）。 軸は次の 4 つ:
+
+1. **Commerce flow**: ACP / AP2 / UCP — 注文 / カート / 支払いハンドラ等の業務プロトコル
+2. **Crypto-native payment**: x402 — HTTP ネイティブ暗号通貨決済
+3. **Agent identity (cryptographic verify)**: Visa Trusted Agent Protocol、 Mastercard Verifiable Intent — 大手金融プレイヤーが回す agent identity / authorization の cryptographic 証明標準
+4. **業界横断パートナーシップ**: AP2 と Verifiable Intent の周りに Adyen / Worldpay / Fiserv / Checkout.com / Basis Theory / Amex / JCB / PayPal などほぼ全大手が集結
+
+---
+
+### ACP (Agentic Commerce Protocol)
+
+**現行バージョン**: API Version 2026-04-17
+
+**管理**: OpenAI & Stripe
+
+#### v2026-04-17 後の変更点
+
+- **Order Schema Post-Checkout SEP**: チェックアウト後の Order Schema アライメント SEP (#232)
+- **`UpsertProductsResponse` JSON Schema 追加**: feed JSON Schema バンドルに `UpsertProductsResponse` 追加 (#241)
+- **Meta TSC メンバー追加**: Meta を TSC メンバーに追加 (#236)
+- **Address.company 説明修正**: コピーペーストエラー修正 (#193)
+- **`intervention_required` ドキュメント追加**: RFC エラーコードドキュメントに `intervention_required` 追加 (#143)
+- **intent traces examples**: 全 reason code の intent traces 例追加 (#151)
+- **Agentic Commerce Inc. CLA 署名**: Catalog 関連で Agentic Commerce Inc. を Corporate CLA 署名者に追加 (#226)
+
+#### v2026-04-17 の主要な変更点
+
+- **Cart Capability SEP**: Cart Capability 追加 (#188)
+- **Product Feeds API SEP**: Product Feeds API 追加 (#190)
+- **Marketing Consent SEP**: マーケティング同意フロー追加 (#199)
+- **Markdown Content Specification (CommonMark)**: Markdown コンテンツ仕様策定 (#212)
+- **Payment Intent (capture vs authorize)**: PaymentHandler `display_name` 含む支払い意図 (#130)
+- **Payment Handler 表示順序**: マーチャント提案の表示順序サポート (#133)
+- **Mandatory Idempotency Requirements**: 冪等性要件と保証の義務化 SEP (#121)
+- **Rich Post-Purchase Lifecycle Tracking**: Order スキーマに購入後ライフサイクル追跡追加 (#106)
+- **Discovery RFC seller terminology**: discovery RFC を seller 用語に再構成 (#176)
+- **TSC Operating Model**: TSC 運営モデルドキュメント追加 (#184)
+- **CLA 署名者追加**: Meta Platforms, Affirm, PayPal, Agentic Commerce (Catalog) が CLA 署名
+- **`risk_signals` 仕様修正**: `delegate_payment` で空の risk_signals を許可 (#214)
+- **ガバナンスモデル改訂**: TSC, DWGs を含むガバナンス構造の見直し (#173)
+- **Webhook Signing Replay Protection 強化**: リプレイ攻撃防止の強化 (#160)
+- **Delegated Authentication API**: マーチャント指定認証の API コントラクト (#93)
+- **Discovery Well-Known Document 実装**: (#137)
+- **MCP Transport Binding**: Agentic Checkout 向け MCP トランスポートバインディング (#139)
+
+#### v2026-01-30 の主要な変更点
+
+- **Capability Negotiation**: エージェントとセラー間の機能ネゴシエーション
+- **Payment Handlers Framework**: 構造化された支払いハンドラー（**破壊的変更**）
+- **Extensions Framework**: オプション・コンポーザブルな拡張機能
+- **Discount Extension**: リッチな割引コードサポート（初のACP拡張）
+
+#### 破壊的変更
+
+| 変更 | 影響 |
+|------|------|
+| Payment Handlers 導入 (v2026-01-30) | 支払い方法IDから構造化ハンドラーへ移行必須 |
+| `items` → `line_items` | Create/Update リクエストのフィールド名変更 |
+| `currency` 必須化 | create リクエストで必須フィールドに |
+| `channel` フィールド削除 (#85) | `AuthenticationMetadata` からの削除 |
+
+#### 参考リンク
+
+- [ACP Protocol](https://agenticcommerce.dev)
+
+---
+
+### AP2 (Agent Payments Protocol)
+
+**現行バージョン**: v0.2.0 (2026-04-28)
+
+**管理**: Google Agentic Commerce
+
+**注目**: 2026-04-28 に **v0.2.0 リリース**。`Release of V2 (#233)` として AP2 V2 仕様の正式リリースに到達。 PayPal / Adyen / Amex / Mastercard / JCB / Worldpay 等 60+ パートナーが集結する業界横断ハブ。
+
+#### v0.2.0 後の変更点
+
+- **uvlock 削除**: uv.lock を repository から除外 (#246)
+- **CHANGELOG.md 更新**: 0.2.0 リリースに合わせた CHANGELOG 更新 (#239)
+- **動画タイトル更新**: README 動画タイトル修正 (#238)
+- **CONTRIBUTING.md 更新**: コントリビューションガイドライン更新 (#240)
+
+#### v0.1.0 → v0.2.0 の主要な変更点
+
+- **AP2 V2 リリース**: V2 仕様の正式リリース (#233)
+- **PaymentReceipt**: トランザクション確認オブジェクト実装 (#110)
+- **X402 決済**: x402 payment method 統合（Python サンプル） (#121)
+- **Go サンプル**: スタンドアロン Go 実装例 (#101)
+- **Vertex AI 認証**: Google API キーに加えて Vertex AI 認証サポート追加 (#48)
+- **X-A2A-Extensions ヘッダーロギング**: サーバーミドルウェアでヘッダーロギング (#29)
+- **UCP 統合ドキュメント**: Universal Commerce Protocol 連携 (#138)
+- **Kite AI / Global Payments / Tether / Solana / OKX / Nexi**: 多数のパートナー追加
+
+#### 参考リンク
+
+- [AP2 Protocol](https://github.com/google-agentic-commerce/AP2)
+
+---
+
 ### UCP (Universal Commerce Protocol)
 
 **現行バージョン**: v2026-04-08
@@ -645,133 +744,6 @@
 
 ---
 
-### UTCP (Universal Tool Calling Protocol)
-
-**現行バージョン**: v1.0（仕様として、 直近 spec commit 2026-05-05）
-
-**管理**: Universal Tool Calling Protocol コミュニティ（独立 OSS）
-
-**注目**: MCP の **構造的代替案 / 補完案**。 MCP が「proxy 経由でツール呼び出し」する一方、 UTCP は **agent が discovery 後に native endpoint (HTTP/gRPC/WebSocket/CLI) を直接叩く**設計で、 wrapper tax + latency を排除し、 既存の auth/billing/security をそのまま活かせる。 v1.0 で plugin-based 構成へ全面再設計。 直近の commit が 2026-05-05、 contributors data も daily 更新で活発。
-
-#### v1.0 の主要な特徴
-
-- **Plugin Architecture**: コア機能を pluggable component に分割、 modularity / testability / packaging 向上
-- **Multiple Protocol Support**: HTTP / CLI / WebSocket / Text / **MCP** をプラグイン経由でサポート（MCP も plugin として包摂）
-- **Enhanced Data Models**: Pydantic モデルへ統一、 包括的バリデーション
-- **Advanced Authentication**: API key / OAuth / カスタム auth など拡張認証
-- **Better Error Handling**: シナリオごとの specific exception 型
-- **Async/Await Support**: 完全非同期クライアントインタフェース
-- **Performance Optimizations**: クライアントとプロトコル実装の最適化
-- **OpenAPI 拡張**: agent-focused enhancements（tags、 average_response_size、 multi-protocol、 direct execution instructions）を OpenAPI に追加
-- **Dual license clarification**: 直近 commit でデュアルライセンス周りを整理
-
-#### 関連リポジトリ（org エコシステム）
-
-| リポ | 役割 |
-|------|------|
-| `utcp-specification` | 仕様本体（本サブモジュール） |
-| `python-utcp` | 公式 Python 実装 |
-| `typescript-utcp` | 公式 TypeScript 実装 |
-| `utcp-agent` | 5 行未満で API/native endpoint 直叩きできる ready-to-use agent |
-| `code-mode` | MCP/UTCP ツールを **コード実行経由** で呼び出す plug-and-play ライブラリ |
-
-#### MCP との位置関係
-
-| 観点 | MCP | UTCP |
-|------|-----|------|
-| 呼び出し方式 | proxy server (wrapper) 経由 | agent が native endpoint を直接 |
-| latency | wrapper hop あり | hop なし |
-| auth/billing | MCP server で再実装 | 既存システムを再利用 |
-| 互換性 | MCP プロトコル独自 | OpenAPI 拡張で既存 API 流用 |
-| MCP 取り込み | n/a | MCP プロトコルを plugin として包摂 |
-
-#### 参考リンク
-
-- [utcp-specification (GitHub)](https://github.com/universal-tool-calling-protocol/utcp-specification)
-- [Universal Tool Calling Protocol org](https://github.com/universal-tool-calling-protocol)
-- [www.utcp.io](https://www.utcp.io/)
-- [python-utcp](https://github.com/universal-tool-calling-protocol/python-utcp)
-- [typescript-utcp](https://github.com/universal-tool-calling-protocol/typescript-utcp)
-
----
-
-### Visa Trusted Agent Protocol
-
-**現行バージョン**: 初期スペック + sample 実装（タグなし、 commit 6 件、 2026 年内に立ち上げ）
-
-**管理**: Visa Inc.（クレジットカード大手）
-
-**注目**: Agentic commerce での **agent identity / authorization 標準化**。 既存 `protocols/ACP` (OpenAI/Stripe) / `protocols/AP2` (Google) / `protocols/UCP` / `protocols/x402` の **identity 補完レイヤ** として位置。 大手金融プレイヤー（Visa）が回した数少ない agentic commerce identity 標準。
-
-#### 主要な特徴
-
-- **Cryptographic Identity Proof**: AI エージェントが merchant に対し、 自身の identity と user 委任権限を **暗号署名** で証明
-- **署名コンテンツ**: timestamp / unique session identifier / key identifier / algorithm identifier を含む（リプレイ防止）
-- **Context-Bound Security**: 全リクエストが merchant の **specific website + 操作中の正確なページ** に cryptographically lock。 認可の他所流用を不可能化
-- **Replay 攻撃防止**: time-sensitive elements でリクエスト毎にユニーク化、 1 回限り有効
-- **Customer / Payment Identifier 標準伝達**: 同意済み consumer の **PAR (Payment Account Reference)**、 verifiable consumer identifier、 loyalty number、 email、 phone などを query parameter 経由で merchant へ安全配信
-- **Browse / Payment 双方の認可**: ブラウジングと支払いそれぞれの操作種別ごとに署名 bound
-- **Anti-Fraud**: 認証済み agent と anonymous bot の区別を明確化、 chargeback / 不正取引削減
-
-#### 既存 commerce 系プロトコルとの位置関係
-
-| プロトコル | 担当領域 |
-|-----------|---------|
-| **ACP** (Agentic Commerce Protocol, OpenAI/Stripe) | Order / Cart / Payment Handler レイヤ |
-| **AP2** (Agent Payments Protocol, Google) | Payment Receipt / Payment method 統合 |
-| **UCP** (Universal Commerce Protocol) | Cart / Catalog / Order / Discount / Identity Linking |
-| **x402** (Coinbase) | Crypto-native HTTP payment |
-| **Visa Trusted Agent Protocol** | **Agent identity / authorization の cryptographic proof（merchant 側 verify）** |
-
-#### リポ構成
-
-- 仕様 + sample 実装 (Quick Start で multiple components)
-- **nonce validation サンプルコード** 追加済み（リプレイ防止検証実装の参考）
-
-#### 参考リンク
-
-- [visa/trusted-agent-protocol (GitHub)](https://github.com/visa/trusted-agent-protocol)
-
----
-
-### webmcp-tools
-
-**現行バージョン**: 継続的デプロイ（バージョンタグなし）
-
-**管理**: Google Chrome Labs
-
-#### 最近の変更点
-
-- **autocomplete values 追加**: name/phone form フィールドへの autocomplete 値追加 (#159, #160)
-- **Leather Bag デモ修正**: Leather Bag デモのイメージ修正 (#155)
-- **registered-purchase 機能**: registered-purchase 機能追加 (#149)
-- **unregisterTool 削除**: unregisterTool 呼び出し削除 (#153)
-- **untrustedContentHint 追加**: `shared/types/webmcp.d.ts` に untrustedContentHint 追加 (#152)
-- **Pizza toppings 修正**: (#150)
-- **Live demo リンクフォーマット修正**: README の live demo リンクフォーマット修正
-- **Flight Search flexible routes**: フライト検索のフレキシブルルート対応・one-way/round-trip 対応 (#141)
-- **Flight Search build 修正**: return flight properties をオプショナル化 (#144)
-- **french-bistro demo Lighthouse 改善**: Lighthouse audit スコア改善
-- **Morning ritual coffee demo**: persistent state と index entry 付きで実装（一時的に revert 状態）
-- **Maze player trail animation 修正**: 迷路プレイヤーの軌跡アニメーション修正 (#133)
-- **Label `for` attribute オプション**: アクセシビリティ改善 (#146)
-- **依存関係更新**: Hono 4.12.14、basic-ftp 5.3.0、protobufjs 7.5.5、vite 8.0.5、vite 7.3.2 等
-
-#### 主要な変更点
-
-- **Order Tracking 宣言的デモ**: オーダートラッキングの宣言的デモ追加
-- **Ticket Booking サポート**: チケット予約サポート追加
-- **webmcp-maze デモ**: 新規迷路デモプロジェクト追加
-- **WebMCP Flow**: アーキテクチャダイアグラムビルダー追加
-- **Vercel AI SDK 移行**: 実験的マルチステップツール実行付き Vercel AI SDK への移行
-- **Sport Shop デモ**: スポーツショップデモの改善
-
-#### 参考リンク
-
-- [webmcp-tools](https://github.com/GoogleChromeLabs/webmcp-tools)
-
----
-
 ### x402 (Internet Native Payments)
 
 **現行バージョン**: Go v2.9.0 / Python v2.7.0 / TypeScript npm-@x402/\* v2.10.0 (npm-x402@v1.1.0 legacy バンドル含む)
@@ -807,6 +779,84 @@
 #### 参考リンク
 
 - [x402 Protocol](https://github.com/coinbase/x402)
+
+---
+
+### Visa Trusted Agent Protocol
+
+**現行バージョン**: 初期スペック + sample 実装（タグなし、 commit 6 件、 2026 年内に立ち上げ）
+
+**管理**: Visa Inc.（クレジットカード大手）
+
+**注目**: Agentic commerce での **agent identity / authorization 標準化**。 既存の payments 系（ACP / AP2 / UCP / x402）の **identity 補完レイヤ** として位置。 大手金融プレイヤー（Visa）が回した数少ない agentic commerce identity 標準。
+
+#### 主要な特徴
+
+- **Cryptographic Identity Proof**: AI エージェントが merchant に対し、 自身の identity と user 委任権限を **暗号署名** で証明
+- **署名コンテンツ**: timestamp / unique session identifier / key identifier / algorithm identifier を含む（リプレイ防止）
+- **Context-Bound Security**: 全リクエストが merchant の **specific website + 操作中の正確なページ** に cryptographically lock。 認可の他所流用を不可能化
+- **Replay 攻撃防止**: time-sensitive elements でリクエスト毎にユニーク化、 1 回限り有効
+- **Customer / Payment Identifier 標準伝達**: 同意済み consumer の **PAR (Payment Account Reference)**、 verifiable consumer identifier、 loyalty number、 email、 phone などを query parameter 経由で merchant へ安全配信
+- **Browse / Payment 双方の認可**: ブラウジングと支払いそれぞれの操作種別ごとに署名 bound
+- **Anti-Fraud**: 認証済み agent と anonymous bot の区別を明確化、 chargeback / 不正取引削減
+
+#### リポ構成
+
+- 仕様 + sample 実装 (Quick Start で multiple components)
+- **nonce validation サンプルコード** 追加済み（リプレイ防止検証実装の参考）
+
+#### 参考リンク
+
+- [visa/trusted-agent-protocol (GitHub)](https://github.com/visa/trusted-agent-protocol)
+
+---
+
+### Mastercard Verifiable Intent
+
+**現行バージョン**: v0.1.0 (Draft)、 直近 push 2026-04-20、 v0.1.0 タグから +4 commits
+
+**管理**: Mastercard（共同開発: Google）
+
+**注目**: 2026-03-05 オープンソース化。 Visa Trusted Agent Protocol と並ぶ大手金融プレイヤーの agent identity / authorization 標準。 **SD-JWT (Selective Disclosure JWT) ベース**の cryptographic credential chain で「user → agent への delegation scope」を tamper-evident に証明。 AP2 / UCP との相互運用を明示的に設計（rival ではなく complementary）。
+
+#### 主要な特徴
+
+- **SD-JWT credential format**: Selective Disclosure 機構により、 必要最小限の情報だけを各 party に開示（プライバシー保護寄り）
+- **Layered tamper-evident chain**: AI agent の commercial action が user delegation scope 内であることを cryptographic に証明
+- **2 つの実行モード**:
+  - **Immediate**: user が都度確認（user-confirmed）
+  - **Autonomous**: agent に委任（agent-delegated）
+- **標準ベース**: FIDO Alliance / EMVCo / IETF / W3C
+- **AP2 / UCP との相互運用**: complementary 標準として設計
+- **Reference 実装**: Python 100% で公式 reference implementation 同梱
+
+#### 業界コミットメント (2026-03-05 発表時)
+
+| 企業 | 役割 |
+|------|------|
+| Google | 共同開発 |
+| Fiserv / IBM / Checkout.com / Basis Theory / Getnet | 支持表明 |
+| Adyen / Worldpay (Global Payments) | 支持表明 |
+
+#### 参考リンク
+
+- [agent-intent/verifiable-intent (GitHub)](https://github.com/agent-intent/verifiable-intent)
+- [verifiableintent.dev](https://verifiableintent.dev/)
+- [Verifiable Intent spec overview](https://verifiableintent.dev/spec/)
+- [Mastercard - Verifiable Intent](https://www.mastercard.com/global/en/news-and-trends/stories/2026/verifiable-intent.html)
+
+---
+
+### 既存 commerce 系プロトコル位置関係まとめ（横断比較）
+
+| プロトコル | 担当領域 | 管理 |
+|-----------|---------|------|
+| **ACP** (Agentic Commerce Protocol) | Order / Cart / Payment Handler レイヤ | OpenAI + Stripe |
+| **AP2** (Agent Payments Protocol) | Payment Receipt / Payment method 統合 | Google + 60 partners |
+| **UCP** (Universal Commerce Protocol) | Cart / Catalog / Order / Discount / Identity Linking | Universal Commerce Protocol コミュニティ |
+| **x402** | Crypto-native HTTP payment | Coinbase |
+| **Visa Trusted Agent Protocol** | Agent identity / authorization の cryptographic proof（merchant 側 verify） | Visa |
+| **Mastercard Verifiable Intent** | SD-JWT chain で user → agent delegation scope を verify（プライバシー保護寄り） | Mastercard + Google |
 
 ---
 
@@ -1470,7 +1520,8 @@
 | 対象 | 変更内容 | 対応優先度 |
 |------|---------|-----------|
 | **UTCP v1.0** (新規追跡, 直近 commit 2026-05-05) | MCP の構造的代替案（agent → native endpoint 直叩き）、 plugin architecture へ全面再設計 | 中 |
-| **Visa Trusted Agent Protocol** (新規追跡) | Agentic commerce での agent identity / authorization 標準。 cryptographic signature ベース | 中 |
+| **Visa Trusted Agent Protocol** (新規追跡, `payments/`) | Agentic commerce での agent identity / authorization 標準。 cryptographic signature ベース | 中 |
+| **Mastercard Verifiable Intent v0.1.0** (新規追跡, 2026-03-05 OSS化, `payments/`) | SD-JWT chain で user → agent delegation scope を verify、 Selective Disclosure でプライバシー保護 | 中 |
 | **Gemini Cloud Assist MCP v0.8.0** (新規追跡, 2026-04-21) | Local Node.js → Remote MCP Server へ全面刷新、 v0.2.0 (local) は完全 deprecate | 高 |
 | **UCP v2026-04-08 後** | Identity Linking OAuth 2.0 foundation、capability-driven scopes（破壊的） | 高 |
 | **MCP-UI v7.1.0** (2026-05-01) | hostInfo / hostCapabilities props 追加、AppRenderer 対応 | 中 |
@@ -1495,7 +1546,9 @@
 ### メジャーアップデート
 
 0. **NEW: UTCP v1.0** (直近 commit 2026-05-05, 新規追跡開始) - Universal Tool Calling Protocol。 MCP が proxy 経由ツール呼び出しなのに対し、 agent が discovery 後 native endpoint (HTTP/gRPC/WebSocket/CLI) を直接叩く設計で wrapper tax 削減。 v1.0 で plugin-based 構成へ再設計、 MCP プロトコル自体も plugin として包摂。 Python / TypeScript / Go 公式実装あり
-0. **NEW: Visa Trusted Agent Protocol** (新規追跡開始) - Agentic commerce における agent identity / authorization の cryptographic 標準。 AI エージェントが merchant に対して timestamp / session id / key id を含む暗号署名で identity と user 委任権限を証明。 既存 ACP/AP2/UCP/x402 の identity 補完レイヤ
+0. **NEW: payments/ ディレクトリ新設** - 既存 commerce 系 5 件 (ACP / AP2 / UCP / x402 / Visa-TAP) を `protocols/` から `payments/` に分離 + Mastercard Verifiable Intent を新規追加で計 6 件。 generic protocols と決済系で関心領域を明確化
+0. **NEW: Visa Trusted Agent Protocol** (新規追跡開始, `payments/`) - Agentic commerce における agent identity / authorization の cryptographic 標準。 AI エージェントが merchant に対して timestamp / session id / key id を含む暗号署名で identity と user 委任権限を証明。 既存 ACP/AP2/UCP/x402 の identity 補完レイヤ
+0. **NEW: Mastercard Verifiable Intent v0.1.0** (2026-03-05 OSS化, 新規追跡開始, `payments/`) - Mastercard + Google 共同開発。 **SD-JWT (Selective Disclosure JWT)** ベースで user → agent への delegation scope を tamper-evident に証明。 Immediate / Autonomous の 2 実行モード。 FIDO/EMVCo/IETF/W3C ベース。 AP2 / UCP との相互運用設計。 Adyen / Worldpay / Fiserv / IBM / Checkout.com / Basis Theory / Getnet が支持表明
 0. **NEW: NLIP 1st edition** (Ecma 承認 2025-12-10, 新規追跡開始) - Ecma TC56 が標準化した natural-language application-level プロトコル。 ECMA-430 本体 + 4 binding (HTTP/WebSocket/AMQP/Security profiles) + TR/113 解説書の 6 文書構成。 ISO 提出済み (2026-01-25)、 Claude Skills 互換 reference 実装は 2026-02-28 予定
 0. **NEW: Gemini Cloud Assist MCP v0.8.0** (2026-04-21, 新規追跡開始) - GCP 環境を natural language で understand / manage / troubleshoot する MCP サーバー。 Local Node.js から Remote MCP Server architecture へ全面移行（**破壊的変更**）、 v0.2.0 (local) を完全 deprecate。 `designing-and-deploying-infrastructure` / `operating-google-cloud` skills 同梱。 現在 Private Preview (allowlist 制)
 1. **ADK Python v1.31.x → v1.32.0** (2026-04-30) - **新たな安定リリース**。Anthropic thinking blocks、native OpenTelemetry agentic metrics、event compaction tracing、GcpAuthProvider 2LO/3LO/API Key sample、Cold start ~25% 短縮、複数のセキュリティ修正（SSRF/RCE/credential isolation/PubSub user_id sanitization）。v2.0.0b1 (2026-04-21) と並走
@@ -1522,7 +1575,8 @@
 ### 新規プロトコル統合
 
 0. **UTCP (Universal Tool Calling Protocol)** - MCP の構造的代替案。 agent が proxy を介さず native endpoint を直接呼び出す。 既存 MCP は plugin として包摂され UTCP の中で共存可能
-0. **Visa Trusted Agent Protocol** - 大手金融プレイヤー (Visa) が回す agentic commerce identity 標準。 既存 ACP/AP2/UCP/x402 の identity 補完軸を埋める
+0. **Visa Trusted Agent Protocol** (`payments/`) - 大手金融プレイヤー (Visa) が回す agentic commerce identity 標準。 既存 ACP/AP2/UCP/x402 の identity 補完軸を埋める
+0. **Mastercard Verifiable Intent** (`payments/`) - Mastercard + Google 共同。 SD-JWT chain で user → agent delegation scope を tamper-evident に verify。 Selective Disclosure でプライバシー保護寄り。 Visa TAP と並ぶ識別系の両極を成す
 0. **NLIP (Natural Language Interaction Protocol)** - Ecma TC56 標準化、 ECMA-430〜434 + TR/113 構成。 既存ラインアップ（A2A: agent ↔ agent opaque / MCP: agent ↔ tool）と相補で natural-language application-level 通信を担当
 0. **Gemini Cloud Assist MCP** - GCP 環境の natural-language operation 用 MCP サーバー（Private Preview）。 既存 cloud-run-mcp / gke-mcp / gcloud-mcp と並ぶ「GCP オペレーショナル」軸の補完
 1. **AP2 v0.2.0** - V2 仕様正式リリース。X402 決済、Vertex AI 認証、UCP 連携、Go サンプル
