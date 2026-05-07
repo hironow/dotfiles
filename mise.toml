@@ -32,7 +32,7 @@ node = "24.15.0"
 "npm:@google/gemini-cli" = "0.40.1"
 "npm:@anthropic-ai/claude-code" = "2.1.126"
 "npm:@github/copilot" = "1.0.40"
-"npm:@mariozechner/pi-coding-agent" = "0.72.1"
+"npm:@earendil-works/pi-coding-agent" = "0.74.0"
 
 # `~/.npmrc` may set `min-release-age=7` (7-day quarantine, mirrors
 # uv's `exclude-newer = "7 days"`). That blocks `mise install` of
