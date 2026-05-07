@@ -113,3 +113,44 @@ run "image_variable_defaults_point_at_runops_artifact_registry" {
     error_message = "default dmail_emitter_image must end with :placeholder until Phase 2 lands."
   }
 }
+
+# Issue #0010 — multi-project systemd env delivery (workspace VM side).
+# These variables let the workspace VM fetch the active project list
+# from the gateway HTTP /admin/projects endpoint (Bearer auth). The
+# value validation here makes sure tofu plan rejects malformed inputs
+# before they ever reach the GCE VM startup script.
+run "runops_gateway_url_must_be_https" {
+  command = plan
+
+  variables {
+    runops_gateway_url = "http://gateway.example.com"
+  }
+
+  expect_failures = [var.runops_gateway_url]
+}
+
+run "runops_gateway_url_accepts_https" {
+  command = plan
+
+  variables {
+    runops_gateway_url = "https://gateway.example.com"
+  }
+}
+
+run "runops_admin_token_secret_id_default_is_empty" {
+  command = plan
+
+  assert {
+    condition     = var.runops_admin_token_secret_id == ""
+    error_message = "runops_admin_token_secret_id must default to empty (single-mode fallback). Operators set it via --variable when production rolls out the multi-mode receiver."
+  }
+}
+
+run "runops_gateway_url_default_is_empty" {
+  command = plan
+
+  assert {
+    condition     = var.runops_gateway_url == ""
+    error_message = "runops_gateway_url must default to empty (single-mode fallback). Operators set it via --variable when production rolls out."
+  }
+}
