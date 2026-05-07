@@ -270,11 +270,17 @@ MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 # sources it through /etc/profile -> /etc/profile.d/*.sh and the
 # PATH layout matches what `pnpm setup` would produce.
 echo "[dotfiles-tools] writing /etc/profile.d/pnpm.sh"
-mkdir -p /root/.local/share/pnpm
+mkdir -p /root/.local/share/pnpm/bin
 cat > /etc/profile.d/pnpm.sh <<'PNPM_PROFILE'
 # pnpm 9+ global bin directory bootstrap (build-time baked).
-# Mirrors what `pnpm setup` would write to the user shell rc.
+# pnpm reports the bin dir as $PNPM_HOME/bin and aborts global
+# operations when it is missing from PATH; mirror what `pnpm setup`
+# writes to the user shell rc plus the bin subdir prepend.
 export PNPM_HOME="/root/.local/share/pnpm"
+case ":${PATH}:" in
+  *":${PNPM_HOME}/bin:"*) ;;
+  *) export PATH="${PNPM_HOME}/bin:${PATH}" ;;
+esac
 case ":${PATH}:" in
   *":${PNPM_HOME}:"*) ;;
   *) export PATH="${PNPM_HOME}:${PATH}" ;;

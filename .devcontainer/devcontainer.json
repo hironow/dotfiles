@@ -72,7 +72,7 @@
     // (`check-pnpm-g`, `update-pnpm-g-safe`) see the expected layout
     // without each test having to run `pnpm setup`.
     "PNPM_HOME": "/root/.local/share/pnpm",
-    "PATH": "/root/.local/share/pnpm:/root/.local/bin:/opt/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "PATH": "/root/.local/share/pnpm/bin:/root/.local/share/pnpm:/root/.local/bin:/opt/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
     // Surfaces the HOST workspace path to processes inside the
     // container. The pytest fixture reads this to bind-mount the
     // workspace into one-shot sub-containers it spins up via
