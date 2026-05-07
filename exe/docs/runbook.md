@@ -75,6 +75,65 @@ After the first apply succeeds:
 | Stop the VM (cheap pause) | `just exe-teardown vm` |
 | Recreate the VM | `just exe-apply` (idempotent) |
 
+## Add a multiplex project (Phase α)
+
+Once the runops-gateway is running with the HTTP admin endpoint
+(`RUNOPS_ADMIN_TOKEN` set) and a Firestore registry, add a new project
+end-to-end with this flow:
+
+1. Register the project via the gateway admin API:
+
+   ```bash
+   curl -X POST "$RUNOPS_GATEWAY_URL/admin/projects" \
+     -H "Authorization: Bearer $RUNOPS_ADMIN_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "id":"foo",
+           "github_org":"hironow",
+           "github_repo":"demo",
+           "workspace_path":"/home/coder/projects/foo"
+         }'
+   ```
+
+2. Push the Coder template with the multi-mode variables set
+   (one-time per template version):
+
+   ```bash
+   cdr templates push dotfiles-devcontainer \
+     --variable runops_gateway_url="$RUNOPS_GATEWAY_URL" \
+     --variable runops_admin_token_secret_id="$RUNOPS_ADMIN_TOKEN_SECRET_ID"
+   ```
+
+3. Restart any active workspace (or start a new one). The boot hook
+   `/usr/local/bin/fetch-projects-env.sh` runs, creates
+   `~/projects/foo/.phonewave/{outbox,archive}`, writes drop-in env
+   files, and `systemctl restart`s the dmail daemons in multi-mode.
+
+4. Clone the repo under the project directory:
+
+   ```bash
+   cd ~/projects/foo
+   git clone https://github.com/hironow/demo hironow__demo
+   ```
+
+5. Smoke-test routing with a Slack `/agent` command:
+
+   ```text
+   /agent paintress --project=foo "<request>"
+   ```
+
+   The dispatch should land in `~/projects/foo/.phonewave/outbox/`
+   on the workspace VM.
+
+To archive a project, hit `POST /admin/projects/<id>/archive` and
+restart the workspace; the boot hook re-fetches and the archived
+project drops out of the env map automatically.
+
+If the gateway or token is unreachable, the boot hook falls back to
+single-mode (`PHONEWAVE_OUTBOX_DIR=/outbox`), preserving pre-issue-0010
+behaviour. The startup-script log under
+`/var/log/cloud-init-output.log` shows which path was taken.
+
 ## Coder workspace template
 
 Push the `dotfiles-devcontainer` template (or update an existing
