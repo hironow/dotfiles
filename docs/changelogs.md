@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-05-07
+最終更新: 2026-05-08
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -62,6 +62,9 @@
 
 #### v0.9 後の変更点（web_core 0.9.2 含む）
 
+- **A2UI Inspect AI 評価フレームワーク追加**: Inspect AI を用いた包括的 A2UI 評価フレームワーク導入（feat(eval)）
+- **renderer publishing スクリプト改善**: CI 経由 renderer publishing スクリプトの整備 (#1317)
+- **restaurant sample streaming duplicate surfaces 修正**: restaurant sample アプリの streaming で発生する duplicate surfaces エラー修正 (#1322)
 - **C++ Agent SDK 完全削除**: 全 C++ ソース・ビルド設定を削除 (#1335)
 - **Java Agent SDK 削除**: Java エージェント SDK 削除し Kotlin 実装にリファレンス (#1336)
 - **Slider 動的 aria-label**: コンポーネントプロパティの null チェック追加と Slider の dynamic aria-label 化 (#1345)
@@ -870,6 +873,14 @@
 
 #### v1.32.0 後の変更点（次回リリース向け）
 
+- **LlmBackedUserSimulator 空応答時のエラー追加**: `LlmBackedUserSimulator` が空応答を返した場合に明示的エラーメッセージを出す (fb92aad9)
+- **agent engine デプロイの認証フロー修正**: API key ではなく project / location を使用してデプロイするよう修正 (398f28fe)
+- **adk metrics の input.type/output.type 属性削除**: ADK metrics から `input.type` / `output.type` 属性を除去（メトリクス定義のリファクタ） (95599683)
+- **workflow.steps メトリクス計算調整**: `workflow.steps` メトリクスの計算ロジック調整＋単体テスト追加 (03d6208a)
+- **BigQuery プラグイン fork 検出 / offload 制限 / response logging 修正**: BigQuery プラグインの fork 検出修正、 offload limits 修正、 response logging 追加 (9d1bb4b4)
+- **CLI deploy テストの subprocess.run モック化**: `test_cli_deploy` で実 gcloud 呼び出しを避けるため subprocess.run をモック (92c06fe5)
+- **license lint で browser assets 無視**: CI の license lint 対象から browser assets を除外 (153c7f70)
+- **header-check の年号 2025 → 2026**: ヘッダーチェックの年号を 2026 に更新 (3117e091)
 - **state_delta overwrite skip on function_response**: function_response 専用イベントでの state_delta 上書きスキップ
 - **CustomAuthScheme 未登録エラー明確化**: AuthProvider 未登録時に actionable error を投げる
 - **Gemini EAP モデル check**: Gemini EAP モデルでの builtin tools 確認
@@ -1212,7 +1223,13 @@
 
 ### gcloud-mcp
 
-**現行バージョン**: gcloud-mcp-v0.5.3 / storage-mcp-v0.5.1 / observability-mcp-v0.2.3 / backupdr-mcp-v0.1.0
+**現行バージョン**: gcloud-mcp-v0.5.3 / storage-mcp-v0.6.0 / observability-mcp-v0.2.3 / backupdr-mcp-v0.1.0
+
+#### storage-mcp-v0.6.0 の主要な変更点（2026-05-06）
+
+- **`download_object_safe` ツール削除（破壊的変更）**: 「safe」を名乗っていたが実際は destination パスへの ~/.bashrc 等への書き込みを許す設計だったため削除。 destructive 経路の `download_object` または `read_object_content` / `read_object_metadata` への移行が必要 (#420, #422)
+- **integration tests 修復**: MCP 接続不能による失敗を修正 (#421, #426)
+- **依存バンプ群**: hono 4.12.12 → 4.12.18 (#425)、 ip-address / express-rate-limit (#423)、 protobufjs 7.5.4 → 7.5.6 (#417)、 postcss 8.5.6 → 8.5.12 (#416)、 fast-xml-parser 5.5.7 → 5.7.1 (#415)、 codecov-action v6 (#410)
 
 #### storage-mcp-v0.5.1 の主要な変更点
 
@@ -1282,6 +1299,7 @@
 
 #### v0.12.0 後の変更点
 
+- **UI 依存バンプ**: hono 4.12.14 → 4.12.18 (#322)、 ip-address / express-rate-limit (#320)
 - **manifestgen に fetch model server versions 統合**: マニフェストエージェントに `giq_fetch_model_server_versions` を接続 (#302, #308)
 - **AI agent インストラクション追加**: README に AI agent 用 instructions 追加 (#317)
 - **生成 UI bundle merge ヘルパー gard**: 生成 HTML / merge helper を guard (#315, #316)
@@ -1440,6 +1458,9 @@
 
 #### 未リリースの変更点（v1.1.0 以降）
 
+- **Cloud Storage バケット管理ツール拡充**: Cloud Storage source に bucket management tools を追加（直近 PR） (#3151)
+- **Cloud SQL MySQL MCP integration tests 追加**: Cloud SQL MySQL ソースの MCP integration test 整備 (#2922)
+- **Go バージョンバンプ**: Go ランタイムを最新バージョンへ更新 (#3091)
 - **IPv6 ホストサポート (postgres)**: postgres ソースで `net.JoinHostPort` を使い IPv6 ホスト対応 (#3052)
 - **Looker OAuth + Gemini-CLI ドキュメント**: Looker の OAuth と Gemini-CLI 連携手順の詳細追加 (#3172)
 - **Cloud Storage バケット/オブジェクト管理ツール**: Cloud Storage ソースに bucket・object 管理ツール追加 (#3129)
@@ -1529,6 +1550,7 @@
 | **GKE MCP v0.12.0** | Anthropic Claude ADK adapter、node pool 管理ツール、新規 cluster ツール群 | 中 |
 | **Google Analytics MCP 0.4.0** | tool call deadlock 修正、`run_funnel_report` ツール、ADK Skills 追加 | 中 |
 | **AP2 v0.2.0** (2026-04-28) | V2 仕様正式リリース。v0.1.0 から 7 ヶ月ぶりの大型更新 | 高 |
+| **gcloud-mcp storage-mcp v0.6.0** (2026-05-06) | `download_object_safe` ツール削除（破壊的変更）。 destructive 経路 `download_object` または `read_object_content` / `read_object_metadata` への移行必須 | 中 |
 | **ADK JS v1.0.0 → v1.1.0** | UrlContextTool/Vertex AI Search Tool 追加、MCP プレフィックス strip 修正、AgentTool セッション再利用 | 中 |
 | **ADK Go v1.2.0** | Agent Engine 統合、Skill Source proxy 群、SkillToolset 実装、stream_query simple text サポート | 中 |
 | **UCP v2026-04-08** | 6件の破壊的変更: variant options リネーム、webhook 分離、エラー統一、currency 必須化等 | 高 |
@@ -1602,6 +1624,7 @@
 - **ADK Python v1.32.0 (リリース済み, 2026-04-30)**: **`load_web_page` SSRF / local-file アクセス修正 (0447e93)**、**nested YAML configs 経由の RCE 脆弱性ブロック (74f235b)**、credential isolation in auth context (race condition / データ漏洩防止) (5578772)、PubSub サブスクリプション / Eventarc source 由来 user_id サニタイズ (#5324, 0c4f157)、litellm 最低バージョンを 1.83.7 へ引き上げ CVE パッチ取り込み (6d2ada8)、Vertex RAG memory display name スコープ化 (784350d)
 - **ADK Python (未リリース)**: 旧版で言及していた未リリース修正の多くは v1.32.0 に取り込み済み
 - **GenAI Toolbox (未リリース)**: pgx v5.9.2 セキュリティ更新 (#3133)、SSE hardcoded `*` allowed origin 削除 (#3054)、macOS SDK を内部 GCS バケットに移行 (#3025)、pytest v9.0.3 セキュリティ更新 (#3047)
+- **gcloud-mcp storage-mcp v0.6.0 (2026-05-06)**: `download_object_safe` ツール削除（破壊的変更、 destination パスへの sensitive 書き込みを許す設計だったため）。 destructive 経路の `download_object` または `read_object_content` / `read_object_metadata` への移行が必要 (#420, #422)
 - **gcloud-mcp storage-mcp**: `delete_object` を safe → destructive tools へ移動（誤削除防止）
 - **A2UI**: Python google-adk 1.28.1 へ bump（セキュリティ）
 - **MCP-Apps v1.7.0**: vite / hono / @hono/node-server パッチバージョンへのバンプ (#616)
