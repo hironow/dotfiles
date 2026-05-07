@@ -213,6 +213,42 @@ variable "otel_traces_sampler_arg" {
   default     = "1.0"
 }
 
+# Issue #0010 — multi-project systemd env delivery. The workspace VM
+# fetches the active project list from the gateway HTTP admin endpoint
+# (runops-gateway #0012) and writes systemd drop-ins to switch
+# dmail-receiver / dmail-emitter into multi-mode. Both default to empty
+# so legacy single-mode deployments are unaffected; setting both
+# enables the dynamic-fetch path.
+variable "runops_gateway_url" {
+  description = <<-EOT
+    Base URL of the runops-gateway HTTP API used to fetch the active
+    multiplex project list at workspace boot. When empty the workspace
+    falls back to single-mode (PHONEWAVE_OUTBOX_DIR / PHONEWAVE_ARCHIVE_DIRS).
+    Must be HTTPS in production so admin tokens never traverse plaintext.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.runops_gateway_url == "" || startswith(var.runops_gateway_url, "https://")
+    error_message = "runops_gateway_url must be empty (single-mode fallback) or start with https:// (admin tokens must never traverse http)."
+  }
+}
+
+variable "runops_admin_token_secret_id" {
+  description = <<-EOT
+    Google Secret Manager secret name (resource id, no projects/ prefix)
+    that stores the gateway admin Bearer token. The startup script
+    reads this secret via `gcloud secrets versions access latest` and
+    exports it as RUNOPS_ADMIN_TOKEN for the multi-project env fetch
+    script. Empty disables the fetch path (single-mode fallback). The
+    workspace SA must have roles/secretmanager.secretAccessor on the
+    secret when this is set.
+  EOT
+  type        = string
+  default     = ""
+}
+
 # Region picker. asia is the home region for this stack; allow
 # us/europe as fallbacks for cross-region experimentation.
 module "gcp_region" {
@@ -267,6 +303,15 @@ EOF
 locals {
   linux_user     = lower(substr(data.coder_workspace_owner.me.name, 0, 32))
   container_name = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
+
+  # Multi-project workspace boot hook (#0010). The script lives in
+  # exe/scripts/ as the source of truth (testable via
+  # exe/scripts/test-fetch-projects-env.sh); we read it here so the
+  # GCE VM startup heredoc can write a synchronised copy into
+  # /usr/local/bin without operators having to keep two files in
+  # lockstep manually. Path is relative to this template directory:
+  # exe/coder/templates/dotfiles-devcontainer/ -> ../../../scripts/.
+  fetch_projects_env_script = file("${path.module}/../../../scripts/fetch-projects-env.sh")
 
   # Startup script for the workspace VM. Brings the host onto the
   # tailnet and then `docker run`s the prebuilt dev container image.
@@ -495,16 +540,23 @@ Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 Environment=OTEL_SERVICE_NAME=dmail-receiver
 Environment=OTEL_TRACES_SAMPLER=parentbased_traceidratio
 Environment=OTEL_TRACES_SAMPLER_ARG=${var.otel_traces_sampler_arg}
+# Multi-mode (#0010) drop-in env is auto-merged by systemd from
+# /etc/systemd/system/dmail-receiver.service.d/*.conf if present;
+# fetch-projects-env.sh writes it on every workspace boot.
 ExecStartPre=-/usr/bin/docker rm -f dmail-receiver
 ExecStart=/usr/bin/docker run --rm --name dmail-receiver \
   --network host \
   -v /var/lib/phonewave/outbox:/outbox \
+  -v /home/${local.linux_user}/projects:/home/${local.linux_user}/projects \
   -e PUBSUB_PROJECT_ID -e PUBSUB_DMAIL_INBOUND_SUB \
-  -e PHONEWAVE_OUTBOX_DIR -e GOOGLE_CLOUD_PROJECT \
+  -e PHONEWAVE_OUTBOX_DIR -e PHONEWAVE_OUTBOX_DIRS_BY_PROJECT \
+  -e GOOGLE_CLOUD_PROJECT \
   -e OTEL_EXPORTER_OTLP_ENDPOINT -e OTEL_EXPORTER_OTLP_PROTOCOL \
   -e OTEL_SERVICE_NAME -e OTEL_TRACES_SAMPLER -e OTEL_TRACES_SAMPLER_ARG \
   ${var.dmail_receiver_image}
-ExecStop=/usr/bin/docker stop -t 10 dmail-receiver
+ExecStop=/usr/bin/docker stop -t 30 dmail-receiver
+KillSignal=SIGTERM
+TimeoutStopSec=30s
 Restart=on-failure
 RestartSec=10s
 
@@ -530,22 +582,69 @@ Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 Environment=OTEL_SERVICE_NAME=dmail-emitter
 Environment=OTEL_TRACES_SAMPLER=parentbased_traceidratio
 Environment=OTEL_TRACES_SAMPLER_ARG=${var.otel_traces_sampler_arg}
+# Multi-mode (#0010) drop-in env is auto-merged from
+# /etc/systemd/system/dmail-emitter.service.d/*.conf if present.
 ExecStartPre=-/usr/bin/docker rm -f dmail-emitter
 ExecStart=/usr/bin/docker run --rm --name dmail-emitter \
   --network host \
   -v /var/lib/phonewave/archive:/archive:ro \
+  -v /home/${local.linux_user}/projects:/home/${local.linux_user}/projects:ro \
   -e PUBSUB_PROJECT_ID -e PUBSUB_DMAIL_OUTBOUND_TOPIC \
-  -e PHONEWAVE_ARCHIVE_DIRS -e GOOGLE_CLOUD_PROJECT \
+  -e PHONEWAVE_ARCHIVE_DIRS -e PHONEWAVE_ARCHIVE_DIRS_BY_PROJECT \
+  -e PHONEWAVE_PEER_RECEIVER_MODE \
+  -e GOOGLE_CLOUD_PROJECT \
   -e OTEL_EXPORTER_OTLP_ENDPOINT -e OTEL_EXPORTER_OTLP_PROTOCOL \
   -e OTEL_SERVICE_NAME -e OTEL_TRACES_SAMPLER -e OTEL_TRACES_SAMPLER_ARG \
   ${var.dmail_emitter_image}
-ExecStop=/usr/bin/docker stop -t 10 dmail-emitter
+ExecStop=/usr/bin/docker stop -t 30 dmail-emitter
+KillSignal=SIGTERM
+TimeoutStopSec=30s
 Restart=on-failure
 RestartSec=10s
 
 [Install]
 WantedBy=multi-user.target
 EOF_DME
+
+    # Multi-project workspace VM boot hook (Issue #0010 / #0006).
+    # The startup heredoc inlines fetch-projects-env.sh (read from
+    # exe/scripts/ at terraform plan time) so the script is byte-for-
+    # byte identical between repo source and VM /usr/local/bin copy.
+    install -d -m 0755 /etc/systemd/system/dmail-receiver.service.d
+    install -d -m 0755 /etc/systemd/system/dmail-emitter.service.d
+    cat > /usr/local/bin/fetch-projects-env.sh <<'EOF_FETCH_PROJECTS_ENV'
+${local.fetch_projects_env_script}
+EOF_FETCH_PROJECTS_ENV
+    chmod 0755 /usr/local/bin/fetch-projects-env.sh
+
+    # ~/projects/ is the multiplex root; the per-project subdirs are
+    # created lazily by fetch-projects-env.sh once the gateway
+    # registry is reachable.
+    install -d -o "${local.linux_user}" -g "${local.linux_user}" -m 0755 \
+        /home/${local.linux_user}/projects
+
+    # Resolve admin token from Secret Manager when the operator opted
+    # in (runops_admin_token_secret_id != ""). Never echo the token to
+    # stdout — pipe straight into env so the startup script log stays
+    # clean.
+    if [ -n "${var.runops_admin_token_secret_id}" ] && [ -n "${var.runops_gateway_url}" ]; then
+      _admin_token=$(gcloud secrets versions access latest \
+          --secret="${var.runops_admin_token_secret_id}" \
+          --project="${var.project_id}" 2>/dev/null || true)
+      if [ -n "$_admin_token" ]; then
+        env \
+          RUNOPS_GATEWAY_URL="${var.runops_gateway_url}" \
+          RUNOPS_ADMIN_TOKEN="$_admin_token" \
+          WORKSPACE_HOME="/home/${local.linux_user}" \
+          /usr/local/bin/fetch-projects-env.sh \
+          || echo "[exe-bootstrap] fetch-projects-env.sh failed; falling back to single-mode (PHONEWAVE_OUTBOX_DIR)"
+      else
+        echo "[exe-bootstrap] secret '${var.runops_admin_token_secret_id}' fetch failed; falling back to single-mode"
+      fi
+      unset _admin_token
+    else
+      echo "[exe-bootstrap] runops_gateway_url / runops_admin_token_secret_id unset; running in single-mode"
+    fi
 
     systemctl daemon-reload
     systemctl enable --now dmail-receiver.service || \

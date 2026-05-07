@@ -81,6 +81,39 @@ Legend / 凡例:
 - debian-12: workspace VM のホスト OS、および dev container イメージのベース
 ```
 
+## Multiplex project layout (Phase α)
+
+The workspace VM hosts one or more multiplex projects. Each project's
+state lives under `~/projects/<project_id>/`, mirroring the layout the
+runops-gateway registry pins via `domain.ValidateProjectID` (gateway
+ADR 0027).
+
+```
+~/projects/<project_id>/                  # project root (5 ツールの CWD)
+  ├── <github_org>__<github_repo>/        # git clone (or worktree pool 親)
+  ├── .phonewave/
+  │   ├── outbox/                         # dmail-receiver write 先
+  │   └── archive/                        # dmail-emitter watch
+  ├── .siren/                             # sightjack state
+  ├── .expedition/                        # paintress state
+  ├── .gate/                              # amadeus state
+  └── .pass/                              # dominator state
+```
+
+Permissions: `~/projects/` itself is `0755 linux_user:linux_user`.
+The `.phonewave/{outbox,archive}` dirs are `chmod 0777` so both the
+dmail daemons (uid 65532 nonroot) and the devcontainer user can write
+without an explicit shared group. This mirrors the `/var/lib/phonewave/`
+policy from ADR 0023; future tightening is tracked alongside that
+container's setgid-based design (dotfiles ADR 0011 §"Negative").
+
+The boot hook `fetch-projects-env.sh` (dotfiles ADR 0011) creates the
+per-project `.phonewave/{outbox,archive}` directories on demand, so
+operators do not need to mkdir them manually after `runops project
+add`. The peer dirs (`.siren` / `.expedition` / `.gate` / `.pass`)
+are created lazily by the corresponding tool when it first runs in a
+project.
+
 ## Boundaries and trust
 
 | Boundary | Trust transition | Mechanism |
