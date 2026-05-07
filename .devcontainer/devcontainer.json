@@ -63,7 +63,16 @@
     // Coder workspace `/home/<user>:/root` volume mount cannot mask
     // the build-time-baked installs. Shims live alongside.
     "MISE_DATA_DIR": "/opt/mise",
-    "PATH": "/root/.local/bin:/opt/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    // pnpm 9+ requires PNPM_HOME on PATH; otherwise `pnpm list -g`
+    // and similar global commands abort with "configured global bin
+    // directory ... is not in PATH". This was a soft warning in
+    // pnpm 8 and became a hard error after pnpm 9.0 (corepack-shipped
+    // pnpm bumps as the upstream node release advances). Set the
+    // canonical PNPM_HOME and prepend it so the just sandbox tests
+    // (`check-pnpm-g`, `update-pnpm-g-safe`) see the expected layout
+    // without each test having to run `pnpm setup`.
+    "PNPM_HOME": "/root/.local/share/pnpm",
+    "PATH": "/root/.local/share/pnpm:/root/.local/bin:/opt/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
     // Surfaces the HOST workspace path to processes inside the
     // container. The pytest fixture reads this to bind-mount the
     // workspace into one-shot sub-containers it spins up via
