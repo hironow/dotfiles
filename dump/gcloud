@@ -1,12 +1,17 @@
+alpha
+beta
 bigtable
 bq
 cbt
 cloud-datastore-emulator
+cloud-firestore-emulator
 cloud-run-proxy
 cloud-sql-proxy
 config-connector
+core
 docker-credential-gcr
 gke-gcloud-auth-plugin
+gsutil
 istioctl
 kpt
 kubectl
@@ -17,6 +22,7 @@ log-streaming
 nomos
 package-go-module
 pkg
+preview
 pubsub-emulator
 skaffold
 spanner-cli
