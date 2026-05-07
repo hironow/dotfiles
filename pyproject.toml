@@ -15,9 +15,11 @@ extend-exclude = [
     "gcloud",
     "guardrails",
     "knowledge-work-plugins",
+    "payments",
     "protocols",
     "skills",
     "telemetry",
+    "tools",
     # `private/certificates/` is created by Let's Encrypt with mode 0700.
     # Inside a bind-mounted dev container ruff cannot traverse it and aborts.
     # Nothing under private/ is Python source anyway.
