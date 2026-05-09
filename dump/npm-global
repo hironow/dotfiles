@@ -1,7 +1,3 @@
-@biomejs/biome
-@e2b/cli
-@fission-ai/openspec
-@googleworkspace/cli
 @mariozechner/pi-coding-agent
 @next/codemod
 @openapi-contrib/json-schema-to-openapi-schema
@@ -9,17 +5,13 @@
 @react-native-community/cli
 @smithery/cli
 @vonage/cli
-agent-browser
 ajv-cli
 caniuse-cmd
 cf
 check-site-meta
 cloudflare
 har-to-k6
-markdownlint
-netlify-cli
 pnpm
 surge
 takt
 web-push
-zx
