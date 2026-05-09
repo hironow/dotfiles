@@ -4,7 +4,7 @@
 #
 # Usage:
 #   cdr-project up <id> [--org=<org> --repo=<repo>]
-#   cdr-project down <id> [--hard]
+#   cdr-project down <id> [--hard] [--dry-run]
 #   cdr-project list
 #   cdr-project show <id>
 #
@@ -113,42 +113,77 @@ cmd_up() {
 
 cmd_down() {
   if [[ $# -lt 1 ]]; then
-    err "usage: cdr-project down <id> [--hard]"
+    err "usage: cdr-project down <id> [--hard] [--dry-run]"
   fi
   local id="$1"; shift
   validate_id "$id"
 
   local hard=0
+  local dry_run=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --hard) hard=1 ;;
+      --dry-run) dry_run=1 ;;
       *) err "unexpected arg: $1" ;;
     esac
     shift
   done
 
-  log "down: workspace VM 側 project-down.sh '$id' を実行"
+  # ADR 0013 Bypass #4 mitigation: hard-delete 3 種 guard
+  #   (1) explicit --hard flag                (= 既存)
+  #   (2) typed project_id confirmation prompt (= 本 ADR で追加)
+  #   (3) --dry-run preview                    (= 本 ADR で追加)
+  # escape hatch (= non-TTY / CI): env CDR_PROJECT_NO_TYPED_CONFIRM=1 で typed
+  # confirmation を skip 可能。 ただし server side approval gate (= 0024 軸 B) が
+  # landed すれば server side で reject されるため、 hatch 単独で bypass にはならない。
+  if [[ "$hard" == "1" && "$dry_run" == "0" ]]; then
+    if [[ "${CDR_PROJECT_NO_TYPED_CONFIRM:-0}" != "1" ]]; then
+      log "WARNING: --hard mode は不可逆 (rm -rf + gateway delete --hard)"
+      printf "Type project ID '%s' to confirm hard delete (Ctrl+C to abort): " "$id" >&2
+      local confirmation=""
+      IFS= read -r confirmation
+      if [[ "$confirmation" != "$id" ]]; then
+        err "confirmation mismatch (expected: '$id', got: '$confirmation')"
+      fi
+      log "confirmation matched, proceeding with hard delete"
+    else
+      log "CDR_PROJECT_NO_TYPED_CONFIRM=1 — typed confirmation skipped (= caller responsibility)"
+    fi
+  fi
+
+  # build commands (= dry-run でも実 run でも同じ string、 dry-run で表示用に共通化)
   local down_cmd
   down_cmd="sudo bash ${REMOTE_DOWN_SCRIPT} $(printf '%q' "$id")"
   if [[ "$hard" == "1" ]]; then
     down_cmd+=" --hard"
   fi
+  local gw_cmd
+  if [[ "$hard" == "1" ]]; then
+    gw_cmd="${GATEWAY_CLI_CMD} project delete $(printf '%q' "$id") --hard"
+  else
+    gw_cmd="${GATEWAY_CLI_CMD} project archive $(printf '%q' "$id")"
+  fi
+
+  if [[ "$dry_run" == "1" ]]; then
+    log "DRY-RUN: would invoke cdr-exec ${RUNNER_WS} -- '${down_cmd}'"
+    log "DRY-RUN: would invoke cdr-exec ${RUNNER_WS} -- '${gw_cmd}'"
+    log "DRY-RUN: NO actual side effect, exit 0"
+    return 0
+  fi
+
+  log "down: workspace VM 側 project-down.sh '$id' を実行"
   if ! cdr-exec "$RUNNER_WS" -- "$down_cmd"; then
     err "workspace project-down.sh failed; gateway 側 archive/delete は実行しない (= data 整合性優先)"
   fi
 
   if [[ "$hard" == "1" ]]; then
     log "down: gateway CLI で project delete --hard '$id'"
-    local del_cmd
-    del_cmd="${GATEWAY_CLI_CMD} project delete $(printf '%q' "$id") --hard"
-    if ! cdr-exec "$RUNNER_WS" -- "$del_cmd"; then
+    if ! cdr-exec "$RUNNER_WS" -- "$gw_cmd"; then
       err "gateway project delete --hard failed; workspace VM 側 cleanup は完了済 (= 状態不整合、 手動修復)"
     fi
   else
     log "down: gateway CLI で project archive '$id'"
-    local arch_cmd
-    arch_cmd="${GATEWAY_CLI_CMD} project archive $(printf '%q' "$id")"
-    if ! cdr-exec "$RUNNER_WS" -- "$arch_cmd"; then
+    if ! cdr-exec "$RUNNER_WS" -- "$gw_cmd"; then
       err "gateway project archive failed; workspace VM 側 cleanup は完了済 (= 状態不整合、 手動修復)"
     fi
   fi
