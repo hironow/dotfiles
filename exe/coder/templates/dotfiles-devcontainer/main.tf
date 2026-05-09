@@ -540,6 +540,11 @@ Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 Environment=OTEL_SERVICE_NAME=dmail-receiver
 Environment=OTEL_TRACES_SAMPLER=parentbased_traceidratio
 Environment=OTEL_TRACES_SAMPLER_ARG=${var.otel_traces_sampler_arg}
+# Actor type (ADR 0012 Path A): producer-side requester_actor_type
+# injection per gateway ADR 0035-0037. Both Environment= and the
+# `docker run -e RUNOPS_ACTOR_TYPE` allowlist below are required;
+# drop-in alone does not reach the container.
+Environment=RUNOPS_ACTOR_TYPE=workspace-daemon
 # Multi-mode (#0010) drop-in env is auto-merged by systemd from
 # /etc/systemd/system/dmail-receiver.service.d/*.conf if present;
 # fetch-projects-env.sh writes it on every workspace boot.
@@ -553,6 +558,7 @@ ExecStart=/usr/bin/docker run --rm --name dmail-receiver \
   -e GOOGLE_CLOUD_PROJECT \
   -e OTEL_EXPORTER_OTLP_ENDPOINT -e OTEL_EXPORTER_OTLP_PROTOCOL \
   -e OTEL_SERVICE_NAME -e OTEL_TRACES_SAMPLER -e OTEL_TRACES_SAMPLER_ARG \
+  -e RUNOPS_ACTOR_TYPE \
   ${var.dmail_receiver_image}
 ExecStop=/usr/bin/docker stop -t 30 dmail-receiver
 KillSignal=SIGTERM
@@ -582,6 +588,11 @@ Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 Environment=OTEL_SERVICE_NAME=dmail-emitter
 Environment=OTEL_TRACES_SAMPLER=parentbased_traceidratio
 Environment=OTEL_TRACES_SAMPLER_ARG=${var.otel_traces_sampler_arg}
+# Actor type (ADR 0012 Path A): producer-side requester_actor_type
+# injection per gateway ADR 0035-0037. Both Environment= and the
+# `docker run -e RUNOPS_ACTOR_TYPE` allowlist below are required;
+# drop-in alone does not reach the container.
+Environment=RUNOPS_ACTOR_TYPE=workspace-daemon
 # Multi-mode (#0010) drop-in env is auto-merged from
 # /etc/systemd/system/dmail-emitter.service.d/*.conf if present.
 ExecStartPre=-/usr/bin/docker rm -f dmail-emitter
@@ -595,6 +606,7 @@ ExecStart=/usr/bin/docker run --rm --name dmail-emitter \
   -e GOOGLE_CLOUD_PROJECT \
   -e OTEL_EXPORTER_OTLP_ENDPOINT -e OTEL_EXPORTER_OTLP_PROTOCOL \
   -e OTEL_SERVICE_NAME -e OTEL_TRACES_SAMPLER -e OTEL_TRACES_SAMPLER_ARG \
+  -e RUNOPS_ACTOR_TYPE \
   ${var.dmail_emitter_image}
 ExecStop=/usr/bin/docker stop -t 30 dmail-emitter
 KillSignal=SIGTERM
