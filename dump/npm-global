@@ -1,15 +1,11 @@
-@mariozechner/pi-coding-agent
 @next/codemod
 @openapi-contrib/json-schema-to-openapi-schema
-@osmonauts/telescope
 @react-native-community/cli
 @smithery/cli
 @vonage/cli
 ajv-cli
 caniuse-cmd
-cf
 check-site-meta
-cloudflare
 har-to-k6
 pnpm
 surge
