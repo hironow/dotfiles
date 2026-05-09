@@ -1,0 +1,26 @@
+# pnpm dlx で都度起動するパッケージ (pnpm globalにはインストールしない)
+#
+# 使い方: `pnpm dlx <package>` または `pnpx <package>`
+# このファイルは自動インストール対象外、記録専用。
+# pnpm global に常駐させるべきものは dump/npm-global を参照。
+
+# Next.js アップグレード時 (pnpm dlx @next/codemod@canary upgrade latest)
+@next/codemod
+
+# React Native init 時 (公式が global install を非推奨)
+@react-native-community/cli
+
+# JSON Schema -> OpenAPI Schema Object 変換 (主はライブラリ)
+@openapi-contrib/json-schema-to-openapi-schema
+
+# CSS/JS feature の caniuse 対応確認
+caniuse-cmd
+
+# OG / Twitter Card 等メタタグ検査 (作者が npx 起動を推奨)
+check-site-meta
+
+# HAR -> k6 script 変換 (Docker grafana/har-to-k6 でも可)
+har-to-k6
+
+# Web Push VAPID 鍵生成 (pnpm dlx web-push generate-vapid-keys)
+web-push
