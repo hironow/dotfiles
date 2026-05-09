@@ -109,4 +109,10 @@ while true; do
 done
 
 log "command: $EXEC_COMMAND"
-exec cdr ssh "$WS_NAME" -- sh -c "$EXEC_COMMAND"
+# Actor type (ADR 0012 Path C): cdr-exec is, by contract, the human
+# operator dispatch path. Always override RUNOPS_ACTOR_TYPE=human-operator
+# regardless of any inherited value (e.g., from a runner the operator
+# forgot to exit) — silent inheritance from the parent shell would
+# misclassify the action against the gateway-side ADR 0035 architectural
+# pin.
+exec cdr ssh "$WS_NAME" -- sh -c "export RUNOPS_ACTOR_TYPE=human-operator; $EXEC_COMMAND"
