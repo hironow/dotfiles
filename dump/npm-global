@@ -1,13 +1,6 @@
-@next/codemod
-@openapi-contrib/json-schema-to-openapi-schema
-@react-native-community/cli
 @smithery/cli
 @vonage/cli
 ajv-cli
-caniuse-cmd
-check-site-meta
-har-to-k6
 pnpm
 surge
 takt
-web-push

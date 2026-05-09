@@ -505,6 +505,17 @@ def test_doctor_reports_just(docker_image):
             marks=pytest.mark.check,
         ),
         pytest.param(
+            # check-pnpm-dlx is a record-only listing (grep over dump/npm-dlx).
+            # pnpm itself is not required; the recipe always exits 0 and
+            # prints the header line.
+            "Check: pnpm dlx record listed",
+            "just check-pnpm-dlx",
+            0,
+            "pnpm dlx packages",
+            id="Check: pnpm dlx record listed",
+            marks=pytest.mark.check,
+        ),
+        pytest.param(
             "Check: rust cfg guarded",
             "if command -v rustc >/dev/null 2>&1; then just check-rust; else echo skip-rust; fi",
             0,

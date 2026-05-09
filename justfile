@@ -555,6 +555,12 @@ check-npm-g:
 check-pnpm-g:
     pnpm list -g --depth=0
 
+# Check: list pnpm dlx packages (record-only; not auto-installed)
+[group('Check')]
+check-pnpm-dlx:
+    @echo "📋 pnpm dlx packages (record-only, run with: pnpm dlx <package>)"
+    @grep -v '^#' dump/npm-dlx | grep -v '^$' || true
+
 # Check: print rustc cfg
 [group('Check')]
 check-rust:
