@@ -132,11 +132,19 @@ def _run_cdr_project(
     tmp_path: Path,
     args: list[str],
     cdr_exec_body: str,
+    extra_env: dict[str, str] | None = None,
+    stdin_input: str | None = None,
 ) -> tuple[subprocess.CompletedProcess, list[str]]:
     """Execute cdr-project with a stubbed cdr-exec.
 
     Returns (CompletedProcess, list of cdr-exec invocation lines logged
     via the stub to `tmp_path / cdr-exec.log`).
+
+    Args:
+        extra_env: Additional env vars (e.g. CDR_PROJECT_NO_TYPED_CONFIRM=1
+            to skip typed confirmation in --hard tests).
+        stdin_input: Text fed to cdr-project stdin (e.g. typed confirmation
+            input). When None, no stdin is provided.
     """
     stubs = tmp_path / "stubs"
     stubs.mkdir()
@@ -147,10 +155,13 @@ def _run_cdr_project(
         "PATH": f"{stubs}:/usr/bin:/bin",
         "HOME": str(tmp_path),
     }
+    if extra_env:
+        env.update(extra_env)
     result = subprocess.run(
         [BASH, str(CDR_PROJECT), *args],
         text=True,
         env=env,
+        input=stdin_input,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=10,
@@ -252,7 +263,12 @@ def test_cdr_project_down_invokes_workspace_script_then_gateway_archive(
 
 def test_cdr_project_down_hard_invokes_gateway_delete(tmp_path: Path) -> None:
     """`cdr-project down <id> --hard` calls `runops project delete --hard`
-    (= not `archive`)."""
+    (= not `archive`).
+
+    ADR 0013 Bypass #4 mitigation: hard-delete typed confirmation prompt
+    is skipped here via env so the test exercises the underlying
+    cdr-exec invocations rather than the prompt.
+    """
     cdr_exec_body = """
         #!/usr/bin/env bash
         printf '%s\\n' "$*" >> __LOG__
@@ -262,6 +278,7 @@ def test_cdr_project_down_hard_invokes_gateway_delete(tmp_path: Path) -> None:
         tmp_path,
         ["down", "demo-foo", "--hard"],
         cdr_exec_body,
+        extra_env={"CDR_PROJECT_NO_TYPED_CONFIRM": "1"},
     )
     assert result.returncode == 0
     assert len(logs) == 2
@@ -269,8 +286,82 @@ def test_cdr_project_down_hard_invokes_gateway_delete(tmp_path: Path) -> None:
     assert "--hard" in logs[0]
     # Gateway invoked with delete --hard, NOT archive.
     assert "project delete" in logs[1]
-    assert "--hard" in logs[1]
-    assert "project archive" not in logs[1]
+
+
+def test_cdr_project_hard_requires_typed_confirmation(tmp_path: Path) -> None:
+    """`cdr-project down <id> --hard` (no env hatch) prompts for typed
+    project_id confirmation; matching input proceeds with the destructive
+    chain.
+
+    ADR 0013 Bypass #4 mitigation guard #2.
+    """
+    cdr_exec_body = """
+        #!/usr/bin/env bash
+        printf '%s\\n' "$*" >> __LOG__
+        exit 0
+    """
+    # Provide the matching project_id on stdin (= operator typed it).
+    result, logs = _run_cdr_project(
+        tmp_path,
+        ["down", "demo-foo", "--hard"],
+        cdr_exec_body,
+        stdin_input="demo-foo\n",
+    )
+    assert result.returncode == 0, (
+        f"matching confirmation should proceed; stderr:\n{result.stderr}"
+    )
+    assert "confirmation matched" in result.stderr
+    # Both cdr-exec invocations happened (= prompt did not abort the chain).
+    assert len(logs) == 2
+
+
+def test_cdr_project_hard_typed_mismatch_rejects(tmp_path: Path) -> None:
+    """`cdr-project down <id> --hard` rejects when the typed confirmation
+    does not exactly match the project id; no cdr-exec invocations occur.
+
+    ADR 0013 Bypass #4 mitigation guard #2 (= reject path)."""
+    cdr_exec_body = """
+        #!/usr/bin/env bash
+        printf '%s\\n' "$*" >> __LOG__
+        exit 0
+    """
+    result, logs = _run_cdr_project(
+        tmp_path,
+        ["down", "demo-foo", "--hard"],
+        cdr_exec_body,
+        stdin_input="demo-bar\n",  # mismatch
+    )
+    assert result.returncode != 0, "mismatched confirmation must fail-loud, not proceed"
+    assert "confirmation mismatch" in result.stderr
+    # NO cdr-exec invocations should have happened.
+    assert len(logs) == 0
+
+
+def test_cdr_project_hard_dry_run_no_side_effect(tmp_path: Path) -> None:
+    """`cdr-project down <id> --hard --dry-run` prints the planned
+    invocations and exits 0 without touching cdr-exec or prompting.
+
+    ADR 0013 Bypass #4 mitigation guard #3 (= dry-run preview).
+    """
+    cdr_exec_body = """
+        #!/usr/bin/env bash
+        printf '%s\\n' "$*" >> __LOG__
+        exit 0
+    """
+    result, logs = _run_cdr_project(
+        tmp_path,
+        ["down", "demo-foo", "--hard", "--dry-run"],
+        cdr_exec_body,
+        # No stdin: dry-run path must not prompt.
+    )
+    assert result.returncode == 0
+    # No cdr-exec invocations (= zero side effect).
+    assert len(logs) == 0
+    # DRY-RUN preview lines should appear on stderr (= log channel).
+    assert "DRY-RUN" in result.stderr
+    assert "project-down.sh" in result.stderr
+    assert "project delete" in result.stderr  # --hard branch
+    assert "--hard" in result.stderr
 
 
 def test_cdr_project_down_aborts_gateway_on_workspace_failure(
