@@ -216,6 +216,7 @@ locals {
       --volume "/var/run/docker.sock:/var/run/docker.sock" \
       --env "CODER_AGENT_TOKEN=${try(coder_agent.job[0].token, "")}" \
       --env "CODER_AGENT_URL=${var.coder_internal_url}" \
+      --env "RUNOPS_ACTOR_TYPE=ai-agent" \
       '${var.image}' \
       sh -c 'echo ${base64encode(try(coder_agent.job[0].init_script, ""))} | base64 -d | sh'
   META
@@ -271,6 +272,10 @@ resource "coder_agent" "job" {
   startup_script = <<-EOT
     set -eu
     export MISE_DATA_DIR=/opt/mise
+    # Actor type (ADR 0012 Path B): cdr-job is the AI agent dispatch
+    # path. Belt-and-suspenders with the docker run --env on the VM
+    # startup script so any sub-shell scrub does not lose the value.
+    export RUNOPS_ACTOR_TYPE=ai-agent
     cd /root
     echo "[dotfiles-job] starting at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "[dotfiles-job] command: ${data.coder_parameter.job_command.value}"
