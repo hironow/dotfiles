@@ -1011,7 +1011,7 @@ exe-cdr-install:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "${HOME}/.local/bin"
-    for name in cdr cdr-header cdr-job cdr-exec; do
+    for name in cdr cdr-header cdr-job cdr-exec cdr-project; do
       src="$(pwd)/exe/scripts/$name"
       dst="${HOME}/.local/bin/$name"
       ln -sf "$src" "$dst"
