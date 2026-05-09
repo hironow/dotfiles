@@ -1,6 +1,13 @@
 name: Shellcheck Linting
 
-on: [push]
+# Restrict push to main so feature branch pushes do not trigger
+# extra runs (= pull_request covers PR review、 既存
+# iac-test.yaml / test-just.yaml と同 pattern)。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   lint:
