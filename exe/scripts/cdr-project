@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+# cdr-project — host 側 wrapper for project lifecycle (= gateway CLI +
+# workspace VM script の glue)。
+#
+# Usage:
+#   cdr-project up <id> [--org=<org> --repo=<repo>]
+#   cdr-project down <id> [--hard]
+#   cdr-project list
+#   cdr-project show <id>
+#
+# What this does (refs/docs/issues/0020-multi 軸 3 受入基準):
+#
+#   up:
+#     1. gateway CLI で project create (= cdr-exec runner -- 'runops project create <id>')
+#     2. workspace VM 側 project-up.sh 実行 (= cdr-exec runner -- 'sudo bash /opt/exe/project-up.sh <id> ...')
+#     3. gateway 側 create が失敗した場合は workspace VM 側 script を実行しない
+#        (= rollback 不要、 at-least-once で OK)
+#
+#   down:
+#     1. workspace VM 側 project-down.sh 実行
+#     2. gateway 側 archive (or --hard 時は delete)
+#     3. workspace VM 側が失敗した場合は gateway 側 archive/delete を実行しない
+#        (= data 整合性優先)
+#
+#   list / show: gateway CLI 'runops project list / show' の薄い passthrough
+#
+# 関連:
+#   - dotfiles cdr-exec (= runner workspace SSH wrapper、 ADR 0012 Path C で
+#     RUNOPS_ACTOR_TYPE=human-operator override を always-保証)
+#   - dotfiles ADR 0012 (= RUNOPS_ACTOR_TYPE env injection)
+#   - runops-gateway cmd/runops project add/list/show/archive subcommand
+#   - refs issue 0020-multi (project lifecycle completion) 軸 3
+
+set -euo pipefail
+
+err() { printf '\033[31m[cdr-project]\033[0m %s\n' "$*" >&2; exit 1; }
+log() { printf '\033[36m[cdr-project]\033[0m %s\n' "$*" >&2; }
+
+require_cdr_exec() {
+  command -v cdr-exec >/dev/null 2>&1 || \
+    err "cdr-exec not on PATH; run 'just exe-cdr-install' first"
+}
+
+# warm-reuse runner workspace name (= cdr-exec で SSH する先)。
+RUNNER_WS="${CDR_PROJECT_RUNNER:-runner}"
+
+# remote project lifecycle script paths (= workspace VM 上の dotfiles repo
+# clone path = /root/dotfiles/、 dotfiles-devcontainer template が
+# `coder dotfiles --repo-url https://github.com/hironow/dotfiles.git` で
+# clone するため、 各 script は /root/dotfiles/exe/scripts/ で参照可能)。
+REMOTE_UP_SCRIPT="${CDR_PROJECT_UP_SCRIPT:-/root/dotfiles/exe/scripts/project-up.sh}"
+REMOTE_DOWN_SCRIPT="${CDR_PROJECT_DOWN_SCRIPT:-/root/dotfiles/exe/scripts/project-down.sh}"
+
+# gateway CLI invocation prefix (= workspace VM 上で実行)。
+# Note: workspace VM には runops-gateway repo + go toolchain が install されている前提。
+GATEWAY_CLI_CMD="${CDR_PROJECT_GATEWAY_CLI:-cd /root/runops-gateway && go run ./cmd/runops}"
+
+PROJECT_ID_RE='^[a-zA-Z0-9_-]+$'
+PROJECT_ID_MAX_LEN=64
+
+validate_id() {
+  local id="$1"
+  if (( ${#id} > PROJECT_ID_MAX_LEN )); then
+    err "project id exceeds ${PROJECT_ID_MAX_LEN} chars"
+  fi
+  if ! [[ "$id" =~ ${PROJECT_ID_RE} ]]; then
+    err "project id failed regex"
+  fi
+}
+
+cmd_up() {
+  if [[ $# -lt 1 ]]; then
+    err "usage: cdr-project up <id> [--org=<org> --repo=<repo>]"
+  fi
+  local id="$1"; shift
+  validate_id "$id"
+
+  local org="" repo=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --org=*) org="${1#--org=}" ;;
+      --repo=*) repo="${1#--repo=}" ;;
+      *) err "unexpected arg: $1" ;;
+    esac
+    shift
+  done
+  if [[ -n "$org" && -z "$repo" ]] || [[ -z "$org" && -n "$repo" ]]; then
+    err "--org and --repo must be specified together"
+  fi
+
+  log "up: gateway CLI で project create '$id'"
+  local create_cmd
+  create_cmd="${GATEWAY_CLI_CMD} project create $(printf '%q' "$id")"
+  if [[ -n "$org" && -n "$repo" ]]; then
+    create_cmd+=" --org $(printf '%q' "$org") --repo $(printf '%q' "$repo")"
+  fi
+  if ! cdr-exec "$RUNNER_WS" -- "$create_cmd"; then
+    err "gateway project create failed; workspace VM script は実行しない"
+  fi
+
+  log "up: workspace VM 側 project-up.sh '$id' を実行"
+  local up_cmd
+  up_cmd="sudo bash ${REMOTE_UP_SCRIPT} $(printf '%q' "$id")"
+  if [[ -n "$org" && -n "$repo" ]]; then
+    up_cmd+=" --org=$(printf '%q' "$org") --repo=$(printf '%q' "$repo")"
+  fi
+  if ! cdr-exec "$RUNNER_WS" -- "$up_cmd"; then
+    err "workspace project-up.sh failed; gateway 側 create は完了済 (= 状態不整合)。 'cdr-project down ${id}' で cleanup するか、 手動修復"
+  fi
+
+  log "up complete: $id"
+}
+
+cmd_down() {
+  if [[ $# -lt 1 ]]; then
+    err "usage: cdr-project down <id> [--hard]"
+  fi
+  local id="$1"; shift
+  validate_id "$id"
+
+  local hard=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --hard) hard=1 ;;
+      *) err "unexpected arg: $1" ;;
+    esac
+    shift
+  done
+
+  log "down: workspace VM 側 project-down.sh '$id' を実行"
+  local down_cmd
+  down_cmd="sudo bash ${REMOTE_DOWN_SCRIPT} $(printf '%q' "$id")"
+  if [[ "$hard" == "1" ]]; then
+    down_cmd+=" --hard"
+  fi
+  if ! cdr-exec "$RUNNER_WS" -- "$down_cmd"; then
+    err "workspace project-down.sh failed; gateway 側 archive/delete は実行しない (= data 整合性優先)"
+  fi
+
+  if [[ "$hard" == "1" ]]; then
+    log "down: gateway CLI で project delete --hard '$id'"
+    local del_cmd
+    del_cmd="${GATEWAY_CLI_CMD} project delete $(printf '%q' "$id") --hard"
+    if ! cdr-exec "$RUNNER_WS" -- "$del_cmd"; then
+      err "gateway project delete --hard failed; workspace VM 側 cleanup は完了済 (= 状態不整合、 手動修復)"
+    fi
+  else
+    log "down: gateway CLI で project archive '$id'"
+    local arch_cmd
+    arch_cmd="${GATEWAY_CLI_CMD} project archive $(printf '%q' "$id")"
+    if ! cdr-exec "$RUNNER_WS" -- "$arch_cmd"; then
+      err "gateway project archive failed; workspace VM 側 cleanup は完了済 (= 状態不整合、 手動修復)"
+    fi
+  fi
+
+  log "down complete: $id (mode: $([[ "$hard" == "1" ]] && echo hard || echo soft))"
+}
+
+cmd_list() {
+  log "list: gateway CLI passthrough"
+  cdr-exec "$RUNNER_WS" -- "${GATEWAY_CLI_CMD} project list $*"
+}
+
+cmd_show() {
+  if [[ $# -lt 1 ]]; then
+    err "usage: cdr-project show <id>"
+  fi
+  local id="$1"; shift
+  validate_id "$id"
+  log "show: gateway CLI passthrough '$id'"
+  cdr-exec "$RUNNER_WS" -- "${GATEWAY_CLI_CMD} project show $(printf '%q' "$id") $*"
+}
+
+# ---- dispatch ---------------------------------------------------------
+
+require_cdr_exec
+
+if [[ $# -lt 1 ]]; then
+  err "usage: cdr-project <up|down|list|show> [args...]"
+fi
+
+SUB="$1"
+shift
+
+case "$SUB" in
+  up) cmd_up "$@" ;;
+  down) cmd_down "$@" ;;
+  list) cmd_list "$@" ;;
+  show) cmd_show "$@" ;;
+  -h|--help|help)
+    sed -n '/^# Usage:/,/^# What this does/p' "$0" | sed 's/^# \?//' >&2
+    exit 0
+    ;;
+  *) err "unknown subcommand: $SUB (expected: up | down | list | show)" ;;
+esac
