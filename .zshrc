@@ -150,12 +150,19 @@ fi
 
 
 # Claude Code
-alias cc='~/.local/bin/claude'
-alias cc-p='CLAUDE_CONFIG_DIR=~/.claude ~/.local/bin/claude'
-alias cc-a='CLAUDE_CONFIG_DIR=~/.claude-work-a ~/.local/bin/claude'
-alias cc-b='CLAUDE_CONFIG_DIR=~/.claude-work-b ~/.local/bin/claude'
-alias cc-c='CLAUDE_CONFIG_DIR=~/.claude-work-c ~/.local/bin/claude'
-alias cc-d='CLAUDE_CONFIG_DIR=~/.claude-work-d ~/.local/bin/claude'
+# Each cc* alias is the runner-specific launcher per dotfiles ADR 0012
+# Path D: prepend RUNOPS_ACTOR_TYPE=ai-agent so any 5-tool CLI invoked
+# from inside Claude Code sees the correct caller classification
+# (gateway ADR 0035 architectural pin). The env is set in alias scope
+# only (= context-specific override), so a parent shell value is never
+# inherited and the runbook-only "local human-operator direct" path
+# stays uncontaminated.
+alias cc='RUNOPS_ACTOR_TYPE=ai-agent ~/.local/bin/claude'
+alias cc-p='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude ~/.local/bin/claude'
+alias cc-a='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-a ~/.local/bin/claude'
+alias cc-b='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-b ~/.local/bin/claude'
+alias cc-c='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-c ~/.local/bin/claude'
+alias cc-d='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-d ~/.local/bin/claude'
 
 # eza for ls replacement
 alias ls='eza --icons --git'
