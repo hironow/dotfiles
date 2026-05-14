@@ -205,7 +205,7 @@ test:
     	echo '   Hint: npm i -g @devcontainers/cli'; \
     fi
     @echo '🧪 Running pytest (verbose with skip reasons)...'
-    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py
+    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_actor_type_injection.py
     @echo '✅ Tests finished.'
 
 # Test (install): run install.sh verification in Docker
