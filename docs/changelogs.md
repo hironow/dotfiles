@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-05-15
+最終更新: 2026-05-19
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -58,7 +58,19 @@
 
 ### A2UI (Agent-to-User Interface)
 
-**現行バージョン**: v0.9
+**現行バージョン**: v0.9 (v0.10 spec 作業中)
+
+**チェックアウト状態**: `v0.8-195-g70205321` (v0.9 タグ後の HEAD、v0.10 仕様作業を含む)
+
+#### 2026-05 後半 新着 (v0.10 spec ドリフト + v0.9 streaming/MCP 整備)
+
+- **v0.9 streaming parser suite**: v0.9 向けストリーミングパーサ一式を追加 (#1394)
+- **v0.9 統合テスト整理**: 統合テストを `tests/v0_9` ディレクトリへ移動 (#1435)
+- **v0.10 spec: Video `posterUrl` 削除**: v0.9 Angular から `posterUrl` 削除し v0.10 spec に追加 (#1373)
+- **v0.10 spec: `placeholder` 同等処理**: 同等処理を v0.10 spec へ統合 (#1372)
+- **v0.10 spec: Icon `color` prop 削除**: Icon コンポーネントから `color` prop を削除 (#1371, fix #1303)
+- **A2UI×MCP サンプル復旧**: MCP 経由 A2UI サンプル動作復旧 + ガイド更新と図示 (#1076, #1439)
+- **Icon snake_case 対応**: snake_case でも解釈できるよう Icon 内部修正 (#1433)
 
 #### v0.9 後の変更点（web_core 0.9.2+ 含む、 2026-05 アクティビティ）
 
@@ -160,11 +172,25 @@
 
 ### ADP (Agent Data Protocol)
 
-**現行バージョン**: 継続的デプロイ（バージョンタグなし）
+**現行バージョン**: v1.1.0 (2026-05-17)
+
+**チェックアウト状態**: `v1.1.0-1-g40b0489` (v1.1.0 + 1 commit)
 
 **管理**: CMU NeuLab
 
-#### 最近の変更点
+#### v1.0.0 / v1.1.0 リリース (2026-05)
+
+- **v1.1.0**: trajectory フィールドに「利用可能 API」を昇格させる正式化 (#212)
+- **v1.0.0**: standardized schema versioning を導入 — スキーマバージョンを公式化、暗黙バージョンから明示バージョン必須化 (#211)
+- **OpenHands browser tools optional**: 非Webデータセット向けに OpenHands ブラウザツールを任意化 (#213)
+
+#### 破壊的変更
+
+| 変更 | 影響 |
+|------|------|
+| v1.0.0 へのジャンプ (schema versioning 明示必須) | 従来の暗黙 schema は明示バージョン宣言が必要 |
+
+#### 最近の変更点 (1.x 前)
 
 - **Catalog データセットガイドライン**: Catalog dataset ガイドライン追加と PR レビューワークフロー導入 (#186)
 - **per-step reward フィールド追加**: Action / Observation スキーマに optional `reward: float | None` フィールド追加。RL トレーニングデータでの per-step reward 信号運搬対応。6 つの concrete action/observation type 全てに継承。デフォルト None で既存データセットへの影響なし (#183)
@@ -293,7 +319,29 @@
 
 **現行バージョン**: 2025-11-25
 
+**チェックアウト状態**: `2025-11-25-1384-g219f8242` (2025-11-25 タグから 1384 commits、 next-revision draft 作業中)
+
 **注目**: 2025-11-25 タグで `2025-11-25-RC` から正式リリース昇格。HEAD はそれより先に進んでおり、**SEP-2567 (Sessionless MCP via Explicit State Handles) と SEP-2575 (Make MCP Stateless) が Final / Accepted へ昇格**して draft に組み込み中。 ステートレス志向への大きな仕様シフトが進行中。
+
+#### 2025-06-18 → 2025-11-25 で導入された主要 SEP (新着補完)
+
+- **SEP-973 Icons metadata**: tools/resources/prompts にアイコンを公開する metadata
+- **SEP-835 Incremental scope consent**: `WWW-Authenticate` 経由の段階的スコープ同意
+- **SEP-1036 URL mode elicitation**: `ElicitResult` / `EnumSchema` 標準化、URL mode elicitation
+- **SEP-1330 titled / multi-select enum elicitation**: enum の titled / multi-select 化
+- **SEP-1577 Sampling に tool calling**: `tools` / `toolChoice` を sampling に追加
+- **SEP-1686 Tasks (実験的)**: 永続的リクエストの polling / deferred result 取得
+- **SEP-991 OAuth Client ID Metadata Documents**: 推奨 client 登録メカニズムとして追加 (PR #1296)
+- **SEP-1613 JSON Schema 2020-12 をデフォルト方言に**: schema dialect を明示固定
+- **OpenID Connect Discovery 1.0 対応**: 認可サーバ発見を OIDC Discovery 準拠に拡張 (PR #797)
+
+#### 2025-11-25 リリースの破壊的変更
+
+| 変更 | 影響 |
+|------|------|
+| HTTP 403 for invalid Origin (PR #1439) | Streamable HTTP transport で不正 Origin に 403 必須化 — クライアント挙動に影響 |
+| OAuth Protected Resource Metadata の RFC 9728 整合 (SEP-985) | `WWW-Authenticate` ヘッダ optional、`.well-known` への fallback — 既存実装の挙動見直し |
+| 入力検証エラーは Tool Execution Error として返す (SEP-1303) | Protocol Error ではなく Tool Execution Error 方針に変更 |
 
 #### 2025-11-25 後の変更点（次回リリース向けドラフト）
 
@@ -353,9 +401,11 @@
 
 ### MCP-Apps
 
-**現行バージョン**: v1.7.1
+**現行バージョン**: v1.7.2 (2026-05-15)
 
-#### v1.7.1 後の変更点
+**チェックアウト状態**: `v1.7.2` (タグぴったり、追加コミットなし)
+
+#### v1.7.2 の主要な変更点
 
 - **example transitives パッチ群 bump**: example 配下の transitive 依存を最新パッチへバンプ (#658)
 - **pdf-lib → @cantoo/pdf-lib フォーク切替**: pdf-server で maintained な `@cantoo/pdf-lib` fork へスイッチ（メンテナンス放棄対応） (#651)
@@ -517,11 +567,27 @@
 
 ### UTCP (Universal Tool Calling Protocol)
 
-**現行バージョン**: v1.0（仕様として、 直近 spec commit 2026-05-05）
+**現行バージョン**: v1.1（仕様、 タグなし latest 追従、 直近 spec commit 2026-05-18）
+
+**チェックアウト状態**: `ce196295` (2026-05-18 contributors update、 ブランチ HEAD)
 
 **管理**: Universal Tool Calling Protocol コミュニティ（独立 OSS）
 
-**注目**: MCP の **構造的代替案 / 補完案**。 MCP が「proxy 経由でツール呼び出し」する一方、 UTCP は **agent が discovery 後に native endpoint (HTTP/gRPC/WebSocket/CLI) を直接叩く**設計で、 wrapper tax + latency を排除し、 既存の auth/billing/security をそのまま活かせる。 v1.0 で plugin-based 構成へ全面再設計。 直近の commit が 2026-05-05、 contributors data も daily 更新で活発。
+**注目**: MCP の **構造的代替案 / 補完案**。 MCP が「proxy 経由でツール呼び出し」する一方、 UTCP は **agent が discovery 後に native endpoint (HTTP/gRPC/WebSocket/CLI) を直接叩く**設計で、 wrapper tax + latency を排除し、 既存の auth/billing/security をそのまま活かせる。 v1.0 で plugin-based 構成へ全面再設計、 v1.1 で multi-protocol manual の secure-by-default 化。
+
+#### v1.0 → v1.1 の変更点
+
+- **`allowed_communication_protocols` 新フィールド**: call template (manual configuration) に optional フィールド追加
+- **Secure by default**: 未指定時、 manual は自身のプロトコル種別のツールしか登録/呼び出し不可 (HTTP manual は HTTP tools のみ、 CLI manual は CLI tools のみ)
+- **マルチプロトコル明示化**: 複数プロトコル混在 manual は `allowed_communication_protocols` を明示設定する必要がある
+- **dual license 明確化**: ライセンス記載を明確化 (commit `29bbc4e`)
+- **API docs 同期**: `python-utcp@4ed0a48` から API docs を再同期 (commit `6bd28ae`)
+
+#### v1.1 の破壊的変更
+
+| 変更 | 影響 |
+|------|------|
+| マルチプロトコル manual の暗黙許可廃止 | v1.0 では HTTP manual に CLI tool を混在登録できたが、 v1.1 では `allowed_communication_protocols` に明示列挙しないとフィルタアウト。 動作する設定が静かに無効化される可能性 |
 
 #### v1.0 の主要な特徴
 
@@ -715,10 +781,13 @@
 
 ### UCP (Universal Commerce Protocol)
 
-**現行バージョン**: v2026-04-08
+**現行バージョン**: v2026-04-08 (2026-04-13)
+
+**チェックアウト状態**: `v2026-01-23-120-g72f5da6` (`git submodule status` は祖先タグ v2026-01-23 を表示するが、 HEAD は v2026-04-08 を超過)
 
 #### v2026-04-08 後の変更点
 
+- **schema refactor**: schema references を common types に整理 (#436)
 - **profile schemas 検証修正（破壊的）**: profile schemas をバリデーションと endpoint contract に合わせて修復、 後方互換を破るスキーマ訂正 (#429)
 - **urllib3 v2.7.0 セキュリティバンプ**: urllib3 2.6.3 → 2.7.0 (#434)
 - **build_local.sh のサーバー起動削除**: build_local.sh から server start を除去 (#430)
@@ -913,10 +982,20 @@
 
 **現行バージョン**: v1.33.0 (stable, 2026-05-08) / v2.0.0b1 (beta)
 
+**チェックアウト状態**: `v1.15.0-1416-g48f1b302` (`git describe` は `v1.32.0-73-g48f1b302`、 HEAD 2026-05-18、 v1.33.0 から 47 commits 先)
+
 **注目**: 安定版が **v1.33.0** にバージョンアップ（2026-05-08）。 v1.32.0 → v1.33.0 はマイナーリリースだが BufferableSessionService、 LlmResponse の `get_function_calls()` / `get_function_responses()` ヘルパー、 ApigeeLlm credential 注入など実用的な API 拡張を含む。 v2.0.0 ベータ版 `v2.0.0b1` (2026-04-21) はそのまま並行で進行中。 HEAD は v1.33.0 後の hotfix 群を含む。
 
 #### v1.33.0 後の変更点（次回リリース向け）
 
+- **Gemini Live API 評価対応**: ADK evaluate に Live API サポート、 `Runner.run_live()` を evaluation_generator で利用、 local / base eval service の live mode 対応
+- **GCPSkillRegistry 実装**: ADK に `GCPSkillRegistry` を新規実装
+- **mTLS Telemetry exporter**: Google Cloud Telemetry exporter に mTLS サポート追加
+- **A2aAgentExecutor factory in to_a2a()**: `to_a2a()` に factory を渡せるよう拡張
+- **SkillToolset 安定化**: SkillToolset から experimental タグ削除
+- **lazy-load サービスレジストリ**: `apps.app` を分割し service registry を lazy-load、 cold start を約 8% 削減 (perf)
+- **AgentTool 結果保持**: `code_execution_result` / `executable_code` を AgentTool 内で保持
+- **A2A 変換時 role 尊重**: events を A2A 形式に変換する際に user / agent role を区別
 - **OAuth フロー整理**: 不要な OAuth フローを auth から削除 (c35a5796)
 - **CLI deprecated フラグ＆ service URI 削除**: 廃止された CLI flag と version-based service URI handling を削除 (e04a4683)
 - **SkillToolset dynamically loaded tools 修正**: 同一 invocation 内で SkillToolset に dynamically load された tool が見つからない問題を修正 (f9097cbf)
@@ -1105,10 +1184,19 @@
 
 ### ADK Go
 
-**現行バージョン**: v1.2.0
+**現行バージョン**: v1.2.0 (2026-04-23)
+
+**チェックアウト状態**: `v1.2.0-220-g2b79d38` (v1.2.0 から 220 commits、 HEAD 2026-05-18)
 
 #### v1.2.0 後の変更点
 
+- **Live session resumption**: bidirectional Live ストリーミングにセッション resumption を追加 (#837)
+- **Live bidirectional streaming core**: 双方向ストリーミングのコア機能を新規追加 (#833)、 sequential agent live run (#835)、 live example (#834) を同梱
+- **nil deref ガード (tool.Tool 未実装)**: ツールが `tool.Tool` interface を実装していない場合の nil dereference を防止 (#855)
+- **non-streaming agent の StateDelta 伝搬修正**: non-streaming agent で StateDelta を伝搬するよう修正 (#854)
+- **runtime request Decode error 修正**: runtime で request の Decode エラーを無視せずハンドリング (#851)
+- **Gemini モデル更新**: examples のモデルを `gemini-3.1-flash-lite` に変更 (#839)
+- **Dependabot 設定追加**: genai 系依存の自動アップデート用 Dependabot 設定 (#843)
 - **a2a-go nil part fix bump**: a2a-go の nil part fix を取り込むためバージョンバンプ (#827)
 - **parallel HITL function test**: parallel HITL function test を追加 (#817)
 - **ADK Go LLM Request タグ付け対応**: LLM Request タグ付けのため ADK Go バージョン更新 (#816)
@@ -1394,10 +1482,15 @@
 
 ### GKE MCP
 
-**現行バージョン**: v0.12.0
+**現行バージョン**: v0.12.0 (2026-05-05)
+
+**チェックアウト状態**: `v0.12.0-40-g04556d0` (v0.12.0 から 40 commits、 HEAD 2026-05-14)
 
 #### v0.12.0 後の変更点
 
+- **`get_k8s_version` ツール**: K8s バージョン取得ツール追加 (#353)
+- **Cluster operations support**: cluster operations サポートと unit test 改善 (#328)
+- **DK 実 HTTP 接続実装**: `SearchDocuments` を実 HTTP 接続化、 mock 実装から本物のAPI接続へ昇格 (#344)
 - **OWNERS / automatic reviewers 更新**: owners と自動レビュアー設定を更新 (#355)
 - **eval skips 削除**: evaluation skip ロジックを削除 (#354)
 - **`list_k8s_events` ツール実装**: k8s イベント一覧ツールを新規実装 (#329)
@@ -1466,7 +1559,13 @@
 
 ### Google Analytics MCP
 
-**現行バージョン**: 0.5.0
+**現行バージョン**: 0.5.0 (2026-05-14)
+
+**チェックアウト状態**: `0.5.0-1-gf1a2f03` (0.5.0 から 1 commit、 HEAD 2026-05-15)
+
+#### 0.5.0 後の変更点
+
+- **subprocess stdio handle inheritance 防止**: サブプロセスでの stdio handle 継承を抑止し、 v0.4.0 #151 修正のフォローアップ deadlock を解決 (#154)
 
 #### 0.5.0 の主要な変更点
 
@@ -1568,10 +1667,18 @@
 
 **現行バージョン**: v1.2.0 (2026-05-07)
 
+**チェックアウト状態**: `v1.2.0-29-g9f1f9b321dc` (v1.2.0 から 29 commits、 HEAD 2026-05-18)
+
 **注目**: v1.0.0 で安定版リリースに到達後、 v1.1.0 → **v1.2.0** へ短サイクルで進行。 Cloud Storage source 一式 (list/read/write/copy/move/delete) と HTTPS/TLS listener、 BigQuery `maximumBytesBilled` 設定、 Dataplex Data Quality Scans 検索ツールが正式取り込み。 [UPGRADING.md](https://github.com/googleapis/genai-toolbox/blob/main/UPGRADING.md) でのマイグレーションガイド参照。
 
 #### 未リリースの変更点（v1.2.0 以降）
 
+- **SQLCommenter + クライアントメタデータ送出**: SQL に client metadata コメントを付与する SQLCommenter 機構を追加 (#3064)
+- **MCP manifest バージョニング**: MCP manifest の versionized refactor (#3226)
+- **MCP server conformance テストパイプライン**: conformance テストを CI に統合、 weekly 実行 (#3106, #3244)
+- **Looker 401 透過**: Looker が 401 を返した場合 MCP クライアントに 401 をそのまま返却 (#3233)
+- **OIDC identity scopes 必須化ドキュメント**: user identity 用に mandatory OIDC scopes をドキュメントで明示 (#3236)
+- **vector search 対応ドキュメント**: DEVELOPER.md に vector search 対応の手順を追加 (#3137)
 - **MCP auth tool-level scopes バリデーション**: tool レベルの scope を MCP auth でバリデーション (#3049)
 - **HTTP tool path traversal / base path scope escape 防止**: HTTP tool での path traversal と base path scope escape を防止 (セキュリティ) (#3218)
 - **toolset/promptset boundary 強制**: `tools/call` と `prompts/get` で toolset/promptset の境界を強制 (#3036)
