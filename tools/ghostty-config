@@ -3,8 +3,6 @@ theme = catppuccin-mocha.conf
 
 # Font
 font-family = Monaspace Neon
-# font-family = Ricty Diminished
-# font-family = JetBrains Mono
 font-family = BIZ UDGothic
 font-feature = -dlig
 font-size = 15
@@ -30,3 +28,5 @@ cursor-opacity = 0.8
 mouse-hide-while-typing = true
 resize-overlay = never
 window-inherit-working-directory = true
+tab-inherit-working-directory = true
+split-inherit-working-directory = true
