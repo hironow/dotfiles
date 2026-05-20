@@ -10,13 +10,10 @@
 [alias]
 	# === 基本操作 ===
 	aa = !git add . && git add -u && git status
-	ac = !git add -A && aicommit2 -a
 	ss = status --short --branch
 	wip = commit -m 'wip'
-	graph = log --graph -10 --branches --remotes --tags --format=format:'%Cgreen%h %Creset• %<(75,trunc)%s (%cN, %cr) %Cred%d' --date-order
 	ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat
 	precommit = diff --cached --diff-algorithm=minimal -w
-	unmerged = diff --name-only --diff-filter=U
 	remotes = remote -v
 	firstcommit = commit --allow-empty -m 'initial commit'
 
@@ -178,10 +175,8 @@
 		echo \"\"; \
 		echo \"📝 Basic:\"; \
 		echo \"  aa        - Add all files and show status\"; \
-		echo \"  ac        - Add all and AI commit\"; \
 		echo \"  ss        - Short status with branch\"; \
 		echo \"  wip       - Quick WIP commit\"; \
-		echo \"  graph     - Visual branch history\"; \
 		echo \"  ll        - Log with file changes\"; \
 		echo \"\"; \
 		echo \"🌳 Worktree:\"; \
