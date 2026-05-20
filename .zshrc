@@ -253,3 +253,6 @@ alias dbtf="$HOME/.local/bin/dbt"
 
 # CF CLI completions
 [[ -f "$HOME/.config/cf/completions/_cf.zsh" ]] && source "$HOME/.config/cf/completions/_cf.zsh"
+
+# Antigravity CLI
+export PATH="$HOME/.local/bin:$PATH"
