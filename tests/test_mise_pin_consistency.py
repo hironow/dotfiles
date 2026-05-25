@@ -57,6 +57,30 @@ FEATURE_INSTALL_SH = (
 )
 
 
+def _parse_tool_line(line: str) -> tuple[str, str] | None:
+    """Parse one mise `[tools]` line into (key, version), or None for
+    blanks/comments/unparseable lines.
+
+    Handles bare keys (`just = "1.40.0"`), quoted keys
+    (`"npm:@openai/codex" = "0.128.0"`), and inline-table values that
+    carry mise tool options alongside the version
+    (`"npm:@anthropic-ai/claude-code" = { version = "2.1.126", npm_args = "..." }`)."""
+    line = line.strip()
+    if not line or line.startswith("#"):
+        return None
+    head = re.match(r'"?([^"=\s]+)"?\s*=\s*(.+)', line)
+    if head is None:
+        return None
+    key, rhs = head.group(1), head.group(2).strip()
+    if rhs.startswith("{"):
+        version = re.search(r'version\s*=\s*"([^"]+)"', rhs)
+    else:
+        version = re.match(r'"([^"]+)"', rhs)
+    if version is None:
+        return None
+    return key, version.group(1)
+
+
 @pytest.fixture(scope="module")
 def mise_pins() -> dict[str, str]:
     """Parse the [tools] section of mise.toml into a dict.
@@ -71,12 +95,9 @@ def mise_pins() -> dict[str, str]:
     assert match is not None, "could not find [tools] section in mise.toml"
     pins: dict[str, str] = {}
     for line in match.group(1).splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        m = re.match(r'"?([^"=\s]+)"?\s*=\s*"([^"]+)"', line)
-        if m:
-            pins[m.group(1)] = m.group(2)
+        parsed = _parse_tool_line(line)
+        if parsed:
+            pins[parsed[0]] = parsed[1]
     return pins
 
 
@@ -89,6 +110,39 @@ def feature_constants() -> dict[str, str]:
         m.group(1): m.group(2)
         for m in re.finditer(r'^([A-Z_]+)_VERSION="([^"]+)"', text, re.MULTILINE)
     }
+
+
+# ---------- tool-line parsing ------------------------------------
+
+
+def test_parse_tool_line_supports_inline_table_pins() -> None:
+    """mise lets a pin carry tool options as an inline table, e.g.
+    `npm_args` to undo the npm backend's default --ignore-scripts.
+    The consistency check must still recover (key, version) from that
+    form, not just the bare `key = "x.y.z"` string form."""
+    # given a pin that carries npm_args alongside the version
+    line = (
+        '"npm:@anthropic-ai/claude-code" = '
+        '{ version = "2.1.126", npm_args = "--ignore-scripts=false" }'
+    )
+
+    # when
+    parsed = _parse_tool_line(line)
+
+    # then key and version are extracted, extra options ignored
+    assert parsed == ("npm:@anthropic-ai/claude-code", "2.1.126")
+
+
+def test_parse_tool_line_supports_bare_string_pins() -> None:
+    """The plain `key = "x.y.z"` form (quoted or bare key) keeps
+    working unchanged."""
+    # given
+    quoted = '"npm:@openai/codex" = "0.128.0"'
+    bare = 'just = "1.40.0"'
+
+    # when / then
+    assert _parse_tool_line(quoted) == ("npm:@openai/codex", "0.128.0")
+    assert _parse_tool_line(bare) == ("just", "1.40.0")
 
 
 # ---------- mise.toml is fully pinned (no "latest") ----------------
@@ -177,7 +231,7 @@ def test_required_tools_are_present(mise_pins: dict[str, str]) -> None:
         "npm:@google/gemini-cli",
         "npm:@anthropic-ai/claude-code",
         "npm:@github/copilot",
-        "npm:@mariozechner/pi-coding-agent",
+        "npm:@earendil-works/pi-coding-agent",
     }
     missing = required - set(mise_pins)
     assert not missing, (
@@ -216,12 +270,9 @@ def test_system_mise_config_matches_workspace_mise_toml(
     )
     system_pins: dict[str, str] = {}
     for line in match.group("body").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        m = re.match(r'"?([^"=\s]+)"?\s*=\s*"([^"]+)"', line)
-        if m:
-            system_pins[m.group(1)] = m.group(2)
+        parsed = _parse_tool_line(line)
+        if parsed:
+            system_pins[parsed[0]] = parsed[1]
 
     diffs = {
         k: (system_pins.get(k), mise_pins.get(k))

@@ -30,7 +30,14 @@ node = "24.15.0"
 # `copilot auth`, `pi auth`). Source: 2026-05 latest stable.
 "npm:@openai/codex" = "0.128.0"
 "npm:@google/gemini-cli" = "0.40.1"
-"npm:@anthropic-ai/claude-code" = "2.1.126"
+# claude-code ships its ~248MB native binary as per-platform npm
+# optionalDependencies that a postinstall (install.cjs) hardlinks over a
+# stub. mise's npm backend installs with --ignore-scripts=true by default,
+# so the optional dep downloads but the postinstall never runs, leaving the
+# stub — `claude` then errors at runtime with "native binary not installed".
+# npm_args re-enables scripts for this one tool (npm honors the last
+# --ignore-scripts flag, so this overrides mise's default).
+"npm:@anthropic-ai/claude-code" = { version = "2.1.126", npm_args = "--ignore-scripts=false" }
 "npm:@github/copilot" = "1.0.40"
 "npm:@earendil-works/pi-coding-agent" = "0.74.0"
 
