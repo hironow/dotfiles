@@ -89,7 +89,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends mise
 
 # ---- uv (Python package manager) ------------------------------------
-UV_VERSION="0.11.8"
+UV_VERSION="0.11.14"
 case "$ARCH" in
   x86_64)  UV_TARGET="x86_64-unknown-linux-gnu" ;;
   aarch64) UV_TARGET="aarch64-unknown-linux-gnu" ;;
@@ -127,7 +127,7 @@ install -m 0755 /tmp/uvx /usr/local/bin/uvx
 rm -f "/tmp/${UV_FILE}" "/tmp/${UV_FILE}.sha256" /tmp/uv /tmp/uvx
 
 # ---- just (command runner) ------------------------------------------
-JUST_VERSION="1.40.0"
+JUST_VERSION="1.51.0"
 case "$ARCH" in
   x86_64)  JUST_TARGET="x86_64-unknown-linux-musl" ;;
   aarch64) JUST_TARGET="aarch64-unknown-linux-musl" ;;
@@ -143,14 +143,14 @@ tar -xz -f "/tmp/${JUST_FILE}" -C /usr/local/bin just
 rm -f "/tmp/${JUST_FILE}" /tmp/just.SHA256SUMS
 
 # ---- sheldon (zsh plugin manager) -----------------------------------
-SHELDON_VERSION="0.8.4"
+SHELDON_VERSION="0.8.5"
 case "$ARCH" in
   x86_64)
     SHELDON_TARGET="x86_64-unknown-linux-musl"
-    SHELDON_SHA256="604ebaeccb485da58f5c3c3353d18f2f7ccc8fd9de0d65ee0b424f5b1a0324ce" ;;
+    SHELDON_SHA256="80aa0be617072c278d67fd6c5fbce4903d3801d78b6abf8f058f0648d2242c78" ;;
   aarch64)
     SHELDON_TARGET="aarch64-unknown-linux-musl"
-    SHELDON_SHA256="7fe1007c52ebb2777edfd66f4a4119b1e2b175269150a334467cf8708621fcf6" ;;
+    SHELDON_SHA256="1f6b792e49e259f7c313e9921c8d4ad638d827abc2c023efe0588a55678f9a3e" ;;
   *) echo "[dotfiles-tools] unsupported arch: $ARCH" >&2; exit 1 ;;
 esac
 SHELDON_URL="https://github.com/rossmacarthur/sheldon/releases/download/${SHELDON_VERSION}/sheldon-${SHELDON_VERSION}-${SHELDON_TARGET}.tar.gz"
@@ -241,19 +241,19 @@ install -d -m 0755 /etc/mise
 export MISE_DATA_DIR=/opt/mise
 cat > /etc/mise/config.toml <<'EOF'
 [tools]
-just = "1.40.0"
+just = "1.51.0"
 markdownlint-cli2 = "0.22.1"
-prek = "0.3.11"
-uv = "0.11.8"
-vp = "0.1.20"
+prek = "0.4.0"
+uv = "0.11.14"
+vp = "0.1.21"
 node = "24.15.0"
-"npm:@openai/codex" = "0.128.0"
-"npm:@google/gemini-cli" = "0.40.1"
+"npm:@openai/codex" = "0.131.0"
+"npm:@google/gemini-cli" = "0.42.0"
 # npm_args re-enables postinstall (mise defaults to --ignore-scripts=true)
 # so claude-code's native binary is linked, not left as a stub. See mise.toml.
-"npm:@anthropic-ai/claude-code" = { version = "2.1.126", npm_args = "--ignore-scripts=false" }
-"npm:@github/copilot" = "1.0.40"
-"npm:@earendil-works/pi-coding-agent" = "0.74.0"
+"npm:@anthropic-ai/claude-code" = { version = "2.1.143", npm_args = "--ignore-scripts=false" }
+"npm:@github/copilot" = "1.0.48"
+"npm:@earendil-works/pi-coding-agent" = "0.75.3"
 EOF
 echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (
