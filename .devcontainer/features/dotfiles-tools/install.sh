@@ -249,7 +249,9 @@ vp = "0.1.20"
 node = "24.15.0"
 "npm:@openai/codex" = "0.128.0"
 "npm:@google/gemini-cli" = "0.40.1"
-"npm:@anthropic-ai/claude-code" = "2.1.126"
+# npm_args re-enables postinstall (mise defaults to --ignore-scripts=true)
+# so claude-code's native binary is linked, not left as a stub. See mise.toml.
+"npm:@anthropic-ai/claude-code" = { version = "2.1.126", npm_args = "--ignore-scripts=false" }
 "npm:@github/copilot" = "1.0.40"
 "npm:@earendil-works/pi-coding-agent" = "0.74.0"
 EOF
