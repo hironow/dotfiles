@@ -5,8 +5,8 @@
     "name": "hironow"
   },
   "metadata": {
-    "description": "hironow's personal Claude Code plugins for autonomous research, design exploration, and expedition workflows",
-    "version": "1.1.0",
+    "description": "hironow's personal Claude Code plugins for autonomous research, design exploration, expedition workflows, and Socratic plan grilling",
+    "version": "1.2.0",
     "pluginRoot": "./plugins"
   },
   "plugins": [
@@ -41,6 +41,14 @@
       "version": "0.1.0",
       "category": "review",
       "tags": ["review", "semgrep", "guardrails", "autonomous", "code-quality", "architecture"]
+    },
+    {
+      "name": "grilling",
+      "source": "./plugins/grilling",
+      "description": "Plan-grilling and session-handover skills for project docs. grit-grill interviews you about a plan along the GRIT axes (Guts/Resilience/Initiative/Tenacity), ends with an ASCII radar scorecard, and crystallizes intent into docs/intent.md; handover compacts the session state into docs/handover.md.",
+      "version": "0.2.0",
+      "category": "planning",
+      "tags": ["grilling", "interview", "planning", "grit", "socratic", "handover", "intent", "session"]
     }
   ]
 }

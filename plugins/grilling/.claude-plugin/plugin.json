@@ -1,0 +1,9 @@
+{
+  "name": "grilling",
+  "version": "0.2.0",
+  "description": "Plan-grilling and session-handover skills for project docs. grit-grill interviews you about a plan along the GRIT axes (Guts/Resilience/Initiative/Tenacity), ends with an ASCII radar scorecard, and crystallizes the intent into docs/intent.md; handover compacts the session state into docs/handover.md.",
+  "author": {
+    "name": "hironow"
+  },
+  "keywords": ["grilling", "interview", "planning", "grit", "socratic", "handover", "intent", "session"]
+}
