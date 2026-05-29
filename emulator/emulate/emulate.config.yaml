@@ -1,0 +1,56 @@
+# Seed configuration for the `emulate` API emulators (vercel-labs/emulate).
+#
+# Loaded by `just emu-api` via `npx emulate@0.6.0 --seed emulate.config.yaml`.
+# emulate provides stateful, in-memory drop-in replacements for SaaS APIs,
+# complementing emulator/ (datastores: postgres/bigtable/spanner/neo4j/qdrant/
+# elasticsearch/firebase) with API/auth/commerce emulators.
+#
+# Schema: top-level `tokens:` + per-service blocks holding seed entities.
+#
+# PORTS: emulate@0.6.0 takes a single base `--port` (we use 4100) and
+# auto-increments per enabled service in its internal registry order. It does
+# NOT support per-service port pinning. After first run, confirm the actual
+# port-to-service mapping (`just emu-api` log output) before enabling the
+# emulate aliases in config/portless-aliases.yaml.
+#
+# SERVICE AVAILABILITY (emulate@0.6.0):
+#   Confirmed in published CLI : github google slack apple microsoft (+ vercel aws)
+#   Requested by us, plugins shipped as deps but UNVERIFIED in published CLI:
+#     stripe clerk okta resend
+#   -> If `just emu-api` rejects an unknown service, drop it from the `services`
+#      arg (e.g. `just emu-api services=github,google,slack,apple,microsoft`).
+
+tokens:
+  local-dev:
+    login: dev
+    scopes: [repo, user, read, write]
+
+# --- confirmed services (seeded) ---
+github:
+  users:
+    - login: octocat
+      name: The Octocat
+      email: octocat@example.com
+  orgs:
+    - login: hironow-dev
+      name: Local Dev Org
+
+google:
+  users:
+    - email: dev@example.com
+      name: Local Developer
+
+slack:
+  users:
+    - username: dev
+      name: Local Developer
+
+# --- apple / microsoft: OAuth/OIDC; default seed is sufficient for local auth flows ---
+
+# --- requested commerce/auth/email services (UNVERIFIED on published CLI) ---
+# Seed blocks intentionally omitted until service availability + schema are
+# confirmed on first run. Add seed data here once verified, e.g.:
+# stripe:
+#   customers:
+#     - email: dev@example.com
+#       name: Local Developer

@@ -1147,6 +1147,17 @@ emu-lint:
     echo '🔍 markdownlint...'
     mise x -- markdownlint-cli2 "**/*.md"
 
+# Start emulate API emulators (vercel-labs/emulate) via npx on host (base 4100, Ctrl+C to stop)
+# Override `services=` to drop any rejected by the published CLI (see emulator/emulate/README.md)
+[group('Emulator')]
+emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v npx >/dev/null 2>&1 || { echo '❌ npx not found (need Node.js)'; exit 127; }
+    cd emulator/emulate
+    echo "▶ emulate@0.6.0 services={{services}} base=4100 (Ctrl+C to stop)"
+    npx -y emulate@0.6.0 --service '{{services}}' --port 4100 --seed emulate.config.yaml
+
 # ------------------------------
 # Telemetry (telemetry/) — OTel + Grafana + Loki + Prometheus + Tempo
 # ------------------------------
