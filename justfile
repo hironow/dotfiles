@@ -1170,3 +1170,52 @@ tel-check:
 [group('Telemetry')]
 tel-logs svc='':
     cd telemetry && docker compose logs -f {{svc}}
+
+# ------------------------------
+# portless (vercel-labs/portless) — stable .localhost URLs for local HTTP UIs
+# Static aliases live in config/portless-aliases.yaml; only HTTP(S) UIs (no TCP).
+# ------------------------------
+
+# Emit "name port" pairs parsed from config/portless-aliases.yaml
+[private]
+_portless-pairs:
+    @awk '/^aliases:/{b=1;next} b&&/^[^[:space:]#]/{b=0} b&&/^[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*[0-9]+/{l=$0;sub(/#.*/,"",l);gsub(/[[:space:]]/,"",l);n=index(l,":");print substr(l,1,n-1), substr(l,n+1)}' config/portless-aliases.yaml
+
+# Start portless proxy and register all aliases from config/portless-aliases.yaml
+[group('Portless')]
+portless-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v portless >/dev/null 2>&1 || { echo '❌ portless not found. Install: npm i -g portless (or: mise use -g npm:portless)'; exit 127; }
+    echo '▶ starting portless proxy...'
+    portless proxy start || true
+    echo '▶ registering aliases...'
+    just _portless-pairs | while read -r name port; do
+      [ -z "$name" ] && continue
+      echo "  $name -> 127.0.0.1:$port"
+      portless alias "$name" "$port" --force
+    done
+    echo '✅ aliases registered. Inspect: just portless-ls'
+
+# Remove all configured aliases and stop the portless proxy
+[group('Portless')]
+portless-down:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v portless >/dev/null 2>&1 || { echo 'portless not found; nothing to do'; exit 0; }
+    just _portless-pairs | while read -r name port; do
+      [ -z "$name" ] && continue
+      portless alias --remove "$name" 2>/dev/null || true
+    done
+    portless proxy stop || true
+    echo '✅ aliases removed, proxy stopped.'
+
+# Trust the portless local CA (one-time, enables HTTPS without warnings)
+[group('Portless')]
+portless-trust:
+    portless trust
+
+# List active portless routes
+[group('Portless')]
+portless-ls:
+    portless list
