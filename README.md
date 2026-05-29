@@ -141,6 +141,40 @@ cd tools/simple-server
 sudo mise x -- go run main.go
 ```
 
+## Local emulators, telemetry & portless
+
+`emulator/` (datastore + inspector emulators) and `telemetry/` (OTel + Grafana +
+Loki + Prometheus + Tempo) are first-party trees in this repo — vendored from the
+former `emulator-set` / `telemetry-set` submodules (see
+[ADR 0014](./docs/adr/0014-vendor-emulator-telemetry-from-submodules.md); those
+upstreams are now archived). `emulate` (vercel-labs/emulate) adds API/SaaS
+emulators via an npx wrapper ([ADR 0016](./docs/adr/0016-integrate-emulate-api-emulators-via-npx.md)).
+
+```shell
+# datastore / inspector emulators (emulator/compose.yaml)
+just emu-start            # clean -> prebuild -> up -> wait
+just emu-check            # status + endpoints
+just emu-stop             # stop (with firebase export)
+
+# telemetry stack (telemetry/compose.yaml)
+just tel-up               # start; just tel-down to stop
+
+# API/SaaS emulators (vercel-labs/emulate, base port 4100, foreground)
+just emu-api              # see emulator/emulate/README.md for service caveats
+```
+
+HTTP UIs are exposed as stable `https://<name>.localhost` URLs via
+[portless](https://github.com/vercel-labs/portless)
+([ADR 0015](./docs/adr/0015-adopt-portless-for-local-dev-urls.md)); aliases live
+in [`config/portless-aliases.yaml`](./config/portless-aliases.yaml). TCP wire
+protocols (postgres / bolt / gRPC) are not portless-routable and stay on ports.
+
+```shell
+just portless-trust       # one-time: trust the portless CA
+just portless-up          # start proxy + register aliases (firebase.localhost, grafana.localhost, ...)
+just portless-ls          # list active routes; just portless-down to tear down
+```
+
 ## Dev Container
 
 This repo ships a [Dev Container](https://containers.dev/) declared in
