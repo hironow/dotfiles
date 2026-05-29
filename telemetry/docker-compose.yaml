@@ -1,0 +1,95 @@
+services:
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.144.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "127.0.0.1:4317:4317"   # OTLP gRPC receiver
+      - "127.0.0.1:4318:4318"   # OTLP HTTP receiver
+      - "127.0.0.1:8888:8888"   # Prometheus metrics exposed by the collector
+      - "127.0.0.1:8889:8889"   # Prometheus exporter metrics
+      - "127.0.0.1:13133:13133" # health_check extension
+      - "127.0.0.1:55679:55679" # zpages extension
+    depends_on:
+      - tempo
+      - prometheus
+
+  # Tempo init service (handles volume permissions)
+  tempo-init:
+    image: grafana/tempo:2.9.0
+    user: root
+    entrypoint:
+      - "chown"
+      - "10001:10001"
+      - "/var/tempo"
+    volumes:
+      - tempo-data:/var/tempo
+
+  # Tempo for traces
+  tempo:
+    image: grafana/tempo:2.9.0
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./config/tempo/tempo-config.yaml:/etc/tempo.yaml
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"   # tempo
+      - "127.0.0.1:14268:14268" # jaeger ingest
+    depends_on:
+      tempo-init:
+        condition: service_completed_successfully
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v3.9.1
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'
+    volumes:
+      - ./config/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9091:9090"
+
+  # Loki for logs (uses /tmp/loki internally, no external volume needed)
+  loki:
+    image: grafana/loki:3.5.0
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./config/loki/loki-config.yaml:/etc/loki/loki-config.yaml
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:12.3.1
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3010:3000"
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  tempo-data:
+
+networks:
+  default:
+    name: shared-otel-net
+    external: true

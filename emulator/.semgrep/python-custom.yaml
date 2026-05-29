@@ -1,0 +1,354 @@
+rules:
+  # =================================================================
+  # Project-specific conventions
+  # =================================================================
+  - id: python-forbid-ambiguous-class-name
+    message: "Avoid ambiguous class suffixes like Manager/Service/Helper/Util/Impl/Base. Prefer specific, responsibility-based names (e.g., 'UserLifecycle' or 'UserSessionRepository' instead of 'UserManager' or 'DataService')."
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: |
+              class $CLASSNAME(...):
+                ...
+          - pattern: |
+              class $CLASSNAME:
+                ...
+      - metavariable-regex:
+          metavariable: $CLASSNAME
+          regex: ".*(Manager|Service|Handler|Helper|Util|Utils|Impl|Base|Controller|Wrapper|Facade)$"
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-forbid-multi-level-inheritance
+    message: "Do not use multi-level inheritance (keep to one level)."
+    languages: [python]
+    severity: ERROR
+    # Detects two-level inheritance within a single file (approximate);
+    # cross-file analysis is not included.
+    patterns:
+      - pattern: |
+          class $BASE($ANCESTOR, ...):
+            ...
+          ...
+          class $CHILD($BASE, ...):
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-forbid-protocol
+    message: "Using typing.Protocol is prohibited (premature abstraction). Consider interface abstraction later when necessary."
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: from typing import Protocol
+          - pattern: typing.Protocol
+          - pattern: |
+              class $C(Protocol, ...):
+          - pattern: |
+              class $C(typing.Protocol, ...):
+    paths:
+      include:
+        - '**/*.py'
+
+  # =================================================================
+  # Best practices & modernization
+  # =================================================================
+  - id: no-print
+    message: "Using print() is prohibited. Use a logging mechanism instead."
+    languages: [python]
+    severity: WARNING
+    pattern: print(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-avoid-dict-keys-iteration
+    message: "Iterate with 'for k in d' instead of 'for k in d.keys()'."
+    languages: [python]
+    severity: WARNING
+    pattern: |
+      for $K in $D.keys():
+        ...
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-avoid-dict-keys-membership
+    message: "Use 'if k in d' instead of 'if k in d.keys()'."
+    languages: [python]
+    severity: WARNING
+    pattern: |
+      if $K in $D.keys():
+        ...
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-avoid-range-len
+    message: "Avoid range(len(x)) in for-loops; use enumerate(x) instead."
+    languages: [python]
+    severity: WARNING
+    pattern: |
+      for $I in range(len($SEQ)):
+        ...
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-no-httpx
+    message: "Use 'aiohttp' as the HTTP client; 'httpx' is prohibited."
+    languages: [python]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: import httpx
+          - pattern: from httpx import $X
+          - pattern: httpx.$FUNC(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-no-import-star
+    message: "Avoid 'from module import *' for readability. Import only the required symbols explicitly."
+    languages: [python]
+    severity: ERROR
+    pattern: |
+      from $MODULE import *
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-no-requests
+    message: "'requests' performs synchronous I/O. Use 'aiohttp' per project policy."
+    languages: [python]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: import requests
+          - pattern: from requests import $X
+          - pattern: requests.$FUNC(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-open-without-with
+    message: "Use 'with open(...) as f:' to ensure files are closed."
+    languages: [python]
+    severity: WARNING
+    # To avoid false positives for open(...) used in a 'with open(...) as f:' header,
+    # detect only representative patterns where open(...) is used outside 'with'.
+    patterns:
+      - pattern-either:
+          # assigned to a variable
+          - pattern: |
+              $FH = open($FILE, ...)
+          # returned / yielded
+          - pattern: |
+              return open($FILE, ...)
+          - pattern: |
+              yield open($FILE, ...)
+          # passed directly to another call
+          - pattern: |
+              $CALL(open($FILE, ...))
+          # used directly in a loop
+          - pattern: |
+              for $X in open($FILE, ...):
+                ...
+          # method called immediately after
+          - pattern: |
+              open($FILE, ...).$METH(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: use-loguru-instead-of-logging
+    message: "Use 'loguru' instead of the standard 'logging' module."
+    languages: [python]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: import logging
+          - pattern: from logging import $X
+          - pattern: logging.$FUNC(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: use-pathlib-instead-of-os-path
+    message: "Prefer 'pathlib.Path' over 'os.path' (e.g., Path('dir') / 'file')."
+    languages: [python]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: os.path.$FUNC(...)
+          - pattern: os.path.$ATTR
+    paths:
+      include:
+        - '**/*.py'
+
+  # =================================================================
+  # Security & bug prevention
+  # =================================================================
+  - id: no-eval
+    message: "Using eval() is prohibited due to security risks. Consider alternatives."
+    languages: [python]
+    severity: ERROR
+    pattern: eval(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-async-no-time-sleep
+    message: "Do not use 'time.sleep()' in async functions (blocks the event loop). Use 'await asyncio.sleep()'."
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-inside: |
+          async def $FUNC(...):
+            ...
+      - pattern: |
+          time.sleep(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-asyncio-sleep-requires-await
+    message: "Always await asyncio.sleep()."
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-inside: |
+          async def $FUNC(...):
+            ...
+      # Same-line detection: flag asyncio.sleep(...) that is not preceded by 'await'
+      - pattern-regex: |
+          (?m)^[ \t]*(?!await\s+)asyncio\.sleep\s*\(
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-naive-datetime
+    message: "Avoid timezone-naive 'datetime.now()/utcnow()'. Use 'datetime.now(timezone.utc)'."
+    languages: [python]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: datetime.now()
+          - pattern: datetime.utcnow()
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-no-exec
+    message: "Using exec() is prohibited for security and maintainability. Consider alternatives."
+    languages: [python]
+    severity: ERROR
+    pattern: exec(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-no-mutable-default-args
+    message: "Do not use mutable default arguments (list/dict/set). Use None and initialize inside the function."
+    languages: [python]
+    severity: WARNING
+    # Use text-based regex to avoid false positives from partial parsing on Python 3.12+ generics
+    pattern-regex: |
+      ^\s*def\s+\w+\s*\([^\)]*?(\w+\s*=\s*(\[[^\)]*\]|\{[^\)]*\}|set\([^\)]*\)))[^\)]*\)\s*:\n
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-no-pdb
+    message: "Do not leave debugger calls like 'pdb.set_trace()' in code."
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: import pdb
+          - pattern: pdb.set_trace(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-no-pickle
+    message: "Avoid 'pickle' due to security/compatibility concerns. Prefer JSON or other formats."
+    languages: [python]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: import pickle
+          - pattern: from pickle import $X
+          - pattern: pickle.$F(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-no-typing-any
+    message: "Avoid excessive use of 'typing.Any'; prefer concrete types where possible."
+    languages: [python]
+    severity: WARNING
+    patterns:
+      - pattern-either:
+          - pattern: from typing import Any
+          - pattern: typing.Any
+          - pattern: |
+              def $F(..., $X: Any, ...) -> ...:
+                ...
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-raise-bare-exception
+    message: "Avoid 'raise Exception(...)'; use a more specific exception."
+    languages: [python]
+    severity: WARNING
+    pattern: |
+      raise Exception(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-subprocess-shell-true
+    message: "Avoid shell=True and os.system/os.popen. Pass commands as lists and avoid invoking a shell."
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: subprocess.check_output(..., shell=True, ...)
+          - pattern: os.system(...)
+          - pattern: os.popen(...)
+    paths:
+      include:
+        - '**/*.py'
+
+  - id: python-yaml-unsafe-load
+    message: "'yaml.load()' is unsafe. Use 'yaml.safe_load()' instead."
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern: yaml.load($X, ...)
+      - pattern-not: yaml.safe_load(...)
+      - pattern-not: yaml.load($X, Loader=yaml.SafeLoader)
+    paths:
+      include:
+        - '**/*.py'
+
+  # -----------------------------------------------------------------
+  # Unnecessary future import on Python 3.10+
+  # -----------------------------------------------------------------
+  - id: python-unnecessary-future-annotations
+    message: "'from __future__ import annotations' is unnecessary on Python 3.10+. Please remove it."
+    languages: [python]
+    severity: WARNING
+    pattern: |
+      from __future__ import annotations
+    paths:
+      include:
+        - '**/*.py'

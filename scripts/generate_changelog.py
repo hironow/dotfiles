@@ -49,8 +49,6 @@ DISPLAY_NAMES: dict[str, str] = {
 }
 
 SKIP_SUBMODULES = {
-    "emulator",
-    "telemetry",
     "skills",
     "knowledge-work-plugins",
     "tools/tmux/plugins/tmux-resurrect",

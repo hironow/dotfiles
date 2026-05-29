@@ -287,7 +287,7 @@ fmt:
     @echo '🔧 Python (ruff format)...'
     uvx ruff format .
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
-    git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2 --fix
+    git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
     @if [ -f package.json ]; then mise x -- vp fmt; else echo 'no package.json; skip'; fi
     @echo '✅ fmt done.'
@@ -302,9 +302,9 @@ lint:
     @echo '🔍 Python (ruff check --fix)...'
     uvx ruff check . --fix
     @echo '🔍 Shell (shellcheck)...'
-    git ls-files -z '*.sh' | xargs -0 -r mise x -- shellcheck
+    git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
-    git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2 --fix
+    git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔍 JS/TS (vp lint)...'
     @if [ -f package.json ]; then mise x -- vp lint; else echo 'no package.json; skip'; fi
     @echo '✅ lint done.'
@@ -317,9 +317,9 @@ check:
     @echo '🔎 Python (ruff check, no --fix)...'
     uvx ruff check .
     @echo '🔎 Shell (shellcheck)...'
-    git ls-files -z '*.sh' | xargs -0 -r mise x -- shellcheck
+    git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
-    git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2
+    git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2
     @echo '🔎 JS/TS (vp check)...'
     @if [ -f package.json ]; then mise x -- vp check; else echo 'no package.json; skip'; fi
     @echo '🔎 Meta-semgrep rules against rule files...'
@@ -426,11 +426,11 @@ add-pnpm-g:
 # Update sets
 # ------------------------------
 
-# Update: pull latest for my submodules (skills, emulator, telemetry)
+# Update: pull latest for my submodules (skills)
 [group('Update')]
 update-my-submodules:
     @echo "◆ Updating own submodules..."
-    git submodule update --remote skills emulator telemetry
+    git submodule update --remote skills
     @echo "✅ Submodules updated."
 
 # Update (all): update gcloud/brew/pnpm and tools (pnpm safe mode)

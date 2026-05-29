@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Docker volumes
+.docker/
+
+# OS files
+.DS_Store
+
+# IDE files
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Local environment files
+.env
+.env.local
+!.env.example
+!.env.local.example
+
+# Grafana data
+grafana-data/
+prometheus-data/
+tempo-data/
+loki-data/

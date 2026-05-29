@@ -1,0 +1,66 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'qdrant'
+          static_configs:
+            - targets: ['qdrant-emulator:6333']
+          metrics_path: /metrics
+          scrape_interval: 30s
+        - job_name: 'elasticsearch'
+          static_configs:
+            - targets: ['elasticsearch-exporter:9114']
+          metrics_path: /metrics
+          scrape_interval: 30s
+        - job_name: 'postgres'
+          static_configs:
+            - targets: ['postgres-exporter:9187']
+          metrics_path: /metrics
+          scrape_interval: 30s
+        # Neo4j: Community Edition doesn't support Prometheus metrics (Enterprise only)
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      label1: value1
+
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+processors:
+  batch:
+
+extensions:
+  health_check:
+  pprof:
+  zpages:
+
+service:
+  extensions: [health_check, pprof, zpages]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/loki]
