@@ -3,14 +3,18 @@ name: Test Emulators
 on:
   push:
     branches: [ main ]
-    paths-ignore:
-      - '**/*.md'
-      - '**/*.MD'
+    paths:
+      - 'emulator/**'
+      - '!emulator/**/*.md'
+      - '!emulator/**/*.MD'
+      - '.github/workflows/test-emulators.yaml'
   pull_request:
     branches: [ main ]
-    paths-ignore:
-      - '**/*.md'
-      - '**/*.MD'
+    paths:
+      - 'emulator/**'
+      - '!emulator/**/*.md'
+      - '!emulator/**/*.MD'
+      - '.github/workflows/test-emulators.yaml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-test-emulators
@@ -20,7 +24,10 @@ jobs:
   unit-integration-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    
+    defaults:
+      run:
+        working-directory: emulator
+
     steps:
     - uses: actions/checkout@v6
 
@@ -67,7 +74,7 @@ jobs:
 
     - name: Start Docker Compose services
       run: bash scripts/start-services.sh --no-build
- 
+
     - name: Wait for services to be ready
       run: bash scripts/wait-for-services.sh --default 90 --a2a 180 --postgres 150
 
@@ -117,7 +124,7 @@ jobs:
         if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
           cat "$tmp_summary" >> "$GITHUB_STEP_SUMMARY"
         fi
-    
+
     - name: Show Docker logs on failure
       if: failure()
       run: docker compose logs

@@ -1031,3 +1031,142 @@ exe-cdr-install:
     echo "    cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"
     echo "    VS Code -> Settings -> Coder: Header Command ->"
     echo "      ${HOME}/.local/bin/cdr-header"
+
+# ------------------------------
+# Emulator (emulator/) — vendored local emulator stack
+# scripts use bare `docker compose`; recipes cd into emulator/ for auto-discovery
+# ------------------------------
+
+# Start emulators (detached). nobuild=yes skips image build
+[group('Emulator')]
+emu-up nobuild='no':
+    cd emulator && if [ '{{nobuild}}' = 'yes' ]; then bash scripts/start-services.sh --no-build; else bash scripts/start-services.sh; fi
+
+# One-shot: clean volumes -> prebuild -> up -> wait
+[group('Emulator')]
+emu-start:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd emulator
+    echo '🧹 Cleaning old volumes...'
+    docker compose down -v || true
+    bash scripts/prebuild-images.sh a2a-inspector firebase-emulator mcp-inspector postgres
+    bash scripts/start-services.sh
+    bash scripts/wait-for-services.sh --default 30 --a2a 60 --mcp 60 --postgres 60
+
+# Stop emulators (with Firebase export)
+[group('Emulator')]
+emu-stop:
+    cd emulator && bash scripts/stop-services.sh
+
+# Show emulator status (containers + endpoints)
+[group('Emulator')]
+emu-check:
+    cd emulator && bash scripts/check-status.sh
+
+# Wait for emulator services to be ready
+[group('Emulator')]
+emu-wait default='30' a2a='60' mcp='60' postgres='60':
+    cd emulator && bash scripts/wait-for-services.sh --default {{default}} --a2a {{a2a}} --mcp {{mcp}} --postgres {{postgres}}
+
+# Pre-build selected emulator images
+[group('Emulator')]
+emu-prebuild images='a2a-inspector firebase-emulator mcp-inspector postgres':
+    cd emulator && bash scripts/prebuild-images.sh {{images}}
+
+# Clean up emulator volumes (deletes all data)
+[group('Emulator')]
+emu-clean:
+    cd emulator && docker compose down -v || true
+
+# Check emulator port usage before starting
+[group('Emulator')]
+emu-port-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    echo '🔍 Checking emulator port usage...'
+    for port in 9099 8080 8086 9010 9020 55432 7474 7687 8081 6274 5252 6333 6334 5433 9200 9300; do
+      result=$(witr --port "$port" --short 2>/dev/null || true)
+      [ -n "$result" ] && echo "⚠️  Port $port: $result"
+    done
+    echo '✅ Port check finished.'
+
+# Verify PostgreSQL 18 basics (version, uuidv7)
+[group('Emulator')]
+emu-pg-verify:
+    cd emulator && bash scripts/verify-postgres18.sh
+
+# Check gcloud auth (detailed + strict) for emulator usage
+[group('Emulator')]
+emu-gcloud-auth-check:
+    cd emulator && bash scripts/check-gcloud-auth.sh --details --strict --verbose
+
+# Update emulator deps (uv lock --upgrade + sync)
+[group('Emulator')]
+emu-update:
+    cd emulator && uv lock --upgrade && uv sync
+
+# Run emulator tests (uv/pytest, vendored self-contained)
+[group('Emulator')]
+emu-test path='tests/' opts='-v':
+    cd emulator && uv run pytest '{{path}}' '{{opts}}'
+
+# Run emulator fast tests (exclude e2e)
+[group('Emulator')]
+emu-test-fast:
+    cd emulator && bash scripts/run-tests-fast.sh
+
+# Run emulator e2e tests only
+[group('Emulator')]
+emu-test-e2e:
+    cd emulator && bash scripts/run-tests-e2e.sh
+
+# Format emulator (ruff + go fmt for CLIs)
+[group('Emulator')]
+emu-fmt:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd emulator
+    uv run ruff format .
+    if command -v go >/dev/null 2>&1; then
+      for d in pgadapter-cli neo4j-cli elasticsearch-cli qdrant-cli bigtable-cli postgres-cli; do
+        [ -f "$d/go.mod" ] && (cd "$d" && go fmt ./...)
+      done
+    fi
+
+# Lint emulator (ruff + semgrep root rules + markdownlint, emulator-scoped)
+[group('Emulator')]
+emu-lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd emulator
+    echo '🔍 ruff...'
+    uv run ruff check .
+    echo '🔍 semgrep (root .semgrep/rules/python, emulator .semgrepignore)...'
+    uvx semgrep --config ../.semgrep/rules/python/ --error .
+    echo '🔍 markdownlint...'
+    mise x -- markdownlint-cli2 "**/*.md"
+
+# ------------------------------
+# Telemetry (telemetry/) — OTel + Grafana + Loki + Prometheus + Tempo
+# ------------------------------
+
+# Start telemetry stack (detached)
+[group('Telemetry')]
+tel-up:
+    cd telemetry && docker compose up -d
+
+# Stop telemetry stack
+[group('Telemetry')]
+tel-down:
+    cd telemetry && docker compose down
+
+# Show telemetry stack status
+[group('Telemetry')]
+tel-check:
+    cd telemetry && docker compose ps
+
+# Tail telemetry logs (optional service name)
+[group('Telemetry')]
+tel-logs svc='':
+    cd telemetry && docker compose logs -f {{svc}}
