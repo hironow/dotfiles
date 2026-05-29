@@ -50,7 +50,7 @@ A complete Docker-based setup for visualizing OpenTelemetry data using Grafana, 
 │   ├── dashboards/        # Dashboard JSON files
 │   └── provisioning/      # Datasource configurations
 ├── examples/              # Example FastAPI application
-└── docker-compose.yml     # Docker Compose orchestration
+└── compose.yaml          # Docker Compose orchestration
 ```
 
 ## Architecture
