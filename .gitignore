@@ -68,8 +68,12 @@ continent-config.yaml
 
 # Per-session intent + handover for AI agents (CLAUDE.md exempts these
 # from "current state only" but they are intentionally not committed).
+# The `-*` globs also cover dated/archived backups (e.g. when a new work
+# unit displaces the live handover) so they can't be committed by accident.
 docs/intent.md
+docs/intent-*.md
 docs/handover.md
+docs/handover-*.md
 docs/setup.md
 node_modules
 
