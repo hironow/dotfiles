@@ -117,6 +117,22 @@ just test-mark marker=validate
 just test-install
 ```
 
+### CI gates
+
+```shell
+# fast gate: lint/format/semgrep + rule self-tests + IaC tests (no Docker)
+just ci
+
+# full non-emulator matrix: ci + devcontainer sandbox + install verification (Docker)
+just ci-all
+
+# emulator suite: lint + bring up emulators + fast + e2e (Docker + emulator uv env)
+just ci-emu
+
+# everything-non-emulator gate (prek hooks + ci-all); used by pre-push/CI
+just check-all
+```
+
 ### install options
 
 ```shell

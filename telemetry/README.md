@@ -220,17 +220,22 @@ Panels include:
 
 ### Network Setup
 
-Both stacks must share the same Docker network:
+Both stacks share the Docker network `shared-otel-net` (declared `external` in
+each `compose.yaml`). The repo-root `just` recipes create it idempotently, so no
+manual `docker network create` is needed:
 
 ```bash
-# Create shared network (if not exists)
-docker network create shared-otel-net
+# from the dotfiles repo root — each ensures shared-otel-net exists first
+just tel-up      # start telemetry stack (otel + grafana + loki + prometheus + tempo)
+just emu-up      # start emulator stack (datastores + inspectors)
+```
 
-# Start emulator stack
-cd /path/to/emulator && docker compose up -d
+To wire it up by hand instead (e.g. outside the repo), create the network first:
 
-# Start telemetry stack
-cd /path/to/telemetry && docker compose up -d
+```bash
+docker network create shared-otel-net   # idempotent; skip if it already exists
+cd telemetry && docker compose up -d
+cd emulator  && docker compose up -d
 ```
 
 ## Troubleshooting
