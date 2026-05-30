@@ -1176,7 +1176,8 @@ emu-lint:
     echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'
     git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2
 
-# Start emulate API emulators (vercel-labs/emulate) via npx on host (base 4100, Ctrl+C to stop)
+# Start emulate API emulators (vercel-labs/emulate) via npx on host (base 4100; Ctrl+C, or
+# `just emu-api-stop` if backgrounded)
 # Override `services=` to drop any rejected by the published CLI (see emulator/emulate/README.md)
 [group('Emulator')]
 emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
@@ -1186,6 +1187,22 @@ emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
     cd emulator/emulate
     echo "▶ emulate@0.6.0 services={{services}} base=4100 (Ctrl+C to stop)"
     npx -y emulate@0.6.0 --service '{{services}}' --port 4100 --seed emulate.config.yaml
+
+# Stop the emulate API emulators started by `just emu-api` (the host npx/emulate process; no
+# Docker container is involved, unlike emu-stop / tel-down)
+[group('Emulator')]
+emu-api-stop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pids="$(pgrep -f 'emulate.* --service' 2>/dev/null || true)"
+    if [ -z "$pids" ]; then
+      echo 'ℹ️  emulate API is not running.'
+      exit 0
+    fi
+    echo "▶ stopping emulate API (PIDs: $(echo "$pids" | tr '\n' ' '))"
+    # shellcheck disable=SC2086
+    kill $pids 2>/dev/null || true
+    echo '✅ emulate API stopped.'
 
 # ------------------------------
 # Telemetry (telemetry/) — OTel + Grafana + Loki + Prometheus + Tempo
