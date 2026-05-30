@@ -837,27 +837,28 @@ def test_just_clean_work_env_resets_managed_paths_only(docker_image):
 
 
 # =============================================================================
-# Validation Recipe Tests (semgrep meta rules)
+# Validation Recipe Tests (semgrep rule self-tests)
 # =============================================================================
 #
 # These exercise the rule-files-against-themselves workflow:
-#   - meta-semgrep      : run rules in .semgrep/rules/meta/ against the repo
-#   - meta-semgrep-test : verify the rules' own test annotations
-#   - validate          : composite of both
+#   - meta-semgrep : run rules in .semgrep/rules/meta/ against the repo
+#   - semgrep-test : `semgrep --test` every rule in .semgrep/rules/ (meta +
+#                    python) against its co-located fixtures
+#   - validate     : composite of both
 #
 # semgrep is installed on demand via uvx, so the first run downloads it
 # (~75MB). Subsequent runs in the same container are cached.
 
 
 @pytest.mark.check
-def test_just_meta_semgrep_test_passes(docker_image):
-    """`just meta-semgrep-test` validates the meta rules' own test annotations."""
+def test_just_semgrep_test_passes(docker_image):
+    """`just semgrep-test` validates every rule's own test annotations."""
     result = run_in_sandbox(
         docker_image,
-        _GIT_INIT + "just meta-semgrep-test",
+        _GIT_INIT + "just semgrep-test",
     )
     assert result.returncode == 0, (
-        f"meta-semgrep-test failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        f"semgrep-test failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
 
 
@@ -875,7 +876,7 @@ def test_just_meta_semgrep_clean_repo_passes(docker_image):
 
 @pytest.mark.check
 def test_just_validate_runs_both_steps(docker_image):
-    """`just validate` chains meta-semgrep-test then meta-semgrep."""
+    """`just validate` chains semgrep-test then meta-semgrep."""
     result = run_in_sandbox(
         docker_image,
         _GIT_INIT + "just validate",
