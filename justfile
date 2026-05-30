@@ -34,14 +34,16 @@ pdoc port="8888" pkg=".":
 meta-semgrep:
     uvx semgrep --config .semgrep/rules/meta/ --error .
 
-# Verify meta rules themselves with their test annotations
+# Unit-test ALL semgrep rules against their co-located test fixtures
+# (.semgrep/rules/**/<rule>.{py,md,...}). `semgrep --test` needs the rules dir
+# passed as BOTH the config and the target.
 [group('Validation')]
-meta-semgrep-test:
-    uvx semgrep --test --config .semgrep/rules/meta/
+semgrep-test:
+    uvx semgrep --test --config .semgrep/rules/ .semgrep/rules/
 
 # Full validation of rule files
 [group('Validation')]
-validate: meta-semgrep-test meta-semgrep
+validate: semgrep-test meta-semgrep
 
 # Install: setup tools via mise
 [group('Setup')]
@@ -348,7 +350,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check meta-semgrep-test test-iac
+ci: check semgrep-test test-iac
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification

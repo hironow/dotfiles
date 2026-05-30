@@ -223,9 +223,8 @@ rules:
       - pattern-inside: |
           async def $FUNC(...):
             ...
-      # Same-line detection: flag asyncio.sleep(...) that is not preceded by 'await'
-      - pattern-regex: |
-          (?m)^[ \t]*(?!await\s+)asyncio\.sleep\s*\(
+      - pattern: asyncio.sleep(...)
+      - pattern-not-inside: await asyncio.sleep(...)
     paths:
       include:
         - '**/*.py'
@@ -255,9 +254,12 @@ rules:
     message: "Do not use mutable default arguments (list/dict/set). Use None and initialize inside the function."
     languages: [python]
     severity: WARNING
-    # Use text-based regex to avoid false positives from partial parsing on Python 3.12+ generics
-    pattern-regex: |
-      ^\s*def\s+\w+\s*\([^\)]*?(\w+\s*=\s*(\[[^\)]*\]|\{[^\)]*\}|set\([^\)]*\)))[^\)]*\)\s*:\n
+    # Use text-based regex to avoid false positives from partial parsing on Python 3.12+ generics.
+    # (?m) so ^ anchors every line, not just the first line of the file.
+    # |- (strip chomping) so the YAML block adds no trailing newline that would
+    # otherwise force the def to be followed by a blank line.
+    pattern-regex: |-
+      (?m)^\s*def\s+\w+\s*\([^\)]*?(\w+\s*=\s*(\[[^\)]*\]|\{[^\)]*\}|set\([^\)]*\)))[^\)]*\)\s*:\n
     paths:
       include:
         - '**/*.py'
