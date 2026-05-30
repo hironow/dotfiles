@@ -14,7 +14,6 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-instrumentation-httpx",
     "httpx",
-    "pydantic",
 ]
 
 [tool.uv]

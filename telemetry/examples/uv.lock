@@ -330,7 +330,6 @@ dependencies = [
     { name = "opentelemetry-instrumentation-httpx" },
     { name = "opentelemetry-instrumentation-logging" },
     { name = "opentelemetry-sdk" },
-    { name = "pydantic" },
     { name = "uvicorn" },
 ]
 
@@ -351,7 +350,6 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-httpx" },
     { name = "opentelemetry-instrumentation-logging" },
     { name = "opentelemetry-sdk" },
-    { name = "pydantic" },
     { name = "uvicorn" },
 ]
 
