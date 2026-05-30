@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 from pathlib import Path
@@ -1012,3 +1013,119 @@ def test_install_sh_has_executable_bit_in_git_index():
         "Run: git update-index --chmod=+x install.sh && commit\n"
         "Otherwise 'coder dotfiles' fails to exec the script after clone."
     )
+
+
+# =============================================================================
+# Host-pollution isolation guards (番人)
+# =============================================================================
+#
+# These pin the invariant that produced real host damage earlier (a staged
+# `private/*` secret, a truncated `dump/*`, host `.git/hooks` writes): the
+# sandbox must NEVER bind-mount the real repo locally. It must instead mount a
+# throwaway copy of ONLY the git-tracked first-party files, and tear it down.
+# In CI the runner checkout is itself ephemeral, so the host path is bound
+# directly. No Docker is needed to exercise this — we inspect the mount source
+# and the snapshot contents, so the guard runs everywhere `just test` runs.
+
+
+def test_snapshot_excludes_git_untracked_and_submodule_gitlinks(tmp_path):
+    """`_snapshot_tracked_worktree` copies only git-tracked first-party files.
+
+    The real `.git`, untracked secrets, and submodule gitlinks must never reach
+    the throwaway sandbox checkout.
+    """
+    # given: a repo with a tracked file, an untracked secret, and a gitlink
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def _git(*args):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+    _git("init", "-q")
+    _git("config", "user.email", "t@e")
+    _git("config", "user.name", "t")
+    (repo / "tracked.txt").write_text("first-party\n")
+    (repo / "private").mkdir()
+    (repo / "private" / "secret.key").write_text("SECRET\n")  # untracked
+    _git("add", "tracked.txt")
+    _git("commit", "-qm", "init")
+    # a submodule pointer (gitlink) staged with no checked-out file on disk
+    _git(
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        "160000,1234567890123456789012345678901234567890,sub",
+    )
+
+    # when
+    snapshot = _snapshot_tracked_worktree(str(repo))
+
+    # then
+    try:
+        assert (Path(snapshot) / "tracked.txt").is_file()
+        assert not (Path(snapshot) / ".git").exists()
+        assert not (Path(snapshot) / "private" / "secret.key").exists()
+        assert not (Path(snapshot) / "sub").exists()
+    finally:
+        shutil.rmtree(snapshot, ignore_errors=True)
+
+
+def test_run_in_sandbox_local_mounts_snapshot_not_host(monkeypatch):
+    """Locally (no LOCAL_WORKSPACE_FOLDER) the sandbox mounts a throwaway
+    git-tracked snapshot, never the host repo, and removes it afterwards."""
+    # given: not in CI; the snapshot helper returns a dir we can track
+    monkeypatch.delenv("LOCAL_WORKSPACE_FOLDER", raising=False)
+    fake_snapshot = tempfile.mkdtemp(prefix="dotfiles-sandbox-test-")
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_snapshot_tracked_worktree",
+        lambda _src: fake_snapshot,
+    )
+    captured = {}
+
+    def _fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(sys.modules[__name__], "_run", _fake_run)
+
+    # when
+    run_in_sandbox("img", "echo hi")
+
+    # then: the bind mount SOURCE (left of ':') is the snapshot, not the host
+    # repo. Check the source only — the target is always '/root/dotfiles', which
+    # equals ROOT inside the dev container, so scanning the whole arg is wrong.
+    cmd = captured["cmd"]
+    mount_arg = cmd[cmd.index("-v") + 1]
+    mount_source = mount_arg.split(":", 1)[0]
+    assert mount_source == fake_snapshot
+    assert mount_source != str(ROOT)
+    # ...and the snapshot is torn down once the run completes
+    assert not os.path.exists(fake_snapshot)
+
+
+def test_run_in_sandbox_ci_binds_host_path(monkeypatch):
+    """In CI (LOCAL_WORKSPACE_FOLDER set, ephemeral runner) the sandbox binds
+    the host path directly and must NOT take the local snapshot branch."""
+    # given: CI-style env points at a host workspace path
+    monkeypatch.setenv("LOCAL_WORKSPACE_FOLDER", "/work/ci-checkout")
+
+    def _boom(_src):
+        raise AssertionError("must not snapshot in CI mode")
+
+    monkeypatch.setattr(sys.modules[__name__], "_snapshot_tracked_worktree", _boom)
+    captured = {}
+
+    def _fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(sys.modules[__name__], "_run", _fake_run)
+
+    # when
+    run_in_sandbox("img", "echo hi")
+
+    # then
+    cmd = captured["cmd"]
+    mount_arg = cmd[cmd.index("-v") + 1]
+    assert mount_arg == "/work/ci-checkout:/root/dotfiles"
