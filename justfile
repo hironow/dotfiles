@@ -63,7 +63,11 @@ deploy:
     mkdir -p ~/.config/git
     cp ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
     @echo "==> Installing plugins..."
-    sheldon lock
+    @if command -v sheldon >/dev/null 2>&1; then \
+        sheldon lock; \
+    else \
+        echo "==> sheldon not found; skipping lock (provided by brew / devcontainer feature)"; \
+    fi
     @if [ ! -d ~/.local/share/fzf-tab ]; then \
         echo "==> Installing fzf-tab..."; \
         git clone --depth 1 https://github.com/Aloxaf/fzf-tab ~/.local/share/fzf-tab; \

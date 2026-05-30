@@ -164,7 +164,33 @@ step_just_bootstrap() {
       fi
       ;;
     linux)
-      echo "[install] step_just_bootstrap: just expected to be present from dev container feature; not bootstrapping"
+      # Dev containers get `just` from a devcontainer feature (covered by the
+      # early `command -v just` return above). On a plain Linux host with no
+      # feature and no brew, download the pinned `just` release binary to
+      # ~/.local/bin (user-local, no sudo) and verify it against the release's
+      # SHA256SUMS. We deliberately avoid `curl | bash` (repo guardrail forbids
+      # piping remote scripts to a shell). Version pinned to mise.toml
+      # (just = "1.51.0") — keep the two in sync.
+      _just_ver="1.51.0"
+      case "$(uname -m)" in
+        x86_64) _just_tgt="x86_64-unknown-linux-musl" ;;
+        aarch64 | arm64) _just_tgt="aarch64-unknown-linux-musl" ;;
+        *)
+          echo "[install] step_just_bootstrap: unsupported arch $(uname -m)" >&2
+          exit 1
+          ;;
+      esac
+      _just_tarball="just-${_just_ver}-${_just_tgt}.tar.gz"
+      _just_base="https://github.com/casey/just/releases/download/${_just_ver}"
+      _just_tmp="$(mktemp -d)"
+      echo "[install] step_just_bootstrap: just missing; installing ${_just_ver} to ~/.local/bin"
+      curl --proto '=https' --tlsv1.2 -sSfL -o "${_just_tmp}/${_just_tarball}" "${_just_base}/${_just_tarball}"
+      curl --proto '=https' --tlsv1.2 -sSfL -o "${_just_tmp}/SHA256SUMS" "${_just_base}/SHA256SUMS"
+      (cd "${_just_tmp}" && sha256sum -c --ignore-missing SHA256SUMS)
+      mkdir -p "$HOME/.local/bin"
+      tar -xzf "${_just_tmp}/${_just_tarball}" -C "$HOME/.local/bin" just
+      rm -rf "${_just_tmp}"
+      export PATH="$HOME/.local/bin:$PATH"
       ;;
     windows)
       _todo_windows "step_just_bootstrap"
