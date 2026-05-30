@@ -1066,12 +1066,36 @@ exe-cdr-install:
 # scripts use bare `docker compose`; recipes cd into emulator/ for auto-discovery
 # ------------------------------
 
-# Start emulators (detached). nobuild=yes skips image build
+# nobuild=yes skips image build. More: emu-up-group/-only/-full. COMPOSE_PROFILES
+# is cleared so a stray shell env can't drag in heavy services.
+# Start the lite profile: firebase + spanner + pgadapter + postgres (GCP core)
 [group('Emulator')]
 emu-up nobuild='no':
-    cd emulator && if [ '{{nobuild}}' = 'yes' ]; then bash scripts/start-services.sh --no-build; else bash scripts/start-services.sh; fi
+    cd emulator && if [ '{{nobuild}}' = 'yes' ]; then COMPOSE_PROFILES= bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES= bash scripts/start-services.sh; fi
 
-# One-shot: clean volumes -> prebuild -> up -> wait
+# Explicit alias for the lite default above.
+alias emu-up-lite := emu-up
+
+# Bypasses profile gating; consumers reuse this (e.g. runops on :9399).
+# e.g. `just emu-up-only firebase-emulator` brings up only Firebase.
+# Start exactly the named service(s) (+ their depends_on)
+[group('Emulator')]
+emu-up-only +services:
+    cd emulator && COMPOSE_PROFILES= bash scripts/start-services.sh {{services}}
+
+# Groups: bigtable search graph vector ml inspect exporters full.
+# e.g. `just emu-up-group search` = lite + Elasticsearch.
+# Start lite + a capability group
+[group('Emulator')]
+emu-up-group group nobuild='no':
+    cd emulator && if [ '{{nobuild}}' = 'yes' ]; then COMPOSE_PROFILES='{{group}}' bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES='{{group}}' bash scripts/start-services.sh; fi
+
+# Start the whole heavy stack (every data service; excludes interactive *-cli).
+[group('Emulator')]
+emu-up-full nobuild='no':
+    cd emulator && if [ '{{nobuild}}' = 'yes' ]; then COMPOSE_PROFILES=full bash scripts/start-services.sh --no-build; else COMPOSE_PROFILES=full bash scripts/start-services.sh; fi
+
+# One-shot LITE: clean volumes -> prebuild lite images -> up lite -> wait
 [group('Emulator')]
 emu-start:
     #!/usr/bin/env bash
@@ -1079,8 +1103,20 @@ emu-start:
     cd emulator
     echo '🧹 Cleaning old volumes...'
     docker compose down -v || true
+    bash scripts/prebuild-images.sh firebase-emulator postgres
+    COMPOSE_PROFILES= bash scripts/start-services.sh
+    bash scripts/wait-for-services.sh --default 30 --postgres 60
+
+# One-shot FULL: clean volumes -> prebuild heavy images -> up everything -> wait
+[group('Emulator')]
+emu-start-full:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd emulator
+    echo '🧹 Cleaning old volumes...'
+    docker compose down -v || true
     bash scripts/prebuild-images.sh a2a-inspector firebase-emulator mcp-inspector postgres
-    bash scripts/start-services.sh
+    COMPOSE_PROFILES=full bash scripts/start-services.sh
     bash scripts/wait-for-services.sh --default 30 --a2a 60 --mcp 60 --postgres 60
 
 # Stop emulators (with Firebase export)
@@ -1114,7 +1150,9 @@ emu-port-check:
     #!/usr/bin/env bash
     set -uo pipefail
     echo '🔍 Checking emulator port usage...'
-    for port in 9099 8080 8086 9010 9020 55432 7474 7687 8081 6274 5252 6333 6334 5433 9200 9300; do
+    # Includes the cross-stack collision ports (9399/4000/4400 firebase, 4317/4318
+    # OTLP) that previously went unchecked and let runops-gateway double-bind.
+    for port in 9099 8080 9399 4000 4400 8086 9010 9020 55432 7474 7687 8081 6274 5252 6333 6334 5433 9200 9300 4317 4318; do
       result=$(witr --port "$port" --short 2>/dev/null || true)
       [ -n "$result" ] && echo "⚠️  Port $port: $result"
     done

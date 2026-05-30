@@ -35,7 +35,20 @@ Note: The Firebase emulator does not need production credentials, but Google SDK
 Start emulators (recommended)
 
 ```bash
-just emu-start
+# Lite default = the GCP core only: firebase + spanner + pgadapter + postgres.
+# This keeps the OrbStack VM well under its memory cap; heavy/amd64 services
+# (Elasticsearch, Neo4j, Bigtable, inspectors, ...) are opt-in.
+just emu-up                          # detached, lite (== just emu-up-lite)
+just emu-start                       # clean volumes -> prebuild -> up lite -> wait
+
+# Start only specific service(s) — what an external consumer reuses.
+just emu-up-only firebase-emulator   # e.g. reuse Pub/Sub on :9399 from another repo
+
+# Start lite + a capability group: bigtable search graph vector ml inspect exporters full
+just emu-up-group search             # lite + Elasticsearch
+
+# The whole heavy stack (every data service; excludes interactive *-cli)
+just emu-up-full                     # == just emu-start-full for the clean variant
 ```
 
 Stop emulators (recommended)
@@ -47,7 +60,8 @@ just emu-stop
 Or use Docker Compose directly
 
 ```bash
-docker compose up -d
+docker compose up -d                 # lite (default profile only)
+COMPOSE_PROFILES=full docker compose up -d   # the whole heavy stack
 # ... later
 docker compose down
 ```
@@ -108,8 +122,13 @@ These exporters are scraped by the OTEL Collector in the `telemetry` stack via t
 All recipes live in the repo-root `justfile` under the `Emulator` group
 (run `just --list`):
 
-- `just emu-start` / `just emu-stop` — start (clean+prebuild+up+wait) / stop emulators
-- `just emu-up` / `just emu-check` / `just emu-wait` — start detached / status / wait for readiness
+- `just emu-up` / `just emu-up-lite` — start detached, lite (firebase+spanner+pgadapter+postgres = GCP core)
+- `just emu-up-only <service...>` — start exactly the named service(s), bypassing profile gating
+- `just emu-up-group <cap>` — start lite + a capability group (`bigtable search graph vector ml inspect exporters full`)
+- `just emu-up-full` — start the whole heavy stack (every data service; excludes interactive *-cli)
+- `just emu-start` / `just emu-start-full` — clean+prebuild+up+wait, lite / full
+- `just emu-stop` / `just emu-check` / `just emu-wait` — stop / status / wait for readiness
+- `just emu-port-check` — check host port usage (incl. cross-stack collision ports) before starting
 - `just emu-test` / `just emu-test-fast` / `just emu-test-e2e` — pytest (all / non-e2e / e2e)
 - `just emu-lint` / `just emu-fmt` — ruff + semgrep + markdownlint / formatters
 - `just emu-pg-verify` — PostgreSQL 18 verification

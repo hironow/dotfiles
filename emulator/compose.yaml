@@ -45,6 +45,9 @@ services:
     image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
     pull_policy: always
     container_name: bigtable-emulator
+    profiles:
+      - bigtable
+      - full
     # Apple Silicon (arm64): Bigtable emulator image is amd64-only; run under emulation
     platform: linux/amd64
     command: ["gcloud", "beta", "emulators", "bigtable", "start", "--host-port=0.0.0.0:8086"]
@@ -143,6 +146,9 @@ services:
   neo4j:
     image: neo4j:2025-community
     container_name: neo4j-emulator
+    profiles:
+      - graph
+      - full
     ports:
       - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"  # HTTP
       - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"  # Bolt
@@ -191,6 +197,9 @@ services:
         A2A_INSPECTOR_REPO: ${A2A_INSPECTOR_REPO:-https://github.com/a2aproject/a2a-inspector.git}
         A2A_INSPECTOR_REF: ${A2A_INSPECTOR_REF:-main}
     container_name: a2a-inspector
+    profiles:
+      - inspect
+      - full
     platform: linux/amd64
     ports:
       - "127.0.0.1:${A2A_INSPECTOR_PORT:-8081}:8080"
@@ -211,6 +220,9 @@ services:
         MCP_INSPECTOR_REPO: ${MCP_INSPECTOR_REPO:-https://github.com/modelcontextprotocol/inspector.git}
         MCP_INSPECTOR_REF: ${MCP_INSPECTOR_REF:-main}
     container_name: mcp-inspector
+    profiles:
+      - inspect
+      - full
     ports:
       - "127.0.0.1:${MCP_INSPECTOR_PORT:-6274}:6274"  # Client UI
     healthcheck:
@@ -225,6 +237,9 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:v3.5.1
     container_name: mlflow-server
+    profiles:
+      - ml
+      - full
     ports:
       - "127.0.0.1:${MLFLOW_PORT:-5252}:5000"
     volumes:
@@ -243,6 +258,9 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: qdrant-emulator
+    profiles:
+      - vector
+      - full
     ports:
       - "127.0.0.1:${QDRANT_REST_PORT:-6333}:6333"  # REST API
       - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"  # gRPC API
@@ -323,6 +341,9 @@ services:
   elasticsearch:
     image: elasticsearch:9.3.0
     container_name: elasticsearch-emulator
+    profiles:
+      - search
+      - full
     ports:
       - "127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200"  # REST API
       - "127.0.0.1:${ELASTICSEARCH_TRANSPORT_PORT:-9300}:9300"  # Transport
@@ -364,6 +385,9 @@ services:
   elasticsearch-exporter:
     image: quay.io/prometheuscommunity/elasticsearch-exporter:latest
     container_name: elasticsearch-exporter
+    profiles:
+      - search
+      - full
     command:
       - '--es.uri=http://elasticsearch:9200'
       - '--es.all'
@@ -383,6 +407,9 @@ services:
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:latest
     container_name: postgres-exporter
+    profiles:
+      - exporters
+      - full
     environment:
       - DATA_SOURCE_NAME=postgresql://postgres:password@postgres:5432/postgres?sslmode=disable
     ports:

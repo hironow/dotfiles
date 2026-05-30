@@ -168,7 +168,12 @@ emulators via an npx wrapper ([ADR 0016](./docs/adr/0016-integrate-emulate-api-e
 
 ```shell
 # datastore / inspector emulators (emulator/compose.yaml)
-just emu-start            # clean -> prebuild -> up -> wait
+# Lite default = GCP core (firebase+spanner+pgadapter+postgres); heavy/amd64
+# services are opt-in so the OrbStack VM stays under its memory cap.
+just emu-up               # detached, lite (== emu-up-lite); emu-start = clean+prebuild+up+wait
+just emu-up-only firebase-emulator   # only Firebase (e.g. reuse Pub/Sub :9399 from another repo)
+just emu-up-group search  # lite + a capability group (bigtable search graph vector ml inspect exporters full)
+just emu-up-full          # the whole heavy stack (excludes interactive *-cli)
 just emu-check            # status + endpoints
 just emu-stop             # stop (with firebase export)
 
@@ -193,7 +198,7 @@ just portless-ls          # list active routes; just portless-down to tear down
 
 Aliases are static routes, so registering them starts nothing on its own — the
 `https://*.localhost` URLs only respond once the backing stack is up (`just
-emu-start` / `just tel-up` / `just emu-api`). Optionally, `portless service
+emu-up` / `just tel-up` / `just emu-api`). Optionally, `portless service
 install` runs the proxy on login so routes survive reboots.
 
 ## Dev Container
