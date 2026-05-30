@@ -191,6 +191,11 @@ just portless-up          # start proxy + register aliases (firebase.localhost, 
 just portless-ls          # list active routes; just portless-down to tear down
 ```
 
+Aliases are static routes, so registering them starts nothing on its own — the
+`https://*.localhost` URLs only respond once the backing stack is up (`just
+emu-start` / `just tel-up` / `just emu-api`). Optionally, `portless service
+install` runs the proxy on login so routes survive reboots.
+
 ## Dev Container
 
 This repo ships a [Dev Container](https://containers.dev/) declared in
