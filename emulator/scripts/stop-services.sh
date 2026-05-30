@@ -18,5 +18,9 @@ else
 fi
 
 echo "🛑 Stopping containers..."
-docker compose down
+# `docker compose down` is profile-gated: with no profile active it only stops
+# the default (lite) services and leaves profiled heavy containers running.
+# Enable every profile (full covers all capability services, cli the helpers)
+# so a stop after `emu-up-full` / `emu-up-group` tears the whole stack down.
+COMPOSE_PROFILES=full,cli docker compose down --remove-orphans
 echo "✅ All emulators stopped."
