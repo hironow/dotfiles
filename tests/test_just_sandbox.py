@@ -1,5 +1,7 @@
 import os
+import shutil
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -103,16 +105,43 @@ def _image_exists(image: str) -> bool:
     return r.returncode == 0
 
 
+def _snapshot_tracked_worktree(src: str) -> str:
+    """Copy only git-tracked files into a throwaway host tempdir.
+
+    The sandbox container must never see the real repo: its 3.6G `.git`
+    (history + credentials), untracked secrets (`private/`), and caches must
+    stay out, and any file a test writes (fmt, dump truncation, symlinks) must
+    land on a disposable copy — not the host working tree via a bind mount.
+    `git ls-files` yields exactly the first-party tracked set (submodule
+    gitlinks, `.git`, `.venv`, `node_modules`, caches are all excluded), so we
+    copy just those (~hundreds of files) with the stdlib (no rsync/tar dep).
+    """
+    snapshot = tempfile.mkdtemp(prefix="dotfiles-sandbox-")
+    tracked = subprocess.run(
+        ["git", "-C", src, "ls-files", "-z"],
+        check=True,
+        stdout=subprocess.PIPE,
+    ).stdout.decode()
+    for rel in tracked.split("\0"):
+        if not rel:
+            continue
+        source = os.path.join(src, rel)
+        if not os.path.isfile(source):  # skip gitlinks / vanished paths
+            continue
+        dest = os.path.join(snapshot, rel)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copy2(source, dest, follow_symlinks=False)
+    return snapshot
+
+
 def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
-    # The dev container image (built by devcontainer.json) does NOT
-    # bake /root/dotfiles into its layers — that path is the bind
-    # mount target declared by `workspaceMount`. So a fresh
-    # `docker run` against the image starts with an empty /root,
-    # and `cd /root/dotfiles` fails with "No such file or directory".
-    #
-    # Re-create the bind mount manually for each one-shot test
-    # container, mirroring what the devcontainer CLI does at create
-    # time.
+    # The dev container image does NOT bake /root/dotfiles into its layers —
+    # that path is the workspace mount. A fresh `docker run` starts empty, so we
+    # recreate it. Under docker-outside-of-docker (CI; LOCAL_WORKSPACE_FOLDER
+    # set) the mount source must be a host path and the checkout is ephemeral,
+    # so we bind-mount it directly. Locally we snapshot only git-tracked files
+    # into a host tempdir and mount THAT, so the real repo (and its .git) never
+    # enters the throwaway container and tests can never pollute the host.
     full_script = textwrap.dedent(
         f"""
         set -e
@@ -120,12 +149,19 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
         {script}
         """
     ).strip()
+    src = _host_workspace_path()
+    snapshot_dir = None
+    if "LOCAL_WORKSPACE_FOLDER" in os.environ:
+        mount_source = src
+    else:
+        snapshot_dir = _snapshot_tracked_worktree(src)
+        mount_source = snapshot_dir
     docker_args = [
         "docker",
         "run",
         "--rm",
         "-v",
-        f"{_host_workspace_path()}:/root/dotfiles",
+        f"{mount_source}:/root/dotfiles",
         "-w",
         "/root/dotfiles",
         # devcontainers/ci action bakes the dev container's
@@ -144,7 +180,11 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
     if gh_token:
         docker_args.extend(["-e", f"GITHUB_TOKEN={gh_token}"])
     docker_args.extend([image, "bash", "-lc", full_script])
-    return _run(docker_args)
+    try:
+        return _run(docker_args)
+    finally:
+        if snapshot_dir is not None:
+            shutil.rmtree(snapshot_dir, ignore_errors=True)
 
 
 def _sh_single_quote(s: str) -> str:
@@ -636,21 +676,17 @@ _MISE_STUB = _MISE_PRETTIER_STUB
 # scan third-party code the recipes are designed to skip. We derive the
 # exclusion list dynamically from .gitmodules so nested submodules
 # (e.g. tools/tmux/plugins/tmux-resurrect) are covered too.
-# SAFETY: /root/dotfiles is a BIND MOUNT of the host repo (see devcontainer.json
-# workspaceMount). Git writes here would hit the host's real .git/index — running
-# `git add -A` against it once staged the entire working tree (incl. gitignored
-# secrets like private/*) into the host index. Redirect all git metadata to a
-# throwaway GIT_DIR in /tmp so init / exclude / `add -A` never touch the host
-# .git. Recipe `git ls-files` calls inherit these env vars and read the throwaway
-# index, so behavior is unchanged.
+# SAFETY: run_in_sandbox mounts a throwaway snapshot of only the tracked working
+# tree (no host .git — see _snapshot_tracked_worktree), so every git write here
+# lands on the disposable copy and can never reach the host repo. We therefore
+# init a normal repo at /root/dotfiles/.git, which `prek install` /
+# `just install-hooks` need (they wire hooks into .git/hooks).
 _GIT_INIT = (
     "cd /root/dotfiles && "
-    "export GIT_DIR=/tmp/sandbox-git GIT_WORK_TREE=/root/dotfiles && "
-    'rm -rf "$GIT_DIR" && git init -q && '
+    "git init -q && "
     "git config user.email t@e && git config user.name t && "
-    'mkdir -p "$GIT_DIR/info" && '
     "git config --file .gitmodules --get-regexp path 2>/dev/null "
-    '| awk \'{print $2"/"}\' > "$GIT_DIR/info/exclude" && '
+    "| awk '{print $2\"/\"}' > .git/info/exclude && "
     "git add -A 2>/dev/null && "
 )
 
