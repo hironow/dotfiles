@@ -342,9 +342,32 @@ install-hooks:
 pre-commit:
     mise exec -- prek run --all-files
 
-# CI-equivalent gate: prek hooks plus the full sandbox test suite
-[group('Lint')]
-check-all: pre-commit check test test-iac
+# Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
+[group('CI')]
+ci: check meta-semgrep-test test-iac
+    @echo "✅ ci (fast gate) passed"
+
+# Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
+[group('CI')]
+ci-all: ci test test-install
+    @echo "✅ ci-all passed"
+
+# Emulator suite (mirrors .github/workflows/test-emulators.yaml): lint + bring up + fast + e2e.
+# Heavy: needs Docker + emulator uv env. Leaves emulators up (stop with `just emu-stop`).
+[group('CI')]
+ci-emu:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just emu-lint
+    just emu-start
+    cd emulator && bash scripts/test-elasticsearch.sh
+    just emu-test-fast
+    just emu-test-e2e
+    echo '✅ ci-emu passed'
+
+# CI-equivalent gate: prek hooks plus the full non-emulator suite (= pre-commit + ci-all)
+[group('CI')]
+check-all: pre-commit ci-all
     @echo "✅ all checks passed"
 
 # Run OpenTofu native tests for the Coder workspace template
