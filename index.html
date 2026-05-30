@@ -123,17 +123,30 @@
     .copy:hover { color: var(--green); border-color: var(--green); }
     .copy.ok { color: var(--green); border-color: var(--green); }
 
-    /* ── Glint sweep on pressable UI (tabs, copy) ────────────────── */
+    /* ── Periodic glint so pressable UI reads as interactive ─────── */
     .tabs a, .copy { position: relative; overflow: hidden; isolation: isolate; }
     .tabs a::after, .copy::after {
       content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
-      background: linear-gradient(115deg, transparent 36%, rgba(94, 240, 143, 0.38) 50%, transparent 64%);
-      transform: translateX(-130%); transition: transform .55s ease;
+      background: linear-gradient(115deg, transparent 38%, rgba(94, 240, 143, 0.32) 50%, transparent 62%);
+      transform: translateX(-135%);
+      animation: glint 6.5s ease-out infinite;
     }
-    .tabs a:hover::after, .tabs a:focus-visible::after,
-    .copy:hover::after, .copy:focus-visible::after { transform: translateX(130%); }
-    .copy:hover { box-shadow: 0 0 12px rgba(94, 240, 143, 0.22); }
-    .tabs a:hover { box-shadow: inset 0 0 16px rgba(94, 240, 143, 0.12); }
+    @keyframes glint {
+      0%   { transform: translateX(-135%); }
+      11%  { transform: translateX(135%); }
+      100% { transform: translateX(135%); }
+    }
+    /* stagger the tabs so the shine travels across the bar as a wave */
+    .tabs a:nth-of-type(1)::after { animation-delay: 0s; }
+    .tabs a:nth-of-type(2)::after { animation-delay: .45s; }
+    .tabs a:nth-of-type(3)::after { animation-delay: .9s; }
+    .tabs a:nth-of-type(4)::after { animation-delay: 1.35s; }
+    .tabs a:nth-of-type(5)::after { animation-delay: 1.8s; }
+    .tabs a:nth-of-type(6)::after { animation-delay: 2.25s; }
+    .copy::after { animation-delay: 1.1s; }
+    /* hover/focus keeps a steady glow as the press affordance */
+    .copy:hover, .copy:focus-visible { box-shadow: 0 0 12px rgba(94, 240, 143, 0.25); }
+    .tabs a:hover, .tabs a:focus-visible { box-shadow: inset 0 0 16px rgba(94, 240, 143, 0.14); }
 
     .blink {
       display: inline-block; width: 0.6ch; height: 1.05em; transform: translateY(0.16em);
