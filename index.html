@@ -49,20 +49,11 @@
 
     a { color: inherit; }
 
-    /* ── Atmosphere: faint scanlines + top phosphor glow ─────────── */
+    /* ── Atmosphere: one faint top phosphor glow ─────────────────── */
     body::before {
       content: "";
       position: fixed; inset: 0; z-index: 0; pointer-events: none;
-      background:
-        radial-gradient(120% 60% at 50% -10%, rgba(74, 222, 128, 0.06), transparent 60%),
-        radial-gradient(80% 50% at 100% 0%, rgba(86, 182, 194, 0.04), transparent 55%);
-    }
-    body::after {
-      content: "";
-      position: fixed; inset: 0; z-index: 0; pointer-events: none;
-      background-image: repeating-linear-gradient(
-        to bottom, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 3px);
-      opacity: 0.7;
+      background: radial-gradient(110% 48% at 50% -12%, rgba(74, 222, 128, 0.04), transparent 62%);
     }
 
     /* ── Layout ──────────────────────────────────────────────────── */
@@ -71,10 +62,8 @@
     /* ── Top bar ─────────────────────────────────────────────────── */
     nav {
       position: sticky; top: 0; z-index: 50;
-      background: rgba(11, 13, 16, 0.78);
+      background: rgba(11, 13, 16, 0.94);
       border-bottom: 1px solid var(--line);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
     }
     .nav-row { display: flex; align-items: center; justify-content: space-between; height: 52px; }
     .brand { font-weight: 700; letter-spacing: -0.01em; color: var(--fg); white-space: nowrap; }
@@ -103,7 +92,6 @@
     .cursor {
       display: inline-block; width: 0.55ch; height: 0.92em; transform: translateY(0.06em);
       background: var(--accent); margin-left: 0.08em;
-      box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
       animation: blink 1.15s step-end infinite;
     }
     @keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
@@ -129,14 +117,7 @@
       border: 1px solid var(--line); border-radius: 6px; background: var(--bg-soft);
       overflow: hidden; margin-top: 30px;
     }
-    .term-bar {
-      display: flex; align-items: center; gap: 8px; padding: 9px 14px;
-      border-bottom: 1px solid var(--line); background: var(--panel);
-    }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
-    .dot.g { background: var(--accent-dim); }
-    .term-title { margin-left: 6px; font-size: 12px; color: var(--fg-mute); }
-    .term-body { padding: 16px 14px; display: flex; align-items: center; gap: 12px; }
+    .term-body { padding: 15px 14px; display: flex; align-items: center; gap: 12px; }
     .term-body .ps1 { color: var(--accent); flex-shrink: 0; user-select: none; }
     .cmd {
       flex: 1; color: var(--fg); font-size: clamp(11px, 2.6vw, 13.5px);
@@ -179,7 +160,6 @@
     .row:first-child { border-top: none; }
     .row:hover { background: var(--panel); }
     .row .k { color: var(--accent); font-weight: 700; font-size: 13.5px; }
-    .row:hover .k { text-shadow: 0 0 12px rgba(74, 222, 128, 0.35); }
     .row .v { color: var(--fg-dim); font-size: 13px; line-height: 1.6; }
     .row .v .mut { color: var(--fg-mute); }
     .row .v b { color: var(--fg); font-weight: 600; }
@@ -210,8 +190,6 @@
     }
     .badge .bd { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
     .badge.ok { color: var(--accent); border-color: var(--accent-dim); }
-    .badge.ok .bd { box-shadow: 0 0 8px var(--accent); animation: pulse 2.4s ease-in-out infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
     /* ── Footer ──────────────────────────────────────────────────── */
     footer { border-top: 1px solid var(--line); padding: 32px 0 48px; }
@@ -289,10 +267,6 @@
 
         <!-- Install terminal -->
         <section class="term" id="install" aria-label="One-liner install">
-          <div class="term-bar" aria-hidden="true">
-            <span class="dot"></span><span class="dot"></span><span class="dot g"></span>
-            <span class="term-title">bash — fresh machine bootstrap</span>
-          </div>
           <div class="term-body">
             <span class="ps1" aria-hidden="true">$</span>
             <code class="cmd" id="cmd">bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"</code>
