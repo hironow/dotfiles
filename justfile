@@ -1102,7 +1102,9 @@ emu-start:
     set -euo pipefail
     cd emulator
     echo '🧹 Cleaning old volumes...'
-    docker compose down -v || true
+    # `down` is profile-gated: without all profiles enabled it only tears down
+    # the default (lite) services, orphaning any profiled heavy containers.
+    COMPOSE_PROFILES=full,cli docker compose down -v --remove-orphans || true
     bash scripts/prebuild-images.sh firebase-emulator postgres
     COMPOSE_PROFILES= bash scripts/start-services.sh
     bash scripts/wait-for-services.sh --default 30 --postgres 60
@@ -1114,7 +1116,8 @@ emu-start-full:
     set -euo pipefail
     cd emulator
     echo '🧹 Cleaning old volumes...'
-    docker compose down -v || true
+    # `down` is profile-gated; enable all profiles so every service is removed.
+    COMPOSE_PROFILES=full,cli docker compose down -v --remove-orphans || true
     bash scripts/prebuild-images.sh a2a-inspector firebase-emulator mcp-inspector postgres
     COMPOSE_PROFILES=full bash scripts/start-services.sh
     bash scripts/wait-for-services.sh --default 30 --a2a 60 --mcp 60 --postgres 60
@@ -1140,9 +1143,11 @@ emu-prebuild images='a2a-inspector firebase-emulator mcp-inspector postgres':
     cd emulator && bash scripts/prebuild-images.sh {{images}}
 
 # Clean up emulator volumes (deletes all data)
+# COMPOSE_PROFILES=full,cli so the profile-gated `down` removes every service
+# (lite + heavy + cli), not just the default-profile ones.
 [group('Emulator')]
 emu-clean:
-    cd emulator && docker compose down -v || true
+    cd emulator && COMPOSE_PROFILES=full,cli docker compose down -v --remove-orphans || true
 
 # Check emulator port usage before starting
 [group('Emulator')]
