@@ -350,7 +350,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check semgrep-test test-iac
+ci: check semgrep-test portless-doc-check test-iac
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -1261,3 +1261,20 @@ portless-trust:
 [group('Portless')]
 portless-ls:
     portless list
+
+# Generate docs/portless-urls.md (service -> .localhost URL + suggested env var) from the alias config
+[group('Portless')]
+portless-doc:
+    @just _portless-pairs | scripts/generate-portless-doc.sh > docs/portless-urls.md
+    @echo "✅ wrote docs/portless-urls.md"
+
+# Verify docs/portless-urls.md is in sync with config/portless-aliases.yaml (CI guard)
+[group('Portless')]
+portless-doc-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! diff -u docs/portless-urls.md <(just _portless-pairs | scripts/generate-portless-doc.sh); then
+      echo '❌ docs/portless-urls.md is stale — run `just portless-doc`' >&2
+      exit 1
+    fi
+    echo '✅ docs/portless-urls.md is in sync'
