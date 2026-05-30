@@ -40,8 +40,8 @@
       padding: 22px 16px 0;
     }
     ::selection { background: var(--sel); color: #eafff2; }
-    a { color: var(--cyan); text-decoration: none; }
-    a:hover { text-decoration: underline; text-underline-offset: 2px; }
+    a { color: var(--cyan); text-decoration: none; transition: text-shadow .15s ease; }
+    a:hover { text-decoration: underline; text-underline-offset: 2px; text-shadow: 0 0 8px rgba(79, 193, 217, 0.5); }
 
     /* ── Terminal window ─────────────────────────────────────────── */
     .term {
@@ -122,6 +122,18 @@
     }
     .copy:hover { color: var(--green); border-color: var(--green); }
     .copy.ok { color: var(--green); border-color: var(--green); }
+
+    /* ── Glint sweep on pressable UI (tabs, copy) ────────────────── */
+    .tabs a, .copy { position: relative; overflow: hidden; isolation: isolate; }
+    .tabs a::after, .copy::after {
+      content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
+      background: linear-gradient(115deg, transparent 36%, rgba(94, 240, 143, 0.38) 50%, transparent 64%);
+      transform: translateX(-130%); transition: transform .55s ease;
+    }
+    .tabs a:hover::after, .tabs a:focus-visible::after,
+    .copy:hover::after, .copy:focus-visible::after { transform: translateX(130%); }
+    .copy:hover { box-shadow: 0 0 12px rgba(94, 240, 143, 0.22); }
+    .tabs a:hover { box-shadow: inset 0 0 16px rgba(94, 240, 143, 0.12); }
 
     .blink {
       display: inline-block; width: 0.6ch; height: 1.05em; transform: translateY(0.16em);
