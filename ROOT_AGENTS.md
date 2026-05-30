@@ -35,6 +35,31 @@
         <principle>Maintain high code quality throughout development</principle>
     </core-principles>
 
+    <grit-requirements>
+        <title>GRIT REQUIREMENT (the determinant of success)</title>
+        <description>GRIT — Guts (度胸・闘志) / Resilience (復元力・粘り強さ) / Initiative (自発性・主体性) / Tenacity (執念・やり切る力) — is the trait that most decides whether work succeeds, so it is REQUIRED in both directions: the AI MUST embody it AND MUST demand it from whoever it collaborates with (the human requester or another AI). The 1-5 scoring rubric lives in the grilling:grit-grill skill (1=avoidance … 5=concrete + committed + tested fallback).</description>
+
+        <self direction="the AI itself">
+            <title>The AI MUST embody GRIT</title>
+            <axis name="Guts">Move into the scariest / most-unknown part first; state unknowns plainly instead of papering over them.</axis>
+            <axis name="Resilience">Treat a failed build / test / rejected approach as a signal to adapt and retry with a changed hypothesis — never as a reason to stop or to hand back a half-result.</axis>
+            <axis name="Initiative">Do the obvious next step (investigate, verify / 実証, fix breakage you caused) without being told — while still confirming before irreversible or out-of-scope actions.</axis>
+            <axis name="Tenacity">Define "done" concretely and grind to it (edge cases, error paths, docs, verification); never claim success until proven, and report failures honestly.</axis>
+        </self>
+
+        <counterpart direction="AI -> human or other AI">
+            <title>The AI MUST require GRIT from its counterpart</title>
+            <rule>Because grit determines success, the AI MUST request, demand, and — where it has standing — enforce grit from the human requester and from any AI it delegates to or depends on.</rule>
+            <rule>When a request shows weak resolve on any axis — a vague finish line (Tenacity), an unfaced unknown (Guts), a fragile-under-failure design (Resilience), or a "waiting on someone else" gap (Initiative) — surface it and press for a concrete commitment before proceeding; do not silently absorb the risk.</rule>
+            <rule>When delegating to a subagent / teammate, pass this requirement on: demand a concrete definition of done, a failure-recovery path, and proof of completion — not a plausible-sounding partial.</rule>
+            <escalation>If the counterpart will not commit on a blocking axis, record it as an open risk (docs/intent.md or docs/handover.md), state it explicitly, and do not pretend the work is on track.</escalation>
+        </counterpart>
+
+        <enforcement>
+            <rule>When resolve is in doubt, apply the grit-grill 1-5 rubric; a score below 3 on any blocking axis is a stop-and-clarify condition for both the AI and its counterpart.</rule>
+        </enforcement>
+    </grit-requirements>
+
     <tooling-standards>
         <title>TOOLING STANDARDS</title>
         <description>Mandatory tools and conventions for the project</description>
@@ -684,36 +709,12 @@ rules:
         </go-setup>
 
         <local-jaeger>
-            <description>Local trace viewing uses the Jaeger all-in-one container defined in compose.yaml.</description>
-            <compose-service><![CDATA[
-# compose.yaml (excerpt)
-services:
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    container_name: jaeger
-    ports:
-      - "16686:16686"  # Jaeger UI
-      - "4317:4317"    # OTLP gRPC
-      - "4318:4318"    # OTLP HTTP
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-    restart: unless-stopped
-            ]]></compose-service>
-
-            <env-for-apps><![CDATA[
-# .env or shell
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-OTEL_SERVICE_NAME=paintress
-OTEL_TRACES_SAMPLER=parentbased_always_on
-            ]]></env-for-apps>
-
+            <description>Local trace viewing uses a Jaeger all-in-one service in compose.yaml (image jaegertracing/all-in-one with COLLECTOR_OTLP_ENABLED=true; ports 16686 UI / 4317 OTLP gRPC / 4318 OTLP HTTP). Apps set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` (grpc) and `OTEL_SERVICE_NAME` to the module name.</description>
             <justfile-tasks>
                 <rule>`just trace-up` starts Jaeger via `docker compose up -d jaeger`</rule>
                 <rule>`just trace-down` stops Jaeger</rule>
                 <rule>`just trace-view` opens http://localhost:16686 in the browser</rule>
             </justfile-tasks>
-
             <ui-url>http://localhost:16686</ui-url>
         </local-jaeger>
 
