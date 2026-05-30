@@ -1,4 +1,4 @@
-FROM golang:1.24-bullseye AS builder
+FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,9 @@ ENV CGO_ENABLED=0
 RUN go build -o bigtable-cli .
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
+RUN apk --no-cache add ca-certificates \
+    && adduser -D -H -u 10001 appuser
+WORKDIR /app
 COPY --from=builder /app/bigtable-cli .
+USER appuser
 CMD ["./bigtable-cli"]
