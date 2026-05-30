@@ -289,7 +289,7 @@ fmt:
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
-    @if [ -f package.json ]; then mise x -- vp fmt; else echo 'no package.json; skip'; fi
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp fmt
     @echo '✅ fmt done.'
 
 # lint: report violations (auto-fixes where possible). Tool per language:
@@ -306,7 +306,7 @@ lint:
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔍 JS/TS (vp lint)...'
-    @if [ -f package.json ]; then mise x -- vp lint; else echo 'no package.json; skip'; fi
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp lint
     @echo '✅ lint done.'
 
 # check: strict gate, never writes. Used by pre-push hook and CI.
@@ -321,7 +321,7 @@ check:
     @echo '🔎 Markdown (markdownlint-cli2)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2
     @echo '🔎 JS/TS (vp check)...'
-    @if [ -f package.json ]; then mise x -- vp check; else echo 'no package.json; skip'; fi
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp check
     @echo '🔎 Meta-semgrep rules against rule files...'
     uvx semgrep --config .semgrep/rules/meta/ --error .
     @echo '✅ All checks passed.'
