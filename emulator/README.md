@@ -26,7 +26,7 @@ Pre-flight (recommended)
 
 ```bash
 # Validate gcloud user login + ADC and common misconfigurations
-just gcloud-auth-check
+just emu-gcloud-auth-check
 # or: bash scripts/check-gcloud-auth.sh --details --strict --verbose
 ```
 
@@ -35,13 +35,13 @@ Note: The Firebase emulator does not need production credentials, but Google SDK
 Start emulators (recommended)
 
 ```bash
-just start
+just emu-start
 ```
 
 Stop emulators (recommended)
 
 ```bash
-just stop
+just emu-stop
 ```
 
 Or use Docker Compose directly
@@ -80,9 +80,9 @@ ports via `.env.local`.
 | ES Exporter    | `elasticsearch-exporter` | 9114 → 9114 (Prometheus)            | HTTP   | –   |
 | PG Exporter    | `postgres-exporter`  | 9187 → 9187 (Prometheus)                 | HTTP   | –   |
 
-> Note: Set `A2A_INSPECTOR_REPO=<git-url>` and/or `A2A_INSPECTOR_REF=<git-ref>` before `just start` to pin the upstream inspector checkout. The image builds via the local `a2a-inspector/Dockerfile`, which fetches the repository and runs on Python 3.12 to satisfy its runtime requirement.
+> Note: Set `A2A_INSPECTOR_REPO=<git-url>` and/or `A2A_INSPECTOR_REF=<git-ref>` before `just emu-start` to pin the upstream inspector checkout. The image builds via the local `a2a-inspector/Dockerfile`, which fetches the repository and runs on Python 3.12 to satisfy its runtime requirement.
 
-> Note: Set `MCP_INSPECTOR_REPO=<git-url>` and/or `MCP_INSPECTOR_REF=<git-ref>` before `just start` to pin the upstream MCP Inspector checkout. The image builds via the local `mcp-inspector/Dockerfile`, which fetches the repository and runs on Node.js 24.
+> Note: Set `MCP_INSPECTOR_REPO=<git-url>` and/or `MCP_INSPECTOR_REF=<git-ref>` before `just emu-start` to pin the upstream MCP Inspector checkout. The image builds via the local `mcp-inspector/Dockerfile`, which fetches the repository and runs on Node.js 24.
 
 CLI availability (✓) means a matching Go-based REPL is included and runnable
 via Docker Compose profiles.
@@ -105,20 +105,22 @@ These exporters are scraped by the OTEL Collector in the `telemetry` stack via t
 
 ## Developer Commands
 
-Convenience tasks (install just from <https://just.systems>):
+All recipes live in the repo-root `justfile` under the `Emulator` group
+(run `just --list`):
 
-- `just test` — Run pytest through `uv run`
-- `just gcloud-auth-check` — Pre-flight gcloud auth/ADC check (strict + details)
-- `just gh-validate` — Validate GitHub workflow files using `wrkflw`
-- `just gh-run` — Execute a workflow locally (Docker / Podman / Emulation)
-- `just gh-tui` — Open `wrkflw` TUI and manage workflows interactively
+- `just emu-start` / `just emu-stop` — start (clean+prebuild+up+wait) / stop emulators
+- `just emu-up` / `just emu-check` / `just emu-wait` — start detached / status / wait for readiness
+- `just emu-test` / `just emu-test-fast` / `just emu-test-e2e` — pytest (all / non-e2e / e2e)
+- `just emu-lint` / `just emu-fmt` — ruff + semgrep + markdownlint / formatters
+- `just emu-pg-verify` — PostgreSQL 18 verification
+- `just emu-gcloud-auth-check` — pre-flight gcloud auth/ADC check (strict + details)
 
 ## Testing
 
 Run all tests
 
 ```bash
-just test
+just emu-test
 ```
 
 Coverage highlights
@@ -222,7 +224,7 @@ Note (A2A Inspector): Entering `localhost` in the web UI resolves inside the con
 ## Data & Persistence
 
 - Firebase data persists under `firebase/data/`.
-- Firebase emulator exports on exit automatically (export-on-exit). `just stop` simply stops containers.
+- Firebase emulator exports on exit automatically (export-on-exit). `just emu-stop` simply stops containers.
 - MLflow experiment data (backend + artifacts) persists under `mlflow-data/`.
 
 ## CLI Tools (details)
@@ -245,7 +247,7 @@ docker compose --profile cli run --rm postgres-cli
 PostgreSQL 18 verification
 
 ```bash
-just pg-verify
+just emu-pg-verify
 ```
 
 Run with Docker Compose profiles. Examples:
@@ -292,7 +294,7 @@ Apple Silicon (arm64)
 Health checks
 
 ```bash
-just check
+just emu-check
 ```
 
 Tips
@@ -305,12 +307,13 @@ Tips
 
 ## CI
 
-GitHub Actions workflow `.github/workflows/test-emulators.yaml`:
+GitHub Actions workflow `.github/workflows/test-emulators.yaml` (repo root,
+`paths:` scoped to `emulator/**`, `working-directory: emulator`):
 
-- Installs dependencies via `uv sync --all-extras --frozen`（lockfile に準拠）
+- Installs dependencies via `uv sync --all-extras --frozen` (lockfile に準拠)
 - Runs tests via `uv run pytest`
 
-Use `just gh-validate` locally to sanity‑check workflow files with `wrkflw`.
+Run the same suite locally with `just ci-emu` (lint + start + fast + e2e).
 
 ## pgAdapter / Spanner Dialect Differences
 
@@ -345,10 +348,10 @@ Highlights (stock PostgreSQL, not pgAdapter):
 
 How to use
 
-- Start with the rest of the suite: `just start`
+- Start with the rest of the suite: `just emu-start`
 - CLI (Docker profile): `docker compose --profile cli run --rm postgres-cli`
 - Host access: `psql -h localhost -p ${POSTGRES_PORT:-5433} -U postgres -d postgres`
-- Quick verification of version, `uuidv7()`, and generated columns: `just pg-verify`
+- Quick verification of version, `uuidv7()`, and generated columns: `just emu-pg-verify`
 
 Notes
 

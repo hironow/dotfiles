@@ -126,7 +126,7 @@
             <step number="5">Commit structural changes separately</step>
             <step number="6">Add another test for the next small increment of functionality</step>
             <step number="7">Repeat until complete, committing behavioral changes separately</step>
-            <step number="8">Run commands (just format, just lint) to ensure code quality</step>
+            <step number="8">Run commands (just emu-fmt, just emu-lint) to ensure code quality</step>
         </steps>
         <principle>Always write one test at a time, make it run, then improve structure</principle>
         <principle>Always run all tests (except long-running) each time</principle>

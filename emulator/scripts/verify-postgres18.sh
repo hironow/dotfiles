@@ -20,7 +20,7 @@ echo "🔎 Verifying PostgreSQL 18 features (service: ${SERVICE})"
 
 # Ensure service is running
 docker compose ps --quiet "$SERVICE" 2>/dev/null | grep -q . || {
-  echo "❌ Service '${SERVICE}' is not running. Start with: just up or just start" >&2
+  echo "❌ Service '${SERVICE}' is not running. Start with: just emu-up or just emu-start" >&2
   exit 2
 }
 
