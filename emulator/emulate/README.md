@@ -13,7 +13,7 @@ auth / commerce / messaging API emulators, useful for agent + `payments/`
 
 ```sh
 just emu-api                 # full requested set on base port 4100 (foreground)
-just emu-api services=github,google,slack,apple,microsoft   # confirmed-only subset
+just emu-api services=github,google,slack   # custom subset
 ```
 
 `just emu-api` runs `npx -y emulate@0.6.0 --service <list> --port 4100 --seed emulate.config.yaml`
@@ -24,19 +24,22 @@ on the host, binding to `127.0.0.1` from base port `4100` upward. Stop with Ctrl
 
 ## Services & ports
 
-| Status (emulate@0.6.0) | Services |
-|------------------------|----------|
-| Confirmed in published CLI | `github` `google` `slack` `apple` `microsoft` (also `vercel` `aws`) |
-| Requested, plugins shipped as deps but **unverified** in published CLI | `stripe` `clerk` `okta` `resend` |
+All requested services run on `emulate@0.6.0` (verified). Ports are deterministic:
+`base + index` in the `--service` order used by `just emu-api`, so the default set
+maps as:
 
-Ports are assigned as `base + index` in emulate's internal registry order for the
-**enabled subset**; per-service ports cannot be pinned. **Verify the actual
-mapping from the first-run log**, then enable + correct the emulate entries in
-[`../../config/portless-aliases.yaml`](../../config/portless-aliases.yaml) and
-re-run `just portless-up` to expose them as `https://<service>.localhost`.
+| Port | Service | | Port | Service |
+|------|---------|-|------|---------|
+| 4100 | github    | | 4105 | stripe |
+| 4101 | google    | | 4106 | clerk  |
+| 4102 | slack     | | 4107 | okta   |
+| 4103 | apple     | | 4108 | resend |
+| 4104 | microsoft | |      |        |
 
-If `emu-api` errors on `stripe`/`clerk`/`okta`/`resend` (not exposed by the
-published CLI), drop them from `services=`.
+These ports are pre-registered in
+[`../../config/portless-aliases.yaml`](../../config/portless-aliases.yaml) — run
+`just portless-up` to expose them as `https://<service>.localhost`. If you change
+the `services=` set/order, update those alias ports to match.
 
 ## Config
 

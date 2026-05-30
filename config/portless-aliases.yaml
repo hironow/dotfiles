@@ -27,22 +27,18 @@ aliases:
   tempo: 3200             # Tempo HTTP API                    -> https://tempo.localhost
   loki: 3100              # Loki HTTP API                     -> https://loki.localhost
 
-  # --- emulate API emulators (emulator/compose.yaml `emulate` service, base 4100) ---
-  # NOTE: emulate (emulate@0.6.0) assigns ports as base+index in its internal
-  # registry order for the ENABLED subset and does NOT support per-service port
-  # pinning. The ports below are therefore best-effort and MUST be verified on
-  # first run (`docker compose -f emulator/compose.yaml logs emulate`) before
-  # relying on them. Uncomment + correct after verifying, then re-run portless-up.
-  #
-  # Confirmed available in emulate@0.6.0 published CLI: github google slack apple microsoft
-  # Requested but UNVERIFIED in published CLI (plugins shipped as deps): stripe clerk okta resend
-  #
-  # github: 4100
-  # google: 4101
-  # slack: 4102
-  # apple: 4103
-  # microsoft: 4104
-  # stripe: 4105
-  # clerk: 4106
-  # okta: 4107
-  # resend: 4108
+  # --- emulate API emulators (`just emu-api`, host npx, base 4100) ---
+  # Verified on emulate@0.6.0: all 9 requested services are exposed by the CLI,
+  # and ports are assigned as base + index in the `--service` order used by
+  # `just emu-api` (github,google,slack,apple,microsoft,stripe,clerk,okta,resend).
+  # If you change emu-api's `services=` set/order, update these ports to match.
+  # These are only reachable while `just emu-api` is running.
+  github: 4100
+  google: 4101
+  slack: 4102
+  apple: 4103
+  microsoft: 4104
+  stripe: 4105
+  clerk: 4106
+  okta: 4107
+  resend: 4108

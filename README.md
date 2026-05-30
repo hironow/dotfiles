@@ -160,7 +160,7 @@ just emu-stop             # stop (with firebase export)
 just tel-up               # start; just tel-down to stop
 
 # API/SaaS emulators (vercel-labs/emulate, base port 4100, foreground)
-just emu-api              # see emulator/emulate/README.md for service caveats
+just emu-api              # 9 API emulators on 4100-4108 (see emulator/emulate/README.md)
 ```
 
 HTTP UIs are exposed as stable `https://<name>.localhost` URLs via

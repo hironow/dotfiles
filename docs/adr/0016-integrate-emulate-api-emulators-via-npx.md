@@ -19,11 +19,12 @@ emulate を vendor せず **npx 薄ラッパ**で統合する。
   emulate.config.yaml` を **host で**実行する (Node CLI を host に直接 bind し、
   コンテナ内 localhost-binding の取り回し問題を回避)
 - 設定は `emulator/emulate/emulate.config.yaml` のみ git 管理
-- `emulate@0.6.0` に pin。 公開 CLI で確認済みのサービスは github / google /
-  slack / apple / microsoft (他に vercel / aws)。 要望の stripe / clerk / okta /
-  resend は `@emulators/*` plugin が deps に同梱されるが公開 CLI での `--service`
-  露出が未確認のため、 `services=` 引数で除外可能とし README に検証手順を明記
-- base port 4100 (firebase UI 4000 との衝突回避)
+- `emulate@0.6.0` に pin。 要望の全 9 サービス (github / google / slack / apple /
+  microsoft / stripe / clerk / okta / resend) が公開 CLI で利用可能なことを実機検証済み
+  (公式 README の列挙は 7 種だが実際にはこれらも `--service` で起動する)
+- base port 4100 (firebase UI 4000 との衝突回避)。 ポートは `--service` 順の
+  base + index で確定する (github 4100 … resend 4108) ため portless alias を
+  確定値で `config/portless-aliases.yaml` に登録済み
 
 ## Consequences
 
@@ -35,8 +36,7 @@ emulate を vendor せず **npx 薄ラッパ**で統合する。
 ### Negative
 
 - 初回 `npx` DL のネットワーク依存
-- emulate@0.6.0 では要望サービスの一部が未露出の可能性 (要初回検証)
-- ポート pin 不可 (内部採番) のため portless alias は初回検証後に有効化
+- `services=` の集合 / 順序を変えると alias ポートと乖離する (順序がポートを決める)
 
 ### Neutral
 
