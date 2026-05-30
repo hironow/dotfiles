@@ -1185,9 +1185,11 @@ emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
 # Telemetry (telemetry/) — OTel + Grafana + Loki + Prometheus + Tempo
 # ------------------------------
 
-# Start telemetry stack (detached)
+# Start telemetry stack (detached). Ensures the shared-otel-net network exists
+# (shared with the emulator stack; telemetry compose references it as external).
 [group('Telemetry')]
 tel-up:
+    @docker network inspect shared-otel-net >/dev/null 2>&1 || docker network create shared-otel-net
     cd telemetry && docker compose up -d
 
 # Stop telemetry stack
