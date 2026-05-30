@@ -103,17 +103,39 @@ wait_elasticsearch() {
   return 1
 }
 
-# ─── Wait for each service ───
-wait_http          "Firebase UI"      "http://localhost:${FIREBASE_UI_PORT}"                       "$DEFAULT_WAIT"
-wait_elasticsearch "Elasticsearch"    "http://localhost:${ELASTICSEARCH_PORT}/_cluster/health"     "$DEFAULT_WAIT"
-wait_http          "Qdrant"           "http://localhost:${QDRANT_REST_PORT}/healthz"               "$DEFAULT_WAIT"
-wait_http          "Neo4j HTTP"       "http://localhost:${NEO4J_HTTP_PORT}"                        "$DEFAULT_WAIT"
-wait_http          "A2A Inspector"    "http://localhost:${A2A_INSPECTOR_PORT}"                     "$A2A_WAIT"
-wait_http          "MCP Inspector"    "http://localhost:${MCP_INSPECTOR_PORT}"                     "$MCP_WAIT"
-wait_http          "MLflow"           "http://localhost:${MLFLOW_PORT}/"                           "$DEFAULT_WAIT"
-wait_tcp           "Spanner gRPC"     localhost "$SPANNER_GRPC_PORT"                               "$DEFAULT_WAIT"
-wait_tcp           "pgAdapter"        localhost "$PGADAPTER_PORT"                                  "$DEFAULT_WAIT"
-wait_tcp           "Bigtable"         localhost "$BIGTABLE_PORT"                                   "$DEFAULT_WAIT"
-wait_postgres      "PostgreSQL 18"    localhost "$POSTGRES_PORT"                                   "$POSTGRES_WAIT"
+# ─── Profile-aware gating ───
+# Since `just emu-up` now starts only the lite (default-profile) services and
+# `emu-up-group`/`emu-up-only` start arbitrary subsets, we must NOT block on a
+# service that was never started. is_running checks the container by name and
+# guard runs a wait_* only when its container is up (otherwise it prints a skip
+# line). The is_running call sits inside an `if`, so its non-zero exit is exempt
+# from `set -e`; a genuine wait_* timeout on a RUNNING service still fails loud.
+is_running() {
+  local c="$1" status
+  status=$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null || echo false)
+  [[ "$status" == "true" ]]
+}
 
-echo "All targeted services reported ready."
+guard() {  # guard <container_name> <wait_fn> [args...]
+  local c="$1"; shift
+  if is_running "$c"; then
+    "$@"
+  else
+    echo "- skip ${c} (not running)"
+  fi
+}
+
+# ─── Wait for each running service ───
+guard firebase-emulator      wait_http          "Firebase UI"   "http://localhost:${FIREBASE_UI_PORT}"                   "$DEFAULT_WAIT"
+guard elasticsearch-emulator wait_elasticsearch "Elasticsearch" "http://localhost:${ELASTICSEARCH_PORT}/_cluster/health" "$DEFAULT_WAIT"
+guard qdrant-emulator        wait_http          "Qdrant"        "http://localhost:${QDRANT_REST_PORT}/healthz"           "$DEFAULT_WAIT"
+guard neo4j-emulator         wait_http          "Neo4j HTTP"    "http://localhost:${NEO4J_HTTP_PORT}"                    "$DEFAULT_WAIT"
+guard a2a-inspector          wait_http          "A2A Inspector" "http://localhost:${A2A_INSPECTOR_PORT}"                 "$A2A_WAIT"
+guard mcp-inspector          wait_http          "MCP Inspector" "http://localhost:${MCP_INSPECTOR_PORT}"                 "$MCP_WAIT"
+guard mlflow-server          wait_http          "MLflow"        "http://localhost:${MLFLOW_PORT}/"                       "$DEFAULT_WAIT"
+guard spanner-emulator       wait_tcp           "Spanner gRPC"  localhost "$SPANNER_GRPC_PORT"                           "$DEFAULT_WAIT"
+guard pgadapter-emulator     wait_tcp           "pgAdapter"     localhost "$PGADAPTER_PORT"                              "$DEFAULT_WAIT"
+guard bigtable-emulator      wait_tcp           "Bigtable"      localhost "$BIGTABLE_PORT"                               "$DEFAULT_WAIT"
+guard postgres-18            wait_postgres      "PostgreSQL 18" localhost "$POSTGRES_PORT"                               "$POSTGRES_WAIT"
+
+echo "All running services reported ready."
