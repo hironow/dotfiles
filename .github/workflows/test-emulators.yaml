@@ -1,0 +1,130 @@
+name: Test Emulators
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'emulator/**'
+      - '!emulator/**/*.md'
+      - '!emulator/**/*.MD'
+      - '.github/workflows/test-emulators.yaml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'emulator/**'
+      - '!emulator/**/*.md'
+      - '!emulator/**/*.MD'
+      - '.github/workflows/test-emulators.yaml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-test-emulators
+  cancel-in-progress: true
+
+jobs:
+  unit-integration-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: emulator
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.14'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+
+    - name: Install dependencies (uv sync --frozen)
+      run: |
+        uv sync --all-extras --frozen
+
+    - name: Clean up any existing Docker resources
+      run: |
+        echo "=== Cleaning up Docker resources ==="
+        # Stop and remove all containers from this compose project
+        docker compose down -v --remove-orphans 2>/dev/null || true
+
+        # Kill any containers that might be using our ports
+        for port in 55432 9200 7474 7687 6333 9020 9010 8085 9000 4000; do
+          container_id=$(docker ps -q --filter "publish=$port" 2>/dev/null || true)
+          if [[ -n "$container_id" ]]; then
+            echo "Stopping container using port $port: $container_id"
+            docker stop "$container_id" 2>/dev/null || true
+            docker rm -f "$container_id" 2>/dev/null || true
+          fi
+        done
+
+        # Also check for any processes using key ports (fallback)
+        for port in 55432 9200; do
+          if sudo lsof -i ":$port" -t >/dev/null 2>&1; then
+            echo "Warning: Port $port still in use by non-Docker process"
+            sudo lsof -i ":$port" || true
+          fi
+        done
+
+        echo "Cleanup complete."
+
+    - name: Pre-build selected images (incl. Postgres 18)
+      run: bash scripts/prebuild-images.sh a2a-inspector firebase-emulator mcp-inspector postgres
+
+    - name: Start Docker Compose services
+      run: bash scripts/start-services.sh --no-build
+
+    - name: Wait for services to be ready
+      run: bash scripts/wait-for-services.sh --default 90 --a2a 180 --postgres 150
+
+    - name: Test Elasticsearch separately
+      timeout-minutes: 2
+      run: bash scripts/test-elasticsearch.sh
+
+    - name: Run unit/integration tests (non-e2e)
+      timeout-minutes: 5
+      run: bash scripts/run-tests-fast.sh
+
+    - name: Run e2e tests
+      timeout-minutes: 20
+      run: |
+        set -o pipefail
+        bash scripts/run-tests-e2e.sh | tee e2e.log
+
+    - name: Summarize skipped e2e tests
+      if: always()
+      shell: bash
+      run: |
+        if [[ ! -f e2e.log ]]; then
+          summary=$'### E2E Skipped Tests\nNo e2e.log found.'
+          printf '%s\n' "$summary"
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+            printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+        fi
+
+        tmp_summary="$(mktemp)"
+        {
+          echo "### E2E Skipped Tests"
+          SKIPS=$(awk 'BEGIN{p=0} /^=+ short test summary info =+$/ {p=1; next} /^=+/ {if(p==1) p=0} p==1 {print}' e2e.log | grep '^SKIPPED' || true)
+          if [[ -n "$SKIPS" ]]; then
+            echo "$SKIPS" | sed 's/^/- /'
+          else
+            ALT=$(grep -E " SKIPPED \(" e2e.log || true)
+            if [[ -n "$ALT" ]]; then
+              echo "$ALT" | sed 's/^/- /'
+            else
+              echo "No skipped e2e tests."
+            fi
+          fi
+        } | tee "$tmp_summary"
+
+        if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+          cat "$tmp_summary" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Show Docker logs on failure
+      if: failure()
+      run: docker compose logs

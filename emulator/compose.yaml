@@ -1,0 +1,412 @@
+services:
+  # Firebase Emulator Suite
+  firebase-emulator:
+    build:
+      context: ./firebase
+      dockerfile: Dockerfile
+    container_name: firebase-emulator
+    volumes:
+      - ./firebase/firebase.json:/firebase/firebase.json:ro
+      - ./firebase/firestore.rules:/firebase/firestore.rules:ro
+      - ./firebase/firestore.indexes.json:/firebase/firestore.indexes.json:ro
+      - ./firebase/storage.rules:/firebase/storage.rules:ro
+      - ./firebase/remoteconfig.template.json:/firebase/remoteconfig.template.json:ro
+      - ./firebase/data:/firebase/data
+    ports:
+      - "127.0.0.1:${AUTH_PORT:-9099}:9099"  # Auth
+      - "127.0.0.1:${FIRESTORE_PORT:-8080}:8080"  # Firestore
+      - "127.0.0.1:${PUBSUB_PORT:-9399}:9399"  # Pub/Sub
+      - "127.0.0.1:${STORAGE_PORT:-9199}:9199"  # Storage
+      - "127.0.0.1:${EVENTARC_PORT:-9299}:9299"  # Eventarc
+      - "127.0.0.1:${TASKS_PORT:-9499}:9499"  # Tasks
+      - "127.0.0.1:${FIREBASE_UI_PORT:-4000}:4000"  # UI
+    environment:
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-test-project}
+    command: >
+      sh -c "
+        if [ -d /firebase/data/firestore_export ]; then
+          echo 'Importing existing data...';
+          firebase emulators:start --project=${FIREBASE_PROJECT_ID:-test-project} --import=/firebase/data --export-on-exit=/firebase/data;
+        else
+          echo 'No existing data found, starting fresh...';
+          firebase emulators:start --project=${FIREBASE_PROJECT_ID:-test-project} --export-on-exit=/firebase/data;
+        fi
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # Cloud Bigtable Emulator
+  bigtable-emulator:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+    pull_policy: always
+    container_name: bigtable-emulator
+    # Apple Silicon (arm64): Bigtable emulator image is amd64-only; run under emulation
+    platform: linux/amd64
+    command: ["gcloud", "beta", "emulators", "bigtable", "start", "--host-port=0.0.0.0:8086"]
+    ports:
+      - "127.0.0.1:${BIGTABLE_PORT:-8086}:8086"  # gRPC endpoint
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8086 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Bigtable CLI
+  bigtable-cli:
+    depends_on:
+      - bigtable-emulator
+    build:
+      context: ./bigtable-cli
+      dockerfile: Dockerfile
+    container_name: bigtable-cli
+    environment:
+      - BIGTABLE_EMULATOR_HOST=bigtable-emulator:8086
+      - BIGTABLE_PROJECT=test-project
+      - BIGTABLE_INSTANCE=test-instance
+    stdin_open: true
+    tty: true
+    command: ["./bigtable-cli"]
+    profiles:
+      - cli  # Only run when explicitly requested
+
+  # Spanner Emulator
+  spanner-emulator:
+    image: "gcr.io/cloud-spanner-emulator/emulator"
+    pull_policy: always
+    container_name: spanner-emulator
+    ports:
+      - "127.0.0.1:${SPANNER_GRPC_PORT:-9010}:9010"  # gRPC endpoint
+      - "127.0.0.1:${SPANNER_REST_PORT:-9020}:9020"  # REST endpoint
+    # Health check using built-in TCP check
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9010 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # PostgreSQL Adapter for Spanner
+  pgadapter:
+    depends_on:
+      - spanner-emulator
+    image: "gcr.io/cloud-spanner-pg-adapter/pgadapter"
+    pull_policy: always
+    container_name: pgadapter-emulator
+    command:
+      - "-p test-project"
+      - "-i test-instance"
+      - "-r autoConfigEmulator=true"
+      - "-e spanner-emulator:9010"
+      - "-c \"\""
+      - "-x"
+    ports:
+      - "127.0.0.1:${PGADAPTER_PORT:-55432}:5432"  # PostgreSQL port (avoid host 5432)
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # pgAdapter CLI
+  pgadapter-cli:
+    depends_on:
+      - pgadapter
+    build:
+      context: ./pgadapter-cli
+      dockerfile: Dockerfile
+    container_name: pgadapter-cli
+    environment:
+      - PGHOST=pgadapter
+      - PGPORT=5432
+      - PGUSER=user
+      - PGDATABASE=test-instance
+      - PGSSLMODE=disable
+    stdin_open: true
+    tty: true
+    command: ["./pgadapter-cli"]
+    profiles:
+      - cli  # Only run when explicitly requested
+
+  # Neo4j Graph Database
+  # Neo4j Graph Database
+  # Note: Prometheus metrics require Enterprise Edition
+  neo4j:
+    image: neo4j:2025-community
+    container_name: neo4j-emulator
+    ports:
+      - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"  # HTTP
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"  # Bolt
+    environment:
+      - NEO4J_AUTH=${NEO4J_AUTH:-neo4j/password}
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=1G
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/import
+      - neo4j_plugins:/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:7474 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Neo4j CLI
+  neo4j-cli:
+    depends_on:
+      - neo4j
+    build:
+      context: ./neo4j-cli
+      dockerfile: Dockerfile
+    container_name: neo4j-cli
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=password
+    stdin_open: true
+    tty: true
+    command: ["./neo4j-cli"]
+    profiles:
+      - cli  # Only run when explicitly requested
+
+  # A2A Inspector (real build using local multi-stage Dockerfile)
+  a2a-inspector:
+    build:
+      context: ./a2a-inspector
+      dockerfile: Dockerfile
+      args:
+        A2A_INSPECTOR_REPO: ${A2A_INSPECTOR_REPO:-https://github.com/a2aproject/a2a-inspector.git}
+        A2A_INSPECTOR_REF: ${A2A_INSPECTOR_REF:-main}
+    container_name: a2a-inspector
+    platform: linux/amd64
+    ports:
+      - "127.0.0.1:${A2A_INSPECTOR_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # MCP Inspector (Model Context Protocol debugging tool)
+  mcp-inspector:
+    build:
+      context: ./mcp-inspector
+      dockerfile: Dockerfile
+      args:
+        MCP_INSPECTOR_REPO: ${MCP_INSPECTOR_REPO:-https://github.com/modelcontextprotocol/inspector.git}
+        MCP_INSPECTOR_REF: ${MCP_INSPECTOR_REF:-main}
+    container_name: mcp-inspector
+    ports:
+      - "127.0.0.1:${MCP_INSPECTOR_PORT:-6274}:6274"  # Client UI
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6274"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # MLflow Tracking Server + UI
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.5.1
+    container_name: mlflow-server
+    ports:
+      - "127.0.0.1:${MLFLOW_PORT:-5252}:5000"
+    volumes:
+      - ./mlflow-data:/mlflow:rw
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination file:///mlflow/artifacts
+      --allowed-hosts '*'
+      --cors-allowed-origins '*'
+    restart: unless-stopped
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant-emulator
+    ports:
+      - "127.0.0.1:${QDRANT_REST_PORT:-6333}:6333"  # REST API
+      - "127.0.0.1:${QDRANT_GRPC_PORT:-6334}:6334"  # gRPC API
+    environment:
+      - QDRANT__LOG_LEVEL=INFO
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Qdrant CLI
+  qdrant-cli:
+    depends_on:
+      - qdrant
+    build:
+      context: ./qdrant-cli
+      dockerfile: Dockerfile
+    container_name: qdrant-cli
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+    stdin_open: true
+    tty: true
+    command: ["./qdrant-cli"]
+    profiles:
+      - cli  # Only run when explicitly requested
+
+  # PostgreSQL 18 (pure Postgres)
+  # Note: PG 18+ uses major-version-specific directories (e.g., /var/lib/postgresql/18/data)
+  # Mount at /var/lib/postgresql (not /data subdir) for pg_upgrade compatibility.
+  postgres:
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    container_name: postgres-18
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"  # PostgreSQL port (avoid 5432 conflict with pgAdapter)
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=postgres
+      # PGDATA is automatically set to /var/lib/postgresql/18/data by the image
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # PostgreSQL CLI (Go-based)
+  postgres-cli:
+    depends_on:
+      - postgres
+    build:
+      context: ./postgres-cli
+      dockerfile: Dockerfile
+    container_name: postgres-cli
+    environment:
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=postgres
+      - PGPASSWORD=password
+      - PGDATABASE=postgres
+    stdin_open: true
+    tty: true
+    command: ["./postgres-cli"]
+    profiles:
+      - cli  # Only run when explicitly requested
+  # Elasticsearch
+  elasticsearch:
+    image: elasticsearch:9.3.0
+    container_name: elasticsearch-emulator
+    ports:
+      - "127.0.0.1:${ELASTICSEARCH_PORT:-9200}:9200"  # REST API
+      - "127.0.0.1:${ELASTICSEARCH_TRANSPORT_PORT:-9300}:9300"  # Transport
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - "bootstrap.memory_lock=false"
+      - "cluster.routing.allocation.disk.threshold_enabled=false"
+      - "action.destructive_requires_name=false"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # Elasticsearch CLI
+  elasticsearch-cli:
+    depends_on:
+      - elasticsearch
+    build:
+      context: ./elasticsearch-cli
+      dockerfile: Dockerfile
+    container_name: elasticsearch-cli
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+    stdin_open: true
+    tty: true
+    command: ["./elasticsearch-cli"]
+    profiles:
+      - cli  # Only run when explicitly requested
+
+  # Elasticsearch Exporter (Prometheus metrics)
+  elasticsearch-exporter:
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:latest
+    container_name: elasticsearch-exporter
+    command:
+      - '--es.uri=http://elasticsearch:9200'
+      - '--es.all'
+    ports:
+      - "127.0.0.1:${ELASTICSEARCH_EXPORTER_PORT:-9114}:9114"
+    depends_on:
+      - elasticsearch
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9114/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # PostgreSQL Exporter (Prometheus metrics)
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://postgres:password@postgres:5432/postgres?sslmode=disable
+    ports:
+      - "127.0.0.1:${POSTGRES_EXPORTER_PORT:-9187}:9187"
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  neo4j_plugins:
+  qdrant_data:
+  elasticsearch_data:
+  postgres_data:
+
+networks:
+  default:
+    name: shared-otel-net
+    external: true

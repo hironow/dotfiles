@@ -1,16 +1,9 @@
-# Test cases for meta-compose-v1-filename-must-be-sentineled
-
-#
-
-# Run: semgrep --test --config ../../../rules/meta/
-
-#
-
-# Convention
-
-# <!-- ruleid: <rule-id> --> on the line ABOVE an expected match
-
-# <!-- ok:     <rule-id> --> on the line ABOVE an expected non-match
+<!--
+Test cases for meta-compose-v1-filename-must-be-sentineled (run via `just semgrep-test`).
+Each target line is preceded by a semgrep annotation comment on the line ABOVE it:
+ruleid marks an expected match, ok marks an expected non-match. The annotation syntax
+is intentionally not spelled out here so this header is not parsed as a test annotation.
+-->
 
 <!-- ok: meta-compose-v1-filename-must-be-sentineled -->
 <prohibited-filename>docker-compose.yaml</prohibited-filename>

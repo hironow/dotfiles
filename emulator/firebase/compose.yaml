@@ -1,0 +1,32 @@
+services:
+  firebase-emulator:
+    build:
+      context: ./firebase
+      dockerfile: Dockerfile
+    volumes:
+      - ./firebase/firebase.json:/firebase/firebase.json:ro
+      - ./firebase/firestore.rules:/firebase/firestore.rules:ro
+      - ./firebase/firestore.indexes.json:/firebase/firestore.indexes.json:ro
+      - ./firebase/storage.rules:/firebase/storage.rules:ro
+      - ./firebase/remoteconfig.template.json:/firebase/remoteconfig.template.json:ro
+      - ./firebase/data:/firebase/data
+    ports:
+      - "127.0.0.1:9099:9099"  # Auth
+      - "127.0.0.1:8080:8080"  # Firestore
+      - "127.0.0.1:9399:9399"  # Pub/Sub
+      - "127.0.0.1:9199:9199"  # Storage
+      - "127.0.0.1:9299:9299"  # Eventarc
+      - "127.0.0.1:9499:9499"  # Tasks
+      - "127.0.0.1:4000:4000"  # UI
+    environment:
+      - FIREBASE_PROJECT_ID=your-project-id
+    command: >
+      sh -c "
+        if [ -d /firebase/data/firestore_export ]; then
+          echo 'Importing existing data...';
+          firebase emulators:start --host 0.0.0.0 --import=/firebase/data --export-on-exit=/firebase/data;
+        else
+          echo 'No existing data found, starting fresh...';
+          firebase emulators:start --host 0.0.0.0 --export-on-exit=/firebase/data;
+        fi
+      "

@@ -1,0 +1,34 @@
+# Common caches and build artifacts (ignored by Semgrep)
+# Keep rules broad, but avoid noisy/slow directories.
+
+# VCS
+.git/**
+
+# Python envs and caches
+.venv/**
+venv/**
+**/__pycache__/**
+.mypy_cache/**
+.ruff_cache/**
+.pytest_cache/**
+.tox/**
+.cache/**
+
+# Packaging / build outputs
+build/**
+dist/**
+**/*.egg-info/**
+.eggs/**
+
+# Node / frontend
+node_modules/**
+
+# Misc
+.DS_Store
+coverage/**
+htmlcov/**
+logs/**
+**/*.log
+
+# Keep Semgrep configs included
+!.semgrep/**

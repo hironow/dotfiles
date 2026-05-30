@@ -1,0 +1,20 @@
+{
+	// markdownlint configuration
+	"config": {
+		"extends": "./.markdownlint.json"
+	},
+	// Files to ignore
+	"ignores": [
+		"**/.pytest_cache/**",
+		"**/__pycache__/**",
+		"**/.cache/**",
+		"**/node_modules/**",
+		"**/dist/**",
+		"**/build/**",
+		"**/output/**",
+		"**/.idea/**",
+		"**/.vscode/**",
+		"**/vendor/**",
+		"AGENTS.md"
+	]
+}

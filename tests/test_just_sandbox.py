@@ -1,5 +1,7 @@
 import os
+import shutil
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -103,16 +105,43 @@ def _image_exists(image: str) -> bool:
     return r.returncode == 0
 
 
+def _snapshot_tracked_worktree(src: str) -> str:
+    """Copy only git-tracked files into a throwaway host tempdir.
+
+    The sandbox container must never see the real repo: its 3.6G `.git`
+    (history + credentials), untracked secrets (`private/`), and caches must
+    stay out, and any file a test writes (fmt, dump truncation, symlinks) must
+    land on a disposable copy — not the host working tree via a bind mount.
+    `git ls-files` yields exactly the first-party tracked set (submodule
+    gitlinks, `.git`, `.venv`, `node_modules`, caches are all excluded), so we
+    copy just those (~hundreds of files) with the stdlib (no rsync/tar dep).
+    """
+    snapshot = tempfile.mkdtemp(prefix="dotfiles-sandbox-")
+    tracked = subprocess.run(
+        ["git", "-C", src, "ls-files", "-z"],
+        check=True,
+        stdout=subprocess.PIPE,
+    ).stdout.decode()
+    for rel in tracked.split("\0"):
+        if not rel:
+            continue
+        source = os.path.join(src, rel)
+        if not os.path.isfile(source):  # skip gitlinks / vanished paths
+            continue
+        dest = os.path.join(snapshot, rel)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copy2(source, dest, follow_symlinks=False)
+    return snapshot
+
+
 def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
-    # The dev container image (built by devcontainer.json) does NOT
-    # bake /root/dotfiles into its layers — that path is the bind
-    # mount target declared by `workspaceMount`. So a fresh
-    # `docker run` against the image starts with an empty /root,
-    # and `cd /root/dotfiles` fails with "No such file or directory".
-    #
-    # Re-create the bind mount manually for each one-shot test
-    # container, mirroring what the devcontainer CLI does at create
-    # time.
+    # The dev container image does NOT bake /root/dotfiles into its layers —
+    # that path is the workspace mount. A fresh `docker run` starts empty, so we
+    # recreate it. Under docker-outside-of-docker (CI; LOCAL_WORKSPACE_FOLDER
+    # set) the mount source must be a host path and the checkout is ephemeral,
+    # so we bind-mount it directly. Locally we snapshot only git-tracked files
+    # into a host tempdir and mount THAT, so the real repo (and its .git) never
+    # enters the throwaway container and tests can never pollute the host.
     full_script = textwrap.dedent(
         f"""
         set -e
@@ -120,12 +149,19 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
         {script}
         """
     ).strip()
+    src = _host_workspace_path()
+    snapshot_dir = None
+    if "LOCAL_WORKSPACE_FOLDER" in os.environ:
+        mount_source = src
+    else:
+        snapshot_dir = _snapshot_tracked_worktree(src)
+        mount_source = snapshot_dir
     docker_args = [
         "docker",
         "run",
         "--rm",
         "-v",
-        f"{_host_workspace_path()}:/root/dotfiles",
+        f"{mount_source}:/root/dotfiles",
         "-w",
         "/root/dotfiles",
         # devcontainers/ci action bakes the dev container's
@@ -144,7 +180,11 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
     if gh_token:
         docker_args.extend(["-e", f"GITHUB_TOKEN={gh_token}"])
     docker_args.extend([image, "bash", "-lc", full_script])
-    return _run(docker_args)
+    try:
+        return _run(docker_args)
+    finally:
+        if snapshot_dir is not None:
+            shutil.rmtree(snapshot_dir, ignore_errors=True)
 
 
 def _sh_single_quote(s: str) -> str:
@@ -636,6 +676,11 @@ _MISE_STUB = _MISE_PRETTIER_STUB
 # scan third-party code the recipes are designed to skip. We derive the
 # exclusion list dynamically from .gitmodules so nested submodules
 # (e.g. tools/tmux/plugins/tmux-resurrect) are covered too.
+# SAFETY: run_in_sandbox mounts a throwaway snapshot of only the tracked working
+# tree (no host .git — see _snapshot_tracked_worktree), so every git write here
+# lands on the disposable copy and can never reach the host repo. We therefore
+# init a normal repo at /root/dotfiles/.git, which `prek install` /
+# `just install-hooks` need (they wire hooks into .git/hooks).
 _GIT_INIT = (
     "cd /root/dotfiles && "
     "git init -q && "
@@ -792,27 +837,28 @@ def test_just_clean_work_env_resets_managed_paths_only(docker_image):
 
 
 # =============================================================================
-# Validation Recipe Tests (semgrep meta rules)
+# Validation Recipe Tests (semgrep rule self-tests)
 # =============================================================================
 #
 # These exercise the rule-files-against-themselves workflow:
-#   - meta-semgrep      : run rules in .semgrep/rules/meta/ against the repo
-#   - meta-semgrep-test : verify the rules' own test annotations
-#   - validate          : composite of both
+#   - meta-semgrep : run rules in .semgrep/rules/meta/ against the repo
+#   - semgrep-test : `semgrep --test` every rule in .semgrep/rules/ (meta +
+#                    python) against its co-located fixtures
+#   - validate     : composite of both
 #
 # semgrep is installed on demand via uvx, so the first run downloads it
 # (~75MB). Subsequent runs in the same container are cached.
 
 
 @pytest.mark.check
-def test_just_meta_semgrep_test_passes(docker_image):
-    """`just meta-semgrep-test` validates the meta rules' own test annotations."""
+def test_just_semgrep_test_passes(docker_image):
+    """`just semgrep-test` validates every rule's own test annotations."""
     result = run_in_sandbox(
         docker_image,
-        _GIT_INIT + "just meta-semgrep-test",
+        _GIT_INIT + "just semgrep-test",
     )
     assert result.returncode == 0, (
-        f"meta-semgrep-test failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        f"semgrep-test failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
 
 
@@ -830,7 +876,7 @@ def test_just_meta_semgrep_clean_repo_passes(docker_image):
 
 @pytest.mark.check
 def test_just_validate_runs_both_steps(docker_image):
-    """`just validate` chains meta-semgrep-test then meta-semgrep."""
+    """`just validate` chains semgrep-test then meta-semgrep."""
     result = run_in_sandbox(
         docker_image,
         _GIT_INIT + "just validate",

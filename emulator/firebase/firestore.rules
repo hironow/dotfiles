@@ -1,0 +1,16 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Development emulator rules - NEVER use in production
+    // Allow all reads/writes while running the local emulator and tests
+    match /{document=**} {
+      allow read, write: if true;
+    }
+    
+    // Example (production idea): Authenticated users can read/write their own data
+    // match /users/{userId} {
+    //   allow read, write: if request.auth != null && request.auth.uid == userId;
+    // }
+  }
+}
