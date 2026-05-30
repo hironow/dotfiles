@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Development emulator rules - NEVER use in production
+    // Uncomment the line below to allow all read/write access for testing
+    // match /{allPaths=**} {
+    //   allow read, write: if true;
+    // }
+    
+    // Default secure rules
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+    
+    // Example: Allow authenticated users to read/write their own files
+    // match /users/{userId}/{allPaths=**} {
+    //   allow read, write: if request.auth != null && request.auth.uid == userId;
+    // }
+    
+    // Example: Public read access for specific paths
+    // match /public/{allPaths=**} {
+    //   allow read: if true;
+    //   allow write: if request.auth != null;
+    // }
+  }
+}

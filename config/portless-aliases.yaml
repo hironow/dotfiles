@@ -1,0 +1,44 @@
+# Static portless aliases for vendored local-dev HTTP UIs.
+#
+# Registered by `just portless-up` via `portless alias <name> <port>`
+# (portless: vercel-labs/portless — HTTPS reverse proxy mapping <name>.localhost
+# to a fixed local port; static aliases persist in ~/.portless/routes.json).
+#
+# Only HTTP(S) UIs are listed here. portless cannot proxy raw TCP, so datastore
+# wire protocols (postgres 5433 / pgadapter 55432 / neo4j bolt 7687 / bigtable
+# gRPC 8086 / spanner gRPC 9010 / qdrant gRPC 6334 / elasticsearch transport
+# 9300) are intentionally NOT aliased and stay on their 127.0.0.1 ports.
+#
+# Format: flat `name: port` entries under `aliases:`. `just portless-up` parses
+# this file; comments (`#`) and blank lines are ignored.
+aliases:
+  # --- emulator (emulator/compose.yaml) HTTP UIs ---
+  firebase: 4000          # Firebase Emulator Suite UI       -> https://firebase.localhost
+  neo4j: 7474             # Neo4j Browser (HTTP)              -> https://neo4j.localhost
+  a2a-inspector: 8081     # A2A Inspector UI                  -> https://a2a-inspector.localhost
+  mcp-inspector: 6274     # MCP Inspector UI                  -> https://mcp-inspector.localhost
+  mlflow: 5252            # MLflow UI                         -> https://mlflow.localhost
+  qdrant: 6333            # Qdrant REST / Dashboard           -> https://qdrant.localhost
+  elasticsearch: 9200     # Elasticsearch REST                -> https://elasticsearch.localhost
+
+  # --- telemetry (telemetry/compose.yaml) HTTP UIs ---
+  grafana: 3010           # Grafana                           -> https://grafana.localhost
+  prometheus: 9091        # Prometheus                        -> https://prometheus.localhost
+  tempo: 3200             # Tempo HTTP API                    -> https://tempo.localhost
+  loki: 3100              # Loki HTTP API                     -> https://loki.localhost
+
+  # --- emulate API emulators (`just emu-api`, host npx, base 4100) ---
+  # Verified on emulate@0.6.0: all 9 requested services are exposed by the CLI,
+  # and ports are assigned as base + index in the `--service` order used by
+  # `just emu-api` (github,google,slack,apple,microsoft,stripe,clerk,okta,resend).
+  # If you change emu-api's `services=` set/order, update these ports to match.
+  # These are only reachable while `just emu-api` is running.
+  github: 4100
+  google: 4101
+  slack: 4102
+  apple: 4103
+  microsoft: 4104
+  stripe: 4105
+  clerk: 4106
+  okta: 4107
+  resend: 4108

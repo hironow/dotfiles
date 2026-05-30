@@ -1,0 +1,5 @@
+# Firebase emulator data
+data/
+
+# Firebase debug logs  
+*.log

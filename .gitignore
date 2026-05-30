@@ -72,3 +72,14 @@ docs/intent.md
 docs/handover.md
 docs/setup.md
 node_modules
+
+# Defense-in-depth: these were previously only covered by the user's GLOBAL
+# gitignore (~/.config/git/ignore), so any environment without it (containers,
+# CI, another machine) could `git add` them. Pin them in-repo so secrets/noise
+# can never be staged regardless of global config.
+private/
+.DS_Store
+__pycache__/
+*.pyc
+.pnpm-store/
+*-debug.log

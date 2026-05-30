@@ -1,0 +1,52 @@
+# Seed configuration for the `emulate` API emulators (vercel-labs/emulate).
+#
+# Loaded by `just emu-api` via `npx emulate@0.6.0 --seed emulate.config.yaml`.
+# emulate provides stateful, in-memory drop-in replacements for SaaS APIs,
+# complementing emulator/ (datastores: postgres/bigtable/spanner/neo4j/qdrant/
+# elasticsearch/firebase) with API/auth/commerce emulators.
+#
+# Schema: top-level `tokens:` + per-service blocks holding seed entities.
+#
+# PORTS: emulate@0.6.0 takes a single base `--port` (we use 4100) and assigns
+# ports as base + index in the `--service` order. Verified mapping for the
+# default `just emu-api` set: github 4100, google 4101, slack 4102, apple 4103,
+# microsoft 4104, stripe 4105, clerk 4106, okta 4107, resend 4108. These are
+# pre-registered in config/portless-aliases.yaml.
+#
+# SERVICE AVAILABILITY: all 9 requested services (github google slack apple
+# microsoft stripe clerk okta resend) are exposed by emulate@0.6.0 (verified).
+
+tokens:
+  local-dev:
+    login: dev
+    scopes: [repo, user, read, write]
+
+# --- confirmed services (seeded) ---
+github:
+  users:
+    - login: octocat
+      name: The Octocat
+      email: octocat@example.com
+  orgs:
+    - login: hironow-dev
+      name: Local Dev Org
+
+google:
+  users:
+    - email: dev@example.com
+      name: Local Developer
+
+slack:
+  users:
+    - username: dev
+      name: Local Developer
+
+# --- apple / microsoft: OAuth/OIDC; default seed is sufficient for local auth flows ---
+
+# --- requested commerce/auth/email services (UNVERIFIED on published CLI) ---
+# Seed blocks intentionally omitted until service availability + schema are
+# confirmed on first run. Add seed data here once verified, e.g.:
+# stripe:
+#   customers:
+#     - email: dev@example.com
+#       name: Local Developer

@@ -11,6 +11,9 @@ dependencies = []
 # Sources of truth: `git config --file .gitmodules --get-regexp path`.
 [tool.ruff]
 extend-exclude = [
+    # semgrep rule test fixtures intentionally contain violations (print/eval/
+    # exec/...) so `semgrep --test` can verify the rules fire; never ruff them.
+    ".semgrep",
     "emulator",
     "gcloud",
     "guardrails",

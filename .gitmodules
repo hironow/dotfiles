@@ -1,9 +1,3 @@
-[submodule "emulator"]
-	path = emulator
-	url = git@github.com:hironow/emulator-set.git
-[submodule "telemetry"]
-	path = telemetry
-	url = git@github.com:hironow/telemetry-set.git
 [submodule "payments/UCP"]
 	path = payments/UCP
 	url = git@github.com:Universal-Commerce-Protocol/ucp.git
