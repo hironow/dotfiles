@@ -81,7 +81,7 @@ ports via `.env.local`.
 | PG Exporter    | `postgres-exporter`  | 9187 → 9187 (Prometheus)                 | HTTP   | –   |
 
 > Note: Set `A2A_INSPECTOR_REPO=<git-url>` and/or `A2A_INSPECTOR_REF=<git-ref>` before `just emu-start` to pin the upstream inspector checkout. The image builds via the local `a2a-inspector/Dockerfile`, which fetches the repository and runs on Python 3.12 to satisfy its runtime requirement.
-
+>
 > Note: Set `MCP_INSPECTOR_REPO=<git-url>` and/or `MCP_INSPECTOR_REF=<git-ref>` before `just emu-start` to pin the upstream MCP Inspector checkout. The image builds via the local `mcp-inspector/Dockerfile`, which fetches the repository and runs on Node.js 24.
 
 CLI availability (✓) means a matching Go-based REPL is included and runnable

@@ -1167,8 +1167,8 @@ emu-lint:
     uv run ruff check .
     echo '🔍 semgrep (root .semgrep/rules/python, emulator .semgrepignore)...'
     uvx semgrep --config ../.semgrep/rules/python/ --error .
-    echo '🔍 markdownlint...'
-    mise x -- markdownlint-cli2 "**/*.md"
+    echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'
+    git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2
 
 # Start emulate API emulators (vercel-labs/emulate) via npx on host (base 4100, Ctrl+C to stop)
 # Override `services=` to drop any rejected by the published CLI (see emulator/emulate/README.md)
