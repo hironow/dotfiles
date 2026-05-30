@@ -636,12 +636,21 @@ _MISE_STUB = _MISE_PRETTIER_STUB
 # scan third-party code the recipes are designed to skip. We derive the
 # exclusion list dynamically from .gitmodules so nested submodules
 # (e.g. tools/tmux/plugins/tmux-resurrect) are covered too.
+# SAFETY: /root/dotfiles is a BIND MOUNT of the host repo (see devcontainer.json
+# workspaceMount). Git writes here would hit the host's real .git/index — running
+# `git add -A` against it once staged the entire working tree (incl. gitignored
+# secrets like private/*) into the host index. Redirect all git metadata to a
+# throwaway GIT_DIR in /tmp so init / exclude / `add -A` never touch the host
+# .git. Recipe `git ls-files` calls inherit these env vars and read the throwaway
+# index, so behavior is unchanged.
 _GIT_INIT = (
     "cd /root/dotfiles && "
-    "git init -q && "
+    "export GIT_DIR=/tmp/sandbox-git GIT_WORK_TREE=/root/dotfiles && "
+    'rm -rf "$GIT_DIR" && git init -q && '
     "git config user.email t@e && git config user.name t && "
+    'mkdir -p "$GIT_DIR/info" && '
     "git config --file .gitmodules --get-regexp path 2>/dev/null "
-    "| awk '{print $2\"/\"}' > .git/info/exclude && "
+    '| awk \'{print $2"/"}\' > "$GIT_DIR/info/exclude" && '
     "git add -A 2>/dev/null && "
 )
 
