@@ -87,3 +87,5 @@ __pycache__/
 *.pyc
 .pnpm-store/
 *-debug.log
+
+.antigravitycli/
