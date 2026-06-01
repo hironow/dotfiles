@@ -235,7 +235,9 @@ path_prepend "$HOME/.local/share/mise/shims"
 
 
 # Vite+ bin (https://viteplus.dev)
-. "$HOME/.vite-plus/env"
+if _file_exists "$HOME/.vite-plus/env"; then
+    . "$HOME/.vite-plus/env"
+fi
 
 # guard for Python package index
 # see: https://shisho.dev/docs/ja/r/202603-takumi-guard-pypi/
