@@ -14,7 +14,7 @@
       "name": "autoresearch",
       "source": "./plugins/autoresearch",
       "description": "Autonomous experiment loop plugin inspired by karpathy/autoresearch. Iteratively modifies target code, evaluates against fixed metrics, and keeps only improvements via git-based keep/revert cycles.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "category": "research",
       "tags": ["research", "optimization", "autonomous", "experiment", "tdd"]
     },
@@ -22,7 +22,7 @@
       "name": "paintress",
       "source": "./plugins/paintress",
       "description": "Autonomous TDD expedition agent with Gradient Gauge momentum, Lumina learning, and Review Gate. Picks Linear issues, implements fixes via TDD, and creates PRs.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "category": "development",
       "tags": ["tdd", "linear", "autonomous", "expedition"]
     },
@@ -30,7 +30,7 @@
       "name": "autodesign",
       "source": "./plugins/autodesign",
       "description": "Autonomous web design exploration plugin. Explores design variations under quality constraints using git-based keep/revert cycles with bundled evaluators for a11y, readability, performance, and completeness.",
-      "version": "0.1.0",
+      "version": "0.2.1",
       "category": "design",
       "tags": ["design", "exploration", "autonomous", "web", "quality", "a11y", "lighthouse"]
     },
@@ -38,7 +38,7 @@
       "name": "autoreview",
       "source": "./plugins/autoreview",
       "description": "Autonomous code review plugin using guardrails/semgrep rules. Scans code, auto-fixes violations, and validates via git-based keep/revert cycles. Supports scan-fix and spec-review modes.",
-      "version": "0.1.0",
+      "version": "0.2.1",
       "category": "review",
       "tags": ["review", "semgrep", "guardrails", "autonomous", "code-quality", "architecture"]
     },
