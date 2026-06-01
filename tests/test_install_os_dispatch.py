@@ -274,3 +274,69 @@ def test_install_sh_enables_corepack_not_pnpm_globals(install_sh_text: str) -> N
             f"{retired!r}. ADR 0017 removed the pnpm-global subsystem; "
             f"pnpm is corepack-provided per-repo now."
         )
+
+
+# ---------- Windows native MVP (ADR 0018) --------------------------
+
+
+def test_install_sh_no_todo_windows_stub_remains(install_sh_text: str) -> None:
+    """ADR 0018 replaces the `_todo_windows` placeholder with either a
+    real implementation (step_corepack) or an explicit `_skip_windows`
+    call with a written reason. No `_todo_windows` references should
+    remain — otherwise a future maintainer might re-stub a new step."""
+    assert "_todo_windows" not in install_sh_text, (
+        "install.sh still references `_todo_windows`. ADR 0018 retired "
+        "the placeholder; each windows) branch must call `_skip_windows "
+        '"<step>" "<reason>"` or implement the step directly.'
+    )
+
+
+def test_install_sh_windows_step_corepack_implemented(install_sh_text: str) -> None:
+    """ADR 0018 implements `step_corepack` on Windows native (corepack
+    ships with node and works cross-platform). The windows) branch must
+    invoke `corepack enable` — not a `_skip_windows` call."""
+    # Isolate the step_corepack function body, then check the windows branch.
+    m = re.search(
+        r"^step_corepack\s*\(\s*\)\s*\{([\s\S]*?)^\}",
+        install_sh_text,
+        re.MULTILINE,
+    )
+    assert m is not None, "step_corepack function definition not found"
+    body = m.group(1)
+    win_m = re.search(r"windows\)([\s\S]*?);;", body)
+    assert win_m is not None, "step_corepack has no windows) branch"
+    win_branch = win_m.group(1)
+    assert "corepack enable" in win_branch, (
+        "step_corepack windows) branch must invoke `corepack enable` "
+        "(ADR 0018: corepack is cross-platform and supplies pnpm on Windows too)."
+    )
+    assert "_skip_windows" not in win_branch, (
+        "step_corepack windows) branch must implement, not skip "
+        "(ADR 0018 decision: corepack is the one cross-platform-meaningful step)."
+    )
+
+
+def test_install_sh_skip_windows_calls_have_reason(install_sh_text: str) -> None:
+    """`_skip_windows` requires two args: step name + non-empty reason.
+    A bare `_skip_windows "step_foo"` (no reason) would silently pass
+    shellcheck but leave operators guessing why the step was skipped.
+    Pin the 2-arg shape so future additions stay self-documenting."""
+    # Find every _skip_windows invocation (not the function definition).
+    calls = re.findall(
+        r'_skip_windows\s+"([^"]*)"\s+"([^"]*)"',
+        install_sh_text,
+    )
+    # At least the 7 skipped steps from ADR 0018 must show up.
+    assert len(calls) >= 7, (
+        f"Expected at least 7 `_skip_windows` calls (ADR 0018: 7 skipped "
+        f"steps), found {len(calls)}. Definitions: {calls!r}"
+    )
+    for step_name, reason in calls:
+        assert step_name.startswith("step_"), (
+            f"_skip_windows first arg must be a step name (step_*); got {step_name!r}"
+        )
+        assert reason.strip(), (
+            f"_skip_windows reason for {step_name!r} is empty. ADR 0018 "
+            f"requires every skip to document why the step is "
+            f"intentionally out of scope on Windows native."
+        )

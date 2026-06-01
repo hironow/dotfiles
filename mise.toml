@@ -1,7 +1,7 @@
 [tools]
 # Pinned versions per ADR 0006 (Accepted 2026-05-02). One pin
 # applies to Mac, Linux (dev container workspace), and Windows
-# (future scoop host). Bump these by hand in a dedicated PR; the
+# native (MVP scope; see ADR 0018). Bump these by hand in a dedicated PR; the
 # build-time consistency check in tests/test_mise_pin_consistency.py
 # fails the image build if these drift from the SHA-verified
 # constants in .devcontainer/features/dotfiles-tools/install.sh.
