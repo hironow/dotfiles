@@ -97,7 +97,7 @@ deploy:
             printf '\n%s\n' "$ps_mise_marker_begin"
             printf '# Managed by `just deploy` (see ADR 0024). Edits inside this block are overwritten on next deploy.\n'
             printf 'if (Get-Command mise -ErrorAction SilentlyContinue) {\n'
-            printf '    Invoke-Expression (&mise activate pwsh)\n'
+            printf '    Invoke-Expression (&mise activate pwsh | Out-String)\n'
             printf '}\n'
             printf '%s\n' "$ps_marker_end"
           } >> "$ps_profile"

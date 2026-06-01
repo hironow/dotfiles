@@ -36,7 +36,7 @@ a second managed block immediately after the starship block:
 # >>> dotfiles managed block: mise activate >>>
 # Managed by `just deploy` (see ADR 0024). Edits inside this block are overwritten on next deploy.
 if (Get-Command mise -ErrorAction SilentlyContinue) {
-    Invoke-Expression (&mise activate pwsh)
+    Invoke-Expression (&mise activate pwsh | Out-String)
 }
 # <<< end dotfiles managed block <<<
 ```
@@ -79,7 +79,7 @@ Decisions that matter:
 - **`tests/test_justfile_windows_subset.py`** — three new tests pin the
   contract:
     - `test_deploy_windows_writes_powershell_mise_activate` checks the
-      mise marker, the `Invoke-Expression (&mise activate pwsh)` line,
+      mise marker, the `Invoke-Expression (&mise activate pwsh | Out-String)` line,
       and the `Get-Command mise` guard.
     - `test_deploy_windows_mise_activate_is_idempotent` asserts the
       deploy branch contains at least two `grep -qF` calls (one per
