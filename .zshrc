@@ -107,7 +107,9 @@ path_prepend "$HOME/go/bin"
 path_prepend "/opt/homebrew/opt/curl/bin"
 
 # cargo
-source "$HOME/.cargo/env"
+if _file_exists "$HOME/.cargo/env"; then
+    source "$HOME/.cargo/env"
+fi
 
 # bun
 path_prepend "$HOME/.bun/bin"
