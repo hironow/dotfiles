@@ -2,7 +2,9 @@
 #
 # 使い方: `pnpm dlx <package>` または `pnpx <package>`
 # このファイルは自動インストール対象外、記録専用。
-# pnpm global に常駐させるべきものは dump/npm-global を参照。
+# 常駐させたい global CLI は mise の npm: backend (mise.toml /
+# ~/.config/mise/config.toml) で宣言する。pnpm global は廃止
+# (ADR 0017: corepack + mise npm: に一本化)。
 
 # Next.js アップグレード時 (pnpm dlx @next/codemod@canary upgrade latest)
 @next/codemod
