@@ -8,7 +8,7 @@ each install step wrapped in a `step_*` helper function. The
 helpers branch on `DOTFILES_OS` so:
 
   - mac:     runs the historical Homebrew + brew bundle + gcloud
-             components + pnpm globals + update-all flow
+             components + corepack enable + update-all flow
   - linux:   runs only symlink + sheldon (the dev container
              feature already provided everything else with SHA/
              SLSA verification at build time)
@@ -116,7 +116,7 @@ REQUIRED_STEPS = (
     "step_sheldon",
     "step_brew_bundle",
     "step_gcloud_components",
-    "step_pnpm_globals",
+    "step_corepack",
     "step_update_all",
 )
 
@@ -254,3 +254,23 @@ def test_install_sh_unknown_uname_exits_nonzero(tmp_path: Path) -> None:
         f"should see an unsupported-OS message. Combined output:\n"
         f"{combined}"
     )
+
+
+# ---------- corepack migration (retire pnpm-global) ----------------
+
+
+def test_install_sh_enables_corepack_not_pnpm_globals(install_sh_text: str) -> None:
+    """ADR 0017 retires the pnpm-global subsystem: pnpm is provided
+    per-repo by corepack, and `install.sh` enables corepack instead of
+    restoring pnpm globals from a dump manifest. Pin both halves so a
+    future edit cannot silently resurrect `pnpm add -g` provisioning."""
+    assert "corepack enable" in install_sh_text, (
+        "install.sh must enable corepack (the per-repo pnpm provider) "
+        "in step_corepack. See ADR 0017."
+    )
+    for retired in ("step_pnpm_globals", "add-pnpm-g"):
+        assert retired not in install_sh_text, (
+            f"install.sh still references the retired pnpm-global token "
+            f"{retired!r}. ADR 0017 removed the pnpm-global subsystem; "
+            f"pnpm is corepack-provided per-repo now."
+        )

@@ -187,9 +187,6 @@ dump:
     cp ~/.config/git/ignore ./dump/gitignore-global
     # Dump installed gcloud components (restore with: just add-gcloud)
     gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u > ./dump/gcloud
-    # Dump installed pnpm globals (restore with: just add-pnpm-g)
-    # Use --json so only top-level deps are captured; --parseable would also include the .pnpm content-addressed store.
-    env -C "$HOME" pnpm ls -g --depth 0 --json 2>/dev/null | jq -r '.[0].dependencies | keys[]' | sort -u > ./dump/npm-global
 
 
 # ------------------------------
@@ -391,12 +388,11 @@ test-iac:
 # Add sets
 # ------------------------------
 
-# Add (all): install gcloud/brew/pnpm sets
+# Add (all): install gcloud/brew sets
 [group('Add')]
 add-all:
     just add-gcloud
     just add-brew
-    just add-pnpm-g
 
 # Add: install Homebrew bundle from dump/Brewfile (idempotent via brew bundle)
 [group('Add')]
@@ -428,29 +424,6 @@ add-gcloud:
     echo "$missing" | sed 's/^/  - /'
     sudo gcloud components install --quiet $missing
 
-# Add: install pnpm globals from dump/npm-global (skips already-installed)
-[group('Add')]
-add-pnpm-g:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    dump="./dump/npm-global"
-    if [[ ! -s "$dump" ]]; then
-        echo "❌ $dump is missing or empty"; exit 1
-    fi
-    # Strip trailing @version (keep scoped "@scope/name" intact)
-    want=$(sed -E 's/(^.+)@[^@]+$/\1/' "$dump" | sort -u)
-    # Use --json so only top-level deps are captured (parseable would include the .pnpm store too).
-    installed=$(env -C "$HOME" pnpm ls -g --depth 0 --json 2>/dev/null | jq -r '.[0].dependencies | keys[]' | sort -u)
-    missing=$(comm -23 <(echo "$want") <(echo "$installed"))
-    if [[ -z "$missing" ]]; then
-        echo "✅ all pnpm globals in $dump are already installed"
-        exit 0
-    fi
-    echo "📦 installing missing pnpm globals:"
-    echo "$missing" | sed 's/^/  - /'
-    # pnpm refuses to run inside projects pinning packageManager; run from $HOME.
-    env -C "$HOME" pnpm add --global $missing
-
 # ------------------------------
 # Update sets
 # ------------------------------
@@ -462,12 +435,11 @@ update-my-submodules:
     git submodule update --remote skills
     @echo "✅ Submodules updated."
 
-# Update (all): update gcloud/brew/pnpm and tools (pnpm safe mode)
+# Update (all): update gcloud/brew and tools (pnpm is corepack/per-repo, not global)
 [group('Update')]
 update-all:
     just update-gcloud
     just update-brew
-    just update-pnpm-g-safe
     @echo "◆ mise..."
     @if command -v mise >/dev/null 2>&1; then mise up && mise plugins up; else echo 'mise not found; skip'; fi
     @echo "◆ gh..."
@@ -479,12 +451,11 @@ update-all:
     @echo "◆ vscode extensions..."
     @if command -v code >/dev/null 2>&1; then code --update-extensions; else echo 'code not found; skip'; fi
 
-# Update (all, safe): update pnpm individually; skip failures
+# Update (all, safe): same as update-all (kept as alias for muscle memory)
 [group('Update')]
 update-all-safe:
     just update-gcloud
     just update-brew
-    just update-pnpm-g-safe
     @echo "◆ mise..."
     @if command -v mise >/dev/null 2>&1; then mise up && mise plugins up; else echo 'mise not found; skip'; fi
     @echo "◆ gh..."
@@ -507,27 +478,6 @@ update-brew:
 update-gcloud:
     @echo "◆ gcloud..."
     sudo gcloud components update --quiet
-
-# Update: update pnpm global packages
-[group('Update')]
-update-pnpm-g:
-    @echo "◆ pnpm..."
-    pnpm update --global
-
-# Update: safely update pnpm globals (per-package; skip failures)
-[group('Update')]
-update-pnpm-g-safe:
-    @echo "◆ pnpm(safe)..."
-    @if command -v jq >/dev/null 2>&1; then \
-      global_pkg_json="$(pnpm root -g 2>/dev/null)/../package.json"; \
-      pkgs=$(jq -r '.dependencies | keys[]' "$$global_pkg_json" 2>/dev/null || true); \
-      if [ -z "$$pkgs" ]; then echo 'No global packages found.'; exit 0; fi; \
-      for p in $$pkgs; do echo "→ updating $$p"; pnpm add -g "$$p@latest" || echo "skip $$p"; done; \
-    else \
-      echo '⚠️ jq not found; falling back to pnpm update --global (best effort)'; \
-      pnpm update --global || true; \
-    fi
-    pnpm store prune || true
 
 # Repair: reset Homebrew state (rebase leftovers, inconsistencies)
 [group('Setup')]
@@ -578,11 +528,6 @@ check-gcloud:
 [group('Check')]
 check-npm-g:
     npm ls --global --depth 0
-
-# Check: list pnpm global packages
-[group('Check')]
-check-pnpm-g:
-    pnpm list -g --depth=0
 
 # Check: list pnpm dlx packages (record-only; not auto-installed)
 [group('Check')]
