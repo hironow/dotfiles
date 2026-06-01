@@ -208,14 +208,35 @@ clean-work-env target:
     rm -rf "$config_dir/shell-snapshots"
     echo "✅ $config_dir cleaned (plugins, projects, history preserved)"
 
-# Dump: write Homebrew bundle and global gitignore into dump/
+# Dump: write per-OS package manifests into dump/
+# Mac/Linux: brew bundle + gitignore-global + gcloud components.
+# Windows native (MSYS/MINGW/CYGWIN): scoop export (record-only, see ADR 0019).
 [group('Setup')]
 dump:
-    # Dump current brew bundle
+    #!/usr/bin/env bash
+    set -eu
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*)
+        echo "==> Dump scoop manifest (windows subset)..."
+        if ! command -v scoop >/dev/null 2>&1; then
+          echo "==> scoop not on PATH; cannot dump (install scoop first)" >&2
+          exit 1
+        fi
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "==> jq not on PATH; cannot normalize (install jq via scoop first)" >&2
+          exit 1
+        fi
+        scoop export | jq '{
+          buckets: [.buckets[] | {Name, Source}] | sort_by(.Name),
+          apps:    [.apps[]    | {Name, Version, Source}] | sort_by(.Name)
+        }' | tr -d '\r' > ./dump/scoop.json
+        echo "==> Dump complete (dump/scoop.json; record-only per ADR 0019)"
+        exit 0
+        ;;
+    esac
+    # Mac / Linux path.
     rm -f ./dump/Brewfile && (cd ./dump && brew bundle dump)
-    # Dump global gitignore
     cp ~/.config/git/ignore ./dump/gitignore-global
-    # Dump installed gcloud components (restore with: just add-gcloud)
     gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u > ./dump/gcloud
 
 

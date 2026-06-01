@@ -1,0 +1,3 @@
+# scoop export on Windows can emit CRLF; force LF for diff stability.
+# See ADR 0019 (Windows scoop manifest in dump/ — record-only).
+dump/scoop.json text eol=lf
