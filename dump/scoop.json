@@ -7,10 +7,6 @@
     {
       "Name": "main",
       "Source": "https://github.com/ScoopInstaller/Main.git"
-    },
-    {
-      "Name": "wangzq",
-      "Source": "https://github.com/wangzq/scoop-bucket"
     }
   ],
   "apps": [
@@ -58,11 +54,6 @@
       "Name": "shellcheck",
       "Version": "0.11.0",
       "Source": "main"
-    },
-    {
-      "Name": "socat",
-      "Version": "1.7.2.1",
-      "Source": "wangzq"
     }
   ]
 }
