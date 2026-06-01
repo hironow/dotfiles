@@ -67,8 +67,10 @@ deploy:
     @echo "==> Installing plugins..."
     @if command -v sheldon >/dev/null 2>&1; then \
         sheldon lock; \
+    elif command -v mise >/dev/null 2>&1 && mise x -- sh -c 'command -v sheldon' >/dev/null 2>&1; then \
+        mise x -- sheldon lock; \
     else \
-        echo "==> sheldon not found; skipping lock (provided by brew / devcontainer feature)"; \
+        echo "==> sheldon not found; skipping lock (provided by brew / devcontainer feature / mise)"; \
     fi
     @if [ ! -d ~/.local/share/fzf-tab ]; then \
         echo "==> Installing fzf-tab..."; \
