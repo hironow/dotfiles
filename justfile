@@ -2,9 +2,14 @@
 
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-# External commands
+# External commands. Wrapping every mise-managed tool with `mise exec --`
+# at call time guarantees the mise-pinned version even from
+# non-mise-activated bash sub-shells (= the shell `just` spawns under
+# ADR 0023 / ADR 0025).
 MARKDOWNLINT := "mise exec -- markdownlint-cli2"
-PDOC := "uv run pdoc"
+PDOC := "mise exec -- uv run pdoc"
+UV := "mise exec -- uv"
+UV_RUN := "mise exec -- uv run"
 
 # Default: show help
 [group('Meta')]
@@ -141,27 +146,27 @@ deploy:
 # Aliases: p=claude, a/b/c/d=work-a..d, g=gemini, x=codex, agents=agents-global
 [group('Agents')]
 sync-agents *args:
-    @uv run scripts/sync_agents.py {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py {{ args }}
 
 # Sync (preview): show what would be synced without making changes
 [group('Agents')]
 sync-agents-preview *args:
-    @uv run scripts/sync_agents.py --preview {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --preview {{ args }}
 
 # Sync (auto): sync without prompts (default scope = .claude only)
 [group('Agents')]
 sync-agents-auto *args:
-    @uv run scripts/sync_agents.py --yes {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
 
 # Sync (override): full replace — dotfiles wins, orphans removed, no prompts
 [group('Agents')]
 sync-agents-override *args:
-    @uv run scripts/sync_agents.py --override {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --override {{ args }}
 
 # Sync (orphans): show target-only items that would be removed
 [group('Agents')]
 sync-agents-orphans *args:
-    @uv run scripts/sync_agents.py --orphans {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --orphans {{ args }}
 
 # Import only: target -> dotfiles. No forward sync, no orphan removal.
 # Default scope = .claude only. Pass targets to widen (same aliases as sync-agents).
@@ -171,12 +176,12 @@ sync-agents-orphans *args:
 #   just import-agents all          -> from every defined agent
 [group('Agents')]
 import-agents *args:
-    @uv run scripts/sync_agents.py --import-only {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --import-only {{ args }}
 
 # Import only (preview): show what would be imported without writing
 [group('Agents')]
 import-agents-preview *args:
-    @uv run scripts/sync_agents.py --import-only --preview {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --import-only --preview {{ args }}
 
 # Clean: remove deployed dotfiles (~/.zshrc, ~/.config/sheldon/plugins.toml, ~/.config/starship.toml)
 # Windows native (MSYS/MINGW/CYGWIN) only removes the subset that `deploy` placed
@@ -850,7 +855,7 @@ check-localhost-tls port="443":
 
 [group('Validation')]
 semgrep:
-    uv run semgrep --config=auto .
+    {{UV_RUN}} semgrep --config=auto .
 
 # ------------------------------
 # Claude Code
@@ -1232,12 +1237,12 @@ emu-gcloud-auth-check:
 # Update emulator deps (uv lock --upgrade + sync)
 [group('Emulator')]
 emu-update:
-    cd emulator && uv lock --upgrade && uv sync
+    cd emulator && {{UV}} lock --upgrade && {{UV}} sync
 
 # Run emulator tests (uv/pytest, vendored self-contained)
 [group('Emulator')]
 emu-test path='tests/' opts='-v':
-    cd emulator && uv run pytest '{{path}}' '{{opts}}'
+    cd emulator && {{UV_RUN}} pytest '{{path}}' '{{opts}}'
 
 # Run emulator fast tests (exclude e2e)
 [group('Emulator')]
@@ -1254,6 +1259,7 @@ emu-test-e2e:
 emu-fmt:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     cd emulator
     uv run ruff format .
     if command -v go >/dev/null 2>&1; then
@@ -1267,6 +1273,7 @@ emu-fmt:
 emu-lint:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     cd emulator
     echo '🔍 ruff...'
     uv run ruff check .
