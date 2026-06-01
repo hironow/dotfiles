@@ -65,7 +65,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/in
 ```
 
 > [!NOTE]
-> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)へ対応。Windows native (scoop) は未対応。
+> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)を一級でサポート。Windows native は最小サブセットのみ (`corepack enable` + `starship.toml` / `gitignore-global` の配置)。フル bootstrap (scoop ベース) は未対応 (将来 ADR)。詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md)。
 > Mac は Homebrew が前提条件 (操作者が手動で先にインストール)、それ以降は install.sh が自動。
 
 ## usage

@@ -53,12 +53,13 @@ _eval_brew() {
   fi
 }
 
-_todo_windows() {
-  # Marker for steps that don't have a Windows implementation yet.
-  # Per ADR 0005 decision the structure is OS-aware now; concrete
-  # Windows logic lands in a future ADR + PR when an actual
-  # Windows host enters the picture.
-  echo "[install] $1: windows TODO (scoop bootstrap to be implemented)"
+_skip_windows() {
+  # Marker for steps deliberately skipped on Windows native (per ADR 0018).
+  # $1 = step name, $2 = reason. The reason is required and kept inline so
+  # future maintainers see why the step is "intentionally out of scope" and
+  # not just "not yet implemented". Full scoop-based bootstrap remains a
+  # future ADR.
+  echo "[install] $1: skip (windows; $2)"
 }
 
 # ---- Repository bootstrap ------------------------------------------
@@ -110,7 +111,7 @@ step_homebrew() {
       echo "[install] step_homebrew: skip (Linux uses apt + dev container feature)"
       ;;
     windows)
-      _todo_windows "step_homebrew"
+      _skip_windows "step_homebrew" "brew is not available on Windows native; tool provisioning uses scoop/mise separately (full bootstrap out of scope, see ADR 0018)"
       ;;
   esac
 }
@@ -140,7 +141,7 @@ step_gcloud_components() {
       echo "[install] step_gcloud_components: skip (gcloud installed at build time via dev container feature)"
       ;;
     windows)
-      _todo_windows "step_gcloud_components"
+      _skip_windows "step_gcloud_components" "install Google Cloud SDK for Windows manually (scoop install gcloud or the official installer)"
       ;;
   esac
 }
@@ -193,7 +194,7 @@ step_just_bootstrap() {
       export PATH="$HOME/.local/bin:$PATH"
       ;;
     windows)
-      _todo_windows "step_just_bootstrap"
+      _skip_windows "step_just_bootstrap" "just is provided by mise (mise.toml pin) or scoop; install separately if the command -v just guard above did not hit"
       ;;
   esac
 }
@@ -211,7 +212,7 @@ step_brew_bundle() {
       echo "[install] step_brew_bundle: skip (Linux equivalents covered by apt + dev container feature)"
       ;;
     windows)
-      _todo_windows "step_brew_bundle"
+      _skip_windows "step_brew_bundle" "brew bundle is not applicable on Windows native (no brew); equivalent provisioning is out of scope for ADR 0018"
       ;;
   esac
 }
@@ -229,7 +230,7 @@ step_gcloud_bundle() {
       echo "[install] step_gcloud_bundle: skip (gcloud components in dev container feature)"
       ;;
     windows)
-      _todo_windows "step_gcloud_bundle"
+      _skip_windows "step_gcloud_bundle" "gcloud component bundle is not applicable; install components manually after step_gcloud_components"
       ;;
   esac
 }
@@ -252,7 +253,17 @@ step_corepack() {
       fi
       ;;
     windows)
-      _todo_windows "step_corepack"
+      # corepack ships with node. On Windows native the Program Files
+      # node install is typically read-only for the operator account
+      # (corepack enable EPERMs writing pnpm shims there), so prefer
+      # the mise-managed node when available.
+      if command -v mise >/dev/null 2>&1; then
+        mise exec -- corepack enable
+      elif command -v corepack >/dev/null 2>&1; then
+        corepack enable
+      else
+        echo "[install] step_corepack: corepack not on PATH; skipping (install node via mise/scoop first)"
+      fi
       ;;
   esac
 }
@@ -270,7 +281,7 @@ step_update_all() {
       echo "[install] step_update_all: skip (apt + mise manage updates)"
       ;;
     windows)
-      _todo_windows "step_update_all"
+      _skip_windows "step_update_all" "tool updates are managed per-backend (mise self-update / scoop update); a unified update entry is out of scope for ADR 0018"
       ;;
   esac
 }
@@ -295,7 +306,7 @@ step_sheldon() {
       fi
       ;;
     windows)
-      _todo_windows "step_sheldon"
+      _skip_windows "step_sheldon" "sheldon is a zsh plugin manager; zsh is not used on Windows native (WSL covers the zsh use case)"
       ;;
   esac
 }

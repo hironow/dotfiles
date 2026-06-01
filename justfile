@@ -52,9 +52,25 @@ install:
     mise install
 
 # Deploy: symlink dotfiles to home and install plugins
+# Windows native (MSYS/MINGW/CYGWIN) gets a cross-platform subset only
+# (starship.toml + gitignore-global). zsh/sheldon/tmux/ghostty/fzf-tab
+# are Unix-only and are skipped. See ADR 0018.
 [group('Setup')]
 deploy:
-    @echo "==> Start to deploy dotfiles to home directory."
+    #!/usr/bin/env bash
+    set -eu
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*)
+        echo "==> Deploy dotfiles (windows subset)..."
+        mkdir -p ~/.config
+        cp -f ~/dotfiles/starship.toml ~/.config/starship.toml
+        mkdir -p ~/.config/git
+        cp -f ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
+        echo "==> Deploy complete (windows subset per ADR 0018; Unix-only artifacts skipped)"
+        exit 0
+        ;;
+    esac
+    echo "==> Start to deploy dotfiles to home directory."
     ln -sf ~/dotfiles/.zshrc ~/.zshrc
     mkdir -p ~/.config/sheldon
     ln -sf ~/dotfiles/sheldon-plugins.toml ~/.config/sheldon/plugins.toml
@@ -64,19 +80,19 @@ deploy:
     ln -sf ~/dotfiles/tools/ghostty-config ~/.config/ghostty/config
     mkdir -p ~/.config/git
     cp ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
-    @echo "==> Installing plugins..."
-    @if command -v sheldon >/dev/null 2>&1; then \
-        sheldon lock; \
-    elif command -v mise >/dev/null 2>&1 && mise x -- sh -c 'command -v sheldon' >/dev/null 2>&1; then \
-        mise x -- sheldon lock; \
-    else \
-        echo "==> sheldon not found; skipping lock (provided by brew / devcontainer feature / mise)"; \
+    echo "==> Installing plugins..."
+    if command -v sheldon >/dev/null 2>&1; then
+        sheldon lock
+    elif command -v mise >/dev/null 2>&1 && mise x -- sh -c 'command -v sheldon' >/dev/null 2>&1; then
+        mise x -- sheldon lock
+    else
+        echo "==> sheldon not found; skipping lock (provided by brew / devcontainer feature / mise)"
     fi
-    @if [ ! -d ~/.local/share/fzf-tab ]; then \
-        echo "==> Installing fzf-tab..."; \
-        git clone --depth 1 https://github.com/Aloxaf/fzf-tab ~/.local/share/fzf-tab; \
+    if [ ! -d ~/.local/share/fzf-tab ]; then
+        echo "==> Installing fzf-tab..."
+        git clone --depth 1 https://github.com/Aloxaf/fzf-tab ~/.local/share/fzf-tab
     fi
-    @echo "==> Deploy complete!"
+    echo "==> Deploy complete!"
 
 # Sync: copy ROOT_AGENTS files to agent instruction directories
 # Default scope = .claude only. Pass targets to widen:
@@ -124,9 +140,21 @@ import-agents-preview *args:
     @uv run scripts/sync_agents.py --import-only --preview {{ args }}
 
 # Clean: remove deployed dotfiles (~/.zshrc, ~/.config/sheldon/plugins.toml, ~/.config/starship.toml)
+# Windows native (MSYS/MINGW/CYGWIN) only removes the subset that `deploy` placed
+# (starship.toml + git ignore); Unix-only artifacts are not touched. See ADR 0018.
 [group('Setup')]
 clean:
-    @echo "==> Remove dotfiles in your home directory..."
+    #!/usr/bin/env bash
+    set -eu
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*)
+        echo "==> Remove dotfiles (windows subset)..."
+        rm -vrf ~/.config/starship.toml
+        rm -vrf ~/.config/git/ignore
+        exit 0
+        ;;
+    esac
+    echo "==> Remove dotfiles in your home directory..."
     rm -vrf ~/.zshrc
     rm -vrf ~/.config/sheldon/plugins.toml
     rm -vrf ~/.config/starship.toml
