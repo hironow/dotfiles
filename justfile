@@ -68,7 +68,26 @@ deploy:
         cp -f ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
         mkdir -p ~/.config/mise
         cp -f ~/dotfiles/config/mise/config.toml ~/.config/mise/config.toml
-        echo "==> Deploy complete (windows subset per ADR 0018; Unix-only artifacts skipped)"
+        # PowerShell 7 $PROFILE — idempotent starship init block (ADR 0022).
+        ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+        ps_marker_begin="# >>> dotfiles managed block: starship init >>>"
+        ps_marker_end="# <<< end dotfiles managed block <<<"
+        mkdir -p "$(dirname "$ps_profile")"
+        touch "$ps_profile"
+        if grep -qF "$ps_marker_begin" "$ps_profile"; then
+          echo "==> PowerShell \$PROFILE starship-init block already present (skip)"
+        else
+          {
+            printf '\n%s\n' "$ps_marker_begin"
+            printf '# Managed by `just deploy` (see ADR 0022). Edits inside this block are overwritten on next deploy.\n'
+            printf 'if (Get-Command starship -ErrorAction SilentlyContinue) {\n'
+            printf '    Invoke-Expression (&starship init powershell)\n'
+            printf '}\n'
+            printf '%s\n' "$ps_marker_end"
+          } >> "$ps_profile"
+          echo "==> PowerShell \$PROFILE updated with starship-init block"
+        fi
+        echo "==> Deploy complete (windows subset per ADR 0018/0022; Unix-only artifacts skipped)"
         exit 0
         ;;
     esac
@@ -156,6 +175,12 @@ clean:
         rm -vrf ~/.config/starship.toml
         rm -vrf ~/.config/git/ignore
         rm -vrf ~/.config/mise/config.toml
+        # Remove PowerShell starship-init block (idempotent; ADR 0022).
+        ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+        if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: starship init >>>" "$ps_profile"; then
+          sed -i '/# >>> dotfiles managed block: starship init >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+          echo "==> PowerShell \$PROFILE starship-init block removed"
+        fi
         exit 0
         ;;
     esac

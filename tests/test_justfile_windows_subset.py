@@ -232,3 +232,90 @@ def test_dump_windows_exits_before_unix_path(justfile_text: str) -> None:
         "dump windows branch must `exit 0` before the Mac/Linux `brew bundle "
         "dump` block, otherwise scoop hosts will hit brew not-found errors."
     )
+
+
+# ---------- PowerShell $PROFILE starship init (ADR 0022) ------------
+
+
+PS_MARKER_BEGIN = "# >>> dotfiles managed block: starship init >>>"
+PS_MARKER_END = "# <<< end dotfiles managed block <<<"
+
+
+def test_deploy_windows_writes_powershell_profile_init(
+    justfile_text: str,
+) -> None:
+    """ADR 0022: deploy Windows branch must wire starship into PowerShell 7's
+    $PROFILE. Without this, placing starship.toml is a no-op on Windows
+    because the shell never invokes `starship init`."""
+    body = _extract_recipe_body(justfile_text, "deploy")
+    win = _extract_windows_branch(body)
+    assert "Microsoft.PowerShell_profile.ps1" in win, (
+        "deploy windows branch must reference the PowerShell 7 profile path "
+        "(ADR 0022 targets PS7 only)"
+    )
+    assert PS_MARKER_BEGIN in win, (
+        "deploy windows branch must include the begin marker so the block "
+        "can be detected for idempotency and removed by clean"
+    )
+    assert PS_MARKER_END in win, (
+        "deploy windows branch must include the end marker so sed range "
+        "deletion in clean has both anchors"
+    )
+    assert "Invoke-Expression (&starship init powershell)" in win, (
+        "deploy windows branch must emit the canonical starship init line"
+    )
+    assert "Get-Command starship -ErrorAction SilentlyContinue" in win, (
+        "deploy windows branch must guard with Get-Command so PowerShell "
+        "does not error on hosts where starship is not yet installed "
+        "(parity with .zshrc's _cmd_exists guard)"
+    )
+
+
+def test_deploy_windows_powershell_init_is_idempotent(
+    justfile_text: str,
+) -> None:
+    """ADR 0022 requires the deploy block to be idempotent: running `just
+    deploy` twice must not duplicate the marker block in $PROFILE.
+
+    Asserts a `grep -qF` marker check exists AND that the writing path uses
+    append (`>>`) rather than overwrite (`>`), so other operator content in
+    $PROFILE is preserved."""
+    body = _extract_recipe_body(justfile_text, "deploy")
+    win = _extract_windows_branch(body)
+    assert "grep -qF" in win, (
+        "deploy windows branch must `grep -qF` for the marker before "
+        "writing, to make the block placement idempotent"
+    )
+    # The append redirection should target $ps_profile. Allow optional
+    # whitespace between `>>` and the variable.
+    assert re.search(r'>>\s*"\$ps_profile"', win), (
+        "deploy windows branch must append (>>) to $ps_profile, not "
+        "overwrite (>), so existing operator content is preserved"
+    )
+
+
+def test_clean_windows_removes_powershell_profile_init(
+    justfile_text: str,
+) -> None:
+    """ADR 0022 symmetry: clean must remove the marker block from $PROFILE
+    so a deploy/clean roundtrip leaves the file in its pre-deploy state
+    (minus the managed block)."""
+    body = _extract_recipe_body(justfile_text, "clean")
+    win = _extract_windows_branch(body)
+    assert "Microsoft.PowerShell_profile.ps1" in win, (
+        "clean windows branch must reference the PowerShell 7 profile path"
+    )
+    assert "sed -i" in win, (
+        "clean windows branch must use `sed -i` to delete the marker block "
+        "range in-place"
+    )
+    assert PS_MARKER_BEGIN in win and PS_MARKER_END in win, (
+        "clean windows branch must reference both markers so the sed range "
+        "deletion has both anchors"
+    )
+    # Original `exit 0` from ADR 0018 must still be present after the
+    # PowerShell block is removed, otherwise Unix-only rm lines would run.
+    assert re.search(r"\bexit\s+0\b", win), (
+        "clean windows branch must keep `exit 0` after the PowerShell "
+        "cleanup so the Unix-only rm block does not run on Windows"
+    )
