@@ -989,6 +989,7 @@ _exe-encryption:
 exe-init:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu init
 
@@ -997,6 +998,7 @@ exe-init:
 exe-plan:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
@@ -1007,6 +1009,7 @@ exe-plan:
 exe-apply:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
@@ -1024,6 +1027,7 @@ exe-apply:
 exe-replace target:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
@@ -1034,6 +1038,7 @@ exe-replace target:
 exe-down:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
@@ -1045,6 +1050,7 @@ exe-down:
 exe-down-all:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
@@ -1055,6 +1061,7 @@ exe-down-all:
 exe-validate:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     cd tofu/exe
     tofu fmt -check -diff
     tofu init -backend=false -input=false >/dev/null
@@ -1065,6 +1072,7 @@ exe-validate:
 exe-output *args:
     #!/usr/bin/env bash
     set -euo pipefail
+    eval "$(mise activate bash)"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu output {{ args }}
 
