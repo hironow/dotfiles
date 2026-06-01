@@ -485,7 +485,7 @@ check-all: pre-commit ci-all
 # rewrites the lock to the terraform.io registry.
 [group('Check')]
 test-iac:
-    @cd exe/coder/templates/dotfiles-devcontainer && tofu init -backend=false >/dev/null && tofu test
+    @cd exe/coder/templates/dotfiles-devcontainer && mise x -- tofu init -backend=false >/dev/null && mise x -- tofu test
 
 # ------------------------------
 # Add sets

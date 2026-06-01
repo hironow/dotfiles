@@ -11,6 +11,11 @@ go = "latest"
 node = "lts"
 just = "latest"
 rust = "1.96.0"
+# opentofu — terraform-compatible IaC. Required by `just test-iac`
+# so `mise x -- tofu` resolves from the non-mise-activated bash
+# sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
+# no shims PATH). Pinned for repeatable IaC test runs across machines.
+opentofu = "1.11.5"
 uv = "latest"
 kotlin = "latest"
 java = "latest"
