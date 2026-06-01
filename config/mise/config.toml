@@ -1,0 +1,49 @@
+# Global mise config for hironow's machines. Symlinked to
+# ~/.config/mise/config.toml by `just deploy`.
+#
+# Project-pinned tools live in /Users/nino/dotfiles/mise.toml (ADR 0006).
+# This file holds user-level tool defaults, security/quarantine settings,
+# and backend tweaks that follow CLAUDE.md global rules.
+
+[tools]
+bun = "latest"
+go = "latest"
+node = "lts"
+just = "latest"
+rust = "1.96.0"
+uv = "latest"
+kotlin = "latest"
+java = "latest"
+gradle = "latest"
+python = "latest"
+vp = "latest"
+markdownlint-cli2 = "latest"
+# portless (local-dev HTTPS proxy). De-orphaned from the retired
+# pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
+# a config source instead of an untracked orphan.
+"npm:portless" = "0.13.0"
+
+[settings]
+# Disable asdf-style .python-version / .nvmrc auto-detection so only
+# mise.toml / .tool-versions drive tool resolution.
+idiomatic_version_file_enable_tools = []
+# Block surprise installs when invoking a missing command. `mise install`
+# must be explicit.
+not_found_auto_install = false
+# `mise use <tool>` (without a version) records the currently pinned
+# version instead of "latest", keeping mise.toml reproducible
+# (ADR 0006 pinned-versions philosophy).
+pin = true
+# Match the npmrc `min_release_age=7` quarantine for supply-chain risk
+# (mirrors uv's `exclude-newer = "7 days"`).
+minimum_release_age = "7d"
+
+[settings.python]
+# Auto-source uv-managed `.venv` when entering a Python project. uv is
+# the project-wide Python package manager per CLAUDE.md global rules.
+uv_venv_auto = "source"
+
+[settings.node]
+# Auto-install corepack shims so pnpm/yarn delivered via corepack work
+# out of the box (ADR 0017 — pnpm is corepack-only).
+corepack = true

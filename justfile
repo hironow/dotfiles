@@ -66,6 +66,8 @@ deploy:
         cp -f ~/dotfiles/starship.toml ~/.config/starship.toml
         mkdir -p ~/.config/git
         cp -f ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
+        mkdir -p ~/.config/mise
+        cp -f ~/dotfiles/config/mise/config.toml ~/.config/mise/config.toml
         echo "==> Deploy complete (windows subset per ADR 0018; Unix-only artifacts skipped)"
         exit 0
         ;;
@@ -80,6 +82,8 @@ deploy:
     ln -sf ~/dotfiles/tools/ghostty-config ~/.config/ghostty/config
     mkdir -p ~/.config/git
     cp ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
+    mkdir -p ~/.config/mise
+    ln -sf ~/dotfiles/config/mise/config.toml ~/.config/mise/config.toml
     echo "==> Installing plugins..."
     if command -v sheldon >/dev/null 2>&1; then
         sheldon lock
@@ -151,6 +155,7 @@ clean:
         echo "==> Remove dotfiles (windows subset)..."
         rm -vrf ~/.config/starship.toml
         rm -vrf ~/.config/git/ignore
+        rm -vrf ~/.config/mise/config.toml
         exit 0
         ;;
     esac
@@ -160,6 +165,7 @@ clean:
     rm -vrf ~/.config/starship.toml
     rm -vrf ~/.tmux.conf
     rm -vrf ~/.config/ghostty/config
+    rm -vrf ~/.config/mise/config.toml
 
 # Clean cache: remove zsh-related caches (compinit, fzf, zoxide, kubectl, sheldon)
 [group('Setup')]
