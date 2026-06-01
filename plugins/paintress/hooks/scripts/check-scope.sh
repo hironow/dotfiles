@@ -6,7 +6,7 @@
 # If target file is outside repository scope (and not journal.tsv/continent-config.yaml), warns.
 #
 # Input: JSON on stdin with tool_input.file_path
-# Output: JSON with "decision" field
+# Output: empty (default allow) or PreToolUse hookSpecificOutput JSON with permissionDecision=allow + reason
 
 set -euo pipefail
 
@@ -14,7 +14,6 @@ CONFIG="continent-config.yaml"
 
 # If no active expedition, allow silently
 if [[ ! -f "$CONFIG" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 
@@ -23,7 +22,6 @@ INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | grep -o '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"file_path"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//' || echo "")
 
 if [[ -z "$FILE_PATH" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 
@@ -32,7 +30,6 @@ BASENAME=$(basename "$FILE_PATH")
 
 # Whitelist: journal.tsv and continent-config.yaml are always allowed
 if [[ "$BASENAME" == "journal.tsv" || "$BASENAME" == "continent-config.yaml" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 
@@ -40,7 +37,6 @@ fi
 REPO_PATH=$(grep -E '^\s*repository:' "$CONFIG" | head -1 | sed 's/.*repository:[[:space:]]*//' | tr -d '"' | tr -d "'" || echo "")
 
 if [[ -z "$REPO_PATH" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 
@@ -52,7 +48,9 @@ REPO_PATH=$(cd "$REPO_PATH" 2>/dev/null && pwd || echo "$REPO_PATH")
 
 # Check if file is within repository scope
 if [[ "$FILE_PATH" == "$REPO_PATH"* ]]; then
-  echo '{"decision": "allow"}'
-else
-  echo '{"decision": "allow", "message": "WARNING: This file is outside the expedition target repository. Expedition scope is limited to the configured repository. Proceed only if intentional."}'
+  exit 0
 fi
+
+cat <<'EOF'
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"WARNING: This file is outside the expedition target repository. Expedition scope is limited to the configured repository. Proceed only if intentional."}}
+EOF

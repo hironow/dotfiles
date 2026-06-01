@@ -2,18 +2,15 @@
 set -euo pipefail
 CONFIG="design-config.yaml"
 if [[ ! -f "$CONFIG" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | grep -o '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"file_path"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//' || echo "")
 if [[ -z "$FILE_PATH" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 BASENAME=$(basename "$FILE_PATH")
 if [[ "$BASENAME" == "design-results.tsv" || "$BASENAME" == "run.log" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 IN_SCOPE=false
@@ -25,7 +22,8 @@ while IFS= read -r line; do
   fi
 done < <(sed -n '/^target_files:/,/^[^ ]/p' "$CONFIG" | head -n -1)
 if [[ "$IN_SCOPE" == "true" ]]; then
-  echo '{"decision": "allow"}'
-else
-  echo '{"decision": "allow", "message": "WARNING: This file is outside the design target scope."}'
+  exit 0
 fi
+cat <<'EOF'
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"WARNING: This file is outside the design target scope."}}
+EOF

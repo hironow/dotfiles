@@ -1,6 +1,6 @@
 {
   "name": "paintress",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Autonomous TDD expedition agent that picks Linear issues, implements fixes, and creates PRs",
   "author": {
     "name": "Hiroto Nishiyama"

@@ -7,7 +7,7 @@
 # warns the user.
 #
 # Input: JSON on stdin with tool_input.file_path
-# Output: JSON with "decision" field
+# Output: empty (default allow) or PreToolUse hookSpecificOutput JSON with permissionDecision=allow + reason
 
 set -euo pipefail
 
@@ -15,7 +15,6 @@ CONFIG="review-config.yaml"
 
 # If no active review, allow silently
 if [[ ! -f "$CONFIG" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 
@@ -24,7 +23,6 @@ INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | grep -o '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"file_path"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//' || echo "")
 
 if [[ -z "$FILE_PATH" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 
@@ -33,7 +31,6 @@ BASENAME=$(basename "$FILE_PATH")
 
 # Whitelist: review artifacts are always allowed
 if [[ "$BASENAME" == "review-results.tsv" || "$BASENAME" == "review-scan.json" ]]; then
-  echo '{"decision": "allow"}'
   exit 0
 fi
 
@@ -50,7 +47,9 @@ while IFS= read -r line; do
 done < <(sed -n '/^target_paths:/,/^[^ ]/p' "$CONFIG" | head -n -1)
 
 if [[ "$IN_SCOPE" == "true" ]]; then
-  echo '{"decision": "allow"}'
-else
-  echo '{"decision": "allow", "message": "WARNING: This file is outside the review target scope. Modifying non-target files during a review loop may introduce untracked changes. Proceed with caution."}'
+  exit 0
 fi
+
+cat <<'EOF'
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"WARNING: This file is outside the review target scope. Modifying non-target files during a review loop may introduce untracked changes. Proceed with caution."}}
+EOF
