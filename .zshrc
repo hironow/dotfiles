@@ -121,7 +121,7 @@ path_prepend "$HOME/.local/bin"
 # mise activate is intentionally NOT here — it lives at EOF so its
 # chpwd/precmd hook runs after every later PATH edit (vite-plus,
 # antigravity, dbt, ...) and mise-managed tool dirs end up first in
-# PATH. See ADR 0022.
+# PATH. See ADR 0023.
 
 
 # alias
@@ -265,7 +265,7 @@ export PATH="$HOME/.local/bin:$PATH"
 # etc. — and mise-managed versions end up first in PATH per
 # `mise doctor`. Shims are intentionally NOT on PATH (interactive shells
 # use activate only; cron/IDE/non-shell consumers should use
-# `mise exec --` or shims in ~/.zshenv). See ADR 0022.
+# `mise exec --` or shims in ~/.zshenv). See ADR 0023.
 if _cmd_exists mise; then
     eval "$(mise activate zsh)"
 fi

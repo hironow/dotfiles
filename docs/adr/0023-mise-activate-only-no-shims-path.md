@@ -1,4 +1,4 @@
-# 0022. Use `mise activate` only in interactive shells, drop manual `shims` PATH entries
+# 0023. Use `mise activate` only in interactive shells, drop manual `shims` PATH entries
 
 **Date:** 2026-06-02
 **Status:** Accepted
