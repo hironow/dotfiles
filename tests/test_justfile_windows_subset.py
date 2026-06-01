@@ -340,7 +340,7 @@ def test_deploy_windows_writes_powershell_mise_activate(
         "deploy windows branch must include the mise-activate begin marker "
         "so the block can be detected for idempotency and removed by clean"
     )
-    assert "Invoke-Expression (&mise activate pwsh)" in win, (
+    assert "Invoke-Expression (&mise activate pwsh | Out-String)" in win, (
         "deploy windows branch must emit the canonical mise activate line "
         "for PowerShell"
     )
