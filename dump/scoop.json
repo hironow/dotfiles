@@ -1,0 +1,68 @@
+{
+  "buckets": [
+    {
+      "Name": "extras",
+      "Source": "https://github.com/ScoopInstaller/Extras"
+    },
+    {
+      "Name": "main",
+      "Source": "https://github.com/ScoopInstaller/Main.git"
+    },
+    {
+      "Name": "wangzq",
+      "Source": "https://github.com/wangzq/scoop-bucket"
+    }
+  ],
+  "apps": [
+    {
+      "Name": "7zip",
+      "Version": "25.01",
+      "Source": "main"
+    },
+    {
+      "Name": "gh",
+      "Version": "2.83.0",
+      "Source": "main"
+    },
+    {
+      "Name": "jq",
+      "Version": "1.8.1",
+      "Source": "main"
+    },
+    {
+      "Name": "just",
+      "Version": "1.43.0",
+      "Source": "main"
+    },
+    {
+      "Name": "mise",
+      "Version": "2025.11.3",
+      "Source": "main"
+    },
+    {
+      "Name": "nmap",
+      "Version": "7.98",
+      "Source": "main"
+    },
+    {
+      "Name": "nodejs",
+      "Version": "24.10.0",
+      "Source": "main"
+    },
+    {
+      "Name": "ollama",
+      "Version": "0.20.2",
+      "Source": "main"
+    },
+    {
+      "Name": "shellcheck",
+      "Version": "0.11.0",
+      "Source": "main"
+    },
+    {
+      "Name": "socat",
+      "Version": "1.7.2.1",
+      "Source": "wangzq"
+    }
+  ]
+}

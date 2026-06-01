@@ -157,3 +157,78 @@ def test_clean_windows_subset_removes_only_what_deploy_placed(
     assert re.search(r"\bexit\s+0\b", win), (
         "clean windows branch must `exit 0` so the Unix-only rm block does not run."
     )
+
+
+# ---------- dump (ADR 0019) -----------------------------------------
+
+
+def test_dump_has_windows_branch(justfile_text: str) -> None:
+    """ADR 0019: `just dump` must dispatch on uname and handle Windows
+    native explicitly. Without this branch, dump would try to run brew/gcloud
+    on Windows where they are absent."""
+    body = _extract_recipe_body(justfile_text, "dump")
+    assert re.search(
+        r'case\s+"\$\(uname\s+-s\)"\s+in',
+        body,
+    ), "dump recipe must dispatch on `uname -s`"
+    _extract_windows_branch(body)  # raises if missing
+
+
+def test_dump_windows_writes_scoop_json(justfile_text: str) -> None:
+    """ADR 0019: the Windows dump branch must invoke `scoop export` and
+    write to `dump/scoop.json` — the record-only manifest."""
+    body = _extract_recipe_body(justfile_text, "dump")
+    win = _extract_windows_branch(body)
+    assert "scoop export" in win, (
+        "dump windows branch must call `scoop export` (ADR 0019)"
+    )
+    assert "dump/scoop.json" in win, (
+        "dump windows branch must redirect to `dump/scoop.json` (ADR 0019)"
+    )
+
+
+def test_dump_windows_normalizes_with_jq(justfile_text: str) -> None:
+    """ADR 0019 diff stability: scoop export emits `Updated` timestamps and
+    `Manifests` counts that change on every run. The dump must filter them
+    out via jq so the file is committable and reviewable.
+
+    Asserts the jq pipe is present AND that `Updated`/`Manifests` tokens do
+    not appear in the Windows branch (a re-include would defeat stability)."""
+    body = _extract_recipe_body(justfile_text, "dump")
+    win = _extract_windows_branch(body)
+    assert re.search(r"\bjq\b", win), (
+        "dump windows branch must pipe through jq to normalize scoop export"
+    )
+    assert "sort_by" in win, (
+        "dump windows branch must sort_by(.Name) to stabilize ordering"
+    )
+    for noise in ("Updated", "Manifests"):
+        assert noise not in win, (
+            f"dump windows branch must NOT reference {noise!r} — that field "
+            f"changes on every scoop export and would make dump/scoop.json "
+            f"diff on every run. ADR 0019 specifies the normalized field set."
+        )
+
+
+def test_dump_windows_has_no_install_side(justfile_text: str) -> None:
+    """ADR 0019 is *record-only*: the dump branch must NOT call
+    `scoop install` (that is the bootstrap layer, deferred per ADR 0018).
+    Any `add-scoop`/`scoop install` invocation here would conflate the
+    two ADR's scopes."""
+    body = _extract_recipe_body(justfile_text, "dump")
+    win = _extract_windows_branch(body)
+    assert "scoop install" not in win, (
+        "dump windows branch must NOT call `scoop install` — ADR 0019 is "
+        "record-only; bootstrap remains future work per ADR 0018."
+    )
+
+
+def test_dump_windows_exits_before_unix_path(justfile_text: str) -> None:
+    """The Windows branch must `exit 0` so the Mac/Linux tail (brew bundle,
+    gcloud components) does not run on Windows where those tools are absent."""
+    body = _extract_recipe_body(justfile_text, "dump")
+    win = _extract_windows_branch(body)
+    assert re.search(r"\bexit\s+0\b", win), (
+        "dump windows branch must `exit 0` before the Mac/Linux `brew bundle "
+        "dump` block, otherwise scoop hosts will hit brew not-found errors."
+    )
