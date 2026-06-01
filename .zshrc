@@ -52,6 +52,9 @@ ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 # PNPM first for Node CLIs
 export PNPM_HOME="$HOME/Library/pnpm"
 path_prepend "$PNPM_HOME"
+# pnpm 9+ reports the global bin dir as $PNPM_HOME/bin and aborts
+# `pnpm add/update -g` when it is missing from PATH (mirror `pnpm setup`)
+path_prepend "$PNPM_HOME/bin"
 
 # Prefer OrbStack Docker if present
 path_prepend "$HOME/.orbstack/bin"
