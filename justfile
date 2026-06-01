@@ -87,7 +87,23 @@ deploy:
           } >> "$ps_profile"
           echo "==> PowerShell \$PROFILE updated with starship-init block"
         fi
-        echo "==> Deploy complete (windows subset per ADR 0018/0022; Unix-only artifacts skipped)"
+        # PowerShell 7 $PROFILE — mise activate block (ADR 0024). Reuses
+        # $ps_profile and $ps_marker_end defined for the starship block above.
+        ps_mise_marker_begin="# >>> dotfiles managed block: mise activate >>>"
+        if grep -qF "$ps_mise_marker_begin" "$ps_profile"; then
+          echo "==> PowerShell \$PROFILE mise-activate block already present (skip)"
+        else
+          {
+            printf '\n%s\n' "$ps_mise_marker_begin"
+            printf '# Managed by `just deploy` (see ADR 0024). Edits inside this block are overwritten on next deploy.\n'
+            printf 'if (Get-Command mise -ErrorAction SilentlyContinue) {\n'
+            printf '    Invoke-Expression (&mise activate pwsh)\n'
+            printf '}\n'
+            printf '%s\n' "$ps_marker_end"
+          } >> "$ps_profile"
+          echo "==> PowerShell \$PROFILE updated with mise-activate block"
+        fi
+        echo "==> Deploy complete (windows subset per ADR 0018/0022/0024; Unix-only artifacts skipped)"
         exit 0
         ;;
     esac
@@ -180,6 +196,11 @@ clean:
         if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: starship init >>>" "$ps_profile"; then
           sed -i '/# >>> dotfiles managed block: starship init >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
           echo "==> PowerShell \$PROFILE starship-init block removed"
+        fi
+        # Remove PowerShell mise-activate block (idempotent; ADR 0024).
+        if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise activate >>>" "$ps_profile"; then
+          sed -i '/# >>> dotfiles managed block: mise activate >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+          echo "==> PowerShell \$PROFILE mise-activate block removed"
         fi
         exit 0
         ;;

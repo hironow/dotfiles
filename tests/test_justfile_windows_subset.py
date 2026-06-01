@@ -319,3 +319,84 @@ def test_clean_windows_removes_powershell_profile_init(
         "clean windows branch must keep `exit 0` after the PowerShell "
         "cleanup so the Unix-only rm block does not run on Windows"
     )
+
+
+# ---------- PowerShell $PROFILE mise activate (ADR 0024) ------------
+
+
+PS_MISE_MARKER_BEGIN = "# >>> dotfiles managed block: mise activate >>>"
+
+
+def test_deploy_windows_writes_powershell_mise_activate(
+    justfile_text: str,
+) -> None:
+    """ADR 0024: deploy Windows branch must wire mise into PowerShell 7's
+    $PROFILE so the mise-managed node/just/etc resolve correctly on
+    Windows. Without this, PATH resolution falls back to whatever Program
+    Files / scoop installed (per the ADR 0024 context)."""
+    body = _extract_recipe_body(justfile_text, "deploy")
+    win = _extract_windows_branch(body)
+    assert PS_MISE_MARKER_BEGIN in win, (
+        "deploy windows branch must include the mise-activate begin marker "
+        "so the block can be detected for idempotency and removed by clean"
+    )
+    assert "Invoke-Expression (&mise activate pwsh)" in win, (
+        "deploy windows branch must emit the canonical mise activate line "
+        "for PowerShell"
+    )
+    assert "Get-Command mise -ErrorAction SilentlyContinue" in win, (
+        "deploy windows branch must guard with Get-Command so PowerShell "
+        "does not error on hosts where mise is not yet installed "
+        "(parity with .zshrc's _cmd_exists mise guard)"
+    )
+
+
+def test_deploy_windows_mise_activate_is_idempotent(
+    justfile_text: str,
+) -> None:
+    """ADR 0024 requires the mise block to be idempotent: a `grep -qF`
+    on the mise marker must guard the append. Since the starship block
+    (ADR 0022) also uses `grep -qF`, the deploy Windows branch must
+    contain at least TWO `grep -qF` calls — one per managed block."""
+    body = _extract_recipe_body(justfile_text, "deploy")
+    win = _extract_windows_branch(body)
+    grep_calls = re.findall(r"grep -qF", win)
+    assert len(grep_calls) >= 2, (
+        f"deploy windows branch must have at least 2 `grep -qF` calls "
+        f"(one per managed block: starship + mise). Found {len(grep_calls)}."
+    )
+    # The append redirection should target $ps_profile (same variable both
+    # blocks reuse). At least 2 append redirections must exist.
+    appends = re.findall(r'>>\s*"\$ps_profile"', win)
+    assert len(appends) >= 2, (
+        f"deploy windows branch must have at least 2 append (>>) redirections "
+        f"to $ps_profile (one per managed block). Found {len(appends)}."
+    )
+
+
+def test_clean_windows_removes_powershell_mise_activate(
+    justfile_text: str,
+) -> None:
+    """ADR 0024 symmetry: clean must remove the mise marker block from
+    $PROFILE via a sed range deletion. The starship sed (ADR 0022)
+    already exists; clean must therefore have at least TWO `sed -i`
+    invocations."""
+    body = _extract_recipe_body(justfile_text, "clean")
+    win = _extract_windows_branch(body)
+    sed_calls = re.findall(r"sed -i", win)
+    assert len(sed_calls) >= 2, (
+        f"clean windows branch must have at least 2 `sed -i` invocations "
+        f"(one per managed block: starship + mise). Found {len(sed_calls)}."
+    )
+    assert PS_MISE_MARKER_BEGIN in win, (
+        "clean windows branch must reference the mise begin marker so the "
+        "sed range deletion targets the right block"
+    )
+    assert "mise activate" in win, (
+        "clean windows branch must remove the mise-activate block per ADR 0024"
+    )
+    # `exit 0` must still terminate the branch after both removals.
+    assert re.search(r"\bexit\s+0\b", win), (
+        "clean windows branch must keep `exit 0` after both PowerShell "
+        "block removals so the Unix-only rm block does not run on Windows"
+    )
