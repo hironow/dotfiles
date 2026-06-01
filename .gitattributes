@@ -1,3 +1,11 @@
 # scoop export on Windows can emit CRLF; force LF for diff stability.
 # See ADR 0019 (Windows scoop manifest in dump/ — record-only).
 dump/scoop.json text eol=lf
+
+# Shell scripts must be LF on every platform: shellcheck reads the working
+# tree and treats CR as SC1017 error, breaking `just lint` and the
+# test_install_sh_passes_shellcheck test on Windows hosts where
+# core.autocrlf=true would otherwise convert the working tree to CRLF.
+# See ADR 0020.
+*.sh   text eol=lf
+*.bash text eol=lf
