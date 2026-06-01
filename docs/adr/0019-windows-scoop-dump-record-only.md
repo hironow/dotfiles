@@ -91,7 +91,7 @@ each ADR has a single responsibility.
     - `test_dump_has_windows_branch`
     - `test_dump_windows_writes_scoop_json`
     - `test_dump_windows_normalizes_with_jq` (asserts `jq` + `sort_by`
-      + that `Updated`/`Manifests` tokens are absent from the branch
+        - that `Updated`/`Manifests` tokens are absent from the branch
       body — a re-include would defeat diff stability)
     - `test_dump_windows_has_no_install_side` (asserts `scoop install`
       does NOT appear — record-only invariant, separates this ADR from
