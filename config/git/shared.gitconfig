@@ -1,0 +1,62 @@
+# Shared git config managed by hironow/dotfiles. Included from
+# ~/.gitconfig via:
+#   [include]
+#     path = ~/dotfiles/config/git/shared.gitconfig
+#
+# PC-specific values (user.email, user.signingkey, gpg.program path,
+# credential helpers with absolute Homebrew paths, lfs custom transfer)
+# stay in ~/.gitconfig directly so they never get committed.
+
+[user]
+	name = hironow
+
+[column]
+	ui = auto
+
+[branch]
+	sort = -committerdate
+
+[init]
+	defaultBranch = main
+
+[diff]
+	algorithm = histogram
+	colorMoved = plain
+	mnemonicPrefix = true
+	renames = true
+
+[push]
+	default = simple
+	autoSetupRemote = true
+	followTags = true
+
+[fetch]
+	prune = true
+	pruneTags = true
+	all = true
+
+[help]
+	autocorrect = prompt
+
+[commit]
+	gpgsign = true
+	verbose = true
+
+[rerere]
+	enabled = true
+	autoupdate = true
+
+[rebase]
+	autoSquash = true
+	autoStash = true
+	updateRefs = true
+
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+
+[tag]
+	sort = version:refname
+	forceSignAnnotated = true
