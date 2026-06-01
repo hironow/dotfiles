@@ -118,12 +118,10 @@ path_prepend "$HOME/.bun/bin"
 path_prepend "/usr/local/bin"
 path_prepend "$HOME/.local/bin"
 
-# mise
-if _cmd_exists mise; then
-    eval "$(mise activate zsh)"
-    # Keep mise-managed tool shims ahead of system toolchains (e.g. /usr/local/go/bin).
-    path_prepend "$HOME/.local/share/mise/shims"
-fi
+# mise activate is intentionally NOT here — it lives at EOF so its
+# chpwd/precmd hook runs after every later PATH edit (vite-plus,
+# antigravity, dbt, ...) and mise-managed tool dirs end up first in
+# PATH. See ADR 0022.
 
 
 # alias
@@ -232,9 +230,6 @@ fi
 # Added by Antigravity
 export PATH="$HOME/.antigravity/antigravity/bin:$PATH"
 
-# Re-assert mise shims at the front in case later PATH edits reorder entries.
-path_prepend "$HOME/.local/share/mise/shims"
-
 
 # Vite+ bin (https://viteplus.dev)
 if _file_exists "$HOME/.vite-plus/env"; then
@@ -264,3 +259,13 @@ alias dbtf="$HOME/.local/bin/dbt"
 
 # Antigravity CLI
 export PATH="$HOME/.local/bin:$PATH"
+
+# mise (run LAST so its chpwd/precmd hook prepends mise tool dirs after
+# every late PATH edit above — vite-plus, antigravity, dbt Fusion,
+# etc. — and mise-managed versions end up first in PATH per
+# `mise doctor`. Shims are intentionally NOT on PATH (interactive shells
+# use activate only; cron/IDE/non-shell consumers should use
+# `mise exec --` or shims in ~/.zshenv). See ADR 0022.
+if _cmd_exists mise; then
+    eval "$(mise activate zsh)"
+fi
