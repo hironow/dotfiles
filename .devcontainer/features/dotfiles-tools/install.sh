@@ -262,33 +262,19 @@ echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_D
 )
 MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 
-# pnpm 9+ requires PNPM_HOME on PATH; otherwise `pnpm list -g` /
-# `pnpm add -g` abort with "configured global bin directory ... is
-# not in PATH". devcontainer.json's `containerEnv` covers the IDE /
-# Coder workspace path, but the just sandbox tests run via `docker
-# run --rm bash -lc` which inherits ENV from the saved image layer
-# only — and dev container's containerEnv is applied at runtime, not
-# baked. Write a /etc/profile.d snippet so `bash -lc` (login shell)
-# sources it through /etc/profile -> /etc/profile.d/*.sh and the
-# PATH layout matches what `pnpm setup` would produce.
-echo "[dotfiles-tools] writing /etc/profile.d/pnpm.sh"
-mkdir -p /root/.local/share/pnpm/bin
-cat > /etc/profile.d/pnpm.sh <<'PNPM_PROFILE'
-# pnpm 9+ global bin directory bootstrap (build-time baked).
-# pnpm reports the bin dir as $PNPM_HOME/bin and aborts global
-# operations when it is missing from PATH; mirror what `pnpm setup`
-# writes to the user shell rc plus the bin subdir prepend.
-export PNPM_HOME="/root/.local/share/pnpm"
-case ":${PATH}:" in
-  *":${PNPM_HOME}/bin:"*) ;;
-  *) export PATH="${PNPM_HOME}/bin:${PATH}" ;;
-esac
-case ":${PATH}:" in
-  *":${PNPM_HOME}:"*) ;;
-  *) export PATH="${PNPM_HOME}:${PATH}" ;;
-esac
-PNPM_PROFILE
-chmod 0755 /etc/profile.d/pnpm.sh
+# pnpm/yarn are provided per-repo by corepack (the package-manager
+# shim shipped with node). We no longer install pnpm globals, so there
+# is no PNPM_HOME global-bin to bootstrap. Enable corepack at build
+# time so its pnpm shim lands in the node bin dir (already on PATH);
+# each project pins its PM via the `packageManager` field and corepack
+# runs that exact version on demand. Global CLIs live in mise's npm:
+# backend instead. See docs/adr/0017-retire-pnpm-global-for-corepack.md.
+if command -v corepack >/dev/null 2>&1; then
+  echo "[dotfiles-tools] enabling corepack"
+  corepack enable || true
+else
+  echo "[dotfiles-tools] corepack not on PATH; skipping (node feature should provide it)"
+fi
 
 # Cleanup apt cache to keep the image lean.
 rm -rf /var/lib/apt/lists/*

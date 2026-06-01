@@ -440,19 +440,6 @@ def test_just_commands_sandbox(
             id="Doctor: PATH duplicates warn",
             marks=pytest.mark.validate,
         ),
-        pytest.param(
-            # The "jq not found" fallback was meaningful on alpine
-            # where jq was absent; debian + Microsoft features ship
-            # jq via common-utils / git-core deps, so the recipe
-            # takes the jq-present path. Just assert it succeeds.
-            "pnpm_safe_fallback_runs",
-            "just update-pnpm-g-safe",
-            0,
-            "",
-            "",
-            id="Update: pnpm safe fallback",
-            marks=pytest.mark.check,
-        ),
     ],
 )
 def test_additional_scenarios_sandbox(
@@ -535,17 +522,6 @@ def test_doctor_reports_just(docker_image):
             marks=pytest.mark.check,
         ),
         pytest.param(
-            # pnpm may or may not be present depending on the node
-            # devcontainer feature config; either branch should
-            # exit 0. No stdout assertion.
-            "Check: pnpm globals guarded",
-            "if command -v pnpm >/dev/null 2>&1; then just check-pnpm-g; else echo skip-pnpm; fi",
-            0,
-            "",
-            id="Check: pnpm globals guarded",
-            marks=pytest.mark.check,
-        ),
-        pytest.param(
             # check-pnpm-dlx is a record-only listing (grep over dump/npm-dlx).
             # pnpm itself is not required; the recipe always exits 0 and
             # prints the header line.
@@ -603,9 +579,6 @@ def test_doctor_sandbox(docker_image):
     [
         pytest.param("add-brew", "dump/Brewfile", id="add-brew guards empty Brewfile"),
         pytest.param("add-gcloud", "dump/gcloud", id="add-gcloud guards empty dump"),
-        pytest.param(
-            "add-pnpm-g", "dump/npm-global", id="add-pnpm-g guards empty dump"
-        ),
     ],
 )
 @pytest.mark.check
@@ -941,9 +914,7 @@ def test_just_self_check_succeeds(docker_image):
 def test_just_add_all_fails_when_dumps_empty(docker_image):
     """`just add-all` is a composite. With empty dump files it must fail at
     the first add-* guard (rc=1, "missing or empty"), not silently succeed."""
-    script = (
-        ": > dump/Brewfile && : > dump/gcloud && : > dump/npm-global && just add-all"
-    )
+    script = ": > dump/Brewfile && : > dump/gcloud && just add-all"
     result = run_in_sandbox(docker_image, script)
     assert result.returncode != 0
     assert "missing or empty" in result.stdout

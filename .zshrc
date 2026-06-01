@@ -49,12 +49,13 @@ ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
 ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 
 # Precedence tweaks
-# PNPM first for Node CLIs
+# pnpm is provided per-repo by corepack; we do NOT install pnpm globals.
+# Keep PNPM_HOME so the content-addressed store stays at ~/Library/pnpm/store
+# (shared by per-project `pnpm install`), but deliberately do NOT put the
+# global bin dir on PATH — that makes `pnpm add -g` abort, steering global
+# CLIs to mise's npm: backend instead.
+# See docs/adr/0017-retire-pnpm-global-for-corepack.md.
 export PNPM_HOME="$HOME/Library/pnpm"
-path_prepend "$PNPM_HOME"
-# pnpm 9+ reports the global bin dir as $PNPM_HOME/bin and aborts
-# `pnpm add/update -g` when it is missing from PATH (mirror `pnpm setup`)
-path_prepend "$PNPM_HOME/bin"
 
 # Prefer OrbStack Docker if present
 path_prepend "$HOME/.orbstack/bin"

@@ -234,24 +234,25 @@ step_gcloud_bundle() {
   esac
 }
 
-step_pnpm_globals() {
-  if [ -n "${INSTALL_SKIP_ADD_UPDATE:-}" ]; then
-    echo "[install] step_pnpm_globals: skip (INSTALL_SKIP_ADD_UPDATE=1)"
-    return
-  fi
+step_corepack() {
+  # pnpm/yarn are provided per-repo by corepack (the package-manager
+  # shim shipped with node). We no longer install pnpm globals: each
+  # project pins its PM via the `packageManager` field and corepack
+  # runs that exact version on demand. Global CLIs live in mise's npm:
+  # backend instead. See docs/adr/0017-retire-pnpm-global-for-corepack.md.
   case "$DOTFILES_OS" in
     mac|linux)
-      # Linux runs this too: pnpm is provided by the dev container
-      # feature and the operator wants the same npm-globals set
-      # (vp, markdownlint-cli2, etc.) available on workspaces.
-      if command -v pnpm >/dev/null 2>&1; then
-        just add-pnpm-g
+      # Guard: the minimal Ubuntu install-test image has no node/corepack.
+      # corepack is provided by `npm "corepack"` in dump/Brewfile (brew
+      # bundle) or by the dev container node feature.
+      if command -v corepack >/dev/null 2>&1; then
+        corepack enable
       else
-        echo "[install] step_pnpm_globals: pnpm not on PATH; skipping (dev container feature should install it)"
+        echo "[install] step_corepack: corepack not on PATH; skipping (provided by brew bundle / dev container feature)"
       fi
       ;;
     windows)
-      _todo_windows "step_pnpm_globals"
+      _todo_windows "step_corepack"
       ;;
   esac
 }
@@ -306,7 +307,7 @@ step_gcloud_components
 step_just_bootstrap
 step_brew_bundle
 step_gcloud_bundle
-step_pnpm_globals
+step_corepack
 step_update_all
 step_symlink_dotfiles
 step_sheldon
