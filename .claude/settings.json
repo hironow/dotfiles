@@ -86,7 +86,9 @@
       "Write(.env.keys)",
       "Read(**/private/**)",
       "Write(**/private/**)",
-      "Bash(sudo:*)",
+      "Bash(sudo:*)"
+    ],
+    "ask": [
       "Bash(rm -rf:*)",
       "Bash(npm:*)",
       "Bash(npx:*)",
@@ -94,9 +96,7 @@
       "Bash(pnpx:*)",
       "Bash(pip3:*)",
       "Bash(pip:*)",
-      "Bash(git reset:*)"
-    ],
-    "ask": [
+      "Bash(git reset:*)",
       "Read(.env)",
       "Write(.env)",
       "Read(.env*)",
