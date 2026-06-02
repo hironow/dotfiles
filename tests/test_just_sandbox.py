@@ -296,6 +296,27 @@ SCRIPT_INSTALL_RERUN = textwrap.dedent(
 ).strip()
 
 
+# A `mise` wrapper that records every invocation and no-ops the
+# `install` subcommand. `just deploy` now provisions the host-global
+# toolchain via `mise -C / install` (cwd=/ so only the global config
+# resolves; see justfile). Without this stub the deploy sandbox tests
+# would try to install the entire global config (rust/java/AI CLIs/...)
+# inside the throwaway container. The wrapper logs argv to
+# /tmp/mise-calls.log so a test can assert the HOME-independent
+# `-C / install` wiring, and delegates every non-install call
+# (e.g. `mise x -- sheldon lock`) to the real mise at /usr/bin/mise.
+_MISE_RECORD_STUB = (
+    "mkdir -p /tmp/stubs && "
+    "printf '%s\\n' "
+    "'#!/bin/sh' "
+    "'echo \"$@\" >> /tmp/mise-calls.log' "
+    '\'for a in "$@"; do [ "$a" = install ] && exit 0; done\' '
+    "'exec /usr/bin/mise \"$@\"' "
+    "> /tmp/stubs/mise && chmod +x /tmp/stubs/mise && "
+    "export PATH=/tmp/stubs:$PATH && "
+)
+
+
 def _case_id(params):
     # Prefer the explicit human-friendly name (first param)
     if isinstance(params, (list, tuple)) and params:
@@ -338,7 +359,10 @@ def _case_id(params):
         ),
         pytest.param(
             "deploy_and_clean_link",
-            "rm -f ~/.zshrc && just deploy && test -L ~/.zshrc && readlink ~/.zshrc | grep '/root/dotfiles/.zshrc' && just clean && test ! -e ~/.zshrc",
+            # `_MISE_RECORD_STUB` no-ops `just deploy`'s `mise -C / install`
+            # so this case stays a fast symlink check (see stub comment).
+            _MISE_RECORD_STUB
+            + "rm -f ~/.zshrc && just deploy && test -L ~/.zshrc && readlink ~/.zshrc | grep '/root/dotfiles/.zshrc' && just clean && test ! -e ~/.zshrc",
             0,
             "",
             "",
@@ -347,7 +371,8 @@ def _case_id(params):
         ),
         pytest.param(
             "deploy_idempotent",
-            "rm -f ~/.zshrc && just deploy && just deploy && test -L ~/.zshrc && readlink ~/.zshrc | grep '/root/dotfiles/.zshrc' && just clean && test ! -e ~/.zshrc",
+            _MISE_RECORD_STUB
+            + "rm -f ~/.zshrc && just deploy && just deploy && test -L ~/.zshrc && readlink ~/.zshrc | grep '/root/dotfiles/.zshrc' && just clean && test ! -e ~/.zshrc",
             0,
             "",
             "",
@@ -938,6 +963,57 @@ def test_just_install_runs_mise_install(docker_image):
     )
     combined = result.stdout + result.stderr
     assert "mise install" in combined
+
+
+@pytest.mark.deploy
+def test_deploy_provisions_global_mise(docker_image):
+    """`just deploy` provisions the host-global mise toolchain.
+
+    The recipe runs `mise -C / install` (cwd=/ so only the global
+    config resolves, never a HOME-level project config). We stub
+    `mise` to record argv and no-op the install, then assert the
+    HOME-independent `-C / install` wiring fired and the symlink
+    deploy still happened.
+    """
+    result = run_in_sandbox(
+        docker_image,
+        _MISE_RECORD_STUB + "rm -f /tmp/mise-calls.log ~/.zshrc && just deploy && "
+        "grep -q -- '-C / install' /tmp/mise-calls.log && "
+        "test -L ~/.zshrc",
+    )
+    assert result.returncode == 0, (
+        f"deploy global-mise provisioning wiring failed:\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+@pytest.mark.deploy
+def test_deploy_mise_install_is_global_scoped(docker_image):
+    """Guard the `-C /` scope choice: the deploy provisioning command
+    must resolve ONLY the global config, never a HOME-level project
+    config (`~/mise.toml` / `~/.tool-versions`).
+
+    Plant a sentinel `~/mise.toml`; from cwd=$HOME mise sees it (HOME
+    is in scope), but from cwd=/ it must not (HOME is not an ancestor
+    of /), while the global config still loads. This locks the
+    assumption behind `mise -C / install` so a future "simplification"
+    back to `-C "$HOME"` (which would leak HOME-local configs) is
+    caught.
+    """
+    result = run_in_sandbox(
+        docker_image,
+        'printf \'[tools]\\n"npm:cowsay" = "latest"\\n\' > ~/mise.toml && '
+        "mise trust ~/mise.toml >/dev/null 2>&1; "
+        # cwd=$HOME sees the planted config (sanity that planting worked):
+        'mise -C "$HOME" config 2>&1 | grep -q cowsay && '
+        # cwd=/ must NOT see it, yet must still load the global config:
+        "! mise -C / config 2>&1 | grep -q cowsay && "
+        "mise -C / config 2>&1 | grep -qw uv",
+    )
+    assert result.returncode == 0, (
+        f"global-scope guard failed:\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
 
 
 # ---------------------------------------------------------------------------
