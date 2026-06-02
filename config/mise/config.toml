@@ -23,10 +23,33 @@ gradle = "latest"
 python = "latest"
 vp = "latest"
 markdownlint-cli2 = "latest"
+# prek — pre-commit runner. Project-pinned in the repo mise.toml for
+# the devcontainer build, but declared here too so it resolves on the
+# Mac host outside the dotfiles dir (ADR 0023 is activate-only with no
+# shims PATH, so a repo-only tool is invisible elsewhere).
+prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
 "npm:portless" = "0.13.0"
+
+# AI agent CLIs. Project-pinned in the repo mise.toml so Coder
+# workspaces boot with them ready; declared here at "latest" so they
+# also resolve globally on the Mac host (ADR 0023 activate-only: a
+# repo-only tool is only on PATH inside the dotfiles dir). The global
+# minimum_release_age="7d" quarantine below still applies, so these
+# track the newest release that is at least 7 days old. Authenticate
+# on first use (`codex login`, `claude /login`, `gemini auth`,
+# `copilot auth`, `pi auth`).
+"npm:@openai/codex" = "latest"
+"npm:@google/gemini-cli" = "latest"
+# claude-code hardlinks its native binary in a postinstall (install.cjs);
+# mise's npm backend defaults to --ignore-scripts=true, which would leave
+# the stub and break `claude` at runtime. npm_args re-enables scripts for
+# this one tool (npm honors the last --ignore-scripts flag).
+"npm:@anthropic-ai/claude-code" = { version = "latest", npm_args = "--ignore-scripts=false" }
+"npm:@github/copilot" = "latest"
+"npm:@earendil-works/pi-coding-agent" = "latest"
 
 [settings]
 # Disable asdf-style .python-version / .nvmrc auto-detection so only
