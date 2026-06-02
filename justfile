@@ -124,6 +124,16 @@ deploy:
     cp ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
     mkdir -p ~/.config/mise
     ln -sf ~/dotfiles/config/mise/config.toml ~/.config/mise/config.toml
+    if command -v mise >/dev/null 2>&1; then
+        echo "==> Provisioning global mise tools (best-effort)..."
+        # cwd=/ so only the global ~/.config/mise/config.toml resolves; a
+        # HOME-level ~/mise.toml / ~/.tool-versions must NOT widen the set.
+        # Best-effort: never abort the symlink deploy on a transient network
+        # or registry failure (resolving "latest" needs an online lookup).
+        mise -C / install || echo "==> WARN: global mise tool install incomplete; re-run 'mise -C / install' (needs network for 'latest')"
+    else
+        echo "==> mise not on PATH; skipping global tool install (install mise, then run 'mise -C / install')"
+    fi
     echo "==> Installing plugins..."
     if command -v sheldon >/dev/null 2>&1; then
         sheldon lock
