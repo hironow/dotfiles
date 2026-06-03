@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-05-30
+最終更新: 2026-06-04
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -10,9 +10,19 @@
 
 ### A2A (Agent-to-Agent)
 
-**現行バージョン**: v1.0.0 (2026-03-12)
+**現行バージョン**: v1.0.1 (2026-05)
 
-**チェックアウト状態**: `v1.0.0-30-ge997516` (v1.0.0 + 30 commits、 HEAD 2026-05-20)
+**チェックアウト状態**: `v1.0.1-6-g7475dd0` (v1.0.1 + 6 commits、 HEAD 2026-06-02)
+
+#### v1.0.1 リリース (2026-05) 後の新着
+
+- **v1.0.1 リリース**: v1.0.0 → v1.0.1 への正式リリース (#1749)
+- **Rust SDK (a2a-rs) 参照追加**: README に Rust SDK (a2a-rs) リファレンス追加、 linter workflow 更新 (#1863)
+- **multi-tenancy ガイド追加**: マルチテナンシーガイドと tenant フィールドのセマンティクス明確化 (#1848)
+- **push notification auth 整合**: push notification 認証例をプロトコル挙動に整合 (#1793)
+- **SDK 数を 6 に更新**: Rust 追加で公式 SDK 数を 6 に更新 (#1778)
+- **Tutorial 8 import path 修正**: AgentExecutor import path 修正 (#1884)
+- **MCP リファレンス明確化**: A2A overview の MCP 参照を明確化 (#1873)
 
 #### v1.0.0 後の変更点
 
@@ -64,7 +74,15 @@
 
 **現行バージョン**: v0.9 (v0.10 spec 作業中)
 
-**チェックアウト状態**: `v0.8-211-gebb474b5` (v0.9 タグ後の HEAD、v0.10 仕様作業を含む)
+**チェックアウト状態**: `v0.8-234-g823f3504` (v0.9 タグ後の HEAD、 v0.10 仕様作業を含む、 HEAD 2026-06-03)
+
+#### 2026-06 新着 (v0.10 spec initialState / MIME 規約変更 / Angular checks 型)
+
+- **BREAKING: IANA MIME を `application/a2ui+json` に**: IANA 規約に合わせ mime type を `application/a2ui+json` へ変更 (POTENTIALLY BREAKING, #1493)
+- **v0.10 CreateSurfaceMessage に optional `initialState`**: v0.10 で CreateSurfaceMessage に optional initialState を追加 (#1524)
+- **Angular `checks` 型を ExtendedProps に露出**: ExtendedProps に checks 型を露出 (#1523)
+- **migration notice 追加**: 移行告知を追加 (#1512)
+- **GeneratedPluginRegistrant 除外**: 生成された GeneratedPluginRegistrant ファイルを ignore/削除 (#1530)
 
 #### 2026-05 末 新着 (v0.10 spec / A2UI-over-MCP 強化 / Angular ComponentBinder)
 
@@ -187,11 +205,18 @@
 
 ### ADP (Agent Data Protocol)
 
-**現行バージョン**: v1.1.0 (2026-05-17)
+**現行バージョン**: v1.3.1 (2026-06)
 
-**チェックアウト状態**: `v1.1.0-1-g40b0489` (v1.1.0 + 1 commit)
+**チェックアウト状態**: `v1.3.1-7-g2d7feff` (v1.3.1 + 7 commits、 HEAD 2026-06-03)
 
 **管理**: CMU NeuLab
+
+#### v1.2.0 / v1.3.0 / v1.3.1 リリース (2026-05〜06)
+
+- **SFT データセット拡充**: LiteCoder Terminal SFT (#255)、 NVIDIA SWE-Zero OpenHands trajectories (#246)、 hybrid-gym trajectory (#248) を追加
+- **OpenHands SDK condenser SFT**: openhands-sdk が condenser prompt SFT データを emit (#244)、 SDK-backed OpenHands SFT converter 追加 (#241)
+- **condenser replay / identity**: in-memory event history で condenser replay (#252)、 condensation 不要時に identity trajectory を emit (#251)
+- **Hugging Face chat-template 互換**: SFT サンプルを HF chat-template 互換に (#242)
 
 #### v1.0.0 / v1.1.0 リリース (2026-05)
 
@@ -237,7 +262,19 @@
 
 ### AG-UI (Agent-User Interaction Protocol)
 
-**現行バージョン**: release/2026-04-22
+**現行バージョン**: @ag-ui/langgraph@0.0.36 / TS SDK 0.0.55 / Python protocol 0.1.19 (release/2026-06-02)
+
+**チェックアウト状態**: `@ag-ui/langgraph@0.0.36-1-g82a2cc28` (HEAD 2026-06-03)
+
+#### 2026-06 新着 (TS SDK 0.0.55 / protocol 0.1.19 / mcp-middleware)
+
+- **client run_id を RUN_FINISHED で保持**: RUN_FINISHED イベントで client の run_id を保持 (#1582)
+- **integration-langgraph-ts 0.0.36**: langgraph TS 統合を 0.0.36 に bump
+- **sdk-py protocol 0.1.19**: Python SDK protocol を 0.1.19 に bump
+- **TS SDK パッケージ 0.0.55 一括リリース**: client / core / encoder / proto を 0.0.55 に
+- **event reducer: tool result 順序修正**: tool result を対応する tool call の後に配置 (client)
+- **langgraph TS createAgent inner graph export**: inner graph を export
+- **@ag-ui/mcp-middleware 追加**: mcp-middleware リリーススコープを追加
 
 #### release/2026-04-22 の主要な変更点
 
@@ -343,11 +380,19 @@
 
 ### MCP (Model Context Protocol)
 
-**現行バージョン**: 2025-11-25
+**現行バージョン**: 2025-11-25 (次期リリース候補 `2026-07-28-RC` 作業中)
 
-**チェックアウト状態**: `2025-11-25-1390-g6d4a06f4` (2025-11-25 タグから 1390 commits、 next-revision draft 作業中、 HEAD 2026-05-20)
+**チェックアウト状態**: `2026-07-28-RC-33-ga2071502` (2026-07-28-RC タグ + 33 commits、 next-revision draft 作業中、 HEAD 2026-06-03)
 
 **注目**: 2025-11-25 タグで `2025-11-25-RC` から正式リリース昇格。HEAD はそれより先に進んでおり、**SEP-2567 (Sessionless MCP via Explicit State Handles) と SEP-2575 (Make MCP Stateless) が Final / Accepted へ昇格**して draft に組み込み中。 ステートレス志向への大きな仕様シフトが進行中。 直近では **SEP-2596 (Feature Lifecycle and Deprecation Policy)、 SEP-2577 (Deprecate Roots/Sampling/Logging)、 SEP-2106 (Tools schema を JSON Schema 2020-12 準拠化)、 SEP-2164 (resource not found error code 標準化)、 SEP-2468 (Issuer iss param 推奨)、 SEP-2484 (Standards Track SEP は Conformance Tests 必須)、 SEP-2663 (Tasks Extension)、 SEP-2575 で unsupported protocol error code 追加** 等が連続して進行。
+
+#### 2026-06 新着 (message patterns 再編 / stdio legacy-fallback / Server Card WG)
+
+- **message patterns ページ再編**: utilities/ から message patterns ページを移動・再編し、 リンクを更新
+- **stdio legacy-fallback ルール修正 + 互換性マトリクス**: stdio の legacy-fallback ルールを修正し、 compatibility matrix を追加 (#2844)
+- **draft spec overview 整理**: deprecated features を削除し、 extensions セクションを追加
+- **Server Identity WG → Server Card WG リネーム**: WG を改称、 Sam Morrow を IG/WG に追加 (#2827)
+- **build(deps) 群**: vitest / typescript-eslint / tsx / eslint / actions 各種を bump
 
 #### 2025-06-18 → 2025-11-25 で導入された主要 SEP (新着補完)
 
@@ -438,9 +483,15 @@
 
 ### MCP-Apps
 
-**現行バージョン**: v1.7.2 (2026-05-15)
+**現行バージョン**: v1.7.3 (2026-06)
 
-**チェックアウト状態**: `v1.7.2` (タグぴったり、追加コミットなし)
+**チェックアウト状態**: `v1.7.3-1-ga9907802` (v1.7.3 + 1 commit、 HEAD 2026-06-02)
+
+#### v1.7.3 の主要な変更点
+
+- **SECURITY: lazy-auth-server token exchange で PKCE 必須化 + redirect_uri バインド**: lazy-auth-server の token exchange で PKCE を必須化し、 redirect_uri をバインド (#681)
+- **lazy-auth-server example 追加**: lazy 認証サーバの example を追加 (#679)
+- **ext-apps 1.7.3 bump**: ext-apps を 1.7.3 に bump (#680)
 
 #### v1.7.2 の主要な変更点
 
@@ -606,7 +657,7 @@
 
 **現行バージョン**: v1.1（仕様、 タグなし latest 追従、 直近 spec commit 2026-05-18）
 
-**チェックアウト状態**: `2948c67` (2026-05-21 contributors update、 ブランチ HEAD)
+**チェックアウト状態**: `75efb05` (2026-06-03 contributors update、 ブランチ HEAD。 前回記録以降は contributors data の自動更新のみで仕様変更なし)
 
 **管理**: Universal Tool Calling Protocol コミュニティ（独立 OSS）
 
@@ -673,6 +724,15 @@
 **現行バージョン**: 継続的デプロイ（バージョンタグなし）
 
 **管理**: Google Chrome Labs
+
+#### 2026-06 新着 (Page Agent demo / Sport Shop evals / permission policy)
+
+- **permission policy 厳格化**: permission policy を tighten
+- **Page Agent demo 追加**: Page Agent デモを追加
+- **Sport Shop evals**: Sport Shop の example evals 追加、 pickup / promos / 追加カートツールを Sport Shop に追加
+- **Pizza-Maker tools クロスオリジンテスト公開**: cross origin testing 向けに Pizza-Maker tools を公開
+- **eval レポート改善**: eval 名付きのレポート改善、 sidecar UI 改善
+- **AWESOME_WEBMCP に webmcp.cool 追加**: AWESOME_WEBMCP.md に webmcp.cool を追加
 
 #### 最近の変更点
 
@@ -822,7 +882,14 @@
 
 **現行バージョン**: v2026-04-08 (2026-04-13)
 
-**チェックアウト状態**: `v2026-01-23-128-ge01b958` (`git submodule status` は祖先タグ v2026-01-23 を表示するが、 HEAD は v2026-04-08 を超過、 HEAD 2026-05-20)
+**チェックアウト状態**: `v2026-01-23-134-gd984d4b` (`git submodule status` は祖先タグ v2026-01-23 を表示するが、 HEAD は v2026-04-08 を超過、 HEAD 2026-06-03)
+
+#### 2026-06 新着 (split payments extension / idempotency 契約)
+
+- **split payments extension 追加**: 分割支払い拡張を導入（discount / loyalty に続く拡張） (#409)
+- **idempotency payload-mismatch 契約明文化**: idempotency の payload 不一致時の契約を明文化 (#485)
+- **Amadeus ロゴ刷新**: lodging セクションで Amadeus ロゴを強調 (#488)、 legacy Amadeus SVG を更新版に置換 (#468)
+- **stylelint / SVG フォーマット修正**: local_preview と site ディレクトリを stylelint 対象外に (#495)、 pre-commit SVG formatting と trailing newline 修正 (#491)
 
 #### v2026-04-08 後の変更点
 
@@ -1996,6 +2063,8 @@
 
 | 対象 | 変更内容 | 対応優先度 |
 |------|---------|-----------|
+| **A2UI v0.10 MIME 変更** (#1493, 2026-06) | IANA 規約準拠で mime type を `application/a2ui+json` へ変更（POTENTIALLY BREAKING）。 既存 A2UI-over-HTTP / MCP クライアントの content-type 判定に影響 | 中 |
+| **MCP-Apps v1.7.3 PKCE 必須化** (#681, 2026-06) | lazy-auth-server の token exchange で PKCE を必須化し redirect_uri をバインド（セキュリティ強化）。 PKCE 非対応の旧フローは拒否される | 中 |
 | **ADK Go v1.4.0** (2026-05-29) | Context unification（tool context を callbackContext にマージする内部統合）、 adka2a structured error propagation、 examples / CLI を a2a-go/v2 SDK へ移行、 metadata-only SSE チャンク許容でストリーム中断防止 | 高 |
 | **GenAI Toolbox v1.3.0** (2026-05-21) | `cloud-sql-admin-execute-sql-many` / `sql-many` bulk ツール、 SQLCommenter（client metadata 送出）、 MCP auth tool-level scopes バリデーション、 HTTP tool path traversal 防止（セキュリティ） | 中 |
 | **GKE MCP v0.13.0** (2026-05-28) | k8s リソース操作ツール群（apply / get / describe / patch / delete / logs / rollout / auth / api-resources / cluster-info / events）一括拡充、 install checksum verification、 insecure `pull_request_target` 防止 CI | 中 |
@@ -2105,6 +2174,7 @@
 
 ### セキュリティ更新
 
+- **MCP-Apps v1.7.3 (2026-06)**: **lazy-auth-server token exchange で PKCE 必須化 + redirect_uri バインド (#681)** — OAuth authorization code interception 攻撃を防止。 PKCE 非対応の旧フローは拒否される
 - **ADK JS HEAD (v1.1.0 後, 未リリース)**: **CORS 脆弱性修正（express.urlencoded parser 無効化, #378）**、 **OAuth2 SSRF 防止（IPv4-mapped IPv6 ブロック + 死んでいた 172.16/12 チェック修正, #354）**、 run_sse の hardcoded `*` Access-Control-Allow-Origin 削除 (#360)、 AdkApiServer を設定 host のみで listen するよう制限 (#383)
 - **ADK Python HEAD (v1.34.0 / v2.0.0 後, 未リリース)**: **ReadFileTool コマンドの path / range を shell escape (RCE 抑止)**、 OAuth2 token requests からの scope 省略、 check-file-contents.yml での非 mTLS hardcoded endpoint 検出
 - **GKE MCP v0.13.0 (2026-05-28)**: install 時の checksum verification 追加 (#398)、 insecure `pull_request_target` 利用を防ぐ CI チェック追加 (#400)
