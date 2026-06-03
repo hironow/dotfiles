@@ -553,6 +553,22 @@ update-my-submodules:
     git submodule update --remote skills
     @echo "✅ Submodules updated."
 
+# Bring ALL submodules to upstream tips cleanly. Absorbs three failure
+# classes seen in practice:
+#   1. tag clobber       -> force-fetch tags up front (upstream re-tagging)
+#   2. LFS/dirty abort    -> --force discards smudge/dirty noise on checkout
+#   3. grandchild drift   -> --no-recurse-submodules keeps nested submodules
+#                            pinned, then re-pin them to each parent's SHA
+[doc('Update all submodules to upstream tips, cleanly (no garbage diff)')]
+[group('Update')]
+update-all-submodules:
+    @echo "◆ Updating ALL submodules to upstream tips (clean)..."
+    git submodule foreach --quiet 'git fetch --tags --force origin 2>/dev/null || true'
+    git submodule update --remote --force --no-recurse-submodules
+    git submodule foreach --quiet 'git submodule update --init --recursive --checkout 2>/dev/null || true'
+    @echo "✅ Submodules updated. Working tree status (empty = clean):"
+    @git status --short
+
 # Update (all): update gcloud/brew and tools (pnpm is corepack/per-repo, not global)
 [group('Update')]
 update-all:
