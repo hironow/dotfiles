@@ -1,14 +1,18 @@
-FROM node:24-slim
+FROM node:24-trixie-slim
 
-# Install Java and other dependencies (required for Firebase emulators)
-RUN apt-get update && apt-get install -y \
-    openjdk-17-jre-headless \
+# Install Java and other dependencies (required for Firebase emulators).
+# firebase-tools >=14 requires a JDK >= 21. node:24-trixie-slim is Debian
+# 13 (trixie), whose main repo ships openjdk-21 directly -- Debian 12
+# (bookworm) only has openjdk-17 and bookworm-backports carries no
+# openjdk-21, so the trixie base avoids any extra apt source.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-21-jre-headless \
     curl \
     netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Firebase CLI with specific version for stability
-RUN npm install -g firebase-tools@13.0.2 && \
+RUN npm install -g firebase-tools@15.19.0 && \
     firebase --version
 
 WORKDIR /firebase
@@ -30,5 +34,7 @@ EXPOSE 9099 8080 9399 9199 9299 9499 4000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:4000 || exit 1
 
-# Default command (can be overridden by docker-compose)
-CMD ["firebase", "emulators:start", "--host", "0.0.0.0"]
+# Default command (can be overridden by docker-compose). firebase-tools
+# 15 removed the `--host` flag; the emulator host binding (0.0.0.0) now
+# comes from firebase.json's per-emulator `host` fields.
+CMD ["firebase", "emulators:start"]
