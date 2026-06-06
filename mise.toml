@@ -7,11 +7,11 @@
 # constants in .devcontainer/features/dotfiles-tools/install.sh.
 just = "1.51.0"
 markdownlint-cli2 = "0.22.1"
-prek = "0.4.0"
-uv = "0.11.14"
+prek = "0.4.3"
+uv = "0.11.17"
 # `vp` is the mise registry alias for npm:vite-plus (NOT the
 # unrelated `vp` npm package). Pin to vite-plus's actual version.
-vp = "0.1.21"
+vp = "0.1.23"
 
 # Node runtime. The npm-backed AI CLIs below have a `#!/usr/bin/env
 # node` shebang that needs node on PATH at *runtime*, not just at
@@ -19,17 +19,17 @@ vp = "0.1.21"
 # `ghcr.io/devcontainers/features/node:1` feature in devcontainer.json
 # does install node into /usr/local/bin, but on Coder workspaces the
 # `/home/<user>:/root` volume mount can mask the symlink chain. Pin
-# node here so /opt/mise/installs/node/24.15.0/bin/node lives outside
+# node here so /opt/mise/installs/node/24.16.0/bin/node lives outside
 # the volume-mount path; mise's shim in /opt/mise/shims wins PATH
 # resolution against any bind-mount issue.
-node = "24.15.0"
+node = "24.16.0"
 
 # AI agent CLIs. Installed at build time so the Coder workspace
 # boots with them ready on PATH; operators authenticate them on
 # first use (`codex login`, `claude /login`, `gemini auth`,
 # `copilot auth`, `pi auth`). Source: 2026-05 latest stable.
-"npm:@openai/codex" = "0.131.0"
-"npm:@google/gemini-cli" = "0.42.0"
+"npm:@openai/codex" = "0.135.0"
+"npm:@google/gemini-cli" = "0.44.1"
 # claude-code ships its ~248MB native binary as per-platform npm
 # optionalDependencies that a postinstall (install.cjs) hardlinks over a
 # stub. mise's npm backend installs with --ignore-scripts=true by default,
@@ -37,9 +37,9 @@ node = "24.15.0"
 # stub — `claude` then errors at runtime with "native binary not installed".
 # npm_args re-enables scripts for this one tool (npm honors the last
 # --ignore-scripts flag, so this overrides mise's default).
-"npm:@anthropic-ai/claude-code" = { version = "2.1.143", npm_args = "--ignore-scripts=false" }
-"npm:@github/copilot" = "1.0.48"
-"npm:@earendil-works/pi-coding-agent" = "0.75.3"
+"npm:@anthropic-ai/claude-code" = { version = "2.1.158", npm_args = "--ignore-scripts=false" }
+"npm:@github/copilot" = "1.0.56"
+"npm:@earendil-works/pi-coding-agent" = "0.78.0"
 
 # `~/.npmrc` may set `min-release-age=7` (7-day quarantine, mirrors
 # uv's `exclude-newer = "7 days"`). That blocks `mise install` of
