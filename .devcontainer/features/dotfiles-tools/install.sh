@@ -254,6 +254,9 @@ node = "24.15.0"
 "npm:@anthropic-ai/claude-code" = { version = "2.1.143", npm_args = "--ignore-scripts=false" }
 "npm:@github/copilot" = "1.0.48"
 "npm:@earendil-works/pi-coding-agent" = "0.75.3"
+"npm:cf" = "0.0.6"
+"npm:resend-cli" = "2.3.0"
+"npm:@stripe/cli" = "0.0.1"
 EOF
 echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (

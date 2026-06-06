@@ -51,6 +51,16 @@ prek = "latest"
 "npm:@github/copilot" = "latest"
 "npm:@earendil-works/pi-coding-agent" = "latest"
 
+# Cloud-service dev CLIs (npm-distributed). Declared "latest" like the
+# AI CLIs above; the minimum_release_age="7d" quarantine below makes
+# that resolve to the newest release at least 7 days old. Concrete pins
+# for these live in the repo mise.toml (ADR 0006). Explicit `npm:`
+# backend avoids registry-alias ambiguity.
+#   cf -> Cloudflare CLI, resend-cli -> Resend, @stripe/cli -> Stripe
+"npm:cf" = "latest"
+"npm:resend-cli" = "latest"
+"npm:@stripe/cli" = "latest"
+
 [settings]
 # Disable asdf-style .python-version / .nvmrc auto-detection so only
 # mise.toml / .tool-versions drive tool resolution.

@@ -41,6 +41,18 @@ node = "24.15.0"
 "npm:@github/copilot" = "1.0.48"
 "npm:@earendil-works/pi-coding-agent" = "0.75.3"
 
+# Cloud-service dev CLIs (npm-distributed). Explicit `npm:` backend to
+# avoid any mise registry-alias ambiguity. Concrete pins per ADR 0006
+# (no `latest` in this file); bump by hand like the tools above. Each
+# was the newest release at least 7 days old when pinned.
+#   cf          -> Cloudflare CLI (blog.cloudflare.com cf local explorer)
+#   resend-cli  -> Resend CLI (resend.com/docs/cli)
+#   @stripe/cli -> Stripe CLI (docs.stripe.com, npm install method;
+#                  the legacy `stripe-cli` package is deprecated)
+"npm:cf" = "0.0.6"
+"npm:resend-cli" = "2.3.0"
+"npm:@stripe/cli" = "0.0.1"
+
 # `~/.npmrc` may set `min-release-age=7` (7-day quarantine, mirrors
 # uv's `exclude-newer = "7 days"`). That blocks `mise install` of
 # brand-new npm-backed tools (e.g. vp). Override only for mise-driven
