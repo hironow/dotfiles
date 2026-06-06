@@ -235,7 +235,7 @@ services:
 
   # MLflow Tracking Server + UI
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v3.5.1
+    image: ghcr.io/mlflow/mlflow:v3.12.0
     container_name: mlflow-server
     profiles:
       - ml
@@ -339,7 +339,7 @@ services:
       - cli  # Only run when explicitly requested
   # Elasticsearch
   elasticsearch:
-    image: elasticsearch:9.3.0
+    image: elasticsearch:9.4.2
     container_name: elasticsearch-emulator
     profiles:
       - search
