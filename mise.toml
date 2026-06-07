@@ -40,13 +40,17 @@ node = "24.16.0"
 "npm:@github/copilot" = "1.0.56"
 "npm:@earendil-works/pi-coding-agent" = "0.78.0"
 
-# antigravity (Google's agentic coding CLI) — replaces gemini-cli.
-# Distributed as GitHub-release binaries (not npm), installed via mise's
-# github backend (SLSA provenance verified); the archived binary is
-# `antigravity`, so the exe must be named explicitly. COOLDOWN EXCEPTION:
-# antigravity-cli's first release was 2026-06-01, so no version is yet
-# >=7 days old (the repo's usual 7-day quarantine); pinned to the latest
-# 1.0.6 by request.
+# antigravity (Google's agentic coding CLI) — replaces gemini-cli, per
+# Google's "Transitioning Gemini CLI to Antigravity CLI" announcement.
+# GitHub-release binaries under the google-antigravity org (identity
+# corroborated via the antigravity.google product page + Google Developers
+# Blog; the GitHub org itself is NOT badge-verified). Installed via mise's
+# github backend; the archived binary is `antigravity` (exe=).
+# SUPPLY-CHAIN NOTE: these releases publish no SLSA/Sigstore attestation
+# (gh attestation API returns 404) and no SHA sidecar, so there is no
+# enforced provenance gate — same posture as the npm-backed AI CLIs above.
+# COOLDOWN EXCEPTION: first release 2026-06-01, so no version is yet
+# >=7 days old (the repo's usual quarantine); pinned to 1.0.6 by request.
 "github:google-antigravity/antigravity-cli" = { version = "1.0.6", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Explicit `npm:` backend to

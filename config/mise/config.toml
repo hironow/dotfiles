@@ -50,11 +50,14 @@ prek = "latest"
 "npm:@github/copilot" = "latest"
 "npm:@earendil-works/pi-coding-agent" = "latest"
 
-# antigravity (Google's agentic CLI) — replaces gemini-cli. GitHub-release
-# binary via mise's github backend (SLSA verified); exe is `antigravity`.
-# Pinned to a concrete version (NOT "latest") because its first release
-# was 2026-06-01, so the minimum_release_age="7d" quarantine would leave
-# "latest" with no eligible version. Same concrete pin in the repo
+# antigravity (Google's agentic CLI) — replaces gemini-cli (per Google's
+# "Transitioning Gemini CLI to Antigravity CLI"). GitHub-release binary
+# via mise's github backend; exe is `antigravity`. SUPPLY-CHAIN NOTE: no
+# SLSA/Sigstore attestation or SHA sidecar is published for these releases
+# (gh attestation API 404), so there is no enforced provenance gate — see
+# the repo mise.toml. Pinned to a concrete version (NOT "latest") because
+# its first release was 2026-06-01, so minimum_release_age="7d" would
+# leave "latest" with no eligible version. Same concrete pin in repo
 # mise.toml; bump both together.
 "github:google-antigravity/antigravity-cli" = { version = "1.0.6", exe = "antigravity" }
 
