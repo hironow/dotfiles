@@ -3,15 +3,23 @@
 # Scope rationale:
 #   - github-actions: rotates pinned-SHA `uses:` weekly so workflows stay
 #     current under the org's "require pinned SHA" Actions policy.
-#   - uv (tools/rttm): only place in this repo with real Python deps.
+#   - uv (tools/rttm, emulator): the two places with real Python deps.
 #     Root pyproject.toml has empty `dependencies = []` so it's skipped.
-#   - docker (tests/docker): bumps base images for the sandbox/install/
-#     exe-startup test containers.
+#   - docker (tests/docker, emulator/*): bumps base images for the
+#     sandbox/install/exe-startup test containers and the emulator
+#     service Dockerfiles.
+#
+# Cooldown: default-days 7 mirrors the repo's supply-chain quarantine
+# (uv `exclude-newer = "7 days"` / npm `min-release-age=7`). Security
+# updates bypass the cooldown. This replaces the retired renovate.json
+# (root + emulator/) which used `stabilityDays: 14`.
 #
 # Out of scope:
-#   - gitsubmodule: 31 submodules sync via scripts/sync_agents.py, not
-#     Dependabot.
+#   - gitsubmodule: submodules sync via scripts/sync_agents.py, not Dependabot.
 #   - root uv.lock: no runtime deps.
+#   - compose.yaml image tags (telemetry/ + emulator/): bumped by hand;
+#     Dependabot's docker ecosystem does not reliably manage compose
+#     `image:` tags (only Dockerfiles).
 #
 # Reviewer convention: hironow only — solo repo.
 version: 2
@@ -25,6 +33,8 @@ updates:
       time: "09:00"
       timezone: Asia/Tokyo
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns:
@@ -45,6 +55,8 @@ updates:
       time: "09:00"
       timezone: Asia/Tokyo
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     labels:
       - dependencies
       - python
@@ -54,15 +66,48 @@ updates:
     assignees:
       - hironow
 
-  - package-ecosystem: docker
-    directories:
-      - /tests/docker
+  # emulator/ is a vendored, self-contained uv project (ADR 0014/0016)
+  # with real runtime deps (aiohttp, litellm, mlflow, ...). Group all of
+  # its updates into one weekly PR to keep the noise down.
+  - package-ecosystem: uv
+    directory: /emulator
     schedule:
       interval: weekly
       day: monday
       time: "09:00"
       timezone: Asia/Tokyo
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      emulator-python:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+      - python
+      - emulator
+    commit-message:
+      prefix: chore(emulator)
+    assignees:
+      - hironow
+
+  - package-ecosystem: docker
+    directories:
+      - /tests/docker
+      - /emulator/*
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        patterns:
+          - "*"
     labels:
       - dependencies
       - docker
