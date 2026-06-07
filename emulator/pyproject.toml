@@ -32,3 +32,15 @@ markers = [
 timeout = 180
 # Timeout method: 'thread' is more compatible with async tests
 timeout_method = "thread"
+
+[tool.uv]
+# Supply-chain quarantine: only resolve distributions that have been public for
+# at least 7 days. This is repo-authoritative (not just a personal global uv
+# config), so EVERY `uv lock` -- local, CI, and Dependabot's uv updater --
+# reproduces `exclude-newer-span = "P7D"` in uv.lock instead of silently
+# dropping it. Mirrors the npm `min-release-age=7` quarantine. uv serializes the
+# relative "7 days" value to the lock's `exclude-newer-span = "P7D"`.
+# Security fixes that need a <7-day-old release override this once with
+# `uv lock --upgrade-package <pkg> --exclude-newer "$(date -u +%FT%TZ)"`; a plain
+# `uv lock` afterwards is conservative and keeps the already-locked version.
+exclude-newer = "7 days"

@@ -9,12 +9,15 @@
 # fast. This mirrors the repo's uv `exclude-newer = "7 days"` / npm
 # `min-release-age=7` quarantine.
 #
-# NOTE on the uv ecosystem (emulator/): uv.lock pins `exclude-newer-span = P7D`.
-# A Dependabot uv PR regenerates the lock under that 7-day span, so a brand-new
-# release (<7 days) won't resolve. For a security fix that needs a fresh version,
-# bump it with `uv lock --upgrade-package <pkg> --exclude-newer <now>` and
-# restore the `exclude-newer-span = "P7D"` line in the same change (see PR #149,
-# aiohttp 3.14.0 / starlette 1.2.1).
+# NOTE on the uv ecosystem: the 7-day cooldown is set authoritatively in the uv
+# project's pyproject.toml (`[tool.uv] exclude-newer = "7 days"`, e.g.
+# emulator/pyproject.toml), NOT just in a personal global uv config. That way
+# Dependabot's uv updater reads it, reproduces `exclude-newer-span = "P7D"` in
+# uv.lock (instead of silently dropping it), and only proposes releases >=7 days
+# old. A security fix that needs a fresher release overrides once with
+# `uv lock --upgrade-package <pkg> --exclude-newer "$(date -u +%FT%TZ)"`; a later
+# conservative `uv lock` keeps the already-pinned version (see PR #149: aiohttp
+# 3.14.0 / starlette 1.2.1).
 #
 # Ecosystems in this repo:
 #   github-actions -> .github/workflows/*.yaml (SHA-pinned actions)
