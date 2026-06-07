@@ -39,10 +39,9 @@ prek = "latest"
 # repo-only tool is only on PATH inside the dotfiles dir). The global
 # minimum_release_age="7d" quarantine below still applies, so these
 # track the newest release that is at least 7 days old. Authenticate
-# on first use (`codex login`, `claude /login`, `gemini auth`,
-# `copilot auth`, `pi auth`).
+# on first use (`codex login`, `claude /login`, `copilot auth`,
+# `pi auth`; antigravity authenticates on first run).
 "npm:@openai/codex" = "latest"
-"npm:@google/gemini-cli" = "latest"
 # claude-code hardlinks its native binary in a postinstall (install.cjs);
 # mise's npm backend defaults to --ignore-scripts=true, which would leave
 # the stub and break `claude` at runtime. npm_args re-enables scripts for
@@ -50,6 +49,17 @@ prek = "latest"
 "npm:@anthropic-ai/claude-code" = { version = "latest", npm_args = "--ignore-scripts=false" }
 "npm:@github/copilot" = "latest"
 "npm:@earendil-works/pi-coding-agent" = "latest"
+
+# antigravity (Google's agentic CLI) — replaces gemini-cli (per Google's
+# "Transitioning Gemini CLI to Antigravity CLI"). GitHub-release binary
+# via mise's github backend; exe is `antigravity`. SUPPLY-CHAIN NOTE: no
+# SLSA/Sigstore attestation or SHA sidecar is published for these releases
+# (gh attestation API 404), so there is no enforced provenance gate — see
+# the repo mise.toml. Pinned to a concrete version (NOT "latest") because
+# its first release was 2026-06-01, so minimum_release_age="7d" would
+# leave "latest" with no eligible version. Same concrete pin in repo
+# mise.toml; bump both together.
+"github:google-antigravity/antigravity-cli" = { version = "1.0.6", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Declared "latest" like the
 # AI CLIs above; the minimum_release_age="7d" quarantine below makes

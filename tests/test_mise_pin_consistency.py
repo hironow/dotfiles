@@ -225,13 +225,14 @@ def test_required_tools_are_present(mise_pins: dict[str, str]) -> None:
         "markdownlint-cli2",
         # node runtime — required by the npm-backed AI CLI shebangs.
         "node",
-        # AI agent CLIs (npm-backend; the keys mise actually stores
-        # are the full `npm:<package>` strings).
+        # AI agent CLIs. npm-backend tools store the full `npm:<package>`
+        # key; antigravity is a GitHub-release binary via the github
+        # backend (replaced gemini-cli).
         "npm:@openai/codex",
-        "npm:@google/gemini-cli",
         "npm:@anthropic-ai/claude-code",
         "npm:@github/copilot",
         "npm:@earendil-works/pi-coding-agent",
+        "github:google-antigravity/antigravity-cli",
     }
     missing = required - set(mise_pins)
     assert not missing, (
