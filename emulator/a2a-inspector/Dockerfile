@@ -22,8 +22,11 @@ COPY --from=source /src/repo/frontend/ ./
 RUN npm rebuild esbuild
 RUN npm run build
 
-# Stage 2: assemble runtime image
-FROM python:3.14.5-slim
+# Stage 2: assemble runtime image.
+# Kept on python 3.12 (not 3.14): a2a-inspector's deps lack cp314 wheels, so
+# `uv sync` falls back to building from sdist, which needs gcc -- absent in the
+# slim image -> build fails. Revisit when upstream publishes 3.14 wheels.
+FROM python:3.12-slim
 WORKDIR /app
 
 # Install uv (no pip required)

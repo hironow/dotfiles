@@ -1,7 +1,7 @@
 FROM node:26-trixie-slim
 
 # Install Java and other dependencies (required for Firebase emulators).
-# firebase-tools >=14 requires a JDK >= 21. node:24-trixie-slim is Debian
+# firebase-tools >=14 requires a JDK >= 21. node:26-trixie-slim is Debian
 # 13 (trixie), whose main repo ships openjdk-21 directly -- Debian 12
 # (bookworm) only has openjdk-17 and bookworm-backports carries no
 # openjdk-21, so the trixie base avoids any extra apt source.
