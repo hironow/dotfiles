@@ -308,14 +308,15 @@ REQUIRED_TOOLS = (
     # relies on node being on PATH (and inside /opt/mise so the
     # workspace volume mount cannot mask it).
     ("node", "--version"),
-    # AI agent CLIs pinned in mise.toml (npm backend). The
-    # workspace boots with these on PATH; operators authenticate
-    # them on first use.
+    # AI agent CLIs pinned in mise.toml. The workspace boots with
+    # these on PATH; operators authenticate them on first use.
+    # codex/claude/copilot/pi are npm-backend; antigravity is a
+    # GitHub-release binary via the github backend (replaced gemini).
     ("codex", "--version"),
-    ("gemini", "--version"),
     ("claude", "--version"),
     ("copilot", "--version"),
     ("pi", "--version"),
+    ("antigravity", "--version"),
 )
 
 

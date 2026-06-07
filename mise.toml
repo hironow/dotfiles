@@ -26,10 +26,9 @@ node = "24.16.0"
 
 # AI agent CLIs. Installed at build time so the Coder workspace
 # boots with them ready on PATH; operators authenticate them on
-# first use (`codex login`, `claude /login`, `gemini auth`,
-# `copilot auth`, `pi auth`). Source: 2026-05 latest stable.
+# first use (`codex login`, `claude /login`, `copilot auth`, `pi auth`;
+# antigravity authenticates on first run). Source: 2026-05 latest stable.
 "npm:@openai/codex" = "0.135.0"
-"npm:@google/gemini-cli" = "0.44.1"
 # claude-code ships its ~248MB native binary as per-platform npm
 # optionalDependencies that a postinstall (install.cjs) hardlinks over a
 # stub. mise's npm backend installs with --ignore-scripts=true by default,
@@ -40,6 +39,15 @@ node = "24.16.0"
 "npm:@anthropic-ai/claude-code" = { version = "2.1.158", npm_args = "--ignore-scripts=false" }
 "npm:@github/copilot" = "1.0.56"
 "npm:@earendil-works/pi-coding-agent" = "0.78.0"
+
+# antigravity (Google's agentic coding CLI) — replaces gemini-cli.
+# Distributed as GitHub-release binaries (not npm), installed via mise's
+# github backend (SLSA provenance verified); the archived binary is
+# `antigravity`, so the exe must be named explicitly. COOLDOWN EXCEPTION:
+# antigravity-cli's first release was 2026-06-01, so no version is yet
+# >=7 days old (the repo's usual 7-day quarantine); pinned to the latest
+# 1.0.6 by request.
+"github:google-antigravity/antigravity-cli" = { version = "1.0.6", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Explicit `npm:` backend to
 # avoid any mise registry-alias ambiguity. Concrete pins per ADR 0006
