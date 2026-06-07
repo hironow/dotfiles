@@ -11,7 +11,7 @@ WORKDIR /src
 RUN git clone --depth 1 --branch "${A2A_INSPECTOR_REF}" "${A2A_INSPECTOR_REPO}" repo
 
 # Stage 1: build frontend assets
-FROM node:24-alpine AS frontend-builder
+FROM node:26-alpine AS frontend-builder
 WORKDIR /app
 
 COPY --from=source /src/repo/frontend/package*.json ./
@@ -22,7 +22,10 @@ COPY --from=source /src/repo/frontend/ ./
 RUN npm rebuild esbuild
 RUN npm run build
 
-# Stage 2: assemble runtime image
+# Stage 2: assemble runtime image.
+# Kept on python 3.12 (not 3.14): a2a-inspector's deps lack cp314 wheels, so
+# `uv sync` falls back to building from sdist, which needs gcc -- absent in the
+# slim image -> build fails. Revisit when upstream publishes 3.14 wheels.
 FROM python:3.12-slim
 WORKDIR /app
 
