@@ -11,7 +11,7 @@ WORKDIR /src
 RUN git clone --depth 1 --branch "${A2A_INSPECTOR_REF}" "${A2A_INSPECTOR_REPO}" repo
 
 # Stage 1: build frontend assets
-FROM node:24-alpine AS frontend-builder
+FROM node:26-alpine AS frontend-builder
 WORKDIR /app
 
 COPY --from=source /src/repo/frontend/package*.json ./
@@ -23,7 +23,7 @@ RUN npm rebuild esbuild
 RUN npm run build
 
 # Stage 2: assemble runtime image
-FROM python:3.12-slim
+FROM python:3.14.5-slim
 WORKDIR /app
 
 # Install uv (no pip required)

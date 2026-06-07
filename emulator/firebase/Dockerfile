@@ -1,4 +1,4 @@
-FROM node:24-trixie-slim
+FROM node:26-trixie-slim
 
 # Install Java and other dependencies (required for Firebase emulators).
 # firebase-tools >=14 requires a JDK >= 21. node:24-trixie-slim is Debian

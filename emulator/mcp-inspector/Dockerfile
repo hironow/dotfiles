@@ -11,7 +11,7 @@ WORKDIR /src
 RUN git clone --depth 1 --branch "${MCP_INSPECTOR_REF}" "${MCP_INSPECTOR_REPO}" repo
 
 # Stage 1: build
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 COPY --from=source /src/repo/package*.json ./
 COPY --from=source /src/repo/client/package*.json ./client/
@@ -22,7 +22,7 @@ COPY --from=source /src/repo/ ./
 RUN npm run build
 
 # Stage 2: runtime
-FROM node:24-slim
+FROM node:26-slim
 WORKDIR /app
 
 # curl for healthcheck
