@@ -1,72 +1,86 @@
-# Dependabot configuration.
+# Dependabot version updates (first-party; replaces Renovate -- favours
+# minimizing third-party apps with repo write access). Dependabot security
+# updates are enabled separately in the repo's security settings.
 #
-# Scope rationale:
-#   - github-actions: rotates pinned-SHA `uses:` weekly so workflows stay
-#     current under the org's "require pinned SHA" Actions policy.
-#   - uv (tools/rttm): only place in this repo with real Python deps.
-#     Root pyproject.toml has empty `dependencies = []` so it's skipped.
-#   - docker (tests/docker): bumps base images for the sandbox/install/
-#     exe-startup test containers.
+# Supply-chain hardening: a 7-day `cooldown` holds back every routine bump until
+# the new version has been public for a week, so a compromised-then-yanked
+# release is not pulled in on day zero. Cooldown applies to version updates only
+# -- Dependabot SECURITY updates (vulnerability fixes) bypass it and still land
+# fast. This mirrors the repo's uv `exclude-newer = "7 days"` / npm
+# `min-release-age=7` quarantine.
 #
-# Out of scope:
-#   - gitsubmodule: 31 submodules sync via scripts/sync_agents.py, not
-#     Dependabot.
-#   - root uv.lock: no runtime deps.
+# NOTE on the uv ecosystem (emulator/): uv.lock pins `exclude-newer-span = P7D`.
+# A Dependabot uv PR regenerates the lock under that 7-day span, so a brand-new
+# release (<7 days) won't resolve. For a security fix that needs a fresh version,
+# bump it with `uv lock --upgrade-package <pkg> --exclude-newer <now>` and
+# restore the `exclude-newer-span = "P7D"` line in the same change (see PR #149,
+# aiohttp 3.14.0 / starlette 1.2.1).
 #
-# Reviewer convention: hironow only — solo repo.
+# Ecosystems in this repo:
+#   github-actions -> .github/workflows/*.yaml (SHA-pinned actions)
+#   uv             -> tools/rttm (rttm CLI) + emulator (vendored dev stack)
+#   docker         -> tests/docker test images + emulator/* service Dockerfiles
+#
+# Out of scope: gitsubmodules (synced via scripts/sync_agents.py), root uv.lock
+# (no runtime deps), compose.yaml `image:` tags in telemetry/ + emulator/
+# (hand-managed; Dependabot's docker ecosystem covers Dockerfiles only).
+#
+# NOTE: filename uses `.yaml` per this repo's YAML convention (CLAUDE.md),
+# unlike the sibling repos' `.yml` -- Dependabot accepts both. Reviewer: hironow.
 version: 2
-
 updates:
-  - package-ecosystem: github-actions
-    directory: /
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
-      interval: weekly
-      day: monday
-      time: "09:00"
-      timezone: Asia/Tokyo
-    open-pull-requests-limit: 5
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: "ci"
     groups:
       github-actions:
-        patterns:
-          - "*"
-    labels:
-      - dependencies
-      - github-actions
-    commit-message:
-      prefix: chore(actions)
-    assignees:
-      - hironow
+        patterns: ["*"]
 
-  - package-ecosystem: uv
-    directory: /tools/rttm
+  - package-ecosystem: "uv"
+    directory: "/tools/rttm"
     schedule:
-      interval: weekly
-      day: monday
-      time: "09:00"
-      timezone: Asia/Tokyo
-    open-pull-requests-limit: 5
-    labels:
-      - dependencies
-      - python
-      - rttm
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    labels: ["dependencies", "python", "rttm"]
     commit-message:
-      prefix: chore(rttm)
-    assignees:
-      - hironow
+      prefix: "chore"
+      include: "scope"
 
-  - package-ecosystem: docker
+  # emulator/ is a vendored, self-contained uv project (ADR 0014/0016) with real
+  # runtime deps (aiohttp, litellm, mlflow, ...); grouped to one weekly PR.
+  - package-ecosystem: "uv"
+    directory: "/emulator"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    labels: ["dependencies", "python", "emulator"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      emulator-python:
+        patterns: ["*"]
+
+  - package-ecosystem: "docker"
     directories:
-      - /tests/docker
+      - "/tests/docker"
+      - "/emulator/*"
     schedule:
-      interval: weekly
-      day: monday
-      time: "09:00"
-      timezone: Asia/Tokyo
-    open-pull-requests-limit: 3
-    labels:
-      - dependencies
-      - docker
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    labels: ["dependencies", "docker"]
     commit-message:
-      prefix: chore(docker)
-    assignees:
-      - hironow
+      prefix: "chore"
+      include: "scope"
+    groups:
+      docker:
+        patterns: ["*"]
