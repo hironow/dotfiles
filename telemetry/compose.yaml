@@ -1,7 +1,7 @@
 services:
   # OpenTelemetry Collector
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.144.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./config/otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml
@@ -16,20 +16,14 @@ services:
       - tempo
       - prometheus
 
-  # Tempo init service (handles volume permissions)
-  tempo-init:
-    image: grafana/tempo:2.9.0
-    user: root
-    entrypoint:
-      - "chown"
-      - "10001:10001"
-      - "/var/tempo"
-    volumes:
-      - tempo-data:/var/tempo
-
-  # Tempo for traces
+  # Tempo for traces. Tempo 3.0's image is distroless (no shell/chown),
+  # and 3.0 provisions its own data dir on a fresh named volume as uid
+  # 10001, so the previous `tempo-init` chown sidecar is both impossible
+  # and unnecessary — removed. Migration note: a root-owned `tempo-data`
+  # volume left over from Tempo 2.x must be recreated
+  # (`docker volume rm telemetry_tempo-data`) before the first 3.0 start.
   tempo:
-    image: grafana/tempo:2.9.0
+    image: grafana/tempo:3.0.0
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
       - ./config/tempo/tempo-config.yaml:/etc/tempo.yaml
@@ -37,13 +31,10 @@ services:
     ports:
       - "127.0.0.1:3200:3200"   # tempo
       - "127.0.0.1:14268:14268" # jaeger ingest
-    depends_on:
-      tempo-init:
-        condition: service_completed_successfully
 
   # Prometheus for metrics
   prometheus:
-    image: prom/prometheus:v3.9.1
+    image: prom/prometheus:v3.12.0
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -59,7 +50,7 @@ services:
 
   # Loki for logs (uses /tmp/loki internally, no external volume needed)
   loki:
-    image: grafana/loki:3.5.0
+    image: grafana/loki:3.7.2
     command: -config.file=/etc/loki/loki-config.yaml
     volumes:
       - ./config/loki/loki-config.yaml:/etc/loki/loki-config.yaml
@@ -68,7 +59,7 @@ services:
 
   # Grafana
   grafana:
-    image: grafana/grafana:12.3.1
+    image: grafana/grafana:13.0.1
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin

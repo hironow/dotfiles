@@ -10,13 +10,11 @@ distributor:
         http:
           endpoint: 0.0.0.0:4318
 
-ingester:
-  max_block_duration: 5m
-
-compactor:
-  compaction:
-    block_retention: 48h
-
+# Tempo 3.0 (monolithic) removed the top-level `ingester:` and
+# `compactor:` blocks; the built-in live-store now handles block
+# building/flushing and retention. The previous tuning
+# (ingester.max_block_duration=5m, compactor block_retention=48h) maps
+# to live-store defaults, which are fine for this local dev stack.
 storage:
   trace:
     backend: local

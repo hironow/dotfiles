@@ -89,7 +89,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends mise
 
 # ---- uv (Python package manager) ------------------------------------
-UV_VERSION="0.11.14"
+UV_VERSION="0.11.17"
 case "$ARCH" in
   x86_64)  UV_TARGET="x86_64-unknown-linux-gnu" ;;
   aarch64) UV_TARGET="aarch64-unknown-linux-gnu" ;;
@@ -243,17 +243,17 @@ cat > /etc/mise/config.toml <<'EOF'
 [tools]
 just = "1.51.0"
 markdownlint-cli2 = "0.22.1"
-prek = "0.4.0"
-uv = "0.11.14"
-vp = "0.1.21"
-node = "24.15.0"
-"npm:@openai/codex" = "0.131.0"
-"npm:@google/gemini-cli" = "0.42.0"
+prek = "0.4.3"
+uv = "0.11.17"
+vp = "0.1.23"
+node = "24.16.0"
+"npm:@openai/codex" = "0.135.0"
+"npm:@google/gemini-cli" = "0.44.1"
 # npm_args re-enables postinstall (mise defaults to --ignore-scripts=true)
 # so claude-code's native binary is linked, not left as a stub. See mise.toml.
-"npm:@anthropic-ai/claude-code" = { version = "2.1.143", npm_args = "--ignore-scripts=false" }
-"npm:@github/copilot" = "1.0.48"
-"npm:@earendil-works/pi-coding-agent" = "0.75.3"
+"npm:@anthropic-ai/claude-code" = { version = "2.1.158", npm_args = "--ignore-scripts=false" }
+"npm:@github/copilot" = "1.0.56"
+"npm:@earendil-works/pi-coding-agent" = "0.78.0"
 "npm:cf" = "0.0.6"
 "npm:resend-cli" = "2.3.0"
 "npm:@stripe/cli" = "0.0.1"
