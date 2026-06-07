@@ -45,9 +45,14 @@ processors:
   batch:
 
 extensions:
+  # Collector >=0.110 defaults extension endpoints to localhost (security
+  # hardening). compose.yaml maps 13133/55679 to the host, so bind these
+  # to 0.0.0.0 explicitly to keep them reachable from the host as before.
   health_check:
+    endpoint: 0.0.0.0:13133
   pprof:
   zpages:
+    endpoint: 0.0.0.0:55679
 
 service:
   extensions: [health_check, pprof, zpages]
