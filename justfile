@@ -708,7 +708,7 @@ validate-path-duplicates:
     # Classify each path into a role. If ALL duplicate instances for a command
     # fall into "structural" roles, the duplicate is considered acceptable
     # (e.g. brew shadowing /usr/bin, mise-install paired with mise-shim).
-    printf '%s\n' "${lines[@]}" | LC_ALL=C sort -k1,1 -k2,2n | awk -v home="$HOME" '
+    printf '%s\n' "${lines[@]}" | LC_ALL=C sort -k1,1 -k2,2n | awk -v home="$HOME" -v venv="${VIRTUAL_ENV:-}" '
     function role(p,   r) {
       # mise layout (installs + shims)
       if (index(p, home "/.local/share/mise/installs/") == 1) return "structural"
@@ -729,6 +729,16 @@ validate-path-duplicates:
       if (index(p, home "/.orbstack/bin/") == 1) return "structural"
       if (index(p, home "/.krew/bin/") == 1) return "structural"
       if (index(p, home "/google-cloud-sdk/bin/") == 1) return "structural"
+      # Package-manager / language-SDK runtime roots (managed installs that
+      # intentionally shadow brew/system: bun globals, dotnet & Android SDK,
+      # vite-plus bundled node toolchain)
+      if (index(p, home "/.bun/bin/") == 1) return "structural"
+      if (index(p, home "/.vite-plus/bin/") == 1) return "structural"
+      if (index(p, "/usr/local/share/dotnet/") == 1) return "structural"
+      if (index(p, home "/Library/Android/sdk/") == 1) return "structural"
+      # Active Python virtualenv: shadowing the base interpreter is the whole
+      # point of a venv, not a duplicate to act on
+      if (venv != "" && index(p, venv "/bin/") == 1) return "structural"
       # System paths (Apple default + cryptex + AppleInternal)
       if (index(p, "/usr/bin/") == 1) return "structural"
       if (index(p, "/bin/") == 1) return "structural"
