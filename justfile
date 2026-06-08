@@ -359,6 +359,8 @@ self-check with_tests="":
     set +e
     dup_out=$(just validate-path-duplicates 2>&1)
     dup_rc=$?
+    # strip the nested `just` wrapper error (exit 2 is by design on findings)
+    dup_out=$(printf '%s\n' "$dup_out" | grep -v '^error: recipe .* failed with exit code')
     set -e
     case "$dup_rc" in
       0) step_ok 'path duplicates: none' ;;
@@ -819,6 +821,9 @@ doctor:
     set +e
     dup_out=$(just validate-path-duplicates 2>&1)
     rc=$?
+    # the nested `just` prints its own "error: recipe ... failed" on the
+    # by-design exit 2; drop it so doctor shows a clean WARN, not a fake error
+    dup_out=$(printf '%s\n' "$dup_out" | grep -v '^error: recipe .* failed with exit code')
     set -e
     case $rc in \
       0) log_ok 'PATH' 'no duplicate command names';; \
