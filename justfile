@@ -719,6 +719,16 @@ validate-path-duplicates:
       if (index(p, "/opt/homebrew/opt/") == 1) return "structural"
       # Homebrew cask bundle executables
       if (p ~ /^\/Applications\/[^\/]+\.app\/Contents\//) return "structural"
+      # /usr/local prefix (peer of /opt/homebrew; classic local install prefix)
+      if (index(p, "/usr/local/bin/") == 1) return "structural"
+      if (index(p, "/usr/local/sbin/") == 1) return "structural"
+      # Managed toolchain / plugin roots that intentionally shadow system/brew
+      # (swiftly = Swift toolchains, orbstack = docker provider, krew = kubectl
+      # plugins, google-cloud-sdk = gcloud installer dir; same rationale as mise)
+      if (index(p, home "/.swiftly/bin/") == 1) return "structural"
+      if (index(p, home "/.orbstack/bin/") == 1) return "structural"
+      if (index(p, home "/.krew/bin/") == 1) return "structural"
+      if (index(p, home "/google-cloud-sdk/bin/") == 1) return "structural"
       # System paths (Apple default + cryptex + AppleInternal)
       if (index(p, "/usr/bin/") == 1) return "structural"
       if (index(p, "/bin/") == 1) return "structural"
