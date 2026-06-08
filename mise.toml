@@ -36,7 +36,7 @@ node = "24.16.0"
 # stub — `claude` then errors at runtime with "native binary not installed".
 # npm_args re-enables scripts for this one tool (npm honors the last
 # --ignore-scripts flag, so this overrides mise's default).
-"npm:@anthropic-ai/claude-code" = { version = "2.1.158", npm_args = "--ignore-scripts=false" }
+"npm:@anthropic-ai/claude-code" = { version = "2.1.159", npm_args = "--ignore-scripts=false" }
 "npm:@github/copilot" = "1.0.56"
 "npm:@earendil-works/pi-coding-agent" = "0.78.0"
 

@@ -250,7 +250,7 @@ node = "24.16.0"
 "npm:@openai/codex" = "0.135.0"
 # npm_args re-enables postinstall (mise defaults to --ignore-scripts=true)
 # so claude-code's native binary is linked, not left as a stub. See mise.toml.
-"npm:@anthropic-ai/claude-code" = { version = "2.1.158", npm_args = "--ignore-scripts=false" }
+"npm:@anthropic-ai/claude-code" = { version = "2.1.159", npm_args = "--ignore-scripts=false" }
 "npm:@github/copilot" = "1.0.56"
 "npm:@earendil-works/pi-coding-agent" = "0.78.0"
 "github:google-antigravity/antigravity-cli" = { version = "1.0.6", exe = "antigravity" }
