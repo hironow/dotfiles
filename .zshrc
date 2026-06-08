@@ -227,8 +227,8 @@ if _cmd_exists fzf; then
     unset _fzf_cache
 fi
 
-# Added by Antigravity
-export PATH="$HOME/.antigravity/antigravity/bin:$PATH"
+# Added by Antigravity (dedup so a re-source / installer re-run cannot double it)
+path_prepend "$HOME/.antigravity/antigravity/bin"
 
 
 # Vite+ bin (https://viteplus.dev)
@@ -272,7 +272,7 @@ if _cmd_exists mise; then
 fi
 
 # >>> grok installer >>>
-export PATH="$HOME/.grok/bin:$PATH"
+path_prepend "$HOME/.grok/bin"
 fpath=(~/.grok/completions/zsh $fpath)
 autoload -Uz compinit && compinit -C
 # <<< grok installer <<<
