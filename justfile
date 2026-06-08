@@ -359,6 +359,8 @@ self-check with_tests="":
     set +e
     dup_out=$(just validate-path-duplicates 2>&1)
     dup_rc=$?
+    # strip the nested `just` wrapper error (exit 2 is by design on findings)
+    dup_out=$(printf '%s\n' "$dup_out" | grep -v '^error: recipe .* failed with exit code')
     set -e
     case "$dup_rc" in
       0) step_ok 'path duplicates: none' ;;
@@ -708,7 +710,7 @@ validate-path-duplicates:
     # Classify each path into a role. If ALL duplicate instances for a command
     # fall into "structural" roles, the duplicate is considered acceptable
     # (e.g. brew shadowing /usr/bin, mise-install paired with mise-shim).
-    printf '%s\n' "${lines[@]}" | LC_ALL=C sort -k1,1 -k2,2n | awk -v home="$HOME" '
+    printf '%s\n' "${lines[@]}" | LC_ALL=C sort -k1,1 -k2,2n | awk -v home="$HOME" -v venv="${VIRTUAL_ENV:-}" '
     function role(p,   r) {
       # mise layout (installs + shims)
       if (index(p, home "/.local/share/mise/installs/") == 1) return "structural"
@@ -719,6 +721,26 @@ validate-path-duplicates:
       if (index(p, "/opt/homebrew/opt/") == 1) return "structural"
       # Homebrew cask bundle executables
       if (p ~ /^\/Applications\/[^\/]+\.app\/Contents\//) return "structural"
+      # /usr/local prefix (peer of /opt/homebrew; classic local install prefix)
+      if (index(p, "/usr/local/bin/") == 1) return "structural"
+      if (index(p, "/usr/local/sbin/") == 1) return "structural"
+      # Managed toolchain / plugin roots that intentionally shadow system/brew
+      # (swiftly = Swift toolchains, orbstack = docker provider, krew = kubectl
+      # plugins, google-cloud-sdk = gcloud installer dir; same rationale as mise)
+      if (index(p, home "/.swiftly/bin/") == 1) return "structural"
+      if (index(p, home "/.orbstack/bin/") == 1) return "structural"
+      if (index(p, home "/.krew/bin/") == 1) return "structural"
+      if (index(p, home "/google-cloud-sdk/bin/") == 1) return "structural"
+      # Package-manager / language-SDK runtime roots (managed installs that
+      # intentionally shadow brew/system: bun globals, dotnet & Android SDK,
+      # vite-plus bundled node toolchain)
+      if (index(p, home "/.bun/bin/") == 1) return "structural"
+      if (index(p, home "/.vite-plus/bin/") == 1) return "structural"
+      if (index(p, "/usr/local/share/dotnet/") == 1) return "structural"
+      if (index(p, home "/Library/Android/sdk/") == 1) return "structural"
+      # Active Python virtualenv: shadowing the base interpreter is the whole
+      # point of a venv, not a duplicate to act on
+      if (venv != "" && index(p, venv "/bin/") == 1) return "structural"
       # System paths (Apple default + cryptex + AppleInternal)
       if (index(p, "/usr/bin/") == 1) return "structural"
       if (index(p, "/bin/") == 1) return "structural"
@@ -799,6 +821,9 @@ doctor:
     set +e
     dup_out=$(just validate-path-duplicates 2>&1)
     rc=$?
+    # the nested `just` prints its own "error: recipe ... failed" on the
+    # by-design exit 2; drop it so doctor shows a clean WARN, not a fake error
+    dup_out=$(printf '%s\n' "$dup_out" | grep -v '^error: recipe .* failed with exit code')
     set -e
     case $rc in \
       0) log_ok 'PATH' 'no duplicate command names';; \
