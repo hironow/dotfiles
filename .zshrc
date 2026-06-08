@@ -257,8 +257,9 @@ alias dbtf="$HOME/.local/bin/dbt"
 # CF CLI completions
 [[ -f "$HOME/.config/cf/completions/_cf.zsh" ]] && source "$HOME/.config/cf/completions/_cf.zsh"
 
-# Antigravity CLI
-export PATH="$HOME/.local/bin:$PATH"
+# Antigravity CLI (installs into ~/.local/bin, already on PATH via line ~119;
+# use the dedup helper so a re-run of the installer cannot double-register it)
+path_prepend "$HOME/.local/bin"
 
 # mise (run LAST so its chpwd/precmd hook prepends mise tool dirs after
 # every late PATH edit above — vite-plus, antigravity, dbt Fusion,
