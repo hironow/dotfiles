@@ -22,6 +22,9 @@ extend-exclude = [
     "protocols",
     "skills",
     "telemetry",
+    # templates/agent-baseline/.semgrep/tests/* are intentional-violation
+    # fixtures (os.path.join / MagicMock) for the scaffold's own semgrep rules.
+    "templates",
     "tools",
     # `private/certificates/` is created by Let's Encrypt with mode 0700.
     # Inside a bind-mounted dev container ruff cannot traverse it and aborts.
