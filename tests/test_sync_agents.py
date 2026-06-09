@@ -2077,3 +2077,101 @@ def test_just_sync_agents_override_default_scope_does_not_touch_work_a(docker_im
     result = _run_in_container(docker_image, cmd)
 
     assert "work-a orphan preserved" in result.stdout
+
+
+# =============================================================================
+# Hub-and-spoke layout: ROOT_AGENTS.md (base) + ROOT_CLAUDE.md (overlay) +
+# ROOT_AGENTS_docs_agents_* (spokes) + ROOT_AGENTS_hooks_* + settings merge.
+# =============================================================================
+
+
+def test_hub_and_spoke_claude_gets_overlay_base_spokes_hooks(docker_image):
+    """claude-family: CLAUDE.md=overlay(@AGENTS.md), AGENTS.md=base, docs/agents/
+    spokes with absolute refs, executable hooks, merged settings.json."""
+    cmd = r"""
+    set -euo pipefail
+    cd /root/dotfiles && just sync-agents-auto p
+
+    grep -q '^@AGENTS.md' /root/.claude/CLAUDE.md && echo "overlay-imports-base"
+    grep -q 'Non-negotiables' /root/.claude/AGENTS.md && echo "base-is-agents-md"
+    [ -f /root/.claude/docs/agents/python-tooling.md ] && echo "spoke-present"
+    [ -x /root/.claude/hooks/block-prohibited-commands.sh ] && echo "hook-executable"
+    grep -q '/root/.claude/docs/agents/python-tooling.md' /root/.claude/AGENTS.md && echo "spoke-ref-absolute"
+    grep -q '/root/.claude/hooks/block-prohibited-commands.sh' /root/.claude/settings.json && echo "settings-merged-absolute"
+    """
+    result = _run_in_container(docker_image, cmd)
+    for marker in (
+        "overlay-imports-base",
+        "base-is-agents-md",
+        "spoke-present",
+        "hook-executable",
+        "spoke-ref-absolute",
+        "settings-merged-absolute",
+    ):
+        assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
+
+
+def test_hub_and_spoke_codex_gemini_base_only_no_hooks(docker_image):
+    """codex/gemini get the base directly (no overlay, no hooks); spokes present
+    with refs rewritten to each agent's own absolute path."""
+    cmd = r"""
+    set -euo pipefail
+    cd /root/dotfiles && just sync-agents-auto x g
+
+    grep -q 'Non-negotiables' /root/.codex/AGENTS.md && echo "codex-base"
+    grep -q 'Non-negotiables' /root/.gemini/GEMINI.md && echo "gemini-base"
+    [ -f /root/.codex/docs/agents/testing.md ] && echo "codex-spoke"
+    grep -q '/root/.codex/docs/agents/testing.md' /root/.codex/AGENTS.md && echo "codex-spoke-ref-absolute"
+    [ -d /root/.codex/hooks ] && echo "ERR-codex-hooks" || echo "codex-no-hooks"
+    [ -d /root/.gemini/hooks ] && echo "ERR-gemini-hooks" || echo "gemini-no-hooks"
+    [ -f /root/.codex/CLAUDE.md ] && echo "ERR-codex-overlay" || echo "codex-no-overlay"
+    """
+    result = _run_in_container(docker_image, cmd)
+    for marker in (
+        "codex-base",
+        "gemini-base",
+        "codex-spoke",
+        "codex-spoke-ref-absolute",
+        "codex-no-hooks",
+        "gemini-no-hooks",
+        "codex-no-overlay",
+    ):
+        assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
+    assert "ERR-" not in result.stdout, result.stdout
+
+
+def test_hub_and_spoke_settings_merge_idempotent_preserves_user_keys(docker_image):
+    """settings.json merge preserves user keys + user hooks, adds managed hooks
+    with absolute paths, and is idempotent across repeated syncs."""
+    cmd = r"""
+    set -euo pipefail
+    mkdir -p /root/.claude
+    cat > /root/.claude/settings.json <<'JSON'
+{
+  "theme": "dark",
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Read", "hooks": [ { "type": "command", "command": "echo user-hook" } ] }
+    ]
+  }
+}
+JSON
+    cd /root/dotfiles
+    just sync-agents-auto p
+    just sync-agents-auto p
+
+    python3 - <<'PY'
+import json
+s = json.load(open("/root/.claude/settings.json"))
+assert s.get("theme") == "dark", "user key lost"
+pre = s["hooks"]["PreToolUse"]
+cmds = [h["command"] for b in pre for h in b["hooks"]]
+assert "echo user-hook" in cmds, "user hook lost"
+managed = [c for c in cmds if c.endswith('block-prohibited-files.sh"')]
+assert len(managed) == 1, f"managed hook not idempotent: {managed}"
+assert all("/root/.claude/hooks/" in c for c in cmds if "block-" in c), "hook path not absolute"
+print("settings-merge-ok")
+PY
+    """
+    result = _run_in_container(docker_image, cmd)
+    assert "settings-merge-ok" in result.stdout, result.stdout
