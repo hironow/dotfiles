@@ -28,11 +28,15 @@ case "$file_path" in
     fi
     ;;
   *.go)
-    command -v gofmt >/dev/null 2>&1 && gofmt -w "$file_path" >/dev/null 2>&1 || true
+    if command -v gofmt >/dev/null 2>&1; then
+      gofmt -w "$file_path" >/dev/null 2>&1 || true
+    fi
     ;;
   *.ts|*.tsx|*.js|*.jsx)
     # Use the project's configured formatter via just if present; stay silent otherwise.
-    command -v just >/dev/null 2>&1 && just --show fmt >/dev/null 2>&1 && just fmt >/dev/null 2>&1 || true
+    if command -v just >/dev/null 2>&1 && just --show fmt >/dev/null 2>&1; then
+      just fmt >/dev/null 2>&1 || true
+    fi
     ;;
 esac
 
