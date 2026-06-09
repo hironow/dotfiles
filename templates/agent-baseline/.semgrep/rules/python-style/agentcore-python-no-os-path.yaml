@@ -1,0 +1,18 @@
+rules:
+  - id: agentcore-python-no-os-path
+    message: |
+      Use pathlib.Path for path manipulation; os.path is deprecated in this
+      project. See docs/agents/python-tooling.md.
+    severity: ERROR
+    languages: [python]
+    paths:
+      exclude:
+        - "tests/"
+    patterns:
+      - pattern-either:
+          - pattern: os.path.$F(...)
+          - pattern: from os.path import $F
+    metadata:
+      category: python-style
+      added: "2026-06-10"
+      ref: docs/agents/python-tooling.md

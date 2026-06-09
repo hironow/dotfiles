@@ -1,0 +1,24 @@
+rules:
+  - id: agentcore-testing-no-mock-in-e2e
+    message: |
+      Mocks/stubs/patching are forbidden in e2e tests. e2e uses real
+      dependencies; if a real dependency cannot be used, move the test to
+      integration. See docs/agents/testing.md.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - "tests/e2e/"
+    patterns:
+      - pattern-either:
+          - pattern: unittest.mock.$ANY(...)
+          - pattern: mock.$ANY(...)
+          - pattern: $M.patch(...)
+          - pattern: MagicMock(...)
+          - pattern: Mock(...)
+          - pattern: mocker.$ANY(...)
+          - pattern: monkeypatch.$ANY(...)
+    metadata:
+      category: testing
+      added: "2026-06-10"
+      ref: docs/agents/testing.md

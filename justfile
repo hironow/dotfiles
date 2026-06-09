@@ -148,7 +148,11 @@ deploy:
     fi
     echo "==> Deploy complete!"
 
-# Sync: copy ROOT_AGENTS files to agent instruction directories
+# Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
+#   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
+#   ROOT_CLAUDE.md (overlay, @AGENTS.md) -> claude-family/CLAUDE.md
+#   ROOT_AGENTS_docs_agents_*.md (spokes) -> <agent>/docs/agents/* (abs refs)
+#   ROOT_AGENTS_hooks_*.sh + .claude/settings.hooks.json -> claude-family only
 # Default scope = .claude only. Pass targets to widen:
 #   just sync-agents               -> ~/.claude only
 #   just sync-agents a b           -> + ~/.claude-work-a, ~/.claude-work-b
@@ -157,6 +161,21 @@ deploy:
 [group('Agents')]
 sync-agents *args:
     @{{UV_RUN}} scripts/sync_agents.py {{ args }}
+
+# Scaffold: copy the agent-baseline template (per-repo enforcement: just check
+# gate, .githooks/pre-commit, quality-gate CI, agentcore semgrep rules) into a
+# target repo, then enable its git hooks. NOT applied to this repo (dotfiles
+# uses prek + its own CI/.semgrep). See templates/agent-baseline/README-agents-setup.md.
+[group('Agents')]
+scaffold-agent-baseline dir:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src="{{ justfile_directory() }}/templates/agent-baseline"
+    dest="{{ dir }}"
+    [ -d "$dest" ] || { echo "❌ target dir does not exist: $dest"; exit 1; }
+    echo "📦 Copying agent-baseline scaffold into $dest ..."
+    cp -R "$src/." "$dest/"
+    echo "✅ Scaffold copied. Next: cd '$dest' && just install-hooks"
 
 # Sync (preview): show what would be synced without making changes
 [group('Agents')]

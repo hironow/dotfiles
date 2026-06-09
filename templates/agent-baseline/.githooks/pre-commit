@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit
+# Deterministic commit gate for HUMANS (and any tool that runs git commit).
+# Mirrors the Claude Code hooks so the same rules apply whoever commits.
+# Enable once per clone:  just install-hooks   (sets core.hooksPath=.githooks)
+set -euo pipefail
+
+if ! command -v just >/dev/null 2>&1; then
+  echo "pre-commit: 'just' is required but not found. Install just, then retry." >&2
+  exit 1
+fi
+
+echo "pre-commit: running 'just check' (fmt + lint + types + semgrep + test)…"
+just check
