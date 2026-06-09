@@ -2,25 +2,36 @@
 
 このファイルは **dotfiles リポジトリ自体を開発するとき** の運用ルールを記録する。
 全エージェント共通の global 規約 (TDD / tooling / commit discipline / observability
-等) は本リポの **`ROOT_AGENTS.md`** が正本で、`just sync-agents` で各エージェント設定
-ディレクトリへ配布される (= デプロイ後に `~/.claude/CLAUDE.md` として読まれるもの)。
+等) は本リポの **hub-and-spoke な agent 指示 source 群** が正本で、`just sync-agents`
+で各エージェント設定ディレクトリへ配布される (= デプロイ後に `~/.claude/CLAUDE.md`
+等として読まれるもの)。
 
 ## このリポの役割と「agent 指示の二層構造」(最重要)
 
-本リポは **global なエージェント指示を配布する** のが主目的の一つ。
+本リポは **global なエージェント指示を配布する** のが主目的の一つ。指示は monolith
+から **hub-and-spoke** に移行済み (短い常時 load + on-demand spoke + 機械 enforcement)。
 
-- **`ROOT_AGENTS.md` (repo root) が唯一の source。** `just sync-agents` が各 agent の
-  main_file へ配る:
-    - claude / claude-work-a..d → `~/.claude*/CLAUDE.md`
-    - gemini → `~/.gemini/GEMINI.md`
-    - codex → `~/.codex/AGENTS.md`
-    - `ROOT_AGENTS_<x>_<y>(.ext|/)` → `<agent>/<x>/<y>` (commands / skills / hooks /
-      agents)。ファイル名中の `_` (ROOT_AGENTS_ の後) が `/` に変換される。
-- **global ルールを変えるときは `ROOT_AGENTS.md` を編集して `just sync-agents`。**
+- **source 群 (repo root, `ROOT_*` sentinel 名なので agent は直接読まない):**
+    - `ROOT_AGENTS.md` = cross-tool **base** (短い常時 load)
+    - `ROOT_CLAUDE.md` = Claude 専用 **overlay** (先頭で `@AGENTS.md` を import)
+    - `ROOT_AGENTS_docs_agents_*.md` = on-demand **spoke** (tdd / commit / python 等)
+    - `ROOT_AGENTS_hooks_*.sh` + `.claude/settings.hooks.json` = Claude hooks (機械 enforcement)
+- **`just sync-agents` (`scripts/sync_agents.py`) の配布 (per-tool):**
+    - base → codex `~/.codex/AGENTS.md` / gemini `~/.gemini/GEMINI.md` /
+      claude-family `~/.claude*/AGENTS.md`
+    - overlay → claude-family `~/.claude*/CLAUDE.md` (`@AGENTS.md` で base を import)
+    - spoke → `<agent>/docs/agents/*` (base 内の `docs/agents/` 参照は配布時に
+      **その agent home の絶対パスへ rewrite**。相対だと作業 project 側に解決して外すため)
+    - hooks + settings → **claude-family のみ**。settings.json は user キーを壊さず
+      **冪等マージ** (manifest 非追跡。marker = event+matcher+rendered command)
+    - `ROOT_AGENTS_<x>_<y>(.ext|/)` → `<agent>/<x>/<y>` (`_`→`/`) の従来規約も継続
+- **global ルールを変えるときは上記 source を編集して `just sync-agents`。**
   配布先 (`~/.claude/CLAUDE.md` 等) を直接編集しても次の sync で上書きされる。
+- **per-repo enforcement は `templates/agent-baseline/` に scaffold 保管** (dotfiles
+  自身には未適用。`just scaffold-agent-baseline <dir>` で新規 repo へ展開)。
 - **本ファイル (`CLAUDE.md`, repo root) は別物** = dotfiles repo の開発時ルール。
   sync の対象外 (sync は home の agent dir のみ書き、repo root は触らない)。repo で
-  作業するアシスタントは「global (`~/.claude/CLAUDE.md` = ROOT_AGENTS) + 本ファイル」
+  作業するアシスタントは「global (`~/.claude/CLAUDE.md` = overlay+base) + 本ファイル」
   の両方を読む。
 
 ```bash
