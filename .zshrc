@@ -257,6 +257,17 @@ alias dbtf="$HOME/.local/bin/dbt"
 # CF CLI completions
 [[ -f "$HOME/.config/cf/completions/_cf.zsh" ]] && source "$HOME/.config/cf/completions/_cf.zsh"
 
+# ant (Anthropic CLI) completion — cached, regenerated only when missing
+if _cmd_exists ant; then
+    _ant_comp_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/ant_completion.zsh"
+    if [[ ! -f "$_ant_comp_cache" || ! -s "$_ant_comp_cache" ]]; then
+        mkdir -p "${_ant_comp_cache:h}"
+        ant @completion zsh > "$_ant_comp_cache"
+    fi
+    source "$_ant_comp_cache"
+    unset _ant_comp_cache
+fi
+
 # Antigravity CLI (installs into ~/.local/bin, already on PATH via line ~119;
 # use the dedup helper so a re-run of the installer cannot double-register it)
 path_prepend "$HOME/.local/bin"
