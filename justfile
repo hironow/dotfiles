@@ -158,6 +158,8 @@ deploy:
 #   just sync-agents a b           -> + ~/.claude-work-a, ~/.claude-work-b
 #   just sync-agents all           -> every defined agent
 # Aliases: p=claude, a/b/c/d=work-a..d, g=gemini, x=codex, agents=agents-global
+# Flag: --no-skills = instruction-only (skip skills import/forward/delete; skills
+# are owned by the `bunx skills` CLI). e.g. `just sync-agents-auto --no-skills a b`
 [group('Agents')]
 sync-agents *args:
     @{{UV_RUN}} scripts/sync_agents.py {{ args }}
