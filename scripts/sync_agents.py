@@ -54,7 +54,7 @@ SYNC_DIRECTORIES = ["commands", "skills", "agents"]
 # items are NEVER overwritten and orphans are NEVER deleted. `skills` is additive
 # because it coexists with the `bunx skills` CLI, which installs skills (as
 # symlinks into ~/.agents/skills) from upstreams and from the dotfiles submodule
-# (`bunx skills add hironow/skills -s <name>`). A full-mirror sync would delete
+# (`bunx skills add <skills-repo> -s <name>`). A full-mirror sync would delete
 # CLI-only orphans and clobber the CLI-managed symlinks; additive preserves both
 # and defers population to the CLI. See repo CLAUDE.md.
 ADDITIVE_DIRECTORIES = ["skills"]
