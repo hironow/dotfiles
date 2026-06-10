@@ -131,3 +131,53 @@
 ### E. 巡回エージェント設定の改善依頼
 
 - [ ] **session scope の拡張**: 次回巡回セッション起動時は `hironow/*` 全リポジトリを GitHub MCP の allowed repositories に含めること。現状 `hironow/dotfiles` のみでは他リポへのマージ・ファイル読み取りが不可で、巡回エージェントとして機能しない。
+
+---
+
+### F. Takumi Guard 導入 — Bun 非対応ジョブ
+
+Takumi Guard の npm action は Bun パッケージマネージャーに対応していない。以下のジョブで `bun install` が使われており、Guard を挿入できなかった。Bun 対応の supply chain 防御ツールの採用、または当該ジョブの npm/pnpm 移行を検討してください。
+
+- [ ] **async**: `ci.yaml` `typescript-unit` ジョブ — `setup-bun + bun install --frozen-lockfile`
+- [ ] **kkk**: `ci.yaml` `unit` / `e2e` / `scenarios` ジョブ — `mise exec -- bun install --frozen-lockfile`（`unit` ジョブの pip install には PyPI Guard 挿入済）
+- [ ] **just-ag**: `mcps-ci.yaml` `test-ts` ジョブ — `bun install --frozen-lockfile`
+- [ ] **just-ag**: `agent-hub-ci.yaml` `frontend` / `frontend-integration` ジョブ — `bun install`
+- [ ] **just-ag**: `browser-stream-ci.yaml` — `bun install` のみ（Guard 未挿入）
+- [ ] **just-ag**: `moodboard-ci.yaml` — `bun install` のみ（Guard 未挿入）
+- [ ] **just-ag**: `tldraw-sync-ci.yaml` — `bun install` のみ（Guard 未挿入）
+- [ ] **just-ag**: `experiments-ci.yaml` — `bun install` のみ（Guard 未挿入）
+- [ ] **notifoo**: `ci.yaml` — `setup-bun + bun install` のみ（Guard 未挿入）
+- [ ] **writing**: `ci.yml` — `bun install --frozen-lockfile` のみ（Guard 未挿入）
+
+---
+
+### G. CI 未整備リポジトリ（Takumi Guard 対象外）
+
+以下のリポジトリは `.github/workflows/` が存在しないか CI が未設定のため Takumi Guard を挿入できなかった。CI 整備および Guard 導入を検討してください。
+
+- [ ] **gentypes** — CI なし
+- [ ] **my-rpc** — CI なし
+- [ ] **research** — CI なし
+- [ ] **weaveback** — CI なし
+- [ ] **chrome-extensions-n-img-to-zip** — CI なし
+- [ ] **cryptoquant** — CI なし
+- [ ] **animation** — CI なし
+- [ ] **audio** — CI なし
+- [ ] **auto-amv** — CI なし
+- [ ] **cloud** — CI なし
+- [ ] **cyber** — CI なし
+- [ ] **deep-research** — CI なし
+- [ ] **fetch-rag** — CI なし
+- [ ] **garnish** — CI なし
+- [ ] **knowledge-work-plugins** — CI なし
+- [ ] **search-ja-persona** — CI なし
+- [ ] **skills** — CI なし
+- [ ] **x-download** — CI なし
+- [ ] **adk-stream-protocol** — CI なし
+- [ ] **code** — CI なし
+- [ ] **k3** — CI なし
+- [ ] **moltbot-sandbox** — CI なし
+- [ ] **nostra** — CI なし
+- [ ] **semgrep-guardrails** — CI なし
+- [ ] **vibe-coding-platform** — CI なし
+- [ ] **vsano** — CI なし
