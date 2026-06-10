@@ -2211,3 +2211,32 @@ def test_skills_are_additive_add_missing_no_overwrite_no_delete(docker_image):
     ):
         assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
     assert "ERR-missing-not-added" not in result.stdout, result.stdout
+
+
+def test_no_skills_flag_deploys_instructions_and_skips_skills(docker_image):
+    """--no-skills deploys instructions (base/spokes) but skips skills entirely:
+    no dotfiles skill is copied in, and a target-only skill is left untouched."""
+    cmd = r"""
+    set -euo pipefail
+    # a target-only skill that a full sync would otherwise see
+    mkdir -p /root/.gemini/skills/cli-only-skill
+    echo "# CLI Only" > /root/.gemini/skills/cli-only-skill/SKILL.md
+
+    cd /root/dotfiles && just sync-agents-auto --no-skills g
+
+    # instructions ARE deployed
+    grep -q 'Non-negotiables' /root/.gemini/GEMINI.md && echo "base-deployed"
+    [ -f /root/.gemini/docs/agents/testing.md ] && echo "spoke-deployed"
+    # skills are NOT touched: target-only skill preserved, dotfiles skill NOT copied
+    [ -f /root/.gemini/skills/cli-only-skill/SKILL.md ] && echo "orphan-preserved"
+    [ -e /root/.gemini/skills/sibyl ] && echo "ERR-skill-copied" || echo "dotfiles-skill-not-copied"
+    """
+    result = _run_in_container(docker_image, cmd)
+    for marker in (
+        "base-deployed",
+        "spoke-deployed",
+        "orphan-preserved",
+        "dotfiles-skill-not-copied",
+    ):
+        assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
+    assert "ERR-skill-copied" not in result.stdout, result.stdout

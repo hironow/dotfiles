@@ -878,7 +878,10 @@ def _print_header(text: str) -> None:
 
 
 def _print_plan(
-    plans: list[_SyncPlan], dotfiles_dir: Path, verbose: bool = False
+    plans: list[_SyncPlan],
+    dotfiles_dir: Path,
+    verbose: bool = False,
+    exclude_dirs: frozenset[str] = frozenset(),
 ) -> bool:
     """Print sync plan. Returns True if there are changes to apply."""
     has_changes = False
@@ -886,7 +889,11 @@ def _print_plan(
     print("📁 Source:", dotfiles_dir)
     print(f"   Base: {BASE_FILE}")
 
-    additional = _get_additional_sources(dotfiles_dir)
+    additional = [
+        item
+        for item in _get_additional_sources(dotfiles_dir)
+        if item.relative_path.split("/")[0] not in exclude_dirs
+    ]
     if additional:
         print("   Additional:")
         for item in additional:
@@ -965,16 +972,23 @@ class _ImportPlan:
 
 
 def _build_import_plan(
-    dotfiles_dir: Path, agent: AgentTarget, manifest: _SyncManifest
+    dotfiles_dir: Path,
+    agent: AgentTarget,
+    manifest: _SyncManifest,
+    exclude_dirs: frozenset[str] = frozenset(),
 ) -> _ImportPlan:
     """Build import plan: detect importable items in target's SYNC_DIRECTORIES.
 
     Uses manifest to distinguish genuinely new items from previously deleted ones.
     Both symlinks and regular directories/files are considered for import.
+    Directories in exclude_dirs (e.g. skills under --no-skills) are skipped so a
+    target's items are never pulled back into dotfiles.
     """
     actions: list[_ImportAction] = []
 
     for dir_name in agent.get_sync_directories():
+        if dir_name in exclude_dirs:
+            continue
         target_dir = agent.directory / dir_name
         if not target_dir.is_dir():
             continue
@@ -1177,7 +1191,11 @@ def import_only_mode(
         print("\n✅ Nothing to import.")
 
 
-def preview_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) -> None:
+def preview_mode(
+    dotfiles_dir: Path,
+    agents: list[AgentTarget] | None = None,
+    exclude_dirs: frozenset[str] = frozenset(),
+) -> None:
     """Preview mode: show what would be synced without applying changes.
 
     Args:
@@ -1202,14 +1220,18 @@ def preview_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) ->
     has_imports = False
     import_sources = [a for a in agents if a.is_import_source]
     for agent in import_sources:
-        import_plan = _build_import_plan(dotfiles_dir, agent, manifest)
+        import_plan = _build_import_plan(dotfiles_dir, agent, manifest, exclude_dirs)
         if import_plan.items:
             print(f"\n⬅️  Import from {agent.name}: {agent.directory}")
             if _print_import_plan(import_plan, verbose=True):
                 has_imports = True
 
     # Phase 2-3: Forward sync + deletion + orphan preview
-    additional = _get_additional_sources(dotfiles_dir)
+    additional = [
+        item
+        for item in _get_additional_sources(dotfiles_dir)
+        if item.relative_path.split("/")[0] not in exclude_dirs
+    ]
     plans: list[_SyncPlan] = []
     for agent in agents:
         sync_plan = _build_sync_plan(dotfiles_dir, agent, additional)
@@ -1219,7 +1241,9 @@ def preview_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) ->
         )
         plans.append(sync_plan)
 
-    has_changes = _print_plan(plans, dotfiles_dir, verbose=True)
+    has_changes = _print_plan(
+        plans, dotfiles_dir, verbose=True, exclude_dirs=exclude_dirs
+    )
 
     if has_imports or has_changes:
         print("\n💡 Run without --preview to apply changes")
@@ -1231,6 +1255,7 @@ def sync_mode(
     dotfiles_dir: Path,
     auto_yes: bool = False,
     agents: list[AgentTarget] | None = None,
+    exclude_dirs: frozenset[str] = frozenset(),
 ) -> None:
     """Sync mode: apply sync to selected agent directories.
 
@@ -1244,6 +1269,9 @@ def sync_mode(
         auto_yes: If True, skip confirmation prompts for changed files.
         agents: Filtered subset of AGENTS to operate on. None means default
             selection (claude only).
+        exclude_dirs: Sync-directory names to skip entirely in BOTH import and
+            forward (e.g. {"skills"} under --no-skills) so instruction-only
+            deploys never touch / import / copy those dirs.
     """
     if agents is None:
         agents = _select_agents(list(_DEFAULT_TARGETS))
@@ -1261,7 +1289,7 @@ def sync_mode(
     import_sources = [a for a in agents if a.is_import_source]
     has_imports = False
     for agent in import_sources:
-        import_plan = _build_import_plan(dotfiles_dir, agent, manifest)
+        import_plan = _build_import_plan(dotfiles_dir, agent, manifest, exclude_dirs)
         importable = [a for a in import_plan.items if a.status == "import"]
         if importable:
             print(f"\n⬅️  Importing from {agent.name}...")
@@ -1285,7 +1313,11 @@ def sync_mode(
         print()
 
     # Phase 2-3: Plan and apply forward sync + deletions + orphans
-    additional = _get_additional_sources(dotfiles_dir)
+    additional = [
+        item
+        for item in _get_additional_sources(dotfiles_dir)
+        if item.relative_path.split("/")[0] not in exclude_dirs
+    ]
     plans: list[_SyncPlan] = []
     for agent in agents:
         sync_plan = _build_sync_plan(dotfiles_dir, agent, additional)
@@ -1295,7 +1327,9 @@ def sync_mode(
         )
         plans.append(sync_plan)
 
-    has_changes = _print_plan(plans, dotfiles_dir, verbose=False)
+    has_changes = _print_plan(
+        plans, dotfiles_dir, verbose=False, exclude_dirs=exclude_dirs
+    )
 
     if not has_changes:
         print("\n✅ All files are already in sync!")
@@ -1452,6 +1486,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--no-skills",
+        action="store_true",
+        help=(
+            "Instruction-only: skip the skills/ dir entirely (no import, no "
+            "forward copy, no delete). Use when skills are owned by the "
+            "`bunx skills` CLI and sync should only deploy base/overlay/spokes/"
+            "hooks/settings + commands/agents."
+        ),
+    )
+    parser.add_argument(
         "--dotfiles",
         "-d",
         type=Path,
@@ -1477,18 +1521,26 @@ def main() -> None:
         sys.exit(2)
 
     selected = _select_agents(keys)
+    exclude_dirs = frozenset({"skills"}) if args.no_skills else frozenset()
 
     if args.import_only:
         import_only_mode(args.dotfiles, agents=selected, preview=args.preview)
     elif args.orphans:
         orphans_mode(args.dotfiles, agents=selected)
     elif args.preview:
-        preview_mode(args.dotfiles, agents=selected)
+        preview_mode(args.dotfiles, agents=selected, exclude_dirs=exclude_dirs)
     elif args.override:
         print("⚡ Override mode: dotfiles → targets (no prompts)")
-        sync_mode(args.dotfiles, auto_yes=True, agents=selected)
+        sync_mode(
+            args.dotfiles, auto_yes=True, agents=selected, exclude_dirs=exclude_dirs
+        )
     else:
-        sync_mode(args.dotfiles, auto_yes=args.yes, agents=selected)
+        sync_mode(
+            args.dotfiles,
+            auto_yes=args.yes,
+            agents=selected,
+            exclude_dirs=exclude_dirs,
+        )
 
 
 if __name__ == "__main__":
