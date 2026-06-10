@@ -84,6 +84,16 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    ignore:
+      # Compiled-dep services (e.g. emulator/a2a-inspector: cffi / pydantic-core
+      # / asyncpg) lack cp314 wheels, so `uv sync` builds from sdist -> needs gcc,
+      # absent in python:*-slim -> build fails (verified 2026-06 on 3.14.5-slim).
+      # Keep docker python base images on their current minor; patch updates are
+      # still allowed. Revisit when upstream publishes 3.14 wheels.
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
     groups:
       docker:
         patterns: ["*"]
