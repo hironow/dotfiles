@@ -311,6 +311,38 @@ step_sheldon() {
   esac
 }
 
+step_prek_shim() {
+  # prek (j178/prek) installs git hooks whose generated .git/hooks/* hardcode
+  # the absolute path of the prek binary that ran `prek install`, with a
+  # `PREK="prek"` PATH fallback. On a repo shared between Windows and WSL (a
+  # /mnt/c checkout) the hardcoded path belongs to whichever OS ran install and
+  # is wrong on the other, so the fallback fires — but mise keeps prek under
+  # ~/.local/share/mise (only on PATH when mise is *activated*), so a hook run
+  # from a non-interactive or cross-OS shell dies with "prek: not found".
+  # Symlink the mise-managed prek into ~/.local/bin (already on PATH via
+  # .zshrc) so the fallback resolves everywhere. ADR 0023 keeps the general
+  # toolchain activate-only; this is a narrow, deliberate exception for the one
+  # binary git must invoke outside an activated shell.
+  case "$DOTFILES_OS" in
+    mac | linux)
+      _prek_bin="$(find "$HOME/.local/share/mise/installs/prek/latest" -maxdepth 2 -name prek -type f 2>/dev/null | head -1)"
+      if [ -z "$_prek_bin" ]; then
+        _prek_bin="$(command -v prek 2>/dev/null || true)"
+      fi
+      if [ -n "$_prek_bin" ] && [ -x "$_prek_bin" ]; then
+        mkdir -p "$HOME/.local/bin"
+        ln -sf "$_prek_bin" "$HOME/.local/bin/prek"
+        echo "[install] step_prek_shim: ~/.local/bin/prek -> ${_prek_bin}"
+      else
+        echo "[install] step_prek_shim: prek not found under mise; skipping (run 'mise install' first)"
+      fi
+      ;;
+    windows)
+      _skip_windows "step_prek_shim" "prek's Windows hook path resolves via the scoop/mise prek.exe; the ~/.local/bin POSIX shim does not apply"
+      ;;
+  esac
+}
+
 # ---- Drive ----------------------------------------------------------
 
 step_homebrew
@@ -322,5 +354,6 @@ step_corepack
 step_update_all
 step_symlink_dotfiles
 step_sheldon
+step_prek_shim
 
 echo "[install] done (DOTFILES_OS=${DOTFILES_OS})"
