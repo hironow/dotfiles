@@ -19,6 +19,9 @@
 - **`just sync-agents` (`scripts/sync_agents.py`) の配布 (per-tool):**
     - base → codex `~/.codex/AGENTS.md` / gemini `~/.gemini/GEMINI.md` /
       claude-family `~/.claude*/AGENTS.md`
+        - **`~/.gemini/GEMINI.md` は Gemini CLI (2026-06-18 sunset) と Antigravity
+          CLI (`agy`) が共有する** global rules (issue google-gemini/gemini-cli#16058)。
+          base sync 先は変更不要で、既存の gemini ターゲットがそのまま Antigravity を兼ねる。
     - overlay → claude-family `~/.claude*/CLAUDE.md` (`@AGENTS.md` で base を import)
     - spoke → `<agent>/docs/agents/*` (base 内の `docs/agents/` 参照は配布時に
       **その agent home の絶対パスへ rewrite**。相対だと作業 project 側に解決して外すため)
@@ -31,6 +34,14 @@
       target は**上書きしない・削除しない**。`bunx skills` CLI が `~/.agents/skills`
       へ install した symlink (上流 + `bunx skills add <skills-repo>`) を churn/orphan
       削除しないため。skill の投入は CLI (`bunx skills add`) を優先する
+    - **Antigravity CLI (`agy`) は自己管理 — dotfiles は skills/settings/mcp を sync
+      しない**: Antigravity は skills を `agy plugin` (=
+      `~/.gemini/antigravity-cli/plugins/<name>/skills/`)、settings/mcp を `agy import`
+      (= `~/.gemini/antigravity-cli/settings.json` + `mcp/`) で持つ。これらを raw sync
+      すると agy の自己管理を迂回/clobber する (= `bunx skills` へ委譲するのと同理由)
+      ため dotfiles は触らない。instruction 層 (`~/.gemini/GEMINI.md`) のみ共有で兼用。
+      既存の `~/.gemini/skills/` additive は Antigravity が plugins/ から読むため
+      vestigial だが additive で無害・残置 (詳細 ADR 0026)。
 - **global ルールを変えるときは上記 source を編集して `just sync-agents`。**
   配布先 (`~/.claude/CLAUDE.md` 等) を直接編集しても次の sync で上書きされる。
 - **per-repo enforcement は `templates/agent-baseline/` に scaffold 保管** (dotfiles
