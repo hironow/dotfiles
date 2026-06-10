@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "hironow's personal Claude Code plugins for autonomous research, design exploration, expedition workflows, and Socratic plan grilling",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "pluginRoot": "./plugins"
   },
   "plugins": [
@@ -16,15 +16,13 @@
       "description": "Autonomous experiment loop plugin inspired by karpathy/autoresearch. Iteratively modifies target code, evaluates against fixed metrics, and keeps only improvements via git-based keep/revert cycles.",
       "version": "0.1.1",
       "category": "research",
-      "tags": ["research", "optimization", "autonomous", "experiment", "tdd"]
-    },
-    {
-      "name": "paintress",
-      "source": "./plugins/paintress",
-      "description": "Autonomous TDD expedition agent with Gradient Gauge momentum, Lumina learning, and Review Gate. Picks Linear issues, implements fixes via TDD, and creates PRs.",
-      "version": "0.2.1",
-      "category": "development",
-      "tags": ["tdd", "linear", "autonomous", "expedition"]
+      "tags": [
+        "research",
+        "optimization",
+        "autonomous",
+        "experiment",
+        "tdd"
+      ]
     },
     {
       "name": "autodesign",
@@ -32,7 +30,15 @@
       "description": "Autonomous web design exploration plugin. Explores design variations under quality constraints using git-based keep/revert cycles with bundled evaluators for a11y, readability, performance, and completeness.",
       "version": "0.2.1",
       "category": "design",
-      "tags": ["design", "exploration", "autonomous", "web", "quality", "a11y", "lighthouse"]
+      "tags": [
+        "design",
+        "exploration",
+        "autonomous",
+        "web",
+        "quality",
+        "a11y",
+        "lighthouse"
+      ]
     },
     {
       "name": "autoreview",
@@ -40,7 +46,14 @@
       "description": "Autonomous code review plugin using guardrails/semgrep rules. Scans code, auto-fixes violations, and validates via git-based keep/revert cycles. Supports scan-fix and spec-review modes.",
       "version": "0.2.1",
       "category": "review",
-      "tags": ["review", "semgrep", "guardrails", "autonomous", "code-quality", "architecture"]
+      "tags": [
+        "review",
+        "semgrep",
+        "guardrails",
+        "autonomous",
+        "code-quality",
+        "architecture"
+      ]
     },
     {
       "name": "grilling",
@@ -48,7 +61,16 @@
       "description": "Plan-grilling and session-handover skills for project docs. grit-grill interviews you about a plan along the GRIT axes (Guts/Resilience/Initiative/Tenacity), ends with an ASCII radar scorecard, and crystallizes intent into docs/intent.md; handover compacts the session state into docs/handover.md.",
       "version": "0.2.0",
       "category": "planning",
-      "tags": ["grilling", "interview", "planning", "grit", "socratic", "handover", "intent", "session"]
+      "tags": [
+        "grilling",
+        "interview",
+        "planning",
+        "grit",
+        "socratic",
+        "handover",
+        "intent",
+        "session"
+      ]
     }
   ]
 }
