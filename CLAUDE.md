@@ -25,6 +25,10 @@
     - hooks + settings → **claude-family のみ**。settings.json は user キーを壊さず
       **冪等マージ** (manifest 非追跡。marker = event+matcher+rendered command)
     - `ROOT_AGENTS_<x>_<y>(.ext|/)` → `<agent>/<x>/<y>` (`_`→`/`) の従来規約も継続
+    - **`skills` は additive** (`ADDITIVE_DIRECTORIES`): 欠落 skill のみ追加、既存
+      target は**上書きしない・削除しない**。`bunx skills` CLI が `~/.agents/skills`
+      へ install した symlink (上流 + `bunx skills add hironow/skills`) を churn/orphan
+      削除しないため。skill の投入は CLI (`bunx skills add`) を優先する
 - **global ルールを変えるときは上記 source を編集して `just sync-agents`。**
   配布先 (`~/.claude/CLAUDE.md` 等) を直接編集しても次の sync で上書きされる。
 - **per-repo enforcement は `templates/agent-baseline/` に scaffold 保管** (dotfiles
