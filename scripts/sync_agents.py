@@ -574,6 +574,45 @@ def _detect_target_only_items(
     return orphans
 
 
+def _detect_managed_dir_orphans(
+    agent: AgentTarget, additional_sources: list[_SyncItem]
+) -> list[_DeleteAction]:
+    """Detect distributed spoke/hook files no longer backed by a source.
+
+    `docs/agents/` (synced to every agent) and `hooks/` (claude-family only)
+    are fully sync-owned: a file there whose ROOT_AGENTS_* source was renamed or
+    removed is an orphan to delete, so stale spokes/hooks do not linger. These
+    dirs are NOT manifest-tracked; the current source set is the source of truth.
+    """
+    managed_dirs = ["docs/agents"]
+    if agent.receives_hooks:
+        managed_dirs.append("hooks")
+
+    orphans: list[_DeleteAction] = []
+    for mdir in managed_dirs:
+        prefix = f"{mdir}/"
+        expected = {
+            item.relative_path[len(prefix) :]
+            for item in additional_sources
+            if item.relative_path.startswith(prefix)
+        }
+        target_dir = agent.directory / mdir
+        if not target_dir.is_dir():
+            continue
+        for child in sorted(target_dir.iterdir(), key=lambda p: p.name):
+            if child.name.startswith(".") or child.name in expected:
+                continue
+            orphans.append(
+                _DeleteAction(
+                    target=child,
+                    relative_path=f"{mdir}/{child.name}",
+                    is_directory=child.is_dir() and not child.is_symlink(),
+                    reason="orphan",
+                )
+            )
+    return orphans
+
+
 def _sync_file(source: Path, target: Path) -> None:
     """Sync a single file."""
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1268,6 +1307,7 @@ def preview_mode(
         sync_plan.deletions.extend(
             _detect_target_only_items(dotfiles_dir, agent, manifest)
         )
+        sync_plan.deletions.extend(_detect_managed_dir_orphans(agent, additional))
         plans.append(sync_plan)
 
     has_changes = _print_plan(
@@ -1354,6 +1394,7 @@ def sync_mode(
         sync_plan.deletions.extend(
             _detect_target_only_items(dotfiles_dir, agent, manifest)
         )
+        sync_plan.deletions.extend(_detect_managed_dir_orphans(agent, additional))
         plans.append(sync_plan)
 
     has_changes = _print_plan(

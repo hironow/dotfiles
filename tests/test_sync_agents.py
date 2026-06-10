@@ -2267,3 +2267,36 @@ def test_hub_and_spoke_settings_merge_updates_managed_in_place(docker_image):
     for marker in ("v1-present", "v2-present", "v1-removed"):
         assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
     assert "ERR-v1-stale" not in result.stdout, result.stdout
+
+
+def test_spoke_and_hook_orphans_are_cleaned(docker_image):
+    """A distributed spoke/hook whose ROOT_AGENTS_* source is gone is removed as
+    an orphan on the next sync; current spokes/hooks are preserved."""
+    cmd = r"""
+    set -euo pipefail
+    cd /root/dotfiles
+    just sync-agents-auto p
+    [ -f /root/.claude/docs/agents/testing.md ] && echo "current-spoke-present"
+
+    # plant stale files with no backing ROOT_AGENTS_* source
+    echo "# stale" > /root/.claude/docs/agents/removed-spoke.md
+    echo "#!/bin/sh" > /root/.claude/hooks/removed-hook.sh
+
+    just sync-agents-auto p
+
+    [ -f /root/.claude/docs/agents/removed-spoke.md ] && echo "ERR-spoke-stale" || echo "spoke-orphan-removed"
+    [ -f /root/.claude/hooks/removed-hook.sh ] && echo "ERR-hook-stale" || echo "hook-orphan-removed"
+    [ -f /root/.claude/docs/agents/testing.md ] && echo "current-spoke-kept"
+    [ -x /root/.claude/hooks/block-secrets.sh ] && echo "current-hook-kept"
+    """
+    result = _run_in_container(docker_image, cmd)
+    for marker in (
+        "current-spoke-present",
+        "spoke-orphan-removed",
+        "hook-orphan-removed",
+        "current-spoke-kept",
+        "current-hook-kept",
+    ):
+        assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
+    assert "ERR-spoke-stale" not in result.stdout, result.stdout
+    assert "ERR-hook-stale" not in result.stdout, result.stdout
