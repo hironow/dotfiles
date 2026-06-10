@@ -75,6 +75,10 @@ docs/intent-*.md
 docs/handover.md
 docs/handover-*.md
 docs/setup.md
+# Tooling-patrol working queue (local-only AI-agent output). Gitignored so an
+# external patrol automation can never commit/PR it into this public repo.
+docs/decision-queue.md
+docs/decision-queue-*.md
 node_modules
 
 # Defense-in-depth: these were previously only covered by the user's GLOBAL
