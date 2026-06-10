@@ -32,6 +32,29 @@ prek = "latest"
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
 "npm:portless" = "0.13.0"
+# eza — modern ls replacement aliased unconditionally-now-guarded in
+# .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
+# it on PATH for every dir; without a config source the installed
+# binary stays an orphan and `ls` falls back to system ls. Pinned (not
+# "latest") so the already-installed 0.23.4 resolves without tripping
+# the 7d quarantine on a fresh release.
+eza = "0.23.4"
+# starship (prompt) + sheldon (zsh plugin manager). Initialized in .zshrc
+# AFTER `mise activate` (see EOF). Declared here so mise puts them on PATH
+# for every dir; without a config source they stay orphan installs and the
+# `_cmd_exists` guards in .zshrc skip prompt + plugins entirely. On a Mac
+# Homebrew also provides them, but WSL has no brew, so mise is the only
+# provider there. Pinned (not "latest") so the already-installed versions
+# resolve without tripping the 7d quarantine. sheldon ships via the aqua
+# backend (rossmacarthur/sheldon); starship is a mise core tool.
+starship = "1.25.1"
+"aqua:rossmacarthur/sheldon" = "0.8.5"
+# fzf — fuzzy finder. Its Ctrl-R / completion init (`fzf --zsh`) lives in
+# .zshrc AFTER `mise activate` for the same reason as the prompt tools above.
+# Declared here so WSL (no Homebrew) gets it; on a Mac brew also provides it.
+# Pinned so the install resolves past the 7d quarantine. (opentofu, the other
+# WSL-orphaned alias `t`, is already declared earlier in this file.)
+fzf = "0.73.1"
 
 # AI agent CLIs. Project-pinned in the repo mise.toml so Coder
 # workspaces boot with them ready; declared here at "latest" so they

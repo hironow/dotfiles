@@ -24,23 +24,16 @@ path_prepend() {
     fi
 }
 
-# Homebrew (must be early for sheldon/starship)
+# Homebrew (kept early so brew-provided tools land on PATH up front).
+# NOTE: sheldon/starship init moved to EOF (after `mise activate`) because
+# they are mise-provisioned now; guarding them here — before mise is on
+# PATH — silently skipped prompt + plugins on WSL where there is no brew.
 if [ -x "/opt/homebrew/bin/brew" ]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
 elif [ -x "$HOME/.linuxbrew/bin/brew" ]; then
     eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
 elif [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
     eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-fi
-
-# Sheldon (plugin manager)
-if _cmd_exists sheldon; then
-    eval "$(sheldon source)"
-fi
-
-# Starship (prompt)
-if _cmd_exists starship; then
-    eval "$(starship init zsh)"
 fi
 
 # zsh-autosuggestions performance settings
@@ -144,13 +137,10 @@ fi
 if _cmd_exists just; then
     alias j="just"
 fi
-if _cmd_exists tofu; then
-    alias t="tofu"
-fi
-if _cmd_exists terramate; then
-    alias tm="terramate"
-    alias tmr="terramate run --"
-fi
+# tofu / terramate aliases are defined at EOF (after `mise activate`),
+# because tofu is mise-provisioned (opentofu) and only lands on PATH once
+# activate runs. Guarding here — before activate — silently skipped `t` on
+# WSL where there is no Homebrew. See the post-activate alias block at EOF.
 
 
 # Claude Code
@@ -168,9 +158,10 @@ alias cc-b='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-b ~/.loc
 alias cc-c='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-c ~/.local/bin/claude'
 alias cc-d='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-d ~/.local/bin/claude'
 
-# eza for ls replacement
-alias ls='eza --icons --git'
-alias ll='eza -al --icons --git'
+# eza-backed `ls`/`ll` aliases are defined at EOF (after `mise activate`),
+# because eza is provisioned by mise and only lands on PATH once activate
+# runs. Guarding the alias here — before activate — would always see eza
+# absent and silently skip it. See the eza block at the bottom of this file.
 
 # Git worktree navigation
 wgo() {
@@ -216,16 +207,9 @@ unset _comp_files
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls -1 --color=always $realpath'
 zstyle ':fzf-tab:*' switch-group '<' '>'
 
-# fzf keybindings and completion (Ctrl+R for history search) - cached
-if _cmd_exists fzf; then
-    _fzf_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/fzf_init.zsh"
-    if [[ ! -f "$_fzf_cache" ]]; then
-        mkdir -p "${_fzf_cache:h}"
-        fzf --zsh > "$_fzf_cache"
-    fi
-    source "$_fzf_cache"
-    unset _fzf_cache
-fi
+# fzf keybindings/completion (Ctrl-R) are initialized at EOF (after
+# `mise activate` + compinit) because fzf is mise-provisioned now; the old
+# pre-activate position silently skipped it on WSL (no Homebrew). See EOF.
 
 # Added by Antigravity (dedup so a re-source / installer re-run cannot double it)
 path_prepend "$HOME/.antigravity/antigravity/bin"
@@ -282,8 +266,53 @@ if _cmd_exists mise; then
     eval "$(mise activate zsh)"
 fi
 
+# Sheldon (plugin manager) + Starship (prompt) — initialized here, AFTER
+# `mise activate`, because both are mise-provisioned (declared in
+# config/mise/config.toml) and only land on PATH once activate runs. The
+# old position (before activate) relied on Homebrew supplying them early,
+# which silently skipped both on WSL where there is no brew. Guarded so a
+# host missing either tool still gets a working (plain) shell.
+if _cmd_exists sheldon; then
+    eval "$(sheldon source)"
+fi
+if _cmd_exists starship; then
+    eval "$(starship init zsh)"
+fi
+
+# tofu / terramate aliases — tofu is mise-provisioned (opentofu) so it is
+# only on PATH after activate; defining `t` here keeps it from being
+# silently skipped on WSL. Still guarded so a host without the tool is fine.
+if _cmd_exists tofu; then
+    alias t="tofu"
+fi
+if _cmd_exists terramate; then
+    alias tm="terramate"
+    alias tmr="terramate run --"
+fi
+
 # >>> grok installer >>>
 path_prepend "$HOME/.grok/bin"
 fpath=(~/.grok/completions/zsh $fpath)
 autoload -Uz compinit && compinit -C
 # <<< grok installer <<<
+
+# fzf keybindings and completion (Ctrl-R) — cached. Defined here, after
+# `mise activate` + the compinit above, because fzf is mise-provisioned now;
+# the old pre-activate position silently skipped it on WSL (no Homebrew).
+if _cmd_exists fzf; then
+    _fzf_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/fzf_init.zsh"
+    if [[ ! -f "$_fzf_cache" ]]; then
+        mkdir -p "${_fzf_cache:h}"
+        fzf --zsh > "$_fzf_cache"
+    fi
+    source "$_fzf_cache"
+    unset _fzf_cache
+fi
+
+# eza for ls replacement (defined here, after `mise activate`, so eza is
+# already on PATH). Guarded so a host without eza falls back to the system
+# `ls` instead of erroring with "command not found: eza" on every call.
+if _cmd_exists eza; then
+    alias ls='eza --icons --git'
+    alias ll='eza -al --icons --git'
+fi
