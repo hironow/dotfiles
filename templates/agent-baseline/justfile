@@ -1,0 +1,55 @@
+# justfile — the ONLY task runner for this repo (no make, no npm scripts).
+# Exactly one justfile, at the root. `just` with no args prints this list.
+
+# Show available tasks (default)
+default: help
+
+help:
+    @just --list
+
+# The full local gate. This is what the pre-commit hook and CI both run.
+# Keep this as the single source of truth for "is the tree green?".
+check: fmt lint semgrep test
+
+# Run all tests
+test:
+    uv run pytest
+
+# Lint + type-check
+lint:
+    uv run ruff check .
+    uv run mypy .
+
+# Format code
+fmt:
+    uv run ruff format .
+
+# Run e2e tests
+test-e2e:
+    uv run pytest tests/e2e/
+
+# Run semgrep (project-specific rules). No-op-safe when .semgrep/ is absent.
+semgrep:
+    @test -d .semgrep/rules && semgrep --config .semgrep/rules/ --error || \
+     echo "no .semgrep/rules — skipping"
+
+# Wire the repo-managed git hooks (run once per clone).
+install-hooks:
+    git config core.hooksPath .githooks
+    chmod +x .githooks/* .claude/hooks/*.sh 2>/dev/null || true
+    @echo "git hooks enabled (core.hooksPath=.githooks). Claude Code hooks live in .claude/settings.json."
+
+# Start local observability stack (Jaeger)
+trace-up:
+    docker compose -f compose.yaml up -d jaeger
+
+# Stop local observability stack
+trace-down:
+    docker compose -f compose.yaml stop jaeger
+
+# Open Jaeger UI in browser
+trace-view:
+    @echo "Jaeger UI: http://localhost:16686"
+    @command -v open >/dev/null 2>&1 && open http://localhost:16686 || \
+     command -v xdg-open >/dev/null 2>&1 && xdg-open http://localhost:16686 || \
+     echo "Please open http://localhost:16686 manually"

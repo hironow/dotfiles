@@ -41,6 +41,11 @@ from typing import Literal
 
 DOTFILES_DIR = Path.home() / "dotfiles"
 BASE_FILE = "ROOT_AGENTS.md"
+# Claude-only overlay (imports the base via `@AGENTS.md`). Distributed as the
+# main_file for claude-family agents; the base is written alongside as AGENTS.md.
+OVERLAY_FILE = "ROOT_CLAUDE.md"
+# Hooks settings fragment merged into each claude-family agent's settings.json.
+HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
 
 # Directories to sync directly (in addition to ROOT_AGENTS_* files)
 SYNC_DIRECTORIES = ["commands", "skills", "agents"]
@@ -56,6 +61,17 @@ class AgentTarget:
     main_file: str | None = None
     is_import_source: bool = False
     sync_directories: list[str] | None = None
+    # Hub-and-spoke distribution:
+    #   overlay_main=True  -> main_file gets the OVERLAY (ROOT_CLAUDE.md) and the
+    #                         base (ROOT_AGENTS.md) is written to base_secondary.
+    #   overlay_main=False -> main_file gets the base directly (codex/gemini).
+    # base_secondary       -> extra file that receives the base (e.g. AGENTS.md),
+    #                         so a CLAUDE.md `@AGENTS.md` import resolves.
+    # receives_hooks       -> hooks/* and the settings.json hook merge apply only
+    #                         to claude-family agents (Claude-only mechanism).
+    overlay_main: bool = False
+    base_secondary: str | None = None
+    receives_hooks: bool = False
 
     def get_sync_directories(self) -> list[str]:
         """Return directories to sync for this agent."""
@@ -73,30 +89,45 @@ AGENTS: list[AgentTarget] = [
         key="claude",
         main_file="CLAUDE.md",
         is_import_source=True,
+        overlay_main=True,
+        base_secondary="AGENTS.md",
+        receives_hooks=True,
     ),
     AgentTarget(
         Path.home() / ".claude-work-a",
         "Claude(Work-A)",
         key="work-a",
         main_file="CLAUDE.md",
+        overlay_main=True,
+        base_secondary="AGENTS.md",
+        receives_hooks=True,
     ),
     AgentTarget(
         Path.home() / ".claude-work-b",
         "Claude(Work-B)",
         key="work-b",
         main_file="CLAUDE.md",
+        overlay_main=True,
+        base_secondary="AGENTS.md",
+        receives_hooks=True,
     ),
     AgentTarget(
         Path.home() / ".claude-work-c",
         "Claude(Work-C)",
         key="work-c",
         main_file="CLAUDE.md",
+        overlay_main=True,
+        base_secondary="AGENTS.md",
+        receives_hooks=True,
     ),
     AgentTarget(
         Path.home() / ".claude-work-d",
         "Claude(Work-D)",
         key="work-d",
         main_file="CLAUDE.md",
+        overlay_main=True,
+        base_secondary="AGENTS.md",
+        receives_hooks=True,
     ),
     AgentTarget(
         Path.home() / ".gemini",
@@ -225,6 +256,10 @@ class _SyncAction:
     relative_path: str
     is_directory: bool
     status: Literal["new", "changed", "synced"]
+    # When True, the target is written as text rendered by _render_for_agent
+    # (docs/agents/ references rewritten to the agent's absolute path) instead of
+    # a byte-for-byte copy. Set for the base, overlay, and spoke .md files.
+    render: bool = False
 
 
 @dataclass
@@ -559,6 +594,22 @@ def _sync_directory(source: Path, target: Path) -> None:
         shutil.copytree(source, target, ignore=_make_copytree_ignore())
 
 
+def _apply_sync_action(action: _SyncAction, agent: AgentTarget) -> None:
+    """Execute one sync action.
+
+    Rendered actions (base/overlay/spokes) are written as text with
+    docs/agents/ references rewritten to the agent's absolute path; everything
+    else is a byte-for-byte file or directory copy.
+    """
+    if action.render:
+        action.target.parent.mkdir(parents=True, exist_ok=True)
+        action.target.write_text(_render_for_agent(action.source.read_text(), agent))
+    elif action.is_directory:
+        _sync_directory(action.source, action.target)
+    else:
+        _sync_file(action.source, action.target)
+
+
 def _link_learned_skills(skills_dir: Path) -> None:
     """Create symlinks for learned skills at the top-level skills directory.
 
@@ -601,33 +652,129 @@ def _link_learned_skills(skills_dir: Path) -> None:
         link_path.symlink_to(Path("learned") / skill_name)
 
 
+def _render_for_agent(text: str, agent: AgentTarget) -> str:
+    """Rewrite on-demand spoke references to the agent's absolute location.
+
+    The base/overlay/spoke prose references playbooks as `docs/agents/X.md`
+    (relative). When distributed globally, a relative path would resolve against
+    the working project, not the agent's home, so it is rewritten to an absolute
+    `<agent_home>/docs/agents/X.md`. Deterministic -> idempotent.
+    """
+    return text.replace("docs/agents/", f"{agent.directory}/docs/agents/")
+
+
+def _is_spoke(relative_path: str) -> bool:
+    """A spoke is a docs/agents/*.md file (its references need rendering)."""
+    return relative_path.startswith("docs/agents/") and relative_path.endswith(".md")
+
+
+def _render_hook_command(command: str, agent: AgentTarget) -> str:
+    """Point a hook command at the agent's global hooks dir, not a project dir."""
+    return command.replace(
+        '"$CLAUDE_PROJECT_DIR/.claude/hooks/', f'"{agent.directory}/hooks/'
+    )
+
+
+def _merge_hook_settings(
+    dotfiles_dir: Path, agent: AgentTarget, dry_run: bool = False
+) -> bool:
+    """Idempotently merge the hook fragment into the agent's settings.json.
+
+    NOT manifest-tracked: settings.json is a user-owned shared file, so the
+    item-granular manifest (whole-file add/delete) would clobber user hooks on an
+    orphan sweep. Identity is the (event, matcher, rendered-command-set) tuple, so
+    re-running is a no-op. User keys and unmanaged hook entries are preserved.
+    With dry_run=True nothing is written. Returns True if the file would change.
+    """
+    fragment_path = dotfiles_dir / HOOK_SETTINGS_FRAGMENT
+    if not fragment_path.exists():
+        return False
+    fragment = json.loads(fragment_path.read_text())
+    target_path = agent.directory / "settings.json"
+    target = json.loads(target_path.read_text()) if target_path.exists() else {}
+
+    hooks = target.setdefault("hooks", {})
+    changed = False
+    for event, blocks in fragment.get("hooks", {}).items():
+        existing_blocks = hooks.setdefault(event, [])
+        for block in blocks:
+            rendered = {
+                "matcher": block.get("matcher"),
+                "hooks": [
+                    {**h, "command": _render_hook_command(h["command"], agent)}
+                    for h in block.get("hooks", [])
+                ],
+            }
+            if rendered not in existing_blocks:
+                existing_blocks.append(rendered)
+                changed = True
+
+    if changed and not dry_run:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(json.dumps(target, indent=2, ensure_ascii=False) + "\n")
+    return changed
+
+
+def _plan_text_file(
+    source: Path, target: Path, relative_path: str, agent: AgentTarget
+) -> _SyncAction:
+    """Plan a rendered text file: status uses the rendered expected content."""
+    rendered = _render_for_agent(source.read_text(), agent)
+    if not target.exists():
+        status: Literal["new", "changed", "synced"] = "new"
+    elif target.read_text() == rendered:
+        status = "synced"
+    else:
+        status = "changed"
+    return _SyncAction(
+        source=source,
+        target=target,
+        relative_path=relative_path,
+        is_directory=False,
+        status=status,
+        render=True,
+    )
+
+
 def _build_sync_plan(
     dotfiles_dir: Path, agent: AgentTarget, additional_sources: list[_SyncItem]
 ) -> _SyncPlan:
     """Build sync plan for an agent."""
     actions: list[_SyncAction] = []
 
-    # Base file (skip for agents without a main_file)
+    # Base + overlay (skip for agents without a main_file, e.g. .agents global).
     if agent.main_file is not None:
-        source_base = dotfiles_dir / BASE_FILE
-        target_base = agent.directory / agent.main_file
-
-        if not target_base.exists():
-            status: Literal["new", "changed", "synced"] = "new"
-        elif _compare_files(source_base, target_base):
-            status = "synced"
-        else:
-            status = "changed"
-
-        actions.append(
-            _SyncAction(
-                source=source_base,
-                target=target_base,
-                relative_path=agent.main_file,
-                is_directory=False,
-                status=status,
+        base_src = dotfiles_dir / BASE_FILE
+        if agent.overlay_main:
+            # claude-family: main_file <- overlay; base written alongside.
+            overlay_src = dotfiles_dir / OVERLAY_FILE
+            actions.append(
+                _plan_text_file(
+                    overlay_src,
+                    agent.directory / agent.main_file,
+                    agent.main_file,
+                    agent,
+                )
             )
-        )
+            if agent.base_secondary is not None:
+                actions.append(
+                    _plan_text_file(
+                        base_src,
+                        agent.directory / agent.base_secondary,
+                        agent.base_secondary,
+                        agent,
+                    )
+                )
+        else:
+            # codex/gemini: main_file <- base directly.
+            actions.append(
+                _plan_text_file(
+                    base_src,
+                    agent.directory / agent.main_file,
+                    agent.main_file,
+                    agent,
+                )
+            )
 
     # Additional sources (filtered by agent's sync_directories if customized)
     for item in additional_sources:
@@ -636,8 +783,25 @@ def _build_sync_plan(
             item_dir = item.relative_path.split("/")[0]
             if item_dir not in agent.sync_directories:
                 continue
+        # Hooks are a Claude-only mechanism: skip for non-claude agents.
+        if item.relative_path.startswith("hooks/") and not agent.receives_hooks:
+            continue
+
+        # Spokes (docs/agents/*.md) are rendered like the base/overlay.
+        if not item.is_directory and _is_spoke(item.relative_path):
+            actions.append(
+                _plan_text_file(
+                    item.source,
+                    agent.directory / item.relative_path,
+                    item.relative_path,
+                    agent,
+                )
+            )
+            continue
+
         target_path = agent.directory / item.relative_path
 
+        status: Literal["new", "changed", "synced"]
         if target_path.is_symlink():
             # Symlinks in targets should always be replaced with real copies
             status = "changed"
@@ -708,6 +872,12 @@ def _print_plan(
                 has_changes = True
             elif verbose:
                 print(f"  ✅ {icon} {action.relative_path} [SYNCED]")
+
+        if plan.agent.receives_hooks and _merge_hook_settings(
+            dotfiles_dir, plan.agent, dry_run=True
+        ):
+            print("  📝 📄 settings.json [HOOKS MERGE]")
+            has_changes = True
 
         for deletion in plan.deletions:
             icon = "📁" if deletion.is_directory else "📄"
@@ -1109,21 +1279,20 @@ def sync_mode(
             icon = "📁" if action.is_directory else "📄"
 
             if action.status == "new":
-                if action.is_directory:
-                    _sync_directory(action.source, action.target)
-                else:
-                    _sync_file(action.source, action.target)
+                _apply_sync_action(action, plan.agent)
                 print(f"  ✅ {icon} {action.relative_path}: Created")
 
             elif action.status == "changed":
                 if auto_yes or _confirm(f"  Overwrite {action.relative_path}?"):
-                    if action.is_directory:
-                        _sync_directory(action.source, action.target)
-                    else:
-                        _sync_file(action.source, action.target)
+                    _apply_sync_action(action, plan.agent)
                     print(f"  ✅ {icon} {action.relative_path}: Updated")
                 else:
                     print(f"  ⏭️  {icon} {action.relative_path}: Skipped")
+
+        # Merge the Claude hook fragment into the agent's settings.json
+        # (claude-family only; idempotent, manifest-independent).
+        if plan.agent.receives_hooks and _merge_hook_settings(dotfiles_dir, plan.agent):
+            print("  ✅ 📄 settings.json: hooks merged")
 
         # Apply deletions
         for deletion in plan.deletions:

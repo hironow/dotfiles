@@ -1,0 +1,55 @@
+# .github/workflows/quality-gate.yaml
+# Required check before merge. Mirrors `just check` so local == CI, and adds a
+# tofu drift check (see docs/agents/iac-drift-policy.md).
+# Note: GitHub Actions accepts .yaml, so this respects the .yaml-only rule.
+
+name: quality-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install Semgrep
+        run: uv tool install semgrep
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      # Single source of truth for "green": the same recipe humans run locally.
+      - name: Run the gate
+        run: just check
+
+  iac-drift:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('tofu/**') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+
+      - name: tofu init
+        working-directory: tofu
+        run: tofu init -backend=false
+
+      # -detailed-exitcode: 0 = no changes, 2 = drift, 1 = error.
+      # A non-empty plan on a PR means live infra and the repo disagree.
+      - name: tofu plan (fail on drift)
+        working-directory: tofu
+        run: tofu plan -detailed-exitcode -lock=false
