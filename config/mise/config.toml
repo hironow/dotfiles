@@ -47,8 +47,14 @@ eza = "0.23.4"
 # provider there. Pinned (not "latest") so the already-installed versions
 # resolve without tripping the 7d quarantine. sheldon ships via the aqua
 # backend (rossmacarthur/sheldon); starship is a mise core tool.
+#
+# sheldon is OS-gated to linux/macos: this config is shared (symlinked) across
+# Mac / Windows / WSL, and the aqua sheldon build has no windows/amd64 asset, so
+# an ungated entry makes `mise install` / `mise exec` hard-fail on Windows
+# (incl. WSL git hooks that pick up the Windows mise on the /mnt/c PATH). sheldon
+# is a zsh plugin manager — irrelevant on Windows anyway.
 starship = "1.25.1"
-"aqua:rossmacarthur/sheldon" = "0.8.5"
+"aqua:rossmacarthur/sheldon" = { version = "0.8.5", os = ["linux", "macos"] }
 # fzf — fuzzy finder. Its Ctrl-R / completion init (`fzf --zsh`) lives in
 # .zshrc AFTER `mise activate` for the same reason as the prompt tools above.
 # Declared here so WSL (no Homebrew) gets it; on a Mac brew also provides it.
