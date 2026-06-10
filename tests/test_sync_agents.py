@@ -318,49 +318,49 @@ def test_sync_agents_handles_directory_sources(docker_image):
     """Test that ROOT_AGENTS_xxx_yyy/ becomes xxx/yyy/ with all contents.
 
     Scenario:
-    - given: ROOT_AGENTS_skills_test-skill/ directory exists with multiple files and subdirs
+    - given: ROOT_AGENTS_agents_test-skill/ directory exists with multiple files and subdirs
     - when: Run sync-agents
-    - then: Directory and ALL contents are synced to skills/test-skill/
+    - then: Directory and ALL contents are synced to agents/test-skill/
     """
     cmd = """
     set -euo pipefail
 
     # Create a test directory source with multiple files and nested subdirectories
-    mkdir -p /root/dotfiles/ROOT_AGENTS_skills_test-skill
-    mkdir -p /root/dotfiles/ROOT_AGENTS_skills_test-skill/templates
-    mkdir -p /root/dotfiles/ROOT_AGENTS_skills_test-skill/examples/advanced
+    mkdir -p /root/dotfiles/ROOT_AGENTS_agents_test-skill
+    mkdir -p /root/dotfiles/ROOT_AGENTS_agents_test-skill/templates
+    mkdir -p /root/dotfiles/ROOT_AGENTS_agents_test-skill/examples/advanced
 
     # Create files at various levels
-    echo "# Test Skill README" > /root/dotfiles/ROOT_AGENTS_skills_test-skill/README.md
-    echo "skill_name: test-skill" > /root/dotfiles/ROOT_AGENTS_skills_test-skill/config.yaml
-    echo "template content" > /root/dotfiles/ROOT_AGENTS_skills_test-skill/templates/main.txt
-    echo "example 1" > /root/dotfiles/ROOT_AGENTS_skills_test-skill/examples/basic.md
-    echo "advanced example" > /root/dotfiles/ROOT_AGENTS_skills_test-skill/examples/advanced/complex.md
+    echo "# Test Skill README" > /root/dotfiles/ROOT_AGENTS_agents_test-skill/README.md
+    echo "skill_name: test-skill" > /root/dotfiles/ROOT_AGENTS_agents_test-skill/config.yaml
+    echo "template content" > /root/dotfiles/ROOT_AGENTS_agents_test-skill/templates/main.txt
+    echo "example 1" > /root/dotfiles/ROOT_AGENTS_agents_test-skill/examples/basic.md
+    echo "advanced example" > /root/dotfiles/ROOT_AGENTS_agents_test-skill/examples/advanced/complex.md
 
     # Run sync-agents
     cd /root/dotfiles && just sync-agents-auto all
 
     # Verify directory structure
-    [ -d /root/.claude/skills/test-skill ] && echo "skills/test-skill/ exists"
-    [ -d /root/.claude/skills/test-skill/templates ] && echo "templates/ subdir exists"
-    [ -d /root/.claude/skills/test-skill/examples/advanced ] && echo "examples/advanced/ nested subdir exists"
+    [ -d /root/.claude/agents/test-skill ] && echo "agents/test-skill/ exists"
+    [ -d /root/.claude/agents/test-skill/templates ] && echo "templates/ subdir exists"
+    [ -d /root/.claude/agents/test-skill/examples/advanced ] && echo "examples/advanced/ nested subdir exists"
 
     # Verify all files exist
-    [ -f /root/.claude/skills/test-skill/README.md ] && echo "README.md exists"
-    [ -f /root/.claude/skills/test-skill/config.yaml ] && echo "config.yaml exists"
-    [ -f /root/.claude/skills/test-skill/templates/main.txt ] && echo "templates/main.txt exists"
-    [ -f /root/.claude/skills/test-skill/examples/basic.md ] && echo "examples/basic.md exists"
-    [ -f /root/.claude/skills/test-skill/examples/advanced/complex.md ] && echo "examples/advanced/complex.md exists"
+    [ -f /root/.claude/agents/test-skill/README.md ] && echo "README.md exists"
+    [ -f /root/.claude/agents/test-skill/config.yaml ] && echo "config.yaml exists"
+    [ -f /root/.claude/agents/test-skill/templates/main.txt ] && echo "templates/main.txt exists"
+    [ -f /root/.claude/agents/test-skill/examples/basic.md ] && echo "examples/basic.md exists"
+    [ -f /root/.claude/agents/test-skill/examples/advanced/complex.md ] && echo "examples/advanced/complex.md exists"
 
     # Verify file contents are correct
-    grep -q "Test Skill README" /root/.claude/skills/test-skill/README.md && echo "README content correct"
-    grep -q "skill_name: test-skill" /root/.claude/skills/test-skill/config.yaml && echo "config content correct"
-    grep -q "advanced example" /root/.claude/skills/test-skill/examples/advanced/complex.md && echo "nested content correct"
+    grep -q "Test Skill README" /root/.claude/agents/test-skill/README.md && echo "README content correct"
+    grep -q "skill_name: test-skill" /root/.claude/agents/test-skill/config.yaml && echo "config content correct"
+    grep -q "advanced example" /root/.claude/agents/test-skill/examples/advanced/complex.md && echo "nested content correct"
     """
     result = _run_in_container(docker_image, cmd)
 
     # then: Directory and all contents are synced
-    assert "skills/test-skill/ exists" in result.stdout
+    assert "agents/test-skill/ exists" in result.stdout
     assert "templates/ subdir exists" in result.stdout
     assert "examples/advanced/ nested subdir exists" in result.stdout
     assert "README.md exists" in result.stdout
@@ -732,17 +732,21 @@ def test_sync_agents_keeps_newer_dotfiles_over_older_symlink(docker_image):
     # Run sync-agents
     cd /root/dotfiles && just sync-agents-auto all
 
-    # Verify dotfiles version was preserved (it's newer)
+    # Verify dotfiles version was preserved (it's newer) — import-conflict
+    # resolution is unchanged by additive skills.
     grep -q "Dotfiles version (newer)" /root/dotfiles/skills/shared-skill/README.md && echo "dotfiles version preserved"
 
-    # Verify targets got the dotfiles version
-    grep -q "Dotfiles version (newer)" /root/.claude/skills/shared-skill/README.md && echo "claude got dotfiles version"
+    # skills is additive: the EXISTING target symlink is preserved (not
+    # overwritten with the dotfiles copy).
+    [ -L /root/.claude/skills/shared-skill ] && echo "claude symlink preserved"
+    grep -q "External version (older)" /root/.claude/skills/shared-skill/README.md && echo "claude kept existing"
     """
     result = _run_in_container(docker_image, cmd)
 
-    # then: Dotfiles version was preserved
+    # then: dotfiles keeps the newer copy; the target's existing skill is kept
     assert "dotfiles version preserved" in result.stdout
-    assert "claude got dotfiles version" in result.stdout
+    assert "claude symlink preserved" in result.stdout
+    assert "claude kept existing" in result.stdout
 
 
 # =============================================================================
@@ -927,28 +931,28 @@ def test_sync_agents_does_not_reimport_deleted_items(docker_image):
     set -euo pipefail
 
     # Create and import a skill via import source
-    mkdir -p /root/.claude/skills/ephemeral-skill
-    echo "# Ephemeral" > /root/.claude/skills/ephemeral-skill/README.md
+    mkdir -p /root/.claude/agents/ephemeral-skill
+    echo "# Ephemeral" > /root/.claude/agents/ephemeral-skill/README.md
 
     # First sync: imports to dotfiles, syncs to targets
     cd /root/dotfiles && just sync-agents-auto all
-    [ -d /root/dotfiles/skills/ephemeral-skill ] && echo "initially imported"
+    [ -d /root/dotfiles/agents/ephemeral-skill ] && echo "initially imported"
 
     # Delete from dotfiles (simulating intentional removal)
-    rm -rf /root/dotfiles/skills/ephemeral-skill
+    rm -rf /root/dotfiles/agents/ephemeral-skill
 
     # Second sync: should NOT re-import, should delete from targets
     cd /root/dotfiles && just sync-agents-auto all
 
     # Verify NOT re-imported to dotfiles
-    if [ -d /root/dotfiles/skills/ephemeral-skill ]; then
+    if [ -d /root/dotfiles/agents/ephemeral-skill ]; then
         echo "ERROR: re-imported to dotfiles"
     else
         echo "correctly not re-imported"
     fi
 
     # Verify deleted from claude (import source)
-    if [ -d /root/.claude/skills/ephemeral-skill ]; then
+    if [ -d /root/.claude/agents/ephemeral-skill ]; then
         echo "ERROR: still in claude"
     else
         echo "deleted from claude"
@@ -1038,28 +1042,28 @@ def test_sync_agents_replaces_symlinks_in_targets(docker_image):
     set -euo pipefail
 
     # Create a skill in dotfiles
-    mkdir -p /root/dotfiles/skills/real-skill
-    echo "# Real Skill" > /root/dotfiles/skills/real-skill/README.md
+    mkdir -p /root/dotfiles/agents/real-skill
+    echo "# Real Skill" > /root/dotfiles/agents/real-skill/README.md
 
     # Create a symlink in gemini pointing elsewhere
     mkdir -p /opt/other/real-skill
     echo "# Other" > /opt/other/real-skill/README.md
-    mkdir -p /root/.gemini/skills
-    ln -s /opt/other/real-skill /root/.gemini/skills/real-skill
+    mkdir -p /root/.gemini/agents
+    ln -s /opt/other/real-skill /root/.gemini/agents/real-skill
 
     # Verify it's a symlink before sync
-    [ -L /root/.gemini/skills/real-skill ] && echo "is symlink before"
+    [ -L /root/.gemini/agents/real-skill ] && echo "is symlink before"
 
     # Run sync-agents
     cd /root/dotfiles && just sync-agents-auto all
 
     # Verify symlink was replaced with real dir
-    if [ -L /root/.gemini/skills/real-skill ]; then
+    if [ -L /root/.gemini/agents/real-skill ]; then
         echo "ERROR: still a symlink"
     else
         echo "replaced with real dir"
     fi
-    grep -q "Real Skill" /root/.gemini/skills/real-skill/README.md && echo "correct content"
+    grep -q "Real Skill" /root/.gemini/agents/real-skill/README.md && echo "correct content"
     """
     result = _run_in_container(docker_image, cmd)
 
@@ -1081,8 +1085,8 @@ def test_sync_agents_newer_import_source_wins_conflict(docker_image):
     set -euo pipefail
 
     # Create a skill in dotfiles (older version)
-    mkdir -p /root/dotfiles/skills/evolving-skill
-    echo "# Version 1" > /root/dotfiles/skills/evolving-skill/README.md
+    mkdir -p /root/dotfiles/agents/evolving-skill
+    echo "# Version 1" > /root/dotfiles/agents/evolving-skill/README.md
 
     # First sync to distribute
     cd /root/dotfiles && just sync-agents-auto all
@@ -1091,16 +1095,16 @@ def test_sync_agents_newer_import_source_wins_conflict(docker_image):
     sleep 2
 
     # Edit the skill in import source (newer version)
-    echo "# Version 2 - Updated" > /root/.claude/skills/evolving-skill/README.md
+    echo "# Version 2 - Updated" > /root/.claude/agents/evolving-skill/README.md
 
     # Run sync again
     cd /root/dotfiles && just sync-agents-auto all
 
     # Verify dotfiles was updated with newer version
-    grep -q "Version 2" /root/dotfiles/skills/evolving-skill/README.md && echo "dotfiles updated"
+    grep -q "Version 2" /root/dotfiles/agents/evolving-skill/README.md && echo "dotfiles updated"
 
     # Verify all targets got the newer version
-    grep -q "Version 2" /root/.gemini/skills/evolving-skill/README.md && echo "gemini updated"
+    grep -q "Version 2" /root/.gemini/agents/evolving-skill/README.md && echo "gemini updated"
     """
     result = _run_in_container(docker_image, cmd)
 
@@ -1134,19 +1138,20 @@ def test_sync_agents_older_import_source_loses_conflict(docker_image):
     # Run sync
     cd /root/dotfiles && just sync-agents-auto all
 
-    # Verify dotfiles version was preserved
+    # Verify dotfiles version was preserved (import-conflict: newer wins)
     grep -q "New Version in Dotfiles" /root/dotfiles/skills/stable-skill/README.md && echo "dotfiles preserved"
 
-    # Verify targets got the dotfiles version (not the older import source version)
+    # gemini was MISSING the skill -> additive adds the dotfiles version.
     grep -q "New Version in Dotfiles" /root/.gemini/skills/stable-skill/README.md && echo "gemini got dotfiles version"
-    grep -q "New Version in Dotfiles" /root/.claude/skills/stable-skill/README.md && echo "claude got dotfiles version"
+    # claude already HAD the skill -> additive preserves it (no overwrite).
+    grep -q "Old Version" /root/.claude/skills/stable-skill/README.md && echo "claude kept existing"
     """
     result = _run_in_container(docker_image, cmd)
 
-    # then: Dotfiles version was preserved
+    # then: dotfiles keeps newer; missing target is added; existing target kept
     assert "dotfiles preserved" in result.stdout
     assert "gemini got dotfiles version" in result.stdout
-    assert "claude got dotfiles version" in result.stdout
+    assert "claude kept existing" in result.stdout
 
 
 # =============================================================================
@@ -1749,8 +1754,8 @@ def test_sync_agents_orphans_shows_target_only_items(docker_image):
     cd /root/dotfiles && just sync-agents-auto all
 
     # Add an orphan skill to a non-import target
-    mkdir -p /root/.claude-work-a/skills/orphan-test-skill
-    echo "# Orphan" > /root/.claude-work-a/skills/orphan-test-skill/SKILL.md
+    mkdir -p /root/.claude-work-a/agents/orphan-test-skill
+    echo "# Orphan" > /root/.claude-work-a/agents/orphan-test-skill/SKILL.md
 
     # Run orphans detection
     cd /root/dotfiles && uv run scripts/sync_agents.py --orphans all
@@ -1802,25 +1807,25 @@ def test_sync_agents_override_removes_orphans(docker_image):
     cd /root/dotfiles && just sync-agents-auto all
 
     # Add orphan skills to non-import target
-    mkdir -p /root/.claude-work-a/skills/orphan-alpha
-    echo "# Alpha" > /root/.claude-work-a/skills/orphan-alpha/SKILL.md
-    mkdir -p /root/.claude-work-a/skills/orphan-beta
-    echo "# Beta" > /root/.claude-work-a/skills/orphan-beta/SKILL.md
+    mkdir -p /root/.claude-work-a/agents/orphan-alpha
+    echo "# Alpha" > /root/.claude-work-a/agents/orphan-alpha/SKILL.md
+    mkdir -p /root/.claude-work-a/agents/orphan-beta
+    echo "# Beta" > /root/.claude-work-a/agents/orphan-beta/SKILL.md
 
     # Verify orphans exist
-    [ -d /root/.claude-work-a/skills/orphan-alpha ] && echo "orphan-alpha exists before"
-    [ -d /root/.claude-work-a/skills/orphan-beta ] && echo "orphan-beta exists before"
+    [ -d /root/.claude-work-a/agents/orphan-alpha ] && echo "orphan-alpha exists before"
+    [ -d /root/.claude-work-a/agents/orphan-beta ] && echo "orphan-beta exists before"
 
     # Run override
     cd /root/dotfiles && uv run scripts/sync_agents.py --override all
 
     # Verify orphans are gone
-    if [ -d /root/.claude-work-a/skills/orphan-alpha ]; then
+    if [ -d /root/.claude-work-a/agents/orphan-alpha ]; then
         echo "ERROR: orphan-alpha still exists"
     else
         echo "orphan-alpha removed"
     fi
-    if [ -d /root/.claude-work-a/skills/orphan-beta ]; then
+    if [ -d /root/.claude-work-a/agents/orphan-beta ]; then
         echo "ERROR: orphan-beta still exists"
     else
         echo "orphan-beta removed"
@@ -1849,22 +1854,22 @@ def test_sync_agents_override_preserves_source_items(docker_image):
     set -euo pipefail
 
     # Create a skill in dotfiles
-    mkdir -p /root/dotfiles/skills/my-real-skill
-    echo "# Real" > /root/dotfiles/skills/my-real-skill/SKILL.md
+    mkdir -p /root/dotfiles/agents/my-real-skill
+    echo "# Real" > /root/dotfiles/agents/my-real-skill/SKILL.md
 
     # First sync
     cd /root/dotfiles && just sync-agents-auto all
 
     # Add an orphan to the non-import target
-    mkdir -p /root/.claude-work-a/skills/orphan-only
-    echo "# Orphan" > /root/.claude-work-a/skills/orphan-only/SKILL.md
+    mkdir -p /root/.claude-work-a/agents/orphan-only
+    echo "# Orphan" > /root/.claude-work-a/agents/orphan-only/SKILL.md
 
     # Run override
     cd /root/dotfiles && uv run scripts/sync_agents.py --override all
 
     # Verify: real skill preserved, orphan removed
-    [ -d /root/.claude-work-a/skills/my-real-skill ] && echo "real skill preserved"
-    if [ -d /root/.claude-work-a/skills/orphan-only ]; then
+    [ -d /root/.claude-work-a/agents/my-real-skill ] && echo "real skill preserved"
+    if [ -d /root/.claude-work-a/agents/orphan-only ]; then
         echo "ERROR: orphan still exists"
     else
         echo "orphan removed"
@@ -1894,8 +1899,8 @@ def test_sync_agents_preview_shows_orphans(docker_image):
     cd /root/dotfiles && just sync-agents-auto all
 
     # Add an orphan to non-import target
-    mkdir -p /root/.claude-work-a/skills/preview-orphan
-    echo "# Preview" > /root/.claude-work-a/skills/preview-orphan/SKILL.md
+    mkdir -p /root/.claude-work-a/agents/preview-orphan
+    echo "# Preview" > /root/.claude-work-a/agents/preview-orphan/SKILL.md
 
     # Run preview
     cd /root/dotfiles && uv run scripts/sync_agents.py --preview all
@@ -2033,14 +2038,14 @@ def test_just_sync_agents_override_removes_orphans_via_recipe(docker_image):
 
     cd /root/dotfiles && just sync-agents-auto all
 
-    mkdir -p /root/.claude-work-a/skills/recipe-orphan
-    echo "# orphan" > /root/.claude-work-a/skills/recipe-orphan/SKILL.md
+    mkdir -p /root/.claude-work-a/agents/recipe-orphan
+    echo "# orphan" > /root/.claude-work-a/agents/recipe-orphan/SKILL.md
 
-    [ -d /root/.claude-work-a/skills/recipe-orphan ] && echo "orphan before"
+    [ -d /root/.claude-work-a/agents/recipe-orphan ] && echo "orphan before"
 
     cd /root/dotfiles && just sync-agents-override all
 
-    if [ -d /root/.claude-work-a/skills/recipe-orphan ]; then
+    if [ -d /root/.claude-work-a/agents/recipe-orphan ]; then
         echo "ERROR: orphan still exists"
     else
         echo "orphan removed by recipe"
@@ -2062,13 +2067,13 @@ def test_just_sync_agents_override_default_scope_does_not_touch_work_a(docker_im
     cd /root/dotfiles && just sync-agents-auto all
 
     # Plant an orphan in work-a (out of default scope)
-    mkdir -p /root/.claude-work-a/skills/scope-orphan-work-a
-    echo "# w" > /root/.claude-work-a/skills/scope-orphan-work-a/SKILL.md
+    mkdir -p /root/.claude-work-a/agents/scope-orphan-work-a
+    echo "# w" > /root/.claude-work-a/agents/scope-orphan-work-a/SKILL.md
 
     cd /root/dotfiles && just sync-agents-override
 
     # work-a orphan must still be there (out of scope by default)
-    if [ -d /root/.claude-work-a/skills/scope-orphan-work-a ]; then
+    if [ -d /root/.claude-work-a/agents/scope-orphan-work-a ]; then
         echo "work-a orphan preserved"
     else
         echo "ERROR: work-a touched outside default scope"
@@ -2175,3 +2180,34 @@ PY
     """
     result = _run_in_container(docker_image, cmd)
     assert "settings-merge-ok" in result.stdout, result.stdout
+
+
+def test_skills_are_additive_add_missing_no_overwrite_no_delete(docker_image):
+    """skills/ is additive: even `--yes` sync ADDS a missing dotfiles skill, but
+    never overwrites an existing target skill (a bunx-skills CLI symlink/copy)
+    and never deletes a target-only skill."""
+    cmd = r"""
+    set -euo pipefail
+    mkdir -p /root/.claude/skills/cli-only-skill
+    echo "# CLI Only" > /root/.claude/skills/cli-only-skill/SKILL.md
+    mkdir -p /root/.claude/skills/tdd-workflow
+    echo "SENTINEL-KEEP" > /root/.claude/skills/tdd-workflow/SKILL.md
+
+    cd /root/dotfiles && just sync-agents-auto p
+
+    [ -f /root/.claude/skills/cli-only-skill/SKILL.md ] && echo "orphan-preserved"
+    grep -q "CLI Only" /root/.claude/skills/cli-only-skill/SKILL.md && echo "orphan-content-intact"
+    grep -q "SENTINEL-KEEP" /root/.claude/skills/tdd-workflow/SKILL.md && echo "existing-not-overwritten"
+    # a skill in the dotfiles submodule but missing in the target IS added
+    # (add-only). 'sibyl' ships in the submodule.
+    [ -e /root/.claude/skills/sibyl ] && echo "missing-skill-added" || echo "ERR-missing-not-added"
+    """
+    result = _run_in_container(docker_image, cmd)
+    for marker in (
+        "orphan-preserved",
+        "orphan-content-intact",
+        "existing-not-overwritten",
+        "missing-skill-added",
+    ):
+        assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
+    assert "ERR-missing-not-added" not in result.stdout, result.stdout

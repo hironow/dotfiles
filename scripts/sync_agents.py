@@ -50,6 +50,26 @@ HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
 # Directories to sync directly (in addition to ROOT_AGENTS_* files)
 SYNC_DIRECTORIES = ["commands", "skills", "agents"]
 
+# Additive directories: add-only. Missing items are added, but existing target
+# items are NEVER overwritten and orphans are NEVER deleted. `skills` is additive
+# because it coexists with the `bunx skills` CLI, which installs skills (as
+# symlinks into ~/.agents/skills) from upstreams and from the dotfiles submodule
+# (`bunx skills add hironow/skills -s <name>`). A full-mirror sync would delete
+# CLI-only orphans and clobber the CLI-managed symlinks; additive preserves both
+# and defers population to the CLI. See repo CLAUDE.md.
+ADDITIVE_DIRECTORIES = ["skills"]
+# Exempt from additive (synced normally even under an additive dir): the
+# dotfiles-owned skill-creator workspace `skills/learned/`.
+ADDITIVE_EXEMPT_SUBDIRS = ["learned"]
+
+
+def _is_additive_item(relative_path: str) -> bool:
+    """True if a sync item is in an additive dir and not an exempt subdir."""
+    parts = relative_path.split("/")
+    if parts[0] not in ADDITIVE_DIRECTORIES:
+        return False
+    return not (len(parts) > 1 and parts[1] in ADDITIVE_EXEMPT_SUBDIRS)
+
 
 @dataclass
 class AgentTarget:
@@ -468,6 +488,9 @@ def _build_deletion_plan(
     deletions: list[_DeleteAction] = []
 
     for dir_name in agent.get_sync_directories():
+        # Additive dirs (skills) are add-only: never delete from the target.
+        if dir_name in ADDITIVE_DIRECTORIES:
+            continue
         manifest_items = set(manifest.items.get(dir_name, []))
         dotfiles_dir_path = dotfiles_dir / dir_name
         dotfiles_items: set[str] = set()
@@ -509,6 +532,10 @@ def _detect_target_only_items(
     orphans: list[_DeleteAction] = []
 
     for dir_name in agent.get_sync_directories():
+        # Additive dirs (skills) keep target-only items (e.g. bunx-skills CLI
+        # installs not present in the dotfiles submodule).
+        if dir_name in ADDITIVE_DIRECTORIES:
+            continue
         target_dir = agent.directory / dir_name
         source_dir = dotfiles_dir / dir_name
 
@@ -802,7 +829,17 @@ def _build_sync_plan(
         target_path = agent.directory / item.relative_path
 
         status: Literal["new", "changed", "synced"]
-        if target_path.is_symlink():
+        # Additive dirs (skills) are add-only: add when missing, but NEVER
+        # overwrite an existing target (a bunx-skills CLI symlink/copy) and NEVER
+        # delete. Prefer `bunx skills add` for populating skills. `learned/` is
+        # the dotfiles-owned skill-creator workspace, so it syncs normally.
+        if _is_additive_item(item.relative_path):
+            status = (
+                "new"
+                if not (target_path.exists() or target_path.is_symlink())
+                else "synced"
+            )
+        elif target_path.is_symlink():
             # Symlinks in targets should always be replaced with real copies
             status = "changed"
         elif item.is_directory:
