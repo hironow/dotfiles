@@ -23,7 +23,9 @@
     - spoke → `<agent>/docs/agents/*` (base 内の `docs/agents/` 参照は配布時に
       **その agent home の絶対パスへ rewrite**。相対だと作業 project 側に解決して外すため)
     - hooks + settings → **claude-family のみ**。settings.json は user キーを壊さず
-      **冪等マージ** (manifest 非追跡。marker = event+matcher+rendered command)
+      **update-in-place マージ** (manifest 非追跡)。sync が所有するのは command が
+      `<agent>/hooks/` を指す block のみで、毎回その managed block を最新 fragment で
+      置換 (hook command 変更でも stale 重複が残らない)、user 作成 block は保持
     - `ROOT_AGENTS_<x>_<y>(.ext|/)` → `<agent>/<x>/<y>` (`_`→`/`) の従来規約も継続
     - **`skills` は additive** (`ADDITIVE_DIRECTORIES`): 欠落 skill のみ追加、既存
       target は**上書きしない・削除しない**。`bunx skills` CLI が `~/.agents/skills`

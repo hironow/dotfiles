@@ -702,16 +702,27 @@ def _render_hook_command(command: str, agent: AgentTarget) -> str:
     )
 
 
+def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
+    """A hook block sync owns: every command points at the agent's hooks dir."""
+    inner = block.get("hooks", [])
+    marker = f"{agent.directory}/hooks/"
+    return bool(inner) and all(marker in h.get("command", "") for h in inner)
+
+
 def _merge_hook_settings(
     dotfiles_dir: Path, agent: AgentTarget, dry_run: bool = False
 ) -> bool:
-    """Idempotently merge the hook fragment into the agent's settings.json.
+    """Merge the hook fragment into the agent's settings.json, update-in-place.
 
     NOT manifest-tracked: settings.json is a user-owned shared file, so the
     item-granular manifest (whole-file add/delete) would clobber user hooks on an
-    orphan sweep. Identity is the (event, matcher, rendered-command-set) tuple, so
-    re-running is a no-op. User keys and unmanaged hook entries are preserved.
-    With dry_run=True nothing is written. Returns True if the file would change.
+    orphan sweep. Instead, sync OWNS exactly the hook blocks whose commands all
+    point at ``<agent>/hooks/`` (see _is_managed_hook_block): on each run those
+    managed blocks are replaced by the current fragment (so a changed/removed
+    hook command does not leave a stale duplicate), while user-authored blocks
+    and other settings keys are preserved untouched. Re-running with an unchanged
+    fragment is a no-op. With dry_run=True nothing is written. Returns True if the
+    file would change.
     """
     fragment_path = dotfiles_dir / HOOK_SETTINGS_FRAGMENT
     if not fragment_path.exists():
@@ -720,21 +731,39 @@ def _merge_hook_settings(
     target_path = agent.directory / "settings.json"
     target = json.loads(target_path.read_text()) if target_path.exists() else {}
 
-    hooks = target.setdefault("hooks", {})
-    changed = False
-    for event, blocks in fragment.get("hooks", {}).items():
-        existing_blocks = hooks.setdefault(event, [])
-        for block in blocks:
-            rendered = {
+    # Desired managed blocks per event, rendered to the agent's absolute hooks path.
+    desired: dict[str, list[dict]] = {
+        event: [
+            {
                 "matcher": block.get("matcher"),
                 "hooks": [
                     {**h, "command": _render_hook_command(h["command"], agent)}
                     for h in block.get("hooks", [])
                 ],
             }
-            if rendered not in existing_blocks:
-                existing_blocks.append(rendered)
-                changed = True
+            for block in blocks
+        ]
+        for event, blocks in fragment.get("hooks", {}).items()
+    }
+
+    hooks: dict[str, list[dict]] = target.get("hooks", {})
+    changed = False
+    for event in set(hooks) | set(desired):
+        existing = hooks.get(event, [])
+        # keep user (unmanaged) blocks; replace managed ones with the current set
+        kept = [b for b in existing if not _is_managed_hook_block(b, agent)]
+        new_list = kept + desired.get(event, [])
+        if new_list != existing:
+            changed = True
+        if new_list:
+            hooks[event] = new_list
+        else:
+            hooks.pop(event, None)
+
+    if hooks:
+        target["hooks"] = hooks
+    else:
+        target.pop("hooks", None)
 
     if changed and not dry_run:
         target_path.parent.mkdir(parents=True, exist_ok=True)

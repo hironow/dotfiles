@@ -2240,3 +2240,30 @@ def test_no_skills_flag_deploys_instructions_and_skips_skills(docker_image):
     ):
         assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
     assert "ERR-skill-copied" not in result.stdout, result.stdout
+
+
+def test_hub_and_spoke_settings_merge_updates_managed_in_place(docker_image):
+    """When a managed hook command changes in the fragment, the old managed
+    block is REPLACED in settings.json (not left as a stale duplicate)."""
+    cmd = r"""
+    set -euo pipefail
+    cd /root/dotfiles
+    just sync-agents-auto p
+    grep -q 'hooks/block-secrets.sh' /root/.claude/settings.json && echo "v1-present"
+
+    # change a managed hook command in the fragment, then re-sync
+    sed -i 's#/.claude/hooks/block-secrets.sh#/.claude/hooks/block-secrets-v2.sh#' \
+        .claude/settings.hooks.json
+    just sync-agents-auto p
+
+    grep -q 'hooks/block-secrets-v2.sh' /root/.claude/settings.json && echo "v2-present"
+    if grep -q 'hooks/block-secrets\.sh"' /root/.claude/settings.json; then
+        echo "ERR-v1-stale"
+    else
+        echo "v1-removed"
+    fi
+    """
+    result = _run_in_container(docker_image, cmd)
+    for marker in ("v1-present", "v2-present", "v1-removed"):
+        assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
+    assert "ERR-v1-stale" not in result.stdout, result.stdout
