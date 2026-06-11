@@ -15,7 +15,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
-        with:
-          experimental: true # [default: false] enable experimental features
+      # shellcheck は ubuntu-latest ランナーにプリインストール済み。
+      # CI は mise 非依存 (mise.toml はローカル開発用)。
       - run: shellcheck *.sh
