@@ -63,7 +63,7 @@ just sync-agents-preview …  # dry-run
 | recipe | 内容 |
 |---|---|
 | `just` / `just help` | recipe 一覧 |
-| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `semgrep --test` + `tofu test` + `portless-doc-check` |
+| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` |
 | `just ci-all` | `ci` + `test` + `test-install` (Docker サンドボックス込み) |
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |
 | `just test` | devcontainer サンドボックステスト (下記) |
