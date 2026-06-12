@@ -30,7 +30,8 @@ LOOP:
   5. Run evaluation command (with timeout)
   6. Extract composite_score and constraint_violated
   7. IF constraints met AND score improved -> keep commit
-     ELSE -> git reset --hard HEAD~1 (revert)
+     ELSE -> git reset --hard "$base" (revert to the iteration baseline
+             recorded by the designer agent's Step 0 preflight; never HEAD~1)
   8. Log result to design-results.tsv
   9. GOTO 1
 ```

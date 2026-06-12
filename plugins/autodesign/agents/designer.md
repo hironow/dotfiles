@@ -65,6 +65,31 @@ run evaluation, and decide whether to keep or revert the change.
 
 **Exploration Protocol:**
 
+Step 0 - Revert Preflight (MANDATORY before any change):
+
+The keep/revert cycle is only safe on a throwaway design branch. Before
+modifying anything, verify the loop will not destroy real work:
+
+- Confirm the current branch is a design branch:
+
+  ```bash
+  BRANCH=$(git branch --show-current)
+  [[ "$BRANCH" == design/* ]] || { echo "ERROR: not on design/* — aborting" >&2; exit 1; }
+  ```
+
+- Confirm a clean working tree (no unexpected dirty/untracked files that a
+  hard reset would erase):
+
+  ```bash
+  [[ -z "$(git status --porcelain)" ]] || { echo "ERROR: working tree not clean — aborting" >&2; exit 1; }
+  ```
+
+- Record this iteration's baseline commit SHA — run `git rev-parse HEAD` and keep
+  the value. Claude Code shell variables do NOT persist across separate Bash
+  calls, so treat `$base` in later steps as that literal SHA: paste the recorded
+  hash in (or re-record it inside the same Bash call that reverts). Every revert
+  below returns to this recorded baseline — never a blind `HEAD~1`.
+
 Step 1 - Understand State:
 
 - Read design-config.yaml for parameters (target_files, eval_target, evaluators, constraints, axes)
@@ -130,8 +155,11 @@ Step 7 - Record:
 
 Step 8 - Git Action:
 
-- If keep: do nothing (commit stays, branch advances)
-- If discard, constraint_fail, or crash: `git reset --hard HEAD~1`
+- If keep: do nothing (commit stays, branch advances; the new HEAD becomes the
+  next iteration's baseline)
+- If discard, constraint_fail, or crash: `git reset --hard "$base"` (restore the
+  Step 0 baseline; do NOT use `git reset --hard HEAD~1` — a miscounted or
+  multi-commit revert can destroy kept work)
 
 **Exploration Axis Hints:**
 
@@ -166,9 +194,12 @@ Return a concise report:
 
 **Critical Rules:**
 
+- ALWAYS run the Step 0 revert preflight (design-branch + clean-tree check,
+  record `base`) before changing any file
 - NEVER modify files outside the target list
 - NEVER modify the evaluation command or scripts
 - NEVER skip logging to design-results.tsv
 - ALWAYS commit before running evaluation
 - ALWAYS check constraints BEFORE comparing scores
-- ALWAYS revert on failure (git reset --hard HEAD~1)
+- ALWAYS revert on failure with `git reset --hard "$base"` (the recorded
+  iteration baseline — never `HEAD~1`)

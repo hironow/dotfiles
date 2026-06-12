@@ -80,7 +80,8 @@ Append to review-results.tsv (tab-separated):
 ### 8. Git Action
 
 - **keep**: Commit stays, proceed to next iteration
-- **revert**: `git reset --hard HEAD~1`, try a different approach or skip
+- **revert**: `git reset --hard "$base"` (the iteration baseline recorded by the
+  reviewer agent's Step 0 preflight; never `HEAD~1`), try a different approach or skip
 
 ## Loop Control
 

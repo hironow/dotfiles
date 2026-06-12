@@ -12,16 +12,18 @@ Pipeline (full semantics: docs/agents/enforcement.md):
    bodies fed to interpreters (bash, python, node, ...) are executable code
    and are re-analyzed recursively.
 2. Raw-string guards on the heredoc-cleaned text for destructive/IaC
-   commands (rm -rf /, force-push, gcloud/cdr mutations) — over-blocking is
-   the safe side there, so quoting is deliberately ignored.
+   commands (rm -rf /, gcloud/cdr mutations) — over-blocking is the safe
+   side there, so quoting is deliberately ignored.
 3. shlex tokenization (POSIX, punctuation_chars): quoted prose collapses
    into single tokens that never equal a tool name, across lines too.
 4. Token walk with a minimal shell grammar: command boundaries are
    ; && || | & ( ); NAME=VALUE prefixes and wrappers (env/sudo/...) are
    skipped at command start; redirect operators consume the next token as
    their operand. Guards: pip/poetry/pipenv, npm/yarn, make (command name,
-   basename-resolved), per-invocation pnpm lockfile gate, and .yml-creation
-   detection (redirect targets, touch/tee args, cp/mv destinations).
+   basename-resolved), per-invocation pnpm lockfile gate, force-push to a
+   protected branch (any force flag + a main/master refspec, order- and
+   spelling-independent), and .yml-creation detection (redirect targets,
+   touch/tee args, cp/mv destinations).
 
 If tokenization still fails after heredoc separation, tooling guards fall
 back to the previous line-based quote-strip regex scan — never worse than
@@ -65,6 +67,10 @@ MSG_YML = (
     "(and 'compose.yaml', not docker-compose.*) — write the .yaml name "
     "instead."
 )
+MSG_FORCE_PUSH = (
+    "Refusing force-push to a protected branch (main/master). Open a PR; "
+    "never rewrite shared history on the default branch."
+)
 
 PIP_COMMANDS = {"pip", "pip3", "poetry", "pipenv"}
 NODE_COMMANDS = {"npm", "yarn"}
@@ -88,6 +94,8 @@ INTERPRETERS = {
 }
 COMMAND_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", ";;"}
 YML_CREATION_COMMANDS = {"touch", "tee", "cp", "mv"}
+PROTECTED_REFS = {"main", "master"}
+FORCE_PUSH_FLAGS = {"-f", "--force", "--force-if-includes"}
 
 ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 HEREDOC_OPEN_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
@@ -101,11 +109,6 @@ RAW_GUARDS: list[tuple[re.Pattern[str], str]] = [
             r"rm[\s]+(-[a-zA-Z]*[rR][a-zA-Z]*[\s]+)?(-[a-zA-Z]*f[a-zA-Z]*[\s]+)?/($|[\s])"
         ),
         "Refusing 'rm -rf /' (or equivalent root deletion).",
-    ),
-    (
-        re.compile(r"git[\s]+push[\s].*--force([\s]|=).*(main|master)"),
-        "Refusing force-push to main/master. Open a PR; never rewrite shared "
-        "history on the default branch.",
     ),
     (
         re.compile(r"gcloud[\s].*(add-iam-policy-binding|set-iam-policy)"),
@@ -141,6 +144,32 @@ def _basename(token: str) -> str:
 def _is_yml_name(token: str) -> bool:
     base = _basename(token)
     return base.endswith(".yml") or base in {"docker-compose.yaml"}
+
+
+def _is_force_push_flag(token: str) -> bool:
+    """True for any git push flag that rewrites the remote ref."""
+    if token in FORCE_PUSH_FLAGS:
+        return True
+    # --force-with-lease and --force-with-lease=<ref>[:<expect>]
+    return token == "--force-with-lease" or token.startswith("--force-with-lease=")
+
+
+def _targets_protected_ref(args: list[str]) -> bool:
+    """True if any positional refspec pushes to main/master.
+
+    Handles bare branch names (`main`), refspecs (`HEAD:main`,
+    `feature:main`) and fully-qualified refs (`refs/heads/main`). Flags and
+    the remote name are positionals too, but neither resolves to a protected
+    branch, so they are simply not matched.
+    """
+    for arg in args:
+        if arg.startswith("-"):
+            continue
+        dest = arg.rsplit(":", 1)[-1]  # src:dst refspec -> dst
+        dest = dest.rsplit("/", 1)[-1]  # refs/heads/main -> main
+        if dest in PROTECTED_REFS:
+            return True
+    return False
 
 
 def split_heredocs(text: str) -> tuple[str, list[str]]:
@@ -242,6 +271,11 @@ class _CommandWalker:
             block(MSG_NODE)
         if name == "make":
             block(MSG_MAKE)
+        if name == "git" and "push" in args:
+            if any(_is_force_push_flag(a) for a in args) and _targets_protected_ref(
+                args
+            ):
+                block(MSG_FORCE_PUSH)
         if name == "cd":
             target = args[0] if args else "~"
             self.effective_dir = _resolve_dir(target, self.effective_dir)

@@ -65,6 +65,31 @@ code, run evaluation, and decide whether to keep or revert the change.
 
 **Experiment Protocol:**
 
+Step 0 - Revert Preflight (MANDATORY before any change):
+
+The keep/revert cycle is only safe on a throwaway experiment branch. Before
+modifying anything, verify the loop will not destroy real work:
+
+- Confirm the current branch is an experiment branch:
+
+  ```bash
+  BRANCH=$(git branch --show-current)
+  [[ "$BRANCH" == experiment/* ]] || { echo "ERROR: not on experiment/* — aborting" >&2; exit 1; }
+  ```
+
+- Confirm a clean working tree (no unexpected dirty/untracked files that a
+  hard reset would erase):
+
+  ```bash
+  [[ -z "$(git status --porcelain)" ]] || { echo "ERROR: working tree not clean — aborting" >&2; exit 1; }
+  ```
+
+- Record this iteration's baseline commit SHA — run `git rev-parse HEAD` and keep
+  the value. Claude Code shell variables do NOT persist across separate Bash
+  calls, so treat `$base` in later steps as that literal SHA: paste the recorded
+  hash in (or re-record it inside the same Bash call that reverts). Every revert
+  below returns to this recorded baseline — never a blind `HEAD~1`.
+
 Step 1 - Understand State:
 
 - Read experiment-config.yaml for parameters
@@ -118,8 +143,11 @@ Step 7 - Record:
 
 Step 8 - Git Action:
 
-- If keep: do nothing (commit stays, branch advances)
-- If discard or crash: `git reset --hard HEAD~1`
+- If keep: do nothing (commit stays, branch advances; the new HEAD becomes the
+  next iteration's baseline)
+- If discard or crash: `git reset --hard "$base"` (restore the Step 0 baseline;
+  do NOT use `git reset --hard HEAD~1` — a miscounted or multi-commit revert can
+  destroy kept work)
 
 **Error Handling:**
 
@@ -143,8 +171,11 @@ Return a concise report:
 
 **Critical Rules:**
 
+- ALWAYS run the Step 0 revert preflight (experiment-branch + clean-tree check,
+  record `base`) before changing any file
 - NEVER modify files outside the target list
 - NEVER modify the evaluation command or harness
 - NEVER skip logging to results.tsv
 - ALWAYS commit before running evaluation
-- ALWAYS revert on failure (git reset --hard HEAD~1)
+- ALWAYS revert on failure with `git reset --hard "$base"` (the recorded
+  iteration baseline — never `HEAD~1`)
