@@ -24,8 +24,8 @@ EXIT_ALLOW = 0
 EXIT_BLOCK = 2
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None or shutil.which("jq") is None,
-    reason="hook needs bash + jq on PATH",
+    shutil.which("bash") is None or shutil.which("python3") is None,
+    reason="hook needs bash + python3 on PATH",
 )
 
 
@@ -148,6 +148,137 @@ def test_make_mention_in_commit_message_is_allowed(unlocked_repo: Path) -> None:
     guard (observed false block)."""
     cmd = 'git commit -m "ci: have the gate make builds reproducible"'
     assert _run_hook(cmd, unlocked_repo) == EXIT_ALLOW
+
+
+# --- Heredocs: data bodies are opaque, interpreter bodies are code -----------
+
+
+def test_heredoc_prose_to_data_sink_is_allowed(tmp_path: Path) -> None:
+    """PR-body style heredoc fed to a data sink is prose, not invocations
+    (observed false block on a multi-line gh pr create body)."""
+    cmd = (
+        "cat <<'EOF' > /tmp/pr-body.md\n"
+        "this prose mentions npm and pnpm and make and even gcloud run deploy\n"
+        "EOF"
+    )
+    assert _run_hook(cmd, tmp_path) == EXIT_ALLOW
+
+
+def test_heredoc_prose_with_unbalanced_quote_is_allowed(tmp_path: Path) -> None:
+    """Prose apostrophes inside a data heredoc must not break parsing."""
+    cmd = "cat <<'EOF'\ndon't use npm here — prose only, isn't it\nEOF"
+    assert _run_hook(cmd, tmp_path) == EXIT_ALLOW
+
+
+def test_heredoc_to_shell_interpreter_is_blocked(tmp_path: Path) -> None:
+    """A heredoc piped into a shell executes — its body is scanned as code."""
+    cmd = "bash <<'EOF'\nnpm install\nEOF"
+    assert _run_hook(cmd, tmp_path) == EXIT_BLOCK
+
+
+# --- .yml creation via Bash ---------------------------------------------------
+
+
+def test_redirect_to_yml_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("echo hi > notes.yml", tmp_path) == EXIT_BLOCK
+
+
+def test_append_redirect_to_yml_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("echo hi >> notes.yml", tmp_path) == EXIT_BLOCK
+
+
+def test_touch_yml_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("touch a.yml", tmp_path) == EXIT_BLOCK
+
+
+def test_tee_yml_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("printf hi | tee a.yml", tmp_path) == EXIT_BLOCK
+
+
+def test_cp_to_yml_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("cp a.yaml b.yml", tmp_path) == EXIT_BLOCK
+
+
+def test_mv_to_yml_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("mv a.yaml c.yml", tmp_path) == EXIT_BLOCK
+
+
+def test_redirect_to_deprecated_compose_name_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("echo x > docker-compose.yaml", tmp_path) == EXIT_BLOCK
+
+
+def test_touch_compose_yaml_is_allowed(tmp_path: Path) -> None:
+    assert _run_hook("touch compose.yaml", tmp_path) == EXIT_ALLOW
+
+
+def test_reading_yml_is_allowed(tmp_path: Path) -> None:
+    assert _run_hook("cat config.yml", tmp_path) == EXIT_ALLOW
+
+
+def test_cp_yml_to_directory_is_allowed(tmp_path: Path) -> None:
+    """Copying an existing .yml elsewhere (dest is a dir) is not creation."""
+    assert _run_hook("cp foo.yml backup/", tmp_path) == EXIT_ALLOW
+
+
+# --- Minimal shell grammar: prefixes, wrappers, boundaries --------------------
+
+
+def test_assignment_prefix_does_not_hide_command(tmp_path: Path) -> None:
+    assert _run_hook("VAR=x touch a.yml", tmp_path) == EXIT_BLOCK
+
+
+def test_env_wrapper_does_not_hide_command(tmp_path: Path) -> None:
+    assert _run_hook("env FOO=1 touch a.yml", tmp_path) == EXIT_BLOCK
+
+
+def test_command_after_cd_is_scanned(tmp_path: Path) -> None:
+    assert _run_hook("cd sub && touch a.yml", tmp_path) == EXIT_BLOCK
+
+
+def test_xargs_wrapper_does_not_hide_command(tmp_path: Path) -> None:
+    assert _run_hook("echo x | xargs npm install", tmp_path) == EXIT_BLOCK
+
+
+# --- Wrapper contract: deployed layout and fail-closed ------------------------
+
+
+def test_wrapper_resolves_deployed_layout(tmp_path: Path) -> None:
+    """In agent homes the pair is hooks/block-prohibited-commands.{sh,py}."""
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+    shutil.copy(HOOK, hooks_dir / "block-prohibited-commands.sh")
+    shutil.copy(
+        HOOK.with_name("ROOT_AGENTS_hooks_block-prohibited-commands.py"),
+        hooks_dir / "block-prohibited-commands.py",
+    )
+    payload = json.dumps({"tool_input": {"command": "npm install"}})
+    result = subprocess.run(
+        ["bash", str(hooks_dir / "block-prohibited-commands.sh")],
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+    assert result.returncode == EXIT_BLOCK
+
+
+def test_wrapper_fails_closed_without_companion(tmp_path: Path) -> None:
+    """A wrapper that cannot find its Python companion must block, loudly."""
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir()
+    shutil.copy(HOOK, hooks_dir / "block-prohibited-commands.sh")
+    payload = json.dumps({"tool_input": {"command": "ls"}})
+    result = subprocess.run(
+        ["bash", str(hooks_dir / "block-prohibited-commands.sh")],
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+    assert result.returncode == EXIT_BLOCK
+    assert "failing closed" in result.stderr
 
 
 # --- Destructive / IaC drift ------------------------------------------------
