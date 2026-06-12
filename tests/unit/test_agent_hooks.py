@@ -292,6 +292,41 @@ def test_force_push_to_main_is_blocked(tmp_path: Path) -> None:
     assert _run_hook("git push --force origin main", tmp_path) == EXIT_BLOCK
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param("git push --force origin main", id="long-flag-before-ref"),
+        pytest.param("git push -f origin main", id="short-flag"),
+        pytest.param("git push origin main --force", id="flag-after-ref"),
+        pytest.param("git push --force-with-lease origin main", id="force-with-lease"),
+        pytest.param(
+            "git push --force-if-includes origin main", id="force-if-includes"
+        ),
+        pytest.param("git push --force origin master", id="master-branch"),
+        pytest.param("git push -f origin HEAD:main", id="refspec-dest-main"),
+        pytest.param("git -C /repo push -f origin main", id="git-global-opt"),
+    ],
+)
+def test_force_push_to_protected_branch_is_blocked(
+    command: str, tmp_path: Path
+) -> None:
+    assert _run_hook(command, tmp_path) == EXIT_BLOCK
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param("git push -f origin feature", id="force-feature-branch"),
+        pytest.param("git push origin main", id="non-force-to-main"),
+        pytest.param(
+            'git commit -m "git push --force origin main"', id="prose-mention"
+        ),
+    ],
+)
+def test_non_protected_force_push_is_allowed(command: str, tmp_path: Path) -> None:
+    assert _run_hook(command, tmp_path) == EXIT_ALLOW
+
+
 def test_readonly_gcloud_is_allowed(tmp_path: Path) -> None:
     assert _run_hook("gcloud compute instances list", tmp_path) == EXIT_ALLOW
 
