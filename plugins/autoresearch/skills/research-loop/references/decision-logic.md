@@ -28,7 +28,7 @@ Experiment completed
 |   |   |   |       +-- REVERT if any complexity added
 |   |   |   |
 |   |   |   +-- NO: Metric same or worse
-|   |   |       +-- REVERT (git reset --hard HEAD~1)
+|   |   |       +-- REVERT (git reset --hard "$base")
 |   |   |
 |   |   +-- (Log result to results.tsv regardless of decision)
 |   |
@@ -41,7 +41,7 @@ Experiment completed
 |           |
 |           +-- Fundamental issue?
 |               +-- Log "crash" to results.tsv
-|               +-- git reset --hard HEAD~1
+|               +-- git reset --hard "$base"
 |               +-- Move on to next hypothesis
 ```
 
@@ -92,11 +92,14 @@ No additional git operation needed.
 ### Revert (discard)
 
 ```bash
-git reset --hard HEAD~1
+git reset --hard "$base"   # the iteration baseline from the agent's Step 0 preflight
 ```
 
-This removes the last commit and restores the working tree.
-The results.tsv entry preserves the record of what was tried.
+`$base` is the commit recorded by the researcher agent's Step 0 revert preflight
+(`base=$(git rev-parse HEAD)`), after it verified the branch is `experiment/*`
+and the tree is clean. Reset to `$base` rather than `HEAD~1` so a miscounted or
+multi-commit revert can never destroy kept work. The results.tsv entry preserves
+the record of what was tried.
 
 ### Crash recovery
 
@@ -109,7 +112,7 @@ git commit --amend -m "experiment: <description> (fix)"
 # Re-run evaluation
 
 # If not fixable
-git reset --hard HEAD~1
+git reset --hard "$base"   # restore the Step 0 baseline
 ```
 
 ## Metric Extraction Patterns

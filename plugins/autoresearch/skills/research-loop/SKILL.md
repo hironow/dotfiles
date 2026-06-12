@@ -30,7 +30,8 @@ LOOP:
   5. Extract metrics from output
   6. Log result to results.tsv (append-only, git-untracked)
   7. IF metric improved -> keep commit (advance branch)
-     ELSE -> git reset --hard HEAD~1 (revert)
+     ELSE -> git reset --hard "$base" (revert to the iteration baseline
+             recorded by the researcher agent's Step 0 preflight; never HEAD~1)
   8. GOTO 1
 ```
 

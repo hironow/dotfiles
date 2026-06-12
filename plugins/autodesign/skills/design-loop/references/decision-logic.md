@@ -12,7 +12,7 @@ Experiment completed
 |   |   +-- ANY constraint violated?
 |   |   |   |
 |   |   |   +-- YES: Log "constraint_fail", record which constraint
-|   |   |   |   +-- git reset --hard HEAD~1
+|   |   |   |   +-- git reset --hard "$base"
 |   |   |   |   +-- Record axis+constraint pair for future avoidance
 |   |   |   |
 |   |   |   +-- NO: Compare composite_score with current best
@@ -36,7 +36,7 @@ Experiment completed
 |   |   |       |   |       +-- REVERT if any complexity added
 |   |   |       |   |
 |   |   |       |   +-- NO: Score same or worse
-|   |   |       |       +-- REVERT (git reset --hard HEAD~1)
+|   |   |       |       +-- REVERT (git reset --hard "$base")
 |   |   |       |
 |   |   |       +-- (Log result to design-results.tsv regardless)
 |   |   |
@@ -55,7 +55,7 @@ Experiment completed
 |           |
 |           +-- Fundamental issue?
 |               +-- Log "crash" to design-results.tsv
-|               +-- git reset --hard HEAD~1
+|               +-- git reset --hard "$base"
 |               +-- Move on to next hypothesis
 ```
 
@@ -126,8 +126,13 @@ No additional git operation needed.
 ### Revert (discard or constraint_fail)
 
 ```bash
-git reset --hard HEAD~1
+git reset --hard "$base"   # the iteration baseline from the agent's Step 0 preflight
 ```
+
+`$base` is the commit recorded by the designer agent's Step 0 revert preflight
+(`base=$(git rev-parse HEAD)`), after it verified the branch is `design/*` and
+the tree is clean. Reset to `$base` rather than `HEAD~1` so a miscounted or
+multi-commit revert can never destroy kept work.
 
 ### Crash recovery
 
@@ -140,5 +145,5 @@ git commit --amend -m "design(<axis>): <description> (fix)"
 # Re-run evaluation
 
 # If not fixable
-git reset --hard HEAD~1
+git reset --hard "$base"   # restore the Step 0 baseline
 ```

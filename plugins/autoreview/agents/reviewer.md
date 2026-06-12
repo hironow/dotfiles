@@ -60,6 +60,31 @@ fix violations, rescan, and decide whether to keep or revert the change.
 
 **Review Protocol:**
 
+Step 0 — Revert Preflight (MANDATORY before any change):
+
+The keep/revert cycle is only safe on a throwaway review branch. Before
+modifying anything, verify the loop will not destroy real work:
+
+- Confirm the current branch is a review branch:
+
+  ```bash
+  BRANCH=$(git branch --show-current)
+  [[ "$BRANCH" == review/* ]] || { echo "ERROR: not on review/* — aborting" >&2; exit 1; }
+  ```
+
+- Confirm a clean working tree (no unexpected dirty/untracked files that a
+  hard reset would erase):
+
+  ```bash
+  [[ -z "$(git status --porcelain)" ]] || { echo "ERROR: working tree not clean — aborting" >&2; exit 1; }
+  ```
+
+- Record this iteration's baseline commit SHA — run `git rev-parse HEAD` and keep
+  the value. Claude Code shell variables do NOT persist across separate Bash
+  calls, so treat `$base` in later steps as that literal SHA: paste the recorded
+  hash in (or re-record it inside the same Bash call that reverts). Every revert
+  below returns to this recorded baseline — never a blind `HEAD~1`.
+
 Step 1 — Understand State:
 
 - Read review-config.yaml for mode, targets, categories, limits
@@ -146,7 +171,8 @@ Append result to review-results.tsv (tab-separated):
 Status values: "keep", "revert", "skip", "crash"
 
 Step 10 — Git Action:
-Before any destructive operation, verify the current branch is a review branch:
+Re-assert the Step 0 preflight invariants before any destructive operation
+(still on `review/*`, `base` recorded for this iteration):
 
 ```bash
 BRANCH=$(git branch --show-current)
@@ -156,8 +182,11 @@ if [[ "$BRANCH" != review/* ]]; then
 fi
 ```
 
-- If keep: commit stays, branch advances
-- If revert: `git reset --hard HEAD~1`
+- If keep: commit stays, branch advances (the new HEAD becomes the next
+  iteration's baseline)
+- If revert: `git reset --hard "$base"` (restore the Step 0 baseline; do NOT use
+  `git reset --hard HEAD~1` — a miscounted or multi-commit revert can destroy
+  kept work)
 - If skip: no git action, move to next category
 
 **Error Handling:**
@@ -183,10 +212,13 @@ Return a concise report:
 
 **Critical Rules:**
 
+- ALWAYS run the Step 0 revert preflight (review-branch + clean-tree check,
+  record `base`) before changing any file
 - NEVER modify files outside target_paths
 - NEVER modify review-config.yaml or evaluation harness
 - NEVER skip logging to review-results.tsv
 - ALWAYS commit before rescanning
-- ALWAYS revert on failure (git reset --hard HEAD~1)
+- ALWAYS revert on failure with `git reset --hard "$base"` (the recorded
+  iteration baseline — never `HEAD~1`)
 - ALWAYS check loop limits before starting work
 - ALWAYS verify no cross-category regressions on keep decisions
