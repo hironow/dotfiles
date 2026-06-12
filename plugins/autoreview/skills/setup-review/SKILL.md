@@ -35,6 +35,17 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-guardrails.sh"
 If `resolve-guardrails.sh` fails, prompt the user to initialize the
 `guardrails/semgrep` submodule.
 
+Also verify `jq` is available — the out-of-scope edit guard
+(check-scope.sh) requires it and silently disables itself (fail-open)
+without it:
+
+```bash
+command -v jq >/dev/null && echo "jq OK" || echo "jq MISSING"
+```
+
+If jq is missing, tell the user the scope guard will be inactive for this
+loop and ask whether to install jq first or continue knowingly without it.
+
 ### 2. Agree on Review Tag
 
 Propose a tag based on today's date and focus area (e.g., `apr16-naming-fix`).
@@ -119,6 +130,8 @@ Once confirmed, hand off to the review skill or reviewer agent.
 Before proceeding, verify:
 
 - [ ] Semgrep is installed and rules are accessible
+- [ ] jq available (scope guard active) — or the user explicitly accepted
+      running without it
 - [ ] Review branch created and checked out
 - [ ] review-config.yaml exists and is valid
 - [ ] review-results.tsv initialized with header

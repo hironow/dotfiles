@@ -158,3 +158,142 @@ def test_empty_file_path_allows_silently(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert result.stdout.strip() == ""
+
+
+# --- structured input parsing (jq) -------------------------------------------
+
+
+def _decision(result: subprocess.CompletedProcess[str]) -> str:
+    """'allow' for silent exit, 'ask' when the hook emits a decision JSON."""
+    if result.stdout.strip() == "":
+        return "allow"
+    return json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"]
+
+
+def test_content_key_before_file_path_is_not_misparsed(tmp_path: Path) -> None:
+    """A Write payload whose content mentions "file_path" must not shadow the
+    real tool_input.file_path (the old grep parser took the first match)."""
+    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC)
+    payload = (
+        '{"tool_input":{"content":"see \\"file_path\\": \\"/bogus/out.md\\" in docs",'
+        '"file_path":"/repo/src/algo.py"}}'
+    )
+    result = subprocess.run(
+        ["bash", str(CANONICAL), *ARGS],
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+    assert _decision(result) == "allow"
+
+
+def test_escaped_quote_in_file_path_is_decoded(tmp_path: Path) -> None:
+    config = 'target_files:\n  - we"ird.py\neval_command: "x"\n'
+    result = _run_hook(tmp_path, '/repo/we"ird.py', config=config)
+    assert _decision(result) == "allow"
+
+
+def test_missing_jq_fails_open(tmp_path: Path) -> None:
+    """Without jq the guard deliberately disables itself (fail-open) instead
+    of producing constant asks; the setup skills preflight jq for this."""
+    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC)
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    for tool in ["cat", "basename", "sed", "awk", "grep", "head"]:
+        path = shutil.which(tool)
+        assert path is not None
+        (bindir / tool).symlink_to(path)
+    bash = shutil.which("bash")
+    assert bash is not None
+    payload = json.dumps({"tool_input": {"file_path": "/repo/not-in-scope.md"}})
+    result = subprocess.run(
+        [bash, str(CANONICAL), *ARGS],
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env={"PATH": str(bindir)},
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == ""
+
+
+# --- anchored scope matching --------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("entry", "file_path", "expected"),
+    [
+        # file entries match exactly or at a path-segment boundary…
+        ("src/algo.py", "/repo/src/algo.py", "allow"),
+        ("src/algo.py", "src/algo.py", "allow"),
+        # …but not as bare substrings (the old parser allowed both of these)
+        ("algo.py", "/repo/myalgo.py", "ask"),
+        ("src/foo.go", "/repo/src/foo.gold", "ask"),
+        ("src/foo.go", "/repo/src/foo_generated.go", "ask"),
+        # leading ./ in the entry is normalized away
+        ("./src/foo.go", "/tmp/repo/src/foo.go", "allow"),
+        # directory entries (trailing /) match by prefix or path segment
+        ("src/", "src/sub/file.py", "allow"),
+        ("src/", "/repo/src/sub/file.py", "allow"),
+        ("src/", "/repo/src2/file.py", "ask"),
+    ],
+)
+def test_anchored_matching(
+    tmp_path: Path, entry: str, file_path: str, expected: str
+) -> None:
+    config = f'target_files:\n  - "{entry}"\neval_command: "x"\n'
+    result = _run_hook(tmp_path, file_path, config=config)
+    assert _decision(result) == expected, (entry, file_path)
+
+
+# --- config list extraction ----------------------------------------------------
+
+
+def test_unquoted_entry_is_honored(tmp_path: Path) -> None:
+    config = "target_files:\n  - src/algo.py\neval_command: x\n"
+    result = _run_hook(tmp_path, "/repo/src/algo.py", config=config)
+    assert _decision(result) == "allow"
+
+
+def test_comment_and_blank_lines_do_not_end_the_list(tmp_path: Path) -> None:
+    config = 'target_files:\n  # primary target\n\n  - "src/algo.py"\neval_command: x\n'
+    result = _run_hook(tmp_path, "/repo/src/algo.py", config=config)
+    assert _decision(result) == "allow"
+
+
+def test_list_at_end_of_file_keeps_its_last_entry(tmp_path: Path) -> None:
+    """The old sed-range parser unconditionally dropped the last line, losing
+    the final entry when the list closes the file."""
+    config = 'eval_command: x\ntarget_files:\n  - "src/algo.py"\n'
+    result = _run_hook(tmp_path, "/repo/src/algo.py", config=config)
+    assert _decision(result) == "allow"
+
+
+def test_empty_list_treats_everything_as_out_of_scope(tmp_path: Path) -> None:
+    config = "target_files:\neval_command: x\n"
+    result = _run_hook(tmp_path, "/repo/src/algo.py", config=config)
+    assert _decision(result) == "ask"
+
+
+# --- jq preflight in the setup skills ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "skill",
+    [
+        "plugins/autoresearch/skills/setup-experiment/SKILL.md",
+        "plugins/autodesign/skills/setup-design/SKILL.md",
+        "plugins/autoreview/skills/setup-review/SKILL.md",
+    ],
+)
+def test_setup_skill_preflights_jq(skill: str) -> None:
+    """Fail-open without jq is a conscious tradeoff only if setup surfaces it."""
+    text = (REPO / skill).read_text()
+    assert "command -v jq" in text, (
+        f"{skill} must preflight jq availability (the scope hook silently "
+        "disables itself without jq)"
+    )
