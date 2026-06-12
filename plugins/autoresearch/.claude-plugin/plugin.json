@@ -1,6 +1,6 @@
 {
   "name": "autoresearch",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Autonomous experiment loop plugin inspired by karpathy/autoresearch. Iteratively modifies target code, evaluates against fixed metrics, and keeps only improvements via git-based keep/revert cycles.",
   "author": {
     "name": "hironow"
