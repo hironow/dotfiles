@@ -24,8 +24,9 @@ explicit chat instruction overrides everything here.
 
 ## Non-negotiables (enforced by hooks + CI — see Enforcement)
 
-These are not preferences. They are gated mechanically; the reasons are given so
-you generalize correctly to unlisted cases.
+These are not preferences. Hooks gate them mechanically for Claude Code in every
+repo; other tools rely on the pre-commit + CI gate where the agent baseline is
+installed. The reasons are given so you generalize correctly to unlisted cases.
 
 - **`uv` only** for Python (`uv sync`, `uv add`, `uv run`). Never `pip`, `poetry`,
   `pipenv` — mixed resolvers desync the lockfile.
@@ -131,19 +132,18 @@ Open the matching file the moment the trigger applies:
 | adding/maintaining a Semgrep rule              | docs/agents/semgrep.md              |
 | editing docs / writing an ADR / intent / handover | docs/agents/docs-discipline.md   |
 | creating dirs/files or unsure where code goes  | docs/agents/project-structure.md    |
+| blocked by a hook / tuning or adding a hook    | docs/agents/enforcement.md          |
 
 ## Enforcement (deterministic — independent of model judgment)
 
 Instructions in this file are advisory; the rules below are not. They run
 regardless of what an agent decides:
 
-- **Claude Code hooks** (`.claude/settings.json`): block prohibited filenames
-  (`.yml`, deprecated compose names) and prohibited commands (`pip`/`poetry`/
-  `npm`/`yarn`/`make`, drift-causing `gcloud` mutations, obvious secrets) before
-  they execute; auto-run `ruff format`/`ruff check --fix` after edits.
+- **Claude Code hooks** (global, synced to `~/.claude`): block prohibited
+  filenames and commands before they execute; auto-format Python after edits.
 - **Git pre-commit** (`.githooks/pre-commit` → `just check`): no commit lands
   red. Enable with `just install-hooks`.
 - **CI** (`.github/workflows/quality-gate.yaml`): same gate + `tofu plan` drift
   check, required before merge.
 
-Setup and rationale: see README-agents-setup.md.
+Exit-code contract, full hook coverage, and tuning: docs/agents/enforcement.md.

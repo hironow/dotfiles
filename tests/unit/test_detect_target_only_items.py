@@ -2,6 +2,11 @@
 
 Tests the orphan detection logic that identifies items existing
 only in the target directory (not in dotfiles source or manifest).
+
+`skills` is an ADDITIVE directory (see ADDITIVE_DIRECTORIES in sync_agents):
+target-only skills are never flagged as orphans because the `bunx skills`
+CLI owns installs there. Orphan detection still applies to the non-additive
+sync directories (`commands`, `agents`).
 """
 
 from pathlib import Path
@@ -43,12 +48,21 @@ def _make_skill(parent: Path, name: str) -> Path:
     return skill_dir
 
 
-def test_detects_orphan_skill_in_target(workspace: dict[str, Path]) -> None:
-    """Target-only skill (not in source, not in manifest) is detected as orphan."""
+def _make_command(parent: Path, name: str) -> Path:
+    """Create a minimal command file under commands/."""
+    cmd_dir = parent / "commands"
+    cmd_dir.mkdir(parents=True, exist_ok=True)
+    cmd_file = cmd_dir / f"{name}.md"
+    cmd_file.write_text(f"# {name}\n")
+    return cmd_file
+
+
+def test_additive_skills_orphan_not_detected(workspace: dict[str, Path]) -> None:
+    """Target-only skill is NOT an orphan — skills/ is additive (CLI-owned)."""
     # given
     _make_skill(workspace["dotfiles"], "my-skill")
     _make_skill(workspace["target"], "my-skill")
-    _make_skill(workspace["target"], "orphan-skill")
+    _make_skill(workspace["target"], "cli-installed-skill")
     manifest = _SyncManifest(items={"skills": ["my-skill"]})
     agent = _make_agent(workspace["target"])
 
@@ -56,9 +70,44 @@ def test_detects_orphan_skill_in_target(workspace: dict[str, Path]) -> None:
     orphans = _detect_target_only_items(workspace["dotfiles"], agent, manifest)
 
     # then
+    assert orphans == []
+
+
+def test_detects_orphan_command_in_target(workspace: dict[str, Path]) -> None:
+    """Target-only item in a non-additive dir (commands/) is detected as orphan."""
+    # given
+    _make_command(workspace["dotfiles"], "my-cmd")
+    _make_command(workspace["target"], "my-cmd")
+    _make_command(workspace["target"], "orphan-cmd")
+    manifest = _SyncManifest(items={"commands": ["my-cmd.md"]})
+    agent = _make_agent(workspace["target"])
+
+    # when
+    orphans = _detect_target_only_items(workspace["dotfiles"], agent, manifest)
+
+    # then
     assert len(orphans) == 1
-    assert orphans[0].relative_path == "skills/orphan-skill"
+    assert orphans[0].relative_path == "commands/orphan-cmd.md"
     assert orphans[0].reason == "orphan"
+    assert orphans[0].is_directory is False
+
+
+def test_detects_orphan_directory_in_target(workspace: dict[str, Path]) -> None:
+    """Target-only directory in a non-additive dir is detected with is_directory."""
+    # given
+    orphan_dir = workspace["target"] / "agents" / "orphan-agent"
+    orphan_dir.mkdir(parents=True, exist_ok=True)
+    (orphan_dir / "agent.md").write_text("# orphan\n")
+    (workspace["dotfiles"] / "agents").mkdir(parents=True, exist_ok=True)
+    manifest = _SyncManifest(items={})
+    agent = _make_agent(workspace["target"])
+
+    # when
+    orphans = _detect_target_only_items(workspace["dotfiles"], agent, manifest)
+
+    # then
+    assert len(orphans) == 1
+    assert orphans[0].relative_path == "agents/orphan-agent"
     assert orphans[0].is_directory is True
 
 
@@ -171,10 +220,10 @@ def test_source_symlinks_count_as_valid_names(workspace: dict[str, Path]) -> Non
 def test_multiple_orphans_sorted_by_name(workspace: dict[str, Path]) -> None:
     """Multiple orphans are returned sorted by directory iteration order."""
     # given
-    _make_skill(workspace["dotfiles"], "keep-me")
-    _make_skill(workspace["target"], "keep-me")
-    _make_skill(workspace["target"], "zebra-orphan")
-    _make_skill(workspace["target"], "alpha-orphan")
+    _make_command(workspace["dotfiles"], "keep-me")
+    _make_command(workspace["target"], "keep-me")
+    _make_command(workspace["target"], "zebra-orphan")
+    _make_command(workspace["target"], "alpha-orphan")
     manifest = _SyncManifest(items={})
     agent = _make_agent(workspace["target"])
 
@@ -184,7 +233,7 @@ def test_multiple_orphans_sorted_by_name(workspace: dict[str, Path]) -> None:
     # then
     assert len(orphans) == 2
     paths = [o.relative_path for o in orphans]
-    assert paths == ["skills/alpha-orphan", "skills/zebra-orphan"]
+    assert paths == ["commands/alpha-orphan.md", "commands/zebra-orphan.md"]
 
 
 def test_no_target_skills_dir(workspace: dict[str, Path]) -> None:
@@ -202,7 +251,7 @@ def test_no_target_skills_dir(workspace: dict[str, Path]) -> None:
 
 
 def test_no_source_skills_dir(workspace: dict[str, Path]) -> None:
-    """All target items are orphans when source has no skills/ directory."""
+    """Target-only skills survive even when source has no skills/ — additive."""
     # given
     _make_skill(workspace["target"], "lonely-skill")
     manifest = _SyncManifest(items={})
@@ -212,8 +261,22 @@ def test_no_source_skills_dir(workspace: dict[str, Path]) -> None:
     orphans = _detect_target_only_items(workspace["dotfiles"], agent, manifest)
 
     # then
+    assert orphans == []
+
+
+def test_no_source_commands_dir(workspace: dict[str, Path]) -> None:
+    """All target items are orphans when source lacks a non-additive dir."""
+    # given
+    _make_command(workspace["target"], "lonely-cmd")
+    manifest = _SyncManifest(items={})
+    agent = _make_agent(workspace["target"])
+
+    # when
+    orphans = _detect_target_only_items(workspace["dotfiles"], agent, manifest)
+
+    # then
     assert len(orphans) == 1
-    assert orphans[0].relative_path == "skills/lonely-skill"
+    assert orphans[0].relative_path == "commands/lonely-cmd.md"
     assert orphans[0].reason == "orphan"
 
 
@@ -243,10 +306,10 @@ def test_respects_agent_sync_directories(workspace: dict[str, Path]) -> None:
 def test_orphan_file_not_directory(workspace: dict[str, Path]) -> None:
     """Non-directory orphan items are detected with is_directory=False."""
     # given
-    skills_dir = workspace["target"] / "skills"
-    skills_dir.mkdir(parents=True, exist_ok=True)
-    (skills_dir / "stray-file.md").write_text("# stray\n")
-    (workspace["dotfiles"] / "skills").mkdir(parents=True, exist_ok=True)
+    commands_dir = workspace["target"] / "commands"
+    commands_dir.mkdir(parents=True, exist_ok=True)
+    (commands_dir / "stray-file.md").write_text("# stray\n")
+    (workspace["dotfiles"] / "commands").mkdir(parents=True, exist_ok=True)
     manifest = _SyncManifest(items={})
     agent = _make_agent(workspace["target"])
 
@@ -255,5 +318,5 @@ def test_orphan_file_not_directory(workspace: dict[str, Path]) -> None:
 
     # then
     assert len(orphans) == 1
-    assert orphans[0].relative_path == "skills/stray-file.md"
+    assert orphans[0].relative_path == "commands/stray-file.md"
     assert orphans[0].is_directory is False

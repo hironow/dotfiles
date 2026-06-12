@@ -199,6 +199,12 @@ sync-agents-override *args:
 sync-agents-orphans *args:
     @{{UV_RUN}} scripts/sync_agents.py --orphans {{ args }}
 
+# Verify deployed agent-home instruction files have no dead file references
+# (run after sync-agents; environment-dependent, so not part of `ci`)
+[group('Agents')]
+check-agent-refs *homes:
+    @{{UV_RUN}} scripts/check_agent_home_refs.py {{ homes }}
+
 # Import only: target -> dotfiles. No forward sync, no orphan removal.
 # Default scope = .claude only. Pass targets to widen (same aliases as sync-agents).
 # Every selected agent becomes an import source — is_import_source flag is ignored.
@@ -350,6 +356,14 @@ test:
     uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_actor_type_injection.py
     @echo '✅ Tests finished.'
 
+# Test (unit): fast host-side unit tests — no Docker. Covers sync_agents
+# helpers and the agent hook scripts (tests/unit/). Runs as part of `ci`.
+[group('Test')]
+test-unit:
+    @echo '🧪 Running unit tests (host, no Docker)...'
+    uvx pytest -q -ra tests/unit/
+    @echo '✅ Unit tests finished.'
+
 # Test (install): run install.sh verification in Docker
 [group('Test')]
 test-install:
@@ -488,7 +502,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check semgrep-test portless-doc-check test-iac
+ci: check test-unit semgrep-test portless-doc-check test-iac
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification

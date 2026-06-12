@@ -15,23 +15,83 @@ cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty')"
 block() { echo "BLOCKED: $1" >&2; exit 2; }
 
 # --- Package managers ---------------------------------------------------------
+# Tooling-word guards scan with quoted substrings removed, so prose mentions
+# (commit messages, echo strings) don't false-trigger. The flip side — a quoted
+# invocation like `bash -c "npm i"` slips these guards — is accepted long tail:
+# prose rules + review cover it. Destructive/IaC guards below keep scanning the
+# full string (over-blocking is the safe side there).
+scan="$(printf '%s' "$cmd" | sed -E -e 's/"[^"]*"//g' -e "s/'[^']*'//g")"
+
 # Python: uv only.
-if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_./-])(pip3?|poetry|pipenv)([[:space:]]|$)'; then
+if printf '%s' "$scan" | grep -Eq '(^|[^[:alnum:]_./-])(pip3?|poetry|pipenv)([[:space:]]|$)'; then
   block "Python package management is 'uv' only (uv add / uv sync / uv run). Do not use pip/poetry/pipenv."
 fi
 
 # Node: bun, unless pnpm-lock.yaml exists (then pnpm). Never npm/yarn.
-if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_./-])(npm|yarn)([[:space:]]|$)'; then
+if printf '%s' "$scan" | grep -Eq '(^|[^[:alnum:]_./-])(npm|yarn)([[:space:]]|$)'; then
   block "Node package management is 'bun' (or 'pnpm' iff pnpm-lock.yaml exists). Do not use npm/yarn."
 fi
-if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_./-])pnpm([[:space:]]|$)'; then
-  if [ ! -f pnpm-lock.yaml ]; then
-    block "'pnpm' is allowed only when pnpm-lock.yaml exists in this project. Use 'bun' instead."
+
+# pnpm: allowed only when a pnpm-lock.yaml governs EACH pnpm invocation's
+# effective directory — the last `cd` target before it in its segment chain,
+# its -C/--dir flag, or the session cwd — searched upward to the filesystem
+# root. Parsing is best-effort; unresolvable targets (variables, subshells)
+# fail safe (block), and the block message offers the `!` escape hatch.
+find_pnpm_lock_upward() {
+  local d
+  d="$(cd "$1" 2>/dev/null && pwd)" || return 1
+  while :; do
+    [ -f "$d/pnpm-lock.yaml" ] && return 0
+    [ "$d" = "/" ] && return 1
+    d="$(dirname "$d")"
+  done
+}
+
+if printf '%s' "$scan" | grep -Eq '(^|[^[:alnum:]_./-])pnpm([[:space:]]|$)'; then
+  segs="$scan"
+  segs="${segs//";"/$'\n'}"
+  segs="${segs//"&&"/$'\n'}"
+  segs="${segs//"||"/$'\n'}"
+  eff_dir="$PWD"
+  pnpm_ok=1
+  while IFS= read -r seg; do
+    seg="$(printf '%s' "$seg" | sed -E 's/^[[:space:](]+//')"
+    case "$seg" in
+      cd|cd\ *)
+        tgt="${seg#cd}"
+        tgt="${tgt# }"
+        tgt="${tgt%%[[:space:]]*}"
+        tgt="${tgt/#\~/$HOME}"
+        case "$tgt" in
+          "" | \$* | \`*) eff_dir="" ;; # empty/variable/substitution: unresolvable
+          /*) eff_dir="$tgt" ;;
+          *) if [ -n "$eff_dir" ]; then eff_dir="$eff_dir/$tgt"; else eff_dir=""; fi ;;
+        esac
+        ;;
+    esac
+    if printf '%s' "$seg" | grep -Eq '(^|[^[:alnum:]_./-])pnpm([[:space:]]|$)'; then
+      if printf '%s' "$seg" | grep -Eq '[[:space:]](-C|--dir)[= ]'; then
+        tdir="$(printf '%s' "$seg" | sed -nE 's/.*[[:space:]](-C|--dir)[= ]([^[:space:]]+).*/\2/p')"
+        case "$tdir" in
+          "" | \$* | \`*) check_dir="" ;;
+          /*) check_dir="$tdir" ;;
+          *) if [ -n "$eff_dir" ]; then check_dir="$eff_dir/$tdir"; else check_dir=""; fi ;;
+        esac
+      else
+        check_dir="$eff_dir"
+      fi
+      if [ -z "$check_dir" ] || ! find_pnpm_lock_upward "$check_dir"; then
+        pnpm_ok=0
+      fi
+    fi
+  done <<<"$segs"
+  if [ "$pnpm_ok" -ne 1 ]; then
+    block "'pnpm' is allowed only when pnpm-lock.yaml governs each pnpm invocation's target directory (resolved cd/-C/--dir target or cwd, searched upward). Use 'bun' instead — or, for a legitimate cross-repo call this guard can't resolve, ask the user to run it with the '!' prefix."
   fi
 fi
 
 # Task runner: just only, no make.
-if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_./-])make([[:space:]]|$)'; then
+if printf '%s' "$scan" | grep -Eq '(^|[^[:alnum:]_./-])make([[:space:]]|$)'; then
   block "Task automation is 'just' only. Add a recipe to the root justfile instead of using make."
 fi
 

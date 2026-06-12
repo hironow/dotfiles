@@ -1,8 +1,9 @@
-# Observability (OpenTelemetry + Jaeger)
+# Observability (OpenTelemetry)
 
 Read this when adding a new service/binary or any telemetry. All services emit
-telemetry via OpenTelemetry. Local dev uses Jaeger; production backends are
-chosen per project in an ADR.
+telemetry via OpenTelemetry. Local dev uses the shared dotfiles telemetry stack
+(otel-collector → Tempo/Grafana); a per-project Jaeger is the isolation
+fallback. Production backends are chosen per project in an ADR.
 
 ## Scope
 
@@ -45,18 +46,30 @@ go.opentelemetry.io/otel/sdk
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 ```
 
-## Local Jaeger
+## Local telemetry
 
-`compose.yaml` runs a Jaeger all-in-one (`jaegertracing/all-in-one`,
-`COLLECTOR_OTLP_ENABLED=true`; ports `16686` UI / `4317` gRPC / `4318` HTTP).
-Apps set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` and
+Either way, apps set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` and
 `OTEL_SERVICE_NAME=<module>`.
 
+**Primary — shared stack (run from the dotfiles repo):**
+
 ```sh
-just trace-up     # docker compose -f compose.yaml up -d jaeger
-just trace-down   # stop it
-just trace-view   # open http://localhost:16686
+just tel-up     # otel-collector (OTLP :4317 gRPC / :4318 HTTP) -> Tempo + Grafana
+just tel-down   # stop it
+# UI: Grafana at http://localhost:3010 (https://grafana.localhost via portless)
 ```
+
+No per-repo telemetry services needed — point apps at the shared collector.
+
+**Fallback — per-project Jaeger (from the agent-baseline `justfile`),** for
+fully isolated work: `just trace-up` runs a Jaeger all-in-one
+(`jaegertracing/all-in-one`, `COLLECTOR_OTLP_ENABLED=true`; UI `:16686`,
+OTLP `:4317`/`:4318`) from the repo's `compose.yaml`; `just trace-down` stops
+it; `just trace-view` opens the UI.
+
+Never run both at once — they bind the same OTLP host ports (`4317`/`4318`),
+and that collision class has crashed the local Docker VM before. Prefer the
+shared stack.
 
 ## Production
 

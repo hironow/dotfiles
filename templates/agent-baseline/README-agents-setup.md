@@ -27,13 +27,10 @@ docs/agents/                   # spokes — read on demand (NOT preloaded)
   docs-discipline.md
   project-structure.md
 
-.claude/
-  settings.json                # wires the hooks below
-  hooks/
-    block-prohibited-files.sh    # PreToolUse: blocks .yml / docker-compose.*
-    block-prohibited-commands.sh # PreToolUse: blocks pip/npm/yarn/make, IaC drift, rm -rf /
-    block-secrets.sh             # PreToolUse: blocks obvious secrets in writes
-    format-after-edit.sh         # PostToolUse: ruff format + --fix on edited files
+# NOTE: Claude Code hooks are NOT files in this scaffold. The dotfiles repo
+# distributes them globally (~/.claude/settings.json + ~/.claude/hooks/*.sh,
+# via `just sync-agents`), so they already apply in every repo — including
+# this one. See ~/.claude/docs/agents/enforcement.md.
 
 .githooks/pre-commit           # human/git gate -> runs `just check`
 .github/workflows/quality-gate.yaml  # CI gate + tofu drift check
@@ -57,8 +54,10 @@ every tool.
 with zero exceptions, that's not good enough. So:
 
 1. **Claude Code hooks** — fire before/after tool calls, bypassing model
-   judgment. PreToolUse hooks **block** with `exit 2` (the script's stderr is fed
-   back to the agent as the reason). Critical gotcha baked into every guard:
+   judgment. Distributed globally from the dotfiles repo via `just sync-agents`
+   (`~/.claude/settings.json` + `~/.claude/hooks/*.sh`) — they are not files in
+   this repo. PreToolUse hooks **block** with `exit 2` (the script's stderr is
+   fed back to the agent as the reason). Critical gotcha baked into every guard:
    `exit 2` blocks, `exit 1` does **not** — `exit 1` is a non-blocking error and
    the action proceeds.
 2. **Git pre-commit** (`.githooks/pre-commit` → `just check`) — same gate for
@@ -76,8 +75,9 @@ common cases; prose covers the long tail.
 just install-hooks      # sets core.hooksPath=.githooks and chmod +x the hooks
 ```
 
-Claude Code picks up `.claude/settings.json` automatically. Verify hooks load
-with `/hooks` inside Claude Code. Personal-only experiments go in
+Claude Code hooks come from the global `~/.claude/settings.json` (synced from
+the dotfiles repo) — nothing to enable per repo. Verify they load with `/hooks`
+inside Claude Code. Personal-only experiments go in
 `.claude/settings.local.json` (auto-gitignored).
 
 ## Repo-scan self-reference
@@ -101,13 +101,15 @@ The `block-prohibited-files` hook already exempts these paths.
 ## Tuning the hooks
 
 The command/file guards use conservative regexes. If a guard misfires (false
-positive) or misses a case you care about (false negative), edit the matching
-`.claude/hooks/*.sh` script — they're plain bash with the logic inline and
-commented. Test a hook in isolation:
+positive) or misses a case you care about (false negative), edit the **source**
+in the dotfiles repo (`ROOT_AGENTS_hooks_*.sh`), extend
+`tests/unit/test_agent_hooks.py` there, then run `just sync-agents` — never
+edit `~/.claude/hooks/*.sh` directly (the next sync overwrites them). Test a
+hook in isolation:
 
 ```sh
-echo '{"tool_input":{"command":"npm install"}}' | bash .claude/hooks/block-prohibited-commands.sh; echo "exit=$?"
-echo '{"tool_input":{"file_path":"config.yml"}}' | bash .claude/hooks/block-prohibited-files.sh; echo "exit=$?"
+echo '{"tool_input":{"command":"npm install"}}' | bash ~/.claude/hooks/block-prohibited-commands.sh; echo "exit=$?"
+echo '{"tool_input":{"file_path":"config.yml"}}' | bash ~/.claude/hooks/block-prohibited-files.sh; echo "exit=$?"
 ```
 
 (`exit=2` means the guard would block; `exit=0` means it would allow.)

@@ -50,12 +50,15 @@ bounded and clear: a reviewer that surfaces observations it can't turn into a fi
 just grows the list without moving the plan forward.
 
 ```sh
+# Model selection is owned by ~/.codex/config.toml — never pin -m here
+# (a pinned model id rots when codex retires it and breaks every review).
+
 # First review of a new plan:
-codex exec -m gpt-5.5 --skip-git-repo-check \
+codex exec --skip-git-repo-check \
   "このプランを批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})"
 
 # Reviewing an updated plan — keep prior context with `resume --last`:
-codex exec resume --skip-git-repo-check --last -m gpt-5.5 \
+codex exec resume --skip-git-repo-check --last \
   "プランを更新したから批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})"
 ```
 
