@@ -56,6 +56,10 @@ covers the long tail.
   false-trigger. The flip side — a quoted invocation like `bash -c "npm i"`
   slips them — is accepted long tail. Destructive/IaC guards scan the full
   string; over-blocking is the safe side there.
+- Quote-stripping is line-based: multi-line prose embedded in a command
+  (heredoc PR bodies and the like) is scanned bare and can false-trigger.
+  Pass long prose via files instead — e.g. `gh pr create --body-file`,
+  `git commit -F`.
 - Command parsing is best-effort. A pnpm target directory hidden behind a
   variable or subshell can't be resolved; the hook fails safe and blocks. If a
   block is a false positive, ask the user to run the command themselves with
