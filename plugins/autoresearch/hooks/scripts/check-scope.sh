@@ -6,7 +6,7 @@
 # If target file is outside scope (and not results.tsv/run.log), warns.
 #
 # Input: JSON on stdin with tool_input.file_path
-# Output: empty (default allow) or PreToolUse hookSpecificOutput JSON with permissionDecision=allow + reason
+# Output: empty (default allow) or PreToolUse hookSpecificOutput JSON with permissionDecision=ask + reason
 
 set -euo pipefail
 
@@ -37,7 +37,7 @@ fi
 IN_SCOPE=false
 while IFS= read -r line; do
   # Lines under target_files: that start with "  - "
-  target=$(echo "$line" | sed -n 's/^[[:space:]]*-[[:space:]]*"\?\([^"]*\)"\?$/\1/p')
+  target=$(echo "$line" | sed -n 's/^[[:space:]]*-[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p')
   if [[ -n "$target" ]]; then
     # Check if FILE_PATH ends with the target pattern
     if [[ "$FILE_PATH" == *"$target"* ]]; then
@@ -45,12 +45,15 @@ while IFS= read -r line; do
       break
     fi
   fi
-done < <(sed -n '/^target_files:/,/^[^ ]/p' "$CONFIG" | head -n -1)
+done < <(sed -n '/^target_files:/,/^[^ ]/p' "$CONFIG" | sed '$d')
 
 if [[ "$IN_SCOPE" == "true" ]]; then
   exit 0
 fi
 
+# Out of scope: escalate to the user instead of auto-approving. permissionDecision
+# "allow" would BYPASS the normal permission prompt and silently let the edit
+# through; "ask" surfaces it so a stray non-target write cannot invalidate the loop.
 cat <<'EOF'
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"WARNING: This file is outside the experiment target scope. Modifying non-target files during an experiment loop may invalidate results. Proceed with caution."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This file is outside the experiment target scope. Modifying non-target files during an experiment loop may invalidate results. Confirm before proceeding."}}
 EOF

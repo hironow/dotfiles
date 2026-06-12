@@ -7,7 +7,7 @@
 # warns the user.
 #
 # Input: JSON on stdin with tool_input.file_path
-# Output: empty (default allow) or PreToolUse hookSpecificOutput JSON with permissionDecision=allow + reason
+# Output: empty (default allow) or PreToolUse hookSpecificOutput JSON with permissionDecision=ask + reason
 
 set -euo pipefail
 
@@ -37,19 +37,22 @@ fi
 # Extract target_paths from config (simple YAML parsing)
 IN_SCOPE=false
 while IFS= read -r line; do
-  target=$(echo "$line" | sed -n 's/^[[:space:]]*-[[:space:]]*"\?\([^"]*\)"\?$/\1/p')
+  target=$(echo "$line" | sed -n 's/^[[:space:]]*-[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p')
   if [[ -n "$target" ]]; then
     if [[ "$FILE_PATH" == *"$target"* ]]; then
       IN_SCOPE=true
       break
     fi
   fi
-done < <(sed -n '/^target_paths:/,/^[^ ]/p' "$CONFIG" | head -n -1)
+done < <(sed -n '/^target_paths:/,/^[^ ]/p' "$CONFIG" | sed '$d')
 
 if [[ "$IN_SCOPE" == "true" ]]; then
   exit 0
 fi
 
+# Out of scope: escalate to the user instead of auto-approving. permissionDecision
+# "allow" would BYPASS the normal permission prompt and silently let the edit
+# through; "ask" surfaces it so a stray non-target write cannot slip into the loop.
 cat <<'EOF'
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"WARNING: This file is outside the review target scope. Modifying non-target files during a review loop may introduce untracked changes. Proceed with caution."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This file is outside the review target scope. Modifying non-target files during a review loop may introduce untracked changes. Confirm before proceeding."}}
 EOF

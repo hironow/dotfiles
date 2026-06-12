@@ -20,10 +20,13 @@ while IFS= read -r line; do
     IN_SCOPE=true
     break
   fi
-done < <(sed -n '/^target_files:/,/^[^ ]/p' "$CONFIG" | head -n -1)
+done < <(sed -n '/^target_files:/,/^[^ ]/p' "$CONFIG" | sed '$d')
 if [[ "$IN_SCOPE" == "true" ]]; then
   exit 0
 fi
+# Out of scope: escalate to the user instead of auto-approving. permissionDecision
+# "allow" would BYPASS the normal permission prompt; "ask" surfaces a stray
+# non-target write so it cannot silently invalidate the design loop.
 cat <<'EOF'
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"WARNING: This file is outside the design target scope."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"This file is outside the design target scope. Confirm before proceeding."}}
 EOF
