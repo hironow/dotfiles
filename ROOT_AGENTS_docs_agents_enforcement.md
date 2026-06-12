@@ -37,29 +37,37 @@ covers the long tail.
 - `block-prohibited-files.sh` (Write|Edit): `.yml` filenames and deprecated
   Compose v1 names (`docker-compose.y{a,}ml`).
 - `block-secrets.sh` (Write|Edit): obvious secrets in file writes.
-- `block-prohibited-commands.sh` (Bash): `pip`/`poetry`/`pipenv`, `npm`/`yarn`,
-  `make`, root deletion, force-push to main/master, and drift-causing
-  `gcloud`/`cdr` mutations (blocked outright — open an IaC PR instead).
-  `pnpm` is allowed only when a `pnpm-lock.yaml` governs each pnpm invocation's
-  target directory (searched upward; `cd`/`-C`/`--dir` targets are resolved
-  best-effort).
+- `block-prohibited-commands.sh` (Bash): thin wrapper around a stdlib-only
+  Python guard (`block-prohibited-commands.py`, same directory) that parses
+  the command instead of regex-scanning it. Blocks: `pip`/`poetry`/`pipenv`,
+  `npm`/`yarn`, `make` (as command names), root deletion, force-push to
+  main/master, drift-causing `gcloud`/`cdr` mutations (open an IaC PR
+  instead), and **creating `.yml` files via Bash** (redirect targets,
+  `touch`/`tee` args, `cp`/`mv` destinations — reads stay allowed). `pnpm` is
+  allowed only when a `pnpm-lock.yaml` governs each pnpm invocation's target
+  directory (searched upward; `cd`/`-C`/`--dir` targets resolved, quoted
+  paths handled).
 - `format-after-edit.sh` (PostToolUse Write|Edit): `ruff format` +
   `ruff check --fix` on edited Python files.
 
-## Known limits (by design)
+## Parsing semantics (and accepted long tail)
 
-- File-naming rules are checked on Write/Edit only. Files created through Bash
-  (`touch x.yml`, shell redirects) are not intercepted — the prose rule and
-  review cover that long tail.
-- Tooling-word guards (package managers, task runner) scan with quoted
-  substrings removed, so prose mentions (commit messages, echo strings) don't
-  false-trigger. The flip side — a quoted invocation like `bash -c "npm i"`
-  slips them — is accepted long tail. Destructive/IaC guards scan the full
-  string; over-blocking is the safe side there.
-- Quote-stripping is line-based: multi-line prose embedded in a command
-  (heredoc PR bodies and the like) is scanned bare and can false-trigger.
-  Pass long prose via files instead — e.g. `gh pr create --body-file`,
-  `git commit -F`.
+- Quoted strings tokenize into single words, so prose mentions of tool names
+  (commit messages, echo strings, multi-line included) never false-trigger
+  the tooling guards. Flip side: a quoted invocation (`bash -c "npm i"`) and
+  wrapper forms outside the known set (`mise exec -- pnpm …`) slip them —
+  accepted long tail; prose rules + review cover it.
+- Heredocs are receiver-aware: a body consumed by a data sink (`cat`, `gh`,
+  `git`, …) is opaque prose and excluded from **all** guards (so PR bodies
+  via `gh pr create --body-file -` or `$(cat <<'EOF' …)` are safe); a body
+  fed to an interpreter (`bash`, `python`, `node`, …) is executable code and
+  is scanned like the top-level command.
+- Destructive/IaC guards still scan quoted text (only data-heredoc bodies are
+  excluded): a prose mention of e.g. a gcloud mutation inside `-m "…"` can
+  false-block. Over-blocking is the safe side there; put long prose in a
+  heredoc or a file (`git commit -F`, `--body-file`).
+- An unresolvable pnpm target (variable, subshell) fails safe (block); the
+  block message offers the `!` escape hatch for legitimate cross-repo calls.
 - Command parsing is best-effort. A pnpm target directory hidden behind a
   variable or subshell can't be resolved; the hook fails safe and blocks. If a
   block is a false positive, ask the user to run the command themselves with
@@ -67,10 +75,11 @@ covers the long tail.
 
 ## Tuning the hooks
 
-Hook sources live in the dotfiles repo as `ROOT_AGENTS_hooks_*.sh`, with unit
-tests in `tests/unit/test_agent_hooks.py`. Never edit `~/.claude/hooks/*.sh`
-directly — the next sync overwrites them. Edit the source, extend the tests,
-then run `just sync-agents` (from the dotfiles repo). Test a hook in isolation:
+Hook sources live in the dotfiles repo as `ROOT_AGENTS_hooks_*.sh` (plus the
+`*.py` companion for the command guard), with unit tests in
+`tests/unit/test_agent_hooks.py`. Never edit `~/.claude/hooks/*` directly —
+the next sync overwrites them. Edit the source, extend the tests, then run
+`just sync-agents` (from the dotfiles repo). Test a hook in isolation:
 
 ```sh
 echo '{"tool_input":{"command":"npm install"}}' | bash ~/.claude/hooks/block-prohibited-commands.sh; echo "exit=$?"
