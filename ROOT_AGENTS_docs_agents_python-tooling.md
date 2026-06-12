@@ -58,8 +58,9 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
 ## Pre-commit sequence
 
 ```sh
-just lint   # uv run ruff check .  &&  uv run mypy .
+just check  # the full gate; or piecewise (format before linting):
 just fmt    # uv run ruff format .
+just lint   # uv run ruff check .  &&  uv run mypy .
 just semgrep   # when .semgrep/ exists
 just test   # uv run pytest
 ```

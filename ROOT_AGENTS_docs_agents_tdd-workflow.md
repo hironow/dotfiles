@@ -9,8 +9,9 @@ AGENTS.md; this file is the full procedure.
    of behavior. Use a behavior-describing name
    (`test_should_sum_two_positive_numbers`). Make the failure message clear.
 2. **Green** — write the *minimum* code to pass. No more. With type annotations.
-3. **Verify** — run `just lint` (ruff + mypy), `just fmt`, and `just semgrep`
-   (when `.semgrep/` exists), then `just test`.
+3. **Verify** — run `just check` (the full gate). When running pieces
+   individually, format before linting: `just fmt` → `just lint` →
+   `just semgrep` (when `.semgrep/` exists) → `just test`.
 4. **Refactor** — only on green. One refactoring at a time; run tests after each.
    Prioritize removing duplication and clarifying intent.
 5. **Commit** — structural and behavioral changes as *separate* commits
@@ -60,10 +61,12 @@ def validate_email(email: str) -> bool:
 **[Verify]**:
 
 ```sh
-just lint     # or: uv run ruff check . && uv run mypy .
-just fmt      # or: uv run ruff format .
+just check    # the full gate: fmt + lint + types + semgrep + test
+# or piecewise (format before linting):
+just fmt      # uv run ruff format .
+just lint     # uv run ruff check . && uv run mypy .
 just semgrep  # when .semgrep/ exists
-just test     # or: uv run pytest
+just test     # uv run pytest
 ```
 
 **[Refactor]** (separate commit) — extract once a pattern emerges:
