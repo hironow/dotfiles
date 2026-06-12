@@ -15,7 +15,9 @@ content="$(printf '%s' "$input" | jq -r '.tool_input.content // .tool_input.new_
 # Common high-confidence token shapes (OpenAI / GitHub / AWS / PEM /
 # Slack / GitLab / Google API key). Deliberately minimal — see the
 # enforcement playbook: the primary wall is a real secret scanner in CI.
-if printf '%s' "$content" | grep -Eq 'sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|AKIA[A-Z0-9]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[baprs]-[0-9A-Za-z-]{10,}|glpat-[0-9A-Za-z_-]{20,}|AIza[0-9A-Za-z_-]{35}'; then
+# Slack requires a digit-led tail: real tokens are digit-led, and the
+# looser class blocked doc placeholders like xoxb-your-token-here.
+if printf '%s' "$content" | grep -Eq 'sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|AKIA[A-Z0-9]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[baprs]-[0-9][0-9A-Za-z-]{9,}|glpat-[0-9A-Za-z_-]{20,}|AIza[0-9A-Za-z_-]{35}'; then
   echo "BLOCKED: content looks like a live secret (API key / token / private key). Do not commit secrets; use a secret manager and reference via env var." >&2
   exit 2
 fi

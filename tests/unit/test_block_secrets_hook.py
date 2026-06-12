@@ -67,6 +67,9 @@ def test_credential_shapes_are_blocked(token: str) -> None:
         "plain configuration text, nothing secret",
         # prefixes alone (or too-short tails) must not false-trigger
         "the slack token prefix is xoxb- followed by the workspace id",
+        # word-shaped placeholders are docs, not tokens (real ones are digit-led)
+        "Set SLACK_TOKEN to xoxb-your-token-here in .env",
+        "export SLACK_BOT_TOKEN=xoxb-replace-me-with-real-token",
         "set GITLAB_TOKEN to your glpat- token from the UI",
         "AIzaSyExample is far too short to be a real key",
         "doc: AWS access key ids start with AKIA",
