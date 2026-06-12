@@ -135,5 +135,5 @@ exploration_axes:
 
 ## Dependencies
 
-Required: Node.js, Git
+Required: Node.js, Git, jq (the out-of-scope edit guard fails open without it)
 Optional: Chrome/Chromium (for structure.sh, lighthouse.sh), yq (for YAML parsing)

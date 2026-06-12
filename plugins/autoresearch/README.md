@@ -95,3 +95,7 @@ From the original autoresearch:
 3. **Fixed budget**: Each experiment runs within a time/resource budget
 4. **Simplicity criterion**: Reject complex code for marginal gains
 5. **Append-only log**: All results preserved regardless of keep/revert
+
+## Dependencies
+
+Required: Git, jq (the out-of-scope edit guard fails open without it)

@@ -23,6 +23,18 @@ results file, and run baseline measurement.
 
 Execute these steps in order before starting the exploration loop:
 
+### 0. Environment Preflight
+
+The out-of-scope edit guard (check-scope.sh) requires `jq` and silently
+disables itself (fail-open) without it. Verify:
+
+```bash
+command -v jq >/dev/null && echo "jq OK" || echo "jq MISSING"
+```
+
+If jq is missing, tell the user the scope guard will be inactive for this
+loop and ask whether to install jq first or continue knowingly without it.
+
 ### 1. Agree on Design Tag
 
 Propose a tag based on today's date and purpose (e.g., `mar21-cafe-redesign`).
@@ -165,6 +177,8 @@ Once confirmed, hand off to the design-loop skill or designer agent.
 
 Before proceeding, verify:
 
+- [ ] jq available (scope guard active) — or the user explicitly accepted
+      running without it
 - [ ] Design branch created and checked out
 - [ ] design-config.yaml exists and is valid
 - [ ] eval_target is reachable
