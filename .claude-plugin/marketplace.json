@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "hironow's personal Claude Code plugins for autonomous research, design exploration, expedition workflows, and Socratic plan grilling",
-    "version": "1.3.1"
+    "version": "1.3.2"
   },
   "plugins": [
     {
       "name": "autoresearch",
       "source": "./plugins/autoresearch",
       "description": "Autonomous experiment loop plugin inspired by karpathy/autoresearch. Iteratively modifies target code, evaluates against fixed metrics, and keeps only improvements via git-based keep/revert cycles.",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "category": "research",
       "tags": [
         "research",
@@ -27,7 +27,7 @@
       "name": "autodesign",
       "source": "./plugins/autodesign",
       "description": "Autonomous web design exploration plugin. Explores design variations under quality constraints using git-based keep/revert cycles with bundled evaluators for a11y, readability, performance, and completeness.",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "category": "design",
       "tags": [
         "design",
@@ -43,7 +43,7 @@
       "name": "autoreview",
       "source": "./plugins/autoreview",
       "description": "Autonomous code review plugin using guardrails/semgrep rules. Scans code, auto-fixes violations, and validates via git-based keep/revert cycles. Supports scan-fix and spec-review modes.",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "category": "review",
       "tags": [
         "review",
