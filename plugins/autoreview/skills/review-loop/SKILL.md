@@ -6,7 +6,6 @@ description: >
   agent during each iteration. Not invoked directly by users — loaded
   automatically when the reviewer agent needs to make keep/revert decisions.
   For the user-facing entry point, see the review skill.
-version: 0.1.0
 ---
 
 # Review Loop Methodology

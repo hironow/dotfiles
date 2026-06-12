@@ -50,6 +50,15 @@ semgrep-test:
 [group('Validation')]
 validate: semgrep-test meta-semgrep
 
+# Gate the always-loaded instruction budget. Counts Markdown list items
+# (code fences / HTML comments excluded) in the base + overlay as a proxy
+# for instruction count. Cap = 40: measured 31 at introduction (2026-06)
+# + ~30% headroom, so the gate only catches unnoticed growth — raising it
+# is a conscious, reviewable edit of this line.
+[group('Validation')]
+instruction-budget:
+    @{{UV_RUN}} scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
+
 # Install: setup tools via mise
 [group('Setup')]
 install:
@@ -219,6 +228,17 @@ import-agents *args:
 [group('Agents')]
 import-agents-preview *args:
     @{{UV_RUN}} scripts/sync_agents.py --import-only --preview {{ args }}
+
+# Sync the canonical check-scope hook (plugins/_shared/check-scope.sh) into
+# each auto-loop plugin. The per-plugin copies are what the marketplace
+# distributes; always edit the canonical, then run this.
+# tests/unit/test_plugin_check_scope.py gates drift in `ci`.
+[group('Agents')]
+sync-plugin-scope-hook:
+    @for p in autoresearch autodesign autoreview; do \
+        cp plugins/_shared/check-scope.sh "plugins/$p/hooks/scripts/check-scope.sh"; \
+    done
+    @echo '✅ check-scope.sh synced into autoresearch / autodesign / autoreview'
 
 # Clean: remove deployed dotfiles (~/.zshrc, ~/.config/sheldon/plugins.toml, ~/.config/starship.toml)
 # Windows native (MSYS/MINGW/CYGWIN) only removes the subset that `deploy` placed
@@ -502,7 +522,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check test-unit semgrep-test portless-doc-check test-iac
+ci: check test-unit semgrep-test portless-doc-check test-iac instruction-budget
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification

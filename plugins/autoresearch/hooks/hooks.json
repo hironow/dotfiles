@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-scope.sh\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-scope.sh\" experiment-config.yaml target_files \"results.tsv run.log\" \"This file is outside the experiment target scope. Modifying non-target files during an experiment loop may invalidate results. Confirm before proceeding.\"",
             "timeout": 10
           }
         ]

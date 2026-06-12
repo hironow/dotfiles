@@ -5,7 +5,6 @@ description: >
   "initialize a research run", "create experiment config", "prepare experiment branch",
   or needs to configure the autoresearch experiment environment before starting
   an autonomous optimization loop.
-version: 0.1.0
 allowed-tools:
   - Read
   - Write
@@ -22,6 +21,18 @@ results file, and run baseline measurement.
 ## Setup Checklist
 
 Execute these steps in order before starting the experiment loop:
+
+### 0. Environment Preflight
+
+The out-of-scope edit guard (check-scope.sh) requires `jq` and silently
+disables itself (fail-open) without it. Verify:
+
+```bash
+command -v jq >/dev/null && echo "jq OK" || echo "jq MISSING"
+```
+
+If jq is missing, tell the user the scope guard will be inactive for this
+loop and ask whether to install jq first or continue knowingly without it.
 
 ### 1. Agree on Experiment Tag
 
@@ -107,6 +118,8 @@ Once confirmed, hand off to the research-loop skill or researcher agent.
 
 Before proceeding, verify:
 
+- [ ] jq available (scope guard active) — or the user explicitly accepted
+      running without it
 - [ ] Experiment branch created and checked out
 - [ ] experiment-config.yaml exists and is valid
 - [ ] results.tsv initialized with header

@@ -26,6 +26,7 @@ Go, Python, TypeScript
 
 - [Semgrep](https://semgrep.dev/) installed (`semgrep` on PATH)
 - `guardrails/semgrep` submodule initialized in the repository
+- `jq` on PATH (the out-of-scope edit guard fails open without it)
 
 ## Usage
 

@@ -5,7 +5,6 @@ description: >
   used when the user asks to "analyze experiment results", "show research progress",
   "summarize experiments", "what improved", "experiment statistics", or needs to
   review and visualize the results from results.tsv.
-version: 0.1.0
 argument-hint: "[results.tsv path]"
 allowed-tools:
   - Read

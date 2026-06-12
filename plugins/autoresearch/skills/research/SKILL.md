@@ -7,7 +7,6 @@ description: >
   an autonomous research experiment loop. This is the top-level entry point
   that orchestrates setup and loop execution. For internal keep/revert
   methodology, see the research-loop skill.
-version: 0.1.0
 argument-hint: "[experiment tag or config path]"
 allowed-tools:
   - Read

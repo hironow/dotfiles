@@ -36,7 +36,10 @@ covers the long tail.
 
 - `block-prohibited-files.sh` (Write|Edit): `.yml` filenames and deprecated
   Compose v1 names (`docker-compose.y{a,}ml`).
-- `block-secrets.sh` (Write|Edit): obvious secrets in file writes.
+- `block-secrets.sh` (Write|Edit): obvious secrets in file writes
+  (OpenAI/GitHub/AWS/Slack/GitLab/Google-API-key shapes + PEM headers).
+  The list is deliberately minimal defense-in-depth: the primary wall is a
+  real secret scanner in CI (e.g. gitleaks), not this hook.
 - `block-prohibited-commands.sh` (Bash): thin wrapper around a stdlib-only
   Python guard (`block-prohibited-commands.py`, same directory) that parses
   the command instead of regex-scanning it. Blocks: `pip`/`poetry`/`pipenv`,
@@ -48,7 +51,10 @@ covers the long tail.
   directory (searched upward; `cd`/`-C`/`--dir` targets resolved, quoted
   paths handled).
 - `format-after-edit.sh` (PostToolUse Write|Edit): `ruff format` +
-  `ruff check --fix` on edited Python files.
+  `ruff check --fix` on the edited Python file; `gofmt -w` on the edited Go
+  file. Always single-file — TS/JS is deliberately not formatted per edit
+  (a project-wide `just fmt` per edit pollutes unrelated diffs; the gate is
+  `just check` / CI).
 
 ## Parsing semantics (and accepted long tail)
 

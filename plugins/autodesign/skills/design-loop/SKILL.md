@@ -8,7 +8,6 @@ description: >
   "design decision criteria", "design exploration strategy",
   "run keep/revert design optimization", or needs guidance on how the autonomous
   explore-evaluate-decide cycle works internally.
-version: 0.1.0
 ---
 
 # Autonomous Design Exploration Loop

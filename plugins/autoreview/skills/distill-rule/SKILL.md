@@ -8,7 +8,6 @@ description: >
   or wants to convert a code review finding or bad code pattern into a
   reusable Semgrep rule with test cases. Also triggered after a review
   loop when patterns emerge that should be automated.
-version: 0.1.0
 allowed-tools:
   - Read
   - Write

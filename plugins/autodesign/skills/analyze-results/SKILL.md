@@ -6,7 +6,6 @@ description: >
   "summarize design exploration", "what designs worked", "design statistics",
   "which exploration axis performed best", or needs to review the results
   from design-results.tsv.
-version: 0.1.0
 argument-hint: "[design-results.tsv path]"
 allowed-tools:
   - Read
