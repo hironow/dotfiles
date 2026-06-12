@@ -241,6 +241,11 @@ alias dbtf="$HOME/.local/bin/dbt"
 # CF CLI completions
 [[ -f "$HOME/.config/cf/completions/_cf.zsh" ]] && source "$HOME/.config/cf/completions/_cf.zsh"
 
+# bun completions (the bun installer appends a copy at EOF with the home dir
+# spelled out literally; keep this portable $HOME form here instead — PATH is
+# already prepended in the bun section above)
+[[ -s "$HOME/.bun/_bun" ]] && source "$HOME/.bun/_bun"
+
 # ant (Anthropic CLI) completion — cached, regenerated only when missing
 if _cmd_exists ant; then
     _ant_comp_cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/ant_completion.zsh"
