@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-scope.sh\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-scope.sh\" design-config.yaml target_files \"design-results.tsv run.log\" \"This file is outside the design target scope. Confirm before proceeding.\"",
             "timeout": 10
           }
         ]
