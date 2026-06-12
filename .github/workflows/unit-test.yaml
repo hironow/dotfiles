@@ -1,0 +1,46 @@
+name: Unit Tests
+
+# Host-side unit gate: agent hook guards (tests/unit/), the plugin
+# check-scope drift gate, the marketplace manifest pins, and the
+# always-loaded instruction budget. `just ci` runs the same gate locally;
+# before this workflow GitHub only ran shellcheck / devcontainer sandbox /
+# IaC, so tests/unit/ never gated a PR (e.g. editing one check-scope copy
+# directly would have passed CI).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit tests + instruction budget
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # CI は mise 非依存 (mise.toml はローカル開発用)。uv は公式
+      # インストーラで導入。just は recipe-propagation テスト
+      # (tests/unit/test_plugin_check_scope.py) が実行するので
+      # ubuntu の公式パッケージから入れる。jq / bash はランナーに
+      # プリインストール済み。
+      - name: Install uv and just
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq just
+
+      - name: Run unit tests
+        run: uvx pytest -q -ra tests/unit/
+
+      # Keep --max in sync with the `instruction-budget` recipe in the
+      # justfile (the recipe is not callable here because the justfile
+      # wraps tools with `mise exec`).
+      - name: Instruction budget
+        run: uv run scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
