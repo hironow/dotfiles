@@ -90,6 +90,66 @@ def test_pnpm_without_lockfile_is_blocked(unlocked_repo: Path) -> None:
     assert _run_hook("pnpm install", unlocked_repo) == EXIT_BLOCK
 
 
+def test_pnpm_with_lockfile_in_ancestor_is_allowed(locked_repo: Path) -> None:
+    """Monorepo subdirectory: the lockfile lives at the repo root above cwd."""
+    sub = locked_repo / "packages" / "app"
+    sub.mkdir(parents=True)
+    assert _run_hook("pnpm install", sub) == EXIT_ALLOW
+
+
+def test_pnpm_cd_into_locked_repo_is_allowed(
+    locked_repo: Path, unlocked_repo: Path
+) -> None:
+    """Cross-repo: cwd has no lockfile, but the cd target does."""
+    cmd = f"cd {locked_repo} && pnpm install"
+    assert _run_hook(cmd, unlocked_repo) == EXIT_ALLOW
+
+
+def test_pnpm_dash_c_locked_repo_is_allowed(
+    locked_repo: Path, unlocked_repo: Path
+) -> None:
+    cmd = f"pnpm -C {locked_repo} install"
+    assert _run_hook(cmd, unlocked_repo) == EXIT_ALLOW
+
+
+def test_pnpm_mixed_cd_segments_blocked(
+    locked_repo: Path, unlocked_repo: Path, tmp_path: Path
+) -> None:
+    """Per-invocation gate: one governed pnpm call must not bless the others."""
+    cmd = f"cd {locked_repo} && pnpm install; cd {unlocked_repo} && pnpm install"
+    assert _run_hook(cmd, tmp_path) == EXIT_BLOCK
+
+
+def test_pnpm_dash_c_mixed_blocked(
+    locked_repo: Path, unlocked_repo: Path, tmp_path: Path
+) -> None:
+    cmd = f"pnpm -C {locked_repo} install && pnpm -C {unlocked_repo} install"
+    assert _run_hook(cmd, tmp_path) == EXIT_BLOCK
+
+
+def test_pnpm_variable_dir_is_blocked(unlocked_repo: Path) -> None:
+    """Unresolvable target (variable) fails safe: block."""
+    assert _run_hook('cd "$PROJECT_DIR" && pnpm install', unlocked_repo) == EXIT_BLOCK
+
+
+def test_pnpm_mention_in_commit_message_is_allowed(unlocked_repo: Path) -> None:
+    """Prose mentions inside quotes are not invocations (observed false block)."""
+    cmd = 'git commit -m "docs: explain why pnpm is gated on lockfiles"'
+    assert _run_hook(cmd, unlocked_repo) == EXIT_ALLOW
+
+
+def test_npm_mention_in_commit_message_is_allowed(unlocked_repo: Path) -> None:
+    cmd = 'git commit -m "build: switch from npm to bun"'
+    assert _run_hook(cmd, unlocked_repo) == EXIT_ALLOW
+
+
+def test_make_mention_in_commit_message_is_allowed(unlocked_repo: Path) -> None:
+    """The English verb 'make' in a quoted message must not trip the task-runner
+    guard (observed false block)."""
+    cmd = 'git commit -m "ci: have the gate make builds reproducible"'
+    assert _run_hook(cmd, unlocked_repo) == EXIT_ALLOW
+
+
 # --- Destructive / IaC drift ------------------------------------------------
 
 
