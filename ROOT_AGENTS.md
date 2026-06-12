@@ -2,10 +2,13 @@
   AGENTS.md — cross-tool agent instructions (read by Codex, Cursor, Copilot,
   Claude Code via @import, and others). Keep this file SHORT and always-loaded.
 
-  Why short: frontier models reliably follow ~150-200 instructions; the agent's
-  own system prompt already spends ~50. Every line here dilutes every other line.
-  Adherence — not token cost — is the constraint. Anything that is not needed on
-  turn one lives in docs/agents/*.md and is read on demand (see the index below).
+  Why short: frontier models reliably follow ~150-200 instructions (a working
+  heuristic, not a measured constant); the agent's own system prompt already
+  spends ~50. Every line here dilutes every other line. Adherence — not token
+  cost — is the constraint. Anything that is not needed on turn one lives in
+  docs/agents/*.md and is read on demand (see the index below).
+  `just instruction-budget` gates a list-item proxy of this file + the overlay
+  so the always-loaded set cannot grow unnoticed.
 
   Self-reference: this file and docs/agents/*.md intentionally name a few
   prohibited patterns as examples. Exclude them from repo scans:

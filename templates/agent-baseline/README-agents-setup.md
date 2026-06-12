@@ -3,7 +3,8 @@
 This replaces the single 1,156-line `ROOT_AGENTS.md` with a **hub-and-spoke**
 layout plus a **deterministic enforcement layer**. The reasoning, in one
 paragraph: AI coding agents reliably follow only ~150-200 instructions before
-adherence degrades (the agent's own system prompt already spends ~50), and a long
+adherence degrades (a working heuristic, not a measured constant; the agent's
+own system prompt already spends ~50), and a long
 instruction file dilutes every rule in it. So the always-loaded files are kept
 short, the detail is loaded on demand, and anything that must hold *every time*
 is moved out of prose into hooks/CI that don't depend on model judgment.
