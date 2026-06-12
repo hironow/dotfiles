@@ -11,7 +11,7 @@ Read this before writing a commit message. Root summary is in AGENTS.md.
 - Message follows Conventional Commits v1.0.0.
 
 `just check` runs the whole gate; the git pre-commit hook runs it too, so a red
-tree cannot be committed (see README-agents-setup.md).
+tree cannot be committed (see docs/agents/enforcement.md).
 
 ## Format
 

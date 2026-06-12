@@ -61,6 +61,6 @@ either silently reverts your change or fails on unexpected state.
 - Refuse to **chain** manual mutations — one emergency mutation is acceptable;
   a sequence means the IaC needs restructuring.
 
-(A PreToolUse hook flags `gcloud … add-iam-policy-binding` / `… update` /
-`… resize` and Cloud Run console-equivalent calls for confirmation; see
-README-agents-setup.md.)
+(A PreToolUse hook blocks — exit 2, no confirmation flow — `gcloud …
+add-iam-policy-binding` / `… update` / `… resize` / `… deploy` and
+`cdr workspaces update/edit`; see docs/agents/enforcement.md.)
