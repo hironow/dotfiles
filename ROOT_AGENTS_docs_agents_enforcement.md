@@ -51,6 +51,11 @@ covers the long tail.
 - File-naming rules are checked on Write/Edit only. Files created through Bash
   (`touch x.yml`, shell redirects) are not intercepted — the prose rule and
   review cover that long tail.
+- Tooling-word guards (package managers, task runner) scan with quoted
+  substrings removed, so prose mentions (commit messages, echo strings) don't
+  false-trigger. The flip side — a quoted invocation like `bash -c "npm i"`
+  slips them — is accepted long tail. Destructive/IaC guards scan the full
+  string; over-blocking is the safe side there.
 - Command parsing is best-effort. A pnpm target directory hidden behind a
   variable or subshell can't be resolved; the hook fails safe and blocks. If a
   block is a false positive, ask the user to run the command themselves with
