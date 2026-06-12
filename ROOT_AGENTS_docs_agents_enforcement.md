@@ -36,7 +36,10 @@ covers the long tail.
 
 - `block-prohibited-files.sh` (Write|Edit): `.yml` filenames and deprecated
   Compose v1 names (`docker-compose.y{a,}ml`).
-- `block-secrets.sh` (Write|Edit): obvious secrets in file writes.
+- `block-secrets.sh` (Write|Edit): obvious secrets in file writes
+  (OpenAI/GitHub/AWS/Slack/GitLab/Google-API-key shapes + PEM headers).
+  The list is deliberately minimal defense-in-depth: the primary wall is a
+  real secret scanner in CI (e.g. gitleaks), not this hook.
 - `block-prohibited-commands.sh` (Bash): thin wrapper around a stdlib-only
   Python guard (`block-prohibited-commands.py`, same directory) that parses
   the command instead of regex-scanning it. Blocks: `pip`/`poetry`/`pipenv`,
