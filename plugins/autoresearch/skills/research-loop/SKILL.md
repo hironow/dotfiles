@@ -8,7 +8,6 @@ description: >
   "experiment decision criteria", "auto-tune hyperparameters",
   "run keep/revert optimization", or needs guidance on how the autonomous
   modify-evaluate-decide cycle works internally.
-version: 0.1.0
 ---
 
 # Autonomous Research Loop

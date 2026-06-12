@@ -6,7 +6,6 @@ description: >
   "review specs", "review types", "begin review loop", or needs to start
   or resume an autonomous code review loop. This is the top-level entry
   point that orchestrates setup and loop execution.
-version: 0.1.0
 argument-hint: "[review tag or config path]"
 allowed-tools:
   - Read

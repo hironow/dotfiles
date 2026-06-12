@@ -7,7 +7,6 @@ description: >
   an autonomous web design exploration loop. This is the top-level entry point
   that orchestrates setup and loop execution. For internal keep/revert
   methodology, see the design-loop skill.
-version: 0.1.0
 argument-hint: "[design tag or config path]"
 allowed-tools:
   - Read
