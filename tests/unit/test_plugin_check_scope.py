@@ -279,6 +279,43 @@ def test_empty_list_treats_everything_as_out_of_scope(tmp_path: Path) -> None:
     assert _decision(result) == "ask"
 
 
+def test_malformed_input_fails_open(tmp_path: Path) -> None:
+    """Garbage on stdin must not surface a jq error (and must never become
+    exit 2 = block); the guard fails open like the no-jq case."""
+    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC)
+    result = subprocess.run(
+        ["bash", str(CANONICAL), *ARGS],
+        input="not json at all",
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == ""
+    assert result.stderr.strip() == ""
+
+
+@pytest.mark.parametrize(
+    ("config", "case"),
+    [
+        ("target_files:\n  - 'src/algo.py'\neval_command: x\n", "single-quoted"),
+        (
+            "target_files:\n  - src/algo.py  # main target\neval_command: x\n",
+            "inline-comment",
+        ),
+        ('target_files :\n  - "src/algo.py"\neval_command: x\n', "space-before-colon"),
+    ],
+)
+def test_common_yaml_spellings_are_in_scope(
+    tmp_path: Path, config: str, case: str
+) -> None:
+    """The config is hand-editable YAML; ordinary valid spellings must not
+    push a listed target out of scope."""
+    result = _run_hook(tmp_path, "/repo/src/algo.py", config=config)
+    assert _decision(result) == "allow", case
+
+
 # --- jq preflight in the setup skills ------------------------------------------
 
 

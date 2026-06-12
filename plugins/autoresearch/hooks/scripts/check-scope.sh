@@ -50,9 +50,11 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-# Extract file_path from stdin JSON (jq decodes escapes; never grep JSON)
+# Extract file_path from stdin JSON (jq decodes escapes; never grep JSON).
+# Malformed input fails open like the no-jq case — never let a payload
+# hiccup surface an error (exit 2 would BLOCK the edit).
 INPUT=$(cat)
-FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')
+FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
 
 if [[ -z "$FILE_PATH" ]]; then
   exit 0
@@ -74,9 +76,11 @@ normalize() {
 FP=$(normalize "$FILE_PATH")
 
 # Extract the scope list: "- " items under LIST_KEY, until the next
-# top-level key. Indented comments and blank lines do not end the list,
-# and a list that closes the file keeps its last entry (POSIX awk; the
-# config format is owned by this plugin's setup skill).
+# top-level key. Hand-edited YAML spellings are tolerated: single or
+# double quotes, inline comments, space before the key's colon; indented
+# comments and blank lines do not end the list, and a list that closes
+# the file keeps its last entry (POSIX awk; full YAML is out of scope —
+# the config format is owned by this plugin's setup skill).
 IN_SCOPE=false
 while IFS= read -r target; do
   [[ -z "$target" ]] && continue
@@ -94,8 +98,8 @@ while IFS= read -r target; do
       break
     fi
   fi
-done < <(awk -v key="$LIST_KEY" '
-  $0 ~ ("^" key ":") { inlist = 1; next }
+done < <(awk -v key="$LIST_KEY" -v sq="'" '
+  $0 ~ ("^" key "[[:space:]]*:") { inlist = 1; next }
   inlist {
     if ($0 ~ /^[^[:space:]]/) exit
     line = $0
@@ -103,8 +107,9 @@ done < <(awk -v key="$LIST_KEY" '
     if (line == "" || line ~ /^#/) next
     if (line ~ /^-[[:space:]]*/) {
       sub(/^-[[:space:]]*/, "", line)
+      sub(/[[:space:]]+#.*$/, "", line)
       sub(/[[:space:]]+$/, "", line)
-      gsub(/^"|"$/, "", line)
+      gsub("^[\"" sq "]|[\"" sq "]$", "", line)
       if (line != "") print line
     }
   }
