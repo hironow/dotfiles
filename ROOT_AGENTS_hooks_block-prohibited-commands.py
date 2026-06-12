@@ -22,8 +22,9 @@ Pipeline (full semantics: docs/agents/enforcement.md):
    their operand. Guards: pip/poetry/pipenv, npm/yarn, make (command name,
    basename-resolved), per-invocation pnpm lockfile gate, force-push to a
    protected branch (any force flag + a main/master refspec, order- and
-   spelling-independent), and .yml-creation detection (redirect targets,
-   touch/tee args, cp/mv destinations).
+   spelling-independent, including the flagless `+<refspec>` syntax), and
+   .yml-creation detection (redirect targets, touch/tee args, cp/mv
+   destinations).
 
 If tokenization still fails after heredoc separation, tooling guards fall
 back to the previous line-based quote-strip regex scan — never worse than
@@ -154,20 +155,25 @@ def _is_force_push_flag(token: str) -> bool:
     return token == "--force-with-lease" or token.startswith("--force-with-lease=")
 
 
-def _targets_protected_ref(args: list[str]) -> bool:
-    """True if any positional refspec pushes to main/master.
+def _force_pushes_protected_ref(args: list[str]) -> bool:
+    """True if this push rewrites main/master.
 
-    Handles bare branch names (`main`), refspecs (`HEAD:main`,
-    `feature:main`) and fully-qualified refs (`refs/heads/main`). Flags and
-    the remote name are positionals too, but neither resolves to a protected
-    branch, so they are simply not matched.
+    Two force spellings: any force flag combined with a refspec that
+    resolves to a protected branch, or the flagless `+<refspec>` syntax
+    (`git push origin +main`), which forces that refspec on its own.
+    Refspecs handled: bare names (`main`), `src:dst` (`HEAD:main`) and
+    fully-qualified refs (`refs/heads/main`). Flags and the remote name
+    are positionals too, but neither resolves to a protected branch, so
+    they are simply not matched.
     """
+    has_force_flag = any(_is_force_push_flag(a) for a in args)
     for arg in args:
         if arg.startswith("-"):
             continue
-        dest = arg.rsplit(":", 1)[-1]  # src:dst refspec -> dst
+        forced_refspec = arg.startswith("+")
+        dest = arg.lstrip("+").rsplit(":", 1)[-1]  # src:dst refspec -> dst
         dest = dest.rsplit("/", 1)[-1]  # refs/heads/main -> main
-        if dest in PROTECTED_REFS:
+        if dest in PROTECTED_REFS and (has_force_flag or forced_refspec):
             return True
     return False
 
@@ -272,9 +278,7 @@ class _CommandWalker:
         if name == "make":
             block(MSG_MAKE)
         if name == "git" and "push" in args:
-            if any(_is_force_push_flag(a) for a in args) and _targets_protected_ref(
-                args
-            ):
+            if _force_pushes_protected_ref(args):
                 block(MSG_FORCE_PUSH)
         if name == "cd":
             target = args[0] if args else "~"

@@ -305,6 +305,11 @@ def test_force_push_to_main_is_blocked(tmp_path: Path) -> None:
         pytest.param("git push --force origin master", id="master-branch"),
         pytest.param("git push -f origin HEAD:main", id="refspec-dest-main"),
         pytest.param("git -C /repo push -f origin main", id="git-global-opt"),
+        # `+<refspec>` is force-push syntax with no flag at all
+        pytest.param("git push origin +main", id="plus-refspec"),
+        pytest.param("git push origin +HEAD:main", id="plus-refspec-src-dst"),
+        pytest.param("git push origin +refs/heads/main", id="plus-qualified-ref"),
+        pytest.param("git push +main", id="plus-refspec-no-remote"),
     ],
 )
 def test_force_push_to_protected_branch_is_blocked(
@@ -318,6 +323,7 @@ def test_force_push_to_protected_branch_is_blocked(
     [
         pytest.param("git push -f origin feature", id="force-feature-branch"),
         pytest.param("git push origin main", id="non-force-to-main"),
+        pytest.param("git push origin +feature", id="plus-refspec-feature"),
         pytest.param(
             'git commit -m "git push --force origin main"', id="prose-mention"
         ),
