@@ -32,12 +32,9 @@ case "$file_path" in
       gofmt -w "$file_path" >/dev/null 2>&1 || true
     fi
     ;;
-  *.ts|*.tsx|*.js|*.jsx)
-    # Use the project's configured formatter via just if present; stay silent otherwise.
-    if command -v just >/dev/null 2>&1 && just --show fmt >/dev/null 2>&1; then
-      just fmt >/dev/null 2>&1 || true
-    fi
-    ;;
+  # TS/JS is intentionally not formatted here: there is no project-agnostic
+  # single-file formatter, and running `just fmt` (project-wide) per edit
+  # pollutes unrelated diffs. The gate is `just check` / CI.
 esac
 
 exit 0

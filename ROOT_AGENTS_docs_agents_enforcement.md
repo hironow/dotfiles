@@ -48,7 +48,10 @@ covers the long tail.
   directory (searched upward; `cd`/`-C`/`--dir` targets resolved, quoted
   paths handled).
 - `format-after-edit.sh` (PostToolUse Write|Edit): `ruff format` +
-  `ruff check --fix` on edited Python files.
+  `ruff check --fix` on the edited Python file; `gofmt -w` on the edited Go
+  file. Always single-file — TS/JS is deliberately not formatted per edit
+  (a project-wide `just fmt` per edit pollutes unrelated diffs; the gate is
+  `just check` / CI).
 
 ## Parsing semantics (and accepted long tail)
 
