@@ -80,7 +80,24 @@ def test_plugin_copy_matches_canonical(plugin: str) -> None:
     )
 
 
-@pytest.mark.skipif(shutil.which("just") is None, reason="recipe test needs just")
+def _just_parses_this_justfile() -> bool:
+    """just older than 1.27 cannot parse the repo justfile ([group])."""
+    if shutil.which("just") is None:
+        return False
+    result = subprocess.run(
+        ["just", "--list"],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+@pytest.mark.skipif(
+    not _just_parses_this_justfile(),
+    reason="recipe test needs a just that can parse the repo justfile (>= 1.27)",
+)
 def test_sync_recipe_propagates_canonical(tmp_path: Path) -> None:
     """`just sync-plugin-scope-hook` must copy the canonical into all plugins."""
     # given: a minimal repo copy (justfile + canonical + per-plugin copies)
