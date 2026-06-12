@@ -22,48 +22,13 @@ only make sense for Claude Code.
   encodes structural-vs-behavioral, so never add `[STRUCTURAL]`/`[BEHAVIORAL]`
   tags (see docs/agents/commit-discipline.md).
 
-## Plan review with codex (before showing a plan to the human)
+## Plan review (before showing a plan to the human)
 
-For any non-trivial implementation plan, run a codex review **before** presenting
-it. Codex is the *preferred* reviewer, but the plan must always get an independent
-second pair of eyes — so the review is never skipped. If codex is unavailable
-(rate-limit — e.g. "You've hit your usage limit…" — or any hard error), review it
-yourself in a **separate context window**: spawn a subagent whose context is
-independent of the one that wrote the plan, hand it the same lenses below, and
-treat its findings exactly as you would codex's. Never self-review inline in the
-authoring context — that defeats the independence the review exists for.
-
-Carry three lenses through the whole review:
-
-- **何も信用しない — trust nothing.** Every claim is a hypothesis to verify —
-  codex's, the plan's, and your own. Don't act on a finding you haven't confirmed.
-- **Even the reviewers get reviewed.** codex is fallible (stale knowledge — see
-  below); judge each finding on the evidence and push back when it's wrong. Your
-  rebuttal must clear the same bar you hold codex to.
-- **Don't fix the code — fix the process that generates it.** When a finding is
-  real, prefer the change that stops the whole class from recurring (the rule,
-  template, or check that produced it) over patching the single instance.
-
-Ask for findings phrased as *actionable* items — each paired with a concrete fix
-or resolution, ordered by severity. The point is to keep the finding list
-bounded and clear: a reviewer that surfaces observations it can't turn into a fix
-just grows the list without moving the plan forward.
-
-```sh
-# Model selection is owned by ~/.codex/config.toml — never pin -m here
-# (a pinned model id rots when codex retires it and breaks every review).
-
-# First review of a new plan:
-codex exec --skip-git-repo-check \
-  "このプランを批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})"
-
-# Reviewing an updated plan — keep prior context with `resume --last`:
-codex exec resume --skip-git-repo-check --last \
-  "プランを更新したから批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})"
-```
-
-To counter the reviewer model's stale knowledge, gather current docs/URLs into a
-temp file and pass its path in the prompt.
+Every non-trivial implementation plan gets an independent second pair of eyes
+**before** it is presented — never skipped, and never an inline self-review in
+the authoring context. Codex is the preferred reviewer; if it is unavailable,
+spawn an independent subagent instead. Full procedure, lenses, and commands:
+docs/agents/plan-review.md.
 
 ## ASCII diagrams in responses
 
