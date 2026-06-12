@@ -220,6 +220,17 @@ import-agents *args:
 import-agents-preview *args:
     @{{UV_RUN}} scripts/sync_agents.py --import-only --preview {{ args }}
 
+# Sync the canonical check-scope hook (plugins/_shared/check-scope.sh) into
+# each auto-loop plugin. The per-plugin copies are what the marketplace
+# distributes; always edit the canonical, then run this.
+# tests/unit/test_plugin_check_scope.py gates drift in `ci`.
+[group('Agents')]
+sync-plugin-scope-hook:
+    @for p in autoresearch autodesign autoreview; do \
+        cp plugins/_shared/check-scope.sh "plugins/$p/hooks/scripts/check-scope.sh"; \
+    done
+    @echo '✅ check-scope.sh synced into autoresearch / autodesign / autoreview'
+
 # Clean: remove deployed dotfiles (~/.zshrc, ~/.config/sheldon/plugins.toml, ~/.config/starship.toml)
 # Windows native (MSYS/MINGW/CYGWIN) only removes the subset that `deploy` placed
 # (starship.toml + git ignore); Unix-only artifacts are not touched. See ADR 0018.
