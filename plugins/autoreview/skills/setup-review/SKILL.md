@@ -5,7 +5,6 @@ description: >
   "initialize code review", "create review config", "prepare review branch",
   "configure autoreview", or needs to set up the autoreview environment before
   starting an autonomous code review loop.
-version: 0.1.0
 allowed-tools:
   - Read
   - Write

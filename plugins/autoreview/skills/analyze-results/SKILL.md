@@ -6,7 +6,6 @@ description: >
   "review-results report", "how did the review go", or wants to understand
   the outcomes of an autoreview loop. Parses review-results.tsv and presents
   a structured summary.
-version: 0.1.0
 allowed-tools:
   - Read
   - Bash

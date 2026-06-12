@@ -5,7 +5,6 @@ description: >
   "initialize a research run", "create experiment config", "prepare experiment branch",
   or needs to configure the autoresearch experiment environment before starting
   an autonomous optimization loop.
-version: 0.1.0
 allowed-tools:
   - Read
   - Write

@@ -5,7 +5,6 @@ description: >
   "initialize a design exploration", "create design config", "prepare design branch",
   or needs to configure the autodesign environment before starting
   an autonomous design exploration loop.
-version: 0.1.0
 allowed-tools:
   - Read
   - Write
