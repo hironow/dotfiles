@@ -19,9 +19,10 @@ Pipeline (full semantics: docs/agents/enforcement.md):
 4. Token walk with a minimal shell grammar: command boundaries are
    ; && || | & ( ); NAME=VALUE prefixes and wrappers (env/sudo/...) are
    skipped at command start; redirect operators consume the next token as
-   their operand. Guards: pip/poetry/pipenv, npm/yarn, make (command name,
-   basename-resolved), per-invocation pnpm lockfile gate, force-push to a
-   protected branch (any force flag + a main/master refspec, order- and
+   their operand. Guards: pip/poetry/pipenv, npm/yarn/pnpm (and the direct
+   `corepack <pm>` run form), make (command name, basename-resolved),
+   force-push to a protected branch (any force flag + a main/master refspec,
+   order- and
    spelling-independent, including the flagless `+<refspec>` syntax), and
    .yml-creation detection (redirect targets, touch/tee args, cp/mv
    destinations).
@@ -35,11 +36,9 @@ the old implementation. Known accepted long tail: quoted invocations
 from __future__ import annotations
 
 import json
-import os
 import re
 import shlex
 import sys
-from pathlib import Path
 
 EXIT_ALLOW = 0
 EXIT_BLOCK = 2
@@ -55,13 +54,6 @@ MSG_NODE = (
 MSG_MAKE = (
     "Task automation is 'just' only. Add a recipe to the root justfile "
     "instead of using make."
-)
-MSG_PNPM = (
-    "'pnpm' is allowed only when pnpm-lock.yaml governs each pnpm "
-    "invocation's target directory (resolved cd/-C/--dir target or cwd, "
-    "searched upward). Use 'bun' instead — or, for a legitimate cross-repo "
-    "call this guard can't resolve, ask the user to run it with the '!' "
-    "prefix."
 )
 MSG_YML = (
     "creates a '.yml' file via Bash. This project uses '.yaml' exclusively "
@@ -211,38 +203,8 @@ def split_heredocs(text: str) -> tuple[str, list[str]]:
     return "\n".join(cleaned), code_bodies
 
 
-def find_pnpm_lock_upward(directory: str) -> bool:
-    try:
-        current = Path(directory).resolve(strict=True)
-    except OSError:
-        return False
-    if not current.is_dir():
-        return False
-    while True:
-        if (current / "pnpm-lock.yaml").is_file():
-            return True
-        if current.parent == current:
-            return False
-        current = current.parent
-
-
-def _resolve_dir(target: str, base: str | None) -> str | None:
-    """Resolve a cd/-C/--dir target; None means unresolvable (fail safe)."""
-    if not target or "$" in target or "`" in target:
-        return None
-    target = os.path.expanduser(target)
-    if os.path.isabs(target):
-        return target
-    if base is None:
-        return None
-    return os.path.join(base, target)
-
-
 class _CommandWalker:
     """Token walk with the minimal shell grammar from enforcement.md."""
-
-    def __init__(self) -> None:
-        self.effective_dir: str | None = os.getcwd()
 
     def walk(self, tokens: list[str]) -> None:
         at_start = True
@@ -302,26 +264,8 @@ class _CommandWalker:
         if name == "git" and "push" in args:
             if _force_pushes_protected_ref(args):
                 block(MSG_FORCE_PUSH)
-        if name == "cd":
-            target = args[0] if args else "~"
-            self.effective_dir = _resolve_dir(target, self.effective_dir)
-            return
-        if name == "pnpm":
-            self._check_pnpm(args)
         if name in YML_CREATION_COMMANDS:
             self._check_yml_creation(name, args)
-
-    def _check_pnpm(self, args: list[str]) -> None:
-        check_dir = self.effective_dir
-        for i, arg in enumerate(args):
-            if arg in {"-C", "--dir"} and i + 1 < len(args):
-                check_dir = _resolve_dir(args[i + 1], self.effective_dir)
-                break
-            if arg.startswith("--dir="):
-                check_dir = _resolve_dir(arg.split("=", 1)[1], self.effective_dir)
-                break
-        if check_dir is None or not find_pnpm_lock_upward(check_dir):
-            block(MSG_PNPM)
 
     def _check_yml_creation(self, name: str, args: list[str]) -> None:
         positional = [a for a in args if not a.startswith("-")]
