@@ -120,8 +120,11 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   (memory `feedback_git_history_rewrite_gpg`)。
 - **mise の npm backend は `--ignore-scripts=true`** — postinstall 必須の npm ツール
   (claude-code native binary 等) は `npm_args` で上書き (memory `project_mise_npm_ignore_scripts`)。
-- **pnpm は corepack 供給の per-repo 専用、global CLI は mise npm: のみ** (ADR 0017)。
-  `pnpm add -g` 禁止 (`$PNPM_HOME/bin` を PATH に載せないので自然に abort する)。
+- **Node は bun 一本。agent は npm/yarn/pnpm を一切叩けない** (guard が常時 block、
+  `corepack pnpm`/`pnpm@ver`/`corepack --cwd … pnpm` 含む。**ADR 0027** が ADR 0017 の
+  per-repo pnpm carve-out を partial supersede)。corepack のマシン供給自体は **ADR 0017**
+  のまま温存 (node 同梱シム + `PNPM_HOME` は store アンカーのみ、`pnpm add -g` は依然
+  abort、global CLI は mise npm: のみ)。`corepack enable`/`prepare`/`use` は素通り。
   `dump/npm-global` / `add-pnpm-g` / `update-pnpm-g*` / `check-pnpm-g` は退役済み。
 - devcontainer features は Microsoft 公式のみ (community 不可、memory
   `feedback_no_community_devcontainer_features`)。

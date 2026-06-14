@@ -86,14 +86,15 @@
       "Write(.env.keys)",
       "Read(**/private/**)",
       "Write(**/private/**)",
-      "Bash(sudo:*)"
-    ],
-    "ask": [
-      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
       "Bash(npm:*)",
       "Bash(npx:*)",
       "Bash(pnpm:*)",
       "Bash(pnpx:*)",
+      "Bash(yarn:*)"
+    ],
+    "ask": [
+      "Bash(rm -rf:*)",
       "Bash(pip3:*)",
       "Bash(pip:*)",
       "Bash(git reset:*)",

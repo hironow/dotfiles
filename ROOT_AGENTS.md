@@ -33,8 +33,9 @@ installed. The reasons are given so you generalize correctly to unlisted cases.
 
 - **`uv` only** for Python (`uv sync`, `uv add`, `uv run`). Never `pip`, `poetry`,
   `pipenv` — mixed resolvers desync the lockfile.
-- **`bun` only** for Node, **unless `pnpm-lock.yaml` exists** (then `pnpm`).
-  Never `npm`/`yarn` — same lockfile-desync reason.
+- **`bun` only** for Node. Never `npm`/`yarn`/`pnpm` (incl. `corepack pnpm`) —
+  same lockfile-desync reason. (corepack stays installed for machine
+  provisioning; agents just never invoke a package manager through it.)
 - **`just` is the only task runner.** Exactly one `justfile` at the repo root,
   no subdirectory justfiles, no `make`. One entrypoint = one place to look.
 - **`.yaml`, never `.yml`.** Compose files are `compose.yaml` (Compose Spec v2+);

@@ -49,8 +49,8 @@ MSG_PIP = (
     "Do not use pip/poetry/pipenv."
 )
 MSG_NODE = (
-    "Node package management is 'bun' (or 'pnpm' iff pnpm-lock.yaml exists). "
-    "Do not use npm/yarn."
+    "Node package management is 'bun' only. "
+    "Do not use npm/yarn/pnpm (including 'corepack pnpm')."
 )
 MSG_MAKE = (
     "Task automation is 'just' only. Add a recipe to the root justfile "
@@ -74,7 +74,12 @@ MSG_FORCE_PUSH = (
 )
 
 PIP_COMMANDS = {"pip", "pip3", "poetry", "pipenv"}
-NODE_COMMANDS = {"npm", "yarn"}
+NODE_COMMANDS = {"npm", "yarn", "pnpm"}
+# corepack runs a package manager: `corepack <pm>[@version] <pm-args>`. Block the
+# direct-PM-run form; provisioning subcommands (enable/prepare/use) pass through
+# since their first positional is the subcommand name, not a PM.
+COREPACK_PMS = {"pnpm", "yarn", "npm"}
+COREPACK_VALUE_FLAGS = {"--cwd"}  # corepack global flags that consume the next token
 WRAPPERS = {"env", "sudo", "time", "nohup", "command", "xargs"}
 INTERPRETERS = {
     "sh",
@@ -275,6 +280,23 @@ class _CommandWalker:
             block(MSG_PIP)
         if name in NODE_COMMANDS:
             block(MSG_NODE)
+        if name == "corepack":
+            # First positional after corepack's own flags (and their values) is
+            # either a PM name (`corepack pnpm …`) or a subcommand (`enable`).
+            sub = None
+            skip_next = False
+            for arg in args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if arg.startswith("-"):
+                    if arg in COREPACK_VALUE_FLAGS:  # e.g. `--cwd /x`: skip the /x
+                        skip_next = True
+                    continue
+                sub = arg
+                break
+            if sub and sub.split("@", 1)[0] in COREPACK_PMS:  # `pnpm@9` -> `pnpm`
+                block(MSG_NODE)
         if name == "make":
             block(MSG_MAKE)
         if name == "git" and "push" in args:
@@ -329,14 +351,10 @@ def _legacy_scan(text: str) -> None:
     scan = "\n".join(stripped_lines)
     if re.search(r"(^|[^\w./-])(pip3?|poetry|pipenv)(\s|$)", scan):
         block(MSG_PIP)
-    if re.search(r"(^|[^\w./-])(npm|yarn)(\s|$)", scan):
+    if re.search(r"(^|[^\w./-])(npm|yarn|pnpm)(\s|$)", scan):
         block(MSG_NODE)
     if re.search(r"(^|[^\w./-])make(\s|$)", scan):
         block(MSG_MAKE)
-    if re.search(r"(^|[^\w./-])pnpm(\s|$)", scan) and not find_pnpm_lock_upward(
-        os.getcwd()
-    ):
-        block(MSG_PNPM)
 
 
 def analyze(text: str, depth: int = 0) -> None:

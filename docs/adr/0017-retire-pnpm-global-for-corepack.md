@@ -1,7 +1,7 @@
 # 0017. Retire the pnpm-global subsystem in favor of corepack + mise npm
 
 **Date:** 2026-06-02
-**Status:** Accepted
+**Status:** Accepted (2026-06-02). Superseded by [0027](./0027-bun-only-retire-per-repo-pnpm-carveout.md) (partial — the per-repo pnpm fallback carve-out at the agent-policy layer is retired; the corepack/mise machine provisioning in this ADR is unchanged and in force).
 
 ## Context
 

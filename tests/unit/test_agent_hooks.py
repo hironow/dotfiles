@@ -44,17 +44,8 @@ def _run_hook(command: str, cwd: Path) -> int:
 
 
 @pytest.fixture()
-def locked_repo(tmp_path: Path) -> Path:
-    """A project directory governed by pnpm-lock.yaml."""
-    repo = tmp_path / "locked"
-    repo.mkdir()
-    (repo / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
-    return repo
-
-
-@pytest.fixture()
 def unlocked_repo(tmp_path: Path) -> Path:
-    """A project directory without a pnpm lockfile."""
+    """A scratch project directory (no special package-manager state)."""
     repo = tmp_path / "unlocked"
     repo.mkdir()
     return repo
@@ -79,62 +70,50 @@ def test_make_is_blocked(tmp_path: Path) -> None:
     assert _run_hook("make build", tmp_path) == EXIT_BLOCK
 
 
-# --- pnpm lockfile gate ----------------------------------------------------
+# --- pnpm: fully banned (Node is bun-only; ADR 0027 retires the lockfile carve-out)
 
 
-def test_pnpm_with_lockfile_in_cwd_is_allowed(locked_repo: Path) -> None:
-    assert _run_hook("pnpm install", locked_repo) == EXIT_ALLOW
+def test_pnpm_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("pnpm install", tmp_path) == EXIT_BLOCK
 
 
-def test_pnpm_without_lockfile_is_blocked(unlocked_repo: Path) -> None:
-    assert _run_hook("pnpm install", unlocked_repo) == EXIT_BLOCK
+def test_pnpm_with_lockfile_is_still_blocked(tmp_path: Path) -> None:
+    """The pnpm-lock.yaml carve-out is gone: pnpm is blocked even in a locked repo."""
+    (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+    assert _run_hook("pnpm install", tmp_path) == EXIT_BLOCK
 
 
-def test_pnpm_with_lockfile_in_ancestor_is_allowed(locked_repo: Path) -> None:
-    """Monorepo subdirectory: the lockfile lives at the repo root above cwd."""
-    sub = locked_repo / "packages" / "app"
-    sub.mkdir(parents=True)
-    assert _run_hook("pnpm install", sub) == EXIT_ALLOW
+def test_corepack_pnpm_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("corepack pnpm install", tmp_path) == EXIT_BLOCK
 
 
-def test_pnpm_cd_into_locked_repo_is_allowed(
-    locked_repo: Path, unlocked_repo: Path
-) -> None:
-    """Cross-repo: cwd has no lockfile, but the cd target does."""
-    cmd = f"cd {locked_repo} && pnpm install"
-    assert _run_hook(cmd, unlocked_repo) == EXIT_ALLOW
+def test_corepack_pnpm_versioned_is_blocked(tmp_path: Path) -> None:
+    """The `pm@version` form corepack accepts must still be caught."""
+    assert _run_hook("corepack pnpm@9 install", tmp_path) == EXIT_BLOCK
 
 
-def test_pnpm_dash_c_locked_repo_is_allowed(
-    locked_repo: Path, unlocked_repo: Path
-) -> None:
-    cmd = f"pnpm -C {locked_repo} install"
-    assert _run_hook(cmd, unlocked_repo) == EXIT_ALLOW
+def test_corepack_cwd_flag_pnpm_is_blocked(tmp_path: Path) -> None:
+    """A corepack value-flag must not let its operand be mistaken for the PM."""
+    assert _run_hook("corepack --cwd /tmp pnpm install", tmp_path) == EXIT_BLOCK
 
 
-def test_pnpm_mixed_cd_segments_blocked(
-    locked_repo: Path, unlocked_repo: Path, tmp_path: Path
-) -> None:
-    """Per-invocation gate: one governed pnpm call must not bless the others."""
-    cmd = f"cd {locked_repo} && pnpm install; cd {unlocked_repo} && pnpm install"
-    assert _run_hook(cmd, tmp_path) == EXIT_BLOCK
+def test_corepack_yarn_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("corepack yarn add lodash", tmp_path) == EXIT_BLOCK
 
 
-def test_pnpm_dash_c_mixed_blocked(
-    locked_repo: Path, unlocked_repo: Path, tmp_path: Path
-) -> None:
-    cmd = f"pnpm -C {locked_repo} install && pnpm -C {unlocked_repo} install"
-    assert _run_hook(cmd, tmp_path) == EXIT_BLOCK
+def test_corepack_yarn_versioned_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("corepack yarn@4 add lodash", tmp_path) == EXIT_BLOCK
 
 
-def test_pnpm_variable_dir_is_blocked(unlocked_repo: Path) -> None:
-    """Unresolvable target (variable) fails safe: block."""
-    assert _run_hook('cd "$PROJECT_DIR" && pnpm install', unlocked_repo) == EXIT_BLOCK
+def test_corepack_enable_is_allowed(tmp_path: Path) -> None:
+    """Provisioning subcommands (corepack enable/prepare/use) stay allowed: the
+    machine-level corepack supply is retained (ADR 0017, unchanged by 0027)."""
+    assert _run_hook("corepack enable", tmp_path) == EXIT_ALLOW
 
 
 def test_pnpm_mention_in_commit_message_is_allowed(unlocked_repo: Path) -> None:
     """Prose mentions inside quotes are not invocations (observed false block)."""
-    cmd = 'git commit -m "docs: explain why pnpm is gated on lockfiles"'
+    cmd = 'git commit -m "build: drop pnpm, Node is bun-only now"'
     assert _run_hook(cmd, unlocked_repo) == EXIT_ALLOW
 
 
