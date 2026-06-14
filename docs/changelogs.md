@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-06-10
+最終更新: 2026-06-14
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -12,7 +12,11 @@
 
 **現行バージョン**: v1.0.1 (2026-05)
 
-**チェックアウト状態**: `v1.0.1-6-g7475dd0` (v1.0.1 + 6 commits、 HEAD 2026-06-02)
+**チェックアウト状態**: `v1.0.1-10-g69dd57c` (v1.0.1 + 10 commits、 HEAD 2026-06-12)
+
+#### 2026-06-12 新着 (ホームページ再構成)
+
+- **ホームページ情報の再構成**: protocol overview のホームページ情報を再構成し、 欠落していたセクションを追加 (#1874)
 
 #### v1.0.1 リリース (2026-05) 後の新着
 
@@ -72,9 +76,26 @@
 
 ### A2UI (Agent-to-User Interface)
 
-**現行バージョン**: v0.9 (v0.10 spec 作業中)
+**現行バージョン**: v0.9 (次期 **v1.0 spec 作業中**、 旧称 v0.10 から `specification/v1_0` へ昇格)
 
-**チェックアウト状態**: `330991f5` (v0.9 タグ後の HEAD、 v0.10 仕様作業を含む、 HEAD 2026-06-09)
+**チェックアウト状態**: `d8af0c56` (v0.9 タグ後の HEAD、 v1.0 仕様作業 + a2ui_core SDK 実装を含む、 HEAD 2026-06-12)
+
+#### 2026-06-12 新着 (a2ui_core SDK 本格実装 / v0.10 → v1.0 spec 昇格)
+
+- **v0.10 → v1.0 spec へ昇格**: 次期仕様ディレクトリが `specification/v0_10` 相当から `specification/v1_0` へ。 これに伴い v1.0 関連の更新が進行
+- **BREAKING (v1.0): catalog instructions を inline Markdown 化 + `instructions.md` 廃止** (#1590): Catalog schema (`client_capabilities.json`) が相対 file URI ではなく plain Markdown 文字列を受け付けるよう変更、 外部 `instructions.md` を削除し catalog.json へ inline 化
+- **a2ui_core SDK: reactive Signal / ComponentNode primitives 導入**: text-based layout renderer (テスト用) も追加 (#1579)
+- **a2ui_core SDK: component state models / message processing / rendering 実装** (#1578)
+- **a2ui_core SDK: components validation 付き catalog 実装** (#1577)
+- **Python SDK Catalog アーキテクチャを Web Core parity へリファクタ** (#1612)
+- **a2ui_agent を a2ui_core 依存へリファクタ** (#1582)、 **custom cuttable keys 設定サポート** (#1581)
+- **core locale を decouple / deprecate**: catalog factory 経由で plumb するよう変更 (#1610)
+- **Lynx ecosystem renderer 追加** (#1601)、 **AGenUI v0.9 renderer を ecosystem に追加** (#1450)
+- **Samples 整理**: 一部削除し他を `samples/community` へ移動 (#1628)
+- **AG-UI / CopilotKit の A2UI ガイダンス明確化** (#1619)
+- **CI 刷新**: GitHub Actions を composite actions + 統合 CI workflow へリファクタ (#1621)、 a2ui_explorer に browser-based 統合テスト追加 (#1607)、 lint enforcement presubmit 追加 (#1600)、 Playwright screenshot regression を `test:visual` ターゲットへ移動 (#1635)
+- **依存バンプ**: yarn パッケージ更新 (#1616)、 uv group を 9 ディレクトリで 12 更新 (#1593)
+- **docsite の legacy/stable/candidate 参照を更新** (#1419)
 
 #### 2026-06-09 新着 (a2ui_core SDK 立ち上げ / v0.10 spec 続報)
 
@@ -216,9 +237,13 @@
 
 **現行バージョン**: v1.3.1 (2026-06)
 
-**チェックアウト状態**: `v1.3.1-7-g2d7feff` (v1.3.1 + 7 commits、 HEAD 2026-06-03)
+**チェックアウト状態**: `v1.3.1-8-g3824726` (v1.3.1 + 8 commits、 HEAD 2026-06-13)
 
 **管理**: CMU NeuLab
+
+#### 2026-06-13 新着 (ATIF 変換パイプライン)
+
+- **ATIF conversion pipeline 追加**: Agent Trajectory Interchange Format (ATIF) への変換パイプラインを追加 (#256)
 
 #### v1.2.0 / v1.3.0 / v1.3.1 リリース (2026-05〜06)
 
@@ -271,9 +296,19 @@
 
 ### AG-UI (Agent-User Interaction Protocol)
 
-**現行バージョン**: **TS SDK 0.0.56 (2026-06-09)** / @ag-ui/langgraph@0.0.40 (TS) / ag-ui-langgraph@0.0.41 (Py) / Python protocol 0.1.19
+**現行バージョン**: **TS SDK 0.0.57 (2026-06-13)** / @ag-ui/langgraph@0.0.40 (TS) / ag-ui-langgraph@0.0.41 (Py) / Python protocol 0.1.19
 
-**チェックアウト状態**: `861d0b22` (0.0.56 リリース後、 HEAD 2026-06-09)
+**チェックアウト状態**: `39df3b4a` (0.0.57 リリース後、 HEAD 2026-06-13)
+
+#### 2026-06-13 新着 (TS SDK 0.0.57 / aws-strands A2UI subagent / langgraph 修正群)
+
+- **TS SDK 一式を 0.0.57 へ**: @ag-ui/core / client / encoder / proto / create-ag-ui-app を 0.0.57 に bump
+- **aws-strands に A2UI subagent アーキテクチャ移植**: Python adapter と TypeScript adapter の両方へ A2UI subagent アーキテクチャを port。 CORS origin デフォルトを Python adapter に合わせ literal `"*"` に
+- **client: HttpAgent の default fetch を bind**: ブラウザでの "Illegal invocation" を防ぐため HttpAgent で default fetch を bind
+- **a2ui-toolkit: child-reference cycle 検出**: singular child を validate し child-reference cycle を検出 (deep child-chain cycle テストの de-flake、 child adjacency builders の ref-field scope ドキュメント化 #1948)
+- **langgraph 修正群**: TOOL_CALL_RESULT で ToolMessage id (tool_call_id fallback 付き) を使用、 `prepare_regenerate_stream` で runtime config を保持 (#1749)、 runtime context を kwargs 経由で転送、 reasoning content をターン跨ぎで lossless に round-trip
+- **dojo: CopilotKit 1.60.1 採用** (1.60.0 経由)、 langchain-core バージョン衝突のため langchain agent を無効化、 weather demo tools を test 下で決定的に
+- **多数の修正 merge**: multi-LRO resume gating、 duplicate terminal event、 messages snapshot の reasoning dedup、 ADK session read cache、 LLMAgent HITL confirmation、 ADK LRO duplicate tool call、 client subscriber clone OOM、 SSE drop recovery regression test、 canary publish action、 proto license metadata
 
 #### 2026-06-09 新着 (TS SDK 0.0.56 / A2UI toolkit)
 
@@ -398,9 +433,13 @@
 
 **現行バージョン**: 2025-11-25 (次期リリース候補 `2026-07-28-RC` 作業中)
 
-**チェックアウト状態**: `1304c8fe` (2026-07-28-RC タグ後の next-revision draft 作業中、 HEAD 2026-06-09)
+**チェックアウト状態**: `2026-07-28-RC-84-ge0454eb5` (2026-07-28-RC タグ後の next-revision draft 作業中、 HEAD 2026-06-13)
 
 **注目**: 2025-11-25 タグで `2025-11-25-RC` から正式リリース昇格。HEAD はそれより先に進んでおり、**SEP-2567 (Sessionless MCP via Explicit State Handles) と SEP-2575 (Make MCP Stateless) が Final / Accepted へ昇格**して draft に組み込み中。 ステートレス志向への大きな仕様シフトが進行中。 直近では **SEP-2596 (Feature Lifecycle and Deprecation Policy)、 SEP-2577 (Deprecate Roots/Sampling/Logging)、 SEP-2106 (Tools schema を JSON Schema 2020-12 準拠化)、 SEP-2164 (resource not found error code 標準化)、 SEP-2468 (Issuer iss param 推奨)、 SEP-2484 (Standards Track SEP は Conformance Tests 必須)、 SEP-2663 (Tasks Extension)、 SEP-2575 で unsupported protocol error code 追加** 等が連続して進行。
+
+#### 2026-06-13 新着 (依存バンプのみ)
+
+- **esbuild バンプ**: deps / deps-dev の esbuild をバンプ (#2911, #2910)。 spec 本文への変更はなし
 
 #### 2026-06 新着 (message patterns 再編 / stdio legacy-fallback / Server Card WG)
 
@@ -682,7 +721,7 @@
 
 **現行バージョン**: v1.1（仕様、 タグなし latest 追従、 直近 spec commit 2026-05-18）
 
-**チェックアウト状態**: `75efb05` (2026-06-03 contributors update、 ブランチ HEAD。 前回記録以降は contributors data の自動更新のみで仕様変更なし)
+**チェックアウト状態**: `7aa4b5e` (2026-06-14 contributors update、 ブランチ HEAD。 前回記録以降は contributors data の自動更新のみで仕様変更なし)
 
 **管理**: Universal Tool Calling Protocol コミュニティ（独立 OSS）
 
@@ -749,6 +788,12 @@
 **現行バージョン**: 継続的デプロイ（バージョンタグなし）
 
 **管理**: Google Chrome Labs
+
+#### 2026-06-10 新着 (leather-bag angular standards / referrer)
+
+- **leather-bag app を最新 Angular standards へ更新**: leather-bag demo を最新の Angular 流儀へリファクタ
+- **referrer 利用対応**: use-referrer の取り込み (#223)
+- **demo 依存バンプ**: sport-shop-angular の hono 4.12.24 / analytics-dashboard の postcss 8.5.15 を dependabot でバンプ (#216, #217)
 
 #### 2026-06-09 新着 (Angular 22 / parametersJsonSchema / french-bistro agent)
 
@@ -820,8 +865,11 @@
 
 **管理**: OpenAI & Stripe
 
+**チェックアウト状態**: `5241c39` (タグなし継続デプロイ、 v2026-04-17 API 後の HEAD、 HEAD 2026-06-11)
+
 #### v2026-04-17 後の変更点
 
+- **MessageInfo / MessageWarning / MessageError の examples 修正** (2026-06-11、 #262): 3 種メッセージ型 (`MessageInfo` / `MessageWarning` / `MessageError`) の examples を正しい形へ修正
 - **SEP: Feed API Upsert Products Response に Feed Update ID 追加** (2026-06-04、 #260)
 - **Fulfillment Details on Checkout Complete (SEP)**: チェックアウト完了時に履行詳細（fulfillment details）を返却できるよう許可する SEP (#200)
 - **Suggested Pricing on Checkout Create (SEP)**: チェックアウト作成時に suggested pricing を提示できるようにする SEP (#201)
@@ -914,7 +962,16 @@
 
 **現行バージョン**: v2026-04-08 (2026-04-13)
 
-**チェックアウト状態**: `v2026-01-23-134-gd984d4b` (`git submodule status` は祖先タグ v2026-01-23 を表示するが、 HEAD は v2026-04-08 を超過、 HEAD 2026-06-03)
+**チェックアウト状態**: `v2026-01-23-142-gbef87dd` (`git submodule status` は祖先タグ v2026-01-23 を表示するが、 HEAD は v2026-04-08 を超過、 HEAD 2026-06-12)
+
+#### 2026-06-12 新着 (buyer consent per-segment 破壊的 / delegated IdP)
+
+- **BREAKING: buyer consent に per-segment extensibility** (#451): buyer consent を per-segment で拡張可能に。 `feat!` のため後方互換を破る変更
+- **delegated identity providers + accelerated IdP flow** (#423): delegated identity provider と高速化された IdP フローを追加
+- **get_order に signature response headers 追加**: 欠落していた署名レスポンスヘッダを `get_order` に追加 (#370)
+- **embedded schemas レンダリング時の required フィールド保持**: 埋め込みスキーマのレンダリングで required フィールドを保持 (#501)
+- **Google TC メンバー交代**: Venu → Jing (#506)
+- **docs 修正**: checkout の不要な fulfillment-option entity 削除 (#284)、 identity linking の formatting 修正 (#505)、 cart の error response examples で無効な UCP version を訂正 (#504)
 
 #### 2026-06 新着 (split payments extension / idempotency 契約)
 
@@ -1125,9 +1182,38 @@
 
 **現行バージョン**: **v2.2.0 (2026-06-04)** / v1.35.0 (stable lts、 2026-06-10)
 
-**チェックアウト状態**: `ca8baf19` (v2.2.0 リリース後の main、 HEAD 2026-06-09 付近)
+**チェックアウト状態**: `d3c21d71` (OSS mirror main の HEAD。 `git describe` は祖先タグ v1.32.0+304 を表示し、 リリースタグ v2.x / v1.34+ は現 HEAD から到達不能な別ライン = Copybara export 運用のため、 HEAD 2026-06-13)
 
 **注目**: v2.0.0 GA（2026-05-19）後、 **v2.1.0 → v2.2.0（2026-06-04）と 2.x 系リリースが軌道に乗った**。 v2.2.0 は **Google GenAI SDK v2.0.0 対応**、 **AutoTracingPlugin（OpenTelemetry 自動計装）**、 **RubricBasedMultiTurnTrajectoryEvaluator**、 native OTel `gen_ai.client.*` metrics など observability / eval 強化が柱で、 セキュリティ修正も多い（下記）。 LTS 側も **v1.35.0（2026-06-10）** がリリースされ、 Gemini 3.1 Live 系の修正（input transcription の扱い、 grounding metadata デフォルト、 history config injection）を backport。 v2.2.0 後の main では **E2BEnvironment（リモート sandbox workspace）**、 **GEPARootAgentOptimizer**、 BigQuery Agent Analytics plugin の ADK 2.0 producer cut、 `GOOGLE_GENAI_USE_ENTERPRISE` env var などが進行中。
+
+#### 2026-06-13 新着 (enterprise パラメータ移行 / mTLS / Agent Identity / Antigravity wrapper)
+
+main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの:
+
+**[Features]**
+
+- **enterprise パラメータへ移行**: core と CLI を enterprise parameters へ移行、 samples / docs の `vertexai` 呼称を `enterprise` に置換、 `GOOGLE_GENAI_USE_ENTERPRISE` env var 系の整備
+- **mTLS サポート**: `McpToolset` を `AsyncAuthorizedSession` へ移行して mTLS 対応、 `AgentRegistry` client にも mTLS 追加
+- **Agent Identity auth provider**: Agent Identity Credentials service ベースの auth provider 実装、 auth provider resource name に基づく diversion ロジック、 `gcp_auth` client UI を Remote Agents 対応に
+- **Antigravity SDK agent wrapper (実験的)**: labs に experimental な Antigravity SDK agent wrapper を追加
+- **GCS first-party toolset**: ADK integrations に GCS の first-party toolset を追加
+- **Live API 強化**: `RunConfig` で Live API translation config をサポート、 live usage metadata で output token count を伝播、 Gemini 3.1 live は各ターン末尾でのみ grounding_metadata を送信
+- **per-request OpenTelemetry 設定**: telemetry をリクエスト単位で構成可能に
+- **`load_web_page` に request timeout 追加**
+- **default model を gemini-3.5-flash に更新** (samples 含む)
+
+**[破壊的/挙動変更]**
+
+- **telemetry metrics の単位を ms → 秒へ**: agent / tool 実行時間メトリクスをミリ秒から秒に変更（既存ダッシュボード要確認）
+- **otel google-genai instrumentor >=0.7b1 を要求**: genai 2.x 向けに instrumentor 下限を引き上げ
+- **`a2a` を agent_engine デプロイの必須依存に**、 **`google-cloud-parametermanager` を optional 依存へ移動**
+
+**[修正]**
+
+- **workflow 系の安定化**: replay divergence hang / sequence barrier の防止、 shared `InvocationContext` の branch mutation 防止、 conditional route 未マッチ時の silent dead end 修正、 explicit single-turn contents の保持、 routed nodes の silent drain 防止
+- **`InMemoryMemoryService` 検索の非Latin テキスト対応**
+- **CI セキュリティ硬化**: fork での workflow 実行を防ぐ repository check 追加、 pr-triage secrets を same-repository `pull_request_target` に gate、 release analyzer workflow input の shell 補間を停止
+- **ruff で unused-import enforcement を採用**
 
 #### v2.2.0 の主要な変更点（2026-06-04）
 
@@ -1444,9 +1530,14 @@
 
 **現行バージョン**: **v1.4.0 (2026-05-29)**
 
-**チェックアウト状態**: `v1.4.0` (HEAD はタグ v1.4.0 に一致、 HEAD 2026-05-29)
+**チェックアウト状態**: `v1.4.0-4-g38b11f7` (v1.4.0 + 4 commits、 HEAD 2026-06-10)
 
 **注目**: **v1.4.0 が 2026-05-29 にリリース**。 Context unification（tool context を callbackContext にマージする内部統合）、 adka2a structured error propagation、 a2a-go/v2 SDK への example / CLI 移行、 StreamingResponseAggregator の metadata-only SSE チャンク許容（ストリーム中断防止）が中心。 直前の v1.3.0（2026-05-20）で Live bidirectional streaming コア機能群・a2a-go/v2 対応・VertexAI MemoryBank が取り込まれた流れの直系。
+
+#### 2026-06-10 新着 (govulncheck パッチ / Node 24 移行)
+
+- **SECURITY: x/net と otel OTLP exporters を bump**: govulncheck advisory に対応するため `golang.org/x/net` と OTLP exporter 群をパッチ版へ (#994)
+- **GitHub Actions の Node 24 移行完了**: GitHub Actions を Node 24 へ完全移行 (#996)
 
 #### v1.4.0 の主要な変更点（2026-05-29）
 
@@ -1797,9 +1888,13 @@
 
 **現行バージョン**: **v0.13.0 (2026-05-28)**
 
-**チェックアウト状態**: `v0.13.0` (HEAD はタグ v0.13.0 に一致、 HEAD 2026-05-28)
+**チェックアウト状態**: `v0.13.0-16-g23463c4` (v0.13.0 + 16 commits、 HEAD 2026-06-10)
 
 **注目**: **v0.13.0 が 2026-05-28 にリリース**。 v0.12.0 の Anthropic Claude ADK adapter / node pool 管理ツールに続き、 k8s リソース操作ツール群（apply / get / describe / patch / delete / logs / rollout status / auth check / api resources / cluster info / events）を一括拡充。 install 時の checksum verification とセキュアな CI（insecure `pull_request_target` 防止チェック）も追加。
+
+#### 2026-06-10 新着 (skill evals を yaml へ)
+
+- **skill evals を textproto → yaml へ移行**: OSS との整合のため skill evals を textproto から yaml フォーマットへ移行 (#420)
 
 #### v0.13.0 の主要な変更点（2026-05-28）
 
@@ -1890,7 +1985,11 @@
 
 **現行バージョン**: **0.6.0 (2026-05-21)**
 
-**チェックアウト状態**: `0.6.0` (HEAD はタグ 0.6.0 に一致、 HEAD 2026-05-21)
+**チェックアウト状態**: `0.6.0-4-g6818a99` (0.6.0 + 4 commits、 HEAD 2026-06-11)
+
+#### 2026-06-11 新着 (Claude Code 向け導入手順)
+
+- **Claude Code 向けセクション追加**: README に Claude Code 用の Google Analytics MCP セットアップセクションを追加 (#174)
 
 #### 0.6.0 の主要な変更点（2026-05-21）
 
@@ -1997,9 +2096,19 @@
 
 **現行バージョン**: **v1.4.0 (2026-06-04)**
 
-**チェックアウト状態**: `eede644599f` (v1.4.0 + 8 commits)
+**チェックアウト状態**: `f9c00a6fa4a` (v1.4.0 + 22 commits、 HEAD 2026-06-12)
 
 **注目**: **v1.4.0 リリース（2026-06-04）**。 **Data Lineage 統合**、 起動時に未知ツールを無視する **`--ignore-unknown-tools` フラグ**、 Cloud SQL Postgres の **vector assist tools 完備**、 Spanner **`search_catalog` tool**、 windows/arm64 バイナリ配布が新規。 セキュリティ面では v1.3.0 後に積まれていた **ClickHouse / BigQuery の identifier injection 防止 (#3219)**、 **Looker filter value escape (#3289)** に加え、 **opaque token 検証での issuer 必須化 (#3360)**、 **Google / Generic MCP OAuth 検証の分離 (#3341)** を取り込み。 [UPGRADING.md](https://github.com/googleapis/genai-toolbox/blob/main/UPGRADING.md) でのマイグレーションガイド参照。
+
+#### 2026-06-12 新着 (SQL injection escape / MCP HTTP body size 制限)
+
+- **SECURITY: `applyEscape` で delimiter 文字を escape**: SQL injection を防ぐため `applyEscape` で区切り文字を escape (#2811)。 関連して bigquery_integration_test.go の escape も更新 (#3392)
+- **SECURITY: MCP HTTP body size を制限**: MCP の HTTP body サイズに上限を設定 (#3216)
+- **tool 初期化を source から decouple**: tool の初期化を sources から切り離し (#3355)
+- **skills のオフライン生成**: live source 接続なしで skills を生成可能に (#3388)、 オフライン skills-generate 時に未設定 env var を許容 (#3399)
+- **dataplex / datalineage の default credentials に cloud-platform scope 指定** (#3376)
+- **alloydb-omni prebuilt で password env var を明示必須化** (#3398)
+- **依存バンプ**: go update (#3310)、 `@grpc/grpc-js` 1.14.3 → 1.14.4 (#3402)
 
 #### v1.4.0 の主要な変更点（2026-06-04）
 
@@ -2119,6 +2228,9 @@
 
 | 対象 | 変更内容 | 対応優先度 |
 |------|---------|-----------|
+| **UCP buyer consent per-segment** (#451, 2026-06-12) | `feat!` で buyer consent を per-segment extensibility 化し後方互換を破る。 delegated identity providers + accelerated IdP flow (#423) も同梱 | 中 |
+| **A2UI v0.10 → v1.0 spec 昇格 + inline catalog instructions** (#1590, 2026-06-12) | 次期 spec が `specification/v1_0` へ昇格。 catalog instructions を相対 file URI から inline Markdown へ (BREAKING)、 `instructions.md` を廃止 | 中 |
+| **ADK Python telemetry metrics 単位変更** (main, 2026-06-13) | agent / tool 実行時間メトリクスを ミリ秒 → 秒 へ変更。 既存 OTel ダッシュボード / アラート閾値の見直しが必要 | 中 |
 | **ADK Python v2.2.0** (2026-06-04) | Google GenAI SDK v2.0.0 対応、 AutoTracingPlugin、 RubricBasedMultiTurnTrajectoryEvaluator、 path traversal / Zip Slip / unpickle 制限 / CVE-2026-48710 等のセキュリティ修正一括 | 高 |
 | **ADK JS v1.2.0** (2026-06-03) | v1.1.0 後のセキュリティ修正（CORS、 OAuth2 SSRF、 host 制限）を取り込み。 後続 main で Skills Registry 3部作 + streaming prototype pollution 修正 | 高 |
 | **GenAI Toolbox v1.4.0** (2026-06-04) | Data Lineage 統合、 `--ignore-unknown-tools`、 identifier injection 防止 / opaque token issuer 必須化 / OAuth 検証分離（セキュリティ） | 中 |
@@ -2237,6 +2349,9 @@
 
 ### セキュリティ更新
 
+- **GenAI Toolbox (v1.4.0 後 main, 2026-06-12)**: **`applyEscape` の delimiter 文字 escape による SQL injection 防止 (#2811)**、 **MCP HTTP body size の上限設定 (#3216)**、 dataplex / datalineage の default credentials に cloud-platform scope 指定 (#3376)、 alloydb-omni prebuilt の password env 明示必須化 (#3398)
+- **ADK Go (v1.4.0 後 main, 2026-06-10)**: **govulncheck advisory 対応で `golang.org/x/net` と otel OTLP exporters を patch 版へ bump (#994)**
+- **ADK Python (main HEAD, 2026-06-13)**: CI セキュリティ硬化 — fork での workflow 実行を防ぐ repository check 追加、 pr-triage secrets を same-repository `pull_request_target` に gate、 release analyzer workflow input の shell 補間を停止
 - **ADK Python v2.2.0 (2026-06-04)**: **Agent Builder file tools の path traversal ブロック (1fa7cda)**、 **GCS skill 展開の Zip Slip 修正 (2f15c6c)**、 **v0 actions blob の unpickle 制限 (9db48ce)**、 **`delete_session` の session 所有権検証 (b2916c7)**、 **CVE-2026-48710 対応（starlette / fastapi bump, 81add39）**、 ReadFileTool の shell escape (e16629b)、 OAuth2 token request の scope 省略 (6ce4b87)
 - **ADK JS v1.2.0 (2026-06-03) + 後続 main**: v1.1.0 後の **CORS 脆弱性修正（express.urlencoded parser 無効化, #378）**、 **OAuth2 SSRF 防止（IPv4-mapped IPv6 ブロック, #354）**、 run_sse hardcoded `*` 削除 (#360)、 AdkApiServer host 制限 (#383) を正式リリース。 main では **streaming の prototype pollution 修正（model 制御 JSON path 経由, #410）**
 - **GenAI Toolbox v1.4.0 (2026-06-04)**: **ClickHouse / BigQuery identifier injection 防止 (#3219)**、 **opaque token validation の issuer 必須化 (#3360)**、 **Google / Generic MCP OAuth 検証分離 (#3341)**、 Looker filter value escape (#3289)、 apache/thrift CVE-2026-41602 対応を正式リリース
