@@ -46,6 +46,9 @@ BASE_FILE = "ROOT_AGENTS.md"
 OVERLAY_FILE = "ROOT_CLAUDE.md"
 # Hooks settings fragment merged into each claude-family agent's settings.json.
 HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
+# Shared settings fragment merged into each claude-family agent's settings.json:
+# the cross-machine env block (owned wholesale) plus curated top-level keys.
+SHARED_SETTINGS_FRAGMENT = ".claude/settings.shared.json"
 
 # Directories to sync directly (in addition to ROOT_AGENTS_* files)
 SYNC_DIRECTORIES = ["commands", "skills", "agents"]
@@ -815,6 +818,43 @@ def _merge_hook_settings(
     return changed
 
 
+def _merge_settings_fragment(
+    dotfiles_dir: Path, agent: AgentTarget, dry_run: bool = False
+) -> bool:
+    """Merge the shared settings fragment into the agent's settings.json.
+
+    Update-in-place, parallel to _merge_hook_settings but with a STRONGER
+    ownership model: the fragment's ``env`` block is owned wholesale (the
+    target's env is replaced, so keys dropped from the fragment are removed) --
+    machine-local env therefore belongs in settings.local.json, which sync never
+    touches. The fragment's ``settings`` object holds curated top-level keys that
+    are upserted (add/update only); every other target key (theme, language,
+    enabledPlugins, hooks, statusLine, ...) is preserved untouched. Top-level key
+    removal is not auto-propagated. Idempotent; dry_run=True writes nothing.
+    Returns True if the file would change.
+    """
+    fragment_path = dotfiles_dir / SHARED_SETTINGS_FRAGMENT
+    if not fragment_path.exists():
+        return False
+    fragment = json.loads(fragment_path.read_text())
+    target_path = agent.directory / "settings.json"
+    target = json.loads(target_path.read_text()) if target_path.exists() else {}
+
+    before = json.dumps(target, sort_keys=True, ensure_ascii=False)
+
+    if "env" in fragment:
+        target["env"] = fragment["env"]
+    for key, value in fragment.get("settings", {}).items():
+        target[key] = value
+
+    changed = json.dumps(target, sort_keys=True, ensure_ascii=False) != before
+
+    if changed and not dry_run:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(json.dumps(target, indent=2, ensure_ascii=False) + "\n")
+    return changed
+
+
 def _plan_text_file(
     source: Path, target: Path, relative_path: str, agent: AgentTarget
 ) -> _SyncAction:
@@ -994,6 +1034,12 @@ def _print_plan(
             dotfiles_dir, plan.agent, dry_run=True
         ):
             print("  📝 📄 settings.json [HOOKS MERGE]")
+            has_changes = True
+
+        if plan.agent.receives_hooks and _merge_settings_fragment(
+            dotfiles_dir, plan.agent, dry_run=True
+        ):
+            print("  📝 📄 settings.json [SHARED MERGE]")
             has_changes = True
 
         for deletion in plan.deletions:
@@ -1439,6 +1485,14 @@ def sync_mode(
         # (claude-family only; idempotent, manifest-independent).
         if plan.agent.receives_hooks and _merge_hook_settings(dotfiles_dir, plan.agent):
             print("  ✅ 📄 settings.json: hooks merged")
+
+        # Merge the shared settings fragment (env owned wholesale + curated
+        # top-level keys; claude-family only). Sequential after the hook merge so
+        # each reads the freshly written settings.json -- no lost update.
+        if plan.agent.receives_hooks and _merge_settings_fragment(
+            dotfiles_dir, plan.agent
+        ):
+            print("  ✅ 📄 settings.json: shared settings merged")
 
         # Apply deletions
         for deletion in plan.deletions:
