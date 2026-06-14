@@ -43,13 +43,13 @@ covers the long tail.
 - `block-prohibited-commands.sh` (Bash): thin wrapper around a stdlib-only
   Python guard (`block-prohibited-commands.py`, same directory) that parses
   the command instead of regex-scanning it. Blocks: `pip`/`poetry`/`pipenv`,
-  `npm`/`yarn`, `make` (as command names), root deletion, force-push to
-  main/master, drift-causing `gcloud`/`cdr` mutations (open an IaC PR
-  instead), and **creating `.yml` files via Bash** (redirect targets,
-  `touch`/`tee` args, `cp`/`mv` destinations — reads stay allowed). `pnpm` is
-  allowed only when a `pnpm-lock.yaml` governs each pnpm invocation's target
-  directory (searched upward; `cd`/`-C`/`--dir` targets resolved, quoted
-  paths handled).
+  `npm`/`yarn`/`pnpm` and `corepack <pm>` (the direct `corepack pnpm`/`yarn`
+  run form — `@version` and `--cwd` variants included), `make` (as command
+  names), root deletion, force-push to main/master, drift-causing
+  `gcloud`/`cdr` mutations (open an IaC PR instead), and **creating `.yml`
+  files via Bash** (redirect targets, `touch`/`tee` args, `cp`/`mv`
+  destinations — reads stay allowed). Node is bun-only (ADR 0027); the
+  `corepack enable`/`prepare`/`use` provisioning subcommands stay allowed.
 - `format-after-edit.sh` (PostToolUse Write|Edit): `ruff format` +
   `ruff check --fix` on the edited Python file; `gofmt -w` on the edited Go
   file. Always single-file — TS/JS is deliberately not formatted per edit
@@ -72,12 +72,9 @@ covers the long tail.
   excluded): a prose mention of e.g. a gcloud mutation inside `-m "…"` can
   false-block. Over-blocking is the safe side there; put long prose in a
   heredoc or a file (`git commit -F`, `--body-file`).
-- An unresolvable pnpm target (variable, subshell) fails safe (block); the
-  block message offers the `!` escape hatch for legitimate cross-repo calls.
-- Command parsing is best-effort. A pnpm target directory hidden behind a
-  variable or subshell can't be resolved; the hook fails safe and blocks. If a
-  block is a false positive, ask the user to run the command themselves with
-  the `!` prefix.
+- Command parsing is best-effort. If a guard false-positives (e.g. a prose
+  mention the tokenizer can't disambiguate), ask the user to run the command
+  themselves with the `!` prefix.
 
 ## Tuning the hooks
 
