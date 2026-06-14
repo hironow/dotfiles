@@ -162,6 +162,8 @@ deploy:
 #   ROOT_CLAUDE.md (overlay, @AGENTS.md) -> claude-family/CLAUDE.md
 #   ROOT_AGENTS_docs_agents_*.md (spokes) -> <agent>/docs/agents/* (abs refs)
 #   ROOT_AGENTS_hooks_*.sh + .claude/settings.hooks.json -> claude-family only
+#   .claude/settings.shared.json -> claude-family settings.json (env owned
+#     wholesale + curated top-level keys upserted; machine-local env -> settings.local.json)
 # Default scope = .claude only. Pass targets to widen:
 #   just sync-agents               -> ~/.claude only
 #   just sync-agents a b           -> + ~/.claude-work-a, ~/.claude-work-b

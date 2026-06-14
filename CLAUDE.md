@@ -16,6 +16,8 @@
     - `ROOT_CLAUDE.md` = Claude 専用 **overlay** (先頭で `@AGENTS.md` を import)
     - `ROOT_AGENTS_docs_agents_*.md` = on-demand **spoke** (tdd / commit / python 等)
     - `ROOT_AGENTS_hooks_*.sh` + `.claude/settings.hooks.json` = Claude hooks (機械 enforcement)
+    - `.claude/settings.shared.json` = Claude **共有 settings fragment** (env block + 選別
+      top-level キー。`settings.hooks.json` 同様 CC からは読まれない純粋な source)
 - **`just sync-agents` (`scripts/sync_agents.py`) の配布 (per-tool):**
     - base → codex `~/.codex/AGENTS.md` / gemini `~/.gemini/GEMINI.md` /
       claude-family `~/.claude*/AGENTS.md`
@@ -29,6 +31,12 @@
       **update-in-place マージ** (manifest 非追跡)。sync が所有するのは command が
       `<agent>/hooks/` を指す block のみで、毎回その managed block を最新 fragment で
       置換 (hook command 変更でも stale 重複が残らない)、user 作成 block は保持
+        - `.claude/settings.shared.json` も同一 settings.json へ **逐次** update-in-place
+          マージ (hooks merge の直後)。**env block は sync が丸ごと所有=置換** (fragment から
+          消えた env キーは target からも除去される。machine 固有 env は `settings.local.json`
+          へ逃がす)、`settings` 内の top-level キーは **upsert** (theme/language/plugins 等の
+          未宣言キーは保持)。top-level キーの削除は自動伝播しない。これにより env は **fragment
+          一本が正本** で、repo `.claude/settings.json` は env を持たず global から継承する
     - `ROOT_AGENTS_<x>_<y>(.ext|/)` → `<agent>/<x>/<y>` (`_`→`/`) の従来規約も継続
     - **`skills` は additive** (`ADDITIVE_DIRECTORIES`): 欠落 skill のみ追加、既存
       target は**上書きしない・削除しない**。`bunx skills` CLI が `~/.agents/skills`
