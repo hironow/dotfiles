@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-06-14
+最終更新: 2026-06-15
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -78,7 +78,11 @@
 
 **現行バージョン**: v0.9 (次期 **v1.0 spec 作業中**、 旧称 v0.10 から `specification/v1_0` へ昇格)
 
-**チェックアウト状態**: `d8af0c56` (v0.9 タグ後の HEAD、 v1.0 仕様作業 + a2ui_core SDK 実装を含む、 HEAD 2026-06-12)
+**チェックアウト状態**: `d886bca0` (v0.9 タグ後の HEAD、 v1.0 仕様作業 + a2ui_core SDK 実装を含む、 HEAD 2026-06-13)
+
+#### 2026-06-13 新着 (eval inference strategies)
+
+- **eval に inference strategies 導入**: A2UI 評価フレームワークに inference strategies を導入 (#1602)
 
 #### 2026-06-12 新着 (a2ui_core SDK 本格実装 / v0.10 → v1.0 spec 昇格)
 
@@ -296,9 +300,13 @@
 
 ### AG-UI (Agent-User Interaction Protocol)
 
-**現行バージョン**: **TS SDK 0.0.57 (2026-06-13)** / @ag-ui/langgraph@0.0.40 (TS) / ag-ui-langgraph@0.0.41 (Py) / Python protocol 0.1.19
+**現行バージョン**: **TS SDK 0.0.57 (2026-06-13)** / @ag-ui/aws-strands@0.2.0 (TS) / ag_ui_strands@0.2.0 (Py) / @ag-ui/langgraph@0.0.40 (TS) / ag-ui-langgraph@0.0.41 (Py) / Python protocol 0.1.19
 
-**チェックアウト状態**: `39df3b4a` (0.0.57 リリース後、 HEAD 2026-06-13)
+**チェックアウト状態**: `5acc1387` (release/2026-06-15、 aws-strands 統合 0.2.0 リリース後、 HEAD 2026-06-15)
+
+#### 2026-06-15 新着 (aws-strands 統合 0.2.0)
+
+- **aws-strands 統合を 0.2.0 へ**: integration-aws-strands-ts (@ag-ui/aws-strands@0.2.0) と integration-aws-strands-py (ag_ui_strands@0.2.0) を 0.2.0 に bump（A2UI subagent アーキテクチャ移植に続くメジャーマイナー昇格）。 release/2026-06-15 でタグ付け
 
 #### 2026-06-13 新着 (TS SDK 0.0.57 / aws-strands A2UI subagent / langgraph 修正群)
 
@@ -721,7 +729,7 @@
 
 **現行バージョン**: v1.1（仕様、 タグなし latest 追従、 直近 spec commit 2026-05-18）
 
-**チェックアウト状態**: `7aa4b5e` (2026-06-14 contributors update、 ブランチ HEAD。 前回記録以降は contributors data の自動更新のみで仕様変更なし)
+**チェックアウト状態**: `b397dcb` (2026-06-15 contributors update、 ブランチ HEAD。 前回記録以降は contributors data の自動更新のみで仕様変更なし)
 
 **管理**: Universal Tool Calling Protocol コミュニティ（独立 OSS）
 
@@ -788,6 +796,13 @@
 **現行バージョン**: 継続的デプロイ（バージョンタグなし）
 
 **管理**: Google Chrome Labs
+
+**チェックアウト状態**: `8e3096e` (タグなし継続デプロイ、 HEAD 2026-06-15)
+
+#### 2026-06-15 新着 (origin trial tokens / dependabot 群)
+
+- **demos に origin trial token 補完**: 欠落していた origin trial tokens を demos に追加 (ot2、 #229)
+- **dependabot deps バンプ群**: react-flightsearch (#227)、 evals-cli/ui (#226)、 webmcp-maze (#225) の esbuild / vite / @vitejs プラグインを bump、 leather-bag の hono 4.12.18 → 4.12.23 (#213)、 hotel-chain の postcss 8.5.8 → 8.5.15 (#210)
 
 #### 2026-06-10 新着 (leather-bag angular standards / referrer)
 
@@ -962,7 +977,11 @@
 
 **現行バージョン**: v2026-04-08 (2026-04-13)
 
-**チェックアウト状態**: `v2026-01-23-142-gbef87dd` (`git submodule status` は祖先タグ v2026-01-23 を表示するが、 HEAD は v2026-04-08 を超過、 HEAD 2026-06-12)
+**チェックアウト状態**: `v2026-01-23-143-g0ea2f36` (`git submodule status` は祖先タグ v2026-01-23 を表示するが、 HEAD は v2026-04-08 を超過、 HEAD 2026-06-15)
+
+#### 2026-06-15 新着 (build script 改善)
+
+- **build script 出力に serving instructions 追加**: build script の出力末尾に serving instructions を追加 (#432)
 
 #### 2026-06-12 新着 (buyer consent per-segment 破壊的 / delegated IdP)
 
@@ -1182,9 +1201,14 @@
 
 **現行バージョン**: **v2.2.0 (2026-06-04)** / v1.35.0 (stable lts、 2026-06-10)
 
-**チェックアウト状態**: `d3c21d71` (OSS mirror main の HEAD。 `git describe` は祖先タグ v1.32.0+304 を表示し、 リリースタグ v2.x / v1.34+ は現 HEAD から到達不能な別ライン = Copybara export 運用のため、 HEAD 2026-06-13)
+**チェックアウト状態**: `71b936bf` (OSS mirror main の HEAD。 `git describe` は祖先タグ v1.32.0+306 を表示し、 リリースタグ v2.x / v1.34+ は現 HEAD から到達不能な別ライン = Copybara export 運用のため、 HEAD 2026-06-15)
 
 **注目**: v2.0.0 GA（2026-05-19）後、 **v2.1.0 → v2.2.0（2026-06-04）と 2.x 系リリースが軌道に乗った**。 v2.2.0 は **Google GenAI SDK v2.0.0 対応**、 **AutoTracingPlugin（OpenTelemetry 自動計装）**、 **RubricBasedMultiTurnTrajectoryEvaluator**、 native OTel `gen_ai.client.*` metrics など observability / eval 強化が柱で、 セキュリティ修正も多い（下記）。 LTS 側も **v1.35.0（2026-06-10）** がリリースされ、 Gemini 3.1 Live 系の修正（input transcription の扱い、 grounding metadata デフォルト、 history config injection）を backport。 v2.2.0 後の main では **E2BEnvironment（リモート sandbox workspace）**、 **GEPARootAgentOptimizer**、 BigQuery Agent Analytics plugin の ADK 2.0 producer cut、 `GOOGLE_GENAI_USE_ENTERPRISE` env var などが進行中。
+
+#### 2026-06-15 新着 (compaction function response 修正)
+
+- **compaction が function response を orphan 化する問題を修正**: compaction によって function response が孤立する不具合を修正（会話履歴の整合性保持）
+- **CI: kokoro pre-commit presubmit に addlicense tool を install**
 
 #### 2026-06-13 新着 (enterprise パラメータ移行 / mTLS / Agent Identity / Antigravity wrapper)
 
@@ -1530,9 +1554,13 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: **v1.4.0 (2026-05-29)**
 
-**チェックアウト状態**: `v1.4.0-4-g38b11f7` (v1.4.0 + 4 commits、 HEAD 2026-06-10)
+**チェックアウト状態**: `v1.4.0-5-gc6f168f` (v1.4.0 + 5 commits、 HEAD 2026-06-15)
 
 **注目**: **v1.4.0 が 2026-05-29 にリリース**。 Context unification（tool context を callbackContext にマージする内部統合）、 adka2a structured error propagation、 a2a-go/v2 SDK への example / CLI 移行、 StreamingResponseAggregator の metadata-only SSE チャンク許容（ストリーム中断防止）が中心。 直前の v1.3.0（2026-05-20）で Live bidirectional streaming コア機能群・a2a-go/v2 対応・VertexAI MemoryBank が取り込まれた流れの直系。
+
+#### 2026-06-15 新着 (deterministic event creation seams)
+
+- **platform clock / UUID provider seams 追加**: deterministic な event creation のため platform clock と UUID provider の差し替え seam を追加（テスト容易性向上） (#964)
 
 #### 2026-06-10 新着 (govulncheck パッチ / Node 24 移行)
 
@@ -2096,9 +2124,15 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: **v1.4.0 (2026-06-04)**
 
-**チェックアウト状態**: `f9c00a6fa4a` (v1.4.0 + 22 commits、 HEAD 2026-06-12)
+**チェックアウト状態**: `e4e13009d5a` (v1.4.0 + 36 commits、 HEAD 2026-06-15)
 
 **注目**: **v1.4.0 リリース（2026-06-04）**。 **Data Lineage 統合**、 起動時に未知ツールを無視する **`--ignore-unknown-tools` フラグ**、 Cloud SQL Postgres の **vector assist tools 完備**、 Spanner **`search_catalog` tool**、 windows/arm64 バイナリ配布が新規。 セキュリティ面では v1.3.0 後に積まれていた **ClickHouse / BigQuery の identifier injection 防止 (#3219)**、 **Looker filter value escape (#3289)** に加え、 **opaque token 検証での issuer 必須化 (#3360)**、 **Google / Generic MCP OAuth 検証の分離 (#3341)** を取り込み。 [UPGRADING.md](https://github.com/googleapis/genai-toolbox/blob/main/UPGRADING.md) でのマイグレーションガイド参照。
+
+#### 2026-06-15 新着 (regex method injection / path normalization bypass パッチ)
+
+- **SECURITY: picomatch を bump**: regex method injection を解消するため picomatch を 2.3.2 (#3426) / 4.0.4 (#3429) にバンプ
+- **SECURITY: fast-uri 3.1.2 へ bump**: path normalization bypass を解消するため fast-uri を 3.1.2 に (#3425)
+- **docs quickstart 依存バンプ群**: fast-xml-parser 5.5.x → 5.9.0 (#3424, #3421)、 hono 4.12.x → 4.12.25 (#3422, #3361)、 axios 1.15.0 → 1.18.0 (#3420, #3419, #3418)、 qs / express (#3282, #3309)、 ip-address / express-rate-limit (#3423)、 @grpc/grpc-js 1.14.3 → 1.14.4 (#3404) を各 ADK / genkit / langchain quickstart で bump
 
 #### 2026-06-12 新着 (SQL injection escape / MCP HTTP body size 制限)
 
@@ -2222,6 +2256,29 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ---
 
+### Knowledge Catalog
+
+**現行バージョン**: 継続的デプロイ（バージョンタグなし、 新規追跡開始）
+
+**チェックアウト状態**: `2d0bb3f` (main HEAD、 2026-06-14)
+
+**管理**: Google Cloud Platform（公式 Google 製品ではない sample/tools リポ）
+
+**注目**: **Knowledge Catalog（旧 Dataplex）** = AI-powered な data catalog / metadata management プラットフォーム。 構造化・非構造化データの dynamic knowledge graph を提供し、 AI エージェントに semantics と business context を与える。 本リポは Knowledge Catalog 機能のデモ、 ツール、 そして **context management / enrichment / retrieval** ソリューション構築用の **agents / samples** を収録。 GenAI Toolbox 側の **dataplex → knowledge-catalog リネーム** (#3039) や Cloud SQL / BigQuery 系 DQ Scans 検索ツール (#2444) と同じ「Dataplex 改め Knowledge Catalog」軸に連なる。
+
+#### 主要な構成
+
+- **Open Knowledge Format (OKF)**: メタデータを **metadata-as-code** で扱う reference 実装。 OKF demo（GA4 demo 含む #19）、 Dataplex 上の Documents Layout を parent でリンク (#24)、 OKF cross-links を file-relative パス化し GitHub 上で bundle がレンダリングされるよう修正 (#45)
+- **enrichment agent (ADK ベース)**: `agents/enrichment` に enrichment agent + evaluation harness を sync (#42)、 OKF reference enrichment agent を import (#28)、 `agents/` に enrichment と mdcode を追加 (#40)、 financial_services / phone_services コーパスでの eval corpora を同梱
+- **onboarding 整備**: agent `requirements.txt` 追加と onboarding ドキュメント改善 (#54)
+
+#### 参考リンク
+
+- [knowledge-catalog (GitHub)](https://github.com/GoogleCloudPlatform/knowledge-catalog)
+- [Knowledge Catalog (Google Cloud)](https://cloud.google.com/products/knowledge-catalog)
+
+---
+
 ## 注目ポイント
 
 ### 破壊的変更一覧
@@ -2277,6 +2334,7 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ### メジャーアップデート
 
+0. **NEW: Knowledge Catalog 新規追跡開始** (`gcloud/knowledge-catalog`, 2026-06-14) - **Knowledge Catalog（旧 Dataplex）** の AI-powered data catalog 機能を示す samples / agents / tools リポを submodule 追加。 **Open Knowledge Format (OKF)** の metadata-as-code reference + **ADK ベース enrichment agent**（eval harness 同梱、 #42 / #28 / #40）が柱。 GenAI Toolbox の dataplex → knowledge-catalog リネーム (#3039) / DQ Scans 検索ツール (#2444) と同じ「Dataplex 改め Knowledge Catalog」軸の補完
 0. **NEW: ADK Python v2.2.0** (2026-06-04) - Google GenAI SDK v2.0.0 対応、 AutoTracingPlugin（OTel 自動計装）、 RubricBasedMultiTurnTrajectoryEvaluator、 native `gen_ai.client.*` metrics、 A2A 連携強化（`to_a2a(Workflow)` / metadata 保持 / input-required vs auth-required）。 セキュリティ: Agent Builder path traversal / GCS skill Zip Slip / v0 actions unpickle 制限 / delete_session 所有権検証 / CVE-2026-48710（starlette・fastapi bump）。 LTS 側は v1.35.0 (2026-06-10) で Gemini 3.1 Live 修正を backport
 0. **NEW: ADK JS v1.2.0** (2026-06-03) - v1.1.0 後のセキュリティ / 堅牢性修正を正式リリース。 後続 main で Skills Registry（Core + GCP remote + SearchSkillsTool、 #422-424）、 OpenAPI parser/auth handler part 2 (#385)、 streaming prototype pollution 修正 (#410)
 0. **NEW: GenAI Toolbox v1.4.0** (2026-06-04) - Data Lineage 統合 (#3285)、 `--ignore-unknown-tools` (#3353)、 Cloud SQL PG vector assist tools (#3203)、 Spanner `search_catalog` (#3140)、 windows/arm64 配布。 セキュリティ: identifier injection 防止 (#3219)、 opaque token issuer 必須化 (#3360)、 Google/Generic OAuth 検証分離 (#3341)、 Looker filter escape (#3289)
@@ -2323,6 +2381,7 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 0. **Mastercard Verifiable Intent** (`payments/`) - Mastercard + Google 共同。 SD-JWT chain で user → agent delegation scope を tamper-evident に verify。 Selective Disclosure でプライバシー保護寄り。 Visa TAP と並ぶ識別系の両極を成す
 0. **NLIP (Natural Language Interaction Protocol)** - Ecma TC56 標準化、 ECMA-430〜434 + TR/113 構成。 既存ラインアップ（A2A: agent ↔ agent opaque / MCP: agent ↔ tool）と相補で natural-language application-level 通信を担当
 0. **Gemini Cloud Assist MCP** - GCP 環境の natural-language operation 用 MCP サーバー（Private Preview）。 既存 cloud-run-mcp / gke-mcp / gcloud-mcp と並ぶ「GCP オペレーショナル」軸の補完
+0. **Knowledge Catalog** (`gcloud/knowledge-catalog`) - Knowledge Catalog（旧 Dataplex）の data catalog / metadata 管理機能を示す samples + ADK enrichment agent。 OKF (Open Knowledge Format) で metadata-as-code を扱う。 GenAI Toolbox の knowledge-catalog ツール群と並ぶ「GCP データ context」軸の補完
 1. **AP2 v0.2.0** - V2 仕様正式リリース。X402 決済、Vertex AI 認証、UCP 連携、Go サンプル
 2. **ADK JS + UrlContextTool / Vertex AI Search Tool** - Gemini 2+ URL context grounding と Vertex AI Search ツール
 3. **ADK Go + Agent Engine** - Agent Engine 統合、既存インスタンス更新、自動 session ID 生成
@@ -2349,6 +2408,7 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ### セキュリティ更新
 
+- **GenAI Toolbox (v1.4.0 後 main, 2026-06-15)**: **picomatch を 2.3.2 / 4.0.4 に bump して regex method injection を解消 (#3426, #3429)**、 **fast-uri を 3.1.2 に bump して path normalization bypass を解消 (#3425)**
 - **GenAI Toolbox (v1.4.0 後 main, 2026-06-12)**: **`applyEscape` の delimiter 文字 escape による SQL injection 防止 (#2811)**、 **MCP HTTP body size の上限設定 (#3216)**、 dataplex / datalineage の default credentials に cloud-platform scope 指定 (#3376)、 alloydb-omni prebuilt の password env 明示必須化 (#3398)
 - **ADK Go (v1.4.0 後 main, 2026-06-10)**: **govulncheck advisory 対応で `golang.org/x/net` と otel OTLP exporters を patch 版へ bump (#994)**
 - **ADK Python (main HEAD, 2026-06-13)**: CI セキュリティ硬化 — fork での workflow 実行を防ぐ repository check 追加、 pr-triage secrets を same-repository `pull_request_target` に gate、 release analyzer workflow input の shell 補間を停止

@@ -101,3 +101,6 @@
 [submodule "payments/mastercard-verifiable-intent"]
 	path = payments/mastercard-verifiable-intent
 	url = git@github.com:agent-intent/verifiable-intent.git
+[submodule "gcloud/knowledge-catalog"]
+	path = gcloud/knowledge-catalog
+	url = git@github.com:GoogleCloudPlatform/knowledge-catalog.git
