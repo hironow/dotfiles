@@ -16,7 +16,6 @@ tap "grafana/grafana"
 tap "greymd/tools"
 tap "hashicorp/tap"
 tap "hironow/tap"
-tap "homebrewery/adobe"
 tap "k1low/tap"
 tap "kentaro-m/md2confl"
 tap "kyoshidajp/ghkw"
@@ -272,6 +271,8 @@ brew "lcov"
 brew "libass"
 # Scalable, high-performance WebRTC server
 brew "livekit"
+# Cross-platform library for audio I/O
+brew "portaudio"
 # Command-line interface to LiveKit
 brew "livekit-cli"
 # LLM inference in C/C++
@@ -332,8 +333,6 @@ brew "pinentry-mac"
 brew "pipx"
 # Tool for managing OCI containers and pods
 brew "podman"
-# Cross-platform library for audio I/O
-brew "portaudio"
 # Object-relational database system
 brew "postgresql@17"
 # Fast Git hook manager written in Rust, drop-in alternative to pre-commit
@@ -523,7 +522,6 @@ cask "deskpad"
 cask "dotnet-sdk"
 # CLI for Entire
 cask "entireio/tap/entire", trusted: true
-cask "exmancmd"
 cask "font-fira-code"
 cask "font-hack-nerd-font"
 cask "font-jetbrains-mono-nerd-font"
