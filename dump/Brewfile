@@ -15,7 +15,7 @@ tap "getsentry/xcodebuildmcp"
 tap "grafana/grafana"
 tap "greymd/tools"
 tap "hashicorp/tap"
-tap "hironow/tap"
+tap "hironow/tap", trusted: { formulae: ["amadeus", "paintress", "phonewave", "sightjack"] }
 tap "k1low/tap"
 tap "kentaro-m/md2confl"
 tap "kyoshidajp/ghkw"
