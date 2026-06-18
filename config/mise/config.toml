@@ -99,6 +99,7 @@ fzf = "0.73.1"
 "npm:cf" = "latest"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
+"npm:@google/gemini-cli" = "0.46.0"
 
 [settings]
 # Disable asdf-style .python-version / .nvmrc auto-detection so only
