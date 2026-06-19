@@ -1,6 +1,13 @@
 import pytest
 import docker
 
+from tests.utils.helpers import skip_unless_container_running
+
+
+@pytest.fixture(autouse=True)
+def _require_qdrant():
+    skip_unless_container_running("qdrant-emulator")
+
 
 @pytest.mark.asyncio
 async def test_qdrant_container_starts(http_client):

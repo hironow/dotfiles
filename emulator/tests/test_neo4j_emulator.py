@@ -1,6 +1,13 @@
 import pytest
 import docker
 
+from tests.utils.helpers import skip_unless_container_running
+
+
+@pytest.fixture(autouse=True)
+def _require_neo4j():
+    skip_unless_container_running("neo4j-emulator")
+
 
 @pytest.mark.asyncio
 async def test_neo4j_container_starts(http_client):

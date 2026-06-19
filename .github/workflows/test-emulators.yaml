@@ -78,9 +78,11 @@ jobs:
     - name: Wait for services to be ready
       run: bash scripts/wait-for-services.sh --default 90 --a2a 180 --postgres 150
 
-    - name: Test Elasticsearch separately
-      timeout-minutes: 2
-      run: bash scripts/test-elasticsearch.sh
+    # Elasticsearch is behind the `search` capability profile (ADR 0016 / PR #120)
+    # and is not started by the default lite stack, so the standalone ES check is
+    # redundant here -- tests/test_elasticsearch_emulator.py covers it and skips
+    # when the container is absent. scripts/test-elasticsearch.sh stays for manual
+    # use when the search profile is brought up locally.
 
     - name: Run unit/integration tests (non-e2e)
       timeout-minutes: 5
