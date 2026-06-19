@@ -21,3 +21,13 @@ dev-dependencies = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.23.0",
 ]
+
+# ADR 0028: route resolution through the Flatt Security PyPI mirror (malware-
+# scanned). flatt becomes the default index, replacing the implicit pypi.org.
+# Public, no-auth endpoint -- no secret distribution. The lock is already on
+# flatt; this declaration makes it intentional and satisfies the
+# `just check-uv-flatt-index` invariant (absence of raw pypi.org).
+[[tool.uv.index]]
+name = "flatt"
+url = "https://pypi.flatt.tech/simple/"
+default = true

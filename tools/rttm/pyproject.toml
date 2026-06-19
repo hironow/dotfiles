@@ -10,3 +10,12 @@ dependencies = [
     "ruff>=0.15.16",
     "pytest>=8.0.0",
 ]
+
+# ADR 0028: route resolution through the Flatt Security PyPI mirror (malware-
+# scanned). flatt becomes the default index, replacing the implicit pypi.org.
+# Public, no-auth endpoint -- no secret distribution. The invariant (enforced by
+# `just check-uv-flatt-index`) is the ABSENCE of raw pypi.org in the committed lock.
+[[tool.uv.index]]
+name = "flatt"
+url = "https://pypi.flatt.tech/simple/"
+default = true
