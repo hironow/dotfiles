@@ -1,6 +1,13 @@
 import pytest
 import docker
 
+from tests.utils.helpers import skip_unless_container_running
+
+
+@pytest.fixture(autouse=True)
+def _require_bigtable():
+    skip_unless_container_running("bigtable-emulator")
+
 
 def test_bigtable_container_starts():
     """Test that the Bigtable emulator container starts and is healthy."""

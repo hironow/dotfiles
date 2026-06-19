@@ -58,3 +58,20 @@ def wait_for_tcp(host: str, port: int, retries: int = 30) -> Result[bool, str]:
             last_error = str(e)
         time.sleep(1)
     return Error(f"TCP endpoint {host}:{port} not accessible: {last_error}")
+
+
+def skip_unless_container_running(name: str) -> None:
+    """pytest.skip the calling test unless a container named `name` is running.
+
+    lite-default (ADR 0016 / PR #120): capability emulators (search/graph/vector/
+    bigtable/inspect/ml) sit behind compose profiles and are NOT started by the
+    default lite stack, so their integration tests must skip rather than fail when
+    the container is absent. Mirrors the e2e `require_services` fixture for the
+    non-e2e suite.
+    """
+    import pytest
+
+    client = docker.from_env()
+    running = {c.name for c in client.containers.list()}
+    if name not in running:
+        pytest.skip(f"required emulator container not running: {name}")

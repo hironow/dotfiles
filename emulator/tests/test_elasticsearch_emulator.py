@@ -1,6 +1,13 @@
 import pytest
 import docker
 
+from tests.utils.helpers import skip_unless_container_running
+
+
+@pytest.fixture(autouse=True)
+def _require_elasticsearch():
+    skip_unless_container_running("elasticsearch-emulator")
+
 
 @pytest.mark.asyncio
 async def test_elasticsearch_container_starts(http_client):
