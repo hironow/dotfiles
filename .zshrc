@@ -151,12 +151,19 @@ fi
 # only (= context-specific override), so a parent shell value is never
 # inherited and the runbook-only "local human-operator direct" path
 # stays uncontaminated.
-alias cc='RUNOPS_ACTOR_TYPE=ai-agent ~/.local/bin/claude'
-alias cc-p='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude ~/.local/bin/claude'
-alias cc-a='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-a ~/.local/bin/claude'
-alias cc-b='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-b ~/.local/bin/claude'
-alias cc-c='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-c ~/.local/bin/claude'
-alias cc-d='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-d ~/.local/bin/claude'
+# The launcher is the PATH-resolved bare `claude`: claude-code is
+# mise-provisioned now (mise.toml `npm:@anthropic-ai/claude-code`) and
+# `mise activate` (EOF) prepends its tool dir first in PATH, so bare
+# `claude` resolves to the mise build. The old ~/.local/bin/claude
+# hardcode (official native installer) is a dead path post-migration.
+# Aliases lazy-resolve at call time, so defining them here (before
+# activate) is fine — only the env prefix matters at definition time.
+alias cc='RUNOPS_ACTOR_TYPE=ai-agent claude'
+alias cc-p='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude claude'
+alias cc-a='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-a claude'
+alias cc-b='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-b claude'
+alias cc-c='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-c claude'
+alias cc-d='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-d claude'
 
 # eza-backed `ls`/`ll` aliases are defined at EOF (after `mise activate`),
 # because eza is provisioned by mise and only lands on PATH once activate
