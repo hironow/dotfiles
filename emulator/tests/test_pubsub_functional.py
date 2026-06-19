@@ -1,76 +1,79 @@
 """Pub/Sub functional test via REST.
 
-Why this may be skipped:
-- The emulator's REST endpoints can return errors depending on platform/version
-  even when the service is healthy. To keep the suite stable, we skip when REST
-  calls don't return expected codes.
+The firebase Pub/Sub emulator downloads its jar on first start, so the REST
+endpoint can briefly refuse or 5xx before it is ready. We retry topic/subscription
+creation while it boots, then assert the publish -> pull -> ack round-trip. A
+genuine failure now fails the test instead of silently skipping it.
 """
 
+import asyncio
 import base64
 import uuid
+
 import pytest
 
-
 BASE = "http://localhost:9399/v1"
+
+
+async def _put_until_ready(client, url, *, json=None, retries: int = 30) -> None:
+    """PUT until the Pub/Sub emulator answers (200/409), tolerating startup.
+
+    Always sends a JSON body (empty `{}` when none is given) so aiohttp sets
+    `Content-Type: application/json`; the emulator's REST router 404s a bodyless
+    PUT, which is what made the original test silently skip.
+    """
+    body = json if json is not None else {}
+    last = ""
+    for _ in range(retries):
+        try:
+            async with client.put(url, json=body) as res:
+                if res.status in (200, 409):
+                    return
+                last = f"{res.status} {await res.text()}"
+        except Exception as e:  # connection refused while the jar boots
+            last = str(e)
+        await asyncio.sleep(1)
+    raise AssertionError(f"Pub/Sub REST not ready after {retries}s: {last}")
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("topic_base", ["test-topic", "events"])
 async def test_pubsub_end_to_end_publish_and_pull(topic_base, project_id, http_client):
-    # given: unique topic and subscription
     suffix = uuid.uuid4().hex[:8]
     topic = f"projects/{project_id}/topics/{topic_base}-{suffix}"
     sub = f"projects/{project_id}/subscriptions/{topic_base}-sub-{suffix}"
-
     client = http_client
-    # when: create topic
-    topic_url = f"{BASE}/{topic}"
-    async with client.put(topic_url) as topic_res:
-        status = topic_res.status
-        text = await topic_res.text()
-    # then: created or already exists; if emulator lacks REST support, skip
-    if status not in (200, 409):
-        pytest.skip(f"Pub/Sub topic create unsupported: {status} {text}")
 
-    # when: create subscription bound to the topic
-    sub_url = f"{BASE}/{sub}"
-    async with client.put(sub_url, json={"topic": topic}) as sub_res:
-        sub_status = sub_res.status
-        sub_text = await sub_res.text()
-    if sub_status not in (200, 409):
-        pytest.skip(f"Pub/Sub subscription create unsupported: {sub_status} {sub_text}")
+    # given: a topic and a subscription (retry create while the emulator boots)
+    await _put_until_ready(client, f"{BASE}/{topic}")
+    await _put_until_ready(client, f"{BASE}/{sub}", json={"topic": topic})
 
     # when: publish a message
-    publish_url = f"{BASE}/{topic}:publish"
     payload = base64.b64encode(b"hello-pubsub").decode()
     async with client.post(
-        publish_url, json={"messages": [{"data": payload}]}
+        f"{BASE}/{topic}:publish", json={"messages": [{"data": payload}]}
     ) as pub_res:
-        pub_status = pub_res.status
-        pub_text = await pub_res.text()
-    if pub_status != 200:
-        pytest.skip(f"Pub/Sub publish unsupported: {pub_status} {pub_text}")
+        assert pub_res.status == 200, await pub_res.text()
 
-    # when: pull the message
-    pull_url = f"{BASE}/{sub}:pull"
-    async with client.post(pull_url, json={"maxMessages": 1}) as pull_res:
-        pull_status = pull_res.status
-        pull_text = await pull_res.text()
-        pull_json = await pull_res.json(content_type=None)
-    if pull_status != 200:
-        pytest.skip(f"Pub/Sub pull unsupported: {pull_status} {pull_text}")
-    pulled = pull_json.get("receivedMessages", [])
-
-    # then: at least one message is available and payload matches
-    assert pulled, pull_text
+    # then: the message is pullable and the payload round-trips
+    pulled: list = []
+    for _ in range(10):
+        async with client.post(
+            f"{BASE}/{sub}:pull", json={"maxMessages": 1}
+        ) as pull_res:
+            assert pull_res.status == 200, await pull_res.text()
+            pulled = (await pull_res.json(content_type=None)).get(
+                "receivedMessages", []
+            )
+        if pulled:
+            break
+        await asyncio.sleep(1)
+    assert pulled, "no message pulled from Pub/Sub"
     msg = pulled[0]["message"]
     assert base64.b64decode(msg["data"]).decode() == "hello-pubsub"
 
-    # when: acknowledge the message
-    ack_id = pulled[0]["ackId"]
-    ack_url = f"{BASE}/{sub}:acknowledge"
-    async with client.post(ack_url, json={"ackIds": [ack_id]}) as ack_res:
-        ack_status = ack_res.status
-        ack_text = await ack_res.text()
-    if ack_status != 200:
-        pytest.skip(f"Pub/Sub ack unsupported: {ack_status} {ack_text}")
+    # and: it can be acknowledged
+    async with client.post(
+        f"{BASE}/{sub}:acknowledge", json={"ackIds": [pulled[0]["ackId"]]}
+    ) as ack_res:
+        assert ack_res.status == 200, await ack_res.text()

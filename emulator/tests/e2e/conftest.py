@@ -31,11 +31,14 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture(scope="session")
 def e2e_network_name() -> str:
-    """Docker network name used by emulators.
+    """Docker network name the emulators join.
 
-    Override with env var `EMULATOR_NETWORK` if needed.
+    Must match the compose `networks.default.name` (`shared-otel-net`, which
+    `scripts/start-services.sh` creates). The old default `emulator-network` was
+    stale and made `ensure_network` skip the whole e2e suite. Override with env
+    var `EMULATOR_NETWORK` if needed.
     """
-    return os.environ.get("EMULATOR_NETWORK", "emulator-network")
+    return os.environ.get("EMULATOR_NETWORK", "shared-otel-net")
 
 
 @pytest.fixture(scope="session")
