@@ -159,3 +159,47 @@ def test_path_d_cc_alias_carries_actor_type(alias_name: str) -> None:
         f"expected alias '{alias_name}' to start with "
         f"RUNOPS_ACTOR_TYPE=ai-agent in .zshrc"
     )
+
+
+@pytest.mark.parametrize(
+    "alias_name",
+    ["cc", "cc-p", "cc-a", "cc-b", "cc-c", "cc-d"],
+)
+def test_path_d_cc_alias_invokes_mise_resolved_claude(alias_name: str) -> None:
+    """claude-code moved from the official native installer
+    (~/.local/bin/claude) to mise's npm backend (mise.toml
+    `npm:@anthropic-ai/claude-code`), which only lands on PATH via
+    `mise activate`. Each cc* alias must therefore invoke the
+    PATH-resolved bare `claude` so the launcher keeps working after the
+    move; aliases lazy-resolve at call time, so the mise tool dir that
+    activate prepends first wins."""
+
+    content = _read(".zshrc")
+    prefix = f"alias {alias_name}='RUNOPS_ACTOR_TYPE=ai-agent"
+    lines = [ln for ln in content.splitlines() if ln.startswith(prefix)]
+    assert len(lines) == 1, (
+        f"expected exactly one `{alias_name}` alias line; saw {len(lines)}"
+    )
+    assert lines[0].rstrip().endswith(" claude'"), (
+        f"alias '{alias_name}' must invoke the PATH-resolved bare `claude` "
+        f"(mise-provisioned), not a hardcoded path; got: {lines[0]!r}"
+    )
+
+
+def test_path_d_cc_aliases_drop_retired_local_bin_path() -> None:
+    """No cc* alias line may hardcode the retired ~/.local/bin/claude path:
+    it is empty since claude-code became mise-provisioned, so an alias
+    pointing at it silently breaks with `command not found`. Scoped to
+    `alias cc*` lines so an explanatory comment may still reference the
+    old path for historical context."""
+
+    content = _read(".zshrc")
+    offending = [
+        ln
+        for ln in content.splitlines()
+        if ln.startswith("alias cc") and "/.local/bin/claude" in ln
+    ]
+    assert not offending, (
+        "no cc* alias may hardcode the retired ~/.local/bin/claude path; "
+        f"invoke the PATH-resolved bare `claude` (mise activate) instead: {offending}"
+    )
