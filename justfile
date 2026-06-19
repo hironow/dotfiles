@@ -487,6 +487,8 @@ lint:
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔍 JS/TS (vp lint)...'
     git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp lint
+    @echo '🔍 uv flatt index (ADR 0028)...'
+    bash scripts/check_uv_flatt_index.sh
     @echo '✅ lint done.'
 
 # check: strict gate, never writes. Used by pre-push hook and CI.
@@ -504,7 +506,23 @@ check:
     git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp check
     @echo '🔎 Meta-semgrep rules against rule files...'
     uvx semgrep --config .semgrep/rules/meta/ --error .
+    @echo '🔎 uv flatt index (ADR 0028)...'
+    bash scripts/check_uv_flatt_index.sh
     @echo '✅ All checks passed.'
+
+# ADR 0028: assert every uv project declares the flatt PyPI mirror as its
+# default index and no committed lock falls back to raw pypi.org (grep only).
+[group('Lint')]
+check-uv-flatt-index:
+    bash scripts/check_uv_flatt_index.sh
+
+# ADR 0028: regenerate the pypi.org-resolving uv locks through the flatt mirror
+# with the machine-local hardening config neutralized (each lock reflects only
+# its project pyproject — emulator keeps its repo `exclude-newer`, tools/rttm
+# stays span-less). Run after changing dependencies in emulator/ or tools/rttm/.
+[group('CI')]
+relock-uv:
+    bash scripts/relock_uv.sh
 
 # ------------------------------
 # prek (j178/prek) — Rust reimplementation of pre-commit
