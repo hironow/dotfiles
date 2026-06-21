@@ -489,6 +489,8 @@ lint:
     git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp lint
     @echo '🔍 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
+    @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
+    @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ lint done.'
 
 # check: strict gate, never writes. Used by pre-push hook and CI.
@@ -508,6 +510,8 @@ check:
     uvx semgrep --config .semgrep/rules/meta/ --error .
     @echo '🔎 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
+    @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
+    @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ All checks passed.'
 
 # ADR 0028: assert every uv project declares the flatt PyPI mirror as its
@@ -515,6 +519,13 @@ check:
 [group('Lint')]
 check-uv-flatt-index:
     bash scripts/check_uv_flatt_index.sh
+
+# ADR 0027: assert no MCP client config launches Node tooling via a banned
+# runner (npm/npx/pnpm/yarn). MCP servers start outside the Bash tool, so the
+# command guard + Bash(npx:*) deny never see them -- this is the only wall.
+[group('Lint')]
+check-mcp-node-runner:
+    @{{UV_RUN}} scripts/check_mcp_node_runner.py
 
 # ADR 0028: regenerate the pypi.org-resolving uv locks through the flatt mirror
 # with the machine-local hardening config neutralized (each lock reflects only
