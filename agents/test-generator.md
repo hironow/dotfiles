@@ -7,7 +7,7 @@ description: |
   `tdd-workflow` skill が「サイクル全体のガイド」なのに対し、本 agent は
   「Red のテストコード生成」だけを切り出した実働役。
 model: inherit
-tools: Read, Grep, Glob, Write
+tools: [Read, Grep, Glob, Write]
 ---
 
 # Test Generator Agent
