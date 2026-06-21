@@ -1,0 +1,53 @@
+name: Claude Config Lint
+
+# Gate the Claude artifacts this repo distributes (agents / settings / hooks /
+# owned skills / plugin manifests) with claudelint. CI never runs `just ci`, so
+# without this workflow the `lint-claude` recipe would only gate locally. The
+# official `claude plugin validate` half runs only in `just lint-claude` (the
+# claude CLI is not installed on GitHub runners). claude-code-lint is pinned to
+# avoid surprise reds when a new release adds rules.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  claude-lint:
+    name: claudelint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        # Vendored submodules are not owned here and would add scan noise.
+        # No submodules is the checkout default; set explicitly as documentation.
+        with:
+          submodules: false
+
+      # bun is not preinstalled on ubuntu runners and the oven-sh setup action
+      # is not on the allowlist, so install via the official bun.sh script.
+      - name: Install bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      # --no-config pins behavior (claudelint otherwise discovers configs up to
+      # $HOME). validate-skills needs --path plugins so its recursive SKILL.md
+      # pattern does not descend into the root skills/ submodule; validate-plugin
+      # must target each manifest file (root is a no-op, --path <dir> is EISDIR).
+      - name: claudelint (agents / settings / hooks / skills / plugin manifests)
+        run: |
+          bunx claude-code-lint@0.5.0 validate-agents --no-config
+          bunx claude-code-lint@0.5.0 validate-settings --no-config
+          bunx claude-code-lint@0.5.0 validate-hooks --no-config
+          bunx claude-code-lint@0.5.0 validate-skills --no-config --path plugins
+          for m in plugins/*/.claude-plugin/plugin.json; do
+            bunx claude-code-lint@0.5.0 validate-plugin --no-config --path "$m"
+          done

@@ -489,6 +489,8 @@ lint:
     git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp lint
     @echo '🔍 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
+    @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
+    @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ lint done.'
 
 # check: strict gate, never writes. Used by pre-push hook and CI.
@@ -508,6 +510,8 @@ check:
     uvx semgrep --config .semgrep/rules/meta/ --error .
     @echo '🔎 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
+    @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
+    @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ All checks passed.'
 
 # ADR 0028: assert every uv project declares the flatt PyPI mirror as its
@@ -515,6 +519,39 @@ check:
 [group('Lint')]
 check-uv-flatt-index:
     bash scripts/check_uv_flatt_index.sh
+
+# ADR 0027: assert no MCP client config launches Node tooling via a banned
+# runner (npm/npx/pnpm/yarn). MCP servers start outside the Bash tool, so the
+# command guard + Bash(npx:*) deny never see them -- this is the only wall.
+[group('Lint')]
+check-mcp-node-runner:
+    @{{UV_RUN}} scripts/check_mcp_node_runner.py
+
+# Claude config lint: validate the artifacts this repo distributes (agents /
+# settings / hooks / owned skills / plugin manifests) with claudelint (bunx),
+# plus the official `claude plugin validate` as a second pair of eyes (skipped
+# when the claude CLI is absent, e.g. in CI). `--no-config` pins behavior
+# (claudelint otherwise discovers configs up to $HOME, diverging machine vs CI);
+# per-validator subcommands write no cache. The GitHub `Claude Config Lint`
+# workflow runs the claudelint half so PRs are actually gated (CI never runs
+# `just ci`). claude-code-lint is pinned to avoid surprise reds on new releases.
+[group('Lint')]
+lint-claude:
+    @echo '🔎 claudelint (agents / settings / hooks)...'
+    bunx claude-code-lint@0.5.0 validate-agents --no-config
+    bunx claude-code-lint@0.5.0 validate-settings --no-config
+    bunx claude-code-lint@0.5.0 validate-hooks --no-config
+    @echo '🔎 claudelint (owned skills under plugins/)...'
+    bunx claude-code-lint@0.5.0 validate-skills --no-config --path plugins
+    @echo '🔎 claudelint (per-plugin manifest)...'
+    @for m in plugins/*/.claude-plugin/plugin.json; do \
+        bunx claude-code-lint@0.5.0 validate-plugin --no-config --path "$m"; \
+      done
+    @echo '🔎 claude plugin validate --strict (official; skipped if claude absent)...'
+    @if command -v claude >/dev/null 2>&1; then \
+        claude plugin validate --strict . ; \
+        for m in plugins/*/.claude-plugin/plugin.json; do claude plugin validate --strict "${m%/.claude-plugin/plugin.json}"; done ; \
+      else echo '  (claude CLI not on PATH -- skipping official validate)'; fi
 
 # ADR 0028: regenerate the pypi.org-resolving uv locks through the flatt mirror
 # with the machine-local hardening config neutralized (each lock reflects only
@@ -542,7 +579,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check test-unit semgrep-test portless-doc-check test-iac instruction-budget
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
