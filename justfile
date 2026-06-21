@@ -527,6 +527,32 @@ check-uv-flatt-index:
 check-mcp-node-runner:
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
 
+# Claude config lint: validate the artifacts this repo distributes (agents /
+# settings / hooks / owned skills / plugin manifests) with claudelint (bunx),
+# plus the official `claude plugin validate` as a second pair of eyes (skipped
+# when the claude CLI is absent, e.g. in CI). `--no-config` pins behavior
+# (claudelint otherwise discovers configs up to $HOME, diverging machine vs CI);
+# per-validator subcommands write no cache. The GitHub `Claude Config Lint`
+# workflow runs the claudelint half so PRs are actually gated (CI never runs
+# `just ci`). claude-code-lint is pinned to avoid surprise reds on new releases.
+[group('Lint')]
+lint-claude:
+    @echo '🔎 claudelint (agents / settings / hooks)...'
+    bunx claude-code-lint@0.5.0 validate-agents --no-config
+    bunx claude-code-lint@0.5.0 validate-settings --no-config
+    bunx claude-code-lint@0.5.0 validate-hooks --no-config
+    @echo '🔎 claudelint (owned skills under plugins/)...'
+    bunx claude-code-lint@0.5.0 validate-skills --no-config --path plugins
+    @echo '🔎 claudelint (per-plugin manifest)...'
+    @for m in plugins/*/.claude-plugin/plugin.json; do \
+        bunx claude-code-lint@0.5.0 validate-plugin --no-config --path "$m"; \
+      done
+    @echo '🔎 claude plugin validate --strict (official; skipped if claude absent)...'
+    @if command -v claude >/dev/null 2>&1; then \
+        claude plugin validate --strict . ; \
+        for m in plugins/*/.claude-plugin/plugin.json; do claude plugin validate --strict "${m%/.claude-plugin/plugin.json}"; done ; \
+      else echo '  (claude CLI not on PATH -- skipping official validate)'; fi
+
 # ADR 0028: regenerate the pypi.org-resolving uv locks through the flatt mirror
 # with the machine-local hardening config neutralized (each lock reflects only
 # its project pyproject — emulator keeps its repo `exclude-newer`, tools/rttm
@@ -553,7 +579,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check test-unit semgrep-test portless-doc-check test-iac instruction-budget
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
