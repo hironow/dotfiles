@@ -77,6 +77,10 @@ just help
 just sync-agents-preview
 just sync-agents
 
+# lint the distributed Claude config (skills/plugins/hooks/agents/settings)
+# via claudelint + official `claude plugin validate` (ADR 0029)
+just lint-claude
+
 just update-all
 just dump
 
@@ -120,7 +124,8 @@ just test-install
 ### CI gates
 
 ```shell
-# fast gate: lint/format/semgrep + rule self-tests + IaC tests (no Docker)
+# fast gate: lint/format/semgrep + claude config lint + rule self-tests + IaC tests (no Docker)
+# (the claude config lint also runs as the `Claude Config Lint` GitHub workflow — ADR 0029)
 just ci
 
 # full non-emulator matrix: ci + devcontainer sandbox + install verification (Docker)
