@@ -55,6 +55,15 @@ def _run_hook(content: str) -> int:
         "glpat-" + "x" * 20,
         # Google API keys
         "AIza" + "B" * 35,
+        # Modern provider keys carry '-'/'_' in the body, so the legacy
+        # alnum-only sk- class missed them (observed: all three slipped through).
+        # Anthropic — our own ecosystem's key shape.
+        "sk-ant-" + "api03-" + "A" * 80,
+        # OpenAI project/service/admin scoped keys (current default format).
+        "sk-proj-" + "T3BlbkFJ" + "a" * 40,
+        "sk-svcacct-" + "b" * 40,
+        # GitHub fine-grained personal access token.
+        "github_pat_" + "1" * 22 + "_" + "c" * 59,
     ],
 )
 def test_credential_shapes_are_blocked(token: str) -> None:
@@ -73,7 +82,27 @@ def test_credential_shapes_are_blocked(token: str) -> None:
         "set GITLAB_TOKEN to your glpat- token from the UI",
         "AIzaSyExample is far too short to be a real key",
         "doc: AWS access key ids start with AKIA",
+        # Hyphenated English prose must not trip the broadened sk- classes:
+        # only the sk-ant-/sk-proj-/sk-svcacct-/sk-admin- prefixes are credentials.
+        "the desk-assignment-rotation-schedule needs an owner",
+        "review the risk-assessment-framework-rollout-plan this week",
     ],
 )
 def test_benign_content_is_allowed(content: str) -> None:
     assert _run_hook(content) == EXIT_ALLOW
+
+
+def test_secret_via_notebook_new_source_is_blocked() -> None:
+    """NotebookEdit carries the written cell text in new_source, not
+    content/new_string. The guard must read it too, or secrets pasted into a
+    notebook cell slip past the Write|Edit net."""
+    secret = "sk-ant-" + "api03-" + "A" * 80
+    payload = json.dumps({"tool_input": {"new_source": f"key = '{secret}'"}})
+    result = subprocess.run(
+        ["bash", str(HOOK)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == EXIT_BLOCK

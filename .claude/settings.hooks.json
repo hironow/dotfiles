@@ -3,7 +3,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-prohibited-files.sh\"" },
           { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-secrets.sh\"" }
