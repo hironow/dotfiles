@@ -25,7 +25,6 @@ tap "porter-dev/porter"
 tap "rs/tap"
 tap "schpet/tap"
 tap "steipete/tap"
-tap "stripe/stripe-cli"
 tap "stripe/stripe-mock"
 tap "supabase/tap"
 tap "tufin/tufin"
@@ -90,7 +89,7 @@ brew "cloudflared"
 # Cross-platform make
 brew "cmake"
 # Powerful, clean, object-oriented scripting language
-brew "ruby", link: false
+brew "ruby"
 # Dependency manager for Cocoa projects
 brew "cocoapods"
 # Color-highlighted diff(1) output
@@ -163,8 +162,6 @@ brew "libpq", link: true
 brew "nss"
 # PDF rendering library (based on the xpdf-3.0 code base)
 brew "poppler"
-# Interact with Google Gemini AI models from the command-line
-brew "gemini-cli"
 # GitHub command-line tool
 brew "gh"
 # OpenType text shaping engine
@@ -800,6 +797,7 @@ vscode "zengxingxin.sort-js-object-keys"
 vscode "ziyasal.vscode-open-in-github"
 go "cmd/go"
 go "cmd/gofmt"
+go "golang.org/x/tools/gopls"
 cargo "bdk-cli"
 cargo "cargo-deny"
 cargo "gen-license"
@@ -823,5 +821,5 @@ krew "krew"
 krew "node-shell"
 krew "ns"
 krew "resource-capacity"
+npm "@anthropic-ai/claude-code"
 npm "corepack"
-npm "vercel"
