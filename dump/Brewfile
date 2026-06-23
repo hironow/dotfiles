@@ -9,7 +9,6 @@ tap "dbt-labs/dbt-cli"
 tap "deploifai/deploifai"
 tap "derailed/k9s"
 tap "dotenvx/brew"
-tap "entireio/tap"
 tap "fastly/tap"
 tap "getsentry/xcodebuildmcp"
 tap "grafana/grafana"
@@ -517,8 +516,6 @@ cask "copilot-cli"
 cask "deskpad"
 # Developer platform
 cask "dotnet-sdk"
-# CLI for Entire
-cask "entireio/tap/entire", trusted: true
 cask "font-fira-code"
 cask "font-hack-nerd-font"
 cask "font-jetbrains-mono-nerd-font"
@@ -539,8 +536,6 @@ cask "orbstack"
 cask "suspicious-package"
 # Rust-based terminal
 cask "warp"
-# Network protocol analyzer
-cask "wireshark-app"
 mas "Bear", id: 1091189122
 mas "Bitwarden", id: 1352778147
 mas "Brother P-touch Editor", id: 1453365242
@@ -627,6 +622,7 @@ vscode "google-workspace.google-workspace-developer-tools"
 vscode "google.gemini-cli-vscode-ide-companion"
 vscode "google.geminicodeassist"
 vscode "googlecloudtools.cloudcode"
+vscode "googlecloudtools.datacloud"
 vscode "grapecity.gc-excelviewer"
 vscode "hashicorp.terraform"
 vscode "hbenl.vscode-test-explorer"
