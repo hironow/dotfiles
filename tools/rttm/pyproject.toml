@@ -8,7 +8,7 @@ dependencies = [
     "matplotlib>=3.11.0",
     "pympi-ling>=1.71",
     "ruff>=0.15.17",
-    "pytest>=8.0.0",
+    "pytest>=9.1.1",
 ]
 
 # ADR 0028: route resolution through the Flatt Security PyPI mirror (malware-
