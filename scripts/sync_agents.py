@@ -32,6 +32,7 @@ import json
 import shutil
 import sys
 import tempfile
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Callable
@@ -72,6 +73,49 @@ def _is_additive_item(relative_path: str) -> bool:
     if parts[0] not in ADDITIVE_DIRECTORIES:
         return False
     return not (len(parts) > 1 and parts[1] in ADDITIVE_EXEMPT_SUBDIRS)
+
+
+# Machine-readable denylist for skills sync (see repo CLAUDE.md). Names listed
+# under `exclude = [...]` are skipped in BOTH directions (distribute + import).
+# Dirs without any SKILL.md are gated automatically and need no listing here.
+SKILLS_SYNC_EXCLUDE_FILE = "dump/harness/skills-sync-exclude.toml"
+
+
+def _load_skills_sync_exclude(dotfiles_dir: Path) -> frozenset[str]:
+    """Load the skills sync denylist from SKILLS_SYNC_EXCLUDE_FILE.
+
+    Missing file -> empty set (fail-safe). Malformed TOML or a non-list
+    `exclude` value raises (fail loud) so a typo never silently syncs junk.
+    """
+    exclude_file = dotfiles_dir / SKILLS_SYNC_EXCLUDE_FILE
+    if not exclude_file.is_file():
+        return frozenset()
+    with exclude_file.open("rb") as f:
+        data = tomllib.load(f)
+    exclude = data.get("exclude", [])
+    if not isinstance(exclude, list) or not all(
+        isinstance(name, str) for name in exclude
+    ):
+        raise ValueError(
+            f"{SKILLS_SYNC_EXCLUDE_FILE}: `exclude` must be a list of strings"
+        )
+    return frozenset(exclude)
+
+
+def _is_syncable_skill(path: Path, name: str, exclude: frozenset[str]) -> bool:
+    """Quality gate for a skills/ child (both sync directions).
+
+    Denylist matches on the original child name (works for symlinks too);
+    the SKILL.md check runs on the resolved path so a symlinked skill in a
+    target is not gated out. A plain file or a dir with no SKILL.md anywhere
+    is not a skill (containers like learned/ pass via the recursive check).
+    """
+    if name in exclude:
+        return False
+    resolved = path.resolve()
+    if not resolved.is_dir():
+        return False
+    return any(resolved.rglob("SKILL.md"))
 
 
 @dataclass
@@ -396,6 +440,7 @@ def _get_directory_items(
     individually. This preserves unmanaged items in the target.
     """
     sources: list[_SyncItem] = []
+    skills_exclude = _load_skills_sync_exclude(dotfiles_dir)
     for dir_name in directories or SYNC_DIRECTORIES:
         dir_path = dotfiles_dir / dir_name
         if not dir_path.is_dir():
@@ -404,6 +449,10 @@ def _get_directory_items(
             if child.name.startswith("."):
                 continue
             if child.is_symlink():
+                continue
+            if dir_name == "skills" and not _is_syncable_skill(
+                child, child.name, skills_exclude
+            ):
                 continue
             rel_path = f"{dir_name}/{child.name}"
             sources.append(
@@ -1101,9 +1150,11 @@ def _build_import_plan(
     Uses manifest to distinguish genuinely new items from previously deleted ones.
     Both symlinks and regular directories/files are considered for import.
     Directories in exclude_dirs (e.g. skills under --no-skills) are skipped so a
-    target's items are never pulled back into dotfiles.
+    target's items are never pulled back into dotfiles. skills/ children must
+    also pass _is_syncable_skill so junk left in a target never reimports.
     """
     actions: list[_ImportAction] = []
+    skills_exclude = _load_skills_sync_exclude(dotfiles_dir)
 
     for dir_name in agent.get_sync_directories():
         if dir_name in exclude_dirs:
@@ -1128,6 +1179,10 @@ def _build_import_plan(
             if _is_excluded_child(dir_name, child.name):
                 continue
             if child.is_symlink() and _is_internal_symlink(child, target_dir):
+                continue
+            if dir_name == "skills" and not _is_syncable_skill(
+                child, child.name, skills_exclude
+            ):
                 continue
 
             rel_path = f"{dir_name}/{child.name}"
@@ -1244,6 +1299,7 @@ def import_only_mode(
     dotfiles_dir: Path,
     agents: list[AgentTarget] | None = None,
     preview: bool = False,
+    exclude_dirs: frozenset[str] = frozenset(),
 ) -> None:
     """Run Phase 1 (target -> dotfiles) only; skip forward sync and deletions.
 
@@ -1257,6 +1313,8 @@ def import_only_mode(
         agents: Filtered subset of AGENTS to import from. None means default
             selection (claude only).
         preview: If True, only print the plan without applying changes.
+        exclude_dirs: Sync-directory names to skip entirely (e.g. skills
+            under --no-skills).
     """
     if agents is None:
         agents = _select_agents(list(_DEFAULT_TARGETS))
@@ -1269,7 +1327,7 @@ def import_only_mode(
 
     has_imports = False
     for agent in agents:
-        plan = _build_import_plan(dotfiles_dir, agent, manifest)
+        plan = _build_import_plan(dotfiles_dir, agent, manifest, exclude_dirs)
         if not plan.items:
             continue
 
@@ -1653,7 +1711,12 @@ def main() -> None:
     exclude_dirs = frozenset({"skills"}) if args.no_skills else frozenset()
 
     if args.import_only:
-        import_only_mode(args.dotfiles, agents=selected, preview=args.preview)
+        import_only_mode(
+            args.dotfiles,
+            agents=selected,
+            preview=args.preview,
+            exclude_dirs=exclude_dirs,
+        )
     elif args.orphans:
         orphans_mode(args.dotfiles, agents=selected)
     elif args.preview:

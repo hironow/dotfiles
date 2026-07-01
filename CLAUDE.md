@@ -42,6 +42,9 @@
       target は**上書きしない・削除しない**。`bunx skills` CLI が `~/.agents/skills`
       へ install した symlink (上流 + `bunx skills add <skills-repo>`) を churn/orphan
       削除しないため。skill の投入は CLI (`bunx skills add`) を優先する
+    - **skills 品質ゲート**: SKILL.md を1つも含まない dir は構造ゲートで、
+      `dump/harness/skills-sync-exclude.toml` (機械可読 SSoT) の `exclude` 記載名は
+      denylist で、**配布・import の両方向とも**除外される (junk の再流入も防ぐ)
     - **Antigravity CLI (`agy`) は自己管理 — dotfiles は skills/settings/mcp を sync
       しない**: Antigravity は skills を `agy plugin` (=
       `~/.gemini/antigravity-cli/plugins/<name>/skills/`)、settings/mcp を `agy import`

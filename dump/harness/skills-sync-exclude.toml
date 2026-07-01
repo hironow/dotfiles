@@ -1,0 +1,7 @@
+# skills sync の除外リスト（scripts/sync_agents.py が読む機械可読 SSoT）
+# - exclude に載せた skill 名は配布・import の両方向で除外される
+# - SKILL.md を1つも含まない dir は構造ゲートで自動除外され、ここへの列挙は不要
+#   （例: skills/docs/ = skills リポ自身の intent/handover 置き場、空 dir の残骸）
+# - 記法: exclude = ["skill-name", ...]（skills/ 直下の dir 名）
+exclude = [
+]
