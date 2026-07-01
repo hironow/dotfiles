@@ -16,7 +16,8 @@
     "MAX_MCP_OUTPUT_TOKENS": "10000",
     "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": "25000",
     "BASH_MAX_OUTPUT_LENGTH": "10000",
-    "TASK_MAX_OUTPUT_LENGTH": "16000"
+    "TASK_MAX_OUTPUT_LENGTH": "16000",
+    "DISABLE_AUTOUPDATER": "1"
   },
   "settings": {
     "includeGitInstructions": false,
