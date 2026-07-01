@@ -30,7 +30,7 @@ differs.
                           |  - install.sh        (OS dispatch)  |
                           |  - mise.toml         (tool pins)    |
                           |  - .devcontainer/    (image SoT)    |
-                          |  - dump/             (brew/gcloud)  |
+                          |  - dump/<host>/      (brew/gcloud)  |
                           +-------------------------------------+
 ```
 
@@ -65,7 +65,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/in
 ```
 
 > [!NOTE]
-> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)を一級でサポート。Windows native は最小サブセット (`corepack enable` + `starship.toml` / `gitignore-global` の配置 + **PowerShell `$PROFILE` への starship init / mise activate 注入**) と **scoop manifest dump (`dump/scoop.json`, record-only)** に対応。フル bootstrap (scoop からの一括 install) は未対応 (将来 ADR)。詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md) / [ADR 0019](docs/adr/0019-windows-scoop-dump-record-only.md) / [ADR 0022](docs/adr/0022-powershell-starship-profile-init.md) / [ADR 0024](docs/adr/0024-powershell-mise-activate-profile.md)。
+> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)を一級でサポート。Windows native は最小サブセット (`corepack enable` + `starship.toml` / `gitignore-global` の配置 + **PowerShell `$PROFILE` への starship init / mise activate 注入**) と **scoop manifest dump (`dump/<host>/scoop.json`, record-only, per-host)** に対応。フル bootstrap (scoop からの一括 install) は未対応 (将来 ADR)。詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md) / [ADR 0019](docs/adr/0019-windows-scoop-dump-record-only.md) / [ADR 0022](docs/adr/0022-powershell-starship-profile-init.md) / [ADR 0024](docs/adr/0024-powershell-mise-activate-profile.md) / [ADR 0030](docs/adr/0030-per-host-dump-layout.md)。
 > Mac は Homebrew が前提条件 (操作者が手動で先にインストール)、それ以降は install.sh が自動。
 
 ## usage

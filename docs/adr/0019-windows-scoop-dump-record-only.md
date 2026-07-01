@@ -1,7 +1,7 @@
 # 0019. Windows scoop manifest in `dump/` — record-only
 
 **Date:** 2026-06-02
-**Status:** Accepted
+**Status:** Accepted (2026-06-02). Partially superseded by [0030](./0030-per-host-dump-layout.md) (path only — the manifest moved from `dump/scoop.json` to `dump/<host>/scoop.json`; the record-only / no `add-scoop` decision below is unchanged and in force).
 
 ## Context
 

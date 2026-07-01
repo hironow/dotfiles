@@ -175,15 +175,60 @@ def test_dump_has_windows_branch(justfile_text: str) -> None:
 
 
 def test_dump_windows_writes_scoop_json(justfile_text: str) -> None:
-    """ADR 0019: the Windows dump branch must invoke `scoop export` and
-    write to `dump/scoop.json` — the record-only manifest."""
+    """ADR 0019 + 0030: the Windows dump branch must invoke `scoop export`
+    and write to the per-host record-only manifest `dump/$host/scoop.json`."""
     body = _extract_recipe_body(justfile_text, "dump")
     win = _extract_windows_branch(body)
     assert "scoop export" in win, (
         "dump windows branch must call `scoop export` (ADR 0019)"
     )
-    assert "dump/scoop.json" in win, (
-        "dump windows branch must redirect to `dump/scoop.json` (ADR 0019)"
+    assert re.search(r"dump/\$host/scoop\.json", win), (
+        "dump windows branch must redirect to `dump/$host/scoop.json` "
+        "(ADR 0030 per-host layout; ADR 0019 record-only)"
+    )
+
+
+def test_dump_resolves_per_host_alias(justfile_text: str) -> None:
+    """ADR 0030: `just dump` must resolve a host alias via
+    scripts/dump_host.sh and write machine manifests under dump/$host/,
+    not to a single shared file."""
+    body = _extract_recipe_body(justfile_text, "dump")
+    assert re.search(r"dump_host\.sh\s+resolve-dump", body), (
+        "dump recipe must resolve the host alias via "
+        "`scripts/dump_host.sh resolve-dump` (ADR 0030)"
+    )
+    assert re.search(r"dump/\$host/Brewfile", body), (
+        "dump recipe must write Brewfile under dump/$host/ (ADR 0030)"
+    )
+    assert re.search(r"dump/\$host/gcloud", body), (
+        "dump recipe must write gcloud manifest under dump/$host/ (ADR 0030)"
+    )
+
+
+def test_dump_keeps_gitignore_global_shared(justfile_text: str) -> None:
+    """ADR 0030: gitignore-global is shared config deployed to every
+    machine, so `just dump` writes it at dump/ top level, NOT per-host."""
+    body = _extract_recipe_body(justfile_text, "dump")
+    assert "dump/gitignore-global" in body, (
+        "dump recipe must still write shared dump/gitignore-global"
+    )
+    assert not re.search(r"dump/\$host/gitignore-global", body), (
+        "gitignore-global is shared config, not machine state — it must "
+        "not be written per-host (ADR 0030)"
+    )
+
+
+def test_deploy_uses_shared_gitignore_global(justfile_text: str) -> None:
+    """ADR 0030 shared-config invariant: `just deploy` distributes the
+    shared dump/gitignore-global to every machine and must never reach
+    into a per-host dump/<host>/ path for it."""
+    body = _extract_recipe_body(justfile_text, "deploy")
+    assert "dump/gitignore-global" in body, (
+        "deploy must reference the shared dump/gitignore-global"
+    )
+    assert not re.search(r"dump/[^/\s]*\$?\{?host", body), (
+        "deploy must not reference any per-host dump/<host>/ path — the "
+        "config it distributes is shared, not machine state (ADR 0030)"
     )
 
 

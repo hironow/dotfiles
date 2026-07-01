@@ -600,26 +600,159 @@ def test_doctor_sandbox(docker_image):
 # These tests cover that guard without needing gcloud/brew/pnpm in the
 # sandbox: the guard fires before any tool is invoked.
 @pytest.mark.parametrize(
-    "recipe, dump_file",
+    "recipe, filename",
     [
-        pytest.param("add-brew", "dump/Brewfile", id="add-brew guards empty Brewfile"),
-        pytest.param("add-gcloud", "dump/gcloud", id="add-gcloud guards empty dump"),
+        pytest.param("add-brew", "Brewfile", id="add-brew guards empty Brewfile"),
+        pytest.param("add-gcloud", "gcloud", id="add-gcloud guards empty dump"),
     ],
 )
 @pytest.mark.check
-def test_add_recipes_guard_empty_dump(docker_image, recipe, dump_file):
-    # given: the dump file is emptied
-    # when: the recipe is run
+def test_add_recipes_guard_empty_dump(docker_image, recipe, filename):
+    # given: a synthetic host dir 'testhost' holding an empty manifest. We only
+    # ADD dump/testhost/ (never truncate the tracked dump/<host>/ manifests) so
+    # CI's bind-mounted checkout is never corrupted for later tests (ADR 0030).
+    # when: the recipe restores from that host (DOTFILES_HOST=testhost)
     # then: it exits 1 with a clear "missing or empty" message
-    script = f": > {dump_file} && just {recipe}"
+    script = (
+        f"mkdir -p dump/testhost && : > dump/testhost/{filename} "
+        f"&& DOTFILES_HOST=testhost just {recipe}"
+    )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode == 1, (
-        f"{recipe}: expected rc=1 for empty {dump_file}\n"
+        f"{recipe}: expected rc=1 for empty dump/testhost/{filename}\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
     assert "missing or empty" in result.stdout, (
         f"{recipe}: expected 'missing or empty' in stdout\nstdout:\n{result.stdout}"
     )
+
+
+# Per-host dump host-alias resolution (ADR 0030). These exercise the recipe
+# wiring and scripts/dump_host.sh. All `.host`-writing / layout-mutating cases
+# run against an isolated DOTFILES_DUMP_DIR tempdir so they never touch the real
+# tracked dump/ or the real dump/.host — keeping CI's bind-mounted checkout
+# clean and the tests order-independent.
+@pytest.mark.check
+def test_dump_fails_without_host_alias(docker_image):
+    """`just dump` must fail loud when no host alias is resolvable (no
+    DOTFILES_HOST, no dump/.host) BEFORE touching brew/gcloud: you declare
+    which host you are before recording it (ADR 0030)."""
+    # Point the resolver at an empty tempdir: no .host, no host dirs.
+    script = 'DOTFILES_HOST= DOTFILES_DUMP_DIR="$(mktemp -d)" just dump'
+    result = run_in_sandbox(docker_image, script)
+    assert result.returncode != 0, (
+        f"dump should fail-loud without a host alias\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "host alias" in (result.stdout + result.stderr)
+
+
+@pytest.mark.check
+def test_set_host_writes_and_validates(docker_image):
+    """`just set-host` records a valid alias and rejects an invalid slug
+    (ADR 0030). Isolated via DOTFILES_DUMP_DIR so the real dump/.host is
+    untouched."""
+    ok = run_in_sandbox(
+        docker_image,
+        'd="$(mktemp -d)"; DOTFILES_DUMP_DIR="$d" just set-host macmini '
+        '&& cat "$d/.host"',
+    )
+    assert ok.returncode == 0, f"set-host valid failed:\n{ok.stdout}\n{ok.stderr}"
+    assert "macmini" in ok.stdout
+
+    bad = run_in_sandbox(
+        docker_image,
+        'DOTFILES_DUMP_DIR="$(mktemp -d)" just set-host "bad host"',
+    )
+    assert bad.returncode != 0
+    assert "invalid" in (bad.stdout + bad.stderr)
+
+
+@pytest.mark.check
+def test_dump_host_helper_resolves_restore(docker_image):
+    """scripts/dump_host.sh resolve-restore: a lone host dir auto-resolves,
+    multiple require an explicit pick, and an unknown alias is rejected
+    (ADR 0030). Fully isolated in a tempdir."""
+    script = textwrap.dedent(
+        """
+        d="$(mktemp -d)"
+        mkdir -p "$d/only"
+        printf 'single=%s\\n' \
+          "$(DOTFILES_HOST= DOTFILES_DUMP_DIR="$d" bash scripts/dump_host.sh resolve-restore)"
+        mkdir -p "$d/second"
+        if DOTFILES_HOST= DOTFILES_DUMP_DIR="$d" bash scripts/dump_host.sh resolve-restore >/dev/null 2>&1; then
+          echo "multi=UNEXPECTED_OK"
+        else
+          echo "multi=rejected"
+        fi
+        if DOTFILES_HOST= DOTFILES_DUMP_DIR="$d" bash scripts/dump_host.sh resolve-restore nope >/dev/null 2>&1; then
+          echo "missing=UNEXPECTED_OK"
+        else
+          echo "missing=rejected"
+        fi
+        """
+    ).strip()
+    result = run_in_sandbox(docker_image, script)
+    assert result.returncode == 0, (
+        f"helper probe failed:\n{result.stdout}\n{result.stderr}"
+    )
+    assert "single=only" in result.stdout
+    assert "multi=rejected" in result.stdout
+    assert "missing=rejected" in result.stdout
+
+
+@pytest.mark.check
+def test_set_host_rejects_shell_metachars(docker_image):
+    """just parameter quoting (ADR 0030): a metacharacter alias must be passed
+    as a single quoted arg and rejected by the validator, never executed as a
+    shell command. Regression for the {{quote(alias)}} boundary."""
+    marker = "/tmp/dump_host_injection_marker"
+    script = textwrap.dedent(
+        f"""
+        d="$(mktemp -d)"
+        rm -f {marker}
+        if DOTFILES_DUMP_DIR="$d" just set-host 'x"; touch {marker}; #'; then
+          echo "outcome=UNEXPECTED_OK"
+        else
+          echo "outcome=rejected"
+        fi
+        test -e {marker} && echo "side_effect=INJECTED" || echo "side_effect=none"
+        """
+    ).strip()
+    result = run_in_sandbox(docker_image, script)
+    assert "outcome=rejected" in result.stdout, result.stdout
+    assert "side_effect=none" in result.stdout, result.stdout
+    assert "INJECTED" not in result.stdout
+
+
+@pytest.mark.check
+def test_dump_host_rejects_unsafe_host(docker_image):
+    """scripts/dump_host.sh hardening (ADR 0030): a multi-line hand-edited
+    dump/.host is rejected (not silently truncated to line 1), and a symlinked
+    dump/<host> is refused so brew bundle cannot read outside the tree."""
+    script = textwrap.dedent(
+        """
+        d="$(mktemp -d)"
+        printf 'macbook\\nmalicious\\n' > "$d/.host"
+        if DOTFILES_HOST= DOTFILES_DUMP_DIR="$d" bash scripts/dump_host.sh resolve-dump >/dev/null 2>&1; then
+          echo "multiline=UNEXPECTED_OK"
+        else
+          echo "multiline=rejected"
+        fi
+        rm -f "$d/.host"
+        mkdir -p "$d/real"
+        ln -s "$d/real" "$d/linked"
+        if DOTFILES_HOST= DOTFILES_DUMP_DIR="$d" bash scripts/dump_host.sh resolve-restore linked >/dev/null 2>&1; then
+          echo "symlink=UNEXPECTED_OK"
+        else
+          echo "symlink=rejected"
+        fi
+        """
+    ).strip()
+    result = run_in_sandbox(docker_image, script)
+    assert "multiline=rejected" in result.stdout, result.stdout
+    assert "symlink=rejected" in result.stdout, result.stdout
+    assert "UNEXPECTED_OK" not in result.stdout
 
 
 # =============================================================================
@@ -937,9 +1070,13 @@ def test_just_self_check_succeeds(docker_image):
 
 @pytest.mark.check
 def test_just_add_all_fails_when_dumps_empty(docker_image):
-    """`just add-all` is a composite. With empty dump files it must fail at
-    the first add-* guard (rc=1, "missing or empty"), not silently succeed."""
-    script = ": > dump/Brewfile && : > dump/gcloud && just add-all"
+    """`just add-all` is a composite. With empty per-host manifests it must
+    fail at the first add-* guard (rc!=0, "missing or empty"), not silently
+    succeed. Uses a synthetic dump/testhost/ (ADR 0030)."""
+    script = (
+        "mkdir -p dump/testhost && : > dump/testhost/Brewfile "
+        "&& : > dump/testhost/gcloud && DOTFILES_HOST=testhost just add-all"
+    )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode != 0
     assert "missing or empty" in result.stdout

@@ -324,16 +324,19 @@ clean-work-env target:
     rm -rf "$config_dir/shell-snapshots"
     echo "✅ $config_dir cleaned (plugins, projects, history preserved)"
 
-# Dump: write per-OS package manifests into dump/
-# Mac/Linux: brew bundle + gitignore-global + gcloud components.
+# Dump: write per-host package manifests into dump/<host>/ (ADR 0030).
+# Host alias comes from DOTFILES_HOST or dump/.host (see: just set-host).
+# Mac/Linux: brew bundle + gcloud components (per-host) + gitignore-global (shared).
 # Windows native (MSYS/MINGW/CYGWIN): scoop export (record-only, see ADR 0019).
 [group('Setup')]
 dump:
     #!/usr/bin/env bash
     set -eu
+    host="$(bash scripts/dump_host.sh resolve-dump)"
+    mkdir -p "./dump/$host"
     case "$(uname -s)" in
       MINGW*|MSYS*|CYGWIN*)
-        echo "==> Dump scoop manifest (windows subset)..."
+        echo "==> Dump scoop manifest for host '$host' (windows subset)..."
         if ! command -v scoop >/dev/null 2>&1; then
           echo "==> scoop not on PATH; cannot dump (install scoop first)" >&2
           exit 1
@@ -345,15 +348,22 @@ dump:
         scoop export | jq '{
           buckets: [.buckets[] | {Name, Source}] | sort_by(.Name),
           apps:    [.apps[]    | {Name, Version, Source}] | sort_by(.Name)
-        }' | tr -d '\r' > ./dump/scoop.json
-        echo "==> Dump complete (dump/scoop.json; record-only per ADR 0019)"
+        }' | tr -d '\r' > "./dump/$host/scoop.json"
+        echo "==> Dump complete (dump/$host/scoop.json; record-only per ADR 0019)"
         exit 0
         ;;
     esac
-    # Mac / Linux path.
-    rm -f ./dump/Brewfile && (cd ./dump && brew bundle dump)
+    # Mac / Linux path. Per-host manifests under dump/$host/; gitignore-global is
+    # shared config deployed to every machine, so it stays at dump/ top level.
+    rm -f "./dump/$host/Brewfile" && (cd "./dump/$host" && brew bundle dump)
     cp ~/.config/git/ignore ./dump/gitignore-global
-    gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u > ./dump/gcloud
+    gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u > "./dump/$host/gcloud"
+    echo "==> Dump complete for host '$host' (dump/$host/{Brewfile,gcloud} + shared dump/gitignore-global)"
+
+# Setup: record this machine's dump host alias in dump/.host (untracked, ADR 0030).
+[group('Setup')]
+set-host alias:
+    bash scripts/dump_host.sh set {{quote(alias)}}
 
 
 # ------------------------------
@@ -621,28 +631,31 @@ test-iac:
 # ------------------------------
 
 # Add (all): install gcloud/brew sets
+# Add (all): restore gcloud/brew from dump/<host>/ (host optional; see add-brew).
 [group('Add')]
-add-all:
-    just add-gcloud
-    just add-brew
+add-all host="":
+    just add-gcloud {{quote(host)}}
+    just add-brew {{quote(host)}}
 
-# Add: install Homebrew bundle from dump/Brewfile (idempotent via brew bundle)
+# Add: install Homebrew bundle from dump/<host>/Brewfile; host defaults to DOTFILES_HOST / dump/.host / lone host dir.
 [group('Add')]
-add-brew:
+add-brew host="":
     #!/usr/bin/env bash
     set -euo pipefail
-    brewfile="./dump/Brewfile"
+    host="$(bash scripts/dump_host.sh resolve-restore {{quote(host)}})"
+    brewfile="./dump/$host/Brewfile"
     if [[ ! -s "$brewfile" ]]; then
         echo "❌ $brewfile is missing or empty"; exit 1
     fi
-    (cd ./dump && brew bundle)
+    (cd "./dump/$host" && brew bundle)
 
-# Add: install gcloud components from dump/gcloud (skips already-installed)
+# Add: install gcloud components from dump/<host>/gcloud; host defaults to DOTFILES_HOST / dump/.host / lone host dir.
 [group('Add')]
-add-gcloud:
+add-gcloud host="":
     #!/usr/bin/env bash
     set -euo pipefail
-    dump="./dump/gcloud"
+    host="$(bash scripts/dump_host.sh resolve-restore {{quote(host)}})"
+    dump="./dump/$host/gcloud"
     if [[ ! -s "$dump" ]]; then
         echo "❌ $dump is missing or empty"; exit 1
     fi

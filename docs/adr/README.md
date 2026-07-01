@@ -40,7 +40,7 @@ recorded decisions that shaped it.
 | 0016 | [Integrate vercel-labs/emulate API emulators via npx wrapper](./0016-integrate-emulate-api-emulators-via-npx.md) | Accepted | 2026-05-30 | `emulator/emulate/`, `justfile` (`emu-api`) |
 | 0017 | [Retire the pnpm-global subsystem in favor of corepack + mise npm](./0017-retire-pnpm-global-for-corepack.md) | Accepted; partial supersede by [0027](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | 2026-06-02 | `mise.toml`, `install.sh`, `dump/npm-global` |
 | 0018 | [Windows native: minimum-viable deploy with explicit-skip step_*](./0018-windows-native-mvp.md) | Accepted | 2026-06-02 | `install.sh`, `justfile` (Windows deploy) |
-| 0019 | [Windows scoop manifest in `dump/` — record-only](./0019-windows-scoop-dump-record-only.md) | Accepted | 2026-06-02 | `dump/scoop.json`, `justfile` |
+| 0019 | [Windows scoop manifest in `dump/` — record-only](./0019-windows-scoop-dump-record-only.md) | Accepted; partial supersede by [0030](./0030-per-host-dump-layout.md) | 2026-06-02 | `dump/scoop.json`, `justfile` |
 | 0020 | [Normalize shell-script line endings via `.gitattributes`](./0020-normalize-shell-script-line-endings.md) | Accepted | 2026-06-02 | `.gitattributes` |
 | 0021 | [Split git config via `[include]` so dotfiles owns aliases + shared settings](./0021-git-config-include-split.md) | Accepted | 2026-06-02 | `~/.gitconfig`, `config/git/` |
 | 0022 | [PowerShell `$PROFILE` starship init from `just deploy` (Windows native)](./0022-powershell-starship-profile-init.md) | Accepted | 2026-06-02 | PowerShell `$PROFILE` |
@@ -51,6 +51,7 @@ recorded decisions that shaped it.
 | 0027 | [Bun-only Node policy: retire the per-repo pnpm carve-out](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | Accepted | 2026-06-14 | `.claude/` hooks, `ROOT_AGENTS*` |
 | 0028 | [Standardize on the Flatt Security PyPI mirror as the default uv index](./0028-flatt-pypi-mirror-default-index.md) | Accepted | 2026-06-19 | `*/pyproject.toml`, `*/uv.lock` |
 | 0029 | [Gate the distributed Claude config with claudelint + official plugin validate](./0029-claude-config-lint-gate.md) | Accepted (PR #200) | 2026-06-22 | `justfile`, `.github/workflows/claude-lint.yaml` |
+| 0030 | [Per-host dump layout (`dump/<host>/`)](./0030-per-host-dump-layout.md) | Accepted | 2026-07-01 | `justfile`, `scripts/dump_host.sh`, `dump/<host>/`, `install.sh` |
 
 ## Reading order for newcomers
 

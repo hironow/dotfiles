@@ -1,6 +1,9 @@
 # Homebrew
 Brewfile.lock.json
 
+# Per-host dump alias (machine-local, ADR 0030; set via `just set-host`)
+dump/.host
+
 # dotfiles-specific private
 refs/
 .env.keys

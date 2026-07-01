@@ -199,6 +199,24 @@ step_just_bootstrap() {
   esac
 }
 
+# Resolve the per-host dump alias to restore FROM (ADR 0030), or die with
+# install-context guidance. Manifests live under dump/<host>/, so a fresh mac
+# with more than one recorded host cannot guess which to install; DOTFILES_HOST
+# (or a lone host dir) disambiguates. Echoes the alias on success.
+_dump_restore_host() {
+  local host
+  if host="$(bash scripts/dump_host.sh resolve-restore '' 2>/dev/null)"; then
+    printf '%s\n' "$host"
+    return 0
+  fi
+  {
+    echo "[install] cannot choose a dump host to restore from:"
+    bash scripts/dump_host.sh resolve-restore '' 2>&1 | sed 's/^/[install]   /' || true
+    echo "[install] set one: DOTFILES_HOST=<alias> bash install.sh   (or: just set-host <alias>)"
+  } >&2
+  return 1
+}
+
 step_brew_bundle() {
   if [ -n "${INSTALL_SKIP_ADD_UPDATE:-}" ]; then
     echo "[install] step_brew_bundle: skip (INSTALL_SKIP_ADD_UPDATE=1)"
@@ -206,7 +224,8 @@ step_brew_bundle() {
   fi
   case "$DOTFILES_OS" in
     mac)
-      just add-brew
+      host="$(_dump_restore_host)" || return 1
+      just add-brew "$host"
       ;;
     linux)
       echo "[install] step_brew_bundle: skip (Linux equivalents covered by apt + dev container feature)"
@@ -224,7 +243,8 @@ step_gcloud_bundle() {
   fi
   case "$DOTFILES_OS" in
     mac)
-      just add-gcloud
+      host="$(_dump_restore_host)" || return 1
+      just add-gcloud "$host"
       ;;
     linux)
       echo "[install] step_gcloud_bundle: skip (gcloud components in dev container feature)"
