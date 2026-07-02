@@ -19,10 +19,10 @@ vp = "0.1.23"
 # `ghcr.io/devcontainers/features/node:1` feature in devcontainer.json
 # does install node into /usr/local/bin, but on Coder workspaces the
 # `/home/<user>:/root` volume mount can mask the symlink chain. Pin
-# node here so /opt/mise/installs/node/24.16.0/bin/node lives outside
+# node here so /opt/mise/installs/node/24.18.0/bin/node lives outside
 # the volume-mount path; mise's shim in /opt/mise/shims wins PATH
 # resolution against any bind-mount issue.
-node = "24.16.0"
+node = "24.18.0"
 
 # AI agent CLIs. Installed at build time so the Coder workspace
 # boots with them ready on PATH; operators authenticate them on
