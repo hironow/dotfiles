@@ -246,7 +246,7 @@ markdownlint-cli2 = "0.22.1"
 prek = "0.4.3"
 uv = "0.11.17"
 vp = "0.1.23"
-node = "24.16.0"
+node = "24.18.0"
 "npm:@openai/codex" = "0.135.0"
 # npm_args re-enables postinstall (mise defaults to --ignore-scripts=true)
 # so claude-code's native binary is linked, not left as a stub. See mise.toml.
