@@ -313,6 +313,46 @@ Skill catalog refs.
 git config --global pull.rebase true
 ```
 
+## fresh WSL provisioning
+
+A bare WSL2 Ubuntu box (not a devcontainer) needs a few one-time steps. The
+bootstrap now self-provisions `mise` and the `mise.toml` toolset, so most of it
+is a single command.
+
+```bash
+# 1. Prereqs: WSL2 Ubuntu with `curl` and `git` only.
+
+# 2. Bootstrap: installs mise (pinned, SHA-verified, ~/.local/bin), runs
+#    `mise install`, and symlinks the dotfiles. No sudo, no devcontainer needed.
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
+
+# 3. Machine-local supply-chain hardening (flatt mirror + 7-day quarantine).
+#    Writes ~/.config/uv/uv.toml + ~/.npmrc; idempotent and NOT tracked.
+just harden-env
+
+# 4. WSL config: keep the Windows PATH out of WSL and enable systemd.
+#    `wsl-conf` previews config/wsl/wsl.conf against /etc/wsl.conf and prints
+#    the sudo edit; then, from Windows PowerShell, reload with `wsl --shutdown`.
+just wsl-conf
+
+# 5. WSL-native Docker (for `just test` / the devcontainer sandbox). With
+#    systemd enabled by step 4, start the daemon after installing docker.io:
+sudo apt-get update && sudo apt-get install -y docker.io
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"   # effective after the next `wsl --shutdown`
+
+# 6. Verify the box.
+just doctor    # expect PATH-windows OK, docker reachable, tools present
+```
+
+Notes:
+
+- Steps 4-5 need `sudo` plus a Windows-side `wsl --shutdown`; the rest is
+  sudo-free.
+- `just harden-env` sets a personal `exclude-newer`. Committed locks stay
+  span-less via `just relock-uv` (ADR 0028); the dependency-free root lock is
+  regenerated with the personal config out of the way.
+
 ## win setup (WSL)
 
 ```bash

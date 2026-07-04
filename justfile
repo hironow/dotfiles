@@ -65,6 +65,54 @@ install:
     # Install tools via mise (versions are managed in mise.toml)
     mise install
 
+# Harden: write machine-local supply-chain guards (npm min-release-age, uv
+# flatt mirror + exclude-newer, go proxy). Idempotent; not tracked (ADR 0028).
+[group('Setup')]
+harden-env:
+    bash scripts/harden_env.sh
+
+# WSL: advise on /etc/wsl.conf. Detects WSL, checks the interop/systemd keys
+# against config/wsl/wsl.conf, and prints the sudo apply + `wsl --shutdown`
+# reload steps. Advisory only — /etc/wsl.conf is root-owned and its reload
+# needs a Windows-side restart, so this never self-applies.
+[group('Setup')]
+wsl-conf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null; then
+      echo "ℹ️  Not running under WSL (kernel: $(uname -r)); nothing to do."
+      exit 0
+    fi
+    tmpl="config/wsl/wsl.conf"
+    conf="/etc/wsl.conf"
+    echo "🪟 Recommended WSL settings (${tmpl}):"
+    sed 's/^/    /' "${tmpl}"
+    echo
+    _present() { [ -f "${conf}" ] && grep -qE "$1" "${conf}"; }
+    missing=0
+    if _present '^[[:space:]]*appendWindowsPath[[:space:]]*=[[:space:]]*false'; then
+      echo "✅ appendWindowsPath=false present in ${conf}"
+    else
+      echo "⚠️  ${conf} missing 'appendWindowsPath=false' ([interop])"
+      missing=1
+    fi
+    if _present '^[[:space:]]*systemd[[:space:]]*=[[:space:]]*true'; then
+      echo "✅ systemd=true present in ${conf}"
+    else
+      echo "⚠️  ${conf} missing 'systemd=true' ([boot])"
+      missing=1
+    fi
+    if [ "${missing}" -eq 0 ]; then
+      echo "✅ ${conf} already hardened."
+      exit 0
+    fi
+    echo
+    echo "Apply (root-owned; needs your sudo password). Add the missing keys,"
+    echo "preserving any existing '[user] default=<you>' line:"
+    echo "  sudoedit ${conf}"
+    echo "Then reload from Windows PowerShell (a full WSL restart):"
+    echo "  wsl --shutdown"
+
 # Deploy: symlink dotfiles to home and install plugins
 # Windows native (MSYS/MINGW/CYGWIN) gets a cross-platform subset only
 # (starship.toml + gitignore-global). zsh/sheldon/tmux/ghostty/fzf-tab
