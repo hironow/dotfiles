@@ -355,7 +355,14 @@ dump:
     esac
     # Mac / Linux path. Per-host manifests under dump/$host/; gitignore-global is
     # shared config deployed to every machine, so it stays at dump/ top level.
-    rm -f "./dump/$host/Brewfile" && (cd "./dump/$host" && brew bundle dump)
+    # brew is optional on Linux (WSL / mise-managed hosts have no Homebrew):
+    # skip the Brewfile dump with a WARN instead of aborting under `set -eu`.
+    # Mirrors the Windows-subset branch, which already guards scoop/jq.
+    if command -v brew >/dev/null 2>&1; then
+      rm -f "./dump/$host/Brewfile" && (cd "./dump/$host" && brew bundle dump)
+    else
+      echo "==> WARN: brew not on PATH; skipping Brewfile dump (dump/$host/Brewfile left as-is)" >&2
+    fi
     cp ~/.config/git/ignore ./dump/gitignore-global
     gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u > "./dump/$host/gcloud"
     echo "==> Dump complete for host '$host' (dump/$host/{Brewfile,gcloud} + shared dump/gitignore-global)"
