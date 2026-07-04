@@ -65,7 +65,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/in
 ```
 
 > [!NOTE]
-> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)を一級でサポート。Windows native は最小サブセット (`corepack enable` + `starship.toml` / `gitignore-global` の配置 + **PowerShell `$PROFILE` への starship init / mise activate 注入**) と **scoop manifest dump (`dump/<host>/scoop.json`, record-only, per-host)** に対応。フル bootstrap (scoop からの一括 install) は未対応 (将来 ADR)。詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md) / [ADR 0019](docs/adr/0019-windows-scoop-dump-record-only.md) / [ADR 0022](docs/adr/0022-powershell-starship-profile-init.md) / [ADR 0024](docs/adr/0024-powershell-mise-activate-profile.md) / [ADR 0030](docs/adr/0030-per-host-dump-layout.md)。
+> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)を一級でサポート。Windows native は `just deploy` で `corepack enable` + `starship.toml` / `gitignore-global` / `config/mise/config.toml` の配置 + **PowerShell `$PROFILE` への starship init / mise activate / `MISE_NODE_COREPACK=0` 注入** + **global mise toolset の install** + **`aliases.gitconfig` の `[include]` 配線** に対応。scoop は **per-host manifest dump (`dump/<host>/scoop.json`) と `just add-scoop` による復元 (`scoop import`) の両方**に対応。`just doctor` / `just update-all` 等の基本 recipe も Windows で完走し、`just ci` は native Windows で green (実行系の一部テストは Linux/WSL/CI 限定で skip)。詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md) / [ADR 0019](docs/adr/0019-windows-scoop-dump-record-only.md) / [ADR 0022](docs/adr/0022-powershell-starship-profile-init.md) / [ADR 0024](docs/adr/0024-powershell-mise-activate-profile.md) / [ADR 0030](docs/adr/0030-per-host-dump-layout.md) / [ADR 0031](docs/adr/0031-disable-mise-corepack-on-windows.md) / [ADR 0032](docs/adr/0032-windows-scoop-restore-add-scoop.md) / [ADR 0033](docs/adr/0033-windows-deploy-global-mise-install.md)。
 > Mac は Homebrew が前提条件 (操作者が手動で先にインストール)、それ以降は install.sh が自動。
 
 ## usage
@@ -83,6 +83,9 @@ just lint-claude
 
 just update-all
 just dump
+# restore packages from a recorded manifest (per-host)
+just add-brew          # macOS
+just add-scoop         # Windows: scoop import dump/<host>/scoop.json (ADR 0032)
 
 # diagnostics
 just self-check

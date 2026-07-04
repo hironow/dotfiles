@@ -12,10 +12,11 @@ and any real secret scanner — would flag the test file).
 
 import json
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from _bash_hook import run_bash
 
 HOOK = Path(__file__).resolve().parents[2] / "ROOT_AGENTS_hooks_block-secrets.sh"
 
@@ -30,8 +31,9 @@ pytestmark = pytest.mark.skipif(
 
 def _run_hook(content: str) -> int:
     payload = json.dumps({"tool_input": {"file_path": "config.py", "content": content}})
-    result = subprocess.run(
-        ["bash", str(HOOK)],
+    result = run_bash(
+        HOOK,
+        cwd=HOOK.parent,
         input=payload,
         capture_output=True,
         text=True,
@@ -98,8 +100,9 @@ def test_secret_via_notebook_new_source_is_blocked() -> None:
     notebook cell slip past the Write|Edit net."""
     secret = "sk-ant-" + "api03-" + "A" * 80
     payload = json.dumps({"tool_input": {"new_source": f"key = '{secret}'"}})
-    result = subprocess.run(
-        ["bash", str(HOOK)],
+    result = run_bash(
+        HOOK,
+        cwd=HOOK.parent,
         input=payload,
         capture_output=True,
         text=True,

@@ -2,6 +2,12 @@
 # See ADR 0019 (record-only) + ADR 0030 (per-host dump/<host>/ layout).
 dump/*/scoop.json text eol=lf
 
+# `just portless-doc` generates this (LF); `just portless-doc-check` verifies it
+# with a raw `diff` in `ci`. Pin LF so a Windows checkout does not introduce CRLF
+# and report the doc stale even though the committed blob is LF. Same rationale
+# as dump/scoop.json above.
+docs/portless-urls.md text eol=lf
+
 # Shell scripts must be LF on every platform: shellcheck reads the working
 # tree and treats CR as SC1017 error, breaking `just lint` and the
 # test_install_sh_passes_shellcheck test on Windows hosts where

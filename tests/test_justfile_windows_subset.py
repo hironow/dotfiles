@@ -445,3 +445,66 @@ def test_clean_windows_removes_powershell_mise_activate(
         "clean windows branch must keep `exit 0` after both PowerShell "
         "block removals so the Unix-only rm block does not run on Windows"
     )
+
+
+# ---------- PowerShell $PROFILE mise node corepack carve-out --------
+# mise's global `[settings.node] corepack = true` (corepack-supplied pnpm on
+# Mac/Linux, ADR 0017) has no OS gate. On Windows it makes `mise install node`
+# run corepack, which throws `EPERM ... C:\Program Files\nodejs\pnpx.CMD` and
+# — because `mise exec` installs missing required tools first — blocks EVERY
+# mise-wrapped recipe (fmt/lint/check, install-hooks, pre-commit, test-iac,
+# instruction-budget, sync-agents, pdoc). Node is bun-only on Windows (ADR
+# 0027), so corepack is never needed there; deploy exports MISE_NODE_COREPACK=0
+# to skip it. It MUST be its own managed block: folding the line into the ADR
+# 0024 mise block would never reach hosts that already carry that block, since
+# deploy skips a block whose marker is already present (grep -qF idempotency).
+
+
+PS_COREPACK_MARKER_BEGIN = "# >>> dotfiles managed block: mise node corepack >>>"
+
+
+def test_deploy_windows_disables_mise_corepack(justfile_text: str) -> None:
+    """The deploy Windows branch must export MISE_NODE_COREPACK=0 in $PROFILE,
+    in a DEDICATED managed block (fresh marker) so it is appended even on hosts
+    that already have the starship/mise blocks."""
+    body = _extract_recipe_body(justfile_text, "deploy")
+    win = _extract_windows_branch(body)
+    assert PS_COREPACK_MARKER_BEGIN in win, (
+        "deploy windows branch must include a dedicated mise-node-corepack "
+        "managed block (its own begin marker) so it appends on hosts that "
+        "already carry the starship/mise blocks (grep -qF skips existing blocks)"
+    )
+    assert re.search(r'MISE_NODE_COREPACK\s*=\s*"0"', win), (
+        "deploy windows branch must set MISE_NODE_COREPACK=0 so mise does not "
+        "run corepack during node install on Windows (Program Files node EPERM)"
+    )
+    # Idempotency + non-destructive append: one grep -qF and one >> append per
+    # managed block. With starship + mise + corepack there must be >= 3 of each.
+    assert len(re.findall(r"grep -qF", win)) >= 3, (
+        "deploy windows branch must grep -qF the corepack marker too "
+        "(one idempotency guard per managed block: starship + mise + corepack)"
+    )
+    assert len(re.findall(r'>>\s*"\$ps_profile"', win)) >= 3, (
+        "deploy windows branch must append (>>) the corepack block to "
+        "$ps_profile (one append per managed block)"
+    )
+
+
+def test_clean_windows_removes_mise_corepack_block(justfile_text: str) -> None:
+    """Symmetry: clean must remove the corepack managed block too, so a
+    deploy/clean roundtrip restores $PROFILE. With starship + mise + corepack
+    there must be at least THREE `sed -i` range deletions."""
+    body = _extract_recipe_body(justfile_text, "clean")
+    win = _extract_windows_branch(body)
+    assert PS_COREPACK_MARKER_BEGIN in win, (
+        "clean windows branch must reference the corepack begin marker so the "
+        "sed range deletion targets the right block"
+    )
+    assert len(re.findall(r"sed -i", win)) >= 3, (
+        "clean windows branch must have >= 3 `sed -i` deletions "
+        "(starship + mise + corepack)"
+    )
+    assert re.search(r"\bexit\s+0\b", win), (
+        "clean windows branch must keep `exit 0` after all block removals so "
+        "the Unix-only rm block does not run on Windows"
+    )

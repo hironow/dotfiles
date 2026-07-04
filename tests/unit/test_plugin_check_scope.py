@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from _bash_hook import run_bash
+
 REPO = Path(__file__).resolve().parents[2]
 CANONICAL = REPO / "plugins" / "_shared" / "check-scope.sh"
 LOOP_PLUGINS = ["autoresearch", "autodesign", "autoreview"]
@@ -49,12 +51,13 @@ def _run_hook(
     if config is not None:
         (cwd / ARGS[0]).write_text(config)
     payload = json.dumps({"tool_input": {"file_path": file_path}})
-    return subprocess.run(
-        ["bash", str(CANONICAL), *(args or ARGS)],
+    return run_bash(
+        CANONICAL,
+        *(args or ARGS),
+        cwd=cwd,
         input=payload,
         capture_output=True,
         text=True,
-        cwd=cwd,
         check=False,
     )
 
@@ -165,12 +168,13 @@ def test_whitelisted_artifacts_allow_silently(tmp_path: Path, artifact: str) -> 
 def test_empty_file_path_allows_silently(tmp_path: Path) -> None:
     (tmp_path / ARGS[0]).write_text(CONFIG_BASIC)
     payload = json.dumps({"tool_input": {"command": "echo no file_path here"}})
-    result = subprocess.run(
-        ["bash", str(CANONICAL), *ARGS],
+    result = run_bash(
+        CANONICAL,
+        *ARGS,
+        cwd=tmp_path,
         input=payload,
         capture_output=True,
         text=True,
-        cwd=tmp_path,
         check=False,
     )
     assert result.returncode == 0
@@ -195,12 +199,13 @@ def test_content_key_before_file_path_is_not_misparsed(tmp_path: Path) -> None:
         '{"tool_input":{"content":"see \\"file_path\\": \\"/bogus/out.md\\" in docs",'
         '"file_path":"/repo/src/algo.py"}}'
     )
-    result = subprocess.run(
-        ["bash", str(CANONICAL), *ARGS],
+    result = run_bash(
+        CANONICAL,
+        *ARGS,
+        cwd=tmp_path,
         input=payload,
         capture_output=True,
         text=True,
-        cwd=tmp_path,
         check=False,
     )
     assert _decision(result) == "allow"
@@ -222,15 +227,14 @@ def test_missing_jq_fails_open(tmp_path: Path) -> None:
         path = shutil.which(tool)
         assert path is not None
         (bindir / tool).symlink_to(path)
-    bash = shutil.which("bash")
-    assert bash is not None
     payload = json.dumps({"tool_input": {"file_path": "/repo/not-in-scope.md"}})
-    result = subprocess.run(
-        [bash, str(CANONICAL), *ARGS],
+    result = run_bash(
+        CANONICAL,
+        *ARGS,
+        cwd=tmp_path,
         input=payload,
         capture_output=True,
         text=True,
-        cwd=tmp_path,
         env={"PATH": str(bindir)},
         check=False,
     )
@@ -300,12 +304,13 @@ def test_malformed_input_fails_open(tmp_path: Path) -> None:
     """Garbage on stdin must not surface a jq error (and must never become
     exit 2 = block); the guard fails open like the no-jq case."""
     (tmp_path / ARGS[0]).write_text(CONFIG_BASIC)
-    result = subprocess.run(
-        ["bash", str(CANONICAL), *ARGS],
+    result = run_bash(
+        CANONICAL,
+        *ARGS,
+        cwd=tmp_path,
         input="not json at all",
         capture_output=True,
         text=True,
-        cwd=tmp_path,
         check=False,
     )
     assert result.returncode == 0

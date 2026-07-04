@@ -12,16 +12,24 @@ tests can assert exactly what the hook ran.
 
 import json
 import shutil
-import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from _bash_hook import run_bash
+
 HOOK = Path(__file__).resolve().parents[2] / "ROOT_AGENTS_hooks_format-after-edit.sh"
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None or shutil.which("jq") is None,
-    reason="hook needs bash + jq on PATH",
+    sys.platform == "win32"
+    or shutil.which("bash") is None
+    or shutil.which("jq") is None,
+    reason=(
+        "Linux/WSL/CI only: the stub PATH uses drive-lettered (C:\\...) entries "
+        "that collide with bash's ':' separator, and the formatter stubs need "
+        "POSIX symlinks — not a harness-fixable issue on native Windows"
+    ),
 )
 
 
@@ -44,12 +52,12 @@ def _run_hook(cwd: Path, file_path: Path, stubs: list[str]) -> Path:
     (bindir / "jq").symlink_to(jq)  # jq may live outside /usr/bin (homebrew)
     payload = json.dumps({"tool_input": {"file_path": str(file_path)}})
     env = {"PATH": f"{bindir}:{Path('/usr/bin')}:{Path('/bin')}"}
-    result = subprocess.run(
-        ["bash", str(HOOK)],
+    result = run_bash(
+        HOOK,
+        cwd=cwd,
         input=payload,
         capture_output=True,
         text=True,
-        cwd=cwd,
         env=env,
         check=False,
     )

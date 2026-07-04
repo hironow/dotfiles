@@ -40,7 +40,7 @@ recorded decisions that shaped it.
 | 0016 | [Integrate vercel-labs/emulate API emulators via npx wrapper](./0016-integrate-emulate-api-emulators-via-npx.md) | Accepted | 2026-05-30 | `emulator/emulate/`, `justfile` (`emu-api`) |
 | 0017 | [Retire the pnpm-global subsystem in favor of corepack + mise npm](./0017-retire-pnpm-global-for-corepack.md) | Accepted; partial supersede by [0027](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | 2026-06-02 | `mise.toml`, `install.sh`, `dump/npm-global` |
 | 0018 | [Windows native: minimum-viable deploy with explicit-skip step_*](./0018-windows-native-mvp.md) | Accepted | 2026-06-02 | `install.sh`, `justfile` (Windows deploy) |
-| 0019 | [Windows scoop manifest in `dump/` — record-only](./0019-windows-scoop-dump-record-only.md) | Accepted; partial supersede by [0030](./0030-per-host-dump-layout.md) | 2026-06-02 | `dump/scoop.json`, `justfile` |
+| 0019 | [Windows scoop manifest in `dump/` — record-only](./0019-windows-scoop-dump-record-only.md) | Accepted; partial supersede by [0030](./0030-per-host-dump-layout.md) (path) + [0032](./0032-windows-scoop-restore-add-scoop.md) (record-only) | 2026-06-02 | `dump/<host>/scoop.json`, `justfile` |
 | 0020 | [Normalize shell-script line endings via `.gitattributes`](./0020-normalize-shell-script-line-endings.md) | Accepted | 2026-06-02 | `.gitattributes` |
 | 0021 | [Split git config via `[include]` so dotfiles owns aliases + shared settings](./0021-git-config-include-split.md) | Accepted | 2026-06-02 | `~/.gitconfig`, `config/git/` |
 | 0022 | [PowerShell `$PROFILE` starship init from `just deploy` (Windows native)](./0022-powershell-starship-profile-init.md) | Accepted | 2026-06-02 | PowerShell `$PROFILE` |
@@ -52,6 +52,9 @@ recorded decisions that shaped it.
 | 0028 | [Standardize on the Flatt Security PyPI mirror as the default uv index](./0028-flatt-pypi-mirror-default-index.md) | Accepted | 2026-06-19 | `*/pyproject.toml`, `*/uv.lock` |
 | 0029 | [Gate the distributed Claude config with claudelint + official plugin validate](./0029-claude-config-lint-gate.md) | Accepted (PR #200) | 2026-06-22 | `justfile`, `.github/workflows/claude-lint.yaml` |
 | 0030 | [Per-host dump layout (`dump/<host>/`)](./0030-per-host-dump-layout.md) | Accepted | 2026-07-01 | `justfile`, `scripts/dump_host.sh`, `dump/<host>/`, `install.sh` |
+| 0031 | [Disable mise `node.corepack` on Windows (`just deploy` `$PROFILE` carve-out)](./0031-disable-mise-corepack-on-windows.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `config/mise/config.toml` |
+| 0032 | [Windows scoop restore: add `add-scoop` (supersede ADR 0019 record-only)](./0032-windows-scoop-restore-add-scoop.md) | Accepted; supersedes [0019](./0019-windows-scoop-dump-record-only.md) (record-only stance) | 2026-07-05 | `justfile` (`add-scoop`), `dump/<host>/scoop.json` |
+| 0033 | [Windows `just deploy` installs the global mise toolset (+ git aliases)](./0033-windows-deploy-global-mise-install.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `~/.gitconfig` |
 
 ## Reading order for newcomers
 
