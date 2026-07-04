@@ -845,6 +845,32 @@ validate-path-duplicates:
       flagged++
     }'
 
+# Validate: detect Windows drive dirs (/mnt/<letter>/...) leaking into a WSL
+# PATH. WSL defaults to appendWindowsPath=true, so the whole Windows PATH
+# bleeds in as silent fallbacks; a single reorder then resolves a command to
+# a Windows binary (which fails to exec / misbehaves under interop-off WSL).
+# /mnt/wsl and other non-drive mounts are legitimate WSL internals and are
+# NOT flagged. On non-WSL hosts no such entry exists, so this passes trivially
+# (cross-platform safe). VALIDATE_PATH overrides the scan target (for tests).
+[group('Validation')]
+validate-path-windows:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo '🔎 Validating PATH for Windows (/mnt) contamination...'
+    scan_path="${VALIDATE_PATH:-$PATH}"
+    # /mnt/<single-letter>/ = a Windows drive mount. The trailing slash keeps
+    # /mnt/wsl/... (WSL-internal) from matching.
+    leaked=$(printf '%s\n' "$scan_path" | tr ':' '\n' | grep -nE '^/mnt/[a-zA-Z]/' || true)
+    if [[ -z "$leaked" ]]; then
+      echo '✅ No Windows (/mnt/<drive>) entries in PATH'
+      exit 0
+    fi
+    count=$(printf '%s\n' "$leaked" | wc -l | tr -d ' ')
+    echo "⚠️  Found ${count} Windows path entr(ies) leaking into PATH (position:path):"
+    printf '%s\n' "$leaked" | sed 's/^/    /'
+    echo '    Hint: set [interop] appendWindowsPath=false in /etc/wsl.conf, then `wsl --shutdown`.'
+    exit 2
+
 # Doctor: environment diagnostics and guardrails
 [group('Setup')]
 doctor:
@@ -886,6 +912,18 @@ doctor:
       0) log_ok 'PATH' 'no duplicate command names';; \
       2) log_warn 'PATH' 'duplicate command names found'; echo "$dup_out";; \
       *) log_warn 'PATH' 'validation error'; echo "$dup_out";; \
+    esac
+
+    # Windows PATH contamination (WSL /mnt leak; no-op on non-WSL hosts)
+    set +e
+    win_out=$(just validate-path-windows 2>&1)
+    rc=$?
+    win_out=$(printf '%s\n' "$win_out" | grep -v '^error: recipe .* failed with exit code')
+    set -e
+    case $rc in \
+      0) log_ok 'PATH-windows' 'no /mnt Windows leakage';; \
+      2) log_warn 'PATH-windows' 'Windows dirs leaking into PATH'; echo "$win_out";; \
+      *) log_warn 'PATH-windows' 'validation error'; echo "$win_out";; \
     esac
 
     echo "Doctor summary: ok=$ok warn=$warn err=$err"
