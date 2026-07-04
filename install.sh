@@ -146,6 +146,81 @@ step_gcloud_components() {
   esac
 }
 
+step_mise_bootstrap() {
+  # Ensure `mise` is on PATH before the steps that consume it (mise install,
+  # prek shim). Dev containers / Coder workspaces get mise from the devcontainer
+  # feature (apt), so the `command -v mise` guard early-returns there — a no-op
+  # on any box that already has mise. On a bare Linux/WSL host, download the
+  # pinned mise release binary to ~/.local/bin (user-local, no sudo), SHA256-
+  # verified against the release SHASUMS — the same posture as
+  # step_just_bootstrap. No pipe-to-shell (repo guardrail). Keep _mise_ver in
+  # sync with the devcontainer feature's apt mise.
+  if command -v mise >/dev/null 2>&1; then
+    return
+  fi
+  case "$DOTFILES_OS" in
+    mac)
+      if command -v brew >/dev/null 2>&1; then
+        brew list mise >/dev/null 2>&1 || brew install mise
+      else
+        echo "[install] step_mise_bootstrap: brew not on PATH and mise is missing. Run step_homebrew first or install mise manually." >&2
+        exit 1
+      fi
+      ;;
+    linux)
+      _mise_ver="2026.7.0"
+      case "$(uname -m)" in
+        x86_64) _mise_tgt="linux-x64-musl" ;;
+        aarch64 | arm64) _mise_tgt="linux-arm64-musl" ;;
+        *)
+          echo "[install] step_mise_bootstrap: unsupported arch $(uname -m)" >&2
+          exit 1
+          ;;
+      esac
+      _mise_tarball="mise-v${_mise_ver}-${_mise_tgt}.tar.gz"
+      _mise_base="https://github.com/jdx/mise/releases/download/v${_mise_ver}"
+      _mise_tmp="$(mktemp -d)"
+      echo "[install] step_mise_bootstrap: mise missing; installing ${_mise_ver} to ~/.local/bin"
+      curl --proto '=https' --tlsv1.2 -sSfL -o "${_mise_tmp}/${_mise_tarball}" "${_mise_base}/${_mise_tarball}"
+      curl --proto '=https' --tlsv1.2 -sSfL -o "${_mise_tmp}/SHASUMS256.txt" "${_mise_base}/SHASUMS256.txt"
+      (cd "${_mise_tmp}" && sha256sum -c --ignore-missing SHASUMS256.txt)
+      tar -xzf "${_mise_tmp}/${_mise_tarball}" -C "${_mise_tmp}"
+      mkdir -p "$HOME/.local/bin"
+      install -m 0755 "${_mise_tmp}/mise/bin/mise" "$HOME/.local/bin/mise"
+      rm -rf "${_mise_tmp}"
+      export PATH="$HOME/.local/bin:$PATH"
+      ;;
+    windows)
+      _skip_windows "step_mise_bootstrap" "mise is provided by scoop/winget on Windows native; the POSIX ~/.local/bin binary download does not apply"
+      ;;
+  esac
+}
+
+step_mise_install() {
+  # Materialize the mise.toml toolset (just, uv, node, prek, markdownlint, vp,
+  # and the AI CLIs). Dev containers pre-install these at build time; on a bare
+  # host this is what turns a fresh mise into a working toolchain. Heavy, so it
+  # honours INSTALL_SKIP_ADD_UPDATE (the Docker install-verification sets it to
+  # keep the build fast). Idempotent: mise skips already-installed tools.
+  if [ -n "${INSTALL_SKIP_ADD_UPDATE:-}" ]; then
+    echo "[install] step_mise_install: skip (INSTALL_SKIP_ADD_UPDATE=1)"
+    return
+  fi
+  if ! command -v mise >/dev/null 2>&1; then
+    echo "[install] step_mise_install: mise not on PATH; skipping (bootstrap incomplete)"
+    return
+  fi
+  case "$DOTFILES_OS" in
+    mac | linux)
+      mise trust >/dev/null 2>&1 || true
+      mise install
+      ;;
+    windows)
+      _skip_windows "step_mise_install" "mise install runs from the scoop/winget mise on Windows native; provisioning is out of scope for ADR 0018"
+      ;;
+  esac
+}
+
 step_just_bootstrap() {
   # Ensure `just` is on PATH before we hand control over to it.
   # Linux's dev container feature already installs just at build
@@ -367,6 +442,8 @@ step_prek_shim() {
 
 step_homebrew
 step_gcloud_components
+step_mise_bootstrap
+step_mise_install
 step_just_bootstrap
 step_brew_bundle
 step_gcloud_bundle
