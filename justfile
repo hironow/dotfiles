@@ -65,6 +65,12 @@ install:
     # Install tools via mise (versions are managed in mise.toml)
     mise install
 
+# Harden: write machine-local supply-chain guards (npm min-release-age, uv
+# flatt mirror + exclude-newer, go proxy). Idempotent; not tracked (ADR 0028).
+[group('Setup')]
+harden-env:
+    bash scripts/harden_env.sh
+
 # Deploy: symlink dotfiles to home and install plugins
 # Windows native (MSYS/MINGW/CYGWIN) gets a cross-platform subset only
 # (starship.toml + gitignore-global). zsh/sheldon/tmux/ghostty/fzf-tab
