@@ -44,6 +44,19 @@ meta-semgrep:
 # passed as BOTH the config and the target.
 [group('Validation')]
 semgrep-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # semgrep's native-Windows engine mis-fires some rules (e.g.
+    # python-no-mutable-default-args yields no finding on `def f(x=[])`), so
+    # `semgrep --test`'s annotation matching fails there even though the rules
+    # are valid and pass on Linux/WSL/CI. Skip cleanly on Windows so `just ci`
+    # does not hard-fail (same uname-guard shape as deploy/clean/dump).
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*)
+        echo "⏭  semgrep --test skipped on native Windows (engine mis-fires rules; validated on Linux/WSL/CI)"
+        exit 0
+        ;;
+    esac
     uvx semgrep --test --config .semgrep/rules/ .semgrep/rules/
 
 # Full validation of rule files
@@ -165,7 +178,60 @@ deploy:
           } >> "$ps_profile"
           echo "==> PowerShell \$PROFILE updated with mise-activate block"
         fi
-        echo "==> Deploy complete (windows subset per ADR 0018/0022/0024; Unix-only artifacts skipped)"
+        # PowerShell 7 $PROFILE — mise node corepack carve-out (Windows; ADR
+        # 0031). mise's global `[settings.node] corepack = true` runs corepack
+        # during `mise install node`, throwing `EPERM ...\Program Files\nodejs\
+        # pnpx.CMD` on Windows; since `mise exec` installs missing tools first,
+        # that blocks every mise-wrapped recipe. Node is bun-only on Windows
+        # (ADR 0027), so export MISE_NODE_COREPACK=0. Its own managed block
+        # (fresh marker) appends even on hosts that already carry the starship
+        # (0022) / mise-activate (0024) blocks.
+        ps_corepack_marker_begin="# >>> dotfiles managed block: mise node corepack >>>"
+        if grep -qF "$ps_corepack_marker_begin" "$ps_profile"; then
+          echo "==> PowerShell \$PROFILE mise-corepack block already present (skip)"
+        else
+          {
+            printf '\n%s\n' "$ps_corepack_marker_begin"
+            printf '# Managed by `just deploy`. Edits inside this block are overwritten on next deploy.\n'
+            printf '$env:MISE_NODE_COREPACK = "0"\n'
+            printf '%s\n' "$ps_marker_end"
+          } >> "$ps_profile"
+          echo "==> PowerShell \$PROFILE updated with mise-corepack block"
+        fi
+        # Install the global mise toolset (ADR 0033). deploy copies the config
+        # above; native Windows mise reads ~/.config/mise/config.toml (verified
+        # via `mise config ls`). `-C /` scopes to the global config only.
+        # MISE_NODE_COREPACK=0 avoids the Program-Files-node corepack EPERM
+        # (ADR 0031). Best-effort, but say so loudly on failure (a fresh host may
+        # need network or `mise trust`).
+        if command -v mise >/dev/null 2>&1; then
+          echo "==> Installing global mise tools (best-effort)..."
+          MISE_NODE_COREPACK=0 mise -C / install || echo "==> WARN: global mise tool install incomplete; re-run 'MISE_NODE_COREPACK=0 mise -C / install' (needs network; may need 'mise trust')"
+        else
+          echo "==> mise not on PATH; skipping global tool install (install mise via scoop, then re-run 'just deploy')"
+        fi
+        # git aliases [include] managed block (ADR 0033). Wires ONLY
+        # aliases.gitconfig (pure [alias] entries) — deliberately NOT
+        # shared.gitconfig: re-including shared after a manual PC-local override
+        # (e.g. gpgsign=false on a keyless host) would clobber it. Identity /
+        # signing / shared stay manual per ADR 0021. Reuses $ps_marker_end;
+        # git treats '#' lines as comments so the markers are inert.
+        gitconfig="$HOME/.gitconfig"
+        git_marker_begin="# >>> dotfiles managed block: git aliases include >>>"
+        touch "$gitconfig"
+        if grep -qF "$git_marker_begin" "$gitconfig"; then
+          echo "==> ~/.gitconfig git-aliases block already present (skip)"
+        else
+          {
+            printf '\n%s\n' "$git_marker_begin"
+            printf '# Managed by `just deploy` (ADR 0033). Only aliases — identity/signing/shared stay manual (ADR 0021).\n'
+            printf '[include]\n'
+            printf '\tpath = ~/dotfiles/config/git/aliases.gitconfig\n'
+            printf '%s\n' "$ps_marker_end"
+          } >> "$gitconfig"
+          echo "==> ~/.gitconfig updated with git-aliases include block"
+        fi
+        echo "==> Deploy complete (windows subset per ADR 0018/0022/0024/0031/0033; corepack carve-out per ADR 0017/0027; Unix-only artifacts skipped)"
         exit 0
         ;;
     esac
@@ -313,6 +379,17 @@ clean:
         if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise activate >>>" "$ps_profile"; then
           sed -i '/# >>> dotfiles managed block: mise activate >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
           echo "==> PowerShell \$PROFILE mise-activate block removed"
+        fi
+        # Remove PowerShell mise-node-corepack block (idempotent; ADR 0031).
+        if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise node corepack >>>" "$ps_profile"; then
+          sed -i '/# >>> dotfiles managed block: mise node corepack >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+          echo "==> PowerShell \$PROFILE mise-corepack block removed"
+        fi
+        # Remove git-aliases include block from ~/.gitconfig (idempotent; ADR 0033).
+        gitconfig="$HOME/.gitconfig"
+        if [ -f "$gitconfig" ] && grep -qF "# >>> dotfiles managed block: git aliases include >>>" "$gitconfig"; then
+          sed -i '/# >>> dotfiles managed block: git aliases include >>>/,/# <<< end dotfiles managed block <<</d' "$gitconfig"
+          echo "==> ~/.gitconfig git-aliases block removed"
         fi
         exit 0
         ;;
@@ -724,6 +801,28 @@ add-gcloud host="":
     echo "$missing" | sed 's/^/  - /'
     sudo gcloud components install --quiet $missing
 
+# Add: restore scoop apps from dump/<host>/scoop.json (Windows native; idempotent).
+# Symmetry with add-brew: host defaults to DOTFILES_HOST / dump/.host / lone host
+# dir (ADR 0030 per-host layout). `scoop import` adds missing buckets + installs
+# missing apps natively (no jq — jq is itself a recorded app). See ADR 0032
+# (supersedes ADR 0019's record-only stance; `just dump` still writes the record).
+[group('Add')]
+add-scoop host="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*) : ;;
+      *) echo "❌ add-scoop is Windows-only (scoop); on this OS use add-brew / add-gcloud"; exit 1 ;;
+    esac
+    host="$(bash scripts/dump_host.sh resolve-restore {{quote(host)}})"
+    manifest="./dump/$host/scoop.json"
+    if [[ ! -s "$manifest" ]]; then
+        echo "❌ $manifest is missing or empty (run 'just dump' on that Windows host first)"; exit 1
+    fi
+    command -v scoop >/dev/null 2>&1 || { echo "❌ scoop not found — install scoop first (https://scoop.sh)"; exit 1; }
+    echo "📦 restoring scoop buckets + apps from $manifest (already-installed apps are skipped)..."
+    scoop import "$manifest"
+
 # ------------------------------
 # Update sets
 # ------------------------------
@@ -786,13 +885,23 @@ update-all-safe:
 # Update: update and cleanup Homebrew
 [group('Update')]
 update-brew:
-    @echo "◆ homebrew..."
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # No Homebrew on native Windows — skip so `update-all` (which calls this)
+    # does not abort before its guarded mise/gh/tldr tail.
+    case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) echo "◆ homebrew: skipped on Windows (no brew)"; exit 0 ;; esac
+    echo "◆ homebrew..."
     brew update && brew upgrade && brew cleanup
 
 # Update: update gcloud components
 [group('Update')]
 update-gcloud:
-    @echo "◆ gcloud..."
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # No gcloud/sudo on native Windows — skip so `update-all` does not abort.
+    # (Update the Cloud SDK via its official Windows installer instead.)
+    case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) echo "◆ gcloud: skipped on Windows (use the official Cloud SDK installer)"; exit 0 ;; esac
+    echo "◆ gcloud..."
     sudo gcloud components update --quiet
 
 # Repair: reset Homebrew state (rebase leftovers, inconsistencies)
@@ -867,6 +976,18 @@ validate-path-duplicates:
     #!/usr/bin/env bash
     set -euo pipefail
     echo '🔎 Validating duplicate commands in PATH...'
+    # The role() classifier below only recognizes Unix structural roots
+    # (/usr/bin, /opt/homebrew, ~/.local/share/mise, nix, ...); on native
+    # Windows every PATH shadow would be a false positive, and globbing
+    # System32/Program Files (thousands of MSYS-executable .exe/.dll) is
+    # prohibitively slow — `doctor`/`self-check` hang on it. Skip cleanly there
+    # (they map exit 0 to OK). Same uname-guard shape as deploy/clean/dump.
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*)
+        echo '⏭  skipped on native Windows (Unix-only heuristics; System32 glob too slow)'
+        exit 0
+        ;;
+    esac
     # Allow overriding scan targets with VALIDATE_PATH; fallback to current PATH
     scan_path="${VALIDATE_PATH:-$PATH}"
     IFS=':' read -r -a dirs <<< "$scan_path"

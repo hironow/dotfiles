@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,12 @@ JUSTFILE = ROOT / "justfile"
 
 @pytest.fixture
 def just_binary() -> str:
+    if sys.platform == "win32":
+        pytest.skip(
+            "native Windows: these run `just` shebang recipes via cygpath + a "
+            "Unix-style restricted PATH that Git-Bash can't resolve; they run on "
+            "Linux/WSL/CI (the static wiring test still runs everywhere)"
+        )
     just = shutil.which("just")
     if just is None:
         pytest.skip("just not on PATH")

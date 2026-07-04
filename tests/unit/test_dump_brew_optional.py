@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,12 @@ def test_dump_guards_brew_behind_command_check() -> None:
 
 @pytest.fixture
 def just_binary() -> str:
+    if sys.platform == "win32":
+        pytest.skip(
+            "native Windows: runs a `just` shebang recipe via cygpath + a "
+            "Unix-style restricted PATH that Git-Bash can't resolve; runs on "
+            "Linux/WSL/CI (the static command-check test still runs everywhere)"
+        )
     just = shutil.which("just")
     if just is None:
         pytest.skip("just not on PATH")

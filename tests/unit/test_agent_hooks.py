@@ -10,10 +10,12 @@ pin both the block list and the pnpm lockfile-resolution behavior.
 
 import json
 import shutil
-import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+from _bash_hook import run_bash
 
 HOOK = (
     Path(__file__).resolve().parents[2]
@@ -24,20 +26,28 @@ EXIT_ALLOW = 0
 EXIT_BLOCK = 2
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None or shutil.which("python3") is None,
-    reason="hook needs bash + python3 on PATH",
+    sys.platform == "win32"
+    or shutil.which("bash") is None
+    or shutil.which("python3") is None,
+    reason=(
+        "Linux/WSL/CI only: the wrapper `exec python3`s its companion, but on "
+        "native Windows `python3` resolves to the non-functional MS-Store stub "
+        "(exit 49) and MSYS bash's pwd-derived paths aren't consumable by the "
+        "Windows interpreter — not a harness-fixable issue"
+    ),
 )
 
 
 def _run_hook(command: str, cwd: Path) -> int:
     """Feed a Bash tool_input payload to the hook and return its exit code."""
     payload = json.dumps({"tool_input": {"command": command}})
-    result = subprocess.run(
-        ["bash", str(HOOK)],
+    result = run_bash(
+        HOOK,
+        cwd=cwd,
+        companions=(HOOK.with_name("ROOT_AGENTS_hooks_block-prohibited-commands.py"),),
         input=payload,
         capture_output=True,
         text=True,
-        cwd=cwd,
         check=False,
     )
     return result.returncode
@@ -231,12 +241,12 @@ def test_wrapper_resolves_deployed_layout(tmp_path: Path) -> None:
         hooks_dir / "block-prohibited-commands.py",
     )
     payload = json.dumps({"tool_input": {"command": "npm install"}})
-    result = subprocess.run(
-        ["bash", str(hooks_dir / "block-prohibited-commands.sh")],
+    result = run_bash(
+        hooks_dir / "block-prohibited-commands.sh",
+        cwd=tmp_path,
         input=payload,
         capture_output=True,
         text=True,
-        cwd=tmp_path,
         check=False,
     )
     assert result.returncode == EXIT_BLOCK
@@ -248,12 +258,12 @@ def test_wrapper_fails_closed_without_companion(tmp_path: Path) -> None:
     hooks_dir.mkdir()
     shutil.copy(HOOK, hooks_dir / "block-prohibited-commands.sh")
     payload = json.dumps({"tool_input": {"command": "ls"}})
-    result = subprocess.run(
-        ["bash", str(hooks_dir / "block-prohibited-commands.sh")],
+    result = run_bash(
+        hooks_dir / "block-prohibited-commands.sh",
+        cwd=tmp_path,
         input=payload,
         capture_output=True,
         text=True,
-        cwd=tmp_path,
         check=False,
     )
     assert result.returncode == EXIT_BLOCK
