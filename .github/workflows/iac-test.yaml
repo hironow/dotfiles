@@ -1,7 +1,11 @@
 name: IaC Tests (OpenTofu)
 
-# Runs `just test-iac` for the Coder workspace template
-# (exe/coder/templates/dotfiles-devcontainer/) on every push and PR.
+# Two IaC gates on every push and PR:
+#   1. `tofu test` for the Coder workspace template
+#      (exe/coder/templates/dotfiles-devcontainer/).
+#   2. `tofu validate` for the exe stack (tofu/exe/) — offline, no secrets
+#      and no GCS backend, so a provider-constraint bump (e.g. hashicorp/google
+#      ~> 7.0) is schema-checked in CI rather than only by a local plan.
 # ADR 0024 (in the runops-gateway repo) is the canonical rationale
 # for splitting IaC tests across `tofu test` (variable defaults /
 # validation) and pytest (heredoc body content, systemd-analyze).
@@ -45,3 +49,27 @@ jobs:
         run: |
           tofu init -backend=false
           tofu test
+
+  validate-exe:
+    name: tofu validate (exe stack)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: opentofu/setup-opentofu@847eaa4afeb791b06daa46e8eafa8b1b68d7cfb4 # v2.0.1
+        with:
+          tofu_version: 1.12.3
+
+      # No secrets, no state: `-backend=false` resolves providers from the
+      # required_providers constraints and the terraform{} encryption block
+      # falls back to its in-file sentinel passphrase, so `validate` checks
+      # the config against the pinned provider schemas (e.g. the google v7
+      # bump) without touching the GCS backend. Mirrors `just exe-validate`.
+      - name: tofu validate (exe)
+        working-directory: tofu/exe
+        run: |
+          tofu fmt -check -diff
+          tofu init -backend=false -input=false
+          tofu validate
