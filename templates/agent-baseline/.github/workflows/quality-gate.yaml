@@ -17,13 +17,15 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        # setup-uv stopped publishing @vN major tags from v8 (supply-chain
+        # hardening); pin the full immutable tag instead of a floating major.
+        uses: astral-sh/setup-uv@v8.2.0
 
       - name: Install just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
 
       - name: Install Semgrep
         run: uv tool install semgrep
@@ -39,10 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ hashFiles('tofu/**') != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: tofu init
         working-directory: tofu
