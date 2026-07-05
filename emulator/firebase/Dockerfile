@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Firebase CLI with specific version for stability
-RUN npm install -g firebase-tools@15.19.0 && \
+RUN npm install -g firebase-tools@15.22.3 && \
     firebase --version
 
 WORKDIR /firebase
