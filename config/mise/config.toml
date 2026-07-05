@@ -15,7 +15,7 @@ rust = "1.96.0"
 # so `mise x -- tofu` resolves from the non-mise-activated bash
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
 # no shims PATH). Pinned for repeatable IaC test runs across machines.
-opentofu = "1.11.5"
+opentofu = "1.12.3"
 uv = "latest"
 kotlin = "latest"
 java = "latest"
@@ -31,7 +31,7 @@ prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
-"npm:portless" = "0.13.0"
+"npm:portless" = "0.15.0"
 # eza — modern ls replacement aliased unconditionally-now-guarded in
 # .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
 # it on PATH for every dir; without a config source the installed
@@ -84,11 +84,10 @@ fzf = "0.73.1"
 # via mise's github backend; exe is `antigravity`. SUPPLY-CHAIN NOTE: no
 # SLSA/Sigstore attestation or SHA sidecar is published for these releases
 # (gh attestation API 404), so there is no enforced provenance gate — see
-# the repo mise.toml. Pinned to a concrete version (NOT "latest") because
-# its first release was 2026-06-01, so minimum_release_age="7d" would
-# leave "latest" with no eligible version. Same concrete pin in repo
-# mise.toml; bump both together.
-"github:google-antigravity/antigravity-cli" = { version = "1.0.6", exe = "antigravity" }
+# the repo mise.toml. Pinned to a concrete version (NOT "latest") to keep
+# the same pin as repo mise.toml (first release was 2026-06-01). Tracks the
+# newest release at least 7 days old; bump both together.
+"github:google-antigravity/antigravity-cli" = { version = "1.0.13", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Declared "latest" like the
 # AI CLIs above; the minimum_release_age="7d" quarantine below makes
@@ -99,7 +98,7 @@ fzf = "0.73.1"
 "npm:cf" = "latest"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
-"npm:@google/gemini-cli" = "0.46.0"
+"npm:@google/gemini-cli" = "0.49.0"
 
 [settings]
 # Disable asdf-style .python-version / .nvmrc auto-detection so only
