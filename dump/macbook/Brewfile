@@ -149,10 +149,10 @@ brew "foremost"
 brew "fzf"
 # GNU Transport Layer Security (TLS) Library
 brew "gnutls"
-# Validating, recursive, caching DNS resolver
-brew "unbound"
 # GNU Privacy Guard (OpenPGP)
 brew "gnupg"
+# Validating, recursive, caching DNS resolver
+brew "unbound"
 # Package compiler and linker metadata toolkit
 brew "pkgconf"
 # Postgres C API library
@@ -544,13 +544,13 @@ mas "GarageBand", id: 682658836
 mas "iMovie", id: 408981434
 mas "LINE", id: 539883307
 mas "Numbers", id: 409203825
-mas "Oka Unarchiver", id: 1441507725
 mas "Pages", id: 409201541
 mas "Reeder", id: 6475002485
 mas "Slack", id: 803453959
 mas "Tailscale", id: 1475387142
 mas "Telegram Lite", id: 946399090
 mas "Transmit", id: 1436522307
+mas "Unzip Pro", id: 1441507725
 mas "WireGuard", id: 1451685025
 vscode "1yib.rust-bundle"
 vscode "aaron-bond.better-comments"
@@ -740,7 +740,6 @@ vscode "pkief.material-icon-theme"
 vscode "pkief.material-product-icons"
 vscode "pwabuilder.pwa-studio"
 vscode "qhoekman.language-plantuml"
-vscode "qwenlm.qwen-code-vscode-ide-companion"
 vscode "qwtel.sqlite-viewer"
 vscode "rangav.vscode-thunder-client"
 vscode "redhat.vscode-knative"
@@ -790,6 +789,7 @@ vscode "ziyasal.vscode-open-in-github"
 go "cmd/go"
 go "cmd/gofmt"
 go "golang.org/x/tools/gopls"
+go "google.golang.org/protobuf/cmd/protoc-gen-go"
 cargo "bdk-cli"
 cargo "cargo-deny"
 cargo "gen-license"
