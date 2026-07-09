@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-07-01
+最終更新: 2026-07-09
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -12,7 +12,14 @@
 
 **現行バージョン**: v1.0.1 (2026-05)
 
-**チェックアウト状態**: `v1.0.1-14-g5d2676e` (v1.0.1 + 14 commits、 HEAD 2026-06-30。 新規リリースタグはなく v1.0.1 が依然最新)
+**チェックアウト状態**: `v1.0.1-18-ga7d12d1` (v1.0.1 + 18 commits、 HEAD 2026-07-07。 新規リリースタグはなく v1.0.1 が依然最新)
+
+#### 2026-07-01〜2026-07-07 新着 (docs / CI のみ、 spec 変更なし)
+
+- **パートナーリストに AlgoVoi 追加**: docs のみの変更 (#1994)
+- **壊れたパートナーリンクを削除**: OIXA / Pinchwork のリンク切れエントリを除去 (#2017)
+- **CI を buf-action へ移行**: 非推奨の buf-setup-action から移行 (#1999)
+- **GitHub Actions 依存を 3 件まとめて更新** (#2035)
 
 #### 2026-06-30 新着 (パートナーリストへの追加)
 
@@ -88,7 +95,15 @@
 
 **現行バージョン**: v0.9 (次期 **v1.0 spec 作業中**、 旧称 v0.10 から `specification/v1_0` へ昇格)
 
-**チェックアウト状態**: `d3265f28` (v0.9 系 HEAD、 v0.9.1 バリデータ修正 / Express コンパイラ脱ファイルシステム化 / Python 3.10 対応 / workspace 単一 uv.lock 統合を含む、 HEAD 2026-06-30)
+**チェックアウト状態**: `02cf2851` (v0.9 系 HEAD、 HEAD 2026-07-07。 前回記録 `d3265f28` から 22 commits 先行、 新規リリースタグなし)
+
+#### 2026-07-01〜2026-07-07 新着 (catalogId 明確化 + web_core 型エクスポート + Python ツーリング整備)
+
+- **spec 明確化: `catalogId` は任意の文字列識別子**: 「解決可能な URI ではない」ことを v0.9 / v0.9.1 / v1.0 の各仕様で明確化。 well-known ID はクライアント/サーバ間の事前合意が前提と明記 (#1924)
+- **web_core: `UserAction` を `ClientEventUserAction` として v0.8 でエクスポート**: 1P 利用向けの型エクスポート追加 (#1942)
+- **API リネーム**: `indexSystemFunction` → `IndexSystemFunction` (#1811)
+- **Angular 修正**: Angular signals を直接使用するよう修正 (#1733)、 Angular MCP Apps デモを A2UI v0_9 へ更新 (#1786)
+- **Python ツーリング整備**: uv workspace 化 (#1814)、 PEP 420 名前空間パッケージ標準化 (#1815)、 `a2ui_core` の型チェック有効化 (#1816)、 pyink 設定集約 (#1911, #1932)、 Python CI 統合 (#1910)
 
 #### 2026-06-29〜2026-06-30 新着 (v0.9.1 バリデータ修正 + Express コンパイラの脱ファイルシステム化 + Python 3.10 対応)
 
@@ -299,9 +314,18 @@
 
 **現行バージョン**: v1.3.1 (2026-06)
 
-**チェックアウト状態**: `v1.3.1-8-g3824726` (v1.3.1 + 8 commits、 HEAD 2026-06-13)
+**チェックアウト状態**: `v1.3.1-32-gf023035` (v1.3.1 + 32 commits、 HEAD 2026-07-05)
 
 **管理**: CMU NeuLab
+
+#### 2026-06-14〜2026-07-05 新着 (データセット拡充 + 整合性監査ツール)
+
+- **新データセット追加**: OpenThoughts-Agent / Finch (#274)、 SWE-ZERO 12M (#258)、 enterpriselab (#271)
+- **クロスデータセット整合性監査を追加** (#305)、 **サンプル fixture ドリフトチェッカーを追加** (#302)
+- **LiteCoder のターミナル系プロンプト分離**: タスクからの分離 (#293) とヘルパー抽出 (#301)
+- **役割正規化の修正**: AndroidControl (#286)、 Android in the Wild (#285)、 OmniAct 初期タスク順序 (#287)
+- **OpenHands SDK の `<SOUL>` タグ system prompt ラッピングへ適応** (#272)、 native async condenser 生成 (#264)
+- **プレースホルダ / 空 system メッセージの除去**: Toucan (#291)、 ORCA AgentInstruct (#290)、 OpenResearcher (#289)、 Nebius SWE-agent (#288)
 
 #### 2026-06-13 新着 (ATIF 変換パイプライン)
 
@@ -358,9 +382,20 @@
 
 ### AG-UI (Agent-User Interaction Protocol)
 
-**現行バージョン**: **TS SDK 0.0.57** / **@ag-ui/a2ui-toolkit@0.0.4 (TS) + ag-ui-a2ui-toolkit@0.0.4 (Py)** / **@ag-ui/a2ui-middleware@0.0.10** / **@ag-ui/aws-strands@0.2.3 (TS) + ag_ui_strands@0.2.2 (Py)** / **ag_ui_adk@0.7.0 (Py)** / **@ag-ui/langgraph@0.0.42 (TS) + ag-ui-langgraph@0.0.42 (Py)** / **AG-UI .NET SDK 0.1.0-preview (新規)** / Python protocol 0.1.19
+**現行バージョン**: **TS SDK 0.0.57** / **@ag-ui/mastra@1.1.1 (新規リリース)** / **@ag-ui/a2ui-toolkit@0.0.4 (TS) + ag-ui-a2ui-toolkit@0.0.4 (Py)** / **@ag-ui/a2ui-middleware@0.0.10** / **@ag-ui/aws-strands@0.2.3 (TS) + ag_ui_strands@0.2.2 (Py)** / **ag_ui_adk@0.7.0 (Py)** / **@ag-ui/langgraph@0.0.42 (TS) + ag-ui-langgraph@0.0.42 (Py)** / **AG-UI .NET SDK (NuGet AGUI.\* 0.0.3)** / Python protocol 0.1.19
 
-**チェックアウト状態**: `b91f32ea` (main、 HEAD 2026-07-01。 前回文書化点 `677dfca1` から 37 commits 先行、 `release/2026-06-24` タグから 54 commits 先。 いずれのパッケージも新規 release タグ未発行で version 表記は変化なし)
+**チェックアウト状態**: `ff60085f` (main、 HEAD 2026-07-06。 前回文書化点 `b91f32ea` から 60 commits 先行。 この窓で @ag-ui/mastra@1.1.0/1.1.1、 release/2026-07-02・release/2026-07-03、 sdk-dotnet AGUI.\*@0.0.2/0.0.3 の新規タグが発行された)
+
+#### 2026-07-02〜2026-07-06 新着 (mastra 1.1.0/1.1.1 リリース + .NET NuGet リリース対応)
+
+- **@ag-ui/mastra@1.1.0 / 1.1.1 リリース** (2026-07-02 / 07-03): 前窓までの Mastra interrupt/resume 整備を正式タグ化。 1.1.1 は fast-json-patch の default import 修正 (#2115) を含む
+- **Mastra: Observational Memory を AG-UI アクティビティイベントとして表面化** (OSS-92)
+- **Mastra: shared-state ストリーミングのリモートパリティ + 書き戻し**: `STATE_DELTA` 経由の共有ステート配信とクライアント編集同期 (OSS-414)
+- **Mastra: `tracingOptions` パススルー公開と実行 traceId の表面化** (#2083)
+- **dotnet: NuGet リリース対応**: AG-UI ワークフローへ NuGet リリースを追加、 sdk-dotnet AGUI.\* を 0.0.2 → 0.0.3 へ（パッケージのトリム・署名修正含む）
+- **A2UI 連携デモ追加**: local+remote の A2UI デモと固定スキーマデモ
+- **CI: Renovate 設定へ移行** (#1782, #1790)、 Java 用 GitHub Actions を削除 (#2090)
+- **fix: missing-payload チャンクをストリーム中断せずスキップ** (#1635)
 
 #### 2026-07-01 新着 (Mastra interrupt/resume 一斉整備 + .NET SDK パッケージ名訂正、いずれも未リリース)
 
@@ -503,9 +538,13 @@
 
 **現行バージョン**: 継続的デプロイ（バージョンタグなし）
 
-**チェックアウト状態**: HEAD `6c9ed64` (2026-06-30)
+**チェックアウト状態**: HEAD `0c0c567` (2026-07-01)
 
 **管理**: Anthropic
+
+#### 2026-07-01 新着 (ロゴアセット調整のみ)
+
+- **正方形クライアントロゴのスケール調整** (#446): 画像アセットのみの変更。 仕様・コード変更なし
 
 #### 2026-06-12〜2026-06-30 新着 (クライアントショーケース追加のみ)
 
@@ -555,11 +594,19 @@
 
 **現行バージョン**: 2025-11-25 (次期リリース候補 `2026-07-28-RC` 作業中)
 
-**チェックアウト状態**: `2026-07-28-RC-190-gc87328cc` (2026-07-28-RC タグ後の next-revision draft 作業継続中、 HEAD 2026-06-30)
+**チェックアウト状態**: `2026-07-28-RC-201-g433d59ca` (2026-07-28-RC タグ後の next-revision draft 作業継続中、 HEAD 2026-07-07)
 
 **注目**: この窓の SEP 活動は既 Final の **SEP-2243 (HTTP ヘッダ標準化)** の post-Final errata に集中し、 `Mcp-Param-*` ヘッダ発行ロジックの TTL 分離と base64 sentinel の大文字プレフィックス扱い反転という2件の規範的挙動修正が landing した。 in-flight の standards-track SEP 群 — SEP-2567 (Sessionless MCP) / SEP-2575 (Make MCP Stateless) / SEP-2596 (Feature Lifecycle/Deprecation) / SEP-2577 (Deprecate Roots/Sampling/Logging) / SEP-2106 (Tools schema JSON Schema 2020-12) / SEP-2164 (resource-not-found error code) / SEP-2468 (Issuer iss param) / SEP-2484 (Conformance Tests for Standards Track SEP) / SEP-2663 (Tasks Extension) — はいずれも draft のまま据え置きで、 この窓での status 遷移はなし。
 
 **訂正**: 前回記録で「SEP-2243 (HTTP Standardization) 撤去 (#2914)」としていたが、 現時点の checkout (`docs/seps/2243-http-standardization.mdx`) では SEP-2243 の Status は **Final / Standards Track** であることを確認した。 前回記録時点の判断が誤りだったか、 SEP が withdrawal 後に再提出されて Final 化した可能性がある。 以降の記述は「SEP-2243 は Final」を正として扱う。
+
+#### 2026-07-01〜2026-07-07 新着 (2026-07-28 リリース準備の広報 + 依存バンプのみ、 spec 実質変更なし)
+
+- **2026-07-28 リリース向け SDK ベータ告知ブログを追加** (#2988、 記述の訂正 #2997): RC/リリース準備がドキュメント面で進行
+- **Code of Conduct に異議申し立てチャネルを追加** (#2993)
+- **workflows: slash-commands で Dependabot 自動承認を有効化** (#3018)
+- **開発依存バンプ**: typedoc 0.28.20 (#3014) / typescript-eslint 8.62.1 (#3013) / prettier 3.9.4 (#3012) / tsx 4.23.0 (#3015)
+- **注記**: `docs/specification/*/schema.mdx` に大きな差分が出るが typedoc バンプに伴う生成 HTML の再生成であり、 実質的な仕様変更ではない。 in-flight SEP 群の status 遷移もこの窓ではなし
 
 #### 2026-06-30 新着 (SEP-2243 HTTP ヘッダ標準化 Final の errata / 微修正)
 
@@ -713,7 +760,13 @@
 
 **現行バージョン**: **v1.7.4 (2026-06-04)**
 
-**チェックアウト状態**: `v1.7.4-1-gfa127449` (v1.7.4 + 1 commit、 HEAD 2026-06-17)
+**チェックアウト状態**: `v1.7.4-4-gcd969dbc` (v1.7.4 + 4 commits、 HEAD 2026-07-07)
+
+#### 2026-07-07 新着 (draft spec: HostCapabilities フィールド補完)
+
+- **spec: 欠落していた HostCapabilities フィールドを追加** (#653): `specification/draft/apps.mdx` を更新（フィールド追加のみで破壊的変更なし）。 この窓で唯一の仕様変更
+- **docs: サポートクライアント一覧に mcp-use inspector バッジを追加** (#650)
+- **docs: ext-apps/server の API Docs リンクを追加** (#697)
 
 #### v1.7.4 後の変更点 (docs のみ)
 
@@ -894,7 +947,7 @@
 
 **現行バージョン**: v1.1（仕様、 タグなし latest 追従、 直近 spec commit 2026-05-18）
 
-**チェックアウト状態**: `bc61668` (2026-07-01 ブランチ HEAD。 前回記録 `53e6f35e` 以降は `chore: update contributors data` の自動更新 3 commit のみで、 spec/schema/docs の実体変更は無し)
+**チェックアウト状態**: `6ccc4fd` (2026-07-07 ブランチ HEAD。 前回記録 `bc61668` 以降も `chore: update contributors data` の自動更新 6 commits のみで、 spec/schema/docs の実体変更は無し)
 
 **管理**: Universal Tool Calling Protocol コミュニティ（独立 OSS）
 
@@ -967,7 +1020,14 @@
 
 **管理**: Google Chrome Labs
 
-**チェックアウト状態**: `923896b` (タグなし継続デプロイ、 HEAD 2026-06-30)
+**チェックアウト状態**: `b29264d` (タグなし継続デプロイ、 HEAD 2026-07-06。 前回記録 `923896b` から 28 commits)
+
+#### 2026-07-01〜2026-07-06 新着 (navigator.modelContext 削除 + evals-cli 大幅強化)
+
+- **`navigator.modelContext` の削除**: デモ / ドキュメント全体 (AWESOME_WEBMCP.md、 coffee-shop、 doors、 hotel-chain 等) から当該 API 参照を一斉除去 (5944b1e)。 影響はデモ範囲に限定
+- **evals-cli 強化（この窓の中心テーマ）**: マルチステップのローカル eval (98373e3)、 openai/ollama プロバイダで Chat Completions API 使用 (ea21765)、 base URL の環境変数上書き (#249)、 期待トラジェクトリでのオプションツール呼び出し (e87b4fe)、 `matchesRecursive` の引数サブセットマッチ (3b0df45)、 OpenAI 互換マルチターンでの Gemini `thought_signature` 保持 (4cfb73d)、 `$pattern` のインラインフラグ `(?flags)` 対応 (1b5ab2f)、 `functionCallOutcome` の省略 `arguments` を未制約扱い (5bed009)
+- **デモ更新**: Sport Shop に AI Chat ヘルパー (50a7852)、 result ページのインページエージェント表示 (#250)、 view-transition auto 使用 (6b7223f)
+- **依存**: analytics-dashboard デモの js-yaml バンプ (#255)
 
 #### 2026-06-30 新着 (registerTool の Promise 化)
 
@@ -1175,7 +1235,13 @@
 
 **現行バージョン**: v2026-04-08 (2026-04-13)
 
-**チェックアウト状態**: `v2026-01-23-166-ga5e88f1` (`git submodule status` / `git describe` は祖先タグ v2026-01-23 を表示。 リリースタグ v2026-04-08 は現 HEAD から到達不能な別ライン = release-branch 運用（`git merge-base --is-ancestor v2026-04-08 HEAD` は false）、 前回記録 `1e115ba` から 3 commits 先行、 HEAD 2026-06-30)
+**チェックアウト状態**: `v2026-01-23-169-g9b348f8` (`git submodule status` / `git describe` は祖先タグ v2026-01-23 を表示。 リリースタグ v2026-04-08 は現 HEAD から到達不能な別ライン = release-branch 運用、 前回記録 `a5e88f1` から 3 commits 先行、 HEAD 2026-07-07。 新タグ未作成)
+
+#### 2026-07-02〜2026-07-03 新着 (Web Bot Auth 相互運用 + 名前空間権限バインディング規範化)
+
+- **Web Bot Auth (WBA) 相互運用** (#483): 署名鍵 JWK スキーマと署名仕様に **EdDSA (Ed25519, [RFC 8037](https://datatracker.ietf.org/doc/html/rfc8037)) をオプションアルゴリズムとして追加**。 ECDSA P-256 (ES256) は UCP ベースラインとして維持。 WBA 相互運用を選ぶ検証者は EdDSA サポートが MUST（WBA が Ed25519 を必須とするため）。 後方互換
+- **名前空間権限バインディングの定義 + RDNS 文法拡張** (#530): 宣言スキーマ URL を逆ドメイン権限へ束縛する正規手順を規定（URL パーサ使用・https 必須・userinfo 拒否・登録ドメイン要求・ラベル逆順で authority_prefix 生成）。 従来「MUST validate」と「SHOULD reject」で矛盾していた規範文を解消 — 名前空間なりすまし防止の規範強化
+- **docs: "Capabilities Incompatible" の例を `capabilities_incompatible` に修正** (#562)
 
 #### 2026-06-30 新着 (スキーマ参照表の配列ラベル修正 / catalog REST ヘッダー追記)
 
@@ -1431,9 +1497,24 @@
 
 ### ADK Python
 
-**現行バージョン**: **v2.3.0** / v1.35.2 (stable lts)
+**現行バージョン**: **v2.4.0 (2026-07-07)** / v1.36.1 (2026-07-06, stable lts)
 
-**チェックアウト状態**: `17d5f389` (OSS mirror main の HEAD。 Copybara export 運用のため v2.x タグは HEAD の history に到達しない別 lineage 上にあり、 `git describe` の nearest tag が v1.32.0/v1.15.0 等に見えるのはそのため（バージョン参照は明示タグ v2.3.0 を正とする）、 HEAD 2026-07-01。 v2.3.0 後 176 commits の未リリース開発を含むが新タグは未付与。 前回記録 `50c81ebf` から +43 commits)
+**チェックアウト状態**: `ecef5f85` (OSS mirror main の HEAD。 Copybara export 運用のため v2.x タグは HEAD の history に到達しない別 lineage 上にあり、 `git describe` が `v1.32.0-603-gecef5f85` と見えるのはそのため（バージョン参照は明示タグを正とする）、 HEAD 2026-07-07。 v2.4.0 / v1.36.1 は release ブランチ上のタグで、 mirror main の CHANGELOG 先頭は依然 2.3.0。 前回記録 `17d5f389` から +67 commits)
+
+#### 2026-07-02〜2026-07-07 新着 (v2.4.0 / v1.36.1 タグ発行 + main 67 commits: Workflow as Tool / ManagedAgent / セキュリティ硬化)
+
+**リリース**: release ブランチ上で **v2.4.0 (2026-07-07)** と **v1.36.1 (2026-07-06, stable lts)** のタグが発行された（mirror main には CHANGELOG 未反映のため詳細内訳は次窓で確認）。 以下は main 側 +67 commits の主要変更（Copybara export のため PR 番号なし、 short hash 参照）:
+
+- **Workflow as Tool コア機能**: workflow をツールとして呼び出す中核実装 (1263ed64)
+- **ManagedAgent**: Managed Agents API 経由の ManagedAgent 追加 (cf91b844) + サンプル
+- **`model_input_context`**: LLM リクエストの一時コンテキストを追加 (2aeb1e1b)
+- **mTLS 対応の拡大**: GDA クライアント / Google API tools (e85a7b28, 3466586b)、 OAuth2 トークン要求での mTLS エンドポイント使用 (ffe41f05)
+- **DaytonaEnvironment**: リモートサンドボックス作業環境の追加 (df6baf4a)
+- **McpToolset**: configurable parameter を property として公開 (cca8c567)
+- **BigQuery**: tool description/parameter schema の LLM_REQUEST ログ出力 (ecef5f85)、 analytics view に thinking / tool-use トークン列を公開 (c14258df)
+- **Telemetry**: `gen_ai.invoke_agent.{inference,tool}_calls` メトリクス追加、 schema v2 での invoke_workflow span。 **注意: `gen_ai.agent.workflow.steps` と `gen_ai.agent.{request,response}.size` の削除、 duration メトリクスの GenAI semconv 名への改名あり — 既存ダッシュボード / アラートに影響し得る**
+- **SECURITY**: GcsArtifactService / InMemoryArtifactService の**パスセグメント検証でクロスユーザー artifact アクセスを防止** (8718aeff)、 **artifact 参照を呼び出し元スコープに制限** (f8631500)、 **_OriginCheckMiddleware への DNS リバインディング保護追加** (9a4f479d)、 gepa サンプルの Jinja2 autoescape 有効化（XSS 対策、 a721c1eb）
+- その他: `SKIP_THOUGHT_SIGNATURE_VALIDATOR` 定数公開 (6aad10df)、 OAuth prompt パラメータ設定を許可 (ac997706)
 
 #### 2026-07-01 新着 (v2.3.0 開発 mainline +43 commits: telemetry schema v2 / Anthropic effort / LiteLLM 拡充 / mTLS 硬化)
 
@@ -1894,11 +1975,19 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: **v2.0.0 (2026-06-30)**（直前に v1.5.0 も同日リリース。 1.x は `v1` ブランチで継続メンテ）
 
-**チェックアウト状態**: `v2.0.0-2-g0f5cfa0` (v2.0.0 + 2 commits、 HEAD 2026-07-01)
+**チェックアウト状態**: `v2.0.0-13-gb09bad9` (v2.0.0 + 13 commits、 HEAD 2026-07-08。 新タグ未発行)
 
 **注記**: 単一モジュール repo（monorepo の multi-module タグではない）。 `v2.0.0` は Go major の import path bump (`google.golang.org/adk` → `/v2`) を伴う正式メジャーリリース。 親 submodule の `git describe`（フラグなし）が `v0.1.0-255-g0f5cfa0` と表示するのは **annotated タグのみを対象にする既定挙動**が原因（タグ未 fetch ではない）。 この repo で annotated タグは `v0.1.0` の1本のみで、 v1.0.0〜v2.0.0（v1.4.0/v1.5.0 含む）は全て lightweight タグ。 `git describe --tags`（lightweight 込み）なら正しく `v2.0.0-2-g0f5cfa0` に解決する。
 
 **注目**: **ADK Go 2.0 メジャーリリース (2026-06-30)**。 `workflow` パッケージ新規導入（scheduler ベースの goroutine-per-node 実行エンジン、 HITL の pause/resume・handoff/re-entry、 JoinNode fan-in 等）が柱で、 module path 変更・`session.NewEvent` の context 必須化・ToolContext/CallbackContext 統合など複数の破壊的 API 変更を伴う。 1.x 系は `v1` ブランチで継続メンテ。
+
+#### 2026-07-02〜2026-07-08 新着 (v2.0.0 後の未リリース開発: TaskRunner seam / LLM registry)
+
+- **platform TaskRunner seam**: 呼び出し側制御の tool fan-out を可能にする実行 seam を追加 (#1050)
+- **name-based LLM registry**: `Register` / `NewLLM` による名前ベースのモデル登録 (#1057)
+- **`PackTool` を public API 化** (#1055)、 **runner に `NewInMemory` コンビニエンスコンストラクタ追加** (#1133)
+- **tool-confirmation の整合**: confirmation リクエストを model-response 順で発行 (#1053)、 confirmation wrapper が下層 tool へ ProcessRequest を伝播するよう修正 (#1130)
+- **fix**: 一時 state delta 除去時に入力 event を shallow copy し変更を防止 (#1128)
 
 #### 2026-07-01 新着 (v2.0.0 ドキュメント整備・v1/v2 ブランチ運用)
 
@@ -2027,7 +2116,13 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: **v1.3.0 (adk-v1.3.0 / devtools-v1.3.0 / main-v1.3.0、 2026-06-22)**
 
-**チェックアウト状態**: `adk-v1.3.0-3-g584ce87` (v1.3.0 + 3 commits、 HEAD 2026-06-30。 親 repo の素の `git describe`（軽量タグを見ない）は旧・注釈付きタグ `v0.2.2` を拾い `v0.2.2-224-g584ce87` と表示するが同一 commit — `adk-vX.Y.Z` 系は軽量タグ運用のため)
+**チェックアウト状態**: `adk-v1.3.0-6-g2ff0643` (v1.3.0 + 6 commits、 HEAD 2026-07-05。 軽量タグ運用による素の `git describe` の注意は従前どおり。 新タグ未発行)
+
+#### 2026-07-01〜2026-07-05 新着 (Gemini Interaction API + OAuth2 SSRF 硬化)
+
+- **Gemini Interaction API を adk-js に実装** (#364)
+- **SECURITY: `fetchOAuth2Tokens` の OAuth2 トークンエンドポイントに SSRF ブロックリストを適用** (#465)
+- **streaming: 空 part 配列の抑制修正** (#450)
 
 #### 2026-06-30 新着 (コンテキスト圧縮とアーティファクトの session スコープ化)
 
@@ -2339,9 +2434,17 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ### GKE MCP
 
-**現行バージョン**: **v0.13.0 (2026-05-28)**
+**現行バージョン**: **v0.14.0 (2026-07-06)**
 
-**チェックアウト状態**: `v0.13.0-42-g4f908ac` (v0.13.0 + 42 commits、 HEAD 2026-07-01)
+**チェックアウト状態**: `v0.14.0` (v0.14.0 タグ = HEAD `35ecffd`、 2026-07-06)
+
+#### v0.14.0 リリース (2026-07-06) の主要な変更点
+
+- **`verify_unused` クラスタ安全性チェック skill 追加** (#444)
+- **GKE TPU dynamic slices の監視・管理 skill 追加** (#442)
+- **query_logs に View パラメータ (BASIC|FULL) を追加**: コンパクトなログエントリ出力に対応 (#449)
+- **依存更新**: google.golang.org/adk 1.4.0 → 1.5.0 (#455)、 **adk-anthropic-go 0.1.18 → 1.0.0（メジャー、 #454）**、 anthropic-sdk-go 1.56.0 (#453)、 google.golang.org/api 0.287.0 (#452)、 ui npm グループ 9 件 (#456)
+- version を 0.14.0 に更新 (#451)。 明示的な破壊的変更マーカーなし（v0.13.0 以降の新着として記録済みの skill 群を正式タグ化）
 
 #### 2026-07-01 新着 (TPU メトリクス監視スキル追加)
 
@@ -2604,9 +2707,17 @@ NO_NEW_COMMITS — HEAD 日付のみ 2026-06-15 に更新。 google.golang.org/a
 
 **現行バージョン**: **v1.6.0 (2026-06-30)**
 
-**チェックアウト状態**: `35c13adbbea` (v1.6.0 タグ = HEAD、 タグ以降のコミット無し、 タグ作成 2026-07-01 / CHANGELOG リリース日付 2026-06-30)
+**チェックアウト状態**: `a3325a349f6` (v1.6.0 + 8 commits、 HEAD 2026-07-07。 新タグ未発行)
 
 **注目**: **v1.6.0 リリース（#3495）**。 目玉は **MCP 2026 draft spec のサポート追加** (#3544) — `vdraft` プロトコル実装を新設し `--enable-draft-specs` フラグで opt-in、 draft spec の正式リリースは暫定 2026-07-28 予定 (既存 v20241105 / v20250326 / v20250618 / v20251125 と並列運用)。 サプライチェーン面では **Kokoro code signing を release workflow に統合し Toolbox バイナリへ電子署名** (#3528、 unsigned/signed GCS bucket 分離 + 署名検証ユーザガイド追加、 長年の issue #996 対応)。 tool 面は **Dataplex data-product 系 tool 拡充** (`dataplex-get-data-product` #3499 / `dataplex-list-data-assets` #3500)、 **cloud-storage の object operation パラメータ設定** (#3529)。 修正は **GDA (Gemini Data Analytics) client の mTLS / `GOOGLE_API_USE_MTLS_ENDPOINT` 対応** (#3460、 AIP-4114 準拠で Context Aware Access(CAA) を回復)。 なお本リリースは 2026-06-26 新着で記録済みの未リリース dev (Dataplex/Looker tool 群、 #3337/#3478/#3494/#3507/#3531/#3515) を正式タグ化したもの。 [UPGRADING.md](https://github.com/googleapis/genai-toolbox/blob/main/UPGRADING.md) 参照。
+
+#### 2026-07-01〜2026-07-07 新着 (v1.6.0 後の未リリース開発: Dataplex tool 続投 + ClickHouse vector)
+
+- **ClickHouse SQL tool にネイティブ vector embedding 対応を追加** (#3229)
+- **dataplex-create-data-product tool 追加** (#3504)、 **dataplex-get-data-asset tool 追加** (#3503)
+- **parameters 堅牢化**: array/map 型エラーで問題の値を報告 (#3512)、 非 string 型フィールドで panic せずエラー返却 (#3516)
+- **docs**: execute_sql の最小権限を明文化 (#3416)、 Announcement Banner 設定を追記 (#3532)
+- **CI**: zizmor autofix (#3560)
 
 #### v1.6.0 リリース (2026-06-30) の主要な変更点
 
@@ -2868,6 +2979,8 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 
 | 対象 | 変更内容 | 対応優先度 |
 |------|---------|-----------|
+| **ADK Python telemetry メトリクス削除・改名** (main, 2026-07 未リリース) | `gen_ai.agent.workflow.steps` / `gen_ai.agent.{request,response}.size` を削除、 duration メトリクスを GenAI semconv 名へ改名。 既存 OTel ダッシュボード / アラートの見直しが必要 | 中 |
+| **UCP 名前空間権限バインディング規範化** (#530, 2026-07-03) | 宣言スキーマ URL → 逆ドメイン権限の束縛手順を新規に厳密化（https 必須・userinfo 拒否・登録ドメイン要求）。 矛盾していた規範文の統一のため、 既存実装は検証手順の適合確認が必要 | 中 |
 | **ADK Go v2.0.0** (2026-06-30) | module path 変更 `google.golang.org/adk` → `/v2`、 `session.NewEvent` の `context.Context` 必須化、 ToolContext/CallbackContext の統一 Context 統合、 `InvocationContext.TriggeredBy()` 削除。 `workflow` パッケージ新規導入が柱。 1.x は `v1` ブランチで継続メンテ | 高 |
 | **AG-UI Mastra 標準 interrupt-outcome 既定 ON 化** (#2059, 未リリース main) | `emitInterruptOutcome` が既定 TRUE (opt-out) に。 **CopilotKit client >= 1.61.2 必須**（未満だと run が stranded） | 中 |
 | **ADK Python Anthropic effort/thinking 設定** (main, 2026-06-29〜) | `AnthropicGenerateContentConfig` 導入に伴い、 従来 Claude で無視されていた temperature/top_p/top_k/stop_sequences/max_output_tokens が client へ伝播するように。 `max_output_tokens` が既定 max_tokens=8192 を上書きする | 中 |
@@ -2927,6 +3040,10 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 
 ### メジャーアップデート
 
+0. **NEW: ADK Python v2.4.0 / v1.36.1 タグ発行** (2026-07-07 / 07-06) - release ブランチ上でタグ発行（mirror main へは CHANGELOG 未反映、 詳細内訳は次窓で確認）。 main 側は Workflow as Tool / ManagedAgent / DaytonaEnvironment / mTLS 拡大 / artifact 越境防止・DNS rebinding 保護（セキュリティ）等 +67 commits
+0. **NEW: GKE MCP v0.14.0** (2026-07-06) - `verify_unused` クラスタ安全性チェック skill / TPU dynamic slices 監視・管理 skill / query_logs View パラメータ (BASIC|FULL)。 依存で adk 1.5.0 と adk-anthropic-go 1.0.0（メジャー）へ
+0. **NEW: AG-UI mastra@1.1.0/1.1.1 リリース** (2026-07-02 / 07-03) - Mastra interrupt/resume 整備の正式タグ化。 Observational Memory の activity event 化 (OSS-92)、 shared-state リモートパリティ (OSS-414)、 tracingOptions パススルー (#2083)。 sdk-dotnet AGUI.\* 0.0.3（NuGet リリース対応）も同窓
+0. **NEW: UCP Web Bot Auth 相互運用 + 名前空間権限バインディング** (2026-07-02/03) - EdDSA (Ed25519) をオプション署名アルゴリズムに追加（WBA interop 選択時は MUST、 #483）、 スキーマ URL → RDNS 権限の束縛手順を規範化 (#530)
 0. **NEW: ADK Go v2.0.0** (2026-06-30) - **メジャーリリース**。 module path を `google.golang.org/adk` → `/v2` へ変更（破壊的）。 `workflow` パッケージを新規導入（scheduler ベースの goroutine-per-node 実行エンジン、 HITL の pause/resume・handoff/re-entry モード、 JoinNode fan-in、 547 files の巨大 squash、 #1109）。 `session.NewEvent` の context 必須化、 ToolContext/CallbackContext 統一、 `InvocationContext.TriggeredBy()` 削除も同時破壊的変更。 1.x は `v1` ブランチで継続メンテ、 直前に v1.5.0 も同日リリース
 0. **NEW: GenAI Toolbox v1.6.0** (2026-06-30) - **MCP 2026 draft spec サポート追加** (#3544、 `--enable-draft-specs` opt-in、 正式リリース暫定 2026-07-28 予定)。 **Kokoro code signing を release workflow に統合しバイナリへ電子署名** (#3528、 issue #996 対応)。 Dataplex data-product 系 tool 拡充 (#3499, #3500)、 GDA client の mTLS/CAA 対応修正 (#3460)。 破壊的変更なし
 0. **NEW: AG-UI Mastra interrupt/resume 一斉整備** (main, 2026-07-01、 未リリース) - native `useInterrupt` suspend/resume、 標準 interrupt-outcome 既定 ON 化（**破壊的、 CopilotKit client >= 1.61.2 必須**、 #2059）、 remote agent resume 対応、 background task の activity event 化、 tool-call args 逐次ストリーミング。 いずれも新規 release タグは未発行
@@ -3009,6 +3126,9 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 
 ### セキュリティ更新
 
+- **ADK Python (main, 2026-07-02〜07-07)**: **GcsArtifactService / InMemoryArtifactService のパスセグメント検証でクロスユーザー artifact アクセスを防止 (8718aeff)**、 **artifact 参照を呼び出し元スコープに制限 (f8631500)**、 **_OriginCheckMiddleware に DNS リバインディング保護を追加 (9a4f479d)**、 gepa サンプルの Jinja2 autoescape 有効化（XSS 対策、 a721c1eb）
+- **ADK JS (main, 2026-07-01〜07-05)**: **`fetchOAuth2Tokens` の OAuth2 トークンエンドポイントに SSRF ブロックリストを適用 (#465)**
+- **UCP (2026-07-02/03)**: **WBA 相互運用のため EdDSA (Ed25519, RFC 8037) 署名をオプション導入 (#483)**、 **名前空間権限バインディング規範化で名前空間なりすましを防止 (#530)**
 - **GenAI Toolbox v1.6.0 (2026-06-30)**: **Kokoro code signing を release workflow に統合し Toolbox バイナリへ電子署名（サプライチェーン強化, #3528）**、 unsigned/signed GCS bucket 分離 + release table 生成時の署名検証、 長年の issue #996 対応
 - **GKE MCP (2026-06-29)**: **UI 依存の脆弱性修正 (`ui/package-lock.json` 更新、 主に Babel toolchain 系 transitive 依存, #448)**
 - **ADK Python (main, 2026-06-27)**: **AgentTool `config_path` 解決の path traversal 防止 (171ae9e)**、 **ContainerCodeExecutor sandbox のデフォルト hardening (0a9ce0f)**、 **YAML agent-config code reference の module blocklist (6a5be34)** / `adk web` 下での args denylist 強制 (e506fa6)
