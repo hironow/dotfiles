@@ -545,6 +545,7 @@ mas "iMovie", id: 408981434
 mas "LINE", id: 539883307
 mas "Numbers", id: 409203825
 mas "Pages", id: 409201541
+mas "Pages", id: 361309726
 mas "Reeder", id: 6475002485
 mas "Slack", id: 803453959
 mas "Tailscale", id: 1475387142
@@ -801,7 +802,7 @@ uv "google-agents-cli"
 uv "marimo"
 uv "migrate-to-uv"
 uv "mypy"
-uv "netexec"
+uv "netexec", source: "git+https://github.com/Pennyw0rth/NetExec"
 uv "prowler"
 uv "ruff"
 uv "semgrep"
@@ -814,4 +815,5 @@ krew "node-shell"
 krew "ns"
 krew "resource-capacity"
 npm "@anthropic-ai/claude-code"
+npm "@openai/codex"
 npm "corepack"
