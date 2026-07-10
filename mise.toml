@@ -28,7 +28,7 @@ node = "24.18.0"
 # boots with them ready on PATH; operators authenticate them on
 # first use (`codex login`, `claude /login`, `copilot auth`, `pi auth`;
 # antigravity authenticates on first run). Source: 2026-05 latest stable.
-"npm:@openai/codex" = "0.142.5"
+"npm:@openai/codex" = "0.144.1"
 # claude-code ships its ~248MB native binary as per-platform npm
 # optionalDependencies that a postinstall (install.cjs) hardlinks over a
 # stub. mise's npm backend installs with --ignore-scripts=true by default,
