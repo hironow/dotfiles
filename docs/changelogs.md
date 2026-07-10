@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-07-09
+最終更新: 2026-07-10
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -1975,11 +1975,16 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: **v2.0.0 (2026-06-30)**（直前に v1.5.0 も同日リリース。 1.x は `v1` ブランチで継続メンテ）
 
-**チェックアウト状態**: `v2.0.0-13-gb09bad9` (v2.0.0 + 13 commits、 HEAD 2026-07-08。 新タグ未発行)
+**チェックアウト状態**: `v2.0.0-15-gd0111d0` (v2.0.0 + 15 commits、 HEAD 2026-07-09。 新タグ未発行)
 
 **注記**: 単一モジュール repo（monorepo の multi-module タグではない）。 `v2.0.0` は Go major の import path bump (`google.golang.org/adk` → `/v2`) を伴う正式メジャーリリース。 親 submodule の `git describe`（フラグなし）が `v0.1.0-255-g0f5cfa0` と表示するのは **annotated タグのみを対象にする既定挙動**が原因（タグ未 fetch ではない）。 この repo で annotated タグは `v0.1.0` の1本のみで、 v1.0.0〜v2.0.0（v1.4.0/v1.5.0 含む）は全て lightweight タグ。 `git describe --tags`（lightweight 込み）なら正しく `v2.0.0-2-g0f5cfa0` に解決する。
 
 **注目**: **ADK Go 2.0 メジャーリリース (2026-06-30)**。 `workflow` パッケージ新規導入（scheduler ベースの goroutine-per-node 実行エンジン、 HITL の pause/resume・handoff/re-entry、 JoinNode fan-in 等）が柱で、 module path 変更・`session.NewEvent` の context 必須化・ToolContext/CallbackContext 統合など複数の破壊的 API 変更を伴う。 1.x 系は `v1` ブランチで継続メンテ。
+
+#### 2026-07-09 新着 (agentregistry クライアント基盤の追加)
+
+- **`agentregistry` パッケージを新規導入**: `Config`/`Client`/`New` のクライアント基盤と、 `agentregistry.googleapis.com` 向けの認証付き REST Transport を追加。 Application Default Credentials + mTLS エンドポイント選択、 typed `APIError`、 service wire types と list options、 resolution helper（`connectionURI`/`cleanName`/transport-binding map）を **adk-python から移植して behavioral parity を確保**。 list-response 型は AIP-158 の `ListXxxResponse` 命名に統一 (#1122)
+- **test**: `TestA2ACleanupPropagation` を de-flake (#1131)
 
 #### 2026-07-02〜2026-07-08 新着 (v2.0.0 後の未リリース開発: TaskRunner seam / LLM registry)
 
