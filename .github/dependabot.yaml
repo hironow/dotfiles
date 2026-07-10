@@ -23,6 +23,8 @@
 #   github-actions -> .github/workflows/*.yaml (SHA-pinned actions)
 #   uv             -> tools/rttm (rttm CLI) + emulator (vendored dev stack)
 #   docker         -> tests/docker test images + emulator/* service Dockerfiles
+#   gomod          -> emulator/*-cli Go helper CLIs (added 2026-07-10 after 14
+#                     x/crypto & x/net alerts rotted unwatched in bigtable-cli)
 #
 # Out of scope: gitsubmodules (synced via scripts/sync_agents.py), root uv.lock
 # (no runtime deps), compose.yaml `image:` tags in telemetry/ + emulator/
@@ -70,6 +72,23 @@ updates:
       include: "scope"
     groups:
       emulator-python:
+        patterns: ["*"]
+
+  # emulator/*-cli are small vendored Go CLIs (one go.mod each); grouped to one
+  # weekly PR so transitive golang.org/x/* bumps don't rot unwatched.
+  - package-ecosystem: "gomod"
+    directories:
+      - "/emulator/*"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    labels: ["dependencies", "go", "emulator"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      emulator-go:
         patterns: ["*"]
 
   - package-ecosystem: "docker"
