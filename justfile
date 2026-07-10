@@ -1681,8 +1681,8 @@ emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
     set -euo pipefail
     command -v npx >/dev/null 2>&1 || { echo '❌ npx not found (need Node.js)'; exit 127; }
     cd emulator/emulate
-    echo "▶ emulate@0.6.0 services={{services}} base=4100 (Ctrl+C to stop)"
-    npx -y emulate@0.6.0 --service '{{services}}' --port 4100 --seed emulate.config.yaml
+    echo "▶ emulate@0.8.0 services={{services}} base=4100 (Ctrl+C to stop)"
+    npx -y emulate@0.8.0 --service '{{services}}' --port 4100 --seed emulate.config.yaml
 
 # Stop the emulate API emulators started by `just emu-api` (the host npx/emulate process; no
 # Docker container is involved, unlike emu-stop / tel-down)

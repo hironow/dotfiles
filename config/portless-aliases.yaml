@@ -28,7 +28,7 @@ aliases:
   loki: 3100              # Loki HTTP API                     -> https://loki.localhost
 
   # --- emulate API emulators (`just emu-api`, host npx, base 4100) ---
-  # Verified on emulate@0.6.0: all 9 requested services are exposed by the CLI,
+  # Verified on emulate@0.8.0: all 9 requested services are exposed by the CLI,
   # and ports are assigned as base + index in the `--service` order used by
   # `just emu-api` (github,google,slack,apple,microsoft,stripe,clerk,okta,resend).
   # If you change emu-api's `services=` set/order, update these ports to match.

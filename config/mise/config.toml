@@ -31,7 +31,7 @@ prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
-"npm:portless" = "0.15.0"
+"npm:portless" = "0.15.1"
 # eza — modern ls replacement aliased unconditionally-now-guarded in
 # .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
 # it on PATH for every dir; without a config source the installed
@@ -53,7 +53,7 @@ eza = "0.23.4"
 # an ungated entry makes `mise install` / `mise exec` hard-fail on Windows
 # (incl. WSL git hooks that pick up the Windows mise on the /mnt/c PATH). sheldon
 # is a zsh plugin manager — irrelevant on Windows anyway.
-starship = "1.25.1"
+starship = "1.26.0"
 "aqua:rossmacarthur/sheldon" = { version = "0.8.5", os = ["linux", "macos"] }
 # fzf — fuzzy finder. Its Ctrl-R / completion init (`fzf --zsh`) lives in
 # .zshrc AFTER `mise activate` for the same reason as the prompt tools above.
@@ -87,7 +87,7 @@ fzf = "0.73.1"
 # the repo mise.toml. Pinned to a concrete version (NOT "latest") to keep
 # the same pin as repo mise.toml (first release was 2026-06-01). Tracks the
 # newest release at least 7 days old; bump both together.
-"github:google-antigravity/antigravity-cli" = { version = "1.0.13", exe = "antigravity" }
+"github:google-antigravity/antigravity-cli" = { version = "1.0.16", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Declared "latest" like the
 # AI CLIs above; the minimum_release_age="7d" quarantine below makes

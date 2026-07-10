@@ -1,20 +1,20 @@
 # Seed configuration for the `emulate` API emulators (vercel-labs/emulate).
 #
-# Loaded by `just emu-api` via `npx emulate@0.6.0 --seed emulate.config.yaml`.
+# Loaded by `just emu-api` via `npx emulate@0.8.0 --seed emulate.config.yaml`.
 # emulate provides stateful, in-memory drop-in replacements for SaaS APIs,
 # complementing emulator/ (datastores: postgres/bigtable/spanner/neo4j/qdrant/
 # elasticsearch/firebase) with API/auth/commerce emulators.
 #
 # Schema: top-level `tokens:` + per-service blocks holding seed entities.
 #
-# PORTS: emulate@0.6.0 takes a single base `--port` (we use 4100) and assigns
+# PORTS: emulate@0.8.0 takes a single base `--port` (we use 4100) and assigns
 # ports as base + index in the `--service` order. Verified mapping for the
 # default `just emu-api` set: github 4100, google 4101, slack 4102, apple 4103,
 # microsoft 4104, stripe 4105, clerk 4106, okta 4107, resend 4108. These are
 # pre-registered in config/portless-aliases.yaml.
 #
 # SERVICE AVAILABILITY: all 9 requested services (github google slack apple
-# microsoft stripe clerk okta resend) are exposed by emulate@0.6.0 (verified).
+# microsoft stripe clerk okta resend) are exposed by emulate@0.8.0 (verified).
 
 tokens:
   local-dev:

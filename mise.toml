@@ -5,13 +5,13 @@
 # build-time consistency check in tests/test_mise_pin_consistency.py
 # fails the image build if these drift from the SHA-verified
 # constants in .devcontainer/features/dotfiles-tools/install.sh.
-just = "1.54.0"
-markdownlint-cli2 = "0.22.1"
-prek = "0.4.5"
-uv = "0.11.25"
+just = "1.55.1"
+markdownlint-cli2 = "0.23.0"
+prek = "0.4.6"
+uv = "0.11.26"
 # `vp` is the mise registry alias for npm:vite-plus (NOT the
 # unrelated `vp` npm package). Pin to vite-plus's actual version.
-vp = "0.2.1"
+vp = "0.2.2"
 
 # Node runtime. The npm-backed AI CLIs below have a `#!/usr/bin/env
 # node` shebang that needs node on PATH at *runtime*, not just at
@@ -28,7 +28,7 @@ node = "24.18.0"
 # boots with them ready on PATH; operators authenticate them on
 # first use (`codex login`, `claude /login`, `copilot auth`, `pi auth`;
 # antigravity authenticates on first run). Source: 2026-05 latest stable.
-"npm:@openai/codex" = "0.142.3"
+"npm:@openai/codex" = "0.142.5"
 # claude-code ships its ~248MB native binary as per-platform npm
 # optionalDependencies that a postinstall (install.cjs) hardlinks over a
 # stub. mise's npm backend installs with --ignore-scripts=true by default,
@@ -36,9 +36,9 @@ node = "24.18.0"
 # stub — `claude` then errors at runtime with "native binary not installed".
 # npm_args re-enables scripts for this one tool (npm honors the last
 # --ignore-scripts flag, so this overrides mise's default).
-"npm:@anthropic-ai/claude-code" = { version = "2.1.195", npm_args = "--ignore-scripts=false" }
-"npm:@github/copilot" = "1.0.65"
-"npm:@earendil-works/pi-coding-agent" = "0.80.2"
+"npm:@anthropic-ai/claude-code" = { version = "2.1.199", npm_args = "--ignore-scripts=false" }
+"npm:@github/copilot" = "1.0.68"
+"npm:@earendil-works/pi-coding-agent" = "0.80.3"
 
 # antigravity (Google's agentic coding CLI) — replaces gemini-cli, per
 # Google's "Transitioning Gemini CLI to Antigravity CLI" announcement.
@@ -52,7 +52,7 @@ node = "24.18.0"
 # Pinned to the newest release at least 7 days old (the repo's usual
 # quarantine); first release was 2026-06-01. Bump together with the
 # config/mise/config.toml mirror.
-"github:google-antigravity/antigravity-cli" = { version = "1.0.13", exe = "antigravity" }
+"github:google-antigravity/antigravity-cli" = { version = "1.0.16", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Explicit `npm:` backend to
 # avoid any mise registry-alias ambiguity. Concrete pins per ADR 0006
@@ -64,7 +64,7 @@ node = "24.18.0"
 #                  the legacy `stripe-cli` package is deprecated)
 "npm:cf" = "0.1.0"
 "npm:resend-cli" = "2.6.0"
-"npm:@stripe/cli" = "1.43.2"
+"npm:@stripe/cli" = "1.43.6"
 
 # `~/.npmrc` may set `min-release-age=7` (7-day quarantine, mirrors
 # uv's `exclude-newer = "7 days"`). That blocks `mise install` of

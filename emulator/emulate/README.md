@@ -16,7 +16,7 @@ just emu-api                 # full requested set on base port 4100 (foreground)
 just emu-api services=github,google,slack   # custom subset
 ```
 
-`just emu-api` runs `npx -y emulate@0.6.0 --service <list> --port 4100 --seed emulate.config.yaml`
+`just emu-api` runs `npx -y emulate@0.8.0 --service <list> --port 4100 --seed emulate.config.yaml`
 on the host, binding to `127.0.0.1` from base port `4100` upward. Stop with Ctrl+C.
 
 > Host `npx` (not a compose service) is used on purpose: `emulate` is a Node CLI
@@ -24,7 +24,7 @@ on the host, binding to `127.0.0.1` from base port `4100` upward. Stop with Ctrl
 
 ## Services & ports
 
-All requested services run on `emulate@0.6.0` (verified). Ports are deterministic:
+All requested services run on `emulate@0.8.0` (verified). Ports are deterministic:
 `base + index` in the `--service` order used by `just emu-api`, so the default set
 maps as:
 
@@ -44,5 +44,5 @@ the `services=` set/order, update those alias ports to match.
 ## Config
 
 [`emulate.config.yaml`](./emulate.config.yaml) holds `tokens:` + per-service seed
-data. Regenerate a canonical starter with `npx emulate@0.6.0 init` if the schema
+data. Regenerate a canonical starter with `npx emulate@0.8.0 init` if the schema
 changes in a newer version.
