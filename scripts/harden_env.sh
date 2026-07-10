@@ -46,6 +46,17 @@ url = "https://pypi.flatt.tech/simple/"
 default = true
 EOF
 
+# Native Windows uv discovers user config at %APPDATA%\uv\uv.toml, not
+# ~/.config/uv/uv.toml. Without the mirror the quarantine never applies
+# there and any `uv run` rewrites committed uv.locks. APPDATA presence is
+# the Windows signal (unset on Linux/macOS/WSL).
+if [ -n "${APPDATA:-}" ]; then
+  _uv_win_dir="$(cygpath -u "$APPDATA" 2>/dev/null || printf '%s' "$APPDATA")/uv"
+  echo "  - windows: mirroring to ${_uv_win_dir}/uv.toml (native uv config path)"
+  mkdir -p "$_uv_win_dir"
+  cp "${_uv_dir}/uv.toml" "${_uv_win_dir}/uv.toml"
+fi
+
 # 3. go — default checksum-verified proxy (only if go is installed).
 echo "[3/3] go: GOPROXY (default) if go is installed"
 if command -v go >/dev/null 2>&1; then

@@ -132,6 +132,11 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   (memory `feedback_git_history_rewrite_gpg`)。
 - **mise の npm backend は `--ignore-scripts=true`** — postinstall 必須の npm ツール
   (claude-code native binary 等) は `npm_args` で上書き (memory `project_mise_npm_ignore_scripts`)。
+- **Windows: PowerShell から just を叩くと shebang レシピが `could not find cygpath`
+  で全滅** — レジストリ PATH に Git の `usr\bin` が無いため (Git Bash は常に動く)。
+  **native Windows の uv は `%APPDATA%\uv\uv.toml` を読む** — 無いと quarantine が
+  効かず `uv run` が uv.lock を書き換え、pre-commit が落ちる (`just harden-env` が
+  書く)。どちらも `just doctor` の Windows セクションが検出して修正手順を提示する。
 - **Node は bun 一本。agent は npm/yarn/pnpm を一切叩けない** (guard が常時 block、
   `corepack pnpm`/`pnpm@ver`/`corepack --cwd … pnpm` 含む。**ADR 0027** が ADR 0017 の
   per-repo pnpm carve-out を partial supersede)。corepack のマシン供給自体は **ADR 0017**
