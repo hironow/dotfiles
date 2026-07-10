@@ -99,3 +99,26 @@ def test_writes_uv_toml_and_is_idempotent(tmp_path: Path) -> None:
             assert "Security Hardening" not in body and "PIP_INDEX_URL" not in body, (
                 f"harden_env.sh wrote a hardening block into {rc}; it must not touch shell rc."
             )
+
+
+def test_mirrors_uv_toml_to_windows_appdata(tmp_path: Path) -> None:
+    """Native Windows uv reads %APPDATA%\\uv\\uv.toml, NOT ~/.config/uv/uv.toml,
+    so on hosts where APPDATA is set the script must mirror the uv config
+    there. Without it the quarantine never applies on native Windows and any
+    `uv run` rewrites committed uv.locks (observed: the pre-commit `just lint`
+    churned the root uv.lock, blocking every commit)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    appdata = tmp_path / "appdata"
+    appdata.mkdir()
+    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "APPDATA": str(appdata)}
+    r = subprocess.run(
+        [BASH, str(HARDEN)], env=env, capture_output=True, text=True, check=False
+    )
+    assert r.returncode == 0, f"harden_env.sh failed:\n{r.stderr}"
+    win_toml = appdata / "uv" / "uv.toml"
+    assert win_toml.is_file(), "did not mirror uv.toml to %APPDATA%/uv/"
+    xdg_toml = home / ".config" / "uv" / "uv.toml"
+    assert win_toml.read_text() == xdg_toml.read_text(), (
+        "%APPDATA%/uv/uv.toml must be an exact mirror of ~/.config/uv/uv.toml"
+    )
