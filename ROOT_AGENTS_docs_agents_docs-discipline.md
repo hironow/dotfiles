@@ -1,9 +1,10 @@
 # Documentation Discipline
 
-Read this when editing docs, writing an ADR, or touching `intent.md`/
-`handover.md`. Root summary is in AGENTS.md.
+Read this when editing docs, writing an ADR/PDR, or touching `intent.md`/
+`handover.md`/`decision-queue.md`/`plan/`/`research/`. Root summary is in AGENTS.md.
 
-Four documentation kinds, four questions:
+Core documentation kinds, one question each (rows below the divider are
+opt-in categories — present only in repos that use them):
 
 | file              | answers                                  | mutability             |
 | ----------------- | ---------------------------------------- | ---------------------- |
@@ -11,6 +12,10 @@ Four documentation kinds, four questions:
 | `docs/adr/*.md`   | **Why** did we decide X (in the past)?   | immutable once accepted|
 | `docs/intent.md`  | **Why** are we doing this right now?     | updated when intent shifts |
 | `docs/handover.md`| **Where** are we, what's **next**?       | updated each session   |
+| `docs/decision-queue.md` | What awaits a **human decision**? | updated as decisions open/close |
+| `docs/pdr/*.md`   | **Why** did we decide X (product/ops)?   | immutable once accepted|
+| `docs/plan/*.md`  | **How** will we implement X (phased)?    | mutable until done, then graduates |
+| `docs/research/*.md` | What did we **find** (dated)?         | snapshot; superseded by newer |
 
 ## `docs/*.md` — current state only
 
@@ -20,7 +25,8 @@ Four documentation kinds, four questions:
   docs in the **same commit**. Outdated docs are bugs.
 - Use code references where possible to keep accuracy.
 - Exempt from "current state only": `docs/adr/`, `docs/intent.md`,
-  `docs/handover.md`.
+  `docs/handover.md`, and the opt-in categories `docs/decision-queue.md`,
+  `docs/pdr/`, `docs/plan/`, `docs/research/`.
 
 ## `docs/adr/` — Architecture Decision Records
 
@@ -129,3 +135,23 @@ Optimized to be read in under two minutes; consumable by both humans and agents.
 
 Update at the end of every significant work session (session-level, not
 commit-level). Don't duplicate `intent.md`; reference it.
+
+## Opt-in categories (adopt per repo)
+
+Use these only in repos that have adopted them; the adopting repo's governance
+ADR is authoritative for local adaptations.
+
+- **`docs/decision-queue.md` + `docs/pdr/`** — decision-record governance (see
+  the `decision-record-governance` skill). The queue is the SSoT of unapproved
+  (Proposed) ADR/PDRs: file a record → register it in the queue → the human
+  decides → move the row to the decided log. Record the adoption itself as an
+  ADR; that ADR governs local profiles (e.g. a solo profile without Slack, or
+  retiring `intent.md` in favor of PDRs).
+- **`docs/plan/`** — phased execution plans (HOW; decisions stay in DRs). Keep a
+  standard status header (state / related DRs / blocking decisions). Never leave
+  a pending human decision inside a plan — file a DR into the queue and mark the
+  plan blocked. On completion, move permanent explanations to
+  architecture/ADR and mark the plan `done(→destination)`; a plan that embodies
+  no new decision graduates into architecture, not into a why-less ADR.
+- **`docs/research/`** — dated investigation snapshots (`YYYY-MM-…` filenames).
+  Newer research supersedes older; never treat them as current-state docs.

@@ -110,6 +110,13 @@ failure-recovery path, and proof of completion. Rubric (1-5):
   once accepted.
 - `docs/intent.md` = "why we're doing this now" (human-authored; never guess it —
   ask). `docs/handover.md` = "where we are, what's next" (update each session).
+- Repos may adopt decision-record governance (`decision-record-governance` skill):
+  `docs/decision-queue.md` = SSoT of unapproved decisions, `docs/pdr/` = product
+  decisions (immutable like ADRs). The adopting repo records the adoption as an
+  ADR, which then governs local roles (it may e.g. retire `intent.md` in favor
+  of PDRs). Dated working sets `docs/plan/` (execution plans; graduate into
+  ADR/architecture when done) and `docs/research/` (dated investigations) are
+  exempt from "current only".
 - Full rules: docs/agents/docs-discipline.md.
 
 ## Detailed playbooks — read on demand (do not preload)
