@@ -105,12 +105,14 @@ def test_mnt_wsl_is_not_windows(just_binary: str) -> None:
 
 def test_doctor_wires_in_windows_check() -> None:
     """`doctor` must invoke the validator so contamination actually shows up
-    in its summary — the recipe existing but unwired would be a silent gap."""
-    text = JUSTFILE.read_text()
+    in its summary — the recipe existing but unwired would be a silent gap.
+    The doctor body lives in scripts/doctor.sh (the recipe is a thin wrapper)."""
+    text = JUSTFILE.read_text(encoding="utf-8")
     assert "\nvalidate-path-windows:" in text, (
         "recipe validate-path-windows not defined"
     )
-    assert "just validate-path-windows" in text, (
+    doctor_sh = (ROOT / "scripts" / "doctor.sh").read_text(encoding="utf-8")
+    assert "just validate-path-windows" in doctor_sh, (
         "doctor does not call `just validate-path-windows`; contamination "
         "would never surface in `just doctor`."
     )
