@@ -55,6 +55,68 @@ case $rc in
   *) log_warn 'PATH-windows' 'validation error'; echo "$win_out";;
 esac
 
+# Native Windows (MSYS/MINGW) environment assurance. Encodes the known
+# fresh-Windows-host gotchas so the doctor teaches the fix instead of each
+# recipe failing cryptically. WARN, not ERR: Git Bash workflows keep working
+# without these, and self-check expects doctor to exit 0.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    # 1) just needs cygpath to run shebang recipes, and PowerShell sessions
+    #    only see the persisted (registry) PATH — which a stock
+    #    Git-for-Windows install leaves without Git\usr\bin. The in-process
+    #    PATH is useless as a signal (Git Bash always self-prepends
+    #    /usr/bin), so read the registry via powershell.exe.
+    win_usr_bin="$(cygpath -w /usr/bin)"
+    persisted_path="$(powershell.exe -NoProfile -Command \
+      "[Environment]::GetEnvironmentVariable('Path','User') + ';' + [Environment]::GetEnvironmentVariable('Path','Machine')" \
+      | tr -d '\r')"
+    # containment check in pure bash: MSYS grep -i can abort (core dump) on
+    # registry PATH strings with non-UTF8 (cp932) bytes
+    if [[ "${persisted_path,,}" == *"${win_usr_bin,,}"* ]]; then
+      log_ok 'win-cygpath' "persisted PATH reaches ${win_usr_bin}"
+    else
+      log_warn 'win-cygpath' 'just shebang recipes fail from PowerShell (cygpath not on persisted PATH)'
+      echo '    Fix (run in PowerShell, then open a new session):'
+      echo "    [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';${win_usr_bin}'), 'User')"
+    fi
+
+    # 2) deploy-managed state: PowerShell profile blocks + global mise
+    #    config. Stale mise config is the nastiest drift (an ungated
+    #    sheldon aborts every `mise exec` recipe), so surface it early.
+    ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+    stale=''
+    for marker in 'starship init' 'mise activate' 'mise node corepack'; do
+      grep -qF "dotfiles managed block: ${marker}" "$ps_profile" 2>/dev/null \
+        || stale="${stale}${stale:+, }profile:${marker##* }"
+    done
+    cmp -s config/mise/config.toml "$HOME/.config/mise/config.toml" 2>/dev/null \
+      || stale="${stale}${stale:+, }mise-config"
+    if [ -z "$stale" ]; then
+      log_ok 'win-deploy' 'PowerShell profile blocks + mise config in sync'
+    else
+      log_warn 'win-deploy' "stale/missing: ${stale} -- run: just deploy"
+    fi
+
+    # 3) uv hardening: native Windows uv reads %APPDATA%\uv\uv.toml (not
+    #    ~/.config/uv/uv.toml). Without it the 7-day quarantine is off and
+    #    any `uv run` rewrites committed uv.locks (blocks commits via the
+    #    pre-commit `just lint`).
+    if [ -n "${APPDATA:-}" ] && [ -f "$(cygpath -u "$APPDATA")/uv/uv.toml" ]; then
+      log_ok 'win-uv-hardening' 'APPDATA uv/uv.toml present (quarantine active)'
+    else
+      log_warn 'win-uv-hardening' 'APPDATA uv/uv.toml missing (uv quarantine off; uv.lock churn) -- run: just harden-env'
+    fi
+
+    # 4) Unix CLIs the hooks and `just check` shell out to (scoop-provided
+    #    on Windows; absence fails as cryptic 'command not found's).
+    if has jq && has shellcheck; then
+      log_ok 'win-clis' 'jq + shellcheck present'
+    else
+      log_warn 'win-clis' 'missing jq and/or shellcheck -- run: scoop install jq shellcheck'
+    fi
+    ;;
+esac
+
 echo "Doctor summary: ok=$ok warn=$warn err=$err"
 if [ "$err" -gt 0 ]; then exit 1; fi
 :
