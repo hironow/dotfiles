@@ -1115,12 +1115,13 @@ validate-path-windows:
     echo '    Hint: set [interop] appendWindowsPath=false in /etc/wsl.conf, then `wsl --shutdown`.'
     exit 2
 
-# Doctor: environment diagnostics and guardrails (body: scripts/doctor.sh)
+# Doctor: environment diagnostics and guardrails (body: scripts/doctor.sh).
+# Deliberately a linewise plain-bash wrapper, NOT a shebang recipe: on native
+# Windows, shebang recipes need cygpath (absent from a stock PowerShell PATH),
+# and the doctor must start in exactly that broken state to teach the fix.
 [group('Setup')]
 doctor:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    exec bash scripts/doctor.sh
+    @bash scripts/doctor.sh
 
 # ------------------------------
 # Connect sets
