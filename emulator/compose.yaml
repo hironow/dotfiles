@@ -339,7 +339,7 @@ services:
       - cli  # Only run when explicitly requested
   # Elasticsearch
   elasticsearch:
-    image: elasticsearch:9.4.2
+    image: elasticsearch:9.4.3
     container_name: elasticsearch-emulator
     profiles:
       - search
