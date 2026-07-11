@@ -358,6 +358,31 @@ def _case_id(params):
             marks=pytest.mark.validate,
         ),
         pytest.param(
+            "validate_path_structural_roots",
+            'H=$(mktemp -d) && mkdir -p "$H/.grok/bin" "$H/.local/bin" && '
+            ': > "$H/.grok/bin/foo" && chmod +x "$H/.grok/bin/foo" && '
+            'cp "$H/.grok/bin/foo" "$H/.local/bin/foo" && '
+            'HOME="$H" VALIDATE_PATH="$H/.grok/bin:$H/.local/bin" '
+            "just validate-path-duplicates",
+            0,
+            "structural duplicate(s) ignored",
+            "",
+            id="Validate: managed roots (.grok/.local/bin) ignored",
+            marks=pytest.mark.validate,
+        ),
+        pytest.param(
+            "validate_path_spaces",
+            "mkdir -p /tmp/sa /tmp/sb && : > /tmp/sa/prog && "
+            "chmod +x /tmp/sa/prog && "
+            ': > "/tmp/sb/prog (variant)" && chmod +x "/tmp/sb/prog (variant)" && '
+            "VALIDATE_PATH=/tmp/sa:/tmp/sb just validate-path-duplicates",
+            0,
+            "No duplicate command names across PATH",
+            "",
+            id="Validate: space-in-name not a false duplicate",
+            marks=pytest.mark.validate,
+        ),
+        pytest.param(
             "deploy_and_clean_link",
             # `_MISE_RECORD_STUB` no-ops `just deploy`'s `mise -C / install`
             # so this case stays a fast symlink check (see stub comment).

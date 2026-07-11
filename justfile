@@ -1000,7 +1000,9 @@ validate-path-duplicates:
       for f in "$dir"/*; do
         [[ -f "$f" && -x "$f" ]] || continue
         name="$(basename "$f")"
-        lines+=("$name $i $f")
+        # tab-delimited so executable names containing spaces (e.g. macOS
+        # `bash (kiro-cli-term)` shims) are not mis-split into a bare `bash`
+        lines+=("$(printf '%s\t%s\t%s' "$name" "$i" "$f")")
       done
     done
     shopt -u nullglob
@@ -1011,7 +1013,7 @@ validate-path-duplicates:
     # Classify each path into a role. If ALL duplicate instances for a command
     # fall into "structural" roles, the duplicate is considered acceptable
     # (e.g. brew shadowing /usr/bin, mise-install paired with mise-shim).
-    printf '%s\n' "${lines[@]}" | LC_ALL=C sort -k1,1 -k2,2n | awk -v home="$HOME" -v venv="${VIRTUAL_ENV:-}" '
+    printf '%s\n' "${lines[@]}" | LC_ALL=C sort -t"$(printf '\t')" -k1,1 -k2,2n | awk -F'\t' -v home="$HOME" -v venv="${VIRTUAL_ENV:-}" '
     function role(p,   r) {
       # mise layout (installs + shims)
       if (index(p, home "/.local/share/mise/installs/") == 1) return "structural"
@@ -1039,6 +1041,12 @@ validate-path-duplicates:
       if (index(p, home "/.vite-plus/bin/") == 1) return "structural"
       if (index(p, "/usr/local/share/dotnet/") == 1) return "structural"
       if (index(p, home "/Library/Android/sdk/") == 1) return "structural"
+      # grok CLI installer root (same rationale as .bun/.swiftly: a managed
+      # single-tool installer dir that intentionally lives on PATH)
+      if (index(p, home "/.grok/bin/") == 1) return "structural"
+      # XDG user tool bin: uv (`uv tool install`, uv-managed pythons) and pipx
+      # put their managed symlink farms here, so shadows are expected/managed
+      if (index(p, home "/.local/bin/") == 1) return "structural"
       # Active Python virtualenv: shadowing the base interpreter is the whole
       # point of a venv, not a duplicate to act on
       if (venv != "" && index(p, venv "/bin/") == 1) return "structural"
@@ -1058,7 +1066,6 @@ validate-path-duplicates:
     {
       name=$1; idx=$2;
       path=$3;
-      for (i=4; i<=NF; i++) path = path " " $i;
       if (NR==1) { prev=name; n=0 }
       if (name!=prev) {
         if (n>1) { emit() }
