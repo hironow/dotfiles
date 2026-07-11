@@ -1123,6 +1123,17 @@ validate-path-windows:
 doctor:
     @bash scripts/doctor.sh
 
+# Prune rogue global installs of mise-managed AI CLIs (codex/claude-code/
+# copilot/pi). A stray `npm install -g` — codex's built-in `codex update`
+# most of all — drops the package into the active node's global each time,
+# shadowing the mise npm-backend version per node version (and EPERM on
+# Windows for a running exe). Removes them across every node version and
+# reshims. Linewise plain-bash wrapper (no shebang) so it runs from
+# PowerShell without cygpath, same as `doctor`. Idempotent.
+[group('Setup')]
+prune-rogue-npm-globals:
+    @bash scripts/rogue_npm_globals.sh prune
+
 # ------------------------------
 # Connect sets
 # ------------------------------
