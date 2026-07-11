@@ -32,22 +32,7 @@ docs/agents/plan-review.md.
 
 ## ASCII diagrams in responses
 
-- Use **single-byte ASCII only** inside diagrams — no Japanese/Chinese/Korean/
-  emoji (multi-byte chars break monospace alignment).
-- Always add a legend directly below, with Japanese glosses unless told
-  otherwise (`English term: 日本語`).
-
-```
-+-------------------+
-|  Request Handler  |
-+-------------------+
-         |
-         v
-+-------------------+
-|     Validator     |
-+-------------------+
-
-Legend / 凡例:
-- Request Handler: リクエストハンドラー
-- Validator: バリデーター
-```
+Single-byte ASCII only inside diagrams (multi-byte breaks monospace alignment),
+and always add a legend directly below with Japanese glosses unless told
+otherwise (`English term: 日本語`). Full rules and a worked example:
+docs/agents/ascii-diagrams.md.
