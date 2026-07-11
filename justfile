@@ -1,6 +1,12 @@
 # https://just.systems
 
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+# Native Windows: WSL's C:\Windows\System32\bash.exe shadows Git Bash for a
+# bare `bash` (CreateProcess searches System32 before PATH), so plain recipes
+# would misrun under WSL. `sh` is NOT in System32, so it resolves to Git Bash's
+# sh; the recipe's own inner `bash` then inherits Git Bash's /usr/bin-first PATH.
+# Ignored on non-Windows. Requires Git usr\bin on PATH (see `just doctor`).
+set windows-shell := ["sh", "-eu", "-o", "pipefail", "-c"]
 
 # External commands. Wrapping every mise-managed tool with `mise exec --`
 # at call time guarantees the mise-pinned version even from
