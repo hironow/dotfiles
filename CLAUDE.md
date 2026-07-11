@@ -132,11 +132,22 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   (memory `feedback_git_history_rewrite_gpg`)。
 - **mise の npm backend は `--ignore-scripts=true`** — postinstall 必須の npm ツール
   (claude-code native binary 等) は `npm_args` で上書き (memory `project_mise_npm_ignore_scripts`)。
-- **Windows: PowerShell から just を叩くと shebang レシピが `could not find cygpath`
-  で全滅** — レジストリ PATH に Git の `usr\bin` が無いため (Git Bash は常に動く)。
-  **native Windows の uv は `%APPDATA%\uv\uv.toml` を読む** — 無いと quarantine が
-  効かず `uv run` が uv.lock を書き換え、pre-commit が落ちる (`just harden-env` が
-  書く)。どちらも `just doctor` の Windows セクションが検出して修正手順を提示する。
+- **Windows の shell 選択 (最重要運用)**: WSL の `C:\Windows\System32\bash.exe` が Git Bash を
+  shadow する (Windows は bare `bash` を PATH より先に System32 で解決する) ため、`just` の
+  bash 系レシピが WSL に落ちうる (WSL 未導入 host では顕在化しない)。効き方が2層に分かれる:
+    - **plain レシピ** (`doctor` / `harden-env` 等 `bash scripts/*.sh`) → justfile の
+      `set windows-shell := ["sh", …]` (#231) で解決済み。System32 に `sh.exe` は無いので
+      `sh`=Git Bash に解決し、内側 `bash` も Git Bash を継承 → **PowerShell からでも直接叩ける**。
+    - **shebang レシピ** (`deploy` / `clean` 等 `#!/usr/bin/env bash`) → `set shell` /
+      `windows-shell` の影響外で `env→bash` が PATH 順に従う。素の PowerShell は System32(WSL)
+      が先なので失敗する → **Git Bash から叩く** (`/usr/bin` 先頭ゆえ `env→bash`=Git Bash)。
+      PowerShell 固執なら Git `usr\bin` を PATH 先頭に prepend する手もあるが、`find` / `sort` 等
+      Windows 版コマンドを shadow するため blanket prepend は非推奨。
+  旧来の注意も継続: PowerShell の shebang レシピは Git `usr\bin` が (登録) PATH に無いと
+  `could not find cygpath` で全滅。**native Windows の uv は `%APPDATA%\uv\uv.toml` を読む** —
+  無いと quarantine が効かず `uv run` が uv.lock を書き換え、pre-commit が落ちる
+  (`just harden-env` が書く)。cygpath / uv とも `just doctor` の Windows セクションが検出して
+  修正手順を提示する。
 - **Node は bun 一本。agent は npm/yarn/pnpm を一切叩けない** (guard が常時 block、
   `corepack pnpm`/`pnpm@ver`/`corepack --cwd … pnpm` 含む。**ADR 0027** が ADR 0017 の
   per-repo pnpm carve-out を partial supersede)。corepack のマシン供給自体は **ADR 0017**
