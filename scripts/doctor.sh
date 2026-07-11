@@ -55,6 +55,26 @@ case $rc in
   *) log_warn 'PATH-windows' 'validation error'; echo "$win_out";;
 esac
 
+# Rogue npm-global AI CLIs shadowing the mise-managed versions (cross-platform).
+# A stray `npm install -g` — codex's built-in `codex update` above all —
+# installs into the active node's global and wins PATH over the mise npm
+# backend, per node version. scripts/rogue_npm_globals.sh scans every node
+# install; a non-zero exit means it could not resolve the installs dir (warn,
+# do not claim clean).
+set +e
+rogue_out=$(bash scripts/rogue_npm_globals.sh detect 2>/dev/null)
+rc=$?
+set -e
+if [ "$rc" -ne 0 ]; then
+  log_warn 'npm-rogue' 'could not scan node installs (mise where node failed)'
+elif [ -z "$rogue_out" ]; then
+  log_ok 'npm-rogue' 'no rogue npm-global AI CLIs shadowing mise'
+else
+  n=$(printf '%s\n' "$rogue_out" | grep -c .)
+  log_warn 'npm-rogue' "${n} rogue npm-global AI CLI install(s) shadow mise -- run: just prune-rogue-npm-globals"
+  printf '%s\n' "$rogue_out" | sed 's/^/    /'
+fi
+
 # Native Windows (MSYS/MINGW) environment assurance. Encodes the known
 # fresh-Windows-host gotchas so the doctor teaches the fix instead of each
 # recipe failing cryptically. WARN, not ERR: Git Bash workflows keep working
