@@ -395,7 +395,7 @@ def _load_manifest(dotfiles_dir: Path) -> _SyncManifest:
     """Load manifest from disk, or initialize from current dotfiles contents."""
     manifest_path = dotfiles_dir / MANIFEST_FILE
     if manifest_path.exists():
-        data = json.loads(manifest_path.read_text())
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
         return _SyncManifest(
             version=data.get("version", MANIFEST_VERSION),
             items=data.get("items", {}),
@@ -420,7 +420,10 @@ def _save_manifest(dotfiles_dir: Path, manifest: _SyncManifest) -> None:
         "version": manifest.version,
         "items": {k: sorted(v) for k, v in manifest.items.items()},
     }
-    manifest_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    manifest_path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _convert_path(source_name: str) -> str:
@@ -726,7 +729,10 @@ def _apply_sync_action(action: _SyncAction, agent: AgentTarget) -> None:
     """
     if action.render:
         action.target.parent.mkdir(parents=True, exist_ok=True)
-        action.target.write_text(_render_for_agent(action.source.read_text(), agent))
+        action.target.write_text(
+            _render_for_agent(action.source.read_text(encoding="utf-8"), agent),
+            encoding="utf-8",
+        )
     elif action.is_directory:
         _sync_directory(action.source, action.target)
     else:
@@ -823,9 +829,13 @@ def _merge_hook_settings(
     fragment_path = dotfiles_dir / HOOK_SETTINGS_FRAGMENT
     if not fragment_path.exists():
         return False
-    fragment = json.loads(fragment_path.read_text())
+    fragment = json.loads(fragment_path.read_text(encoding="utf-8"))
     target_path = agent.directory / "settings.json"
-    target = json.loads(target_path.read_text()) if target_path.exists() else {}
+    target = (
+        json.loads(target_path.read_text(encoding="utf-8"))
+        if target_path.exists()
+        else {}
+    )
 
     # Desired managed blocks per event, rendered to the agent's absolute hooks path.
     desired: dict[str, list[dict]] = {
@@ -863,7 +873,10 @@ def _merge_hook_settings(
 
     if changed and not dry_run:
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(json.dumps(target, indent=2, ensure_ascii=False) + "\n")
+        target_path.write_text(
+            json.dumps(target, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
     return changed
 
 
@@ -885,9 +898,13 @@ def _merge_settings_fragment(
     fragment_path = dotfiles_dir / SHARED_SETTINGS_FRAGMENT
     if not fragment_path.exists():
         return False
-    fragment = json.loads(fragment_path.read_text())
+    fragment = json.loads(fragment_path.read_text(encoding="utf-8"))
     target_path = agent.directory / "settings.json"
-    target = json.loads(target_path.read_text()) if target_path.exists() else {}
+    target = (
+        json.loads(target_path.read_text(encoding="utf-8"))
+        if target_path.exists()
+        else {}
+    )
 
     before = json.dumps(target, sort_keys=True, ensure_ascii=False)
 
@@ -900,7 +917,10 @@ def _merge_settings_fragment(
 
     if changed and not dry_run:
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(json.dumps(target, indent=2, ensure_ascii=False) + "\n")
+        target_path.write_text(
+            json.dumps(target, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
     return changed
 
 
@@ -908,10 +928,10 @@ def _plan_text_file(
     source: Path, target: Path, relative_path: str, agent: AgentTarget
 ) -> _SyncAction:
     """Plan a rendered text file: status uses the rendered expected content."""
-    rendered = _render_for_agent(source.read_text(), agent)
+    rendered = _render_for_agent(source.read_text(encoding="utf-8"), agent)
     if not target.exists():
         status: Literal["new", "changed", "synced"] = "new"
-    elif target.read_text() == rendered:
+    elif target.read_text(encoding="utf-8") == rendered:
         status = "synced"
     else:
         status = "changed"
@@ -1636,6 +1656,14 @@ def orphans_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) ->
 
 def main() -> None:
     """CLI entry point for sync-agents."""
+    # Native Windows consoles default stdout/stderr to cp932, which cannot
+    # encode the emoji this script prints (🔄, ⬅️, ⚠️, ...). Force UTF-8 so
+    # `just sync-agents*` runs there regardless of console code page.
+    for _stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(_stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(
         description=(
             "Sync ROOT_AGENTS files to agent instruction directories. "
