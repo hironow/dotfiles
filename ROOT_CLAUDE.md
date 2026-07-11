@@ -51,18 +51,3 @@ Legend / 凡例:
 - Request Handler: リクエストハンドラー
 - Validator: バリデーター
 ```
-
-## Hook awareness
-
-`.claude/settings.json` enforces the non-negotiables mechanically. If a hook
-blocks an action (exit 2 with a reason), do not try to route around it — the
-block is policy. Read the reason and change approach (e.g. switch `npm` → `bun`,
-`.yml` → `.yaml`, or open an IaC PR instead of a manual `gcloud` mutation).
-
-## Never (Claude-specific reminders; the rest are in AGENTS.md)
-
-- Never suggest untested code for production, or skip the failing-test step.
-- Never mix structural and behavioral changes in one suggestion.
-- Never create or update `docs/intent.md` with guessed intent — ask the human
-  first.
-- Never suggest editing the ruff/mypy/semgrep configuration to make a check pass.
