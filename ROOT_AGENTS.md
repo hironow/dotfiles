@@ -110,14 +110,8 @@ failure-recovery path, and proof of completion. Rubric (1-5):
   once accepted.
 - `docs/intent.md` = "why we're doing this now" (human-authored; never guess it —
   ask). `docs/handover.md` = "where we are, what's next" (update each session).
-- Repos may adopt decision-record governance (`decision-record-governance` skill):
-  `docs/decision-queue.md` = SSoT of unapproved decisions, `docs/pdr/` = product
-  decisions (immutable like ADRs). The adopting repo records the adoption as an
-  ADR, which then governs local roles (it may e.g. retire `intent.md` in favor
-  of PDRs). Dated working sets `docs/plan/` (execution plans; graduate into
-  ADR/architecture when done) and `docs/research/` (dated investigations) are
-  exempt from "current only".
-- Full rules: docs/agents/docs-discipline.md.
+- Full rules — incl. opt-in decision-record governance (`decision-queue.md`,
+  `docs/pdr/`, `docs/plan/`, `docs/research/`): docs/agents/docs-discipline.md.
 
 ## Detailed playbooks — read on demand (do not preload)
 
@@ -138,14 +132,9 @@ Open the matching file the moment the trigger applies:
 
 ## Enforcement (deterministic — independent of model judgment)
 
-Instructions in this file are advisory; the rules below are not. They run
-regardless of what an agent decides:
-
-- **Claude Code hooks** (global, synced to `~/.claude`): block prohibited
-  filenames and commands before they execute; auto-format Python after edits.
-- **Git pre-commit** (`.githooks/pre-commit` → `just check`): no commit lands
-  red. Enable with `just install-hooks`.
-- **CI** (`.github/workflows/quality-gate.yaml`): same gate + `tofu plan` drift
-  check, required before merge.
-
-Exit-code contract, full hook coverage, and tuning: docs/agents/enforcement.md.
+Instructions here are advisory; three mechanical gates are not, and hold the
+non-negotiables regardless of what an agent decides: Claude Code hooks (synced
+to `~/.claude`, pre/post tool call), Git pre-commit (`just install-hooks` →
+`just check`), and CI (`just check` + `tofu plan` drift). A block is policy, not
+a suggestion — read the reason and change approach, never route around it.
+Layers, exit-code contract, per-hook coverage, and tuning: docs/agents/enforcement.md.
