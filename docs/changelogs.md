@@ -403,7 +403,13 @@
 
 **現行バージョン**: **TS SDK 0.0.57** / **@ag-ui/mastra@1.1.1 (新規リリース)** / **@ag-ui/a2ui-toolkit@0.0.4 (TS) + ag-ui-a2ui-toolkit@0.0.4 (Py)** / **@ag-ui/a2ui-middleware@0.0.10** / **@ag-ui/aws-strands@0.2.3 (TS) + ag_ui_strands@0.2.2 (Py)** / **ag_ui_adk@0.7.0 (Py)** / **@ag-ui/langgraph@0.0.42 (TS) + ag-ui-langgraph@0.0.42 (Py)** / **AG-UI .NET SDK (NuGet AGUI.\* 0.0.3)** / Python protocol 0.1.19
 
-**チェックアウト状態**: `ff60085f` (main、 HEAD 2026-07-06。 前回文書化点 `b91f32ea` から 60 commits 先行。 この窓で @ag-ui/mastra@1.1.0/1.1.1、 release/2026-07-02・release/2026-07-03、 sdk-dotnet AGUI.\*@0.0.2/0.0.3 の新規タグが発行された)
+**チェックアウト状態**: `bc0a2c1d` (main、 HEAD 2026-07-17。 新規 `release/2026-07-15` タグ発行、 .NET SDK は `AGUI.Abstractions@0.0.4` 系へ前進)
+
+#### 2026-07-18時点 新着 (release/2026-07-15 発行 + .NET SDK ドキュメント整備)
+
+- **release/2026-07-15**: 新規リリースタグを発行
+- **.NET SDK 整備**: dotnet reasoning text message-id 衝突修正 (#2200)、 .NET client/server verification とパッケージ parity notes の docs 追加 (#1971)
+- **その他**: github actions 依存更新 (renovate)、 go-dojo を Go の既定 example 化 (#2047)。 破壊的変更なし
 
 #### 2026-07-02〜2026-07-06 新着 (mastra 1.1.0/1.1.1 リリース + .NET NuGet リリース対応)
 
