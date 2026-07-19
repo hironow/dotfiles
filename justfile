@@ -1383,6 +1383,34 @@ exe-apply:
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu apply
 
+# The Tailscale slice of the exe stack (tailscale.tf): the ACL bind, the
+# rotation clock, the three auth keys, and their Secret Manager containers/
+# versions. One place so plan and apply cannot drift.
+_exe_tailscale_targets := "-target=tailscale_acl.this -target=time_rotating.tailscale_keys -target=tailscale_tailnet_key.exe_coder -target=tailscale_tailnet_key.exe_workspace -target=tailscale_tailnet_key.agent -target=google_secret_manager_secret.exe_coder_authkey -target=google_secret_manager_secret.exe_workspace_authkey -target=google_secret_manager_secret.agent_authkey -target=google_secret_manager_secret_version.exe_coder_authkey -target=google_secret_manager_secret_version.exe_workspace_authkey -target=google_secret_manager_secret_version.agent_authkey"
+
+# Use case: pushing an acl.hujson change without touching the VM/tunnel.
+# The targeted refresh never configures the cloudflare provider, so only
+# the Tailscale token is required; expect tofu's "targeted plan" notice.
+# Targeted plan of ONLY the Tailscale slice (ACL + keys + their secrets).
+[group('Exe')]
+exe-plan-tailscale:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(mise activate bash)"
+    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu plan {{ _exe_tailscale_targets }}
+
+# Targeted apply of ONLY the Tailscale slice (interactive; same target set as the plan).
+[group('Exe')]
+exe-apply-tailscale:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(mise activate bash)"
+    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu apply {{ _exe_tailscale_targets }}
+
 # Common targets:
 #   just exe-replace google_compute_instance.exe_coder
 #     # re-run startup-script after VM image / metadata changes
