@@ -47,19 +47,23 @@ output "tailscale_acl_id" {
   value       = tailscale_acl.this.id
 }
 
+# VM outputs are null while stack_mode = "mothballed" (count = 0).
+# one(resource[*].attr) is the null-safe form; a direct .attr reference
+# breaks the plan when the instance list is empty.
+
 output "vm_name" {
-  description = "GCE instance name of the workspace VM (also its Tailscale hostname)."
-  value       = google_compute_instance.exe_coder.name
+  description = "GCE instance name of the workspace VM (also its Tailscale hostname). Null when mothballed."
+  value       = one(google_compute_instance.exe_coder[*].name)
 }
 
 output "vm_zone" {
-  description = "GCE zone hosting the workspace VM."
-  value       = google_compute_instance.exe_coder.zone
+  description = "GCE zone hosting the workspace VM. Null when mothballed."
+  value       = one(google_compute_instance.exe_coder[*].zone)
 }
 
 output "vm_external_ip" {
-  description = "Ephemeral external IP of the workspace VM (egress + NAT only; no ingress allowed)."
-  value       = google_compute_instance.exe_coder.network_interface[0].access_config[0].nat_ip
+  description = "Ephemeral external IP of the workspace VM (egress + NAT only; no ingress allowed). Null when mothballed."
+  value       = one(google_compute_instance.exe_coder[*].network_interface[0].access_config[0].nat_ip)
 }
 
 output "vm_service_account_email" {
@@ -84,8 +88,12 @@ with tag:exe-workspace at boot, then `exe-coder` resolves to the
 control-plane VM's tailnet IP automatically). Public CF Access edge
 is bypassed for this path. Pass to
 `cdr templates push --variable coder_internal_url=...`.
+Null when mothballed.
 EOF
-  value       = "http://${google_compute_instance.exe_coder.name}:7080"
+  # The URL must be built INSIDE the comprehension: interpolating
+  # one(...[*].name) directly would put null into a string template and
+  # error the whole plan at count = 0.
+  value = one([for i in google_compute_instance.exe_coder : "http://${i.name}:7080"])
 }
 
 output "cloudflare_tunnel_id" {
@@ -172,15 +180,15 @@ output "uptime_check_name" {
   description = <<-EOF
 Cloud Monitoring uptime check config resource name. Operator can
 inspect last fired, success rate, etc., via the GCP console
-Monitoring -> Uptime checks page.
+Monitoring -> Uptime checks page. Null when mothballed.
 EOF
-  value       = google_monitoring_uptime_check_config.exe_coder_healthz.name
+  value       = one(google_monitoring_uptime_check_config.exe_coder_healthz[*].name)
 }
 
 output "alert_policy_name" {
   description = <<-EOF
 Cloud Monitoring alert policy that fires on sustained uptime
-check failure. Notifies var.owner_email.
+check failure. Notifies var.owner_email. Null when mothballed.
 EOF
-  value       = google_monitoring_alert_policy.exe_coder_healthz_down.name
+  value       = one(google_monitoring_alert_policy.exe_coder_healthz_down[*].name)
 }

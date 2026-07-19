@@ -292,8 +292,12 @@ longer wipes the data plane: only the binaries / cache / first-
 boot admin password file reset. The DB stays up across all VM
 churn.
 
-Backup retention is 7 daily snapshots + point-in-time recovery
-(default 7 days of binary log). Restore + rotate procedures are
+Backup retention is 30 daily snapshots + point-in-time recovery
+(7 days of transaction logs). The whole stack can be mothballed
+(`stack_mode = "mothballed"`, ADR 0034): the control-plane VM and
+uptime monitoring drop out of the config and Cloud SQL stops, while
+the DB disk and backups stay — see
+[runbook.md › Mothball / wake](./runbook.md#mothball--wake-idle-cost). Restore + rotate procedures are
 in [runbook.md › Cloud SQL backup and restore](./runbook.md#cloud-sql-backup-and-restore).
 
 ## Workspace template — `dotfiles-devcontainer`

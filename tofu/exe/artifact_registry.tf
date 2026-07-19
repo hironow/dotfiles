@@ -14,14 +14,37 @@ resource "google_artifact_registry_repository" "dotfiles" {
   format        = "DOCKER"
   labels        = local.common_labels
 
-  # Container Optimized OS pulls images at workspace-create time;
-  # keep image history bounded so the AR storage bill does not grow
-  # unboundedly with every commit.
+  # Retention (ADR 0034, revising ADR 0002's 10-version cap).
+  #
+  # Every publish tags the image (`main` + `<sha>`), so the original
+  # UNTAGGED delete policy never fired and versions accumulated
+  # unboundedly (20+ versions, ~21 GiB by 2026-07). Cleanup semantics:
+  # KEEP beats DELETE, and keep_count is a floor, not a cap — the
+  # steady state is max(3, builds in the last 30 days) + main.
   cleanup_policies {
     id     = "keep-recent-versions"
     action = "KEEP"
     most_recent_versions {
-      keep_count = 10
+      keep_count = 3
+    }
+  }
+  # Workspaces pull `:main`; without this KEEP a >30-day publish gap
+  # would let delete-stale remove the rolling tag and break workspace
+  # creation (recovery: re-run publish-devcontainer via workflow_dispatch).
+  cleanup_policies {
+    id     = "keep-main-tag"
+    action = "KEEP"
+    condition {
+      tag_state    = "TAGGED"
+      tag_prefixes = ["main"]
+    }
+  }
+  cleanup_policies {
+    id     = "delete-stale"
+    action = "DELETE"
+    condition {
+      tag_state  = "ANY"
+      older_than = "2592000s" # 30 days
     }
   }
   cleanup_policies {

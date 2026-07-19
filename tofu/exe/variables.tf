@@ -4,6 +4,22 @@
 # Tokyo region, Cloudflare zone hironow.dev). Override via terraform.tfvars
 # (gitignored) or environment variables (TF_VAR_*) for sensitive values.
 
+# Lifecycle mode for the whole stack (ADR 0034). "active" runs the
+# control plane; "mothballed" removes the control-plane VM and uptime
+# monitoring and stops Cloud SQL (storage/backups keep billing).
+# Deliberately NO default: flipping this recreates or stops paid
+# infrastructure, so the operator must state intent in terraform.tfvars.
+# While mothballed, a full refresh may 400 on google_sql_user reads —
+# wake first (runbook § Mothball / wake) or plan with -refresh=false.
+variable "stack_mode" {
+  description = "Stack lifecycle mode: \"active\" (control plane up) or \"mothballed\" (VM + uptime monitoring removed, Cloud SQL stopped)."
+  type        = string
+  validation {
+    condition     = contains(["active", "mothballed"], var.stack_mode)
+    error_message = "stack_mode must be \"active\" or \"mothballed\"."
+  }
+}
+
 variable "gcp_project_id" {
   description = "GCP project hosting the Coder workspace VM and state bucket."
   type        = string

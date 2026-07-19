@@ -616,6 +616,12 @@ locals {
 }
 
 resource "google_compute_instance" "exe_coder" {
+  # Mothball gate (ADR 0034). The VM was historically removed with a
+  # targeted destroy (just exe-down), which left config and state
+  # permanently divergent; count makes the mothballed state a plannable
+  # part of the config instead.
+  count = var.stack_mode == "active" ? 1 : 0
+
   name         = local.vm_name
   machine_type = var.machine_type
   zone         = var.gcp_zone

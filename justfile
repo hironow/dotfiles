@@ -1411,9 +1411,49 @@ exe-apply-tailscale:
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu apply {{ _exe_tailscale_targets }}
 
+# The mothball transition slice (ADR 0034): Cloud SQL activation, AR
+# retention, uptime check + alert. All four are google-provider-only,
+# so no Cloudflare/Tailscale token is needed (same targeted-refresh
+# reasoning as exe-plan-tailscale). Shared between plan and apply so
+# they cannot drift.
+_exe_mothball_targets := "-target=google_sql_database_instance.coder -target=google_artifact_registry_repository.dotfiles -target=google_monitoring_uptime_check_config.exe_coder_healthz -target=google_monitoring_alert_policy.exe_coder_healthz_down"
+
+# Targeted plan of the mothball slice, written to a plan file so what
+# was reviewed is exactly what exe-apply-mothball applies.
+[group('Exe')]
+exe-plan-mothball:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(mise activate bash)"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu plan {{ _exe_mothball_targets }} -out=mothball.tfplan
+
+# Apply the saved mothball plan file (run exe-plan-mothball first).
+[group('Exe')]
+exe-apply-mothball:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(mise activate bash)"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu apply mothball.tfplan
+
+# Wake step 1: start Cloud SQL alone (targeted). While the instance is
+# stopped, a full refresh may 400 on google_sql_user reads, so the wake
+# order is: set stack_mode = "active" in tfvars -> exe-apply-wake ->
+# full `just exe-apply` (needs CF/TS tokens) for the VM + monitoring.
+[group('Exe')]
+exe-apply-wake:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(mise activate bash)"
+    export TF_ENCRYPTION="$(just _exe-encryption)"
+    cd tofu/exe && tofu apply -target=google_sql_database_instance.coder
+
 # Common targets:
-#   just exe-replace google_compute_instance.exe_coder
-#     # re-run startup-script after VM image / metadata changes
+#   just exe-replace 'google_compute_instance.exe_coder[0]'
+#     # re-run startup-script after VM image / metadata changes (the
+#     # [0] index is required: an unindexed -replace on a counted
+#     # resource is a silent no-op, and the quotes stop shell globbing)
 #   just exe-replace time_rotating.tailscale_keys
 #     # force-rotate Tailscale auth keys
 #   just exe-replace random_id.tunnel_secret
@@ -1439,7 +1479,7 @@ exe-down:
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu destroy \
-      -target=google_compute_instance.exe_coder
+      -target='google_compute_instance.exe_coder[0]'
 
 # tofu destroy of every resource (VM, net, secrets, tunnel, DNS, Access).
 [group('Exe')]

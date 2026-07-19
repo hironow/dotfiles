@@ -2,6 +2,12 @@
 # Sensitive entries should ideally come from `gcloud secrets versions access`
 # at apply time rather than this file.
 
+# Stack lifecycle (ADR 0034) — REQUIRED, no default. "active" runs the
+# control plane; "mothballed" stops Cloud SQL and removes the VM +
+# uptime monitoring (transition via `just exe-plan-mothball` /
+# `exe-apply-mothball`; wake via `exe-apply-wake` — see runbook).
+stack_mode = "active"
+
 # GCP — usually defaults are fine, override only for non-default project.
 gcp_project_id = "gen-ai-hironow"
 gcp_region     = "asia-northeast1"
