@@ -75,6 +75,63 @@ After the first apply succeeds:
 | Stop the VM (cheap pause) | `just exe-teardown vm` |
 | Recreate the VM | `just exe-apply` (idempotent) |
 
+## Mothball / wake (idle cost)
+
+`stack_mode` in `terraform.tfvars` (ADR 0034) declares whether the
+stack is running (`"active"`) or parked (`"mothballed"`). Mothballed
+removes the control-plane VM and the uptime check + alert from the
+config (`count = 0`) and stops Cloud SQL
+(`activation_policy = NEVER`). Idle run-rate drops from ~JPY 3,500/mo
+to ~JPY 550/mo (SQL storage + backups + AR + secrets are what remain).
+
+### Mothball
+
+```bash
+# 1. Snapshot the data plane FIRST — automated backups do not run
+#    while the instance is stopped; the inventory at stop time is
+#    what you keep.
+gcloud sql backups create --instance=exe-coder-pg --project=gen-ai-hironow
+gcloud sql backups list --instance=exe-coder-pg --limit=1  # expect SUCCESSFUL
+
+# 2. Declare intent in terraform.tfvars:  stack_mode = "mothballed"
+# 3. Plan + apply the transition slice (google-provider-only targets;
+#    CLOUDFLARE_API_TOKEN / TAILSCALE_API_KEY are NOT needed):
+just exe-plan-mothball   # review: uptime+alert destroy, SQL+AR change
+just exe-apply-mothball
+
+# 4. Verify (the console may still show the state as RUNNABLE —
+#    activationPolicy is the authoritative signal):
+gcloud sql instances describe exe-coder-pg \
+  --format="value(settings.activationPolicy)"   # -> NEVER
+```
+
+Notes:
+
+- **A full `tofu plan` may fail while mothballed**: refreshing
+  `google_sql_user` against a stopped instance can return 400. Check
+  drift with `tofu plan -refresh=false`, or wake first.
+- The on-demand backup from step 1 is never auto-deleted (bills
+  ~JPY 17/GiB-mo); delete it after wake if unwanted.
+- AR cleanup policies execute asynchronously (~daily), so the storage
+  drop lands over the following day(s), not at apply time.
+
+### Wake
+
+```bash
+# 1. terraform.tfvars:  stack_mode = "active"
+# 2. Start Cloud SQL alone first (a full refresh 400s while stopped):
+just exe-apply-wake
+# 3. Recreate VM + monitoring (needs CLOUDFLARE_API_TOKEN +
+#    TAILSCALE_API_KEY):
+just exe-apply
+just exe-smoke
+# 4. IMMEDIATELY clean up workspaces whose resources were deleted
+#    out-of-band while mothballed — before creating or starting any
+#    workspace, so an autostart cannot race a build against deleted
+#    resources. E.g. the 2026-07 exception decommission:
+cdr delete test-ws-001 --orphan
+```
+
 ## Add a multiplex project (Phase α)
 
 Once the runops-gateway is running with the HTTP admin endpoint
@@ -300,7 +357,7 @@ in `cloudsql.tf` first if you want the revocation to stick.)
 
 Per [ADR 0010](../../docs/adr/0010-cloud-sql-postgres-for-coder.md)
 the Coder data plane runs on a managed `db-f1-micro` instance with
-**daily automated backup + 7-day point-in-time recovery**. No
+**30 daily automated backups + 7-day point-in-time recovery**. No
 manual action is required for backup; restore is gcloud-driven.
 
 ### Inspect backups
@@ -677,7 +734,7 @@ If you receive a `exe-coder-healthz down` email:
    recovers, the alert clears itself.
 
 To suppress alerts during planned maintenance (e.g. running
-`just exe-replace google_compute_instance.exe_coder`), the
+`just exe-replace 'google_compute_instance.exe_coder[0]'`), the
 operator can either silence the policy via the GCP console or
 just expect a single false alert (it will auto-close in 30 min
 once the VM is back).
@@ -688,6 +745,8 @@ GCS state bucket, Secret Manager, and Cloud Monitoring uptime checks
 are essentially free. The two meaningful cost lines are the GCE VM
 (`exe-coder`, ~$5–7/mo on `e2-small` SPOT) and Cloud SQL
 (`exe-coder-pg`, ~$8–10/mo on `db-f1-micro` ZONAL with daily backup).
+Mothballed (`stack_mode = "mothballed"`, ADR 0034) both lines stop and
+the stack idles at ~JPY 550/mo (SQL storage + backups + AR + secrets).
 See `architecture.md` §"Cost" for the full table. To check this
 month's spend:
 

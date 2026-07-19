@@ -12,6 +12,7 @@ operator-supplied via `terraform.tfvars`.
 
 | Variable | Default | Description |
 |---|---|---|
+| `stack_mode` | (required, `terraform.tfvars`) | `active` or `mothballed` (ADR 0034): mothballed stops Cloud SQL and removes the VM + uptime monitoring |
 | `gcp_project_id` | `gen-ai-hironow` | GCP project (single-project, single-stack) |
 | `gcp_region` | `asia-northeast1` | Primary region |
 | `gcp_zone` | `asia-northeast1-a` | Primary zone |
@@ -73,10 +74,15 @@ from `~/.config/tofu/exe.passphrase` (0600 mode, gitignored).
 ## Lifecycle
 
 ```bash
-just exe-plan    # tofu plan
-just exe-apply   # tofu apply
-just exe-down    # tofu destroy (keeps state)
+just exe-plan            # tofu plan
+just exe-apply           # tofu apply
+just exe-down            # tofu destroy (keeps state)
+just exe-plan-mothball   # targeted plan of the mothball slice -> mothball.tfplan
+just exe-apply-mothball  # apply the saved mothball plan file
+just exe-apply-wake      # start Cloud SQL alone (wake step 1)
 ```
+
+Mothball / wake workflow: [runbook.md › Mothball / wake](../../exe/docs/runbook.md#mothball--wake-idle-cost).
 
 ## Related docs
 

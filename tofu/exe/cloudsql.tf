@@ -85,6 +85,12 @@ resource "google_sql_database_instance" "coder" {
     edition           = "ENTERPRISE"
     tier              = var.cloud_sql_tier
     availability_type = "ZONAL" # personal stack; no HA
+
+    # Mothball gate (ADR 0034). NEVER stops the instance; storage and
+    # existing backups keep billing, the per-hour instance charge stops.
+    # While stopped, google_sql_user reads may 400 on refresh — wake via
+    # `just exe-apply-wake` before running a full plan.
+    activation_policy = var.stack_mode == "active" ? "ALWAYS" : "NEVER"
     disk_type         = "PD_SSD"
     disk_size         = var.cloud_sql_disk_size_gb
     disk_autoresize   = true

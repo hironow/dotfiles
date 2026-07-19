@@ -49,6 +49,10 @@ resource "google_monitoring_notification_channel" "operator_email" {
 # ----- uptime check --------------------------------------------------
 
 resource "google_monitoring_uptime_check_config" "exe_coder_healthz" {
+  # Mothball gate (ADR 0034): with the control plane down the check can
+  # only fail, so a mothballed stack would page the operator forever.
+  count = var.stack_mode == "active" ? 1 : 0
+
   display_name = "${local.prefix}-coder-healthz"
   timeout      = "10s"
   period       = "300s" # 5 min cadence — single-operator stack, no need for 60s
@@ -91,6 +95,9 @@ resource "google_monitoring_uptime_check_config" "exe_coder_healthz" {
 # ----- alert policy: page on 2 consecutive uptime failures -----------
 
 resource "google_monitoring_alert_policy" "exe_coder_healthz_down" {
+  # Same gate as the uptime check it consumes.
+  count = var.stack_mode == "active" ? 1 : 0
+
   display_name = "${local.prefix}-coder-healthz down"
   combiner     = "OR"
   enabled      = true
@@ -102,7 +109,7 @@ resource "google_monitoring_alert_policy" "exe_coder_healthz_down" {
     condition_threshold {
       filter = format(
         "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id=\"%s\" AND resource.type=\"uptime_url\"",
-        google_monitoring_uptime_check_config.exe_coder_healthz.uptime_check_id,
+        google_monitoring_uptime_check_config.exe_coder_healthz[0].uptime_check_id,
       )
       duration        = "300s" # 5 min sustained = 2 consecutive 5-min checks
       comparison      = "COMPARISON_GT"
