@@ -96,3 +96,10 @@ __pycache__/
 *-debug.log
 
 .antigravitycli/
+
+# Go build output. `go build` inside a module drops a binary named after the
+# module next to its sources, and Go binaries carry no extension -- so nothing
+# above catches it. Pinned by exact path rather than a bare `simple-server`
+# glob, which would also swallow legitimately named files elsewhere.
+tools/simple-server/simple-server
+tools/simple-server/simple-server.exe
