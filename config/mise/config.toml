@@ -10,7 +10,7 @@ bun = "latest"
 go = "latest"
 node = "lts"
 just = "latest"
-rust = "1.96.0"
+rust = "1.97.0"
 # opentofu — terraform-compatible IaC. Required by `just test-iac`
 # so `mise x -- tofu` resolves from the non-mise-activated bash
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
@@ -38,7 +38,7 @@ prek = "latest"
 # binary stays an orphan and `ls` falls back to system ls. Pinned (not
 # "latest") so the already-installed 0.23.4 resolves without tripping
 # the 7d quarantine on a fresh release.
-eza = "0.23.4"
+eza = "0.23.5"
 # starship (prompt) + sheldon (zsh plugin manager). Initialized in .zshrc
 # AFTER `mise activate` (see EOF). Declared here so mise puts them on PATH
 # for every dir; without a config source they stay orphan installs and the
@@ -60,7 +60,7 @@ starship = "1.26.0"
 # Declared here so WSL (no Homebrew) gets it; on a Mac brew also provides it.
 # Pinned so the install resolves past the 7d quarantine. (opentofu, the other
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
-fzf = "0.73.1"
+fzf = "0.74.0"
 
 # AI agent CLIs. Project-pinned in the repo mise.toml so Coder
 # workspaces boot with them ready; declared here at "latest" so they
@@ -86,8 +86,9 @@ fzf = "0.73.1"
 # (gh attestation API 404), so there is no enforced provenance gate — see
 # the repo mise.toml. Pinned to a concrete version (NOT "latest") to keep
 # the same pin as repo mise.toml (first release was 2026-06-01). Tracks the
-# newest release at least 7 days old; bump both together.
-"github:google-antigravity/antigravity-cli" = { version = "1.0.16", exe = "antigravity" }
+# true newest release under the LLM-CLI quarantine exemption (see repo
+# mise.toml), not the 7-days-old rule; bump both together.
+"github:google-antigravity/antigravity-cli" = { version = "1.1.4", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Declared "latest" like the
 # AI CLIs above; the minimum_release_age="7d" quarantine below makes

@@ -89,7 +89,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends mise
 
 # ---- uv (Python package manager) ------------------------------------
-UV_VERSION="0.11.26"
+UV_VERSION="0.11.28"
 case "$ARCH" in
   x86_64)  UV_TARGET="x86_64-unknown-linux-gnu" ;;
   aarch64) UV_TARGET="aarch64-unknown-linux-gnu" ;;
@@ -127,7 +127,7 @@ install -m 0755 /tmp/uvx /usr/local/bin/uvx
 rm -f "/tmp/${UV_FILE}" "/tmp/${UV_FILE}.sha256" /tmp/uv /tmp/uvx
 
 # ---- just (command runner) ------------------------------------------
-JUST_VERSION="1.55.1"
+JUST_VERSION="1.56.0"
 case "$ARCH" in
   x86_64)  JUST_TARGET="x86_64-unknown-linux-musl" ;;
   aarch64) JUST_TARGET="aarch64-unknown-linux-musl" ;;
@@ -241,22 +241,22 @@ install -d -m 0755 /etc/mise
 export MISE_DATA_DIR=/opt/mise
 cat > /etc/mise/config.toml <<'EOF'
 [tools]
-just = "1.55.1"
+just = "1.56.0"
 markdownlint-cli2 = "0.23.0"
-prek = "0.4.6"
-uv = "0.11.26"
-vp = "0.2.2"
+prek = "0.4.9"
+uv = "0.11.28"
+vp = "0.2.4"
 node = "24.18.0"
-"npm:@openai/codex" = "0.142.5"
+"npm:@openai/codex" = "0.144.6"
 # npm_args re-enables postinstall (mise defaults to --ignore-scripts=true)
 # so claude-code's native binary is linked, not left as a stub. See mise.toml.
-"npm:@anthropic-ai/claude-code" = { version = "2.1.199", npm_args = "--ignore-scripts=false" }
-"npm:@github/copilot" = "1.0.68"
-"npm:@earendil-works/pi-coding-agent" = "0.80.3"
-"github:google-antigravity/antigravity-cli" = { version = "1.0.16", exe = "antigravity" }
-"npm:cf" = "0.1.0"
-"npm:resend-cli" = "2.6.0"
-"npm:@stripe/cli" = "1.43.6"
+"npm:@anthropic-ai/claude-code" = { version = "2.1.215", npm_args = "--ignore-scripts=false" }
+"npm:@github/copilot" = "1.0.71"
+"npm:@earendil-works/pi-coding-agent" = "0.80.10"
+"github:google-antigravity/antigravity-cli" = { version = "1.1.4", exe = "antigravity" }
+"npm:cf" = "0.2.0"
+"npm:resend-cli" = "2.8.1"
+"npm:@stripe/cli" = "1.43.7"
 EOF
 echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (
