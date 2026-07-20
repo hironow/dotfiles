@@ -22,6 +22,15 @@ vp = "0.2.4"
 # node here so /opt/mise/installs/node/24.18.0/bin/node lives outside
 # the volume-mount path; mise's shim in /opt/mise/shims wins PATH
 # resolution against any bind-mount issue.
+#
+# LTS-ONLY (deliberate exception to this repo's bump-forward default):
+# track the newest release of the *active LTS* line, never the overall
+# newest. `mise latest node` reports 26.5.0, but the 26.x line is
+# Current until it promotes in October 2026, and one runtime pin is
+# shared by Mac, the dev container, Windows, and Coder workspaces —
+# reproducibility there outweighs being on the newest line. Resolve the
+# bump target with `mise latest node@lts` (not `mise latest node`);
+# today both that and `mise latest node@24` give the pin below.
 node = "24.18.0"
 
 # AI agent CLIs. Installed at build time so the Coder workspace
