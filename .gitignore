@@ -103,3 +103,10 @@ __pycache__/
 # glob, which would also swallow legitimately named files elsewhere.
 tools/simple-server/simple-server
 tools/simple-server/simple-server.exe
+
+# Stray `bunx skills` output. The CLI's real lock is ~/.agents/.skill-lock.json
+# in the agent home (dot-prefixed, singular); running the CLI from the repo root
+# instead drops this differently-named file here, where it means nothing.
+# Anchored with a leading slash: only the root-level stray is junk, so an
+# unrooted pattern would over-match any future subdirectory copy.
+/skills-lock.json
