@@ -5,13 +5,13 @@
 # build-time consistency check in tests/test_mise_pin_consistency.py
 # fails the image build if these drift from the SHA-verified
 # constants in .devcontainer/features/dotfiles-tools/install.sh.
-just = "1.55.1"
+just = "1.56.0"
 markdownlint-cli2 = "0.23.0"
-prek = "0.4.6"
-uv = "0.11.26"
+prek = "0.4.9"
+uv = "0.11.28"
 # `vp` is the mise registry alias for npm:vite-plus (NOT the
 # unrelated `vp` npm package). Pin to vite-plus's actual version.
-vp = "0.2.2"
+vp = "0.2.4"
 
 # Node runtime. The npm-backed AI CLIs below have a `#!/usr/bin/env
 # node` shebang that needs node on PATH at *runtime*, not just at
@@ -27,8 +27,13 @@ node = "24.18.0"
 # AI agent CLIs. Installed at build time so the Coder workspace
 # boots with them ready on PATH; operators authenticate them on
 # first use (`codex login`, `claude /login`, `copilot auth`, `pi auth`;
-# antigravity authenticates on first run). Source: 2026-05 latest stable.
-"npm:@openai/codex" = "0.144.1"
+# antigravity authenticates on first run).
+# QUARANTINE EXEMPTION: unlike every other pin in this file, the LLM
+# CLIs track the *true* newest release rather than the newest at least
+# 7 days old. They ship multiple releases per week and lag costs access
+# to current models and protocol fixes; the `[env]` override at the
+# bottom of this file is what lets mise install a same-week version.
+"npm:@openai/codex" = "0.144.6"
 # claude-code ships its ~248MB native binary as per-platform npm
 # optionalDependencies that a postinstall (install.cjs) hardlinks over a
 # stub. mise's npm backend installs with --ignore-scripts=true by default,
@@ -36,9 +41,9 @@ node = "24.18.0"
 # stub — `claude` then errors at runtime with "native binary not installed".
 # npm_args re-enables scripts for this one tool (npm honors the last
 # --ignore-scripts flag, so this overrides mise's default).
-"npm:@anthropic-ai/claude-code" = { version = "2.1.199", npm_args = "--ignore-scripts=false" }
-"npm:@github/copilot" = "1.0.68"
-"npm:@earendil-works/pi-coding-agent" = "0.80.3"
+"npm:@anthropic-ai/claude-code" = { version = "2.1.215", npm_args = "--ignore-scripts=false" }
+"npm:@github/copilot" = "1.0.71"
+"npm:@earendil-works/pi-coding-agent" = "0.80.10"
 
 # antigravity (Google's agentic coding CLI) — replaces gemini-cli, per
 # Google's "Transitioning Gemini CLI to Antigravity CLI" announcement.
@@ -49,10 +54,11 @@ node = "24.18.0"
 # SUPPLY-CHAIN NOTE: these releases publish no SLSA/Sigstore attestation
 # (gh attestation API returns 404) and no SHA sidecar, so there is no
 # enforced provenance gate — same posture as the npm-backed AI CLIs above.
-# Pinned to the newest release at least 7 days old (the repo's usual
-# quarantine); first release was 2026-06-01. Bump together with the
-# config/mise/config.toml mirror.
-"github:google-antigravity/antigravity-cli" = { version = "1.0.16", exe = "antigravity" }
+# Tracks the true newest release under the LLM-CLI quarantine exemption
+# above (not the 7-days-old rule the rest of this file follows); first
+# release was 2026-06-01. Bump together with the config/mise/config.toml
+# mirror.
+"github:google-antigravity/antigravity-cli" = { version = "1.1.4", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Explicit `npm:` backend to
 # avoid any mise registry-alias ambiguity. Concrete pins per ADR 0006
@@ -62,9 +68,9 @@ node = "24.18.0"
 #   resend-cli  -> Resend CLI (resend.com/docs/cli)
 #   @stripe/cli -> Stripe CLI (docs.stripe.com, npm install method;
 #                  the legacy `stripe-cli` package is deprecated)
-"npm:cf" = "0.1.0"
-"npm:resend-cli" = "2.6.0"
-"npm:@stripe/cli" = "1.43.6"
+"npm:cf" = "0.2.0"
+"npm:resend-cli" = "2.8.1"
+"npm:@stripe/cli" = "1.43.7"
 
 # `~/.npmrc` may set `min-release-age=7` (7-day quarantine, mirrors
 # uv's `exclude-newer = "7 days"`). That blocks `mise install` of
