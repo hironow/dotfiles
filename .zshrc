@@ -107,6 +107,12 @@ fi
 # bun
 path_prepend "$HOME/.bun/bin"
 
+# kimi-code
+# The installer appends a bare `export PATH=...` to ~/.zshrc, which bypasses
+# path_prepend()'s dedup guard and re-inflates PATH on every re-source. Declare
+# it here instead and discard whatever the installer leaves behind.
+path_prepend "$HOME/.kimi-code/bin"
+
 # local
 path_prepend "/usr/local/bin"
 path_prepend "$HOME/.local/bin"
