@@ -1,7 +1,12 @@
 # syntax=docker/dockerfile:1.22
 
 ARG MCP_INSPECTOR_REPO=https://github.com/modelcontextprotocol/inspector.git
-ARG MCP_INSPECTOR_REF=main
+# Pin to the last v1 release: upstream v2.0.0 (2026-07-28) restructured the repo
+# and removed the client/server/cli monorepo layout this Dockerfile COPYs, so an
+# unpinned `main` broke the build (`lstat /src/repo/client: no such file`). 1.0.1
+# is the newest tag that still ships client/. Bump deliberately when this
+# Dockerfile is updated for the v2 layout.
+ARG MCP_INSPECTOR_REF=1.0.1
 
 # Stage 0: fetch source
 FROM alpine/git AS source
