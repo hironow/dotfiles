@@ -930,6 +930,25 @@ def test_status_validates_the_hook_rather_than_its_presence() -> None:
     )
 
 
+def test_status_never_claims_proof_for_a_hook_that_is_not_set() -> None:
+    """A hook that is absent cannot have been accepted by 2392 jobs.
+
+    Both legs fell through from the unset branch into the accept/reject
+    verdict, which counts job logs newer than `.env` — not jobs that ran the
+    hook. On a runner whose `.env` exists without the hook key, that printed a
+    green "accepted in all 2392 job(s)" directly beneath the red "hook: not
+    set", which is exactly the line a reader takes as proof it works.
+    """
+    lines = (SCRIPTS / "gc_status.sh").read_text(encoding="utf-8").splitlines()
+    unset = [(n, line) for n, line in enumerate(lines, 1) if "hook: not set in" in line]
+    assert unset, "status must still report a hook that is not configured"
+    bad = [(n, line.strip()) for n, line in unset if "continue" not in line]
+    assert not bad, (
+        "these branches report an unset hook and then fall through to the "
+        f"accept/reject verdict, which vouches for a hook that is absent: {bad}"
+    )
+
+
 def test_windows_installer_survives_without_elevation() -> None:
     """S4U is better but needs admin; staying installable matters more."""
     text = INSTALL_WIN.read_text(encoding="utf-8")
