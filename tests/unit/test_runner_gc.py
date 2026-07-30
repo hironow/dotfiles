@@ -392,6 +392,41 @@ def test_workspace_sweep_uses_an_explicit_runner_dir_allowlist() -> None:
         )
 
 
+def test_counted_collections_are_wrapped_for_powershell_51() -> None:
+    """`runner_gc.sh` drives the Windows leg through `powershell.exe` (5.1).
+
+    There, `Get-ChildItem | Where-Object` yielding exactly one item returns a
+    bare FileInfo, which has no `.Count` under `Set-StrictMode -Version
+    Latest` - so the sweep throws. pwsh 7 supplies `.Count` on any object, so
+    the end-to-end tests below run green while the real hook crashes. Only a
+    static check covers this.
+    """
+    text = GC_WIN.read_text(encoding="utf-8")
+    bad = [
+        (n, line.strip())
+        for n, line in enumerate(text.splitlines(), 1)
+        if re.search(r"^\s*\$(\w+)\s*=\s*Get-ChildItem", line)
+        and re.search(rf"\${re.match(r'^\s*\$(\w+)', line).group(1)}\.Count", text)
+    ]
+    assert not bad, (
+        "these collections are counted but not wrapped in @(), so a single "
+        f"match throws under powershell.exe 5.1: {bad}"
+    )
+
+
+def test_dry_run_covers_the_docker_prunes() -> None:
+    """A rehearsal must not prune the daemon either.
+
+    Not reachable from the end-to-end tests: they all pass -SkipDocker, since
+    a test that really pruned the developer's Docker Desktop would be worse
+    than the bug.
+    """
+    text = GC_WIN.read_text(encoding="utf-8")
+    assert "DRY-RUN: would prune docker" in text, (
+        "-DryRun must report the docker prunes rather than executing them."
+    )
+
+
 def test_stale_version_pruning_requires_a_resolvable_symlink() -> None:
     """`bin.*`/`externals.*` are only leftovers when `bin` is a symlink to one
     of them. On a plain install they *are* the runner - deleting them bricks
@@ -578,6 +613,29 @@ def test_readonly_files_do_not_stop_the_sweep(tmp_path: Path) -> None:
         "read-only git objects must be cleared, not left behind as a partial "
         "delete that keeps the disk full."
     )
+
+
+@pwshonly
+def test_a_single_stale_log_does_not_throw(tmp_path: Path) -> None:
+    """One match makes Get-ChildItem return a bare FileInfo, not an array.
+
+    Under `Set-StrictMode -Version Latest` that object has no `.Count`, so the
+    trim throws PropertyNotFoundStrict mid-sweep. `$ErrorActionPreference =
+    'Continue'` keeps the exit code at 0, so this only ever shows up as a
+    stack trace in the Scheduled Task log nobody reads.
+    """
+    root = _make_runner_root(tmp_path)
+    log = root / "_diag" / "Runner_only_one.log"
+    log.write_text("x", encoding="utf-8")
+    _age(log, 24 * 30)
+
+    proc = _run_gc(root)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "PropertyNotFoundStrict" not in proc.stderr, (
+        f"the _diag trim threw on a single match: {proc.stderr}"
+    )
+    assert not log.exists(), "the stale log should still have been collected"
 
 
 @pwshonly

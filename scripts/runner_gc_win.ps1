@@ -147,6 +147,10 @@ if ($docker) {
                 @('image', @('image', 'prune', '-af', "--filter=until=$Retention")),
                 @('build cache', @('builder', 'prune', '-af', "--filter=until=$Retention"))
             )) {
+            if ($DryRun) {
+                Write-GcLog ("DRY-RUN: would prune docker {0} older than {1}" -f $step[0], $Retention)
+                continue
+            }
             & docker @($step[1]) *>$null
             Write-GcLog ("docker: pruned {0} older than {1}" -f $step[0], $Retention)
         }
@@ -180,9 +184,14 @@ $diagCutoff = (Get-Date).AddDays(-$DiagRetentionDays)
 foreach ($root in $runnerRoots) {
     $diag = Join-Path $root '_diag'
     if (Test-Path $diag) {
-        $old = Get-ChildItem $diag -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -lt $diagCutoff }
-        if ($old) {
+        # Wrapped in @() because runner_gc.sh drives this through
+        # powershell.exe (5.1), where a single match comes back as a bare
+        # FileInfo with no .Count under StrictMode - and the trim then throws
+        # on the log line below. pwsh 7 papers over it, so the tests cannot
+        # see this one.
+        $old = @(Get-ChildItem $diag -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -lt $diagCutoff })
+        if ($old.Count) {
             $mb = [math]::Round((($old | Measure-Object Length -Sum).Sum) / 1MB, 1)
             if ($DryRun) {
                 Write-GcLog ("DRY-RUN: would remove {0} _diag logs older than {1}d ({2} MB)" -f $old.Count, $DiagRetentionDays, $mb)
