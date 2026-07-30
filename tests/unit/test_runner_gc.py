@@ -1013,9 +1013,16 @@ def test_workspace_sweep_is_exercisable_on_a_busy_runner() -> None:
     RUNNER_GC_ROOT is a safe signal for a deliberate, targeted run.
     """
     text = GC.read_text(encoding="utf-8")
-    assert re.search(
-        r'if \[ -z "\$\{RUNNER_GC_ROOT:-\}" \] && _foreign_worker', text
-    ), (
+    # Naming the root says *which* install; it does not say the runner is safe
+    # to disturb. A manual run has no RUNNER_WORKSPACE/GITHUB_WORKSPACE, so it
+    # cannot tell which checkout a concurrent job is writing to — a workspace
+    # whose last job finished over the retention ago looks collectable even
+    # while a new job builds in it. Both signals are required.
+    assert "RUNNER_GC_ALLOW_BUSY" in text, (
+        "bypassing the concurrent-job guard must need an explicit "
+        "RUNNER_GC_ALLOW_BUSY, not just a named root."
+    )
+    assert re.search(r'\[ -z "\$\{RUNNER_GC_ROOT:-\}" \] \|\|', text), (
         "the workspace sweep must still back off for a concurrent job unless "
         "an install was named explicitly."
     )
