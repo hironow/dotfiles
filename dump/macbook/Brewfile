@@ -467,6 +467,8 @@ brew "dotenvx/brew/dotenvx", trusted: true
 brew "fastly/tap/fastly", trusted: true
 # Model Context Protocol server for Xcode project workflows
 brew "getsentry/xcodebuildmcp/xcodebuildmcp", trusted: true
+# Grafana Cloud CLI
+brew "grafana/grafana/gcx", trusted: true
 # An experimental MCP (Model Context Protocol) server for k6
 brew "grafana/grafana/mcp-k6", trusted: true
 # Masking tape to help commands "do one thing well"
@@ -504,10 +506,7 @@ brew "supabase/tap/supabase", trusted: true
 brew "tufin/tufin/oasdiff", trusted: true
 # CLI for the Claude Platform
 cask "anthropics/tap/ant", trusted: true
-# Open source, extensible AI agent that goes beyond code suggestions
-cask "block-goose"
-# Native desktop client for Coder
-cask "coder/coder/coder-desktop"
+cask "coder-desktop"
 # OpenAI's coding agent that runs in your terminal
 cask "codex"
 # Brings the power of Copilot coding agent directly to your terminal
@@ -544,7 +543,6 @@ mas "GarageBand", id: 682658836
 mas "iMovie", id: 408981434
 mas "LINE", id: 539883307
 mas "Numbers", id: 409203825
-mas "Pages", id: 409201541
 mas "Pages", id: 361309726
 mas "Reeder", id: 6475002485
 mas "Slack", id: 803453959
@@ -666,6 +664,7 @@ vscode "mikestead.dotenv"
 vscode "mohamed-nouri.websocket-client"
 vscode "mohsen1.prettify-json"
 vscode "mongodb.mongodb-vscode"
+vscode "moonshot-ai.kimi-code"
 vscode "ms-azure-devops.azure-pipelines"
 vscode "ms-azuretools.vscode-azure-github-copilot"
 vscode "ms-azuretools.vscode-azure-mcp-server"
@@ -815,5 +814,4 @@ krew "node-shell"
 krew "ns"
 krew "resource-capacity"
 npm "@anthropic-ai/claude-code"
-npm "@openai/codex"
 npm "corepack"
