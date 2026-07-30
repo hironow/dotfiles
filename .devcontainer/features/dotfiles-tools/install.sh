@@ -265,6 +265,40 @@ echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_D
 )
 MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 
+# ---- claude-code native binary (real binary, over the mise stub) ----
+# claude-code stays declared in the mise heredoc above so it keeps ADR 0006
+# parity with mise.toml and stays in the MISE_OFFLINE prebuild cache. BUT mise's
+# npm backend no longer installs claude-code's per-platform native-binary
+# optionalDependency (@anthropic-ai/claude-code-linux-x64) — it links only a
+# stub that errors "native binary not installed" at runtime. So we install the
+# real binary from Anthropic's official signed apt repository (same fingerprint-
+# verified pattern as gcloud/mise above; the file-header trust policy forbids
+# `curl | bash`) and point the mise shim — first on PATH — at it. The stable
+# channel serves a ~1-week-old, regression-skipping build and does not
+# auto-update in the image.
+echo "[dotfiles-tools] installing claude-code from Anthropic's signed apt repo (stable channel)"
+import_apt_key_with_fingerprint \
+  https://downloads.claude.ai/keys/claude-code.asc \
+  31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE \
+  /etc/apt/keyrings/claude-code.gpg
+echo "deb [signed-by=/etc/apt/keyrings/claude-code.gpg] https://downloads.claude.ai/claude-code/apt/stable stable main" \
+  > /etc/apt/sources.list.d/claude-code.list
+apt-get update -y
+apt-get install -y --no-install-recommends claude-code
+# Locate the apt-installed binary (the mise shim shadows `command -v claude`,
+# so resolve it from the package file list instead) and overlay the mise shim
+# with a symlink to it. The shim dir is first on PATH, so runtime `claude`
+# resolves to the real binary while parity/prebuild keep the mise declaration.
+_apt_claude="$(dpkg -L claude-code 2>/dev/null | grep -E '/bin/claude$' | head -1)"
+if [ -z "${_apt_claude}" ]; then
+  _apt_claude="$(dpkg -L claude-code 2>/dev/null | grep -E '/claude$' | head -1)"
+fi
+if [ -z "${_apt_claude}" ] || [ ! -x "${_apt_claude}" ]; then
+  echo "[dotfiles-tools] ERROR: apt claude-code produced no runnable binary" >&2
+  exit 1
+fi
+ln -sf "${_apt_claude}" /opt/mise/shims/claude
+
 # pnpm/yarn are provided per-repo by corepack (the package-manager
 # shim shipped with node). We no longer install pnpm globals, so there
 # is no PNPM_HOME global-bin to bootstrap. Enable corepack at build

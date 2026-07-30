@@ -610,10 +610,14 @@ test-mark marker="":
 #   - Don't pass `--exclude` to ruff: CLI replaces built-in defaults
 #     (.venv, __pycache__, dist, build, ...). Excludes belong in pyproject.toml.
 #   - Use `git ls-files -z | xargs -0 -r` for null-delimited, empty-safe pipes.
+#   - Pin ruff (`ruff@0.15.22`): the devcontainer sandbox has no uv exclude-newer
+#     window, so a bare `uvx ruff` pulls a newer ruff whose expanded default rules
+#     (EXE/ISC/UP/B ...) flag the as-shipped tree and redden `just test`. Pinning
+#     keeps sandbox == CI == local. Bump this in lockstep across fmt/lint/check.
 [group('Lint')]
 fmt:
     @echo '🔧 Python (ruff format)...'
-    uvx ruff format .
+    uvx ruff@0.15.22 format .
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
@@ -628,7 +632,7 @@ fmt:
 [group('Lint')]
 lint:
     @echo '🔍 Python (ruff check --fix)...'
-    uvx ruff check . --fix
+    uvx ruff@0.15.22 check . --fix
     @echo '🔍 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
@@ -645,9 +649,9 @@ lint:
 [group('Lint')]
 check:
     @echo '🔎 Python (ruff format --check)...'
-    uvx ruff format --check .
+    uvx ruff@0.15.22 format --check .
     @echo '🔎 Python (ruff check, no --fix)...'
-    uvx ruff check .
+    uvx ruff@0.15.22 check .
     @echo '🔎 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
