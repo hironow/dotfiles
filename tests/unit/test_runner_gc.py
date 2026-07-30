@@ -945,6 +945,30 @@ def test_windows_installer_survives_without_elevation() -> None:
 # --- WSL workspaces: the mirror of the Windows leg ---------------------------
 
 
+def test_no_ambiguous_and_or_chains() -> None:
+    """`A && B || C` is not if-then-else: C also runs when B fails.
+
+    shellcheck flags it as SC2015, but only on some versions — the 0.11.0 on
+    this host stays quiet while the devcontainer's copy fails the build. That
+    divergence let the pattern through twice, so pin it here instead, where the
+    check runs everywhere.
+    """
+    offenders = []
+    for script in (GC, INSTALL, COMPACT, DISK, SCRIPTS / "gc_status.sh"):
+        for n, line in enumerate(script.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            # Only the three-part chain is ambiguous; `A && B` and `A || B`
+            # are fine, and so is a `||` inside a command substitution guard.
+            if re.search(r"&&.*\|\|", stripped):
+                offenders.append(f"{script.name}:{n}: {stripped}")
+    assert not offenders, (
+        "spell these as if/else — `A && B || C` runs C when B fails:\n"
+        + "\n".join(offenders)
+    )
+
+
 def test_wsl_leg_sweeps_workspaces_too() -> None:
     """`_work/<repo>` is the larger half: 23 GB against 3 GB of toolcache.
 
@@ -958,6 +982,23 @@ def test_wsl_leg_sweeps_workspaces_too() -> None:
         "workspaces must be aged on the marker file, not the directory mtime: "
         "a top-level mtime does not move when a build rewrites nested files, "
         "so a hot checkout reads cold."
+    )
+
+
+def test_workspace_sweep_is_exercisable_on_a_busy_runner() -> None:
+    """Only an explicit RUNNER_GC_ROOT may run the sweep during a job.
+
+    A concurrent worker normally stops it, but then the destructive path could
+    only ever be tested on an idle runner — and this box produced no idle
+    window in twelve minutes. The timer and the hook never name an install, so
+    RUNNER_GC_ROOT is a safe signal for a deliberate, targeted run.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert re.search(
+        r'if \[ -z "\$\{RUNNER_GC_ROOT:-\}" \] && _foreign_worker', text
+    ), (
+        "the workspace sweep must still back off for a concurrent job unless "
+        "an install was named explicitly."
     )
 
 
@@ -994,9 +1035,9 @@ def test_superseded_runner_versions_need_a_live_symlink() -> None:
     where bin/externals really are symlinks pointing elsewhere.
     """
     text = GC.read_text(encoding="utf-8")
-    assert re.search(r'\[ -L "\$\{_rdir\}/bin" \]', text), (
-        "superseded versions may only be reaped when bin is a symlink."
-    )
+    assert re.search(r'-L "\$\{_rdir\}/bin"', text) and re.search(
+        r'-L "\$\{_rdir\}/externals"', text
+    ), "superseded versions may only be reaped when bin/externals are symlinks."
     assert "readlink -f" in text, "the live target must be resolved and spared."
     # 24h floor, not the 2h retention: an update stages before it swings.
     assert "-mmin +1440" in text, (

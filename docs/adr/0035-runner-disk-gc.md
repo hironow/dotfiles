@@ -254,9 +254,13 @@ target they resolve to — a plain install keeps the live runner inside `bin.*`
 itself, where deleting the "old" one would brick it.
 
 `RUNNER_GC_ROOT` points the sweep at a single install, mirroring the Windows
-leg's `-RunnerRoot`. This is not just for tests: on a busy runner the idle
-window the sweep needs may not come for hours, so the destructive path has to be
-exercisable against a synthetic root rather than only against the live one.
+leg's `-RunnerRoot`, and is the one thing that lets the workspace leg run while
+a job is executing. Everywhere else a concurrent worker stops it, because that
+worker may be building inside one of these trees — but then the destructive path
+could only ever be exercised on an idle runner, and on this box no idle window
+appeared in twelve minutes of waiting. Naming an install explicitly is something
+the timer and the hook never do, so it is a safe signal for "I mean this one".
+The `.runner` guard and the live-workspace exclusions still apply.
 
 ### Windows → WSL dispatch
 

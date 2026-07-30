@@ -317,7 +317,13 @@ _ret_min="$(_retention_minutes)"
 # underscore instead would permanently exclude a repo actually named `_foo`.
 _runner_managed=" _actions _diag _PipelineMapping _temp _tool _update "
 
-if _foreign_worker; then
+# A concurrent job may be building inside one of these trees, so back off — with
+# one carve-out: an explicit RUNNER_GC_ROOT names a specific install, which the
+# timer and the hook never do. Without it the destructive path could only ever
+# be exercised on a runner that happens to be idle, and on a busy box that
+# window may not come for hours. The .runner guard and the live-workspace
+# exclusions still apply.
+if [ -z "${RUNNER_GC_ROOT:-}" ] && _foreign_worker; then
   log "workspaces: SKIP (another job is executing)"
 else
   _each_runner_dir | while read -r _rdir; do
@@ -331,7 +337,10 @@ else
     _live=""
     for _c in "${RUNNER_WORKSPACE:-}" "${GITHUB_WORKSPACE:-}"; do
       [ -n "$_c" ] || continue
-      _live="${_live} $(cd "$_c" 2>/dev/null && pwd || printf '%s' "$_c")"
+      # Resolve to an absolute path when it exists; fall back to the raw value.
+      _abs="$(cd "$_c" 2>/dev/null && pwd)"
+      [ -n "$_abs" ] || _abs="$_c"
+      _live="${_live} ${_abs}"
     done
 
     # Stamp the workspace of the job that just finished, so the next sweep ages
@@ -368,7 +377,7 @@ fi
 # a short window could catch one mid-flight. Reaped only where bin/externals
 # really are symlinks — a plain install keeps the live runner in bin.* itself.
 _each_runner_dir | while read -r _rdir; do
-  [ -L "${_rdir}/bin" ] && [ -L "${_rdir}/externals" ] || continue
+  if [ ! -L "${_rdir}/bin" ] || [ ! -L "${_rdir}/externals" ]; then continue; fi
   _live_bin="$(readlink -f "${_rdir}/bin" 2>/dev/null)"
   _live_ext="$(readlink -f "${_rdir}/externals" 2>/dev/null)"
   for _old in "${_rdir}"/bin.* "${_rdir}"/externals.*; do
