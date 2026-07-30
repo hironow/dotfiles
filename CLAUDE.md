@@ -154,6 +154,70 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   のまま温存 (node 同梱シム + `PNPM_HOME` は store アンカーのみ、`pnpm add -g` は依然
   abort、global CLI は mise npm: のみ)。`corepack enable`/`prepare`/`use` は素通り。
   `dump/npm-global` / `add-pnpm-g` / `update-pnpm-g*` / `check-pnpm-g` は退役済み。
+- **WSL self-hosted runner の disk ratchet (ADR 0035)**: runner を載せた WSL distro の
+  `ext4.vhdx` は docker の image / stopped container / **BuildKit build cache** が
+  無制限に積み上がる (既定で GC policy が無い)。放置すると C: が枯渇し、しかも
+  **空きが尽きると vhdx を展開できず WSL 自体が起動不能になる** (`I/O error @util.cpp`
+  → systemd 起動失敗) デッドロックに入る。`just runner-gc-install` が **2時間保持**の
+  GC を三重に仕掛ける (job-completed hook / hourly timer / journald cap)。関連する罠:
+    - **job 検出は `pgrep -x Runner.Worker` 必須**。`pgrep -f` は GC 自身のコマンド行に
+      マッチして「常時ジョブ実行中」と誤判定し、GC を無言で永久停止させる。
+    - **rootless docker のホストでは root の timer が別 daemon を掃除する**。hourly timer は
+      root で走るが root の context は `/var/run/docker.sock` (rootful) に解決し、実在庫は
+      `/run/user/<uid>/docker.sock` (rootless) 側にある。`docker info` は空の rootful でも
+      成功するため **回収ゼロで exit 0** になる。GC は root 実行時、runner ディレクトリの
+      **所有ユーザで docker leg を再実行**する (`runuser` + `XDG_RUNTIME_DIR`)。root 自身の
+      leg も残すので rootful 専用ホストは無影響。
+    - **toolcache は「世代数」でなく `major.minor` 系列で回収する**。workflow は
+      `go-version: 1.25.x` / `node-version: 22.x` / `python-version: 3.13` のように**系列**を
+      pin し、`setup-*` は系列内の最新 patch に解決する。単純な「最新 N 世代を残す」は matrix が
+      使う版を消す (この runner では rvc-hfie=3.10 / m4k3=3.13 / just-ag=3.14 と Python が3系列)。
+      **系列ごとに最新 patch を残し**、`RUNNER_GC_TOOLCACHE_KEEP` (既定 5) で系列数を上限する。
+    - **並び替えは `sort -V` 必須**。辞書順だと `1.25.8` が `1.25.11` より後に来て**最新版を消す**。
+      削除単位は `<version>/` ディレクトリ丸ごと (`<version>/<arch>.complete` マーカーが内側に
+      あるため、部分削除は「cached のはずが実体無し」を作る)。
+    - **最終使用時刻は取れない**。`relatime` かつ `_tool` を walk する処理 (GC 自身を含む) が
+      atime を書き換えてしまう。mtime は install 時刻で使用時刻ではない (matrix で現役の
+      Python 3.10.20 は mtime が7週前)。だから時間予算でなく系列で判定している。
+    - この leg だけは `RUNNER_GC_FORCE=1` でも job 実行中はスキップする (cache 喪失は時間の損
+      だが、使用中の toolcache 削除は job を即死させるため)。
+    - **Windows→WSL dispatch は `MSYS_NO_PATHCONV=1` / `MSYS2_ARG_CONV_EXCL='*'` 必須**。
+      Git Bash が `/usr/local/bin/...` や `/mnt/c/...`、素の `/` すら Windows パスへ
+      書き換えてから `wsl.exe` に渡すため。
+    - **guest 内で消しても C: は増えない。返すのは `fstrim`**。vhdx は解放済み ext4 block を
+      Windows から掴んだままなので、45GB prune しても C: が動かず「GC が効いていない」と見える。
+      WSL の vhdx は通常 **sparse** なので `fstrim /` でホールパンチすれば**無停止・非管理者で**
+      即返却される (実測 43.5GB、vhdx 実占有 174→130GB)。GC の root leg 末尾で実行する。
+    - **スラックは実占有 (`du -B1`) で測る**。`stat -c %s` は論理サイズ=高水位マークで decrease
+      しないため、`論理 - 使用` は「既に返却済みの分」まで slack に数えて過大報告する
+      (実測: 報告130GB / 実際33GB)。`just wsl-compact` は sparse フラグ
+      (`fsutil sparse queryflag`) も出す。**sparse なら compaction 不要、非 sparse なら必要**で
+      機体ごとに答えが違う。
+    - **実際に肥大するのは docker ではなく開発キャッシュ**。`~/.cache/uv` 単体で 44GB
+      (姉妹機は 126GB)、Windows profile 全体が ~2.5GB なのと対照的。`just disk-gc` は
+      **WSL の runner ユーザ HOME まで掃除する** (`DISK_GC_NO_WSL=1` で無効化)。hourly timer に
+      は載せない (対話作業と共有のため)。`~/.cache/huggingface` は既定で対象外
+      (`DISK_GC_HUGGINGFACE=1` で opt-in。単一モデル 77GB、wheel の再取得とは訳が違う)
+    - **compaction は非 sparse 機のフォールバック**。既存スラックの返却に管理者権限 +
+      `wsl --shutdown` (= runner 停止) が要るため `just wsl-compact` は計測と手順提示に
+      留める advisory。**`wsl --manage --set-sparse` を自分で有効化しない** — MS が
+      データ破損リスクで無効化中 (`--allow-unsafe` が必要)。既に sparse な vhdx を
+      `fstrim` で使うのは別物で、こちらは安全。
+    - **native Windows 側の主犯は `_work/<repo>`** (`_diag` や `_work/_temp` ではない。
+      実測 5.1G / うち Rust `target/` 3.7G に対し `_temp` は 12K)。**ディレクトリ mtime で
+      期限判定してはいけない** — Windows は入れ子のファイル更新で親ディレクトリの
+      `LastWriteTime` を更新しないため、数分前にビルドした checkout が2ヶ月前の日付を
+      示す。`.runner-gc-last-used` マーカーを GC 自身が押して、それを基準に aging する。
+      加えて `RUNNER_WORKSPACE` / `GITHUB_WORKSPACE` の指す checkout は無条件に除外
+      (hook がステップ間で発火しても現行ジョブを消さないため)。
+    - **workspace の削除は素の `Remove-Item` では完走しない**。junction (5.1 の
+      `-Recurse` はリンクを**貫通して**リンク先を消す)、read-only な `.git/objects`、
+      MAX_PATH 超え (`node_modules`) の3つが原因。reparse point を先に非再帰で
+      detach → read-only 解除 → 残りは `robocopy /MIR /XJ` で潰す順序が必須。
+    - **runner 自己更新の残骸 (`_work/_update`, 旧 `bin.*`/`externals.*`) は 24h の
+      別枠 floor** で回収する。2時間枠だと進行中の self-update を巻き込む。旧版削除は
+      `bin`/`externals` が **symlink として解決できる時だけ** (plain install では
+      `bin.*` が runner 本体そのものなので消すと壊れる)。
 - devcontainer features は Microsoft 公式のみ (community 不可、memory
   `feedback_no_community_devcontainer_features`)。
 
