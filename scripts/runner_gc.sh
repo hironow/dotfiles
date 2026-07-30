@@ -23,6 +23,11 @@ set -eu
 
 RETENTION="${RUNNER_GC_RETENTION:-2h}"
 FORCE="${RUNNER_GC_FORCE:-0}"
+DIAG_DAYS="${RUNNER_GC_DIAG_DAYS:-7}"
+TOOLCACHE_KEEP="${RUNNER_GC_TOOLCACHE_KEEP:-1}"
+# Set by the root->runner-user re-entry below: do the docker leg only, so the
+# child neither recurses nor repeats the root-only apt/journal/_diag work.
+DOCKER_ONLY="${RUNNER_GC_DOCKER_ONLY:-0}"
 
 log() { printf '[runner-gc] %s %s\n' "$(date -Is)" "$*"; }
 
@@ -79,6 +84,17 @@ _df_root() { df -h / | awk 'NR==2 {print $3" used, "$4" avail ("$5")"}'; }
 
 log "start (retention=${RETENTION}) — / : $(_df_root)"
 
+# --- Runner installs --------------------------------------------------------
+# Same globs the installer uses to place the job hook, so both agree on what
+# counts as a runner install.
+_each_runner_dir() {
+  for _d in /home/*/actions-runner* /root/actions-runner* /opt/actions-runner*; do
+    [ -d "$_d" ] || continue
+    [ -f "${_d}/config.sh" ] || continue
+    printf '%s\n' "$_d"
+  done
+}
+
 # --- Docker -----------------------------------------------------------------
 _docker_gc() {
   if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
@@ -102,7 +118,93 @@ _docker_gc() {
   log "docker: after  — $(docker system df --format '{{.Type}}={{.Size}}' | tr '\n' ' ')"
 }
 
+# The docker-only re-entry (see below) stops here: everything past this point
+# is either root-only or would be repeated once per runner user.
+if [ "$DOCKER_ONLY" = "1" ]; then
+  _docker_gc
+  log "done (docker-only) — / : $(_df_root)"
+  exit 0
+fi
+
 _docker_gc
+
+# --- Reach the runner's own daemon ------------------------------------------
+# The hourly timer runs as root, and root's docker context is NOT the runner's.
+# Where the runner drives ROOTLESS docker, root resolves to /var/run/docker.sock
+# — a different daemon, usually empty — so every prune above "succeeds" against
+# nothing while the real hoard at /run/user/<uid>/docker.sock keeps growing.
+# `docker info` succeeds against that empty daemon too, so nothing surfaces the
+# miss: the sweep exits 0 having reclaimed zero.
+#
+# So re-enter the docker leg as each runner's owning user, whose context points
+# at the daemon its jobs actually dirty. Root's own leg above is kept, which is
+# what a rootful-only host needs — neither topology regresses.
+if _is_root && command -v runuser >/dev/null 2>&1; then
+  _each_runner_dir | while read -r _rdir; do
+    _ruser="$(stat -c '%U' "$_rdir" 2>/dev/null || true)"
+    _ruid="$(stat -c '%u' "$_rdir" 2>/dev/null || true)"
+    if [ -z "$_ruser" ] || [ "$_ruser" = "root" ] || [ -z "$_ruid" ]; then
+      continue
+    fi
+    _rhome="$(getent passwd "$_ruser" | cut -d: -f6)"
+    [ -n "$_rhome" ] || continue
+    log "docker: re-entering as ${_ruser} (uid ${_ruid}) for its own daemon"
+    runuser -u "$_ruser" -- env \
+      HOME="$_rhome" \
+      XDG_RUNTIME_DIR="/run/user/${_ruid}" \
+      RUNNER_GC_DOCKER_ONLY=1 \
+      RUNNER_GC_RETENTION="$RETENTION" \
+      RUNNER_GC_FORCE="$FORCE" \
+      "$0" || log "docker: re-entry as ${_ruser} failed (non-fatal)"
+  done
+elif _is_root; then
+  log "docker: runuser missing; cannot reach a rootless runner daemon"
+fi
+
+# --- Runner _diag logs ------------------------------------------------------
+# The runner never rotates these; left alone they accumulate for the life of
+# the box. Age-based so the current job's logs are untouched.
+_each_runner_dir | while read -r _rdir; do
+  [ -d "${_rdir}/_diag" ] || continue
+  _n="$(find "${_rdir}/_diag" -type f -mtime +"${DIAG_DAYS}" 2>/dev/null | wc -l)"
+  [ "$_n" -gt 0 ] || continue
+  find "${_rdir}/_diag" -type f -mtime +"${DIAG_DAYS}" -delete 2>/dev/null || true
+  log "_diag: removed ${_n} file(s) older than ${DIAG_DAYS}d in ${_rdir}"
+done
+
+# --- Toolcache generations --------------------------------------------------
+# `actions/setup-*` stacks _work/_tool/<tool>/<version>/ per release and never
+# removes the old one (CodeQL alone is ~1.7 GB a generation).
+#
+# Two traps. Ordering MUST be `sort -V`: lexically `1.25.8` sorts above
+# `1.25.11`, so a plain sort keeps the older tool and deletes the newest. And
+# the unit of deletion MUST be the whole <version>/ directory, because the
+# `<version>/<arch>.complete` marker the runner trusts lives inside it —
+# removing anything narrower leaves the cache claiming a tool that is gone.
+#
+# This re-checks for a live job even under FORCE: losing build cache only costs
+# time, but deleting a <version>/ a running job already resolved fails its next
+# step outright.
+if pgrep -x Runner.Worker >/dev/null 2>&1; then
+  log "toolcache: SKIP (a job is executing; deleting an in-use version breaks it)"
+else
+  _each_runner_dir | while read -r _rdir; do
+    [ -d "${_rdir}/_work/_tool" ] || continue
+    for _tool in "${_rdir}"/_work/_tool/*/; do
+      [ -d "$_tool" ] || continue
+      _stale="$(
+        find "$_tool" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null |
+          sort -V | head -n "-${TOOLCACHE_KEEP}"
+      )"
+      [ -n "$_stale" ] || continue
+      printf '%s\n' "$_stale" | while read -r _ver; do
+        [ -n "$_ver" ] || continue
+        rm -rf "${_tool}${_ver}"
+        log "toolcache: removed $(basename "$_tool")/${_ver}"
+      done
+    done
+  done
+fi
 
 # --- apt / journal (root only) ----------------------------------------------
 # Both need privileges; under the systemd timer we are root, under the runner

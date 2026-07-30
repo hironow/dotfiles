@@ -162,6 +162,17 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   GC を三重に仕掛ける (job-completed hook / hourly timer / journald cap)。関連する罠:
     - **job 検出は `pgrep -x Runner.Worker` 必須**。`pgrep -f` は GC 自身のコマンド行に
       マッチして「常時ジョブ実行中」と誤判定し、GC を無言で永久停止させる。
+    - **rootless docker のホストでは root の timer が別 daemon を掃除する**。hourly timer は
+      root で走るが root の context は `/var/run/docker.sock` (rootful) に解決し、実在庫は
+      `/run/user/<uid>/docker.sock` (rootless) 側にある。`docker info` は空の rootful でも
+      成功するため **回収ゼロで exit 0** になる。GC は root 実行時、runner ディレクトリの
+      **所有ユーザで docker leg を再実行**する (`runuser` + `XDG_RUNTIME_DIR`)。root 自身の
+      leg も残すので rootful 専用ホストは無影響。
+    - **toolcache の世代回収は `sort -V` 必須**。辞書順だと `1.25.8` が `1.25.11` より後に
+      来て**最新版を消す**。削除単位は `<version>/` ディレクトリ丸ごと (`<version>/<arch>.complete`
+      マーカーが内側にあるため、部分削除は「cached のはずが実体無し」を作る)。この leg だけは
+      `RUNNER_GC_FORCE=1` でも job 実行中はスキップする (cache 喪失は時間の損だが、使用中の
+      toolcache 削除は job を即死させるため)。
     - **Windows→WSL dispatch は `MSYS_NO_PATHCONV=1` / `MSYS2_ARG_CONV_EXCL='*'` 必須**。
       Git Bash が `/usr/local/bin/...` や `/mnt/c/...`、素の `/` すら Windows パスへ
       書き換えてから `wsl.exe` に渡すため。

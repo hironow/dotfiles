@@ -49,7 +49,8 @@ idempotent installer, wired to three independent brakes:
 | -------------------------------------- | ------------------------------ | --------------------------------- |
 | collect right after each job           | `ACTIONS_RUNNER_HOOK_JOB_COMPLETED` | same env var, `.ps1` payload |
 | hourly floor (idle drift, missed hooks) | `runner-gc.timer` (Persistent) | Scheduled Task `dotfiles-runner-gc` |
-| uncapped logs                          | journald `SystemMaxUse=200M`   | `_diag` trimmed at 7 days         |
+| uncapped logs                          | journald `SystemMaxUse=200M`, `_diag` trimmed at 7 days | `_diag` trimmed at 7 days |
+| stacked toolcache generations           | `_work/_tool/<tool>/<version>/`, newest N kept | (native runner installs tools per job) |
 
 `just runner-gc` and `just runner-gc-install` drive **both** legs from the
 Windows side, so there is one command to remember rather than two.
@@ -74,6 +75,54 @@ exact-name match, so it has no equivalent hazard — but its scripts **must stay
 ASCII-only**: `powershell.exe` (5.1) reads a BOM-less UTF-8 script as ANSI, so
 emoji in log lines arrive mojibake under the Scheduled Task.
 
+### Reaching the runner's own Docker daemon
+
+The hourly timer runs as root, and **root's Docker context is not the
+runner's**. Where the runner drives *rootless* Docker, root resolves to
+`/var/run/docker.sock` — a different daemon, typically empty — so every prune
+succeeds against nothing while the real hoard at `/run/user/<uid>/docker.sock`
+keeps growing. `docker info` succeeds against that empty daemon too, so both
+`system df` lines read ~0 B and the sweep exits 0 having reclaimed zero: the
+same silent-stop class as the `pgrep -f` trap, but reached by a different road.
+
+Measured on the WSL box that hosts `actions-runner-linux-wsl`: the rootless
+daemon held 148 GB of images and 128 GB of build cache while the rootful daemon
+it would otherwise have swept held **0 B**.
+
+So when running as root, the docker leg is re-entered once per runner install
+as that install's **owning user** (`runuser -u <owner> -- env
+XDG_RUNTIME_DIR=/run/user/<uid> … RUNNER_GC_DOCKER_ONLY=1 "$0"`), whose context
+points at the daemon its jobs actually dirty. Root's own leg is kept as well,
+which is what a rootful-only host needs — so neither topology regresses and no
+host-type branching is required.
+
+Identity, not socket path, is the key: the authority on *which* daemon to reach
+is the Docker context store, not a `/run/user/*/docker.sock` glob. Running as
+the owner delegates that decision to Docker instead of re-deriving it, and it
+keeps working for hosts whose context points somewhere else entirely.
+
+### Toolcache generations
+
+`actions/setup-*` stacks a fresh `_work/_tool/<tool>/<version>/` per release and
+never removes the previous one. On the WSL box this had reached 7 generations of
+Go, 4 of `uv`, 4 of CodeQL — the last at ~1.7 GB each, roughly 30 GB a year from
+CodeQL alone. `RUNNER_GC_TOOLCACHE_KEEP` (default 1) keeps the newest N.
+
+Two traps, both silent:
+
+- **Ordering must be `sort -V`.** Lexically `1.25.8` sorts *above* `1.25.11`, so
+  a plain `sort` keeps the older tool and deletes the newest. Both versions were
+  present on the box, so this would have fired immediately.
+- **The unit of deletion must be the whole `<version>/` directory**, because the
+  `<version>/<arch>.complete` marker the runner trusts to decide a tool is
+  cached lives *inside* it. Removing anything narrower leaves the cache
+  advertising a tool that is no longer on disk.
+
+This leg re-checks for a live job **even under `RUNNER_GC_FORCE=1`**. Losing
+build cache to a forced prune only costs time, but deleting a `<version>/` that
+a running job already resolved fails its next step outright — so the two are not
+equally forceable.
+
 ### Windows → WSL dispatch
 
 `just runner-gc` / `runner-gc-install` run from the Windows side, where the
@@ -93,6 +142,11 @@ each dispatch sets `MSYS_NO_PATHCONV=1` / `MSYS2_ARG_CONV_EXCL='*'`.
   disk. Raise `RUNNER_GC_RETENTION` if CI wall-clock matters more than space.
 - Host-side profile caches (mise/bun/uv/cargo/npm) are handled separately by
   `just disk-gc`, which only ever removes regenerable caches.
+- **Version-matrix workflows re-download their toolchains** under the default
+  `RUNNER_GC_TOOLCACHE_KEEP=1`: a job matrix testing Python 3.10 and 3.13 keeps
+  only the newest generation, so the pinned ones are fetched again on the next
+  run. Nothing breaks — the leg never deletes while a job runs — but CI pays the
+  download. Raise the value to the number of versions the matrices actually pin.
 
 ### Rejected: sparse VHD
 

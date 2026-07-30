@@ -19,6 +19,19 @@ start:
 - **Mojibake logs.** `powershell.exe` (5.1) reads a BOM-less UTF-8 script as
   ANSI, so the Windows scripts must stay ASCII-only to remain readable in the
   Scheduled Task's log — the only trace an unattended run leaves.
+- **Wrong daemon.** The hourly timer runs as root. On a host where the runner
+  drives *rootless* Docker, root's `docker` resolves to `/var/run/docker.sock`
+  — a different, usually empty daemon — so `docker info` succeeds, both
+  `system df` lines read ~0B and the sweep exits 0 having reclaimed nothing,
+  while the runner's real hoard grows untouched.
+- **Unbounded `_diag`.** The runner never rotates its own diagnostic logs, so
+  they accumulate for the life of the box.
+- **Toolcache generations.** `actions/setup-*` stacks a new
+  `_tool/<tool>/<version>/` per release and never drops the old one. Reaping it
+  by *lexical* order silently deletes the newest (`1.25.8` sorts above
+  `1.25.11`), and deleting anything narrower than the whole `<version>/`
+  directory leaves the `<version>/<arch>.complete` marker claiming a tool that
+  is no longer there.
 
 Static checks only (part of `tests/unit/`): the scripts drive a live runner,
 systemd and the Windows task scheduler, none of which is reproducible
@@ -192,6 +205,92 @@ def test_windows_entrypoint_drives_both_runners() -> None:
             f"{script.name} must not `exec` into WSL — that would skip the "
             "Windows leg entirely."
         )
+
+
+def test_docker_leg_also_runs_as_each_runner_owner() -> None:
+    """Root's own docker context cannot reach a rootless daemon.
+
+    The timer runs as root. Where the runner drives rootless Docker, root's
+    `docker` talks to `/var/run/docker.sock` — a *different* daemon that is
+    typically empty — so every prune succeeds against nothing and the sweep
+    reports success. Root must therefore also re-enter the docker leg as each
+    runner's owning user, whose context points at the daemon the jobs actually
+    dirty. Keeping root's own leg as well means a rootful-only host is
+    unaffected, so the fix cannot regress either topology.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert re.search(r"runuser\s+-u", text), (
+        "runner_gc.sh must drop to the runner's owning user for the docker "
+        "leg; as root it would prune the wrong (often empty) daemon."
+    )
+    assert "XDG_RUNTIME_DIR" in text, (
+        "the re-entry must set XDG_RUNTIME_DIR so the rootless context "
+        "resolves to /run/user/<uid>/docker.sock."
+    )
+    assert "RUNNER_GC_DOCKER_ONLY" in text, (
+        "the re-entry needs a docker-only mode so it neither recurses nor "
+        "repeats the root-only apt/journal work."
+    )
+
+
+def test_diag_logs_are_rotated_on_the_linux_leg() -> None:
+    """The runner never rotates `_diag`; nothing else will.
+
+    The Windows leg already trims `_diag`; without the same on the Linux leg
+    the WSL runner keeps every diagnostic log it has ever written.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert "_diag" in text, (
+        "runner_gc.sh must rotate the runner's _diag logs — they are never "
+        "rotated by the runner itself."
+    )
+    assert re.search(r"-mtime\s+\+", text), (
+        "_diag rotation must be age-based (`find -mtime +N`), so the current "
+        "job's logs survive."
+    )
+
+
+def test_toolcache_reaping_is_semver_ordered_and_atomic() -> None:
+    """Lexical order deletes the newest tool; partial deletes corrupt the cache.
+
+    `sort -V` is mandatory: this box holds `go/1.25.8` and `go/1.25.11`, and
+    lexically `1.25.8` sorts *above* `1.25.11`, so a plain `sort` would keep
+    the older one and delete the newest. The unit of deletion must be the whole
+    `<version>/` directory, because `<version>/<arch>.complete` — the marker
+    the runner trusts to decide a tool is cached — lives inside it.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert "_tool" in text, (
+        "runner_gc.sh must reap stale toolcache generations; setup-* actions "
+        "stack one directory per release and never remove the old ones."
+    )
+    assert re.search(r"\bsort\s+-V\b", text), (
+        "toolcache generations must be ordered with `sort -V`; lexical order "
+        "keeps 1.25.8 over 1.25.11 and deletes the newest tool."
+    )
+    bad = [
+        line
+        for line in text.splitlines()
+        if re.search(r"^\s*[^#]*\bsort\s+-r?\s*$", line)
+        or re.search(r"^\s*[^#]*\bsort\s+-r\b", line)
+    ]
+    assert not bad, f"toolcache ordering must not fall back to lexical sort: {bad}"
+
+
+def test_toolcache_reaping_never_races_a_running_job() -> None:
+    """Deleting an in-use `<version>/` breaks the job outright.
+
+    Losing build cache to a prune only costs time, so `RUNNER_GC_FORCE=1`
+    may bypass the job guard for Docker. Removing a toolcache directory that a
+    running job resolved earlier makes its next step fail with ENOENT, so this
+    leg must re-check for a live job regardless of FORCE.
+    """
+    text = GC.read_text(encoding="utf-8")
+    guards = re.findall(r"pgrep\s+-x\s+Runner\.Worker", text)
+    assert len(guards) >= 2, (
+        "the toolcache leg needs its own `pgrep -x Runner.Worker` guard that "
+        "FORCE cannot bypass, separate from the top-level docker guard."
+    )
 
 
 @pytest.mark.skipif(
