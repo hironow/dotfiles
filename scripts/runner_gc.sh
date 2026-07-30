@@ -80,7 +80,11 @@ _df_root() { df -h / | awk 'NR==2 {print $3" used, "$4" avail ("$5")"}'; }
 log "start (retention=${RETENTION}) — / : $(_df_root)"
 
 # --- Docker -----------------------------------------------------------------
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+_docker_gc() {
+  if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+    log "docker: not available; skipping"
+    return 0
+  fi
   log "docker: before — $(docker system df --format '{{.Type}}={{.Size}}' | tr '\n' ' ')"
 
   # Order matters: containers first so the images they pin become prunable.
@@ -96,9 +100,9 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   done
 
   log "docker: after  — $(docker system df --format '{{.Type}}={{.Size}}' | tr '\n' ' ')"
-else
-  log "docker: not available; skipping"
-fi
+}
+
+_docker_gc
 
 # --- apt / journal (root only) ----------------------------------------------
 # Both need privileges; under the systemd timer we are root, under the runner
