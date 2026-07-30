@@ -184,18 +184,30 @@ foreach ($root in $runnerRoots) {
             Where-Object { $_.LastWriteTime -lt $diagCutoff }
         if ($old) {
             $mb = [math]::Round((($old | Measure-Object Length -Sum).Sum) / 1MB, 1)
-            $old | Remove-Item -Force -ErrorAction SilentlyContinue
-            Write-GcLog ("runner: removed {0} _diag logs older than {1}d ({2} MB)" -f $old.Count, $DiagRetentionDays, $mb)
+            if ($DryRun) {
+                Write-GcLog ("DRY-RUN: would remove {0} _diag logs older than {1}d ({2} MB)" -f $old.Count, $DiagRetentionDays, $mb)
+            }
+            else {
+                $old | Remove-Item -Force -ErrorAction SilentlyContinue
+                Write-GcLog ("runner: removed {0} _diag logs older than {1}d ({2} MB)" -f $old.Count, $DiagRetentionDays, $mb)
+            }
         }
     }
 
     # _temp is pure scratch - the runner recreates it per job.
     $temp = Join-Path $root '_work\_temp'
     if (Test-Path $temp) {
-        Get-ChildItem $temp -Force -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -lt $diagCutoff } |
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-        Write-GcLog 'runner: _work\_temp scratch trimmed'
+        $scratch = @(Get-ChildItem $temp -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -lt $diagCutoff })
+        if ($DryRun) {
+            if ($scratch.Count) {
+                Write-GcLog ("DRY-RUN: would trim {0} _work\_temp entries" -f $scratch.Count)
+            }
+        }
+        else {
+            $scratch | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            Write-GcLog 'runner: _work\_temp scratch trimmed'
+        }
     }
 
     # --- Workspaces ---------------------------------------------------------
@@ -299,7 +311,16 @@ foreach ($root in $runnerRoots) {
         if (-not $target) { continue }
         $current = Split-Path -Leaf $target
         Get-ChildItem -LiteralPath $root -Directory -Force -Filter "$name.*" -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ne $current -and $_.LastWriteTime -lt $staleCutoff } |
+            Where-Object {
+                # Windows reads a trailing `.*` as "extension optional", so
+                # this filter also returns the live `bin` link - whose name
+                # never equals the resolved target, so the check below would
+                # wave it through and leave a runner that cannot start.
+                $_.Name -ne $name -and
+                -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
+                $_.Name -ne $current -and
+                $_.LastWriteTime -lt $staleCutoff
+            } |
             ForEach-Object {
                 Write-GcLog ("runner: collecting superseded {0}" -f $_.Name)
                 Remove-Tree $_.FullName
