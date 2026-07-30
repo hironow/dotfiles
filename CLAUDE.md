@@ -168,11 +168,19 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
       成功するため **回収ゼロで exit 0** になる。GC は root 実行時、runner ディレクトリの
       **所有ユーザで docker leg を再実行**する (`runuser` + `XDG_RUNTIME_DIR`)。root 自身の
       leg も残すので rootful 専用ホストは無影響。
-    - **toolcache の世代回収は `sort -V` 必須**。辞書順だと `1.25.8` が `1.25.11` より後に
-      来て**最新版を消す**。削除単位は `<version>/` ディレクトリ丸ごと (`<version>/<arch>.complete`
-      マーカーが内側にあるため、部分削除は「cached のはずが実体無し」を作る)。この leg だけは
-      `RUNNER_GC_FORCE=1` でも job 実行中はスキップする (cache 喪失は時間の損だが、使用中の
-      toolcache 削除は job を即死させるため)。
+    - **toolcache は「世代数」でなく `major.minor` 系列で回収する**。workflow は
+      `go-version: 1.25.x` / `node-version: 22.x` / `python-version: 3.13` のように**系列**を
+      pin し、`setup-*` は系列内の最新 patch に解決する。単純な「最新 N 世代を残す」は matrix が
+      使う版を消す (この runner では rvc-hfie=3.10 / m4k3=3.13 / just-ag=3.14 と Python が3系列)。
+      **系列ごとに最新 patch を残し**、`RUNNER_GC_TOOLCACHE_KEEP` (既定 5) で系列数を上限する。
+    - **並び替えは `sort -V` 必須**。辞書順だと `1.25.8` が `1.25.11` より後に来て**最新版を消す**。
+      削除単位は `<version>/` ディレクトリ丸ごと (`<version>/<arch>.complete` マーカーが内側に
+      あるため、部分削除は「cached のはずが実体無し」を作る)。
+    - **最終使用時刻は取れない**。`relatime` かつ `_tool` を walk する処理 (GC 自身を含む) が
+      atime を書き換えてしまう。mtime は install 時刻で使用時刻ではない (matrix で現役の
+      Python 3.10.20 は mtime が7週前)。だから時間予算でなく系列で判定している。
+    - この leg だけは `RUNNER_GC_FORCE=1` でも job 実行中はスキップする (cache 喪失は時間の損
+      だが、使用中の toolcache 削除は job を即死させるため)。
     - **Windows→WSL dispatch は `MSYS_NO_PATHCONV=1` / `MSYS2_ARG_CONV_EXCL='*'` 必須**。
       Git Bash が `/usr/local/bin/...` や `/mnt/c/...`、素の `/` すら Windows パスへ
       書き換えてから `wsl.exe` に渡すため。

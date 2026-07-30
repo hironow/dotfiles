@@ -24,7 +24,10 @@ set -eu
 RETENTION="${RUNNER_GC_RETENTION:-2h}"
 FORCE="${RUNNER_GC_FORCE:-0}"
 DIAG_DAYS="${RUNNER_GC_DIAG_DAYS:-7}"
-TOOLCACHE_KEEP="${RUNNER_GC_TOOLCACHE_KEEP:-1}"
+# How many major.minor SERIES of each tool survive (the newest patch of each).
+# Must exceed the number of series the workflows on this runner pin between
+# them; see the toolcache section below for why series, not versions.
+TOOLCACHE_KEEP="${RUNNER_GC_TOOLCACHE_KEEP:-5}"
 # Set by the root->runner-user re-entry below: do the docker leg only, so the
 # child neither recurses nor repeats the root-only apt/journal/_diag work.
 DOCKER_ONLY="${RUNNER_GC_DOCKER_ONLY:-0}"
@@ -176,15 +179,38 @@ done
 # `actions/setup-*` stacks _work/_tool/<tool>/<version>/ per release and never
 # removes the old one (CodeQL alone is ~1.7 GB a generation).
 #
-# Two traps. Ordering MUST be `sort -V`: lexically `1.25.8` sorts above
-# `1.25.11`, so a plain sort keeps the older tool and deletes the newest. And
-# the unit of deletion MUST be the whole <version>/ directory, because the
+# Reap by SERIES, not by count. Workflows pin a series — `go-version: 1.25.x`,
+# `node-version: 22.x`, `python-version: 3.13` — and setup-* resolves it to the
+# newest patch within that series. So "keep the newest N versions" evicts what
+# the matrices still need: three repos on this runner pin Python 3.10, 3.13 and
+# 3.14 between them, and keeping only the newest would re-download two of them
+# on every job. Keeping the newest patch of each series protects exactly what a
+# series pin resolves to, while still reaping the patches it has superseded
+# (1.25.0 and 1.25.8 sat behind 1.25.11). TOOLCACHE_KEEP then bounds how many
+# series survive so the cache cannot grow forever either.
+#
+# Last-use would be the natural axis, matching the 2h budget elsewhere, but
+# there is no usable signal: the filesystem is `relatime`, and any sweep that
+# walks _tool (this one included) rewrites every atime it reads. mtime is the
+# install time, not the use time — Python 3.10.20 was installed seven weeks ago
+# and is still pinned.
+#
+# Two traps, both silent. Ordering MUST be `sort -V`: lexically `1.25.8` sorts
+# above `1.25.11`, so a plain sort keeps the older tool and deletes the newest.
+# And the unit of deletion MUST be the whole <version>/ directory, because the
 # `<version>/<arch>.complete` marker the runner trusts lives inside it —
 # removing anything narrower leaves the cache claiming a tool that is gone.
 #
 # This re-checks for a live job even under FORCE: losing build cache only costs
 # time, but deleting a <version>/ a running job already resolved fails its next
 # step outright.
+_tool_series() { # 1.25.11 -> 1.25 ; 2.26.2 -> 2.26 ; anything else -> itself
+  case "$1" in
+    *.*.*) printf '%s' "${1%.*}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 if pgrep -x Runner.Worker >/dev/null 2>&1; then
   log "toolcache: SKIP (a job is executing; deleting an in-use version breaks it)"
 else
@@ -192,15 +218,33 @@ else
     [ -d "${_rdir}/_work/_tool" ] || continue
     for _tool in "${_rdir}"/_work/_tool/*/; do
       [ -d "$_tool" ] || continue
-      _stale="$(
-        find "$_tool" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null |
-          sort -V | head -n "-${TOOLCACHE_KEEP}"
-      )"
-      [ -n "$_stale" ] || continue
-      printf '%s\n' "$_stale" | while read -r _ver; do
-        [ -n "$_ver" ] || continue
-        rm -rf "${_tool}${_ver}"
-        log "toolcache: removed $(basename "$_tool")/${_ver}"
+      mapfile -t _vers < <(
+        find "$_tool" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort -V
+      )
+      [ "${#_vers[@]}" -gt 0 ] || continue
+
+      # Newest TOOLCACHE_KEEP series, then the newest patch inside each.
+      mapfile -t _keep_series < <(
+        for _v in "${_vers[@]}"; do _tool_series "$_v"; printf '\n'; done |
+          sort -V -u | tail -n "$TOOLCACHE_KEEP"
+      )
+      _keep=()
+      for _s in "${_keep_series[@]}"; do
+        _newest=""
+        for _v in "${_vers[@]}"; do
+          if [ "$(_tool_series "$_v")" = "$_s" ]; then _newest="$_v"; fi
+        done
+        if [ -n "$_newest" ]; then _keep+=("$_newest"); fi
+      done
+
+      for _v in "${_vers[@]}"; do
+        _hit=0
+        for _k in "${_keep[@]}"; do
+          if [ "$_v" = "$_k" ]; then _hit=1; break; fi
+        done
+        if [ "$_hit" -eq 1 ]; then continue; fi
+        rm -rf "${_tool}${_v}"
+        log "toolcache: removed $(basename "$_tool")/${_v}"
       done
     done
   done

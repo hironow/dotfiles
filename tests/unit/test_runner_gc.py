@@ -250,6 +250,31 @@ def test_diag_logs_are_rotated_on_the_linux_leg() -> None:
     )
 
 
+def test_toolcache_keeps_the_newest_patch_of_each_series() -> None:
+    """Counting generations deletes versions the matrices still pin.
+
+    Workflows pin a *series* (`go-version: 1.25.x`, `node-version: 22.x`,
+    `python-version: 3.13`) and `setup-*` resolves it to the newest patch in
+    that series. So "keep the newest N versions" is the wrong axis: on this
+    runner three repos pin Python 3.10, 3.13 and 3.14, and keeping only the
+    newest would evict two of them on every sweep and re-download them on the
+    next job.
+
+    Keeping the newest patch *per series* protects exactly what a series pin
+    resolves to, while still reaping superseded patches (go had 1.25.0 and
+    1.25.8 sitting behind 1.25.11). `RUNNER_GC_TOOLCACHE_KEEP` then bounds how
+    many series survive, so the cache cannot grow without limit either.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert "RUNNER_GC_TOOLCACHE_KEEP" in text, (
+        "the number of retained series must stay configurable."
+    )
+    assert re.search(r"series", text, re.I), (
+        "toolcache reaping must group versions by major.minor series; a flat "
+        "newest-N count evicts versions the matrices still pin."
+    )
+
+
 def test_toolcache_reaping_is_semver_ordered_and_atomic() -> None:
     """Lexical order deletes the newest tool; partial deletes corrupt the cache.
 

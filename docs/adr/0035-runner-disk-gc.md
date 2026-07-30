@@ -106,7 +106,36 @@ keeps working for hosts whose context points somewhere else entirely.
 `actions/setup-*` stacks a fresh `_work/_tool/<tool>/<version>/` per release and
 never removes the previous one. On the WSL box this had reached 7 generations of
 Go, 4 of `uv`, 4 of CodeQL — the last at ~1.7 GB each, roughly 30 GB a year from
-CodeQL alone. `RUNNER_GC_TOOLCACHE_KEEP` (default 1) keeps the newest N.
+CodeQL alone.
+
+**Reap by series, not by count.** Workflows pin a *series* — `go-version:
+1.25.x`, `node-version: 22.x`, `python-version: 3.13` — and `setup-*` resolves
+it to the newest patch within that series. A flat "keep the newest N versions"
+therefore evicts versions the matrices still need: three repos on this runner
+(`rvc-hfie` 3.10, `m4k3` 3.13, `just-ag` 3.14) pin three different Python
+series between them, so keeping only the newest would re-download two of them on
+every job. Keeping **the newest patch of each series** protects exactly what a
+series pin resolves to, and still reaps the patches it superseded.
+`RUNNER_GC_TOOLCACHE_KEEP` (default 5) bounds how many series survive, so the
+cache cannot grow without limit either; raise it if the matrices pin more series
+than that.
+
+Measured on the box, this keeps every pinned version and reclaims only dead
+patches:
+
+| tool   | kept                             | reaped                              |
+| ------ | -------------------------------- | ----------------------------------- |
+| Python | 3.10.20, 3.13.13, 3.14.6         | — (all three are matrix-pinned)      |
+| node   | 22.22.3, 24.18.0                 | —                                    |
+| go     | 1.23.12, **1.25.11**, 1.26.5     | 1.25.0, 1.25.8, 1.26.2, 1.26.4       |
+| uv     | 0.11.33, 0.12.0                  | 0.11.21, 0.11.32                     |
+
+Last-use would be the natural axis — it is what the 2 h budget uses everywhere
+else — but there is no usable signal. The filesystem mounts `relatime`, and any
+sweep that walks `_tool` (this one included) rewrites every atime it reads; the
+investigation that produced this ADR flattened all of them to a single
+timestamp. `mtime` is the *install* time, not the use time: Python 3.10.20 was
+installed seven weeks before this measurement and is still pinned.
 
 Two traps, both silent:
 
@@ -142,11 +171,15 @@ each dispatch sets `MSYS_NO_PATHCONV=1` / `MSYS2_ARG_CONV_EXCL='*'`.
   disk. Raise `RUNNER_GC_RETENTION` if CI wall-clock matters more than space.
 - Host-side profile caches (mise/bun/uv/cargo/npm) are handled separately by
   `just disk-gc`, which only ever removes regenerable caches.
-- **Version-matrix workflows re-download their toolchains** under the default
-  `RUNNER_GC_TOOLCACHE_KEEP=1`: a job matrix testing Python 3.10 and 3.13 keeps
-  only the newest generation, so the pinned ones are fetched again on the next
-  run. Nothing breaks — the leg never deletes while a job runs — but CI pays the
-  download. Raise the value to the number of versions the matrices actually pin.
+- Version-matrix workflows keep their toolchains: series-based retention leaves
+  the newest patch of every pinned series in place. A matrix that pins **more
+  than `RUNNER_GC_TOOLCACHE_KEEP` (5) distinct series** of one tool would still
+  lose the oldest, which costs a re-download but never breaks a job — the leg
+  refuses to delete while one is running.
+- An **exact-patch pin** (`python-version: '3.13.13'`) is re-downloaded once a
+  newer patch in the same series lands, since only the newest patch of a series
+  is kept. Series pins — what `setup-*` documents and what every workflow here
+  uses — are unaffected.
 
 ### Rejected: sparse VHD
 
