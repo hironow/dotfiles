@@ -154,6 +154,21 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   のまま温存 (node 同梱シム + `PNPM_HOME` は store アンカーのみ、`pnpm add -g` は依然
   abort、global CLI は mise npm: のみ)。`corepack enable`/`prepare`/`use` は素通り。
   `dump/npm-global` / `add-pnpm-g` / `update-pnpm-g*` / `check-pnpm-g` は退役済み。
+- **WSL self-hosted runner の disk ratchet (ADR 0035)**: runner を載せた WSL distro の
+  `ext4.vhdx` は docker の image / stopped container / **BuildKit build cache** が
+  無制限に積み上がる (既定で GC policy が無い)。放置すると C: が枯渇し、しかも
+  **空きが尽きると vhdx を展開できず WSL 自体が起動不能になる** (`I/O error @util.cpp`
+  → systemd 起動失敗) デッドロックに入る。`just runner-gc-install` が **2時間保持**の
+  GC を三重に仕掛ける (job-completed hook / hourly timer / journald cap)。関連する罠:
+    - **job 検出は `pgrep -x Runner.Worker` 必須**。`pgrep -f` は GC 自身のコマンド行に
+      マッチして「常時ジョブ実行中」と誤判定し、GC を無言で永久停止させる。
+    - **Windows→WSL dispatch は `MSYS_NO_PATHCONV=1` / `MSYS2_ARG_CONV_EXCL='*'` 必須**。
+      Git Bash が `/usr/local/bin/...` や `/mnt/c/...`、素の `/` すら Windows パスへ
+      書き換えてから `wsl.exe` に渡すため。
+    - **vhdx は縮まない**。GC は増加を止めるだけで、既存スラックの返却は compaction のみ
+      (管理者権限 + `wsl --shutdown` = runner 停止)。`just wsl-compact` は計測と手順提示に
+      留める advisory。**sparse VHD (`--set-sparse`) は MS がデータ破損リスクで無効化中**
+      (`--allow-unsafe` が必要) なので CI ホストでは採らない。
 - devcontainer features は Microsoft 公式のみ (community 不可、memory
   `feedback_no_community_devcontainer_features`)。
 
