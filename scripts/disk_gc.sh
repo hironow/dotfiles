@@ -92,6 +92,21 @@ printf '%b' "$_caches" | awk 'NF' | while read -r _c; do
   printf '  %-8s %s\n' "$(_size "$_c")" "$_c"
 done
 
+# The huggingface cache is never collected by default (see above), so report it
+# per model instead: 77 GB of one checkpoint is a decision about what CI needs,
+# not a hygiene problem, and it cannot be made from a single total.
+_hf="$HOME/.cache/huggingface/hub"
+if [ -d "$_hf" ]; then
+  printf '  %-8s %s (opt-in: DISK_GC_HUGGINGFACE=1)\n' "$(_size "$HOME/.cache/huggingface")" "$HOME/.cache/huggingface"
+  for _m in "$_hf"/models--*; do
+    [ -d "$_m" ] || continue
+    # Newest blob is the closest thing to "when was this last pulled".
+    _when="$(find "$_m" -type f -printf '%TY-%Tm-%Td\n' 2>/dev/null | sort -r | head -1)"
+    printf '    %-8s %-52s last file %s\n' \
+      "$(_size "$_m")" "$(basename "$_m" | sed 's/^models--//; s/--/\//g')" "${_when:-?}"
+  done | sort -rh -k1 | head -10
+fi
+
 if [ "$_win" -eq 1 ]; then
   # PowerShell is the only portable way to read free space on native Windows;
   # `df` reports the Git-Bash mount table, not the volume.

@@ -61,8 +61,8 @@ idempotent installer, wired to three independent brakes:
 | hourly floor (idle drift, missed hooks) | `runner-gc.timer` (Persistent) | Scheduled Task `dotfiles-runner-gc` |
 | uncapped logs                          | journald `SystemMaxUse=200M`, `_diag` trimmed at 7 days | `_diag` trimmed at 7 days |
 | stacked toolcache generations           | `_work/_tool/<tool>/<version>/`, newest patch of each `major.minor` series kept | (native runner installs tools per job) |
-| idle job workspaces                     | (docker holds the build state)  | `_work/<repo>` past the retention |
-| superseded runner versions              | (self-update replaces in place) | `_work/_update`, stale `bin.*`/`externals.*`, installer `.zip` |
+| idle job workspaces                     | `_work/<repo>` past the retention | `_work/<repo>` past the retention |
+| superseded runner versions              | stale `bin.*`/`externals.*`, installer archive, `_work/_update` (24 h floor) | same, plus installer `.zip` |
 
 `just runner-gc` and `just runner-gc-install` drive **both** legs from the
 Windows side, so there is one command to remember rather than two.
@@ -230,6 +230,37 @@ retention: the runner stages an update and only then swings the `bin`/
 Versioned directories are pruned **only when `bin`/`externals` resolve as
 symlinks** — a plain install keeps the live runner in `bin.*` itself, where
 deleting the "old" one would brick it.
+
+### Workspaces on the WSL leg
+
+The Windows leg swept `_work/<repo>` from the start while the WSL leg did not,
+which had the asymmetry backwards: the WSL runner held **23 GB of checkouts**
+against 3 GB of toolcache, on the box that actually filled up. Both legs now
+use the same rules — a `.runner` file as proof of a runner install, an explicit
+list of runner-owned directories (so a repo genuinely named `_foo` is still
+collected), `RUNNER_WORKSPACE`/`GITHUB_WORKSPACE` excluded, and ageing on the
+`.runner-gc-last-used` marker rather than the directory mtime.
+
+The marker matters on Linux too, for a subtler reason than on Windows: a
+directory's mtime moves when entries are added or removed *directly* in it, not
+when a build rewrites files further down, so a checkout rebuilt minutes ago can
+still read weeks old.
+
+Self-update leftovers (`bin.<ver>`, `externals.<ver>`, the installer archive,
+`_work/_update`) get a **24 h floor** instead of the 2 h retention, because the
+runner stages an update and only then swings the `bin`/`externals` symlinks
+over. They are reaped **only where those really are symlinks** and never for the
+target they resolve to — a plain install keeps the live runner inside `bin.*`
+itself, where deleting the "old" one would brick it.
+
+`RUNNER_GC_ROOT` points the sweep at a single install, mirroring the Windows
+leg's `-RunnerRoot`, and is the one thing that lets the workspace leg run while
+a job is executing. Everywhere else a concurrent worker stops it, because that
+worker may be building inside one of these trees — but then the destructive path
+could only ever be exercised on an idle runner, and on this box no idle window
+appeared in twelve minutes of waiting. Naming an install explicitly is something
+the timer and the hook never do, so it is a safe signal for "I mean this one".
+The `.runner` guard and the live-workspace exclusions still apply.
 
 ### Windows → WSL dispatch
 

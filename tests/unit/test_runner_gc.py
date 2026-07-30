@@ -826,12 +826,14 @@ def test_disk_gc_keeps_huggingface_opt_in() -> None:
     assert "DISK_GC_HUGGINGFACE" in text, (
         "the huggingface cache must be opt-in, never swept by default."
     )
+    # Reporting it is fine and deliberate — the size breakdown is what makes
+    # the keep-or-drop call possible. Only *collecting* it must be gated.
     unconditional = [
         line
         for line in text.splitlines()
         if "huggingface" in line
+        and re.search(r"^\s*_add\b", line)
         and "DISK_GC_HUGGINGFACE" not in line
-        and not line.strip().startswith("#")
     ]
     assert not unconditional, (
         f"huggingface must not be collected unconditionally: {unconditional}"
@@ -956,4 +958,108 @@ def test_windows_installer_survives_without_elevation() -> None:
     assert re.search(r"catch\s*\{", text), (
         "registering an S4U principal needs elevation, so the installer must "
         "fall back instead of failing for an unelevated user."
+    )
+
+
+# --- WSL workspaces: the mirror of the Windows leg ---------------------------
+
+
+def test_no_ambiguous_and_or_chains() -> None:
+    """`A && B || C` is not if-then-else: C also runs when B fails.
+
+    shellcheck flags it as SC2015, but only on some versions — the 0.11.0 on
+    this host stays quiet while the devcontainer's copy fails the build. That
+    divergence let the pattern through twice, so pin it here instead, where the
+    check runs everywhere.
+    """
+    offenders = []
+    for script in (GC, INSTALL, COMPACT, DISK, SCRIPTS / "gc_status.sh"):
+        for n, line in enumerate(script.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            # Only the three-part chain is ambiguous; `A && B` and `A || B`
+            # are fine, and so is a `||` inside a command substitution guard.
+            if re.search(r"&&.*\|\|", stripped):
+                offenders.append(f"{script.name}:{n}: {stripped}")
+    assert not offenders, (
+        "spell these as if/else — `A && B || C` runs C when B fails:\n"
+        + "\n".join(offenders)
+    )
+
+
+def test_wsl_leg_sweeps_workspaces_too() -> None:
+    """`_work/<repo>` is the larger half: 23 GB against 3 GB of toolcache.
+
+    The Windows leg collected workspaces from the start while the WSL leg —
+    the box that actually filled up — did not, which had the asymmetry exactly
+    backwards.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert "workspaces:" in text, "runner_gc.sh must collect idle workspaces."
+    assert ".runner-gc-last-used" in text, (
+        "workspaces must be aged on the marker file, not the directory mtime: "
+        "a top-level mtime does not move when a build rewrites nested files, "
+        "so a hot checkout reads cold."
+    )
+
+
+def test_workspace_sweep_is_exercisable_on_a_busy_runner() -> None:
+    """Only an explicit RUNNER_GC_ROOT may run the sweep during a job.
+
+    A concurrent worker normally stops it, but then the destructive path could
+    only ever be tested on an idle runner — and this box produced no idle
+    window in twelve minutes. The timer and the hook never name an install, so
+    RUNNER_GC_ROOT is a safe signal for a deliberate, targeted run.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert re.search(
+        r'if \[ -z "\$\{RUNNER_GC_ROOT:-\}" \] && _foreign_worker', text
+    ), (
+        "the workspace sweep must still back off for a concurrent job unless "
+        "an install was named explicitly."
+    )
+
+
+def test_workspace_sweep_demands_proof_it_is_a_runner() -> None:
+    """It deletes whole trees, so a wrong root must be impossible."""
+    text = GC.read_text(encoding="utf-8")
+    assert re.search(r'\[ -f "\$\{_rdir\}/\.runner" \]', text), (
+        "the workspace sweep must refuse any directory without a .runner file."
+    )
+    # A live checkout must survive whatever the ageing says.
+    assert "RUNNER_WORKSPACE" in text and "GITHUB_WORKSPACE" in text, (
+        "the sweep must exclude the workspace the current job is using; the "
+        "hook fires between steps of the job that owns it."
+    )
+
+
+def test_workspace_sweep_excludes_runner_dirs_by_name() -> None:
+    """Matching a leading underscore would exclude a repo named `_foo`."""
+    text = GC.read_text(encoding="utf-8")
+    assert "_runner_managed=" in text, (
+        "runner-owned directories must be listed explicitly, not matched by a "
+        "leading-underscore heuristic."
+    )
+    for owned in ("_actions", "_tool", "_temp", "_diag", "_update"):
+        assert owned in text.split("_runner_managed=")[1].split("\n")[0], (
+            f"{owned} must be in the runner-managed exclusion list."
+        )
+
+
+def test_superseded_runner_versions_need_a_live_symlink() -> None:
+    """A plain install keeps the live runner in bin.* itself.
+
+    Reaping `bin.<ver>` there would brick the runner, so the sweep only fires
+    where bin/externals really are symlinks pointing elsewhere.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert re.search(r'-L "\$\{_rdir\}/bin"', text) and re.search(
+        r'-L "\$\{_rdir\}/externals"', text
+    ), "superseded versions may only be reaped when bin/externals are symlinks."
+    assert "readlink -f" in text, "the live target must be resolved and spared."
+    # 24h floor, not the 2h retention: an update stages before it swings.
+    assert "-mmin +1440" in text, (
+        "self-update leftovers need a 24h floor; the 2h retention could catch "
+        "an update mid-flight."
     )

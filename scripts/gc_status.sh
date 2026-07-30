@@ -74,7 +74,11 @@ else
 fi
 
 _res="$(systemctl show runner-gc.service -p Result --value 2>/dev/null)"
-[ "$_res" = "success" ] && _ok "last timer run: success" || _warn "last timer run: ${_res:-unknown}"
+if [ "$_res" = "success" ]; then
+  _ok "last timer run: success"
+else
+  _warn "last timer run: ${_res:-unknown}"
+fi
 
 # Effect, not wiring: did an unattended run actually collect anything?
 _ran="$(journalctl -u runner-gc.service --since '-24 hours' -o cat 2>/dev/null | grep -c 'start (retention' || true)"
