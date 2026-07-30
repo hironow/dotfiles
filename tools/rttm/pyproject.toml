@@ -5,7 +5,7 @@ description = "RTTM file tool"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "matplotlib>=3.11.0",
+    "matplotlib>=3.11.1",
     "pympi-ling>=1.71",
     "ruff>=0.15.22",
     "pytest>=9.1.1",
