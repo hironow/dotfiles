@@ -35,7 +35,7 @@ open http://localhost:6274
 |----------|---------|-------------|
 | `MCP_INSPECTOR_PORT` | 6274 | Host port for client UI |
 | `MCP_INSPECTOR_REPO` | GitHub URL | Git repository to clone |
-| `MCP_INSPECTOR_REF` | main | Git ref (branch/tag/commit) |
+| `MCP_INSPECTOR_REF` | 1.0.1 | Git ref (branch/tag/commit); pinned to last v1 release (upstream v2 dropped client/) |
 
 ## Connecting to Host Services
 
