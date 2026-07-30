@@ -215,6 +215,15 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
       留める advisory。**`wsl --manage --set-sparse` を自分で有効化しない** — MS が
       データ破損リスクで無効化中 (`--allow-unsafe` が必要)。既に sparse な vhdx を
       `fstrim` で使うのは別物で、こちらは安全。
+    - **workspace sweep は両 leg 共通**。WSL 側は `_work/<repo>` が 23GB (toolcache 3GB より
+      遥かに大きい) で、埋まったのはこちらなので非対称は逆向きだった。判定は
+      `.runner-gc-last-used` マーカー (Linux でもディレクトリ mtime は「直下の増減」しか
+      追わず、深い階層の再ビルドを見ないため)。runner 所有ディレクトリは**名前の明示列挙**
+      (`_` 接頭辞判定だと `_foo` という実リポを永久に除外する)。旧 `bin.*`/`externals.*` は
+      **`bin`/`externals` が symlink のときだけ**、かつ **24h フロア**で回収 (update は
+      staging 後に symlink を切替えるため 2h だと途中を掴む)。`RUNNER_GC_ROOT` で単一
+      install を対象にできる (多忙な runner では idle window が来ないので、破壊的経路を
+      合成 root で検証するため)。
     - **native Windows 側の主犯は `_work/<repo>`** (`_diag` や `_work/_temp` ではない。
       実測 5.1G / うち Rust `target/` 3.7G に対し `_temp` は 12K)。**ディレクトリ mtime で
       期限判定してはいけない** — Windows は入れ子のファイル更新で親ディレクトリの

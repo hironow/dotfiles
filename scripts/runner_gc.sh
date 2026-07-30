@@ -121,7 +121,15 @@ log "start (retention=${RETENTION}) — / : $(_df_root)"
 # --- Runner installs --------------------------------------------------------
 # Same globs the installer uses to place the job hook, so both agree on what
 # counts as a runner install.
+# RUNNER_GC_ROOT sweeps one named install instead of probing the usual places,
+# mirroring the Windows leg's -RunnerRoot. The workspace sweep deletes whole
+# trees, so it has to be exercisable against a synthetic runner rather than only
+# against the live one — on a busy box the idle window it needs may never come.
 _each_runner_dir() {
+  if [ -n "${RUNNER_GC_ROOT:-}" ]; then
+    [ -d "$RUNNER_GC_ROOT" ] && printf '%s\n' "$RUNNER_GC_ROOT"
+    return 0
+  fi
   for _d in /home/*/actions-runner* /root/actions-runner* /opt/actions-runner*; do
     [ -d "$_d" ] || continue
     [ -f "${_d}/config.sh" ] || continue
@@ -283,6 +291,103 @@ else
     done
   done
 fi
+
+# --- Runner workspaces ------------------------------------------------------
+# The mirror of the Windows leg, and the larger half of the problem: `_work/`
+# held 23 GB of checkouts here against 3 GB of toolcache. Nothing rotates them
+# and the runner is happy to re-clone.
+#
+# Aged on a marker file rather than the directory mtime: a checkout's top-level
+# mtime tracks when files were added or removed directly in it, not when a
+# build rewrote something three levels down, so a hot workspace can read cold.
+_marker='.runner-gc-last-used'
+
+# Retention is docker's syntax (2h, 90m, 7d); find wants minutes.
+_retention_minutes() {
+  case "$RETENTION" in
+    *m) printf '%s' "${RETENTION%m}" ;;
+    *h) printf '%s' "$(( ${RETENTION%h} * 60 ))" ;;
+    *d) printf '%s' "$(( ${RETENTION%d} * 1440 ))" ;;
+    *) printf '120' ;;   # never widen the window because the input was odd
+  esac
+}
+_ret_min="$(_retention_minutes)"
+
+# The runner owns these; every sibling is a repo checkout. Matching a leading
+# underscore instead would permanently exclude a repo actually named `_foo`.
+_runner_managed=" _actions _diag _PipelineMapping _temp _tool _update "
+
+if _foreign_worker; then
+  log "workspaces: SKIP (another job is executing)"
+else
+  _each_runner_dir | while read -r _rdir; do
+    # Deleting whole trees, so demand proof this really is a runner install.
+    [ -f "${_rdir}/.runner" ] || { log "workspaces: ${_rdir} has no .runner; skipped"; continue; }
+    _work="${_rdir}/_work"
+    [ -d "$_work" ] || continue
+
+    # Whatever the ageing says, never touch the checkout a job is using: the
+    # hook fires between steps of the job that owns these.
+    _live=""
+    for _c in "${RUNNER_WORKSPACE:-}" "${GITHUB_WORKSPACE:-}"; do
+      [ -n "$_c" ] || continue
+      _live="${_live} $(cd "$_c" 2>/dev/null && pwd || printf '%s' "$_c")"
+    done
+
+    # Stamp the workspace of the job that just finished, so the next sweep ages
+    # it from now rather than from whenever the tree last changed shape.
+    if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+      _fin="${_work}/${GITHUB_REPOSITORY##*/}"
+      if [ -d "$_fin" ]; then
+        _live="${_live} ${_fin}"
+        touch "${_fin}/${_marker}" 2>/dev/null || true
+      fi
+    fi
+
+    for _ws in "$_work"/*/; do
+      [ -d "$_ws" ] || continue
+      _ws="${_ws%/}"
+      _name="${_ws##*/}"
+      case "$_runner_managed" in *" $_name "*) continue ;; esac
+      case " $_live " in *" $_ws "*) continue ;; esac
+
+      _probe="${_ws}/${_marker}"
+      [ -f "$_probe" ] || _probe="$_ws"
+      [ -n "$(find "$_probe" -maxdepth 0 -mmin +"$_ret_min" 2>/dev/null)" ] || continue
+
+      _sz="$(du -shx "$_ws" 2>/dev/null | cut -f1)"
+      rm -rf "$_ws" && log "workspaces: collected ${_name} (${_sz}, idle > ${RETENTION})"
+    done
+  done
+fi
+
+# --- Superseded runner versions ---------------------------------------------
+# self-update leaves the previous bin.<ver>/externals.<ver> behind (1.5 GB here)
+# plus the installer archive it unpacked. A 24 h floor rather than the 2 h
+# retention: the runner stages an update and only then swings the symlinks, so
+# a short window could catch one mid-flight. Reaped only where bin/externals
+# really are symlinks — a plain install keeps the live runner in bin.* itself.
+_each_runner_dir | while read -r _rdir; do
+  [ -L "${_rdir}/bin" ] && [ -L "${_rdir}/externals" ] || continue
+  _live_bin="$(readlink -f "${_rdir}/bin" 2>/dev/null)"
+  _live_ext="$(readlink -f "${_rdir}/externals" 2>/dev/null)"
+  for _old in "${_rdir}"/bin.* "${_rdir}"/externals.*; do
+    [ -d "$_old" ] || continue
+    _real="$(readlink -f "$_old" 2>/dev/null)"
+    [ "$_real" = "$_live_bin" ] && continue
+    [ "$_real" = "$_live_ext" ] && continue
+    [ -n "$(find "$_old" -maxdepth 0 -mmin +1440 2>/dev/null)" ] || continue
+    _sz="$(du -shx "$_old" 2>/dev/null | cut -f1)"
+    rm -rf "$_old" && log "runner: removed superseded $(basename "$_old") (${_sz})"
+  done
+  # The tarball the current version was unpacked from, and any staged update.
+  for _junk in "${_rdir}"/actions-runner-*.tar.gz "${_rdir}/_work/_update"; do
+    [ -e "$_junk" ] || continue
+    [ -n "$(find "$_junk" -maxdepth 0 -mmin +1440 2>/dev/null)" ] || continue
+    _sz="$(du -shx "$_junk" 2>/dev/null | cut -f1)"
+    rm -rf "$_junk" && log "runner: removed $(basename "$_junk") (${_sz})"
+  done
+done
 
 # --- apt / journal (root only) ----------------------------------------------
 # Both need privileges; under the systemd timer we are root, under the runner
