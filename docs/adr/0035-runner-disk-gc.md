@@ -50,7 +50,7 @@ idempotent installer, wired to three independent brakes:
 | collect right after each job           | `ACTIONS_RUNNER_HOOK_JOB_COMPLETED` | same env var, `.ps1` payload |
 | hourly floor (idle drift, missed hooks) | `runner-gc.timer` (Persistent) | Scheduled Task `dotfiles-runner-gc` |
 | uncapped logs                          | journald `SystemMaxUse=200M`, `_diag` trimmed at 7 days | `_diag` trimmed at 7 days |
-| stacked toolcache generations           | `_work/_tool/<tool>/<version>/`, newest N kept | (native runner installs tools per job) |
+| stacked toolcache generations           | `_work/_tool/<tool>/<version>/`, newest patch of each `major.minor` series kept | (native runner installs tools per job) |
 
 `just runner-gc` and `just runner-gc-install` drive **both** legs from the
 Windows side, so there is one command to remember rather than two.
