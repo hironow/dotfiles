@@ -66,11 +66,12 @@ INSTALL = SCRIPTS / "install_runner_gc.sh"
 COMPACT = SCRIPTS / "wsl_compact.sh"
 GC_WIN = SCRIPTS / "runner_gc_win.ps1"
 INSTALL_WIN = SCRIPTS / "install_runner_gc_win.ps1"
+DISK = SCRIPTS / "disk_gc.sh"
 BASH = shutil.which("bash") or "/bin/bash"
 PWSH = shutil.which("pwsh")
 
 # Every script that shells out to wsl.exe from a possible Git Bash host.
-DISPATCHERS = (GC, INSTALL, COMPACT)
+DISPATCHERS = (GC, INSTALL, COMPACT, DISK)
 
 # Written by the GC into every workspace it sees a job finish in; the only
 # reliable "last used" signal (see the module docstring).
@@ -734,4 +735,115 @@ def test_sweep_does_not_follow_a_junction_out_of_the_workspace(
     assert not ws.exists(), "the workspace itself must still be collected"
     assert (outside / "keep.txt").exists(), (
         "the GC followed a junction and deleted data outside the runner root."
+    )
+
+
+# --- Returning the space, and reaching the caches that actually grow ---------
+
+
+def test_gc_discards_freed_blocks_back_to_the_host() -> None:
+    """Pruning inside the distro is invisible to C: until something discards.
+
+    The vhdx keeps freed ext4 blocks claimed from Windows, which is why a large
+    prune can leave C: unchanged and make the whole GC look like a no-op. On a
+    sparse vhdx `fstrim` punches the holes straight back out with no downtime:
+    43.5 GB returned to C: in a single call on the runner host.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert re.search(r"^\s*[^#]*\bfstrim\b", text, re.M), (
+        "runner_gc.sh must fstrim after pruning, or the space it frees never "
+        "reaches the Windows host."
+    )
+    # The script runs under `set -e`, so an unguarded fstrim would abort the
+    # sweep on any guest whose filesystem cannot discard.
+    assert re.search(r"if\s+fstrim\b|fstrim[^\n]*\|\|", text), (
+        "the fstrim call must be guarded so a guest without discard support "
+        "degrades quietly instead of aborting the sweep."
+    )
+
+
+def test_windows_dispatch_falls_back_to_the_checkout() -> None:
+    """A first `just runner-gc` must collect, not exit 127.
+
+    Hard-coding the installed payload made the WSL leg die with `No such file
+    or directory` whenever runner-gc-install had not run yet, which reads as a
+    broken GC rather than an uninstalled one.
+    """
+    text = GC.read_text(encoding="utf-8")
+    assert re.search(r"if \[ -x /usr/local/bin/runner-gc \]", text), (
+        "runner_gc.sh must test for the installed payload and fall back to "
+        "this checkout instead of exec'ing a path that may not exist."
+    )
+
+
+def test_disk_gc_reaches_the_wsl_runner_user() -> None:
+    """The biggest caches on the box live in the WSL user's HOME, not Windows.
+
+    `~/.cache/uv` alone measured 44 GB there against ~2.5 GB for the entire
+    Windows profile, and `just disk-gc` previously had no route into the distro.
+    """
+    text = DISK.read_text(encoding="utf-8")
+    assert "wsl.exe" in text, "disk_gc.sh must collect the WSL leg too."
+    # `-u root` would collect root's empty HOME and silently reclaim nothing.
+    assert not re.search(r"wsl\.exe[^\n]*-u root", text), (
+        "the disk-gc WSL leg must run as the distro user; the caches live in "
+        "that user's HOME."
+    )
+    assert "DISK_GC_NO_WSL" in text, "the WSL leg must be opt-out-able."
+
+
+def test_disk_gc_uses_go_clean_for_the_module_cache() -> None:
+    """Go's module cache is deliberately read-only, so a plain delete fails."""
+    text = DISK.read_text(encoding="utf-8")
+    assert "go clean -modcache" in text, (
+        "disk_gc.sh must use `go clean -modcache`; a recursive delete leaves "
+        "the 11 GB module cache behind because its files are read-only."
+    )
+
+
+def test_disk_gc_finds_mise_managed_tools() -> None:
+    """Non-interactive shells have no mise shims on PATH.
+
+    The WSL leg is invoked non-interactively, where `uv` and `go` resolve to
+    "command not found" and the two largest caches survive untouched.
+    """
+    text = DISK.read_text(encoding="utf-8")
+    assert "mise/shims" in text, (
+        "disk_gc.sh must put the mise shims on PATH before invoking uv/go."
+    )
+
+
+def test_disk_gc_keeps_huggingface_opt_in() -> None:
+    """Models are not wheels: one directory measured 77 GB to re-download."""
+    text = DISK.read_text(encoding="utf-8")
+    assert "DISK_GC_HUGGINGFACE" in text, (
+        "the huggingface cache must be opt-in, never swept by default."
+    )
+    unconditional = [
+        line
+        for line in text.splitlines()
+        if "huggingface" in line
+        and "DISK_GC_HUGGINGFACE" not in line
+        and not line.strip().startswith("#")
+    ]
+    assert not unconditional, (
+        f"huggingface must not be collected unconditionally: {unconditional}"
+    )
+
+
+def test_compaction_measures_allocated_not_logical_size() -> None:
+    """Logical size is a high-water mark and overstates the slack.
+
+    A sparse vhdx read 227 GB logical against 174 GB actually on disk, so
+    `logical - used` reported 130 GB of "reclaimable" space where only 33 GB
+    was real — the rest had already been returned to Windows on its own.
+    """
+    text = COMPACT.read_text(encoding="utf-8")
+    assert "du -B1" in text, (
+        "wsl_compact.sh must measure the allocated size (du -B1); stat -c %s "
+        "reports the logical high-water mark."
+    )
+    assert "fsutil sparse queryflag" in text, (
+        "wsl_compact.sh must report whether the vhdx is sparse: it decides "
+        "whether compaction is needed at all."
     )

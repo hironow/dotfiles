@@ -28,6 +28,26 @@ case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*) _win=1 ;;
 esac
 
+# --- Reach the WSL runner user's caches -------------------------------------
+# These caches are the largest thing on the box and nothing collects them:
+# ~/.cache/uv alone measured 44 GB here (126 GB on the sibling host), against
+# ~2.5 GB for the whole Windows profile. runner_gc.sh deliberately leaves them
+# alone — they are shared with interactive work, so they are collected on
+# demand from here rather than by the hourly timer.
+#
+# Set DISK_GC_NO_WSL=1 to keep this to the Windows profile only.
+if [ "$_win" -eq 1 ] && [ "${DISK_GC_NO_WSL:-0}" != "1" ] && command -v wsl.exe >/dev/null 2>&1; then
+  _distro="${RUNNER_GC_WSL_DISTRO:-Ubuntu}"
+  _self="$(cygpath -m "$0" | sed -E 's|^([A-Za-z]):|/mnt/\L\1|')"
+  echo "--- 🐧 WSL distro '${_distro}' (runner user) ---"
+  # Run as the distro's default user: these caches live in that user's HOME and
+  # root would collect an empty set. Path conversion off, as ever.
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+    wsl.exe -d "$_distro" -e bash -lc "bash '${_self}' ${MODE}" || \
+    echo "  (WSL leg failed; continuing with the Windows profile)"
+  echo
+fi
+
 # Resolve a Windows env var (e.g. LOCALAPPDATA) to a unix path, empty if unset.
 _winpath() {
   _v="$(printenv "$1" 2>/dev/null || true)"
@@ -52,8 +72,19 @@ if [ "$_win" -eq 1 ]; then
   [ -n "$_lad" ] && _add "${_lad}/uv/cache"
   [ -n "$_lad" ] && _add "${_lad}/npm-cache"
 else
-  _add "$HOME/.cache/uv"
-  _add "$HOME/.npm/_cacache"
+  # Sizes are the ones measured on the WSL runner host before this landed.
+  _add "$HOME/.cache/uv"                 # 44 GB — by far the biggest single item
+  _add "$HOME/.npm/_cacache"             # 2.3 GB
+  _add "$HOME/.local/share/pnpm/store"   # 2.6 GB
+  _add "$HOME/.cache/ms-playwright"      # 1.3 GB — re-installed by the workflow
+  _add "$HOME/.cache/pip"
+  _add "$HOME/.cache/node-gyp"
+  _add "$HOME/.cache/dprint"
+  _add "$HOME/.cache/golangci-lint"
+  # ~/.cache/huggingface is deliberately NOT here: a single model directory
+  # measured 77 GB and re-downloading it is nothing like re-fetching a wheel.
+  # Opt in per-run once you know the models are disposable.
+  [ "${DISK_GC_HUGGINGFACE:-0}" = "1" ] && _add "$HOME/.cache/huggingface"
 fi
 
 echo "--- 💽 host cache report ---"
@@ -78,10 +109,22 @@ fi
 
 echo "--- 🧹 reclaiming ---"
 
+# mise-managed tools are not on PATH in a non-interactive shell, which is how
+# the WSL leg is invoked; without the shims `uv`/`go` silently resolve to
+# "command not found" and their caches (the two biggest) survive untouched.
+[ -d "$HOME/.local/share/mise/shims" ] && PATH="$HOME/.local/share/mise/shims:$PATH"
+
 # mise: drop tool versions no tracked config references. `prune` is the
 # supported entry point; it never touches versions still pinned by a config.
 if command -v mise >/dev/null 2>&1; then
   mise prune --yes >/dev/null 2>&1 && echo "  mise: pruned unreferenced versions" || echo "  mise: prune failed (non-fatal)"
+fi
+
+# Go's module cache is deliberately read-only, so `rm -rf` leaves most of it
+# behind (11 GB here). `go clean` is the only supported way to drop it.
+if command -v go >/dev/null 2>&1; then
+  go clean -modcache >/dev/null 2>&1 && echo "  go: module cache cleaned" || echo "  go: modcache clean failed (non-fatal)"
+  go clean -cache >/dev/null 2>&1 && echo "  go: build cache cleaned" || true
 fi
 
 printf '%b' "$_caches" | awk 'NF' | while read -r _c; do

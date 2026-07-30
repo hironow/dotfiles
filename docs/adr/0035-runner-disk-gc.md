@@ -211,17 +211,49 @@ rewrites any argument that looks like a unix path (`/usr/local/bin/runner-gc`,
 `/mnt/c/...`, even a bare `/`) into a Windows path before `wsl.exe` sees it, so
 each dispatch sets `MSYS_NO_PATHCONV=1` / `MSYS2_ARG_CONV_EXCL='*'`.
 
+### Returning the space to Windows
+
+Everything above frees ext4 blocks *inside* the distro. The vhdx keeps them
+claimed from Windows until something discards them, so a 45 GB prune can leave
+C: unmoved and make the GC look like a no-op — which is exactly what the first
+runs looked like.
+
+**`fstrim` is what closes the loop.** A WSL vhdx is normally a *sparse* file, so
+discarding the freed blocks punches holes straight back out of it: no downtime,
+no elevation, the runner stays online. One call on the runner host returned
+**43.5 GB to C: immediately**, taking the vhdx from 174 GB to 130 GB on disk
+while its logical size stayed pinned at 227 GB. The root leg therefore ends with
+`fstrim /`; a guest that cannot discard ignores it harmlessly.
+
+This also corrects how slack must be *measured*. `stat -c %s` reports the
+logical high-water mark, which never falls; only the **allocated** size
+(`du -B1`) is what C: gives up. Sizing compaction off the logical figure
+overstated the reclaimable space by the entire sparse gap — 130 GB of "slack"
+where 33 GB was real. `just wsl-compact` now reports both, plus the sparse flag
+(`fsutil sparse queryflag`), because the flag decides whether compaction is
+needed at all.
+
 ## Consequences
 
 - Growth stops at the source; the vhdx no longer ratchets upward.
-- **Existing slack is not recovered automatically.** Compaction is the only way
-  to return it to Windows, and it needs Administrator *and* a full
-  `wsl --shutdown` (runner offline). `just wsl-compact` therefore only measures
-  the slack and prints the `diskpart` steps — advisory, like `just wsl-conf`.
+- **On a sparse vhdx the space comes back on its own**, via the `fstrim` at the
+  end of every sweep. Compaction is the fallback for a *non-sparse* vhdx, where
+  freed blocks stay claimed — and it still needs Administrator plus a full
+  `wsl --shutdown` (runner offline), so `just wsl-compact` stays advisory.
+  Sibling hosts can differ here: check the flag before assuming either.
 - Colder cache for jobs spaced more than 2 h apart, in exchange for a bounded
   disk. Raise `RUNNER_GC_RETENTION` if CI wall-clock matters more than space.
-- Host-side profile caches (mise/bun/uv/cargo/npm) are handled separately by
-  `just disk-gc`, which only ever removes regenerable caches.
+- Developer caches (mise/bun/uv/cargo/npm/go/pnpm/playwright) are handled
+  separately by `just disk-gc`, which only ever removes regenerable caches —
+  and which now sweeps the **WSL runner user's HOME as well as the Windows
+  profile**. That is where the volume actually is: `~/.cache/uv` alone measured
+  44 GB on this host and 126 GB on its sibling, against ~2.5 GB for the entire
+  Windows profile. It stays on-demand rather than joining the hourly timer
+  because those caches are shared with interactive work.
+- `~/.cache/huggingface` is **not** swept without `DISK_GC_HUGGINGFACE=1`. A
+  single model directory measured 77 GB on the sibling host, and re-downloading
+  a 14B checkpoint is nothing like re-fetching a wheel. Whether CI needs those
+  models is a separate question from disk hygiene.
 - Version-matrix workflows keep their toolchains: series-based retention leaves
   the newest patch of every pinned series in place. A matrix that pins **more
   than `RUNNER_GC_TOOLCACHE_KEEP` (5) distinct series** of one tool would still

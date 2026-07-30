@@ -37,8 +37,7 @@ log() { printf '[runner-gc] %s %s\n' "$(date -Is)" "$*"; }
 # --- Windows host: collect BOTH runners -------------------------------------
 # This box hosts two self-hosted runners — one inside the WSL distro and one
 # native Windows one — so `just runner-gc` from the Windows side must sweep
-# both. The WSL leg needs install_runner_gc.sh to have placed the payload at
-# /usr/local/bin/runner-gc.
+# both.
 case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*)
     _here="$(cd "$(dirname "$0")" && pwd)"
@@ -49,10 +48,17 @@ case "$(uname -s)" in
     # Git Bash would rewrite /usr/local/bin/runner-gc into a Windows path
     # before wsl.exe sees it; disable the conversion for these calls.
     export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+
+    # Prefer the installed payload, but fall back to this checkout when
+    # runner-gc-install has not run: hard-coding the installed path made a
+    # first `just runner-gc` die with `No such file or directory` (exit 127)
+    # and collect nothing, which reads as "the GC is broken" rather than
+    # "the GC is not installed yet".
+    _wsl_self="$(cygpath -m "${_here}/runner_gc.sh" | sed -E 's|^([A-Za-z]):|/mnt/\L\1|')"
     wsl.exe -d "$_distro" -u root -e env \
       "RUNNER_GC_RETENTION=${RETENTION}" \
       "RUNNER_GC_FORCE=${FORCE}" \
-      /usr/local/bin/runner-gc || _rc=$?
+      sh -c "if [ -x /usr/local/bin/runner-gc ]; then exec /usr/local/bin/runner-gc; else echo '[runner-gc] not installed; running from the checkout (run: just runner-gc-install)'; exec bash '${_wsl_self}'; fi" || _rc=$?
 
     log "collecting the native Windows runner"
     _ps1="${_here}/runner_gc_win.ps1"
@@ -264,6 +270,24 @@ if _is_root; then
   fi
 else
   log "apt/journal: not root; skipping (the hourly timer covers these)"
+fi
+
+# --- Return the freed blocks to the host (root only) ------------------------
+# Everything above only frees ext4 blocks *inside* the distro. The vhdx keeps
+# them claimed from Windows until something discards them, which is why a big
+# prune can leave C: unchanged and make the GC look useless.
+#
+# On a sparse vhdx — what WSL creates by default — `fstrim` punches those holes
+# straight back out: no downtime, no elevation, the runner stays online. On this
+# host one call returned 43.5 GB to C: immediately. A non-sparse vhdx simply
+# ignores the discard, so this is unconditional; compaction (`just wsl-compact`)
+# stays the fallback for that case.
+if _is_root && command -v fstrim >/dev/null 2>&1; then
+  if fstrim / >/dev/null 2>&1; then
+    log "fstrim: freed blocks discarded back to the host"
+  else
+    log "fstrim: discard unsupported here (non-fatal; see just wsl-compact)"
+  fi
 fi
 
 log "done — / : $(_df_root)"

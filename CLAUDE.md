@@ -184,10 +184,25 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
     - **Windows→WSL dispatch は `MSYS_NO_PATHCONV=1` / `MSYS2_ARG_CONV_EXCL='*'` 必須**。
       Git Bash が `/usr/local/bin/...` や `/mnt/c/...`、素の `/` すら Windows パスへ
       書き換えてから `wsl.exe` に渡すため。
-    - **vhdx は縮まない**。GC は増加を止めるだけで、既存スラックの返却は compaction のみ
-      (管理者権限 + `wsl --shutdown` = runner 停止)。`just wsl-compact` は計測と手順提示に
-      留める advisory。**sparse VHD (`--set-sparse`) は MS がデータ破損リスクで無効化中**
-      (`--allow-unsafe` が必要) なので CI ホストでは採らない。
+    - **guest 内で消しても C: は増えない。返すのは `fstrim`**。vhdx は解放済み ext4 block を
+      Windows から掴んだままなので、45GB prune しても C: が動かず「GC が効いていない」と見える。
+      WSL の vhdx は通常 **sparse** なので `fstrim /` でホールパンチすれば**無停止・非管理者で**
+      即返却される (実測 43.5GB、vhdx 実占有 174→130GB)。GC の root leg 末尾で実行する。
+    - **スラックは実占有 (`du -B1`) で測る**。`stat -c %s` は論理サイズ=高水位マークで decrease
+      しないため、`論理 - 使用` は「既に返却済みの分」まで slack に数えて過大報告する
+      (実測: 報告130GB / 実際33GB)。`just wsl-compact` は sparse フラグ
+      (`fsutil sparse queryflag`) も出す。**sparse なら compaction 不要、非 sparse なら必要**で
+      機体ごとに答えが違う。
+    - **実際に肥大するのは docker ではなく開発キャッシュ**。`~/.cache/uv` 単体で 44GB
+      (姉妹機は 126GB)、Windows profile 全体が ~2.5GB なのと対照的。`just disk-gc` は
+      **WSL の runner ユーザ HOME まで掃除する** (`DISK_GC_NO_WSL=1` で無効化)。hourly timer に
+      は載せない (対話作業と共有のため)。`~/.cache/huggingface` は既定で対象外
+      (`DISK_GC_HUGGINGFACE=1` で opt-in。単一モデル 77GB、wheel の再取得とは訳が違う)
+    - **compaction は非 sparse 機のフォールバック**。既存スラックの返却に管理者権限 +
+      `wsl --shutdown` (= runner 停止) が要るため `just wsl-compact` は計測と手順提示に
+      留める advisory。**`wsl --manage --set-sparse` を自分で有効化しない** — MS が
+      データ破損リスクで無効化中 (`--allow-unsafe` が必要)。既に sparse な vhdx を
+      `fstrim` で使うのは別物で、こちらは安全。
     - **native Windows 側の主犯は `_work/<repo>`** (`_diag` や `_work/_temp` ではない。
       実測 5.1G / うち Rust `target/` 3.7G に対し `_temp` は 12K)。**ディレクトリ mtime で
       期限判定してはいけない** — Windows は入れ子のファイル更新で親ディレクトリの

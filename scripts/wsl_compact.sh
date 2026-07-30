@@ -39,12 +39,33 @@ if [ -z "$_vhdx" ]; then
   exit 0
 fi
 
-_host_bytes="$(stat -c '%s' "$_vhdx" 2>/dev/null || echo 0)"
-_host_gb="$((_host_bytes / 1024 / 1024 / 1024))"
+# Logical size is the high-water mark the vhdx has ever reached; it never goes
+# down. What actually occupies C: is the ALLOCATED size, which differs whenever
+# the file is sparse — and a WSL vhdx usually is. Reporting the logical figure
+# overstates the reclaimable slack by exactly the sparse gap (measured here:
+# 227 GB logical vs 174 GB allocated, i.e. 53 GB of phantom "slack").
+_logical_bytes="$(stat -c '%s' "$_vhdx" 2>/dev/null || echo 0)"
+_ondisk_bytes="$(du -B1 -s "$_vhdx" 2>/dev/null | cut -f1)"
+[ -n "$_ondisk_bytes" ] || _ondisk_bytes="$_logical_bytes"
+_logical_gb="$((_logical_bytes / 1024 / 1024 / 1024))"
+_ondisk_gb="$((_ondisk_bytes / 1024 / 1024 / 1024))"
+
+# `fsutil sparse queryflag` is the authority; its wording is localised, so key
+# off the exit status plus the presence of the flag rather than the message.
+_sparse=0
+if fsutil sparse queryflag "$(cygpath -w "$_vhdx")" 2>/dev/null | grep -qi 'sparse'; then
+  _sparse=1
+fi
 
 echo "🗜️  WSL virtual disk"
 echo "    file      : ${_vhdx}"
-echo "    host size : ${_host_gb} GB"
+echo "    logical   : ${_logical_gb} GB (high-water mark; never shrinks)"
+echo "    on disk   : ${_ondisk_gb} GB (what C: actually gives up)"
+if [ "$_sparse" -eq 1 ]; then
+  echo "    sparse    : yes — freed blocks return to Windows on their own"
+else
+  echo "    sparse    : no — freed blocks stay claimed until compaction"
+fi
 
 # Used-inside figure comes from the distro itself; skip if it will not start.
 # MSYS would rewrite the bare `/` argument into the Git-Bash root before
@@ -56,14 +77,31 @@ _df="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
 
 if [ -n "$_used_gb" ]; then
   echo "    used      : ${_used_gb} GB inside the distro"
-  _slack=$((_host_gb - _used_gb))
-  echo "    slack     : ~${_slack} GB reclaimable by compaction"
+  # Slack is measured against the ALLOCATED size: blocks the host has handed
+  # out that the guest filesystem is no longer using. The logical-minus-used
+  # figure is not slack, it is slack plus everything already given back.
+  _slack=$((_ondisk_gb - _used_gb))
+  [ "$_slack" -lt 0 ] && _slack=0
+  echo "    slack     : ~${_slack} GB actually reclaimable by compaction"
+  if [ "$_sparse" -eq 1 ]; then
+    echo "                (logical-minus-used would read ~$((_logical_gb - _used_gb)) GB;"
+    echo "                 the difference has already been returned automatically)"
+  fi
   if [ "$_slack" -lt 10 ]; then
     echo "✅ Slack is small; compaction is not worth the CI interruption yet."
     exit 0
   fi
 else
   echo "    used      : (distro did not start; cannot measure)"
+fi
+
+if [ "$_sparse" -eq 1 ]; then
+  cat <<'EOF'
+
+ℹ️  This vhdx is sparse, so reclaiming space inside the distro (`just runner-gc`,
+    `just disk-gc`) already returns it to C: without stopping anything. Compact
+    only if the residual slack above is worth a CI outage.
+EOF
 fi
 
 cat <<EOF
