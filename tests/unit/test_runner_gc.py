@@ -420,6 +420,26 @@ def _age(path: Path, hours: float) -> None:
     os.utime(path, (stamp, stamp))
 
 
+def _age_link(path: Path, hours: float) -> None:
+    """Backdate a reparse point itself.
+
+    `os.utime` resolves the link and stamps the target, leaving the link
+    reading fresh — which is exactly the state that hides the `bin.*` filter
+    bug from a test.
+    """
+    subprocess.run(
+        [
+            PWSH,
+            "-NoProfile",
+            "-Command",
+            f"(Get-Item -LiteralPath '{path}' -Force).LastWriteTime = "
+            f"(Get-Date).AddHours(-{hours})",
+        ],
+        capture_output=True,
+        check=True,
+    )
+
+
 def _workspace(root: Path, name: str, age_hours: float, *, marker: bool = True) -> Path:
     """A workspace shaped like the runner builds it: `_work/<repo>/<repo>`."""
     top = root / "_work" / name
@@ -573,6 +593,64 @@ def test_dry_run_reports_without_deleting(tmp_path: Path) -> None:
     assert "manga-uri" in proc.stdout, (
         "-DryRun has to name what it would collect, or it cannot be reviewed."
     )
+
+
+@pwshonly
+def test_dry_run_spares_the_log_trim_too(tmp_path: Path) -> None:
+    """A rehearsal that deletes 800 log files is not a rehearsal.
+
+    The workspace sweep gained -DryRun; the _diag/_temp trims predate it and
+    silently ignored the flag, so the first real dry-run against the live
+    runner reclaimed 282 MB it had just promised not to touch.
+    """
+    root = _make_runner_root(tmp_path)
+    log = root / "_diag" / "Runner_ancient.log"
+    log.write_text("old", encoding="utf-8")
+    _age(log, 24 * 30)
+    scratch = root / "_work" / "_temp" / "leftover"
+    scratch.mkdir(parents=True)
+    _age(scratch, 24 * 30)
+
+    proc = _run_gc(root, "-DryRun")
+
+    assert proc.returncode == 0, proc.stderr
+    assert log.exists(), "-DryRun deleted a _diag log"
+    assert scratch.exists(), "-DryRun deleted _work/_temp scratch"
+
+
+@pwshonly
+@pytest.mark.skipif(sys.platform != "win32", reason="needs a real NTFS link")
+def test_the_live_bin_link_is_never_pruned(tmp_path: Path) -> None:
+    """`-Filter bin.*` matches `bin` itself.
+
+    Windows treats a trailing `.*` as "extension optional", so the filter that
+    finds `bin.2.335.1` also returns the live `bin` link - and its name never
+    equals the resolved target, so the "is this the current one?" guard waves
+    it through. Deleting that link leaves a runner that cannot start.
+    """
+    root = _make_runner_root(tmp_path)
+    live = root / "bin.2.336.0"
+    live.mkdir()
+    (live / "Runner.Listener.exe").write_text("x", encoding="utf-8")
+    stale = root / "bin.2.335.1"
+    stale.mkdir()
+    (stale / "Runner.Listener.exe").write_text("x", encoding="utf-8")
+    _age(stale, 24 * 30)
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(root / "bin"), str(live)],
+        capture_output=True,
+        check=True,
+    )
+    _age_link(root / "bin", 24 * 30)
+
+    proc = _run_gc(root)
+
+    assert proc.returncode == 0, proc.stderr
+    assert (root / "bin").exists(), "the live bin link must survive the sweep"
+    assert (live / "Runner.Listener.exe").exists(), (
+        "the version bin points at must survive with its contents"
+    )
+    assert not stale.exists(), "the superseded version should still be collected"
 
 
 @pwshonly
