@@ -21,7 +21,13 @@ JOURNAL_MAX="${RUNNER_GC_JOURNAL_MAX:-200M}"
 
 _here="$(cd "$(dirname "$0")" && pwd)"
 _src="${_here}/runner_gc.sh"
-_dest="/usr/local/bin/runner-gc"
+# The extension is load-bearing, not cosmetic: the runner validates the hook
+# path and rejects anything that does not end in .sh/.ps1/.js with
+#   ArgumentException: <path> is not a valid path to a script.
+# An extensionless payload therefore threw on *every* job completion while
+# looking perfectly installed in `.env`.
+_dest="/usr/local/bin/runner-gc.sh"
+_legacy_dest="/usr/local/bin/runner-gc"
 
 # --- Windows host dispatch --------------------------------------------------
 # The runner (and therefore everything this installs) lives inside WSL. Re-enter
@@ -67,6 +73,9 @@ echo "--- 🧹 Installing runner disk GC (retention=${RETENTION}) ---"
 
 # 1. payload -----------------------------------------------------------------
 install -m 0755 "$_src" "$_dest"
+# Drop the extensionless payload earlier versions installed, so nothing keeps
+# pointing at a path the runner refuses to execute.
+[ -e "$_legacy_dest" ] && rm -f "$_legacy_dest"
 echo "[1/4] script: $_dest"
 
 # 2. systemd timer -----------------------------------------------------------

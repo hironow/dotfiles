@@ -74,6 +74,25 @@ ages out within the hour. Retention is `RUNNER_GC_RETENTION`, default `2h`.
 The GC **skips itself while a job is executing** so an in-flight `docker build`
 never loses cache underneath it; the hourly timer retries.
 
+### The hook has to actually be executable by the runner
+
+The runner **validates the hook path** and refuses anything that does not end
+in `.sh`, `.ps1` or `.js`:
+
+```
+ArgumentException: /usr/local/bin/runner-gc is not a valid path to a script.
+```
+
+An extensionless payload therefore threw on **every one of 877 jobs** while
+sitting in `.env` looking perfectly installed. The value must also be a *path*,
+not a command line — a `powershell.exe -NoProfile -File <script>` wrapper fails
+the same check, so retention comes from the environment rather than an argument.
+
+The failure is recorded only inside the job's own Worker log, never in the
+journal or the task history, which is why it survived a review that checked the
+wiring instead of the effect. `just status` therefore re-checks the extension
+and greps those logs for the rejection.
+
 ### Detecting a running job
 
 Job detection MUST use `pgrep -x Runner.Worker` (exact executable *name*).
@@ -81,6 +100,15 @@ Job detection MUST use `pgrep -x Runner.Worker` (exact executable *name*).
 reports a running job 100% of the time and silently disables the entire
 mechanism. This bit us during development and is the single easiest way to
 regress this file.
+
+Getting the name right is not enough. The job-completed hook is invoked **by**
+`Runner.Worker`, so the worker of the job being collected after is always alive
+and always the GC's own ancestor — counting it made the hook skip every time,
+which is the same silent no-op reached by a third road. The guard therefore
+compares live workers against the process ancestry and backs off only for a
+worker outside it, i.e. a genuinely concurrent job. Verified on the box with a
+copy of `sh` renamed `Runner.Worker`: invoked *from* one the sweep proceeds,
+with an unrelated one alive it skips.
 
 On the Windows leg `Get-Process -Name Runner.Worker` is already an
 exact-name match, so it has no equivalent hazard — but its scripts **must stay

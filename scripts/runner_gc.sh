@@ -45,7 +45,7 @@ case "$(uname -s)" in
     _rc=0
 
     log "host is Windows; collecting WSL distro '${_distro}'"
-    # Git Bash would rewrite /usr/local/bin/runner-gc into a Windows path
+    # Git Bash would rewrite /usr/local/bin/runner-gc.sh into a Windows path
     # before wsl.exe sees it; disable the conversion for these calls.
     export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
@@ -58,7 +58,7 @@ case "$(uname -s)" in
     wsl.exe -d "$_distro" -u root -e env \
       "RUNNER_GC_RETENTION=${RETENTION}" \
       "RUNNER_GC_FORCE=${FORCE}" \
-      sh -c "if [ -x /usr/local/bin/runner-gc ]; then exec /usr/local/bin/runner-gc; else echo '[runner-gc] not installed; running from the checkout (run: just runner-gc-install)'; exec bash '${_wsl_self}'; fi" || _rc=$?
+      sh -c "if [ -x /usr/local/bin/runner-gc.sh ]; then exec /usr/local/bin/runner-gc.sh; else echo '[runner-gc] not installed; running from the checkout (run: just runner-gc-install)'; exec bash '${_wsl_self}'; fi" || _rc=$?
 
     log "collecting the native Windows runner"
     _ps1="${_here}/runner_gc_win.ps1"
@@ -82,8 +82,33 @@ esac
 # Use `pgrep -x` (matches the executable NAME only). `pgrep -f Runner.Worker`
 # matches this script's own command line as well and so reports a running job
 # 100% of the time — a false positive that silently disables the whole GC.
-if [ "$FORCE" != "1" ] && pgrep -x Runner.Worker >/dev/null 2>&1; then
-  log "SKIP: a runner job is executing (Runner.Worker alive)"
+#
+# The job-completed hook is invoked *by* Runner.Worker, so the worker of the job
+# we are collecting after is always alive and always our own ancestor. Counting
+# it would make the hook — the brake that fires at the ideal moment — skip every
+# single time. Only a worker that is NOT in our ancestry belongs to a concurrent
+# job, and only that is a reason to back off.
+_ancestor_pids() {
+  _p="$$"
+  while [ -n "$_p" ] && [ "$_p" -gt 1 ]; do
+    printf '%s\n' "$_p"
+    _p="$(ps -o ppid= -p "$_p" 2>/dev/null | tr -d ' ')"
+  done
+}
+
+_foreign_worker() {
+  _anc=" $(_ancestor_pids | tr '\n' ' ') "
+  for _w in $(pgrep -x Runner.Worker 2>/dev/null); do
+    case "$_anc" in
+      *" $_w "*) continue ;;
+      *) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+if [ "$FORCE" != "1" ] && _foreign_worker; then
+  log "SKIP: another runner job is executing (Runner.Worker alive)"
   exit 0
 fi
 
@@ -217,8 +242,11 @@ _tool_series() { # 1.25.11 -> 1.25 ; 2.26.2 -> 2.26 ; anything else -> itself
   esac
 }
 
-if pgrep -x Runner.Worker >/dev/null 2>&1; then
-  log "toolcache: SKIP (a job is executing; deleting an in-use version breaks it)"
+# Independent of FORCE, but still ancestry-aware: under the job-completed hook
+# our own worker has finished its steps, while a *concurrent* job may be
+# mid-resolve and would lose a version out from under it.
+if _foreign_worker; then
+  log "toolcache: SKIP (another job is executing; deleting an in-use version breaks it)"
 else
   _each_runner_dir | while read -r _rdir; do
     [ -d "${_rdir}/_work/_tool" ] || continue

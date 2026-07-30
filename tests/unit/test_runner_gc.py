@@ -327,10 +327,17 @@ def test_toolcache_reaping_never_races_a_running_job() -> None:
     leg must re-check for a live job regardless of FORCE.
     """
     text = GC.read_text(encoding="utf-8")
-    guards = re.findall(r"pgrep\s+-x\s+Runner\.Worker", text)
-    assert len(guards) >= 2, (
-        "the toolcache leg needs its own `pgrep -x Runner.Worker` guard that "
-        "FORCE cannot bypass, separate from the top-level docker guard."
+    # The guard is ancestry-aware (`_foreign_worker`) rather than a bare pgrep,
+    # so the job-completed hook is not blocked by the very worker that invoked
+    # it — but a *concurrent* job still stops this leg, FORCE or not.
+    # Top-level guard: FORCE may bypass it (losing build cache only costs time).
+    assert re.search(r'if \[ "\$FORCE" != "1" \] && _foreign_worker', text), (
+        "the top-level guard must be _foreign_worker, bypassable by FORCE."
+    )
+    # Toolcache guard: separate, and FORCE must not reach it.
+    assert re.search(r"^if _foreign_worker; then$", text, re.M), (
+        "the toolcache leg needs its own `_foreign_worker` guard with no FORCE "
+        "escape, separate from the top-level docker guard."
     )
 
 
@@ -770,7 +777,7 @@ def test_windows_dispatch_falls_back_to_the_checkout() -> None:
     broken GC rather than an uninstalled one.
     """
     text = GC.read_text(encoding="utf-8")
-    assert re.search(r"if \[ -x /usr/local/bin/runner-gc \]", text), (
+    assert re.search(r"if \[ -x /usr/local/bin/runner-gc\.sh \]", text), (
         "runner_gc.sh must test for the installed payload and fall back to "
         "this checkout instead of exec'ing a path that may not exist."
     )
@@ -846,4 +853,88 @@ def test_compaction_measures_allocated_not_logical_size() -> None:
     assert "fsutil sparse queryflag" in text, (
         "wsl_compact.sh must report whether the vhdx is sparse: it decides "
         "whether compaction is needed at all."
+    )
+
+
+# --- The hook that never ran ------------------------------------------------
+
+
+def test_hook_payload_carries_a_script_extension() -> None:
+    """The runner validates the hook path and rejects a bare name.
+
+    An extensionless `/usr/local/bin/runner-gc` sat in `.env` looking correct
+    while the runner threw `ArgumentException: ... is not a valid path to a
+    script` on all 877 jobs. The extension is load-bearing.
+    """
+    text = INSTALL.read_text(encoding="utf-8")
+    assert re.search(r'_dest="/usr/local/bin/runner-gc\.sh"', text), (
+        "the payload must be installed under a .sh name or the runner refuses "
+        "to execute the job-completed hook."
+    )
+
+
+def test_windows_hook_is_a_path_not_a_command_line() -> None:
+    """Same validation on Windows: arguments make it not a path."""
+    text = INSTALL_WIN.read_text(encoding="utf-8")
+    assert re.search(r"^\s*\$hookCmd\s*=\s*\$payload\s*$", text, re.M), (
+        "the Windows hook must be the bare .ps1 path; a `powershell.exe "
+        "-File <script>` wrapper fails the runner's path validation."
+    )
+
+
+def test_job_safety_ignores_our_own_worker() -> None:
+    """The hook runs *inside* Runner.Worker, so it is always its own ancestor.
+
+    Counting that worker made the hook — the brake that fires at the ideal
+    moment — skip unconditionally. Only a worker outside our ancestry belongs
+    to a concurrent job.
+    """
+    sh = GC.read_text(encoding="utf-8")
+    assert "_ancestor_pids" in sh and "_foreign_worker" in sh, (
+        "runner_gc.sh must compare live workers against its own ancestry."
+    )
+    # A bare pgrep as the decision would reintroduce the always-skip bug.
+    bad = [
+        line
+        for line in sh.splitlines()
+        if re.search(r"^\s*if\s+.*pgrep -x Runner\.Worker", line)
+    ]
+    assert not bad, f"job-safety must go through _foreign_worker: {bad}"
+
+    ps = GC_WIN.read_text(encoding="utf-8")
+    assert "Get-AncestorProcessId" in ps and "-notcontains" in ps, (
+        "runner_gc_win.ps1 must exclude its own ancestry the same way."
+    )
+
+
+def test_status_validates_the_hook_rather_than_its_presence() -> None:
+    """`just status` exists because 'installed' and 'working' differed.
+
+    The wiring looked perfect in `.env` for 877 jobs; only the job's own log
+    showed the rejection. Status has to check the extension and surface those
+    rejections, or it would have reported green throughout.
+    """
+    status = SCRIPTS / "gc_status.sh"
+    assert status.is_file(), "scripts/gc_status.sh must exist"
+    text = status.read_text(encoding="utf-8")
+    assert "is not a valid path to a script" in text, (
+        "status must surface the runner's own rejection message from the job "
+        "logs; it is the only place the failure is recorded."
+    )
+    assert ".ps1" in text and ".sh" in text, (
+        "status must validate the hook extension the runner requires."
+    )
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    assert re.search(r"^status:\n\s+bash scripts/gc_status\.sh", justfile, re.M), (
+        "`just status` must be wired to scripts/gc_status.sh."
+    )
+
+
+def test_windows_installer_survives_without_elevation() -> None:
+    """S4U is better but needs admin; staying installable matters more."""
+    text = INSTALL_WIN.read_text(encoding="utf-8")
+    assert "S4U" in text, "prefer a principal that fires while logged off"
+    assert re.search(r"catch\s*\{", text), (
+        "registering an S4U principal needs elevation, so the installer must "
+        "fall back instead of failing for an unelevated user."
     )
