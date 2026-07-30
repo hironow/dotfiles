@@ -96,7 +96,11 @@ for _d in /home/*/actions-runner* /root/actions-runner* /opt/actions-runner*; do
   [ -f "${_d}/config.sh" ] || continue
   _h="$(grep -h '^ACTIONS_RUNNER_HOOK_JOB_COMPLETED=' "${_d}/.env" 2>/dev/null | cut -d= -f2-)"
   case "$_h" in
-    '')            _bad  "hook: not set in ${_d}/.env" ;;
+    # `continue`, because the verdict below only counts job logs newer than
+    # `.env`. Without a hook key those jobs prove nothing, and printing a
+    # green "accepted in all N job(s)" under a red "not set" reads as proof
+    # the mechanism works.
+    '')            _bad  "hook: not set in ${_d}/.env"; continue ;;
     *' '*)         _bad  "hook: has arguments, so it is not a path — the runner rejects it: $_h" ;;
     *.sh|*.ps1|*.js) _ok "hook: $_h" ;;
     *)             _bad  "hook: missing a .sh/.ps1/.js extension — the runner rejects it: $_h" ;;
@@ -153,7 +157,7 @@ _windows_status() {
         \$line = Get-Content \$env_ | Where-Object { \$_ -match '^ACTIONS_RUNNER_HOOK_JOB_COMPLETED=' }
         if (\$line) { \$h = (\$line -split '=',2)[1] }
       }
-      if (-not \$h) { 'FAIL|hook: not set in ' + \$env_ }
+      if (-not \$h) { 'FAIL|hook: not set in ' + \$env_; continue }
       elseif (\$h -match '\s') { 'FAIL|hook: has arguments, so it is not a path — the runner rejects it: ' + \$h }
       elseif (\$h -match '\.(ps1|sh|js)\$') { 'OK|hook: ' + \$h }
       else { 'FAIL|hook: missing a .sh/.ps1/.js extension — the runner rejects it: ' + \$h }
