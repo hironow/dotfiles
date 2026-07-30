@@ -117,18 +117,34 @@ echo "--- 🧹 reclaiming ---"
 # mise: drop tool versions no tracked config references. `prune` is the
 # supported entry point; it never touches versions still pinned by a config.
 if command -v mise >/dev/null 2>&1; then
-  mise prune --yes >/dev/null 2>&1 && echo "  mise: pruned unreferenced versions" || echo "  mise: prune failed (non-fatal)"
+  if mise prune --yes >/dev/null 2>&1; then
+    echo "  mise: pruned unreferenced versions"
+  else
+    echo "  mise: prune failed (non-fatal)"
+  fi
 fi
 
-# Go's module cache is deliberately read-only, so `rm -rf` leaves most of it
-# behind (11 GB here). `go clean` is the only supported way to drop it.
+# Go's module cache is deliberately read-only, so a recursive delete leaves
+# most of it behind (11 GB here). `go clean` is the only supported way to drop
+# it. Spelled as if/else rather than `A && B || C`, which shellcheck rightly
+# rejects (SC2015): C also runs when A succeeded but B failed.
 if command -v go >/dev/null 2>&1; then
-  go clean -modcache >/dev/null 2>&1 && echo "  go: module cache cleaned" || echo "  go: modcache clean failed (non-fatal)"
-  go clean -cache >/dev/null 2>&1 && echo "  go: build cache cleaned" || true
+  if go clean -modcache >/dev/null 2>&1; then
+    echo "  go: module cache cleaned"
+  else
+    echo "  go: modcache clean failed (non-fatal)"
+  fi
+  if go clean -cache >/dev/null 2>&1; then
+    echo "  go: build cache cleaned"
+  fi
 fi
 
 printf '%b' "$_caches" | awk 'NF' | while read -r _c; do
-  rm -rf "$_c" 2>/dev/null && echo "  removed: $_c" || echo "  skipped (in use): $_c"
+  if rm -rf "$_c" 2>/dev/null; then
+    echo "  removed: $_c"
+  else
+    echo "  skipped (in use): $_c"
+  fi
 done
 
 echo "--- ✅ host caches reclaimed ---"
