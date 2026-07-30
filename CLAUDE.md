@@ -180,6 +180,21 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
       (管理者権限 + `wsl --shutdown` = runner 停止)。`just wsl-compact` は計測と手順提示に
       留める advisory。**sparse VHD (`--set-sparse`) は MS がデータ破損リスクで無効化中**
       (`--allow-unsafe` が必要) なので CI ホストでは採らない。
+    - **native Windows 側の主犯は `_work/<repo>`** (`_diag` や `_work/_temp` ではない。
+      実測 5.1G / うち Rust `target/` 3.7G に対し `_temp` は 12K)。**ディレクトリ mtime で
+      期限判定してはいけない** — Windows は入れ子のファイル更新で親ディレクトリの
+      `LastWriteTime` を更新しないため、数分前にビルドした checkout が2ヶ月前の日付を
+      示す。`.runner-gc-last-used` マーカーを GC 自身が押して、それを基準に aging する。
+      加えて `RUNNER_WORKSPACE` / `GITHUB_WORKSPACE` の指す checkout は無条件に除外
+      (hook がステップ間で発火しても現行ジョブを消さないため)。
+    - **workspace の削除は素の `Remove-Item` では完走しない**。junction (5.1 の
+      `-Recurse` はリンクを**貫通して**リンク先を消す)、read-only な `.git/objects`、
+      MAX_PATH 超え (`node_modules`) の3つが原因。reparse point を先に非再帰で
+      detach → read-only 解除 → 残りは `robocopy /MIR /XJ` で潰す順序が必須。
+    - **runner 自己更新の残骸 (`_work/_update`, 旧 `bin.*`/`externals.*`) は 24h の
+      別枠 floor** で回収する。2時間枠だと進行中の self-update を巻き込む。旧版削除は
+      `bin`/`externals` が **symlink として解決できる時だけ** (plain install では
+      `bin.*` が runner 本体そのものなので消すと壊れる)。
 - devcontainer features は Microsoft 公式のみ (community 不可、memory
   `feedback_no_community_devcontainer_features`)。
 

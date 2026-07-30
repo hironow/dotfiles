@@ -32,18 +32,28 @@ start:
   `1.25.11`), and deleting anything narrower than the whole `<version>/`
   directory leaves the `<version>/<arch>.complete` marker claiming a tool that
   is no longer there.
+- **Stale directory timestamps.** Windows does not bump a directory's
+  `LastWriteTime` when a nested file changes, so a workspace rebuilt minutes ago
+  can still carry a two-month-old stamp. Ageing `_work/<repo>` on the directory
+  mtime would therefore delete hot checkouts and spare cold ones — the marker
+  file is what makes the 2 h budget mean anything there.
 
-Static checks only (part of `tests/unit/`): the scripts drive a live runner,
+Mostly static checks (part of `tests/unit/`): the scripts drive a live runner,
 systemd and the Windows task scheduler, none of which is reproducible
-host-side.
+host-side. The workspace sweep is the exception — it deletes multi-GB trees, so
+it is additionally exercised end-to-end against a synthetic runner root
+whenever `pwsh` is available.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -57,9 +67,14 @@ COMPACT = SCRIPTS / "wsl_compact.sh"
 GC_WIN = SCRIPTS / "runner_gc_win.ps1"
 INSTALL_WIN = SCRIPTS / "install_runner_gc_win.ps1"
 BASH = shutil.which("bash") or "/bin/bash"
+PWSH = shutil.which("pwsh")
 
 # Every script that shells out to wsl.exe from a possible Git Bash host.
 DISPATCHERS = (GC, INSTALL, COMPACT)
+
+# Written by the GC into every workspace it sees a job finish in; the only
+# reliable "last used" signal (see the module docstring).
+MARKER = ".runner-gc-last-used"
 
 
 def test_job_detection_uses_exact_name_match() -> None:
@@ -305,3 +320,257 @@ def test_scripts_parse() -> None:
     for script in (GC, INSTALL, COMPACT, SCRIPTS / "disk_gc.sh"):
         proc = subprocess.run([BASH, "-n", str(script)], capture_output=True, text=True)
         assert proc.returncode == 0, f"{script.name}: {proc.stderr}"
+
+
+# ---------------------------------------------------------------------------
+# Workspace sweep — the collector for `_work/<repo>`
+#
+# `_diag` and `_work/_temp` are rounding errors (0.3 GB and 12 KB on the host
+# that prompted this); the workspaces are where the growth actually lives, at
+# 4.9 GB across three repos. Deleting whole multi-GB trees earns stricter
+# tests than the rest of the file: a mistake here is unrecoverable, not just a
+# missed collection.
+# ---------------------------------------------------------------------------
+
+
+def test_workspace_ageing_never_trusts_the_directory_mtime() -> None:
+    """A directory mtime does not track work done inside it on Windows.
+
+    Ageing a workspace on `LastWriteTime` inverts the policy — hot checkouts
+    look old and get deleted, cold ones look fresh and survive.
+    """
+    text = GC_WIN.read_text(encoding="utf-8")
+    assert ".runner-gc-last-used" in text, (
+        "runner_gc_win.ps1 must age workspaces on a marker file it stamps "
+        "itself, not on the directory timestamp."
+    )
+
+
+def test_workspace_sweep_protects_the_live_checkout() -> None:
+    """The runner hands us the in-flight workspace; never age it out."""
+    text = GC_WIN.read_text(encoding="utf-8")
+    for var in ("RUNNER_WORKSPACE", "GITHUB_WORKSPACE"):
+        assert var in text, (
+            f"runner_gc_win.ps1 must read {var} and exclude that path "
+            "unconditionally, so a hook firing mid-checkout cannot delete it."
+        )
+
+
+def test_workspace_sweep_uses_an_explicit_runner_dir_allowlist() -> None:
+    """`_`-prefix matching would permanently exclude a repo literally named
+    `_foo`; the runner's own directories are a known, closed set."""
+    text = GC_WIN.read_text(encoding="utf-8")
+    for managed in ("_actions", "_tool", "_temp", "_update", "_PipelineMapping"):
+        assert managed in text, (
+            f"runner_gc_win.ps1 must name {managed} in its protect list "
+            "instead of inferring runner-owned directories from a prefix."
+        )
+
+
+def test_stale_version_pruning_requires_a_resolvable_symlink() -> None:
+    """`bin.*`/`externals.*` are only leftovers when `bin` is a symlink to one
+    of them. On a plain install they *are* the runner - deleting them bricks
+    it."""
+    text = GC_WIN.read_text(encoding="utf-8")
+    assert "LinkType" in text or "ResolvedTarget" in text, (
+        "runner_gc_win.ps1 must resolve the bin/externals symlink before "
+        "pruning versioned directories, and skip the prune when it cannot."
+    )
+
+
+# --- end-to-end against a synthetic runner root -----------------------------
+
+
+def _make_runner_root(tmp_path: Path) -> Path:
+    """A directory that passes the script's own safety check."""
+    root = tmp_path / "actions-runner-win"
+    (root / "_work").mkdir(parents=True)
+    (root / "_diag").mkdir()
+    (root / ".runner").write_text("{}", encoding="utf-8")
+    return root
+
+
+def _age(path: Path, hours: float) -> None:
+    stamp = time.time() - hours * 3600
+    os.utime(path, (stamp, stamp))
+
+
+def _workspace(root: Path, name: str, age_hours: float, *, marker: bool = True) -> Path:
+    """A workspace shaped like the runner builds it: `_work/<repo>/<repo>`."""
+    top = root / "_work" / name
+    (top / name / "target").mkdir(parents=True)
+    (top / name / "target" / "build.bin").write_bytes(b"x" * 512)
+    if marker:
+        stamp = top / MARKER
+        stamp.touch()
+        _age(stamp, age_hours)
+    _age(top, age_hours)
+    return top
+
+
+def _run_gc(root: Path, *extra: str, env: dict[str, str] | None = None):
+    overrides = dict(os.environ)
+    # A real job's variables must not leak in from the developer's shell.
+    for key in ("RUNNER_WORKSPACE", "GITHUB_WORKSPACE", "GITHUB_REPOSITORY"):
+        overrides.pop(key, None)
+    overrides.update(env or {})
+    return subprocess.run(
+        [
+            PWSH,
+            "-NoProfile",
+            "-File",
+            str(GC_WIN),
+            "-RunnerRoot",
+            str(root),
+            "-SkipDocker",
+            "-Force",
+            *extra,
+        ],
+        capture_output=True,
+        text=True,
+        env=overrides,
+    )
+
+
+pwshonly = pytest.mark.skipif(PWSH is None, reason="needs pwsh to run the GC")
+
+
+@pwshonly
+def test_cold_workspace_goes_warm_workspace_stays(tmp_path: Path) -> None:
+    root = _make_runner_root(tmp_path)
+    cold = _workspace(root, "manga-uri", age_hours=5)
+    warm = _workspace(root, "auto-amv", age_hours=0.5)
+
+    proc = _run_gc(root)
+
+    assert proc.returncode == 0, proc.stderr
+    assert not cold.exists(), "a workspace idle for 5 h must be collected"
+    assert warm.exists(), "a workspace used 30 min ago must survive"
+
+
+@pwshonly
+def test_marker_outranks_a_stale_directory_timestamp(tmp_path: Path) -> None:
+    """The regression the marker exists for: old directory, fresh marker."""
+    root = _make_runner_root(tmp_path)
+    ws = _workspace(root, "manga-uri", age_hours=800)
+    _age(ws / MARKER, 0.25)
+
+    proc = _run_gc(root)
+
+    assert proc.returncode == 0, proc.stderr
+    assert ws.exists(), (
+        "the marker says this workspace was used 15 min ago; the two-month-old "
+        "directory mtime must not override it."
+    )
+
+
+@pwshonly
+def test_live_workspace_survives_even_when_cold(tmp_path: Path) -> None:
+    root = _make_runner_root(tmp_path)
+    live = _workspace(root, "manga-uri", age_hours=99)
+
+    proc = _run_gc(root, env={"RUNNER_WORKSPACE": str(live / "manga-uri")})
+
+    assert proc.returncode == 0, proc.stderr
+    assert live.exists(), (
+        "RUNNER_WORKSPACE points at the job the runner is finishing; it must "
+        "be excluded no matter how the ageing lands."
+    )
+
+
+@pwshonly
+def test_hook_stamps_the_marker_for_the_finishing_job(tmp_path: Path) -> None:
+    """Without this the workspace of the *last* job ages from its checkout."""
+    root = _make_runner_root(tmp_path)
+    ws = _workspace(root, "manga-uri", age_hours=99, marker=False)
+
+    proc = _run_gc(root, env={"GITHUB_REPOSITORY": "m4k3-co/manga-uri"})
+
+    assert proc.returncode == 0, proc.stderr
+    assert ws.exists(), "the workspace of the job we just ran must be kept"
+    assert (ws / MARKER).exists(), (
+        "the GC must stamp the marker for GITHUB_REPOSITORY so the next sweep "
+        "ages this workspace from now, not from its checkout date."
+    )
+
+
+@pwshonly
+def test_runner_owned_directories_are_never_swept(tmp_path: Path) -> None:
+    root = _make_runner_root(tmp_path)
+    managed = []
+    for name in ("_actions", "_tool", "_PipelineMapping"):
+        directory = root / "_work" / name
+        directory.mkdir()
+        (directory / "keep.txt").write_text("keep", encoding="utf-8")
+        _age(directory, 999)
+        managed.append(directory)
+
+    proc = _run_gc(root)
+
+    assert proc.returncode == 0, proc.stderr
+    for directory in managed:
+        assert directory.exists(), (
+            f"{directory.name} is runner-owned state, not a workspace cache; "
+            "deleting it forces every action to re-download."
+        )
+
+
+@pwshonly
+def test_readonly_files_do_not_stop_the_sweep(tmp_path: Path) -> None:
+    """`.git/objects` is read-only; a naive delete aborts the whole tree."""
+    root = _make_runner_root(tmp_path)
+    ws = _workspace(root, "manga-uri", age_hours=9)
+    locked = ws / "manga-uri" / ".git" / "objects"
+    locked.mkdir(parents=True)
+    blob = locked / "cafebabe"
+    blob.write_bytes(b"blob")
+    os.chmod(blob, stat.S_IREAD)
+
+    proc = _run_gc(root)
+
+    assert proc.returncode == 0, proc.stderr
+    assert not ws.exists(), (
+        "read-only git objects must be cleared, not left behind as a partial "
+        "delete that keeps the disk full."
+    )
+
+
+@pwshonly
+def test_dry_run_reports_without_deleting(tmp_path: Path) -> None:
+    """Rehearsal before pointing this at a real 5 GB runner root."""
+    root = _make_runner_root(tmp_path)
+    cold = _workspace(root, "manga-uri", age_hours=5)
+
+    proc = _run_gc(root, "-DryRun")
+
+    assert proc.returncode == 0, proc.stderr
+    assert cold.exists(), "-DryRun must not delete anything"
+    assert "manga-uri" in proc.stdout, (
+        "-DryRun has to name what it would collect, or it cannot be reviewed."
+    )
+
+
+@pwshonly
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are Windows-only")
+def test_sweep_does_not_follow_a_junction_out_of_the_workspace(
+    tmp_path: Path,
+) -> None:
+    """A junction in a checkout must cost the link, never the target."""
+    root = _make_runner_root(tmp_path)
+    ws = _workspace(root, "manga-uri", age_hours=9)
+    outside = tmp_path / "precious"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(ws / "manga-uri" / "linked"), str(outside)],
+        capture_output=True,
+        check=True,
+    )
+
+    proc = _run_gc(root)
+
+    assert proc.returncode == 0, proc.stderr
+    assert not ws.exists(), "the workspace itself must still be collected"
+    assert (outside / "keep.txt").exists(), (
+        "the GC followed a junction and deleted data outside the runner root."
+    )

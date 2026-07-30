@@ -11,9 +11,19 @@ WSL distro, and a native Windows one at `~/actions-runner-win` — and neither
 collected anything.
 
 Measurement found a single dominant consumer: the WSL `ext4.vhdx` backing the
-distro, at **227 GB**. (The Windows runner was comparatively tiny at ~0.06 GB
-of `_work`, but had 44 unrotated `_diag` logs and no GC of any kind, so it is
-the same leak at an earlier stage.)
+distro, at **227 GB**. The native Windows runner is the same leak an order of
+magnitude behind, at **6.1 GB** and climbing with no GC of any kind:
+
+| path                                | size   |
+| ----------------------------------- | ------ |
+| `_work/<repo>` (3 repos)            | 4.9 GB |
+| `_diag` (1098 unrotated logs)       | 0.4 GB |
+| `_work/_update` + superseded `bin.*`/`externals.*` + installer `.zip` | 0.6 GB |
+| `_work/_temp`                       | 12 KB  |
+
+`manga-uri` alone accounts for 4.1 GB of that, 3.7 GB of it a Rust `target/`.
+The scratch directory an incomplete sweep would reach for is five orders of
+magnitude smaller than the workspaces that actually grow.
 
 Inside that distro, `docker system df` reported:
 
@@ -51,6 +61,8 @@ idempotent installer, wired to three independent brakes:
 | hourly floor (idle drift, missed hooks) | `runner-gc.timer` (Persistent) | Scheduled Task `dotfiles-runner-gc` |
 | uncapped logs                          | journald `SystemMaxUse=200M`, `_diag` trimmed at 7 days | `_diag` trimmed at 7 days |
 | stacked toolcache generations           | `_work/_tool/<tool>/<version>/`, newest N kept | (native runner installs tools per job) |
+| idle job workspaces                     | (docker holds the build state)  | `_work/<repo>` past the retention |
+| superseded runner versions              | (self-update replaces in place) | `_work/_update`, stale `bin.*`/`externals.*`, installer `.zip` |
 
 `just runner-gc` and `just runner-gc-install` drive **both** legs from the
 Windows side, so there is one command to remember rather than two.
@@ -122,6 +134,45 @@ This leg re-checks for a live job **even under `RUNNER_GC_FORCE=1`**. Losing
 build cache to a forced prune only costs time, but deleting a `<version>/` that
 a running job already resolved fails its next step outright — so the two are not
 equally forceable.
+
+### Ageing a workspace
+
+`_work/<repo>` is where the Windows leg actually grows, and it is the one thing
+here whose collection is irreversible — so it is aged on a marker file
+(`.runner-gc-last-used`) the GC stamps itself, never on the directory
+timestamp. **Windows does not bump a directory's `LastWriteTime` when a nested
+file changes**: `manga-uri` was rebuilt the day before this was written and
+still reported a mtime seven weeks old. Ageing on that inverts the policy
+outright — hot checkouts read cold and get deleted, cold ones look fresh and
+survive. Whatever `RUNNER_WORKSPACE`/`GITHUB_WORKSPACE` point at is excluded on
+top of that, so a hook firing between steps cannot take the running job's tree.
+
+Deleting the tree needs more than `Remove-Item -Recurse`, and each gap is a
+different kind of damage:
+
+- **Junctions.** Windows PowerShell recurses *through* a reparse point and
+  deletes the target's contents — data outside the runner root. Links are
+  detached first, non-recursively, so only the link is spent.
+- **Read-only files.** `.git/objects` is read-only by design; one of them
+  aborts the delete midway and leaves a half-removed tree that still fills the
+  disk.
+- **MAX_PATH.** `node_modules` nests past the limit on its own, and
+  `powershell.exe` (5.1) — which is what the hook runs — gives up there.
+  `robocopy /MIR /XJ` mirrors an empty directory over the remains, speaking the
+  long-path API natively; `/XJ` so it cannot cross a junction either.
+
+The cost is a fresh clone and a cold build on the next job for that repo. That
+is the trade the 2 h budget already makes elsewhere, and it is why the marker
+exists: back-to-back jobs keep their cache, a repo nobody has touched since
+this morning does not.
+
+Self-update leftovers (`_work/_update`, superseded `bin.*`/`externals.*`,
+installer archives) get a **24 h floor of their own** rather than the 2 h
+retention: the runner stages an update and only then swings the `bin`/
+`externals` links over, so a two-hour window could catch one mid-flight.
+Versioned directories are pruned **only when `bin`/`externals` resolve as
+symlinks** — a plain install keeps the live runner in `bin.*` itself, where
+deleting the "old" one would brick it.
 
 ### Windows → WSL dispatch
 
