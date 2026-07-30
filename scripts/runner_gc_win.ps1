@@ -124,10 +124,32 @@ function Remove-Tree {
 # --- Job safety -------------------------------------------------------------
 # Get-Process matches on the executable name, so unlike the Linux side there is
 # no risk of this script matching itself.
+# The job-completed hook is invoked *by* Runner.Worker, so the worker of the job
+# we are collecting after is always alive and always our own ancestor. Counting
+# it would make the hook skip every single time; only a worker outside our
+# ancestry belongs to a concurrent job.
+function Get-AncestorProcessId {
+    $ids = @()
+    $walk = $PID
+    while ($walk) {
+        $ids += $walk
+        $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$walk" -ErrorAction SilentlyContinue
+        if (-not $proc) { break }
+        $walk = $proc.ParentProcessId
+        if ($ids -contains $walk) { break }   # defensive: never loop on a cycle
+    }
+    return $ids
+}
+
 if (-not $Force) {
-    $worker = Get-Process -Name 'Runner.Worker' -ErrorAction SilentlyContinue
-    if ($worker) {
-        Write-GcLog 'SKIP: a runner job is executing (Runner.Worker alive)'
+    $ancestors = Get-AncestorProcessId
+    # @() so a single match does not unroll to a bare object under StrictMode.
+    $foreign = @(
+        Get-Process -Name 'Runner.Worker' -ErrorAction SilentlyContinue |
+            Where-Object { $ancestors -notcontains $_.Id }
+    )
+    if ($foreign.Count -gt 0) {
+        Write-GcLog 'SKIP: another runner job is executing (Runner.Worker alive)'
         exit 0
     }
 }

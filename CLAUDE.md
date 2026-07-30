@@ -160,8 +160,20 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   **空きが尽きると vhdx を展開できず WSL 自体が起動不能になる** (`I/O error @util.cpp`
   → systemd 起動失敗) デッドロックに入る。`just runner-gc-install` が **2時間保持**の
   GC を三重に仕掛ける (job-completed hook / hourly timer / journald cap)。関連する罠:
+    - **状態確認は `just status`**。Windows/WSL 両 leg の timer・task・hook を一度に出し、
+      **hook が runner に受理される形式か**と**直近ジョブで拒否されていないか**まで見る
+      (下記の事故を二度と見逃さないため)。
+    - **hook のパスは `.sh`/`.ps1`/`.js` 拒否検証がある**。runner が
+      `ArgumentException: ... is not a valid path to a script` で弾くため、拡張子なしの
+      `/usr/local/bin/runner-gc` は **877 ジョブ全てで失敗**していた (`.env` 上は正しく
+      見えるので気付けない)。値は**パスであること**も必須で、`powershell.exe -File <script>`
+      のようなコマンド行も同じ検証で落ちる。**失敗はジョブ自身の Worker ログにしか残らない**
+      (journal にもタスク履歴にも出ない)。
     - **job 検出は `pgrep -x Runner.Worker` 必須**。`pgrep -f` は GC 自身のコマンド行に
       マッチして「常時ジョブ実行中」と誤判定し、GC を無言で永久停止させる。
+    - **さらに hook は `Runner.Worker` の内側から呼ばれる**ので、素直に検出すると
+      「自分を起動したジョブ」を理由に**毎回 SKIP** する。プロセス**祖先**と突き合わせ、
+      祖先でない worker (= 同時実行の別ジョブ) のときだけ退避する。
     - **rootless docker のホストでは root の timer が別 daemon を掃除する**。hourly timer は
       root で走るが root の context は `/var/run/docker.sock` (rootful) に解決し、実在庫は
       `/run/user/<uid>/docker.sock` (rootless) 側にある。`docker info` は空の rootful でも

@@ -425,6 +425,13 @@ clean-all: clean clean-cache
 # Disk GC — stop the host/runner disk ratchet (ADR 0035)
 # ------------------------------
 
+# Status: is the disk GC actually collecting? Shows the Windows and WSL legs
+# together — timer/task state, whether the job hook is a path the runner will
+# accept, and whether it was rejected in recent jobs. Read-only (ADR 0035).
+[group('Disk')]
+status:
+    bash scripts/gc_status.sh
+
 # Disk: report host cache sizes + free space. Measures only, never deletes.
 [group('Disk')]
 disk-report:
