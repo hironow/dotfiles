@@ -254,13 +254,18 @@ target they resolve to — a plain install keeps the live runner inside `bin.*`
 itself, where deleting the "old" one would brick it.
 
 `RUNNER_GC_ROOT` points the sweep at a single install, mirroring the Windows
-leg's `-RunnerRoot`, and is the one thing that lets the workspace leg run while
-a job is executing. Everywhere else a concurrent worker stops it, because that
-worker may be building inside one of these trees — but then the destructive path
-could only ever be exercised on an idle runner, and on this box no idle window
-appeared in twelve minutes of waiting. Naming an install explicitly is something
-the timer and the hook never do, so it is a safe signal for "I mean this one".
-The `.runner` guard and the live-workspace exclusions still apply.
+leg's `-RunnerRoot`. Without it the destructive path could only ever be
+exercised on an idle runner, and on this box no idle window appeared in twelve
+minutes of waiting.
+
+Running it while a job executes takes **both** `RUNNER_GC_ROOT` and
+`RUNNER_GC_ALLOW_BUSY=1`, and `RUNNER_GC_FORCE` cannot substitute for either.
+Naming a root says *which* install, not that the install is safe to disturb —
+those are different claims, and only the second one is dangerous. A manual run
+has no `RUNNER_WORKSPACE`/`GITHUB_WORKSPACE`, so it cannot tell which checkout
+a concurrent job is writing to: a workspace whose last job finished over the
+retention ago looks collectable even while a new job builds in it. The second
+flag is where the operator accepts that.
 
 ### Windows → WSL dispatch
 

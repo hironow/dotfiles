@@ -317,13 +317,22 @@ _ret_min="$(_retention_minutes)"
 # underscore instead would permanently exclude a repo actually named `_foo`.
 _runner_managed=" _actions _diag _PipelineMapping _temp _tool _update "
 
-# A concurrent job may be building inside one of these trees, so back off — with
-# one carve-out: an explicit RUNNER_GC_ROOT names a specific install, which the
-# timer and the hook never do. Without it the destructive path could only ever
-# be exercised on a runner that happens to be idle, and on a busy box that
-# window may not come for hours. The .runner guard and the live-workspace
-# exclusions still apply.
-if [ -z "${RUNNER_GC_ROOT:-}" ] && _foreign_worker; then
+# A concurrent job may be building inside one of these trees, so back off.
+#
+# The carve-out needs BOTH RUNNER_GC_ROOT and RUNNER_GC_ALLOW_BUSY=1, because it
+# is genuinely unsafe on a live runner: the live-workspace exclusion relies on
+# RUNNER_WORKSPACE/GITHUB_WORKSPACE, which only exist inside the hook, so a
+# manual run cannot tell which checkout a concurrent job is building in. A
+# workspace whose last job finished over the retention ago looks collectable
+# even while a new job is writing to it right now. Naming the root alone is a
+# statement about *which* install, not about it being safe to disturb — the
+# second flag is where the operator says that.
+if [ -z "${RUNNER_GC_ROOT:-}" ] || [ "${RUNNER_GC_ALLOW_BUSY:-0}" != "1" ]; then
+  _busy_guarded=1
+else
+  _busy_guarded=0
+fi
+if [ "$_busy_guarded" = "1" ] && _foreign_worker; then
   log "workspaces: SKIP (another job is executing)"
 else
   _each_runner_dir | while read -r _rdir; do

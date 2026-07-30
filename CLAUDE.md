@@ -223,7 +223,12 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
       **`bin`/`externals` が symlink のときだけ**、かつ **24h フロア**で回収 (update は
       staging 後に symlink を切替えるため 2h だと途中を掴む)。`RUNNER_GC_ROOT` で単一
       install を対象にできる (多忙な runner では idle window が来ないので、破壊的経路を
-      合成 root で検証するため)。
+      合成 root で検証するため)。**ジョブ実行中に走らせるには `RUNNER_GC_ROOT` と
+      `RUNNER_GC_ALLOW_BUSY=1` の両方**が要る (`RUNNER_GC_FORCE` では代替できない)。
+      root を指定するのは「どの install か」の宣言であって「触って安全か」ではない —
+      手動実行には `RUNNER_WORKSPACE`/`GITHUB_WORKSPACE` が無く、**実行中ジョブが今書いて
+      いる checkout を判別できない** (前回ジョブが retention より前に終わっていれば、
+      新しいジョブがビルド中でも回収対象に見える)。
     - **native Windows 側の主犯は `_work/<repo>`** (`_diag` や `_work/_temp` ではない。
       実測 5.1G / うち Rust `target/` 3.7G に対し `_temp` は 12K)。**ディレクトリ mtime で
       期限判定してはいけない** — Windows は入れ子のファイル更新で親ディレクトリの
