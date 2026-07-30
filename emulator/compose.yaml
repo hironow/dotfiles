@@ -218,7 +218,11 @@ services:
       dockerfile: Dockerfile
       args:
         MCP_INSPECTOR_REPO: ${MCP_INSPECTOR_REPO:-https://github.com/modelcontextprotocol/inspector.git}
-        MCP_INSPECTOR_REF: ${MCP_INSPECTOR_REF:-main}
+        # Pinned to the last v1 release: upstream v2.0.0 dropped the
+        # client/server/cli monorepo layout the Dockerfile COPYs. See the
+        # note in mcp-inspector/Dockerfile. This default is what the build
+        # actually uses (it overrides the Dockerfile ARG default).
+        MCP_INSPECTOR_REF: ${MCP_INSPECTOR_REF:-1.0.1}
     container_name: mcp-inspector
     profiles:
       - inspect
