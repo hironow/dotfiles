@@ -17,10 +17,13 @@ file_path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')"
 case "$file_path" in
   *.py)
     if command -v uv >/dev/null 2>&1; then
-      uv run ruff format "$file_path"        >/dev/null 2>&1 || true
-      uv run ruff check --fix "$file_path"   >/dev/null 2>&1 || true
+      # --frozen: never touch uv.lock. A bare `uv run` re-resolves under
+      # machine-local uv config (e.g. mirror overrides) and rewrites the lock
+      # on every .py edit; the lock must only change via explicit `uv lock`.
+      uv run --frozen ruff format "$file_path"        >/dev/null 2>&1 || true
+      uv run --frozen ruff check --fix "$file_path"   >/dev/null 2>&1 || true
       # Surface anything auto-fix couldn't resolve, as feedback for Claude.
-      remaining="$(uv run ruff check "$file_path" 2>&1 || true)"
+      remaining="$(uv run --frozen ruff check "$file_path" 2>&1 || true)"
       if [ -n "$remaining" ] && ! printf '%s' "$remaining" | grep -q "All checks passed"; then
         echo "ruff still reports issues in $file_path:" >&2
         printf '%s\n' "$remaining" >&2
