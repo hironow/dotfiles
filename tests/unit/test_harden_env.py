@@ -22,19 +22,48 @@ Host-side, no Docker (part of `tests/unit/`), so it honours WSL-only.
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 from pathlib import Path
+
+from _bash_hook import resolve_bash
 
 
 ROOT = Path(__file__).resolve().parents[2]
 HARDEN = ROOT / "scripts" / "harden_env.sh"
-BASH = shutil.which("bash") or "/bin/bash"
+# Not `shutil.which("bash")`: on Windows that is the WSL launcher, which runs
+# the script inside the distro where the host toolchain is absent.
+BASH = resolve_bash()
+
+
+def _env(home: Path, **extra: str) -> dict[str, str]:
+    """The deliberately restricted environment the script runs under.
+
+    ``TMPDIR`` is not decoration: the script calls ``mktemp``, and MSYS bash
+    started from a *native-Windows* process has no writable ``/tmp`` unless it
+    is told where one is (``mktemp: ... Permission denied``). On Linux ``/tmp``
+    always exists, which is why leaving it out was invisible there.
+    """
+    tmp = home.parent / "tmp"
+    tmp.mkdir(exist_ok=True)
+    return {"HOME": str(home), "PATH": "/usr/bin:/bin", "TMPDIR": str(tmp), **extra}
+
+
+def _run_harden(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    # Explicit utf-8: the script's output is utf-8, while `text=True` alone
+    # decodes with the locale codec (cp932 on a Japanese Windows) and throws.
+    return subprocess.run(
+        [BASH, str(HARDEN)],
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
 
 
 def test_no_bsd_sed_in_place() -> None:
     """`sed -i ''` (BSD) misparses on GNU sed — must not appear."""
-    text = HARDEN.read_text()
+    text = HARDEN.read_text(encoding="utf-8")
     assert not re.search(r"sed\s+-i\s+''", text), (
         "harden_env.sh uses BSD `sed -i ''` which breaks on GNU/Linux sed. "
         "Use a portable, sed-i-free rewrite."
@@ -45,7 +74,7 @@ def test_does_not_write_shell_rc() -> None:
     """The flatt `PIP_INDEX_URL` / `alias pip` block is already committed in
     the tracked `.zshrc`; the script must not append it (it would dirty the
     symlinked repo file and duplicate on re-run)."""
-    text = HARDEN.read_text()
+    text = HARDEN.read_text(encoding="utf-8")
     assert "PIP_INDEX_URL" not in text, (
         "harden_env.sh writes PIP_INDEX_URL into a shell rc; that block is "
         "already tracked in .zshrc and the append dirties the symlinked repo file."
@@ -58,7 +87,7 @@ def test_does_not_write_shell_rc() -> None:
 
 def test_justfile_wires_harden_env() -> None:
     """The script must be reachable as a `just` recipe (it was manual-only)."""
-    just_text = (ROOT / "justfile").read_text()
+    just_text = (ROOT / "justfile").read_text(encoding="utf-8")
     assert re.search(r"^harden-env:", just_text, re.MULTILINE), (
         "justfile must define a `harden-env` recipe so the machine-local "
         "hardening is a discoverable one-liner, not a hand-run script."
@@ -73,29 +102,27 @@ def test_writes_uv_toml_and_is_idempotent(tmp_path: Path) -> None:
     keeps `~/.npmrc` de-duplicated, and never writes a shell-rc block."""
     home = tmp_path / "home"
     home.mkdir()
-    env = {"HOME": str(home), "PATH": "/usr/bin:/bin"}
+    env = _env(home)
     for _ in range(2):  # idempotency: second run must not duplicate
-        r = subprocess.run(
-            [BASH, str(HARDEN)], env=env, capture_output=True, text=True, check=False
-        )
+        r = _run_harden(env)
         assert r.returncode == 0, f"harden_env.sh failed:\n{r.stderr}"
 
     uv_toml = home / ".config" / "uv" / "uv.toml"
     assert uv_toml.is_file(), "did not write ~/.config/uv/uv.toml"
-    uv_content = uv_toml.read_text()
+    uv_content = uv_toml.read_text(encoding="utf-8")
     assert 'exclude-newer = "7 days"' in uv_content
     assert "pypi.flatt.tech" in uv_content
 
     npmrc = home / ".npmrc"
     assert npmrc.is_file(), "did not write ~/.npmrc"
-    assert npmrc.read_text().count("min-release-age") == 1, (
+    assert npmrc.read_text(encoding="utf-8").count("min-release-age") == 1, (
         "min-release-age duplicated across runs — not idempotent (GNU sed cleanup broke)."
     )
 
     for rc in (".zshrc", ".bashrc"):
         p = home / rc
         if p.exists():
-            body = p.read_text()
+            body = p.read_text(encoding="utf-8")
             assert "Security Hardening" not in body and "PIP_INDEX_URL" not in body, (
                 f"harden_env.sh wrote a hardening block into {rc}; it must not touch shell rc."
             )
@@ -111,14 +138,11 @@ def test_mirrors_uv_toml_to_windows_appdata(tmp_path: Path) -> None:
     home.mkdir()
     appdata = tmp_path / "appdata"
     appdata.mkdir()
-    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "APPDATA": str(appdata)}
-    r = subprocess.run(
-        [BASH, str(HARDEN)], env=env, capture_output=True, text=True, check=False
-    )
+    r = _run_harden(_env(home, APPDATA=str(appdata)))
     assert r.returncode == 0, f"harden_env.sh failed:\n{r.stderr}"
     win_toml = appdata / "uv" / "uv.toml"
     assert win_toml.is_file(), "did not mirror uv.toml to %APPDATA%/uv/"
     xdg_toml = home / ".config" / "uv" / "uv.toml"
-    assert win_toml.read_text() == xdg_toml.read_text(), (
-        "%APPDATA%/uv/uv.toml must be an exact mirror of ~/.config/uv/uv.toml"
-    )
+    assert win_toml.read_text(encoding="utf-8") == xdg_toml.read_text(
+        encoding="utf-8"
+    ), "%APPDATA%/uv/uv.toml must be an exact mirror of ~/.config/uv/uv.toml"

@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from _symlinks import requires_symlinks
+
 # Import from scripts (add parent to path)
 import sys
 
@@ -164,6 +166,7 @@ def test_skips_hidden_directories(workspace: dict[str, Path]) -> None:
     assert orphans == []
 
 
+@requires_symlinks
 def test_skips_internal_symlinks(workspace: dict[str, Path]) -> None:
     """Internal symlinks (e.g., learned skill links) are ignored."""
     # given
@@ -186,6 +189,7 @@ def test_skips_internal_symlinks(workspace: dict[str, Path]) -> None:
     assert "skills/linked-skill" not in orphan_paths
 
 
+@requires_symlinks
 def test_source_symlinks_count_as_valid_names(workspace: dict[str, Path]) -> None:
     """Symlinks in dotfiles source are included in valid names.
 

@@ -23,7 +23,7 @@ JUSTFILE = ROOT / "justfile"
 
 def test_template_exists_and_hardens() -> None:
     assert TEMPLATE.is_file(), "config/wsl/wsl.conf template is missing"
-    text = TEMPLATE.read_text()
+    text = TEMPLATE.read_text(encoding="utf-8")
     assert re.search(r"^\s*appendWindowsPath\s*=\s*false", text, re.MULTILINE), (
         "wsl.conf template must set appendWindowsPath=false (no Windows PATH leak)."
     )
@@ -33,7 +33,7 @@ def test_template_exists_and_hardens() -> None:
 
 
 def test_justfile_wires_wsl_conf() -> None:
-    text = JUSTFILE.read_text()
+    text = JUSTFILE.read_text(encoding="utf-8")
     assert re.search(r"^wsl-conf:", text, re.MULTILINE), (
         "justfile must define a `wsl-conf` recipe that surfaces the template."
     )

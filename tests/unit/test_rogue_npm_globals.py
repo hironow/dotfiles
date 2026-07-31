@@ -16,7 +16,6 @@ makes prune REFUSE (never delete) rather than fall through to the CWD.
 from __future__ import annotations
 
 import os
-import shutil
 import stat
 import subprocess
 import sys
@@ -24,9 +23,13 @@ from pathlib import Path
 
 import pytest
 
+from _bash_hook import resolve_bash
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "rogue_npm_globals.sh"
-BASH = shutil.which("bash") or "/bin/bash"
+# Not `shutil.which("bash")`: on Windows that is the WSL launcher, which runs
+# the script inside the distro where the host toolchain is absent.
+BASH = resolve_bash()
 
 # Root ignores the directory permissions this uses to make a delete fail, and
 # Windows does not honour chmod at all.
@@ -43,6 +46,9 @@ def _run(mode: str, installs_dir: str) -> subprocess.CompletedProcess[str]:
         },
         capture_output=True,
         text=True,
+        # Explicit: `text=True` alone decodes with the locale codec, which
+        # throws on utf-8 output on a Japanese Windows.
+        encoding="utf-8",
         check=False,
     )
 

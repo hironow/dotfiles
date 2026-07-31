@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from _symlinks import requires_symlinks
+
 # Import from scripts (add parent to path)
 import sys
 
@@ -237,6 +239,7 @@ def test_excluded_skill_in_target_not_reimported(workspace: dict[str, Path]) -> 
     assert [a.relative_path for a in plan.items] == []
 
 
+@requires_symlinks
 def test_symlinked_skill_in_target_still_importable(
     workspace: dict[str, Path], tmp_path: Path
 ) -> None:
