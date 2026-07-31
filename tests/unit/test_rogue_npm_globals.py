@@ -15,8 +15,11 @@ makes prune REFUSE (never delete) rather than fall through to the CWD.
 
 from __future__ import annotations
 
+import os
 import shutil
+import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -24,6 +27,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "rogue_npm_globals.sh"
 BASH = shutil.which("bash") or "/bin/bash"
+
+# Root ignores the directory permissions this uses to make a delete fail, and
+# Windows does not honour chmod at all.
+_IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
 
 
 def _run(mode: str, installs_dir: str) -> subprocess.CompletedProcess[str]:
@@ -101,6 +108,66 @@ def test_prune_removes_rogue_both_layouts_keeps_unmanaged(installs: Path) -> Non
     # a second prune is a clean no-op (idempotent)
     r2 = _run("prune", str(installs))
     assert r2.returncode == 0 and "pruned: 0" in r2.stdout, r2.stdout
+
+
+def test_prune_reports_undeletable_copies_in_the_script() -> None:
+    """A failed `rm -rf` must not abort the sweep.
+
+    The script runs under `set -euo pipefail`, so an unguarded `rm -rf` that
+    fails kills it mid-loop: the remaining rogues are left in place, `mise
+    reshim` never runs, and the summary line is never printed. On Windows this
+    is the normal case, not an edge one — a running `claude.exe` cannot be
+    deleted, and `claude` is precisely the binary you are most likely to be
+    running when you decide to clean up after it.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    bad = [
+        (n, line.strip())
+        for n, line in enumerate(text.splitlines(), 1)
+        if line.strip().startswith("rm -rf ")
+        and "||" not in line
+        and "2>/dev/null" not in line
+    ]
+    assert not bad, (
+        f"these `rm -rf` calls abort the whole prune when the target is locked: {bad}"
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or _IS_ROOT,
+    reason="needs POSIX permissions to make a delete fail",
+)
+def test_prune_survives_a_locked_copy_and_still_removes_the_rest(
+    installs: Path,
+) -> None:
+    """One undeletable rogue must not shield the others."""
+    # Make the codex package dir undeletable by dropping write on its parent.
+    locked_parent = installs / "24.15.0" / "node_modules" / "@openai"
+    original = locked_parent.stat().st_mode
+    locked_parent.chmod(stat.S_IRUSR | stat.S_IXUSR)
+    try:
+        r = _run("prune", str(installs))
+        # The other version's rogue must still be gone.
+        assert not (
+            installs
+            / "22.9.0"
+            / "lib"
+            / "node_modules"
+            / "@anthropic-ai"
+            / "claude-code"
+        ).exists(), (
+            f"a locked copy under 24.15.0 stopped the sweep before 22.9.0: "
+            f"rc={r.returncode} stdout={r.stdout!r} stderr={r.stderr!r}"
+        )
+        assert r.returncode == 0, (
+            f"prune must finish so `mise reshim` runs: {r.stderr!r}"
+        )
+        assert "codex" in r.stderr, (
+            "the copy that could not be removed has to be named, or the user "
+            f"believes the cleanup succeeded: {r.stderr!r}"
+        )
+    finally:
+        locked_parent.chmod(original)
 
 
 def test_prune_refuses_when_installs_dir_unresolvable(tmp_path: Path) -> None:
