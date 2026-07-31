@@ -115,6 +115,18 @@ pin = true
 # (mirrors uv's `exclude-newer = "7 days"`).
 minimum_release_age = "7d"
 
+[settings.npm]
+# Install npm: tools with bun instead of mise's embedded `aube` (the `auto`
+# default). aube's virtual-store layout defeats claude-code's postinstall:
+# the 263 MB native binary is never unpacked, `bin/claude.exe` stays a
+# 500-byte stub, and the shim then runs `node claude.exe` ->
+# ERR_UNKNOWN_FILE_EXTENSION. Nothing surfaces it — `claude` keeps working
+# only because a stray npm-global copy shadows it on PATH, so
+# `just prune-rogue-npm-globals` becomes the thing that breaks it.
+# bun unpacks the binary correctly and is the sanctioned Node package
+# manager here anyway (ADR 0027). See ADR 0036.
+package_manager = "bun"
+
 [settings.python]
 # Auto-source uv-managed `.venv` when entering a Python project. uv is
 # the project-wide Python package manager per CLAUDE.md global rules.
