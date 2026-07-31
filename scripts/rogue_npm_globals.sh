@@ -87,17 +87,25 @@ scan() {
 # Remove the rogue install for one `<ver>:<pkg>:<bin>` finding under $1.
 prune_one() {
   local installs="$1" ver="$2" pkg="$3" bin="$4"
-  local verdir="${installs}/${ver}/" scope base pkgdir
+  local verdir="${installs}/${ver}/" scope base pkgdir rc=0
   scope="${pkg%%/*}"
   base="${pkg##*/}"
   # package dir (whichever layout) + npm's failed-cleanup temp dirs.
+  # A running binary cannot be deleted on Windows (EPERM), and `claude` is
+  # typically running when you decide to clean up after it. Under `set -e` an
+  # unguarded failure here would abort the whole sweep: the remaining rogues
+  # survive, `mise reshim` never runs, and no summary is printed. Report it
+  # through the return code instead and let the caller carry on.
   if pkgdir="$(rogue_pkg_dir "$verdir" "$pkg")"; then
-    rm -rf "$pkgdir"
+    rm -rf "$pkgdir" 2>/dev/null || rc=1
+    # `rm -rf` can also exit 0 having removed only part of the tree.
+    if [ -e "$pkgdir" ]; then rc=1; fi
   fi
   rm -rf "${verdir}node_modules/${scope}/.${base}-"* "${verdir}lib/node_modules/${scope}/.${base}-"* 2>/dev/null || true
   rmdir "${verdir}node_modules/${scope}" "${verdir}lib/node_modules/${scope}" 2>/dev/null || true
   # bin shims: Windows prefix-root (<ver>/<bin>{,.cmd,.ps1}) + Unix (<ver>/bin/<bin>).
   rm -f "${verdir}${bin}" "${verdir}${bin}.cmd" "${verdir}${bin}.ps1" "${verdir}bin/${bin}" 2>/dev/null || true
+  return "$rc"
 }
 
 main() {
@@ -123,20 +131,30 @@ main() {
         echo "rogue_npm_globals: refusing to prune — cannot resolve installs/node dir (rc=$rc)" >&2
         exit "$rc"
       fi
-      local removed=0 line ver pkg bin
+      local removed=0 failed=0 line ver pkg bin
       while IFS= read -r line; do
         [ -n "$line" ] || continue
         ver="${line%%:*}"
         pkg="${line#*:}"; pkg="${pkg%%:*}"
         bin="${line##*:}"
-        prune_one "$installs" "$ver" "$pkg" "$bin"
-        printf 'pruned %s from node %s\n' "$pkg" "$ver"
-        removed=$((removed + 1))
+        if prune_one "$installs" "$ver" "$pkg" "$bin"; then
+          printf 'pruned %s from node %s\n' "$pkg" "$ver"
+          removed=$((removed + 1))
+        else
+          printf 'could NOT prune %s from node %s — still running? close it and re-run\n' \
+            "$pkg" "$ver" >&2
+          failed=$((failed + 1))
+        fi
       done < <(scan "$installs")
       if [ "$removed" -gt 0 ] && [ -z "${ROGUE_NODE_INSTALLS_DIR:-}" ] && command -v mise >/dev/null 2>&1; then
         mise reshim 2>/dev/null || true
       fi
       printf 'rogue npm globals pruned: %d\n' "$removed"
+      # Exit 0 regardless: `just doctor` calls this and a partial sweep is
+      # still progress. The count on stderr is what says it is not done.
+      if [ "$failed" -gt 0 ]; then
+        printf 'rogue npm globals still present: %d\n' "$failed" >&2
+      fi
       ;;
     *)
       echo "usage: rogue_npm_globals.sh [detect|prune]" >&2

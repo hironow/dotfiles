@@ -421,6 +421,50 @@ clean-cache:
 [group('Setup')]
 clean-all: clean clean-cache
 
+# ------------------------------
+# Disk GC — stop the host/runner disk ratchet (ADR 0035)
+# ------------------------------
+
+# Status: is the disk GC actually collecting? Shows the Windows and WSL legs
+# together — timer/task state, whether the job hook is a path the runner will
+# accept, and whether it was rejected in recent jobs. Read-only (ADR 0035).
+[group('Disk')]
+status:
+    bash scripts/gc_status.sh
+
+# Disk: report host cache sizes + free space. Measures only, never deletes.
+[group('Disk')]
+disk-report:
+    bash scripts/disk_gc.sh report
+
+# Disk: reclaim regenerable host caches (mise stale versions, bun/uv/cargo,
+# npm). Toolchains and project data are out of scope — safe to run unattended.
+[group('Disk')]
+disk-gc:
+    bash scripts/disk_gc.sh clean
+
+# Disk: collect the WSL self-hosted runner now (docker images/containers/build
+# cache older than 2h, apt, journal). Skips itself while a job is executing.
+# On Windows this dispatches into the WSL distro; needs `runner-gc-install`.
+[group('Disk')]
+runner-gc:
+    bash scripts/runner_gc.sh
+
+# Disk: install the runner GC mechanism inside WSL (hourly timer +
+# job-completed hook + journald cap). Idempotent; re-run after editing
+# scripts/runner_gc.sh to re-copy the payload. Root-owned, so it runs via
+# `wsl -u root` on Windows.
+[group('Disk')]
+runner-gc-install:
+    bash scripts/install_runner_gc.sh
+
+# Disk: report WSL vhdx slack and print the compaction steps. Advisory only —
+# compaction needs Administrator + a full `wsl --shutdown` (runner goes
+# offline), so it is never self-applied. See ADR 0035.
+[group('Disk')]
+wsl-compact:
+    bash scripts/wsl_compact.sh
+
 # Clean work env: reset a claude-work-X directory (remove synced skills/commands/agents, empty CLAUDE.md)
 # Usage: just clean-work-env d
 [group('Agents')]

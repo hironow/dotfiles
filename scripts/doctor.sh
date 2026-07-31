@@ -134,6 +134,33 @@ case "$(uname -s)" in
     else
       log_warn 'win-clis' 'missing jq and/or shellcheck -- run: scoop install jq shellcheck'
     fi
+
+    # 5) WinGet copies of mise-managed AI CLIs. `winget install` drops a shim
+    #    in WinGet/Links, which outranks mise on PATH — the same shadowing the
+    #    npm-rogue check covers, reached by a different route.
+    #
+    #    This one hides: while an npm-global copy exists it wins the PATH race
+    #    and the WinGet copy is invisible. Here `claude` ran from an npm-global
+    #    copy until `just prune-rogue-npm-globals` removed it, at which point a
+    #    WinGet 2.1.198 surfaced — six patches behind the 2.1.215 mise held.
+    #    Nothing had reported the duplicate because nothing looked for it.
+    winget_links="${HOME}/AppData/Local/Microsoft/WinGet/Links"
+    winget_shadow=''
+    if [ -d "$winget_links" ]; then
+      for _wb in codex claude copilot pi; do
+        # Only a duplicate matters: a WinGet copy of something mise does not
+        # manage is just an install, not a shadow.
+        if [ -e "${winget_links}/${_wb}" ] && mise which "$_wb" >/dev/null 2>&1; then
+          winget_shadow="${winget_shadow}${_wb} "
+        fi
+      done
+    fi
+    if [ -n "$winget_shadow" ]; then
+      log_warn 'winget-shadow' \
+        "WinGet copies shadow mise on PATH: ${winget_shadow}-- run: winget uninstall --id <package>"
+    else
+      log_ok 'winget-shadow' 'no WinGet copies shadowing mise-managed CLIs'
+    fi
     ;;
 esac
 

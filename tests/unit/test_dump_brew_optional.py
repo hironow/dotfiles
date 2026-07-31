@@ -43,7 +43,7 @@ def _dump_recipe(text: str) -> str:
 
 def test_dump_guards_brew_behind_command_check() -> None:
     """The Mac/Linux path must not call `brew bundle dump` unconditionally."""
-    body = _dump_recipe(JUSTFILE.read_text())
+    body = _dump_recipe(JUSTFILE.read_text(encoding="utf-8"))
     assert "brew bundle dump" in body, "dump no longer dumps a Brewfile at all?"
     assert "command -v brew" in body, (
         "dump calls `brew bundle dump` without a `command -v brew` guard; on a "

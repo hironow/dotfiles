@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from _bash_hook import run_bash
+from _symlinks import requires_symlinks
 
 REPO = Path(__file__).resolve().parents[2]
 CANONICAL = REPO / "plugins" / "_shared" / "check-scope.sh"
@@ -91,6 +92,7 @@ def _just_parses_this_justfile() -> bool:
         ["just", "--list"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         cwd=REPO,
         check=False,
     )
@@ -109,7 +111,11 @@ def test_sync_recipe_propagates_canonical(tmp_path: Path) -> None:
     shared.mkdir(parents=True)
     marker = "# sync-recipe-test-marker\n"
     shutil.copy(CANONICAL, shared / "check-scope.sh")
-    (shared / "check-scope.sh").write_text(CANONICAL.read_text() + marker)
+    # Explicit utf-8 both ways: the canonical script contains non-ASCII (an em
+    # dash), which the locale codec on a Japanese Windows cannot encode.
+    (shared / "check-scope.sh").write_text(
+        CANONICAL.read_text(encoding="utf-8") + marker, encoding="utf-8"
+    )
     for plugin in LOOP_PLUGINS:
         dest = tmp_path / "plugins" / plugin / "hooks" / "scripts"
         dest.mkdir(parents=True)
@@ -120,6 +126,9 @@ def test_sync_recipe_propagates_canonical(tmp_path: Path) -> None:
         ["just", "sync-plugin-scope-hook"],
         capture_output=True,
         text=True,
+        # The justfile carries Japanese comments; `text=True` alone would
+        # decode `just`'s echo of them with the locale codec and throw.
+        encoding="utf-8",
         cwd=tmp_path,
         check=False,
     )
@@ -128,7 +137,7 @@ def test_sync_recipe_propagates_canonical(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     for plugin in LOOP_PLUGINS:
         copied = tmp_path / "plugins" / plugin / "hooks" / "scripts" / "check-scope.sh"
-        assert copied.read_text().endswith(marker), (
+        assert copied.read_text(encoding="utf-8").endswith(marker), (
             f"recipe did not propagate the canonical to {plugin}"
         )
 
@@ -166,7 +175,7 @@ def test_whitelisted_artifacts_allow_silently(tmp_path: Path, artifact: str) -> 
 
 
 def test_empty_file_path_allows_silently(tmp_path: Path) -> None:
-    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC)
+    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC, encoding="utf-8")
     payload = json.dumps({"tool_input": {"command": "echo no file_path here"}})
     result = run_bash(
         CANONICAL,
@@ -194,7 +203,7 @@ def _decision(result: subprocess.CompletedProcess[str]) -> str:
 def test_content_key_before_file_path_is_not_misparsed(tmp_path: Path) -> None:
     """A Write payload whose content mentions "file_path" must not shadow the
     real tool_input.file_path (the old grep parser took the first match)."""
-    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC)
+    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC, encoding="utf-8")
     payload = (
         '{"tool_input":{"content":"see \\"file_path\\": \\"/bogus/out.md\\" in docs",'
         '"file_path":"/repo/src/algo.py"}}'
@@ -217,10 +226,11 @@ def test_escaped_quote_in_file_path_is_decoded(tmp_path: Path) -> None:
     assert _decision(result) == "allow"
 
 
+@requires_symlinks
 def test_missing_jq_fails_open(tmp_path: Path) -> None:
     """Without jq the guard deliberately disables itself (fail-open) instead
     of producing constant asks; the setup skills preflight jq for this."""
-    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC)
+    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC, encoding="utf-8")
     bindir = tmp_path / "bin"
     bindir.mkdir()
     for tool in ["cat", "basename", "sed", "awk", "grep", "head"]:
@@ -303,7 +313,7 @@ def test_empty_list_treats_everything_as_out_of_scope(tmp_path: Path) -> None:
 def test_malformed_input_fails_open(tmp_path: Path) -> None:
     """Garbage on stdin must not surface a jq error (and must never become
     exit 2 = block); the guard fails open like the no-jq case."""
-    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC)
+    (tmp_path / ARGS[0]).write_text(CONFIG_BASIC, encoding="utf-8")
     result = run_bash(
         CANONICAL,
         *ARGS,
@@ -351,7 +361,7 @@ def test_common_yaml_spellings_are_in_scope(
 )
 def test_setup_skill_preflights_jq(skill: str) -> None:
     """Fail-open without jq is a conscious tradeoff only if setup surfaces it."""
-    text = (REPO / skill).read_text()
+    text = (REPO / skill).read_text(encoding="utf-8")
     assert "command -v jq" in text, (
         f"{skill} must preflight jq availability (the scope hook silently "
         "disables itself without jq)"

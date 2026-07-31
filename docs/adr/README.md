@@ -55,6 +55,9 @@ recorded decisions that shaped it.
 | 0031 | [Disable mise `node.corepack` on Windows (`just deploy` `$PROFILE` carve-out)](./0031-disable-mise-corepack-on-windows.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `config/mise/config.toml` |
 | 0032 | [Windows scoop restore: add `add-scoop` (supersede ADR 0019 record-only)](./0032-windows-scoop-restore-add-scoop.md) | Accepted; supersedes [0019](./0019-windows-scoop-dump-record-only.md) (record-only stance) | 2026-07-05 | `justfile` (`add-scoop`), `dump/<host>/scoop.json` |
 | 0033 | [Windows `just deploy` installs the global mise toolset (+ git aliases)](./0033-windows-deploy-global-mise-install.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `~/.gitconfig` |
+| 0034 | [exe stack mothball mode (`stack_mode`) + AR retention bound](./0034-exe-stack-mothball-mode.md) | Accepted | 2026-07-20 | `tofu/exe/`, `exe/docs/` |
+| 0035 | [Time-based disk GC for the self-hosted runners (2h retention)](./0035-runner-disk-gc.md) | Accepted | 2026-07-31 | `scripts/runner_gc*.{sh,ps1}`, `scripts/disk_gc.sh`, `scripts/gc_status.sh`, `justfile` (Disk) |
+| 0036 | [Install mise `npm:` tools with bun, not the embedded aube](./0036-mise-npm-backend-bun.md) | Accepted | 2026-07-31 | `config/mise/config.toml` |
 
 ## Reading order for newcomers
 

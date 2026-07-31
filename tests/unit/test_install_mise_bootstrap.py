@@ -32,7 +32,7 @@ INSTALL_SH = ROOT / "install.sh"
 
 
 def _text() -> str:
-    return INSTALL_SH.read_text()
+    return INSTALL_SH.read_text(encoding="utf-8")
 
 
 def _drive_section(text: str) -> str:
