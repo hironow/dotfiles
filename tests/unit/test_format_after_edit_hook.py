@@ -16,7 +16,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from _bash_hook import run_bash
 
 HOOK = Path(__file__).resolve().parents[2] / "ROOT_AGENTS_hooks_format-after-edit.sh"
@@ -84,7 +83,8 @@ def test_python_edit_formats_only_the_edited_file(tmp_path: Path) -> None:
     lines = log.read_text().splitlines()
     assert lines, "expected the Python branch to invoke uv"
     for line in lines:
-        assert line.startswith("uv run ruff "), line
+        # --frozen pins the "never touch uv.lock" contract (e013e6f).
+        assert line.startswith("uv run --frozen ruff "), line
         assert str(target) in line, f"ruff must target the edited file: {line}"
     assert not any(line.startswith("just") for line in lines)
 
