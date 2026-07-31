@@ -462,6 +462,7 @@ runner-gc-install:
 # compaction needs Administrator + a full `wsl --shutdown` (runner goes
 # offline), so it is never self-applied. See ADR 0035.
 [group('Disk')]
+[windows]
 wsl-compact:
     bash scripts/wsl_compact.sh
 
@@ -861,6 +862,7 @@ add-gcloud host="":
 # missing apps natively (no jq — jq is itself a recorded app). See ADR 0032
 # (supersedes ADR 0019's record-only stance; `just dump` still writes the record).
 [group('Add')]
+[windows]
 add-scoop host="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1301,12 +1303,14 @@ skills *args:
 
 # Start Chrome Dev with remote debugging
 [group('CDP')]
+[macos]
 start-cdp:
   @echo "Starting Chrome Dev with remote debugging on port 9222..."
   "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-dev-profile"
 
 # Start Chrome Dev for debugging
 [group('CDP')]
+[macos]
 debug-cdp:
   @echo "Starting Chrome Dev for debugging with remote debugging on port 9222..."
   "/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev" --remote-debugging-port=9222 --user-data-dir="$HOME/chrome-debug-profile"
