@@ -132,6 +132,23 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   (memory `feedback_git_history_rewrite_gpg`)。
 - **mise の npm backend は `--ignore-scripts=true`** — postinstall 必須の npm ツール
   (claude-code native binary 等) は `npm_args` で上書き (memory `project_mise_npm_ignore_scripts`)。
+- **npm backend の package manager は `bun` 必須 (ADR 0036)**。既定の `auto` は mise 内蔵の
+  **aube** を使い、その virtual-store レイアウトが claude-code の postinstall を無力化する
+  (263MB の native binary が展開されず `bin/claude.exe` が **500 バイトのスタブ**のまま残り、
+  シムが `node claude.exe` を実行して `ERR_UNKNOWN_FILE_EXTENSION`)。**install は成功扱いで
+  何も報告しない** — 動き続けるのは npm-global の野良コピーが PATH で mise を shadow して
+  いるからで、その野良を消す `just prune-rogue-npm-globals` こそが `claude` を壊す、という
+  倒錯が起きる。関連する罠:
+    - **backend を変えても既存 install は直らない**。`mise uninstall … && mise install …`
+      で入れ直すまでスタブのまま。
+    - **bun は `node_modules/.bin` にシムを作らず `<install>/bin/` に置く**。mise activate
+      前に開いたシェルは aube 時代の `.bin`(空) を PATH に掴んだままなので、mise 版に到達
+      できない。`mise env` は正しく `bin/` を出すので、**シェルを開き直せば直る**。
+    - **Windows では削除済みの exe でプロセスが動き続ける**。prune 後も現行セッションは
+      平然と動くが、次回起動時にそのパスは無い。`ps -W` で実体パスを確認しないと気付けない。
+    - **WinGet 版は野良コピーの陰に隠れる**。野良が PATH 勝負に勝っている間は見えず、
+      prune した瞬間に現れる (実測: 隠れていた WinGet 2.1.198 が mise の 2.1.215 より
+      6 patch 古かった)。`just doctor` の `winget-shadow` が検出する。
 - **Windows の shell 選択 (最重要運用)**: WSL の `C:\Windows\System32\bash.exe` が Git Bash を
   shadow する (Windows は bare `bash` を PATH より先に System32 で解決する) ため、`just` の
   bash 系レシピが WSL に落ちうる (WSL 未導入 host では顕在化しない)。効き方が2層に分かれる:
