@@ -113,8 +113,13 @@ for _d in /home/*/actions-runner* /root/actions-runner* /opt/actions-runner*; do
   # Only jobs newer than the hook's own configuration count: rejections from
   # before a repair are history, and leaving them red would train the reader to
   # ignore this line.
+  # Anchored on the hook path, and literal (-F): a Worker log also carries the
+  # job payload, so grepping the bare phrase matches any PR whose body quotes
+  # it. That fired here — a PR about this very message turned status red while
+  # the hook was fine. The runner always names the path it refused, and a
+  # payload quoting the phrase does not carry this runner's hook value.
   _rej="$(find "${_d}/_diag" -name 'Worker_*.log' -newer "${_d}/.env" \
-    -exec grep -l 'is not a valid path to a script' {} + 2>/dev/null | wc -l)"
+    -exec grep -lF "${_h} is not a valid path to a script" {} + 2>/dev/null | wc -l)"
   _since="$(find "${_d}/_diag" -name 'Worker_*.log' -newer "${_d}/.env" 2>/dev/null | wc -l)"
   if [ "${_rej:-0}" -gt 0 ]; then
     _bad "hook REJECTED in ${_rej} of the ${_since} job(s) since it was configured"
@@ -170,7 +175,9 @@ _windows_status() {
       \$cfg = if (Test-Path \$env_) { (Get-Item \$env_).LastWriteTime } else { [datetime]::MaxValue }
       \$since = @(Get-ChildItem (Join-Path \$r '_diag') -Filter 'Worker_*.log' -ErrorAction SilentlyContinue |
         Where-Object { \$_.LastWriteTime -gt \$cfg })
-      \$rej = @(\$since | Where-Object { Select-String -Path \$_.FullName -Pattern 'is not a valid path to a script' -Quiet -ErrorAction SilentlyContinue })
+      # -SimpleMatch and anchored on \$h: a Worker log carries the job payload,
+      # so the bare phrase also matches a PR body that quotes it.
+      \$rej = @(\$since | Where-Object { Select-String -Path \$_.FullName -SimpleMatch -Pattern (\$h + ' is not a valid path to a script') -Quiet -ErrorAction SilentlyContinue })
       if (\$rej.Count -gt 0) { 'FAIL|hook REJECTED in ' + \$rej.Count + ' of the ' + \$since.Count + ' job(s) since it was configured' }
       elseif (\$since.Count -gt 0) { 'OK|hook: accepted in all ' + \$since.Count + ' job(s) since it was configured' }
       else { 'WARN|hook: no jobs have run since it was configured — unproven' }
