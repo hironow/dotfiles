@@ -95,6 +95,7 @@ harden-env:
 # reload steps. Advisory only — /etc/wsl.conf is root-owned and its reload
 # needs a Windows-side restart, so this never self-applies.
 [group('Setup')]
+[linux]
 wsl-conf:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -410,6 +411,7 @@ clean:
 
 # Clean cache: remove zsh-related caches (compinit, fzf, zoxide, kubectl, sheldon)
 [group('Setup')]
+[unix]
 clean-cache:
     @echo "==> Remove zsh caches..."
     rm -vrf ~/.cache/zsh/
@@ -417,8 +419,9 @@ clean-cache:
     rm -vrf ~/.local/share/sheldon/
     rm -vrf ~/.local/share/fzf-tab/
 
-# Clean all: remove both dotfiles and caches
+# Clean all: remove both dotfiles and caches (Windows path: `just clean`, ADR 0018 subset)
 [group('Setup')]
+[unix]
 clean-all: clean clean-cache
 
 # ------------------------------
@@ -818,14 +821,17 @@ test-iac:
 # ------------------------------
 
 # Add (all): install gcloud/brew sets
+# Windows restore path is `just add-scoop` (ADR 0032).
 # Add (all): restore gcloud/brew from dump/<host>/ (host optional; see add-brew).
 [group('Add')]
+[unix]
 add-all host="":
     just add-gcloud {{quote(host)}}
     just add-brew {{quote(host)}}
 
 # Add: install Homebrew bundle from dump/<host>/Brewfile; host defaults to DOTFILES_HOST / dump/.host / lone host dir.
 [group('Add')]
+[unix]
 add-brew host="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -838,6 +844,7 @@ add-brew host="":
 
 # Add: install gcloud components from dump/<host>/gcloud; host defaults to DOTFILES_HOST / dump/.host / lone host dir.
 [group('Add')]
+[unix]
 add-gcloud host="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -964,6 +971,7 @@ update-gcloud:
 
 # Repair: reset Homebrew state (rebase leftovers, inconsistencies)
 [group('Setup')]
+[unix]
 brew-repair:
     @echo '🔧 brew update-reset + doctor'
     brew update-reset
@@ -982,6 +990,7 @@ check-path:
 
 # Check: show local IP addresses
 [group('Check')]
+[unix]
 check-myip:
     # Check my ip address
     @ifconfig | sed -En "s/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p"
@@ -999,6 +1008,7 @@ check-dockerport:
 
 # Check: list installed Homebrew packages
 [group('Check')]
+[unix]
 check-brew:
     brew list
 
@@ -1244,8 +1254,9 @@ elt-list:
 # Version checks
 # ------------------------------
 
-# Version check: verify NVCC version
+# Version check: verify NVCC version (CUDA hosts only — no CUDA on macOS)
 [group('Check')]
+[linux, windows]
 check-version-nvcc expected:
     # Usage: just check-version-nvcc <EXPECTED_NVCC_VERSION>
     version=$(nvcc --version | sed -n 's/.*release \([0-9.]*\).*/\1/p' | head -n1); if [ "${version}" != "{{ expected }}" ]; then echo "ERROR: Expected NVCC version {{ expected }}, but found ${version}"; exit 1; fi
@@ -1265,6 +1276,7 @@ check-version-torch expected:
 # Requires sudo for privileged port binding and to read the root-owned
 # Let's Encrypt certificate files under private/certificates/live/.
 [group('Check')]
+[unix]
 check-localhost-tls port="443":
     sudo go run tools/simple-server/main.go -port {{ port }} -cert ./private/certificates/live/localhost.hironow.dev/fullchain.pem -key ./private/certificates/live/localhost.hironow.dev/privkey.pem -dir ./docs
 
@@ -1349,6 +1361,7 @@ scan domain:
 
 # Check free before access network
 [group('Check')]
+[unix]
 check-free:
     @sudo lsof -i -P -n +c 0 | grep LISTEN | grep -vE "127.0.0.1|\[::1\]|ControlCenter|rapportd|symptomsd|launchd" | column -t
 
