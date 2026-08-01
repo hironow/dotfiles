@@ -95,10 +95,12 @@ fzf = "0.74.0"
 # that resolve to the newest release at least 7 days old. Concrete pins
 # for these live in the repo mise.toml (ADR 0006). Explicit `npm:`
 # backend avoids registry-alias ambiguity.
-#   cf -> Cloudflare CLI, resend-cli -> Resend, @stripe/cli -> Stripe
+#   cf -> Cloudflare CLI, resend-cli -> Resend, @stripe/cli -> Stripe,
+#   @dataform/cli -> Dataform (BigQuery ELT)
 "npm:cf" = "latest"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
+"npm:@dataform/cli" = "latest"
 
 [settings]
 # Disable asdf-style .python-version / .nvmrc auto-detection so only
