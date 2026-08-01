@@ -954,11 +954,13 @@ update-brew:
 update-gcloud:
     #!/usr/bin/env bash
     set -euo pipefail
-    # No gcloud/sudo on native Windows — skip so `update-all` does not abort.
+    # No gcloud on native Windows — skip so `update-all` does not abort.
     # (Update the Cloud SDK via its official Windows installer instead.)
     case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) echo "◆ gcloud: skipped on Windows (use the official Cloud SDK installer)"; exit 0 ;; esac
     echo "◆ gcloud..."
-    sudo gcloud components update --quiet
+    # ~/google-cloud-sdk is user-owned; sudo would re-chown it to root and
+    # reintroduce the very permission problem that once forced sudo here.
+    gcloud components update --quiet
 
 # Repair: reset Homebrew state (rebase leftovers, inconsistencies)
 [group('Setup')]
