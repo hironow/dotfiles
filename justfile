@@ -927,7 +927,7 @@ update-all:
     @echo "◆ gitignore..."
     @if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
     @echo "◆ vscode extensions..."
-    @if command -v code >/dev/null 2>&1; then code --update-extensions; else echo 'code not found; skip'; fi
+    @if command -v code >/dev/null 2>&1; then NODE_NO_WARNINGS=1 code --update-extensions; else echo 'code not found; skip'; fi
 
 # Update (all, safe): same as update-all (kept as alias for muscle memory)
 [group('Update')]
@@ -943,7 +943,7 @@ update-all-safe:
     @echo "◆ gitignore..."
     @if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
     @echo "◆ vscode extensions..."
-    @if command -v code >/dev/null 2>&1; then code --update-extensions; else echo 'code not found; skip'; fi
+    @if command -v code >/dev/null 2>&1; then NODE_NO_WARNINGS=1 code --update-extensions; else echo 'code not found; skip'; fi
 
 # Update: update and cleanup Homebrew
 [group('Update')]
