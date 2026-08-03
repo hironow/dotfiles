@@ -117,6 +117,15 @@ pin = true
 # (mirrors uv's `exclude-newer = "7 days"`).
 minimum_release_age = "7d"
 
+[settings.github]
+# Version lookups for github: backends hit the unauthenticated 60 req/h
+# API limit and spam rate-limit WARNs during `mise up`. gh stores its token
+# in the OS keychain (not hosts.yml), so the default gh_cli_tokens discovery
+# finds nothing — ask gh directly instead (authenticated = 5000 req/h).
+# If gh is missing or logged out, mise debug-logs and falls back to
+# unauthenticated requests, so this is harmless on machines without gh.
+credential_command = "gh auth token"
+
 [settings.npm]
 # Install npm: tools with bun instead of mise's embedded `aube` (the `auto`
 # default). aube's virtual-store layout defeats claude-code's postinstall:
