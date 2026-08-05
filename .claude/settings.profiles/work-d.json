@@ -1,0 +1,9 @@
+{
+  "settings": {
+    "effortLevel": "xhigh",
+    "permissions": {
+      "defaultMode": "default"
+    },
+    "tui": "fullscreen"
+  }
+}

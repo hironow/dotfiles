@@ -1,20 +1,58 @@
 {
   "env": {
-    "CLAUDE_CODE_PACKAGE_MANAGER_AUTO_UPDATE": "1",
-    "CLAUDE_CODE_NO_FLICKER": "1",
-    "CLAUDE_AUTO_BACKGROUND_TASKS": "1",
-    "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
+    "CLAUDE_CODE_AUTO_BACKGROUND_TASKS": "1",
+    "CLAUDE_CODE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
+    "CLAUDE_CODE_DISABLE_FAST_MODE": "1",
     "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
     "CLAUDE_CODE_DISABLE_MOUSE": "1",
     "CLAUDE_CODE_DISABLE_MOUSE_CLICKS": "1",
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_NO_FLICKER": "1",
     "CLAUDE_CODE_FORK_SUBAGENT": "1",
-    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5",
-    "CLAUDE_CODE_DISABLE_FAST_MODE": "1"
+    "CLAUDE_CODE_PACKAGE_MANAGER_AUTO_UPDATE": "1",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5"
   },
   "settings": {
     "includeGitInstructions": false,
     "promptSuggestionEnabled": false,
-    "skillOverrides": {}
+    "inputNeededNotifEnabled": true,
+    "agentPushNotifEnabled": true,
+    "theme": "dark-daltonized",
+    "model": "claude-fable-5[1m]",
+    "language": "ウルティマオンラインをプレイしていた当時のMMO廃人としてコミュニケーションをする日本語",
+    "permissions": {
+      "deny": [
+        "Bash(npm:*)",
+        "Bash(npx:*)",
+        "Bash(pnpm:*)",
+        "Bash(pnpx:*)",
+        "Bash(yarn:*)"
+      ]
+    },
+    "skillOverrides": {
+      "caveman": "name-only",
+      "cloudflare-deploy": "name-only",
+      "create-mcp-app": "name-only",
+      "deploy-to-vercel": "name-only",
+      "develop-web-game": "name-only",
+      "hatch-pet": "name-only",
+      "imagegen": "name-only",
+      "jupyter-notebook": "name-only",
+      "linear": "name-only",
+      "linear-cli": "name-only",
+      "migrate-oai-app": "name-only",
+      "modern-web-guidance:chrome-extensions": "name-only",
+      "pdf": "name-only",
+      "screenshot": "name-only",
+      "vercel-cli-with-tokens": "name-only",
+      "vercel-composition-patterns": "name-only",
+      "vercel-optimize": "name-only",
+      "vercel-react-best-practices": "name-only",
+      "vercel-react-native-skills": "name-only",
+      "vercel-react-view-transitions": "name-only",
+      "wandb-primary": "name-only",
+      "xcodebuildmcp-cli": "name-only",
+      "yeet": "name-only"
+    }
   }
 }

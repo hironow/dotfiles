@@ -48,7 +48,7 @@ recorded decisions that shaped it.
 | 0024 | [PowerShell `$PROFILE` mise activate from `just deploy` (Windows native)](./0024-powershell-mise-activate-profile.md) | Accepted | 2026-06-02 | PowerShell `$PROFILE`, `mise.toml` |
 | 0025 | [Wrap mise-managed tools at every justfile call site (補強 of ADR 0023)](./0025-justfile-mise-tool-wrap.md) | Accepted | 2026-06-02 | `justfile` |
 | 0026 | [Antigravity CLI: instruction 層のみ共有、skills/settings/mcp は agy 委譲](./0026-antigravity-cli-instruction-layer.md) | Accepted | 2026-06-10 | `~/.gemini/GEMINI.md`, `scripts/sync_agents.py` |
-| 0027 | [Bun-only Node policy: retire the per-repo pnpm carve-out](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | Accepted | 2026-06-14 | `.claude/` hooks, `ROOT_AGENTS*` |
+| 0027 | [Bun-only Node policy: retire the per-repo pnpm carve-out](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | Accepted; partial supersede by [0037](./0037-layered-claude-settings-fragments.md) (permissions distribution) | 2026-06-14 | `.claude/` hooks, `ROOT_AGENTS*` |
 | 0028 | [Standardize on the Flatt Security PyPI mirror as the default uv index](./0028-flatt-pypi-mirror-default-index.md) | Accepted | 2026-06-19 | `*/pyproject.toml`, `*/uv.lock` |
 | 0029 | [Gate the distributed Claude config with claudelint + official plugin validate](./0029-claude-config-lint-gate.md) | Accepted (PR #200) | 2026-06-22 | `justfile`, `.github/workflows/claude-lint.yaml` |
 | 0030 | [Per-host dump layout (`dump/<host>/`)](./0030-per-host-dump-layout.md) | Accepted | 2026-07-01 | `justfile`, `scripts/dump_host.sh`, `dump/<host>/`, `install.sh` |
@@ -58,6 +58,7 @@ recorded decisions that shaped it.
 | 0034 | [exe stack mothball mode (`stack_mode`) + AR retention bound](./0034-exe-stack-mothball-mode.md) | Accepted | 2026-07-20 | `tofu/exe/`, `exe/docs/` |
 | 0035 | [Time-based disk GC for the self-hosted runners (2h retention)](./0035-runner-disk-gc.md) | Accepted | 2026-07-31 | `scripts/runner_gc*.{sh,ps1}`, `scripts/disk_gc.sh`, `scripts/gc_status.sh`, `justfile` (Disk) |
 | 0036 | [Install mise `npm:` tools with bun, not the embedded aube](./0036-mise-npm-backend-bun.md) | Accepted | 2026-07-31 | `config/mise/config.toml` |
+| 0037 | [Layered Claude settings fragments (shared / OS / profile / machine-local)](./0037-layered-claude-settings-fragments.md) | Accepted | 2026-08-05 | `scripts/sync_agents.py`, `.claude/settings.shared*.json`, `.claude/settings.profiles/` |
 
 ## Reading order for newcomers
 

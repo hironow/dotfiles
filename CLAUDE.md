@@ -16,8 +16,10 @@
     - `ROOT_CLAUDE.md` = Claude 専用 **overlay** (先頭で `@AGENTS.md` を import)
     - `ROOT_AGENTS_docs_agents_*.md` = on-demand **spoke** (tdd / commit / python 等)
     - `ROOT_AGENTS_hooks_*.sh` + `.claude/settings.hooks.json` = Claude hooks (機械 enforcement)
-    - `.claude/settings.shared.json` = Claude **共有 settings fragment** (env block + 選別
-      top-level キー。`settings.hooks.json` 同様 CC からは読まれない純粋な source)
+    - `.claude/settings.shared.json`, `.claude/settings.shared.{macos,linux,windows}.json`,
+      `.claude/settings.profiles/<key>.json` = Claude **層状 settings fragment**
+      (shared → OS overlay → profile。env block + 選別 top-level キー。
+      `settings.hooks.json` 同様 CC からは読まれない純粋な source。詳細 ADR 0037)
 - **`just sync-agents` (`scripts/sync_agents.py`) の配布 (per-tool):**
     - base → codex `~/.codex/AGENTS.md` / gemini `~/.gemini/GEMINI.md` /
       claude-family `~/.claude*/AGENTS.md`
@@ -31,12 +33,18 @@
       **update-in-place マージ** (manifest 非追跡)。sync が所有するのは command が
       `<agent>/hooks/` を指す block のみで、毎回その managed block を最新 fragment で
       置換 (hook command 変更でも stale 重複が残らない)、user 作成 block は保持
-        - `.claude/settings.shared.json` も同一 settings.json へ **逐次** update-in-place
-          マージ (hooks merge の直後)。**env block は sync が丸ごと所有=置換** (fragment から
-          消えた env キーは target からも除去される。machine 固有 env は `settings.local.json`
-          へ逃がす)、`settings` 内の top-level キーは **upsert** (theme/language/plugins 等の
-          未宣言キーは保持)。top-level キーの削除は自動伝播しない。これにより env は **fragment
-          一本が正本** で、repo `.claude/settings.json` は env を持たず global から継承する
+        - settings fragment は **4層を合成して1つの desired state** にしてから同一
+          settings.json へ update-in-place マージ (hooks merge の直後)。層は後勝ちで
+          ① `settings.shared.json` → ② `settings.shared.<os>.json` (実行 OS、欠落=空) →
+          ③ `settings.profiles/<AgentTarget.key>.json` → ④ **`<agent home>/settings.sync-local.json`**
+          (git 非追跡・machine 固有の最終上書き層)。**env は合成後に sync が丸ごと所有=置換**
+          (fragment 群から消えた env キーは target からも除去。machine 固有 env は ④ へ —
+          `settings.local.json` は **project scope 専用で user scope では読まれない**ため
+          逃し先にならない)。`settings` 内は key-wise 後勝ち + **両辺 dict のみ1段 deep-merge**
+          (shared の `permissions.deny` と profile の `permissions.defaultMode` が合成される)、
+          target へは top-level **upsert** (enabledPlugins 等の未宣言キーは保持)。top-level
+          キーの削除は自動伝播しない。env は **fragment 群が正本** で、repo
+          `.claude/settings.json` は env を持たず global から継承する (詳細 ADR 0037)
     - `ROOT_AGENTS_<x>_<y>(.ext|/)` → `<agent>/<x>/<y>` (`_`→`/`) の従来規約も継続
     - **`skills` は additive** (`ADDITIVE_DIRECTORIES`): 欠落 skill のみ追加、既存
       target は**上書きしない・削除しない**。`bunx skills` CLI が `~/.agents/skills`

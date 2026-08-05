@@ -747,6 +747,8 @@ lint-claude:
     @for m in plugins/*/.claude-plugin/plugin.json; do \
         bunx claude-code-lint@0.5.0 validate-plugin --no-config --path "$m"; \
       done
+    @echo '🔎 effective settings (profiles x OS, ADR 0037)...'
+    {{UV_RUN}} scripts/check_effective_settings.py
     @echo '🔎 claude plugin validate --strict (official; skipped if claude absent)...'
     @if command -v claude >/dev/null 2>&1; then \
         claude plugin validate --strict . ; \
