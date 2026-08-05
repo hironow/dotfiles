@@ -33,9 +33,9 @@ import shutil
 import sys
 import tempfile
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from collections.abc import Callable
 from typing import Literal
 
 # --- Configuration ---
@@ -536,8 +536,7 @@ def _get_newest_mtime(path: Path) -> float:
     for child in path.rglob("*"):
         if child.is_file():
             mtime = child.stat().st_mtime
-            if mtime > newest:
-                newest = mtime
+            newest = max(newest, mtime)
     return newest
 
 
@@ -880,6 +879,18 @@ def _merge_hook_settings(
     return changed
 
 
+def _compose_settings_fragments(dotfiles_dir: Path, agent: AgentTarget) -> dict | None:
+    """Compose the settings fragment layers into one effective desired state.
+
+    Returns the composed ``{"env": ..., "settings": ...}`` dict, or None when
+    no fragment layer exists (merge is then a no-op).
+    """
+    fragment_path = dotfiles_dir / SHARED_SETTINGS_FRAGMENT
+    if not fragment_path.exists():
+        return None
+    return json.loads(fragment_path.read_text(encoding="utf-8"))
+
+
 def _merge_settings_fragment(
     dotfiles_dir: Path, agent: AgentTarget, dry_run: bool = False
 ) -> bool:
@@ -895,10 +906,9 @@ def _merge_settings_fragment(
     removal is not auto-propagated. Idempotent; dry_run=True writes nothing.
     Returns True if the file would change.
     """
-    fragment_path = dotfiles_dir / SHARED_SETTINGS_FRAGMENT
-    if not fragment_path.exists():
+    fragment = _compose_settings_fragments(dotfiles_dir, agent)
+    if fragment is None:
         return False
-    fragment = json.loads(fragment_path.read_text(encoding="utf-8"))
     target_path = agent.directory / "settings.json"
     target = (
         json.loads(target_path.read_text(encoding="utf-8"))
