@@ -48,10 +48,15 @@ through the existing single update-in-place merge in `sync_agents.py`:
    UX keys (`theme`, `language`, `model`, `includeGitInstructions`,
    `promptSuggestionEnabled`, notification flags), the full 23-entry
    `skillOverrides` map, `permissions.deny` (npm guard, everywhere), and the
-   canonical env block (work-family 18-key set + promoted keys
-   `CLAUDE_CODE_SUBAGENT_MODEL`, `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY`,
-   `CLAUDE_CODE_DISABLE_FAST_MODE`, `CLAUDE_CODE_PACKAGE_MANAGER_AUTO_UPDATE`;
-   legacy unprefixed keys and the mouse/flicker terminal workarounds retire).
+   canonical env block. The canonical env is the **original git-managed
+   fragment set** (11 keys, with the two dead unprefixed names modernized to
+   their `CLAUDE_CODE_` successors) — NOT a union with per-home state: the
+   work homes' 14 hand-applied tuning keys (`MAX_THINKING_TOKENS`,
+   `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`, `DISABLE_AUTOUPDATER`,
+   `ENABLE_TOOL_SEARCH`, output-length caps, ...) do not get promoted into
+   the source of truth and drop everywhere on the next sync. Anything
+   genuinely wanted again re-enters via a fragment layer (shared, profile,
+   or machine-local) as a reviewed change.
 2. `.claude/settings.shared.{macos,linux,windows}.json` — overlay for the OS
    running the sync (`platform.system()` map). Missing file = empty layer.
    Initially only `macos.json` (`preferredNotifChannel: "ghostty"` — a property
