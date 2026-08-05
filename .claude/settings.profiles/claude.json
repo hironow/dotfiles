@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "effortLevel": "medium",
+    "permissions": {
+      "defaultMode": "auto"
+    },
+    "skipAutoPermissionPrompt": true,
+    "teammateMode": "auto",
+    "tui": "fullscreen",
+    "alwaysThinkingEnabled": true,
+    "autoCompactEnabled": true,
+    "fileCheckpointingEnabled": true,
+    "companyAnnouncements": ["😄 Private Claude Code is working!"]
+  }
+}

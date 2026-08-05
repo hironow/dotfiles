@@ -81,9 +81,12 @@ normalizes `\` to `/` before matching so pre-existing backslash-rendered
 blocks are recognized and replaced instead of duplicated. Git's sh is bash, so
 the existing hook scripts run unchanged.
 
-Deliberately **unmanaged** (never in fragments): `enabledPlugins` (large,
-churny, runtime-mutated by the plugin CLI — same delegation rationale as
-ADR 0026's skills stance), `feedbackSurveyState`, `skipWorkflowUsageWarning`,
+Deliberately **unmanaged** (never in fragments): `enabledPlugins` and
+`extraKnownMarketplaces` (large/churny, runtime-mutated by the plugin CLI, and
+the marketplace entries embed machine-absolute paths like
+`/Users/.../dotfiles/...` that would break cross-platform — same delegation
+rationale as ADR 0026's skills stance), `feedbackSurveyState`,
+`skipWorkflowUsageWarning`,
 `minimumVersion`, `autoUpdatesChannel`, `$schema`, `statusLine` (only
 `~/.claude` has one and its script is not a `ROOT_*` source — a follow-up may
 distribute it hooks-style with path rendering), and `hooks` (owned by the hook
@@ -95,6 +98,9 @@ fragment wrapper, so `scripts/check_effective_settings.py` generates the
 effective settings.json for every profile × OS and runs
 `claudelint validate-settings` on the output; wired into both `just
 lint-claude` and the `claude-lint` workflow (which does not run `just ci`).
+The checker pins claude-code-lint@0.7.1 (0.5.0's settings schema predates
+`permissions.defaultMode: "auto"` and string `teammateMode` and rejects
+valid live settings).
 
 ## Consequences
 

@@ -1,0 +1,13 @@
+{
+  "settings": {
+    "effortLevel": "medium",
+    "permissions": {
+      "defaultMode": "auto"
+    },
+    "skipAutoPermissionPrompt": true,
+    "teammateMode": "in-process",
+    "askUserQuestionTimeout": "10m",
+    "editorMode": "normal",
+    "companyAnnouncements": ["Welcome to workspace - a -"]
+  }
+}

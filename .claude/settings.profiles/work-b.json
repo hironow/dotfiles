@@ -1,0 +1,10 @@
+{
+  "settings": {
+    "effortLevel": "medium",
+    "permissions": {
+      "defaultMode": "auto"
+    },
+    "skipAutoPermissionPrompt": true,
+    "tui": "fullscreen"
+  }
+}

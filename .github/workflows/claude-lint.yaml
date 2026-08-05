@@ -51,3 +51,9 @@ jobs:
           for m in plugins/*/.claude-plugin/plugin.json; do
             bunx claude-code-lint@0.5.0 validate-plugin --no-config --path "$m"
           done
+
+      # The fragment layers ({env, settings} wrappers) are not claudelint
+      # inputs; validate the composed effective settings per profile x OS
+      # instead (ADR 0037). stdlib-only script; bunx provides claudelint.
+      - name: effective settings (profiles x OS)
+        run: python3 scripts/check_effective_settings.py
