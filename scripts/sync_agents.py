@@ -29,6 +29,7 @@ Public API:
 import argparse
 import filecmp
 import json
+import platform
 import shutil
 import sys
 import tempfile
@@ -50,6 +51,17 @@ HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
 # Shared settings fragment merged into each claude-family agent's settings.json:
 # the cross-machine env block (owned wholesale) plus curated top-level keys.
 SHARED_SETTINGS_FRAGMENT = ".claude/settings.shared.json"
+# OS overlay fragments layered on top of the shared fragment, keyed by
+# platform.system(). A missing overlay file is simply an empty layer.
+OS_SETTINGS_OVERLAYS = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}
+# Per-profile fragments (one per claude-family AgentTarget.key) layered on top
+# of the OS overlay, capturing intentional per-profile diffs (effortLevel...).
+PROFILE_SETTINGS_DIR = ".claude/settings.profiles"
+# Machine-local layer read from the AGENT HOME (untracked, user-owned): the
+# final override so machine-specific env / permissions.allow survive the
+# wholesale env ownership. NOTE: Claude Code reads settings.local.json at
+# project scope only, so this file is a sync-side input, not a CC settings file.
+MACHINE_LOCAL_SETTINGS = "settings.sync-local.json"
 
 # Directories to sync directly (in addition to ROOT_AGENTS_* files)
 SYNC_DIRECTORIES = ["commands", "skills", "agents"]
@@ -879,34 +891,74 @@ def _merge_hook_settings(
     return changed
 
 
-def _compose_settings_fragments(dotfiles_dir: Path, agent: AgentTarget) -> dict | None:
+def _compose_settings_fragments(
+    dotfiles_dir: Path, agent: AgentTarget, system: str | None = None
+) -> dict | None:
     """Compose the settings fragment layers into one effective desired state.
 
-    Returns the composed ``{"env": ..., "settings": ...}`` dict, or None when
-    no fragment layer exists (merge is then a no-op).
+    Layers, later wins (see repo CLAUDE.md and ADR 0037):
+      1. ``.claude/settings.shared.json``            all OS / all profiles
+      2. ``.claude/settings.shared.<os>.json``       running OS (macos/linux/windows)
+      3. ``.claude/settings.profiles/<key>.json``    per profile (AgentTarget.key)
+      4. ``<agent_home>/settings.sync-local.json``   machine-local, untracked
+
+    ``env`` composes key-wise; ``settings`` composes key-wise with a one-level
+    deep-merge when both sides are dicts (so shared can own ``permissions.deny``
+    while a profile owns ``permissions.defaultMode``). Missing layer files are
+    empty layers. ``system`` (a ``platform.system()`` value) is injectable for
+    tests. Returns the composed ``{"env": ..., "settings": ...}`` dict, or None
+    when no fragment layer exists (merge is then a no-op).
     """
-    fragment_path = dotfiles_dir / SHARED_SETTINGS_FRAGMENT
-    if not fragment_path.exists():
+    os_name = OS_SETTINGS_OVERLAYS.get(system or platform.system())
+    layer_paths = [
+        dotfiles_dir / SHARED_SETTINGS_FRAGMENT,
+        (dotfiles_dir / f".claude/settings.shared.{os_name}.json") if os_name else None,
+        (dotfiles_dir / PROFILE_SETTINGS_DIR / f"{agent.key}.json")
+        if agent.key
+        else None,
+        agent.directory / MACHINE_LOCAL_SETTINGS,
+    ]
+    layers = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in layer_paths
+        if path is not None and path.exists()
+    ]
+    if not layers:
         return None
-    return json.loads(fragment_path.read_text(encoding="utf-8"))
+
+    composed: dict = {}
+    for layer in layers:
+        if "env" in layer:
+            composed.setdefault("env", {}).update(layer["env"])
+        for key, value in layer.get("settings", {}).items():
+            settings = composed.setdefault("settings", {})
+            if isinstance(value, dict) and isinstance(settings.get(key), dict):
+                settings[key] = {**settings[key], **value}
+            else:
+                settings[key] = value
+    return composed
 
 
 def _merge_settings_fragment(
-    dotfiles_dir: Path, agent: AgentTarget, dry_run: bool = False
+    dotfiles_dir: Path,
+    agent: AgentTarget,
+    dry_run: bool = False,
+    system: str | None = None,
 ) -> bool:
-    """Merge the shared settings fragment into the agent's settings.json.
+    """Merge the composed settings fragments into the agent's settings.json.
 
     Update-in-place, parallel to _merge_hook_settings but with a STRONGER
-    ownership model: the fragment's ``env`` block is owned wholesale (the
-    target's env is replaced, so keys dropped from the fragment are removed) --
-    machine-local env therefore belongs in settings.local.json, which sync never
-    touches. The fragment's ``settings`` object holds curated top-level keys that
-    are upserted (add/update only); every other target key (theme, language,
-    enabledPlugins, hooks, statusLine, ...) is preserved untouched. Top-level key
-    removal is not auto-propagated. Idempotent; dry_run=True writes nothing.
-    Returns True if the file would change.
+    ownership model: the composed ``env`` block is owned wholesale (the
+    target's env is replaced, so keys dropped from the fragments are removed) --
+    machine-local env therefore belongs in the agent home's
+    ``settings.sync-local.json`` layer (composed last; sync never edits it).
+    The composed ``settings`` object holds curated top-level keys that are
+    upserted (add/update only); every other target key (enabledPlugins, hooks,
+    statusLine, ...) is preserved untouched. Top-level key removal is not
+    auto-propagated. Idempotent; dry_run=True writes nothing. Returns True if
+    the file would change.
     """
-    fragment = _compose_settings_fragments(dotfiles_dir, agent)
+    fragment = _compose_settings_fragments(dotfiles_dir, agent, system=system)
     if fragment is None:
         return False
     target_path = agent.directory / "settings.json"

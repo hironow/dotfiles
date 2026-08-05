@@ -1,7 +1,10 @@
 # 0027. Bun-only Node policy: retire the per-repo pnpm carve-out
 
 **Date:** 2026-06-14
-**Status:** Accepted
+**Status:** Accepted; partial supersede by
+[0037](./0037-layered-claude-settings-fragments.md) (only the "settings
+`permissions` is per-home, not synced" stance — the deny list is now
+distributed by the shared settings fragment)
 **Supersedes:** [0017](./0017-retire-pnpm-global-for-corepack.md) (partial — only
 the per-repo pnpm fallback carve-out at the **agent-policy** layer; ADR 0017's
 corepack/mise global-CLI **machine provisioning** is unchanged and in force)

@@ -262,3 +262,203 @@ def test_integration_hooks_then_settings(workspace: dict[str, Path]) -> None:
     expected_cmd = f'"{agent.directory}/hooks/foo.sh"'
     assert result["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == expected_cmd
     assert result["env"] == {"A": "1"}
+
+
+# --- Layered composition (shared -> OS overlay -> profile -> machine-local) ---
+
+
+def _write_os_fragment(dotfiles_dir: Path, os_name: str, data: dict) -> Path:
+    """Write an OS overlay fragment under <dotfiles>/.claude/."""
+    path = dotfiles_dir / ".claude" / f"settings.shared.{os_name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data))
+    return path
+
+
+def _write_profile_fragment(dotfiles_dir: Path, key: str, data: dict) -> Path:
+    """Write a per-profile fragment under <dotfiles>/.claude/settings.profiles/."""
+    path = dotfiles_dir / ".claude" / "settings.profiles" / f"{key}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data))
+    return path
+
+
+def _write_machine_local(target_dir: Path, data: dict) -> Path:
+    """Write the machine-local layer in the agent home (untracked, user-owned)."""
+    path = target_dir / "settings.sync-local.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_os_overlay_applied(workspace: dict[str, Path]) -> None:
+    """The running OS's overlay wins over the shared layer."""
+    # given
+    _write_shared_fragment(
+        workspace["dotfiles"],
+        {"settings": {"preferredNotifChannel": "auto", "theme": "dark"}},
+    )
+    _write_os_fragment(
+        workspace["dotfiles"],
+        "macos",
+        {"settings": {"preferredNotifChannel": "ghostty"}},
+    )
+    _write_os_fragment(
+        workspace["dotfiles"],
+        "windows",
+        {"settings": {"preferredNotifChannel": "wrong"}},
+    )
+    agent = _make_agent(workspace["target"])
+
+    # when
+    changed = _merge_settings_fragment(workspace["dotfiles"], agent, system="Darwin")
+
+    # then
+    assert changed is True
+    result = _read_target(workspace["target"])
+    assert result["preferredNotifChannel"] == "ghostty"
+    assert result["theme"] == "dark"
+
+
+def test_profile_fragment_selected_by_agent_key(workspace: dict[str, Path]) -> None:
+    """The profile layer is selected by AgentTarget.key; empty key skips it."""
+    # given
+    _write_shared_fragment(
+        workspace["dotfiles"], {"settings": {"effortLevel": "medium"}}
+    )
+    _write_profile_fragment(
+        workspace["dotfiles"], "work-c", {"settings": {"effortLevel": "xhigh"}}
+    )
+    keyed = AgentTarget(directory=workspace["target"], name="Test", key="work-c")
+
+    unkeyed_dir = workspace["target"].parent / "target2"
+    unkeyed_dir.mkdir()
+    unkeyed = AgentTarget(directory=unkeyed_dir, name="Test2")
+
+    # when
+    _merge_settings_fragment(workspace["dotfiles"], keyed, system="Linux")
+    _merge_settings_fragment(workspace["dotfiles"], unkeyed, system="Linux")
+
+    # then
+    assert _read_target(workspace["target"])["effortLevel"] == "xhigh"
+    assert _read_target(unkeyed_dir)["effortLevel"] == "medium"
+
+
+def test_layer_precedence_shared_os_profile_machine(workspace: dict[str, Path]) -> None:
+    """Later layers win: shared < OS overlay < profile < machine-local."""
+    # given
+    _write_shared_fragment(workspace["dotfiles"], {"settings": {"k": "shared"}})
+    _write_os_fragment(workspace["dotfiles"], "linux", {"settings": {"k": "os"}})
+    _write_profile_fragment(
+        workspace["dotfiles"], "work-a", {"settings": {"k": "profile"}}
+    )
+    agent = AgentTarget(directory=workspace["target"], name="Test", key="work-a")
+
+    # when / then (profile beats OS beats shared)
+    _merge_settings_fragment(workspace["dotfiles"], agent, system="Linux")
+    assert _read_target(workspace["target"])["k"] == "profile"
+
+    # and machine-local beats profile
+    _write_machine_local(workspace["target"], {"settings": {"k": "machine"}})
+    _merge_settings_fragment(workspace["dotfiles"], agent, system="Linux")
+    assert _read_target(workspace["target"])["k"] == "machine"
+
+
+def test_env_composed_then_owned_wholesale(workspace: dict[str, Path]) -> None:
+    """env is unioned across layers (later wins) then applied wholesale."""
+    # given
+    _write_shared_fragment(
+        workspace["dotfiles"], {"env": {"SHARED_ONLY": "1", "OVERRIDDEN": "shared"}}
+    )
+    _write_profile_fragment(
+        workspace["dotfiles"],
+        "work-b",
+        {"env": {"OVERRIDDEN": "profile", "EXTRA": "2"}},
+    )
+    _write_target(workspace["target"], {"env": {"TARGET_ONLY": "stale"}})
+    agent = AgentTarget(directory=workspace["target"], name="Test", key="work-b")
+
+    # when
+    _merge_settings_fragment(workspace["dotfiles"], agent, system="Linux")
+
+    # then
+    assert _read_target(workspace["target"])["env"] == {
+        "SHARED_ONLY": "1",
+        "OVERRIDDEN": "profile",
+        "EXTRA": "2",
+    }
+
+
+def test_settings_dict_values_deep_merged_one_level(workspace: dict[str, Path]) -> None:
+    """Dict-valued settings keys deep-merge one level across layers."""
+    # given
+    _write_shared_fragment(
+        workspace["dotfiles"],
+        {"settings": {"permissions": {"deny": ["Bash(npm:*)"]}}},
+    )
+    _write_profile_fragment(
+        workspace["dotfiles"],
+        "work-d",
+        {"settings": {"permissions": {"defaultMode": "default"}}},
+    )
+    _write_target(workspace["target"], {"permissions": {"stale": True}})
+    agent = AgentTarget(directory=workspace["target"], name="Test", key="work-d")
+
+    # when
+    _merge_settings_fragment(workspace["dotfiles"], agent, system="Linux")
+
+    # then (composed object upserted wholesale at top level: stale key gone)
+    assert _read_target(workspace["target"])["permissions"] == {
+        "deny": ["Bash(npm:*)"],
+        "defaultMode": "default",
+    }
+
+
+def test_machine_local_layer_wins_and_survives_sync(workspace: dict[str, Path]) -> None:
+    """Machine-local env/permissions.allow survive repeated syncs."""
+    # given
+    _write_shared_fragment(
+        workspace["dotfiles"],
+        {
+            "env": {"SHARED": "1"},
+            "settings": {"permissions": {"deny": ["Bash(npm:*)"]}},
+        },
+    )
+    _write_machine_local(
+        workspace["target"],
+        {
+            "env": {"MACHINE": "local"},
+            "settings": {"permissions": {"allow": ["Bash(cat:*)"]}},
+        },
+    )
+    agent = _make_agent(workspace["target"])
+
+    # when (twice: must be idempotent and never strip the machine layer)
+    _merge_settings_fragment(workspace["dotfiles"], agent, system="Linux")
+    changed_second = _merge_settings_fragment(
+        workspace["dotfiles"], agent, system="Linux"
+    )
+
+    # then
+    result = _read_target(workspace["target"])
+    assert result["env"] == {"SHARED": "1", "MACHINE": "local"}
+    assert result["permissions"] == {
+        "deny": ["Bash(npm:*)"],
+        "allow": ["Bash(cat:*)"],
+    }
+    assert changed_second is False
+
+
+def test_missing_layers_noop(workspace: dict[str, Path]) -> None:
+    """Only the layers that exist compose; a lone profile layer still merges."""
+    # given (no shared fragment at all)
+    _write_profile_fragment(
+        workspace["dotfiles"], "work-a", {"settings": {"effortLevel": "medium"}}
+    )
+    agent = AgentTarget(directory=workspace["target"], name="Test", key="work-a")
+
+    # when
+    changed = _merge_settings_fragment(workspace["dotfiles"], agent, system="Linux")
+
+    # then
+    assert changed is True
+    assert _read_target(workspace["target"])["effortLevel"] == "medium"
