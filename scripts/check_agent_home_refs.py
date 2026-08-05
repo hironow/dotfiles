@@ -24,10 +24,11 @@ import re
 import sys
 from pathlib import Path
 
-# Three ref shapes: macOS absolute, tilde, and Windows drive paths. The sync
-# rewrites with the home's native separators, so Windows refs arrive with a
-# backslash home prefix and forward-slash tail — accept both separators there.
-_PATH_RE = re.compile(r"(?:/Users/|~/)[\w@./*-]+|[A-Za-z]:[\\/][\w@.\\/*-]+")
+# Four ref shapes: macOS absolute, Linux absolute, tilde, and Windows drive
+# paths. The sync rewrites with the home's native separators, so Windows refs
+# arrive with a backslash home prefix and forward-slash tail — accept both
+# separators there.
+_PATH_RE = re.compile(r"(?:/Users/|/home/|~/)[\w@./*-]+|[A-Za-z]:[\\/][\w@.\\/*-]+")
 _SUFFIXES = {".md", ".sh", ".yaml"}
 _TRAILING_PUNCT = ".,;:'\")"
 

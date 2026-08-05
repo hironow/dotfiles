@@ -51,6 +51,30 @@ def test_windows_drive_glob_ref_is_recognized_not_bare(tmp_path: Path) -> None:
     assert not any("bare 'docs/agents/'" in p for p in problems), problems
 
 
+def test_linux_home_ref_is_recognized_not_bare(tmp_path: Path) -> None:
+    """A sync-rewritten Linux ref (`/home/<user>/.claude/docs/agents/x.md`,
+    as written on WSL/Linux homes) must be treated as an absolute reference:
+    existence-checked ("dead path"), never mis-flagged as a bare
+    docs/agents/ rewrite miss."""
+    problems = _scan_text(
+        tmp_path,
+        "see /home/nobody/.claude/docs/agents/tdd-workflow.md for more\n",
+    )
+    assert not any("bare 'docs/agents/'" in p for p in problems), problems
+    assert any("dead path reference" in p for p in problems), problems
+
+
+def test_linux_home_glob_ref_is_recognized_not_bare(tmp_path: Path) -> None:
+    """Glob-form Linux refs (`/home/<user>/.claude/docs/agents/*.md`) get the
+    same treatment as their /Users/ counterparts: prefix-checked, not
+    bare-flagged."""
+    problems = _scan_text(
+        tmp_path,
+        "exclude /home/nobody/.claude/docs/agents/*.md from scans\n",
+    )
+    assert not any("bare 'docs/agents/'" in p for p in problems), problems
+
+
 def test_bare_reference_is_still_flagged(tmp_path: Path) -> None:
     problems = _scan_text(tmp_path, "see docs/agents/testing.md\n")
     assert any("bare 'docs/agents/'" in p for p in problems), problems
