@@ -808,22 +808,43 @@ def _is_spoke(relative_path: str) -> bool:
     return relative_path.startswith("docs/agents/") and relative_path.endswith(".md")
 
 
-def _render_hook_command(command: str, agent: AgentTarget) -> str:
-    """Point a hook command at the agent's global hooks dir, not a project dir."""
-    return command.replace(
-        '"$CLAUDE_PROJECT_DIR/.claude/hooks/', f'"{agent.directory}/hooks/'
-    )
+def _render_hook_command(
+    command: str, agent: AgentTarget, system: str | None = None
+) -> str:
+    """Point a hook command at the agent's global hooks dir, not a project dir.
+
+    Paths render posix-style everywhere (identical to str() on mac/linux,
+    ``C:/...`` on Windows). On Windows the ``bash`` prefix becomes ``sh``:
+    bare ``bash`` resolves to the System32 WSL bash before Git Bash, while
+    ``sh`` has no System32 shadow and resolves to Git for Windows' sh (which
+    is bash) — same strategy as the justfile's windows-shell (ADR 0037).
+    """
+    hooks_prefix = f'"{agent.directory.as_posix()}/hooks/'
+    rendered = command.replace('"$CLAUDE_PROJECT_DIR/.claude/hooks/', hooks_prefix)
+    if (system or platform.system()) == "Windows":
+        rendered = rendered.replace(f"bash {hooks_prefix}", f"sh {hooks_prefix}")
+    return rendered
 
 
 def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
-    """A hook block sync owns: every command points at the agent's hooks dir."""
+    """A hook block sync owns: every command points at the agent's hooks dir.
+
+    Commands are normalized ``\\`` -> ``/`` before matching so legacy
+    Windows-rendered blocks (backslash paths) are recognized as managed and
+    replaced on the next sync instead of surviving as duplicates.
+    """
     inner = block.get("hooks", [])
-    marker = f"{agent.directory}/hooks/"
-    return bool(inner) and all(marker in h.get("command", "") for h in inner)
+    marker = f"{agent.directory.as_posix()}/hooks/"
+    return bool(inner) and all(
+        marker in h.get("command", "").replace("\\", "/") for h in inner
+    )
 
 
 def _merge_hook_settings(
-    dotfiles_dir: Path, agent: AgentTarget, dry_run: bool = False
+    dotfiles_dir: Path,
+    agent: AgentTarget,
+    dry_run: bool = False,
+    system: str | None = None,
 ) -> bool:
     """Merge the hook fragment into the agent's settings.json, update-in-place.
 
@@ -854,7 +875,12 @@ def _merge_hook_settings(
             {
                 "matcher": block.get("matcher"),
                 "hooks": [
-                    {**h, "command": _render_hook_command(h["command"], agent)}
+                    {
+                        **h,
+                        "command": _render_hook_command(
+                            h["command"], agent, system=system
+                        ),
+                    }
                     for h in block.get("hooks", [])
                 ],
             }
