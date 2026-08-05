@@ -5,8 +5,10 @@ Verification gate for the distributed agent instruction set: after
 `just sync-agents`, every file reference inside the deployed base/overlay/
 spokes must resolve. Per agent home this checks that:
 
-1. absolute `/Users/...` and `~/...` references to .md/.sh/.yaml files exist
-   (glob-ish tokens like `*` are checked at their fixed directory prefix);
+1. absolute `/Users/...`, `~/...`, and Windows drive (`C:/Users/...` or the
+   mixed-separator backslash form the sync writes on Windows) references to
+   .md/.sh/.yaml files exist (glob-ish tokens like `*` are checked at their
+   fixed directory prefix);
 2. no bare `docs/agents/` reference survived the sync path-rewrite;
 3. no reference to README-agents-setup.md (not distributed) remains.
 
@@ -22,7 +24,10 @@ import re
 import sys
 from pathlib import Path
 
-_PATH_RE = re.compile(r"(?:/Users/|~/)[\w@./*-]+")
+# Three ref shapes: macOS absolute, tilde, and Windows drive paths. The sync
+# rewrites with the home's native separators, so Windows refs arrive with a
+# backslash home prefix and forward-slash tail — accept both separators there.
+_PATH_RE = re.compile(r"(?:/Users/|~/)[\w@./*-]+|[A-Za-z]:[\\/][\w@.\\/*-]+")
 _SUFFIXES = {".md", ".sh", ".yaml"}
 _TRAILING_PUNCT = ".,;:'\")"
 
