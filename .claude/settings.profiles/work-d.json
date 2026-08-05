@@ -4,6 +4,6 @@
     "permissions": {
       "defaultMode": "default"
     },
-    "tui": "fullscreen"
+    "tui": "default"
   }
 }
