@@ -5,6 +5,6 @@
       "defaultMode": "auto"
     },
     "skipAutoPermissionPrompt": true,
-    "tui": "fullscreen"
+    "tui": "default"
   }
 }

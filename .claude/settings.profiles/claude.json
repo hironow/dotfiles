@@ -6,10 +6,12 @@
     },
     "skipAutoPermissionPrompt": true,
     "teammateMode": "auto",
-    "tui": "fullscreen",
+    "tui": "default",
     "alwaysThinkingEnabled": true,
     "autoCompactEnabled": true,
     "fileCheckpointingEnabled": true,
-    "companyAnnouncements": ["😄 Private Claude Code is working!"]
+    "companyAnnouncements": [
+      "😄 Private Claude Code is working!"
+    ]
   }
 }
