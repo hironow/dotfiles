@@ -20,13 +20,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from sync_agents import (
     AGENTS,
-    DOTFILES_DIR,
     OS_SETTINGS_OVERLAYS,
     AgentTarget,
     _compose_settings_fragments,
 )
 
 CLAUDELINT = ["bunx", "claude-code-lint@0.7.1", "validate-settings", "--no-config"]
+
+# Derived from the script location, NOT sync_agents.DOTFILES_DIR (~/dotfiles):
+# CI checks out the repo elsewhere, and the fragments to validate are the ones
+# in THIS checkout, not whatever ~/dotfiles happens to hold.
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def generate(dotfiles_dir: Path, out_dir: Path) -> dict[str, Path]:
@@ -65,7 +69,7 @@ def main() -> int:
     """Generate all effective settings and claudelint each one."""
     failures: list[str] = []
     with tempfile.TemporaryDirectory() as tmp:
-        generated = generate(DOTFILES_DIR, Path(tmp))
+        generated = generate(REPO_ROOT, Path(tmp))
         for label, path in sorted(generated.items()):
             result = subprocess.run(
                 CLAUDELINT, cwd=path.parents[1], capture_output=True, text=True

@@ -52,3 +52,11 @@ def test_effective_settings_reflect_layering(tmp_path: Path) -> None:
     claude_mac = json.loads(generated["claude-macos"].read_text(encoding="utf-8"))
     assert claude_mac["effortLevel"] == "medium"
     assert claude_mac["permissions"]["defaultMode"] == "auto"
+
+
+def test_repo_root_is_derived_from_script_location() -> None:
+    """The checker must not assume the repo lives at ~/dotfiles (CI checkout)."""
+    import check_effective_settings as ces
+
+    assert ces.REPO_ROOT == DOTFILES
+    assert (ces.REPO_ROOT / ".claude" / "settings.shared.json").is_file()
