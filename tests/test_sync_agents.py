@@ -23,23 +23,16 @@ DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
 
 
-def _host_workspace_path() -> str:
-    """See test_just_sandbox.py — surfaces host path for docker-outside-
-    of-docker bind mounts when tests run inside the dev container."""
-    return os.environ.get("LOCAL_WORKSPACE_FOLDER", str(ROOT))
-
-
-def _snapshot_tracked_worktree(src: str) -> str:
-    """Copy only git-tracked files into a throwaway host tempdir.
+def _copy_tracked_into(src: str, snapshot: str) -> None:
+    """Copy git-tracked files (superproject + skills submodule) into snapshot.
 
     Same rationale as test_just_sandbox.py: the container must never see
     the real repo. This suite's containers even run `sync-agents import`
     style commands that WRITE into /root/dotfiles, so a direct bind mount
-    of the host repo mutates the working tree (observed: deleted
-    ROOT_AGENTS.md, junk skills/commands). Every test gets its own
-    disposable snapshot via the autouse fixture below.
+    mutates the mounted tree (observed: deleted ROOT_AGENTS.md, junk
+    skills/commands). Every test gets its own disposable snapshot via the
+    autouse fixture below.
     """
-    snapshot = tempfile.mkdtemp(prefix="dotfiles-syncagents-")
     # Superproject tracked files, plus the skills submodule's tracked files
     # (`git ls-files` skips gitlinks, but this suite's tests rely on the
     # self-authored skills shipping in /root/dotfiles/skills).
@@ -66,7 +59,6 @@ def _snapshot_tracked_worktree(src: str) -> str:
             )
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             shutil.copy2(source, dest, follow_symlinks=False)
-    return snapshot
 
 
 # Mount source for the current test's containers (set by the autouse
@@ -77,16 +69,27 @@ _SANDBOX_REPO: str | None = None
 @pytest.fixture(autouse=True)
 def sandbox_repo():
     """Give every test a disposable repo copy to mount instead of the host
-    working tree. Under docker-outside-of-docker (CI; LOCAL_WORKSPACE_FOLDER
-    set) the checkout is ephemeral and host paths are required, so it is
-    bind-mounted directly — mirroring test_just_sandbox.py."""
+    working tree. Bind-mounting the checkout directly (even the ephemeral CI
+    one) is not enough: tests mutate /root/dotfiles, so a shared mount
+    cross-contaminates the suite (observed as 44 CI failures).
+
+    Under docker-outside-of-docker (CI; LOCAL_WORKSPACE_FOLDER set) mount
+    sources must be HOST paths, so the snapshot is created inside the
+    workspace itself and its host path derived via LOCAL_WORKSPACE_FOLDER."""
     global _SANDBOX_REPO
-    if "LOCAL_WORKSPACE_FOLDER" in os.environ:
-        _SANDBOX_REPO = _host_workspace_path()
+    lwf = os.environ.get("LOCAL_WORKSPACE_FOLDER")
+    if lwf:
+        snapshots_root = ROOT / ".e2e-snapshots"
+        snapshots_root.mkdir(exist_ok=True)
+        snapshot = tempfile.mkdtemp(prefix="snap-", dir=str(snapshots_root))
+        _copy_tracked_into(str(ROOT), snapshot)
+        _SANDBOX_REPO = os.path.join(lwf, os.path.relpath(snapshot, str(ROOT)))
         yield
         _SANDBOX_REPO = None
+        shutil.rmtree(snapshot, ignore_errors=True)
         return
-    snapshot = _snapshot_tracked_worktree(str(ROOT))
+    snapshot = tempfile.mkdtemp(prefix="dotfiles-syncagents-")
+    _copy_tracked_into(str(ROOT), snapshot)
     _SANDBOX_REPO = snapshot
     yield
     _SANDBOX_REPO = None

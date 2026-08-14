@@ -110,3 +110,4 @@ tools/simple-server/simple-server.exe
 # Anchored with a leading slash: only the root-level stray is junk, so an
 # unrooted pattern would over-match any future subdirectory copy.
 /skills-lock.json
+.e2e-snapshots/
