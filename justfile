@@ -1315,6 +1315,18 @@ skills *args:
       bunx skills {{ args }}
     fi
 
+# Normalize ~/.agents/.skill-lock.json into the committed declaration
+# (dump/harness/skill-lock.json). Run after `bunx skills add/update/remove`.
+[group('Agents')]
+dump-skills-lock:
+    @{{ UV_RUN }} scripts/skills_lock.py dump
+
+# Install every declared third-party skill via the pinned bunx skills CLI
+# (best-effort: upstream HEAD, idempotent — already-installed skills skip).
+[group('Agents')]
+restore-skills-lock:
+    @{{ UV_RUN }} scripts/skills_lock.py restore
+
 # CDP
 
 # Start Chrome Dev with remote debugging
