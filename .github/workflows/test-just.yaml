@@ -18,6 +18,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # The sync-agents e2e suite distributes the self-authored skills
+          # shipped in the skills submodule (e.g. asserts `sibyl` lands in
+          # agent homes) — without it the suite runs against an empty
+          # skills/ and fails.
+          submodules: true
 
       # Build the dev container declared by .devcontainer/devcontainer.json
       # (debian-12 + features) and run `just test` inside it. The action
