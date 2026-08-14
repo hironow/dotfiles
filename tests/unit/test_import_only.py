@@ -6,15 +6,14 @@ Tests that:
    ALL selected agents become import candidates.
 """
 
-from pathlib import Path
-
 import sys
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from sync_agents import (  # noqa: E402
+from sync_agents import (
     AgentTarget,
     _build_import_plan,
     _SyncManifest,
@@ -28,6 +27,15 @@ def _make_skill(parent: Path, name: str, content: str = "skill") -> Path:
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "SKILL.md").write_text(f"# {name}\n{content}\n")
     return skill_dir
+
+
+def _make_command(parent: Path, name: str) -> Path:
+    """Create a minimal command file (skills never import — declarative model)."""
+    commands_dir = parent / "commands"
+    commands_dir.mkdir(parents=True, exist_ok=True)
+    command = commands_dir / f"{name}.md"
+    command.write_text(f"# {name}\n")
+    return command
 
 
 @pytest.fixture()
@@ -48,8 +56,8 @@ def test_import_only_imports_from_non_import_source_agent(
 ) -> None:
     """Selected agent without is_import_source should still be imported from
     in import-only mode (the flag is dropped)."""
-    # given: target-a has a unique skill, but its agent has is_import_source=False
-    _make_skill(workspace["target_a"], "from-a")
+    # given: target-a has a unique command, but its agent has is_import_source=False
+    _make_command(workspace["target_a"], "from-a")
     agent = AgentTarget(
         directory=workspace["target_a"],
         name="A",
@@ -61,9 +69,9 @@ def test_import_only_imports_from_non_import_source_agent(
     # when: build import plan ignoring is_import_source flag
     plan = _build_import_plan(workspace["dotfiles"], agent, manifest)
 
-    # then: the new skill is detected as importable regardless of the flag
+    # then: the new command is detected as importable regardless of the flag
     importable = [a for a in plan.items if a.status == "import"]
-    assert any(a.relative_path == "skills/from-a" for a in importable)
+    assert any(a.relative_path == "commands/from-a.md" for a in importable)
 
 
 def test_import_only_mode_does_not_create_target_files(
@@ -72,8 +80,8 @@ def test_import_only_mode_does_not_create_target_files(
     """import_only_mode runs Phase 1 only — no forward sync, no orphan removal."""
     # given: dotfiles has a skill that is NOT in target-a
     _make_skill(workspace["dotfiles"], "only-in-dotfiles")
-    # given: target-a has its own unique skill to import
-    _make_skill(workspace["target_a"], "only-in-target")
+    # given: target-a has its own unique command to import
+    _make_command(workspace["target_a"], "only-in-target")
 
     agent = AgentTarget(
         directory=workspace["target_a"],
@@ -84,8 +92,8 @@ def test_import_only_mode_does_not_create_target_files(
     # when: run import-only mode
     import_only_mode(workspace["dotfiles"], agents=[agent])
 
-    # then: target-a's unique skill landed in dotfiles
-    assert (workspace["dotfiles"] / "skills" / "only-in-target" / "SKILL.md").exists()
+    # then: target-a's unique command landed in dotfiles
+    assert (workspace["dotfiles"] / "commands" / "only-in-target.md").exists()
 
     # then: dotfiles' unique skill was NOT pushed into target-a
     assert not (workspace["target_a"] / "skills" / "only-in-dotfiles").exists()

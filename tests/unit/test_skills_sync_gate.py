@@ -12,23 +12,21 @@ Two mechanisms keep junk out of agent homes (both directions):
 The gate applies only to `skills/`; commands/ and agents/ are untouched.
 """
 
+# Import from scripts (add parent to path)
+import sys
 from pathlib import Path
 
 import pytest
-
 from _symlinks import requires_symlinks
-
-# Import from scripts (add parent to path)
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from sync_agents import (
     AgentTarget,
-    _SyncManifest,
     _build_import_plan,
     _get_directory_items,
     _load_skills_sync_exclude,
+    _SyncManifest,
     import_only_mode,
 )
 
@@ -218,10 +216,11 @@ def test_junk_in_target_not_reimported(workspace: dict[str, Path]) -> None:
     # when
     plan = _build_import_plan(workspace["dotfiles"], agent, manifest)
 
-    # then
+    # then: junk is skipped, and (declarative model) even genuine skills
+    # never import back — see test_commands_still_import for the positive path.
     paths = [a.relative_path for a in plan.items]
     assert "skills/docs" not in paths
-    assert "skills/genuine-skill" in paths
+    assert "skills/genuine-skill" not in paths
 
 
 def test_excluded_skill_in_target_not_reimported(workspace: dict[str, Path]) -> None:
@@ -240,10 +239,10 @@ def test_excluded_skill_in_target_not_reimported(workspace: dict[str, Path]) -> 
 
 
 @requires_symlinks
-def test_symlinked_skill_in_target_still_importable(
+def test_symlinked_skill_in_target_not_imported(
     workspace: dict[str, Path], tmp_path: Path
 ) -> None:
-    """An external symlink to a real skill passes the gate via its resolved dir."""
+    """A CLI-installed symlink (like ~/.agents/skills/foo) never imports back."""
     # given: real skill lives outside the target (like ~/.agents/skills/foo)
     real = tmp_path / "elsewhere" / "linked-skill"
     real.mkdir(parents=True, exist_ok=True)
@@ -259,7 +258,56 @@ def test_symlinked_skill_in_target_still_importable(
 
     # then
     paths = [a.relative_path for a in plan.items]
-    assert "skills/linked-skill" in paths
+    assert "skills/linked-skill" not in paths
+
+
+def test_real_skill_dir_in_target_not_imported(workspace: dict[str, Path]) -> None:
+    """Third-party skills are declared in the skill-lock, never re-vendored."""
+    # given: a valid skill exists only in the target home
+    _make_skill(workspace["target"], "target-only-skill")
+    manifest = _SyncManifest(items={})
+    agent = _make_agent(workspace["target"])
+
+    # when
+    plan = _build_import_plan(workspace["dotfiles"], agent, manifest)
+
+    # then
+    paths = [a.relative_path for a in plan.items]
+    assert "skills/target-only-skill" not in paths
+
+
+def test_skills_learned_workspace_still_imports(workspace: dict[str, Path]) -> None:
+    """The exempt skills/learned workspace keeps its home->repo round-trip."""
+    # given: a learned skill written by skill-creator into the home
+    learned = workspace["target"] / "skills" / "learned"
+    learned.mkdir(parents=True, exist_ok=True)
+    (learned / "SKILL.md").write_text("# learned index\n")
+    manifest = _SyncManifest(items={})
+    agent = _make_agent(workspace["target"])
+
+    # when
+    plan = _build_import_plan(workspace["dotfiles"], agent, manifest)
+
+    # then
+    paths = [a.relative_path for a in plan.items]
+    assert "skills/learned" in paths
+
+
+def test_commands_still_import(workspace: dict[str, Path]) -> None:
+    """Abolishing skills import must not block the other sync directories."""
+    # given: a command exists only in the target home
+    commands_dir = workspace["target"] / "commands"
+    commands_dir.mkdir(parents=True, exist_ok=True)
+    (commands_dir / "my-command.md").write_text("# cmd\n")
+    manifest = _SyncManifest(items={})
+    agent = _make_agent(workspace["target"])
+
+    # when
+    plan = _build_import_plan(workspace["dotfiles"], agent, manifest)
+
+    # then
+    paths = [a.relative_path for a in plan.items]
+    assert "commands/my-command.md" in paths
 
 
 def test_import_only_no_skills_imports_nothing(

@@ -1288,6 +1288,13 @@ def _build_import_plan(
                 continue
             if child.is_symlink() and _is_internal_symlink(child, target_dir):
                 continue
+            if dir_name == "skills" and child.name not in ADDITIVE_EXEMPT_SUBDIRS:
+                # Skills never import back from agent homes: third-party skills
+                # are declared in dump/harness/skill-lock.json (the bunx skills
+                # CLI owns the store), self-authored skills are edited in the
+                # submodule directly. Only the exempt skill-creator workspace
+                # (skills/learned) keeps its round-trip.
+                continue
             if dir_name == "skills" and not _is_syncable_skill(
                 child, child.name, skills_exclude
             ):
