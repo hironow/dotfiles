@@ -37,8 +37,8 @@ def _run(
         env=env,
         text=True,
         shell=isinstance(cmd, str),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
+        check=False,
     )
 
 
@@ -148,14 +148,14 @@ def test_sync_agents_default_targets_claude_only(docker_image):
 
     Scenario:
     - given: Fresh container with no agent files
-    - when: Run sync-agents-auto WITHOUT any targets (new default)
+    - when: Run sync-agents WITHOUT any targets (new default)
     - then: ~/.claude/CLAUDE.md is created, but ~/.gemini, ~/.codex,
             ~/.claude-work-a are NOT created
     """
     cmd = """
     set -euo pipefail
 
-    cd /root/dotfiles && just sync-agents-auto
+    cd /root/dotfiles && just sync-agents
 
     [ -f /root/.claude/CLAUDE.md ] && echo "CLAUDE.md exists" || echo "CLAUDE.md missing"
     [ ! -d /root/.gemini ] && echo "gemini absent" || echo "gemini PRESENT"
@@ -175,13 +175,13 @@ def test_sync_agents_explicit_target_widens_scope(docker_image):
 
     Scenario:
     - given: Fresh container
-    - when: Run sync-agents-auto with explicit targets `p a`
+    - when: Run sync-agents with explicit targets `p a`
     - then: ~/.claude AND ~/.claude-work-a are populated, others stay empty
     """
     cmd = """
     set -euo pipefail
 
-    cd /root/dotfiles && just sync-agents-auto p a
+    cd /root/dotfiles && just sync-agents p a
 
     [ -f /root/.claude/CLAUDE.md ] && echo "claude ok"
     [ -f /root/.claude-work-a/CLAUDE.md ] && echo "work-a ok"
@@ -213,7 +213,7 @@ def test_sync_agents_creates_files_on_first_run(docker_image):
     set -euo pipefail
 
     # Run sync-agents with auto-yes (no prompts)
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify files exist
     [ -f /root/.claude/CLAUDE.md ] && echo "CLAUDE.md exists" || echo "CLAUDE.md missing"
@@ -240,7 +240,7 @@ def test_sync_agents_is_idempotent(docker_image):
     set -euo pipefail
 
     # First run - create files
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Second run - should report synced
     cd /root/dotfiles && just sync-agents-preview all
@@ -264,7 +264,7 @@ def test_sync_agents_creates_missing_directories(docker_image):
     set -euo pipefail
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify directories were created
     [ -d /root/.claude ] && echo ".claude directory exists"
@@ -302,7 +302,7 @@ def test_sync_agents_converts_underscore_to_path(docker_image):
     [ -f /root/dotfiles/ROOT_AGENTS_hooks_formatter.md ] && echo "source exists"
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify converted path
     [ -f /root/.claude/hooks/formatter.md ] && echo "hooks/formatter.md exists"
@@ -338,7 +338,7 @@ def test_sync_agents_handles_directory_sources(docker_image):
     echo "advanced example" > /root/dotfiles/ROOT_AGENTS_agents_test-skill/examples/advanced/complex.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify directory structure
     [ -d /root/.claude/agents/test-skill ] && echo "agents/test-skill/ exists"
@@ -389,7 +389,7 @@ def test_sync_agents_handles_python_file_extension(docker_image):
     echo 'print("Hello")' >> /root/dotfiles/ROOT_AGENTS_hooks_formatter.py
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify converted path
     [ -f /root/.claude/hooks/formatter.py ] && echo "hooks/formatter.py exists"
@@ -465,7 +465,7 @@ def test_sync_agents_preview_shows_synced_files(docker_image):
     set -euo pipefail
 
     # First, sync files
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Then preview
     cd /root/dotfiles && just sync-agents-preview all
@@ -493,7 +493,7 @@ def test_sync_agents_detects_changed_files(docker_image):
     set -euo pipefail
 
     # First, sync files
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Modify target file
     echo "# Modified" >> /root/.claude/CLAUDE.md
@@ -527,7 +527,7 @@ def test_sync_agents_fails_without_base_file(docker_image):
     rm -f /root/dotfiles/ROOT_AGENTS.md
 
     # Run sync-agents (should fail)
-    cd /root/dotfiles && just sync-agents-auto all 2>&1 || echo "script failed as expected"
+    cd /root/dotfiles && just sync-agents all 2>&1 || echo "script failed as expected"
     """
     result = _run_in_container(docker_image, cmd, check=False)
 
@@ -555,7 +555,7 @@ def test_sync_agents_syncs_to_all_agents(docker_image):
     set -euo pipefail
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify all agents have files
     [ -f /root/.claude/CLAUDE.md ] && echo "claude ok"
@@ -593,14 +593,14 @@ def test_sync_agents_preserves_unmanaged_items_in_target(docker_image):
     echo "# My Skill" > /root/dotfiles/skills/my-skill/README.md
 
     # First sync - creates target skills
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Add an extra item in target (simulating plugin install)
     mkdir -p /root/.claude/skills/external-plugin
     echo "# External Plugin" > /root/.claude/skills/external-plugin/README.md
 
     # Run sync again
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify both exist
     [ -f /root/.claude/skills/my-skill/README.md ] && echo "dotfiles skill preserved"
@@ -642,7 +642,7 @@ def test_sync_agents_imports_symlinked_skills_from_target(docker_image):
     [ -L /root/.claude/skills/cool-plugin ] && echo "symlink exists"
 
     # Run sync-agents (import phase should detect and import the symlink)
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify the skill was imported to dotfiles
     [ -d /root/dotfiles/skills/cool-plugin ] && echo "imported to dotfiles"
@@ -682,7 +682,7 @@ def test_sync_agents_imports_regular_directories(docker_image):
     echo "# Manual Skill" > /root/.claude/skills/manual-skill/README.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify the regular dir WAS imported to dotfiles
     if [ -d /root/dotfiles/skills/manual-skill ]; then
@@ -730,7 +730,7 @@ def test_sync_agents_keeps_newer_dotfiles_over_older_symlink(docker_image):
     echo "# Dotfiles version (newer)" > /root/dotfiles/skills/shared-skill/README.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify dotfiles version was preserved (it's newer) — import-conflict
     # resolution is unchanged by additive skills.
@@ -774,7 +774,7 @@ def test_sync_agents_full_bidirectional_cycle(docker_image):
     ln -s /opt/plugins/awesome-plugin /root/.claude/skills/awesome-plugin
 
     # Run sync-agents (should import + forward sync)
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify Phase 1: imported to dotfiles
     [ -d /root/dotfiles/skills/awesome-plugin ] && echo "imported to dotfiles"
@@ -816,7 +816,7 @@ def test_sync_agents_import_only_from_import_source(docker_image):
     ln -s /opt/gemini-plugin/special /root/.gemini/skills/special
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify the symlink was NOT imported to dotfiles
     if [ -d /root/dotfiles/skills/special ]; then
@@ -851,7 +851,7 @@ def test_sync_agents_creates_manifest_on_first_run(docker_image):
     rm -f /root/dotfiles/.sync-manifest.json
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify manifest was created
     [ -f /root/dotfiles/.sync-manifest.json ] && echo "manifest created"
@@ -886,7 +886,7 @@ def test_sync_agents_deletes_removed_items_from_targets(docker_image):
     echo "# Temp Skill" > /root/dotfiles/skills/temp-skill/README.md
 
     # First sync: distributes temp-skill to all targets
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify it was synced
     [ -f /root/.claude/skills/temp-skill/README.md ] && echo "synced to claude"
@@ -896,7 +896,7 @@ def test_sync_agents_deletes_removed_items_from_targets(docker_image):
     rm -rf /root/dotfiles/skills/temp-skill
 
     # Second sync: should delete from all targets
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify deletion
     if [ -d /root/.claude/skills/temp-skill ]; then
@@ -935,14 +935,14 @@ def test_sync_agents_does_not_reimport_deleted_items(docker_image):
     echo "# Ephemeral" > /root/.claude/agents/ephemeral-skill/README.md
 
     # First sync: imports to dotfiles, syncs to targets
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
     [ -d /root/dotfiles/agents/ephemeral-skill ] && echo "initially imported"
 
     # Delete from dotfiles (simulating intentional removal)
     rm -rf /root/dotfiles/agents/ephemeral-skill
 
     # Second sync: should NOT re-import, should delete from targets
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify NOT re-imported to dotfiles
     if [ -d /root/dotfiles/agents/ephemeral-skill ]; then
@@ -982,7 +982,7 @@ def test_sync_agents_imports_from_codex(docker_image):
     echo "# Codex Native" > /root/.codex/skills/codex-native/README.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify imported to dotfiles
     [ -d /root/dotfiles/skills/codex-native ] && echo "imported to dotfiles"
@@ -1015,7 +1015,7 @@ def test_sync_agents_skips_hidden_directories(docker_image):
     echo "# Internal" > /root/.codex/skills/.system/internal/README.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify hidden dir was NOT imported
     if [ -d /root/dotfiles/skills/.system ]; then
@@ -1055,7 +1055,7 @@ def test_sync_agents_replaces_symlinks_in_targets(docker_image):
     [ -L /root/.gemini/agents/real-skill ] && echo "is symlink before"
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify symlink was replaced with real dir
     if [ -L /root/.gemini/agents/real-skill ]; then
@@ -1089,7 +1089,7 @@ def test_sync_agents_newer_import_source_wins_conflict(docker_image):
     echo "# Version 1" > /root/dotfiles/agents/evolving-skill/README.md
 
     # First sync to distribute
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Wait to ensure mtime difference
     sleep 2
@@ -1098,7 +1098,7 @@ def test_sync_agents_newer_import_source_wins_conflict(docker_image):
     echo "# Version 2 - Updated" > /root/.claude/agents/evolving-skill/README.md
 
     # Run sync again
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify dotfiles was updated with newer version
     grep -q "Version 2" /root/dotfiles/agents/evolving-skill/README.md && echo "dotfiles updated"
@@ -1136,7 +1136,7 @@ def test_sync_agents_older_import_source_loses_conflict(docker_image):
     echo "# New Version in Dotfiles" > /root/dotfiles/skills/stable-skill/README.md
 
     # Run sync
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify dotfiles version was preserved (import-conflict: newer wins)
     grep -q "New Version in Dotfiles" /root/dotfiles/skills/stable-skill/README.md && echo "dotfiles preserved"
@@ -1175,7 +1175,7 @@ def test_sync_agents_preserves_workspace_dirs_in_learned(docker_image):
     echo "# My Real Skill v1" > /root/dotfiles/skills/learned/my-real-skill/SKILL.md
 
     # First sync: distribute learned/ to targets
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify learned was synced
     [ -f /root/.claude/skills/learned/my-real-skill/SKILL.md ] && echo "initial sync ok"
@@ -1190,7 +1190,7 @@ def test_sync_agents_preserves_workspace_dirs_in_learned(docker_image):
     echo "# My Real Skill v2" > /root/dotfiles/skills/learned/my-real-skill/SKILL.md
 
     # Run sync again - should update skill but preserve workspace
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify managed skill was updated
     grep -q "v2" /root/.claude/skills/learned/my-real-skill/SKILL.md && echo "skill updated"
@@ -1230,7 +1230,7 @@ def test_sync_agents_does_not_import_workspace_dirs(docker_image):
     echo "workspace data" > /root/.claude/skills/learned/imported-skill-workspace/iteration-1/data.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify real skill WAS imported
     [ -d /root/dotfiles/skills/learned/imported-skill ] && echo "real skill imported"
@@ -1270,7 +1270,7 @@ def test_sync_agents_imports_from_agents_global(docker_image):
     echo "# Global Only Skill" > /root/.agents/skills/global-only-skill/SKILL.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify imported to dotfiles
     [ -d /root/dotfiles/skills/global-only-skill ] && echo "imported to dotfiles"
@@ -1310,7 +1310,7 @@ def test_sync_agents_syncs_dotfiles_skills_to_agents_global(docker_image):
     mkdir -p /root/.agents/skills
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify synced to ~/.agents/skills/
     [ -f /root/.agents/skills/dotfiles-only-skill/SKILL.md ] && echo "synced to agents global"
@@ -1341,7 +1341,7 @@ def test_sync_agents_agents_global_only_syncs_skills(docker_image):
     echo "# Test Agent" > /root/dotfiles/agents/test-agent.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify commands/ was NOT synced to ~/.agents/
     if [ -d /root/.agents/commands ]; then
@@ -1380,7 +1380,7 @@ def test_sync_agents_agents_global_no_base_file(docker_image):
     set -euo pipefail
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify no base file in ~/.agents/
     if [ -f /root/.agents/CLAUDE.md ] || [ -f /root/.agents/AGENTS.md ] || [ -f /root/.agents/GEMINI.md ]; then
@@ -1418,7 +1418,7 @@ def test_sync_agents_creates_symlinks_for_learned_skills(docker_image):
     echo "---" >> /root/dotfiles/skills/learned/my-learned-skill/SKILL.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify symlinks created in dotfiles
     [ -L /root/dotfiles/skills/my-learned-skill ] && echo "dotfiles symlink created"
@@ -1461,7 +1461,7 @@ def test_sync_agents_skips_workspace_dirs_in_learned(docker_image):
     echo "workspace data" > /root/dotfiles/skills/learned/real-skill-workspace/iteration-1/data.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify skill IS symlinked
     [ -L /root/.claude/skills/real-skill ] && echo "skill symlinked"
@@ -1500,7 +1500,7 @@ def test_sync_agents_skips_learned_dirs_without_skill_md(docker_image):
     echo "---" > /root/dotfiles/skills/learned/valid-skill/SKILL.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify valid skill IS symlinked
     [ -L /root/.claude/skills/valid-skill ] && echo "valid skill symlinked"
@@ -1535,13 +1535,13 @@ def test_sync_agents_preserves_existing_learned_symlinks(docker_image):
     echo "---" > /root/dotfiles/skills/learned/stable-skill/SKILL.md
 
     # First sync
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify symlink created
     [ -L /root/.claude/skills/stable-skill ] && echo "first run: symlink exists"
 
     # Second sync (should be idempotent)
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify symlink still exists and is correct
     [ -L /root/.claude/skills/stable-skill ] && echo "second run: symlink preserved"
@@ -1577,7 +1577,7 @@ def test_sync_agents_no_symlink_when_real_dir_exists(docker_image):
     echo "real version" >> /root/dotfiles/skills/conflicting-skill/SKILL.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify in target: should be a real directory, NOT a symlink
     if [ -L /root/.claude/skills/conflicting-skill ]; then
@@ -1615,7 +1615,7 @@ def test_sync_agents_no_learned_dir_no_error(docker_image):
     echo "# Regular" > /root/dotfiles/skills/regular-skill/SKILL.md
 
     # Run sync-agents (should not error)
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify regular skill was synced
     [ -f /root/.claude/skills/regular-skill/SKILL.md ] && echo "regular skill synced"
@@ -1644,14 +1644,14 @@ def test_sync_agents_learned_symlinks_survive_resync(docker_image):
     echo "# Version 1" > /root/dotfiles/skills/learned/evolving-skill/SKILL.md
 
     # First sync
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
     [ -L /root/.claude/skills/evolving-skill ] && echo "symlink created"
 
     # Update the learned skill content
     echo "# Version 2" > /root/dotfiles/skills/learned/evolving-skill/SKILL.md
 
     # Second sync
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify symlink still works and reflects new content
     [ -L /root/.claude/skills/evolving-skill ] && echo "symlink preserved"
@@ -1681,7 +1681,7 @@ def test_sync_agents_learned_symlinks_in_dotfiles_itself(docker_image):
     echo "---" > /root/dotfiles/skills/learned/dotfiles-linked-skill/SKILL.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify symlink in dotfiles itself
     [ -L /root/dotfiles/skills/dotfiles-linked-skill ] && echo "dotfiles symlink exists"
@@ -1714,7 +1714,7 @@ def test_sync_agents_agents_global_gets_learned_symlinks(docker_image):
     echo "---" > /root/dotfiles/skills/learned/agents-linked-skill/SKILL.md
 
     # Run sync-agents
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Verify learned/ was synced to ~/.agents/skills/
     [ -d /root/.agents/skills/learned/agents-linked-skill ] && echo "learned synced"
@@ -1751,7 +1751,7 @@ def test_sync_agents_orphans_shows_target_only_items(docker_image):
     set -euo pipefail
 
     # First sync to establish baseline
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Add an orphan skill to a non-import target
     mkdir -p /root/.claude-work-a/agents/orphan-test-skill
@@ -1779,7 +1779,7 @@ def test_sync_agents_orphans_clean_when_no_orphans(docker_image):
     set -euo pipefail
 
     # Sync to establish baseline
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Run orphans detection (should be clean)
     cd /root/dotfiles && uv run scripts/sync_agents.py --orphans all
@@ -1804,7 +1804,7 @@ def test_sync_agents_override_removes_orphans(docker_image):
     set -euo pipefail
 
     # First sync to establish baseline
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Add orphan skills to non-import target
     mkdir -p /root/.claude-work-a/agents/orphan-alpha
@@ -1858,7 +1858,7 @@ def test_sync_agents_override_preserves_source_items(docker_image):
     echo "# Real" > /root/dotfiles/agents/my-real-skill/SKILL.md
 
     # First sync
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Add an orphan to the non-import target
     mkdir -p /root/.claude-work-a/agents/orphan-only
@@ -1896,7 +1896,7 @@ def test_sync_agents_preview_shows_orphans(docker_image):
     set -euo pipefail
 
     # First sync
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Add an orphan to non-import target
     mkdir -p /root/.claude-work-a/agents/preview-orphan
@@ -2036,7 +2036,7 @@ def test_just_sync_agents_override_removes_orphans_via_recipe(docker_image):
     cmd = """
     set -euo pipefail
 
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     mkdir -p /root/.claude-work-a/agents/recipe-orphan
     echo "# orphan" > /root/.claude-work-a/agents/recipe-orphan/SKILL.md
@@ -2064,7 +2064,7 @@ def test_just_sync_agents_override_default_scope_does_not_touch_work_a(docker_im
     cmd = """
     set -euo pipefail
 
-    cd /root/dotfiles && just sync-agents-auto all
+    cd /root/dotfiles && just sync-agents all
 
     # Plant an orphan in work-a (out of default scope)
     mkdir -p /root/.claude-work-a/agents/scope-orphan-work-a
@@ -2095,7 +2095,7 @@ def test_hub_and_spoke_claude_gets_overlay_base_spokes_hooks(docker_image):
     spokes with absolute refs, executable hooks, merged settings.json."""
     cmd = r"""
     set -euo pipefail
-    cd /root/dotfiles && just sync-agents-auto p
+    cd /root/dotfiles && just sync-agents p
 
     grep -q '^@AGENTS.md' /root/.claude/CLAUDE.md && echo "overlay-imports-base"
     grep -q 'Non-negotiables' /root/.claude/AGENTS.md && echo "base-is-agents-md"
@@ -2121,7 +2121,7 @@ def test_hub_and_spoke_codex_gemini_base_only_no_hooks(docker_image):
     with refs rewritten to each agent's own absolute path."""
     cmd = r"""
     set -euo pipefail
-    cd /root/dotfiles && just sync-agents-auto x g
+    cd /root/dotfiles && just sync-agents x g
 
     grep -q 'Non-negotiables' /root/.codex/AGENTS.md && echo "codex-base"
     grep -q 'Non-negotiables' /root/.gemini/GEMINI.md && echo "gemini-base"
@@ -2162,8 +2162,8 @@ def test_hub_and_spoke_settings_merge_idempotent_preserves_user_keys(docker_imag
 }
 JSON
     cd /root/dotfiles
-    just sync-agents-auto p
-    just sync-agents-auto p
+    just sync-agents p
+    just sync-agents p
 
     python3 - <<'PY'
 import json
@@ -2193,7 +2193,7 @@ def test_skills_are_additive_add_missing_no_overwrite_no_delete(docker_image):
     mkdir -p /root/.claude/skills/tdd-workflow
     echo "SENTINEL-KEEP" > /root/.claude/skills/tdd-workflow/SKILL.md
 
-    cd /root/dotfiles && just sync-agents-auto p
+    cd /root/dotfiles && just sync-agents p
 
     [ -f /root/.claude/skills/cli-only-skill/SKILL.md ] && echo "orphan-preserved"
     grep -q "CLI Only" /root/.claude/skills/cli-only-skill/SKILL.md && echo "orphan-content-intact"
@@ -2222,7 +2222,7 @@ def test_no_skills_flag_deploys_instructions_and_skips_skills(docker_image):
     mkdir -p /root/.gemini/skills/cli-only-skill
     echo "# CLI Only" > /root/.gemini/skills/cli-only-skill/SKILL.md
 
-    cd /root/dotfiles && just sync-agents-auto --no-skills g
+    cd /root/dotfiles && just sync-agents --no-skills g
 
     # instructions ARE deployed
     grep -q 'Non-negotiables' /root/.gemini/GEMINI.md && echo "base-deployed"
@@ -2248,13 +2248,13 @@ def test_hub_and_spoke_settings_merge_updates_managed_in_place(docker_image):
     cmd = r"""
     set -euo pipefail
     cd /root/dotfiles
-    just sync-agents-auto p
+    just sync-agents p
     grep -q 'hooks/block-secrets.sh' /root/.claude/settings.json && echo "v1-present"
 
     # change a managed hook command in the fragment, then re-sync
     sed -i 's#/.claude/hooks/block-secrets.sh#/.claude/hooks/block-secrets-v2.sh#' \
         .claude/settings.hooks.json
-    just sync-agents-auto p
+    just sync-agents p
 
     grep -q 'hooks/block-secrets-v2.sh' /root/.claude/settings.json && echo "v2-present"
     if grep -q 'hooks/block-secrets\.sh"' /root/.claude/settings.json; then
@@ -2275,14 +2275,14 @@ def test_spoke_and_hook_orphans_are_cleaned(docker_image):
     cmd = r"""
     set -euo pipefail
     cd /root/dotfiles
-    just sync-agents-auto p
+    just sync-agents p
     [ -f /root/.claude/docs/agents/testing.md ] && echo "current-spoke-present"
 
     # plant stale files with no backing ROOT_AGENTS_* source
     echo "# stale" > /root/.claude/docs/agents/removed-spoke.md
     echo "#!/bin/sh" > /root/.claude/hooks/removed-hook.sh
 
-    just sync-agents-auto p
+    just sync-agents p
 
     [ -f /root/.claude/docs/agents/removed-spoke.md ] && echo "ERR-spoke-stale" || echo "spoke-orphan-removed"
     [ -f /root/.claude/hooks/removed-hook.sh ] && echo "ERR-hook-stale" || echo "hook-orphan-removed"

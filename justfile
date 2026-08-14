@@ -290,11 +290,15 @@ deploy:
 #   just sync-agents a b           -> + ~/.claude-work-a, ~/.claude-work-b
 #   just sync-agents all           -> every defined agent
 # Aliases: p=claude, a/b/c/d=work-a..d, g=gemini, x=codex, agents=agents-global
-# Flag: --no-skills = instruction-only (skip skills import/forward/delete; skills
-# are owned by the `bunx skills` CLI). e.g. `just sync-agents-auto --no-skills a b`
+# Flag: --no-skills = instruction-only (skip skills forward sync; skills are
+# owned by the `bunx skills` CLI). e.g. `just sync-agents --no-skills a b`
+# Prompt-free by design: non-tty prompts silently skipped CHANGED files,
+# which made "sync completed" lie. Inspect with sync-agents-preview first;
+# full replace incl. orphan removal is the explicit sync-agents-override.
+# Sync (apply, no prompts): dotfiles → agent homes; preview first to inspect
 [group('Agents')]
 sync-agents *args:
-    @{{UV_RUN}} scripts/sync_agents.py {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
 
 # Scaffold: copy the agent-baseline template (per-repo enforcement: just check
 # gate, .githooks/pre-commit, quality-gate CI, agentcore semgrep rules) into a
@@ -316,20 +320,10 @@ scaffold-agent-baseline dir:
 sync-agents-preview *args:
     @{{UV_RUN}} scripts/sync_agents.py --preview {{ args }}
 
-# Sync (auto): sync without prompts (default scope = .claude only)
-[group('Agents')]
-sync-agents-auto *args:
-    @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
-
 # Sync (override): full replace — dotfiles wins, orphans removed, no prompts
 [group('Agents')]
 sync-agents-override *args:
     @{{UV_RUN}} scripts/sync_agents.py --override {{ args }}
-
-# Sync (orphans): show target-only items that would be removed
-[group('Agents')]
-sync-agents-orphans *args:
-    @{{UV_RUN}} scripts/sync_agents.py --orphans {{ args }}
 
 # Verify deployed agent-home instruction files have no dead file references
 # (run after sync-agents; environment-dependent, so not part of `ci`)
