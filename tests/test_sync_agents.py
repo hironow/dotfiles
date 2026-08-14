@@ -23,23 +23,16 @@ DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
 
 
-def _host_workspace_path() -> str:
-    """See test_just_sandbox.py — surfaces host path for docker-outside-
-    of-docker bind mounts when tests run inside the dev container."""
-    return os.environ.get("LOCAL_WORKSPACE_FOLDER", str(ROOT))
-
-
-def _snapshot_tracked_worktree(src: str) -> str:
-    """Copy only git-tracked files into a throwaway host tempdir.
+def _copy_tracked_into(src: str, snapshot: str) -> None:
+    """Copy git-tracked files (superproject + skills submodule) into snapshot.
 
     Same rationale as test_just_sandbox.py: the container must never see
     the real repo. This suite's containers even run `sync-agents import`
     style commands that WRITE into /root/dotfiles, so a direct bind mount
-    of the host repo mutates the working tree (observed: deleted
-    ROOT_AGENTS.md, junk skills/commands). Every test gets its own
-    disposable snapshot via the autouse fixture below.
+    mutates the mounted tree (observed: deleted ROOT_AGENTS.md, junk
+    skills/commands). Every test gets its own disposable snapshot via the
+    autouse fixture below.
     """
-    snapshot = tempfile.mkdtemp(prefix="dotfiles-syncagents-")
     # Superproject tracked files, plus the skills submodule's tracked files
     # (`git ls-files` skips gitlinks, but this suite's tests rely on the
     # self-authored skills shipping in /root/dotfiles/skills).
@@ -66,7 +59,6 @@ def _snapshot_tracked_worktree(src: str) -> str:
             )
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             shutil.copy2(source, dest, follow_symlinks=False)
-    return snapshot
 
 
 # Mount source for the current test's containers (set by the autouse
@@ -77,16 +69,27 @@ _SANDBOX_REPO: str | None = None
 @pytest.fixture(autouse=True)
 def sandbox_repo():
     """Give every test a disposable repo copy to mount instead of the host
-    working tree. Under docker-outside-of-docker (CI; LOCAL_WORKSPACE_FOLDER
-    set) the checkout is ephemeral and host paths are required, so it is
-    bind-mounted directly — mirroring test_just_sandbox.py."""
+    working tree. Bind-mounting the checkout directly (even the ephemeral CI
+    one) is not enough: tests mutate /root/dotfiles, so a shared mount
+    cross-contaminates the suite (observed as 44 CI failures).
+
+    Under docker-outside-of-docker (CI; LOCAL_WORKSPACE_FOLDER set) mount
+    sources must be HOST paths, so the snapshot is created inside the
+    workspace itself and its host path derived via LOCAL_WORKSPACE_FOLDER."""
     global _SANDBOX_REPO
-    if "LOCAL_WORKSPACE_FOLDER" in os.environ:
-        _SANDBOX_REPO = _host_workspace_path()
+    lwf = os.environ.get("LOCAL_WORKSPACE_FOLDER")
+    if lwf:
+        snapshots_root = ROOT / ".e2e-snapshots"
+        snapshots_root.mkdir(exist_ok=True)
+        snapshot = tempfile.mkdtemp(prefix="snap-", dir=str(snapshots_root))
+        _copy_tracked_into(str(ROOT), snapshot)
+        _SANDBOX_REPO = os.path.join(lwf, os.path.relpath(snapshot, str(ROOT)))
         yield
         _SANDBOX_REPO = None
+        shutil.rmtree(snapshot, ignore_errors=True)
         return
-    snapshot = _snapshot_tracked_worktree(str(ROOT))
+    snapshot = tempfile.mkdtemp(prefix="dotfiles-syncagents-")
+    _copy_tracked_into(str(ROOT), snapshot)
     _SANDBOX_REPO = snapshot
     yield
     _SANDBOX_REPO = None
@@ -911,6 +914,11 @@ def test_sync_agents_creates_manifest_on_first_run(docker_image):
     # Ensure no manifest exists
     rm -f /root/dotfiles/.sync-manifest.json
 
+    # Hermetic probe skill (the skills submodule may be absent in CI —
+    # it is a private repo the workflow token cannot clone)
+    mkdir -p /root/dotfiles/skills/probe-skill
+    echo "# Probe" > /root/dotfiles/skills/probe-skill/SKILL.md
+
     # Run sync-agents
     cd /root/dotfiles && just sync-agents all
 
@@ -920,7 +928,7 @@ def test_sync_agents_creates_manifest_on_first_run(docker_image):
     # Verify manifest contains version and skills
     grep -q '"version"' /root/dotfiles/.sync-manifest.json && echo "has version"
     grep -q '"skills"' /root/dotfiles/.sync-manifest.json && echo "has skills key"
-    grep -q 'brand-legal-review' /root/dotfiles/.sync-manifest.json && echo "has brand-legal-review"
+    grep -q 'probe-skill' /root/dotfiles/.sync-manifest.json && echo "has probe-skill"
     """
     result = _run_in_container(docker_image, cmd)
 
@@ -928,7 +936,7 @@ def test_sync_agents_creates_manifest_on_first_run(docker_image):
     assert "manifest created" in result.stdout
     assert "has version" in result.stdout
     assert "has skills key" in result.stdout
-    assert "has brand-legal-review" in result.stdout
+    assert "has probe-skill" in result.stdout
 
 
 def test_sync_agents_deletes_removed_items_from_targets(docker_image):
@@ -1398,6 +1406,10 @@ def test_sync_agents_agents_global_only_syncs_skills(docker_image):
     echo "# Strict" > /root/dotfiles/commands/strict.md
     mkdir -p /root/dotfiles/agents
     echo "# Test Agent" > /root/dotfiles/agents/test-agent.md
+    # hermetic probe so skills/ distribution is observable even when the
+    # (private) skills submodule is absent in CI
+    mkdir -p /root/dotfiles/skills/probe-skill
+    echo "# Probe" > /root/dotfiles/skills/probe-skill/SKILL.md
 
     # Run sync-agents
     cd /root/dotfiles && just sync-agents all
@@ -2253,15 +2265,19 @@ def test_skills_are_additive_add_missing_no_overwrite_no_delete(docker_image):
     echo "# CLI Only" > /root/.claude/skills/cli-only-skill/SKILL.md
     mkdir -p /root/.claude/skills/tdd-workflow
     echo "SENTINEL-KEEP" > /root/.claude/skills/tdd-workflow/SKILL.md
+    # hermetic probes: one skill missing from the target, one already present
+    mkdir -p /root/dotfiles/skills/probe-add-skill
+    echo "# Probe Add" > /root/dotfiles/skills/probe-add-skill/SKILL.md
+    mkdir -p /root/dotfiles/skills/tdd-workflow
+    echo "# dotfiles version" > /root/dotfiles/skills/tdd-workflow/SKILL.md
 
     cd /root/dotfiles && just sync-agents p
 
     [ -f /root/.claude/skills/cli-only-skill/SKILL.md ] && echo "orphan-preserved"
     grep -q "CLI Only" /root/.claude/skills/cli-only-skill/SKILL.md && echo "orphan-content-intact"
     grep -q "SENTINEL-KEEP" /root/.claude/skills/tdd-workflow/SKILL.md && echo "existing-not-overwritten"
-    # a skill in the dotfiles submodule but missing in the target IS added
-    # (add-only). 'sibyl' ships in the submodule.
-    [ -e /root/.claude/skills/sibyl ] && echo "missing-skill-added" || echo "ERR-missing-not-added"
+    # a skill in dotfiles but missing in the target IS added (add-only)
+    [ -e /root/.claude/skills/probe-add-skill ] && echo "missing-skill-added" || echo "ERR-missing-not-added"
     """
     result = _run_in_container(docker_image, cmd)
     for marker in (
@@ -2282,6 +2298,9 @@ def test_no_skills_flag_deploys_instructions_and_skips_skills(docker_image):
     # a target-only skill that a full sync would otherwise see
     mkdir -p /root/.gemini/skills/cli-only-skill
     echo "# CLI Only" > /root/.gemini/skills/cli-only-skill/SKILL.md
+    # hermetic probe: a dotfiles skill that --no-skills must NOT copy
+    mkdir -p /root/dotfiles/skills/probe-add-skill
+    echo "# Probe Add" > /root/dotfiles/skills/probe-add-skill/SKILL.md
 
     cd /root/dotfiles && just sync-agents --no-skills g
 
@@ -2290,7 +2309,7 @@ def test_no_skills_flag_deploys_instructions_and_skips_skills(docker_image):
     [ -f /root/.gemini/docs/agents/testing.md ] && echo "spoke-deployed"
     # skills are NOT touched: target-only skill preserved, dotfiles skill NOT copied
     [ -f /root/.gemini/skills/cli-only-skill/SKILL.md ] && echo "orphan-preserved"
-    [ -e /root/.gemini/skills/sibyl ] && echo "ERR-skill-copied" || echo "dotfiles-skill-not-copied"
+    [ -e /root/.gemini/skills/probe-add-skill ] && echo "ERR-skill-copied" || echo "dotfiles-skill-not-copied"
     """
     result = _run_in_container(docker_image, cmd)
     for marker in (
