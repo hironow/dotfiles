@@ -49,10 +49,17 @@
     - **`skills` は additive** (`ADDITIVE_DIRECTORIES`): 欠落 skill のみ追加、既存
       target は**上書きしない・削除しない**。`bunx skills` CLI が `~/.agents/skills`
       へ install した symlink (上流 + `bunx skills add <skills-repo>`) を churn/orphan
-      削除しないため。skill の投入は CLI (`bunx skills add`) を優先する
+      削除しないため
+    - **skills は宣言管理 (ADR 0038)**: サードパーティ skill の実体は CLI が持ち、
+      git は正規化宣言 `dump/harness/skill-lock.json` のみ追跡する
+      (`just dump-skills-lock` で更新 / `just restore-skills-lock` で新マシン復元 —
+      best-effort, upstream HEAD)。`skills/` submodule は**自作 skill 専用**で、
+      **home→repo の skills import は全面廃止** (`skills/learned` のみ例外)。
+      lock 管理名が submodule に再出現すると `just skills-lock-check` (`ci` 組込み)
+      が fail する
     - **skills 品質ゲート**: SKILL.md を1つも含まない dir は構造ゲートで、
       `dump/harness/skills-sync-exclude.toml` (機械可読 SSoT) の `exclude` 記載名は
-      denylist で、**配布・import の両方向とも**除外される (junk の再流入も防ぐ)
+      denylist で除外される (junk の流入も防ぐ)
     - **Antigravity CLI (`agy`) は自己管理 — dotfiles は skills/settings/mcp を sync
       しない**: Antigravity は skills を `agy plugin` (=
       `~/.gemini/antigravity-cli/plugins/<name>/skills/`)、settings/mcp を `agy import`
