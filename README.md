@@ -305,6 +305,15 @@ just skills add https://github.com/googleworkspace/cli
 just skills add vercel-labs/agent-browser
 ```
 
+サードパーティ skill は**宣言管理** ([ADR 0038](docs/adr/0038-declarative-third-party-skills.md)):
+実体は skills CLI が `~/.agents/skills` に持ち、git は正規化宣言
+`dump/harness/skill-lock.json` のみ追跡する (`skills/` submodule は自作 skill 専用)。
+
+```bash
+just dump-skills-lock     # bunx skills add/update/remove の後に宣言を更新
+just restore-skills-lock  # 新マシンで宣言から復元 (best-effort: upstream HEAD)
+```
+
 Skill catalog refs.
 
 - <https://skills.sh/>

@@ -290,11 +290,15 @@ deploy:
 #   just sync-agents a b           -> + ~/.claude-work-a, ~/.claude-work-b
 #   just sync-agents all           -> every defined agent
 # Aliases: p=claude, a/b/c/d=work-a..d, g=gemini, x=codex, agents=agents-global
-# Flag: --no-skills = instruction-only (skip skills import/forward/delete; skills
-# are owned by the `bunx skills` CLI). e.g. `just sync-agents-auto --no-skills a b`
+# Flag: --no-skills = instruction-only (skip skills forward sync; skills are
+# owned by the `bunx skills` CLI). e.g. `just sync-agents --no-skills a b`
+# Prompt-free by design: non-tty prompts silently skipped CHANGED files,
+# which made "sync completed" lie. Inspect with sync-agents-preview first;
+# full replace incl. orphan removal is the explicit sync-agents-override.
+# Sync (apply, no prompts): dotfiles → agent homes; preview first to inspect
 [group('Agents')]
 sync-agents *args:
-    @{{UV_RUN}} scripts/sync_agents.py {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
 
 # Scaffold: copy the agent-baseline template (per-repo enforcement: just check
 # gate, .githooks/pre-commit, quality-gate CI, agentcore semgrep rules) into a
@@ -316,20 +320,10 @@ scaffold-agent-baseline dir:
 sync-agents-preview *args:
     @{{UV_RUN}} scripts/sync_agents.py --preview {{ args }}
 
-# Sync (auto): sync without prompts (default scope = .claude only)
-[group('Agents')]
-sync-agents-auto *args:
-    @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
-
 # Sync (override): full replace — dotfiles wins, orphans removed, no prompts
 [group('Agents')]
 sync-agents-override *args:
     @{{UV_RUN}} scripts/sync_agents.py --override {{ args }}
-
-# Sync (orphans): show target-only items that would be removed
-[group('Agents')]
-sync-agents-orphans *args:
-    @{{UV_RUN}} scripts/sync_agents.py --orphans {{ args }}
 
 # Verify deployed agent-home instruction files have no dead file references
 # (run after sync-agents; environment-dependent, so not part of `ci`)
@@ -571,7 +565,7 @@ test:
     	echo '   Hint: npm i -g @devcontainers/cli'; \
     fi
     @echo '🧪 Running pytest (verbose with skip reasons)...'
-    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_actor_type_injection.py
+    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_actor_type_injection.py tests/test_sync_agents.py
     @echo '✅ Tests finished.'
 
 # Test (unit): fast host-side unit tests — no Docker. Covers sync_agents
@@ -781,7 +775,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -1314,6 +1308,24 @@ skills *args:
     else
       bunx skills {{ args }}
     fi
+
+# Normalize ~/.agents/.skill-lock.json into the committed declaration
+# (dump/harness/skill-lock.json). Run after `bunx skills add/update/remove`.
+[group('Agents')]
+dump-skills-lock:
+    @{{ UV_RUN }} scripts/skills_lock.py dump
+
+# Install every declared third-party skill via the pinned bunx skills CLI
+# (best-effort: upstream HEAD, idempotent — already-installed skills skip).
+[group('Agents')]
+restore-skills-lock:
+    @{{ UV_RUN }} scripts/skills_lock.py restore
+
+# CI barrier: fail when a lock-managed third-party skill reappears in the
+# skills submodule (re-vendoring). hironow/skills-sourced entries are exempt.
+[group('Validation')]
+skills-lock-check:
+    @{{ UV_RUN }} scripts/skills_lock.py check
 
 # CDP
 
