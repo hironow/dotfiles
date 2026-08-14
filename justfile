@@ -571,7 +571,7 @@ test:
     	echo '   Hint: npm i -g @devcontainers/cli'; \
     fi
     @echo '🧪 Running pytest (verbose with skip reasons)...'
-    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_actor_type_injection.py
+    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_actor_type_injection.py tests/test_sync_agents.py
     @echo '✅ Tests finished.'
 
 # Test (unit): fast host-side unit tests — no Docker. Covers sync_agents
