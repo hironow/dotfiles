@@ -781,7 +781,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -1326,6 +1326,12 @@ dump-skills-lock:
 [group('Agents')]
 restore-skills-lock:
     @{{ UV_RUN }} scripts/skills_lock.py restore
+
+# CI barrier: fail when a lock-managed third-party skill reappears in the
+# skills submodule (re-vendoring). hironow/skills-sourced entries are exempt.
+[group('Validation')]
+skills-lock-check:
+    @{{ UV_RUN }} scripts/skills_lock.py check
 
 # CDP
 
