@@ -885,6 +885,11 @@ validate-path-duplicates:
     i=0
     for dir in "${dirs[@]}"; do
       [[ -d "$dir" ]] || continue
+      # Windows drive mounts (WSL appendWindowsPath leak): globbing System32
+      # and friends over 9p takes minutes — the same "too slow" reason the
+      # native-Windows guard above skips entirely. The leak itself is
+      # validate-path-windows' finding, not a duplicate to enumerate here.
+      case "$dir" in /mnt/[a-zA-Z]|/mnt/[a-zA-Z]/*) continue;; esac
       i=$((i+1))
       for f in "$dir"/*; do
         [[ -f "$f" && -x "$f" ]] || continue

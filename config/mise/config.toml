@@ -39,6 +39,13 @@ prek = "latest"
 # "latest") so the already-installed 0.23.4 resolves without tripping
 # the 7d quarantine on a fresh release.
 eza = "0.23.5"
+# shellcheck — `just check` runs it via `mise x -- shellcheck`, which
+# resolves ONLY config-declared tools; an installed-but-undeclared copy is
+# an orphan and `mise x` fails with "couldn't exec process" (seen live
+# 2026-08-17 on WSL, where brew never provides it). Pinned (not "latest")
+# so the already-installed version resolves without tripping the 7d
+# quarantine on a fresh release.
+shellcheck = "0.11.0"
 # starship (prompt) + sheldon (zsh plugin manager). Initialized in .zshrc
 # AFTER `mise activate` (see EOF). Declared here so mise puts them on PATH
 # for every dir; without a config source they stay orphan installs and the

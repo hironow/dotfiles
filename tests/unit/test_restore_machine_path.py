@@ -77,6 +77,30 @@ def test_detects_optional_dirs_instead_of_hardcoding_users() -> None:
     )
 
 
+def test_missing_comparison_expands_env_vars() -> None:
+    # Seen live 2026-08-17: the wiped-PATH incident was first repaired with
+    # LITERAL entries (C:\Windows\system32); a later run of this script
+    # compared UNEXPANDED strings, saw %SystemRoot%\system32 as "missing",
+    # and appended it — doubling every System32 binary on PATH (5786
+    # duplicate names; `just doctor` looked hung enumerating them).
+    assert "ExpandEnvironmentVariables" in _code(), (
+        "missing-entry comparison must expand env vars so "
+        "%SystemRoot%\\system32 and a literal C:\\Windows\\system32 count "
+        "as the same entry"
+    )
+
+
+def test_dedupes_existing_entries_by_expanded_value() -> None:
+    # The same incident left both spellings already IN the Machine PATH;
+    # merging correctly next time is not enough — the script must also
+    # collapse pre-existing duplicates (by expanded, case-insensitive value)
+    # so a repaired machine converges instead of staying doubled.
+    assert re.search(r"dedup", _text(), re.IGNORECASE), (
+        "must dedupe current Machine PATH entries by expanded value "
+        "(keep one spelling per real directory)"
+    )
+
+
 def test_requires_apply_switch_and_self_elevates() -> None:
     text = _text()
     assert "-Apply" in text or "$Apply" in text, (
