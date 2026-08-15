@@ -8,10 +8,14 @@ targets: `starship.toml` and `dump/gitignore-global`. Unix-only assets
 (zsh / sheldon / tmux / ghostty / fzf-tab) are intentionally skipped
 because the underlying tools are not present on Windows native.
 
-These tests static-parse the justfile to verify the `deploy` and `clean`
-recipes contain the expected MSYS/MINGW/CYGWIN branch and that the branch
-body contains the subset (and nothing more). The Linux sandbox tests in
-`test_just_sandbox.py` continue to cover the macOS/Linux path end-to-end.
+These tests static-parse the recipe bodies to verify the `deploy` and
+`clean` recipes contain the expected MSYS/MINGW/CYGWIN branch and that the
+branch body contains the subset (and nothing more). `deploy`/`clean` bodies
+live in scripts/deploy.sh / scripts/clean.sh (the justfile recipes are
+linewise wrappers so they run from PowerShell — see
+tests/unit/test_deploy_clean_linewise.py); `dump` stays in the justfile.
+The Linux sandbox tests in `test_just_sandbox.py` continue to cover the
+macOS/Linux path end-to-end.
 
 Why these exist
 ---------------
@@ -42,7 +46,14 @@ def justfile_text() -> str:
 
 def _extract_recipe_body(text: str, name: str) -> str:
     """Return the body of a top-level recipe, stopping at the next recipe
-    header (a line that starts at column 0 and contains `:`)."""
+    header (a line that starts at column 0 and contains `:`).
+
+    `deploy` / `clean` are linewise wrappers around scripts/{name}.sh (shebang
+    recipes break from PowerShell on native Windows — see
+    tests/unit/test_deploy_clean_linewise.py), so their bodies live in the
+    scripts and are returned from there."""
+    if name in ("deploy", "clean"):
+        return (ROOT / "scripts" / f"{name}.sh").read_text(encoding="utf-8")
     # Match `^name:` at column 0, then capture until the next column-0
     # non-comment, non-blank line that looks like a recipe header
     # (`word(s):` optionally followed by deps).

@@ -173,7 +173,9 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
     - **plain レシピ** (`doctor` / `harden-env` 等 `bash scripts/*.sh`) → justfile の
       `set windows-shell := ["sh", …]` (#231) で解決済み。System32 に `sh.exe` は無いので
       `sh`=Git Bash に解決し、内側 `bash` も Git Bash を継承 → **PowerShell からでも直接叩ける**。
-    - **shebang レシピ** (`deploy` / `clean` 等 `#!/usr/bin/env bash`) → `set shell` /
+    - **shebang レシピ** (`dump` / `scaffold-agent-baseline` 等 `#!/usr/bin/env bash`。
+      `deploy` / `clean` は #231 同様に `bash scripts/*.sh` の plain レシピへ移行済みで
+      PowerShell から直接叩ける — `tests/unit/test_deploy_clean_linewise.py` がガード) → `set shell` /
       `windows-shell` の影響外で `env→bash` が PATH 順に従う。素の PowerShell は System32(WSL)
       が先なので失敗する → **Git Bash から叩く** (`/usr/bin` 先頭ゆえ `env→bash`=Git Bash)。
       PowerShell 固執なら Git `usr\bin` を PATH 先頭に prepend する手もあるが、`find` / `sort` 等
