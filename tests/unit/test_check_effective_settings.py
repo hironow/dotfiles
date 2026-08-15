@@ -1,10 +1,10 @@
 """Unit tests for scripts/check_effective_settings.py generation.
 
-claudelint only auto-detects `.claude/settings.json`, so the fragment layers
-(`{env, settings}` wrappers) cannot be validated directly. The checker
-composes the effective settings.json for every claude-family profile x OS and
-writes them out for claudelint to validate (ADR 0037). These tests cover the
-generation step against the repo's real fragments (no bunx invocation).
+The fragment layers (`{env, settings}` wrappers) are not a settings.json
+shape, so the checker composes the effective settings.json for every
+claude-family profile x OS and validates each structurally with the
+stdlib validator (ADR 0037/0041). These tests cover generation and the
+validator against the repo's real fragments (no external tools).
 """
 
 import json
@@ -64,8 +64,7 @@ def test_repo_root_is_derived_from_script_location() -> None:
 
 def test_output_survives_cp932_stdout() -> None:
     # Windows Git Bash gives Python a cp932 stdout; the checker's emoji
-    # status lines crashed with UnicodeEncodeError, and decoding claudelint's
-    # UTF-8 output as cp932 crashed the capture thread. _configure_output()
+    # status lines crashed with UnicodeEncodeError. _configure_output()
     # must make printing safe.
     import os
     import subprocess
@@ -88,15 +87,49 @@ def test_output_survives_cp932_stdout() -> None:
     )
 
 
-def test_claudelint_capture_decodes_utf8() -> None:
-    # The claudelint subprocess capture must pin encoding="utf-8": text=True
-    # alone uses the locale codec (cp932 on Japanese Windows) and the reader
-    # thread dies with UnicodeDecodeError on claudelint's UTF-8 output.
-    source = (DOTFILES / "scripts" / "check_effective_settings.py").read_text(
-        encoding="utf-8"
-    )
-    import re
+def test_validator_accepts_real_composed_settings(tmp_path: Path) -> None:
+    # The stdlib validator (ADR 0041 — third-party claudelint retired) must
+    # pass every settings.json this repo's real fragments compose.
+    from check_effective_settings import _validate_settings, generate
 
-    assert re.search(
-        r"subprocess\.run\(\s*CLAUDELINT[^)]*encoding=\"utf-8\"", source
-    ), "subprocess.run(CLAUDELINT, ...) must pass encoding='utf-8'."
+    generated = generate(DOTFILES, tmp_path)
+    for label, path in generated.items():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert _validate_settings(data) == [], f"{label} failed validation"
+
+
+def test_validator_rejects_malformed_shapes() -> None:
+    from check_effective_settings import _validate_settings
+
+    assert _validate_settings([]) != [], "non-object top level must fail"
+    assert _validate_settings({"env": {"A": 1}}) != [], "non-str env value must fail"
+    assert _validate_settings({"permissions": {"deny": "WebFetch"}}) != [], (
+        "permissions.deny as a bare str must fail"
+    )
+    assert _validate_settings({"hooks": {"PreToolUse": [{"hooks": []}]}}) != [], (
+        "empty inner hooks list must fail"
+    )
+    assert (
+        _validate_settings(
+            {"hooks": {"PreToolUse": [{"hooks": [{"type": "command"}]}]}}
+        )
+        != []
+    ), "command hook without a command string must fail"
+    assert (
+        _validate_settings(
+            {
+                "env": {"A": "1"},
+                "permissions": {"deny": ["WebFetch"], "defaultMode": "plan"},
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "Bash",
+                            "hooks": [{"type": "command", "command": "x"}],
+                        }
+                    ]
+                },
+                "unknownFutureKey": {"anything": True},
+            }
+        )
+        == []
+    ), "well-formed settings (incl. unknown future keys) must pass"

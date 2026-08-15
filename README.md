@@ -91,8 +91,9 @@ just help
 just sync-agents-preview
 just sync-agents
 
-# lint the distributed Claude config (skills/plugins/hooks/agents/settings)
-# via claudelint + official `claude plugin validate` (ADR 0029)
+# lint the distributed Claude config via the official
+# `claude plugin validate --strict` + stdlib effective-settings check
+# (ADR 0029; third-party claudelint retired per ADR 0041)
 just lint-claude
 
 just update-all

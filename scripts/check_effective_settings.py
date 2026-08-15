@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Validate the effective Claude settings composed from the fragment layers.
 
-claudelint auto-detects only `.claude/settings.json` (and its .local sibling),
-so the layered fragments' `{env, settings}` wrappers cannot be linted directly
-(ADR 0037). This checker composes the effective settings.json for every
-claude-family profile x OS via `_compose_settings_fragments` (machine-local
-layer absent by construction), writes each to `<out>/<profile>-<os>/.claude/`,
-and runs `claudelint validate-settings` against each. Wired into
+The layered fragments' `{env, settings}` wrappers are not a settings.json
+shape any external tool understands (ADR 0037), so this checker composes the
+effective settings.json for every claude-family profile x OS via
+`_compose_settings_fragments` (machine-local layer absent by construction),
+writes each to `<out>/<profile>-<os>/.claude/`, and structurally validates
+each one with the stdlib-only `_validate_settings` (the third-party
+claudelint that used to do this is retired — ADR 0041). Wired into
 `just lint-claude` and `.github/workflows/claude-lint.yaml`.
 """
 
 import json
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -24,8 +24,6 @@ from sync_agents import (
     AgentTarget,
     _compose_settings_fragments,
 )
-
-CLAUDELINT = ["bunx", "claude-code-lint@0.7.1", "validate-settings", "--no-config"]
 
 # Derived from the script location, NOT sync_agents.DOTFILES_DIR (~/dotfiles):
 # CI checks out the repo elsewhere, and the fragments to validate are the ones
@@ -74,29 +72,92 @@ def _configure_output() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
 
 
+def _validate_settings(data: object) -> list[str]:
+    """Structural validation of a composed settings.json (stdlib-only).
+
+    Replaces the retired third-party claudelint (ADR 0041). Checks the
+    shapes this repo's fragments actually produce — env, permissions,
+    hooks — and leaves unknown top-level keys alone (the upstream schema
+    evolves; an allowlist would rot into false reds).
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        return ["top level must be a JSON object"]
+    env = data.get("env")
+    if env is not None:
+        if not isinstance(env, dict):
+            errors.append("env must be an object")
+        else:
+            errors.extend(
+                f"env[{k!r}] must map str -> str"
+                for k, v in env.items()
+                if not (isinstance(k, str) and isinstance(v, str))
+            )
+    permissions = data.get("permissions")
+    if permissions is not None:
+        if not isinstance(permissions, dict):
+            errors.append("permissions must be an object")
+        else:
+            for key in ("allow", "deny", "ask"):
+                rules = permissions.get(key)
+                if rules is not None and not (
+                    isinstance(rules, list) and all(isinstance(r, str) for r in rules)
+                ):
+                    errors.append(f"permissions.{key} must be a list of str")
+            mode = permissions.get("defaultMode")
+            if mode is not None and not isinstance(mode, str):
+                errors.append("permissions.defaultMode must be a str")
+    hooks = data.get("hooks")
+    if hooks is not None:
+        if not isinstance(hooks, dict):
+            errors.append("hooks must be an object")
+        else:
+            for event, blocks in hooks.items():
+                if not isinstance(blocks, list):
+                    errors.append(f"hooks.{event} must be a list")
+                    continue
+                for i, block in enumerate(blocks):
+                    where = f"hooks.{event}[{i}]"
+                    if not isinstance(block, dict):
+                        errors.append(f"{where} must be an object")
+                        continue
+                    matcher = block.get("matcher")
+                    if matcher is not None and not isinstance(matcher, str):
+                        errors.append(f"{where}.matcher must be a str")
+                    inner = block.get("hooks")
+                    if not isinstance(inner, list) or not inner:
+                        errors.append(f"{where}.hooks must be a non-empty list")
+                        continue
+                    for j, hook in enumerate(inner):
+                        if not (
+                            isinstance(hook, dict)
+                            and hook.get("type") == "command"
+                            and isinstance(hook.get("command"), str)
+                        ):
+                            errors.append(
+                                f"{where}.hooks[{j}] must be "
+                                '{"type": "command", "command": <str>}'
+                            )
+    return errors
+
+
 def main() -> int:
-    """Generate all effective settings and claudelint each one."""
+    """Generate all effective settings and structurally validate each one."""
     _configure_output()
     failures: list[str] = []
     with tempfile.TemporaryDirectory() as tmp:
         generated = generate(REPO_ROOT, Path(tmp))
         for label, path in sorted(generated.items()):
-            # encoding pinned: claudelint emits UTF-8, and text=True alone
-            # decodes with the locale codec (cp932 on Japanese Windows),
-            # crashing the capture thread.
-            result = subprocess.run(
-                CLAUDELINT,
-                cwd=path.parents[1],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-            if result.returncode != 0:
+            try:
+                data: object = json.loads(path.read_text(encoding="utf-8"))
+                errors = _validate_settings(data)
+            except json.JSONDecodeError as exc:
+                errors = [f"invalid JSON: {exc}"]
+            if errors:
                 failures.append(label)
                 print(f"❌ {label}")
-                print(result.stdout, end="")
-                print(result.stderr, end="", file=sys.stderr)
+                for error in errors:
+                    print(f"   {error}")
             else:
                 print(f"✅ {label}")
     if failures:

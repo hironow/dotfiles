@@ -1,11 +1,12 @@
 name: Claude Config Lint
 
-# Gate the Claude artifacts this repo distributes (agents / settings / hooks /
-# owned skills / plugin manifests) with claudelint. CI never runs `just ci`, so
-# without this workflow the `lint-claude` recipe would only gate locally. The
-# official `claude plugin validate` half runs only in `just lint-claude` (the
-# claude CLI is not installed on GitHub runners). claude-code-lint is pinned to
-# avoid surprise reds when a new release adds rules.
+# Gate the Claude artifacts this repo distributes (marketplace + plugins and
+# the skill/agent/command/hook files they reference) with the OFFICIAL
+# `claude plugin validate --strict`, run via a version-pinned bunx (nothing
+# global on the runner; bun runs claude-code's postinstall because the
+# package is on bun's default-trusted list — ADR 0040). The third-party
+# claudelint that used to run here is retired (ADR 0041). CI never runs
+# `just ci`, so without this workflow `lint-claude` would only gate locally.
 on:
   push:
     branches: [main]
@@ -21,7 +22,7 @@ permissions:
 
 jobs:
   claude-lint:
-    name: claudelint
+    name: claude plugin validate
     runs-on: ubuntu-latest
 
     steps:
@@ -38,22 +39,17 @@ jobs:
           curl -fsSL https://bun.sh/install | bash
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
-      # --no-config pins behavior (claudelint otherwise discovers configs up to
-      # $HOME). validate-skills needs --path plugins so its recursive SKILL.md
-      # pattern does not descend into the root skills/ submodule; validate-plugin
-      # must target each manifest file (root is a no-op, --path <dir> is EISDIR).
-      - name: claudelint (agents / settings / hooks / skills / plugin manifests)
+      # Official validator, pinned. Before ADR 0041 the official half never
+      # ran in CI at all (only the retired claudelint did).
+      - name: claude plugin validate --strict (official, pinned bunx)
         run: |
-          bunx claude-code-lint@0.5.0 validate-agents --no-config
-          bunx claude-code-lint@0.5.0 validate-settings --no-config
-          bunx claude-code-lint@0.5.0 validate-hooks --no-config
-          bunx claude-code-lint@0.5.0 validate-skills --no-config --path plugins
+          bunx @anthropic-ai/claude-code@2.1.226 plugin validate --strict .
           for m in plugins/*/.claude-plugin/plugin.json; do
-            bunx claude-code-lint@0.5.0 validate-plugin --no-config --path "$m"
+            bunx @anthropic-ai/claude-code@2.1.226 plugin validate --strict "${m%/.claude-plugin/plugin.json}"
           done
 
-      # The fragment layers ({env, settings} wrappers) are not claudelint
-      # inputs; validate the composed effective settings per profile x OS
-      # instead (ADR 0037). stdlib-only script; bunx provides claudelint.
+      # The fragment layers ({env, settings} wrappers) are not a shape any
+      # external tool understands; compose the effective settings per
+      # profile x OS and validate structurally (stdlib-only — ADR 0037/0041).
       - name: effective settings (profiles x OS)
         run: python3 scripts/check_effective_settings.py
