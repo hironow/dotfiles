@@ -39,7 +39,7 @@ recorded decisions that shaped it.
 | 0015 | [Adopt portless for stable .localhost URLs of local HTTP UIs](./0015-adopt-portless-for-local-dev-urls.md) | Accepted | 2026-05-30 | `config/portless-aliases.yaml`, `docs/portless-urls.md` |
 | 0016 | [Integrate vercel-labs/emulate API emulators via npx wrapper](./0016-integrate-emulate-api-emulators-via-npx.md) | Accepted | 2026-05-30 | `emulator/emulate/`, `justfile` (`emu-api`) |
 | 0017 | [Retire the pnpm-global subsystem in favor of corepack + mise npm](./0017-retire-pnpm-global-for-corepack.md) | Accepted; partial supersede by [0027](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | 2026-06-02 | `mise.toml`, `install.sh`, `dump/npm-global` |
-| 0018 | [Windows native: minimum-viable deploy with explicit-skip step_*](./0018-windows-native-mvp.md) | Accepted | 2026-06-02 | `install.sh`, `justfile` (Windows deploy) |
+| 0018 | [Windows native: minimum-viable deploy with explicit-skip step_*](./0018-windows-native-mvp.md) | Accepted; partial supersede by [0039](./0039-windows-bootstrap-ps1.md) (bootstrap scope) | 2026-06-02 | `install.sh`, `justfile` (Windows deploy) |
 | 0019 | [Windows scoop manifest in `dump/` — record-only](./0019-windows-scoop-dump-record-only.md) | Accepted; partial supersede by [0030](./0030-per-host-dump-layout.md) (path) + [0032](./0032-windows-scoop-restore-add-scoop.md) (record-only) | 2026-06-02 | `dump/<host>/scoop.json`, `justfile` |
 | 0020 | [Normalize shell-script line endings via `.gitattributes`](./0020-normalize-shell-script-line-endings.md) | Accepted | 2026-06-02 | `.gitattributes` |
 | 0021 | [Split git config via `[include]` so dotfiles owns aliases + shared settings](./0021-git-config-include-split.md) | Accepted | 2026-06-02 | `~/.gitconfig`, `config/git/` |
@@ -59,6 +59,8 @@ recorded decisions that shaped it.
 | 0035 | [Time-based disk GC for the self-hosted runners (2h retention)](./0035-runner-disk-gc.md) | Accepted | 2026-07-31 | `scripts/runner_gc*.{sh,ps1}`, `scripts/disk_gc.sh`, `scripts/gc_status.sh`, `justfile` (Disk) |
 | 0036 | [Install mise `npm:` tools with bun, not the embedded aube](./0036-mise-npm-backend-bun.md) | Accepted | 2026-07-31 | `config/mise/config.toml` |
 | 0037 | [Layered Claude settings fragments (shared / OS / profile / machine-local)](./0037-layered-claude-settings-fragments.md) | Accepted | 2026-08-05 | `scripts/sync_agents.py`, `.claude/settings.shared*.json`, `.claude/settings.profiles/` |
+| 0038 | [Declarative third-party skills (skill-lock dump, no re-vendoring)](./0038-declarative-third-party-skills.md) | Accepted | 2026-08-14 | `dump/harness/skill-lock.json`, `scripts/skills_lock.py`, `justfile` |
+| 0039 | [Windows native bootstrap via `bootstrap.ps1` one-liner](./0039-windows-bootstrap-ps1.md) | Accepted | 2026-08-15 | `bootstrap.ps1`, `tests/unit/test_bootstrap_ps1.py`, `README.md` |
 
 ## Reading order for newcomers
 

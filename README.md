@@ -64,8 +64,22 @@ Requires `curl` and `git`.
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ```
 
+**Windows native** はまっさらな機体から PowerShell 一発 ([ADR 0039](docs/adr/0039-windows-bootstrap-ps1.md)):
+
+```powershell
+# scoop manifest の host を変える場合は先に: $env:DOTFILES_HOST = '<host>'
+irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex
+```
+
+scoop / git / just / jq / mise / pwsh の導入 → HTTPS clone (`~\dotfiles`) →
+`add-scoop` → `deploy` → `harden-env` → `sync-agents` → `restore-skills-lock` →
+`doctor` まで自動 (冪等、再実行安全)。完了後は **新しい pwsh セッション**を開くこと
+($PROFILE はそこで効く)。SSH 鍵設定後の operator 手順:
+`git -C ~/dotfiles remote set-url origin git@github.com:hironow/dotfiles.git` と
+`git -C ~/dotfiles submodule update --init` (submodule は SSH URL のため bootstrap では触らない)。
+
 > [!NOTE]
-> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)を一級でサポート。Windows native は `just deploy` で `corepack enable` + `starship.toml` / `gitignore-global` / `config/mise/config.toml` の配置 + **PowerShell `$PROFILE` への starship init / mise activate / `MISE_NODE_COREPACK=0` 注入** + **global mise toolset の install** + **`aliases.gitconfig` の `[include]` 配線** に対応。scoop は **per-host manifest dump (`dump/<host>/scoop.json`) と `just add-scoop` による復元 (`scoop import`) の両方**に対応。`just doctor` / `just update-all` 等の基本 recipe も Windows で完走し、`just ci` は native Windows で green (実行系の一部テストは Linux/WSL/CI 限定で skip)。詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md) / [ADR 0019](docs/adr/0019-windows-scoop-dump-record-only.md) / [ADR 0022](docs/adr/0022-powershell-starship-profile-init.md) / [ADR 0024](docs/adr/0024-powershell-mise-activate-profile.md) / [ADR 0030](docs/adr/0030-per-host-dump-layout.md) / [ADR 0031](docs/adr/0031-disable-mise-corepack-on-windows.md) / [ADR 0032](docs/adr/0032-windows-scoop-restore-add-scoop.md) / [ADR 0033](docs/adr/0033-windows-deploy-global-mise-install.md)。
+> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)を一級でサポート。Windows native は `just deploy` で `corepack enable` + `starship.toml` / `gitignore-global` / `config/mise/config.toml` の配置 + **PowerShell `$PROFILE` への starship init / mise activate / `MISE_NODE_COREPACK=0` 注入** + **global mise toolset の install** + **`aliases.gitconfig` の `[include]` 配線** に対応。scoop は **per-host manifest dump (`dump/<host>/scoop.json`) と `just add-scoop` による復元 (`scoop import`) の両方**に対応。`just doctor` / `just update-all` 等の基本 recipe も Windows で完走し、`just ci` は native Windows で green (実行系の一部テストは Linux/WSL/CI 限定で skip)。詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md) / [ADR 0019](docs/adr/0019-windows-scoop-dump-record-only.md) / [ADR 0022](docs/adr/0022-powershell-starship-profile-init.md) / [ADR 0024](docs/adr/0024-powershell-mise-activate-profile.md) / [ADR 0030](docs/adr/0030-per-host-dump-layout.md) / [ADR 0031](docs/adr/0031-disable-mise-corepack-on-windows.md) / [ADR 0032](docs/adr/0032-windows-scoop-restore-add-scoop.md) / [ADR 0033](docs/adr/0033-windows-deploy-global-mise-install.md) / [ADR 0039](docs/adr/0039-windows-bootstrap-ps1.md)。
 > Mac は Homebrew が前提条件 (操作者が手動で先にインストール)、それ以降は install.sh が自動。
 
 ## usage
