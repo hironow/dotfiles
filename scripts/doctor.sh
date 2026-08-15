@@ -86,18 +86,61 @@ case "$(uname -s)" in
     #    Git-for-Windows install leaves without Git\usr\bin. The in-process
     #    PATH is useless as a signal (Git Bash always self-prepends
     #    /usr/bin), so read the registry via powershell.exe.
+    # powershell.exe by absolute path when it is not on PATH — a session
+    # spawned from a broken persisted PATH (seen live: EMPTY Machine PATH)
+    # has no System32, and the doctor must keep diagnosing exactly then.
+    _powershell() {
+      if command -v powershell.exe >/dev/null 2>&1; then
+        powershell.exe "$@"
+      else
+        "$(cygpath -u "${SYSTEMROOT:-C:\\Windows}")/System32/WindowsPowerShell/v1.0/powershell.exe" "$@"
+      fi
+    }
     win_usr_bin="$(cygpath -w /usr/bin)"
-    persisted_path="$(powershell.exe -NoProfile -Command \
+    persisted_path="$(_powershell -NoProfile -Command \
       "[Environment]::GetEnvironmentVariable('Path','User') + ';' + [Environment]::GetEnvironmentVariable('Path','Machine')" \
       | tr -d '\r')"
+
+    # 0) Machine PATH sanity. An empty (or System32-less) Machine PATH is a
+    #    machine-level incident: every fresh shell is born without System32
+    #    (no powershell.exe, where.exe, reg.exe...). Seen live 2026-08-16 —
+    #    masked for a long time because interactive shells inherited an
+    #    enriched PATH from their parent. Repair needs an ELEVATED shell and
+    #    human review of machine-specific entries, so detect + advise only.
+    machine_path="$(_powershell -NoProfile -Command \
+      "[Environment]::GetEnvironmentVariable('Path','Machine')" | tr -d '\r')"
+    if [[ "${machine_path,,}" == *'system32'* ]]; then
+      log_ok 'win-machine-path' 'Machine PATH present (reaches System32)'
+    else
+      log_warn 'win-machine-path' "Machine PATH is empty or missing System32 (len=${#machine_path}) -- fresh shells have no System32 tools"
+      echo '    Fix from an ELEVATED PowerShell (review + extend with machine-specific dirs).'
+      echo '    NOTE: Registry.SetValue + ExpandString, NOT SetEnvironmentVariable (which'
+      echo '    writes REG_SZ and leaves %SystemRoot% unexpanded at logon):'
+      printf '%s\n' "    [Microsoft.Win32.Registry]::SetValue('HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment','Path','%SystemRoot%\system32;%SystemRoot%;%SystemRoot%\System32\Wbem;%SYSTEMROOT%\System32\WindowsPowerShell\v1.0\;%SYSTEMROOT%\System32\OpenSSH\','ExpandString')"
+    fi
     # containment check in pure bash: MSYS grep -i can abort (core dump) on
     # registry PATH strings with non-UTF8 (cp932) bytes
     if [[ "${persisted_path,,}" == *"${win_usr_bin,,}"* ]]; then
       log_ok 'win-cygpath' "persisted PATH reaches ${win_usr_bin}"
     else
       log_warn 'win-cygpath' 'just shebang recipes fail from PowerShell (cygpath not on persisted PATH)'
-      echo '    Fix (run in PowerShell, then open a new session):'
+      echo '    Fix: just harden-env   (or run in PowerShell, then open a new session:)'
       echo "    [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';${win_usr_bin}'), 'User')"
+    fi
+
+    # 1b) git itself: git.exe lives in Git\cmd, NOT usr\bin, so the check
+    #     above passing says nothing about git. A persisted PATH without
+    #     Git\cmd leaves every fresh non-Git-Bash session with no git at
+    #     all (fetch/clone: command not found) — seen live on this host,
+    #     masked for months because interactive shells inherited an
+    #     enriched PATH from their parent.
+    win_git_cmd="$(cygpath -w /cmd)"
+    if [[ "${persisted_path,,}" == *"${win_git_cmd,,}"* ]]; then
+      log_ok 'win-git-cmd' "persisted PATH reaches ${win_git_cmd}"
+    else
+      log_warn 'win-git-cmd' 'fresh (non-Git-Bash) sessions have no git (Git\cmd not on persisted PATH)'
+      echo '    Fix: just harden-env   (or run in PowerShell, then open a new session:)'
+      echo "    [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';${win_git_cmd}'), 'User')"
     fi
 
     # 2) deploy-managed state: PowerShell profile blocks + global mise
