@@ -240,7 +240,17 @@ install -d -m 0755 /opt/mise
 install -d -m 0755 /etc/mise
 export MISE_DATA_DIR=/opt/mise
 cat > /etc/mise/config.toml <<'EOF'
+[settings.npm]
+# Install npm: tools with bun instead of mise's embedded `aube` (parity with
+# the distributed global config, ADR 0036). Live breakage this prevents:
+# aube's no-downgrade trust policy hard-fails the whole toolset install when
+# any transitive dep publishes without provenance (seen 2026-08-15:
+# @smithy/core@3.33.0 lost attestations and pi-coding-agent's install sank
+# every CI devcontainer build).
+package_manager = "bun"
+
 [tools]
+bun = "1.3.14"
 just = "1.56.0"
 markdownlint-cli2 = "0.23.0"
 prek = "0.4.9"
@@ -248,9 +258,11 @@ uv = "0.11.28"
 vp = "0.2.4"
 node = "24.18.0"
 "npm:@openai/codex" = "0.144.6"
-# npm_args re-enables postinstall (mise defaults to --ignore-scripts=true)
-# so claude-code's native binary is linked, not left as a stub. See mise.toml.
-"npm:@anthropic-ai/claude-code" = { version = "2.1.215", npm_args = "--ignore-scripts=false" }
+# Under bun (package_manager above) mise ignores npm_args (bun reads
+# bun_args only) and bun skips postinstall for untrusted deps anyway; the
+# real native binary is overlaid from the apt install further below, so no
+# lifecycle scripts are needed here.
+"npm:@anthropic-ai/claude-code" = "2.1.215"
 "npm:@github/copilot" = "1.0.71"
 "npm:@earendil-works/pi-coding-agent" = "0.80.10"
 "github:google-antigravity/antigravity-cli" = { version = "1.1.4", exe = "antigravity" }
@@ -261,6 +273,10 @@ EOF
 echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (
   cd /etc/mise
+  # bun first: the npm backend's package_manager="bun" needs the bun binary
+  # on PATH at npm-tool install time, and `mise install` does not order
+  # backend prerequisites ahead of the tools that need them.
+  MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise install bun
   MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise install
 )
 MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
