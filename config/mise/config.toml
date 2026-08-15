@@ -77,7 +77,12 @@ fzf = "0.74.0"
 # this one tool (npm honors the last --ignore-scripts flag).
 "npm:@anthropic-ai/claude-code" = { version = "latest", npm_args = "--ignore-scripts=false" }
 "npm:@github/copilot" = "latest"
-"npm:@earendil-works/pi-coding-agent" = "latest"
+# trust_policy_excludes: @smithy/core@3.33.0 was published by aws-sdk-bot (a
+# listed maintainer) without provenance attestations, while 3.24.6 had them —
+# aube's no-downgrade policy (mise >= 2026.8.6) blocks the install. Verified
+# against npmjs.org 2026-08-15 (benign publish outside the trusted workflow,
+# not tampering). Drop once a provenance-attested @smithy/core release ships.
+"npm:@earendil-works/pi-coding-agent" = { version = "latest", trust_policy_excludes = ["@smithy/core@3.33.0"] }
 
 # antigravity (Google's agentic CLI) — replaces gemini-cli (per Google's
 # "Transitioning Gemini CLI to Antigravity CLI"). GitHub-release binary
