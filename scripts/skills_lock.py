@@ -161,6 +161,15 @@ def _cmd_dump(dotfiles_dir: Path) -> int:
     return 0
 
 
+def _configure_output() -> None:
+    # Windows Git Bash hands Python a cp932 stdout; the emoji progress lines
+    # then raise UnicodeEncodeError and kill the whole command. Re-encode to
+    # UTF-8 where supported, degrade to replacement characters elsewhere.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def _cmd_restore(dotfiles_dir: Path) -> int:
     records = _load_dump(dotfiles_dir)
     installed = _list_dirs(AGENTS_STORE)
@@ -193,6 +202,7 @@ def _cmd_check(dotfiles_dir: Path) -> int:
 
 
 def main() -> int:
+    _configure_output()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["dump", "restore", "check"])
     args = parser.parse_args()

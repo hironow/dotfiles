@@ -180,3 +180,28 @@ def test_restore_command_uses_lock_key_and_pinned_cli() -> None:
     assert cmd[cmd.index("-s") + 1] == "vercel-composition-patterns"
     assert "-g" in cmd
     assert "-y" in cmd
+
+
+def test_output_survives_cp932_stdout() -> None:
+    # Windows Git Bash gives Python a cp932 stdout; restore's progress lines
+    # use emoji (下矢印 U+2B07) and crashed with UnicodeEncodeError, killing
+    # the whole restore. _configure_output() must make printing safe.
+    import os
+    import subprocess
+
+    script = (
+        "import sys; sys.path.insert(0, r'{scripts}');"
+        "import skills_lock; skills_lock._configure_output();"
+        "print('\u2b07\ufe0f  ok')"
+    ).format(scripts=Path(__file__).resolve().parents[2] / "scripts")
+    env = dict(os.environ, PYTHONIOENCODING="cp932")
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    assert proc.returncode == 0, (
+        "skills_lock output must not crash on a cp932 stdout:\n" + proc.stderr
+    )

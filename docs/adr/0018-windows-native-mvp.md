@@ -1,7 +1,7 @@
 # 0018. Windows native: minimum-viable deploy with explicit-skip step_*
 
 **Date:** 2026-06-02
-**Status:** Accepted
+**Status:** Accepted (2026-06-02). Superseded by [0039](./0039-windows-bootstrap-ps1.md) (partial — the "full scoop-based bootstrap out of scope" stance is retired by `bootstrap.ps1`; the explicit-skip `step_*` design in `install.sh` and the deploy subset are unchanged and in force).
 
 ## Context
 

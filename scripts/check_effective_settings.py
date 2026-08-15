@@ -65,14 +65,32 @@ def generate(dotfiles_dir: Path, out_dir: Path) -> dict[str, Path]:
     return generated
 
 
+def _configure_output() -> None:
+    # Windows Git Bash hands Python a cp932 stdout; the emoji status lines
+    # then raise UnicodeEncodeError and kill the checker. Re-encode to UTF-8
+    # where supported, degrade to replacement characters elsewhere.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main() -> int:
     """Generate all effective settings and claudelint each one."""
+    _configure_output()
     failures: list[str] = []
     with tempfile.TemporaryDirectory() as tmp:
         generated = generate(REPO_ROOT, Path(tmp))
         for label, path in sorted(generated.items()):
+            # encoding pinned: claudelint emits UTF-8, and text=True alone
+            # decodes with the locale codec (cp932 on Japanese Windows),
+            # crashing the capture thread.
             result = subprocess.run(
-                CLAUDELINT, cwd=path.parents[1], capture_output=True, text=True
+                CLAUDELINT,
+                cwd=path.parents[1],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             if result.returncode != 0:
                 failures.append(label)
