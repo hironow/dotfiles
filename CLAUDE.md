@@ -145,8 +145,11 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
 - **commit.gpgsign=true** — 全 commit が GPG 署名される。履歴書き換え時は
   `git commit-tree -S` で再署名、force push は ruleset 一時トグル
   (memory `feedback_git_history_rewrite_gpg`)。
-- **mise の npm backend は `--ignore-scripts=true`** — postinstall 必須の npm ツール
-  (claude-code native binary 等) は `npm_args` で上書き (memory `project_mise_npm_ignore_scripts`)。
+- **bun backend では `npm_args` は読まれない (ADR 0040)** — mise は package manager ごとに
+  別キーを読む (bun は `bun_args` のみ)。claude-code の native binary が動くのは
+  **bun の default-trusted リストに載っていて postinstall が走る**から。postinstall 必須で
+  default-trusted に**無い** npm ツールを足すときは `bun_args` / trustedDependencies を検討
+  (memory `project_mise_npm_ignore_scripts`)。
 - **npm backend の package manager は `bun` 必須 (ADR 0036)**。既定の `auto` は mise 内蔵の
   **aube** を使い、その virtual-store レイアウトが claude-code の postinstall を無力化する
   (263MB の native binary が展開されず `bin/claude.exe` が **500 バイトのスタブ**のまま残り、

@@ -57,10 +57,11 @@ recorded decisions that shaped it.
 | 0033 | [Windows `just deploy` installs the global mise toolset (+ git aliases)](./0033-windows-deploy-global-mise-install.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `~/.gitconfig` |
 | 0034 | [exe stack mothball mode (`stack_mode`) + AR retention bound](./0034-exe-stack-mothball-mode.md) | Accepted | 2026-07-20 | `tofu/exe/`, `exe/docs/` |
 | 0035 | [Time-based disk GC for the self-hosted runners (2h retention)](./0035-runner-disk-gc.md) | Accepted | 2026-07-31 | `scripts/runner_gc*.{sh,ps1}`, `scripts/disk_gc.sh`, `scripts/gc_status.sh`, `justfile` (Disk) |
-| 0036 | [Install mise `npm:` tools with bun, not the embedded aube](./0036-mise-npm-backend-bun.md) | Accepted | 2026-07-31 | `config/mise/config.toml` |
+| 0036 | [Install mise `npm:` tools with bun, not the embedded aube](./0036-mise-npm-backend-bun.md) | Accepted; amended by [0040](./0040-npm-args-inert-under-bun.md) (npm_args rationale) | 2026-07-31 | `config/mise/config.toml` |
 | 0037 | [Layered Claude settings fragments (shared / OS / profile / machine-local)](./0037-layered-claude-settings-fragments.md) | Accepted | 2026-08-05 | `scripts/sync_agents.py`, `.claude/settings.shared*.json`, `.claude/settings.profiles/` |
 | 0038 | [Declarative third-party skills (skill-lock dump, no re-vendoring)](./0038-declarative-third-party-skills.md) | Accepted | 2026-08-14 | `dump/harness/skill-lock.json`, `scripts/skills_lock.py`, `justfile` |
 | 0039 | [Windows native bootstrap via `bootstrap.ps1` one-liner](./0039-windows-bootstrap-ps1.md) | Accepted | 2026-08-15 | `bootstrap.ps1`, `tests/unit/test_bootstrap_ps1.py`, `README.md` |
+| 0040 | [`npm_args` is inert under the bun backend — drop it, correct ADR 0036's rationale](./0040-npm-args-inert-under-bun.md) | Accepted | 2026-08-15 | `config/mise/config.toml`, `.devcontainer/features/dotfiles-tools/install.sh` |
 
 ## Reading order for newcomers
 

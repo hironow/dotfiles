@@ -1,7 +1,7 @@
 # 0036. Install mise `npm:` tools with bun, not the embedded aube
 
 **Date:** 2026-07-31
-**Status:** Accepted
+**Status:** Accepted (2026-07-31). Amended by [0040](./0040-npm-args-inert-under-bun.md) (the "`npm_args` stays… bun accepts it" rationale was wrong — mise never passes `npm_args` to bun; the binary works because claude-code is on bun's default-trusted list. The bun-over-aube decision itself is unchanged and in force).
 
 ## Context
 

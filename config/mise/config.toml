@@ -71,11 +71,14 @@ fzf = "0.74.0"
 # on first use (`codex login`, `claude /login`, `copilot auth`,
 # `pi auth`; antigravity authenticates on first run).
 "npm:@openai/codex" = "latest"
-# claude-code hardlinks its native binary in a postinstall (install.cjs);
-# mise's npm backend defaults to --ignore-scripts=true, which would leave
-# the stub and break `claude` at runtime. npm_args re-enables scripts for
-# this one tool (npm honors the last --ignore-scripts flag).
-"npm:@anthropic-ai/claude-code" = { version = "latest", npm_args = "--ignore-scripts=false" }
+# claude-code hardlinks its native binary in a postinstall (install.cjs).
+# Under the bun backend (settings.npm below) that script runs because the
+# package is on bun's default-trusted dependencies list — no per-tool config
+# needed. Do NOT re-add `npm_args = "--ignore-scripts=false"` here: mise
+# only reads npm_args under the npm backend (bun reads bun_args), so it was
+# inert, and its comment wrongly credited it for the working binary
+# (ADR 0040 corrects ADR 0036 on this point).
+"npm:@anthropic-ai/claude-code" = "latest"
 "npm:@github/copilot" = "latest"
 # trust_policy_excludes: the 2026-08-14 @smithy/* batch (core@3.33.0,
 # node-http-handler@4.11.0) was published by aws-sdk-bot (a listed maintainer)
