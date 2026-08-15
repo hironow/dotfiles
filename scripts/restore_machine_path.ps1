@@ -61,21 +61,44 @@ $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(
 $current = $key.GetValue(
     'Path', '',
     [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
-$currentEntries = @($current -split ';' | Where-Object { $_ -ne '' })
+$rawEntries = @($current -split ';' | Where-Object { $_ -ne '' })
+
+# Compare by EXPANDED value: %SystemRoot%\system32 and a literal
+# C:\Windows\system32 are the same directory. Comparing unexpanded strings
+# treated them as different, appended the baseline next to a literal repair,
+# and doubled every System32 binary on PATH (seen live 2026-08-17).
+function Get-ExpandedKey([string]$entry) {
+    [Environment]::ExpandEnvironmentVariables($entry).TrimEnd('\').ToLowerInvariant()
+}
+
+# Dedupe pre-existing entries by expanded value so an already-doubled
+# machine converges. Prefer the %Var% spelling (survives a SystemRoot
+# relocation); otherwise keep the first occurrence, preserving order.
+$byKey = [ordered]@{}
+foreach ($entry in $rawEntries) {
+    $k = Get-ExpandedKey $entry
+    if (-not $byKey.Contains($k)) {
+        $byKey[$k] = $entry
+    } elseif ($entry -like '*%*' -and $byKey[$k] -notlike '*%*') {
+        $byKey[$k] = $entry
+    }
+}
+$currentEntries = @($byKey.Values)
+$dupesRemoved = $rawEntries.Count - $currentEntries.Count
 
 $missing = @(($baseline + $probed) | Where-Object {
         $entry = $_
         -not ($currentEntries | Where-Object {
-                $_.TrimEnd('\') -ieq $entry.TrimEnd('\')
+                (Get-ExpandedKey $_) -eq (Get-ExpandedKey $entry)
             })
     })
 
-Write-Host "Current Machine PATH ($($currentEntries.Count) entries):"
+Write-Host "Current Machine PATH ($($rawEntries.Count) entries, $dupesRemoved duplicate(s) to collapse):"
 $currentEntries | ForEach-Object { Write-Host "  = $_" }
 Write-Host "Missing entries to append ($($missing.Count)):"
 $missing | ForEach-Object { Write-Host "  + $_" }
 
-if ($missing.Count -eq 0) {
+if ($missing.Count -eq 0 -and $dupesRemoved -eq 0) {
     Write-Host 'Machine PATH already complete - nothing to do.'
     exit 0
 }
