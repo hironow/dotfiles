@@ -259,7 +259,9 @@ def test_integration_hooks_then_settings(workspace: dict[str, Path]) -> None:
 
     # then
     result = _read_target(workspace["target"])
-    expected_cmd = f'"{agent.directory}/hooks/foo.sh"'
+    # as_posix, not str(): rendered hook commands are posix-style on every
+    # host (see _render_hook_command), so str() only matches on mac/linux.
+    expected_cmd = f'"{agent.directory.as_posix()}/hooks/foo.sh"'
     assert result["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == expected_cmd
     assert result["env"] == {"A": "1"}
 
