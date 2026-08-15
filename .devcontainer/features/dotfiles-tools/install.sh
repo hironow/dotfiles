@@ -252,7 +252,13 @@ node = "24.18.0"
 # so claude-code's native binary is linked, not left as a stub. See mise.toml.
 "npm:@anthropic-ai/claude-code" = { version = "2.1.215", npm_args = "--ignore-scripts=false" }
 "npm:@github/copilot" = "1.0.71"
-"npm:@earendil-works/pi-coding-agent" = "0.80.10"
+# trust_policy_excludes: the 2026-08-14 @smithy/* batch (core@3.33.0,
+# node-http-handler@4.11.0) was published by aws-sdk-bot (a listed maintainer)
+# without provenance attestations, while the prior releases had them — aube's
+# no-downgrade policy blocks the install. Verified against npmjs.org
+# 2026-08-15 (benign publish outside the trusted workflow, not tampering).
+# Drop the excludes once provenance-attested @smithy releases ship.
+"npm:@earendil-works/pi-coding-agent" = { version = "0.80.10", trust_policy_excludes = ["@smithy/core@3.33.0", "@smithy/node-http-handler@4.11.0"] }
 "github:google-antigravity/antigravity-cli" = { version = "1.1.4", exe = "antigravity" }
 "npm:cf" = "0.2.0"
 "npm:resend-cli" = "2.8.1"
