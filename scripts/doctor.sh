@@ -113,10 +113,10 @@ case "$(uname -s)" in
       log_ok 'win-machine-path' 'Machine PATH present (reaches System32)'
     else
       log_warn 'win-machine-path' "Machine PATH is empty or missing System32 (len=${#machine_path}) -- fresh shells have no System32 tools"
-      echo '    Fix from an ELEVATED PowerShell (review + extend with machine-specific dirs).'
-      echo '    NOTE: Registry.SetValue + ExpandString, NOT SetEnvironmentVariable (which'
-      echo '    writes REG_SZ and leaves %SystemRoot% unexpanded at logon):'
-      printf '%s\n' "    [Microsoft.Win32.Registry]::SetValue('HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment','Path','%SystemRoot%\system32;%SystemRoot%;%SystemRoot%\System32\Wbem;%SYSTEMROOT%\System32\WindowsPowerShell\v1.0\;%SYSTEMROOT%\System32\OpenSSH\','ExpandString')"
+      echo '    Fix (dry-run first; -Apply self-elevates via UAC = ELEVATED write,'
+      echo '    Registry.SetValue + ExpandString so %SystemRoot% stays expandable):'
+      echo '    powershell -ExecutionPolicy Bypass -File scripts/restore_machine_path.ps1'
+      echo '    powershell -ExecutionPolicy Bypass -File scripts/restore_machine_path.ps1 -Apply'
     fi
     # containment check in pure bash: MSYS grep -i can abort (core dump) on
     # registry PATH strings with non-UTF8 (cp932) bytes
