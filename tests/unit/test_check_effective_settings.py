@@ -60,3 +60,43 @@ def test_repo_root_is_derived_from_script_location() -> None:
 
     assert ces.REPO_ROOT == DOTFILES
     assert (ces.REPO_ROOT / ".claude" / "settings.shared.json").is_file()
+
+
+def test_output_survives_cp932_stdout() -> None:
+    # Windows Git Bash gives Python a cp932 stdout; the checker's emoji
+    # status lines crashed with UnicodeEncodeError, and decoding claudelint's
+    # UTF-8 output as cp932 crashed the capture thread. _configure_output()
+    # must make printing safe.
+    import os
+    import subprocess
+
+    script = (
+        "import sys; sys.path.insert(0, r'{scripts}');"
+        "import check_effective_settings as ces; ces._configure_output();"
+        "print('\u2705 ok')"
+    ).format(scripts=Path(__file__).resolve().parents[2] / "scripts")
+    env = dict(os.environ, PYTHONIOENCODING="cp932")
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    assert proc.returncode == 0, (
+        "checker output must not crash on a cp932 stdout:\n" + proc.stderr
+    )
+
+
+def test_claudelint_capture_decodes_utf8() -> None:
+    # The claudelint subprocess capture must pin encoding="utf-8": text=True
+    # alone uses the locale codec (cp932 on Japanese Windows) and the reader
+    # thread dies with UnicodeDecodeError on claudelint's UTF-8 output.
+    source = (DOTFILES / "scripts" / "check_effective_settings.py").read_text(
+        encoding="utf-8"
+    )
+    import re
+
+    assert re.search(
+        r"subprocess\.run\(\s*CLAUDELINT[^)]*encoding=\"utf-8\"", source
+    ), "subprocess.run(CLAUDELINT, ...) must pass encoding='utf-8'."
