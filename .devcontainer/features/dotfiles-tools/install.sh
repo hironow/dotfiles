@@ -259,9 +259,9 @@ vp = "0.2.4"
 node = "24.18.0"
 "npm:@openai/codex" = "0.144.6"
 # Under bun (package_manager above) mise ignores npm_args (bun reads
-# bun_args only) and bun skips postinstall for untrusted deps anyway; the
-# real native binary is overlaid from the apt install further below, so no
-# lifecycle scripts are needed here.
+# bun_args only). claude-code's postinstall still runs — the package is on
+# bun's default-trusted dependencies list — and the apt install further
+# below overlays the real native binary regardless. See ADR 0040.
 "npm:@anthropic-ai/claude-code" = "2.1.215"
 "npm:@github/copilot" = "1.0.71"
 # trust_policy_excludes: the 2026-08-14 @smithy/* batch (core@3.33.0,
