@@ -50,7 +50,7 @@ recorded decisions that shaped it.
 | 0026 | [Antigravity CLI: instruction 層のみ共有、skills/settings/mcp は agy 委譲](./0026-antigravity-cli-instruction-layer.md) | Accepted | 2026-06-10 | `~/.gemini/GEMINI.md`, `scripts/sync_agents.py` |
 | 0027 | [Bun-only Node policy: retire the per-repo pnpm carve-out](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | Accepted; partial supersede by [0037](./0037-layered-claude-settings-fragments.md) (permissions distribution) | 2026-06-14 | `.claude/` hooks, `ROOT_AGENTS*` |
 | 0028 | [Standardize on the Flatt Security PyPI mirror as the default uv index](./0028-flatt-pypi-mirror-default-index.md) | Accepted | 2026-06-19 | `*/pyproject.toml`, `*/uv.lock` |
-| 0029 | [Gate the distributed Claude config with claudelint + official plugin validate](./0029-claude-config-lint-gate.md) | Accepted (PR #200) | 2026-06-22 | `justfile`, `.github/workflows/claude-lint.yaml` |
+| 0029 | [Gate the distributed Claude config with claudelint + official plugin validate](./0029-claude-config-lint-gate.md) | Accepted; partial supersede by [0041](./0041-retire-third-party-claudelint.md) (claudelint retired) | 2026-06-22 | `justfile`, `.github/workflows/claude-lint.yaml` |
 | 0030 | [Per-host dump layout (`dump/<host>/`)](./0030-per-host-dump-layout.md) | Accepted | 2026-07-01 | `justfile`, `scripts/dump_host.sh`, `dump/<host>/`, `install.sh` |
 | 0031 | [Disable mise `node.corepack` on Windows (`just deploy` `$PROFILE` carve-out)](./0031-disable-mise-corepack-on-windows.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `config/mise/config.toml` |
 | 0032 | [Windows scoop restore: add `add-scoop` (supersede ADR 0019 record-only)](./0032-windows-scoop-restore-add-scoop.md) | Accepted; supersedes [0019](./0019-windows-scoop-dump-record-only.md) (record-only stance) | 2026-07-05 | `justfile` (`add-scoop`), `dump/<host>/scoop.json` |
@@ -62,6 +62,7 @@ recorded decisions that shaped it.
 | 0038 | [Declarative third-party skills (skill-lock dump, no re-vendoring)](./0038-declarative-third-party-skills.md) | Accepted | 2026-08-14 | `dump/harness/skill-lock.json`, `scripts/skills_lock.py`, `justfile` |
 | 0039 | [Windows native bootstrap via `bootstrap.ps1` one-liner](./0039-windows-bootstrap-ps1.md) | Accepted | 2026-08-15 | `bootstrap.ps1`, `tests/unit/test_bootstrap_ps1.py`, `README.md` |
 | 0040 | [`npm_args` is inert under the bun backend — drop it, correct ADR 0036's rationale](./0040-npm-args-inert-under-bun.md) | Accepted | 2026-08-15 | `config/mise/config.toml`, `.devcontainer/features/dotfiles-tools/install.sh` |
+| 0041 | [Retire the third-party claudelint; official-validator-only gate](./0041-retire-third-party-claudelint.md) | Accepted | 2026-08-16 | `justfile`, `.github/workflows/claude-lint.yaml`, `scripts/check_effective_settings.py` |
 
 ## Reading order for newcomers
 

@@ -24,7 +24,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-# Pinned like claudelint in the justfile: an unpinned CLI would make restore
+# Pinned like every bunx-run CLI here: an unpinned CLI would make restore
 # behavior drift between machines.
 SKILLS_CLI_VERSION = "1.5.22"
 

@@ -721,33 +721,26 @@ check-uv-flatt-index:
 check-mcp-node-runner:
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
 
-# Claude config lint: validate the artifacts this repo distributes (agents /
-# settings / hooks / owned skills / plugin manifests) with claudelint (bunx),
-# plus the official `claude plugin validate` as a second pair of eyes (skipped
-# when the claude CLI is absent, e.g. in CI). `--no-config` pins behavior
-# (claudelint otherwise discovers configs up to $HOME, diverging machine vs CI);
-# per-validator subcommands write no cache. The GitHub `Claude Config Lint`
-# workflow runs the claudelint half so PRs are actually gated (CI never runs
-# `just ci`). claude-code-lint is pinned to avoid surprise reds on new releases.
+# Claude config lint: validate the artifacts this repo distributes with the
+# OFFICIAL `claude plugin validate --strict` (marketplace + each plugin and
+# the skill/agent/command/hook files they reference; skipped when the claude
+# CLI is absent) plus the stdlib effective-settings checker (ADR 0037). The
+# third-party claudelint is retired — operator withdrew trust in a
+# single-maintainer non-Anthropic tool parsing every distributed artifact
+# (ADR 0041). The GitHub `Claude Config Lint` workflow runs the same official
+# validate via pinned bunx so PRs are actually gated (CI never runs `just ci`).
 [group('Lint')]
 lint-claude:
-    @echo '🔎 claudelint (agents / settings / hooks)...'
-    bunx claude-code-lint@0.5.0 validate-agents --no-config
-    bunx claude-code-lint@0.5.0 validate-settings --no-config
-    bunx claude-code-lint@0.5.0 validate-hooks --no-config
-    @echo '🔎 claudelint (owned skills under plugins/)...'
-    bunx claude-code-lint@0.5.0 validate-skills --no-config --path plugins
-    @echo '🔎 claudelint (per-plugin manifest)...'
-    @for m in plugins/*/.claude-plugin/plugin.json; do \
-        bunx claude-code-lint@0.5.0 validate-plugin --no-config --path "$m"; \
-      done
-    @echo '🔎 effective settings (profiles x OS, ADR 0037)...'
+    @echo '🔎 effective settings (profiles x OS, ADR 0037; stdlib validator per ADR 0041)...'
     {{UV_RUN}} scripts/check_effective_settings.py
     @echo '🔎 claude plugin validate --strict (official; skipped if claude absent)...'
-    @if command -v claude >/dev/null 2>&1; then \
-        claude plugin validate --strict . ; \
-        for m in plugins/*/.claude-plugin/plugin.json; do claude plugin validate --strict "${m%/.claude-plugin/plugin.json}"; done ; \
-      else echo '  (claude CLI not on PATH -- skipping official validate)'; fi
+    @# mise-wrapped per ADR 0025: a bare `claude` follows the inherited PATH,
+    @# which can hold a stale/half-uninstalled copy (seen live: a locked
+    @# old version failing with bun's "corrupted node_modules" remap error).
+    @if mise exec -- claude --version >/dev/null 2>&1; then \
+        mise exec -- claude plugin validate --strict . ; \
+        for m in plugins/*/.claude-plugin/plugin.json; do mise exec -- claude plugin validate --strict "${m%/.claude-plugin/plugin.json}"; done ; \
+      else echo '  (claude CLI not available via mise -- skipping official validate)'; fi
 
 # ADR 0028: regenerate the pypi.org-resolving uv locks through the flatt mirror
 # with the machine-local hardening config neutralized (each lock reflects only

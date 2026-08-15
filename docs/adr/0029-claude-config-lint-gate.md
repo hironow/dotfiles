@@ -1,7 +1,7 @@
 # 0029. Gate the distributed Claude config with claudelint + official plugin validate
 
 **Date:** 2026-06-22
-**Status:** Accepted (PR #200)
+**Status:** Accepted (PR #200). Superseded by [0041](./0041-retire-third-party-claudelint.md) (partial — the third-party claudelint half is retired after an operator trust review; the gate concept survives with the official `claude plugin validate --strict` running locally AND in CI, plus a stdlib effective-settings checker).
 
 ## Context
 
