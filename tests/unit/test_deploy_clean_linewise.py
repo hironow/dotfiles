@@ -11,9 +11,12 @@ machine PATH), and WSL bash cannot open the backslashed Windows temp path —
 directory` from PowerShell.
 
 Plain (linewise) recipes DO go through `set windows-shell := ["sh", ...]`:
-`sh` is not in System32 so it resolves to Git Bash's sh, and the inner
-`bash` then inherits Git Bash's /usr/bin-first PATH. This is the #231
-precedent (doctor/harden-env -> `bash scripts/*.sh`), also guarded for
+`sh` is not in System32 so it resolves to Git Bash's sh, whose prelude
+prepends /usr/bin so the inner `bash` resolves to Git Bash's (raw non-login
+msys sh preserves the caller's PATH order and would otherwise let System32's
+WSL bash win from a fresh persisted PATH — see
+test_windows_shell_usr_bin_path.py). This is the #231 precedent
+(doctor/harden-env -> `bash scripts/*.sh`), also guarded for
 prune-rogue-npm-globals in test_doctor_npm_rogue.py.
 
 deploy/clean are the ADR 0018 Windows-native entry points (bootstrap.ps1

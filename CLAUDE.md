@@ -171,8 +171,14 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   shadow する (Windows は bare `bash` を PATH より先に System32 で解決する) ため、`just` の
   bash 系レシピが WSL に落ちうる (WSL 未導入 host では顕在化しない)。効き方が2層に分かれる:
     - **plain レシピ** (`doctor` / `harden-env` 等 `bash scripts/*.sh`) → justfile の
-      `set windows-shell := ["sh", …]` (#231) で解決済み。System32 に `sh.exe` は無いので
-      `sh`=Git Bash に解決し、内側 `bash` も Git Bash を継承 → **PowerShell からでも直接叩ける**。
+      `set windows-shell := ["sh", …]` (#231) + prelude で解決済み。System32 に `sh.exe` は
+      無いので `sh`=Git Bash に解決するが、**raw な非 login msys sh は呼び出し元の PATH 順を
+      保存する**ため、素の永続 PATH (Machine の System32 が User の Git `usr\bin` より先) では
+      内側 `bash` が WSL に落ちていた (doctor が WSL Ubuntu の apt just 1.21 で走る実害)。
+      現在は windows-shell の prelude が `/usr/bin` を PATH 先頭に足してから内側
+      `/usr/bin/sh` に exec するので → **PowerShell からでも直接叩ける**
+      (recipe shell 内に閉じた scoped prepend で、下記の blanket prepend 非推奨とは別物。
+      ガード: `tests/unit/test_windows_shell_usr_bin_path.py`)。
     - **shebang レシピ** (`dump` / `scaffold-agent-baseline` 等 `#!/usr/bin/env bash`。
       `deploy` / `clean` は #231 同様に `bash scripts/*.sh` の plain レシピへ移行済みで
       PowerShell から直接叩ける — `tests/unit/test_deploy_clean_linewise.py` がガード) → `set shell` /
