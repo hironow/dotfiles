@@ -41,7 +41,10 @@ def test_render_hook_command_posix_unchanged(tmp_path: Path) -> None:
 
     for system in ("Darwin", "Linux"):
         rendered = _render_hook_command(FRAGMENT_CMD, agent, system=system)
-        assert rendered == f'bash "{tmp_path}/hooks/block.sh"'
+        # as_posix, not str(): _render_hook_command renders posix-style on
+        # every host, so a str() expectation only matches on mac/linux and
+        # fails when this suite runs on a Windows checkout.
+        assert rendered == f'bash "{tmp_path.as_posix()}/hooks/block.sh"'
 
 
 def test_windows_rendered_command_is_recognized_as_managed() -> None:
