@@ -134,3 +134,59 @@ def test_doctor_checks_scoop_unix_clis(doctor_windows_branch: str) -> None:
     assert "scoop install jq shellcheck" in win, (
         "the fix hint must be the exact scoop install command"
     )
+
+
+def test_doctor_checks_persisted_path_reaches_git_cmd(
+    doctor_windows_branch: str,
+) -> None:
+    """git.exe lives in Git\cmd, NOT usr\bin — a persisted PATH that only
+    carries usr\bin (the cygpath fix) leaves fresh non-Git-Bash sessions
+    with no git at all (fetch/clone: command not found). Seen live on this
+    class of host; the doctor must detect it and point at the fix."""
+    win = doctor_windows_branch
+    assert "win-git-cmd" in win, (
+        "doctor must emit a 'win-git-cmd' check: usr\bin on PATH does not "
+        "imply git is reachable (git.exe is in Git\cmd)"
+    )
+    assert "cygpath -w /cmd" in win, (
+        "must derive Git\cmd dynamically via `cygpath -w /cmd` "
+        "(install-location independent), not hardcode C:\Program Files\Git"
+    )
+    assert "harden-env" in win, (
+        "on a miss the doctor must point at `just harden-env`, which now "
+        "appends the missing Git dirs to the persisted User PATH"
+    )
+
+
+def test_doctor_checks_machine_path_sanity(doctor_windows_branch: str) -> None:
+    """Seen live: the HKLM Machine PATH was completely EMPTY, so every fresh
+    shell was born without System32 (no powershell.exe/where.exe/reg.exe),
+    masked for a long time because interactive shells inherited an enriched
+    PATH from their parent. The doctor must detect it; repair stays manual
+    (elevation + review of machine-specific entries)."""
+    win = doctor_windows_branch
+    assert "win-machine-path" in win, (
+        "doctor must emit a 'win-machine-path' check for an empty or "
+        "System32-less Machine PATH"
+    )
+    assert "ExpandString" in win, (
+        "the printed fix must write REG_EXPAND_SZ via Registry.SetValue — "
+        "SetEnvironmentVariable writes REG_SZ and leaves %SystemRoot% "
+        "unexpanded at logon"
+    )
+    assert "ELEVATED" in win, (
+        "must say the fix needs an elevated shell; doctor itself never "
+        "writes the Machine scope"
+    )
+
+
+def test_doctor_powershell_fallback_when_system32_off_path(
+    doctor_windows_branch: str,
+) -> None:
+    """A session spawned from a broken persisted PATH has no System32, so a
+    bare `powershell.exe` dies with command-not-found — exactly when the
+    doctor's Windows checks are needed most (seen live)."""
+    assert "WindowsPowerShell/v1.0/powershell.exe" in doctor_windows_branch, (
+        "doctor must fall back to powershell.exe by absolute path (via "
+        "SYSTEMROOT) when it is not on PATH"
+    )

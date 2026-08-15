@@ -138,7 +138,9 @@ def test_mirrors_uv_toml_to_windows_appdata(tmp_path: Path) -> None:
     home.mkdir()
     appdata = tmp_path / "appdata"
     appdata.mkdir()
-    r = _run_harden(_env(home, APPDATA=str(appdata)))
+    # HARDEN_ENV_SKIP_WIN_PATH: a fake APPDATA triggers the Windows PATH
+    # section too, which would write the REAL registry from a test.
+    r = _run_harden(_env(home, APPDATA=str(appdata), HARDEN_ENV_SKIP_WIN_PATH="1"))
     assert r.returncode == 0, f"harden_env.sh failed:\n{r.stderr}"
     win_toml = appdata / "uv" / "uv.toml"
     assert win_toml.is_file(), "did not mirror uv.toml to %APPDATA%/uv/"
@@ -146,3 +148,59 @@ def test_mirrors_uv_toml_to_windows_appdata(tmp_path: Path) -> None:
     assert win_toml.read_text(encoding="utf-8") == xdg_toml.read_text(
         encoding="utf-8"
     ), "%APPDATA%/uv/uv.toml must be an exact mirror of ~/.config/uv/uv.toml"
+
+
+def _script_text() -> str:
+    return HARDEN.read_text(encoding="utf-8")
+
+
+def test_appends_missing_git_dirs_to_windows_user_path() -> None:
+    # Fresh PowerShell sessions see only the persisted (registry) PATH. A
+    # stock setup can leave BOTH Git dirs off it: usr\bin (cygpath — every
+    # just shebang recipe dies) and cmd (git.exe itself — fresh sessions
+    # have no git at all; seen live). harden-env must append whichever is
+    # missing to the persisted User PATH (end position — shadows nothing),
+    # idempotently, so the bootstrap chain self-heals new machines.
+    text = _script_text()
+    assert re.search(r"for \_unix_dir in /usr/bin /cmd", text), (
+        "must cover BOTH Git dirs (/usr/bin and /cmd), each derived via "
+        "cygpath (install-location independent), not hardcode Program Files"
+    )
+    assert 'cygpath -w "$_unix_dir"' in text, (
+        "must derive the Windows path via cygpath, not hardcode it"
+    )
+    assert "GetEnvironmentVariable" in text, (
+        "must read the persisted User+Machine PATH from the registry — the "
+        "in-process PATH always has both dirs under Git Bash, so it is "
+        "useless as a signal"
+    )
+    assert re.search(r"SetEnvironmentVariable[^\n]*'User'", text), (
+        "must persist the append via SetEnvironmentVariable on the User "
+        "scope (no admin needed)"
+    )
+    assert "'Machine')\"" not in text.replace(
+        "GetEnvironmentVariable('Path','Machine')", ""
+    ), (
+        "must NEVER write the Machine scope — that needs elevation and "
+        "human review; doctor only detects and advises there"
+    )
+    assert "HARDEN_ENV_SKIP_WIN_PATH" in text, (
+        "tests exercise the uv mirror with a fake APPDATA; without the "
+        "skip flag they would write the real registry"
+    )
+    assert re.search(r"APPDATA", text), (
+        "the PATH section must be gated to native Windows (APPDATA "
+        "presence, like the uv mirror section) so Linux/macOS/WSL skip it"
+    )
+
+
+def test_powershell_fallback_when_system32_off_path() -> None:
+    # The section repairs broken persisted PATHs — the very situation where
+    # the current session may lack System32 (seen live: EMPTY Machine PATH),
+    # so a bare `powershell.exe` invocation would die with command-not-found
+    # exactly when the repair is needed most.
+    text = _script_text()
+    assert "WindowsPowerShell/v1.0/powershell.exe" in text, (
+        "must fall back to powershell.exe by absolute path (via SYSTEMROOT) "
+        "when it is not on PATH"
+    )
