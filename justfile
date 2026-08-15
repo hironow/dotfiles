@@ -137,146 +137,12 @@ wsl-conf:
 # Windows native (MSYS/MINGW/CYGWIN) gets a cross-platform subset only
 # (starship.toml + gitignore-global). zsh/sheldon/tmux/ghostty/fzf-tab
 # are Unix-only and are skipped. See ADR 0018.
+# Linewise wrapper (NOT a shebang recipe): shebang recipes bypass
+# `set windows-shell` and resolve `env bash` to WSL's System32 bash from
+# PowerShell (tests/unit/test_deploy_clean_linewise.py guards this).
 [group('Setup')]
 deploy:
-    #!/usr/bin/env bash
-    set -eu
-    case "$(uname -s)" in
-      MINGW*|MSYS*|CYGWIN*)
-        echo "==> Deploy dotfiles (windows subset)..."
-        mkdir -p ~/.config
-        cp -f ~/dotfiles/starship.toml ~/.config/starship.toml
-        mkdir -p ~/.config/git
-        cp -f ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
-        mkdir -p ~/.config/mise
-        cp -f ~/dotfiles/config/mise/config.toml ~/.config/mise/config.toml
-        # PowerShell 7 $PROFILE — idempotent starship init block (ADR 0022).
-        ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
-        ps_marker_begin="# >>> dotfiles managed block: starship init >>>"
-        ps_marker_end="# <<< end dotfiles managed block <<<"
-        mkdir -p "$(dirname "$ps_profile")"
-        touch "$ps_profile"
-        if grep -qF "$ps_marker_begin" "$ps_profile"; then
-          echo "==> PowerShell \$PROFILE starship-init block already present (skip)"
-        else
-          {
-            printf '\n%s\n' "$ps_marker_begin"
-            printf '# Managed by `just deploy` (see ADR 0022). Edits inside this block are overwritten on next deploy.\n'
-            printf 'if (Get-Command starship -ErrorAction SilentlyContinue) {\n'
-            printf '    Invoke-Expression (&starship init powershell)\n'
-            printf '}\n'
-            printf '%s\n' "$ps_marker_end"
-          } >> "$ps_profile"
-          echo "==> PowerShell \$PROFILE updated with starship-init block"
-        fi
-        # PowerShell 7 $PROFILE — mise activate block (ADR 0024). Reuses
-        # $ps_profile and $ps_marker_end defined for the starship block above.
-        ps_mise_marker_begin="# >>> dotfiles managed block: mise activate >>>"
-        if grep -qF "$ps_mise_marker_begin" "$ps_profile"; then
-          echo "==> PowerShell \$PROFILE mise-activate block already present (skip)"
-        else
-          {
-            printf '\n%s\n' "$ps_mise_marker_begin"
-            printf '# Managed by `just deploy` (see ADR 0024). Edits inside this block are overwritten on next deploy.\n'
-            printf 'if (Get-Command mise -ErrorAction SilentlyContinue) {\n'
-            printf '    Invoke-Expression (&mise activate pwsh | Out-String)\n'
-            printf '}\n'
-            printf '%s\n' "$ps_marker_end"
-          } >> "$ps_profile"
-          echo "==> PowerShell \$PROFILE updated with mise-activate block"
-        fi
-        # PowerShell 7 $PROFILE — mise node corepack carve-out (Windows; ADR
-        # 0031). mise's global `[settings.node] corepack = true` runs corepack
-        # during `mise install node`, throwing `EPERM ...\Program Files\nodejs\
-        # pnpx.CMD` on Windows; since `mise exec` installs missing tools first,
-        # that blocks every mise-wrapped recipe. Node is bun-only on Windows
-        # (ADR 0027), so export MISE_NODE_COREPACK=0. Its own managed block
-        # (fresh marker) appends even on hosts that already carry the starship
-        # (0022) / mise-activate (0024) blocks.
-        ps_corepack_marker_begin="# >>> dotfiles managed block: mise node corepack >>>"
-        if grep -qF "$ps_corepack_marker_begin" "$ps_profile"; then
-          echo "==> PowerShell \$PROFILE mise-corepack block already present (skip)"
-        else
-          {
-            printf '\n%s\n' "$ps_corepack_marker_begin"
-            printf '# Managed by `just deploy`. Edits inside this block are overwritten on next deploy.\n'
-            printf '$env:MISE_NODE_COREPACK = "0"\n'
-            printf '%s\n' "$ps_marker_end"
-          } >> "$ps_profile"
-          echo "==> PowerShell \$PROFILE updated with mise-corepack block"
-        fi
-        # Install the global mise toolset (ADR 0033). deploy copies the config
-        # above; native Windows mise reads ~/.config/mise/config.toml (verified
-        # via `mise config ls`). `-C /` scopes to the global config only.
-        # MISE_NODE_COREPACK=0 avoids the Program-Files-node corepack EPERM
-        # (ADR 0031). Best-effort, but say so loudly on failure (a fresh host may
-        # need network or `mise trust`).
-        if command -v mise >/dev/null 2>&1; then
-          echo "==> Installing global mise tools (best-effort)..."
-          MISE_NODE_COREPACK=0 mise -C / install || echo "==> WARN: global mise tool install incomplete; re-run 'MISE_NODE_COREPACK=0 mise -C / install' (needs network; may need 'mise trust')"
-        else
-          echo "==> mise not on PATH; skipping global tool install (install mise via scoop, then re-run 'just deploy')"
-        fi
-        # git aliases [include] managed block (ADR 0033). Wires ONLY
-        # aliases.gitconfig (pure [alias] entries) — deliberately NOT
-        # shared.gitconfig: re-including shared after a manual PC-local override
-        # (e.g. gpgsign=false on a keyless host) would clobber it. Identity /
-        # signing / shared stay manual per ADR 0021. Reuses $ps_marker_end;
-        # git treats '#' lines as comments so the markers are inert.
-        gitconfig="$HOME/.gitconfig"
-        git_marker_begin="# >>> dotfiles managed block: git aliases include >>>"
-        touch "$gitconfig"
-        if grep -qF "$git_marker_begin" "$gitconfig"; then
-          echo "==> ~/.gitconfig git-aliases block already present (skip)"
-        else
-          {
-            printf '\n%s\n' "$git_marker_begin"
-            printf '# Managed by `just deploy` (ADR 0033). Only aliases — identity/signing/shared stay manual (ADR 0021).\n'
-            printf '[include]\n'
-            printf '\tpath = ~/dotfiles/config/git/aliases.gitconfig\n'
-            printf '%s\n' "$ps_marker_end"
-          } >> "$gitconfig"
-          echo "==> ~/.gitconfig updated with git-aliases include block"
-        fi
-        echo "==> Deploy complete (windows subset per ADR 0018/0022/0024/0031/0033; corepack carve-out per ADR 0017/0027; Unix-only artifacts skipped)"
-        exit 0
-        ;;
-    esac
-    echo "==> Start to deploy dotfiles to home directory."
-    ln -sf ~/dotfiles/.zshrc ~/.zshrc
-    mkdir -p ~/.config/sheldon
-    ln -sf ~/dotfiles/sheldon-plugins.toml ~/.config/sheldon/plugins.toml
-    ln -sf ~/dotfiles/starship.toml ~/.config/starship.toml
-    ln -sf ~/dotfiles/tools/tmux/tmux.conf ~/.tmux.conf
-    mkdir -p ~/.config/ghostty
-    ln -sf ~/dotfiles/tools/ghostty-config ~/.config/ghostty/config
-    mkdir -p ~/.config/git
-    cp ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
-    mkdir -p ~/.config/mise
-    ln -sf ~/dotfiles/config/mise/config.toml ~/.config/mise/config.toml
-    if command -v mise >/dev/null 2>&1; then
-        echo "==> Provisioning global mise tools (best-effort)..."
-        # cwd=/ so only the global ~/.config/mise/config.toml resolves; a
-        # HOME-level ~/mise.toml / ~/.tool-versions must NOT widen the set.
-        # Best-effort: never abort the symlink deploy on a transient network
-        # or registry failure (resolving "latest" needs an online lookup).
-        mise -C / install || echo "==> WARN: global mise tool install incomplete; re-run 'mise -C / install' (needs network for 'latest')"
-    else
-        echo "==> mise not on PATH; skipping global tool install (install mise, then run 'mise -C / install')"
-    fi
-    echo "==> Installing plugins..."
-    if command -v sheldon >/dev/null 2>&1; then
-        sheldon lock
-    elif command -v mise >/dev/null 2>&1 && mise x -- sh -c 'command -v sheldon' >/dev/null 2>&1; then
-        mise x -- sheldon lock
-    else
-        echo "==> sheldon not found; skipping lock (provided by brew / devcontainer feature / mise)"
-    fi
-    if [ ! -d ~/.local/share/fzf-tab ]; then
-        echo "==> Installing fzf-tab..."
-        git clone --depth 1 https://github.com/Aloxaf/fzf-tab ~/.local/share/fzf-tab
-    fi
-    echo "==> Deploy complete!"
+    @bash scripts/deploy.sh
 
 # Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
@@ -360,48 +226,11 @@ sync-plugin-scope-hook:
 # Clean: remove deployed dotfiles (~/.zshrc, ~/.config/sheldon/plugins.toml, ~/.config/starship.toml)
 # Windows native (MSYS/MINGW/CYGWIN) only removes the subset that `deploy` placed
 # (starship.toml + git ignore); Unix-only artifacts are not touched. See ADR 0018.
+# Linewise wrapper (NOT a shebang recipe): see deploy above / ADR 0018 guard
+# in tests/unit/test_deploy_clean_linewise.py.
 [group('Setup')]
 clean:
-    #!/usr/bin/env bash
-    set -eu
-    case "$(uname -s)" in
-      MINGW*|MSYS*|CYGWIN*)
-        echo "==> Remove dotfiles (windows subset)..."
-        rm -vrf ~/.config/starship.toml
-        rm -vrf ~/.config/git/ignore
-        rm -vrf ~/.config/mise/config.toml
-        # Remove PowerShell starship-init block (idempotent; ADR 0022).
-        ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
-        if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: starship init >>>" "$ps_profile"; then
-          sed -i '/# >>> dotfiles managed block: starship init >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
-          echo "==> PowerShell \$PROFILE starship-init block removed"
-        fi
-        # Remove PowerShell mise-activate block (idempotent; ADR 0024).
-        if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise activate >>>" "$ps_profile"; then
-          sed -i '/# >>> dotfiles managed block: mise activate >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
-          echo "==> PowerShell \$PROFILE mise-activate block removed"
-        fi
-        # Remove PowerShell mise-node-corepack block (idempotent; ADR 0031).
-        if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise node corepack >>>" "$ps_profile"; then
-          sed -i '/# >>> dotfiles managed block: mise node corepack >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
-          echo "==> PowerShell \$PROFILE mise-corepack block removed"
-        fi
-        # Remove git-aliases include block from ~/.gitconfig (idempotent; ADR 0033).
-        gitconfig="$HOME/.gitconfig"
-        if [ -f "$gitconfig" ] && grep -qF "# >>> dotfiles managed block: git aliases include >>>" "$gitconfig"; then
-          sed -i '/# >>> dotfiles managed block: git aliases include >>>/,/# <<< end dotfiles managed block <<</d' "$gitconfig"
-          echo "==> ~/.gitconfig git-aliases block removed"
-        fi
-        exit 0
-        ;;
-    esac
-    echo "==> Remove dotfiles in your home directory..."
-    rm -vrf ~/.zshrc
-    rm -vrf ~/.config/sheldon/plugins.toml
-    rm -vrf ~/.config/starship.toml
-    rm -vrf ~/.tmux.conf
-    rm -vrf ~/.config/ghostty/config
-    rm -vrf ~/.config/mise/config.toml
+    @bash scripts/clean.sh
 
 # Clean cache: remove zsh-related caches (compinit, fzf, zoxide, kubectl, sheldon)
 [group('Setup')]

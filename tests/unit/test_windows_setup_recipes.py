@@ -24,6 +24,11 @@ def justfile_text() -> str:
 
 
 def _recipe_body(text: str, name: str) -> str:
+    # deploy/clean bodies live in scripts/*.sh (linewise wrappers; shebang
+    # recipes break from PowerShell — tests/unit/test_deploy_clean_linewise.py).
+    if name in ("deploy", "clean"):
+        scripts = JUSTFILE.parent / "scripts" / f"{name}.sh"
+        return scripts.read_text(encoding="utf-8")
     m = re.search(
         rf"(?ms)^{re.escape(name)}[^:\n]*:.*?\n(.*?)(?=^[A-Za-z_][\w-]*[^:\n]*:|\Z)",
         text,
