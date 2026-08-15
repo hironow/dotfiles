@@ -897,14 +897,17 @@ update-my-submodules:
 # classes seen in practice:
 #   1. tag clobber       -> force-fetch tags up front (upstream re-tagging)
 #   2. LFS/dirty abort    -> --force discards smudge/dirty noise on checkout
-#   3. grandchild drift   -> --no-recurse-submodules keeps nested submodules
-#                            pinned, then re-pin them to each parent's SHA
+#   3. grandchild drift   -> -c submodule.recurse=false keeps nested submodules
+#                            pinned even if a user gitconfig sets recurse=true
+#                            (portable to git 2.43, the fresh-WSL baseline;
+#                            --no-recurse-submodules is not), then re-pin them
+#                            to each parent's SHA
 [doc('Update all submodules to upstream tips, cleanly (no garbage diff)')]
 [group('Update')]
 update-all-submodules:
     @echo "◆ Updating ALL submodules to upstream tips (clean)..."
     git submodule foreach --quiet 'git fetch --tags --force origin 2>/dev/null || true'
-    git submodule update --remote --force --no-recurse-submodules
+    git -c submodule.recurse=false submodule update --remote --force
     git submodule foreach --quiet 'git submodule update --init --recursive --checkout 2>/dev/null || true'
     @echo "✅ Submodules updated. Working tree status (empty = clean):"
     @git status --short
