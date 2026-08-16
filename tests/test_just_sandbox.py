@@ -1229,7 +1229,7 @@ def test_install_sh_has_executable_bit_in_git_index():
 # =============================================================================
 #
 # These pin the invariant that produced real host damage earlier (a staged
-# `private/*` secret, a truncated `dump/*`, host `.git/hooks` writes): the
+# `/private/*` secret, a truncated `dump/*`, host `.git/hooks` writes): the
 # sandbox must NEVER bind-mount the real repo locally. It must instead mount a
 # throwaway copy of ONLY the git-tracked first-party files, and tear it down.
 # In CI the runner checkout is itself ephemeral, so the host path is bound

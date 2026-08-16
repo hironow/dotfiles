@@ -6,7 +6,6 @@
 .indexing/
 
 # --- Local Secrets & Private (Safety Net) ---
-private/
 env.keys
 .env*.local
 *.pem

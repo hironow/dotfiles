@@ -24,4 +24,4 @@ ignores:
   - .venv/**
   - tools/rttm/.venv/**
   - output/**
-  - private/**
+  - /private/**

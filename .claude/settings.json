@@ -54,8 +54,6 @@
     "deny": [
       "Read(.env.keys)",
       "Edit(.env.keys)",
-      "Read(**/private/**)",
-      "Edit(**/private/**)",
       "Bash(sudo:*)",
       "Bash(npm:*)",
       "Bash(npx:*)",

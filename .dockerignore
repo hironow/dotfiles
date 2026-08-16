@@ -7,7 +7,7 @@ Brewfile.lock.json
 venv
 __pycache__
 .*_cache/
-private/
+/private/
 refs/
 .env.keys
 .env.local
