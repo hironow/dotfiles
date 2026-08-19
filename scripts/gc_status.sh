@@ -20,11 +20,26 @@ set -eu
 
 DISTRO="${RUNNER_GC_WSL_DISTRO:-Ubuntu}"
 TASK="${RUNNER_GC_TASK_NAME:-dotfiles-runner-gc}"
+AUTOTASK="${RUNNER_GC_AUTOSTART_TASK_NAME:-dotfiles-wsl-autostart}"
 
 _win=0
 case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*) _win=1 ;;
 esac
+
+# Captured ONCE, before either leg runs: the WSL probe itself boots the
+# distro, so any check made after it would always read "running" — an
+# order-dependent silent pass. --quiet keeps the output to bare names, and
+# WSL_UTF8=1 (with a \0-strip fallback) tames wsl.exe's UTF-16 default.
+_distro_running=unknown
+if [ "$_win" -eq 1 ]; then
+  if MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' WSL_UTF8=1 \
+      wsl.exe --list --quiet --running 2>/dev/null | tr -d '\r\0' | grep -qxF "$DISTRO"; then
+    _distro_running=yes
+  else
+    _distro_running=no
+  fi
+fi
 
 _ok()   { printf '  \033[32mOK\033[0m    %s\n' "$1"; }
 _warn() { printf '  \033[33mWARN\033[0m  %s\n' "$1"; }
@@ -130,6 +145,41 @@ for _d in /home/*/actions-runner* /root/actions-runner* /opt/actions-runner*; do
   fi
 done
 
+# Reboot-recovery contract (mirrors wsl_autostart.ps1): systemd must be up
+# and a runner unit loaded — `is-active 'actions.runner.*'` exits 0 on ZERO
+# matches, so count units instead of trusting a glob.
+_sys="$(systemctl is-system-running 2>/dev/null || true)"
+case "$_sys" in
+  running | degraded) : ;;
+  *) _bad "systemd: ${_sys:-absent} — run: just wsl-conf, then wsl --shutdown" ;;
+esac
+_units="$(systemctl list-units --type=service --all --no-legend --plain 'actions.runner.*' 2>/dev/null | grep -c . || true)"
+if [ "${_units:-0}" -eq 0 ]; then
+  _bad "runner service: no actions.runner.* unit loaded"
+else
+  # pgrep exits 1 on zero matches; without `|| true` the `set -e` shell
+  # running this probe on a native Linux host would abort mid-report.
+  _lis="$(pgrep -cx Runner.Listener || true)"
+  if [ "${_lis:-0}" -gt 1 ]; then
+    _bad "runner: ${_lis} Runner.Listener processes — a duplicate was launched outside systemd"
+  elif [ "${_lis:-0}" -eq 1 ]; then
+    _ok "runner: single Runner.Listener"
+  else
+    _warn "runner: no Runner.Listener — service down?"
+  fi
+fi
+
+# WSL terminates a distro ~1 min after its last CLIENT exits — systemd
+# services inside do not count. The autostart task's keepalive client is what
+# lets the runner outlive closed terminals. Bracketed pattern: unescaped it
+# would match this probe's own command line.
+_ka="$(pgrep -fc 'dotfiles-wsl-keepaliv[e]' || true)"
+if [ "${_ka:-0}" -ge 1 ]; then
+  _ok "keepalive: attached — distro survives closed terminals"
+else
+  _warn "keepalive: not attached — distro stops ~1min after the last terminal closes (run: just runner-gc-install)"
+fi
+
 printf '        disk: %s\n' "$(df -h / | awk 'NR==2 {print $3" used, "$4" avail ("$5")"}')"
 PROBE
 }
@@ -137,6 +187,11 @@ PROBE
 # --- Windows leg ------------------------------------------------------------
 _windows_status() {
   echo "── Windows leg ──────────────────────────────────────────────"
+
+  case "$_distro_running" in
+    yes) _ok "distro '${DISTRO}': running" ;;
+    no)  _warn "distro '${DISTRO}': stopped — autostart fires at next logon (start now: wsl -d ${DISTRO})" ;;
+  esac
 
   # -NonInteractive so this never blocks; all of it is read-only.
   powershell.exe -NoProfile -NonInteractive -Command "
@@ -155,6 +210,24 @@ _windows_status() {
       elseif (\$i.LastTaskResult -eq 0)  { 'OK|last run: ' + \$i.LastRunTime + ' (result 0)' }
       else { 'FAIL|last run: ' + \$i.LastRunTime + ' (result ' + \$i.LastTaskResult + ')' }
       'INFO|next run: ' + \$i.NextRunTime
+    }
+    \$a = Get-ScheduledTask -TaskName '$AUTOTASK' -ErrorAction SilentlyContinue
+    if (-not \$a) { 'FAIL|autostart task ''$AUTOTASK'' not registered (run: just runner-gc-install)' }
+    else {
+      # Judged by trigger shape, not principal: a logon task is Interactive by
+      # design (the S4U warning above would be a permanent false alarm here),
+      # and LastTaskResult stays 0 even when the already-running valve
+      # short-circuits, so the trigger class is the only structural check
+      # that means anything before the first real reboot.
+      \$trig = @(\$a.Triggers | ForEach-Object { \$_.CimClass.CimClassName })
+      if (\$trig -contains 'MSFT_TaskLogonTrigger') { 'OK|autostart task: logon trigger (' + \$a.State + ')' }
+      else { 'FAIL|autostart task: no logon trigger — re-run: just runner-gc-install' }
+      # The task blocks forever as the keepalive, so while healthy its
+      # LastTaskResult is 0x41301 (SCHED_S_TASK_RUNNING = 267009), not 0.
+      \$ai = \$a | Get-ScheduledTaskInfo
+      if (\$ai.LastRunTime.Year -ge 2000 -and \$ai.LastTaskResult -ne 0 -and \$ai.LastTaskResult -ne 267009) {
+        'FAIL|autostart last run: ' + \$ai.LastRunTime + ' (result ' + \$ai.LastTaskResult + ')'
+      }
     }
     \$roots = @(\"\$env:USERPROFILE\actions-runner-win\", \"\$env:USERPROFILE\actions-runner\", 'C:\actions-runner') |
       Where-Object { Test-Path (Join-Path \$_ 'config.cmd') }
@@ -184,7 +257,7 @@ _windows_status() {
     }
     \$d = Get-PSDrive C
     'INFO|disk: C: {0:N1} GB free of {1:N1} GB' -f (\$d.Free/1GB), ((\$d.Free+\$d.Used)/1GB)
-  " 2>/dev/null | tr -d '\r' | while IFS='|' read -r _lvl _msg; do
+  " 2>/dev/null | tr -d '\r\0' | while IFS='|' read -r _lvl _msg; do
     case "$_lvl" in
       OK) _ok "$_msg" ;;
       WARN) _warn "$_msg" ;;
