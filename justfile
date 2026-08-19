@@ -142,6 +142,16 @@ wsl-conf:
     echo "Then reload from Windows PowerShell (a full WSL restart):"
     echo "  wsl --shutdown"
 
+# WSL: advise on the Windows-side %USERPROFILE%\.wslconfig. Diffs the
+# recommended keys (config/wsl/wslconfig) against the live file and prints
+# the apply + `wsl --shutdown` reload steps. Advisory only — the reload
+# stops the self-hosted runner distro (ADR 0035), so this never self-applies.
+# sparseVhd / vmIdleTimeout are deliberately absent from the template; the
+# template's header says why.
+[group('Setup'), windows, doc('Advise on the Windows-side .wslconfig (preview + apply steps, never self-applies)')]
+wslconfig:
+    bash scripts/wslconfig_conf.sh
+
 # Deploy: symlink dotfiles to home and install plugins
 # Windows native (MSYS/MINGW/CYGWIN) gets a cross-platform subset only
 # (starship.toml + gitignore-global). zsh/sheldon/tmux/ghostty/fzf-tab
