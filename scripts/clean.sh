@@ -14,23 +14,23 @@ case "$(uname -s)" in
     # Remove PowerShell starship-init block (idempotent; ADR 0022).
     ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
     if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: starship init >>>" "$ps_profile"; then
-      sed -i '\# >>> dotfiles managed block: starship init >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+      sed -i '/# >>> dotfiles managed block: starship init >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
       echo "==> PowerShell \$PROFILE starship-init block removed"
     fi
     # Remove PowerShell mise-activate block (idempotent; ADR 0024).
     if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise activate >>>" "$ps_profile"; then
-      sed -i '\# >>> dotfiles managed block: mise activate >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+      sed -i '/# >>> dotfiles managed block: mise activate >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
       echo "==> PowerShell \$PROFILE mise-activate block removed"
     fi
     # Remove PowerShell mise-node-corepack block (idempotent; ADR 0031).
     if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise node corepack >>>" "$ps_profile"; then
-      sed -i '\# >>> dotfiles managed block: mise node corepack >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+      sed -i '/# >>> dotfiles managed block: mise node corepack >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
       echo "==> PowerShell \$PROFILE mise-corepack block removed"
     fi
     # Remove git-aliases include block from ~/.gitconfig (idempotent; ADR 0033).
     gitconfig="$HOME/.gitconfig"
     if [ -f "$gitconfig" ] && grep -qF "# >>> dotfiles managed block: git aliases include >>>" "$gitconfig"; then
-      sed -i '\# >>> dotfiles managed block: git aliases include >>>/,/# <<< end dotfiles managed block <<</d' "$gitconfig"
+      sed -i '/# >>> dotfiles managed block: git aliases include >>>/,/# <<< end dotfiles managed block <<</d' "$gitconfig"
       echo "==> ~/.gitconfig git-aliases block removed"
     fi
     exit 0
