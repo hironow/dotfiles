@@ -1,0 +1,31 @@
+# Recommended Windows-side WSL2 global config (%USERPROFILE%\.wslconfig).
+#
+# Apply by merging into %USERPROFILE%\.wslconfig, then run `wsl --shutdown`
+# from Windows to reload (NOTE: that stops the self-hosted runner distro —
+# pick an idle moment; see ADR 0035). `just wslconfig` previews this against
+# the live file and prints the apply steps.
+#
+# Deliberately absent (do NOT re-add):
+# - sparseVhd=true — Microsoft disabled sparse conversion over
+#   data-corruption risk (`wsl --manage --set-sparse` demands
+#   --allow-unsafe). A vhdx that is already sparse keeps working and
+#   `fstrim` returns space without this key; shipping it here would spread
+#   the risk to every new machine.
+# - vmIdleTimeout — tested live (2026-08-20): it governs the utility VM,
+#   not distro lifetime. What keeps the runner distro alive is the
+#   keepalive client task (scripts/wsl_autostart.ps1).
+# - [wsl2] memory= / processors= — per-machine limits; set them locally.
+
+[experimental]
+# Gradually return unused cached memory back to Windows.
+autoMemoryReclaim=gradual
+
+# Optional — modern networking (uncomment to opt in, per machine):
+# mirrored mode needs Win11 22H2+ and some VPN stacks break under it, so it
+# stays a documented local opt-in, never a shipped default. Under mirrored,
+# do NOT also set localhostForwarding=true — the key is ignored in that mode
+# and makes every wsl.exe invocation print a warning.
+# [wsl2]
+# networkingMode=mirrored
+# dnsTunneling=true
+# autoProxy=true
