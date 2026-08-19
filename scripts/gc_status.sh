@@ -233,6 +233,32 @@ _windows_status() {
       Where-Object { Test-Path (Join-Path \$_ 'config.cmd') }
     if (-not \$roots) { 'INFO|no native Windows runner installed' }
     foreach (\$r in \$roots) {
+      # Service state first: a Stopped or Disabled service is the silent
+      # killer found live (2026-08-20) — GitHub shows the runner offline and
+      # nothing on the host says so.
+      # Judged on EFFECT, not mechanism: this host deliberately toggles
+      # between service mode and interactive run.cmd mode, so a bare
+      # service-Stopped alarm would stand permanently. FAIL only when the
+      # service is not Running AND no Runner.Listener process exists.
+      \$rc = Join-Path \$r '.runner'
+      if (Test-Path \$rc) {
+        \$cfgj = Get-Content \$rc | ConvertFrom-Json
+        \$ownr = ((\$cfgj.gitHubUrl -replace '^https?://github\.com/','').TrimEnd('/')) -replace '/','-'
+        \$sname = 'actions.runner.' + \$ownr + '.' + \$cfgj.agentName
+        \$svc = Get-Service -Name \$sname -ErrorAction SilentlyContinue
+        \$lsn = @(Get-Process -Name 'Runner.Listener' -ErrorAction SilentlyContinue)
+        if (\$svc -and \$svc.Status -eq 'Running') {
+          'OK|service: Running (StartType=' + \$svc.StartType + ')'
+        } elseif (\$lsn.Count -gt 0) {
+          'WARN|service: ' + \$(if (\$svc) { [string]\$svc.Status } else { 'not installed' }) + ' but Runner.Listener runs outside it (run.cmd mode?) — stops at logoff'
+        } elseif (-not \$svc) {
+          'FAIL|service ''' + \$sname + ''' not installed and no listener (run: just runner-svc-install)'
+        } elseif (\$svc.StartType -eq 'Disabled') {
+          'FAIL|service: ' + \$svc.Status + ' + StartType=Disabled — silently offline (run: just runner-svc-install)'
+        } else {
+          'FAIL|service: ' + \$svc.Status + ' (StartType=' + \$svc.StartType + ') and no listener — run: just runner-svc-install'
+        }
+      } else { 'WARN|no .runner config in ' + \$r + ' — runner never configured' }
       \$env_ = Join-Path \$r '.env'
       \$h = ''
       if (Test-Path \$env_) {
