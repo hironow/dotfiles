@@ -64,6 +64,7 @@ SCRIPTS = ROOT / "scripts"
 GC = SCRIPTS / "runner_gc.sh"
 INSTALL = SCRIPTS / "install_runner_gc.sh"
 COMPACT = SCRIPTS / "wsl_compact.sh"
+VHDX_LIB = SCRIPTS / "wsl_vhdx_lib.sh"
 GC_WIN = SCRIPTS / "runner_gc_win.ps1"
 INSTALL_WIN = SCRIPTS / "install_runner_gc_win.ps1"
 DISK = SCRIPTS / "disk_gc.sh"
@@ -855,6 +856,32 @@ def test_compaction_measures_allocated_not_logical_size() -> None:
     assert "fsutil sparse queryflag" in text, (
         "wsl_compact.sh must report whether the vhdx is sparse: it decides "
         "whether compaction is needed at all."
+    )
+
+
+def test_compaction_resolves_vhdx_for_the_target_distro() -> None:
+    """`find | head -1` picks whichever vhdx enumerates first, not the distro's.
+
+    On a host with Ubuntu + Debian side by side it grabbed Debian's 366 MB
+    vhdx and reported "0 GB slack; not worth it" while the Ubuntu vhdx sat at
+    432 GB with ~200 GB reclaimable. The path must come from the Lxss registry
+    BasePath keyed by DistributionName.
+    """
+    lib = VHDX_LIB.read_text(encoding="utf-8")
+    for text, name in (
+        (COMPACT.read_text(encoding="utf-8"), "wsl_compact.sh"),
+        (lib, "wsl_vhdx_lib.sh"),
+    ):
+        assert "head -1" not in text, (
+            f"{name} must not pick the first ext4.vhdx it finds — a "
+            "multi-distro host measures the wrong disk."
+        )
+    assert "Lxss" in lib and "DistributionName" in lib, (
+        "wsl_vhdx_lib.sh must resolve the vhdx from the Lxss registry "
+        "BasePath matching the target DistributionName."
+    )
+    assert "wsl_vhdx_path" in COMPACT.read_text(encoding="utf-8"), (
+        "wsl_compact.sh must use the shared resolver from wsl_vhdx_lib.sh."
     )
 
 

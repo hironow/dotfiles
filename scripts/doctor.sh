@@ -143,6 +143,36 @@ case "$(uname -s)" in
       echo "    [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';${win_git_cmd}'), 'User')"
     fi
 
+    # 1c) WSL ext4 read-only fallback: a corrupted vhdx makes WSL boot the
+    #     distro on a tmpfs overlay ("mounted read-only as a fallback") —
+    #     shells open, writes silently vanish, the runner turns zombie.
+    #     Inspect ALREADY-RUNNING distros only (never boot WSL as a side
+    #     effect); `wsl -l` output is UTF-16LE, hence the NUL strip.
+    if command -v wsl.exe >/dev/null 2>&1; then
+      # NOTE: no `case` (nor a double-semicolon in any form) inside this uname
+      # branch — tests/unit/test_doctor_windows.py slices the branch up to the
+      # first case terminator, so one here truncates what those tests see.
+      while IFS= read -r _wd; do
+        [ -n "$_wd" ] || continue
+        [[ "$_wd" == docker-desktop* ]] && continue
+        _wroot="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+          wsl.exe -d "$_wd" -e findmnt -no FSTYPE,OPTIONS / 2>/dev/null | tr -d '\0\r')"
+        # judge fstype + FIRST option only: healthy roots carry
+        # `errors=remount-ro` later in the option string
+        # shellcheck disable=SC2086
+        set -- $_wroot ""
+        _wfs="$1" _wopt="${2%%,*}"
+        if [[ "$_wfs" == ext4 && "$_wopt" == rw ]]; then
+          log_ok "wsl-ext4-${_wd}" "'/' is ext4 rw"
+        elif [[ "$_wfs" == overlay || "$_wfs" == tmpfs || ( "$_wfs" == ext4 && "$_wopt" == ro ) ]]; then
+          log_warn "wsl-ext4-${_wd}" "'/' is '${_wroot}' — read-only fallback (ext4 corruption?)"
+          echo '    Diagnose + repair runbook: just wsl-fsck'
+        fi # else: unreadable (distro stopped between list and probe) — skip
+      done <<EOF_WSL
+$(MSYS_NO_PATHCONV=1 wsl.exe -l --running -q 2>/dev/null | tr -d '\0\r')
+EOF_WSL
+    fi
+
     # 2) deploy-managed state: PowerShell profile blocks + global mise
     #    config. Stale mise config is the nastiest drift (an ungated
     #    sheldon aborts every `mise exec` recipe), so surface it early.
