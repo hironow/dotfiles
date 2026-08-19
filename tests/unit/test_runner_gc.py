@@ -167,8 +167,12 @@ def test_windows_scripts_are_ascii_only() -> None:
 
     Any non-ASCII byte then arrives mojibake in the Scheduled Task log, which
     is the only record an unattended run leaves behind.
+
+    Globbed, not listed: a hardcoded tuple silently exempts every .ps1 added
+    after it, and this test is the only gate .ps1 files have (`just check`
+    lints shell and Python, never PowerShell).
     """
-    for script in (GC_WIN, INSTALL_WIN):
+    for script in sorted(SCRIPTS.glob("*.ps1")):
         raw = script.read_bytes()
         assert not raw.startswith(b"\xef\xbb\xbf"), (
             f"{script.name} must not carry a UTF-8 BOM."
