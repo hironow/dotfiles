@@ -169,6 +169,17 @@ else
   fi
 fi
 
+# WSL terminates a distro ~1 min after its last CLIENT exits — systemd
+# services inside do not count. The autostart task's keepalive client is what
+# lets the runner outlive closed terminals. Bracketed pattern: unescaped it
+# would match this probe's own command line.
+_ka="$(pgrep -fc 'dotfiles-wsl-keepaliv[e]' || true)"
+if [ "${_ka:-0}" -ge 1 ]; then
+  _ok "keepalive: attached — distro survives closed terminals"
+else
+  _warn "keepalive: not attached — distro stops ~1min after the last terminal closes (run: just runner-gc-install)"
+fi
+
 printf '        disk: %s\n' "$(df -h / | awk 'NR==2 {print $3" used, "$4" avail ("$5")"}')"
 PROBE
 }
@@ -211,8 +222,10 @@ _windows_status() {
       \$trig = @(\$a.Triggers | ForEach-Object { \$_.CimClass.CimClassName })
       if (\$trig -contains 'MSFT_TaskLogonTrigger') { 'OK|autostart task: logon trigger (' + \$a.State + ')' }
       else { 'FAIL|autostart task: no logon trigger — re-run: just runner-gc-install' }
+      # The task blocks forever as the keepalive, so while healthy its
+      # LastTaskResult is 0x41301 (SCHED_S_TASK_RUNNING = 267009), not 0.
       \$ai = \$a | Get-ScheduledTaskInfo
-      if (\$ai.LastRunTime.Year -ge 2000 -and \$ai.LastTaskResult -ne 0) {
+      if (\$ai.LastRunTime.Year -ge 2000 -and \$ai.LastTaskResult -ne 0 -and \$ai.LastTaskResult -ne 267009) {
         'FAIL|autostart last run: ' + \$ai.LastRunTime + ' (result ' + \$ai.LastTaskResult + ')'
       }
     }

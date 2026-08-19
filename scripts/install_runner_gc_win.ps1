@@ -36,10 +36,20 @@ if (-not (Test-Path $payload)) {
 Write-Host "--- Installing Windows runner disk GC (retention=$Retention) ---"
 
 # 1. Scheduled Task ----------------------------------------------------------
-# Unregister first so re-running never stacks duplicate triggers.
+# Unregister first so re-running never stacks duplicate triggers. A task that
+# was registered S4U (elevated) cannot be unregistered from an UNELEVATED
+# shell; this installer promises to work without Administrator, so keep the
+# existing task and continue with the remaining steps instead of dying here.
+$keepGcTask = $false
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+    try {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Stop
+    }
+    catch {
+        Write-Host "[1/3] scheduled task: $TaskName exists but cannot be replaced unelevated; keeping it as-is"
+        $keepGcTask = $true
+    }
 }
 
 $action = New-ScheduledTaskAction `
@@ -63,23 +73,25 @@ $settings = New-ScheduledTaskSettingsSet `
 # unelevated matters more than the better trigger, so fall back to Interactive
 # and let `just status` report which one is in force.
 $me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-$registered = $false
-try {
-    $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType S4U -RunLevel Limited
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-        -Settings $settings -Principal $principal `
-        -Description 'dotfiles ADR 0035: hourly self-hosted runner disk GC' -ErrorAction Stop | Out-Null
-    Write-Host "[1/3] scheduled task: $TaskName (hourly, runs while logged off)"
-    $registered = $true
-}
-catch {
-    Write-Host "[1/3] S4U needs elevation; falling back to an interactive trigger"
-}
-if (-not $registered) {
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-        -Settings $settings `
-        -Description 'dotfiles ADR 0035: hourly self-hosted runner disk GC' | Out-Null
-    Write-Host "[1/3] scheduled task: $TaskName (hourly, only while signed in)"
+if (-not $keepGcTask) {
+    $registered = $false
+    try {
+        $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType S4U -RunLevel Limited
+        Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+            -Settings $settings -Principal $principal `
+            -Description 'dotfiles ADR 0035: hourly self-hosted runner disk GC' -ErrorAction Stop | Out-Null
+        Write-Host "[1/3] scheduled task: $TaskName (hourly, runs while logged off)"
+        $registered = $true
+    }
+    catch {
+        Write-Host "[1/3] S4U needs elevation; falling back to an interactive trigger"
+    }
+    if (-not $registered) {
+        Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+            -Settings $settings `
+            -Description 'dotfiles ADR 0035: hourly self-hosted runner disk GC' | Out-Null
+        Write-Host "[1/3] scheduled task: $TaskName (hourly, only while signed in)"
+    }
 }
 
 # 2. WSL autostart at logon ---------------------------------------------------
@@ -95,9 +107,16 @@ if (-not (Test-Path $autoPayload)) {
     throw "payload not found: $autoPayload"
 }
 
+$keepAutoTask = $false
 $existingAuto = Get-ScheduledTask -TaskName $AutostartTaskName -ErrorAction SilentlyContinue
 if ($existingAuto) {
-    Unregister-ScheduledTask -TaskName $AutostartTaskName -Confirm:$false
+    try {
+        Unregister-ScheduledTask -TaskName $AutostartTaskName -Confirm:$false -ErrorAction Stop
+    }
+    catch {
+        Write-Host "[2/3] scheduled task: $AutostartTaskName exists but cannot be replaced unelevated; keeping it as-is"
+        $keepAutoTask = $true
+    }
 }
 
 $autoAction = New-ScheduledTaskAction `
@@ -105,21 +124,27 @@ $autoAction = New-ScheduledTaskAction `
     -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Distro {1}' -f $autoPayload, $Distro)
 $autoTrigger = New-ScheduledTaskTrigger -AtLogOn -User $me
 # IgnoreNew: overlapping firings collapse to one (duplicate-start valve).
+# ExecutionTimeLimit 0 (= no limit): the payload ends by BLOCKING as the
+# keepalive client that holds the distro open - WSL terminates a distro
+# ~1 min after its last client exits, systemd services inside do not count.
+# A time limit would kill the task's process tree and the keepalive with it.
 $autoSettings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
     -DontStopIfGoingOnBatteries `
     -AllowStartIfOnBatteries `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
-Register-ScheduledTask -TaskName $AutostartTaskName -Action $autoAction -Trigger $autoTrigger `
-    -Settings $autoSettings `
-    -Description 'dotfiles: start the WSL runner distro at logon (reboot recovery)' | Out-Null
-Write-Host "[2/3] scheduled task: $AutostartTaskName (at logon, distro '$Distro')"
-# Fire once now only to prove the action is RUNNABLE. It proves nothing about
-# reboot recovery: the WSL leg installed first, so the distro is already
-# running and the payload exits at its already-running valve with result 0.
-# The real proof is `just status` after the next reboot.
+    -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+if (-not $keepAutoTask) {
+    Register-ScheduledTask -TaskName $AutostartTaskName -Action $autoAction -Trigger $autoTrigger `
+        -Settings $autoSettings `
+        -Description 'dotfiles: start the WSL runner distro at logon (reboot recovery)' | Out-Null
+    Write-Host "[2/3] scheduled task: $AutostartTaskName (at logon, distro '$Distro')"
+}
+# Fire once now: the payload attaches the keepalive client immediately, so
+# the distro stops depending on an open terminal from this moment on. This
+# still proves nothing about REBOOT recovery (the logon trigger has not
+# fired) - the real proof is `just status` after the next reboot.
 Start-ScheduledTask -TaskName $AutostartTaskName
-Write-Host "      smoke-fired; the real proof is 'just status' after the next reboot"
+Write-Host "      fired now (attaches the keepalive); reboot-recovery proof is 'just status' after the next reboot"
 
 # 3. Runner job-completed hook ----------------------------------------------
 # The runner reads .env from its install dir at service start. Upsert the key

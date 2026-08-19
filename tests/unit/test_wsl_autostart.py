@@ -31,6 +31,18 @@ comes back:
   hand) is a different fact than "the distro failed to start"; folding it
   into the exit code turns the autostart task permanently red while it works
   perfectly. Duplicates are WARN here, FAIL in `just status`.
+- **No keepalive = a 1-minute runner.** WSL terminates a distro shortly
+  after its last CLIENT exits; systemd services inside do not count. This
+  box's runner only ever survived because a terminal happened to stay open
+  (measured live: graceful poweroff ~60-90s after the last wsl.exe client).
+  A boot-and-exit autostart therefore protects nothing — the payload must
+  END by blocking as a persistent keepalive client, and its Scheduled Task
+  must carry no execution time limit (a limit kills the process tree and
+  takes the keepalive with it).
+- **pgrep self-match.** The keepalive-presence probe greps the marker out of
+  process command lines; an unbracketed pattern matches the probe's own
+  command line and reports "already attached" forever (same trap as
+  `pgrep -f Runner.Worker` in runner_gc.sh).
 
 Static checks plus behavioral runs against a stub wsl.exe (`-WslExe` exists
 so the stub can be injected) whenever pwsh is available.
@@ -96,6 +108,18 @@ def test_installer_does_not_claim_the_smoke_fire_proves_recovery() -> None:
     )
 
 
+def test_installer_survives_an_unreplaceable_s4u_task() -> None:
+    """The GC task registers S4U when elevated; a later UNELEVATED re-run
+    cannot unregister it (access denied). The installer claims it needs no
+    Administrator, so it must keep the existing task and continue to the
+    autostart + hook steps instead of dying mid-install."""
+    text = INSTALL_WIN.read_text(encoding="utf-8")
+    assert "keeping it as-is" in text, (
+        "install_runner_gc_win.ps1 must degrade gracefully when the "
+        "existing S4U task cannot be unregistered unelevated."
+    )
+
+
 def test_bash_dispatcher_passes_the_resolved_distro() -> None:
     """install_runner_gc.sh resolves RUNNER_GC_WSL_DISTRO; the ps1 must get
     that same value instead of re-defaulting to 'Ubuntu'."""
@@ -132,6 +156,28 @@ def test_payload_matches_the_distro_exactly() -> None:
     )
 
 
+def test_payload_ends_as_a_blocking_keepalive_client() -> None:
+    """systemd services do not keep a WSL distro alive — only a connected
+    client does. Boot-and-exit would leave the runner dead ~1 min later."""
+    text = AUTOSTART.read_text(encoding="utf-8")
+    assert "dotfiles-wsl-keepalive" in text, (
+        "the payload must attach a marked, persistent keepalive client."
+    )
+    assert "keepaliv[e]" in text, (
+        "the presence probe must bracket-escape its pattern or it matches "
+        "its own command line and reports 'already attached' forever."
+    )
+
+
+def test_installer_gives_the_keepalive_task_no_time_limit() -> None:
+    """An ExecutionTimeLimit kills the task's process tree when it expires —
+    including the keepalive, resurrecting the 1-minute-runner failure."""
+    text = INSTALL_WIN.read_text(encoding="utf-8")
+    assert "-ExecutionTimeLimit (New-TimeSpan -Seconds 0)" in text, (
+        "the autostart task must run without a time limit; it IS the keepalive."
+    )
+
+
 def test_payload_enforces_the_systemd_contract() -> None:
     text = AUTOSTART.read_text(encoding="utf-8")
     assert "is-system-running" in text, (
@@ -153,6 +199,17 @@ def test_status_checks_the_autostart_task_by_trigger_shape() -> None:
         "a logon task is Interactive by design, and LastTaskResult stays 0 "
         "when valve A short-circuits — the trigger class is the only "
         "structural check that means anything."
+    )
+
+
+def test_status_does_not_flag_a_running_keepalive_as_failure() -> None:
+    """A forever-running task reports LastTaskResult 0x41301
+    (SCHED_S_TASK_RUNNING = 267009). Treating non-zero as FAIL turns the
+    healthy keepalive permanently red."""
+    text = STATUS.read_text(encoding="utf-8")
+    assert "267009" in text, (
+        "gc_status.sh must exempt SCHED_S_TASK_RUNNING before judging the "
+        "autostart task's LastTaskResult."
     )
 
 
@@ -198,6 +255,9 @@ if ($line -like '*--list*--running*') {
 }
 if ($line -like '*is-system-running*') { 'running'; exit 0 }
 if ($line -like '*list-units*') { 'actions.runner.test.service loaded active running x'; exit 0 }
+if ($line -like '*keepaliv*' -and $line -like '*pgrep*') {
+    if ($env:STUB_KEEPALIVE -eq '1') { exit 0 } else { exit 1 }
+}
 if ($line -like '*pgrep*') { "$env:STUB_LISTENERS"; exit 0 }
 exit 0
 """
@@ -241,6 +301,7 @@ def test_sibling_distro_does_not_satisfy_the_running_check(tmp_path: Path) -> No
     assert "-d Ubuntu" in calls, (
         "the payload must still start 'Ubuntu' when only a sibling distro is running."
     )
+    assert "while" in calls, "the keepalive must be attached for the target distro."
 
 
 @pwshonly
@@ -253,17 +314,27 @@ def test_nothing_running_nonzero_exit_still_starts(tmp_path: Path) -> None:
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "-d Ubuntu" in calls
+    assert "while" in calls, "the keepalive must be attached."
 
 
 @pwshonly
-def test_already_running_short_circuits_even_with_nul_padding(tmp_path: Path) -> None:
+def test_existing_keepalive_short_circuits_even_with_nul_padding(
+    tmp_path: Path,
+) -> None:
+    """A present keepalive means a prior instance already owns the distro's
+    lifetime — attaching a second one would stack clients forever. The NUL
+    padding on the running list must not defeat the exact-name match."""
     proc, calls = _run_payload(
-        tmp_path, {"STUB_RUNNING_NAMES": "Ubuntu", "STUB_NULS": "1"}
+        tmp_path,
+        {"STUB_RUNNING_NAMES": "Ubuntu", "STUB_NULS": "1", "STUB_KEEPALIVE": "1"},
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "-d Ubuntu" not in calls, (
-        "valve A must short-circuit on an exact (NUL-stripped) match "
-        "without touching wsl again."
+    assert "already running" in proc.stdout, (
+        "the NUL-stripped exact match must recognize the running distro."
+    )
+    assert "while" not in calls, (
+        "the keepalive valve must short-circuit without attaching a second "
+        "keepalive client."
     )
 
 
