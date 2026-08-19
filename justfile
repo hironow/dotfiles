@@ -306,6 +306,21 @@ runner-gc:
 runner-gc-install:
     bash scripts/install_runner_gc.sh
 
+# Runner: install/repair the native Windows runner SERVICE (LocalSystem,
+# delayed-auto, failure recovery, Machine PATH onion check). Idempotent;
+# re-enables a Disabled service in place. Self-elevates via UAC. No
+# -NonInteractive here - it would break the UAC/console interaction.
+# Root override: RUNNER_WIN_ROOT (default %USERPROFILE%ctions-runner-win).
+[group('Disk'), windows, doc('Install/repair the native Windows runner service (UAC self-elevating)')]
+runner-svc-install:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install_runner_svc_win.ps1
+
+# Runner: restart the native Windows runner service (self-elevates via UAC;
+# refuses while a job is executing - Runner.Worker guard).
+[group('Disk'), windows, doc('Restart the native Windows runner service (job-safe, UAC self-elevating)')]
+runner-svc-restart:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/restart_runner_svc_win.ps1
+
 # Disk: diagnose a WSL distro stuck on the read-only overlay fallback (ext4
 # corruption) and print the exact e2fsck repair runbook. Advisory only —
 # repair needs Administrator + `wsl --shutdown` (runner goes offline).
