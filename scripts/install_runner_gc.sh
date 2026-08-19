@@ -54,7 +54,7 @@ case "$(uname -s)" in
     _ps1="${_here}/install_runner_gc_win.ps1"
     if [ -f "$_ps1" ]; then
       powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass \
-        -File "$(cygpath -w "$_ps1")" -Retention "$RETENTION" || _rc=$?
+        -File "$(cygpath -w "$_ps1")" -Retention "$RETENTION" -Distro "$_distro" || _rc=$?
     else
       echo "    ${_ps1} missing; skipping"
     fi

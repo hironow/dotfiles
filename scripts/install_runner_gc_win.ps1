@@ -15,7 +15,11 @@
 [CmdletBinding()]
 param(
     [string]$Retention = '2h',
-    [string]$TaskName = 'dotfiles-runner-gc'
+    [string]$TaskName = 'dotfiles-runner-gc',
+    [string]$AutostartTaskName = 'dotfiles-wsl-autostart',
+    # The distro whose systemd hosts the runner. install_runner_gc.sh forwards
+    # its resolved value so bash and PowerShell share one source of truth.
+    [string]$Distro = $(if ($env:RUNNER_GC_WSL_DISTRO) { $env:RUNNER_GC_WSL_DISTRO } else { 'Ubuntu' })
 )
 
 Set-StrictMode -Version Latest
@@ -65,20 +69,59 @@ try {
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
         -Settings $settings -Principal $principal `
         -Description 'dotfiles ADR 0035: hourly self-hosted runner disk GC' -ErrorAction Stop | Out-Null
-    Write-Host "[1/2] scheduled task: $TaskName (hourly, runs while logged off)"
+    Write-Host "[1/3] scheduled task: $TaskName (hourly, runs while logged off)"
     $registered = $true
 }
 catch {
-    Write-Host "[1/2] S4U needs elevation; falling back to an interactive trigger"
+    Write-Host "[1/3] S4U needs elevation; falling back to an interactive trigger"
 }
 if (-not $registered) {
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
         -Settings $settings `
         -Description 'dotfiles ADR 0035: hourly self-hosted runner disk GC' | Out-Null
-    Write-Host "[1/2] scheduled task: $TaskName (hourly, only while signed in)"
+    Write-Host "[1/3] scheduled task: $TaskName (hourly, only while signed in)"
 }
 
-# 2. Runner job-completed hook ----------------------------------------------
+# 2. WSL autostart at logon ---------------------------------------------------
+# After a reboot nothing starts the WSL distro, so the runner service and the
+# runner-gc.timer stay down until a human opens a terminal. A logon-trigger
+# task closes that gap. Logon, not boot: a boot trigger needs elevation and
+# the WSL VM wants a user session anyway. The distro name is baked into the
+# command line - a Scheduled Task does not inherit this shell's environment,
+# so an env-var default would silently fall back to 'Ubuntu' at logon while
+# every interactive run of this installer works.
+$autoPayload = Join-Path $here 'wsl_autostart.ps1'
+if (-not (Test-Path $autoPayload)) {
+    throw "payload not found: $autoPayload"
+}
+
+$existingAuto = Get-ScheduledTask -TaskName $AutostartTaskName -ErrorAction SilentlyContinue
+if ($existingAuto) {
+    Unregister-ScheduledTask -TaskName $AutostartTaskName -Confirm:$false
+}
+
+$autoAction = New-ScheduledTaskAction `
+    -Execute (Get-Command powershell.exe).Source `
+    -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Distro {1}' -f $autoPayload, $Distro)
+$autoTrigger = New-ScheduledTaskTrigger -AtLogOn -User $me
+# IgnoreNew: overlapping firings collapse to one (duplicate-start valve).
+$autoSettings = New-ScheduledTaskSettingsSet `
+    -MultipleInstances IgnoreNew `
+    -DontStopIfGoingOnBatteries `
+    -AllowStartIfOnBatteries `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+Register-ScheduledTask -TaskName $AutostartTaskName -Action $autoAction -Trigger $autoTrigger `
+    -Settings $autoSettings `
+    -Description 'dotfiles: start the WSL runner distro at logon (reboot recovery)' | Out-Null
+Write-Host "[2/3] scheduled task: $AutostartTaskName (at logon, distro '$Distro')"
+# Fire once now only to prove the action is RUNNABLE. It proves nothing about
+# reboot recovery: the WSL leg installed first, so the distro is already
+# running and the payload exits at its already-running valve with result 0.
+# The real proof is `just status` after the next reboot.
+Start-ScheduledTask -TaskName $AutostartTaskName
+Write-Host "      smoke-fired; the real proof is 'just status' after the next reboot"
+
+# 3. Runner job-completed hook ----------------------------------------------
 # The runner reads .env from its install dir at service start. Upsert the key
 # so repeated runs never duplicate the line, and keep the file ASCII/UTF8
 # without a BOM - the runner's parser chokes on a BOM.
@@ -98,7 +141,7 @@ $roots = @(
 ) | Where-Object { $_ -and (Test-Path (Join-Path $_ 'config.cmd')) }
 
 if (-not $roots) {
-    Write-Host '[2/2] hook: no Windows runner install found; skipped'
+    Write-Host '[3/3] hook: no Windows runner install found; skipped'
 }
 foreach ($root in $roots) {
     $envFile = Join-Path $root '.env'
@@ -108,7 +151,7 @@ foreach ($root in $roots) {
     }
     $lines += "$hookKey=$hookCmd"
     [System.IO.File]::WriteAllLines($envFile, $lines, (New-Object System.Text.UTF8Encoding($false)))
-    Write-Host "[2/2] hook: $envFile -> $hookKey"
+    Write-Host "[3/3] hook: $envFile -> $hookKey"
 }
 
 Write-Host '--- OK. Installed. Restart the runner to pick up the job hook. ---'

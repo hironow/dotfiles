@@ -261,43 +261,45 @@ clean-all: clean clean-cache
 # ------------------------------
 
 # Status: is the disk GC actually collecting? Shows the Windows and WSL legs
-# together — timer/task state, whether the job hook is a path the runner will
-# accept, and whether it was rejected in recent jobs. Read-only (ADR 0035).
-[group('Disk')]
+# together — timer/task/autostart state, whether the job hook is a path the
+# runner will accept, and whether it was rejected in recent jobs. Read-only
+# (ADR 0035). Runner hosts only, hence [windows, linux].
+[group('Disk'), windows, linux, doc('Is the disk GC actually collecting? Both runner legs, read-only')]
 status:
     bash scripts/gc_status.sh
 
 # Disk: report host cache sizes + free space. Measures only, never deletes.
-[group('Disk')]
+[group('Disk'), doc('Report host cache sizes + free space (measures only, never deletes)')]
 disk-report:
     bash scripts/disk_gc.sh report
 
 # Disk: reclaim regenerable host caches (mise stale versions, bun/uv/cargo,
 # npm). Toolchains and project data are out of scope — safe to run unattended.
-[group('Disk')]
+[group('Disk'), doc('Reclaim regenerable host caches (mise/bun/uv/cargo/npm) — safe unattended')]
 disk-gc:
     bash scripts/disk_gc.sh clean
 
 # Disk: collect the WSL self-hosted runner now (docker images/containers/build
 # cache older than 2h, apt, journal). Skips itself while a job is executing.
 # On Windows this dispatches into the WSL distro; needs `runner-gc-install`.
-[group('Disk')]
+[group('Disk'), windows, linux, doc('Collect the self-hosted runner disks now (2h retention, job-safe)')]
 runner-gc:
     bash scripts/runner_gc.sh
 
 # Disk: install the runner GC mechanism inside WSL (hourly timer +
-# job-completed hook + journald cap). Idempotent; re-run after editing
+# job-completed hook + journald cap) and, on Windows, the
+# 'dotfiles-wsl-autostart' logon task that restarts the distro's systemd
+# (runner + GC timer) after a reboot. Idempotent; re-run after editing
 # scripts/runner_gc.sh to re-copy the payload. Root-owned, so it runs via
 # `wsl -u root` on Windows.
-[group('Disk')]
+[group('Disk'), windows, linux, doc('Install runner GC (timer + job hook) and the WSL logon autostart')]
 runner-gc-install:
     bash scripts/install_runner_gc.sh
 
 # Disk: report WSL vhdx slack and print the compaction steps. Advisory only —
 # compaction needs Administrator + a full `wsl --shutdown` (runner goes
 # offline), so it is never self-applied. See ADR 0035.
-[group('Disk')]
-[windows]
+[group('Disk'), windows, doc('Report WSL vhdx slack + compaction steps (advisory, never self-applied)')]
 wsl-compact:
     bash scripts/wsl_compact.sh
 
