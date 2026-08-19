@@ -86,3 +86,36 @@ def test_justfile_wires_wslconfig() -> None:
     assert "config/wsl/wslconfig" in text or "wslconfig_conf.sh" in text, (
         "the wslconfig recipe must reference the template or its advisor script."
     )
+
+
+def test_optional_networking_keys_ship_commented_only() -> None:
+    """networkingMode=mirrored (+ dnsTunneling / autoProxy) are modern
+    recommendations but environment-sensitive: mirrored needs Win11 22H2+ and
+    some VPN stacks break under it. They ship as a commented-out optional
+    block — documented, never active by default."""
+    text = TEMPLATE.read_text(encoding="utf-8")
+    for key in ("networkingMode", "dnsTunneling", "autoProxy"):
+        assert key in text, f"the template must document the optional {key} key."
+        assert not re.search(rf"^\s*{key}\s*=", text, re.MULTILINE), (
+            f"{key} must stay commented out: it is environment-sensitive and "
+            "must be an explicit local opt-in."
+        )
+
+
+def test_advisor_flags_live_misconfigurations() -> None:
+    """The advisor must catch the two live misconfigurations found on the
+    trade box (2026-08-20), not just missing recommended keys:
+
+    - localhostForwarding=true under networkingMode=mirrored is ignored and
+      makes every wsl.exe invocation print a warning.
+    - sparseVhd=true is a dead key (Microsoft gated sparse conversion behind
+      --allow-unsafe); carrying it implies a protection that is not there.
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "localhostForwarding" in text and "mirrored" in text, (
+        "the advisor must warn when localhostForwarding coexists with "
+        "networkingMode=mirrored (the combination is ignored + noisy)."
+    )
+    assert "sparseVhd" in text, (
+        "the advisor must warn when the live file carries the dead sparseVhd key."
+    )

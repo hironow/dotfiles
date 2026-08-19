@@ -37,6 +37,24 @@ else
   missing=1
 fi
 
+# Live misconfigurations (found live 2026-08-20): flag keys that silently do
+# nothing — or worse, imply a protection that is not there.
+if [ -f "${conf}" ]; then
+  if grep -qE '^[[:space:]]*networkingMode[[:space:]]*=[[:space:]]*mirrored' "${conf}" \
+    && grep -qE '^[[:space:]]*localhostForwarding[[:space:]]*=' "${conf}"; then
+    echo "⚠️  localhostForwarding is IGNORED under networkingMode=mirrored (localhost"
+    echo "    works natively there) and makes every wsl.exe invocation print a"
+    echo "    warning — remove the localhostForwarding line."
+    missing=1
+  fi
+  if grep -qE '^[[:space:]]*sparseVhd[[:space:]]*=' "${conf}"; then
+    echo "⚠️  sparseVhd is a dead key: Microsoft gated sparse conversion behind"
+    echo "    --allow-unsafe (data-corruption risk), so this line does nothing —"
+    echo "    remove it and check the real state with: just wsl-compact"
+    missing=1
+  fi
+fi
+
 if [ "${missing}" -eq 0 ]; then
   echo "✅ ${conf} already carries the recommended keys."
   exit 0

@@ -19,3 +19,13 @@
 [experimental]
 # Gradually return unused cached memory back to Windows.
 autoMemoryReclaim=gradual
+
+# Optional — modern networking (uncomment to opt in, per machine):
+# mirrored mode needs Win11 22H2+ and some VPN stacks break under it, so it
+# stays a documented local opt-in, never a shipped default. Under mirrored,
+# do NOT also set localhostForwarding=true — the key is ignored in that mode
+# and makes every wsl.exe invocation print a warning.
+# [wsl2]
+# networkingMode=mirrored
+# dnsTunneling=true
+# autoProxy=true
