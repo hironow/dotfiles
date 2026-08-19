@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,14 @@ def test_clean_has_managed_block_seds() -> None:
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "native Windows: bare `bash` resolves to System32 (WSL) bash, which "
+        "cannot read the drive-lettered fixture path; runs on Linux/WSL/CI "
+        "(the live `just clean`/`just deploy` roundtrip covers Windows)"
+    ),
+)
 @pytest.mark.parametrize("sed_line", _sed_invocations())
 def test_managed_block_sed_removes_the_block(sed_line: str, tmp_path: Path) -> None:
     """Each expression must (a) be valid sed at all and (b) delete exactly the
