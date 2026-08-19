@@ -30,23 +30,10 @@ esac
 
 DISTRO="${RUNNER_GC_WSL_DISTRO:-Ubuntu}"
 
-# Resolve the vhdx for THE TARGET DISTRO from the Lxss registry (BasePath
-# keyed by DistributionName). Taking the first ext4.vhdx found grabs whichever
-# vhdx lists first — on a multi-distro host it measured Debian's 366 MB disk
-# and declared "0 GB slack" while Ubuntu sat at 432 GB.
-_vhdx=""
-_lxss='HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss'
-for _key in $(MSYS_NO_PATHCONV=1 reg.exe query "$_lxss" 2>/dev/null | tr -d '\r' | grep '^HKEY' || true); do
-  _name="$(MSYS_NO_PATHCONV=1 reg.exe query "$_key" /v DistributionName 2>/dev/null | tr -d '\r' \
-    | sed -n 's/.*REG_SZ[[:space:]]*//p')"
-  [ "$_name" = "$DISTRO" ] || continue
-  _bp="$(MSYS_NO_PATHCONV=1 reg.exe query "$_key" /v BasePath 2>/dev/null | tr -d '\r' \
-    | sed -n 's/.*REG_SZ[[:space:]]*//p')"
-  # Store installs prefix the path with \\?\ — strip it before converting.
-  _bp="${_bp#\\\\?\\}"
-  [ -n "$_bp" ] && _vhdx="$(cygpath -u "$_bp")/ext4.vhdx"
-  break
-done
+# Resolve the vhdx for THE TARGET DISTRO (shared with wsl_fsck.sh).
+# shellcheck source=scripts/wsl_vhdx_lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/wsl_vhdx_lib.sh"
+_vhdx="$(wsl_vhdx_path "$DISTRO" || true)"
 
 if [ -z "$_vhdx" ] || [ ! -f "$_vhdx" ]; then
   echo "⚠️  No ext4.vhdx found for distro '${DISTRO}' via the Lxss registry."
