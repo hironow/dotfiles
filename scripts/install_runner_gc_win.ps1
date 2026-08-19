@@ -19,11 +19,19 @@ param(
     [string]$AutostartTaskName = 'dotfiles-wsl-autostart',
     # The distro whose systemd hosts the runner. install_runner_gc.sh forwards
     # its resolved value so bash and PowerShell share one source of truth.
-    [string]$Distro = $(if ($env:RUNNER_GC_WSL_DISTRO) { $env:RUNNER_GC_WSL_DISTRO } else { 'Ubuntu' })
+    [string]$Distro = $(if ($env:RUNNER_GC_WSL_DISTRO) { $env:RUNNER_GC_WSL_DISTRO } else { 'Ubuntu' }),
+    # Set by the UAC relaunch so the child skips re-elevating and transcripts.
+    [switch]$Elevated
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# The elevated child's console vanishes on exit; a transcript is the only
+# surviving output (the parent prints and then dumps this path).
+if ($Elevated) {
+    Start-Transcript -Path (Join-Path $env:TEMP 'runner-gc-install-elevated.log') -Force | Out-Null
+}
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $payload = Join-Path $here 'runner_gc_win.ps1'
@@ -84,7 +92,36 @@ if (-not $keepGcTask) {
         $registered = $true
     }
     catch {
-        Write-Host "[1/3] S4U needs elevation; falling back to an interactive trigger"
+        # S4U ("runs while logged off") needs elevation. Try ONE UAC relaunch
+        # of this script before settling for Interactive: the elevated child
+        # gets the params forwarded explicitly (env/params do not survive UAC)
+        # and transcripts to %TEMP% (its console dies on exit). A converged
+        # host never prompts again - an existing S4U task cannot even be
+        # unregistered unelevated, so the keepGcTask path short-circuits
+        # before this point. A declined prompt falls through to Interactive:
+        # staying installable unattended beats the better trigger.
+        if (-not $Elevated) {
+            $gcLog = Join-Path $env:TEMP 'runner-gc-install-elevated.log'
+            Write-Host "[1/3] S4U needs elevation; requesting UAC (output lands in: $gcLog)"
+            try {
+                $psi = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru `
+                    -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', `
+                    '-File', "`"$($MyInvocation.MyCommand.Path)`"", `
+                    '-Retention', $Retention, '-TaskName', $TaskName, `
+                    '-AutostartTaskName', $AutostartTaskName, '-Distro', $Distro, '-Elevated'
+                if ($psi.ExitCode -eq 0) {
+                    Get-Content $gcLog -ErrorAction SilentlyContinue
+                    exit 0
+                }
+                Write-Host "[1/3] elevated install failed ($($psi.ExitCode)); falling back to an interactive trigger"
+            }
+            catch {
+                Write-Host "[1/3] UAC declined; falling back to an interactive trigger"
+            }
+        }
+        else {
+            Write-Host "[1/3] S4U registration failed even elevated: $_"
+        }
     }
     if (-not $registered) {
         Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
@@ -181,3 +218,4 @@ foreach ($root in $roots) {
 
 Write-Host '--- OK. Installed. Restart the runner to pick up the job hook. ---'
 Write-Host "     Verify: Get-ScheduledTask -TaskName $TaskName"
+if ($Elevated) { Stop-Transcript | Out-Null }
