@@ -1101,3 +1101,33 @@ def test_superseded_runner_versions_need_a_live_symlink() -> None:
         "self-update leftovers need a 24h floor; the 2h retention could catch "
         "an update mid-flight."
     )
+
+
+def test_gc_installer_offers_uac_elevation_for_s4u() -> None:
+    """The hourly GC task only fires while the user is signed in unless its
+    principal is S4U — and S4U registration needs elevation. Found live
+    (2026-08-20): the fallback silently left an Interactive trigger, so a
+    logged-off CI box never collected between jobs.
+
+    The installer must attempt a one-shot UAC relaunch before falling back:
+    - `-Verb RunAs` relaunch of itself, forwarding -Retention and -Distro
+      (the elevated child inherits neither env nor params on its own), with
+      a transcript (the elevated console dies on exit).
+    - The Interactive fallback must SURVIVE a declined prompt — staying
+      installable unattended matters more than the better trigger.
+    - No repeat nagging: an existing S4U task cannot even be unregistered
+      unelevated (the keepGcTask path), so a converged host never prompts.
+    """
+    text = INSTALL_WIN.read_text(encoding="utf-8")
+    assert "-Verb RunAs" in text, (
+        "attempt UAC elevation for the S4U principal before falling back."
+    )
+    assert "'-Retention'" in text and "'-Distro'" in text, (
+        "forward -Retention/-Distro to the elevated child explicitly."
+    )
+    assert "Start-Transcript" in text, (
+        "the elevated child's console closes on exit; transcript or nothing."
+    )
+    assert "only while signed in" in text, (
+        "keep the Interactive fallback for declined/headless installs."
+    )
