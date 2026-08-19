@@ -296,6 +296,14 @@ runner-gc:
 runner-gc-install:
     bash scripts/install_runner_gc.sh
 
+# Disk: diagnose a WSL distro stuck on the read-only overlay fallback (ext4
+# corruption) and print the exact e2fsck repair runbook. Advisory only —
+# repair needs Administrator + `wsl --shutdown` (runner goes offline).
+[group('Disk')]
+[windows]
+wsl-fsck:
+    bash scripts/wsl_fsck.sh
+
 # Disk: report WSL vhdx slack and print the compaction steps. Advisory only —
 # compaction needs Administrator + a full `wsl --shutdown` (runner goes
 # offline), so it is never self-applied. See ADR 0035.

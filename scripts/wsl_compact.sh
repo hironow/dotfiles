@@ -30,11 +30,13 @@ esac
 
 DISTRO="${RUNNER_GC_WSL_DISTRO:-Ubuntu}"
 
-_lad="$(cygpath -u "$LOCALAPPDATA" 2>/dev/null || printf '%s' "${LOCALAPPDATA:-}")"
-_vhdx="$(find "${_lad}/wsl" -name 'ext4.vhdx' -print 2>/dev/null | head -1)"
+# Resolve the vhdx for THE TARGET DISTRO (shared with wsl_fsck.sh).
+# shellcheck source=scripts/wsl_vhdx_lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/wsl_vhdx_lib.sh"
+_vhdx="$(wsl_vhdx_path "$DISTRO" || true)"
 
-if [ -z "$_vhdx" ]; then
-  echo "⚠️  No ext4.vhdx found under ${_lad}/wsl (distro may be store-installed)."
+if [ -z "$_vhdx" ] || [ ! -f "$_vhdx" ]; then
+  echo "⚠️  No ext4.vhdx found for distro '${DISTRO}' via the Lxss registry."
   echo "    Locate it with:  wsl --manage ${DISTRO} --get-location"
   exit 0
 fi
