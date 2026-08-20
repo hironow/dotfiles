@@ -59,16 +59,23 @@ _check_hook() {
 }
 
 # --- WSL leg ----------------------------------------------------------------
+# The rendered probe output is CAPTURED (not streamed) into _WSL_RAW so later
+# sections can consult what this leg found without re-probing. The `|| ...`
+# guards are load-bearing: under `set -e` a failing command substitution in an
+# assignment aborts the whole script, where the old direct pipeline merely
+# returned non-zero.
+_WSL_RAW=""
 _wsl_status() {
   echo "── WSL leg (distro '${DISTRO}') ─────────────────────────────"
   if [ "$_win" -eq 1 ]; then
-    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
-      wsl.exe -d "$DISTRO" -u root -e bash -lc "$(_wsl_probe)" 2>&1 || \
-      _bad "could not query the distro"
+    _WSL_RAW="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+      wsl.exe -d "$DISTRO" -u root -e bash -lc "$(_wsl_probe)" 2>&1 | tr -d '\r\0')" || \
+      { _bad "could not query the distro"; _WSL_RAW=""; }
   else
     # shellcheck disable=SC2091  # deliberately executing the generated probe
-    eval "$(_wsl_probe)"
+    _WSL_RAW="$(eval "$(_wsl_probe)")" || _WSL_RAW=""
   fi
+  [ -n "$_WSL_RAW" ] && printf '%s\n' "$_WSL_RAW"
   echo
 }
 
@@ -185,6 +192,7 @@ PROBE
 }
 
 # --- Windows leg ------------------------------------------------------------
+_WIN_RAW=""
 _windows_status() {
   echo "── Windows leg ──────────────────────────────────────────────"
 
@@ -194,7 +202,7 @@ _windows_status() {
   esac
 
   # -NonInteractive so this never blocks; all of it is read-only.
-  powershell.exe -NoProfile -NonInteractive -Command "
+  _WIN_RAW="$(powershell.exe -NoProfile -NonInteractive -Command "
     \$t = Get-ScheduledTask -TaskName '$TASK' -ErrorAction SilentlyContinue
     if (-not \$t) { 'FAIL|scheduled task ''$TASK'' not registered (run: just runner-gc-install)' }
     else {
@@ -283,14 +291,19 @@ _windows_status() {
     }
     \$d = Get-PSDrive C
     'INFO|disk: C: {0:N1} GB free of {1:N1} GB' -f (\$d.Free/1GB), ((\$d.Free+\$d.Used)/1GB)
-  " 2>/dev/null | tr -d '\r\0' | while IFS='|' read -r _lvl _msg; do
+  " 2>/dev/null | tr -d '\r\0')" || { _WIN_RAW=""; _bad "could not query PowerShell"; }
+  # Rendered from the capture, not a pipeline: a `... | while read` subshell
+  # would discard anything this leg wanted to remember for later sections.
+  [ -n "$_WIN_RAW" ] && while IFS='|' read -r _lvl _msg; do
     case "$_lvl" in
       OK) _ok "$_msg" ;;
       WARN) _warn "$_msg" ;;
       FAIL) _bad "$_msg" ;;
       *) _info "$_msg" ;;
     esac
-  done
+  done <<EOF
+$_WIN_RAW
+EOF
   echo
 }
 
