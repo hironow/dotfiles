@@ -133,3 +133,31 @@ def test_status_recognises_deliberate_interactive_mode() -> None:
         "status must check for the interactive-mode logon task and report "
         "the mode as OK when it is deliberate."
     )
+
+
+def test_interactive_mode_reowns_foreign_work_checkouts() -> None:
+    """Live incident (2026-08-21): after the switch to interactive mode,
+    vrt jobs died in actions/checkout within a second — the _work checkout
+    dirs (comfy/SHAKU/vivo) were still owned by BUILTIN\Administrators from
+    the LocalSystem-service era, and git's dubious-ownership check refuses a
+    repo whose OWNER differs from the running user. The mirror image is
+    already handled (install_runner_svc_win.ps1 warns about user-owned trees
+    under SYSTEM); the interactive path must repair, not just warn — the
+    switch itself created the mismatch, so it owns the cleanup.
+
+    takeown without /A assigns ownership to the CURRENT (elevated) user,
+    which is exactly the runner account here; job-runner dirs only, never
+    the runner-internal _actions/_temp/_tool/_update/_PipelineMapping.
+    """
+    text = MODE.read_text(encoding="utf-8")
+    assert "takeown" in text, (
+        "interactive mode must re-own Administrators-owned _work checkouts "
+        "to the runner user (git dubious-ownership)."
+    )
+    assert "/A" not in text.split("takeown", 1)[1].splitlines()[0], (
+        "takeown must NOT use /A — that assigns to Administrators, which is "
+        "the broken state being repaired."
+    )
+    assert "_PipelineMapping" in text, (
+        "runner-internal dirs are enumerated and skipped, not re-owned."
+    )

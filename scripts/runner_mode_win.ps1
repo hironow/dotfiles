@@ -129,10 +129,41 @@ if ($Mode -eq 'interactive') {
         -Description 'dotfiles: GitHub Actions runner, interactive at logon (GUI e2e needs a user session)' | Out-Null
     Write-Host "[2/3] logon task: $taskName (run.cmd as $me, interactive, no time limit)"
 
+    # [2b/3] _work checkouts created by the LocalSystem service are owned by
+    # BUILTIN\Administrators; git's dubious-ownership check then refuses them
+    # for the interactive user and actions/checkout dies in under a second
+    # (lived 2026-08-21: vrt x2). The switch created the mismatch, so the
+    # switch repairs it: re-own job dirs to the runner user. takeown WITHOUT
+    # /A assigns to the current (elevated) user - exactly the runner account.
+    # Runner-internal dirs are skipped by name, never re-owned.
+    $workRoot = Join-Path $RunnerRoot '_work'
+    if (Test-Path $workRoot) {
+        Import-Module Microsoft.PowerShell.Security -ErrorAction SilentlyContinue
+        $internal = @('_actions', '_temp', '_tool', '_update', '_PipelineMapping')
+        $foreign = @(Get-ChildItem $workRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notin $internal } |
+            Where-Object { (Get-Acl $_.FullName).Owner -ne $me })
+        foreach ($d in $foreign) {
+            Write-Host "      re-owning $($d.Name) (was $((Get-Acl $d.FullName).Owner))"
+            & takeown /F "$($d.FullName)" /R /D Y | Out-Null
+        }
+        if ($foreign.Count -gt 0) {
+            Write-Host "[2b/3] re-owned $($foreign.Count) _work checkout(s) to $me (git dubious-ownership)"
+        } else {
+            Write-Host '[2b/3] _work ownership already matches the runner user'
+        }
+    }
+
     # [3/3] start now and PROVE the fix: the listener must live outside
-    # Session 0. NOTE: unattended reboot recovery additionally needs
-    # auto-logon for this user; without it the runner waits at the logon
-    # screen (deliberate - storing credentials is a human decision).
+    # Session 0. Stop any previous interactive listener first - a re-run of
+    # this switch would otherwise leave two listeners racing for jobs (the
+    # Worker guard above already proved no job is executing).
+    # NOTE: unattended reboot recovery additionally needs auto-logon for
+    # this user; without it the runner waits at the logon screen
+    # (deliberate - storing credentials is a human decision).
+    Get-Process -Name 'Runner.Listener' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
     Start-ScheduledTask -TaskName $taskName
     $listener = $null
     foreach ($i in 1..15) {
