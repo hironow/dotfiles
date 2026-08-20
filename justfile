@@ -315,6 +315,20 @@ runner-gc-install:
 runner-svc-install:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install_runner_svc_win.ps1
 
+# Runner: switch the native runner to INTERACTIVE mode (logon task running
+# run.cmd in the user's session). GUI e2e / user-profile jobs need this -
+# a LocalSystem service runs in Session 0 where WebView2 cannot draw.
+# Stops + Disables the service; UAC self-elevating; refuses mid-job.
+[group('Disk'), windows, doc('Run the native runner interactively at logon (GUI-capable; disables the service)')]
+runner-mode-interactive:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_mode_win.ps1 -Mode interactive
+
+# Runner: switch back to SERVICE mode (delayed-auto; headless boxes only -
+# Session 0 cannot run GUI e2e). Removes the logon task.
+[group('Disk'), windows, doc('Run the native runner as a service again (headless; removes the logon task)')]
+runner-mode-service:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_mode_win.ps1 -Mode service
+
 # Runner: restart the native Windows runner service (self-elevates via UAC;
 # refuses while a job is executing - Runner.Worker guard).
 [group('Disk'), windows, doc('Restart the native Windows runner service (job-safe, UAC self-elevating)')]
