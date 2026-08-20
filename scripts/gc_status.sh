@@ -59,16 +59,23 @@ _check_hook() {
 }
 
 # --- WSL leg ----------------------------------------------------------------
+# The rendered probe output is CAPTURED (not streamed) into _WSL_RAW so later
+# sections can consult what this leg found without re-probing. The `|| ...`
+# guards are load-bearing: under `set -e` a failing command substitution in an
+# assignment aborts the whole script, where the old direct pipeline merely
+# returned non-zero.
+_WSL_RAW=""
 _wsl_status() {
   echo "── WSL leg (distro '${DISTRO}') ─────────────────────────────"
   if [ "$_win" -eq 1 ]; then
-    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
-      wsl.exe -d "$DISTRO" -u root -e bash -lc "$(_wsl_probe)" 2>&1 || \
-      _bad "could not query the distro"
+    _WSL_RAW="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+      wsl.exe -d "$DISTRO" -u root -e bash -lc "$(_wsl_probe)" 2>&1 | tr -d '\r\0')" || \
+      { _bad "could not query the distro"; _WSL_RAW=""; }
   else
     # shellcheck disable=SC2091  # deliberately executing the generated probe
-    eval "$(_wsl_probe)"
+    _WSL_RAW="$(eval "$(_wsl_probe)")" || _WSL_RAW=""
   fi
+  [ -n "$_WSL_RAW" ] && printf '%s\n' "$_WSL_RAW"
   echo
 }
 
@@ -185,6 +192,7 @@ PROBE
 }
 
 # --- Windows leg ------------------------------------------------------------
+_WIN_RAW=""
 _windows_status() {
   echo "── Windows leg ──────────────────────────────────────────────"
 
@@ -194,7 +202,7 @@ _windows_status() {
   esac
 
   # -NonInteractive so this never blocks; all of it is read-only.
-  powershell.exe -NoProfile -NonInteractive -Command "
+  _WIN_RAW="$(powershell.exe -NoProfile -NonInteractive -Command "
     \$t = Get-ScheduledTask -TaskName '$TASK' -ErrorAction SilentlyContinue
     if (-not \$t) { 'FAIL|scheduled task ''$TASK'' not registered (run: just runner-gc-install)' }
     else {
@@ -283,14 +291,95 @@ _windows_status() {
     }
     \$d = Get-PSDrive C
     'INFO|disk: C: {0:N1} GB free of {1:N1} GB' -f (\$d.Free/1GB), ((\$d.Free+\$d.Used)/1GB)
-  " 2>/dev/null | tr -d '\r\0' | while IFS='|' read -r _lvl _msg; do
+  " 2>/dev/null | tr -d '\r\0')" || { _WIN_RAW=""; _bad "could not query PowerShell"; }
+  # Rendered from the capture, not a pipeline: a `... | while read` subshell
+  # would discard anything this leg wanted to remember for later sections.
+  [ -n "$_WIN_RAW" ] && while IFS='|' read -r _lvl _msg; do
     case "$_lvl" in
       OK) _ok "$_msg" ;;
       WARN) _warn "$_msg" ;;
       FAIL) _bad "$_msg" ;;
       *) _info "$_msg" ;;
     esac
-  done
+  done <<EOF
+$_WIN_RAW
+EOF
+  echo
+}
+
+# --- GitHub (the server's view) ----------------------------------------------
+# The local probes can be all green while GitHub shows a runner offline (dead
+# broker session, server-side registration purge — both seen live 2026-08-20).
+# Compose one `name|url|local_up|restart_hint` line per local runner and let
+# gc_github_status.sh ask the server. local_up comes from the captured leg
+# output (_WIN_RAW/_WSL_RAW) — the reason the legs capture at all.
+_github_status() {
+  _here="$(cd "$(dirname "$0")" && pwd)"
+  _lines=""
+
+  _ident() {  # $1 = .runner JSON text; prints "name|url" (empty when unparsable)
+    _n="$(printf '%s\n' "$1" | sed -n 's/.*"agentName": *"\([^"]*\)".*/\1/p' | head -1)"
+    _u="$(printf '%s\n' "$1" | sed -n 's/.*"gitHubUrl": *"\([^"]*\)".*/\1/p' | head -1)"
+    if [ -n "$_n" ] && [ -n "$_u" ]; then printf '%s|%s\n' "$_n" "$_u"; fi
+    return 0
+  }
+
+  _unit_for() {  # $1=name $2=url → the unit name the runner registers
+    # Scope slashes become dashes, name spaces become underscores — the same
+    # normalisation the runner itself applies (observed on both legs live).
+    _p="${2#https://github.com/}"; _p="${_p#http://github.com/}"; _p="${_p%/}"
+    printf 'actions.runner.%s.%s.service' \
+      "$(printf '%s' "$_p" | tr '/' '-')" "$(printf '%s' "$1" | tr ' ' '_')"
+  }
+
+  if [ "$_win" -eq 1 ]; then
+    _uphome="$(cygpath -u "${USERPROFILE:-}" 2>/dev/null || printf '%s' "$HOME")"
+    _win_up=0
+    # 'runs outside it' = the run.cmd-mode WARN: the listener is up either way.
+    case "$_WIN_RAW" in *'service: Running'* | *'runs outside it'*) _win_up=1 ;; esac
+    for _d in "${_uphome}/actions-runner-win" "${_uphome}/actions-runner" /c/actions-runner; do
+      [ -f "${_d}/.runner" ] || continue
+      _id="$(_ident "$(tr -d '\0\r' < "${_d}/.runner")")"
+      [ -n "$_id" ] || continue
+      # The plain restart is REFUSED while Runner.Worker lives (the in-flight
+      # job guard) — exactly the zombie state — so the hint must name the
+      # -Force escape hatch (just runner-svc-restart-force).
+      _lines="${_lines}${_id}|${_win_up}|just runner-svc-restart (refused with 'a job is executing'? abandoning the hung job needs the -Force path: just runner-svc-restart-force)
+"
+    done
+    _wsl_up=0
+    case "$_WSL_RAW" in *'single Runner.Listener'*) _wsl_up=1 ;; esac
+    _wsl_json="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+      wsl.exe -d "$DISTRO" -u root -e sh -c 'cat /home/*/actions-runner*/.runner /root/actions-runner*/.runner /opt/actions-runner*/.runner 2>/dev/null' 2>/dev/null | tr -d '\0\r')" || _wsl_json=""
+    # Concatenated files parse pairwise: the Nth agentName belongs to the Nth
+    # gitHubUrl (each .runner carries exactly one of each).
+    _wn="$(printf '%s\n' "$_wsl_json" | sed -n 's/.*"agentName": *"\([^"]*\)".*/\1/p')"
+    _wu="$(printf '%s\n' "$_wsl_json" | sed -n 's/.*"gitHubUrl": *"\([^"]*\)".*/\1/p')"
+    _i=1
+    while :; do
+      _n="$(printf '%s\n' "$_wn" | sed -n "${_i}p")"
+      [ -n "$_n" ] || break
+      _u="$(printf '%s\n' "$_wu" | sed -n "${_i}p")"
+      if [ -n "$_u" ]; then
+        _lines="${_lines}${_n}|${_u}|${_wsl_up}|wsl -d ${DISTRO} -u root -e systemctl restart $(_unit_for "$_n" "$_u")
+"
+      fi
+      _i=$((_i + 1))
+    done
+  else
+    _loc_up=0
+    case "$_WSL_RAW" in *'single Runner.Listener'*) _loc_up=1 ;; esac
+    for _d in /home/*/actions-runner* /root/actions-runner* /opt/actions-runner*; do
+      [ -f "${_d}/.runner" ] || continue
+      _id="$(_ident "$(tr -d '\0\r' < "${_d}/.runner")")"
+      [ -n "$_id" ] || continue
+      _n="${_id%%|*}"; _u="${_id#*|}"
+      _lines="${_lines}${_id}|${_loc_up}|sudo systemctl restart $(_unit_for "$_n" "$_u")
+"
+    done
+  fi
+
+  printf '%s' "$_lines" | bash "${_here}/gc_github_status.sh" || true
   echo
 }
 
@@ -302,4 +391,5 @@ if [ "$_win" -eq 1 ]; then
 else
   _wsl_status
 fi
+_github_status
 echo "Collect now: just runner-gc    Install/repair: just runner-gc-install"

@@ -321,6 +321,14 @@ runner-svc-install:
 runner-svc-restart:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/restart_runner_svc_win.ps1
 
+# Disk: the -Force escape hatch for the zombie state (`just status` GitHub
+# section): the plain restart is refused while Runner.Worker lives, which is
+# exactly what a hung, cancellation-ignoring job looks like. This KILLS that
+# in-flight job — use it only after deciding the job is lost anyway.
+[group('Disk'), windows, doc('Force-restart the native Windows runner service (KILLS an in-flight job)')]
+runner-svc-restart-force:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/restart_runner_svc_win.ps1 -Force
+
 # Disk: diagnose a WSL distro stuck on the read-only overlay fallback (ext4
 # corruption) and print the exact e2fsck repair runbook. Advisory only —
 # repair needs Administrator + `wsl --shutdown` (runner goes offline).
