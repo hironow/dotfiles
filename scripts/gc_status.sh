@@ -258,7 +258,15 @@ _windows_status() {
         if (\$svc -and \$svc.Status -eq 'Running') {
           'OK|service: Running (StartType=' + \$svc.StartType + ')'
         } elseif (\$lsn.Count -gt 0) {
-          'WARN|service: ' + \$(if (\$svc) { [string]\$svc.Status } else { 'not installed' }) + ' but Runner.Listener runs outside it (run.cmd mode?) — stops at logoff'
+          # A listener outside the service is DELIBERATE when the dotfiles
+          # interactive-mode logon task exists (GUI e2e boxes; see
+          # runner_mode_win.ps1) - report OK, or the standing false alarm
+          # trains the reader to ignore the line.
+          if (Get-ScheduledTask -TaskName 'dotfiles-runner-interactive' -ErrorAction SilentlyContinue) {
+            'OK|interactive mode: logon task + listener in session ' + \$lsn[0].SessionId + ' (service ' + \$(if (\$svc) { [string]\$svc.StartType } else { 'absent' }) + ')'
+          } else {
+            'WARN|service: ' + \$(if (\$svc) { [string]\$svc.Status } else { 'not installed' }) + ' but Runner.Listener runs outside it (run.cmd mode?) — stops at logoff'
+          }
         } elseif (-not \$svc) {
           'FAIL|service ''' + \$sname + ''' not installed and no listener (run: just runner-svc-install)'
         } elseif (\$svc.StartType -eq 'Disabled') {
