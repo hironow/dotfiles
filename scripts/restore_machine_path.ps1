@@ -93,13 +93,42 @@ $missing = @(($baseline + $probed) | Where-Object {
             })
     })
 
+# --- Git\bin ordering (PREPEND, not append) -------------------------------
+# System32 carries the WSL launcher, and a bare `bash` resolves through PATH
+# order -- so Git\bin must sit AHEAD of System32 or every `shell: bash` CI
+# step on this box lands inside a WSL distro (seen live 2026-08-21: E#544
+# lint died with 'uv not on PATH' from C:\WINDOWS\system32\bash.EXE).
+# The pre-incident box carried exactly this ordering; the 2026-08-16 rebuild
+# lost it BECAUSE this script only appended -- the ordering now lives here so
+# the next rebuild keeps it. Git\bin only (bash/sh/git): Git\usr\bin
+# would shadow find/sort and stays banned (blanket-prepend rule).
+$gitBin = "$env:ProgramFiles\Git\bin"
+$needsPrepend = $false
+if (Test-Path $gitBin) {
+    $gitKey = Get-ExpandedKey $gitBin
+    $sysKey = Get-ExpandedKey '%SystemRoot%\system32'
+    $gitIdx = -1
+    $sysIdx = -1
+    for ($i = 0; $i -lt $currentEntries.Count; $i++) {
+        $k = Get-ExpandedKey $currentEntries[$i]
+        if ($gitIdx -lt 0 -and $k -eq $gitKey) { $gitIdx = $i }
+        if ($sysIdx -lt 0 -and $k -eq $sysKey) { $sysIdx = $i }
+    }
+    if ($gitIdx -lt 0 -or ($sysIdx -ge 0 -and $gitIdx -gt $sysIdx)) {
+        $needsPrepend = $true
+    }
+}
+
 Write-Host "Current Machine PATH ($($rawEntries.Count) entries, $dupesRemoved duplicate(s) to collapse):"
 $currentEntries | ForEach-Object { Write-Host "  = $_" }
 Write-Host "Missing entries to append ($($missing.Count)):"
 $missing | ForEach-Object { Write-Host "  + $_" }
+if ($needsPrepend) {
+    Write-Host "Reorder: $gitBin -> FRONT (bare bash must not resolve to System32's WSL launcher)"
+}
 
-if ($missing.Count -eq 0 -and $dupesRemoved -eq 0) {
-    Write-Host 'Machine PATH already complete - nothing to do.'
+if ($missing.Count -eq 0 -and $dupesRemoved -eq 0 -and -not $needsPrepend) {
+    Write-Host 'Machine PATH already complete (incl. Git\bin ordering) - nothing to do.'
     exit 0
 }
 
@@ -120,7 +149,13 @@ if (-not $isAdmin) {
     exit $psi.ExitCode
 }
 
-$newValue = (@($currentEntries) + $missing) -join ';'
+$ordered = @($currentEntries)
+if ($needsPrepend) {
+    $ordered = @($gitBin) + @($currentEntries | Where-Object {
+            (Get-ExpandedKey $_) -ne (Get-ExpandedKey $gitBin)
+        })
+}
+$newValue = (@($ordered) + $missing) -join ';'
 [Microsoft.Win32.Registry]::SetValue(
     $regPath, 'Path', $newValue,
     [Microsoft.Win32.RegistryValueKind]::ExpandString)

@@ -143,6 +143,39 @@ case "$(uname -s)" in
       echo "    [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';${win_git_cmd}'), 'User')"
     fi
 
+    # 1b2) bare-bash resolution: System32 carries the WSL launcher, and a
+    #      bare `bash` (GitHub runner `shell: bash`, any native process)
+    #      resolves through PATH order — so the Machine PATH must reach
+    #      Git\bin BEFORE System32. Seen live 2026-08-21: the 2026-08-16
+    #      Machine PATH rebuild dropped the historical ordering and CI bash
+    #      steps on this box died inside a WSL distro (E#544, 'uv not on
+    #      PATH' from C:\WINDOWS\system32\bash.EXE). Ordering-aware repair:
+    #      restore_machine_path.ps1 now owns the prepend.
+    _git_bin_pos=-1
+    _sys32_pos=-1
+    _i=0
+    while IFS= read -r _e; do
+      _el="${_e,,}"
+      _el="${_el%\\}"
+      if [[ $_git_bin_pos -lt 0 && "$_el" == *'\git\bin' ]]; then
+        _git_bin_pos=$_i
+      fi
+      if [[ $_sys32_pos -lt 0 && ( "$_el" == *'\system32' ) ]]; then
+        _sys32_pos=$_i
+      fi
+      _i=$((_i+1))
+    done <<EOF_MP
+$(printf '%s' "$machine_path" | tr ';' '\n')
+EOF_MP
+    if [[ $_git_bin_pos -ge 0 && ( $_sys32_pos -lt 0 || $_git_bin_pos -lt $_sys32_pos ) ]]; then
+      log_ok 'win-bash-shadow' 'Machine PATH reaches Git\bin before System32 (bare bash = Git Bash)'
+    else
+      log_warn 'win-bash-shadow' 'bare bash resolves to System32 (WSL launcher) -- CI shell:bash steps on this box land inside a WSL distro'
+      printf '%s\n' '    Fix (dry-run first; -Apply prepends Git\bin ahead of System32):'
+      echo '    powershell -ExecutionPolicy Bypass -File scripts/restore_machine_path.ps1'
+      echo '    powershell -ExecutionPolicy Bypass -File scripts/restore_machine_path.ps1 -Apply'
+    fi
+
     # 1c) WSL ext4 read-only fallback: a corrupted vhdx makes WSL boot the
     #     distro on a tmpfs overlay ("mounted read-only as a fallback") —
     #     shells open, writes silently vanish, the runner turns zombie.
