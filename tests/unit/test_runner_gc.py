@@ -909,7 +909,13 @@ def test_hook_payload_carries_a_script_extension() -> None:
 def test_windows_hook_is_a_path_not_a_command_line() -> None:
     """Same validation on Windows: arguments make it not a path."""
     text = INSTALL_WIN.read_text(encoding="utf-8")
-    assert re.search(r"^\s*\$hookCmd\s*=\s*\$payload\s*$", text, re.M), (
+    # The bare payload path, optionally slash-normalised (-replace '\\','/')
+    # for just's dotenv discovery — but never a command-line wrapper.
+    assert re.search(
+        r"^\s*\$hookCmd\s*=\s*\$payload\s*(-replace\s+'\\\\',\s*'/')?\s*$",
+        text,
+        re.M,
+    ), (
         "the Windows hook must be the bare .ps1 path; a `powershell.exe "
         "-File <script>` wrapper fails the runner's path validation."
     )
@@ -1130,4 +1136,25 @@ def test_gc_installer_offers_uac_elevation_for_s4u() -> None:
     )
     assert "only while signed in" in text, (
         "keep the Interactive fallback for declined/headless installs."
+    )
+
+
+def test_windows_hook_path_is_dotenv_parseable() -> None:
+    r"""`just` walks ancestor directories for a `.env` when dotenv-load is
+    on, and a repo checkout lives under the runner root - so the runner's
+    own `.env` IS discovered by every just invocation in every job on the
+    box. Found live (2026-08-21, E#544): the hook value
+    `C:\Users\...\runner_gc_win.ps1` made just's dotenv parser abort
+    ('error parsing line'), failing `just fmt-check` before it ran anything.
+    The WSL leg never hit this because its hook path has no backslashes.
+
+    Windows accepts forward slashes everywhere the hook travels (the
+    runner's extension validation, PowerShell -File), so the installer must
+    write the path with forward slashes - dotenv-parseable by construction.
+    """
+    text = INSTALL_WIN.read_text(encoding="utf-8")
+    assert re.search(r"-replace\s+'\\\\'\s*,\s*'/'", text), (
+        "install_runner_gc_win.ps1 must normalise the hook path to forward "
+        "slashes before writing .env (backslashes break just's dotenv "
+        "discovery in every checkout under the runner root)."
     )
