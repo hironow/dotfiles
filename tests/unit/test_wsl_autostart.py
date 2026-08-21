@@ -213,6 +213,20 @@ def test_status_does_not_flag_a_running_keepalive_as_failure() -> None:
     )
 
 
+def test_status_does_not_flag_a_running_gc_task_as_failure() -> None:
+    """Same 267009 trap, other task: catch `just status` while the hourly GC
+    task is mid-run and its LastTaskResult reads SCHED_S_TASK_RUNNING — seen
+    live 2026-08-22 as a red `FAIL last run: result 267009` directly under a
+    green `scheduled task: Running`. A red line that means 'healthy' trains
+    the reader to ignore the line."""
+    text = STATUS.read_text(encoding="utf-8")
+    assert "running now (result 267009" in text, (
+        "the GC task's last-run judgment must exempt SCHED_S_TASK_RUNNING "
+        "(267009) and report it as running, exactly like the autostart "
+        "task's judgment already does."
+    )
+
+
 def test_status_captures_distro_running_state_once_up_front() -> None:
     """The WSL probe itself boots the distro, so a check made after it always
     reads 'running' (order-dependent silent pass)."""
