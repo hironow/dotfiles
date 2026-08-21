@@ -132,3 +132,62 @@ def test_parses_as_valid_powershell() -> None:
     assert proc.returncode == 0, (
         "restore_machine_path.ps1 has syntax errors:\n" + proc.stdout
     )
+
+
+def test_git_bin_is_prepended_ahead_of_system32() -> None:
+    r"""A bare `bash` on Windows resolves through PATH order, and System32
+    carries the WSL launcher. Found live (2026-08-21): the box's historical
+    "Git\bin before System32" Machine PATH ordering was lost in the
+    2026-08-16 rebuild (this script appends, so the repair itself dropped
+    the ordering), and the first CI job with a `shell: bash` step on the
+    interactive runner died inside a WSL distro ("uv not on PATH", E#544).
+    Workflow-side self-defence exists (hub prefer-git-bash), but jobs that
+    inject no steps (CodeQL default setup) only have the box — so the
+    rebuild script itself must own the ordering, or the next rebuild loses
+    it again.
+
+    Git\bin is safe to front-load: it holds bash/sh/git only (unlike
+    usr\bin, which would shadow find/sort — the reason blanket prepends
+    are banned in CLAUDE.md stays valid).
+    """
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert re.search(r"Git\\bin", text), (
+        r"restore_machine_path.ps1 must manage the Git\bin entry."
+    )
+    assert "prepend" in text.lower(), (
+        r"Git\bin must be PREPENDED (ahead of System32), not appended — "
+        "append order is exactly how the 2026-08-16 rebuild lost it."
+    )
+    assert re.search(r"usr\\+bin", text), (
+        r"the script must document why Git\bin and NOT Git\usr\bin "
+        r"(usr\bin shadows find/sort; see the blanket-prepend ban)."
+    )
+
+
+def test_nothing_to_do_honours_ordering() -> None:
+    r"""'Machine PATH already complete' must also require the ordering to
+    be right — otherwise a PATH with Git\bin trailing System32 reports
+    healthy and the repair never fires."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    m = re.search(
+        r"if \(([^)]*)\) \{\s*\n\s*Write-Host 'Machine PATH already complete",
+        text,
+    )
+    assert m is not None, "the nothing-to-do gate should exist"
+    assert "order" in m.group(1).lower() or "prepend" in m.group(1).lower(), (
+        "the nothing-to-do gate must include the ordering check."
+    )
+
+
+def test_doctor_detects_the_bash_shadow() -> None:
+    r"""doctor must warn when the Machine PATH would resolve a bare `bash`
+    to System32's WSL launcher (Git\bin absent or trailing System32) and
+    point at the repair."""
+    text = (SCRIPT.parent / "doctor.sh").read_text(encoding="utf-8")
+    assert "win-bash-shadow" in text, (
+        "doctor.sh needs a win-bash-shadow check on the Machine PATH."
+    )
+    assert text.count("restore_machine_path.ps1") >= 3, (
+        "the bash-shadow WARN must point at restore_machine_path.ps1 "
+        "(alongside the existing win-machine-path pointers)."
+    )
