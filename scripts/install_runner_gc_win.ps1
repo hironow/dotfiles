@@ -194,7 +194,14 @@ $hookKey = 'ACTIONS_RUNNER_HOOK_JOB_COMPLETED'
 # A `powershell.exe ... -File <script>` wrapper therefore fails on every job
 # while reading perfectly in `.env`. Retention comes from the environment
 # default instead of an argument.
-$hookCmd = $payload
+# FORWARD slashes, deliberately: `just` (dotenv-load) walks ancestor
+# directories for a `.env`, and every checkout lives under the runner root,
+# so this file IS discovered by every just invocation in every job on the
+# box - and just's dotenv parser aborts on backslashes in the value (seen
+# live 2026-08-21: E#544 `just fmt-check` died on 'error parsing line').
+# Windows accepts forward slashes everywhere the value travels (the
+# runner's extension validation, PowerShell -File).
+$hookCmd = $payload -replace '\\', '/'
 
 $roots = @(
     (Join-Path $env:USERPROFILE 'actions-runner-win'),
