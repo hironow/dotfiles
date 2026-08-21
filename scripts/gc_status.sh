@@ -216,6 +216,9 @@ _windows_status() {
       }
       if (\$i.LastRunTime.Year -lt 2000) { 'WARN|last run: never since registration' }
       elseif (\$i.LastTaskResult -eq 0)  { 'OK|last run: ' + \$i.LastRunTime + ' (result 0)' }
+      # 0x41301 (SCHED_S_TASK_RUNNING = 267009): the hourly sweep is simply
+      # mid-run right now — same exemption the autostart task gets below.
+      elseif (\$i.LastTaskResult -eq 267009) { 'OK|last run: running now (result 267009 = still executing)' }
       else { 'FAIL|last run: ' + \$i.LastRunTime + ' (result ' + \$i.LastTaskResult + ')' }
       'INFO|next run: ' + \$i.NextRunTime
     }
