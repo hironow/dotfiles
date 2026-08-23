@@ -209,9 +209,7 @@ def test_windows_gc_docker_calls_carry_a_watchdog() -> None:
         "runner_gc_win.ps1 must route docker through a watchdog wrapper."
     )
     bare = [
-        line
-        for line in text.splitlines()
-        if re.search(r"^\s*[^#]*&\s+docker\b", line)
+        line for line in text.splitlines() if re.search(r"^\s*[^#]*&\s+docker\b", line)
     ]
     assert not bare, (
         f"bare `& docker` invocations can hang forever on a half-dead "
@@ -1212,7 +1210,10 @@ def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
         ],
         capture_output=True,
         text=True,
-        env={**os.environ, "PATH": f"{stub_dir}{os.pathsep}" + os.environ.get("PATH", "")},
+        env={
+            **os.environ,
+            "PATH": f"{stub_dir}{os.pathsep}" + os.environ.get("PATH", ""),
+        },
         timeout=90,
     )
     elapsed = time.monotonic() - start
