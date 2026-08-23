@@ -197,6 +197,30 @@ def test_windows_gc_skips_while_a_job_runs() -> None:
     )
 
 
+def test_windows_gc_docker_calls_carry_a_watchdog() -> None:
+    """A half-dead Docker Desktop answers `docker info` and then hangs the
+    prunes FOREVER (seen live 2026-08-23: engine VM stopped, CLI connected,
+    `container prune` never returned — the hourly S4U task would burn its
+    whole 30-minute ExecutionTimeLimit every hour). Every docker invocation
+    must go through a kill-on-timeout wrapper, `docker info` included: the
+    zombie state passes info and dies one call later."""
+    text = GC_WIN.read_text(encoding="utf-8")
+    assert "Invoke-DockerGuarded" in text, (
+        "runner_gc_win.ps1 must route docker through a watchdog wrapper."
+    )
+    bare = [
+        line for line in text.splitlines() if re.search(r"^\s*[^#]*&\s+docker\b", line)
+    ]
+    assert not bare, (
+        f"bare `& docker` invocations can hang forever on a half-dead "
+        f"daemon; route them through the watchdog: {bare}"
+    )
+    assert "timed out" in text, (
+        "a watchdog kill must leave a log line — the Scheduled Task "
+        "transcript is the only trace an unattended hang leaves."
+    )
+
+
 def test_windows_installer_upserts_hook_without_bom() -> None:
     """The runner's .env parser chokes on a BOM, and re-runs must not stack."""
     text = INSTALL_WIN.read_text(encoding="utf-8")
@@ -1157,4 +1181,47 @@ def test_windows_hook_path_is_dotenv_parseable() -> None:
         "install_runner_gc_win.ps1 must normalise the hook path to forward "
         "slashes before writing .env (backslashes break just's dotenv "
         "discovery in every checkout under the runner root)."
+    )
+
+
+@pwshonly
+def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
+    """Behavioral: a docker that never returns must not hang the sweep."""
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    # Found via Get-Command 'docker' on PATH; sleeps far longer than the
+    # watchdog budget on every invocation (info and prunes alike).
+    (stub_dir / "docker.bat").write_text(
+        "@echo off\nping -n 121 127.0.0.1 >nul\n", encoding="ascii"
+    )
+    root = _make_runner_root(tmp_path)
+    start = time.monotonic()
+    proc = subprocess.run(
+        [
+            PWSH,
+            "-NoProfile",
+            "-File",
+            str(GC_WIN),
+            "-RunnerRoot",
+            str(root),
+            "-Force",
+            "-DockerTimeoutSec",
+            "3",
+        ],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PATH": f"{stub_dir}{os.pathsep}" + os.environ.get("PATH", ""),
+        },
+        timeout=90,
+    )
+    elapsed = time.monotonic() - start
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert elapsed < 60, (
+        f"a hanging docker held the sweep for {elapsed:.0f}s; the watchdog "
+        "must kill it within its budget."
+    )
+    assert "timed out" in proc.stdout, (
+        "the watchdog kill must be logged: " + proc.stdout
     )

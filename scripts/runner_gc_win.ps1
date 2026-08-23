@@ -40,7 +40,12 @@ param(
     # the one irreversible thing this script does, so it earns a rehearsal.
     [switch]$DryRun,
     # Run even when a job is in flight. Only for manual use.
-    [switch]$Force
+    [switch]$Force,
+    # Watchdog budget per docker call. A half-dead Docker Desktop (engine VM
+    # stopped, CLI still connected) answers `docker info` and then hangs the
+    # prunes FOREVER (seen live 2026-08-23); without this the hourly S4U task
+    # burns its whole 30-minute ExecutionTimeLimit every hour.
+    [int]$DockerTimeoutSec = 300
 )
 
 Set-StrictMode -Version Latest
@@ -49,6 +54,35 @@ $ErrorActionPreference = 'Continue'
 function Write-GcLog {
     param([string]$Message)
     Write-Host ("[runner-gc-win] {0} {1}" -f (Get-Date -Format 'o'), $Message)
+}
+
+function Invoke-DockerGuarded {
+    <# Run one docker command under a kill-on-timeout watchdog. Returns the
+       exit code, or $null on a timeout/spawn failure. Never throws: the
+       zombie daemon this guards against passes `docker info` and hangs one
+       call later, so every invocation gets the same treatment. #>
+    param(
+        [string[]]$DockerArgs,
+        [int]$TimeoutSec
+    )
+    try {
+        $proc = Start-Process -FilePath 'docker' -ArgumentList $DockerArgs `
+            -NoNewWindow -PassThru `
+            -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) `
+            -RedirectStandardError ([System.IO.Path]::GetTempFileName())
+    }
+    catch {
+        return $null
+    }
+    if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+        Write-GcLog ("docker: {0} timed out after {1}s (half-dead daemon?); killing it" -f ($DockerArgs -join ' '), $TimeoutSec)
+        # /T: the whole tree. Killing only the top process leaves children
+        # holding inherited handles (and a half-dead docker spawns helpers),
+        # which keeps the caller's pipes open long after we "killed" it.
+        & taskkill /PID $proc.Id /T /F *>$null
+        return $null
+    }
+    return $proc.ExitCode
 }
 
 # Stamped into a workspace whenever a job finishes there. See .NOTES.
@@ -162,8 +196,12 @@ Write-GcLog ("start (retention={0}) - C: {1:N1} GB free" -f $Retention, $free)
 # normal state, not an error.
 $docker = if ($SkipDocker) { $null } else { Get-Command docker -ErrorAction SilentlyContinue }
 if ($docker) {
-    & docker info *>$null
-    if ($LASTEXITCODE -eq 0) {
+    # info gets a short leash: it either answers in seconds or the daemon is
+    # gone. The prunes get the full budget - a large prune legitimately takes
+    # minutes, an infinite one is the zombie this watchdog exists for.
+    $infoBudget = [Math]::Min(60, $DockerTimeoutSec)
+    $infoRc = Invoke-DockerGuarded -DockerArgs @('info') -TimeoutSec $infoBudget
+    if ($infoRc -eq 0) {
         foreach ($step in @(
                 @('container', @('container', 'prune', '-f', "--filter=until=$Retention")),
                 @('image', @('image', 'prune', '-af', "--filter=until=$Retention")),
@@ -173,8 +211,10 @@ if ($docker) {
                 Write-GcLog ("DRY-RUN: would prune docker {0} older than {1}" -f $step[0], $Retention)
                 continue
             }
-            & docker @($step[1]) *>$null
-            Write-GcLog ("docker: pruned {0} older than {1}" -f $step[0], $Retention)
+            $rc = Invoke-DockerGuarded -DockerArgs $step[1] -TimeoutSec $DockerTimeoutSec
+            if ($null -ne $rc) {
+                Write-GcLog ("docker: pruned {0} older than {1}" -f $step[0], $Retention)
+            }
         }
     }
     else {
