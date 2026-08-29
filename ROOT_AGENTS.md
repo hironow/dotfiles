@@ -60,7 +60,7 @@ just test       # uv run pytest
 just lint       # ruff check + mypy
 just fmt        # ruff format
 just semgrep    # semgrep --config .semgrep/rules/ --error  (when .semgrep/ exists)
-just install-hooks   # wire .githooks as core.hooksPath (run once per clone)
+just install-hooks   # prek install --hook-type pre-commit (run once per clone)
 ```
 
 If a command you need isn't a `just` task, add it to the root `justfile` rather
@@ -135,7 +135,8 @@ Open the matching file the moment the trigger applies:
 
 Instructions here are advisory; three mechanical gates are not, and hold the
 non-negotiables regardless of what an agent decides: Claude Code hooks (synced
-to `~/.claude`, pre/post tool call), Git pre-commit (`just install-hooks` →
-`just check`), and CI (`just check` + `tofu plan` drift). A block is policy, not
+to `~/.claude`, pre/post tool call), Git pre-commit (`just install-hooks` =
+`prek install`; runs the hook set `.pre-commit-config.yaml` selects), and CI
+(`just check` + `tofu plan` drift). A block is policy, not
 a suggestion — read the reason and change approach, never route around it.
 Layers, exit-code contract, per-hook coverage, and tuning: docs/agents/enforcement.md.
