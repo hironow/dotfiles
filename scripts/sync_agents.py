@@ -528,7 +528,17 @@ def _compare_directories(source: Path, target: Path) -> bool:
     left_only = [f for f in dcmp.left_only if not _is_excluded_child(dir_name, f)]
     right_only = [f for f in dcmp.right_only if not _is_excluded_child(dir_name, f)]
 
-    if left_only or right_only or dcmp.diff_files:
+    if left_only or right_only or dcmp.funny_files:
+        return False
+
+    # dircmp.diff_files compares SHALLOWLY (size + mtime stat signature): a
+    # same-length change whose mtime collides at the filesystem's timestamp
+    # granularity is reported identical and sync silently skips the update
+    # (observed on podman's virtiofs). Re-check every common file by content.
+    _, mismatch, errors = filecmp.cmpfiles(
+        source, target, dcmp.common_files, shallow=False
+    )
+    if mismatch or errors:
         return False
 
     for subdir in dcmp.common_dirs:
