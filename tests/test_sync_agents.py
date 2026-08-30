@@ -1259,6 +1259,14 @@ def test_sync_agents_preserves_workspace_dirs_in_learned(docker_image):
     # Update the real skill in dotfiles
     echo "# My Real Skill v2" > /root/dotfiles/skills/learned/my-real-skill/SKILL.md
 
+    # Instrumentation for a rare podman/virtiofs flake (sync2 reported
+    # "already in sync" with the change invisible): prove the write is
+    # readable before syncing, and surface both files' stat on failure.
+    grep -q "v2" /root/dotfiles/skills/learned/my-real-skill/SKILL.md \
+        || echo "ERR-source-write-not-visible"
+    stat -c "pre-sync2 src mtime=%Y size=%s" /root/dotfiles/skills/learned/my-real-skill/SKILL.md
+    stat -c "pre-sync2 tgt mtime=%Y size=%s" /root/.claude/skills/learned/my-real-skill/SKILL.md
+
     # Run sync again - should update skill but preserve workspace
     cd /root/dotfiles && just sync-agents all
 
@@ -1273,8 +1281,9 @@ def test_sync_agents_preserves_workspace_dirs_in_learned(docker_image):
     result = _run_in_container(docker_image, cmd)
 
     # then: Workspace dirs preserved, skills updated
+    assert "ERR-source-write-not-visible" not in result.stdout, result.stdout
     assert "initial sync ok" in result.stdout
-    assert "skill updated" in result.stdout
+    assert "skill updated" in result.stdout, result.stdout
     assert "claude workspace preserved" in result.stdout
     assert "workspace contents intact" in result.stdout
     assert "gemini workspace preserved" in result.stdout
