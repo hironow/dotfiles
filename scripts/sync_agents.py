@@ -551,14 +551,26 @@ def _compare_directories(source: Path, target: Path) -> bool:
 
 
 def _get_newest_mtime(path: Path) -> float:
-    """Get the newest modification time of any file in a path (recursively)."""
+    """Get the newest modification time of any file in a path (recursively).
+
+    Children excluded from sync (e.g. `-workspace` dirs under learned/) are
+    skipped: they are never compared or copied, so their activity must not
+    decide import-conflict direction. A busy target-side workspace once made
+    the target look "newer" and the import phase silently overwrote fresher
+    dotfiles content with the target's stale copy.
+    """
     if path.is_file():
         return path.stat().st_mtime
     newest = 0.0
-    for child in path.rglob("*"):
+    if not path.is_dir():
+        return newest
+    for child in path.iterdir():
+        if _is_excluded_child(path.name, child.name):
+            continue
         if child.is_file():
-            mtime = child.stat().st_mtime
-            newest = max(newest, mtime)
+            newest = max(newest, child.stat().st_mtime)
+        elif child.is_dir():
+            newest = max(newest, _get_newest_mtime(child))
     return newest
 
 
