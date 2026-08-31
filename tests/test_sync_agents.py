@@ -1266,6 +1266,21 @@ def test_sync_agents_preserves_workspace_dirs_in_learned(docker_image):
         || echo "ERR-source-write-not-visible"
     stat -c "pre-sync2 src mtime=%Y size=%s" /root/dotfiles/skills/learned/my-real-skill/SKILL.md
     stat -c "pre-sync2 tgt mtime=%Y size=%s" /root/.claude/skills/learned/my-real-skill/SKILL.md
+    python3 - <<'DIAG'
+import filecmp, sys
+from pathlib import Path
+sys.path.insert(0, "/root/dotfiles/scripts")
+from sync_agents import _compare_directories
+src = Path("/root/dotfiles/skills/learned")
+tgt = Path("/root/.claude/skills/learned")
+print("diag compare:", _compare_directories(src, tgt))
+d = filecmp.dircmp(src, tgt)
+print("diag left:", sorted(p.name for p in src.iterdir()))
+print("diag right:", sorted(p.name for p in tgt.iterdir()))
+print("diag common_dirs:", d.common_dirs)
+print("diag src SKILL:", (src / "my-real-skill" / "SKILL.md").read_text().strip())
+print("diag tgt SKILL:", (tgt / "my-real-skill" / "SKILL.md").read_text().strip())
+DIAG
 
     # Run sync again - should update skill but preserve workspace
     cd /root/dotfiles && just sync-agents all
