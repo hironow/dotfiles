@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-08-01
+最終更新: 2026-08-31
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -12,7 +12,16 @@
 
 **現行バージョン**: v1.0.1 (2026-05)
 
-**チェックアウト状態**: `v1.0.1-32-g2cdf197` (v1.0.1 + 32 commits、 HEAD 2026-07-31。 新規リリースタグはなく v1.0.1 が依然最新)
+**チェックアウト状態**: `c0f30b3` (HEAD 2026-08-31。 新規リリースタグはなく v1.0.1 が依然最新)
+
+#### 2026-08-01〜2026-08-31 新着 (docs / governance / build のみ、 14 commits。 spec 非互換なし)
+
+- **A2A が AAIF へ join した旨の blog post を追加** (#2186) — 治理面の注目トピック
+- **build: JSON Schema 生成を導入** (#2074、 issue #2073 解決) — spec の機械可読 schema 生成基盤 (build 変更、 spec 本文は不変)
+- **docs(spec): `PushNotificationConfig` → `TaskPushNotificationConfig` へ rename** (#1981) — v1.0.1 で統合済みの型名への docs 追従
+- **docs(spec): Hybrid Agents section を Life of a Task で明確化** (#2154)、 migration docs の pagination field names 修正 (#2165)
+- **partners リスト**: FAF (#2136) / TiEQi-A2A (#1900) / OpenAgents (#2168) 追加、 broken link 修正 (#2139, #2193)
+- **governance / chore**: rust・repo maintainers 追加 (#2175)、 Todd Segal を Distinguished Engineer へ (#2147)、 ServiceNow 代表更新 (#2142)、 discord links 追加 (#2146)
 
 #### 2026-07-28〜2026-07-31 新着 (docs 中心、 spec 非互換なし)
 
@@ -40,21 +49,17 @@
 - **CI を buf-action へ移行**: 非推奨の buf-setup-action から移行 (#1999)
 - **GitHub Actions 依存を 3 件まとめて更新** (#2035)
 
-#### 2026-06-30 新着 (パートナーリストへの追加)
+#### 2026-06-22〜2026-06-30 新着 (docs / CI のみ、 spec 変更なし)
 
-- **Auto Agent Protocol / Lumika をパートナーリストに追加 (docs のみ)**: `docs/partners.md` に Auto Agent Protocol (A2A の vertical) と Lumika (car dealership サイトへの A2A 統合を推進するパートナー) の2エントリを追加。 spec 変更・破壊的変更なし (#1907)
-
-#### 2026-06-22 新着 (docs / CI のみ、 spec 変更なし)
+- **partners**: Auto Agent Protocol / Lumika を追加 (#1907)
 
 - **docs build CI トリガー追加**: build inputs の変更で docs build を起動 (#1967)
 - **`llms.txt` を v1.0 spec へ整合**: llms.txt を v1.0 spec とサイトナビゲーションに合わせて更新 (#1943)
 - **ホームページバナー更新**: A2A ホームページのバナーを更新 (#1971)
 
-#### 2026-06-12 新着 (ホームページ再構成)
-
-- **ホームページ情報の再構成**: protocol overview のホームページ情報を再構成し、 欠落していたセクションを追加 (#1874)
-
 #### v1.0.1 リリース (2026-05) 後の新着
+
+- **ホームページ情報の再構成** (#1874、 2026-06-12): protocol overview のホームページ情報を再構成し欠落セクションを追加
 
 - **v1.0.1 リリース**: v1.0.0 → v1.0.1 への正式リリース (#1749)
 - **Rust SDK (a2a-rs) 参照追加**: README に Rust SDK (a2a-rs) リファレンス追加、 linter workflow 更新 (#1863)
@@ -114,7 +119,18 @@
 
 **現行バージョン**: production **v0.9.1** (安定版 v0.9 系 patch)。 **v1.0 spec は Release Candidate** (Status: Candidate, 2026-06-08)。 `v0.8`/`v0.9` 軽量タグは共に旧 commit 19919ef4 を指し spec version を表さない (実体は `specification/{v0_8,v0_9,v0_9_1,v1_0}/`)
 
-**チェックアウト状態**: `2276f8cc` (`v0.8-499-g2276f8cc`、 HEAD 2026-08-01。 2026-07-27 以降 30 commits、 新規リリースタグなし)
+**チェックアウト状態**: `392436d9` (`v0.8-589-g392436d9`、 HEAD 2026-08-31。 8月に 42 commits、 新規リリースタグなし)
+
+#### 2026-08-01〜2026-08-31 新着 (Swift SDK 本格実装 + web_core node layer / `Catalog.fromJson` + v1.0 `allowedCallers` rename BREAKING)
+
+- **BREAKING (v1.0 開発中トラック): spec の `callableFrom` を `allowedCallers` へ rename** (#2238) — v1.0 スキーマの関数呼び出し元制御フィールド改名で非互換。 production v0.9.1 利用中は未影響
+- **Swift SDK 大型進捗**: Basic Catalog component schemas + registry (#2377)、 SwiftUI component 実装 (#2400)、 core validation rules / reactivity / type coercion、 **conformance test harness** (#90157ec1)、 Basic Catalog functions (#453bfa07)、 `DataContext` 型導入 (#6bffecb3)、 surface theme を catalog `themeSchema` に対して検証、 message decoder の atomic two-pass validation と single-action mutual exclusivity 強制、 top-level path/call object の binding 解決
+- **web_core**: **node layer を導入** (#2077) + React が `A2uiSurface` を node layer 経由で render (#2393)、 **`Catalog.fromJson` schema ingestion engine** (#9f000841)、 generic binder の schema inference 強化 (#d9086fb7)、 function arg arrays 内の `DynamicValues` 解決 (#2016)
+- **lit**: basic catalog components を **light DOM rendering へ migrate** (#b4eebcdc)
+- **skills**: `a2ui-swift-development` skill 新設 (#2436)、 `a2ui-remediate-problem` skill + copyable 検証 (#57491139)、 glossary respect 指示 (#2405)
+- **explorers**: collapsible sidebars + j/k keyboard navigation (#48874ecc)
+- **eval / docs**: solver prose の保持と format version 正規化 (eval/parser)、 reporter.py の Python 3.10/3.11 対応 (#2199)、 broken relative specification links 修正、 Flutter sample を quickstart guide へ (#2107)
+- **CI**: GitHub Actions runners を ubuntu-latest 系へ切替、 remediation PAT token / quoted `/fix` 対応
 
 #### 2026-07-28〜2026-08-01 新着 (v1.0 spec から surfaceProperties 削除 BREAKING + iframe component + Kotlin DSL engine)
 
@@ -364,9 +380,13 @@
 
 **現行バージョン**: v1.3.1 (2026-06)
 
-**チェックアウト状態**: `v1.3.1-32-gf023035` (v1.3.1 + 32 commits、 HEAD 2026-07-05)
+**チェックアウト状態**: `v1.3.1-33-g040a279` (v1.3.1 + 33 commits、 HEAD 2026-08-17)
 
 **管理**: CMU NeuLab
+
+#### 2026-08-17 新着 (1 commit、 fix のみ)
+
+- **fix: sample-limited dataset extractors を修正** (#307) — dataset 抽出器の sample 制限処理修正。 schema 変更・破壊的変更なし
 
 #### 2026-06-14〜2026-07-05 新着 (データセット拡充 + 整合性監査ツール)
 
@@ -432,9 +452,40 @@
 
 ### AG-UI (Agent-User Interaction Protocol)
 
-**現行バージョン**: **TS SDK 0.0.57** / **@ag-ui/mastra@1.1.1 (新規リリース)** / **@ag-ui/a2ui-toolkit@0.0.4 (TS) + ag-ui-a2ui-toolkit@0.0.4 (Py)** / **@ag-ui/a2ui-middleware@0.0.10** / **@ag-ui/aws-strands@0.2.3 (TS) + ag_ui_strands@0.2.3 (Py)** / **ag_ui_adk@0.7.0 (Py)** / **@ag-ui/langgraph@0.0.42 (TS) + ag-ui-langgraph@0.0.42 (Py)** / **AG-UI .NET SDK (NuGet AGUI.\* 0.0.4)** / Python protocol 0.1.19
+**現行バージョン**: **TS SDK 0.0.59** (@ag-ui/core/client/encoder/proto) / **Python protocol 0.1.21** / **@ag-ui/langgraph@0.0.44 (TS) + ag-ui-langgraph@0.0.44 (Py)** / **@ag-ui/mastra@1.1.2** / **ag_ui_strands@0.3.0 (Py)** / **ag-ui-crewai@0.3.0 (Py) + @ag-ui/crewai@0.0.4 (TS)** / **AG-UI .NET SDK (NuGet AGUI.\* 0.0.6)** / **AG-UI Java SDK 0.1.0 (java-client/core/server)** / 新規: @ag-ui/ag2@0.0.2 / @ag-ui/agno@0.0.6 / @ag-ui/llamaindex@0.2.0 / @ag-ui/pydantic-ai@0.0.3 / @ag-ui/langchain@0.0.3
 
-**チェックアウト状態**: `bb1c2afd` (HEAD 2026-07-30。 HEAD に `release/2026-07-31` + `AGUI.ClaudeManagedAgents@0.0.1` タグ、 レンジ内に `release/2026-07-28` + `ag-ui-crewai@0.2.1` も発行)
+**チェックアウト状態**: `3765923c` (HEAD 2026-08-31 = `ag-ui-langgraph@0.0.44` タグ。 8月に release/2026-08-04〜08-27 のリリースタグ群を発行)
+
+#### 2026-08-01〜2026-08-31 新着 (521 commits: subagent lifecycle をプロトコルへ追加 + metadata on every event + Java SDK 0.1.0 + aws-strands セキュリティ硬化)
+
+**プロトコル追加 (additive)**:
+
+- **subagent lifecycle events + `subagentRunId` attribution をプロトコルへ追加** (#2350): core / client / Python / protobuf (PNI-197) / .NET / langgraph に伝播。 typed `SubagentFinished` outcome (success | suspended)、 per-interrupt attribution、 pre-subagent agents 向け version-gated backward-compat shim。 langgraph は subagent の attribution / lifecycle / HITL suspension / `subagent_visibility` をサポート (#2528)
+- **metadata を全 event / message に追加** (PNI-198, #2349 + review #2535): core の metadata と merge primitive、 Python / protobuf (binary wire) / .NET、 resume entry への metadata (PNI-317, #2458)
+
+**BREAKING (integration 境界)**:
+
+- **aws-strands TypeScript の CORS を opt-in 化し Python と auth parity** (`fix(aws-strands)!`) — 既定で credentials 付き CORS を許可しなくなる。 プロトコルイベント仕様の非互換はなし
+
+**aws-strands ハードニング (8月最大の作業領域)**:
+
+- **URL fetch のセキュリティ**: fetch scheme 制限、 redirect downgrade 拒否、 **DNS rebinding 防止**、 URL fetch ceilings の redirect hop 適用、 zero-net URL target block、 hostile HTTP response の containment、 server-side URL source 検証
+- **auth fail-open path の閉鎖** (複数)、 CORS credentials を policy でなく per-request で決定、 null origin への credentials 拒否
+- **native frontend waits**: frontend wait を native interrupts へ delegate、 `frontend_tool_call` interrupt reason を core/client に追加、 unsafe native frontend identities の拒否、 parked orchestrator 保護、 1 thread での第2 concurrent run 拒否 (Py)
+- **citations**: Bedrock metadata を raw events で emit、 model citations を annotation 対象 message 上に surface、 citations demo (TS/Py)
+- **マルチエージェント**: Python bridge から multi-agent orchestrators を駆動、 invocation state forwarding、 per-thread agent config route
+
+**langgraph (TS/Py)**: boundary checkpoint の durability 修正群 (snapshot pinning / state cache / expiry / root-scoping)、 malformed-input contract の文書化と両 runtime 適用、 multimodal 堅牢化 (MIME-less data URL / subclassed media / attachment modality recovery / nameless attachment 拡張子)、 raw event emission toggle、 `exit` custom event を advisory に定義 (PNI-386)
+
+**SDK / 統合**:
+
+- **AG-UI Java SDK 0.1.0 リリース** (java-client / java-core / java-server)
+- **新規 TS 統合**: @ag-ui/crewai (0.0.4) / @ag-ui/ag2 (0.0.2) / @ag-ui/agno (0.0.6) / @ag-ui/llamaindex (0.2.0、 multimodal) / @ag-ui/pydantic-ai (0.0.3) / @ag-ui/langchain (0.0.3)
+- **ag-ui-crewai@0.3.0 (Py)**: conversational run の空 stream 終了、 abandoned Conversational Flow workers の bound/contain、 OpenAI Responses handling 簡素化
+- **mastra**: segment identity 保持 (buffered text)、 Observable teardown からの cancellation 伝播 (#2288)
+- **adk**: state JSON pointer path の escape
+- **.NET**: 0.0.5 → 0.0.6 (multimodal / metadata / media type 処理の修正群、 subagent events)
+- **release 基盤**: git history から reviewed changelog entries を生成し release PR / GitHub Release へ publish
 
 #### 2026-07-28〜2026-07-31 新着 (Claude Managed Agents 統合 + crewai 1.x 全面対応、 release/2026-07-28・07-31 発行)
 
@@ -666,7 +717,16 @@
 
 **現行バージョン**: **2026-07-28 (GA、 2026-07-28 タグ発行済)**
 
-**チェックアウト状態**: `2026-07-28-48-g73763114` (2026-07-28 タグ + 48 commits、 HEAD 2026-07-30)
+**チェックアウト状態**: `2026-07-28-142-g3ff697dc` (2026-07-28 タグ + 142 commits、 HEAD 2026-08-31)
+
+#### 2026-08-01〜2026-08-31 新着 (55 commits: 次期 spec リリースの roadmap 公開 + community 整備。 spec 本文の変更なし)
+
+- **次期 specification release の roadmap を公開** (#3290): 5 優先領域 — ① agentic messaging primitives、 ② HTTP-native transport の統合と hardening、 ③ agent identity と enterprise-ready security、 ④ improved primitives、 ⑤ improved SDK developer experience。 各領域に maintainer と deliverable を明記し SEP 優先順位への影響も規定。 roadmap blog post (#3291) + Looking back section (#3298) も
+- **Enterprise Interest Group charter 新設** (#2626)、 **transports working group charter 追加**、 Authorization IG を単一 venue へ re-charter
+- **Rust SDK を Tier 1 へ昇格** (SDK listing)、 Cargo (Rust) packages を registry package types に文書化
+- **Node floor を EOL の 20 から 24 へ移行**、 dev 依存の **high-severity advisory 2件を patch** (881ee655)
+- **docs**: subscription completion result の明確化 (71f7c162)、 icon MIME type documentation の hardening、 SEP finalization 要件の明確化、 WG/IG 作成プロセスの整理
+- 依存 bump 群 (typescript-eslint 8.68.0 / eslint 10.9.1 等)。 2026-07-28 spec GA 後も spec 本文・schema の変更はなし
 
 #### 2026-07-28〜2026-07-30 新着 (**2026-07-28 spec 正式リリース (GA)** — stateless protocol 世代へ)
 
@@ -1080,7 +1140,7 @@
 
 **現行バージョン**: v1.1（仕様、 タグなし latest 追従、 直近 spec commit 2026-05-18）
 
-**チェックアウト状態**: `1e08041` (remote HEAD detached、 HEAD 2026-08-01。 前回記録以降の5 commits は全て毎日の `chore: update contributors data` 自動 commit で、 spec 実体の変更は 2026-06-24 以降なし)
+**チェックアウト状態**: `8875c39` (remote HEAD detached、 HEAD 2026-08-31。 前回記録以降の17 commits は全て毎日の `chore: update contributors data` 自動 commit で、 spec 実体の変更は 2026-06-24 以降なし)
 
 **管理**: Universal Tool Calling Protocol コミュニティ（独立 OSS）
 
@@ -1151,11 +1211,19 @@
 
 ### webmcp-tools
 
-**現行バージョン**: **v0.0.3 (2026-07-17)** (evals-cli `webmcp-evals` も 0.0.3)
+**現行バージョン**: **v0.0.4 (2026-08-28)** (evals CLI も `webmcp-evals` v0.0.4 へリネーム)
 
 **管理**: Google Chrome Labs
 
-**チェックアウト状態**: `1946d90` (`v0.0.3-25-g1946d90` = v0.0.3 + 25 commits、 HEAD 2026-07-31。 新タグ未発行)
+**チェックアウト状態**: `97e6fbe` (`v0.0.4-2-g97e6fbe` = v0.0.4 + 2 commits、 HEAD 2026-08-29)
+
+#### 2026-08-01〜2026-08-29 新着 (v0.0.4 リリース: evals-cli → `webmcp-evals` リネーム + tool abort 対応)
+
+- **v0.0.4 リリース** (2026-08-28): evals-cli を **`webmcp-evals` へリネーム** (#379) しタグ発行
+- **feat**: tool 実行の abort に対応 (agent / polyfill)、 local evals の trajectory populate (#396)、 report への browser console errors 取り込み (#361)、 french-bistro demo に imperative tool registration mode (#377)、 tool `inputSchema` が object と string 両方をサポート
+- **Hotel chain readonly tool** (#398)、 **WebMCP Kit / WindTunnel を追加** (#389)
+- **docs**: Open for Agents Storefront (#383)、 MCP Webcomic Site Server を Libraries & Tools へ (#392)
+- deps: `@hono/node-server` / `@modelcontextprotocol/sdk` / `@a2ui/*` ほか bump。 スキーマ非互換なし
 
 #### 2026-07-28〜2026-07-31 新着 (Evals CLI の Puppeteer WebMCP API 化、 v0.0.3 据え置き)
 
@@ -1393,9 +1461,29 @@
 
 ### UCP (Universal Commerce Protocol)
 
-**現行バージョン**: v2026-04-08 (2026-04-13)
+**現行バージョン**: **v2026-08-25 (2026-08-25)**
 
-**チェックアウト状態**: `a839e99` (`git describe` = `v2026-01-23-192-ga839e99`。 リリースタグ v2026-04-08 は現 HEAD から到達不能な別ライン = release-branch 運用のため describe は祖先タグ v2026-01-23 起点、 HEAD 2026-07-31。 新タグ未作成)
+**チェックアウト状態**: `1d399483` (`git describe` = `v2026-01-23-231-g1d399483`、 HEAD 2026-08-27。 HEAD は v2026-08-25 タグ以降の docs 追従 (core concepts 更新 #777))
+
+#### 2026-08-01〜2026-08-27 新着 (**v2026-08-25 protocol release**: multi-vertical 拡張 + request constraints + 3DS2、 破壊的変更 7 件)
+
+**v2026-08-25 リリース** (2026-08-25 タグ、 release announcement #770): major protocol enhancements・multi-vertical 展開のための構造リファクタリング・payments security (3DS2)・structured request constraints・independent capability versioning・grocery shopping readiness を含む大型リリース。
+
+- **Location Search + Lookup capabilities を新設** (#589, `feat!`)、 Fulfillment behavior for location context (#671)
+- **request constraints**: instrument requirements を request constraints で表現、 **PAN と Network Token の credential type 分離** (#424, `feat!`)、 `anyOf` constraint + payments example (#757)、 response-carried request constraints (#655)
+- **構造リファクタリング (multi-vertical 展開)**: Payment constructs を `shopping/` から `common/` へ (#741, `refactor!`)、 common primitive types を `common/types` へ (#736, `refactor!`)、 specification hierarchy を domain verticals (Shopping / Payment / Common) で再編 (#723)、 shopping extensions を nested subfolder へ (#761)
+- **token binding を vertical-agnostic 化** (#746, `refactor!`)
+- **transition & deprecated schema の cleanup + fulfillment 修正** (#763, `fix!`)、 destination types を explicit 化 (#688, `fix!`)
+
+| 破壊的変更 (v2026-08-25) | 影響 |
+|------|------|
+| Location Search + Lookup capabilities (#589) | 新 capability 追加に伴う profile 構造変更 |
+| request constraints + PAN/Network Token credential type 分離 (#424) | instrument requirements 表現の変更、 credential type 明示が必須に |
+| Payment constructs / common types の `common/` 移動 (#741, #736) | extension namespace・schema path の変更、 参照側は追従必要 |
+| token binding の vertical-agnostic 化 (#746) | binding 定義の移行が必要 |
+| transition & deprecated schema cleanup (#763) / destination types explicit 化 (#688) | deprecated schema 利用側は新 schema へ移行 |
+
+**governance**: **Lodging TC 成立** (2026-08-11、 Amadeus / Booking.com / Expedia / Google / Hilton / Marriott / Trip.com)。 Food TC (2026-07-16、 Block/DoorDash/Google/Toast/Uber Eats) に続き vertical 別 Technical Council が2つ目
 
 #### 2026-07-28〜2026-07-31 新着 (cart.id 省略可能化、 fix/docs のみ)
 
@@ -1681,9 +1769,21 @@
 
 ### ADK Python
 
-**現行バージョン**: **v2.6.1 (2026-07-30)** / v1.36.2 (2026-07-21, stable lts)
+**現行バージョン**: **v2.8.0 (2026-08-25)** / v1.39.1 (2026-08-27, stable lts)
 
-**チェックアウト状態**: `f4e72334` (OSS mirror main の HEAD、 HEAD 2026-07-31。 Copybara export + squash-sync 運用のため v2.x タグは main の直系祖先に無く、 `git describe` は最後の到達タグ `v1.32.0-940-gf4e72334` を表示するが、 main の CHANGELOG 先頭は `[2.6.1] (2026-07-30)`。 バージョン参照は明示タグ/CHANGELOG を正とする)
+**チェックアウト状態**: `f449bb70` (OSS mirror main の HEAD、 HEAD 2026-08-31。 Copybara 運用のため `git describe` は `v1.15.0-2774-gf449bb70` を表示するが、 main の CHANGELOG 先頭は `[2.8.0] (2026-08-25)`。 バージョン参照は明示タグ/CHANGELOG を正とする)
+
+#### 2026-08-01〜2026-08-31 新着 (v2.6.2〜v2.8.0 + lts v1.37.0〜v1.39.1: モデル能力宣言 / media 返却 tool / Model Armor / FallbackModel / HITL 強化)
+
+**リリース**: v2.6.2 (08-03) / v2.6.3 (08-07) / **v2.7.0 (08-13)** / v2.7.1 (08-17) / **v2.8.0 (08-25)**、 stable lts 側は v1.37.0 (07-30) / v1.38.0 (08-07) / v1.39.0 (08-17) / v1.39.1 (08-27)。
+
+- **v2.7.0 (correctness release)**: **モデルが自ら capability を宣言** (model id 推論を廃止し output schema × tools の組合わせをモデル能力で判定)、 **tool が media (画像等) を function response で返却可能** (Gemini / Anthropic / LiteLLM / Apigee / OCI)、 会話履歴が thought signatures・server-side tool call parts・並列 function call 結果をラウンドトリップで保持、 **Jinja2 instruction template** (`use_jinja2=True`、 `{{ artifact("name") }}` helper、 任意依存)、 import の高速化と Pydantic 往復・streaming 蓄積の O(n^2) 解消
+- **破壊的 (v2.7.0)**: **`pyarrow` を `gcp` extra から新設の `bigquery-analytics` extra へ移動** — `pip install google-adk[gcp]` が約 50 MB 軽量化。 `BigQueryAgentAnalyticsPlugin` 利用者は `google-adk[bigquery-analytics]` へ
+- **v2.8.0**: **Model Armor guardrail plugin**、 **`FallbackModel` (モデル自動 failover)**、 **ADK 2.0 graph workflows を YAML 設定から load**、 RemoteA2aAgent の native task mode + auth_scheme/auth_credential、 data_agent toolset の CRUD tools、 `ADK_MAX_LLM_CALLS` env、 telemetry (per-invocation / per-workflow token spend、 OTLP logs export、 MCP HTTP exchanges の OTel log records 化)、 live (before/after model callbacks、 VIDEO modality、 streaming tool のユーザー直接送信、 session resumption handle)、 eval (custom metrics、 LLM-as-judge の asyncio.gather 並列化)、 Vertex AI API version 設定、 GcsArtifactService の signed/authenticated URL、 Antigravity の client-side tool outcomes
+- **SECURITY (main / リリース込み)**: **BigQuery tools の SQL injection guard** (d6290a0)、 **relayed agent output を fence して instructions への偽装を防止** (9ffe8be)、 **agent-config code references で YAML / ruamel deserialization を block** (924d802)、 **Pub/Sub・Eventarc trigger に optional OIDC verification** (73d9fe05)、 `app_name` を deploy Dockerfile 補間前に検証 (6eb1d35d)、 forbidden parent/peer agent への transfer 拒否 (b0503a03)、 検証失敗した remote agent card の cache 停止 (2685acd3)
+- **workflow / HITL**: **multi-turn nested HITL pause と workflows・agent tools 横断の resumption** (6d145180)、 hallucinated tool call の callback lifecycle 整合 (f842a15c)、 resume 時の invocation 解決安定化 (8db82ba2, ed1306f5)、 invocation retry の二重 user event 防止 (d06a7fed)、 ParallelAgent の early exit を直下 sub-agent escalation に限定 (cd04c7a7)
+- **その他**: agent clone 時に自身の callback method を rebind (f449bb70)、 generation config (temperature/top_p/…/media_resolution) の Live API 転送 (bd74c42b)、 int-typed tool parameter への integral float coerce (adbee3cd)、 Claude model id を列挙でなく全解決 (01919b37)、 unknown tool name を model へ report (f3377937)、 ContainerCodeExecutor の atexit leak 停止 (04f8df11)、 動的 instruction を user turn と誤読させない label 付け (8cdbbb15)、 session rehydration の O(n^2) 比較解消 (b8dd086)
+- **v1 lts**: v1.39.x で v1 backport review の残課題修正、 api registry credentials を google api endpoints のみへ送信 (#6889)、 session resource name 受け入れ復元 (#6888)
 
 #### 2026-07-27〜2026-07-31 新着 (v2.6.0 / v2.6.1 リリース + main 118 commits: CLI テレメトリ / OCI プロバイダ / サプライチェーン保護)
 
@@ -2187,9 +2287,19 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ### ADK Go
 
-**現行バージョン**: **v2.1.0 (2026-07-23)**（v1 系は v1.5.1 (2026-07-22) を継続メンテ）
+**現行バージョン**: **v2.3.0 (2026-08-31)**（v1 系は v1.6.0 (2026-08-11) を継続メンテ）
 
-**チェックアウト状態**: `v2.1.0-10-ga8e4606` (v2.1.0 + 10 commits、 HEAD 2026-07-26。 新タグ未発行)
+**チェックアウト状態**: `cf61116c` (HEAD = v2.3.0 タグ commit ちょうど、 2026-08-31)
+
+#### 2026-08-01〜2026-08-31 新着 (v2.2.0 / v1.6.0 / v2.3.0 リリース: context compaction suite + credentials-service client + セキュリティ修正)
+
+- **v2.3.0 の目玉 = context compaction suite**: 会話成長に応じた completed invocations の要約 (#1232)、 prompt が閾値を超えた mid-invocation compaction (#1234)、 全 serving surface から到達可能化 (#1235)、 session event 上の compaction record (#1231)、 **re-summarization 間で durable facts を維持** (#1431)、 実 model recording に対するテスト (#1236)
+- **telemetry**: generate_content span に opt-in `gen_ai` content attributes を記録 (#1426)
+- **auth/gcp**: **credentials-service REST client を追加** (#1149)
+- **SECURITY**: **A2A peer 供給の `transferToAgent` metadata の unsafe 利用を修正** (#1226)、 remote agent card source を http(s) URL / path 以外拒否 (#1328, SSRF 緩和)、 **tool confirmation の conflicting requests 拒否** (#1369) と **非 agent 作成 event からの resume 拒否** (#1357)
+- **fix 群**: agenttool result から thinking parts を filter (#696)、 OpenAI model の assistant turn を `output_text` content で replay (#1427)、 nil event guard (#1417)、 Vertex AI session の userId を AIP-160 filter で quote (#1171)、 `load_artifacts` の他 tool call 併用対応 (#1320)、 複数 tool call の artifact delta 保持 (#474)、 llminternal の consecutive thought-only turn を bound (#1290)
+- **v2.2.0 (08-10)**: function call arguments の string/object 両対応 + error reporting 改善 (#1254)、 web launcher listener の h2c 有効化 (#826)
+- **chore**: Go 1.26.6 (#1339)、 OTel logs を 0.21 へ migrate (#1335)、 README に Kotlin/TypeScript 実装追記、 `.agents/skills` + examples authoring skill (#1331)
 
 #### 2026-07-24〜2026-07-26 新着 (v2.1.0 後の未リリース開発: h2c / Vertex AI artifact delta)
 
@@ -2354,9 +2464,17 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ### ADK JS
 
-**現行バージョン**: **v1.5.0 (adk-v1.5.0 / devtools-v1.5.0 / integrations-v1.5.0 / main-v1.5.0、 2026-07-30)**
+**現行バージョン**: **v2.0.0 (adk-v2.0.0 / devtools-v2.0.0 / integrations-v2.0.0、 2026-08-21)**
 
-**チェックアウト状態**: `adk-v1.5.0-18-g81bcc8d` (v1.5.0 + 18 commits、 HEAD 2026-07-31。 軽量タグ運用による素の `git describe` の注意は従前どおり)
+**チェックアウト状態**: `e7fab37` (HEAD 2026-08-30 = v2.0.0 release (#629) + 直後の修正 commit。 軽量タグ運用による素の `git describe` の注意は従前どおり)
+
+#### 2026-08-01〜2026-08-30 新着 (**v2.0.0 メジャーリリース**: optional peers で install 172 packages 化 + typed-errors + ReflectAndRetry plugins)
+
+- **v2.0.0 (2026-08-21, #629)**: **situational subsystems を optional peers 化し `npm install` の package 数を 591 → 172 へ削減** (#626)。 同梱: **typed-errors module (errors/) の adk-python からの port** (#583)、 **`ReflectAndRetryToolPlugin` / `ReflectAndRetryModelPlugin` (自己修復 error recovery)** (#631)、 **RoutedAgent / RoutedLlm の experimental 卒業** (#783)
+- **workflow 堅牢化**: node error の throw でなく fail 処理 (#776)、 caller を待機中 input で resume (#760)、 open interrupt に答えない reply の拒否 (#777)、 dynamic child の pause/fail での caller unwind (#709)、 子の pending interrupt が caller を hold (#759)、 2つの route key での同一 destination 共有 (#763)
+- **SECURITY**: **dev server の read を DNS rebinding から guard** (#744)、 **remote A2A peer へ転送する前に credential material を scrub** (#767)、 **author-blind confirmation-resolution path 2件を閉鎖** (#755)、 **HITL confirmation を承認対象 action に bind** (#771)、 OAuth2 authorization code の log redaction (#640)、 credential response を要求元に bind (#775)
+- **fix 群**: built-in tools を名前で解決 (#811)、 unregistered tool call の graceful 処理 (#790)、 他 tool call との併用時の artifacts / MCP resources load (#639)、 長時間 tool の no-response でも EventActions 保持 (#571)、 code execution の生存 grandchild hang 停止 (#793)、 VertexAiSessionService の event round trip 復元 (#565)、 piped stdin の drop 停止 (#781)、 A2A request metadata の agent 実行への伝播 (#752/#768)
+- **dev / docs**: README に明示的な最小 Node.js version (#800)。 パッケージ構成 (optional peers) 以外に明示された破壊的変更なし
 
 #### 2026-07-24〜2026-07-31 新着 (v1.5.0 リリース (#503) + 直後の開発: A2A auth 必須化 / python パリティ tools)
 
@@ -2563,7 +2681,11 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: v1.10.0
 
-**チェックアウト状態**: `v1.9.0-63-gf16061e` (`git describe` は祖先タグ `v1.9.0` + 63 だが package.json は `1.10.0`。 `v1.10.0` タグは別コミット `6ce7cbb` の別系列で HEAD の祖先ではない、 HEAD 2026-07-24。 下記 Docker Compose 機能群は未だ tag 付き release 未反映の未リリース分)
+**チェックアウト状態**: `560558a` (`git describe` は祖先タグ `v1.9.0` + 70 だが package.json は `1.10.0`。 `v1.10.0` タグは別コミットの別系列で HEAD の祖先ではない、 HEAD 2026-08-20)
+
+#### 2026-08-01〜2026-08-20 新着 (1 commit、 依存 bump のみ)
+
+- **deps**: js-yaml 4.3.0 → 4.3.1 (#308)。 機能変更なし、 tag 付き release は未発行
 
 #### 2026-07-27時点 新着 (依存 bump のみ、 実質変更なし)
 
@@ -2720,7 +2842,11 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: **v0.15.0 (2026-07-28)**
 
-**チェックアウト状態**: `v0.15.0-2-g1911243` (v0.15.0 + 2 commits、 HEAD 2026-07-29)
+**チェックアウト状態**: `0f52b76` (`v0.15.0-32-g0f52b76`、 HEAD 2026-08-31。 新タグ未発行)
+
+#### 2026-08-01〜2026-08-31 新着 (依存 bump のみ、 実質変更なし)
+
+- **deps (17 commits 全て)**: `goquery` 1.13.0 (#529)、 `anthropic-sdk-go` 1.68.0 (#528)、 `genai` 1.70.0 (#527)、 kubernetes group (#524, #519)、 protobuf-grpc group (#525)、 google-cloud group (#523)、 **`google.golang.org/adk` 1.6.0 (#518)**、 ui の npm group 複数。 機能変更なし
 
 #### 2026-07-28〜2026-07-29 新着 (v0.15.0 リリース: delete_cluster safety checks)
 
@@ -2957,6 +3083,10 @@ NO_NEW_COMMITS — HEAD 日付のみ 2026-06-15 に更新。 google.golang.org/a
 
 **性質**: Google 公式の MCP サーバーディレクトリ・デプロイガイダンス・入門例を集約するリポジトリ（継続デプロイ）。
 
+#### 2026-08-17 新着 (デモ agent model 更新)
+
+- **launchmybakery デモの agent model を gemini-3.5-flash へ更新**。 ディレクトリ構成の変更なし
+
 #### 2026-06-18 新着 (Angular CLI MCP 追加)
 
 - **Angular CLI MCP の追加** (#38): Angular CLI MCP サーバーをディレクトリ / 例に組み込み
@@ -2987,7 +3117,14 @@ NO_NEW_COMMITS — HEAD 日付のみ 2026-06-15 に更新。 google.golang.org/a
 
 ### MCP Security
 
-**現行バージョン**: secops-v0.7.0 (2026-03-14)
+**現行バージョン**: secops-v0.7.1 / gti-v0.1.3 / scc-v0.1.1 / secops-soar-v0.1.2 (2026-08-27、 server 別タグ体系)
+
+#### 2026-08-01〜2026-08-29 新着 (SCC v2 API migration + SOAR 修正群 + 4 server タグ発行)
+
+- **scc-mcp**: **SCC v2 API への migration**、 新規 finding tools、 organization-level findings サポート、 mute tool 追加、 filter helpers 抽出・sorting 修正 → **scc-v0.1.1**
+- **secops-mcp**: `test_rule` の buffered hour 計算を end_time を時間先頭へ切捨てて修正 → **secops-v0.7.1**
+- **gti-mcp**: VirusTotal client の `trust_env` 有効化 (proxy 対応) → **gti-v0.1.3**
+- **secops-soar-mcp**: setup entrypoint の整列、 dotenv dependency 宣言、 SOAR session の close 時生成停止・cleanup 冪等化、 case details response key 修正、 SOAR_URL の探し方 docs → **secops-soar-v0.1.2**
 
 #### v0.7.0 以降の変更点
 
@@ -3014,9 +3151,16 @@ NO_NEW_COMMITS — HEAD 日付のみ 2026-06-15 に更新。 google.golang.org/a
 
 ### GenAI Toolbox
 
-**現行バージョン**: **v1.8.0 (2026-07-28)**
+**現行バージョン**: **v1.10.0 (2026-08-27)**
 
-**チェックアウト状態**: `v1.8.0-16-g801d5899665` (v1.8.0 + 16 commits、 HEAD 2026-07-31。 リポ URL は `googleapis/mcp-toolbox` に改称)
+**チェックアウト状態**: `bd444e92eda` (`v1.10.0-2-gbd444e92eda`、 HEAD 2026-08-28。 リポ URL は `googleapis/mcp-toolbox` に改称)
+
+#### 2026-08-01〜2026-08-28 新着 (v1.9.0 / v1.10.0 リリース: FalkorDB / Secure Parameters / read-only mode / databaseinsights)
+
+- **v1.9.0 (2026-08-14)**: 前窓の未リリース分 (Bigtable admin / `bigtable-list-schemas` / Looker dashboard 系 tools / `/healthz` / BigQuery `apiEndpoint`) に加え、 **cloud-sql-connect-gce (pg/mysql/mssql)** (#3740)、 **AlloyDB Advanced Query Insights tools + `databaseinsights` source** (#3722, #3461)、 **groups の `ttlMs` / `cacheScope` customization** (#3805)、 **generic client extension registry** (#3723)、 toolset → group kind の移行 (#3704)、 **Spanner `execute_sql_dql` → `execute_sql_readonly` rename** (#3776、 破壊的リネーム)、 review-prs skill (#3743)
+- **v1.10.0 (2026-08-27)**: **source の native read-only mode と dynamic tool annotations** (#3872)、 **FalkorDB source / tools** (#3692)、 **MCP Secure Parameters を Toolbox experimental extension としてサポート** (#3394)、 **`com.google.cloud/toolbox.v1` extension を v20260728 でサポート** (#3801)、 **firestore-mongodb の `firestore-execute-mql` / `firestore-get-…` tools** (#3826)、 mongodb の runtime collection 指定 (#3715)、 fix-failing-tests skill (#3821)
+- **fix / security 関連**: postgres UUID の string 正規化 (#3806)、 **cloud-storage source の local path 境界で symlink を解決** (#3810)、 custom config reload 時の prebuilt tools merge (#3864)、 config の env var offset を rune space で比較 (#3856)、 postgres-list-active-queries の background process filter (#3885)、 resource leak 対策 (`context.WithoutCancel`, #3849)
+- **CI**: eval step の失敗分離と change detection 高速化 (#3904)。 破壊的変更は Spanner tool rename (#3776) のみ
 
 #### 2026-07-28〜2026-07-31 新着 (v1.8.0 リリース + 直後の開発: Bigtable admin / BigQuery apiEndpoint / healthz)
 
@@ -3284,11 +3428,19 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 
 **現行バージョン**: 継続的デプロイ（バージョンタグなし、 新規追跡開始）
 
-**チェックアウト状態**: `3fcbb9f` (main HEAD、 2026-07-24。 OKF v0.2 への移行 + SPEC.md 更新を含む)
+**チェックアウト状態**: `891034c` (main HEAD、 2026-08-30)
 
 **管理**: Google Cloud Platform（公式 Google 製品ではない sample/tools リポ）
 
 **注目**: **Knowledge Catalog（旧 Dataplex）** = AI-powered な data catalog / metadata management プラットフォーム。 構造化・非構造化データの dynamic knowledge graph を提供し、 AI エージェントに semantics と business context を与える。 本リポは Knowledge Catalog 機能のデモ、 ツール、 そして **context management / enrichment / retrieval** ソリューション構築用の **samples / tools** を収録。 GenAI Toolbox 側の **dataplex → knowledge-catalog リネーム** (#3039) や Cloud SQL / BigQuery 系 DQ Scans 検索ツール (#2444) と同じ「Dataplex 改め Knowledge Catalog」軸に連なる。 **2026-06-20 にリポを Open Knowledge Format (OKF) 中心へ再構成**: トップレベルの `agents/` フォルダを撤去し、 enrichment agent を `okf/src/reference_agent` へ統合（旧 `enrichment_agent` → `reference_agent` にリネーム）。 現構成は `okf/`（OKF reference 実装 + reference_agent）/ `samples/`（discovery, enrichment）/ `toolbox/`（enrichment, mdcode）。
+
+#### 2026-08-01〜2026-08-30 新着 (semantic-model codelab + Spanner Graph push + OWL logical model)
+
+- **mdcode: semantic-model codelab を新設** (#349 ほか): task-focused page 分割 (#335)、 production-ready 表示 (#369)、 binding profile 経由の Spanner deploy (#364)、 paste-safe placeholder (#385)、 RDF diagram の top-down 化 (#380)、 semantic-model deploy guide の再構成 (govern-first, #386)
+- **mdcode: binding profiles を導入** (#358、 design #357) — graph backend を profile から導出し `--no-profile` / `--profile` / `--all-profiles` + `--no-kc` 軸 (#376)
+- **mdcode: Spanner Graph を kcmd push target に追加** (#361)、 Spanner graph の KEY/REFERENCES を物理 column へ解決 (#363)、 KC entity の logical-only source 出力 (#368) と **logical-only model の KC push** (#367)
+- **OWL import**: **純粋な logical model を生成** (#375)、 opt-in compact flow YAML `--compact` (#377)、 `owl:oneOf` / `propertyChainAxiom` / set-level axioms (AllDisjoint*/AllDifferent) の carry、 非-native OWL constructs を custom extensions として carry (#333)、 BigQuery Graph への class hierarchy push (labels + field flattening, #331)
+- **fix / env**: 生成 graph DDL の reserved-word backtick (#382)、 non-addressable entry-link aspect の re-push 許容 (#384)、 Dataplex endpoint と KC type project の env override (#347)
 
 #### 2026-07-27時点 新着 (Open Knowledge Format v0.2 へ移行)
 
@@ -3320,6 +3472,12 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 
 | 対象 | 変更内容 | 対応優先度 |
 |------|---------|-----------|
+| **UCP v2026-08-25 protocol release** (2026-08-25) | multi-vertical 展開の構造リファクタリング (Payment constructs / common types を `common/` へ、 domain verticals 再編)、 Location Search + Lookup capabilities、 request constraints + PAN/Network Token credential type 分離、 token binding の vertical-agnostic 化、 transition & deprecated schema cleanup。 **7 件の `!` commit を含む大型破壊的リリース** | 高 |
+| **ADK Python v2.7.0: pyarrow を `gcp` extra から分離** (2026-08-13) | `pyarrow` が新設 `bigquery-analytics` extra へ移動。 `BigQueryAgentAnalyticsPlugin` 利用者は `google-adk[bigquery-analytics]` の明示 install が必要 | 中 |
+| **AG-UI aws-strands TypeScript CORS opt-in 化** (2026-08、 `fix(aws-strands)!`) | TS adapter が既定で credentials 付き CORS を許可しなくなり Python と auth parity。 該当 integration 利用者は CORS 設定の見直しが必要。 プロトコルイベント仕様の非互換はなし | 中 |
+| **ADK JS v2.0.0** (2026-08-21) | メジャー昇格。 situational subsystems が optional peers 化 (install package 数 591 → 172)。 該当 subsystem 利用時は明示 install が必要 | 中 |
+| **A2UI v1.0 (Candidate) `callableFrom` → `allowedCallers` rename** (#2238、 2026-08) | v1.0 開発中トラックの schema rename で非互換。 production v0.9.1 利用中は未影響 | 中 |
+| **GenAI Toolbox Spanner `execute_sql_dql` → `execute_sql_readonly` rename** (#3776、 v1.9.0) | Spanner ツール名の rename。 呼び出し側は新名称へ移行 | 低 |
 | **MCP 2026-07-28 spec GA — stateless 化が確定** (2026-07-28 タグ発行) | initialize handshake 撤廃・per-request メタ化 (SEP-2575)、 `Mcp-Session-Id` 廃止 (SEP-2567)、 server-initiated request → MRTR (SEP-2322)、 `resources/subscribe` → `subscriptions/listen` 置換、 `MetaObject` rename、 `ping`/`logging/setLevel` 削除、 error code `-32002`→`-32602`、 **HTTP+SSE transport deprecated**。 RC 段階から**正式リリースに昇格**し接続モデルの移行が現実の作業に | 高 |
 | **ADK Python v2.6.0 artifact namespace 化 + LangGraph runtime 必須化** (2026-07-30) | file artifact を app 単位で namespace 化 (f72f0db) — 既存 artifact パスと非互換。 patched async LangGraph runtime を必須化し graph field 型を更新 (551372b)。 あわせて unsafe checkpoint loading を含む LangGraph リリースを依存から除外 | 高 |
 | **A2UI v1.0 spec から `surfaceProperties` 削除** (#2126/#2129, 2026-07 末) | v1.0 (開発中トラック) スキーマからのフィールド削除で非互換。 transport format 用語も `direct_json` へリネーム (#2130)、 default input/output modes を有効 MIME type に制限 (#2097) | 中 |
@@ -3387,6 +3545,19 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 | **Google Analytics MCP** (未リリース) | パッケージ名 `analytics-mcp` にリネーム | 低 |
 
 ### メジャーアップデート
+
+**― 2026-08-31 更新分 (submodule remote HEAD 追従) ―**
+
+0. **NEW: UCP v2026-08-25 protocol release** (2026-08-25) - multi-vertical 拡張 (Location Search + Lookup、 request constraints、 3DS2 security、 independent capability versioning、 grocery readiness)。 **Lodging TC 成立** (Amadeus / Booking.com / Expedia / Google / Hilton / Marriott / Trip.com) も同月
+0. **NEW: AG-UI subagent lifecycle をプロトコルへ追加** (#2350、 2026-08) - `SUBAGENT_*` events + `subagentRunId` attribution を core/client/Python/protobuf/.NET/langgraph に伝播、 **metadata を全 event/message へ** (PNI-198)。 **Java SDK 0.1.0**、 TS SDK 0.0.59、 Python protocol 0.1.21、 新規 TS 統合 5 件 (crewai/ag2/agno/llamaindex/pydantic-ai)
+0. **NEW: ADK JS v2.0.0** (2026-08-21) - メジャーリリース。 optional peers 化で install 591 → 172 packages、 typed-errors port、 ReflectAndRetry plugins、 RoutedAgent/RoutedLlm 卒業
+0. **NEW: ADK Python v2.7.0 / v2.8.0 + lts v1.39.x** (2026-08-13 / 08-25 / 08-27) - v2.7.0 は correctness release (モデル能力宣言 / media 返却 tool / Jinja2 templates)。 v2.8.0 は **Model Armor guardrail plugin** / **FallbackModel** / YAML graph workflows
+0. **NEW: ADK Go v2.2.0 / v2.3.0 + v1.6.0** (2026-08-10 / 08-31 / 08-11) - **context compaction suite** (invocation 要約 / mid-invocation compaction / durable facts)、 credentials-service REST client、 gen_ai content attributes
+0. **NEW: MCP 次期 spec リリースの roadmap 公開** (#3290) - 5 優先領域 (agentic messaging / HTTP-native transport 統合 / agent identity & enterprise security / improved primitives / SDK DX)。 Enterprise IG charter、 Rust SDK Tier 1 昇格
+0. **NEW: GenAI Toolbox v1.9.0 / v1.10.0** (2026-08-14 / 08-27) - FalkorDB source、 **MCP Secure Parameters experimental extension**、 source の read-only mode、 AlloyDB Advanced Query Insights、 `toolbox.v1` extension (v20260728)
+0. **NEW: MCP Security server 別タグ体系で 4 リリース** (2026-08-27) - **SCC v2 API migration** (scc-v0.1.1)、 secops-v0.7.1、 gti-v0.1.3、 secops-soar-v0.1.2
+0. **NEW: webmcp-tools v0.0.4** (2026-08-28) - evals-cli を `webmcp-evals` へ rename、 tool abort 対応、 WebMCP Kit / WindTunnel
+0. **NEW: A2UI Swift SDK 本格実装** (2026-08) - Basic Catalog schemas / SwiftUI components / conformance harness / core validation・reactivity。 web_core は node layer + `Catalog.fromJson` ingestion engine
 
 **― 2026-08-01 更新分 (submodule remote HEAD 追従) ―**
 
@@ -3511,6 +3682,12 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 
 ### セキュリティ更新
 
+- **AG-UI aws-strands (2026-08)**: **URL fetch の scheme 制限・redirect downgrade 拒否・DNS rebinding 防止・zero-net URL target block**、 auth fail-open path の閉鎖、 CORS credentials の per-request 判定と null origin 拒否 (TS は CORS opt-in 化で破壊的)、 unsafe native frontend identities の拒否
+- **ADK JS v2.0.0 (2026-08-21)**: **dev server の DNS rebinding guard (#744)**、 **remote A2A peer への転送前 credential scrub (#767)**、 author-blind confirmation-resolution の閉鎖 (#755)、 HITL confirmation を承認 action に bind (#771)、 OAuth2 authorization code の log redaction (#640)
+- **ADK Python v2.7.x/v2.8.0 + main (2026-08)**: **BigQuery tools の SQL injection guard (d6290a0)**、 **relayed agent output の fence (instructions 偽装防止, 9ffe8be)**、 **agent-config code references の YAML/ruamel deserialization block (924d802)**、 Pub/Sub・Eventarc trigger の OIDC verification (73d9fe05)、 forbidden agent への transfer 拒否 (b0503a03)
+- **ADK Go v2.2.0/v2.3.0 (2026-08)**: **A2A peer 供与 `transferToAgent` metadata の unsafe 利用修正 (#1226)**、 agent card source を http(s)/path に限定 (#1328)、 tool confirmation の conflicting request 拒否 (#1369)・非 agent 作成 event からの resume 拒否 (#1357)
+- **GenAI Toolbox v1.10.0 (2026-08-27)**: **cloud-storage source の local path 境界で symlink を解決して escape 防止 (#3810)**
+- **MCP (2026-08)**: dev 依存の **high-severity advisory 2件を patch** (881ee655)、 Node floor を EOL 20 から 24 へ
 - **ADK Python v2.6.x + main (2026-07-27〜07-31)**: **`constraints-3.11/3.12.txt` publish による transitive 依存のサプライチェーン攻撃緩和（4日バッファ, 75c773e)**、 **unsafe checkpoint loading を含む LangGraph リリースを依存から除外 (1b12ee39)**、 A2A agent card RPC ターゲット制限 (SSRF 緩和, 16cbb7d)、 A2A peer 供給 event actions metadata 無視 (0ba7d3c)、 GKE code sandbox への cluster credential 非マウント (8207880)、 `config.http_options` credential の trace 除外 (761f1ac)、 skill name 検証 (11101ac)、 executor timeout 時の暴走コード kill (27548e3)
 - **ADK JS v1.5.0 (2026-07-30)**: **A2A server マウント時の認証必須化 (#529)**、 **インライン skill script 実行前の確認必須化 (#528)**、 **zipped skills の zip-slip 拒否 (#584)**、 `UnsafeLocalCodeExecutor` の PowerShell `-NoProfile` / cmd.exe `/D` (#566)、 `randomUUID` の暗号学的安全化 (#577)
 - **GKE MCP v0.15.0 (2026-07-28)**: **`delete_cluster` への safety checks (#481)**、 脆弱性系 bump: `brace-expansion` 5.0.7 (#483) / `fast-uri` 3.1.4 (#485)
