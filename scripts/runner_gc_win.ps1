@@ -265,6 +265,32 @@ foreach ($root in $runnerRoots) {
         }
     }
 
+    # ~/.bun/bin rename-away litter: the hub's setup-bun-canary renames a
+    # BUSY bun.exe/bunx.exe aside as *.stale-<guid> instead of fighting the
+    # image lock (m4k3-co/.github#70; bunx is a HARDLINK of bun, so any live
+    # bun process blocks an overwrite - manga-uri light-0201). Its own sweep
+    # runs only at the next install and is best-effort, so on a box where an
+    # interactive bun lives for hours the 86MB-per-file litter can sit
+    # indefinitely. 24h floor, deliberately NOT the 2h retention: a fresher
+    # stale file may still be held by the very process it was renamed away
+    # from (deleting under a live image fails; the floor keeps the GC from
+    # churning while a long interactive session holds it).
+    $bunBin = Join-Path $env:USERPROFILE '.bun\bin'
+    if (Test-Path $bunBin) {
+        $staleCutoff = (Get-Date).AddHours(-24)
+        $bunStale = @(Get-ChildItem $bunBin -Filter '*.stale-*' -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -lt $staleCutoff })
+        if ($DryRun) {
+            if ($bunStale.Count) {
+                Write-GcLog ("DRY-RUN: would sweep {0} .bun\bin *.stale-* file(s)" -f $bunStale.Count)
+            }
+        }
+        elseif ($bunStale.Count) {
+            $bunStale | Remove-Item -Force -ErrorAction SilentlyContinue
+            Write-GcLog ("bun: swept {0} rename-away stale file(s) older than 24h" -f $bunStale.Count)
+        }
+    }
+
     # _temp is pure scratch - the runner recreates it per job.
     $temp = Join-Path $root '_work\_temp'
     if (Test-Path $temp) {

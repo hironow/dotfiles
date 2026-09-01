@@ -1225,3 +1225,31 @@ def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
     assert "timed out" in proc.stdout, (
         "the watchdog kill must be logged: " + proc.stdout
     )
+
+
+def test_win_gc_sweeps_bun_stale_renames_with_a_day_floor() -> None:
+    r"""The hub's setup-bun-canary renames a busy bun.exe/bunx.exe aside as
+    `*.stale-<guid>` instead of fighting the lock (m4k3-co/.github#70;
+    bunx is a HARDLINK of bun, so any live bun process blocks an overwrite -
+    manga-uri light-0201). Its own sweep runs only at the NEXT install and is
+    best-effort, so on a box where interactive bun runs live for hours the
+    86MB-per-file litter can sit in ~/.bun/bin indefinitely. The hourly GC is
+    the natural janitor.
+
+    A 24h floor, deliberately NOT the 2h retention: a stale file may belong
+    to a bun process that is still executing (that is WHY it was renamed);
+    deleting under a live image fails harmlessly, but the floor keeps the GC
+    from churning on files whose holder is a long interactive session - same
+    reasoning as the runner self-update leftovers floor.
+    """
+    text = GC_WIN.read_text(encoding="utf-8")
+    assert re.search(r"\.bun\\bin|\.bun.bin", text), (
+        "runner_gc_win.ps1 must sweep the user's ~/.bun/bin."
+    )
+    assert "stale-" in text, (
+        "the sweep targets the *.stale-* rename-away litter, nothing else in .bun/bin."
+    )
+    assert re.search(r"AddHours\(-24\)|AddDays\(-1\)", text), (
+        "24h floor: a fresher stale file may still be held by the very "
+        "process it was renamed away from."
+    )
