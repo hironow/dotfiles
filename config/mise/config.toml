@@ -10,12 +10,12 @@ bun = "latest"
 go = "latest"
 node = "lts"
 just = "latest"
-rust = "1.97.0"
+rust = "1.98.0"
 # opentofu — terraform-compatible IaC. Required by `just test-iac`
 # so `mise x -- tofu` resolves from the non-mise-activated bash
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
 # no shims PATH). Pinned for repeatable IaC test runs across machines.
-opentofu = "1.12.3"
+opentofu = "1.12.6"
 uv = "latest"
 kotlin = "latest"
 java = "latest"
@@ -31,7 +31,7 @@ prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
-"npm:portless" = "0.15.1"
+"npm:portless" = "0.15.6"
 # eza — modern ls replacement aliased unconditionally-now-guarded in
 # .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
 # it on PATH for every dir; without a config source the installed
@@ -67,7 +67,7 @@ starship = "1.26.0"
 # Declared here so WSL (no Homebrew) gets it; on a Mac brew also provides it.
 # Pinned so the install resolves past the 7d quarantine. (opentofu, the other
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
-fzf = "0.74.0"
+fzf = "0.74.3"
 
 # AI agent CLIs. Project-pinned in the repo mise.toml so Coder
 # workspaces boot with them ready; declared here at "latest" so they
@@ -99,12 +99,13 @@ fzf = "0.74.0"
 # "Transitioning Gemini CLI to Antigravity CLI"). GitHub-release binary
 # via mise's github backend; exe is `antigravity`. SUPPLY-CHAIN NOTE: no
 # SLSA/Sigstore attestation or SHA sidecar is published for these releases
-# (gh attestation API 404), so there is no enforced provenance gate — see
-# the repo mise.toml. Pinned to a concrete version (NOT "latest") to keep
-# the same pin as repo mise.toml (first release was 2026-06-01). Tracks the
-# true newest release under the LLM-CLI quarantine exemption (see repo
-# mise.toml), not the 7-days-old rule; bump both together.
-"github:google-antigravity/antigravity-cli" = { version = "1.1.4", exe = "antigravity" }
+# (gh attestation API 404), so there is no enforced provenance gate.
+# QUARANTINE EXEMPTION (LLM CLI): pinned to the *true* newest release,
+# not the 7-days-old rule the rest of this file follows — same policy as
+# the other LLM CLIs above (first release was 2026-06-01). If the newest
+# release is younger than 7d, install this pin with
+# MISE_MINIMUM_RELEASE_AGE=0 mise install.
+"github:google-antigravity/antigravity-cli" = { version = "1.1.23", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Declared "latest" like the
 # AI CLIs above; the minimum_release_age="7d" quarantine below makes

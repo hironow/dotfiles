@@ -168,7 +168,7 @@ step_mise_bootstrap() {
       fi
       ;;
     linux)
-      _mise_ver="2026.7.0"
+      _mise_ver="2026.9.0"
       case "$(uname -m)" in
         x86_64) _mise_tgt="linux-x64-musl" ;;
         aarch64 | arm64) _mise_tgt="linux-arm64-musl" ;;
@@ -245,9 +245,10 @@ step_just_bootstrap() {
       # feature and no brew, download the pinned `just` release binary to
       # ~/.local/bin (user-local, no sudo) and verify it against the release's
       # SHA256SUMS. We deliberately avoid `curl | bash` (repo guardrail forbids
-      # piping remote scripts to a shell). Version pinned to mise.toml
-      # (just = "1.51.0") — keep the two in sync.
-      _just_ver="1.51.0"
+      # piping remote scripts to a shell). Version pinned — bump together
+      # with config/mise/config.toml's `just` entry (repo mise.toml was
+      # removed 2026-08-05, f013378).
+      _just_ver="1.58.0"
       case "$(uname -m)" in
         x86_64) _just_tgt="x86_64-unknown-linux-musl" ;;
         aarch64 | arm64) _just_tgt="aarch64-unknown-linux-musl" ;;

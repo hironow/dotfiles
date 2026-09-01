@@ -89,7 +89,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends mise
 
 # ---- uv (Python package manager) ------------------------------------
-UV_VERSION="0.11.28"
+UV_VERSION="0.12.5"
 case "$ARCH" in
   x86_64)  UV_TARGET="x86_64-unknown-linux-gnu" ;;
   aarch64) UV_TARGET="aarch64-unknown-linux-gnu" ;;
@@ -127,7 +127,7 @@ install -m 0755 /tmp/uvx /usr/local/bin/uvx
 rm -f "/tmp/${UV_FILE}" "/tmp/${UV_FILE}.sha256" /tmp/uv /tmp/uvx
 
 # ---- just (command runner) ------------------------------------------
-JUST_VERSION="1.56.0"
+JUST_VERSION="1.58.0"
 case "$ARCH" in
   x86_64)  JUST_TARGET="x86_64-unknown-linux-musl" ;;
   aarch64) JUST_TARGET="aarch64-unknown-linux-musl" ;;
@@ -218,11 +218,12 @@ git config --system --add safe.directory /root/dotfiles
 git config --system --add safe.directory /root/sandbox/dotfiles-fresh
 
 # ---- pre-install mise.toml tools ------------------------------------
-# Bake mise.toml's tool versions into the saved image so test
-# containers don't re-download every run. Versions in this prebuild
-# block MUST match the workspace mise.toml; the
-# tests/test_mise_pin_consistency.py check fails the build on
-# drift. Bump these together with mise.toml in dedicated PRs.
+# Bake the pinned tool versions into the saved image so test
+# containers don't re-download every run. The repo-root mise.toml
+# was removed (2026-08-05, f013378/#282), so this prebuild block
+# is the ONLY pin record for the devcontainer image — keep its
+# versions in the same generation as config/mise/config.toml and
+# bump them in dedicated PRs.
 #
 # Per ADR 0006 the data dir is /opt/mise, NOT $HOME/.local/share/mise.
 # The /home/<user>:/root volume mount on Coder workspaces would
@@ -250,31 +251,31 @@ cat > /etc/mise/config.toml <<'EOF'
 package_manager = "bun"
 
 [tools]
-bun = "1.3.14"
-just = "1.56.0"
-markdownlint-cli2 = "0.23.0"
-prek = "0.4.9"
-uv = "0.11.28"
-vp = "0.2.4"
-node = "24.18.0"
-"npm:@openai/codex" = "0.144.6"
+bun = "1.4.0"
+just = "1.58.0"
+markdownlint-cli2 = "0.23.2"
+prek = "0.4.14"
+uv = "0.12.5"
+vp = "0.3.0"
+node = "24.19.0"
+"npm:@openai/codex" = "0.149.1"
 # Under bun (package_manager above) mise ignores npm_args (bun reads
 # bun_args only). claude-code's postinstall still runs — the package is on
 # bun's default-trusted dependencies list — and the apt install further
 # below overlays the real native binary regardless. See ADR 0040.
-"npm:@anthropic-ai/claude-code" = "2.1.215"
-"npm:@github/copilot" = "1.0.71"
+"npm:@anthropic-ai/claude-code" = "2.1.245"
+"npm:@github/copilot" = "1.0.80"
 # trust_policy_excludes: the 2026-08-14 @smithy/* batch (core@3.33.0,
 # node-http-handler@4.11.0) was published by aws-sdk-bot (a listed maintainer)
 # without provenance attestations, while the prior releases had them — aube's
 # no-downgrade policy blocks the install. Verified against npmjs.org
 # 2026-08-15 (benign publish outside the trusted workflow, not tampering).
 # Drop the excludes once provenance-attested @smithy releases ship.
-"npm:@earendil-works/pi-coding-agent" = { version = "0.80.10", trust_policy_excludes = ["@smithy/core@3.33.0", "@smithy/node-http-handler@4.11.0"] }
-"github:google-antigravity/antigravity-cli" = { version = "1.1.4", exe = "antigravity" }
-"npm:cf" = "0.2.0"
-"npm:resend-cli" = "2.8.1"
-"npm:@stripe/cli" = "1.43.7"
+"npm:@earendil-works/pi-coding-agent" = { version = "0.84.3", trust_policy_excludes = ["@smithy/core@3.33.0", "@smithy/node-http-handler@4.11.0"] }
+"github:google-antigravity/antigravity-cli" = { version = "1.1.23", exe = "antigravity" }
+"npm:cf" = "0.8.0"
+"npm:resend-cli" = "2.16.0"
+"npm:@stripe/cli" = "1.50.5"
 EOF
 echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (

@@ -10,7 +10,6 @@ no mocks of project code.
 |---|---|
 | [`test_devcontainer.py`](./test_devcontainer.py) | Dev container image runtime smoke (`mise current`, `MISE_DATA_DIR`, AI CLI `--version`) |
 | [`test_install_os_dispatch.py`](./test_install_os_dispatch.py) | `install.sh` OS dispatch contract (uname → DOTFILES_OS, `step_*` helpers) |
-| [`test_mise_pin_consistency.py`](./test_mise_pin_consistency.py) | `mise.toml` ↔ `feature install.sh` ↔ `/etc/mise/config.toml` drift guard |
 | [`test_mise_data_dir_relocation.py`](./test_mise_data_dir_relocation.py) | `MISE_DATA_DIR=/opt/mise` invariant across 4 files |
 | [`test_vm_bootstrap.py`](./test_vm_bootstrap.py) | Workspace VM startup_script supply-chain regressions (no curl\|bash, fingerprint pins) |
 | [`test_publish_workflow.py`](./test_publish_workflow.py) | `publish-devcontainer.yaml` GHA WIF auth + tag invariants |
