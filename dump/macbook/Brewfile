@@ -47,8 +47,6 @@ brew "aliyun-cli"
 brew "amass"
 # Protocol buffers (Google's data interchange format)
 brew "protobuf"
-# Next-gen compiler infrastructure
-brew "llvm"
 # Download with resuming and segmented downloading
 brew "aria2"
 # Microsoft Azure CLI 2.0
@@ -151,8 +149,6 @@ brew "fzf"
 brew "gnutls"
 # GNU Privacy Guard (OpenPGP)
 brew "gnupg"
-# Validating, recursive, caching DNS resolver
-brew "unbound"
 # Package compiler and linker metadata toolkit
 brew "pkgconf"
 # Postgres C API library
@@ -185,6 +181,8 @@ brew "git-lfs"
 brew "git-xet"
 # Audit git repos for secrets
 brew "gitleaks"
+# Next-gen compiler infrastructure
+brew "llvm"
 # Tools for manipulating and plotting geographic and Cartesian data
 brew "gmt"
 # Directory/file & DNS busting tool written in Go
@@ -381,6 +379,8 @@ brew "swig"
 brew "syft"
 # Tools for market analysis
 brew "ta-lib"
+# Netcat-like tool over Tailscale's data plane, without its control plane
+brew "tailcat"
 # CI-Friendly tool to document a database
 brew "tbls"
 # Tool Command Language
@@ -409,6 +409,8 @@ brew "trivy"
 brew "trufflehog"
 # Command-line tool for sharing terminal over the web
 brew "ttyd"
+# Validating, recursive, caching DNS resolver
+brew "unbound"
 # Maintained ctags implementation
 brew "universal-ctags"
 # High-performance data structure server that primarily serves key/value workloads
@@ -541,15 +543,17 @@ mas "Brother P-touch Editor", id: 1453365242
 mas "Developer", id: 640199958
 mas "GarageBand", id: 682658836
 mas "iMovie", id: 408981434
+mas "Kindle", id: 302584613
 mas "LINE", id: 539883307
 mas "Numbers", id: 409203825
 mas "Pages", id: 361309726
+mas "Prime Video", id: 545519333
 mas "Reeder", id: 6475002485
 mas "Slack", id: 803453959
 mas "Tailscale", id: 1475387142
 mas "Telegram Lite", id: 946399090
 mas "Transmit", id: 1436522307
-mas "Unzip Pro", id: 1441507725
+mas "Wink RAR - Oka Unarchiver", id: 1441507725
 mas "WireGuard", id: 1451685025
 vscode "1yib.rust-bundle"
 vscode "aaron-bond.better-comments"
@@ -765,7 +769,6 @@ vscode "swiftlang.swift-vscode"
 vscode "tailscale.vscode-tailscale"
 vscode "tamasfe.even-better-toml"
 vscode "tauri-apps.tauri-vscode"
-vscode "teamsdevapp.vscode-ai-foundry"
 vscode "timonwong.shellcheck"
 vscode "toba.vsfire"
 vscode "tomoki1207.pdf"
@@ -788,8 +791,8 @@ vscode "zengxingxin.sort-js-object-keys"
 vscode "ziyasal.vscode-open-in-github"
 go "cmd/go"
 go "cmd/gofmt"
+go "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
 go "golang.org/x/tools/gopls"
-go "google.golang.org/protobuf/cmd/protoc-gen-go"
 cargo "bdk-cli"
 cargo "cargo-deny"
 cargo "gen-license"
@@ -797,6 +800,7 @@ cargo "just-lsp"
 cargo "tauri-webdriver"
 cargo "wrkflw"
 uv "bloodhound"
+uv "clang-format"
 uv "google-agents-cli"
 uv "marimo"
 uv "migrate-to-uv"
@@ -813,5 +817,4 @@ krew "krew"
 krew "node-shell"
 krew "ns"
 krew "resource-capacity"
-npm "@anthropic-ai/claude-code"
 npm "corepack"

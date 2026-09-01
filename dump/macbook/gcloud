@@ -20,9 +20,7 @@ kubectl-oidc
 kustomize
 local-extract
 log-streaming
-nomos
 package-go-module
-pkg
 preview
 pubsub-emulator
 skaffold
