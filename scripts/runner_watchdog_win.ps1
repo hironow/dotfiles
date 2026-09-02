@@ -17,7 +17,12 @@
 #                  (at logon + every -IntervalMinutes, IgnoreNew), remove the
 #                  legacy Startup .lnk that raced the logon task, and try to
 #                  enable Task Scheduler history (needs admin; warns otherwise).
-#   -Uninstall   : remove the task.
+#   -Uninstall   : remove the task (and the installed copy).
+#
+# The task runs a COPY at %LOCALAPPDATA%\dotfiles\runner_watchdog_win.ps1, not
+# this working-tree file: lived 2026-09-03 02:18/02:23 - the task pointed at the
+# repo path, a branch switch removed the file, and two ticks exited 0xFFFD0000
+# (powershell: -File not found) with no log line. Re-run -Install after editing.
 #
 # Same conventions as runner_mode_win.ps1: generic root (-RunnerRoot /
 # RUNNER_WIN_ROOT, USERPROFILE default), no hard-coded user, ASCII-only
@@ -42,6 +47,8 @@ if (-not $RunnerRoot) {
 $watchTask = 'dotfiles-runner-watchdog'
 $runnerTask = 'dotfiles-runner-interactive'
 $logPath = Join-Path $env:TEMP 'runner-watchdog-win.log'
+$installDir = Join-Path $env:LOCALAPPDATA 'dotfiles'
+$installed = Join-Path $installDir 'runner_watchdog_win.ps1'
 $me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 function Write-WdLog {
@@ -55,7 +62,8 @@ function Write-WdLog {
 
 if ($Uninstall) {
     Unregister-ScheduledTask -TaskName $watchTask -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Host "watchdog task removed: $watchTask"
+    Remove-Item -LiteralPath $installed -Force -ErrorAction SilentlyContinue
+    Write-Host "watchdog task removed: $watchTask (+ copy $installed)"
     exit 0
 }
 
@@ -69,12 +77,21 @@ if ($Install) {
         exit 1
     }
 
-    # [1/3] the task. Interactive logon type: it only makes sense while the user
+    # [1/4] a copy outside the working tree. The task must not depend on which
+    # branch the repo happens to be on (see header: two silent ticks, 2026-09-03).
+    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    $self = [IO.Path]::GetFullPath($PSCommandPath)
+    if ($self -ine [IO.Path]::GetFullPath($installed)) {
+        Copy-Item -LiteralPath $self -Destination $installed -Force
+    }
+    Write-Host "[1/4] installed copy: $installed (the task runs this; re-run -Install after editing the repo file)"
+
+    # [2/4] the task. Interactive logon type: it only makes sense while the user
     # is logged on (the listener it restarts needs that session anyway).
     Unregister-ScheduledTask -TaskName $watchTask -Confirm:$false -ErrorAction SilentlyContinue
     $action = New-ScheduledTaskAction `
         -Execute (Get-Command powershell.exe).Source `
-        -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -RunnerRoot "{1}"' -f $PSCommandPath, $RunnerRoot)
+        -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -RunnerRoot "{1}"' -f $installed, $RunnerRoot)
     $every = New-TimeSpan -Minutes $IntervalMinutes
     $triggers = @(
         (New-ScheduledTaskTrigger -AtLogOn -User $me),
@@ -92,9 +109,9 @@ if ($Install) {
     Register-ScheduledTask -TaskName $watchTask -Action $action -Trigger $triggers `
         -Principal $principal -Settings $settings `
         -Description ('dotfiles: restart the interactive runner task when Runner.Listener is gone (every {0} min)' -f $IntervalMinutes) | Out-Null
-    Write-Host "[1/3] watchdog task: $watchTask (at logon + every $IntervalMinutes min, re-fires $runnerTask)"
+    Write-Host "[2/4] watchdog task: $watchTask (at logon + every $IntervalMinutes min, re-fires $runnerTask)"
 
-    # [2/3] the legacy start path. The pre-repo script dropped a Startup
+    # [3/4] the legacy start path. The pre-repo script dropped a Startup
     # shortcut to run.cmd; with the logon task that is TWO starts per logon and
     # the loser loops on "A session for this runner already exists"
     # (lived 2026-08-30). One start path: the task.
@@ -107,11 +124,11 @@ if ($Install) {
         })
     foreach ($l in $legacy) {
         Remove-Item -LiteralPath $l.FullName -Force
-        Write-Host "[2/3] removed legacy Startup shortcut: $($l.Name) (second start path -> session conflict)"
+        Write-Host "[3/4] removed legacy Startup shortcut: $($l.Name) (second start path -> session conflict)"
     }
-    if ($legacy.Count -eq 0) { Write-Host '[2/3] no legacy Startup shortcut to remove' }
+    if ($legacy.Count -eq 0) { Write-Host '[3/4] no legacy Startup shortcut to remove' }
 
-    # [3/3] history. Disabled by default on Windows; without it a task that
+    # [4/4] history. Disabled by default on Windows; without it a task that
     # ends leaves no trace. Needs admin - the elevated mode switch does it
     # for real; here we only try and say so.
     $hist = 'could not enable (needs admin - just runner-mode-interactive does it)'
@@ -119,8 +136,8 @@ if ($Install) {
         $null = & wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true 2>&1
         if ($LASTEXITCODE -eq 0) { $hist = 'enabled' }
     } catch { }
-    Write-Host "[3/3] Task Scheduler history: $hist"
-    Write-WdLog ("install by {0}: every {1} min, log {2}" -f $me, $IntervalMinutes, $logPath)
+    Write-Host "[4/4] Task Scheduler history: $hist"
+    Write-WdLog ("install by {0}: every {1} min, runs {2}, log {3}" -f $me, $IntervalMinutes, $installed, $logPath)
     exit 0
 }
 
