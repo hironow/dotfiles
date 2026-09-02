@@ -61,7 +61,7 @@
       "lock_key": "brand-legal-review",
       "source": "hironow/skills",
       "skill_path": "brand-legal-review/SKILL.md",
-      "skill_folder_hash": "0877bd18a11ed8b6748e9b2b4d0cc8165729d6ad",
+      "skill_folder_hash": "fd1879d4765a85bc64a938d5f6d0975d49138d52",
       "resolved_by": "installed"
     },
     {
@@ -142,7 +142,7 @@
       "lock_key": "decision-record-governance",
       "source": "hironow/skills",
       "skill_path": "decision-record-governance/SKILL.md",
-      "skill_folder_hash": "92c06834604867221f7c23d55bbd2acddd4ef764",
+      "skill_folder_hash": "b5f0e758077461077128a943ff50a0e454b90831",
       "resolved_by": "installed"
     },
     {
@@ -628,7 +628,7 @@
       "lock_key": "sibyl",
       "source": "hironow/skills",
       "skill_path": "sibyl/SKILL.md",
-      "skill_folder_hash": "362be3943460cee8305db6218a1e3c0217777c74",
+      "skill_folder_hash": "719e3a5779eaed0e5cb4b27deed367861cfef9f2",
       "resolved_by": "installed"
     },
     {
@@ -736,7 +736,7 @@
       "lock_key": "update-submodule-changelog",
       "source": "hironow/skills",
       "skill_path": "update-submodule-changelog/SKILL.md",
-      "skill_folder_hash": "5b2a0fc32b00654737f6f76c4bf601bf79f942be",
+      "skill_folder_hash": "d36f1d89f4b4477c132b427f72ca7135a5fbc043",
       "resolved_by": "installed"
     },
     {
