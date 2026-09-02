@@ -129,6 +129,36 @@ if ($Mode -eq 'interactive') {
         -Description 'dotfiles: GitHub Actions runner, interactive at logon (GUI e2e needs a user session)' | Out-Null
     Write-Host "[2/3] logon task: $taskName (run.cmd as $me, interactive, no time limit)"
 
+    # [2a/3] one start path. The pre-repo script dropped a Startup shortcut to
+    # run.cmd; with the logon task that is two starts per logon and the loser
+    # loops on "A session for this runner already exists" (lived 2026-08-30).
+    $startup = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'
+    $shell = New-Object -ComObject WScript.Shell
+    foreach ($l in @(Get-ChildItem -Path $startup -Filter '*.lnk' -ErrorAction SilentlyContinue)) {
+        $sc = $shell.CreateShortcut($l.FullName)
+        if ($sc.TargetPath -like '*run.cmd' -and $sc.TargetPath -like ('{0}*' -f $RunnerRoot)) {
+            Remove-Item -LiteralPath $l.FullName -Force
+            Write-Host "[2a/3] removed legacy Startup shortcut: $($l.Name)"
+        }
+    }
+
+    # [2c/3] history ON while we are elevated. Task Scheduler ships with its
+    # operational log disabled; a task that ends then leaves no trace, which
+    # is how the 2026-09-03 death stayed causeless.
+    $null = & wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true 2>&1
+    Write-Host '[2c/3] Task Scheduler history: enabled'
+
+    # [2d/3] the watchdog: re-fires this logon task when Runner.Listener is
+    # gone (every 5 min). ADR 0042.
+    $watchdog = Join-Path $PSScriptRoot 'runner_watchdog_win.ps1'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $watchdog -Install -RunnerRoot $RunnerRoot
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'ERROR: watchdog install failed (see above)'
+        if ($Elevated) { Stop-Transcript | Out-Null }
+        exit 1
+    }
+    Write-Host '[2d/3] watchdog task: dotfiles-runner-watchdog'
+
     # [2b/3] _work checkouts created by the LocalSystem service are owned by
     # BUILTIN\Administrators; git's dubious-ownership check then refuses them
     # for the interactive user and actions/checkout dies in under a second
@@ -189,9 +219,11 @@ if ($Mode -eq 'interactive') {
     # [1/3] remove the logon task and any interactive listener it started -
     # otherwise two runners race for jobs.
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    # the watchdog would resurrect the interactive listener next to the service (ADR 0042)
+    Unregister-ScheduledTask -TaskName 'dotfiles-runner-watchdog' -Confirm:$false -ErrorAction SilentlyContinue
     Get-Process -Name 'Runner.Listener' -ErrorAction SilentlyContinue |
         Where-Object { $_.SessionId -ne 0 } | Stop-Process -Force -ErrorAction SilentlyContinue
-    Write-Host "[1/3] logon task removed: $taskName"
+    Write-Host "[1/3] logon task removed: $taskName (+ watchdog dotfiles-runner-watchdog)"
 
     # [2/3] re-enable delayed-auto (reboot survival without a logon).
     if (-not $svc) {

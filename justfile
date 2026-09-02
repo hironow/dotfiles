@@ -329,6 +329,14 @@ runner-mode-interactive:
 runner-mode-service:
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_mode_win.ps1 -Mode service
 
+# Runner: (re)install the watchdog for the INTERACTIVE runner - a per-user
+# task that re-fires the logon task every 5 min when Runner.Listener is gone
+# (lived 2026-09-03: listener died silently, box offline until the next
+# logon). Unelevated; `runner-mode-interactive` installs it too. ADR 0042.
+[group('Disk'), windows, doc('Install the interactive-runner watchdog task (re-fires the logon task when the listener dies)')]
+runner-watchdog-install:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_watchdog_win.ps1 -Install
+
 # Runner: restart the native Windows runner service (self-elevates via UAC;
 # refuses while a job is executing - Runner.Worker guard).
 [group('Disk'), windows, doc('Restart the native Windows runner service (job-safe, UAC self-elevating)')]

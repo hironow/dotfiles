@@ -161,3 +161,77 @@ def test_interactive_mode_reowns_foreign_work_checkouts() -> None:
     assert "_PipelineMapping" in text, (
         "runner-internal dirs are enumerated and skipped, not re-owned."
     )
+
+
+# --- watchdog (2026-09-03, third live report) --------------------------------
+# The interactive listener died silently mid-day (gpu-win: _diag ends at
+# 16:24:16Z with no shutdown line, no Application event, Task Scheduler
+# history disabled) and nothing restarted it until the next logon - the
+# logon task has no restart policy and run.cmd exits 0 on "terminated".
+# A second start path (the legacy Startup .lnk) also raced the task at logon
+# ("A session for this runner already exists", 2026-08-30). Prevention:
+# a repo-managed watchdog task that re-fires the logon task when no listener
+# lives, removal of the legacy .lnk, and Task Scheduler history ON so the
+# next death has a cause.
+
+WATCHDOG = SCRIPTS / "runner_watchdog_win.ps1"
+
+
+def _watchdog() -> str:
+    return WATCHDOG.read_text(encoding="utf-8")
+
+
+def test_watchdog_exists_and_is_generic() -> None:
+    assert WATCHDOG.is_file(), "scripts/runner_watchdog_win.ps1 is missing"
+    text = _watchdog()
+    assert "absin" not in text.lower(), (
+        "no hard-coded user (same rule as the mode switch)"
+    )
+    assert (
+        "dotfiles-runner-watchdog" in text and "dotfiles-runner-interactive" in text
+    ), (
+        "the watchdog re-fires the logon task by name; both task names spelled once here."
+    )
+    assert "Runner.Listener" in text and "Start-ScheduledTask" in text, (
+        "the only action is: no Runner.Listener alive -> Start-ScheduledTask of the "
+        "interactive task. It never kills anything."
+    )
+    assert "Stop-Process" not in text and "taskkill" not in text, (
+        "a watchdog that kills is a second way to lose an in-flight job."
+    )
+    assert "-Install" in text and "Unregister-ScheduledTask" in text, (
+        "self-installing (-Install registers the repeating task; idempotent re-register)."
+    )
+    assert "IgnoreNew" in text, (
+        "overlapping firings collapse to one (duplicate-start valve)."
+    )
+
+
+def test_watchdog_writes_a_log_line_on_every_restart() -> None:
+    """Silence is the failure mode we are fixing; each restart must leave a
+    dated line so the NEXT death has a timestamp even if history is off."""
+    text = _watchdog()
+    assert "runner-watchdog-win.log" in text
+    assert re.search(r"Get-Date", text)
+
+
+def test_mode_switch_wires_the_watchdog_and_removes_the_legacy_lnk() -> None:
+    text = _text()
+    assert "runner_watchdog_win.ps1" in text and "-Install" in text, (
+        "-Mode interactive installs the watchdog; the switch is the one place the "
+        "interactive stack is assembled."
+    )
+    assert "dotfiles-runner-watchdog" in text, (
+        "-Mode service unregisters the watchdog too (else it would resurrect the "
+        "interactive listener next to the service)."
+    )
+    assert ".lnk" in text and "Startup" in text, (
+        "remove the legacy Startup shortcut (the pre-repo script's start path): two "
+        "start paths race at logon -> 'A session for this runner already exists'."
+    )
+    assert (
+        "Microsoft-Windows-TaskScheduler/Operational" in text and "/e:true" in text
+    ), (
+        "enable Task Scheduler history while elevated - without it a dead task "
+        "leaves no trace (lived 2026-09-03)."
+    )
