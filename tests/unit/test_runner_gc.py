@@ -1253,3 +1253,41 @@ def test_win_gc_sweeps_bun_stale_renames_with_a_day_floor() -> None:
         "24h floor: a fresher stale file may still be held by the very "
         "process it was renamed away from."
     )
+
+
+def test_disk_gc_huggingface_optin_reaches_both_legs() -> None:
+    """DISK_GC_HUGGINGFACE=1 promised to collect ~/.cache/huggingface, but
+    measured 2026-09-03 it would have collected NEITHER leg from a Windows
+    host: the opt-in _add lived only in the non-Windows branch (so the
+    Windows-side C:/Users/<me>/.cache/huggingface, 75 GB here, was never a
+    candidate), and the WSL leg is dispatched via `wsl.exe -e bash -lc`
+    which does not inherit the caller's environment (WSLENV unset), so the
+    flag never reached the distro where the other 90 GB lives.
+
+    Both must hold: the opt-in is evaluated on every leg (outside the per-OS
+    if/else), and the Windows dispatcher forwards the knob into the WSL
+    invocation.
+    """
+    text = DISK.read_text(encoding="utf-8")
+    block = re.search(
+        r'if \[ "\$_win" -eq 1 \]; then(.*?)\selse\s(.*?)\sfi\s', text, re.S
+    )
+    assert block is not None, "expected the per-OS cache list if/else"
+    assert "DISK_GC_HUGGINGFACE" not in block.group(
+        1
+    ) and "DISK_GC_HUGGINGFACE" not in block.group(2), (
+        "the huggingface opt-in must not be confined to one OS branch."
+    )
+    after = text[block.end() :]
+    assert re.search(
+        r'DISK_GC_HUGGINGFACE.*_add "\$HOME/\.cache/huggingface"', after
+    ), (
+        "the huggingface opt-in must be evaluated after the per-OS block so it "
+        "reaches the Windows profile (Git Bash $HOME) and the WSL user alike."
+    )
+    dispatch = re.search(r'wsl\.exe -d "\$_distro" -e bash -lc "([^"]*)"', text)
+    assert dispatch is not None, "expected the WSL leg dispatch line"
+    assert "DISK_GC_HUGGINGFACE" in dispatch.group(1), (
+        "the WSL leg must receive DISK_GC_HUGGINGFACE inline in the bash -lc "
+        "command - wsl.exe -e does not inherit the caller's environment."
+    )

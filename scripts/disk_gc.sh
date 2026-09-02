@@ -42,8 +42,10 @@ if [ "$_win" -eq 1 ] && [ "${DISK_GC_NO_WSL:-0}" != "1" ] && command -v wsl.exe 
   echo "--- 🐧 WSL distro '${_distro}' (runner user) ---"
   # Run as the distro's default user: these caches live in that user's HOME and
   # root would collect an empty set. Path conversion off, as ever.
+  # wsl.exe -e starts a fresh environment (WSLENV unset here), so the opt-in
+  # knob must ride inside the command line or the WSL leg never sees it.
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
-    wsl.exe -d "$_distro" -e bash -lc "bash '${_self}' ${MODE}" || \
+    wsl.exe -d "$_distro" -e bash -lc "DISK_GC_HUGGINGFACE=${DISK_GC_HUGGINGFACE:-0} bash '${_self}' ${MODE}" || \
     echo "  (WSL leg failed; continuing with the Windows profile)"
   echo
 fi
@@ -81,11 +83,14 @@ else
   _add "$HOME/.cache/node-gyp"
   _add "$HOME/.cache/dprint"
   _add "$HOME/.cache/golangci-lint"
-  # ~/.cache/huggingface is deliberately NOT here: a single model directory
-  # measured 77 GB and re-downloading it is nothing like re-fetching a wheel.
-  # Opt in per-run once you know the models are disposable.
-  [ "${DISK_GC_HUGGINGFACE:-0}" = "1" ] && _add "$HOME/.cache/huggingface"
 fi
+# ~/.cache/huggingface is deliberately NOT collected by default: a single model
+# directory measured 77 GB and re-downloading it is nothing like re-fetching a
+# wheel. Opt in per-run once you know the models are disposable. Evaluated on
+# EVERY leg (Git Bash $HOME is the Windows profile, so this reaches
+# C:/Users/<me>/.cache/huggingface as well as the WSL user's) - it used to sit
+# inside the non-Windows branch, which silently skipped the 75 GB Windows copy.
+[ "${DISK_GC_HUGGINGFACE:-0}" = "1" ] && _add "$HOME/.cache/huggingface"
 
 echo "--- 💽 host cache report ---"
 printf '%b' "$_caches" | awk 'NF' | while read -r _c; do
