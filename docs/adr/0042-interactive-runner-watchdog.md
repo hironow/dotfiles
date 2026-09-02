@@ -28,7 +28,12 @@ for this runner already exists".
    `dotfiles-runner-interactive`. That is its only action - it never kills
    (a killing watchdog is a second way to lose an in-flight job). Every run
    appends one dated line to `%TEMP%\runner-watchdog-win.log`; a restart is
-   loud there even when Windows itself recorded nothing.
+   loud there even when Windows itself recorded nothing. The task runs a
+   **copy** at `%LOCALAPPDATA%\dotfiles\runner_watchdog_win.ps1`, not the
+   working-tree file: lived 2026-09-03 02:18/02:23 - the task pointed at the
+   repo path, a branch switch removed the file, and two ticks exited
+   0xFFFD0000 (powershell: `-File` not found) with no log line. Editing the
+   script means re-running `just runner-watchdog-install`.
 2. **One start path.** The mode switch and the watchdog installer remove any
    Startup shortcut that points at the runner's `run.cmd`.
 3. **Task Scheduler history ON** (`wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true`),
@@ -47,6 +52,10 @@ for this runner already exists".
 - The watchdog cannot tell WHY the listener died; it only bounds the damage
   and dates it. The cause of the 2026-09-03 death stays open until history
   and the watchdog log catch the next one.
+- A tick that cannot even start (script missing, powershell broken) leaves
+  no log line - only Task Scheduler's last result (`0xFFFD0000` = `-File`
+  not found). The installed copy removes the known cause; history ON covers
+  the rest.
 - Static tests: `tests/unit/test_runner_mode_win.py` (watchdog exists,
-  generic, never kills, wired into both mode directions, legacy .lnk removed,
-  history enabled).
+  generic, never kills, task runs the installed copy, wired into both mode
+  directions, legacy .lnk removed, history enabled).

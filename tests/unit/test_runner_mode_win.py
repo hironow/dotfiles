@@ -215,6 +215,20 @@ def test_watchdog_writes_a_log_line_on_every_restart() -> None:
     assert re.search(r"Get-Date", text)
 
 
+def test_watchdog_task_runs_a_copy_outside_the_working_tree() -> None:
+    """Lived 2026-09-03 02:18/02:23: the task pointed at the repo file, a branch
+    switch removed it, and two ticks died with exit 0xFFFD0000 (-File not found)
+    and no log line - the watchdog itself was the silent one."""
+    text = _watchdog()
+    assert "LOCALAPPDATA" in text and "Copy-Item" in text, (
+        "-Install copies the script to %LOCALAPPDATA%\dotfiles; the task runs the copy."
+    )
+    assert re.search(r'-File "\{0\}"[^\n]*-f \$installed', text), (
+        "the task action's -File is the installed copy, never $PSCommandPath."
+    )
+    assert "-f $PSCommandPath" not in text
+
+
 def test_mode_switch_wires_the_watchdog_and_removes_the_legacy_lnk() -> None:
     text = _text()
     assert "runner_watchdog_win.ps1" in text and "-Install" in text, (
