@@ -2,8 +2,8 @@
 # ~/.config/mise/config.toml by `just deploy`.
 #
 # Project-pinned tools live in /Users/nino/dotfiles/mise.toml (ADR 0006).
-# This file holds user-level tool defaults, security/quarantine settings,
-# and backend tweaks that follow CLAUDE.md global rules.
+# This file holds user-level tool defaults, security settings, and backend
+# tweaks that follow CLAUDE.md global rules.
 
 [tools]
 bun = "latest"
@@ -23,9 +23,8 @@ gradle = "latest"
 python = "latest"
 vp = "latest"
 markdownlint-cli2 = "latest"
-# prek — pre-commit runner. Project-pinned in the repo mise.toml for
-# the devcontainer build, but declared here too so it resolves on the
-# Mac host outside the dotfiles dir (ADR 0023 is activate-only with no
+# prek — pre-commit runner. Declared here so it resolves on the Mac
+# host outside the dotfiles dir (ADR 0023 is activate-only with no
 # shims PATH, so a repo-only tool is invisible elsewhere).
 prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
@@ -36,24 +35,21 @@ prek = "latest"
 # .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
 # it on PATH for every dir; without a config source the installed
 # binary stays an orphan and `ls` falls back to system ls. Pinned (not
-# "latest") so the already-installed 0.23.4 resolves without tripping
-# the 7d quarantine on a fresh release.
+# "latest") for cross-machine reproducibility (ADR 0006).
 eza = "0.23.5"
 # shellcheck — `just check` runs it via `mise x -- shellcheck`, which
 # resolves ONLY config-declared tools; an installed-but-undeclared copy is
 # an orphan and `mise x` fails with "couldn't exec process" (seen live
 # 2026-08-17 on WSL, where brew never provides it). Pinned (not "latest")
-# so the already-installed version resolves without tripping the 7d
-# quarantine on a fresh release.
+# for cross-machine reproducibility (ADR 0006).
 shellcheck = "0.11.0"
 # starship (prompt) + sheldon (zsh plugin manager). Initialized in .zshrc
 # AFTER `mise activate` (see EOF). Declared here so mise puts them on PATH
 # for every dir; without a config source they stay orphan installs and the
 # `_cmd_exists` guards in .zshrc skip prompt + plugins entirely. On a Mac
 # Homebrew also provides them, but WSL has no brew, so mise is the only
-# provider there. Pinned (not "latest") so the already-installed versions
-# resolve without tripping the 7d quarantine. sheldon ships via the aqua
-# backend (rossmacarthur/sheldon); starship is a mise core tool.
+# provider there. Pinned (not "latest") for cross-machine reproducibility.
+# sheldon ships via the aqua backend (rossmacarthur/sheldon); starship is a mise core tool.
 #
 # sheldon is OS-gated to linux/macos: this config is shared (symlinked) across
 # Mac / Windows / WSL, and the aqua sheldon build has no windows/amd64 asset, so
@@ -65,18 +61,17 @@ starship = "1.26.0"
 # fzf — fuzzy finder. Its Ctrl-R / completion init (`fzf --zsh`) lives in
 # .zshrc AFTER `mise activate` for the same reason as the prompt tools above.
 # Declared here so WSL (no Homebrew) gets it; on a Mac brew also provides it.
-# Pinned so the install resolves past the 7d quarantine. (opentofu, the other
+# Pinned for cross-machine reproducibility. (opentofu, the other
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
 fzf = "0.74.3"
 
-# AI agent CLIs. Project-pinned in the repo mise.toml so Coder
-# workspaces boot with them ready; declared here at "latest" so they
-# also resolve globally on the Mac host (ADR 0023 activate-only: a
-# repo-only tool is only on PATH inside the dotfiles dir). The global
-# minimum_release_age="7d" quarantine below still applies, so these
-# track the newest release that is at least 7 days old. Authenticate
-# on first use (`codex login`, `claude /login`, `copilot auth`,
-# `pi auth`; antigravity authenticates on first run).
+# AI agent CLIs. Declared at "latest" so they resolve globally on every
+# host (ADR 0023 activate-only: a repo-only tool is only on PATH inside
+# the dotfiles dir). These track the TRUE newest release — the global 7d
+# minimum_release_age quarantine was removed 2026-09-03 so mise-declared
+# tools update immediately (see [settings] below). Authenticate on first
+# use (`codex login`, `claude /login`, `copilot auth`, `pi auth`;
+# antigravity authenticates on first run).
 "npm:@openai/codex" = "latest"
 # claude-code hardlinks its native binary in a postinstall (install.cjs).
 # Under the bun backend (settings.npm below) that script runs because the
@@ -100,17 +95,14 @@ fzf = "0.74.3"
 # via mise's github backend; exe is `antigravity`. SUPPLY-CHAIN NOTE: no
 # SLSA/Sigstore attestation or SHA sidecar is published for these releases
 # (gh attestation API 404), so there is no enforced provenance gate.
-# QUARANTINE EXEMPTION (LLM CLI): pinned to the *true* newest release,
-# not the 7-days-old rule the rest of this file follows — same policy as
-# the other LLM CLIs above (first release was 2026-06-01). If the newest
-# release is younger than 7d, install this pin with
-# MISE_MINIMUM_RELEASE_AGE=0 mise install.
+# Pinned to the true newest release (first release was 2026-06-01);
+# bump on `just update-all` rounds together with the other pins here.
 "github:google-antigravity/antigravity-cli" = { version = "1.1.23", exe = "antigravity" }
 
 # Cloud-service dev CLIs (npm-distributed). Declared "latest" like the
-# AI CLIs above; the minimum_release_age="7d" quarantine below makes
-# that resolve to the newest release at least 7 days old. Concrete pins
-# for these live in the repo mise.toml (ADR 0006). Explicit `npm:`
+# AI CLIs above — tracks the true newest release. Concrete pins for the
+# devcontainer image live in
+# .devcontainer/features/dotfiles-tools/install.sh. Explicit `npm:`
 # backend avoids registry-alias ambiguity.
 #   cf -> Cloudflare CLI, resend-cli -> Resend, @stripe/cli -> Stripe,
 #   @dataform/cli -> Dataform (BigQuery ELT)
@@ -130,9 +122,16 @@ not_found_auto_install = false
 # version instead of "latest", keeping mise.toml reproducible
 # (ADR 0006 pinned-versions philosophy).
 pin = true
-# Match the npmrc `min_release_age=7` quarantine for supply-chain risk
-# (mirrors uv's `exclude-newer = "7 days"`).
-minimum_release_age = "7d"
+# Supply-chain quarantine for mise-managed tools was REMOVED 2026-09-03:
+# the user toolset declared in this file now tracks the true newest
+# release on `mise up` (the 7d wait cost current models/protocol fixes
+# in the LLM CLIs and was friction everywhere else). Explicit "0" is
+# required — removing the key entirely would fall back to mise's
+# built-in 24h default quarantine. Dependency installs remain
+# quarantined via the npmrc min_release_age / uv exclude-newer guards
+# written by `just harden-env` (ADR 0028). To restore temporarily:
+# minimum_release_age = "7d"
+minimum_release_age = "0"
 
 [settings.github]
 # Version lookups for github: backends hit the unauthenticated 60 req/h
