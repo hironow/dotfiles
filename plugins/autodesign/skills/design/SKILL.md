@@ -1,12 +1,11 @@
 ---
 name: design
 description: >
-  This skill should be used when the user asks to "start design exploration",
-  "run autonomous design", "explore design variations", "optimize my design",
-  "begin design loop", "run autodesign", or needs to start or resume
-  an autonomous web design exploration loop. This is the top-level entry point
-  that orchestrates setup and loop execution. For internal keep/revert
-  methodology, see the design-loop skill.
+  Top-level entry point for the autodesign loop: start or resume an autonomous
+  keep/revert exploration of web design variations under quality constraints.
+  Use for any request to run, start, resume or continue autonomous design
+  exploration or design optimization. For the methodology itself see
+  design-loop.
 argument-hint: "[design tag or config path]"
 allowed-tools:
   - Read
@@ -62,8 +61,9 @@ Spawn the designer agent via the Agent tool:
 
 ```
 Agent(
-  prompt="Run the next design exploration iteration. Config: <config>. Current best: <score>.",
-  name="designer"
+  subagent_type="autodesign:designer",
+  description="Run one design exploration iteration",
+  prompt="Run the next design exploration iteration. Config: <config>. Current best: <score>."
 )
 ```
 

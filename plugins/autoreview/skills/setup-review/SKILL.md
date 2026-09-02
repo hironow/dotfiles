@@ -1,10 +1,10 @@
 ---
 name: setup-review
 description: >
-  This skill should be used when the user asks to "set up a review",
-  "initialize code review", "create review config", "prepare review branch",
-  "configure autoreview", or needs to set up the autoreview environment before
-  starting an autonomous code review loop.
+  Initialize an autoreview environment: review/* branch, review-config.yaml,
+  review-results.tsv and the baseline scan. Use when the user wants to set up
+  or reconfigure an autoreview loop before running it; normally invoked by the
+  review skill.
 allowed-tools:
   - Read
   - Write
@@ -82,10 +82,13 @@ max_iterations_per_category: 5      # prevent infinite loops
 max_consecutive_no_improvement: 2   # skip category after N stalls
 ```
 
-Request each field value from the user. For `rule_categories`, present the
-available categories: naming, type-safety, immutability, encapsulation,
-structure, complexity, layer-dependency, repository, error-handling, security,
-backward-compat.
+Request each field value from the user. For `rule_categories`, offer the
+categories present in the resolved rules directory rather than a fixed list:
+
+```bash
+find "$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-guardrails.sh")" \
+  -mindepth 1 -maxdepth 1 -type d ! -name tests -exec basename {} \; | sort
+```
 
 ### 6. Initialize review-results.tsv
 

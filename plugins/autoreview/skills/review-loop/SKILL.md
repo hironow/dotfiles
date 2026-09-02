@@ -35,11 +35,7 @@ current category. Assign a quality score (1-10) as `findings_before`
 ### 2. Analyze
 
 Parse findings and identify the root cause pattern. Group related findings
-that share the same fix. Prioritize fixes by impact:
-
-1. Fixes that resolve multiple findings at once
-2. Simple renames or restructuring
-3. Deeper refactoring (extract method, introduce type)
+that share the same fix.
 
 ### 3. Fix
 
@@ -81,24 +77,6 @@ Append to review-results.tsv (tab-separated):
 - **keep**: Commit stays, proceed to next iteration
 - **revert**: `git reset --hard "$base"` (the iteration baseline recorded by the
   reviewer agent's Step 0 preflight; never `HEAD~1`), try a different approach or skip
-
-## Loop Control
-
-### Category Progression
-
-Process categories in order of most findings to least. Within a category,
-process files with the most findings first.
-
-### Stall Detection
-
-Track consecutive iterations with no improvement per category.
-When `max_consecutive_no_improvement` is reached, log a "skip" entry
-and move to the next category.
-
-### Iteration Limits
-
-Each category has `max_iterations_per_category` attempts. After reaching
-the limit, move to the next category regardless of remaining findings.
 
 ## Additional Resources
 

@@ -1,11 +1,11 @@
 ---
 name: review
 description: >
-  This skill should be used when the user asks to "start a review",
-  "run autoreview", "review my code", "fix semgrep violations",
-  "review specs", "review types", "begin review loop", or needs to start
-  or resume an autonomous code review loop. This is the top-level entry
-  point that orchestrates setup and loop execution.
+  Entry point for the autoreview loop: start or resume an autonomous,
+  guardrails-driven review of code (scan-fix, Semgrep findings) or of type
+  definitions and specs (spec-review, LLM score). Use when the user wants an
+  automated review loop run against their code; it invokes setup-review when
+  no review-config.yaml exists.
 argument-hint: "[review tag or config path]"
 allowed-tools:
   - Read
@@ -53,21 +53,19 @@ Start an autonomous code review loop.
 
 ### Determining Next Category
 
-Read review-results.tsv and apply these rules:
-
-1. Skip categories that reached `max_iterations_per_category`
-2. Skip categories with `max_consecutive_no_improvement` stalls in a row
-3. Pick the category with the highest remaining findings count
-4. If all categories are done or skipped, report completion
+Run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/next-target.sh"`; it applies the
+iteration caps, stall and oscillation rules from review-config.yaml and reports
+completion.
 
 ### Launching the Loop
 
-Spawn the reviewer agent via the Agent tool:
+Spawn the reviewer agent via the Agent tool (plugin agents are addressed as
+`<plugin>:<agent>`):
 
 ```
 Agent(
-  prompt="Run the next review iteration. Config: <config>. Mode: <mode>. Category: <category>. Current findings: <count>. Rules path: <rules_path>.",
-  name="reviewer"
+  subagent_type="autoreview:reviewer",
+  prompt="Run the next review iteration. Config: <config>. Mode: <mode>. Category: <category>. Current findings: <count>. Rules path: <rules_path>."
 )
 ```
 

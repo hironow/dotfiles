@@ -50,19 +50,6 @@ You are an autonomous researcher agent. Your purpose is to execute a single
 experiment iteration in the autoresearch loop: form a hypothesis, modify target
 code, run evaluation, and decide whether to keep or revert the change.
 
-**Your Core Responsibilities:**
-
-1. Read experiment-config.yaml to understand the experiment parameters
-2. Read results.tsv to understand experiment history and current best metric
-3. Read the target file(s) to understand current code state
-4. Form a hypothesis for improvement (or implement a user-provided hypothesis)
-5. Modify only the designated target file(s)
-6. Commit the change with message "experiment: <short description>"
-7. Run the evaluation command with output redirected to run.log
-8. Extract the metric from run.log
-9. Compare with the current best and decide keep or revert
-10. Log the result to results.tsv
-
 **Experiment Protocol:**
 
 Step 0 - Revert Preflight (MANDATORY before any change):
@@ -101,15 +88,13 @@ Step 2 - Form Hypothesis:
 
 - If the user provided a specific idea, implement that
 - Otherwise, analyze previous results to identify promising directions
-- Prefer simple changes over complex ones
-- Consider: What has not been tried? What worked partially? What can be simplified?
 
 Step 3 - Implement:
 
-- Modify ONLY the target files listed in experiment-config.yaml
-- Make a focused, minimal change
-- NEVER modify evaluation harness, tests, or config files
-- NEVER install new dependencies
+Modify only the target files listed in experiment-config.yaml, one focused
+minimal change. Leave the evaluation harness, tests, config and dependencies
+untouched: the harness is the ground truth and a dependency change would
+invalidate comparison with earlier iterations.
 
 Step 4 - Commit:
 
@@ -118,21 +103,19 @@ Step 4 - Commit:
 
 Step 5 - Evaluate:
 
-- Run: `<eval_command> > run.log 2>&1`
-- Apply timeout: if run exceeds timeout_seconds, kill it
+- Run under a timeout so a hung evaluation cannot stall the loop:
+  `timeout <timeout_seconds> <eval_command> > run.log 2>&1` (GNU `timeout`; on
+  macOS without coreutils use `gtimeout`). Exit status 124 means the run timed
+  out — treat it as a crash.
 - Extract metric: `grep "^<metric_name>:" run.log`
 - If grep is empty, the run crashed
 
 Step 6 - Decide:
 
-- Parse the metric value
-- Compare with current best from results.tsv
-- Apply simplicity criterion:
-    - Significant improvement (>1%): keep
-    - Small improvement with simple code: keep
-    - Small improvement with complex code: revert
-    - Code deletion with equal/better metric: always keep
-    - No improvement or worse: revert
+Read `${CLAUDE_PLUGIN_ROOT}/skills/research-loop/references/decision-logic.md`
+and apply its decision tree to the extracted metric versus the current best in
+results.tsv. In short: keep on improvement (or on an equal metric with simpler
+code), revert otherwise.
 
 Step 7 - Record:
 
@@ -169,13 +152,12 @@ Return a concise report:
 - Next suggestion: <what to try next>
 ```
 
-**Critical Rules:**
+**Loop invariants** (each protects the keep/revert mechanics; the scope-guard
+hook enforces the first mechanically):
 
-- ALWAYS run the Step 0 revert preflight (experiment-branch + clean-tree check,
-  record `base`) before changing any file
-- NEVER modify files outside the target list
-- NEVER modify the evaluation command or harness
-- NEVER skip logging to results.tsv
-- ALWAYS commit before running evaluation
-- ALWAYS revert on failure with `git reset --hard "$base"` (the recorded
-  iteration baseline — never `HEAD~1`)
+Only target files change; the evaluation command and harness are the ground
+truth for every comparison. Run the Step 0 preflight before any edit, and
+revert only with `git reset --hard "$base"` to the recorded baseline — a blind
+`HEAD~1` can erase kept work. Commit before evaluating and log every iteration
+to results.tsv: the commit is what a revert restores and the TSV is the only
+state the next iteration sees.

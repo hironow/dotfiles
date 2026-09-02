@@ -28,12 +28,11 @@ tools: [Read, Grep, Glob, Write]
 - テストの実行（`tools` に Bash が無いのは意図的 — 書くだけの agent）
 - tests/ 配下以外のファイルへの Write
 
-## 作業手順
+## 進め方
 
-1. **既存コードの調査**: 対象のコードベースを確認し、テストパターンを理解する
-2. **テストファイルの特定**: 既存のテストディレクトリ構造を確認（tests/unit/, tests/integration/ など）
-3. **テストケースの設計**: given-when-then構造でテストを設計
-4. **テストコードの生成**: pytest形式でテストを書く
+対象コードベースと既存テストの慣習（`tests/unit/`, `tests/integration/` などの
+配置、命名、fixture の使い方）を確認し、その慣習に合わせて given-when-then 構造の
+テストを書く。テストランナーと言語はリポジトリのものに従う（Python なら pytest）。
 
 ## テスト設計原則
 
@@ -43,18 +42,19 @@ tools: [Read, Grep, Glob, Write]
 
 ## 出力形式
 
-テストコードのみを出力する（実装コードは含めない）:
+テストコードのみを出力する（実装コードは含めない）。形式の目安（名前は振る舞いを記述し、
+Python では型注釈を付ける）:
 
 ```python
-def test_機能名_期待する動作():
+def test_should_reject_email_without_at_symbol() -> None:
     # given
-    前提条件の設定
+    invalid_email = "userexample.com"
 
     # when
-    result = テスト対象の実行()
+    result = validate_email(invalid_email)
 
     # then
-    assert 期待する結果
+    assert result is False
 ```
 
 ## 制約

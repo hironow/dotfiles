@@ -37,5 +37,7 @@ Go, Python, TypeScript
 
 ## Rule Categories (11)
 
+(as of 2026-09, derived from `guardrails/semgrep`)
+
 naming, type-safety, immutability, encapsulation, structure, complexity,
 layer-dependency, repository, error-handling, security, backward-compat

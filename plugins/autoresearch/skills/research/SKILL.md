@@ -1,12 +1,11 @@
 ---
 name: research
 description: >
-  This skill should be used when the user asks to "start research",
-  "run autonomous experiments", "optimize my code automatically",
-  "begin experiment loop", "run autoresearch", or needs to start or resume
-  an autonomous research experiment loop. This is the top-level entry point
-  that orchestrates setup and loop execution. For internal keep/revert
-  methodology, see the research-loop skill.
+  Top-level entry point for the autoresearch loop: start or resume an
+  autonomous keep/revert experiment loop that optimizes code against a fixed
+  metric. Use for any request to run, start, resume or continue autonomous
+  experiments or metric-driven optimization. For the methodology itself see
+  research-loop.
 argument-hint: "[experiment tag or config path]"
 allowed-tools:
   - Read
@@ -52,8 +51,9 @@ Spawn the researcher agent via the Agent tool:
 
 ```
 Agent(
-  prompt="Run the next experiment iteration. Config: <config>. Current best: <metric>.",
-  name="researcher"
+  subagent_type="autoresearch:researcher",
+  description="Run one experiment iteration",
+  prompt="Run the next experiment iteration. Config: <config>. Current best: <metric>."
 )
 ```
 

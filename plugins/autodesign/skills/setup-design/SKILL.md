@@ -1,10 +1,9 @@
 ---
 name: setup-design
 description: >
-  This skill should be used when the user asks to "set up a design experiment",
-  "initialize a design exploration", "create design config", "prepare design branch",
-  or needs to configure the autodesign environment before starting
-  an autonomous design exploration loop.
+  Initialize an autodesign environment: design branch, design-config.yaml,
+  evaluator dependency checks, design-results.tsv and baseline measurement. Use
+  when configuring or preparing a design exploration loop before it starts.
 allowed-tools:
   - Read
   - Write
@@ -155,8 +154,9 @@ printf '%s\t%s\tkeep\t-\tbaseline\tinitial design\n' \
   "$(git rev-parse --short HEAD)" "<composite_score>" >> design-results.tsv
 ```
 
-When `initial_prompt` IS set, skip this step — Step 0 of the core loop handles
-initial generation and baseline recording.
+When `initial_prompt` is set, skip this step; the `/design` entry skill's
+*Initial Generation* section generates the design, commits it, and records the
+baseline before the first designer iteration.
 
 ### 9. Confirm and Go
 

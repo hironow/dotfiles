@@ -1,11 +1,10 @@
 ---
 name: analyze-results
 description: >
-  This skill should be used when the user asks to "analyze review results",
-  "show review progress", "summarize review", "what was fixed",
-  "review-results report", "how did the review go", or wants to understand
-  the outcomes of an autoreview loop. Parses review-results.tsv and presents
-  a structured summary.
+  Summarize the outcome of an autoreview loop from review-results.tsv:
+  iterations, keep rate, per-category and per-file findings reduction, and
+  recommendations for the next pass. Use when the user asks how a review went
+  or what it fixed.
 allowed-tools:
   - Read
   - Bash
@@ -20,41 +19,15 @@ loop outcomes.
 
 ## Analysis Steps
 
-### 1. Read Results
+### 1. Compute the statistics
 
 ```bash
-cat review-results.tsv
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/parse-results.py" review-results.tsv
 ```
 
-If the file does not exist, inform the user that no review has been run yet.
+If the file does not exist, tell the user no review has been run yet.
 
-### 2. Compute Summary Statistics
-
-Calculate from the TSV data:
-
-- **Total iterations**: Count of all rows (excluding header)
-- **Kept**: Count where status = "keep"
-- **Reverted**: Count where status = "revert"
-- **Skipped**: Count where status = "skip"
-- **Keep rate**: kept / total iterations
-- **Net findings reduction**: First findings_before minus last findings_after
-
-### 3. Per-Category Breakdown
-
-For each category that appears in the results:
-
-| Category | Iterations | Kept | Reverted | Findings Start | Findings End | Reduction |
-|----------|-----------|------|----------|---------------|-------------|-----------|
-
-### 4. Per-File Breakdown
-
-For each file that appears in the results:
-
-- Files with most fixes applied
-- Files with most reverts (indicating difficulty)
-- Files with remaining findings
-
-### 5. Pattern Analysis
+### 2. Read the patterns and recommend
 
 Identify patterns in the results:
 
@@ -62,8 +35,6 @@ Identify patterns in the results:
 - Categories where fixes struggled (high revert rate)
 - Files that were touched most frequently
 - Oscillation patterns (alternating keep/revert)
-
-### 6. Recommendations
 
 Based on the analysis, suggest:
 

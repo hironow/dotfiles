@@ -1,13 +1,10 @@
 ---
 name: design-loop
 description: >
-  Core methodology reference for the autodesign keep/revert cycle.
-  This skill provides the rules, decision logic, and error recovery patterns
-  for the autonomous loop — not the top-level entry point (use /design for that).
-  Applicable when the user asks about "autodesign pattern", "keep/revert logic",
-  "design decision criteria", "design exploration strategy",
-  "run keep/revert design optimization", or needs guidance on how the autonomous
-  explore-evaluate-decide cycle works internally.
+  Methodology reference for the autodesign keep/revert cycle: two-stage decision
+  (constraints, then composite score), axis selection and error recovery. Use
+  when the user asks how the loop decides, wants to tune the criteria, or asks
+  about the autodesign pattern. Not the entry point — use /design to run a loop.
 ---
 
 # Autonomous Design Exploration Loop
@@ -46,12 +43,9 @@ LOOP:
 
 ## Two-Stage Decision
 
-Unlike autoresearch's single metric comparison, autodesign uses a two-stage decision:
-
-1. **Constraint check** (pass/fail gate): Check all constraints from config.
-   Any violation = immediate revert, regardless of score.
-2. **Score comparison** (keep/revert): Compare composite_score with current best.
-   Apply simplicity criterion for marginal improvements.
+Constraints are a pass/fail gate — any violation reverts regardless of score —
+and only a passing run has its composite_score compared with the current best.
+Apply the full decision tree in `references/decision-logic.md`.
 
 ## Exploration Strategy
 
