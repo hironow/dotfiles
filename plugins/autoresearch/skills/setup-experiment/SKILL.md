@@ -1,10 +1,9 @@
 ---
 name: setup-experiment
 description: >
-  This skill should be used when the user asks to "set up an experiment",
-  "initialize a research run", "create experiment config", "prepare experiment branch",
-  or needs to configure the autoresearch experiment environment before starting
-  an autonomous optimization loop.
+  Initialize an autoresearch environment: experiment branch,
+  experiment-config.yaml, results.tsv and baseline measurement. Use when
+  configuring or preparing an experiment loop before it starts.
 allowed-tools:
   - Read
   - Write

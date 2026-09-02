@@ -1,13 +1,11 @@
 ---
 name: research-loop
 description: >
-  Core methodology reference for the autoresearch keep/revert cycle.
-  This skill provides the rules, decision logic, and error recovery patterns
-  for the autonomous loop — not the top-level entry point (use /research for that).
-  Applicable when the user asks about "autoresearch pattern", "keep/revert logic",
-  "experiment decision criteria", "auto-tune hyperparameters",
-  "run keep/revert optimization", or needs guidance on how the autonomous
-  modify-evaluate-decide cycle works internally.
+  Methodology reference for the autoresearch keep/revert cycle: rules, decision
+  logic and error recovery for the modify-evaluate-decide loop. Use when the
+  user asks how the loop decides, wants to tune keep/revert criteria, or asks
+  about the autoresearch pattern. Not the entry point — use /research to run a
+  loop.
 ---
 
 # Autonomous Research Loop
@@ -60,14 +58,9 @@ results_file: "results.tsv"     # Append-only log (git-untracked)
 
 ## Decision Logic
 
-Apply the **simplicity criterion** when deciding keep vs. revert:
-
-- Metric improved AND code is simpler or equal complexity -> **keep**
-- Metric improved significantly (>1% relative) -> **keep** even if slightly more complex
-- Metric improved marginally (<0.1% relative) with added complexity -> **revert**
-- Metric improved by deleting code -> **always keep** (simplification win)
-- Metric unchanged or worse -> **revert**
-- Experiment crashed -> log as "crash", revert, diagnose
+Keep when the metric improves (or stays equal with simpler code), revert
+otherwise, and log a failed run as "crash" before reverting. Apply the full
+decision tree in `references/decision-logic.md`.
 
 ## Results Logging
 

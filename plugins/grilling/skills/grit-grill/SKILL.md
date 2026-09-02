@@ -9,10 +9,10 @@ user's resolve to finish it along the four GRIT axes.
 
 GRIT = Guts (度胸・闘志) / Resilience (復元力・粘り強さ) / Initiative (自発性・主体性) / Tenacity (執念・やり切る力).
 
-## Core rules (inherited from grill-me)
+## Core rules
 
-- Ask questions ONE AT A TIME. Never batch them.
-- For each question, provide your recommended answer.
+- Ask one question at a time, each with your recommended answer; batching lets
+  the user skip the hard one.
 - Walk down each branch of the design tree, resolving dependencies between decisions one-by-one.
 - If a question can be answered by exploring the codebase, explore the codebase instead of asking.
 - Stay relentless: do not accept the first vague answer — dig until it is concrete.
@@ -26,9 +26,9 @@ in one or two sentences, and establish what "done" means.
 
 ### Phase 1 — Design-tree grilling
 
-Walk the design tree as in grill-me: one question at a time, a recommended answer
-each time, exploring the codebase when the answer lives there. As you go, note which
-GRIT axis each weakness maps to:
+Walk the design tree: one question at a time, a recommended answer each time,
+exploring the codebase when the answer lives there. As you go, note which GRIT
+axis each weakness maps to:
 
 - a design that is fragile under failure -> Resilience
 - an unaddressed scary unknown -> Guts
@@ -104,15 +104,15 @@ as the project's intent document.
 - Target: `docs/intent.md` at the root of the current project repository. Confirm the
   repository / path first, and create the `docs/` directory if it does not exist. If the
   session is not inside a project repo, ask the user where to write it.
-- MANDATORY — do NOT invent intent. Write only what was actually established during the
-  grilling. Any branch that stayed vague goes into "Open Questions"; never fill a gap
-  with a guess.
+- Do not invent intent: intent.md is the requester's document, so write only
+  what the grilling established. Any branch that stayed vague goes into "Open
+  Questions".
 - Draft the full document, show it to the user, and write the file only after they
   confirm. If `docs/intent.md` already exists, treat this as an update (the requester's
   intent has changed): summarise what changes before overwriting — prior versions live
   in git history, not in the file.
-- The GRIT scorecard stays in the chat. It assesses resolve, not intent, so do NOT embed
-  it in intent.md.
+- Keep the GRIT scorecard in the chat; it assesses resolve, not intent, so it
+  does not belong in intent.md.
 
 Use this structure:
 

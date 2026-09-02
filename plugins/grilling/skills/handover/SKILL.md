@@ -19,9 +19,8 @@ minimal ramp-up. Optimize it to be read in under two minutes.
 - Draft the full document, show it to the user, and write the file only after they confirm.
   If `docs/handover.md` already exists, this is a session-level update: summarise what
   changes before overwriting. Prior versions live in git history, not in the file.
-- Do NOT duplicate content already captured elsewhere (intent.md, PRDs, plans, ADRs, issues,
-  commits, diffs). Reference it by path or URL instead. Do not restate the intent — if
-  `docs/intent.md` exists, reference it rather than repeating the goal.
+- Do not duplicate content already captured elsewhere (docs/intent.md, PRDs, plans,
+  ADRs, issues, commits, diffs); reference it by path or URL instead.
 - Redact sensitive information (API keys, passwords, PII) before writing.
 - If the user passed arguments, treat them as a description of what the next session will
   focus on, and tailor "Next Actions" accordingly.

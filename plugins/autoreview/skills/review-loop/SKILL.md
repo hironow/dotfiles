@@ -35,11 +35,7 @@ current category. Assign a quality score (1-10) as `findings_before`
 ### 2. Analyze
 
 Parse findings and identify the root cause pattern. Group related findings
-that share the same fix. Prioritize fixes by impact:
-
-1. Fixes that resolve multiple findings at once
-2. Simple renames or restructuring
-3. Deeper refactoring (extract method, introduce type)
+that share the same fix.
 
 ### 3. Fix
 

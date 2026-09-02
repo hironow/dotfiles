@@ -1,10 +1,9 @@
 ---
 name: analyze-results
 description: >
-  Analyze results from an autoresearch experiment loop. This skill should be
-  used when the user asks to "analyze experiment results", "show research progress",
-  "summarize experiments", "what improved", "experiment statistics", or needs to
-  review and visualize the results from results.tsv.
+  Summarize and interpret results.tsv from an autoresearch loop: progress,
+  outcomes, failure patterns and recommended next experiments. Use for any
+  request to review, analyze or report on experiment progress.
 argument-hint: "[results.tsv path]"
 allowed-tools:
   - Read
@@ -20,50 +19,15 @@ identify patterns, and suggest next experiment directions.
 
 ## Analysis Process
 
-### 1. Load Results
-
-Read `results.tsv` (or path from experiment-config.yaml `results_file` field).
-Parse tab-separated columns: commit, metric, status, description.
-
-### 2. Summary Statistics
-
-Calculate and report:
-
-- **Total experiments**: Count of all rows (excluding header)
-- **Outcomes**: Count of keep / discard / crash
-- **Keep rate**: keeps / total (higher suggests good hypothesis generation)
-- **Baseline metric**: First row's metric value
-- **Current best**: Lowest (or highest, per metric_direction) metric among "keep" rows
-- **Total improvement**: Difference between baseline and current best
-- **Relative improvement**: Percentage change from baseline
-
-### 3. Progress Trajectory
-
-List all "keep" experiments in order, showing cumulative improvement:
-
-```
-# | commit  | metric   | delta    | description
-1 | a1b2c3d | 0.9500   | baseline | initial baseline
-2 | b2c3d4e | 0.9320   | -0.0180  | increase learning rate
-3 | e5f6g7h | 0.9210   | -0.0110  | reduce model depth
-```
-
-### 4. Failure Analysis
-
-Identify patterns in discarded and crashed experiments:
-
-- What types of changes consistently fail?
-- Are there crash patterns (OOM, timeout, convergence)?
-- What experiment categories have the best keep rate?
-
-### 5. Recommendations
-
-Based on the analysis, suggest:
-
-- **Exploit**: Variations on successful experiments (fine-tune what worked)
-- **Explore**: Novel directions not yet tried
-- **Simplify**: Opportunities to reduce code while maintaining metrics
-- **Avoid**: Categories of changes that consistently fail
+1. Run the bundled parser and take its numbers as-is:
+   `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/parse-results.py results.tsv <lower|higher>`
+   (direction from `metric_direction` in experiment-config.yaml). It returns
+   JSON with totals, outcome counts, keep rate, baseline, current best and
+   improvement.
+2. Failure analysis (judgment): from the discard/crash rows, identify which
+   kinds of changes fail and any crash patterns (OOM, timeout, divergence).
+3. Recommendations (judgment): exploit what worked, explore untried directions,
+   look for simplifications, name failure categories to avoid.
 
 ## Output Format
 
@@ -91,13 +55,3 @@ Present results as a structured report:
 2. [Another suggestion]
 3. [Another suggestion]
 ```
-
-## Script Usage
-
-Use the bundled analysis script for automated parsing:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/parse-results.py results.tsv
-```
-
-This outputs JSON with summary statistics for programmatic use.

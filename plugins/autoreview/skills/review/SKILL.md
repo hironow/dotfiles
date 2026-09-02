@@ -1,11 +1,11 @@
 ---
 name: review
 description: >
-  This skill should be used when the user asks to "start a review",
-  "run autoreview", "review my code", "fix semgrep violations",
-  "review specs", "review types", "begin review loop", or needs to start
-  or resume an autonomous code review loop. This is the top-level entry
-  point that orchestrates setup and loop execution.
+  Entry point for the autoreview loop: start or resume an autonomous,
+  guardrails-driven review of code (scan-fix, Semgrep findings) or of type
+  definitions and specs (spec-review, LLM score). Use when the user wants an
+  automated review loop run against their code; it invokes setup-review when
+  no review-config.yaml exists.
 argument-hint: "[review tag or config path]"
 allowed-tools:
   - Read

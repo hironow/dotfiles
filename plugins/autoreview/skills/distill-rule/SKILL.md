@@ -1,13 +1,10 @@
 ---
 name: distill-rule
 description: >
-  This skill should be used when the user asks to "distill a rule",
-  "create a semgrep rule from this finding", "turn this into a rule",
-  "codify this pattern", "prevent this from recurring",
-  "extract a semgrep rule", "add a guardrail for this",
-  or wants to convert a code review finding or bad code pattern into a
-  reusable Semgrep rule with test cases. Also triggered after a review
-  loop when patterns emerge that should be automated.
+  Turn a code-review finding, a kept autoreview fix, or a described bad pattern
+  into a reusable Semgrep guardrail rule with test cases under the project's
+  .semgrep/. Use when the user wants a recurring pattern codified so it is
+  caught automatically.
 allowed-tools:
   - Read
   - Write
@@ -56,9 +53,13 @@ For manual input, ask the user to provide:
 
 ### 2. Determine Rule Category
 
-Map the finding to one of the 11 guardrails categories:
-naming, type-safety, immutability, encapsulation, structure, complexity,
-layer-dependency, repository, error-handling, security, backward-compat.
+Map the finding to one of the guardrails categories — the directories under
+the resolved rules path:
+
+```bash
+find "$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-guardrails.sh")" \
+  -mindepth 1 -maxdepth 1 -type d ! -name tests -exec basename {} \; | sort
+```
 
 If none fit, propose a new category name and confirm with the user.
 

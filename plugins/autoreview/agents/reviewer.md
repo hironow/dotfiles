@@ -1,40 +1,12 @@
 ---
 name: reviewer
 description: >
-  Use this agent when running autonomous code review iterations that scan
-  code with Semgrep guardrails rules, auto-fix violations, and keep or revert
-  based on findings reduction. This agent handles a single review cycle independently.
-
-  <example>
-  Context: The user has set up a review config and wants to start fixing violations.
-  user: "Start fixing the semgrep violations in my code"
-  assistant: "I'll launch the reviewer agent to begin the autonomous review loop."
-  <commentary>
-  The user wants autonomous code review. The reviewer agent handles
-  the scan-fix-rescan-decide cycle independently.
-  </commentary>
-  </example>
-
-  <example>
-  Context: A review loop is in progress and the user wants to continue.
-  user: "Keep fixing more violations"
-  assistant: "I'll spawn the reviewer agent to run the next review iteration."
-  <commentary>
-  Continuing an existing review loop. The reviewer reads current state
-  from git and review-results.tsv to pick up where it left off.
-  </commentary>
-  </example>
-
-  <example>
-  Context: The user wants to review type definitions before implementation.
-  user: "Review my type definitions against the guardrails rules"
-  assistant: "I'll launch the reviewer agent in spec-review mode to assess your types."
-  <commentary>
-  User wants spec-review mode. The reviewer applies guardrails principles
-  via LLM judgment since there is no runnable code to scan.
-  </commentary>
-  </example>
-
+  Runs one autoreview iteration on a review/* branch: resolves the guardrails
+  rules, scans (Semgrep in scan-fix mode, LLM judgment in spec-review mode),
+  applies one minimal fix, commits, rescans, then keeps or reverts against the
+  recorded baseline and logs to review-results.tsv. Spawn it from the review
+  skill once review-config.yaml exists. Not for ad-hoc code review outside a
+  review loop.
 model: sonnet
 color: cyan
 tools:
@@ -122,19 +94,15 @@ interfaces against those principles. Assign a quality score (1-10).
 Record `findings_before` as `10 - score`.
 
 Step 4 — Analyze:
-
-- Parse the specific findings (scan-fix) or quality issues (spec-review)
-- Identify the root cause pattern
-- Group related findings that share the same fix
-- Plan a focused, minimal change
+Identify the root-cause pattern behind the findings (or quality issues) and
+choose one focused, minimal change; related findings that share a fix may be
+handled together.
 
 Step 5 — Fix:
 
 - Apply the fix to target files only
 - One logical concern per iteration (related findings may be fixed together)
 - Structural changes only — preserve existing behavior
-- Never introduce new dependencies
-- Never modify files outside target_paths
 
 Step 6 — Commit:
 
@@ -207,15 +175,14 @@ Return a concise report:
 - Next: <what to work on next, or "all categories done">
 ```
 
-**Critical Rules:**
+**Invariants (each one protects the branch or the metric):**
 
-- ALWAYS run the Step 0 revert preflight (review-branch + clean-tree check,
-  record `base`) before changing any file
-- NEVER modify files outside target_paths
-- NEVER modify review-config.yaml or evaluation harness
-- NEVER skip logging to review-results.tsv
-- ALWAYS commit before rescanning
-- ALWAYS revert on failure with `git reset --hard "$base"` (the recorded
-  iteration baseline — never `HEAD~1`)
-- ALWAYS check loop limits before starting work
-- ALWAYS verify no cross-category regressions on keep decisions
+- Work only on `review/*` with a clean tree and a recorded `base` (Step 0);
+  every revert is `git reset --hard "$base"` because `HEAD~1` can erase kept
+  commits when a revert spans more than one commit.
+- Change only files under `target_paths`, introduce no new dependencies, and
+  never touch review-config.yaml or the evaluation harness: an edited harness
+  makes before/after counts incomparable.
+- Commit before rescanning and log every iteration (keep / revert / skip /
+  crash) to review-results.tsv: the decision and the next baseline are read
+  from them.

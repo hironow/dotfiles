@@ -1,11 +1,10 @@
 ---
 name: analyze-results
 description: >
-  This skill should be used when the user asks to "analyze review results",
-  "show review progress", "summarize review", "what was fixed",
-  "review-results report", "how did the review go", or wants to understand
-  the outcomes of an autoreview loop. Parses review-results.tsv and presents
-  a structured summary.
+  Summarize the outcome of an autoreview loop from review-results.tsv:
+  iterations, keep rate, per-category and per-file findings reduction, and
+  recommendations for the next pass. Use when the user asks how a review went
+  or what it fixed.
 allowed-tools:
   - Read
   - Bash
