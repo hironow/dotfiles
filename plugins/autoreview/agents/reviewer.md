@@ -95,17 +95,14 @@ Step 1 — Understand State:
   RULES=$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-guardrails.sh")
   ```
 
-- Identify which category and file to work on next
-- Check loop limits (max iterations, stall detection)
+- Pick the next target: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/next-target.sh"`
+  (prints category and file, or DONE with the reason; a skip reason is logged
+  as "skip")
 
 Step 2 — Pre-Check (Loop Safety):
 
-- Count iterations for the current category in review-results.tsv
-- If `max_iterations_per_category` reached, log "skip" and report
-- Count consecutive no-improvement results for current category
-- If `max_consecutive_no_improvement` reached, log "skip" and report
-- Check for oscillation pattern (alternating keep/revert in last 3 entries)
-- If oscillation detected, log "skip" and report
+Act on what next-target.sh printed: DONE means stop and report the reason; a
+skipped category is logged to review-results.tsv with status "skip".
 
 Step 3 — Scan (Before):
 

@@ -61,7 +61,22 @@ Apply the guardrails rules conceptually to type definitions and interfaces:
 - **3-4**: Needs work — multiple violations
 - **1-2**: Poor — fundamental design issues
 
+## Category and File Progression
+
+Process categories by most remaining findings; within a category, files with
+most findings first. A category is finished only when every file scanned for it
+is clean and no unvisited file remains under `target_paths`.
+
+Stall detection: count consecutive iterations without improvement per category;
+at `max_consecutive_no_improvement`, log a "skip" and move to the next category.
+Each category also gets at most `max_iterations_per_category` attempts, after
+which it is skipped regardless of remaining findings.
+
 ## Infinite Loop Prevention
+
+The progression, stall and iteration rules above and the Oscillation Detection
+below are implemented by `scripts/next-target.sh`; Diminishing Returns and Total
+Budget remain judgment calls for the agent.
 
 ### Oscillation Detection
 

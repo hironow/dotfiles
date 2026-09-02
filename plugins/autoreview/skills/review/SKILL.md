@@ -53,12 +53,9 @@ Start an autonomous code review loop.
 
 ### Determining Next Category
 
-Read review-results.tsv and apply these rules:
-
-1. Skip categories that reached `max_iterations_per_category`
-2. Skip categories with `max_consecutive_no_improvement` stalls in a row
-3. Pick the category with the highest remaining findings count
-4. If all categories are done or skipped, report completion
+Run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/next-target.sh"`; it applies the
+iteration caps, stall and oscillation rules from review-config.yaml and reports
+completion.
 
 ### Launching the Loop
 
