@@ -62,8 +62,9 @@ Spawn the designer agent via the Agent tool:
 
 ```
 Agent(
-  prompt="Run the next design exploration iteration. Config: <config>. Current best: <score>.",
-  name="designer"
+  subagent_type="autodesign:designer",
+  description="Run one design exploration iteration",
+  prompt="Run the next design exploration iteration. Config: <config>. Current best: <score>."
 )
 ```
 

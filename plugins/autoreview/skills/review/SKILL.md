@@ -62,12 +62,13 @@ Read review-results.tsv and apply these rules:
 
 ### Launching the Loop
 
-Spawn the reviewer agent via the Agent tool:
+Spawn the reviewer agent via the Agent tool (plugin agents are addressed as
+`<plugin>:<agent>`):
 
 ```
 Agent(
-  prompt="Run the next review iteration. Config: <config>. Mode: <mode>. Category: <category>. Current findings: <count>. Rules path: <rules_path>.",
-  name="reviewer"
+  subagent_type="autoreview:reviewer",
+  prompt="Run the next review iteration. Config: <config>. Mode: <mode>. Category: <category>. Current findings: <count>. Rules path: <rules_path>."
 )
 ```
 

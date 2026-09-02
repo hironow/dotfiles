@@ -52,8 +52,9 @@ Spawn the researcher agent via the Agent tool:
 
 ```
 Agent(
-  prompt="Run the next experiment iteration. Config: <config>. Current best: <metric>.",
-  name="researcher"
+  subagent_type="autoresearch:researcher",
+  description="Run one experiment iteration",
+  prompt="Run the next experiment iteration. Config: <config>. Current best: <metric>."
 )
 ```
 
