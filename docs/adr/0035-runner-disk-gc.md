@@ -338,3 +338,13 @@ behind `--allow-unsafe`** over a data-corruption risk:
 
 Not acceptable on a host running CI. Revisit if the flag is re-enabled by
 default.
+
+## Addendum 2026-09-03 — images that must survive idle: the `keep/` tag
+
+The image sweep took the h-nn LLM stack's 14.7 GB ghcr image two hours after
+`just llm down` (03:04 JST; a 10-minute re-pull on next `up`). Retention is
+right for CI leftovers and wrong for a box's resident stack, so the sweep now
+skips any image ID that also carries a tag under `RUNNER_GC_KEEP_TAG_PREFIX`
+(default `keep/`). Protecting an image is `docker tag <image> keep/<name>`;
+the .gpus box scripts re-apply it after every pull and `just doctor` checks
+it. No list lives in this repo.
