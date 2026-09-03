@@ -14,6 +14,14 @@
 # Retention is TIME-based: anything last used within $RUNNER_GC_RETENTION is
 # kept so back-to-back jobs still hit warm cache; everything older is dropped.
 #
+# Images that must SURVIVE idle periods (lived 2026-09-03: the h-nn LLM stack's
+# 14.7 GB ghcr image, stopped by `just llm down`, was swept two hours later and
+# had to be pulled again) are protected by a TAG, not a list: any image ID that
+# also carries a tag under $RUNNER_GC_KEEP_TAG_PREFIX (default `keep/`) is
+# skipped by the image sweep. Protecting a new image is one command —
+#   docker tag <image> keep/<name>
+# — and needs no change here (the .gpus box scripts re-apply it after every pull).
+#
 # Invoked from two places (both installed by scripts/install_runner_gc.sh):
 #   - runner-gc.timer                  — hourly floor, catches idle drift
 #   - ACTIONS_RUNNER_HOOK_JOB_COMPLETED — right after each job, the ideal moment
@@ -22,6 +30,7 @@
 set -eu
 
 RETENTION="${RUNNER_GC_RETENTION:-2h}"
+KEEP_TAG_PREFIX="${RUNNER_GC_KEEP_TAG_PREFIX:-keep/}"
 FORCE="${RUNNER_GC_FORCE:-0}"
 DIAG_DAYS="${RUNNER_GC_DIAG_DAYS:-7}"
 # How many major.minor SERIES of each tool survive (the newest patch of each).
@@ -138,6 +147,42 @@ _each_runner_dir() {
 }
 
 # --- Docker -----------------------------------------------------------------
+# "2h" / "30m" / "1d" -> seconds (the shapes `docker prune --filter until=` takes).
+_retention_secs() {
+  case "$1" in
+    *h) echo $(( ${1%h} * 3600 )) ;;
+    *m) echo $(( ${1%m} * 60 )) ;;
+    *d) echo $(( ${1%d} * 86400 )) ;;
+    *s) echo "${1%s}" ;;
+    *)  echo "$1" ;;
+  esac
+}
+
+# The image sweep used to be a blanket prune (`-a`, `--filter until=`): every
+# image no container references, older than the retention. Same rule, minus
+# the images that carry a $KEEP_TAG_PREFIX tag (see the header). Age is the
+# image's Created time, exactly what `until=` compared.
+_docker_image_gc() {
+  local cutoff used id refs created
+  cutoff=$(( $(date +%s) - $(_retention_secs "$RETENTION") ))
+  used="$(docker ps -aq 2>/dev/null | xargs -r docker inspect --format '{{.Image}}' 2>/dev/null | sort -u)"
+  docker images -q --no-trunc 2>/dev/null | sort -u | while read -r id; do
+    [ -n "$id" ] || continue
+    printf '%s\n' "$used" | grep -qx "$id" && continue
+    refs="$(docker image inspect --format '{{join .RepoTags " "}}' "$id" 2>/dev/null || true)"
+    case " $refs " in
+      *" ${KEEP_TAG_PREFIX}"*) log "docker: keep ${refs} (${KEEP_TAG_PREFIX} tag)"; continue ;;
+    esac
+    created="$(docker image inspect --format '{{.Created}}' "$id" 2>/dev/null | cut -c1-19)"
+    [ -n "$created" ] || continue
+    if [ "$(date -u -d "$created" +%s 2>/dev/null || echo 0)" -lt "$cutoff" ]; then
+      docker rmi -f "$id" >/dev/null 2>&1 || true
+    fi
+  done
+  # Dangling layers left by the removals above.
+  docker image prune -f --filter "until=${RETENTION}" >/dev/null 2>&1 || true
+}
+
 _docker_gc() {
   if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
     log "docker: not available; skipping"
@@ -147,7 +192,7 @@ _docker_gc() {
 
   # Order matters: containers first so the images they pin become prunable.
   docker container prune -f --filter "until=${RETENTION}" >/dev/null 2>&1 || true
-  docker image prune -af --filter "until=${RETENTION}" >/dev/null 2>&1 || true
+  _docker_image_gc
   docker builder prune -af --filter "until=${RETENTION}" >/dev/null 2>&1 || true
 
   # buildx `docker-container` builders keep their cache inside their own

@@ -125,6 +125,22 @@ def test_retention_is_time_based_and_overridable() -> None:
         )
 
 
+def test_image_sweep_spares_keep_tagged_images() -> None:
+    """Lived 2026-09-03: `docker image prune -af` swept the h-nn LLM stack's
+    14.7 GB image two hours after `just llm down`. Protection is a TAG under
+    RUNNER_GC_KEEP_TAG_PREFIX (default keep/), so guarding a new image is one
+    `docker tag` and never a list edit here."""
+    text = GC.read_text(encoding="utf-8")
+    assert 'KEEP_TAG_PREFIX="${RUNNER_GC_KEEP_TAG_PREFIX:-keep/}"' in text
+    assert "_docker_image_gc" in text and "docker rmi -f" in text
+    assert not re.search(r"docker image prune -af", text), (
+        "the blanket `image prune -af` is gone: it cannot exempt anything."
+    )
+    assert "${KEEP_TAG_PREFIX}" in text and "docker: keep" in text, (
+        "keep-tagged images are skipped and the skip is logged."
+    )
+
+
 def test_gc_prunes_docker_container_buildx_builders() -> None:
     """`docker builder prune` does not reach docker-container builders."""
     text = GC.read_text(encoding="utf-8")
