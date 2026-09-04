@@ -1,6 +1,6 @@
 # Agent instruction set — structure & setup
 
-This replaces the single 1,156-line `ROOT_AGENTS.md` with a **hub-and-spoke**
+This replaces the original long-form, single-file `ROOT_AGENTS.md` with a **hub-and-spoke**
 layout plus a **deterministic enforcement layer**. The reasoning, in one
 paragraph: AI coding agents reliably follow only ~150-200 instructions before
 adherence degrades (a working heuristic, not a measured constant; the agent's

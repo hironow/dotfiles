@@ -1,7 +1,10 @@
 # Global mise config for hironow's machines. Symlinked to
 # ~/.config/mise/config.toml by `just deploy`.
 #
-# Project-pinned tools live in /Users/nino/dotfiles/mise.toml (ADR 0006).
+# Project-pinned tools live in this file (deployed to ~/.config/mise/config.toml
+# by `just deploy`; baked to /etc/mise/config.toml in the devcontainer image).
+# The former repo-root mise.toml was removed 2026-08-05. See ADR 0006 for
+# the version-pinning strategy.
 # This file holds user-level tool defaults, security settings, and backend
 # tweaks that follow CLAUDE.md global rules.
 
@@ -113,13 +116,13 @@ fzf = "0.74.3"
 
 [settings]
 # Disable asdf-style .python-version / .nvmrc auto-detection so only
-# mise.toml / .tool-versions drive tool resolution.
+# mise config files / .tool-versions drive tool resolution.
 idiomatic_version_file_enable_tools = []
 # Block surprise installs when invoking a missing command. `mise install`
 # must be explicit.
 not_found_auto_install = false
 # `mise use <tool>` (without a version) records the currently pinned
-# version instead of "latest", keeping mise.toml reproducible
+# version instead of "latest", keeping the config reproducible
 # (ADR 0006 pinned-versions philosophy).
 pin = true
 # Supply-chain quarantine for mise-managed tools was REMOVED 2026-09-03:

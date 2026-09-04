@@ -4,6 +4,10 @@ This directory contains the Firebase emulator configuration for local developmen
 
 ## Quick Start
 
+Prefer the repo-root recipes (`just emu-up` / `just emu-start`), which handle
+profiles, prebuilds, and readiness waits — see [`../README.md`](../README.md).
+Direct compose is for debugging this service in isolation:
+
 1. Start the Firebase emulators:
 
    ```bash

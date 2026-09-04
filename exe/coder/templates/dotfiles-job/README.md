@@ -106,10 +106,10 @@ Tools available inside the container (from the prebuilt image):
 |---|---|
 | Core | `just`, `mise`, `uv`, `gcloud`, `git`, `docker` (cli-only) |
 | Lint / format | `ruff`, `shellcheck`, `markdownlint-cli2`, `prek` |
-| Runtime | `node` 24.15.0, `python` 3 (mise-pinned) |
-| AI agent CLIs | `codex`, `gemini`, `claude`, `copilot`, `pi` |
+| Runtime | `node` 24.x (mise-pinned), `python` 3 (mise-pinned) |
+| AI agent CLIs | `codex`, `antigravity`, `claude`, `copilot`, `pi` |
 
-Versions are pinned in [`mise.toml`](../../../../mise.toml) per
+Versions are pinned in [`config/mise/config.toml`](../../../../config/mise/config.toml) (global) and the devcontainer feature prebuild (`/etc/mise/config.toml` in the image) per
 [ADR 0006](../../../../docs/adr/0006-mise-version-pinning.md).
 The mise data dir is `/opt/mise`, baked into the image at build time
 and reachable with `MISE_OFFLINE=1`.
@@ -122,7 +122,7 @@ cdr-job smoke -- 'echo hello $(hostname); date'
 
 # verify the same tool set as the interactive workspace
 cdr-job smoke-tools -- '
-  for cli in just mise uv gcloud codex gemini claude copilot pi; do
+  for cli in just mise uv gcloud codex antigravity claude copilot pi; do
     printf "%s: " "$cli"
     "$cli" --version 2>&1 | head -1
   done'

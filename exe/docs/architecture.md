@@ -244,7 +244,7 @@ fallback). Configuration is purely env-var driven:
 | `CODER_WILDCARD_ACCESS_URL` | `*.sandbox.hironow.dev` | Workspace app preview hostnames |
 | `CODER_PG_CONNECTION_URL` | `postgres://<sa>%40<project>.iam:placeholder@127.0.0.1:5432/coder?sslmode=disable` | Cloud SQL via CSAP loopback (ADR 0010). The "password" is a literal `placeholder` — CSAP `--auto-iam-authn` swaps it for an OAuth token at every connection. Loaded from `/etc/default/coder`. |
 | `CODER_CACHE_DIRECTORY` | `/var/lib/coder/cache` | Coder asset cache (templates, static binaries) — postgres data lives in Cloud SQL |
-| `CODER_TELEMETRY` / `CODER_TELEMETRY_TRACE` | `false` / `false` | Telemetry off |
+| `CODER_TELEMETRY_ENABLE` | `false` | Telemetry off (note: `CODER_TELEMETRY` / `--telemetry-enable` are deprecated aliases that only emit a serpent warning — see runbook) |
 | `CODER_SECURE_AUTH_COOKIE` | `true` | Auth cookie set with Secure flag |
 | `CODER_STRICT_TRANSPORT_SECURITY` | `31536000` | One-year HSTS |
 | `CODER_STRICT_TRANSPORT_SECURITY_OPTIONS` | `includeSubDomains;preload` | Cover sandbox subdomains and qualify for HSTS preload |
@@ -322,11 +322,11 @@ project's `default` VPC and joins the tailnet as `tag:exe-workspace`.
   INSTALL_SKIP_ADD_UPDATE=1` (belt-and-suspenders; ADR 0005
   install.sh OS dispatch already auto-skips Mac-only steps on
   Linux), then `MISE_OFFLINE=1 mise install` against the workspace
-  mise.toml. The mise data dir is `/opt/mise` (ADR 0006 relocation)
+  mise config. The mise data dir is `/opt/mise` (ADR 0006 relocation)
   so the build-time-baked installs survive the `/root` overlay
   mask.
 - The image bakes the dotfiles tool set + 5 AI agent CLIs
-  (`codex`, `gemini`, `claude`, `copilot`, `pi`) + Node.js 24.15.0
+  (`codex`, `antigravity`, `claude`, `copilot`, `pi`) + Node.js 24.x (mise-pinned)
   for the npm-backed shebangs — all under `/opt/mise` so they
   survive the volume mount. Auth is operator-side and runs once
   per workspace; see the

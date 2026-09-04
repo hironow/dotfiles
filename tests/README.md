@@ -14,6 +14,9 @@ no mocks of project code.
 | [`test_vm_bootstrap.py`](./test_vm_bootstrap.py) | Workspace VM startup_script supply-chain regressions (no curl\|bash, fingerprint pins) |
 | [`test_publish_workflow.py`](./test_publish_workflow.py) | `publish-devcontainer.yaml` GHA WIF auth + tag invariants |
 | [`test_cdr_wrapper.py`](./test_cdr_wrapper.py) | `exe/scripts/cdr` Secret Manager fetch + cleanup-on-failure |
+| [`test_actor_type_injection.py`](./test_actor_type_injection.py) | `RUNOPS_ACTOR_TYPE` env injection static checks (ADR 0012, four caller paths) |
+| [`test_justfile_env_checks.py`](./test_justfile_env_checks.py) | justfile `exe-*` recipes fail fast on missing `CLOUDFLARE_API_TOKEN` / `TAILSCALE_API_KEY` |
+| [`test_justfile_windows_subset.py`](./test_justfile_windows_subset.py) | `deploy` / `clean` Windows native cross-platform subset (ADR 0018) |
 | [`test_just_sandbox.py`](./test_just_sandbox.py) | `just <recipe>` end-to-end inside the dev container |
 | [`test_sync_agents.py`](./test_sync_agents.py) | `just sync-agents` (Claude / Gemini / Codex agent file mirroring) |
 | [`exe/test_startup_script.py`](./exe/test_startup_script.py) | Control-plane VM startup_script (heredoc extraction + bash lint + systemd-analyze) |

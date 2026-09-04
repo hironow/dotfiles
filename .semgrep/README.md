@@ -63,7 +63,8 @@ If rules are shared across projects, reference a single source of truth:
 ln -s ~/dotfiles/.semgrep/rules/meta ~/work/myproject/.semgrep/rules/meta
 ```
 
-**Option 2 — git subtree** (when you want per-project divergence history)
+**Option 2 — git subtree** (when you want per-project divergence history;
+`dotfiles-semgrep.git` below is a placeholder for wherever you publish the shared rules)
 
 ```bash
 git subtree add --prefix .semgrep/rules/meta \

@@ -30,7 +30,7 @@ tools: [Read, Grep, Glob, Write]
 
 ## 進め方
 
-対象コードベースと既存テストの慣習（`tests/unit/`, `tests/integration/` などの
+対象コードベースと既存テストの慣習（`tests/unit/`, `tests/exe/` などの
 配置、命名、fixture の使い方）を確認し、その慣習に合わせて given-when-then 構造の
 テストを書く。テストランナーと言語はリポジトリのものに従う（Python なら pytest）。
 

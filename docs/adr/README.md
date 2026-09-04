@@ -31,7 +31,7 @@ recorded decisions that shaped it.
 | 0007 | [Coder server install hardening on the control-plane VM](./0007-coder-server-install-hardening.md)   | Accepted                                     | 2026-05-02 | `tofu/exe/coder.tf`, `tofu/exe/variables.tf` |
 | 0008 | [Event-driven Coder workspace runner (GHA-style without GHA)](./0008-event-driven-workspace-runner.md) | Superseded by [0009](./0009-retract-cron-trigger-from-adr-0008.md) (partial — trigger source 2 retracted) | 2026-05-03 | `exe/coder/templates/dotfiles-job/`, `exe/scripts/cdr-job` |
 | 0009 | [Retract the systemd-timer cron trigger from ADR 0008](./0009-retract-cron-trigger-from-adr-0008.md) | Accepted (2026-05-04 — cron infra reverted in PR #76, intentionally absent) | 2026-05-03 | retracts `tofu/exe` cron / systemd timer (none added) |
-| 0010 | [Cloud SQL Postgres for Coder data plane](./0010-cloud-sql-postgres-for-coder.md)                    | Proposed                                     | 2026-05-03 | `tofu/exe/cloudsql.tf`, `tofu/exe/coder.tf`, `tofu/exe/monitoring.tf` |
+| 0010 | [Cloud SQL Postgres for Coder data plane](./0010-cloud-sql-postgres-for-coder.md)                    | Accepted                                     | 2026-05-03 | `tofu/exe/cloudsql.tf`, `tofu/exe/coder.tf`, `tofu/exe/monitoring.tf` |
 | 0011 | [exe-coder workspace VM multi-project systemd env delivery](./0011-exe-multi-project-systemd-env.md) | Accepted | 2026-05-07 | `exe/coder/templates/`, `exe/scripts/` |
 | 0012 | [exe-coder workspace VM RUNOPS_ACTOR_TYPE env injection (per caller path)](./0012-exe-actor-type-env-injection.md) | Accepted | 2026-05-09 | `exe/coder/templates/`, `exe/scripts/cdr-exec` |
 | 0013 | [Project lifecycle severity classification (= cdr-project / runops project)](./0013-project-lifecycle-severity-classification.md) | Proposed | 2026-05-09 | `exe/` runops project lifecycle |
@@ -63,6 +63,7 @@ recorded decisions that shaped it.
 | 0039 | [Windows native bootstrap via `bootstrap.ps1` one-liner](./0039-windows-bootstrap-ps1.md) | Accepted | 2026-08-15 | `bootstrap.ps1`, `tests/unit/test_bootstrap_ps1.py`, `README.md` |
 | 0040 | [`npm_args` is inert under the bun backend — drop it, correct ADR 0036's rationale](./0040-npm-args-inert-under-bun.md) | Accepted | 2026-08-15 | `config/mise/config.toml`, `.devcontainer/features/dotfiles-tools/install.sh` |
 | 0041 | [Retire the third-party claudelint; official-validator-only gate](./0041-retire-third-party-claudelint.md) | Accepted | 2026-08-16 | `justfile`, `.github/workflows/claude-lint.yaml`, `scripts/check_effective_settings.py` |
+| 0042 | [Watchdog for the interactive Windows runner](./0042-interactive-runner-watchdog.md) | Accepted | 2026-09-03 | `scripts/runner_watchdog_win.ps1`, `justfile` (runner recipes) |
 
 ## Reading order for newcomers
 
