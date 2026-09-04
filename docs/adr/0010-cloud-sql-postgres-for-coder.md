@@ -1,7 +1,7 @@
 # 0010. Cloud SQL Postgres for Coder data plane
 
 **Date:** 2026-05-03
-**Status:** Proposed
+**Status:** Accepted
 
 ## Context
 

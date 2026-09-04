@@ -4,7 +4,7 @@ My configuration for Zsh, Mise, Just, and more.
 
 ## Architecture overview
 
-Three environments share one source of truth (`mise.toml` +
+Three environments share one source of truth (`config/mise/config.toml` +
 `.devcontainer/devcontainer.json` + `install.sh`). Each runs the
 same tools at the same versions; only the install path per OS
 differs.
@@ -28,7 +28,7 @@ differs.
                           |  Single source of truth (this repo) |
                           |                                     |
                           |  - install.sh        (OS dispatch)  |
-                          |  - mise.toml         (tool pins)    |
+                          |  - config/mise/config.toml (tool pins)    |
                           |  - .devcontainer/    (image SoT)    |
                           |  - dump/<host>/      (brew/gcloud)  |
                           +-------------------------------------+
@@ -41,7 +41,7 @@ Legend / 凡例:
 - Dev container: .devcontainer/devcontainer.json + features/dotfiles-tools をビルドした image (CI とローカル IDE で同一)
 - Coder workspace: exe.hironow.dev で立ち上がる cloud dev 環境。Artifact Registry 上の prebuilt image を docker pull する
 - install.sh OS dispatch: uname → mac / linux / windows で step_* 関数を切り替える (ADR 0005)
-- mise.toml: just / uv / prek / vp / markdownlint-cli2 / node + 5 AI CLI (codex / antigravity / claude / copilot / pi) を 3 OS 同一バージョンに pin (ADR 0006)
+- `config/mise/config.toml`: just / uv / prek / vp / markdownlint-cli2 / node + 5 AI CLI (codex / antigravity / claude / copilot / pi) を 3 OS 同一バージョンに pin (ADR 0006)
 - .devcontainer/: dev container 仕様の SoT (debian-12 + Microsoft-curated features + ローカル feature)
 - Artifact Registry: GitHub Actions が main merge 時に WIF 認証で image push、Coder workspace VM が docker pull
 ```
@@ -173,7 +173,7 @@ INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./i
 dig localhost.hironow.dev
 
 # create/update cert for https
-sudo certbot certonly --manual --preferred-challenges dns -d localhost.hironow.dev --config-dir ${config_root}/private/certificates
+sudo certbot certonly --manual --preferred-challenges dns -d localhost.hironow.dev --config-dir ~/dotfiles/private/certificates
 
 # check simple-server for https localhost
 cd tools/simple-server
@@ -343,7 +343,7 @@ git config --global pull.rebase true
 ## fresh WSL provisioning
 
 A bare WSL2 Ubuntu box (not a devcontainer) needs a few one-time steps. The
-bootstrap now self-provisions `mise` and the `mise.toml` toolset, so most of it
+bootstrap now self-provisions `mise` and the `config/mise/config.toml` toolset, so most of it
 is a single command.
 
 ```bash

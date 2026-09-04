@@ -13,7 +13,14 @@ A complete Docker-based setup for visualizing OpenTelemetry data using Grafana, 
 
 ## Quick Start
 
-1. Start the infrastructure:
+1. Start the infrastructure (from the dotfiles repo root, which
+   creates the shared `shared-otel-net` network idempotently):
+
+   ```bash
+   just tel-up
+   ```
+
+   Or standalone inside this directory:
 
    ```bash
    docker compose up -d

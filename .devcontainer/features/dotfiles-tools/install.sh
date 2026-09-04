@@ -177,7 +177,7 @@ chmod 0755 /usr/local/bin/nvcc
 # picks it up.
 echo "[dotfiles-tools] writing /etc/profile.d/dotfiles-mise.sh"
 cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'
-# Pre-trust ONLY the workspace mise.toml and install.sh's sandbox
+# Pre-trust ONLY the workspace mise config and install.sh's sandbox
 # DOTPATH. Earlier revisions used MISE_TRUSTED_CONFIG_PATHS=/root
 # but that exposed the entire home tree as a trusted config path,
 # which is a wider trust boundary than the migration needs.
@@ -193,7 +193,7 @@ export MISE_TRUSTED_CONFIG_PATHS=/root/dotfiles:/root/sandbox/dotfiles-fresh
 # pinned versions are reachable at runtime without re-fetch.
 export MISE_DATA_DIR=/opt/mise
 
-# Add mise's shim directory to PATH so tools managed by mise.toml
+# Add mise's shim directory to PATH so tools managed by mise
 # (prek, markdownlint-cli2, vp, ...) are reachable without a `mise
 # exec` wrapper. Critical for git hooks installed by `prek install`
 # — the pre-commit hook execs `prek` directly and sh -c hooks do
@@ -277,7 +277,7 @@ node = "24.19.0"
 "npm:resend-cli" = "2.16.0"
 "npm:@stripe/cli" = "1.50.5"
 EOF
-echo "[dotfiles-tools] pre-installing mise.toml tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
+echo "[dotfiles-tools] pre-installing mise tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (
   cd /etc/mise
   # bun first: the npm backend's package_manager="bun" needs the bun binary
@@ -290,7 +290,7 @@ MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 
 # ---- claude-code native binary (real binary, over the mise stub) ----
 # claude-code stays declared in the mise heredoc above so it keeps ADR 0006
-# parity with mise.toml and stays in the MISE_OFFLINE prebuild cache. BUT mise's
+# parity with config/mise/config.toml and stays in the MISE_OFFLINE prebuild cache. BUT mise's
 # npm backend no longer installs claude-code's per-platform native-binary
 # optionalDependency (@anthropic-ai/claude-code-linux-x64) — it links only a
 # stub that errors "native binary not installed" at runtime. So we install the

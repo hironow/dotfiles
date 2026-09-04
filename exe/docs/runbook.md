@@ -245,7 +245,7 @@ Operator authenticates once per workspace; tokens persist across
 | CLI | Auth command | Provider | Token location |
 |---|---|---|---|
 | `codex` | `codex login` | OpenAI (ChatGPT) | `~/.codex/` |
-| `gemini` | `gemini auth login` | Google | `~/.config/gcloud/` or `~/.gemini/` |
+| `antigravity` | first-run auth (Google) | Google | `~/.gemini/antigravity-cli/` |
 | `claude` | run `claude`, then `/login` | Anthropic | `~/.claude/` |
 | `copilot` | `copilot auth` | GitHub (Copilot subscription) | `~/.config/github-copilot/` |
 | `pi` | `pi auth` | multi-provider API keys | `~/.config/pi/` |

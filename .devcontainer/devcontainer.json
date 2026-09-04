@@ -47,7 +47,7 @@
   // gcloud / mise / uv / just / sheldon are installed at BUILD time
   // by the local `./features/dotfiles-tools` feature above and end
   // up baked into the saved image. The runtime onCreate step only
-  // covers the bind-mount-dependent piece: resolving mise.toml
+  // covers the bind-mount-dependent piece: resolving the mise toolset
   // (markdownlint-cli2, prek, vp, ...) into the cached mise store.
   "onCreateCommand": "bash .devcontainer/post-create.sh",
 

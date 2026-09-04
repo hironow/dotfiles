@@ -197,7 +197,7 @@ step_mise_bootstrap() {
 }
 
 step_mise_install() {
-  # Materialize the mise.toml toolset (just, uv, node, prek, markdownlint, vp,
+  # Materialize the config/mise/config.toml toolset (just, uv, node, prek, markdownlint, vp,
   # and the AI CLIs). Dev containers pre-install these at build time; on a bare
   # host this is what turns a fresh mise into a working toolchain. Heavy, so it
   # honours INSTALL_SKIP_ADD_UPDATE (the Docker install-verification sets it to
@@ -270,7 +270,7 @@ step_just_bootstrap() {
       export PATH="$HOME/.local/bin:$PATH"
       ;;
     windows)
-      _skip_windows "step_just_bootstrap" "just is provided by mise (mise.toml pin) or scoop; install separately if the command -v just guard above did not hit"
+      _skip_windows "step_just_bootstrap" "just is provided by mise (config/mise/config.toml pin) or scoop; install separately if the command -v just guard above did not hit"
       ;;
   esac
 }

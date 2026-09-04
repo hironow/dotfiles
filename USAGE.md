@@ -31,7 +31,7 @@ sheldon lock
 | `j` | `just` |
 | `mx` | `mise exec --` |
 | `mr` | `mise run` |
-| `cc` | Claude Code |
+| `cc` | Claude Code (`RUNOPS_ACTOR_TYPE=ai-agent` wrapper defined in `.zshrc`) |
 
 ## Maintenance
 

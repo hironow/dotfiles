@@ -93,10 +93,10 @@ feature, so a fresh workspace boots with these on PATH:
 |---|---|
 | Core | `just`, `mise`, `uv`, `sheldon`, `gcloud`, `git`, `docker` (cli-only) |
 | Lint / format | `ruff`, `shellcheck`, `markdownlint-cli2`, `prek` |
-| Runtime | `node` 24.15.0, `python` 3 (via mise/devcontainer) |
-| AI agent CLIs | `codex`, `gemini`, `claude`, `copilot`, `pi` (auth on first use — see [runbook](../../../docs/runbook.md#ai-agent-cli-authentication)) |
+| Runtime | `node` 24.x (mise-pinned), `python` 3 (via mise/devcontainer) |
+| AI agent CLIs | `codex`, `antigravity`, `claude`, `copilot`, `pi` (auth on first use — see [runbook](../../../docs/runbook.md#ai-agent-cli-authentication)) |
 
-Versions are pinned in [`mise.toml`](../../../../mise.toml) per
+Versions are pinned in [`config/mise/config.toml`](../../../../config/mise/config.toml) (global) and the devcontainer feature prebuild (`/etc/mise/config.toml` in the image) per
 [ADR 0006](../../../../docs/adr/0006-mise-version-pinning.md).
 
 ## Lifecycle
@@ -126,7 +126,7 @@ cdr delete my-ws --yes
 cdr workspaces list                # status: starting -> running (~30-60s)
 cdr ssh my-ws.dev -- just --list   # workspace recipes available
 cdr ssh my-ws.dev -- '
-  for cli in codex gemini claude copilot pi; do
+  for cli in codex antigravity claude copilot pi; do
     printf "%s: " "$cli"; "$cli" --version 2>&1 | head -1
   done'
 ```

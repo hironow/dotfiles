@@ -17,7 +17,9 @@ resources, testing prompts, and executing tools.
 
 ## Usage
 
-Start with Docker Compose:
+Prefer the repo-root recipes (`just emu-up-group inspect` / `just emu-up-full`),
+which wire up profiles and readiness waits — see [`../README.md`](../README.md).
+Standalone (debugging this service in isolation):
 
 ```bash
 docker compose up -d mcp-inspector

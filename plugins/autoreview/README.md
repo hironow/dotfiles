@@ -6,7 +6,7 @@ Autonomous code review plugin powered by [guardrails/semgrep](../../guardrails/s
 
 ### scan-fix
 
-Scans existing code with Semgrep (116 rules across 11 categories), auto-fixes violations,
+Scans existing code with Semgrep (65 rules across 11 categories), auto-fixes violations,
 and validates each fix via git-based keep/revert cycles.
 
 **Metric**: Semgrep findings count (fewer = better).

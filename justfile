@@ -90,7 +90,7 @@ instruction-budget:
 # Install: setup tools via mise
 [group('Setup')]
 install:
-    # Install tools via mise (versions are managed in mise.toml)
+    # Install tools via mise (versions are managed in config/mise/config.toml)
     mise install
 
 # Harden: write machine-local supply-chain guards (npm min-release-age, uv
@@ -808,7 +808,7 @@ update-all-submodules:
     @echo "✅ Submodules updated. Working tree status (empty = clean):"
     @git status --short
 
-# Update (all): update gcloud/brew and tools (pnpm is corepack/per-repo, not global)
+# Update (all): update gcloud/brew and tools (bun-only Node policy per ADR 0027)
 [group('Update')]
 update-all:
     just update-gcloud

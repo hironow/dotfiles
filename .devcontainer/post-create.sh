@@ -10,14 +10,14 @@
 set -euo pipefail
 
 # MISE_OFFLINE=1 is set in containerEnv to keep `just test` runs
-# hermetic. Per ADR 0006 the workspace mise.toml is fully pinned
+# hermetic. Per ADR 0006 the workspace mise toolset is fully pinned
 # and the data dir lives at /opt/mise (outside any bind-mounted
 # overlay), so `mise install` here only needs to verify the
 # already-installed cache matches the pinned versions — no
 # network required.
-echo "[post-create] mise install (mise.toml tools, MISE_OFFLINE=1)"
+echo "[post-create] mise install (config/mise/config.toml tools, MISE_OFFLINE=1)"
 cd /root/dotfiles
-mise trust mise.toml >/dev/null 2>&1 || true
+mise trust config/mise/config.toml >/dev/null 2>&1 || true
 touch mise.lock
 MISE_DATA_DIR=/opt/mise mise install
 
