@@ -258,12 +258,12 @@ prek = "0.4.14"
 uv = "0.12.5"
 vp = "0.3.0"
 node = "24.19.0"
-"npm:@openai/codex" = "0.149.1"
+"npm:@openai/codex" = "0.153.4"
 # Under bun (package_manager above) mise ignores npm_args (bun reads
 # bun_args only). claude-code's postinstall still runs — the package is on
 # bun's default-trusted dependencies list — and the apt install further
 # below overlays the real native binary regardless. See ADR 0040.
-"npm:@anthropic-ai/claude-code" = "2.1.245"
+"npm:@anthropic-ai/claude-code" = "2.1.258"
 "npm:@github/copilot" = "1.0.80"
 # trust_policy_excludes: the 2026-08-14 @smithy/* batch (core@3.33.0,
 # node-http-handler@4.11.0) was published by aws-sdk-bot (a listed maintainer)
@@ -272,7 +272,7 @@ node = "24.19.0"
 # 2026-08-15 (benign publish outside the trusted workflow, not tampering).
 # Drop the excludes once provenance-attested @smithy releases ship.
 "npm:@earendil-works/pi-coding-agent" = { version = "0.84.3", trust_policy_excludes = ["@smithy/core@3.33.0", "@smithy/node-http-handler@4.11.0"] }
-"github:google-antigravity/antigravity-cli" = { version = "1.1.23", exe = "antigravity" }
+"github:google-antigravity/antigravity-cli" = { version = "1.1.27", exe = "antigravity" }
 "npm:cf" = "0.8.0"
 "npm:resend-cli" = "2.16.0"
 "npm:@stripe/cli" = "1.50.5"
