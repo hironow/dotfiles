@@ -8,8 +8,9 @@ def test_pgadapter_error_without_primary_key(
     """A table without PRIMARY KEY: older builds reject it, newer ones accept it.
 
     Spanner allows a table with an empty primary key (it can hold one row),
-    and the unpinned `gcr.io/cloud-spanner-emulator/emulator` image started
-    accepting the PG-dialect form without a PRIMARY KEY clause (CI, 2026-09-06).
+    and the `gcr.io/cloud-spanner-emulator/emulator` image (pinned to 1.5.57 in
+    compose.yaml since 2026-09-06; it drifted while still `latest`) accepts the
+    PG-dialect form without a PRIMARY KEY clause.
     When the build rejects it, the error must name the primary key; when it
     accepts it, that is the environment's behaviour, not a defect, so skip.
     """
