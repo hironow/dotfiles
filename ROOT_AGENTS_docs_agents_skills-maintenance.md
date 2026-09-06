@@ -56,15 +56,29 @@ metadata:
 ```
 
 Keep the upstream `LICENSE*` file in the skill directory (Apache-2.0 and MIT
-both require it) and never edit it. Every bundled file that differs from the
-upstream revision carries a modification notice on its first line
-(`<!-- Modified from owner/repo@sha:path; ... -->`, or a `#` comment in
-scripts), which is what Apache-2.0 section 4(b) asks for. If the origin is not
-known, write `upstream: unknown` and say so in `changes`; never guess an
-author. A skill you wrote yourself gets `provenance: original` once that is
-confirmed; without the key it is listed as "origin not yet confirmed".
-`just skills-readme-index` turns this into the README credits block, and
-`just skills-audit` rejects a derived skill whose contract is incomplete.
+both require it; for a public-domain dedication such as the Unlicense, bundle
+the text with a note on where the author declared it) and never edit it. Every
+bundled file that differs from the upstream revision carries a modification
+notice on its first line (`<!-- Modified from owner/repo@sha:path; ... -->`,
+or a `#` comment in scripts), which is what Apache-2.0 section 4(b) asks for.
+A gist is written `upstream: gist:<owner>/<gist-id>@<revision-sha>:<file>`
+(the revision comes from `gh api gists/<id>`, `history[].version`). If the
+origin is not known, write `upstream: unknown` and say so in `changes`; never
+guess an author. A skill you wrote yourself gets `provenance: original` once
+that is confirmed (first commit authored in-repo, no public copy older than
+it, no match in the cloned upstreams); without the key it is listed as "origin
+not yet confirmed". An original skill whose idea came from a public post or
+article names it in `metadata.inspired-by` (URLs separated by `; `), which the
+README lists as idea credit. `just skills-readme-index` turns this into the
+README credits block (one row per upstream), and `just skills-audit` rejects
+a derived skill whose contract is incomplete.
+
+Skills that must not be published do not belong in the submodule at all:
+personal ones go to hironow/skills-private, organisation-internal ones to
+that organisation's own skills repository, both installed into the agent
+homes with `bunx skills add <repo> -g -s <name> -y` (plus
+`CLAUDE_CONFIG_DIR=~/.claude-work-x … -a claude-code` per Claude profile and
+a relative symlink for codex/gemini) and declared in the lock.
 
 ## Comparing a fork with its upstream (the dedup playbook)
 
