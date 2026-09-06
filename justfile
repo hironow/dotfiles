@@ -671,7 +671,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check skills-audit skills-readme-check
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
