@@ -110,15 +110,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "code-review",
-      "upstream_name": "code-review",
-      "lock_key": "code-review",
-      "source": "mattpocock/skills",
-      "skill_path": "skills/engineering/code-review/SKILL.md",
-      "skill_folder_hash": "7a2057dcc514dc024d4e6bf8ad78021b97f229ae",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "codebase-design",
       "upstream_name": "codebase-design",
       "lock_key": "codebase-design",
@@ -152,15 +143,6 @@
       "source": "vercel-labs/agent-skills",
       "skill_path": "skills/deploy-to-vercel/SKILL.md",
       "skill_folder_hash": "1378aa506439f26c809dbcfc61515cbd70f93d69",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "diagnosing-bugs",
-      "upstream_name": "diagnosing-bugs",
-      "lock_key": "diagnosing-bugs",
-      "source": "mattpocock/skills",
-      "skill_path": "skills/engineering/diagnosing-bugs/SKILL.md",
-      "skill_folder_hash": "463c81def888fefa77b894837d301d9ed70e0994",
       "resolved_by": "installed"
     },
     {
