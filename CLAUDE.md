@@ -300,5 +300,8 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
 ## Git / PR
 
 - default branch = `main`。feature / fix / chore / docs は branch → PR → **squash merge** to `main`。
+- **draft PR では CI が回らない** (全 workflow の job に `if: … pull_request.draft == false`、
+  `ready_for_review` で起動)。作業中は `gh pr create --draft`、検証したくなったら `gh pr ready`。
+  skills submodule の `ci.yaml` も同じ扱い。
 - Conventional Commits (type が structural/behavioral を encode)。詳細は `ROOT_AGENTS.md`。
 - YAML は `.yaml` (not `.yml`)、Docker Compose は `compose.yaml`。

@@ -15,6 +15,9 @@ on:
       - '!emulator/**/*.md'
       - '!emulator/**/*.MD'
       - '.github/workflows/test-emulators.yaml'
+    # ready_for_review is not in the default event set; without it a draft
+    # marked ready would not get a run until its next push.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-test-emulators
@@ -22,6 +25,9 @@ concurrency:
 
 jobs:
   unit-integration-e2e:
+    # Draft pull requests do not run CI; runs start when the PR is marked
+    # ready for review.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
