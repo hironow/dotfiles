@@ -30,15 +30,13 @@
     "skillOverrides": {
       "caveman": "name-only",
       "cloudflare-deploy": "name-only",
-      "create-mcp-app": "name-only",
+      "create-mcp-app": "on",
       "deploy-to-vercel": "name-only",
       "develop-web-game": "name-only",
       "hatch-pet": "name-only",
       "imagegen": "name-only",
-      "jupyter-notebook": "name-only",
-      "linear": "name-only",
-      "linear-cli": "name-only",
-      "migrate-oai-app": "name-only",
+      "jupyter-notebook": "on",
+      "migrate-oai-app": "on",
       "modern-web-guidance:chrome-extensions": "name-only",
       "pdf": "name-only",
       "screenshot": "name-only",
@@ -49,7 +47,7 @@
       "vercel-react-native-skills": "name-only",
       "vercel-react-view-transitions": "name-only",
       "wandb-primary": "name-only",
-      "xcodebuildmcp-cli": "name-only",
+      "xcodebuildmcp-cli": "on",
       "yeet": "name-only"
     }
   }
