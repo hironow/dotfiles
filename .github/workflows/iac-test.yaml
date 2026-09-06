@@ -23,6 +23,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # ready_for_review is not in the default event set; without it a draft
+    # marked ready would not get a run until its next push.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -34,6 +37,9 @@ permissions:
 jobs:
   test-iac:
     name: tofu test (Coder template)
+    # Draft pull requests do not run CI; runs start when the PR is marked
+    # ready for review.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     steps:
@@ -52,6 +58,7 @@ jobs:
 
   validate-exe:
     name: tofu validate (exe stack)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     steps:
