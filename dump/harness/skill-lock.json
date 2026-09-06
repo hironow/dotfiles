@@ -119,6 +119,15 @@
       "resolved_by": "installed"
     },
     {
+      "installed_dir": "consume-hub-actions",
+      "upstream_name": "consume-hub-actions",
+      "lock_key": "consume-hub-actions",
+      "source": "m4k3-co/skills",
+      "skill_path": "consume-hub-actions/SKILL.md",
+      "skill_folder_hash": "bd562c0bd843a058415af6599ccbbfa0635e7896",
+      "resolved_by": "installed"
+    },
+    {
       "installed_dir": "create-mcp-app",
       "upstream_name": "create-mcp-app",
       "lock_key": "create-mcp-app",
@@ -608,9 +617,9 @@
       "installed_dir": "sibyl",
       "upstream_name": "sibyl",
       "lock_key": "sibyl",
-      "source": "hironow/skills",
+      "source": "hironow/skills-private",
       "skill_path": "sibyl/SKILL.md",
-      "skill_folder_hash": "719e3a5779eaed0e5cb4b27deed367861cfef9f2",
+      "skill_folder_hash": "5f61ff309387359229387e26933c5a74fb229c75",
       "resolved_by": "installed"
     },
     {
