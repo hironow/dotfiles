@@ -2,8 +2,9 @@
 
 Read this when adding, comparing, or retiring a skill in the `skills/`
 submodule (hironow/skills), or when an installed third-party skill overlaps
-with one of ours. Conventions for the skills themselves are in the
-submodule's README; this is the procedure around them.
+with one of ours. Conventions for the skills themselves and the tooling that
+checks them (`scripts/`, `tests/`, `justfile`, CI) live in the submodule; this
+is the procedure around them.
 
 ## Where skills live and how they reach agents
 
@@ -22,19 +23,23 @@ submodule's README; this is the procedure around them.
 
 ## Gates
 
-| command | what it proves |
-| --- | --- |
-| `just skills-audit` | frontmatter shape, links and anchors, balanced fences, no emoji, Japanese only in the allowed places, provenance contract for derived skills |
-| `just skills-audit-consumers` | every agent home holds a byte-identical copy of every skill; no dangling symlinks |
-| `just skills-readme-check` / `just skills-readme-index` | the README index and credits tables match the frontmatter (check / regenerate) |
-| `just skills-lock-check` | no lock-managed third-party name inside the submodule |
-| `just skills-compare <fork> <upstream>...` | size, description, tooling-rule violations, and body diff of two or more versions |
+The recipes are defined in the submodule (`skills/justfile`, run from
+`skills/` as `just check`, `just audit`, ...). The dotfiles wrappers below run
+the same recipes from the dotfiles root; either form is fine.
 
-`just ci` runs the lock check today; the audit and the README check join it
-together with the submodule bump that brings the generated README. The GitHub
-`skills` job then runs the same three against the gitlink; it checks the
-private submodule out with the `SKILLS_SUBMODULE_TOKEN` secret and fails —
-never skips — when the token is missing or the submodule comes back empty.
+| command (dotfiles wrapper → submodule recipe) | what it proves |
+| --- | --- |
+| `just skills-audit` → `just audit` | frontmatter shape, links and anchors, balanced fences, no emoji, Japanese only in the allowed places, provenance contract for derived skills |
+| `just skills-audit-consumers` → `just audit-consumers` | every agent home holds a byte-identical copy of every skill; no dangling symlinks |
+| `just skills-readme-check` / `just skills-readme-index` → `just readme-check` / `just readme-index` | the README index and credits tables match the frontmatter (check / regenerate) |
+| `just skills-lock-check` (dotfiles only) | no lock-managed third-party name inside the submodule |
+| `just skills-compare <fork> <upstream>...` → `just compare` | size, description, tooling-rule violations, and body diff of two or more versions (paths resolve inside `skills/`: name the fork by directory, give upstream copies as absolute paths) |
+
+The submodule's GitHub Actions run `just check` (ruff, mypy, the tooling's
+tests, the audit, the README check) on every pull request there, so a merged
+skills commit is already clean; dotfiles `just ci` only runs the lock check.
+`audit-consumers` depends on the machine's agent homes and is never part of
+CI.
 
 ## Provenance contract (derived skills)
 
@@ -71,7 +76,7 @@ de-crufted on purpose.
    directory. Never run `bunx skills check` or `update` before comparing: they
    rewrite the store copy of anything the CLI tracks, including forks it once
    installed.
-2. **Quantitative pass.** `just skills-compare skills/<fork> <scratch>/<upstream-skill>`
+2. **Quantitative pass.** `just skills-compare <fork> /abs/<scratch>/<upstream-skill>`
    for size, description length, tooling violations, and diff size.
 3. **Independent judge.** Give a read-only model both files with the prompt
    below (capability inventory first, scores with quoted evidence, one of
