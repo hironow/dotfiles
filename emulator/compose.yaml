@@ -81,7 +81,13 @@ services:
 
   # Spanner Emulator
   spanner-emulator:
-    image: "gcr.io/cloud-spanner-emulator/emulator"
+    # Pinned (2026-09-06): the floating `latest` drifted to a build that accepts
+    # a PG-dialect CREATE TABLE without a PRIMARY KEY, which turned an e2e red
+    # (dotfiles #348/#349). compose `image:` tags are hand-managed (Dependabot
+    # covers Dockerfiles only); bump deliberately after checking the tag list:
+    #   curl -s -H "Authorization: Bearer $(curl -s 'https://gcr.io/v2/token?scope=repository:cloud-spanner-emulator/emulator:pull' | jq -r .token)" \
+    #     https://gcr.io/v2/cloud-spanner-emulator/emulator/tags/list | jq .tags
+    image: "gcr.io/cloud-spanner-emulator/emulator:1.5.57"
     pull_policy: always
     container_name: spanner-emulator
     ports:
