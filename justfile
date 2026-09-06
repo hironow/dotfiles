@@ -671,7 +671,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check skills-audit skills-readme-check
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -1234,12 +1234,14 @@ skills-lock-check:
 # The skills maintenance tooling (scripts, tests, CI) lives in the submodule
 # itself (hironow/skills: `skills/justfile`), so one repo owns it. The
 # wrappers below run its recipes from here with the submodule as working
-# directory; the procedure around them is docs/agents/skills-maintenance.md.
-SKILLS_JUST := "just --justfile skills/justfile --working-directory skills"
+# directory (`mise exec` so the nested just and uv are the mise-pinned ones);
+# the procedure around them is docs/agents/skills-maintenance.md.
+SKILLS_JUST := "mise exec -- just --justfile skills/justfile --working-directory skills"
 
 # Structural audit of every skill in the submodule: frontmatter, links and
 # anchors, code fences, emoji markers, language rule, provenance contract.
-# Gated in the submodule's own CI, so not repeated in `ci` here.
+# The submodule's own CI runs it on every commit there; `ci` runs it here
+# too so a gitlink bump to an unreviewed commit is caught locally.
 [group('Validation')]
 skills-audit:
     @{{ SKILLS_JUST }} audit

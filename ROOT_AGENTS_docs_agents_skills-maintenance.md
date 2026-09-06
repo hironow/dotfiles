@@ -36,10 +36,11 @@ the same recipes from the dotfiles root; either form is fine.
 | `just skills-compare <fork> <upstream>...` → `just compare` | size, description, tooling-rule violations, and body diff of two or more versions (paths resolve inside `skills/`: name the fork by directory, give upstream copies as absolute paths) |
 
 The submodule's GitHub Actions run `just check` (ruff, mypy, the tooling's
-tests, the audit, the README check) on every pull request there, so a merged
-skills commit is already clean; dotfiles `just ci` only runs the lock check.
-`audit-consumers` depends on the machine's agent homes and is never part of
-CI.
+tests, the audit, the README check) on every pull request there. dotfiles
+`just ci` (a local gate) runs the lock check, the audit, and the README check
+against the checked-out gitlink as well, so a bump to an unreviewed or
+local-only commit is caught before it is pushed. `audit-consumers` depends on
+the machine's agent homes and is never part of CI.
 
 ## Provenance contract (derived skills)
 
