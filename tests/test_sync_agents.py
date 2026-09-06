@@ -6,7 +6,6 @@ The sync-agents command syncs ROOT_AGENTS files to agent instruction directories
 File naming convention:
     ROOT_AGENTS.md                      -> <agent>/AGENT.md (base file)
     ROOT_AGENTS_commands_strict.md      -> <agent>/commands/strict.md
-    ROOT_AGENTS_skills_my-skill/        -> <agent>/skills/my-skill/
     ROOT_AGENTS_hooks_formatter.py      -> <agent>/hooks/formatter.py
 """
 
@@ -24,41 +23,29 @@ IMAGE = "dotfiles-just-sandbox:latest"
 
 
 def _copy_tracked_into(src: str, snapshot: str) -> None:
-    """Copy git-tracked files (superproject + skills submodule) into snapshot.
+    """Copy git-tracked files into snapshot.
 
     Same rationale as test_just_sandbox.py: the container must never see
     the real repo. This suite's containers even run `sync-agents import`
     style commands that WRITE into /root/dotfiles, so a direct bind mount
     mutates the mounted tree (observed: deleted ROOT_AGENTS.md, junk
-    skills/commands). Every test gets its own disposable snapshot via the
+    commands). Every test gets its own disposable snapshot via the
     autouse fixture below.
     """
-    # Superproject tracked files, plus the skills submodule's tracked files
-    # (`git ls-files` skips gitlinks, but this suite's tests rely on the
-    # self-authored skills shipping in /root/dotfiles/skills).
-    for prefix in ("", "skills"):
-        tree = os.path.join(src, prefix) if prefix else src
-        # the skills submodule may be un-inited on a fresh clone
-        if prefix and not os.path.exists(os.path.join(tree, ".git")):
+    tracked = subprocess.run(
+        ["git", "-C", src, "ls-files", "-z"],
+        check=True,
+        stdout=subprocess.PIPE,
+    ).stdout.decode()
+    for rel in tracked.split("\0"):
+        if not rel:
             continue
-        tracked = subprocess.run(
-            ["git", "-C", tree, "ls-files", "-z"],
-            check=True,
-            stdout=subprocess.PIPE,
-        ).stdout.decode()
-        for rel in tracked.split("\0"):
-            if not rel:
-                continue
-            source = os.path.join(tree, rel)
-            if not os.path.isfile(source):  # skip gitlinks / vanished paths
-                continue
-            dest = (
-                os.path.join(snapshot, prefix, rel)
-                if prefix
-                else os.path.join(snapshot, rel)
-            )
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-            shutil.copy2(source, dest, follow_symlinks=False)
+        source = os.path.join(src, rel)
+        if not os.path.isfile(source):  # skip gitlinks / vanished paths
+            continue
+        dest = os.path.join(snapshot, rel)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copy2(source, dest, follow_symlinks=False)
 
 
 # Mount source for the current test's containers (set by the autouse
@@ -648,167 +635,9 @@ def test_sync_agents_syncs_to_all_agents(docker_image):
 # =============================================================================
 
 
-def test_sync_agents_preserves_unmanaged_items_in_target(docker_image):
-    """Test that sync preserves items in target not managed by dotfiles.
-
-    Scenario:
-    - given: Target has an extra skill (e.g. a symlink-installed plugin)
-    - when: Run sync-agents
-    - then: The extra skill is preserved, dotfiles skills are synced
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a dotfiles skill (SKILL.md required by the quality gate)
-    mkdir -p /root/dotfiles/skills/my-skill
-    echo "# My Skill" > /root/dotfiles/skills/my-skill/SKILL.md
-
-    # First sync - creates target skills
-    cd /root/dotfiles && just sync-agents all
-
-    # Add an extra item in target (simulating plugin install)
-    mkdir -p /root/.claude/skills/external-plugin
-    echo "# External Plugin" > /root/.claude/skills/external-plugin/README.md
-
-    # Run sync again
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify both exist
-    [ -f /root/.claude/skills/my-skill/SKILL.md ] && echo "dotfiles skill preserved"
-    [ -f /root/.claude/skills/external-plugin/README.md ] && echo "external plugin preserved"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Both items exist
-    assert "dotfiles skill preserved" in result.stdout
-    assert "external plugin preserved" in result.stdout
-
-
 # =============================================================================
 # Import (symlink resolution) Tests
 # =============================================================================
-
-
-def test_sync_agents_does_not_import_symlinked_skills_from_target(docker_image):
-    """Symlink-installed skills (bunx skills CLI) are never imported.
-
-    Scenario:
-    - given: Target (~/.claude/skills/) has a symlink to an external skill
-    - when: Run sync-agents
-    - then: The symlink stays in the target and nothing lands in dotfiles
-      (declarative model: third-party skills are lock-managed, ADR 0038)
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create an external skill directory (the symlink target)
-    mkdir -p /opt/external-skills/cool-plugin
-    echo "# Cool Plugin" > /opt/external-skills/cool-plugin/SKILL.md
-
-    # Set up ~/.claude/skills/ with a symlink to the external skill
-    mkdir -p /root/.claude/skills
-    ln -s /opt/external-skills/cool-plugin /root/.claude/skills/cool-plugin
-
-    # Verify symlink exists
-    [ -L /root/.claude/skills/cool-plugin ] && echo "symlink exists"
-
-    # Run sync-agents (import of skills is abolished)
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify the skill was NOT imported to dotfiles
-    [ ! -e /root/dotfiles/skills/cool-plugin ] && echo "not imported to dotfiles"
-
-    # Verify the target symlink survived untouched
-    [ -L /root/.claude/skills/cool-plugin ] && echo "symlink preserved"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Symlink stays put, nothing imported
-    assert "symlink exists" in result.stdout
-    assert "not imported to dotfiles" in result.stdout
-    assert "symlink preserved" in result.stdout
-
-
-def test_sync_agents_does_not_import_regular_skill_directories(docker_image):
-    """Target-only real skill dirs stay in the target, never enter dotfiles.
-
-    Scenario:
-    - given: Target has a regular (non-symlink) skill directory
-    - when: Run sync-agents
-    - then: It is neither imported to dotfiles nor propagated to other
-      targets, but it is preserved in place (additive)
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Set up target with a regular (non-symlink) skill directory
-    mkdir -p /root/.claude/skills/manual-skill
-    echo "# Manual Skill" > /root/.claude/skills/manual-skill/SKILL.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify the regular dir was NOT imported to dotfiles
-    [ ! -e /root/dotfiles/skills/manual-skill ] && echo "not imported"
-
-    # Verify it did NOT propagate to other targets
-    [ ! -e /root/.gemini/skills/manual-skill ] && echo "not propagated"
-
-    # Verify it survived in place
-    grep -q "Manual Skill" /root/.claude/skills/manual-skill/SKILL.md && echo "preserved in target"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: target-only skill is left alone
-    assert "not imported" in result.stdout
-    assert "not propagated" in result.stdout
-    assert "preserved in target" in result.stdout
-
-
-def test_sync_agents_keeps_newer_dotfiles_over_older_symlink(docker_image):
-    """Test that newer dotfiles version wins over older symlink target.
-
-    Scenario:
-    - given: Target has a symlink to external content, dotfiles has newer version
-    - when: Run sync-agents
-    - then: Dotfiles version is preserved (newer wins)
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create external version first (older)
-    mkdir -p /opt/external/shared-skill
-    echo "# External version (older)" > /opt/external/shared-skill/README.md
-
-    # Symlink in target to the external version
-    mkdir -p /root/.claude/skills
-    ln -s /opt/external/shared-skill /root/.claude/skills/shared-skill
-
-    # Wait to ensure mtime difference
-    sleep 2
-
-    # Create newer version in dotfiles
-    mkdir -p /root/dotfiles/skills/shared-skill
-    echo "# Dotfiles version (newer)" > /root/dotfiles/skills/shared-skill/README.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify dotfiles version was preserved (it's newer) — import-conflict
-    # resolution is unchanged by additive skills.
-    grep -q "Dotfiles version (newer)" /root/dotfiles/skills/shared-skill/README.md && echo "dotfiles version preserved"
-
-    # skills is additive: the EXISTING target symlink is preserved (not
-    # overwritten with the dotfiles copy).
-    [ -L /root/.claude/skills/shared-skill ] && echo "claude symlink preserved"
-    grep -q "External version (older)" /root/.claude/skills/shared-skill/README.md && echo "claude kept existing"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: dotfiles keeps the newer copy; the target's existing skill is kept
-    assert "dotfiles version preserved" in result.stdout
-    assert "claude symlink preserved" in result.stdout
-    assert "claude kept existing" in result.stdout
 
 
 # =============================================================================
@@ -816,74 +645,28 @@ def test_sync_agents_keeps_newer_dotfiles_over_older_symlink(docker_image):
 # =============================================================================
 
 
-def test_sync_agents_one_way_cycle_ignores_cli_symlinks(docker_image):
-    """Skills flow one way (dotfiles -> targets); CLI symlinks never re-enter.
-
-    Scenario:
-    - given: An external skill is symlinked into ~/.claude/skills/ and a
-      self-authored skill exists in dotfiles
-    - when: Run sync-agents
-    - then: The dotfiles skill reaches every target; the symlinked skill is
-      neither imported nor propagated (declarative model, ADR 0038)
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create an external (CLI-style) skill and symlink it into ~/.claude
-    mkdir -p /opt/plugins/awesome-plugin
-    echo "# Awesome Plugin" > /opt/plugins/awesome-plugin/SKILL.md
-    mkdir -p /root/.claude/skills
-    ln -s /opt/plugins/awesome-plugin /root/.claude/skills/awesome-plugin
-
-    # Create a self-authored skill in dotfiles
-    mkdir -p /root/dotfiles/skills/own-skill
-    echo "# Own Skill" > /root/dotfiles/skills/own-skill/SKILL.md
-
-    # Run sync-agents (forward only for skills)
-    cd /root/dotfiles && just sync-agents all
-
-    # CLI symlink is NOT imported
-    [ ! -e /root/dotfiles/skills/awesome-plugin ] && echo "symlink not imported"
-    [ ! -e /root/.gemini/skills/awesome-plugin ] && echo "symlink not propagated"
-
-    # Self-authored skill IS distributed everywhere
-    [ -f /root/.gemini/skills/own-skill/SKILL.md ] && echo "synced to gemini"
-    [ -f /root/.codex/skills/own-skill/SKILL.md ] && echo "synced to codex"
-    [ -f /root/.claude-work-a/skills/own-skill/SKILL.md ] && echo "synced to claude-work-a"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: One-way flow holds in both directions of the assertion
-    assert "symlink not imported" in result.stdout
-    assert "symlink not propagated" in result.stdout
-    assert "synced to gemini" in result.stdout
-    assert "synced to codex" in result.stdout
-    assert "synced to claude-work-a" in result.stdout
-    assert "synced to claude-work-a" in result.stdout
-
-
 def test_sync_agents_import_only_from_import_source(docker_image):
     """Test that import only happens from agents with is_import_source=True.
 
     Scenario:
-    - given: A symlink exists in ~/.gemini/skills/ (not an import source)
+    - given: A symlink exists in ~/.gemini/agents/ (not an import source)
     - when: Run sync-agents
     - then: Symlink is NOT imported to dotfiles
     """
     cmd = """
     set -euo pipefail
 
-    # Create an external skill symlinked into gemini (NOT an import source)
+    # Create an external agent symlinked into gemini (NOT an import source)
     mkdir -p /opt/gemini-plugin/special
     echo "# Gemini Plugin" > /opt/gemini-plugin/special/README.md
-    mkdir -p /root/.gemini/skills
-    ln -s /opt/gemini-plugin/special /root/.gemini/skills/special
+    mkdir -p /root/.gemini/agents
+    ln -s /opt/gemini-plugin/special /root/.gemini/agents/special
 
     # Run sync-agents
     cd /root/dotfiles && just sync-agents all
 
     # Verify the symlink was NOT imported to dotfiles
-    if [ -d /root/dotfiles/skills/special ]; then
+    if [ -d /root/dotfiles/agents/special ]; then
         echo "ERROR: imported from non-import-source"
     else
         echo "correctly skipped non-import-source"
@@ -914,10 +697,9 @@ def test_sync_agents_creates_manifest_on_first_run(docker_image):
     # Ensure no manifest exists
     rm -f /root/dotfiles/.sync-manifest.json
 
-    # Hermetic probe skill (the skills submodule may be absent in CI —
-    # it is a private repo the workflow token cannot clone)
-    mkdir -p /root/dotfiles/skills/probe-skill
-    echo "# Probe" > /root/dotfiles/skills/probe-skill/SKILL.md
+    # Hermetic probe command
+    mkdir -p /root/dotfiles/commands
+    echo "# Probe" > /root/dotfiles/commands/probe-cmd.md
 
     # Run sync-agents
     cd /root/dotfiles && just sync-agents all
@@ -925,18 +707,18 @@ def test_sync_agents_creates_manifest_on_first_run(docker_image):
     # Verify manifest was created
     [ -f /root/dotfiles/.sync-manifest.json ] && echo "manifest created"
 
-    # Verify manifest contains version and skills
+    # Verify manifest contains version and commands
     grep -q '"version"' /root/dotfiles/.sync-manifest.json && echo "has version"
-    grep -q '"skills"' /root/dotfiles/.sync-manifest.json && echo "has skills key"
-    grep -q 'probe-skill' /root/dotfiles/.sync-manifest.json && echo "has probe-skill"
+    grep -q '"commands"' /root/dotfiles/.sync-manifest.json && echo "has commands key"
+    grep -q 'probe-cmd.md' /root/dotfiles/.sync-manifest.json && echo "has probe-cmd"
     """
     result = _run_in_container(docker_image, cmd)
 
     # then: Manifest was created with items
     assert "manifest created" in result.stdout
     assert "has version" in result.stdout
-    assert "has skills key" in result.stdout
-    assert "has probe-skill" in result.stdout
+    assert "has commands key" in result.stdout
+    assert "has probe-cmd" in result.stdout
 
 
 def test_sync_agents_deletes_removed_items_from_targets(docker_image):
@@ -944,8 +726,6 @@ def test_sync_agents_deletes_removed_items_from_targets(docker_image):
 
     Scenario:
     - given: A command exists in dotfiles and is synced to targets
-      (skills/ is additive and exempt from deletion, so the deletion
-      machinery is exercised with commands/)
     - when: The command is removed from dotfiles and sync runs again
     - then: The command is deleted from all targets
     """
@@ -1038,7 +818,7 @@ def test_sync_agents_does_not_reimport_deleted_items(docker_image):
 
 
 def test_sync_agents_does_not_import_from_codex(docker_image):
-    """Codex-home skills never enter dotfiles (declarative model).
+    """Codex-home skills never enter dotfiles (skills are not synced at all).
 
     Scenario:
     - given: A skill exists in ~/.codex/skills/
@@ -1072,22 +852,22 @@ def test_sync_agents_skips_hidden_directories(docker_image):
     """Test that hidden directories (starting with .) are skipped.
 
     Scenario:
-    - given: A hidden directory exists in ~/.codex/skills/.system/
+    - given: A hidden directory exists in ~/.codex/agents/.system/
     - when: Run sync-agents
     - then: Hidden directory is NOT imported
     """
     cmd = """
     set -euo pipefail
 
-    # Create a hidden directory in codex skills
-    mkdir -p /root/.codex/skills/.system/internal
-    echo "# Internal" > /root/.codex/skills/.system/internal/README.md
+    # Create a hidden directory in codex agents
+    mkdir -p /root/.codex/agents/.system/internal
+    echo "# Internal" > /root/.codex/agents/.system/internal/README.md
 
     # Run sync-agents
     cd /root/dotfiles && just sync-agents all
 
     # Verify hidden dir was NOT imported
-    if [ -d /root/dotfiles/skills/.system ]; then
+    if [ -d /root/dotfiles/agents/.system ]; then
         echo "ERROR: hidden dir was imported"
     else
         echo "hidden dir correctly skipped"
@@ -1182,165 +962,9 @@ def test_sync_agents_newer_import_source_wins_conflict(docker_image):
     assert "gemini updated" in result.stdout
 
 
-def test_sync_agents_target_copy_never_overwrites_dotfiles(docker_image):
-    """A target-side copy of a dotfiles skill can never overwrite dotfiles.
-
-    With skills import abolished there is no conflict machinery left to
-    race: dotfiles is simply authoritative for its own skills.
-
-    Scenario:
-    - given: A skill exists in both dotfiles and ~/.claude with different content
-    - when: Run sync-agents
-    - then: Dotfiles keeps its version; a missing target gets the dotfiles
-      version; an existing target copy is preserved (additive)
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a diverged copy in the target
-    mkdir -p /root/.claude/skills/stable-skill
-    echo "# Old Version" > /root/.claude/skills/stable-skill/SKILL.md
-
-    # Create the authoritative version in dotfiles
-    mkdir -p /root/dotfiles/skills/stable-skill
-    echo "# New Version in Dotfiles" > /root/dotfiles/skills/stable-skill/SKILL.md
-
-    # Run sync
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify dotfiles version was untouched (no import can occur)
-    grep -q "New Version in Dotfiles" /root/dotfiles/skills/stable-skill/SKILL.md && echo "dotfiles preserved"
-
-    # gemini was MISSING the skill -> additive adds the dotfiles version.
-    grep -q "New Version in Dotfiles" /root/.gemini/skills/stable-skill/SKILL.md && echo "gemini got dotfiles version"
-    # claude already HAD the skill -> additive preserves it (no overwrite).
-    grep -q "Old Version" /root/.claude/skills/stable-skill/SKILL.md && echo "claude kept existing"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: dotfiles authoritative; missing target added; existing target kept
-    assert "dotfiles preserved" in result.stdout
-    assert "gemini got dotfiles version" in result.stdout
-    assert "claude kept existing" in result.stdout
-
-
 # =============================================================================
 # Workspace Exclusion Tests (skill-creator workspace preservation)
 # =============================================================================
-
-
-def test_sync_agents_preserves_workspace_dirs_in_learned(docker_image):
-    """Test that -workspace dirs inside learned/ are preserved during sync.
-
-    Scenario:
-    - given: Target has learned/ with both real skills and -workspace dirs
-    - when: A managed skill inside learned/ changes and sync runs
-    - then: -workspace dirs are preserved, managed skills are updated
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a real skill in dotfiles learned/
-    mkdir -p /root/dotfiles/skills/learned/my-real-skill
-    echo "# My Real Skill v1" > /root/dotfiles/skills/learned/my-real-skill/SKILL.md
-
-    # First sync: distribute learned/ to targets
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify learned was synced
-    [ -f /root/.claude/skills/learned/my-real-skill/SKILL.md ] && echo "initial sync ok"
-
-    # Create workspace dirs in targets (simulating skill-creator)
-    mkdir -p /root/.claude/skills/learned/my-real-skill-workspace/iteration-1
-    echo "workspace data" > /root/.claude/skills/learned/my-real-skill-workspace/iteration-1/results.md
-    mkdir -p /root/.gemini/skills/learned/test-workspace/iteration-1
-    echo "gemini workspace" > /root/.gemini/skills/learned/test-workspace/iteration-1/data.md
-
-    # Update the real skill in dotfiles
-    echo "# My Real Skill v2" > /root/dotfiles/skills/learned/my-real-skill/SKILL.md
-
-    # Instrumentation for a rare podman/virtiofs flake (sync2 reported
-    # "already in sync" with the change invisible): prove the write is
-    # readable before syncing, and surface both files' stat on failure.
-    grep -q "v2" /root/dotfiles/skills/learned/my-real-skill/SKILL.md \
-        || echo "ERR-source-write-not-visible"
-    stat -c "pre-sync2 src mtime=%Y size=%s" /root/dotfiles/skills/learned/my-real-skill/SKILL.md
-    stat -c "pre-sync2 tgt mtime=%Y size=%s" /root/.claude/skills/learned/my-real-skill/SKILL.md
-    python3 - <<'DIAG'
-import filecmp, sys
-from pathlib import Path
-sys.path.insert(0, "/root/dotfiles/scripts")
-from sync_agents import _compare_directories
-src = Path("/root/dotfiles/skills/learned")
-tgt = Path("/root/.claude/skills/learned")
-print("diag compare:", _compare_directories(src, tgt))
-d = filecmp.dircmp(src, tgt)
-print("diag left:", sorted(p.name for p in src.iterdir()))
-print("diag right:", sorted(p.name for p in tgt.iterdir()))
-print("diag common_dirs:", d.common_dirs)
-print("diag src SKILL:", (src / "my-real-skill" / "SKILL.md").read_text().strip())
-print("diag tgt SKILL:", (tgt / "my-real-skill" / "SKILL.md").read_text().strip())
-DIAG
-
-    # Run sync again - should update skill but preserve workspace
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify managed skill was updated
-    grep -q "v2" /root/.claude/skills/learned/my-real-skill/SKILL.md && echo "skill updated"
-
-    # Verify workspace dirs were preserved
-    [ -d /root/.claude/skills/learned/my-real-skill-workspace ] && echo "claude workspace preserved"
-    [ -f /root/.claude/skills/learned/my-real-skill-workspace/iteration-1/results.md ] && echo "workspace contents intact"
-    [ -d /root/.gemini/skills/learned/test-workspace ] && echo "gemini workspace preserved"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Workspace dirs preserved, skills updated
-    assert "ERR-source-write-not-visible" not in result.stdout, result.stdout
-    assert "initial sync ok" in result.stdout
-    assert "skill updated" in result.stdout, result.stdout
-    assert "claude workspace preserved" in result.stdout
-    assert "workspace contents intact" in result.stdout
-    assert "gemini workspace preserved" in result.stdout
-
-
-def test_sync_agents_does_not_import_workspace_dirs(docker_image):
-    """Test that -workspace dirs are not imported from import sources.
-
-    Scenario:
-    - given: Import source has learned/ with -workspace dirs
-    - when: Run sync-agents
-    - then: -workspace dirs are NOT imported to dotfiles
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create learned dir with real skill in import source
-    mkdir -p /root/.claude/skills/learned/imported-skill
-    echo "# Imported Skill" > /root/.claude/skills/learned/imported-skill/SKILL.md
-
-    # Create workspace dir in import source (should NOT be imported)
-    mkdir -p /root/.claude/skills/learned/imported-skill-workspace/iteration-1
-    echo "workspace data" > /root/.claude/skills/learned/imported-skill-workspace/iteration-1/data.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify real skill WAS imported
-    [ -d /root/dotfiles/skills/learned/imported-skill ] && echo "real skill imported"
-
-    # Verify workspace dir was NOT imported to dotfiles
-    if [ -d /root/dotfiles/skills/learned/imported-skill-workspace ]; then
-        echo "ERROR: workspace was imported"
-    else
-        echo "workspace correctly excluded"
-    fi
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Real skill imported, workspace excluded
-    assert "real skill imported" in result.stdout
-    assert "workspace correctly excluded" in result.stdout
 
 
 # =============================================================================
@@ -1348,482 +972,9 @@ def test_sync_agents_does_not_import_workspace_dirs(docker_image):
 # =============================================================================
 
 
-def test_sync_agents_does_not_import_from_agents_global(docker_image):
-    """The bunx skills CLI store (~/.agents/skills) never enters dotfiles.
-
-    This is the structural gate against re-vendoring (ADR 0038): even a
-    perfectly valid SKILL.md in the CLI store must not be imported.
-
-    Scenario:
-    - given: A valid skill exists in ~/.agents/skills/ but not in dotfiles
-    - when: Run sync-agents
-    - then: It is not imported and not propagated to other targets
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a skill only in ~/.agents/skills/
-    mkdir -p /root/.agents/skills/global-only-skill
-    echo "# Global Only Skill" > /root/.agents/skills/global-only-skill/SKILL.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify NOT imported to dotfiles, NOT propagated, preserved in store
-    [ ! -e /root/dotfiles/skills/global-only-skill ] && echo "not imported"
-    [ ! -e /root/.claude/skills/global-only-skill ] && echo "not propagated"
-    grep -q "Global Only Skill" /root/.agents/skills/global-only-skill/SKILL.md && echo "preserved in store"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: the CLI store is left alone
-    assert "not imported" in result.stdout
-    assert "not propagated" in result.stdout
-    assert "preserved in store" in result.stdout
-
-
-def test_sync_agents_syncs_dotfiles_skills_to_agents_global(docker_image):
-    """Test that dotfiles skills are synced TO ~/.agents/skills/.
-
-    Scenario:
-    - given: A skill exists in dotfiles but not in ~/.agents/skills/
-    - when: Run sync-agents
-    - then: Skill is synced to ~/.agents/skills/
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a skill in dotfiles
-    mkdir -p /root/dotfiles/skills/dotfiles-only-skill
-    echo "# Dotfiles Only" > /root/dotfiles/skills/dotfiles-only-skill/SKILL.md
-
-    # Ensure ~/.agents/skills/ exists but empty
-    mkdir -p /root/.agents/skills
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify synced to ~/.agents/skills/
-    [ -f /root/.agents/skills/dotfiles-only-skill/SKILL.md ] && echo "synced to agents global"
-    grep -q "Dotfiles Only" /root/.agents/skills/dotfiles-only-skill/SKILL.md && echo "content correct"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Skill was synced to ~/.agents/
-    assert "synced to agents global" in result.stdout
-    assert "content correct" in result.stdout
-
-
-def test_sync_agents_agents_global_only_syncs_skills(docker_image):
-    """Test that ~/.agents/ only receives skills/, not commands/ or agents/.
-
-    Scenario:
-    - given: dotfiles has commands/ and agents/ directories
-    - when: Run sync-agents
-    - then: Only skills/ is synced to ~/.agents/, not commands/ or agents/
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create commands and agents in dotfiles
-    mkdir -p /root/dotfiles/commands
-    echo "# Strict" > /root/dotfiles/commands/strict.md
-    mkdir -p /root/dotfiles/agents
-    echo "# Test Agent" > /root/dotfiles/agents/test-agent.md
-    # hermetic probe so skills/ distribution is observable even when the
-    # (private) skills submodule is absent in CI
-    mkdir -p /root/dotfiles/skills/probe-skill
-    echo "# Probe" > /root/dotfiles/skills/probe-skill/SKILL.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify commands/ was NOT synced to ~/.agents/
-    if [ -d /root/.agents/commands ]; then
-        echo "ERROR: commands synced to agents global"
-    else
-        echo "commands correctly excluded"
-    fi
-
-    # Verify agents/ was NOT synced to ~/.agents/
-    if [ -d /root/.agents/agents ]; then
-        echo "ERROR: agents synced to agents global"
-    else
-        echo "agents correctly excluded"
-    fi
-
-    # Verify skills/ WAS synced (if any exist)
-    [ -d /root/.agents/skills ] && echo "skills dir exists"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Only skills/ synced
-    assert "commands correctly excluded" in result.stdout
-    assert "agents correctly excluded" in result.stdout
-    assert "skills dir exists" in result.stdout
-
-
-def test_sync_agents_agents_global_no_base_file(docker_image):
-    """Test that ~/.agents/ does NOT receive a base file (CLAUDE.md etc).
-
-    Scenario:
-    - given: dotfiles has ROOT_AGENTS.md
-    - when: Run sync-agents
-    - then: No CLAUDE.md/AGENTS.md/GEMINI.md appears in ~/.agents/
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify no base file in ~/.agents/
-    if [ -f /root/.agents/CLAUDE.md ] || [ -f /root/.agents/AGENTS.md ] || [ -f /root/.agents/GEMINI.md ]; then
-        echo "ERROR: base file synced to agents global"
-    else
-        echo "no base file in agents global"
-    fi
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: No base file in ~/.agents/
-    assert "no base file in agents global" in result.stdout
-
-
 # =============================================================================
-# Learned Skills Symlink Tests (link-learned-skills integration)
+# Override mode tests
 # =============================================================================
-
-
-def test_sync_agents_creates_symlinks_for_learned_skills(docker_image):
-    """Test that learned skills get symlinked to top-level skills/.
-
-    Scenario:
-    - given: dotfiles has skills/learned/my-skill/SKILL.md
-    - when: Run sync-agents
-    - then: skills/my-skill -> learned/my-skill symlink created in all targets
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a learned skill in dotfiles
-    mkdir -p /root/dotfiles/skills/learned/my-learned-skill
-    echo "---" > /root/dotfiles/skills/learned/my-learned-skill/SKILL.md
-    echo "name: my-learned-skill" >> /root/dotfiles/skills/learned/my-learned-skill/SKILL.md
-    echo "---" >> /root/dotfiles/skills/learned/my-learned-skill/SKILL.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify symlinks created in dotfiles
-    [ -L /root/dotfiles/skills/my-learned-skill ] && echo "dotfiles symlink created"
-    readlink /root/dotfiles/skills/my-learned-skill | grep -q "learned/my-learned-skill" && echo "dotfiles symlink target correct"
-
-    # Verify symlinks created in targets
-    [ -L /root/.claude/skills/my-learned-skill ] && echo "claude symlink created"
-    [ -L /root/.gemini/skills/my-learned-skill ] && echo "gemini symlink created"
-    [ -L /root/.codex/skills/my-learned-skill ] && echo "codex symlink created"
-
-    # Verify symlink is functional (can read through it)
-    [ -f /root/.claude/skills/my-learned-skill/SKILL.md ] && echo "claude symlink functional"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Symlinks created in dotfiles and all targets
-    assert "dotfiles symlink created" in result.stdout
-    assert "dotfiles symlink target correct" in result.stdout
-    assert "claude symlink created" in result.stdout
-    assert "gemini symlink created" in result.stdout
-    assert "codex symlink created" in result.stdout
-    assert "claude symlink functional" in result.stdout
-
-
-def test_sync_agents_skips_workspace_dirs_in_learned(docker_image):
-    """Test that -workspace directories in learned/ are not symlinked.
-
-    Scenario:
-    - given: learned/ contains both a skill and a -workspace directory
-    - when: Run sync-agents
-    - then: Skill is symlinked, workspace is NOT symlinked
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a learned skill and a workspace
-    mkdir -p /root/dotfiles/skills/learned/real-skill
-    echo "---" > /root/dotfiles/skills/learned/real-skill/SKILL.md
-    mkdir -p /root/dotfiles/skills/learned/real-skill-workspace/iteration-1
-    echo "workspace data" > /root/dotfiles/skills/learned/real-skill-workspace/iteration-1/data.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify skill IS symlinked
-    [ -L /root/.claude/skills/real-skill ] && echo "skill symlinked"
-
-    # Verify workspace is NOT symlinked at top level
-    if [ -L /root/.claude/skills/real-skill-workspace ]; then
-        echo "ERROR: workspace was symlinked"
-    else
-        echo "workspace not symlinked"
-    fi
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Skill symlinked, workspace not
-    assert "skill symlinked" in result.stdout
-    assert "workspace not symlinked" in result.stdout
-
-
-def test_sync_agents_skips_learned_dirs_without_skill_md(docker_image):
-    """Test that directories in learned/ without SKILL.md are not symlinked.
-
-    Scenario:
-    - given: learned/ contains a directory without SKILL.md
-    - when: Run sync-agents
-    - then: No symlink is created for it
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a directory in learned/ without SKILL.md
-    mkdir -p /root/dotfiles/skills/learned/no-skill-md
-    echo "# README" > /root/dotfiles/skills/learned/no-skill-md/README.md
-
-    # Create a valid one too for comparison
-    mkdir -p /root/dotfiles/skills/learned/valid-skill
-    echo "---" > /root/dotfiles/skills/learned/valid-skill/SKILL.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify valid skill IS symlinked
-    [ -L /root/.claude/skills/valid-skill ] && echo "valid skill symlinked"
-
-    # Verify no-skill-md is NOT symlinked
-    if [ -L /root/.claude/skills/no-skill-md ]; then
-        echo "ERROR: dir without SKILL.md was symlinked"
-    else
-        echo "no-skill-md correctly skipped"
-    fi
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Only valid skill symlinked
-    assert "valid skill symlinked" in result.stdout
-    assert "no-skill-md correctly skipped" in result.stdout
-
-
-def test_sync_agents_preserves_existing_learned_symlinks(docker_image):
-    """Test that existing symlinks are preserved (idempotent).
-
-    Scenario:
-    - given: Learned skill symlinks already exist
-    - when: Run sync-agents again
-    - then: Symlinks are preserved, no errors
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a learned skill
-    mkdir -p /root/dotfiles/skills/learned/stable-skill
-    echo "---" > /root/dotfiles/skills/learned/stable-skill/SKILL.md
-
-    # First sync
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify symlink created
-    [ -L /root/.claude/skills/stable-skill ] && echo "first run: symlink exists"
-
-    # Second sync (should be idempotent)
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify symlink still exists and is correct
-    [ -L /root/.claude/skills/stable-skill ] && echo "second run: symlink preserved"
-    readlink /root/.claude/skills/stable-skill | grep -q "learned/stable-skill" && echo "symlink target still correct"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Symlinks preserved across runs
-    assert "first run: symlink exists" in result.stdout
-    assert "second run: symlink preserved" in result.stdout
-    assert "symlink target still correct" in result.stdout
-
-
-def test_sync_agents_no_symlink_when_real_dir_exists(docker_image):
-    """Test that symlink is NOT created if a real (non-symlink) dir exists.
-
-    Scenario:
-    - given: skills/foo/ is a real directory AND learned/foo/ also exists
-    - when: Run sync-agents
-    - then: The real directory is preserved, no symlink replaces it
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a learned skill
-    mkdir -p /root/dotfiles/skills/learned/conflicting-skill
-    echo "---" > /root/dotfiles/skills/learned/conflicting-skill/SKILL.md
-    echo "learned version" >> /root/dotfiles/skills/learned/conflicting-skill/SKILL.md
-
-    # Also create a real (non-learned) skill with the same name
-    mkdir -p /root/dotfiles/skills/conflicting-skill
-    echo "# Real skill" > /root/dotfiles/skills/conflicting-skill/SKILL.md
-    echo "real version" >> /root/dotfiles/skills/conflicting-skill/SKILL.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify in target: should be a real directory, NOT a symlink
-    if [ -L /root/.claude/skills/conflicting-skill ]; then
-        echo "ERROR: symlink replaced real dir"
-    else
-        echo "real dir preserved"
-    fi
-
-    # Verify it has the real version content (from dotfiles/skills/, not learned/)
-    grep -q "real version" /root/.claude/skills/conflicting-skill/SKILL.md && echo "real content preserved"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Real directory preserved, no symlink
-    assert "real dir preserved" in result.stdout
-    assert "real content preserved" in result.stdout
-
-
-def test_sync_agents_no_learned_dir_no_error(docker_image):
-    """Test that sync works fine when learned/ directory doesn't exist.
-
-    Scenario:
-    - given: No skills/learned/ directory
-    - when: Run sync-agents
-    - then: No errors, sync completes normally
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Ensure no learned dir exists
-    rm -rf /root/dotfiles/skills/learned
-
-    # Create a regular skill
-    mkdir -p /root/dotfiles/skills/regular-skill
-    echo "# Regular" > /root/dotfiles/skills/regular-skill/SKILL.md
-
-    # Run sync-agents (should not error)
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify regular skill was synced
-    [ -f /root/.claude/skills/regular-skill/SKILL.md ] && echo "regular skill synced"
-    echo "no errors"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: No errors
-    assert "regular skill synced" in result.stdout
-    assert "no errors" in result.stdout
-
-
-def test_sync_agents_learned_symlinks_survive_resync(docker_image):
-    """Test that learned symlinks survive when learned/ content changes.
-
-    Scenario:
-    - given: A learned skill with symlink exists
-    - when: The learned skill content changes and sync runs again
-    - then: Symlink still works and points to updated content
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create initial learned skill
-    mkdir -p /root/dotfiles/skills/learned/evolving-skill
-    echo "# Version 1" > /root/dotfiles/skills/learned/evolving-skill/SKILL.md
-
-    # First sync
-    cd /root/dotfiles && just sync-agents all
-    [ -L /root/.claude/skills/evolving-skill ] && echo "symlink created"
-
-    # Update the learned skill content
-    echo "# Version 2" > /root/dotfiles/skills/learned/evolving-skill/SKILL.md
-
-    # Second sync
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify symlink still works and reflects new content
-    [ -L /root/.claude/skills/evolving-skill ] && echo "symlink preserved"
-    grep -q "Version 2" /root/.claude/skills/evolving-skill/SKILL.md && echo "content updated through symlink"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Symlink preserved and content accessible
-    assert "symlink created" in result.stdout
-    assert "symlink preserved" in result.stdout
-    assert "content updated through symlink" in result.stdout
-
-
-def test_sync_agents_learned_symlinks_in_dotfiles_itself(docker_image):
-    """Test that symlinks are also created in dotfiles/skills/ itself.
-
-    Scenario:
-    - given: dotfiles has skills/learned/my-skill/SKILL.md
-    - when: Run sync-agents
-    - then: dotfiles/skills/my-skill -> learned/my-skill symlink exists
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a learned skill
-    mkdir -p /root/dotfiles/skills/learned/dotfiles-linked-skill
-    echo "---" > /root/dotfiles/skills/learned/dotfiles-linked-skill/SKILL.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify symlink in dotfiles itself
-    [ -L /root/dotfiles/skills/dotfiles-linked-skill ] && echo "dotfiles symlink exists"
-    readlink /root/dotfiles/skills/dotfiles-linked-skill | grep -q "learned/dotfiles-linked-skill" && echo "relative symlink correct"
-
-    # Verify the symlink is functional
-    [ -f /root/dotfiles/skills/dotfiles-linked-skill/SKILL.md ] && echo "symlink functional"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Symlink exists in dotfiles
-    assert "dotfiles symlink exists" in result.stdout
-    assert "relative symlink correct" in result.stdout
-    assert "symlink functional" in result.stdout
-
-
-def test_sync_agents_agents_global_gets_learned_symlinks(docker_image):
-    """Test that ~/.agents/skills/ also gets learned skill symlinks.
-
-    Scenario:
-    - given: dotfiles has skills/learned/my-skill/SKILL.md
-    - when: Run sync-agents
-    - then: ~/.agents/skills/my-skill -> learned/my-skill symlink exists
-    """
-    cmd = """
-    set -euo pipefail
-
-    # Create a learned skill
-    mkdir -p /root/dotfiles/skills/learned/agents-linked-skill
-    echo "---" > /root/dotfiles/skills/learned/agents-linked-skill/SKILL.md
-
-    # Run sync-agents
-    cd /root/dotfiles && just sync-agents all
-
-    # Verify learned/ was synced to ~/.agents/skills/
-    [ -d /root/.agents/skills/learned/agents-linked-skill ] && echo "learned synced"
-
-    # Verify symlink created in ~/.agents/skills/
-    [ -L /root/.agents/skills/agents-linked-skill ] && echo "agents symlink exists"
-    readlink /root/.agents/skills/agents-linked-skill | grep -q "learned/agents-linked-skill" && echo "agents symlink target correct"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    # then: Symlinks in ~/.agents/
-    assert "learned synced" in result.stdout
-    assert "agents symlink exists" in result.stdout
-    assert "agents symlink target correct" in result.stdout
 
 
 # =============================================================================
@@ -1889,7 +1040,7 @@ def test_sync_agents_override_removes_orphans(docker_image):
     """Test that --override removes target-only items without prompts.
 
     Scenario:
-    - given: Non-import target has orphan skills
+    - given: Non-import target has orphan agents
     - when: Run sync-agents --override
     - then: Orphans are deleted, target matches dotfiles
 
@@ -1901,7 +1052,7 @@ def test_sync_agents_override_removes_orphans(docker_image):
     # First sync to establish baseline
     cd /root/dotfiles && just sync-agents all
 
-    # Add orphan skills to non-import target
+    # Add orphan agents to non-import target
     mkdir -p /root/.claude-work-a/agents/orphan-alpha
     echo "# Alpha" > /root/.claude-work-a/agents/orphan-alpha/SKILL.md
     mkdir -p /root/.claude-work-a/agents/orphan-beta
@@ -1939,9 +1090,9 @@ def test_sync_agents_override_preserves_source_items(docker_image):
     """Test that --override keeps items that exist in dotfiles.
 
     Scenario:
-    - given: Non-import target has both dotfiles skills and orphans
+    - given: Non-import target has both dotfiles agents and orphans
     - when: Run sync-agents --override
-    - then: Dotfiles skills remain, orphans are removed
+    - then: Dotfiles agents remain, orphans are removed
 
     Note: Uses Work-A (non-import-source) to avoid import phase interference.
     """
@@ -2012,49 +1163,26 @@ def test_sync_agents_preview_shows_orphans(docker_image):
 # =============================================================================
 
 
-def test_import_agents_never_pulls_skills_into_dotfiles(docker_image):
-    """Even explicit import-agents does not pull skills (declarative model).
-
-    Scenario:
-    - given: A valid skill exists in ~/.claude/skills/ but not in dotfiles
-    - when: Run `just import-agents` (default scope = claude only)
-    - then: The skill is NOT imported into dotfiles/skills/
-    """
-    cmd = """
-    set -euo pipefail
-
-    mkdir -p /root/.claude/skills/imported-from-claude
-    echo "# imported" > /root/.claude/skills/imported-from-claude/SKILL.md
-
-    cd /root/dotfiles && just import-agents
-
-    [ ! -e /root/dotfiles/skills/imported-from-claude ] && echo "skill not imported"
-    """
-    result = _run_in_container(docker_image, cmd)
-
-    assert "skill not imported" in result.stdout
-
-
 def test_import_agents_does_not_forward_sync_to_targets(docker_image):
     """import-agents must NOT push dotfiles content into targets (Phase 2-3 skipped).
 
     Scenario:
-    - given: A skill exists in dotfiles but not in any target
+    - given: A command exists in dotfiles but not in any target
     - when: Run `just import-agents all`
-    - then: The skill stays only in dotfiles; targets are NOT created/updated
+    - then: The command stays only in dotfiles; targets are NOT created/updated
     """
     cmd = """
     set -euo pipefail
 
-    mkdir -p /root/dotfiles/skills/dotfiles-only
-    echo "# dotfiles only" > /root/dotfiles/skills/dotfiles-only/README.md
+    mkdir -p /root/dotfiles/commands
+    echo "# dotfiles only" > /root/dotfiles/commands/dotfiles-only.md
 
     cd /root/dotfiles && just import-agents all
 
-    [ -f /root/dotfiles/skills/dotfiles-only/README.md ] && echo "stayed in dotfiles"
-    [ ! -e /root/.claude/skills/dotfiles-only ] && echo "not pushed to claude"
-    [ ! -e /root/.claude-work-a/skills/dotfiles-only ] && echo "not pushed to work-a"
-    [ ! -e /root/.gemini/skills/dotfiles-only ] && echo "not pushed to gemini"
+    [ -f /root/dotfiles/commands/dotfiles-only.md ] && echo "stayed in dotfiles"
+    [ ! -e /root/.claude/commands/dotfiles-only.md ] && echo "not pushed to claude"
+    [ ! -e /root/.claude-work-a/commands/dotfiles-only.md ] && echo "not pushed to work-a"
+    [ ! -e /root/.gemini/commands/dotfiles-only.md ] && echo "not pushed to gemini"
     """
     result = _run_in_container(docker_image, cmd)
 
@@ -2279,73 +1407,6 @@ PY
     assert "settings-merge-ok" in result.stdout, result.stdout
 
 
-def test_skills_are_additive_add_missing_no_overwrite_no_delete(docker_image):
-    """skills/ is additive: even `--yes` sync ADDS a missing dotfiles skill, but
-    never overwrites an existing target skill (a bunx-skills CLI symlink/copy)
-    and never deletes a target-only skill."""
-    cmd = r"""
-    set -euo pipefail
-    mkdir -p /root/.claude/skills/cli-only-skill
-    echo "# CLI Only" > /root/.claude/skills/cli-only-skill/SKILL.md
-    mkdir -p /root/.claude/skills/tdd-workflow
-    echo "SENTINEL-KEEP" > /root/.claude/skills/tdd-workflow/SKILL.md
-    # hermetic probes: one skill missing from the target, one already present
-    mkdir -p /root/dotfiles/skills/probe-add-skill
-    echo "# Probe Add" > /root/dotfiles/skills/probe-add-skill/SKILL.md
-    mkdir -p /root/dotfiles/skills/tdd-workflow
-    echo "# dotfiles version" > /root/dotfiles/skills/tdd-workflow/SKILL.md
-
-    cd /root/dotfiles && just sync-agents p
-
-    [ -f /root/.claude/skills/cli-only-skill/SKILL.md ] && echo "orphan-preserved"
-    grep -q "CLI Only" /root/.claude/skills/cli-only-skill/SKILL.md && echo "orphan-content-intact"
-    grep -q "SENTINEL-KEEP" /root/.claude/skills/tdd-workflow/SKILL.md && echo "existing-not-overwritten"
-    # a skill in dotfiles but missing in the target IS added (add-only)
-    [ -e /root/.claude/skills/probe-add-skill ] && echo "missing-skill-added" || echo "ERR-missing-not-added"
-    """
-    result = _run_in_container(docker_image, cmd)
-    for marker in (
-        "orphan-preserved",
-        "orphan-content-intact",
-        "existing-not-overwritten",
-        "missing-skill-added",
-    ):
-        assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
-    assert "ERR-missing-not-added" not in result.stdout, result.stdout
-
-
-def test_no_skills_flag_deploys_instructions_and_skips_skills(docker_image):
-    """--no-skills deploys instructions (base/spokes) but skips skills entirely:
-    no dotfiles skill is copied in, and a target-only skill is left untouched."""
-    cmd = r"""
-    set -euo pipefail
-    # a target-only skill that a full sync would otherwise see
-    mkdir -p /root/.gemini/skills/cli-only-skill
-    echo "# CLI Only" > /root/.gemini/skills/cli-only-skill/SKILL.md
-    # hermetic probe: a dotfiles skill that --no-skills must NOT copy
-    mkdir -p /root/dotfiles/skills/probe-add-skill
-    echo "# Probe Add" > /root/dotfiles/skills/probe-add-skill/SKILL.md
-
-    cd /root/dotfiles && just sync-agents --no-skills g
-
-    # instructions ARE deployed
-    grep -q 'Non-negotiables' /root/.gemini/GEMINI.md && echo "base-deployed"
-    [ -f /root/.gemini/docs/agents/testing.md ] && echo "spoke-deployed"
-    # skills are NOT touched: target-only skill preserved, dotfiles skill NOT copied
-    [ -f /root/.gemini/skills/cli-only-skill/SKILL.md ] && echo "orphan-preserved"
-    [ -e /root/.gemini/skills/probe-add-skill ] && echo "ERR-skill-copied" || echo "dotfiles-skill-not-copied"
-    """
-    result = _run_in_container(docker_image, cmd)
-    for marker in (
-        "base-deployed",
-        "spoke-deployed",
-        "orphan-preserved",
-        "dotfiles-skill-not-copied",
-    ):
-        assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
-    assert "ERR-skill-copied" not in result.stdout, result.stdout
-
-
 def test_hub_and_spoke_settings_merge_updates_managed_in_place(docker_image):
     """When a managed hook command changes in the fragment, the old managed
     block is REPLACED in settings.json (not left as a stale duplicate)."""
@@ -2404,3 +1465,50 @@ def test_spoke_and_hook_orphans_are_cleaned(docker_image):
         assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
     assert "ERR-spoke-stale" not in result.stdout, result.stdout
     assert "ERR-hook-stale" not in result.stdout, result.stdout
+
+
+# =============================================================================
+# Skills are out of the sync's business (ADR 0043)
+# =============================================================================
+
+
+def test_sync_never_touches_skills_dirs(docker_image):
+    """Skills reach the homes through the bunx skills CLI and skills_lock.py;
+    the sync must neither copy a skills/ dir from dotfiles nor delete, import,
+    or rewrite anything under a home's skills/ — in --yes and --override mode,
+    and even when a stale manifest still lists skills items."""
+    cmd = r"""
+    set -euo pipefail
+    # a stale manifest from before the retirement
+    cat > /root/dotfiles/.sync-manifest.json <<'EOF'
+{"version": 1, "items": {"skills": ["cli-managed", "gone-skill"], "commands": [], "agents": []}}
+EOF
+    # a stray skills dir in dotfiles must NOT be distributed
+    mkdir -p /root/dotfiles/skills/probe-skill
+    echo "# Probe" > /root/dotfiles/skills/probe-skill/SKILL.md
+    # what a home holds: a CLI-managed real dir and a symlink into the store
+    mkdir -p /root/.agents/skills/linked
+    echo "# linked" > /root/.agents/skills/linked/SKILL.md
+    mkdir -p /root/.claude/skills/cli-managed
+    echo "SENTINEL" > /root/.claude/skills/cli-managed/SKILL.md
+    ln -s ../../.agents/skills/linked /root/.claude/skills/linked
+
+    cd /root/dotfiles && just sync-agents all
+    cd /root/dotfiles && uv run scripts/sync_agents.py --override all
+
+    grep -q SENTINEL /root/.claude/skills/cli-managed/SKILL.md && echo "real-dir-untouched"
+    [ -L /root/.claude/skills/linked ] && echo "symlink-untouched"
+    [ ! -e /root/.claude/skills/probe-skill ] && echo "dotfiles-skills-not-copied"
+    [ ! -e /root/.gemini/skills/probe-skill ] && echo "not-copied-to-gemini"
+    grep -q '"skills"' /root/dotfiles/.sync-manifest.json && echo "ERR-manifest-still-lists-skills" || echo "manifest-pruned"
+    """
+    result = _run_in_container(docker_image, cmd)
+    for marker in (
+        "real-dir-untouched",
+        "symlink-untouched",
+        "dotfiles-skills-not-copied",
+        "not-copied-to-gemini",
+        "manifest-pruned",
+    ):
+        assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
+    assert "ERR-manifest-still-lists-skills" not in result.stdout, result.stdout

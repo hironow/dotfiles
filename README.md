@@ -76,7 +76,7 @@ scoop / git / just / jq / mise / pwsh の導入 → HTTPS clone (`~\dotfiles`) �
 `doctor` まで自動 (冪等、再実行安全)。完了後は **新しい pwsh セッション**を開くこと
 ($PROFILE はそこで効く)。SSH 鍵設定後の operator 手順:
 `git -C ~/dotfiles remote set-url origin git@github.com:hironow/dotfiles.git` と
-`git -C ~/dotfiles submodule update --init` (submodule は SSH URL のため bootstrap では触らない)。
+`git -C ~/dotfiles submodule update --init` (vendored submodule は SSH URL のため bootstrap では触らない)。
 
 > [!NOTE]
 > Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)を一級でサポート。Windows native は `just deploy` で `corepack enable` + `starship.toml` / `gitignore-global` / `config/mise/config.toml` の配置 + **PowerShell `$PROFILE` への starship init / mise activate / `MISE_NODE_COREPACK=0` 注入** + **global mise toolset の install** + **`aliases.gitconfig` の `[include]` 配線** に対応。scoop は **per-host manifest dump (`dump/<host>/scoop.json`) と `just add-scoop` による復元 (`scoop import`) の両方**に対応。`just doctor` / `just update-all` 等の基本 recipe も Windows で完走し、`just ci` は native Windows で green (実行系の一部テストは Linux/WSL/CI 限定で skip)。詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md) / [ADR 0019](docs/adr/0019-windows-scoop-dump-record-only.md) / [ADR 0022](docs/adr/0022-powershell-starship-profile-init.md) / [ADR 0024](docs/adr/0024-powershell-mise-activate-profile.md) / [ADR 0030](docs/adr/0030-per-host-dump-layout.md) / [ADR 0031](docs/adr/0031-disable-mise-corepack-on-windows.md) / [ADR 0032](docs/adr/0032-windows-scoop-restore-add-scoop.md) / [ADR 0033](docs/adr/0033-windows-deploy-global-mise-install.md) / [ADR 0039](docs/adr/0039-windows-bootstrap-ps1.md)。
@@ -320,13 +320,19 @@ just skills add https://github.com/googleworkspace/cli
 just skills add vercel-labs/agent-browser
 ```
 
-サードパーティ skill は**宣言管理** ([ADR 0038](docs/adr/0038-declarative-third-party-skills.md)):
-実体は skills CLI が `~/.agents/skills` に持ち、git は正規化宣言
-`dump/harness/skill-lock.json` のみ追跡する (`skills/` submodule は自作 skill 専用)。
+skill は自作 ([hironow/skills](https://github.com/hironow/skills)) もサードパーティも**宣言管理**
+([ADR 0038](docs/adr/0038-declarative-third-party-skills.md) →
+[ADR 0043](docs/adr/0043-self-authored-skills-through-the-skills-cli.md)):
+実体は skills CLI が `~/.agents/skills` (store) に持ち、git は正規化宣言
+`dump/harness/skill-lock.json` のみ追跡する。各 agent home (`~/.claude*`, `~/.codex`, `~/.gemini`)
+には `skills-place` が store への相対 symlink を張る (symlink 不可の環境では追跡付きコピー)。
+同名衝突は hironow/skills が勝つ (`skills-lock-check` が `ci` で検証)。
 
 ```bash
 just dump-skills-lock     # bunx skills add/update/remove の後に宣言を更新
-just restore-skills-lock  # 新マシンで宣言から復元 (best-effort: upstream HEAD)
+just restore-skills-lock  # 新マシンで宣言から復元 (store → home の順、best-effort: upstream HEAD)
+just skills-place         # home の symlink を張り直す (冪等)
+just skills-update        # hironow/skills の merge 後など: store を更新して home を張り直す
 ```
 
 Skill catalog refs.

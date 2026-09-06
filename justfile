@@ -174,9 +174,9 @@ deploy:
 #   just sync-agents               -> ~/.claude only
 #   just sync-agents a b           -> + ~/.claude-work-a, ~/.claude-work-b
 #   just sync-agents all           -> every defined agent
-# Aliases: p=claude, a/b/c/d=work-a..d, g=gemini, x=codex, agents=agents-global
-# Flag: --no-skills = instruction-only (skip skills forward sync; skills are
-# owned by the `bunx skills` CLI). e.g. `just sync-agents --no-skills a b`
+# Aliases: p=claude, a/b/c/d=work-a..d, g=gemini, x=codex
+# Skills are never synced here: the bunx skills CLI owns the store and
+# `just skills-place` / `skills-update` fill the homes (ADR 0043).
 # Prompt-free by design: non-tty prompts silently skipped CHANGED files,
 # which made "sync completed" lie. Inspect with sync-agents-preview first;
 # full replace incl. orphan removal is the explicit sync-agents-override.
@@ -671,7 +671,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check skills-audit skills-readme-check
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -781,13 +781,6 @@ add-scoop host="":
 # ------------------------------
 # Update sets
 # ------------------------------
-
-# Update: pull latest for my submodules (skills)
-[group('Update')]
-update-my-submodules:
-    @echo "◆ Updating own submodules..."
-    git submodule update --remote skills
-    @echo "✅ Submodules updated."
 
 # Bring ALL submodules to upstream tips cleanly. Absorbs three failure
 # classes seen in practice:
@@ -1213,66 +1206,43 @@ skills *args:
       bunx skills {{ args }}
     fi
 
-# Normalize ~/.agents/.skill-lock.json into the committed declaration
-# (dump/harness/skill-lock.json). Run after `bunx skills add/update/remove`.
-[group('Agents')]
-dump-skills-lock:
-    @{{ UV_RUN }} scripts/skills_lock.py dump
+# Skills (ADR 0043): every skill, self-authored or third-party, is declared in
+# dump/harness/skill-lock.json, lives in the bunx skills CLI store
+# (~/.agents/skills) and reaches each agent home as a relative symlink placed
+# by scripts/skills_lock.py. Procedure: docs/agents/skills-maintenance.md.
 
-# Install every declared third-party skill via the pinned bunx skills CLI
-# (best-effort: upstream HEAD, idempotent — already-installed skills skip).
+# Refuses to drop a hironow/skills record silently (--allow-self-drop).
+# Run after `bunx skills add/update/remove`.
+# Normalize ~/.agents/.skill-lock.json into dump/harness/skill-lock.json
 [group('Agents')]
-restore-skills-lock:
-    @{{ UV_RUN }} scripts/skills_lock.py restore
+dump-skills-lock *args:
+    @{{ UV_RUN }} scripts/skills_lock.py dump {{ args }}
 
-# CI barrier: fail when a lock-managed third-party skill reappears in the
-# skills submodule (re-vendoring). hironow/skills-sourced entries are exempt.
+# Best-effort (upstream HEAD); hironow/skills installed last so ours wins a
+# name collision; ends with skills-place.
+# New machine: install every declared skill into the CLI store, then place homes
+[group('Agents')]
+restore-skills-lock *args:
+    @{{ UV_RUN }} scripts/skills_lock.py restore {{ args }}
+
+# Idempotent; copies where symlinks are unavailable; a differing real
+# directory is kept and reported (--force replaces it).
+# Link every declared skill from the store into each agent home
+[group('Agents')]
+skills-place *args:
+    @{{ UV_RUN }} scripts/skills_lock.py place {{ args }}
+
+# Run after a hironow/skills merge or any upstream change.
+# Refresh the CLI store (pinned `skills update -g -y`), then re-place the homes
+[group('Agents')]
+skills-update *args:
+    @{{ UV_RUN }} scripts/skills_lock.py update {{ args }}
+
+# hironow/skills wins name collisions (ADR 0043).
+# CI barrier: no third-party skill in the declaration shadows a hironow/skills name
 [group('Validation')]
 skills-lock-check:
     @{{ UV_RUN }} scripts/skills_lock.py check
-
-# The skills maintenance tooling (scripts, tests, CI) lives in the submodule
-# itself (hironow/skills: `skills/justfile`), so one repo owns it. The
-# wrappers below run its recipes from here with the submodule as working
-# directory (`mise exec` so the nested just and uv are the mise-pinned ones);
-# the procedure around them is docs/agents/skills-maintenance.md.
-SKILLS_JUST := "mise exec -- just --justfile skills/justfile --working-directory skills"
-
-# Structural audit of every skill in the submodule: frontmatter, links and
-# anchors, code fences, emoji markers, language rule, provenance contract.
-# The submodule's own CI runs it on every commit there; `ci` runs it here
-# too so a gitlink bump to an unreviewed commit is caught locally.
-[group('Validation')]
-skills-audit:
-    @{{ SKILLS_JUST }} audit
-
-# The same audit plus a byte comparison against every agent home that
-# receives a copy (additive sync never refreshes them) and dangling-symlink
-# detection. Environment-dependent, so not part of any CI.
-[group('Validation')]
-skills-audit-consumers:
-    @{{ SKILLS_JUST }} audit-consumers
-
-# Regenerate the README tables of the skills submodule (index + credits)
-# from each skill's frontmatter. Run after adding, removing, or re-sourcing
-# a skill, then commit the README in hironow/skills.
-[group('Agents')]
-skills-readme-index:
-    @{{ SKILLS_JUST }} readme-index
-
-# The skills README tables must match the frontmatter.
-[group('Validation')]
-skills-readme-check:
-    @{{ SKILLS_JUST }} readme-check
-
-# Quantitative comparison of skill versions (fork first, then the upstream
-# copies): sizes, description length, tooling violations, body diff.
-# Paths resolve inside the submodule, so name the fork by directory and give
-# the upstream copies as absolute paths.
-# Usage: just skills-compare review /tmp/upstream/code-review
-[group('Agents')]
-skills-compare +versions:
-    @{{ SKILLS_JUST }} compare {{ versions }}
 
 # CDP
 

@@ -46,28 +46,24 @@
           キーの削除は自動伝播しない。env は **fragment 群が正本** で、repo
           `.claude/settings.json` は env を持たず global から継承する (詳細 ADR 0037)
     - `ROOT_AGENTS_<x>_<y>(.ext|/)` → `<agent>/<x>/<y>` (`_`→`/`) の従来規約も継続
-    - **`skills` は additive** (`ADDITIVE_DIRECTORIES`): 欠落 skill のみ追加、既存
-      target は**上書きしない・削除しない**。`bunx skills` CLI が `~/.agents/skills`
-      へ install した symlink (上流 + `bunx skills add <skills-repo>`) を churn/orphan
-      削除しないため
-    - **skills は宣言管理 (ADR 0038)**: サードパーティ skill の実体は CLI が持ち、
-      git は正規化宣言 `dump/harness/skill-lock.json` のみ追跡する
-      (`just dump-skills-lock` で更新 / `just restore-skills-lock` で新マシン復元 —
-      best-effort, upstream HEAD)。`skills/` submodule は**自作 skill 専用**で、
-      **home→repo の skills import は全面廃止** (`skills/learned` のみ例外)。
-      lock 管理名が submodule に再出現すると `just skills-lock-check` (`ci` 組込み)
-      が fail する
-    - **skills 品質ゲート**: SKILL.md を1つも含まない dir は構造ゲートで、
-      `dump/harness/skills-sync-exclude.toml` (機械可読 SSoT) の `exclude` 記載名は
-      denylist で除外される (junk の流入も防ぐ)
+    - **skills は sync しない (ADR 0043)**: 自作 (hironow/skills) もサードパーティも
+      `bunx skills` CLI の store (`~/.agents/skills`) に入れ、git は正規化宣言
+      `dump/harness/skill-lock.json` だけを追跡する。各 home の `skills/` には
+      `just skills-place` が store への相対 symlink を張る (symlink 不可なら追跡付きコピー)。
+      `just dump-skills-lock` (宣言更新、hironow/skills の record 消失を拒否) /
+      `just restore-skills-lock` (新マシン: store 復元 → place) / `just skills-update`
+      (hironow/skills merge 後: store 更新 → place)。CLI には `-a universal` で store だけを
+      書かせ、home には CLI を触らせない。**同名衝突は hironow/skills が勝つ**
+      (`just skills-lock-check`、`ci` 組込み)。旧 `skills/` submodule・`skills/learned`・
+      additive sync・除外 toml は撤去済み
     - **Antigravity CLI (`agy`) は自己管理 — dotfiles は skills/settings/mcp を sync
       しない**: Antigravity は skills を `agy plugin` (=
       `~/.gemini/antigravity-cli/plugins/<name>/skills/`)、settings/mcp を `agy import`
       (= `~/.gemini/antigravity-cli/settings.json` + `mcp/`) で持つ。これらを raw sync
       すると agy の自己管理を迂回/clobber する (= `bunx skills` へ委譲するのと同理由)
       ため dotfiles は触らない。instruction 層 (`~/.gemini/GEMINI.md`) のみ共有で兼用。
-      既存の `~/.gemini/skills/` additive は Antigravity が plugins/ から読むため
-      vestigial だが additive で無害・残置 (詳細 ADR 0026)。
+      `~/.gemini/skills/` は `skills-place` の link 先だが Antigravity は plugins/ から読むため
+      vestigial・無害 (詳細 ADR 0026)。
 - **global ルールを変えるときは上記 source を編集して `just sync-agents`。**
   配布先 (`~/.claude/CLAUDE.md` 等) を直接編集しても次の sync で上書きされる。
 - **per-repo enforcement は `templates/agent-baseline/` に scaffold 保管** (dotfiles
@@ -89,13 +85,13 @@ just sync-agents-preview …  # dry-run
 | recipe | 内容 |
 |---|---|
 | `just` / `just help` | recipe 一覧 |
-| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` + `skills-lock-check` + `skills-audit` + `skills-readme-check` (後2つは submodule の justfile へ委譲) |
+| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` + `skills-lock-check` |
 | `just lint-claude` | 公式 `claude plugin validate --strict` (claude CLI 不在時は skip) + stdlib の effective-settings 検証 (ADR 0037/0041)。サードパーティ claudelint は**退役済み** (ADR 0041、trust 判断)。CI gate は `Claude Config Lint` workflow が pinned `bunx @anthropic-ai/claude-code` で公式 validate を回す (CI は `just ci` 非実行) |
 | `just ci-all` | `ci` + `test` + `test-install` (Docker サンドボックス込み) |
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |
 | `just test` | devcontainer サンドボックステスト (下記) |
 | `just semgrep-test` | `.semgrep/rules/**` を co-located fixture で `semgrep --test` |
-| `just skills-audit` / `skills-audit-consumers` / `skills-readme-index` / `skills-readme-check` / `skills-compare` | skills submodule の構造監査・8 home との一致検査・README 表の生成/検査・fork と upstream の定量比較。**実体 (scripts/tests/justfile/CI) は submodule 側 (hironow/skills) に閉じており、ここは `skills/justfile` への薄い wrapper** (`just --justfile skills/justfile --working-directory skills <recipe>`)。手順は `docs/agents/skills-maintenance.md` (spoke) |
+| `just dump-skills-lock` / `restore-skills-lock` / `skills-place` / `skills-update` / `skills-lock-check` | skill の宣言 (`dump/harness/skill-lock.json`) と配置 (ADR 0043): 自作 (hironow/skills) もサードパーティも `bunx skills` CLI の store (`~/.agents/skills`) に入れ、各 home へは `skills-place` が相対 symlink を張る。監査・README 表・fork 比較の tooling は hironow/skills 側の `justfile`。手順は `docs/agents/skills-maintenance.md` (spoke) |
 
 ## テストモデル (重要)
 
@@ -302,6 +298,6 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
 - default branch = `main`。feature / fix / chore / docs は branch → PR → **squash merge** to `main`。
 - **draft PR では CI が回らない** (全 workflow の job に `if: … pull_request.draft == false`、
   `ready_for_review` で起動)。作業中は `gh pr create --draft`、検証したくなったら `gh pr ready`。
-  skills submodule の `ci.yaml` も同じ扱い。
+  hironow/skills の `ci.yaml` も同じ扱い。
 - Conventional Commits (type が structural/behavioral を encode)。詳細は `ROOT_AGENTS.md`。
 - YAML は `.yaml` (not `.yml`)、Docker Compose は `compose.yaml`。

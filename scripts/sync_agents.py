@@ -14,7 +14,6 @@ Manifest-based sync algorithm:
 File naming convention:
     ROOT_AGENTS.md                      -> <agent>/AGENT.md (base file)
     ROOT_AGENTS_commands_strict.md      -> <agent>/commands/strict.md
-    ROOT_AGENTS_skills_my-skill/        -> <agent>/skills/my-skill/
     ROOT_AGENTS_hooks_formatter.py      -> <agent>/hooks/formatter.py
     ROOT_AGENTS_agents_subagent/        -> <agent>/agents/subagent/
 
@@ -32,9 +31,6 @@ import json
 import platform
 import shutil
 import sys
-import tempfile
-import tomllib
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -63,71 +59,10 @@ PROFILE_SETTINGS_DIR = ".claude/settings.profiles"
 # project scope only, so this file is a sync-side input, not a CC settings file.
 MACHINE_LOCAL_SETTINGS = "settings.sync-local.json"
 
-# Directories to sync directly (in addition to ROOT_AGENTS_* files)
-SYNC_DIRECTORIES = ["commands", "skills", "agents"]
-
-# Additive directories: add-only. Missing items are added, but existing target
-# items are NEVER overwritten and orphans are NEVER deleted. `skills` is additive
-# because it coexists with the `bunx skills` CLI, which installs skills (as
-# symlinks into ~/.agents/skills) from upstreams and from the dotfiles submodule
-# (`bunx skills add <skills-repo> -s <name>`). A full-mirror sync would delete
-# CLI-only orphans and clobber the CLI-managed symlinks; additive preserves both
-# and defers population to the CLI. See repo CLAUDE.md.
-ADDITIVE_DIRECTORIES = ["skills"]
-# Exempt from additive (synced normally even under an additive dir): the
-# dotfiles-owned skill-creator workspace `skills/learned/`.
-ADDITIVE_EXEMPT_SUBDIRS = ["learned"]
-
-
-def _is_additive_item(relative_path: str) -> bool:
-    """True if a sync item is in an additive dir and not an exempt subdir."""
-    parts = relative_path.split("/")
-    if parts[0] not in ADDITIVE_DIRECTORIES:
-        return False
-    return not (len(parts) > 1 and parts[1] in ADDITIVE_EXEMPT_SUBDIRS)
-
-
-# Machine-readable denylist for skills sync (see repo CLAUDE.md). Names listed
-# under `exclude = [...]` are skipped in BOTH directions (distribute + import).
-# Dirs without any SKILL.md are gated automatically and need no listing here.
-SKILLS_SYNC_EXCLUDE_FILE = "dump/harness/skills-sync-exclude.toml"
-
-
-def _load_skills_sync_exclude(dotfiles_dir: Path) -> frozenset[str]:
-    """Load the skills sync denylist from SKILLS_SYNC_EXCLUDE_FILE.
-
-    Missing file -> empty set (fail-safe). Malformed TOML or a non-list
-    `exclude` value raises (fail loud) so a typo never silently syncs junk.
-    """
-    exclude_file = dotfiles_dir / SKILLS_SYNC_EXCLUDE_FILE
-    if not exclude_file.is_file():
-        return frozenset()
-    with exclude_file.open("rb") as f:
-        data = tomllib.load(f)
-    exclude = data.get("exclude", [])
-    if not isinstance(exclude, list) or not all(
-        isinstance(name, str) for name in exclude
-    ):
-        raise ValueError(
-            f"{SKILLS_SYNC_EXCLUDE_FILE}: `exclude` must be a list of strings"
-        )
-    return frozenset(exclude)
-
-
-def _is_syncable_skill(path: Path, name: str, exclude: frozenset[str]) -> bool:
-    """Quality gate for a skills/ child (both sync directions).
-
-    Denylist matches on the original child name (works for symlinks too);
-    the SKILL.md check runs on the resolved path so a symlinked skill in a
-    target is not gated out. A plain file or a dir with no SKILL.md anywhere
-    is not a skill (containers like learned/ pass via the recursive check).
-    """
-    if name in exclude:
-        return False
-    resolved = path.resolve()
-    if not resolved.is_dir():
-        return False
-    return any(resolved.rglob("SKILL.md"))
+# Directories to sync directly (in addition to ROOT_AGENTS_* files).
+# Skills are NOT synced: the bunx skills CLI owns the store and
+# scripts/skills_lock.py places them into every consumer home (ADR 0043).
+SYNC_DIRECTORIES = ["commands", "agents"]
 
 
 @dataclass
@@ -226,13 +161,6 @@ AGENTS: list[AgentTarget] = [
         main_file="AGENTS.md",
         is_import_source=True,
     ),
-    AgentTarget(
-        Path.home() / ".agents",
-        "Agents(Global)",
-        key="agents",
-        is_import_source=True,
-        sync_directories=["skills"],
-    ),
 ]
 
 
@@ -258,8 +186,6 @@ _TARGET_ALIASES: dict[str, str] = {
     # codex (.codex)
     "x": "codex",
     "codex": "codex",
-    # global agents (.agents)
-    "agents": "agents",
 }
 
 # Default selection when no targets are specified.
@@ -365,41 +291,6 @@ class _SyncPlan:
     deletions: list[_DeleteAction] = field(default_factory=list)
 
 
-# Patterns excluded from sync (skill-creator workspace directories, etc.)
-# Key = parent directory name, Value = list of suffixes to exclude
-EXCLUDE_PATTERNS: dict[str, list[str]] = {
-    "learned": ["-workspace"],  # learned/*-workspace are skill-creator workspaces
-}
-
-
-def _is_excluded_child(parent_name: str, child_name: str) -> bool:
-    """Check if a child item should be excluded from sync based on EXCLUDE_PATTERNS."""
-    suffixes = EXCLUDE_PATTERNS.get(parent_name, [])
-    return any(child_name.endswith(suffix) for suffix in suffixes)
-
-
-def _is_internal_symlink(path: Path, parent_dir: Path) -> bool:
-    """Check if a symlink points to a target within the same parent directory.
-
-    Used to skip symlinks created by link-learned-skills (e.g. skills/foo -> learned/foo).
-    """
-    try:
-        link_target = path.resolve()
-        return link_target.is_relative_to(parent_dir)
-    except (OSError, ValueError):
-        return False
-
-
-def _make_copytree_ignore() -> Callable[[str, list[str]], set[str]]:
-    """Build an ignore function for shutil.copytree that skips excluded items."""
-
-    def _ignore(directory: str, children: list[str]) -> set[str]:
-        dir_basename = Path(directory).name
-        return {c for c in children if _is_excluded_child(dir_basename, c)}
-
-    return _ignore
-
-
 # --- Private helper functions ---
 
 
@@ -450,12 +341,10 @@ def _get_directory_items(
 ) -> list[_SyncItem]:
     """Get individual items within sync directories as sync items.
 
-    Instead of syncing entire directories (e.g. skills/), syncs each
-    child item (e.g. skills/tdd-workflow, skills/brand-legal-review)
-    individually. This preserves unmanaged items in the target.
+    Instead of syncing entire directories (e.g. commands/), syncs each
+    child item (e.g. commands/strict.md, agents/reviewer) individually. This preserves unmanaged items in the target.
     """
     sources: list[_SyncItem] = []
-    skills_exclude = _load_skills_sync_exclude(dotfiles_dir)
     for dir_name in directories or SYNC_DIRECTORIES:
         dir_path = dotfiles_dir / dir_name
         if not dir_path.is_dir():
@@ -464,10 +353,6 @@ def _get_directory_items(
             if child.name.startswith("."):
                 continue
             if child.is_symlink():
-                continue
-            if dir_name == "skills" and not _is_syncable_skill(
-                child, child.name, skills_exclude
-            ):
                 continue
             rel_path = f"{dir_name}/{child.name}"
             sources.append(
@@ -501,7 +386,7 @@ def _get_additional_sources(
                     )
                 )
 
-    # Direct directory structure (commands/, skills/, agents/)
+    # Direct directory structure (commands/, agents/)
     sources.extend(_get_directory_items(dotfiles_dir, target_dirs))
 
     return sorted(sources, key=lambda x: x.relative_path)
@@ -515,20 +400,13 @@ def _compare_files(source: Path, target: Path) -> bool:
 
 
 def _compare_directories(source: Path, target: Path) -> bool:
-    """Compare two directories recursively. Returns True if identical.
-
-    Excluded items (e.g. workspace dirs in learned/) are ignored in comparison.
-    """
+    """Compare two directories recursively. Returns True if identical."""
     if not target.exists():
         return False
 
     dcmp = filecmp.dircmp(source, target)
 
-    dir_name = source.name
-    left_only = [f for f in dcmp.left_only if not _is_excluded_child(dir_name, f)]
-    right_only = [f for f in dcmp.right_only if not _is_excluded_child(dir_name, f)]
-
-    if left_only or right_only or dcmp.funny_files:
+    if dcmp.left_only or dcmp.right_only or dcmp.funny_files:
         return False
 
     # dircmp.diff_files compares SHALLOWLY (size + mtime stat signature): a
@@ -542,8 +420,6 @@ def _compare_directories(source: Path, target: Path) -> bool:
         return False
 
     for subdir in dcmp.common_dirs:
-        if _is_excluded_child(dir_name, subdir):
-            continue
         if not _compare_directories(source / subdir, target / subdir):
             return False
 
@@ -551,22 +427,13 @@ def _compare_directories(source: Path, target: Path) -> bool:
 
 
 def _get_newest_mtime(path: Path) -> float:
-    """Get the newest modification time of any file in a path (recursively).
-
-    Children excluded from sync (e.g. `-workspace` dirs under learned/) are
-    skipped: they are never compared or copied, so their activity must not
-    decide import-conflict direction. A busy target-side workspace once made
-    the target look "newer" and the import phase silently overwrote fresher
-    dotfiles content with the target's stale copy.
-    """
+    """Get the newest modification time of any file in a path (recursively)."""
     if path.is_file():
         return path.stat().st_mtime
     newest = 0.0
     if not path.is_dir():
         return newest
     for child in path.iterdir():
-        if _is_excluded_child(path.name, child.name):
-            continue
         if child.is_file():
             newest = max(newest, child.stat().st_mtime)
         elif child.is_dir():
@@ -581,9 +448,6 @@ def _build_deletion_plan(
     deletions: list[_DeleteAction] = []
 
     for dir_name in agent.get_sync_directories():
-        # Additive dirs (skills) are add-only: never delete from the target.
-        if dir_name in ADDITIVE_DIRECTORIES:
-            continue
         manifest_items = set(manifest.items.get(dir_name, []))
         dotfiles_dir_path = dotfiles_dir / dir_name
         dotfiles_items: set[str] = set()
@@ -618,17 +482,10 @@ def _detect_target_only_items(
     These are items not present in the dotfiles source and not tracked
     in the manifest (manifest-tracked deletions are handled separately
     by _build_deletion_plan).
-
-    Internal symlinks (e.g., learned skill links created by _link_learned_skills)
-    are excluded since they are auto-managed.
     """
     orphans: list[_DeleteAction] = []
 
     for dir_name in agent.get_sync_directories():
-        # Additive dirs (skills) keep target-only items (e.g. bunx-skills CLI
-        # installs not present in the dotfiles submodule).
-        if dir_name in ADDITIVE_DIRECTORIES:
-            continue
         target_dir = agent.directory / dir_name
         source_dir = dotfiles_dir / dir_name
 
@@ -647,9 +504,6 @@ def _detect_target_only_items(
 
         for child in sorted(target_dir.iterdir(), key=lambda p: p.name):
             if child.name.startswith("."):
-                continue
-            # Skip internal symlinks (managed by _link_learned_skills)
-            if child.is_symlink() and _is_internal_symlink(child, target_dir):
                 continue
             # Skip items that exist in source or are manifest-tracked
             if child.name in source_names or child.name in manifest_items:
@@ -713,44 +567,12 @@ def _sync_file(source: Path, target: Path) -> None:
 
 
 def _sync_directory(source: Path, target: Path) -> None:
-    """Sync a directory (copy with overwrite).
-
-    Preserves excluded items (e.g. workspace dirs) in the target.
-    """
+    """Sync a directory (copy with overwrite)."""
     if target.is_symlink():
         target.unlink()
-        shutil.copytree(source, target, ignore=_make_copytree_ignore())
-        return
-
-    if target.exists():
-        # Preserve excluded items in a temp directory before replacing
-        preserved: list[tuple[str, Path]] = []
-        tmp_dir: Path | None = None
-
-        for child in target.iterdir():
-            if _is_excluded_child(target.name, child.name):
-                if tmp_dir is None:
-                    tmp_dir = Path(tempfile.mkdtemp(prefix="sync-preserve-"))
-                tmp_path = tmp_dir / child.name
-                shutil.move(str(child), str(tmp_path))
-                preserved.append((child.name, tmp_path))
-
+    elif target.exists():
         shutil.rmtree(target)
-        shutil.copytree(source, target, ignore=_make_copytree_ignore())
-
-        # Restore preserved items
-        for name, tmp_path in preserved:
-            dest = target / name
-            if not dest.exists():
-                shutil.move(str(tmp_path), str(dest))
-            else:
-                shutil.rmtree(tmp_path) if tmp_path.is_dir() else tmp_path.unlink()
-
-        # Clean up temp dir
-        if tmp_dir is not None and tmp_dir.exists():
-            shutil.rmtree(tmp_dir)
-    else:
-        shutil.copytree(source, target, ignore=_make_copytree_ignore())
+    shutil.copytree(source, target)
 
 
 def _apply_sync_action(action: _SyncAction, agent: AgentTarget) -> None:
@@ -770,48 +592,6 @@ def _apply_sync_action(action: _SyncAction, agent: AgentTarget) -> None:
         _sync_directory(action.source, action.target)
     else:
         _sync_file(action.source, action.target)
-
-
-def _link_learned_skills(skills_dir: Path) -> None:
-    """Create symlinks for learned skills at the top-level skills directory.
-
-    For each directory in skills/learned/ that contains a SKILL.md,
-    creates a relative symlink: skills/<name> -> learned/<name>.
-
-    Skips:
-    - Directories ending with -workspace (skill-creator workspaces)
-    - Directories without SKILL.md
-    - When a non-symlink already exists at skills/<name>
-    """
-    learned_dir = skills_dir / "learned"
-    if not learned_dir.is_dir():
-        return
-
-    for skill_dir in learned_dir.iterdir():
-        if not skill_dir.is_dir():
-            continue
-        skill_name = skill_dir.name
-
-        # Skip workspace directories
-        if skill_name.endswith("-workspace"):
-            continue
-
-        # Skip directories without SKILL.md
-        if not (skill_dir / "SKILL.md").exists():
-            continue
-
-        link_path = skills_dir / skill_name
-
-        if link_path.is_symlink():
-            # Already linked, skip
-            continue
-
-        if link_path.exists():
-            # Non-symlink exists (real directory from dotfiles), skip
-            continue
-
-        # Create relative symlink: skills/<name> -> learned/<name>
-        link_path.symlink_to(Path("learned") / skill_name)
 
 
 def _render_for_agent(text: str, agent: AgentTarget) -> str:
@@ -1121,17 +901,7 @@ def _build_sync_plan(
         target_path = agent.directory / item.relative_path
 
         status: Literal["new", "changed", "synced"]
-        # Additive dirs (skills) are add-only: add when missing, but NEVER
-        # overwrite an existing target (a bunx-skills CLI symlink/copy) and NEVER
-        # delete. Prefer `bunx skills add` for populating skills. `learned/` is
-        # the dotfiles-owned skill-creator workspace, so it syncs normally.
-        if _is_additive_item(item.relative_path):
-            status = (
-                "new"
-                if not (target_path.exists() or target_path.is_symlink())
-                else "synced"
-            )
-        elif target_path.is_symlink():
+        if target_path.is_symlink():
             # Symlinks in targets should always be replaced with real copies
             status = "changed"
         elif item.is_directory:
@@ -1173,7 +943,6 @@ def _print_plan(
     plans: list[_SyncPlan],
     dotfiles_dir: Path,
     verbose: bool = False,
-    exclude_dirs: frozenset[str] = frozenset(),
 ) -> bool:
     """Print sync plan. Returns True if there are changes to apply."""
     has_changes = False
@@ -1181,11 +950,7 @@ def _print_plan(
     print("📁 Source:", dotfiles_dir)
     print(f"   Base: {BASE_FILE}")
 
-    additional = [
-        item
-        for item in _get_additional_sources(dotfiles_dir)
-        if item.relative_path.split("/")[0] not in exclude_dirs
-    ]
+    additional = _get_additional_sources(dotfiles_dir)
     if additional:
         print("   Additional:")
         for item in additional:
@@ -1273,22 +1038,15 @@ def _build_import_plan(
     dotfiles_dir: Path,
     agent: AgentTarget,
     manifest: _SyncManifest,
-    exclude_dirs: frozenset[str] = frozenset(),
 ) -> _ImportPlan:
     """Build import plan: detect importable items in target's SYNC_DIRECTORIES.
 
     Uses manifest to distinguish genuinely new items from previously deleted ones.
     Both symlinks and regular directories/files are considered for import.
-    Directories in exclude_dirs (e.g. skills under --no-skills) are skipped so a
-    target's items are never pulled back into dotfiles. skills/ children must
-    also pass _is_syncable_skill so junk left in a target never reimports.
     """
     actions: list[_ImportAction] = []
-    skills_exclude = _load_skills_sync_exclude(dotfiles_dir)
 
     for dir_name in agent.get_sync_directories():
-        if dir_name in exclude_dirs:
-            continue
         target_dir = agent.directory / dir_name
         if not target_dir.is_dir():
             continue
@@ -1305,21 +1063,6 @@ def _build_import_plan(
 
         for child in target_dir.iterdir():
             if child.name.startswith("."):
-                continue
-            if _is_excluded_child(dir_name, child.name):
-                continue
-            if child.is_symlink() and _is_internal_symlink(child, target_dir):
-                continue
-            if dir_name == "skills" and child.name not in ADDITIVE_EXEMPT_SUBDIRS:
-                # Skills never import back from agent homes: third-party skills
-                # are declared in dump/harness/skill-lock.json (the bunx skills
-                # CLI owns the store), self-authored skills are edited in the
-                # submodule directly. Only the exempt skill-creator workspace
-                # (skills/learned) keeps its round-trip.
-                continue
-            if dir_name == "skills" and not _is_syncable_skill(
-                child, child.name, skills_exclude
-            ):
                 continue
 
             rel_path = f"{dir_name}/{child.name}"
@@ -1391,7 +1134,6 @@ def _apply_import(plan: _ImportPlan) -> None:
                 action.resolved_path,
                 action.dotfiles_dest,
                 symlinks=False,
-                ignore=_make_copytree_ignore(),
             )
         else:
             action.dotfiles_dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1436,7 +1178,6 @@ def import_only_mode(
     dotfiles_dir: Path,
     agents: list[AgentTarget] | None = None,
     preview: bool = False,
-    exclude_dirs: frozenset[str] = frozenset(),
 ) -> None:
     """Run Phase 1 (target -> dotfiles) only; skip forward sync and deletions.
 
@@ -1450,8 +1191,6 @@ def import_only_mode(
         agents: Filtered subset of AGENTS to import from. None means default
             selection (claude only).
         preview: If True, only print the plan without applying changes.
-        exclude_dirs: Sync-directory names to skip entirely (e.g. skills
-            under --no-skills).
     """
     if agents is None:
         agents = _select_agents(list(_DEFAULT_TARGETS))
@@ -1464,7 +1203,7 @@ def import_only_mode(
 
     has_imports = False
     for agent in agents:
-        plan = _build_import_plan(dotfiles_dir, agent, manifest, exclude_dirs)
+        plan = _build_import_plan(dotfiles_dir, agent, manifest)
         if not plan.items:
             continue
 
@@ -1508,7 +1247,6 @@ def import_only_mode(
 def preview_mode(
     dotfiles_dir: Path,
     agents: list[AgentTarget] | None = None,
-    exclude_dirs: frozenset[str] = frozenset(),
 ) -> None:
     """Preview mode: show what would be synced without applying changes.
 
@@ -1534,18 +1272,14 @@ def preview_mode(
     has_imports = False
     import_sources = [a for a in agents if a.is_import_source]
     for agent in import_sources:
-        import_plan = _build_import_plan(dotfiles_dir, agent, manifest, exclude_dirs)
+        import_plan = _build_import_plan(dotfiles_dir, agent, manifest)
         if import_plan.items:
             print(f"\n⬅️  Import from {agent.name}: {agent.directory}")
             if _print_import_plan(import_plan, verbose=True):
                 has_imports = True
 
     # Phase 2-3: Forward sync + deletion + orphan preview
-    additional = [
-        item
-        for item in _get_additional_sources(dotfiles_dir)
-        if item.relative_path.split("/")[0] not in exclude_dirs
-    ]
+    additional = _get_additional_sources(dotfiles_dir)
     plans: list[_SyncPlan] = []
     for agent in agents:
         sync_plan = _build_sync_plan(dotfiles_dir, agent, additional)
@@ -1556,9 +1290,7 @@ def preview_mode(
         sync_plan.deletions.extend(_detect_managed_dir_orphans(agent, additional))
         plans.append(sync_plan)
 
-    has_changes = _print_plan(
-        plans, dotfiles_dir, verbose=True, exclude_dirs=exclude_dirs
-    )
+    has_changes = _print_plan(plans, dotfiles_dir, verbose=True)
 
     if has_imports or has_changes:
         print("\n💡 Run without --preview to apply changes")
@@ -1570,7 +1302,6 @@ def sync_mode(
     dotfiles_dir: Path,
     auto_yes: bool = False,
     agents: list[AgentTarget] | None = None,
-    exclude_dirs: frozenset[str] = frozenset(),
 ) -> None:
     """Sync mode: apply sync to selected agent directories.
 
@@ -1584,9 +1315,6 @@ def sync_mode(
         auto_yes: If True, skip confirmation prompts for changed files.
         agents: Filtered subset of AGENTS to operate on. None means default
             selection (claude only).
-        exclude_dirs: Sync-directory names to skip entirely in BOTH import and
-            forward (e.g. {"skills"} under --no-skills) so instruction-only
-            deploys never touch / import / copy those dirs.
     """
     if agents is None:
         agents = _select_agents(list(_DEFAULT_TARGETS))
@@ -1604,7 +1332,7 @@ def sync_mode(
     import_sources = [a for a in agents if a.is_import_source]
     has_imports = False
     for agent in import_sources:
-        import_plan = _build_import_plan(dotfiles_dir, agent, manifest, exclude_dirs)
+        import_plan = _build_import_plan(dotfiles_dir, agent, manifest)
         importable = [a for a in import_plan.items if a.status == "import"]
         if importable:
             print(f"\n⬅️  Importing from {agent.name}...")
@@ -1628,11 +1356,7 @@ def sync_mode(
         print()
 
     # Phase 2-3: Plan and apply forward sync + deletions + orphans
-    additional = [
-        item
-        for item in _get_additional_sources(dotfiles_dir)
-        if item.relative_path.split("/")[0] not in exclude_dirs
-    ]
+    additional = _get_additional_sources(dotfiles_dir)
     plans: list[_SyncPlan] = []
     for agent in agents:
         sync_plan = _build_sync_plan(dotfiles_dir, agent, additional)
@@ -1643,9 +1367,7 @@ def sync_mode(
         sync_plan.deletions.extend(_detect_managed_dir_orphans(agent, additional))
         plans.append(sync_plan)
 
-    has_changes = _print_plan(
-        plans, dotfiles_dir, verbose=False, exclude_dirs=exclude_dirs
-    )
+    has_changes = _print_plan(plans, dotfiles_dir, verbose=False)
 
     if not has_changes:
         print("\n✅ All files are already in sync!")
@@ -1719,16 +1441,12 @@ def sync_mode(
             }
             current_items = current_items | dotfiles_names
         manifest.items[dir_name] = sorted(current_items)
+    # Directories no longer synced (skills, before ADR 0043) drop out of the
+    # manifest so nothing can ever turn them into deletions.
+    for stale in [d for d in manifest.items if d not in SYNC_DIRECTORIES]:
+        del manifest.items[stale]
 
     _save_manifest(dotfiles_dir, manifest)
-
-    # Post-sync: create symlinks for learned skills
-    # (workaround for Claude Code flat skill discovery)
-    _link_learned_skills(dotfiles_dir / "skills")
-    for agent in agents:
-        agent_skills_dir = agent.directory / "skills"
-        if agent_skills_dir.is_dir():
-            _link_learned_skills(agent_skills_dir)
 
     print("\n✨ Sync completed!")
 
@@ -1818,16 +1536,6 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--no-skills",
-        action="store_true",
-        help=(
-            "Instruction-only: skip the skills/ dir entirely (no import, no "
-            "forward copy, no delete). Use when skills are owned by the "
-            "`bunx skills` CLI and sync should only deploy base/overlay/spokes/"
-            "hooks/settings + commands/agents."
-        ),
-    )
-    parser.add_argument(
         "--dotfiles",
         "-d",
         type=Path,
@@ -1839,7 +1547,7 @@ def main() -> None:
         nargs="*",
         help=(
             "Targets to sync. Aliases: p=claude, a/b/c/d=work-a..d, g=gemini, "
-            "x=codex, agents=agents-global. Special: 'all'. "
+            "x=codex. Special: 'all'. "
             "Default: claude (only ~/.claude is touched)."
         ),
     )
@@ -1853,31 +1561,18 @@ def main() -> None:
         sys.exit(2)
 
     selected = _select_agents(keys)
-    exclude_dirs = frozenset({"skills"}) if args.no_skills else frozenset()
 
     if args.import_only:
-        import_only_mode(
-            args.dotfiles,
-            agents=selected,
-            preview=args.preview,
-            exclude_dirs=exclude_dirs,
-        )
+        import_only_mode(args.dotfiles, agents=selected, preview=args.preview)
     elif args.orphans:
         orphans_mode(args.dotfiles, agents=selected)
     elif args.preview:
-        preview_mode(args.dotfiles, agents=selected, exclude_dirs=exclude_dirs)
+        preview_mode(args.dotfiles, agents=selected)
     elif args.override:
         print("⚡ Override mode: dotfiles → targets (no prompts)")
-        sync_mode(
-            args.dotfiles, auto_yes=True, agents=selected, exclude_dirs=exclude_dirs
-        )
+        sync_mode(args.dotfiles, auto_yes=True, agents=selected)
     else:
-        sync_mode(
-            args.dotfiles,
-            auto_yes=args.yes,
-            agents=selected,
-            exclude_dirs=exclude_dirs,
-        )
+        sync_mode(args.dotfiles, auto_yes=args.yes, agents=selected)
 
 
 if __name__ == "__main__":
