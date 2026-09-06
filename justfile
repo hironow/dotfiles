@@ -1231,6 +1231,39 @@ restore-skills-lock:
 skills-lock-check:
     @{{ UV_RUN }} scripts/skills_lock.py check
 
+# Structural audit of the skills submodule: frontmatter, links and anchors,
+# code fences, emoji markers, language rule, provenance contract.
+# Procedure and conventions: docs/agents/skills-maintenance.md.
+[group('Validation')]
+skills-audit:
+    @{{ UV_RUN }} scripts/skills_audit.py
+
+# The same audit plus a byte comparison against every agent home that
+# receives a copy (additive sync never refreshes them) and dangling-symlink
+# detection. Environment-dependent, so not part of `ci`.
+[group('Validation')]
+skills-audit-consumers:
+    @{{ UV_RUN }} scripts/skills_audit.py --consumers
+
+# Regenerate the README tables of the skills submodule (index + credits)
+# from each skill's frontmatter. Run after adding, removing, or re-sourcing
+# a skill, then commit the README in hironow/skills.
+[group('Agents')]
+skills-readme-index:
+    @{{ UV_RUN }} scripts/skills_readme_index.py
+
+# CI barrier: the skills README tables must match the frontmatter.
+[group('Validation')]
+skills-readme-check:
+    @{{ UV_RUN }} scripts/skills_readme_index.py --check
+
+# Quantitative comparison of skill versions (fork first, then the upstream
+# copies): sizes, description length, tooling violations, body diff.
+# Usage: just skills-compare skills/review /tmp/upstream/code-review
+[group('Agents')]
+skills-compare +versions:
+    @{{ UV_RUN }} scripts/skills_compare.py {{ versions }}
+
 # CDP
 
 # Start Chrome Dev with remote debugging

@@ -95,6 +95,7 @@ just sync-agents-preview …  # dry-run
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |
 | `just test` | devcontainer サンドボックステスト (下記) |
 | `just semgrep-test` | `.semgrep/rules/**` を co-located fixture で `semgrep --test` |
+| `just skills-audit` / `skills-audit-consumers` / `skills-readme-index` / `skills-readme-check` / `skills-compare` | skills submodule の構造監査・8 home との一致検査・README 表の生成/検査・fork と upstream の定量比較。手順は `docs/agents/skills-maintenance.md` (spoke) |
 
 ## テストモデル (重要)
 

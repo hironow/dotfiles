@@ -130,6 +130,7 @@ Open the matching file the moment the trigger applies:
 | creating dirs/files or unsure where code goes  | docs/agents/project-structure.md    |
 | blocked by a hook / tuning or adding a hook    | docs/agents/enforcement.md          |
 | using the `rtk` output-filter proxy / debugging filtered output | docs/agents/rtk.md |
+| adding, comparing, or retiring a skill in the `skills/` submodule | docs/agents/skills-maintenance.md |
 
 ## Enforcement (deterministic — independent of model judgment)
 
