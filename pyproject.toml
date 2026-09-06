@@ -20,7 +20,6 @@ extend-exclude = [
     "knowledge-work-plugins",
     "payments",
     "protocols",
-    "skills",
     "telemetry",
     # templates/agent-baseline/.semgrep/tests/* are intentional-violation
     # fixtures (os.path.join / MagicMock) for the scaffold's own semgrep rules.
