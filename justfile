@@ -671,7 +671,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check skills-audit skills-readme-check
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -1230,6 +1230,49 @@ restore-skills-lock:
 [group('Validation')]
 skills-lock-check:
     @{{ UV_RUN }} scripts/skills_lock.py check
+
+# The skills maintenance tooling (scripts, tests, CI) lives in the submodule
+# itself (hironow/skills: `skills/justfile`), so one repo owns it. The
+# wrappers below run its recipes from here with the submodule as working
+# directory (`mise exec` so the nested just and uv are the mise-pinned ones);
+# the procedure around them is docs/agents/skills-maintenance.md.
+SKILLS_JUST := "mise exec -- just --justfile skills/justfile --working-directory skills"
+
+# Structural audit of every skill in the submodule: frontmatter, links and
+# anchors, code fences, emoji markers, language rule, provenance contract.
+# The submodule's own CI runs it on every commit there; `ci` runs it here
+# too so a gitlink bump to an unreviewed commit is caught locally.
+[group('Validation')]
+skills-audit:
+    @{{ SKILLS_JUST }} audit
+
+# The same audit plus a byte comparison against every agent home that
+# receives a copy (additive sync never refreshes them) and dangling-symlink
+# detection. Environment-dependent, so not part of any CI.
+[group('Validation')]
+skills-audit-consumers:
+    @{{ SKILLS_JUST }} audit-consumers
+
+# Regenerate the README tables of the skills submodule (index + credits)
+# from each skill's frontmatter. Run after adding, removing, or re-sourcing
+# a skill, then commit the README in hironow/skills.
+[group('Agents')]
+skills-readme-index:
+    @{{ SKILLS_JUST }} readme-index
+
+# The skills README tables must match the frontmatter.
+[group('Validation')]
+skills-readme-check:
+    @{{ SKILLS_JUST }} readme-check
+
+# Quantitative comparison of skill versions (fork first, then the upstream
+# copies): sizes, description length, tooling violations, body diff.
+# Paths resolve inside the submodule, so name the fork by directory and give
+# the upstream copies as absolute paths.
+# Usage: just skills-compare review /tmp/upstream/code-review
+[group('Agents')]
+skills-compare +versions:
+    @{{ SKILLS_JUST }} compare {{ versions }}
 
 # CDP
 

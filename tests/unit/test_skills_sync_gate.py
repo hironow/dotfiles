@@ -185,6 +185,19 @@ def test_exclude_file_loads_names(workspace: dict[str, Path]) -> None:
     )
 
 
+def test_repo_exclude_denies_the_submodule_tooling_dirs() -> None:
+    """The committed exclude TOML denylists the skills repo's own tooling dirs.
+
+    `scripts/` and `tests/` in hironow/skills hold the maintenance tooling, not
+    skills. The structural gate only keeps them out while no SKILL.md exists
+    below them; a test fixture written to disk would flip that, and the
+    additive skills sync would then copy the tooling into every agent home and
+    never remove it. The denylist holds regardless of what appears below them.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    assert {"scripts", "tests"} <= _load_skills_sync_exclude(repo_root)
+
+
 def test_malformed_exclude_file_fails_loud(workspace: dict[str, Path]) -> None:
     """Broken TOML syntax and a non-list `exclude` both raise."""
     # given: invalid syntax

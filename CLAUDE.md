@@ -89,12 +89,13 @@ just sync-agents-preview …  # dry-run
 | recipe | 内容 |
 |---|---|
 | `just` / `just help` | recipe 一覧 |
-| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` |
+| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` + `skills-lock-check` + `skills-audit` + `skills-readme-check` (後2つは submodule の justfile へ委譲) |
 | `just lint-claude` | 公式 `claude plugin validate --strict` (claude CLI 不在時は skip) + stdlib の effective-settings 検証 (ADR 0037/0041)。サードパーティ claudelint は**退役済み** (ADR 0041、trust 判断)。CI gate は `Claude Config Lint` workflow が pinned `bunx @anthropic-ai/claude-code` で公式 validate を回す (CI は `just ci` 非実行) |
 | `just ci-all` | `ci` + `test` + `test-install` (Docker サンドボックス込み) |
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |
 | `just test` | devcontainer サンドボックステスト (下記) |
 | `just semgrep-test` | `.semgrep/rules/**` を co-located fixture で `semgrep --test` |
+| `just skills-audit` / `skills-audit-consumers` / `skills-readme-index` / `skills-readme-check` / `skills-compare` | skills submodule の構造監査・8 home との一致検査・README 表の生成/検査・fork と upstream の定量比較。**実体 (scripts/tests/justfile/CI) は submodule 側 (hironow/skills) に閉じており、ここは `skills/justfile` への薄い wrapper** (`just --justfile skills/justfile --working-directory skills <recipe>`)。手順は `docs/agents/skills-maintenance.md` (spoke) |
 
 ## テストモデル (重要)
 
