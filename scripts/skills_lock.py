@@ -562,12 +562,17 @@ def _cmd_restore(dotfiles_dir: Path, *, force: bool, copy: bool) -> int:
 def _cmd_update(dotfiles_dir: Path, *, force: bool, copy: bool) -> int:
     print("🔄 refreshing the store with the pinned skills CLI")
     result = subprocess.run(build_update_command(), check=False, env=cli_env())
-    if result.returncode != 0:
-        print("❌ skills update failed", file=sys.stderr)
-        return 1
+    failed = result.returncode != 0
+    if failed:
+        # One upstream failing (moved, deleted, rate-limited) must not leave
+        # the homes unplaced for every other skill that did update.
+        print(
+            "⚠️  skills update reported failures; placing what the store holds",
+            file=sys.stderr,
+        )
     placed = place(_load_dump(dotfiles_dir), home_dir(), force=force, link=not copy)
     _report_place(placed)
-    return 1 if placed.unresolved else 0
+    return 1 if failed or placed.unresolved else 0
 
 
 def _cmd_check(dotfiles_dir: Path) -> int:

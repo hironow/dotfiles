@@ -402,6 +402,41 @@ def test_update_command_uses_the_pinned_cli_globally() -> None:
     assert cmd[2:] == ["update", "-g", "-y"]
 
 
+def test_update_still_places_when_the_cli_update_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One third-party skill failing to update must not leave the homes
+    unplaced: the store refresh failure is reported and the exit code is 1,
+    but `place` still runs on whatever the store holds."""
+    import subprocess
+
+    import skills_lock
+
+    (tmp_path / "dump" / "harness").mkdir(parents=True)
+    (tmp_path / "dump" / "harness" / "skill-lock.json").write_text(
+        json_dumps_records([_rec("review", source=SELF_SOURCE)]), encoding="utf-8"
+    )
+    home = tmp_path / "home"
+    _store_skill(home, "review")
+    (home / ".claude").mkdir()
+    monkeypatch.setenv("SKILLS_LOCK_HOME", str(home))
+    monkeypatch.setattr(
+        skills_lock.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a[0], 1),
+    )
+    rc = skills_lock._cmd_update(tmp_path, force=False, copy=True)
+    assert rc == 1
+    assert (home / ".claude" / "skills" / "review" / "SKILL.md").exists()
+
+
+def json_dumps_records(records: list[SkillRecord]) -> str:
+    import json
+    from dataclasses import asdict
+
+    return json.dumps({"version": 1, "skills": [asdict(r) for r in records]})
+
+
 def test_output_survives_cp932_stdout() -> None:
     # Windows Git Bash gives Python a cp932 stdout; restore's progress lines
     # use emoji (下矢印 U+2B07) and crashed with UnicodeEncodeError, killing
