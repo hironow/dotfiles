@@ -3,5 +3,11 @@
 # - SKILL.md を1つも含まない dir は構造ゲートで自動除外され、ここへの列挙は不要
 #   （例: skills/docs/ = skills リポ自身の intent/handover 置き場、空 dir の残骸）
 # - 記法: exclude = ["skill-name", ...]（skills/ 直下の dir 名）
+# - hironow/skills 自身の tooling dir (scripts/ = 監査スクリプト、tests/ = その unit test)。
+#   構造ゲートは配下に SKILL.md が 1 つも無い間しか効かず、test fixture が disk に生えた
+#   瞬間に additive sync が 8 home へ配布して二度と消さない。名前で恒久除外する
+#   (ガード: tests/unit/test_skills_sync_gate.py)
 exclude = [
+    "scripts",
+    "tests",
 ]
