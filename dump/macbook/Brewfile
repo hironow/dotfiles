@@ -150,6 +150,8 @@ brew "fzf"
 brew "gnutls"
 # GNU Privacy Guard (OpenPGP)
 brew "gnupg"
+# OpenType text shaping engine
+brew "harfbuzz"
 # Package compiler and linker metadata toolkit
 brew "pkgconf"
 # Postgres C API library
@@ -160,8 +162,6 @@ brew "nss"
 brew "poppler"
 # GitHub command-line tool
 brew "gh"
-# OpenType text shaping engine
-brew "harfbuzz"
 # Framework for layout and rendering of i18n text
 brew "pango"
 # Interpreter for PostScript and PDF

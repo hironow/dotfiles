@@ -63,9 +63,6 @@
     ],
     "ask": [
       "Bash(rm -rf:*)",
-      "Bash(pip3:*)",
-      "Bash(pip:*)",
-      "Bash(git reset:*)",
       "Read(.env)",
       "Edit(.env)",
       "Read(.env*)",
@@ -79,12 +76,7 @@
       "Bash(psql:*)",
       "Bash(curl:*)",
       "Bash(kill:*)",
-      "Bash(pkill:*)",
-      "Bash(bunx:*)",
-      "Bash(bun x:*)",
-      "Bash(uv python:*)",
-      "Bash(uv add:*)",
-      "Bash(uv remove:*)"
+      "Bash(pkill:*)"
     ]
   },
   "companyAnnouncements": [
