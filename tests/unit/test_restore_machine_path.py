@@ -179,6 +179,44 @@ def test_nothing_to_do_honours_ordering() -> None:
     )
 
 
+def test_git_bin_detection_handles_a_scoop_install() -> None:
+    r"""Seen live (2026-09-08, trade): Git is scoop-installed
+    (scoop\apps\git\current\bin — bash/git/sh only, same safe set as
+    Program Files\Git\bin). The script probed ONLY $env:ProgramFiles\Git\bin,
+    so Test-Path failed, the ordering check never ran, and the dry-run said
+    "nothing to do" while `just doctor` kept warning win-bash-shadow — the
+    printed Fix could not fix the box. Probe the scoop layout too (the
+    `current` junction, so a git upgrade does not stale the entry)."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert re.search(r"scoop\\apps\\git\\current\\bin", text), (
+        r"restore_machine_path.ps1 must also probe "
+        r"$env:USERPROFILE\scoop\apps\git\current\bin for Git\bin."
+    )
+    # Program Files stays the first candidate; scoop is the fallback.
+    assert text.index("Git\\bin") < text.index("scoop\\apps\\git\\current\\bin"), (
+        "Program Files\\Git\\bin must be probed before the scoop fallback."
+    )
+
+
+def test_doctor_bash_shadow_resolves_git_bin_via_cygpath() -> None:
+    r"""The doctor check matched a `*\git\bin` PATH suffix, which a scoop
+    install (`...\git\current\bin`) never satisfies — permanent WARN on
+    such a box even after the repair. Derive the real Git\bin the way the
+    win-git-cmd check already does (`cygpath -w /cmd`) and compare PATH
+    entries by resolved path, so junctions (`current`) match their
+    versioned target."""
+    text = (SCRIPT.parent / "doctor.sh").read_text(encoding="utf-8")
+    assert "win_git_root" in text, (
+        "doctor.sh's win-bash-shadow must derive Git\\bin from the Git root "
+        "(dirname of `cygpath -w /cmd`) — NOT `cygpath -w /bin`, which msys "
+        "aliases to usr\\bin, the very directory the prepend ban excludes."
+    )
+    assert "realpath -m" in text, (
+        "PATH entries must be compared by resolved path (`realpath -m`) so a "
+        "scoop `current` junction matches its versioned Git\\bin."
+    )
+
+
 def test_doctor_detects_the_bash_shadow() -> None:
     r"""doctor must warn when the Machine PATH would resolve a bare `bash`
     to System32's WSL launcher (Git\bin absent or trailing System32) and

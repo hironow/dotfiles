@@ -102,9 +102,18 @@ $missing = @(($baseline + $probed) | Where-Object {
 # lost it BECAUSE this script only appended -- the ordering now lives here so
 # the next rebuild keeps it. Git\bin only (bash/sh/git): Git\usr\bin
 # would shadow find/sort and stays banned (blanket-prepend rule).
-$gitBin = "$env:ProgramFiles\Git\bin"
+# Git may be scoop-installed (seen live 2026-09-08, trade): probe the
+# Program Files layout first, then scoop's `current` junction (bash/git/sh
+# only, the same safe set; the junction keeps the entry valid across git
+# upgrades). Without the fallback the ordering check never ran on such a
+# box, the dry-run reported "nothing to do", and doctor kept warning.
+$gitBinCandidates = @(
+    "$env:ProgramFiles\Git\bin"
+    "$env:USERPROFILE\scoop\apps\git\current\bin"
+)
+$gitBin = $gitBinCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 $needsPrepend = $false
-if (Test-Path $gitBin) {
+if ($gitBin) {
     $gitKey = Get-ExpandedKey $gitBin
     $sysKey = Get-ExpandedKey '%SystemRoot%\system32'
     $gitIdx = -1
