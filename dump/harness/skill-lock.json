@@ -362,15 +362,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "gemini-interactions-api",
-      "upstream_name": "gemini-interactions-api",
-      "lock_key": "gemini-interactions-api",
-      "source": "google-gemini/gemini-skills",
-      "skill_path": "skills/gemini-interactions-api/SKILL.md",
-      "skill_folder_hash": "83d32f12be2f8f3310507145c08d92aa1d797bab",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "gemini-live-api-dev",
       "upstream_name": "gemini-live-api-dev",
       "lock_key": "gemini-live-api-dev",
@@ -494,15 +485,6 @@
       "source": "google/skills",
       "skill_path": "skills/cloud/google-cloud-recipe-auth/SKILL.md",
       "skill_folder_hash": "a42449bc4dc3d411321e9aa63b8ea12c1e5eaa89",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "google-cloud-recipe-networking-observability",
-      "upstream_name": "google-cloud-networking-observability",
-      "lock_key": "google-cloud-recipe-networking-observability",
-      "source": "google/skills",
-      "skill_path": "skills/cloud/google-cloud-networking-observability/SKILL.md",
-      "skill_folder_hash": "60a7d611ef06a0700bb33eef1bf45c3b3430f4e1",
       "resolved_by": "installed"
     },
     {
