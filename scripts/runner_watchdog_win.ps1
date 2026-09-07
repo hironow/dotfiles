@@ -89,27 +89,38 @@ if ($Install) {
     # [2/4] the task. Interactive logon type: it only makes sense while the user
     # is logged on (the listener it restarts needs that session anyway).
     Unregister-ScheduledTask -TaskName $watchTask -Confirm:$false -ErrorAction SilentlyContinue
-    $action = New-ScheduledTaskAction `
-        -Execute (Get-Command powershell.exe).Source `
-        -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -RunnerRoot "{1}"' -f $installed, $RunnerRoot)
-    $every = New-TimeSpan -Minutes $IntervalMinutes
-    $triggers = @(
-        (New-ScheduledTaskTrigger -AtLogOn -User $me),
-        # 10 years, not [TimeSpan]::MaxValue: Task Scheduler rejects MaxValue
-        # as out of range (HRESULT 0x80041318, lived 2026-09-03 on PS 5.1).
-        (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
-            -RepetitionInterval $every -RepetitionDuration (New-TimeSpan -Days 3650))
-    )
-    $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited
-    $settings = New-ScheduledTaskSettingsSet `
-        -MultipleInstances IgnoreNew `
-        -StartWhenAvailable `
-        -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-        -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
-    Register-ScheduledTask -TaskName $watchTask -Action $action -Trigger $triggers `
-        -Principal $principal -Settings $settings `
-        -Description ('dotfiles: restart the interactive runner task when Runner.Listener is gone (every {0} min)' -f $IntervalMinutes) | Out-Null
-    Write-Host "[2/4] watchdog task: $watchTask (at logon + every $IntervalMinutes min, re-fires $runnerTask)"
+    # A task registered from an ELEVATED context (runner-mode-interactive
+    # installs the watchdog too, inside its UAC child) cannot be unregistered
+    # unelevated: the Unregister above fails silently and Register-ScheduledTask
+    # then dies with 0x800700b7 'already exists' (lived 2026-09-08). Same
+    # contract as install_runner_gc_win.ps1's keepGcTask: keep it, say so,
+    # continue - the watchdog is already in force and a re-run must never
+    # turn a healthy box red.
+    if (Get-ScheduledTask -TaskName $watchTask -ErrorAction SilentlyContinue) {
+        Write-Host "[2/4] watchdog task: $watchTask exists but cannot be replaced unelevated; keeping it as-is"
+    } else {
+        $action = New-ScheduledTaskAction `
+            -Execute (Get-Command powershell.exe).Source `
+            -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -RunnerRoot "{1}"' -f $installed, $RunnerRoot)
+        $every = New-TimeSpan -Minutes $IntervalMinutes
+        $triggers = @(
+            (New-ScheduledTaskTrigger -AtLogOn -User $me),
+            # 10 years, not [TimeSpan]::MaxValue: Task Scheduler rejects MaxValue
+            # as out of range (HRESULT 0x80041318, lived 2026-09-03 on PS 5.1).
+            (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+                -RepetitionInterval $every -RepetitionDuration (New-TimeSpan -Days 3650))
+        )
+        $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited
+        $settings = New-ScheduledTaskSettingsSet `
+            -MultipleInstances IgnoreNew `
+            -StartWhenAvailable `
+            -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+            -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+        Register-ScheduledTask -TaskName $watchTask -Action $action -Trigger $triggers `
+            -Principal $principal -Settings $settings `
+            -Description ('dotfiles: restart the interactive runner task when Runner.Listener is gone (every {0} min)' -f $IntervalMinutes) | Out-Null
+        Write-Host "[2/4] watchdog task: $watchTask (at logon + every $IntervalMinutes min, re-fires $runnerTask)"
+    }
 
     # [3/4] the legacy start path. The pre-repo script dropped a Startup
     # shortcut to run.cmd; with the logon task that is TWO starts per logon and

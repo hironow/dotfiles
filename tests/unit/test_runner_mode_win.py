@@ -249,3 +249,33 @@ def test_mode_switch_wires_the_watchdog_and_removes_the_legacy_lnk() -> None:
         "enable Task Scheduler history while elevated - without it a dead task "
         "leaves no trace (lived 2026-09-03)."
     )
+
+
+def test_watchdog_install_keeps_a_task_it_cannot_replace() -> None:
+    """Lived 2026-09-08: `just runner-watchdog-install` re-run on a box where
+    runner-mode-interactive (elevated) had already registered the watchdog
+    died with Register-ScheduledTask HRESULT 0x800700b7 ("already exists").
+    The preceding Unregister ran with -ErrorAction SilentlyContinue, so a
+    task the unelevated caller is not allowed to delete simply survived -
+    and the installer then collided with it instead of noticing.
+
+    Same contract as install_runner_gc_win.ps1's keepGcTask path: after the
+    Unregister attempt, check whether the task is still there; if so, keep
+    it as-is (say so) and skip re-registration - the watchdog is already in
+    force, and a re-run must never turn a healthy box red.
+    """
+    text = WATCHDOG.read_text(encoding="utf-8")
+    m = re.search(
+        r"Unregister-ScheduledTask -TaskName \$watchTask[^\r\n]*\s(.*?)Register-ScheduledTask -TaskName \$watchTask",
+        text,
+        re.S,
+    )
+    assert m is not None, "expected the watchdog unregister/register pair"
+    between = m.group(1)
+    assert "Get-ScheduledTask -TaskName $watchTask" in between, (
+        "after the (silently failing) Unregister, probe whether the task still "
+        "exists before trying to Register it again."
+    )
+    assert re.search(r"keeping it as-is|cannot be replaced unelevated", between), (
+        "an unremovable existing task is kept, not fought: say so and skip."
+    )
