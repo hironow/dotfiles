@@ -359,3 +359,31 @@ def test_duplicate_listeners_warn_but_do_not_fail(tmp_path: Path) -> None:
     proc, _ = _run_payload(tmp_path, {"STUB_LISTENERS": "3"})
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "WARN" in proc.stdout
+
+
+def test_status_exempts_a_refused_duplicate_start_while_the_keepalive_lives() -> None:
+    """Lived 2026-08-22 and again 2026-09-08: `just status` painted the
+    autostart line FAIL with result 2147946720 (0x800710E0, "the operator or
+    administrator has refused the request") while the task was Running and
+    the keepalive was attached. That code is Task Scheduler refusing a
+    SECOND start under MultipleInstances=IgnoreNew - the defence working,
+    not the task failing. #319 exempted SCHED_S_TASK_RUNNING for the GC task;
+    the autostart line kept flagging the refusal, so the reader learns to
+    ignore a red line - the failure mode this repo's status exists to avoid.
+
+    Rule: 0x800710E0 is OK only while the task State is Running (the
+    instance that matters is alive); a refused start on a task that is NOT
+    running stays FAIL.
+    """
+    text = STATUS.read_text(encoding="utf-8")
+    assert "2147946720" in text or "0x800710E0" in text, (
+        "gc_status.sh must recognise the refused-duplicate-start code on the "
+        "autostart task."
+    )
+    seg = text[
+        text.index("autostart last run") - 900 : text.index("autostart last run") + 200
+    ]
+    assert "Running" in seg and ("2147946720" in seg or "800710E0" in seg), (
+        "the exemption must be conditioned on the task State being Running - "
+        "a refused start on a stopped task is a real failure."
+    )

@@ -235,9 +235,19 @@ _windows_status() {
       else { 'FAIL|autostart task: no logon trigger — re-run: just runner-gc-install' }
       # The task blocks forever as the keepalive, so while healthy its
       # LastTaskResult is 0x41301 (SCHED_S_TASK_RUNNING = 267009), not 0.
+      # 0x800710E0 (2147946720, 'the operator or administrator has refused
+      # the request'): Task Scheduler refusing a SECOND start under
+      # MultipleInstances=IgnoreNew while the keepalive instance is alive -
+      # the defence working, not a failure (lived 2026-08-22 / 2026-09-08).
+      # OK only while State is Running; a refused start on a task that is
+      # NOT running stays FAIL.
       \$ai = \$a | Get-ScheduledTaskInfo
       if (\$ai.LastRunTime.Year -ge 2000 -and \$ai.LastTaskResult -ne 0 -and \$ai.LastTaskResult -ne 267009) {
-        'FAIL|autostart last run: ' + \$ai.LastRunTime + ' (result ' + \$ai.LastTaskResult + ')'
+        if (\$ai.LastTaskResult -eq 2147946720 -and \$a.State -eq 'Running') {
+          'OK|autostart last run: duplicate start refused (0x800710E0) while the keepalive instance is running'
+        } else {
+          'FAIL|autostart last run: ' + \$ai.LastRunTime + ' (result ' + \$ai.LastTaskResult + ')'
+        }
       }
     }
     \$roots = @(\"\$env:USERPROFILE\actions-runner-win\", \"\$env:USERPROFILE\actions-runner\", 'C:\actions-runner') |
