@@ -64,7 +64,7 @@ def validate_email(email: str) -> bool:
 just check    # the full gate: fmt + lint + types + semgrep + test
 # or piecewise (format before linting):
 just fmt      # uv run ruff format .
-just lint     # uv run ruff check . && uv run mypy .
+just lint     # uv run ruff check . && uv run ty check
 just semgrep  # when .semgrep/ exists
 just test     # uv run pytest
 ```

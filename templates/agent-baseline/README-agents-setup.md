@@ -126,7 +126,7 @@ Every rule from the original survives — it was relocated, not removed:
 | tooling standards (uv/bun/just/.yaml)          | `AGENTS.md` non-negotiables + hooks   |
 | TDD methodology + workflow + example           | `docs/agents/tdd-workflow.md`         |
 | Tidy First + commit discipline + Conv. Commits | `docs/agents/commit-discipline.md`    |
-| python-tooling (ruff/mypy) + refactoring + encoding | `docs/agents/python-tooling.md`  |
+| python-tooling (uv/ruff/ty) + refactoring + encoding | `docs/agents/python-tooling.md` |
 | mock policy + unit/e2e/runn                    | `docs/agents/testing.md`              |
 | observability (OTel/Jaeger)                    | `docs/agents/observability.md`        |
 | IaC drift policy                               | `docs/agents/iac-drift-policy.md` + command hook |
