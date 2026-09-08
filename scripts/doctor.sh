@@ -151,14 +151,26 @@ case "$(uname -s)" in
     #      steps on this box died inside a WSL distro (E#544, 'uv not on
     #      PATH' from C:\WINDOWS\system32\bash.EXE). Ordering-aware repair:
     #      restore_machine_path.ps1 now owns the prepend.
+    #      Git may be scoop-installed (seen live 2026-09-08, trade): its bin
+    #      is `...\git\current\bin`, so a `*\git\bin` suffix match warned
+    #      forever. Derive the real Git\bin from the Git ROOT (dirname of
+    #      `cygpath -w /cmd`, as win-git-cmd does) — NOT `cygpath -w /bin`,
+    #      which msys aliases to usr\bin (the very directory the prepend ban
+    #      excludes) — and compare entries by resolved path so the scoop
+    #      `current` junction matches its versioned target.
+    win_git_root="$(dirname "$(cygpath -w /cmd)")"
+    git_bin_real="$(realpath -m "$(cygpath -u "${win_git_root}\\bin")" 2>/dev/null || true)"
     _git_bin_pos=-1
     _sys32_pos=-1
     _i=0
     while IFS= read -r _e; do
       _el="${_e,,}"
       _el="${_el%\\}"
-      if [[ $_git_bin_pos -lt 0 && "$_el" == *'\git\bin' ]]; then
-        _git_bin_pos=$_i
+      if [[ $_git_bin_pos -lt 0 && -n "$git_bin_real" ]]; then
+        _er="$(realpath -m "$(cygpath -u "$_e" 2>/dev/null)" 2>/dev/null || true)"
+        if [[ "$_er" == "$git_bin_real" ]]; then
+          _git_bin_pos=$_i
+        fi
       fi
       if [[ $_sys32_pos -lt 0 && ( "$_el" == *'\system32' ) ]]; then
         _sys32_pos=$_i
