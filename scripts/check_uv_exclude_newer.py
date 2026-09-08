@@ -24,8 +24,22 @@ import tomllib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-DEFAULT_WINDOW = timedelta(days=7)
-_RELATIVE_DAYS = re.compile(r"^\s*(\d+)\s*(?:d|day|days)\s*$")
+# Fixed-length units uv accepts for a relative `exclude-newer` span. Calendar
+# units (month, year) have no fixed length and are refused rather than guessed.
+_SPAN_UNITS: dict[str, timedelta] = {
+    "minute": timedelta(minutes=1),
+    "min": timedelta(minutes=1),
+    "m": timedelta(minutes=1),
+    "hour": timedelta(hours=1),
+    "hr": timedelta(hours=1),
+    "h": timedelta(hours=1),
+    "day": timedelta(days=1),
+    "d": timedelta(days=1),
+    "week": timedelta(weeks=1),
+    "wk": timedelta(weeks=1),
+    "w": timedelta(weeks=1),
+}
+_RELATIVE_SPAN = re.compile(r"^\s*(\d+)\s*([a-zA-Z]+)\s*$")
 
 
 def _parse_cutoff(pkg: str, raw: object) -> datetime:
@@ -48,13 +62,41 @@ def _parse_cutoff(pkg: str, raw: object) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def quarantine_window(pyproject_text: str) -> timedelta:
-    """The global `exclude-newer` span ("N days"); DEFAULT_WINDOW if absent/absolute."""
+def quarantine_window(pyproject_text: str) -> timedelta | None:
+    """The global `exclude-newer` span as a duration, or None when the project
+    has no relative quarantine (absent, or an absolute timestamp): then the
+    per-package entries are plain pins and nothing can "expire".
+
+    Raises ValueError for a relative span this gate cannot measure (calendar
+    units, unknown words) — guessing 7 days here once told a reviewer to delete
+    a load-bearing override.
+    """
     tool_uv = tomllib.loads(pyproject_text).get("tool", {}).get("uv", {})
     raw = tool_uv.get("exclude-newer")
-    if isinstance(raw, str) and (m := _RELATIVE_DAYS.match(raw)):
-        return timedelta(days=int(m.group(1)))
-    return DEFAULT_WINDOW
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if _looks_absolute(text):
+        return None
+    m = _RELATIVE_SPAN.match(text)
+    if m is None:
+        raise ValueError(f"cannot measure global exclude-newer span {raw!r}")
+    count, unit = int(m.group(1)), m.group(2).lower().rstrip("s")
+    if unit not in _SPAN_UNITS:
+        raise ValueError(
+            f"cannot measure global exclude-newer span {raw!r}: unit {m.group(2)!r} "
+            "has no fixed length or is unknown (minutes/hours/days/weeks are supported)"
+        )
+    return count * _SPAN_UNITS[unit]
+
+
+def _looks_absolute(text: str) -> bool:
+    """RFC 3339 timestamp or YYYY-MM-DD, as uv also accepts for exclude-newer."""
+    try:
+        _parse_cutoff("exclude-newer", text)
+    except ValueError:
+        return False
+    return True
 
 
 def expired_overrides(
@@ -90,10 +132,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"check-uv-exclude-newer: cannot read {path}: {exc}", file=sys.stderr)
             failed = True
             continue
-        window = quarantine_window(text)
         try:
+            window = quarantine_window(text)
+            if window is None:
+                continue  # no relative quarantine here -> nothing can expire
             expired = expired_overrides(text, now=now, window=window)
-        except ValueError as exc:
+        except (ValueError, tomllib.TOMLDecodeError) as exc:
             print(f"check-uv-exclude-newer: {path}: {exc}", file=sys.stderr)
             failed = True
             continue

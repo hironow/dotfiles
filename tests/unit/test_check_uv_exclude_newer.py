@@ -78,12 +78,47 @@ def test_window_is_read_from_the_global_exclude_newer_span() -> None:
     ) == timedelta(days=3)
 
 
-def test_window_falls_back_to_default_when_global_is_absent_or_absolute() -> None:
+@pytest.mark.parametrize(
+    ("span", "expected"),
+    [
+        ('"2 weeks"', timedelta(weeks=2)),
+        ('"1 week"', timedelta(weeks=1)),
+        ('"12 hours"', timedelta(hours=12)),
+        ('"90 minutes"', timedelta(minutes=90)),
+        ('"1d"', timedelta(days=1)),
+        ('"2w"', timedelta(weeks=2)),
+    ],
+)
+def test_window_accepts_every_fixed_length_relative_span(
+    span: str, expected: timedelta
+) -> None:
+    """uv accepts more than "N days"; silently treating "2 weeks" as 7 days
+    would report a load-bearing override as expired and have the reader
+    delete it (verified by review on 2026-09-08)."""
     mod = _load()
-    assert mod.quarantine_window("[tool.uv]\n") == timedelta(days=7)
-    assert mod.quarantine_window(
-        '[tool.uv]\nexclude-newer = "2026-01-01T00:00:00Z"\n'
-    ) == timedelta(days=7)
+    assert (
+        mod.quarantine_window(_pyproject('a = "2026-09-01"', window=span)) == expected
+    )
+
+
+@pytest.mark.parametrize("span", ['"1 month"', '"2 years"', '"soon"', '"7"'])
+def test_window_refuses_calendar_or_unknown_spans_instead_of_guessing(
+    span: str,
+) -> None:
+    mod = _load()
+    with pytest.raises(ValueError, match="exclude-newer"):
+        mod.quarantine_window(_pyproject('a = "2026-09-01"', window=span))
+
+
+def test_no_relative_window_means_no_quarantine_to_expire() -> None:
+    """Without a relative global span the per-package entries are plain pins,
+    not holes in a quarantine, so there is nothing to age out."""
+    mod = _load()
+    assert mod.quarantine_window("[tool.uv]\n") is None
+    assert (
+        mod.quarantine_window('[tool.uv]\nexclude-newer = "2026-01-01T00:00:00Z"\n')
+        is None
+    )
 
 
 def test_no_tool_uv_table_means_nothing_to_check() -> None:
@@ -131,3 +166,62 @@ def test_main_treats_a_project_without_overrides_as_clean(tmp_path: Path) -> Non
 def test_main_fails_on_a_missing_pyproject(tmp_path: Path) -> None:
     mod = _load()
     assert mod.main([str(tmp_path / "nope" / "pyproject.toml")]) == 1
+
+
+def test_main_skips_projects_without_a_relative_window(tmp_path: Path) -> None:
+    mod = _load()
+    py = tmp_path / "pyproject.toml"
+    py.write_text(_pyproject('old = "2020-01-01"', window='"2020-06-01T00:00:00Z"'))
+    assert mod.main([str(py), "--now", NOW.isoformat()]) == 0
+
+
+def test_main_reports_malformed_toml_in_its_own_words(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mod = _load()
+    py = tmp_path / "pyproject.toml"
+    py.write_text("[tool.uv\nexclude-newer = 7 days\n")
+    assert mod.main([str(py), "--now", NOW.isoformat()]) == 1
+    err = capsys.readouterr().err
+    assert "check-uv-exclude-newer" in err and str(py) in err
+    assert "Traceback" not in err
+
+
+def test_non_string_cutoff_is_rejected_naming_the_package() -> None:
+    mod = _load()
+    with pytest.raises(ValueError, match="mlflow"):
+        mod.expired_overrides(_pyproject("mlflow = 20260904"), now=NOW, window=WINDOW)
+
+
+def test_justfile_passes_every_uv_project_to_the_gate() -> None:
+    """The project list is hardcoded in the justfile (like check_uv_flatt_index.sh);
+    a fourth uv project must not slip past both."""
+    import re
+    import subprocess
+
+    repo = Path(__file__).resolve().parents[2]
+    tracked = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "pyproject.toml", "*/pyproject.toml"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    uv_projects = {
+        rel
+        for rel in tracked
+        if re.search(
+            r"^\[\[?tool\.uv", (repo / rel).read_text(encoding="utf-8"), re.MULTILINE
+        )
+    }
+    justfile = (repo / "justfile").read_text(encoding="utf-8")
+    invocations = [
+        line
+        for line in justfile.splitlines()
+        if "scripts/check_uv_exclude_newer.py" in line
+    ]
+    assert invocations, "the gate is not wired into the justfile"
+    for line in invocations:
+        listed = set(line.split("scripts/check_uv_exclude_newer.py", 1)[1].split())
+        assert uv_projects <= listed, (
+            f"missing from {line.strip()!r}: {sorted(uv_projects - listed)}"
+        )
