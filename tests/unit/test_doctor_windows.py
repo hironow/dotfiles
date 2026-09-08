@@ -145,7 +145,7 @@ def test_doctor_checks_persisted_path_reaches_git_cmd(
     class of host; the doctor must detect it and point at the fix."""
     win = doctor_windows_branch
     assert "win-git-cmd" in win, (
-        "doctor must emit a 'win-git-cmd' check: usr\bin on PATH does not "
+        r"doctor must emit a 'win-git-cmd' check: usr\bin on PATH does not "
         r"imply git is reachable (git.exe is in Git\cmd)"
     )
     assert "cygpath -w /cmd" in win, (
