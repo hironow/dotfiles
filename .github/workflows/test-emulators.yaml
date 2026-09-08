@@ -49,6 +49,14 @@ jobs:
       run: |
         uv sync --all-extras --frozen
 
+    # Same gate as `just emu-lint` (ruff canonical rules + ty, ADR 0044), before
+    # spending minutes on containers.
+    - name: Lint + type-check (ruff + ty)
+      run: |
+        uv run --frozen ruff format --check .
+        uv run --frozen ruff check .
+        uv run --frozen ty check
+
     - name: Clean up any existing Docker resources
       run: |
         echo "=== Cleaning up Docker resources ==="

@@ -1,9 +1,10 @@
 import os
-import pytest
+import socket
+import time
+
 import docker
 import docker.errors
-import time
-import socket
+import pytest
 
 
 def test_pgadapter_container_starts():

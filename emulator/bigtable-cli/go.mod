@@ -3,7 +3,7 @@ module bigtable-cli
 go 1.25.8
 
 require (
-	cloud.google.com/go/bigtable v1.52.0
+	cloud.google.com/go/bigtable v1.53.0
 	github.com/olekukonko/tablewriter v1.1.4
 )
 

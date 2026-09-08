@@ -7,6 +7,7 @@ Why this may be skipped:
 """
 
 import uuid
+
 import pytest
 from aiohttp import ClientTimeout
 

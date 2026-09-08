@@ -18,22 +18,60 @@ dependencies = [
     "pyyaml>=6.0.2",
     "typer>=0.27.1",
     "uvicorn>=0.52.1",
-    "mlflow>=3.15.1",
 ]
 
 [dependency-groups]
 dev = [
     "docker>=7.2.0",
+    # Only tests/e2e/test_mlflow_e2e.py imports the mlflow client; the tracking
+    # server itself runs from the compose image (mlflow service).
+    "mlflow>=3.15.1",
     "pytest>=9.1.0",
     "pytest-asyncio>=1.4.0",
     "pytest-timeout>=2.3.1",
-    "ruff>=0.16.2",
+    # == the dotfiles gate pin (`uvx ruff@<ver>` in the root justfile); a newer
+    # ruff widens the default rules. tests/unit/test_ruff_ty_pins.py keeps it equal.
+    "ruff==0.15.22",
     "ty==0.0.77",
 ]
 
 # ty (ADR 0044): type-check the emulator tooling; warnings fail `just emu-lint`.
 [tool.ty.terminal]
 error-on-warning = true
+
+# ruff (ADR 0044): the canonical rule set from docs/agents/python-tooling.md.
+# tests/** are exempt from ANN (every def annotated) and PLR2004 (magic-value
+# comparison): an `assert status == 200` needs neither a named constant nor an
+# annotated fixture signature, and 284 of the 331 findings the canonical set
+# raised here were exactly that (2026-09-08). PLR0911 / PLR0915 (return and
+# statement counts) are complexity heuristics for production code; an e2e
+# scenario or a per-type conversion helper in a test is long by nature.
+# Non-test code keeps every rule.
+[tool.ruff.lint]
+select = [
+    "FAST", # FastAPI
+    "C90",  # mccabe
+    "NPY",  # numpy
+    "PD",   # pandas
+    "B",    # flake8-bugbear
+    "A",    # flake8-builtins
+    "DTZ",  # flake8-datetimez
+    "T20",  # flake8-print
+    "N",    # pep8-naming
+    "I",    # isort
+    "E",    # pycodestyle errors
+    "F",    # Pyflakes
+    "PLE",  # Pylint errors
+    "PLR",  # Pylint refactor
+    "UP",   # pyupgrade
+    "FURB", # refurb
+    "RUF",  # Ruff-specific rules
+    "ANN",  # flake8-annotations
+]
+extend-ignore = ["E501", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "PLR2004", "PLR0911", "PLR0915"]
 
 [tool.pytest.ini_options]
 markers = [

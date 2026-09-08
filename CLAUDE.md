@@ -85,13 +85,23 @@ just sync-agents-preview …  # dry-run
 | recipe | 内容 |
 |---|---|
 | `just` / `just help` | recipe 一覧 |
-| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` + `skills-lock-check` |
+| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) |
 | `just lint-claude` | 公式 `claude plugin validate --strict` (claude CLI 不在時は skip) + stdlib の effective-settings 検証 (ADR 0037/0041)。サードパーティ claudelint は**退役済み** (ADR 0041、trust 判断)。CI gate は `Claude Config Lint` workflow が pinned `bunx @anthropic-ai/claude-code` で公式 validate を回す (CI は `just ci` 非実行) |
 | `just ci-all` | `ci` + `test` + `test-install` (Docker サンドボックス込み) |
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |
 | `just test` | devcontainer サンドボックステスト (下記) |
 | `just semgrep-test` | `.semgrep/rules/**` を co-located fixture で `semgrep --test` |
 | `just dump-skills-lock` / `restore-skills-lock` / `skills-place` / `skills-update` / `skills-lock-check` | skill の宣言 (`dump/harness/skill-lock.json`) と配置 (ADR 0043): 自作 (hironow/skills) もサードパーティも `bunx skills` CLI の store (`~/.agents/skills`) に入れ、各 home へは `skills-place` が相対 symlink を張る。監査・README 表・fork 比較の tooling は hironow/skills 側の `justfile`。手順は `docs/agents/skills-maintenance.md` (spoke) |
+
+## Python lint の範囲 (repo-side の例外)
+
+- Python toolchain は global 規約どおり **uv + ruff + ty** (ADR 0044)。ただし **repo root
+  (`scripts/` `tests/`) の ruff は default rule + W605 のまま**で、spoke の canonical select は当てない
+  (2026-09-08 計測: canonical は tests の ANN を除外しても 851 件。tests 中心の tooling に対して
+  作業量が価値に見合わない)。`emulator/` は canonical を適用済み (tests/** は ANN / PLR2004 /
+  PLR0911 / PLR0915 を除外、理由は `emulator/pyproject.toml`)。gate の ruff 版は justfile の
+  `uvx ruff@<ver>` が正で、root / emulator の dev dep と mise の pin を `just bump-tool` で同時に動かす
+  (`tests/unit/test_ruff_ty_pins.py` が不一致を検出)。
 
 ## テストモデル (重要)
 

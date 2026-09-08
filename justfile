@@ -703,7 +703,7 @@ pre-commit:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check emu-lint
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -1133,6 +1133,24 @@ doctor:
 [group('Setup')]
 prune-rogue-npm-globals:
     @bash scripts/rogue_npm_globals.sh prune
+
+# ADR 0044: remove the Python tools the uv + ruff + ty trio retired -- mypy /
+# pyright executables (pyright as a rogue npm global), `uv tool` mypy / ruff,
+# Homebrew ruff / pyright, mise ruff / ty versions the config no longer pins.
+# `just doctor` lists them under `python-retired`; the mypy VS Code extension is
+# reported but left to the editor. Plain-bash wrapper like the recipe above.
+[group('Setup')]
+prune-retired-python-tools:
+    @bash scripts/retired_python_tools.sh prune
+
+# ADR 0044: move the ruff or ty pin in EVERY declaration at once (justfile uvx
+# gate pin, root + emulator dev groups, mise config), re-lock both uv projects,
+# and print the hironow/skills follow-up. Dependabot ignores both tools, so this
+# is the only path a pin moves through; tests/unit/test_ruff_ty_pins.py
+# guards the result. Usage: just bump-tool ruff 0.15.23 / just bump-tool ty 0.0.79
+[group('Setup')]
+bump-tool tool version:
+    @{{UV_RUN}} scripts/bump_tool.py {{ tool }} {{ version }}
 
 # ------------------------------
 # Connect sets
@@ -1736,10 +1754,14 @@ emu-lint:
     set -euo pipefail
     eval "$(mise activate bash)"
     cd emulator
-    echo '🔍 ruff...'
-    uv run ruff check .
+    # --frozen: install from the committed lock, never rewrite it (same three
+    # commands as the Test Emulators workflow step).
+    echo '🔍 ruff format --check...'
+    uv run --frozen ruff format --check .
+    echo '🔍 ruff check...'
+    uv run --frozen ruff check .
     echo '🔍 ty (ADR 0044)...'
-    uv run ty check
+    uv run --frozen ty check
     echo '🔍 semgrep (root .semgrep/rules/python, emulator .semgrepignore)...'
     uvx semgrep --config ../.semgrep/rules/python/ --error .
     echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'

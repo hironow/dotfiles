@@ -5,6 +5,7 @@ extensions are not available in the image, they skip gracefully.
 """
 
 import re
+
 import pytest
 
 
@@ -13,8 +14,8 @@ def _should_skip_for_missing_extension(out: str, name: str) -> bool:
     name = name.lower()
     patterns = [
         "could not open extension control file",
-        'extension "%s" is not available' % name,
-        'type "%s" does not exist' % ("vector" if name == "vector" else name),
+        f'extension "{name}" is not available',
+        f'type "{name}" does not exist',
         "no such file or directory",
     ]
     return any(p in s for p in patterns)
