@@ -1,6 +1,7 @@
 import os
 import pytest
 import docker
+import docker.errors
 import time
 import socket
 

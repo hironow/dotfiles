@@ -21,8 +21,8 @@ async def test_mlflow_e2e_logging_and_persistence(
     require_services(["mlflow-server"])
 
     try:
-        import mlflow  # type: ignore
-        from mlflow.tracking import MlflowClient  # type: ignore
+        import mlflow
+        from mlflow.tracking import MlflowClient
     except Exception as e:  # pragma: no cover - optional dep
         pytest.skip(f"mlflow client not available: {e}")
 
