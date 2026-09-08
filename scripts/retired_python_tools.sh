@@ -5,40 +5,46 @@
 # the interactive ruff / ty copies. A machine that predates the switch still
 # carries: mypy / pyright executables on PATH (pyright typically as a rogue npm
 # global under <prefix>/lib/node_modules), `uv tool` installs of mypy and ruff,
-# a Homebrew ruff or pyright, mise ruff / ty versions the config no longer
-# pins, and the mypy VS Code extension. `just doctor` runs `detect` (label
-# `python-retired`); `just prune-retired-python-tools` runs `prune`.
+# a Homebrew ruff or pyright, mise ruff / ty versions no config asks for (what
+# `mise ls` shows without a source column), and the mypy VS Code extension.
+# `just doctor` runs `detect` (label `python-retired`);
+# `just prune-retired-python-tools` runs `prune`.
 #
 # Usage:  retired_python_tools.sh [detect|prune]
 #   detect : one `<kind>:<name>[:<path>]` line per artefact; exit 0.
 #   prune  : remove every artefact detect lists EXCEPT the VS Code extension
 #            (reported, left to the editor) and PATH entries whose provider it
-#            cannot name (reported, left alone); exit 1 if a removal failed.
+#            cannot name (reported, left alone -- a project-local
+#            node_modules/.bin/pyright is never touched); exit 1 if a removal
+#            failed.
 #
-# Injection points (tests run host-side with stubs on PATH):
-#   UV_TOOL_DIR                  uv's own variable: where `uv tool` envs live
-#   RETIRED_TOOLS_MISE_CONFIG    mise config to read the ruff / ty pins from
-#   RETIRED_TOOLS_MISE_INSTALLS  mise `installs/` dir (<tool>/<version>/)
+# Tests run host-side: uv / brew / mise / code are stubs on PATH and
+# UV_TOOL_DIR (uv's own variable: where `uv tool` envs live) is a temp dir.
 set -euo pipefail
 
 UV_TOOLS="${UV_TOOL_DIR:-$HOME/.local/share/uv/tools}"
-MISE_CFG="${RETIRED_TOOLS_MISE_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/mise/config.toml}"
-MISE_INSTALLS="${RETIRED_TOOLS_MISE_INSTALLS:-${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/installs}"
 
 RETIRED_EXES='mypy dmypy pyright pyright-langserver'
 RETIRED_UV_TOOLS='mypy ruff'
 RETIRED_BREW='ruff pyright'
-MISE_PINNED='ruff ty'
+MISE_MANAGED='ruff ty'
 VSCODE_EXT='ms-python.mypy-type-checker'
 
-# Exact version the mise config pins for $1 (empty + non-zero if none).
-mise_pin() {
-  [ -f "$MISE_CFG" ] || return 1
-  sed -n "s/^$1 = \"\([0-9][0-9A-Za-z.]*\)\"[[:space:]]*$/\1/p" "$MISE_CFG" | head -n 1 | grep .
+# Versions of $1 that mise installed but no config asks for: `mise ls <tool>`
+# prints a config path (…/config.toml or …/mise.toml) as the source column for
+# every requested version and nothing for an orphan. Asking mise -- rather than
+# reading one config file -- means a project-local mise.toml pin is honoured.
+mise_orphans() {
+  mise ls "$1" 2>/dev/null | awk -v tool="$1" '
+    $1 == tool {
+      managed = 0
+      for (i = 3; i <= NF; i++) if ($i ~ /\.toml$/) managed = 1
+      if (!managed) print $2
+    }'
 }
 
 detect() {
-  local exe p name pin d ver
+  local exe p name ver
   for exe in $RETIRED_EXES; do
     if p="$(command -v "$exe" 2>/dev/null)"; then
       printf 'path:%s:%s\n' "$exe" "$p"
@@ -54,16 +60,13 @@ detect() {
       fi
     done
   fi
-  for name in $MISE_PINNED; do
-    pin="$(mise_pin "$name")" || continue   # unpinned: nothing to compare against
-    [ -d "$MISE_INSTALLS/$name" ] || continue
-    for d in "$MISE_INSTALLS/$name"/*/; do
-      [ -d "$d" ] || continue
-      [ -L "${d%/}" ] && continue           # mise alias links (e.g. `latest`)
-      ver="$(basename "$d")"
-      [ "$ver" = "$pin" ] || printf 'mise-unmanaged:%s@%s\n' "$name" "$ver"
+  if command -v mise >/dev/null 2>&1; then
+    for name in $MISE_MANAGED; do
+      for ver in $(mise_orphans "$name"); do
+        printf 'mise-unmanaged:%s@%s\n' "$name" "$ver"
+      done
     done
-  done
+  fi
   if command -v code >/dev/null 2>&1; then
     if code --list-extensions 2>/dev/null | grep -qx "$VSCODE_EXT"; then
       printf 'vscode:%s\n' "$VSCODE_EXT"
@@ -72,15 +75,17 @@ detect() {
   return 0
 }
 
-# path:<exe>:<p> -- only the rogue npm-global pyright layout is removed here;
-# uv-tool and brew providers are handled by their own lines, anything else is
-# reported and left alone (never delete what we cannot name).
+# path:<exe>:<p> -- only the npm GLOBAL pyright layout (<prefix>/lib/node_modules/
+# pyright, i.e. `npm install -g` on Unix) is removed here; a project-local
+# node_modules/pyright reached through node_modules/.bin on PATH does not match
+# and is left alone. uv-tool and brew providers are handled by their own lines,
+# anything else is reported and left alone (never delete what we cannot name).
 prune_path() {
   local exe="$1" p="$2" target pkgdir
   target="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
   case "$target" in
-    */node_modules/pyright/*)
-      pkgdir="${target%%/node_modules/pyright/*}/node_modules/pyright"
+    */lib/node_modules/pyright/*)
+      pkgdir="${target%%/lib/node_modules/pyright/*}/lib/node_modules/pyright"
       rm -rf "$pkgdir" && rm -f "$p" && printf 'pruned path:%s:%s (npm global %s)\n' "$exe" "$p" "$pkgdir"
       ;;
     "$UV_TOOLS"/*)

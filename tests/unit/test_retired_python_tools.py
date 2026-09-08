@@ -7,8 +7,11 @@ mypy / ruff, a Homebrew ruff, pyright as a rogue npm global under
 extension). `just doctor` runs `detect` and `just prune-retired-python-tools`
 runs `prune`. Everything the script talks to is injected so this runs host-side
 with no real uv / brew / mise / code: those four are STUBS on PATH that log
-their argv, the uv tool dir and mise installs dir are temp dirs, and the mise
-config is a temp file. The VS Code extension is reported but never removed.
+their argv and the uv tool dir is a temp dir; unmanaged mise versions come from
+`mise ls <tool>` itself (a row with no config `.toml` source column, exactly what
+mise shows for an orphan), so a project-local mise.toml pin is never mistaken
+for an orphan. The VS Code extension is reported but never removed, and a
+project-local node_modules/pyright is never touched.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from _bash_hook import resolve_bash
+from _symlinks import requires_symlinks
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "retired_python_tools.sh"
@@ -60,41 +64,26 @@ def machine(tmp_path: Path) -> dict[str, Path]:
     for exe in ("mypy", "dmypy"):
         (bindir / exe).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         (bindir / exe).chmod(0o755)
-    # mise: config pins ruff 0.15.22 / ty 0.0.77; installs carry an unmanaged ruff 0.12.7
-    mise_cfg = tmp_path / "mise-config.toml"
-    mise_cfg.write_text(
-        '[tools]\nuv = "latest"\nruff = "0.15.22"\nty = "0.0.77"\n', encoding="utf-8"
-    )
-    installs = tmp_path / "mise-installs"
-    for tool, ver in (
-        ("ruff", "0.15.22"),
-        ("ruff", "0.12.7"),
-        ("ty", "0.0.77"),
-        ("uv", "0.12.10"),
-    ):
-        (installs / tool / ver).mkdir(parents=True)
-    os.symlink(
-        installs / "ruff" / "0.15.22", installs / "ruff" / "latest"
-    )  # mise's alias link
     # stubs
     log = tmp_path / "stub.log"
     _stub(bindir, "uv", "exit 0")
     _stub(bindir, "brew", 'if [ "$1" = list ]; then printf "jq\\nruff\\n"; fi; exit 0')
-    _stub(bindir, "mise", "exit 0")
+    # `mise ls <tool>`: managed rows carry the config .toml source column, an
+    # orphan row has none (real format, 2026-09-08).
+    _stub(
+        bindir,
+        "mise",
+        'if [ "$1" = ls ]; then case "$2" in\n'
+        '  ruff) printf "ruff  0.12.7\\nruff  0.15.22  ~/.config/mise/config.toml  0.15.22\\nruff  0.16.6  /work/proj/mise.toml  0.16.6\\n" ;;\n'
+        '  ty) printf "ty  0.0.77  ~/.config/mise/config.toml  0.0.77\\n" ;;\n'
+        "esac; fi; exit 0",
+    )
     _stub(
         bindir,
         "code",
         'if [ "$1" = --list-extensions ]; then printf "esbenp.prettier-vscode\\nms-python.mypy-type-checker\\n"; fi; exit 0',
     )
-    return {
-        "bin": bindir,
-        "uvtools": uvtools,
-        "mise_cfg": mise_cfg,
-        "installs": installs,
-        "log": log,
-        "nm": nm,
-        "keep": keep,
-    }
+    return {"bin": bindir, "uvtools": uvtools, "log": log, "nm": nm, "keep": keep}
 
 
 def _run(
@@ -109,8 +98,6 @@ def _run(
             "HOME": str(m["bin"].parent),
             "STUB_LOG": str(m["log"]),
             "UV_TOOL_DIR": str(m["uvtools"]),
-            "RETIRED_TOOLS_MISE_CONFIG": str(m["mise_cfg"]),
-            "RETIRED_TOOLS_MISE_INSTALLS": str(m["installs"]),
         },
         capture_output=True,
         text=True,
@@ -119,6 +106,7 @@ def _run(
     )
 
 
+@requires_symlinks
 def test_detect_reports_every_retired_artefact(machine: dict[str, Path]) -> None:
     r = _run("detect", machine)
     assert r.returncode == 0, r.stderr
@@ -128,6 +116,7 @@ def test_detect_reports_every_retired_artefact(machine: dict[str, Path]) -> None
     assert "uv-tool:mypy" in lines and "uv-tool:ruff" in lines
     assert "brew:ruff" in lines
     assert "mise-unmanaged:ruff@0.12.7" in lines
+    assert "mise-unmanaged:ruff@0.16.6" not in lines  # pinned by a project mise.toml
     assert "vscode:ms-python.mypy-type-checker" in lines
     assert not [
         line
@@ -156,6 +145,7 @@ def test_detect_is_silent_and_zero_on_a_clean_machine(tmp_path: Path) -> None:
     assert r.returncode == 0 and r.stdout.strip() == "", (r.stdout, r.stderr)
 
 
+@requires_symlinks
 def test_prune_removes_the_retired_copies_and_nothing_else(
     machine: dict[str, Path],
 ) -> None:
@@ -177,6 +167,7 @@ def test_prune_removes_the_retired_copies_and_nothing_else(
     )  # reported, left to the human
 
 
+@requires_symlinks
 def test_prune_and_detect_survive_missing_brew_and_code(
     machine: dict[str, Path],
 ) -> None:
@@ -186,6 +177,39 @@ def test_prune_and_detect_survive_missing_brew_and_code(
     assert "uv tool uninstall mypy" in calls and not [
         c for c in calls if c.startswith("brew")
     ]
+
+
+@requires_symlinks
+def test_prune_leaves_a_project_local_node_modules_pyright_alone(
+    machine: dict[str, Path],
+) -> None:
+    """A repo with node_modules/.bin on PATH must not lose its own pyright."""
+    proj = machine["bin"].parent / "proj"
+    local = proj / "node_modules" / "pyright"
+    local.mkdir(parents=True)
+    (local / "index.js").write_text("stub", encoding="utf-8")
+    dotbin = proj / "node_modules" / ".bin"
+    dotbin.mkdir()
+    os.symlink(local / "index.js", dotbin / "pyright")
+    # put the project bin FIRST on PATH and drop the global pyright
+    (machine["bin"] / "pyright").unlink()
+    (machine["bin"] / "pyright-langserver").unlink()
+    r = subprocess.run(
+        [BASH, str(SCRIPT), "prune"],
+        env={
+            "PATH": f"{dotbin}:{machine['bin']}:/usr/bin:/bin",
+            "HOME": str(machine["bin"].parent),
+            "STUB_LOG": str(machine["log"]),
+            "UV_TOOL_DIR": str(machine["uvtools"]),
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    assert local.exists() and (dotbin / "pyright").exists()
+    assert f"left path:pyright:{dotbin / 'pyright'}" in r.stdout
 
 
 def test_unknown_mode_is_a_usage_error() -> None:
