@@ -1754,10 +1754,14 @@ emu-lint:
     set -euo pipefail
     eval "$(mise activate bash)"
     cd emulator
-    echo '🔍 ruff...'
-    uv run ruff check .
+    # --frozen: install from the committed lock, never rewrite it (same three
+    # commands as the Test Emulators workflow step).
+    echo '🔍 ruff format --check...'
+    uv run --frozen ruff format --check .
+    echo '🔍 ruff check...'
+    uv run --frozen ruff check .
     echo '🔍 ty (ADR 0044)...'
-    uv run ty check
+    uv run --frozen ty check
     echo '🔍 semgrep (root .semgrep/rules/python, emulator .semgrepignore)...'
     uvx semgrep --config ../.semgrep/rules/python/ --error .
     echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'
