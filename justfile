@@ -29,6 +29,12 @@ UV := "mise exec -- uv"
 # (or machine uv config differs), instead of failing. The lock changes only via
 # an explicit `uv lock`.
 UV_RUN := "mise exec -- uv run --frozen"
+# Script mode, for scripts/ files with a PEP 723 `# /// script` block (today:
+# sync_agents.py). uv runs those in their own isolated environment and never
+# touches uv.lock, so --frozen is pointless there -- and rejected: it demands a
+# *script* lockfile that does not exist. tests/unit/test_justfile_uv_run_modes.py
+# keeps every invocation on the right runner.
+UV_RUN_SCRIPT := "mise exec -- uv run"
 
 # Default: show help
 [group('Meta')]
@@ -187,7 +193,7 @@ deploy:
 # Sync (apply, no prompts): dotfiles → agent homes; preview first to inspect
 [group('Agents')]
 sync-agents *args:
-    @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --yes {{ args }}
 
 # Scaffold: copy the agent-baseline template (per-repo enforcement: just check
 # gate, .githooks/pre-commit, quality-gate CI, agentcore semgrep rules) into a
@@ -207,12 +213,12 @@ scaffold-agent-baseline dir:
 # Sync (preview): show what would be synced without making changes
 [group('Agents')]
 sync-agents-preview *args:
-    @{{UV_RUN}} scripts/sync_agents.py --preview {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --preview {{ args }}
 
 # Sync (override): full replace — dotfiles wins, orphans removed, no prompts
 [group('Agents')]
 sync-agents-override *args:
-    @{{UV_RUN}} scripts/sync_agents.py --override {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --override {{ args }}
 
 # Verify deployed agent-home instruction files have no dead file references
 # (run after sync-agents; environment-dependent, so not part of `ci`)
@@ -228,12 +234,12 @@ check-agent-refs *homes:
 #   just import-agents all          -> from every defined agent
 [group('Agents')]
 import-agents *args:
-    @{{UV_RUN}} scripts/sync_agents.py --import-only {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --import-only {{ args }}
 
 # Import only (preview): show what would be imported without writing
 [group('Agents')]
 import-agents-preview *args:
-    @{{UV_RUN}} scripts/sync_agents.py --import-only --preview {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --import-only --preview {{ args }}
 
 # Sync the canonical check-scope hook (plugins/_shared/check-scope.sh) into
 # each auto-loop plugin. The per-plugin copies are what the marketplace
