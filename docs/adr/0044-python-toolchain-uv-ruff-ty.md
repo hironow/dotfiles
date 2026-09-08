@@ -32,15 +32,19 @@ mise registry) and is fast enough to run on every `just lint`. It is pre-1.0
 2. **The trio is declared in the shared mise config** (`config/mise/config.toml`)
    so it resolves on every host under the activate-only layout (ADR 0023).
    `uv` stays `latest`; `ruff` is pinned to the exact version the dotfiles gate
-   runs (`uvx ruff@0.15.22` in the justfile) so interactive runs and the Claude
-   format-after-edit hook see the same rule set as `just check`; `ty` is pinned
+   runs (`uvx ruff@0.15.22` in the justfile) so a hand-run `ruff check` in a
+   mise-activated shell reports what `just check` reports; `ty` is pinned
    (0.0.79) because a pre-1.0 "latest" could change diagnostics under a
    mandatory gate (ADR 0006 pinning rationale). Both are bumped together with
-   the justfile pin.
+   the justfile pin. These global copies are for interactive use: per-repo
+   gates and the Claude format-after-edit hook run `uv run [--frozen] ruff`,
+   which resolves that repo's own dev-dependency pin, never the mise copy.
 3. **mypy and pyright are removed from machines** (uv tool, npm global, VS Code
-   extension) and from the host dump (`dump/macbook/Brewfile`). Per-repo gates
-   pin ruff and ty as uv dev dependencies (`uv add --dev ruff ty`) on top of the
-   global mise copies.
+   extension), and so are the duplicate ruff copies (uv tool, Homebrew): mise
+   is the single provider, which the host dump (`dump/macbook/Brewfile`)
+   reflects. Per-repo gates pin ruff and ty as uv dev dependencies
+   (`uv add --dev ruff ty`, now a step in the agent-baseline scaffold README)
+   on top of the global mise copies.
 
 ## Consequences
 
