@@ -139,18 +139,18 @@ def test_doctor_checks_scoop_unix_clis(doctor_windows_branch: str) -> None:
 def test_doctor_checks_persisted_path_reaches_git_cmd(
     doctor_windows_branch: str,
 ) -> None:
-    """git.exe lives in Git\cmd, NOT usr\bin — a persisted PATH that only
+    r"""git.exe lives in Git\cmd, NOT usr\bin — a persisted PATH that only
     carries usr\bin (the cygpath fix) leaves fresh non-Git-Bash sessions
     with no git at all (fetch/clone: command not found). Seen live on this
     class of host; the doctor must detect it and point at the fix."""
     win = doctor_windows_branch
     assert "win-git-cmd" in win, (
         "doctor must emit a 'win-git-cmd' check: usr\bin on PATH does not "
-        "imply git is reachable (git.exe is in Git\cmd)"
+        r"imply git is reachable (git.exe is in Git\cmd)"
     )
     assert "cygpath -w /cmd" in win, (
-        "must derive Git\cmd dynamically via `cygpath -w /cmd` "
-        "(install-location independent), not hardcode C:\Program Files\Git"
+        r"must derive Git\cmd dynamically via `cygpath -w /cmd` "
+        r"(install-location independent), not hardcode C:\Program Files\Git"
     )
     assert "harden-env" in win, (
         "on a miss the doctor must point at `just harden-env`, which now "
