@@ -14,6 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PROJECTS=(
+    .
     emulator
     tools/rttm
     telemetry/examples

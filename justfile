@@ -578,6 +578,8 @@ fmt:
 lint:
     @echo '🔍 Python (ruff check --fix)...'
     uvx ruff@0.15.22 check . --fix
+    @echo '🔍 Python (ty check, ADR 0044)...'
+    @{{UV_RUN}} ty check
     @echo '🔍 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
@@ -587,7 +589,7 @@ lint:
     @echo '🔍 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
     @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
-    @{{UV_RUN}} scripts/check_uv_exclude_newer.py emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ lint done.'
@@ -599,6 +601,8 @@ check:
     uvx ruff@0.15.22 format --check .
     @echo '🔎 Python (ruff check, no --fix)...'
     uvx ruff@0.15.22 check .
+    @echo '🔎 Python (ty check, ADR 0044)...'
+    @{{UV_RUN}} ty check
     @echo '🔎 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
@@ -610,7 +614,7 @@ check:
     @echo '🔎 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
     @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
-    @{{UV_RUN}} scripts/check_uv_exclude_newer.py emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ All checks passed.'
@@ -625,9 +629,15 @@ check-uv-flatt-index:
 # fix through the 7-day hold with an absolute cutoff that never expires on its
 # own -- left behind, it silently freezes that package. Fail once the cutoff is
 # older than the window: delete the entry and re-run `uv lock`.
+# ADR 0044: type-check the root tooling (scripts/, tests/) with ty, pinned as a
+# dev dependency in pyproject.toml ([tool.ty] there scopes and configures it).
+[group('Lint')]
+check-ty:
+    @{{UV_RUN}} ty check
+
 [group('Lint')]
 check-uv-exclude-newer:
-    @{{UV_RUN}} scripts/check_uv_exclude_newer.py emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
 
 # ADR 0027: assert no MCP client config launches Node tooling via a banned
 # runner (npm/npx/pnpm/yarn). MCP servers start outside the Bash tool, so the
@@ -1718,6 +1728,8 @@ emu-lint:
     cd emulator
     echo '🔍 ruff...'
     uv run ruff check .
+    echo '🔍 ty (ADR 0044)...'
+    uv run ty check
     echo '🔍 semgrep (root .semgrep/rules/python, emulator .semgrepignore)...'
     uvx semgrep --config ../.semgrep/rules/python/ --error .
     echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'
