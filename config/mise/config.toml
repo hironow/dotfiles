@@ -24,10 +24,16 @@ opentofu = "1.12.6"
 # mypy / pyright are retired (2026-09-08) — do not reintroduce them. Declared
 # here so all three resolve globally on every host (ADR 0023 activate-only);
 # per-repo gates additionally pin them as uv dev dependencies. ruff and ty
-# ship via the aqua backend (astral-sh/ruff, astral-sh/ty).
+# ship via the aqua backend (astral-sh/ruff, astral-sh/ty). Both are PINNED
+# (ADR 0006): ruff to the exact version the justfile gate runs
+# (`uvx ruff@0.15.22`), so a hand-run `ruff check` and the Claude
+# format-after-edit hook apply the same rule set as `just check` (a newer
+# ruff widens the default rules and reports findings the gate does not);
+# ty because it is still 0.0.x and a "latest" pre-release could change
+# diagnostics under a mandatory gate. Bump both together with the justfile pin.
 uv = "latest"
-ruff = "latest"
-ty = "latest"
+ruff = "0.15.22"
+ty = "0.0.79"
 kotlin = "latest"
 java = "latest"
 gradle = "latest"
