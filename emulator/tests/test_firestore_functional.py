@@ -1,7 +1,7 @@
 import uuid
+
 import pytest
 from aiohttp import ClientTimeout
-
 
 BASE_TPL = "http://localhost:8080/v1/projects/{project_id}/databases/(default)"
 

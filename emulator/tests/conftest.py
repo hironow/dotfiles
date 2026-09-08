@@ -9,9 +9,10 @@ Intentional separation:
 Shared, fast fixtures for unit/integration tests live here.
 """
 
+import os
 from collections.abc import AsyncIterator
 from pathlib import Path
-import os
+
 import pytest
 import pytest_asyncio
 from aiohttp import ClientSession, ClientTimeout, TCPConnector

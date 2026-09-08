@@ -15,8 +15,8 @@ import pytest
 
 
 def _rand(n: int = 6) -> str:
-    import string as _s
     import random as _r
+    import string as _s
 
     return "".join(_r.choices(_s.ascii_lowercase + _s.digits, k=n))
 

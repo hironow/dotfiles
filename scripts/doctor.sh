@@ -75,6 +75,23 @@ else
   printf '%s\n' "$rogue_out" | sed 's/^/    /'
 fi
 
+# Python tools retired by ADR 0044 (mypy, pyright, duplicate ruff copies outside
+# mise, mise ruff/ty versions the config no longer pins, the mypy VS Code
+# extension). Cross-platform; scripts/retired_python_tools.sh does the scan.
+set +e
+retired_out=$(bash scripts/retired_python_tools.sh detect 2>/dev/null)
+rc=$?
+set -e
+if [ "$rc" -ne 0 ]; then
+  log_warn 'python-retired' 'could not scan for retired Python tools'
+elif [ -z "$retired_out" ]; then
+  log_ok 'python-retired' 'no retired Python tools (mypy / pyright / duplicate ruff) on this machine'
+else
+  n=$(printf '%s\n' "$retired_out" | grep -c .)
+  log_warn 'python-retired' "${n} retired Python tool artefact(s) (ADR 0044) -- run: just prune-retired-python-tools"
+  printf '%s\n' "$retired_out" | sed 's/^/    /'
+fi
+
 # Native Windows (MSYS/MINGW) environment assurance. Encodes the known
 # fresh-Windows-host gotchas so the doctor teaches the fix instead of each
 # recipe failing cryptically. WARN, not ERR: Git Bash workflows keep working

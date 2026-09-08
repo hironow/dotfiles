@@ -1,5 +1,5 @@
-import pytest
 import docker
+import pytest
 
 from tests.utils.helpers import skip_unless_container_running
 

@@ -62,6 +62,12 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    ignore:
+      # ruff and ty are pinned == in four places (justfile uvx pin, root and
+      # emulator dev groups, mise) and bumped together by `just bump-tool`;
+      # a one-place Dependabot bump only turns tests/unit/test_ruff_ty_pins.py red.
+      - dependency-name: "ruff"
+      - dependency-name: "ty"
 
   - package-ecosystem: "uv"
     directory: "/tools/rttm"
@@ -86,6 +92,10 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    ignore:
+      # same reason as the root entry: bumped via `just bump-tool`.
+      - dependency-name: "ruff"
+      - dependency-name: "ty"
     groups:
       emulator-python:
         patterns: ["*"]

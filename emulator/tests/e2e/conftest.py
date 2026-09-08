@@ -7,7 +7,7 @@
 
 import os
 import textwrap
-from typing import Callable
+from collections.abc import Callable
 
 import pytest
 

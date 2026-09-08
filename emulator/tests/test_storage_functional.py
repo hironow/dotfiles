@@ -7,9 +7,9 @@ Notes:
 """
 
 import urllib.parse
+
 import pytest
 from aiohttp import ClientTimeout
-
 
 BASE = "http://localhost:9199"
 
