@@ -57,7 +57,8 @@ timeout_method = "thread"
 exclude-newer = "7 days"
 # mlflow 3.16.0 (uploaded 2026-09-04) lifts the `cryptography<50` cap so that
 # cryptography 50.0.1 (GHSA-g6cj-pr64-35w5, Dependabot #103) can resolve.
-# Removable after 2026-09-11.
+# Removable after 2026-09-11 -- `just check-uv-exclude-newer` (in `just check`)
+# fails from then on until the entry is deleted and `uv lock` re-run.
 exclude-newer-package = { mlflow = "2026-09-04T06:00:00Z", mlflow-skinny = "2026-09-04T06:00:00Z", mlflow-tracing = "2026-09-04T06:00:00Z" }
 
 # ADR 0028: route resolution through the Flatt Security PyPI mirror (malware-

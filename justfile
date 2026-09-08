@@ -586,6 +586,8 @@ lint:
     git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp lint
     @echo '🔍 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
+    @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ lint done.'
@@ -607,6 +609,8 @@ check:
     uvx semgrep --config .semgrep/rules/meta/ --error .
     @echo '🔎 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
+    @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ All checks passed.'
@@ -616,6 +620,14 @@ check:
 [group('Lint')]
 check-uv-flatt-index:
     bash scripts/check_uv_flatt_index.sh
+
+# ADR 0028 quarantine: a `[tool.uv] exclude-newer-package` entry lets ONE security
+# fix through the 7-day hold with an absolute cutoff that never expires on its
+# own -- left behind, it silently freezes that package. Fail once the cutoff is
+# older than the window: delete the entry and re-run `uv lock`.
+[group('Lint')]
+check-uv-exclude-newer:
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
 
 # ADR 0027: assert no MCP client config launches Node tooling via a banned
 # runner (npm/npx/pnpm/yarn). MCP servers start outside the Bash tool, so the
