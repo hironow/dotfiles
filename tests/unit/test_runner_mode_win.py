@@ -136,7 +136,7 @@ def test_status_recognises_deliberate_interactive_mode() -> None:
 
 
 def test_interactive_mode_reowns_foreign_work_checkouts() -> None:
-    """Live incident (2026-08-21): after the switch to interactive mode,
+    r"""Live incident (2026-08-21): after the switch to interactive mode,
     vrt jobs died in actions/checkout within a second — the _work checkout
     dirs (comfy/SHAKU/vivo) were still owned by BUILTIN\Administrators from
     the LocalSystem-service era, and git's dubious-ownership check refuses a
@@ -221,7 +221,7 @@ def test_watchdog_task_runs_a_copy_outside_the_working_tree() -> None:
     and no log line - the watchdog itself was the silent one."""
     text = _watchdog()
     assert "LOCALAPPDATA" in text and "Copy-Item" in text, (
-        "-Install copies the script to %LOCALAPPDATA%\dotfiles; the task runs the copy."
+        r"-Install copies the script to %LOCALAPPDATA%\dotfiles; the task runs the copy."
     )
     assert re.search(r'-File "\{0\}"[^\n]*-f \$installed', text), (
         "the task action's -File is the installed copy, never $PSCommandPath."

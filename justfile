@@ -24,7 +24,17 @@ set windows-shell := ["sh", "-eu", "-o", "pipefail", "-c", 'PATH="/usr/bin:$PATH
 MARKDOWNLINT := "mise exec -- markdownlint-cli2"
 PDOC := "mise exec -- uv run pdoc"
 UV := "mise exec -- uv"
-UV_RUN := "mise exec -- uv run"
+# --frozen: the root is a uv project now (dev deps pytest/ruff/ty, ADR 0044);
+# a bare `uv run` would re-resolve and rewrite uv.lock whenever pyproject drifts
+# (or machine uv config differs), instead of failing. The lock changes only via
+# an explicit `uv lock`.
+UV_RUN := "mise exec -- uv run --frozen"
+# Script mode, for scripts/ files with a PEP 723 `# /// script` block (today:
+# sync_agents.py). uv runs those in their own isolated environment and never
+# touches uv.lock, so --frozen is pointless there -- and rejected: it demands a
+# *script* lockfile that does not exist. tests/unit/test_justfile_uv_run_modes.py
+# keeps every invocation on the right runner.
+UV_RUN_SCRIPT := "mise exec -- uv run"
 
 # Default: show help
 [group('Meta')]
@@ -183,7 +193,7 @@ deploy:
 # Sync (apply, no prompts): dotfiles → agent homes; preview first to inspect
 [group('Agents')]
 sync-agents *args:
-    @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --yes {{ args }}
 
 # Scaffold: copy the agent-baseline template (per-repo enforcement: just check
 # gate, .githooks/pre-commit, quality-gate CI, agentcore semgrep rules) into a
@@ -203,12 +213,12 @@ scaffold-agent-baseline dir:
 # Sync (preview): show what would be synced without making changes
 [group('Agents')]
 sync-agents-preview *args:
-    @{{UV_RUN}} scripts/sync_agents.py --preview {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --preview {{ args }}
 
 # Sync (override): full replace — dotfiles wins, orphans removed, no prompts
 [group('Agents')]
 sync-agents-override *args:
-    @{{UV_RUN}} scripts/sync_agents.py --override {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --override {{ args }}
 
 # Verify deployed agent-home instruction files have no dead file references
 # (run after sync-agents; environment-dependent, so not part of `ci`)
@@ -224,12 +234,12 @@ check-agent-refs *homes:
 #   just import-agents all          -> from every defined agent
 [group('Agents')]
 import-agents *args:
-    @{{UV_RUN}} scripts/sync_agents.py --import-only {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --import-only {{ args }}
 
 # Import only (preview): show what would be imported without writing
 [group('Agents')]
 import-agents-preview *args:
-    @{{UV_RUN}} scripts/sync_agents.py --import-only --preview {{ args }}
+    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --import-only --preview {{ args }}
 
 # Sync the canonical check-scope hook (plugins/_shared/check-scope.sh) into
 # each auto-loop plugin. The per-plugin copies are what the marketplace
@@ -578,6 +588,8 @@ fmt:
 lint:
     @echo '🔍 Python (ruff check --fix)...'
     uvx ruff@0.15.22 check . --fix
+    @echo '🔍 Python (ty check, ADR 0044)...'
+    @{{UV_RUN}} ty check
     @echo '🔍 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
@@ -586,6 +598,8 @@ lint:
     git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp lint
     @echo '🔍 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
+    @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ lint done.'
@@ -597,6 +611,8 @@ check:
     uvx ruff@0.15.22 format --check .
     @echo '🔎 Python (ruff check, no --fix)...'
     uvx ruff@0.15.22 check .
+    @echo '🔎 Python (ty check, ADR 0044)...'
+    @{{UV_RUN}} ty check
     @echo '🔎 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
@@ -607,6 +623,8 @@ check:
     uvx semgrep --config .semgrep/rules/meta/ --error .
     @echo '🔎 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
+    @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '✅ All checks passed.'
@@ -616,6 +634,20 @@ check:
 [group('Lint')]
 check-uv-flatt-index:
     bash scripts/check_uv_flatt_index.sh
+
+# ADR 0028 quarantine: a `[tool.uv] exclude-newer-package` entry lets ONE security
+# fix through the 7-day hold with an absolute cutoff that never expires on its
+# own -- left behind, it silently freezes that package. Fail once the cutoff is
+# older than the window: delete the entry and re-run `uv lock`.
+# ADR 0044: type-check the root tooling (scripts/, tests/) with ty, pinned as a
+# dev dependency in pyproject.toml ([tool.ty] there scopes and configures it).
+[group('Lint')]
+check-ty:
+    @{{UV_RUN}} ty check
+
+[group('Lint')]
+check-uv-exclude-newer:
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
 
 # ADR 0027: assert no MCP client config launches Node tooling via a banned
 # runner (npm/npx/pnpm/yarn). MCP servers start outside the Bash tool, so the
@@ -1706,6 +1738,8 @@ emu-lint:
     cd emulator
     echo '🔍 ruff...'
     uv run ruff check .
+    echo '🔍 ty (ADR 0044)...'
+    uv run ty check
     echo '🔍 semgrep (root .semgrep/rules/python, emulator .semgrepignore)...'
     uvx semgrep --config ../.semgrep/rules/python/ --error .
     echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'

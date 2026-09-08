@@ -5,7 +5,7 @@ Read this before writing a commit message. Root summary is in AGENTS.md.
 ## Pre-commit conditions (ALL must hold)
 
 - All tests pass.
-- Zero ruff violations, zero mypy errors.
+- Zero ruff violations, zero ty diagnostics.
 - Zero semgrep findings under `.semgrep/` (when it exists).
 - The change is a single logical unit of work.
 - Message follows Conventional Commits v1.0.0.

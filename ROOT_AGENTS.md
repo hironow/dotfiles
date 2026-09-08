@@ -31,8 +31,12 @@ These are not preferences. Hooks gate them mechanically for Claude Code in every
 repo; other tools rely on the pre-commit + CI gate where the agent baseline is
 installed. The reasons are given so you generalize correctly to unlisted cases.
 
-- **`uv` only** for Python (`uv sync`, `uv add`, `uv run`). Never `pip`, `poetry`,
-  `pipenv` — mixed resolvers desync the lockfile.
+- **Python = the `uv` + `ruff` + `ty` trio, always.** `uv` for packages and
+  running (`uv sync`, `uv add`, `uv run`) — never `pip`, `poetry`, `pipenv`
+  (mixed resolvers desync the lockfile). `ruff` for lint + format, `ty`
+  (astral-sh/ty) for type checking — never `mypy`, `pyright`, `flake8`,
+  `black`, `isort`. One toolchain, one config, one gate. Details:
+  docs/agents/python-tooling.md.
 - **`bun` only** for Node. Never `npm`/`yarn`/`pnpm` (incl. `corepack pnpm`) —
   same lockfile-desync reason. (corepack stays installed for machine
   provisioning; agents just never invoke a package manager through it.)
@@ -47,7 +51,7 @@ installed. The reasons are given so you generalize correctly to unlisted cases.
   Coder VMs) changes only through OpenTofu + PR + CD. A stray `gcloud ... update`
   creates drift the next `tofu apply` silently reverts. Details:
   docs/agents/iac-drift-policy.md.
-- **Never weaken the gates to pass.** Do not edit ruff/mypy/semgrep config to
+- **Never weaken the gates to pass.** Do not edit ruff/ty/semgrep config to
   silence a finding, and never commit with failing tests or non-zero lint/type
   findings. Fix the cause.
 
@@ -57,7 +61,7 @@ installed. The reasons are given so you generalize correctly to unlisted cases.
 just            # list all tasks (default: help)
 just check      # the full local gate: fmt + lint + types + semgrep + test
 just test       # uv run pytest
-just lint       # ruff check + mypy
+just lint       # ruff check + ty check
 just fmt        # ruff format
 just semgrep    # semgrep --config .semgrep/rules/ --error  (when .semgrep/ exists)
 just install-hooks   # prek install --hook-type pre-commit (run once per clone)

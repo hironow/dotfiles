@@ -9,6 +9,7 @@ Intentional separation:
 Shared, fast fixtures for unit/integration tests live here.
 """
 
+from collections.abc import AsyncIterator
 from pathlib import Path
 import os
 import pytest
@@ -36,7 +37,7 @@ def project_id() -> str:
 
 
 @pytest_asyncio.fixture()
-async def http_client() -> ClientSession:
+async def http_client() -> AsyncIterator[ClientSession]:
     """Shared aiohttp client with sane defaults (function-scoped)."""
     timeout = ClientTimeout(total=5.0)
     connector = TCPConnector(force_close=True)

@@ -55,4 +55,5 @@ jobs:
       # justfile (the recipe is not callable here because the justfile
       # wraps tools with `mise exec`).
       - name: Instruction budget
-        run: uv run scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
+        # --frozen: install from the committed root uv.lock, never rewrite it.
+        run: uv run --frozen scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md

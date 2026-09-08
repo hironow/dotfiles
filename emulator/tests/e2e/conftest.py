@@ -45,7 +45,7 @@ def e2e_network_name() -> str:
 def docker_client():
     """Shared Docker client or skip if unavailable."""
     try:
-        import docker  # type: ignore
+        import docker
 
         client = docker.from_env()
         client.ping()

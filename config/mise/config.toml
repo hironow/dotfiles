@@ -19,7 +19,29 @@ rust = "1.98.0"
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
 # no shims PATH). Pinned for repeatable IaC test runs across machines.
 opentofu = "1.12.6"
+# Python toolchain = the astral trio, always: uv (packages/runner), ruff
+# (lint + format), ty (type checking; https://github.com/astral-sh/ty).
+# mypy / pyright are retired (2026-09-08) — do not reintroduce them. Declared
+# here so all three resolve globally on every host (ADR 0023 activate-only);
+# per-repo gates additionally pin them as uv dev dependencies. ruff and ty
+# ship via the aqua backend (astral-sh/ruff, astral-sh/ty) and are the ONLY
+# copies on this machine (the Homebrew ruff was uninstalled 2026-09-08 so a
+# stale-PATH shell cannot pick a different version). Both are PINNED
+# (ADR 0006): ruff to the exact version the dotfiles justfile gate runs
+# (`uvx ruff@0.15.22`), so a hand-run `ruff check` in a mise-activated
+# shell reports what `just check` reports (a newer ruff widens the default
+# rules: 0.16 showed 88 findings the gate does not); ty because it is still
+# 0.0.x and a "latest" pre-release could change diagnostics under a
+# mandatory gate; it equals the ty==<ver> dev pin of this repo's uv projects
+# (tests/unit/test_ruff_ty_pins.py keeps all three declarations in step;
+# a newer ty enters the uv locks only once it clears the 7-day quarantine,
+# so bump here at the same time). These global copies serve interactive use only: per-repo
+# gates and the Claude format-after-edit hook run `uv run [--frozen] ruff`,
+# i.e. that repo's own dev-dependency pin, never these. Bump both together
+# with the justfile pin.
 uv = "latest"
+ruff = "0.15.22"
+ty = "0.0.77"
 kotlin = "latest"
 java = "latest"
 gradle = "latest"

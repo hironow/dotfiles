@@ -52,7 +52,7 @@ rules:
 - `just semgrep` runs `semgrep --config .semgrep/rules/ --error`.
 - Wire semgrep into CI as a required check before merge (see the quality-gate
   workflow).
-- Pre-commit runs semgrep alongside ruff + mypy.
+- Pre-commit runs semgrep alongside ruff + ty.
 
 ## When to add a rule
 
@@ -63,6 +63,6 @@ rules:
 
 ## When *not* to add a rule
 
-- A type checker would catch it — let mypy do its job.
+- A type checker would catch it — let ty do its job.
 - ruff already has a built-in rule for it.
 - It would fire false positives frequently — tune or drop it.

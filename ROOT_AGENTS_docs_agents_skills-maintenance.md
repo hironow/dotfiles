@@ -31,7 +31,7 @@ procedure around them and the way skills reach the agent homes (ADR 0043).
 
 | command | what it proves / does |
 | --- | --- |
-| in hironow/skills: `just check` (`audit`, `readme-check`, tests, ruff, mypy) | frontmatter shape, links and anchors, balanced fences, no emoji, Japanese only in the allowed places, provenance contract, README tables in sync; its CI runs the same on every PR |
+| in hironow/skills: `just check` (`audit`, `readme-check`, tests, ruff, ty — the same uv/ruff/ty trio, pinned in that repo's own pyproject) | frontmatter shape, links and anchors, balanced fences, no emoji, Japanese only in the allowed places, provenance contract, README tables in sync; its CI runs the same on every PR |
 | in hironow/skills: `just audit-consumers` | every home resolves each skill to bytes identical to the checkout (through the links); no dangling symlinks |
 | in hironow/skills: `just compare <fork> /abs/<upstream>...` | size, description, tooling-rule violations, and body diff of two or more versions |
 | dotfiles: `just skills-lock-check` (in `ci`) | the committed declaration lets no third-party skill shadow a hironow/skills name |

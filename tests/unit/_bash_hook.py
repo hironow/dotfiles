@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 
 def _is_wsl_launcher(exe: str) -> bool:
@@ -75,7 +76,7 @@ def run_bash(
     *args: str,
     cwd: str | os.PathLike[str],
     companions: tuple[str | os.PathLike[str], ...] = (),
-    **kwargs: object,
+    **kwargs: Any,
 ) -> subprocess.CompletedProcess[str]:
     """Run ``bash <script> [args...]`` from ``cwd``, Windows-safely.
 
@@ -99,7 +100,7 @@ def run_bash(
         return subprocess.run(  # noqa: S603 - fixed argv, test-only helper
             [_BASH, rel.replace(os.sep, "/"), *args],
             cwd=str(cwd_p),
-            **kwargs,  # type: ignore[arg-type]
+            **kwargs,
         )
     # Script lives outside cwd: stage it (+ companions) into a descendant dir.
     staged = Path(tempfile.mkdtemp(prefix=".bashhook-", dir=cwd_p))
@@ -112,7 +113,7 @@ def run_bash(
         return subprocess.run(  # noqa: S603 - fixed argv, test-only helper
             [_BASH, staged_rel, *args],
             cwd=str(cwd_p),
-            **kwargs,  # type: ignore[arg-type]
+            **kwargs,
         )
     finally:
         shutil.rmtree(staged, ignore_errors=True)

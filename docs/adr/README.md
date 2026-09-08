@@ -64,6 +64,8 @@ recorded decisions that shaped it.
 | 0040 | [`npm_args` is inert under the bun backend — drop it, correct ADR 0036's rationale](./0040-npm-args-inert-under-bun.md) | Accepted | 2026-08-15 | `config/mise/config.toml`, `.devcontainer/features/dotfiles-tools/install.sh` |
 | 0041 | [Retire the third-party claudelint; official-validator-only gate](./0041-retire-third-party-claudelint.md) | Accepted | 2026-08-16 | `justfile`, `.github/workflows/claude-lint.yaml`, `scripts/check_effective_settings.py` |
 | 0042 | [Watchdog for the interactive Windows runner](./0042-interactive-runner-watchdog.md) | Accepted | 2026-09-03 | `scripts/runner_watchdog_win.ps1`, `justfile` (runner recipes) |
+| 0043 | [Self-authored skills go through the skills CLI; the `skills/` submodule is retired](./0043-self-authored-skills-through-the-skills-cli.md) | Accepted; supersedes decisions 2–4 of [0038](./0038-declarative-third-party-skills.md) | 2026-09-06 | `dump/harness/skill-lock.json`, `justfile` (skills recipes), `scripts/sync_agents.py` |
+| 0044 | [The Python toolchain is uv + ruff + ty; mypy and pyright are retired](./0044-python-toolchain-uv-ruff-ty.md) | Accepted | 2026-09-08 | `config/mise/config.toml`, `ROOT_AGENTS.md`, `ROOT_AGENTS_docs_agents_python-tooling.md`, `templates/agent-baseline/justfile` |
 
 ## Reading order for newcomers
 

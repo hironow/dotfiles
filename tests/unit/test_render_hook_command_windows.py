@@ -11,6 +11,7 @@ legacy backslash-rendered blocks are replaced, not duplicated (ADR 0037).
 import json
 import sys
 from pathlib import Path, PureWindowsPath
+from typing import cast
 
 import pytest
 
@@ -28,7 +29,11 @@ FRAGMENT_CMD = 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/block.sh"'
 
 def test_render_hook_command_windows_uses_sh_and_posix_path() -> None:
     """Windows renders sh + forward-slash C:/ path (never bare bash)."""
-    agent = AgentTarget(directory=PureWindowsPath(r"C:\Users\x\.claude"), name="Test")
+    # A PureWindowsPath stands in for the Path field so the Windows rendering
+    # can be exercised on any host; cast() states that lie for the type checker.
+    agent = AgentTarget(
+        directory=cast(Path, PureWindowsPath(r"C:\Users\x\.claude")), name="Test"
+    )
 
     rendered = _render_hook_command(FRAGMENT_CMD, agent, system="Windows")
 
@@ -49,7 +54,11 @@ def test_render_hook_command_posix_unchanged(tmp_path: Path) -> None:
 
 def test_windows_rendered_command_is_recognized_as_managed() -> None:
     """Idempotency: the freshly rendered Windows command matches the marker."""
-    agent = AgentTarget(directory=PureWindowsPath(r"C:\Users\x\.claude"), name="Test")
+    # A PureWindowsPath stands in for the Path field so the Windows rendering
+    # can be exercised on any host; cast() states that lie for the type checker.
+    agent = AgentTarget(
+        directory=cast(Path, PureWindowsPath(r"C:\Users\x\.claude")), name="Test"
+    )
     rendered = _render_hook_command(FRAGMENT_CMD, agent, system="Windows")
     block = {"matcher": "Bash", "hooks": [{"type": "command", "command": rendered}]}
 

@@ -68,8 +68,9 @@ def _configure_output() -> None:
     # then raise UnicodeEncodeError and kill the checker. Re-encode to UTF-8
     # where supported, degrade to replacement characters elsewhere.
     for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8", errors="replace")
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
 
 
 def _validate_settings(data: object) -> list[str]:

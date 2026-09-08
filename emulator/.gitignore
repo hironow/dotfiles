@@ -32,3 +32,9 @@ mlflow-data/
 # py cache
 __pycache__/
 *.pyc
+
+# Go CLI build outputs: `go build ./...` in emulator/<name>-cli/ writes a
+# binary named after the directory next to main.go (48 MB for bigtable-cli).
+# The compose images build from source (Dockerfile), so the binary is never
+# needed in git; one was tracked by accident until 2026-09-08.
+*-cli/*-cli
