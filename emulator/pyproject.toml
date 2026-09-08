@@ -39,6 +39,40 @@ dev = [
 [tool.ty.terminal]
 error-on-warning = true
 
+# ruff (ADR 0044): the canonical rule set from docs/agents/python-tooling.md.
+# tests/** are exempt from ANN (every def annotated) and PLR2004 (magic-value
+# comparison): an `assert status == 200` needs neither a named constant nor an
+# annotated fixture signature, and 284 of the 331 findings the canonical set
+# raised here were exactly that (2026-09-08). PLR0911 / PLR0915 (return and
+# statement counts) are complexity heuristics for production code; an e2e
+# scenario or a per-type conversion helper in a test is long by nature.
+# Non-test code keeps every rule.
+[tool.ruff.lint]
+select = [
+    "FAST", # FastAPI
+    "C90",  # mccabe
+    "NPY",  # numpy
+    "PD",   # pandas
+    "B",    # flake8-bugbear
+    "A",    # flake8-builtins
+    "DTZ",  # flake8-datetimez
+    "T20",  # flake8-print
+    "N",    # pep8-naming
+    "I",    # isort
+    "E",    # pycodestyle errors
+    "F",    # Pyflakes
+    "PLE",  # Pylint errors
+    "PLR",  # Pylint refactor
+    "UP",   # pyupgrade
+    "FURB", # refurb
+    "RUF",  # Ruff-specific rules
+    "ANN",  # flake8-annotations
+]
+extend-ignore = ["E501", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "PLR2004", "PLR0911", "PLR0915"]
+
 [tool.pytest.ini_options]
 markers = [
     "e2e: end-to-end tests that require Docker and running emulators",
