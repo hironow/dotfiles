@@ -46,10 +46,19 @@ timeout_method = "thread"
 # reproduces `exclude-newer-span = "P7D"` in uv.lock instead of silently
 # dropping it. Mirrors the npm `min-release-age=7` quarantine. uv serializes the
 # relative "7 days" value to the lock's `exclude-newer-span = "P7D"`.
-# Security fixes that need a <7-day-old release override this once with
-# `uv lock --upgrade-package <pkg> --exclude-newer "$(date -u +%FT%TZ)"`; a plain
-# `uv lock` afterwards is conservative and keeps the already-locked version.
+# Security fixes that need a <7-day-old release are let through PER PACKAGE
+# with `exclude-newer-package` below: an absolute cutoff just after that
+# release's upload time, which uv serializes to `[options.exclude-newer-package]`
+# in the lock while the global P7D stays intact. Do NOT use the one-shot
+# `uv lock --upgrade-package <pkg> --exclude-newer "$(date -u +%FT%TZ)"`: since
+# uv 0.12 a following plain `uv lock` re-resolves ("addition of exclude newer
+# span") and silently downgrades the package back into quarantine (verified
+# 2026-09-08, uv 0.12.10). Drop an entry once its release is >=7 days old.
 exclude-newer = "7 days"
+# mlflow 3.16.0 (uploaded 2026-09-04) lifts the `cryptography<50` cap so that
+# cryptography 50.0.1 (GHSA-g6cj-pr64-35w5, Dependabot #103) can resolve.
+# Removable after 2026-09-11.
+exclude-newer-package = { mlflow = "2026-09-04T06:00:00Z", mlflow-skinny = "2026-09-04T06:00:00Z", mlflow-tracing = "2026-09-04T06:00:00Z" }
 
 # ADR 0028: route resolution through the Flatt Security PyPI mirror (malware-
 # scanned). flatt becomes the default index, replacing the implicit pypi.org.
