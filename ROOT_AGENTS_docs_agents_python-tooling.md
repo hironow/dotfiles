@@ -41,13 +41,16 @@ select = [
     # "DOC", # pydoclint
     # "D",   # pydocstyle
     "RUF",  # Ruff-specific rules
+    "ANN",  # flake8-annotations: every def annotated (ty has no strict mode)
 ]
 extend-ignore = ["E501", "RUF002", "RUF003"]
 ```
 
 ## ty
 
-- All code is type-annotated.
+- All code is type-annotated — enforced by ruff's `ANN` rules above, because ty
+  has no `--strict`: `[tool.ty.terminal] error-on-warning = true` only raises
+  severity, it adds no checks.
 - `uv run ty check` passes with zero diagnostics before commit.
 - Configure under `[tool.ty]` in `pyproject.toml`; raise rule levels, never
   lower them to silence a finding.
