@@ -1,5 +1,5 @@
-import pytest
 import docker
+import pytest
 
 
 @pytest.mark.asyncio

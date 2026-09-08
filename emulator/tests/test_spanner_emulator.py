@@ -1,5 +1,5 @@
-import pytest
 import docker
+import pytest
 
 
 def test_spanner_container_starts():

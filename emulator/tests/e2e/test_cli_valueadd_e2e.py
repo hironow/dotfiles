@@ -8,8 +8,8 @@ Scenarios
 """
 
 import textwrap
-import pytest
 
+import pytest
 
 # ---------- pgAdapter ----------
 

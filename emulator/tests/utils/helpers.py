@@ -4,11 +4,9 @@ import asyncio
 import socket
 import time
 
-
 import docker
 from aiohttp import ClientSession
 from docker.errors import NotFound
-
 from docker.models.containers import Container
 
 from tests.utils.result import Error, Ok, Result

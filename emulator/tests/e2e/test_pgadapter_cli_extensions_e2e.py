@@ -14,7 +14,7 @@ def _missing_ext(out: str, name: str) -> bool:
     name = name.lower()
     patterns = [
         "create extension",
-        'extension "%s"' % name,
+        f'extension "{name}"',
         "is not supported",
         "is not available",
         "does not exist",

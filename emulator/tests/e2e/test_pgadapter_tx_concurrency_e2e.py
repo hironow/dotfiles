@@ -7,6 +7,7 @@ available in the pgAdapter build, the test skips.
 
 import textwrap
 import time
+
 import pytest
 
 
