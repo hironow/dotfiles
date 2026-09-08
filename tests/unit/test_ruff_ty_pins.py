@@ -52,6 +52,20 @@ def test_mise_ruff_matches_the_gate_pin() -> None:
     assert _mise_pin("ruff") == _dev_pin("ruff")
 
 
-def test_ty_is_pinned_exactly_everywhere() -> None:
-    _dev_pin("ty")
-    _mise_pin("ty")
+def _emulator_dev_pin(name: str) -> str:
+    dev = tomllib.loads(
+        (REPO / "emulator" / "pyproject.toml").read_text(encoding="utf-8")
+    )["dependency-groups"]["dev"]
+    spec = next(s for s in dev if isinstance(s, str) and re.match(rf"^{name}\b", s))
+    m = re.fullmatch(rf"{name}==([0-9][0-9A-Za-z.]*)", spec)
+    assert m, (
+        f"emulator: {name} must be pinned with == in [dependency-groups].dev, got {spec!r}"
+    )
+    return m.group(1)
+
+
+def test_ty_is_pinned_exactly_and_to_one_version_everywhere() -> None:
+    """mise (interactive copy), the root dev group and the emulator dev group must
+    name the same ty; a newer release reaches the uv locks only after the 7-day
+    quarantine, so the mise pin is bumped together with them, not ahead."""
+    assert _mise_pin("ty") == _dev_pin("ty") == _emulator_dev_pin("ty")
