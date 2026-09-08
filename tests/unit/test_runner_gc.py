@@ -458,8 +458,8 @@ def test_counted_collections_are_wrapped_for_powershell_51() -> None:
     bad = [
         (n, line.strip())
         for n, line in enumerate(text.splitlines(), 1)
-        if re.search(r"^\s*\$(\w+)\s*=\s*Get-ChildItem", line)
-        and re.search(rf"\${re.match(r'^\s*\$(\w+)', line).group(1)}\.Count", text)
+        if (m := re.search(r"^\s*\$(\w+)\s*=\s*Get-ChildItem", line))
+        and re.search(rf"\${m.group(1)}\.Count", text)
     ]
     assert not bad, (
         "these collections are counted but not wrapped in @(), so a single "
@@ -515,6 +515,7 @@ def _age_link(path: Path, hours: float) -> None:
     reading fresh — which is exactly the state that hides the `bin.*` filter
     bug from a test.
     """
+    assert PWSH is not None, "pwsh-only helper"
     subprocess.run(
         [
             PWSH,
@@ -547,6 +548,7 @@ def _run_gc(root: Path, *extra: str, env: dict[str, str] | None = None):
     for key in ("RUNNER_WORKSPACE", "GITHUB_WORKSPACE", "GITHUB_REPOSITORY"):
         overrides.pop(key, None)
     overrides.update(env or {})
+    assert PWSH is not None, "pwsh-only helper"
     return subprocess.run(
         [
             PWSH,
@@ -1212,6 +1214,7 @@ def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
     )
     root = _make_runner_root(tmp_path)
     start = time.monotonic()
+    assert PWSH is not None, "pwsh-only test"
     proc = subprocess.run(
         [
             PWSH,
