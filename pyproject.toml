@@ -48,3 +48,35 @@ markers = [
     "check: basic just check commands",
     "exe: e2e for tofu/exe startup-script (requires docker)",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    # == the justfile's `uvx ruff@<ver>` gate pin (tests/unit/test_ruff_ty_pins.py)
+    "ruff==0.15.22",
+    # pre-1.0: pinned exactly, bumped deliberately (ADR 0044)
+    "ty==0.0.77",
+]
+
+[tool.uv]
+# Same supply-chain settings as every uv project here (emulator/pyproject.toml
+# has the full rationale): 7-day release quarantine, resolution through the
+# malware-scanning flatt PyPI mirror (ADR 0028).
+exclude-newer = "7 days"
+
+[[tool.uv.index]]
+name = "flatt"
+url = "https://pypi.flatt.tech/simple/"
+default = true
+
+# ty (ADR 0044): the root tooling in scripts/ and its tests. extra-paths lets
+# the tests' bare `from sync_agents import ...` resolve against scripts/.
+# Warnings fail the gate (severity only; ty has no strict mode).
+[tool.ty.src]
+include = ["scripts", "tests"]
+
+[tool.ty.environment]
+extra-paths = ["scripts"]
+
+[tool.ty.terminal]
+error-on-warning = true
