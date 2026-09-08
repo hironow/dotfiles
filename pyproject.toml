@@ -31,6 +31,14 @@ extend-exclude = [
     "private",
 ]
 
+[tool.ruff.lint]
+# On top of ruff's default rule set (E4/E7/E9/F). W605 turns invalid escape
+# sequences (e.g. "\A" in a Windows path inside a non-raw string) into a
+# gate failure. CPython 3.12+ only emits a SyntaxWarning for them (a future
+# release makes it a SyntaxError), so they ride through `just ci` as pytest
+# warning noise today; 7 such sites had accumulated under tests/unit/.
+extend-select = ["W605"]
+
 [tool.pytest.ini_options]
 markers = [
     "install: tests for install.sh flows",
