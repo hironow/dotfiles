@@ -348,8 +348,6 @@ brew "radare2"
 brew "restish"
 # Wrapper around ripgrep that adds multiple rich file types
 brew "ripgrep-all"
-# Extremely fast Python linter, written in Rust
-brew "ruff"
 # Fast and accurate code counter with complexity and COCOMO estimates
 brew "scc"
 # Fast, configurable, shell plugin manager
