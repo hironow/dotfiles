@@ -53,7 +53,7 @@ markers = [
 dev = [
     "pytest>=9.1.1",
     # == the justfile's `uvx ruff@<ver>` gate pin (tests/unit/test_ruff_ty_pins.py)
-    "ruff==0.15.22",
+    "ruff==0.16.5",
     # pre-1.0: pinned exactly, bumped deliberately (ADR 0044)
     "ty==0.0.77",
 ]
