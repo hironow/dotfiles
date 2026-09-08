@@ -18,16 +18,20 @@ dependencies = [
     "pyyaml>=6.0.2",
     "typer>=0.27.1",
     "uvicorn>=0.52.1",
-    "mlflow>=3.15.1",
 ]
 
 [dependency-groups]
 dev = [
     "docker>=7.2.0",
+    # Only tests/e2e/test_mlflow_e2e.py imports the mlflow client; the tracking
+    # server itself runs from the compose image (mlflow service).
+    "mlflow>=3.15.1",
     "pytest>=9.1.0",
     "pytest-asyncio>=1.4.0",
     "pytest-timeout>=2.3.1",
-    "ruff>=0.16.2",
+    # == the dotfiles gate pin (`uvx ruff@<ver>` in the root justfile); a newer
+    # ruff widens the default rules. tests/unit/test_ruff_ty_pins.py keeps it equal.
+    "ruff==0.15.22",
     "ty==0.0.77",
 ]
 
