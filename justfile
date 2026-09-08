@@ -24,7 +24,11 @@ set windows-shell := ["sh", "-eu", "-o", "pipefail", "-c", 'PATH="/usr/bin:$PATH
 MARKDOWNLINT := "mise exec -- markdownlint-cli2"
 PDOC := "mise exec -- uv run pdoc"
 UV := "mise exec -- uv"
-UV_RUN := "mise exec -- uv run"
+# --frozen: the root is a uv project now (dev deps pytest/ruff/ty, ADR 0044);
+# a bare `uv run` would re-resolve and rewrite uv.lock whenever pyproject drifts
+# (or machine uv config differs), instead of failing. The lock changes only via
+# an explicit `uv lock`.
+UV_RUN := "mise exec -- uv run --frozen"
 
 # Default: show help
 [group('Meta')]
