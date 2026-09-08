@@ -19,7 +19,7 @@ Astral now ships a type checker, [ty](https://github.com/astral-sh/ty), next to
 uv and ruff. It reads the same `pyproject.toml`, is distributed through the same
 release channel (GitHub releases with attestations, `aqua:astral-sh/ty` in the
 mise registry) and is fast enough to run on every `just lint`. It is pre-1.0
-(0.0.79 at the time of this decision).
+(0.0.77 is the newest release outside the 7-day quarantine at the time of this decision).
 
 ## Decision
 
@@ -34,9 +34,12 @@ mise registry) and is fast enough to run on every `just lint`. It is pre-1.0
    `uv` stays `latest`; `ruff` is pinned to the exact version the dotfiles gate
    runs (`uvx ruff@0.15.22` in the justfile) so a hand-run `ruff check` in a
    mise-activated shell reports what `just check` reports; `ty` is pinned
-   (0.0.79) because a pre-1.0 "latest" could change diagnostics under a
-   mandatory gate (ADR 0006 pinning rationale). Both are bumped together with
-   the justfile pin. These global copies are for interactive use: per-repo
+   exactly (0.0.77 at acceptance; the number lives in `config/mise/config.toml`
+   and the uv projects' dev groups, kept equal by
+   `tests/unit/test_ruff_ty_pins.py`) because a pre-1.0 "latest" could change
+   diagnostics under a mandatory gate (ADR 0006 pinning rationale). A newer ty
+   reaches the uv locks only after the 7-day quarantine, so the mise pin moves
+   with them, never ahead. ruff is bumped together with the justfile pin. These global copies are for interactive use: per-repo
    gates and the Claude format-after-edit hook run `uv run [--frozen] ruff`,
    which resolves that repo's own dev-dependency pin, never the mise copy.
 3. **mypy and pyright are removed from machines** (uv tool, npm global, VS Code
