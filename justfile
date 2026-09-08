@@ -1134,6 +1134,24 @@ doctor:
 prune-rogue-npm-globals:
     @bash scripts/rogue_npm_globals.sh prune
 
+# ADR 0044: remove the Python tools the uv + ruff + ty trio retired -- mypy /
+# pyright executables (pyright as a rogue npm global), `uv tool` mypy / ruff,
+# Homebrew ruff / pyright, mise ruff / ty versions the config no longer pins.
+# `just doctor` lists them under `python-retired`; the mypy VS Code extension is
+# reported but left to the editor. Plain-bash wrapper like the recipe above.
+[group('Setup')]
+prune-retired-python-tools:
+    @bash scripts/retired_python_tools.sh prune
+
+# ADR 0044: move the ruff or ty pin in EVERY declaration at once (justfile uvx
+# gate pin, root + emulator dev groups, mise config), re-lock both uv projects,
+# and print the hironow/skills follow-up. Dependabot ignores both tools, so this
+# is the only path a pin moves through; tests/unit/test_ruff_ty_pins.py
+# guards the result. Usage: just bump-tool ruff 0.15.23 / just bump-tool ty 0.0.79
+[group('Setup')]
+bump-tool tool version:
+    @{{UV_RUN}} scripts/bump_tool.py {{ tool }} {{ version }}
+
 # ------------------------------
 # Connect sets
 # ------------------------------
