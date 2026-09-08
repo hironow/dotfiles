@@ -52,6 +52,12 @@ def test_mise_ruff_matches_the_gate_pin() -> None:
     assert _mise_pin("ruff") == _dev_pin("ruff")
 
 
+def test_emulator_ruff_matches_the_gate_pin() -> None:
+    """just emu-lint runs the emulator's own ruff; at 0.16 it reported 52 findings
+    the 0.15.22 gate never sees (2026-09-08)."""
+    assert _emulator_dev_pin("ruff") == _dev_pin("ruff")
+
+
 def _emulator_dev_pin(name: str) -> str:
     dev = tomllib.loads(
         (REPO / "emulator" / "pyproject.toml").read_text(encoding="utf-8")
