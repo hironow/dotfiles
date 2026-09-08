@@ -28,7 +28,8 @@ opentofu = "1.12.6"
 # copies on this machine (the Homebrew ruff was uninstalled 2026-09-08 so a
 # stale-PATH shell cannot pick a different version). Both are PINNED
 # (ADR 0006): ruff to the exact version the dotfiles justfile gate runs
-# (`uvx ruff@0.15.22`), so a hand-run `ruff check` in a mise-activated
+# (its `uvx ruff@<ver>` pin -- `just bump-tool ruff <ver>` moves both), so a
+# hand-run `ruff check` in a mise-activated
 # shell reports what `just check` reports (a newer ruff widens the default
 # rules: 0.16 showed 88 findings the gate does not); ty because it is still
 # 0.0.x and a "latest" pre-release could change diagnostics under a
