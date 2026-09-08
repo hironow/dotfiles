@@ -28,7 +28,12 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-timeout>=2.3.1",
     "ruff>=0.16.2",
+    "ty==0.0.77",
 ]
+
+# ty (ADR 0044): type-check the emulator tooling; warnings fail `just emu-lint`.
+[tool.ty.terminal]
+error-on-warning = true
 
 [tool.pytest.ini_options]
 markers = [
