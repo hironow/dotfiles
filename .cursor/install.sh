@@ -78,4 +78,21 @@ fi
 sudo groupadd -f docker
 sudo usermod -aG docker "$(id -un)" || true
 
+echo "[install] hironow/skills into the bunx skills store (~/.agents/skills), then place"
+# ADR 0043: the skills CLI writes only the store ('-a universal'); consumer
+# homes (~/.claude/skills, ...) get relative symlinks from scripts/skills_lock.py
+# place. Best-effort so a skills registry/network hiccup never blocks the build;
+# the pinned CLI version tracks scripts/skills_lock.py (SKILLS_CLI_VERSION).
+skills_cli_ver="$(sed -n 's/^SKILLS_CLI_VERSION = "\(.*\)"/\1/p' "${REPO_DIR}/scripts/skills_lock.py")"
+if [ -n "${skills_cli_ver}" ]; then
+  mise exec -- bunx "skills@${skills_cli_ver}" add hironow/skills -g -s '*' -a universal -y \
+    || echo "[install] WARN: 'skills add hironow/skills' did not complete (best-effort)"
+  # place links declared hironow/skills from the store into existing agent
+  # homes; it exits non-zero when third-party declared skills are absent from
+  # the store (expected here — only hironow/skills is installed), so ignore it.
+  mise exec -- just skills-place || true
+else
+  echo "[install] WARN: could not read SKILLS_CLI_VERSION; skipping skills add"
+fi
+
 echo "[install] done"
