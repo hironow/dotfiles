@@ -259,6 +259,16 @@ class PlaceResult:
 def _trees_equal(a: Path, b: Path) -> bool:
     """Byte-for-byte equality of two directory trees. Any entry that cannot
     be compared (type mismatch, unreadable) counts as a difference."""
+    # filecmp.cmp() (used by cmpfiles below) caches its verdict keyed on the
+    # os.stat signature (path, size, mtime). `place` refreshes a copy via
+    # shutil.copytree, whose copy2 preserves the source mtime, so a same-size
+    # edit (e.g. "# v1\n" -> "# v2\n") can land on a stat signature identical
+    # to a prior comparison — on filesystems with coarse mtime granularity
+    # (seen on Cloud Agent VMs: ~ms resolution) the cache then returns a stale
+    # result and an up-to-date copy is needlessly re-refreshed (or, worse, a
+    # changed one judged identical). Clear the cache so each equality check
+    # reads current bytes. See CPython filecmp.clear_cache() docs.
+    filecmp.clear_cache()
     cmp = filecmp.dircmp(a, b, ignore=[".DS_Store"])
     if cmp.left_only or cmp.right_only or cmp.funny_files or cmp.common_funny:
         return False
