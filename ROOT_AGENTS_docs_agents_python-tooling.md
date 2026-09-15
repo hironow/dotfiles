@@ -12,6 +12,28 @@ Read this when writing or changing Python. Package management is `uv` (AGENTS.md
 Every Python project uses all three, pinned as dev dependencies
 (`uv add --dev ruff ty`) and wired into `just fmt` / `just lint`. Do not
 introduce another package manager, linter, formatter, or type checker.
+Ruff and ty are Class 1 (docs/agents/dependency-policy.md): pin them
+**exactly** (one version, aggressive adoption), pair the seven-day uv
+cooldown with `exclude-newer-package = { ruff = false, ty = false }` so
+the pin can move, and do not copy a version number into this file — it
+goes stale. Wire the gate with this justfile split (load-bearing: ruff
+only parses source, ty **resolves imports**):
+
+```just
+fmt:
+    uv run --locked --only-group lint ruff format .
+
+lint:
+    uv run --locked --only-group lint ruff check .
+    uv run --locked --only-group lint ruff format --check .
+    uv run --locked --group lint ty check
+```
+
+Never "fix" ty's `unresolved-import` by silencing the rule — it means ty
+cannot see the project's dependencies and is checking nothing. Give it the
+deps instead (`--group lint`, not `--only-group`). Keep one ruff.toml /
+ty.toml shape per *project*; change only project-local path and exclude
+blocks.
 
 ## ruff configuration (canonical — in `pyproject.toml`)
 

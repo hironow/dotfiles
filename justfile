@@ -558,21 +558,20 @@ test-mark marker="":
 # ------------------------------
 
 # fmt: writes formatting fixes in place. Tool per language:
-#   - Python  : `uvx ruff format .` (excludes live in pyproject.toml)
+#   - Python  : `uv run --frozen --only-group lint ruff format .`
+#     (excludes live in pyproject.toml; version is the lint-group pin + lock)
 #   - Markdown: `markdownlint-cli2 --fix`
 #   - JS/TS   : `vp fmt` (only when a package.json is present at the root)
 # Notes:
 #   - Don't pass `--exclude` to ruff: CLI replaces built-in defaults
 #     (.venv, __pycache__, dist, build, ...). Excludes belong in pyproject.toml.
 #   - Use `git ls-files -z | xargs -0 -r` for null-delimited, empty-safe pipes.
-#   - Pin ruff (`ruff@0.15.22`): the devcontainer sandbox has no uv exclude-newer
-#     window, so a bare `uvx ruff` pulls a newer ruff whose expanded default rules
-#     (EXE/ISC/UP/B ...) flag the as-shipped tree and redden `just test`. Pinning
-#     keeps sandbox == CI == local. Bump this in lockstep across fmt/lint/check.
+#   - ruff/ty versions live in [dependency-groups].lint (root + emulator) and
+#     uv.lock; `just bump-tool` moves them. `--frozen` keeps sandbox == CI.
 [group('Lint')]
 fmt:
     @echo '🔧 Python (ruff format)...'
-    uvx ruff@0.15.22 format .
+    {{UV_RUN}} --only-group lint ruff format .
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
@@ -587,9 +586,9 @@ fmt:
 [group('Lint')]
 lint:
     @echo '🔍 Python (ruff check --fix)...'
-    uvx ruff@0.15.22 check . --fix
+    {{UV_RUN}} --only-group lint ruff check . --fix
     @echo '🔍 Python (ty check, ADR 0044)...'
-    @{{UV_RUN}} ty check
+    @{{UV_RUN}} --group lint ty check
     @echo '🔍 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
@@ -608,11 +607,13 @@ lint:
 [group('Lint')]
 check:
     @echo '🔎 Python (ruff format --check)...'
-    uvx ruff@0.15.22 format --check .
+    {{UV_RUN}} --only-group lint ruff format --check .
     @echo '🔎 Python (ruff check, no --fix)...'
-    uvx ruff@0.15.22 check .
+    {{UV_RUN}} --only-group lint ruff check .
     @echo '🔎 Python (ty check, ADR 0044)...'
-    @{{UV_RUN}} ty check
+    @{{UV_RUN}} --group lint ty check
+    @echo '🔎 Go (golangci-lint)...'
+    just go-lint
     @echo '🔎 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
@@ -639,11 +640,38 @@ check-uv-flatt-index:
 # fix through the 7-day hold with an absolute cutoff that never expires on its
 # own -- left behind, it silently freezes that package. Fail once the cutoff is
 # older than the window: delete the entry and re-run `uv lock`.
-# ADR 0044: type-check the root tooling (scripts/, tests/) with ty, pinned as a
-# dev dependency in pyproject.toml ([tool.ty] there scopes and configures it).
+# ADR 0044: type-check the root tooling (scripts/, tests/) with ty, pinned in
+# [dependency-groups].lint ([tool.ty] in pyproject.toml scopes and configures it).
+# --group lint (not --only-group): ty resolves project imports.
 [group('Lint')]
 check-ty:
-    @{{UV_RUN}} ty check
+    @{{UV_RUN}} --group lint ty check
+
+# Go quality gate (docs/agents/go-tooling.md): golangci-lint v2, one root
+# config, gofumpt-only formatters. Per module because this repo has several
+# go.mod files (emulator CLIs + tools/simple-server).
+[group('Lint')]
+go-lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    config="$PWD/.golangci.yaml"
+    git ls-files -z '*go.mod' | while IFS= read -r -d '' mod; do
+      dir="$(dirname "$mod")"
+      echo "🔎 golangci-lint run $dir"
+      (cd "$dir" && mise exec aqua:golangci/golangci-lint -- golangci-lint run --config "$config" ./...)
+      echo "🔎 golangci-lint fmt --diff $dir"
+      (cd "$dir" && mise exec aqua:golangci/golangci-lint -- golangci-lint fmt --config "$config" --diff ./...)
+    done
+
+[group('Lint')]
+go-fmt:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    config="$PWD/.golangci.yaml"
+    git ls-files -z '*go.mod' | while IFS= read -r -d '' mod; do
+      dir="$(dirname "$mod")"
+      (cd "$dir" && mise exec aqua:golangci/golangci-lint -- golangci-lint fmt --config "$config" ./...)
+    done
 
 [group('Lint')]
 check-uv-exclude-newer:
@@ -1733,19 +1761,18 @@ emu-test-fast:
 emu-test-e2e:
     cd emulator && bash scripts/run-tests-e2e.sh
 
-# Format emulator (ruff + go fmt for CLIs)
+# Format emulator (ruff + golangci-lint fmt for CLIs)
 [group('Emulator')]
 emu-fmt:
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$(mise activate bash)"
     cd emulator
-    uv run ruff format .
-    if command -v go >/dev/null 2>&1; then
-      for d in pgadapter-cli neo4j-cli elasticsearch-cli qdrant-cli bigtable-cli postgres-cli; do
-        [ -f "$d/go.mod" ] && (cd "$d" && go fmt ./...)
-      done
-    fi
+    uv run --frozen --only-group lint ruff format .
+    config="$PWD/../.golangci.yaml"
+    for d in pgadapter-cli neo4j-cli elasticsearch-cli qdrant-cli bigtable-cli postgres-cli; do
+      [ -f "$d/go.mod" ] && (cd "$d" && mise exec aqua:golangci/golangci-lint -- golangci-lint fmt --config "$config" ./...)
+    done
 
 # Lint emulator (ruff + semgrep root rules + markdownlint, emulator-scoped)
 [group('Emulator')]
@@ -1757,11 +1784,11 @@ emu-lint:
     # --frozen: install from the committed lock, never rewrite it (same three
     # commands as the Test Emulators workflow step).
     echo '🔍 ruff format --check...'
-    uv run --frozen ruff format --check .
+    uv run --frozen --only-group lint ruff format --check .
     echo '🔍 ruff check...'
-    uv run --frozen ruff check .
+    uv run --frozen --only-group lint ruff check .
     echo '🔍 ty (ADR 0044)...'
-    uv run --frozen ty check
+    uv run --frozen --group lint ty check
     echo '🔍 semgrep (root .semgrep/rules/python, emulator .semgrepignore)...'
     uvx semgrep --config ../.semgrep/rules/python/ --error .
     echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'

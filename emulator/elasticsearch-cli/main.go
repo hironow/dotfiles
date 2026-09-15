@@ -158,7 +158,7 @@ func listIndices() {
 	if ts, ok := any(table).(interface{ SetHeader([]string) }); ok {
 		ts.SetHeader([]string{"Health", "Status", "Index", "Docs Count", "Store Size", "Pri Shards"})
 	} else {
-		table.Append([]string{"Health", "Status", "Index", "Docs Count", "Store Size", "Pri Shards"})
+		_ = table.Append([]string{"Health", "Status", "Index", "Docs Count", "Store Size", "Pri Shards"})
 	}
 
 	result.ForEach(func(key, value gjson.Result) bool {
@@ -169,11 +169,11 @@ func listIndices() {
 		storeSize := value.Get("store.size").String()
 		priShards := value.Get("pri").String()
 
-		table.Append([]string{health, status, index, docsCount, storeSize, priShards})
+		_ = table.Append([]string{health, status, index, docsCount, storeSize, priShards})
 		return true
 	})
 
-	table.Render()
+	_ = table.Render()
 }
 
 func showClusterInfo() {
@@ -269,7 +269,7 @@ func waitForIndexReady(indexName string) {
 	}
 
 	for i := 0; i < maxRetries; i++ {
-		healthPath := fmt.Sprintf("/_cluster/health/%s", indexName)
+		healthPath := "/_cluster/health/" + indexName
 		start := time.Now()
 		resp, err := makeRequest("GET", healthPath, nil)
 		elapsed := time.Since(start)
@@ -328,7 +328,7 @@ func makeRequest(method, path string, body []byte) (string, error) {
 
 	if verbose {
 		bodyPreview := ""
-		if body != nil && len(body) > 0 {
+		if len(body) > 0 {
 			if len(body) > 100 {
 				bodyPreview = fmt.Sprintf(" (body: %d bytes)", len(body))
 			} else {

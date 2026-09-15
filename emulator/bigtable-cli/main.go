@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,7 +84,219 @@ func setHeader(t *tablewriter.Table, headers []string) {
 		ts.SetHeader(headers)
 		return
 	}
-	t.Append(headers)
+	_ = t.Append(headers)
+}
+
+func appendRow(t *tablewriter.Table, row []string) {
+	_ = t.Append(row)
+}
+
+func renderTable(t *tablewriter.Table) {
+	_ = t.Render()
+}
+
+func ensureConnected(cli *clients, connected bool) (*clients, bool) {
+	if connected {
+		return cli, true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	c, err := connect(ctx)
+	cancel()
+	if err != nil {
+		fmt.Printf("❌ Connect error: %v\n", err)
+		fmt.Println("💡 Ensure emulator is running and instance exists, or run 'help'.")
+		return cli, false
+	}
+	return c, true
+}
+
+func handleInit(ctx context.Context, cli *clients, parts []string, start time.Time) {
+	inst := getenv("BIGTABLE_INSTANCE", "test-instance")
+	cl := "test-cluster"
+	zone := "us-central1-f"
+	nodes := 1
+	if len(parts) >= 2 {
+		inst = parts[1]
+	}
+	if len(parts) >= 3 {
+		cl = parts[2]
+	}
+	if len(parts) >= 4 {
+		zone = parts[3]
+	}
+	if len(parts) >= 5 {
+		if n, err := strconv.Atoi(parts[4]); err == nil {
+			nodes = n
+		}
+	}
+
+	ia, err := bigtable.NewInstanceAdminClient(ctx, cli.project)
+	if err != nil {
+		fmt.Printf("❌ Error: %v\n\n", err)
+		return
+	}
+	if _, err := ia.InstanceInfo(ctx, inst); err != nil {
+		conf := &bigtable.InstanceConf{
+			InstanceId:   inst,
+			DisplayName:  inst,
+			ClusterId:    cl,
+			Zone:         zone,
+			NumNodes:     int32(nodes),
+			InstanceType: bigtable.DEVELOPMENT,
+		}
+		if err := ia.CreateInstance(ctx, conf); err != nil {
+			fmt.Printf("❌ Error: %v\n\n", err)
+			_ = ia.Close()
+			return
+		}
+	}
+	_ = ia.Close()
+	fmt.Printf("\n✅ Instance %s ready with cluster %s (%v)\n\n", inst, cl, time.Since(start).Round(time.Millisecond))
+}
+
+func handleTables(ctx context.Context, cli *clients, start time.Time) {
+	names, err := cli.admin.Tables(ctx)
+	if err != nil {
+		fmt.Printf("❌ Error: %v\n\n", err)
+		return
+	}
+	table := tablewriter.NewWriter(os.Stdout)
+	setHeader(table, []string{"Tables"})
+	for _, n := range names {
+		appendRow(table, []string{n})
+	}
+	fmt.Println()
+	renderTable(table)
+	fmt.Printf("\n(%d rows) Time: %v\n\n", len(names), time.Since(start).Round(time.Millisecond))
+}
+
+func handleCreate(ctx context.Context, cli *clients, parts []string, start time.Time) {
+	if len(parts) < 2 {
+		fmt.Println("Usage: create <table> [cf]")
+		return
+	}
+	tbl := parts[1]
+	cf := "cf1"
+	if len(parts) >= 3 {
+		cf = parts[2]
+	}
+	if err := cli.admin.CreateTable(ctx, tbl); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already exists") {
+		fmt.Printf("❌ Error: %v\n\n", err)
+		return
+	}
+	if err := cli.admin.CreateColumnFamily(ctx, tbl, cf); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already exists") {
+		fmt.Printf("❌ Error: %v\n\n", err)
+		return
+	}
+	fmt.Printf("\n✅ Table %s (cf=%s) ready (%v)\n\n", tbl, cf, time.Since(start).Round(time.Millisecond))
+}
+
+func handleDelete(ctx context.Context, cli *clients, parts []string, start time.Time) {
+	if len(parts) < 2 {
+		fmt.Println("Usage: delete <table>")
+		return
+	}
+	tbl := parts[1]
+	if err := cli.admin.DeleteTable(ctx, tbl); err != nil {
+		fmt.Printf("❌ Error: %v\n\n", err)
+		return
+	}
+	fmt.Printf("\n✅ Dropped %s (%v)\n\n", tbl, time.Since(start).Round(time.Millisecond))
+}
+
+func handlePut(ctx context.Context, cli *clients, parts []string, start time.Time) {
+	if len(parts) < 5 {
+		fmt.Println("Usage: put <table> <row> <family:col> <value>")
+		return
+	}
+	tbl, row, famcol, val := parts[1], parts[2], parts[3], strings.Join(parts[4:], " ")
+	f := strings.SplitN(famcol, ":", 2)
+	if len(f) != 2 {
+		fmt.Println("family:col required")
+		return
+	}
+	mut := bigtable.NewMutation()
+	mut.Set(f[0], f[1], bigtable.Now(), []byte(val))
+	if err := cli.data.Open(tbl).Apply(ctx, row, mut); err != nil {
+		fmt.Printf("❌ Error: %v\n\n", err)
+		return
+	}
+	fmt.Printf("\n✅ Wrote row=%s %s:%s (%v)\n\n", row, f[0], f[1], time.Since(start).Round(time.Millisecond))
+}
+
+func handleGet(ctx context.Context, cli *clients, parts []string, start time.Time) {
+	if len(parts) < 3 {
+		fmt.Println("Usage: get <table> <row> [family:col]")
+		return
+	}
+	tbl, row := parts[1], parts[2]
+	var fam, col string
+	if len(parts) >= 4 {
+		fc := strings.SplitN(parts[3], ":", 2)
+		if len(fc) == 2 {
+			fam, col = fc[0], fc[1]
+		}
+	}
+	rr, err := cli.data.Open(tbl).ReadRow(ctx, row)
+	if err != nil {
+		fmt.Printf("❌ Error: %v\n\n", err)
+		return
+	}
+	table := tablewriter.NewWriter(os.Stdout)
+	setHeader(table, []string{"Family", "Column", "Timestamp(us)", "Value"})
+	for famName, items := range rr {
+		for _, item := range items {
+			if fam != "" && famName != fam {
+				continue
+			}
+			if col != "" && item.Column != fam+":"+col {
+				continue
+			}
+			ts := fmt.Sprintf("%d", item.Timestamp)
+			appendRow(table, []string{famName, item.Column, ts, string(item.Value)})
+		}
+	}
+	fmt.Println()
+	renderTable(table)
+	fmt.Printf("\nTime: %v\n\n", time.Since(start).Round(time.Millisecond))
+}
+
+func handleScan(ctx context.Context, cli *clients, parts []string, start time.Time) {
+	if len(parts) < 2 {
+		fmt.Println("Usage: scan <table> [limit]")
+		return
+	}
+	tbl := parts[1]
+	limit := 10
+	if len(parts) >= 3 {
+		if n, err := strconv.Atoi(parts[2]); err == nil {
+			limit = n
+		}
+	}
+	t := cli.data.Open(tbl)
+	count := 0
+	table := tablewriter.NewWriter(os.Stdout)
+	setHeader(table, []string{"RowKey", "Family", "Column", "Value"})
+	err := t.ReadRows(ctx, bigtable.InfiniteRange(""), func(rr bigtable.Row) bool {
+		var rowKey string
+		for fam, items := range rr {
+			for _, item := range items {
+				if rowKey == "" {
+					rowKey = item.Row
+				}
+				appendRow(table, []string{rowKey, fam, item.Column, string(item.Value)})
+			}
+		}
+		count++
+		return count < limit
+	})
+	if err != nil {
+		fmt.Printf("❌ Error: %v\n\n", err)
+		return
+	}
+	fmt.Println()
+	renderTable(table)
+	fmt.Printf("\n(%d rows) Time: %v\n\n", count, time.Since(start).Round(time.Millisecond))
 }
 
 func main() {
@@ -96,7 +309,6 @@ func main() {
 	fmt.Println("\nType 'help' for commands; 'exit' to leave")
 	fmt.Println()
 
-	// Lazy connect on first command that needs it
 	var cli *clients
 	var connected bool
 
@@ -111,11 +323,11 @@ func main() {
 			continue
 		}
 		low := strings.ToLower(line)
-		switch {
-		case low == "help" || low == "\\h":
+		switch low {
+		case "help", "\\h":
 			printHelp()
 			continue
-		case low == "exit" || low == "quit" || low == "\\q":
+		case "exit", "quit", "\\q":
 			fmt.Println("Goodbye! 👋")
 			if cli != nil {
 				cli.close()
@@ -123,18 +335,9 @@ func main() {
 			return
 		}
 
-		// Commands below require a connection
+		cli, connected = ensureConnected(cli, connected)
 		if !connected {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			c, err := connect(ctx)
-			cancel()
-			if err != nil {
-				fmt.Printf("❌ Connect error: %v\n", err)
-				fmt.Println("💡 Ensure emulator is running and instance exists, or run 'help'.")
-				continue
-			}
-			cli = c
-			connected = true
+			continue
 		}
 
 		parts := strings.Fields(line)
@@ -147,188 +350,19 @@ func main() {
 
 		switch cmd {
 		case "init", "init-instance":
-			// Defaults based on env or sane emulator values
-			inst := getenv("BIGTABLE_INSTANCE", "test-instance")
-			cl := "test-cluster"
-			zone := "us-central1-f"
-			nodes := 1
-			if len(parts) >= 2 {
-				inst = parts[1]
-			}
-			if len(parts) >= 3 {
-				cl = parts[2]
-			}
-			if len(parts) >= 4 {
-				zone = parts[3]
-			}
-			if len(parts) >= 5 {
-				fmt.Sscanf(parts[4], "%d", &nodes)
-			}
-
-			ia, err := bigtable.NewInstanceAdminClient(ctx, cli.project)
-			if err != nil {
-				fmt.Printf("❌ Error: %v\n\n", err)
-				continue
-			}
-			// If instance exists, we treat as success
-			if _, err := ia.InstanceInfo(ctx, inst); err != nil {
-				// Attempt creation using the modern InstanceConf API
-				conf := &bigtable.InstanceConf{
-					InstanceId:   inst,
-					DisplayName:  inst,
-					ClusterId:    cl,
-					Zone:         zone,
-					NumNodes:     int32(nodes),
-					InstanceType: bigtable.DEVELOPMENT,
-				}
-				if err := ia.CreateInstance(ctx, conf); err != nil {
-					fmt.Printf("❌ Error: %v\n\n", err)
-					_ = ia.Close()
-					continue
-				}
-			}
-			_ = ia.Close()
-			fmt.Printf("\n✅ Instance %s ready with cluster %s (%v)\n\n", inst, cl, time.Since(start).Round(time.Millisecond))
-
+			handleInit(ctx, cli, parts, start)
 		case "tables", "\\lt":
-			names, err := cli.admin.Tables(ctx)
-			if err != nil {
-				fmt.Printf("❌ Error: %v\n\n", err)
-				continue
-			}
-			table := tablewriter.NewWriter(os.Stdout)
-			setHeader(table, []string{"Tables"})
-			for _, n := range names {
-				table.Append([]string{n})
-			}
-			fmt.Println()
-			table.Render()
-			fmt.Printf("\n(%d rows) Time: %v\n\n", len(names), time.Since(start).Round(time.Millisecond))
-
+			handleTables(ctx, cli, start)
 		case "create":
-			if len(parts) < 2 {
-				fmt.Println("Usage: create <table> [cf]")
-				continue
-			}
-			tbl := parts[1]
-			cf := "cf1"
-			if len(parts) >= 3 {
-				cf = parts[2]
-			}
-			if err := cli.admin.CreateTable(ctx, tbl); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already exists") {
-				fmt.Printf("❌ Error: %v\n\n", err)
-				continue
-			}
-			if err := cli.admin.CreateColumnFamily(ctx, tbl, cf); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already exists") {
-				fmt.Printf("❌ Error: %v\n\n", err)
-				continue
-			}
-			fmt.Printf("\n✅ Table %s (cf=%s) ready (%v)\n\n", tbl, cf, time.Since(start).Round(time.Millisecond))
-
+			handleCreate(ctx, cli, parts, start)
 		case "delete":
-			if len(parts) < 2 {
-				fmt.Println("Usage: delete <table>")
-				continue
-			}
-			tbl := parts[1]
-			if err := cli.admin.DeleteTable(ctx, tbl); err != nil {
-				fmt.Printf("❌ Error: %v\n\n", err)
-				continue
-			}
-			fmt.Printf("\n✅ Dropped %s (%v)\n\n", tbl, time.Since(start).Round(time.Millisecond))
-
+			handleDelete(ctx, cli, parts, start)
 		case "put":
-			if len(parts) < 5 {
-				fmt.Println("Usage: put <table> <row> <family:col> <value>")
-				continue
-			}
-			tbl, row, famcol, val := parts[1], parts[2], parts[3], strings.Join(parts[4:], " ")
-			f := strings.SplitN(famcol, ":", 2)
-			if len(f) != 2 {
-				fmt.Println("family:col required")
-				continue
-			}
-			mut := bigtable.NewMutation()
-			mut.Set(f[0], f[1], bigtable.Now(), []byte(val))
-			if err := cli.data.Open(tbl).Apply(ctx, row, mut); err != nil {
-				fmt.Printf("❌ Error: %v\n\n", err)
-				continue
-			}
-			fmt.Printf("\n✅ Wrote row=%s %s:%s (%v)\n\n", row, f[0], f[1], time.Since(start).Round(time.Millisecond))
-
+			handlePut(ctx, cli, parts, start)
 		case "get":
-			if len(parts) < 3 {
-				fmt.Println("Usage: get <table> <row> [family:col]")
-				continue
-			}
-			tbl, row := parts[1], parts[2]
-			var fam, col string
-			if len(parts) >= 4 {
-				fc := strings.SplitN(parts[3], ":", 2)
-				if len(fc) == 2 {
-					fam, col = fc[0], fc[1]
-				}
-			}
-			rr, err := cli.data.Open(tbl).ReadRow(ctx, row)
-			if err != nil {
-				fmt.Printf("❌ Error: %v\n\n", err)
-				continue
-			}
-			table := tablewriter.NewWriter(os.Stdout)
-			setHeader(table, []string{"Family", "Column", "Timestamp(us)", "Value"})
-			for famName, items := range rr {
-				for _, item := range items {
-					if fam != "" && famName != fam {
-						continue
-					}
-					if col != "" && item.Column != fam+":"+col {
-						continue
-					}
-					ts := fmt.Sprintf("%d", item.Timestamp)
-					table.Append([]string{famName, item.Column, ts, string(item.Value)})
-				}
-			}
-			fmt.Println()
-			table.Render()
-			fmt.Printf("\nTime: %v\n\n", time.Since(start).Round(time.Millisecond))
-
+			handleGet(ctx, cli, parts, start)
 		case "scan":
-			if len(parts) < 2 {
-				fmt.Println("Usage: scan <table> [limit]")
-				continue
-			}
-			tbl := parts[1]
-			limit := 10
-			if len(parts) >= 3 {
-				if n, err := fmt.Sscanf(parts[2], "%d", &limit); n == 0 || err != nil {
-					limit = 10
-				}
-			}
-			t := cli.data.Open(tbl)
-			count := 0
-			table := tablewriter.NewWriter(os.Stdout)
-			setHeader(table, []string{"RowKey", "Family", "Column", "Value"})
-			err := t.ReadRows(ctx, bigtable.InfiniteRange(""), func(rr bigtable.Row) bool {
-				var rowKey string
-				for fam, items := range rr {
-					for _, item := range items {
-						if rowKey == "" {
-							rowKey = item.Row
-						}
-						table.Append([]string{rowKey, fam, item.Column, string(item.Value)})
-					}
-				}
-				count++
-				return count < limit
-			})
-			if err != nil {
-				fmt.Printf("❌ Error: %v\n\n", err)
-				continue
-			}
-			fmt.Println()
-			table.Render()
-			fmt.Printf("\n(%d rows) Time: %v\n\n", count, time.Since(start).Round(time.Millisecond))
-
+			handleScan(ctx, cli, parts, start)
 		default:
 			fmt.Printf("Unknown command: %s\n", cmd)
 		}

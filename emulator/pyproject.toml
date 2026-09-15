@@ -29,8 +29,11 @@ dev = [
     "pytest>=9.1.0",
     "pytest-asyncio>=1.4.0",
     "pytest-timeout>=2.3.1",
-    # == the dotfiles gate pin (`uvx ruff@<ver>` in the root justfile); a newer
-    # ruff widens the default rules. tests/unit/test_ruff_ty_pins.py keeps it equal.
+]
+# ruff + ty only: `uv run --frozen --only-group lint ruff` (emu-fmt / emu-lint).
+# ty uses `--group lint` so it still sees project imports.
+lint = [
+    # == the root lint-group pin; tests/unit/test_ruff_ty_pins.py keeps it equal.
     "ruff==0.15.22",
     "ty==0.0.77",
 ]
@@ -98,11 +101,9 @@ timeout_method = "thread"
 # span") and silently downgrades the package back into quarantine (verified
 # 2026-09-08, uv 0.12.10). Drop an entry once its release is >=7 days old.
 exclude-newer = "7 days"
-# mlflow 3.16.0 (uploaded 2026-09-04) lifts the `cryptography<50` cap so that
-# cryptography 50.0.1 (GHSA-g6cj-pr64-35w5, Dependabot #103) can resolve.
-# Removable after 2026-09-11 -- `just check-uv-exclude-newer` (in `just check`)
-# fails from then on until the entry is deleted and `uv lock` re-run.
-exclude-newer-package = { mlflow = "2026-09-04T06:00:00Z", mlflow-skinny = "2026-09-04T06:00:00Z", mlflow-tracing = "2026-09-04T06:00:00Z" }
+# ruff/ty = false so an exact pin can move without waiting out the window
+# (docs/agents/python-tooling.md).
+exclude-newer-package = { ruff = false, ty = false }
 
 # ADR 0028: route resolution through the Flatt Security PyPI mirror (malware-
 # scanned). flatt becomes the default index, replacing the implicit pypi.org.

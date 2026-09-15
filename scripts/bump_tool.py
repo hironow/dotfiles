@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Move a ruff or ty pin in every declaration at once (`just bump-tool <tool> <ver>`).
 
-ruff and ty are pinned exactly in four places that must agree
-(tests/unit/test_ruff_ty_pins.py): the justfile's `uvx ruff@<ver>` gate pin (ruff
-only), the root and emulator dev groups (`"<tool>==<ver>"`), and the shared mise
-config (`<tool> = "<ver>"`). Dependabot ignores both tools, so this script is the
-one path a pin moves through. It rewrites all declarations (refusing, with no
-writes, if any is missing or not an exact pin), re-locks both uv projects with
+ruff and ty are pinned exactly in three places that must agree
+(tests/unit/test_ruff_ty_pins.py): the root and emulator lint groups
+(`"<tool>==<ver>"`), and the shared mise config (`<tool> = "<ver>"`). The
+justfile gate is `uv run --frozen --only-group lint ruff` (no uvx pin).
+Dependabot ignores both tools, so this script is the one path a pin moves
+through. It rewrites all declarations (refusing, with no writes, if any is
+missing or not an exact pin), re-locks both uv projects with
 `uv lock --upgrade-package <tool>`, and prints the hironow/skills follow-up.
 
 Usage: bump_tool.py {ruff,ty} VERSION [--repo DIR] [--no-lock] [--dry-run]
@@ -39,18 +40,18 @@ class Edit:
 def plan(repo: Path, tool: str, version: str) -> list[Edit]:
     """Every declaration of `tool` this repo carries, as substitution edits."""
     ver = r"[0-9][0-9A-Za-z.]*"
-    edits = [
+    return [
         Edit(
             repo / "pyproject.toml",
             re.compile(rf'"{tool}=={ver}"'),
             f'"{tool}=={version}"',
-            "root dev group",
+            "root lint group",
         ),
         Edit(
             repo / "emulator" / "pyproject.toml",
             re.compile(rf'"{tool}=={ver}"'),
             f'"{tool}=={version}"',
-            "emulator dev group",
+            "emulator lint group",
         ),
         Edit(
             repo / "config" / "mise" / "config.toml",
@@ -59,17 +60,6 @@ def plan(repo: Path, tool: str, version: str) -> list[Edit]:
             "mise config",
         ),
     ]
-    if tool == "ruff":
-        edits.insert(
-            0,
-            Edit(
-                repo / "justfile",
-                re.compile(rf"uvx ruff@{ver}"),
-                f"uvx ruff@{version}",
-                "justfile uvx gate pin",
-            ),
-        )
-    return edits
 
 
 def _lock(repo: Path, tool: str, dry_run: bool) -> int:

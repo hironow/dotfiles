@@ -10,6 +10,10 @@ resolution-markers = [
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
+[options.exclude-newer-package]
+ruff = false
+ty = false
+
 [[package]]
 name = "colorama"
 version = "0.4.6"
@@ -27,6 +31,8 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+]
+lint = [
     { name = "ruff" },
     { name = "ty" },
 ]
@@ -34,8 +40,8 @@ dev = [
 [package.metadata]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=9.1.1" },
+dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+lint = [
     { name = "ruff", specifier = "==0.15.22" },
     { name = "ty", specifier = "==0.0.77" },
 ]

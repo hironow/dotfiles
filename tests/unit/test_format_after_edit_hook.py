@@ -84,7 +84,8 @@ def test_python_edit_formats_only_the_edited_file(tmp_path: Path) -> None:
     assert lines, "expected the Python branch to invoke uv"
     for line in lines:
         # --frozen pins the "never touch uv.lock" contract (e013e6f).
-        assert line.startswith("uv run --frozen ruff "), line
+        # --only-group lint is the ruff/ty group (docs/agents/python-tooling.md).
+        assert line.startswith("uv run --frozen --only-group lint ruff "), line
         assert str(target) in line, f"ruff must target the edited file: {line}"
     assert not any(line.startswith("just") for line in lines)
 

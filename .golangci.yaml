@@ -1,0 +1,50 @@
+# golangci-lint v2 config for this repo's Go modules (emulator CLIs and
+# tools/simple-server). One file at the repo root; recipes pass --config.
+# gofumpt ONLY — do not enable goimports alongside it: their import grouping
+# conflicts, making `fmt` and `run` disagree.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # standard = errcheck / govet / ineffassign / staticcheck / unused.
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - gocyclo
+    - gosec
+    - misspell
+    - nilerr
+    - perfsprint
+    - revive
+    - unconvert
+    - unparam
+  settings:
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - bodyclose
+          - errcheck
+          - gosec
+
+formatters:
+  enable:
+    - gofumpt

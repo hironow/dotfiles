@@ -38,12 +38,16 @@ func getConnStr() string {
 
 	conn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=%s", host, port, user, dbname, sslmode)
 	if password != "" {
-		conn += fmt.Sprintf(" password=%s", password)
+		conn += " password=" + password
 	}
 	return conn
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	fmt.Println("🚀 PostgreSQL 18 CLI")
 	fmt.Println("=====================")
 
@@ -51,7 +55,7 @@ func main() {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		fmt.Printf("❌ Failed to connect: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	defer db.Close()
 
@@ -68,7 +72,7 @@ func main() {
 			port = "5433"
 		}
 		fmt.Printf("💡 Ensure PostgreSQL is reachable at %s:%s (host defaults)\n", host, port)
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println("✅ Connected to PostgreSQL 18")
@@ -93,7 +97,7 @@ func main() {
 			switch strings.ToLower(line) {
 			case "exit", "quit", "\\q":
 				fmt.Println("Goodbye! 👋")
-				return
+				return 0
 			case "help", "\\h":
 				printHelp()
 				continue
@@ -116,6 +120,7 @@ func main() {
 			executeQuery(db, query)
 		}
 	}
+	return 0
 }
 
 func printHelp() {
@@ -142,14 +147,14 @@ func showTables(db *sql.DB) {
 	if ts, ok := any(table).(interface{ SetHeader([]string) }); ok {
 		ts.SetHeader([]string{"schema", "table"})
 	} else {
-		table.Append([]string{"schema", "table"})
+		_ = table.Append([]string{"schema", "table"})
 	}
 	for rows.Next() {
 		var s, t string
 		_ = rows.Scan(&s, &t)
-		table.Append([]string{s, t})
+		_ = table.Append([]string{s, t})
 	}
-	table.Render()
+	_ = table.Render()
 }
 
 func executeQuery(db *sql.DB, query string) {
@@ -177,7 +182,7 @@ func executeQuery(db *sql.DB, query string) {
 		if ts, ok := any(table).(interface{ SetHeader([]string) }); ok {
 			ts.SetHeader(cols)
 		} else {
-			table.Append(cols)
+			_ = table.Append(cols)
 		}
 
 		vals := make([]interface{}, len(cols))
@@ -204,9 +209,9 @@ func executeQuery(db *sql.DB, query string) {
 					out[i] = fmt.Sprintf("%v", v)
 				}
 			}
-			table.Append(out)
+			_ = table.Append(out)
 		}
-		table.Render()
+		_ = table.Render()
 		return
 	}
 

@@ -1,6 +1,6 @@
 module elasticsearch-cli
 
-go 1.23
+go 1.27
 
 require (
 	github.com/olekukonko/tablewriter v1.1.4
