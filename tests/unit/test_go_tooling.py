@@ -10,11 +10,17 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 _GO_DIRECTIVE = re.compile(r"^go (\d+)(?:\.(\d+))?(?:\.(\d+))?$")
 _FLOOR = (1, 27)
+_BAKED_MISE = REPO / ".devcontainer" / "features" / "dotfiles-tools" / "install.sh"
+_BAKED_MISE_HEREDOC = re.compile(
+    r"cat > /etc/mise/config.toml <<'EOF'\n(.*?)\nEOF",
+    re.DOTALL,
+)
 
 
 def _git_ls(pattern: str) -> list[Path]:
@@ -113,6 +119,32 @@ def test_just_check_wires_go_lint() -> None:
     assert in_recipe, "just check recipe not found"
     assert re.search(r"\bgo-lint\b|golangci-lint\s+run", joined), (
         "just check must run the Go lint gate"
+    )
+
+
+def _baked_mise_tools() -> dict:
+    text = _BAKED_MISE.read_text(encoding="utf-8")
+    match = _BAKED_MISE_HEREDOC.search(text)
+    assert match, "install.sh must bake /etc/mise/config.toml"
+    parsed = tomllib.loads(match.group(1))
+    tools = parsed["tools"]
+    assert isinstance(tools, dict), "baked mise [tools] must be a table"
+    return tools
+
+
+def test_baked_mise_pins_go_and_golangci_lint() -> None:
+    """Sandbox `just check` runs go-lint; the one-shot image has no project
+    mise.toml, so /etc/mise must already pin Go and golangci-lint."""
+    tools = _baked_mise_tools()
+    go = tools.get("go")
+    assert go == "1.27.1", (
+        "bake go 1.27.1 into /etc/mise so sandbox just check can run go-lint, "
+        f"got {go!r}"
+    )
+    golangci = tools.get("aqua:golangci/golangci-lint")
+    assert golangci == "2.13.0", (
+        "bake aqua:golangci/golangci-lint 2.13.0 into /etc/mise so sandbox "
+        f"just check can run go-lint, got {golangci!r}"
     )
 
 

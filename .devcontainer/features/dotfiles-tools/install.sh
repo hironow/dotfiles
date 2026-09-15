@@ -258,6 +258,12 @@ prek = "0.4.14"
 uv = "0.12.5"
 vp = "0.3.0"
 node = "24.19.0"
+# Go + golangci-lint: `just check` runs `just go-lint`. The one-shot
+# sandbox has no project mise.toml, so /etc/mise must already pin both
+# (golangci typechecks with Go; recipes invoke
+# `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
+go = "1.27.1"
+"aqua:golangci/golangci-lint" = "2.13.0"
 "npm:@openai/codex" = "0.153.4"
 # Under bun (package_manager above) mise ignores npm_args (bun reads
 # bun_args only). claude-code's postinstall still runs — the package is on
