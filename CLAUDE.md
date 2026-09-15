@@ -99,9 +99,10 @@ just sync-agents-preview …  # dry-run
   (`scripts/` `tests/`) の ruff は default rule + W605 のまま**で、spoke の canonical select は当てない
   (2026-09-08 計測: canonical は tests の ANN を除外しても 851 件。tests 中心の tooling に対して
   作業量が価値に見合わない)。`emulator/` は canonical を適用済み (tests/** は ANN / PLR2004 /
-  PLR0911 / PLR0915 を除外、理由は `emulator/pyproject.toml`)。gate の ruff 版は justfile の
-  `uvx ruff@<ver>` が正で、root / emulator の dev dep と mise の pin を `just bump-tool` で同時に動かす
-  (`tests/unit/test_ruff_ty_pins.py` が不一致を検出)。
+  PLR0911 / PLR0915 を除外、理由は `emulator/pyproject.toml`)。gate の ruff 版は root /
+  emulator の `[dependency-groups].lint` と uv.lock が正で、mise の pin を `just bump-tool`
+  で同時に動かす (`tests/unit/test_ruff_ty_pins.py` が不一致を検出)。justfile は
+  `uv run --frozen --only-group lint ruff` で呼ぶ。
 
 ## テストモデル (重要)
 

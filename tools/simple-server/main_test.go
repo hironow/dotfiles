@@ -16,7 +16,7 @@ func TestFileServer(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	content := []byte("Hello, World!")
-	err = os.WriteFile(tmpDir+"/index.html", content, 0644)
+	err = os.WriteFile(tmpDir+"/index.html", content, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -193,6 +193,22 @@ def test_non_string_cutoff_is_rejected_naming_the_package() -> None:
         mod.expired_overrides(_pyproject("mlflow = 20260904"), now=NOW, window=WINDOW)
 
 
+def test_boolean_false_is_a_pin_exemption_not_a_cutoff() -> None:
+    """uv accepts `pkg = false` to skip the global exclude-newer span so an
+    exact pin (ruff/ty) can move without waiting out the window. That is not
+    a forgotten absolute cutoff and must not fail this gate."""
+    mod = _load()
+    text = _pyproject("ruff = false", "ty = false")
+    assert mod.expired_overrides(text, now=NOW, window=WINDOW) == []
+
+
+def test_boolean_false_does_not_hide_a_sibling_expired_cutoff() -> None:
+    mod = _load()
+    text = _pyproject("ruff = false", 'mlflow = "2026-08-30T00:00:00Z"')
+    found = mod.expired_overrides(text, now=NOW, window=WINDOW)
+    assert [pkg for pkg, _c, _a in found] == ["mlflow"]
+
+
 def test_justfile_passes_every_uv_project_to_the_gate() -> None:
     """The project list is hardcoded in the justfile (like check_uv_flatt_index.sh);
     a fourth uv project must not slip past both."""

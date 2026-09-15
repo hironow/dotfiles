@@ -37,6 +37,24 @@ installed. The reasons are given so you generalize correctly to unlisted cases.
   (astral-sh/ty) for type checking — never `mypy`, `pyright`, `flake8`,
   `black`, `isort`. One toolchain, one config, one gate. Details:
   docs/agents/python-tooling.md.
+- **Services are Go, 1.27+ floor, stdlib first.** New services (and the
+  control plane) are Go — not Python, TypeScript, or shell. Floor is Go
+  1.27; take the newest stable the module compiles. Prefer stdlib — `uuid`
+  (not `github.com/google/uuid`), `encoding/json/v2` under
+  `GOEXPERIMENT=jsonv2` — over third-party modules. Lint/format:
+  golangci-lint v2 + gofumpt. Details: docs/agents/go-tooling.md.
+- **Distributed state is modelled in Quint.** An at-least-once queue,
+  lock/lease, reconciler/janitor, or anything that deletes or releases on
+  its own carries a Quint model and a seeded simulation of the real code,
+  both in `just check`. Single-process logic stays unit tests. Details:
+  docs/agents/formal-methods.md.
+- **Draft PRs run no Actions.** Every job reachable from `pull_request` is
+  gated `draft == false`, and the workflow declares `ready_for_review`.
+  Details: docs/agents/draft-ci.md.
+- **Dependencies: newest and more-secure, by class.** Class 1 (toolchains,
+  Ruff, ty, Go, bun, ...) adopt latest aggressively and fix-forward. Class 2
+  (niche) cooldown + changelog. Unsure → Class 2. Details:
+  docs/agents/dependency-policy.md.
 - **`bun` only** for Node. Never `npm`/`yarn`/`pnpm` (incl. `corepack pnpm`) —
   same lockfile-desync reason. (corepack stays installed for machine
   provisioning; agents just never invoke a package manager through it.)
@@ -51,9 +69,9 @@ installed. The reasons are given so you generalize correctly to unlisted cases.
   Coder VMs) changes only through OpenTofu + PR + CD. A stray `gcloud ... update`
   creates drift the next `tofu apply` silently reverts. Details:
   docs/agents/iac-drift-policy.md.
-- **Never weaken the gates to pass.** Do not edit ruff/ty/semgrep config to
-  silence a finding, and never commit with failing tests or non-zero lint/type
-  findings. Fix the cause.
+- **Never weaken the gates to pass.** Do not edit ruff/ty/semgrep/golangci
+  config to silence a finding, and never commit with failing tests or
+  non-zero lint/type findings. Fix the cause.
 
 ## Golden-path commands
 
@@ -124,6 +142,10 @@ Open the matching file the moment the trigger applies:
 | When you are…                                  | Read                                |
 | ---------------------------------------------- | ----------------------------------- |
 | writing/changing Python                        | docs/agents/python-tooling.md       |
+| writing/changing Go or a service               | docs/agents/go-tooling.md           |
+| modelling distributed state / Quint            | docs/agents/formal-methods.md       |
+| adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |
+| writing a `pull_request` workflow              | docs/agents/draft-ci.md             |
 | in the Red/Green/Refactor loop                 | docs/agents/tdd-workflow.md         |
 | writing a commit message                       | docs/agents/commit-discipline.md    |
 | writing or placing tests / asking "mock?"      | docs/agents/testing.md              |

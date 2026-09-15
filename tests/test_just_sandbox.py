@@ -784,7 +784,7 @@ def test_dump_host_rejects_unsafe_host(docker_image):
 # Format / Lint Recipe Tests
 # =============================================================================
 #
-# `just fmt` / `just lint` chain `uvx ruff` (Python), `mise x -- shellcheck`
+# `just fmt` / `just lint` chain `uv run --frozen --only-group lint ruff` (Python), `mise x -- shellcheck`
 # (lint only), and `mise x -- prettier` (both). The sandbox image ships mise,
 # and shellcheck is listed in mise.toml, so shellcheck runs for real here.
 #

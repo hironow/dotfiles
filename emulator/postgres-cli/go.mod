@@ -1,6 +1,6 @@
 module postgres-cli
 
-go 1.23.0
+go 1.27
 
 require (
 	github.com/lib/pq v1.12.3

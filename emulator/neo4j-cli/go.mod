@@ -1,6 +1,6 @@
 module neo4j-cli
 
-go 1.24
+go 1.27
 
 require (
 	github.com/neo4j/neo4j-go-driver/v5 v5.28.4

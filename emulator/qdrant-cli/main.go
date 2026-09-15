@@ -151,14 +151,14 @@ func listCollections() {
 	if ts, ok := any(table).(interface{ SetHeader([]string) }); ok {
 		ts.SetHeader([]string{"Name", "Vectors Count", "Points Count", "Config"})
 	} else {
-		table.Append([]string{"Name", "Vectors Count", "Points Count", "Config"})
+		_ = table.Append([]string{"Name", "Vectors Count", "Points Count", "Config"})
 	}
 
 	result.ForEach(func(key, value gjson.Result) bool {
 		name := value.Get("name").String()
 
 		// Get collection details
-		detailResp, err := makeRequest("GET", fmt.Sprintf("/collections/%s", name), nil)
+		detailResp, err := makeRequest("GET", "/collections/"+name, nil)
 		if err == nil {
 			details := gjson.Get(detailResp, "result")
 			vectorsCount := details.Get("vectors_count").String()
@@ -167,12 +167,12 @@ func listCollections() {
 			distance := details.Get("config.params.vectors.distance").String()
 			config := fmt.Sprintf("size=%s, distance=%s", vectorSize, distance)
 
-			table.Append([]string{name, vectorsCount, pointsCount, config})
+			_ = table.Append([]string{name, vectorsCount, pointsCount, config})
 		}
 		return true
 	})
 
-	table.Render()
+	_ = table.Render()
 }
 
 func showClusterInfo() {

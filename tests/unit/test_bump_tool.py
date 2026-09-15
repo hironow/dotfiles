@@ -1,10 +1,11 @@
 """Unit tests for scripts/bump_tool.py (`just bump-tool ruff|ty <ver>`).
 
-ruff and ty are pinned exactly in four declarations (justfile `uvx ruff@<ver>`,
-root and emulator dev groups, mise config) that tests/unit/test_ruff_ty_pins.py
-requires to agree; Dependabot ignores both. This script is therefore the only
-way a pin moves: it rewrites every declaration in one go, re-locks both uv
-projects, and prints the hironow/skills follow-up.
+ruff and ty are pinned exactly in three declarations (root and emulator lint
+groups, mise config) that tests/unit/test_ruff_ty_pins.py requires to agree;
+Dependabot ignores both. This script is therefore the only way a pin moves: it
+rewrites every declaration in one go, re-locks both uv projects, and prints
+the hironow/skills follow-up. The justfile no longer carries a `uvx ruff@<ver>`
+pin — the lint group + lock are the gate.
 """
 
 from __future__ import annotations
@@ -32,16 +33,16 @@ def _load():  # noqa: ANN202 - module object
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     (tmp_path / "justfile").write_text(
-        "fmt:\n    uvx ruff@0.15.22 format .\ncheck:\n    uvx ruff@0.15.22 check .\n",
+        "fmt:\n    uv run --frozen --only-group lint ruff format .\n",
         encoding="utf-8",
     )
     (tmp_path / "pyproject.toml").write_text(
-        '[dependency-groups]\ndev = [\n    "pytest>=9.1.1",\n    "ruff==0.15.22",\n    "ty==0.0.77",\n]\n',
+        '[dependency-groups]\ndev = [\n    "pytest>=9.1.1",\n]\nlint = [\n    "ruff==0.15.22",\n    "ty==0.0.77",\n]\n',
         encoding="utf-8",
     )
     (tmp_path / "emulator").mkdir()
     (tmp_path / "emulator" / "pyproject.toml").write_text(
-        '[dependency-groups]\ndev = [\n    "ruff==0.15.22",\n    "ty==0.0.77",\n]\n',
+        '[dependency-groups]\ndev = [\n    "pytest>=9.1.0",\n]\nlint = [\n    "ruff==0.15.22",\n    "ty==0.0.77",\n]\n',
         encoding="utf-8",
     )
     (tmp_path / "config" / "mise").mkdir(parents=True)
@@ -57,9 +58,7 @@ def test_bump_ruff_rewrites_every_declaration(
     mod = _load()
     rc = mod.main(["ruff", "0.15.23", "--repo", str(repo), "--no-lock"])
     assert rc == 0
-    assert (repo / "justfile").read_text(encoding="utf-8").count(
-        "uvx ruff@0.15.23"
-    ) == 2
+    assert "0.15.23" not in (repo / "justfile").read_text(encoding="utf-8")
     assert '"ruff==0.15.23"' in (repo / "pyproject.toml").read_text(encoding="utf-8")
     assert '"ruff==0.15.23"' in (repo / "emulator" / "pyproject.toml").read_text(
         encoding="utf-8"
@@ -118,7 +117,7 @@ def test_refuses_when_a_declaration_is_missing_and_writes_nothing(
 def test_refuses_a_non_exact_declaration(repo: Path) -> None:
     mod = _load()
     (repo / "emulator" / "pyproject.toml").write_text(
-        '[dependency-groups]\ndev = [\n    "ruff>=0.15",\n    "ty==0.0.77",\n]\n',
+        '[dependency-groups]\nlint = [\n    "ruff>=0.15",\n    "ty==0.0.77",\n]\n',
         encoding="utf-8",
     )
     assert mod.main(["ruff", "0.15.23", "--repo", str(repo), "--no-lock"]) == 1

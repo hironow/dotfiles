@@ -9,6 +9,8 @@ That cutoff never expires by itself: once the admitted release is older than
 the window the entry only freezes the package at that version, so later
 Dependabot bumps become silent no-ops. This gate turns the "removable after
 <date>" comment into a mechanical failure: delete the entry, run `uv lock`.
+uv also accepts `pkg = false` to skip the global span so an exact pin can
+move without waiting out the window; that is not a forgotten cutoff.
 
 Usage: check_uv_exclude_newer.py PYPROJECT [PYPROJECT ...] [--now ISO8601]
 Exit 0 = every override is younger than the window (or none exist); 1 = at
@@ -107,6 +109,11 @@ def expired_overrides(
     overrides = tool_uv.get("exclude-newer-package") or {}
     expired: list[tuple[str, datetime, timedelta]] = []
     for pkg, raw in overrides.items():
+        # uv accepts `pkg = false` to skip the global exclude-newer span so an
+        # exact pin can move without waiting out the window. That is not a
+        # forgotten absolute cutoff.
+        if raw is False:
+            continue
         cutoff = _parse_cutoff(pkg, raw)
         age = now - cutoff
         if age > window:

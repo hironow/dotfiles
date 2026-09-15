@@ -29,6 +29,10 @@ func getConnectionParams() (string, string, string) {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	fmt.Println("🚀 Neo4j CLI for Neo4j Emulator")
 	fmt.Println("======================================")
 
@@ -39,7 +43,7 @@ func main() {
 	driver, err := neo4j.NewDriverWithContext(uri, neo4j.BasicAuth(username, password, ""))
 	if err != nil {
 		fmt.Printf("❌ Failed to create driver: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	defer driver.Close(context.Background())
 
@@ -49,7 +53,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("❌ Failed to connect to Neo4j: %v\n", err)
 		fmt.Println("💡 Make sure Neo4j is running on", uri)
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println("✅ Connected to Neo4j")
@@ -83,7 +87,7 @@ func main() {
 			switch strings.ToLower(line) {
 			case "exit", "quit", "\\q":
 				fmt.Println("Goodbye! 👋")
-				return
+				return 0
 			case "help", "\\h":
 				printHelp()
 				continue
@@ -115,6 +119,7 @@ func main() {
 			executeQuery(ctx, session, query)
 		}
 	}
+	return 0
 }
 
 func printHelp() {
@@ -254,7 +259,7 @@ func executeQuery(ctx context.Context, session neo4j.SessionWithContext, query s
 			if ts, ok := any(table).(interface{ SetHeader([]string) }); ok {
 				ts.SetHeader(records[0].Keys)
 			} else {
-				table.Append(records[0].Keys)
+				_ = table.Append(records[0].Keys)
 			}
 			if x, ok := any(table).(interface{ SetAutoWrapText(bool) }); ok {
 				x.SetAutoWrapText(false)
@@ -285,11 +290,11 @@ func executeQuery(ctx context.Context, session neo4j.SessionWithContext, query s
 					value, _ := record.Get(key)
 					row = append(row, formatValue(value))
 				}
-				table.Append(row)
+				_ = table.Append(row)
 			}
 
 			fmt.Println()
-			table.Render()
+			_ = table.Render()
 			fmt.Printf("\n(%d rows) Time: %v\n\n", len(records), elapsed.Round(time.Millisecond))
 		}
 	} else {

@@ -35,8 +35,9 @@ func main() {
 	mux.Handle("/", fs)
 
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	// Start server in a goroutine

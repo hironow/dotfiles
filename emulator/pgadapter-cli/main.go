@@ -40,6 +40,10 @@ func getConnStr() string {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	fmt.Println("🚀 pgAdapter CLI for Spanner Emulator")
 	fmt.Println("======================================")
 
@@ -48,7 +52,7 @@ func main() {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		fmt.Printf("❌ Failed to connect: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	defer db.Close()
 
@@ -71,7 +75,7 @@ func main() {
 		}
 		fmt.Printf("💡 Target: %s:%s\n", host, port)
 		fmt.Printf("💡 Host access hint: localhost:%s (override with PGADAPTER_PORT)\n", alt)
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println("✅ Connected to Spanner Emulator via pgAdapter")
@@ -101,7 +105,7 @@ func main() {
 			switch strings.ToLower(line) {
 			case "exit", "quit", "\\q":
 				fmt.Println("Goodbye! 👋")
-				return
+				return 0
 			case "help", "\\h":
 				printHelp()
 				continue
@@ -129,6 +133,7 @@ func main() {
 			executeQuery(ctx, db, query)
 		}
 	}
+	return 0
 }
 
 func printHelp() {
@@ -236,7 +241,7 @@ func executeQuery(ctx context.Context, db *sql.DB, query string) {
 		if ts, ok := any(table).(interface{ SetHeader([]string) }); ok {
 			ts.SetHeader(columns)
 		} else {
-			table.Append(columns)
+			_ = table.Append(columns)
 		}
 		// Optional styling if methods exist in the linked tablewriter version
 		if x, ok := any(table).(interface{ SetAutoWrapText(bool) }); ok {
@@ -284,12 +289,12 @@ func executeQuery(ctx context.Context, db *sql.DB, query string) {
 					row = append(row, string(col))
 				}
 			}
-			table.Append(row)
+			_ = table.Append(row)
 			rowCount++
 		}
 
 		fmt.Println()
-		table.Render()
+		_ = table.Render()
 
 		elapsed := time.Since(start)
 		fmt.Printf("\n(%d rows) Time: %v\n\n", rowCount, elapsed.Round(time.Millisecond))

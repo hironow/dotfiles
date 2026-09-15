@@ -22,11 +22,12 @@
 #
 # Ecosystems in this repo:
 #   github-actions -> .github/workflows/*.yaml (SHA-pinned actions)
-#   uv             -> / (root tooling dev deps: pytest, ruff, ty -- ADR 0044)
+#   uv             -> / (root: pytest in dev, ruff/ty in lint -- ADR 0044)
 #                     + tools/rttm (rttm CLI) + emulator (vendored dev stack)
 #   docker         -> tests/docker test images + emulator/* service Dockerfiles
-#   gomod          -> emulator/*-cli Go helper CLIs (added 2026-07-10 after 14
-#                     x/crypto & x/net alerts rotted unwatched in bigtable-cli)
+#   gomod          -> emulator/*-cli Go helper CLIs + tools/simple-server
+#                     (emulator CLIs added 2026-07-10 after 14 x/crypto &
+#                     x/net alerts rotted unwatched in bigtable-cli)
 #
 # Out of scope: gitsubmodules (synced via scripts/sync_agents.py), compose.yaml
 # `image:` tags in telemetry/ + emulator/
@@ -49,9 +50,9 @@ updates:
       github-actions:
         patterns: ["*"]
 
-  # Root: dev-only deps (pytest + the ruff/ty pins the gate runs). ruff is pinned
-  # == to the justfile's `uvx ruff@<ver>` and ty == because it is pre-1.0
-  # (ADR 0044); a Dependabot bump of either is a deliberate pin edit to review.
+  # Root: pytest in the dev group + ruff/ty pins in the lint group. Both tools
+  # are pinned == (docs/agents/python-tooling.md); a Dependabot bump of either
+  # is a deliberate pin edit to review.
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
@@ -63,9 +64,9 @@ updates:
       prefix: "chore"
       include: "scope"
     ignore:
-      # ruff and ty are pinned == in four places (justfile uvx pin, root and
-      # emulator dev groups, mise) and bumped together by `just bump-tool`;
-      # a one-place Dependabot bump only turns tests/unit/test_ruff_ty_pins.py red.
+      # ruff and ty are pinned == in three places (root and emulator lint
+      # groups, mise) and bumped together by `just bump-tool`; a one-place
+      # Dependabot bump only turns tests/unit/test_ruff_ty_pins.py red.
       - dependency-name: "ruff"
       - dependency-name: "ty"
 
@@ -100,11 +101,13 @@ updates:
       emulator-python:
         patterns: ["*"]
 
-  # emulator/*-cli are small vendored Go CLIs (one go.mod each); grouped to one
-  # weekly PR so transitive golang.org/x/* bumps don't rot unwatched.
+  # emulator/*-cli and tools/simple-server are small vendored Go modules
+  # (one go.mod each); grouped to one weekly PR so transitive golang.org/x/*
+  # bumps don't rot unwatched.
   - package-ecosystem: "gomod"
     directories:
       - "/emulator/*"
+      - "/tools/simple-server"
     schedule:
       interval: "weekly"
     cooldown:
