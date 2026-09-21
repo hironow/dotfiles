@@ -134,6 +134,8 @@ brew "libvpx"
 brew "opus"
 # Play, record, convert, and stream select audio and video codecs
 brew "ffmpeg"
+# Play, record, convert, and stream select audio and video codecs
+brew "ffmpeg@8"
 # Fast web fuzzer written in Go
 brew "ffuf"
 # Command-line interface that provides utilities for building Flow applications
@@ -202,8 +204,6 @@ brew "goose"
 brew "gosec"
 # Database client and tools for the Go vulnerability database
 brew "govulncheck"
-# Development kit for the Java programming language
-brew "openjdk", link: true
 # Open-source build automation tool based on the Groovy and Kotlin DSL
 brew "gradle"
 # Gorgeous metric visualizations and dashboards for timeseries databases
@@ -280,6 +280,8 @@ brew "markdownlint-cli"
 brew "mas"
 # TCP port scanner, scans entire Internet in under 5 minutes
 brew "masscan"
+# Development kit for the Java programming language
+brew "openjdk", link: true
 # Java-based project management
 brew "maven"
 # MCP server for databases
@@ -466,12 +468,14 @@ brew "dbt-labs/dbt-cli/dbt", trusted: true
 brew "deploifai/deploifai/deploifai", trusted: true
 # Kubernetes CLI To Manage Your Clusters In Style!
 brew "derailed/k9s/k9s", trusted: true
-# Secure dotenv–from the creator of `dotenv`
+# Secure dotenv—from the creator of `dotenv`
 brew "dotenvx/brew/dotenvx", trusted: true
 # A CLI for interacting with the Fastly platform
 brew "fastly/tap/fastly", trusted: true
 # Model Context Protocol server for Xcode project workflows
 brew "getsentry/xcodebuildmcp/xcodebuildmcp", trusted: true
+# CLI for the Grafana Agent Observability plugins
+brew "grafana/grafana/agento11y", trusted: true
 # Grafana Cloud CLI
 brew "grafana/grafana/gcx", trusted: true
 # An experimental MCP (Model Context Protocol) server for k6
@@ -793,6 +797,8 @@ vscode "zengxingxin.sort-js-object-keys"
 vscode "ziyasal.vscode-open-in-github"
 go "cmd/go"
 go "cmd/gofmt"
+go "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
+go "golang.org/x/tools/gopls"
 cargo "bdk-cli"
 cargo "cargo-deny"
 cargo "gen-license"
@@ -815,4 +821,5 @@ krew "krew"
 krew "node-shell"
 krew "ns"
 krew "resource-capacity"
+npm "@informalsystems/quint"
 npm "corepack"
