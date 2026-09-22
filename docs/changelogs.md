@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-09-15
+最終更新: 2026-09-22
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -12,7 +12,11 @@
 
 **現行バージョン**: v1.0.1 (2026-05)
 
-**チェックアウト状態**: `6d6640c` (HEAD 2026-09-10。 新規リリースタグはなく v1.0.1 が依然最新)
+**チェックアウト状態**: `afda8316` (HEAD 2026-09-16。 新規リリースタグはなく v1.0.1 が依然最新)
+
+#### 2026-09-16〜2026-09-22 新着 (1 commit、 docs のみ)
+
+- **roadmap 更新**: TSC 会議の議論に基づき roadmap ページを更新 (#2237)。 spec 変更なし
 
 #### 2026-09-01〜2026-09-15 新着 (docs のみ、 4 commits。 spec 非互換なし)
 
@@ -123,7 +127,18 @@
 
 **現行バージョン**: production **v0.9.1** (安定版 v0.9 系 patch)。 **v1.0 spec は Release Candidate** (Status: Candidate, 2026-06-08)。 `v0.8`/`v0.9` 軽量タグは共に旧 commit 19919ef4 を指し spec version を表さない (実体は `specification/{v0_8,v0_9,v0_9_1,v1_0}/`)
 
-**チェックアウト状態**: `c78608f1` (`v0.8-652-gc78608f1`、 HEAD 2026-09-14。 9月に 63 commits、 spec リリースタグは `v0.8`/`v0.9` のまま)
+**チェックアウト状態**: `f7ef57a1` (`v0.8-668-gf7ef57a1`、 HEAD 2026-09-22。 9月に 79 commits、 spec リリースタグは `v0.8`/`v0.9` のまま)
+
+#### 2026-09-16〜2026-09-22 新着 (16 commits: web_core 再帰ガード SECURITY + MCP catalog 関数 + Swift/Dart/Angular 修正)
+
+- **SECURITY (web_core)**: DynamicValue 解決の過剰再帰をガードし `MAX_DYNAMIC_VALUE_DEPTH = 20` を導入 (#2432) — 深さ 20,000 のネスト関数呼び出しが renderer プロセスをクラッシュさせる CWE-674 を防止
+- **MCP catalog**: MCP 結果を処理する jmespath / split / regexCapture / regexReplace / updateDataModel 関数を追加 (#2650)
+- **Swift**: 不正な path が書き込み先を削除するのを止める (data model conformance) (#2626)、 swift-json-schema を 0.13.x に制限 (#2656)
+- **Dart**: a2ui_core に payload entry-point 型を追加 (#2683)、 preact_signals 依存制約を緩和 (#2667)、 validator を単一 catalog にスコープ (#2538)
+- **Angular**: v0.8 icon component を非文字列名からガード (#2608)
+- **conformance**: agent SDK parser suites を追加し Python SDK で実行 (#2713)
+- **samples/mcp**: filesystem sample の startup action を A2UI payload から宣言的に実行 (#2711)、 mcp demo 修正 (#2687)、 mcp docs 改善 (#2682)
+- **docs**: a2ui_agent module blueprint 更新 (#2718)、 canonical examples に有効な basic catalog icon 名を使用 (#2703)、 spec 明確化 (#2677)、 Flutter adapter placeholder を renderers から dart へ移動 (#2588)
 
 #### 2026-09-01〜2026-09-15 新着 (web_core / lit **0.11.0** BREAKING + a2ui_agent 0.6.0 + SECURITY 硬化 + SkillGenerator)
 
@@ -467,9 +482,28 @@
 
 ### AG-UI (Agent-User Interaction Protocol)
 
-**現行バージョン**: **TS SDK 0.0.59** (@ag-ui/core/client/encoder/proto) / **Python protocol 0.1.22** / **ag-ui-langgraph@0.0.45** / **@ag-ui/mastra@1.1.4** / **ag_ui_strands@0.4.0 (Py) + @ag-ui/aws-strands@0.3.0 (TS)** / **ag-ui-crewai@0.3.1 (Py) + @ag-ui/crewai@0.0.4 (TS)** / **AG-UI .NET SDK (NuGet AGUI.\* 0.0.6)** / **AG-UI Java SDK 0.1.1** / 新規: **@ag-ui/mcp-apps-middleware@0.1.1** / **@ag-ui/mcp-middleware@0.0.2** / @ag-ui/ag2@0.0.2 / @ag-ui/agno@0.0.6 / @ag-ui/llamaindex@0.2.0 / @ag-ui/pydantic-ai@0.0.3 / @ag-ui/langchain@0.0.3
+**現行バージョン**: **AG-UI 1.0** — **TS SDK 1.0.0** (@ag-ui/core/client/encoder/proto) / **Python protocol 1.0.0** / **AG-UI .NET SDK (NuGet AGUI.* 1.0.0)** / **AG-UI Java SDK (Spring 統合)** / spec 1.0 (frozen)。 従来: @ag-ui/mastra@1.1.4 / ag_ui_strands@0.4.0 (Py) + @ag-ui/aws-strands@0.3.0 (TS) / ag-ui-crewai@0.3.1 (Py) + @ag-ui/crewai@0.0.4 (TS) / @ag-ui/mcp-apps-middleware@0.1.1 / @ag-ui/mcp-middleware@0.0.2 / @ag-ui/ag2@0.0.2 / @ag-ui/agno@0.0.6 / @ag-ui/llamaindex@0.2.0 / @ag-ui/pydantic-ai@0.0.3 / @ag-ui/langchain@0.0.3
 
-**チェックアウト状態**: `1918e2e4` (HEAD 2026-09-15 = `@ag-ui/mastra@1.1.4` + 15 commits。 9月に release/2026-09-08〜09-14 のリリースタグ群を発行)
+**チェックアウト状態**: `db790c3d4` (HEAD 2026-09-21 = `@ag-ui/client@1.0.0` + 2 commits。 9月に **AG-UI 1.0** リリース)
+
+#### 2026-09-16〜2026-09-22 新着 (**AG-UI 1.0 リリース**: spec freeze + 1.0.0 SDK 群 + Java Spring 統合)
+
+- **spec 1.0 freeze** (#2783): draft spec を 1.0 として freeze。 schema が single source of truth、 全 SDK の protocol 型がそこから生成、 behavioral rules が規範的 (BCP 14)。 `PROTOCOL_VERSION` が "1.0"
+- **1.0.0 SDK リリース** (2026-09-17): @ag-ui/core@1.0.0 / @ag-ui/client@1.0.0 / @ag-ui/encoder@1.0.0 / @ag-ui/proto@1.0.0、 ag-ui-protocol@1.0.0 (Py)、 AGUI.Abstractions/Formatting/Protobuf/Client/Server@1.0.0 (.NET)
+- **1.0 の主要なプロトコル変更 (0.x からの差分)**:
+  - `RUN_FINISHED.outcome` (success/interrupt/cancelled) + Interrupt + resume entry
+  - Subagent events (SUBAGENT_STARTED/FINISHED/ERROR + subagentRunId)
+  - THINKING_* が deprecated → REASONING_* 系へ (compatibility boundary で変換)
+  - ACTIVITY_SNAPSHOT / ACTIVITY_DELTA 構造化 progress events
+  - unknown vs malformed の規範的区別
+  - HTTP + Protobuf binary wire spec
+  - AgentCapabilities が schema 定義へ
+  - TOOL_CALL_RESULT.content が content parts を受け入れ (InputContent → ContentPart rename、 wire 不変)
+- **後方互換**: 0.x agent は 1.0 client で動作 (always-on compatibility boundary + version-gated middleware、 shims は DEPRECATIONS.md に記録、 12ヶ月 expiry)
+- **Java Spring 統合** (#2147): Spring AI 統合 (ag-ui-4j)
+- **protocol version 宣言**: client が話す protocol version を宣言し producer の version を判定 (Py/.NET)
+- **1.0 migration guide** (docs/migrating-to-1-0.mdx)
+- **fix**: langchain JSON decode error (#2681)、 watsonx lazy fastapi (#2747)、 typed runagent state (#2752)、 crewai uvicorn cap (#2769)、 optional copilotkit peer (#2763)、 license metadata publishing (#2761)、 client snapshot ordering (#2709)
 
 #### 2026-09-01〜2026-09-15 新着 (release/2026-09-08〜09-14: MCP Apps middleware 新設 + mastra 1.1.4 + strands 0.4.0 + Java 0.1.1)
 
@@ -744,7 +778,12 @@
 
 **現行バージョン**: **2026-07-28 (GA、 2026-07-28 タグ発行済)**
 
-**チェックアウト状態**: `cd062376` (2026-07-28 タグ以降の HEAD、 HEAD 2026-09-14。 spec GA タグは 2026-07-28 のまま)
+**チェックアウト状態**: `24efd6e7` (2026-07-28 タグ以降の HEAD、 HEAD 2026-09-18。 spec GA タグは 2026-07-28 のまま)
+
+#### 2026-09-16〜2026-09-22 新着 (4 commits、 docs のみ: Skills extension が published 化)
+
+- **Skills extension が published 化**: SEP-2640 が Final、 Skills Over MCP WG が公式 Skills extension (`io.modelcontextprotocol/skills`) を maintain — docs が published status を反映 (#3372)
+- **docs**: Skills work を extension issues で追跡、 ext-skills archive 移動後の Skills SEP links 修復 (#3366)
 
 #### 2026-09-01〜2026-09-15 新着 (**SEP-2640 Skills Over MCP が Final** + Skills WG / Filesystems WG)
 
@@ -1189,7 +1228,13 @@
 
 **現行バージョン**: v1.1（仕様、 タグなし latest 追従、 直近 spec commit 2026-05-18）
 
-**チェックアウト状態**: `88012a8` (remote HEAD detached、 HEAD 2026-09-06。 spec バージョンは v1.1 据え置き)
+**チェックアウト状態**: `4a9ed93` (remote HEAD detached、 HEAD 2026-09-16。 spec バージョンは v1.1 据え置き)
+
+#### 2026-09-16〜2026-09-22 新着 (4 commits: 1.1 snapshot re-cut + API docs 同期)
+
+- **1.1 snapshot re-cut** (#66): 1.2 が land する前に current line から versioned_docs/version-1.1 を re-cut — 1.1.x の docs (OAuth cache keying、 MCP client reuse、 socket protocols、 security/protocol pages) が 1.1 snapshot に反映
+- **docs 修正 (re-cut 前)**: redirect が non-loopback origin から loopback に入るのを止める (python-utcp #109)、 MCP checklist は HTTPS/WSS anywhere + plain HTTP/WS は loopback のみ、 ws:// URL の受理場所を明確化、 SSE reconnection の no-request-body 修飾
+- **API docs 同期**: python-utcp@3730c46 (1.2 line) から同期
 
 #### 2026-09-01〜2026-09-15 新着 (HTTP トラスト境界の docs 明確化、 spec 非互換なし)
 
@@ -1269,7 +1314,14 @@
 
 **管理**: Google Chrome Labs
 
-**チェックアウト状態**: `9cc745a` (`v0.0.4-56-g9cc745a` = v0.0.4 + 56 commits、 HEAD 2026-09-14。 新タグ未発行)
+**チェックアウト状態**: `80bb4d3` (`v0.0.4-73-g80bb4d3` = v0.0.4 + 73 commits、 HEAD 2026-09-21。 新タグ未発行)
+
+#### 2026-09-16〜2026-09-22 新着 (17 commits: demo SECURITY 硬化 + BestPrice.gr production site)
+
+- **SECURITY (demos)**: page-agent / french-bistro の innerHTML を DOMPurify で sanitize (#469)、 french-bistro modalDetails (#471)、 ticket-booking movieGrid (#472)、 pizza-maker の DOM XSS と DoS を緩和 (#468)、 webmcp-maze EvalTool の Web Worker を sandboxed iframe にネスト (#470)
+- **新規 production site**: BestPrice.gr production WebMCP site を追加 (#395)
+- **fix**: cross-demo tool name collisions を解決 (#474)、 webmcp demos 更新 (#476)
+- **deps**: @babel/core 7.29.7、 protobufjs 7.6.6、 nanoid 3.3.19 等
 
 #### 2026-09-01〜2026-09-15 新着 (tool 実行 API の options / inputObject + WebMCP Registry / デモ拡充、 v0.0.4 据え置き)
 
@@ -1523,7 +1575,14 @@
 
 **現行バージョン**: **v2026-08-25 (2026-08-25)**
 
-**チェックアウト状態**: `8e600b05` (`git describe` = `v2026-01-23-239-g8e600b05`、 HEAD 2026-09-10。 protocol タグは v2026-08-25 のまま)
+**チェックアウト状態**: `ef833ac2` (`git describe` = `v2026-01-23-244-gef833ac2`、 HEAD 2026-09-21。 protocol タグは v2026-08-25 のまま)
+
+#### 2026-09-16〜2026-09-22 新着 (5 commits、 protocol バージョン据え置き)
+
+- **ci**: ucp workflows を harden (#847)
+- **fix**: docs を UTF-8 で読み込み、 欠落 ucp-schema binary を名指し (#840)
+- **docs**: specification overview section order を復元 (#823)
+- **deps**: soupsieve 2.9 (#834)、 anyio 4.14.2 (#844)
 
 #### 2026-09-01〜2026-09-15 新着 (Payments Technical Council 発表 + 依存 CVE 修正、 protocol バージョン据え置き)
 
@@ -1836,9 +1895,15 @@
 
 ### ADK Python
 
-**現行バージョン**: **v2.9.0 (2026-09-10)** / v1.39.1 (2026-08-27, stable lts)
+**現行バージョン**: **v2.9.2 (2026-09-18)** / v1.39.1 (2026-08-27, stable lts)
 
-**チェックアウト状態**: `322e3bf0` (OSS mirror main の HEAD、 HEAD 2026-09-15。 Copybara 運用のため `git describe` は `v1.32.0` 系列を出すが、 CHANGELOG 先頭は `[2.9.0] (2026-09-10)`。 バージョン参照は明示タグ/CHANGELOG を正とする)
+**チェックアウト状態**: `fc16a78a` (OSS mirror main の HEAD、 HEAD 2026-09-21。 Copybara 運用のため `git describe` は `v1.32.0` 系列を出すが、 CHANGELOG 先頭は `[2.9.2] (2026-09-18)`。 バージョン参照は明示タグ/CHANGELOG を正とする)
+
+#### 2026-09-16〜2026-09-22 新着 (**v2.9.1 / v2.9.2** + HEAD)
+
+- **v2.9.1 (2026-09-15)**: Claude adaptive thinking — visible thoughts を request して step-by-step reasoning を可視化 (ba0d542)
+- **v2.9.2 (2026-09-18)**: Telemetry — Agent Engine 以外のプラットフォームで OTel event name を保持 (9110770)
+- **HEAD (v2.9.2 以降)**: OpenAILlm の api_key/base_url + per-request key resolution (56aabce2)、 tool_config mode と全 tool declarations を honor (ed758bba)、 Chat Completions responses の堅牢な parsing (f28d28a3)、 SkillToolset が skill 変更を検知 (f848b7e3)、 workflow DEFAULT_ROUTE fan-out (ffc191bb)、 resolved interrupts が rerun_on_resume なしで resume (307d0413)、 Redis session list を oldest-first に復元 (68638424)、 rewind で InvocationNotFoundError (fc16a78a)、 artifact reference resolution depth 制限 (87b9f25b)
 
 #### 2026-09-01〜2026-09-15 新着 (**v2.9.0**: FallbackModel / LiveKit / YAML graphs / MCP SDK 2.x + 破壊的 3 件)
 
@@ -2363,7 +2428,14 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: **v2.4.0 (2026-09-11)**（v1 系は v1.7.0 を継続メンテ）
 
-**チェックアウト状態**: `ad8ff7bf` (HEAD 2026-09-15 = v2.4.0 + 直後修正。 `git describe` は軽量タグ運用により `v0.1.0-437-gad8ff7bf` を出す)
+**チェックアウト状態**: `437a384e` (HEAD 2026-09-22 = v2.4.0 + 6 commits。 `git describe` は軽量タグ運用により `v2.4.0-15-g437a384e` を出す)
+
+#### 2026-09-16〜2026-09-22 新着 (6 commits: web server SECURITY 硬化 + OpenAI model 修正)
+
+- **SECURITY**: web server を既定で loopback に bind (#1456)、 adkrest が DNS-rebinding hosts と cross-origin browsers を拒否 (#1615)
+- **OpenAI model**: streamed function name を output_item.added から取得 (#1616)、 function tools を non-strict validation に pin (#1389)
+- **session/vertexai**: AppendEvent persist 前に temp: keys を除去 (#1514)
+- **web launcher**: telemetry shutdown を defer し startup logging を調整 (#1469/#1470)
 
 #### 2026-09-01〜2026-09-15 新着 (**v2.4.0 / v1.7.0**: REST API 認証 + OpenAI stream / session 堅牢化)
 
@@ -2547,9 +2619,15 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ### ADK JS
 
-**現行バージョン**: **v2.0.0 (adk-v2.0.0 / devtools-v2.0.0 / integrations-v2.0.0、 2026-08-21)**
+**現行バージョン**: **v2.1.0 (adk-v2.1.0 / devtools-v2.1.0 / integrations-v2.1.0、 2026-09-15)**
 
-**チェックアウト状態**: `77b0803` (HEAD 2026-09-14 = v2.0.0 + 90 commits。 新規リリースタグなし。 軽量タグ運用による素の `git describe` の注意は従前どおり)
+**チェックアウト状態**: `1729ddd` (HEAD 2026-09-21 = v2.1.0 + 13 commits。 軽量タグ運用による素の `git describe` の注意は従前どおり)
+
+#### 2026-09-16〜2026-09-22 新着 (**v2.1.0 リリース** + 13 commits)
+
+- **v2.1.0 (2026-09-15, #792)**: v2.0.0 以降の 90 commits を正式リリース (Chrome Prompt API BaseLlm、 ContainerCodeExecutor、 VertexAiRagMemoryService、 PKCE S256、 SSRF/DNS-rebinding 硬化、 typed-errors、 ReflectAndRetry plugins 等 — 前セクション参照)
+- **feat**: openapi_tool を adk-python v0.1.0 と parity (#924)、 A2A task/working/input-required events に session metadata を付与 (#919)、 agent card に code-execution skill を publish (#905)
+- **fix**: 全 2xx media type を return schema 走査 (#917)、 schema-less media type で body argument を emit (#907)、 nested artifact が versions を漏らさない (#918)、 AdkApiServer.stop() を idempotent (#916)、 toGeminiSchema で enum の null member を除去 (#915)、 adk deploy agent_engine に --staging_bucket を wire (#893)、 Gemini 3.x live audio を model family で route (#912)、 skill toolset 閉鎖時に skill registry を close (#906)、 再利用 Zod v3 sub-schemas を inline (#904)、 出力なし code execution result で空 text part を render (#903)
 
 #### 2026-09-01〜2026-09-15 新着 (v2.0.0 後 90 commits: Chrome Prompt API / RAG memory / ContainerCodeExecutor / SSRF・DNS rebinding 硬化、 新タグ未発行)
 
@@ -2888,9 +2966,13 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: v0.8.0 (2026-04-21)
 
-**チェックアウト状態**: `v0.8.0-6-ga0439a7` (v0.8.0 + 6 commits、 HEAD 2026-05-19)
+**チェックアウト状態**: `v0.8.0-7-ge32393c` (v0.8.0 + 7 commits、 HEAD 2026-09-18)
 
 **注目**: ローカル Node.js 実装 (v0.2.0) を **完全 deprecate**、 Remote MCP Server 構成へアーキテクチャ全面刷新。 現在 **Private Preview** で allowlist 制（Google Cloud account team 経由でアクセス申請が必要）。
+
+#### 2026-09-16〜2026-09-22 新着 (1 commit)
+
+- **chore**: deprecated Gemini CLI extension と instructions を削除 (e32393c)
 
 #### v0.8.0 後の変更点（次回リリース向け）
 
@@ -2931,7 +3013,11 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 **現行バージョン**: **v0.15.0 (2026-07-28)**
 
-**チェックアウト状態**: `fdd530e` (`v0.15.0-48-gfdd530e`、 HEAD 2026-09-14。 新タグ未発行)
+**チェックアウト状態**: `a3f1b45` (`v0.15.0-52-ga3f1b45`、 HEAD 2026-09-21。 新タグ未発行)
+
+#### 2026-09-16〜2026-09-22 新着 (4 commits、 依存 bump のみ)
+
+- **deps**: google.golang.org/adk 1.6.1 → 1.7.0 (#550)、 anthropic-sdk-go 1.73.0 (#551)、 google.golang.org/api 0.298.0 (#549)、 /ui の npm group 7件 (#552)
 
 #### 2026-09-01〜2026-09-15 新着 (依存 bump のみ、 機能変更なし)
 
@@ -3251,9 +3337,18 @@ NO_NEW_COMMITS — HEAD 日付のみ 2026-06-15 に更新。 google.golang.org/a
 
 ### GenAI Toolbox
 
-**現行バージョン**: **v1.11.0 (2026-09-10)**
+**現行バージョン**: **v1.12.0 (2026-09-17)**
 
-**チェックアウト状態**: `5de21c00558` (`v1.11.0-2-g5de21c00558`、 HEAD 2026-09-15。 リポ URL は `googleapis/mcp-toolbox`)
+**チェックアウト状態**: `5700630c132` (`v1.12.0-7-g5700630c132`、 HEAD 2026-09-21。 リポ URL は `googleapis/mcp-toolbox`)
+
+#### 2026-09-16〜2026-09-22 新着 (**v1.12.0**: OpenAI Apps challenge + looker 拡張 + bigtable prebuilt)
+
+- **feat**: `/.well-known/openai-apps-challenge` を serve (#4038) — OpenAI Apps challenge endpoint
+- **looker**: dashboard/look tools で certification_metadata を expose (#4041)、 looker-generate-embed-url で embed parameters を必須化 (#3913)、 OpenAI plugins 対応の annotations (#4035)
+- **fix**: cockroachdb/redis sources で接続失敗時に handle を解放 (#3933)、 cloud-sql-postgres の execute_sql tool description を明確化 (#3884)
+- **docs**: com.google.cloud/toolbox.v1 の groups schema と specification (#3937)
+- **ci**: cloud-sql-mssql evals (#3942)、 exit gate configuration を parameterize (#4047)
+- **HEAD (v1.12.0 以降)**: bigtable prebuilt config (#4068)、 sources を first use で connect (#4076)、 cloud-sql-postgres evals 拡充
 
 #### 2026-09-01〜2026-09-15 新着 (**v1.11.0**: MCP Apps / MCP Resources / groups extension)
 
@@ -3537,9 +3632,16 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 
 **現行バージョン**: 継続的デプロイ（バージョンタグなし、 新規追跡開始）
 
-**チェックアウト状態**: `36f777c` (main HEAD、 2026-09-14)
+**チェックアウト状態**: `22efaa5` (main HEAD、 2026-09-21)
 
 **管理**: Google Cloud Platform（公式 Google 製品ではない sample/tools リポ）
+
+#### 2026-09-16〜2026-09-22 新着 (28 commits: mdcode が Agent Skill 生成へ pivot + 複数 BREAKING)
+
+- **BREAKING (mdcode)**: kcmd agent-tools と未使用 TS runtime を削除し skills-generate を中心に (#459)、 agent tool derivation から entity lookup tools を削除 (#458)、 kcmd action-run / action-list を削除 (#457)、 runtime から store-reading judge を除去 (#455)、 action command lines を curation 必要分へ trim (#454)、 action parameter を field から project (#452)、 profiles を持つ model で `sql` executor を拒否 (#449)、 judgment を唯一の constraint body に (#446)、 generated row keys を削除 (#431)
+- **feat**: semantic model から Agent Skill を生成 — `kcmd skills-generate` が SKILL.md + references/<action>.md フォルダを書き出す (#451)、 action DML を push 時に store に対して validate (BigQuery dryRun / Spanner PLAN) (#464)、 actions に parameter descriptions/defaults/optionality (#442)
+- **demo**: commerce demo が agent ではなく generated skill を install (#453)
+- **docs**: skills.md user guide を rewrite し skills-generate を optimize (#460)、 actions guide を再構成
 
 #### 2026-09-01〜2026-09-15 新着 (mdcode: actions / constraints / AlloyDB + semantic model から agent を導出)
 
@@ -3589,6 +3691,9 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 
 | 対象 | 変更内容 | 対応優先度 |
 |------|---------|-----------|
+| **AG-UI 1.0** (2026-09-17) | spec freeze + 1.0.0 SDK 群 (TS/Py/.NET)。 THINKING_* → REASONING_*、 InputContent → ContentPart rename、 RUN_FINISHED.outcome 追加、 subagent events、 ACTIVITY_*、 HTTP+Protobuf binary wire。 0.x agent は 1.0 client で動作 (compatibility boundary + DEPRECATIONS.md) | 高 |
+| **Knowledge Catalog mdcode** (2026-09) | Agent Skill 生成へ pivot。 kcmd agent-tools / action-run / action-list 削除、 store-reading judge を runtime から除去、 generated row keys 削除等 8 件の `!` commit | 中 |
+| **ADK Go (v2.4.0 後 main, 2026-09)** | web server を既定で loopback に bind (#1456)、 adkrest が DNS-rebinding hosts と cross-origin browsers を拒否 (#1615) | 中 |
 | **MCP-Apps v2.0.0** (2026-09-08) | MCP TypeScript SDK 1.x 単一パッケージから 2.x split peers (`client`/`server`/`core`/`node`/`express`) へ移行、 zod 3 落とし + handler context / `setRequestHandler` 引数の変更。 **wire (`ui/*`) は 1.x と互換** | 高 |
 | **ADK Python v2.9.0** (2026-09-10) | 失敗した workflow node は resume 時に再実行 (完了 replay しない → node 本体をべき等)、 GCS tool のローカルパスは `local_file_root` 配下のみ、 `InMemorySessionService` が未所有 session への append で `SessionNotFoundError` | 高 |
 | **A2UI web_core / lit 0.11.0** (2026-09、 v0.9 トラック) | 不正な数値リテラルが `NaN` ではなく `A2uiExpressionError`、 basic catalog を web_core へ移転、 **Shadow DOM → Light DOM** (#2204、 0.10.4 は撤回済み)。 production spec v0.9.1 本体のバージョンはそのまま | 中 |
@@ -3665,6 +3770,18 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 | **Google Analytics MCP** (未リリース) | パッケージ名 `analytics-mcp` にリネーム | 低 |
 
 ### メジャーアップデート
+
+**― 2026-09-22 更新分 (submodule remote HEAD 追従) ―**
+
+0. **NEW: AG-UI 1.0** (2026-09-17) - spec freeze + 1.0.0 SDK 群 (TS/Py/.NET)。 THINKING_* → REASONING_*、 InputContent → ContentPart、 RUN_FINISHED.outcome、 subagent events、 ACTIVITY_*、 HTTP+Protobuf binary wire。 0.x agent は 1.0 client で動作 (compatibility boundary + DEPRECATIONS.md)
+0. **NEW: ADK JS v2.1.0** (2026-09-15) - v2.0.0 以降 90 commits を正式リリース。 Chrome Prompt API BaseLlm、 ContainerCodeExecutor、 VertexAiRagMemoryService、 PKCE S256、 SSRF/DNS-rebinding 硬化
+0. **NEW: ADK Python v2.9.1 / v2.9.2** (2026-09-15 / 09-18) - v2.9.1 は Claude adaptive thinking (visible thoughts)、 v2.9.2 は OTel event name 保持。 HEAD で OpenAILlm api_key/base_url、 tool_config mode、 Chat Completions parsing 強化
+0. **NEW: GenAI Toolbox v1.12.0** (2026-09-17) - OpenAI Apps challenge endpoint、 looker certification_metadata / embed parameters、 bigtable prebuilt config、 sources first-use connect
+0. **NEW: Knowledge Catalog mdcode Agent Skill 生成** (2026-09) - semantic model から Agent Skill (SKILL.md + references/) を生成。 kcmd agent-tools / action-run / action-list 削除等 8 件の BREAKING
+0. **NEW: MCP Skills extension が published 化** (2026-09) - SEP-2640 Final、 Skills Over MCP WG が公式 Skills extension (io.modelcontextprotocol/skills) を maintain
+0. **NEW: A2UI web_core 再帰ガード + MCP catalog 関数** (2026-09) - DynamicValue 解決の過剰再帰ガード (CWE-674 防止)、 MCP 結果処理関数 (jmespath/split/regexCapture/regexReplace/updateDataModel)
+0. **NEW: webmcp-tools demo SECURITY 硬化 + BestPrice.gr** (2026-09) - DOMPurify sanitize 群、 DOM XSS/DoS 緩和、 sandboxed iframe。 BestPrice.gr production site 追加
+0. **NEW: ADK Go web server SECURITY 硬化** (2026-09) - web server を既定で loopback に bind、 adkrest が DNS-rebinding hosts と cross-origin browsers を拒否
 
 **― 2026-09-15 更新分 (submodule remote HEAD 追従) ―**
 
@@ -3816,6 +3933,9 @@ v1.5.0 後 main で 20 commits 進行（新リリースタグ未付与）。 主
 
 ### セキュリティ更新
 
+- **A2UI web_core (2026-09)**: DynamicValue 解決の過剰再帰をガードし `MAX_DYNAMIC_VALUE_DEPTH = 20` を導入 (#2432) — 深さ 20,000 のネスト関数呼び出しが renderer プロセスをクラッシュさせる CWE-674 を防止
+- **ADK Go (v2.4.0 後 main, 2026-09)**: **web server を既定で loopback に bind (#1456)**、 **adkrest が DNS-rebinding hosts と cross-origin browsers を拒否 (#1615)**
+- **webmcp-tools (2026-09)**: **demos の innerHTML を DOMPurify で sanitize** (page-agent / french-bistro #469、 french-bistro modalDetails #471、 ticket-booking movieGrid #472)、 **pizza-maker の DOM XSS と DoS を緩和 (#468)**、 **webmcp-maze EvalTool の Web Worker を sandboxed iframe にネスト (#470)**
 - **A2UI web_core 0.11.0 (2026-09)**: v0.8 read path の prototype chain 辿り (#2355)、 DataContext エラーの V8 stack trace 非公開化 (#2429)、 `MAX_ARRAY_INDEX` / `MAX_DYNAMIC_CHILD_LIST_SIZE` / 式パーサ template 長の上限 (#2430 / #2431 / #2433)
 - **ADK JS (v2.0.0 後 main, 2026-09)**: **dev server の Origin 検証 (DNS rebinding 防衛, #557)**、 **A2A agent-card 解決の SSRF / 無言 file read 防止 (#832)**、 **OAuth2 PKCE S256 (#820)**、 使えない OpenAPI HTTP credential での未認証リクエスト拒否 (#816)、 telemetry から credential 付き httpOptions を除去 (#815)
 - **ADK Go v2.4.0 (2026-09-11)**: ConsentRequiredError メッセージから consent URI を除外 (#1519)、 GCP auth サービスエラーから caller 識別子を除外 (#1520)、 deploy CLI 値を Dockerfile 補間前に検証 (#1240)
