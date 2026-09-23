@@ -115,7 +115,9 @@ def test_writes_uv_toml_and_is_idempotent(tmp_path: Path) -> None:
 
     npmrc = home / ".npmrc"
     assert npmrc.is_file(), "did not write ~/.npmrc"
-    assert npmrc.read_text(encoding="utf-8").count("min-release-age") == 1, (
+    assert (
+        npmrc.read_text(encoding="utf-8").splitlines().count("min-release-age=7") == 1
+    ), (
         "min-release-age duplicated across runs — not idempotent (GNU sed cleanup broke)."
     )
 
@@ -126,6 +128,51 @@ def test_writes_uv_toml_and_is_idempotent(tmp_path: Path) -> None:
             assert "Security Hardening" not in body and "PIP_INDEX_URL" not in body, (
                 f"harden_env.sh wrote a hardening block into {rc}; it must not touch shell rc."
             )
+
+
+def test_only_four_pi_extensions_bypass_release_age(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    for _ in range(2):
+        result = _run_harden(_env(home))
+        assert result.returncode == 0, result.stderr
+    lines = (home / ".npmrc").read_text(encoding="utf-8").splitlines()
+    exclusions = [line for line in lines if line.startswith("min-release-age-exclude")]
+    assert sorted(exclusions) == sorted(
+        f"min-release-age-exclude[]={name}"
+        for name in (
+            "pi-goal-x",
+            "pi-subagents",
+            "pi-web-access",
+            "pi-background-tasks",
+        )
+    )
+    assert lines.count("min-release-age=7") == 1
+
+
+def test_preserves_user_npm_settings_and_exclusions(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    npmrc = home / ".npmrc"
+    preserved = (
+        "registry=https://registry.npmjs.org/\nmin-release-age-exclude[]=@internal/*\n"
+    )
+    npmrc.write_text(
+        preserved
+        + "min-release-age=2\nmin-release-age=3\n"
+        + "min-release-age-exclude[]=pi-subagents\n" * 2,
+        encoding="utf-8",
+    )
+    for _ in range(2):
+        result = _run_harden(_env(home))
+        assert result.returncode == 0, result.stderr
+    content = npmrc.read_text(encoding="utf-8")
+    assert content.startswith(preserved)
+    lines = content.splitlines()
+    assert lines.count("min-release-age-exclude[]=pi-subagents") == 1
+    assert [line for line in lines if line.startswith("min-release-age=")] == [
+        "min-release-age=7"
+    ]
 
 
 def test_mirrors_uv_toml_to_windows_appdata(tmp_path: Path) -> None:

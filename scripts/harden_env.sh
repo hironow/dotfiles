@@ -4,7 +4,7 @@
 # Development environment hardening (machine-local; ADR 0028)
 # ------------------------------------------------------------------------------
 # Writes the supply-chain guards that must NOT live in the committed repo:
-#   - npm  ~/.npmrc               min-release-age=7 (7-day quarantine)
+#   - npm  ~/.npmrc               min-release-age=7 (four Pi extension exceptions)
 #   - uv   ~/.config/uv/uv.toml   flatt mirror (default index) + exclude-newer=7d
 #   - go   GOPROXY                default checksum-verified proxy (if go present)
 #   - win  persisted User PATH     append missing Git usr\bin + cmd (native Windows)
@@ -21,16 +21,22 @@ set -eu
 
 echo "--- 🛡️  Hardening environment (flatt mirror + 7-day quarantine) ---"
 
-# 1. npm — idempotent min-release-age upsert (portable; no sed -i).
+# 1. npm — idempotent age + four named Pi extension exceptions.
+# Keep dependency installs quarantined; no pi-* / scope-wide exemptions.
+# Preserve unrelated user settings, including user-owned age exclusions.
 _npmrc="$HOME/.npmrc"
-echo "[1/4] npm: ${_npmrc} (min-release-age=7)"
+echo "[1/4] npm: ${_npmrc} (min-release-age=7; four Pi extension exceptions)"
 _tmp="$(mktemp)"
 if [ -f "$_npmrc" ]; then
-  # Drop any prior min-release-age line; `|| true` because grep -v exits 1
-  # when every line is filtered out (e.g. a one-line file).
-  grep -v '^min-release-age' "$_npmrc" >"$_tmp" || true
+  # Replace only the age key and our exact package exceptions. `|| true`
+  # handles grep's exit 1 when every input line is filtered out.
+  grep -Ev '^[[:space:]]*min-release-age[[:space:]]*=|^[[:space:]]*min-release-age-exclude\[\][[:space:]]*=[[:space:]]*(pi-goal-x|pi-subagents|pi-web-access|pi-background-tasks)[[:space:]]*$' \
+    "$_npmrc" >"$_tmp" || true
 fi
 printf 'min-release-age=7\n' >>"$_tmp"
+for _pkg in pi-goal-x pi-subagents pi-web-access pi-background-tasks; do
+  printf 'min-release-age-exclude[]=%s\n' "$_pkg" >>"$_tmp"
+done
 mv "$_tmp" "$_npmrc"
 
 # 2. uv — flatt default index + 7-day quarantine (overwrite = idempotent).
