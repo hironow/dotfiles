@@ -60,6 +60,25 @@ resource "google_container_cluster" "exe" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
+  # ...but that default pool still boots ONE real node for the minutes between
+  # cluster creation and its removal, and left to GKE's default it runs as the
+  # Compute Engine default service account. The org policy on this project
+  # withholds every role from that account (plan section 2), and GKE documents
+  # that a node service account without the permissions it needs can fail node
+  # registration — which here would fail the cluster CREATE, before the managed
+  # pool exists:
+  #   https://docs.cloud.google.com/kubernetes-engine/docs/troubleshooting/node-registration
+  # So the throwaway node runs as the same identity as the real ones.
+  #
+  # Creation-only, and ignored afterwards (see the lifecycle block): once the
+  # default pool is gone, GKE reports the FIRST remaining pool's configuration
+  # under this field, and the provider aims any update of it at a pool named
+  # "default-pool" that no longer exists.
+  node_config {
+    service_account = google_service_account.node.email
+    oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+
   ip_allocation_policy {
     cluster_secondary_range_name  = "${local.prefix}-pods"
     services_secondary_range_name = "${local.prefix}-services"
@@ -151,10 +170,21 @@ resource "google_container_cluster" "exe" {
 
   lifecycle {
     # GKE moves the patch version inside the pinned minor on its own schedule.
-    ignore_changes = [min_master_version]
+    #
+    # node_config configures only the default pool, which is deleted during
+    # create; after that, any diff on it is both spurious (it reads back the
+    # managed pool's settings) and unappliable (its update targets the deleted
+    # pool). See the comment on the block itself.
+    ignore_changes = [min_master_version, node_config]
   }
 
-  depends_on = [google_project_service.enabled]
+  # The node identity's grants come first: the throwaway default-pool node runs
+  # as that identity (node_config above), and it has to be able to register
+  # while the cluster is still being created.
+  depends_on = [
+    google_project_service.enabled,
+    google_project_iam_member.node,
+  ]
 }
 
 resource "google_container_node_pool" "main" {

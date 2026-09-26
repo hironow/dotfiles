@@ -30,6 +30,13 @@
 #     cost here is not a rebuild but every actor snapshot the cluster still
 #     references. A genuine teardown flips the flag in its own commit first, and
 #     that extra apply is the whole point of the protection.
+#   - the throwaway default pool's identity: remove_default_node_pool still
+#     boots ONE real node while the cluster is being created. Left to GKE's
+#     default it runs as the Compute Engine default service account, which this
+#     project's org policy leaves without any role (plan section 2), and GKE
+#     documents node registration failing for a node service account without
+#     the permissions it needs — which would fail the cluster CREATE, before the
+#     managed pool exists. So it runs as the same identity as the real nodes.
 #   - the maintenance window and the upgrade exclusion: one node means an
 #     upgrade is a full outage, and on Substrate v0.1.0 replacing a worker pod
 #     kills every awake actor terminally. The window is placed after L3's daily
@@ -55,6 +62,16 @@ variables {
   gcp_project_number = "000000000000"
   billing_account_id = "AAAAAA-BBBBBB-CCCCCC"
   alert_email        = "alerts@example.invalid"
+}
+
+# A mocked service account's email is a generated string. Pinning a realistic
+# one makes the default-pool identity assertion below legible: a failure names
+# the identity that was expected instead of comparing two random strings.
+override_resource {
+  target = google_service_account.node
+  values = {
+    email = "exe-node@zz-synthetic-project.iam.gserviceaccount.com"
+  }
 }
 
 run "cluster_is_zonal_and_pinned_to_one_zone" {
@@ -182,6 +199,28 @@ run "the_cluster_is_long_lived_and_protected_from_deletion" {
   assert {
     condition     = google_container_cluster.exe.remove_default_node_pool == true
     error_message = "remove_default_node_pool must be true: otherwise the cluster keeps an unmanaged default pool alongside the managed one, and that pool's nodes are outside everything the auto-sleep can resize — they would run, and bill, forever."
+  }
+}
+
+run "the_throwaway_default_pool_runs_as_the_node_identity" {
+  command = plan
+
+  assert {
+    condition     = google_container_cluster.exe.node_config[0].service_account == "exe-node@zz-synthetic-project.iam.gserviceaccount.com"
+    error_message = "the cluster-level node_config must run the temporary default pool as the exe node service account. Without it that node boots as the Compute Engine default service account, which the org policy leaves without any role, and GKE documents node registration failing for a node service account without permissions — that fails the cluster create itself, before the managed pool exists."
+  }
+
+  # One identity for every node this stack ever boots, stated as a relation
+  # rather than a second literal: if the managed pool's identity changes, the
+  # throwaway node's must change with it.
+  assert {
+    condition     = google_container_cluster.exe.node_config[0].service_account == google_container_node_pool.main.node_config[0].service_account
+    error_message = "the temporary default pool and the managed pool must run as the same service account. Two node identities means two sets of grants to keep correct, and the one that is only exercised at cluster creation is the one nobody notices is wrong."
+  }
+
+  assert {
+    condition     = google_container_cluster.exe.node_config[0].oauth_scopes == toset(["https://www.googleapis.com/auth/cloud-platform"])
+    error_message = "the temporary default pool must use the cloud-platform scope, like the managed pool: with per-resource IAM the service account's bindings are the access boundary, and a narrower legacy scope set would make the node's effective permissions differ from what iam.tf grants."
   }
 }
 
