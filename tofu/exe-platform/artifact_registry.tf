@@ -121,12 +121,17 @@ resource "google_artifact_registry_repository_iam_member" "node_task_reader" {
 # Substrate's atelet pulls ACTOR images itself rather than letting kubelet do
 # it (--gcp-auth-for-image-pulls), so it needs its own reader. Upstream grants
 # this project-wide; narrowed here to the repository actor images come from.
+#
+# This binding and the reaper's below name a Workload Identity principal, whose
+# pool only exists once the cluster does; see the ORDERING note in iam.tf.
 resource "google_artifact_registry_repository_iam_member" "atelet_task_reader" {
   project    = var.gcp_project_id
   location   = google_artifact_registry_repository.task.location
   repository = google_artifact_registry_repository.task.name
   role       = "roles/artifactregistry.reader"
   member     = local.wi_atelet
+
+  depends_on = [google_container_cluster.exe]
 }
 
 # The reaper adds and removes `inuse-` tags, which is a write against the
@@ -137,6 +142,8 @@ resource "google_artifact_registry_repository_iam_member" "reaper_task_writer" {
   repository = google_artifact_registry_repository.task.name
   role       = "roles/artifactregistry.writer"
   member     = local.wi_reaper
+
+  depends_on = [google_container_cluster.exe]
 }
 
 resource "google_artifact_registry_repository_iam_member" "build_task_writer" {
