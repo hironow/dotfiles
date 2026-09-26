@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (gitignored) and fill in. No HCL variable has a
+# default: a missing value must fail loudly rather than silently target the
+# wrong project. Nothing in this example may be a real value.
+
+# The private GCP project this stack owns.
+gcp_project_id     = "REPLACE-project-id"
+gcp_project_number = "000000000000"
+
+# Billing account that funds it (for the JPY budget). Format: XXXXXX-XXXXXX-XXXXXX
+billing_account_id = "REPLACE-billing-account-id"
+
+# Where the budget and alert notifications go.
+alert_email = "REPLACE@example.invalid"

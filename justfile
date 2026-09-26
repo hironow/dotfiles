@@ -1443,6 +1443,111 @@ docs-view:
 exe-bootstrap:
     @bash exe/scripts/bootstrap.sh
 
+# ==============================================================================
+# exe-platform — the google/ax migration's GCP foundation (tofu/exe-platform).
+#
+# Separate recipe names from the legacy `exe-*` Coder recipes above on purpose:
+# both stacks coexist until the legacy one is retired, and a shared name would
+# make it possible to plan one and apply the other.
+#
+# Every identifier lives in tofu/exe-platform/terraform.tfvars and backend.hcl,
+# both gitignored. The recipes read them from there or from `tofu output`; none
+# is written into this file.
+#
+# APPLY IS THE OPERATOR'S. Agents produce a saved plan; a human applies it.
+# ==============================================================================
+
+_EXE_PLATFORM_DIR := "tofu/exe-platform"
+_EXE_PLATFORM_PLAN := "tofu/exe-platform/exe-platform.tfplan"
+
+# Create the OpenTofu state bucket for exe-platform (UBLA, PAP, versioning,
+# 10 noncurrent versions, soft delete off). Out-of-band because a stack cannot
+# create its own backend. Idempotent; pass --dry-run to see the commands first.
+[group('Exe')]
+exe-platform-bootstrap *args:
+    @bash scripts/exe_platform_bootstrap.sh {{ args }}
+
+# Initialise the backend from the gitignored partial config.
+[group('Exe')]
+exe-platform-init *args:
+    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu init -input=false -backend-config=backend.hcl {{ args }}
+
+# Offline invariant tests (plan + mock_provider, no credentials, no network).
+[group('Exe')]
+exe-platform-test *args:
+    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu test {{ args }}
+
+[group('Exe')]
+exe-platform-validate:
+    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu fmt -check -recursive . && mise x -- tofu validate
+
+# Write a saved plan for the operator to apply. The plan file is gitignored AND
+# the forbidden-token guard refuses to stage a *.tfplan at all: plan output is
+# dense with private identifiers, so it never reaches the repo, a commit message
+# or a PR.
+[group('Exe')]
+exe-platform-plan *args:
+    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu plan -input=false -out=exe-platform.tfplan {{ args }}
+    @echo '📋 saved plan: {{ _EXE_PLATFORM_PLAN }} (gitignored; never paste its output anywhere public)'
+
+# Summarise a saved plan by action and resource type — enough to review intent
+# without printing attribute values.
+[group('Exe')]
+exe-platform-plan-summary:
+    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu show -json exe-platform.tfplan | {{ UV_RUN }} ../../scripts/summarize_tofu_plan.py
+
+# OPERATOR ONLY. Applies the saved plan produced above.
+[group('Exe')]
+exe-platform-apply:
+    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu apply -input=false exe-platform.tfplan
+
+# Write a kubeconfig that reaches the cluster through its IAM-guarded DNS
+# endpoint. There is no IP endpoint, so this is the only route in. The project id
+# comes from `tofu output`, never from this file.
+[group('Exe')]
+exe-ctx:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{ _EXE_PLATFORM_DIR }}
+    project="$(mise x -- tofu output -raw project_id)"
+    cluster="$(mise x -- tofu output -raw cluster_name)"
+    zone="$(mise x -- tofu output -raw zone)"
+    kubeconfig="${XDG_CONFIG_HOME:-$HOME/.config}/exe/kubeconfig"
+    mkdir -p "$(dirname "$kubeconfig")"
+    KUBECONFIG="$kubeconfig" mise x -- gcloud container clusters get-credentials \
+        "$cluster" --zone "$zone" --project "$project" --dns-endpoint
+    chmod 600 "$kubeconfig"
+    echo "✅ kubeconfig written (DNS endpoint, IAM only):"
+    echo "   export KUBECONFIG=$kubeconfig"
+
+# Read-only: how many nodes are running right now. The money question.
+[group('Exe')]
+exe-platform-nodes:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{ _EXE_PLATFORM_DIR }}
+    project="$(mise x -- tofu output -raw project_id)"
+    cluster="$(mise x -- tofu output -raw cluster_name)"
+    zone="$(mise x -- tofu output -raw zone)"
+    pool="$(mise x -- tofu output -raw node_pool_name)"
+    mise x -- gcloud container node-pools describe "$pool" \
+        --cluster "$cluster" --zone "$zone" --project "$project" \
+        --format='value(initialNodeCount)'
+    mise x -- gcloud compute instances list --project "$project" \
+        --filter="name~^gke-${cluster}-" --format='table(name,status)'
+
+# Run the L3 daily-stop job now: take the node pool to 0 immediately. Also the
+# proof that L3 actually works, which is why it is a recipe and not a one-off.
+[group('Exe')]
+exe-platform-stop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{ _EXE_PLATFORM_DIR }}
+    project="$(mise x -- tofu output -raw project_id)"
+    region="$(mise x -- tofu output -raw region)"
+    job="$(mise x -- tofu output -raw l3_scheduler_job)"
+    mise x -- gcloud scheduler jobs run "$job" --location "$region" --project "$project"
+    echo "✅ L3 triggered. Node pool goes to 0; check with: just exe-platform-nodes"
 
 # Build the TF_ENCRYPTION HCL payload from the local passphrase.
 # State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
