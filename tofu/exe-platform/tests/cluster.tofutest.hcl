@@ -24,9 +24,12 @@
 #     bill continuously and neither is used. An Ingress controller would create
 #     a forwarding rule that is charged whether or not a node exists, which on a
 #     cluster meant to sit at zero nodes is the entire monthly bill.
-#   - deletion_protection off, remove_default_node_pool on: Phase 7 has to be
-#     able to destroy this stack. Left at the provider's default, a teardown
-#     fails halfway through and leaves the expensive half standing.
+#   - deletion_protection ON, remove_default_node_pool on: this cluster is the
+#     long-lived one. Phase 7 retires the OLD Coder stack, not this — so the
+#     guard that matters is the one against an accidental `tofu destroy`, whose
+#     cost here is not a rebuild but every actor snapshot the cluster still
+#     references. A genuine teardown flips the flag in its own commit first, and
+#     that extra apply is the whole point of the protection.
 #   - the maintenance window and the upgrade exclusion: one node means an
 #     upgrade is a full outage, and on Substrate v0.1.0 replacing a worker pod
 #     kills every awake actor terminally. The window is placed after L3's daily
@@ -165,12 +168,15 @@ run "no_continuously_billed_addons" {
   }
 }
 
-run "cluster_can_be_destroyed_in_phase_7" {
+run "the_cluster_is_long_lived_and_protected_from_deletion" {
   command = plan
 
+  # Stated, not inherited. The provider's default happens to be true as well,
+  # and an invariant that relies on a default is one a provider upgrade can
+  # silently retract.
   assert {
-    condition     = google_container_cluster.exe.deletion_protection == false
-    error_message = "deletion_protection must be false. The provider defaults it to TRUE, so leaving it out makes `tofu destroy` fail at the cluster after the cheap resources are already gone — the teardown stops with the expensive half still standing and still billing."
+    condition     = google_container_cluster.exe.deletion_protection == true
+    error_message = "deletion_protection must be true. This cluster is long-lived: Phase 7 retires the OLD Coder stack, not this one, so there is no planned destroy for the flag to be in the way of. What it is in the way of is the unplanned one — a `tofu destroy` aimed at the wrong stack, or a rename that reads as a replace — and the loss there is not a rebuild but every actor snapshot the cluster still references. A genuine teardown sets this to false in its own deliberate change first."
   }
 
   assert {

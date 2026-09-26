@@ -36,9 +36,20 @@ resource "google_container_cluster" "exe" {
   # would be noise every time it does.
   min_master_version = local.pins.gke.cluster_minor
 
-  # Phase 7 has to be able to destroy this. Left at the provider default
-  # (true), a teardown fails halfway and leaves the expensive half standing.
-  deletion_protection = false
+  # This cluster is LONG-LIVED, and deletion protection is deliberately on.
+  #
+  # Phase 7 retires the OLD Coder stack, not this one, so there is no planned
+  # destroy for the flag to be in the way of. What it is in the way of is the
+  # unplanned one — a `tofu destroy` aimed at the wrong directory, a rename that
+  # plans as a replace — and the loss there is not a rebuild: it is every actor
+  # snapshot a suspended task still references, which nothing can reconstruct.
+  #
+  # Stated rather than inherited, even though the provider's default is also
+  # true: an invariant that rests on a default is one a provider upgrade can
+  # retract silently. A genuine teardown flips this to false in its own
+  # deliberate change and applies that first, and the extra apply IS the
+  # protection.
+  deletion_protection = true
 
   network    = google_compute_network.exe.id
   subnetwork = google_compute_subnetwork.nodes.id
