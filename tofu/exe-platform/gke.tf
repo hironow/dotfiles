@@ -21,8 +21,12 @@ resource "google_container_cluster" "exe" {
 
   # Zonal, not regional: a zonal Standard cluster is in GKE's free management
   # tier, and a one-node cluster has no availability story to protect.
-  location       = local.zone
-  node_locations = [local.zone]
+  #
+  # And no node_locations. For a zonal cluster that list holds ADDITIONAL zones
+  # only: the provider refuses the cluster's own zone in it before calling the
+  # API, and any other zone makes the cluster multi-zonal, so every wake boots
+  # one node per zone. Leaving it out is how "nodes in this one zone" is said.
+  location = local.zone
 
   # Rapid is not a preference: 1.37 exists only there, and 1.37 is what turns
   # on the beta APIs Substrate needs by default — without it, missing them at

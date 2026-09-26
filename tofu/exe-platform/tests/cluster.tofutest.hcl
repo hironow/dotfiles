@@ -85,11 +85,14 @@ run "cluster_is_zonal_and_pinned_to_one_zone" {
     error_message = "cluster location must be a ZONE (ending in a zone letter), not a region: a regional cluster leaves GKE's free management tier and bills per control-plane hour, and it cannot be converted to zonal afterwards."
   }
 
-  # node_locations wider than the control-plane zone would silently multiply the
-  # node count — the pool's size is per zone.
+  # node_locations lists ADDITIONAL zones only. The provider refuses the
+  # cluster's own zone there before any API call ("when using a multi-zonal
+  # cluster, node_locations should not contain the original 'zone'"), and any
+  # other zone silently multiplies the node count, because the pool's size is
+  # per zone. The only correct value for this cluster is none at all.
   assert {
-    condition     = google_container_cluster.exe.node_locations == toset([google_container_cluster.exe.location])
-    error_message = "node_locations must be exactly the cluster's own zone: the node pool's size is applied PER zone, so a second entry doubles every wake into two billed nodes while `exe-status` still reports a pool size of 1."
+    condition     = length(google_container_cluster.exe.node_locations) == 0
+    error_message = "node_locations must be empty. For a zonal cluster it lists ADDITIONAL zones: the provider rejects the cluster's own zone in it (the first apply failed exactly so), and any other zone makes the cluster multi-zonal, so every wake boots one billed node PER zone while `exe-status` still reports a pool size of 1."
   }
 }
 
