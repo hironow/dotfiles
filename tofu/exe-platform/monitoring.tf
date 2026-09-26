@@ -95,10 +95,14 @@ resource "google_logging_metric" "scheduler_failures" {
   name        = "${local.prefix}_scheduler_job_failures"
   description = "Error-severity log entries from exe Cloud Scheduler jobs (L2 / L3)"
 
+  # Cloud LOGGING query language: `=~` is an RE2 match, anchored here so only
+  # exe-prefixed jobs count. (`monitoring.regex.full_match()` belongs to Cloud
+  # Monitoring's filter syntax; the Logging API rejects it as an unparseable
+  # filter, which is how the first apply failed.)
   filter = join(" AND ", [
     "resource.type = \"cloud_scheduler_job\"",
     "severity >= ERROR",
-    "resource.labels.job_id = monitoring.regex.full_match(\"${local.prefix}-.*\")",
+    "resource.labels.job_id =~ \"^${local.prefix}-\"",
   ])
 
   metric_descriptor {

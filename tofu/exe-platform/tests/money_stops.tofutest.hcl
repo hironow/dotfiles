@@ -192,6 +192,24 @@ run "the_budget_is_jpy_and_scoped_to_this_project_alone" {
   }
 }
 
+run "the_scheduler_failure_metric_is_a_logging_query" {
+  command = plan
+
+  # A log-based metric's filter is parsed by Cloud LOGGING, not Cloud Monitoring.
+  # The two syntaxes look alike and differ exactly where it hurts: a
+  # monitoring.* function is an unparseable token to Logging, rejected at apply.
+  assert {
+    condition     = !strcontains(google_logging_metric.scheduler_failures.filter, "monitoring.")
+    error_message = "the scheduler-failure metric's filter must not use monitoring.* functions: it is a Cloud LOGGING query, and Logging rejects them as unparseable at apply — no metric, so the Scheduler-failure alert cannot exist either, and a silently dead L3 goes unreported."
+  }
+
+  # Anchored prefix match: exe's own jobs, never a neighbouring stack's.
+  assert {
+    condition     = strcontains(google_logging_metric.scheduler_failures.filter, "resource.labels.job_id =~ \"^exe-\"")
+    error_message = "the scheduler-failure metric must select jobs with the anchored Logging regex resource.labels.job_id =~ \"^exe-\": unanchored, it can count a neighbouring stack's job whose name merely contains exe-; absent, it counts every Scheduler job in the shared project."
+  }
+}
+
 run "l4_alerts_reach_the_email_channel" {
   command = plan
 
