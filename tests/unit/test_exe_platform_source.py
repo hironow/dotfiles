@@ -7,6 +7,9 @@ configuration text. So some properties of the stack are invisible to
 - creation ORDER. `depends_on` changes when a resource is created, not what it
   looks like, and the first real apply failed on ordering alone: every
   Workload Identity binding was sent before the cluster that creates its pool.
+- provider configuration. The quota-project settings the Billing Budgets API
+  demands of user credentials live on the provider block, which no run block
+  can read.
 
 These tests read the source instead, through the storage-bounds gate's HCL
 scanner (comment-, string- and heredoc-aware), so a `depends_on` inside a
@@ -151,3 +154,27 @@ resource "google_storage_bucket_iam_member" "service_account" {
         "google_storage_bucket_iam_member.races",
     ]
     assert racing == ["google_storage_bucket_iam_member.races"]
+
+
+# --- the quota project for user credentials ----------------------------------
+
+
+def test_the_provider_names_this_project_as_the_quota_project() -> None:
+    """The operator applies with user ADC, and the Billing Budgets API refuses
+    user credentials without an explicit quota project (403). The provider's
+    google_billing_budget docs require exactly these two settings."""
+    text = hcl.scrub((STACK / "main.tf").read_text(encoding="utf-8"))
+    providers = [
+        block
+        for block in hcl.iter_blocks(text)
+        if block.kind == "provider" and block.labels == ("google",)
+    ]
+    assert len(providers) == 1, (
+        f"expected exactly one default google provider block, got {len(providers)}"
+    )
+    body = providers[0].body
+    assert hcl.literal_bool(hcl.read_attribute(body, "user_project_override")) is True
+    assert hcl.read_attribute(body, "billing_project") == "var.gcp_project_id", (
+        "billing_project must be var.gcp_project_id: the quota project is this "
+        "project, never whichever project the operator's ADC defaults to"
+    )

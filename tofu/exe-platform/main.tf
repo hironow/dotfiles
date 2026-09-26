@@ -45,4 +45,15 @@ provider "google" {
   project = var.gcp_project_id
   region  = local.region
   zone    = local.zone
+
+  # The quota project for every request is this project, stated. The operator
+  # applies with user ADC, and the Billing Budgets API refuses user credentials
+  # without an explicit quota project (403; the provider's google_billing_budget
+  # docs require exactly these two settings). The budget is the one resource
+  # here that lives outside a project, so nothing else supplies it. Set
+  # provider-wide rather than on an alias: the offline tests keep a single mock,
+  # and no call from this stack is billed to whichever project the operator's
+  # ADC happens to default to.
+  user_project_override = true
+  billing_project       = var.gcp_project_id
 }
