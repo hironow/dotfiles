@@ -628,6 +628,8 @@ check:
     @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
+    @echo '🔎 exe pins (exe/versions.json is the single source)...'
+    @{{UV_RUN}} scripts/check_exe_pins.py
     @echo '✅ All checks passed.'
 
 # ADR 0028: assert every uv project declares the flatt PyPI mirror as its

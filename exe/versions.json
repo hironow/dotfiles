@@ -1,0 +1,32 @@
+{
+  "_source_of_truth": "The only place the ax / Agent Substrate / GKE pins live: OpenTofu stacks read this file with jsondecode(file(\"${path.module}/../../exe/versions.json\")), mise mirrors the CLI pin, and scripts/check_exe_pins.py (tests/unit/test_exe_pins.py) keeps them in step.",
+  "ax": {
+    "version": "v0.3.1",
+    "repo": "github.com/google/ax",
+    "sha": "e70162a34037c221fe6fadefd98308c05a4ad8f3"
+  },
+  "substrate": {
+    "version": "v0.1.0",
+    "repo": "github.com/agent-substrate/substrate",
+    "sha": "fa6d949685a6318940a9a0195c867c864009b820",
+    "version_label_key": "ate.dev/substrate-version",
+    "version_label_value": "v0.1.0",
+    "_ax_gomod_pseudoversion_commit": "672533541dbf",
+    "_ax_gomod_note": "The ax release's go.mod pins substrate at pseudo-version commit 672533541dbf, which has diverged from the tag pinned above; we deliberately unify on the tag and prove compatibility in spike S1 before anything else builds on it.",
+    "_version_label_note": "version_label_value is the VERSION argument handed to ate-setup and is stamped on every node under version_label_key, so it must stay both equal to version and a valid Kubernetes label value."
+  },
+  "gke": {
+    "release_channel": "RAPID",
+    "cluster_minor": "1.37"
+  },
+  "providers": {
+    "ko-build/ko": {
+      "version": "0.0.21",
+      "dependency_class": 2
+    }
+  },
+  "stacks": [
+    "tofu/exe-platform",
+    "tofu/exe-cluster"
+  ]
+}
