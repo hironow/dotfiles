@@ -314,13 +314,14 @@ step 'converge: soft delete policy (disabled)'
 # number is a billing window, and EMPTY means the field could not be read --
 # which is NOT the same as off. A new GCS bucket is created with a 7-day soft
 # delete policy by default, so an unproven read has to converge rather than
-# assume, and `--clear-soft-delete-policy` is idempotent.
+# assume, and `--clear-soft-delete` is idempotent. (That is the whole flag:
+# gcloud has no `-policy` suffixed form and rejects one as an unknown argument.)
 soft_retention="$(bucket_prop 'soft_delete_policy.retentionDurationSeconds')"
 if [[ "${soft_retention}" == '0' ]]; then
   ok 'already disabled'
 else
   run_gcloud storage buckets update "gs://${BUCKET}" \
-    --project="${PROJECT}" --clear-soft-delete-policy
+    --project="${PROJECT}" --clear-soft-delete
 fi
 
 # --- 3. verify ----------------------------------------------------------------

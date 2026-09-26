@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -132,7 +133,7 @@ def test_dry_run_prints_the_whole_command_set() -> None:
         "--public-access-prevention",
         "--versioning",
         "--lifecycle-file",
-        "--clear-soft-delete-policy",
+        "--clear-soft-delete",
         "STANDARD",
     ):
         assert token in out, f"dry-run output is missing {token!r}; got:\n{out}"
@@ -140,6 +141,54 @@ def test_dry_run_prints_the_whole_command_set() -> None:
         "public access prevention must be stated as *enforced* (the inherited "
         "default is what we are guarding against)"
     )
+
+
+def _dry_run_commands(*args: str) -> list[list[str]]:
+    """Every `+ gcloud ...` line a dry run prints, split into argv tokens."""
+    out = _dry_run_output(*args)
+    marker = "+ gcloud "
+    return [
+        shlex.split(line.strip()[len("+ ") :])
+        for line in out.splitlines()
+        if line.strip().startswith(marker)
+    ]
+
+
+def test_soft_delete_is_cleared_with_the_real_gcloud_flag() -> None:
+    """`gcloud storage buckets update` spells it `--clear-soft-delete`.
+
+    The script once issued `--clear-soft-delete-policy`, which does not exist:
+    gcloud rejected it against the real bucket, and soft delete stayed at the
+    7-day default -- billing for every generation the 10-version lifecycle rule
+    prunes. A substring check cannot catch that, because the real flag is a
+    prefix of the wrong one, so the flag is compared as a whole argv token of
+    the command the dry run prints.
+    """
+    commands = _dry_run_commands("--project", PROJECT)
+    clearing = [
+        cmd
+        for cmd in commands
+        if any(token.startswith("--clear-soft-delete") for token in cmd)
+    ]
+    assert len(clearing) == 1, (
+        f"exactly one command must clear soft delete; got {clearing!r}"
+    )
+    cmd = clearing[0]
+    assert cmd[:4] == ["gcloud", "storage", "buckets", "update"], cmd
+    assert f"gs://{DERIVED_BUCKET}" in cmd, cmd
+    flags = [token for token in cmd if token.startswith("--clear-soft-delete")]
+    assert flags == ["--clear-soft-delete"], (
+        "the flag must be spelled exactly --clear-soft-delete (see "
+        f"`gcloud storage buckets update --help`); got {flags!r}"
+    )
+
+
+def test_the_nonexistent_soft_delete_flag_is_gone_from_the_script() -> None:
+    """Belt and braces for the dry-run check above: the misspelling must not
+    survive anywhere in the script, including a comment a later edit could
+    copy back into a command."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "--clear-soft-delete-policy" not in text
 
 
 def test_env_var_supplies_the_project() -> None:
