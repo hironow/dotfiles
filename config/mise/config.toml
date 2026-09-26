@@ -39,7 +39,7 @@ opentofu = "1.12.6"
 # lint-group pin, never these.
 uv = "latest"
 ruff = "0.15.22"
-ty = "0.0.77"
+ty = "0.0.84"
 # golangci-lint v2: the Go quality gate (`just go-lint` / `just check`).
 # Aqua backend. Bare `mise exec -- golangci-lint` can still resolve Go's
 # GOBIN copy, so justfile recipes pin `aqua:golangci/golangci-lint`.
