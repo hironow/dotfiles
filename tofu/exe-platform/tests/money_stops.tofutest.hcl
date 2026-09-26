@@ -145,6 +145,14 @@ run "l3_authenticates_as_its_own_least_privileged_identity" {
 run "the_budget_is_jpy_and_scoped_to_this_project_alone" {
   command = plan
 
+  # The provider builds the request path as billingAccounts/<id>/budgets, so it
+  # wants the bare id. The first apply sent the prefixed form and got a 404 for
+  # billingAccounts/billingAccounts/<id>.
+  assert {
+    condition     = google_billing_budget.exe_monthly.billing_account == var.billing_account_id && !startswith(google_billing_budget.exe_monthly.billing_account, "billingAccounts/")
+    error_message = "the budget's billing_account must be the bare billing account id (var.billing_account_id), not billingAccounts/<id>: the provider adds that prefix itself, and a doubled prefix is a 404 at apply — leaving the stack with no budget and nothing saying so until the bill arrives."
+  }
+
   assert {
     condition     = google_billing_budget.exe_monthly.amount[0].specified_amount[0].currency_code == "JPY"
     error_message = "the budget's currency must be JPY: a budget has to match its billing account's currency, and a mismatched code is rejected at apply — or worse, compares a yen spend against a dollar ceiling."

@@ -166,7 +166,9 @@ resource "google_monitoring_alert_policy" "scheduler_failure" {
 # Alerts only, no automatic spend cap: a hard cap on a shared billing account
 # takes the neighbours down too.
 resource "google_billing_budget" "exe_monthly" {
-  billing_account = "billingAccounts/${var.billing_account_id}"
+  # The BARE id. The provider builds billingAccounts/<id>/budgets itself, so a
+  # prefixed value turns into billingAccounts/billingAccounts/<id> and a 404.
+  billing_account = var.billing_account_id
   display_name    = "exe monthly (JPY)"
 
   budget_filter {
