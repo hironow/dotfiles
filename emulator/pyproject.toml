@@ -35,7 +35,7 @@ dev = [
 lint = [
     # == the root lint-group pin; tests/unit/test_ruff_ty_pins.py keeps it equal.
     "ruff==0.15.22",
-    "ty==0.0.77",
+    "ty==0.0.84",
 ]
 
 # ty (ADR 0044): type-check the emulator tooling; warnings fail `just emu-lint`.
@@ -114,3 +114,11 @@ exclude-newer-package = { ruff = false, ty = false }
 name = "flatt"
 url = "https://pypi.flatt.tech/simple/"
 default = true
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple/"
+explicit = true
+
+[tool.uv.sources]
+ty = { index = "pypi" }
