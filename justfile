@@ -628,6 +628,8 @@ check:
     @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
+    @echo '🔎 exe pins (exe/versions.json is the single source)...'
+    @{{UV_RUN}} scripts/check_exe_pins.py
     @echo '✅ All checks passed.'
 
 # ADR 0028: assert every uv project declares the flatt PyPI mirror as its
@@ -715,23 +717,60 @@ relock-uv:
 
 # ------------------------------
 # prek (j178/prek) — Rust reimplementation of pre-commit
-# Install: just install-hooks  (== mise exec -- prek install)
+# Install: just install-hooks  (== prek install, both shim types)
 # Run:     just pre-commit     (== mise exec -- prek run --all-files)
 # ------------------------------
 
-# Install prek-managed git hooks once per clone
+# Install prek-managed git hooks once per clone (pre-commit AND commit-msg)
+#
+# Both types are named explicitly, not left to prek's default: the
+# confidentiality guard scans the commit MESSAGE as well as the staged diff,
+# and without the commit-msg shim a leaking message sails through a hook set
+# that looks fully installed. .pre-commit-config.yaml declares the same pair
+# in `default_install_hook_types`, so a bare `prek install` agrees with this.
+# --force overwrites an existing shim so an older install (e.g. one made
+# before commit-msg existed) is actually replaced instead of skipped.
 [group('Lint')]
 install-hooks:
-    mise exec -- prek install
+    mise exec -- prek install --force --hook-type pre-commit --hook-type commit-msg
 
 # Run every prek hook against all files (matches what git invokes pre-commit)
 [group('Lint')]
 pre-commit:
     mise exec -- prek run --all-files
 
+# ------------------------------
+# Confidentiality guard (this repo is PUBLIC).
+#
+# The forbidden-token list lives OUTSIDE the repo
+# (~/.config/dotfiles/forbidden-tokens, mode 0600, or $DOTFILES_FORBIDDEN_TOKENS):
+# tracking it would publish the very strings it protects. With no list the
+# checker is a no-op, so these recipes are safe in CI and on a fresh clone.
+# Called as bare `python3` (stdlib-only script, and `uv run` in a commit hook
+# can regenerate the root uv.lock mid-commit — a known trap here).
+# ------------------------------
+
+# Scan the staged diff, staged paths and unreviewable blobs (what pre-commit runs)
+[group('Lint')]
+check-forbidden-tokens:
+    python3 scripts/check_forbidden_tokens.py staged
+
+# Rescan the whole branch: added lines of <base>..HEAD plus EVERY commit message
+# there. Squashing or amending cannot hide a token from this; the per-commit
+# hook only ever saw one message at a time. Base defaults to the origin/main
+# merge base; override with `just check-forbidden-tokens-branch --base REF`.
+[group('Lint')]
+check-forbidden-tokens-branch *args:
+    python3 scripts/check_forbidden_tokens.py branch {{ args }}
+
+# Scan a PR body (or any file) in full before `gh pr create --body-file`
+[group('Lint')]
+check-pr-body file:
+    python3 scripts/check_forbidden_tokens.py file {{ file }}
+
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check emu-lint
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
