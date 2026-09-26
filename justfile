@@ -630,6 +630,8 @@ check:
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '🔎 exe pins (exe/versions.json is the single source)...'
     @{{UV_RUN}} scripts/check_exe_pins.py
+    @echo '🔎 storage bounds (every tofu sink declares its cap)...'
+    @{{UV_RUN}} scripts/check_storage_bounds.py
     @echo '✅ All checks passed.'
 
 # ADR 0028: assert every uv project declares the flatt PyPI mirror as its
@@ -1440,6 +1442,7 @@ docs-view:
 [group('Exe')]
 exe-bootstrap:
     @bash exe/scripts/bootstrap.sh
+
 
 # Build the TF_ENCRYPTION HCL payload from the local passphrase.
 # State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
