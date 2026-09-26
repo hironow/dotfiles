@@ -173,11 +173,22 @@ resource "google_container_node_pool" "main" {
     # that is unhealthy while the cluster is meant to be asleep should stay
     # dead, not be resurrected.
     auto_repair = false
-    # Upgrades are the maintenance exclusion's job, not a surprise.
-    auto_upgrade = false
+
+    # TRUE because false is not on offer: the cluster is enrolled in a release
+    # channel, where GKE auto-upgrades nodes by default and refuses a node pool
+    # with auto-upgrade disabled ("Auto_upgrade must be true when
+    # release_channel <CHANNEL> is set"). The documented way to hold node
+    # upgrades off is the cluster's "No minor or node upgrades" maintenance
+    # exclusion — which the cluster above carries, inside a window placed after
+    # L3's daily stop:
+    #   https://docs.cloud.google.com/kubernetes-engine/docs/concepts/release-channels
+    #   https://docs.cloud.google.com/kubernetes-engine/docs/how-to/node-auto-upgrades
+    auto_upgrade = true
   }
 
-  # One node at a time, no surge: surging would mean two billed nodes.
+  # One node at a time, no surge: surging would mean two billed nodes. Live
+  # behaviour, not dead config: auto-upgrade is on (above), so this is how GKE
+  # replaces the node whenever the exclusion allows it to.
   upgrade_settings {
     max_surge       = 0
     max_unavailable = 1

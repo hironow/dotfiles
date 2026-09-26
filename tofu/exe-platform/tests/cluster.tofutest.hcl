@@ -31,6 +31,11 @@
 #     upgrade is a full outage, and on Substrate v0.1.0 replacing a worker pod
 #     kills every awake actor terminally. The window is placed after L3's daily
 #     stop so maintenance lands on a cluster that is already meant to be cold.
+#     Node auto-upgrade cannot be turned off in a release channel (see
+#     node_pool.tofutest.hcl), which makes the NO_MINOR_OR_NODE_UPGRADES
+#     exclusion THE control over when a node is replaced — and an exclusion
+#     that has lapsed controls nothing, so its end is checked against the
+#     plan's own timestamp.
 #
 # command = plan + mock_provider keeps this offline: no GCP credentials, no API
 # calls, nothing created. Every value asserted comes from configuration, not
@@ -200,5 +205,23 @@ run "maintenance_lands_on_a_cold_cluster_and_upgrades_are_held" {
   assert {
     condition     = one(google_container_cluster.exe.maintenance_policy[0].maintenance_exclusion).exclusion_options[0].scope == "NO_MINOR_OR_NODE_UPGRADES"
     error_message = "the maintenance exclusion must use scope NO_MINOR_OR_NODE_UPGRADES. A weaker scope still lets GKE replace nodes inside the window; with one node that is a full outage, and on Substrate v0.1.0 a replaced worker pod destroys every awake actor with no recovery path."
+  }
+
+  # GKE refuses an exclusion whose end is not after its start, and it would do
+  # so at apply time, halfway through creating the stack.
+  assert {
+    condition     = timecmp(one(google_container_cluster.exe.maintenance_policy[0].maintenance_exclusion).end_time, one(google_container_cluster.exe.maintenance_policy[0].maintenance_exclusion).start_time) > 0
+    error_message = "the upgrade exclusion's end_time must be after its start_time. GKE rejects an inverted or empty exclusion window at apply time, after part of the stack already exists."
+  }
+
+  # Calendar-driven on purpose, like the uv exclude-newer gate: node auto-upgrade
+  # is on (the release channel requires it), so the day this exclusion lapses is
+  # the day GKE may start replacing the node again. Fourteen days of warning,
+  # measured from the plan being reviewed, is the time to re-date it
+  # deliberately — no later than the pinned minor's end of support, which GKE
+  # enforces — or to move to the next minor on purpose.
+  assert {
+    condition     = timecmp(one(google_container_cluster.exe.maintenance_policy[0].maintenance_exclusion).end_time, timeadd(plantimestamp(), "336h")) > 0
+    error_message = "the NO_MINOR_OR_NODE_UPGRADES exclusion ends within 14 days of this plan (or has already ended). It is the only thing holding node upgrades off, because auto-upgrade cannot be disabled in a release channel. Re-date upgrade_exclusion_end in locals.tf deliberately (GKE caps it at the pinned minor's end of support), or plan the minor upgrade — do not let it lapse silently."
   }
 }

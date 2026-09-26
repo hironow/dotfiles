@@ -27,6 +27,12 @@
 #   - auto_repair off: repair recreates a node it considers unhealthy, which is
 #     indistinguishable from deleting every actor on it; and a node that looks
 #     unhealthy while the cluster is meant to be ASLEEP should stay dead.
+#   - auto_upgrade ON, because OFF is not available: the cluster is enrolled in
+#     a release channel, and GKE refuses a node pool there with auto-upgrade
+#     disabled. What decides WHEN a node may be replaced is the cluster's
+#     NO_MINOR_OR_NODE_UPGRADES maintenance exclusion and its 04:00-08:00 JST
+#     window, both pinned in cluster.tofutest.hcl. With upgrades possible, the
+#     surge settings become live behaviour, so they are pinned too.
 #   - the substrate version label taken from the pin document: Substrate's node
 #     selector matches on this exact key/value. A stale literal does not fail
 #     loudly — it produces nodes the selector quietly declines to schedule onto,
@@ -109,7 +115,7 @@ run "nodes_are_on_demand_and_never_reclaimed" {
   }
 }
 
-run "gke_never_resurrects_or_upgrades_a_node_on_its_own" {
+run "gke_never_resurrects_a_node_and_upgrades_only_as_the_channel_allows" {
   command = plan
 
   assert {
@@ -117,9 +123,28 @@ run "gke_never_resurrects_or_upgrades_a_node_on_its_own" {
     error_message = "auto_repair must be false. Repair RECREATES a node GKE considers unhealthy, which is indistinguishable from deleting every actor awake on it; and a node that looks unhealthy while the cluster is meant to be asleep should stay dead rather than be resurrected into a billed node."
   }
 
+  # TRUE, and not by preference: it is the only value a release-channel cluster
+  # accepts. GKE documents node auto-upgrade as on by default for clusters
+  # enrolled in a release channel, and names a cluster maintenance exclusion
+  # with the "No minor or node upgrades" scope as the way to hold upgrades off:
+  #   https://docs.cloud.google.com/kubernetes-engine/docs/concepts/release-channels
+  #   https://docs.cloud.google.com/kubernetes-engine/docs/how-to/node-auto-upgrades
+  # The API rejects false at node-pool creation ("Auto_upgrade must be true
+  # when release_channel <CHANNEL> is set"), i.e. AFTER the cluster exists, so
+  # an offline test is the only place this can fail cheaply. The control over
+  # WHEN a node is replaced lives on the cluster: see the maintenance run in
+  # cluster.tofutest.hcl.
   assert {
-    condition     = google_container_node_pool.main.management[0].auto_upgrade == false
-    error_message = "auto_upgrade must be false. With one node an upgrade is a full outage, so upgrades are held off deliberately by the maintenance exclusion; auto-upgrade would route around that exclusion's intent and replace the node on GKE's schedule instead of the operator's."
+    condition     = google_container_node_pool.main.management[0].auto_upgrade == true
+    error_message = "auto_upgrade must be true. The cluster is enrolled in a release channel, and GKE refuses a node pool there with auto-upgrade off (API: 'Auto_upgrade must be true when release_channel <CHANNEL> is set'): false does not hold upgrades off, it fails the apply after the cluster already exists. Upgrades are held by the cluster's NO_MINOR_OR_NODE_UPGRADES maintenance exclusion and placed by its 04:00-08:00 JST window (cluster.tofutest.hcl)."
+  }
+
+  # Upgrades CAN happen now, so how they happen is live behaviour rather than
+  # dead configuration. Surge 0 / unavailable 1 replaces the node in place
+  # instead of booting a second billed node beside it.
+  assert {
+    condition     = google_container_node_pool.main.upgrade_settings[0].max_surge == 0 && google_container_node_pool.main.upgrade_settings[0].max_unavailable == 1
+    error_message = "upgrade_settings must be max_surge = 0 and max_unavailable = 1. Auto-upgrade is on (the release channel requires it), so a surge above 0 means every upgrade boots a SECOND billed node beside the first, and a pool that only ever holds one node has nothing to gain from it."
   }
 }
 
