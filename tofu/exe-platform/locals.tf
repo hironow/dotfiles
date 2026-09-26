@@ -63,14 +63,19 @@ locals {
   upgrade_exclusion_start = "2026-09-27T00:00:00Z"
   upgrade_exclusion_end   = "2027-03-25T00:00:00Z"
 
-  # L3: the daily forced stop calls the GKE REST API directly. The URI is built
-  # from the cluster and node pool RESOURCES, never from repeated literals, so a
-  # rename cannot leave the Scheduler job pointing at a pool that no longer
-  # exists (it would 404 daily and only the failure alert would notice).
+  # L3: the daily forced stop calls the GKE REST API directly, as
+  # projects.locations.clusters.nodePools.setSize: POST v1/{name}:setSize with
+  # name = projects/P/locations/L/clusters/C/nodePools/N, where a zone is a
+  # valid location. The older projects.zones method spells its verb as a path
+  # segment instead (.../nodePools/N/setSize); /zones/ joined to :setSize is
+  # neither, and is not a path the API defines. The URI is built from the
+  # cluster and node pool RESOURCES, never from repeated literals, so a rename
+  # cannot leave the Scheduler job pointing at a pool that no longer exists (it
+  # would 404 daily and only the failure alert would notice).
   node_pool_set_size_uri = join("", [
     "https://container.googleapis.com/v1/projects/",
     var.gcp_project_id,
-    "/zones/",
+    "/locations/",
     google_container_cluster.exe.location,
     "/clusters/",
     google_container_cluster.exe.name,

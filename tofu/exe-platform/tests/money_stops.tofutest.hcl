@@ -82,8 +82,18 @@ run "the_l3_uri_and_the_cluster_resources_come_from_one_source" {
   }
 
   assert {
-    condition     = strcontains(google_cloud_scheduler_job.l3_daily_stop.http_target[0].uri, "/zones/${google_container_cluster.exe.location}/")
-    error_message = "the L3 setSize URI must name the cluster resource's OWN zone. A zonal cluster's nodePools.setSize is addressed per zone, so a stale zone segment is a 404 — the job reports success in the Scheduler console only because the retry budget is exhausted quietly."
+    condition     = strcontains(google_cloud_scheduler_job.l3_daily_stop.http_target[0].uri, "/locations/${google_container_cluster.exe.location}/")
+    error_message = "the L3 setSize URI must name the cluster resource's OWN location (its zone). A stale location segment is a 404 — the job reports success in the Scheduler console only because the retry budget is exhausted quietly."
+  }
+
+  # The whole path, pinned to the REST template of
+  # projects.locations.clusters.nodePools.setSize in the container v1 discovery
+  # document: v1/{name=projects/*/locations/*/clusters/*/nodePools/*}:setSize.
+  # The legacy projects.zones method is .../nodePools/{id}/setSize, so the two
+  # forms cannot be mixed, and a mixed URI resizes nothing.
+  assert {
+    condition     = can(regex("^https://container\\.googleapis\\.com/v1/projects/[^/]+/locations/[^/]+/clusters/[^/]+/nodePools/[^/:]+:setSize$", google_cloud_scheduler_job.l3_daily_stop.http_target[0].uri))
+    error_message = "the L3 URI must be exactly https://container.googleapis.com/v1/projects/<p>/locations/<zone>/clusters/<c>/nodePools/<pool>:setSize — the locations form of nodePools.setSize. The zones form spells the verb as /setSize, and a /zones/ path ending in :setSize is not a route the API defines: the last automatic money stop would fail every night."
   }
 
   assert {
