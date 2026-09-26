@@ -158,7 +158,17 @@ resource "google_monitoring_alert_policy" "scheduler_failure" {
 
   notification_channels = [google_monitoring_notification_channel.email.id]
 
-  depends_on = [google_project_service.enabled]
+  # After the L3 job, i.e. after the cluster build, and not merely after the
+  # metric. Cloud Monitoring registers a new log-based metric's descriptor
+  # asynchronously ("If a metric was created recently, it could take up to 10
+  # minutes to become available"), the provider does not retry that 404
+  # (hashicorp/terraform-provider-google#11102), and a policy created straight
+  # after the metric fails the apply. The cluster build is the wait; it is also
+  # the natural order, since this alert watches that job.
+  depends_on = [
+    google_project_service.enabled,
+    google_cloud_scheduler_job.l3_daily_stop,
+  ]
 }
 
 # --- JPY budget -------------------------------------------------------------

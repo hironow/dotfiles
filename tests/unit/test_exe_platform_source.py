@@ -178,3 +178,20 @@ def test_the_provider_names_this_project_as_the_quota_project() -> None:
         "billing_project must be var.gcp_project_id: the quota project is this "
         "project, never whichever project the operator's ADC defaults to"
     )
+
+
+# --- the Scheduler-failure alert waits for its metric -------------------------
+
+
+def test_the_scheduler_failure_alert_is_created_after_the_l3_job() -> None:
+    """Cloud Monitoring registers a new log-based metric asynchronously -- "it
+    could take up to 10 minutes to become available" -- and the provider does
+    not retry that 404. Ordering the alert after the L3 job puts the whole
+    cluster build between the metric and the policy that reads it."""
+    bodies = resources(_stack_text())
+    alert = bodies["google_monitoring_alert_policy.scheduler_failure"]
+    assert "google_cloud_scheduler_job.l3_daily_stop" in depends_on(alert), (
+        "the scheduler-failure alert must depend on the L3 job, so it is not "
+        "created in the seconds after its log-based metric, before Cloud "
+        "Monitoring can see it"
+    )
