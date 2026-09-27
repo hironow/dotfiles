@@ -11,6 +11,14 @@
 # and when one of its executions failed. Those two close this file and come and
 # go with the L2 job.
 #
+# Every policy states its severity, which Cloud Monitoring carries into the
+# incident and the email (Phase 6 plan D9):
+#   CRITICAL  money is going where it should not, or work was cut off: a node
+#             up past any lease, a forced stop.
+#   ERROR     one layer of the money stop is failing while the others stand:
+#             a failed Scheduler job, a failed L2 execution.
+# tests/alert_severity.tofutest.hcl pins the table.
+#
 # The notification address lives only in terraform.tfvars.
 
 resource "google_monitoring_notification_channel" "email" {
@@ -37,6 +45,7 @@ resource "google_monitoring_notification_channel" "email" {
 resource "google_monitoring_alert_policy" "node_uptime" {
   project      = var.gcp_project_id
   display_name = "exe: node up longer than 9h"
+  severity     = "CRITICAL"
   combiner     = "OR"
 
   documentation {
@@ -121,6 +130,7 @@ resource "google_logging_metric" "scheduler_failures" {
 resource "google_monitoring_alert_policy" "scheduler_failure" {
   project      = var.gcp_project_id
   display_name = "exe: Cloud Scheduler job failed"
+  severity     = "ERROR"
   combiner     = "OR"
 
   documentation {
@@ -276,6 +286,7 @@ resource "google_monitoring_alert_policy" "l2_forced_stop" {
 
   project      = var.gcp_project_id
   display_name = "exe: L2 forced a stop"
+  severity     = "CRITICAL"
 
   # A log-match condition is a policy of its own: exactly one condition, OR.
   combiner = "OR"
@@ -339,6 +350,7 @@ resource "google_monitoring_alert_policy" "l2_execution_failed" {
 
   project      = var.gcp_project_id
   display_name = "exe: L2 execution failed"
+  severity     = "ERROR"
 
   # A log-match condition is a policy of its own: exactly one condition, OR.
   combiner = "OR"
