@@ -165,6 +165,21 @@ func DecideL2(o Observation) Decision {
 	return Decision{ActionStopForced, ReasonHeartbeatStale}
 }
 
+// NextReadFailures advances L2's run of consecutive lease read failures by one
+// tick. L2 is a job that exits between ticks, so the run lives in enforce.json
+// and is carried forward here.
+//
+// While the pool is at zero the run is reset, readable or not: there is nothing
+// for a blind stop to stop, and a run carried across a stop would make the
+// first miss after the next wake a blind stop of a lease nobody has yet failed
+// to read three times.
+func NextReadFailures(prev int, leaseOK bool, nodes int) int {
+	if nodes == 0 || leaseOK {
+		return 0
+	}
+	return prev + 1
+}
+
 // MayStartTask reports whether a new task may be started right now.
 //
 // This guard was found missing by the seeded simulation, which produced:

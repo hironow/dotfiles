@@ -266,11 +266,6 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 
 	obs := lease.Observation{Now: now}
 	obs.Lease, obs.LeaseOK = leaseFromRead(client.GetObject(ctx, cfg.bucket, leaseObject))
-	if obs.LeaseOK {
-		obs.ConsecutiveReadFailures = 0
-	} else {
-		obs.ConsecutiveReadFailures = prev.ReadFailures + 1
-	}
 
 	if drainBody, _, derr := client.GetObject(ctx, cfg.bucket, drainObject); derr == nil {
 		var d lease.Drain
@@ -284,6 +279,11 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 		_, _ = fmt.Fprintf(e.errOut, "warning: node pool size unreadable, deciding as if a node may be up: %v\n", sizeErr)
 	}
 	obs.Nodes = nodesForDecision(size, sizeErr)
+
+	// After the pool size, because the rule needs it: while the pool is at
+	// zero the run resets, so a run carried across a stop cannot make the first
+	// miss after the next wake a blind stop.
+	obs.ConsecutiveReadFailures = lease.NextReadFailures(prev.ReadFailures, obs.LeaseOK, obs.Nodes)
 
 	decision := lease.DecideL2(obs)
 	_, _ = fmt.Fprintf(e.out, "decision=%s reason=%s nodes=%d readFailures=%d\n",

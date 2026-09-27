@@ -485,3 +485,32 @@ func TestExtendAfterDrainedIsDecidedByGenerationNotByCleanup(t *testing.T) {
 		t.Fatalf("after the extend, the stale drained record must not stop it; got %+v", got)
 	}
 }
+
+func TestNextReadFailures(t *testing.T) {
+	// L2 is a job that exits between ticks, so the run of consecutive lease
+	// read failures is carried in enforce.json and advanced here, one tick at a
+	// time. The model's l2 branches and the simulation advance it through this
+	// same rule.
+	tests := []struct {
+		name    string
+		prev    int
+		leaseOK bool
+		nodes   int
+		want    int
+	}{
+		{"a readable lease ends the run", 2, true, 1, 0},
+		{"the first miss starts a run", 0, false, 1, 1},
+		{"a further miss extends it", 2, false, 1, 3},
+		// Carried across a stop, a run would make the first miss after the
+		// next wake a blind stop of a lease nobody has failed to read yet.
+		{"while the pool is at zero the run is reset, unreadable or not", 2, false, 0, 0},
+		{"and a readable lease at zero leaves it reset", 0, true, 0, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NextReadFailures(tc.prev, tc.leaseOK, tc.nodes); got != tc.want {
+				t.Errorf("NextReadFailures(%d, %v, %d) = %d, want %d", tc.prev, tc.leaseOK, tc.nodes, got, tc.want)
+			}
+		})
+	}
+}

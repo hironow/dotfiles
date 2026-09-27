@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -79,6 +80,48 @@ func TestADeletedLeaseForcesOnTheThirdTick(t *testing.T) {
 			t.Fatalf("tick %d: action %s (%s); forced = %v, want %v", tick, d.Action, d.Reason, gotForced, wantForced)
 		}
 		now = now.Add(lease.L2Tick)
+	}
+}
+
+// L2's run of consecutive lease read failures lives in enforce.json between
+// ticks. A tick advances it by lease.NextReadFailures, the rule the Quint model
+// and the seeded simulation advance it by, and that rule resets the run while
+// the pool is at zero.
+func TestATickCarriesTheReadFailureRunByTheSharedRule(t *testing.T) {
+	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		prev       int
+		readable   bool
+		targetSize int
+		wantRun    int
+		wantStop   bool
+	}{
+		{"a miss while the pool is up extends the run", 1, false, 1, 2, false},
+		{"the third miss in a row stops the pool", 2, false, 1, 3, true},
+		{"a readable lease ends the run", 2, true, 1, 0, false},
+		// Carried across a stop, the run would make the first miss after the
+		// next wake a blind stop of a lease nobody has yet failed to read.
+		{"while the pool is at zero the run is reset, unreadable or not", 2, false, 0, 0, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cloud := newFakeCloud(t)
+			cloud.targetSize = tc.targetSize
+			cloud.put(enforceObject, enforceRecord{ReadFailures: tc.prev})
+			if tc.readable {
+				cloud.put(leaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
+			}
+
+			cloud.tickAt(now, io.Discard)
+
+			if got := cloud.storedRecord().ReadFailures; got != tc.wantRun {
+				t.Errorf("read-failure run after the tick = %d, want %d", got, tc.wantRun)
+			}
+			if stopped := len(cloud.setSizes()) > 0; stopped != tc.wantStop {
+				t.Errorf("setSize called = %v, want %v (calls %v)", stopped, tc.wantStop, cloud.setSizes())
+			}
+		})
 	}
 }
 
