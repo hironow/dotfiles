@@ -128,3 +128,21 @@ run "redis_persists_demands_a_password_and_answers_only_ax" {
     error_message = "only ax-server and ax-controller may reach Redis, on 6379: every actor runs task code on the same pod network."
   }
 }
+
+# S5: a task's actor runs arbitrary code on the pod network. The only client of
+# ax-server is the operator's `ax` CLI, which arrives through a kubectl
+# port-forward -- through the kubelet, not the pod network, so NetworkPolicy
+# does not apply to it. Every pod-network connection to ax-server is refused.
+run "ax_server_takes_no_connection_from_the_pod_network" {
+  command = plan
+
+  assert {
+    condition     = kubernetes_network_policy_v1.ax_server.spec[0].pod_selector[0].match_labels["app.kubernetes.io/name"] == "ax-server"
+    error_message = "the ax-server NetworkPolicy must select the ax-server pods."
+  }
+
+  assert {
+    condition     = kubernetes_network_policy_v1.ax_server.spec[0].policy_types == tolist(["Ingress"]) && length(kubernetes_network_policy_v1.ax_server.spec[0].ingress) == 0
+    error_message = "ax-server must deny every ingress from the pod network (policy type Ingress, no rules): a task could otherwise create, resume or delete tasks through the API. The ax CLI is unaffected, because its port-forward does not cross the pod network."
+  }
+}

@@ -235,6 +235,29 @@ resource "kubernetes_network_policy_v1" "redis" {
   }
 }
 
+# Nothing on the pod network may reach ax-server (S5): every task's actor runs
+# arbitrary code there, and the API creates, resumes and deletes tasks. Its one
+# client, the operator's `ax` CLI, arrives through a kubectl port-forward, which
+# enters the pod through the kubelet rather than the pod network, so a policy
+# with no ingress rules leaves it working.
+resource "kubernetes_network_policy_v1" "ax_server" {
+  metadata {
+    name      = "ax-server-from-nothing"
+    namespace = kubernetes_namespace_v1.ax.metadata[0].name
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name" = "ax-server"
+      }
+    }
+
+    policy_types = ["Ingress"]
+  }
+}
+
 # --- ax-server ---------------------------------------------------------------
 
 resource "kubernetes_deployment_v1" "ax_server" {
