@@ -50,8 +50,9 @@ locals {
   # bucket, which can disappear. It is copied, verified by sha256, into the
   # snapshot bucket under mirror/gvisor/ (substrate.tf), and our own
   # SandboxConfig names the copy. atelet reads it through the grant it already
-  # holds on that bucket (exe-platform iam.tf). The worker node is amd64
-  # (e2-standard-4), so only the amd64 asset is mirrored and named.
+  # holds on that bucket (exe-platform iam.tf). The worker node is an amd64 E2
+  # (exe-platform's node_machine_type), so only the amd64 asset is mirrored and
+  # named.
   #
   # Moving the Substrate pin means re-reading upstream's
   # sandboxconfig-gvisor.yaml at the new commit and moving these two lines with
@@ -113,8 +114,9 @@ locals {
   #
   # Two workers, one actor each on Substrate v0.1.0, so two tasks awake at once
   # (plan Q17). Limits are the worker's advertised capacity AND what the
-  # kube-scheduler has to place, next to the control plane, on one
-  # e2-standard-4; memory is not compressible, so its request equals the limit.
+  # kube-scheduler has to place, next to the control plane, on the one node
+  # (exe-platform's node_machine_type, sized by S7 to fit exactly this); memory
+  # is not compressible, so its request equals the limit.
   worker_pool_name     = "exe-gvisor"
   worker_pool_replicas = 2
   worker_resources = {

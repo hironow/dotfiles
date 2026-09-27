@@ -104,9 +104,9 @@ variable "enforcer_image" {
 }
 
 variable "node_machine_type" {
-  description = "Node machine type (decision Q9/Q17: e2-standard-4 supports 2 concurrent actors)."
+  description = "Node machine type (M20 T3, sized by S7: e2-highmem-2 fits the stack plus 2 concurrent 4Gi actors at ~68% of e2-standard-4's rate)."
   type        = string
-  default     = "e2-standard-4"
+  default     = "e2-highmem-2"
 }
 
 variable "node_disk_size_gb" {

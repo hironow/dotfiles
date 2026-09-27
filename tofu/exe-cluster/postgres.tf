@@ -1,7 +1,7 @@
 # The Substrate store: our own Postgres, instead of the one upstream bundles.
 #
 # Upstream's bundled store requests 2 CPUs and claims a 500Gi volume (a cost
-# trap on a single e2-standard-4), so the install is given an external DSN and
+# trap on our one small node), so the install is given an external DSN and
 # skips it entirely. This one is sized for one small control plane: 10Gi of
 # pd-standard (the GKE `standard` class). The disk bills around the clock while
 # the node sleeps, and cost comes first (manager-loop inbox M20 T2): pd-balanced

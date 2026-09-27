@@ -100,8 +100,8 @@ run "nodes_are_on_demand_and_never_reclaimed" {
   command = plan
 
   assert {
-    condition     = google_container_node_pool.main.node_config[0].machine_type == "e2-standard-4"
-    error_message = "machine type must be e2-standard-4 (decisions Q9/Q17): it is the size sighted to run two concurrent actors, and the cost model in the plan is built on its hourly rate. A larger type silently multiplies every awake hour."
+    condition     = google_container_node_pool.main.node_config[0].machine_type == "e2-highmem-2"
+    error_message = "machine type must be e2-highmem-2 (M20 T3, sized by S7's measurement on 2026-09-27): the stack plus two workers requests 1745m CPU and 10.2 GiB, which fits its ~1.93 vCPU / ~13 GiB allocatable, at about 68% of e2-standard-4's hourly rate. The memory is what two 4Gi workers need; a larger type silently multiplies every awake hour, a smaller one cannot schedule both workers."
   }
 
   assert {

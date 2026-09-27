@@ -1,8 +1,8 @@
 # What this file pins: the Substrate store is our own small Postgres, never
 # upstream's bundled one, and nothing but ate-api-server can reach it.
 #
-# Upstream's bundled store requests 2 CPUs and claims 500Gi, a cost trap on one
-# e2-standard-4; a store anyone on the pod network can dial is a store any
+# Upstream's bundled store requests 2 CPUs and claims 500Gi, a cost trap on our
+# one small node; a store anyone on the pod network can dial is a store any
 # task can rewrite. Both are properties of values, so both are asserted.
 
 # command = plan + mock providers: offline, no credentials, nothing created. The

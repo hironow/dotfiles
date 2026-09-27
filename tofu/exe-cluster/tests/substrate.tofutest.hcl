@@ -70,7 +70,7 @@ run "the_install_runs_the_pinned_substrate_in_build_mode" {
 
   assert {
     condition     = local.ate_setup_env.KO_DEFAULTPLATFORMS == "linux/amd64"
-    error_message = "build for linux/amd64 only: the node is an e2-standard-4, and upstream's default of amd64 plus arm64 doubles every build for images nothing pulls."
+    error_message = "build for linux/amd64 only: the node is an amd64 E2 machine, and upstream's default of amd64 plus arm64 doubles every build for images nothing pulls."
   }
 
   assert {
