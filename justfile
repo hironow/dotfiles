@@ -1939,6 +1939,56 @@ exe-worker-images: exe-cluster-src
     KO_DOCKER_REPO="${repo}/substrate" KO_DEFAULTPLATFORMS=linux/amd64 VERSION="$version" NO_DEV_ENV=1 \
         mise x -- go run ./cmd/ate-setup --no-dev-env publish worker-images
 
+# Build and push the task image (docker/exe-task.Dockerfile) with Cloud Build in
+# the private project: default pool, the exe-build service account, source
+# staged in the 7-day exe-build bucket, logs to Cloud Logging only. The context
+# is staged here: the Dockerfile, ax-task-runner cross-compiled from the pinned
+# ax checkout, and its bootstrap script; the tag is the context's content hash.
+# After the push it reads the manifest back, refuses anything but linux/amd64,
+# and prints the digest ref a Task's spec.image takes.
+[group('Exe')]
+exe-image: exe-cluster-src
+    #!/usr/bin/env bash
+    set -euo pipefail
+    project="$(just _tofu-out exe-platform project_id)"
+    region="$(just _tofu-out exe-platform region)"
+    repo="$(just _tofu-out exe-platform ar_task_repo)"
+    bucket="$(just _tofu-out exe-platform bucket_build)"
+    sa="$(just _tofu-out exe-platform service_account_emails | python3 -c 'import json, sys; print(json.load(sys.stdin)["build"])')"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    mkdir "$work/context"
+    cp docker/exe-task.Dockerfile "$work/context/Dockerfile"
+    cp "{{ _EXE_SRC_DIR }}/ax/cmd/ax-task-runner/antigravity_bootstrap.py" "$work/context/"
+    (cd "{{ _EXE_SRC_DIR }}/ax" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+        mise x -- go build -trimpath -ldflags="-s -w" -o "$work/context/ax-task-runner" ./cmd/ax-task-runner)
+    hash="$(cd "$work/context" && shasum -a 256 Dockerfile ax-task-runner antigravity_bootstrap.py | shasum -a 256 | cut -c1-16)"
+    tag="${repo}/task:${hash}"
+    mise x -- gcloud builds submit "$work/context" --project "$project" --region "$region" \
+        --config exe/ax/cloudbuild.yaml --substitutions "_IMAGE=${tag}" \
+        --gcs-source-staging-dir "gs://${bucket}/source" \
+        --service-account "projects/${project}/serviceAccounts/${sa}"
+    digest="$(mise x -- gcloud artifacts docker images describe "$tag" --project "$project" \
+        --format='value(image_summary.digest)')"
+    case "$digest" in
+      sha256:*) ;;
+      *) echo "exe-image: no sha256 digest for ${tag}: '${digest}'" >&2; exit 1 ;;
+    esac
+    host="${repo%%/*}"
+    path="${repo#*/}/task"
+    token="$(mise x -- gcloud auth print-access-token)"
+    registry() { curl -fsSL -H "Authorization: Bearer ${token}" -H "Accept: $2" "https://${host}/v2/${path}/$1"; }
+    manifest_types='application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
+    config="$(registry "manifests/${digest}" "$manifest_types" |
+        python3 -c 'import json, sys; print(json.load(sys.stdin)["config"]["digest"])')"
+    platform="$(registry "blobs/${config}" '*/*' |
+        python3 -c 'import json, sys; c = json.load(sys.stdin); print(c["os"] + "/" + c["architecture"])')"
+    if [ "$platform" != "linux/amd64" ]; then
+      echo "exe-image: ${tag}@${digest} is ${platform}, not linux/amd64" >&2
+      exit 1
+    fi
+    echo "${tag}@${digest}"
+
 # Build and push a MINIMAL task image for the Phase 4 spike: upstream's
 # ax-task-runner at /usr/local/bin (where AX runs it) over the runner's
 # alpine/git base from exe/ax/.ko.yaml (pinned by digest), nothing else. See
