@@ -7,10 +7,11 @@
 // entire job is to be trustworthy enough to stop a cluster, and the repo's
 // stdlib-first rule points the same way.
 //
-// Tokens come from one of two places, tried in order: the metadata server (when
-// running as the Cloud Run job or on a node), then GOOGLE_OAUTH_ACCESS_TOKEN
+// Tokens come from one of two places, tried in order: GOOGLE_OAUTH_ACCESS_TOKEN
 // (which `just` recipes fill from `gcloud auth print-access-token` for the
-// operator's own path). No key files, no ADC file parsing.
+// operator's own path), then the metadata server (when running as the Cloud Run
+// job or on a node), whose token is cached for as long as it lives. No key
+// files, no ADC file parsing.
 package gcp
 
 import (
@@ -24,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -38,6 +40,14 @@ const (
 	containerBase = "https://container.googleapis.com"
 
 	defaultTimeout = 30 * time.Second
+
+	// metadataTimeout bounds one token request. The metadata server is local to
+	// the Cloud Run job and the node, so it answers at once or not at all.
+	metadataTimeout = 2 * time.Second
+	// tokenRefreshSkew is how long before its expires_in runs out a cached
+	// metadata token is replaced: a token presented in its last minute can
+	// expire while the request carrying it is still in flight.
+	tokenRefreshSkew = time.Minute
 )
 
 // ErrNotFound is returned for a missing object, distinctly from a transport
@@ -92,37 +102,81 @@ func New() *Client {
 	}
 }
 
-// tokenSource is the default token chain.
+// tokenSource is the default token chain, and the cache that makes it one
+// metadata fetch per token lifetime instead of one per request. New gives every
+// Client its own, so the cache lives as long as the Client does -- for each
+// subcommand, the life of the process.
 type tokenSource struct {
 	// metadataURL is the metadata server's token endpoint. New sets the real
 	// one; the tests point it at an httptest server, the same seam as
 	// StorageBase.
 	metadataURL string
+
+	mu     sync.Mutex
+	token  string    // the cached metadata token; "" when there is none
+	expiry time.Time // when token dies, by the expires_in it came with
 }
 
+// Token returns the access token for one request.
+//
+// $GOOGLE_OAUTH_ACCESS_TOKEN first, and used as is: it is set only where
+// someone set it on purpose, and whoever set it owns its lifetime. The metadata
+// server is asked only when it is empty. Asking it first would cost the
+// operator's Mac, which has no metadata server, up to metadataTimeout on every
+// request before the env var was even read.
+//
+// The lock is held across the fetch, so concurrent first calls make one
+// metadata request between them instead of one each.
 func (s *tokenSource) Token(ctx context.Context) (string, error) {
-	// Metadata server first: inside Cloud Run or on a node this is the identity
-	// that matters, and it needs no configuration.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.metadataURL, nil)
-	if err == nil {
-		req.Header.Set("Metadata-Flavor", "Google")
-		client := &http.Client{Timeout: 2 * time.Second}
-		if resp, err := client.Do(req); err == nil {
-			defer func() { _ = resp.Body.Close() }()
-			if resp.StatusCode == http.StatusOK {
-				var payload struct {
-					AccessToken string `json:"access_token"`
-				}
-				if err := json.NewDecoder(resp.Body).Decode(&payload); err == nil && payload.AccessToken != "" {
-					return payload.AccessToken, nil
-				}
-			}
-		}
-	}
 	if tok := os.Getenv(tokenEnv); tok != "" {
 		return tok, nil
 	}
-	return "", fmt.Errorf("no access token: metadata server unavailable and $%s is empty", tokenEnv)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.token != "" && time.Until(s.expiry) > tokenRefreshSkew {
+		return s.token, nil
+	}
+	// Measured from before the request, so the expiry errs early: expires_in
+	// counts from when the server answered, which is later.
+	requested := time.Now()
+	tok, lifetime, err := fetchMetadataToken(ctx, s.metadataURL)
+	if err != nil {
+		return "", fmt.Errorf("no access token: $%s is empty and the metadata server gave none: %w", tokenEnv, err)
+	}
+	s.token, s.expiry = tok, requested.Add(lifetime)
+	return tok, nil
+}
+
+// fetchMetadataToken asks the metadata server for the default service
+// account's access token and how long it has left to live.
+func fetchMetadataToken(ctx context.Context, endpoint string) (string, time.Duration, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("Metadata-Flavor", "Google")
+	client := &http.Client{Timeout: metadataTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", 0, statusError(resp)
+	}
+
+	var payload struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"` // seconds
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", 0, fmt.Errorf("decoding the metadata token: %w", err)
+	}
+	if payload.AccessToken == "" {
+		return "", 0, errors.New("the metadata server answered without an access_token")
+	}
+	return payload.AccessToken, time.Duration(payload.ExpiresIn) * time.Second, nil
 }
 
 func (c *Client) do(ctx context.Context, method, rawURL string, body []byte, headers map[string]string) (*http.Response, error) {

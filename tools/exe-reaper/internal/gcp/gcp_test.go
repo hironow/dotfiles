@@ -3,10 +3,14 @@ package gcp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -222,6 +226,220 @@ func TestTokenFailureIsReportedNotSwallowed(t *testing.T) {
 	}
 	if _, _, err := client.GetObject(context.Background(), "zz-bucket", "lease.json"); err == nil {
 		t.Error("want the token error to surface")
+	}
+}
+
+// The default token chain, against a stand-in metadata server. Each fetch
+// hands out a new token (meta-token-1, meta-token-2, ...), so a test can tell a
+// cached token from a refreshed one, and every request is counted, so a test
+// can prove the server was never asked. Like the real server, it refuses a
+// request without Metadata-Flavor: Google.
+func metadataServer(t *testing.T, expiresIn int) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := requests.Add(1)
+		if r.Header.Get("Metadata-Flavor") != "Google" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"access_token":"meta-token-%d","expires_in":%d,"token_type":"Bearer"}`, n, expiresIn)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &requests
+}
+
+// tokenClient is a Client on the default token chain, pointed at the given
+// metadata endpoint and at a storage server that records the Authorization
+// header of every request it serves.
+func tokenClient(t *testing.T, metadataURL string) (client *Client, auths func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var seen []string
+	storage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.Header().Set("X-Goog-Generation", "1")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(storage.Close)
+	tokens := &tokenSource{metadataURL: metadataURL}
+	client = &Client{HTTP: storage.Client(), Token: tokens.Token, StorageBase: storage.URL}
+	return client, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(seen)
+	}
+}
+
+func getTwice(t *testing.T, client *Client) {
+	t.Helper()
+	for range 2 {
+		if _, _, err := client.GetObject(context.Background(), "zz-bucket", "lease.json"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+}
+
+// Env first. $GOOGLE_OAUTH_ACCESS_TOKEN is set only where someone meant it to
+// be (the just recipes fill it from gcloud for the operator), so when it is set
+// the metadata server is not asked at all. Asked first, off GCP, it would cost
+// up to a 2 s timeout on every request.
+func TestTokenUsesTheEnvVarWithoutAskingTheMetadataServer(t *testing.T) {
+	t.Setenv(tokenEnv, "env-token")
+	meta, requests := metadataServer(t, 3600)
+	client, auths := tokenClient(t, meta.URL)
+
+	getTwice(t, client)
+
+	if got, want := auths(), []string{"Bearer env-token", "Bearer env-token"}; !slices.Equal(got, want) {
+		t.Errorf("authorization: want %q, got %q", want, got)
+	}
+	if n := requests.Load(); n != 0 {
+		t.Errorf("metadata server asked %d time(s) with $%s set; want 0", n, tokenEnv)
+	}
+}
+
+func TestTokenFallsBackToTheMetadataServerWhenTheEnvVarIsEmpty(t *testing.T) {
+	// Set to empty rather than left alone: the operator's shell may export it.
+	t.Setenv(tokenEnv, "")
+	meta, _ := metadataServer(t, 3600)
+	client, auths := tokenClient(t, meta.URL)
+
+	if _, _, err := client.GetObject(context.Background(), "zz-bucket", "lease.json"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got, want := auths(), []string{"Bearer meta-token-1"}; !slices.Equal(got, want) {
+		t.Errorf("authorization: want %q, got %q", want, got)
+	}
+}
+
+// One metadata fetch per token lifetime, not one per request: an L2 tick makes
+// half a dozen requests.
+func TestMetadataTokenIsCachedAcrossRequests(t *testing.T) {
+	t.Setenv(tokenEnv, "")
+	meta, requests := metadataServer(t, 3600)
+	client, auths := tokenClient(t, meta.URL)
+
+	getTwice(t, client)
+
+	if got, want := auths(), []string{"Bearer meta-token-1", "Bearer meta-token-1"}; !slices.Equal(got, want) {
+		t.Errorf("authorization: want %q, got %q", want, got)
+	}
+	if n := requests.Load(); n != 1 {
+		t.Errorf("metadata fetches for two requests: want 1, got %d", n)
+	}
+}
+
+// expires_in is honoured: a token in the last minute of its life is replaced
+// rather than presented, since a request that outlives the token fails.
+func TestMetadataTokenNearItsExpiryIsRefreshed(t *testing.T) {
+	t.Setenv(tokenEnv, "")
+	meta, requests := metadataServer(t, 30) // already inside the last minute
+	client, auths := tokenClient(t, meta.URL)
+
+	getTwice(t, client)
+
+	if got, want := auths(), []string{"Bearer meta-token-1", "Bearer meta-token-2"}; !slices.Equal(got, want) {
+		t.Errorf("authorization: want %q, got %q", want, got)
+	}
+	if n := requests.Load(); n != 2 {
+		t.Errorf("metadata fetches: want 2, got %d", n)
+	}
+}
+
+// The cache is shared by every request a Client makes, so it has to hold under
+// concurrent first use: one fetch between all the callers, one token for all.
+func TestConcurrentFirstUseFetchesTheMetadataTokenOnce(t *testing.T) {
+	t.Setenv(tokenEnv, "")
+	meta, requests := metadataServer(t, 3600)
+	tokens := &tokenSource{metadataURL: meta.URL}
+
+	const callers = 8
+	got := make([]string, callers)
+	errs := make([]error, callers)
+	var wg sync.WaitGroup
+	for i := range callers {
+		wg.Go(func() { got[i], errs[i] = tokens.Token(context.Background()) })
+	}
+	wg.Wait()
+
+	for i := range callers {
+		if errs[i] != nil || got[i] != "meta-token-1" {
+			t.Errorf("caller %d: got %q, %v; want meta-token-1", i, got[i], errs[i])
+		}
+	}
+	if n := requests.Load(); n != 1 {
+		t.Errorf("metadata fetches for %d concurrent first calls: want 1, got %d", callers, n)
+	}
+}
+
+// No env var and no metadata token is an error, and one that names the env
+// var: on the operator's Mac that is the one thing there is to fix.
+func TestNoTokenAnywhereIsAClearError(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler http.HandlerFunc // nil: nothing is listening
+	}{
+		{"metadata server unreachable", nil},
+		{"metadata server refuses", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		}},
+		{"metadata server answers without a token", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"expires_in":3600}`))
+		}},
+		{"metadata server answers garbage", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`<html>`))
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(tokenEnv, "")
+			srv := httptest.NewServer(tc.handler)
+			if tc.handler == nil {
+				srv.Close() // a closed server's URL refuses connections
+			} else {
+				t.Cleanup(srv.Close)
+			}
+
+			tok, err := (&tokenSource{metadataURL: srv.URL}).Token(context.Background())
+			if err == nil {
+				t.Fatalf("want an error, got token %q", tok)
+			}
+			if !strings.Contains(err.Error(), tokenEnv) {
+				t.Errorf("the error should name $%s: %v", tokenEnv, err)
+			}
+		})
+	}
+}
+
+// New wires that chain in: with the env var set, New's Client authenticates
+// with the env token.
+func TestNewAuthenticatesWithTheEnvToken(t *testing.T) {
+	t.Setenv(tokenEnv, "env-token")
+	var mu sync.Mutex
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotAuth = r.Header.Get("Authorization")
+		mu.Unlock()
+		w.Header().Set("X-Goog-Generation", "1")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := New()
+	client.StorageBase = srv.URL
+	if _, _, err := client.GetObject(context.Background(), "zz-bucket", "lease.json"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if gotAuth != "Bearer env-token" {
+		t.Errorf("authorization: want %q, got %q", "Bearer env-token", gotAuth)
 	}
 }
 
