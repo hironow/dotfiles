@@ -248,8 +248,9 @@ resource "google_billing_budget" "exe_monthly" {
 # per line on stdout, whose `severity` Cloud Run lifts into the LogEntry and
 # whose other fields land in jsonPayload — L2's under jsonPayload.exe_l2.
 #   decision  event "decision", with action / reason / notify. ERROR exactly
-#             when the action is stop-forced AND notify is set, i.e. the first
-#             forced stop of a lease generation; every repeat is WARNING.
+#             when the action is stop-forced AND notify is set, i.e. a forced
+#             stop that does not repeat the tick before it (the same stop under
+#             the same lease generation); every repeat is WARNING.
 #   failure   event "failure", at ERROR: the last line before the binary exits 1.
 # Both are Cloud LOGGING queries, so no monitoring.* functions (the
 # Scheduler-failure metric above records how that fails at apply).
@@ -300,9 +301,9 @@ resource "google_monitoring_alert_policy" "l2_forced_stop" {
     display_name = "L2 logged a forced stop"
 
     condition_matched_log {
-      # Severity is the once-per-lease-generation rule: the enforcer writes the
-      # first forced stop of a generation at ERROR and every repeat at WARNING,
-      # so without the severity clause one stuck stop pages on every tick.
+      # Severity is the page-once rule: the enforcer writes a forced stop at
+      # ERROR and a repeat of the tick before it at WARNING, so without the
+      # severity clause one stuck stop pages on every tick.
       filter = join(" AND ", [
         "resource.type = \"cloud_run_job\"",
         "resource.labels.job_name = \"${google_cloud_run_v2_job.l2_enforcer[0].name}\"",
@@ -317,11 +318,11 @@ resource "google_monitoring_alert_policy" "l2_forced_stop" {
 
   alert_strategy {
     # The floor (5 minutes). The enforcer already limits this line to one per
-    # lease generation, so the policy adds no second limit of its own: a longer
-    # window could skip a genuine forced stop of the NEXT generation, and every
-    # forced stop is one the operator has to hear about. If that per-generation
-    # rule ever broke, this would page on every tick — loud, which is the
-    # direction a money stop should fail in.
+    # run of forced stops, so the policy adds no second limit of its own: a
+    # longer window could skip a genuine forced stop of the NEXT wake, and every
+    # forced stop is one the operator has to hear about. If that page-once rule
+    # ever broke, this would page on every tick — loud, which is the direction
+    # a money stop should fail in.
     notification_rate_limit {
       period = "300s"
     }

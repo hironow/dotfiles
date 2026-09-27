@@ -377,7 +377,7 @@ run "the_job_is_told_where_everything_is_by_reference" {
 # prints one JSON object per line to stdout; Cloud Run lifts `severity` into the
 # LogEntry and the rest lands in jsonPayload, with L2's fields under
 # jsonPayload.exe_l2. A decision line carries event "decision" and the action,
-# and is at ERROR exactly for the FIRST forced stop of a lease generation
+# and is at ERROR exactly for a forced stop that does not repeat the tick before
 # (repeats are WARNING). A failure line carries event "failure", at ERROR, and
 # is the last thing the binary writes before it exits 1.
 #
@@ -438,7 +438,7 @@ run "a_forced_stop_pages_on_the_enforcers_own_decision_line" {
 
   assert {
     condition     = strcontains(google_monitoring_alert_policy.l2_forced_stop[0].conditions[0].condition_matched_log[0].filter, "severity >= ERROR")
-    error_message = "the forced-stop filter must require severity >= ERROR. The enforcer logs the first forced stop of a lease generation at ERROR and every repeat at WARNING, so severity IS the once-per-generation rule: without it one stuck stop pages on every tick, all night, until the alert is muted."
+    error_message = "the forced-stop filter must require severity >= ERROR. The enforcer logs a forced stop at ERROR and a repeat of the tick before it at WARNING, so severity IS the page-once rule: without it one stuck stop pages on every tick, all night, until the alert is muted."
   }
 
   assert {
@@ -508,7 +508,7 @@ run "l2_alerts_carry_the_rate_limit_a_log_match_policy_requires" {
 
   assert {
     condition     = try(google_monitoring_alert_policy.l2_forced_stop[0].alert_strategy[0].notification_rate_limit[0].period, null) == "300s"
-    error_message = "the forced-stop alert must set alert_strategy.notification_rate_limit.period = \"300s\", the floor; without a rate limit the API rejects a log-match policy at apply. The enforcer already limits this line to one per lease generation, so the policy adds no second limit of its own: a longer window could swallow a genuine forced stop of the NEXT generation, and every forced stop is one the operator has to hear about."
+    error_message = "the forced-stop alert must set alert_strategy.notification_rate_limit.period = \"300s\", the floor; without a rate limit the API rejects a log-match policy at apply. The enforcer already limits this line to one per run of forced stops, so the policy adds no second limit of its own: a longer window could swallow a genuine forced stop of the NEXT wake, and every forced stop is one the operator has to hear about."
   }
 
   assert {

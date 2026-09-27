@@ -93,9 +93,10 @@ func TestEveryTickWritesOneDecisionLine(t *testing.T) {
 }
 
 // One stuck stop must page once, not on every tick all night: the stop is
-// repeated while the pool reads as up, but only the first forced stop of a
-// lease generation is at ERROR. A NEW lease that is forced again pages again.
-func TestAForcedStopPagesOncePerLeaseGeneration(t *testing.T) {
+// repeated while the pool reads as up, but only the first of a run of forced
+// stops under one lease generation is at ERROR. A NEW lease that is forced
+// pages again.
+func TestAStuckForcedStopPagesOnce(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
@@ -113,8 +114,8 @@ func TestAForcedStopPagesOncePerLeaseGeneration(t *testing.T) {
 	if line.L2["action"] != "stop-forced" || line.L2["notify"] != true || line.Severity != "ERROR" {
 		t.Fatalf("first forced stop of generation %d: want stop-forced, notify, ERROR; got %+v", first, line)
 	}
-	if rec := cloud.storedRecord(); rec.NotifiedGeneration == nil || *rec.NotifiedGeneration != first {
-		t.Fatalf("the record must remember the generation it paged for: %+v", rec)
+	if rec := cloud.storedRecord(); !rec.Notified || rec.LeaseGeneration != first {
+		t.Fatalf("the record must say it paged, and for which generation: %+v", rec)
 	}
 
 	// The pool reads as up again with no new lease: the stop did not take, or
@@ -137,9 +138,9 @@ func TestAForcedStopPagesOncePerLeaseGeneration(t *testing.T) {
 	}
 }
 
-// A blind stop has no lease to name, so it pages under the last generation L2
-// read -- once, like any other.
-func TestABlindStopPagesOnceUnderTheLastLeaseRead(t *testing.T) {
+// A blind stop has no lease to name, so it is keyed on the last generation L2
+// read, and a run of them pages once, like any other.
+func TestARunOfBlindStopsPagesOnce(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
@@ -169,8 +170,48 @@ func TestABlindStopPagesOnceUnderTheLastLeaseRead(t *testing.T) {
 	if paged != 1 {
 		t.Errorf("paged %d times over ticks %+v, want once", paged, lines)
 	}
-	if rec := cloud.storedRecord(); rec.NotifiedGeneration == nil || *rec.NotifiedGeneration != generation {
-		t.Errorf("blind stops page under the last lease read (%d): %+v", generation, rec)
+	if rec := cloud.storedRecord(); rec.LeaseGeneration != generation {
+		t.Errorf("blind stops are keyed on the last lease read (%d): %+v", generation, rec)
+	}
+}
+
+// Found by the 3.7 e2e on the real platform. A forced stop paged for one lease;
+// the pool went to zero; the operator woke it again, and the new lease was
+// deleted before any tick read it. Three ticks later the blind stop carried the
+// OLD lease's generation as its key -- the only one L2 had read -- and was
+// taken for a repeat of the stop already paged for. It is a new stop. What
+// makes a repeat is the tick right before it: a forced stop under the same key.
+func TestAForcedStopAfterAnyOtherTickPages(t *testing.T) {
+	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
+	cloud := newFakeCloud(t)
+	cloud.targetSize = 1
+	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+
+	tick := func(n int) contractLine {
+		t.Helper()
+		var out bytes.Buffer
+		cloud.tickAt(now.Add(time.Duration(n)*lease.L2Tick), &out)
+		return decisionLine(t, &out)
+	}
+
+	if line := tick(0); line.L2["notify"] != true {
+		t.Fatalf("the first forced stop must page: %+v", line)
+	}
+	if line := tick(1); line.L2["reason"] != "already-stopped" {
+		t.Fatalf("the stop took, so the next tick finds the pool at zero: %+v", line)
+	}
+
+	// A new wake, and its lease is gone before any tick reads it.
+	cloud.targetSize = 1
+	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(8 * time.Hour)})
+	cloud.getStatus[leaseObject] = http.StatusNotFound
+
+	var line contractLine
+	for n := 2; n <= 4; n++ {
+		line = tick(n)
+	}
+	if line.L2["reason"] != "lease-unreadable" || line.L2["notify"] != true || line.Severity != "ERROR" {
+		t.Fatalf("the blind stop of the new wake must page; got %+v", line)
 	}
 }
 

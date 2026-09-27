@@ -393,16 +393,12 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	}
 
 	record := enforceRecord{
-		At:                 now,
-		Action:             string(decision.Action),
-		Reason:             string(decision.Reason),
-		Notified:           line.Notify,
-		ReadFailures:       obs.ConsecutiveReadFailures,
-		LeaseGeneration:    key,
-		NotifiedGeneration: prev.NotifiedGeneration,
-	}
-	if line.Notify {
-		record.NotifiedGeneration = &key
+		At:              now,
+		Action:          string(decision.Action),
+		Reason:          string(decision.Reason),
+		Notified:        line.Notify,
+		ReadFailures:    obs.ConsecutiveReadFailures,
+		LeaseGeneration: key,
 	}
 	body, err := json.Marshal(record)
 	if err != nil {
@@ -442,7 +438,7 @@ func describeLease(l lease.Lease, readable bool) string {
 // pageKey is the lease generation a forced stop is paged under: the lease this
 // tick read, or, when it could read none, the last one an earlier tick did. A
 // blind stop has no lease of its own to name, and keying it on the last one
-// read is what keeps a run of blind stops to one page.
+// read is what lets a run of blind stops count as one.
 func pageKey(obs lease.Observation, prev enforceRecord) int64 {
 	if obs.LeaseOK {
 		return obs.Lease.Generation
@@ -450,17 +446,21 @@ func pageKey(obs lease.Observation, prev enforceRecord) int64 {
 	return prev.LeaseGeneration
 }
 
-// shouldPage reports whether a decision pages the operator: a forced stop, and
-// only the first under its lease generation (D4). The stop itself is repeated
-// on every tick that sees the pool up -- setSize(0) is idempotent -- but a
-// stuck stop, or a pool size that keeps reading as up, would otherwise page on
-// every tick all night. A new lease is a new generation, so its forced stop
-// pages again.
+// shouldPage reports whether a decision pages the operator: a forced stop,
+// unless the tick right before it was a forced stop under the same key (D4).
+//
+// The stop is repeated on every tick that sees the pool up -- setSize(0) is
+// idempotent -- and a stuck stop, or a pool size that keeps reading as up,
+// would otherwise page on every tick all night. Any other tick in between (the
+// pool found at zero, a wait) ends the run, and the next forced stop pages.
+// Keying on the lease generation alone, as this once did, took a new wake whose
+// lease L2 never read for a repeat of the last stop, and stopped it in silence.
 func shouldPage(d lease.Decision, key int64, prev enforceRecord) bool {
 	if !d.Notify() {
 		return false
 	}
-	return prev.NotifiedGeneration == nil || *prev.NotifiedGeneration != key
+	repeat := prev.Action == string(lease.ActionStopForced) && prev.LeaseGeneration == key
+	return !repeat
 }
 
 // --- the log contract ---------------------------------------------------------
@@ -472,8 +472,9 @@ func shouldPage(d lease.Decision, key int64, prev enforceRecord) bool {
 // it, so these lines are an interface, not a diagnostic:
 //
 //	decision  event "decision", once per tick that decided. ERROR exactly when
-//	          notify is set -- the first forced stop of a lease generation,
-//	          which the forced-stop alert pages on. A repeat is WARNING.
+//	          notify is set -- a forced stop that is not a repeat of the
+//	          tick before (shouldPage), which the forced-stop alert pages
+//	          on. A repeat is WARNING.
 //	failure   event "failure" at ERROR, the last line before exit 1. The
 //	          failed-execution alert pages on ERROR that is not a decision.
 //	warning   event "warning" at WARNING: something the tick worked around.
@@ -622,9 +623,6 @@ type enforceRecord struct {
 	// LeaseGeneration is the lease generation this tick read, or, when it read
 	// none, the last one an earlier tick did (pageKey).
 	LeaseGeneration int64 `json:"leaseGeneration,omitempty"`
-	// NotifiedGeneration is the lease generation the last paged forced stop was
-	// about; nil until the first page.
-	NotifiedGeneration *int64 `json:"notifiedGeneration,omitempty"`
 }
 
 // readEnforce reads L2's own record, its only memory between ticks.
