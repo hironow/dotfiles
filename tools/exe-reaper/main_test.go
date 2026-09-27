@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -189,6 +191,94 @@ func TestAGarbledEnforcementRecordIsReplaced(t *testing.T) {
 
 	if rec := cloud.storedRecord(); rec.Action != string(lease.ActionWait) {
 		t.Errorf("record after the tick = %+v, want a fresh wait", rec)
+	}
+}
+
+// A tick reads the lease, then the drain record and the pool size, then decides
+// -- and an `exe-extend` can land in between. A stop decided on the lease
+// before it would take down a node its operator has just been granted more
+// time on. So the lease is read again right before setSize, and a stop decided
+// on anything but the lease as it now stands is abandoned: the next tick
+// decides on the new one (review finding #8).
+func TestAStopIsAbandonedWhenTheLeaseMovesDuringTheTick(t *testing.T) {
+	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
+	extended := lease.Lease{Deadline: now.Add(2 * time.Hour)}
+
+	tests := []struct {
+		name  string
+		setup func(cloud *fakeCloud)
+		// moveOnGet is the GET of lease.json before which it changes: 2 is
+		// the re-read right before setSize.
+		moveOnGet int
+		move      func(f *fakeCloud)
+		wantStop  bool
+	}{
+		{
+			name: "an extend lands between the read and the stop",
+			setup: func(cloud *fakeCloud) {
+				cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+			},
+			moveOnGet: 2,
+			move: func(f *fakeCloud) {
+				body, _ := json.Marshal(extended)
+				f.store(leaseObject, body)
+			},
+			wantStop: false,
+		},
+		{
+			// Blind: decided without a lease; a lease that can be read again
+			// is newer information than the three misses.
+			name: "a blind stop, and the lease is readable again",
+			setup: func(cloud *fakeCloud) {
+				cloud.put(leaseObject, extended)
+				cloud.put(enforceObject, enforceRecord{ReadFailures: 2})
+				cloud.getStatus[leaseObject] = http.StatusServiceUnavailable
+			},
+			moveOnGet: 2,
+			move:      func(f *fakeCloud) { delete(f.getStatus, leaseObject) },
+			wantStop:  false,
+		},
+		{
+			name: "nothing moved: the stop is made",
+			setup: func(cloud *fakeCloud) {
+				cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+			},
+			wantStop: true,
+		},
+		{
+			// A failed re-read is no evidence that anything moved.
+			name: "the re-read fails: the stop is made",
+			setup: func(cloud *fakeCloud) {
+				cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+			},
+			moveOnGet: 2,
+			move:      func(f *fakeCloud) { f.getStatus[leaseObject] = http.StatusServiceUnavailable },
+			wantStop:  true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cloud := newFakeCloud(t)
+			cloud.targetSize = 1
+			tc.setup(cloud)
+			if tc.move != nil {
+				cloud.beforeGet = func(f *fakeCloud, object string, n int) {
+					if object == leaseObject && n == tc.moveOnGet {
+						tc.move(f)
+					}
+				}
+			}
+
+			var out bytes.Buffer
+			cloud.tickAt(now, &out)
+
+			if stopped := len(cloud.setSizes()) > 0; stopped != tc.wantStop {
+				t.Fatalf("stopped = %v, want %v\n%s", stopped, tc.wantStop, out.String())
+			}
+			if !tc.wantStop && !strings.Contains(out.String(), "lease changed") {
+				t.Errorf("an abandoned stop should say why:\n%s", out.String())
+			}
+		})
 	}
 }
 

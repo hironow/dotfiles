@@ -321,6 +321,17 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	}
 
 	if decision.Action != lease.ActionWait {
+		// Everything above took time, and the operator may have extended (or
+		// slept, or woken) in the meantime. That write is a new lease
+		// generation and the operator's latest word; this decision was about
+		// the one before it. So the lease is read once more, right before the
+		// stop, and a decision about a lease that has since moved is abandoned
+		// for the next tick to make again (review finding #8).
+		if moved, current := e.leaseMoved(ctx, obs); moved {
+			e.log.warn(fmt.Sprintf("lease changed during this tick (%s); not stopping: the next tick decides on %s",
+				describeLease(obs.Lease, obs.LeaseOK), describeLease(current, true)))
+			return nil
+		}
 		if err := client.SetNodePoolSize(ctx, cfg.setSizeURI, 0); err != nil {
 			// No decision line: a stop that was not made must not page as one.
 			// The failure line carries what was decided.
@@ -364,6 +375,24 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 		return fmt.Errorf("writing the enforcement record: %w", err)
 	}
 	return nil
+}
+
+// leaseMoved reads lease.json again and reports whether it has moved since the
+// observation: a new generation, or, for a decision taken blind, a lease that
+// can be read at all. A read that fails is no evidence that anything moved.
+func (e enforcer) leaseMoved(ctx context.Context, obs lease.Observation) (bool, lease.Lease) {
+	current, ok := leaseFromRead(e.client.GetObject(ctx, e.cfg.bucket, leaseObject))
+	if !ok {
+		return false, lease.Lease{}
+	}
+	return !obs.LeaseOK || current.Generation != obs.Lease.Generation, current
+}
+
+func describeLease(l lease.Lease, readable bool) string {
+	if !readable {
+		return "no readable lease"
+	}
+	return fmt.Sprintf("generation %d", l.Generation)
 }
 
 // pageKey is the lease generation a forced stop is paged under: the lease this
