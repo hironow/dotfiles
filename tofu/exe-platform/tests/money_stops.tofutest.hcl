@@ -220,6 +220,29 @@ run "the_scheduler_failure_metric_is_a_logging_query" {
   }
 }
 
+# ORDER, not value. Cloud Monitoring registers a new log-based metric's
+# descriptor asynchronously ("it could take up to 10 minutes to become
+# available") and the provider does not retry that 404
+# (hashicorp/terraform-provider-google#11102), so an alert created seconds after
+# its metric fails the apply. The alert therefore waits for the L3 job, which
+# puts the cluster build between the two. Nothing in the alert's attributes
+# refers to the job, so only a depends_on carries this; a plan TARGETED at the
+# alert contains the job exactly when that depends_on is there. Without it the
+# job is not planned, its name is unknown, and this run fails with "Unknown
+# condition" — read that error here as "the alert can race its metric again".
+run "the_scheduler_failure_alert_waits_for_the_l3_job" {
+  command = plan
+
+  plan_options {
+    target = [google_monitoring_alert_policy.scheduler_failure]
+  }
+
+  assert {
+    condition     = google_cloud_scheduler_job.l3_daily_stop.name != ""
+    error_message = "the L3 job must be planned with the Scheduler-failure alert: the alert has to be created after the cluster build, or it races the asynchronous registration of its own log-based metric and the apply fails."
+  }
+}
+
 run "l4_alerts_reach_the_email_channel" {
   command = plan
 
