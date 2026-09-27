@@ -130,8 +130,6 @@ resource "google_artifact_registry_repository_iam_member" "atelet_task_reader" {
   repository = google_artifact_registry_repository.task.name
   role       = "roles/artifactregistry.reader"
   member     = local.wi_atelet
-
-  depends_on = [google_container_cluster.exe]
 }
 
 # The reaper adds and removes `inuse-` tags, which is a write against the
@@ -142,8 +140,6 @@ resource "google_artifact_registry_repository_iam_member" "reaper_task_writer" {
   repository = google_artifact_registry_repository.task.name
   role       = "roles/artifactregistry.writer"
   member     = local.wi_reaper
-
-  depends_on = [google_container_cluster.exe]
 }
 
 resource "google_artifact_registry_repository_iam_member" "build_task_writer" {

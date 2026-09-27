@@ -144,41 +144,34 @@ resource "google_project_iam_member" "build_logs" {
 # ORDERING. Every principal:// member below names the Workload Identity pool
 # <project>.svc.id.goog, and that pool does not exist until a cluster with
 # Workload Identity enabled does: bound any earlier, IAM answers "Identity Pool
-# does not exist" (the first apply failed exactly so, for all seven). Hence the
-# explicit depends_on on the cluster in each of them; nothing in the member
-# string itself references it. tests/unit/test_exe_platform_source.py fails for
-# any principal binding that forgets it, here or in artifact_registry.tf.
+# does not exist" (the first apply failed exactly so, for all seven). The
+# members are built in locals.tf from the cluster's own workload_pool, so each
+# binding depends on the cluster through its value and needs no depends_on.
+# tests/workload_identity.tofutest.hcl plans each binding on its own and fails
+# if the cluster is not part of that plan, here or in artifact_registry.tf.
 
 resource "google_storage_bucket_iam_member" "atelet_snapshots_object_admin" {
   bucket = google_storage_bucket.snapshots.name
   role   = "roles/storage.objectAdmin"
   member = local.wi_atelet
-
-  depends_on = [google_container_cluster.exe]
 }
 
 resource "google_storage_bucket_iam_member" "atelet_snapshots_bucket_viewer" {
   bucket = google_storage_bucket.snapshots.name
   role   = "roles/storage.bucketViewer"
   member = local.wi_atelet
-
-  depends_on = [google_container_cluster.exe]
 }
 
 resource "google_storage_bucket_iam_member" "api_server_snapshots_object_admin" {
   bucket = google_storage_bucket.snapshots.name
   role   = "roles/storage.objectAdmin"
   member = local.wi_api_server
-
-  depends_on = [google_container_cluster.exe]
 }
 
 resource "google_storage_bucket_iam_member" "api_server_snapshots_bucket_viewer" {
   bucket = google_storage_bucket.snapshots.name
   role   = "roles/storage.bucketViewer"
   member = local.wi_api_server
-
-  depends_on = [google_container_cluster.exe]
 }
 
 # --- Workload Identity: our own reaper (L1) ---------------------------------
@@ -192,8 +185,6 @@ resource "google_storage_bucket_iam_member" "reaper_ops" {
   bucket = google_storage_bucket.ops.name
   role   = "roles/storage.objectUser"
   member = local.wi_reaper
-
-  depends_on = [google_container_cluster.exe]
 }
 
 # --- L2 enforcer: lease objects ---------------------------------------------

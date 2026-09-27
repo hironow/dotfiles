@@ -44,7 +44,16 @@ locals {
   # Workload Identity pool: addressed by project NUMBER, named by project ID.
   # Getting these two the wrong way round yields a binding that applies to
   # nothing and a 403 at first use, so it is built once, here.
-  wi_pool = "projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${var.gcp_project_id}.svc.id.goog"
+  #
+  # The name segment is read from the cluster rather than rebuilt from the
+  # project id, because the pool only comes into existence with the first
+  # cluster that enables Workload Identity: a binding sent before it fails with
+  # "Identity Pool does not exist" (all seven did on the first apply). Reading
+  # the pool from the cluster makes every principal binding depend on the
+  # cluster through its value, so the order cannot be lost by deleting a
+  # depends_on line. tests/workload_identity.tofutest.hcl pins both the value
+  # and the order.
+  wi_pool = "projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${google_container_cluster.exe.workload_identity_config[0].workload_pool}"
 
   wi_atelet     = "principal://iam.googleapis.com/${local.wi_pool}/subject/ns/${local.substrate_namespace}/sa/${local.ksa_atelet}"
   wi_api_server = "principal://iam.googleapis.com/${local.wi_pool}/subject/ns/${local.substrate_namespace}/sa/${local.ksa_api_server}"
