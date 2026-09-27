@@ -7,12 +7,16 @@
 # re-plannable to "No changes." while the enforcer is still being built, and it
 # makes turning L2 on a single, reviewable variable change.
 #
-# Three things are pinned, and the variable is deliberately NOT set here, so
-# every run exercises the declared default:
+# Three things are pinned, for an EMPTY image. It is stated in the variables
+# block below rather than left to the declared default, because `tofu test`
+# also loads the operator's gitignored terraform.tfvars, and once L2 is on that
+# file sets the image: left unset here, these runs would test whatever the
+# local file says instead of the empty case:
 #
-#   - the job, its run.invoker binding, its pool-reader grant and its tick are
-#     all absent together. A tick without the job 404s every ten minutes; a job
-#     without the tick never runs, and looks deployed.
+#   - the job, its run.invoker binding, its pool-reader grant, its tick and its
+#     two alerts are all absent together. A tick without the job 404s every ten
+#     minutes; a job without the tick never runs, and looks deployed; an alert
+#     without the job watches a log that never arrives.
 #   - the L2 outputs are null rather than an error, so status recipes can tell
 #     "not deployed" from "deployed".
 #   - the enforcer IDENTITY and its two grants stay. They were applied with the
@@ -30,6 +34,10 @@ variables {
   gcp_project_number = "000000000000"
   billing_account_id = "AAAAAA-BBBBBB-CCCCCC"
   alert_email        = "alerts@example.invalid"
+
+  # Empty, which is also the declared default; see the header for why it is
+  # stated.
+  enforcer_image = ""
 }
 
 run "without_an_image_l2_is_absent_as_a_unit" {
@@ -53,6 +61,20 @@ run "without_an_image_l2_is_absent_as_a_unit" {
   assert {
     condition     = length(google_cloud_scheduler_job.l2_tick) == 0
     error_message = "with no enforcer_image the L2 tick must not be planned: a tick aimed at a job that does not exist fails every ten minutes, all night, and fires the Scheduler-failure alert for a layer that was never switched on."
+  }
+}
+
+run "without_an_image_the_l2_alerts_are_absent" {
+  command = plan
+
+  assert {
+    condition     = length(google_monitoring_alert_policy.l2_forced_stop) == 0
+    error_message = "with no enforcer_image the L2 forced-stop alert must not be planned: its filter names the L2 job, so without the job it watches a log that never arrives — an alert that looks armed and can never fire."
+  }
+
+  assert {
+    condition     = length(google_monitoring_alert_policy.l2_execution_failed) == 0
+    error_message = "with no enforcer_image the L2 failed-execution alert must not be planned: its filter names the L2 job, so without the job it watches a log that never arrives — and its presence would read as \"L2 is deployed and healthy\" on a platform where L2 was never switched on."
   }
 }
 
