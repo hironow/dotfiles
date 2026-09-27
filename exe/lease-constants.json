@@ -1,0 +1,24 @@
+{
+  "_source_of_truth": "The only place the lease auto-sleep's numbers live. The Go reaper mirrors it (tools/exe-reaper/internal/lease, held equal by constants_test.go), the Quint model exe/spec/lease.qnt mirrors it (held equal by tests/unit/test_lease_constants_lockstep.py). A constant that exists twice is a constant that will disagree once.",
+  "timezone": "Asia/Tokyo",
+  "default_lease_minutes": 120,
+  "max_lease_minutes": 480,
+  "l1_tick_minutes": 1,
+  "drain_ceiling_minutes": 30,
+  "l2_tick_minutes": 10,
+  "slack_minutes": 19,
+  "l3_daily_stop_local_hour": 4,
+  "nightly_cap_local_hour": 3,
+  "force_grace_minutes": 45,
+  "heartbeat_stale_ticks": 2,
+  "idle_zero_running_minutes": 30,
+  "lease_read_failure_threshold": 3,
+  "task_ttl_days": 30,
+  "task_ttl_warning_days": 7,
+  "_cap_formula": "nightly_cap_local_hour = l3_daily_stop_local_hour - (l1_tick_minutes + drain_ceiling_minutes + l2_tick_minutes + slack_minutes), i.e. 04:00 - 60min = 03:00 JST. This is what guarantees L3 never lands on an awake actor in normal operation; both the Go guard and the Quint invariant recompute it rather than trusting the stored 3.",
+  "_writers": {
+    "lease.json": "operator (wake / extend / sleep)",
+    "drain.json": "L1 reaper, in-cluster",
+    "enforce.json": "L2 enforcer, Cloud Run job"
+  }
+}

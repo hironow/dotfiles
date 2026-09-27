@@ -632,6 +632,10 @@ check:
     @{{UV_RUN}} scripts/check_exe_pins.py
     @echo '🔎 storage bounds (every tofu sink declares its cap)...'
     @{{UV_RUN}} scripts/check_storage_bounds.py
+    @echo '🔎 Go tests (tools/ modules)...'
+    just go-test
+    @echo '🔎 Formal methods (Quint model + seeded simulation)...'
+    just spec-check
     @echo '✅ All checks passed.'
 
 # ADR 0028: assert every uv project declares the flatt PyPI mirror as its
@@ -654,6 +658,52 @@ check-ty:
 # Go quality gate (docs/agents/go-tooling.md): golangci-lint v2, one root
 # config, gofumpt-only formatters. Per module because this repo has several
 # go.mod files (emulator CLIs + tools/simple-server).
+# go-test: unit tests for the Go modules under tools/.
+#
+# Scope is deliberate. The emulator/*-cli modules need running emulators and a
+# populated module cache, which is what `just ci-emu` is for; putting them in the
+# fast gate would make `just check` depend on Docker. tools/ modules are
+# stdlib-only and run in seconds. `-short` leaves out the exe-reaper seed sweep,
+# which `just spec-check` runs in full (and `just check` runs both).
+#
+# Strict bash: just's default `sh -cu` would let a failing iteration inside the
+# loop pass unnoticed.
+[group('Test')]
+go-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git ls-files -z 'tools/**/go.mod' | while IFS= read -r -d '' mod; do
+      dir="$(dirname "$mod")"
+      echo "🧪 go test -short $dir"
+      (cd "$dir" && mise x -- go test -short ./...)
+    done
+
+# spec-check: the formal-methods gate (docs/agents/formal-methods.md).
+#
+# Two halves, and both are required. The Quint model proves the lease rules are
+# internally consistent; the seeded simulation proves the SHIPPED Go functions
+# implement those rules under interleavings no hand-written scenario would think
+# of. A model without the simulation tells you the design is fine while the code
+# does something else.
+#
+# Strict bash, and Quint pinned through one variable, per the spoke: with just's
+# default `sh -cu` a failing iteration in the loop below would pass silently.
+[group('Lint')]
+spec-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    QUINT="mise x -- quint"
+    for spec in $(git ls-files '*.qnt'); do
+      echo "🔬 quint parse $spec"
+      $QUINT parse "$spec"
+      echo "🔬 quint typecheck $spec"
+      $QUINT typecheck "$spec"
+      echo "🔬 quint test $spec"
+      $QUINT test --max-samples=200 "$spec"
+    done
+    echo "🔬 seeded simulation of the real Go code"
+    (cd tools/exe-reaper && mise x -- go test ./internal/lease/ -run 'TestSimulation' -count=1)
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash
