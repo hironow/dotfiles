@@ -1,0 +1,5 @@
+# The reviewed change list for enabling the two certificates.k8s.io/v1beta1
+# APIs Substrate v0.1.0 speaks on the running cluster: one in-place update of
+# the cluster (enable_k8s_beta_apis), no replacement, nothing else.
+#   just exe-platform-plan && just exe-platform-plan-summary --expect-changes expected-changes/beta-apis.txt
+~ google_container_cluster.exe

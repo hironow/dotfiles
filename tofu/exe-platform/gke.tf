@@ -28,11 +28,25 @@ resource "google_container_cluster" "exe" {
   # one node per zone. Leaving it out is how "nodes in this one zone" is said.
   location = local.zone
 
-  # Rapid is not a preference: 1.37 exists only there, and 1.37 is what turns
-  # on the beta APIs Substrate needs by default — without it, missing them at
-  # creation time means rebuilding the cluster rather than fixing a flag.
+  # Rapid is not a preference: the pinned minor (exe/versions.json) exists only
+  # there.
   release_channel {
     channel = "RAPID"
+  }
+
+  # Substrate v0.1.0 reads and writes its ClusterTrustBundles and
+  # PodCertificateRequests at certificates.k8s.io/v1beta1. Kubernetes 1.37 serves
+  # both GA at v1 and keeps v1beta1 deprecated and OFF, like any beta version:
+  # on a cluster without these two, Substrate's podcertificate controller cannot
+  # list a single request, no trust bundle is published, and the install times
+  # out waiting for one. Upstream's setup tool sets this at creation; its README
+  # reports that enabling it later did not make the APIs served (on 1.36).
+  # Exactly two entries: GKE cannot disable a beta API once it is on.
+  enable_k8s_beta_apis {
+    enabled_apis = [
+      "certificates.k8s.io/v1beta1/clustertrustbundles",
+      "certificates.k8s.io/v1beta1/podcertificaterequests",
+    ]
   }
 
   # Minor floor from the single pin source. Drift is ignored because GKE owns

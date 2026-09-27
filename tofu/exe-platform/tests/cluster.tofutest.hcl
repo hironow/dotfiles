@@ -11,6 +11,9 @@
 #     1.37 exists only in Rapid. Getting any of them wrong means deleting the
 #     cluster and starting again, after the cluster stack has already installed
 #     into it.
+#   - the two certificates.k8s.io/v1beta1 APIs Substrate v0.1.0 speaks: without
+#     them its install cannot publish a trust bundle, and a beta API that is on
+#     cannot be turned off again, so the list is exact.
 #   - Workload Identity, Dataplane V2: same story. The workload pool name is
 #     built from the project ID (while the IAM members in iam.tf address the
 #     pool by project NUMBER); swapping the two yields bindings that apply to
@@ -110,7 +113,7 @@ run "cluster_tracks_the_single_pin_document" {
 
   assert {
     condition     = google_container_cluster.exe.release_channel[0].channel == "RAPID"
-    error_message = "release_channel must be RAPID: the pinned minor exists only there, and it is Rapid that turns on by default the beta APIs Substrate needs. A channel is not changeable downwards on a live cluster."
+    error_message = "release_channel must be RAPID: the pinned minor exists only there. A channel is not changeable downwards on a live cluster."
   }
 
   # The stack writes "RAPID" literally while exe/versions.json also declares
@@ -119,6 +122,26 @@ run "cluster_tracks_the_single_pin_document" {
   assert {
     condition     = google_container_cluster.exe.release_channel[0].channel == jsondecode(file("${path.module}/../../exe/versions.json")).gke.release_channel
     error_message = "the cluster's release channel and gke.release_channel in exe/versions.json have diverged. The pin document is the single source of truth for both the channel and the minor; a stack on a different channel than the document claims cannot host the pinned minor."
+  }
+}
+
+# Substrate v0.1.0 reads and writes its ClusterTrustBundles and
+# PodCertificateRequests at certificates.k8s.io/v1beta1 (the podcertificate
+# controller and ate-setup, at the pinned commit). Kubernetes 1.37 made both GA
+# at v1 and deprecated v1beta1 without removing it, and a beta version is off
+# until enabled: on a cluster serving only v1 the controller never lists a
+# request, no trust bundle is ever published, and `ate-setup deploy` times out
+# waiting for one. Exactly two entries, because GKE cannot disable a beta API
+# once it is on.
+run "the_certificates_beta_apis_substrate_uses_are_enabled" {
+  command = plan
+
+  assert {
+    condition = try(toset(google_container_cluster.exe.enable_k8s_beta_apis[0].enabled_apis), toset([])) == toset([
+      "certificates.k8s.io/v1beta1/clustertrustbundles",
+      "certificates.k8s.io/v1beta1/podcertificaterequests",
+    ])
+    error_message = "enable_k8s_beta_apis must list exactly certificates.k8s.io/v1beta1/clustertrustbundles and certificates.k8s.io/v1beta1/podcertificaterequests. Substrate v0.1.0 speaks v1beta1 for both; without them its podcertificate controller loops on \"could not find the requested resource\" and the install times out waiting for the trust bundle (the first exe-cluster apply failed exactly so, on a cluster serving only v1). Nothing else belongs in the list: a beta API cannot be disabled once enabled."
   }
 }
 
