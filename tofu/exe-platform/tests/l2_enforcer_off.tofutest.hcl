@@ -14,7 +14,7 @@
 # local file says instead of the empty case:
 #
 #   - the job, its run.invoker binding, its pool-reader grant, its tick and its
-#     two alerts are all absent together. A tick without the job 404s every ten
+#     three alerts are all absent together. A tick without the job 404s every ten
 #     minutes; a job without the tick never runs, and looks deployed; an alert
 #     without the job watches a log that never arrives.
 #   - the L2 outputs are null rather than an error, so status recipes can tell
@@ -75,6 +75,11 @@ run "without_an_image_the_l2_alerts_are_absent" {
   assert {
     condition     = length(google_monitoring_alert_policy.l2_execution_failed) == 0
     error_message = "with no enforcer_image the L2 failed-execution alert must not be planned: its filter names the L2 job, so without the job it watches a log that never arrives — and its presence would read as \"L2 is deployed and healthy\" on a platform where L2 was never switched on."
+  }
+
+  assert {
+    condition     = length(google_monitoring_alert_policy.l2_stop_latency) == 0
+    error_message = "with no enforcer_image the L2 stop-latency alert must not be planned: the enforcer is what measures a stop, so without the job it watches a log that never arrives, and reads as a slow stop being watched for when nothing is."
   }
 }
 

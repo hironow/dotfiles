@@ -7,14 +7,14 @@
 # one, by what it tells the operator:
 #
 #   CRITICAL  money is going where it should not, or work was cut off: a node
-#             up past any lease, a forced stop.
+#             up past any lease, a forced stop, a stop that did not finish.
 #   ERROR     one layer of the money stop is failing while the others stand:
 #             a failed Scheduler job (L2's tick or L3), a failed L2 execution.
 #
 # The table is the plan's decision, so a page moving between rows is a decision
 # too, not an edit: every row is pinned by value.
 #
-# enforcer_image is set, because the L2 pages exist only with L2.
+# enforcer_image is set, because the three L2 pages exist only with L2.
 #
 # command = plan + mock_provider: offline, no credentials, nothing created.
 
@@ -42,6 +42,11 @@ run "every_page_states_its_severity" {
   assert {
     condition     = google_monitoring_alert_policy.l2_forced_stop[0].severity == "CRITICAL"
     error_message = "the L2 forced-stop alert must be CRITICAL. The stop worked, but whatever was running was cut off without L1's drain, and the operator has to find out why before the next wake."
+  }
+
+  assert {
+    condition     = google_monitoring_alert_policy.l2_stop_latency[0].severity == "CRITICAL"
+    error_message = "the L2 stop-latency alert must be CRITICAL. The pool's target is zero and a VM is still there, so the stop everyone believes happened has not, and the VM bills until someone looks."
   }
 
   assert {

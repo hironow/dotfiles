@@ -8,13 +8,13 @@
 #   - a JPY budget, which catches everything the first two missed.
 #
 # L2, once deployed, also pages on its own account: when it had to force a stop,
-# and when one of its executions failed. Those two close this file and come and
-# go with the L2 job.
+# when a stop did not finish, and when one of its executions failed. Those three
+# close this file and come and go with the L2 job.
 #
 # Every policy states its severity, which Cloud Monitoring carries into the
 # incident and the email (Phase 6 plan D9):
 #   CRITICAL  money is going where it should not, or work was cut off: a node
-#             up past any lease, a forced stop.
+#             up past any lease, a forced stop, a stop that did not finish.
 #   ERROR     one layer of the money stop is failing while the others stand:
 #             a failed Scheduler job, a failed L2 execution.
 # tests/alert_severity.tofutest.hcl pins the table.
@@ -233,10 +233,10 @@ resource "google_billing_budget" "exe_monthly" {
   depends_on = [google_project_service.enabled]
 }
 
-# --- L2: forced stops and failed executions ---------------------------------
+# --- L2: forced stops, slow stops and failed executions ---------------------
 #
 # L2 acts at night with nobody watching, so it is also the layer that has to say
-# what it did. Two pages, created and destroyed with the L2 job on its switch:
+# what it did. Three pages, created and destroyed with the L2 job on its switch:
 # an alert on a job that does not exist watches a log that never arrives, and
 # looks armed doing it.
 #
@@ -245,6 +245,11 @@ resource "google_billing_budget" "exe_monthly" {
 #     heartbeat went stale, or the grace after the deadline ran out with no drain
 #     at all — and whatever was still running was cut off (decision Q14). The
 #     stop is the system working; the page is for why L1 did not get there first.
+#   - a SLOW stop. The pool's target is zero and a VM is still in its instance
+#     groups a tick after L2 first saw it there (inbox M18, layer 3). setSize
+#     returning 200 is not a stopped node: a disruption budget or a stuck
+#     operation can hold one for an hour or more, billing, while every layer
+#     reports the stop as done, and L3 only posts the same setSize again.
 #   - a FAILED execution. The tick reports success once an execution is CREATED,
 #     so an enforcer that fails on every tick is otherwise invisible until L3 or
 #     the budget notices.
@@ -254,24 +259,30 @@ resource "google_billing_budget" "exe_monthly" {
 # and a log-match condition evaluates its filter directly, so there is no metric
 # descriptor for the policy to race.
 #
-# Both filters read the log contract `exe-reaper enforce` writes: one JSON object
+# The filters read the log contract `exe-reaper enforce` writes: one JSON object
 # per line on stdout, whose `severity` Cloud Run lifts into the LogEntry and
 # whose other fields land in jsonPayload — L2's under jsonPayload.exe_l2.
-#   decision  event "decision", with action / reason / notify. ERROR exactly
-#             when the action is stop-forced AND notify is set, i.e. a forced
-#             stop that does not repeat the tick before it (the same stop under
-#             the same lease generation); every repeat is WARNING.
-#   failure   event "failure", at ERROR: the last line before the binary exits 1.
-# Both are Cloud LOGGING queries, so no monitoring.* functions (the
+#   decision      event "decision", with action / reason / notify. ERROR
+#                 exactly when the action is stop-forced AND notify is set, i.e.
+#                 a forced stop that does not repeat the tick before it (the
+#                 same stop under the same lease generation); every repeat is
+#                 WARNING.
+#   stop-latency  event "stop-latency", with target / instances /
+#                 stoppingSince. ERROR the first time for a stop (enforce.json
+#                 remembers which stop was paged), WARNING on every later tick
+#                 of the same stop.
+#   failure       event "failure", at ERROR: the last line before the binary
+#                 exits 1.
+# All are Cloud LOGGING queries, so no monitoring.* functions (the
 # Scheduler-failure metric above records how that fails at apply).
 #
-# alert_strategy is not optional on either. The Monitoring API requires a
+# alert_strategy is not optional on any of them. The Monitoring API requires a
 # notification rate limit on every log-match policy and refuses the create
 # without one; the provider does not check it, so a missing block passes plan
 # and fails apply. The rate limit throttles notifications for an alert that is
 # already open, and a log-based policy sends at most 20 notifications a day
-# (cloud.google.com/monitoring/quotas); the two limits below differ because the
-# two signals repeat differently. Both close an incident after 1800s, the
+# (cloud.google.com/monitoring/quotas); the limits below differ because the
+# signals repeat differently. All close an incident after 1800s, the
 # minimum: a log-match incident has no recovery signal and closes only after
 # that long without a repeat of its entry, and the 7-day default would leave one
 # forced stop open for a week with every later one reduced to a throttled repeat
@@ -372,11 +383,13 @@ resource "google_monitoring_alert_policy" "l2_execution_failed" {
   }
 
   conditions {
-    display_name = "L2 job logged an error that is not a decision"
+    display_name = "L2 job logged an error that is not a decision or a slow stop"
 
     condition_matched_log {
       # Everything at ERROR from this job except the enforcer's decision lines
-      # (a forced stop's decision is ERROR too, and has its own page above).
+      # (a forced stop's decision is ERROR too, and has its own page above) and
+      # its stop-latency lines (the first of a slow stop is ERROR, and has its
+      # own page below). Both are ticks that did their job.
       #
       # What this has to catch besides the enforcer's failure line is what the
       # binary never wrote. Cloud Run records a failed execution against this
@@ -388,20 +401,21 @@ resource "google_monitoring_alert_policy" "l2_execution_failed" {
       # Run stores as textPayload, and only a structured line's `severity` field
       # is documented to set an entry's level (cloud.google.com/run/docs/logging).
       #
-      # Those entries have no jsonPayload at all, which is why the exclusion is
+      # Those entries have no jsonPayload at all, which is why each exclusion is
       # spelled NOT <field> = "decision" and never <field> != "decision". In the
       # Logging query language every comparison on a missing field is false,
       # `NOT` of one is TRUE, and `!=` on a missing field is FALSE
       # (cloud.google.com/logging/docs/view/logging-query-language, "Missing
       # fields"): the != spelling reads the same and silently drops exactly the
-      # failures above. Nor is there any other payload clause (those entries
-      # fail it for the same missing-field reason) or a logName clause (they are
-      # not in the enforcer's stdout log).
+      # failures above. Nor is there any payload clause but these NOT
+      # exclusions (those entries fail any other for the same missing-field
+      # reason) or a logName clause (they are not in the enforcer's stdout log).
       filter = join(" AND ", [
         "resource.type = \"cloud_run_job\"",
         "resource.labels.job_name = \"${google_cloud_run_v2_job.l2_enforcer[0].name}\"",
         "severity >= ERROR",
         "NOT jsonPayload.exe_l2.event = \"decision\"",
+        "NOT jsonPayload.exe_l2.event = \"stop-latency\"",
       ])
     }
   }
@@ -418,6 +432,74 @@ resource "google_monitoring_alert_policy" "l2_execution_failed" {
     # email is not emailed again — it was, less than an hour ago.
     notification_rate_limit {
       period = "3600s"
+    }
+
+    auto_close           = "1800s"
+    notification_prompts = ["OPENED"]
+  }
+
+  depends_on = [google_project_service.enabled]
+}
+
+resource "google_monitoring_alert_policy" "l2_stop_latency" {
+  count = local.l2_enabled ? 1 : 0
+
+  project      = var.gcp_project_id
+  display_name = "exe: node still up after a stop"
+  severity     = "CRITICAL"
+
+  # A log-match condition is a policy of its own: exactly one condition, OR.
+  combiner = "OR"
+
+  documentation {
+    content   = <<-EOT
+      The exe node pool's target size is zero, but a VM was still in its
+      instance groups on two L2 passes more than
+      ${local.leases.stop_latency_minutes} minutes apart. On the
+      ${local.leases.l2_tick_minutes}-minute tick that means the stop has taken
+      at least ${local.leases.l2_tick_minutes} minutes, where a normal one is
+      done before the next tick. The VM bills until it is gone, and every layer
+      that stopped the pool believes it is.
+
+      Check, in order: `just exe-status` (target, instances, stopping since);
+      the cluster's GKE operations, for a resize still running or one that
+      failed; the pool's managed instance group, for its current actions. The
+      likely causes are something holding the node's drain (a
+      PodDisruptionBudget, a pod that will not terminate) and a delete stuck in
+      the instance group. L3 at 04:00 JST only posts the same setSize(0), so it
+      will not clear a VM the group cannot delete.
+
+      This pages once per stop. The enforcer writes the first stop-latency line
+      of a stop at ERROR and every later one at WARNING, so the
+      ${google_cloud_run_v2_job.l2_enforcer[0].name} job's logs show whether
+      the VM is still there.
+    EOT
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "L2 logged a stop that has not finished"
+
+    condition_matched_log {
+      # Severity is the page-once rule, as for a forced stop: the first line of
+      # a stop is ERROR, every later tick of the same stop WARNING.
+      filter = join(" AND ", [
+        "resource.type = \"cloud_run_job\"",
+        "resource.labels.job_name = \"${google_cloud_run_v2_job.l2_enforcer[0].name}\"",
+        "severity >= ERROR",
+        "jsonPayload.exe_l2.event = \"stop-latency\"",
+      ])
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email.id]
+
+  alert_strategy {
+    # The floor, for the forced stop's reason: the enforcer already limits the
+    # ERROR line to one per stop, and a longer window could swallow the slow
+    # stop of the NEXT sleep.
+    notification_rate_limit {
+      period = "300s"
     }
 
     auto_close           = "1800s"

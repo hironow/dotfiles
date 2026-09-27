@@ -35,12 +35,12 @@
 #     job-scoped binding would still be sitting there looking correct — so the
 #     absence of the project-wide form is asserted directly.
 #   - the pages. L2 acts at night with nobody watching, so it is also the layer
-#     that has to say what it did: two log-match alerts, one for a forced stop
-#     and one for a failed execution. A log filter is a string only the Logging
-#     API parses, so its clauses are pinned one by one — above all the mistakes
-#     a plan cannot see: a `!=` where a NOT belongs, which drops Cloud Run's own
-#     failure entries silently and for good, and a monitoring.* function, which
-#     the Logging API refuses at apply.
+#     that has to say what it did: three log-match alerts, for a forced stop, a
+#     stop that did not finish, and a failed execution. A log filter is a string
+#     only the Logging API parses, so its clauses are pinned one by one — above
+#     all the mistakes a plan cannot see: a `!=` where a NOT belongs, which
+#     drops Cloud Run's own failure entries silently and for good, and a
+#     monitoring.* function, which the Logging API refuses at apply.
 #
 # Every run here sets enforcer_image, the switch that deploys L2 at all. The
 # default, empty, leaves the job, its invoker binding, its tick and its alerts
@@ -373,12 +373,15 @@ run "the_job_is_told_where_everything_is_by_reference" {
 
 # --- the pages (decision D5) ------------------------------------------------
 #
-# Both alerts read the enforcer's own log contract. Every `exe-reaper enforce`
-# prints one JSON object per line to stdout; Cloud Run lifts `severity` into the
-# LogEntry and the rest lands in jsonPayload, with L2's fields under
+# All three alerts read the enforcer's own log contract. Every `exe-reaper
+# enforce` prints one JSON object per line to stdout; Cloud Run lifts `severity`
+# into the LogEntry and the rest lands in jsonPayload, with L2's fields under
 # jsonPayload.exe_l2. A decision line carries event "decision" and the action,
 # and is at ERROR exactly for a forced stop that does not repeat the tick before
-# (repeats are WARNING). A failure line carries event "failure", at ERROR, and
+# (repeats are WARNING). A stop-latency line carries event "stop-latency": the
+# pool's target has been zero past the stop latency and an instance is still
+# there. It is at ERROR the first time for a stop, and WARNING on every later
+# tick of the same stop. A failure line carries event "failure", at ERROR, and
 # is the last thing the binary writes before it exits 1.
 #
 # The failed-execution alert must also see what the binary never wrote: a task
@@ -389,7 +392,7 @@ run "the_job_is_told_where_everything_is_by_reference" {
 # `NOT jsonPayload.exe_l2.event = "decision"` keeps those entries, and the `!=`
 # spelling, which reads the same, drops every one of them without an error.
 
-run "with_an_image_l2_pages_through_two_log_match_alerts" {
+run "with_an_image_l2_pages_through_three_log_match_alerts" {
   command = plan
 
   assert {
@@ -402,11 +405,16 @@ run "with_an_image_l2_pages_through_two_log_match_alerts" {
     error_message = "with enforcer_image set, the L2 failed-execution alert must be planned with the job. The tick reports success as soon as an execution is CREATED, so an enforcer that crashes on every tick is otherwise invisible: the money stop meant to work when the cluster does not would silently not work at all."
   }
 
+  assert {
+    condition     = length(google_monitoring_alert_policy.l2_stop_latency) == 1
+    error_message = "with enforcer_image set, the L2 stop-latency alert must be planned with the job. A setSize(0) that returned 200 is not a stopped node: a disruption budget or a stuck operation can hold the VM for an hour or more, billing, while every layer reports the stop as done (inbox M18)."
+  }
+
   # A log-match condition is a policy of its own: the API refuses a second
   # condition beside it, and any combiner but OR.
   assert {
     condition = alltrue([
-      for p in [google_monitoring_alert_policy.l2_forced_stop[0], google_monitoring_alert_policy.l2_execution_failed[0]] :
+      for p in [google_monitoring_alert_policy.l2_forced_stop[0], google_monitoring_alert_policy.l2_execution_failed[0], google_monitoring_alert_policy.l2_stop_latency[0]] :
       p.combiner == "OR" && length(p.conditions) == 1 && length(p.conditions[0].condition_matched_log) == 1
     ])
     error_message = "each L2 alert must be exactly one condition_matched_log condition, combined with OR. That is the only shape the Monitoring API accepts for a log-based policy: a metric condition beside the log match, or any other combiner, is refused at apply — after a plan that looked fine."
@@ -420,6 +428,11 @@ run "with_an_image_l2_pages_through_two_log_match_alerts" {
   assert {
     condition     = one(google_monitoring_alert_policy.l2_execution_failed[0].notification_channels) == google_monitoring_notification_channel.email.id
     error_message = "the L2 failed-execution alert must notify exactly the exe email channel. With L2 broken, a failed L1 leaves only the 04:00 L3 stop between an expired lease and the rest of the night's billing, and this alert is the one thing that says so."
+  }
+
+  assert {
+    condition     = one(google_monitoring_alert_policy.l2_stop_latency[0].notification_channels) == google_monitoring_notification_channel.email.id
+    error_message = "the L2 stop-latency alert must notify exactly the exe email channel. L3 posts the same setSize(0) that already returned 200, so nothing else will ever notice a VM the stop left behind."
   }
 }
 
@@ -452,7 +465,36 @@ run "a_forced_stop_pages_on_the_enforcers_own_decision_line" {
   }
 }
 
-run "a_failed_execution_pages_on_anything_at_error_but_a_decision" {
+run "a_slow_stop_pages_on_the_enforcers_stop_latency_line" {
+  command = plan
+
+  assert {
+    condition     = strcontains(google_monitoring_alert_policy.l2_stop_latency[0].conditions[0].condition_matched_log[0].filter, "resource.type = \"cloud_run_job\"")
+    error_message = "the stop-latency filter must select resource.type = \"cloud_run_job\". The enforcer's lines are logged against the JOB resource; without the type clause the job-name comparison runs against every resource in a SHARED project."
+  }
+
+  assert {
+    condition     = strcontains(google_monitoring_alert_policy.l2_stop_latency[0].conditions[0].condition_matched_log[0].filter, "resource.labels.job_name = \"${google_cloud_run_v2_job.l2_enforcer[0].name}\"")
+    error_message = "the stop-latency filter must name the L2 job RESOURCE's own name (resource.labels.job_name). A retyped name that has drifted matches nothing: the one alert that notices a VM the stop left behind could never fire."
+  }
+
+  assert {
+    condition     = strcontains(google_monitoring_alert_policy.l2_stop_latency[0].conditions[0].condition_matched_log[0].filter, "severity >= ERROR")
+    error_message = "the stop-latency filter must require severity >= ERROR. The enforcer writes the first stop-latency line of a stop at ERROR and every later tick of the same stop at WARNING, so severity IS the page-once rule: without it one stuck VM pages every ten minutes until the alert is muted."
+  }
+
+  assert {
+    condition     = strcontains(google_monitoring_alert_policy.l2_stop_latency[0].conditions[0].condition_matched_log[0].filter, "jsonPayload.exe_l2.event = \"stop-latency\"")
+    error_message = "the stop-latency filter must select the enforcer's stop-latency line (jsonPayload.exe_l2.event = \"stop-latency\"). Looser, it also matches a forced stop's decision and the failure line, and the operator is sent to look for a VM that is not there."
+  }
+
+  assert {
+    condition     = !strcontains(google_monitoring_alert_policy.l2_stop_latency[0].conditions[0].condition_matched_log[0].filter, "monitoring.")
+    error_message = "the stop-latency filter must not use monitoring.* functions. A log-match filter is a Cloud LOGGING query, which rejects them as unparseable at apply."
+  }
+}
+
+run "a_failed_execution_pages_on_anything_at_error_but_a_decision_or_a_slow_stop" {
   command = plan
 
   assert {
@@ -476,16 +518,21 @@ run "a_failed_execution_pages_on_anything_at_error_but_a_decision" {
   }
 
   assert {
+    condition     = strcontains(google_monitoring_alert_policy.l2_execution_failed[0].conditions[0].condition_matched_log[0].filter, "NOT jsonPayload.exe_l2.event = \"stop-latency\"")
+    error_message = "the failed-execution filter must exclude the enforcer's stop-latency lines as NOT jsonPayload.exe_l2.event = \"stop-latency\". The first line of a slow stop is at ERROR and has its own page; without the exclusion it also pages as a failed execution, on a tick that did everything right."
+  }
+
+  assert {
     condition     = !strcontains(google_monitoring_alert_policy.l2_execution_failed[0].conditions[0].condition_matched_log[0].filter, "!=")
     error_message = "the failed-execution filter must not use != . In the Logging query language `field != value` is FALSE when the field is missing, and Cloud Run's own entries for a crashed, timed-out or killed task have no jsonPayload at all — the != spelling of the decision exclusion silently drops exactly the failures in which the enforcer never wrote a line. `NOT field = value` is TRUE for them."
   }
 
   # Any other payload clause is one those same entries cannot satisfy, for the
-  # same missing-field reason; so the decision exclusion is the ONLY payload
-  # clause, and the filter is not narrowed to one log either.
+  # same missing-field reason; so the NOT exclusions are the ONLY payload
+  # clauses, and the filter is not narrowed to one log either.
   assert {
-    condition     = length(regexall("Payload", google_monitoring_alert_policy.l2_execution_failed[0].conditions[0].condition_matched_log[0].filter)) == 1
-    error_message = "the failed-execution filter may mention the payload only in the NOT decision clause. Any other payload clause (jsonPayload.exe_l2.event = \"failure\", a textPayload match, ...) is a comparison Cloud Run's own entries cannot satisfy: a crash, a timeout or an OOM kill — the failures in which the enforcer wrote nothing — would all pass unreported."
+    condition     = length(regexall("Payload", google_monitoring_alert_policy.l2_execution_failed[0].conditions[0].condition_matched_log[0].filter)) == length(regexall("NOT jsonPayload\\.exe_l2\\.event = \"[a-z-]+\"", google_monitoring_alert_policy.l2_execution_failed[0].conditions[0].condition_matched_log[0].filter))
+    error_message = "the failed-execution filter may mention the payload only in NOT jsonPayload.exe_l2.event = \"...\" exclusions. Any other payload clause (jsonPayload.exe_l2.event = \"failure\", a textPayload match, ...) is a comparison Cloud Run's own entries cannot satisfy: a crash, a timeout or an OOM kill — the failures in which the enforcer wrote nothing — would all pass unreported."
   }
 
   assert {
@@ -517,7 +564,26 @@ run "l2_alerts_carry_the_rate_limit_a_log_match_policy_requires" {
   }
 
   assert {
-    condition     = try(google_monitoring_alert_policy.l2_forced_stop[0].alert_strategy[0].auto_close, null) == "1800s" && try(google_monitoring_alert_policy.l2_execution_failed[0].alert_strategy[0].auto_close, null) == "1800s"
-    error_message = "both L2 alerts must auto-close after 1800s, the minimum. A log-match incident has no recovery signal — it closes only after this long without a repeat of its entry — and the default is 7 days: one forced stop would stay open for a week with every later one reduced to a throttled repeat inside it, and a failure that has long cleared would still read as current."
+    condition     = try(google_monitoring_alert_policy.l2_stop_latency[0].alert_strategy[0].notification_rate_limit[0].period, null) == "300s"
+    error_message = "the stop-latency alert must set alert_strategy.notification_rate_limit.period = \"300s\", the floor; without a rate limit the API rejects a log-match policy at apply. The enforcer already writes this line at ERROR once per stop, so the policy adds no second limit of its own: a longer window could swallow the slow stop of the NEXT sleep."
+  }
+
+  assert {
+    condition = alltrue([
+      for p in [google_monitoring_alert_policy.l2_forced_stop[0], google_monitoring_alert_policy.l2_execution_failed[0], google_monitoring_alert_policy.l2_stop_latency[0]] :
+      try(p.alert_strategy[0].auto_close, null) == "1800s"
+    ])
+    error_message = "every L2 alert must auto-close after 1800s, the minimum. A log-match incident has no recovery signal — it closes only after this long without a repeat of its entry — and the default is 7 days: one forced stop would stay open for a week with every later one reduced to a throttled repeat inside it, and a failure that has long cleared would still read as current."
+  }
+
+  # The one value the API allows for a log-based policy, stated rather than left
+  # to a server default because the provider does not mark the field computed
+  # (monitoring.tf).
+  assert {
+    condition = alltrue([
+      for p in [google_monitoring_alert_policy.l2_forced_stop[0], google_monitoring_alert_policy.l2_execution_failed[0], google_monitoring_alert_policy.l2_stop_latency[0]] :
+      try(p.alert_strategy[0].notification_prompts, null) == tolist(["OPENED"])
+    ])
+    error_message = "every L2 alert must state alert_strategy.notification_prompts = [\"OPENED\"], the one value the API allows for a log-based policy: nothing is sent when an incident closes, which for a log match is only the end of its 30-minute window, not a recovery."
   }
 }
