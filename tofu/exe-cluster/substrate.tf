@@ -159,6 +159,15 @@ locals {
       echo "ate-setup: deploy ate-system $VERSION (build mode)"
       go run ./cmd/ate-setup --kubeconfig "$KUBECONFIG" --context "$context" \
         --no-dev-env --rollout-timeout 5m deploy ate-system
+
+      # Upstream's ate-api-server budget (maxUnavailable 1) cannot keep an API
+      # server up on one node that every stop removes: the evicted pod's
+      # replacement cannot schedule on the cordoned node, the budget reads zero,
+      # and the drain waits on the other pod for up to GKE's one-hour PDB limit
+      # while the node bills. Let it allow a full stop. The installer rewrites
+      # the budget only when this step runs again, and this line runs after it.
+      kubectl --context "$context" -n ate-system patch poddisruptionbudget ate-api-server \
+        --type=merge -p '{"spec":{"maxUnavailable":"100%"}}'
   EOT
 
   ate_setup_env = {

@@ -118,6 +118,21 @@ run "the_install_drops_the_gmp_podmonitoring_and_writes_our_sandboxconfig" {
   }
 }
 
+# Upstream's ate-api-server PodDisruptionBudget (maxUnavailable 1) cannot keep
+# an API server up on a one-node cluster whose every stop takes the node away:
+# the first evicted pod's replacement is unschedulable on the cordoned node, so
+# the budget reads zero and the drain waits on the second pod until GKE's
+# one-hour PDB limit -- a stop that bills the node for up to an hour past the
+# lease. The install step lets the budget allow a full stop.
+run "the_install_lets_the_api_server_budget_allow_a_full_stop" {
+  command = plan
+
+  assert {
+    condition     = strcontains(local.ate_setup_script, "patch poddisruptionbudget ate-api-server") && strcontains(local.ate_setup_script, "{\"spec\":{\"maxUnavailable\":\"100%\"}}")
+    error_message = "the install must patch upstream's ate-api-server PodDisruptionBudget to maxUnavailable 100% after the deploy. With one node, the budget cannot protect anything: every stop removes the node, the evicted pod's replacement cannot schedule, and the drain then waits on the other pod for up to GKE's one-hour PDB limit while the node bills."
+  }
+}
+
 run "gvisor_default_names_our_mirror_and_the_gke_pause_image" {
   command = plan
 
