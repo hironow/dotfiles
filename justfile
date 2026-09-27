@@ -701,6 +701,27 @@ spec-check:
       echo "🔬 quint test $spec"
       $QUINT test --max-samples=200 "$spec"
     done
+    # The rejected designs (exe/spec/README.md) are kept as FAILING instances,
+    # so the gate requires them to fail, and to fail on their expectation
+    # (QNT508) rather than because a module or test went missing. A rejected
+    # design that starts passing means the model can no longer tell it from the
+    # decided one.
+    for rejected in \
+      "twoWriterLease twoWritersLoseTheOperatorsLease" \
+      "naiveShrinkFirst shrinkingFirstCrashesTheRunningActor" \
+      "routerLeftOpen leftOpenRouterRevivesAnActorAfterDrained"; do
+      read -r module run <<<"$rejected"
+      echo "🔬 quint test $module.$run (must fail)"
+      if out="$($QUINT test --main="$module" --match="$run" exe/spec/lease.qnt 2>&1)"; then
+        echo "❌ rejected design $module passed $run: the model no longer rejects it" >&2
+        exit 1
+      fi
+      if ! grep -q "QNT508" <<<"$out"; then
+        echo "❌ $module.$run failed, but not on its expectation:" >&2
+        echo "$out" >&2
+        exit 1
+      fi
+    done
     echo "🔬 seeded simulation of the real Go code"
     (cd tools/exe-reaper && mise x -- go test ./internal/lease/ -run 'TestSimulation' -count=1)
 
