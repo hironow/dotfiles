@@ -1648,6 +1648,42 @@ _exe-reaper *args:
     cd ../../tools/exe-reaper
     exec mise x -- go run . {{ args }}
 
+# --- L2: the enforcer image and an on-demand run ----------------------------
+
+# Build exe-reaper with ko and push it to the exe-platform registry (linux/amd64,
+# no SBOM, tagged with the commit). Prints the digest-pinned ref, which is the
+# enforcer_image value that deploys L2 (gitignored terraform.tfvars, or `-var` on
+# the plan). Writes to the private registry only; its cleanup policy bounds how
+# many versions stay.
+[group('Exe')]
+exe-reaper-image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{ _EXE_PLATFORM_DIR }}
+    repo="$(mise x -- tofu output -raw ar_platform_repo)"
+    tag="$(git rev-parse --short=12 HEAD)"
+    cd ../../tools/exe-reaper
+    KO_DOCKER_REPO="${repo}/exe-reaper" mise exec aqua:ko-build/ko -- \
+        ko build --bare --platform=linux/amd64 --sbom=none --tags="${tag}" .
+
+# Run one L2 enforcement pass now, as the job itself (its own identity and env),
+# and wait for it. The tick only reports that an execution was CREATED; this is
+# where a failed pass shows up.
+[group('Exe')]
+exe-l2-run:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{ _EXE_PLATFORM_DIR }}
+    job="$(mise x -- tofu output -json l2_enforcer_job)"
+    if [ "$job" = "null" ]; then
+        echo "L2 is not deployed (enforcer_image is empty)." >&2
+        exit 1
+    fi
+    project="$(mise x -- tofu output -raw project_id)"
+    region="$(mise x -- tofu output -raw region)"
+    mise x -- gcloud run jobs execute "$(mise x -- tofu output -raw l2_enforcer_job)" \
+        --region "$region" --project "$project" --wait
+
 # Build the TF_ENCRYPTION HCL payload from the local passphrase.
 # State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
 # Mirrors the static block in tofu/exe/main.tf. HCL form (NOT JSON);

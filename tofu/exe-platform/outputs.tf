@@ -54,6 +54,23 @@ output "l3_scheduler_job" {
   value       = google_cloud_scheduler_job.l3_daily_stop.name
 }
 
+output "l2_scheduler_job" {
+  description = "Name of the L2 tick, for `gcloud scheduler jobs run` — the way to force an enforcement pass without waiting for the cadence. Null while L2 is not deployed (no enforcer_image)."
+  value       = one(google_cloud_scheduler_job.l2_tick[*].name)
+}
+
+output "l2_enforcer_job" {
+  description = <<-EOT
+    Name of the L2 Cloud Run job. Exposed so a recipe reads the name instead of
+    retyping it: `gcloud run jobs execute` bypasses the tick, which is what the
+    Phase 3 e2e needs, and `gcloud run jobs executions list` is where a failed
+    enforcement pass is actually visible (the tick reports success as soon as the
+    execution is created, not when it succeeds). Null while L2 is not deployed
+    (no enforcer_image).
+  EOT
+  value       = one(google_cloud_run_v2_job.l2_enforcer[*].name)
+}
+
 output "bucket_snapshots" {
   description = "Actor snapshot bucket (AX_SNAPSHOTS_BUCKET)."
   value       = google_storage_bucket.snapshots.name

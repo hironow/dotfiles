@@ -67,6 +67,42 @@ variable "monthly_budget_jpy" {
   }
 }
 
+variable "enforcer_image" {
+  description = <<-EOT
+    Container image for the L2 enforcer Cloud Run job, pinned by digest
+    (…/exe-platform/exe-reaper@sha256:<64 hex>).
+
+    Passed IN rather than built here. The reaper is a Go binary built with ko,
+    and a ko provider in this stack would build and push an image during `tofu
+    plan` — which would make a plan a side-effecting operation, break the offline
+    invariant tests, and require registry credentials to review a diff. So the
+    build is a separate recipe and its output digest is an input.
+
+    The digest requirement is the part that matters. A mutable tag in the job
+    that enforces a spend limit is how a silently stale enforcer survives: the
+    tick fires, an execution starts, it exits 0, and the binary that ran is last
+    month's — with nothing in the plan, the state or the execution record saying
+    which code resized the node pool. A digest makes the deployed enforcer
+    auditable after the fact, which for a money stop is the whole point.
+
+    Empty, the default, means L2 is not deployed: the job, its run.invoker
+    binding and its tick are left out together, and the rest of the stack
+    (the enforcer identity and its grants included) plans unchanged. The digest
+    only exists once the ko build has pushed the image, so this is also what
+    lets the platform keep planning to "No changes." until then.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    # Only the digest tail is checked. Requiring a particular registry host or
+    # repository path would mean writing the project id into a public repo, and
+    # the property being defended here is immutability, not provenance.
+    condition     = var.enforcer_image == "" || can(regex("@sha256:[0-9a-f]{64}$", var.enforcer_image))
+    error_message = "enforcer_image must be empty (L2 not deployed) or pinned by digest, ending in @sha256:<64 lowercase hex>. A tag is mutable, so a tagged enforcer cannot be audited after it has resized the pool."
+  }
+}
+
 variable "node_machine_type" {
   description = "Node machine type (decision Q9/Q17: e2-standard-4 supports 2 concurrent actors)."
   type        = string

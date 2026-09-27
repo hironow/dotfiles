@@ -14,6 +14,15 @@ locals {
   # any .tf file hardcodes one of these literals instead of reading them here.
   pins = jsondecode(file("${path.module}/../../exe/versions.json"))
 
+  # The one place the auto-sleep's numbers come from, read the same way and for
+  # the same reason. The Go reaper and the Quint model mirror this document
+  # under lockstep tests, so a literal in a .tf file would be a THIRD opinion about a
+  # number whose whole purpose is that all three agree: l2_tick_minutes is a term
+  # in the formula that keeps L3 off an awake actor (section 3.2), so a cadence
+  # that drifts from the document shortens the real safety margin without
+  # changing anything that mentions it.
+  leases = jsondecode(file("${path.module}/../../exe/lease-constants.json"))
+
   # Names. Every one is exe-prefixed: the project is shared with two unrelated
   # OpenTofu stacks and a collision would let this stack adopt or clobber a
   # resource it does not own.
@@ -92,6 +101,38 @@ locals {
     google_container_node_pool.main.name,
     ":setSize",
   ])
+
+  # L2's cadence, COMPUTED from the lease document rather than written as
+  # "*/10 * * * *". The tick period is one of the four terms the hour of slack
+  # before L3 is made of, so the constant and the cron have to move together; a
+  # literal is how the enforcer keeps ticking at the old period after someone
+  # widened the constant and recomputed the slack around it.
+  #
+  # `*/N` restarts at every hour boundary, so N must divide 60 — otherwise the
+  # LONGEST gap (not the nominal period) is what the slack has to cover. The
+  # invariant test asserts that divisibility, since a locals block cannot.
+  l2_cron = "*/${local.leases.l2_tick_minutes} * * * *"
+
+  # L2's trigger: the Cloud Run Admin API's jobs.run verb, assembled from the JOB
+  # RESOURCE the same way the setSize URI above is assembled from the cluster —
+  # written independently, a rename leaves the tick POSTing at a job that no
+  # longer exists, 404ing every ten minutes with only the Scheduler-failure alert
+  # to mention it. The Admin API is regional-agnostic on this path; the region
+  # appears in the resource name, not the host.
+  #
+  # Null while L2 is not deployed (no enforcer image; see variables.tf), since
+  # there is no job to aim at; only the tick reads it, and the tick is gated on
+  # the same switch.
+  l2_enabled = var.enforcer_image != ""
+  l2_enforcer_run_uri = local.l2_enabled ? join("", [
+    "https://run.googleapis.com/v2/projects/",
+    var.gcp_project_id,
+    "/locations/",
+    google_cloud_run_v2_job.l2_enforcer[0].location,
+    "/jobs/",
+    google_cloud_run_v2_job.l2_enforcer[0].name,
+    ":run",
+  ]) : null
 
   common_labels = {
     stack      = local.prefix

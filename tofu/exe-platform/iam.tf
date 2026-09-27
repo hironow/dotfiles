@@ -9,8 +9,11 @@
 #   node      - kubelet: pull images, ship logs and metrics
 #   build     - Cloud Build: read the source bucket, push the task image
 #   reaper    - L1, in-cluster via Workload Identity: lease objects, image tags
-#   enforcer  - L2, Cloud Run job: lease objects, and shrink the pool to 0
-#   scheduler - L3, Cloud Scheduler: shrink the pool to 0, nothing else
+#   enforcer  - L2, Cloud Run job: lease objects, read the pool's size and
+#               shrink it to 0 (the size read is granted with the job, in
+#               l2_enforcer.tf)
+#   scheduler - L3, Cloud Scheduler: shrink the pool to 0, nothing else; and
+#               start the L2 job (run.invoker on that job, in l2_enforcer.tf)
 #
 # The two pool-shrinking identities share a custom role rather than
 # roles/container.clusterAdmin, which would also let them delete the cluster.

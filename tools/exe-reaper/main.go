@@ -35,7 +35,11 @@ const (
 	enforceObject = "enforce.json"
 
 	// Env vars the OpenTofu stack sets on the Cloud Run job, and the just
-	// recipes set for the operator's path. Named here so there is one list.
+	// recipes set for the operator's path. Named here so there is one list, and
+	// spelled exactly as tofu/exe-platform/l2_enforcer.tf spells them:
+	// tests/unit/test_exe_reaper_env_contract.py fails if the two drift, since a
+	// drifted name is an enforcer that exits "missing required environment" on
+	// every tick.
 	envBucket     = "EXE_OPS_BUCKET"
 	envSetSizeURI = "EXE_NODE_POOL_SET_SIZE_URI"
 	envProject    = "EXE_PROJECT_ID"
