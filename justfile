@@ -1805,6 +1805,9 @@ exe-cluster-src:
       fi
       echo "✅ $name at $sha ($dir)"
     done
+    # The Substrate pin may be ax's go.mod pseudo-version; hold the recorded
+    # requirement to the go.mod actually fetched (fails closed).
+    python3 scripts/check_exe_pins.py ax-gomod "$src/ax/go.mod"
 
 # tofu in the exe-cluster stack, with the private project as the quota project.
 # The state key's KMS calls (and the backend's) run on the operator's user ADC,

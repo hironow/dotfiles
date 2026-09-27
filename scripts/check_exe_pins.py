@@ -29,6 +29,15 @@ resolver, and the one main() passes returns None unless
 EXE_PINS_VERIFY_UPSTREAM=1 is set. A CI gate that needs api.github.com is a gate
 that fails for reasons unrelated to the pins, so offline it reports "skipped".
 
+substrate.version is an upstream vX.Y.Z tag, or exactly the Go pseudo-version the
+pinned ax release's go.mod requires (ax.go_mod_substrate), with substrate.sha
+starting with its 12-hex suffix. The second form exists because the spike proved
+the v0.1.0 tag incompatible with ax v0.3.1 (2026-09-27): ax is built against a
+main-branch commit. It binds the pin to ax's own requirement, so a floating ref
+or any other pseudo-version still fails. `ax-gomod <path>` holds
+ax.go_mod_substrate to the go.mod of the fetched ax checkout; `just
+exe-cluster-src` runs it, fail-closed.
+
 Exit code: 0 = clean, 1 = violations found (listed on stderr). Stdlib only.
 """
 
@@ -77,7 +86,7 @@ _TOP_REQUIRED: dict[str, type] = {
     "providers": dict,
     "stacks": list,
 }
-_AX_REQUIRED = ("version", "repo", "sha")
+_AX_REQUIRED = ("version", "repo", "sha", "go_mod_substrate")
 _SUBSTRATE_REQUIRED = (
     "version",
     "repo",
@@ -94,6 +103,13 @@ _SUBSTRATE_VERSION_KEYS = ("version", "version_label_value")
 
 _SEMVER_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 _SEMVER_LITERAL_RE = re.compile(r"v\d+\.\d+\.\d+")
+# A Go module pseudo-version (vX.Y.Z-[pre.]yyyymmddhhmmss-<12 hex>), capturing
+# the abbreviated commit it names.
+_GO_PSEUDO_VERSION_RE = re.compile(
+    r"^v\d+\.\d+\.\d+-(?:[0-9A-Za-z-]+\.)*\d{14}-([0-9a-f]{12})$"
+)
+# The module the ax go.mod requirement is read for.
+SUBSTRATE_MODULE = "github.com/agent-substrate/substrate"
 _PROVIDER_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)(?:\.(\d+))?")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _CLUSTER_MINOR_RE = re.compile(r"^1\.\d+$")
@@ -195,14 +211,13 @@ def check_schema(pins: dict[str, Any]) -> list[str]:
     violations.extend(_closed_block(pins, "substrate", _SUBSTRATE_REQUIRED))
     violations.extend(_closed_block(pins, "gke", _GKE_REQUIRED))
 
-    for name in ("ax", "substrate"):
-        block = pins.get(name)
-        if not isinstance(block, dict):
-            continue
-        version = block.get("version")
+    # substrate.version has two legal forms; check_substrate_version owns it.
+    ax = pins.get("ax")
+    if isinstance(ax, dict):
+        version = ax.get("version")
         if isinstance(version, str) and not _SEMVER_TAG_RE.match(version):
             violations.append(
-                f"{PINS_REL}: schema -- {name}.version '{version}' is not a "
+                f"{PINS_REL}: schema -- ax.version '{version}' is not a "
                 f"vMAJOR.MINOR.PATCH upstream tag."
             )
 
@@ -272,6 +287,112 @@ def check_single_substrate_ref(pins: dict[str, Any]) -> list[str]:
                 f"substrate version reference."
             )
     return violations
+
+
+# --- check 2b: a substrate tag, or exactly what the ax release requires -----
+
+
+def check_substrate_version(pins: dict[str, Any]) -> list[str]:
+    """Require substrate.version to be a tag, or ax's go.mod pseudo-version.
+
+    The pseudo-version form is accepted only when it IS ax.go_mod_substrate and
+    substrate.sha starts with the commit its suffix names, so the pin stays
+    bound to the one commit the ax release was built against.
+    """
+    violations: list[str] = []
+    ax = pins.get("ax")
+    substrate = pins.get("substrate")
+    if not isinstance(ax, dict) or not isinstance(substrate, dict):
+        return violations  # typed at the top level already
+
+    required = ax.get("go_mod_substrate")
+    if isinstance(required, str) and not (
+        _SEMVER_TAG_RE.match(required) or _GO_PSEUDO_VERSION_RE.match(required)
+    ):
+        violations.append(
+            f"{PINS_REL}: substrate -- ax.go_mod_substrate '{required}' is "
+            f"neither a vMAJOR.MINOR.PATCH tag nor a Go pseudo-version; it must "
+            f"be copied verbatim from the pinned ax release's go.mod."
+        )
+
+    version = substrate.get("version")
+    if not isinstance(version, str) or _SEMVER_TAG_RE.match(version):
+        return violations  # a missing version is check_schema's to report
+    pseudo = _GO_PSEUDO_VERSION_RE.match(version)
+    if pseudo is None:
+        violations.append(
+            f"{PINS_REL}: substrate -- version '{version}' is neither a "
+            f"vMAJOR.MINOR.PATCH upstream tag nor the pseudo-version the ax "
+            f"release requires. A branch or other floating ref is not a pin."
+        )
+        return violations
+    if version != required:
+        violations.append(
+            f"{PINS_REL}: substrate -- version '{version}' is a pseudo-version, "
+            f"but not the one ax.go_mod_substrate records ('{required}'). Only "
+            f"the ax release's own requirement may be pinned untagged."
+        )
+    sha = substrate.get("sha")
+    if not isinstance(sha, str) or not sha.startswith(pseudo.group(1)):
+        violations.append(
+            f"{PINS_REL}: substrate -- sha {sha!r} is not the commit version "
+            f"'{version}' names (suffix {pseudo.group(1)})."
+        )
+    return violations
+
+
+# --- check 2c: ax.go_mod_substrate matches the fetched ax go.mod -------------
+
+
+def _gomod_requirements(gomod: str, module: str) -> tuple[list[str], bool]:
+    """Return every version go.mod requires of `module`, and whether it is replaced."""
+    versions: list[str] = []
+    replaced = False
+    in_require = False
+    for raw in gomod.splitlines():
+        line = raw.split("//", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("replace") and module in line:
+            replaced = True
+        if line == "require (":
+            in_require = True
+            continue
+        if in_require and line == ")":
+            in_require = False
+            continue
+        fields = line.split()
+        if in_require and len(fields) >= 2 and fields[0] == module:
+            versions.append(fields[1])
+        elif len(fields) >= 3 and fields[0] == "require" and fields[1] == module:
+            versions.append(fields[2])
+    return versions, replaced
+
+
+def check_ax_gomod(pins: dict[str, Any], gomod: str) -> list[str]:
+    """Hold ax.go_mod_substrate to what the fetched ax go.mod really requires.
+
+    Fail-closed: no requirement, several, or a replace directive are violations.
+    """
+    ax = pins.get("ax")
+    recorded = ax.get("go_mod_substrate") if isinstance(ax, dict) else None
+    versions, replaced = _gomod_requirements(gomod, SUBSTRATE_MODULE)
+    if replaced:
+        return [
+            f"ax go.mod: a replace directive overrides {SUBSTRATE_MODULE}; the "
+            f"requirement is not what the build uses."
+        ]
+    if len(versions) != 1:
+        return [
+            f"ax go.mod: expected exactly one requirement of {SUBSTRATE_MODULE}, "
+            f"found {versions or 'none'}."
+        ]
+    if versions[0] != recorded:
+        return [
+            f"ax go.mod requires {SUBSTRATE_MODULE} {versions[0]}, but "
+            f"{PINS_REL} records ax.go_mod_substrate = {recorded!r}."
+        ]
+    return []
 
 
 # --- check 3: SHA shape, and match against upstream ------------------------
@@ -675,14 +796,35 @@ def check_mise_pin(mise_config_path: Path, pins: dict[str, Any]) -> list[str]:
 # --- entry point ------------------------------------------------------------
 
 
+def main_ax_gomod(root: Path, gomod_path: Path) -> int:
+    """`ax-gomod <path>`: compare the recorded requirement with a fetched go.mod."""
+    pins, violations = load_pins(root)
+    if pins is not None:
+        try:
+            gomod = gomod_path.read_text()
+        except OSError as exc:
+            violations.append(f"ax go.mod: unreadable ({exc}).")
+        else:
+            violations.extend(check_ax_gomod(pins, gomod))
+    if violations:
+        for violation in violations:
+            print(f"check-exe-pins ax-gomod: {violation}", file=sys.stderr)
+        return EXIT_FAIL
+    print(f"check-exe-pins ax-gomod: OK -- {gomod_path} matches ax.go_mod_substrate.")
+    return EXIT_OK
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
+    if len(sys.argv) == 3 and sys.argv[1] == "ax-gomod":
+        return main_ax_gomod(root, Path(sys.argv[2]))
     pins, violations = load_pins(root)
 
     skipped: list[str] = []
     if pins is not None:
         violations.extend(check_schema(pins))
         violations.extend(check_single_substrate_ref(pins))
+        violations.extend(check_substrate_version(pins))
         violations.extend(check_sha_shapes(pins))
         sha_result = verify_shas(pins, default_resolver)
         violations.extend(sha_result.violations)

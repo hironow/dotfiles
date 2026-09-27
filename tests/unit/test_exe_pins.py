@@ -43,6 +43,10 @@ _REAL_MISE_CONFIG = _REPO_ROOT / "config" / "mise" / "config.toml"
 AX_SHA = "e70162a34037c221fe6fadefd98308c05a4ad8f3"
 SUBSTRATE_SHA = "fa6d949685a6318940a9a0195c867c864009b820"
 
+# What ax v0.3.1's go.mod requires of Substrate: a main-branch commit, not a tag.
+AX_GOMOD_SUBSTRATE = "v0.0.0-20260911232748-672533541dbf"
+AX_GOMOD_SUBSTRATE_SHA = "672533541dbfcd29084e4de2475267088bda3651"
+
 
 def _load() -> ModuleType:
     spec = importlib.util.spec_from_file_location("check_exe_pins", _SCRIPT)
@@ -64,6 +68,7 @@ def _pins() -> dict[str, Any]:
                 "version": "v0.3.1",
                 "repo": "github.com/google/ax",
                 "sha": AX_SHA,
+                "go_mod_substrate": AX_GOMOD_SUBSTRATE,
             },
             "substrate": {
                 "version": "v0.1.0",
@@ -176,6 +181,117 @@ def test_underscore_note_mentioning_the_tag_is_not_a_second_ref() -> None:
     pins = _pins()
     pins["substrate"]["_ax_gomod_note"] = "go.mod diverges from the v0.1.0 tag"
     assert mod.check_single_substrate_ref(pins) == []
+
+
+# --- check 2b: a substrate tag, or exactly what the ax release requires ------
+#
+# The spike (S1/S2, 2026-09-27) proved the v0.1.0 tag incompatible with ax
+# v0.3.1, whose go.mod requires a main-branch commit. So the pin may be that
+# requirement's Go pseudo-version -- but only that one, and only with the SHA
+# its suffix names. Anything else floating or off-requirement still fails.
+
+
+def _pins_on_ax_gomod() -> dict[str, Any]:
+    pins = _pins()
+    pins["substrate"]["version"] = AX_GOMOD_SUBSTRATE
+    pins["substrate"]["version_label_value"] = AX_GOMOD_SUBSTRATE
+    pins["substrate"]["sha"] = AX_GOMOD_SUBSTRATE_SHA
+    return pins
+
+
+def test_a_substrate_tag_is_clean() -> None:
+    assert mod.check_substrate_version(_pins()) == []
+
+
+def test_the_pseudo_version_ax_requires_is_clean() -> None:
+    pins = _pins_on_ax_gomod()
+    assert mod.check_schema(pins) == []
+    assert mod.check_substrate_version(pins) == []
+    assert mod.check_single_substrate_ref(pins) == []
+    assert mod.check_labels(pins) == []
+
+
+def test_a_pseudo_version_other_than_the_one_ax_requires_is_flagged() -> None:
+    pins = _pins_on_ax_gomod()
+    other = "v0.0.0-20260925000000-10a1bfb00000"
+    pins["substrate"]["version"] = other
+    pins["substrate"]["version_label_value"] = other
+    pins["substrate"]["sha"] = "10a1bfb00000" + "0" * 28
+    assert mod.check_substrate_version(pins)
+
+
+def test_a_pseudo_version_whose_suffix_is_not_the_sha_is_flagged() -> None:
+    pins = _pins_on_ax_gomod()
+    pins["substrate"]["sha"] = SUBSTRATE_SHA
+    assert mod.check_substrate_version(pins)
+
+
+def test_a_floating_substrate_ref_is_flagged() -> None:
+    pins = _pins()
+    pins["substrate"]["version"] = "main"
+    pins["substrate"]["version_label_value"] = "main"
+    assert mod.check_substrate_version(pins)
+
+
+def test_ax_go_mod_substrate_must_be_a_tag_or_a_pseudo_version() -> None:
+    pins = _pins()
+    pins["ax"]["go_mod_substrate"] = "latest"
+    assert mod.check_substrate_version(pins)
+
+
+def test_missing_ax_go_mod_substrate_is_flagged() -> None:
+    pins = _pins()
+    del pins["ax"]["go_mod_substrate"]
+    assert mod.check_schema(pins)
+
+
+# --- check 2c: ax.go_mod_substrate is what the fetched ax go.mod says --------
+#
+# `just exe-cluster-src` runs this against the checkout it fetched, so the value
+# the gate trusts above cannot drift from the file it claims to copy.
+
+_AX_GOMOD = """module github.com/google/ax
+
+go 1.27.1
+
+require (
+\tgithub.com/agent-substrate/env v0.0.11-0.20260912052224-4468a200b170
+\tgithub.com/agent-substrate/substrate v0.0.0-20260911232748-672533541dbf
+)
+"""
+
+
+def test_ax_gomod_matching_the_recorded_requirement_is_clean() -> None:
+    assert mod.check_ax_gomod(_pins(), _AX_GOMOD) == []
+
+
+def test_ax_gomod_requiring_another_substrate_is_flagged() -> None:
+    gomod = _AX_GOMOD.replace(AX_GOMOD_SUBSTRATE, "v0.1.0")
+    assert mod.check_ax_gomod(_pins(), gomod)
+
+
+def test_ax_gomod_without_a_substrate_requirement_is_flagged() -> None:
+    gomod = "\n".join(
+        line
+        for line in _AX_GOMOD.splitlines()
+        if "agent-substrate/substrate" not in line
+    )
+    assert mod.check_ax_gomod(_pins(), gomod)
+
+
+def test_ax_gomod_replacing_substrate_is_flagged() -> None:
+    gomod = (
+        _AX_GOMOD + "\nreplace github.com/agent-substrate/substrate => ../substrate\n"
+    )
+    assert mod.check_ax_gomod(_pins(), gomod)
+
+
+def test_single_line_require_form_is_read() -> None:
+    gomod = (
+        "module github.com/google/ax\n\n"
+        f"require github.com/agent-substrate/substrate {AX_GOMOD_SUBSTRATE}\n"
+    )
+    assert mod.check_ax_gomod(_pins(), gomod) == []
 
 
 # --- check 3: SHA shape, and match against a resolver ----------------------

@@ -3,7 +3,9 @@
   "ax": {
     "version": "v0.3.1",
     "repo": "github.com/google/ax",
-    "sha": "e70162a34037c221fe6fadefd98308c05a4ad8f3"
+    "sha": "e70162a34037c221fe6fadefd98308c05a4ad8f3",
+    "go_mod_substrate": "v0.0.0-20260911232748-672533541dbf",
+    "_go_mod_substrate_note": "Copied verbatim from the pinned ax release's go.mod (github.com/agent-substrate/substrate). `just exe-cluster-src` re-reads the fetched go.mod and fails if it differs (scripts/check_exe_pins.py ax-gomod)."
   },
   "substrate": {
     "version": "v0.1.0",
