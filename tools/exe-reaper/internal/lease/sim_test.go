@@ -91,31 +91,19 @@ func TestSimulationReachesTheDangerousStates(t *testing.T) {
 	// across the seed sweep every interesting transition must occur at least
 	// once, including the ones the invariants are about.
 	skipSweepInShortMode(t)
-	total := SimStats{}
+	var total SimStats
 	for _, r := range sweep() {
 		if r.violation != nil {
 			t.Fatal(r.violation.Error())
 		}
-		s := r.stats
-		total.Wakes += s.Wakes
-		total.Extends += s.Extends
-		total.DrainsStarted += s.DrainsStarted
-		total.DrainsFinished += s.DrainsFinished
-		total.DrainsFailed += s.DrainsFailed
-		total.GracefulStops += s.GracefulStops
-		total.ForcedStops += s.ForcedStops
-		total.ForcedLeaseUnreadable += s.ForcedLeaseUnreadable
-		total.ForcedDrainFailed += s.ForcedDrainFailed
-		total.ForcedGraceExpired += s.ForcedGraceExpired
-		total.ForcedHeartbeatStale += s.ForcedHeartbeatStale
-		total.L3Stops += s.L3Stops
-		total.ReadFailures += s.ReadFailures
+		total = addStats(total, r.stats)
 	}
 
 	// Every forced branch of DecideL2 by name, not "forced stops" in total: a
 	// sweep whose every forced stop was a lease-read failure proves nothing
 	// about the drain-failed, heartbeat and grace rules, and for a long time
-	// that is exactly what this sweep was.
+	// that is exactly what this sweep was. Likewise every way a drain ends, and
+	// every path that wakes an actor behind its back.
 	required := []struct {
 		name string
 		got  int
@@ -123,9 +111,14 @@ func TestSimulationReachesTheDangerousStates(t *testing.T) {
 		{"wakes", total.Wakes},
 		{"extends", total.Extends},
 		{"drains started", total.DrainsStarted},
+		{"drains restarted over a stale terminal record", total.StaleRedrains},
 		{"drains finished", total.DrainsFinished},
-		{"drains failed", total.DrainsFailed},
+		{"drains failed on a loss", total.DrainsFailedLost},
+		{"drains failed at the ceiling", total.DrainsFailedCeil},
+		{"controller brought back to suspend again", total.Resuspends},
+		{"drains waiting on golden work", total.GoldenWaits},
 		{"graceful stops", total.GracefulStops},
+		{"idle stops before the deadline", total.IdleStops},
 		{"forced stops", total.ForcedStops},
 		{"forced stops: lease unreadable", total.ForcedLeaseUnreadable},
 		{"forced stops: drain failed", total.ForcedDrainFailed},
@@ -133,6 +126,9 @@ func TestSimulationReachesTheDangerousStates(t *testing.T) {
 		{"forced stops: heartbeat stale", total.ForcedHeartbeatStale},
 		{"L3 stops", total.L3Stops},
 		{"lease read failures", total.ReadFailures},
+		{"raw resumes during a drain", total.RawResumesDuringDrain},
+		{"worker pods lost", total.WorkerPodsLost},
+		{"wedges cleared", total.WedgesCleared},
 	}
 	for _, r := range required {
 		if r.got == 0 {
@@ -141,7 +137,54 @@ func TestSimulationReachesTheDangerousStates(t *testing.T) {
 				r.name, total)
 		}
 	}
+	// With the stop latency the design assumes, the detector never fires: a
+	// node that leaves in StopLatency is gone before L2's second look.
+	if total.StopLatencyAlarms != 0 {
+		t.Errorf("%d stop-latency alarms at the assumed latency", total.StopLatencyAlarms)
+	}
 	t.Logf("coverage across %d seeds: %+v", len(simSeeds), total)
+}
+
+func addStats(a, b SimStats) SimStats {
+	a.Wakes += b.Wakes
+	a.Extends += b.Extends
+	a.DrainsStarted += b.DrainsStarted
+	a.StaleRedrains += b.StaleRedrains
+	a.DrainsFinished += b.DrainsFinished
+	a.DrainsFailedLost += b.DrainsFailedLost
+	a.DrainsFailedCeil += b.DrainsFailedCeil
+	a.Resuspends += b.Resuspends
+	a.GoldenWaits += b.GoldenWaits
+	a.GracefulStops += b.GracefulStops
+	a.IdleStops += b.IdleStops
+	a.ForcedStops += b.ForcedStops
+	a.ForcedLeaseUnreadable += b.ForcedLeaseUnreadable
+	a.ForcedDrainFailed += b.ForcedDrainFailed
+	a.ForcedGraceExpired += b.ForcedGraceExpired
+	a.ForcedHeartbeatStale += b.ForcedHeartbeatStale
+	a.L3Stops += b.L3Stops
+	a.ReadFailures += b.ReadFailures
+	a.RawResumesDuringDrain += b.RawResumesDuringDrain
+	a.WorkerPodsLost += b.WorkerPodsLost
+	a.WedgesCleared += b.WedgesCleared
+	a.StopLatencyAlarms += b.StopLatencyAlarms
+	return a
+}
+
+func TestSimulationCatchesASlowStop(t *testing.T) {
+	// The pdbHoldsTheDrain instance, run through the real code: a node that
+	// takes an hour to leave breaks the billing bound -- and L2's detector
+	// raises the alarm before it does.
+	skipSweepInShortMode(t)
+	cfg := DefaultSimConfig(1)
+	cfg.ActualStopLatency = time.Hour
+	stats, v := SimulateWithStats(cfg)
+	if v == nil || v.Invariant != "NodesEventuallyZero" {
+		t.Fatalf("a one-hour stop must break NodesEventuallyZero, got %v", v)
+	}
+	if stats.StopLatencyAlarms == 0 {
+		t.Fatalf("the detector never fired on a one-hour stop (stats %+v)\n%s", stats, v.Error())
+	}
 }
 
 func TestSimulationCatchesADeliberatelyBrokenBound(t *testing.T) {
@@ -165,6 +208,7 @@ func TestSimulationCatchesADeliberatelyBrokenBound(t *testing.T) {
 			s := &simState{
 				now:          ref().Add(tc.pastDeadline),
 				nodes:        1,
+				stopping:     true, // billing is what counts, not the target
 				lease:        Lease{Deadline: ref(), Generation: 1},
 				leaseOK:      tc.readFailures == 0,
 				readFailures: tc.readFailures,

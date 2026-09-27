@@ -453,6 +453,76 @@ func TestDecideL2(t *testing.T) {
 	}
 }
 
+func TestDecideL2StopsAnIdleDrainBeforeTheDeadline(t *testing.T) {
+	// Review note, Phase 3: an idle `drained` before the deadline must actually
+	// stop billing. Only an idle drain, and only about THIS lease.
+	now := ref()
+	live := Lease{Deadline: now.Add(time.Hour), Generation: 7}
+	drained := func(reason Reason, gen int64) Drain {
+		return Drain{Phase: DrainDrained, LeaseGeneration: gen, Reason: reason}
+	}
+	tests := []struct {
+		name  string
+		drain Drain
+		want  Decision
+	}{
+		{"an idle drain about this lease stops the pool", drained(ReasonIdle, 7), Decision{ActionStopGraceful, ReasonIdleDrained}},
+		{"an idle drain about an older lease does not: the extend took it away", drained(ReasonIdle, 6), Decision{ActionWait, ReasonWithinLease}},
+		{"a deadline drain before the deadline does not", drained(ReasonDeadlinePassed, 7), Decision{ActionWait, ReasonWithinLease}},
+		{"an unreadable-lease drain before the deadline does not", drained(ReasonLeaseUnreadable, 7), Decision{ActionWait, ReasonWithinLease}},
+		{"an idle drain still in progress does not", Drain{Phase: DrainDraining, LeaseGeneration: 7, Reason: ReasonIdle}, Decision{ActionWait, ReasonWithinLease}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := DecideL2(Observation{Now: now, Lease: live, LeaseOK: true, Nodes: 1, Drain: tc.drain})
+			if got != tc.want {
+				t.Errorf("want %+v, got %+v", tc.want, got)
+			}
+		})
+	}
+	if (Decision{ActionStopGraceful, ReasonIdleDrained}).Notify() {
+		t.Error("an idle stop is the system working; it must not page")
+	}
+}
+
+func TestNextStopping(t *testing.T) {
+	// L2's stop-latency detector (inbox M18, layer 3): the target reads zero
+	// the moment setSize(0) is accepted, while the node still bills.
+	now := ref()
+	tests := []struct {
+		name              string
+		prev              time.Time
+		target, instances int
+		wantSince         time.Time
+		wantAlarm         bool
+	}{
+		{"a pool at zero with nothing left is not stopping", time.Time{}, 0, 0, time.Time{}, false},
+		{"a live pool is not stopping", now.Add(-time.Hour), 1, 1, time.Time{}, false},
+		{"the first tick that sees the node still there remembers when", time.Time{}, 0, 1, now, false},
+		{"a later tick inside the latency does not alarm", now.Add(-StopLatency), 0, 1, now.Add(-StopLatency), false},
+		{"a later tick past the latency alarms", now.Add(-StopLatency - time.Second), 0, 1, now.Add(-StopLatency - time.Second), true},
+		{"once the node is gone the memory clears", now.Add(-time.Hour), 0, 0, time.Time{}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			since, alarm := NextStopping(tc.prev, tc.target, tc.instances, now)
+			if !since.Equal(tc.wantSince) || alarm != tc.wantAlarm {
+				t.Errorf("NextStopping = (%s, %v), want (%s, %v)", since, alarm, tc.wantSince, tc.wantAlarm)
+			}
+		})
+	}
+}
+
+func TestAwakeBoundIncludesTheStopLatency(t *testing.T) {
+	// Bounds are measured in billing, not in decisions (inbox M18, layer 2).
+	if got, want := AwakeBound(), ForceGrace+L2Tick+StopLatency; got != want {
+		t.Errorf("AwakeBound() = %s, want %s", got, want)
+	}
+	if got := AwakeBound(); got != time.Hour {
+		t.Errorf("AwakeBound() = %s; with the committed constants the plan's bound is deadline + 60 min", got)
+	}
+}
+
 func TestOnlyForcedStopsPage(t *testing.T) {
 	// A graceful stop is the system working; paging on it trains the operator to
 	// ignore the channel that also carries the forced stops.

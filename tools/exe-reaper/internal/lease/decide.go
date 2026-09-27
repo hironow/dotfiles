@@ -107,10 +107,13 @@ func ShouldDrain(now time.Time, l Lease, leaseOK bool, zeroRunningSince time.Tim
 //  3. One or two failures: WAIT. This is the rule most likely to be "simplified"
 //     into forcing on the first failure, which would destroy work every time
 //     GCS hiccups. L1 is already draining if the lease is genuinely gone.
-//  4. Deadline not passed: wait. L2 never stops an authorised cluster.
-//  5. A drain record from a previous lease is ignored entirely -- that is how a
+//  4. A drain record from a previous lease is ignored entirely -- that is how a
 //     successful extend invalidates an earlier `drained`, without L1 having to
 //     remember to clean up.
+//  5. Deadline not passed: wait -- unless L1 finished an IDLE drain about this
+//     lease. Nothing has been awake for IdleZeroRunning and everything is
+//     suspended, so billing on until the deadline would buy nothing (review
+//     note, Phase 3). That is the only stop before a deadline.
 //  6. drained: stop gracefully. Nothing is awake; this is the happy path, at
 //     any time past the deadline.
 //  7. drain-failed: force. L1 said it could not finish.
@@ -135,13 +138,16 @@ func DecideL2(o Observation) Decision {
 		return Decision{ActionWait, ReasonTransientReadFailure}
 	}
 
-	if o.Now.Before(o.Lease.Deadline) {
-		return Decision{ActionWait, ReasonWithinLease}
-	}
-
 	phase := o.Drain.Phase
 	if o.Drain.Stale(o.Lease) {
 		phase = DrainNone
+	}
+
+	if o.Now.Before(o.Lease.Deadline) {
+		if phase == DrainDrained && o.Drain.Reason == ReasonIdle {
+			return Decision{ActionStopGraceful, ReasonIdleDrained}
+		}
+		return Decision{ActionWait, ReasonWithinLease}
 	}
 
 	switch phase {

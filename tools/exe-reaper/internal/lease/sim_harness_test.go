@@ -3,6 +3,7 @@ package lease
 import (
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"time"
 )
@@ -13,19 +14,37 @@ import (
 // What it is FOR: the model proves the rules are consistent; this proves the
 // shipped functions implement those rules under adversarial interleavings that
 // no hand-written scenario would think of -- an extend landing in the same
-// minute as a drain finishing, a node vanishing mid-drain, three read failures
-// straddling a deadline.
+// minute as a drain finishing, a raw resume executed by a controller pod that
+// has not finished terminating, a worker pod dying mid-checkpoint, three read
+// failures straddling a deadline.
 //
 // What it deliberately stubs: all I/O. GCS reads and writes, the setSize call,
-// the Kubernetes API. Those are the parts a simulation cannot tell you anything
-// true about. It never stubs the LOGIC: every transition below calls the same
-// ShouldDrain / DecideL2 the binary calls.
+// the Kubernetes API, AX, Substrate. Those are the parts a simulation cannot
+// tell you anything true about. It never stubs the LOGIC: every L1 tick calls
+// DecideL1, every L2 tick DecideL2, NextReadFailures and NextStopping, and
+// every task start MayStartTask -- the functions the binaries call.
+//
+// Action boundary (model) -> I/O boundary (code) -> what covers it:
+//
+//	l1Tick          exe-reap: DecideL1, then drain.json, the two scale
+//	                subresources, AX SuspendTask, pod deletes   -> this sim,
+//	                TestDecideL1AgreesWithTheModel, internal/l1 tests
+//	l2Tick          exe-reaper enforce: DecideL2 + NextStopping, then setSize
+//	                and enforce.json                            -> this sim,
+//	                TestDecideL2AgreesWithTheModel, main_test.go
+//	wake/extend/    exe-reaper wake/extend/sleep: ClampDeadline and a
+//	sleep           conditional lease.json write                -> this sim,
+//	                main_test.go
+//	resumes         ax-job/ax-exec (MayStartTask), raw `ax resume`, the
+//	                router, Substrate's golden reconciler       -> this sim
 //
 // Outside the guarantee, stated so nobody mistakes a green run for more than it
 // is: real clock skew between the operator's laptop and the enforcer; GCS
-// generation preconditions actually being honoured by GCS; whether atelet really
-// suspends an actor when asked; and anything about Substrate's own 60-second
-// crash window other than "if the pool shrinks while an actor is awake, it dies".
+// generation preconditions actually being honoured by GCS; whether AX really
+// suspends an actor when asked; Substrate's crash detection (it happens at a
+// random moment here, or not at all); and the stop latency itself, which is
+// the measured assumption StopLatency (a slow stop is SimConfig's
+// ActualStopLatency, which TestSimulationCatchesASlowStop turns up).
 
 // SimConfig bounds a run.
 type SimConfig struct {
@@ -34,16 +53,60 @@ type SimConfig struct {
 	// MinuteStep is how far the clock advances per step. One minute matches L1's
 	// tick, which is the finest granularity any rule cares about.
 	MinuteStep time.Duration
+	// ActualStopLatency is how long a node really takes to leave after
+	// setSize(0). The design assumes StopLatency; a disruption budget holding
+	// the drain is this set far higher.
+	ActualStopLatency time.Duration
 }
 
 // DefaultSimConfig is what the test uses when it is not sweeping seeds.
 //
-// Two weeks of minutes per seed. The rarest forced branch, the grace running
-// out under a heartbeat that is still fresh, needs a drain that starts late AND
-// never finishes, and at under three days per seed the fixed sweep never met
-// one; the whole sweep still takes well under a second.
+// Two weeks of minutes per seed. The rarest paths -- a drain that starts late
+// AND never finishes, a raw resume landing in a controller pod's last minutes
+// -- need many drains per seed; the whole sweep still takes a few seconds.
 func DefaultSimConfig(seed uint64) SimConfig {
-	return SimConfig{Seed: seed, Steps: 20000, MinuteStep: time.Minute}
+	return SimConfig{Seed: seed, Steps: 20000, MinuteStep: time.Minute, ActualStopLatency: StopLatency}
+}
+
+type simActorState int
+
+const (
+	simAtRest simActorState = iota
+	simAwake
+	simCheckpointing
+	simDoomed
+	simCrashed
+	simDeleting
+	simGone
+)
+
+var simActorNames = map[simActorState]string{
+	simAtRest: "at rest", simAwake: "awake", simCheckpointing: "checkpointing",
+	simDoomed: "doomed", simCrashed: "crashed", simDeleting: "deleting", simGone: "gone",
+}
+
+// simActor is one task actor, as the world has it. The store's view -- what L1
+// observes -- is derived from it: a doomed actor still reads RUNNING.
+type simActor struct {
+	state  simActorState
+	doneAt time.Time // when a checkpoint in flight lands
+}
+
+// simStop is what the most recent stop decision was, and what it found.
+type simStop struct {
+	graceful bool
+	byL2     bool
+	reason   Reason
+	// crashed: the stop took the target to zero with something awake (task
+	// actor, checkpoint in flight, doomed actor, golden actor).
+	crashed bool
+	// silentLoss: a graceful stop after a task actor crashed since its
+	// drain's baseline.
+	silentLoss bool
+	// despiteLiveLease: L2 stopped a lease it could read before that lease's
+	// deadline, other than by the idle rule -- the model's
+	// stoppedDespiteLiveLease, set the same way, at the stop.
+	despiteLiveLease bool
 }
 
 // simState is the whole world the simulation models.
@@ -52,70 +115,62 @@ type simState struct {
 
 	lease   Lease
 	leaseOK bool
-	// readFailures is L2's carried count (it lives in enforce.json in reality,
-	// because the job exits between ticks and has no memory of its own).
-	readFailures int
+	// readFailures, stoppingSince and stopAlarm are L2's carried memory (in
+	// enforce.json in reality: the job exits between ticks).
+	readFailures  int
+	stoppingSince time.Time
+	stopAlarm     bool
 
 	drain Drain
 
-	nodes int
-	// awake is the number of actors currently running on the node. An actor can
-	// only exist while nodes == 1.
-	awake int
-	// lastStopCrashed records whether the MOST RECENT stop destroyed an awake
-	// actor. Per-stop rather than sticky: a sticky flag makes every later
-	// graceful stop look like the guilty one, which is a false positive the
-	// first version of this simulation duly produced.
-	lastStopCrashed bool
-	// lastStopForced records whether that stop was a forced one, so the
-	// graceful-stop invariant only judges the stops it is about.
-	lastStopForced bool
-	// lastStopByL2 says the stop was L2's DECISION, rather than L3's
-	// unconditional one or the environment's (the node simply vanished). Only
-	// L2 reads the lease before it stops, so only L2 can be held to a lease it
-	// read -- the model sets stoppedDespiteLiveLease in its L2 branches alone.
-	lastStopByL2 bool
-	// lastStopReason is the rule that fired, so an invariant can exclude the
-	// cases it is not about.
-	lastStopReason Reason
+	// The pool: nodes counts BILLING instances; stopping is "target zero, the
+	// node still there", until nodeGoneAt.
+	nodes      int
+	stopping   bool
+	nodeGoneAt time.Time
 
-	zeroRunningSince time.Time
-	// lastExtendAt is when a lease was last successfully extended, used by the
-	// ExtendBeatsStaleDrained invariant.
+	actors          [2]simActor
+	goldenAwake     bool
+	templatePending bool
+
+	// The replica counts L1 set, and the pods actually there. A scale-down
+	// takes effect when the pod has terminated (…PodGoneAt).
+	routerReplicas, controllerReplicas int
+	routerPod, controllerPod           bool
+	routerPodGoneAt, controllerPodGone time.Time
+
+	// L1's ways of failing: dead until the node goes, not scheduled for a
+	// while, or its suspend requests ignored for the rest of this drain.
+	l1Dead          bool
+	l1PausedUntil   time.Time
+	suspendsIgnored bool
+
+	lastStop     simStop
 	lastExtendAt time.Time
-
-	// L1's three ways of failing, each the only road to one of DecideL2's
-	// forced branches:
-	//   - wedged: the drain's actors refuse to suspend while L1 keeps
-	//     heartbeating, until the ceiling makes it write drain-failed (the
-	//     model's l1Stall -> l1GiveUp);
-	//   - l1Dead: the CronJob stops running until the node goes away, so its
-	//     heartbeat stops, or it never writes a record for this lease at all
-	//     (the model's l1Crash);
-	//   - l1PausedUntil: the CronJob is not scheduled for a while and then
-	//     resumes -- a drain that starts late keeps a fresh heartbeat past the
-	//     grace, which is the case the unconditional grace exists for.
-	wedged        bool
-	l1Dead        bool
-	l1PausedUntil time.Time
-	rates         simRates
+	clearedLive  bool
+	rates        simRates
+	latency      time.Duration
 }
 
-// simRates are the per-seed odds of L1's failure modes, as "one in N" per
+// simRates are the per-seed odds of the failure modes, as "one in N" per
 // opportunity. Varied by seed so the sweep spends some seeds where L1 mostly
 // works and some where it mostly does not: a single fixed rate either never
 // reaches a forced branch or never lets a drain finish.
 type simRates struct {
-	wedgeOneIn int // per drain started with an actor awake
-	crashOneIn int // per minute with the node up
-	pauseOneIn int // per minute with the node up
+	ignoreOneIn int // per drain started with an actor awake: AX never acts
+	crashOneIn  int // per minute with the node up: L1 dies
+	pauseOneIn  int // per minute with the node up: L1 not scheduled
+	podLossIn   int // per minute with something awake: a worker pod dies
+	rawResumeIn int // per minute: a raw `ax resume`
 }
 
 func ratesFor(seed uint64) simRates {
 	return simRates{
-		wedgeOneIn: 2 + int(seed%5),
-		crashOneIn: 300 + 150*int(seed%4),
-		pauseOneIn: 200 + 100*int(seed%3),
+		ignoreOneIn: 2 + int(seed%5),
+		crashOneIn:  300 + 150*int(seed%4),
+		pauseOneIn:  200 + 100*int(seed%3),
+		podLossIn:   300 + 100*int(seed%3),
+		rawResumeIn: 40 + 20*int(seed%3),
 	}
 }
 
@@ -139,15 +194,20 @@ func (v SimViolation) Error() string {
 //
 // Not a test hook: a simulation that never reaches a forced stop passes while
 // proving nothing, so "did this run visit the dangerous states" is a first-class
-// result, printed by the gate when a seed list is widened.
+// result, asserted by TestSimulationReachesTheDangerousStates.
 type SimStats struct {
-	Wakes          int
-	Extends        int
-	DrainsStarted  int
-	DrainsFinished int
-	DrainsFailed   int
-	GracefulStops  int
-	ForcedStops    int
+	Wakes            int
+	Extends          int
+	DrainsStarted    int
+	StaleRedrains    int
+	DrainsFinished   int
+	DrainsFailedLost int
+	DrainsFailedCeil int
+	Resuspends       int
+	GoldenWaits      int
+	GracefulStops    int
+	IdleStops        int
+	ForcedStops      int
 	// ForcedStops by the rule that fired, one field per forced branch of
 	// DecideL2 (fields rather than a map so the struct stays comparable for the
 	// determinism test).
@@ -157,6 +217,10 @@ type SimStats struct {
 	ForcedHeartbeatStale  int
 	L3Stops               int
 	ReadFailures          int
+	RawResumesDuringDrain int
+	WorkerPodsLost        int
+	WedgesCleared         int
+	StopLatencyAlarms     int
 }
 
 // Simulate runs one seeded trace and returns the first invariant violation, or
@@ -174,10 +238,11 @@ func SimulateWithStats(cfg SimConfig) (SimStats, *SimViolation) {
 	// Start asleep at a fixed instant, well away from any boundary so that the
 	// first few steps are not all about the cap window.
 	s := &simState{
-		now:     time.Date(2026, 9, 27, 10, 0, 0, 0, Location()),
-		leaseOK: true,
-		nodes:   0,
+		now:            time.Date(2026, 9, 27, 10, 0, 0, 0, Location()),
+		leaseOK:        true,
+		routerReplicas: 1, controllerReplicas: 1,
 		rates:   ratesFor(cfg.Seed),
+		latency: cfg.ActualStopLatency,
 	}
 
 	stats := &SimStats{}
@@ -194,10 +259,10 @@ func SimulateWithStats(cfg SimConfig) (SimStats, *SimViolation) {
 	}
 
 	for step := range cfg.Steps {
-		// Every step: advance the clock, then let a randomly chosen subset of
-		// the actors act. Order within a step is fixed (operator, L1, L2, L3)
-		// because that is the real causal order: a human acts, then the
-		// in-cluster loop sees it, then the out-of-cluster one.
+		// Every step: advance the clock, then let each actor act. Order within
+		// a step is fixed (operator, L1, L2, L3, environment) because that is
+		// the real causal order: a human acts, then the in-cluster loop sees
+		// it, then the out-of-cluster one.
 		s.now = s.now.Add(cfg.MinuteStep)
 
 		simOperator(s, rng, record, stats)
@@ -213,21 +278,95 @@ func SimulateWithStats(cfg SimConfig) (SimStats, *SimViolation) {
 	return *stats, nil
 }
 
+// --- the world's derived views --------------------------------------------------
+
+func (s *simState) nodeLive() bool          { return s.nodes == 1 && !s.stopping }
+func (s *simState) routerServing() bool     { return s.nodeLive() && s.routerPod }
+func (s *simState) controllerServing() bool { return s.nodeLive() && s.controllerPod }
+
+func (s *simState) target() int {
+	if s.nodeLive() {
+		return 1
+	}
+	return 0
+}
+
+// actorsIn is the indexes of actors in any of the given states.
+func (s *simState) actorsIn(states ...simActorState) []int {
+	var out []int
+	for i := range s.actors {
+		if slices.Contains(states, s.actors[i].state) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+func (s *simState) anythingAwake() bool {
+	return len(s.actorsIn(simAwake, simCheckpointing, simDoomed)) > 0 || s.goldenAwake
+}
+
+func simUID(i int) string    { return fmt.Sprintf("a%d", i+1) }
+func simTask(i int) string   { return fmt.Sprintf("t%d", i+1) }
+func simWorker(i int) string { return fmt.Sprintf("w%d", i+1) }
+
+// l1Observation is what the in-cluster reaper would read on this tick: the
+// store's view of every actor (doomed ones still read RUNNING), the golden
+// flag, the replica counts it set and the pods actually there.
+func (s *simState) l1Observation() L1Observation {
+	o := L1Observation{
+		Now: s.now, Lease: s.lease, LeaseOK: s.leaseOK, Drain: s.drain,
+		TemplatesPending:   s.templatePending,
+		RouterReplicas:     s.routerReplicas,
+		ControllerReplicas: s.controllerReplicas,
+	}
+	if s.routerPod {
+		o.RouterPods = 1
+	}
+	if s.controllerPod {
+		o.ControllerPods = 1
+	}
+	for i, a := range s.actors {
+		state := ActorAtRest
+		switch a.state {
+		case simGone:
+			continue
+		case simAwake, simDoomed:
+			state = ActorAwake
+		case simCheckpointing:
+			state = ActorCheckpointing
+		case simCrashed:
+			state = ActorCrashed
+		case simDeleting:
+			state = ActorDeleting
+		}
+		o.Actors = append(o.Actors, ActorObs{UID: simUID(i), Task: simTask(i), Worker: simWorker(i), State: state})
+	}
+	if s.goldenAwake {
+		o.Actors = append(o.Actors, ActorObs{UID: "golden", Golden: true, State: ActorAwake})
+	}
+	return o
+}
+
+// --- the operator ----------------------------------------------------------------
+
 func simOperator(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimStats) {
 	switch {
-	case s.nodes == 0 && rng.IntN(40) == 0:
+	case !s.nodeLive() && rng.IntN(40) == 0:
 		requested := time.Duration(1+rng.IntN(int(MaxLease/time.Minute))) * time.Minute
 		deadline, _, err := ClampDeadline(s.now, requested)
 		if err != nil {
 			return
 		}
-		s.lease = Lease{Deadline: deadline, Generation: s.lease.Generation + 1}
-		s.nodes = 1
-		// The write reached GCS, so reads work again. The run of read
-		// failures is NOT reset here: it is L2's, in enforce.json, and only L2
-		// writes that (it resets it itself while the pool is at zero).
+		s.lease = Lease{Deadline: deadline, WokenAt: s.now, Generation: s.lease.Generation + 1}
+		// A new node: a fresh CronJob, and pods as the replica counts L1 left
+		// say. The write reached GCS, so reads work again; L2's run of read
+		// failures is L2's own and is NOT reset here.
+		s.nodes, s.stopping = 1, false
+		s.routerPod = s.routerReplicas == 1
+		s.controllerPod = s.controllerReplicas == 1
+		s.l1Dead, s.l1PausedUntil, s.suspendsIgnored = false, time.Time{}, false
 		s.leaseOK = true
-		s.zeroRunningSince = s.now
 		stats.Wakes++
 		record("wake until %s (gen %d)", deadline.Format("15:04"), s.lease.Generation)
 
@@ -237,29 +376,63 @@ func simOperator(s *simState, rng *rand.Rand, record func(string, ...any), stats
 		if err != nil {
 			return
 		}
-		s.lease = Lease{Deadline: deadline, Generation: s.lease.Generation + 1}
+		s.lease = Lease{Deadline: deadline, WokenAt: s.lease.WokenAt, Generation: s.lease.Generation + 1}
 		s.lastExtendAt = s.now
 		stats.Extends++
 		record("extend until %s (gen %d)", deadline.Format("15:04"), s.lease.Generation)
 
 	case s.nodes == 1 && rng.IntN(120) == 0:
-		s.lease = Lease{Deadline: s.now, Generation: s.lease.Generation + 1}
+		s.lease = Lease{Deadline: s.now, WokenAt: s.lease.WokenAt, Generation: s.lease.Generation + 1}
 		record("sleep (deadline now, gen %d)", s.lease.Generation)
 
-	case s.nodes == 1 && s.awake == 0 && rng.IntN(15) == 0:
-		// The guard the simulation found missing: once L1 has begun tidying up,
-		// nothing new may start, or L2's entirely correct graceful stop kills it.
+	case s.controllerServing() && rng.IntN(15) == 0:
+		// ax-job / ax-exec: the guard the simulation once found missing --
+		// once L1 has begun tidying up, nothing new may start through them.
+		idle := s.actorsIn(simAtRest)
+		if len(idle) == 0 {
+			return
+		}
 		if ok, _ := MayStartTask(s.now, s.lease, s.leaseOK, s.drain); !ok {
 			return
 		}
-		s.awake++
-		s.zeroRunningSince = time.Time{}
-		record("operator starts a task (awake=%d)", s.awake)
+		s.actors[idle[0]].state = simAwake
+		record("ax-job resumes %s", simUID(idle[0]))
+
+	case s.controllerServing() && rng.IntN(rawResumeOdds(s)) == 0:
+		// A raw `ax resume`, bypassing every guard: executed by whatever
+		// controller pod is there, drain or no drain.
+		idle := s.actorsIn(simAtRest)
+		if len(idle) == 0 {
+			return
+		}
+		s.actors[idle[0]].state = simAwake
+		if s.drain.Phase == DrainDraining {
+			stats.RawResumesDuringDrain++
+		}
+		record("raw ax resume of %s (drain %q)", simUID(idle[0]), s.drain.Phase)
+
+	case s.controllerServing() && rng.IntN(200) == 0:
+		// `ax delete task`: the actor goes -- or, as in Phase 4, the delete
+		// wedges in DELETING and holds its worker.
+		cands := s.actorsIn(simAtRest, simAwake)
+		if len(cands) == 0 {
+			return
+		}
+		i := cands[0]
+		if rng.IntN(2) == 0 {
+			s.actors[i].state = simDeleting
+			record("delete of %s wedges", simUID(i))
+		} else {
+			s.actors[i].state = simGone
+			record("%s deleted", simUID(i))
+		}
 	}
 }
 
+// --- L1 ----------------------------------------------------------------------------
+
 func simL1(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimStats) {
-	if s.nodes == 0 || s.l1Dead || s.now.Before(s.l1PausedUntil) {
+	if !s.nodeLive() || s.l1Dead || s.now.Before(s.l1PausedUntil) {
 		return
 	}
 	if rng.IntN(s.rates.crashOneIn) == 0 {
@@ -272,117 +445,264 @@ func simL1(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimS
 		record("L1 is not scheduled until %s", s.l1PausedUntil.Format("15:04"))
 		return
 	}
-	should, reason := ShouldDrain(s.now, s.lease, s.leaseOK, s.zeroRunningSince)
-	if !should {
-		// A live lease cancels an in-progress drain and reopens the router.
-		if s.drain.Phase == DrainDraining || s.drain.Phase == DrainDrained {
-			s.drain = Drain{}
-			record("L1 cancels the drain: %s", reason)
-		}
-		return
-	}
 
-	switch s.drain.Phase {
-	case DrainNone, DrainFailed:
-		if s.drain.Stale(s.lease) || s.drain.Phase == DrainNone {
-			s.drain = Drain{
-				Phase: DrainDraining, Heartbeat: s.now,
-				LeaseGeneration: s.lease.Generation, StartedAt: s.now,
-			}
-			s.wedged = s.awake > 0 && rng.IntN(s.rates.wedgeOneIn) == 0
-			stats.DrainsStarted++
-			record("L1 begins draining (%s)", reason)
+	before := s.drain
+	d := DecideL1(s.l1Observation())
+	s.drain = d.Drain
+	noteL1Branch(s, rng, record, stats, d, before)
+	simScale(s, rng, d.RouterReplicas, &s.routerReplicas, &s.routerPod, &s.routerPodGoneAt)
+	simScale(s, rng, d.ControllerReplicas, &s.controllerReplicas, &s.controllerPod, &s.controllerPodGone)
+	applySuspends(s, rng, record, d.Suspend)
+	applyClears(s, record, stats, d.ClearWorkers)
+}
+
+// noteL1Branch counts and records what one L1 tick decided.
+func noteL1Branch(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimStats, d L1Decision, before Drain) {
+	switch d.Branch {
+	case L1Begin:
+		stats.DrainsStarted++
+		if before.Phase == DrainDrained || before.Phase == DrainFailed {
+			stats.StaleRedrains++
 		}
-	case DrainDraining:
-		if s.now.After(s.drain.StartedAt.Add(DrainCeiling)) {
-			s.drain.Phase = DrainFailed
-			stats.DrainsFailed++
-			record("L1 gives up: ceiling blown")
-			return
-		}
-		// A stalled L1 stops heartbeating; that is the case L2's stale-heartbeat
-		// rule exists for, so it has to be reachable.
-		if rng.IntN(25) == 0 {
-			record("L1 stalls (no heartbeat)")
-			return
-		}
-		s.drain.Heartbeat = s.now
-		if s.awake > 0 && s.wedged {
-			record("L1 heartbeats; the actor will not suspend")
-			return
-		}
-		if s.awake > 0 {
-			s.awake--
-			record("L1 suspends an actor (awake=%d)", s.awake)
-			return
-		}
-		s.drain.Phase = DrainDrained
+		s.suspendsIgnored = len(s.actorsIn(simAwake)) > 0 && rng.IntN(s.rates.ignoreOneIn) == 0
+		record("L1 begins draining (%s, gen %d)", d.Drain.Reason, d.Drain.LeaseGeneration)
+	case L1Finish:
 		stats.DrainsFinished++
 		record("L1 reports drained")
+	case L1Lost:
+		stats.DrainsFailedLost++
+		record("L1: a task actor crashed since the baseline -> drain-failed (lost)")
+	case L1GiveUp:
+		stats.DrainsFailedCeil++
+		record("L1 gives up: ceiling spent")
+	case L1Resuspend:
+		stats.Resuspends++
+		record("L1 brings the controller back to suspend again")
+	case L1Wait:
+		if s.templatePending || s.goldenAwake {
+			stats.GoldenWaits++
+		}
+	case L1Cancel:
+		record("L1 cancels the drain")
 	}
 }
+
+// applySuspends asks AX to suspend. AX needs the controller pod to act -- and
+// this drain's AX may be ignoring the requests.
+func applySuspends(s *simState, rng *rand.Rand, record func(string, ...any), tasks []string) {
+	if len(tasks) > 0 && s.controllerServing() && !s.suspendsIgnored {
+		for i := range s.actors {
+			if !slices.Contains(tasks, simTask(i)) {
+				continue
+			}
+			switch s.actors[i].state {
+			case simAwake:
+				s.actors[i] = simActor{state: simCheckpointing, doneAt: s.now.Add(time.Duration(rng.IntN(8)) * time.Minute)}
+				record("%s checkpointing", simUID(i))
+			case simDoomed:
+				// Its pod is gone: the suspend workflow crashes it.
+				s.actors[i].state = simCrashed
+				record("%s: suspend found its pod gone -> CRASHED", simUID(i))
+			}
+		}
+	}
+}
+
+// applyClears deletes the worker pods L1 named, and notes whether any hosted
+// something live (ClearingNeverLosesState).
+func applyClears(s *simState, record func(string, ...any), stats *SimStats, workers []string) {
+	for _, w := range workers {
+		for i := range s.actors {
+			if simWorker(i) != w {
+				continue
+			}
+			if st := s.actors[i].state; st == simAwake || st == simCheckpointing || st == simDoomed {
+				s.clearedLive = true
+			}
+			s.actors[i].state = simGone
+			stats.WedgesCleared++
+			record("L1 deletes %s's worker pod %s", simUID(i), w)
+		}
+	}
+}
+
+// simScale applies a replica count: up starts the pod at once (the
+// conservative direction -- a resume path open sooner), down leaves the pod
+// running until it has terminated a few minutes later.
+func simScale(s *simState, rng *rand.Rand, want int, replicas *int, pod *bool, goneAt *time.Time) {
+	if want == *replicas {
+		return
+	}
+	*replicas = want
+	if want == 1 {
+		*pod = s.nodeLive()
+		*goneAt = time.Time{}
+		return
+	}
+	*goneAt = s.now.Add(time.Duration(rng.IntN(4)) * time.Minute)
+}
+
+// --- L2 ----------------------------------------------------------------------------
 
 func simL2(s *simState, record func(string, ...any), stats *SimStats) {
 	// L2 only runs on its tick.
 	if s.now.Minute()%int(L2Tick/time.Minute) != 0 {
 		return
 	}
-	s.readFailures = NextReadFailures(s.readFailures, s.leaseOK, s.nodes)
+	target := s.target()
+	s.readFailures = NextReadFailures(s.readFailures, s.leaseOK, target)
+	since, alarm := NextStopping(s.stoppingSince, target, s.nodes, s.now)
+	s.stoppingSince = since
+	if alarm && !s.stopAlarm {
+		stats.StopLatencyAlarms++
+		record("L2: the node is still billing %s after its target went to zero -> alarm", s.now.Sub(since))
+	}
+	s.stopAlarm = s.stopAlarm || alarm
 
 	d := DecideL2(Observation{
 		Now: s.now, Lease: s.lease, LeaseOK: s.leaseOK,
-		ConsecutiveReadFailures: s.readFailures, Drain: s.drain, Nodes: s.nodes,
+		ConsecutiveReadFailures: s.readFailures, Drain: s.drain, Nodes: target,
 	})
-	switch d.Action {
-	case ActionWait:
+	if d.Action == ActionWait {
 		return
-	case ActionStopGraceful, ActionStopForced:
-		s.lastStopForced = d.Action == ActionStopForced
-		s.lastStopReason = d.Reason
-		if s.lastStopForced {
-			stats.ForcedStops++
-			switch d.Reason {
-			case ReasonLeaseUnreadable:
-				stats.ForcedLeaseUnreadable++
-			case ReasonDrainFailed:
-				stats.ForcedDrainFailed++
-			case ReasonGraceExpired:
-				stats.ForcedGraceExpired++
-			case ReasonHeartbeatStale:
-				stats.ForcedHeartbeatStale++
-			}
-		} else {
-			stats.GracefulStops++
-		}
-		shrinkBy(s, record, fmt.Sprintf("L2 %s (%s)", d.Action, d.Reason), true)
 	}
+	stop := simStop{
+		graceful: d.Action == ActionStopGraceful, byL2: true, reason: d.Reason,
+		despiteLiveLease: s.leaseOK && s.now.Before(s.lease.Deadline) &&
+			d.Reason != ReasonLeaseUnreadable && d.Reason != ReasonIdleDrained,
+	}
+	if stop.graceful {
+		stats.GracefulStops++
+		if d.Reason == ReasonIdleDrained {
+			stats.IdleStops++
+		}
+		for i, a := range s.actors {
+			if a.state == simCrashed && !slices.Contains(s.drain.BaselineCrashed, simUID(i)) {
+				stop.silentLoss = true
+			}
+		}
+	} else {
+		stats.ForcedStops++
+		switch d.Reason {
+		case ReasonLeaseUnreadable:
+			stats.ForcedLeaseUnreadable++
+		case ReasonDrainFailed:
+			stats.ForcedDrainFailed++
+		case ReasonGraceExpired:
+			stats.ForcedGraceExpired++
+		case ReasonHeartbeatStale:
+			stats.ForcedHeartbeatStale++
+		}
+	}
+	requestStop(s, record, fmt.Sprintf("L2 %s (%s)", d.Action, d.Reason), stop)
 }
+
+// --- L3 ----------------------------------------------------------------------------
 
 func simL3(s *simState, record func(string, ...any), stats *SimStats) {
 	local := s.now.In(Location())
-	if local.Hour() != L3StopHour || local.Minute() != 0 {
-		return
-	}
-	if s.nodes == 0 {
+	if local.Hour() != L3StopHour || local.Minute() != 0 || !s.nodeLive() {
 		return
 	}
 	// No logic, by design. That is the point of L3.
-	s.lastStopForced = true
 	stats.L3Stops++
-	shrinkBy(s, record, "L3 daily stop", false)
+	requestStop(s, record, "L3 daily stop", simStop{})
 }
 
-func simEnvironment(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimStats) {
-	// The router resumes a suspended actor without going through the
-	// controller. It really does this, which is why L1 closes the router first.
-	if ok, _ := MayStartTask(s.now, s.lease, s.leaseOK, s.drain); ok &&
-		s.nodes == 1 && s.awake == 0 && rng.IntN(50) == 0 {
-		s.awake++
-		s.zeroRunningSince = time.Time{}
-		record("router auto-resumes an actor (awake=%d)", s.awake)
+// requestStop takes the pool's target to zero. Everything on the node is
+// evicted -- the reaper, the router and controller pods, every worker pod -- so
+// anything with a live sandbox is doomed. The node itself bills on until
+// nodeGoneAt.
+func requestStop(s *simState, record func(string, ...any), why string, stop simStop) {
+	stop.crashed = s.anythingAwake()
+	s.lastStop = stop
+	for i := range s.actors {
+		if st := s.actors[i].state; st == simAwake || st == simCheckpointing {
+			s.actors[i].state = simDoomed
+		}
 	}
-	if s.nodes == 1 && s.awake == 0 && s.zeroRunningSince.IsZero() {
-		s.zeroRunningSince = s.now
+	s.goldenAwake = false
+	s.routerPod, s.controllerPod = false, false
+	s.stopping = true
+	s.nodeGoneAt = s.now.Add(s.latency)
+	if stop.crashed {
+		record("%s -- something awake is doomed", why)
+	} else {
+		record("%s", why)
+	}
+}
+
+// --- the environment -----------------------------------------------------------------
+
+func simEnvironment(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimStats) {
+	simInfrastructure(s, record)
+	simActorsLive(s, rng, record, stats)
+	simGolden(s, rng, record)
+	simFailures(s, rng, record, stats)
+}
+
+// simInfrastructure: the node leaving, and scale-downs taking effect.
+func simInfrastructure(s *simState, record func(string, ...any)) {
+	// The node leaves stop latency after its target went to zero.
+	if s.stopping && !s.now.Before(s.nodeGoneAt) {
+		s.nodes, s.stopping = 0, false
+		record("the node is gone")
+	}
+	// Scale-downs take effect.
+	if !s.routerPodGoneAt.IsZero() && !s.now.Before(s.routerPodGoneAt) {
+		s.routerPod, s.routerPodGoneAt = false, time.Time{}
+	}
+	if !s.controllerPodGone.IsZero() && !s.now.Before(s.controllerPodGone) {
+		s.controllerPod, s.controllerPodGone = false, time.Time{}
+	}
+}
+
+// simActorsLive: checkpoints landing, crashes being detected, and the router
+// auto-resuming.
+func simActorsLive(s *simState, rng *rand.Rand, record func(string, ...any), _ *SimStats) {
+	// Checkpoints land.
+	for i := range s.actors {
+		if s.actors[i].state == simCheckpointing && s.nodeLive() && !s.now.Before(s.actors[i].doneAt) {
+			s.actors[i] = simActor{state: simAtRest}
+		}
+	}
+	// Substrate notices a doomed actor's pod is gone -- whenever it does.
+	if doomed := s.actorsIn(simDoomed); len(doomed) > 0 && rng.IntN(20) == 0 {
+		s.actors[doomed[0]].state = simCrashed
+		record("%s CRASHED (detected)", simUID(doomed[0]))
+	}
+	// The router auto-resumes on a connection; it does not read the lease.
+	if s.routerServing() && rng.IntN(50) == 0 {
+		if idle := s.actorsIn(simAtRest); len(idle) > 0 {
+			s.actors[idle[0]].state = simAwake
+			record("router auto-resumes %s", simUID(idle[0]))
+		}
+	}
+}
+
+// simGolden: the controller creates a template, Substrate's own reconciler
+// resumes its golden actor, and the flow settles.
+func simGolden(s *simState, rng *rand.Rand, record func(string, ...any)) {
+	switch {
+	case s.controllerServing() && !s.templatePending && rng.IntN(300) == 0:
+		s.templatePending = true
+		record("a template for a new image")
+	case s.nodeLive() && s.templatePending && !s.goldenAwake && rng.IntN(3) == 0:
+		s.goldenAwake = true
+		record("Substrate resumes the golden actor")
+	case s.nodeLive() && s.templatePending && rng.IntN(8) == 0:
+		s.templatePending, s.goldenAwake = false, false
+		record("the golden flow settles")
+	}
+}
+
+// simFailures: a worker pod dying, GCS failing, the node vanishing.
+func simFailures(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimStats) {
+	// A worker pod dies on its own under an awake or checkpointing actor.
+	if live := s.actorsIn(simAwake, simCheckpointing); s.nodeLive() && len(live) > 0 && rng.IntN(podLossOdds(s)) == 0 {
+		s.actors[live[0]].state = simDoomed
+		stats.WorkerPodsLost++
+		record("%s's worker pod dies", simUID(live[0]))
 	}
 	// GCS read failures come and go.
 	if s.leaseOK && rng.IntN(120) == 0 {
@@ -395,35 +715,9 @@ func simEnvironment(s *simState, rng *rand.Rand, record func(string, ...any), st
 	}
 	// The node disappears on its own occasionally.
 	if s.nodes == 1 && rng.IntN(400) == 0 {
-		s.lastStopForced = true
-		shrink(s, record, "node lost")
+		requestStop(s, record, "node lost", simStop{})
+		s.nodes, s.stopping = 0, false
 	}
-}
-
-// shrink is the one place the pool size changes, so the crash rule lives here
-// and cannot be forgotten at one of several call sites.
-func shrink(s *simState, record func(string, ...any), why string) {
-	shrinkBy(s, record, why, false)
-}
-
-// shrinkBy is shrink with an explicit answer to "was this L2's decision?".
-func shrinkBy(s *simState, record func(string, ...any), why string, byL2 bool) {
-	s.lastStopByL2 = byL2
-	s.lastStopCrashed = s.awake > 0
-	if s.lastStopCrashed {
-		record("%s -- %d awake actor(s) CRASHED", why, s.awake)
-		s.awake = 0
-	} else {
-		record("%s", why)
-	}
-	s.nodes = 0
-	s.drain = Drain{}
-	s.zeroRunningSince = time.Time{}
-	// The next node brings a fresh CronJob: whatever was wrong with L1 went
-	// with this one.
-	s.wedged = false
-	s.l1Dead = false
-	s.l1PausedUntil = time.Time{}
 }
 
 // lastLines is the tail of a trace, at most n lines.
@@ -439,24 +733,50 @@ func checkInvariants(s *simState, seed uint64, step int, trace []string) *SimVio
 		return &SimViolation{Seed: seed, Step: step, Invariant: name, Detail: detail, Trace: trace}
 	}
 
-	// NoCrashOnGracefulSleep: a stop that was not forced must never have caught
-	// an awake actor. This is the invariant the whole ordering of L1's steps
-	// exists to preserve.
-	if s.lastStopCrashed && !s.lastStopForced {
+	// NoCrashOnGracefulSleep: a stop that claims to be graceful never found
+	// anything awake. The ordering of L1's whole procedure exists for this.
+	if s.lastStop.graceful && s.lastStop.crashed {
 		return fail("NoCrashOnGracefulSleep",
-			"an actor was crashed by a stop that was not a forced one")
+			"a graceful stop took the pool away with something awake")
+	}
+
+	// NoSilentLoss: nor did it follow a crash since its drain's baseline.
+	if s.lastStop.graceful && s.lastStop.silentLoss {
+		return fail("NoSilentLoss",
+			"a graceful stop followed a task actor's crash during its drain")
+	}
+
+	// DrainedRecordStaysTrue, the lemma: while a `drained` record exists,
+	// nothing can wake an actor and nothing is awake.
+	if s.drain.Phase == DrainDrained {
+		var why []string
+		if s.routerPod {
+			why = append(why, "a router pod")
+		}
+		if s.controllerPod {
+			why = append(why, "a controller pod")
+		}
+		if n := s.actorsIn(simAwake, simCheckpointing, simDoomed); len(n) > 0 {
+			why = append(why, fmt.Sprintf("actors %v not at rest", n))
+		}
+		if s.goldenAwake || s.templatePending {
+			why = append(why, "golden work")
+		}
+		if len(why) > 0 {
+			return fail("DrainedRecordStaysTrue", "`drained` stands with "+strings.Join(why, ", "))
+		}
+	}
+
+	// ClearingNeverLosesState: L1 never deleted a pod hosting anything live.
+	if s.clearedLive {
+		return fail("ClearingNeverLosesState", "L1 deleted the worker pod of a live actor")
 	}
 
 	// L3NeverHitsAwakeActor: no lease may authorise a node past the cap, so in
-	// normal operation L3 cannot land on one. Checked as a state property: the
-	// deadline is never inside the window between the cap and L3.
-	//
-	// Only a deadline still in the FUTURE is judged. `exe-sleep` works by setting
-	// the deadline to now, so a cluster stopped at 03:06 legitimately carries a
-	// deadline inside the window -- it is already expired, L1 drains immediately,
-	// and nothing is authorised. The first version of this invariant flagged
-	// exactly that and was wrong: an expired deadline authorises nothing, which
-	// is the property that matters.
+	// normal operation L3 cannot land on one. Checked as a state property: a
+	// deadline still in the FUTURE is never inside the window between the cap
+	// and L3. (`exe-sleep` legitimately leaves a deadline there in the past:
+	// an expired deadline authorises nothing.)
 	if s.nodes == 1 && s.lease.Deadline.After(s.now) {
 		local := s.lease.Deadline.In(Location())
 		capAt := time.Date(local.Year(), local.Month(), local.Day(), NightlyCapHour, 0, 0, 0, Location())
@@ -467,37 +787,23 @@ func checkInvariants(s *simState, seed uint64, step int, trace []string) *SimVio
 		}
 	}
 
-	// ExtendBeatsStaleDrained: within one L2 tick of a successful extend, an
-	// enforcement stop must not happen. A stale `drained` record stopping a
-	// freshly extended lease is the exact bug the generation comparison
-	// prevents.
-	//
-	// Scoped three times, each time because the simulation produced a trace
-	// showing the unscoped version was wrong:
-	//
-	//   - only L2's stops count. A node that simply vanishes six minutes after
-	//     an extend is not something any rule can prevent, and neither is L3,
-	//     which has no logic by design: an extend at 04:00, the first minute the
-	//     cap window allows one again, can be followed by L3 in that same
-	//     minute.
-	//   - a stop because the lease was UNREADABLE for three consecutive ticks
-	//     is excluded. L2 is a job that runs every ten minutes and sees only
-	//     what it can read; if it cannot read the lease it cannot know an extend
-	//     happened, and forcing is then the documented, intended behaviour. The
-	//     requirement is about a stale drain record, not about blindness.
-	if !s.lastExtendAt.IsZero() && s.nodes == 0 && s.lastStopByL2 &&
-		s.lastStopReason != ReasonLeaseUnreadable &&
-		s.now.Sub(s.lastExtendAt) <= L2Tick && s.lease.Deadline.After(s.now) {
+	// ExtendBeatsStaleDrained: no stop L2 took from a lease it could read lands
+	// before that lease's deadline. Judged at the stop, as the model judges it
+	// (stoppedDespiteLiveLease): only L2's stops (a vanishing node or L3 obey
+	// no lease); not a stop blind on three unreadable ticks (L2 cannot know
+	// the lease is live); and not an idle stop about the current lease, which
+	// is the rule itself -- nothing was awake for IdleZeroRunning. An extend
+	// that comes AFTER a stop, while the node is still leaving, is no race: an
+	// earlier version of this check judged by the extend's time and the sim
+	// duly produced that false positive.
+	if s.lastStop.byL2 && s.lastStop.despiteLiveLease {
 		return fail("ExtendBeatsStaleDrained",
-			fmt.Sprintf("the pool was stopped (%s) within one L2 tick of a successful extend",
-				s.lastStopReason))
+			fmt.Sprintf("L2 stopped (%s) a lease it could read before its deadline", s.lastStop.reason))
 	}
 
-	// NodesEventuallyZero, as a bounded safety property rather than a liveness
-	// one, with the model's two bounds: AwakeBound past the deadline while L2's
-	// last read of the lease succeeded, BlindAwakeBound whatever the reads did.
-	// Expressed this way because a simulation can falsify a bound but cannot
-	// prove eventual behaviour.
+	// NodesEventuallyZero, about BILLING: a node still there -- live or
+	// stopping -- past deadline + bound. AwakeBound while L2's last read of the
+	// lease succeeded, BlindAwakeBound whatever the reads did.
 	if s.nodes == 1 && !s.lease.Deadline.IsZero() {
 		bound := BlindAwakeBound()
 		if s.readFailures == 0 {
@@ -505,10 +811,29 @@ func checkInvariants(s *simState, seed uint64, step int, trace []string) *SimVio
 		}
 		if s.now.After(s.lease.Deadline.Add(bound)) {
 			return fail("NodesEventuallyZero",
-				fmt.Sprintf("deadline passed %s ago (bound %s, read failures %d) and the pool is still up",
-					s.now.Sub(s.lease.Deadline), bound, s.readFailures))
+				fmt.Sprintf("deadline passed %s ago (bound %s, read failures %d, stopping %v) and the node still bills",
+					s.now.Sub(s.lease.Deadline), bound, s.readFailures, s.stopping))
 		}
 	}
 
 	return nil
+}
+
+func (a simActorState) String() string { return simActorNames[a] }
+
+// rawResumeOdds and podLossOdds make the interleavings the drain exists for --
+// a raw resume, or a worker pod dying, WHILE a drain runs -- common enough for
+// the sweep to reach them many times, not once by luck.
+func rawResumeOdds(s *simState) int {
+	if s.drain.Phase == DrainDraining {
+		return 8
+	}
+	return s.rates.rawResumeIn
+}
+
+func podLossOdds(s *simState) int {
+	if s.drain.Phase == DrainDraining {
+		return 60
+	}
+	return s.rates.podLossIn
 }

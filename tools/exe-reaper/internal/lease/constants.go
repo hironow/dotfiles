@@ -79,6 +79,18 @@ const (
 	// is genuinely unreadable from inside.
 	LeaseReadFailureThreshold = 3
 
+	// StopLatency is how long the node takes to actually leave after
+	// setSize(0) -- measured with the full stack at 3m29s-3m32s, rounded up.
+	// It is an ASSUMPTION the billing bound rests on (inbox M18, layer 2):
+	// AwakeBound includes it, and L2's stop-latency detector pages when a node
+	// outlives it.
+	StopLatency = 5 * time.Minute
+
+	// WedgeClear is how long an actor may sit in DELETING, still holding its
+	// worker, before L1 deletes that worker's pod. Only DELETING: a SUSPENDING
+	// actor may be mid-checkpoint, and deleting its pod would crash it.
+	WedgeClear = 10 * time.Minute
+
 	// TaskTTL is how long a task may sit suspended before the reaper deletes
 	// it; TaskTTLWarning is how far ahead exe-status warns (decision Q15).
 	TaskTTL        = 30 * 24 * time.Hour
@@ -91,12 +103,14 @@ func HeartbeatStaleAfter() time.Duration {
 	return HeartbeatStaleTicks * L2Tick
 }
 
-// AwakeBound is how long past its deadline a node can stay up while L2 can read
-// the lease: the grace, which nothing outlasts, plus one L2 period for the tick
-// that lands after it. Plan section 3.2's "期限 + 45 分 + L2 の周期 10 分",
-// and the bound the model's NodesEventuallyZero and the simulation check.
+// AwakeBound is how long past its deadline a node can keep BILLING while L2
+// can read the lease: the grace, which nothing outlasts, one L2 period for the
+// tick that lands after it, and the stop latency until the node is actually
+// gone. Plan section 3.2's "期限 + 45 分 + L2 の周期 10 分" plus inbox M18's
+// layer 2, and the bound the model's NodesEventuallyZero and the simulation
+// check.
 func AwakeBound() time.Duration {
-	return ForceGrace + L2Tick
+	return ForceGrace + L2Tick + StopLatency
 }
 
 // BlindAwakeBound is the same bound when L2 cannot read the lease. The

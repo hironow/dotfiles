@@ -33,6 +33,8 @@ type constantsDoc struct {
 	HeartbeatStaleTicks       int    `json:"heartbeat_stale_ticks"`
 	IdleZeroRunningMinutes    int    `json:"idle_zero_running_minutes"`
 	LeaseReadFailureThreshold int    `json:"lease_read_failure_threshold"`
+	StopLatencyMinutes        int    `json:"stop_latency_minutes"`
+	WedgeClearMinutes         int    `json:"wedge_clear_minutes"`
 	TaskTTLDays               int    `json:"task_ttl_days"`
 	TaskTTLWarningDays        int    `json:"task_ttl_warning_days"`
 }
@@ -78,6 +80,8 @@ func TestConstantsMatchTheSingleSource(t *testing.T) {
 		{"heartbeat_stale_ticks", HeartbeatStaleTicks, doc.HeartbeatStaleTicks},
 		{"idle_zero_running_minutes", minutes(IdleZeroRunning), doc.IdleZeroRunningMinutes},
 		{"lease_read_failure_threshold", LeaseReadFailureThreshold, doc.LeaseReadFailureThreshold},
+		{"stop_latency_minutes", minutes(StopLatency), doc.StopLatencyMinutes},
+		{"wedge_clear_minutes", minutes(WedgeClear), doc.WedgeClearMinutes},
 		{"task_ttl_days", days(TaskTTL), doc.TaskTTLDays},
 		{"task_ttl_warning_days", days(TaskTTLWarning), doc.TaskTTLWarningDays},
 	}
@@ -147,14 +151,15 @@ func TestLocationIsResolvedOnce(t *testing.T) {
 }
 
 func TestTheAwakeBoundsComeFromTheSingleSource(t *testing.T) {
-	// Plan section 3.2: a node is up for at most deadline + force grace + one
-	// L2 period. The model's NodesEventuallyZero and the simulation's check
-	// both take that number from here, so it is pinned against the JSON rather
-	// than against a literal.
+	// Plan section 3.2: a node BILLS for at most deadline + force grace + one
+	// L2 period + the stop latency (inbox M18, layer 2: bounds are measured in
+	// billing, not in decisions). The model's NodesEventuallyZero and the
+	// simulation's check both take that number from here, so it is pinned
+	// against the JSON rather than against a literal.
 	doc := loadConstants(t)
-	want := time.Duration(doc.ForceGraceMinutes+doc.L2TickMinutes) * time.Minute
+	want := time.Duration(doc.ForceGraceMinutes+doc.L2TickMinutes+doc.StopLatencyMinutes) * time.Minute
 	if AwakeBound() != want {
-		t.Errorf("AwakeBound() = %s, want force_grace + l2_tick = %s", AwakeBound(), want)
+		t.Errorf("AwakeBound() = %s, want force_grace + l2_tick + stop_latency = %s", AwakeBound(), want)
 	}
 
 	// The plan's figure assumes L2 can read the lease. When it cannot, the

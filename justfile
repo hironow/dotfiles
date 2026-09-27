@@ -716,7 +716,11 @@ spec-check:
     for rejected in \
       "twoWriterLease twoWritersLoseTheOperatorsLease" \
       "naiveShrinkFirst shrinkingFirstCrashesTheRunningActor" \
-      "routerLeftOpen leftOpenRouterRevivesAnActorAfterDrained"; do
+      "routerLeftOpen leftOpenRouterRevivesAnActorAfterDrained" \
+      "controllerLeftUp controllerLeftUpLetsARawResumeThrough" \
+      "scaleIsNotABarrier scaleAloneLetsALingeringControllerResume" \
+      "goldenIgnored goldenReconcilerResumesAfterDrained" \
+      "pdbHoldsTheDrain aDisruptionBudgetOutlivesTheBound"; do
       read -r module run <<<"$rejected"
       echo "🔬 quint test $module.$run (must fail)"
       if out="$($QUINT test --main="$module" --match="$run" exe/spec/lease.qnt 2>&1)"; then
@@ -729,6 +733,10 @@ spec-check:
         exit 1
       fi
     done
+    # The detector that covers the stop-latency assumption: on the instance
+    # where a disruption budget holds the drain, L2 must raise the alarm.
+    echo "🔬 quint test pdbHoldsTheDrain.theSlowStopIsPagedTest (must pass)"
+    $QUINT test --main=pdbHoldsTheDrain --match=theSlowStopIsPagedTest exe/spec/lease.qnt
     echo "🔬 seeded simulation of the real Go code"
     (cd tools/exe-reaper && mise x -- go test ./internal/lease/ -run 'TestSimulation' -count=1)
     # The model and DecideL2 encode one L2 table twice, so they are compared
@@ -738,11 +746,22 @@ spec-check:
     echo "🔬 replay the model's L2 decisions through DecideL2"
     traces="$(mktemp -d)"
     trap 'rm -rf "$traces"' EXIT
-    $QUINT run exe/spec/lease.qnt --step=l2WorldStep --max-steps=30 \
+    $QUINT run exe/spec/lease.qnt --init=l2World --step=l2WorldStep --max-steps=30 \
       --max-samples=200 --n-traces=200 --seed=0x1ea5e --verbosity=0 \
       --out-itf="$traces/l2_{seq}.itf.json"
     (cd tools/exe-reaper && EXE_REAPER_L2_TRACES="$traces" \
       mise x -- go test ./internal/lease/ -run 'TestDecideL2AgreesWithTheModel' -count=1)
+    # The same for L1's thirteen branches: sampled observations (l1WorldStep),
+    # each replayed through DecideL1, which must take the same branch and leave
+    # the same drain.json, replica counts, suspends and pod deletions.
+    echo "🔬 replay the model's L1 decisions through DecideL1"
+    l1traces="$traces/l1"
+    mkdir -p "$l1traces"
+    $QUINT run exe/spec/lease.qnt --init=l1World --step=l1WorldStep --max-steps=6 \
+      --max-samples=300 --n-traces=300 --seed=0x1ea5e --verbosity=0 \
+      --out-itf="$l1traces/l1_{seq}.itf.json"
+    (cd tools/exe-reaper && EXE_REAPER_L1_TRACES="$l1traces" \
+      mise x -- go test ./internal/lease/ -run 'TestDecideL1AgreesWithTheModel' -count=1)
 
 [group('Lint')]
 go-lint:

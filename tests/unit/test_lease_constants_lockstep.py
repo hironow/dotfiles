@@ -259,7 +259,9 @@ def test_the_stored_cap_hour_is_read_exactly_once_by_the_model() -> None:
 #: the same two (lease.AwakeBound, lease.BlindAwakeBound) and pins them against
 #: the JSON in constants_test.go.
 _BOUND_DERIVATIONS: Final[dict[str, str]] = {
-    "awake_bound_minutes": "force_grace_minutes + l2_tick_minutes",
+    # Measured in billing, not in decisions (inbox M18, layer 2): the node
+    # leaves stop_latency_minutes after the pool's target went to zero.
+    "awake_bound_minutes": "force_grace_minutes + l2_tick_minutes + stop_latency_minutes",
     "blind_awake_bound_minutes": (
         "awake_bound_minutes + l2_tick_minutes * (lease_read_failure_threshold - 1)"
     ),
@@ -310,7 +312,10 @@ def test_the_awake_window_bound_fits_inside_the_cap_gap() -> None:
         + _json_int("slack_minutes")
     )
     assert (
-        _json_int("force_grace_minutes") + _json_int("l2_tick_minutes") <= gap_minutes
+        _json_int("force_grace_minutes")
+        + _json_int("l2_tick_minutes")
+        + _json_int("stop_latency_minutes")
+        <= gap_minutes
     )
 
 
