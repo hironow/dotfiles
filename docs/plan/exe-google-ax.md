@@ -185,16 +185,18 @@ Legend / 凡例:
 |---|---|---|---|
 | L0 リース | `just exe-wake [2h]` / `exe-extend` / `exe-sleep` (手元で `exe-reaper` を実行) | 起動には必ず期限が付く。既定 2h、1 回の起動・延長で最大 8h。**期限は 03:00 JST を越えられない** (下の算式)。延長に成功すると、それ以前の `drained` は無効になる。`exe-sleep` は期限を今にして L1 に片付けさせる | 期限なしの起動は作れない |
 | L1 丁寧な休眠 | クラスタ内の CronJob `exe-reaper reap` (**毎分**、ノードが起きている間だけ動く) | 条件: 期限切れ、または **Running の task が 30 分連続で 0**、またはリースの読み取り失敗。手順: ① drain.json に `draining` と heartbeat → ② **atenet-router を 0 台にする** (router 経由の自動 resume と `ax ssh` を止める) → ③ AX の `SuspendTask` で Running の task を全部 suspend (AX の状態と実体を一致させる) → ④ Substrate 上で全 actor が SUSPENDED になるまで確認 (その間 heartbeat を更新、上限 30 分) → ⑤ `drained`。上限を超えたら `drain-failed`。期限内に戻ったら router を 1 台に戻す | 状態を失わずに寝かせる |
-| L2 期限の強制 | Cloud Scheduler (10 分ごと) → Cloud Run job `exe-reaper enforce` | 期限切れ後の判定: `drained` なら 0 にする / `draining` で heartbeat が 2 回分以内なら待つ / heartbeat が止まった・`drain-failed`・**期限 + 45 分**を過ぎた・リースが **3 回連続**で読めない、のどれかなら強制的に 0 にして通知。1〜2 回の読み取り失敗では何もしない (L1 が片付けに入る) | Mac が閉じていても、クラスタ内が壊れていても止まる |
+| L2 期限の強制 | Cloud Scheduler (10 分ごと) → Cloud Run job `exe-reaper enforce` | 期限切れ後の判定: `drained` なら 0 にする / `draining` で heartbeat が 2 回分 (L2 の周期 2 回 = 20 分) 以内なら待つ。このリースについての drain の記録がまだ無いときは、期限の時刻に heartbeat が止まったとみなす / heartbeat が止まった・`drain-failed`・**期限 + 45 分**を過ぎた (heartbeat が新しくても待たない)・リースが **3 回連続**で読めない、のどれかなら強制的に 0 にして通知 (通知はリースの世代ごとに 1 回)。1〜2 回の読み取り失敗では何もしない (L1 が片付けに入る) | Mac が閉じていても、クラスタ内が壊れていても止まる |
 | L3 日次の強制停止 | Cloud Scheduler (毎日 04:00 JST) → GKE API `setSize(0)` を直接呼ぶ | 判断ロジックなし。正常時は空振りする (下の算式で保証)。**このジョブ自体の失敗は L4 が通知する** | 全部壊れても 24 時間には届かない |
 | L4 検知 | Cloud Monitoring + JPY の budget | ① Compute Engine の稼働時間でノードが 9h を超えたら通知 (GKE の監視設定に依存しない) ② Scheduler ジョブ 2 つの失敗を通知 ③ 予算 ¥3,000/月の 50 / 90 / 100% | 抜けた時と、止める仕組みが壊れた時に気づける |
 
 - **期限の上限の算式** (定数と Quint の不変条件は同じ場所から出す): 利用上限時刻 = L3 時刻 04:00 −
   (L1 の周期 1 分 + 片付けの上限 30 分 + L2 の周期 10 分 + 余裕 19 分) = **03:00 JST** (Q21)。
   これで、正常時に L3 が起きている actor を巻き込むことはない。
-- 最悪額: ノードが起きている時間は「期限 + 45 分 + L2 の周期 10 分」以内。休眠し忘れは既定リースで ≈ ¥87/回、最大リースで ≈ ¥266/回。
-- L2 は GCS と `nodePools.setSize` しか使わない。**クラスタの認証情報に依存しない** (クラスタ側が壊れていても止められる)。
-  この性質を崩す変更 (kubectl を使うなど) はしない。
+- 最悪額: ノードが起きている時間は「期限 + 45 分 + L2 の周期 10 分」以内 (L2 が `lease.json` を読める間。読めない間は
+  3 回連続の規則のため、さらに L2 の周期 2 回分まで延びうる)。休眠し忘れは既定リースで ≈ ¥87/回、最大リースで ≈ ¥266/回。
+- L2 が使うのは GCS、`nodePools.setSize`、そして台数を知るための node pool の MIG の targetSize の読み取り
+  (`compute.instanceGroupManagers.get` だけの custom role、enforcer の SA にだけ付ける) だけ。
+  **クラスタの認証情報に依存しない** (クラスタ側が壊れていても止められる)。この性質を崩す変更 (kubectl を使うなど) はしない。
 - L1 の追加の仕事 (§3.3): 生きている task が参照する task image に `inuse-` タグを付け、不要になったタグを外す。
   resume されないまま 30 日経った task は削除する (7 日前から `exe-status` で予告、`keep` ラベル付きは対象外、Q15)。
 - `ax-job` / `ax-exec` は、リースが `draining` 以降なら新しい task を起こさない。
