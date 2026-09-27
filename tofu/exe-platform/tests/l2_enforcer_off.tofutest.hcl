@@ -19,7 +19,7 @@
 #     without the job watches a log that never arrives.
 #   - the L2 outputs are null rather than an error, so status recipes can tell
 #     "not deployed" from "deployed".
-#   - the enforcer IDENTITY and its two grants stay. They were applied with the
+#   - the enforcer IDENTITY and its grants stay. They were applied with the
 #     platform, before the job existed; gating them with the job would destroy
 #     them on the next plan and recreate them the moment L2 is switched on.
 #
@@ -112,6 +112,11 @@ run "without_an_image_the_enforcer_identity_and_its_grants_stay" {
 
   assert {
     condition     = google_storage_bucket_iam_member.enforcer_ops.member == "serviceAccount:${google_service_account.enforcer.email}"
-    error_message = "the enforcer's ops-bucket grant must be planned whether or not L2 is deployed, for the same reason as the account: it already exists, and a plan that removes it is not \"No changes.\"."
+    error_message = "the enforcer's ops-bucket read grant must be planned whether or not L2 is deployed, for the same reason as the account: it already exists, and a plan that removes it is not \"No changes.\"."
+  }
+
+  assert {
+    condition     = google_storage_bucket_iam_member.enforcer_ops_write.member == "serviceAccount:${google_service_account.enforcer.email}"
+    error_message = "the enforcer's enforce.json write grant must be planned whether or not L2 is deployed, like its read grant: gated with the job, switching L2 off would destroy it and switching it back on would start the job before its write is granted again."
   }
 }

@@ -19,8 +19,11 @@
   "task_ttl_warning_days": 7,
   "_cap_formula": "nightly_cap_local_hour = l3_daily_stop_local_hour - (l1_tick_minutes + drain_ceiling_minutes + l2_tick_minutes + slack_minutes), i.e. 04:00 - 60min = 03:00 JST. This is what guarantees L3 never lands on an awake actor in normal operation; both the Go guard and the Quint invariant recompute it rather than trusting the stored 3.",
   "_writers": {
-    "lease.json": "operator (wake / extend / sleep)",
-    "drain.json": "L1 reaper, in-cluster",
-    "enforce.json": "L2 enforcer, Cloud Run job"
-  }
+    "lease.json": "operator",
+    "keep.json": "operator",
+    "drain.json": "reaper",
+    "tasks.json": "reaper",
+    "enforce.json": "enforcer"
+  },
+  "_writer_identities": "operator = L0: exe-reaper wake / extend / sleep / keep, on the operator's own credentials. reaper = L1, in-cluster, Workload Identity exe-ops/exe-reaper. enforcer = L2, the Cloud Run job's exe-enforcer service account. tofu/exe-platform/iam.tf reads _writers: every identity reads the whole ops bucket, and each service writer gets roles/storage.objectUser on exactly its own objects."
 }

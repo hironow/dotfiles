@@ -44,6 +44,10 @@ from typing import Final
 _REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 CONSTANTS_JSON: Final = _REPO_ROOT / "exe" / "lease-constants.json"
 LEASE_QNT: Final = _REPO_ROOT / "exe" / "spec" / "lease.qnt"
+REAPER_DIR: Final = _REPO_ROOT / "tools" / "exe-reaper"
+
+#: `leaseObject = "lease.json"`: how the reaper names an object in the ops bucket.
+_GO_OBJECT_NAME: Final = re.compile(r'\b\w+Object\s*=\s*"([^"]+)"')
 
 #: JSON keys that are deliberately absent from the model, with the reason. The
 #: model's header says the same thing in prose; this is the mechanical half.
@@ -324,13 +328,36 @@ def test_the_awake_window_bound_fits_inside_the_cap_gap() -> None:
 
 def test_the_json_names_one_writer_per_object() -> None:
     """The one-writer rule is what the model encodes structurally; the JSON is
-    where the rule is declared, so a fourth object or a shared writer has to
-    show up here first.
+    where the rule is declared, so a new object or a second writer has to show
+    up here first. It is also what tofu/exe-platform/iam.tf reads to grant each
+    service writer its objects and nothing else, so a value outside the three
+    identities would be an object nobody can write.
     """
     document = json.loads(CONSTANTS_JSON.read_text(encoding="utf-8"))
-    writers = document["_writers"]
-    assert set(writers) == {"lease.json", "drain.json", "enforce.json"}
-    assert len(set(writers.values())) == len(writers), writers
+    assert document["_writers"] == {
+        "lease.json": "operator",
+        "keep.json": "operator",
+        "drain.json": "reaper",
+        "tasks.json": "reaper",
+        "enforce.json": "enforcer",
+    }
+
+
+def test_every_object_the_reaper_names_has_a_declared_writer() -> None:
+    """An object the binary reads or writes without a declared writer is one
+    the IAM grants in tofu/exe-platform/iam.tf know nothing about: a write to
+    it is denied on the first live tick, not in review.
+    """
+    document = json.loads(CONSTANTS_JSON.read_text(encoding="utf-8"))
+    named: set[str] = set()
+    for source in sorted(REAPER_DIR.rglob("*.go")):
+        if source.name.endswith("_test.go"):
+            continue
+        named |= set(_GO_OBJECT_NAME.findall(source.read_text(encoding="utf-8")))
+    assert named, (
+        "no <name>Object constant found; the pattern no longer matches the code"
+    )
+    assert named <= set(document["_writers"]), sorted(named - set(document["_writers"]))
 
 
 def test_the_json_points_at_the_model_it_is_mirrored_into() -> None:

@@ -146,7 +146,7 @@ run "the_enforcer_job_runs_as_the_enforcer_identity" {
 
   assert {
     condition     = google_cloud_run_v2_job.l2_enforcer[0].template[0].template[0].service_account == google_service_account.enforcer.email
-    error_message = "the L2 job must run as the dedicated exe-enforcer service account. Its entire authority is objectUser on the ops bucket plus the custom node-pool-resizer role; running as anything else (the node SA, a default SA, or the scheduler identity whose job is to TRIGGER this one) either gives the enforcer powers it must not have or leaves it unable to read the lease at all — and an enforcer that cannot read the lease is a money stop that does nothing."
+    error_message = "the L2 job must run as the dedicated exe-enforcer service account. Its entire authority is reading the ops bucket, writing enforce.json in it, and the custom node-pool-resizer role; running as anything else (the node SA, a default SA, or the scheduler identity whose job is to TRIGGER this one) either gives the enforcer powers it must not have or leaves it unable to read the lease at all — and an enforcer that cannot read the lease is a money stop that does nothing."
   }
 
   assert {

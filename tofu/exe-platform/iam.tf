@@ -8,10 +8,11 @@
 # Five identities, matching section 3.2's table of who writes what:
 #   node      - kubelet: pull images, ship logs and metrics
 #   build     - Cloud Build: read the source bucket, push the task image
-#   reaper    - L1, in-cluster via Workload Identity: lease objects, image tags
-#   enforcer  - L2, Cloud Run job: lease objects, read the pool's size and
-#               shrink it to 0 (the size read is granted with the job, in
-#               l2_enforcer.tf)
+#   reaper    - L1, in-cluster via Workload Identity: read the ops bucket,
+#               write drain.json and tasks.json; image tags
+#   enforcer  - L2, Cloud Run job: read the ops bucket, write enforce.json;
+#               read the pool's size and shrink it to 0 (the size read is
+#               granted with the job, in l2_enforcer.tf)
 #   scheduler - L3, Cloud Scheduler: shrink the pool to 0, nothing else; and
 #               start the L2 job (run.invoker on that job, in l2_enforcer.tf)
 #
@@ -181,29 +182,109 @@ resource "google_storage_bucket_iam_member" "api_server_snapshots_bucket_viewer"
   member = local.wi_api_server
 }
 
+# --- the ops bucket: one writer per object ---------------------------------
+#
+# Every object in the ops bucket has exactly one writer, declared in
+# exe/lease-constants.json (_writers): the operator writes lease.json and
+# keep.json on their own credentials, the reaper (L1) drain.json and
+# tasks.json, the enforcer (L2) enforce.json. The grants below enforce that
+# declaration rather than restating it.
+#
+# IAM grants add up, so a condition cannot narrow an unconditional grant, and
+# objectUser carries reads and writes alike. Each service identity therefore
+# holds two bindings:
+#   - roles/storage.objectViewer, unconditional: it reads every object, and
+#     listing is checked against the BUCKET, which an object-name condition
+#     could never match;
+#   - roles/storage.objectUser under a condition naming exactly its own
+#     objects. An overwrite under a generation precondition is
+#     storage.objects.create plus storage.objects.delete on that object, and
+#     objectUser holds both. objectAdmin would add nothing but ACL control,
+#     and a UBLA bucket has no ACLs.
+#
+# Every one of these grants is replaced create-before-destroy, and each read
+# grant depends on its write grant, so a replacement adds the new binding
+# before it removes the old and a writer is never left without its write. The
+# enforcer writes enforce.json on every tick, and a tick without that write is
+# a failed execution. The same order is what let the read grants take over the
+# addresses of the unconditional objectUser grants they replaced, with L2 live.
+#
+# tests/ops_bucket_iam.tofutest.hcl pins all of it.
+
+locals {
+  # A condition on a Cloud Storage binding compares IAM resource names, and an
+  # object's is projects/_/buckets/<bucket>/objects/<name>.
+  ops_write_conditions = {
+    for writer in ["reaper", "enforcer"] : writer => join(" || ", [
+      for object, owner in local.leases["_writers"] :
+      "resource.name == \"projects/_/buckets/${google_storage_bucket.ops.name}/objects/${object}\""
+      if owner == writer
+    ])
+  }
+}
+
 # --- Workload Identity: our own reaper (L1) ---------------------------------
 #
-# The reaper's cloud reach is deliberately tiny: it writes drain.json and it
-# retags task images. Everything else it does (scaling atenet-router,
-# suspending tasks) happens through the Kubernetes API with cluster RBAC, not
-# through GCP IAM — which is why there is no container.* role here.
+# The reaper's cloud reach is deliberately tiny: it writes drain.json and
+# tasks.json, and it retags task images. Everything else it does (scaling
+# atenet-router and ax-controller, suspending tasks) happens through the
+# Kubernetes API with cluster RBAC, not through GCP IAM — which is why there is
+# no container.* role here.
 
 resource "google_storage_bucket_iam_member" "reaper_ops" {
   bucket = google_storage_bucket.ops.name
+  role   = "roles/storage.objectViewer"
+  member = local.wi_reaper
+
+  depends_on = [google_storage_bucket_iam_member.reaper_ops_write]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_storage_bucket_iam_member" "reaper_ops_write" {
+  bucket = google_storage_bucket.ops.name
   role   = "roles/storage.objectUser"
   member = local.wi_reaper
+
+  condition {
+    title      = "exe-reaper writes its own ops objects"
+    expression = local.ops_write_conditions.reaper
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # --- L2 enforcer: lease objects ---------------------------------------------
-#
-# objectUser, not objectAdmin: the enforcer reads lease.json/drain.json and
-# writes enforce.json under generation preconditions. It never needs to change
-# an object's ACL, and on a UBLA bucket there are none to change.
 
 resource "google_storage_bucket_iam_member" "enforcer_ops" {
   bucket = google_storage_bucket.ops.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.enforcer.email}"
+
+  depends_on = [google_storage_bucket_iam_member.enforcer_ops_write]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_storage_bucket_iam_member" "enforcer_ops_write" {
+  bucket = google_storage_bucket.ops.name
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.enforcer.email}"
+
+  condition {
+    title      = "exe-enforcer writes its own ops objects"
+    expression = local.ops_write_conditions.enforcer
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # --- Cloud Build source bucket ---------------------------------------------

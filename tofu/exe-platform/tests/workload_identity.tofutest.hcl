@@ -63,7 +63,12 @@ run "every_member_names_its_ksa_in_the_pool_the_cluster_creates" {
 
   assert {
     condition     = google_storage_bucket_iam_member.reaper_ops.member == "principal://iam.googleapis.com/projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${google_container_cluster.exe.workload_identity_config[0].workload_pool}/subject/ns/exe-ops/sa/exe-reaper"
-    error_message = "reaper_ops must bind exe-ops/exe-reaper in the cluster's own Workload Identity pool, addressed by project number: it is how L1 writes drain.json."
+    error_message = "reaper_ops must bind exe-ops/exe-reaper in the cluster's own Workload Identity pool, addressed by project number: it is how L1 reads the lease."
+  }
+
+  assert {
+    condition     = google_storage_bucket_iam_member.reaper_ops_write.member == "principal://iam.googleapis.com/projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${google_container_cluster.exe.workload_identity_config[0].workload_pool}/subject/ns/exe-ops/sa/exe-reaper"
+    error_message = "reaper_ops_write must bind exe-ops/exe-reaper in the cluster's own Workload Identity pool, addressed by project number: it is how L1 writes drain.json."
   }
 
   assert {
@@ -141,6 +146,19 @@ run "reaper_ops_waits_for_the_cluster" {
   assert {
     condition     = google_container_cluster.exe.name != ""
     error_message = "the cluster must be planned with reaper_ops: the binding names the cluster's Workload Identity pool and has to be created after it."
+  }
+}
+
+run "reaper_ops_write_waits_for_the_cluster" {
+  command = plan
+
+  plan_options {
+    target = [google_storage_bucket_iam_member.reaper_ops_write]
+  }
+
+  assert {
+    condition     = google_container_cluster.exe.name != ""
+    error_message = "the cluster must be planned with reaper_ops_write: the binding names the cluster's Workload Identity pool and has to be created after it."
   }
 }
 

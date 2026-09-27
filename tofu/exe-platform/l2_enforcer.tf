@@ -60,11 +60,11 @@ resource "google_cloud_run_v2_job" "l2_enforcer" {
     parallelism = 1
 
     template {
-      # The dedicated L2 identity from iam.tf. Its entire authority is
-      # storage.objectUser on the ops bucket plus the custom node-pool-resizer
-      # role (container.clusters.get + update — no create, no delete, no
-      # getCredentials). Nothing here can reach the Kubernetes API even if the
-      # binary tried.
+      # The dedicated L2 identity from iam.tf. Its entire authority is reading
+      # the ops bucket, writing enforce.json in it, and the custom
+      # node-pool-resizer role (container.clusters.get + update — no create, no
+      # delete, no getCredentials). Nothing here can reach the Kubernetes API
+      # even if the binary tried.
       service_account = google_service_account.enforcer.email
 
       # One retry, not the provider's default of three. The next tick is only
@@ -148,6 +148,7 @@ resource "google_cloud_run_v2_job" "l2_enforcer" {
     google_project_iam_member.enforcer_resizer,
     google_project_iam_member.enforcer_pool_reader,
     google_storage_bucket_iam_member.enforcer_ops,
+    google_storage_bucket_iam_member.enforcer_ops_write,
   ]
 }
 
