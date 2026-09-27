@@ -779,7 +779,8 @@ module leaseCore {
   // order: the pool already at zero; read failures (a lease you cannot read
   // tells you nothing about expiry); the lease-is-live exit; then the rule for
   // an expired lease. They are disjoint and exhaustive, so a tick is a replay
-  // rather than a coin toss.
+  // rather than a coin toss -- which is what lets TestDecideL2AgreesWithTheModel
+  // replay the model's own traces through DecideL2 and demand the same branch.
   // --------------------------------------------------------------------------
 
   /// L2's run of consecutive lease read failures after this tick: reset while
@@ -1091,13 +1092,43 @@ module leaseCore {
   // The L2 table, one decision at a time.
   //
   // Not part of `step`. A world set up for exactly one L2 decision, so the
-  // table can be walked row by row (the l2Table*Test runs in `lease`) at the
-  // boundaries where two encodings of one table disagree.
+  // table can be walked row by row (the l2Table*Test runs in `lease`) and at
+  // random: `just spec-check` samples l2WorldStep traces and hands them to
+  // TestDecideL2AgreesWithTheModel, which replays every L2 decision in them
+  // through the Go DecideL2 and demands the same branch. The offsets sit on
+  // both sides of every boundary the rule has, because that is where two
+  // encodings of one table disagree.
   // --------------------------------------------------------------------------
 
-  /// The minute the tick lands at: far enough from 0 that every offset the
-  /// rows use stays a valid clock value.
+  /// The minute the sampled L2 tick lands at: far enough from 0 that every
+  /// offset below stays a valid clock value.
   pure val L2_TABLE_NOW = 10 * minutes_per_hour
+
+  /// Deadline offsets from the tick: past the grace and at it, past the
+  /// heartbeat window and at it, just past the deadline, exactly at it, and
+  /// before it -- plus one well inside each region.
+  pure val L2_DEADLINE_OFFSETS = Set(
+    -60,
+    -(force_grace_minutes + 1),
+    -force_grace_minutes,
+    -30,
+    -(heartbeat_stale_minutes + 1),
+    -heartbeat_stale_minutes,
+    -10,
+    -1,
+    0,
+    1,
+    60,
+  )
+
+  /// How old the drain heartbeat is at the tick, around the stale boundary.
+  pure val L2_HEARTBEAT_AGES = Set(
+    0,
+    l2_tick_minutes,
+    heartbeat_stale_minutes,
+    heartbeat_stale_minutes + 1,
+    40,
+  )
 
   /// A world whose next event is one L2 tick at minute `t`, with the lease,
   /// drain.json, the carried read-failure run and the pool exactly as given.
@@ -1134,6 +1165,33 @@ module leaseCore {
       leaseEverUnreadable: not(readable),
     },
   }
+
+  /// One random row of the L2 table.
+  action l2World = {
+    nondet deadlineOffset = oneOf(L2_DEADLINE_OFFSETS)
+    nondet heartbeatAge = oneOf(L2_HEARTBEAT_AGES)
+    nondet readable = oneOf(Set(true, false))
+    nondet failures = oneOf(0.to(lease_read_failure_threshold))
+    nondet drainState = oneOf(Set(DrainNone, Draining, Drained, DrainFailed))
+    nondet staleRecord = oneOf(Set(true, false))
+    nondet nodes = oneOf(Set(0, 1))
+    l2WorldAt(
+      L2_TABLE_NOW,
+      L2_TABLE_NOW + deadlineOffset,
+      7,
+      readable,
+      failures,
+      drainState,
+      L2_TABLE_NOW - heartbeatAge,
+      if (staleRecord) 6 else 7,
+      nodes,
+    )
+  }
+
+  /// Re-roll the world or take the tick. Traces of this step are what the Go
+  /// replay reads: every l2* branch in them is one row checked twice, and a tick
+  /// straight after a tick checks the carried read-failure run as well.
+  action l2WorldStep = any { l2World, l2Tick }
 
   // --------------------------------------------------------------------------
   // Invariants
@@ -1657,8 +1715,9 @@ module lease {
   // --- the L2 table, at its boundaries ----------------------------------------
   //
   // One run per row that decide.go's TestDecideL2 pins at a boundary, in model
-  // minutes (the Go table uses one second where these use one minute): the
-  // rows the two encodings of the rule once disagreed at.
+  // minutes (the Go table uses one second where these use one minute). The
+  // rows at random are TestDecideL2AgreesWithTheModel's job; these are the ones
+  // the rule was once written wrong at.
 
   /// A wait world: nothing about the drain, a readable lease, one node.
   action l2Row(deadlineOffset: int, drainState: DrainState, heartbeatAge: int): bool =

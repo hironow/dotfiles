@@ -684,7 +684,8 @@ go-test:
 # internally consistent; the seeded simulation proves the SHIPPED Go functions
 # implement those rules under interleavings no hand-written scenario would think
 # of. A model without the simulation tells you the design is fine while the code
-# does something else.
+# does something else. Where the two encode the same table (L2's), they are
+# also compared directly, decision by decision.
 #
 # Strict bash, and Quint pinned through one variable, per the spoke: with just's
 # default `sh -cu` a failing iteration in the loop below would pass silently.
@@ -730,6 +731,18 @@ spec-check:
     done
     echo "🔬 seeded simulation of the real Go code"
     (cd tools/exe-reaper && mise x -- go test ./internal/lease/ -run 'TestSimulation' -count=1)
+    # The model and DecideL2 encode one L2 table twice, so they are compared
+    # rather than trusted: sampled rows of the model's table (l2WorldStep) are
+    # replayed through the Go decision, which must take the same branch on every
+    # tick and reach every branch (exe/spec/README.md).
+    echo "🔬 replay the model's L2 decisions through DecideL2"
+    traces="$(mktemp -d)"
+    trap 'rm -rf "$traces"' EXIT
+    $QUINT run exe/spec/lease.qnt --step=l2WorldStep --max-steps=30 \
+      --max-samples=200 --n-traces=200 --seed=0x1ea5e --verbosity=0 \
+      --out-itf="$traces/l2_{seq}.itf.json"
+    (cd tools/exe-reaper && EXE_REAPER_L2_TRACES="$traces" \
+      mise x -- go test ./internal/lease/ -run 'TestDecideL2AgreesWithTheModel' -count=1)
 
 [group('Lint')]
 go-lint:

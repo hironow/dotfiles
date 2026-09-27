@@ -106,6 +106,26 @@ no drain record about the lease, L2 waits exactly one heartbeat window after the
 deadline and forces a minute later; `drained` is a graceful stop even past the
 grace; and a carried read-failure run resets while the pool is at zero.
 
+### The L2 table, replayed through the Go code
+
+The L2 rule is written twice, as the model's `l2*` branches and as `DecideL2`
+in `tools/exe-reaper/internal/lease/decide.go`, and two encodings of one table
+stay equal only if something compares them. `l2World` builds a random row of
+the table — deadline and heartbeat ages on both sides of every boundary the rule
+has, lease readable or not, a carried read-failure run, each drain state about
+this lease generation or an older one, the pool up or down — and `l2WorldStep`
+either re-rolls it or takes the L2 tick that decides it, sometimes twice in a
+row so the carried run is exercised too.
+
+`just spec-check` samples 200 `l2WorldStep` traces as ITF into a fresh
+directory and runs `TestDecideL2AgreesWithTheModel`
+(`tools/exe-reaper/internal/lease/model_replay_test.go`) on it. Every L2 tick
+in them is replayed through `DecideL2` and `NextReadFailures`, which must take
+the branch the model took, carry the same read-failure run, and stop the pool
+exactly when the model did; the test also fails unless every one of the
+model's seven L2 branches was reached. Without the directory, a plain
+`go test` skips it.
+
 ## What the model deliberately does not cover
 
 Read no invariant as covering any of this:
@@ -171,6 +191,17 @@ mise x -- quint test --main=routerLeftOpen \
     --match=leftOpenRouterRevivesAnActorAfterDrained exe/spec/lease.qnt
 ```
 
+The L2 replay by hand, into a fresh directory:
+
+```sh
+traces="$(mktemp -d)"
+mise x -- quint run exe/spec/lease.qnt --step=l2WorldStep --max-steps=30 \
+    --max-samples=200 --n-traces=200 --seed=0x1ea5e --verbosity=0 \
+    --out-itf="$traces/l2_{seq}.itf.json"
+(cd tools/exe-reaper && EXE_REAPER_L2_TRACES="$traces" \
+    mise x -- go test ./internal/lease/ -run TestDecideL2AgreesWithTheModel -v)
+```
+
 The constants mirror is held by
 `tests/unit/test_lease_constants_lockstep.py`:
 
@@ -178,7 +209,8 @@ The constants mirror is held by
 uvx pytest -q tests/unit/test_lease_constants_lockstep.py
 ```
 
-All of the above is wired into `just check` through `just spec-check`.
+Everything above but that pytest runs in `just check`, through
+`just spec-check`; the pytest runs with the other unit tests in `just ci`.
 
 ## Findings the model produced
 
