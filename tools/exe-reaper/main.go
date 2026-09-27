@@ -22,6 +22,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -239,8 +240,24 @@ func cmdEnforce(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	client := gcp.New()
-	now := time.Now()
+	e := enforcer{client: gcp.New(), cfg: cfg, out: os.Stdout, errOut: os.Stderr}
+	return e.tick(ctx, time.Now(), *dryRun)
+}
+
+// enforcer is L2's plumbing: what it reads and writes through, and where it
+// reports. cmdEnforce builds it from the environment; the tests build it from
+// httptest stand-ins for GCS and GKE, which is what lets a whole tick run, real
+// HTTP client included, without a cloud.
+type enforcer struct {
+	client *gcp.Client
+	cfg    config
+	out    io.Writer // the decision line
+	errOut io.Writer // warnings
+}
+
+// tick is one L2 pass: read the three inputs, decide, act, record.
+func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
+	client, cfg := e.client, e.cfg
 
 	// L2 is a job: it exits between ticks and has no memory. The consecutive
 	// read-failure count therefore lives in enforce.json, the object L2 itself
@@ -264,15 +281,15 @@ func cmdEnforce(ctx context.Context, args []string) error {
 
 	size, sizeErr := client.NodePoolSize(ctx, cfg.project, cfg.zone, cfg.cluster, cfg.nodePool)
 	if sizeErr != nil {
-		fmt.Fprintf(os.Stderr, "warning: node pool size unreadable, deciding as if a node may be up: %v\n", sizeErr)
+		_, _ = fmt.Fprintf(e.errOut, "warning: node pool size unreadable, deciding as if a node may be up: %v\n", sizeErr)
 	}
 	obs.Nodes = nodesForDecision(size, sizeErr)
 
 	decision := lease.DecideL2(obs)
-	fmt.Printf("decision=%s reason=%s nodes=%d readFailures=%d\n",
+	_, _ = fmt.Fprintf(e.out, "decision=%s reason=%s nodes=%d readFailures=%d\n",
 		decision.Action, decision.Reason, obs.Nodes, obs.ConsecutiveReadFailures)
 
-	if *dryRun {
+	if dryRun {
 		return nil
 	}
 
