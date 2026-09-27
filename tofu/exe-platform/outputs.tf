@@ -136,3 +136,8 @@ output "state_kms_key" {
   value       = google_kms_crypto_key.state.id
   sensitive   = true
 }
+
+output "claude_token_secret" {
+  description = "The Secret Manager secret holding the Claude OAuth token (plan Q20). ax-job reads its latest version; the operator adds versions."
+  value       = google_secret_manager_secret.claude_oauth_token.secret_id
+}
