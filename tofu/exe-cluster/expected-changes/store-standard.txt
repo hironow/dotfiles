@@ -1,0 +1,11 @@
+# The reviewed change list for moving the store to pd-standard (manager-loop
+# inbox M20 T2) together with S5's ax-server isolation: the Postgres
+# StatefulSet is replaced (its claim template is renamed and re-classed, which
+# Kubernetes cannot change in place), the install step re-runs and restarts
+# the API server onto the new, empty store, and ax-server gets its
+# deny-all-ingress policy. Needs a node up. Afterwards the old claim
+# (exe-store/data-postgres-0, pd-balanced) is deleted by hand, which deletes its disk.
+#   just exe-cluster-plan && just exe-cluster-plan-summary --expect-changes expected-changes/store-standard.txt
+-/+ kubernetes_stateful_set_v1.postgres
+-/+ terraform_data.ate_system
++   kubernetes_network_policy_v1.ax_server

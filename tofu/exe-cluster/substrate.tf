@@ -84,7 +84,13 @@ resource "terraform_data" "ate_system" {
     ko_repo           = local.substrate_ko_repo
     sandbox_config    = sha256(local.sandbox_config_yaml)
     postgres_dsn_base = local.postgres_dsn_base
-    script            = sha256(local.ate_setup_script)
+    # A replaced store volume is an empty store: re-run, and the script below
+    # restarts the API server onto it.
+    store_volume = join("/", [
+      kubernetes_stateful_set_v1.postgres.spec[0].volume_claim_template[0].metadata[0].name,
+      kubernetes_stateful_set_v1.postgres.spec[0].volume_claim_template[0].spec[0].storage_class_name,
+    ])
+    script = sha256(local.ate_setup_script)
   }
 
   provisioner "local-exec" {
@@ -159,6 +165,11 @@ locals {
       echo "ate-setup: deploy ate-system $VERSION (build mode)"
       go run ./cmd/ate-setup --kubeconfig "$KUBECONFIG" --context "$context" \
         --no-dev-env --rollout-timeout 5m deploy ate-system
+
+      # The API server applies the store's schema at startup only; after a store
+      # replacement it would run against empty tables until restarted.
+      kubectl --context "$context" -n ate-system rollout restart deployment/ate-api-server
+      kubectl --context "$context" -n ate-system rollout status deployment/ate-api-server --timeout=5m
 
       # Nothing may delay a stop unless it protects state. Every stop takes the
       # only node away with actors already suspended, so a disruption budget can

@@ -47,7 +47,7 @@ variables {
   gemini_api_key     = null
 }
 
-run "the_store_is_upstreams_postgres_image_on_a_small_balanced_disk" {
+run "the_store_is_upstreams_postgres_image_on_a_small_standard_disk" {
   command = plan
 
   assert {
@@ -56,8 +56,16 @@ run "the_store_is_upstreams_postgres_image_on_a_small_balanced_disk" {
   }
 
   assert {
-    condition     = kubernetes_stateful_set_v1.postgres.spec[0].volume_claim_template[0].spec[0].storage_class_name == "standard-rwo"
-    error_message = "the store's volume must be pd-balanced (GKE's standard-rwo class): pd-standard's IOPS scale with size and are far too low for a database at 10Gi (plan Q22)."
+    condition     = kubernetes_stateful_set_v1.postgres.spec[0].volume_claim_template[0].spec[0].storage_class_name == "standard"
+    error_message = "the store's volume must be pd-standard (GKE's `standard` class): cost first (manager-loop inbox M20 T2). A 10Gi disk bills around the clock whether a node runs or not, and pd-balanced costs 2.5x pd-standard; S7 measures that Postgres still turns Ready within 60 s on it."
+  }
+
+  # Renamed from "data" when the store moved off pd-balanced: a claim template
+  # of the old name would have re-bound the old pd-balanced claim instead of
+  # creating a pd-standard one.
+  assert {
+    condition     = kubernetes_stateful_set_v1.postgres.spec[0].volume_claim_template[0].metadata[0].name == "store" && kubernetes_stateful_set_v1.postgres.spec[0].template[0].spec[0].container[0].volume_mount[0].name == "store"
+    error_message = "the store's claim template must be named \"store\" and mounted by that name: the old \"data\" name re-binds the old pd-balanced claim (data-postgres-0), so the move to pd-standard would silently not happen."
   }
 
   assert {

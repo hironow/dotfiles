@@ -3,8 +3,10 @@
 # Upstream's bundled store requests 2 CPUs and claims a 500Gi volume (a cost
 # trap on a single e2-standard-4), so the install is given an external DSN and
 # skips it entirely. This one is sized for one small control plane: 10Gi of
-# pd-balanced (the GKE `standard-rwo` class), because pd-standard's IOPS scale
-# with size and at 10Gi are too low for a database (plan Q22; S7 measures it).
+# pd-standard (the GKE `standard` class). The disk bills around the clock while
+# the node sleeps, and cost comes first (manager-loop inbox M20 T2): pd-balanced
+# costs 2.5x as much. pd-standard's IOPS scale with size, so S7 measures that the
+# store still turns Ready within 60 s (plan Q22's concern).
 #
 # Plain password auth over the pod network, with the NetworkPolicy below as the
 # wall: only ate-api-server may connect. The password is generated here, lives
@@ -146,21 +148,24 @@ resource "kubernetes_stateful_set_v1" "postgres" {
           }
 
           volume_mount {
-            name       = "data"
+            name       = "store"
             mount_path = "/var/lib/postgresql/data"
           }
         }
       }
     }
 
+    # Named "store", not "data": the claim template's name is part of the
+    # claim's (store-postgres-0), and the old name would re-bind the old
+    # pd-balanced claim instead of creating a pd-standard one.
     volume_claim_template {
       metadata {
-        name = "data"
+        name = "store"
       }
 
       spec {
         access_modes       = ["ReadWriteOnce"]
-        storage_class_name = "standard-rwo"
+        storage_class_name = "standard"
 
         resources {
           requests = {

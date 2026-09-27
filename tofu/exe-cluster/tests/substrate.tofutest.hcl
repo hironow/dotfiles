@@ -99,6 +99,23 @@ run "the_install_runs_the_pinned_substrate_in_build_mode" {
   }
 }
 
+# ate-api-server applies the store's schema at startup only. A store replaced
+# under it (a new claim, as when it moved to pd-standard) is empty, so the
+# install re-runs when the store's volume changes and restarts the API server.
+run "a_new_store_volume_re_runs_the_install_and_restarts_the_api_server" {
+  command = plan
+
+  assert {
+    condition     = terraform_data.ate_system.triggers_replace.store_volume == "store/standard"
+    error_message = "the install step must be triggered by the store's claim template name and storage class, so replacing the store's volume re-runs it and the API server comes back up on the new, empty store."
+  }
+
+  assert {
+    condition     = strcontains(local.ate_setup_script, "rollout restart deployment/ate-api-server") && strcontains(local.ate_setup_script, "rollout status deployment/ate-api-server")
+    error_message = "after the deploy the install must restart ate-api-server and wait for it: the API server applies its schema at startup only, so on a store that was replaced it would otherwise run against empty tables."
+  }
+}
+
 run "the_install_drops_the_gmp_podmonitoring_and_writes_our_sandboxconfig" {
   command = plan
 
