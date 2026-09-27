@@ -313,21 +313,35 @@ func (c *Client) SetNodePoolSize(ctx context.Context, setSizeURI string, size in
 	return nil
 }
 
-// NodePoolSize reads the pool's RUNNING size: the summed target size of its
-// managed instance groups.
+// Pool is a node pool as its managed instance groups have it: the size it was
+// asked for, and the instances really there.
+type Pool struct {
+	// Target is the summed target size: what setSize wrote.
+	Target int
+	// Instances is every instance still in the groups, whatever it is doing
+	// -- one being deleted still bills.
+	Instances int
+}
+
+// NodePool reads the pool's managed instance groups.
 //
 // Not initialNodeCount. That field is the creation-time constant gke.tf sets
 // (0) and it does not move when the pool is resized, so reading it reports
 // "asleep" for a pool with a node up -- and L2's first rule, "already at zero:
 // nothing to do", would then never stop anything. The instance groups are what
 // setSize actually changes, and summing their target sizes is the same read the
-// Google provider does for a pool's node_count. The target, not the live
-// instance count: after setSize(0) the target is 0 at once while the VM is still
-// being deleted, and a stop already under way needs nothing more from L2.
+// Google provider does for a pool's node_count.
+//
+// The target is what L2 decides on: after setSize(0) it is 0 at once while the
+// VM is still being deleted, and a stop already under way needs nothing more
+// from L2. Instances is what the stop-latency detector reads (inbox M18,
+// layer 3): the same GET carries currentActions, one count per action with
+// every instance counted once, so a VM that is still there -- deleting,
+// verifying, anything -- is counted without any further permission.
 //
 // The group URLs come from the node pool itself, so no instance group name is
 // guessed here. Any unreadable group is an error, never a size.
-func (c *Client) NodePoolSize(ctx context.Context, project, zone, cluster, pool string) (int, error) {
+func (c *Client) NodePool(ctx context.Context, project, zone, cluster, pool string) (Pool, error) {
 	rawURL := fmt.Sprintf("%s/v1/projects/%s/locations/%s/clusters/%s/nodePools/%s",
 		c.container(), url.PathEscape(project), url.PathEscape(zone),
 		url.PathEscape(cluster), url.PathEscape(pool))
@@ -335,20 +349,30 @@ func (c *Client) NodePoolSize(ctx context.Context, project, zone, cluster, pool 
 		InstanceGroupUrls []string `json:"instanceGroupUrls"`
 	}
 	if err := c.getJSON(ctx, rawURL, &np); err != nil {
-		return 0, fmt.Errorf("node pool %s: %w", pool, err)
+		return Pool{}, fmt.Errorf("node pool %s: %w", pool, err)
 	}
 
-	total := 0
+	var total Pool
 	for _, groupURL := range np.InstanceGroupUrls {
 		var igm struct {
-			TargetSize int `json:"targetSize"`
+			TargetSize     int            `json:"targetSize"`
+			CurrentActions map[string]int `json:"currentActions"`
 		}
 		if err := c.getJSON(ctx, groupURL, &igm); err != nil {
-			return 0, fmt.Errorf("instance group of node pool %s: %w", pool, err)
+			return Pool{}, fmt.Errorf("instance group of node pool %s: %w", pool, err)
 		}
-		total += igm.TargetSize
+		total.Target += igm.TargetSize
+		for _, n := range igm.CurrentActions {
+			total.Instances += n
+		}
 	}
 	return total, nil
+}
+
+// NodePoolSize is NodePool's target size alone.
+func (c *Client) NodePoolSize(ctx context.Context, project, zone, cluster, pool string) (int, error) {
+	p, err := c.NodePool(ctx, project, zone, cluster, pool)
+	return p.Target, err
 }
 
 // getJSON GETs a Google API resource and decodes it, keeping 404 distinct.

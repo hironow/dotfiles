@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/gcp"
@@ -34,6 +36,9 @@ const (
 	leaseObject   = "lease.json"
 	drainObject   = "drain.json"
 	enforceObject = "enforce.json"
+	// keepObject lists the tasks the operator exempted from the task TTL. One
+	// writer, like the lease: `keep add|rm` on the operator's Mac.
+	keepObject = "keep.json"
 
 	// Env vars the OpenTofu stack sets on the Cloud Run job, and the just
 	// recipes set for the operator's path. Named here so there is one list, and
@@ -136,6 +141,10 @@ func run(ctx context.Context, args []string) int {
 		return runEnforce(ctx, args[1:], os.Stdout)
 	case "status":
 		err = cmdStatus(ctx, args[1:])
+	case "may-start":
+		err = cmdMayStart(ctx, args[1:])
+	case "keep":
+		err = cmdKeep(ctx, args[1:])
 	case "-h", "--help", "help":
 		usage()
 		return 0
@@ -143,6 +152,10 @@ func run(ctx context.Context, args []string) int {
 		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n", args[0])
 		usage()
 		return 2
+	}
+	if errors.Is(err, errRefused) {
+		fmt.Fprintf(os.Stderr, "exe-reaper: %v\n", err)
+		return 3
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "exe-reaper: %v\n", err)
@@ -159,6 +172,11 @@ func usage() {
   sleep              set the deadline to now and let the drain run
   enforce            L2: one out-of-cluster enforcement tick
   status             what the lease says, without needing the cluster to be up
+  may-start [-need 10m]
+                     exit 0 if a new task may start now and the lease has that
+                     long left; exit 3 with the reason if not (ax-job, ax-exec)
+  keep add|rm TASK   exempt a task from the 30-day TTL, or stop exempting it
+  keep ls            the exempted tasks
 
 Every deadline is clamped so it cannot outlive the nightly cap, and a single
 request may not exceed the maximum lease. Both limits are in
@@ -201,27 +219,8 @@ func cmdLease(ctx context.Context, args []string, startNode bool) error {
 	}
 
 	client := gcp.New()
-
-	// Read for the generation, then write conditionally on it. Two operators
-	// racing means one of them is told, rather than one silently losing.
-	_, generation, err := client.GetObject(ctx, cfg.bucket, leaseObject)
-	switch {
-	case err == nil:
-	case errors.Is(err, gcp.ErrNotFound):
-		generation = 0 // create-only
-	default:
-		return fmt.Errorf("reading the lease: %w", err)
-	}
-
-	body, err := json.Marshal(lease.Lease{Deadline: deadline})
-	if err != nil {
+	if err := writeLease(ctx, client, cfg.bucket, now, deadline, startNode); err != nil {
 		return err
-	}
-	if err := client.PutObject(ctx, cfg.bucket, leaseObject, body, generation); err != nil {
-		if errors.Is(err, gcp.ErrPreconditionFailed) {
-			return errors.New("the lease changed while this command was running; re-run it")
-		}
-		return fmt.Errorf("writing the lease: %w", err)
 	}
 	fmt.Printf("lease until %s\n", deadline.In(lease.Location()).Format(time.RFC3339))
 
@@ -246,27 +245,199 @@ func cmdSleep(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	client := gcp.New()
-
-	_, generation, err := client.GetObject(ctx, cfg.bucket, leaseObject)
-	if err != nil && !errors.Is(err, gcp.ErrNotFound) {
-		return fmt.Errorf("reading the lease: %w", err)
-	}
-	if errors.Is(err, gcp.ErrNotFound) {
-		generation = 0
-	}
 
 	// Expire the lease rather than shrinking the pool here. L1 then drains
 	// gracefully and L2 stops the pool -- which keeps "one writer per object" and
 	// keeps the ordering that saves the running actors.
-	body, err := json.Marshal(lease.Lease{Deadline: time.Now()})
+	now := time.Now()
+	if err := writeLease(ctx, gcp.New(), cfg.bucket, now, now, false); err != nil {
+		return err
+	}
+	fmt.Println("lease expired; the drain will run and the pool will stop")
+	return nil
+}
+
+// errLeaseMoved is a lease write that lost to another write of lease.json.
+var errLeaseMoved = errors.New("the lease changed while this command was running; re-run it")
+
+// writeLease is every L0 write of lease.json: read it for its generation and
+// wokenAt, then write the new deadline conditional on that generation, so two
+// operators racing means one of them is told, rather than one silently losing.
+//
+// A wake writes wokenAt: a new session, which restarts L1's idle clock. Extend
+// and sleep carry it over unchanged -- an extend is not a new session (the
+// model's finding 3).
+func writeLease(ctx context.Context, client *gcp.Client, bucket string, now, deadline time.Time, wake bool) error {
+	body, generation, err := client.GetObject(ctx, bucket, leaseObject)
+	var current lease.Lease
+	switch {
+	case err == nil:
+		// A lease this command cannot parse still has a generation to write
+		// over; its wokenAt is simply unknown.
+		_ = json.Unmarshal(body, &current)
+	case errors.Is(err, gcp.ErrNotFound):
+		generation = 0 // create-only
+	default:
+		return fmt.Errorf("reading the lease: %w", err)
+	}
+
+	next := lease.Lease{Deadline: deadline, WokenAt: current.WokenAt}
+	if wake {
+		next.WokenAt = now
+	}
+	out, err := json.Marshal(next)
 	if err != nil {
 		return err
 	}
-	if err := client.PutObject(ctx, cfg.bucket, leaseObject, body, generation); err != nil {
+	if err := client.PutObject(ctx, bucket, leaseObject, out, generation); err != nil {
+		if errors.Is(err, gcp.ErrPreconditionFailed) {
+			return errLeaseMoved
+		}
 		return fmt.Errorf("writing the lease: %w", err)
 	}
-	fmt.Println("lease expired; the drain will run and the pool will stop")
+	return nil
+}
+
+// --- the wrappers' check: may-start ---------------------------------------------
+
+// errRefused is a check that said no. `run` exits 3 on it, so ax-job and ax-exec
+// can tell "not now" from "broken".
+var errRefused = errors.New("refused")
+
+func cmdMayStart(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("may-start", flag.ExitOnError)
+	need := fs.Duration("need", 10*time.Minute, "how long the lease must still run")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := noArgs(fs); err != nil {
+		return err
+	}
+	cfg, err := loadConfig(envBucket)
+	if err != nil {
+		return err
+	}
+	ok, why, err := mayStart(ctx, gcp.New(), cfg.bucket, time.Now(), *need)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: %s", errRefused, why)
+	}
+	fmt.Println("may start")
+	return nil
+}
+
+// mayStart is lease.MayStartTask on what GCS holds now, plus the wrappers' own
+// question: does the lease still run for `need`? A drain record it cannot read
+// is an error, never "no drain": a wrapper must not start work it cannot see is
+// safe to start.
+func mayStart(ctx context.Context, client *gcp.Client, bucket string, now time.Time, need time.Duration) (bool, string, error) {
+	l, leaseOK := leaseFromRead(client.GetObject(ctx, bucket, leaseObject))
+
+	var d lease.Drain
+	switch body, _, err := client.GetObject(ctx, bucket, drainObject); {
+	case errors.Is(err, gcp.ErrNotFound):
+	case err != nil:
+		return false, "", fmt.Errorf("reading %s: %w", drainObject, err)
+	default:
+		if err := json.Unmarshal(body, &d); err != nil {
+			return false, "", fmt.Errorf("%s is not a drain record: %w", drainObject, err)
+		}
+	}
+
+	if ok, reason := lease.MayStartTask(now, l, leaseOK, d); !ok {
+		return false, string(reason), nil
+	}
+	if left := l.Deadline.Sub(now); left < need {
+		return false, fmt.Sprintf("the lease has %s left, and this needs %s (just exe-extend)", left.Round(time.Second), need), nil
+	}
+	return true, "", nil
+}
+
+// --- keep.json -----------------------------------------------------------------------
+
+// keepRecord is keep.json: the tasks the operator exempted from the task TTL.
+type keepRecord struct {
+	Tasks []string `json:"tasks"`
+}
+
+// errKeepMoved is a keep.json write that lost to another write of it.
+var errKeepMoved = errors.New("keep.json changed while this command was running; re-run it")
+
+func cmdKeep(ctx context.Context, args []string) error {
+	cfg, err := loadConfig(envBucket)
+	if err != nil {
+		return err
+	}
+	client := gcp.New()
+	switch {
+	case len(args) == 1 && args[0] == "ls":
+		tasks, err := keepList(ctx, client, cfg.bucket)
+		if err != nil {
+			return err
+		}
+		for _, task := range tasks {
+			fmt.Println(task)
+		}
+		return nil
+	case len(args) == 2 && (args[0] == "add" || args[0] == "rm"):
+		return keepEdit(ctx, client, cfg.bucket, args[1], args[0] == "add")
+	default:
+		return errors.New("usage: exe-reaper keep add|rm TASK, or keep ls")
+	}
+}
+
+func readKeep(ctx context.Context, client *gcp.Client, bucket string) (keepRecord, int64, error) {
+	body, generation, err := client.GetObject(ctx, bucket, keepObject)
+	switch {
+	case errors.Is(err, gcp.ErrNotFound):
+		return keepRecord{}, 0, nil
+	case err != nil:
+		return keepRecord{}, 0, fmt.Errorf("reading %s: %w", keepObject, err)
+	}
+	var rec keepRecord
+	if err := json.Unmarshal(body, &rec); err != nil {
+		return keepRecord{}, 0, fmt.Errorf("%s is not a keep list: %w", keepObject, err)
+	}
+	return rec, generation, nil
+}
+
+// keepList is the exempted tasks, sorted; none when keep.json does not exist.
+func keepList(ctx context.Context, client *gcp.Client, bucket string) ([]string, error) {
+	rec, _, err := readKeep(ctx, client, bucket)
+	if err != nil {
+		return nil, err
+	}
+	slices.Sort(rec.Tasks)
+	return slices.Compact(rec.Tasks), nil
+}
+
+// keepEdit adds or removes one task, conditional on the generation it read.
+// Either way the end state is what was asked for, so repeating it is harmless.
+func keepEdit(ctx context.Context, client *gcp.Client, bucket, task string, add bool) error {
+	if task == "" {
+		return errors.New("keep: empty task name")
+	}
+	rec, generation, err := readKeep(ctx, client, bucket)
+	if err != nil {
+		return err
+	}
+	tasks := slices.DeleteFunc(slices.Clone(rec.Tasks), func(t string) bool { return t == task })
+	if add {
+		tasks = append(tasks, task)
+	}
+	slices.Sort(tasks)
+	body, err := json.Marshal(keepRecord{Tasks: slices.Compact(tasks)})
+	if err != nil {
+		return err
+	}
+	if err := client.PutObject(ctx, bucket, keepObject, body, generation); err != nil {
+		if errors.Is(err, gcp.ErrPreconditionFailed) {
+			return errKeepMoved
+		}
+		return fmt.Errorf("writing %s: %w", keepObject, err)
+	}
 	return nil
 }
 
@@ -342,11 +513,11 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 		}
 	}
 
-	size, sizeErr := client.NodePoolSize(ctx, cfg.project, cfg.zone, cfg.cluster, cfg.nodePool)
+	pool, sizeErr := client.NodePool(ctx, cfg.project, cfg.zone, cfg.cluster, cfg.nodePool)
 	if sizeErr != nil {
 		e.log.warn(fmt.Sprintf("node pool size unreadable, deciding as if a node may be up: %v", sizeErr))
 	}
-	obs.Nodes = nodesForDecision(size, sizeErr)
+	obs.Nodes = nodesForDecision(pool.Target, sizeErr)
 
 	// After the pool size, because the rule needs it: while the pool is at
 	// zero the run resets, so a run carried across a stop cannot make the first
@@ -385,6 +556,20 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	line.Notify = shouldPage(decision, key, prev)
 	e.log.decision(line)
 
+	// The stop-latency detector (inbox M18, layer 3). With the pool unreadable
+	// there is nothing to judge, so the memory is carried as it was.
+	stoppingSince, stopPaged := prev.StoppingSince, prev.StopLatencyPaged
+	if sizeErr == nil {
+		var alarm bool
+		stoppingSince, alarm = lease.NextStopping(prev.StoppingSince, pool.Target, pool.Instances, now)
+		if alarm {
+			// Once per stop: the first alarm of a stop pages, the rest repeat.
+			notify := !prev.StopLatencyPaged.Equal(stoppingSince)
+			e.log.stopLatency(now, stoppingSince, pool, notify)
+			stopPaged = stoppingSince
+		}
+	}
+
 	if recordErr != nil {
 		// No generation to write against, so a conditional write could only
 		// lose to the record that is there. Fail the tick instead: the job
@@ -393,12 +578,14 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	}
 
 	record := enforceRecord{
-		At:              now,
-		Action:          string(decision.Action),
-		Reason:          string(decision.Reason),
-		Notified:        line.Notify,
-		ReadFailures:    obs.ConsecutiveReadFailures,
-		LeaseGeneration: key,
+		At:               now,
+		Action:           string(decision.Action),
+		Reason:           string(decision.Reason),
+		Notified:         line.Notify,
+		ReadFailures:     obs.ConsecutiveReadFailures,
+		LeaseGeneration:  key,
+		StoppingSince:    stoppingSince,
+		StopLatencyPaged: stopPaged,
 	}
 	body, err := json.Marshal(record)
 	if err != nil {
@@ -477,6 +664,11 @@ func shouldPage(d lease.Decision, key int64, prev enforceRecord) bool {
 //	          on. A repeat is WARNING.
 //	failure   event "failure" at ERROR, the last line before exit 1. The
 //	          failed-execution alert pages on ERROR that is not a decision.
+//	stop-     event "stop-latency": the pool's target has been zero for
+//	latency   longer than lease.StopLatency and an instance is still there,
+//	          billing. ERROR the first time for a stop, which the stop-latency
+//	          alert pages on; WARNING on every later tick of the same stop. The
+//	          failed-execution alert excludes it by this event name.
 //	warning   event "warning" at WARNING: something the tick worked around.
 //	          Never ERROR, or a tick that did its job would page as failed.
 
@@ -562,6 +754,31 @@ type messageFields struct {
 	Error string `json:"error,omitempty"`
 }
 
+type stopLatencyFields struct {
+	Event         string    `json:"event"`
+	Notify        bool      `json:"notify"`
+	Target        int       `json:"target"`
+	Instances     int       `json:"instances"`
+	StoppingSince time.Time `json:"stoppingSince"`
+}
+
+// stopLatency reports a node that still bills past the stop latency.
+func (l contractLog) stopLatency(now, since time.Time, pool gcp.Pool, notify bool) {
+	severity := severityWarning
+	if notify {
+		severity = severityError
+	}
+	l.write(logEntry{
+		Severity: severity,
+		Message: fmt.Sprintf("the node pool's target has been zero for %s, past the %s stop latency, and %d instance(s) still bill",
+			now.Sub(since).Round(time.Second), lease.StopLatency, pool.Instances),
+		L2: stopLatencyFields{
+			Event: "stop-latency", Notify: notify, Target: pool.Target,
+			Instances: pool.Instances, StoppingSince: since,
+		},
+	})
+}
+
 func (l contractLog) warn(message string) {
 	l.write(logEntry{Severity: severityWarning, Message: message, L2: messageFields{Event: "warning"}})
 }
@@ -623,6 +840,12 @@ type enforceRecord struct {
 	// LeaseGeneration is the lease generation this tick read, or, when it read
 	// none, the last one an earlier tick did (pageKey).
 	LeaseGeneration int64 `json:"leaseGeneration,omitempty"`
+	// StoppingSince is the first tick that found the pool's target at zero
+	// with an instance still there; zero when there is none (NextStopping).
+	StoppingSince time.Time `json:"stoppingSince,omitzero"`
+	// StopLatencyPaged is the StoppingSince of the stop last paged for, so
+	// one slow stop pages once.
+	StopLatencyPaged time.Time `json:"stopLatencyPaged,omitzero"`
 }
 
 // readEnforce reads L2's own record, its only memory between ticks.
@@ -701,9 +924,10 @@ func cmdStatus(ctx context.Context, args []string) error {
 		fmt.Println("drain          (none)")
 	}
 
-	switch rec, _, err := readEnforce(ctx, client, cfg.bucket); {
-	case err != nil:
-		fmt.Printf("last enforce   unreadable: %v\n", err)
+	rec, _, recErr := readEnforce(ctx, client, cfg.bucket)
+	switch {
+	case recErr != nil:
+		fmt.Printf("last enforce   unreadable: %v\n", recErr)
 	case rec.Action != "":
 		fmt.Printf("last enforce   %s (%s) at %s\n", rec.Action, rec.Reason,
 			rec.At.In(lease.Location()).Format(time.RFC3339))
@@ -711,13 +935,30 @@ func cmdStatus(ctx context.Context, args []string) error {
 		fmt.Println("last enforce   (none)")
 	}
 
-	if size, err := client.NodePoolSize(ctx, cfg.project, cfg.zone, cfg.cluster, cfg.nodePool); err == nil {
-		fmt.Printf("node pool      %d node(s)\n", size)
-		if size == 0 {
+	// The target is what setSize asked for; instances are what still bills. A
+	// target of zero with an instance left is a stop in progress -- and past
+	// the stop latency, the Phase 4 incident (inbox M18, layer 3).
+	if pool, err := client.NodePool(ctx, cfg.project, cfg.zone, cfg.cluster, cfg.nodePool); err == nil {
+		fmt.Printf("node pool      %d node(s) (target %d)\n", pool.Instances, pool.Target)
+		if pool.Target == 0 && pool.Instances > 0 {
+			line := "stopping       the node still bills"
+			if recErr == nil && !rec.StoppingSince.IsZero() {
+				line += fmt.Sprintf(" (seen since %s, stop latency %s)",
+					rec.StoppingSince.In(lease.Location()).Format(time.RFC3339), lease.StopLatency)
+			}
+			fmt.Println(line)
+		}
+		if pool.Instances == 0 {
 			fmt.Println("tasks          (asleep — task counts need the cluster up)")
 		}
 	} else {
 		fmt.Printf("node pool      unreadable: %v\n", err)
+	}
+
+	if kept, err := keepList(ctx, client, cfg.bucket); err != nil {
+		fmt.Printf("kept tasks     unreadable: %v\n", err)
+	} else if len(kept) > 0 {
+		fmt.Printf("kept tasks     %s (exempt from the %s task TTL)\n", strings.Join(kept, ", "), lease.TaskTTL)
 	}
 
 	fmt.Printf("nightly cap    %02d:00 %s, daily stop %02d:00\n",

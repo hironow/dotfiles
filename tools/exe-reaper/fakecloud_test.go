@@ -39,11 +39,18 @@ type fakeCloud struct {
 	// beforeGet runs under the lock before the nth GET of an object is
 	// served (n counts from 1), so a test can change the world between two
 	// reads of one tick.
-	beforeGet     func(f *fakeCloud, object string, n int)
+	beforeGet func(f *fakeCloud, object string, n int)
+	// afterGet runs under the lock once the nth GET of an object has been
+	// answered, so a test can land another writer between a read and the
+	// write conditional on it.
+	afterGet      func(f *fakeCloud, object string, n int)
 	sizeStatus    int // non-zero: the pool GET answers with it
 	setSizeStatus int // non-zero: setSize answers with it and resizes nothing
 	targetSize    int
-	setSizeCalls  []int
+	// instances is what the instance group still holds; -1 (the default)
+	// means "whatever the target is", a stop that took at once.
+	instances    int
+	setSizeCalls []int
 }
 
 type fakeObject struct {
@@ -63,6 +70,7 @@ func newFakeCloud(t *testing.T) *fakeCloud {
 		objects:   map[string]fakeObject{},
 		getStatus: map[string]int{},
 		gets:      map[string]int{},
+		instances: -1,
 	}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
@@ -149,7 +157,11 @@ func (f *fakeCloud) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = fmt.Fprintf(w, `{"instanceGroupUrls":[%q]}`, f.srv.URL+"/compute/v1/zz-igm")
 	case r.Method == http.MethodGet && r.URL.Path == "/compute/v1/zz-igm":
-		_, _ = fmt.Fprintf(w, `{"targetSize":%d}`, f.targetSize)
+		instances := f.instances
+		if instances < 0 {
+			instances = f.targetSize
+		}
+		_, _ = fmt.Fprintf(w, `{"targetSize":%d,"currentActions":{"none":%d}}`, f.targetSize, instances)
 	case r.Method == http.MethodPost && r.URL.Path == poolPath+":setSize":
 		if f.setSizeStatus != 0 {
 			w.WriteHeader(f.setSizeStatus)
@@ -187,6 +199,9 @@ func (f *fakeCloud) serveGet(w http.ResponseWriter, object string) {
 	}
 	w.Header().Set("X-Goog-Generation", strconv.FormatInt(o.generation, 10))
 	_, _ = w.Write(o.body)
+	if f.afterGet != nil {
+		f.afterGet(f, object, f.gets[object])
+	}
 }
 
 // servePut honours ifGenerationMatch as GCS does: 0 means "only if absent",

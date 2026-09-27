@@ -1690,6 +1690,13 @@ exe-sleep:
 exe-status:
     @just _exe-reaper status
 
+# keep.json in the ops bucket has one writer, this recipe, and every write is
+# conditional on the generation it read; L1 only reads it.
+# Exempt a task from the 30-day TTL (add TASK), stop (rm TASK), or list (ls).
+[group('Exe')]
+exe-keep action *task:
+    @just _exe-reaper keep {{ action }} {{ task }}
+
 _exe-reaper *args:
     #!/usr/bin/env bash
     set -euo pipefail

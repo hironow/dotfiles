@@ -522,3 +522,52 @@ func TestNodePoolSizeReportsAnUnreadableGroup(t *testing.T) {
 		t.Fatal("a 403 on the instance group must be an error, not a size")
 	}
 }
+
+// The detector L2 runs (inbox M18, layer 3) needs what is really there, not
+// only what was asked for: the target reads zero the moment setSize(0) is
+// accepted, while the VM is still being deleted and still bills. The same
+// instance group GET carries currentActions -- one count per action, every
+// instance in the group counted once -- so reading it needs no new permission.
+func TestNodePoolReportsTheInstancesStillThere(t *testing.T) {
+	tests := []struct {
+		name string
+		igms []string
+		want Pool
+	}{
+		{"a live pool", []string{`{"targetSize":1,"currentActions":{"none":1}}`}, Pool{Target: 1, Instances: 1}},
+		{"stopping: the target is zero, the VM is still being deleted", []string{`{"targetSize":0,"currentActions":{"deleting":1,"none":0}}`}, Pool{Target: 0, Instances: 1}},
+		{"gone", []string{`{"targetSize":0,"currentActions":{"none":0,"deleting":0}}`}, Pool{Target: 0, Instances: 0}},
+		{"every action counts", []string{`{"targetSize":1,"currentActions":{"creating":1,"verifying":1}}`}, Pool{Target: 1, Instances: 2}},
+		{"groups add up", []string{`{"targetSize":1,"currentActions":{"none":1}}`, `{"targetSize":0,"currentActions":{"deleting":1}}`}, Pool{Target: 1, Instances: 2}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var srvURL string
+			client, srv := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, "/nodePools/") {
+					var urls []string
+					for i := range tc.igms {
+						urls = append(urls, fmt.Sprintf("%q", fmt.Sprintf("%s/compute/v1/projects/p/zones/z/instanceGroupManagers/g%d", srvURL, i)))
+					}
+					_, _ = fmt.Fprintf(w, `{"instanceGroupUrls":[%s]}`, strings.Join(urls, ","))
+					return
+				}
+				var i int
+				if _, err := fmt.Sscanf(r.URL.Path[strings.LastIndex(r.URL.Path, "/g")+2:], "%d", &i); err != nil || i >= len(tc.igms) {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				_, _ = w.Write([]byte(tc.igms[i]))
+			})
+			srvURL = srv.URL
+
+			got, err := client.NodePool(context.Background(), "p", "z", "exe", "main")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("want %+v, got %+v", tc.want, got)
+			}
+		})
+	}
+}
