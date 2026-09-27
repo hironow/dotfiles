@@ -137,8 +137,10 @@ locals {
 
   ate_setup_script = <<-EOT
       set -euo pipefail
+      ${local.worker_pool_functions}
       work="$(mktemp -d)"
-      trap 'rm -rf "$work"' EXIT
+      export AX_HOME="$work/ax"
+      trap 'ax tunnel stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 
       # The checkout must be the pinned commit; `just exe-cluster-src` fetches it.
       head="$(git -C "$SUBSTRATE_SRC" rev-parse HEAD)"
@@ -170,6 +172,13 @@ locals {
       # replacement it would run against empty tables until restarted.
       kubectl --context "$context" -n ate-system rollout restart deployment/ate-api-server
       kubectl --context "$context" -n ate-system rollout status deployment/ate-api-server --timeout=5m
+
+      # A worker reports its capacity once, at startup, to the store the API
+      # server has then. On a replaced store its record comes back without
+      # capacity and nothing is placed on it again. So restart the workers that
+      # predate the store, now that the API server is up on it, and refuse
+      # while a task is Running on them (worker_pool.sh).
+      restart_workers_from_a_replaced_store "ate-setup"
 
       # Nothing may delay a stop unless it protects state. Every stop takes the
       # only node away with actors already suspended, so a disruption budget can
@@ -222,6 +231,14 @@ locals {
     CLUSTER_NAME        = local.platform.cluster_name
     CLUSTER_LOCATION    = local.platform.zone
     STORE_NAMESPACE     = local.store_namespace
+    # The store's one claim: <claim template>-<statefulset>-<ordinal>.
+    STORE_CLAIM = join("-", [
+      kubernetes_stateful_set_v1.postgres.spec[0].volume_claim_template[0].metadata[0].name,
+      kubernetes_stateful_set_v1.postgres.metadata[0].name,
+      "0",
+    ])
+    ATESPACE            = local.atespace
+    POOL                = local.worker_pool_name
     SANDBOX_CONFIG_YAML = local.sandbox_config_yaml
     # Password-less on purpose: the installer writes this into a ConfigMap.
     # The real DSN is the Secret above, which wins.

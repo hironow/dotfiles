@@ -116,6 +116,36 @@ run "a_new_store_volume_re_runs_the_install_and_restarts_the_api_server" {
   }
 }
 
+# A worker reports its capacity once, at startup, to the store the API server
+# had then. On a replaced store its record comes back without capacity and
+# nothing is placed on it again, so after the API server is back up on the new
+# store the install restarts the workers that predate it (worker_pool.sh, whose
+# behaviour tests/unit/test_exe_worker_pool_functions.py runs under bash). The
+# checks here are the wiring.
+run "workers_that_reported_to_a_replaced_store_are_restarted_after_the_api_server" {
+  command = plan
+
+  assert {
+    condition     = strcontains(local.ate_setup_script, local.worker_pool_functions)
+    error_message = "the install must embed worker_pool.sh, so it refuses to restart workers on exactly what the pool guard refuses on."
+  }
+
+  assert {
+    condition     = can(regex("(?s)rollout status deployment/ate-api-server.*\nrestart_workers_from_a_replaced_store \"ate-setup\"\n", local.ate_setup_script))
+    error_message = "the install must restart the workers that predate the store after ate-api-server is back up on it: before that, a restarted worker would report its capacity to a server not yet on the new store."
+  }
+
+  assert {
+    condition     = local.ate_setup_env.STORE_CLAIM == "store-postgres-0" && local.ate_setup_env.POOL == "exe-gvisor" && local.ate_setup_env.ATESPACE == "exe"
+    error_message = "the install must name the store's claim (its creation time tells which workers predate the store), the pool, and the atespace whose tasks the check reads."
+  }
+
+  assert {
+    condition     = strcontains(local.ate_setup_script, "AX_HOME=\"$work/ax\"") && strcontains(local.ate_setup_script, "ax tunnel stop")
+    error_message = "the install's task check must keep ax's state in its scratch directory and stop the tunnel it opens, as the pool guard does."
+  }
+}
+
 run "the_install_drops_the_gmp_podmonitoring_and_writes_our_sandboxconfig" {
   command = plan
 
