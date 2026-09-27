@@ -153,6 +153,10 @@ resource "google_project_iam_member" "build_logs" {
 # tests/workload_identity.tofutest.hcl plans each binding on its own and fails
 # if the cluster is not part of that plan, here or in artifact_registry.tf.
 
+# This grant is also atelet's read access to the gVisor mirror, which lives in
+# the same bucket under mirror/gvisor/ (storage.tf; exe-cluster copies it there
+# and names it in the SandboxConfig). Narrowing it to snapshot prefixes would
+# make every actor's first boot fail on the sandbox asset download.
 resource "google_storage_bucket_iam_member" "atelet_snapshots_object_admin" {
   bucket = google_storage_bucket.snapshots.name
   role   = "roles/storage.objectAdmin"

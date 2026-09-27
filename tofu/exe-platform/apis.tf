@@ -32,6 +32,7 @@ locals {
     "logging.googleapis.com"              = "cluster logs, and the log-based Scheduler-failure metric"
     "cloudtrace.googleapis.com"           = "Substrate emits traces; the API itself costs nothing"
     "billingbudgets.googleapis.com"       = "the JPY budget"
+    "cloudkms.googleapis.com"             = "the key that encrypts tofu/exe-cluster's state (kms.tf)"
   }
 }
 

@@ -34,12 +34,12 @@ variables {
   alert_email        = "alerts@example.invalid"
 }
 
-run "the_enabled_api_set_is_exactly_the_eighteen_declared_here" {
+run "the_enabled_api_set_is_exactly_the_nineteen_declared_here" {
   command = plan
 
   assert {
-    condition     = length(google_project_service.enabled) == 18
-    error_message = "this stack must enable exactly 18 services. A 19th means an API was added to apis.tf without being explained here; a 17th means one was dropped and the resource that needed it will fail as an opaque 403 on the next apply into a clean project."
+    condition     = length(google_project_service.enabled) == 19
+    error_message = "this stack must enable exactly 19 services. A 20th means an API was added to apis.tf without being explained here; an 18th means one was dropped and the resource that needed it will fail as an opaque 403 on the next apply into a clean project."
   }
 
   # The explicit list. Anything enabled by apis.tf but absent here is either a
@@ -64,8 +64,9 @@ run "the_enabled_api_set_is_exactly_the_eighteen_declared_here" {
       "logging.googleapis.com",
       "cloudtrace.googleapis.com",
       "billingbudgets.googleapis.com",
+      "cloudkms.googleapis.com",
     ]))) == 0
-    error_message = "apis.tf enables a service this test does not list: ${join(", ", setsubtract(toset(keys(google_project_service.enabled)), toset(["cloudresourcemanager.googleapis.com", "serviceusage.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com", "sts.googleapis.com", "compute.googleapis.com", "container.googleapis.com", "networkconnectivity.googleapis.com", "storage.googleapis.com", "artifactregistry.googleapis.com", "cloudbuild.googleapis.com", "secretmanager.googleapis.com", "run.googleapis.com", "cloudscheduler.googleapis.com", "monitoring.googleapis.com", "logging.googleapis.com", "cloudtrace.googleapis.com", "billingbudgets.googleapis.com"])))}. On a shared project an unexplained enablement widens the blast radius of this stack; add it here with a note saying who needs it, or take it out of apis.tf."
+    error_message = "apis.tf enables a service this test does not list: ${join(", ", setsubtract(toset(keys(google_project_service.enabled)), toset(["cloudresourcemanager.googleapis.com", "serviceusage.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com", "sts.googleapis.com", "compute.googleapis.com", "container.googleapis.com", "networkconnectivity.googleapis.com", "storage.googleapis.com", "artifactregistry.googleapis.com", "cloudbuild.googleapis.com", "secretmanager.googleapis.com", "run.googleapis.com", "cloudscheduler.googleapis.com", "monitoring.googleapis.com", "logging.googleapis.com", "cloudtrace.googleapis.com", "billingbudgets.googleapis.com", "cloudkms.googleapis.com"])))}. On a shared project an unexplained enablement widens the blast radius of this stack; add it here with a note saying who needs it, or take it out of apis.tf."
   }
 }
 
@@ -160,6 +161,11 @@ run "every_declared_api_is_present_by_key" {
   assert {
     condition     = contains(keys(google_project_service.enabled), "billingbudgets.googleapis.com")
     error_message = "billingbudgets.googleapis.com must be enabled: the JPY budget is the last-resort money stop that catches everything the uptime and Scheduler alerts missed."
+  }
+
+  assert {
+    condition     = contains(keys(google_project_service.enabled), "cloudkms.googleapis.com")
+    error_message = "cloudkms.googleapis.com must be enabled: it holds the key that encrypts tofu/exe-cluster's state, which carries the Postgres and Redis passwords. Without it that stack cannot read its own state."
   }
 }
 

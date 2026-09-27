@@ -126,3 +126,13 @@ output "workload_identity_principals" {
   }
   sensitive = true
 }
+
+output "state_kms_key" {
+  description = <<-EOT
+    The KMS key tofu/exe-cluster encrypts its state with (kms.tf). Its id embeds
+    the project id, so it reaches that stack through its gitignored tfvars, not
+    through a tracked file.
+  EOT
+  value       = google_kms_crypto_key.state.id
+  sensitive   = true
+}

@@ -32,6 +32,12 @@ resource "google_storage_bucket" "snapshots" {
   # The storage-bounds gate asserts the ABSENCE of a delete rule here.
   # ==================================================================
 
+  # One other tenant, under its own prefix: `mirror/gvisor/`, the private copy
+  # of the gVisor release tarball that exe-cluster's SandboxConfig names.
+  # atelet downloads it through the grant it already holds here (iam.tf), and
+  # it is as permanent as a snapshot: a resumed actor needs that exact tarball,
+  # by sha256, long after upstream's nightly path has gone.
+
   # No versioning: a snapshot object is written once under a content-addressed
   # name, so versions would only ever be duplicates.
   versioning {
