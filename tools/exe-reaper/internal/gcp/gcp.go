@@ -78,16 +78,25 @@ func (c *Client) container() string {
 
 // New returns a Client with the default token chain.
 func New() *Client {
+	tokens := &tokenSource{metadataURL: metadataTokenURL}
 	return &Client{
 		HTTP:  &http.Client{Timeout: defaultTimeout},
-		Token: defaultToken,
+		Token: tokens.Token,
 	}
 }
 
-func defaultToken(ctx context.Context) (string, error) {
+// tokenSource is the default token chain.
+type tokenSource struct {
+	// metadataURL is the metadata server's token endpoint. New sets the real
+	// one; the tests point it at an httptest server, the same seam as
+	// StorageBase.
+	metadataURL string
+}
+
+func (s *tokenSource) Token(ctx context.Context) (string, error) {
 	// Metadata server first: inside Cloud Run or on a node this is the identity
 	// that matters, and it needs no configuration.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataTokenURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.metadataURL, nil)
 	if err == nil {
 		req.Header.Set("Metadata-Flavor", "Google")
 		client := &http.Client{Timeout: 2 * time.Second}
