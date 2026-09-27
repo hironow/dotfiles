@@ -1761,6 +1761,129 @@ _tofu-out stack name:
     echo "tofu/{{ stack }}: outputs unreadable after 4 tries" >&2
     exit 1
 
+# ==============================================================================
+# exe-cluster — everything inside the cluster (tofu/exe-cluster): the Substrate
+# store, Agent Substrate via its pinned installer, the gVisor SandboxConfig and
+# mirror, AX, the WorkerPool.
+#
+# Its state is ENCRYPTED (gcp_kms, exe-platform's state key): tfvars carries
+# state_kms_key. The upstream checkouts it builds from are fetched and verified
+# by exe-cluster-src into a local cache, never into the repo.
+#
+# APPLY IS THE OPERATOR'S, and an apply that (re)runs the Substrate install
+# needs a node up under a lease (`just exe-wake`).
+# ==============================================================================
+
+_EXE_CLUSTER_DIR := "tofu/exe-cluster"
+_EXE_SRC_DIR := env("XDG_CACHE_HOME", env("HOME") + "/.cache") + "/exe/src"
+
+# Fetch the pinned ax and Agent Substrate checkouts (exe/versions.json) into the
+# local cache, and verify each is at its pinned commit. Idempotent.
+[group('Exe')]
+exe-cluster-src:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src="{{ _EXE_SRC_DIR }}"
+    mkdir -p "$src"
+    pin() { python3 -c 'import json, sys; print(json.load(open("exe/versions.json"))[sys.argv[1]][sys.argv[2]])' "$1" "$2"; }
+    for name in ax substrate; do
+      repo="https://$(pin "$name" repo)"
+      sha="$(pin "$name" sha)"
+      dir="$src/$name"
+      if [ ! -d "$dir/.git" ]; then
+        git init --quiet "$dir"
+        git -C "$dir" remote add origin "$repo"
+      fi
+      if [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null || true)" != "$sha" ]; then
+        git -C "$dir" fetch --quiet --depth 1 origin "$sha"
+        git -C "$dir" checkout --quiet --detach FETCH_HEAD
+      fi
+      head="$(git -C "$dir" rev-parse HEAD)"
+      if [ "$head" != "$sha" ]; then
+        echo "exe-cluster-src: $dir is at $head, want $sha" >&2
+        exit 1
+      fi
+      echo "✅ $name at $sha ($dir)"
+    done
+
+# tofu in the exe-cluster stack, with the private project as the quota project.
+# The state key's KMS calls (and the backend's) run on the operator's user ADC,
+# which bills requests to whatever project gcloud defaults to, and that project
+# need not have KMS enabled; GOOGLE_CLOUD_QUOTA_PROJECT pins it to the project
+# the key lives in, read from the gitignored terraform.tfvars.
+_exe-cluster-tofu *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}/{{ _EXE_CLUSTER_DIR }}"
+    if [ -f terraform.tfvars ]; then
+      GOOGLE_CLOUD_QUOTA_PROJECT="$(python3 -c 'import re; print(re.search(r"(?m)^gcp_project_id\s*=\s*\"([^\"]+)\"", open("terraform.tfvars").read()).group(1))')"
+      export GOOGLE_CLOUD_QUOTA_PROJECT
+    fi
+    exec mise x -- tofu {{ args }}
+
+# Initialise the backend (the platform's state bucket, prefix exe-cluster) from
+# the gitignored partial config. The state key comes from terraform.tfvars.
+[group('Exe')]
+exe-cluster-init *args:
+    @just _exe-cluster-tofu init -input=false -backend-config=backend.hcl {{ args }}
+
+# Offline invariant tests (plan + mock providers, no credentials, no network).
+[group('Exe')]
+exe-cluster-test *args:
+    cd {{ _EXE_CLUSTER_DIR }} && mise x -- tofu test {{ args }}
+
+[group('Exe')]
+exe-cluster-validate:
+    cd {{ _EXE_CLUSTER_DIR }} && mise x -- tofu fmt -check -recursive . && mise x -- tofu validate
+
+# Write an ENCRYPTED saved plan for the operator to apply. ko_build rebuilds the
+# AX images locally on every plan, so the checkouts must be in place first.
+[group('Exe')]
+exe-cluster-plan *args: exe-cluster-src
+    @TF_VAR_exe_src_dir="{{ _EXE_SRC_DIR }}" just _exe-cluster-tofu plan -input=false -out=exe-cluster.tfplan {{ args }}
+    @echo '📋 saved plan: {{ _EXE_CLUSTER_DIR }}/exe-cluster.tfplan (encrypted, gitignored)'
+
+# Summarise the saved plan by address (`--expect-changes FILE` holds it to a
+# reviewed change list; FILE is relative to the stack directory).
+[group('Exe')]
+exe-cluster-plan-summary *args:
+    @just _exe-cluster-tofu show -json exe-cluster.tfplan | (cd {{ _EXE_CLUSTER_DIR }} && {{ UV_RUN }} ../../scripts/summarize_tofu_plan.py {{ args }})
+
+# OPERATOR ONLY. Applies the saved plan. Its terraform_data steps run here: the
+# gVisor mirror copy, the Substrate install (ko builds + rollout waits; needs a
+# node up), and the WorkerPool guard.
+[group('Exe')]
+exe-cluster-apply:
+    @just _exe-cluster-tofu apply -input=false exe-cluster.tfplan
+
+# Build and push the Substrate worker images with upstream's own
+# `ate-setup publish worker-images`, from the pinned checkout. Prints their
+# digest refs; the gVisor one is the exe-cluster `ateom_gvisor_image` tfvars
+# value. Writes to the private registry only.
+[group('Exe')]
+exe-worker-images: exe-cluster-src
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo="$(just _tofu-out exe-platform ar_platform_repo)"
+    version="$(python3 -c 'import json; print(json.load(open("exe/versions.json"))["substrate"]["version_label_value"])')"
+    cd "{{ _EXE_SRC_DIR }}/substrate"
+    KO_DOCKER_REPO="${repo}/substrate" KO_DEFAULTPLATFORMS=linux/amd64 VERSION="$version" NO_DEV_ENV=1 \
+        mise x -- go run ./cmd/ate-setup --no-dev-env publish worker-images
+
+# Build and push a MINIMAL task image for the Phase 4 spike: upstream's
+# ax-task-runner over its alpine/git base (pinned by digest), nothing else. The
+# real task image, with the agent CLIs, is Phase 5's `just exe-image`. Prints
+# the digest ref a Task's spec.image takes.
+[group('Exe')]
+exe-spike-task-image: exe-cluster-src
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo="$(just _tofu-out exe-platform ar_task_repo)"
+    cd "{{ _EXE_SRC_DIR }}/ax"
+    KO_DOCKER_REPO="${repo}/spike-task-runner" KO_CONFIG_PATH="{{ justfile_directory() }}/exe/ax/.ko.yaml" \
+        mise exec aqua:ko-build/ko -- ko build --bare --platform=linux/amd64 --sbom=none \
+        --tags="$(git rev-parse --short=12 HEAD)" ./cmd/ax-task-runner
+
 # Build the TF_ENCRYPTION HCL payload from the local passphrase.
 # State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
 # Mirrors the static block in tofu/exe/main.tf. HCL form (NOT JSON);

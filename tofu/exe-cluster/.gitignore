@@ -1,0 +1,27 @@
+# This stack targets a PRIVATE GCP project in a PUBLIC repo. Everything that
+# carries an identifier (project id / number, billing account, state bucket,
+# notification address) lives in these files and nowhere else -- see the
+# confidentiality contract in docs/plan/exe-google-ax.md section 1.1.
+#
+# scripts/check_forbidden_tokens.py is the second wall: it refuses to stage
+# *.tfplan / *.tfstate* / terraform.tfvars / backend.hcl outright, because their
+# content cannot be reviewed for tokens. This file is the first wall.
+
+# Variable values (no HCL variable here carries a default, so these are required)
+terraform.tfvars
+*.auto.tfvars
+!terraform.tfvars.example
+
+# Partial backend config: `tofu init -backend-config=backend.hcl`
+backend.hcl
+*.tfbackend
+
+# Saved plans and any state that ever lands locally
+*.tfplan
+*.tfstate
+*.tfstate.*
+
+# Provider plugins and lock-adjacent working files
+.terraform/
+crash.log
+crash.*.log
