@@ -1859,6 +1859,72 @@ exe-cluster-plan-summary *args:
 exe-cluster-apply:
     @just _exe-cluster-tofu apply -input=false exe-cluster.tfplan
 
+# Run after the exe-cluster destroy: upstream's own `ate-setup delete
+# ate-system` from the exact commit that installed it (SHA and VERSION are that
+# install's substrate.sha and substrate.version, from exe/versions.json's git
+# history -- not the current pin), then the podcertificate ClusterTrustBundles
+# the controller publishes at runtime, which no manifest owns. Prints what
+# went and fails if any of it is still there. The delete ignores objects that
+# are already gone, so a rerun is harmless.
+# OPERATOR ONLY. Remove what a Substrate install created outside tofu state.
+[group('Exe')]
+exe-substrate-teardown sha version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! printf '%s' "{{ sha }}" | grep -Eq '^[0-9a-f]{40}$'; then
+      echo "exe-substrate-teardown: SHA must be the full 40-hex commit" >&2
+      exit 1
+    fi
+    repo="https://$(python3 -c 'import json; print(json.load(open("exe/versions.json"))["substrate"]["repo"])')"
+    project="$(just _tofu-out exe-platform project_id)"
+    cluster="$(just _tofu-out exe-platform cluster_name)"
+    zone="$(just _tofu-out exe-platform zone)"
+    ar="$(just _tofu-out exe-platform ar_platform_repo)"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    git init --quiet "$work/substrate"
+    git -C "$work/substrate" remote add origin "$repo"
+    git -C "$work/substrate" fetch --quiet --depth 1 origin "{{ sha }}"
+    git -C "$work/substrate" checkout --quiet --detach FETCH_HEAD
+    if [ "$(git -C "$work/substrate" rev-parse HEAD)" != "{{ sha }}" ]; then
+      echo "exe-substrate-teardown: fetched $(git -C "$work/substrate" rev-parse HEAD), want {{ sha }}" >&2
+      exit 1
+    fi
+    export KUBECONFIG="$work/kubeconfig"
+    mise x -- gcloud container clusters get-credentials "$cluster" \
+        --zone "$zone" --project "$project" --dns-endpoint >/dev/null 2>&1
+    context="$(kubectl config current-context)"
+    signers='podidentity.podcert.ate.dev/identity|servicedns.podcert.ate.dev/identity'
+    inventory() {
+      kubectl get namespaces -o name | grep -E '/(ate-system|podcertificate-controller-system)$' || true
+      kubectl get customresourcedefinitions -o name | grep -E '\.ate\.dev$' || true
+      kubectl get clustertrustbundles.certificates.k8s.io \
+          -o custom-columns='N:.metadata.name,S:.spec.signerName' --no-headers |
+        awk -v s="$signers" '$2 ~ "^(" s ")$" {print "clustertrustbundle/" $1}'
+    }
+    inventory | sort > "$work/before"
+    (cd "$work/substrate" &&
+      KO_DOCKER_REPO="$ar/substrate" KO_DEFAULTPLATFORMS=linux/amd64 VERSION="{{ version }}" NO_DEV_ENV=1 \
+      PROJECT_ID="$project" CLUSTER_NAME="$cluster" CLUSTER_LOCATION="$zone" \
+      mise x -- go run ./cmd/ate-setup --kubeconfig "$KUBECONFIG" --context "$context" --no-dev-env \
+        delete ate-system)
+    kubectl get clustertrustbundles.certificates.k8s.io \
+        -o custom-columns='N:.metadata.name,S:.spec.signerName' --no-headers |
+      awk -v s="$signers" '$2 ~ "^(" s ")$" {print $1}' |
+      while read -r bundle; do kubectl delete clustertrustbundles.certificates.k8s.io "$bundle"; done
+    # Namespace and CRD deletion finish asynchronously; wait before judging.
+    while read -r object; do
+      kubectl wait --for=delete "$object" --timeout=5m >/dev/null 2>&1 || true
+    done < "$work/before"
+    inventory | sort > "$work/after"
+    echo "exe-substrate-teardown: removed (Substrate {{ version }} at {{ sha }}):"
+    comm -23 "$work/before" "$work/after" | sed 's/^/  - /'
+    if [ -s "$work/after" ]; then
+      echo "exe-substrate-teardown: still present:" >&2
+      sed 's/^/  - /' "$work/after" >&2
+      exit 1
+    fi
+
 # Build and push the Substrate worker images with upstream's own
 # `ate-setup publish worker-images`, from the pinned checkout. Prints their
 # digest refs; the gVisor one is the exe-cluster `ateom_gvisor_image` tfvars
