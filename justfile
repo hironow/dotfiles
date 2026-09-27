@@ -1601,6 +1601,53 @@ exe-platform-stop:
     mise x -- gcloud scheduler jobs run "$job" --location "$region" --project "$project"
     echo "✅ L3 triggered. Node pool goes to 0; check with: just exe-platform-nodes"
 
+# --- the lease (L0): exe-reaper on the operator's own credentials -----------
+#
+# Every exe node runs under a lease with a deadline (plan section 3.2): 2h by
+# default, 8h at most per wake or extend, never past 03:00 JST. These recipes
+# are the operator's side of it; L1 drains, L2 enforces the deadline from
+# outside the cluster, and L3 stops the pool every night regardless. Identifiers
+# come from `tofu output` (the private values stay in state and never reach the
+# repo), the token from the operator's gcloud login. Nothing here needs the
+# cluster to be up, so `exe-status` answers while it is asleep.
+
+# Authorise a node for DURATION (default 2h) and start it: `just exe-wake 5m`.
+[group('Exe')]
+exe-wake duration="2h":
+    @just _exe-reaper wake -for {{ duration }}
+
+# Push the deadline to DURATION from now; invalidates an earlier drained record.
+[group('Exe')]
+exe-extend duration="2h":
+    @just _exe-reaper extend -for {{ duration }}
+
+# Expire the lease now: L1 drains, then L2 stops the pool.
+[group('Exe')]
+exe-sleep:
+    @just _exe-reaper sleep
+
+# The lease, the drain and enforcement records, and the pool size, from GCP APIs.
+[group('Exe')]
+exe-status:
+    @just _exe-reaper status
+
+_exe-reaper *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd {{ _EXE_PLATFORM_DIR }}
+    outputs="$(mise x -- tofu output -json)"
+    out() { printf '%s' "$outputs" | python3 -c 'import json, sys; print(json.load(sys.stdin)[sys.argv[1]]["value"])' "$1"; }
+    EXE_PROJECT_ID="$(out project_id)"
+    EXE_ZONE="$(out zone)"
+    EXE_CLUSTER_NAME="$(out cluster_name)"
+    EXE_NODE_POOL="$(out node_pool_name)"
+    EXE_NODE_POOL_SET_SIZE_URI="$(out node_pool_set_size_uri)"
+    EXE_OPS_BUCKET="$(out bucket_ops)"
+    GOOGLE_OAUTH_ACCESS_TOKEN="$(mise x -- gcloud auth print-access-token)"
+    export EXE_PROJECT_ID EXE_ZONE EXE_CLUSTER_NAME EXE_NODE_POOL EXE_NODE_POOL_SET_SIZE_URI EXE_OPS_BUCKET GOOGLE_OAUTH_ACCESS_TOKEN
+    cd ../../tools/exe-reaper
+    exec mise x -- go run . {{ args }}
+
 # Build the TF_ENCRYPTION HCL payload from the local passphrase.
 # State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
 # Mirrors the static block in tofu/exe/main.tf. HCL form (NOT JSON);
