@@ -37,10 +37,11 @@ type fakeCloud struct {
 	// beforeGet runs under the lock before the nth GET of an object is
 	// served (n counts from 1), so a test can change the world between two
 	// reads of one tick.
-	beforeGet    func(f *fakeCloud, object string, n int)
-	sizeStatus   int
-	targetSize   int
-	setSizeCalls []int
+	beforeGet     func(f *fakeCloud, object string, n int)
+	sizeStatus    int // non-zero: the pool GET answers with it
+	setSizeStatus int // non-zero: setSize answers with it and resizes nothing
+	targetSize    int
+	setSizeCalls  []int
 }
 
 type fakeObject struct {
@@ -83,8 +84,7 @@ func (f *fakeCloud) enforcer(out io.Writer) enforcer {
 			cluster:    "zz-cluster",
 			nodePool:   fakePool,
 		},
-		out:    out,
-		errOut: out,
+		log: contractLog{out},
 	}
 }
 
@@ -143,6 +143,10 @@ func (f *fakeCloud) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/compute/v1/zz-igm":
 		_, _ = fmt.Fprintf(w, `{"targetSize":%d}`, f.targetSize)
 	case r.Method == http.MethodPost && r.URL.Path == poolPath+":setSize":
+		if f.setSizeStatus != 0 {
+			w.WriteHeader(f.setSizeStatus)
+			return
+		}
 		var req struct {
 			NodeCount int `json:"nodeCount"`
 		}

@@ -98,7 +98,9 @@ func main() {
 	case "sleep":
 		err = cmdSleep(ctx, os.Args[2:])
 	case "enforce":
-		err = cmdEnforce(ctx, os.Args[2:])
+		// Its own exit path: every line it writes, the failure line included,
+		// is the log contract on stdout.
+		os.Exit(runEnforce(ctx, os.Args[2:], os.Stdout))
 	case "status":
 		err = cmdStatus(ctx, os.Args[2:])
 	case "-h", "--help", "help":
@@ -230,29 +232,43 @@ func cmdSleep(ctx context.Context, args []string) error {
 
 // --- L2: enforce -------------------------------------------------------------
 
-func cmdEnforce(ctx context.Context, args []string) error {
+// runEnforce is `exe-reaper enforce`, the L2 Cloud Run job: one tick, reported
+// through the log contract below, and an exit code for Cloud Run to record.
+func runEnforce(ctx context.Context, args []string, out io.Writer) int {
+	log := contractLog{out}
 	fs := flag.NewFlagSet("enforce", flag.ExitOnError)
 	dryRun := fs.Bool("dry-run", false, "decide and report, change nothing")
 	if err := fs.Parse(args); err != nil {
-		return err
+		log.fail(err)
+		return 1
 	}
 	cfg, err := loadConfig(envBucket, envSetSizeURI, envProject, envZone, envCluster, envNodePool)
 	if err != nil {
-		return err
+		log.fail(err)
+		return 1
 	}
-	e := enforcer{client: gcp.New(), cfg: cfg, out: os.Stdout, errOut: os.Stderr}
-	return e.tick(ctx, time.Now(), *dryRun)
+	e := enforcer{client: gcp.New(), cfg: cfg, log: log}
+	return e.run(ctx, time.Now(), *dryRun)
 }
 
 // enforcer is L2's plumbing: what it reads and writes through, and where it
-// reports. cmdEnforce builds it from the environment; the tests build it from
+// reports. runEnforce builds it from the environment; the tests build it from
 // httptest stand-ins for GCS and GKE, which is what lets a whole tick run, real
 // HTTP client included, without a cloud.
 type enforcer struct {
 	client *gcp.Client
 	cfg    config
-	out    io.Writer // the decision line
-	errOut io.Writer // warnings
+	log    contractLog
+}
+
+// run is one tick as the job runs it. A tick that fails ends with the failure
+// line of the log contract and exit code 1.
+func (e enforcer) run(ctx context.Context, now time.Time, dryRun bool) int {
+	if err := e.tick(ctx, now, dryRun); err != nil {
+		e.log.fail(err)
+		return 1
+	}
+	return 0
 }
 
 // tick is one L2 pass: read the three inputs, decide, act, record.
@@ -269,7 +285,7 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	// acts, and then fails instead of recording.
 	prev, prevGeneration, recordErr := readEnforce(ctx, client, cfg.bucket)
 	if recordErr != nil {
-		_, _ = fmt.Fprintf(e.errOut, "warning: %v; deciding without the previous record\n", recordErr)
+		e.log.warn(fmt.Sprintf("%v; deciding without the previous record", recordErr))
 	}
 
 	obs := lease.Observation{Now: now}
@@ -284,7 +300,7 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 
 	size, sizeErr := client.NodePoolSize(ctx, cfg.project, cfg.zone, cfg.cluster, cfg.nodePool)
 	if sizeErr != nil {
-		_, _ = fmt.Fprintf(e.errOut, "warning: node pool size unreadable, deciding as if a node may be up: %v\n", sizeErr)
+		e.log.warn(fmt.Sprintf("node pool size unreadable, deciding as if a node may be up: %v", sizeErr))
 	}
 	obs.Nodes = nodesForDecision(size, sizeErr)
 
@@ -294,18 +310,25 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	obs.ConsecutiveReadFailures = lease.NextReadFailures(prev.ReadFailures, obs.LeaseOK, obs.Nodes)
 
 	decision := lease.DecideL2(obs)
-	_, _ = fmt.Fprintf(e.out, "decision=%s reason=%s nodes=%d readFailures=%d\n",
-		decision.Action, decision.Reason, obs.Nodes, obs.ConsecutiveReadFailures)
+	key := pageKey(obs, prev)
+	line := decisionReport{Decision: decision, Obs: obs, LeaseGeneration: key}
 
 	if dryRun {
+		// Changes nothing and records nothing, so it pages nothing either.
+		line.DryRun = true
+		e.log.decision(line)
 		return nil
 	}
 
 	if decision.Action != lease.ActionWait {
 		if err := client.SetNodePoolSize(ctx, cfg.setSizeURI, 0); err != nil {
-			return fmt.Errorf("stopping the node pool: %w", err)
+			// No decision line: a stop that was not made must not page as one.
+			// The failure line carries what was decided.
+			return fmt.Errorf("stopping the node pool (%s, %s): %w", decision.Action, decision.Reason, err)
 		}
 	}
+	line.Notify = shouldPage(decision, key, prev)
+	e.log.decision(line)
 
 	if recordErr != nil {
 		// No generation to write against, so a conditional write could only
@@ -315,11 +338,16 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	}
 
 	record := enforceRecord{
-		At:           now,
-		Action:       string(decision.Action),
-		Reason:       string(decision.Reason),
-		Notified:     decision.Notify(),
-		ReadFailures: obs.ConsecutiveReadFailures,
+		At:                 now,
+		Action:             string(decision.Action),
+		Reason:             string(decision.Reason),
+		Notified:           line.Notify,
+		ReadFailures:       obs.ConsecutiveReadFailures,
+		LeaseGeneration:    key,
+		NotifiedGeneration: prev.NotifiedGeneration,
+	}
+	if line.Notify {
+		record.NotifiedGeneration = &key
 	}
 	body, err := json.Marshal(record)
 	if err != nil {
@@ -328,11 +356,148 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	// Conditional on the generation L2 itself last saw. Two enforcer executions
 	// overlapping (a retry, a manual run) then produce one winner rather than a
 	// silently interleaved record.
-	if err := client.PutObject(ctx, cfg.bucket, enforceObject, body, prevGeneration); err != nil &&
-		!errors.Is(err, gcp.ErrPreconditionFailed) {
+	err = client.PutObject(ctx, cfg.bucket, enforceObject, body, prevGeneration)
+	switch {
+	case errors.Is(err, gcp.ErrPreconditionFailed):
+		e.log.warn(enforceObject + " changed during this tick; the other execution's record stands")
+	case err != nil:
 		return fmt.Errorf("writing the enforcement record: %w", err)
 	}
 	return nil
+}
+
+// pageKey is the lease generation a forced stop is paged under: the lease this
+// tick read, or, when it could read none, the last one an earlier tick did. A
+// blind stop has no lease of its own to name, and keying it on the last one
+// read is what keeps a run of blind stops to one page.
+func pageKey(obs lease.Observation, prev enforceRecord) int64 {
+	if obs.LeaseOK {
+		return obs.Lease.Generation
+	}
+	return prev.LeaseGeneration
+}
+
+// shouldPage reports whether a decision pages the operator: a forced stop, and
+// only the first under its lease generation (D4). The stop itself is repeated
+// on every tick that sees the pool up -- setSize(0) is idempotent -- but a
+// stuck stop, or a pool size that keeps reading as up, would otherwise page on
+// every tick all night. A new lease is a new generation, so its forced stop
+// pages again.
+func shouldPage(d lease.Decision, key int64, prev enforceRecord) bool {
+	if !d.Notify() {
+		return false
+	}
+	return prev.NotifiedGeneration == nil || *prev.NotifiedGeneration != key
+}
+
+// --- the log contract ---------------------------------------------------------
+//
+// `exe-reaper enforce` writes one JSON object per line to stdout, and nothing
+// else. Cloud Run lifts "severity" into the entry's level and "message" into
+// its summary; the rest lands in jsonPayload, L2's fields under
+// jsonPayload.exe_l2. The two L2 alerts in tofu/exe-platform/monitoring.tf read
+// it, so these lines are an interface, not a diagnostic:
+//
+//	decision  event "decision", once per tick that decided. ERROR exactly when
+//	          notify is set -- the first forced stop of a lease generation,
+//	          which the forced-stop alert pages on. A repeat is WARNING.
+//	failure   event "failure" at ERROR, the last line before exit 1. The
+//	          failed-execution alert pages on ERROR that is not a decision.
+//	warning   event "warning" at WARNING: something the tick worked around.
+//	          Never ERROR, or a tick that did its job would page as failed.
+
+const (
+	severityInfo    = "INFO"
+	severityNotice  = "NOTICE"
+	severityWarning = "WARNING"
+	severityError   = "ERROR"
+)
+
+type contractLog struct {
+	w io.Writer
+}
+
+type logEntry struct {
+	Severity string `json:"severity"`
+	Message  string `json:"message"`
+	L2       any    `json:"exe_l2"`
+}
+
+func (l contractLog) write(e logEntry) {
+	body, err := json.Marshal(e)
+	if err != nil {
+		// Nothing above can fail to marshal; if it ever does, the line must
+		// still arrive, at its severity.
+		body = fmt.Appendf(nil, `{"severity":%q,"message":%q,"exe_l2":{"event":"failure"}}`,
+			e.Severity, e.Message)
+	}
+	_, _ = l.w.Write(append(body, '\n'))
+}
+
+// decisionReport is what one tick decided, as the decision line reports it.
+type decisionReport struct {
+	Decision        lease.Decision
+	Obs             lease.Observation
+	LeaseGeneration int64
+	Notify          bool
+	DryRun          bool
+}
+
+type decisionFields struct {
+	Event           string `json:"event"`
+	Action          string `json:"action"`
+	Reason          string `json:"reason"`
+	Notify          bool   `json:"notify"`
+	DryRun          bool   `json:"dryRun,omitempty"`
+	Nodes           int    `json:"nodes"`
+	ReadFailures    int    `json:"readFailures"`
+	LeaseReadable   bool   `json:"leaseReadable"`
+	LeaseGeneration int64  `json:"leaseGeneration"`
+}
+
+func (l contractLog) decision(d decisionReport) {
+	severity := severityInfo
+	switch {
+	case d.Notify:
+		severity = severityError
+	case d.Decision.Action == lease.ActionStopForced || d.Decision.Reason == lease.ReasonTransientReadFailure:
+		severity = severityWarning
+	case d.Decision.Action == lease.ActionStopGraceful:
+		severity = severityNotice
+	}
+	l.write(logEntry{
+		Severity: severity,
+		Message: fmt.Sprintf("L2 %s (%s): nodes %d, lease read failures %d",
+			d.Decision.Action, d.Decision.Reason, d.Obs.Nodes, d.Obs.ConsecutiveReadFailures),
+		L2: decisionFields{
+			Event:           "decision",
+			Action:          string(d.Decision.Action),
+			Reason:          string(d.Decision.Reason),
+			Notify:          d.Notify,
+			DryRun:          d.DryRun,
+			Nodes:           d.Obs.Nodes,
+			ReadFailures:    d.Obs.ConsecutiveReadFailures,
+			LeaseReadable:   d.Obs.LeaseOK,
+			LeaseGeneration: d.LeaseGeneration,
+		},
+	})
+}
+
+type messageFields struct {
+	Event string `json:"event"`
+	Error string `json:"error,omitempty"`
+}
+
+func (l contractLog) warn(message string) {
+	l.write(logEntry{Severity: severityWarning, Message: message, L2: messageFields{Event: "warning"}})
+}
+
+func (l contractLog) fail(err error) {
+	l.write(logEntry{
+		Severity: severityError,
+		Message:  "exe-reaper enforce failed: " + err.Error(),
+		L2:       messageFields{Event: "failure", Error: err.Error()},
+	})
 }
 
 // nodesForDecision is the pool size L2 decides on. An unreadable size counts as
@@ -373,12 +538,20 @@ func leaseFromRead(body []byte, generation int64, err error) (lease.Lease, bool)
 	return l, true
 }
 
+// enforceRecord is enforce.json: what L2 decided last, and the little it has
+// to carry to the next tick.
 type enforceRecord struct {
 	At           time.Time `json:"at"`
 	Action       string    `json:"action"`
 	Reason       string    `json:"reason"`
 	Notified     bool      `json:"notified"`
 	ReadFailures int       `json:"readFailures"`
+	// LeaseGeneration is the lease generation this tick read, or, when it read
+	// none, the last one an earlier tick did (pageKey).
+	LeaseGeneration int64 `json:"leaseGeneration,omitempty"`
+	// NotifiedGeneration is the lease generation the last paged forced stop was
+	// about; nil until the first page.
+	NotifiedGeneration *int64 `json:"notifiedGeneration,omitempty"`
 }
 
 // readEnforce reads L2's own record, its only memory between ticks.
