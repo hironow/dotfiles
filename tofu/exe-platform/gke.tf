@@ -145,6 +145,12 @@ resource "google_container_cluster" "exe" {
     gce_persistent_disk_csi_driver_config {
       enabled = true
     }
+    # On by GKE's default and unused here. It runs a DaemonSet on the only
+    # node, and its lock-release controller ships a GKE-managed disruption
+    # budget that can hold the drain at a stop while the node bills.
+    gcp_filestore_csi_driver_config {
+      enabled = false
+    }
   }
 
   # System logs only for monitoring, and Managed Service for Prometheus off.

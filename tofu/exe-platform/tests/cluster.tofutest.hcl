@@ -203,6 +203,16 @@ run "no_continuously_billed_addons" {
     error_message = "the HTTP load balancing addon must stay disabled: an Ingress controller here would create a forwarding rule billed per hour whether or not a node exists, which on a cluster designed to sit at zero nodes would be the whole monthly bill."
   }
 
+  # GKE turns the Filestore CSI driver on by default. Nothing here uses
+  # Filestore, it runs a DaemonSet on the only node, and its lock-release
+  # controller ships a PodDisruptionBudget GKE reconciles -- one that can read
+  # zero allowed disruptions and hold a one-node drain while the node bills
+  # (nothing may delay a stop unless it protects state).
+  assert {
+    condition     = google_container_cluster.exe.addons_config[0].gcp_filestore_csi_driver_config[0].enabled == false
+    error_message = "the Filestore CSI driver must be disabled: nothing here uses Filestore, and the addon brings a GKE-managed PodDisruptionBudget (filestore-lock-release-controller-pdb) that can hold the one node's drain at a stop, plus a DaemonSet on the only node. Upstream's own setup tool disables it too."
+  }
+
   # Deliberately off, and the node-uptime alert reads a Compute Engine metric
   # instead, so the money stop does not depend on the cluster's own monitoring.
   assert {
