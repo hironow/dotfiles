@@ -1643,7 +1643,7 @@ exe-platform-stop:
 
 # --- the lease (L0): exe-reaper on the operator's own credentials -----------
 #
-# Every exe node runs under a lease with a deadline (plan section 3.2): 2h by
+# Every exe node runs under a lease with a deadline (plan section 3.2): 1h by
 # default, 8h at most per wake or extend, never past 03:00 JST. These recipes
 # are the operator's side of it; L1 drains, L2 enforces the deadline from
 # outside the cluster, and L3 stops the pool every night regardless. Identifiers
@@ -1651,14 +1651,14 @@ exe-platform-stop:
 # repo), the token from the operator's gcloud login. Nothing here needs the
 # cluster to be up, so `exe-status` answers while it is asleep.
 
-# Authorise a node for DURATION (default 2h) and start it: `just exe-wake 5m`.
+# Authorise a node for DURATION (default 1h) and start it: `just exe-wake 5m`.
 [group('Exe')]
-exe-wake duration="2h":
+exe-wake duration="1h":
     @just _exe-reaper wake -for {{ duration }}
 
 # Push the deadline to DURATION from now; invalidates an earlier drained record.
 [group('Exe')]
-exe-extend duration="2h":
+exe-extend duration="1h":
     @just _exe-reaper extend -for {{ duration }}
 
 # Expire the lease now: L1 drains, then L2 stops the pool.

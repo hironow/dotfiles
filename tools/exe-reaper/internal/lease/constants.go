@@ -30,7 +30,7 @@ const (
 	TimezoneName = "Asia/Tokyo"
 
 	// DefaultLease is what `exe-wake` with no argument asks for.
-	DefaultLease = 120 * time.Minute
+	DefaultLease = 60 * time.Minute
 
 	// MaxLease is the ceiling on ONE wake or extend. It is not a ceiling on
 	// total uptime: repeated extends are allowed, and each one is a deliberate

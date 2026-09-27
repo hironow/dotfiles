@@ -1,7 +1,7 @@
 {
   "_source_of_truth": "The only place the lease auto-sleep's numbers live. The Go reaper mirrors it (tools/exe-reaper/internal/lease, held equal by constants_test.go), the Quint model exe/spec/lease.qnt mirrors it (held equal by tests/unit/test_lease_constants_lockstep.py), and OpenTofu reads it directly. A constant that exists twice is a constant that will disagree once.",
   "timezone": "Asia/Tokyo",
-  "default_lease_minutes": 120,
+  "default_lease_minutes": 60,
   "max_lease_minutes": 480,
   "l1_tick_minutes": 1,
   "drain_ceiling_minutes": 30,

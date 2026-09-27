@@ -118,7 +118,7 @@ module leaseCore {
   // text.
   // --------------------------------------------------------------------------
 
-  pure val default_lease_minutes = 120
+  pure val default_lease_minutes = 60
   pure val max_lease_minutes = 480
   pure val l1_tick_minutes = 1
   pure val drain_ceiling_minutes = 30

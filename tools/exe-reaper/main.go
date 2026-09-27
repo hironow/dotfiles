@@ -85,7 +85,7 @@ func loadConfig(required ...string) (config, error) {
 
 // errPositionalArgs is a command given an argument it does not take. Every
 // value goes through a flag, and anything else is refused rather than
-// ignored: `wake 5m` once meant a two-hour lease.
+// ignored: `wake 5m` once meant a default-length lease.
 var errPositionalArgs = errors.New("unexpected argument")
 
 // noArgs refuses whatever the flags did not consume.
