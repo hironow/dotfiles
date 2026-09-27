@@ -28,6 +28,7 @@
 #   gomod          -> emulator/*-cli Go helper CLIs + tools/simple-server
 #                     (emulator CLIs added 2026-07-10 after 14 x/crypto &
 #                     x/net alerts rotted unwatched in bigtable-cli)
+#   opentofu       -> tofu/exe-platform + tofu/exe-cluster provider pins
 #
 # Out of scope: gitsubmodules (synced via scripts/sync_agents.py), compose.yaml
 # `image:` tags in telemetry/ + emulator/
@@ -144,4 +145,25 @@ updates:
           - "version-update:semver-minor"
     groups:
       docker:
+        patterns: ["*"]
+
+  # The exe stacks' OpenTofu providers. Providers only: the Agent Substrate / ax /
+  # GKE pins live in exe/versions.json, which Dependabot does not read. That file
+  # also records ko-build/ko's pin as 0.x, dependency class 2, so a bump of it
+  # here is merged only after its changelog is read, with versions.json moved in
+  # the same PR.
+  - package-ecosystem: "opentofu"
+    directories:
+      - "/tofu/exe-platform"
+      - "/tofu/exe-cluster"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    labels: ["dependencies", "opentofu", "exe"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      exe-opentofu:
         patterns: ["*"]
