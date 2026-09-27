@@ -104,10 +104,18 @@ func TestSimulationReachesTheDangerousStates(t *testing.T) {
 		total.DrainsFailed += s.DrainsFailed
 		total.GracefulStops += s.GracefulStops
 		total.ForcedStops += s.ForcedStops
+		total.ForcedLeaseUnreadable += s.ForcedLeaseUnreadable
+		total.ForcedDrainFailed += s.ForcedDrainFailed
+		total.ForcedGraceExpired += s.ForcedGraceExpired
+		total.ForcedHeartbeatStale += s.ForcedHeartbeatStale
 		total.L3Stops += s.L3Stops
 		total.ReadFailures += s.ReadFailures
 	}
 
+	// Every forced branch of DecideL2 by name, not "forced stops" in total: a
+	// sweep whose every forced stop was a lease-read failure proves nothing
+	// about the drain-failed, heartbeat and grace rules, and for a long time
+	// that is exactly what this sweep was.
 	required := []struct {
 		name string
 		got  int
@@ -116,8 +124,13 @@ func TestSimulationReachesTheDangerousStates(t *testing.T) {
 		{"extends", total.Extends},
 		{"drains started", total.DrainsStarted},
 		{"drains finished", total.DrainsFinished},
+		{"drains failed", total.DrainsFailed},
 		{"graceful stops", total.GracefulStops},
 		{"forced stops", total.ForcedStops},
+		{"forced stops: lease unreadable", total.ForcedLeaseUnreadable},
+		{"forced stops: drain failed", total.ForcedDrainFailed},
+		{"forced stops: grace expired", total.ForcedGraceExpired},
+		{"forced stops: heartbeat stale", total.ForcedHeartbeatStale},
 		{"L3 stops", total.L3Stops},
 		{"lease read failures", total.ReadFailures},
 	}
@@ -132,18 +145,39 @@ func TestSimulationReachesTheDangerousStates(t *testing.T) {
 }
 
 func TestSimulationCatchesADeliberatelyBrokenBound(t *testing.T) {
-	// Proof the harness can actually fail: with a step budget long enough to
-	// pass a deadline and no enforcement able to keep up, NodesEventuallyZero
-	// must fire. Rather than breaking the production rules to test the harness,
-	// this drives the invariant checker directly with a state that violates it.
-	s := &simState{
-		now:   ref().Add(ForceGrace + CapMargin() + L2Tick + time.Minute),
-		nodes: 1,
-		lease: Lease{Deadline: ref(), Generation: 1},
+	// Proof the harness can actually fail, at the plan's bound and not at some
+	// looser one. Rather than breaking the production rules to test the
+	// harness, this drives the invariant checker directly with states on each
+	// side of each bound.
+	tests := []struct {
+		name         string
+		pastDeadline time.Duration
+		readFailures int
+		wantViolated bool
+	}{
+		{"at the bound, a readable lease is still in time", AwakeBound(), 0, false},
+		{"a minute past it, a readable lease is not", AwakeBound() + time.Minute, 0, true},
+		{"a run of read misses may go past the readable bound", AwakeBound() + time.Minute, 2, false},
+		{"but not past the blind one", BlindAwakeBound() + time.Minute, 2, true},
 	}
-	if v := checkInvariants(s, 0, 0, nil); v == nil {
-		t.Fatal("a pool still up long past its deadline must violate NodesEventuallyZero")
-	} else if v.Invariant != "NodesEventuallyZero" {
-		t.Fatalf("wrong invariant fired: %s", v.Invariant)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &simState{
+				now:          ref().Add(tc.pastDeadline),
+				nodes:        1,
+				lease:        Lease{Deadline: ref(), Generation: 1},
+				leaseOK:      tc.readFailures == 0,
+				readFailures: tc.readFailures,
+			}
+			v := checkInvariants(s, 0, 0, nil)
+			switch {
+			case !tc.wantViolated && v != nil:
+				t.Fatalf("no violation expected, got %s: %s", v.Invariant, v.Detail)
+			case tc.wantViolated && v == nil:
+				t.Fatal("a pool still up past its bound must violate NodesEventuallyZero")
+			case tc.wantViolated && v.Invariant != "NodesEventuallyZero":
+				t.Fatalf("wrong invariant fired: %s", v.Invariant)
+			}
+		})
 	}
 }

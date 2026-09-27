@@ -37,8 +37,13 @@ type SimConfig struct {
 }
 
 // DefaultSimConfig is what the test uses when it is not sweeping seeds.
+//
+// Two weeks of minutes per seed. The rarest forced branch, the grace running
+// out under a heartbeat that is still fresh, needs a drain that starts late AND
+// never finishes, and at under three days per seed the fixed sweep never met
+// one; the whole sweep still takes well under a second.
 func DefaultSimConfig(seed uint64) SimConfig {
-	return SimConfig{Seed: seed, Steps: 4000, MinuteStep: time.Minute}
+	return SimConfig{Seed: seed, Steps: 20000, MinuteStep: time.Minute}
 }
 
 // simState is the whole world the simulation models.
@@ -65,12 +70,11 @@ type simState struct {
 	// lastStopForced records whether that stop was a forced one, so the
 	// graceful-stop invariant only judges the stops it is about.
 	lastStopForced bool
-	// lastStopByEnforcement distinguishes a stop the DESIGN made (L2 or L3) from
-	// one the environment made (the node simply vanished). The design can be
-	// held responsible for the first kind only; an invariant that judges the
-	// second is over-strong, and the first version of this one duly failed on a
-	// node that disappeared six minutes after a successful extend.
-	lastStopByEnforcement bool
+	// lastStopByL2 says the stop was L2's DECISION, rather than L3's
+	// unconditional one or the environment's (the node simply vanished). Only
+	// L2 reads the lease before it stops, so only L2 can be held to a lease it
+	// read -- the model sets stoppedDespiteLiveLease in its L2 branches alone.
+	lastStopByL2 bool
 	// lastStopReason is the rule that fired, so an invariant can exclude the
 	// cases it is not about.
 	lastStopReason Reason
@@ -79,6 +83,40 @@ type simState struct {
 	// lastExtendAt is when a lease was last successfully extended, used by the
 	// ExtendBeatsStaleDrained invariant.
 	lastExtendAt time.Time
+
+	// L1's three ways of failing, each the only road to one of DecideL2's
+	// forced branches:
+	//   - wedged: the drain's actors refuse to suspend while L1 keeps
+	//     heartbeating, until the ceiling makes it write drain-failed (the
+	//     model's l1Stall -> l1GiveUp);
+	//   - l1Dead: the CronJob stops running until the node goes away, so its
+	//     heartbeat stops, or it never writes a record for this lease at all
+	//     (the model's l1Crash);
+	//   - l1PausedUntil: the CronJob is not scheduled for a while and then
+	//     resumes -- a drain that starts late keeps a fresh heartbeat past the
+	//     grace, which is the case the unconditional grace exists for.
+	wedged        bool
+	l1Dead        bool
+	l1PausedUntil time.Time
+	rates         simRates
+}
+
+// simRates are the per-seed odds of L1's failure modes, as "one in N" per
+// opportunity. Varied by seed so the sweep spends some seeds where L1 mostly
+// works and some where it mostly does not: a single fixed rate either never
+// reaches a forced branch or never lets a drain finish.
+type simRates struct {
+	wedgeOneIn int // per drain started with an actor awake
+	crashOneIn int // per minute with the node up
+	pauseOneIn int // per minute with the node up
+}
+
+func ratesFor(seed uint64) simRates {
+	return simRates{
+		wedgeOneIn: 2 + int(seed%5),
+		crashOneIn: 300 + 150*int(seed%4),
+		pauseOneIn: 200 + 100*int(seed%3),
+	}
 }
 
 // SimViolation is an invariant failure, with everything needed to replay it.
@@ -110,8 +148,15 @@ type SimStats struct {
 	DrainsFailed   int
 	GracefulStops  int
 	ForcedStops    int
-	L3Stops        int
-	ReadFailures   int
+	// ForcedStops by the rule that fired, one field per forced branch of
+	// DecideL2 (fields rather than a map so the struct stays comparable for the
+	// determinism test).
+	ForcedLeaseUnreadable int
+	ForcedDrainFailed     int
+	ForcedGraceExpired    int
+	ForcedHeartbeatStale  int
+	L3Stops               int
+	ReadFailures          int
 }
 
 // Simulate runs one seeded trace and returns the first invariant violation, or
@@ -132,14 +177,20 @@ func SimulateWithStats(cfg SimConfig) (SimStats, *SimViolation) {
 		now:     time.Date(2026, 9, 27, 10, 0, 0, 0, Location()),
 		leaseOK: true,
 		nodes:   0,
+		rates:   ratesFor(cfg.Seed),
 	}
 
 	stats := &SimStats{}
-	trace := make([]string, 0, cfg.Steps)
+	// The LAST traceLines events, not the first: a violation at step 14 000 is
+	// explained by what happened just before it, and the opening hours of the
+	// run explain nothing.
+	const traceLines = 400
+	trace := make([]string, 0, 2*traceLines)
 	record := func(format string, args ...any) {
-		if len(trace) < 400 { // enough to diagnose; not enough to drown the log
-			trace = append(trace, fmt.Sprintf("  %s %s", s.now.Format("15:04"), fmt.Sprintf(format, args...)))
+		if len(trace) == cap(trace) {
+			trace = append(trace[:0], trace[traceLines:]...)
 		}
+		trace = append(trace, fmt.Sprintf("  %s %s", s.now.Format("01-02 15:04"), fmt.Sprintf(format, args...)))
 	}
 
 	for step := range cfg.Steps {
@@ -155,7 +206,7 @@ func SimulateWithStats(cfg SimConfig) (SimStats, *SimViolation) {
 		simL3(s, record, stats)
 		simEnvironment(s, rng, record, stats)
 
-		if v := checkInvariants(s, cfg.Seed, step, trace); v != nil {
+		if v := checkInvariants(s, cfg.Seed, step, lastLines(trace, traceLines)); v != nil {
 			return *stats, v
 		}
 	}
@@ -172,8 +223,10 @@ func simOperator(s *simState, rng *rand.Rand, record func(string, ...any), stats
 		}
 		s.lease = Lease{Deadline: deadline, Generation: s.lease.Generation + 1}
 		s.nodes = 1
+		// The write reached GCS, so reads work again. The run of read
+		// failures is NOT reset here: it is L2's, in enforce.json, and only L2
+		// writes that (it resets it itself while the pool is at zero).
 		s.leaseOK = true
-		s.readFailures = 0
 		s.zeroRunningSince = s.now
 		stats.Wakes++
 		record("wake until %s (gen %d)", deadline.Format("15:04"), s.lease.Generation)
@@ -206,7 +259,17 @@ func simOperator(s *simState, rng *rand.Rand, record func(string, ...any), stats
 }
 
 func simL1(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimStats) {
-	if s.nodes == 0 {
+	if s.nodes == 0 || s.l1Dead || s.now.Before(s.l1PausedUntil) {
+		return
+	}
+	if rng.IntN(s.rates.crashOneIn) == 0 {
+		s.l1Dead = true
+		record("L1 dies (no more ticks until the node goes)")
+		return
+	}
+	if rng.IntN(s.rates.pauseOneIn) == 0 {
+		s.l1PausedUntil = s.now.Add(time.Duration(5+rng.IntN(36)) * time.Minute)
+		record("L1 is not scheduled until %s", s.l1PausedUntil.Format("15:04"))
 		return
 	}
 	should, reason := ShouldDrain(s.now, s.lease, s.leaseOK, s.zeroRunningSince)
@@ -226,6 +289,7 @@ func simL1(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimS
 				Phase: DrainDraining, Heartbeat: s.now,
 				LeaseGeneration: s.lease.Generation, StartedAt: s.now,
 			}
+			s.wedged = s.awake > 0 && rng.IntN(s.rates.wedgeOneIn) == 0
 			stats.DrainsStarted++
 			record("L1 begins draining (%s)", reason)
 		}
@@ -243,6 +307,10 @@ func simL1(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimS
 			return
 		}
 		s.drain.Heartbeat = s.now
+		if s.awake > 0 && s.wedged {
+			record("L1 heartbeats; the actor will not suspend")
+			return
+		}
 		if s.awake > 0 {
 			s.awake--
 			record("L1 suspends an actor (awake=%d)", s.awake)
@@ -259,11 +327,7 @@ func simL2(s *simState, record func(string, ...any), stats *SimStats) {
 	if s.now.Minute()%int(L2Tick/time.Minute) != 0 {
 		return
 	}
-	if !s.leaseOK {
-		s.readFailures++
-	} else {
-		s.readFailures = 0
-	}
+	s.readFailures = NextReadFailures(s.readFailures, s.leaseOK, s.nodes)
 
 	d := DecideL2(Observation{
 		Now: s.now, Lease: s.lease, LeaseOK: s.leaseOK,
@@ -277,6 +341,16 @@ func simL2(s *simState, record func(string, ...any), stats *SimStats) {
 		s.lastStopReason = d.Reason
 		if s.lastStopForced {
 			stats.ForcedStops++
+			switch d.Reason {
+			case ReasonLeaseUnreadable:
+				stats.ForcedLeaseUnreadable++
+			case ReasonDrainFailed:
+				stats.ForcedDrainFailed++
+			case ReasonGraceExpired:
+				stats.ForcedGraceExpired++
+			case ReasonHeartbeatStale:
+				stats.ForcedHeartbeatStale++
+			}
 		} else {
 			stats.GracefulStops++
 		}
@@ -295,7 +369,7 @@ func simL3(s *simState, record func(string, ...any), stats *SimStats) {
 	// No logic, by design. That is the point of L3.
 	s.lastStopForced = true
 	stats.L3Stops++
-	shrinkBy(s, record, "L3 daily stop", true)
+	shrinkBy(s, record, "L3 daily stop", false)
 }
 
 func simEnvironment(s *simState, rng *rand.Rand, record func(string, ...any), stats *SimStats) {
@@ -332,9 +406,9 @@ func shrink(s *simState, record func(string, ...any), why string) {
 	shrinkBy(s, record, why, false)
 }
 
-// shrinkBy is shrink with an explicit answer to "was this the design's doing?".
-func shrinkBy(s *simState, record func(string, ...any), why string, byEnforcement bool) {
-	s.lastStopByEnforcement = byEnforcement
+// shrinkBy is shrink with an explicit answer to "was this L2's decision?".
+func shrinkBy(s *simState, record func(string, ...any), why string, byL2 bool) {
+	s.lastStopByL2 = byL2
 	s.lastStopCrashed = s.awake > 0
 	if s.lastStopCrashed {
 		record("%s -- %d awake actor(s) CRASHED", why, s.awake)
@@ -345,6 +419,19 @@ func shrinkBy(s *simState, record func(string, ...any), why string, byEnforcemen
 	s.nodes = 0
 	s.drain = Drain{}
 	s.zeroRunningSince = time.Time{}
+	// The next node brings a fresh CronJob: whatever was wrong with L1 went
+	// with this one.
+	s.wedged = false
+	s.l1Dead = false
+	s.l1PausedUntil = time.Time{}
+}
+
+// lastLines is the tail of a trace, at most n lines.
+func lastLines(trace []string, n int) []string {
+	if len(trace) <= n {
+		return trace
+	}
+	return trace[len(trace)-n:]
 }
 
 func checkInvariants(s *simState, seed uint64, step int, trace []string) *SimViolation {
@@ -385,17 +472,20 @@ func checkInvariants(s *simState, seed uint64, step int, trace []string) *SimVio
 	// freshly extended lease is the exact bug the generation comparison
 	// prevents.
 	//
-	// Scoped twice, each time because the simulation produced a trace showing
-	// the unscoped version was wrong:
+	// Scoped three times, each time because the simulation produced a trace
+	// showing the unscoped version was wrong:
 	//
-	//   - only stops the DESIGN made count. A node that simply vanishes six
-	//     minutes after an extend is not something any rule can prevent.
+	//   - only L2's stops count. A node that simply vanishes six minutes after
+	//     an extend is not something any rule can prevent, and neither is L3,
+	//     which has no logic by design: an extend at 04:00, the first minute the
+	//     cap window allows one again, can be followed by L3 in that same
+	//     minute.
 	//   - a stop because the lease was UNREADABLE for three consecutive ticks
 	//     is excluded. L2 is a job that runs every ten minutes and sees only
 	//     what it can read; if it cannot read the lease it cannot know an extend
 	//     happened, and forcing is then the documented, intended behaviour. The
 	//     requirement is about a stale drain record, not about blindness.
-	if !s.lastExtendAt.IsZero() && s.nodes == 0 && s.lastStopByEnforcement &&
+	if !s.lastExtendAt.IsZero() && s.nodes == 0 && s.lastStopByL2 &&
 		s.lastStopReason != ReasonLeaseUnreadable &&
 		s.now.Sub(s.lastExtendAt) <= L2Tick && s.lease.Deadline.After(s.now) {
 		return fail("ExtendBeatsStaleDrained",
@@ -404,15 +494,19 @@ func checkInvariants(s *simState, seed uint64, step int, trace []string) *SimVio
 	}
 
 	// NodesEventuallyZero, as a bounded safety property rather than a liveness
-	// one: if the deadline passed longer ago than the worst-case stopping chain
-	// plus the grace, the pool must not still be up. Expressed this way because
-	// a simulation can falsify a bound but cannot prove eventual behaviour.
+	// one, with the model's two bounds: AwakeBound past the deadline while L2's
+	// last read of the lease succeeded, BlindAwakeBound whatever the reads did.
+	// Expressed this way because a simulation can falsify a bound but cannot
+	// prove eventual behaviour.
 	if s.nodes == 1 && !s.lease.Deadline.IsZero() {
-		bound := ForceGrace + CapMargin() + L2Tick
+		bound := BlindAwakeBound()
+		if s.readFailures == 0 {
+			bound = AwakeBound()
+		}
 		if s.now.After(s.lease.Deadline.Add(bound)) {
 			return fail("NodesEventuallyZero",
-				fmt.Sprintf("deadline passed %s ago (bound %s) and the pool is still up",
-					s.now.Sub(s.lease.Deadline), bound))
+				fmt.Sprintf("deadline passed %s ago (bound %s, read failures %d) and the pool is still up",
+					s.now.Sub(s.lease.Deadline), bound, s.readFailures))
 		}
 	}
 
