@@ -1871,18 +1871,35 @@ exe-worker-images: exe-cluster-src
         mise x -- go run ./cmd/ate-setup --no-dev-env publish worker-images
 
 # Build and push a MINIMAL task image for the Phase 4 spike: upstream's
-# ax-task-runner over its alpine/git base (pinned by digest), nothing else. The
-# real task image, with the agent CLIs, is Phase 5's `just exe-image`. Prints
-# the digest ref a Task's spec.image takes.
+# ax-task-runner at /usr/local/bin (where AX runs it) over the runner's
+# alpine/git base from exe/ax/.ko.yaml (pinned by digest), nothing else. See
+# exe/ax/spike-task.Dockerfile for why this is not a ko build. The real task
+# image, with the agent CLIs, is Phase 5's `just exe-image`. Prints the digest
+# ref a Task's spec.image takes.
 [group('Exe')]
 exe-spike-task-image: exe-cluster-src
     #!/usr/bin/env bash
     set -euo pipefail
     repo="$(just _tofu-out exe-platform ar_task_repo)"
+    project="$(just _tofu-out exe-platform project_id)"
+    base="$(sed -n 's#^ *github.com/google/ax/cmd/ax-task-runner: *##p' exe/ax/.ko.yaml)"
+    case "$base" in
+      *@sha256:*) ;;
+      *) echo "exe-spike-task-image: no digest-pinned runner base in exe/ax/.ko.yaml" >&2; exit 1 ;;
+    esac
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    cp exe/ax/spike-task.Dockerfile "$work/Dockerfile"
     cd "{{ _EXE_SRC_DIR }}/ax"
-    KO_DOCKER_REPO="${repo}/spike-task-runner" KO_CONFIG_PATH="{{ justfile_directory() }}/exe/ax/.ko.yaml" \
-        mise exec aqua:ko-build/ko -- ko build --bare --platform=linux/amd64 --sbom=none \
-        --tags="$(git rev-parse --short=12 HEAD)" ./cmd/ax-task-runner
+    tag="${repo}/spike-task-runner:$(git rev-parse --short=12 HEAD)"
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 mise x -- go build -trimpath -ldflags="-s -w" \
+        -o "$work/ax-task-runner" ./cmd/ax-task-runner
+    # --push: a docker-container buildx builder keeps its result in the build
+    # cache only, so a separate `docker push` would find no image to push.
+    docker buildx build --platform linux/amd64 --build-arg BASE_IMAGE="$base" -t "$tag" --push "$work"
+    digest="$(mise x -- gcloud artifacts docker images describe "$tag" --project "$project" \
+        --format='value(image_summary.digest)')"
+    echo "${tag}@${digest}"
 
 # Build the TF_ENCRYPTION HCL payload from the local passphrase.
 # State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).

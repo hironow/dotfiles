@@ -37,8 +37,9 @@ locals {
   redis_image = "redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499"
 
   # AX's build definitions live in exe/ax/.ko.yaml (upstream's, with every base
-  # pinned by digest), which the spike's task-image recipe hands to ko as well;
-  # the ko_build resources in ax.tf take their base image from it.
+  # pinned by digest), which the spike's task-image recipe reads the runner's
+  # base from as well; the ko_build resources in ax.tf take their base image
+  # from it.
   ax_ko         = yamldecode(file("${path.module}/../../exe/ax/.ko.yaml"))
   ax_base_image = local.ax_ko.defaultBaseImage
 
