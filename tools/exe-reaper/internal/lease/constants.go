@@ -15,7 +15,10 @@
 //	L3  a daily unconditional stop, with no logic at all
 package lease
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // The numbers below mirror exe/lease-constants.json, which is the single source
 // of truth: OpenTofu reads it with jsondecode to build the Scheduler cadences,
@@ -119,9 +122,16 @@ func NightlyCapHourComputed() int {
 // Falling back rather than failing is right here: the fallback is correct for
 // this timezone, and a reaper that refuses to run because tzdata is missing is
 // a reaper that does not stop the cluster.
+//
+// Resolved once per process. time.LoadLocation reads and parses the zoneinfo
+// file on every call, and the seeded simulation asks on every simulated minute.
 func Location() *time.Location {
+	return location()
+}
+
+var location = sync.OnceValue(func() *time.Location {
 	if loc, err := time.LoadLocation(TimezoneName); err == nil {
 		return loc
 	}
 	return time.FixedZone("JST", 9*60*60)
-}
+})

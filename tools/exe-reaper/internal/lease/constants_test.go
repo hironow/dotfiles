@@ -133,3 +133,15 @@ func TestTimezoneResolves(t *testing.T) {
 		t.Errorf("offset for the operator timezone is %d seconds, want %d", offset, 9*60*60)
 	}
 }
+
+func TestLocationIsResolvedOnce(t *testing.T) {
+	// time.LoadLocation reads and parses the zoneinfo file on every call, and
+	// the seeded simulation asks for the zone on every simulated minute: 60 000
+	// file reads per sweep made the gate's slowest step slow for no reason.
+	// One resolution per process is also the only sane semantics -- a zone
+	// that changed mid-run would move every boundary under a running decision.
+	first, second := Location(), Location()
+	if first != second {
+		t.Fatal("Location() must return the same *time.Location on every call")
+	}
+}
