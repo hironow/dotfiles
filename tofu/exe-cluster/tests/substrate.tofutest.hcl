@@ -132,11 +132,15 @@ run "the_install_lets_the_api_server_budget_allow_a_full_stop" {
     error_message = "the install must open every PodDisruptionBudget outside the kube-/gke- system namespaces to maxUnavailable 100% after the deploy (upstream's ate-api-server budget first among them). With one node, a budget cannot protect anything: every stop removes the node, an evicted pod's replacement cannot schedule, and the drain then waits for up to GKE's one-hour PDB limit while the node bills."
   }
 
-  # And a budget it did not open -- a new upstream one, or a GKE-managed one it
-  # must not touch -- fails the install loudly instead of stalling a stop later.
+  # And a budget that still needs a healthy pod while the only node drains -- a
+  # new upstream one, or a GKE-managed one it must not touch -- fails the
+  # install loudly instead of stalling a stop later. Semantic, not "exactly
+  # 100%": a budget blocks only if the pods it wants kept healthy exceed zero,
+  # i.e. minAvailable above 0, or maxUnavailable below its expected pods (a
+  # one-replica maxUnavailable 1 budget blocks nothing).
   assert {
-    condition     = strcontains(local.ate_setup_script, "$3 != \"100%\"") && strcontains(local.ate_setup_script, "could hold a stop")
-    error_message = "after opening the budgets, the install must fail when any PodDisruptionBudget in the cluster still allows less than 100% unavailable, so a future budget stops the install loudly rather than a stop silently."
+    condition     = strcontains(local.ate_setup_script, "expectedPods") && strcontains(local.ate_setup_script, "minAvailable") && strcontains(local.ate_setup_script, "keep > 0") && strcontains(local.ate_setup_script, "could hold a stop")
+    error_message = "after opening the budgets, the install must fail when any PodDisruptionBudget in the cluster still wants a pod kept healthy while the node drains (resolved minAvailable above 0, or maxUnavailable below status.expectedPods), so a future budget stops the install loudly rather than a stop silently."
   }
 }
 

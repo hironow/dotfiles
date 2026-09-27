@@ -174,11 +174,26 @@ locals {
           kubectl --context "$context" -n "$ns" patch poddisruptionbudget "$name" \
             --type=merge -p '{"spec":{"maxUnavailable":"100%","minAvailable":null}}'
         done
-      # A budget still short of 100% -- a new upstream one, or a GKE-managed
-      # one this step must not touch -- fails the install now, loudly.
-      blocking="$(kubectl --context "$context" get poddisruptionbudgets -A \
-          -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,MAX:.spec.maxUnavailable' --no-headers |
-        awk '$3 != "100%" {print $1 "/" $2}')"
+      # A budget that still wants a pod kept healthy while the only node drains
+      # -- a new upstream one, or a GKE-managed one this step must not touch --
+      # fails the install now, loudly. It blocks only if what it keeps is above
+      # zero: minAvailable above 0, or maxUnavailable below its expected pods
+      # (percentages round up, as the disruption controller does).
+      blocking="$(kubectl --context "$context" get poddisruptionbudgets -A -o json | python3 -c '
+      import json, math, sys
+      def count(value, pods):
+          if isinstance(value, str) and value.endswith("%"):
+              return math.ceil(int(value[:-1]) * pods / 100)
+          return int(value)
+      for pdb in json.load(sys.stdin)["items"]:
+          spec, pods = pdb["spec"], pdb.get("status", {}).get("expectedPods", 0)
+          if spec.get("minAvailable") is not None:
+              keep = count(spec["minAvailable"], pods)
+          else:
+              keep = pods - count(spec.get("maxUnavailable", 0), pods)
+          if keep > 0:
+              print(pdb["metadata"]["namespace"] + "/" + pdb["metadata"]["name"])
+      ')"
       if [ -n "$blocking" ]; then
         echo "ate-setup: disruption budgets that could hold a stop: $blocking" >&2
         exit 1
