@@ -3,6 +3,9 @@ package main
 import (
 	"errors"
 	"io"
+	"net/http"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,6 +125,70 @@ func TestATickCarriesTheReadFailureRunByTheSharedRule(t *testing.T) {
 				t.Errorf("setSize called = %v, want %v (calls %v)", stopped, tc.wantStop, cloud.setSizes())
 			}
 		})
+	}
+}
+
+// enforce.json is L2's only memory. A read of it that fails for any reason but
+// "absent" must fail the tick: the job then exits non-zero, which is what the
+// failed-execution alert sees. Swallowed, the old way, the record read as empty,
+// the conditional write that followed lost to the object that was there, and
+// the read-failure run could never advance -- silently, on every tick.
+//
+// The stop is still made. What cannot be read is L2's memory, not the lease,
+// and a node past its deadline costs the same whether or not L2 can remember
+// the tick before.
+func TestAnUnreadableEnforcementRecordFailsTheTickButNotTheStop(t *testing.T) {
+	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
+	cloud := newFakeCloud(t)
+	cloud.targetSize = 1
+	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+	cloud.put(enforceObject, enforceRecord{ReadFailures: 1})
+	before := cloud.object(enforceObject)
+	cloud.getStatus[enforceObject] = http.StatusServiceUnavailable
+
+	err := cloud.enforcer(io.Discard).tick(t.Context(), now, false)
+
+	if err == nil || !strings.Contains(err.Error(), enforceObject) {
+		t.Fatalf("tick error = %v, want one that names %s", err, enforceObject)
+	}
+	if got := cloud.setSizes(); !slices.Equal(got, []int{0}) {
+		t.Errorf("setSize calls = %v, want [0]: the expired lease still stops the pool", got)
+	}
+	if after := cloud.object(enforceObject); after.generation != before.generation {
+		t.Errorf("enforce.json was rewritten (generation %d -> %d) by a tick that could not read it",
+			before.generation, after.generation)
+	}
+}
+
+// "Absent" is not a failure: it is the very first tick, and the record is
+// created under the create-only precondition.
+func TestAMissingEnforcementRecordIsTheFirstTick(t *testing.T) {
+	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
+	cloud := newFakeCloud(t)
+	cloud.targetSize = 1
+	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
+
+	cloud.tickAt(now, io.Discard)
+
+	if rec := cloud.storedRecord(); rec.Action != string(lease.ActionWait) {
+		t.Errorf("first record = %+v, want a wait", rec)
+	}
+}
+
+// A record L2 cannot parse is replaced, not a reason to stop recording. Only L2
+// writes it, so it can only be garbage from an L2 that crashed mid-write or a
+// human; refusing to overwrite it would fail every tick from then on.
+func TestAGarbledEnforcementRecordIsReplaced(t *testing.T) {
+	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
+	cloud := newFakeCloud(t)
+	cloud.targetSize = 1
+	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
+	cloud.put(enforceObject, "not a record")
+
+	cloud.tickAt(now, io.Discard)
+
+	if rec := cloud.storedRecord(); rec.Action != string(lease.ActionWait) {
+		t.Errorf("record after the tick = %+v, want a fresh wait", rec)
 	}
 }
 

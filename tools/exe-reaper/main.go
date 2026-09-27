@@ -262,7 +262,15 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	// L2 is a job: it exits between ticks and has no memory. The consecutive
 	// read-failure count therefore lives in enforce.json, the object L2 itself
 	// owns -- which is why the three-failure rule is implementable at all.
-	prev, prevGeneration := readEnforce(ctx, client, cfg.bucket)
+	//
+	// A record that cannot be read does not stop the tick from deciding: it is
+	// L2's memory that is missing, not the lease, and an expired lease costs
+	// the same either way. The tick decides as if this were the first one,
+	// acts, and then fails instead of recording.
+	prev, prevGeneration, recordErr := readEnforce(ctx, client, cfg.bucket)
+	if recordErr != nil {
+		_, _ = fmt.Fprintf(e.errOut, "warning: %v; deciding without the previous record\n", recordErr)
+	}
 
 	obs := lease.Observation{Now: now}
 	obs.Lease, obs.LeaseOK = leaseFromRead(client.GetObject(ctx, cfg.bucket, leaseObject))
@@ -297,6 +305,13 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 		if err := client.SetNodePoolSize(ctx, cfg.setSizeURI, 0); err != nil {
 			return fmt.Errorf("stopping the node pool: %w", err)
 		}
+	}
+
+	if recordErr != nil {
+		// No generation to write against, so a conditional write could only
+		// lose to the record that is there. Fail the tick instead: the job
+		// exits non-zero, and the failed-execution alert says so.
+		return fmt.Errorf("not recording this tick: %w", recordErr)
 	}
 
 	record := enforceRecord{
@@ -366,16 +381,27 @@ type enforceRecord struct {
 	ReadFailures int       `json:"readFailures"`
 }
 
-func readEnforce(ctx context.Context, client *gcp.Client, bucket string) (enforceRecord, int64) {
+// readEnforce reads L2's own record, its only memory between ticks.
+//
+// Absent is the first tick: an empty record, and generation 0 so the write
+// creates it. Unparsable is replaced: an empty record, with the generation it
+// was read at so the write overwrites exactly that. Any other failure is an
+// error, never an empty record: a record L2 cannot read is a read-failure run
+// it cannot carry, and the conditional write that followed would lose to the
+// object that is there -- on every tick, silently.
+func readEnforce(ctx context.Context, client *gcp.Client, bucket string) (enforceRecord, int64, error) {
 	body, generation, err := client.GetObject(ctx, bucket, enforceObject)
-	if err != nil {
-		return enforceRecord{}, 0
+	switch {
+	case errors.Is(err, gcp.ErrNotFound):
+		return enforceRecord{}, 0, nil
+	case err != nil:
+		return enforceRecord{}, 0, fmt.Errorf("reading %s: %w", enforceObject, err)
 	}
 	var rec enforceRecord
 	if json.Unmarshal(body, &rec) != nil {
-		return enforceRecord{}, generation
+		rec = enforceRecord{} // a partial decode is no record either
 	}
-	return rec, generation
+	return rec, generation, nil
 }
 
 // --- status ------------------------------------------------------------------
@@ -428,10 +454,13 @@ func cmdStatus(ctx context.Context, args []string) error {
 		fmt.Println("drain          (none)")
 	}
 
-	if rec, _ := readEnforce(ctx, client, cfg.bucket); rec.Action != "" {
+	switch rec, _, err := readEnforce(ctx, client, cfg.bucket); {
+	case err != nil:
+		fmt.Printf("last enforce   unreadable: %v\n", err)
+	case rec.Action != "":
 		fmt.Printf("last enforce   %s (%s) at %s\n", rec.Action, rec.Reason,
 			rec.At.In(lease.Location()).Format(time.RFC3339))
-	} else {
+	default:
 		fmt.Println("last enforce   (none)")
 	}
 
