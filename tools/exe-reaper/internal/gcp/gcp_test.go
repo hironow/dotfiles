@@ -91,6 +91,45 @@ func TestGetObjectDistinguishesAbsentFromBroken(t *testing.T) {
 	}
 }
 
+// A 200 that cannot say which generation it read is an error, never a
+// generation. Every conditional write and every drain comparison keys on the
+// generation, and the values a missing or garbled header would silently turn
+// into already mean something: to PutObject, 0 is "create only if absent" and a
+// negative number is "unconditional". Not ErrNotFound either: the object is
+// there, and reading it as absent tells L2 the lease was deleted.
+func TestGetObjectRefusesAReadWithoutAUsableGeneration(t *testing.T) {
+	tests := []struct {
+		name       string
+		generation string // "" leaves the header out
+	}{
+		{"no header", ""},
+		{"garbled", "not-a-generation"},
+		{"zero, which PutObject would take as create-only", "0"},
+		{"negative, which PutObject would take as unconditional", "-5"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _ := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				if tc.generation != "" {
+					w.Header().Set("X-Goog-Generation", tc.generation)
+				}
+				_, _ = w.Write([]byte(`{"deadline":"2026-09-27T12:00:00Z"}`))
+			})
+
+			_, generation, err := client.GetObject(context.Background(), "zz-bucket", "lease.json")
+			if err == nil {
+				t.Fatalf("want an error, got generation %d and no error", generation)
+			}
+			if !errors.Is(err, ErrNoGeneration) {
+				t.Errorf("want errors.Is(..., ErrNoGeneration); got %v", err)
+			}
+			if errors.Is(err, ErrNotFound) {
+				t.Errorf("the object is there; an unusable generation must not read as ErrNotFound: %v", err)
+			}
+		})
+	}
+}
+
 func TestPutObjectSendsTheGenerationPrecondition(t *testing.T) {
 	tests := []struct {
 		name         string

@@ -49,6 +49,13 @@ var ErrNotFound = errors.New("object not found")
 // ErrPreconditionFailed is returned when a conditional write lost the race.
 var ErrPreconditionFailed = errors.New("generation precondition failed")
 
+// ErrNoGeneration is returned when a read succeeded but did not say which
+// generation of the object it read. It is a read failure, never ErrNotFound
+// (the object is there) and never a guessed generation: 0 is what a conditional
+// write takes as "create only if absent", and what L2 would compare a drain
+// record against.
+var ErrNoGeneration = errors.New("read did not carry a usable object generation")
+
 // Client is an authenticated HTTP client for the two APIs the reaper uses.
 type Client struct {
 	HTTP  *http.Client
@@ -142,7 +149,8 @@ func (c *Client) do(ctx context.Context, method, rawURL string, body []byte, hea
 //
 // The generation is not a detail: every write the reaper makes is conditional on
 // it, which is what enforces "one writer per object" against two processes that
-// both believe they are that writer.
+// both believe they are that writer. So a read that does not say which
+// generation it read is an error, ErrNoGeneration, and never a zero.
 func (c *Client) GetObject(ctx context.Context, bucket, object string) (data []byte, generation int64, err error) {
 	rawURL := fmt.Sprintf("%s/storage/v1/b/%s/o/%s?alt=media",
 		c.storage(), url.PathEscape(bucket), url.PathEscape(object))
@@ -160,14 +168,34 @@ func (c *Client) GetObject(ctx context.Context, bucket, object string) (data []b
 		return nil, 0, statusError(resp)
 	}
 
+	// The media download carries the generation in a header, which saves a
+	// second request for the object's metadata -- and the reaper reads on every
+	// tick. It also means the body and its generation come from ONE response.
+	// That is load-bearing: a second read for the generation could return a
+	// newer one than the body it is paired with.
+	generation, err = parseGeneration(resp.Header)
+	if err != nil {
+		return nil, 0, fmt.Errorf("%s/%s: %w", bucket, object, err)
+	}
 	data, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, 0, err
 	}
-	// The media download carries the generation in a header, which saves a
-	// second metadata request per read -- and the reaper reads on every tick.
-	generation, _ = strconv.ParseInt(resp.Header.Get("X-Goog-Generation"), 10, 64)
 	return data, generation, nil
+}
+
+// parseGeneration reads the X-Goog-Generation header of a media download.
+//
+// GCS generations are positive, so anything else is ErrNoGeneration: a missing
+// header, a garbled one, and also 0 or a negative number, which PutObject would
+// take as "create only if absent" and "unconditional".
+func parseGeneration(h http.Header) (int64, error) {
+	raw := h.Get("X-Goog-Generation")
+	generation, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || generation <= 0 {
+		return 0, fmt.Errorf("X-Goog-Generation %q: %w", raw, ErrNoGeneration)
+	}
+	return generation, nil
 }
 
 // PutObject writes an object conditionally.
