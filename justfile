@@ -701,6 +701,12 @@ spec-check:
       echo "🔬 quint test $spec"
       $QUINT test --max-samples=200 "$spec"
     done
+    # Random search over the decided design against the invariants
+    # exe/spec/README.md names. A bug finder, not a proof; seeded so a failure
+    # replays, and bounded so the gate stays fast (about ten seconds).
+    echo "🔬 quint run exe/spec/lease.qnt: Safety, WellFormed, DrainedRecordStaysTrue"
+    $QUINT run exe/spec/lease.qnt --invariants Safety WellFormed DrainedRecordStaysTrue \
+      --max-steps=120 --max-samples=5000 --seed=0x1ea5e --verbosity=1
     # The rejected designs (exe/spec/README.md) are kept as FAILING instances,
     # so the gate requires them to fail, and to fail on their expectation
     # (QNT508) rather than because a module or test went missing. A rejected

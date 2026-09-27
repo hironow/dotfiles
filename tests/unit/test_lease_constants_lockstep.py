@@ -252,18 +252,51 @@ def test_the_stored_cap_hour_is_read_exactly_once_by_the_model() -> None:
 # --- the bound NodesEventuallyZero uses -------------------------------------
 
 
-def test_the_termination_bound_is_wider_than_the_plans_readable_case() -> None:
-    """The plan's worst case (deadline + force_grace + l2_tick) assumes
-    lease.json can be read. The model's bound must also cover the ticks L2 is
-    entitled to burn when it cannot -- otherwise NodesEventuallyZero is a
-    property about a subset of the reachable states.
+#: The two bounds NodesEventuallyZero holds the pool to, as the model must
+#: derive them. The first is the plan's worst case, deadline + force_grace +
+#: l2_tick, which assumes L2 can read lease.json; the second adds the L2 ticks
+#: the three-strike rule forbids a stop on when it cannot. The Go reaper derives
+#: the same two (lease.AwakeBound, lease.BlindAwakeBound) and pins them against
+#: the JSON in constants_test.go.
+_BOUND_DERIVATIONS: Final[dict[str, str]] = {
+    "awake_bound_minutes": "force_grace_minutes + l2_tick_minutes",
+    "blind_awake_bound_minutes": (
+        "awake_bound_minutes + l2_tick_minutes * (lease_read_failure_threshold - 1)"
+    ),
+}
+
+
+def test_the_model_derives_the_plans_bound_and_the_blind_one() -> None:
+    """Each bound is a pure val over the mirrored constants, spelled exactly as
+    above: a stored number could drift from the JSON by itself, and a
+    different formula is a different guarantee.
     """
-    readable_case = _json_int("force_grace_minutes") + _json_int("l2_tick_minutes")
-    model_bound = _json_int("force_grace_minutes") + _json_int("l2_tick_minutes") * (
-        1 + _json_int("lease_read_failure_threshold")
+    text = LEASE_QNT.read_text(encoding="utf-8")
+    for name, derivation in _BOUND_DERIVATIONS.items():
+        match = re.search(
+            rf"^\s*pure val\s+{name}\s*=\s*\n\s*(?P<expr>[^\n]+?)\s*$",
+            text,
+            re.MULTILINE,
+        )
+        assert match is not None, f"{name} is not declared as a derived pure val"
+        assert match.group("expr") == derivation, (name, match.group("expr"))
+
+
+def test_nodes_eventually_zero_uses_both_bounds() -> None:
+    """The readable bound alone is a property about a subset of the reachable
+    states (those where L2 can read the lease); the blind bound alone is looser
+    than the plan promises. The invariant needs both.
+    """
+    text = LEASE_QNT.read_text(encoding="utf-8")
+    invariant = re.search(
+        r"^\s*val NodesEventuallyZero = and \{(?P<body>.*?)^\s*\}",
+        text,
+        re.MULTILINE | re.DOTALL,
     )
-    assert model_bound > readable_case
-    assert "termination_bound_minutes" in LEASE_QNT.read_text(encoding="utf-8")
+    assert invariant is not None, "NodesEventuallyZero is not an and-block"
+    for name in _BOUND_DERIVATIONS:
+        assert name in invariant.group("body"), name
+    assert "termination_bound_minutes" not in text, "the old, wider bound is back"
 
 
 def test_the_awake_window_bound_fits_inside_the_cap_gap() -> None:

@@ -153,13 +153,20 @@ module leaseCore {
   /// counted in L2 ticks, and L2's tick is l2_tick_minutes long.
   pure val heartbeat_stale_minutes = heartbeat_stale_ticks * l2_tick_minutes
 
-  /// The bound in NodesEventuallyZero. force_grace_minutes is when L2 stops
-  /// waiting for anything at all; one l2_tick_minutes covers the scheduler's
-  /// phase (the forcing tick lands no later than one period after the grace
-  /// runs out); lease_read_failure_threshold more cover the ticks that a lease
-  /// L2 cannot READ is allowed to burn before L2 stops the pool blind.
-  pure val termination_bound_minutes =
-    force_grace_minutes + l2_tick_minutes * (1 + lease_read_failure_threshold)
+  /// The plan's bound (section 3.2, "期限 + 45 分 + L2 の周期 10 分"), and the
+  /// one in NodesEventuallyZero: force_grace_minutes is when L2 stops waiting
+  /// for anything at all, and one l2_tick_minutes covers the scheduler's phase
+  /// (the forcing tick lands no later than one period after the grace runs
+  /// out). It holds while L2 can READ the lease.
+  pure val awake_bound_minutes =
+    force_grace_minutes + l2_tick_minutes
+
+  /// The same bound when L2 cannot read the lease. The three-strike rule
+  /// forbids forcing on the first lease_read_failure_threshold - 1 misses
+  /// however late they come, so the first tick past the grace can be followed
+  /// by that many more before the blind stop.
+  pure val blind_awake_bound_minutes =
+    awake_bound_minutes + l2_tick_minutes * (lease_read_failure_threshold - 1)
 
   /// End of the modelled window. One local day is more than enough: the latest
   /// L3 offset below is 10 hours.
@@ -213,6 +220,7 @@ module leaseCore {
   /// the enforcer did without a cluster credential.
   type Decision =
     | NoDecision
+    | AlreadyStopped
     | LeaseLive
     | WaitedForDrain
     | WaitedOnReadFailure
@@ -762,25 +770,73 @@ module leaseCore {
 
   // --------------------------------------------------------------------------
   // L2 -- the Cloud Run enforcer, every 10 minutes. The only writer of
-  // enforce.json. It reads GCS and calls nodePools.setSize; it never holds a
-  // cluster credential, which is why it still works when the cluster does not.
+  // enforce.json. It reads GCS, reads the pool's size and calls
+  // nodePools.setSize; it never holds a cluster credential, which is why it
+  // still works when the cluster does not.
   //
-  // Branch order matters and mirrors the plan: read failures first (a lease you
-  // cannot read tells you nothing about expiry), then the lease-is-live exit,
-  // then the three-way rule.
+  // The branches are the rows of plan section 3.2's L2 table, and the SAME
+  // table as DecideL2 in tools/exe-reaper/internal/lease/decide.go, in the same
+  // order: the pool already at zero; read failures (a lease you cannot read
+  // tells you nothing about expiry); the lease-is-live exit; then the rule for
+  // an expired lease. They are disjoint and exhaustive, so a tick is a replay
+  // rather than a coin toss.
   // --------------------------------------------------------------------------
+
+  /// L2's run of consecutive lease read failures after this tick: reset while
+  /// the pool is at zero, reset by a readable lease, extended by a miss. The
+  /// same rule as NextReadFailures on the Go side.
+  val l2ReadFailuresNext =
+    if (cluster.nodes == 0 or lease.readable) 0 else enforce.leaseReadFailures + 1
+
+  /// Does drain.json hold a record in state `s` about THIS lease generation? A
+  /// record about an older generation says nothing about this lease -- that is
+  /// how a successful extend invalidates an earlier `drained`.
+  def drainIs(s: DrainState): bool = drain.state == s and drain.leaseGen == lease.gen
+
+  /// The heartbeat L2 judges L1 by. With no record about this lease it is the
+  /// deadline itself: a live L1 writes `draining` within a minute of it, so a
+  /// whole heartbeat window of silence after it means L1 is not running.
+  val l2Heartbeat = if (drainIs(Draining)) drain.heartbeat else lease.deadline
+
+  /// Past the deadline, the only two ways L2 waits: a drain in progress, or no
+  /// record yet -- in both cases inside heartbeat_stale_minutes of the
+  /// heartbeat, and NEVER past force_grace_minutes. The grace is unconditional:
+  /// it is what bounds every wait, so a node is up for at most
+  /// awake_bound_minutes past its deadline while the lease is readable.
+  def l2MayWait(t: int): bool = and {
+    not(drainIs(Drained)),
+    not(drainIs(DrainFailed)),
+    t <= lease.deadline + force_grace_minutes,
+    t - l2Heartbeat <= heartbeat_stale_minutes,
+  }
+
+  /// The pool is already at zero. Nothing to stop, whatever the lease says --
+  /// and the read-failure run is reset, so a run carried across a stop cannot
+  /// turn the first miss after the next wake into a blind stop.
+  action l2AlreadyStopped(t: int): bool = all {
+    cluster.nodes == 0,
+    enforce' = {
+      ...enforce,
+      last: AlreadyStopped,
+      gen: enforce.gen + 1,
+      leaseReadFailures: l2ReadFailuresNext,
+    },
+    clusterUnchanged,
+    evidenceUnchanged,
+  }
 
   /// Fewer than lease_read_failure_threshold consecutive read failures: record
   /// the miss and do nothing. L1 is draining on the very same signal, so the
   /// correct move is to let it. One or two misses must never stop the pool.
   action l2ReadFailedBelowThreshold(t: int): bool = all {
+    cluster.nodes > 0,
     not(lease.readable),
-    enforce.leaseReadFailures + 1 < lease_read_failure_threshold,
+    l2ReadFailuresNext < lease_read_failure_threshold,
     enforce' = {
       ...enforce,
       last: WaitedOnReadFailure,
       gen: enforce.gen + 1,
-      leaseReadFailures: enforce.leaseReadFailures + 1,
+      leaseReadFailures: l2ReadFailuresNext,
     },
     clusterUnchanged,
     evidenceUnchanged,
@@ -794,13 +850,14 @@ module leaseCore {
   /// The compensating control is the notification plus L1, which has been
   /// draining gracefully on the same signal since its own first tick.
   action l2ReadFailedAtThreshold(t: int): bool = all {
+    cluster.nodes > 0,
     not(lease.readable),
-    enforce.leaseReadFailures + 1 >= lease_read_failure_threshold,
+    l2ReadFailuresNext >= lease_read_failure_threshold,
     enforce' = {
       last: StoppedOnReadFailures,
       gen: enforce.gen + 1,
       notified: true,
-      leaseReadFailures: enforce.leaseReadFailures + 1,
+      leaseReadFailures: l2ReadFailuresNext,
     },
     cluster' = shrunk(cluster),
     evidence' = { ...evidence, lastShrink: ForcedStop },
@@ -809,31 +866,32 @@ module leaseCore {
   /// The lease is live. L2 has nothing to enforce, and still records a decision
   /// -- that record is how `exe-status` proves the enforcer ran at all.
   action l2LeaseLive(t: int): bool = all {
+    cluster.nodes > 0,
     lease.readable,
     t < lease.deadline,
     enforce' = {
       ...enforce,
       last: LeaseLive,
       gen: enforce.gen + 1,
-      leaseReadFailures: 0,
+      leaseReadFailures: l2ReadFailuresNext,
     },
     clusterUnchanged,
     evidenceUnchanged,
   }
 
-  /// Three-way rule, branch 1: L1 says `drained`, about THIS lease generation.
-  /// The pool can go to zero, and this is the only stop that claims to be
+  /// L1 says `drained`, about THIS lease generation. The pool can go to zero,
+  /// at any time past the deadline, and this is the only stop that claims to be
   /// graceful -- so it is the only one NoCrashOnGracefulSleep judges.
   action l2StopOnDrained(t: int): bool = all {
+    cluster.nodes > 0,
     lease.readable,
     t >= lease.deadline,
-    drain.state == Drained,
-    drain.leaseGen == lease.gen,
+    drainIs(Drained),
     enforce' = {
       ...enforce,
       last: StoppedOnDrained,
       gen: enforce.gen + 1,
-      leaseReadFailures: 0,
+      leaseReadFailures: l2ReadFailuresNext,
     },
     cluster' = shrunk(cluster),
     evidence' = {
@@ -844,47 +902,39 @@ module leaseCore {
     },
   }
 
-  /// Branch 2: `draining`, about this generation, with a heartbeat inside
-  /// heartbeat_stale_ticks L2 ticks, and the grace period not yet spent. Wait.
-  /// The grace clause is what stops a heartbeat that keeps arriving from
-  /// buying unlimited time.
+  /// A drain in progress with a fresh heartbeat, or no record yet inside the
+  /// heartbeat window after the deadline -- and in both cases inside the grace.
+  /// Wait.
   action l2WaitForDrain(t: int): bool = all {
+    cluster.nodes > 0,
     lease.readable,
     t >= lease.deadline,
-    drain.state == Draining,
-    drain.leaseGen == lease.gen,
-    t - drain.heartbeat <= heartbeat_stale_minutes,
-    t < lease.deadline + force_grace_minutes,
+    l2MayWait(t),
     enforce' = {
       ...enforce,
       last: WaitedForDrain,
       gen: enforce.gen + 1,
-      leaseReadFailures: 0,
+      leaseReadFailures: l2ReadFailuresNext,
     },
     clusterUnchanged,
     evidenceUnchanged,
   }
 
-  /// Branch 3: everything else past the deadline -- a stale heartbeat, a
-  /// `drain-failed`, no drain record at all, a drain record about an older
-  /// lease generation, or the grace period spent. Force the pool to zero and
-  /// notify. An actor Running here is CRASHED, and that is accepted: the
-  /// alternative is a node that never stops.
+  /// Everything else past the deadline -- `drain-failed`, a stale heartbeat, no
+  /// record for a whole heartbeat window, or the grace spent. Force the pool to
+  /// zero and notify. An actor Running here is CRASHED, and that is accepted:
+  /// the alternative is a node that never stops.
   action l2Force(t: int): bool = all {
+    cluster.nodes > 0,
     lease.readable,
     t >= lease.deadline,
-    not(drain.state == Drained and drain.leaseGen == lease.gen),
-    not(and {
-      drain.state == Draining,
-      drain.leaseGen == lease.gen,
-      t - drain.heartbeat <= heartbeat_stale_minutes,
-      t < lease.deadline + force_grace_minutes,
-    }),
+    not(drainIs(Drained)),
+    not(l2MayWait(t)),
     enforce' = {
       last: StoppedForced,
       gen: enforce.gen + 1,
       notified: true,
-      leaseReadFailures: 0,
+      leaseReadFailures: l2ReadFailuresNext,
     },
     cluster' = shrunk(cluster),
     evidence' = {
@@ -903,6 +953,7 @@ module leaseCore {
     drainUnchanged,
     clock' = { ...clock, now: clock.l2Due, l2Due: clock.l2Due + l2_tick_minutes },
     any {
+      l2AlreadyStopped(clock.l2Due),
       l2ReadFailedBelowThreshold(clock.l2Due),
       l2ReadFailedAtThreshold(clock.l2Due),
       l2LeaseLive(clock.l2Due),
@@ -1037,6 +1088,54 @@ module leaseCore {
   }
 
   // --------------------------------------------------------------------------
+  // The L2 table, one decision at a time.
+  //
+  // Not part of `step`. A world set up for exactly one L2 decision, so the
+  // table can be walked row by row (the l2Table*Test runs in `lease`) at the
+  // boundaries where two encodings of one table disagree.
+  // --------------------------------------------------------------------------
+
+  /// The minute the tick lands at: far enough from 0 that every offset the
+  /// rows use stays a valid clock value.
+  pure val L2_TABLE_NOW = 10 * minutes_per_hour
+
+  /// A world whose next event is one L2 tick at minute `t`, with the lease,
+  /// drain.json, the carried read-failure run and the pool exactly as given.
+  /// L1 is not running and L3 has fired, so nothing but L2 can move.
+  action l2WorldAt(
+    t: int,
+    deadline: int,
+    gen: int,
+    readable: bool,
+    failures: int,
+    drainState: DrainState,
+    heartbeat: int,
+    drainGen: int,
+    nodes: int,
+  ): bool = all {
+    lease' = { deadline: deadline, gen: gen, granted: deadline, readable: readable },
+    drain' = { state: drainState, heartbeat: heartbeat, startedAt: heartbeat, leaseGen: drainGen },
+    enforce' = { last: NoDecision, gen: 0, notified: false, leaseReadFailures: failures },
+    cluster' = {
+      nodes: nodes,
+      awake: Set(),
+      crashed: Set(),
+      routerUp: false,
+      reaperAlive: false,
+      zeroRunningSince: -1,
+    },
+    clock' = { now: t - 1, l1Due: t + l1_tick_minutes, l2Due: t, l3At: HORIZON, l3Fired: true },
+    evidence' = {
+      lastShrink: NoShrink,
+      gracefulCrash: false,
+      l3HitAwakeActor: false,
+      stoppedDespiteLiveLease: false,
+      drainEverFailed: false,
+      leaseEverUnreadable: not(readable),
+    },
+  }
+
+  // --------------------------------------------------------------------------
   // Invariants
   //
   // `Safety` carries the four mandatory properties and nothing else. The
@@ -1095,12 +1194,17 @@ module leaseCore {
   /// pool has necessarily already happened -- so the honest encoding is a
   /// safety property about the clock, and this is it.
   ///
-  /// The bound is re-derived in termination_bound_minutes. It is wider than the
-  /// plan's "deadline + 45 + 10" because that figure assumes lease.json is
-  /// readable; when it is not, L2 is entitled to burn
-  /// lease_read_failure_threshold ticks before stopping the pool blind.
-  val NodesEventuallyZero =
-    clock.now > lease.deadline + termination_bound_minutes implies cluster.nodes == 0
+  /// Two bounds, both re-derived from the constants. awake_bound_minutes is
+  /// the plan's "deadline + 45 + 10", and it holds whenever L2's last read of
+  /// the lease succeeded. That figure assumes lease.json is readable; while it
+  /// is not, the three-strike rule forbids a stop on the first misses however
+  /// late they come, and blind_awake_bound_minutes is the bound that holds
+  /// regardless.
+  val NodesEventuallyZero = and {
+    (clock.now > lease.deadline + awake_bound_minutes and enforce.leaseReadFailures == 0)
+      implies cluster.nodes == 0,
+    clock.now > lease.deadline + blind_awake_bound_minutes implies cluster.nodes == 0,
+  }
 
   /// MANDATORY 4. A lease the operator was granted is honoured: no stop taken
   /// from a lease L2 could actually READ ever lands before the granted
@@ -1409,9 +1513,10 @@ module lease {
   /// Same race with L1 dead, so nothing cancels the stale record. The lease
   /// generation is what saves it: the `drained` in drain.json is about
   /// generation 2, the lease is on generation 3, so L2 refuses to call it a
-  /// graceful stop and forces with a notification instead. Conservative in the
-  /// right direction -- a forced stop is loud, a mislabelled graceful one is
-  /// silent.
+  /// graceful stop. It reads as NO record about this lease -- a heartbeat that
+  /// stopped at the deadline -- so L2 waits out one heartbeat window and then
+  /// forces with a notification. Conservative in the right direction -- a
+  /// forced stop is loud, a mislabelled graceful one is silent.
   run staleDrainRecordForcesInsteadOfStoppingGracefullyTest =
     initWith(10 * minutes_per_hour)
       .then(wakeFor(l2_tick_minutes))
@@ -1421,7 +1526,10 @@ module lease {
       .then(extendFor(l2_tick_minutes))   // generation 3, deadline 12
       .then(l1Crash)
       .then(l2Tick)                       // 10: lease still live
-      .then(l2Tick)                       // 20: expired, record is generation 2
+      .then(l2Tick)                       // 20: expired 8 min ago, no record: wait
+      .then(l2Tick)                       // 30: 18 min, still inside the window
+      .expect(and { cluster.nodes == 1, enforce.last == WaitedForDrain })
+      .then(l2Tick)                       // 40: 28 min > heartbeat_stale_minutes
       .expect(and {
         cluster.nodes == 0,
         enforce.last == StoppedForced,
@@ -1533,14 +1641,72 @@ module lease {
   /// away and `exe-wake` is refused for the whole window.
   run l3SpringsOnAnAsleepClusterTest =
     initWith(cap_gap_minutes)
-      .then(5.reps(_ => l2Tick))          // 10..50
+      .then(5.reps(_ => l2Tick))          // 10..50: nothing to stop
       .then(l3Tick)                       // 60 = 04:00
       .expect(and {
         clock.l3Fired,
         cluster.nodes == 0,
         not(evidence.l3HitAwakeActor),
+        // A sleeping pool is never "force-stopped" by L2, so nobody is paged
+        // for a cluster that was never up.
+        enforce.last == AlreadyStopped,
+        not(enforce.notified),
         Safety,
       })
+
+  // --- the L2 table, at its boundaries ----------------------------------------
+  //
+  // One run per row that decide.go's TestDecideL2 pins at a boundary, in model
+  // minutes (the Go table uses one second where these use one minute): the
+  // rows the two encodings of the rule once disagreed at.
+
+  /// A wait world: nothing about the drain, a readable lease, one node.
+  action l2Row(deadlineOffset: int, drainState: DrainState, heartbeatAge: int): bool =
+    l2WorldAt(
+      L2_TABLE_NOW, L2_TABLE_NOW + deadlineOffset, 7, true, 0,
+      drainState, L2_TABLE_NOW - heartbeatAge, 7, 1,
+    )
+
+  /// Past the grace, a heartbeat that is still arriving buys nothing.
+  run l2TableGraceBeatsAFreshHeartbeatTest =
+    l2Row(-(force_grace_minutes + 1), Draining, 0)
+      .then(l2Tick)
+      .expect(and { enforce.last == StoppedForced, cluster.nodes == 0 })
+
+  /// Exactly at the grace it still does.
+  run l2TableAtTheGraceAFreshHeartbeatWaitsTest =
+    l2Row(-force_grace_minutes, Draining, 0)
+      .then(l2Tick)
+      .expect(and { enforce.last == WaitedForDrain, cluster.nodes == 1 })
+
+  /// No record about this lease is a heartbeat that stopped at the deadline:
+  /// exactly one window after it, L2 still waits...
+  run l2TableNoRecordWaitsOneHeartbeatWindowTest =
+    l2Row(-heartbeat_stale_minutes, DrainNone, 0)
+      .then(l2Tick)
+      .expect(and { enforce.last == WaitedForDrain, cluster.nodes == 1 })
+
+  /// ...and a minute later it forces.
+  run l2TableNoRecordForcesAfterTheWindowTest =
+    l2Row(-(heartbeat_stale_minutes + 1), DrainNone, 0)
+      .then(l2Tick)
+      .expect(and { enforce.last == StoppedForced, cluster.nodes == 0, enforce.notified })
+
+  /// `drained` about this lease is a graceful stop at any time past the
+  /// deadline, the grace included.
+  run l2TableDrainedPastTheGraceIsGracefulTest =
+    l2Row(-(force_grace_minutes + 1), Drained, 0)
+      .then(l2Tick)
+      .expect(and { enforce.last == StoppedOnDrained, not(enforce.notified) })
+
+  /// While the pool is at zero, a carried run of read failures is reset.
+  run l2TableAtZeroTheReadFailureRunResetsTest =
+    l2WorldAt(
+      L2_TABLE_NOW, L2_TABLE_NOW - 60, 7, false, lease_read_failure_threshold - 1,
+      DrainNone, 0, 7, 0,
+    )
+      .then(l2Tick)
+      .expect(and { enforce.last == AlreadyStopped, enforce.leaseReadFailures == 0 })
 
   // --- environment --------------------------------------------------------
 

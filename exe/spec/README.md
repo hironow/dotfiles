@@ -18,7 +18,7 @@ which is the only place they live.
 |---|---|---|
 | L0 lease (operator, Mac) | `wakeFor` / `extendFor` / `sleep` | every wake carries an expiry; the nightly cap clamps it; a successful extend beats a stale `drained` |
 | L1 graceful drain (in-cluster CronJob, 1 min) | `l1Tick` → `l1Begin`, `l1OpenRouter`, `l1Suspend`, `l1Stall`, `l1Finish`, `l1GiveUp`, `l1Cancel`, `l1Settled`, `l1NoOp`; `l1Crash` | the router closes before anything is suspended; the pool is never touched by L1 |
-| L2 deadline enforcement (Cloud Run, 10 min) | `l2Tick` → the three-way rule plus the read-failure branch | the node stops even when the cluster is broken; one or two read failures do nothing |
+| L2 deadline enforcement (Cloud Run, 10 min) | `l2Tick` → plan section 3.2's L2 table, row for row the same as `DecideL2`: pool already at zero, read failures, lease live, then the rule for an expired lease | the node stops even when the cluster is broken; one or two read failures do nothing; past deadline + 45 min nothing waits |
 | L3 daily stop (Cloud Scheduler → `setSize(0)`) | `l3Tick` | no logic at all, and the cap arithmetic makes that safe |
 | environment | `autoResume`, `operatorResume`, `nodeLoss`, `leaseReadBreaks`, `leaseReadHeals`, `rogueLeaseWrite` | the router auto-resumes without asking; nodes vanish; GCS stops answering |
 
@@ -44,12 +44,15 @@ structural property of the model, checkable by grepping for `lease' = {`,
   temporal formula: the unfair trace where the schedulers never fire would
   falsify it. The model instead makes the tick actions the only thing that moves
   the clock, and lets a tick fire only when it is the earliest scheduled event.
-  "Eventually" then becomes arithmetic — if the clock is past
-  `deadline + termination_bound_minutes`, the tick that had to stop the pool has
-  already happened — and the honest encoding is a statement about the clock.
-  The bound is wider than the plan's `deadline + 45 + 10`, because that figure
-  assumes `lease.json` is readable; when it is not, L2 may burn
-  `lease_read_failure_threshold` ticks first.
+  "Eventually" then becomes arithmetic — if the clock is past the deadline plus
+  the bound, the tick that had to stop the pool has already happened — and the
+  honest encoding is a statement about the clock. Two bounds, both re-derived
+  from the constants: `awake_bound_minutes` is the plan's `deadline + 45 + 10`
+  and holds while L2's last read of `lease.json` succeeded;
+  `blind_awake_bound_minutes` adds `lease_read_failure_threshold - 1` L2 ticks
+  and holds regardless, because the three-strike rule forbids a stop on the
+  first misses however late they come. The seeded simulation checks the same
+  two numbers, taken from `lease.AwakeBound` and `lease.BlindAwakeBound`.
 - **`ExtendBeatsStaleDrained`** — no stop taken from a lease L2 could actually
   read lands before the deadline the operator was granted.
 
@@ -95,6 +98,13 @@ and two read failures doing nothing, the third forcing, a stale heartbeat
 forcing, the drain ceiling forcing, a stale `drained` record forcing instead of
 stopping gracefully, node loss not counting as a graceful stop, and a full night
 ending with L3 springing on an empty pool.
+
+The `l2Table*Test` runs walk the L2 table at the boundaries where the model and
+`DecideL2` once disagreed, one tick each from a world built by `l2WorldAt`:
+past the grace a fresh heartbeat buys nothing, exactly at it it still does; with
+no drain record about the lease, L2 waits exactly one heartbeat window after the
+deadline and forces a minute later; `drained` is a graceful stop even past the
+grace; and a carried read-failure run resets while the pool is at zero.
 
 ## What the model deliberately does not cover
 
@@ -142,8 +152,11 @@ mise x -- quint typecheck  exe/spec/lease.qnt
 mise x -- quint test --max-samples=200 exe/spec/lease.qnt
 mise x -- quint run exe/spec/lease.qnt \
     --invariants Safety WellFormed DrainedRecordStaysTrue \
-    --max-steps=120 --max-samples=5000 --verbosity=1
+    --max-steps=120 --max-samples=5000 --seed=0x1ea5e --verbosity=1
 ```
+
+The gate runs that search with a fixed seed, so a failure it reports replays;
+drop `--seed` to search elsewhere.
 
 `--main` defaults to the module named after the file, so all four pick up
 `lease`, the decided design. The rejected designs are addressed by name:
