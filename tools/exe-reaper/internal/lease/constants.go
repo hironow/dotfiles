@@ -91,6 +91,21 @@ func HeartbeatStaleAfter() time.Duration {
 	return HeartbeatStaleTicks * L2Tick
 }
 
+// AwakeBound is how long past its deadline a node can stay up while L2 can read
+// the lease: the grace, which nothing outlasts, plus one L2 period for the tick
+// that lands after it. Plan section 3.2's "期限 + 45 分 + L2 の周期 10 分",
+// and the bound the model's NodesEventuallyZero and the simulation check.
+func AwakeBound() time.Duration {
+	return ForceGrace + L2Tick
+}
+
+// BlindAwakeBound is the same bound when L2 cannot read the lease. The
+// three-strike rule forbids forcing on the first two misses however late they
+// come, so the first tick past the grace can be followed by threshold - 1 more.
+func BlindAwakeBound() time.Duration {
+	return AwakeBound() + L2Tick*(LeaseReadFailureThreshold-1)
+}
+
 // CapMargin is the total time the stopping chain can take in the worst case:
 // one L1 tick to notice, a full drain ceiling to finish, one L2 tick to
 // enforce, plus slack.

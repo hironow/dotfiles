@@ -145,3 +145,30 @@ func TestLocationIsResolvedOnce(t *testing.T) {
 		t.Fatal("Location() must return the same *time.Location on every call")
 	}
 }
+
+func TestTheAwakeBoundsComeFromTheSingleSource(t *testing.T) {
+	// Plan section 3.2: a node is up for at most deadline + force grace + one
+	// L2 period. The model's NodesEventuallyZero and the simulation's check
+	// both take that number from here, so it is pinned against the JSON rather
+	// than against a literal.
+	doc := loadConstants(t)
+	want := time.Duration(doc.ForceGraceMinutes+doc.L2TickMinutes) * time.Minute
+	if AwakeBound() != want {
+		t.Errorf("AwakeBound() = %s, want force_grace + l2_tick = %s", AwakeBound(), want)
+	}
+
+	// The plan's figure assumes L2 can read the lease. When it cannot, the
+	// three-strike rule forbids forcing on the first two misses however late
+	// they are, so the first tick past the grace can be followed by two more.
+	blind := want + time.Duration(doc.L2TickMinutes*(doc.LeaseReadFailureThreshold-1))*time.Minute
+	if BlindAwakeBound() != blind {
+		t.Errorf("BlindAwakeBound() = %s, want AwakeBound + l2_tick * (threshold - 1) = %s", BlindAwakeBound(), blind)
+	}
+
+	// Both have to end before L3 could land on a node the cap let a lease run
+	// up to: the readable bound inside the cap gap is what keeps L3 off an
+	// awake actor in normal operation.
+	if AwakeBound() > CapMargin() {
+		t.Errorf("AwakeBound() %s does not fit in the cap gap %s", AwakeBound(), CapMargin())
+	}
+}
