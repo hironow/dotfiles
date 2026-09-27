@@ -8,13 +8,12 @@
     "_go_mod_substrate_note": "Copied verbatim from the pinned ax release's go.mod (github.com/agent-substrate/substrate). `just exe-cluster-src` re-reads the fetched go.mod and fails if it differs (scripts/check_exe_pins.py ax-gomod)."
   },
   "substrate": {
-    "version": "v0.1.0",
+    "version": "v0.0.0-20260911232748-672533541dbf",
     "repo": "github.com/agent-substrate/substrate",
-    "sha": "fa6d949685a6318940a9a0195c867c864009b820",
+    "sha": "672533541dbfcd29084e4de2475267088bda3651",
     "version_label_key": "ate.dev/substrate-version",
-    "version_label_value": "v0.1.0",
-    "_ax_gomod_pseudoversion_commit": "672533541dbf",
-    "_ax_gomod_note": "The ax release's go.mod pins substrate at pseudo-version commit 672533541dbf, which has diverged from the tag pinned above; we deliberately unify on the tag and prove compatibility in spike S1 before anything else builds on it.",
+    "version_label_value": "v0.0.0-20260911232748-672533541dbf",
+    "_ax_gomod_note": "Until 2026-09-27 this pinned the v0.1.0 tag (fa6d949) on the bet that it was compatible with ax v0.3.1, whose go.mod requires the main-branch commit 672533541dbf; spike S1/S2 proved that wrong the same day (v0.1.0 routes to actors by Host DNS name, ax v0.3.1 by the ate-target-actor header, so no task ever turned Ready and `ax ssh` was refused). The operator chose to repin to exactly ax's requirement (manager-loop inbox M13); the pins gate accepts that pseudo-version only because it equals ax.go_mod_substrate and the SHA matches its suffix. The v0.2.0 tag was rejected: its ateapi.proto drops fields ax v0.3.1 sends (snapshots_config, readyz, golden_snapshot).",
     "_version_label_note": "version_label_value is the VERSION argument handed to ate-setup and is stamped on every node under version_label_key, so it must stay both equal to version and a valid Kubernetes label value."
   },
   "gke": {
