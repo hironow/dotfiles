@@ -11,13 +11,13 @@
 - 新基盤は旧 exe とは**別の private GCP project** に作る。その識別子は git に一切入れない (§1.1)。
 - GKE Standard の **zonal クラスタ 1 つ** (Rapid チャネル、1.37 系)。管理費 $0.10/h は GKE 無料枠 ($74.40/月、
   請求先アカウント単位) で相殺される。無料枠は空いていることを確認済み。
-- ノードは **on-demand e2-standard-4 の 1 台だけ**で、使う時だけ起こす。台数は**リース方式の自動休眠**が持つ (§3.2)。
-  休眠し忘れても 1 回あたり既定 ≈ ¥52 (既定リース 1h)、最悪 ≈ ¥266 で止まり、**24 時間つけっぱなしは構造的に起きない**。
+- ノードは **on-demand e2-highmem-2 の 1 台だけ**で、使う時だけ起こす (機種は S7 の実測で決定、M20 T3)。台数は**リース方式の自動休眠**が持つ (§3.2)。
+  休眠し忘れても 1 回あたり既定 ≈ ¥40 (既定リース 1h)、最悪 ≈ ¥186 で止まり、**24 時間つけっぱなしは構造的に起きない**。
 - **保存先は全部、上限を宣言して CI で強制する** (§3.3)。Artifact Registry や snapshot がじわじわ溜まるのを防ぐ。
 - 公開面ゼロ: private nodes + Cloud NAT、IP endpoint 無効 + DNS endpoint (Google IAM 必須)、Service は ClusterIP のみ。
 - 構築は dotfiles 配下の OpenTofu: `tofu/exe-platform` (GCP 基盤) + `tofu/exe-cluster` (クラスタ内) + `tofu/tailnet` (ACL 移管)。
   上流 Substrate の installer (`ate-setup`) は、pin した版を build モードで `terraform_data` から呼ぶ。
-- 概算 (東京のカタログ価格、2026-09-26): **休眠中 ≈ ¥330/月、起動中 ≈ ¥30/時** (PVC は両方 pd-standard、Q22)。
+- 概算 (東京のカタログ価格、2026-09-26): **休眠中 ≈ ¥330/月、起動中 ≈ ¥21/時** (PVC は両方 pd-standard、Q22)。
 - ちりつも対策は、あとで個人アカウント側の GCP にも横展開できるよう、再利用できる形 (spoke + 監査ツール + 後続計画) で残す (Q18)。
 - 最大のリスクは上流が pre-1.0 で頻繁に breaking change すること。版を pin し、実機 e2e で互換を実証してから先へ進む。
 
@@ -141,12 +141,12 @@
     | lease.json write                  | HTTPS + Google IAM (DNS endpoint only)
     v                                   v
  +------------+     +------------- GKE zonal cluster "exe" (Rapid, 1.37) -------------+
- | GCS: ops   |<----| node pool "main": 0..1 x e2-standard-4 on-demand                |
+ | GCS: ops   |<----| node pool "main": 0..1 x e2-highmem-2 on-demand                 |
  | lease.json | L1  |   (node count owned by the lease loop, ignored by tofu)         |
- | drain.json |     |   ns ax-system : ax-server | ax-controller | redis (PVC)         |
- | enforce.   |     |   ns ate-system: substrate control plane | atelet | workers x2   |
- |   json     |     |   ns exe-store : postgres (PVC)                                  |
- +------------+     |   ns exe-ops   : exe-reaper CronJob (L1, every minute)           |
+ | drain.json |     |   ns ax-system : ax-server | ax-controller | redis (PVC)        |
+ | enforce.   |     |   ns ate-system: substrate control plane | atelet | workers x2  |
+ |   json     |     |   ns exe-store : postgres (PVC)                                 |
+ +------------+     |   ns exe-ops   : exe-reaper CronJob (L1, every minute)          |
     ^               +-----------------------------------------------------------------+
     | L2 reads             ^ setSize(0)          |                        |
  +------------+            |                     v                        v
@@ -210,7 +210,7 @@ Legend / 凡例:
   (L1 の周期 1 分 + 片付けの上限 30 分 + L2 の周期 10 分 + 余裕 19 分) = **03:00 JST** (Q21)。
   これで、正常時に L3 が起きている actor を巻き込むことはない。
 - 最悪額: ノードが起きている時間は「期限 + 45 分 + L2 の周期 10 分」以内 (L2 が `lease.json` を読める間。読めない間は
-  3 回連続の規則のため、さらに L2 の周期 2 回分まで延びうる)。休眠し忘れは既定リースで ≈ ¥52/回、最大リースで ≈ ¥266/回。
+  3 回連続の規則のため、さらに L2 の周期 2 回分まで延びうる)。休眠し忘れは既定リースで ≈ ¥40/回、最大リースで ≈ ¥186/回 (起動中 ≈ ¥20.9/時で計算)。
   **ただしこれは「止める判断」の上限で、ノードが実際に消えるまでの時間 (停止の遅延) は含まない**。PodDisruptionBudget が
   drain を最大 1 時間止めうることが Phase 4 で判明した → install で全 budget を開き、残れば install を失敗させる。
   修正後の実測は 3 分 32 秒。停止の遅延をモデルの前提と検知に入れるのは Phase 6。
@@ -322,7 +322,7 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
     - NAT あり、bucket は UBLA + PAP + soft delete 0、§3.3 の上限
     - あわせて repo 全体の保存先上限テストを置く
 - **[Green]**: API 有効化、VPC / subnet / Cloud Router + NAT、専用 SA (node、Cloud Build、reaper の Workload Identity、
-  enforcer、Scheduler) と最小権限、GKE と node pool (e2-standard-4、boot disk は spike の実測まで 50GB)、
+  enforcer、Scheduler) と最小権限、GKE と node pool (e2-highmem-2。S7 の実測で e2-standard-4 から変更 (M20 T3)。boot disk 50GB)、
   bucket (`exe-snapshots`、`exe-ops`、`exe-build`)、AR (`exe-platform`、`exe-task`) と cleanup policy、
   Substrate の Workload Identity principal への権限 (上流が列挙する 6 種。project 番号で組み立てる。どれを絞るかも明記する)、
   **L3 (毎日 04:00 JST の `setSize(0)`)、Scheduler 失敗のアラート、ノード稼働時間のアラート、JPY の budget**。
@@ -386,12 +386,14 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 |---|---|---|
 | S4 | egress | task 内から `git ls-remote` と model API への HTTPS が通る |
 | S5 | 隔離 | task 内から redis / postgres / ax-server に繋がらない。**NetworkPolicy 適用後も `ax get tasks` が port-forward で通る** |
-| S7 | 容量 | CPU / メモリ / **ephemeral-storage** の実測で、基盤一式 + worker 2 が e2-standard-4 と boot disk に収まる。Postgres が 60 秒以内に Ready、Redis の AOF で遅延が出ない |
+| S7 | 容量 | CPU / メモリ / **ephemeral-storage** の実測で、基盤一式 + worker 2 がノードと boot disk に収まる。Postgres が 60 秒以内に Ready、Redis の AOF で遅延が出ない |
 | S8 | image | task image で `claude --version` / `node -v` / `git` が gVisor 下で動く |
 | S9 | 資格情報 | Q20 の方式で Claude が認証でき、token が snapshot やログに残らない。`CLAUDE_CONFIG_DIR` を `/workspace` に置いた設定 dir が suspend / resume 後も残る (v0.3.1 の `ax ssh` は stdin を転送しないので、task 内の対話ログインはできない) |
 
-- S7 の実測から、worker 2 のまま収まる最小の機種を提案する (候補 e2-highmem-2、約 −32%/時)。worker を 1 にはしない
-  (router の自動 resume が空き worker を奪い合う)。Postgres / Redis が遅ければ pd-balanced に戻す。
+- S7 の実測 (2026-09-27、e2-standard-4): requests は CPU 1745m / メモリ 10.19 GiB、idle の使用は 484m / 2.7 GiB。
+  worker 2 のまま収まる最小の機種 e2-highmem-2 (allocatable 1930m / 12.96 GiB、約 −32%/時) に変え、実機で全 pod が
+  Ready になることを確かめた。worker を 1 にはしない (router の自動 resume が空き worker を奪い合う)。Postgres は
+  60 秒以内に Ready、Redis の AOF に遅延はなく、PVC は pd-standard のままでよい。
 - M20 T2 (Postgres を pd-standard へ) を S4 の前に行う: claim template の名前を変え、install を再実行して ate-api-server を
   新しい store に再起動し、古い claim と disk を消す。
 - 仕上げ: S4 / S5 / S7 / S8 / S9 緑、ノード 0。
@@ -490,7 +492,7 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 
 | 項目 | USD | JPY | いつ課金されるか |
 |---|---|---|---|
-| e2-standard-4 (4 vCPU / 16 GiB) | $0.1719/h | ¥27.4/h | ノードが起きている時だけ |
+| e2-highmem-2 (2 vCPU / 16 GiB、M20 T3) | $0.1159/h | ¥18.5/h | ノードが起きている時だけ |
 | boot disk 50 GiB (pd-balanced) | $0.0089/h | ¥1.4/h | 同上 |
 | Cloud NAT (VM 1 台 $0.0014/h + IP $0.005/h) | $0.0064/h | ¥1.0/h | 起きている時 (IP の休眠中の扱いは spike で実測) |
 | GKE 管理費 (zonal) | $0.10/h | ¥15.9/h | クラスタが存在する限り。**無料枠で相殺 (確認済み)** |
@@ -504,19 +506,20 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | 使い方 | 月額 |
 |---|---|
 | 休眠のみ | **≈ ¥330** (¥260〜510) |
-| 月 20 時間 | ≈ ¥1,050 |
-| 月 40 時間 | ≈ ¥1,650 |
-| 月 80 時間 | ≈ ¥2,850 (予算アラートの 90% 付近) |
-| 休眠し忘れ | 1 回あたり既定 ≈ ¥52 (既定リース 1h)、最悪 ≈ ¥266 (24 時間つけっぱなしは起きない) |
+| 月 20 時間 | ≈ ¥870 |
+| 月 40 時間 | ≈ ¥1,290 |
+| 月 80 時間 | ≈ ¥2,120 (予算アラートの 90% は ≈ 108 時間) |
+| 休眠し忘れ | 1 回あたり既定 ≈ ¥40 (既定リース 1h)、最悪 ≈ ¥186 (24 時間つけっぱなしは起きない) |
 
-- PVC は両方 pd-standard (M20 T2)。両方 pd-balanced なら休眠中 ≈ ¥570。Postgres の速さは S7 で実測する (Q22)。
+- PVC は両方 pd-standard (M20 T2)。両方 pd-balanced なら休眠中 ≈ ¥570。Postgres は S7 の実測で Ready まで 16 秒 (initdb) / 5 秒 (データあり) / 34 秒 (新しいノードで image 取得込み) (Q22)。
 - spot は使わない (M20 T1): 退避で起きている actor が全部 CRASHED (終端) になり、直前の suspend 以降の作業とトークンが
-  消える。その損失を数えると ≈ ¥19/時の節約は割に合わない。Substrate / AX に定期 checkpoint か crash 復旧が入るか、
+  消える。その損失を数えると ≈ ¥13/時の節約は割に合わない。Substrate / AX に定期 checkpoint か crash 復旧が入るか、
   月の稼働時間が大きく増えたら見直す。
-- 機種は S7 の実測で決める (M20 T3)。worker 2 を保ったまま e2-highmem-2 に収まれば ≈ ¥18.5/時 (e2-standard-4 は ≈ ¥27.4/時)。
+- 機種は S7 の実測で決めた (M20 T3): e2-highmem-2 ≈ ¥18.5/時 (e2-standard-4 は ≈ ¥27.4/時)。CPU の重い task が 2 本同時だと、
+  1 本あたり ≈ 0.75 vCPU に絞られる。
 - 移行作業中 (Phase 2〜6) はクラスタが 20〜40 時間起きて ≈ ¥600〜1,200 の見込み。
 - 旧スタックの撤去で、旧 project の維持費 (推定 ¥500〜1,500/月、要確認) が消える。
-- 同時 3 本以上が要る場合は e2-standard-8 (≈ ¥57/h) か 2 台目 (Q17)。
+- 同時 3 本以上が要る場合は e2-highmem-4 (≈ ¥39/h、S7 ではメモリが律速) か 2 台目 (Q17)。
 
 ## 7. リスクと対策
 
@@ -571,7 +574,7 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | Q24 | pins gate の例外 (M16) | tag 以外は「AX の go.mod の要求そのもの + SHA 一致」だけ。取得時に go.mod と照合し、合わなければ失敗 |
 | Q25 | 停止を遅らせるもの (M18 / M19) | 状態を守らないものは停止を遅らせない。PodDisruptionBudget は install で開き、残れば失敗。Filestore CSI は無効。停止の遅延はモデルの前提と検知に入れる (Phase 6) |
 | Q26 | spot (M20 T1) | 使わない (CRASHED は終端で、失う作業とトークンが節約を上回る) |
-| Q27 | worker 数と機種 (M20 T3) | worker は 2 のまま。機種は S7 の実測で最小のものに (候補 e2-highmem-2) |
+| Q27 | worker 数と機種 (M20 T3) | worker は 2 のまま。機種は S7 の実測で最小のもの = e2-highmem-2 (2026-09-27 適用、実機で全 pod Ready を確認) |
 | Q28 | Claude の設定 dir (M21) | image の既定では設定 dir を `/workspace` に置かない (credential をディスクに残さない)。永続化が要る task だけ `CLAUDE_CONFIG_DIR=/workspace/.claude` を指定し、その場合 credential は private bucket の snapshot に入ることを ADR に書く |
 
 ## 9. 完了条件 (Definition of Done)
