@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,8 +27,9 @@ import (
 // It models only what the tick depends on; anything else is a 404 and fails the
 // test loudly.
 type fakeCloud struct {
-	t   *testing.T
-	srv *httptest.Server
+	t    *testing.T
+	srv  *httptest.Server
+	hang atomic.Bool // every request waits until its caller gives up
 
 	mu         sync.Mutex
 	objects    map[string]fakeObject
@@ -124,6 +126,12 @@ func (f *fakeCloud) setSizes() []int {
 }
 
 func (f *fakeCloud) serve(w http.ResponseWriter, r *http.Request) {
+	if f.hang.Load() {
+		// A Google API that accepted the connection and never answers:
+		// only the caller's own deadline ends the request.
+		<-r.Context().Done()
+		return
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

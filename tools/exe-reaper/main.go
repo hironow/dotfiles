@@ -96,8 +96,24 @@ func noArgs(fs *flag.FlagSet) error {
 	return nil
 }
 
+// commandTimeout bounds every command, end to end. Each request has its own
+// timeout, but a command makes several, and the L2 job's task limit is 120 s
+// (tofu/exe-platform/l2_enforcer.tf): a tick stopped by this deadline still
+// writes its failure line, where one killed at the limit leaves only Cloud
+// Run's record that it failed. tests/unit/test_exe_reaper_env_contract.py
+// keeps the two apart.
+const commandTimeout = 90 * time.Second
+
+// commandContext is the context every command runs under.
+func commandContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, commandTimeout)
+}
+
 func main() {
-	os.Exit(run(context.Background(), os.Args[1:]))
+	ctx, cancel := commandContext(context.Background())
+	code := run(ctx, os.Args[1:])
+	cancel()
+	os.Exit(code)
 }
 
 // run dispatches one command and returns the process's exit code.

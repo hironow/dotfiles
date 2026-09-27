@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -322,6 +323,47 @@ func TestAPositionalArgumentIsRefused(t *testing.T) {
 	if code := runEnforce(t.Context(), []string{"5m"}, &out); code != 1 ||
 		!strings.Contains(out.String(), `unexpected argument \"5m\"`) {
 		t.Errorf("enforce 5m: exit %d, output %s", code, out.String())
+	}
+}
+
+// Every command runs under one deadline, set where the process starts. Each
+// HTTP request has its own 30 s timeout, but a command makes several, and an
+// L2 tick against a Google API that accepts connections and never answers
+// would run into Cloud Run's 120 s task limit and be killed without a word
+// (review finding #9). The deadline ends it first, with the failure line.
+func TestEveryCommandRunsUnderADeadline(t *testing.T) {
+	ctx, cancel := commandContext(t.Context())
+	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("commandContext must set a deadline")
+	}
+	if left := time.Until(deadline); left <= 0 || left > commandTimeout {
+		t.Errorf("deadline in %s, want within (0, %s]", left, commandTimeout)
+	}
+}
+
+// What the deadline buys: a tick whose every request hangs gives up when its
+// context does, and says so in its failure line.
+func TestATickGivesUpAtItsDeadline(t *testing.T) {
+	cloud := newFakeCloud(t)
+	cloud.hang.Store(true)
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+
+	var out bytes.Buffer
+	started := time.Now()
+	code := cloud.enforcer(&out).run(ctx, time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC), false)
+
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if took := time.Since(started); took > 5*time.Second {
+		t.Errorf("the tick took %s to give up; the deadline was 200ms", took)
+	}
+	if !strings.Contains(out.String(), "context deadline exceeded") {
+		t.Errorf("the failure line should say the deadline ran out:\n%s", out.String())
 	}
 }
 

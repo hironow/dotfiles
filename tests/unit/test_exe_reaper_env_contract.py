@@ -91,3 +91,47 @@ const (
 """
     assert go_env_names(go) == {"EXE_OPS_BUCKET", "EXE_ZONE"}
     assert tf_env_names(tf) == {"EXE_OPS_BUCKET", "EXE_ZONE"}
+
+
+# --- the command deadline against the job's own limit -----------------------
+
+#: `commandTimeout = 90 * time.Second` in main.go.
+_GO_COMMAND_TIMEOUT: Final = re.compile(
+    r"(?m)^\s*(?:const\s+)?commandTimeout\s*=\s*(\d+)\s*\*\s*time\.Second\b"
+)
+
+#: `timeout = "120s"` in the job's task template.
+_TF_TASK_TIMEOUT: Final = re.compile(r'(?m)^\s*timeout\s*=\s*"(\d+)s"')
+
+#: What the binary needs after its deadline to write the failure line and
+#: exit, with room to spare: one JSON line, no network.
+_FAILURE_LINE_MARGIN_SECONDS: Final = 10
+
+
+def test_every_command_gives_up_before_the_job_is_killed() -> None:
+    """exe-reaper's own deadline must end a hung tick before Cloud Run's task
+    timeout does. Killed by the timeout, the job leaves only Cloud Run's terse
+    record of a failed execution; stopped by its deadline, it writes its
+    failure line first, with the error that says what hung.
+    """
+    go = _GO_COMMAND_TIMEOUT.findall(REAPER_MAIN.read_text(encoding="utf-8"))
+    tf = _TF_TASK_TIMEOUT.findall(L2_ENFORCER_TF.read_text(encoding="utf-8"))
+    assert len(go) == 1, f"want one commandTimeout in main.go, found {go}"
+    assert len(tf) == 1, f"want one task timeout in l2_enforcer.tf, found {tf}"
+    command, task = int(go[0]), int(tf[0])
+    assert command + _FAILURE_LINE_MARGIN_SECONDS <= task, (
+        f"exe-reaper's deadline ({command}s) must end at least "
+        f"{_FAILURE_LINE_MARGIN_SECONDS}s before the job's timeout ({task}s)"
+    )
+
+
+def test_the_timeout_scanners_parse_both_shapes() -> None:
+    assert _GO_COMMAND_TIMEOUT.findall("const commandTimeout = 90 * time.Second\n") == [
+        "90"
+    ]
+    assert _GO_COMMAND_TIMEOUT.findall("// commandTimeout = 5 * time.Second\n") == []
+    assert _GO_COMMAND_TIMEOUT.findall("\tcommandTimeout = 90 * time.Second\n") == [
+        "90"
+    ]
+    assert _TF_TASK_TIMEOUT.findall('      timeout = "120s"\n') == ["120"]
+    assert _TF_TASK_TIMEOUT.findall('  attempt_deadline = "180s"\n') == []
