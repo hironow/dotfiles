@@ -97,37 +97,42 @@ func noArgs(fs *flag.FlagSet) error {
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	os.Exit(run(context.Background(), os.Args[1:]))
+}
+
+// run dispatches one command and returns the process's exit code.
+func run(ctx context.Context, args []string) int {
+	if len(args) < 1 {
 		usage()
-		os.Exit(2)
+		return 2
 	}
-	ctx := context.Background()
 	var err error
-	switch os.Args[1] {
+	switch args[0] {
 	case "wake":
-		err = cmdLease(ctx, os.Args[2:], true)
+		err = cmdLease(ctx, args[1:], true)
 	case "extend":
-		err = cmdLease(ctx, os.Args[2:], false)
+		err = cmdLease(ctx, args[1:], false)
 	case "sleep":
-		err = cmdSleep(ctx, os.Args[2:])
+		err = cmdSleep(ctx, args[1:])
 	case "enforce":
 		// Its own exit path: every line it writes, the failure line included,
 		// is the log contract on stdout.
-		os.Exit(runEnforce(ctx, os.Args[2:], os.Stdout))
+		return runEnforce(ctx, args[1:], os.Stdout)
 	case "status":
-		err = cmdStatus(ctx, os.Args[2:])
+		err = cmdStatus(ctx, args[1:])
 	case "-h", "--help", "help":
 		usage()
-		return
+		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n", args[0])
 		usage()
-		os.Exit(2)
+		return 2
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "exe-reaper: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func usage() {
