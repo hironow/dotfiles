@@ -1491,10 +1491,12 @@ exe-platform-plan *args:
     @echo '📋 saved plan: {{ _EXE_PLATFORM_PLAN }} (gitignored; never paste its output anywhere public)'
 
 # Summarise a saved plan by action and resource type — enough to review intent
-# without printing attribute values.
+# without printing attribute values. Extra args go to the summariser, e.g.
+# `--expect-changes FILE` to hold the plan to a reviewed change list; the recipe
+# runs from the stack directory, so a relative FILE resolves there.
 [group('Exe')]
-exe-platform-plan-summary:
-    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu show -json exe-platform.tfplan | {{ UV_RUN }} ../../scripts/summarize_tofu_plan.py
+exe-platform-plan-summary *args:
+    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu show -json exe-platform.tfplan | {{ UV_RUN }} ../../scripts/summarize_tofu_plan.py {{ args }}
 
 # OPERATOR ONLY. Applies the saved plan produced above.
 [group('Exe')]

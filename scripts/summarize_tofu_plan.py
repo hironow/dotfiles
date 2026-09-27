@@ -20,6 +20,17 @@ That is enough to answer the two questions that matter before an apply:
      resource somebody else owns.
   2. Is every address one of ours? `--expect-prefix` asserts that every changed
      address belongs to the stack under review, and exits non-zero if not.
+  3. Is the set of changes EXACTLY the set that was reviewed? `--expect-changes`
+     takes a file of `<action> <address>` lines and holds the plan to it in BOTH
+     directions. `--creates-only` cannot answer this once a stack is past its
+     first apply -- it would reject the whole plan for containing the one update
+     the reviewer asked for -- and both directions matter: an unexpected change
+     is the obvious danger, while an expected change that is silently ABSENT
+     means the reviewer approved something that is not going to happen.
+
+An expectation file is as public as the .tf files, because it holds nothing but
+addresses those files already chose. That asymmetry is the point: the file can be
+tracked and reviewed in a PR, while the plan it checks can never be.
 
 Reads `tofu show -json <planfile>` on stdin. Exit 0 = summary printed and every
 assertion held; 1 = an assertion failed (details on stderr). Stdlib only.
@@ -31,7 +42,8 @@ import argparse
 import json
 import sys
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import Any
 
 EXIT_OK = 0
@@ -52,6 +64,87 @@ _MARKERS: dict[tuple[str, ...], str] = {
 # Actions a reviewer must be told about loudly, because on a shared project they
 # mean this stack is touching something that already existed.
 _DESTRUCTIVE = {"delete", "update"}
+
+# Markers an expectation file may use: exactly the ones this tool prints, so a
+# reviewer writes down what they read rather than translating it. The no-op
+# marker is excluded because no-op changes are filtered out of the summary
+# entirely, and a single space is not a token anybody can write on a line.
+_EXPECTABLE_MARKERS = frozenset(
+    mark for actions, mark in _MARKERS.items() if actions != ("no-op",)
+)
+
+_COMMENT = "#"
+
+
+class ExpectationError(ValueError):
+    """A line in an `--expect-changes` file that cannot be read as a change.
+
+    Its own type, because it is an operator mistake in a hand-edited file and not
+    a finding about the plan -- the message has to say which line, since that is
+    the only way to fix it.
+    """
+
+
+def parse_expectations(text: str, source: str) -> set[tuple[str, str]]:
+    """`<marker> <address>` lines -> the set of (marker, address) pairs.
+
+    Blank lines and `#` comments (leading whitespace allowed) are skipped, so the
+    file can be grouped and annotated by the reviewer who approved it.
+
+    Strict about everything else. A line is two whitespace-separated fields and
+    the first must be a marker this tool prints: a typo that was merely ALLOWED
+    through would become a pair the plan can never match, reported as "an
+    expected change is missing" -- which sends the reader looking at the plan for
+    a mistake that is in the expectation file.
+    """
+    expected: set[tuple[str, str]] = set()
+    for lineno, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith(_COMMENT):
+            continue
+        fields = line.split()
+        if len(fields) != 2:
+            raise ExpectationError(
+                f"{source} line {lineno}: expected '<action> <address>', got {line!r}. "
+                f"Actions are {' '.join(sorted(_EXPECTABLE_MARKERS))}; "
+                "one change per line, '#' starts a comment."
+            )
+        mark, address = fields
+        if mark not in _EXPECTABLE_MARKERS:
+            raise ExpectationError(
+                f"{source} line {lineno}: {mark!r} is not an action. "
+                f"Use one of {' '.join(sorted(_EXPECTABLE_MARKERS))}, "
+                "exactly as the summary above prints it."
+            )
+        expected.add((mark, address))
+    return expected
+
+
+def read_expectations(path: str) -> set[tuple[str, str]]:
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ExpectationError(f"--expect-changes {path}: {exc.strerror}") from exc
+    return parse_expectations(text, path)
+
+
+def _format_pairs(pairs: Iterable[tuple[str, str]]) -> list[str]:
+    return [
+        f"{mark} {address}" for mark, address in sorted(pairs, key=lambda p: p[::-1])
+    ]
+
+
+def compare_expectations(
+    entries: Sequence[tuple[str, list[str]]], expected: set[tuple[str, str]]
+) -> tuple[list[str], list[str]]:
+    """(unexpected, missing) as `<marker> <address>` strings.
+
+    Both halves are returned because both are failures, for opposite reasons: an
+    unexpected pair is a change nobody reviewed, and a missing one is a change
+    somebody reviewed that is not going to happen.
+    """
+    actual = {(marker(actions), address) for address, actions in entries}
+    return _format_pairs(actual - expected), _format_pairs(expected - actual)
 
 
 def load_plan(text: str) -> dict[str, Any]:
@@ -170,6 +263,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Fail if the plan updates or destroys anything (a first apply should only create).",
     )
+    parser.add_argument(
+        "--expect-changes",
+        metavar="FILE",
+        help=(
+            "Hold the plan to a reviewed list of '<action> <address>' lines "
+            "('#' comments allowed). Fails on any change the file does not list "
+            "AND on any listed change the plan does not contain. Use it for a "
+            "plan that legitimately updates things, where --creates-only cannot."
+        ),
+    )
     args = parser.parse_args(argv)
 
     plan = load_plan(sys.stdin.read())
@@ -198,6 +301,29 @@ def main(argv: Sequence[str] | None = None) -> int:
             "resource name(s) outside the expected prefixes "
             f"{args.expect_prefix}:\n" + "\n".join(f"    {a}" for a in bad)
         )
+
+    if args.expect_changes:
+        try:
+            expected = read_expectations(args.expect_changes)
+        except ExpectationError as exc:
+            # Reported as a violation rather than raised: the summary above has
+            # already been printed, and it is what the operator needs in order to
+            # fix the file.
+            violations.append(str(exc))
+        else:
+            unexpected, missing = compare_expectations(entries, expected)
+            if unexpected:
+                violations.append(
+                    "change(s) the plan makes that "
+                    f"{args.expect_changes} does not list:\n"
+                    + "\n".join(f"    {p}" for p in unexpected)
+                )
+            if missing:
+                violations.append(
+                    f"change(s) {args.expect_changes} lists that the plan does "
+                    "NOT make -- something that was reviewed is not going to "
+                    "happen:\n" + "\n".join(f"    {p}" for p in missing)
+                )
 
     if violations:
         print("summarize-tofu-plan: FAILED", file=sys.stderr)
