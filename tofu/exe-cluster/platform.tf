@@ -15,8 +15,6 @@ data "terraform_remote_state" "platform" {
   }
 }
 
-data "google_client_config" "current" {}
-
 provider "google" {
   project = var.gcp_project_id
   region  = local.platform.region
@@ -27,15 +25,29 @@ provider "google" {
 # trusted certificate, so there is no CA to pin, and every request carries the
 # operator's own Google access token: there is no kubeconfig and no client
 # certificate anywhere in this stack.
+#
+# The token is minted when the provider talks to the cluster, by
+# gke-gcloud-auth-plugin (the same plugin `gcloud container clusters
+# get-credentials` configures), never read at plan time: a saved plan carries
+# every data source's values, and a planned access token dies after an hour --
+# a later apply then fails half-way on "provide credentials" (2026-09-27).
 provider "kubernetes" {
-  host  = "https://${local.platform.cluster_dns_endpoint}"
-  token = data.google_client_config.current.access_token
+  host = "https://${local.platform.cluster_dns_endpoint}"
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "gke-gcloud-auth-plugin"
+  }
 }
 
 provider "kubectl" {
   host             = "https://${local.platform.cluster_dns_endpoint}"
-  token            = data.google_client_config.current.access_token
   load_config_file = false
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "gke-gcloud-auth-plugin"
+  }
 }
 
 # AX's images build into the platform registry, next to exe-reaper's and

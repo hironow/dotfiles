@@ -1840,7 +1840,10 @@ exe-cluster-validate:
     cd {{ _EXE_CLUSTER_DIR }} && mise x -- tofu fmt -check -recursive . && mise x -- tofu validate
 
 # Write an ENCRYPTED saved plan for the operator to apply. ko_build rebuilds the
-# AX images locally on every plan, so the checkouts must be in place first.
+# AX images locally on every plan, so the checkouts must be in place first. The
+# plan holds no cluster credential (the providers mint a token at apply time),
+# so it stays applicable until the state changes; before 2026-09-27 it carried
+# a one-hour token and expired with it.
 [group('Exe')]
 exe-cluster-plan *args: exe-cluster-src
     @TF_VAR_exe_src_dir="{{ _EXE_SRC_DIR }}" just _exe-cluster-tofu plan -input=false -out=exe-cluster.tfplan {{ args }}
