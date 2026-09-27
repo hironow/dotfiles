@@ -59,16 +59,6 @@ func (d Drain) Stale(l Lease) bool {
 	return d.Phase != DrainNone && d.LeaseGeneration != l.Generation
 }
 
-// Enforce is L2's object: a record of what it decided and when. Exactly one
-// writer, and nothing reads it to make a decision -- it exists so a human can
-// reconstruct why the cluster stopped.
-type Enforce struct {
-	At       time.Time `json:"at"`
-	Action   string    `json:"action"`
-	Reason   string    `json:"reason"`
-	Notified bool      `json:"notified"`
-}
-
 // Observation is everything L2 sees on one tick. Grouping it in a struct rather
 // than passing six arguments keeps the decision function's signature stable as
 // the design grows, and makes the table-driven tests readable.
