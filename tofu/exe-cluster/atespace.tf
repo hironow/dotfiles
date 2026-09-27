@@ -126,8 +126,12 @@ resource "terraform_data" "worker_pool_guard" {
 }
 
 locals {
+  # Shared with every step that takes the pool's workers away.
+  worker_pool_functions = file("${path.module}/worker_pool.sh")
+
   worker_pool_guard_script = <<-EOT
       set -euo pipefail
+      ${local.worker_pool_functions}
       work="$(mktemp -d)"
       export KUBECONFIG="$work/kubeconfig" AX_HOME="$work/ax"
       trap 'ax tunnel stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
@@ -141,13 +145,7 @@ locals {
         echo "worker pool guard: the pool is asleep, so no actor is awake"
         exit 0
       fi
-      running="$(ax get tasks -a "$ATESPACE" | awk 'NR > 1 && $3 == "Running"' | wc -l | tr -d ' ')"
-      if [ "$running" != "0" ]; then
-        echo "worker pool guard: $running task(s) Running in atespace $ATESPACE." >&2
-        echo "Changing $POOL now would CRASH them. Suspend every task (ax suspend task <name>) and apply again." >&2
-        exit 1
-      fi
-      echo "worker pool guard: no task Running in atespace $ATESPACE"
+      refuse_while_tasks_run "worker pool guard" "Changing $POOL now would CRASH them."
   EOT
 
   worker_pool_guard_env = {

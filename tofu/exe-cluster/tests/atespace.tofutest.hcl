@@ -113,8 +113,13 @@ run "changing_the_pool_is_guarded_against_awake_actors" {
   }
 
   assert {
-    condition     = strcontains(local.worker_pool_guard_script, "ax get tasks -a \"$ATESPACE\"") && strcontains(local.worker_pool_guard_script, "exit 1")
-    error_message = "the guard must count Running tasks in the atespace and fail the apply when there are any."
+    condition     = strcontains(local.worker_pool_functions, "ax get tasks -a \"$ATESPACE\"") && strcontains(local.worker_pool_functions, "exit 1")
+    error_message = "the shared check must count Running tasks in the atespace and fail the apply when there are any."
+  }
+
+  assert {
+    condition     = strcontains(local.worker_pool_guard_script, local.worker_pool_functions) && strcontains(local.worker_pool_guard_script, "refuse_while_tasks_run \"worker pool guard\"")
+    error_message = "the guard must embed worker_pool.sh and run its check, so it refuses on exactly what every other step that takes workers away refuses on."
   }
 }
 
