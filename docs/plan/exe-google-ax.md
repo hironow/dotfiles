@@ -7,17 +7,17 @@
 ## 0. 要約
 
 - exe の実行基盤を Coder (旧 project の GCE VM + Cloud SQL + Cloudflare Tunnel/Access + Tailscale) から
-  **google/ax v0.3.1 + Agent Substrate v0.1.0 on GKE** へ置き換え、Coder 系は全撤去する。
+  **google/ax v0.3.1 + Agent Substrate (AX の `go.mod` が要求する commit `672533541dbf`) on GKE** へ置き換え、Coder 系は全撤去する。
 - 新基盤は旧 exe とは**別の private GCP project** に作る。その識別子は git に一切入れない (§1.1)。
 - GKE Standard の **zonal クラスタ 1 つ** (Rapid チャネル、1.37 系)。管理費 $0.10/h は GKE 無料枠 ($74.40/月、
   請求先アカウント単位) で相殺される。無料枠は空いていることを確認済み。
 - ノードは **on-demand e2-standard-4 の 1 台だけ**で、使う時だけ起こす。台数は**リース方式の自動休眠**が持つ (§3.2)。
-  休眠し忘れても 1 回あたり既定 ≈ ¥87、最悪 ≈ ¥266 で止まり、**24 時間つけっぱなしは構造的に起きない**。
+  休眠し忘れても 1 回あたり既定 ≈ ¥52 (既定リース 1h)、最悪 ≈ ¥266 で止まり、**24 時間つけっぱなしは構造的に起きない**。
 - **保存先は全部、上限を宣言して CI で強制する** (§3.3)。Artifact Registry や snapshot がじわじわ溜まるのを防ぐ。
 - 公開面ゼロ: private nodes + Cloud NAT、IP endpoint 無効 + DNS endpoint (Google IAM 必須)、Service は ClusterIP のみ。
 - 構築は dotfiles 配下の OpenTofu: `tofu/exe-platform` (GCP 基盤) + `tofu/exe-cluster` (クラスタ内) + `tofu/tailnet` (ACL 移管)。
   上流 Substrate の installer (`ate-setup`) は、pin した版を build モードで `terraform_data` から呼ぶ。
-- 概算 (東京のカタログ価格、2026-09-26): **休眠中 ≈ ¥450/月、起動中 ≈ ¥30/時** (Q22 の推奨どおりなら)。
+- 概算 (東京のカタログ価格、2026-09-26): **休眠中 ≈ ¥330/月、起動中 ≈ ¥30/時** (PVC は両方 pd-standard、Q22)。
 - ちりつも対策は、あとで個人アカウント側の GCP にも横展開できるよう、再利用できる形 (spoke + 監査ツール + 後続計画) で残す (Q18)。
 - 最大のリスクは上流が pre-1.0 で頻繁に breaking change すること。版を pin し、実機 e2e で互換を実証してから先へ進む。
 
@@ -70,10 +70,16 @@
 - atenet router は、宛先の actor が suspend 中なら**自分で resume してから転送する** (Substrate の機能。ax-controller を経由しない)。
 - 公開イメージは無い (`gcr.io/ax-substrate/...` は匿名 pull 不可、release asset 無し)。**全イメージを自前で build する**。
   ActorTemplate の image は digest 固定必須 (CEL `self.contains('@')`)。
-- **Agent Substrate** (v0.1.0 = 2026-09-10、v0.2.0 = 2026-09-25): AX v0.3.1 の `go.mod` は commit `672533541dbf` を pin しているが、
-  これは **v0.1.0 tag と系統が分岐** (`compare`: diverged, ahead 49 / behind 3)。本計画は **tag `v0.1.0` に統一**し、
-  互換は spike S1 で実証する。v0.2.0 は「EgressPolicy の無い actor は egress ゼロ」で AX 未対応のため使わない。
-- **v0.1.0 の制約**:
+- **Agent Substrate** (v0.1.0 = 2026-09-10、v0.2.0 = 2026-09-25): AX v0.3.1 の `go.mod` は main の commit `672533541dbf`
+  (`v0.0.0-20260911232748-672533541dbf`) を要求し、これは v0.1.0 の release branch と系統が分岐している。
+  **本計画はその commit に pin する** (2026-09-27、運用者の決定)。当初は tag `v0.1.0` に統一して S1 で互換を示す予定だったが、
+  spike S1/S2 で不整合が判明した: v0.1.0 の atenet-router は actor を Host の DNS 名で認可し、AX v0.3.1 は
+  `ate-target-actor` header で宛先を指すため、task は Ready にならず (`WorkspaceInitializing` のまま) `ax ssh` も拒否された。
+  pins gate は、tag 以外では「AX の go.mod の要求そのもの + SHA が suffix と一致」だけを許す。
+  v0.2.0 は使わない: ateapi.proto から AX v0.3.1 が送るフィールド (`snapshots_config`、`readyz`、`golden_snapshot`、
+  `GetActorSnapshotRequest`) が消えており、EgressPolicy の無い actor の egress をゼロにする評価器 (`internal/egresspolicy`) も
+  入る。672533541dbf の EgressPolicy は保存されるだけで、評価はされない (egress の既定拒否は無い)。
+- **Substrate の制約** (v0.1.0 / 672533541dbf):
     - worker pod が消えると、起きている actor は **約 60 秒**以内に suspend されないと `ACTOR_STATE_CRASHED`
     (終端、状態消失、復旧手段なし)。**serving 中の WorkerPool を編集・縮小するのも同じ経路**で actor を殺す。
     (30 分に延びたのは v0.2.0 以降の話)
@@ -87,9 +93,18 @@
     付与まで行う。`KO_DOCKER_REPO` と `VERSION` を渡せば、image は ko で build され、ラベル値は `VERSION` で固定される。
     - gVisor の SandboxConfig は **nightly の GCS パス**と `registry.k8s.io` の pause image を参照する → 自前の SandboxConfig に差し替える。
     - atelet は hostPath と hostPort を使う → **Autopilot は不可**。E2 は nested virtualization 非対応 → **microvm は使えない (gVisor のみ)**。
+    - task の suspend で GCS に保存されるのは `/workspace` (durable dir) だけ (snapshot の scope は `data`)。resume は
+    template の golden snapshot (メモリ) + `/workspace`。rootfs やホーム (`~/.claude` など) の変更は suspend で消える。
+    - ate-api-server の PodDisruptionBudget (maxUnavailable 1、2 replica) は、ノード 1 台では退避先が無く、停止時の drain を
+    GKE の上限 (1 時間) まで止める。gVisor worker の terminationGracePeriodSeconds は 3600 (ate-controller が固定、WorkerPool では変えられない)。
+    - AX が task の Ready 判定に使うのは atenet-router 経由の `readyz` だけで、定期的な再確認は無い。
+    `runsc start` に失敗した actor は Terminate できず worker を掴んだままになる (worker pod の作り直しで解ける)。
 - **GKE**: no-channel (static) は非推奨で新規顧客は作れず、2027-06-14 に Stable へ強制移行される。
-  **1.37 は Rapid チャネルにだけある**。1.37 なら Substrate に必要な beta API が既定で有効になり、
-  「作成時に beta API を有効化し損ねたら作り直し」の罠が消える。ノードのアップグレードは node pool の
+  **1.37 は Rapid チャネルにだけある**。1.37 は ClusterTrustBundle / PodCertificateRequest を `certificates.k8s.io/v1` でしか
+  serve しない (v1beta1 は 1.37 で deprecated、1.40 で削除) が、pin の Substrate は v1beta1 を使う。
+  → `enable_k8s_beta_apis` で 2 つの v1beta1 を有効化する (作成後の in-place 有効化で serve されることを 2026-09-27 に確認。
+  上流 README の「1.37 なら既定で有効」は v1 についてしか正しくない)。GKE は Filestore CSI を既定で有効にする
+  (未使用で、停止を止めうる PodDisruptionBudget を持つ) → 無効にする。ノードのアップグレードは node pool の
   maintenance exclusion (`NO_MINOR_OR_NODE_UPGRADES`、minor の EOS まで) で止められる。auto-repair は node pool 単位で無効化できる。
   node pool には実行時の台数変更を無視する専用フィールド `ignore_node_count_changes` がある。
 - **Artifact Registry の cleanup policy**: KEEP と DELETE の両方に当たるものは KEEP が勝つ。`most_recent_versions` は保護するだけで
@@ -113,6 +128,8 @@
     - ドメイン制限付き共有あり → Workload Identity の principal 付与が通るかは spike で確認
     - bucket は UBLA + public access prevention が必須
     - リージョン・LB・NAT・VPC peering の制限は無し。`container.*` やカスタム制約も無し
+    - Cloud Build: worker pool の制約は全許可 (既定 pool が使える、2026-09-27 に build で確認)。既定の Cloud Build SA の作成は
+    無効 → build は専用 SA を指定し、ログは `CLOUD_LOGGING_ONLY`
 - 同じ project に他の OpenTofu stack とその state bucket が 2 つある → 名前と state prefix は必ず `exe-` 系で分け、既存と被らせない。
 - 東京に既存の subnet / router / NAT は無い。新しい VPC を作る (quota に余裕あり)。
 
@@ -183,7 +200,7 @@ Legend / 凡例:
 
 | 層 | どこで動く | 何をするか | 保証 |
 |---|---|---|---|
-| L0 リース | `just exe-wake [2h]` / `exe-extend` / `exe-sleep` (手元で `exe-reaper` を実行) | 起動には必ず期限が付く。既定 2h、1 回の起動・延長で最大 8h。**期限は 03:00 JST を越えられない** (下の算式)。延長に成功すると、それ以前の `drained` は無効になる。`exe-sleep` は期限を今にして L1 に片付けさせる | 期限なしの起動は作れない |
+| L0 リース | `just exe-wake [1h]` / `exe-extend` / `exe-sleep` (手元で `exe-reaper` を実行) | 起動には必ず期限が付く。既定 1h、1 回の起動・延長で最大 8h。**期限は 03:00 JST を越えられない** (下の算式)。延長に成功すると、それ以前の `drained` は無効になる。`exe-sleep` は期限を今にして L1 に片付けさせる | 期限なしの起動は作れない |
 | L1 丁寧な休眠 | クラスタ内の CronJob `exe-reaper reap` (**毎分**、ノードが起きている間だけ動く) | 条件: 期限切れ、または **Running の task が 30 分連続で 0**、またはリースの読み取り失敗。手順: ① drain.json に `draining` と heartbeat → ② **atenet-router を 0 台にする** (router 経由の自動 resume と `ax ssh` を止める) → ③ AX の `SuspendTask` で Running の task を全部 suspend (AX の状態と実体を一致させる) → ④ Substrate 上で全 actor が SUSPENDED になるまで確認 (その間 heartbeat を更新、上限 30 分) → ⑤ `drained`。上限を超えたら `drain-failed`。期限内に戻ったら router を 1 台に戻す | 状態を失わずに寝かせる |
 | L2 期限の強制 | Cloud Scheduler (10 分ごと) → Cloud Run job `exe-reaper enforce` | 期限切れ後の判定: `drained` なら 0 にする / `draining` で heartbeat が 2 回分 (L2 の周期 2 回 = 20 分) 以内なら待つ。このリースについての drain の記録がまだ無いときは、期限の時刻に heartbeat が止まったとみなす / heartbeat が止まった・`drain-failed`・**期限 + 45 分**を過ぎた (heartbeat が新しくても待たない)・リースが **3 回連続**で読めない、のどれかなら強制的に 0 にして通知 (強制停止が続く間の通知は最初の 1 回だけ)。1〜2 回の読み取り失敗では何もしない (L1 が片付けに入る) | Mac が閉じていても、クラスタ内が壊れていても止まる |
 | L3 日次の強制停止 | Cloud Scheduler (毎日 04:00 JST) → GKE API `setSize(0)` を直接呼ぶ | 判断ロジックなし。正常時は空振りする (下の算式で保証)。**このジョブ自体の失敗は L4 が通知する** | 全部壊れても 24 時間には届かない |
@@ -193,7 +210,10 @@ Legend / 凡例:
   (L1 の周期 1 分 + 片付けの上限 30 分 + L2 の周期 10 分 + 余裕 19 分) = **03:00 JST** (Q21)。
   これで、正常時に L3 が起きている actor を巻き込むことはない。
 - 最悪額: ノードが起きている時間は「期限 + 45 分 + L2 の周期 10 分」以内 (L2 が `lease.json` を読める間。読めない間は
-  3 回連続の規則のため、さらに L2 の周期 2 回分まで延びうる)。休眠し忘れは既定リースで ≈ ¥87/回、最大リースで ≈ ¥266/回。
+  3 回連続の規則のため、さらに L2 の周期 2 回分まで延びうる)。休眠し忘れは既定リースで ≈ ¥52/回、最大リースで ≈ ¥266/回。
+  **ただしこれは「止める判断」の上限で、ノードが実際に消えるまでの時間 (停止の遅延) は含まない**。PodDisruptionBudget が
+  drain を最大 1 時間止めうることが Phase 4 で判明した → install で全 budget を開き、残れば install を失敗させる。
+  修正後の実測は 3 分 32 秒。停止の遅延をモデルの前提と検知に入れるのは Phase 6。
 - L2 が使うのは GCS、`nodePools.setSize`、そして台数を知るための node pool の MIG の targetSize の読み取り
   (`compute.instanceGroupManagers.get` だけの custom role、enforcer の SA にだけ付ける) だけ。
   **クラスタの認証情報に依存しない** (クラスタ側が壊れていても止められる)。この性質を崩す変更 (kubectl を使うなど) はしない。
@@ -236,7 +256,7 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | GCS `exe-snapshots` | Substrate が参照の無い snapshot を GC する。**削除系の lifecycle は付けない** (参照中を消すと resume 不能)。上限は task の寿命 (30 日) |
 | GCS `exe-ops` (lease / drain / enforce) | 古い世代は 5 個まで |
 | tofu state bucket | 古い世代は 10 個まで |
-| PVC | Postgres は pd-balanced 10Gi、Redis は pd-standard 10Gi (Q22、S7 で性能を実測) |
+| PVC | Postgres も Redis も pd-standard 10Gi (Q22、S7 で性能を実測)。teardown は disk を残さない |
 | Cloud Logging | 既定の 30 日保持 (無料枠内) |
 | 旧 project の AR / Cloud SQL / 残骸 | 撤去で消える (Phase 7) |
 
@@ -258,7 +278,7 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | `cdr create` + `cdr ssh` (対話ワークスペース) | `just exe-wake` → `ax apply` (Task, `debug: true`) → `ax ssh` | SSH サーバではなく guest process service |
 | `cdr-job` (使い捨て 1 コマンド) | `ax-job`: リース確認 → Task 作成 → resume → Ready 待ち → `ax ssh -- cmd` (exit code 伝播) → delete (trap) | AX は command の exit code を返さないので `ax ssh` 経由で実行する |
 | `cdr-exec` (常駐ワークスペース再利用) | `ax-exec`: resume → `ax ssh -- cmd` → suspend (既定) | warm resume は snapshot 復元 |
-| 同じ VM で複数 project を同時に | **同時に起こせる task は 2 本** (WorkerPool replicas、Q17) | v0.1.0 は 1 actor = 1 worker |
+| 同じ VM で複数 project を同時に | **同時に起こせる task は 2 本** (WorkerPool replicas、Q17) | Substrate は 1 actor = 1 worker |
 | `cdr-project up/down` / runops 連携 | 切り離し (Q1) | 必要になったら AX Task 前提で別 work unit |
 | `cdr-header` / Coder Web UI | 無し (Q4) | CLI のみ |
 | Tailscale `tag:agent` | GKE IAM + k8s RBAC (v1 は運用者のみ) | |
@@ -284,7 +304,7 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 - **[Green]** `scripts/check_forbidden_tokens.py`、prek の pre-commit と commit-msg、`default_install_hook_types`、`just install-hooks`、
   `just ci` でのブランチ全 commit message の再検査、PR 本文の検査 recipe。
   **[Red]** install された hook の種類に commit-msg が含まれることのテスト。
-- `exe/versions.json`: AX `v0.3.1`、Substrate tag `v0.1.0` + SHA、GKE チャネル Rapid + minor 1.37、`ate.dev/substrate-version` の値
+- `exe/versions.json`: AX `v0.3.1` (+ go.mod の Substrate 要求)、Substrate の pin + SHA、GKE チャネル Rapid + minor 1.37、`ate.dev/substrate-version` の値
   (**node pool のラベルと `VERSION` の唯一の出どころ**)。**[Red]** pin の一貫性テスト (substrate の ref は 1 つだけ、SHA と一致、
   ラベル値が label として有効、両 stack が同じオブジェクトを読む)。
 - ツールの pin: `ax` CLI、`ko`、Go (Substrate の build に必須)、Quint。OpenTofu provider の `ko-build/ko` は 0.0.x なので Class 2 (cooldown + changelog)。
@@ -331,7 +351,7 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 
 ### Phase 4 — Substrate + AX のインストール (spike 前半)
 
-- `tofu/exe-cluster`: Postgres (pd-balanced 10Gi、上流と同じ digest の `postgres:18-alpine`) → `terraform_data` で
+- `tofu/exe-cluster`: Postgres (10Gi、Phase 5 で pd-standard に移行、上流と同じ digest の `postgres:18-alpine`) → `terraform_data` で
   `ate-setup deploy ate-system` (build モード、`KO_DOCKER_REPO` = `exe-platform`、`VERSION` と DSN は env で渡す、DSN は sensitive) →
   `ate-setup publish worker-images` の出力から gVisor worker の digest 付き ref を記録 (**[Red]** `@sha256:` を含むこと) →
   自前の SandboxConfig → AX (`ko_build`、自前の `.ko.yaml` でベース image を digest 固定、`ax-server` の build 定義も明示) →
@@ -343,14 +363,16 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 
 | # | 検証 | 合格条件 |
 |---|---|---|
-| S1 | 互換 | AX v0.3.1 + Substrate v0.1.0 + GKE 1.37 で Task が `Running` / `Ready=True` |
+| S1 | 互換 | AX v0.3.1 + Substrate (pin) + GKE 1.37 で Task が `Running` / `Ready=True` |
 | S2 | ssh | `ax ssh <task> -- echo ok` が exit 0 で `ok` |
 | S3 | 永続 | `/workspace` のファイルが suspend → resume 後も残り、**snapshot object が GCS に実際に書かれている** |
 | S10 | 組織ポリシー | Workload Identity principal への権限付与が通る (ドメイン制限付き共有との相性) |
 | S11 | OTel | Managed OTel 無しで install が完走する (駄目なら有効化し、費用を再見積もり) |
 
 - 失敗時の回復経路 (仮説を変えて再試行する):
-    - S1 失敗 → 1.37 の API 差 (PodCertificateRequest v1 化など) を確認 → Rapid の 1.36 + beta API 有効化で再作成 → それでも駄目なら運用者に判断を仰ぐ
+    - S1 失敗 → 1.37 の API 差 (PodCertificateRequest v1 化など) を確認 → 1.37 のまま v1beta1 の beta API を in-place で有効化
+    → 駄目なら Rapid の 1.36 + beta API 有効化で再作成 → それでも駄目なら運用者に判断を仰ぐ
+    (実際: in-place 有効化で解決。続く AX と Substrate のルーティング不整合は、AX の go.mod の commit への repin で解決)
     - S10 失敗 → GSA 経由の Workload Identity に切り替え、それも不可なら運用者に判断を仰ぐ
 - 仕上げ: S1 / S2 / S3 / S10 / S11 緑、ノード 0。
 
@@ -366,9 +388,12 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | S5 | 隔離 | task 内から redis / postgres / ax-server に繋がらない。**NetworkPolicy 適用後も `ax get tasks` が port-forward で通る** |
 | S7 | 容量 | CPU / メモリ / **ephemeral-storage** の実測で、基盤一式 + worker 2 が e2-standard-4 と boot disk に収まる。Postgres が 60 秒以内に Ready、Redis の AOF で遅延が出ない |
 | S8 | image | task image で `claude --version` / `node -v` / `git` が gVisor 下で動く |
-| S9 | 資格情報 | Q20 の方式で Claude が認証できる。対話ログインは suspend / resume 後も残る |
+| S9 | 資格情報 | Q20 の方式で Claude が認証でき、token が snapshot やログに残らない。`CLAUDE_CONFIG_DIR` を `/workspace` に置いた設定 dir が suspend / resume 後も残る (v0.3.1 の `ax ssh` は stdin を転送しないので、task 内の対話ログインはできない) |
 
-- S7 不足 → worker を 1 に減らすか e2-standard-8 にし、費用差を出して判断を仰ぐ。Redis が遅ければ pd-balanced に上げる。
+- S7 の実測から、worker 2 のまま収まる最小の機種を提案する (候補 e2-highmem-2、約 −32%/時)。worker を 1 にはしない
+  (router の自動 resume が空き worker を奪い合う)。Postgres / Redis が遅ければ pd-balanced に戻す。
+- M20 T2 (Postgres を pd-standard へ) を S4 の前に行う: claim template の名前を変え、install を再実行して ate-api-server を
+  新しい store に再起動し、古い claim と disk を消す。
 - 仕上げ: S4 / S5 / S7 / S8 / S9 緑、ノード 0。
 
 ### Phase 6 — L1 (丁寧な休眠)、保存先の上限、ラッパー
@@ -469,7 +494,7 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | boot disk 50 GiB (pd-balanced) | $0.0089/h | ¥1.4/h | 同上 |
 | Cloud NAT (VM 1 台 $0.0014/h + IP $0.005/h) | $0.0064/h | ¥1.0/h | 起きている時 (IP の休眠中の扱いは spike で実測) |
 | GKE 管理費 (zonal) | $0.10/h | ¥15.9/h | クラスタが存在する限り。**無料枠で相殺 (確認済み)** |
-| PVC: Postgres 10 GiB pd-balanced + Redis 10 GiB pd-standard | $1.82/月 | ¥290/月 | 常時 |
+| PVC: Postgres 10 GiB + Redis 10 GiB (どちらも pd-standard) | $1.04/月 | ¥166/月 | 常時 |
 | GCS snapshot (Standard) | $0.023/GiB·月 | ¥3.7/GiB·月 | 常時 (task の寿命 30 日で上限) |
 | AR (無料枠 0.5 GB 超) | ≈ $0.10/GiB·月 | ≈ ¥16/GiB·月 | 常時 (§3.3 で上限) |
 | Cloud Scheduler 2 ジョブ / Cloud Run job / Cloud Build | ほぼ $0 | ほぼ ¥0 | 無料枠内の見込み |
@@ -478,13 +503,17 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 
 | 使い方 | 月額 |
 |---|---|
-| 休眠のみ | **≈ ¥450** (¥380〜630) |
+| 休眠のみ | **≈ ¥330** (¥260〜510) |
 | 月 20 時間 | ≈ ¥1,050 |
 | 月 40 時間 | ≈ ¥1,650 |
 | 月 80 時間 | ≈ ¥2,850 (予算アラートの 90% 付近) |
-| 休眠し忘れ | 1 回あたり既定 ≈ ¥87、最悪 ≈ ¥266 (24 時間つけっぱなしは起きない) |
+| 休眠し忘れ | 1 回あたり既定 ≈ ¥52 (既定リース 1h)、最悪 ≈ ¥266 (24 時間つけっぱなしは起きない) |
 
-- PVC を両方 pd-balanced にすると休眠中 ≈ ¥570、両方 pd-standard だと ≈ ¥320 (ただし Postgres が遅すぎる恐れ、Q22)。
+- PVC は両方 pd-standard (M20 T2)。両方 pd-balanced なら休眠中 ≈ ¥570。Postgres の速さは S7 で実測する (Q22)。
+- spot は使わない (M20 T1): 退避で起きている actor が全部 CRASHED (終端) になり、直前の suspend 以降の作業とトークンが
+  消える。その損失を数えると ≈ ¥19/時の節約は割に合わない。Substrate / AX に定期 checkpoint か crash 復旧が入るか、
+  月の稼働時間が大きく増えたら見直す。
+- 機種は S7 の実測で決める (M20 T3)。worker 2 を保ったまま e2-highmem-2 に収まれば ≈ ¥18.5/時 (e2-standard-4 は ≈ ¥27.4/時)。
 - 移行作業中 (Phase 2〜6) はクラスタが 20〜40 時間起きて ≈ ¥600〜1,200 の見込み。
 - 旧スタックの撤去で、旧 project の維持費 (推定 ¥500〜1,500/月、要確認) が消える。
 - 同時 3 本以上が要る場合は e2-standard-8 (≈ ¥57/h) か 2 台目 (Q17)。
@@ -494,13 +523,15 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | リスク | 影響 | 対策 |
 |---|---|---|
 | 上流 pre-1.0 の breaking change | 版上げで壊れる | 版を 1 ファイルで pin。Class 2 扱い。版上げは「全 task を suspend → 上げる → `just exe-e2e`」の全停止手順 (ノード 1 台なのでローリングは無い) |
-| AX v0.3.1 と Substrate v0.1.0 / GKE 1.37 の互換 | 起動しない | S1 と回復経路 |
+| AX v0.3.1 と Substrate / GKE 1.37 の互換 | 起動しない | AX の go.mod の commit に pin し、pins gate と取得時の go.mod 照合で縛る。S1〜S3 を実機で確認 |
+| certificates の v1beta1 (1.37 で deprecated、1.40 で削除) | 1.40 以降で Substrate が動かない | minor の exclusion は 2027-03-25 まで。それまでに Substrate が v1 を話すか、次の minor で v1beta1 が使えるかを確かめる |
+| 停止の遅延 (PodDisruptionBudget、終了猶予) | 止める判断のあともノードが課金され続ける (最大 1 時間) | install で全 budget を開き、残れば install を失敗させる。Filestore CSI は無効。worker の 3600 秒の猶予は起きている actor がいる時だけ効く → L1 で先に suspend、Phase 6 でモデルの前提 (停止の遅延) と実台数の検知 |
 | 起きている actor を残したままの worker 除去 (休眠、WorkerPool 編集、eviction) | CRASHED (終端) | L1 の手順を Quint で検証、期限の算式、heartbeat と上限、WorkerPool の apply を止める前提条件、limits の必須化、disk の実測 (S7) |
 | 休眠し忘れ | 課金継続 | 4 層の自動休眠 (§3.2)。L3 は判断ロジックなしで毎日止め、その失敗も通知する |
 | 止める仕組みが黙って壊れる | 24 時間保証の喪失 | Scheduler 失敗のアラート、`exe-status` に最終結果、L3 の URI と node pool 名を同じ値から作るテスト |
 | 保存先の肥大 | じわじわ課金 | §3.3 の上限と CI の強制、`exe-status` での見える化 |
 | AX の Redis が揮発 | Task 記録の全消失 | StatefulSet + PVC + AOF + requirepass |
-| 同梱 Postgres のサイズ罠 / 遅い disk | ノード逼迫と PD 費 / control plane の不調 | 外部 DSN で自前の Postgres、pd-balanced、S7 で性能を実測 |
+| 同梱 Postgres のサイズ罠 / 遅い disk | ノード逼迫と PD 費 / control plane の不調 | 外部 DSN で自前の Postgres、pd-standard (費用優先)、S7 で性能を実測し、遅ければ pd-balanced |
 | Claude の資格情報 | 漏洩時の影響範囲 | Q20 の方式。`Task.spec.env` を使う場合は Redis の PVC、Postgres の PVC、ActorTemplate、`ax get task` の出力に平文で残ることを ADR に明記 |
 | gVisor asset が nightly の URL | 休眠明けに取得できない | private project の GCS に mirror した自前の SandboxConfig |
 | ドメイン制限付き共有 | Workload Identity の付与が通らず snapshot が 403 | S10、GSA 経由への切り替え |
@@ -526,16 +557,22 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | Q10 | 実行の予算と停止条件 | 実時間 12 時間 (チェックポイント、Q19)。stall 閾値 45 分。implementer の再生成は無確認で可。フェーズ上限は Q19 |
 | Q11 | task image | 上流 `Dockerfile.task-runner` ベース + agent CLI。ツールチェーンは Workspace `goal` 任せ。build は private project の Cloud Build。public の devcontainer publish は退役 |
 | Q12 | 既存の露出 | 今回はガードだけ。掃除は別 work unit |
-| Q13 | 自動休眠の数値 | 既定リース 2h、最大 8h、task が 30 分動いていなければ休眠、日次の強制停止 04:00 JST、L2 の猶予 20 分。**利用上限時刻は Q21、猶予の扱いはレビュー #2 で精緻化** |
+| Q13 | 自動休眠の数値 | 既定リース 1h (2026-09-27、M20 T4 で 2h から短縮)、最大 8h、task が 30 分動いていなければ休眠、日次の強制停止 04:00 JST、L2 の猶予 20 分。**利用上限時刻は Q21、猶予の扱いはレビュー #2 で精緻化** |
 | Q14 | L1 が失敗した時 | 強制停止を優先 (コストの上限を守る)。発生時は通知。**レビュー #2 により、heartbeat がある健全な片付けは期限 + 45 分まで待つ形に精緻化** |
 | Q15 | task の寿命 | resume されないまま 30 日で自動削除。7 日前から予告、`keep` ラベルは対象外 |
-| Q16 | GKE のバージョン方針 | Rapid チャネル + 1.37 系。node pool の maintenance exclusion でアップグレードを止め、メンテナンス時間帯は 04:00〜08:00 JST |
+| Q16 | GKE のバージョン方針 | Rapid チャネル + 1.37 系。certificates の v1beta1 (ClusterTrustBundle / PodCertificateRequest) を beta API として有効化。node pool の maintenance exclusion でアップグレードを止め、メンテナンス時間帯は 04:00〜08:00 JST |
 | Q17 | 同時実行数 | 2 本 (e2-standard-4、1 本あたりメモリ 4GiB 前後、spike で調整) |
 | Q18 | ちりつも対策の再利用 | 全エージェント共通 spoke + 読み取り専用の監査ツール + 後続計画を今回の run で作る (Phase 9)。前提知識ゼロの subagent で再現を検証 |
 | Q19 | 実行の予算 | フェーズ上限は 10。12 時間は止まって中間報告するチェックポイント (続行は `/goal` の打ち直し) |
 | Q20 | Claude の資格情報の渡し方 | 実行のたびに `ax-job` が Secret Manager から取り出し、`ax ssh` のコマンド引数で渡す。クラスタの DB と snapshot には残さない。task の起動コマンド自体をエージェントにする場合は対話ログイン |
 | Q21 | 夜の利用上限時刻 | 03:00 JST (L3 は 04:00 のまま、算式は §3.2) |
-| Q22 | PVC の disk 種別 | Postgres は pd-balanced、Redis は pd-standard (S7 で実測し、遅ければ pd-balanced に上げる) |
+| Q22 | PVC の disk 種別 | Postgres も Redis も pd-standard (2026-09-27、M20 T2 で Postgres を pd-balanced から変更。S7 で実測し、遅ければ pd-balanced に戻す) |
+| Q23 | Substrate の pin (M13、2026-09-27) | AX v0.3.1 の go.mod が要求する commit `672533541dbf`。v0.1.0 はルーティング不整合、v0.2.0 は AX の送るフィールドが消えるため。レビュー #1 の 10 (tag に統一) を置き換える |
+| Q24 | pins gate の例外 (M16) | tag 以外は「AX の go.mod の要求そのもの + SHA 一致」だけ。取得時に go.mod と照合し、合わなければ失敗 |
+| Q25 | 停止を遅らせるもの (M18 / M19) | 状態を守らないものは停止を遅らせない。PodDisruptionBudget は install で開き、残れば失敗。Filestore CSI は無効。停止の遅延はモデルの前提と検知に入れる (Phase 6) |
+| Q26 | spot (M20 T1) | 使わない (CRASHED は終端で、失う作業とトークンが節約を上回る) |
+| Q27 | worker 数と機種 (M20 T3) | worker は 2 のまま。機種は S7 の実測で最小のものに (候補 e2-highmem-2) |
+| Q28 | Claude の設定 dir (M21) | image の既定では設定 dir を `/workspace` に置かない (credential をディスクに残さない)。永続化が要る task だけ `CLAUDE_CONFIG_DIR=/workspace/.claude` を指定し、その場合 credential は private bucket の snapshot に入ることを ADR に書く |
 
 ## 9. 完了条件 (Definition of Done)
 
