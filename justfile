@@ -1601,9 +1601,9 @@ exe-ctx:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{ _EXE_PLATFORM_DIR }}
-    project="$(mise x -- tofu output -raw project_id)"
-    cluster="$(mise x -- tofu output -raw cluster_name)"
-    zone="$(mise x -- tofu output -raw zone)"
+    project="$(just _tofu-out exe-platform project_id)"
+    cluster="$(just _tofu-out exe-platform cluster_name)"
+    zone="$(just _tofu-out exe-platform zone)"
     kubeconfig="${XDG_CONFIG_HOME:-$HOME/.config}/exe/kubeconfig"
     mkdir -p "$(dirname "$kubeconfig")"
     KUBECONFIG="$kubeconfig" mise x -- gcloud container clusters get-credentials \
@@ -1618,10 +1618,10 @@ exe-platform-nodes:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{ _EXE_PLATFORM_DIR }}
-    project="$(mise x -- tofu output -raw project_id)"
-    cluster="$(mise x -- tofu output -raw cluster_name)"
-    zone="$(mise x -- tofu output -raw zone)"
-    pool="$(mise x -- tofu output -raw node_pool_name)"
+    project="$(just _tofu-out exe-platform project_id)"
+    cluster="$(just _tofu-out exe-platform cluster_name)"
+    zone="$(just _tofu-out exe-platform zone)"
+    pool="$(just _tofu-out exe-platform node_pool_name)"
     mise x -- gcloud container node-pools describe "$pool" \
         --cluster "$cluster" --zone "$zone" --project "$project" \
         --format='value(initialNodeCount)'
@@ -1635,9 +1635,9 @@ exe-platform-stop:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{ _EXE_PLATFORM_DIR }}
-    project="$(mise x -- tofu output -raw project_id)"
-    region="$(mise x -- tofu output -raw region)"
-    job="$(mise x -- tofu output -raw l3_scheduler_job)"
+    project="$(just _tofu-out exe-platform project_id)"
+    region="$(just _tofu-out exe-platform region)"
+    job="$(just _tofu-out exe-platform l3_scheduler_job)"
     mise x -- gcloud scheduler jobs run "$job" --location "$region" --project "$project"
     echo "✅ L3 triggered. Node pool goes to 0; check with: just exe-platform-nodes"
 
@@ -1675,8 +1675,7 @@ _exe-reaper *args:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{ _EXE_PLATFORM_DIR }}
-    outputs="$(mise x -- tofu output -json)"
-    out() { printf '%s' "$outputs" | python3 -c 'import json, sys; print(json.load(sys.stdin)[sys.argv[1]]["value"])' "$1"; }
+    out() { just _tofu-out exe-platform "$1"; }
     EXE_PROJECT_ID="$(out project_id)"
     EXE_ZONE="$(out zone)"
     EXE_CLUSTER_NAME="$(out cluster_name)"
@@ -1700,7 +1699,7 @@ exe-reaper-image:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{ _EXE_PLATFORM_DIR }}
-    repo="$(mise x -- tofu output -raw ar_platform_repo)"
+    repo="$(just _tofu-out exe-platform ar_platform_repo)"
     tag="$(git rev-parse --short=12 HEAD)"
     cd ../../tools/exe-reaper
     KO_DOCKER_REPO="${repo}/exe-reaper" mise exec aqua:ko-build/ko -- \
@@ -1714,15 +1713,53 @@ exe-l2-run:
     #!/usr/bin/env bash
     set -euo pipefail
     cd {{ _EXE_PLATFORM_DIR }}
-    job="$(mise x -- tofu output -json l2_enforcer_job)"
+    job="$(just _tofu-out exe-platform l2_enforcer_job)"
     if [ "$job" = "null" ]; then
         echo "L2 is not deployed (enforcer_image is empty)." >&2
         exit 1
     fi
-    project="$(mise x -- tofu output -raw project_id)"
-    region="$(mise x -- tofu output -raw region)"
-    mise x -- gcloud run jobs execute "$(mise x -- tofu output -raw l2_enforcer_job)" \
+    project="$(just _tofu-out exe-platform project_id)"
+    region="$(just _tofu-out exe-platform region)"
+    mise x -- gcloud run jobs execute "$(just _tofu-out exe-platform l2_enforcer_job)" \
         --region "$region" --project "$project" --wait
+
+# One output of an exe stack, read with retries. `tofu output` can race a state
+# write and read an intermediate snapshot with no outputs; it then prints a
+# warning on stdout and exits 0, which a caller would take for the value (seen
+# on 2026-09-27). So the whole output set is read as JSON and only a non-empty
+# object counts; a missing NAME in a non-empty set fails at once. Strings print
+# raw, anything else (null included) as JSON.
+_tofu-out stack name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}/tofu/{{ stack }}"
+    for attempt in 1 2 3 4; do
+      if json="$(mise x -- tofu output -json 2>/dev/null)"; then
+        set +e
+        value="$(printf '%s' "$json" | python3 -c '
+    import json, sys
+    try:
+        outputs = json.load(sys.stdin)
+    except ValueError:
+        sys.exit(3)
+    if not isinstance(outputs, dict) or not outputs:
+        sys.exit(3)
+    if sys.argv[1] not in outputs:
+        sys.exit(4)
+    value = outputs[sys.argv[1]]["value"]
+    print(value if isinstance(value, str) else json.dumps(value))
+    ' "{{ name }}")"
+        status=$?
+        set -e
+        case "$status" in
+          0) printf '%s\n' "$value"; exit 0 ;;
+          4) echo "tofu/{{ stack }} has no output {{ name }}" >&2; exit 1 ;;
+        esac
+      fi
+      sleep "$attempt"
+    done
+    echo "tofu/{{ stack }}: outputs unreadable after 4 tries" >&2
+    exit 1
 
 # Build the TF_ENCRYPTION HCL payload from the local passphrase.
 # State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
