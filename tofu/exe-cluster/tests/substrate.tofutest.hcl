@@ -128,8 +128,15 @@ run "the_install_lets_the_api_server_budget_allow_a_full_stop" {
   command = plan
 
   assert {
-    condition     = strcontains(local.ate_setup_script, "patch poddisruptionbudget ate-api-server") && strcontains(local.ate_setup_script, "{\"spec\":{\"maxUnavailable\":\"100%\"}}")
-    error_message = "the install must patch upstream's ate-api-server PodDisruptionBudget to maxUnavailable 100% after the deploy. With one node, the budget cannot protect anything: every stop removes the node, the evicted pod's replacement cannot schedule, and the drain then waits on the other pod for up to GKE's one-hour PDB limit while the node bills."
+    condition     = strcontains(local.ate_setup_script, "get poddisruptionbudgets -A") && strcontains(local.ate_setup_script, "{\"spec\":{\"maxUnavailable\":\"100%\",\"minAvailable\":null}}")
+    error_message = "the install must open every PodDisruptionBudget outside the kube-/gke- system namespaces to maxUnavailable 100% after the deploy (upstream's ate-api-server budget first among them). With one node, a budget cannot protect anything: every stop removes the node, an evicted pod's replacement cannot schedule, and the drain then waits for up to GKE's one-hour PDB limit while the node bills."
+  }
+
+  # And a budget it did not open -- a new upstream one, or a GKE-managed one it
+  # must not touch -- fails the install loudly instead of stalling a stop later.
+  assert {
+    condition     = strcontains(local.ate_setup_script, "$3 != \"100%\"") && strcontains(local.ate_setup_script, "could hold a stop")
+    error_message = "after opening the budgets, the install must fail when any PodDisruptionBudget in the cluster still allows less than 100% unavailable, so a future budget stops the install loudly rather than a stop silently."
   }
 }
 

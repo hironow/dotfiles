@@ -1,6 +1,8 @@
-# The reviewed change list for letting ate-api-server's PodDisruptionBudget
-# allow a full stop: the install step's script changed, so the step re-runs
-# (upstream's deploy is idempotent on a live install) and then patches the
-# budget. Nothing else is touched. Needs a node up, like any install run.
+# The reviewed change list for letting every disruption budget allow a full
+# stop: the install step's script changed, so the step re-runs (upstream's
+# deploy is idempotent on a live install), opens every budget outside the
+# kube-/gke- system namespaces, and fails if any budget in the cluster still
+# could hold a stop. Nothing else is touched. Needs a node up, like any
+# install run, and exe-platform's filestore-off change applied first.
 #   just exe-cluster-plan && just exe-cluster-plan-summary --expect-changes expected-changes/pdb-full-stop.txt
 -/+ terraform_data.ate_system

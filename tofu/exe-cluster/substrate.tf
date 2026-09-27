@@ -160,14 +160,29 @@ locals {
       go run ./cmd/ate-setup --kubeconfig "$KUBECONFIG" --context "$context" \
         --no-dev-env --rollout-timeout 5m deploy ate-system
 
-      # Upstream's ate-api-server budget (maxUnavailable 1) cannot keep an API
-      # server up on one node that every stop removes: the evicted pod's
-      # replacement cannot schedule on the cordoned node, the budget reads zero,
-      # and the drain waits on the other pod for up to GKE's one-hour PDB limit
-      # while the node bills. Let it allow a full stop. The installer rewrites
-      # the budget only when this step runs again, and this line runs after it.
-      kubectl --context "$context" -n ate-system patch poddisruptionbudget ate-api-server \
-        --type=merge -p '{"spec":{"maxUnavailable":"100%"}}'
+      # Nothing may delay a stop unless it protects state. Every stop takes the
+      # only node away with actors already suspended, so a disruption budget can
+      # only bill: upstream's ate-api-server budget (maxUnavailable 1) held a
+      # drain with its evicted pod's replacement unschedulable on the cordoned
+      # node, and GKE waits on budgets for up to an hour. Open every budget
+      # outside the kube-/gke- system namespaces. The installer rewrites them
+      # only when this step runs again, and this runs after it.
+      kubectl --context "$context" get poddisruptionbudgets -A \
+          -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name' --no-headers |
+        while read -r ns name; do
+          case "$ns" in kube-*|gke-*) continue ;; esac
+          kubectl --context "$context" -n "$ns" patch poddisruptionbudget "$name" \
+            --type=merge -p '{"spec":{"maxUnavailable":"100%","minAvailable":null}}'
+        done
+      # A budget still short of 100% -- a new upstream one, or a GKE-managed
+      # one this step must not touch -- fails the install now, loudly.
+      blocking="$(kubectl --context "$context" get poddisruptionbudgets -A \
+          -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,MAX:.spec.maxUnavailable' --no-headers |
+        awk '$3 != "100%" {print $1 "/" $2}')"
+      if [ -n "$blocking" ]; then
+        echo "ate-setup: disruption budgets that could hold a stop: $blocking" >&2
+        exit 1
+      fi
   EOT
 
   ate_setup_env = {
