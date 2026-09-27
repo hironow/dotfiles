@@ -111,13 +111,18 @@ func ShouldDrain(now time.Time, l Lease, leaseOK bool, zeroRunningSince time.Tim
 //  5. A drain record from a previous lease is ignored entirely -- that is how a
 //     successful extend invalidates an earlier `drained`, without L1 having to
 //     remember to clean up.
-//  6. drained: stop gracefully. Nothing is awake; this is the happy path.
+//  6. drained: stop gracefully. Nothing is awake; this is the happy path, at
+//     any time past the deadline.
 //  7. drain-failed: force. L1 said it could not finish.
-//  8. draining with a fresh heartbeat: wait. A slow drain is not a dead one.
-//  9. draining with a stale heartbeat: force. L1 died mid-drain.
-//  10. past deadline + grace with no usable drain record: force.
-//  11. otherwise (no drain record yet, still inside the grace): wait, and let
-//     L1 have its 45 minutes.
+//  8. past deadline + grace: force, UNCONDITIONALLY. Only rules 9 and 10 can
+//     wait, and this is what bounds them: no heartbeat, however fresh, buys
+//     time past the grace, so a node is up for at most deadline + ForceGrace +
+//     one L2 tick while the lease is readable.
+//  9. draining with a heartbeat inside HeartbeatStaleAfter: wait. A slow drain
+//     is not a dead one. A staler heartbeat is a dead L1: force.
+//  10. no record about this lease: judged as a heartbeat that stopped AT the
+//     deadline. A live L1 writes `draining` within a minute of it, so silence
+//     for a whole heartbeat window means L1 is not running: force.
 func DecideL2(o Observation) Decision {
 	if o.Nodes == 0 {
 		return Decision{ActionWait, ReasonAlreadyStopped}
@@ -144,17 +149,20 @@ func DecideL2(o Observation) Decision {
 		return Decision{ActionStopGraceful, ReasonDrained}
 	case DrainFailed:
 		return Decision{ActionStopForced, ReasonDrainFailed}
-	case DrainDraining:
-		if !o.Now.After(o.Drain.Heartbeat.Add(HeartbeatStaleAfter())) {
-			return Decision{ActionWait, ReasonDrainingWithHeartbeat}
-		}
-		return Decision{ActionStopForced, ReasonHeartbeatStale}
 	}
 
 	if o.Now.After(o.Lease.Deadline.Add(ForceGrace)) {
 		return Decision{ActionStopForced, ReasonGraceExpired}
 	}
-	return Decision{ActionWait, ReasonAwaitingDrain}
+
+	heartbeat, waiting := o.Lease.Deadline, ReasonAwaitingDrain
+	if phase == DrainDraining {
+		heartbeat, waiting = o.Drain.Heartbeat, ReasonDrainingWithHeartbeat
+	}
+	if !o.Now.After(heartbeat.Add(HeartbeatStaleAfter())) {
+		return Decision{ActionWait, waiting}
+	}
+	return Decision{ActionStopForced, ReasonHeartbeatStale}
 }
 
 // MayStartTask reports whether a new task may be started right now.

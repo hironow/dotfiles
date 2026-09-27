@@ -320,14 +320,88 @@ func TestDecideL2(t *testing.T) {
 		{
 			// L1 runs every minute; L2 every ten. A deadline that passed a
 			// moment ago must not be forced before L1 has had a chance.
-			name: "no drain record yet, inside the grace: wait for L1",
+			name: "no drain record yet, just past the deadline: wait for L1",
 			obs:  Observation{Now: now, Lease: expired, LeaseOK: true, Nodes: 1},
 			want: Decision{ActionWait, ReasonAwaitingDrain},
+		},
+		{
+			// No record about this lease reads as a heartbeat that stopped AT
+			// the deadline: L1 gets the same window a draining L1 gets between
+			// two heartbeats, and not the whole grace. A live L1 writes
+			// `draining` within a minute of the deadline, so silence for the
+			// full window means it is not running.
+			name: "no drain record, exactly one heartbeat window after the deadline: still wait",
+			obs: Observation{
+				Now: now, Lease: Lease{Deadline: now.Add(-HeartbeatStaleAfter()), Generation: gen},
+				LeaseOK: true, Nodes: 1,
+			},
+			want: Decision{ActionWait, ReasonAwaitingDrain},
+		},
+		{
+			name: "no drain record, one second past that window: force as a stopped heartbeat",
+			obs: Observation{
+				Now: now, Lease: Lease{Deadline: now.Add(-HeartbeatStaleAfter() - time.Second), Generation: gen},
+				LeaseOK: true, Nodes: 1,
+			},
+			want: Decision{ActionStopForced, ReasonHeartbeatStale},
 		},
 		{
 			name: "no drain record and the grace has expired: force",
 			obs:  Observation{Now: now, Lease: longExpired, LeaseOK: true, Nodes: 1},
 			want: Decision{ActionStopForced, ReasonGraceExpired},
+		},
+		{
+			// The grace is unconditional: past it, not even a heartbeat that
+			// keeps arriving buys more time. L1 gives up at its own ceiling, so
+			// a heartbeat this late is an L1 that is broken in a way that
+			// keeps writing, or a clock that disagrees -- and the plan's bound,
+			// deadline + ForceGrace + one L2 tick, has to hold through both.
+			name: "past the grace a fresh heartbeat buys nothing: force",
+			obs: Observation{
+				Now: now, Lease: Lease{Deadline: now.Add(-ForceGrace - time.Second), Generation: gen},
+				LeaseOK: true, Nodes: 1,
+				Drain: draining(now, gen),
+			},
+			want: Decision{ActionStopForced, ReasonGraceExpired},
+		},
+		{
+			name: "exactly at the grace a fresh heartbeat is still waited for",
+			obs: Observation{
+				Now: now, Lease: Lease{Deadline: now.Add(-ForceGrace), Generation: gen},
+				LeaseOK: true, Nodes: 1,
+				Drain: draining(now, gen),
+			},
+			want: Decision{ActionWait, ReasonDrainingWithHeartbeat},
+		},
+		{
+			// Nothing is awake once L1 says so for this lease, so the stop is
+			// graceful whenever L2 first sees it -- paging for it would be a
+			// false alarm on the channel that carries the real ones.
+			name: "a drained record is a graceful stop even past the grace",
+			obs: Observation{
+				Now: now, Lease: longExpired, LeaseOK: true, Nodes: 1,
+				Drain: Drain{Phase: DrainDrained, LeaseGeneration: gen},
+			},
+			want: Decision{ActionStopGraceful, ReasonDrained},
+		},
+		{
+			name: "drain-failed past the grace is still reported as drain-failed",
+			obs: Observation{
+				Now: now, Lease: longExpired, LeaseOK: true, Nodes: 1,
+				Drain: Drain{Phase: DrainFailed, LeaseGeneration: gen},
+			},
+			want: Decision{ActionStopForced, ReasonDrainFailed},
+		},
+		{
+			// A heartbeat is judged by its own age, not by the deadline: one
+			// last written before the deadline (an idle drain whose L1 then
+			// died) is already stale the moment the lease runs out.
+			name: "a draining heartbeat older than the window is stale even just past the deadline",
+			obs: Observation{
+				Now: now, Lease: expired, LeaseOK: true, Nodes: 1,
+				Drain: draining(now.Add(-HeartbeatStaleAfter()-time.Minute), gen),
+			},
+			want: Decision{ActionStopForced, ReasonHeartbeatStale},
 		},
 		{
 			// This is how an extend invalidates an earlier `drained` without L1
@@ -355,6 +429,17 @@ func TestDecideL2(t *testing.T) {
 				Drain: draining(now, gen-1),
 			},
 			want: Decision{ActionStopForced, ReasonGraceExpired},
+		},
+		{
+			// ...it counts as no record: the window runs from the deadline,
+			// however fresh the older lease's heartbeat is.
+			name: "a stale draining record past the heartbeat window forces as a stopped heartbeat",
+			obs: Observation{
+				Now: now, Lease: Lease{Deadline: now.Add(-HeartbeatStaleAfter() - time.Second), Generation: gen},
+				LeaseOK: true, Nodes: 1,
+				Drain: draining(now, gen-1),
+			},
+			want: Decision{ActionStopForced, ReasonHeartbeatStale},
 		},
 	}
 
