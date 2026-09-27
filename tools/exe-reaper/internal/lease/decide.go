@@ -58,40 +58,6 @@ func ClampDeadline(now time.Time, requested time.Duration) (deadline time.Time, 
 	return deadline, false, nil
 }
 
-// ShouldDrainForIdle is L1's second trigger: the cluster is authorised but
-// nobody is using it.
-//
-// zeroRunningSince is when the running-task count last became zero, or the zero
-// value if something is running. Taking a timestamp rather than a count is what
-// makes the rule "zero for thirty minutes" instead of "zero right now" -- a task
-// that finishes and is immediately followed by another must not start the clock.
-func ShouldDrainForIdle(now, zeroRunningSince time.Time) bool {
-	if zeroRunningSince.IsZero() {
-		return false
-	}
-	return !now.Before(zeroRunningSince.Add(IdleZeroRunning))
-}
-
-// ShouldDrain is L1's full trigger rule: the deadline has passed, or the
-// cluster has been idle long enough, or the lease could not be read at all.
-//
-// The last one is not paranoia. If L1 cannot read the lease it cannot know it is
-// still authorised, and the safe reading of "unknown" for something that costs
-// money by the hour is "not authorised". It drains gracefully, so nothing is
-// lost if the read failure was transient.
-func ShouldDrain(now time.Time, l Lease, leaseOK bool, zeroRunningSince time.Time) (bool, Reason) {
-	if !leaseOK {
-		return true, ReasonLeaseUnreadable
-	}
-	if !now.Before(l.Deadline) {
-		return true, ReasonDeadlinePassed
-	}
-	if ShouldDrainForIdle(now, zeroRunningSince) {
-		return true, ReasonIdle
-	}
-	return false, ReasonAuthorised
-}
-
 // DecideL2 is the out-of-cluster enforcer's three-way rule (section 3.2).
 //
 // Order is the whole content of this function, so it is written as a flat
