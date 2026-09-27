@@ -97,6 +97,8 @@
     template の golden snapshot (メモリ) + `/workspace`。rootfs やホーム (`~/.claude` など) の変更は suspend で消える。
     - ate-api-server の PodDisruptionBudget (maxUnavailable 1、2 replica) は、ノード 1 台では退避先が無く、停止時の drain を
     GKE の上限 (1 時間) まで止める。gVisor worker の terminationGracePeriodSeconds は 3600 (ate-controller が固定、WorkerPool では変えられない)。
+    ただしこの猶予は**状態を守らない**: ateom は SIGTERM を受けると sandbox の container を kill するだけで checkpoint しない
+    (SIGTERM のあと workloadGracePeriod の 30 分で SIGKILL)。起きている actor が残った停止を最大 30 分遅らせうるだけ。
     - AX が task の Ready 判定に使うのは atenet-router 経由の `readyz` だけで、定期的な再確認は無い。
     `runsc start` に失敗した actor は Terminate できず worker を掴んだままになる (worker pod の作り直しで解ける)。
 - **GKE**: no-channel (static) は非推奨で新規顧客は作れず、2027-06-14 に Stable へ強制移行される。
@@ -528,7 +530,7 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | 上流 pre-1.0 の breaking change | 版上げで壊れる | 版を 1 ファイルで pin。Class 2 扱い。版上げは「全 task を suspend → 上げる → `just exe-e2e`」の全停止手順 (ノード 1 台なのでローリングは無い) |
 | AX v0.3.1 と Substrate / GKE 1.37 の互換 | 起動しない | AX の go.mod の commit に pin し、pins gate と取得時の go.mod 照合で縛る。S1〜S3 を実機で確認 |
 | certificates の v1beta1 (1.37 で deprecated、1.40 で削除) | 1.40 以降で Substrate が動かない | minor の exclusion は 2027-03-25 まで。それまでに Substrate が v1 を話すか、次の minor で v1beta1 が使えるかを確かめる |
-| 停止の遅延 (PodDisruptionBudget、終了猶予) | 止める判断のあともノードが課金され続ける (最大 1 時間) | install で全 budget を開き、残れば install を失敗させる。Filestore CSI は無効。worker の 3600 秒の猶予は起きている actor がいる時だけ効く → L1 で先に suspend、Phase 6 でモデルの前提 (停止の遅延) と実台数の検知 |
+| 停止の遅延 (PodDisruptionBudget、終了猶予) | 止める判断のあともノードが課金され続ける (最大 1 時間) | install で全 budget を開き、残れば install を失敗させる。Filestore CSI は無効。worker の 3600 秒の猶予は状態を守らない (ateom は SIGTERM で kill するだけで checkpoint しない)。起きている actor が残った停止だけを最大 30 分遅らせうる → L1 で先に suspend、停止の遅延はモデルの前提 (5 分) と L2 の検知 (Phase 6)。実際の kill 時間は強制停止の e2e で測る |
 | 起きている actor を残したままの worker 除去 (休眠、WorkerPool 編集、eviction) | CRASHED (終端) | L1 の手順を Quint で検証、期限の算式、heartbeat と上限、WorkerPool の apply を止める前提条件、limits の必須化、disk の実測 (S7) |
 | 休眠し忘れ | 課金継続 | 4 層の自動休眠 (§3.2)。L3 は判断ロジックなしで毎日止め、その失敗も通知する |
 | 止める仕組みが黙って壊れる | 24 時間保証の喪失 | Scheduler 失敗のアラート、`exe-status` に最終結果、L3 の URI と node pool 名を同じ値から作るテスト |
