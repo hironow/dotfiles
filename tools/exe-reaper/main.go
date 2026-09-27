@@ -83,6 +83,19 @@ func loadConfig(required ...string) (config, error) {
 	return c, nil
 }
 
+// errPositionalArgs is a command given an argument it does not take. Every
+// value goes through a flag, and anything else is refused rather than
+// ignored: `wake 5m` once meant a two-hour lease.
+var errPositionalArgs = errors.New("unexpected argument")
+
+// noArgs refuses whatever the flags did not consume.
+func noArgs(fs *flag.FlagSet) error {
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%w %q: %s takes flags only", errPositionalArgs, fs.Arg(0), fs.Name())
+	}
+	return nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -144,6 +157,9 @@ func cmdLease(ctx context.Context, args []string, startNode bool) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("%w %q: ask for a duration with -for %s", errPositionalArgs, fs.Arg(0), fs.Arg(0))
+	}
 
 	required := []string{envBucket}
 	if startNode {
@@ -202,6 +218,9 @@ func cmdSleep(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if err := noArgs(fs); err != nil {
+		return err
+	}
 	cfg, err := loadConfig(envBucket)
 	if err != nil {
 		return err
@@ -239,6 +258,10 @@ func runEnforce(ctx context.Context, args []string, out io.Writer) int {
 	fs := flag.NewFlagSet("enforce", flag.ExitOnError)
 	dryRun := fs.Bool("dry-run", false, "decide and report, change nothing")
 	if err := fs.Parse(args); err != nil {
+		log.fail(err)
+		return 1
+	}
+	if err := noArgs(fs); err != nil {
 		log.fail(err)
 		return 1
 	}
@@ -611,6 +634,9 @@ func readEnforce(ctx context.Context, client *gcp.Client, bucket string) (enforc
 func cmdStatus(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := noArgs(fs); err != nil {
 		return err
 	}
 	cfg, err := loadConfig(envBucket, envProject, envZone, envCluster, envNodePool)

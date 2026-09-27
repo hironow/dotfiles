@@ -282,6 +282,49 @@ func TestAStopIsAbandonedWhenTheLeaseMovesDuringTheTick(t *testing.T) {
 	}
 }
 
+// `exe-reaper wake 5m` used to parse no flags, ignore the "5m" and authorise
+// the default two hours: the operator asked for five minutes and got a node
+// that bills for two hours (review finding #7). A positional argument is now
+// refused before anything is read or written, and the refusal says how to ask.
+func TestAPositionalArgumentIsRefused(t *testing.T) {
+	// Empty, so that a regression fails on the environment rather than
+	// reaching for a real bucket.
+	for _, name := range []string{envBucket, envSetSizeURI, envProject, envZone, envCluster, envNodePool} {
+		t.Setenv(name, "")
+	}
+	commands := []struct {
+		name string
+		run  func(args []string) error
+	}{
+		{"wake", func(args []string) error { return cmdLease(t.Context(), args, true) }},
+		{"extend", func(args []string) error { return cmdLease(t.Context(), args, false) }},
+		{"sleep", func(args []string) error { return cmdSleep(t.Context(), args) }},
+		{"status", func(args []string) error { return cmdStatus(t.Context(), args) }},
+	}
+	for _, c := range commands {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.run([]string{"5m"})
+			if !errors.Is(err, errPositionalArgs) {
+				t.Fatalf("%s 5m: error %v, want errPositionalArgs", c.name, err)
+			}
+			if !strings.Contains(err.Error(), `"5m"`) {
+				t.Errorf("the refusal should name the argument: %v", err)
+			}
+		})
+	}
+
+	if err := cmdLease(t.Context(), []string{"5m"}, true); !strings.Contains(err.Error(), "-for 5m") {
+		t.Errorf("wake's refusal should say how to ask for a duration: %v", err)
+	}
+
+	// The job refuses one too, through its failure line.
+	var out bytes.Buffer
+	if code := runEnforce(t.Context(), []string{"5m"}, &out); code != 1 ||
+		!strings.Contains(out.String(), `unexpected argument \"5m\"`) {
+		t.Errorf("enforce 5m: exit %d, output %s", code, out.String())
+	}
+}
+
 // A pool size L2 cannot read counts as "may be up", never as "asleep". Asleep
 // is DecideL2's first rule ("nothing to do"), so reading an error as zero makes
 // the money stop inert exactly when its view of the pool is broken. "May be up"
