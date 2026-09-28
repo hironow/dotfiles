@@ -50,6 +50,14 @@ covers the long tail.
   files via Bash** (redirect targets, `touch`/`tee` args, `cp`/`mv`
   destinations — reads stay allowed). Node is bun-only (ADR 0027); the
   `corepack enable`/`prepare`/`use` provisioning subcommands stay allowed.
+- `rtk-hook-claude.sh` (Bash): wraps `rtk hook claude`, the mandatory output
+  proxy's rewriter (ADR 0047). Not a guard — it **fails open** (any error
+  exits 0 and leaves the command untouched) and it is the one hook here that
+  may exit non-zero without blocking. It strips rtk's `permissionDecision:
+  "allow"` so rewritten commands keep the normal permission flow, and drops
+  rtk's `git` rewrite inside a Claude Code isolation worktree, where the
+  harness refuses any git command it can only see through a launcher. Details:
+  docs/agents/rtk.md.
 - `format-after-edit.sh` (PostToolUse Write|Edit): `ruff format` +
   `ruff check --fix` on the edited Python file; `gofmt -w` on the edited Go
   file. Always single-file — TS/JS is deliberately not formatted per edit
@@ -63,6 +71,12 @@ covers the long tail.
   the tooling guards. Flip side: a quoted invocation (`bash -c "npm i"`) and
   wrapper forms outside the known set (`mise exec -- pnpm …`) slip them —
   accepted long tail; prose rules + review cover it.
+- The known wrapper set is `env`/`sudo`/`time`/`nohup`/`command`/`xargs` plus
+  **`rtk`**, whose real command is the first operand after rtk's own flags and
+  sits one token further right behind a run-anything subcommand
+  (`rtk proxy|err|test|summary|smart <cmd>`). rtk is in the set, not the long
+  tail, because it is mandatory and its hook prefixes commands by default — so
+  `rtk pnpm install` blocks exactly like `pnpm install` (ADR 0047).
 - Heredocs are receiver-aware: a body consumed by a data sink (`cat`, `gh`,
   `git`, …) is opaque prose and excluded from **all** guards (so PR bodies
   via `gh pr create --body-file -` or `$(cat <<'EOF' …)` are safe); a body
