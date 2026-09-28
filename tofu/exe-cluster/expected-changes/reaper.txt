@@ -1,0 +1,30 @@
+# The reviewed change list for putting L1 in the cluster (512d932, 77e2d7d):
+# exe-reap's image, namespace, KSA, CronJob, RBAC and ax-server allow rule; the
+# ax-controller's manifest without replicas (L1 owns that count); the install's
+# new drain guard; and the pool guard, whose script now also checks drain.json,
+# re-running.
+#
+# The Substrate install itself must NOT re-run: its inputs moved into a shared
+# local unchanged, and its new drain guard is a step of its own. A
+# terraform_data.ate_system line here means the install would re-run, which
+# needs a node up for many minutes: do not apply.
+#
+# Nothing here needs a node. With the pool at zero the CronJob's pods stay
+# Pending, and each Job gives up after 55 s; the first tick runs when a node
+# is up (W1). The drain guard reads drain.json on the operator's credentials
+# and passes while there is no drain.
+#   just exe-cluster-plan && just exe-cluster-plan-summary --expect-changes expected-changes/reaper.txt
++ ko_build.exe_reap
+~ kubectl_manifest.ax_controller
++ kubectl_manifest.reaper
++ kubernetes_namespace_v1.ops
++ kubernetes_network_policy_v1.ax_server_from_reaper
++ kubernetes_role_binding_v1.reaper_controller
++ kubernetes_role_binding_v1.reaper_router
++ kubernetes_role_binding_v1.reaper_workers
++ kubernetes_role_v1.reaper_controller
++ kubernetes_role_v1.reaper_router
++ kubernetes_role_v1.reaper_workers
++ kubernetes_service_account_v1.reaper
++ terraform_data.ate_system_drain_guard
+-/+ terraform_data.worker_pool_guard[0]
