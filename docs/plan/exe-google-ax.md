@@ -203,32 +203,42 @@ Legend / 凡例:
 | 層 | どこで動く | 何をするか | 保証 |
 |---|---|---|---|
 | L0 リース | `just exe-wake [1h]` / `exe-extend` / `exe-sleep` (手元で `exe-reaper` を実行) | 起動には必ず期限が付く。既定 1h、1 回の起動・延長で最大 8h。**期限は 03:00 JST を越えられない** (下の算式)。延長に成功すると、それ以前の `drained` は無効になる。`exe-sleep` は期限を今にして L1 に片付けさせる | 期限なしの起動は作れない |
-| L1 丁寧な休眠 | クラスタ内の CronJob `exe-reaper reap` (**毎分**、ノードが起きている間だけ動く) | 条件: 期限切れ、または **Running の task が 30 分連続で 0**、またはリースの読み取り失敗。手順: ① drain.json に `draining` と heartbeat → ② **atenet-router を 0 台にする** (router 経由の自動 resume と `ax ssh` を止める) → ③ AX の `SuspendTask` で Running の task を全部 suspend (AX の状態と実体を一致させる) → ④ Substrate 上で全 actor が SUSPENDED になるまで確認 (その間 heartbeat を更新、上限 30 分) → ⑤ `drained`。上限を超えたら `drain-failed`。期限内に戻ったら router を 1 台に戻す | 状態を失わずに寝かせる |
-| L2 期限の強制 | Cloud Scheduler (10 分ごと) → Cloud Run job `exe-reaper enforce` | 期限切れ後の判定: `drained` なら 0 にする / `draining` で heartbeat が 2 回分 (L2 の周期 2 回 = 20 分) 以内なら待つ。このリースについての drain の記録がまだ無いときは、期限の時刻に heartbeat が止まったとみなす / heartbeat が止まった・`drain-failed`・**期限 + 45 分**を過ぎた (heartbeat が新しくても待たない)・リースが **3 回連続**で読めない、のどれかなら強制的に 0 にして通知 (強制停止が続く間の通知は最初の 1 回だけ)。1〜2 回の読み取り失敗では何もしない (L1 が片付けに入る) | Mac が閉じていても、クラスタ内が壊れていても止まる |
+| L1 丁寧な休眠 | クラスタ内の CronJob `exe-reap` (**毎分**、ノードが起きている間だけ動く。専用 KSA、AX gRPC と Substrate API のクライアント) | 条件: 期限切れ、または **起きている task の actor が 30 分連続で 0**、またはリースの読み取り失敗。手順: ① drain.json に `draining` と heartbeat (以後毎 tick 更新) → ② **atenet-router を 0 台にする** (drain 中は毎 tick 0 に保つ。router 経由の自動 resume と `ax ssh` を止める) → ③ AX の `SuspendTask` で起きている task を全部 suspend → ④ 起きている actor が無くなったら **ax-controller を 0 台** (AX の resume を実行する唯一の経路) → ⑤ router と controller の **pod が消えたことを pod 一覧で確かめる** (scale の変更はバリアではない) → ⑥ 全 ActorTemplate の golden snapshot が完了か失敗になるのを待つ (Substrate の template reconciler は golden actor を resume する) → ⑦ Substrate で、起きている actor が無く、drain 開始後に説明のつかない CRASHED も無いことを確かめる (起きていれば controller を戻して ③ へ) → ⑧ `drained`。上限 30 分を超えたら `drain-failed` (ceiling)、actor を失ったら `drain-failed` (lost)。有効なリースに戻ったら router と controller を 1 台に戻す (drain の記録があれば Cancel、無ければ Reopen)。DELETING のまま worker を 10 分握る actor は、その worker pod を消す | 状態を失わずに寝かせる |
+| L2 期限の強制 | Cloud Scheduler (10 分ごと) → Cloud Run job `exe-reaper enforce` | 期限切れ後の判定: `drained` なら 0 にする / `draining` で heartbeat が 2 回分 (L2 の周期 2 回 = 20 分) 以内なら待つ。このリースについての drain の記録がまだ無いときは、期限の時刻に heartbeat が止まったとみなす / heartbeat が止まった・`drain-failed`・**期限 + 45 分**を過ぎた (heartbeat が新しくても待たない)・リースが **3 回連続**で読めない、のどれかなら強制的に 0 にして通知 (強制停止が続く間の通知は最初の 1 回だけ)。1〜2 回の読み取り失敗では何もしない (L1 が片付けに入る)。0 にした後もノードが **5 分**を超えて残っていれば通知する (停止の遅延) | Mac が閉じていても、クラスタ内が壊れていても止まる |
 | L3 日次の強制停止 | Cloud Scheduler (毎日 04:00 JST) → GKE API `setSize(0)` を直接呼ぶ | 判断ロジックなし。正常時は空振りする (下の算式で保証)。**このジョブ自体の失敗は L4 が通知する** | 全部壊れても 24 時間には届かない |
 | L4 検知 | Cloud Monitoring + JPY の budget | ① Compute Engine の稼働時間でノードが 9h を超えたら通知 (GKE の監視設定に依存しない) ② Scheduler ジョブ 2 つの失敗を通知 ③ 予算 ¥3,000/月の 50 / 90 / 100% | 抜けた時と、止める仕組みが壊れた時に気づける |
 
 - **期限の上限の算式** (定数と Quint の不変条件は同じ場所から出す): 利用上限時刻 = L3 時刻 04:00 −
   (L1 の周期 1 分 + 片付けの上限 30 分 + L2 の周期 10 分 + 余裕 19 分) = **03:00 JST** (Q21)。
   これで、正常時に L3 が起きている actor を巻き込むことはない。
-- 最悪額: ノードが起きている時間は「期限 + 45 分 + L2 の周期 10 分」以内 (L2 が `lease.json` を読める間。読めない間は
-  3 回連続の規則のため、さらに L2 の周期 2 回分まで延びうる)。休眠し忘れは既定リースで ≈ ¥40/回、最大リースで ≈ ¥186/回 (起動中 ≈ ¥20.9/時で計算)。
-  **ただしこれは「止める判断」の上限で、ノードが実際に消えるまでの時間 (停止の遅延) は含まない**。PodDisruptionBudget が
-  drain を最大 1 時間止めうることが Phase 4 で判明した → install で全 budget を開き、残れば install を失敗させる。
-  修正後の実測は 3 分 32 秒。停止の遅延をモデルの前提と検知に入れるのは Phase 6。
+- 最悪額: ノードが課金される時間は「期限 + 45 分 + L2 の周期 10 分 + 停止の遅延 5 分」= **期限 + 60 分**以内
+  (L2 が `lease.json` を読める間。読めない間は 3 回連続の規則のため、さらに L2 の周期 2 回分まで延びうる)。
+  休眠し忘れは既定リースで ≈ ¥42/回、最大リースで ≈ ¥188/回 (起動中 ≈ ¥20.9/時で計算)。
+  停止の遅延はモデル (`exe/spec/lease.qnt`) の前提で、実測は 3 分 29 秒〜3 分 48 秒 (Phase 4〜6)。5 分を超えれば L2 が通知する。
+  PodDisruptionBudget が drain を最大 1 時間止めうることが Phase 4 で判明した → install で全 budget を開き、残れば install を失敗させる。
 - L2 が使うのは GCS、`nodePools.setSize`、そして台数を知るための node pool の MIG の targetSize の読み取り
   (`compute.instanceGroupManagers.get` だけの custom role、enforcer の SA にだけ付ける) だけ。
   **クラスタの認証情報に依存しない** (クラスタ側が壊れていても止められる)。この性質を崩す変更 (kubectl を使うなど) はしない。
-- L1 の追加の仕事 (§3.3): 生きている task が参照する task image に `inuse-` タグを付け、不要になったタグを外す。
-  resume されないまま 30 日経った task は削除する (7 日前から `exe-status` で予告、`keep` ラベル付きは対象外、Q15)。
-- `ax-job` / `ax-exec` は、リースが `draining` 以降なら新しい task を起こさない。
+- L1 の追加の仕事 (§3.3。`exe/spec/retention.qnt` でモデル化):
+    - 生きている task が参照する task image に `inuse-<sha12>` タグを付け、参照されなくなって 7 日経ったら外す。
+      `ax-job` は task を作る**前に** `inuse-<sha12>-<unix 時刻>` を付け、L1 はそれを名前の時刻から 7 日で外す。
+    - SUSPENDED のまま 30 日触られていない task は削除する。時計は Substrate の actor の `update_time`
+      (書き込みのたびに進む)。SUSPENDED の actor を背景で書く経路が無いことは固定した Substrate で監査し、
+      `exe/spec/substrate-audit.json` と pins gate が、repin のたびに監査のやり直しを求める。
+      L1 はノードが起きている間しか動かないので、実際には「30 日を過ぎた後の最初の起動で削除」。
+      7 日前から `exe-status` で予告し、`just exe-keep add <task>` (keep.json) で対象外にできる (Q15)。
+    - 記録は tasks.json (書き手は L1 だけ。内容が変わった時だけ書く)。
+- `ax-job` / `ax-exec` は、何かを作る前と、コマンドを起動する直前の 2 回、`exe-reaper may-start` でリースを確かめる。
+  リースが `draining` 以降か、残り時間が timeout + 5 分に足りなければ何もしない。
 
 #### サブコマンド、実行場所、ID、書き込み先
 
 | サブコマンド | 実行場所 | ID | 書き込む対象 |
 |---|---|---|---|
-| `wake` / `extend` / `sleep` / `status` | 運用者の Mac | 運用者の ADC | `lease.json`、node pool の台数 (wake のみ 1 に) |
-| `reap` (L1) | クラスタ内 CronJob | reaper 用の KSA (Workload Identity) | `drain.json`、atenet-router の replicas、AX の suspend、task image のタグ、TTL 切れ task の削除 |
+| `wake` / `extend` / `sleep` / `status` / `may-start` | 運用者の Mac | 運用者の ADC | `lease.json`、node pool の台数 (wake のみ 1 に)。`status` と `may-start` は読むだけ |
+| `keep` | 運用者の Mac | 運用者の ADC | `keep.json` (TTL の対象外にする task) |
+| `exe-reap` (L1) | クラスタ内 CronJob | reaper 用の KSA (Workload Identity) | `drain.json`、`tasks.json`、atenet-router と ax-controller の replicas、AX の suspend、task image のタグ、TTL 切れ task の削除 |
+| `exe-reap snapshot-gc` | `just exe-snapshot-gc` が作る一回限りの Job | snapshot GC 用の KSA (L1 とは別) | 失われた store の actor が残した snapshot prefix の削除 (`-apply` の時だけ) |
 | `enforce` (L2) | Cloud Run job | enforcer 用の SA | `enforce.json`、node pool の台数 (0 のみ) |
 | L3 | Cloud Scheduler | scheduler 用の SA | node pool の台数 (0 のみ) |
 
@@ -240,12 +250,19 @@ Legend / 凡例:
 
 L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-controller・atenet router が同時に resume しうる。`exe/spec/lease.qnt` で次をモデル化する。
 
-- 遷移: worker pod の除去 → 60 秒の窓 → CRASHED、運用者の `ax resume`、router 経由の自動 resume、任意の時点でのノード消失、
-  lease / drain / enforce の各オブジェクトへの書き込みと読み取り失敗
-- 不変条件: 強制でない休眠では worker pod の除去時に起きている actor は無い。L3 は正常時に起きている actor と重ならない (算式)。
-  ノードは有界時間内に必ず 0 になる。延長に成功した直後に L2 が止めることはない
-- 失敗する instance として残すもの: pool を先に縮める素朴な順序、書き手が 2 つある lease、ax-controller を止めて router を開けたままにする案
-- Go 実装の seeded simulation を用意し、`just spec-check` を `just check` に組み込む
+- 遷移: worker pod の除去 → (上限の無い) 検知の遅れ → CRASHED、運用者の `ax resume`、router 経由の自動 resume、
+  Substrate の template reconciler による golden actor の resume、任意の時点でのノード消失、停止の遅延、
+  scale の変更と pod が実際に消えるまでのずれ、lease / drain / enforce の各オブジェクトへの書き込みと読み取り失敗
+- 不変条件: 強制でない休眠では worker pod の除去時に起きている actor は無い。drain 中に actor を失えば graceful と報告しない。
+  `drained` はその lease について真であり続ける。L3 は正常時に起きている actor と重ならない (算式)。
+  ノードの課金は有界時間 (期限 + 60 分) 内に必ず止まる。延長に成功した直後に L2 が止めることはない
+- 失敗する instance として残すもの (それぞれ自分の不変条件で落ちる): pool を先に縮める素朴な順序、書き手が 2 つある lease、
+  router を開けたままにする案、ax-controller を動かしたままにする案、scale の変更をバリアとみなす案、
+  golden actor の resume を無視する案、drain を 1 時間止める PodDisruptionBudget
+- task の保持 (L1 の `inuse-` タグと 30 日の TTL) も「自分で消す」処理なので、`exe/spec/retention.qnt` で別にモデル化する。
+  不変条件: 生きている task の image を AR の cleanup が消さない。期限切れの task だけを消す。期限切れは最初の tick で必ず消す。
+  失敗する instance: ax-job が共有の `inuse-<sha12>` を付ける案、L1 が初めて見た時から数える TTL、背景で SUSPENDED の actor を書く writer
+- どちらも Go 実装の seeded simulation を持ち (lease は L1・L2 の ITF replay も)、`just spec-check` を `just check` に組み込む
 
 ### 3.3 保存先の上限 (ちりつも対策)
 
@@ -255,8 +272,8 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 | AR `exe-platform` (Substrate / AX / reaper image) | KEEP#1 `most_recent_versions { keep_count = 10 }`、DELETE `condition { older_than = 30 日 }`。untagged の即時削除はしない (稼働中の install が digest で参照しているため) |
 | 両 AR 共通 | `cleanup_policy_dry_run = false`。適用は約 1 日遅れるので、`exe-status` は実際の容量を表示する |
 | Cloud Build | 既定の無期限 bucket は使わない。source は `exe-build` bucket (7 日で削除)、ログは `CLOUD_LOGGING_ONLY` |
-| GCS `exe-snapshots` | Substrate が参照の無い snapshot を GC する。**削除系の lifecycle は付けない** (参照中を消すと resume 不能)。上限は task の寿命 (30 日) |
-| GCS `exe-ops` (lease / drain / enforce) | 古い世代は 5 個まで |
+| GCS `exe-snapshots` | Substrate が参照の無い snapshot を GC する。**削除系の lifecycle は付けない** (参照中を消すと resume 不能)。上限は task の寿命 (30 日)。store を失った時に残る actor の prefix は `just exe-snapshot-gc` で消す (運用者が起動し、既定は dry-run。store の actor・task・template が指すもの、24 時間以内に書かれたものは消さない。IAM の条件で `ax/atespaces/{exe,ate-golden}/actors/` の外は消せず、L1 はこの bucket に何の権限も持たない) |
+| GCS `exe-ops` (lease / drain / enforce / tasks / keep) | 古い世代は 5 個まで |
 | tofu state bucket | 古い世代は 10 個まで |
 | PVC | Postgres も Redis も pd-standard 10Gi (Q22、S7 で性能を実測)。teardown は disk を残さない |
 | Cloud Logging | 既定の 30 日保持 (無料枠内) |
