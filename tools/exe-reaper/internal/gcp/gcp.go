@@ -77,6 +77,9 @@ type Client struct {
 	StorageBase string
 	// ContainerBase overrides the GKE endpoint, for the same reason.
 	ContainerBase string
+	// ArtifactRegistryBase overrides the Artifact Registry endpoint, for the
+	// same reason.
+	ArtifactRegistryBase string
 }
 
 func (c *Client) storage() string {

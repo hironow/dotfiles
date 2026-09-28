@@ -204,6 +204,9 @@ func observe(a *ateapipb.Actor) (lease.ActorObs, error) {
 		return lease.ActorObs{}, fmt.Errorf("actor %s/%s: %w", md.GetAtespace(), md.GetName(), err)
 	}
 	obs := lease.ActorObs{UID: md.GetUid(), State: state}
+	if md.GetUpdateTime() != nil {
+		obs.ChangedAt = md.GetUpdateTime().AsTime()
+	}
 	if md.GetAtespace() == GoldenAtespace {
 		obs.Golden = true
 	} else {

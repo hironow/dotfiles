@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/lease"
 )
@@ -200,9 +201,12 @@ func dial(t *testing.T, opts Options) *Client {
 	return c
 }
 
+// changedAt is the update_time every fixture actor carries.
+var changedAt = time.Date(2026, 9, 20, 3, 4, 5, 0, time.UTC)
+
 func actor(atespace, name, uid string, s ateapipb.ActorState, worker *ateapipb.WorkerAssignment) *ateapipb.Actor {
 	return &ateapipb.Actor{
-		Metadata: &ateapipb.ResourceMetadata{Atespace: atespace, Name: name, Uid: uid},
+		Metadata: &ateapipb.ResourceMetadata{Atespace: atespace, Name: name, Uid: uid, UpdateTime: timestamppb.New(changedAt)},
 		Status:   &ateapipb.ActorStatus{State: s, WorkerAssignment: worker},
 	}
 }
@@ -237,10 +241,10 @@ func TestActorsReadsEveryPageOfEveryAtespaceAndClassifiesEachActor(t *testing.T)
 		t.Fatal(err)
 	}
 	want := []lease.ActorObs{
-		{UID: "u1", State: lease.ActorAwake, Task: "exe/p1", Worker: "exe/w-a/pa"},
-		{UID: "u2", State: lease.ActorAtRest, Task: "exe/p2"},
-		{UID: "u3", State: lease.ActorDeleting, Task: "exe/p3", Worker: "exe/w-b/pb"},
-		{UID: "u4", State: lease.ActorAwake, Golden: true, Worker: "exe/w-a/pa"},
+		{UID: "u1", State: lease.ActorAwake, Task: "exe/p1", Worker: "exe/w-a/pa", ChangedAt: changedAt},
+		{UID: "u2", State: lease.ActorAtRest, Task: "exe/p2", ChangedAt: changedAt},
+		{UID: "u3", State: lease.ActorDeleting, Task: "exe/p3", Worker: "exe/w-b/pb", ChangedAt: changedAt},
+		{UID: "u4", State: lease.ActorAwake, Golden: true, Worker: "exe/w-a/pa", ChangedAt: changedAt},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("actors:\n got %+v\nwant %+v", got, want)

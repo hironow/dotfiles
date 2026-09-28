@@ -214,6 +214,9 @@ type ActorObs struct {
 	Task string
 	// Worker is the worker pod the actor is assigned to, if any.
 	Worker string
+	// ChangedAt is the actor's update_time in the store, which every write
+	// moves. The drain does not read it; retention's TTL counts from it.
+	ChangedAt time.Time
 }
 
 // L1Observation is everything L1 sees on one tick: the lease, its own record,
