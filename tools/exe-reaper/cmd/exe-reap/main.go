@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/ax"
@@ -34,6 +35,7 @@ import (
 
 const (
 	envBucket          = "EXE_OPS_BUCKET"
+	envARRepos         = "EXE_AR_REPOS"
 	envSubstrateTarget = "EXE_SUBSTRATE_TARGET"
 	envSubstrateToken  = "EXE_SUBSTRATE_TOKEN_FILE" //nolint:gosec // G101: env var name, not a credential
 	envSubstrateCA     = "EXE_SUBSTRATE_CA_FILE"
@@ -87,6 +89,12 @@ func wire(stdout io.Writer) (*reaper, func(), error) {
 	if bucket == "" {
 		return nil, nil, fmt.Errorf("missing required environment: %s", envBucket)
 	}
+	// Without them retention would protect nothing, and Artifact Registry's
+	// cleanup would take the images of suspended tasks: refuse instead.
+	repos := splitRepos(os.Getenv(envARRepos))
+	if len(repos) == 0 {
+		return nil, nil, fmt.Errorf("missing required environment: %s", envARRepos)
+	}
 	sub, err := substrate.Dial(substrate.Options{
 		Target:     envOr(envSubstrateTarget, defaultSubstrateTarget),
 		ServerName: substrate.ServerName,
@@ -111,14 +119,28 @@ func wire(stdout io.Writer) (*reaper, func(), error) {
 		_ = sub.Close()
 		_ = axc.Close()
 	}
+	cloud := gcp.New()
 	return &reaper{
 		substrate: sub,
 		ax:        axc,
 		k8s:       kube,
-		gcs:       gcp.New(),
+		gcs:       cloud,
+		ar:        cloud,
 		bucket:    bucket,
+		repos:     repos,
 		log:       l1Log{w: stdout},
 	}, closeAll, nil
+}
+
+// splitRepos reads EXE_AR_REPOS: repository resource names, comma-separated.
+func splitRepos(raw string) []string {
+	var out []string
+	for _, r := range strings.Split(raw, ",") {
+		if r = strings.TrimSpace(r); r != "" {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func envOr(name, fallback string) string {

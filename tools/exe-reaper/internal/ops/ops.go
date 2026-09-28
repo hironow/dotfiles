@@ -25,6 +25,9 @@ const (
 	// KeepObject lists the tasks the operator exempted from the task TTL. One
 	// writer, like the lease: `keep add|rm` on the operator's Mac.
 	KeepObject = "keep.json"
+	// TasksObject is L1's retention record (lease.TasksRecord): the tasks
+	// as it last saw them, with their TTL dates, and its tag-release clocks.
+	TasksObject = "tasks.json"
 )
 
 // LeaseFromRead is the view of one read of LeaseObject: the lease, and whether

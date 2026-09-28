@@ -28,6 +28,7 @@ override_data {
       cluster_dns_endpoint = "gke-zz.asia-northeast1.gke.goog"
       bucket_snapshots     = "zz-synthetic-project-exe-snapshots"
       bucket_ops           = "zz-synthetic-project-exe-ops"
+      ar_task_repository   = "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-task"
       ar_platform_repo     = "asia-northeast1-docker.pkg.dev/zz-synthetic-project/exe-platform"
       workload_identity_principals = {
         atelet     = "principal://iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/zz-synthetic-project.svc.id.goog/subject/ns/ate-system/sa/atelet"

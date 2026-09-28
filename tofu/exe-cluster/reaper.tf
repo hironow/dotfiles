@@ -103,10 +103,12 @@ resource "kubectl_manifest" "reaper" {
                 image = ko_build.exe_reap.image_ref
 
                 # The Control API and ax-server at exe-reap's in-cluster
-                # defaults, which are the ax-controller's; only the bucket
-                # comes from outside.
+                # defaults, which are the ax-controller's; the bucket and the
+                # repository whose images retention keeps tagged come from
+                # exe-platform's state.
                 env = [
                   { name = "EXE_OPS_BUCKET", value = local.platform.bucket_ops },
+                  { name = "EXE_AR_REPOS", value = local.platform.ar_task_repository },
                 ]
 
                 resources = {

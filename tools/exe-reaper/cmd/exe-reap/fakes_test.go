@@ -48,6 +48,16 @@ type world struct {
 	suspended  []string
 	noTask     map[string]bool
 	suspendErr error
+	axTasks    []ax.Task
+	axDeleted  []string
+	tasksErr   error
+
+	// Artifact Registry: repo -> packages, package -> tag id -> digest
+	packages map[string][]string
+	tags     map[string]map[string]string
+	tagsErr  error
+	tagged   []string // "<package> <id>"
+	untagged []string
 
 	// GCS: the ops bucket, with generations
 	objects map[string]storedObject
@@ -76,6 +86,8 @@ func newWorld(t *testing.T) *world {
 		podsGone: map[string]bool{},
 		replaced: map[string]bool{},
 		noTask:   map[string]bool{},
+		packages: map[string][]string{},
+		tags:     map[string]map[string]string{},
 		objects:  map[string]storedObject{},
 		getErr:   map[string]error{},
 		putErr:   map[string]error{},
@@ -88,7 +100,10 @@ func (w *world) call(format string, args ...any) {
 
 // reaper is a reaper wired to this world, logging into out.
 func (w *world) reaper(out *logBuffer) *reaper {
-	return &reaper{substrate: w, ax: w, k8s: w, gcs: w, bucket: "zz-ops", log: l1Log{w: out}}
+	return &reaper{
+		substrate: w, ax: w, k8s: w, gcs: w, ar: w,
+		bucket: "zz-ops", repos: []string{testRepo}, log: l1Log{w: out},
+	}
 }
 
 func (w *world) put(object string, v any) {
@@ -128,6 +143,65 @@ func (w *world) TemplatesPending(context.Context) (bool, error) {
 	defer w.mu.Unlock()
 	w.call("substrate.TemplatesPending")
 	return w.pending, w.templateErr
+}
+
+// --- axAPI ---
+
+func (w *world) Tasks(context.Context) ([]ax.Task, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.call("ax.Tasks")
+	return slices.Clone(w.axTasks), w.tasksErr
+}
+
+func (w *world) Delete(_ context.Context, task string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.call("ax.Delete %s", task)
+	w.axDeleted = append(w.axDeleted, task)
+	return nil
+}
+
+// --- tagStore ---
+
+func (w *world) ListPackages(_ context.Context, repo string) ([]string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.call("ar.ListPackages %s", repo)
+	return slices.Clone(w.packages[repo]), w.tagsErr
+}
+
+func (w *world) ListTags(_ context.Context, pkg string) ([]gcp.ARTag, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.call("ar.ListTags %s", pkg)
+	var out []gcp.ARTag
+	for id, digest := range w.tags[pkg] {
+		out = append(out, gcp.ARTag{ID: id, Digest: digest})
+	}
+	slices.SortFunc(out, func(a, b gcp.ARTag) int { return strings.Compare(a.ID, b.ID) })
+	return out, w.tagsErr
+}
+
+func (w *world) CreateTag(_ context.Context, pkg, id, digest string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.call("ar.CreateTag %s %s", pkg, id)
+	if w.tags[pkg] == nil {
+		w.tags[pkg] = map[string]string{}
+	}
+	w.tags[pkg][id] = digest
+	w.tagged = append(w.tagged, pkg+" "+id)
+	return nil
+}
+
+func (w *world) DeleteTag(_ context.Context, pkg, id string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.call("ar.DeleteTag %s %s", pkg, id)
+	delete(w.tags[pkg], id)
+	w.untagged = append(w.untagged, pkg+" "+id)
+	return nil
 }
 
 // --- taskSuspender ---

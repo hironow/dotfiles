@@ -46,6 +46,7 @@ override_data {
       cluster_dns_endpoint = "gke-zz.asia-northeast1.gke.goog"
       bucket_snapshots     = "zz-synthetic-project-exe-snapshots"
       bucket_ops           = "zz-synthetic-project-exe-ops"
+      ar_task_repository   = "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-task"
       ar_platform_repo     = "asia-northeast1-docker.pkg.dev/zz-synthetic-project/exe-platform"
       workload_identity_principals = {
         atelet     = "principal://iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/zz-synthetic-project.svc.id.goog/subject/ns/ate-system/sa/atelet"
@@ -179,6 +180,11 @@ run "the_reaper_reaches_substrate_as_the_controller_does_and_knows_its_bucket" {
   assert {
     condition     = one([for e in yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.template.spec.containers[0].env : e.value if e.name == "EXE_OPS_BUCKET"]) == "zz-synthetic-project-exe-ops"
     error_message = "EXE_OPS_BUCKET must be exe-platform's ops bucket, read from its state: the lease and drain.json live there, and exe-reap exits on every tick without it."
+  }
+
+  assert {
+    condition     = one([for e in yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.template.spec.containers[0].env : e.value if e.name == "EXE_AR_REPOS"]) == "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-task"
+    error_message = "EXE_AR_REPOS must be exe-platform's ar_task_repository, read from its state: it names the repository whose images retention keeps tagged, and exe-reap exits on every tick without it rather than protect nothing."
   }
 }
 

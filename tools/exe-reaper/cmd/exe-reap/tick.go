@@ -35,8 +35,16 @@ type (
 		Actors(ctx context.Context) ([]lease.ActorObs, error)
 		TemplatesPending(ctx context.Context) (bool, error)
 	}
-	taskSuspender interface {
+	axAPI interface {
 		Suspend(ctx context.Context, task string) error
+		Tasks(ctx context.Context) ([]ax.Task, error)
+		Delete(ctx context.Context, task string) error
+	}
+	tagStore interface {
+		ListPackages(ctx context.Context, repo string) ([]string, error)
+		ListTags(ctx context.Context, pkg string) ([]gcp.ARTag, error)
+		CreateTag(ctx context.Context, pkg, id, digest string) error
+		DeleteTag(ctx context.Context, pkg, id string) error
 	}
 	clusterAPI interface {
 		Scale(ctx context.Context, ns, deployment string) (int, string, error)
@@ -53,11 +61,15 @@ type (
 // reaper is L1: one tick per CronJob run.
 type reaper struct {
 	substrate actorSource
-	ax        taskSuspender
+	ax        axAPI
 	k8s       clusterAPI
 	gcs       objectStore
+	ar        tagStore
 	bucket    string
-	log       l1Log
+	// repos are the Artifact Registry repositories whose images retention
+	// protects, by resource name (projects/P/locations/L/repositories/R).
+	repos []string
+	log   l1Log
 	// dryRun decides and logs, and writes and does nothing.
 	dryRun bool
 }
@@ -101,6 +113,17 @@ func (r *reaper) tick(ctx context.Context, now time.Time) error {
 	if err := r.act(ctx, obs, d); err != nil {
 		r.log.fail(err)
 		return err
+	}
+
+	// Retention has the tick only when the drain does not: no trigger, so no
+	// drain in flight and none starting.
+	switch d.Branch {
+	case lease.L1NoOp, lease.L1Reopen, lease.L1Cancel:
+		if err := r.retain(ctx, now, obs.Actors); err != nil {
+			err = fmt.Errorf("retention: %w", err)
+			r.log.fail(err)
+			return err
+		}
 	}
 	return nil
 }
@@ -230,6 +253,8 @@ func splitWorker(worker string) (ns, pod, uid string, ok bool) {
 //	          nothing changed hands, NOTICE when the tick moved something,
 //	          WARNING when a drain failed. L2 forces and pages on a failed
 //	          drain, so this line is the reader's why, not a second page.
+//	retention event "retention" at NOTICE: what the retention step deleted,
+//	          tagged and released, when it did anything (plan D10).
 //	warning   event "warning" at WARNING: something the tick worked around.
 //	failure   event "failure" at ERROR: the tick could not read, record or
 //	          act; the last line before exit 1.
@@ -330,6 +355,31 @@ func phaseName(p lease.DrainPhase) string {
 type messageFields struct {
 	Event string `json:"event"`
 	Error string `json:"error,omitempty"`
+}
+
+type retentionFields struct {
+	Event    string   `json:"event"`
+	Deleted  []string `json:"deleted,omitempty"`
+	Tagged   []string `json:"tagged,omitempty"`
+	Untagged []string `json:"untagged,omitempty"`
+}
+
+// retention reports a retention step that deleted, tagged or untagged
+// something. A step that changed nothing writes no line.
+func (l l1Log) retention(d lease.RetentionDecision) {
+	f := retentionFields{Event: "retention", Deleted: d.Delete}
+	for _, img := range d.Tag {
+		f.Tagged = append(f.Tagged, img.Key())
+	}
+	for _, tag := range d.Untag {
+		f.Untagged = append(f.Untagged, tag.Image.Key()+" "+tag.Name)
+	}
+	l.write(logEntry{
+		Severity: severityNotice,
+		Message: fmt.Sprintf("L1 retention: %d task(s) past their TTL deleted, %d image(s) tagged, %d tag(s) released",
+			len(f.Deleted), len(f.Tagged), len(f.Untagged)),
+		L1: f,
+	})
 }
 
 func (l l1Log) warn(message string) {

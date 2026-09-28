@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -38,5 +39,28 @@ func TestAMissingBucketFailsWithAFailureLine(t *testing.T) {
 	}
 	if line.Severity != severityError || line.L1.Event != "failure" {
 		t.Errorf("line %+v, want an ERROR failure", line)
+	}
+}
+
+func TestMissingRepositoriesFailWithAFailureLine(t *testing.T) {
+	// Without the repositories to protect, retention would tag nothing, and
+	// Artifact Registry's cleanup would collect the images of suspended
+	// tasks. Refusing to run is the loud way to find out.
+	t.Setenv(envBucket, "zz-ops")
+	t.Setenv(envARRepos, "")
+	var stdout, stderr bytes.Buffer
+	if code := run(nil, &stdout, &stderr); code != 1 {
+		t.Fatalf("exit %d, want 1", code)
+	}
+	if !strings.Contains(stdout.String(), envARRepos) {
+		t.Errorf("stdout %q does not name %s", stdout.String(), envARRepos)
+	}
+}
+
+func TestRepositoriesAreACommaSeparatedList(t *testing.T) {
+	got := splitRepos(" projects/p/locations/l/repositories/a ,projects/p/locations/l/repositories/b,, ")
+	want := []string{"projects/p/locations/l/repositories/a", "projects/p/locations/l/repositories/b"}
+	if !slices.Equal(got, want) {
+		t.Errorf("repos %q, want %q", got, want)
 	}
 }
