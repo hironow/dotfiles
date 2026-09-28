@@ -72,6 +72,10 @@ test prints its name, and it is deleted at the next wake.
 - Without it: 0 nodes. The `exe` fixture deletes the test's tasks while a node is up,
   sleeps, and runs L2 until the node is gone, even when the test failed. If
   the node is still up 30 minutes later it fails loudly: page the operator.
+- The lease as long as it was. A module's wake never shortens a lease that
+  already stands: inside a window woken for an hour, a module that asks for
+  30 minutes keeps the hour (`wake_would_shorten`; W3's barrier module once
+  cut the window to 30 minutes).
 - `measurements.jsonl` in `$EXE_E2E_OUT`, or in a fresh temp dir whose path
   the run prints. It has one JSON line per measurement: wake to ready, each
   drain record, the stop latency (setSize(0) to the node gone, from GKE's
