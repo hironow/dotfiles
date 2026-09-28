@@ -2020,13 +2020,15 @@ exe-cluster-plan-summary *args:
 exe-cluster-apply:
     @just _exe-cluster-tofu apply -input=false exe-cluster.tfplan
 
-# Run after the exe-cluster destroy: upstream's own `ate-setup delete
-# ate-system` from the exact commit that installed it (SHA and VERSION are that
-# install's substrate.sha and substrate.version, from exe/versions.json's git
-# history -- not the current pin), then the podcertificate ClusterTrustBundles
-# the controller publishes at runtime, which no manifest owns. Prints what
-# went and fails if any of it is still there. The delete ignores objects that
-# are already gone, so a rerun is harmless.
+# Run after the exe-cluster destroy, which prints this command with its
+# arguments (terraform_data.substrate_teardown_reminder): upstream's own
+# `ate-setup delete ate-system` from the exact commit that installed it (SHA
+# and VERSION are that install's substrate.sha and substrate.version, from
+# exe/versions.json's git history -- not the current pin), then the
+# podcertificate ClusterTrustBundles the controller publishes at runtime,
+# which no manifest owns. Prints what went and fails if any of it is still
+# there. The delete ignores objects that are already gone, so a rerun is
+# harmless.
 # OPERATOR ONLY. Remove what a Substrate install created outside tofu state.
 [group('Exe')]
 exe-substrate-teardown sha version:

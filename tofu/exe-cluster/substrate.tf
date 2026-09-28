@@ -95,6 +95,28 @@ resource "terraform_data" "ate_system" {
   ]
 }
 
+# What the install leaves outside tofu state (ate-system, the ate.dev CRDs, the
+# podcertificate trust bundles) goes with `just exe-substrate-teardown <sha>
+# <version>`: upstream's `ate-setup delete ate-system` from the exact commit
+# that installed it. Not with a destroy-time step on ate_system above: that
+# resource is replaced on every repin, and a destroy step would then delete
+# the CRDs, and with them this stack's WorkerPool, before the reinstall.
+#
+# This remembers the installed pin (input is updated in place and never
+# replaces) and, when this stack is destroyed, prints the exact command.
+# tests/unit/test_exe_substrate_teardown_reminder.py pins both.
+resource "terraform_data" "substrate_teardown_reminder" {
+  input = {
+    sha     = local.pins.substrate.sha
+    version = local.pins.substrate.version
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "echo 'exe-cluster is gone, but the Substrate install it ran is not. Run: just exe-substrate-teardown ${self.input.sha} ${self.input.version}' >&2"
+  }
+}
+
 # The install re-applies upstream's atenet-router manifest, count included, and
 # L1 owns that count while it drains (Phase 6 plan D2): run mid-drain, the
 # install reopens the path an auto-resume takes, and a `drained` record is then

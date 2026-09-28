@@ -1,0 +1,10 @@
+# The reviewed change list for the Substrate teardown reminder (inbox M53 B4).
+# One new resource: terraform_data.substrate_teardown_reminder holds the
+# installed Substrate pin and, only when this stack is destroyed, prints
+# `just exe-substrate-teardown <sha> <version>` for that pin. Creating it runs
+# nothing: its one provisioner is destroy-time. It needs no node.
+#
+# It must be the only terraform_data line. A terraform_data.ate_system line
+# here means the Substrate install would re-run, so do not apply.
+#   just exe-cluster-plan && just exe-cluster-plan-summary --expect-changes expected-changes/substrate-teardown-reminder.txt
++ terraform_data.substrate_teardown_reminder
