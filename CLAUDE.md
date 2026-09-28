@@ -110,8 +110,10 @@ just sync-agents-preview …  # dry-run
   で実行**する。サンドボックスは **git-tracked ファイルだけ** を throwaway tempdir に
   snapshot し、host repo / `.git` を **マウントしない** (host 汚染が構造的に不可能)。
   Docker + devcontainer CLI が必要。
-- `tests/*.py` は sandbox / 静的検査 (`test_just_sandbox.py` / `test_justfile_env_checks.py`
-  等)。recipe 追加・改名後は `just ci` でなく **full `just test`** を回す。sandbox assert は
+- `tests/*.py` は sandbox / image 検査 (`test_just_sandbox.py` / `test_devcontainer.py` 等、
+  `just test` が列挙して回す)。Docker 不要の静的検査は `tests/unit/` に置く (`just ci` の
+  `test-unit` が拾う。root に置くとどの gate にも乗らない)。recipe 追加・改名後は `just ci` でなく
+  **full `just test`** を回す。sandbox assert は
   環境非依存 (mount source 側) に保つ (memory `feedback_just_test_ci_vs_local`)。
 - **semgrep**: `.semgrep/rules/**` を `semgrep --test` で検証 (`just semgrep-test`, `ci` 組込み)。
   `.semgrep` は intentional-violation fixture を含むため `pyproject.toml` で ruff 除外。

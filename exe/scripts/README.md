@@ -34,7 +34,7 @@ All scripts must be idempotent (per `scripts-guidelines` in CLAUDE.md).
   exe.hironow.dev architecture
 - [`../coder/templates/dotfiles-devcontainer/README.md`](../coder/templates/dotfiles-devcontainer/README.md)
   — workspace template; `cdr templates push` is the deployment path
-- [`../../tests/test_cdr_wrapper.py`](../../tests/test_cdr_wrapper.py)
+- [`../../tests/unit/test_cdr_wrapper.py`](../../tests/unit/test_cdr_wrapper.py)
   — regression tests for `cdr` (secret refresh, cleanup-on-failure,
   empty-payload guard)
 - [`../../tests/unit/test_exe_ax_wrappers.py`](../../tests/unit/test_exe_ax_wrappers.py)

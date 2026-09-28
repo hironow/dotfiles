@@ -889,7 +889,7 @@ check-pr-body file:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac test-iac-exe instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -925,6 +925,20 @@ check-all: pre-commit ci-all
 [group('Check')]
 test-iac:
     @cd exe/coder/templates/dotfiles-devcontainer && mise x -- tofu init -backend=false >/dev/null && mise x -- tofu test
+
+# The exe stacks' offline tofu suites: mock providers, exe-platform's state as
+# override_data, no backend and no credentials, so the PR CI runs them too
+# (.github/workflows/iac-test.yaml, tests/unit/test_iac_gates_run_the_exe_suites.py).
+# Every test file states the variables it depends on, so an operator's
+# gitignored terraform.tfvars, which `tofu test` also loads, changes nothing.
+[group('Check')]
+test-iac-exe:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for stack in tofu/exe-platform tofu/exe-cluster; do
+      echo "🧪 tofu test $stack"
+      (cd "$stack" && mise x -- tofu init -backend=false -input=false >/dev/null && mise x -- tofu test)
+    done
 
 # ------------------------------
 # Add sets

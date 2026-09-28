@@ -449,8 +449,8 @@ L1 / L2 / L3 は「自分で止める・消す」処理で、運用者・ax-cont
 6. repo から削除・更新する対象:
    - ディレクトリ: `exe/coder/`、`exe/cloudflared/`、`exe/tailscale/`
    - 旧 `exe/scripts/*`: cdr 系、bootstrap / smoke / teardown / project-* / fetch-projects-env
-   - テスト: `tests/exe/`、`tests/test_cdr_wrapper.py`、`tests/test_vm_bootstrap.py`、`tests/test_actor_type_injection.py`、
-     `tests/test_mise_data_dir_relocation.py` の Coder 参照、`tests/test_publish_workflow.py`、`tests/test_justfile_env_checks.py` の CF/TS 部分、
+   - テスト: `tests/exe/`、`tests/unit/test_cdr_wrapper.py`、`tests/unit/test_vm_bootstrap.py`、`tests/test_actor_type_injection.py`、
+     `tests/unit/test_mise_data_dir_relocation.py` の Coder 参照、`tests/unit/test_publish_workflow.py`、`tests/unit/test_justfile_env_checks.py` の CF/TS 部分、
      `tests/unit/test_exe_stack_mode.py`、`tests/docker/ExeStartup.Dockerfile`、`tests/README.md` の索引
    - CI と hook: `.github/workflows/publish-devcontainer.yaml`、`iac-test.yaml` の Coder job、`.pre-commit-config.yaml` の Coder hook
    - 設定: `pyproject.toml` の `exe` marker、justfile の旧 `exe-*` / `test-iac` の Coder 部分 (新 recipe の名前もここで整理)、`config/mise/config.toml` のコメント
