@@ -10,8 +10,8 @@ them.
   and A comes back with its marker (6.7).
 - Task B wrote a marker too. Its resume is thrown in while the drain is
   `draining`; whatever the controller manages, L1 suspends again before it
-  writes `drained` (6.9). From inside B, the Control API must not answer (the
-  barrier's named assumption, plan F5).
+  writes `drained` (6.9). (The Control API probe from inside a task, plan F5,
+  is test_control_api_barrier.py.)
 - Both boundaries still end in a graceful stop and 0 nodes, and the first L1
   tick of the next wake, which observes before it reopens anything, sees no
   actor awake.
@@ -36,27 +36,6 @@ from typing import Any
 import pytest
 
 from exe_live import Exe, log, stamp, utcnow
-
-# A TLS handshake with the Control API, by name and by its ClusterIP, with
-# verification on: the task does not trust the cluster's CA, so a server that
-# answers fails verification, and that failure is the proof it answered. No
-# answer is a timeout, a reset or a refusal. A bare TCP connect proves nothing
-# inside an actor (Phase 5, finding 5).
-PROBE = """
-import socket, ssl, sys
-ctx = ssl.create_default_context()
-answered = []
-for host in sys.argv[1:]:
-    try:
-        with socket.create_connection((host, 443), timeout=5) as s:
-            with ctx.wrap_socket(s, server_hostname="api.ate-system.svc"):
-                answered.append(host)
-    except ssl.SSLCertVerificationError:
-        answered.append(host)
-    except OSError as exc:
-        print(host, "no answer:", type(exc).__name__)
-print("ANSWERED", " ".join(answered))
-"""
 
 
 @dataclass
@@ -119,23 +98,6 @@ def run_scenario(exe: Exe, s: Scenario) -> None:
     for name, marker in ((a, marker_a), (b, marker_b)):
         exe.wait_phase(name, "Running")
         exe.ssh(name, f"echo {marker} > /workspace/e2e-marker && sync")
-
-    cluster_ip = exe.kubectl(
-        "-n", "ate-system", "get", "service", "api", "-o", "jsonpath={.spec.clusterIP}"
-    )
-    step(
-        "probe",
-        exe.ax(
-            "ssh",
-            b,
-            "--",
-            "python3",
-            "-c",
-            PROBE,
-            "api.ate-system.svc",
-            cluster_ip.strip(),
-        ).strip(),
-    )
 
     # the lease runs out; B's resume lands while draining, A's right after drained
     started = utcnow()
@@ -237,12 +199,6 @@ def test_a_resume_after_drained_runs_at_the_next_wake(scenario: Scenario) -> Non
     assert s["enforce"].get("action") == "stop-graceful", s["enforce"]
     assert s["first_tick_2"]["awake"] == 0, s["first_tick_2"]
     assert s["a_came_back"] is True
-
-
-def test_a_task_cannot_reach_the_control_api(scenario: Scenario) -> None:
-    """Plan F5, the barrier's named assumption: no answer from inside a task."""
-    scenario.need("probe")
-    assert scenario.seen["probe"].splitlines()[-1] == "ANSWERED", scenario.seen["probe"]
 
 
 def test_the_gates_reopen_on_a_valid_lease(scenario: Scenario) -> None:

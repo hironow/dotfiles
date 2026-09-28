@@ -36,8 +36,17 @@ its own part:
 | `test_graceful_sleep_keeps_files` | 6.7 | L1 drains to `drained` for that lease, L2 stops with `stop-graceful` and no forced-stop or ERROR line, the node goes, and A comes back with its marker. |
 | `test_a_resume_while_draining_still_ends_suspended` | 6.9 | B's resume during the drain still ends in `drained`. The first L1 tick of the next wake, which observes before it reopens anything, sees no actor awake, and B comes back with its marker. |
 | `test_a_resume_after_drained_runs_at_the_next_wake` | 6.9 | A's resume after `drained` finds no controller pod, the stop stays graceful, and the resume runs by itself at the next wake, as the operator asked. |
-| `test_a_task_cannot_reach_the_control_api` | 6.9 (F5) | From inside B, a TLS handshake with the Control API, by name and by ClusterIP, gets no answer. |
 | `test_the_gates_reopen_on_a_valid_lease` | 6.2 | L1 puts the router and the controller back on the new lease after `drained` (a Cancel of the old record; Reopen is for a gate shut with no record), and an extend during a drain restores both mid-drain (Cancel). |
+
+`test_control_api_barrier.py` is plan F5 from inside one task, about 5
+node-minutes on top of a wake. The drain barrier (plan D2) holds only if no task
+can resume an actor through the Control API, which authenticates its callers but
+does not authorize them:
+
+| test | item | what it proves |
+| --- | --- | --- |
+| `test_a_task_cannot_authenticate_to_the_control_api` | 6.9 (F5) | An unauthenticated gRPC call from the task gets grpc-status 16 (UNAUTHENTICATED), and the guest has no /var/run/secrets. |
+| `test_a_task_cannot_reach_the_control_api` | 6.9 (F5) | Nothing answers a TLS handshake from the task, by name or at the API pods' own addresses. This holds only once `tofu/exe-cluster/control_api.tf` is applied: run `-k authenticate` before that. |
 
 `test_forced_stop.py` runs alone, about 15 node-minutes, and only with the
 operator on email:
@@ -53,7 +62,11 @@ test prints its name, and it is deleted at the next wake.
 
 ## What every run leaves
 
-- 0 nodes. The `exe` fixture deletes the test's tasks while a node is up,
+- 0 nodes, unless `EXE_E2E_KEEP_AWAKE=1`. With it, the tasks are still
+  deleted but the node stays up, so one wake serves several modules in a row
+  (W3); the window's last run goes without it, and the lease stays the
+  backstop.
+- Without it: 0 nodes. The `exe` fixture deletes the test's tasks while a node is up,
   sleeps, and runs L2 until the node is gone, even when the test failed. If
   the node is still up 30 minutes later it fails loudly: page the operator.
 - `measurements.jsonl` in `$EXE_E2E_OUT`, or in a fresh temp dir whose path

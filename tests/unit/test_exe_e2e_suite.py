@@ -106,3 +106,14 @@ def test_a_path_argument_runs_only_that_path() -> None:
     _, body = recipe("exe-e2e")
     assert re.search(r'if \[ "\$#" -eq 0 \]; then\s+set -- tests/e2e/exe', body)
     assert not re.search(r"pytest tests/e2e/exe", body)
+
+
+def test_keeping_the_node_up_still_deletes_the_tasks() -> None:
+    # W3 chains modules in one wake (EXE_E2E_KEEP_AWAKE=1). The node may stay
+    # up; a test's tasks may not, and the lease stays the backstop.
+    text = (SUITE / "exe_live.py").read_text()
+    body = text[text.index("def leave_asleep") :]
+    delete = body.index('"delete", "task"')
+    keep = body.index('os.environ.get("EXE_E2E_KEEP_AWAKE")')
+    sleep = body.index('"exe-sleep"')
+    assert delete < keep < sleep

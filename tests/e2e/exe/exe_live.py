@@ -376,11 +376,21 @@ class Exe:
 
 
 def leave_asleep(e: Exe) -> None:
-    """Delete this test's tasks while a node is up, then get the pool to 0."""
+    """Delete this test's tasks while a node is up, then get the pool to 0.
+
+    EXE_E2E_KEEP_AWAKE=1 leaves the node up after the tasks are gone, so that
+    one wake serves several modules in a row (W3). The last run of the window
+    goes without it, and the lease and L2 remain the backstop.
+    """
     if e.nodes() == 0:
         return
     for name in e.tasks:
         e.ax("delete", "task", name, check=False)
+    if os.environ.get("EXE_E2E_KEEP_AWAKE") == "1":
+        log(
+            f"EXE_E2E_KEEP_AWAKE=1: the node stays up; the lease runs to {e.lease_deadline()}"
+        )
+        return
     deadline = e.lease_deadline()
     if deadline is None or deadline > utcnow():
         e.just("exe-sleep")
