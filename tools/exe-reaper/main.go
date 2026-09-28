@@ -1,14 +1,17 @@
 // Command exe-reaper owns the lease that decides whether an exe node may run.
 //
-// Five subcommands, three identities, one writer per object (section 3.2 of
+// Seven subcommands, two identities, one writer per object (section 3.2 of
 // docs/plan/exe-google-ax.md):
 //
-//	wake / extend / sleep / status   operator's own credentials; writes lease.json
+//	wake / extend / sleep            operator's own credentials; writes lease.json
+//	keep                             operator's own credentials; writes keep.json
+//	status / may-start               operator's own credentials; reads only
 //	enforce                          the L2 Cloud Run job; writes enforce.json
 //
-// L1's `reap` lands in a later phase; its decision rules already live in
-// internal/lease and are already tested, so that phase adds the in-cluster I/O,
-// not new judgement.
+// L1, the in-cluster drain, is a second binary in this module, cmd/exe-reap.
+// It links the gRPC stubs for AX and Substrate; this one links the standard
+// library and this module only (deps_test.go), because it is the one that
+// shrinks the pool.
 //
 // The rules are all in internal/lease and none of them are here. This file is
 // plumbing: parse a flag, read two objects, call the decision function, act on
