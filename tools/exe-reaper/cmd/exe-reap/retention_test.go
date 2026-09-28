@@ -114,6 +114,85 @@ func TestRetentionLeavesImagesOutsideItsRepositoriesAlone(t *testing.T) {
 	}
 }
 
+const (
+	platformRepo = "projects/zz-p/locations/asia-northeast1/repositories/exe-platform"
+	apiPkg       = platformRepo + "/packages/ate-api"
+	enforcerPkg  = platformRepo + "/packages/exe-l2"
+	refAPI       = "asia-northeast1-docker.pkg.dev/zz-p/exe-platform/ate-api@" + digestB
+	refEnforcer  = "asia-northeast1-docker.pkg.dev/zz-p/exe-platform/exe-l2@" + digestA
+)
+
+// withPlatform makes exe-platform one of the repositories retention manages,
+// with the packages the tests below use.
+func withPlatform(w *world) {
+	w.repos = append(w.repos, platformRepo)
+	w.packages[platformRepo] = []string{apiPkg, enforcerPkg}
+}
+
+func TestRetentionTagsTheImagesTheClustersOwnPodsRun(t *testing.T) {
+	// The running install pulls its images from exe-platform by digest (inbox
+	// M19 C3). L1 keeps them tagged exactly like a task's, so that repository
+	// can keep fewer versions. An image outside the repositories L1 manages,
+	// GKE's own say, is not its to tag, and an image two pods run is one tag.
+	w := newWorld(t)
+	live(w)
+	withPlatform(w)
+	w.podNamespaces = []string{"ate-system", "exe-ops"}
+	w.podImages["ate-system"] = []string{refAPI, "gke.gcr.io/pause@" + digestA}
+	w.podImages["exe-ops"] = []string{refAPI}
+
+	if _, err := tick(t, w, t0); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{apiPkg + " " + lease.L1TagName(digestB)}; !slices.Equal(w.tagged, want) {
+		t.Errorf("tagged %v, want %v", w.tagged, want)
+	}
+	for _, ns := range w.podNamespaces {
+		if index(w.calls, "k8s.PodImages "+ns) < 0 {
+			t.Errorf("never listed the pods in %s", ns)
+		}
+	}
+}
+
+func TestRetentionTagsTheImagesItIsToldRunOutsideTheCluster(t *testing.T) {
+	// L2's enforcer runs on Cloud Run, not in a pod: its image comes in
+	// through the configuration.
+	w := newWorld(t)
+	live(w)
+	withPlatform(w)
+	w.protect = []string{refEnforcer}
+
+	if _, err := tick(t, w, t0); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{enforcerPkg + " " + lease.L1TagName(digestA)}; !slices.Equal(w.tagged, want) {
+		t.Errorf("tagged %v, want %v", w.tagged, want)
+	}
+}
+
+func TestAPodListThatFailsReleasesNothing(t *testing.T) {
+	// The unread namespace may run the image whose tag looks unused: deciding
+	// on the rest would release it.
+	w := newWorld(t)
+	live(w)
+	withPlatform(w)
+	w.podNamespaces = []string{"ate-system", "exe"}
+	w.podImagesErr["exe"] = errBoom
+	w.tags[apiPkg] = map[string]string{lease.L1TagName(digestB): digestB}
+	w.put(ops.TasksObject, lease.TasksRecord{Unreferenced: map[string]time.Time{apiPkg + "@" + digestB: t0.Add(-lease.TagRelease)}})
+	w.puts = nil
+
+	if _, err := tick(t, w, t0); err == nil {
+		t.Fatal("a failed pod list reported success")
+	}
+	if len(w.untagged)+len(w.tagged) != 0 {
+		t.Errorf("acted on a partial view: untagged %v, tagged %v", w.untagged, w.tagged)
+	}
+	if slices.Contains(w.puts, ops.TasksObject) {
+		t.Error("recorded a partial view in tasks.json")
+	}
+}
+
 func TestRetentionRunsOnlyOnALiveLeaseWithNoDrain(t *testing.T) {
 	// A drain has the tick to itself: nothing about retention is urgent, and
 	// a task deleted mid-drain is one more thing the drain has to watch.

@@ -50,6 +50,7 @@ type (
 		Scale(ctx context.Context, ns, deployment string) (int, string, error)
 		SetScale(ctx context.Context, ns, deployment string, replicas int) error
 		CountPods(ctx context.Context, ns, selector string) (int, error)
+		PodImages(ctx context.Context, ns string) ([]string, error)
 		DeletePod(ctx context.Context, ns, name, uid string) error
 	}
 	objectStore interface {
@@ -69,7 +70,12 @@ type reaper struct {
 	// repos are the Artifact Registry repositories whose images retention
 	// protects, by resource name (projects/P/locations/L/repositories/R).
 	repos []string
-	log   l1Log
+	// podNamespaces are the namespaces whose pods' images retention protects
+	// like a task's (the cluster's own workloads); protect names the images
+	// it protects that run outside the cluster, pinned by digest.
+	podNamespaces []string
+	protect       []string
+	log           l1Log
 	// dryRun decides and logs, and writes and does nothing.
 	dryRun bool
 }

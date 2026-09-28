@@ -58,6 +58,34 @@ func TestMissingRepositoriesFailWithAFailureLine(t *testing.T) {
 	}
 }
 
+func TestProtectedImagesArePinnedInARepositoryRetentionManages(t *testing.T) {
+	// An image L1 cannot protect, named as protected, would be left to the
+	// cleanup while the configuration says otherwise: refuse it instead.
+	const digest = "sha256:aaaaaaaaaaaa1111111111111111111111111111111111111111111111111111"
+	repos := []string{"projects/zz-p/locations/asia-northeast1/repositories/exe-platform"}
+	enforcer := "asia-northeast1-docker.pkg.dev/zz-p/exe-platform/exe-l2@" + digest
+
+	got, err := protectedImages(" "+enforcer+" ,, ", repos)
+	if err != nil || !slices.Equal(got, []string{enforcer}) {
+		t.Errorf("protected %q, %v; want [%s]", got, err, enforcer)
+	}
+	for _, bad := range []string{
+		"asia-northeast1-docker.pkg.dev/zz-p/exe-platform/exe-l2:v1",  // a tag moves
+		"asia-northeast1-docker.pkg.dev/zz-p/exe-task/task@" + digest, // not managed
+		"ghcr.io/somewhere/else@" + digest,                            // not Artifact Registry
+	} {
+		if _, err := protectedImages(bad, repos); err == nil || !strings.Contains(err.Error(), envProtectImages) {
+			t.Errorf("%s: err = %v, want a refusal naming %s", bad, err, envProtectImages)
+		}
+	}
+}
+
+func TestPodNamespacesAreACommaSeparatedList(t *testing.T) {
+	if got, want := splitList(" ate-system,exe-ops ,,exe"), []string{"ate-system", "exe-ops", "exe"}; !slices.Equal(got, want) {
+		t.Errorf("namespaces %q, want %q", got, want)
+	}
+}
+
 func TestRepositoriesAreACommaSeparatedList(t *testing.T) {
 	got := splitList(" projects/p/locations/l/repositories/a ,projects/p/locations/l/repositories/b,, ")
 	want := []string{"projects/p/locations/l/repositories/a", "projects/p/locations/l/repositories/b"}
