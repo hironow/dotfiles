@@ -106,12 +106,16 @@ resource "kubectl_manifest" "reaper" {
                 image = ko_build.exe_reap.image_ref
 
                 # The Control API and ax-server at exe-reap's in-cluster
-                # defaults, which are the ax-controller's; the bucket and the
-                # repository whose images retention keeps tagged come from
-                # exe-platform's state.
+                # defaults, which are the ax-controller's; the bucket, the
+                # repositories whose images retention keeps tagged, and L2's
+                # enforcer image (no pod runs it) come from exe-platform's
+                # state. The namespaces are the ones whose pods' images
+                # retention protects (M19 C3).
                 env = [
                   { name = "EXE_OPS_BUCKET", value = local.platform.bucket_ops },
-                  { name = "EXE_AR_REPOS", value = local.platform.ar_task_repository },
+                  { name = "EXE_AR_REPOS", value = join(",", [local.platform.ar_task_repository, local.platform.ar_platform_repository]) },
+                  { name = "EXE_POD_NAMESPACES", value = join(",", local.reaper_pod_namespaces) },
+                  { name = "EXE_PROTECT_IMAGES", value = local.platform.enforcer_image },
                 ]
 
                 resources = {
@@ -171,9 +175,17 @@ resource "kubectl_manifest" "reaper" {
   # The trust bundle and the Control API exist once Substrate is installed,
   # and ax-server once AX is: a tick before them fails, and says so.
   depends_on = [terraform_data.ate_system, kubernetes_deployment_v1.ax_server]
+
+  lifecycle {
+    precondition {
+      condition     = local.platform.enforcer_image == "" || startswith(local.platform.enforcer_image, "${local.platform.ar_platform_repo}/")
+      error_message = "exe-platform's enforcer_image is not in its platform repository. exe-reap refuses to start on an EXE_PROTECT_IMAGES entry it cannot protect, so every tick, the drain included, would fail: build the enforcer with `just exe-reaper-image`."
+    }
+  }
 }
 
-# --- RBAC: two replica counts, the pods behind them, and wedged workers --------
+# --- RBAC: two replica counts, the pods behind them, wedged workers, and the ---
+# --- images the cluster's pods run --------------------------------------------
 
 resource "kubernetes_role_v1" "reaper_router" {
   metadata {
@@ -219,7 +231,7 @@ resource "kubernetes_role_v1" "reaper_controller" {
 
 # Pod deletes cannot be narrowed to one label by RBAC; exe-reap deletes only a
 # pod the Substrate store names as a wedged actor's worker, with that pod's UID
-# as a precondition (plan D6).
+# as a precondition (plan D6). It lists the workers for the images they run.
 resource "kubernetes_role_v1" "reaper_workers" {
   metadata {
     name      = "exe-reaper"
@@ -230,7 +242,50 @@ resource "kubernetes_role_v1" "reaper_workers" {
   rule {
     api_groups = [""]
     resources  = ["pods"]
-    verbs      = ["delete"]
+    verbs      = ["delete", "list"]
+  }
+}
+
+# The namespaces in local.reaper_pod_namespaces where no role above lets the
+# reaper list pods: its own, and the pod certificate controller's, which the
+# Substrate install creates.
+resource "kubernetes_role_v1" "reaper_pods" {
+  for_each = toset([local.reaper_namespace, local.podcertificate_namespace])
+
+  metadata {
+    name      = "exe-reaper"
+    namespace = each.key
+    labels    = local.common_labels
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["pods"]
+    verbs      = ["list"]
+  }
+
+  depends_on = [kubernetes_namespace_v1.ops, terraform_data.ate_system]
+}
+
+resource "kubernetes_role_binding_v1" "reaper_pods" {
+  for_each = kubernetes_role_v1.reaper_pods
+
+  metadata {
+    name      = "exe-reaper"
+    namespace = each.value.metadata[0].namespace
+    labels    = local.common_labels
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = each.value.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account_v1.reaper.metadata[0].name
+    namespace = kubernetes_service_account_v1.reaper.metadata[0].namespace
   }
 }
 

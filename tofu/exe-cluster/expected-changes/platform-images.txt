@@ -1,0 +1,24 @@
+# The reviewed change list for step 2 of protecting the platform images
+# (M19 C3, inbox M53 B6). Needs exe-platform's platform-images.txt applied
+# first: EXE_AR_REPOS and EXE_PROTECT_IMAGES read its new outputs.
+#   - exe-reap's image is built anew with the pod-image reading, and both
+#     CronJobs roll to it. L1's gains EXE_AR_REPOS with exe-platform,
+#     EXE_POD_NAMESPACES and EXE_PROTECT_IMAGES (L2's enforcer image);
+#   - RBAC to list pods in every namespace of EXE_POD_NAMESPACES: the workers'
+#     role in exe gains `list`, and exe-ops and
+#     podcertificate-controller-system get a list-only role each.
+# Retention then tags every exe-platform image a pod runs, at the first tick
+# with a live lease: step 3 is that wake, which checks every running image
+# carries an inuse- tag before step 4 lowers keep_count.
+#
+# The Substrate install must NOT re-run: a terraform_data.ate_system line here
+# means it would, so do not apply. Nothing here needs a node.
+#   just exe-cluster-plan && just exe-cluster-plan-summary --expect-changes expected-changes/platform-images.txt
++ ko_build.exe_reap
+~ kubectl_manifest.reaper
+~ kubectl_manifest.snapshot_gc
++ kubernetes_role_binding_v1.reaper_pods["exe-ops"]
++ kubernetes_role_binding_v1.reaper_pods["podcertificate-controller-system"]
++ kubernetes_role_v1.reaper_pods["exe-ops"]
++ kubernetes_role_v1.reaper_pods["podcertificate-controller-system"]
+~ kubernetes_role_v1.reaper_workers
