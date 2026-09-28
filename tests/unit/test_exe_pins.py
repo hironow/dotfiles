@@ -294,6 +294,62 @@ def test_single_line_require_form_is_read() -> None:
     assert mod.check_ax_gomod(_pins(), gomod) == []
 
 
+# --- check 2d: the reaper's go.mod requires exactly the pinned releases -----
+#
+# L1 talks to ax-server and to the Substrate Control API through their own
+# generated gRPC stubs (plan D1), so tools/exe-reaper/go.mod requires both
+# modules. A stub from any other release than the one the cluster runs is a
+# client for an API the server may not speak, which fails at the first drain,
+# not at build time.
+
+_REAPER_GOMOD = """module github.com/hironow/dotfiles/tools/exe-reaper
+
+go 1.27
+
+require (
+\tgithub.com/agent-substrate/substrate v0.1.0
+\tgithub.com/google/ax v0.3.1
+\tgoogle.golang.org/grpc v1.83.2
+)
+"""
+
+
+def test_reaper_gomod_requiring_the_pinned_releases_is_clean() -> None:
+    assert mod.check_reaper_gomod(_pins(), _REAPER_GOMOD) == []
+
+
+def test_reaper_gomod_requiring_another_ax_is_flagged() -> None:
+    gomod = _REAPER_GOMOD.replace(
+        "github.com/google/ax v0.3.1", "github.com/google/ax v0.3.0"
+    )
+    assert mod.check_reaper_gomod(_pins(), gomod)
+
+
+def test_reaper_gomod_requiring_another_substrate_is_flagged() -> None:
+    gomod = _REAPER_GOMOD.replace("substrate v0.1.0", f"substrate {AX_GOMOD_SUBSTRATE}")
+    assert mod.check_reaper_gomod(_pins(), gomod)
+
+
+def test_reaper_gomod_missing_either_release_is_flagged() -> None:
+    for module in ("github.com/google/ax", "github.com/agent-substrate/substrate"):
+        gomod = "\n".join(
+            line for line in _REAPER_GOMOD.splitlines() if module not in line
+        )
+        assert mod.check_reaper_gomod(_pins(), gomod), module
+
+
+def test_reaper_gomod_replacing_either_release_is_flagged() -> None:
+    for module in ("github.com/google/ax", "github.com/agent-substrate/substrate"):
+        gomod = _REAPER_GOMOD + f"\nreplace {module} => ../elsewhere\n"
+        assert mod.check_reaper_gomod(_pins(), gomod), module
+
+
+def test_real_reaper_gomod_requires_the_real_pins() -> None:
+    pins = json.loads(_REAL_PINS.read_text())
+    gomod = (_REPO_ROOT / mod.REAPER_GOMOD_REL).read_text()
+    assert mod.check_reaper_gomod(pins, gomod) == []
+
+
 # --- check 3: SHA shape, and match against a resolver ----------------------
 
 

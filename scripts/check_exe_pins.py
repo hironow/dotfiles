@@ -108,8 +108,14 @@ _SEMVER_LITERAL_RE = re.compile(r"v\d+\.\d+\.\d+")
 _GO_PSEUDO_VERSION_RE = re.compile(
     r"^v\d+\.\d+\.\d+-(?:[0-9A-Za-z-]+\.)*\d{14}-([0-9a-f]{12})$"
 )
-# The module the ax go.mod requirement is read for.
+# The modules whose go.mod requirements are read: substrate in ax's go.mod, and
+# both in the reaper's.
 SUBSTRATE_MODULE = "github.com/agent-substrate/substrate"
+AX_MODULE = "github.com/google/ax"
+
+# The Go module whose L1 binary speaks both control APIs through their own
+# generated stubs (Phase 6 plan D1), relative to the repo root.
+REAPER_GOMOD_REL = "tools/exe-reaper/go.mod"
 _PROVIDER_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)(?:\.(\d+))?")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _CLUSTER_MINOR_RE = re.compile(r"^1\.\d+$")
@@ -393,6 +399,40 @@ def check_ax_gomod(pins: dict[str, Any], gomod: str) -> list[str]:
             f"{PINS_REL} records ax.go_mod_substrate = {recorded!r}."
         ]
     return []
+
+
+# --- check 2d: the reaper's go.mod requires exactly the pinned releases -----
+
+
+def check_reaper_gomod(pins: dict[str, Any], gomod: str) -> list[str]:
+    """Hold the reaper's ax and substrate requirements to the pins.
+
+    L1 calls ax-server and the Substrate Control API with the stubs those
+    modules generate, so a requirement on any other release is a client for an
+    API the running server may not speak. Fail-closed, as for ax's go.mod: no
+    requirement, several, or a replace directive are violations.
+    """
+    violations: list[str] = []
+    for block, module in (("ax", AX_MODULE), ("substrate", SUBSTRATE_MODULE)):
+        pin = pins.get(block)
+        want = pin.get("version") if isinstance(pin, dict) else None
+        versions, replaced = _gomod_requirements(gomod, module)
+        if replaced:
+            violations.append(
+                f"{REAPER_GOMOD_REL}: a replace directive overrides {module}; "
+                "the requirement is not what the build uses."
+            )
+        elif len(versions) != 1:
+            violations.append(
+                f"{REAPER_GOMOD_REL}: expected exactly one requirement of {module}, "
+                f"found {versions or 'none'}."
+            )
+        elif versions[0] != want:
+            violations.append(
+                f"{REAPER_GOMOD_REL} requires {module} {versions[0]}, but "
+                f"{PINS_REL} pins {block}.version = {want!r}."
+            )
+    return violations
 
 
 # --- check 3: SHA shape, and match against upstream ------------------------
@@ -834,6 +874,9 @@ def main() -> int:
         violations.extend(check_providers(pins))
         violations.extend(check_stacks(root, pins))
         violations.extend(check_mise_pin(root / MISE_CONFIG_REL, pins))
+        violations.extend(
+            check_reaper_gomod(pins, (root / REAPER_GOMOD_REL).read_text())
+        )
 
     if violations:
         print(
