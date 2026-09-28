@@ -55,25 +55,24 @@ resource "google_sql_database_instance" "coder" {
   region           = var.gcp_region
   database_version = var.cloud_sql_postgres_version
 
-  # Mandatory: protects against tofu destroy taking the DB with it.
-  # Operator must flip this to false explicitly to delete.
-  # This is the *Terraform-resource-level* guard — it only stops
-  # `tofu destroy`. The GCP API itself (Console / gcloud / direct
-  # REST) can still issue a delete. settings.deletion_protection_enabled
-  # below adds the second layer at the GCP API level so a deletion
-  # attempt from outside Terraform also fails.
-  deletion_protection = true
+  # RETIREMENT (Phase 7): both deletion protections are off, the two-step
+  # the runbook's "Cloud SQL deletion" section describes, so this stack's
+  # destroy can take the instance. The retirement sheet makes the 30-day
+  # copy of the data FIRST and applies this before the destroy. While this
+  # stack lived, this was the Terraform-level guard (it only stops `tofu
+  # destroy`), with settings.deletion_protection_enabled below as the GCP
+  # API-level one.
+  deletion_protection = false
+
+  # Names the final backup the destroy leaves (settings.final_backup_config).
+  final_backup_description = "exe Coder stack retirement (Phase 7): the 30-day copy of the database"
 
   settings {
-    # GCP-API-level deletion protection. Two-layer best practice
-    # (2026 Cloud SQL Postgres). To delete the instance, the
-    # operator must:
-    #   1. flip this flag to false and `tofu apply`
-    #   2. flip the resource-level deletion_protection to false and apply
-    #   3. then `tofu destroy` the instance
-    # Each layer is independent, so a misclick / single-line
-    # diff in either field does not unlock destruction.
-    deletion_protection_enabled = true
+    # GCP-API-level deletion protection, off for the retirement (see
+    # deletion_protection above). The order that deletes the instance:
+    #   1. both flags false, `tofu apply` (this change);
+    #   2. then `tofu destroy`.
+    deletion_protection_enabled = false
 
     # ENTERPRISE edition supports the legacy shared-core tiers
     # (db-f1-micro, db-g1-small, db-custom-N-RAMMB). New instances
@@ -112,6 +111,16 @@ resource "google_sql_database_instance" "coder" {
         retained_backups = 30
         retention_unit   = "COUNT"
       }
+    }
+
+    # RETIREMENT (Phase 7): the 30-day copy of the data. When the destroy
+    # deletes the instance, Cloud SQL takes a final backup and keeps it for
+    # 30 days after the instance is gone; the automated backups above go
+    # with the instance. Cheaper than an export, which would need a bucket
+    # outside this stack to outlive it.
+    final_backup_config {
+      enabled        = true
+      retention_days = 30
     }
 
     # Private IP only. No public IP, no authorized networks.

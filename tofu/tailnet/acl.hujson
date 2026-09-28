@@ -1,0 +1,84 @@
+// The tailnet's policy file (tofu/tailnet, tailscale_acl.this).
+//
+// Pattern A: tag-based delegation. A stack that needs a device on the tailnet
+// mints its own tagged auth key; this file says which tags exist, who may
+// issue them, and what each may reach. Default deny: anything not accepted
+// below is refused.
+{
+  // ----- tag ownership -------------------------------------------------
+  // Only the tailnet's admins can issue keys carrying these tags.
+  //
+  //   tag:owner             hironow's personal devices (laptop, phone)
+  //   tag:steiner           a private stack's ephemeral cloud workload (its
+  //                         auth key is minted by that stack's own tofu)
+  //   tag:steiner-upstream  the on-tailnet host that workload reads. The tag
+  //                         is per-device state applied from the admin
+  //                         console; the rule's destination is a tag on
+  //                         purpose, so no address or hostname belongs in
+  //                         this public file.
+  "tagOwners": {
+    "tag:owner":            ["autogroup:admin"],
+    "tag:steiner":          ["autogroup:admin"],
+    "tag:steiner-upstream": ["autogroup:admin"],
+  },
+
+  // ----- groups --------------------------------------------------------
+  // Break-glass identity. The owner email is listed directly so that even
+  // if every owner device loses tag:owner (e.g. a tagged auth key expires
+  // and re-auth happens without the tag), a fresh device authenticated as
+  // hironow365@gmail.com still has full tailnet access. Combined with
+  // Tailscale's 24h ACL grace period, this is the lockout-prevention path.
+  "groups": {
+    "group:owners": ["hironow365@gmail.com"],
+  },
+
+  // ----- access rules --------------------------------------------------
+  "acls": [
+    // Break-glass #1: anyone with the admin role on this tailnet -> *:*.
+    // Personal tailnets where the operator is admin (e.g. tailnet
+    // 'hironow.github' via GitHub login) are guaranteed to match here, even
+    // when the GitHub-derived login identity does not equal the email in
+    // group:owners (GitHub login produces '<gh-username>@github' rather
+    // than the gmail address).
+    {
+      "action": "accept",
+      "src":    ["autogroup:admin"],
+      "dst":    ["*:*"],
+    },
+    // Break-glass #2: explicit email allowlist for the owner. Stays in
+    // place for tailnets where the admin-role mapping changes.
+    {
+      "action": "accept",
+      "src":    ["group:owners"],
+      "dst":    ["*:*"],
+    },
+
+    // Owner devices can reach anything in the tailnet.
+    {
+      "action": "accept",
+      "src":    ["tag:owner"],
+      "dst":    ["*:*"],
+    },
+
+    // The steiner cloud workload reaches ONLY its upstream host's single
+    // forwarded port (default-deny covers everything else it might try).
+    {
+      "action": "accept",
+      "src":    ["tag:steiner"],
+      "dst":    ["tag:steiner-upstream:8080"],
+    },
+  ],
+
+  // ----- ssh -----------------------------------------------------------
+  // Tailscale SSH is off: no device is started with --ssh. SSH, when
+  // needed, is OpenSSH on the tailnet address with the operator's key. An
+  // empty ssh block matches that and avoids the "Tailscale SSH enabled,
+  // but access controls don't allow anyone to access this device" warning.
+  "ssh": [],
+
+  // ----- node attributes ----------------------------------------------
+  // Default deny: no node is granted `funnel`, so nothing on the tailnet
+  // is published to the internet; `tailscale serve` (tailnet-only) is the
+  // only publish path.
+  "nodeAttrs": [],
+}

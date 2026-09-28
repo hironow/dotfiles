@@ -330,17 +330,10 @@ def test_workspace_tailnet_auth_key_resource_present() -> None:
         "missing matching _version resource"
     )
 
-    # depends_on tailscale_acl.this — without this the first apply hits
-    # 'requested tags [tag:exe-workspace] are invalid or not permitted'
-    # because the key issuance races ahead of the ACL update.
-    assert re.search(
-        r"depends_on\s*=\s*\[\s*tailscale_acl\.this\s*\]",
-        body,
-    ), (
-        "tailscale_tailnet_key.exe_workspace must depend_on tailscale_acl.this\n"
-        "to avoid a race where the key is issued for a tag whose tagOwners\n"
-        "isn't in the live ACL yet."
-    )
+    # The ACL left this stack for tofu/tailnet (Phase 7), so the key no
+    # longer orders itself after it; the tag has been in the live ACL
+    # since the first apply (tests/unit/test_tailnet_handover.py).
+    assert "tailscale_acl.this" not in body
 
 
 @pytest.mark.exe
@@ -1005,20 +998,12 @@ def test_cloud_sql_resources_present() -> None:
     )
     assert inst is not None, "missing google_sql_database_instance.coder"
     body = inst.group(1)
-    assert re.search(r"deletion_protection\s*=\s*true", body), (
-        "Cloud SQL instance MUST have deletion_protection = true"
-    )
-    # Two-layer deletion protection: the resource-level
-    # deletion_protection above guards against `tofu destroy`, while
-    # settings.deletion_protection_enabled guards against the GCP API
-    # itself (gcloud / Console / direct REST). 2026 Cloud SQL best
-    # practice is to enable both — Terraform-only protection is
-    # bypassable from outside Terraform.
-    assert re.search(r"deletion_protection_enabled\s*=\s*true", body), (
-        "Cloud SQL instance MUST set settings.deletion_protection_enabled = true\n"
-        "as a second protection layer at the GCP API level (Console / gcloud\n"
-        "deletion is otherwise unprotected)."
-    )
+    # Phase 7 retires this stack: both deletion protections are off so its
+    # destroy can take the instance, once the 30-day copy exists (the
+    # retirement sheet makes it first). tests/unit/test_tailnet_handover.py
+    # pins the retirement state.
+    assert re.search(r"(?m)^\s*deletion_protection\s*=\s*false", body)
+    assert re.search(r"deletion_protection_enabled\s*=\s*false", body)
     assert re.search(r"ipv4_enabled\s*=\s*false", body), (
         "Cloud SQL instance MUST have ipv4_enabled = false (private IP only)"
     )

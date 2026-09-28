@@ -2034,6 +2034,60 @@ exe-cluster-plan-summary *args:
 exe-cluster-apply:
     @just _exe-cluster-tofu apply -input=false exe-cluster.tfplan
 
+# --- tofu/tailnet: the tailnet's policy file ------------------------------
+#
+# State in the exe project's state bucket (prefix tailnet), KMS-encrypted like
+# exe-cluster's; tofu/tailnet/README.md. The Tailscale credential comes from
+# the environment only, never a variable, so it cannot reach state or a plan.
+
+_TAILNET_DIR := "tofu/tailnet"
+
+_tailnet-tofu *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}/{{ _TAILNET_DIR }}"
+    if [ -f terraform.tfvars ]; then
+      GOOGLE_CLOUD_QUOTA_PROJECT="$(python3 -c 'import re; print(re.search(r"(?m)^state_kms_key\s*=\s*\"projects/([^/\"]+)/", open("terraform.tfvars").read()).group(1))')"
+      export GOOGLE_CLOUD_QUOTA_PROJECT
+    fi
+    exec mise x -- tofu {{ args }}
+
+# Initialise the backend from the gitignored partial config (backend.hcl).
+[group('Tailnet')]
+tailnet-init *args:
+    @just _tailnet-tofu init -input=false -backend-config=backend.hcl {{ args }}
+
+# Offline invariant tests (plan + a mock provider, no credentials, no network).
+[group('Tailnet')]
+tailnet-test *args:
+    cd {{ _TAILNET_DIR }} && mise x -- tofu test {{ args }}
+
+# Needs a Tailscale API key (TAILSCALE_API_KEY) or an OAuth client
+# (TAILSCALE_OAUTH_CLIENT_ID and _SECRET), and the exe project's ADC.
+# Plan against the live tailnet, saved for review.
+[group('Tailnet')]
+tailnet-plan *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${TAILSCALE_API_KEY:-}" ] && [ -z "${TAILSCALE_OAUTH_CLIENT_ID:-}" ]; then
+      echo "tailnet-plan: set TAILSCALE_API_KEY, or TAILSCALE_OAUTH_CLIENT_ID and TAILSCALE_OAUTH_CLIENT_SECRET" >&2
+      exit 1
+    fi
+    just _tailnet-tofu plan -input=false -out=tailnet.tfplan {{ args }}
+    echo '📋 saved plan: {{ _TAILNET_DIR }}/tailnet.tfplan (encrypted, gitignored)'
+
+# `--expect-changes FILE` (relative to the stack directory) holds the plan to
+# a reviewed change list.
+# Summarise the saved plan by address.
+[group('Tailnet')]
+tailnet-plan-summary *args:
+    @just _tailnet-tofu show -json tailnet.tfplan | (cd {{ _TAILNET_DIR }} && {{ UV_RUN }} ../../scripts/summarize_tofu_plan.py {{ args }})
+
+# OPERATOR ONLY. Applies the saved plan.
+[group('Tailnet')]
+tailnet-apply:
+    @just _tailnet-tofu apply -input=false tailnet.tfplan
+
 # Run after the exe-cluster destroy, which prints this command with its
 # arguments (terraform_data.substrate_teardown_reminder): upstream's own
 # `ate-setup delete ate-system` from the exact commit that installed it (SHA
@@ -2254,10 +2308,10 @@ exe-apply:
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu apply
 
-# The Tailscale slice of the exe stack (tailscale.tf): the ACL bind, the
-# rotation clock, the three auth keys, and their Secret Manager containers/
-# versions. One place so plan and apply cannot drift.
-_exe_tailscale_targets := "-target=tailscale_acl.this -target=time_rotating.tailscale_keys -target=tailscale_tailnet_key.exe_coder -target=tailscale_tailnet_key.exe_workspace -target=tailscale_tailnet_key.agent -target=google_secret_manager_secret.exe_coder_authkey -target=google_secret_manager_secret.exe_workspace_authkey -target=google_secret_manager_secret.agent_authkey -target=google_secret_manager_secret_version.exe_coder_authkey -target=google_secret_manager_secret_version.exe_workspace_authkey -target=google_secret_manager_secret_version.agent_authkey"
+# The Tailscale slice of the exe stack (tailscale.tf): the rotation clock, the
+# three auth keys, and their Secret Manager containers/versions (the ACL moved
+# to tofu/tailnet). One place so plan and apply cannot drift.
+_exe_tailscale_targets := "-target=time_rotating.tailscale_keys -target=tailscale_tailnet_key.exe_coder -target=tailscale_tailnet_key.exe_workspace -target=tailscale_tailnet_key.agent -target=google_secret_manager_secret.exe_coder_authkey -target=google_secret_manager_secret.exe_workspace_authkey -target=google_secret_manager_secret.agent_authkey -target=google_secret_manager_secret_version.exe_coder_authkey -target=google_secret_manager_secret_version.exe_workspace_authkey -target=google_secret_manager_secret_version.agent_authkey"
 
 # Use case: pushing an acl.hujson change without touching the VM/tunnel.
 # The targeted refresh never configures the cloudflare provider, so only

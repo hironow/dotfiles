@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Nothing here is a secret,
+# but both values identify private things, so they stay out of the repo.
+
+# The tailnet's name as the Tailscale API knows it; "-" means the API key's own.
+tailnet = "-"
+
+# exe-platform's state_kms_key output: `just _tofu-out exe-platform state_kms_key`.
+state_kms_key = "projects/<project>/locations/<region>/keyRings/<ring>/cryptoKeys/<key>"

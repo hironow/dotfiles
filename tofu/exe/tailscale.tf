@@ -70,13 +70,6 @@ resource "tailscale_tailnet_key" "exe_workspace" {
   expiry        = 90 * 24 * 3600
   tags          = [local.tag_exe_workspace]
 
-  # Tailscale rejects key issuance for a tag whose tagOwners is not
-  # yet in the live ACL (HTTP 400 "requested tags ... are invalid or
-  # not permitted"). Without this dependency the ACL update and the
-  # key creation are scheduled in parallel and the key sometimes
-  # races ahead. Force the ACL to apply first.
-  depends_on = [tailscale_acl.this]
-
   lifecycle {
     replace_triggered_by = [time_rotating.tailscale_keys.id]
   }
@@ -127,30 +120,18 @@ resource "google_secret_manager_secret_version" "agent_authkey" {
   secret_data = tailscale_tailnet_key.agent.key
 }
 
-# --- ACL bind --------------------------------------------------------
+# --- ACL: handed over to tofu/tailnet ---------------------------------
 #
-# Wire exe/tailscale/acl.hujson into the live tailnet. Without this
-# resource, tag:agent keys would be issued under whatever ACL is
-# currently in the admin UI — which by default lets every member
-# device reach every other device. codex review flagged this as a
-# critical hole: the auth keys we issue declare scoped permissions,
-# but only the ACL actually enforces them.
-#
-# Lockout precautions:
-#   - overwrite_existing_content = true so the first apply does not
-#     stall on a divergent admin-UI ACL; declare tofu state as the
-#     truth.
-#   - lifecycle.prevent_destroy = true so a careless `tofu destroy`
-#     cannot wipe the ACL and lock the operator out of the tailnet
-#     in one move (must be removed manually).
-#   - Tailscale itself maintains a 24h grace period on ACL pushes;
-#     during that window an admin can revert from the UI.
-
-resource "tailscale_acl" "this" {
-  acl                        = file("${path.module}/../../exe/tailscale/acl.hujson")
-  overwrite_existing_content = true
+# This stack is being retired (Phase 7). The tailnet's ACL outlives it:
+# tofu/tailnet takes it over by import. Here it is dropped from state
+# only -- destroy = false leaves the live policy exactly as it is, so
+# the tailnet is never without one, and the stack's destroy no longer
+# meets the ACL's prevent_destroy. Apply this before tofu/tailnet's
+# first plan, so the ACL never has two owners.
+removed {
+  from = tailscale_acl.this
 
   lifecycle {
-    prevent_destroy = true
+    destroy = false
   }
 }

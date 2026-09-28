@@ -42,11 +42,6 @@ output "tailscale_keys_rotated_at" {
   value       = time_rotating.tailscale_keys.rfc3339
 }
 
-output "tailscale_acl_id" {
-  description = "ID of the tailscale_acl resource (proves the live ACL has been bound to acl.hujson)."
-  value       = tailscale_acl.this.id
-}
-
 # VM outputs are null while stack_mode = "mothballed" (count = 0).
 # one(resource[*].attr) is the null-safe form; a direct .attr reference
 # breaks the plan when the instance list is empty.

@@ -1,0 +1,12 @@
+# The reviewed change list for the retirement's first apply on this stack
+# (Phase 7: 7.4 and 7.5's IaC half), run in the old project's window from its
+# step sheet:
+#   - the tailnet's ACL leaves this stack's state and stays live, exactly as
+#     it is, for tofu/tailnet to import next (7.3): "forget", never a delete;
+#   - the Cloud SQL instance loses both deletion protections and gains its
+#     final-backup setting, so the destroy (7.7) can take it and a 30-day
+#     copy stays behind.
+# Anything else in the plan (a key rotation that happened to fall due, drift)
+# stops the sheet until it has been reviewed.
+. tailscale_acl.this
+~ google_sql_database_instance.coder

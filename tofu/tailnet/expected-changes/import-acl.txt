@@ -1,0 +1,9 @@
+# The reviewed change list for taking the tailnet's ACL over (Phase 7, 7.3),
+# after the retired stack dropped it from its own state (7.4). The plan
+# imports the live ACL (its text says "will be imported") and updates it in
+# place to acl.hujson: tag:exe-coder, tag:exe-workspace and tag:agent go, with
+# their three rules; the owner's rule, both break-glass rules and the steiner
+# rule stay. Needs TAILSCALE_API_KEY (or an OAuth client) and the exe
+# project's credentials for the state bucket and its KMS key.
+#   just tailnet-plan && just tailnet-plan-summary --expect-changes expected-changes/import-acl.txt
+~ tailscale_acl.this
