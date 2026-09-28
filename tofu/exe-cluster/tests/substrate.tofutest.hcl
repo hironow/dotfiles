@@ -290,3 +290,17 @@ run "the_gvisor_mirror_is_verified_on_both_ends" {
     error_message = "a new gVisor pin must re-run the mirror step."
   }
 }
+
+run "destroying_the_stack_remembers_which_install_to_tear_down" {
+  command = plan
+
+  assert {
+    condition     = terraform_data.substrate_teardown_reminder.input == { sha = local.pins.substrate.sha, version = local.pins.substrate.version }
+    error_message = "the teardown reminder must hold the installed Substrate pin, the arguments `just exe-substrate-teardown` needs when this stack is destroyed."
+  }
+
+  assert {
+    condition     = terraform_data.substrate_teardown_reminder.triggers_replace == null
+    error_message = "the reminder must never be replaced: a replacement would run its destroy step, and print the teardown, on every repin."
+  }
+}
