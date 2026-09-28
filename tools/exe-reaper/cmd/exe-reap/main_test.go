@@ -59,7 +59,7 @@ func TestMissingRepositoriesFailWithAFailureLine(t *testing.T) {
 }
 
 func TestRepositoriesAreACommaSeparatedList(t *testing.T) {
-	got := splitRepos(" projects/p/locations/l/repositories/a ,projects/p/locations/l/repositories/b,, ")
+	got := splitList(" projects/p/locations/l/repositories/a ,projects/p/locations/l/repositories/b,, ")
 	want := []string{"projects/p/locations/l/repositories/a", "projects/p/locations/l/repositories/b"}
 	if !slices.Equal(got, want) {
 		t.Errorf("repos %q, want %q", got, want)

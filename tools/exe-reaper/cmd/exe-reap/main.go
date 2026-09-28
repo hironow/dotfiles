@@ -97,7 +97,7 @@ func wire(stdout io.Writer) (*reaper, func(), error) {
 	}
 	// Without them retention would protect nothing, and Artifact Registry's
 	// cleanup would take the images of suspended tasks: refuse instead.
-	repos := splitRepos(os.Getenv(envARRepos))
+	repos := splitList(os.Getenv(envARRepos))
 	if len(repos) == 0 {
 		return nil, nil, fmt.Errorf("missing required environment: %s", envARRepos)
 	}
@@ -138,8 +138,9 @@ func wire(stdout io.Writer) (*reaper, func(), error) {
 	}, closeAll, nil
 }
 
-// splitRepos reads EXE_AR_REPOS: repository resource names, comma-separated.
-func splitRepos(raw string) []string {
+// splitList reads a comma-separated list from the environment, such as
+// EXE_AR_REPOS's repository resource names.
+func splitList(raw string) []string {
 	var out []string
 	for _, r := range strings.Split(raw, ",") {
 		if r = strings.TrimSpace(r); r != "" {
