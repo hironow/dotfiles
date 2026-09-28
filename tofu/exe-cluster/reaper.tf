@@ -42,8 +42,11 @@ resource "ko_build" "exe_reap" {
   base_image  = local.ax_base_image
   platforms   = ["linux/amd64"]
   sbom        = "none"
-  env         = ["CGO_ENABLED=0"]
-  ldflags     = ["-s", "-w"]
+  # No VCS stamps: go would stamp the commit and a dirty-tree flag into the
+  # binary, so every commit anywhere in this repo, or any uncommitted file,
+  # would give a new digest and roll both CronJobs for no change of code.
+  env     = ["CGO_ENABLED=0", "GOFLAGS=-buildvcs=false"]
+  ldflags = ["-s", "-w"]
 }
 
 # A raw manifest (server-side applied), for the same reason as the

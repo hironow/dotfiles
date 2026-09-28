@@ -156,6 +156,11 @@ run "the_reaper_image_is_exe_reap_over_a_digest_pinned_base" {
     condition     = yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.template.spec.containers[0].image == ko_build.exe_reap.image_ref
     error_message = "the CronJob must run exactly the digest ko_build pushed."
   }
+
+  assert {
+    condition     = contains(ko_build.exe_reap.env, "GOFLAGS=-buildvcs=false")
+    error_message = "exe-reap must build without VCS stamps: go stamps the commit and a dirty-tree flag into the binary, so every commit anywhere in the repo, or any uncommitted file, gives a new digest and a new image, and every exe-cluster plan rolls both CronJobs for no change of code."
+  }
 }
 
 run "the_reaper_reaches_substrate_as_the_controller_does_and_knows_its_bucket" {
