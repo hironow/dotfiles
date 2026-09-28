@@ -48,7 +48,7 @@ from pathlib import Path
 import pytest
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SH = ROOT / "install.sh"
 BASH = shutil.which("bash") or "/bin/bash"
 
