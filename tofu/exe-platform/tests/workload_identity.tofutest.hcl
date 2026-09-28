@@ -82,6 +82,11 @@ run "every_member_names_its_ksa_in_the_pool_the_cluster_creates" {
   }
 
   assert {
+    condition     = google_artifact_registry_repository_iam_member.reaper_platform_tags.member == "principal://iam.googleapis.com/projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${google_container_cluster.exe.workload_identity_config[0].workload_pool}/subject/ns/exe-ops/sa/exe-reaper"
+    error_message = "reaper_platform_tags must bind exe-ops/exe-reaper in the cluster's own Workload Identity pool, addressed by project number: the reaper moves inuse- tags on platform images too."
+  }
+
+  assert {
     condition     = google_storage_bucket_iam_member.snapshot_gc_list.member == "principal://iam.googleapis.com/projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${google_container_cluster.exe.workload_identity_config[0].workload_pool}/subject/ns/exe-ops/sa/exe-snapshot-gc"
     error_message = "snapshot_gc_list must bind exe-ops/exe-snapshot-gc in the cluster's own Workload Identity pool, addressed by project number: the GC lists the snapshot bucket."
   }
@@ -195,6 +200,19 @@ run "reaper_task_tags_waits_for_the_cluster" {
   assert {
     condition     = google_container_cluster.exe.name != ""
     error_message = "the cluster must be planned with reaper_task_tags: the binding names the cluster's Workload Identity pool and has to be created after it."
+  }
+}
+
+run "reaper_platform_tags_waits_for_the_cluster" {
+  command = plan
+
+  plan_options {
+    target = [google_artifact_registry_repository_iam_member.reaper_platform_tags]
+  }
+
+  assert {
+    condition     = google_container_cluster.exe.name != ""
+    error_message = "the cluster must be planned with reaper_platform_tags: the binding names the cluster's Workload Identity pool and has to be created after it."
   }
 }
 

@@ -1,0 +1,13 @@
+# The reviewed change list for step 1 of protecting the platform images
+# (M19 C3, inbox M53 B6): the reaper's tag role on the exe-platform
+# repository, and a keep-inuse KEEP there, with keep-recent still at 10.
+# Neither is used until exe-cluster's CronJob lists exe-platform in
+# EXE_AR_REPOS (step 2, expected-changes/platform-images.txt there).
+#
+# The two new outputs, ar_platform_repository and enforcer_image, are not
+# resource changes and do not show here; step 2's plan reads them, and cannot
+# plan until this is applied. keep_count goes from 10 to 2 only in step 4,
+# after a wake has shown every running image tagged.
+#   just exe-platform-plan && just exe-platform-plan-summary --expect-changes expected-changes/platform-images.txt
+~ google_artifact_registry_repository.platform
++ google_artifact_registry_repository_iam_member.reaper_platform_tags

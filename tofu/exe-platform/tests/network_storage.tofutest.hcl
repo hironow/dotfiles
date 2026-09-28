@@ -182,8 +182,30 @@ run "both_registries_actually_enforce_their_cleanup_policies" {
   }
 
   assert {
-    condition     = keys({ for policy in google_artifact_registry_repository.platform.cleanup_policies : policy.id => policy }) == ["delete-stale", "keep-recent"]
-    error_message = "exe-platform must carry exactly the two policies keep-recent and delete-stale. A third policy — most plausibly an 'delete untagged immediately' reflex — would pull versions out from under a running install, which references its images BY DIGEST."
+    condition     = keys({ for policy in google_artifact_registry_repository.platform.cleanup_policies : policy.id => policy }) == ["delete-stale", "keep-inuse", "keep-recent"]
+    error_message = "exe-platform must carry exactly the three policies keep-inuse, keep-recent and delete-stale. Another policy — most plausibly an 'delete untagged immediately' reflex — would pull versions out from under a running install, which references its images BY DIGEST."
+  }
+}
+
+run "exe_platform_keeps_the_inuse_tag" {
+  command = plan
+
+  # L1 tags every image the cluster's own pods run, and L2's enforcer image,
+  # `inuse-` (M19 C3, inbox M53 B6): this KEEP is what makes that tag hold
+  # here, as keep-inuse does on exe-task.
+  assert {
+    condition     = one([for policy in google_artifact_registry_repository.platform.cleanup_policies : policy if policy.id == "keep-inuse"]).action == "KEEP"
+    error_message = "exe-platform's keep-inuse policy must be a KEEP: the reaper's inuse- tag on an image the running install pulls by digest protects it only through a KEEP."
+  }
+
+  assert {
+    condition     = one(one([for policy in google_artifact_registry_repository.platform.cleanup_policies : policy if policy.id == "keep-inuse"]).condition[0].tag_prefixes) == "inuse-"
+    error_message = "exe-platform's keep-inuse policy must match exactly one tag prefix, 'inuse-', the literal prefix the reaper writes: another prefix protects nothing while looking like it protects everything."
+  }
+
+  assert {
+    condition     = one([for policy in google_artifact_registry_repository.platform.cleanup_policies : policy if policy.id == "keep-inuse"]).condition[0].tag_state == "TAGGED"
+    error_message = "exe-platform's keep-inuse policy must select TAGGED versions, like exe-task's: the tag prefix is what it keys on."
   }
 }
 
@@ -249,6 +271,11 @@ run "no_cleanup_policy_mixes_a_condition_with_most_recent_versions" {
   assert {
     condition     = length(one([for policy in google_artifact_registry_repository.task.cleanup_policies : policy if policy.id == "delete-stale"]).condition) == 0 || length(one([for policy in google_artifact_registry_repository.task.cleanup_policies : policy if policy.id == "delete-stale"]).most_recent_versions) == 0
     error_message = "exe-task/delete-stale must not carry both a condition and most_recent_versions: a DELETE bounded by most_recent_versions is not a narrower delete, it is a policy Artifact Registry refuses."
+  }
+
+  assert {
+    condition     = length(one([for policy in google_artifact_registry_repository.platform.cleanup_policies : policy if policy.id == "keep-inuse"]).condition) == 0 || length(one([for policy in google_artifact_registry_repository.platform.cleanup_policies : policy if policy.id == "keep-inuse"]).most_recent_versions) == 0
+    error_message = "exe-platform/keep-inuse must not carry both a condition and most_recent_versions: Artifact Registry forbids the combination, which is why keep-inuse and keep-recent are two policies here too."
   }
 
   assert {

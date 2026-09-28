@@ -111,6 +111,26 @@ output "ar_task_repository" {
   sensitive   = true
 }
 
+output "ar_platform_repository" {
+  description = <<-EOT
+    The exe-platform repository's resource name (projects/P/locations/L/repositories/R):
+    the other repository exe-reap protects (EXE_AR_REPOS), for the images the
+    cluster's own pods and L2's enforcer run (M19 C3).
+  EOT
+  value       = "projects/${var.gcp_project_id}/locations/${local.region}/repositories/${google_artifact_registry_repository.platform.repository_id}"
+  sensitive   = true
+}
+
+output "enforcer_image" {
+  description = <<-EOT
+    The image L2's enforcer job runs, pinned by digest, or "" while L2 is not
+    deployed. No pod runs it, so exe-reap learns of it only from here
+    (EXE_PROTECT_IMAGES) and keeps it tagged like the pods' images.
+  EOT
+  value       = var.enforcer_image
+  sensitive   = true
+}
+
 output "service_account_emails" {
   description = "The five dedicated identities, by role."
   value = {
