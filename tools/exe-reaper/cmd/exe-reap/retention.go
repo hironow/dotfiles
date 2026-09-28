@@ -16,10 +16,11 @@ import (
 )
 
 // retain is L1's retention step (plan D10, exe/spec/retention.qnt): read every
-// task, the operator's keep list, the `inuse-` tags in the repositories L1
-// protects and its own record; decide with lease.DecideRetention; record;
-// then act. Like the drain, it decides nothing on a partial view: a read that
-// fails ends the step.
+// task, the images the cluster's own pods run and the ones configured as
+// running elsewhere (M19 C3), the operator's keep list, the `inuse-` tags in
+// the repositories L1 protects and its own record; decide with
+// lease.DecideRetention; record; then act. Like the drain, it decides nothing
+// on a partial view: a read that fails ends the step.
 func (r *reaper) retain(ctx context.Context, now time.Time, actors []lease.ActorObs) error {
 	o, generation, err := r.observeRetention(ctx, now, actors)
 	if err != nil {
@@ -74,6 +75,24 @@ func (r *reaper) observeRetention(ctx context.Context, now time.Time, actors []l
 			obs.Suspended, obs.ChangedAt = true, a.ChangedAt
 		}
 		o.Tasks = append(o.Tasks, obs)
+	}
+
+	platform := slices.Clone(r.protect)
+	for _, ns := range r.podNamespaces {
+		refs, err := r.k8s.PodImages(ctx, ns)
+		if err != nil {
+			return o, 0, err
+		}
+		platform = append(platform, refs...)
+	}
+	seen := map[string]bool{}
+	for _, ref := range platform {
+		img := r.managedImage(ref)
+		if img == (lease.Image{}) || seen[img.Key()] {
+			continue
+		}
+		seen[img.Key()] = true
+		o.Platform = append(o.Platform, img)
 	}
 
 	keep, err := r.readKeep(ctx)

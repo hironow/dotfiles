@@ -1,10 +1,12 @@
 // Package k8s is the little of the Kubernetes API L1 needs, spoken over plain
 // net/http: the scale subresource of the two Deployments whose replica counts
 // L1 owns (atenet-router and ax-controller, plan D2), a count of the pods that
-// can still run behind them, and deleting a wedged worker's pod (plan D6).
+// can still run behind them, the images the cluster's own pods run (which
+// retention keeps tagged, M19 C3), and deleting a wedged worker's pod (plan
+// D6).
 //
 // Stdlib only, like internal/gcp: client-go would be the whole dependency tree
-// of Kubernetes for four requests. Every request authenticates with the pod's
+// of Kubernetes for five requests. Every request authenticates with the pod's
 // projected service-account token, read from its file each time because the
 // kubelet rotates it in place, and verifies the API server against the
 // cluster CA mounted beside it.
@@ -19,10 +21,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -130,13 +134,27 @@ func (c *Client) SetScale(ctx context.Context, ns, deployment string, replicas i
 
 type podList struct {
 	Items []struct {
+		Spec struct {
+			Containers     []containerSpec `json:"containers"`
+			InitContainers []containerSpec `json:"initContainers"`
+		} `json:"spec"`
 		Status struct {
-			Phase string `json:"phase"`
+			Phase                 string            `json:"phase"`
+			ContainerStatuses     []containerStatus `json:"containerStatuses"`
+			InitContainerStatuses []containerStatus `json:"initContainerStatuses"`
 		} `json:"status"`
 	} `json:"items"`
 	Metadata struct {
 		Continue string `json:"continue"`
 	} `json:"metadata"`
+}
+
+type containerSpec struct {
+	Image string `json:"image"`
+}
+
+type containerStatus struct {
+	ImageID string `json:"imageID"`
 }
 
 // CountPods counts the pods matching selector that can still run: every pod
@@ -164,6 +182,49 @@ func (c *Client) CountPods(ctx context.Context, ns, selector string) (int, error
 		}
 		if list.Metadata.Continue == "" {
 			return n, nil
+		}
+		cont = list.Metadata.Continue
+	}
+}
+
+// PodImages lists the images the pods in ns run or are about to run, each a
+// reference pinned by digest, sorted and without repeats: every started
+// container's image as its status resolved it (the digest the node pulled,
+// even when the spec names a tag), and every spec image already pinned by
+// digest, which is all a pod that has not started has. Init containers count
+// too. An image with no repository, one the node built or loaded itself, is
+// left out: no registry holds it.
+func (c *Client) PodImages(ctx context.Context, ns string) ([]string, error) {
+	seen := map[string]bool{}
+	add := func(ref string) {
+		// Docker-era runtimes prefix the ID with a scheme.
+		if _, rest, ok := strings.Cut(ref, "://"); ok {
+			ref = rest
+		}
+		if name, _, ok := strings.Cut(ref, "@sha256:"); ok && name != "" {
+			seen[ref] = true
+		}
+	}
+	cont := ""
+	for {
+		q := url.Values{"limit": {strconv.Itoa(podPage)}}
+		if cont != "" {
+			q.Set("continue", cont)
+		}
+		var list podList
+		if err := c.call(ctx, http.MethodGet, "/api/v1/namespaces/"+url.PathEscape(ns)+"/pods?"+q.Encode(), "", nil, &list); err != nil {
+			return nil, fmt.Errorf("listing pods in %s: %w", ns, err)
+		}
+		for _, p := range list.Items {
+			for _, s := range slices.Concat(p.Status.ContainerStatuses, p.Status.InitContainerStatuses) {
+				add(s.ImageID)
+			}
+			for _, s := range slices.Concat(p.Spec.Containers, p.Spec.InitContainers) {
+				add(s.Image)
+			}
+		}
+		if list.Metadata.Continue == "" {
+			return slices.Sorted(maps.Keys(seen)), nil
 		}
 		cont = list.Metadata.Continue
 	}

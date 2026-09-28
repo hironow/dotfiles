@@ -40,14 +40,16 @@ override_data {
   target = data.terraform_remote_state.platform
   values = {
     outputs = {
-      region               = "asia-northeast1"
-      zone                 = "asia-northeast1-a"
-      cluster_name         = "exe"
-      cluster_dns_endpoint = "gke-zz.asia-northeast1.gke.goog"
-      bucket_snapshots     = "zz-synthetic-project-exe-snapshots"
-      bucket_ops           = "zz-synthetic-project-exe-ops"
-      ar_task_repository   = "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-task"
-      ar_platform_repo     = "asia-northeast1-docker.pkg.dev/zz-synthetic-project/exe-platform"
+      region                 = "asia-northeast1"
+      zone                   = "asia-northeast1-a"
+      cluster_name           = "exe"
+      cluster_dns_endpoint   = "gke-zz.asia-northeast1.gke.goog"
+      bucket_snapshots       = "zz-synthetic-project-exe-snapshots"
+      bucket_ops             = "zz-synthetic-project-exe-ops"
+      ar_task_repository     = "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-task"
+      ar_platform_repository = "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-platform"
+      ar_platform_repo       = "asia-northeast1-docker.pkg.dev/zz-synthetic-project/exe-platform"
+      enforcer_image         = "asia-northeast1-docker.pkg.dev/zz-synthetic-project/exe-platform/exe-l2@sha256:2222222222222222222222222222222222222222222222222222222222222222"
       workload_identity_principals = {
         atelet      = "principal://iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/zz-synthetic-project.svc.id.goog/subject/ns/ate-system/sa/atelet"
         api_server  = "principal://iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/zz-synthetic-project.svc.id.goog/subject/ns/ate-system/sa/ate-api-server"
@@ -189,8 +191,76 @@ run "the_reaper_reaches_substrate_as_the_controller_does_and_knows_its_bucket" {
   }
 
   assert {
-    condition     = one([for e in yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.template.spec.containers[0].env : e.value if e.name == "EXE_AR_REPOS"]) == "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-task"
-    error_message = "EXE_AR_REPOS must be exe-platform's ar_task_repository, read from its state: it names the repository whose images retention keeps tagged, and exe-reap exits on every tick without it rather than protect nothing."
+    condition     = one([for e in yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.template.spec.containers[0].env : e.value if e.name == "EXE_AR_REPOS"]) == "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-task,projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-platform"
+    error_message = "EXE_AR_REPOS must be exe-platform's ar_task_repository and ar_platform_repository, read from its state: they name the repositories whose images retention keeps tagged (the tasks' and the cluster's own, M19 C3), and exe-reap exits on every tick without them rather than protect nothing."
+  }
+
+  assert {
+    condition     = one([for e in yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.template.spec.containers[0].env : e.value if e.name == "EXE_PROTECT_IMAGES"]) == "asia-northeast1-docker.pkg.dev/zz-synthetic-project/exe-platform/exe-l2@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    error_message = "EXE_PROTECT_IMAGES must be exe-platform's enforcer_image: L2's enforcer runs on Cloud Run, not in a pod, so this is the only way L1 learns to keep its image tagged."
+  }
+
+  assert {
+    condition     = one([for e in yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.template.spec.containers[0].env : e.value if e.name == "EXE_POD_NAMESPACES"]) == "ate-system,ax-system,exe,exe-ops,podcertificate-controller-system"
+    error_message = "EXE_POD_NAMESPACES must name every namespace whose pods run images from exe-platform: Substrate's (ate-system, podcertificate-controller-system), AX's (ax-system), the workers' (exe) and L1's own (exe-ops). An image in a namespace left out loses its inuse- tag after tag_release_days, and the cleanup can then take what the next wake pulls."
+  }
+}
+
+run "an_enforcer_image_the_reaper_cannot_protect_fails_the_plan" {
+  command = plan
+
+  # exe-reap refuses to start on an EXE_PROTECT_IMAGES entry outside the
+  # repositories it manages, so such a value would stop every tick, the drain
+  # included. The plan must refuse it first.
+  override_data {
+    target = data.terraform_remote_state.platform
+    values = {
+      outputs = {
+        region                 = "asia-northeast1"
+        zone                   = "asia-northeast1-a"
+        cluster_name           = "exe"
+        cluster_dns_endpoint   = "gke-zz.asia-northeast1.gke.goog"
+        bucket_snapshots       = "zz-synthetic-project-exe-snapshots"
+        bucket_ops             = "zz-synthetic-project-exe-ops"
+        ar_task_repository     = "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-task"
+        ar_platform_repository = "projects/zz-synthetic-project/locations/asia-northeast1/repositories/exe-platform"
+        ar_platform_repo       = "asia-northeast1-docker.pkg.dev/zz-synthetic-project/exe-platform"
+        enforcer_image         = "asia-northeast1-docker.pkg.dev/zz-synthetic-project/elsewhere/exe-l2@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        workload_identity_principals = {
+          atelet      = "principal://iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/zz-synthetic-project.svc.id.goog/subject/ns/ate-system/sa/atelet"
+          api_server  = "principal://iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/zz-synthetic-project.svc.id.goog/subject/ns/ate-system/sa/ate-api-server"
+          reaper      = "principal://iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/zz-synthetic-project.svc.id.goog/subject/ns/exe-ops/sa/exe-reaper"
+          snapshot_gc = "principal://iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/zz-synthetic-project.svc.id.goog/subject/ns/exe-ops/sa/exe-snapshot-gc"
+        }
+      }
+    }
+  }
+
+  expect_failures = [kubectl_manifest.reaper]
+}
+
+run "the_reaper_may_list_pods_in_every_namespace_it_protects_and_nothing_more" {
+  command = plan
+
+  # Retention reads every pod's images in EXE_POD_NAMESPACES, and a list that
+  # fails ends the step (no decision on a partial view): a namespace missing
+  # its list grant would stop retention on every tick.
+  assert {
+    condition = toset(split(",", one([for e in yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.template.spec.containers[0].env : e.value if e.name == "EXE_POD_NAMESPACES"]))) == toset(concat(
+      [for r in [kubernetes_role_v1.reaper_router, kubernetes_role_v1.reaper_controller, kubernetes_role_v1.reaper_workers] : r.metadata[0].namespace if length([for rule in r.rule : rule if contains(rule.resources, "pods") && contains(rule.verbs, "list")]) > 0],
+      [for r in kubernetes_role_v1.reaper_pods : r.metadata[0].namespace],
+    ))
+    error_message = "the reaper must be able to list pods in exactly the namespaces EXE_POD_NAMESPACES names."
+  }
+
+  assert {
+    condition     = alltrue([for r in kubernetes_role_v1.reaper_pods : length(r.rule) == 1 && r.rule[0].resources == toset(["pods"]) && r.rule[0].verbs == toset(["list"])])
+    error_message = "where the reaper only reads images, it may list pods and do nothing else."
+  }
+
+  assert {
+    condition     = alltrue([for b in kubernetes_role_binding_v1.reaper_pods : b.subject[0].kind == "ServiceAccount" && b.subject[0].name == "exe-reaper" && b.subject[0].namespace == "exe-ops" && length(b.subject) == 1 && b.role_ref[0].name == kubernetes_role_v1.reaper_pods[b.metadata[0].namespace].metadata[0].name])
+    error_message = "each pod-list role must be bound to the reaper's KSA and to nothing else."
   }
 }
 
@@ -224,8 +294,8 @@ run "the_reaper_may_scale_two_deployments_and_delete_worker_pods_and_nothing_els
   }
 
   assert {
-    condition     = kubernetes_role_v1.reaper_workers.metadata[0].namespace == "exe" && length(kubernetes_role_v1.reaper_workers.rule) == 1 && kubernetes_role_v1.reaper_workers.rule[0].resources == toset(["pods"]) && kubernetes_role_v1.reaper_workers.rule[0].verbs == toset(["delete"])
-    error_message = "in the atespace namespace the reaper may delete pods and do nothing else: it deletes a wedged worker's pod (plan D6), always with the UID the store named."
+    condition     = kubernetes_role_v1.reaper_workers.metadata[0].namespace == "exe" && length(kubernetes_role_v1.reaper_workers.rule) == 1 && kubernetes_role_v1.reaper_workers.rule[0].resources == toset(["pods"]) && kubernetes_role_v1.reaper_workers.rule[0].verbs == toset(["delete", "list"])
+    error_message = "in the atespace namespace the reaper may list and delete pods and do nothing else: it deletes a wedged worker's pod (plan D6), always with the UID the store named, and reads the images the workers run (M19 C3)."
   }
 
   assert {

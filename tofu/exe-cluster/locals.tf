@@ -25,6 +25,10 @@ locals {
   ax_namespace        = "ax-system"
   atespace            = "exe"
 
+  # Also upstream's, and not created here: `ate-setup` installs Substrate's
+  # pod certificate controller into it (manifests/ate-install).
+  podcertificate_namespace = "podcertificate-controller-system"
+
   # --- the upstream checkouts (exe_src_dir, fetched by `just exe-cluster-src`) --
   substrate_src = "${var.exe_src_dir}/substrate"
   ax_src        = "${var.exe_src_dir}/ax"
@@ -148,6 +152,17 @@ locals {
   # The label the ax-server allow rule admits (ax.tf) and the CronJob's pods
   # carry (reaper.tf).
   reaper_app = "exe-reap"
+
+  # Every namespace whose pods run images from exe-platform, which retention
+  # keeps tagged like a task's (M19 C3): Substrate's (its ko builds), AX's,
+  # the workers', and L1's own. Sorted, so the CronJob's env is stable.
+  reaper_pod_namespaces = sort([
+    local.substrate_namespace,
+    local.podcertificate_namespace,
+    local.ax_namespace,
+    local.atespace,
+    local.reaper_namespace,
+  ])
 
   # --- the orphan-snapshot GC ------------------------------------------------------
   #

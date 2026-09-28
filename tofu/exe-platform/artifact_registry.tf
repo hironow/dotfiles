@@ -28,6 +28,19 @@ resource "google_artifact_registry_repository" "platform" {
 
   cleanup_policy_dry_run = false
 
+  # The reaper (L1) puts an `inuse-` tag on every image the cluster's own pods
+  # run and on L2's enforcer image, and removes it once nothing has used the
+  # image for tag_release_days (M19 C3). This KEEP is what makes that tag hold
+  # here, as keep-inuse does on exe-task.
+  cleanup_policies {
+    id     = "keep-inuse"
+    action = "KEEP"
+    condition {
+      tag_state    = "TAGGED"
+      tag_prefixes = ["inuse-"]
+    }
+  }
+
   # A running install references its images BY DIGEST, so deleting untagged
   # versions promptly — the usual reflex — would pull the floor out from under
   # a live cluster. Keep the newest 10 regardless of tags.
@@ -137,7 +150,9 @@ resource "google_artifact_registry_repository_iam_member" "atelet_task_reader" {
 # plan D10, exe/spec/retention.qnt). It lists packages and tags and creates and
 # deletes tags, and nothing else: roles/artifactregistry.writer, which it held
 # before, can also push images, which retention never needs. A custom role,
-# granted on the repository only. tests/reaper_tags.tofutest.hcl pins both.
+# granted on the two repositories only: exe-task for the images live tasks
+# run, and exe-platform for the ones the cluster's own pods and L2's enforcer
+# run (M19 C3). tests/reaper_tags.tofutest.hcl pins all three.
 resource "google_project_iam_custom_role" "reaper_tags" {
   project     = var.gcp_project_id
   role_id     = "exeReaperTags"
@@ -160,6 +175,16 @@ resource "google_artifact_registry_repository_iam_member" "reaper_task_tags" {
   project    = var.gcp_project_id
   location   = google_artifact_registry_repository.task.location
   repository = google_artifact_registry_repository.task.name
+  role       = google_project_iam_custom_role.reaper_tags.id
+  member     = local.wi_reaper
+
+  depends_on = [terraform_data.custom_roles_settled]
+}
+
+resource "google_artifact_registry_repository_iam_member" "reaper_platform_tags" {
+  project    = var.gcp_project_id
+  location   = google_artifact_registry_repository.platform.location
+  repository = google_artifact_registry_repository.platform.name
   role       = google_project_iam_custom_role.reaper_tags.id
   member     = local.wi_reaper
 

@@ -43,6 +43,9 @@ type world struct {
 	deleted  []string
 	podsGone map[string]bool // "<ns>/<pod>/<uid>" already gone
 	replaced map[string]bool // "<ns>/<pod>/<uid>" replaced under the same name
+	// the images the pods in each namespace run, and a failing list
+	podImages    map[string][]string
+	podImagesErr map[string]error
 
 	// AX
 	suspended  []string
@@ -51,6 +54,13 @@ type world struct {
 	axTasks    []ax.Task
 	axDeleted  []string
 	tasksErr   error
+
+	// The reaper's configuration: the repositories retention manages, the
+	// namespaces whose pods' images it protects, and the images it protects
+	// that run outside the cluster.
+	repos         []string
+	podNamespaces []string
+	protect       []string
 
 	// Artifact Registry: repo -> packages, package -> tag id -> digest
 	packages map[string][]string
@@ -86,11 +96,15 @@ func newWorld(t *testing.T) *world {
 		podsGone: map[string]bool{},
 		replaced: map[string]bool{},
 		noTask:   map[string]bool{},
-		packages: map[string][]string{},
-		tags:     map[string]map[string]string{},
-		objects:  map[string]storedObject{},
-		getErr:   map[string]error{},
-		putErr:   map[string]error{},
+		repos:    []string{testRepo},
+
+		podImages:    map[string][]string{},
+		podImagesErr: map[string]error{},
+		packages:     map[string][]string{},
+		tags:         map[string]map[string]string{},
+		objects:      map[string]storedObject{},
+		getErr:       map[string]error{},
+		putErr:       map[string]error{},
 	}
 }
 
@@ -102,7 +116,8 @@ func (w *world) call(format string, args ...any) {
 func (w *world) reaper(out *logBuffer) *reaper {
 	return &reaper{
 		substrate: w, ax: w, k8s: w, gcs: w, ar: w,
-		bucket: "zz-ops", repos: []string{testRepo}, log: l1Log{w: out},
+		bucket: "zz-ops", repos: w.repos, podNamespaces: w.podNamespaces, protect: w.protect,
+		log: l1Log{w: out},
 	}
 }
 
@@ -248,6 +263,16 @@ func (w *world) CountPods(_ context.Context, ns, selector string) (int, error) {
 	defer w.mu.Unlock()
 	w.call("k8s.CountPods %s %s", ns, selector)
 	return w.pods[ns+"/"+strings.TrimPrefix(selector, "app=")], nil
+}
+
+func (w *world) PodImages(_ context.Context, ns string) ([]string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.call("k8s.PodImages %s", ns)
+	if err := w.podImagesErr[ns]; err != nil {
+		return nil, err
+	}
+	return w.podImages[ns], nil
 }
 
 func (w *world) DeletePod(_ context.Context, ns, name, uid string) error {

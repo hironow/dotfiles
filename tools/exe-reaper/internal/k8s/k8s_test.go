@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -38,6 +39,9 @@ type fakeAPI struct {
 type fakePod struct {
 	name, uid, labels, phase string
 	terminating              bool
+	// images and initImages are the spec's; imageIDs and initImageIDs the
+	// status's, one per started container.
+	images, initImages, imageIDs, initImageIDs []string
 }
 
 func newFakeAPI(t *testing.T) *fakeAPI {
@@ -142,13 +146,35 @@ func (f *fakeAPI) listPods(w http.ResponseWriter, r *http.Request, ns string) {
 	if f.pageSize > 0 && start+f.pageSize < end {
 		end = start + f.pageSize
 	}
+	containers := func(images []string) []map[string]any {
+		out := []map[string]any{}
+		for i, img := range images {
+			out = append(out, map[string]any{"name": fmt.Sprintf("c%d", i), "image": img})
+		}
+		return out
+	}
+	statuses := func(ids []string) []map[string]any {
+		out := []map[string]any{}
+		for i, id := range ids {
+			out = append(out, map[string]any{"name": fmt.Sprintf("c%d", i), "imageID": id})
+		}
+		return out
+	}
 	items := []map[string]any{}
 	for _, p := range matched[start:end] {
 		meta := map[string]any{"name": p.name, "uid": p.uid}
 		if p.terminating {
 			meta["deletionTimestamp"] = "2026-09-28T00:00:00Z"
 		}
-		items = append(items, map[string]any{"metadata": meta, "status": map[string]any{"phase": p.phase}})
+		items = append(items, map[string]any{
+			"metadata": meta,
+			"spec":     map[string]any{"containers": containers(p.images), "initContainers": containers(p.initImages)},
+			"status": map[string]any{
+				"phase":                 p.phase,
+				"containerStatuses":     statuses(p.imageIDs),
+				"initContainerStatuses": statuses(p.initImageIDs),
+			},
+		})
 	}
 	cont := ""
 	if end < len(matched) {
@@ -241,6 +267,42 @@ func TestCountPodsFollowsEveryPageAndCountsWhatCanStillRun(t *testing.T) {
 	}
 }
 
+func TestPodImagesListsWhatEveryPodRunsPinnedByDigest(t *testing.T) {
+	// A started container's status holds the digest its node pulled, even
+	// when the spec names a tag; a pod not started yet has only its spec, and
+	// that counts when it is pinned by digest. Init containers run images
+	// too. An image the node built or loaded itself has no repository, so
+	// nothing to protect.
+	const (
+		reg = "asia-northeast1-docker.pkg.dev/zz-p/exe-platform/"
+		dA  = "sha256:aaaaaaaaaaaa1111111111111111111111111111111111111111111111111111"
+		dB  = "sha256:bbbbbbbbbbbb2222222222222222222222222222222222222222222222222222"
+		dC  = "sha256:cccccccccccc3333333333333333333333333333333333333333333333333333"
+	)
+	f := newFakeAPI(t)
+	f.pageSize = 1
+	f.pods["ate-system"] = []fakePod{
+		{
+			name: "api-1", uid: "1", phase: "Running",
+			images: []string{reg + "ate-api:v1"}, imageIDs: []string{reg + "ate-api@" + dA},
+			initImages: []string{reg + "init:v1"}, initImageIDs: []string{"docker-pullable://" + reg + "init@" + dB},
+		},
+		{name: "api-2", uid: "2", phase: "Running", images: []string{reg + "ate-api:v1"}, imageIDs: []string{reg + "ate-api@" + dA}},
+		{name: "starting", uid: "3", phase: "Pending", images: []string{reg + "atelet@" + dC, reg + "sidecar:latest"}},
+		{name: "local", uid: "4", phase: "Running", images: []string{"pause"}, imageIDs: []string{dA}},
+	}
+	c, _ := f.client()
+
+	got, err := c.PodImages(context.Background(), "ate-system")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{reg + "ate-api@" + dA, reg + "atelet@" + dC, reg + "init@" + dB}
+	if !slices.Equal(got, want) {
+		t.Errorf("images %q, want %q", got, want)
+	}
+}
+
 func TestCountPodsRefusesAnEmptySelector(t *testing.T) {
 	// An empty selector lists every pod in the namespace: a Deployment whose
 	// scale reports no selector would make L1 wait on pods that are not its.
@@ -308,6 +370,9 @@ func TestARefusalIsAnErrorThatSaysSo(t *testing.T) {
 	}
 	if _, err := c.CountPods(context.Background(), "ate-system", "app=x"); err == nil {
 		t.Error("a refused list reported success")
+	}
+	if _, err := c.PodImages(context.Background(), "ate-system"); err == nil {
+		t.Error("a refused image list reported success")
 	}
 	if err := c.DeletePod(context.Background(), "exe", "w-a", "u"); err == nil || errors.Is(err, ErrPodReplaced) {
 		t.Errorf("a refused delete: %v", err)

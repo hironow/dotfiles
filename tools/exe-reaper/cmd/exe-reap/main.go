@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,6 +40,8 @@ import (
 const (
 	envBucket          = "EXE_OPS_BUCKET"
 	envARRepos         = "EXE_AR_REPOS"
+	envPodNamespaces   = "EXE_POD_NAMESPACES"
+	envProtectImages   = "EXE_PROTECT_IMAGES"
 	envSubstrateTarget = "EXE_SUBSTRATE_TARGET"
 	envSubstrateToken  = "EXE_SUBSTRATE_TOKEN_FILE" //nolint:gosec // G101: env var name, not a credential
 	envSubstrateCA     = "EXE_SUBSTRATE_CA_FILE"
@@ -97,9 +100,13 @@ func wire(stdout io.Writer) (*reaper, func(), error) {
 	}
 	// Without them retention would protect nothing, and Artifact Registry's
 	// cleanup would take the images of suspended tasks: refuse instead.
-	repos := splitRepos(os.Getenv(envARRepos))
+	repos := splitList(os.Getenv(envARRepos))
 	if len(repos) == 0 {
 		return nil, nil, fmt.Errorf("missing required environment: %s", envARRepos)
+	}
+	protect, err := protectedImages(os.Getenv(envProtectImages), repos)
+	if err != nil {
+		return nil, nil, err
 	}
 	sub, err := substrate.Dial(substrate.Options{
 		Target:     envOr(envSubstrateTarget, defaultSubstrateTarget),
@@ -127,19 +134,37 @@ func wire(stdout io.Writer) (*reaper, func(), error) {
 	}
 	cloud := gcp.New()
 	return &reaper{
-		substrate: sub,
-		ax:        axc,
-		k8s:       kube,
-		gcs:       cloud,
-		ar:        cloud,
-		bucket:    bucket,
-		repos:     repos,
-		log:       l1Log{w: stdout},
+		substrate:     sub,
+		ax:            axc,
+		k8s:           kube,
+		gcs:           cloud,
+		ar:            cloud,
+		bucket:        bucket,
+		repos:         repos,
+		podNamespaces: splitList(os.Getenv(envPodNamespaces)),
+		protect:       protect,
+		log:           l1Log{w: stdout},
 	}, closeAll, nil
 }
 
-// splitRepos reads EXE_AR_REPOS: repository resource names, comma-separated.
-func splitRepos(raw string) []string {
+// protectedImages reads EXE_PROTECT_IMAGES: the images retention protects
+// that no pod runs (L2's enforcer runs on Cloud Run), each pinned by digest
+// in a repository retention manages. An entry it could not protect is refused
+// rather than skipped, since the configuration would then say the image is
+// protected while the cleanup takes it.
+func protectedImages(raw string, repos []string) ([]string, error) {
+	refs := splitList(raw)
+	for _, ref := range refs {
+		if repo, _, _, ok := gcp.ParseImageRef(ref); !ok || !slices.Contains(repos, repo) {
+			return nil, fmt.Errorf("%s names %q, which is not an image pinned by digest in one of %s", envProtectImages, ref, envARRepos)
+		}
+	}
+	return refs, nil
+}
+
+// splitList reads a comma-separated list from the environment, such as
+// EXE_AR_REPOS's repository resource names.
+func splitList(raw string) []string {
 	var out []string
 	for _, r := range strings.Split(raw, ",") {
 		if r = strings.TrimSpace(r); r != "" {
