@@ -382,6 +382,30 @@ def test_a_missing_or_malformed_audit_record_is_flagged() -> None:
     assert mod.check_substrate_audit(pins, {"audit": "exe/spec/README.md"})
 
 
+def test_a_repin_names_everything_it_reopens() -> None:
+    # The audit record also lists what else a new Substrate must be checked
+    # for, and a repin's failure says all of it.
+    pins = _pins_on_ax_gomod()
+    audit = {**_AUDIT, "sha": "0" * 40, "on_repin": ["check one", "check two"]}
+    violations = mod.check_substrate_audit(pins, audit)
+    assert violations
+    assert "check one" in violations[0]
+    assert "check two" in violations[0]
+
+
+def test_on_repin_must_be_a_list_of_strings() -> None:
+    pins = _pins_on_ax_gomod()
+    assert mod.check_substrate_audit(pins, {**_AUDIT, "on_repin": "check one"})
+    assert mod.check_substrate_audit(pins, {**_AUDIT, "on_repin": [1]})
+
+
+def test_the_real_audit_reopens_the_egress_deny() -> None:
+    # F5's residual: this Substrate cannot deny an actor's egress CONNECT to a
+    # cluster service, so a repin must look for the setting that can.
+    audit = json.loads((_REPO_ROOT / mod.SUBSTRATE_AUDIT_REL).read_text())
+    assert any("default-deny egress" in item for item in audit["on_repin"])
+
+
 def test_the_real_pin_is_the_audited_one() -> None:
     pins = json.loads(_REAL_PINS.read_text())
     audit = json.loads((_REPO_ROOT / mod.SUBSTRATE_AUDIT_REL).read_text())

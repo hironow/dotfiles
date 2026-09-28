@@ -458,24 +458,34 @@ def check_substrate_audit(pins: dict[str, Any], audit: object) -> list[str]:
 
     retention.qnt's TTL counts from an actor's update_time. That is sound only
     while nothing writes a SUSPENDED actor's row in the background, which was
-    audited in the Substrate source at one commit. A repin has to redo it.
+    audited in the Substrate source at one commit. A repin has to redo it, and
+    whatever else the record's on_repin lists, each a check the pinned commit
+    could not settle.
     """
-    if not isinstance(audit, dict) or not isinstance(audit.get("sha"), str):
+    on_repin = audit.get("on_repin", []) if isinstance(audit, dict) else None
+    if (
+        not isinstance(audit, dict)
+        or not isinstance(audit.get("sha"), str)
+        or not isinstance(on_repin, list)
+        or not all(isinstance(item, str) for item in on_repin)
+    ):
         return [
             f"{SUBSTRATE_AUDIT_REL}: missing or malformed; it must record the "
-            "Substrate commit the task TTL's write-path audit was done at."
+            "Substrate commit the task TTL's write-path audit was done at, and "
+            "on_repin as a list of strings."
         ]
     substrate = pins.get("substrate")
     pinned = substrate.get("sha") if isinstance(substrate, dict) else None
     if pinned != audit["sha"]:
         where = audit.get("audit", "exe/spec/README.md")
+        also = "".join(f" Also on this repin: {item}" for item in on_repin)
         return [
             f"{PINS_REL} pins substrate {pinned!r}, but the audit that lets the "
             f"task TTL count from an actor's update_time ({where}) was done at "
             f"{audit['sha']!r}. Redo it at the new commit: list every write to "
             "a SUSPENDED actor's row, then move the SHA in "
             f"{SUBSTRATE_AUDIT_REL}. A background writer would keep tasks "
-            "forever (retention.qnt's backgroundWriteRefreshes)."
+            "forever (retention.qnt's backgroundWriteRefreshes)." + also
         ]
     return []
 
