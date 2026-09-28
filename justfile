@@ -1774,6 +1774,46 @@ _exe-ax tool *args:
     rmdir "$bin"
     exit "$rc"
 
+# The orphan-snapshot GC (plan D11): prefixes of actors a lost store forgot.
+# Runs `exe-reap snapshot-gc` in a one-off Job made from the suspended
+# exe-snapshot-gc CronJob, as the GC's own KSA, prints its report, and deletes
+# the Job. A dry run unless told `-apply`; `-allow <prefix>` names a prefix a
+# task without an actor holds. Needs a node up.
+[group('Exe')]
+[positional-arguments]
+exe-snapshot-gc *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export KUBECONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/exe/kubeconfig"
+    if [ ! -f "$KUBECONFIG" ]; then
+        echo "no kubeconfig at $KUBECONFIG: run just exe-ctx first" >&2
+        exit 1
+    fi
+    if [ -z "$(kubectl get nodes -o name)" ]; then
+        echo "no node is up, and the Job would only wait Pending: just exe-wake first" >&2
+        exit 1
+    fi
+    ns="$(kubectl get cronjobs -A -l app.kubernetes.io/name=exe-snapshot-gc -o jsonpath='{.items[0].metadata.namespace}')"
+    if [ -z "$ns" ]; then
+        echo "no exe-snapshot-gc CronJob: apply tofu/exe-cluster first" >&2
+        exit 1
+    fi
+    job="exe-snapshot-gc-$(date +%s)"
+    trap 'kubectl -n "$ns" delete job "$job" --ignore-not-found --wait=false >/dev/null' EXIT
+    # `--` keeps jq from reading -apply and -allow as its own options.
+    kubectl -n "$ns" create job "$job" --from=cronjob/exe-snapshot-gc --dry-run=client -o json |
+        jq '.spec.template.spec.containers[0].args += $ARGS.positional' --args -- "$@" |
+        kubectl -n "$ns" create -f - >/dev/null
+    echo "job $job started; waiting for it (at most 15 min)" >&2
+    for _ in $(seq 1 180); do
+        case "$(kubectl -n "$ns" get job "$job" -o jsonpath='{.status.succeeded}/{.status.failed}')" in
+        1/* | */1) break ;;
+        esac
+        sleep 5
+    done
+    kubectl -n "$ns" logs "job/$job"
+    [ "$(kubectl -n "$ns" get job "$job" -o jsonpath='{.status.succeeded}')" = 1 ]
+
 # --- L2: the enforcer image and an on-demand run ----------------------------
 
 # Build exe-reaper with ko and push it to the exe-platform registry (linux/amd64,

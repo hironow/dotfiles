@@ -149,6 +149,20 @@ locals {
   # carry (reaper.tf).
   reaper_app = "exe-reap"
 
+  # --- the orphan-snapshot GC ------------------------------------------------------
+  #
+  # Its KSA is the one exe-platform lets list the snapshot bucket and delete
+  # under two prefixes of it (workload_identity_principals.snapshot_gc), parsed
+  # like the reaper's. Same namespace and binary as L1, never the same identity:
+  # L1 runs every minute, and holds nothing on that bucket (plan D11, inbox M35).
+  snapshot_gc_subject   = regex("/subject/ns/([^/]+)/sa/([^/]+)$", local.platform.workload_identity_principals.snapshot_gc)
+  snapshot_gc_namespace = local.snapshot_gc_subject[0]
+  snapshot_gc_ksa       = local.snapshot_gc_subject[1]
+
+  # The label the GC's own ax-server allow rule admits (ax.tf) and its Job's
+  # pods carry (snapshot_gc.tf).
+  snapshot_gc_app = "exe-snapshot-gc"
+
   common_labels = {
     "app.kubernetes.io/part-of"    = "exe"
     "app.kubernetes.io/managed-by" = "opentofu"

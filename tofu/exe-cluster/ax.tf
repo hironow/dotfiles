@@ -411,6 +411,47 @@ resource "kubernetes_network_policy_v1" "ax_server_from_reaper" {
   }
 }
 
+# The orphan-snapshot GC lists every task through ax-server, to find each
+# task's actor (plan D11). Its own rule, for its own pods: one allow rule per
+# identity, built the same way as L1's above.
+resource "kubernetes_network_policy_v1" "ax_server_from_snapshot_gc" {
+  metadata {
+    name      = "ax-server-from-the-snapshot-gc"
+    namespace = kubernetes_namespace_v1.ax.metadata[0].name
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name" = "ax-server"
+      }
+    }
+
+    policy_types = ["Ingress"]
+
+    ingress {
+      from {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ops.metadata[0].name
+          }
+        }
+        pod_selector {
+          match_labels = {
+            "app.kubernetes.io/name" = local.snapshot_gc_app
+          }
+        }
+      }
+
+      ports {
+        protocol = "TCP"
+        port     = "8080"
+      }
+    }
+  }
+}
+
 resource "kubernetes_service_account_v1" "ax_controller" {
   metadata {
     name      = "ax-controller"
