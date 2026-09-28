@@ -622,6 +622,8 @@ check:
     git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp check
     @echo '🔎 Meta-semgrep rules against rule files...'
     uvx semgrep --config .semgrep/rules/meta/ --error .
+    @echo '🔎 No mocks in e2e tests (semgrep)...'
+    uvx semgrep --config .semgrep/rules/e2e/ --error tests/e2e
     @echo '🔎 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
     @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
@@ -1773,6 +1775,23 @@ _exe-ax tool *args:
     rm -f "$bin/exe-reaper"
     rmdir "$bin"
     exit "$rc"
+
+# The live end-to-end tests of the stop paths (plan D13; tests/e2e/exe/README.md).
+# They wake the node, run tasks and stop the pool: they cost node time, and every
+# one leaves 0 nodes. EXE_E2E_IMAGE is the task image, pinned by digest (`just
+# exe-image` prints one). Extra words go to pytest: `just exe-e2e -k graceful`.
+[group('Exe')]
+[positional-arguments]
+exe-e2e *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${EXE_E2E_IMAGE:?EXE_E2E_IMAGE must be a task image pinned by digest (just exe-image prints one)}"
+    export KUBECONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/exe/kubeconfig"
+    if [ ! -f "$KUBECONFIG" ]; then
+        echo "no kubeconfig at $KUBECONFIG: run just exe-ctx first" >&2
+        exit 1
+    fi
+    EXE_E2E=1 {{ UV_RUN }} pytest tests/e2e/exe -v -s -rs -p no:cacheprovider "$@"
 
 # The orphan-snapshot GC (plan D11): prefixes of actors a lost store forgot.
 # Runs `exe-reap snapshot-gc` in a one-off Job made from the suspended

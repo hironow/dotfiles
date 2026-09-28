@@ -22,6 +22,7 @@ no mocks of project code.
 | [`exe/test_startup_script.py`](./exe/test_startup_script.py) | Control-plane VM startup_script (heredoc extraction + bash lint + systemd-analyze) |
 | [`exe/test_template.py`](./exe/test_template.py) | `exe/coder/templates/...` HCL static checks |
 | [`unit/`](./unit/) | Pure-Python helpers (no Docker, no fixtures) |
+| [`e2e/exe/`](./e2e/exe/) | The exe stack's stop paths against the real cluster; skipped unless `EXE_E2E=1` (`just exe-e2e`, see its README) |
 | [`docker/`](./docker/) | Dockerfiles supporting the heavier exe smoke tests |
 
 ## Running

@@ -1,0 +1,27 @@
+rules:
+  - id: exe-e2e-no-mocks
+    message: |
+      No mocks in an e2e test: a stand-in for the cluster asserts nothing
+      about it (AGENTS.md, non-negotiables). If a real dependency cannot be
+      used, the test is not e2e; it belongs in tests/unit, with stubs on PATH.
+    severity: ERROR
+    languages: [python]
+    paths:
+      include:
+        - "/tests/e2e/**"
+    pattern-either:
+      - pattern: import unittest.mock
+      - pattern: from unittest import mock
+      - pattern: from unittest.mock import $X
+      - pattern: import mock
+      - pattern: from pytest_mock import $X
+      - pattern: |
+          def $F(..., monkeypatch, ...):
+              ...
+      - pattern: |
+          def $F(..., mocker, ...):
+              ...
+    metadata:
+      category: e2e
+      added: "2026-09-28"
+      related-doc: "manager-loop Phase 6 plan D13; tests/e2e/exe/README.md"
