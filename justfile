@@ -1779,7 +1779,8 @@ _exe-ax tool *args:
 # The live end-to-end tests of the stop paths (plan D13; tests/e2e/exe/README.md).
 # They wake the node, run tasks and stop the pool: they cost node time, and every
 # one leaves 0 nodes. EXE_E2E_IMAGE is the task image, pinned by digest (`just
-# exe-image` prints one). Extra words go to pytest: `just exe-e2e -k graceful`.
+# exe-image` prints one). Name a test file to run just it; the forced stop (W3)
+# also needs EXE_E2E_FORCED=1.
 [group('Exe')]
 [positional-arguments]
 exe-e2e *args:
@@ -1791,7 +1792,11 @@ exe-e2e *args:
         echo "no kubeconfig at $KUBECONFIG: run just exe-ctx first" >&2
         exit 1
     fi
-    EXE_E2E=1 {{ UV_RUN }} pytest tests/e2e/exe -v -s -rs -p no:cacheprovider "$@"
+    # The whole suite only when nothing is named: a path runs only that path.
+    if [ "$#" -eq 0 ]; then
+        set -- tests/e2e/exe
+    fi
+    EXE_E2E=1 {{ UV_RUN }} pytest -v -s -rs -p no:cacheprovider "$@"
 
 # The orphan-snapshot GC (plan D11): prefixes of actors a lost store forgot.
 # Runs `exe-reap snapshot-gc` in a one-off Job made from the suspended
@@ -1819,13 +1824,20 @@ exe-snapshot-gc *args:
     fi
     job="exe-snapshot-gc-$(date +%s)"
     trap 'kubectl -n "$ns" delete job "$job" --ignore-not-found --wait=false >/dev/null' EXIT
-    # `--` keeps jq from reading -apply and -allow as its own options.
+    # The Job is this recipe's, not the CronJob's: `--from` makes the CronJob
+    # its owner, and with a history limit of 0 its controller deletes the
+    # finished Job, and the report with it, before it can be read. `--` keeps
+    # jq from reading -apply and -allow as its own options.
     kubectl -n "$ns" create job "$job" --from=cronjob/exe-snapshot-gc --dry-run=client -o json |
-        jq '.spec.template.spec.containers[0].args += $ARGS.positional' --args -- "$@" |
+        jq 'del(.metadata.ownerReferences) | .spec.template.spec.containers[0].args += $ARGS.positional' --args -- "$@" |
         kubectl -n "$ns" create -f - >/dev/null
     echo "job $job started; waiting for it (at most 15 min)" >&2
     for _ in $(seq 1 180); do
-        case "$(kubectl -n "$ns" get job "$job" -o jsonpath='{.status.succeeded}/{.status.failed}')" in
+        status="$(kubectl -n "$ns" get job "$job" -o jsonpath='{.status.succeeded}/{.status.failed}')" || {
+            echo "job $job is gone before it finished" >&2
+            exit 1
+        }
+        case "$status" in
         1/* | */1) break ;;
         esac
         sleep 5

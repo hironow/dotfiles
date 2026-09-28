@@ -15,9 +15,10 @@ them.
 - Both boundaries still end in a graceful stop and 0 nodes, and the first L1
   tick of the next wake, which observes before it reopens anything, sees no
   actor awake.
-- The second wake shows L1 reopening the router and the controller on the new
-  lease after `drained` (Reopen). A last sleep, cancelled by an extend while it
-  drains, shows them restored mid-drain (Cancel): 6.2's router restore.
+- The second wake shows L1 putting the router and the controller back on the
+  new lease after `drained` (a Cancel of that record). A last sleep, cancelled
+  by an extend while it drains, shows them restored mid-drain: 6.2's router
+  restore.
 
 The scenario runs once, in a module fixture that records what it saw and where
 it stopped, and each test asserts its own part. The `exe` fixture's teardown
@@ -71,23 +72,28 @@ class Scenario:
             )
 
 
+# The branches in which L1 puts the router and the controller back (DecideL1):
+# Cancel when a drain record is left from another lease, Reopen when there is
+# none but a gate is still shut. A wake after `drained` is a Cancel (seen at
+# W2's first wake, 09:56:03Z).
+RESTORES = ("Cancel", "Reopen")
+
+
 def first_decision(
-    exe: Exe, since: datetime, branch: str | None = None
+    exe: Exe, since: datetime, branches: tuple[str, ...] = ()
 ) -> dict[str, Any]:
-    """The first L1 decision since a moment, optionally of one branch."""
+    """The first L1 decision since a moment, optionally of the given branches."""
 
     def probe() -> dict[str, Any] | None:
         for entry in exe.l1_decisions(since):
             decision = entry["jsonPayload"]["exe_l1"]
-            if branch is None or decision.get("branch") == branch:
+            if not branches or decision.get("branch") in branches:
                 return {"timestamp": entry["timestamp"], **decision}
         return None
 
+    what = "/".join(branches) or "decision"
     return exe.wait_until(
-        f"an L1 {branch or 'decision'} since {stamp(since)}",
-        probe,
-        timeout=600,
-        interval=20,
+        f"an L1 {what} since {stamp(since)}", probe, timeout=600, interval=20
     )
 
 
@@ -158,7 +164,7 @@ def run_scenario(exe: Exe, s: Scenario) -> None:
     # the next wake: first what Substrate holds, then the tasks
     woke = exe.wake("30m")
     step("first_tick_2", first_decision(exe, woke))
-    step("reopen_2", first_decision(exe, woke, "Reopen"))
+    step("restore_2", first_decision(exe, woke, RESTORES))
     exe.wait_phase(a, "Running", timeout=600)
     step("a_came_back", True)
     step("marker_a", (exe.ssh(a, "cat /workspace/e2e-marker").strip(), marker_a))
@@ -178,7 +184,7 @@ def run_scenario(exe: Exe, s: Scenario) -> None:
     generation = exe.sleep()
     exe.wait_drain(generation, "draining", timeout=300, interval=5)
     exe.just("exe-extend", "15m")
-    step("cancel", first_decision(exe, cancelling, "Cancel"))
+    step("cancel", first_decision(exe, cancelling, ("Cancel",)))
     exe.wait_until(
         "the router and the controller back after the cancel",
         lambda: (
@@ -240,8 +246,8 @@ def test_a_task_cannot_reach_the_control_api(scenario: Scenario) -> None:
 
 
 def test_the_gates_reopen_on_a_valid_lease(scenario: Scenario) -> None:
-    """6.2: Reopen at the wake after drained, and Cancel restoring both gates mid-drain."""
-    scenario.need("reopen_2", "cancel", "gates_after_cancel")
+    """6.2: both gates back at the wake after drained, and after a cancel mid-drain."""
+    scenario.need("restore_2", "cancel", "gates_after_cancel")
     s = scenario.seen
-    for key in ("reopen_2", "cancel"):
+    for key in ("restore_2", "cancel"):
         assert s[key]["router"] == 1 and s[key]["controller"] == 1, s[key]

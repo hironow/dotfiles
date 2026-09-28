@@ -37,7 +37,7 @@ its own part:
 | `test_a_resume_while_draining_still_ends_suspended` | 6.9 | B's resume during the drain still ends in `drained`. The first L1 tick of the next wake, which observes before it reopens anything, sees no actor awake, and B comes back with its marker. |
 | `test_a_resume_after_drained_runs_at_the_next_wake` | 6.9 | A's resume after `drained` finds no controller pod, the stop stays graceful, and the resume runs by itself at the next wake, as the operator asked. |
 | `test_a_task_cannot_reach_the_control_api` | 6.9 (F5) | From inside B, a TLS handshake with the Control API, by name and by ClusterIP, gets no answer. |
-| `test_the_gates_reopen_on_a_valid_lease` | 6.2 | L1 reopens the router and the controller on the new lease after `drained` (Reopen), and an extend during a drain restores both mid-drain (Cancel). |
+| `test_the_gates_reopen_on_a_valid_lease` | 6.2 | L1 puts the router and the controller back on the new lease after `drained` (a Cancel of the old record; Reopen is for a gate shut with no record), and an extend during a drain restores both mid-drain (Cancel). |
 
 `test_forced_stop.py` runs alone, about 15 node-minutes, and only with the
 operator on email:

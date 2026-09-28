@@ -14,6 +14,7 @@ behind; delete it at the next wake (the test says which).
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Iterator
 from datetime import timedelta
@@ -21,6 +22,14 @@ from datetime import timedelta
 import pytest
 
 from exe_live import Exe, log, parse_time, utcnow
+
+# W3 only: the operator on email, after the manager's go. EXE_E2E alone runs
+# the rest of the suite and never this; running the whole directory once
+# started it by accident (W2, 19:18 JST).
+pytestmark = pytest.mark.skipif(
+    os.environ.get("EXE_E2E_FORCED") != "1",
+    reason="the forced stop pages the operator: EXE_E2E_FORCED=1 runs it (W3, with the manager's go)",
+)
 
 # exe/lease-constants.json: L2 forces heartbeat_stale_ticks L1 ticks after the
 # deadline when no drain record exists, and a scheduled L2 tick comes at most

@@ -88,3 +88,21 @@ def test_the_readme_says_what_each_run_costs_and_leaves() -> None:
         "0 nodes",
     ):
         assert needed in readme, needed
+
+
+def test_the_forced_stop_needs_its_own_opt_in() -> None:
+    # W3 needs the operator on email and the manager's go. Running the
+    # directory once started it in W2 (pytest collected it beside the file
+    # asked for): EXE_E2E alone must never start it.
+    text = (SUITE / "test_forced_stop.py").read_text()
+    assert re.search(
+        r"pytestmark = pytest\.mark\.skipif\(\s*os\.environ\.get\(\"EXE_E2E_FORCED\"\) != \"1\"",
+        text,
+    )
+
+
+def test_a_path_argument_runs_only_that_path() -> None:
+    # The directory is the default only when no argument names what to run.
+    _, body = recipe("exe-e2e")
+    assert re.search(r'if \[ "\$#" -eq 0 \]; then\s+set -- tests/e2e/exe', body)
+    assert not re.search(r"pytest tests/e2e/exe", body)

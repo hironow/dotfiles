@@ -49,6 +49,21 @@ def test_the_job_comes_from_the_suspended_template() -> None:
     assert "--from=cronjob/exe-snapshot-gc" in body
 
 
+def test_the_job_is_ours_not_the_cronjobs() -> None:
+    # `create job --from` makes the CronJob the Job's owner, and with a
+    # history limit of 0 its controller deleted the finished Job, and the
+    # GC's report with it, before the recipe could read it (W2, 18:56 JST).
+    _, body = recipe("exe-snapshot-gc")
+    assert "del(.metadata.ownerReferences)" in body
+
+
+def test_a_job_that_vanishes_ends_the_wait() -> None:
+    # A Job that is gone will not finish: the wait fails at once rather than
+    # polling NotFound for 15 minutes.
+    _, body = recipe("exe-snapshot-gc")
+    assert re.search(r"get job \"\$job\"[^\n]*\|\| \{", body)
+
+
 def test_the_job_is_deleted_whatever_happens() -> None:
     _, body = recipe("exe-snapshot-gc")
     trap = re.search(r"^\s*trap '([^']*)' EXIT", body, re.M)
