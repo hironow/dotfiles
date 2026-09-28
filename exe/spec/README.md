@@ -353,6 +353,11 @@ Invariants (`Retention`):
   for `task_ttl_days`, and is not kept.
 - **`ProtectedImagesAreTagged`**: every protected live task's image carries a
   tag right now.
+- **`TtlNeverMissed`**, the liveness half: every L1 tick at or past a task's
+  TTL (SUSPENDED and untouched for `task_ttl_days`, not kept) deletes it.
+  Safety alone is satisfied by a TTL that never fires, which is unbounded
+  storage. The model's time is bounded, so this is a bounded response rather
+  than a temporal formula `quint run` could not check.
 
 Rejected designs, each a named run that must fail:
 
@@ -360,6 +365,42 @@ Rejected designs, each a named run that must fail:
 |---|---|---|
 | `sharedJobTag` | `sharedTagLetsAFreshTasksImageBeCollected` | ax-job tags the shared `inuse-<sha12>`; a tick between its tag and its apply reads a weeks-old "unreferenced since" and releases the tag, and AR collects the new task's image |
 | `ttlByFirstSight` | `firstSightDeletesATaskUsedYesterday` | the TTL counts from L1's first sight of the task suspended; a resume and re-suspend between two ticks are invisible, and a task used yesterday is deleted as a month old |
+| `backgroundWriteRefreshes` | `aBackgroundWriteKeepsATaskForever` | not a design: the TTL clock's assumption broken. Something rewrites a SUSPENDED actor's row now and then, update_time never ages, and the TTL never fires (`TtlNeverMissed`) |
+
+The TTL clock rests on that assumption: nothing writes a SUSPENDED actor's row
+in the background. At the pinned Substrate (672533541dbf) it holds. Every
+actor write goes through `store.UpdateActor`: the one `UPDATE actors` is
+`cmd/ateapi/internal/store/atepg/atepg.go:709`, beside the create (`:636`)
+and the delete (`:754`). Its callers in `cmd/ateapi/internal/controlapi/`
+are:
+
+- `workflow_suspend.go:152` marks SUSPENDING, from RUNNING or PAUSED only, and
+  `:425` commits SUSPENDED. A suspend of an actor already SUSPENDED returns at
+  `:68` without writing, which matters because the ax-controller calls
+  SuspendActor on every reconcile of a suspended task.
+- `workflow_resume.go:266`, `:271`, `:533` and `:803` resume. That is a real
+  use, and it should restart the TTL.
+- `workflow_pause.go:135` and `:274` pause, from RUNNING.
+- `workflow_delete.go:293` and `:336` delete: the TTL's own action, or the
+  operator's.
+- `crash.go:94` (`crashActor`) is reached only from inside the suspend,
+  resume and pause workflows: `crash.go:54`, `workflow_pause.go:162` and
+  `:172`, `workflow_resume.go:355`, `:365`, `:376`, `:389` and `:407`,
+  `workflow_suspend.go:215`, `:225` and `:283`.
+- `workflow_worker_delete.go:213` releases actors from a dead worker, and skips
+  a SUSPENDED one just above it ("suspended cleanly before the pod went away").
+- `actor.go:256` and `:279` are the client-facing UpdateActor. AX v0.3.1 never
+  calls it, and its reconciles are event-driven (`internal/controller/worker.go`
+  subscribes to task events; there is no periodic resync).
+
+Background loops checked for actor writes, none found:
+`cmd/atecontroller/internal/workersync/syncer.go` (DeleteWorker, which goes
+to the worker-delete workflow above), `controlapi/template_reconciler.go`
+(templates, and golden actors in `ate-golden` only), `store/atepg/outbox.go`,
+`cmd/ateapi/internal/workercache`, atelet's `imagegc.go` and
+`systeminfovolume.go`, and atenet's router `health.go` and `envoydrain.go`. A
+Substrate upgrade re-opens this list. The model's
+`backgroundWriteRefreshes` shows what breaks if it grows.
 
 Time is whole days, and L1's ticks, AR's cleanup and the operator's commands
 interleave freely inside one: coarser than reality, so any order the real
@@ -378,17 +419,21 @@ mise x -- quint test --main=sharedJobTag \
     --match=sharedTagLetsAFreshTasksImageBeCollected exe/spec/retention.qnt
 mise x -- quint test --main=ttlByFirstSight \
     --match=firstSightDeletesATaskUsedYesterday exe/spec/retention.qnt
+mise x -- quint test --main=backgroundWriteRefreshes \
+    --match=aBackgroundWriteKeepsATaskForever exe/spec/retention.qnt
 ```
 
-The random search finds both rejected designs' violations within seconds on
-the same seed, and none in the decided one: the search reaches the states that
-matter.
+The random search finds all three rejected instances' violations within a
+second or so on the same seed, and none in the decided one: the search reaches
+the states that matter.
 
 The Go half is `DecideRetention` (`tools/exe-reaper/internal/lease/retention.go`).
 `TestSimulationRetention*` runs it through this model's environment on 200 fixed
 seeds, checks the three invariants on the Go state after every step, and
 requires TTL deletions, releases and collections to occur. The same sweep with
-ax-job tagging the shared `inuse-<sha12>` must find a violation, and does.
+ax-job tagging the shared `inuse-<sha12>` must find a violation, and so must
+one with a background writer refreshing suspended actors (a missed TTL);
+both do.
 `EXE_REAPER_RETENTION_SEED=<seed>` replays one seed.
 
 ## Findings the model produced

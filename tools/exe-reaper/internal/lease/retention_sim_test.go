@@ -63,6 +63,7 @@ var retentionWeights = []struct {
 	{stepDay, 5},
 	{stepARCleanup, 1},
 	{stepL1Tick, 4},
+	{stepBackgroundWrite, 1},
 }
 
 const (
@@ -78,6 +79,7 @@ const (
 	stepDay
 	stepARCleanup
 	stepL1Tick
+	stepBackgroundWrite
 )
 
 func (w *retWorld) draw() int {
@@ -119,6 +121,9 @@ type retWorld struct {
 	// sharedJobTag is retention.qnt's rejected design: ax-job tags the shared
 	// inuse-<sha12>.
 	sharedJobTag bool
+	// backgroundWrites is its backgroundWriteRefreshes: something rewrites a
+	// suspended actor's row now and then, moving its update_time.
+	backgroundWrites bool
 
 	trace []string
 	stats retStats
@@ -162,36 +167,17 @@ func (w *retWorld) liveTask(key string) (*retTask, bool) {
 func (w *retWorld) step() string {
 	key := fmt.Sprintf("exe/t%d", w.rng.IntN(retentionTasks)+1)
 	digest := retDigest(w.rng.IntN(retentionDigests) + 1)
-	switch w.draw() {
+	switch kind := w.draw(); kind {
 	case stepPush:
-		if _, pushed := w.pushedAt[digest]; !pushed {
-			w.pushedAt[digest] = w.day
-			w.note("push %s", digest[7:13])
-		}
+		w.push(digest)
 	case stepAxJobTag:
 		w.axJobTag(key, digest)
 	case stepAxJobApply:
 		w.axJobApply(key)
 	case stepRawApply:
-		if _, exists := w.tasks[key]; w.awake && !exists && w.pending[key] == "" && w.available(digest) {
-			w.tasks[key] = &retTask{alive: true, digest: digest, changedAt: w.now()}
-			w.note("raw apply %s on %s", key, digest[7:13])
-		}
-	case stepSuspend:
-		if t, ok := w.liveTask(key); ok && w.awake && !t.suspended {
-			t.suspended, t.changedAt, t.suspendedAt = true, w.now(), w.now()
-			w.note("suspend %s", key)
-		}
-	case stepResume:
-		if t, ok := w.liveTask(key); ok && w.awake && t.suspended && w.available(t.digest) {
-			t.suspended, t.changedAt = false, w.now()
-			w.note("resume %s", key)
-		}
-	case stepDelete:
-		if t, ok := w.liveTask(key); ok && w.awake {
-			t.alive = false
-			w.note("operator deletes %s", key)
-		}
+		w.rawApply(key, digest)
+	case stepSuspend, stepResume, stepDelete, stepBackgroundWrite:
+		w.operate(kind, key)
 	case stepKeep:
 		w.keep[key] = !w.keep[key]
 		w.note("keep %s = %t", key, w.keep[key])
@@ -206,6 +192,43 @@ func (w *retWorld) step() string {
 		return w.l1Tick()
 	}
 	return ""
+}
+
+func (w *retWorld) push(digest string) {
+	if _, pushed := w.pushedAt[digest]; !pushed {
+		w.pushedAt[digest] = w.day
+		w.note("push %s", digest[7:13])
+	}
+}
+
+func (w *retWorld) rawApply(key, digest string) {
+	if _, exists := w.tasks[key]; w.awake && !exists && w.pending[key] == "" && w.available(digest) {
+		w.tasks[key] = &retTask{alive: true, digest: digest, changedAt: w.now()}
+		w.note("raw apply %s on %s", key, digest[7:13])
+	}
+}
+
+// operate is what the operator, AX, or a background writer does to one live
+// task, with a node up.
+func (w *retWorld) operate(kind int, key string) {
+	t, ok := w.liveTask(key)
+	if !ok || !w.awake {
+		return
+	}
+	switch {
+	case kind == stepSuspend && !t.suspended:
+		t.suspended, t.changedAt, t.suspendedAt = true, w.now(), w.now()
+		w.note("suspend %s", key)
+	case kind == stepResume && t.suspended && w.available(t.digest):
+		t.suspended, t.changedAt = false, w.now()
+		w.note("resume %s", key)
+	case kind == stepDelete:
+		t.alive = false
+		w.note("operator deletes %s", key)
+	case kind == stepBackgroundWrite && w.backgroundWrites && t.suspended:
+		t.changedAt = w.now()
+		w.note("background write to %s", key)
+	}
 }
 
 func (w *retWorld) axJobTag(key, digest string) {
@@ -302,6 +325,14 @@ func (w *retWorld) l1Tick() string {
 
 	d := DecideRetention(o)
 	w.stats.ticks++
+	// The liveness half (TtlNeverMissed): a task SUSPENDED and untouched for
+	// the TTL, and not kept, is deleted by this tick.
+	for key, t := range w.tasks {
+		if t.alive && t.suspended && !w.keep[key] && !w.now().Before(t.suspendedAt.Add(TaskTTL)) && !slices.Contains(d.Delete, key) {
+			return fmt.Sprintf("TtlNeverMissed: %s has been suspended since %s and is not kept, and the tick on day %d left it",
+				key, t.suspendedAt.Format(time.DateOnly), w.day)
+		}
+	}
 	for _, key := range d.Delete {
 		t := w.tasks[key]
 		if !t.suspended || w.keep[key] || w.now().Before(t.suspendedAt.Add(TaskTTL)) {
@@ -340,17 +371,28 @@ func (w *retWorld) protectedImagesAreTagged() string {
 	return ""
 }
 
-func runRetention(seed uint64, sharedJobTag bool) (retStats, string, []string) {
+// retentionVariant switches one of retention.qnt's rejected designs into the
+// simulated world.
+type retentionVariant int
+
+const (
+	decidedRetention retentionVariant = iota
+	withSharedJobTag
+	withBackgroundWrites
+)
+
+func runRetention(seed uint64, variant retentionVariant) (retStats, string, []string) {
 	w := &retWorld{
-		rng:          rand.New(rand.NewPCG(seed, seed^0x5eed)),
-		epoch:        time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
-		tasks:        map[string]*retTask{},
-		pushedAt:     map[string]int{},
-		gone:         map[string]bool{},
-		tags:         map[string]Tag{},
-		keep:         map[string]bool{},
-		pending:      map[string]string{},
-		sharedJobTag: sharedJobTag,
+		rng:              rand.New(rand.NewPCG(seed, seed^0x5eed)),
+		epoch:            time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+		tasks:            map[string]*retTask{},
+		pushedAt:         map[string]int{},
+		gone:             map[string]bool{},
+		tags:             map[string]Tag{},
+		keep:             map[string]bool{},
+		pending:          map[string]string{},
+		sharedJobTag:     variant == withSharedJobTag,
+		backgroundWrites: variant == withBackgroundWrites,
 	}
 	for range retentionSteps {
 		if v := w.step(); v != "" {
@@ -374,7 +416,7 @@ func TestSimulationRetentionHoldsTheInvariants(t *testing.T) {
 	}
 	var total retStats
 	for _, seed := range seeds {
-		stats, violation, trace := runRetention(seed, false)
+		stats, violation, trace := runRetention(seed, decidedRetention)
 		if violation != "" {
 			t.Fatalf("seed %d: %s\nreplay: EXE_REAPER_RETENTION_SEED=%d\nlast steps:\n  %s",
 				seed, violation, seed, strings.Join(trace[max(0, len(trace)-15):], "\n  "))
@@ -394,8 +436,8 @@ func TestSimulationRetentionHoldsTheInvariants(t *testing.T) {
 }
 
 func TestSimulationRetentionIsDeterministic(t *testing.T) {
-	a, va, ta := runRetention(42, false)
-	b, vb, tb := runRetention(42, false)
+	a, va, ta := runRetention(42, decidedRetention)
+	b, vb, tb := runRetention(42, decidedRetention)
 	if a != b || va != vb || !slices.Equal(ta, tb) {
 		t.Error("the same seed ran two different ways")
 	}
@@ -405,10 +447,22 @@ func TestSimulationRetentionCatchesASharedJobTag(t *testing.T) {
 	// The teeth: with retention.qnt's rejected design wired in, the same
 	// sweep must find its violation.
 	for _, seed := range retentionSeeds {
-		if _, violation, _ := runRetention(seed, true); violation != "" {
+		if _, violation, _ := runRetention(seed, withSharedJobTag); violation != "" {
 			t.Logf("seed %d: %s", seed, violation)
 			return
 		}
 	}
 	t.Error("no seed found a violation with ax-job tagging the shared inuse-<sha12>: the simulation has no teeth")
+}
+
+func TestSimulationRetentionCatchesABackgroundWriter(t *testing.T) {
+	// The liveness half's teeth: with something rewriting suspended actors,
+	// update_time never ages, and the sweep must see a TTL that did not fire.
+	for _, seed := range retentionSeeds {
+		if _, violation, _ := runRetention(seed, withBackgroundWrites); strings.HasPrefix(violation, "TtlNeverMissed") {
+			t.Logf("seed %d: %s", seed, violation)
+			return
+		}
+	}
+	t.Error("no seed found a missed TTL with background writes: the liveness check has no teeth")
 }

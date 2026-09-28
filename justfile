@@ -725,7 +725,8 @@ spec-check:
       "lease goldenIgnored goldenReconcilerResumesAfterDrained" \
       "lease pdbHoldsTheDrain aDisruptionBudgetOutlivesTheBound" \
       "retention sharedJobTag sharedTagLetsAFreshTasksImageBeCollected" \
-      "retention ttlByFirstSight firstSightDeletesATaskUsedYesterday"; do
+      "retention ttlByFirstSight firstSightDeletesATaskUsedYesterday" \
+      "retention backgroundWriteRefreshes aBackgroundWriteKeepsATaskForever"; do
       read -r spec module run <<<"$rejected"
       echo "🔬 quint test $module.$run (must fail)"
       if out="$($QUINT test --main="$module" --match="$run" "exe/spec/$spec.qnt" 2>&1)"; then

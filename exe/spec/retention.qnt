@@ -36,6 +36,20 @@
 //           moment. The real policy also keeps the 2 most recent versions; the
 //           model does not rely on that, so it collects at least as much as AR.
 //
+// LIVENESS
+//
+// Safety alone is satisfied by a TTL that never fires, and a TTL that never
+// fires is unbounded storage. So a task SUSPENDED and untouched for
+// task_ttl_days, and not kept, must be deleted by the first L1 tick after
+// that: `TtlNeverMissed`. The model's time is bounded, so this is checked as
+// a bounded response -- every tick at or past a task's TTL deletes it -- rather
+// than as a temporal formula, which `quint run` cannot check.
+//
+// It rests on one assumption about the store, checked against the pinned
+// Substrate source (exe/spec/README.md lists the paths): nothing writes a
+// SUSPENDED actor's row in the background, so its update_time only moves when
+// someone suspends, resumes, pauses or deletes it.
+//
 // REJECTED DESIGNS (each kept as a failing named run, at the bottom)
 //
 //   sharedJobTag     ax-job tags the shared `inuse-<sha12>`. L1's
@@ -47,6 +61,10 @@
 //                    suspended. A resume and a re-suspend between two ticks
 //                    are invisible to it, and a task used yesterday is deleted
 //                    as a month old.
+//   backgroundWriteRefreshes
+//                    the store's assumption broken: something rewrites a
+//                    SUSPENDED actor's row now and then. update_time never
+//                    gets old, and the TTL never fires.
 //
 // TIME
 //
@@ -79,6 +97,11 @@ module retentionCore {
   /// The TTL counts from the first tick L1 saw the task suspended, instead of
   /// the store's update_time (`ttlByFirstSight`).
   const ttl_by_first_sight: bool
+
+  /// Something in the background rewrites a SUSPENDED actor's row, moving its
+  /// update_time (`backgroundWriteRefreshes`). The pinned Substrate has no
+  /// such writer; this is what the TTL would do if one appeared.
+  const background_writes: bool
 
   // --------------------------------------------------------------------------
   // Constants. task_ttl_days and task_ttl_warning_days mirror
@@ -139,6 +162,7 @@ module retentionCore {
   // evidence, raised at the step that breaks a property
   var deletedEarly: bool
   var liveImageCollected: bool
+  var ttlMissed: bool
 
   // --------------------------------------------------------------------------
   // Helpers
@@ -181,6 +205,7 @@ module retentionCore {
   action unchangedEvidence = all {
     deletedEarly' = deletedEarly,
     liveImageCollected' = liveImageCollected,
+    ttlMissed' = ttlMissed,
   }
 
   /// A new task image is pushed (Cloud Build).
@@ -279,6 +304,20 @@ module retentionCore {
     unchangedEvidence,
   }
 
+  /// A background write to a SUSPENDED actor's row: its update_time moves,
+  /// and nothing else. Enabled only in `backgroundWriteRefreshes`.
+  action backgroundWrite(t: int): bool = all {
+    background_writes,
+    awake,
+    liveTasks.contains(t),
+    tasks.get(t).suspended,
+    tasks' = tasks.set(t, { ...tasks.get(t), changedAt: clock }),
+    clock' = clock, awake' = awake, versions' = versions, l1Tags' = l1Tags,
+    jobTags' = jobTags, axJobPending' = axJobPending, keep' = keep,
+    unreferencedSince' = unreferencedSince,
+    unchangedEvidence,
+  }
+
   /// `just exe-keep add|rm`, on the operator's Mac: any time.
   action keepTask(t: int, kept: bool): bool = all {
     keep.contains(t) != kept,
@@ -344,6 +383,7 @@ module retentionCore {
       liveImageCollected' = (liveImageCollected or liveTasks.exists(t =>
         tasks.get(t).protected and doomed.contains(tasks.get(t).digest))),
       deletedEarly' = deletedEarly,
+      ttlMissed' = ttlMissed,
       clock' = clock, awake' = awake, tasks' = tasks, l1Tags' = l1Tags,
       jobTags' = jobTags, axJobPending' = axJobPending, keep' = keep,
       unreferencedSince' = unreferencedSince,
@@ -383,6 +423,9 @@ module retentionCore {
       unreferencedSince' = unreferenced.exclude(releasedL1).mapBy(d => since.get(d)),
       // Parenthesised: `x' = a or b` would read as `(x' = a) or b`.
       deletedEarly' = (deletedEarly or expired.exists(t => not(ttlExpiredForReal(t)))),
+      // The liveness half: a task whose TTL has really run out and that this
+      // tick leaves alive is a TTL that did not fire.
+      ttlMissed' = (ttlMissed or remaining.exists(t => ttlExpiredForReal(t))),
       liveImageCollected' = liveImageCollected,
       clock' = clock, awake' = awake, versions' = versions,
       axJobPending' = axJobPending, keep' = keep,
@@ -405,6 +448,7 @@ module retentionCore {
     unreferencedSince' = Map(),
     deletedEarly' = false,
     liveImageCollected' = false,
+    ttlMissed' = false,
   }
 
   action step: bool = any {
@@ -420,6 +464,7 @@ module retentionCore {
       resumeTask(t),
       operatorDelete(t),
       keepTask(t, kept),
+      backgroundWrite(t),
     },
     wake,
     sleep,
@@ -445,10 +490,16 @@ module retentionCore {
   val ProtectedImagesAreTagged = liveTasks.forall(t =>
     tasks.get(t).protected implies tagged(tasks.get(t).digest))
 
+  /// The liveness half, as a bounded response: every L1 tick at or past a
+  /// task's TTL -- SUSPENDED and untouched for task_ttl_days, and not kept --
+  /// deletes it.
+  val TtlNeverMissed = not(ttlMissed)
+
   val Retention = and {
     NoLiveImageCollected,
     TtlDeletesOnlyTheExpired,
     ProtectedImagesAreTagged,
+    TtlNeverMissed,
   }
 }
 
@@ -456,7 +507,7 @@ module retentionCore {
 // The decided design
 // ============================================================================
 module retention {
-  import retentionCore(shared_job_tag = false, ttl_by_first_sight = false).*
+  import retentionCore(shared_job_tag = false, ttl_by_first_sight = false, background_writes = false).*
 
   /// The helper every scripted run starts from: a node up and one image.
   action upWithImage(d: int): bool = init.then(wake).then(push(d))
@@ -474,6 +525,18 @@ module retention {
       .expect(tasks.get(1).alive)
       .then(sleep)
       .then(dayPasses)
+      .then(wake)
+      .then(l1RetentionTick)
+      .expect(and { not(tasks.get(1).alive), Retention })
+
+  /// The liveness half: a task suspended by the drain as the node went to
+  /// sleep, and not touched again, is deleted by the first tick of the first
+  /// wake after its TTL, however long the sleep.
+  run theFirstWakeAfterTheTtlDeletesTest =
+    upWithImage(1)
+      .then(axJobTag(1, 1)).then(axJobApply(1))
+      .then(sleep)                                    // the drain suspends it
+      .then((task_ttl_days + 20).reps(_ => dayPasses))
       .then(wake)
       .then(l1RetentionTick)
       .expect(and { not(tasks.get(1).alive), Retention })
@@ -546,7 +609,7 @@ module retention {
 //   on an untagged image, and AR's next cleanup collects it.
 // ============================================================================
 module sharedJobTag {
-  import retentionCore(shared_job_tag = true, ttl_by_first_sight = false).*
+  import retentionCore(shared_job_tag = true, ttl_by_first_sight = false, background_writes = false).*
 
   /// EXPECTED TO FAIL (ProtectedImagesAreTagged, then NoLiveImageCollected).
   run sharedTagLetsAFreshTasksImageBeCollected =
@@ -574,7 +637,7 @@ module sharedJobTag {
 //   the task is deleted as a month old the day after it was used.
 // ============================================================================
 module ttlByFirstSight {
-  import retentionCore(shared_job_tag = false, ttl_by_first_sight = true).*
+  import retentionCore(shared_job_tag = false, ttl_by_first_sight = true, background_writes = false).*
 
   /// EXPECTED TO FAIL (TtlDeletesOnlyTheExpired).
   run firstSightDeletesATaskUsedYesterday =
@@ -587,5 +650,31 @@ module ttlByFirstSight {
       .then(suspendTask(1))                           // ... and suspended again, between ticks
       .then(dayPasses)
       .then(l1RetentionTick)                          // day 30 by first sight: deleted
+      .expect(Retention)
+}
+
+// ============================================================================
+// REJECTED DESIGN 3 -- a background writer keeps update_time fresh
+//
+// Scope: the assumption the TTL clock rests on, not a design anyone chose.
+// Accepted by: the Phase 6 amendment of plan D10, on source evidence that the
+//   pinned Substrate has no such writer (exe/spec/README.md); the live runs
+//   record a suspended actor's update_time across a sleep to confirm it.
+// Why it matters: if a Substrate upgrade adds a periodic write to suspended
+//   actors, update_time never ages, the TTL never fires, and storage grows
+//   without bound. This instance keeps TtlNeverMissed honest: it must FAIL.
+// ============================================================================
+module backgroundWriteRefreshes {
+  import retentionCore(shared_job_tag = false, ttl_by_first_sight = false, background_writes = true).*
+
+  /// EXPECTED TO FAIL (TtlNeverMissed).
+  run aBackgroundWriteKeepsATaskForever =
+    init.then(wake).then(push(1))
+      .then(axJobTag(1, 1)).then(axJobApply(1))
+      .then(suspendTask(1))
+      .then((task_ttl_days / 2).reps(_ => dayPasses))
+      .then(backgroundWrite(1))                       // update_time moves, nobody resumed it
+      .then((task_ttl_days / 2 + 1).reps(_ => dayPasses))
+      .then(l1RetentionTick)                          // suspended 31 days: must be deleted
       .expect(Retention)
 }
