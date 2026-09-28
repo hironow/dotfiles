@@ -883,8 +883,7 @@ func cmdStatus(ctx context.Context, args []string) error {
 	if body, _, err := client.GetObject(ctx, cfg.bucket, ops.DrainObject); err == nil {
 		var d lease.Drain
 		if json.Unmarshal(body, &d) == nil {
-			fmt.Printf("drain          %s (heartbeat %s, lease generation %d)\n",
-				orNone(string(d.Phase)), d.Heartbeat.In(lease.Location()).Format(time.RFC3339), d.LeaseGeneration)
+			fmt.Printf("drain          %s\n", describeDrain(d))
 		}
 	} else {
 		fmt.Println("drain          (none)")
@@ -921,6 +920,19 @@ func cmdStatus(ctx context.Context, args []string) error {
 		fmt.Printf("node pool      unreadable: %v\n", err)
 	}
 
+	// tasks.json is L1's record: it answers while the node sleeps, as of the
+	// last time L1 saw a change.
+	if body, _, err := client.GetObject(ctx, cfg.bucket, ops.TasksObject); err == nil {
+		var rec lease.TasksRecord
+		if json.Unmarshal(body, &rec) == nil {
+			fmt.Printf("tasks          %d as L1 last saw them (%s)\n",
+				len(rec.Tasks), rec.At.In(lease.Location()).Format(time.RFC3339))
+			for _, line := range ttlNotice(rec, now) {
+				fmt.Println("task TTL       " + line)
+			}
+		}
+	}
+
 	if kept, err := keepList(ctx, client, cfg.bucket); err != nil {
 		fmt.Printf("kept tasks     unreadable: %v\n", err)
 	} else if len(kept) > 0 {
@@ -932,9 +944,44 @@ func cmdStatus(ctx context.Context, args []string) error {
 	return nil
 }
 
-func orNone(s string) string {
-	if s == "" {
-		return "(none)"
+// describeDrain is drain.json for a reader: what the phase means, and only
+// the fields that mean something in it.
+func describeDrain(d lease.Drain) string {
+	stamp := func(t time.Time) string { return t.In(lease.Location()).Format(time.RFC3339) }
+	if d.Phase == lease.DrainNone {
+		if d.IdleSince.IsZero() {
+			return "none"
+		}
+		return "none (nothing awake since " + stamp(d.IdleSince) + ")"
 	}
-	return s
+	phase := string(d.Phase)
+	if d.Failure != "" {
+		phase += " (" + d.Failure + ")"
+	}
+	if d.Reason != "" {
+		phase += " for " + string(d.Reason)
+	}
+	return fmt.Sprintf("%s (heartbeat %s, lease generation %d)", phase, stamp(d.Heartbeat), d.LeaseGeneration)
+}
+
+// ttlNotice is exe-status's warning about the task TTL (plan D10): each
+// suspended, unkept task whose TTL runs out within TaskTTLWarning, or already
+// has. L1 deletes it at the first wake after that, so the notice is how the
+// operator hears of it in time to keep it.
+func ttlNotice(rec lease.TasksRecord, now time.Time) []string {
+	var out []string
+	for _, t := range rec.Tasks {
+		if !t.Suspended || t.Kept || t.DeleteAt.IsZero() || t.DeleteAt.Sub(now) > lease.TaskTTLWarning {
+			continue
+		}
+		keep := " (keep it: just exe-keep add " + t.Task + ")"
+		if !now.Before(t.DeleteAt) {
+			out = append(out, t.Task+" is past its TTL and is deleted at the next wake"+keep)
+			continue
+		}
+		out = append(out, t.Task+" is deleted at the first wake after "+
+			t.DeleteAt.In(lease.Location()).Format(time.RFC3339)+keep)
+	}
+	slices.Sort(out)
+	return out
 }
