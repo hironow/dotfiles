@@ -50,12 +50,13 @@ guest's path is closed by authentication, and the worker pod's path by
 | `test_a_pod_in_the_atespace_reaches_the_api_only_without_the_policy` | F5 | A probe pod in the atespace, standing in for a worker pod: with `EXE_E2E_API_POLICY=absent` it gets an answer (the path exists), with `present` it gets none. |
 | `test_the_callers_still_work_behind_the_policy` | F5 | With `present`: an L1 tick still reads Substrate, and the ax-controller still suspends and resumes a task. |
 
-`test_forced_stop.py` runs alone, about 15 node-minutes, and only with the
+`test_forced_stop.py` runs alone, about 30 node-minutes (most of it L2's
+20-minute heartbeat window), and only with the
 operator on email:
 
 | test | item | what it proves |
 | --- | --- | --- |
-| `test_forced_stop_pages` | 6.8 | With L1's CronJob suspended (restored afterwards whatever happens), an awake task and a 5-minute lease, L2 forces the stop after the heartbeat window and within one L2 tick of it. The decision is logged at ERROR with notify set, which is what the "exe: L2 forced a stop" alert matches. |
+| `test_forced_stop_pages` | 6.8 | With L1's CronJob suspended (restored afterwards whatever happens), an awake task, and the lease run out at once (`just exe-sleep`), L2 forces the stop after the heartbeat window (heartbeat_stale_ticks L2 ticks, 20 minutes) and within one L2 tick of it. The decision, read from Cloud Logging since a scheduled tick may force first, is logged at ERROR with notify set, which is what the "exe: L2 forced a stop" alert matches. |
 
 The operator confirms by hand that the forced stop's email arrived: the
 Monitoring API has no public call to read an incident. The forced stop takes

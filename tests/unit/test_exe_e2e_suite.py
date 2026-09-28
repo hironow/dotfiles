@@ -117,3 +117,14 @@ def test_keeping_the_node_up_still_deletes_the_tasks() -> None:
     keep = body.index('os.environ.get("EXE_E2E_KEEP_AWAKE")')
     sleep = body.index('"exe-sleep"')
     assert delete < keep < sleep
+
+
+def test_the_forced_stop_waits_the_window_l2_really_waits() -> None:
+    # L2 treats a lease with no drain record as a heartbeat that stopped at
+    # the deadline, and forces after HeartbeatStaleAfter, which is
+    # heartbeat_stale_ticks L2 ticks (lease.HeartbeatStaleAfter), 20 minutes.
+    # A hardcoded 2 minutes read it as L1 ticks and would fail every W3.
+    text = (SUITE / "test_forced_stop.py").read_text()
+    assert "lease-constants.json" in text
+    assert re.search(r'\["heartbeat_stale_ticks"\]\s*\*\s*L2_TICK', text)
+    assert "timedelta(minutes=2)" not in text
