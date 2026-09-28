@@ -38,15 +38,17 @@ its own part:
 | `test_a_resume_after_drained_runs_at_the_next_wake` | 6.9 | A's resume after `drained` finds no controller pod, the stop stays graceful, and the resume runs by itself at the next wake, as the operator asked. |
 | `test_the_gates_reopen_on_a_valid_lease` | 6.2 | L1 puts the router and the controller back on the new lease after `drained` (a Cancel of the old record; Reopen is for a gate shut with no record), and an extend during a drain restores both mid-drain (Cancel). |
 
-`test_control_api_barrier.py` is plan F5 from inside one task, about 5
-node-minutes on top of a wake. The drain barrier (plan D2) holds only if no task
-can resume an actor through the Control API, which authenticates its callers but
-does not authorize them:
+`test_control_api_barrier.py` is plan F5 in one task, about 5 node-minutes
+on top of a wake. The Control API authenticates its callers but does not
+authorize them. An actor's TCP leaves through the egress gateway, so the
+guest's path is closed by authentication, and the worker pod's path by
+`tofu/exe-cluster/control_api.tf`:
 
 | test | item | what it proves |
 | --- | --- | --- |
-| `test_a_task_cannot_authenticate_to_the_control_api` | 6.9 (F5) | An unauthenticated gRPC call from the task gets grpc-status 16 (UNAUTHENTICATED), and the guest has no /var/run/secrets. |
-| `test_a_task_cannot_reach_the_control_api` | 6.9 (F5) | Nothing answers a TLS handshake from the task, by name or at the API pods' own addresses. This holds only once `tofu/exe-cluster/control_api.tf` is applied: run `-k authenticate` before that. |
+| `test_a_task_cannot_authenticate_to_the_control_api` | 6.9 (F5) | An unauthenticated gRPC call from the task gets grpc-status 16 (UNAUTHENTICATED), and the guest has no /var/run/secrets. What the guest's handshake reaches through the gateway is recorded, not asserted. |
+| `test_a_pod_in_the_atespace_reaches_the_api_only_without_the_policy` | F5 | A probe pod in the atespace, standing in for a worker pod: with `EXE_E2E_API_POLICY=absent` it gets an answer (the path exists), with `present` it gets none. |
+| `test_the_callers_still_work_behind_the_policy` | F5 | With `present`: an L1 tick still reads Substrate, and the ax-controller still suspends and resumes a task. |
 
 `test_forced_stop.py` runs alone, about 15 node-minutes, and only with the
 operator on email:

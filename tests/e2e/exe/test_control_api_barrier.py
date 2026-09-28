@@ -1,33 +1,47 @@
-"""Plan F5 from inside a task: what stands between a task and the Control API.
+"""Plan F5 live: what stands between a task and Substrate's Control API.
 
 L1's drain barrier (plan D2) holds only if nothing but the components it stops
-can resume an actor. Substrate's Control API authenticates its callers but does
-not authorize them (plan F1). W2 found that its network half does not hold:
-from inside a task, api.ate-system.svc resolves and answers a TLS handshake.
-Two layers can still hold, and this module tests each:
+can resume an actor. The Control API authenticates its callers but does not
+authorize them (plan F1). W2 found that a task reaches it. With tunneled egress
+armed, an actor's TCP leaves through atenet-egress, and the API sees the
+gateway (manager-loop/reports/f5-control-api-audit.md). Two layers are left,
+and this module tests each:
 
-- authentication. The API admits only a Kubernetes SA token for audience
-  api.ate-system.svc, or a client certificate from the pod-identity CA. A
-  guest has neither, so an unauthenticated call is refused with
-  UNAUTHENTICATED, and the guest has no /var/run/secrets at all.
-- the network. tofu/exe-cluster/control_api.tf admits the API's port only from
-  its callers, and the atespace's worker pods are not among them, so once it
-  is applied nothing answers the task, by name or at the pods' own addresses.
+- Authentication, the guest's path. The API admits only a Kubernetes SA token
+  for audience api.ate-system.svc, or a podidentity client certificate, and a
+  guest has neither. So an unauthenticated call from the task is refused with
+  UNAUTHENTICATED, and the guest has no /var/run/secrets.
+- The network, the worker pod's path. tofu/exe-cluster/control_api.tf admits
+  the API's port only from its callers, and nothing in the atespace, where a
+  worker pod holds a certificate the API accepts. A probe pod in the atespace
+  stands in for the worker pod: the policy admits nothing from that namespace,
+  and the probe needs a python the worker image lacks. With
+  EXE_E2E_API_POLICY=absent the probe must get an answer, which shows the path
+  exists. With present it must not, and the callers must still work.
 
-W3 runs `-k authenticate` before the policy is applied and the whole module
-after. It needs only a node and one task, and leaves 0 nodes like the rest.
+W3 (inbox M46) runs the module with EXE_E2E_API_POLICY=absent, has the policy
+applied, then runs it again with present.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import secrets
 from collections.abc import Iterator
 
 import pytest
 
-from exe_live import Exe
+from exe_live import Exe, stamp, utcnow
+
+POLICY = os.environ.get("EXE_E2E_API_POLICY", "")
+needs_policy_state = pytest.mark.skipif(
+    POLICY not in ("absent", "present"),
+    reason="EXE_E2E_API_POLICY=absent|present says whether control_api.tf is applied",
+)
 
 # A TLS handshake with the Control API at each target, with verification on.
-# The task does not trust the cluster's CA, so a server that answers fails
+# Nothing here trusts the cluster's CA, so a server that answers fails
 # verification, and that failure is the proof it answered. No answer is a
 # timeout, a reset or a refusal. A bare TCP connect proves nothing inside an
 # actor (Phase 5, finding 5).
@@ -86,17 +100,15 @@ def api_pod_ips(exe: Exe) -> list[str]:
     return out.split()
 
 
+def answered(output: str) -> list[str]:
+    return output.strip().splitlines()[-1].split()[1:]
+
+
 def test_a_task_cannot_authenticate_to_the_control_api(exe: Exe, task: str) -> None:
     out = exe.ax("ssh", task, "--", "sh", "-c", AUTH, timeout=60)
-    exe.measure("control_api_auth_probe", task=task, output=out.strip())
-    assert "grpc-status: 16" in out, out
-    assert "NO SECRETS" in out, out
-
-
-def test_a_task_cannot_reach_the_control_api(exe: Exe, task: str) -> None:
-    ips = api_pod_ips(exe)
-    assert ips, "no endpoint for Service ate-system/api"
-    out = exe.ax(
+    # The guest's way in goes through the egress gateway, so it may answer.
+    # Recorded, not asserted: what matters is that the answer is a refusal.
+    through_gateway = exe.ax(
         "ssh",
         task,
         "--",
@@ -104,13 +116,76 @@ def test_a_task_cannot_reach_the_control_api(exe: Exe, task: str) -> None:
         "-c",
         REACH,
         "api.ate-system.svc",
-        *ips,
+        *api_pod_ips(exe),
         timeout=60,
     )
     exe.measure(
-        "control_api_reach_probe",
-        task=task,
-        targets=["api.ate-system.svc", *ips],
-        output=out.strip(),
+        "control_api_auth", task=task, auth=out.strip(), reach=through_gateway.strip()
     )
-    assert out.strip().splitlines()[-1] == "ANSWERED", out
+    assert "grpc-status: 16" in out, out
+    assert "NO SECRETS" in out, out
+
+
+@needs_policy_state
+def test_a_pod_in_the_atespace_reaches_the_api_only_without_the_policy(
+    exe: Exe, task: str
+) -> None:
+    name = f"e2e-api-probe-{secrets.token_hex(3)}"
+    targets = ["api.ate-system.svc", *api_pod_ips(exe)]
+    overrides = {"spec": {"automountServiceAccountToken": False}}
+    exe.kubectl(
+        "-n",
+        "exe",
+        "run",
+        name,
+        f"--image={exe.image}",
+        "--restart=Never",
+        f"--overrides={json.dumps(overrides)}",
+        "--command",
+        "--",
+        "python3",
+        "-c",
+        REACH,
+        *targets,
+    )
+    try:
+        exe.wait_until(
+            f"probe pod {name} finished",
+            lambda: (
+                exe.kubectl(
+                    "-n", "exe", "get", "pod", name, "-o", "jsonpath={.status.phase}"
+                )
+                in ("Succeeded", "Failed")
+            ),
+            timeout=300,
+        )
+        out = exe.kubectl("-n", "exe", "logs", name)
+    finally:
+        exe.kubectl("-n", "exe", "delete", "pod", name, "--wait=false", check=False)
+    exe.measure(
+        "control_api_pod_reach", policy=POLICY, targets=targets, output=out.strip()
+    )
+    if POLICY == "absent":
+        assert answered(out), (
+            f"nothing answered without the policy, so the probe proves nothing:\n{out}"
+        )
+    else:
+        assert answered(out) == [], out
+
+
+@pytest.mark.skipif(POLICY != "present", reason="only once the policy is applied")
+def test_the_callers_still_work_behind_the_policy(exe: Exe, task: str) -> None:
+    since = utcnow()
+    # an L1 tick still reads Substrate
+    exe.wait_until(
+        f"an L1 decision since {stamp(since)}",
+        lambda: exe.l1_decisions(since),
+        timeout=300,
+        interval=20,
+    )
+    # and the ax-controller still suspends and resumes through the API
+    exe.ax("suspend", "task", task)
+    exe.wait_phase(task, "Suspended", timeout=300)
+    exe.ax("resume", "task", task)
+    exe.wait_phase(task, "Running", timeout=600)
+    assert "ok" in exe.ssh(task, "echo ok")
