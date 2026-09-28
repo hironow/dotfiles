@@ -75,10 +75,15 @@ resource "kubectl_manifest" "reaper" {
 
       jobTemplate = {
         spec = {
-          # No retries: the next minute is the retry. And a tick cannot
-          # outlive its minute (exe-reap gives itself 45 s).
-          backoffLimit          = 0
-          activeDeadlineSeconds = 55
+          # No retries: the next minute is the retry. And no Job deadline
+          # (inbox M28): while the pool sleeps the tick's pod stays Pending,
+          # and Forbid holds every later tick behind it, so one Pending Job
+          # waits out the whole sleep and runs the moment a node is up. A
+          # deadline would fail it and create the next one every minute, all
+          # night. A tick that runs ends itself on exe-reap's own 45 s
+          # deadline; a pod stuck on a node goes when the node does, at the
+          # next stop.
+          backoffLimit = 0
 
           template = {
             metadata = {

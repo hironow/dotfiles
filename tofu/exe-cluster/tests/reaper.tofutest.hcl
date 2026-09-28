@@ -96,8 +96,19 @@ run "the_reaper_ticks_every_minute_one_at_a_time" {
   }
 
   assert {
-    condition     = yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.backoffLimit == 0 && yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.activeDeadlineSeconds < 60
-    error_message = "a tick gets no retries and cannot outlive its minute (backoffLimit 0, activeDeadlineSeconds under 60): the next minute is the retry, and a tick still running then would hold it back."
+    condition     = yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec.backoffLimit == 0
+    error_message = "a tick gets no retries (backoffLimit 0): the next minute is the retry."
+  }
+
+  # While the pool sleeps the tick's pod cannot schedule and stays Pending, and
+  # Forbid holds every later tick behind it: one Pending Job for the whole
+  # sleep, run the moment a node is up (inbox M28). A Job deadline would fail
+  # that Job once its time ran out, and the next minute would create another:
+  # a create/fail loop all night. A tick that does run ends itself, on
+  # exe-reap's own 45 s deadline.
+  assert {
+    condition     = !contains(keys(yamldecode(kubectl_manifest.reaper.yaml_body).spec.jobTemplate.spec), "activeDeadlineSeconds")
+    error_message = "the reaper's Job must set no activeDeadlineSeconds: while the pool sleeps its pod stays Pending, and a deadline turns that one Pending Job into a Job created and failed every minute, all night. exe-reap's own deadline ends a tick that runs."
   }
 
   assert {

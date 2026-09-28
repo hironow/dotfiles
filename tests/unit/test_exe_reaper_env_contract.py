@@ -21,6 +21,7 @@ Stdlib + pytest only.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Final
@@ -180,19 +181,31 @@ _GO_TICK_TIMEOUT: Final = re.compile(
     r"(?m)^\s*tickTimeout\s*=\s*(\d+)\s*\*\s*time\.Second\b"
 )
 
-#: `activeDeadlineSeconds = 55` in the CronJob's Job template.
-_TF_ACTIVE_DEADLINE: Final = re.compile(r"(?m)^\s*activeDeadlineSeconds\s*=\s*(\d+)\b")
+LEASE_CONSTANTS: Final = _REPO_ROOT / "exe" / "lease-constants.json"
+
+#: `activeDeadlineSeconds = 55`, an assignment in the CronJob's Job template.
+_TF_ACTIVE_DEADLINE: Final = re.compile(r"(?m)^\s*activeDeadlineSeconds\s*=")
 
 
-def test_a_tick_gives_up_before_its_job_is_killed() -> None:
-    """A tick ended by its own deadline writes its failure line; one killed by
-    the Job's activeDeadlineSeconds leaves a pod that just stopped."""
+def test_a_tick_ends_inside_its_minute() -> None:
+    """exe-reap's own deadline is what ends a tick: its Job has none, so that a
+    Job left Pending while the pool sleeps is not failed and recreated every
+    minute (inbox M28). It must end the tick, failure line written, before the
+    next one is due, or Forbid skips that one."""
     go = _GO_TICK_TIMEOUT.findall(EXE_REAP_MAIN.read_text(encoding="utf-8"))
-    tf = _TF_ACTIVE_DEADLINE.findall(REAPER_TF.read_text(encoding="utf-8"))
     assert len(go) == 1, f"want one tickTimeout in exe-reap, found {go}"
-    assert len(tf) == 1, f"want one activeDeadlineSeconds in reaper.tf, found {tf}"
-    tick, deadline = int(go[0]), int(tf[0])
-    assert tick + _FAILURE_LINE_MARGIN_SECONDS <= deadline, (
-        f"exe-reap's deadline ({tick}s) must end at least "
-        f"{_FAILURE_LINE_MARGIN_SECONDS}s before the Job's ({deadline}s)"
+    tick_minutes = json.loads(LEASE_CONSTANTS.read_text(encoding="utf-8"))[
+        "l1_tick_minutes"
+    ]
+    assert int(go[0]) + _FAILURE_LINE_MARGIN_SECONDS <= 60 * tick_minutes, (
+        f"exe-reap's deadline ({go[0]}s) must end at least "
+        f"{_FAILURE_LINE_MARGIN_SECONDS}s before the next tick ({60 * tick_minutes}s)"
+    )
+
+
+def test_the_reaper_job_sets_no_deadline_of_its_own() -> None:
+    assert not _TF_ACTIVE_DEADLINE.search(REAPER_TF.read_text(encoding="utf-8")), (
+        "the reaper's Job must set no activeDeadlineSeconds: while the pool "
+        "sleeps its pod stays Pending, and a deadline turns that one Pending "
+        "Job into a Job created and failed every minute (inbox M28)"
     )
