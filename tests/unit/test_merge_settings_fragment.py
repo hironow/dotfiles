@@ -464,3 +464,190 @@ def test_missing_layers_noop(workspace: dict[str, Path]) -> None:
     # then
     assert changed is True
     assert _read_target(workspace["target"])["effortLevel"] == "medium"
+
+
+# --- Retired hook blocks (third-party installers) --------------------------
+#
+# rtk's installer writes its own PreToolUse block straight into the agent
+# home's settings.json:
+#
+#     {"matcher": "Bash", "hooks": [{"type": "command",
+#      "command": "rtk hook claude"}]}
+#
+# Its command does not point at <agent>/hooks/, so _is_managed_hook_block
+# classifies it as a user block and sync PRESERVES it — forever. That block
+# now has a dotfiles-managed replacement (hooks/rtk-hook-claude.sh), and
+# leaving both in place means rtk rewrites git again and the worktree carve-out
+# never fires. Retirement must also be repeatable, because rtk's installer can
+# re-add the entry on the next upgrade (rtk is mandatory base tooling, ADR 0047).
+
+
+STRAY_RTK_BLOCK = {
+    "matcher": "Bash",
+    "hooks": [{"type": "command", "command": "rtk hook claude"}],
+}
+
+
+def _hook_fragment_with(command_name: str) -> dict:
+    return {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "Bash",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": (
+                                f'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/{command_name}"'
+                            ),
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+
+
+def _commands(result: dict) -> list[str]:
+    return [
+        hook["command"]
+        for block in result.get("hooks", {}).get("PreToolUse", [])
+        for hook in block.get("hooks", [])
+    ]
+
+
+def test_stray_rtk_hook_block_is_retired(workspace: dict[str, Path]) -> None:
+    """The installer-written `rtk hook claude` block is dropped on sync."""
+    # given
+    agent = _make_agent(workspace["target"])
+    _write_hook_fragment(
+        workspace["dotfiles"], _hook_fragment_with("rtk-hook-claude.sh")
+    )
+    _write_target(
+        workspace["target"],
+        {"hooks": {"PreToolUse": [STRAY_RTK_BLOCK]}},
+    )
+
+    # when
+    changed = _merge_hook_settings(workspace["dotfiles"], agent)
+
+    # then
+    assert changed is True
+    commands = _commands(_read_target(workspace["target"]))
+    assert "rtk hook claude" not in commands
+    assert any(c.endswith('hooks/rtk-hook-claude.sh"') for c in commands)
+
+
+def test_unrelated_user_hook_blocks_survive_retirement(
+    workspace: dict[str, Path],
+) -> None:
+    """Retirement names one exact command — other user blocks are untouched."""
+    # given
+    agent = _make_agent(workspace["target"])
+    user_block = {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": "my-own-audit-hook"}],
+    }
+    _write_hook_fragment(
+        workspace["dotfiles"], _hook_fragment_with("rtk-hook-claude.sh")
+    )
+    _write_target(
+        workspace["target"],
+        {"hooks": {"PreToolUse": [STRAY_RTK_BLOCK, user_block]}},
+    )
+
+    # when
+    _merge_hook_settings(workspace["dotfiles"], agent)
+
+    # then
+    commands = _commands(_read_target(workspace["target"]))
+    assert "rtk hook claude" not in commands
+    assert "my-own-audit-hook" in commands
+
+
+def test_user_block_mixing_retired_command_is_preserved(
+    workspace: dict[str, Path],
+) -> None:
+    """A block is only retired when EVERY command in it is retired.
+
+    Same all() shape as _is_managed_hook_block: a hand-written block that
+    happens to also call `rtk hook claude` is the user's, not the installer's,
+    so it is left alone rather than silently trimmed.
+    """
+    # given
+    agent = _make_agent(workspace["target"])
+    mixed = {
+        "matcher": "Bash",
+        "hooks": [
+            {"type": "command", "command": "rtk hook claude"},
+            {"type": "command", "command": "my-own-audit-hook"},
+        ],
+    }
+    _write_hook_fragment(
+        workspace["dotfiles"], _hook_fragment_with("rtk-hook-claude.sh")
+    )
+    _write_target(workspace["target"], {"hooks": {"PreToolUse": [mixed]}})
+
+    # when
+    _merge_hook_settings(workspace["dotfiles"], agent)
+
+    # then
+    commands = _commands(_read_target(workspace["target"]))
+    assert "rtk hook claude" in commands
+    assert "my-own-audit-hook" in commands
+
+
+def test_retirement_is_idempotent(workspace: dict[str, Path]) -> None:
+    """Re-running with nothing to retire reports no change."""
+    # given
+    agent = _make_agent(workspace["target"])
+    _write_hook_fragment(
+        workspace["dotfiles"], _hook_fragment_with("rtk-hook-claude.sh")
+    )
+    _write_target(workspace["target"], {"hooks": {"PreToolUse": [STRAY_RTK_BLOCK]}})
+
+    # when
+    first = _merge_hook_settings(workspace["dotfiles"], agent)
+    second = _merge_hook_settings(workspace["dotfiles"], agent)
+
+    # then
+    assert first is True
+    assert second is False
+
+
+def test_retirement_self_heals_after_reinstall(workspace: dict[str, Path]) -> None:
+    """rtk's installer re-adding the block is undone by the next sync."""
+    # given
+    agent = _make_agent(workspace["target"])
+    _write_hook_fragment(
+        workspace["dotfiles"], _hook_fragment_with("rtk-hook-claude.sh")
+    )
+    _write_target(workspace["target"], {"hooks": {"PreToolUse": [STRAY_RTK_BLOCK]}})
+    _merge_hook_settings(workspace["dotfiles"], agent)
+
+    # when (rtk upgrade re-adds its block on top of the synced state)
+    reinstalled = _read_target(workspace["target"])
+    reinstalled["hooks"]["PreToolUse"].insert(0, STRAY_RTK_BLOCK)
+    _write_target(workspace["target"], reinstalled)
+    changed = _merge_hook_settings(workspace["dotfiles"], agent)
+
+    # then
+    assert changed is True
+    assert "rtk hook claude" not in _commands(_read_target(workspace["target"]))
+
+
+def test_retirement_is_dry_run_aware(workspace: dict[str, Path]) -> None:
+    """--preview reports the retirement without writing it."""
+    # given
+    agent = _make_agent(workspace["target"])
+    _write_hook_fragment(
+        workspace["dotfiles"], _hook_fragment_with("rtk-hook-claude.sh")
+    )
+    _write_target(workspace["target"], {"hooks": {"PreToolUse": [STRAY_RTK_BLOCK]}})
+
+    # when
+    changed = _merge_hook_settings(workspace["dotfiles"], agent, dry_run=True)
+
+    # then
+    assert changed is True
+    assert "rtk hook claude" in _commands(_read_target(workspace["target"]))
