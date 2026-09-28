@@ -339,6 +339,24 @@ def test_expect_changes_still_prints_no_attribute_values(tmp_path: Path) -> None
     assert SECRET_VALUE not in result.stdout + result.stderr
 
 
+def test_a_forgotten_resource_is_shown_and_can_be_expected(tmp_path: Path) -> None:
+    """A `removed` block with destroy = false plans the action "forget": the
+    resource leaves the state and stays in the world. OpenTofu marks it with a
+    dot; so does this tool, and a reviewed list can hold a plan to it (the
+    retired exe stack hands the tailnet's ACL over this way)."""
+    plan = _plan(("tailscale_acl.this", ["forget"]))
+    shown = _run(plan)
+    assert "  .  tailscale_acl.this" in shown.stdout
+    assert "1 resource change(s)" in shown.stdout
+    held = _run(
+        plan, "--expect-changes", _expect_file(tmp_path, ". tailscale_acl.this\n")
+    )
+    assert held.returncode == 0, held.stderr
+    # it is not a destroy: --creates-only still refuses it, as it refuses any
+    # change to something that already exists
+    assert _run(plan, "--creates-only").returncode != 0
+
+
 def test_expect_changes_parser_is_exercisable_on_its_own() -> None:
     parsed = mod.parse_expectations("# c\n\n+ a.b\n~ c.d\n", "expected.txt")
     assert parsed == {("+", "a.b"), ("~", "c.d")}
