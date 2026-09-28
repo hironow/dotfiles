@@ -100,7 +100,15 @@ case "$1" in
       if [ "$phase" = Pending ] && [ -f "$FAKE_STATE/countdown-$name" ]; then
         left="$(cat "$FAKE_STATE/countdown-$name")"
         if [ "$left" -le 0 ]; then
-          phase="${FAKE_START_PHASE:-Running}"
+          refused=$(cat "$FAKE_STATE/refusals" 2>/dev/null || echo 0)
+          if [ "$refused" -lt "${FAKE_NO_WORKER:-0}" ]; then
+            echo $((refused + 1)) > "$FAKE_STATE/refusals"
+            phase=Failed
+            echo "no free workers" > "$FAKE_STATE/reason-$name"
+          else
+            phase="${FAKE_START_PHASE:-Running}"
+            rm -f "$FAKE_STATE/reason-$name"
+          fi
           echo "$phase" > "$f"
         else
           echo $((left - 1)) > "$FAKE_STATE/countdown-$name"
@@ -134,7 +142,12 @@ case "$1" in
       reset
     fi
     exec "${args[@]}" ;;
-  delete) rm -f "$tasks/$3"; echo "task \"$3\" deleted" ;;
+  delete) rm -f "$tasks/$3" "$FAKE_STATE/reason-$3"; echo "task \"$3\" deleted" ;;
+  describe)
+    printf 'Name:         %s\nPhase:        %s\n\nConditions:\n' "$3" "$(cat "$tasks/$3" 2>/dev/null)"
+    if [ -f "$FAKE_STATE/reason-$3" ]; then
+      printf '  Ready  False   ActorResumeFailed  resuming actor exe/%s: rpc error: code = ResourceExhausted desc = no free workers available\n' "$3"
+    fi ;;
   suspend) echo Suspended > "$tasks/$3"; echo "task \"$3\" suspended" ;;
   resume)
     echo Pending > "$tasks/$3"
@@ -725,3 +738,47 @@ def test_the_recipe_builds_exe_reaper_outside_the_tree() -> None:
     assert re.search(r'bin="\$\(mktemp -d\)"', body)
     assert 'go build -o "$bin/exe-reaper"' in body
     assert "rm -rf" not in body
+
+
+# --- no free worker (W2 finding, inbox M43) --------------------------------------
+#
+# AX fails a task on the first ResumeActor refusal, "no free workers
+# available", and never retries it. A worker frees within a few minutes of the
+# task it held being deleted.
+
+
+def test_a_task_refused_a_worker_is_applied_again_once(tmp_path: Path) -> None:
+    r = job(tmp_path, "true", FAKE_NO_WORKER="1", AX_JOB_WORKER_WAIT_SECONDS="0.1")
+    assert r.code == 0, r.result.stderr
+    assert len(r.applied()) == 2
+    # the refused task was deleted before the second apply
+    applies = [i for i, c in enumerate(r.calls) if c.startswith("ax apply")]
+    assert any(
+        c.startswith("ax delete task j1") for c in r.calls[applies[0] : applies[1]]
+    )
+    assert "no free worker" in r.result.stderr
+
+
+def test_a_second_refusal_says_to_wait_for_a_worker(tmp_path: Path) -> None:
+    r = job(tmp_path, "true", FAKE_NO_WORKER="2", AX_JOB_WORKER_WAIT_SECONDS="0.1")
+    assert r.code == 1
+    assert len(r.applied()) == 2
+    assert not r.ssh("launch")
+    assert "wait" in r.result.stderr and "no free worker" in r.result.stderr
+    assert r.task("j1") is None
+
+
+def test_another_start_failure_is_not_retried(tmp_path: Path) -> None:
+    r = job(
+        tmp_path, "true", FAKE_START_PHASE="Failed", AX_JOB_WORKER_WAIT_SECONDS="0.1"
+    )
+    assert r.code == 1
+    assert len(r.applied()) == 1
+
+
+def test_ax_exec_says_to_wait_for_a_worker_and_keeps_the_task(tmp_path: Path) -> None:
+    r = exec_(tmp_path, {"w1": "Suspended"}, "w1", "--", "true", FAKE_NO_WORKER="1")
+    assert r.code == 1
+    assert "no free worker" in r.result.stderr
+    assert not r.called("ax delete")
+    assert not r.ssh("launch")

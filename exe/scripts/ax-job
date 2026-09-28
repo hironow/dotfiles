@@ -11,7 +11,9 @@
 #    cleanup cannot take it from under the task (plan D10); L1 keeps it
 #    tagged from then on.
 # 3. The task is applied (debug: true; no env, no token) and waited for,
-#    Running, for at most 10 minutes.
+#    Running, for at most 10 minutes. AX fails a task that no worker was free
+#    for and never retries it; such a task is deleted and applied again once,
+#    AX_JOB_WORKER_WAIT_SECONDS (2 minutes) later.
 # 4. The lease is checked again right before the launch: provisioning may
 #    have eaten the margin.
 # 5. CMD runs detached in the task, and short `ax ssh` polls stream its
@@ -133,7 +135,19 @@ spec:
 EOF
 applied=1
 ax apply -f "$work/task.yaml" >&2 || die "ax apply failed"
-wait_running "$name" || exit 1
+rc=0
+wait_running "$name" || rc=$?
+if ((rc == NO_WORKER)); then
+	# AX never retries this refusal; apply the task again, once, after a wait.
+	log "deleting task $name and applying it again in ${AX_JOB_WORKER_WAIT_SECONDS}s"
+	ax delete task "$name" -a "$AX_ATESPACE" >/dev/null 2>&1 || die "could not delete task $name"
+	sleep "$AX_JOB_WORKER_WAIT_SECONDS"
+	ax apply -f "$work/task.yaml" >&2 || die "ax apply failed"
+	rc=0
+	wait_running "$name" || rc=$?
+	((rc != NO_WORKER)) || die "still no free worker: wait a few minutes for one to be released, then run ax-job again"
+fi
+((rc == 0)) || exit 1
 may_start "$need" || exit $?
 
 disposition=keep

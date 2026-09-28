@@ -72,17 +72,24 @@ if ((claude)); then
 fi
 
 phase="$(task_phase "$name")" || die "cannot list the tasks in $AX_ATESPACE"
+no_worker() {
+	restore=0
+	die "no free worker for task $name: wait a few minutes for one to be released, then run ax-exec again (ax describe task $name -a $AX_ATESPACE)"
+}
+rc=0
 case "$phase" in
 Running) ;;
-Pending) wait_running "$name" || exit 1 ;;
+Pending) wait_running "$name" || rc=$? ;;
 Suspended)
 	ax resume task "$name" -a "$AX_ATESPACE" >&2 || die "ax resume failed"
 	restore=1
-	wait_running "$name" || exit 1
+	wait_running "$name" || rc=$?
 	;;
 "") die "no task named $name in $AX_ATESPACE" ;;
 *) die "task $name is $phase: ax describe task $name -a $AX_ATESPACE" ;;
 esac
+((rc != NO_WORKER)) || no_worker
+((rc == 0)) || exit 1
 may_start "$need" || exit $?
 
 rc=0

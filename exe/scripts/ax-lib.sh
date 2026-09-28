@@ -15,12 +15,17 @@ AX_JOB_POLL_SECONDS="${AX_JOB_POLL_SECONDS:-5}"
 AX_JOB_START_SECONDS="${AX_JOB_START_SECONDS:-600}"
 AX_JOB_MAX_POLL_FAILURES="${AX_JOB_MAX_POLL_FAILURES:-12}"
 AX_JOB_SSH_SECONDS="${AX_JOB_SSH_SECONDS:-60}"
+# How long ax-job waits before it applies a task again that AX refused a
+# worker (see wait_running).
+AX_JOB_WORKER_WAIT_SECONDS="${AX_JOB_WORKER_WAIT_SECONDS:-120}"
 
 # The wrappers' own exit codes, besides the command's.
 readonly EXIT_REFUSED=3      # the lease said not now
 readonly EXIT_UNREACHABLE=69 # the task stopped answering; the command may still run
 readonly EXIT_SUSPENDED=75   # the task was suspended (a drain) or lost /tmp mid-command
 readonly EXIT_TIMEOUT=124    # --timeout ran out, and the command's process group was killed
+# wait_running's own answer, never an exit code: AX refused the task a worker.
+readonly NO_WORKER=10
 
 AX_GUEST="$(cat "$(dirname "${BASH_SOURCE[0]}")/ax-job-guest.sh")"
 
@@ -70,7 +75,15 @@ task_phase() {
 	awk -v n="$1" 'NR > 1 && $1 == n { print $3; exit }' <<<"$listing"
 }
 
+# no_free_worker NAME: whether AX failed the task because no worker was free.
+# AX fails a task on the first such refusal and never retries it, while a
+# worker frees within a few minutes of the task it held being deleted.
+no_free_worker() {
+	ax describe task "$1" -a "$AX_ATESPACE" 2>/dev/null | grep -q "no free workers available"
+}
+
 # wait_running NAME: until the task is Running, for AX_JOB_START_SECONDS.
+# Returns NO_WORKER when AX failed it for want of a free worker.
 wait_running() {
 	local name="$1" phase deadline=$((SECONDS + AX_JOB_START_SECONDS))
 	while :; do
@@ -78,6 +91,10 @@ wait_running() {
 		case "$phase" in
 		Running) return 0 ;;
 		Failed)
+			if no_free_worker "$name"; then
+				log "task $name got no free worker: a task deleted a few minutes ago may still hold one"
+				return "$NO_WORKER"
+			fi
 			log "task $name failed to start: ax describe task $name -a $AX_ATESPACE"
 			return 1
 			;;
