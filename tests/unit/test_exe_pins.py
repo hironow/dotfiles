@@ -350,6 +350,42 @@ def test_real_reaper_gomod_requires_the_real_pins() -> None:
     assert mod.check_reaper_gomod(pins, gomod) == []
 
 
+# --- check 2e: the Substrate commit the TTL audit was done at ----------------
+#
+# retention.qnt's TTL counts from an actor's update_time, which is sound only
+# while nothing writes a SUSPENDED actor's row in the background. That was
+# audited in the Substrate source at one commit (exe/spec/README.md). A repin
+# must redo the audit, so the gate refuses a pin the audit was not done at.
+
+_AUDIT = {"sha": AX_GOMOD_SUBSTRATE_SHA, "audit": "exe/spec/README.md"}
+
+
+def test_a_pin_the_audit_was_done_at_is_clean() -> None:
+    pins = _pins_on_ax_gomod()
+    assert mod.check_substrate_audit(pins, _AUDIT) == []
+
+
+def test_a_pin_the_audit_was_not_done_at_is_flagged() -> None:
+    pins = _pins_on_ax_gomod()
+    audit = {**_AUDIT, "sha": "0" * 40}
+    violations = mod.check_substrate_audit(pins, audit)
+    assert violations
+    assert "exe/spec/README.md" in violations[0]
+    assert "update_time" in violations[0]
+
+
+def test_a_missing_or_malformed_audit_record_is_flagged() -> None:
+    pins = _pins_on_ax_gomod()
+    assert mod.check_substrate_audit(pins, None)
+    assert mod.check_substrate_audit(pins, {"audit": "exe/spec/README.md"})
+
+
+def test_the_real_pin_is_the_audited_one() -> None:
+    pins = json.loads(_REAL_PINS.read_text())
+    audit = json.loads((_REPO_ROOT / mod.SUBSTRATE_AUDIT_REL).read_text())
+    assert mod.check_substrate_audit(pins, audit) == []
+
+
 # --- check 3: SHA shape, and match against a resolver ----------------------
 
 

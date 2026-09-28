@@ -116,6 +116,10 @@ AX_MODULE = "github.com/google/ax"
 # The Go module whose L1 binary speaks both control APIs through their own
 # generated stubs (Phase 6 plan D1), relative to the repo root.
 REAPER_GOMOD_REL = "tools/exe-reaper/go.mod"
+
+# The Substrate commit whose actor write paths were audited for the task TTL's
+# clock (exe/spec/README.md), relative to the repo root.
+SUBSTRATE_AUDIT_REL = "exe/spec/substrate-audit.json"
 _PROVIDER_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)(?:\.(\d+))?")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _CLUSTER_MINOR_RE = re.compile(r"^1\.\d+$")
@@ -433,6 +437,36 @@ def check_reaper_gomod(pins: dict[str, Any], gomod: str) -> list[str]:
                 f"{PINS_REL} pins {block}.version = {want!r}."
             )
     return violations
+
+
+# --- check 2e: the pinned Substrate is the audited one ----------------------
+
+
+def check_substrate_audit(pins: dict[str, Any], audit: object) -> list[str]:
+    """Refuse a Substrate pin the task TTL's write-path audit was not done at.
+
+    retention.qnt's TTL counts from an actor's update_time. That is sound only
+    while nothing writes a SUSPENDED actor's row in the background, which was
+    audited in the Substrate source at one commit. A repin has to redo it.
+    """
+    if not isinstance(audit, dict) or not isinstance(audit.get("sha"), str):
+        return [
+            f"{SUBSTRATE_AUDIT_REL}: missing or malformed; it must record the "
+            "Substrate commit the task TTL's write-path audit was done at."
+        ]
+    substrate = pins.get("substrate")
+    pinned = substrate.get("sha") if isinstance(substrate, dict) else None
+    if pinned != audit["sha"]:
+        where = audit.get("audit", "exe/spec/README.md")
+        return [
+            f"{PINS_REL} pins substrate {pinned!r}, but the audit that lets the "
+            f"task TTL count from an actor's update_time ({where}) was done at "
+            f"{audit['sha']!r}. Redo it at the new commit: list every write to "
+            "a SUSPENDED actor's row, then move the SHA in "
+            f"{SUBSTRATE_AUDIT_REL}. A background writer would keep tasks "
+            "forever (retention.qnt's backgroundWriteRefreshes)."
+        ]
+    return []
 
 
 # --- check 3: SHA shape, and match against upstream ------------------------
@@ -854,6 +888,13 @@ def main_ax_gomod(root: Path, gomod_path: Path) -> int:
     return EXIT_OK
 
 
+def _load_audit(root: Path) -> object:
+    try:
+        return json.loads((root / SUBSTRATE_AUDIT_REL).read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     if len(sys.argv) == 3 and sys.argv[1] == "ax-gomod":
@@ -877,6 +918,7 @@ def main() -> int:
         violations.extend(
             check_reaper_gomod(pins, (root / REAPER_GOMOD_REL).read_text())
         )
+        violations.extend(check_substrate_audit(pins, _load_audit(root)))
 
     if violations:
         print(

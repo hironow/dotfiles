@@ -399,8 +399,11 @@ to the worker-delete workflow above), `controlapi/template_reconciler.go`
 (templates, and golden actors in `ate-golden` only), `store/atepg/outbox.go`,
 `cmd/ateapi/internal/workercache`, atelet's `imagegc.go` and
 `systeminfovolume.go`, and atenet's router `health.go` and `envoydrain.go`. A
-Substrate upgrade re-opens this list. The model's
-`backgroundWriteRefreshes` shows what breaks if it grows.
+Substrate upgrade re-opens this list, and not only by this sentence:
+`substrate-audit.json` records the commit it was checked at, and the pins gate
+in `just check` (`scripts/check_exe_pins.py`) fails while `exe/versions.json`
+pins any other. Redo the list at the new commit, then move that SHA. The
+model's `backgroundWriteRefreshes` shows what breaks if it grows.
 
 Time is whole days, and L1's ticks, AR's cleanup and the operator's commands
 interleave freely inside one: coarser than reality, so any order the real

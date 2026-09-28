@@ -1,0 +1,5 @@
+{
+  "_what": "The Substrate commit at which every actor write path was audited for the task TTL's clock (exe/spec/README.md, the retention.qnt section: nothing writes a SUSPENDED actor's row in the background, so update_time only moves when someone suspends, resumes, pauses or deletes it). scripts/check_exe_pins.py fails while exe/versions.json pins any other commit: redo the audit at the new commit, update the README's list, then move this SHA. retention.qnt's backgroundWriteRefreshes shows what a background writer would do to the TTL.",
+  "sha": "672533541dbfcd29084e4de2475267088bda3651",
+  "audit": "exe/spec/README.md"
+}
