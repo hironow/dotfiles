@@ -52,3 +52,9 @@ func LeaseFromRead(body []byte, generation int64, err error) (lease.Lease, bool)
 	l.Generation = generation
 	return l, true
 }
+
+// Keep is KeepObject: the tasks the operator exempted from the task TTL, by
+// "<atespace>/<name>", or by bare name for that name in any atespace.
+type Keep struct {
+	Tasks []string `json:"tasks"`
+}

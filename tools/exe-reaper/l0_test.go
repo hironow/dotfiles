@@ -142,7 +142,7 @@ func TestKeepListOfNothingIsEmpty(t *testing.T) {
 
 func TestAKeepEditThatLosesTheRaceIsRefused(t *testing.T) {
 	cloud := newFakeCloud(t)
-	cloud.put(ops.KeepObject, keepRecord{Tasks: []string{"t1"}})
+	cloud.put(ops.KeepObject, ops.Keep{Tasks: []string{"t1"}})
 	cloud.afterGet = func(f *fakeCloud, object string, n int) {
 		if object == ops.KeepObject && n == 1 {
 			f.store(ops.KeepObject, []byte(`{"tasks":["t1","t3"]}`))

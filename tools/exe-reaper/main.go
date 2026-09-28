@@ -354,11 +354,6 @@ func mayStart(ctx context.Context, client *gcp.Client, bucket string, now time.T
 
 // --- keep.json -----------------------------------------------------------------------
 
-// keepRecord is keep.json: the tasks the operator exempted from the task TTL.
-type keepRecord struct {
-	Tasks []string `json:"tasks"`
-}
-
 // errKeepMoved is a keep.json write that lost to another write of it.
 var errKeepMoved = errors.New("keep.json changed while this command was running; re-run it")
 
@@ -385,17 +380,17 @@ func cmdKeep(ctx context.Context, args []string) error {
 	}
 }
 
-func readKeep(ctx context.Context, client *gcp.Client, bucket string) (keepRecord, int64, error) {
+func readKeep(ctx context.Context, client *gcp.Client, bucket string) (ops.Keep, int64, error) {
 	body, generation, err := client.GetObject(ctx, bucket, ops.KeepObject)
 	switch {
 	case errors.Is(err, gcp.ErrNotFound):
-		return keepRecord{}, 0, nil
+		return ops.Keep{}, 0, nil
 	case err != nil:
-		return keepRecord{}, 0, fmt.Errorf("reading %s: %w", ops.KeepObject, err)
+		return ops.Keep{}, 0, fmt.Errorf("reading %s: %w", ops.KeepObject, err)
 	}
-	var rec keepRecord
+	var rec ops.Keep
 	if err := json.Unmarshal(body, &rec); err != nil {
-		return keepRecord{}, 0, fmt.Errorf("%s is not a keep list: %w", ops.KeepObject, err)
+		return ops.Keep{}, 0, fmt.Errorf("%s is not a keep list: %w", ops.KeepObject, err)
 	}
 	return rec, generation, nil
 }
@@ -425,7 +420,7 @@ func keepEdit(ctx context.Context, client *gcp.Client, bucket, task string, add 
 		tasks = append(tasks, task)
 	}
 	slices.Sort(tasks)
-	body, err := json.Marshal(keepRecord{Tasks: slices.Compact(tasks)})
+	body, err := json.Marshal(ops.Keep{Tasks: slices.Compact(tasks)})
 	if err != nil {
 		return err
 	}
