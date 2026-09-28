@@ -99,7 +99,11 @@ traffic.
    classifier and prompts. Installing a token filter must not change the
    permission posture. This is a single named constant
    (`PERMISSION_DECISION_POLICY`) defaulting to strip, with both values covered
-   by tests.
+   by tests. Its `RTK_HOOK_PERMISSION_DECISION` environment variable is a **test
+   seam only** and must never be set in managed settings — not in any
+   `.claude/settings*.json` fragment (a unit test fails the build if one does)
+   and not in the untracked `settings.sync-local.json`, which no test can
+   police.
 
 6. **The command guard unwraps rtk.** `rtk` joins the known wrapper set: the
    real command is the first operand after rtk's own flags, one token further

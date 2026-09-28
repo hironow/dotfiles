@@ -32,6 +32,11 @@ forwards only the rewrite, so rewritten commands still go through the normal
 permission flow. rtk is an output optimiser, not an approver: installing it must
 not change the permission posture (ADR 0047).
 
+The wrapper's `RTK_HOOK_PERMISSION_DECISION` variable is a **test seam only** —
+never set it in managed settings (any `.claude/settings*.json` fragment, or
+`settings.sync-local.json`); any value but `strip` restores rtk's blanket
+auto-approval, and a unit test fails the build if a tracked fragment sets it.
+
 ## Worktree-isolated agents: git is not rewritten
 
 Inside a Claude Code isolation worktree (`*/.claude/worktrees/*`) the wrapper
