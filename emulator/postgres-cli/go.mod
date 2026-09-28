@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/lib/pq v1.12.3
-	github.com/olekukonko/tablewriter v1.1.4
+	github.com/olekukonko/tablewriter v1.1.5
 )
 
 require (

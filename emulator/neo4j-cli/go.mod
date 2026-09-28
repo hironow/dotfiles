@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
-	github.com/olekukonko/tablewriter v1.1.4
+	github.com/olekukonko/tablewriter v1.1.5
 )
 
 require (
