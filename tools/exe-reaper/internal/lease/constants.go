@@ -95,6 +95,11 @@ const (
 	// it; TaskTTLWarning is how far ahead exe-status warns (decision Q15).
 	TaskTTL        = 30 * 24 * time.Hour
 	TaskTTLWarning = 7 * 24 * time.Hour
+
+	// TagRelease is how long an image L1 tagged `inuse-` must go unreferenced,
+	// by L1's own record, before L1 removes the tag, and how old ax-job's
+	// dated tag must be by its name (exe/spec/retention.qnt).
+	TagRelease = 7 * 24 * time.Hour
 )
 
 // HeartbeatStaleAfter is the wall-clock window a drain heartbeat may be older

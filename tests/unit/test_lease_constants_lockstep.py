@@ -1,8 +1,10 @@
-"""Hold exe/spec/lease.qnt's constants equal to exe/lease-constants.json.
+"""Hold the exe/spec/ models' constants equal to exe/lease-constants.json.
 
 The lease auto-sleep numbers exist in three places by necessity: the JSON is the
-declared source of truth, the Go reaper mirrors it, and the Quint model mirrors it
-because Quint cannot read JSON. A mirror nothing checks is a mirror that will
+declared source of truth, the Go reaper mirrors it, and the Quint models mirror
+it because Quint cannot read JSON. Two models share the document: lease.qnt (the
+auto-sleep) and retention.qnt (task TTL and image tags); each constant is
+mirrored by the model that uses it. A mirror nothing checks is a mirror that will
 disagree -- and the disagreement is silent in the worst possible way: the model
 keeps proving a property about numbers the running code no longer uses, so the
 gate stays green while the guarantee quietly stops applying.
@@ -44,6 +46,8 @@ from typing import Final
 _REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 CONSTANTS_JSON: Final = _REPO_ROOT / "exe" / "lease-constants.json"
 LEASE_QNT: Final = _REPO_ROOT / "exe" / "spec" / "lease.qnt"
+RETENTION_QNT: Final = _REPO_ROOT / "exe" / "spec" / "retention.qnt"
+MODELS: Final = (LEASE_QNT, RETENTION_QNT)
 REAPER_DIR: Final = _REPO_ROOT / "tools" / "exe-reaper"
 
 #: `leaseObject = "lease.json"`: how the reaper names an object in the ops bucket.
@@ -54,10 +58,6 @@ _GO_OBJECT_NAME: Final = re.compile(r'\b\w+Object\s*=\s*"([^"]+)"')
 NOT_MODELLED: Final[dict[str, str]] = {
     # The model's clock is abstract minutes, not wall-clock time in any zone.
     "timezone": "the model has no dates and no zone; the clock is minutes",
-    # Task retention is the same reaper binary but a different job, with its own
-    # retention argument. Out of scope for the lease state machine.
-    "task_ttl_days": "task retention is a separate job (plan section 3.3)",
-    "task_ttl_warning_days": "task retention is a separate job (plan section 3.3)",
 }
 
 #: `pure val name = 123` in a Quint module. Only integer literals: a mirrored
@@ -86,50 +86,65 @@ def _json_int(key: str) -> int:
     return value
 
 
-def _model_int_constants() -> dict[str, int]:
-    """Every `pure val <name> = <int>` in exe/spec/lease.qnt."""
-    text = LEASE_QNT.read_text(encoding="utf-8")
+def _model_int_constants(model: Path = LEASE_QNT) -> dict[str, int]:
+    """Every `pure val <name> = <int>` in one model (lease.qnt by default)."""
+    text = model.read_text(encoding="utf-8")
     return {
         match.group("name"): int(match.group("value"))
         for match in _PURE_VAL_INT.finditer(text)
     }
 
 
+def _mirrored_anywhere() -> dict[str, int]:
+    """The JSON keys some model mirrors, with the value that model gives."""
+    declared = _json_constants()
+    out: dict[str, int] = {}
+    for model in MODELS:
+        for key, value in _model_int_constants(model).items():
+            if key in declared:
+                out[key] = value
+    return out
+
+
 # --- the two files exist and parse ------------------------------------------
 
 
-def test_both_files_are_present() -> None:
+def test_every_file_is_present() -> None:
     assert CONSTANTS_JSON.is_file(), CONSTANTS_JSON
-    assert LEASE_QNT.is_file(), LEASE_QNT
+    for model in MODELS:
+        assert model.is_file(), model
 
 
-def test_the_model_declares_integer_constants_the_regex_can_see() -> None:
+def test_the_models_declare_integer_constants_the_regex_can_see() -> None:
     """A guard on the guard: a reformat that hid every constant would otherwise
     turn this whole module into a set of vacuous passes."""
-    assert len(_model_int_constants()) >= 12
+    assert len(_model_int_constants(LEASE_QNT)) >= 12
+    assert len(_model_int_constants(RETENTION_QNT)) >= 4
 
 
 # --- check 1: every JSON constant is mirrored or explicitly excused ----------
 
 
 def test_every_json_constant_is_mirrored_or_listed_as_not_modelled() -> None:
-    model = _model_int_constants()
+    mirrored = _mirrored_anywhere()
     unaccounted = [
-        key for key in _json_constants() if key not in model and key not in NOT_MODELLED
+        key
+        for key in _json_constants()
+        if key not in mirrored and key not in NOT_MODELLED
     ]
     assert unaccounted == [], (
-        "exe/lease-constants.json declares constants that exe/spec/lease.qnt "
-        "neither mirrors nor excuses. Mirror them as `pure val <key> = <n>`, or "
-        f"add them to NOT_MODELLED with a reason: {unaccounted}"
+        "exe/lease-constants.json declares constants that no exe/spec/ model "
+        "mirrors or excuses. Mirror them as `pure val <key> = <n>` in the model "
+        f"that uses them, or add them to NOT_MODELLED with a reason: {unaccounted}"
     )
 
 
 def test_not_modelled_only_lists_keys_that_really_are_absent() -> None:
     """A stale excuse is worse than none: it hides a constant that IS mirrored
     and therefore IS subject to the equality check below."""
-    model = _model_int_constants()
-    stale = sorted(key for key in NOT_MODELLED if key in model)
-    assert stale == [], f"NOT_MODELLED excuses constants the model does mirror: {stale}"
+    mirrored = _mirrored_anywhere()
+    stale = sorted(key for key in NOT_MODELLED if key in mirrored)
+    assert stale == [], f"NOT_MODELLED excuses constants a model does mirror: {stale}"
 
 
 def test_not_modelled_only_lists_keys_the_json_actually_has() -> None:
@@ -146,26 +161,27 @@ def test_every_not_modelled_key_carries_a_reason() -> None:
 
 
 def test_mirrored_constants_have_equal_values() -> None:
+    """Checked per model, so a key mirrored by both cannot hide a mismatch in
+    one of them."""
     declared = _json_constants()
-    model = _model_int_constants()
-    mismatches = {
-        key: (declared[key], model[key])
-        for key in declared
-        if key in model and declared[key] != model[key]
-    }
-    assert mismatches == {}, (
-        "exe/spec/lease.qnt disagrees with exe/lease-constants.json "
-        f"(key: (json, qnt)): {mismatches}"
-    )
+    for path in MODELS:
+        model = _model_int_constants(path)
+        mismatches = {
+            key: (declared[key], model[key])
+            for key in declared
+            if key in model and declared[key] != model[key]
+        }
+        assert mismatches == {}, (
+            f"exe/spec/{path.name} disagrees with exe/lease-constants.json "
+            f"(key: (json, qnt)): {mismatches}"
+        )
 
 
 def test_the_mirror_covers_every_number_the_json_declares() -> None:
     """Spelled out as an exact set, so a new constant cannot slip in as 'covered
-    by the loop above' while nothing in the model reads it."""
+    by the loop above' while nothing in the models reads it."""
     declared = _json_constants()
-    model = _model_int_constants()
-    mirrored = {key for key in declared if key in model}
-    assert mirrored == set(declared) - set(NOT_MODELLED)
+    assert set(_mirrored_anywhere()) == set(declared) - set(NOT_MODELLED)
 
 
 def test_every_mirrored_constant_is_a_plain_integer_in_the_json() -> None:
@@ -173,8 +189,7 @@ def test_every_mirrored_constant_is_a_plain_integer_in_the_json() -> None:
     string or an object must go through NOT_MODELLED, not through a silent
     type coercion."""
     declared = _json_constants()
-    model = _model_int_constants()
-    for key in model.keys() & declared.keys():
+    for key in _mirrored_anywhere():
         value = declared[key]
         assert isinstance(value, int) and not isinstance(value, bool), (key, value)
 

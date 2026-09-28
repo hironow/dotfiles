@@ -1,6 +1,8 @@
 # exe/spec/
 
-Formal model of the `exe` cluster's lease-based auto-sleep.
+Formal models of what the `exe` cluster stops or deletes on its own: the
+lease-based auto-sleep (`lease.qnt`), and task retention with the image tags
+that protect a live task's image (`retention.qnt`, at the end of this file).
 
 `lease.qnt` is the design half of what
 [`docs/agents/formal-methods.md`](../../ROOT_AGENTS_docs_agents_formal-methods.md)
@@ -240,7 +242,7 @@ Read no invariant as covering any of this:
 - **Money.** The billing window is bounded in minutes. Yen never appear.
 - **Snapshot correctness**: that a SUSPENDED actor can actually be resumed.
 - **Task TTL and image-tag GC** (plan section 3.3). Same reaper, a different
-  job, with its own retention argument.
+  job, with its own model: `retention.qnt`, below.
 - **IAM** and who may call what.
 - **N actors.** The WorkerPool runs 2 replicas (plan Q17), so the model has 2.
   Golden actors are one flag, not a set. No symmetry argument is attempted.
@@ -319,6 +321,69 @@ uvx pytest -q tests/unit/test_lease_constants_lockstep.py
 Everything above but that pytest runs in `just check`, through
 `just spec-check`; the pytest runs with the other unit tests in `just ci`.
 
+## retention.qnt: the task TTL and the image tags
+
+Two things delete here with nobody watching (Phase 6 plan D10): L1 deletes an
+AX task that has sat SUSPENDED for `task_ttl_days` unless the operator kept it
+(`just exe-keep`), and Artifact Registry deletes a task image older than 14 days
+unless it carries an `inuse-` tag. What goes wrong is a delete that lands on
+something still wanted: a task before its time, or the image a live task needs
+at its next resume. Every wake is a fresh node, so a resume pulls the image
+again.
+
+The decided mechanisms:
+
+- **TTL** counts from the Substrate store's `update_time` for the task's actor,
+  which every write moves: a resume and a re-suspend move it whether or not an
+  L1 tick saw them. L1 runs only with a node up, so a task is "deleted at the
+  first wake after 30 days".
+- **L1's tags.** L1 tags every digest a live task references `inuse-<sha12>`,
+  and releases that tag once the digest has been unreferenced for
+  `tag_release_days`, counted in `tasks.json` from the first tick that saw it
+  so.
+- **ax-job's tag** is its own and dated, `inuse-<sha12>-<unix>`, created before
+  the task is applied. L1 releases it once its name says it is
+  `tag_release_days` old, never by a record.
+
+Invariants (`Retention`):
+
+- **`NoLiveImageCollected`**: AR never collects the image of a protected live
+  task (created through ax-job, or seen by an L1 tick).
+- **`TtlDeletesOnlyTheExpired`**: a task L1 deletes has really been SUSPENDED
+  for `task_ttl_days`, and is not kept.
+- **`ProtectedImagesAreTagged`**: every protected live task's image carries a
+  tag right now.
+
+Rejected designs, each a named run that must fail:
+
+| Module | Run | What breaks |
+|---|---|---|
+| `sharedJobTag` | `sharedTagLetsAFreshTasksImageBeCollected` | ax-job tags the shared `inuse-<sha12>`; a tick between its tag and its apply reads a weeks-old "unreferenced since" and releases the tag, and AR collects the new task's image |
+| `ttlByFirstSight` | `firstSightDeletesATaskUsedYesterday` | the TTL counts from L1's first sight of the task suspended; a resume and re-suspend between two ticks are invisible, and a task used yesterday is deleted as a month old |
+
+Time is whole days, and L1's ticks, AR's cleanup and the operator's commands
+interleave freely inside one: coarser than reality, so any order the real
+system can produce, the model can too. Outside it: a raw `ax apply` of an
+untagged image older than 14 days with AR's cleanup landing before L1's next
+tick (ax-job is the supported path), keep.json edits racing L1's read,
+platform images (the same tags over different references), and snapshot
+objects (the operator-run snapshot GC, plan D11).
+
+```sh
+mise x -- quint test --max-samples=200 exe/spec/retention.qnt
+mise x -- quint run exe/spec/retention.qnt --invariants Retention \
+    --max-steps=150 --max-samples=3000 --seed=0x1ea5e --verbosity=1
+# each of these MUST fail
+mise x -- quint test --main=sharedJobTag \
+    --match=sharedTagLetsAFreshTasksImageBeCollected exe/spec/retention.qnt
+mise x -- quint test --main=ttlByFirstSight \
+    --match=firstSightDeletesATaskUsedYesterday exe/spec/retention.qnt
+```
+
+The random search finds both rejected designs' violations within seconds on
+the same seed, and none in the decided one: the search reaches the states that
+matter.
+
 ## Findings the model produced
 
 Recorded here. All of them are requirements for the Go side, not observations:
@@ -349,3 +414,14 @@ Recorded here. All of them are requirements for the Go side, not observations:
    `drained` must be drained again (Phase 3 review notes).** Without the idle
    stop, L2 billed on to the deadline. Without the re-drain, `exe-sleep` after
    an idle drain left L1 settled on the old record and L2 forcing a page.
+6. **ax-job's tag must be its own, dated by its name (retention.qnt, Phase 6).**
+   The plan had ax-job put the shared `inuse-<sha12>` on the image before it
+   applies the task. L1 releases that tag by its own "unreferenced since"
+   record, which can be weeks old for an image being reused, so a tick between
+   ax-job's tag and its apply released it, and AR collected the new task's
+   image. `sharedJobTag` keeps the failing run.
+7. **The TTL counts from the store's update_time, not from L1's first sight
+   (retention.qnt, Phase 6).** L1 only sees what is there when it ticks; a
+   resume and a re-suspend between two ticks would leave a first-sight clock
+   running, and a task used yesterday would be deleted as a month old.
+   `ttlByFirstSight` keeps the failing run.

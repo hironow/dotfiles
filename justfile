@@ -708,22 +708,27 @@ spec-check:
     echo "🔬 quint run exe/spec/lease.qnt: Safety, WellFormed, DrainedRecordStaysTrue"
     $QUINT run exe/spec/lease.qnt --invariants Safety WellFormed DrainedRecordStaysTrue \
       --max-steps=120 --max-samples=5000 --seed=0x1ea5e --verbosity=1
+    echo "🔬 quint run exe/spec/retention.qnt: Retention"
+    $QUINT run exe/spec/retention.qnt --invariants Retention \
+      --max-steps=150 --max-samples=3000 --seed=0x1ea5e --verbosity=1
     # The rejected designs (exe/spec/README.md) are kept as FAILING instances,
     # so the gate requires them to fail, and to fail on their expectation
     # (QNT508) rather than because a module or test went missing. A rejected
     # design that starts passing means the model can no longer tell it from the
     # decided one.
     for rejected in \
-      "twoWriterLease twoWritersLoseTheOperatorsLease" \
-      "naiveShrinkFirst shrinkingFirstCrashesTheRunningActor" \
-      "routerLeftOpen leftOpenRouterRevivesAnActorAfterDrained" \
-      "controllerLeftUp controllerLeftUpLetsARawResumeThrough" \
-      "scaleIsNotABarrier scaleAloneLetsALingeringControllerResume" \
-      "goldenIgnored goldenReconcilerResumesAfterDrained" \
-      "pdbHoldsTheDrain aDisruptionBudgetOutlivesTheBound"; do
-      read -r module run <<<"$rejected"
+      "lease twoWriterLease twoWritersLoseTheOperatorsLease" \
+      "lease naiveShrinkFirst shrinkingFirstCrashesTheRunningActor" \
+      "lease routerLeftOpen leftOpenRouterRevivesAnActorAfterDrained" \
+      "lease controllerLeftUp controllerLeftUpLetsARawResumeThrough" \
+      "lease scaleIsNotABarrier scaleAloneLetsALingeringControllerResume" \
+      "lease goldenIgnored goldenReconcilerResumesAfterDrained" \
+      "lease pdbHoldsTheDrain aDisruptionBudgetOutlivesTheBound" \
+      "retention sharedJobTag sharedTagLetsAFreshTasksImageBeCollected" \
+      "retention ttlByFirstSight firstSightDeletesATaskUsedYesterday"; do
+      read -r spec module run <<<"$rejected"
       echo "🔬 quint test $module.$run (must fail)"
-      if out="$($QUINT test --main="$module" --match="$run" exe/spec/lease.qnt 2>&1)"; then
+      if out="$($QUINT test --main="$module" --match="$run" "exe/spec/$spec.qnt" 2>&1)"; then
         echo "❌ rejected design $module passed $run: the model no longer rejects it" >&2
         exit 1
       fi

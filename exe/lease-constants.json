@@ -17,6 +17,7 @@
   "wedge_clear_minutes": 10,
   "task_ttl_days": 30,
   "task_ttl_warning_days": 7,
+  "tag_release_days": 7,
   "_cap_formula": "nightly_cap_local_hour = l3_daily_stop_local_hour - (l1_tick_minutes + drain_ceiling_minutes + l2_tick_minutes + slack_minutes), i.e. 04:00 - 60min = 03:00 JST. This is what guarantees L3 never lands on an awake actor in normal operation; both the Go guard and the Quint invariant recompute it rather than trusting the stored 3.",
   "_writers": {
     "lease.json": "operator",

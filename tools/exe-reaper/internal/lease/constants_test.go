@@ -1,9 +1,11 @@
 package lease
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,6 +39,7 @@ type constantsDoc struct {
 	WedgeClearMinutes         int    `json:"wedge_clear_minutes"`
 	TaskTTLDays               int    `json:"task_ttl_days"`
 	TaskTTLWarningDays        int    `json:"task_ttl_warning_days"`
+	TagReleaseDays            int    `json:"tag_release_days"`
 }
 
 func loadConstants(t *testing.T) constantsDoc {
@@ -84,6 +87,7 @@ func TestConstantsMatchTheSingleSource(t *testing.T) {
 		{"wedge_clear_minutes", minutes(WedgeClear), doc.WedgeClearMinutes},
 		{"task_ttl_days", days(TaskTTL), doc.TaskTTLDays},
 		{"task_ttl_warning_days", days(TaskTTLWarning), doc.TaskTTLWarningDays},
+		{"tag_release_days", days(TagRelease), doc.TagReleaseDays},
 	}
 
 	for _, c := range checks {
@@ -91,6 +95,35 @@ func TestConstantsMatchTheSingleSource(t *testing.T) {
 			t.Errorf("%s: Go has %v, exe/lease-constants.json has %v -- "+
 				"the JSON is the source of truth; move both together", c.name, c.got, c.want)
 		}
+	}
+}
+
+func TestEveryConstantInTheSourceHasAGoMirror(t *testing.T) {
+	// constantsDoc decodes only the keys it names, so a constant added to the
+	// JSON would be silently ignored here. Every key that is not prose (`_`)
+	// must have a field, and so a row in the table above.
+	raw, err := os.ReadFile(constantsRelPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		t.Fatal(err)
+	}
+	for key := range keys {
+		if strings.HasPrefix(key, "_") {
+			delete(keys, key)
+		}
+	}
+	constants, err := json.Marshal(keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	strict := json.NewDecoder(bytes.NewReader(constants))
+	strict.DisallowUnknownFields()
+	var doc constantsDoc
+	if err := strict.Decode(&doc); err != nil {
+		t.Errorf("exe/lease-constants.json has a constant with no Go mirror in constantsDoc: %v", err)
 	}
 }
 
