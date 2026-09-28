@@ -32,6 +32,14 @@ export DEBIAN_FRONTEND=noninteractive
 # `just lint` / `just check` invoke `mise x -- shellcheck` which
 # falls through to system PATH. shellcheck and jq are apt packages,
 # install them up front.
+#
+# Every download in this script retries a transient upstream error (a 5xx, a
+# reset) a bounded number of times instead of failing the image build, and so
+# every PR's sandbox job: apt through Acquire::Retries, each curl through
+# --retry, git through retry_git. The checksum and signature checks after each
+# download are unchanged; a retry fetches the same pinned URL again.
+# tests/unit/test_devcontainer_download_retries.py pins it.
+echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-dotfiles-retries
 echo "[dotfiles-tools] installing apt prerequisites"
 apt-get update -y
 apt-get install -y --no-install-recommends \
@@ -48,7 +56,7 @@ import_apt_key_with_fingerprint() {
   local tmp_armored="/tmp/dotfiles-apt-key.armored"
   local tmp_keyring="/tmp/dotfiles-apt-key.gpg"
   rm -f "$tmp_armored" "$tmp_keyring"
-  curl -fsSL -o "$tmp_armored" "$url"
+  curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o "$tmp_armored" "$url"
   gpg --no-default-keyring --keyring "$tmp_keyring" --import "$tmp_armored" 2>/dev/null
   local actual
   actual=$(gpg --no-default-keyring --keyring "$tmp_keyring" \
@@ -100,8 +108,8 @@ esac
 UV_FILE="uv-${UV_TARGET}.tar.gz"
 UV_BASE="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}"
 echo "[dotfiles-tools] installing uv ${UV_VERSION} (${UV_TARGET})"
-curl -fsSL -o "/tmp/${UV_FILE}" "${UV_BASE}/${UV_FILE}"
-curl -fsSL -o "/tmp/${UV_FILE}.sha256" "${UV_BASE}/${UV_FILE}.sha256"
+curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o "/tmp/${UV_FILE}" "${UV_BASE}/${UV_FILE}"
+curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o "/tmp/${UV_FILE}.sha256" "${UV_BASE}/${UV_FILE}.sha256"
 ( cd /tmp && sha256sum -c "${UV_FILE}.sha256" )
 # Defense in depth: astral-sh signs uv release artifacts via
 # GitHub Actions OIDC (sigstore-backed). `gh attestation verify`
@@ -138,8 +146,8 @@ esac
 JUST_FILE="just-${JUST_VERSION}-${JUST_TARGET}.tar.gz"
 JUST_BASE="https://github.com/casey/just/releases/download/${JUST_VERSION}"
 echo "[dotfiles-tools] installing just ${JUST_VERSION} (${JUST_TARGET})"
-curl -fsSL -o "/tmp/${JUST_FILE}" "${JUST_BASE}/${JUST_FILE}"
-curl -fsSL -o /tmp/just.SHA256SUMS "${JUST_BASE}/SHA256SUMS"
+curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o "/tmp/${JUST_FILE}" "${JUST_BASE}/${JUST_FILE}"
+curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o /tmp/just.SHA256SUMS "${JUST_BASE}/SHA256SUMS"
 ( cd /tmp && grep "  ${JUST_FILE}\$" just.SHA256SUMS | sha256sum -c - )
 tar -xz -f "/tmp/${JUST_FILE}" -C /usr/local/bin just
 rm -f "/tmp/${JUST_FILE}" /tmp/just.SHA256SUMS
@@ -157,7 +165,7 @@ case "$ARCH" in
 esac
 SHELDON_URL="https://github.com/rossmacarthur/sheldon/releases/download/${SHELDON_VERSION}/sheldon-${SHELDON_VERSION}-${SHELDON_TARGET}.tar.gz"
 echo "[dotfiles-tools] installing sheldon ${SHELDON_VERSION} (${SHELDON_TARGET})"
-curl -fsSL -o /tmp/sheldon.tar.gz "$SHELDON_URL"
+curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o /tmp/sheldon.tar.gz "$SHELDON_URL"
 echo "${SHELDON_SHA256}  /tmp/sheldon.tar.gz" | sha256sum -c -
 tar -xz -f /tmp/sheldon.tar.gz -C /usr/local/bin
 rm -f /tmp/sheldon.tar.gz
@@ -336,12 +344,22 @@ case "$ARCH" in
   *) echo "[dotfiles-tools] unsupported arch: $ARCH" >&2; exit 1 ;;
 esac
 echo "[dotfiles-tools] building quint's Rust evaluator ${QUINT_EVALUATOR_VERSION} (${QUINT_EVALUATOR_REV}) with Rust ${RUST_TOOLCHAIN}"
-curl -fsSL -o /tmp/rustup-init \
+curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o /tmp/rustup-init \
   "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_TARGET}/rustup-init"
 echo "${RUSTUP_SHA256}  /tmp/rustup-init" | sha256sum -c -
 chmod 0755 /tmp/rustup-init
+# git has no retry of its own: three tries, a few seconds apart.
+retry_git() {
+  local try
+  for try in 1 2 3; do
+    git "$@" && return 0
+    echo "[dotfiles-tools] git failed (try ${try} of 3): git $*" >&2
+    sleep $((try * 5))
+  done
+  return 1
+}
 git init -q /tmp/quint-src
-git -C /tmp/quint-src fetch -q --depth 1 https://github.com/quint-co/quint "${QUINT_EVALUATOR_REV}"
+retry_git -C /tmp/quint-src fetch -q --depth 1 https://github.com/quint-co/quint "${QUINT_EVALUATOR_REV}"
 git -C /tmp/quint-src checkout -q FETCH_HEAD
 if [ "$(git -C /tmp/quint-src rev-parse HEAD)" != "${QUINT_EVALUATOR_REV}" ]; then
   echo "[dotfiles-tools] quint source is not at ${QUINT_EVALUATOR_REV}" >&2
