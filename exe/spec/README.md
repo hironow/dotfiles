@@ -33,13 +33,16 @@ counts have one owner too, L1.
 ### The drain, and why it has every step it has
 
 1. **Begin**: the baseline of what is already CRASHED, `draining`, and the
-   router to 0 replicas.
+   router to 0 replicas. Every later tick of the drain holds the router at 0
+   again, because the real scale-down can fail after `draining` is written,
+   and the next tick is a new process that knows only what it observes.
 2. **Suspend**: AX suspends every awake task; a checkpoint takes as long as it
    takes.
 3. **Quiesce**: nothing awake, so the ax-controller goes to 0 replicas. A raw
    `ax resume` bypasses the wrappers and is executed by the controller.
-4. **Wait**: until no router or controller pod is left, because a pod whose
-   count is already 0 still serves until it has terminated. Also until no
+4. **Wait**: until both replica counts read 0 and no router or controller pod
+   is left, because a pod whose count is already 0 still serves until it has
+   terminated, and a count that still reads 1 brings a pod back. Also until no
    ActorTemplate is in flight, because Substrate's own reconciler, inside
    ate-api-server, resumes golden actors without asking anyone.
 5. **Finish**: `drained`.

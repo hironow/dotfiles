@@ -178,6 +178,11 @@ func TestDecideL1Branches(t *testing.T) {
 			return o
 		}(), L1Wait},
 		{"a checkpoint still writing holds `drained` back", withActor(quiet(draining(expired(l1Base()), time.Minute)), "a1", ActorCheckpointing), L1Wait},
+		{"a router still scaled to one holds `drained` back, even with no pod up yet", func() L1Observation {
+			o := quiet(draining(expired(l1Base()), time.Minute))
+			o.RouterReplicas = 1
+			return o
+		}(), L1Wait},
 
 		// --- the ceiling ---
 		{"the ceiling spent with something awake gives up", withActor(draining(expired(l1Base()), DrainCeiling), "a1", ActorAwake), L1GiveUp},
@@ -268,6 +273,32 @@ func TestDecideL1QuiesceAndResuspendMoveOnlyTheController(t *testing.T) {
 	r := DecideL1(withActor(quiet(draining(expired(l1Base()), time.Minute)), "a1", ActorAwake))
 	if r.Branch != L1Resuspend || r.ControllerReplicas != 1 || r.RouterReplicas != 0 {
 		t.Errorf("resuspend: %s router %d controller %d, want Resuspend 0 1", r.Branch, r.RouterReplicas, r.ControllerReplicas)
+	}
+}
+
+func TestDecideL1HoldsTheRouterShutThroughoutADrain(t *testing.T) {
+	// Begin closes the router, but the scale call that does it can fail after
+	// `draining` is written, and the next tick is a new process. So every tick
+	// of a drain in progress holds the router at zero, whatever branch it
+	// takes: a drain with the router open is one a connection can undo.
+	rows := map[L1Branch]L1Observation{
+		L1Lost:      withActor(draining(expired(l1Base()), time.Minute), "a1", ActorCrashed),
+		L1GiveUp:    withActor(draining(expired(l1Base()), DrainCeiling), "a1", ActorAwake),
+		L1Resuspend: withActor(quiet(draining(expired(l1Base()), time.Minute)), "a1", ActorAwake),
+		L1Suspend:   withActor(draining(expired(l1Base()), time.Minute), "a1", ActorAwake),
+		L1Quiesce:   draining(expired(l1Base()), time.Minute),
+		L1Wait:      withActor(quiet(draining(expired(l1Base()), time.Minute)), "a1", ActorCheckpointing),
+	}
+	for want, o := range rows {
+		o.RouterReplicas, o.RouterPods = 1, 1 // the scale-down that failed
+		d := DecideL1(o)
+		if d.Branch != want {
+			t.Errorf("%s row took %s", want, d.Branch)
+			continue
+		}
+		if d.RouterReplicas != 0 {
+			t.Errorf("%s left the router at %d, want 0", want, d.RouterReplicas)
+		}
 	}
 }
 

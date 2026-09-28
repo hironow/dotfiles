@@ -882,6 +882,7 @@ module leaseCore {
     golden_ignored or (not(c.goldenAwake) and not(c.templatePending)),
     controller_left_up or c.controllerReplicas == 0,
     controller_left_up or scale_is_barrier or not(c.controllerPod),
+    router_left_open or c.routerReplicas == 0,
     router_left_open or scale_is_barrier or not(c.routerPod),
   }
 
@@ -897,6 +898,14 @@ module leaseCore {
 
   pure def reopened(c: Cluster): Cluster =
     { ...c, routerReplicas: 1, controllerReplicas: 1, routerPod: true, controllerPod: true }
+
+  /// Every tick of a drain in progress holds the router at zero, not only
+  /// Begin: the real scale-down can fail after `draining` is written, and the
+  /// next tick is a new process that knows only what it observes. From a
+  /// reachable state this changes nothing -- Begin already closed it -- but the
+  /// L1 replay draws arbitrary worlds, and there it is the Go reaper's rule.
+  def heldShut(c: Cluster): Cluster =
+    { ...c, routerReplicas: if (router_left_open) c.routerReplicas else 0 }
 
   /// Nothing to do: no trigger, no drain in flight, both paths open. This is
   /// what almost every one of the 1440 daily ticks does.
@@ -996,7 +1005,7 @@ module leaseCore {
     drain.state == Draining,
     lostIn(c0),
     drain' = { ...d0, state: DrainFailed, heartbeat: t, leaseGen: l1Gen },
-    cluster' = c0,
+    cluster' = heldShut(c0),
     evidence' = { ...e0, drainEverFailed: true },
     clock' = l1ClockAt(t),
     l1Last' = { branch: "Lost", ticks: l1Last.ticks + 1 },
@@ -1009,7 +1018,7 @@ module leaseCore {
     not(lostIn(c0)),
     drainDoneIn(c0),
     drain' = { ...d0, state: Drained, heartbeat: t, leaseGen: l1Gen },
-    cluster' = c0,
+    cluster' = heldShut(c0),
     evidence' = e0,
     clock' = l1ClockAt(t),
     l1Last' = { branch: "Finish", ticks: l1Last.ticks + 1 },
@@ -1026,7 +1035,7 @@ module leaseCore {
     not(drainDoneIn(c0)),
     ceilingBlown,
     drain' = { ...d0, state: DrainFailed, heartbeat: t, leaseGen: l1Gen },
-    cluster' = c0,
+    cluster' = heldShut(c0),
     evidence' = { ...e0, drainEverFailed: true },
     clock' = l1ClockAt(t),
     l1Last' = { branch: "GiveUp", ticks: l1Last.ticks + 1 },
@@ -1044,7 +1053,7 @@ module leaseCore {
     c0.awake.union(c0.doomed) != Set(),
     c0.controllerReplicas == 0,
     drain' = { ...d0, heartbeat: t, leaseGen: l1Gen },
-    cluster' = { ...c0, controllerReplicas: 1, controllerPod: true },
+    cluster' = { ...heldShut(c0), controllerReplicas: 1, controllerPod: true },
     evidence' = e0,
     clock' = l1ClockAt(t),
     l1Last' = { branch: "Resuspend", ticks: l1Last.ticks + 1 },
@@ -1065,7 +1074,7 @@ module leaseCore {
     c0.controllerReplicas == 1,
     drain' = { ...d0, heartbeat: t, leaseGen: l1Gen },
     cluster' = {
-      ...c0,
+      ...heldShut(c0),
       awake: Set(),
       checkpointing: c0.checkpointing.union(c0.awake),
       doomed: Set(),
@@ -1089,7 +1098,7 @@ module leaseCore {
     c0.awake.union(c0.doomed) != Set(),
     c0.controllerReplicas == 1,
     drain' = { ...d0, heartbeat: t, leaseGen: l1Gen },
-    cluster' = c0,
+    cluster' = heldShut(c0),
     evidence' = e0,
     clock' = l1ClockAt(t),
     l1Last' = { branch: "Stall", ticks: l1Last.ticks + 1 },
@@ -1108,7 +1117,7 @@ module leaseCore {
     c0.awake.union(c0.doomed) == Set(),
     c0.controllerReplicas == 1,
     drain' = { ...d0, heartbeat: t, leaseGen: l1Gen },
-    cluster' = { ...c0, controllerReplicas: 0 },
+    cluster' = { ...heldShut(c0), controllerReplicas: 0 },
     evidence' = e0,
     clock' = l1ClockAt(t),
     l1Last' = { branch: "Quiesce", ticks: l1Last.ticks + 1 },
@@ -1125,7 +1134,7 @@ module leaseCore {
     c0.awake.union(c0.doomed) == Set(),
     c0.controllerReplicas == 0 or controller_left_up,
     drain' = { ...d0, heartbeat: t, leaseGen: l1Gen },
-    cluster' = c0,
+    cluster' = heldShut(c0),
     evidence' = e0,
     clock' = l1ClockAt(t),
     l1Last' = { branch: "Wait", ticks: l1Last.ticks + 1 },

@@ -93,9 +93,12 @@ func DecideL1(o L1Observation) L1Decision {
 		return d
 	}
 
-	// A drain in progress: every branch below heartbeats.
+	// A drain in progress: every branch below heartbeats, and holds the router
+	// shut. Begin's scale-down can fail after `draining` is written, and the
+	// next tick is a new process that only knows what it observes.
 	d.Drain.Heartbeat = o.Now
 	d.Drain.LeaseGeneration = gen
+	d.RouterReplicas = 0
 	awake := awakeTasks(o.Actors)
 
 	switch {
@@ -228,8 +231,8 @@ func lostSinceBaseline(actors []ActorObs, baseline []string) bool {
 }
 
 // barrierHolds is the model's drainDoneIn: nothing awake or mid-checkpoint in
-// any atespace, no template in flight, the controller at 0, and no router or
-// controller pod left that could still execute a resume.
+// any atespace, no template in flight, both replica counts at 0, and no router
+// or controller pod left that could still execute a resume.
 func barrierHolds(o L1Observation) bool {
 	for _, a := range o.Actors {
 		if a.State == ActorAwake || a.State == ActorCheckpointing {
@@ -237,7 +240,8 @@ func barrierHolds(o L1Observation) bool {
 		}
 	}
 	return !o.TemplatesPending &&
-		o.ControllerReplicas == 0 && o.ControllerPods == 0 && o.RouterPods == 0
+		o.RouterReplicas == 0 && o.RouterPods == 0 &&
+		o.ControllerReplicas == 0 && o.ControllerPods == 0
 }
 
 // NextStopping is L2's stop-latency detector (inbox M18, layer 3). The target
