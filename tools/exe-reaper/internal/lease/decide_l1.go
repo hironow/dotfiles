@@ -14,7 +14,8 @@ import (
 //   - the idle clock: the first tick that saw no task actor awake, carried in
 //     drain.json because each CronJob run is a new process;
 //   - wedges: every actor stuck in DELETING, with the tick it was first seen
-//     so, and the worker pod of any stuck for WedgeClear, to delete.
+//     so, and the worker pod of any stuck for WedgeClear, to delete -- only
+//     when every actor on that worker is such a wedge.
 //
 // Then one branch decides. Without a trigger: nothing (NoOp), put both resume
 // paths back (Reopen), or cancel a drain (Cancel). With one:
@@ -146,26 +147,47 @@ func observedIdleSince(o L1Observation) time.Time {
 // observedWedges carries the wedge record forward and picks the worker pods to
 // delete. Only an actor in DELETING that still holds a worker is a wedge: a
 // SUSPENDING actor may be mid-checkpoint, and deleting its pod would crash it
-// (the model's ClearingNeverLosesState).
+// (the model's ClearingNeverLosesState). A worker can host more than one
+// actor, and deleting its pod takes them all, so a worker is cleared only when
+// every actor on it is a wedge that has waited WedgeClear; until then its
+// wedges stay remembered.
 func observedWedges(o L1Observation) (map[string]time.Time, []string) {
 	var seen map[string]time.Time
-	var clear []string
+	clearable := map[string]bool{}
 	for _, a := range o.Actors {
-		if a.State != ActorDeleting || a.Worker == "" {
+		if a.Worker == "" {
+			continue
+		}
+		if a.State != ActorDeleting {
+			clearable[a.Worker] = false
 			continue
 		}
 		first, ok := o.Drain.WedgeSeen[a.UID]
 		if !ok {
 			first = o.Now
 		}
-		if !o.Now.Before(first.Add(WedgeClear)) {
-			clear = append(clear, a.Worker)
-			continue
-		}
 		if seen == nil {
 			seen = map[string]time.Time{}
 		}
 		seen[a.UID] = first
+		ripe := !o.Now.Before(first.Add(WedgeClear))
+		if held, known := clearable[a.Worker]; !known || held {
+			clearable[a.Worker] = ripe
+		}
+	}
+	var clear []string
+	for worker, ok := range clearable {
+		if ok {
+			clear = append(clear, worker)
+		}
+	}
+	for _, a := range o.Actors {
+		if clearable[a.Worker] {
+			delete(seen, a.UID)
+		}
+	}
+	if len(seen) == 0 {
+		seen = nil
 	}
 	slices.Sort(clear)
 	return seen, clear

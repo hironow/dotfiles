@@ -493,6 +493,36 @@ func TestDecideL1NeverClearsAPodHostingAnythingLive(t *testing.T) {
 	}
 }
 
+func TestDecideL1NeverClearsAWorkerThatAlsoHostsALiveActor(t *testing.T) {
+	// A worker can host more than one actor (WorkerResources.actors), and
+	// deleting its pod takes every one of them. So a wedge is cleared only when
+	// every actor on that worker is a wedge old enough to clear. The model has
+	// one worker per actor and cannot say this; this test does.
+	o := withActor(l1Base(), "a1", ActorDeleting)
+	o.Actors[1].Worker = "w1" // a2 shares a1's worker
+	o.Drain.WedgeSeen = map[string]time.Time{"a1": o.Now.Add(-WedgeClear)}
+	for _, s := range []ActorState{ActorAwake, ActorCheckpointing, ActorAtRest, ActorCrashed} {
+		o := withActor(o, "a2", s)
+		if d := DecideL1(o); len(d.ClearWorkers) != 0 {
+			t.Errorf("with a %s actor on w1 as well, cleared %v", s, d.ClearWorkers)
+		}
+	}
+
+	// and a second wedge on the same worker that is still young holds it too
+	young := withActor(o, "a2", ActorDeleting)
+	young.Drain.WedgeSeen = map[string]time.Time{"a1": o.Now.Add(-WedgeClear), "a2": o.Now.Add(-time.Minute)}
+	if d := DecideL1(young); len(d.ClearWorkers) != 0 {
+		t.Errorf("with a young wedge on w1 as well, cleared %v", d.ClearWorkers)
+	}
+
+	// but two wedges both old enough clear their shared worker, once
+	both := withActor(o, "a2", ActorDeleting)
+	both.Drain.WedgeSeen = map[string]time.Time{"a1": o.Now.Add(-WedgeClear), "a2": o.Now.Add(-WedgeClear)}
+	if d := DecideL1(both); !slices.Equal(d.ClearWorkers, []string{"w1"}) {
+		t.Errorf("two ripe wedges on w1 cleared %v, want [w1]", d.ClearWorkers)
+	}
+}
+
 func TestDecideL1WedgesClearInEveryBranch(t *testing.T) {
 	// Wedge clearing is part of observing, not a branch: it happens during a
 	// drain as well, so a wedge cannot hold `drained` back forever either.

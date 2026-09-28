@@ -244,6 +244,11 @@ Read no invariant as covering any of this:
 - **IAM** and who may call what.
 - **N actors.** The WorkerPool runs 2 replicas (plan Q17), so the model has 2.
   Golden actors are one flag, not a set. No symmetry argument is attempted.
+- **Actors sharing a worker.** Each modelled actor has a worker of its own, so
+  clearing a wedge can only ever take that one actor. A Substrate worker can
+  host several, and deleting its pod takes them all, so the Go side clears a
+  worker only when every actor on it is a ripe wedge
+  (`TestDecideL1NeverClearsAWorkerThatAlsoHostsALiveActor`).
 - **Proof.** `quint run` samples traces; it is a bug finder. Apalache
   (`quint verify`) may be pointed at this file by hand, and it is deliberately
   not part of `just check`.
