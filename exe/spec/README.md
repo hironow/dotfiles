@@ -384,6 +384,13 @@ The random search finds both rejected designs' violations within seconds on
 the same seed, and none in the decided one: the search reaches the states that
 matter.
 
+The Go half is `DecideRetention` (`tools/exe-reaper/internal/lease/retention.go`).
+`TestSimulationRetention*` runs it through this model's environment on 200 fixed
+seeds, checks the three invariants on the Go state after every step, and
+requires TTL deletions, releases and collections to occur. The same sweep with
+ax-job tagging the shared `inuse-<sha12>` must find a violation, and does.
+`EXE_REAPER_RETENTION_SEED=<seed>` replays one seed.
+
 ## Findings the model produced
 
 Recorded here. All of them are requirements for the Go side, not observations:
