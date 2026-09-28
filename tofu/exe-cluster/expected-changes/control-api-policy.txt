@@ -1,0 +1,14 @@
+# The reviewed change list for putting the network back in front of the
+# Control API (plan F5; W2 finding 7): one NetworkPolicy in ate-system that
+# admits the ate-api-server pods' port 443 only from ate-system, ax-system's
+# ax-controller, and exe-ops' exe-reap and exe-snapshot-gc, and leaves 9090
+# (metrics and probes) open. The atespace's worker pods, where actors run, get
+# no rule.
+#
+# Apply it only after W3 has proved the authentication half from inside a task
+# (tests/e2e/exe/test_control_api_barrier.py -k authenticate), so each layer is
+# shown on its own. It needs no node, but its effect can only be seen with one:
+# run the module's reach test after the apply. The Substrate install must not
+# re-run: a terraform_data line here means it would, so do not apply.
+#   just exe-cluster-plan && just exe-cluster-plan-summary --expect-changes expected-changes/control-api-policy.txt
++ kubernetes_network_policy_v1.control_api
