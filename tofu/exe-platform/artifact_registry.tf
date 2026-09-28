@@ -162,6 +162,8 @@ resource "google_artifact_registry_repository_iam_member" "reaper_task_tags" {
   repository = google_artifact_registry_repository.task.name
   role       = google_project_iam_custom_role.reaper_tags.id
   member     = local.wi_reaper
+
+  depends_on = [terraform_data.custom_roles_settled]
 }
 
 resource "google_artifact_registry_repository_iam_member" "build_task_writer" {

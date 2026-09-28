@@ -90,12 +90,47 @@ resource "google_project_iam_member" "enforcer_resizer" {
   project = var.gcp_project_id
   role    = google_project_iam_custom_role.node_pool_resizer.id
   member  = "serviceAccount:${google_service_account.enforcer.email}"
+
+  depends_on = [terraform_data.custom_roles_settled]
 }
 
 resource "google_project_iam_member" "scheduler_resizer" {
   project = var.gcp_project_id
   role    = google_project_iam_custom_role.node_pool_resizer.id
   member  = "serviceAccount:${google_service_account.scheduler.email}"
+
+  depends_on = [terraform_data.custom_roles_settled]
+}
+
+# --- custom roles: bound only once they can be ------------------------------
+#
+# A custom role is not usable in a policy for a while after it is created: a
+# binding sent at once fails with "Role ... does not exist in the resource's
+# hierarchy". The snapshot GC's first apply failed halfway on exactly that
+# (manager-loop inbox M37), and every fresh environment would, since each role
+# and its first binding share one apply there. So every binding of a custom
+# role waits on this, which sleeps once whenever the set of custom roles
+# changes. Built-in terraform_data and local-exec rather than the time
+# provider's time_sleep: no new dependency for a sleep. A binding that still
+# races is safe (the role exists and is bound to nobody): re-plan and re-apply
+# after about a minute.
+#
+# tests/unit/test_exe_custom_role_settle.py fails on a custom role missing
+# here, and on a binding of one that does not wait.
+resource "terraform_data" "custom_roles_settled" {
+  triggers_replace = concat(
+    [
+      google_project_iam_custom_role.node_pool_resizer.id,
+      google_project_iam_custom_role.reaper_tags.id,
+      google_project_iam_custom_role.snapshot_gc_list.id,
+      google_project_iam_custom_role.snapshot_gc_delete.id,
+    ],
+    google_project_iam_custom_role.node_pool_reader[*].id,
+  )
+
+  provisioner "local-exec" {
+    command = "sleep 60"
+  }
 }
 
 # --- node SA ----------------------------------------------------------------
@@ -349,6 +384,8 @@ resource "google_storage_bucket_iam_member" "snapshot_gc_list" {
   bucket = google_storage_bucket.snapshots.name
   role   = google_project_iam_custom_role.snapshot_gc_list.id
   member = local.wi_snapshot_gc
+
+  depends_on = [terraform_data.custom_roles_settled]
 }
 
 resource "google_storage_bucket_iam_member" "snapshot_gc_delete" {
@@ -360,4 +397,6 @@ resource "google_storage_bucket_iam_member" "snapshot_gc_delete" {
     title      = "exe-snapshot-gc deletes only actor snapshots"
     expression = local.snapshot_gc_delete_condition
   }
+
+  depends_on = [terraform_data.custom_roles_settled]
 }

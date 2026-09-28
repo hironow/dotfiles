@@ -189,6 +189,8 @@ resource "google_project_iam_member" "enforcer_pool_reader" {
   project = var.gcp_project_id
   role    = google_project_iam_custom_role.node_pool_reader[0].id
   member  = "serviceAccount:${google_service_account.enforcer.email}"
+
+  depends_on = [terraform_data.custom_roles_settled]
 }
 
 # --- run.invoker, on this job only ------------------------------------------
