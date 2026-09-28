@@ -82,7 +82,7 @@ run "the_pool_is_two_gvisor_workers_on_the_versioned_node_with_limits" {
 
   assert {
     condition     = yamldecode(kubectl_manifest.worker_pool[0].yaml_body).spec.replicas == 2
-    error_message = "the pool runs two workers: two tasks awake at once on Substrate v0.1.0 (one actor per worker, plan Q17)."
+    error_message = "the pool runs two workers: two tasks awake at once (the pinned Substrate hosts one actor per worker, plan Q17)."
   }
 
   assert {
@@ -115,7 +115,7 @@ run "changing_the_pool_is_guarded_against_awake_actors" {
 
   assert {
     condition     = terraform_data.worker_pool_guard[0].triggers_replace.pool == sha256(jsonencode(local.worker_pool))
-    error_message = "the guard must re-run whenever the pool's manifest changes: editing a serving pool replaces its pods and CRASHES every awake actor on Substrate v0.1.0."
+    error_message = "the guard must re-run whenever the pool's manifest changes: editing a serving pool replaces its pods and CRASHES every awake actor."
   }
 
   assert {

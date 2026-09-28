@@ -74,14 +74,16 @@ resource "kubernetes_role_binding_v1" "ax_controller_gemini" {
 # Two gVisor workers on the version-labelled node, running the worker image
 # `just exe-worker-images` printed. Absent until that image is recorded.
 #
-# CHANGING THIS POOL KILLS AWAKE ACTORS. On Substrate v0.1.0 an actor whose
-# worker pod goes away is CRASHED within about a minute unless it was suspended
-# first, and editing a serving pool replaces its pods. So a change is guarded:
-# the guard below re-runs whenever the pool's manifest changes, before the
-# pool is applied, and on a live node fails the apply while L1 is draining
-# (drain_guard.sh) or any task in the atespace is Running. The way to change a
-# pool that is in use is to suspend every task first (the runbook's "new pool,
-# then switch" procedure is Phase 8's).
+# CHANGING THIS POOL KILLS AWAKE ACTORS. At the pinned Substrate an actor whose
+# worker pod goes away is lost unless it was suspended first: its state was in
+# that pod, and the store marks it CRASHED once a workflow or the worker syncer
+# notices, with no bound on how soon (Phase 6 plan F7). Editing a serving pool
+# replaces its pods. So a change is guarded: the guard below re-runs whenever
+# the pool's manifest changes, before the pool is applied, and on a live node
+# fails the apply while L1 is draining (drain_guard.sh) or any task in the
+# atespace is Running. The way to change a pool that is in use is to suspend
+# every task first (the runbook's "new pool, then switch" procedure is
+# Phase 8's).
 
 locals {
   worker_pool_enabled = var.ateom_gvisor_image != ""

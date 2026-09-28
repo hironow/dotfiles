@@ -116,7 +116,8 @@ locals {
 
   # --- the WorkerPool ------------------------------------------------------------
   #
-  # Two workers, one actor each on Substrate v0.1.0, so two tasks awake at once
+  # Two workers, one actor each (the pinned Substrate's ateom hosts one actor at
+  # a time: internal/ateomcapacity, actorsPerAteom), so two tasks awake at once
   # (plan Q17). Limits are the worker's advertised capacity AND what the
   # kube-scheduler has to place, next to the control plane, on the one node
   # (exe-platform's node_machine_type, sized by S7 to fit exactly this); memory
