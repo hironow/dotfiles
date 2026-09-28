@@ -1,32 +1,59 @@
-# Who may reach Substrate's Control API (plan F5; W2 finding 7).
+# Who may reach Substrate's Control API (plan F5; W2 finding 7; the audit in
+# manager-loop/reports/f5-control-api-audit.md).
 #
 # L1's drain barrier (plan D2) holds only if nothing but the components it
 # stops can resume an actor. The Control API authenticates its callers (a
-# Kubernetes SA token for audience api.ate-system.svc, or a pod-identity
-# client certificate) but does not authorize them (plan F1), so any caller
-# with a credential can resume anything. W2 found that a task CAN reach it:
-# from inside an actor, api.ate-system.svc resolves and answers a TLS
-# handshake. Authentication then stands alone between a task and a resume.
-#
-# This policy adds the network back. The API's pod port admits only the pods
-# that call it, from the pinned sources:
-#   - ate-system, the API's own namespace: atelet (substrate
-#     cmd/atelet/main.go:328), the ate-controller (cmd/atecontroller/main.go:
-#     160), and the atenet router and egress (cmd/atenet/internal/router/
-#     router.go:183);
-#   - ax-system's ax-controller (ax internal/substrate/client.go:147; the
-#     ax-server makes no Substrate call);
+# Kubernetes SA token for audience api.ate-system.svc, or a podidentity client
+# certificate) but does not authorize them (plan F1): any caller with a
+# credential controls everything. This policy is the only authorization there
+# is. It admits the API's pod port only from the pods that call it, according
+# to the pinned sources:
+#   - ate-system: atelet, the ate-controller, the atenet router and the atenet
+#     egress's ext-proc sidecar;
+#   - ax-system: the ax-controller (the ax-server makes no Substrate call);
 #   - exe-ops: L1 (exe-reap) and the snapshot GC.
-# No worker component dials the API (no Control or WorkerService client in
-# cmd/ateom-gvisor), so the atespace's worker pods, and the actors inside
-# them, get no rule. The operator's install and `kubectl ate` come through a
-# port-forward, which reaches the pod from its own node, not over the pod
-# network. The metrics and probe port stays open, as it was.
+#
+# It closes the worker POD's own path. A worker pod holds a podidentity
+# certificate the API accepts, so dialing the API from the pod is how a
+# sandbox escape would reach the control plane. No worker component needs the
+# API: capacity reports and actor certificates go to the node's atelet over a
+# unix socket.
+#
+# It cannot close the actor's own path, and does not try. With tunneled egress
+# armed (ate-api-server's --egress-gateway-address), an actor's TCP leaves
+# through atenet-egress, which has to stay admitted. What stands there is
+# authentication: the guest holds no credential the API accepts. The F5 e2e
+# (tests/e2e/exe/test_control_api_barrier.py) is that path's regression guard.
+#
+# The operator's install and `kubectl ate` come through a pod port-forward,
+# which this policy neither blocks nor protects. The metrics and probe port
+# stays open.
 #
 # tests/control_api.tofutest.hcl pins every peer and port.
+# tests/unit/test_exe_control_api_policy.py checks the admitted labels
+# against the manifests that set them.
+
+locals {
+  # Namespace => the pod label key, and the values the API admits under it.
+  control_api_callers = {
+    (local.substrate_namespace) = {
+      key    = "app"
+      values = ["atelet", "ate-controller", "atenet-router", "atenet-egress"]
+    }
+    (kubernetes_namespace_v1.ax.metadata[0].name) = {
+      key    = "app.kubernetes.io/name"
+      values = ["ax-controller"]
+    }
+    (kubernetes_namespace_v1.ops.metadata[0].name) = {
+      key    = "app.kubernetes.io/name"
+      values = [local.reaper_app, local.snapshot_gc_app]
+    }
+  }
+}
+
 resource "kubernetes_network_policy_v1" "control_api" {
   metadata {
-    name      = "ate-api-server-from-its-callers"
+    name      = "ate-api-server-ingress"
     namespace = local.substrate_namespace
     labels    = local.common_labels
   }
@@ -40,47 +67,30 @@ resource "kubernetes_network_policy_v1" "control_api" {
 
     policy_types = ["Ingress"]
 
+    # Metrics and all three probes, from anywhere, as before.
     ingress {
-      from {
-        namespace_selector {
-          match_labels = {
-            "kubernetes.io/metadata.name" = local.substrate_namespace
-          }
-        }
+      ports {
+        protocol = "TCP"
+        port     = "9090"
       }
-      from {
-        namespace_selector {
-          match_labels = {
-            "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ax.metadata[0].name
+    }
+
+    ingress {
+      dynamic "from" {
+        for_each = local.control_api_callers
+
+        content {
+          namespace_selector {
+            match_labels = {
+              "kubernetes.io/metadata.name" = from.key
+            }
           }
-        }
-        pod_selector {
-          match_labels = {
-            "app.kubernetes.io/name" = "ax-controller"
-          }
-        }
-      }
-      from {
-        namespace_selector {
-          match_labels = {
-            "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ops.metadata[0].name
-          }
-        }
-        pod_selector {
-          match_labels = {
-            "app.kubernetes.io/name" = local.reaper_app
-          }
-        }
-      }
-      from {
-        namespace_selector {
-          match_labels = {
-            "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ops.metadata[0].name
-          }
-        }
-        pod_selector {
-          match_labels = {
-            "app.kubernetes.io/name" = local.snapshot_gc_app
+          pod_selector {
+            match_expressions {
+              key      = from.value.key
+              operator = "In"
+              values   = from.value.values
+            }
           }
         }
       }
@@ -88,13 +98,6 @@ resource "kubernetes_network_policy_v1" "control_api" {
       ports {
         protocol = "TCP"
         port     = "443"
-      }
-    }
-
-    ingress {
-      ports {
-        protocol = "TCP"
-        port     = "9090"
       }
     }
   }
