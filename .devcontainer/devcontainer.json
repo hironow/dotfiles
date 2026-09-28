@@ -63,6 +63,10 @@
     // Coder workspace `/home/<user>:/root` volume mount cannot mask
     // the build-time-baked installs. Shims live alongside.
     "MISE_DATA_DIR": "/opt/mise",
+    // quint's Rust evaluator is baked under /opt/quint (built from source
+    // for bookworm's glibc by features/dotfiles-tools/install.sh); outside
+    // $HOME for the same reason as MISE_DATA_DIR.
+    "QUINT_HOME": "/opt/quint",
     // pnpm is provided per-repo by corepack (the package-manager shim
     // shipped with node); we no longer install pnpm globals, so no
     // PNPM_HOME global-bin needs to be on PATH. corepack's pnpm shim

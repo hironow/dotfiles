@@ -303,6 +303,8 @@ REQUIRED_TOOLS = (
     ("sheldon", "--version"),
     ("shellcheck", "--version"),
     ("jq", "--version"),
+    # quint: `just check` ends in `just spec-check`, the formal-methods gate.
+    ("quint", "--version"),
     # node runtime pinned in mise.toml. Required by the 4 npm-
     # backed AI CLIs below; their `#!/usr/bin/env node` shebang
     # relies on node being on PATH (and inside /opt/mise so the
@@ -335,6 +337,37 @@ def test_image_provides_tool(saved_image: str, tool: str, flag: str) -> None:
         f"{tool} not found or not runnable inside saved image.\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
+
+
+def test_image_runs_a_quint_simulation_offline(saved_image: str) -> None:
+    """`just spec-check` runs `quint run` and `quint test`, which execute on
+    quint's Rust evaluator. quint downloads that evaluator on first use, and
+    its Linux release binaries need a newer glibc than bookworm's, so
+    install.sh builds it from source into $QUINT_HOME. A simulation with no
+    network fails here if the evaluator is missing, sits where quint does not
+    look, or cannot run on this glibc."""
+    script = (
+        "cat > /tmp/t.qnt <<'QNT'\n"
+        "module t {\n"
+        "  var x: int\n"
+        "  action init = x' = 0\n"
+        "  action step = x' = x + 1\n"
+        "}\n"
+        "QNT\n"
+        'printf "QUINT_HOME=%s\\n" "$QUINT_HOME"\n'
+        "quint run /tmp/t.qnt --max-steps=3 --max-samples=10\n"
+    )
+    result = subprocess.run(
+        ["docker", "run", "--rm", "--network", "none", IMAGE, "bash", "-lc", script],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        "quint could not simulate offline inside the saved image.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "QUINT_HOME=/opt/quint" in result.stdout, result.stdout
+    assert "Fetching Rust evaluator" not in result.stdout + result.stderr
 
 
 def test_image_git_safe_directory_is_scoped(saved_image: str) -> None:
