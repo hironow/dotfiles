@@ -130,9 +130,10 @@ output "workload_identity_principals" {
     a 403 at first use.
   EOT
   value = {
-    atelet     = local.wi_atelet
-    api_server = local.wi_api_server
-    reaper     = local.wi_reaper
+    atelet      = local.wi_atelet
+    api_server  = local.wi_api_server
+    reaper      = local.wi_reaper
+    snapshot_gc = local.wi_snapshot_gc
   }
   sensitive = true
 }

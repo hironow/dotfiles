@@ -294,3 +294,70 @@ resource "google_storage_bucket_iam_member" "build_source" {
   role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.build.email}"
 }
+
+# --- Workload Identity: the operator's orphan-snapshot GC (plan D11) --------
+#
+# Substrate collects the snapshots of the actors it deletes; the GC takes the
+# prefixes of actors a lost store forgot. It runs as its own KSA, only inside
+# the one-off Job `just exe-snapshot-gc` makes (tofu/exe-cluster), and never as
+# L1: L1 runs every minute, and holds nothing on this bucket (inbox M35).
+#
+# Two custom roles, because no predefined role is narrow enough:
+#   - storage.objects.list, unconditional: a list is checked against the
+#     bucket, which no object-name condition matches. Names and times are all
+#     the decision reads; storage.objects.get would let it read every
+#     snapshot's contents.
+#   - storage.objects.delete, under a condition naming the two prefixes it may
+#     delete under. The gVisor mirror every actor boots from (mirror/) and a
+#     Tag's snapshot (atespaces/<a>/tags/) stay out of reach at IAM.
+#
+# The residual risk: anyone who can create pods in exe-ops can run as this KSA.
+# That adds no reach beyond what already stands: atelet and ate-api-server hold
+# roles/storage.objectAdmin on the whole bucket (above), and whoever can create
+# pods in exe-ops can create them in ate-system as well.
+#
+# tests/snapshot_gc.tofutest.hcl pins the roles, the members and the condition.
+
+locals {
+  snapshot_gc_delete_condition = join(" || ", [
+    for atespace in local.snapshot_gc_atespaces :
+    "resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.snapshots.name}/objects/${local.snapshot_gc_root}atespaces/${atespace}/actors/\")"
+  ])
+}
+
+resource "google_project_iam_custom_role" "snapshot_gc_list" {
+  project     = var.gcp_project_id
+  role_id     = "exeSnapshotGcList"
+  title       = "exe snapshot GC: list"
+  description = "Lists object names and times; reads no object."
+  permissions = ["storage.objects.list"]
+
+  depends_on = [google_project_service.enabled]
+}
+
+resource "google_project_iam_custom_role" "snapshot_gc_delete" {
+  project     = var.gcp_project_id
+  role_id     = "exeSnapshotGcDelete"
+  title       = "exe snapshot GC: delete"
+  description = "Deletes objects; granted only under a condition naming the prefixes."
+  permissions = ["storage.objects.delete"]
+
+  depends_on = [google_project_service.enabled]
+}
+
+resource "google_storage_bucket_iam_member" "snapshot_gc_list" {
+  bucket = google_storage_bucket.snapshots.name
+  role   = google_project_iam_custom_role.snapshot_gc_list.id
+  member = local.wi_snapshot_gc
+}
+
+resource "google_storage_bucket_iam_member" "snapshot_gc_delete" {
+  bucket = google_storage_bucket.snapshots.name
+  role   = google_project_iam_custom_role.snapshot_gc_delete.id
+  member = local.wi_snapshot_gc
+
+  condition {
+    title      = "exe-snapshot-gc deletes only actor snapshots"
+    expression = local.snapshot_gc_delete_condition
+  }
+}

@@ -80,6 +80,16 @@ run "every_member_names_its_ksa_in_the_pool_the_cluster_creates" {
     condition     = google_artifact_registry_repository_iam_member.reaper_task_tags.member == "principal://iam.googleapis.com/projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${google_container_cluster.exe.workload_identity_config[0].workload_pool}/subject/ns/exe-ops/sa/exe-reaper"
     error_message = "reaper_task_tags must bind exe-ops/exe-reaper in the cluster's own Workload Identity pool, addressed by project number: the reaper moves inuse- tags."
   }
+
+  assert {
+    condition     = google_storage_bucket_iam_member.snapshot_gc_list.member == "principal://iam.googleapis.com/projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${google_container_cluster.exe.workload_identity_config[0].workload_pool}/subject/ns/exe-ops/sa/exe-snapshot-gc"
+    error_message = "snapshot_gc_list must bind exe-ops/exe-snapshot-gc in the cluster's own Workload Identity pool, addressed by project number: the GC lists the snapshot bucket."
+  }
+
+  assert {
+    condition     = google_storage_bucket_iam_member.snapshot_gc_delete.member == "principal://iam.googleapis.com/projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${google_container_cluster.exe.workload_identity_config[0].workload_pool}/subject/ns/exe-ops/sa/exe-snapshot-gc"
+    error_message = "snapshot_gc_delete must bind exe-ops/exe-snapshot-gc in the cluster's own Workload Identity pool, addressed by project number: the GC deletes orphaned actor snapshots."
+  }
 }
 
 # --- ORDER: one targeted plan per binding ------------------------------------
@@ -185,5 +195,31 @@ run "reaper_task_tags_waits_for_the_cluster" {
   assert {
     condition     = google_container_cluster.exe.name != ""
     error_message = "the cluster must be planned with reaper_task_tags: the binding names the cluster's Workload Identity pool and has to be created after it."
+  }
+}
+
+run "snapshot_gc_list_waits_for_the_cluster" {
+  command = plan
+
+  plan_options {
+    target = [google_storage_bucket_iam_member.snapshot_gc_list]
+  }
+
+  assert {
+    condition     = google_container_cluster.exe.name != ""
+    error_message = "the cluster must be planned with snapshot_gc_list: the binding names the cluster's Workload Identity pool and has to be created after it."
+  }
+}
+
+run "snapshot_gc_delete_waits_for_the_cluster" {
+  command = plan
+
+  plan_options {
+    target = [google_storage_bucket_iam_member.snapshot_gc_delete]
+  }
+
+  assert {
+    condition     = google_container_cluster.exe.name != ""
+    error_message = "the cluster must be planned with snapshot_gc_delete: the binding names the cluster's Workload Identity pool and has to be created after it."
   }
 }

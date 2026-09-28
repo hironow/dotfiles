@@ -49,6 +49,14 @@ locals {
   ksa_api_server      = "ate-api-server"
   reaper_namespace    = "exe-ops"
   ksa_reaper          = "exe-reaper"
+  ksa_snapshot_gc     = "exe-snapshot-gc"
+
+  # The orphan-snapshot GC (plan D11) may delete only the actors of these
+  # atespaces, under the root AX's ActorTemplates put snapshots in: tofu/
+  # exe-cluster's atespace and ax_snapshots_location, and Substrate's golden
+  # atespace. tests/unit/test_exe_snapshot_gc_iam.py holds the three in step.
+  snapshot_gc_root      = "ax/"
+  snapshot_gc_atespaces = ["exe", "ate-golden"]
 
   # Workload Identity pool: addressed by project NUMBER, named by project ID.
   # Getting these two the wrong way round yields a binding that applies to
@@ -64,9 +72,10 @@ locals {
   # and the order.
   wi_pool = "projects/${var.gcp_project_number}/locations/global/workloadIdentityPools/${google_container_cluster.exe.workload_identity_config[0].workload_pool}"
 
-  wi_atelet     = "principal://iam.googleapis.com/${local.wi_pool}/subject/ns/${local.substrate_namespace}/sa/${local.ksa_atelet}"
-  wi_api_server = "principal://iam.googleapis.com/${local.wi_pool}/subject/ns/${local.substrate_namespace}/sa/${local.ksa_api_server}"
-  wi_reaper     = "principal://iam.googleapis.com/${local.wi_pool}/subject/ns/${local.reaper_namespace}/sa/${local.ksa_reaper}"
+  wi_atelet      = "principal://iam.googleapis.com/${local.wi_pool}/subject/ns/${local.substrate_namespace}/sa/${local.ksa_atelet}"
+  wi_api_server  = "principal://iam.googleapis.com/${local.wi_pool}/subject/ns/${local.substrate_namespace}/sa/${local.ksa_api_server}"
+  wi_reaper      = "principal://iam.googleapis.com/${local.wi_pool}/subject/ns/${local.reaper_namespace}/sa/${local.ksa_reaper}"
+  wi_snapshot_gc = "principal://iam.googleapis.com/${local.wi_pool}/subject/ns/${local.reaper_namespace}/sa/${local.ksa_snapshot_gc}"
 
   # Maintenance: 04:00-08:00 JST = 19:00-23:00 UTC. Static timestamps, so the
   # window never shows up as a perpetual plan diff. The date is only an anchor;
