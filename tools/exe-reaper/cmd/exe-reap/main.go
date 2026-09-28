@@ -16,6 +16,9 @@
 // Configuration comes from the environment the CronJob sets
 // (tofu/exe-cluster), with the in-cluster defaults the ax-controller uses for
 // the same endpoints.
+//
+// One subcommand runs something else: `exe-reap snapshot-gc`, the operator's
+// orphan-snapshot GC (snapshotgc.go), in a one-off Job from the same template.
 package main
 
 import (
@@ -56,6 +59,9 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "snapshot-gc" {
+		return runSnapshotGC(args[1:], stdout, stderr)
+	}
 	fs := flag.NewFlagSet("exe-reap", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dryRun := fs.Bool("dry-run", false, "decide and log, but write and do nothing")
@@ -63,7 +69,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintf(stderr, "exe-reap takes no arguments, got %q\n", fs.Args())
+		fmt.Fprintf(stderr, "exe-reap takes no arguments besides the snapshot-gc subcommand, got %q\n", fs.Args())
 		return 2
 	}
 

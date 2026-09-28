@@ -1,10 +1,12 @@
 // Package gcp is the thin I/O layer the reaper needs, over stdlib net/http.
 //
-// No cloud SDK, deliberately. What the reaper does with Google APIs is: read and
-// conditionally write three small JSON objects in one GCS bucket, and POST one
-// setSize call. That is three endpoints. Pulling in cloud.google.com/go/storage
-// and the GKE client for it would add a large dependency tree to a binary whose
-// entire job is to be trustworthy enough to stop a cluster, and the repo's
+// No cloud SDK, deliberately. What the reaper does with Google APIs is small:
+// read and conditionally write a few JSON objects in the ops bucket, read and
+// resize the node pool, move `inuse-` tags in Artifact Registry (ar.go), and,
+// for the operator's snapshot GC, list the snapshot bucket and delete what it
+// may take (objects.go). Pulling in cloud.google.com/go/storage and the GKE
+// client for that would add a large dependency tree to a binary whose entire
+// job is to be trustworthy enough to stop a cluster, and the repo's
 // stdlib-first rule points the same way.
 //
 // Tokens come from one of two places, tried in order: GOOGLE_OAUTH_ACCESS_TOKEN

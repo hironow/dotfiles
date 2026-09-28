@@ -48,6 +48,10 @@ type fakeControl struct {
 	failPage int
 	// loopToken, when set, is handed back as every next token.
 	loopToken string
+	// named answers GetActor, keyed "<atespace>/<name>"; getErr, when set,
+	// is its answer instead.
+	named  map[string]*ateapipb.Actor
+	getErr error
 	// seen records every request's atespace and bearer token.
 	atespaces []string
 	tokens    []string

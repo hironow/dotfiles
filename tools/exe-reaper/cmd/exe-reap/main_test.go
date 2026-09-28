@@ -9,8 +9,9 @@ import (
 )
 
 func TestAPositionalArgumentIsRefused(t *testing.T) {
-	// exe-reap has one job and no subcommands yet: a stray word is a typo in
-	// the CronJob, and guessing what it meant could run the wrong thing.
+	// The tick takes no arguments and snapshot-gc is the one subcommand: any
+	// other word is a typo in the CronJob, and guessing what it meant could
+	// run the wrong thing.
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"reap"}, &stdout, &stderr); code != 2 {
 		t.Errorf("exit %d, want 2", code)
