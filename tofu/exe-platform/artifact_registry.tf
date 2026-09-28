@@ -132,13 +132,35 @@ resource "google_artifact_registry_repository_iam_member" "atelet_task_reader" {
   member     = local.wi_atelet
 }
 
-# The reaper adds and removes `inuse-` tags, which is a write against the
-# repository even though it creates no new image.
-resource "google_artifact_registry_repository_iam_member" "reaper_task_writer" {
+# The reaper (L1) keeps an `inuse-` tag on every image a live task runs, and
+# releases it once nothing has used the image for tag_release_days (Phase 6
+# plan D10, exe/spec/retention.qnt). It lists packages and tags and creates and
+# deletes tags, and nothing else: roles/artifactregistry.writer, which it held
+# before, can also push images, which retention never needs. A custom role,
+# granted on the repository only. tests/reaper_tags.tofutest.hcl pins both.
+resource "google_project_iam_custom_role" "reaper_tags" {
+  project     = var.gcp_project_id
+  role_id     = "exeReaperTags"
+  title       = "exe reaper: inuse- tags"
+  description = "Lists packages and tags and creates and deletes tags; no image upload or delete."
+  permissions = [
+    "artifactregistry.packages.list",
+    "artifactregistry.tags.create",
+    "artifactregistry.tags.delete",
+    "artifactregistry.tags.get",
+    "artifactregistry.tags.list",
+    "artifactregistry.versions.get",
+    "artifactregistry.versions.list",
+  ]
+
+  depends_on = [google_project_service.enabled]
+}
+
+resource "google_artifact_registry_repository_iam_member" "reaper_task_tags" {
   project    = var.gcp_project_id
   location   = google_artifact_registry_repository.task.location
   repository = google_artifact_registry_repository.task.name
-  role       = "roles/artifactregistry.writer"
+  role       = google_project_iam_custom_role.reaper_tags.id
   member     = local.wi_reaper
 }
 

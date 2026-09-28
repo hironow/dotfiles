@@ -101,6 +101,16 @@ output "ar_task_repo" {
   sensitive   = true
 }
 
+output "ar_task_repository" {
+  description = <<-EOT
+    The exe-task repository's resource name (projects/P/locations/L/repositories/R):
+    what exe-reap is told to protect (EXE_AR_REPOS), and compares with the
+    repository parsed out of each task's image reference.
+  EOT
+  value       = "projects/${var.gcp_project_id}/locations/${local.region}/repositories/${google_artifact_registry_repository.task.repository_id}"
+  sensitive   = true
+}
+
 output "service_account_emails" {
   description = "The five dedicated identities, by role."
   value = {
