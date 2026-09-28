@@ -926,16 +926,17 @@ check-all: pre-commit ci-all
 test-iac:
     @cd exe/coder/templates/dotfiles-devcontainer && mise x -- tofu init -backend=false >/dev/null && mise x -- tofu test
 
-# The exe stacks' offline tofu suites: mock providers, exe-platform's state as
-# override_data, no backend and no credentials, so the PR CI runs them too
-# (.github/workflows/iac-test.yaml, tests/unit/test_iac_gates_run_the_exe_suites.py).
-# Every test file states the variables it depends on, so an operator's
-# gitignored terraform.tfvars, which `tofu test` also loads, changes nothing.
+# The offline tofu suites of the exe stacks and the tailnet: mock providers,
+# exe-platform's state as override_data, no backend and no credentials, so the
+# PR CI runs them too (.github/workflows/iac-test.yaml,
+# tests/unit/test_iac_gates_run_the_exe_suites.py). Every test file states the
+# variables it depends on, so an operator's gitignored terraform.tfvars, which
+# `tofu test` also loads, changes nothing.
 [group('Check')]
 test-iac-exe:
     #!/usr/bin/env bash
     set -euo pipefail
-    for stack in tofu/exe-platform tofu/exe-cluster; do
+    for stack in tofu/exe-platform tofu/exe-cluster tofu/tailnet; do
       echo "🧪 tofu test $stack"
       (cd "$stack" && mise x -- tofu init -backend=false -input=false >/dev/null && mise x -- tofu test)
     done

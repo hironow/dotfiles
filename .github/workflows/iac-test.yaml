@@ -4,7 +4,8 @@ name: IaC Tests (OpenTofu)
 #   1. `tofu test` for the Coder workspace template
 #      (exe/coder/templates/dotfiles-devcontainer/).
 #   2. `tofu test` for the AX-era stacks, tofu/exe-platform and
-#      tofu/exe-cluster: offline suites on mock providers.
+#      tofu/exe-cluster, and for tofu/tailnet: offline suites on mock
+#      providers.
 #   3. `tofu validate` for the exe stack (tofu/exe/) — offline, no secrets
 #      and no GCS backend, so a provider-constraint bump (e.g. hashicorp/google
 #      ~> 7.0) is schema-checked in CI rather than only by a local plan.
@@ -65,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [tofu/exe-platform, tofu/exe-cluster]
+        stack: [tofu/exe-platform, tofu/exe-cluster, tofu/tailnet]
 
     steps:
       - name: Checkout

@@ -16,7 +16,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 JUSTFILE = REPO / "justfile"
 WORKFLOW = REPO / ".github" / "workflows" / "iac-test.yaml"
-STACKS = ("tofu/exe-platform", "tofu/exe-cluster")
+STACKS = ("tofu/exe-platform", "tofu/exe-cluster", "tofu/tailnet")
 
 
 def recipe_body(name: str) -> str:
