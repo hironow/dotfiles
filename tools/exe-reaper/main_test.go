@@ -14,57 +14,8 @@ import (
 
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/gcp"
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/lease"
+	"github.com/hironow/dotfiles/tools/exe-reaper/internal/ops"
 )
-
-// L2's view of lease.json, from one read. The rows that matter are the ones
-// where the object is NOT a readable lease: every one of them has to count as a
-// read failure, because that is what gives L1 its two ticks to drain before L2
-// forces (section 3.2), and what the Quint model's leaseReadBreaks means by
-// "the object was deleted, the bucket is 503-ing".
-func TestLeaseFromRead(t *testing.T) {
-	deadline := time.Date(2026, 9, 27, 1, 0, 0, 0, time.UTC)
-	valid := []byte(`{"deadline":"2026-09-27T01:00:00Z"}`)
-
-	cases := []struct {
-		name       string
-		body       []byte
-		generation int64
-		err        error
-		wantOK     bool
-		wantLease  lease.Lease
-	}{
-		{
-			name: "a readable lease carries the generation of the SAME read", body: valid, generation: 7,
-			wantOK: true, wantLease: lease.Lease{Deadline: deadline, Generation: 7},
-		},
-		{
-			// Deleted is not "expired long ago". Read that way, a deleted lease
-			// forces the pool on the next tick, over the top of an L1 drain that
-			// is saving the actors; read as a failure, L1 gets its two ticks.
-			name: "a deleted lease is a read failure, not an expired lease", err: gcp.ErrNotFound,
-			wantOK: false,
-		},
-		{
-			name: "a transport error is a read failure", err: errors.New("503 from GCS"),
-			wantOK: false,
-		},
-		{
-			name: "an unparsable body is a read failure", body: []byte(`{"deadline":`), generation: 3,
-			wantOK: false,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, ok := leaseFromRead(tc.body, tc.generation, tc.err)
-			if ok != tc.wantOK {
-				t.Fatalf("ok = %v, want %v", ok, tc.wantOK)
-			}
-			if !got.Deadline.Equal(tc.wantLease.Deadline) || got.Generation != tc.wantLease.Generation {
-				t.Fatalf("lease = %+v, want %+v", got, tc.wantLease)
-			}
-		})
-	}
-}
 
 // End to end through the shipped decision: with lease.json gone and the pool
 // up, L2 waits on the first two ticks and forces on the third. This is the
@@ -74,7 +25,7 @@ func TestADeletedLeaseForcesOnTheThirdTick(t *testing.T) {
 	now := time.Date(2026, 9, 27, 1, 0, 0, 0, time.UTC)
 	failures := 0
 	for tick := 1; tick <= 3; tick++ {
-		l, ok := leaseFromRead(nil, 0, gcp.ErrNotFound)
+		l, ok := ops.LeaseFromRead(nil, 0, gcp.ErrNotFound)
 		if !ok {
 			failures++
 		}
@@ -114,9 +65,9 @@ func TestATickCarriesTheReadFailureRunByTheSharedRule(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cloud := newFakeCloud(t)
 			cloud.targetSize = tc.targetSize
-			cloud.put(enforceObject, enforceRecord{ReadFailures: tc.prev})
+			cloud.put(ops.EnforceObject, enforceRecord{ReadFailures: tc.prev})
 			if tc.readable {
-				cloud.put(leaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
+				cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
 			}
 
 			cloud.tickAt(now, io.Discard)
@@ -144,20 +95,20 @@ func TestAnUnreadableEnforcementRecordFailsTheTickButNotTheStop(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
-	cloud.put(enforceObject, enforceRecord{ReadFailures: 1})
-	before := cloud.object(enforceObject)
-	cloud.getStatus[enforceObject] = http.StatusServiceUnavailable
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+	cloud.put(ops.EnforceObject, enforceRecord{ReadFailures: 1})
+	before := cloud.object(ops.EnforceObject)
+	cloud.getStatus[ops.EnforceObject] = http.StatusServiceUnavailable
 
 	err := cloud.enforcer(io.Discard).tick(t.Context(), now, false)
 
-	if err == nil || !strings.Contains(err.Error(), enforceObject) {
-		t.Fatalf("tick error = %v, want one that names %s", err, enforceObject)
+	if err == nil || !strings.Contains(err.Error(), ops.EnforceObject) {
+		t.Fatalf("tick error = %v, want one that names %s", err, ops.EnforceObject)
 	}
 	if got := cloud.setSizes(); !slices.Equal(got, []int{0}) {
 		t.Errorf("setSize calls = %v, want [0]: the expired lease still stops the pool", got)
 	}
-	if after := cloud.object(enforceObject); after.generation != before.generation {
+	if after := cloud.object(ops.EnforceObject); after.generation != before.generation {
 		t.Errorf("enforce.json was rewritten (generation %d -> %d) by a tick that could not read it",
 			before.generation, after.generation)
 	}
@@ -169,7 +120,7 @@ func TestAMissingEnforcementRecordIsTheFirstTick(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
 
 	cloud.tickAt(now, io.Discard)
 
@@ -185,8 +136,8 @@ func TestAGarbledEnforcementRecordIsReplaced(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
-	cloud.put(enforceObject, "not a record")
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
+	cloud.put(ops.EnforceObject, "not a record")
 
 	cloud.tickAt(now, io.Discard)
 
@@ -217,12 +168,12 @@ func TestAStopIsAbandonedWhenTheLeaseMovesDuringTheTick(t *testing.T) {
 		{
 			name: "an extend lands between the read and the stop",
 			setup: func(cloud *fakeCloud) {
-				cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+				cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
 			},
 			moveOnGet: 2,
 			move: func(f *fakeCloud) {
 				body, _ := json.Marshal(extended)
-				f.store(leaseObject, body)
+				f.store(ops.LeaseObject, body)
 			},
 			wantStop: false,
 		},
@@ -231,18 +182,18 @@ func TestAStopIsAbandonedWhenTheLeaseMovesDuringTheTick(t *testing.T) {
 			// is newer information than the three misses.
 			name: "a blind stop, and the lease is readable again",
 			setup: func(cloud *fakeCloud) {
-				cloud.put(leaseObject, extended)
-				cloud.put(enforceObject, enforceRecord{ReadFailures: 2})
-				cloud.getStatus[leaseObject] = http.StatusServiceUnavailable
+				cloud.put(ops.LeaseObject, extended)
+				cloud.put(ops.EnforceObject, enforceRecord{ReadFailures: 2})
+				cloud.getStatus[ops.LeaseObject] = http.StatusServiceUnavailable
 			},
 			moveOnGet: 2,
-			move:      func(f *fakeCloud) { delete(f.getStatus, leaseObject) },
+			move:      func(f *fakeCloud) { delete(f.getStatus, ops.LeaseObject) },
 			wantStop:  false,
 		},
 		{
 			name: "nothing moved: the stop is made",
 			setup: func(cloud *fakeCloud) {
-				cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+				cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
 			},
 			wantStop: true,
 		},
@@ -250,10 +201,10 @@ func TestAStopIsAbandonedWhenTheLeaseMovesDuringTheTick(t *testing.T) {
 			// A failed re-read is no evidence that anything moved.
 			name: "the re-read fails: the stop is made",
 			setup: func(cloud *fakeCloud) {
-				cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+				cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
 			},
 			moveOnGet: 2,
-			move:      func(f *fakeCloud) { f.getStatus[leaseObject] = http.StatusServiceUnavailable },
+			move:      func(f *fakeCloud) { f.getStatus[ops.LeaseObject] = http.StatusServiceUnavailable },
 			wantStop:  true,
 		},
 	}
@@ -264,7 +215,7 @@ func TestAStopIsAbandonedWhenTheLeaseMovesDuringTheTick(t *testing.T) {
 			tc.setup(cloud)
 			if tc.move != nil {
 				cloud.beforeGet = func(f *fakeCloud, object string, n int) {
-					if object == leaseObject && n == tc.moveOnGet {
+					if object == ops.LeaseObject && n == tc.moveOnGet {
 						tc.move(f)
 					}
 				}

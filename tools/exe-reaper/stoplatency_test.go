@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/lease"
+	"github.com/hironow/dotfiles/tools/exe-reaper/internal/ops"
 )
 
 // L2's stop-latency detector, through a whole tick (inbox M18, layer 3): the
@@ -30,7 +31,7 @@ func TestAStopThatOutlivesItsLatencyPagesOnce(t *testing.T) {
 	// given a pool whose target is zero while its VM is still there
 	t0 := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
-	cloud.put(leaseObject, lease.Lease{Deadline: t0.Add(-2 * time.Hour)})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: t0.Add(-2 * time.Hour)})
 	cloud.targetSize, cloud.instances = 0, 1
 
 	tick := func(at time.Time) []contractLine {
@@ -79,7 +80,7 @@ func TestAStopThatOutlivesItsLatencyPagesOnce(t *testing.T) {
 func TestAStopInsideItsLatencyNeverPages(t *testing.T) {
 	t0 := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
-	cloud.put(leaseObject, lease.Lease{Deadline: t0.Add(-2 * time.Hour)})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: t0.Add(-2 * time.Hour)})
 	cloud.targetSize, cloud.instances = 0, 1
 
 	var out bytes.Buffer
@@ -98,7 +99,7 @@ func TestAStopLatencyPageIsNotAFailure(t *testing.T) {
 	// exactly which event it is (monitoring.tf excludes it by that name).
 	t0 := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
-	cloud.put(leaseObject, lease.Lease{Deadline: t0.Add(-2 * time.Hour)})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: t0.Add(-2 * time.Hour)})
 	cloud.targetSize, cloud.instances = 0, 1
 	var out bytes.Buffer
 	cloud.tickAt(t0, &out)

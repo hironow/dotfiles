@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/lease"
+	"github.com/hironow/dotfiles/tools/exe-reaper/internal/ops"
 )
 
 // The log contract `exe-reaper enforce` writes, and tofu/exe-platform's two L2
@@ -66,8 +67,8 @@ func TestEveryTickWritesOneDecisionLine(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
-	generation := cloud.object(leaseObject).generation
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
+	generation := cloud.object(ops.LeaseObject).generation
 
 	var out bytes.Buffer
 	cloud.tickAt(now, &out)
@@ -100,8 +101,8 @@ func TestAStuckForcedStopPagesOnce(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
-	first := cloud.object(leaseObject).generation
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+	first := cloud.object(ops.LeaseObject).generation
 
 	tick := func(at time.Time) contractLine {
 		t.Helper()
@@ -131,7 +132,7 @@ func TestAStuckForcedStopPagesOnce(t *testing.T) {
 
 	// A new lease, which also ran out: that is a new forced stop to hear about.
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-time.Hour)})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(-time.Hour)})
 	line = tick(now.Add(2 * lease.L2Tick))
 	if line.L2["notify"] != true || line.Severity != "ERROR" {
 		t.Fatalf("first forced stop of a new generation must page again; got %+v", line)
@@ -144,13 +145,13 @@ func TestARunOfBlindStopsPagesOnce(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(8 * time.Hour)})
-	generation := cloud.object(leaseObject).generation
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(8 * time.Hour)})
+	generation := cloud.object(ops.LeaseObject).generation
 
 	var lines []contractLine
 	for tick := range 5 {
 		if tick == 1 {
-			cloud.getStatus[leaseObject] = http.StatusServiceUnavailable
+			cloud.getStatus[ops.LeaseObject] = http.StatusServiceUnavailable
 		}
 		cloud.targetSize = 1 // the stop on tick 3 is not seen to take
 		var out bytes.Buffer
@@ -185,7 +186,7 @@ func TestAForcedStopAfterAnyOtherTickPages(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
 
 	tick := func(n int) contractLine {
 		t.Helper()
@@ -203,8 +204,8 @@ func TestAForcedStopAfterAnyOtherTickPages(t *testing.T) {
 
 	// A new wake, and its lease is gone before any tick reads it.
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(8 * time.Hour)})
-	cloud.getStatus[leaseObject] = http.StatusNotFound
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(8 * time.Hour)})
+	cloud.getStatus[ops.LeaseObject] = http.StatusNotFound
 
 	var line contractLine
 	for n := 2; n <= 4; n++ {
@@ -220,7 +221,7 @@ func TestADryRunNeverPages(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
 
 	var out bytes.Buffer
 	if err := cloud.enforcer(&out).tick(t.Context(), now, true); err != nil {
@@ -242,7 +243,7 @@ func TestAWorkaroundIsAWarningLine(t *testing.T) {
 	now := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
 	cloud := newFakeCloud(t)
 	cloud.sizeStatus = http.StatusForbidden
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(time.Hour)})
 
 	var out bytes.Buffer
 	cloud.tickAt(now, &out)
@@ -269,7 +270,7 @@ func TestAFailedTickEndsWithTheFailureLine(t *testing.T) {
 	cloud := newFakeCloud(t)
 	cloud.targetSize = 1
 	cloud.setSizeStatus = http.StatusForbidden
-	cloud.put(leaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: now.Add(-2 * time.Hour)})
 
 	var out bytes.Buffer
 	if code := cloud.enforcer(&out).run(t.Context(), now, false); code != 1 {

@@ -30,16 +30,10 @@ import (
 
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/gcp"
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/lease"
+	"github.com/hironow/dotfiles/tools/exe-reaper/internal/ops"
 )
 
 const (
-	leaseObject   = "lease.json"
-	drainObject   = "drain.json"
-	enforceObject = "enforce.json"
-	// keepObject lists the tasks the operator exempted from the task TTL. One
-	// writer, like the lease: `keep add|rm` on the operator's Mac.
-	keepObject = "keep.json"
-
 	// Env vars the OpenTofu stack sets on the Cloud Run job, and the just
 	// recipes set for the operator's path. Named here so there is one list, and
 	// spelled exactly as tofu/exe-platform/l2_enforcer.tf spells them:
@@ -268,7 +262,7 @@ var errLeaseMoved = errors.New("the lease changed while this command was running
 // and sleep carry it over unchanged -- an extend is not a new session (the
 // model's finding 3).
 func writeLease(ctx context.Context, client *gcp.Client, bucket string, now, deadline time.Time, wake bool) error {
-	body, generation, err := client.GetObject(ctx, bucket, leaseObject)
+	body, generation, err := client.GetObject(ctx, bucket, ops.LeaseObject)
 	var current lease.Lease
 	switch {
 	case err == nil:
@@ -289,7 +283,7 @@ func writeLease(ctx context.Context, client *gcp.Client, bucket string, now, dea
 	if err != nil {
 		return err
 	}
-	if err := client.PutObject(ctx, bucket, leaseObject, out, generation); err != nil {
+	if err := client.PutObject(ctx, bucket, ops.LeaseObject, out, generation); err != nil {
 		if errors.Is(err, gcp.ErrPreconditionFailed) {
 			return errLeaseMoved
 		}
@@ -333,16 +327,16 @@ func cmdMayStart(ctx context.Context, args []string) error {
 // is an error, never "no drain": a wrapper must not start work it cannot see is
 // safe to start.
 func mayStart(ctx context.Context, client *gcp.Client, bucket string, now time.Time, need time.Duration) (bool, string, error) {
-	l, leaseOK := leaseFromRead(client.GetObject(ctx, bucket, leaseObject))
+	l, leaseOK := ops.LeaseFromRead(client.GetObject(ctx, bucket, ops.LeaseObject))
 
 	var d lease.Drain
-	switch body, _, err := client.GetObject(ctx, bucket, drainObject); {
+	switch body, _, err := client.GetObject(ctx, bucket, ops.DrainObject); {
 	case errors.Is(err, gcp.ErrNotFound):
 	case err != nil:
-		return false, "", fmt.Errorf("reading %s: %w", drainObject, err)
+		return false, "", fmt.Errorf("reading %s: %w", ops.DrainObject, err)
 	default:
 		if err := json.Unmarshal(body, &d); err != nil {
-			return false, "", fmt.Errorf("%s is not a drain record: %w", drainObject, err)
+			return false, "", fmt.Errorf("%s is not a drain record: %w", ops.DrainObject, err)
 		}
 	}
 
@@ -389,16 +383,16 @@ func cmdKeep(ctx context.Context, args []string) error {
 }
 
 func readKeep(ctx context.Context, client *gcp.Client, bucket string) (keepRecord, int64, error) {
-	body, generation, err := client.GetObject(ctx, bucket, keepObject)
+	body, generation, err := client.GetObject(ctx, bucket, ops.KeepObject)
 	switch {
 	case errors.Is(err, gcp.ErrNotFound):
 		return keepRecord{}, 0, nil
 	case err != nil:
-		return keepRecord{}, 0, fmt.Errorf("reading %s: %w", keepObject, err)
+		return keepRecord{}, 0, fmt.Errorf("reading %s: %w", ops.KeepObject, err)
 	}
 	var rec keepRecord
 	if err := json.Unmarshal(body, &rec); err != nil {
-		return keepRecord{}, 0, fmt.Errorf("%s is not a keep list: %w", keepObject, err)
+		return keepRecord{}, 0, fmt.Errorf("%s is not a keep list: %w", ops.KeepObject, err)
 	}
 	return rec, generation, nil
 }
@@ -432,11 +426,11 @@ func keepEdit(ctx context.Context, client *gcp.Client, bucket, task string, add 
 	if err != nil {
 		return err
 	}
-	if err := client.PutObject(ctx, bucket, keepObject, body, generation); err != nil {
+	if err := client.PutObject(ctx, bucket, ops.KeepObject, body, generation); err != nil {
 		if errors.Is(err, gcp.ErrPreconditionFailed) {
 			return errKeepMoved
 		}
-		return fmt.Errorf("writing %s: %w", keepObject, err)
+		return fmt.Errorf("writing %s: %w", ops.KeepObject, err)
 	}
 	return nil
 }
@@ -504,9 +498,9 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	}
 
 	obs := lease.Observation{Now: now}
-	obs.Lease, obs.LeaseOK = leaseFromRead(client.GetObject(ctx, cfg.bucket, leaseObject))
+	obs.Lease, obs.LeaseOK = ops.LeaseFromRead(client.GetObject(ctx, cfg.bucket, ops.LeaseObject))
 
-	if drainBody, _, derr := client.GetObject(ctx, cfg.bucket, drainObject); derr == nil {
+	if drainBody, _, derr := client.GetObject(ctx, cfg.bucket, ops.DrainObject); derr == nil {
 		var d lease.Drain
 		if json.Unmarshal(drainBody, &d) == nil {
 			obs.Drain = d
@@ -594,10 +588,10 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 	// Conditional on the generation L2 itself last saw. Two enforcer executions
 	// overlapping (a retry, a manual run) then produce one winner rather than a
 	// silently interleaved record.
-	err = client.PutObject(ctx, cfg.bucket, enforceObject, body, prevGeneration)
+	err = client.PutObject(ctx, cfg.bucket, ops.EnforceObject, body, prevGeneration)
 	switch {
 	case errors.Is(err, gcp.ErrPreconditionFailed):
-		e.log.warn(enforceObject + " changed during this tick; the other execution's record stands")
+		e.log.warn(ops.EnforceObject + " changed during this tick; the other execution's record stands")
 	case err != nil:
 		return fmt.Errorf("writing the enforcement record: %w", err)
 	}
@@ -608,7 +602,7 @@ func (e enforcer) tick(ctx context.Context, now time.Time, dryRun bool) error {
 // observation: a new generation, or, for a decision taken blind, a lease that
 // can be read at all. A read that fails is no evidence that anything moved.
 func (e enforcer) leaseMoved(ctx context.Context, obs lease.Observation) (bool, lease.Lease) {
-	current, ok := leaseFromRead(e.client.GetObject(ctx, e.cfg.bucket, leaseObject))
+	current, ok := ops.LeaseFromRead(e.client.GetObject(ctx, e.cfg.bucket, ops.LeaseObject))
 	if !ok {
 		return false, lease.Lease{}
 	}
@@ -803,32 +797,6 @@ func nodesForDecision(size int, err error) int {
 	return size
 }
 
-// leaseFromRead is L2's view of one read of lease.json: the lease, and whether
-// it was readable at all.
-//
-// The generation comes from the SAME read as the body. It is what a drain
-// record is checked against, and a second read for it could return a newer
-// generation than the body it is paired with -- an extend landing in between
-// would then make an old `drained` look current.
-//
-// A deleted lease is a read failure, not an expired lease, exactly as the Quint
-// model's leaseReadBreaks has it ("the object was deleted, the bucket is
-// 503-ing"). The difference is who stops the pool: read as expired-long-ago, a
-// deleted lease is forced on the very next tick, over the top of an L1 drain that
-// is saving the actors; read as a failure, L1 gets its two ticks, and L2 forces on
-// the third.
-func leaseFromRead(body []byte, generation int64, err error) (lease.Lease, bool) {
-	if err != nil {
-		return lease.Lease{}, false
-	}
-	var l lease.Lease
-	if json.Unmarshal(body, &l) != nil {
-		return lease.Lease{}, false
-	}
-	l.Generation = generation
-	return l, true
-}
-
 // enforceRecord is enforce.json: what L2 decided last, and the little it has
 // to carry to the next tick.
 type enforceRecord struct {
@@ -857,12 +825,12 @@ type enforceRecord struct {
 // it cannot carry, and the conditional write that followed would lose to the
 // object that is there -- on every tick, silently.
 func readEnforce(ctx context.Context, client *gcp.Client, bucket string) (enforceRecord, int64, error) {
-	body, generation, err := client.GetObject(ctx, bucket, enforceObject)
+	body, generation, err := client.GetObject(ctx, bucket, ops.EnforceObject)
 	switch {
 	case errors.Is(err, gcp.ErrNotFound):
 		return enforceRecord{}, 0, nil
 	case err != nil:
-		return enforceRecord{}, 0, fmt.Errorf("reading %s: %w", enforceObject, err)
+		return enforceRecord{}, 0, fmt.Errorf("reading %s: %w", ops.EnforceObject, err)
 	}
 	var rec enforceRecord
 	if json.Unmarshal(body, &rec) != nil {
@@ -894,7 +862,7 @@ func cmdStatus(ctx context.Context, args []string) error {
 	// operator is trying to find out why nothing is running.
 	fmt.Printf("now            %s\n", now.In(lease.Location()).Format(time.RFC3339))
 
-	switch body, generation, err := client.GetObject(ctx, cfg.bucket, leaseObject); {
+	switch body, generation, err := client.GetObject(ctx, cfg.bucket, ops.LeaseObject); {
 	case errors.Is(err, gcp.ErrNotFound):
 		fmt.Println("lease          (none) — nothing is authorised")
 	case err != nil:
@@ -914,7 +882,7 @@ func cmdStatus(ctx context.Context, args []string) error {
 			l.Deadline.In(lease.Location()).Format(time.RFC3339), state, generation)
 	}
 
-	if body, _, err := client.GetObject(ctx, cfg.bucket, drainObject); err == nil {
+	if body, _, err := client.GetObject(ctx, cfg.bucket, ops.DrainObject); err == nil {
 		var d lease.Drain
 		if json.Unmarshal(body, &d) == nil {
 			fmt.Printf("drain          %s (heartbeat %s, lease generation %d)\n",

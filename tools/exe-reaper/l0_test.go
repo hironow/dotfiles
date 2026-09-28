@@ -9,6 +9,7 @@ import (
 
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/gcp"
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/lease"
+	"github.com/hironow/dotfiles/tools/exe-reaper/internal/ops"
 )
 
 // The L0 writes and the wrappers' check, against the fake GCS. lease.json has
@@ -20,7 +21,7 @@ func (f *fakeCloud) client() *gcp.Client { return f.enforcer(nil).client }
 func (f *fakeCloud) storedLease() lease.Lease {
 	f.t.Helper()
 	var l lease.Lease
-	if err := json.Unmarshal(f.object(leaseObject).body, &l); err != nil {
+	if err := json.Unmarshal(f.object(ops.LeaseObject).body, &l); err != nil {
 		f.t.Fatalf("lease.json: %v", err)
 	}
 	return l
@@ -56,11 +57,11 @@ func TestWakeWritesWokenAtAndExtendAndSleepCarryIt(t *testing.T) {
 func TestALeaseWriteThatLosesTheRaceIsRefused(t *testing.T) {
 	cloud := newFakeCloud(t)
 	t0 := time.Date(2026, 9, 27, 5, 0, 0, 0, time.UTC)
-	cloud.put(leaseObject, lease.Lease{Deadline: t0.Add(time.Hour), WokenAt: t0})
+	cloud.put(ops.LeaseObject, lease.Lease{Deadline: t0.Add(time.Hour), WokenAt: t0})
 	// Another writer lands between this command's read and its write.
 	cloud.afterGet = func(f *fakeCloud, object string, n int) {
-		if object == leaseObject && n == 1 {
-			f.store(leaseObject, []byte(`{"deadline":"2026-09-27T07:00:00Z"}`))
+		if object == ops.LeaseObject && n == 1 {
+			f.store(ops.LeaseObject, []byte(`{"deadline":"2026-09-27T07:00:00Z"}`))
 		}
 	}
 	err := writeLease(t.Context(), cloud.client(), fakeBucket, t0, t0.Add(2*time.Hour), false)
@@ -90,10 +91,10 @@ func TestMayStart(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cloud := newFakeCloud(t)
 			if tc.lease != nil {
-				cloud.put(leaseObject, *tc.lease) // generation 1
+				cloud.put(ops.LeaseObject, *tc.lease) // generation 1
 			}
 			if tc.drain != nil {
-				cloud.put(drainObject, *tc.drain)
+				cloud.put(ops.DrainObject, *tc.drain)
 			}
 			ok, why, err := mayStart(t.Context(), cloud.client(), fakeBucket, t0, tc.need)
 			if err != nil {
@@ -141,10 +142,10 @@ func TestKeepListOfNothingIsEmpty(t *testing.T) {
 
 func TestAKeepEditThatLosesTheRaceIsRefused(t *testing.T) {
 	cloud := newFakeCloud(t)
-	cloud.put(keepObject, keepRecord{Tasks: []string{"t1"}})
+	cloud.put(ops.KeepObject, keepRecord{Tasks: []string{"t1"}})
 	cloud.afterGet = func(f *fakeCloud, object string, n int) {
-		if object == keepObject && n == 1 {
-			f.store(keepObject, []byte(`{"tasks":["t1","t3"]}`))
+		if object == ops.KeepObject && n == 1 {
+			f.store(ops.KeepObject, []byte(`{"tasks":["t1","t3"]}`))
 		}
 	}
 	if err := keepEdit(t.Context(), cloud.client(), fakeBucket, "t2", true); !errors.Is(err, errKeepMoved) {

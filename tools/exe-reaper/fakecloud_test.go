@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hironow/dotfiles/tools/exe-reaper/internal/gcp"
+	"github.com/hironow/dotfiles/tools/exe-reaper/internal/ops"
 )
 
 // fakeCloud stands in for every Google endpoint one L2 tick touches: the GCS
@@ -232,7 +233,7 @@ func (f *fakeCloud) servePut(w http.ResponseWriter, r *http.Request) {
 func (f *fakeCloud) storedRecord() enforceRecord {
 	f.t.Helper()
 	var rec enforceRecord
-	if err := json.Unmarshal(f.object(enforceObject).body, &rec); err != nil {
+	if err := json.Unmarshal(f.object(ops.EnforceObject).body, &rec); err != nil {
 		f.t.Fatalf("enforce.json is not a record: %v", err)
 	}
 	return rec
