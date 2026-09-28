@@ -122,6 +122,50 @@ run "a_new_store_volume_re_runs_the_install_and_restarts_the_api_server" {
   }
 }
 
+# L1 owns the router's replica count through a drain (Phase 6 plan D2), but the
+# install re-applies upstream's router manifest, count included. Run while L1
+# is draining, it reopens the path an auto-resume takes, and a `drained` record
+# is then written, or already stands, over an actor that can wake. So the
+# install refuses while drain.json says draining or drained, before it touches
+# anything (worker_pool.sh; tests/unit/test_exe_worker_pool_functions.py runs
+# the check under bash). After a wake, L1 cancels a drained record within a
+# tick.
+run "the_install_refuses_while_a_drain_is_in_flight_or_done" {
+  command = plan
+
+  assert {
+    condition     = strcontains(local.ate_system_drain_guard_script, local.drain_guard_functions) && strcontains(local.ate_system_drain_guard_script, "refuse_while_draining \"ate-setup\" \"draining drained\"")
+    error_message = "the install's drain guard must embed drain_guard.sh and refuse while drain.json says draining or drained: the installer reopens the router L1 closed."
+  }
+
+  assert {
+    condition     = terraform_data.ate_system_drain_guard.triggers_replace.install == terraform_data.ate_system.triggers_replace
+    error_message = "the drain guard must re-run on exactly the install's inputs, so every re-run of the install is preceded by one of the guard. A guard on its own triggers checks drain.json once and never again."
+  }
+
+  assert {
+    condition     = local.ate_system_drain_guard_env.OPS_BUCKET == "zz-synthetic-project-exe-ops"
+    error_message = "the drain guard must read drain.json from exe-platform's ops bucket, read from its state."
+  }
+}
+
+# A plan TARGETED at the install contains everything the install depends on.
+# Without the depends_on the guard is not in it, its triggers are unknown, and
+# this run fails with "Unknown condition": read that here as "the install can
+# run before the guard has refused".
+run "the_install_waits_for_its_drain_guard" {
+  command = plan
+
+  plan_options {
+    target = [terraform_data.ate_system]
+  }
+
+  assert {
+    condition     = terraform_data.ate_system_drain_guard.triggers_replace.script != ""
+    error_message = "the install must depend on its drain guard, or it runs before the guard can refuse."
+  }
+}
+
 # A worker reports its capacity once, at startup, to the store the API server
 # had then. On a replaced store its record comes back without capacity and
 # nothing is placed on it again, so after the API server is back up on the new

@@ -435,7 +435,13 @@ resource "kubectl_manifest" "ax_controller" {
       labels    = merge(local.common_labels, { "app.kubernetes.io/name" = "ax-controller" })
     }
     spec = {
-      replicas = 1
+      # No `replicas`: L1 owns this count (Phase 6 plan D2). It takes the
+      # controller to 0 once nothing is awake, so a raw `ax resume` cannot be
+      # carried out behind a drain, and back to 1 on a live lease. A count here
+      # would be a second writer, reopening that path on every apply. Dropping
+      # it releases this stack's server-side-apply claim on the field: the
+      # count falls back to the API default, 1, until L1 sets it, and no later
+      # apply touches L1's value.
       selector = {
         matchLabels = { "app.kubernetes.io/name" = "ax-controller" }
       }

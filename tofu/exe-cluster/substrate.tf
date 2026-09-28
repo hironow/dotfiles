@@ -78,7 +78,50 @@ resource "terraform_data" "gvisor_mirror" {
 
 resource "terraform_data" "ate_system" {
   # Everything the install depends on. A change to any of them re-runs it.
+  triggers_replace = local.ate_system_triggers
+
+  provisioner "local-exec" {
+    interpreter = ["bash", "-c"]
+    command     = local.ate_setup_script
+    environment = local.ate_setup_env
+  }
+
+  depends_on = [
+    kubernetes_secret_v1.ate_api_server_env,
+    kubernetes_stateful_set_v1.postgres,
+    kubernetes_network_policy_v1.postgres,
+    terraform_data.gvisor_mirror,
+    terraform_data.ate_system_drain_guard,
+  ]
+}
+
+# The install re-applies upstream's atenet-router manifest, count included, and
+# L1 owns that count while it drains (Phase 6 plan D2): run mid-drain, the
+# install reopens the path an auto-resume takes, and a `drained` record is then
+# written, or already stands, over an actor that can wake. So every re-run of
+# the install is preceded by this guard, on exactly the install's inputs, and
+# refuses while drain.json says draining or drained (drain_guard.sh). After a
+# wake, L1 cancels a drained record within a tick.
+#
+# A step of its own rather than the install script's first line: the install
+# re-runs when its script changes, and a re-run needs a node up for many
+# minutes. This way the guard could be added without re-running the install.
+resource "terraform_data" "ate_system_drain_guard" {
   triggers_replace = {
+    install = local.ate_system_triggers
+    script  = sha256(local.ate_system_drain_guard_script)
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["bash", "-c"]
+    command     = local.ate_system_drain_guard_script
+    environment = local.ate_system_drain_guard_env
+  }
+}
+
+# The two install steps' scripts and inputs, as values the tests can pin.
+locals {
+  ate_system_triggers = {
     substrate_sha     = local.pins.substrate.sha
     substrate_version = local.pins.substrate.version_label_value
     ko_repo           = local.substrate_ko_repo
@@ -93,22 +136,16 @@ resource "terraform_data" "ate_system" {
     script = sha256(local.ate_setup_script)
   }
 
-  provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-    command     = local.ate_setup_script
-    environment = local.ate_setup_env
+  ate_system_drain_guard_script = <<-EOT
+      set -euo pipefail
+      ${local.drain_guard_functions}
+      refuse_while_draining "ate-setup" "draining drained"
+  EOT
+
+  ate_system_drain_guard_env = {
+    OPS_BUCKET = local.platform.bucket_ops
   }
 
-  depends_on = [
-    kubernetes_secret_v1.ate_api_server_env,
-    kubernetes_stateful_set_v1.postgres,
-    kubernetes_network_policy_v1.postgres,
-    terraform_data.gvisor_mirror,
-  ]
-}
-
-# The two install steps' scripts and inputs, as values the tests can pin.
-locals {
   gvisor_mirror_script = <<-EOT
       set -euo pipefail
       verify() {

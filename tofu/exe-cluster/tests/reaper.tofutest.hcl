@@ -244,3 +244,16 @@ run "only_the_reaper_reaches_ax_server" {
     error_message = "the reaper's pods must carry the label the allow rule admits, or every suspend request is dropped at the network."
   }
 }
+
+run "tofu_does_not_own_the_controllers_replica_count" {
+  command = plan
+
+  # L1 is the only writer of both replica counts (plan D2). A `replicas` in
+  # this manifest is a second writer: every plan would show the controller
+  # going back to 1, and an apply mid-drain would reopen the path a raw
+  # `ax resume` takes.
+  assert {
+    condition     = !contains(keys(yamldecode(kubectl_manifest.ax_controller.yaml_body).spec), "replicas")
+    error_message = "the ax-controller manifest must not set spec.replicas: L1 owns that count, and tofu setting it reopens the resume path in the middle of a drain."
+  }
+}

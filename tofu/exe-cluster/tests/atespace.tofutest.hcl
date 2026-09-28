@@ -127,6 +127,24 @@ run "changing_the_pool_is_guarded_against_awake_actors" {
     condition     = strcontains(local.worker_pool_guard_script, local.worker_pool_functions) && strcontains(local.worker_pool_guard_script, "refuse_while_tasks_run \"worker pool guard\"")
     error_message = "the guard must embed worker_pool.sh and run its check, so it refuses on exactly what every other step that takes workers away refuses on."
   }
+
+  # A drain can have every task Suspended in AX while actors are still
+  # SUSPENDING, checkpointing on their workers. Replacing the workers then
+  # crashes them, and "no task Running" does not see it (Phase 6 plan D2).
+  assert {
+    condition     = strcontains(local.worker_pool_guard_script, local.drain_guard_functions)
+    error_message = "the guard must embed drain_guard.sh, the same drain check the install's guard runs."
+  }
+
+  assert {
+    condition     = can(regex("(?s)the pool is asleep.*\nrefuse_while_draining \"worker pool guard\" \"draining\"\nrefuse_while_tasks_run", local.worker_pool_guard_script))
+    error_message = "on a live node the guard must refuse while drain.json says draining, before its Running check: a drain's actors can be checkpointing on the workers with every task already Suspended."
+  }
+
+  assert {
+    condition     = local.worker_pool_guard_env.OPS_BUCKET == "zz-synthetic-project-exe-ops"
+    error_message = "the guard must read drain.json from exe-platform's ops bucket, read from its state."
+  }
 }
 
 run "the_gemini_secret_waits_for_the_operators_key" {

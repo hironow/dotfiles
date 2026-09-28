@@ -78,9 +78,10 @@ resource "kubernetes_role_binding_v1" "ax_controller_gemini" {
 # worker pod goes away is CRASHED within about a minute unless it was suspended
 # first, and editing a serving pool replaces its pods. So a change is guarded:
 # the guard below re-runs whenever the pool's manifest changes, before the
-# pool is applied, and fails the apply while any task in the atespace is
-# Running. The way to change a pool that is in use is to suspend every task
-# first (the runbook's "new pool, then switch" procedure is Phase 8's).
+# pool is applied, and on a live node fails the apply while L1 is draining
+# (drain_guard.sh) or any task in the atespace is Running. The way to change a
+# pool that is in use is to suspend every task first (the runbook's "new pool,
+# then switch" procedure is Phase 8's).
 
 locals {
   worker_pool_enabled = var.ateom_gvisor_image != ""
@@ -129,9 +130,13 @@ locals {
   # Shared with every step that takes the pool's workers away.
   worker_pool_functions = file("${path.module}/worker_pool.sh")
 
+  # Shared with every step that could undo an L1 drain (substrate.tf too).
+  drain_guard_functions = file("${path.module}/drain_guard.sh")
+
   worker_pool_guard_script = <<-EOT
       set -euo pipefail
       ${local.worker_pool_functions}
+      ${local.drain_guard_functions}
       work="$(mktemp -d)"
       export KUBECONFIG="$work/kubeconfig" AX_HOME="$work/ax"
       trap 'ax tunnel stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
@@ -145,6 +150,7 @@ locals {
         echo "worker pool guard: the pool is asleep, so no actor is awake"
         exit 0
       fi
+      refuse_while_draining "worker pool guard" "draining"
       refuse_while_tasks_run "worker pool guard" "Changing $POOL now would CRASH them."
   EOT
 
@@ -154,6 +160,7 @@ locals {
     CLUSTER_LOCATION = local.platform.zone
     ATESPACE         = local.atespace
     POOL             = local.worker_pool_name
+    OPS_BUCKET       = local.platform.bucket_ops
   }
 }
 

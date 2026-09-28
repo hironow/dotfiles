@@ -1,15 +1,21 @@
-"""The WorkerPool's shared shell functions (tofu/exe-cluster/worker_pool.sh).
+"""The shell functions tofu/exe-cluster embeds in its guards and install step.
 
-tofu embeds that file into the pool guard and the Substrate install step, so
-these tests run the real functions under bash. kubectl and ax are stubs on
+worker_pool.sh is embedded into the pool guard and the Substrate install step,
+drain_guard.sh into the pool guard and the install's drain guard, so these
+tests run the real functions under bash. kubectl and ax are stubs on
 PATH: they answer from FAKE_* variables and log every call they get.
 
-The case under test: a worker reports its capacity once, at startup, to the
-store the API server has then. After the store is replaced, the install
+The first case under test: a worker reports its capacity once, at startup, to
+the store the API server has then. After the store is replaced, the install
 restarts exactly the workers that started before the new store's claim
 existed. It deletes their pods rather than rolling the Deployment, because a
 4Gi surge pod cannot fit on the one node. It does this only while no task is
 Running, and any doubt fails the apply instead of taking a worker away.
+
+The second: while L1 drains (Phase 6 plan D2), the install must not run, since
+it reopens the router L1 closed, and the pool guard must not let the workers
+be replaced under actors still checkpointing. gcloud is a stub too, answering
+the ops bucket's listing and drain.json from FAKE_* variables.
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 FUNCTIONS = REPO / "tofu" / "exe-cluster" / "worker_pool.sh"
+DRAIN_GUARD = REPO / "tofu" / "exe-cluster" / "drain_guard.sh"
 BASH = shutil.which("bash") or "/bin/bash"
 
 STORE_BORN = "2026-09-27T19:15:02Z"
@@ -38,6 +45,19 @@ case " $* " in
   *" delete pod "*) exit 0 ;;
   *" wait "*) exit 0 ;;
   *) echo "stub kubectl: unexpected call: $*" >&2; exit 97 ;;
+esac
+"""
+
+GCLOUD_STUB = r"""#!/usr/bin/env bash
+echo "gcloud $*" >> "$FAKE_LOG"
+if [ -n "${FAKE_GCLOUD_FAIL:-}" ] && [[ " $* " == *" $FAKE_GCLOUD_FAIL "* ]]; then
+  echo "gcloud: 503 from the bucket" >&2
+  exit 1
+fi
+case " $* " in
+  *" storage ls gs://$OPS_BUCKET/ "*) printf '%s' "$FAKE_LISTING" ;;
+  *" storage cat gs://$OPS_BUCKET/drain.json "*) printf '%s' "$FAKE_DRAIN" ;;
+  *) echo "stub gcloud: unexpected call: $*" >&2; exit 97 ;;
 esac
 """
 
@@ -57,7 +77,11 @@ def run_function(
     """Source worker_pool.sh under `set -euo pipefail` and run `call`."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    for name, body in (("kubectl", KUBECTL_STUB), ("ax", AX_STUB)):
+    for name, body in (
+        ("kubectl", KUBECTL_STUB),
+        ("ax", AX_STUB),
+        ("gcloud", GCLOUD_STUB),
+    ):
         stub = bin_dir / name
         stub.write_text(body)
         stub.chmod(0o755)
@@ -74,9 +98,14 @@ def run_function(
         "FAKE_STORE_BORN": STORE_BORN,
         "FAKE_WORKERS": "",
         "FAKE_TASKS": TASKS_HEADER,
+        "OPS_BUCKET": "zz-ops",
+        "FAKE_LISTING": "gs://zz-ops/lease.json\ngs://zz-ops/enforce.json\n",
+        "FAKE_DRAIN": "",
         **fake,
     }
-    script = f'set -euo pipefail\nsource "{FUNCTIONS}"\n{call}\n'
+    script = (
+        f'set -euo pipefail\nsource "{FUNCTIONS}"\nsource "{DRAIN_GUARD}"\n{call}\n'
+    )
     result = subprocess.run(
         [BASH, "-c", script],
         env=env,
@@ -226,3 +255,81 @@ def test_the_shared_check_counts_only_running_rows(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "worker pool guard: 1 task(s) Running in atespace exe." in result.stderr
     assert "Changing exe-gvisor now would CRASH them." in result.stderr
+
+
+# --- refuse_while_draining ----------------------------------------------------
+
+WITH_DRAIN = (
+    "gs://zz-ops/lease.json\ngs://zz-ops/drain.json\ngs://zz-ops/enforce.json\n"
+)
+INSTALL_CHECK = 'refuse_while_draining "ate-setup" "draining drained"'
+POOL_CHECK = 'refuse_while_draining "worker pool guard" "draining"'
+
+
+def drain_record(phase: str) -> str:
+    """drain.json as L1 writes it; the empty phase is "no drain"."""
+    return (
+        f'{{"phase":"{phase}","heartbeat":"2026-09-28T04:00:00Z","leaseGeneration":7}}'
+    )
+
+
+def test_no_drain_record_yet_lets_the_step_through(tmp_path: Path) -> None:
+    # Before L1's first tick there is no record at all; nothing can be draining.
+    result, log = run_function(tmp_path, INSTALL_CHECK)
+
+    assert result.returncode == 0, result.stderr
+    assert "ate-setup: no drain record yet" in result.stdout
+    assert not [line for line in log if " storage cat " in line], log
+
+
+@pytest.mark.parametrize(
+    ("check", "phase", "refused"),
+    [
+        pytest.param(INSTALL_CHECK, "", False, id="install-no-drain"),
+        pytest.param(INSTALL_CHECK, "draining", True, id="install-draining"),
+        pytest.param(INSTALL_CHECK, "drained", True, id="install-drained"),
+        pytest.param(INSTALL_CHECK, "drain-failed", False, id="install-drain-failed"),
+        pytest.param(POOL_CHECK, "draining", True, id="pool-draining"),
+        pytest.param(POOL_CHECK, "drained", False, id="pool-drained"),
+    ],
+)
+def test_the_step_refuses_exactly_the_phases_it_names(
+    tmp_path: Path, check: str, phase: str, refused: bool
+) -> None:
+    result, _ = run_function(
+        tmp_path, check, FAKE_LISTING=WITH_DRAIN, FAKE_DRAIN=drain_record(phase)
+    )
+
+    if refused:
+        assert result.returncode == 1
+        assert f"drain.json says {phase}" in result.stderr
+        assert "L1" in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
+        assert f"drain.json says {phase or 'none'}" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("fake", "says"),
+    [
+        pytest.param({"FAKE_GCLOUD_FAIL": "ls"}, "cannot list", id="listing-fails"),
+        pytest.param(
+            {"FAKE_LISTING": WITH_DRAIN, "FAKE_GCLOUD_FAIL": "cat"},
+            "cannot be read",
+            id="record-unreadable",
+        ),
+        pytest.param(
+            {"FAKE_LISTING": WITH_DRAIN, "FAKE_DRAIN": '{"phase":'},
+            "cannot be read",
+            id="record-garbled",
+        ),
+    ],
+)
+def test_a_drain_record_that_cannot_be_read_fails_closed(
+    tmp_path: Path, fake: dict[str, str], says: str
+) -> None:
+    # A step that cannot tell whether L1 is draining must not guess "no".
+    result, _ = run_function(tmp_path, INSTALL_CHECK, **fake)
+
+    assert result.returncode != 0
+    assert says in result.stderr
