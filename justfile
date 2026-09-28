@@ -1719,6 +1719,61 @@ _exe-reaper *args:
     cd ../../tools/exe-reaper
     exec mise x -- go run . {{ args }}
 
+# --- work in AX tasks: ax-job / ax-exec (exe/scripts) ------------------------
+#
+# The operator's way to run a command in a task (plan D12). Both check the
+# lease with `exe-reaper may-start` before they start anything and again right
+# before the launch, and run the command detached in the task, following it
+# with short `ax ssh` polls. Every word after the recipe name reaches the
+# wrapper as its own argument, so quote the command as you would for ssh:
+#   just exe-ax-job --image <exe-task>/task:<tag>@sha256:<digest> -- sh -c 'make test'
+# Needs the kubeconfig from `just exe-ctx` and a node up (`just exe-wake`).
+
+# Run one command in a fresh task, then delete it: --image (digest-pinned in
+# exe-task) [--name N] [--timeout 30m] [--claude] -- CMD...
+[group('Exe')]
+[positional-arguments]
+exe-ax-job *args:
+    @just _exe-ax ax-job "$@"
+
+# Run one command in an existing task, resuming it if Suspended and
+# suspending it again afterwards: NAME [--timeout 30m] [--claude] -- CMD...
+[group('Exe')]
+[positional-arguments]
+exe-ax-exec *args:
+    @just _exe-ax ax-exec "$@"
+
+# The wrappers' environment: identifiers from `tofu output` (never from the
+# repo), the operator's token for may-start, and exe-reaper built into a fresh
+# temp dir rather than the module (M32).
+[positional-arguments]
+_exe-ax tool *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tool="$1"
+    shift
+    repo="$(pwd)"
+    KUBECONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/exe/kubeconfig"
+    if [ ! -f "$KUBECONFIG" ]; then
+        echo "no kubeconfig at $KUBECONFIG: run just exe-ctx first" >&2
+        exit 1
+    fi
+    cd {{ _EXE_PLATFORM_DIR }}
+    out() { just _tofu-out exe-platform "$1"; }
+    EXE_PROJECT_ID="$(out project_id)"
+    EXE_OPS_BUCKET="$(out bucket_ops)"
+    EXE_AR_TASK_REPO="$(out ar_task_repo)"
+    EXE_CLAUDE_SECRET="$(out claude_token_secret)"
+    GOOGLE_OAUTH_ACCESS_TOKEN="$(mise x -- gcloud auth print-access-token)"
+    export KUBECONFIG EXE_PROJECT_ID EXE_OPS_BUCKET EXE_AR_TASK_REPO EXE_CLAUDE_SECRET GOOGLE_OAUTH_ACCESS_TOKEN
+    bin="$(mktemp -d)"
+    (cd "$repo/tools/exe-reaper" && mise x -- go build -o "$bin/exe-reaper" .)
+    rc=0
+    PATH="$bin:$PATH" mise x -- bash "$repo/exe/scripts/$tool" "$@" || rc=$?
+    rm -f "$bin/exe-reaper"
+    rmdir "$bin"
+    exit "$rc"
+
 # --- L2: the enforcer image and an on-demand run ----------------------------
 
 # Build exe-reaper with ko and push it to the exe-platform registry (linux/amd64,

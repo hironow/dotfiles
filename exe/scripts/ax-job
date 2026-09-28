@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# ax-job: run one command in a fresh AX task, then delete the task (Phase 6
+# plan D12; what cdr-job was for Coder).
+#
+#   ax-job --image REF@sha256:DIGEST [--name NAME] [--timeout 30m] [--claude] -- CMD...
+#
+# 1. The lease must still run for --timeout plus 5 minutes (exe-reaper
+#    may-start).
+# 2. The image must be pinned by digest in exe-task. It is tagged
+#    inuse-<sha12>-<unix> BEFORE the task exists, so Artifact Registry's
+#    cleanup cannot take it from under the task (plan D10); L1 keeps it
+#    tagged from then on.
+# 3. The task is applied (debug: true; no env, no token) and waited for,
+#    Running, for at most 10 minutes.
+# 4. The lease is checked again right before the launch: provisioning may
+#    have eaten the margin.
+# 5. CMD runs detached in the task, and short `ax ssh` polls stream its
+#    output and read its exit code (ax-job-guest.sh). A poll that fails is
+#    retried, and never taken for the command's end.
+# 6. The task is deleted once the end is certain: the command's exit code, a
+#    confirmed kill at --timeout, or a task that failed or went away. With
+#    KEEP_ON_FAILURE=1, a task whose command failed is kept.
+#
+# --claude hands the command CLAUDE_CODE_OAUTH_TOKEN (plan Q20). It is read
+# from Secret Manager on the operator's own credentials into a shell
+# variable, passed only in the launch's `ax ssh` argv, and never written to a
+# file, the Task or the log; every line of output is redacted.
+#
+# Exit: the command's own code, or 2 (usage), 3 (the lease said not now), 69
+# (the task stopped answering; kept), 75 (the task was suspended mid-command,
+# as a drain does; kept), 124 (timed out; its process group killed), 1
+# (anything else).
+#
+# Environment (`just exe-ax-job` sets it): EXE_AR_TASK_REPO, EXE_CLAUDE_SECRET,
+# EXE_PROJECT_ID, AX_ATESPACE (default exe), and what exe-reaper and ax read.
+
+set -euo pipefail
+AX_TOOL=ax-job
+# shellcheck source=exe/scripts/ax-lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/ax-lib.sh"
+
+usage="usage: ax-job --image REF@sha256:DIGEST [--name NAME] [--timeout 30m] [--claude] -- CMD..."
+image="" name="" timeout="30m" claude=0
+while (($#)); do
+	case "$1" in
+	--image | --name | --timeout)
+		(($# >= 2)) || usage_error "$1 needs a value; $usage"
+		case "$1" in
+		--image) image="$2" ;;
+		--name) name="$2" ;;
+		--timeout) timeout="$2" ;;
+		esac
+		shift 2
+		;;
+	--claude)
+		claude=1
+		shift
+		;;
+	--)
+		shift
+		break
+		;;
+	*) usage_error "unexpected $1; $usage" ;;
+	esac
+done
+(($#)) || usage_error "no command after --; $usage"
+[[ -n "$image" ]] || usage_error "--image is required: an image pinned by digest in exe-task; $usage"
+timeout_s="$(seconds "$timeout")" || usage_error "--timeout $timeout: use 90s, 30m or 2h"
+
+# Only an image pinned by digest in exe-task can carry the tag that keeps it.
+repo="${EXE_AR_TASK_REPO:?EXE_AR_TASK_REPO is not set (just exe-ax-job sets it)}"
+rest="${image#"$repo"/}"
+if [[ "$rest" == "$image" ]] ||
+	[[ ! "$rest" =~ ^([a-z0-9][a-z0-9._/-]*)(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?@sha256:([0-9a-f]{64})$ ]]; then
+	usage_error "--image must be <exe-task>/<image>[:tag]@sha256:<digest>, pinned by digest in $repo"
+fi
+pkg="${BASH_REMATCH[1]}"
+hex="${BASH_REMATCH[3]}"
+
+[[ -n "$name" ]] || name="job-$(date +%s)-$((RANDOM % 1000))"
+[[ "$name" =~ ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ ]] ||
+	usage_error "--name $name: lowercase letters, digits and '-', at most 63"
+
+need=$((timeout_s + 300))
+may_start "$need" || exit $?
+
+work="$(mktemp -d)"
+applied=0
+# delete, or keep: set to keep before the launch, and back to delete only
+# once the command's end is certain.
+disposition=delete
+# shellcheck disable=SC2329 # run by the EXIT trap below
+cleanup() {
+	local rc=$?
+	rm -f "$work/task.yaml" "$work/gcloud.err"
+	rmdir "$work" 2>/dev/null || true
+	((applied)) || return 0
+	if [[ "$disposition" == keep ]]; then
+		log "task $name is kept; remove it with: ax delete task $name -a $AX_ATESPACE"
+	elif [[ "${KEEP_ON_FAILURE:-}" == 1 ]] && ((rc != 0)); then
+		log "KEEP_ON_FAILURE=1: task $name is kept (exit $rc); remove it with: ax delete task $name -a $AX_ATESPACE"
+	elif ! ax delete task "$name" -a "$AX_ATESPACE" >/dev/null 2>&1; then
+		log "could not delete task $name; remove it with: ax delete task $name -a $AX_ATESPACE"
+	fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+phase="$(task_phase "$name")" || die "cannot list the tasks in $AX_ATESPACE"
+[[ -z "$phase" ]] || die "a task named $name already exists ($phase); pick another --name"
+
+if ((claude)); then
+	read_claude_token || exit 1
+fi
+
+src="$repo/$pkg@sha256:$hex"
+gcloud artifacts docker images describe "$src" >/dev/null 2>"$work/gcloud.err" ||
+	die "the registry has no $pkg@sha256:${hex:0:12}: $(tail -n 1 "$work/gcloud.err")"
+tag="inuse-${hex:0:12}-$(date +%s)"
+gcloud artifacts docker tags add "$src" "$repo/$pkg:$tag" --quiet >/dev/null 2>"$work/gcloud.err" ||
+	die "could not tag $pkg@sha256:${hex:0:12} as $tag: $(tail -n 1 "$work/gcloud.err")"
+log "tagged $pkg@sha256:${hex:0:12} as $tag"
+
+cat >"$work/task.yaml" <<EOF
+apiVersion: ax.io/v1alpha1
+kind: Task
+metadata:
+  name: $name
+  atespace: $AX_ATESPACE
+spec:
+  image: "$image"
+  debug: true
+EOF
+applied=1
+ax apply -f "$work/task.yaml" >&2 || die "ax apply failed"
+wait_running "$name" || exit 1
+may_start "$need" || exit $?
+
+disposition=keep
+rc=0
+run_detached "$name" "$timeout_s" "$@" || rc=$?
+if ((ended)); then
+	disposition=delete
+fi
+exit "$rc"
