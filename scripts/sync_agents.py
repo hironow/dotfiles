@@ -44,6 +44,13 @@ BASE_FILE = "ROOT_AGENTS.md"
 OVERLAY_FILE = "ROOT_CLAUDE.md"
 # Hooks settings fragment merged into each claude-family agent's settings.json.
 HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
+# Hook commands a third-party installer writes into the agent home that dotfiles
+# has since replaced with a managed hook. Their commands do not point at
+# <agent>/hooks/, so _is_managed_hook_block would classify them as user blocks
+# and preserve them forever — next to the replacement, which is worse than
+# either alone. Retired on every sync, so a reinstall/upgrade that re-adds one
+# is undone rather than silently resurrecting the old behavior (ADR 0047).
+RETIRED_HOOK_COMMANDS = frozenset({"rtk hook claude"})
 # Shared settings fragment merged into each claude-family agent's settings.json:
 # the cross-machine env block (owned wholesale) plus curated top-level keys.
 SHARED_SETTINGS_FRAGMENT = ".claude/settings.shared.json"
@@ -642,6 +649,20 @@ def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
     )
 
 
+def _is_retired_hook_block(block: dict) -> bool:
+    """A block owned by a third-party installer that dotfiles has replaced.
+
+    Retired only when EVERY command in the block is a retired one (the same
+    all() shape as _is_managed_hook_block), so a hand-written block that merely
+    also calls one is the user's and is left alone rather than silently
+    trimmed.
+    """
+    inner = block.get("hooks", [])
+    return bool(inner) and all(
+        h.get("command", "").strip() in RETIRED_HOOK_COMMANDS for h in inner
+    )
+
+
 def _merge_hook_settings(
     dotfiles_dir: Path,
     agent: AgentTarget,
@@ -656,9 +677,12 @@ def _merge_hook_settings(
     point at ``<agent>/hooks/`` (see _is_managed_hook_block): on each run those
     managed blocks are replaced by the current fragment (so a changed/removed
     hook command does not leave a stale duplicate), while user-authored blocks
-    and other settings keys are preserved untouched. Re-running with an unchanged
-    fragment is a no-op. With dry_run=True nothing is written. Returns True if the
-    file would change.
+    and other settings keys are preserved untouched. The one exception to
+    "preserve user blocks" is RETIRED_HOOK_COMMANDS (see _is_retired_hook_block):
+    third-party installer blocks dotfiles now replaces, dropped on every run so a
+    reinstall cannot resurrect them. Re-running with an unchanged fragment is a
+    no-op. With dry_run=True nothing is written. Returns True if the file would
+    change.
     """
     fragment_path = dotfiles_dir / HOOK_SETTINGS_FRAGMENT
     if not fragment_path.exists():
@@ -695,8 +719,13 @@ def _merge_hook_settings(
     changed = False
     for event in set(hooks) | set(desired):
         existing = hooks.get(event, [])
-        # keep user (unmanaged) blocks; replace managed ones with the current set
-        kept = [b for b in existing if not _is_managed_hook_block(b, agent)]
+        # keep user (unmanaged) blocks; replace managed ones with the current
+        # set; drop retired third-party blocks dotfiles has replaced
+        kept = [
+            b
+            for b in existing
+            if not _is_managed_hook_block(b, agent) and not _is_retired_hook_block(b)
+        ]
         new_list = kept + desired.get(event, [])
         if new_list != existing:
             changed = True
