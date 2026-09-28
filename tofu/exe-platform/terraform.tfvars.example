@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars (gitignored) and fill in. No HCL variable has a
+# default: a missing value must fail loudly rather than silently target the
+# wrong project. Nothing in this example may be a real value.
+
+# The private GCP project this stack owns.
+gcp_project_id     = "REPLACE-project-id"
+gcp_project_number = "000000000000"
+
+# Billing account that funds it (for the JPY budget). Format: XXXXXX-XXXXXX-XXXXXX
+billing_account_id = "REPLACE-billing-account-id"
+
+# Where the budget and alert notifications go.
+alert_email = "REPLACE@example.invalid"
+
+# The L2 enforcer image, pinned by digest. Leave it unset (empty) until the ko
+# build has pushed one: empty means L2 is not deployed and the rest of the stack
+# plans unchanged. Setting it is what turns L2 on. The build recipe prints the
+# full ref; paste it here, or pass it per-plan with `-var enforcer_image=...`. A
+# tag is refused by the variable's validation: an enforcer that resizes the node
+# pool has to be identifiable after the fact.
+# enforcer_image = "REPLACE-region-docker.pkg.dev/REPLACE-project-id/exe-platform/exe-reaper@sha256:REPLACE-64-hex-digest"

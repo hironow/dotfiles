@@ -79,12 +79,17 @@ def test_feature_install_exports_mise_data_dir() -> None:
 
 
 def test_feature_install_does_not_use_home_share_mise() -> None:
-    """No reference to /root/.local/share/mise or $HOME/.local/share/mise
-    should remain in the feature install.sh after the relocation."""
-    text = FEATURE_INSTALL_SH.read_text(encoding="utf-8")
+    """No command in the feature install.sh may use /root/.local/share/mise
+    or $HOME/.local/share/mise after the relocation. Comment lines may name
+    the old path: they explain why the data dir moved (ADR 0006)."""
+    code = "\n".join(
+        line
+        for line in FEATURE_INSTALL_SH.read_text(encoding="utf-8").splitlines()
+        if not line.lstrip().startswith("#")
+    )
     forbidden = [r"/root/\.local/share/mise", r"\$HOME/\.local/share/mise"]
     for pat in forbidden:
-        assert not re.search(pat, text), (
+        assert not re.search(pat, code), (
             f"feature install.sh still references {pat}; relocation to "
             f"/opt/mise per ADR 0006 must remove all such references."
         )

@@ -6,6 +6,8 @@ isolated stack with its own backend / state file.
 | Stack | Purpose |
 |---|---|
 | [`exe/`](./exe/) | `exe.hironow.dev` — GCE workspace + Tailscale + Cloudflare |
+| [`exe-platform/`](./exe-platform/) | GCP foundation for the google/ax stack in the private project: GKE, buckets, registries, IAM, the L2/L3 money stops, alerts, budget, the exe-cluster state key |
+| [`exe-cluster/`](./exe-cluster/) | Everything inside that cluster: the Substrate store, Agent Substrate (upstream installer, pinned), its gVisor SandboxConfig and mirror, AX, the WorkerPool (state encrypted with the platform's KMS key) |
 
 ## Conventions
 

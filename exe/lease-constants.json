@@ -1,0 +1,30 @@
+{
+  "_source_of_truth": "The only place the lease auto-sleep's numbers live. The Go reaper mirrors it (tools/exe-reaper/internal/lease, held equal by constants_test.go), the Quint model exe/spec/lease.qnt mirrors it (held equal by tests/unit/test_lease_constants_lockstep.py), and OpenTofu reads it directly. A constant that exists twice is a constant that will disagree once.",
+  "timezone": "Asia/Tokyo",
+  "default_lease_minutes": 60,
+  "max_lease_minutes": 480,
+  "l1_tick_minutes": 1,
+  "drain_ceiling_minutes": 30,
+  "l2_tick_minutes": 10,
+  "slack_minutes": 19,
+  "l3_daily_stop_local_hour": 4,
+  "nightly_cap_local_hour": 3,
+  "force_grace_minutes": 45,
+  "heartbeat_stale_ticks": 2,
+  "idle_zero_running_minutes": 30,
+  "lease_read_failure_threshold": 3,
+  "stop_latency_minutes": 5,
+  "wedge_clear_minutes": 10,
+  "task_ttl_days": 30,
+  "task_ttl_warning_days": 7,
+  "tag_release_days": 7,
+  "_cap_formula": "nightly_cap_local_hour = l3_daily_stop_local_hour - (l1_tick_minutes + drain_ceiling_minutes + l2_tick_minutes + slack_minutes), i.e. 04:00 - 60min = 03:00 JST. This is what guarantees L3 never lands on an awake actor in normal operation; both the Go guard and the Quint invariant recompute it rather than trusting the stored 3.",
+  "_writers": {
+    "lease.json": "operator",
+    "keep.json": "operator",
+    "drain.json": "reaper",
+    "tasks.json": "reaper",
+    "enforce.json": "enforcer"
+  },
+  "_writer_identities": "operator = L0: exe-reaper wake / extend / sleep / keep, on the operator's own credentials. reaper = L1, in-cluster, Workload Identity exe-ops/exe-reaper. enforcer = L2, the Cloud Run job's exe-enforcer service account. tofu/exe-platform/iam.tf reads _writers: every identity reads the whole ops bucket, and each service writer gets roles/storage.objectUser on exactly its own objects."
+}

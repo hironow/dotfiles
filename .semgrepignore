@@ -25,8 +25,13 @@
 # To ignore a file with a literal ':' character, escape it with
 # a backslash, e.g. "\:foo".
 
-# Test data
-/tests
+# Test data. Listed rather than /tests, so the live e2e suite under
+# tests/e2e stays scanned: .semgrep/rules/e2e/ keeps mocks out of it.
+/tests/*.py
+/tests/README.md
+/tests/unit/
+/tests/exe/
+/tests/docker/
 
 # has some constructs that AST_to_IL has trouble translating ('...' in target code)
 *.pyi

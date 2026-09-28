@@ -5,6 +5,16 @@
 #          just check-all      (== prek run --all-files + just check + just test)
 minimum_prek_version: "0.3.0"
 
+# `prek install` with no --hook-type installs exactly these shims. The guard
+# below only works if the commit-msg shim exists, and the historical default
+# ([pre-commit]) silently left it out -- a commit message could carry a
+# forbidden token past a fully "installed" hook set. `just install-hooks` also
+# passes both types explicitly, so a bare `prek install` and the recipe agree.
+#
+# pre-push is deliberately NOT in this list: .git/hooks/pre-push in this clone
+# belongs to git-lfs, and `just check-all` is the documented push gate.
+default_install_hook_types: [pre-commit, commit-msg]
+
 exclude: |
   (?x)^(
     emulator/|
@@ -23,6 +33,38 @@ exclude: |
   )
 
 repos:
+  # ======================================================================
+  # Confidentiality guard — runs FIRST, before anything rewrites a file.
+  #
+  # This repo is PUBLIC. A locally-declared token list (outside the repo, at
+  # ~/.config/dotfiles/forbidden-tokens, mode 0600) names the strings that must
+  # never be published; the checker scans the ADDED lines of the staged diff,
+  # the staged pathnames and the commit message about to be recorded, and
+  # refuses unreviewable blobs (*.tfplan / *.tfstate* / terraform.tfvars /
+  # backend.hcl / .terraform/ / anything git calls binary) outright.
+  #
+  # Invoked as bare `python3`, not through a just recipe or `uv run`: the
+  # script is stdlib-only, and `uv run` inside a commit hook can regenerate the
+  # root uv.lock mid-commit (a known trap here). No local list => no-op.
+  # ======================================================================
+  - repo: local
+    hooks:
+      - id: forbidden-tokens-staged
+        name: forbidden tokens (staged diff + unreviewable blobs)
+        entry: python3 scripts/check_forbidden_tokens.py staged
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+        description: Refuse staged content, paths or blobs that leak a private identifier.
+
+      - id: forbidden-tokens-commit-msg
+        name: forbidden tokens (commit message)
+        entry: python3 scripts/check_forbidden_tokens.py commit-msg
+        language: system
+        stages: [commit-msg]
+        description: Refuse a commit message that leaks a private identifier.
+
   # Rust-native builtin hooks (fast, no external repo clone needed)
   - repo: builtin
     hooks:

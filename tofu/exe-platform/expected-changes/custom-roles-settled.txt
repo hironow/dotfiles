@@ -1,0 +1,9 @@
+# The reviewed change list for waiting on new custom roles before binding them
+# (inbox M37): one terraform_data whose local-exec sleeps 60 s, keyed on every
+# custom role's id. Every binding of a custom role now depends on it; a new
+# depends_on changes no resource, so none of them shows here.
+#
+# The apply runs the sleep once, now, with every role long usable: harmless. It
+# runs again only when a custom role is added or replaced.
+#   just exe-platform-plan && just exe-platform-plan-summary --expect-changes expected-changes/custom-roles-settled.txt
++ terraform_data.custom_roles_settled

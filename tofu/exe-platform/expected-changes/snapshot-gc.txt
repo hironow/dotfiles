@@ -1,0 +1,14 @@
+# The reviewed change list for the orphan-snapshot GC's authority (plan D11,
+# option B in inbox M35): two custom roles, and two bindings on the snapshot
+# bucket for the GC's own Workload Identity, exe-ops/exe-snapshot-gc. The list
+# is unconditional; the delete is conditioned on ax/atespaces/exe/actors/ and
+# ax/atespaces/ate-golden/actors/. L1's exe-ops/exe-reaper gets nothing.
+# The output workload_identity_principals gains snapshot_gc; outputs do not
+# show here, and exe-cluster's next plan reads it to create the KSA.
+#
+# Nothing uses the grants until that KSA exists and `just exe-snapshot-gc` runs.
+#   just exe-platform-plan && just exe-platform-plan-summary --expect-changes expected-changes/snapshot-gc.txt
++ google_project_iam_custom_role.snapshot_gc_delete
++ google_project_iam_custom_role.snapshot_gc_list
++ google_storage_bucket_iam_member.snapshot_gc_delete
++ google_storage_bucket_iam_member.snapshot_gc_list

@@ -1,0 +1,8 @@
+# The reviewed change list for re-running the install after the first apply
+# stopped at the Substrate step (tainted, so replaced): the step itself and the
+# two objects that wait for it, ax-controller and the WorkerPool. Everything the
+# first apply created stays as it is.
+#   just exe-cluster-plan && just exe-cluster-plan-summary --expect-changes expected-changes/install-retry.txt
+-/+ terraform_data.ate_system
++   kubectl_manifest.ax_controller
++   kubectl_manifest.worker_pool[0]

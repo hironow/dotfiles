@@ -21,6 +21,15 @@ resource "google_artifact_registry_repository" "dotfiles" {
   # unboundedly (20+ versions, ~21 GiB by 2026-07). Cleanup semantics:
   # KEEP beats DELETE, and keep_count is a floor, not a cap — the
   # steady state is max(3, builds in the last 30 days) + main.
+  #
+  # Stated explicitly rather than left to the provider default (which is also
+  # false, so this line changes no plan): with dry_run TRUE every policy below
+  # would be inert and versions would accumulate exactly as they did before
+  # ADR 0034, while the config still looked correct. That silent-failure mode is
+  # what scripts/check_storage_bounds.py refuses, and it refuses absence too --
+  # a bound nobody wrote down is a bound nobody can review.
+  cleanup_policy_dry_run = false
+
   cleanup_policies {
     id     = "keep-recent-versions"
     action = "KEEP"

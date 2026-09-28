@@ -1,0 +1,31 @@
+# The reviewed change list for the first exe-cluster apply: the store, the
+# Substrate install step and its gVisor mirror, AX, the atespace with its
+# WorkerPool and guard, and nothing else. The Gemini Secret is absent (no key).
+#   just exe-cluster-plan && just exe-cluster-plan-summary --expect-changes expected-changes/first-install.txt
+    +  ko_build.ax_controller
+    +  ko_build.ax_server
+    +  kubectl_manifest.ax_controller
+    +  kubectl_manifest.worker_pool[0]
+    +  kubernetes_deployment_v1.ax_server
+    +  kubernetes_namespace_v1.ate_system
+    +  kubernetes_namespace_v1.atespace
+    +  kubernetes_namespace_v1.ax
+    +  kubernetes_namespace_v1.store
+    +  kubernetes_network_policy_v1.postgres
+    +  kubernetes_network_policy_v1.redis
+    +  kubernetes_role_binding_v1.ax_controller_gemini
+    +  kubernetes_role_v1.ax_controller_gemini
+    +  kubernetes_secret_v1.ate_api_server_env
+    +  kubernetes_secret_v1.postgres
+    +  kubernetes_secret_v1.redis
+    +  kubernetes_service_account_v1.ax_controller
+    +  kubernetes_service_v1.ax_server
+    +  kubernetes_service_v1.postgres
+    +  kubernetes_service_v1.redis
+    +  kubernetes_stateful_set_v1.postgres
+    +  kubernetes_stateful_set_v1.redis
+    +  random_password.postgres
+    +  random_password.redis
+    +  terraform_data.ate_system
+    +  terraform_data.gvisor_mirror
+    +  terraform_data.worker_pool_guard[0]

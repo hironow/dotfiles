@@ -1,0 +1,20 @@
+# The reviewed change list for Phase 6's first exe-platform apply: the
+# stop-latency page and every page's severity (8560f88, 3399529), the
+# ops-bucket writer split (c9aed84), and the L2 image that writes the
+# stop-latency line (enforcer_image, built from c9aed84).
+#
+# The two read grants are REPLACED create-before-destroy (+/-): their role goes
+# from objectUser to objectViewer, the write grants are created first, and the
+# old unconditional objectUser goes last, so the live enforcer never loses its
+# enforce.json write. A -/+ here means that order is gone: do not apply.
+#   just exe-platform-plan && just exe-platform-plan-summary --expect-changes expected-changes/stop-latency-and-writers.txt
+~ google_cloud_run_v2_job.l2_enforcer[0]
+~ google_monitoring_alert_policy.l2_execution_failed[0]
+~ google_monitoring_alert_policy.l2_forced_stop[0]
++ google_monitoring_alert_policy.l2_stop_latency[0]
+~ google_monitoring_alert_policy.node_uptime
+~ google_monitoring_alert_policy.scheduler_failure
++/- google_storage_bucket_iam_member.enforcer_ops
++ google_storage_bucket_iam_member.enforcer_ops_write
++/- google_storage_bucket_iam_member.reaper_ops
++ google_storage_bucket_iam_member.reaper_ops_write

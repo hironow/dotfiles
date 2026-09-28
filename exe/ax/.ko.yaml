@@ -1,0 +1,39 @@
+# Our ko build definitions for google/ax (docs/plan/exe-google-ax.md, Phase 4):
+# upstream's .ko.yaml at the pinned commit, with every base image pinned by
+# digest instead of a moving tag, linux/amd64 only (the node's architecture),
+# and ax-server stated alongside the others (upstream's file has no entry for
+# it). Read by tofu/exe-cluster (the ko_build base image, through yamldecode)
+# and by `just exe-spike-task-image` (the runner's base below, handed to
+# exe/ax/spike-task.Dockerfile), so both build paths use the same bases.
+defaultBaseImage: cgr.dev/chainguard/static@sha256:41e17ed83c594a64a9396b6ab96dd26d5ddc290dacf4c177464712ff21ad534f
+baseImageOverrides:
+  # Upstream's task-runner base (alpine/git:latest): git is what Workspace
+  # bootstrap clones with.
+  github.com/google/ax/cmd/ax-task-runner: alpine/git@sha256:832b1cd1a271509f3d5272a1a62d4cb2ab1a53426ebde1f6c2cb7349f907dc6f
+defaultPlatforms:
+  - linux/amd64
+builds:
+  - id: ax-server
+    main: ./cmd/ax-server
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+  - id: ax-controller
+    main: ./cmd/ax-controller
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+  - id: ax-task-runner
+    main: ./cmd/ax-task-runner
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w

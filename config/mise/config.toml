@@ -10,6 +10,8 @@
 
 [tools]
 bun = "latest"
+# go — also the build toolchain for Agent Substrate, the AX CLI and the ko
+# images below; Class 1 (adopt latest aggressively), so it stays "latest".
 go = "latest"
 node = "lts"
 just = "latest"
@@ -91,6 +93,44 @@ starship = "1.26.0"
 # Pinned for cross-machine reproducibility. (opentofu, the other
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
 fzf = "0.74.3"
+
+# google/ax + Agent Substrate toolchain. Declared here rather than per-repo
+# for the ADR 0023 activate-only reason as above: the migration is driven from
+# outside any single repo, so these have to resolve in every dir.
+#
+# ko — container image builder. Substrate's `ate-setup` and the AX build set
+# KO_DOCKER_REPO and have ko build every image; upstream publishes no prebuilt
+# images, so there is nothing to pull instead. Pinned exactly (ADR 0006) so
+# every host builds with the same builder. Uses the explicit
+# `aqua:ko-build/ko` key for the golangci-lint reason above, and for ko that
+# case is measured rather than theoretical: mise itself exports GOBIN as go's
+# own install bin dir and puts that dir EARLIER on PATH than any aqua tool
+# dir, so a `go install github.com/google/ko@latest` (ko's documented
+# alternative install route, and what a setup script reaches for when ko is
+# missing) silently wins the PATH race — `mise which golangci-lint` already
+# answers its GOBIN copy today. The backend-qualified key is what makes the
+# shadow-proof `mise exec aqua:ko-build/ko -- ko ...` form resolvable.
+"aqua:ko-build/ko" = "0.19.1"
+# quint — the Quint model checker, i.e. the formal-methods gate: a Quint model
+# plus a seeded simulation is mandatory for autonomous stop/delete logic, which
+# this migration's lease / drain / TTL reaper is. Not in the mise registry, so
+# it comes in through the npm backend — and that backend resolves through bun
+# here ([settings.npm] below, ADR 0036), so this is not an npm/yarn/pnpm
+# invocation and does not breach the bun-only Node policy (ADR 0027). Pinned
+# exactly (ADR 0006): a checker sitting under a mandatory gate must change its
+# verdicts deliberately. `quint verify` (apalache) needs a JVM, `quint run` /
+# `quint test` do not — `java` is already declared above either way.
+"npm:@informalsystems/quint" = "0.32.0"
+# ax — the google/ax CLI. Upstream publishes NO release binaries and NO release
+# assets (verified: the v0.3.1 release carries zero assets), so building from
+# source through mise's Go backend is the only install route; the command lives
+# at cmd/ax in the repo. OS-gated to linux/macos for the sheldon reason above —
+# a from-source build on Windows is not part of this workflow, and a failure
+# there hard-fails `mise install` for EVERY tool in this shared config. The
+# version here MUST equal `ax.version` in exe/versions.json, the single source
+# of truth for the migration's pins; scripts/check_exe_pins.py gates the two
+# against each other.
+"go:github.com/google/ax/cmd/ax" = { version = "v0.3.1", os = ["linux", "macos"] }
 
 # AI agent CLIs. Declared at "latest" so they resolve globally on every
 # host (ADR 0023 activate-only: a repo-only tool is only on PATH inside

@@ -20,6 +20,10 @@ extend-exclude = [
     "knowledge-work-plugins",
     "payments",
     "protocols",
+    # `submodules/` holds upstream checkouts pinned as gitlinks (e.g. google/ax,
+    # read while designing against its runner contract). Upstream Python there
+    # is not ours to format -- same exemption as every other vendored dir above.
+    "submodules",
     "telemetry",
     # templates/agent-baseline/.semgrep/tests/* are intentional-violation
     # fixtures (os.path.join / MagicMock) for the scaffold's own semgrep rules.

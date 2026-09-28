@@ -15,6 +15,8 @@
 #       * uv:      .sha256 sidecar + GitHub attestation (SLSA provenance, sigstore)
 #       * just:    SHA256SUMS bulk file (no upstream signature; SHA only)
 #       * sheldon: pinned SHA256 hardcoded per arch (no upstream signature)
+#       * quint's Rust evaluator: built from source at a pinned git commit
+#         with its Cargo.lock (--locked); rustup-init pinned SHA256 per arch
 #
 # The split is documented in docs/adr/0001-devcontainer-debian-features.md.
 # `gh attestation verify` covers uv because astral-sh signs releases via
@@ -193,6 +195,11 @@ export MISE_TRUSTED_CONFIG_PATHS=/root/dotfiles:/root/sandbox/dotfiles-fresh
 # pinned versions are reachable at runtime without re-fetch.
 export MISE_DATA_DIR=/opt/mise
 
+# quint's Rust evaluator is built into the image (see "quint's Rust
+# evaluator" below). QUINT_HOME points quint at it, outside $HOME for the
+# reason MISE_DATA_DIR is.
+export QUINT_HOME=/opt/quint
+
 # Add mise's shim directory to PATH so tools managed by mise
 # (prek, markdownlint-cli2, vp, ...) are reachable without a `mise
 # exec` wrapper. Critical for git hooks installed by `prek install`
@@ -264,6 +271,11 @@ node = "24.19.0"
 # `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
 go = "1.27.1"
 "aqua:golangci/golangci-lint" = "2.13.0"
+# quint: `just check` ends in `just spec-check`, the formal-methods gate
+# (`mise x -- quint`). Same pin as config/mise/config.toml: a checker under a
+# mandatory gate changes its verdicts only deliberately (ADR 0006 parity).
+# npm: backend through bun, like the other npm tools here.
+"npm:@informalsystems/quint" = "0.32.0"
 "npm:@openai/codex" = "0.153.4"
 # Under bun (package_manager above) mise ignores npm_args (bun reads
 # bun_args only). claude-code's postinstall still runs — the package is on
@@ -293,6 +305,69 @@ echo "[dotfiles-tools] pre-installing mise tools at build time (MISE_DATA_DIR=/o
   MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise install
 )
 MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
+
+# ---- quint's Rust evaluator, built for this image's glibc ----
+# `quint run` and `quint test` (the formal-methods gate, `just spec-check`)
+# execute on quint's Rust evaluator, which quint downloads from its GitHub
+# releases on first use. Those Linux binaries need GLIBC_2.39 and bookworm has
+# 2.36, so the download cannot run here. Build the same release from source
+# against this image's glibc instead, pinned to the release tag's commit and
+# its Cargo.lock (--locked), and install it where quint looks before it
+# downloads: $QUINT_HOME/rust-evaluator-<version>/quint_evaluator.
+#
+# QUINT_EVALUATOR_VERSION is the one the baked quint asks for (quint 0.32.0
+# asks for v0.6.0). A quint bump that asks for another makes quint try the
+# download again, and the warm-up run below then fails the build rather than
+# the sandbox's `just check`. Rust is the workstation's pin
+# (config/mise/config.toml), from a rustup-init pinned by SHA256 per arch,
+# and lives in /tmp only for the build.
+export QUINT_HOME=/opt/quint
+QUINT_EVALUATOR_VERSION="v0.6.0"
+QUINT_EVALUATOR_REV="513910b6a3831ed3040296cc66ef5d0f84db185c" # tag evaluator/v0.6.0
+RUSTUP_VERSION="1.29.1"
+RUST_TOOLCHAIN="1.98.0"
+case "$ARCH" in
+  x86_64)
+    RUSTUP_TARGET="x86_64-unknown-linux-gnu"
+    RUSTUP_SHA256="dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71" ;;
+  aarch64)
+    RUSTUP_TARGET="aarch64-unknown-linux-gnu"
+    RUSTUP_SHA256="15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433" ;;
+  *) echo "[dotfiles-tools] unsupported arch: $ARCH" >&2; exit 1 ;;
+esac
+echo "[dotfiles-tools] building quint's Rust evaluator ${QUINT_EVALUATOR_VERSION} (${QUINT_EVALUATOR_REV}) with Rust ${RUST_TOOLCHAIN}"
+curl -fsSL -o /tmp/rustup-init \
+  "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_TARGET}/rustup-init"
+echo "${RUSTUP_SHA256}  /tmp/rustup-init" | sha256sum -c -
+chmod 0755 /tmp/rustup-init
+git init -q /tmp/quint-src
+git -C /tmp/quint-src fetch -q --depth 1 https://github.com/quint-co/quint "${QUINT_EVALUATOR_REV}"
+git -C /tmp/quint-src checkout -q FETCH_HEAD
+if [ "$(git -C /tmp/quint-src rev-parse HEAD)" != "${QUINT_EVALUATOR_REV}" ]; then
+  echo "[dotfiles-tools] quint source is not at ${QUINT_EVALUATOR_REV}" >&2
+  exit 1
+fi
+(
+  export RUSTUP_HOME=/tmp/quint-rustup CARGO_HOME=/tmp/quint-cargo
+  export PATH="${CARGO_HOME}/bin:${PATH}"
+  /tmp/rustup-init -y --no-modify-path --profile minimal --default-toolchain "${RUST_TOOLCHAIN}"
+  cd /tmp/quint-src/evaluator
+  cargo build --release --locked
+)
+install -d -m 0755 "${QUINT_HOME}/rust-evaluator-${QUINT_EVALUATOR_VERSION}"
+install -m 0755 /tmp/quint-src/evaluator/target/release/quint_evaluator \
+  "${QUINT_HOME}/rust-evaluator-${QUINT_EVALUATOR_VERSION}/quint_evaluator"
+rm -rf /tmp/rustup-init /tmp/quint-rustup /tmp/quint-cargo /tmp/quint-src
+
+# Warm-up: a two-step run of a one-variable model. It proves quint finds the
+# evaluator above and runs it, so a quint that cannot simulate fails the image
+# build rather than the sandbox's `just check`.
+(
+  cd /tmp
+  printf '%s\n' 'module warm {' '  var x: int' "  action init = x' = 0" "  action step = x' = x + 1" '}' > /tmp/quint-warm.qnt
+  MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise x -- quint run /tmp/quint-warm.qnt --max-steps=2 --max-samples=1
+  rm -f /tmp/quint-warm.qnt
+)
 
 # ---- claude-code native binary (real binary, over the mise stub) ----
 # claude-code stays declared in the mise heredoc above so it keeps ADR 0006

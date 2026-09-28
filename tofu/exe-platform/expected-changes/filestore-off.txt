@@ -1,0 +1,6 @@
+# The reviewed change list for turning GKE's default Filestore CSI driver off:
+# one in-place update of the cluster's addons, nothing else. It removes the
+# addon's DaemonSet from the only node and its GKE-managed disruption budget,
+# which could hold a stop's drain.
+#   just exe-platform-plan && just exe-platform-plan-summary --expect-changes expected-changes/filestore-off.txt
+~ google_container_cluster.exe

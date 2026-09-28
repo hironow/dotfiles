@@ -26,6 +26,14 @@ Currently enforces:
   deprecated Compose v1 filenames (`docker-compose.yaml`, `docker-compose.yml`)
   in a rule file must be wrapped in `<prohibited-filename>...</prohibited-filename>`.
 
+### e2e/
+
+Rules for the live end-to-end tests under `tests/e2e/`, run by `just check`.
+
+- **exe-e2e-no-mocks** — No `unittest.mock`, `mock`, `pytest-mock` or
+  `monkeypatch` in an e2e test: a stand-in for the cluster asserts nothing
+  about it. A test that cannot use the real dependency is not e2e.
+
 ## Running
 
 ```bash
