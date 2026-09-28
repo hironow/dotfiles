@@ -42,6 +42,10 @@ resource "google_container_cluster" "exe" {
   # out waiting for one. Upstream's setup tool sets this at creation; its README
   # reports that enabling it later did not make the APIs served (on 1.36).
   # Exactly two entries: GKE cannot disable a beta API once it is on.
+  # Kubernetes 1.40 stops serving both, so exe/versions.json records which
+  # version the pin speaks (substrate.certificates_api), and
+  # scripts/check_exe_pins.py fails from 60 days before upgrade_exclusion_end
+  # (locals.tf) until the pin is a Substrate that speaks v1.
   enable_k8s_beta_apis {
     enabled_apis = [
       "certificates.k8s.io/v1beta1/clustertrustbundles",

@@ -87,6 +87,8 @@ locals {
   # means an upgrade is a full stop, and Substrate v0.1.0 kills every awake
   # actor when a worker pod goes away. Re-dated deliberately when the minor
   # approaches end of support, which is the moment to re-read this decision.
+  # scripts/check_exe_pins.py counts the certificates.k8s.io/v1beta1 deadline
+  # from the end date (gke.tf, enable_k8s_beta_apis).
   upgrade_exclusion_start = "2026-09-27T00:00:00Z"
   upgrade_exclusion_end   = "2027-03-25T00:00:00Z"
 

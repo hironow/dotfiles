@@ -31,6 +31,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -76,6 +77,7 @@ def _pins() -> dict[str, Any]:
                 "sha": SUBSTRATE_SHA,
                 "version_label_key": "ate.dev/substrate-version",
                 "version_label_value": "v0.1.0",
+                "certificates_api": "v1beta1",
                 "_ax_gomod_pseudoversion_commit": "672533541dbf",
                 "_ax_gomod_note": "go.mod commit diverges from tag v0.1.0",
             },
@@ -384,6 +386,72 @@ def test_the_real_pin_is_the_audited_one() -> None:
     pins = json.loads(_REAL_PINS.read_text())
     audit = json.loads((_REPO_ROOT / mod.SUBSTRATE_AUDIT_REL).read_text())
     assert mod.check_substrate_audit(pins, audit) == []
+
+
+# --- check 2f: the certificates API before the upgrade exclusion ends ---------
+#
+# The pinned Substrate speaks certificates.k8s.io/v1beta1 (ClusterTrustBundles,
+# PodCertificateRequests), which the cluster serves only because gke.tf enables
+# the two beta APIs. They went GA in 1.37, so 1.40 stops serving the beta, and
+# the exclusion that holds the cluster on 1.37 ends on a set date. The gate
+# starts failing 60 days before it unless the pin is marked as speaking v1.
+
+_EXCLUSION_END = date(2027, 3, 25)
+_LOCALS_TF = 'locals {\n  upgrade_exclusion_end   = "2027-03-25T00:00:00Z"\n}\n'
+
+
+def test_the_exclusion_end_is_read_from_the_platform_locals() -> None:
+    assert mod.upgrade_exclusion_end(_LOCALS_TF) == _EXCLUSION_END
+    assert mod.upgrade_exclusion_end("locals {}") is None
+
+
+def test_the_real_exclusion_end_puts_the_deadline_on_2027_01_24() -> None:
+    locals_tf = (_REPO_ROOT / mod.PLATFORM_LOCALS_REL).read_text()
+    end = mod.upgrade_exclusion_end(locals_tf)
+    assert end == _EXCLUSION_END
+    assert end - mod.CERTIFICATES_API_LEAD == date(2027, 1, 24)
+
+
+def test_v1beta1_passes_the_day_before_the_deadline() -> None:
+    assert mod.check_certificates_api(_pins(), _EXCLUSION_END, date(2027, 1, 23)) == []
+
+
+def test_v1beta1_fails_from_the_deadline() -> None:
+    violations = mod.check_certificates_api(_pins(), _EXCLUSION_END, date(2027, 1, 24))
+    assert len(violations) == 1
+    for needed in ("2027-03-25", "certificates.k8s.io/v1", "1.40", "gke.tf"):
+        assert needed in violations[0], needed
+
+
+def test_a_pin_that_speaks_v1_passes_any_day() -> None:
+    pins = _pins()
+    pins["substrate"]["certificates_api"] = "v1"
+    assert mod.check_certificates_api(pins, _EXCLUSION_END, date(2027, 6, 1)) == []
+
+
+def test_the_certificates_api_must_be_named() -> None:
+    for value in (None, "", "v2"):
+        pins = _pins()
+        if value is None:
+            del pins["substrate"]["certificates_api"]
+        else:
+            pins["substrate"]["certificates_api"] = value
+        assert mod.check_certificates_api(pins, _EXCLUSION_END, date(2026, 10, 1)), (
+            value
+        )
+    # and the schema requires it too
+    pins = _pins()
+    del pins["substrate"]["certificates_api"]
+    assert mod.check_schema(pins)
+
+
+def test_an_unreadable_exclusion_end_is_a_violation() -> None:
+    assert mod.check_certificates_api(_pins(), None, date(2026, 10, 1))
+
+
+def test_the_real_pin_names_its_certificates_api() -> None:
+    pins = json.loads(_REAL_PINS.read_text())
+    assert pins["substrate"]["certificates_api"] in mod.CERTIFICATES_APIS
 
 
 # --- check 3: SHA shape, and match against a resolver ----------------------

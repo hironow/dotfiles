@@ -51,6 +51,7 @@ import tomllib
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -93,6 +94,7 @@ _SUBSTRATE_REQUIRED = (
     "sha",
     "version_label_key",
     "version_label_value",
+    "certificates_api",
 )
 _GKE_REQUIRED = ("release_channel", "cluster_minor")
 _PROVIDER_KEYS = ("version", "dependency_class")
@@ -120,6 +122,15 @@ REAPER_GOMOD_REL = "tools/exe-reaper/go.mod"
 # The Substrate commit whose actor write paths were audited for the task TTL's
 # clock (exe/spec/README.md), relative to the repo root.
 SUBSTRATE_AUDIT_REL = "exe/spec/substrate-audit.json"
+
+# exe-platform's locals, which hold the date the upgrade exclusion that keeps
+# the cluster on its pinned minor ends, relative to the repo root.
+PLATFORM_LOCALS_REL = "tofu/exe-platform/locals.tf"
+
+# The certificates.k8s.io versions a Substrate pin may speak, and how long
+# before the upgrade exclusion ends a pin still on the beta fails the gate.
+CERTIFICATES_APIS = ("v1beta1", "v1")
+CERTIFICATES_API_LEAD = timedelta(days=60)
 _PROVIDER_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)(?:\.(\d+))?")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _CLUSTER_MINOR_RE = re.compile(r"^1\.\d+$")
@@ -465,6 +476,61 @@ def check_substrate_audit(pins: dict[str, Any], audit: object) -> list[str]:
             "a SUSPENDED actor's row, then move the SHA in "
             f"{SUBSTRATE_AUDIT_REL}. A background writer would keep tasks "
             "forever (retention.qnt's backgroundWriteRefreshes)."
+        ]
+    return []
+
+
+# --- check 2f: the certificates API before the upgrade exclusion ends --------
+
+_EXCLUSION_END_RE = re.compile(
+    r'^\s*upgrade_exclusion_end\s*=\s*"(\d{4}-\d{2}-\d{2})T', re.M
+)
+
+
+def upgrade_exclusion_end(locals_tf: str) -> date | None:
+    """The date exe-platform's upgrade exclusion ends, or None if not found."""
+    m = _EXCLUSION_END_RE.search(locals_tf)
+    if not m:
+        return None
+    return datetime.strptime(m.group(1), "%Y-%m-%d").date()
+
+
+def check_certificates_api(
+    pins: dict[str, Any], exclusion_end: date | None, today: date
+) -> list[str]:
+    """Fail a Substrate pin still on certificates.k8s.io/v1beta1 near the exclusion's end.
+
+    The pinned Substrate reads and writes ClusterTrustBundles and
+    PodCertificateRequests at certificates.k8s.io/v1beta1, which the cluster
+    serves only because gke.tf enables those two beta APIs. Both went GA in
+    Kubernetes 1.37, and a beta is removed three minors after it graduates, so
+    1.40 stops serving them. What holds the cluster on 1.37 is exe-platform's
+    upgrade exclusion, which ends on a set date. From CERTIFICATES_API_LEAD
+    before it, the gate fails until the pin is one that speaks v1.
+    """
+    substrate = pins.get("substrate")
+    api = substrate.get("certificates_api") if isinstance(substrate, dict) else None
+    if api not in CERTIFICATES_APIS:
+        return [
+            f"{PINS_REL}: substrate.certificates_api is {api!r}; it must say "
+            f"which certificates.k8s.io version the pinned Substrate speaks, one "
+            f"of {', '.join(CERTIFICATES_APIS)}."
+        ]
+    if exclusion_end is None:
+        return [
+            f"{PLATFORM_LOCALS_REL}: upgrade_exclusion_end not found; the "
+            "certificates API deadline is counted from it."
+        ]
+    deadline = exclusion_end - CERTIFICATES_API_LEAD
+    if api == "v1beta1" and today >= deadline:
+        return [
+            f"{PINS_REL}: the pinned Substrate still speaks certificates.k8s.io/"
+            f"v1beta1, and the upgrade exclusion that holds the cluster on its "
+            f"minor ends on {exclusion_end.isoformat()} ({PLATFORM_LOCALS_REL}). "
+            "Kubernetes 1.40 stops serving the beta. Repin to a Substrate that "
+            "speaks certificates.k8s.io/v1, set substrate.certificates_api to "
+            "v1, and drop the two beta APIs in tofu/exe-platform/gke.tf, before "
+            "the exclusion ends."
         ]
     return []
 
@@ -919,6 +985,13 @@ def main() -> int:
             check_reaper_gomod(pins, (root / REAPER_GOMOD_REL).read_text())
         )
         violations.extend(check_substrate_audit(pins, _load_audit(root)))
+        violations.extend(
+            check_certificates_api(
+                pins,
+                upgrade_exclusion_end((root / PLATFORM_LOCALS_REL).read_text()),
+                date.today(),
+            )
+        )
 
     if violations:
         print(
