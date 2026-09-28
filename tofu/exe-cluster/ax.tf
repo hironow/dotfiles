@@ -236,10 +236,11 @@ resource "kubernetes_network_policy_v1" "redis" {
 }
 
 # Nothing on the pod network may reach ax-server (S5): every task's actor runs
-# arbitrary code there, and the API creates, resumes and deletes tasks. Its one
-# client, the operator's `ax` CLI, arrives through a kubectl port-forward, which
-# enters the pod through the kubelet rather than the pod network, so a policy
-# with no ingress rules leaves it working.
+# arbitrary code there, and the API creates, resumes and deletes tasks. The
+# operator's `ax` CLI arrives through a kubectl port-forward, which enters the
+# pod through the kubelet rather than the pod network, so a policy with no
+# ingress rules leaves it working. The one pod-network client is L1, admitted
+# by the policy after this one.
 resource "kubernetes_network_policy_v1" "ax_server" {
   metadata {
     name      = "ax-server-from-nothing"
@@ -366,6 +367,49 @@ resource "kubernetes_service_v1" "ax_server" {
 }
 
 # --- ax-controller -----------------------------------------------------------
+
+# L1 suspends tasks through ax-server (Phase 6 plan D2), from its own namespace.
+# Policies add up, so this admits the reaper's pods and leaves every other pod
+# refused. The peer is one namespaceSelector AND podSelector: the namespace
+# alone would admit anything that ever runs in exe-ops, and the label alone any
+# pod in any namespace that carries it, a task's included.
+resource "kubernetes_network_policy_v1" "ax_server_from_reaper" {
+  metadata {
+    name      = "ax-server-from-the-reaper"
+    namespace = kubernetes_namespace_v1.ax.metadata[0].name
+    labels    = local.common_labels
+  }
+
+  spec {
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name" = "ax-server"
+      }
+    }
+
+    policy_types = ["Ingress"]
+
+    ingress {
+      from {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = kubernetes_namespace_v1.ops.metadata[0].name
+          }
+        }
+        pod_selector {
+          match_labels = {
+            "app.kubernetes.io/name" = local.reaper_app
+          }
+        }
+      }
+
+      ports {
+        protocol = "TCP"
+        port     = "8080"
+      }
+    }
+  }
+}
 
 resource "kubernetes_service_account_v1" "ax_controller" {
   metadata {

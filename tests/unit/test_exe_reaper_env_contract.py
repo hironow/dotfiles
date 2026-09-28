@@ -135,3 +135,64 @@ def test_the_timeout_scanners_parse_both_shapes() -> None:
     ]
     assert _TF_TASK_TIMEOUT.findall('      timeout = "120s"\n') == ["120"]
     assert _TF_TASK_TIMEOUT.findall('  attempt_deadline = "180s"\n') == []
+
+
+# --- L1: the reaper's CronJob against exe-reap ----------------------------------
+#
+# The same stack boundary for L1: tofu/exe-cluster/reaper.tf sets the CronJob's
+# env, and tools/exe-reaper/cmd/exe-reap/main.go reads it. exe-reap has
+# in-cluster defaults for every endpoint, so the CronJob sets only what has no
+# default; a name it sets that exe-reap does not read is a typo that leaves the
+# default in force, and a required name it does not set is a reaper that exits
+# on every tick, which L2 only notices as a drain that never happens.
+
+EXE_REAP_MAIN: Final = (
+    _REPO_ROOT / "tools" / "exe-reaper" / "cmd" / "exe-reap" / "main.go"
+)
+REAPER_TF: Final = _REPO_ROOT / "tofu" / "exe-cluster" / "reaper.tf"
+
+#: `{ name = "EXE_OPS_BUCKET", value = ... }` in the CronJob's yamlencode'd env.
+_TF_ENV_ITEM: Final = re.compile(r'\{\s*name\s*=\s*"(EXE_[A-Z0-9_]+)"')
+
+#: `fmt.Errorf("missing required environment: %s", envBucket)`.
+_GO_REQUIRED: Final = re.compile(r'missing required environment: %s",\s*(env\w+)')
+
+#: `envBucket = "EXE_OPS_BUCKET"`, capturing the const's name and its value.
+_GO_ENV_PAIR: Final = re.compile(r'(?m)^\s*(env[A-Z]\w*)\s*=\s*"(EXE_[A-Z0-9_]+)"')
+
+
+def test_the_cronjob_sets_only_env_exe_reap_reads_and_all_it_requires() -> None:
+    go_text = EXE_REAP_MAIN.read_text(encoding="utf-8")
+    consts = dict(_GO_ENV_PAIR.findall(go_text))
+    required = {consts[name] for name in _GO_REQUIRED.findall(go_text)}
+    tf = set(_TF_ENV_ITEM.findall(REAPER_TF.read_text(encoding="utf-8")))
+    assert consts and required and tf, (consts, required, tf)
+    assert tf <= set(consts.values()), (
+        f"the CronJob sets env exe-reap does not read: {sorted(tf - set(consts.values()))}"
+    )
+    assert required <= tf, (
+        f"exe-reap requires env the CronJob does not set: {sorted(required - tf)}"
+    )
+
+
+#: `tickTimeout = 45 * time.Second` in exe-reap.
+_GO_TICK_TIMEOUT: Final = re.compile(
+    r"(?m)^\s*tickTimeout\s*=\s*(\d+)\s*\*\s*time\.Second\b"
+)
+
+#: `activeDeadlineSeconds = 55` in the CronJob's Job template.
+_TF_ACTIVE_DEADLINE: Final = re.compile(r"(?m)^\s*activeDeadlineSeconds\s*=\s*(\d+)\b")
+
+
+def test_a_tick_gives_up_before_its_job_is_killed() -> None:
+    """A tick ended by its own deadline writes its failure line; one killed by
+    the Job's activeDeadlineSeconds leaves a pod that just stopped."""
+    go = _GO_TICK_TIMEOUT.findall(EXE_REAP_MAIN.read_text(encoding="utf-8"))
+    tf = _TF_ACTIVE_DEADLINE.findall(REAPER_TF.read_text(encoding="utf-8"))
+    assert len(go) == 1, f"want one tickTimeout in exe-reap, found {go}"
+    assert len(tf) == 1, f"want one activeDeadlineSeconds in reaper.tf, found {tf}"
+    tick, deadline = int(go[0]), int(tf[0])
+    assert tick + _FAILURE_LINE_MARGIN_SECONDS <= deadline, (
+        f"exe-reap's deadline ({tick}s) must end at least "
+        f"{_FAILURE_LINE_MARGIN_SECONDS}s before the Job's ({deadline}s)"
+    )

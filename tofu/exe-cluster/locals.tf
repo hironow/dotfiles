@@ -6,6 +6,10 @@ locals {
   # hardcodes one instead).
   pins = jsondecode(file("${path.module}/../../exe/versions.json"))
 
+  # The one place the auto-sleep's numbers come from (exe-platform reads it the
+  # same way): the reaper's cadence is l1_tick_minutes.
+  leases = jsondecode(file("${path.module}/../../exe/lease-constants.json"))
+
   # exe-platform's outputs (platform.tf).
   platform = data.terraform_remote_state.platform.outputs
 
@@ -129,6 +133,20 @@ locals {
       memory = "4Gi"
     }
   }
+
+  # --- L1, the reaper ------------------------------------------------------------
+  #
+  # Its namespace and KSA are the ones exe-platform binds to the ops bucket
+  # (workload_identity_principals.reaper), parsed from that principal rather
+  # than retyped: a KSA under any other name holds no grant, and every tick
+  # 403s on the lease.
+  reaper_subject   = regex("/subject/ns/([^/]+)/sa/([^/]+)$", local.platform.workload_identity_principals.reaper)
+  reaper_namespace = local.reaper_subject[0]
+  reaper_ksa       = local.reaper_subject[1]
+
+  # The label the ax-server allow rule admits (ax.tf) and the CronJob's pods
+  # carry (reaper.tf).
+  reaper_app = "exe-reap"
 
   common_labels = {
     "app.kubernetes.io/part-of"    = "exe"
