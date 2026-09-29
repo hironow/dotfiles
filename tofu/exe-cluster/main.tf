@@ -34,7 +34,7 @@ terraform {
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.38"
+      version = "~> 3.2"
     }
     # Server-side apply for the two custom resources (WorkerPool) whose CRDs
     # only exist after the Substrate install: hashicorp/kubernetes'
