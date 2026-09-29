@@ -194,10 +194,11 @@ def build_env(
 
 
 # ---- Codex workers: pick a gpt-6 model and its reasoning effort ----
-# OpenAI's guidance (learn.chatgpt.com/docs/models): Astra for the hardest end-to-end
-# work (start at low), Sol for everyday and complex coding (start at medium), Luna for
-# clear, repeatable tasks (start at high). Astra costs about five times Sol, so it
-# needs a confident "hard and end to end" read.
+# OpenAI's guidance (learn.chatgpt.com/docs/models, 2026-09-29): GPT-6.1 Sol has
+# near-Astra performance for complex, repeated or long-running work at a lower cost, so
+# it is the default for complex coding. Keep Astra for the most demanding end-to-end
+# work (start at low); Luna suits clear, repeatable tasks (start at high). Astra costs
+# far more than Sol, so it needs a confident "hard and end to end" read.
 CODEX_QUESTIONS: dict[str, dict[str, object]] = {
     **QUESTIONS,
     "well_scoped": {
@@ -212,9 +213,9 @@ CODEX_QUESTIONS: dict[str, dict[str, object]] = {
 WELL_SCOPED = 0.7
 END_TO_END = 0.7
 ASTRA_CONFIDENCE = 0.8
-CODEX_DEFAULT = ("gpt-6-sol", "medium")
+CODEX_DEFAULT = ("gpt-6.1-sol", "medium")
 # A strict format means a slip breaks a consumer: one step up where there is room.
-_ONE_STEP_UP = {("gpt-6-sol", "medium"): "high", ("gpt-6-astra", "low"): "medium"}
+_ONE_STEP_UP = {("gpt-6.1-sol", "medium"): "high", ("gpt-6-astra", "low"): "medium"}
 CODEX_SANDBOXES = ("read-only", "workspace-write")
 CODEX_AGENT_TYPES = {"codex:codex-rescue", "codex-rescue"}
 
@@ -243,7 +244,9 @@ def codex_from_answers(answers: Mapping[str, object]) -> tuple[str, str]:
                 _noul(answers, "end_to_end") >= END_TO_END
                 and confidence >= ASTRA_CONFIDENCE
             )
-            choice = ("gpt-6-astra", "low") if hard_and_sure else ("gpt-6-sol", "high")
+            choice = (
+                ("gpt-6-astra", "low") if hard_and_sure else ("gpt-6.1-sol", "high")
+            )
         elif _noul(answers, "well_scoped") >= WELL_SCOPED:
             choice = ("gpt-6-luna", "high")
     if (

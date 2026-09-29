@@ -33,7 +33,7 @@ def fake_codex(final: str | None = "DONE", returncode: int = 0):
     return run, calls
 
 
-def run_wrapper(argv, prompt="do the work", *, run, choice=("gpt-6-sol", "medium")):
+def run_wrapper(argv, prompt="do the work", *, run, choice=("gpt-6.1-sol", "medium")):
     out = io.StringIO()
     code = wrapper.main(
         argv,

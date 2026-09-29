@@ -89,7 +89,7 @@ def _run(
     monkeypatch.setattr(hook, "jev_key", lambda: key)
     monkeypatch.setattr(hook, "choose_effort", lambda _task, _key: effort)
     monkeypatch.setattr(
-        hook, "choose_codex", lambda _task, _key: ("gpt-6-sol", "medium")
+        hook, "choose_codex", lambda _task, _key: ("gpt-6.1-sol", "medium")
     )
     out = io.StringIO()
     hook.main(io.StringIO(stdin), out)
@@ -183,9 +183,9 @@ def test_main_handles_a_codex_launch_and_logs_it(
     printed = _run(monkeypatch, json.dumps(CODEX), key="secret")
     assert json.loads(printed)["hookSpecificOutput"]["updatedInput"][
         "prompt"
-    ].startswith("--model gpt-6-sol --effort medium ")
+    ].startswith("--model gpt-6.1-sol --effort medium ")
     assert json.loads(log.read_text(encoding="utf-8")) == {
         "kind": "codex-rescue",
-        "model": "gpt-6-sol",
+        "model": "gpt-6.1-sol",
         "effort": "medium",
     }

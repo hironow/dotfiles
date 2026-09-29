@@ -85,7 +85,7 @@ def choose_effort(task: str, key: str | None) -> str:
 def choose_codex(task: str, key: str | None) -> tuple[str, str]:
     """(model, effort) for a Codex worker; without an answer, Sol at medium."""
     if not key:
-        print("Jev: no TYPESAFE_API_KEY; using gpt-6-sol medium", file=sys.stderr)
+        print("Jev: no TYPESAFE_API_KEY; using gpt-6.1-sol medium", file=sys.stderr)
         return codex_from_answers({})
     return codex_from_answers(ask_jev(build_codex_request_body(task), key) or {})
 

@@ -100,23 +100,26 @@ Windows では、キーを環境変数からしか読めないため、この差
 
 | モデル | 向く作業 | 基本の effort |
 | --- | --- | --- |
-| `gpt-6-astra` | 最も難しい、複数の段階にわたる作業 | `low` |
-| `gpt-6-sol` | 日常から複雑なコーディング、曖昧で難しい作業 | `medium` |
+| `gpt-6-astra` | 曖昧で、深い分析や大きな成果物が要る、最も難しい作業 | `low` |
+| `gpt-6.1-sol` | 複雑な作業で、時間とコストも管理したいもの。Astra に近い性能で単価が低い | `medium` |
 | `gpt-6-luna` | 明確で反復的な作業（抽出、分類、変換、絞った変更） | `high` |
+
+Sol は 6.1 を使う (`gpt-6.1-sol`)。
+6.0 の `gpt-6-sol` は、OpenAI の推奨から外れたため使わない。
 
 Jev には、Claude の worker と同じ「難しさ」と「厳密な構造が必要か」に、「明確で反復的か」と「複数段階で最後まで判断が要るか」を足した4つを、1回の呼び出しで問う。
 判定は次のとおり。
 
 | 条件 | 選択 |
 | --- | --- |
-| 難しさの確信度が 0.5 未満、または応答なし | `gpt-6-sol` / `medium` |
+| 難しさの確信度が 0.5 未満、または応答なし | `gpt-6.1-sol` / `medium` |
 | 難しさが 1.5 以上、複数段階が 0.7 以上、確信度が 0.8 以上 | `gpt-6-astra` / `low` |
-| 難しさが 1.5 以上（上に当たらない） | `gpt-6-sol` / `high` |
+| 難しさが 1.5 以上（上に当たらない） | `gpt-6.1-sol` / `high` |
 | 「明確で反復的」が 0.7 以上（難しくない） | `gpt-6-luna` / `high` |
-| 上記以外 | `gpt-6-sol` / `medium` |
+| 上記以外 | `gpt-6.1-sol` / `medium` |
 
-厳密な構造が必要（0.7 以上）なら、`sol` は `high`、`astra` は `medium` に一段上げる。
-Astra は Sol の約5倍の単価なので、確信度が高いときだけ選ぶ。
+厳密な構造が必要（0.7 以上）なら、Sol は `high`、Astra は `medium` に一段上げる。
+Astra は Sol より単価がはるかに高いので、確信度が高いときだけ選ぶ。
 閾値は `scripts/jev_core.py` にあり、`tests/unit/jev_codex_cases.json` の実測値で固定している。
 
 ### Claude
@@ -137,7 +140,7 @@ Pi 組み込みの `codex-exec` と `codex-exec-writer` は、モデルを上書
 どちらも、実行の直前に Jev へ問い合わせ、`codex exec -m <model> -c model_reasoning_effort=<effort>` を起動する（サンドボックスなどの引数は組み込みと同じ）。
 選択は実行時に行うので、`workflowScript` の中の子でも効く。
 `jev-pi` で起動した Pi では、`subagent` の直接の呼び出しで `codex-exec` と `codex-exec-writer` が、自動でこの2つに切り替わる。
-選ばれたモデルは、run の `external-*.stderr.log` の先頭行（`Jev: codex gpt-6-sol / medium (read-only)`）で確認できる。
+選ばれたモデルは、run の `external-*.stderr.log` の先頭行（`Jev: codex gpt-6.1-sol / medium (read-only)`）で確認できる。
 Windows では、`sh` を使うため配置しない。
 
 ### 動作確認（利用上限のリセット後に一度）

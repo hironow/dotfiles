@@ -218,13 +218,13 @@ def test_choose_codex_asks_the_four_questions_and_returns_a_model_and_effort(
 def test_choose_codex_falls_back_to_sol_medium_without_a_key_or_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert launcher.choose_codex("task", None) == ("gpt-6-sol", "medium")
+    assert launcher.choose_codex("task", None) == ("gpt-6.1-sol", "medium")
 
     def offline(*_args: object, **_kwargs: object) -> None:
         raise urllib.error.URLError("offline")
 
     monkeypatch.setattr(launcher.urllib.request, "urlopen", offline)
-    assert launcher.choose_codex("task", "secret") == ("gpt-6-sol", "medium")
+    assert launcher.choose_codex("task", "secret") == ("gpt-6.1-sol", "medium")
 
 
 @pytest.mark.parametrize(

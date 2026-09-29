@@ -187,17 +187,17 @@ def test_codex_request_adds_two_atomic_questions_to_the_shared_ones() -> None:
 def test_codex_only_uses_the_gpt_6_family_and_efforts_the_cli_accepts() -> None:
     models = {c["expected"][0] for c in CODEX_CASES}
     efforts = {c["expected"][1] for c in CODEX_CASES}
-    assert models == {"gpt-6-luna", "gpt-6-sol", "gpt-6-astra"}
+    assert models == {"gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"}
     assert efforts <= {"low", "medium", "high"}  # the Claude plugin stops at xhigh
 
 
 def test_exec_command_owns_the_sandbox_and_pins_model_and_effort() -> None:
     command = core.build_codex_exec_command(
-        "gpt-6-sol", "high", "workspace-write", "/tmp/out.txt"
+        "gpt-6.1-sol", "high", "workspace-write", "/tmp/out.txt"
     )
     assert command[:2] == ["codex", "exec"]
     assert command[command.index("-s") + 1] == "workspace-write"
-    assert command[command.index("-m") + 1] == "gpt-6-sol"
+    assert command[command.index("-m") + 1] == "gpt-6.1-sol"
     assert 'model_reasoning_effort="high"' in command
     assert 'approval_policy="never"' in command
     assert "--ignore-user-config" in command and command[-1] == "-"
@@ -207,7 +207,7 @@ def test_exec_command_owns_the_sandbox_and_pins_model_and_effort() -> None:
 def test_exec_command_refuses_an_unknown_sandbox() -> None:
     with pytest.raises(ValueError, match="sandbox"):
         core.build_codex_exec_command(
-            "gpt-6-sol", "high", "danger-full-access", "/tmp/x"
+            "gpt-6.1-sol", "high", "danger-full-access", "/tmp/x"
         )
 
 
@@ -219,10 +219,10 @@ def test_codex_rescue_gets_flags_prepended_to_its_prompt(agent: str) -> None:
         "description": "d",
     }
     original = dict(tool_input)
-    planned = core.plan_codex_rewrite(tool_input, "gpt-6-sol", "medium")
+    planned = core.plan_codex_rewrite(tool_input, "gpt-6.1-sol", "medium")
     assert planned == {
         **original,
-        "prompt": "--model gpt-6-sol --effort medium fix the flaky test",
+        "prompt": "--model gpt-6.1-sol --effort medium fix the flaky test",
     }
     assert tool_input == original
 
@@ -241,7 +241,7 @@ def test_codex_rescue_gets_flags_prepended_to_its_prompt(agent: str) -> None:
 def test_an_explicit_choice_or_another_agent_is_left_alone(
     tool_input: dict[str, object],
 ) -> None:
-    assert core.plan_codex_rewrite(tool_input, "gpt-6-sol", "medium") is None
+    assert core.plan_codex_rewrite(tool_input, "gpt-6.1-sol", "medium") is None
 
 
 @pytest.mark.parametrize(
