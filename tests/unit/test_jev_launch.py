@@ -19,40 +19,29 @@ launcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launcher)
 
 
-def test_jev_choice_selects_high_without_exposing_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+HARD = (
+    b'{"answers":{"difficulty":{"type":"score","score":1.9,"confidence":0.9},'
+    b'"strict_structure":{"type":"noul","noul":0.1}}}'
+)
+
+
+def test_jev_selects_high_without_exposing_key(monkeypatch: pytest.MonkeyPatch) -> None:
     def reply(request: urllib.request.Request, timeout: int) -> io.BytesIO:
         assert timeout == 5
         assert isinstance(request.data, bytes)
-        assert json.loads(request.data)["questions"]["profile"]["type"] == "choice"
-        return io.BytesIO(
-            b'{"answers":{"profile":{"type":"choice","choice":"complex"}}}'
-        )
+        assert "secret" not in request.data.decode("utf-8")
+        assert request.get_header("Authorization") == "Bearer secret"
+        return io.BytesIO(HARD)
 
     monkeypatch.setattr(launcher.urllib.request, "urlopen", reply)
     assert launcher.choose_effort("fix a complex bug", "secret") == "high"
 
 
-def test_sonnet_json_uses_high_until_evals_justify_xhigh(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    answer = b'{"answers":{"profile":{"type":"choice","choice":"json"}}}'
-    monkeypatch.setattr(
-        launcher.urllib.request, "urlopen", lambda *_args, **_kwargs: io.BytesIO(answer)
-    )
-    assert launcher.choose_effort("complex JSON schema migration", "secret") == "high"
-    assert set(launcher.PROFILES.values()) == {"medium", "high"}
-
-
 @pytest.mark.parametrize(
     "answer",
-    [
-        b'{"answers":{"profile":{"type":"choice","choice":"unapproved"}}}',
-        b'{"answers":{}}',
-    ],
+    [b'{"answers":{"difficulty":{"type":"choice"}}}', b'{"answers":{}}', b"[]"],
 )
-def test_unapproved_answer_falls_back(
+def test_unusable_answer_falls_back(
     monkeypatch: pytest.MonkeyPatch, answer: bytes
 ) -> None:
     monkeypatch.setattr(
@@ -154,3 +143,84 @@ def test_launcher_does_not_pass_jev_key_to_pi(monkeypatch: pytest.MonkeyPatch) -
             launcher.os, "execvpe", lambda _file, argv, env: check_child(argv, env)
         )
         launcher.main()
+
+
+def _run_pi_launch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, installed: bool
+) -> dict[str, str]:
+    agent = tmp_path / "agent"
+    (agent / "extensions").mkdir(parents=True)
+    if installed:
+        (agent / "extensions/jev-sonnet-fallback.ts").write_text("x", encoding="utf-8")
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(agent))
+    monkeypatch.setenv("TYPESAFE_API_KEY", "secret")
+    monkeypatch.setattr(launcher.sys, "argv", ["jev_launch.py", "pi", "hello"])
+    monkeypatch.setattr(launcher, "choose_effort", lambda *_args: "medium")
+    monkeypatch.setattr(
+        launcher, "pi_route", lambda: "github-copilot/claude-sonnet-5.5"
+    )
+    seen: dict[str, str] = {}
+
+    def child(_argv: list[str], **kwargs: object) -> Mock:
+        seen.update(cast("dict[str, str]", kwargs["env"]))
+        return Mock(returncode=0)
+
+    monkeypatch.setattr(launcher.subprocess, "run", child)
+    monkeypatch.setattr(
+        launcher.os, "execvpe", lambda _file, _argv, env: seen.update(env)
+    )
+    try:
+        launcher.main()
+    except SystemExit:
+        pass
+    return seen
+
+
+def test_pi_receives_key_handoff_only_when_extension_is_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    env = _run_pi_launch(monkeypatch, tmp_path, installed=True)
+    assert env["JEV_KEY_HANDOFF"] == "secret"
+    assert "TYPESAFE_API_KEY" not in env
+
+
+def test_pi_without_extension_never_receives_the_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    env = _run_pi_launch(monkeypatch, tmp_path, installed=False)
+    assert "JEV_KEY_HANDOFF" not in env
+    assert "TYPESAFE_API_KEY" not in env
+
+
+CASES = json.loads(
+    (Path(__file__).parent / "jev_effort_cases.json").read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize("case", CASES, ids=[case["name"] for case in CASES])
+def test_effort_composes_score_noul_and_confidence(case: dict[str, object]) -> None:
+    answers = cast("dict[str, object]", case["answers"])
+    assert launcher.effort_from_answers(answers) == case["expected"]
+
+
+def test_request_asks_score_and_noul_in_one_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[dict[str, object]] = []
+
+    def reply(request: urllib.request.Request, timeout: int) -> io.BytesIO:
+        assert isinstance(request.data, bytes)
+        sent.append(json.loads(request.data))
+        return io.BytesIO(
+            b'{"answers":{"difficulty":{"type":"score","score":1.8,"confidence":0.9},'
+            b'"strict_structure":{"type":"noul","noul":0.1}}}'
+        )
+
+    monkeypatch.setattr(launcher.urllib.request, "urlopen", reply)
+    assert launcher.choose_effort("hard task", "secret") == "high"
+    questions = cast("dict[str, dict[str, object]]", sent[0]["questions"])
+    assert {name: q["type"] for name, q in questions.items()} == {
+        "difficulty": "score",
+        "strict_structure": "noul",
+    }
+    assert len(cast("list[str]", questions["difficulty"]["criteria"])) == 3

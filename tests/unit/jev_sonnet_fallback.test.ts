@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import fallback, { isUsageLimit, ROUTES } from "../../config/pi/extensions/jev-sonnet-fallback";
+import cases from "./jev_effort_cases.json";
+import fallback, { applyWorkerEffort, chooseEffort, effortFromAnswers, isUsageLimit, ROUTES } from "../../config/pi/extensions/jev-sonnet-fallback";
 
 test("only provider usage limits trigger a switch", () => {
   expect(isUsageLimit("HTTP 429: usage limit reached")).toBe(true);
@@ -16,7 +17,7 @@ test("after a subscription limit, continue on the next authenticated provider", 
   let handler: ((event: any, context: any) => Promise<any>) | undefined;
   let selected = "";
   const pi = {
-    on: (_event: string, callback: typeof handler) => { handler = callback; },
+    on: (name: string, callback: typeof handler) => { if (name === "agent_before_settle") handler = callback; },
     setModel: async (model: { provider: string }) => { selected = model.provider; return true; },
     setThinkingLevel: (level: string) => expect(level).toBe("medium"),
   };
@@ -49,7 +50,7 @@ test("skip unauthenticated Cursor and stop when the metered provider is exhauste
   let handler: ((event: any, context: any) => Promise<any>) | undefined;
   const switched: string[] = [];
   fallback({
-    on: (_event: string, callback: typeof handler) => { handler = callback; },
+    on: (name: string, callback: typeof handler) => { if (name === "agent_before_settle") handler = callback; },
     setModel: async (model: { provider: string }) => { switched.push(model.provider); return true; },
     setThinkingLevel: () => {},
   } as any);
@@ -64,5 +65,112 @@ test("skip unauthenticated Cursor and stop when the metered provider is exhauste
   expect(switched).toEqual(["openrouter"]);
   ctx.model = openrouter;
   expect(await handler!(event, ctx)).toBeUndefined();
+  delete process.env.JEV_ROUTED_SESSION;
+});
+
+const reply = (answers: unknown) => async () => new Response(JSON.stringify({ answers }));
+const HARD = { difficulty: { type: "score", score: 1.9, confidence: 0.9 }, strict_structure: { type: "noul", noul: 0.1 } };
+
+test("Jev's difficulty score and structure noul compose into an effort", async () => {
+  expect(await chooseEffort("t", "k", reply(HARD) as any)).toBe("high");
+  expect(await chooseEffort("t", "k", reply({ ...HARD, difficulty: { score: 0.2, confidence: 1 } }) as any)).toBe("medium");
+});
+
+test("failed or unusable Jev answers continue on medium without leaking the key", async () => {
+  const boom = async () => { throw new Error("Bearer secret-key leaked"); };
+  expect(await chooseEffort("t", "secret-key", boom as any)).toBe("medium");
+  expect(await chooseEffort("t", "k", reply({}) as any)).toBe("medium");
+  expect(await chooseEffort("t", "k", reply("nope") as any)).toBe("medium");
+  expect(await chooseEffort("t", "k", (async () => new Response("{}", { status: 500 })) as any)).toBe("medium");
+});
+
+test("the request asks one score and one noul in a single call", async () => {
+  let sent: any;
+  await chooseEffort("t", "k", (async (_url: string, init: any) => { sent = JSON.parse(init.body); return new Response(JSON.stringify({ answers: HARD })); }) as any);
+  expect(Object.fromEntries(Object.entries(sent.questions).map(([name, q]: any) => [name, q.type]))).toEqual({ difficulty: "score", strict_structure: "noul" });
+  expect(sent.questions.difficulty.criteria.length).toBe(3);
+});
+
+for (const item of cases as { name: string; answers: any; expected: string }[]) {
+  test(`effort case: ${item.name}`, () => {
+    expect(effortFromAnswers(item.answers)).toBe(item.expected);
+  });
+}
+
+test("worker effort applies to a bare single launch using the session model", () => {
+  const input: any = { agent: "worker", task: "fix" };
+  expect(applyWorkerEffort(input, "high", "github-copilot/claude-sonnet-5.5")).toBe(true);
+  expect(input.model).toBe("github-copilot/claude-sonnet-5.5:high");
+});
+
+test("worker effort leaves explicit suffixes, other models, workflows and management calls alone", () => {
+  const sonnet = "github-copilot/claude-sonnet-5.5";
+  const cases: any[] = [
+    { agent: "worker", task: "x", model: "hnn/uncensored:low" },
+    { agent: "worker", task: "x", model: "nvidia/deepseek-ai/deepseek-v4.1-flash" },
+    { workflowScript: "return 1" },
+    { action: "list" },
+    { agent: "worker" },
+  ];
+  for (const input of cases) {
+    const before = JSON.stringify(input);
+    expect(applyWorkerEffort(input, "high", sonnet)).toBe(false);
+    expect(JSON.stringify(input)).toBe(before);
+  }
+});
+
+test("an explicit Sonnet route without a suffix gets the chosen effort", () => {
+  const input: any = { agent: "worker", task: "x", model: "cursor/claude-sonnet-5-5" };
+  expect(applyWorkerEffort(input, "medium", "github-copilot/claude-sonnet-5.5")).toBe(true);
+  expect(input.model).toBe("cursor/claude-sonnet-5-5:medium");
+});
+
+function workerHarness() {
+  const handlers: Record<string, (event: any, context: any) => Promise<any>> = {};
+  fallback({ on: (name: string, cb: any) => { handlers[name] = cb; } } as any);
+  return handlers;
+}
+const sonnetCtx = { model: { provider: "github-copilot", id: "claude-sonnet-5.5" }, hasUI: false };
+
+test("the key handoff is consumed at load and never stays in the environment", async () => {
+  process.env.JEV_ROUTED_SESSION = "1";
+  process.env.JEV_KEY_HANDOFF = "secret";
+  workerHarness();
+  expect(process.env.JEV_KEY_HANDOFF).toBeUndefined();
+  delete process.env.JEV_ROUTED_SESSION;
+});
+
+test("a subagent launch asks Jev once and pins the chosen effort", async () => {
+  process.env.JEV_ROUTED_SESSION = "1";
+  process.env.JEV_KEY_HANDOFF = "secret";
+  const handlers = workerHarness();
+  const seen: string[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (_url: string, init: any) => {
+    seen.push(JSON.parse(init.body).state);
+    return new Response(JSON.stringify({ answers: HARD }));
+  }) as any;
+  try {
+    const event = { toolName: "subagent", input: { agent: "worker", task: "hard refactor" } };
+    await handlers.tool_call(event, sonnetCtx);
+    expect(event.input).toMatchObject({ model: "github-copilot/claude-sonnet-5.5:high" });
+    expect(seen).toEqual(["hard refactor"]);
+    const other = { toolName: "bash", input: { command: "ls" } };
+    await handlers.tool_call(other, sonnetCtx);
+    expect(other.input).toEqual({ command: "ls" });
+    expect(seen.length).toBe(1);
+  } finally {
+    globalThis.fetch = original;
+    delete process.env.JEV_ROUTED_SESSION;
+  }
+});
+
+test("without the handed-off key (child sessions) launches are untouched", async () => {
+  process.env.JEV_ROUTED_SESSION = "1";
+  delete process.env.JEV_KEY_HANDOFF;
+  const handlers = workerHarness();
+  const event = { toolName: "subagent", input: { agent: "worker", task: "x" } };
+  expect(handlers.tool_call).toBeUndefined();
+  expect(event.input).toEqual({ agent: "worker", task: "x" });
   delete process.env.JEV_ROUTED_SESSION;
 });

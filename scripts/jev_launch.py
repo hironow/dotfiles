@@ -21,7 +21,26 @@ PI_ROUTES = (
 )
 # Sonnet 5.5 coding guidance: medium for well-specified work, high for harder
 # work. Reserve xhigh/max until a workload-specific evaluation proves a gain.
-PROFILES = {"routine": "medium", "complex": "high", "json": "high"}
+# Jev answers atomic questions (docs.typesafe.ai): a Score for how hard the task
+# is and a Noul for strict structure. This code combines them; thresholds live here.
+QUESTIONS = {
+    "difficulty": {
+        "type": "score",
+        "instructions": "How demanding is this coding-agent task for the model that performs it?",
+        "criteria": [
+            "Small, well-specified change or lookup with a clear finish line, such as a rename, a typo, or running one command.",
+            "Routine multi-step engineering with a known approach, such as adding a test, a simple feature, or a focused bug fix.",
+            "Hard or open-ended engineering: unclear cause, cross-cutting design, many files or services, migrations, or long-running multistep tool use.",
+        ],
+    },
+    "strict_structure": {
+        "type": "noul",
+        "instructions": "Does the task require producing strictly structured output, such as a JSON schema, a typed contract, or a machine-checked format, where a formatting mistake would break a consumer?",
+    },
+}
+HARD_SCORE = 1.5  # Nearest level is the top of the three-level difficulty scale.
+STRICT_STRUCTURE = 0.7  # Acting on a false yes costs thinking tokens, so lean high.
+CONFIDENCE_FLOOR = 0.5  # Below this Jev is saying "I don't know"; keep the default.
 SESSION_RULES = (
     "The host selected the model and effort before this session. Keep both fixed; "
     "Pi may switch only to an approved Sonnet 5.5 provider on a usage limit. "
@@ -53,26 +72,34 @@ def jev_key() -> str | None:
     return None
 
 
+def _number(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def effort_from_answers(answers: dict[str, object]) -> str:
+    """Compose Jev's typed answers into an effort; anything unusable means medium."""
+    structure = answers.get("strict_structure")
+    noul = _number(structure.get("noul")) if isinstance(structure, dict) else None
+    if noul is not None and noul >= STRICT_STRUCTURE:
+        return "high"
+    difficulty = answers.get("difficulty")
+    if not isinstance(difficulty, dict):
+        return "medium"
+    score = _number(difficulty.get("score"))
+    confidence = _number(difficulty.get("confidence"))
+    if score is None or confidence is None or confidence < CONFIDENCE_FLOOR:
+        return "medium"
+    return "high" if score >= HARD_SCORE else "medium"
+
+
 def choose_effort(task: str, key: str | None) -> str:
-    """One bounded Jev choice; a failed or unknown choice keeps the host profile."""
+    """One bounded Jev call; a failed or unusable answer keeps the host profile."""
     if not key:
         print("Jev: no TYPESAFE_API_KEY; using Sonnet 5.5 medium", file=sys.stderr)
         return "medium"
-    body = {
-        "model": "jev-latest",
-        "state": task[:8000],
-        "questions": {
-            "profile": {
-                "type": "choice",
-                "instructions": "Select effort for one coding-agent session. Pick routine for well-specified coding, complex for hard or long-running agentic coding and multistep tool use, json for difficult structured JSON tasks.",
-                "criteria": {
-                    "routine": "Clear coding or straightforward work; Sonnet 5.5 medium",
-                    "complex": "Hard or long agentic coding, complex reasoning, multistep tools; Sonnet 5.5 high",
-                    "json": "Difficult JSON or constrained structured work; Sonnet 5.5 high",
-                },
-            }
-        },
-    }
+    body = {"model": "jev-latest", "state": task[:8000], "questions": QUESTIONS}
     request = urllib.request.Request(
         JEV_URL,
         data=json.dumps(body).encode("utf-8"),
@@ -81,10 +108,10 @@ def choose_effort(task: str, key: str | None) -> str:
     )
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
-            answer = json.load(response)["answers"]["profile"]
-        if answer.get("type") != "choice":
-            raise ValueError("unexpected answer type")
-        return PROFILES[answer["choice"]]
+            answers = json.load(response)["answers"]
+        if not isinstance(answers, dict):
+            raise TypeError("answers is not an object")
+        return effort_from_answers(answers)
     except (
         urllib.error.URLError,
         TimeoutError,
@@ -105,6 +132,12 @@ def agent_environment() -> dict[str, str]:
     env.pop("TYPESAFE_API_KEY", None)  # Neither Pi nor Claude needs the Jev secret.
     env.pop("TYPESAFE_AI_API_KEY", None)
     return env
+
+
+def extension_installed() -> bool:
+    """The worker-effort extension consumes the key handoff; without it, hand off nothing."""
+    agent = Path(os.environ.get("PI_CODING_AGENT_DIR") or Path.home() / ".pi/agent")
+    return (agent / "extensions/jev-sonnet-fallback.ts").is_file()
 
 
 def pi_route() -> str:
@@ -133,7 +166,8 @@ def main() -> None:
     task = " ".join(sys.argv[2:]).strip()
     if not task:
         raise SystemExit("Give the task up front so Jev can select an effort profile.")
-    effort = choose_effort(task, jev_key())
+    key = jev_key()
+    effort = choose_effort(task, key)
     print(f"Jev: {host} Sonnet 5.5 / {effort}", file=sys.stderr)
     if host == "claude":
         command = [
@@ -162,6 +196,10 @@ def main() -> None:
     env = agent_environment()
     if host == "pi":
         env["JEV_ROUTED_SESSION"] = "1"
+        if key and extension_installed():
+            # Consumed and removed by the extension at load; bash tool and child
+            # sessions never see it. Absent extension, the key stays out of Pi.
+            env["JEV_KEY_HANDOFF"] = key
     else:
         env.setdefault("RUNOPS_ACTOR_TYPE", "ai-agent")
     if os.name == "nt":
