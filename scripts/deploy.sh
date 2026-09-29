@@ -87,20 +87,24 @@ case "$(uname -s)" in
     else
       echo "==> mise not on PATH; skipping global tool install (install mise via scoop, then re-run 'just deploy')"
     fi
-    # Opt-in Jev commands for the next PowerShell session. Keep the key out
-    # of this profile; the operator supplies TYPESAFE_API_KEY as an env var.
+    # Opt-in Jev commands (j-cc, j-pi) for the next PowerShell session. Keep the
+    # key out of this profile; the operator supplies TYPESAFE_API_KEY as an env
+    # var (or a ~/.env file). The block is rewritten on every deploy, so a rename
+    # reaches profiles that already carry it.
     ps_jev_marker_begin="# >>> dotfiles managed block: Jev launchers >>>"
-    if ! grep -qF "$ps_jev_marker_begin" "$ps_profile"; then
-      {
-        printf '\n%s\n' "$ps_jev_marker_begin"
-        cat <<'POWERSHELL'
-function jev-claude { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" claude @args }
-function jev-pi { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" pi @args }
-POWERSHELL
-        printf '%s\n' "$ps_marker_end"
-      } >> "$ps_profile"
-      echo "==> PowerShell \$PROFILE updated with Jev launchers"
+    if grep -qF "$ps_jev_marker_begin" "$ps_profile"; then
+      awk -v b="$ps_jev_marker_begin" -v e="$ps_marker_end" -f ~/dotfiles/scripts/drop_managed_block.awk "$ps_profile" > "$ps_profile.jev.tmp" \
+        && mv "$ps_profile.jev.tmp" "$ps_profile"
     fi
+    {
+      printf '\n%s\n' "$ps_jev_marker_begin"
+      cat <<'POWERSHELL'
+function j-cc { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" claude @args }
+function j-pi { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" pi @args }
+POWERSHELL
+      printf '%s\n' "$ps_marker_end"
+    } >> "$ps_profile"
+    echo "==> PowerShell \$PROFILE updated with Jev launchers"
     if command -v mise >/dev/null 2>&1; then
       echo "==> Installing Pi extensions (native Windows)..."
       MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; re-run 'just pi-extensions-install'"

@@ -25,8 +25,8 @@ $env:TYPESAFE_API_KEY = [System.Net.NetworkCredential]::new('', (Read-Host -AsSe
 macOS と Linux（zsh）、または Windows PowerShell で、作業リポジトリに移動して実行する。
 
 ```sh
-jev-claude '失敗しているパーサのテストを修正して'
-jev-pi '失敗しているパーサのテストを修正して'
+j-cc '失敗しているパーサのテストを修正して'
+j-pi '失敗しているパーサのテストを修正して'
 ```
 
 依頼文を渡さないと起動しない。
@@ -65,7 +65,7 @@ Claude Code 側に利用上限が出た場合、このコマンドは別アカ�
 
 ## Pi の worker 起動ごとの選択
 
-`jev-pi` で起動した Pi では、`subagent` で worker を1つ起動するたびに、その `task` を Jev に送り、思考レベルを選ぶ。
+`j-pi` で起動した Pi では、`subagent` で worker を1つ起動するたびに、その `task` を Jev に送り、思考レベルを選ぶ。
 起動元の Sonnet 5.5 のモデルに `:medium` か `:high` を付けて worker を起動する。
 判定と、Jev に届かないときの `medium` は起動時と同じ。
 モデルを明示した起動は、Sonnet 5.5 の提供元で suffix がない場合にだけ思考レベルを付ける。
@@ -78,7 +78,7 @@ bash ツールや worker の子セッションにキーは渡らない。
 
 ## Claude Code の worker 起動ごとの選択
 
-`jev-claude` で起動した Claude Code でも、既定の worker（`general-purpose`）を起動するたびに、`prompt` を Jev に送り、思考レベルを選ぶ。
+`j-cc` で起動した Claude Code でも、既定の worker（`general-purpose`）を起動するたびに、`prompt` を Jev に送り、思考レベルを選ぶ。
 
 Claude Code の Agent ツールには effort の引数がなく、サブエージェントの effort は定義ごとに固定される。
 そのため次の2つを、このセッションにだけ注入している（`--settings` と `--agents`。グローバル設定は変えない）。
@@ -95,7 +95,7 @@ Windows では、キーを環境変数からしか読めないため、この差
 
 ## Codex の worker のモデルと effort
 
-`jev-claude` と `jev-pi` から Codex を worker として呼ぶときは、起動ごとに Jev が `gpt-6` のモデルと reasoning effort を選ぶ。
+`j-cc` と `j-pi` から Codex を worker として呼ぶときは、起動ごとに Jev が `gpt-6` のモデルと reasoning effort を選ぶ。
 [OpenAI のモデル案内](https://learn.chatgpt.com/docs/models?surface=cli)の使い分けに合わせる。
 
 | モデル | 向く作業 | 基本の effort |
@@ -139,7 +139,7 @@ Pi 組み込みの `codex-exec` と `codex-exec-writer` は、モデルを上書
 
 どちらも、実行の直前に Jev へ問い合わせ、`codex exec -m <model> -c model_reasoning_effort=<effort>` を起動する（サンドボックスなどの引数は組み込みと同じ）。
 選択は実行時に行うので、`workflowScript` の中の子でも効く。
-`jev-pi` で起動した Pi では、`subagent` の直接の呼び出しで `codex-exec` と `codex-exec-writer` が、自動でこの2つに切り替わる。
+`j-pi` で起動した Pi では、`subagent` の直接の呼び出しで `codex-exec` と `codex-exec-writer` が、自動でこの2つに切り替わる。
 選ばれたモデルは、run の `external-*.stderr.log` の先頭行（`Jev: codex gpt-6.1-sol / medium (read-only)`）で確認できる。
 Windows では、`sh` を使うため配置しない。
 
@@ -161,7 +161,7 @@ just jev-claude-verify
 | `PASS` | 0 | 名前なしの worker が差し替え後の定義で起動し、選んだ effort が記録された。Codex には `--model` と `--effort` が届いた。マージしてよい |
 | `FAIL` | 1 | 差し替えが効かない、または effort が効かない。`updatedInput` が Agent で無視されている場合は何も変わらないだけで害はないが、この機能は動かないのでマージしない |
 | `BLOCKED` | 2 | Claude の利用上限。リセット後にやり直す |
-| `PARTIAL` | 3 | 動いているが effort を確認できない。`jev-claude '...'` で worker を動かし、`/tasks` の worker の行を目で確認する |
+| `PARTIAL` | 3 | 動いているが effort を確認できない。`j-cc '...'` で worker を動かし、`/tasks` の worker の行を目で確認する |
 
 名前ありの worker（teammate）は、effort が落ちるという報告がある（anthropics/claude-code#64706）。
 名前なしで正しければ `PASS` とし、名前ありが落ちたときは警告を出す。

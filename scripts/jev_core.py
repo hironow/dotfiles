@@ -109,7 +109,7 @@ def build_command(
 # Claude Code fixes a subagent's effort in its definition; the Agent tool takes no
 # effort argument. So each effort gets a definition, and a PreToolUse hook swaps
 # the launch onto the one Jev picked. Both are injected with --settings/--agents,
-# so only a jev-claude session is affected.
+# so only a j-cc session is affected.
 _WORKER_PROMPT = (
     "You are a worker agent inside a coding session. Complete the delegated task "
     "fully with the tools available. Report what you changed or found, with "

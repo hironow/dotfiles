@@ -4,7 +4,7 @@
 - A default worker (general-purpose) moves onto the worker-<effort> definition Jev picks.
 - `codex:codex-rescue` gets `--model gpt-6-*` and `--effort` in front of its prompt.
 
-Injected only into `jev-claude` sessions (--settings); see docs/runbook/jev-launchers.md.
+Injected only into `j-cc` sessions (--settings); see docs/runbook/jev-launchers.md.
 It fails open: any problem leaves the launch exactly as Claude sent it.
 """
 
