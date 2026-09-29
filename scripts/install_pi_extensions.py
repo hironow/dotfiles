@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install declared Pi packages and the dotfiles-owned Jev extension."""
+"""Install declared Pi packages and the dotfiles-owned Jev extension and agents."""
 
 import json
 import os
@@ -11,6 +11,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "dump/harness/pi-packages.json"
 EXTENSION = ROOT / "config/pi/extensions/jev-sonnet-fallback.ts"
+AGENTS_DIR = ROOT / "config/pi/agents"
 
 
 def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
@@ -34,6 +35,9 @@ def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
     if any(not (npm / source.removeprefix("npm:")).is_dir() for source in sources):
         subprocess.run(["pi", "update", "--extensions"], check=True)
     _place_extension(agent_dir, symlinks=symlinks)
+    if symlinks:
+        # The agents run `sh -c`, which native Windows does not have.
+        _link_agents(agent_dir)
 
 
 def _place_extension(agent_dir: Path, *, symlinks: bool) -> None:
@@ -57,6 +61,19 @@ def _place_extension(agent_dir: Path, *, symlinks: bool) -> None:
     else:
         # Native Windows symlinks require developer mode or elevation.
         shutil.copyfile(EXTENSION, destination)
+
+
+def _link_agents(agent_dir: Path) -> None:
+    """Link each dotfiles-owned agent; never replace a file the user owns."""
+    target_dir = agent_dir / "agents"
+    for source in sorted(AGENTS_DIR.glob("*.md")):
+        destination = target_dir / source.name
+        if destination.is_symlink() and destination.resolve() == source:
+            continue
+        if destination.exists() or destination.is_symlink():
+            raise RuntimeError(f"refusing to replace user agent: {destination}")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        destination.symlink_to(source)
 
 
 if __name__ == "__main__":

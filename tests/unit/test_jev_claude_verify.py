@@ -85,3 +85,52 @@ def test_a_named_teammate_dropping_effort_is_a_warning_when_the_plain_worker_is_
 
 def test_no_subagent_at_all_is_a_failure() -> None:
     assert verify.analyze([], [RECORD], [], "").status == "fail"
+
+
+CODEX_RECORD = {"kind": "codex-rescue", "model": "gpt-6-astra", "effort": "low"}
+COMPANION = 'node "/p/codex-companion.mjs" task --write --model gpt-6-astra --effort low "fix it"'
+CODEX_OK = {
+    "agentType": "codex:codex-rescue",
+    "name": None,
+    "efforts": ["medium"],
+    "commands": [COMPANION],
+}
+
+
+def test_pass_also_needs_the_codex_flags_to_reach_the_companion() -> None:
+    report = verify.analyze(
+        [], [RECORD, CODEX_RECORD], [OK, CODEX_OK], "", expect_codex=True
+    )
+    assert report.status == "pass"
+    assert any("codex" in line for line in report.evidence)
+
+
+def test_codex_flags_that_never_reached_the_companion_are_a_failure() -> None:
+    dropped = {**CODEX_OK, "commands": ['node "/p/codex-companion.mjs" task "fix it"']}
+    report = verify.analyze(
+        [], [RECORD, CODEX_RECORD], [OK, dropped], "", expect_codex=True
+    )
+    assert report.status == "fail" and "codex" in report.reason
+
+
+def test_a_model_that_differs_from_jevs_choice_is_a_failure() -> None:
+    other = {**CODEX_OK, "commands": [COMPANION.replace("gpt-6-astra", "gpt-6-luna")]}
+    assert (
+        verify.analyze(
+            [], [RECORD, CODEX_RECORD], [OK, other], "", expect_codex=True
+        ).status
+        == "fail"
+    )
+
+
+def test_no_codex_launch_is_unconfirmed_not_a_pass() -> None:
+    report = verify.analyze([], [RECORD], [OK], "", expect_codex=True)
+    assert report.status == "partial" and "codex" in report.reason
+
+
+def test_the_worse_of_the_worker_and_codex_verdicts_wins() -> None:
+    kept = {"agentType": "general-purpose", "name": None, "efforts": ["medium"]}
+    report = verify.analyze(
+        [], [RECORD, CODEX_RECORD], [kept, CODEX_OK], "", expect_codex=True
+    )
+    assert report.status == "fail" and "updatedInput" in report.reason

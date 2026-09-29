@@ -76,6 +76,14 @@ export function workerBaseModel(input: any, sessionModel: string | undefined): s
   return model && !SUFFIX.test(model) && isSonnetRoute(model) ? model : undefined;
 }
 
+const CODEX_AGENTS: Record<string, string> = { "codex-exec": "codex-jev", "codex-exec-writer": "codex-jev-writer" };
+
+/** The Jev-aware Codex agent for a direct launch of a built-in one, which cannot choose a model. */
+export function redirectCodexAgent(input: any): string | undefined {
+  if (!input || typeof input !== "object" || input.action || input.workflow || input.workflowScript || input.workflowScriptPath) return undefined;
+  return typeof input.agent === "string" ? CODEX_AGENTS[input.agent] : undefined;
+}
+
 // ---- Imperative shell: the only code that touches env, network and Pi. ----
 
 /** One bounded Jev call per worker launch. Any failure keeps medium; error text is never surfaced. */
@@ -101,10 +109,18 @@ export default function (pi: ExtensionAPI) {
   // bash tool nor child sessions inherit it; children then leave launches alone.
   const jevKey = process.env.JEV_KEY_HANDOFF;
   delete process.env.JEV_KEY_HANDOFF;
-  if (jevKey) {
+  // Set by the launcher only when the codex-jev agents are installed.
+  const redirectCodex = process.env.JEV_CODEX_AGENTS === "1";
+  if (jevKey || redirectCodex) {
     pi.on("tool_call", async (event, ctx) => {
       if (event.toolName !== "subagent") return;
       const input = event.input as any;
+      const codex = redirectCodex ? redirectCodexAgent(input) : undefined;
+      if (codex) {
+        input.agent = codex; // codex-jev asks Jev for the gpt-6 model and effort itself
+        return;
+      }
+      if (!jevKey) return;
       const base = workerBaseModel(input, ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
       if (!base) return;
       const effort = await chooseEffort(input.task, jevKey);

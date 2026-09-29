@@ -118,6 +118,7 @@ def _launch(
     monkeypatch.setattr(launcher, "jev_key", lambda: "secret")
     monkeypatch.setattr(launcher, "choose_effort", lambda *_args: "high")
     monkeypatch.setattr(launcher, "extension_installed", lambda: True)
+    monkeypatch.setattr(launcher, "codex_agents_installed", lambda: True)
     monkeypatch.setattr(
         launcher, "pi_route", lambda: "github-copilot/claude-sonnet-5.5"
     )
@@ -151,6 +152,7 @@ def test_main_wires_key_effort_route_and_environment(
         "high",
     ]
     assert env["JEV_KEY_HANDOFF"] == "secret" and "TYPESAFE_API_KEY" not in env
+    assert env["JEV_CODEX_AGENTS"] == "1"
     argv, env = _launch(monkeypatch, "claude")
     assert Path(argv[0]).stem == "claude"
     assert argv[1:5] == ["--model", launcher.SONNET, "--effort", "high"]
@@ -183,3 +185,56 @@ def test_extension_is_detected_in_the_pi_agent_dir(
         )
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path))
     assert launcher.extension_installed() is installed
+
+
+CODEX_HARD = (
+    b'{"answers":{"difficulty":{"type":"score","score":2.0,"confidence":1.0},'
+    b'"strict_structure":{"type":"noul","noul":0.1},'
+    b'"well_scoped":{"type":"noul","noul":0.1},'
+    b'"end_to_end":{"type":"noul","noul":0.95}}}'
+)
+
+
+def test_choose_codex_asks_the_four_questions_and_returns_a_model_and_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[dict[str, object]] = []
+
+    def reply(request: urllib.request.Request, timeout: int) -> io.BytesIO:
+        assert isinstance(request.data, bytes)
+        sent.append(json.loads(request.data))
+        return io.BytesIO(CODEX_HARD)
+
+    monkeypatch.setattr(launcher.urllib.request, "urlopen", reply)
+    assert launcher.choose_codex("redesign it", "secret") == ("gpt-6-astra", "low")
+    assert set(cast("dict[str, object]", sent[0]["questions"])) == {
+        "difficulty",
+        "strict_structure",
+        "well_scoped",
+        "end_to_end",
+    }
+
+
+def test_choose_codex_falls_back_to_sol_medium_without_a_key_or_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert launcher.choose_codex("task", None) == ("gpt-6-sol", "medium")
+
+    def offline(*_args: object, **_kwargs: object) -> None:
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr(launcher.urllib.request, "urlopen", offline)
+    assert launcher.choose_codex("task", "secret") == ("gpt-6-sol", "medium")
+
+
+@pytest.mark.parametrize(
+    "names", [("codex-jev.md", "codex-jev-writer.md"), ("codex-jev.md",), ()]
+)
+def test_the_codex_agents_count_as_installed_only_when_both_are_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, names: tuple[str, ...]
+) -> None:
+    (tmp_path / "agents").mkdir()
+    for name in names:
+        (tmp_path / "agents" / name).write_text("x", encoding="utf-8")
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path))
+    assert launcher.codex_agents_installed() is (len(names) == 2)

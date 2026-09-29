@@ -151,3 +151,105 @@ def test_claude_session_args_inject_hook_and_agents_for_this_session_only() -> N
 def test_build_command_places_extra_args_before_the_task() -> None:
     command = core.build_command("claude", "task", "high", core.SONNET, ["--x", "1"])
     assert command[-3:] == ["--x", "1", "task"]
+
+
+CODEX_CASES = json.loads(
+    (Path(__file__).parent / "jev_codex_cases.json").read_text(encoding="utf-8")
+)
+
+
+@pytest.mark.parametrize(
+    "case", CODEX_CASES, ids=[case["name"] for case in CODEX_CASES]
+)
+def test_codex_model_and_effort_follow_openai_guidance(case: dict[str, object]) -> None:
+    answers = cast("dict[str, object]", case["answers"])
+    assert list(core.codex_from_answers(answers)) == case["expected"]
+
+
+def test_codex_request_adds_two_atomic_questions_to_the_shared_ones() -> None:
+    body = core.build_codex_request_body("task")
+    questions = cast("dict[str, dict[str, object]]", body["questions"])
+    assert set(questions) == {
+        "difficulty",
+        "strict_structure",
+        "well_scoped",
+        "end_to_end",
+    }
+    assert questions["well_scoped"]["type"] == questions["end_to_end"]["type"] == "noul"
+    assert cast(
+        "dict[str, object]", core.build_request_body("task")["questions"]
+    ).keys() == {
+        "difficulty",
+        "strict_structure",
+    }
+
+
+def test_codex_only_uses_the_gpt_6_family_and_efforts_the_cli_accepts() -> None:
+    models = {c["expected"][0] for c in CODEX_CASES}
+    efforts = {c["expected"][1] for c in CODEX_CASES}
+    assert models == {"gpt-6-luna", "gpt-6-sol", "gpt-6-astra"}
+    assert efforts <= {"low", "medium", "high"}  # the Claude plugin stops at xhigh
+
+
+def test_exec_command_owns_the_sandbox_and_pins_model_and_effort() -> None:
+    command = core.build_codex_exec_command(
+        "gpt-6-sol", "high", "workspace-write", "/tmp/out.txt"
+    )
+    assert command[:2] == ["codex", "exec"]
+    assert command[command.index("-s") + 1] == "workspace-write"
+    assert command[command.index("-m") + 1] == "gpt-6-sol"
+    assert 'model_reasoning_effort="high"' in command
+    assert 'approval_policy="never"' in command
+    assert "--ignore-user-config" in command and command[-1] == "-"
+    assert command[command.index("--output-last-message") + 1] == "/tmp/out.txt"
+
+
+def test_exec_command_refuses_an_unknown_sandbox() -> None:
+    with pytest.raises(ValueError, match="sandbox"):
+        core.build_codex_exec_command(
+            "gpt-6-sol", "high", "danger-full-access", "/tmp/x"
+        )
+
+
+@pytest.mark.parametrize("agent", ["codex:codex-rescue", "codex-rescue"])
+def test_codex_rescue_gets_flags_prepended_to_its_prompt(agent: str) -> None:
+    tool_input = {
+        "prompt": "fix the flaky test",
+        "subagent_type": agent,
+        "description": "d",
+    }
+    original = dict(tool_input)
+    planned = core.plan_codex_rewrite(tool_input, "gpt-6-sol", "medium")
+    assert planned == {
+        **original,
+        "prompt": "--model gpt-6-sol --effort medium fix the flaky test",
+    }
+    assert tool_input == original
+
+
+@pytest.mark.parametrize(
+    "tool_input",
+    [
+        {"prompt": "--model gpt-6-luna fix it", "subagent_type": "codex:codex-rescue"},
+        {"prompt": "fix it --effort high", "subagent_type": "codex:codex-rescue"},
+        {"prompt": "--model=gpt-6-luna fix it", "subagent_type": "codex:codex-rescue"},
+        {"prompt": "fix it", "subagent_type": "general-purpose"},
+        {"prompt": "fix it", "subagent_type": "codex:other"},
+        {"subagent_type": "codex:codex-rescue"},
+    ],
+)
+def test_an_explicit_choice_or_another_agent_is_left_alone(
+    tool_input: dict[str, object],
+) -> None:
+    assert core.plan_codex_rewrite(tool_input, "gpt-6-sol", "medium") is None
+
+
+@pytest.mark.parametrize(
+    ("host", "ready", "flag"),
+    [("pi", True, True), ("pi", False, False), ("claude", True, False)],
+)
+def test_pi_learns_whether_the_codex_agents_are_installed(
+    host: str, ready: bool, flag: bool
+) -> None:
+    env = core.build_env({}, host, None, extension_ready=True, codex_agents_ready=ready)
+    assert (env.get("JEV_CODEX_AGENTS") == "1") is flag

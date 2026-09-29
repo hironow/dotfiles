@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -64,3 +65,55 @@ def test_deploy_refuses_user_extension(
     monkeypatch.setattr(installer.subprocess, "run", Mock())
     with pytest.raises(RuntimeError, match="refusing to replace user extension"):
         installer.install(agent, symlinks=False)
+
+
+AGENT_NAMES = ("codex-jev.md", "codex-jev-writer.md")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="native Windows symlinks need privileges")
+def test_codex_agents_are_linked_into_the_user_agent_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    monkeypatch.setattr(installer.subprocess, "run", Mock())
+    installer.install(agent, symlinks=True)
+    for name in AGENT_NAMES:
+        link = agent / "agents" / name
+        assert link.is_symlink() and link.resolve() == installer.AGENTS_DIR / name
+    installer.install(agent, symlinks=True)  # idempotent
+    assert all((agent / "agents" / name).is_symlink() for name in AGENT_NAMES)
+
+
+def test_codex_agents_are_skipped_where_symlinks_and_sh_are_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    monkeypatch.setattr(installer.subprocess, "run", Mock())
+    installer.install(agent, symlinks=False)
+    assert not (agent / "agents").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="native Windows symlinks need privileges")
+def test_a_user_owned_agent_of_the_same_name_is_never_replaced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    (agent / "agents").mkdir(parents=True)
+    (agent / "agents/codex-jev.md").write_text("mine", encoding="utf-8")
+    monkeypatch.setattr(installer.subprocess, "run", Mock())
+    with pytest.raises(RuntimeError, match="refusing to replace user agent"):
+        installer.install(agent, symlinks=True)
+    assert (agent / "agents/codex-jev.md").read_text(encoding="utf-8") == "mine"
+
+
+def test_the_agent_definitions_call_the_runner_with_the_right_sandbox() -> None:
+    for name, sandbox in (
+        ("codex-jev.md", "read-only"),
+        ("codex-jev-writer.md", "workspace-write"),
+    ):
+        text = (installer.AGENTS_DIR / name).read_text(encoding="utf-8")
+        assert "type: external-cli" in text and "promptDelivery: stdin" in text
+        assert f'jev_codex_exec.py" --sandbox {sandbox}' in text
+        assert f"name: {name.removesuffix('.md')}" in text

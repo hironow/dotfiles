@@ -91,6 +91,53 @@ Claude Code の Agent ツールには effort の引数がなく、サブエー�
 失敗したときは何も変えず、Claude が送った起動のまま実行する。
 Windows では、キーを環境変数からしか読めないため、この差し替えは行われない。
 
+## Codex の worker のモデルと effort
+
+`jev-claude` と `jev-pi` から Codex を worker として呼ぶときは、起動ごとに Jev が `gpt-6` のモデルと reasoning effort を選ぶ。
+[OpenAI のモデル案内](https://learn.chatgpt.com/docs/models?surface=cli)の使い分けに合わせる。
+
+| モデル | 向く作業 | 基本の effort |
+| --- | --- | --- |
+| `gpt-6-astra` | 最も難しい、複数の段階にわたる作業 | `low` |
+| `gpt-6-sol` | 日常から複雑なコーディング、曖昧で難しい作業 | `medium` |
+| `gpt-6-luna` | 明確で反復的な作業（抽出、分類、変換、絞った変更） | `high` |
+
+Jev には、Claude の worker と同じ「難しさ」と「厳密な構造が必要か」に、「明確で反復的か」と「複数段階で最後まで判断が要るか」を足した4つを、1回の呼び出しで問う。
+判定は次のとおり。
+
+| 条件 | 選択 |
+| --- | --- |
+| 難しさの確信度が 0.5 未満、または応答なし | `gpt-6-sol` / `medium` |
+| 難しさが 1.5 以上、複数段階が 0.7 以上、確信度が 0.8 以上 | `gpt-6-astra` / `low` |
+| 難しさが 1.5 以上（上に当たらない） | `gpt-6-sol` / `high` |
+| 「明確で反復的」が 0.7 以上（難しくない） | `gpt-6-luna` / `high` |
+| 上記以外 | `gpt-6-sol` / `medium` |
+
+厳密な構造が必要（0.7 以上）なら、`sol` は `high`、`astra` は `medium` に一段上げる。
+Astra は Sol の約5倍の単価なので、確信度が高いときだけ選ぶ。
+閾値は `scripts/jev_core.py` にあり、`tests/unit/jev_codex_cases.json` の実測値で固定している。
+
+### Claude
+
+`codex:codex-rescue` の依頼文の先頭に、`--model` と `--effort` を足す。
+プラグインのラッパーは、この2つをそのまま Codex に渡す。
+依頼文に `--model` か `--effort` がすでにあれば、そちらを優先して何もしない。
+`--effort` の値は、プラグインが受け付ける `xhigh` までに収まる。
+
+### Pi
+
+Pi 組み込みの `codex-exec` と `codex-exec-writer` は、モデルを上書きできない（引数がコードで固定され、`config.toml` も無視する）。
+代わりに、`just deploy` が `~/.pi/agent/agents/` に次の2つを配置する。
+
+- `codex-jev`: 読み取り専用。`codex-exec` に相当する。
+- `codex-jev-writer`: ワークスペースへの書き込み可。`codex-exec-writer` に相当する。
+
+どちらも、実行の直前に Jev へ問い合わせ、`codex exec -m <model> -c model_reasoning_effort=<effort>` を起動する（サンドボックスなどの引数は組み込みと同じ）。
+選択は実行時に行うので、`workflowScript` の中の子でも効く。
+`jev-pi` で起動した Pi では、`subagent` の直接の呼び出しで `codex-exec` と `codex-exec-writer` が、自動でこの2つに切り替わる。
+選ばれたモデルは、run の `external-*.stderr.log` の先頭行（`Jev: codex gpt-6-sol / medium (read-only)`）で確認できる。
+Windows では、`sh` を使うため配置しない。
+
 ### 動作確認（利用上限のリセット後に一度）
 
 `updatedInput` が Agent ツールで効くか、`effort` が実際に効くかは、実リクエストでしか確認できない。
@@ -102,11 +149,11 @@ just jev-claude-verify
 
 判定は、モデルの返答ではなく Claude Code が残す記録で行う。
 フック自身のログ、各サブエージェントの `agent-*.meta.json`（実際に使われた `agentType` と `name`）、各リクエストに記録された effort である。
-名前なしと名前ありの worker を1つずつ起動する。
+名前なしと名前ありの worker、`codex:codex-rescue` を1つずつ起動する。
 
 | 結果 | 終了コード | 意味 |
 | --- | --- | --- |
-| `PASS` | 0 | 名前なしの worker が差し替え後の定義で起動し、選んだ effort が記録された。マージしてよい |
+| `PASS` | 0 | 名前なしの worker が差し替え後の定義で起動し、選んだ effort が記録された。Codex には `--model` と `--effort` が届いた。マージしてよい |
 | `FAIL` | 1 | 差し替えが効かない、または effort が効かない。`updatedInput` が Agent で無視されている場合は何も変わらないだけで害はないが、この機能は動かないのでマージしない |
 | `BLOCKED` | 2 | Claude の利用上限。リセット後にやり直す |
 | `PARTIAL` | 3 | 動いているが effort を確認できない。`jev-claude '...'` で worker を動かし、`/tasks` の worker の行を目で確認する |

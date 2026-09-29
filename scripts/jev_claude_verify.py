@@ -28,6 +28,8 @@ PROMPT = (
     "'Redesign the distributed lock protocol across three services, prove safety "
     "under partial failure, then plan the migration of all callers. Analysis only: "
     "do not use any tool and do not edit files; answer in one sentence.' "
+    "Call 3 uses subagent_type codex:codex-rescue with the prompt: 'Read-only: "
+    "reply with the single word OK and do not edit any file.' "
     "Then reply with the single word DONE."
 )
 EXIT = {"pass": 0, "fail": 1, "blocked": 2, "partial": 3}
@@ -40,7 +42,7 @@ class Report:
     evidence: list[str] = field(default_factory=list)
 
 
-def analyze(
+def _analyze_worker(
     stream_lines: list[str],
     hook_records: list[dict],
     subagents: list[dict],
@@ -105,6 +107,57 @@ def analyze(
     return Report("pass", f"a plain worker ran as {target} at effort {want}", evidence)
 
 
+SEVERITY = {"blocked": 3, "fail": 2, "partial": 1, "pass": 0}
+
+
+def _analyze_codex(hook_records: list[dict], subagents: list[dict]) -> Report:
+    """Did Jev's model and effort reach the Codex plugin's companion command?"""
+    records = [r for r in hook_records if r.get("kind") == "codex-rescue"]
+    if not records:
+        return Report(
+            "partial", "codex-rescue was not launched, so the codex path is unconfirmed"
+        )
+    want_model, want_effort = records[-1]["model"], records[-1]["effort"]
+    commands = [
+        command
+        for sub in subagents
+        if str(sub.get("agentType", "")).endswith("codex-rescue")
+        for command in sub.get("commands", [])
+        if "codex-companion" in command
+    ]
+    evidence = [f"codex-rescue: Jev chose {want_model} / {want_effort}"]
+    if any(
+        f"--model {want_model}" in c and f"--effort {want_effort}" in c
+        for c in commands
+    ):
+        return Report("pass", "the codex flags reached codex-companion", evidence)
+    return Report(
+        "fail",
+        f"codex-companion did not receive --model {want_model} --effort {want_effort}: "
+        "the codex-rescue wrapper dropped them or updatedInput was ignored",
+        evidence,
+    )
+
+
+def analyze(
+    stream_lines: list[str],
+    hook_records: list[dict],
+    subagents: list[dict],
+    debug_log: str,
+    expect_codex: bool = False,
+) -> Report:
+    """Worse of the worker verdict and (when the run included one) the codex verdict."""
+    worker_records = [r for r in hook_records if "kind" not in r]
+    report = _analyze_worker(stream_lines, worker_records, subagents, debug_log)
+    if not expect_codex or report.status == "blocked":
+        return report
+    codex = _analyze_codex(hook_records, subagents)
+    worse = max((report, codex), key=lambda r: SEVERITY[r.status])
+    if report.status == codex.status == "pass":
+        worse = Report("pass", f"{report.reason}; {codex.reason}")
+    return Report(worse.status, worse.reason, [*report.evidence, *codex.evidence])
+
+
 def collect_subagents(config_dir: Path, session_id: str) -> list[dict]:
     """Shell: read each subagent's sidecar and the effort recorded on its requests."""
     found = []
@@ -116,19 +169,26 @@ def collect_subagents(config_dir: Path, session_id: str) -> list[dict]:
             if meta_path.exists()
             else {}
         )
-        efforts = []
+        efforts, commands = [], []
         for line in transcript.read_text(encoding="utf-8").splitlines():
             try:
                 row = json.loads(line)
             except ValueError:
                 continue
-            if row.get("type") == "assistant" and row.get("effort"):
+            if row.get("type") != "assistant":
+                continue
+            if row.get("effort"):
                 efforts.append(row["effort"])
+            content = row.get("message", {}).get("content")
+            for block in content if isinstance(content, list) else []:
+                if isinstance(block, dict) and block.get("name") == "Bash":
+                    commands.append(str(block.get("input", {}).get("command", "")))
         found.append(
             {
                 "agentType": meta.get("agentType", ""),
                 "name": meta.get("name"),
                 "efforts": efforts,
+                "commands": commands,
             }
         )
     return found

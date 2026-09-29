@@ -15,9 +15,11 @@ from jev_core import (
     JEV_URL,
     PI_ROUTES,
     SONNET,
+    build_codex_request_body,
     build_command,
     build_env,
     build_request_body,
+    codex_from_answers,
     claude_session_args,
     effort_from_answers,
     parse_args,
@@ -80,10 +82,27 @@ def choose_effort(task: str, key: str | None) -> str:
     return effort_from_answers(answers) if answers is not None else "medium"
 
 
+def choose_codex(task: str, key: str | None) -> tuple[str, str]:
+    """(model, effort) for a Codex worker; without an answer, Sol at medium."""
+    if not key:
+        print("Jev: no TYPESAFE_API_KEY; using gpt-6-sol medium", file=sys.stderr)
+        return codex_from_answers({})
+    return codex_from_answers(ask_jev(build_codex_request_body(task), key) or {})
+
+
 def extension_installed() -> bool:
     """The worker-effort extension consumes the key handoff; without it, hand off nothing."""
     agent = Path(os.environ.get("PI_CODING_AGENT_DIR") or Path.home() / ".pi/agent")
     return (agent / "extensions/jev-sonnet-fallback.ts").is_file()
+
+
+def codex_agents_installed() -> bool:
+    """The Jev-aware Codex agents exist; the extension only redirects to agents that do."""
+    agent = Path(os.environ.get("PI_CODING_AGENT_DIR") or Path.home() / ".pi/agent")
+    return all(
+        (agent / "agents" / name).is_file()
+        for name in ("codex-jev.md", "codex-jev-writer.md")
+    )
 
 
 def pi_route() -> str:
@@ -127,7 +146,9 @@ def main() -> None:
         print(f"Pi route: {model}", file=sys.stderr)
     extra = claude_session_args(hook_command()) if host == "claude" else []
     command = build_command(host, task, effort, model, extra)
-    env = build_env(os.environ, host, key, extension_installed())
+    env = build_env(
+        os.environ, host, key, extension_installed(), codex_agents_installed()
+    )
     if os.name == "nt":
         # Resolve mise's .cmd/.exe shim via PATHEXT before CreateProcess.
         command[0] = shutil.which(command[0]) or command[0]
