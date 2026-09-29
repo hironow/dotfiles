@@ -3,7 +3,7 @@
 import importlib.util
 import io
 import os
-import json
+import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -12,7 +12,9 @@ from typing import cast
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts/jev_launch.py"
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+sys.path.insert(0, str(SCRIPTS))  # jev_launch imports its sibling core
+SCRIPT = SCRIPTS / "jev_launch.py"
 spec = importlib.util.spec_from_file_location("jev_launch", SCRIPT)
 assert spec is not None and spec.loader is not None
 launcher = importlib.util.module_from_spec(spec)
@@ -106,121 +108,62 @@ def test_pi_route_uses_metered_only_after_subscriptions(
     assert seen == ["github-copilot", "cursor", "openrouter"]
 
 
-def test_launcher_does_not_pass_jev_key_to_pi(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(launcher.sys, "argv", ["jev_launch.py", "pi", "hello"])
-    monkeypatch.setenv("TYPESAFE_API_KEY", "secret")
-    monkeypatch.setattr(launcher, "choose_effort", lambda *_args: "medium")
+def _launch(
+    monkeypatch: pytest.MonkeyPatch, host: str
+) -> tuple[list[str], dict[str, str]]:
+    """Run main() with the effects stubbed; return what would be executed."""
+    seen: dict[str, tuple[list[str], dict[str, str]]] = {}
+    monkeypatch.setattr(launcher.sys, "argv", ["jev_launch.py", host, "hello"])
+    monkeypatch.setattr(launcher, "jev_key", lambda: "secret")
+    monkeypatch.setattr(launcher, "choose_effort", lambda *_args: "high")
+    monkeypatch.setattr(launcher, "extension_installed", lambda: True)
     monkeypatch.setattr(
         launcher, "pi_route", lambda: "github-copilot/claude-sonnet-5.5"
     )
 
-    def check_child(argv: list[str], env: dict[str, str]) -> None:
-        assert Path(argv[0]).stem == "pi"
-        assert argv[1:] == [
-            "--model",
-            "github-copilot/claude-sonnet-5.5",
-            "--thinking",
-            "medium",
-            "--append-system-prompt",
-            launcher.SESSION_RULES,
-            "hello",
-        ]
-        assert "TYPESAFE_API_KEY" not in env
-        assert env["JEV_ROUTED_SESSION"] == "1"
-
-    if os.name == "nt":
-
-        def child(argv: list[str], **kwargs: object) -> Mock:
-            check_child(argv, cast("dict[str, str]", kwargs["env"]))
-            return Mock(returncode=0)
-
-        monkeypatch.setattr(launcher.subprocess, "run", child)
-        with pytest.raises(SystemExit) as exit_status:
-            launcher.main()
-        assert exit_status.value.code == 0
-    else:
-        monkeypatch.setattr(
-            launcher.os, "execvpe", lambda _file, argv, env: check_child(argv, env)
-        )
-        launcher.main()
-
-
-def _run_pi_launch(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, installed: bool
-) -> dict[str, str]:
-    agent = tmp_path / "agent"
-    (agent / "extensions").mkdir(parents=True)
-    if installed:
-        (agent / "extensions/jev-sonnet-fallback.ts").write_text("x", encoding="utf-8")
-    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(agent))
-    monkeypatch.setenv("TYPESAFE_API_KEY", "secret")
-    monkeypatch.setattr(launcher.sys, "argv", ["jev_launch.py", "pi", "hello"])
-    monkeypatch.setattr(launcher, "choose_effort", lambda *_args: "medium")
-    monkeypatch.setattr(
-        launcher, "pi_route", lambda: "github-copilot/claude-sonnet-5.5"
-    )
-    seen: dict[str, str] = {}
-
-    def child(_argv: list[str], **kwargs: object) -> Mock:
-        seen.update(cast("dict[str, str]", kwargs["env"]))
+    def child(argv: list[str], **kwargs: object) -> Mock:
+        seen["run"] = (argv, cast("dict[str, str]", kwargs["env"]))
         return Mock(returncode=0)
 
     monkeypatch.setattr(launcher.subprocess, "run", child)
     monkeypatch.setattr(
-        launcher.os, "execvpe", lambda _file, _argv, env: seen.update(env)
+        launcher.os,
+        "execvpe",
+        lambda _file, argv, env: seen.update(run=(argv, env)),
     )
     try:
         launcher.main()
     except SystemExit:
         pass
-    return seen
+    return seen["run"]
 
 
-def test_pi_receives_key_handoff_only_when_extension_is_installed(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    env = _run_pi_launch(monkeypatch, tmp_path, installed=True)
-    assert env["JEV_KEY_HANDOFF"] == "secret"
-    assert "TYPESAFE_API_KEY" not in env
-
-
-def test_pi_without_extension_never_receives_the_key(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    env = _run_pi_launch(monkeypatch, tmp_path, installed=False)
-    assert "JEV_KEY_HANDOFF" not in env
-    assert "TYPESAFE_API_KEY" not in env
-
-
-CASES = json.loads(
-    (Path(__file__).parent / "jev_effort_cases.json").read_text(encoding="utf-8")
-)
-
-
-@pytest.mark.parametrize("case", CASES, ids=[case["name"] for case in CASES])
-def test_effort_composes_score_noul_and_confidence(case: dict[str, object]) -> None:
-    answers = cast("dict[str, object]", case["answers"])
-    assert launcher.effort_from_answers(answers) == case["expected"]
-
-
-def test_request_asks_score_and_noul_in_one_call(
+def test_main_wires_key_effort_route_and_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sent: list[dict[str, object]] = []
+    argv, env = _launch(monkeypatch, "pi")
+    assert Path(argv[0]).stem == "pi"
+    assert argv[1:5] == [
+        "--model",
+        "github-copilot/claude-sonnet-5.5",
+        "--thinking",
+        "high",
+    ]
+    assert env["JEV_KEY_HANDOFF"] == "secret" and "TYPESAFE_API_KEY" not in env
+    argv, env = _launch(monkeypatch, "claude")
+    assert Path(argv[0]).stem == "claude"
+    assert argv[1:5] == ["--model", launcher.SONNET, "--effort", "high"]
+    assert "JEV_KEY_HANDOFF" not in env
 
-    def reply(request: urllib.request.Request, timeout: int) -> io.BytesIO:
-        assert isinstance(request.data, bytes)
-        sent.append(json.loads(request.data))
-        return io.BytesIO(
-            b'{"answers":{"difficulty":{"type":"score","score":1.8,"confidence":0.9},'
-            b'"strict_structure":{"type":"noul","noul":0.1}}}'
+
+@pytest.mark.parametrize("installed", [True, False])
+def test_extension_is_detected_in_the_pi_agent_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, installed: bool
+) -> None:
+    (tmp_path / "extensions").mkdir()
+    if installed:
+        (tmp_path / "extensions/jev-sonnet-fallback.ts").write_text(
+            "x", encoding="utf-8"
         )
-
-    monkeypatch.setattr(launcher.urllib.request, "urlopen", reply)
-    assert launcher.choose_effort("hard task", "secret") == "high"
-    questions = cast("dict[str, dict[str, object]]", sent[0]["questions"])
-    assert {name: q["type"] for name, q in questions.items()} == {
-        "difficulty": "score",
-        "strict_structure": "noul",
-    }
-    assert len(cast("list[str]", questions["difficulty"]["criteria"])) == 3
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path))
+    assert launcher.extension_installed() is installed

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import cases from "./jev_effort_cases.json";
-import fallback, { applyWorkerEffort, chooseEffort, effortFromAnswers, isUsageLimit, ROUTES } from "../../config/pi/extensions/jev-sonnet-fallback";
+import fallback, { buildRequestBody, chooseEffort, effortFromAnswers, fallbackCandidates, hitUsageLimit, isUsageLimit, ROUTES, workerBaseModel } from "../../config/pi/extensions/jev-sonnet-fallback";
 
 test("only provider usage limits trigger a switch", () => {
   expect(isUsageLimit("HTTP 429: usage limit reached")).toBe(true);
@@ -97,13 +97,15 @@ for (const item of cases as { name: string; answers: any; expected: string }[]) 
   });
 }
 
-test("worker effort applies to a bare single launch using the session model", () => {
-  const input: any = { agent: "worker", task: "fix" };
-  expect(applyWorkerEffort(input, "high", "github-copilot/claude-sonnet-5.5")).toBe(true);
-  expect(input.model).toBe("github-copilot/claude-sonnet-5.5:high");
+test("a bare single launch runs on the session's Sonnet route", () => {
+  expect(workerBaseModel({ agent: "worker", task: "fix" }, "github-copilot/claude-sonnet-5.5")).toBe("github-copilot/claude-sonnet-5.5");
 });
 
-test("worker effort leaves explicit suffixes, other models, workflows and management calls alone", () => {
+test("an explicit Sonnet route without a suffix is kept as the base", () => {
+  expect(workerBaseModel({ agent: "worker", task: "x", model: "cursor/claude-sonnet-5-5" }, "github-copilot/claude-sonnet-5.5")).toBe("cursor/claude-sonnet-5-5");
+});
+
+test("explicit suffixes, other models, workflows and management calls have no base", () => {
   const sonnet = "github-copilot/claude-sonnet-5.5";
   const cases: any[] = [
     { agent: "worker", task: "x", model: "hnn/uncensored:low" },
@@ -112,17 +114,25 @@ test("worker effort leaves explicit suffixes, other models, workflows and manage
     { action: "list" },
     { agent: "worker" },
   ];
-  for (const input of cases) {
-    const before = JSON.stringify(input);
-    expect(applyWorkerEffort(input, "high", sonnet)).toBe(false);
-    expect(JSON.stringify(input)).toBe(before);
-  }
+  for (const input of cases) expect(workerBaseModel(input, sonnet)).toBeUndefined();
+  expect(workerBaseModel({ agent: "worker", task: "x" }, undefined)).toBeUndefined();
 });
 
-test("an explicit Sonnet route without a suffix gets the chosen effort", () => {
-  const input: any = { agent: "worker", task: "x", model: "cursor/claude-sonnet-5-5" };
-  expect(applyWorkerEffort(input, "medium", "github-copilot/claude-sonnet-5.5")).toBe(true);
-  expect(input.model).toBe("cursor/claude-sonnet-5-5:medium");
+test("usage limits are read from the last assistant message only", () => {
+  const limit = { role: "assistant", stopReason: "error", errorMessage: "429 usage limit" };
+  expect(hitUsageLimit([limit])).toBe(true);
+  expect(hitUsageLimit([limit, { role: "user" }])).toBe(true);
+  expect(hitUsageLimit([limit, { role: "assistant", stopReason: "stop" }])).toBe(false);
+  expect(hitUsageLimit([{ role: "assistant", stopReason: "error", errorMessage: "401 bad key" }])).toBe(false);
+  expect(hitUsageLimit([])).toBe(false);
+});
+
+test("fallback candidates keep route order and drop exhausted or unavailable ones", () => {
+  const all = ROUTES.map(([provider, id]) => `${provider}/${id}`);
+  expect(fallbackCandidates(new Set(), all)).toEqual([...ROUTES]);
+  expect(fallbackCandidates(new Set([all[0]]), all)).toEqual([ROUTES[1], ROUTES[2]]);
+  expect(fallbackCandidates(new Set([all[0]]), [all[0], all[2]])).toEqual([ROUTES[2]]);
+  expect(fallbackCandidates(new Set(all), all)).toEqual([]);
 });
 
 function workerHarness() {
@@ -173,4 +183,10 @@ test("without the handed-off key (child sessions) launches are untouched", async
   expect(handlers.tool_call).toBeUndefined();
   expect(event.input).toEqual({ agent: "worker", task: "x" });
   delete process.env.JEV_ROUTED_SESSION;
+});
+
+test("the request body is pure: task truncated, one score and one noul", () => {
+  const body = buildRequestBody("x".repeat(9000));
+  expect(body.state.length).toBe(8000);
+  expect(Object.values(body.questions).map((question) => question.type)).toEqual(["score", "noul"]);
 });

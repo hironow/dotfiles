@@ -9,8 +9,21 @@ export const ROUTES = [
   ["openrouter", "anthropic/claude-sonnet-5.5"],
 ] as const;
 
+// ---- Functional core: pure decisions over plain data. No env, network or Pi calls. ----
+
 export function isUsageLimit(message: string): boolean {
   return /(?:\b429\b|rate.?limit|usage.?limit|quota.?exceed|resource.?exhaust|too many requests)/i.test(message);
+}
+
+/** Did the last assistant message end in a provider usage limit? */
+export function hitUsageLimit(messages: readonly any[]): boolean {
+  const last = [...messages].reverse().find((message) => message.role === "assistant");
+  return !!last && last.stopReason === "error" && isUsageLimit(last.errorMessage ?? "");
+}
+
+/** Routes still worth trying, in preference order: not exhausted and authenticated. */
+export function fallbackCandidates(exhausted: ReadonlySet<string>, available: readonly string[]) {
+  return ROUTES.filter(([provider, id]) => !exhausted.has(`${provider}/${id}`) && available.includes(`${provider}/${id}`));
 }
 
 const JEV_URL = "https://api.typesafe.ai/v1/systemone";
@@ -38,6 +51,8 @@ const SUFFIX = /:(off|minimal|low|medium|high|xhigh|max)$/;
 const isSonnetRoute = (model: string) => ROUTES.some(([provider, id]) => `${provider}/${id}` === model);
 const num = (value: unknown): number | undefined => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
 
+export const buildRequestBody = (task: string) => ({ model: "jev-latest", state: task.slice(0, 8000), questions: QUESTIONS });
+
 /** Compose Jev's typed answers into an effort; anything unusable means medium. */
 export function effortFromAnswers(answers: any): "medium" | "high" {
   const noul = num(answers?.strict_structure?.noul);
@@ -48,13 +63,28 @@ export function effortFromAnswers(answers: any): "medium" | "high" {
   return score >= HARD_SCORE ? "high" : "medium";
 }
 
+/**
+ * The Sonnet route a direct subagent launch should run on, before any effort suffix.
+ * A launch that names another model, carries its own suffix, or runs as a
+ * workflow/management call has none: its owner already decided.
+ */
+export function workerBaseModel(input: any, sessionModel: string | undefined): string | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  if (input.action || input.workflow || input.workflowScript || input.workflowScriptPath) return undefined;
+  if (typeof input.agent !== "string" || typeof input.task !== "string") return undefined;
+  const model: string | undefined = input.model ?? sessionModel;
+  return model && !SUFFIX.test(model) && isSonnetRoute(model) ? model : undefined;
+}
+
+// ---- Imperative shell: the only code that touches env, network and Pi. ----
+
 /** One bounded Jev call per worker launch. Any failure keeps medium; error text is never surfaced. */
 export async function chooseEffort(task: string, key: string, fetchImpl: typeof fetch = fetch): Promise<"medium" | "high"> {
   try {
     const response = await fetchImpl(JEV_URL, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "jev-latest", state: task.slice(0, 8000), questions: QUESTIONS }),
+      body: JSON.stringify(buildRequestBody(task)),
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) return "medium";
@@ -62,20 +92,6 @@ export async function chooseEffort(task: string, key: string, fetchImpl: typeof 
   } catch {
     return "medium";
   }
-}
-
-/**
- * Pin the effort on one direct subagent launch. A launch that names another model,
- * carries its own suffix, or runs as a workflow/management call is left to its owner.
- */
-export function applyWorkerEffort(input: any, effort: string, sessionModel: string | undefined): boolean {
-  if (!input || typeof input !== "object") return false;
-  if (input.action || input.workflow || input.workflowScript || input.workflowScriptPath) return false;
-  if (typeof input.agent !== "string" || typeof input.task !== "string") return false;
-  const model: string | undefined = input.model ?? sessionModel;
-  if (!model || SUFFIX.test(model) || !isSonnetRoute(model)) return false;
-  input.model = `${model}:${effort}`;
-  return true;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -89,11 +105,10 @@ export default function (pi: ExtensionAPI) {
     pi.on("tool_call", async (event, ctx) => {
       if (event.toolName !== "subagent") return;
       const input = event.input as any;
-      const sessionModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
-      // Cheap shape check first so unrelated calls never reach Jev.
-      if (!applyWorkerEffort({ ...input }, "medium", sessionModel)) return;
+      const base = workerBaseModel(input, ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
+      if (!base) return;
       const effort = await chooseEffort(input.task, jevKey);
-      applyWorkerEffort(input, effort, sessionModel);
+      input.model = `${base}:${effort}`;
       if (ctx.hasUI) ctx.ui.notify(`Jev worker effort: ${effort}`, "info");
     });
   }
@@ -101,20 +116,16 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_before_settle", async (event, ctx) => {
     if (event.outcome !== "error" || !ctx.model) return;
     const current = `${ctx.model.provider}/${ctx.model.id}`;
-    if (!ROUTES.some(([provider, model]) => `${provider}/${model}` === current)) return;
-    const last = [...event.context.contextMessages].reverse().find((msg) => msg.role === "assistant");
-    if (!last || last.role !== "assistant" || last.stopReason !== "error" || !isUsageLimit(last.errorMessage ?? "")) return;
+    if (!isSonnetRoute(current) || !hitUsageLimit(event.context.contextMessages)) return;
 
     exhausted.add(current);
-    for (const [provider, modelId] of ROUTES) {
-      const id = `${provider}/${modelId}`;
-      if (exhausted.has(id)) continue;
+    const available = ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`);
+    for (const [provider, modelId] of fallbackCandidates(exhausted, available)) {
       const model = ctx.modelRegistry.find(provider, modelId);
-      if (!model || !ctx.modelRegistry.getAvailable().some((available) => available.provider === provider && available.id === modelId)) continue;
-      if (!(await pi.setModel(model))) continue;
+      if (!model || !(await pi.setModel(model))) continue;
       // Preserve the fixed effort chosen before the session, even across providers.
       if (ctx.thinkingLevel) pi.setThinkingLevel(ctx.thinkingLevel);
-      if (ctx.hasUI) ctx.ui.notify(`Sonnet provider limit: ${current} → ${id}`, "warning");
+      if (ctx.hasUI) ctx.ui.notify(`Sonnet provider limit: ${current} → ${provider}/${modelId}`, "warning");
       return {
         // An error ends with an assistant message; append a context-visible
         // boundary so Pi can make a fresh request rather than dead-end.
