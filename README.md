@@ -166,6 +166,11 @@ bash ./install.sh
 INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./install.sh
 ```
 
+## Jev opt-in coding sessions
+
+作業リポジトリから `jev-claude '依頼文'` または `jev-pi '依頼文'` で起動する。
+鍵の設定、初回準備、提供元の切替は [Jev 起動コマンドの手順](docs/runbook/jev-launchers.md) を参照。
+
 ## setup for https localhost
 
 ```shell

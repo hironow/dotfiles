@@ -173,6 +173,14 @@ wslconfig:
 deploy:
     @bash scripts/deploy.sh
 
+# Restore declared Pi packages and install the dotfiles Jev fallback extension.
+pi-extensions-install:
+    @python3 scripts/install_pi_extensions.py
+
+# Exercise the Pi usage-limit failover logic without consuming model tokens.
+pi-jev-test:
+    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test tests/unit/jev_sonnet_fallback.test.ts
+
 # Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
 #   ROOT_CLAUDE.md (overlay, @AGENTS.md) -> claude-family/CLAUDE.md
@@ -575,7 +583,7 @@ fmt:
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp fmt
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp fmt
     @echo '✅ fmt done.'
 
 # lint: report violations (auto-fixes where possible). Tool per language:
@@ -594,7 +602,9 @@ lint:
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔍 JS/TS (vp lint)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp lint
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp lint
+    @echo '🔍 Pi extension (Bun build + tests; vp has no root JS workspace)...'
+    just pi-jev-test
     @echo '🔍 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
     @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
@@ -619,7 +629,9 @@ check:
     @echo '🔎 Markdown (markdownlint-cli2)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2
     @echo '🔎 JS/TS (vp check)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp check
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp check
+    @echo '🔎 Pi extension (Bun build + tests; vp has no root JS workspace)...'
+    just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
     uvx semgrep --config .semgrep/rules/meta/ --error .
     @echo '🔎 No mocks in e2e tests (semgrep)...'
@@ -937,7 +949,14 @@ test-iac-exe:
     set -euo pipefail
     for stack in tofu/exe-platform tofu/exe-cluster; do
       echo "🧪 tofu test $stack"
-      (cd "$stack" && mise x -- tofu init -backend=false -input=false >/dev/null && mise x -- tofu test)
+      (
+        data_dir="$(mktemp -d)"
+        trap 'rm -rf "$data_dir"' EXIT
+        export TF_DATA_DIR="$data_dir"
+        cd "$stack"
+        mise x -- tofu init -backend=false -input=false >/dev/null
+        mise x -- tofu test
+      )
     done
 
 # ------------------------------
@@ -1947,7 +1966,7 @@ _tofu-out stack name:
 # ==============================================================================
 
 _EXE_CLUSTER_DIR := "tofu/exe-cluster"
-_EXE_SRC_DIR := env("XDG_CACHE_HOME", env("HOME") + "/.cache") + "/exe/src"
+_EXE_SRC_DIR := env("XDG_CACHE_HOME", home_directory() + "/.cache") + "/exe/src"
 
 # Fetch the pinned ax and Agent Substrate checkouts (exe/versions.json) into the
 # local cache, and verify each is at its pinned commit. Idempotent.

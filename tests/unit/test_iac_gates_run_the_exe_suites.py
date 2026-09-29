@@ -48,6 +48,10 @@ def test_just_ci_runs_both_exe_suites() -> None:
         assert stack in body
     assert "tofu init -backend=false" in body
     assert "tofu test" in body
+    assert "TF_DATA_DIR" in body, (
+        "local .terraform may retain an encrypted live backend"
+    )
+    assert "mktemp -d" in body and "trap" in body
 
 
 def test_the_pr_ci_runs_both_exe_suites_offline() -> None:

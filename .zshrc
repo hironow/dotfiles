@@ -185,6 +185,10 @@ alias cc-b='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-b claude
 alias cc-c='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-c claude'
 alias cc-d='RUNOPS_ACTOR_TYPE=ai-agent CLAUDE_CONFIG_DIR=~/.claude-work-d claude'
 
+# Opt-in Jev routing. Pass the task before starting; ordinary claude/pi stay unchanged.
+jev-claude() { python3 "$HOME/dotfiles/scripts/jev_launch.py" claude "$@"; }
+jev-pi() { python3 "$HOME/dotfiles/scripts/jev_launch.py" pi "$@"; }
+
 # eza-backed `ls`/`ll` aliases are defined at EOF (after `mise activate`),
 # because eza is provisioned by mise and only lands on PATH once activate
 # runs. Guarding the alias here — before activate — would always see eza

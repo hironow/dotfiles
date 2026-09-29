@@ -87,6 +87,24 @@ case "$(uname -s)" in
     else
       echo "==> mise not on PATH; skipping global tool install (install mise via scoop, then re-run 'just deploy')"
     fi
+    # Opt-in Jev commands for the next PowerShell session. Keep the key out
+    # of this profile; the operator supplies TYPESAFE_API_KEY as an env var.
+    ps_jev_marker_begin="# >>> dotfiles managed block: Jev launchers >>>"
+    if ! grep -qF "$ps_jev_marker_begin" "$ps_profile"; then
+      {
+        printf '\n%s\n' "$ps_jev_marker_begin"
+        cat <<'POWERSHELL'
+function jev-claude { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" claude @args }
+function jev-pi { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" pi @args }
+POWERSHELL
+        printf '%s\n' "$ps_marker_end"
+      } >> "$ps_profile"
+      echo "==> PowerShell \$PROFILE updated with Jev launchers"
+    fi
+    if command -v mise >/dev/null 2>&1; then
+      echo "==> Installing Pi extensions (native Windows)..."
+      MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; re-run 'just pi-extensions-install'"
+    fi
     # git aliases [include] managed block (ADR 0033). Wires ONLY
     # aliases.gitconfig (pure [alias] entries) — deliberately NOT
     # shared.gitconfig: re-including shared after a manual PC-local override
@@ -146,5 +164,13 @@ fi
 if [ ! -d ~/.local/share/fzf-tab ]; then
     echo "==> Installing fzf-tab..."
     git clone --depth 1 https://github.com/Aloxaf/fzf-tab ~/.local/share/fzf-tab
+fi
+if command -v mise >/dev/null 2>&1; then
+    echo "==> Installing Pi extensions..."
+    mise -C / exec -- python ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; run 'just pi-extensions-install' after resolving the error"
+elif command -v pi >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    python3 ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; run 'just pi-extensions-install' after resolving the error"
+else
+    echo "==> pi or Python not on PATH; run 'just pi-extensions-install' after provisioning"
 fi
 echo "==> Deploy complete!"
