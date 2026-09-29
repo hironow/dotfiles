@@ -33,6 +33,10 @@ def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
     npm = agent_dir / "npm/node_modules"
     if any(not (npm / source.removeprefix("npm:")).is_dir() for source in sources):
         subprocess.run(["pi", "update", "--extensions"], check=True)
+    _place_extension(agent_dir, symlinks=symlinks)
+
+
+def _place_extension(agent_dir: Path, *, symlinks: bool) -> None:
     destination = agent_dir / "extensions/jev-sonnet-fallback.ts"
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_symlink():

@@ -45,12 +45,8 @@ def jev_key() -> str | None:
     return None
 
 
-def choose_effort(task: str, key: str | None) -> str:
-    """One bounded Jev call; a failed or unusable answer keeps the host profile."""
-    if not key:
-        print("Jev: no TYPESAFE_API_KEY; using Sonnet 5.5 medium", file=sys.stderr)
-        return "medium"
-    body = build_request_body(task)
+def ask_jev(body: dict[str, object], key: str) -> dict[str, object] | None:
+    """Imperative shell: one bounded call. None means there was no usable answer."""
     request = urllib.request.Request(
         JEV_URL,
         data=json.dumps(body).encode("utf-8"),
@@ -62,7 +58,7 @@ def choose_effort(task: str, key: str | None) -> str:
             answers = json.load(response)["answers"]
         if not isinstance(answers, dict):
             raise TypeError("answers is not an object")
-        return effort_from_answers(answers)
+        return answers
     except (
         urllib.error.URLError,
         TimeoutError,
@@ -71,11 +67,17 @@ def choose_effort(task: str, key: str | None) -> str:
         TypeError,
     ) as error:
         # Never print exception bodies/headers: upstream errors may echo the key.
-        print(
-            f"Jev: no valid selection ({type(error).__name__}); using Sonnet 5.5 medium",
-            file=sys.stderr,
-        )
+        print(f"Jev: no valid selection ({type(error).__name__})", file=sys.stderr)
+        return None
+
+
+def choose_effort(task: str, key: str | None) -> str:
+    """One Jev call; no key, no answer or an unusable one keeps the host profile."""
+    if not key:
+        print("Jev: no TYPESAFE_API_KEY; using Sonnet 5.5 medium", file=sys.stderr)
         return "medium"
+    answers = ask_jev(build_request_body(task), key)
+    return effort_from_answers(answers) if answers is not None else "medium"
 
 
 def extension_installed() -> bool:
