@@ -86,3 +86,68 @@ def test_pi_gets_the_key_only_for_an_installed_extension(
     assert env["JEV_ROUTED_SESSION"] == "1"
     assert ("JEV_KEY_HANDOFF" in env) is handed_off
     assert "TYPESAFE_API_KEY" not in env
+
+
+def test_worker_agents_differ_only_by_effort() -> None:
+    assert set(core.WORKER_AGENTS) == {"worker-medium", "worker-high"}
+    for name, agent in core.WORKER_AGENTS.items():
+        assert agent["effort"] == name.removeprefix("worker-")
+        assert agent["model"] == "inherit"
+    prompts = {agent["prompt"] for agent in core.WORKER_AGENTS.values()}
+    assert len(prompts) == 1
+
+
+@pytest.mark.parametrize("subagent_type", ["general-purpose", "worker", None, ""])
+def test_default_worker_types_are_rewritten_to_the_chosen_effort(
+    subagent_type: str | None,
+) -> None:
+    tool_input: dict[str, object] = {"prompt": "p", "description": "d"}
+    if subagent_type is not None:
+        tool_input["subagent_type"] = subagent_type
+    original = dict(tool_input)
+    assert core.plan_agent_rewrite(tool_input, "high") == {
+        "prompt": "p",
+        "description": "d",
+        "subagent_type": "worker-high",
+    }
+    assert tool_input == original  # the input is never mutated
+
+
+@pytest.mark.parametrize(
+    "tool_input",
+    [
+        {"prompt": "p", "subagent_type": "Explore"},
+        {"prompt": "p", "subagent_type": "my-reviewer"},
+        {"prompt": "p", "subagent_type": "general-purpose", "model": "haiku"},
+        {"subagent_type": "general-purpose"},
+        {"prompt": 3, "subagent_type": "general-purpose"},
+    ],
+)
+def test_other_launches_are_left_to_their_owner(tool_input: dict[str, object]) -> None:
+    assert core.plan_agent_rewrite(tool_input, "high") is None
+
+
+def test_hook_output_replaces_input_without_deciding_permission() -> None:
+    output = core.hook_output({"prompt": "p", "subagent_type": "worker-high"})
+    assert output == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": {"prompt": "p", "subagent_type": "worker-high"},
+        }
+    }
+    assert "permissionDecision" not in output["hookSpecificOutput"]
+
+
+def test_claude_session_args_inject_hook_and_agents_for_this_session_only() -> None:
+    args = core.claude_session_args("py hook.py")
+    assert args[0] == "--settings" and args[2] == "--agents"
+    hooks = json.loads(args[1])["hooks"]["PreToolUse"]
+    assert hooks[0]["matcher"] == "Agent|Task"
+    assert hooks[0]["hooks"][0]["command"] == "py hook.py"
+    assert hooks[0]["hooks"][0]["timeout"] == 15
+    assert set(json.loads(args[3])) == set(core.WORKER_AGENTS)
+
+
+def test_build_command_places_extra_args_before_the_task() -> None:
+    command = core.build_command("claude", "task", "high", core.SONNET, ["--x", "1"])
+    assert command[-3:] == ["--x", "1", "task"]

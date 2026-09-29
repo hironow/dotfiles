@@ -2,6 +2,7 @@
 
 import importlib.util
 import io
+import json
 import os
 import sys
 import urllib.error
@@ -154,6 +155,21 @@ def test_main_wires_key_effort_route_and_environment(
     assert Path(argv[0]).stem == "claude"
     assert argv[1:5] == ["--model", launcher.SONNET, "--effort", "high"]
     assert "JEV_KEY_HANDOFF" not in env
+
+
+def test_claude_gets_the_worker_hook_and_agents_but_pi_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    argv, _ = _launch(monkeypatch, "claude")
+    settings = json.loads(argv[argv.index("--settings") + 1])
+    command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert "jev_claude_hook.py" in command and sys.executable in command
+    assert set(json.loads(argv[argv.index("--agents") + 1])) == {
+        "worker-medium",
+        "worker-high",
+    }
+    argv, _ = _launch(monkeypatch, "pi")
+    assert "--settings" not in argv and "--agents" not in argv
 
 
 @pytest.mark.parametrize("installed", [True, False])

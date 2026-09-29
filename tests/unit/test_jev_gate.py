@@ -23,3 +23,11 @@ def test_pi_extension_is_excluded_from_inapplicable_vp_and_built_with_bun() -> N
     assert "bun build config/pi/extensions/jev-sonnet-fallback.ts" in JUSTFILE
     assert "bun test tests/unit/jev_sonnet_fallback.test.ts" in JUSTFILE
     assert WORKFLOW.count("bun test tests/unit/jev_sonnet_fallback.test.ts") == 2
+
+
+def test_the_claude_live_verification_is_one_command() -> None:
+    assert (
+        "\njev-claude-verify:\n    {{UV_RUN}} scripts/jev_claude_verify.py" in JUSTFILE
+    )
+    runbook = (ROOT / "docs/runbook/jev-launchers.md").read_text(encoding="utf-8")
+    assert "just jev-claude-verify" in runbook

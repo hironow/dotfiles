@@ -5,7 +5,8 @@ side effect: environment, files, network, subprocesses. Everything here takes
 its data as arguments and returns a value, so it is tested without mocks.
 """
 
-from collections.abc import Mapping
+import json
+from collections.abc import Mapping, Sequence
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 SONNET = "claude-sonnet-5-5"
@@ -84,7 +85,9 @@ def parse_args(argv: list[str]) -> tuple[str, str]:
     return argv[0], task
 
 
-def build_command(host: str, task: str, effort: str, model: str) -> list[str]:
+def build_command(
+    host: str, task: str, effort: str, model: str, extra: Sequence[str] = ()
+) -> list[str]:
     flag = "--effort" if host == "claude" else "--thinking"
     return [
         host,
@@ -94,8 +97,71 @@ def build_command(host: str, task: str, effort: str, model: str) -> list[str]:
         effort,
         "--append-system-prompt",
         SESSION_RULES,
+        *extra,
         task,
     ]
+
+
+# ---- Claude Code workers ----
+# Claude Code fixes a subagent's effort in its definition; the Agent tool takes no
+# effort argument. So each effort gets a definition, and a PreToolUse hook swaps
+# the launch onto the one Jev picked. Both are injected with --settings/--agents,
+# so only a jev-claude session is affected.
+_WORKER_PROMPT = (
+    "You are a worker agent inside a coding session. Complete the delegated task "
+    "fully with the tools available. Report what you changed or found, with "
+    "evidence such as the commands you ran and their results. Do not ask the user "
+    "questions; state assumptions instead."
+)
+WORKER_AGENTS: dict[str, dict[str, str]] = {
+    f"worker-{effort}": {
+        "description": f"General-purpose worker running at {effort} effort",
+        "prompt": _WORKER_PROMPT,
+        "model": "inherit",
+        "effort": effort,
+    }
+    for effort in ("medium", "high")
+}
+REWRITABLE_TYPES = {"general-purpose", "worker", ""}
+
+
+def plan_agent_rewrite(tool_input: Mapping[str, object], effort: str) -> dict | None:
+    """The Agent input to run instead, or None to leave the launch alone.
+
+    Only default workers move; a named specialist or an explicit model stays as the
+    caller chose it. updatedInput replaces the whole input, so copy every field.
+    """
+    if not isinstance(tool_input.get("prompt"), str) or tool_input.get("model"):
+        return None
+    if str(tool_input.get("subagent_type") or "") not in REWRITABLE_TYPES:
+        return None
+    return {**tool_input, "subagent_type": f"worker-{effort}"}
+
+
+def hook_output(updated_input: Mapping[str, object]) -> dict:
+    """No permissionDecision: the rewrite must not skip any approval prompt."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": dict(updated_input),
+        }
+    }
+
+
+def claude_session_args(hook_command: str) -> list[str]:
+    settings = {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "Agent|Task",
+                    "hooks": [
+                        {"type": "command", "command": hook_command, "timeout": 15}
+                    ],
+                }
+            ]
+        }
+    }
+    return ["--settings", json.dumps(settings), "--agents", json.dumps(WORKER_AGENTS)]
 
 
 def build_env(

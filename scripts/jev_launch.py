@@ -4,6 +4,7 @@
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from jev_core import (
     build_command,
     build_env,
     build_request_body,
+    claude_session_args,
     effort_from_answers,
     parse_args,
 )
@@ -101,6 +103,14 @@ def pi_route() -> str:
     raise RuntimeError("no authenticated Pi Sonnet 5.5 provider (run pi /login)")
 
 
+def hook_command() -> str:
+    """The shell command Claude Code runs for the worker hook, with absolute paths."""
+    parts = [sys.executable, str(Path(__file__).with_name("jev_claude_hook.py"))]
+    if os.name == "nt":
+        return subprocess.list2cmdline(parts)
+    return " ".join(shlex.quote(part) for part in parts)
+
+
 def main() -> None:
     try:
         host, task = parse_args(sys.argv[1:])
@@ -113,7 +123,8 @@ def main() -> None:
     if host == "pi":
         model = pi_route()
         print(f"Pi route: {model}", file=sys.stderr)
-    command = build_command(host, task, effort, model)
+    extra = claude_session_args(hook_command()) if host == "claude" else []
+    command = build_command(host, task, effort, model, extra)
     env = build_env(os.environ, host, key, extension_installed())
     if os.name == "nt":
         # Resolve mise's .cmd/.exe shim via PATHEXT before CreateProcess.

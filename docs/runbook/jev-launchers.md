@@ -74,5 +74,34 @@ API キーは Pi 起動時に拡張へ1回だけ渡し、拡張が読み込み�
 bash ツールや worker の子セッションにキーは渡らない。
 拡張が未導入のときは、キーを Pi に渡さず、worker の選択は行わない。
 
-Claude Code の worker は対象外にしている。
-Agent ツールの `PreToolUse` フックが返す `updatedInput` が無視され、サブエージェントの `effort:` も効かないため、公式の手段では起動ごとに制御できない。
+## Claude Code の worker 起動ごとの選択
+
+`jev-claude` で起動した Claude Code でも、既定の worker（`general-purpose`）を起動するたびに、`prompt` を Jev に送り、思考レベルを選ぶ。
+
+Claude Code の Agent ツールには effort の引数がなく、サブエージェントの effort は定義ごとに固定される。
+そのため次の2つを、このセッションにだけ注入している（`--settings` と `--agents`。グローバル設定は変えない）。
+
+- `worker-medium` と `worker-high`: effort だけが違う worker の定義。
+- `PreToolUse` フック（`scripts/jev_claude_hook.py`）: 既定の worker の起動を、Jev が選んだ方の定義に差し替える。
+
+差し替えるのは `subagent_type` が `general-purpose`、`worker`、または未指定の起動だけ。
+`Explore` や自作のエージェント、`model` を明示した起動には触れない。
+判定は Pi と同じコード（`scripts/jev_core.py`）を使う。
+フックは権限の判定を返さないため、承認の確認は省略されない。
+失敗したときは何も変えず、Claude が送った起動のまま実行する。
+Windows では、キーを環境変数からしか読めないため、この差し替えは行われない。
+
+### 動作確認（利用上限のリセット後に一度）
+
+`updatedInput` が Agent ツールで効くか、`effort` が実際に効くかは、実リクエストでしか確認できない。
+次のコマンドを実行する。
+
+```sh
+just jev-claude-verify
+```
+
+- `PASS`: 差し替え後の定義で worker が起動した。
+- `FAIL`: フックは動いたが差し替えが効いていない。`updatedInput` が Agent で無視されている。この場合は差し替えず、何も変わらないだけで害はない。
+- `BLOCKED`: Claude の利用上限。上限のリセット後にやり直す。
+
+`PASS` のあと、`jev-claude '...'` で起動して worker を動かし、`/tasks` の worker の行に effort が出ることを目で確認する。
