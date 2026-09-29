@@ -11,11 +11,13 @@ from collections.abc import Mapping, Sequence
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 SONNET = "claude-sonnet-5-5"
-# Subscription-backed routes precede the metered route. The Pi extension uses
-# the same order if a provider reports a usage limit during the session.
+# Other subscriptions first, then the Claude Code subscription (kept for last so it is
+# left for Claude Code itself), then the metered route. The Pi extension uses the same
+# order if a provider reports a usage limit during the session.
 PI_ROUTES = (
     ("github-copilot", "claude-sonnet-5.5"),
     ("cursor", "claude-sonnet-5-5"),
+    ("anthropic", "claude-sonnet-5-5"),
     ("openrouter", "anthropic/claude-sonnet-5.5"),
 )
 # Sonnet 5.5 coding guidance: medium for well-specified work, high for harder

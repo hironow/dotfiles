@@ -106,7 +106,7 @@ def test_pi_route_uses_metered_only_after_subscriptions(
 
     monkeypatch.setattr(launcher.subprocess, "run", check)
     assert launcher.pi_route() == "openrouter/anthropic/claude-sonnet-5.5"
-    assert seen == ["github-copilot", "cursor", "openrouter"]
+    assert seen == ["github-copilot", "cursor", "anthropic", "openrouter"]
 
 
 def _launch(
@@ -238,3 +238,18 @@ def test_the_codex_agents_count_as_installed_only_when_both_are_present(
         (tmp_path / "agents" / name).write_text("x", encoding="utf-8")
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path))
     assert launcher.codex_agents_installed() is (len(names) == 2)
+
+
+def test_the_claude_code_subscription_is_kept_for_last_before_the_metered_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str] = []
+
+    def check(args: list[str], **_kwargs: object) -> Mock:
+        seen.append(args[-1])
+        ready = args[-1] in {"anthropic", "openrouter"}
+        return Mock(returncode=0, stdout="ready" if ready else "not_ready")
+
+    monkeypatch.setattr(launcher.subprocess, "run", check)
+    assert launcher.pi_route() == "anthropic/claude-sonnet-5-5"
+    assert seen == ["github-copilot", "cursor", "anthropic"]

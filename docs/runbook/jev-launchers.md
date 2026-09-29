@@ -55,7 +55,9 @@ jev-pi '失敗しているパーサのテストを修正して'
 Jev に届かない、または応答を解釈できないときも `medium` で起動する。
 閾値は `scripts/jev_launch.py` にあり、Pi の拡張と同じ値を使う。
 両者の一致は `tests/unit/jev_effort_cases.json` で確認している。
-Pi は認証済みの GitHub Copilot、Cursor、OpenRouter の順に選ぶ（最初の2つはサブスク、OpenRouter は従量課金）。
+Pi は認証済みの提供元を、GitHub Copilot、Cursor、Anthropic（Claude Code のサブスク）、OpenRouter の順に選ぶ。
+Claude Code のサブスクは、Claude Code 自身のために残すので、ほかのサブスクより後にする。
+OpenRouter は従量課金なので最後にする。
 Pi の使用量上限に達したときは次の認証済み提供元へ切り替える。
 利用できる提供元がなければエラーを表示する。
 Claude Code 側に利用上限が出た場合、このコマンドは別アカウントや従量課金へ自動切替しない。

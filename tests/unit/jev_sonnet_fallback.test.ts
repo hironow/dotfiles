@@ -9,7 +9,7 @@ test("only provider usage limits trigger a switch", () => {
 });
 
 test("subscription candidates precede metered candidate", () => {
-  expect(ROUTES.map(([provider]) => provider)).toEqual(["github-copilot", "cursor", "openrouter"]);
+  expect(ROUTES.map(([provider]) => provider)).toEqual(["github-copilot", "cursor", "anthropic", "openrouter"]);
 });
 
 test("after a subscription limit, continue on the next authenticated provider", async () => {
@@ -130,8 +130,8 @@ test("usage limits are read from the last assistant message only", () => {
 test("fallback candidates keep route order and drop exhausted or unavailable ones", () => {
   const all = ROUTES.map(([provider, id]) => `${provider}/${id}`);
   expect(fallbackCandidates(new Set(), all)).toEqual([...ROUTES]);
-  expect(fallbackCandidates(new Set([all[0]]), all)).toEqual([ROUTES[1], ROUTES[2]]);
-  expect(fallbackCandidates(new Set([all[0]]), [all[0], all[2]])).toEqual([ROUTES[2]]);
+  expect(fallbackCandidates(new Set([all[0]]), all)).toEqual([ROUTES[1], ROUTES[2], ROUTES[3]]);
+  expect(fallbackCandidates(new Set([all[0]]), [all[0], all[3]])).toEqual([ROUTES[3]]);
   expect(fallbackCandidates(new Set(all), all)).toEqual([]);
 });
 
@@ -242,4 +242,12 @@ test("a redirected codex launch is not given a Sonnet effort", async () => {
     delete process.env.JEV_ROUTED_SESSION;
     delete process.env.JEV_CODEX_AGENTS;
   }
+});
+
+test("the Claude Code subscription is tried after the other subscriptions and before the metered route", () => {
+  const all = ROUTES.map(([provider, id]) => `${provider}/${id}`);
+  const anthropic = "anthropic/claude-sonnet-5-5";
+  expect(all.indexOf(anthropic)).toBeGreaterThan(all.indexOf("cursor/claude-sonnet-5-5"));
+  expect(all.indexOf(anthropic)).toBeLessThan(all.indexOf("openrouter/anthropic/claude-sonnet-5.5"));
+  expect(fallbackCandidates(new Set([all[0], all[1]]), all)[0]).toEqual(["anthropic", "claude-sonnet-5-5"]);
 });
