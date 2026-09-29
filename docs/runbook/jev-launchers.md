@@ -100,8 +100,16 @@ Windows では、キーを環境変数からしか読めないため、この差
 just jev-claude-verify
 ```
 
-- `PASS`: 差し替え後の定義で worker が起動した。
-- `FAIL`: フックは動いたが差し替えが効いていない。`updatedInput` が Agent で無視されている。この場合は差し替えず、何も変わらないだけで害はない。
-- `BLOCKED`: Claude の利用上限。上限のリセット後にやり直す。
+判定は、モデルの返答ではなく Claude Code が残す記録で行う。
+フック自身のログ、各サブエージェントの `agent-*.meta.json`（実際に使われた `agentType` と `name`）、各リクエストに記録された effort である。
+名前なしと名前ありの worker を1つずつ起動する。
 
-`PASS` のあと、`jev-claude '...'` で起動して worker を動かし、`/tasks` の worker の行に effort が出ることを目で確認する。
+| 結果 | 終了コード | 意味 |
+| --- | --- | --- |
+| `PASS` | 0 | 名前なしの worker が差し替え後の定義で起動し、選んだ effort が記録された。マージしてよい |
+| `FAIL` | 1 | 差し替えが効かない、または effort が効かない。`updatedInput` が Agent で無視されている場合は何も変わらないだけで害はないが、この機能は動かないのでマージしない |
+| `BLOCKED` | 2 | Claude の利用上限。リセット後にやり直す |
+| `PARTIAL` | 3 | 動いているが effort を確認できない。`jev-claude '...'` で worker を動かし、`/tasks` の worker の行を目で確認する |
+
+名前ありの worker（teammate）は、effort が落ちるという報告がある（anthropics/claude-code#64706）。
+名前なしで正しければ `PASS` とし、名前ありが落ちたときは警告を出す。
