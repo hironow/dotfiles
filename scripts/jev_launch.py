@@ -26,19 +26,28 @@ from jev_core import (
 )
 
 
+IS_WINDOWS = os.name == "nt"
+
+
 def jev_key() -> str | None:
     key = os.environ.get("TYPESAFE_API_KEY") or os.environ.get("TYPESAFE_AI_API_KEY")
     if key:
         return key
-    # A local private file is convenient for interactive shell functions. Do
-    # not source it: arbitrary shell content must never run during routing.
-    path = Path.home() / ".env"
-    if os.name == "nt" or not path.is_file():
+    # A local private file is convenient for interactive shell functions, and the only
+    # source for children whose environment is scrubbed. Do not source it: arbitrary
+    # shell content must never run during routing.
+    try:
+        path = Path.home() / ".env"
+    except (RuntimeError, OSError):  # a scrubbed environment may not name a home
         return None
-    stat = path.stat()
-    if stat.st_uid != os.getuid() or stat.st_mode & 0o077:
-        print("Jev: ~/.env must be owned by you and mode 0600", file=sys.stderr)
+    if not path.is_file():
         return None
+    if not IS_WINDOWS:
+        # On Windows the profile directory's ACL keeps the file to its owner instead.
+        stat = path.stat()
+        if stat.st_uid != os.getuid() or stat.st_mode & 0o077:
+            print("Jev: ~/.env must be owned by you and mode 0600", file=sys.stderr)
+            return None
     for line in path.read_text(encoding="utf-8").splitlines():
         if "=" in line:
             name, value = line.split("=", 1)

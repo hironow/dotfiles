@@ -9,8 +9,11 @@
 Pi の拡張が未導入と表示された場合は、`just pi-extensions-install` を再実行する。
 
 TypeSafe の API キーは `TYPESAFE_API_KEY` 環境変数に設定する。
-macOS と Linux では、`TYPESAFE_API_KEY=...` と書いた `~/.env`（所有者のみ読み書き可能な 0600）からも読み込める。
-Windows PowerShell では環境変数を使用する。
+`TYPESAFE_API_KEY=...` と書いた `~/.env` からも読み込める。
+macOS と Linux では、所有者のみ読み書き可能（0600）でなければ読まない。
+Windows では、`%USERPROFILE%\.env` を読む（権限は、プロファイルのフォルダーの ACL に任せる）。
+worker のフックと `codex-jev` は、キーの環境変数を除いた環境で動くので、この `.env` からキーを読む。
+そのため、これらを使うには `.env` が必要である。
 セッション中だけ設定する場合は以下を実行する。
 
 ```powershell
@@ -91,7 +94,7 @@ Claude Code の Agent ツールには effort の引数がなく、サブエー�
 判定は Pi と同じコード（`scripts/jev_core.py`）を使う。
 フックは権限の判定を返さないため、承認の確認は省略されない。
 失敗したときは何も変えず、Claude が送った起動のまま実行する。
-Windows では、キーを環境変数からしか読めないため、この差し替えは行われない。
+Windows でも、`%USERPROFILE%\.env` からキーを読むので、同じように動く（実機は未確認）。
 
 ## Codex の worker のモデルと effort
 
@@ -132,7 +135,8 @@ Astra は Sol より単価がはるかに高いので、確信度が高いとき
 ### Pi
 
 Pi 組み込みの `codex-exec` と `codex-exec-writer` は、モデルを上書きできない（引数がコードで固定され、`config.toml` も無視する）。
-代わりに、`just deploy` が `~/.pi/agent/agents/` に次の2つを配置する。
+代わりに、`just deploy` が `~/.pi/agent/agents/` に次の2つを生成する。
+Python とスクリプトの絶対パスを埋め込むので、`sh` は要らず、Windows でも同じ定義が動く（実機は未確認）。
 
 - `codex-jev`: 読み取り専用。`codex-exec` に相当する。
 - `codex-jev-writer`: ワークスペースへの書き込み可。`codex-exec-writer` に相当する。
@@ -141,7 +145,6 @@ Pi 組み込みの `codex-exec` と `codex-exec-writer` は、モデルを上書
 選択は実行時に行うので、`workflowScript` の中の子でも効く。
 `j-pi` で起動した Pi では、`subagent` の直接の呼び出しで `codex-exec` と `codex-exec-writer` が、自動でこの2つに切り替わる。
 選ばれたモデルは、run の `external-*.stderr.log` の先頭行（`Jev: codex gpt-6.1-sol / medium (read-only)`）で確認できる。
-Windows では、`sh` を使うため配置しない。
 
 ### 動作確認（利用上限のリセット後に一度）
 

@@ -4,8 +4,8 @@ description: Explicit workspace-writing one-shot execution through the Codex CLI
 acceptanceRole: writer
 runner:
   type: external-cli
-  command: sh
-  args: ["-c", 'exec python3 "$HOME/dotfiles/scripts/jev_codex_exec.py" --sandbox workspace-write']
+  command: "@PYTHON@"
+  args: ["@SCRIPT@", "--sandbox", "workspace-write"]
   promptDelivery: stdin
 async: true
 systemPromptMode: replace

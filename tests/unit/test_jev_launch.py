@@ -253,3 +253,44 @@ def test_the_claude_code_subscription_is_kept_for_last_before_the_metered_route(
     monkeypatch.setattr(launcher.subprocess, "run", check)
     assert launcher.pi_route() == "anthropic/claude-sonnet-5-5"
     assert seen == ["github-copilot", "cursor", "anthropic"]
+
+
+def test_windows_reads_the_key_from_the_profile_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # NTFS ACLs on the profile play the role of the POSIX mode check.
+    secret = tmp_path / ".env"
+    secret.write_text("TYPESAFE_API_KEY=winsecret\n", encoding="utf-8")
+    secret.chmod(0o644)
+    monkeypatch.setattr(launcher, "IS_WINDOWS", True)
+    monkeypatch.setattr(launcher.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
+    assert launcher.jev_key() == "winsecret"
+
+
+def test_posix_still_refuses_a_group_readable_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    if os.name == "nt":
+        pytest.skip("POSIX ownership/mode checks do not apply")
+    secret = tmp_path / ".env"
+    secret.write_text("TYPESAFE_API_KEY=secret\n", encoding="utf-8")
+    secret.chmod(0o644)
+    monkeypatch.setattr(launcher, "IS_WINDOWS", False)
+    monkeypatch.setattr(launcher.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
+    assert launcher.jev_key() is None
+
+
+def test_an_unknown_home_directory_means_no_key_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_home() -> Path:
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(launcher.Path, "home", no_home)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
+    assert launcher.jev_key() is None
