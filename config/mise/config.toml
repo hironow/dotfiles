@@ -173,7 +173,9 @@ fzf = "0.74.3"
 # backend avoids registry-alias ambiguity.
 #   cf -> Cloudflare CLI, resend-cli -> Resend, @stripe/cli -> Stripe,
 #   @dataform/cli -> Dataform (BigQuery ELT)
-"npm:cf" = "latest"
+# cf's npm dist-tag "latest" is 1.0.0-beta.5, but mise points its `latest` link at the
+# newest stable (0.13.0), so "latest" never activates the beta. Pin it until 1.0.0.
+"npm:cf" = "1.0.0-beta.5"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
 "npm:@dataform/cli" = "latest"
