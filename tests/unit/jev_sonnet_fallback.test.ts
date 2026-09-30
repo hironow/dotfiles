@@ -8,6 +8,46 @@ test("only provider usage limits trigger a switch", () => {
   expect(isUsageLimit("network timeout")).toBe(false);
 });
 
+test("only explicit status or machine error kinds count as provider limits", () => {
+  for (const message of ["429 quota exceeded", "HTTP/2 429", "statusCode=429", "Error: status code 429", '{"status":429}', '{"error":{"type":"rate_limit_error"}}', '{"error":{"code":"insufficient_quota"}}', "RESOURCE_EXHAUSTED", "rate_limit_error: provider stopped"]) {
+    expect(isUsageLimit(message)).toBe(true);
+  }
+  for (const message of ["Request ID 429 failed: authentication error (401)", "Rate limiter configuration is invalid (400)", "quota exceeded", "rate limit reached", "no usage limit exceeded", "not RESOURCE_EXHAUSTED", "4290 quota exceeded", "HTTP 429.1", "HTTP 429/401", "statusCode=4291", 'HTTP 400: fixture says "HTTP 429: usage limit reached"', '401 fixture says "quota exceeded"', '403 fixture says "rate limit reached"', 'HTTP 500: fixture says "429"', "HTTP 429, statusCode=401", "rate_limit_error: HTTP 401", '{"status":401,"error":{"type":"rate_limit_error"}}', '{"status":429,"error":{"status":401}}', '{"error":{"type":"authentication_error","message":"HTTP 429"}}', '{"status":true,"error":{"type":"rate_limit_error"}}']) {
+    expect(isUsageLimit(message)).toBe(false);
+  }
+});
+
+test("an ambiguous error neither switches nor exhausts a route", async () => {
+  process.env.JEV_ROUTED_SESSION = "1";
+  let handler: ((event: any, context: any) => Promise<any>) | undefined;
+  const switched: string[] = [];
+  const thinking: string[] = [];
+  const copilot = { provider: "github-copilot", id: "claude-sonnet-5.5" };
+  const router = { provider: "openrouter", id: "anthropic/claude-sonnet-5.5" };
+  fallback({
+    on: (name: string, cb: typeof handler) => { if (name === "agent_before_settle") handler = cb; },
+    setModel: async (model: any) => { switched.push(model.provider); return true; },
+    setThinkingLevel: (level: string) => thinking.push(level),
+  } as any);
+  const ctx = { model: copilot, hasUI: false, thinkingLevel: "high", modelRegistry: {
+    getAvailable: () => [copilot, router],
+    find: (provider: string) => provider === "github-copilot" ? copilot : router,
+  } };
+  const event = (errorMessage: string) => ({ outcome: "error", context: { contextMessages: [{ role: "assistant", stopReason: "error", errorMessage }] } });
+  for (const message of ["Request ID 429 failed: authentication error (401)", "Rate limiter configuration is invalid (400)", "quota exceeded", "HTTP 429, statusCode=401"]) {
+    expect(await handler!(event(message), ctx)).toBeUndefined();
+  }
+  expect(switched).toEqual([]);
+  expect(thinking).toEqual([]);
+  // Copilot must still be eligible: only the genuine Router limit exhausts a route.
+  ctx.model = router;
+  const result = await handler!(event("HTTP 429: provider quota exceeded"), ctx);
+  expect(switched).toEqual(["github-copilot"]);
+  expect(thinking).toEqual(["high"]);
+  expect(result.continue).toBe(true);
+  delete process.env.JEV_ROUTED_SESSION;
+});
+
 test("subscription candidates precede metered candidate", () => {
   expect(ROUTES.map(([provider]) => provider)).toEqual(["github-copilot", "cursor", "anthropic", "openrouter"]);
 });
@@ -26,7 +66,7 @@ test("after a subscription limit, continue on the next authenticated provider", 
   const cursor = { provider: "cursor", id: "claude-sonnet-5-5" };
   const router = { provider: "openrouter", id: "anthropic/claude-sonnet-5.5" };
   const event = {
-    outcome: "error", context: { contextMessages: [{ role: "assistant", stopReason: "error", errorMessage: "usage limit exceeded" }] },
+    outcome: "error", context: { contextMessages: [{ role: "assistant", stopReason: "error", errorMessage: "HTTP 429: usage limit exceeded" }] },
   };
   const ctx = {
     model: copilot, thinkingLevel: "medium", hasUI: false,
@@ -74,6 +114,15 @@ const HARD = { difficulty: { type: "score", score: 1.9, confidence: 0.9 }, stric
 test("Jev's difficulty score and structure noul compose into an effort", async () => {
   expect(await chooseEffort("t", "k", reply(HARD) as any)).toBe("high");
   expect(await chooseEffort("t", "k", reply({ ...HARD, difficulty: { score: 0.2, confidence: 1 } }) as any)).toBe("medium");
+});
+
+test("nonfinite score, confidence and noul match the Python fallback", () => {
+  for (const value of [NaN, Infinity, -Infinity]) {
+    expect(effortFromAnswers({ difficulty: { score: value, confidence: 0.9 } })).toBe("medium");
+    expect(effortFromAnswers({ difficulty: { score: 2, confidence: value } })).toBe("medium");
+    expect(effortFromAnswers({ difficulty: { score: 0, confidence: 0.9 }, strict_structure: { noul: value } })).toBe("medium");
+  }
+  expect(effortFromAnswers({ difficulty: { score: 2, confidence: NaN }, strict_structure: { noul: 1 } })).toBe("high");
 });
 
 test("failed or unusable Jev answers continue on medium without leaking the key", async () => {

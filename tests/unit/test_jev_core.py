@@ -22,6 +22,37 @@ def test_effort_composes_score_noul_and_confidence(case: dict[str, object]) -> N
     assert core.effort_from_answers(answers) == case["expected"]
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), 10**400])
+@pytest.mark.parametrize("field", ["score", "confidence", "noul"])
+def test_nonfinite_or_overflowing_answers_do_not_raise_effort(
+    field: str, value: float | int
+) -> None:
+    difficulty = {"score": 0, "confidence": 0.9}
+    structure = {"noul": 0}
+    if field == "noul":
+        structure["noul"] = value
+    else:
+        difficulty = {"score": 2, "confidence": 0.9, field: value}
+    assert (
+        core.effort_from_answers(
+            {"difficulty": difficulty, "strict_structure": structure}
+        )
+        == "medium"
+    )
+
+
+def test_valid_structure_still_raises_effort_when_difficulty_is_nonfinite() -> None:
+    assert (
+        core.effort_from_answers(
+            {
+                "difficulty": {"score": 2, "confidence": float("nan")},
+                "strict_structure": {"noul": 1},
+            }
+        )
+        == "high"
+    )
+
+
 def test_request_asks_one_score_and_one_noul() -> None:
     body = core.build_request_body("x" * 9000)
     assert body["model"] == "jev-latest"

@@ -44,6 +44,29 @@ class Report:
     evidence: list[str] = field(default_factory=list)
 
 
+def has_provider_limit(stream_lines: list[str]) -> bool:
+    """Read only the CLI's provider-error fields, never quoted user/tool text."""
+    for line in stream_lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "assistant" and event.get("error") == "rate_limit":
+            # stream-json may omit the transcript-only marker; if present it
+            # must be a real boolean true, not a string or an ordinary message.
+            if "isApiErrorMessage" not in event or event["isApiErrorMessage"] is True:
+                return True
+        if event.get("type") == "result" and event.get("is_error") is True:
+            result = event.get("result")
+            if isinstance(result, str) and re.match(
+                r"^You've hit your (?:(?:weekly|daily|session|5-hour) )?limit\b", result
+            ):
+                return True
+    return False
+
+
 def _analyze_worker(
     stream_lines: list[str],
     hook_records: list[dict],
@@ -55,13 +78,7 @@ def _analyze_worker(
     Each subagent is {"agentType", "name" (or None), "efforts" (the effort recorded
     on each of its requests)}.
     """
-    if "hit your weekly limit" in "\n".join(stream_lines):
-        return Report("blocked", "Claude usage limit; try again after it resets")
-    if not hook_records:
-        return Report(
-            "fail",
-            "the hook never recorded a rewrite: it did not run, or Jev gave no answer",
-        )
+    limited = has_provider_limit(stream_lines)
     # Match the rejected-key diagnostic itself, not words in unrelated hooks
     # or in the valid updatedInput payload (which may quote an error message).
     rejected_key = (
@@ -74,11 +91,21 @@ def _analyze_worker(
             "fail",
             "Claude Code rejected the hook output schema for updatedInput (see the debug log)",
         )
+    if not hook_records:
+        return Report(
+            "blocked" if limited else "fail",
+            "Claude usage limit; no rewrite could be verified"
+            if limited
+            else "the hook never recorded a rewrite: it did not run, or Jev gave no answer",
+        )
     record = hook_records[-1]
     target, want = record["to"], record["effort"]
     plain = [s for s in subagents if not s.get("name")]
     named = [s for s in subagents if s.get("name")]
-    if not any(s["agentType"] == target for s in plain):
+    matched = [s for s in plain if s["agentType"] == target]
+    if not matched:
+        if limited and not plain:
+            return Report("blocked", "Claude usage limit; no plain worker executed")
         return Report(
             "fail",
             f"the hook chose {target} but the plain worker ran as "
@@ -90,28 +117,36 @@ def _analyze_worker(
         f"{sorted(set(s['efforts'])) or 'none'}"
         for s in subagents
     ]
-    efforts = {e for s in plain if s["agentType"] == target for e in s["efforts"]}
-    if want == SESSION_EFFORT:
-        return Report(
-            "partial",
-            "Jev chose the session effort, so the frontmatter effort cannot be told apart; rerun",
-            evidence,
-        )
-    if not efforts:
-        return Report(
-            "partial", "no recorded effort found; confirm with /tasks", evidence
-        )
-    if efforts != {want}:
+    efforts = {e for s in matched for e in s["efforts"]}
+    # A real observed mismatch wins over an unrelated quota event. Missing
+    # evidence during a quota stop, however, is BLOCKED rather than a defect.
+    if efforts and efforts != {want}:
         return Report(
             "fail",
             f"the worker recorded effort {sorted(efforts)} instead of {want}: "
             "the frontmatter effort was not honoured",
             evidence,
         )
+    if any(not s["efforts"] for s in matched):
+        return Report(
+            "blocked" if limited else "partial",
+            "not every plain worker has recorded effort; confirm with /tasks",
+            evidence,
+        )
+    if want == SESSION_EFFORT:
+        return Report(
+            "blocked" if limited else "partial",
+            "Jev chose the session effort, so the frontmatter effort cannot be told apart; rerun",
+            evidence,
+        )
     if any(set(s["efforts"]) != {want} for s in named if s["agentType"] == target):
         evidence.append(
             "warning: a teammate (named) spawn dropped the effort "
             "(anthropics/claude-code#64706); plain spawns are fine"
+        )
+    if limited:
+        return Report(
+            "blocked", "Claude usage limit; worker evidence retained", evidence
         )
     return Report("pass", f"a plain worker ran as {target} at effort {want}", evidence)
 

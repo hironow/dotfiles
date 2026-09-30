@@ -6,6 +6,7 @@ its data as arguments and returns a value, so it is tested without mocks.
 """
 
 import json
+import math
 import re
 from collections.abc import Mapping, Sequence
 
@@ -55,7 +56,11 @@ SESSION_RULES = (
 def _number(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    return float(value)
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    return number if math.isfinite(number) else None
 
 
 def effort_from_answers(answers: dict[str, object]) -> str:

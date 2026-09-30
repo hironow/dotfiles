@@ -28,7 +28,11 @@ OK = {"agentType": "worker-high", "name": None, "efforts": ["high", "high"]}
 def limit_stream() -> list[str]:
     return [
         json.dumps(
-            {"type": "result", "result": "You've hit your weekly limit · resets Oct 4"}
+            {
+                "type": "result",
+                "is_error": True,
+                "result": "You've hit your weekly limit · resets Oct 4",
+            }
         )
     ]
 
@@ -40,6 +44,96 @@ def test_pass_needs_the_rewritten_type_and_the_chosen_effort_recorded() -> None:
 
 def test_the_weekly_limit_is_blocked_not_failed() -> None:
     assert verify.analyze(limit_stream(), [], [], "").status == "blocked"
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"type": "assistant", "error": "rate_limit", "isApiErrorMessage": True},
+        {"type": "assistant", "error": "rate_limit"},
+        {"type": "result", "is_error": True, "result": "You've hit your weekly limit"},
+    ],
+)
+def test_only_structured_provider_limit_events_block_the_verification(
+    event: dict,
+) -> None:
+    assert verify.analyze([json.dumps(event)], [], [], "").status == "blocked"
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "text", "text": "You've hit your weekly limit"}]
+            },
+        },
+        {"type": "user", "content": "You've hit your weekly limit"},
+        {"type": "tool_result", "content": "You've hit your weekly limit"},
+        {"type": "result", "is_error": False, "result": "You've hit your weekly limit"},
+        {
+            "type": "result",
+            "is_error": "true",
+            "result": "You've hit your weekly limit",
+        },
+        {
+            "type": "result",
+            "is_error": True,
+            "result": 'Fixture says "You\'ve hit your weekly limit"',
+        },
+        {
+            "type": "assistant",
+            "error": "authentication_failed",
+            "isApiErrorMessage": True,
+            "text": "You've hit your weekly limit",
+        },
+        {"type": "assistant", "error": "rate_limit", "isApiErrorMessage": False},
+        {"type": "assistant", "error": "rate_limit", "isApiErrorMessage": "true"},
+        ["You've hit your weekly limit"],
+        "You've hit your weekly limit",
+        None,
+    ],
+)
+def test_quoted_or_malformed_limit_text_cannot_hide_real_worker_results(
+    event: object,
+) -> None:
+    lines = [json.dumps(event), "not JSON: You've hit your weekly limit"]
+    assert verify.analyze(lines, [RECORD], [OK], "").status == "pass"
+    assert (
+        verify.analyze(lines, [RECORD], [{**OK, "efforts": ["medium"]}], "").status
+        == "fail"
+    )
+
+
+@pytest.mark.parametrize("defect", ["schema", "type", "effort"])
+def test_a_proven_defect_is_not_hidden_by_a_real_usage_limit(defect: str) -> None:
+    sub = {**OK, "agentType": "general-purpose"} if defect == "type" else OK
+    if defect == "effort":
+        sub = {**OK, "efforts": ["medium"]}
+    debug = (
+        "[DEBUG] Hook JSON output had unrecognized keys (ignored): updatedInput."
+        if defect == "schema"
+        else ""
+    )
+    assert verify.analyze(limit_stream(), [RECORD], [sub], debug).status == "fail"
+
+
+def test_a_real_limit_before_worker_execution_is_blocked_not_an_ignored_rewrite() -> (
+    None
+):
+    assert verify.analyze(limit_stream(), [RECORD], [], "").status == "blocked"
+
+
+def test_a_limit_does_not_discard_already_proven_worker_evidence() -> None:
+    report = verify.analyze(limit_stream(), [RECORD], [OK], "")
+    assert report.status == "blocked"
+    assert report.evidence
+
+
+def test_every_matched_plain_worker_needs_effort_evidence() -> None:
+    report = verify.analyze([], [RECORD, RECORD], [OK, {**OK, "efforts": []}], "")
+    assert report.status == "partial"
 
 
 def test_no_hook_record_means_the_hook_never_ran() -> None:

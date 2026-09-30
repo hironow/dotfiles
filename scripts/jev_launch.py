@@ -130,7 +130,7 @@ def pi_route() -> str:
             continue
         if check.returncode == 0 and check.stdout.strip() == "ready":
             return f"{provider}/{model}"
-    raise RuntimeError("no authenticated Pi Sonnet 5.5 provider (run pi /login)")
+    raise SystemExit("Jev: no authenticated Pi Sonnet 5.5 provider (run pi /login)")
 
 
 def hook_command() -> str:

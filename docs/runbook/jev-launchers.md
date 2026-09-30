@@ -56,12 +56,15 @@ j-pi '失敗しているパーサのテストを修正して'
 
 確信度が 0.5 未満のときは、Jev が「わからない」と答えたものとして扱い、既定の `medium` にする。
 Jev に届かない、または応答を解釈できないときも `medium` で起動する。
-閾値は `scripts/jev_launch.py` にあり、Pi の拡張と同じ値を使う。
+NaN、無限大、数値への変換でオーバーフローする値は採用しない。
+独立した有効な構造の確率が 0.7 以上なら、難しさの値が無効でも `high` にする。
+閾値は `scripts/jev_core.py` にあり、Pi の拡張と同じ値を使う。
 両者の一致は `tests/unit/jev_effort_cases.json` で確認している。
 Pi は認証済みの提供元を、GitHub Copilot、Cursor、Anthropic（Claude Code のサブスク）、OpenRouter の順に選ぶ。
 Claude Code のサブスクは、Claude Code 自身のために残すので、ほかのサブスクより後にする。
 OpenRouter は従量課金なので最後にする。
-Pi の使用量上限に達したときは次の認証済み提供元へ切り替える。
+Pi は明示的な 429 ステータスか、既知の機械的な上限エラー種別を確認した場合だけ、次の認証済み提供元へ切り替える。
+曖昧な「quota exceeded」などの文章や、認証・サーバーエラーを含む矛盾したステータスでは切り替えず、元のエラーを表示する。
 利用できる提供元がなければエラーを表示する。
 Claude Code 側に利用上限が出た場合、このコマンドは別アカウントや従量課金へ自動切替しない。
 通常起動のモデル設定、権限、承認、既存の計画レビュー規則は変更しない。
@@ -146,7 +149,7 @@ Python とスクリプトの絶対パスを埋め込むので、`sh` は要ら�
 `j-pi` で起動した Pi では、`subagent` の直接の呼び出しで `codex-exec` と `codex-exec-writer` が、自動でこの2つに切り替わる。
 選ばれたモデルは、run の `external-*.stderr.log` の先頭行（`Jev: codex gpt-6.1-sol / medium (read-only)`）で確認できる。
 
-### 動作確認（利用上限のリセット後に一度）
+### 動作確認
 
 `updatedInput` が Agent ツールで効くか、`effort` が実際に効くかは、実リクエストでしか確認できない。
 次のコマンドを実行する。
@@ -161,10 +164,13 @@ just jev-claude-verify
 
 | 結果 | 終了コード | 意味 |
 | --- | --- | --- |
-| `PASS` | 0 | 名前なしの worker が差し替え後の定義で起動し、選んだ effort が記録された。Codex には `--model` と `--effort` が届いた。マージしてよい |
-| `FAIL` | 1 | 差し替えが効かない、または effort が効かない。`updatedInput` が Agent で無視されている場合は何も変わらないだけで害はないが、この機能は動かないのでマージしない |
-| `BLOCKED` | 2 | Claude の利用上限。リセット後にやり直す |
-| `PARTIAL` | 3 | 動いているが effort を確認できない。`j-cc '...'` で worker を動かし、`/tasks` の worker の行を目で確認する |
+| `PASS` | 0 | 名前なしの worker の定義と選んだ effort、Codex の呼び出し引数を確認できた。CI と Windows の確認は別 |
+| `FAIL` | 1 | スキーマ拒否、worker の定義や effort の不一致を確認した。利用上限が同時に出てもこちらを優先する |
+| `BLOCKED` | 2 | provider のエラーイベントで利用上限を確認した。リセット後にやり直す。会話中の引用は対象外 |
+| `PARTIAL` | 3 | worker の effort の証拠が不足するか、親と同じ `medium` で効果を区別できない。`/tasks` でも確認する |
 
-名前ありの worker（teammate）は、effort が落ちるという報告がある（anthropics/claude-code#64706）。
-名前なしで正しければ `PASS` とし、名前ありが落ちたときは警告を出す。
+Codex は、companion を呼ぶツールの引数に選んだ `--model` と `--effort` があることを確認する。
+下流の全 API リクエストに同じ effort が届いたことまでは証明しない。
+一致した名前なし worker は、それぞれに effort の記録が必要である。
+ただし、各フックの起動と全 worker の一対一対応は検証していないため、`PASS` は全起動の差し替えを証明しない。
+名前ありの worker（teammate）の effort が異なる場合は、別に警告を出す。
