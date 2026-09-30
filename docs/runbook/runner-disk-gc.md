@@ -9,11 +9,12 @@ runner を載せた WSL の `ext4.vhdx` には、docker の image、停止した
 放置すると C: が尽き、空きがないと vhdx を広げられず WSL 自体が起動しなくなる（`I/O error @util.cpp` から systemd の起動失敗）。
 この状態は、容量を空けるための WSL が起動しないので自力では抜けられない。
 
-`just runner-gc-install` は、2 時間より古いものを回収する GC を 3 つの契機で仕掛ける。
+`just runner-gc-install` は、最後の使用から `RUNNER_GC_RETENTION`（既定 2 時間）を過ぎたものを回収する GC を、次のとおり仕掛ける。
 
 - **job-completed hook**：ジョブの終了ごと
 - **hourly timer**：1 時間ごと（root で動く）
-- **journald の上限**：ログの肥大を止める
+- **journald の上限**：ログの肥大を止める（`RUNNER_GC_JOURNAL_MAX`、既定 `200M`）
+- **`dotfiles-wsl-autostart`**（Windows のログオン時のタスク）：再起動のあと、distro の systemd（runner と GC の timer）を起こし直す
 
 状態は `just status` で確かめる。
 Windows と WSL の両方について、timer、タスク、hook を一度に表示し、hook が runner に受理される形式か、直近のジョブで拒否されていないかまで見る。
@@ -79,7 +80,7 @@ vhdx は解放済みの ext4 のブロックを Windows 側で抱えたままな
 WSL の vhdx は通常 sparse なので、`fstrim /` で穴をあければ、止めずに管理者権限なしで返せる。
 GC は root での回収の最後に `fstrim` を実行する。
 
-vhdx が sparse でない機体では、`fstrim` は C: に何も返さない。
+vhdx が sparse でない機体では、`fstrim` は C: に何も返さない（実例は memory `project_this_host_vhdx_non_sparse`）。
 その場合の返却には、管理者権限と `wsl --shutdown`（runner の停止）が要るので、`just wsl-compact` は計測と手順の表示にとどめる。
 `wsl --manage --set-sparse` は自分では有効にしない（Microsoft がデータ破損の危険から無効にしており、`--allow-unsafe` が要る）。
 すでに sparse な vhdx で `fstrim` を使うのは別の話で、こちらは安全である。
@@ -97,5 +98,5 @@ vhdx が sparse でない機体では、`fstrim` は C: に何も返さない。
 
 ## Windows から WSL へのコマンドの渡し方
 
-Windows から WSL の GC を呼ぶときは、`MSYS_NO_PATHCONV=1` と `MSYS2_ARG_CONV_EXCL='*'` を付ける。
+Windows から WSL の GC を呼ぶときは、`MSYS_NO_PATHCONV=1` と `MSYS2_ARG_CONV_EXCL='*'` を付ける（対象の distro は `RUNNER_GC_WSL_DISTRO`、既定 `Ubuntu`）。
 付けないと、Git Bash が `/usr/local/bin/...`、`/mnt/c/...`、素の `/` まで Windows のパスに書き換えてから `wsl.exe` に渡す。

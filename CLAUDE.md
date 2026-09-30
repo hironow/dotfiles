@@ -44,7 +44,7 @@ just sync-agents-preview …  # dry-run
 | recipe | 内容 |
 |---|---|
 | `just` / `just help` | recipe 一覧 |
-| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) |
+| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) + `check-forbidden-tokens-branch`。`check` 自体に Go / JS・TS / Pi 拡張 / Quint の leg も入る |
 | `just lint-claude` | 公式 `claude plugin validate --strict` (claude CLI 不在時は skip) + stdlib の effective-settings 検証 (ADR 0037/0041)。サードパーティ claudelint は**退役済み** (ADR 0041、trust 判断)。CI gate は `Claude Config Lint` workflow が pinned `bunx @anthropic-ai/claude-code` で公式 validate を回す (CI は `just ci` 非実行) |
 | `just ci-all` | `ci` + `test` + `test-install` (Docker サンドボックス込み) |
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |

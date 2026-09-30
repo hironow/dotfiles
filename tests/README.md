@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | [`unit/`](./unit/) | Docker の要らないテスト。純粋な Python の関数と、ファイルの静的検査 | `just test-unit`（`just ci` に含まれる） |
 | `tests/*.py`、[`exe/`](./exe/) | Dev Container の image の中で動かすサンドボックステストと、exe.hironow.dev の IaC の検査 | `just test`（先に image を作る） |
-| [`e2e/exe/`](./e2e/exe/) | 実際のクラスタに対する exe の停止経路。`EXE_E2E=1` のときだけ動く | `just exe-e2e`（[README](./e2e/exe/README.md)） |
+| [`e2e/exe/`](./e2e/exe/) | 実際のクラスタに対する exe の停止経路。`EXE_E2E=1` のときだけ動く（`just exe-e2e` は digest で固定した `EXE_E2E_IMAGE` と `EXE_E2E_FORCED=1` も要る） | `just exe-e2e`（[README](./e2e/exe/README.md)） |
 | [`docker/`](./docker/) | 重い exe のテストが使う Dockerfile | |
 
 Docker が要らない静的検査は `unit/` に置く。
@@ -17,7 +17,8 @@ Docker が要らない静的検査は `unit/` に置く。
 ```bash
 just test-unit                         # unit/ だけ（Docker 不要）
 just test                              # サンドボックステスト全体
-just test-mark marker=validate         # マーカーで絞る
+just test-mark marker=validate         # マーカーで絞る（install、validate、versions、deploy、check）
+uv run pytest -m exe                   # 重い IaC のテスト（@pytest.mark.exe）だけ
 uv run pytest tests/unit/test_<name>.py   # 1 ファイル
 ```
 

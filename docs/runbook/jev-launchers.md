@@ -11,7 +11,7 @@ Pi の拡張が未導入と表示された場合は、`just pi-extensions-instal
 
 TypeSafe の API キーは、`TYPESAFE_API_KEY=...` と書いた `~/.env` に置く。
 起動のたびに読むので、書き換えてもシェルを開き直す必要はない。
-`TYPESAFE_API_KEY` 環境変数があれば、そちらを優先する。
+環境変数の `TYPESAFE_API_KEY`（または `TYPESAFE_AI_API_KEY`）があれば、そちらを優先する。
 worker のフックと `codex-jev` は、キーの環境変数を除いた環境で動くので、`~/.env` からしかキーを読めない。
 
 他人が読める `~/.env` からは読まない。
@@ -149,7 +149,7 @@ Pi に組み込みの `codex-exec` と `codex-exec-writer` は、モデルを上
 Python とスクリプトの絶対パスを定義に埋め込むので、`sh` は要らず、Windows でも同じ定義が動く。
 選択は実行時に行うので、`workflowScript` の中の子でも効く。
 `j-pi` で起動した Pi では、`subagent` から `codex-exec` と `codex-exec-writer` を直接呼ぶと、自動でこの 2 つに切り替わる。
-選ばれたモデルは、run の `external-*.stderr.log` の先頭行（`Jev: codex gpt-6.1-sol / medium (read-only)`）で確かめられる。
+選ばれたモデルは、実行の stderr の先頭行（`Jev: codex gpt-6.1-sol / medium (read-only)`）で確かめられる（Pi の run では `external-*.stderr.log` に残る）。
 
 ## Pi の提供元と切り替え
 

@@ -14,7 +14,8 @@ Windows は、裸の `bash` を PATH より先に `C:\Windows\System32\bash.exe`
 
 Git の `usr\bin` を PATH の先頭に恒久的に足せば PowerShell からも動くが、`find` や `sort` などの Windows 版のコマンドを覆い隠すので勧めない。
 PowerShell から shebang の recipe を実行すると、登録済みの PATH に Git の `usr\bin` がなければ `could not find cygpath` で全部失敗する。
-`just doctor` の Windows の節が cygpath の不足を検出し、直し方を表示する。
+`just harden-env` は、User の PATH に Git の `usr\bin` と `cmd` を足す。
+`just doctor` の Windows の節が cygpath の不足を検出し、直し方を表示する（経緯は memory `project_windows_shell_msys_sh_path_order`）。
 
 ネイティブのプロセス（Python など）から bash を起動するときも、裸の `bash` ではなく Git Bash の実体を指定する（テストでは `tests/unit/_bash_hook.py` の `resolve_bash()`）。
 Claude Code は hook を Git Bash で実行するので、hook のコマンドに `C:\` のパスを書くとバックスラッシュが失われる（`/` 区切りで書く）。
@@ -23,7 +24,7 @@ Claude Code は hook を Git Bash で実行するので、hook のコマンド�
 
 native Windows の uv は `~/.config/uv/uv.toml` ではなく `%APPDATA%\uv\uv.toml` を読む。
 これがないと供給網の隔離が効かず、`uv run` がコミット済みの `uv.lock` を書き換え、pre-commit の lint で commit が止まる。
-`just harden-env` が両方に書き、`just doctor` が不足を検出する。
+`just harden-env` が両方に書き、`just doctor` が不足を検出する（memory `project_windows_uv_appdata_config`）。
 
 ## mise の npm backend
 
@@ -40,7 +41,7 @@ npm-global の野良のコピーが PATH で mise の版を隠していると動
 
 bun backend では `npm_args` は読まれない（ADR 0040。bun は `bun_args` だけを読む）。
 claude-code の native binary が動くのは、bun の既定の信頼リストに載っていて postinstall が走るからである。
-postinstall が必要で信頼リストにない npm の道具を足すときは、`bun_args` か trustedDependencies を検討する。
+postinstall が必要で信頼リストにない npm の道具を足すときは、`bun_args` か trustedDependencies を検討する（memory `project_mise_npm_ignore_scripts`）。
 
 ## self-hosted runner の PATH
 

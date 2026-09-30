@@ -38,7 +38,7 @@ OS ごとに違うのは、導入の経路だけである。
 - Dev container: CI と IDE が共有するサンドボックス（CI とエディタの実行環境）
 - Coder workspace: exe.hironow.dev 上の作業環境（リモート開発環境）
 - install.sh (OS dispatch): `uname` で mac / linux / windows を振り分ける（OS 判定。ADR 0005）
-- config/mise/config.toml (pins): 道具のバージョンを 3 OS で揃える（バージョン固定。ADR 0006）
+- config/mise/config.toml (pins): just、uv、prek、vp、markdownlint-cli2、node と 5 つの AI CLI（codex、antigravity、claude、copilot、pi）のバージョンを 3 OS で揃える（バージョン固定。ADR 0006）
 - Artifact Reg.: main への merge で GitHub Actions が push した image を、Coder の VM が pull する（イメージ置き場）
 
 関連文書:
@@ -50,6 +50,7 @@ OS ごとに違うのは、導入の経路だけである。
 - [`exe/coder/templates/dotfiles-devcontainer/README.md`](./exe/coder/templates/dotfiles-devcontainer/README.md): Coder template の push と作成
 - [`exe/scripts/README.md`](./exe/scripts/README.md): `cdr`（Cloudflare Access のサービストークン経由で `coder` CLI を実行するラッパー）
 - [`tools/README.md`](./tools/README.md): RTTM 変換などの補助ツール
+- `docs/intent.md`: いま取り組んでいる作業の意図（operator だけが書く。git では追跡しない）
 
 ## 導入
 
@@ -72,7 +73,7 @@ WSL の素の Ubuntu では、続けて次を一度だけ行う。
 `wsl-conf` と Docker の手順は sudo と、Windows 側での `wsl --shutdown` が要る。
 
 ```bash
-just harden-env   # 機体ごとの供給網対策（PyPI ミラーと 7 日の隔離）。追跡しない
+just harden-env   # 機体ごとの供給網対策（npm と uv の 7 日の隔離、PyPI ミラー、GOPROXY）。追跡しない
 just wsl-conf     # /etc/wsl.conf の差分と sudo での編集手順を表示する（Windows の PATH を入れない、systemd を有効化）
 
 # WSL の中で Docker を動かす（just test と Dev Container のサンドボックス用）
@@ -83,7 +84,7 @@ sudo usermod -aG docker "$USER"   # 次の wsl --shutdown のあとで効く
 just doctor       # 確認: PATH-windows が OK、docker に届く、道具がそろう
 ```
 
-`just harden-env` は個人の `exclude-newer` を設定する。
+`just harden-env` は `~/.npmrc` と `~/.config/uv/uv.toml` を書き、個人の `exclude-newer` を設定する。
 コミットする lock は `just relock-uv` で期間指定なしに保つ（ADR 0028）。
 
 ### Windows（native）
@@ -96,7 +97,7 @@ irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex
 ```
 
 bootstrap は scoop、git、just、jq、mise、pwsh を入れ、HTTPS で `~\dotfiles` に clone する。
-続けて `add-scoop`、`deploy`、`harden-env`、`sync-agents`、`restore-skills-lock`、`doctor` を実行する。
+続けて `add-scoop`、`deploy`、`harden-env`、`sync-agents`、`restore-skills-lock`、`doctor` を実行する（Windows の `harden-env` は、`%APPDATA%\uv\uv.toml` と、User の PATH にある Git の `usr\bin` と `cmd` も整える）。
 何度実行しても安全であり、終わったら新しい pwsh を開く（`$PROFILE` はそこで効く）。
 
 `just deploy` は Windows では次を行う。
@@ -137,17 +138,19 @@ just validate-path-duplicates   # PATH の重複を検査する
 mx uv sync                      # mx は `mise exec --` の zsh alias
 mx dotenvx run -- mise set      # 暗号化した .env を mise の環境に読む
 gh do -- mise set               # GitHub の認証情報つきで同じことをする
+mx dotenvx set HELLO World      # 暗号化して .env に書く
+mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
 ```
 
 ### テストと CI ゲート
 
 | コマンド | 内容 | Docker |
 | --- | --- | --- |
-| `just ci` | fmt、lint、semgrep、Claude 設定の検査、unit テスト、IaC のテスト、指示量の予算、skill 宣言の検査 | 不要 |
-| `just ci-all` | `ci` と Dev Container のサンドボックステストと `install.sh` の検証 | 要る |
+| `just ci` | `just check`（Python、Go、shell、Markdown、JS/TS の lint、Pi 拡張のテスト、Go のテスト、Quint のモデル）、Claude 設定の検査、unit テスト、semgrep の規則テスト、IaC のテスト、portless の文書、指示量の予算、skill 宣言、emulator の lint、禁止トークン | 不要 |
+| `just ci-all` | `ci` と Dev Container のサンドボックステストと `install.sh` の検証（単独では `just test-install`） | 要る |
 | `just ci-emu` | emulator 群の lint、起動、高速テスト、e2e | 要る |
 | `just check-all` | prek の hook と `ci-all`（push 前の最終ゲート） | 要る |
-| `just test` | Dev Container の中のサンドボックステスト（`just test-mark marker=validate` で絞れる） | 要る |
+| `just test` | Dev Container の中のサンドボックステスト（`just test-mark marker=validate` のように install、validate、versions、deploy、check で絞れる） | 要る |
 
 ## Jev でのコーディングセッション
 
@@ -190,15 +193,15 @@ store が宣言とずれていると無関係な差分も出るので、差分�
 API や SaaS の emulator は、vercel-labs/emulate を npx 経由で動かす（ADR 0016）。
 
 ```shell
-just emu-up                          # 既定は GCP の中核だけ（firebase、spanner、pgadapter、postgres）
+just emu-up                          # 既定は GCP の中核だけ（firebase、spanner、pgadapter、postgres。別名 emu-up-lite）
 just emu-up-only firebase-emulator   # 名指しで起動する（別リポジトリから Firebase だけ借りるときなど）
 just emu-up-group search             # 中核に機能群を足す（bigtable search graph vector ml inspect exporters full）
-just emu-up-full                     # 重いものも含めて全部
+just emu-up-full                     # 重いものも含む全データサービス（対話用の *-cli は除く）
 just emu-check                       # 状態と接続先
 just emu-stop                        # firebase のデータを書き出して止める
 
 just tel-up                          # telemetry を起動する（止めるのは just tel-down）
-just emu-api                         # API emulator を 4100-4108 で前面に起動する
+just emu-api                         # API emulator を 4100-4108 で前面に起動する（emulator/emulate/README.md）
 ```
 
 重いサービスと amd64 のサービスを既定で起動しないのは、OrbStack の VM をメモリ上限内に収めるためである。
