@@ -35,15 +35,12 @@ differs.
 ```
 
 ```
-Legend / 凡例:
+凡例:
 
-- Mac host: operator のメインマシン (Homebrew 前提)
-- Dev container: .devcontainer/devcontainer.json + features/dotfiles-tools をビルドした image (CI とローカル IDE で同一)
-- Coder workspace: exe.hironow.dev で立ち上がる cloud dev 環境。Artifact Registry 上の prebuilt image を docker pull する
-- install.sh OS dispatch: uname → mac / linux / windows で step_* 関数を切り替える (ADR 0005)
-- `config/mise/config.toml`: just / uv / prek / vp / markdownlint-cli2 / node + 5 AI CLI (codex / antigravity / claude / copilot / pi) を 3 OS 同一バージョンに pin (ADR 0006)
-- .devcontainer/: dev container 仕様の SoT (debian-12 + Microsoft-curated features + ローカル feature)
-- Artifact Registry: GitHub Actions が main merge 時に WIF 認証で image push、Coder workspace VM が docker pull
+- install.sh: uname で mac / linux / windows を振り分ける (ADR 0005)
+- `config/mise/config.toml`: just / uv / prek / vp / markdownlint-cli2 / node と 5 つの AI CLI (codex / antigravity / claude / copilot / pi) を 3 OS で同じバージョンに pin する (ADR 0006)
+- Artifact Registry: main への merge 時に GitHub Actions が WIF 認証で image を push し、Coder workspace VM が docker pull する
+- Dev container: CI とローカル IDE で同じ image (Dev Container の節を参照)
 ```
 
 詳細は以下を参照:
@@ -64,23 +61,34 @@ Requires `curl` and `git`.
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 ```
 
-**Windows native** はまっさらな機体から PowerShell 一発 ([ADR 0039](docs/adr/0039-windows-bootstrap-ps1.md)):
+**Windows native** は、まっさらな機体から PowerShell 1 行で導入できる ([ADR 0039](docs/adr/0039-windows-bootstrap-ps1.md)):
 
 ```powershell
 # scoop manifest の host を変える場合は先に: $env:DOTFILES_HOST = '<host>'
 irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex
 ```
 
-scoop / git / just / jq / mise / pwsh の導入 → HTTPS clone (`~\dotfiles`) →
-`add-scoop` → `deploy` → `harden-env` → `sync-agents` → `restore-skills-lock` →
-`doctor` まで自動 (冪等、再実行安全)。完了後は **新しい pwsh セッション**を開くこと
-($PROFILE はそこで効く)。SSH 鍵設定後の operator 手順:
-`git -C ~/dotfiles remote set-url origin git@github.com:hironow/dotfiles.git` と
-`git -C ~/dotfiles submodule update --init` (vendored submodule は SSH URL のため bootstrap では触らない)。
+bootstrap は scoop / git / just / jq / mise / pwsh を入れ、HTTPS で `~\dotfiles` に clone する。
+続けて `add-scoop` → `deploy` → `harden-env` → `sync-agents` → `restore-skills-lock` → `doctor` を実行する。
+何度実行しても安全である。
+完了後は新しい pwsh セッションを開く (`$PROFILE` はそこで効く)。
+
+SSH 鍵を設定したあとに、次を実行する。
+vendored submodule は SSH URL のため、bootstrap は触らない。
+
+```powershell
+git -C ~/dotfiles remote set-url origin git@github.com:hironow/dotfiles.git
+git -C ~/dotfiles submodule update --init
+```
 
 > [!NOTE]
-> Mac, Linux, Windows([WSL](https://learn.microsoft.com/en-us/windows/wsl/)内Linux)を一級でサポート。Windows native は `just deploy` で `corepack enable` + `starship.toml` / `gitignore-global` / `config/mise/config.toml` の配置 + **PowerShell `$PROFILE` への starship init / mise activate / `MISE_NODE_COREPACK=0` 注入** + **global mise toolset の install** + **`aliases.gitconfig` の `[include]` 配線** に対応。scoop は **per-host manifest dump (`dump/<host>/scoop.json`) と `just add-scoop` による復元 (`scoop import`) の両方**に対応。`just doctor` / `just update-all` 等の基本 recipe も Windows で完走し、`just ci` は native Windows で green (実行系の一部テストは Linux/WSL/CI 限定で skip)。詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md) / [ADR 0019](docs/adr/0019-windows-scoop-dump-record-only.md) / [ADR 0022](docs/adr/0022-powershell-starship-profile-init.md) / [ADR 0024](docs/adr/0024-powershell-mise-activate-profile.md) / [ADR 0030](docs/adr/0030-per-host-dump-layout.md) / [ADR 0031](docs/adr/0031-disable-mise-corepack-on-windows.md) / [ADR 0032](docs/adr/0032-windows-scoop-restore-add-scoop.md) / [ADR 0033](docs/adr/0033-windows-deploy-global-mise-install.md) / [ADR 0039](docs/adr/0039-windows-bootstrap-ps1.md)。
-> Mac は Homebrew が前提条件 (操作者が手動で先にインストール)、それ以降は install.sh が自動。
+> Mac、Linux、Windows ([WSL](https://learn.microsoft.com/en-us/windows/wsl/) 内の Linux) を一級でサポートする。
+> Mac は Homebrew が前提で、operator が先に入れる。以降は install.sh が自動で進める。
+>
+> Windows native の `just deploy` は、`corepack enable`、`starship.toml` / `gitignore-global` / `config/mise/config.toml` の配置、`$PROFILE` への starship init / mise activate / `MISE_NODE_COREPACK=0` の注入、global mise toolset の install、`aliases.gitconfig` の `[include]` 配線を行う。
+> scoop は、host ごとの manifest (`dump/<host>/scoop.json`) の dump と、`just add-scoop` による復元に対応する。
+> 基本の recipe は完走し、`just ci` も green になる (一部のテストは Linux / WSL / CI 限定で skip)。
+> 詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md)、[ADR 0039](docs/adr/0039-windows-bootstrap-ps1.md) と、0019 / 0022 / 0024 / 0030 / 0031 / 0032 / 0033。
 
 ## usage
 
@@ -91,9 +99,7 @@ just help
 just sync-agents-preview
 just sync-agents
 
-# lint the distributed Claude config via the official
-# `claude plugin validate --strict` + stdlib effective-settings check
-# (ADR 0029; third-party claudelint retired per ADR 0041)
+# lint the distributed Claude config (official `claude plugin validate --strict` + effective-settings check, ADR 0029)
 just lint-claude
 
 just update-all
@@ -142,8 +148,8 @@ just test-install
 ### CI gates
 
 ```shell
-# fast gate: lint/format/semgrep + claude config lint + rule self-tests + IaC tests (no Docker)
-# (the claude config lint also runs as the `Claude Config Lint` GitHub workflow — ADR 0029)
+# fast gate (no Docker): fmt/lint, semgrep, claude config lint, unit tests, IaC tests, instruction budget, skills lock check
+# (the claude config lint also runs as the `Claude Config Lint` GitHub workflow, ADR 0029)
 just ci
 
 # full non-emulator matrix: ci + devcontainer sandbox + install verification (Docker)
@@ -187,12 +193,8 @@ sudo mise x -- go run main.go
 
 ## Local emulators, telemetry & portless
 
-`emulator/` (datastore + inspector emulators) and `telemetry/` (OTel + Grafana +
-Loki + Prometheus + Tempo) are first-party trees in this repo — vendored from the
-former `emulator-set` / `telemetry-set` submodules (see
-[ADR 0014](./docs/adr/0014-vendor-emulator-telemetry-from-submodules.md); those
-upstreams are now archived). `emulate` (vercel-labs/emulate) adds API/SaaS
-emulators via an npx wrapper ([ADR 0016](./docs/adr/0016-integrate-emulate-api-emulators-via-npx.md)).
+`emulator/` (datastore and inspector emulators) and `telemetry/` (OTel, Grafana, Loki, Prometheus, Tempo) live in this repo ([ADR 0014](./docs/adr/0014-vendor-emulator-telemetry-from-submodules.md)).
+`emulate` (vercel-labs/emulate) adds API/SaaS emulators through an npx wrapper ([ADR 0016](./docs/adr/0016-integrate-emulate-api-emulators-via-npx.md)).
 
 ```shell
 # datastore / inspector emulators (emulator/compose.yaml)
@@ -212,11 +214,8 @@ just tel-up               # start; just tel-down to stop
 just emu-api              # 9 API emulators on 4100-4108 (see emulator/emulate/README.md)
 ```
 
-HTTP UIs are exposed as stable `https://<name>.localhost` URLs via
-[portless](https://github.com/vercel-labs/portless)
-([ADR 0015](./docs/adr/0015-adopt-portless-for-local-dev-urls.md)); aliases live
-in [`config/portless-aliases.yaml`](./config/portless-aliases.yaml). TCP wire
-protocols (postgres / bolt / gRPC) are not portless-routable and stay on ports.
+HTTP UIs get stable `https://<name>.localhost` URLs through [portless](https://github.com/vercel-labs/portless) ([ADR 0015](./docs/adr/0015-adopt-portless-for-local-dev-urls.md)); aliases live in [`config/portless-aliases.yaml`](./config/portless-aliases.yaml).
+TCP wire protocols (postgres / bolt / gRPC) cannot be routed and keep their ports.
 
 ```shell
 just portless-trust       # one-time: trust the portless CA
@@ -224,37 +223,25 @@ just portless-up          # start proxy + register aliases (firebase.localhost, 
 just portless-ls          # list active routes; just portless-down to tear down
 ```
 
-Aliases are static routes, so registering them starts nothing on its own — the
-`https://*.localhost` URLs only respond once the backing stack is up (`just
-emu-up` / `just tel-up` / `just emu-api`). Optionally, `portless service
-install` runs the proxy on login so routes survive reboots.
+Registering an alias starts nothing.
+The `https://*.localhost` URLs respond only after the backing stack is up (`just emu-up`, `just tel-up`, `just emu-api`).
+`portless service install` runs the proxy at login so routes survive reboots.
 
 ## Dev Container
 
-This repo ships a [Dev Container](https://containers.dev/) declared in
-`.devcontainer/devcontainer.json` (debian-12 + Microsoft-curated
-features + local `dotfiles-tools` feature). The same file drives CI
-(`devcontainers/ci` action) and the Coder workspace template
-(prebuilt image pulled from Artifact Registry — no envbuilder per
-[ADR 0002](./docs/adr/0002-coder-prebuilt-image.md)), so all three
-environments stay aligned. Open it to get an isolated environment
-with `just`, `mise`, `prek`, `ruff`, `shellcheck`,
-`markdownlint-cli2`, Node.js 24, and 5 AI agent CLIs
-(`codex`, `antigravity`, `claude`, `copilot`, `pi`) already provisioned
-— useful as an AI agent sandbox for `just fmt|lint|check|test`.
-Auth for the AI CLIs is operator-side and runs once per workspace;
-see [`exe/docs/runbook.md`](./exe/docs/runbook.md#ai-agent-cli-authentication).
+`.devcontainer/devcontainer.json` (debian-12, Microsoft-curated features, and the local `dotfiles-tools` feature) defines the [Dev Container](https://containers.dev/).
+The same file drives CI (`devcontainers/ci`) and the Coder workspace template, which pulls a prebuilt image from Artifact Registry ([ADR 0002](./docs/adr/0002-coder-prebuilt-image.md); no envbuilder), so the three environments stay aligned.
+
+The container has `just`, `mise`, `prek`, `ruff`, `shellcheck`, `markdownlint-cli2`, Node.js (LTS) and five AI agent CLIs (`codex`, `antigravity`, `claude`, `copilot`, `pi`).
+That makes it a sandbox for agents running `just fmt|lint|check|test`.
+Auth for the CLIs is operator-side, once per workspace ([runbook](./exe/docs/runbook.md#ai-agent-cli-authentication)).
 
 - **Claude Code**: run `/devcontainer`
 - **VS Code / Cursor**: install the Dev Containers extension, then `Reopen in Container`
 - **JetBrains**: `File > Remote Development > Dev Containers`
 
-The `postCreateCommand` runs `mise trust && mise install && just install-hooks`,
-so prek hooks are wired into the clone automatically.
-
-## Tools
-
-- [Tools](./tools/README.md): Collection of utility scripts and tools (e.g., RTTM converter, simple server).
+`postCreateCommand` runs `just install-hooks` when the clone has a `.git`, so prek hooks are wired automatically.
+A failure does not stop the container.
 
 ## references
 
@@ -304,41 +291,34 @@ MCP catalog refs.
 
 ## skill setup
 
-justfile経由で `CLAUDE_CONFIG_DIR` を切り替えつつ操作できる:
+skill は自作 ([hironow/skills](https://github.com/hironow/skills)) もサードパーティも宣言管理する
+([ADR 0038](docs/adr/0038-declarative-third-party-skills.md) → [ADR 0043](docs/adr/0043-self-authored-skills-through-the-skills-cli.md))。
+実体は skills CLI が `~/.agents/skills` (store) に置き、git は宣言 `dump/harness/skill-lock.json` だけを追跡する。
+各 agent home (`~/.claude*`, `~/.codex`, `~/.gemini`) には、`skills-place` が store への相対 symlink を張る (張れない環境では追跡付きのコピー)。
+同名の skill は hironow/skills が優先される (`skills-lock-check` が `ci` で検証する)。
 
 ```bash
-just skills ls                # デフォルトconfigでスキル一覧
-just skills add <repo> --all  # スキル追加
-just env=a skills ls -g       # ~/.claude-work-a 向け
-just env=b skills ls -g       # ~/.claude-work-b 向け
-just env=c skills ls -g       # ~/.claude-work-c 向け
-just env=d skills ls -g       # ~/.claude-work-d 向け
-just env=p skills ls -g       # ~/.claude (personal) 向け
-```
-
-```bash
-just skills add vercel-labs/agent-skills
-just skills add modelcontextprotocol/ext-apps
-just skills add wandb/skills
-just skills add https://github.com/googleworkspace/cli
-# browser: https://github.com/vercel-labs/agent-browser?tab=readme-ov-file#agentsmd--claudemd
-just skills add vercel-labs/agent-browser
-```
-
-skill は自作 ([hironow/skills](https://github.com/hironow/skills)) もサードパーティも**宣言管理**
-([ADR 0038](docs/adr/0038-declarative-third-party-skills.md) →
-[ADR 0043](docs/adr/0043-self-authored-skills-through-the-skills-cli.md)):
-実体は skills CLI が `~/.agents/skills` (store) に持ち、git は正規化宣言
-`dump/harness/skill-lock.json` のみ追跡する。各 agent home (`~/.claude*`, `~/.codex`, `~/.gemini`)
-には `skills-place` が store への相対 symlink を張る (symlink 不可の環境では追跡付きコピー)。
-同名衝突は hironow/skills が勝つ (`skills-lock-check` が `ci` で検証)。
-
-```bash
-just dump-skills-lock     # bunx skills add/update/remove の後に宣言を更新
-just restore-skills-lock  # 新マシンで宣言から復元 (store → home の順、best-effort: upstream HEAD)
+just restore-skills-lock  # 新しいマシン: 宣言から store に復元し、home に配置する
 just skills-place         # home の symlink を張り直す (冪等)
-just skills-update        # hironow/skills の merge 後など: store を更新して home を張り直す
+just skills-update        # hironow/skills の merge 後など: store を更新して home に配置する
+
+# 追加: CLI には store だけを書かせ (-a universal)、宣言を更新してから配置する
+bunx skills add <repo> -g -s <name> -y -a universal
+just dump-skills-lock
+just skills-place
 ```
+
+`just dump-skills-lock` は、その機体の store 全体から宣言を作り直す。
+store が宣言とずれていると無関係な差分も出るので、差分を確認する。
+
+サードパーティは、必要な skill だけを宣言している。
+
+- `wandb/skills`: `wandb-primary` は hironow/skills の fork が優先される。宣言するのは `wandb-autoresearch` と `wandb-eval-tables`。
+- `googleworkspace/cli`: 95 個のうち、`gws-shared` と主要 9 サービス (gmail / calendar / drive / docs / sheets / slides / tasks / forms / people) だけを宣言する。`persona-*` と `recipe-*` は、skill 一覧が長くなるため入れない。
+- `vercel-labs/agent-browser`: [使い方](https://github.com/vercel-labs/agent-browser?tab=readme-ov-file#agentsmd--claudemd)。
+
+`just skills` は、`CLAUDE_CONFIG_DIR` を切り替えて CLI を呼ぶ (`env=p` は `~/.claude`、`a` から `d` は `~/.claude-work-a` から `-d`)。
+参照 (`just env=a skills ls -g`) に使い、追加には使わない。home に直接書き込み、store と宣言から外れるためである。
 
 Skill catalog refs.
 

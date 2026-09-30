@@ -515,6 +515,96 @@
       "resolved_by": "installed"
     },
     {
+      "installed_dir": "gws-calendar",
+      "upstream_name": "gws-calendar",
+      "lock_key": "gws-calendar",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-calendar/SKILL.md",
+      "skill_folder_hash": "62a27859dbdf798c1f7288d04750e743283a6b4f",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "gws-docs",
+      "upstream_name": "gws-docs",
+      "lock_key": "gws-docs",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-docs/SKILL.md",
+      "skill_folder_hash": "455f7468d4a2e3b0b352fbd7ad0937354427af82",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "gws-drive",
+      "upstream_name": "gws-drive",
+      "lock_key": "gws-drive",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-drive/SKILL.md",
+      "skill_folder_hash": "46b7e75840ff26db80b6b74238e423dfa4b75c11",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "gws-forms",
+      "upstream_name": "gws-forms",
+      "lock_key": "gws-forms",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-forms/SKILL.md",
+      "skill_folder_hash": "eed415975407cd92db67a743992f436a56bec2d1",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "gws-gmail",
+      "upstream_name": "gws-gmail",
+      "lock_key": "gws-gmail",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-gmail/SKILL.md",
+      "skill_folder_hash": "95c83c1280def63651f99025fa707bc0e4781a79",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "gws-people",
+      "upstream_name": "gws-people",
+      "lock_key": "gws-people",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-people/SKILL.md",
+      "skill_folder_hash": "b3a24673cdbbbf6d3eed3203e20521b289298c63",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "gws-shared",
+      "upstream_name": "gws-shared",
+      "lock_key": "gws-shared",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-shared/SKILL.md",
+      "skill_folder_hash": "50b50dd1d65c51835c599745c943ada18b187a86",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "gws-sheets",
+      "upstream_name": "gws-sheets",
+      "lock_key": "gws-sheets",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-sheets/SKILL.md",
+      "skill_folder_hash": "50758ea65d12833e48361aa541c0acaff0d96f67",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "gws-slides",
+      "upstream_name": "gws-slides",
+      "lock_key": "gws-slides",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-slides/SKILL.md",
+      "skill_folder_hash": "a1aef615fb11bcce264c1eff679d15c3d2a73f10",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "gws-tasks",
+      "upstream_name": "gws-tasks",
+      "lock_key": "gws-tasks",
+      "source": "googleworkspace/cli",
+      "skill_path": "skills/gws-tasks/SKILL.md",
+      "skill_folder_hash": "2eb991e7237379dfbf9e7ec6f7fbf7f0497e5ae7",
+      "resolved_by": "installed"
+    },
+    {
       "installed_dir": "handoff",
       "upstream_name": "handoff",
       "lock_key": "handoff",
@@ -1070,6 +1160,24 @@
       "source": "mattpocock/skills",
       "skill_path": "skills/productivity/wait-what/SKILL.md",
       "skill_folder_hash": "6abe708f1bf253158a037ac49faea2944e2809dc",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "wandb-autoresearch",
+      "upstream_name": "wandb-autoresearch",
+      "lock_key": "wandb-autoresearch",
+      "source": "wandb/skills",
+      "skill_path": "skills/wandb-autoresearch/SKILL.md",
+      "skill_folder_hash": "9cbe3bd6cc770cd3ae320c1c9f8eae55d8cbed20",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "wandb-eval-tables",
+      "upstream_name": "wandb-eval-tables",
+      "lock_key": "wandb-eval-tables",
+      "source": "wandb/skills",
+      "skill_path": "skills/wandb-eval-tables/SKILL.md",
+      "skill_folder_hash": "d09f628cad190e0f5e3bbd2eb24990f7aa18f8ae",
       "resolved_by": "installed"
     },
     {
