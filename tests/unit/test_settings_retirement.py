@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from sync_agents import AgentTarget, _merge_settings_fragment  # noqa: E402
 
-
+DOTFILES = Path(__file__).resolve().parents[2]
 MIGRATION = "2026-10-test-migration"
 
 
@@ -189,3 +189,71 @@ def test_the_record_is_written_before_settings(
 
     assert not _merge_settings_fragment(dotfiles, _agent(home), system="Linux")
     assert _read_target(home)["tui"] == "default"
+
+
+# ---- The repo's own fragments, applied to what earlier syncs deployed ----
+
+DEPLOYED_BEFORE = {
+    "work-a": {
+        "effortLevel": "medium",
+        "permissions": {"defaultMode": "auto"},
+        "skipAutoPermissionPrompt": True,
+        "teammateMode": "in-process",
+        "askUserQuestionTimeout": "10m",
+        "editorMode": "normal",
+        "companyAnnouncements": ["Welcome to workspace - a -"],
+    },
+    "work-b": {
+        "effortLevel": "medium",
+        "permissions": {"defaultMode": "auto"},
+        "skipAutoPermissionPrompt": True,
+        "tui": "default",
+    },
+    "work-c": {"effortLevel": "xhigh", "tui": "default"},
+    "work-d": {
+        "effortLevel": "xhigh",
+        "permissions": {"defaultMode": "default"},
+        "tui": "default",
+    },
+}
+RETIRED_KEYS = {"effortLevel", "tui", "teammateMode", "editorMode"}
+USER_KEYS = {
+    "enabledPlugins": {"p@m": True},
+    "statusLine": {"type": "command", "command": "x"},
+}
+
+
+@pytest.mark.parametrize(
+    "renderer", ["default", "fullscreen"]
+)  # fullscreen: before #286
+@pytest.mark.parametrize("key", sorted(DEPLOYED_BEFORE))
+def test_repo_work_profiles_retire_what_they_dropped(
+    tmp_path: Path, key: str, renderer: str
+) -> None:
+    deployed = dict(DEPLOYED_BEFORE[key])
+    if "tui" in deployed:
+        deployed["tui"] = renderer
+    _write_target(tmp_path, {**deployed, **USER_KEYS})
+
+    _merge_settings_fragment(DOTFILES, _agent(tmp_path, key), system="Linux")
+
+    result = _read_target(tmp_path)
+    assert not RETIRED_KEYS & set(result)
+    assert result["permissions"]["defaultMode"] == "auto"
+    assert result["skipAutoPermissionPrompt"] is True
+    assert {name: result[name] for name in USER_KEYS} == USER_KEYS
+    if key == "work-a":
+        assert result["askUserQuestionTimeout"] == "10m"
+        assert result["companyAnnouncements"] == ["Welcome to workspace - a -"]
+
+
+def test_the_claude_profile_keeps_its_effective_settings(tmp_path: Path) -> None:
+    # Moving defaultMode / skipAutoPermissionPrompt into the shared layer
+    # must not change what the personal profile gets
+    _merge_settings_fragment(DOTFILES, _agent(tmp_path, "claude"), system="Linux")
+
+    result = _read_target(tmp_path)
+    assert result["permissions"]["defaultMode"] == "auto"
+    assert result["skipAutoPermissionPrompt"] is True
+    assert result["effortLevel"] == "medium"
+    assert result["teammateMode"] == "auto"

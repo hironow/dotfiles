@@ -1,6 +1,8 @@
 {
-  "settings": {
-    "effortLevel": "xhigh",
-    "tui": "default"
+  "retired": {
+    "2026-10-recommended-defaults": {
+      "effortLevel": ["xhigh"],
+      "tui": ["default", "fullscreen"]
+    }
   }
 }
