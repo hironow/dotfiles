@@ -35,6 +35,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -46,7 +47,7 @@ JUSTFILE = ROOT / "justfile"
 def test_no_double_dollar_var_question_mark_in_shebang_recipes() -> None:
     """`$${VAR:?msg}` is broken in shebang recipes — see module
     docstring. The pattern must not exist anywhere in the justfile."""
-    text = JUSTFILE.read_text()
+    text = JUSTFILE.read_text(encoding="utf-8")
     matches = re.findall(r"\$\$\{[A-Z_][A-Z0-9_]*:\?[^}]*\}", text)
     assert matches == [], (
         "justfile contains broken $${VAR:?msg} env-var guards (these\n"
@@ -64,6 +65,10 @@ def just_binary() -> str:
     return just
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the fixture PATH is POSIX (/usr/bin); native just finds no bash for shebang recipes",
+)
 def test_env_check_actually_fires_on_missing_token(
     just_binary: str, tmp_path: Path
 ) -> None:
@@ -89,6 +94,7 @@ def test_env_check_actually_fires_on_missing_token(
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     assert result.returncode != 0, (
@@ -100,6 +106,10 @@ def test_env_check_actually_fires_on_missing_token(
     )
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the fixture PATH is POSIX (/usr/bin); native just finds no bash for shebang recipes",
+)
 def test_env_check_passes_with_token_set(just_binary: str, tmp_path: Path) -> None:
     """Same recipe, with the token set, must succeed."""
     tmp_just = tmp_path / "smoke.just"
@@ -120,6 +130,7 @@ def test_env_check_passes_with_token_set(just_binary: str, tmp_path: Path) -> No
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     assert result.returncode == 0, (

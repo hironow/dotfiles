@@ -28,7 +28,7 @@ def blocks(stack: Path, kind: str) -> dict[str, str]:
     """Every `resource "<type matching kind>" "<name>" { ... }` in a stack, by address."""
     out: dict[str, str] = {}
     for tf in sorted(stack.glob("*.tf")):
-        text = tf.read_text()
+        text = tf.read_text(encoding="utf-8")
         for m in re.finditer(r'resource "(' + kind + r')" "([\w-]+)" \{', text):
             depth, i = 1, m.end()
             while depth:
@@ -76,7 +76,7 @@ def test_no_role_binding_names_the_gcs_ksa() -> None:
 
 def local_value(stack: Path, name: str) -> str:
     for tf in sorted(stack.glob("*.tf")):
-        m = re.search(rf"^\s*{name}\s*=\s*(.+)$", tf.read_text(), re.M)
+        m = re.search(rf"^\s*{name}\s*=\s*(.+)$", tf.read_text(encoding="utf-8"), re.M)
         if m:
             return m.group(1).strip()
     raise AssertionError(f"no local {name} in {stack.name}")
@@ -96,6 +96,8 @@ def test_the_gc_prefixes_are_the_actors_the_cluster_and_substrate_use() -> None:
     assert root == f'"{m.group(1)}"'
 
     task_atespace = local_value(CLUSTER, "atespace")
-    golden = re.search(r'GoldenAtespace = "([^"]+)"', GOLDEN_GO.read_text())
+    golden = re.search(
+        r'GoldenAtespace = "([^"]+)"', GOLDEN_GO.read_text(encoding="utf-8")
+    )
     assert golden
     assert atespaces == {task_atespace.strip('"'), golden.group(1)}

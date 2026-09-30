@@ -86,6 +86,14 @@ def machine(tmp_path: Path) -> dict[str, Path]:
     return {"bin": bindir, "uvtools": uvtools, "log": log, "nm": nm, "keep": keep}
 
 
+def _sh(path: Path) -> str:
+    """``path`` as bash spells it: bash splits PATH on ':', so a native
+    Windows entry breaks at its drive colon; Git Bash resolves ``/c/...``."""
+    if not path.drive:
+        return str(path)
+    return f"/{path.drive[0].lower()}{path.as_posix()[len(path.drive) :]}"
+
+
 def _run(
     mode: str, m: dict[str, Path], *, drop: tuple[str, ...] = ()
 ) -> subprocess.CompletedProcess[str]:
@@ -94,7 +102,7 @@ def _run(
     return subprocess.run(
         [BASH, str(SCRIPT), mode],
         env={
-            "PATH": f"{m['bin']}:/usr/bin:/bin",
+            "PATH": f"{_sh(m['bin'])}:/usr/bin:/bin",
             "HOME": str(m["bin"].parent),
             "STUB_LOG": str(m["log"]),
             "UV_TOOL_DIR": str(m["uvtools"]),
@@ -111,8 +119,8 @@ def test_detect_reports_every_retired_artefact(machine: dict[str, Path]) -> None
     r = _run("detect", machine)
     assert r.returncode == 0, r.stderr
     lines = set(r.stdout.splitlines())
-    assert f"path:pyright:{machine['bin'] / 'pyright'}" in lines
-    assert f"path:mypy:{machine['bin'] / 'mypy'}" in lines
+    assert f"path:pyright:{_sh(machine['bin'] / 'pyright')}" in lines
+    assert f"path:mypy:{_sh(machine['bin'] / 'mypy')}" in lines
     assert "uv-tool:mypy" in lines and "uv-tool:ruff" in lines
     assert "brew:ruff" in lines
     assert "mise-unmanaged:ruff@0.12.7" in lines
@@ -197,7 +205,7 @@ def test_prune_leaves_a_project_local_node_modules_pyright_alone(
     r = subprocess.run(
         [BASH, str(SCRIPT), "prune"],
         env={
-            "PATH": f"{dotbin}:{machine['bin']}:/usr/bin:/bin",
+            "PATH": f"{_sh(dotbin)}:{_sh(machine['bin'])}:/usr/bin:/bin",
             "HOME": str(machine["bin"].parent),
             "STUB_LOG": str(machine["log"]),
             "UV_TOOL_DIR": str(machine["uvtools"]),
@@ -209,7 +217,7 @@ def test_prune_leaves_a_project_local_node_modules_pyright_alone(
     )
     assert r.returncode == 0, r.stderr
     assert local.exists() and (dotbin / "pyright").exists()
-    assert f"left path:pyright:{dotbin / 'pyright'}" in r.stdout
+    assert f"left path:pyright:{_sh(dotbin / 'pyright')}" in r.stdout
 
 
 def test_unknown_mode_is_a_usage_error() -> None:

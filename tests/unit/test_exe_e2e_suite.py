@@ -20,7 +20,7 @@ JUSTFILE = REPO / "justfile"
 
 def recipe(name: str) -> tuple[list[str], str]:
     """A recipe's attribute lines and its body, from the root justfile."""
-    lines = JUSTFILE.read_text().splitlines()
+    lines = JUSTFILE.read_text(encoding="utf-8").splitlines()
     start = next(
         i for i, line in enumerate(lines) if re.match(rf"^{re.escape(name)}\b.*:", line)
     )
@@ -54,6 +54,7 @@ def test_without_exe_e2e_every_live_test_is_skipped() -> None:
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=120,
         check=False,
     )
@@ -79,7 +80,7 @@ def test_the_recipe_is_the_way_in() -> None:
 
 
 def test_the_readme_says_what_each_run_costs_and_leaves() -> None:
-    readme = (SUITE / "README.md").read_text()
+    readme = (SUITE / "README.md").read_text(encoding="utf-8")
     for needed in (
         "EXE_E2E",
         "just exe-e2e",
@@ -94,7 +95,7 @@ def test_the_forced_stop_needs_its_own_opt_in() -> None:
     # W3 needs the operator on email and the manager's go. Running the
     # directory once started it in W2 (pytest collected it beside the file
     # asked for): EXE_E2E alone must never start it.
-    text = (SUITE / "test_forced_stop.py").read_text()
+    text = (SUITE / "test_forced_stop.py").read_text(encoding="utf-8")
     assert re.search(
         r"pytestmark = pytest\.mark\.skipif\(\s*os\.environ\.get\(\"EXE_E2E_FORCED\"\) != \"1\"",
         text,
@@ -111,7 +112,7 @@ def test_a_path_argument_runs_only_that_path() -> None:
 def test_keeping_the_node_up_still_deletes_the_tasks() -> None:
     # W3 chains modules in one wake (EXE_E2E_KEEP_AWAKE=1). The node may stay
     # up; a test's tasks may not, and the lease stays the backstop.
-    text = (SUITE / "exe_live.py").read_text()
+    text = (SUITE / "exe_live.py").read_text(encoding="utf-8")
     body = text[text.index("def leave_asleep") :]
     delete = body.index('"delete", "task"')
     keep = body.index('os.environ.get("EXE_E2E_KEEP_AWAKE")')
@@ -124,7 +125,7 @@ def test_the_forced_stop_waits_the_window_l2_really_waits() -> None:
     # the deadline, and forces after HeartbeatStaleAfter, which is
     # heartbeat_stale_ticks L2 ticks (lease.HeartbeatStaleAfter), 20 minutes.
     # A hardcoded 2 minutes read it as L1 ticks and would fail every W3.
-    text = (SUITE / "test_forced_stop.py").read_text()
+    text = (SUITE / "test_forced_stop.py").read_text(encoding="utf-8")
     assert "lease-constants.json" in text
     assert re.search(r'\["heartbeat_stale_ticks"\]\s*\*\s*L2_TICK', text)
     assert "timedelta(minutes=2)" not in text

@@ -29,7 +29,7 @@ def _instructions(path: Path) -> list[str]:
     """Dockerfile instructions with continuation lines joined, comments dropped."""
     joined: list[str] = []
     current = ""
-    for raw in path.read_text().splitlines():
+    for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not current and (not line or line.startswith("#")):
             continue
@@ -69,7 +69,7 @@ def test_every_image_the_dockerfile_uses_is_pinned_by_digest() -> None:
 
 
 def test_the_runner_sits_where_ax_starts_it() -> None:
-    text = _DOCKERFILE.read_text()
+    text = _DOCKERFILE.read_text(encoding="utf-8")
     assert re.search(
         r"^COPY\s+ax-task-runner\s+/usr/local/bin/ax-task-runner$", text, re.MULTILINE
     )
@@ -77,7 +77,7 @@ def test_the_runner_sits_where_ax_starts_it() -> None:
 
 
 def test_the_claude_binary_is_a_pinned_version_checked_by_sha256() -> None:
-    text = _DOCKERFILE.read_text()
+    text = _DOCKERFILE.read_text(encoding="utf-8")
     assert re.search(r"^ARG CLAUDE_CODE_VERSION=\d+\.\d+\.\d+$", text, re.MULTILINE)
     assert re.search(r"^ARG CLAUDE_CODE_SHA256=[0-9a-f]{64}$", text, re.MULTILINE)
     assert "sha256sum -c" in text
@@ -94,13 +94,13 @@ def test_python_packages_are_pinned_by_version() -> None:
 
 
 def test_debian_packages_come_from_a_dated_snapshot() -> None:
-    text = _DOCKERFILE.read_text()
+    text = _DOCKERFILE.read_text(encoding="utf-8")
     assert re.search(r"^ARG DEBIAN_SNAPSHOT=\d{8}T\d{6}Z$", text, re.MULTILINE)
     assert "snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" in text
 
 
 def test_cloud_build_builds_linux_amd64_with_a_pinned_builder() -> None:
-    text = _CLOUDBUILD.read_text()
+    text = _CLOUDBUILD.read_text(encoding="utf-8")
     assert "--platform=linux/amd64" in text
     builders = re.findall(r"^\s*-?\s*name:\s*(\S+)", text, re.MULTILINE)
     assert builders and all(_DIGEST.search(b) for b in builders), builders
@@ -108,14 +108,20 @@ def test_cloud_build_builds_linux_amd64_with_a_pinned_builder() -> None:
 
 def test_cloud_build_logs_to_cloud_logging_only() -> None:
     assert re.search(
-        r"^\s+logging:\s+CLOUD_LOGGING_ONLY$", _CLOUDBUILD.read_text(), re.MULTILINE
+        r"^\s+logging:\s+CLOUD_LOGGING_ONLY$",
+        _CLOUDBUILD.read_text(encoding="utf-8"),
+        re.MULTILINE,
     )
 
 
 def test_exe_image_stages_in_the_bounded_bucket_as_the_build_sa_and_checks_amd64() -> (
     None
 ):
-    body = _JUSTFILE.read_text().split("\nexe-image:", 1)[1].split("\n\n", 1)[0]
+    body = (
+        _JUSTFILE.read_text(encoding="utf-8")
+        .split("\nexe-image:", 1)[1]
+        .split("\n\n", 1)[0]
+    )
     assert "--gcs-source-staging-dir" in body and "bucket_build" in body
     assert "--service-account" in body
     assert "exe/ax/cloudbuild.yaml" in body
