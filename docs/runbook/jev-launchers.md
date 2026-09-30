@@ -8,6 +8,8 @@ Jev の答えから、セッションと worker の Sonnet 5.5 の思考レベ�
 
 `just deploy` を実行し、新しいシェルを開く。
 Pi の拡張が未導入と表示された場合は、`just pi-extensions-install` を実行する。
+`just deploy` は導入済みの Pi の拡張を更新しないので、更新は `just update-all`（中で `pi update --extensions`）で行う。
+機体ごとに拡張の版がずれると、同じ設定でも片方だけ失敗することがある。
 
 TypeSafe の API キーは、`TYPESAFE_API_KEY=...` と書いた `~/.env` に置く。
 起動のたびに読むので、書き換えてもシェルを開き直す必要はない。

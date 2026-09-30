@@ -1073,6 +1073,8 @@ update-all:
     @if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
     @echo "◆ vscode extensions..."
     @if command -v code >/dev/null 2>&1; then NODE_NO_WARNINGS=1 code --update-extensions; else echo 'code not found; skip'; fi
+    @echo "◆ pi extensions..."
+    @if command -v pi >/dev/null 2>&1; then pi update --extensions || echo 'WARN: pi update failed (a fresh dependency may still be in the ~/.npmrc 7-day quarantine); retry later'; else echo 'pi not found; skip'; fi
 
 # Update (all, safe): same as update-all (kept as alias for muscle memory)
 [group('Update')]
@@ -1089,6 +1091,8 @@ update-all-safe:
     @if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
     @echo "◆ vscode extensions..."
     @if command -v code >/dev/null 2>&1; then NODE_NO_WARNINGS=1 code --update-extensions; else echo 'code not found; skip'; fi
+    @echo "◆ pi extensions..."
+    @if command -v pi >/dev/null 2>&1; then pi update --extensions || echo 'WARN: pi update failed (a fresh dependency may still be in the ~/.npmrc 7-day quarantine); retry later'; else echo 'pi not found; skip'; fi
 
 # Update: update and cleanup Homebrew
 [group('Update')]

@@ -126,7 +126,7 @@ just sync-agents-preview        # エージェント指示の配布を試す（�
 just sync-agents                # ~/.claude などへ配る
 just lint-claude                # 配る Claude 設定の検査（ADR 0029）
 
-just update-all                 # 道具を更新する
+just update-all                 # 道具を更新する（mise、gh、Pi の拡張など）
 just dump                       # 導入済みのパッケージを dump/<host>/ に記録する
 just add-brew                   # macOS: 記録から復元する
 just add-scoop                  # Windows: 記録から復元する（ADR 0032）
