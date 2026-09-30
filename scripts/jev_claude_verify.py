@@ -5,7 +5,7 @@ The verdict comes from records Claude Code leaves behind, not from model text:
 the hook's own log, each subagent's sidecar (agentType, name) and the effort
 recorded on each of its requests.
 
-Exit 0 = pass, 1 = fail (a real defect), 2 = blocked (usage limit; nothing learned),
+Exit 0 = pass, 1 = fail (a real defect), 2 = blocked (usage limit or no login; nothing learned),
 3 = partial (works, but the effort could not be confirmed; check /tasks by eye).
 """
 
@@ -67,6 +67,25 @@ def has_provider_limit(stream_lines: list[str]) -> bool:
     return False
 
 
+def is_logged_out(stream_lines: list[str]) -> bool:
+    """The CLI ended before any request because it has no login (its own result
+    event, never quoted model text): nothing was tested, so this is not a defect."""
+    for line in stream_lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if (
+            isinstance(event, dict)
+            and event.get("type") == "result"
+            and event.get("is_error") is True
+            and isinstance(event.get("result"), str)
+            and re.match(r"^Not logged in\b", event["result"])
+        ):
+            return True
+    return False
+
+
 def _analyze_worker(
     stream_lines: list[str],
     hook_records: list[dict],
@@ -90,6 +109,11 @@ def _analyze_worker(
         return Report(
             "fail",
             "Claude Code rejected the hook output schema for updatedInput (see the debug log)",
+        )
+    if not hook_records and is_logged_out(stream_lines):
+        return Report(
+            "blocked",
+            "Claude Code is not logged in (run claude, then /login); nothing was verified",
         )
     if not hook_records:
         return Report(

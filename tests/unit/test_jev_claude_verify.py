@@ -46,6 +46,39 @@ def test_the_weekly_limit_is_blocked_not_failed() -> None:
     assert verify.analyze(limit_stream(), [], [], "").status == "blocked"
 
 
+def test_a_logged_out_cli_is_blocked_not_failed() -> None:
+    """Seen live (WSL): `claude -p` ended at once with this result, no Agent call
+    ran, and the run was reported FAIL (a defect) although nothing was tested."""
+    stream = [
+        json.dumps(
+            {
+                "type": "result",
+                "is_error": True,
+                "result": "Not logged in · Please run /login",
+            }
+        )
+    ]
+    report = verify.analyze(stream, [], [], "")
+    assert report.status == "blocked"
+    assert "/login" in report.reason
+
+
+def test_logged_out_text_from_the_model_does_not_block() -> None:
+    stream = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "Not logged in · Please run /login"}
+                    ]
+                },
+            }
+        )
+    ]
+    assert verify.analyze(stream, [], [], "").status == "fail"
+
+
 @pytest.mark.parametrize(
     "event",
     [
@@ -497,3 +530,38 @@ def test_ordinary_limit_quote_cannot_hide_wrong_codex_arguments() -> None:
         quote, [RECORD, CODEX_RECORD], [OK, wrong], "", expect_codex=True
     )
     assert report.status == "fail"
+
+
+@pytest.mark.parametrize(
+    ("records", "subagents", "status"),
+    [
+        ([], [], "blocked"),
+        ([CODEX_RECORD], [{**CODEX_OK, "commands": []}], "blocked"),
+        (
+            [CODEX_RECORD],
+            [
+                {
+                    **CODEX_OK,
+                    "commands": [COMPANION.replace("gpt-6-astra", "gpt-6-luna")],
+                }
+            ],
+            "fail",
+        ),
+    ],
+)
+def test_login_block_does_not_hide_codex_defects_or_invent_missing_evidence(
+    records: list[dict], subagents: list[dict], status: str
+) -> None:
+    stream = [
+        json.dumps(
+            {
+                "type": "result",
+                "is_error": True,
+                "result": "Not logged in · Please run /login",
+            }
+        )
+    ]
+    report = verify.analyze(stream, records, subagents, "", expect_codex=True)
+    assert report.status == status
+    if status == "blocked":
+        assert "/login" in report.reason
