@@ -1,181 +1,177 @@
 # Jev で Claude Code と Pi を起動する
 
-通常の `claude` と `pi` はそのまま使える。
-作業内容に応じて Sonnet 5.5 の思考レベルを選びたいときは、専用コマンドに**最初の依頼文**を渡す。
+`j-cc` と `j-pi` は、最初の依頼文を Jev に問い合わせてから Claude Code と Pi を起動する。
+Jev の答えから、セッションと worker の Sonnet 5.5 の思考レベルと、Codex の worker のモデルと reasoning effort を選ぶ。
+通常の `claude` と `pi` の動作は変えない。
 
 ## 初回準備
 
 `just deploy` を実行し、新しいシェルを開く。
-Pi の拡張が未導入と表示された場合は、`just pi-extensions-install` を再実行する。
+Pi の拡張が未導入と表示された場合は、`just pi-extensions-install` を実行する。
 
 TypeSafe の API キーは、`TYPESAFE_API_KEY=...` と書いた `~/.env` に置く。
-起動のたびに読むため、書き換えてもシェルを開き直す必要はない。
+起動のたびに読むので、書き換えてもシェルを開き直す必要はない。
 `TYPESAFE_API_KEY` 環境変数があれば、そちらを優先する。
-worker のフックと `codex-jev` は、キーの環境変数を除いた環境で動くので、この `.env` からキーを読む。
-そのため、これらを使うには `.env` が必要である。
+worker のフックと `codex-jev` は、キーの環境変数を除いた環境で動くので、`~/.env` からしかキーを読めない。
 
-他人が読めるファイルからは読まない。
-macOS と Linux では、所有者のみ読み書きできる 0600 にする（`chmod 600 ~/.env`）。
-Windows では、所有者が自分で、自分・SYSTEM・Administrators 以外にアクセス許可が無いこと。
-ホーム直下に作ったファイルの既定の権限なら満たす。
-満たさない場合は、継承を外して自分だけに許可する。
+他人が読める `~/.env` からは読まない。
+macOS と Linux では、所有者だけが読み書きできる 0600 にする（`chmod 600 ~/.env`）。
+Windows では、所有者が自分で、自分、SYSTEM、Administrators のほかにアクセス許可がないことを求める。
+ホーム直下に作ったファイルは既定の権限で満たし、満たさない場合は継承を外して自分だけに許可する。
 
 ```powershell
 icacls "$HOME\.env" /inheritance:r /grant:r "${env:USERNAME}:F"
 ```
 
-キーをリポジトリに置かない。
-依頼文は Jev に送信されるため、パスワードなどを含めない。
+キーはリポジトリに置かない。
+依頼文は Jev に送られるので、パスワードなどを含めない。
 
 ## 使い方
 
-macOS と Linux（zsh）、または Windows PowerShell で、作業リポジトリに移動して実行する。
+macOS と Linux の zsh、または Windows の PowerShell で、作業リポジトリに移動して実行する。
 
 ```sh
 j-cc '失敗しているパーサのテストを修正して'
 j-pi '失敗しているパーサのテストを修正して'
 ```
 
-依頼文を渡さないと起動しない。
-既存セッションを再開するコマンドではなく、新しいセッションを開始する。
+依頼文がないと起動しない。
+既存のセッションを再開するのではなく、新しいセッションを始める。
+通常起動のモデル設定、権限、承認、計画レビューの規則は変えない。
+Claude Code に利用上限が出ても、別のアカウントや従量課金には切り替えない。
 
-## 選択と切り戻し
+## 思考レベルの選び方
 
-起動時に Jev へ1回問い合わせ、Sonnet 5.5 の思考レベルを選ぶ。
-問いは2つで、1回の呼び出しにまとめる。
+起動時に Jev へ 1 回だけ問い合わせる。
+問いは次の 2 つで、1 回の呼び出しにまとめる。
 
-- 難しさ（Score、3段階）: 単純な変更から、原因不明や複数サービスにまたがる作業まで。
-- 厳密な構造が必要か（Noul）: JSON スキーマなど、形式の誤りが利用側を壊す作業か。
+- **難しさ**（Score、3 段階）：単純な変更から、原因不明で複数のサービスにまたがる作業まで
+- **厳密な構造**（Noul）：JSON スキーマなど、形式の誤りが利用側を壊す作業か
 
-判定はこのリポジトリのコードで行う。
-[Anthropic の Sonnet 5.5 推奨](https://platform.claude.com/docs/en/build-with-claude/effort#recommended-effort-levels-for-claude-sonnet-5-5) に合わせ、明確な作業は `medium`、難しい作業と厳密な構造が必要な作業は `high` にする。
-`xhigh` と `max` は評価で改善が確認されるまで選ばない。
+答えはこのリポジトリのコードで思考レベルに直す。
+[Anthropic の Sonnet 5.5 の推奨](https://platform.claude.com/docs/en/build-with-claude/effort#recommended-effort-levels-for-claude-sonnet-5-5)に合わせ、明確な作業は `medium`、難しい作業と厳密な構造が要る作業は `high` にする。
+`xhigh` と `max` は、評価で改善を確かめるまで選ばない。
 
 | 条件 | 思考レベル |
 | --- | --- |
-| 構造の確率が 0.7 以上 | `high` |
-| 難しさの確信度が 0.5 未満（Jev が判断できない） | `medium` |
+| 厳密な構造の確率が 0.7 以上 | `high` |
+| 難しさの確信度が 0.5 未満（Jev にも判断がつかない） | `medium` |
 | 難しさのスコアが 1.5 以上（最上位の段階に近い） | `high` |
 | 上記以外 | `medium` |
 
-確信度が 0.5 未満のときは、Jev が「わからない」と答えたものとして扱い、既定の `medium` にする。
-Jev に届かない、または応答を解釈できないときも `medium` で起動する。
-NaN、無限大、数値への変換でオーバーフローする値は採用しない。
-独立した有効な構造の確率が 0.7 以上なら、難しさの値が無効でも `high` にする。
-閾値は `scripts/jev_core.py` にあり、Pi の拡張と同じ値を使う。
-両者の一致は `tests/unit/jev_effort_cases.json` で確認している。
-Pi は認証済みの提供元を、GitHub Copilot、Cursor、Anthropic（Claude Code のサブスク）、OpenRouter の順に選ぶ。
-Claude Code のサブスクは、Claude Code 自身のために残すので、ほかのサブスクより後にする。
-OpenRouter は従量課金なので最後にする。
-Pi は明示的な 429 ステータスか、既知の機械的な上限エラー種別を確認した場合だけ、次の認証済み提供元へ切り替える。
-曖昧な「quota exceeded」などの文章や、認証・サーバーエラーを含む矛盾したステータスでは切り替えず、元のエラーを表示する。
-利用できる提供元がなければエラーを表示する。
-Claude Code 側に利用上限が出た場合、このコマンドは別アカウントや従量課金へ自動切替しない。
-通常起動のモデル設定、権限、承認、既存の計画レビュー規則は変更しない。
+Jev に届かないときと、応答を解釈できないときも `medium` にする。
+NaN、無限大、数値に直すとあふれる値は採用しない。
+厳密な構造の確率が有効に 0.7 以上なら、難しさの値が無効でも `high` にする。
+閾値は `scripts/jev_core.py` にあり、Pi の拡張も同じ値を使う（`tests/unit/jev_effort_cases.json` が一致を確かめる）。
 
-## Pi の worker 起動ごとの選択
+## worker ごとの選択
 
-`j-pi` で起動した Pi では、`subagent` で worker を1つ起動するたびに、その `task` を Jev に送り、思考レベルを選ぶ。
-起動元の Sonnet 5.5 のモデルに `:medium` か `:high` を付けて worker を起動する。
-判定と、Jev に届かないときの `medium` は起動時と同じ。
-モデルを明示した起動は、Sonnet 5.5 の提供元で suffix がない場合にだけ思考レベルを付ける。
-ほかのモデル、`:low` などの suffix 付き、`workflowScript` の中の子、管理操作には触れない。
-通常の `pi` には影響しない。
+セッションだけでなく、worker を 1 つ起動するたびに、その依頼を Jev に送って思考レベルを選び直す。
+判定と、Jev に届かないときの `medium` は、起動時と同じである。
 
-API キーは Pi 起動時に拡張へ1回だけ渡し、拡張が読み込み直後に環境から消す。
-bash ツールや worker の子セッションにキーは渡らない。
-拡張が未導入のときは、キーを Pi に渡さず、worker の選択は行わない。
+### Pi
 
-## Claude Code の worker 起動ごとの選択
+`j-pi` で起動した Pi では、`subagent` が worker を起動するたびに `task` を Jev に送る。
+起動元の Sonnet 5.5 のモデル名に `:medium` か `:high` を付けて worker を起動する。
+モデルを明示した起動は、Sonnet 5.5 の提供元で suffix がない場合にだけ付ける。
+ほかのモデル、`:low` などの suffix が付いた起動、`workflowScript` の中の子、管理操作には触れない。
 
-`j-cc` で起動した Claude Code でも、既定の worker（`general-purpose`）を起動するたびに、`prompt` を Jev に送り、思考レベルを選ぶ。
+API キーは Pi の起動時に拡張へ 1 回だけ渡し、拡張が読み込み直後に環境から消す。
+bash ツールと worker の子セッションには、キーが渡らない。
+拡張が未導入なら、キーを Pi に渡さず、worker の選択もしない。
+
+### Claude Code
 
 Claude Code の Agent ツールには effort の引数がなく、サブエージェントの effort は定義ごとに固定される。
-そのため次の2つを、このセッションにだけ注入している（`--settings` と `--agents`。グローバル設定は変えない）。
+そこで `j-cc` は、次の 2 つをそのセッションにだけ注入する（`--settings` と `--agents`。グローバル設定は変えない）。
 
-- `worker-medium` と `worker-high`: effort だけが違う worker の定義。
-- `PreToolUse` フック（`scripts/jev_claude_hook.py`）: 既定の worker の起動を、Jev が選んだ方の定義に差し替える。
+- `worker-medium` と `worker-high`：effort だけが違う worker の定義
+- `PreToolUse` フック（`scripts/jev_claude_hook.py`）：既定の worker の起動を、Jev が選んだほうの定義に差し替える
 
-差し替えるのは `subagent_type` が `general-purpose`、`worker`、または未指定の起動だけ。
-`Explore` や自作のエージェント、`model` を明示した起動には触れない。
-判定は Pi と同じコード（`scripts/jev_core.py`）を使う。
-フックは権限の判定を返さないため、承認の確認は省略されない。
-失敗したときは何も変えず、Claude が送った起動のまま実行する。
-Windows でも同じく差し替える。
-Claude Code はフックを Git Bash で実行するため、フックのコマンドはパスを `/` 区切りで渡す。
+差し替えるのは、`subagent_type` が `general-purpose`、`worker`、または未指定の起動だけである。
+`Explore`、自作のエージェント、`model` を明示した起動には触れない。
+フックは権限の判定を返さないので、承認の確認は省かれない。
+失敗したときは何も変えず、Claude が送ったとおりに起動する。
+Claude Code は Windows でもフックを Git Bash で実行するので、フックのコマンドはパスを `/` 区切りで渡す。
 
 ## Codex の worker のモデルと effort
 
-`j-cc` と `j-pi` から Codex を worker として呼ぶときは、起動ごとに Jev が `gpt-6` のモデルと reasoning effort を選ぶ。
-[OpenAI のモデル案内](https://learn.chatgpt.com/docs/models?surface=cli)の使い分けに合わせる。
+`j-cc` と `j-pi` から Codex を worker として呼ぶと、起動ごとに Jev が `gpt-6` 系のモデルと reasoning effort を選ぶ。
+使い分けは [OpenAI のモデル案内](https://learn.chatgpt.com/docs/models?surface=cli)に合わせる。
 
 | モデル | 向く作業 | 基本の effort |
 | --- | --- | --- |
 | `gpt-6-astra` | 曖昧で、深い分析や大きな成果物が要る、最も難しい作業 | `low` |
-| `gpt-6.1-sol` | 複雑な作業で、時間とコストも管理したいもの。Astra に近い性能で単価が低い | `medium` |
+| `gpt-6.1-sol` | 時間とコストも管理したい複雑な作業（Astra に近い性能で単価が低い） | `medium` |
 | `gpt-6-luna` | 明確で反復的な作業（抽出、分類、変換、絞った変更） | `high` |
 
-Sol は 6.1 を使う (`gpt-6.1-sol`)。
-6.0 の `gpt-6-sol` は、OpenAI の推奨から外れたため使わない。
+Sol は 6.1（`gpt-6.1-sol`）を使う。
+6.0 の `gpt-6-sol` は OpenAI の推奨から外れたので使わない。
 
-Jev には、Claude の worker と同じ「難しさ」と「厳密な構造が必要か」に、「明確で反復的か」と「複数段階で最後まで判断が要るか」を足した4つを、1回の呼び出しで問う。
-判定は次のとおり。
+Jev には、思考レベルと同じ 2 つの問いに「明確で反復的か」と「複数の段階で最後まで判断が要るか」を足した 4 つを、1 回で問う。
 
 | 条件 | 選択 |
 | --- | --- |
-| 難しさの確信度が 0.5 未満、または応答なし | `gpt-6.1-sol` / `medium` |
+| 難しさの確信度が 0.5 未満、または応答がない | `gpt-6.1-sol` / `medium` |
 | 難しさが 1.5 以上、複数段階が 0.7 以上、確信度が 0.8 以上 | `gpt-6-astra` / `low` |
 | 難しさが 1.5 以上（上に当たらない） | `gpt-6.1-sol` / `high` |
-| 「明確で反復的」が 0.7 以上（難しくない） | `gpt-6-luna` / `high` |
+| 明確で反復的が 0.7 以上（難しくない） | `gpt-6-luna` / `high` |
 | 上記以外 | `gpt-6.1-sol` / `medium` |
 
-厳密な構造が必要（0.7 以上）なら、Sol は `high`、Astra は `medium` に一段上げる。
+厳密な構造が要る（0.7 以上）なら、Sol は `high`、Astra は `medium` に一段上げる。
 Astra は Sol より単価がはるかに高いので、確信度が高いときだけ選ぶ。
-閾値は `scripts/jev_core.py` にあり、`tests/unit/jev_codex_cases.json` の実測値で固定している。
+閾値は `scripts/jev_core.py` にあり、`tests/unit/jev_codex_cases.json` の実測で固定している。
 
-### Claude
+### Claude Code から
 
-`codex:codex-rescue` の依頼文の先頭に、`--model` と `--effort` を足す。
-プラグインのラッパーは、この2つをそのまま Codex に渡す。
-依頼文に `--model` か `--effort` がすでにあれば、そちらを優先して何もしない。
-`--effort` の値は、プラグインが受け付ける `xhigh` までに収まる。
+`codex:codex-rescue` の依頼文の先頭に `--model` と `--effort` を足し、プラグインのラッパーがそのまま Codex に渡す。
+依頼文にすでに `--model` か `--effort` があれば、そちらを優先して何もしない。
+`--effort` は、プラグインが受け付ける `xhigh` までに収まる。
+この経路には、Claude Code に Codex のプラグイン（`codex:codex-rescue`）が入っている必要がある。
 
-### Pi
+### Pi から
 
-Pi 組み込みの `codex-exec` と `codex-exec-writer` は、モデルを上書きできない（引数がコードで固定され、`config.toml` も無視する）。
-代わりに、`just deploy` が `~/.pi/agent/agents/` に次の2つを生成する。
-Python とスクリプトの絶対パスを埋め込むので、`sh` は要らず、Windows でも同じ定義が動く（実機は未確認）。
+Pi に組み込みの `codex-exec` と `codex-exec-writer` は、モデルを上書きできない（引数がコードで固定され、`config.toml` も読まない）。
+代わりに `just deploy` が、`~/.pi/agent/agents/` に次の 2 つを生成する。
 
-- `codex-jev`: 読み取り専用。`codex-exec` に相当する。
-- `codex-jev-writer`: ワークスペースへの書き込み可。`codex-exec-writer` に相当する。
+- `codex-jev`：読み取り専用（`codex-exec` に相当）
+- `codex-jev-writer`：ワークスペースに書き込める（`codex-exec-writer` に相当）
 
-どちらも、実行の直前に Jev へ問い合わせ、`codex exec -m <model> -c model_reasoning_effort=<effort>` を起動する（サンドボックスなどの引数は組み込みと同じ）。
+どちらも実行の直前に Jev へ問い合わせ、`codex exec -m <model> -c model_reasoning_effort=<effort>` を起動する（サンドボックスなどの引数は組み込みと同じ）。
+Python とスクリプトの絶対パスを定義に埋め込むので、`sh` は要らず、Windows でも同じ定義が動く。
 選択は実行時に行うので、`workflowScript` の中の子でも効く。
-`j-pi` で起動した Pi では、`subagent` の直接の呼び出しで `codex-exec` と `codex-exec-writer` が、自動でこの2つに切り替わる。
-選ばれたモデルは、run の `external-*.stderr.log` の先頭行（`Jev: codex gpt-6.1-sol / medium (read-only)`）で確認できる。
+`j-pi` で起動した Pi では、`subagent` から `codex-exec` と `codex-exec-writer` を直接呼ぶと、自動でこの 2 つに切り替わる。
+選ばれたモデルは、run の `external-*.stderr.log` の先頭行（`Jev: codex gpt-6.1-sol / medium (read-only)`）で確かめられる。
 
-### 動作確認
+## Pi の提供元と切り替え
 
-`updatedInput` が Agent ツールで効くか、`effort` が実際に効くかは、実リクエストでしか確認できない。
-次のコマンドを実行する。
+Pi は、認証済みの提供元を GitHub Copilot、Cursor、Anthropic（Claude Code のサブスク）、OpenRouter の順に使う。
+Claude Code のサブスクは Claude Code 自身のために残したいので、ほかのサブスクより後にする。
+OpenRouter は従量課金なので最後にする。
+
+次の提供元へ切り替えるのは、429 のステータスか、既知の機械的な上限エラーを確認したときだけである。
+「quota exceeded」のような曖昧な文章や、認証エラーやサーバーエラーと矛盾するステータスでは切り替えず、元のエラーを表示する。
+切り替え先の認証済みの提供元がなければ、元のエラーを表示する。
+
+## 動作確認
+
+Agent ツールで `updatedInput` が効くか、`effort` が実際に効くかは、実際のリクエストでしか確かめられない。
 
 ```sh
 just jev-claude-verify
 ```
 
-判定は、モデルの返答ではなく Claude Code が残す記録で行う。
-フック自身のログ、各サブエージェントの `agent-*.meta.json`（実際に使われた `agentType` と `name`）、各リクエストに記録された effort である。
-名前なしと名前ありの worker、`codex:codex-rescue` を1つずつ起動する。
+名前なしと名前ありの worker、`codex:codex-rescue` を 1 つずつ起動し、モデルの返答ではなく Claude Code が残す記録で判定する。
+記録とは、フック自身のログ、各サブエージェントの `agent-*.meta.json`（実際に使われた `agentType` と `name`）、各リクエストに記録された effort である。
 
 | 結果 | 終了コード | 意味 |
 | --- | --- | --- |
-| `PASS` | 0 | 名前なしの worker の定義と選んだ effort、Codex の呼び出し引数を確認できた。CI と Windows の確認は別 |
-| `FAIL` | 1 | スキーマ拒否、worker の定義や effort の不一致を確認した。利用上限が同時に出てもこちらを優先する |
-| `BLOCKED` | 2 | provider のエラーイベントで利用上限を確認した、または CLI が未ログインで終了した（結果イベントが `Not logged in`）。リセット後、またはログイン後にやり直す。会話中の引用は対象外 |
-| `PARTIAL` | 3 | worker の effort の証拠が不足するか、親と同じ `medium` で効果を区別できない。`/tasks` でも確認する |
+| `PASS` | 0 | 名前なしの worker の定義と選んだ effort、Codex の呼び出し引数を確認できた（確認できたのは、実行した機体についてだけ） |
+| `FAIL` | 1 | スキーマの拒否、worker の定義や effort の不一致を確認した（利用上限が同時に出ても、こちらを優先する） |
+| `BLOCKED` | 2 | 提供元のエラーイベントで利用上限を確認した、または CLI が未ログインで終了した（結果イベントが `Not logged in`）。リセット後かログイン後にやり直す。会話の中の引用は対象外 |
+| `PARTIAL` | 3 | worker の effort の証拠が足りないか、親と同じ `medium` で効果を区別できない。`/tasks` でも確かめる |
 
-Codex は、companion を呼ぶツールの引数に選んだ `--model` と `--effort` があることを確認する。
-下流の全 API リクエストに同じ effort が届いたことまでは証明しない。
-一致した名前なし worker は、それぞれに effort の記録が必要である。
-ただし、各フックの起動と全 worker の一対一対応は検証していないため、`PASS` は全起動の差し替えを証明しない。
-名前ありの worker（teammate）の effort が異なる場合は、別に警告を出す。
+一致した名前なしの worker には、それぞれ effort の記録が要る。
+ただし、各フックの起動と全 worker の一対一の対応は検証しないので、`PASS` は全起動の差し替えを証明しない。
+Codex については、companion を呼ぶツールの引数に選んだ `--model` と `--effort` があることを確かめるが、下流の全 API リクエストに同じ effort が届いたことまでは証明しない。
+名前ありの worker（teammate）の effort が違う場合は、別に警告を出す。

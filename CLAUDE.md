@@ -96,9 +96,14 @@ just sync-agents-preview …  # dry-run
 ## Python lint の範囲 (repo-side の例外)
 
 - Python toolchain は global 規約どおり **uv + ruff + ty** (ADR 0044)。ただし **repo root
-  (`scripts/` `tests/`) の ruff は default rule + W605 + PTH (pathlib 強制) のまま**で、spoke の canonical select は当てない
+  (`scripts/` `tests/` `tools/` など) の ruff は default rule + W605 + PTH (pathlib 強制)**で、
+  spoke の canonical select は当てない
   (2026-09-08 計測: canonical は tests の ANN を除外しても 851 件。tests 中心の tooling に対して
-  作業量が価値に見合わない)。`emulator/` は canonical を適用済み (tests/** は ANN / PLR2004 /
+  作業量が価値に見合わない)。
+- テキストの読み書きは必ず `encoding="utf-8"`、subprocess の `text=True` には
+  `encoding="utf-8", errors="replace"` を渡す (日本語版 Windows の既定は cp932)。
+  `tests/unit/test_text_io_encoding.py` が自前の Python 全体を AST で検査する。
+  `tests/unit/` は native Windows でも全部通る状態を保つ。`emulator/` は canonical を適用済み (tests/** は ANN / PLR2004 /
   PLR0911 / PLR0915 を除外、理由は `emulator/pyproject.toml`)。gate の ruff 版は root /
   emulator の `[dependency-groups].lint` と uv.lock が正で、mise の pin を `just bump-tool`
   で同時に動かす (`tests/unit/test_ruff_ty_pins.py` が不一致を検出)。justfile は
@@ -147,156 +152,31 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
 
 - **`.git/info/exclude` の `skills/` glob** が `plugins/*/skills/**` の新規 SKILL.md を
   silent drop する → `git add -f` 必須 (memory `project_dotfiles_skills_exclude`)。
-- **prek の stash/rollback** で staged ファイルを取りこぼすことがある → commit 後に
-  `git show --name-only` で収録を検証 (memory `feedback_prek_stash_partial_commit`)。
+- **prek の stash/rollback** は staged を取りこぼすことがあり、**untracked は stash しない**
+  (新規テストが未 commit の helper を import すると、hook の ty が staged 版と食い違って落ちる)
+  → commit 後に `git show --name-only` で収録を検証し、別 commit に入れる新規ファイルは
+  hook の間だけ退避する (memory `feedback_prek_stash_partial_commit`)。
 - **statusline-command.sh が `.git/index.lock` レース** を起こす → `Unable to create
   .git/index.lock` が出たら active な git 書込みプロセス不在を確認して stale lock を
   除去 (memory `feedback_statusline`)。
 - **commit.gpgsign=true** — 全 commit が GPG 署名される。履歴書き換え時は
   `git commit-tree -S` で再署名、force push は ruleset 一時トグル
   (memory `feedback_git_history_rewrite_gpg`)。
-- **bun backend では `npm_args` は読まれない (ADR 0040)** — mise は package manager ごとに
-  別キーを読む (bun は `bun_args` のみ)。claude-code の native binary が動くのは
-  **bun の default-trusted リストに載っていて postinstall が走る**から。postinstall 必須で
-  default-trusted に**無い** npm ツールを足すときは `bun_args` / trustedDependencies を検討
-  (memory `project_mise_npm_ignore_scripts`)。
-- **npm backend の package manager は `bun` 必須 (ADR 0036)**。既定の `auto` は mise 内蔵の
-  **aube** を使い、その virtual-store レイアウトが claude-code の postinstall を無力化する
-  (263MB の native binary が展開されず `bin/claude.exe` が **500 バイトのスタブ**のまま残り、
-  シムが `node claude.exe` を実行して `ERR_UNKNOWN_FILE_EXTENSION`)。**install は成功扱いで
-  何も報告しない** — 動き続けるのは npm-global の野良コピーが PATH で mise を shadow して
-  いるからで、その野良を消す `just prune-rogue-npm-globals` こそが `claude` を壊す、という
-  倒錯が起きる。関連する罠:
-    - **backend を変えても既存 install は直らない**。`mise uninstall … && mise install …`
-      で入れ直すまでスタブのまま。
-    - **bun は `node_modules/.bin` にシムを作らず `<install>/bin/` に置く**。mise activate
-      前に開いたシェルは aube 時代の `.bin`(空) を PATH に掴んだままなので、mise 版に到達
-      できない。`mise env` は正しく `bin/` を出すので、**シェルを開き直せば直る**。
-    - **Windows では削除済みの exe でプロセスが動き続ける**。prune 後も現行セッションは
-      平然と動くが、次回起動時にそのパスは無い。`ps -W` で実体パスを確認しないと気付けない。
-    - **WinGet 版は野良コピーの陰に隠れる**。野良が PATH 勝負に勝っている間は見えず、
-      prune した瞬間に現れる (実測: 隠れていた WinGet 2.1.198 が mise の 2.1.215 より
-      6 patch 古かった)。`just doctor` の `winget-shadow` が検出する。
-- **Windows の shell 選択 (最重要運用)**: WSL の `C:\Windows\System32\bash.exe` が Git Bash を
-  shadow する (Windows は bare `bash` を PATH より先に System32 で解決する) ため、`just` の
-  bash 系レシピが WSL に落ちうる (WSL 未導入 host では顕在化しない)。効き方が2層に分かれる:
-    - **plain レシピ** (`doctor` / `harden-env` 等 `bash scripts/*.sh`) → justfile の
-      `set windows-shell := ["sh", …]` (#231) + prelude で解決済み。System32 に `sh.exe` は
-      無いので `sh`=Git Bash に解決するが、**raw な非 login msys sh は呼び出し元の PATH 順を
-      保存する**ため、素の永続 PATH (Machine の System32 が User の Git `usr\bin` より先) では
-      内側 `bash` が WSL に落ちていた (doctor が WSL Ubuntu の apt just 1.21 で走る実害)。
-      現在は windows-shell の prelude が `/usr/bin` を PATH 先頭に足してから内側
-      `/usr/bin/sh` に exec するので → **PowerShell からでも直接叩ける**
-      (recipe shell 内に閉じた scoped prepend で、下記の blanket prepend 非推奨とは別物。
-      ガード: `tests/unit/test_windows_shell_usr_bin_path.py`)。
-    - **shebang レシピ** (`dump` / `scaffold-agent-baseline` 等 `#!/usr/bin/env bash`。
-      `deploy` / `clean` は #231 同様に `bash scripts/*.sh` の plain レシピへ移行済みで
-      PowerShell から直接叩ける — `tests/unit/test_deploy_clean_linewise.py` がガード) → `set shell` /
-      `windows-shell` の影響外で `env→bash` が PATH 順に従う。素の PowerShell は System32(WSL)
-      が先なので失敗する → **Git Bash から叩く** (`/usr/bin` 先頭ゆえ `env→bash`=Git Bash)。
-      PowerShell 固執なら Git `usr\bin` を PATH 先頭に prepend する手もあるが、`find` / `sort` 等
-      Windows 版コマンドを shadow するため blanket prepend は非推奨。
-  旧来の注意も継続: PowerShell の shebang レシピは Git `usr\bin` が (登録) PATH に無いと
-  `could not find cygpath` で全滅。**native Windows の uv は `%APPDATA%\uv\uv.toml` を読む** —
-  無いと quarantine が効かず `uv run` が uv.lock を書き換え、pre-commit が落ちる
-  (`just harden-env` が書く)。cygpath / uv とも `just doctor` の Windows セクションが検出して
-  修正手順を提示する。
 - **Node は bun 一本。agent は npm/yarn/pnpm を一切叩けない** (guard が常時 block、
   `corepack pnpm`/`pnpm@ver`/`corepack --cwd … pnpm` 含む。**ADR 0027** が ADR 0017 の
   per-repo pnpm carve-out を partial supersede)。corepack のマシン供給自体は **ADR 0017**
   のまま温存 (node 同梱シム + `PNPM_HOME` は store アンカーのみ、`pnpm add -g` は依然
   abort、global CLI は mise npm: のみ)。`corepack enable`/`prepare`/`use` は素通り。
-  `dump/npm-global` / `add-pnpm-g` / `update-pnpm-g*` / `check-pnpm-g` は退役済み。
-- **WSL self-hosted runner の disk ratchet (ADR 0035)**: runner を載せた WSL distro の
-  `ext4.vhdx` は docker の image / stopped container / **BuildKit build cache** が
-  無制限に積み上がる (既定で GC policy が無い)。放置すると C: が枯渇し、しかも
-  **空きが尽きると vhdx を展開できず WSL 自体が起動不能になる** (`I/O error @util.cpp`
-  → systemd 起動失敗) デッドロックに入る。`just runner-gc-install` が **2時間保持**の
-  GC を三重に仕掛ける (job-completed hook / hourly timer / journald cap)。関連する罠:
-    - **状態確認は `just status`**。Windows/WSL 両 leg の timer・task・hook を一度に出し、
-      **hook が runner に受理される形式か**と**直近ジョブで拒否されていないか**まで見る
-      (下記の事故を二度と見逃さないため)。
-    - **hook のパスは `.sh`/`.ps1`/`.js` 拒否検証がある**。runner が
-      `ArgumentException: ... is not a valid path to a script` で弾くため、拡張子なしの
-      `/usr/local/bin/runner-gc` は **877 ジョブ全てで失敗**していた (`.env` 上は正しく
-      見えるので気付けない)。値は**パスであること**も必須で、`powershell.exe -File <script>`
-      のようなコマンド行も同じ検証で落ちる。**失敗はジョブ自身の Worker ログにしか残らない**
-      (journal にもタスク履歴にも出ない)。
-    - **job 検出は `pgrep -x Runner.Worker` 必須**。`pgrep -f` は GC 自身のコマンド行に
-      マッチして「常時ジョブ実行中」と誤判定し、GC を無言で永久停止させる。
-    - **さらに hook は `Runner.Worker` の内側から呼ばれる**ので、素直に検出すると
-      「自分を起動したジョブ」を理由に**毎回 SKIP** する。プロセス**祖先**と突き合わせ、
-      祖先でない worker (= 同時実行の別ジョブ) のときだけ退避する。
-    - **rootless docker のホストでは root の timer が別 daemon を掃除する**。hourly timer は
-      root で走るが root の context は `/var/run/docker.sock` (rootful) に解決し、実在庫は
-      `/run/user/<uid>/docker.sock` (rootless) 側にある。`docker info` は空の rootful でも
-      成功するため **回収ゼロで exit 0** になる。GC は root 実行時、runner ディレクトリの
-      **所有ユーザで docker leg を再実行**する (`runuser` + `XDG_RUNTIME_DIR`)。root 自身の
-      leg も残すので rootful 専用ホストは無影響。
-    - **toolcache は「世代数」でなく `major.minor` 系列で回収する**。workflow は
-      `go-version: 1.25.x` / `node-version: 22.x` / `python-version: 3.13` のように**系列**を
-      pin し、`setup-*` は系列内の最新 patch に解決する。単純な「最新 N 世代を残す」は matrix が
-      使う版を消す (この runner では rvc-hfie=3.10 / m4k3=3.13 / just-ag=3.14 と Python が3系列)。
-      **系列ごとに最新 patch を残し**、`RUNNER_GC_TOOLCACHE_KEEP` (既定 5) で系列数を上限する。
-    - **並び替えは `sort -V` 必須**。辞書順だと `1.25.8` が `1.25.11` より後に来て**最新版を消す**。
-      削除単位は `<version>/` ディレクトリ丸ごと (`<version>/<arch>.complete` マーカーが内側に
-      あるため、部分削除は「cached のはずが実体無し」を作る)。
-    - **最終使用時刻は取れない**。`relatime` かつ `_tool` を walk する処理 (GC 自身を含む) が
-      atime を書き換えてしまう。mtime は install 時刻で使用時刻ではない (matrix で現役の
-      Python 3.10.20 は mtime が7週前)。だから時間予算でなく系列で判定している。
-    - この leg だけは `RUNNER_GC_FORCE=1` でも job 実行中はスキップする (cache 喪失は時間の損
-      だが、使用中の toolcache 削除は job を即死させるため)。
-    - **Windows→WSL dispatch は `MSYS_NO_PATHCONV=1` / `MSYS2_ARG_CONV_EXCL='*'` 必須**。
-      Git Bash が `/usr/local/bin/...` や `/mnt/c/...`、素の `/` すら Windows パスへ
-      書き換えてから `wsl.exe` に渡すため。
-    - **guest 内で消しても C: は増えない。返すのは `fstrim`**。vhdx は解放済み ext4 block を
-      Windows から掴んだままなので、45GB prune しても C: が動かず「GC が効いていない」と見える。
-      WSL の vhdx は通常 **sparse** なので `fstrim /` でホールパンチすれば**無停止・非管理者で**
-      即返却される (実測 43.5GB、vhdx 実占有 174→130GB)。GC の root leg 末尾で実行する。
-    - **スラックは実占有 (`du -B1`) で測る**。`stat -c %s` は論理サイズ=高水位マークで decrease
-      しないため、`論理 - 使用` は「既に返却済みの分」まで slack に数えて過大報告する
-      (実測: 報告130GB / 実際33GB)。`just wsl-compact` は sparse フラグ
-      (`fsutil sparse queryflag`) も出す。**sparse なら compaction 不要、非 sparse なら必要**で
-      機体ごとに答えが違う。
-    - **実際に肥大するのは docker ではなく開発キャッシュ**。`~/.cache/uv` 単体で 44GB
-      (姉妹機は 126GB)、Windows profile 全体が ~2.5GB なのと対照的。`just disk-gc` は
-      **WSL の runner ユーザ HOME まで掃除する** (`DISK_GC_NO_WSL=1` で無効化)。hourly timer に
-      は載せない (対話作業と共有のため)。`~/.cache/huggingface` は既定で対象外
-      (`DISK_GC_HUGGINGFACE=1` で opt-in。単一モデル 77GB、wheel の再取得とは訳が違う)
-    - **compaction は非 sparse 機のフォールバック**。既存スラックの返却に管理者権限 +
-      `wsl --shutdown` (= runner 停止) が要るため `just wsl-compact` は計測と手順提示に
-      留める advisory。**`wsl --manage --set-sparse` を自分で有効化しない** — MS が
-      データ破損リスクで無効化中 (`--allow-unsafe` が必要)。既に sparse な vhdx を
-      `fstrim` で使うのは別物で、こちらは安全。
-    - **workspace sweep は両 leg 共通**。WSL 側は `_work/<repo>` が 23GB (toolcache 3GB より
-      遥かに大きい) で、埋まったのはこちらなので非対称は逆向きだった。判定は
-      `.runner-gc-last-used` マーカー (Linux でもディレクトリ mtime は「直下の増減」しか
-      追わず、深い階層の再ビルドを見ないため)。runner 所有ディレクトリは**名前の明示列挙**
-      (`_` 接頭辞判定だと `_foo` という実リポを永久に除外する)。旧 `bin.*`/`externals.*` は
-      **`bin`/`externals` が symlink のときだけ**、かつ **24h フロア**で回収 (update は
-      staging 後に symlink を切替えるため 2h だと途中を掴む)。`RUNNER_GC_ROOT` で単一
-      install を対象にできる (多忙な runner では idle window が来ないので、破壊的経路を
-      合成 root で検証するため)。**ジョブ実行中に走らせるには `RUNNER_GC_ROOT` と
-      `RUNNER_GC_ALLOW_BUSY=1` の両方**が要る (`RUNNER_GC_FORCE` では代替できない)。
-      root を指定するのは「どの install か」の宣言であって「触って安全か」ではない —
-      手動実行には `RUNNER_WORKSPACE`/`GITHUB_WORKSPACE` が無く、**実行中ジョブが今書いて
-      いる checkout を判別できない** (前回ジョブが retention より前に終わっていれば、
-      新しいジョブがビルド中でも回収対象に見える)。
-    - **native Windows 側の主犯は `_work/<repo>`** (`_diag` や `_work/_temp` ではない。
-      実測 5.1G / うち Rust `target/` 3.7G に対し `_temp` は 12K)。**ディレクトリ mtime で
-      期限判定してはいけない** — Windows は入れ子のファイル更新で親ディレクトリの
-      `LastWriteTime` を更新しないため、数分前にビルドした checkout が2ヶ月前の日付を
-      示す。`.runner-gc-last-used` マーカーを GC 自身が押して、それを基準に aging する。
-      加えて `RUNNER_WORKSPACE` / `GITHUB_WORKSPACE` の指す checkout は無条件に除外
-      (hook がステップ間で発火しても現行ジョブを消さないため)。
-    - **workspace の削除は素の `Remove-Item` では完走しない**。junction (5.1 の
-      `-Recurse` はリンクを**貫通して**リンク先を消す)、read-only な `.git/objects`、
-      MAX_PATH 超え (`node_modules`) の3つが原因。reparse point を先に非再帰で
-      detach → read-only 解除 → 残りは `robocopy /MIR /XJ` で潰す順序が必須。
-    - **runner 自己更新の残骸 (`_work/_update`, 旧 `bin.*`/`externals.*`) は 24h の
-      別枠 floor** で回収する。2時間枠だと進行中の self-update を巻き込む。旧版削除は
-      `bin`/`externals` が **symlink として解決できる時だけ** (plain install では
-      `bin.*` が runner 本体そのものなので消すと壊れる)。
+- **mise の npm backend は `bun` 必須 (ADR 0036)、bun backend は `npm_args` を読まない
+  (ADR 0040)**。`auto` (aube) だと claude-code が 500 バイトの stub のまま「成功」する。
+- **native Windows** では bare `bash` が System32 の WSL に落ち、shebang レシピは Git Bash から
+  叩く必要がある。justfile の shell 設定、`scripts/*.sh`、mise 設定、Windows で動く Python を
+  触る前に `docs/runbook/windows-host.md` を読む (shell 選択、cygpath、`%APPDATA%\uv`、
+  npm backend の stub、runner の Machine PATH、cp932)。
+- **self-hosted runner のディスク GC (ADR 0035)**: WSL の vhdx が docker と開発キャッシュで
+  膨らみ、C: が尽きると WSL 自体が起動しなくなる。`just runner-gc-install` が GC を仕掛け、
+  `just status` が状態と hook の受理を出す。`scripts/runner_gc*` や `just runner-gc*` /
+  `disk-gc` / `wsl-compact` を触る前に `docs/runbook/runner-disk-gc.md` を読む。
 - devcontainer features は Microsoft 公式のみ (community 不可、memory
   `feedback_no_community_devcontainer_features`)。
 
