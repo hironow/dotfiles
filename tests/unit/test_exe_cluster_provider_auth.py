@@ -24,7 +24,7 @@ _PLATFORM_TF = (
 
 
 def _provider_block(name: str) -> str:
-    text = _PLATFORM_TF.read_text()
+    text = _PLATFORM_TF.read_text(encoding="utf-8")
     start = re.search(rf'^provider "{name}" \{{\s*$', text, re.MULTILINE)
     assert start, f'provider "{name}" not found in {_PLATFORM_TF.name}'
     depth, i = 0, start.start()
@@ -55,4 +55,6 @@ def test_kubectl_provider_execs_the_gke_auth_plugin() -> None:
 
 
 def test_no_planned_access_token_is_read() -> None:
-    assert "google_client_config" not in _uncommented(_PLATFORM_TF.read_text())
+    assert "google_client_config" not in _uncommented(
+        _PLATFORM_TF.read_text(encoding="utf-8")
+    )

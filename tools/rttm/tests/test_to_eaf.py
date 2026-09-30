@@ -14,7 +14,9 @@ SPEAKER sample 1 1.500 2.000 <NA> <NA> speaker2 <NA> <NA>
 
 
 def test_convert_rttm_to_eaf_success(sample_rttm_content):
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as rttm_file:
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, encoding="utf-8"
+    ) as rttm_file:
         rttm_file.write(sample_rttm_content)
         rttm_path = rttm_file.name
 

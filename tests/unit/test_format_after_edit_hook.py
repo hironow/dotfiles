@@ -34,7 +34,9 @@ pytestmark = pytest.mark.skipif(
 
 def _make_stub(bindir: Path, name: str, log: Path) -> None:
     stub = bindir / name
-    stub.write_text(f'#!/usr/bin/env bash\necho "{name} $*" >> "{log}"\n')
+    stub.write_text(
+        f'#!/usr/bin/env bash\necho "{name} $*" >> "{log}"\n', encoding="utf-8"
+    )
     stub.chmod(0o755)
 
 
@@ -68,9 +70,9 @@ def _run_hook(cwd: Path, file_path: Path, stubs: list[str]) -> Path:
 def test_ts_js_edit_never_runs_project_wide_format(tmp_path: Path, suffix: str) -> None:
     """Editing one TS/JS file must not trigger `just fmt` (whole project)."""
     target = tmp_path / f"component{suffix}"
-    target.write_text("export {}\n")
+    target.write_text("export {}\n", encoding="utf-8")
     log = _run_hook(tmp_path, target, stubs=["just", "uv", "gofmt"])
-    assert log.read_text() == "", (
+    assert log.read_text(encoding="utf-8") == "", (
         "format-after-edit invoked a formatter for a TS/JS edit; the project-"
         "wide `just fmt` branch must stay removed (it polluted unrelated diffs)"
     )
@@ -78,9 +80,9 @@ def test_ts_js_edit_never_runs_project_wide_format(tmp_path: Path, suffix: str) 
 
 def test_python_edit_formats_only_the_edited_file(tmp_path: Path) -> None:
     target = tmp_path / "module.py"
-    target.write_text("x = 1\n")
+    target.write_text("x = 1\n", encoding="utf-8")
     log = _run_hook(tmp_path, target, stubs=["just", "uv", "gofmt"])
-    lines = log.read_text().splitlines()
+    lines = log.read_text(encoding="utf-8").splitlines()
     assert lines, "expected the Python branch to invoke uv"
     for line in lines:
         # --frozen pins the "never touch uv.lock" contract (e013e6f).
@@ -92,6 +94,6 @@ def test_python_edit_formats_only_the_edited_file(tmp_path: Path) -> None:
 
 def test_go_edit_formats_only_the_edited_file(tmp_path: Path) -> None:
     target = tmp_path / "main.go"
-    target.write_text("package main\n")
+    target.write_text("package main\n", encoding="utf-8")
     log = _run_hook(tmp_path, target, stubs=["just", "uv", "gofmt"])
-    assert log.read_text().splitlines() == [f"gofmt -w {target}"]
+    assert log.read_text(encoding="utf-8").splitlines() == [f"gofmt -w {target}"]

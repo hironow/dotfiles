@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _bash_hook import bash_path
 
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
@@ -71,7 +72,7 @@ def test_detects_duplicates_across_dirs(just_binary: str, tmp_path: Path) -> Non
         exe.write_text("#!/bin/sh\n", encoding="utf-8")
         exe.chmod(0o755)
     env = {
-        "PATH": f"{Path(just_binary).parent}:/usr/bin:/bin:/usr/local/bin",
+        "PATH": f"{bash_path(Path(just_binary).parent)}:/usr/bin:/bin:/usr/local/bin",
         "HOME": os.environ.get("HOME", "/root"),
         "VALIDATE_PATH": f"{dir_a}:{dir_b}",
     }
@@ -81,6 +82,8 @@ def test_detects_duplicates_across_dirs(just_binary: str, tmp_path: Path) -> Non
         capture_output=True,
         text=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     combined = result.stdout + result.stderr
     assert result.returncode == 2, (

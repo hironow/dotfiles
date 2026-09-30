@@ -162,7 +162,7 @@ def test_devcontainer_oncreate_invokes_post_create_script(
 
     post_create = ROOT / ".devcontainer" / "post-create.sh"
     assert post_create.exists(), f"post-create.sh missing at {post_create}"
-    body = post_create.read_text()
+    body = post_create.read_text(encoding="utf-8")
     assert "mise install" in body, (
         "post-create.sh must run `mise install` to resolve mise.toml tools."
     )
@@ -255,7 +255,13 @@ def test_mise_trusted_paths_are_scoped(devcontainer: dict) -> None:
 
 def _docker_available() -> bool:
     return (
-        subprocess.run(["docker", "info"], capture_output=True, text=True).returncode
+        subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        ).returncode
         == 0
     )
 
@@ -263,7 +269,11 @@ def _docker_available() -> bool:
 def _image_exists(image: str) -> bool:
     return (
         subprocess.run(
-            ["docker", "image", "inspect", image], capture_output=True, text=True
+            ["docker", "image", "inspect", image],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         ).returncode
         == 0
     )
@@ -277,6 +287,8 @@ def _run_in_image(script: str) -> subprocess.CompletedProcess:
         ["docker", "run", "--rm", IMAGE, "bash", "-lc", script],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -361,6 +373,8 @@ def test_image_runs_a_quint_simulation_offline(saved_image: str) -> None:
         ["docker", "run", "--rm", "--network", "none", IMAGE, "bash", "-lc", script],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, (
         "quint could not simulate offline inside the saved image.\n"
@@ -448,6 +462,8 @@ def test_image_devcontainer_metadata_smoke(saved_image: str) -> None:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, f"failed to inspect image:\nstderr:\n{result.stderr}"
     labels_json = result.stdout.strip()

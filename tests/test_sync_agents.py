@@ -70,7 +70,7 @@ def sandbox_repo():
         snapshots_root.mkdir(exist_ok=True)
         snapshot = tempfile.mkdtemp(prefix="snap-", dir=str(snapshots_root))
         _copy_tracked_into(str(ROOT), snapshot)
-        _SANDBOX_REPO = str(Path(lwf) / Path(snapshot).relative_to(ROOT))
+        _SANDBOX_REPO = str(Path(lwf) / Path(snapshot).relative_to(ROOT, walk_up=True))
         yield
         _SANDBOX_REPO = None
         shutil.rmtree(snapshot, ignore_errors=True)
@@ -95,6 +95,8 @@ def _run(
         shell=isinstance(cmd, str),
         capture_output=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
 
 

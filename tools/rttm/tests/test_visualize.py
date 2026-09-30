@@ -37,7 +37,9 @@ def test_find_overlaps():
 
 
 def test_visualize_rttm_success(sample_rttm_content):
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as rttm_file:
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, encoding="utf-8"
+    ) as rttm_file:
         rttm_file.write(sample_rttm_content)
         rttm_path = rttm_file.name
 

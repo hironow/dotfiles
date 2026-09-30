@@ -396,7 +396,13 @@ def test_toolcache_reaping_never_races_a_running_job() -> None:
 def test_scripts_parse() -> None:
     """`bash -n` every script so a syntax error cannot ship."""
     for script in (GC, INSTALL, COMPACT, SCRIPTS / "disk_gc.sh"):
-        proc = subprocess.run([BASH, "-n", str(script)], capture_output=True, text=True)
+        proc = subprocess.run(
+            [BASH, "-n", str(script)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
         assert proc.returncode == 0, f"{script.name}: {proc.stderr}"
 
 
@@ -564,6 +570,8 @@ def _run_gc(root: Path, *extra: str, env: dict[str, str] | None = None):
         capture_output=True,
         text=True,
         env=overrides,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -1234,6 +1242,8 @@ def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
             "PATH": f"{stub_dir}{os.pathsep}" + os.environ.get("PATH", ""),
         },
         timeout=90,
+        encoding="utf-8",
+        errors="replace",
     )
     elapsed = time.monotonic() - start
     assert proc.returncode == 0, proc.stdout + proc.stderr

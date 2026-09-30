@@ -81,7 +81,8 @@ def test_env_check_actually_fires_on_missing_token(
         "  #!/usr/bin/env bash\n"
         "  set -euo pipefail\n"
         '  : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"\n'
-        '  echo "ok"\n'
+        '  echo "ok"\n',
+        encoding="utf-8",
     )
 
     env = {
@@ -118,7 +119,8 @@ def test_env_check_passes_with_token_set(just_binary: str, tmp_path: Path) -> No
         "  #!/usr/bin/env bash\n"
         "  set -euo pipefail\n"
         '  : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"\n'
-        '  echo "ok"\n'
+        '  echo "ok"\n',
+        encoding="utf-8",
     )
 
     env = {

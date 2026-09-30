@@ -410,7 +410,8 @@ def test_commit_message_git_comment_lines_are_ignored(tmp_path: Path) -> None:
     tokens = _token_list(tmp_path, TOKEN_A)
     msg = repo / "MSG"
     msg.write_text(
-        f"feat: something clean\n\n# On branch {TOKEN_A}\n# Changes staged:\n"
+        f"feat: something clean\n\n# On branch {TOKEN_A}\n# Changes staged:\n",
+        encoding="utf-8",
     )
     result = _run(repo, "commit-msg", str(msg), token_list=tokens)
     assert result.returncode == 0, result.stderr
@@ -423,7 +424,8 @@ def test_commit_message_body_below_scissors_is_ignored(tmp_path: Path) -> None:
     msg.write_text(
         "feat: clean subject\n\n"
         "# ------------------------ >8 ------------------------\n"
-        f"diff --git a/x b/x\n+{TOKEN_A}\n"
+        f"diff --git a/x b/x\n+{TOKEN_A}\n",
+        encoding="utf-8",
     )
     result = _run(repo, "commit-msg", str(msg), token_list=tokens)
     assert result.returncode == 0, result.stderr

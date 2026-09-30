@@ -64,6 +64,8 @@ def _tracked_settings_sources(root: Path) -> list[Path]:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout
     return [root / name for name in out.split("\0") if name]
 

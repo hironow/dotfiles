@@ -104,7 +104,7 @@ def _run(
     path = _path_without_rtk()
     if rtk_stub is not None:
         stub = bin_dir / "rtk"
-        stub.write_text(rtk_stub)
+        stub.write_text(rtk_stub, encoding="utf-8")
         stub.chmod(0o755)
         path = f"{bin_dir}{os.pathsep}{path}"
     env = {**os.environ, "PATH": path}
@@ -276,7 +276,7 @@ def test_wrapper_fails_open_on_unparseable_payload(tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     stub = bin_dir / "rtk"
-    stub.write_text(_rtk_stub(json.dumps(RTK_GIT_REWRITE)))
+    stub.write_text(_rtk_stub(json.dumps(RTK_GIT_REWRITE)), encoding="utf-8")
     stub.chmod(0o755)
     result = run_bash(
         HOOK,
@@ -300,7 +300,7 @@ def test_missing_cwd_falls_back_to_process_cwd(
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     stub = bin_dir / "rtk"
-    stub.write_text(_rtk_stub(json.dumps(RTK_GIT_REWRITE)))
+    stub.write_text(_rtk_stub(json.dumps(RTK_GIT_REWRITE)), encoding="utf-8")
     stub.chmod(0o755)
     result = run_bash(
         HOOK,

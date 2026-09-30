@@ -116,5 +116,7 @@ def test_repo_configs_pass_the_gate() -> None:
         capture_output=True,
         text=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, result.stderr

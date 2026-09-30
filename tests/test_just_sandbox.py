@@ -39,6 +39,8 @@ def _run(
         shell=isinstance(cmd, str),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -1214,6 +1216,8 @@ def test_install_sh_has_executable_bit_in_git_index():
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
+        errors="replace",
     )
     # Output format: "<mode> <hash> <stage>\t<path>"
     mode = out.stdout.split()[0]
@@ -1253,9 +1257,11 @@ def test_snapshot_excludes_git_untracked_and_submodule_gitlinks(tmp_path):
     _git("init", "-q")
     _git("config", "user.email", "t@e")
     _git("config", "user.name", "t")
-    (repo / "tracked.txt").write_text("first-party\n")
+    (repo / "tracked.txt").write_text("first-party\n", encoding="utf-8")
     (repo / "private").mkdir()
-    (repo / "private" / "secret.key").write_text("SECRET\n")  # untracked
+    (repo / "private" / "secret.key").write_text(
+        "SECRET\n", encoding="utf-8"
+    )  # untracked
     _git("add", "tracked.txt")
     _git("commit", "-qm", "init")
     # a submodule pointer (gitlink) staged with no checked-out file on disk

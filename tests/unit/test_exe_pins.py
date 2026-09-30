@@ -106,7 +106,7 @@ def _write_stack(root: Path, rel: str, body: str) -> Path:
     """Create a synthetic tofu stack dir with one .tf file in it."""
     stack = root / rel
     stack.mkdir(parents=True, exist_ok=True)
-    (stack / "main.tf").write_text(body)
+    (stack / "main.tf").write_text(body, encoding="utf-8")
     return stack
 
 
@@ -755,7 +755,7 @@ def _write_mise_config(root: Path, body: str) -> Path:
     """Create a synthetic config/mise/config.toml under `root`."""
     path = root / "config" / "mise" / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     return path
 
 
@@ -865,7 +865,7 @@ def test_missing_versions_json_is_a_violation(tmp_path: Path) -> None:
 
 def test_unparsable_versions_json_is_a_violation(tmp_path: Path) -> None:
     (tmp_path / "exe").mkdir()
-    (tmp_path / "exe" / "versions.json").write_text("{ not json")
+    (tmp_path / "exe" / "versions.json").write_text("{ not json", encoding="utf-8")
     pins, violations = mod.load_pins(tmp_path)
     assert pins is None
     assert violations
@@ -873,7 +873,9 @@ def test_unparsable_versions_json_is_a_violation(tmp_path: Path) -> None:
 
 def test_load_pins_returns_the_document(tmp_path: Path) -> None:
     (tmp_path / "exe").mkdir()
-    (tmp_path / "exe" / "versions.json").write_text(json.dumps(_pins()))
+    (tmp_path / "exe" / "versions.json").write_text(
+        json.dumps(_pins()), encoding="utf-8"
+    )
     pins, violations = mod.load_pins(tmp_path)
     assert violations == []
     assert pins is not None

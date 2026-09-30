@@ -81,6 +81,8 @@ def _run(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=timeout,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -416,7 +418,7 @@ def test_dmail_units_pass_systemd_analyze(
     )
 
     unit_path = tmp_path / f"{unit_name}.service"
-    unit_path.write_text(body)
+    unit_path.write_text(body, encoding="utf-8")
 
     # systemd-analyze short-circuits with "Unit docker.service not
     # found" / "/usr/bin/docker not executable" before validating

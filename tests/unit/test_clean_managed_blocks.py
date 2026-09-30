@@ -36,7 +36,12 @@ def _gnu_sed() -> str | None:
         if not exe:
             continue
         probe = subprocess.run(
-            [exe, "--version"], capture_output=True, text=True, check=False
+            [exe, "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
         )
         if probe.returncode == 0 and "GNU sed" in probe.stdout:
             return exe
@@ -104,6 +109,8 @@ def test_managed_block_sed_removes_the_block(sed_line: str, tmp_path: Path) -> N
         capture_output=True,
         text=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert proc.returncode == 0, (
         f"sed expression is not valid sed: {sed_line!r}\n{proc.stderr}"
