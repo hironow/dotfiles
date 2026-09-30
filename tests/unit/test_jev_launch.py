@@ -4,6 +4,8 @@ import importlib.util
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -67,6 +69,62 @@ def test_private_home_env_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     assert launcher.jev_key() is None
     secret.chmod(0o600)
     assert launcher.jev_key() == "secret"
+
+
+def test_home_env_key_needs_a_private_file_on_every_platform(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # given a key in ~/.env and no key in the environment
+    (tmp_path / ".env").write_text("TYPESAFE_API_KEY=secret\n", encoding="utf-8")
+    monkeypatch.setattr(launcher.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
+
+    # when the file is not private, then the key is refused with a hint
+    monkeypatch.setattr(launcher, "env_file_is_private", lambda _path: False)
+    assert launcher.jev_key() is None
+    assert "~/.env" in capsys.readouterr().err
+
+    # when it is private, then the key is read (Windows included)
+    monkeypatch.setattr(launcher, "env_file_is_private", lambda _path: True)
+    assert launcher.jev_key() == "secret"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="reads a real Windows ACL")
+def test_windows_acl_check_on_a_real_file(tmp_path: Path) -> None:
+    # given a file made private the way the runbook says (a temp dir may grant
+    # other accounts access, so its inherited ACL is not assumed)
+    secret = tmp_path / ".env"
+    secret.write_text("TYPESAFE_API_KEY=secret\n", encoding="utf-8")
+    me = (
+        subprocess.run(
+            ["whoami", "/user", "/fo", "csv", "/nh"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .split(",")[-1]
+        .strip('"')
+    )
+    subprocess.run(
+        ["icacls", str(secret), "/inheritance:r", "/grant:r", f"*{me}:(F)"],
+        check=True,
+        capture_output=True,
+    )
+    assert launcher.env_file_is_private(secret) is True
+
+    # when Everyone (by SID, so the check is locale-independent) may read it
+    subprocess.run(
+        ["icacls", str(secret), "/grant", "*S-1-1-0:(R)"],
+        check=True,
+        capture_output=True,
+    )
+
+    # then it is no longer private
+    assert launcher.env_file_is_private(secret) is False
 
 
 def test_network_error_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -185,7 +243,8 @@ def test_claude_gets_the_worker_hook_and_agents_but_pi_does_not(
     argv, _ = _launch(monkeypatch, "claude")
     settings = json.loads(argv[argv.index("--settings") + 1])
     command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-    assert "jev_claude_hook.py" in command and sys.executable in command
+    assert "jev_claude_hook.py" in command
+    assert Path(sys.executable).as_posix() in command
     assert set(json.loads(argv[argv.index("--agents") + 1])) == {
         "worker-medium",
         "worker-high",
@@ -205,3 +264,34 @@ def test_extension_is_detected_in_the_pi_agent_dir(
         )
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path))
     assert launcher.extension_installed() is installed
+
+
+def _hook_shell() -> str:
+    """The bash Claude Code runs hook commands with: Git Bash on Windows."""
+    if sys.platform != "win32":
+        return shutil.which("bash") or "bash"
+    # Never a bare "bash" from a native process: System32's WSL bash wins.
+    # git may be <root>/cmd/git.exe or <root>/mingw64/bin/git.exe.
+    git = shutil.which("git")
+    for root in Path(git).resolve().parents if git else []:
+        if (root / "bin" / "bash.exe").is_file():
+            return str(root / "bin" / "bash.exe")
+    pytest.skip("Git for Windows bash.exe not found")
+
+
+def test_the_worker_hook_command_runs_in_the_hook_shell() -> None:
+    # given the command Claude Code is told to run for the worker hook
+    command = launcher.hook_command()
+
+    # when the hook shell runs it with an empty payload
+    result = subprocess.run(
+        [_hook_shell(), "-c", command],
+        input="{}",
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    # then the hook itself started (it ignores the payload and exits 0)
+    assert result.returncode == 0, result.stderr
