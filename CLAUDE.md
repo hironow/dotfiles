@@ -8,63 +8,22 @@
 
 ## このリポの役割と「agent 指示の二層構造」(最重要)
 
-本リポは **global なエージェント指示を配布する** のが主目的の一つ。指示は monolith
-から **hub-and-spoke** に移行済み (短い常時 load + on-demand spoke + 機械 enforcement)。
+本リポは **global なエージェント指示を配布する** のが主目的の一つ。指示は
+**hub-and-spoke** (短い常時 load + on-demand spoke + 機械 enforcement)。
 
-- **source 群 (repo root, `ROOT_*` sentinel 名なので agent は直接読まない):**
-    - `ROOT_AGENTS.md` = cross-tool **base** (短い常時 load)
-    - `ROOT_CLAUDE.md` = Claude 専用 **overlay** (先頭で `@AGENTS.md` を import)
-    - `ROOT_AGENTS_docs_agents_*.md` = on-demand **spoke** (tdd / commit / python 等)
-    - `ROOT_AGENTS_hooks_*.sh` + `.claude/settings.hooks.json` = Claude hooks (機械 enforcement)
-    - `.claude/settings.shared.json`, `.claude/settings.shared.{macos,linux,windows}.json`,
-      `.claude/settings.profiles/<key>.json` = Claude **層状 settings fragment**
-      (shared → OS overlay → profile。env block + 選別 top-level キー。
-      `settings.hooks.json` 同様 CC からは読まれない純粋な source。詳細 ADR 0037)
-- **`just sync-agents` (`scripts/sync_agents.py`) の配布 (per-tool):**
-    - base → codex `~/.codex/AGENTS.md` / gemini `~/.gemini/GEMINI.md` /
-      claude-family `~/.claude*/AGENTS.md`
-        - **`~/.gemini/GEMINI.md` は Gemini CLI (2026-06-18 sunset) と Antigravity
-          CLI (`agy`) が共有する** global rules (issue google-gemini/gemini-cli#16058)。
-          base sync 先は変更不要で、既存の gemini ターゲットがそのまま Antigravity を兼ねる。
-    - overlay → claude-family `~/.claude*/CLAUDE.md` (`@AGENTS.md` で base を import)
-    - spoke → `<agent>/docs/agents/*` (base 内の `docs/agents/` 参照は配布時に
-      **その agent home の絶対パスへ rewrite**。相対だと作業 project 側に解決して外すため)
-    - hooks + settings → **claude-family のみ**。settings.json は user キーを壊さず
-      **update-in-place マージ** (manifest 非追跡)。sync が所有するのは command が
-      `<agent>/hooks/` を指す block のみで、毎回その managed block を最新 fragment で
-      置換 (hook command 変更でも stale 重複が残らない)、user 作成 block は保持
-        - settings fragment は **4層を合成して1つの desired state** にしてから同一
-          settings.json へ update-in-place マージ (hooks merge の直後)。層は後勝ちで
-          ① `settings.shared.json` → ② `settings.shared.<os>.json` (実行 OS、欠落=空) →
-          ③ `settings.profiles/<AgentTarget.key>.json` → ④ **`<agent home>/settings.sync-local.json`**
-          (git 非追跡・machine 固有の最終上書き層)。**env は合成後に sync が丸ごと所有=置換**
-          (fragment 群から消えた env キーは target からも除去。machine 固有 env は ④ へ —
-          `settings.local.json` は **project scope 専用で user scope では読まれない**ため
-          逃し先にならない)。`settings` 内は key-wise 後勝ち + **両辺 dict のみ1段 deep-merge**
-          (shared の `permissions.deny` と profile の `permissions.defaultMode` が合成される)、
-          target へは top-level **upsert** (enabledPlugins 等の未宣言キーは保持)。top-level
-          キーの削除は自動伝播しない。env は **fragment 群が正本** で、repo
-          `.claude/settings.json` は env を持たず global から継承する (詳細 ADR 0037)
-    - `ROOT_AGENTS_<x>_<y>(.ext|/)` → `<agent>/<x>/<y>` (`_`→`/`) の従来規約も継続
-    - **skills は sync しない (ADR 0043)**: 自作 (hironow/skills) もサードパーティも
-      `bunx skills` CLI の store (`~/.agents/skills`) に入れ、git は正規化宣言
-      `dump/harness/skill-lock.json` だけを追跡する。各 home の `skills/` には
-      `just skills-place` が store への相対 symlink を張る (symlink 不可なら追跡付きコピー)。
-      `just dump-skills-lock` (宣言更新、hironow/skills の record 消失を拒否) /
-      `just restore-skills-lock` (新マシン: store 復元 → place) / `just skills-update`
-      (hironow/skills merge 後: store 更新 → place)。CLI には `-a universal` で store だけを
-      書かせ、home には CLI を触らせない。**同名衝突は hironow/skills が勝つ**
-      (`just skills-lock-check`、`ci` 組込み)。旧 `skills/` submodule・`skills/learned`・
-      additive sync・除外 toml は撤去済み
-    - **Antigravity CLI (`agy`) は自己管理 — dotfiles は skills/settings/mcp を sync
-      しない**: Antigravity は skills を `agy plugin` (=
-      `~/.gemini/antigravity-cli/plugins/<name>/skills/`)、settings/mcp を `agy import`
-      (= `~/.gemini/antigravity-cli/settings.json` + `mcp/`) で持つ。これらを raw sync
-      すると agy の自己管理を迂回/clobber する (= `bunx skills` へ委譲するのと同理由)
-      ため dotfiles は触らない。instruction 層 (`~/.gemini/GEMINI.md`) のみ共有で兼用。
-      `~/.gemini/skills/` は `skills-place` の link 先だが Antigravity は plugins/ から読むため
-      vestigial・無害 (詳細 ADR 0026)。
-- **global ルールを変えるときは上記 source を編集して `just sync-agents`。**
+- **正本は repo root の `ROOT_*`** (sentinel 名なので agent は直接読まない):
+  `ROOT_AGENTS.md` = cross-tool **base**、`ROOT_CLAUDE.md` = Claude **overlay**
+  (`@AGENTS.md` で base を import)、`ROOT_AGENTS_docs_agents_*.md` = on-demand **spoke**、
+  `ROOT_AGENTS_hooks_*` + `.claude/settings.hooks.json` = hooks、
+  `.claude/settings.shared*.json` / `.claude/settings.profiles/` = 層状 settings fragment (ADR 0037)。
+- **`just sync-agents` が各 agent home へ配る** (base → `~/.codex/AGENTS.md` /
+  `~/.gemini/GEMINI.md` / `~/.claude*/AGENTS.md`、overlay → `~/.claude*/CLAUDE.md`、
+  spoke → `<agent>/docs/agents/`、hooks と settings は Claude 系のみ update-in-place マージ)。
+  skills と Antigravity の自己管理領域は sync しない。
+  `scripts/sync_agents.py`、`ROOT_*`、`.claude/settings.*.json` を触る前に
+  `docs/agent-sync.md` を読む (spoke 参照の絶対パス rewrite、hook block の所有範囲と
+  第三者 hook の保持、settings 4 層の合成と env の丸ごと所有、skills、Antigravity)。
+- **global ルールを変えるときは source を編集して `just sync-agents`。**
   配布先 (`~/.claude/CLAUDE.md` 等) を直接編集しても次の sync で上書きされる。
 - **per-repo enforcement は `templates/agent-baseline/` に scaffold 保管** (dotfiles
   自身には未適用。`just scaffold-agent-baseline <dir>` で新規 repo へ展開)。
@@ -91,7 +50,7 @@ just sync-agents-preview …  # dry-run
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |
 | `just test` | devcontainer サンドボックステスト (下記) |
 | `just semgrep-test` | `.semgrep/rules/**` を co-located fixture で `semgrep --test` |
-| `just dump-skills-lock` / `restore-skills-lock` / `skills-place` / `skills-update` / `skills-lock-check` | skill の宣言 (`dump/harness/skill-lock.json`) と配置 (ADR 0043): 自作 (hironow/skills) もサードパーティも `bunx skills` CLI の store (`~/.agents/skills`) に入れ、各 home へは `skills-place` が相対 symlink を張る。監査・README 表・fork 比較の tooling は hironow/skills 側の `justfile`。手順は `docs/agents/skills-maintenance.md` (spoke) |
+| `just dump-skills-lock` / `restore-skills-lock` / `skills-place` / `skills-update` / `skills-lock-check` | skill の宣言 (`dump/harness/skill-lock.json`) と配置 (ADR 0043、`docs/agent-sync.md`)。監査・README 表・fork 比較の tooling は hironow/skills 側の `justfile`。手順は `docs/agents/skills-maintenance.md` (spoke) |
 
 ## Python lint の範囲 (repo-side の例外)
 
