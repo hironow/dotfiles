@@ -68,6 +68,7 @@ select = [
     "PLR",  # Pylint refactor
     "UP",   # pyupgrade
     "FURB", # refurb
+    "PTH",  # flake8-use-pathlib
     "RUF",  # Ruff-specific rules
     "ANN",  # flake8-annotations
 ]

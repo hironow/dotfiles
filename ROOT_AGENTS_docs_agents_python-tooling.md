@@ -60,6 +60,7 @@ select = [
     "PLR",  # Pylint refactor
     "UP",   # pyupgrade
     "FURB", # refurb
+    "PTH",  # flake8-use-pathlib: pathlib over os.path / bare open()
     # "DOC", # pydoclint
     # "D",   # pydocstyle
     "RUF",  # Ruff-specific rules
