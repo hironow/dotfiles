@@ -105,6 +105,35 @@ def _resolve(
 
 
 @needs_posix_bash
+def test_sourcing_the_lib_runs_no_external_command(tmp_path: Path) -> None:
+    """The fixtures isolate PATH to their own bin (so a real pwsh or cygpath
+    cannot leak in), so the lib must not need any external command just to be
+    sourced; `dirname` there broke every test on macOS. A tool that fails when
+    called stands in for "not on PATH" on hosts whose bash finds one anyway."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for tool in ("dirname", "basename", "readlink", "realpath"):
+        _fake(bin_dir, tool, f'echo "{tool} called" >&2; exit 97')
+    assert BASH is not None
+    r = subprocess.run(
+        [
+            BASH,
+            "-c",
+            f'set -euo pipefail; . "{LIB.as_posix()}"; echo "$_PS_PROFILE_LIB_DIR"',
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env={"PATH": str(bin_dir), "HOME": "/home/u"},
+        check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    assert "called" not in r.stderr
+    assert r.stdout.strip().endswith("/scripts")
+
+
+@needs_posix_bash
 def test_override_wins(tmp_path: Path) -> None:
     r = _resolve(tmp_path, {"DOTFILES_PS_PROFILE": "/x/profile.ps1"})
     assert r.returncode == 0, r.stderr

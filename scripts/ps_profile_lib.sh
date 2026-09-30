@@ -17,8 +17,14 @@
 # paths. Nothing here fails: callers run under `set -eu`/pipefail.
 # ==============================================================================
 
-# This file's directory, for its sibling drop_managed_block.awk.
-_PS_PROFILE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# This file's directory, for its sibling drop_managed_block.awk. Builtins only:
+# callers (and the tests, which isolate PATH) source this with no guarantee
+# that `dirname` is on PATH.
+case "${BASH_SOURCE[0]}" in
+  */*) _PS_PROFILE_LIB_DIR="${BASH_SOURCE[0]%/*}" ;;
+  *) _PS_PROFILE_LIB_DIR=. ;;
+esac
+_PS_PROFILE_LIB_DIR="$(cd "$_PS_PROFILE_LIB_DIR" && pwd)"
 
 ps_profile_legacy() {
   printf '%s\n' "$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
