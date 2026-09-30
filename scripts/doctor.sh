@@ -4,6 +4,8 @@
 # can stay a plain-bash one-liner that starts from any shell and any just
 # version — a diagnostics tool must not depend on the machinery it diagnoses.
 set -euo pipefail
+# shellcheck source=scripts/ps_profile_lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/ps_profile_lib.sh"
 
 echo '🩺 Running environment doctor...'
 ok=0; warn=0; err=0
@@ -238,7 +240,7 @@ EOF_WSL
     # 2) deploy-managed state: PowerShell profile blocks + global mise
     #    config. Stale mise config is the nastiest drift (an ungated
     #    sheldon aborts every `mise exec` recipe), so surface it early.
-    ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+    ps_profile="$(resolve_ps_profile)"
     stale=''
     for marker in 'starship init' 'mise activate' 'mise node corepack'; do
       grep -qF "dotfiles managed block: ${marker}" "$ps_profile" 2>/dev/null \
@@ -250,6 +252,14 @@ EOF_WSL
       log_ok 'win-deploy' 'PowerShell profile blocks + mise config in sync'
     else
       log_warn 'win-deploy' "stale/missing: ${stale} -- run: just deploy"
+    fi
+    # Deploys before the $PROFILE path was resolved wrote the blocks to the
+    # legacy Documents path; with Documents redirected (OneDrive) pwsh never
+    # loads that file, so the leftovers only mislead whoever reads it.
+    ps_legacy="$(ps_profile_legacy)"
+    if [ "$ps_legacy" != "$ps_profile" ] \
+      && grep -qF 'dotfiles managed block:' "$ps_legacy" 2>/dev/null; then
+      log_warn 'win-profile-legacy' "managed blocks in ${ps_legacy} (pwsh loads ${ps_profile}) -- run: just clean && just deploy"
     fi
 
     # 3) uv hardening: native Windows uv reads %APPDATA%\uv\uv.toml (not

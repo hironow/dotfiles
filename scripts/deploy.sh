@@ -7,6 +7,8 @@
 # (starship.toml + gitignore-global). zsh/sheldon/tmux/ghostty/fzf-tab
 # are Unix-only and are skipped. See ADR 0018.
 set -eu
+# shellcheck source=scripts/ps_profile_lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/ps_profile_lib.sh"
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     echo "==> Deploy dotfiles (windows subset)..."
@@ -17,7 +19,9 @@ case "$(uname -s)" in
     mkdir -p ~/.config/mise
     cp -f ~/dotfiles/config/mise/config.toml ~/.config/mise/config.toml
     # PowerShell 7 $PROFILE — idempotent starship init block (ADR 0022).
-    ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+    # The Microsoft.PowerShell_profile.ps1 pwsh actually loads — not always
+    # under $HOME/Documents (OneDrive redirects it; scripts/ps_profile_lib.sh).
+    ps_profile="$(resolve_ps_profile)"
     ps_marker_begin="# >>> dotfiles managed block: starship init >>>"
     ps_marker_end="# <<< end dotfiles managed block <<<"
     mkdir -p "$(dirname "$ps_profile")"
