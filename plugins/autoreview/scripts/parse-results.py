@@ -62,7 +62,7 @@ def parse_results(filepath: str) -> dict:
         return {"error": f"File not found: {filepath}"}
 
     rows: list[dict] = []
-    with open(path) as f:
+    with path.open(encoding="utf-8") as f:
         for lineno, line in enumerate(f):
             parts = line.rstrip("\n").split("\t")
             if lineno == 0 and parts[0] == "commit":
