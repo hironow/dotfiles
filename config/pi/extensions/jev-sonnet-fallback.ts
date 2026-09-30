@@ -3,10 +3,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // Other subscriptions first, then the Claude Code subscription (kept for last so it is
 // left for Claude Code itself), then the metered route. Pi's registry only exposes
-// authenticated models, so a newly authenticated Cursor joins the pool.
+// authenticated models. Cursor is not a route: Pi hands that provider no tools, so a
+// session there cannot launch a worker, run a command or edit a file.
 export const ROUTES = [
   ["github-copilot", "claude-sonnet-5.5"],
-  ["cursor", "claude-sonnet-5-5"],
   ["anthropic", "claude-sonnet-5-5"],
   ["openrouter", "anthropic/claude-sonnet-5.5"],
 ] as const;

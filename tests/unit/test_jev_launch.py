@@ -165,12 +165,13 @@ def test_pi_route_prefers_ready_subscription(monkeypatch: pytest.MonkeyPatch) ->
         seen.append(args[-1])
         assert "TYPESAFE_API_KEY" not in cast("dict[str, str]", kwargs["env"])
         return Mock(
-            returncode=0, stdout="ready" if args[-1] == "cursor" else "not_ready"
+            returncode=0,
+            stdout="ready" if args[-1] == "github-copilot" else "not_ready",
         )
 
     monkeypatch.setattr(launcher.subprocess, "run", check)
-    assert launcher.pi_route() == "cursor/claude-sonnet-5-5"
-    assert seen == ["github-copilot", "cursor"]
+    assert launcher.pi_route() == "github-copilot/claude-sonnet-5.5"
+    assert seen == ["github-copilot"]
 
 
 def test_pi_route_uses_metered_only_after_subscriptions(
@@ -186,7 +187,7 @@ def test_pi_route_uses_metered_only_after_subscriptions(
 
     monkeypatch.setattr(launcher.subprocess, "run", check)
     assert launcher.pi_route() == "openrouter/anthropic/claude-sonnet-5.5"
-    assert seen == ["github-copilot", "cursor", "anthropic", "openrouter"]
+    assert seen == ["github-copilot", "anthropic", "openrouter"]
 
 
 def test_pi_without_ready_provider_exits_with_a_message_not_a_traceback(
@@ -355,7 +356,24 @@ def test_the_claude_code_subscription_is_kept_for_last_before_the_metered_route(
 
     monkeypatch.setattr(launcher.subprocess, "run", check)
     assert launcher.pi_route() == "anthropic/claude-sonnet-5-5"
-    assert seen == ["github-copilot", "cursor", "anthropic"]
+    assert seen == ["github-copilot", "anthropic"]
+
+
+def test_cursor_is_never_a_pi_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Pi hands the cursor provider no tools ("Tool not available"), so a
+    # session there cannot run a worker, a shell command or an edit
+    seen: list[str] = []
+
+    def check(args: list[str], **_kwargs: object) -> Mock:
+        seen.append(args[-1])
+        return Mock(
+            returncode=0, stdout="ready" if args[-1] == "cursor" else "not_ready"
+        )
+
+    monkeypatch.setattr(launcher.subprocess, "run", check)
+    with pytest.raises(SystemExit):
+        launcher.pi_route()
+    assert "cursor" not in seen
 
 
 def test_an_unknown_home_directory_means_no_key_not_a_crash(

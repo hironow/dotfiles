@@ -155,7 +155,9 @@ Python とスクリプトの絶対パスを定義に埋め込むので、`sh` �
 
 ## Pi の提供元と切り替え
 
-Pi は、認証済みの提供元を GitHub Copilot、Cursor、Anthropic（Claude Code のサブスク）、OpenRouter の順に使う。
+Pi は、認証済みの提供元を GitHub Copilot、Anthropic（Claude Code のサブスク）、OpenRouter の順に使う。
+Cursor は、ログインしていても使わない。
+Pi が Cursor の提供元にツールを渡さない（`Tool not available` と答える）ので、そこでは worker の起動も、コマンドの実行も、編集もできないからである。
 Claude Code のサブスクは Claude Code 自身のために残したいので、ほかのサブスクより後にする。
 OpenRouter は従量課金なので最後にする。
 

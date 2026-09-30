@@ -49,7 +49,7 @@ test("an ambiguous error neither switches nor exhausts a route", async () => {
 });
 
 test("subscription candidates precede metered candidate", () => {
-  expect(ROUTES.map(([provider]) => provider)).toEqual(["github-copilot", "cursor", "anthropic", "openrouter"]);
+  expect(ROUTES.map(([provider]) => provider)).toEqual(["github-copilot", "anthropic", "openrouter"]);
 });
 
 test("after a subscription limit, continue on the next authenticated provider", async () => {
@@ -63,7 +63,7 @@ test("after a subscription limit, continue on the next authenticated provider", 
   };
   fallback(pi as any);
   const copilot = { provider: "github-copilot", id: "claude-sonnet-5.5" };
-  const cursor = { provider: "cursor", id: "claude-sonnet-5-5" };
+  const anthropic = { provider: "anthropic", id: "claude-sonnet-5-5" };
   const router = { provider: "openrouter", id: "anthropic/claude-sonnet-5.5" };
   const event = {
     outcome: "error", context: { contextMessages: [{ role: "assistant", stopReason: "error", errorMessage: "HTTP 429: usage limit exceeded" }] },
@@ -71,21 +71,43 @@ test("after a subscription limit, continue on the next authenticated provider", 
   const ctx = {
     model: copilot, thinkingLevel: "medium", hasUI: false,
     modelRegistry: {
-      find: (provider: string) => ({ cursor, openrouter: router } as any)[provider],
-      getAvailable: () => [copilot, cursor, router],
+      find: (provider: string) => ({ anthropic, openrouter: router } as any)[provider],
+      getAvailable: () => [copilot, anthropic, router],
     },
   };
   const result = await handler!(event, ctx);
-  expect(selected).toBe("cursor");
+  expect(selected).toBe("anthropic");
   expect(result.continue).toBe(true);
   expect(result.entries[0].type).toBe("custom_message");
-  ctx.model = cursor;
+  ctx.model = anthropic;
   await handler!(event, ctx);
   expect(selected).toBe("openrouter");
   delete process.env.JEV_ROUTED_SESSION;
 });
 
-test("skip unauthenticated Cursor and stop when the metered provider is exhausted", async () => {
+test("Cursor is never a fallback, even when authenticated: Pi gives that provider no tools", async () => {
+  process.env.JEV_ROUTED_SESSION = "1";
+  let handler: ((event: any, context: any) => Promise<any>) | undefined;
+  const switched: string[] = [];
+  fallback({
+    on: (name: string, callback: typeof handler) => { if (name === "agent_before_settle") handler = callback; },
+    setModel: async (model: { provider: string }) => { switched.push(model.provider); return true; },
+    setThinkingLevel: () => {},
+  } as any);
+  const copilot = { provider: "github-copilot", id: "claude-sonnet-5.5" };
+  const cursor = { provider: "cursor", id: "claude-sonnet-5-5" };
+  const openrouter = { provider: "openrouter", id: "anthropic/claude-sonnet-5.5" };
+  const event = { outcome: "error", context: { contextMessages: [{ role: "assistant", stopReason: "error", errorMessage: "429 quota exceeded" }] } };
+  const ctx = {
+    model: copilot, hasUI: false,
+    modelRegistry: { find: (provider: string) => ({ cursor, openrouter } as any)[provider], getAvailable: () => [copilot, cursor, openrouter] },
+  };
+  expect((await handler!(event, ctx)).continue).toBe(true);
+  expect(switched).toEqual(["openrouter"]);
+  delete process.env.JEV_ROUTED_SESSION;
+});
+
+test("skip an unauthenticated provider and stop when the metered provider is exhausted", async () => {
   process.env.JEV_ROUTED_SESSION = "1";
   let handler: ((event: any, context: any) => Promise<any>) | undefined;
   const switched: string[] = [];
@@ -151,7 +173,9 @@ test("a bare single launch runs on the session's Sonnet route", () => {
 });
 
 test("an explicit Sonnet route without a suffix is kept as the base", () => {
-  expect(workerBaseModel({ agent: "worker", task: "x", model: "cursor/claude-sonnet-5-5" }, "github-copilot/claude-sonnet-5.5")).toBe("cursor/claude-sonnet-5-5");
+  expect(workerBaseModel({ agent: "worker", task: "x", model: "anthropic/claude-sonnet-5-5" }, "github-copilot/claude-sonnet-5.5")).toBe("anthropic/claude-sonnet-5-5");
+  // Cursor is not a route (no tools there), so an explicit Cursor model gets no effort
+  expect(workerBaseModel({ agent: "worker", task: "x", model: "cursor/claude-sonnet-5-5" }, "github-copilot/claude-sonnet-5.5")).toBeUndefined();
 });
 
 test("explicit suffixes, other models, workflows and management calls have no base", () => {
@@ -296,7 +320,7 @@ test("a redirected codex launch is not given a Sonnet effort", async () => {
 test("the Claude Code subscription is tried after the other subscriptions and before the metered route", () => {
   const all = ROUTES.map(([provider, id]) => `${provider}/${id}`);
   const anthropic = "anthropic/claude-sonnet-5-5";
-  expect(all.indexOf(anthropic)).toBeGreaterThan(all.indexOf("cursor/claude-sonnet-5-5"));
+  expect(all.indexOf(anthropic)).toBeGreaterThan(all.indexOf("github-copilot/claude-sonnet-5.5"));
   expect(all.indexOf(anthropic)).toBeLessThan(all.indexOf("openrouter/anthropic/claude-sonnet-5.5"));
-  expect(fallbackCandidates(new Set([all[0], all[1]]), all)[0]).toEqual(["anthropic", "claude-sonnet-5-5"]);
+  expect(fallbackCandidates(new Set([all[0]]), all)[0]).toEqual(["anthropic", "claude-sonnet-5-5"]);
 });

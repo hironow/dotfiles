@@ -14,10 +14,11 @@ JEV_URL = "https://api.typesafe.ai/v1/systemone"
 SONNET = "claude-sonnet-5-5"
 # Other subscriptions first, then the Claude Code subscription (kept for last so it is
 # left for Claude Code itself), then the metered route. The Pi extension uses the same
-# order if a provider reports a usage limit during the session.
+# order if a provider reports a usage limit during the session. Cursor is not a route:
+# Pi hands that provider no tools ("Tool not available"), so a session there cannot
+# launch a worker, run a command or edit a file.
 PI_ROUTES = (
     ("github-copilot", "claude-sonnet-5.5"),
-    ("cursor", "claude-sonnet-5-5"),
     ("anthropic", "claude-sonnet-5-5"),
     ("openrouter", "anthropic/claude-sonnet-5.5"),
 )
