@@ -116,6 +116,23 @@ def test_drop_block_removes_only_that_block(tmp_path: Path) -> None:
 
 
 @needs_bash
+def test_drop_block_matches_markers_in_a_crlf_profile(tmp_path: Path) -> None:
+    # given a profile an editor saved with CRLF line endings
+    crlf = (STARSHIP + USER_LINE + MISE).replace("\n", "\r\n")
+    profile = tmp_path / "profile.ps1"
+    profile.write_bytes(crlf.encode("utf-8"))
+
+    # when the starship block is dropped
+    result = _lib(f'ps_profile_drop_block "{profile.as_posix()}" "starship init"')
+
+    # then it is gone (a missed CRLF marker would re-append a duplicate block);
+    # MSYS tools may normalize the line endings, which PowerShell does not mind
+    assert result.returncode == 0, result.stderr
+    left = profile.read_bytes().decode("utf-8").replace("\r\n", "\n")
+    assert left == USER_LINE + MISE
+
+
+@needs_bash
 def test_drop_block_does_not_depend_on_gnu_sed_in_place(tmp_path: Path) -> None:
     """`sed -i` differs between GNU and BSD (macOS wants `-i ''`), so the lib
     must not use it: a sed that rejects -i stands in for BSD's here."""

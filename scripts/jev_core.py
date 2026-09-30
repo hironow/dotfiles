@@ -7,22 +7,25 @@ its data as arguments and returns a value, so it is tested without mocks.
 
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping, Sequence
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 SONNET = "claude-sonnet-5-5"
-# Subscription-backed routes precede the metered route. The Pi extension uses
-# the same order if a provider reports a usage limit during the session.
+# Other subscriptions first, then the Claude Code subscription (kept for last so it is
+# left for Claude Code itself), then the metered route. The Pi extension uses the same
+# order if a provider reports a usage limit during the session.
 PI_ROUTES = (
     ("github-copilot", "claude-sonnet-5.5"),
     ("cursor", "claude-sonnet-5-5"),
+    ("anthropic", "claude-sonnet-5-5"),
     ("openrouter", "anthropic/claude-sonnet-5.5"),
 )
 # Sonnet 5.5 coding guidance: medium for well-specified work, high for harder
 # work. Reserve xhigh/max until a workload-specific evaluation proves a gain.
 # Jev answers atomic questions (docs.typesafe.ai): a Score for how hard the task
 # is and a Noul for strict structure. This code combines them; thresholds live here.
-QUESTIONS = {
+QUESTIONS: dict[str, dict[str, object]] = {
     "difficulty": {
         "type": "score",
         "instructions": "How demanding is this coding-agent task for the model that performs it?",
@@ -111,7 +114,7 @@ def build_command(
 # Claude Code fixes a subagent's effort in its definition; the Agent tool takes no
 # effort argument. So each effort gets a definition, and a PreToolUse hook swaps
 # the launch onto the one Jev picked. Both are injected with --settings/--agents,
-# so only a jev-claude session is affected.
+# so only a j-cc session is affected.
 _WORKER_PROMPT = (
     "You are a worker agent inside a coding session. Complete the delegated task "
     "fully with the tools available. Report what you changed or found, with "
@@ -170,7 +173,11 @@ def claude_session_args(hook_command: str) -> list[str]:
 
 
 def build_env(
-    environ: Mapping[str, str], host: str, key: str | None, extension_ready: bool
+    environ: Mapping[str, str],
+    host: str,
+    key: str | None,
+    extension_ready: bool,
+    codex_agents_ready: bool = False,
 ) -> dict[str, str]:
     """The child's environment. Neither agent gets the Jev secret in its env."""
     env = {
@@ -184,9 +191,124 @@ def build_env(
             # Consumed and removed by the extension at load; bash tool and child
             # sessions never see it. Absent extension, the key stays out of Pi.
             env["JEV_KEY_HANDOFF"] = key
+        if codex_agents_ready:
+            env["JEV_CODEX_AGENTS"] = "1"
     else:
         env.setdefault("RUNOPS_ACTOR_TYPE", "ai-agent")
     return env
+
+
+# ---- Codex workers: pick a gpt-6 model and its reasoning effort ----
+# OpenAI's guidance (learn.chatgpt.com/docs/models, 2026-09-29): GPT-6.1 Sol has
+# near-Astra performance for complex, repeated or long-running work at a lower cost, so
+# it is the default for complex coding. Keep Astra for the most demanding end-to-end
+# work (start at low); Luna suits clear, repeatable tasks (start at high). Astra costs
+# far more than Sol, so it needs a confident "hard and end to end" read.
+CODEX_QUESTIONS: dict[str, dict[str, object]] = {
+    **QUESTIONS,
+    "well_scoped": {
+        "type": "noul",
+        "instructions": "Is this a specific, repeatable task where a good result is easy to recognize, such as extraction, classification, transformation, a structured summary, or a focused code change?",
+    },
+    "end_to_end": {
+        "type": "noul",
+        "instructions": "Does the task span many steps across code, tools, applications or research, and need sustained judgment to reach a complete result?",
+    },
+}
+WELL_SCOPED = 0.7
+END_TO_END = 0.7
+ASTRA_CONFIDENCE = 0.8
+CODEX_DEFAULT = ("gpt-6.1-sol", "medium")
+# A strict format means a slip breaks a consumer: one step up where there is room.
+_ONE_STEP_UP = {("gpt-6.1-sol", "medium"): "high", ("gpt-6-astra", "low"): "medium"}
+CODEX_SANDBOXES = ("read-only", "workspace-write")
+CODEX_AGENT_TYPES = {"codex:codex-rescue", "codex-rescue"}
+
+
+def build_codex_request_body(task: str) -> dict[str, object]:
+    return {**build_request_body(task), "questions": CODEX_QUESTIONS}
+
+
+def _noul(answers: Mapping[str, object], name: str) -> float:
+    answer = answers.get(name)
+    value = _number(answer.get("noul")) if isinstance(answer, dict) else None
+    return -1.0 if value is None else value
+
+
+def codex_from_answers(answers: Mapping[str, object]) -> tuple[str, str]:
+    """(model, effort) for a Codex worker; anything unusable means Sol at medium."""
+    difficulty = answers.get("difficulty")
+    score = _number(difficulty.get("score")) if isinstance(difficulty, dict) else None
+    confidence = (
+        _number(difficulty.get("confidence")) if isinstance(difficulty, dict) else None
+    )
+    choice = CODEX_DEFAULT
+    if score is not None and confidence is not None and confidence >= CONFIDENCE_FLOOR:
+        if score >= HARD_SCORE:
+            hard_and_sure = (
+                _noul(answers, "end_to_end") >= END_TO_END
+                and confidence >= ASTRA_CONFIDENCE
+            )
+            choice = (
+                ("gpt-6-astra", "low") if hard_and_sure else ("gpt-6.1-sol", "high")
+            )
+        elif _noul(answers, "well_scoped") >= WELL_SCOPED:
+            choice = ("gpt-6-luna", "high")
+    if (
+        _noul(answers, "strict_structure") >= STRICT_STRUCTURE
+        and choice in _ONE_STEP_UP
+    ):
+        choice = (choice[0], _ONE_STEP_UP[choice])
+    return choice
+
+
+def build_codex_exec_command(
+    model: str, effort: str, sandbox: str, final_message_path: str
+) -> list[str]:
+    """`codex exec` the way pi-subagents' own adapter runs it, plus the model and effort."""
+    if sandbox not in CODEX_SANDBOXES:
+        raise ValueError(f"sandbox must be one of {CODEX_SANDBOXES}")
+    return [
+        "codex",
+        "exec",
+        "--json",
+        "--color",
+        "never",
+        "--ephemeral",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--skip-git-repo-check",
+        "-s",
+        sandbox,
+        "-m",
+        model,
+        "-c",
+        f'model_reasoning_effort="{effort}"',
+        "-c",
+        'approval_policy="never"',
+        "--output-last-message",
+        final_message_path,
+        "-",
+    ]
+
+
+_EXPLICIT_CODEX_FLAG = re.compile(r"(?:^|\s)--(?:model|effort)(?:[=\s]|$)")
+
+
+def plan_codex_rewrite(
+    tool_input: Mapping[str, object], model: str, effort: str
+) -> dict | None:
+    """The Agent input that hands `codex:codex-rescue` a model and effort, or None.
+
+    The plugin's wrapper forwards `--model`/`--effort` written in the request, so the
+    flags go in front of the prompt. Anything the caller already chose wins.
+    """
+    prompt = tool_input.get("prompt")
+    if tool_input.get("subagent_type") not in CODEX_AGENT_TYPES:
+        return None
+    if not isinstance(prompt, str) or _EXPLICIT_CODEX_FLAG.search(prompt):
+        return None
+    return {**tool_input, "prompt": f"--model {model} --effort {effort} {prompt}"}
 
 
 # Who may hold access to ~/.env on Windows besides the user: SYSTEM and the

@@ -250,6 +250,323 @@ def test_no_subagent_at_all_is_a_failure() -> None:
     assert verify.analyze([], [RECORD], [], "").status == "fail"
 
 
+CODEX_RECORD = {"kind": "codex-rescue", "model": "gpt-6-astra", "effort": "low"}
+COMPANION = 'node "/p/codex-companion.mjs" task --write --model gpt-6-astra --effort low "fix it"'
+CODEX_OK = {
+    "agentType": "codex:codex-rescue",
+    "name": None,
+    "efforts": ["medium"],
+    "commands": [COMPANION],
+}
+
+
+def test_pass_also_needs_the_codex_flags_to_reach_the_companion() -> None:
+    report = verify.analyze(
+        [], [RECORD, CODEX_RECORD], [OK, CODEX_OK], "", expect_codex=True
+    )
+    assert report.status == "pass"
+    assert any("codex" in line for line in report.evidence)
+
+
+def test_codex_flags_that_never_reached_the_companion_are_a_failure() -> None:
+    dropped = {**CODEX_OK, "commands": ['node "/p/codex-companion.mjs" task "fix it"']}
+    report = verify.analyze(
+        [], [RECORD, CODEX_RECORD], [OK, dropped], "", expect_codex=True
+    )
+    assert report.status == "fail" and "codex" in report.reason
+
+
+def test_a_model_that_differs_from_jevs_choice_is_a_failure() -> None:
+    other = {**CODEX_OK, "commands": [COMPANION.replace("gpt-6-astra", "gpt-6-luna")]}
+    assert (
+        verify.analyze(
+            [], [RECORD, CODEX_RECORD], [OK, other], "", expect_codex=True
+        ).status
+        == "fail"
+    )
+
+
+def test_no_codex_launch_is_unconfirmed_not_a_pass() -> None:
+    report = verify.analyze([], [RECORD], [OK], "", expect_codex=True)
+    assert report.status == "partial" and "codex" in report.reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        COMPANION.replace("gpt-6-astra", "gpt-6-astra-other").replace(
+            "--effort low", "--effort lower"
+        ),
+        'node "/p/codex-companion.mjs" task "say --model gpt-6-astra --effort low"',
+        COMPANION.replace("--model gpt-6-astra", "-m=gpt-6-astra"),
+        'node "/p/codex-companion.mjs" task # --model gpt-6-astra --effort low',
+        COMPANION.replace("--model gpt-6-astra", '--cwd "--model"'),
+        "echo 'node /p/codex-companion.mjs task --model gpt-6-astra --effort low'",
+        'echo OK; node "/p/codex-companion.mjs" task --model gpt-6-astra --effort low "fix it"',
+        COMPANION.replace(
+            "--model gpt-6-astra", "--model gpt-6-astra --model gpt-6-luna"
+        ),
+        COMPANION.replace('"fix it"', '-- "--model gpt-6-astra --effort low"').replace(
+            "--model gpt-6-astra --effort low ", "", 1
+        ),
+    ],
+)
+def test_codex_evidence_requires_actual_exact_arguments(command: str) -> None:
+    report = verify.analyze(
+        [],
+        [RECORD, CODEX_RECORD],
+        [OK, {**CODEX_OK, "commands": [command]}],
+        "",
+        expect_codex=True,
+    )
+    assert report.status != "pass"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        COMPANION,
+        COMPANION.replace(
+            "--model gpt-6-astra --effort low", "--model=gpt-6-astra --effort=low"
+        ),
+    ],
+)
+def test_a_direct_companion_invocation_with_exact_flags_passes(command: str) -> None:
+    assert (
+        verify._analyze_codex(
+            [CODEX_RECORD], [{**CODEX_OK, "commands": [command]}]
+        ).status
+        == "pass"
+    )
+
+
+@pytest.mark.parametrize(
+    "mode, want_status, want_exit",
+    [
+        ("absent", "PARTIAL", 3),
+        ("dropped", "FAIL", 1),
+        ("wrong", "FAIL", 1),
+        ("ok", "PASS", 0),
+    ],
+)
+def test_main_checks_codex_using_real_session_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+    want_status: str,
+    want_exit: int,
+) -> None:
+    config = tmp_path / "claude"
+    session = "verification-session"
+    agents = config / "projects/example" / session / "subagents"
+    agents.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+
+    def transcript(directory: Path, agent_id: str, meta: dict, content: list) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"agent-{agent_id}.meta.json").write_text(
+            json.dumps(meta), encoding="utf-8"
+        )
+        (directory / f"agent-{agent_id}.jsonl").write_text(
+            json.dumps(
+                {"type": "assistant", "effort": "high", "message": {"content": content}}
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    transcript(agents, "worker", {"agentType": "worker-high"}, [])
+    transcript(
+        config / "projects/example/decoy/subagents",
+        "decoy",
+        {"agentType": "worker-high"},
+        [],
+    )
+    # A different session must never contaminate effort/command evidence.
+    (config / "projects/example/decoy/subagents/agent-decoy.jsonl").write_text(
+        json.dumps({"type": "assistant", "effort": "medium"}), encoding="utf-8"
+    )
+    if mode != "absent":
+        command = (
+            COMPANION if mode == "ok" else 'node "/p/codex-companion.mjs" task "fix it"'
+        )
+        if mode == "wrong":
+            command = COMPANION.replace("gpt-6-astra", "gpt-6-luna")
+        transcript(
+            agents,
+            "codex",
+            {"agentType": "codex:codex-rescue"},
+            [{"name": "Bash", "input": {"command": command}}],
+        )
+
+    def run(command: list[str], *, env: dict[str, str], **_kwargs: object) -> object:
+        records = [RECORD] if mode == "absent" else [RECORD, CODEX_RECORD]
+        Path(env["JEV_HOOK_LOG"]).write_text(
+            "\n".join(json.dumps(r) for r in records), encoding="utf-8"
+        )
+        Path(command[command.index("--debug-file") + 1]).write_text(
+            "", encoding="utf-8"
+        )
+        return verify.subprocess.CompletedProcess(
+            command, 0, json.dumps({"session_id": session}), ""
+        )
+
+    monkeypatch.setattr(verify.subprocess, "run", run)
+    assert verify.main() == want_exit
+    assert capsys.readouterr().out.startswith(f"{want_status}:")
+
+
+def test_the_worse_of_the_worker_and_codex_verdicts_wins() -> None:
+    kept = {"agentType": "general-purpose", "name": None, "efforts": ["medium"]}
+    report = verify.analyze(
+        [], [RECORD, CODEX_RECORD], [kept, CODEX_OK], "", expect_codex=True
+    )
+    assert report.status == "fail" and "updatedInput" in report.reason
+
+
+def genuine_codex_limit_stream() -> list[str]:
+    return [
+        json.dumps(
+            {
+                "type": "assistant",
+                "error": "rate_limit",
+                "isApiErrorMessage": True,
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "You've hit your weekly limit"}
+                    ]
+                },
+            }
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        COMPANION.replace("gpt-6-astra", "gpt-6-luna"),
+        COMPANION.replace("--effort low", "--effort high"),
+        COMPANION.replace("--model gpt-6-astra", ""),
+        COMPANION.replace("--effort low", ""),
+    ],
+)
+def test_real_limit_does_not_hide_confirmed_codex_argument_defects(
+    command: str,
+) -> None:
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [OK, {**CODEX_OK, "commands": [command]}],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "fail"
+    assert "codex" in report.reason
+
+
+@pytest.mark.parametrize("commands", [[], [f"cd /p && {COMPANION}"]])
+def test_limit_with_missing_or_unrecognized_companion_evidence_is_blocked(
+    commands: list[str],
+) -> None:
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [OK, {**CODEX_OK, "commands": commands}],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "blocked"
+
+
+def test_codex_success_does_not_make_an_unstarted_plain_worker_a_defect() -> None:
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [CODEX_OK],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "blocked"
+
+
+def test_confirmed_codex_defect_wins_even_if_plain_worker_did_not_start() -> None:
+    wrong = {**CODEX_OK, "commands": [COMPANION.replace("gpt-6-astra", "gpt-6-luna")]}
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [wrong],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "fail"
+
+
+def test_successful_codex_does_not_hide_a_confirmed_plain_worker_defect_during_limit() -> (
+    None
+):
+    wrong = {**OK, "efforts": ["medium"]}
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [wrong, CODEX_OK],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "fail"
+
+
+def test_ordinary_limit_quote_cannot_hide_wrong_codex_arguments() -> None:
+    quote = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {"content": "fixture: hit your weekly limit"},
+            }
+        )
+    ]
+    wrong = {**CODEX_OK, "commands": [COMPANION.replace("gpt-6-astra", "gpt-6-luna")]}
+    report = verify.analyze(
+        quote, [RECORD, CODEX_RECORD], [OK, wrong], "", expect_codex=True
+    )
+    assert report.status == "fail"
+
+
+@pytest.mark.parametrize(
+    ("records", "subagents", "status"),
+    [
+        ([], [], "blocked"),
+        ([CODEX_RECORD], [{**CODEX_OK, "commands": []}], "blocked"),
+        (
+            [CODEX_RECORD],
+            [
+                {
+                    **CODEX_OK,
+                    "commands": [COMPANION.replace("gpt-6-astra", "gpt-6-luna")],
+                }
+            ],
+            "fail",
+        ),
+    ],
+)
+def test_login_block_does_not_hide_codex_defects_or_invent_missing_evidence(
+    records: list[dict], subagents: list[dict], status: str
+) -> None:
+    stream = [
+        json.dumps(
+            {
+                "type": "result",
+                "is_error": True,
+                "result": "Not logged in · Please run /login",
+            }
+        )
+    ]
+    report = verify.analyze(stream, records, subagents, "", expect_codex=True)
+    assert report.status == status
+    if status == "blocked":
+        assert "/login" in report.reason
+
+
 def test_the_claude_stream_is_decoded_as_utf8_on_every_platform(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

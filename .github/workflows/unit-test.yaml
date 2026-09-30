@@ -82,5 +82,5 @@ jobs:
         run: |
           Remove-Item Env:HOME -ErrorAction SilentlyContinue
           just --evaluate _EXE_SRC_DIR
-          uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py
+          uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_jev_codex_exec.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py
           bun test tests/unit/jev_sonnet_fallback.test.ts

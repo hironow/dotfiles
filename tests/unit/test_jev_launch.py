@@ -183,7 +183,7 @@ def test_pi_route_uses_metered_only_after_subscriptions(
 
     monkeypatch.setattr(launcher.subprocess, "run", check)
     assert launcher.pi_route() == "openrouter/anthropic/claude-sonnet-5.5"
-    assert seen == ["github-copilot", "cursor", "openrouter"]
+    assert seen == ["github-copilot", "cursor", "anthropic", "openrouter"]
 
 
 def test_pi_without_ready_provider_exits_with_a_message_not_a_traceback(
@@ -217,6 +217,7 @@ def _launch(
     monkeypatch.setattr(launcher, "jev_key", lambda: "secret")
     monkeypatch.setattr(launcher, "choose_effort", lambda *_args: "high")
     monkeypatch.setattr(launcher, "extension_installed", lambda: True)
+    monkeypatch.setattr(launcher, "codex_agents_installed", lambda: True)
     monkeypatch.setattr(
         launcher, "pi_route", lambda: "github-copilot/claude-sonnet-5.5"
     )
@@ -250,6 +251,7 @@ def test_main_wires_key_effort_route_and_environment(
         "high",
     ]
     assert env["JEV_KEY_HANDOFF"] == "secret" and "TYPESAFE_API_KEY" not in env
+    assert env["JEV_CODEX_AGENTS"] == "1"
     argv, env = _launch(monkeypatch, "claude")
     assert Path(argv[0]).stem == "claude"
     assert argv[1:5] == ["--model", launcher.SONNET, "--effort", "high"]
@@ -285,6 +287,86 @@ def test_extension_is_detected_in_the_pi_agent_dir(
     assert launcher.extension_installed() is installed
 
 
+CODEX_HARD = (
+    b'{"answers":{"difficulty":{"type":"score","score":2.0,"confidence":1.0},'
+    b'"strict_structure":{"type":"noul","noul":0.1},'
+    b'"well_scoped":{"type":"noul","noul":0.1},'
+    b'"end_to_end":{"type":"noul","noul":0.95}}}'
+)
+
+
+def test_choose_codex_asks_the_four_questions_and_returns_a_model_and_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[dict[str, object]] = []
+
+    def reply(request: urllib.request.Request, timeout: int) -> io.BytesIO:
+        assert isinstance(request.data, bytes)
+        sent.append(json.loads(request.data))
+        return io.BytesIO(CODEX_HARD)
+
+    monkeypatch.setattr(launcher.urllib.request, "urlopen", reply)
+    assert launcher.choose_codex("redesign it", "secret") == ("gpt-6-astra", "low")
+    assert set(cast("dict[str, object]", sent[0]["questions"])) == {
+        "difficulty",
+        "strict_structure",
+        "well_scoped",
+        "end_to_end",
+    }
+
+
+def test_choose_codex_falls_back_to_sol_medium_without_a_key_or_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert launcher.choose_codex("task", None) == ("gpt-6.1-sol", "medium")
+
+    def offline(*_args: object, **_kwargs: object) -> None:
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr(launcher.urllib.request, "urlopen", offline)
+    assert launcher.choose_codex("task", "secret") == ("gpt-6.1-sol", "medium")
+
+
+@pytest.mark.parametrize(
+    "names", [("codex-jev.md", "codex-jev-writer.md"), ("codex-jev.md",), ()]
+)
+def test_the_codex_agents_count_as_installed_only_when_both_are_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, names: tuple[str, ...]
+) -> None:
+    (tmp_path / "agents").mkdir()
+    for name in names:
+        (tmp_path / "agents" / name).write_text("x", encoding="utf-8")
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path))
+    assert launcher.codex_agents_installed() is (len(names) == 2)
+
+
+def test_the_claude_code_subscription_is_kept_for_last_before_the_metered_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str] = []
+
+    def check(args: list[str], **_kwargs: object) -> Mock:
+        seen.append(args[-1])
+        ready = args[-1] in {"anthropic", "openrouter"}
+        return Mock(returncode=0, stdout="ready" if ready else "not_ready")
+
+    monkeypatch.setattr(launcher.subprocess, "run", check)
+    assert launcher.pi_route() == "anthropic/claude-sonnet-5-5"
+    assert seen == ["github-copilot", "cursor", "anthropic"]
+
+
+def test_an_unknown_home_directory_means_no_key_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_home() -> Path:
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(launcher.Path, "home", no_home)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
+    assert launcher.jev_key() is None
+
+
 def _hook_shell() -> str:
     """The bash Claude Code runs hook commands with: Git Bash on Windows."""
     if sys.platform != "win32":
@@ -316,3 +398,37 @@ def test_the_worker_hook_command_runs_in_the_hook_shell() -> None:
 
     # then the hook itself started (it ignores the payload and exits 0)
     assert result.returncode == 0, result.stderr
+
+
+def test_utf8_stdio_overrides_a_non_utf8_locale() -> None:
+    # given a child whose stdio would default to cp932 (Japanese Windows)
+    probe = (
+        "import sys; sys.path.insert(0, sys.argv[1]); import jev_launch; "
+        "jev_launch.use_utf8_stdio(); "
+        "sys.stdout.write(sys.stdin.read())"
+    )
+    text = "日本語のプロンプト ✅"
+
+    # when it echoes UTF-8 bytes from stdin back to stdout
+    result = subprocess.run(
+        [sys.executable, "-c", probe, str(SCRIPTS)],
+        input=text.encode("utf-8"),
+        capture_output=True,
+        env={**os.environ, "PYTHONIOENCODING": "cp932"},
+        check=False,
+    )
+
+    # then the text survives both ways
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert result.stdout.decode("utf-8") == text
+
+
+@pytest.mark.parametrize("name", ["jev_claude_hook.py", "jev_codex_exec.py"])
+def test_stdio_scripts_switch_to_utf8_before_reading(name: str) -> None:
+    # Claude Code and Pi talk UTF-8 over these pipes; the locale may not.
+    main_block = (
+        (SCRIPTS / name)
+        .read_text(encoding="utf-8")
+        .split('if __name__ == "__main__":', 1)[1]
+    )
+    assert "use_utf8_stdio()" in main_block

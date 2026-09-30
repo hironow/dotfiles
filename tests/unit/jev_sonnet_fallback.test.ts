@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import cases from "./jev_effort_cases.json";
-import fallback, { buildRequestBody, chooseEffort, effortFromAnswers, fallbackCandidates, hitUsageLimit, isUsageLimit, ROUTES, workerBaseModel } from "../../config/pi/extensions/jev-sonnet-fallback";
+import fallback, { buildRequestBody, redirectCodexAgent, chooseEffort, effortFromAnswers, fallbackCandidates, hitUsageLimit, isUsageLimit, ROUTES, workerBaseModel } from "../../config/pi/extensions/jev-sonnet-fallback";
 
 test("only provider usage limits trigger a switch", () => {
   expect(isUsageLimit("HTTP 429: usage limit reached")).toBe(true);
@@ -49,7 +49,7 @@ test("an ambiguous error neither switches nor exhausts a route", async () => {
 });
 
 test("subscription candidates precede metered candidate", () => {
-  expect(ROUTES.map(([provider]) => provider)).toEqual(["github-copilot", "cursor", "openrouter"]);
+  expect(ROUTES.map(([provider]) => provider)).toEqual(["github-copilot", "cursor", "anthropic", "openrouter"]);
 });
 
 test("after a subscription limit, continue on the next authenticated provider", async () => {
@@ -179,8 +179,8 @@ test("usage limits are read from the last assistant message only", () => {
 test("fallback candidates keep route order and drop exhausted or unavailable ones", () => {
   const all = ROUTES.map(([provider, id]) => `${provider}/${id}`);
   expect(fallbackCandidates(new Set(), all)).toEqual([...ROUTES]);
-  expect(fallbackCandidates(new Set([all[0]]), all)).toEqual([ROUTES[1], ROUTES[2]]);
-  expect(fallbackCandidates(new Set([all[0]]), [all[0], all[2]])).toEqual([ROUTES[2]]);
+  expect(fallbackCandidates(new Set([all[0]]), all)).toEqual([ROUTES[1], ROUTES[2], ROUTES[3]]);
+  expect(fallbackCandidates(new Set([all[0]]), [all[0], all[3]])).toEqual([ROUTES[3]]);
   expect(fallbackCandidates(new Set(all), all)).toEqual([]);
 });
 
@@ -238,4 +238,65 @@ test("the request body is pure: task truncated, one score and one noul", () => {
   const body = buildRequestBody("x".repeat(9000));
   expect(body.state.length).toBe(8000);
   expect(Object.values(body.questions).map((question) => question.type)).toEqual(["score", "noul"]);
+});
+
+test("the built-in codex agents map to the Jev-aware ones; everything else does not", () => {
+  expect(redirectCodexAgent({ agent: "codex-exec", task: "x" })).toBe("codex-jev");
+  expect(redirectCodexAgent({ agent: "codex-exec-writer", task: "x" })).toBe("codex-jev-writer");
+  for (const input of [{ agent: "worker", task: "x" }, { agent: "codex-jev", task: "x" }, { workflowScript: "return 1" }, { action: "list" }, null, "x"]) {
+    expect(redirectCodexAgent(input as any)).toBeUndefined();
+  }
+});
+
+test("with the codex agents installed, launches are redirected even without a Jev key", async () => {
+  process.env.JEV_ROUTED_SESSION = "1";
+  process.env.JEV_CODEX_AGENTS = "1";
+  delete process.env.JEV_KEY_HANDOFF;
+  try {
+    const handlers = workerHarness();
+    const event = { toolName: "subagent", input: { agent: "codex-exec-writer", task: "x" } };
+    await handlers.tool_call(event, sonnetCtx);
+    expect(event.input.agent).toBe("codex-jev-writer");
+    const other = { toolName: "subagent", input: { agent: "worker", task: "x" } };
+    await handlers.tool_call(other, sonnetCtx);
+    expect(other.input.agent).toBe("worker");
+  } finally {
+    delete process.env.JEV_ROUTED_SESSION;
+    delete process.env.JEV_CODEX_AGENTS;
+  }
+});
+
+test("without the agents installed the codex launches stay as they are", async () => {
+  process.env.JEV_ROUTED_SESSION = "1";
+  delete process.env.JEV_CODEX_AGENTS;
+  delete process.env.JEV_KEY_HANDOFF;
+  const handlers = workerHarness();
+  expect(handlers.tool_call).toBeUndefined();
+  delete process.env.JEV_ROUTED_SESSION;
+});
+
+test("a redirected codex launch is not given a Sonnet effort", async () => {
+  process.env.JEV_ROUTED_SESSION = "1";
+  process.env.JEV_CODEX_AGENTS = "1";
+  process.env.JEV_KEY_HANDOFF = "secret";
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => { throw new Error("Jev must not be asked for a codex launch"); }) as any;
+  try {
+    const handlers = workerHarness();
+    const event = { toolName: "subagent", input: { agent: "codex-exec", task: "x" } };
+    await handlers.tool_call(event, sonnetCtx);
+    expect(event.input).toEqual({ agent: "codex-jev", task: "x" });
+  } finally {
+    globalThis.fetch = original;
+    delete process.env.JEV_ROUTED_SESSION;
+    delete process.env.JEV_CODEX_AGENTS;
+  }
+});
+
+test("the Claude Code subscription is tried after the other subscriptions and before the metered route", () => {
+  const all = ROUTES.map(([provider, id]) => `${provider}/${id}`);
+  const anthropic = "anthropic/claude-sonnet-5-5";
+  expect(all.indexOf(anthropic)).toBeGreaterThan(all.indexOf("cursor/claude-sonnet-5-5"));
+  expect(all.indexOf(anthropic)).toBeLessThan(all.indexOf("openrouter/anthropic/claude-sonnet-5.5"));
+  expect(fallbackCandidates(new Set([all[0], all[1]]), all)[0]).toEqual(["anthropic", "claude-sonnet-5-5"]);
 });

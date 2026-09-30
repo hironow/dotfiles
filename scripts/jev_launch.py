@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Opt-in Jev routing for a new Claude Code or Pi session (imperative shell)."""
 
+import io
 import json
 import os
 from pathlib import Path
@@ -15,9 +16,11 @@ from jev_core import (
     JEV_URL,
     PI_ROUTES,
     SONNET,
+    build_codex_request_body,
     build_command,
     build_env,
     build_request_body,
+    codex_from_answers,
     claude_session_args,
     effort_from_answers,
     parse_args,
@@ -66,13 +69,28 @@ def env_file_is_private(path: Path) -> bool:
     return stat.st_uid == os.getuid() and not stat.st_mode & 0o077
 
 
+def use_utf8_stdio() -> None:
+    """Claude Code and Pi speak UTF-8 over stdin/stdout; the locale may not.
+
+    On Japanese Windows piped stdio defaults to cp932, which garbles a Japanese
+    prompt before Jev sees it and cannot write every character of the answer.
+    """
+    for stream in (sys.stdin, sys.stdout):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
+
+
 def jev_key() -> str | None:
     key = os.environ.get("TYPESAFE_API_KEY") or os.environ.get("TYPESAFE_AI_API_KEY")
     if key:
         return key
-    # A local private file is convenient for interactive shell functions. Do
-    # not source it: arbitrary shell content must never run during routing.
-    path = Path.home() / ".env"
+    # A local private file is convenient for interactive shell functions, and the only
+    # source for children whose environment is scrubbed. Do not source it: arbitrary
+    # shell content must never run during routing.
+    try:
+        path = Path.home() / ".env"
+    except (RuntimeError, OSError):  # a scrubbed environment may not name a home
+        return None
     if not path.is_file():
         return None
     if not env_file_is_private(path):
@@ -89,12 +107,8 @@ def jev_key() -> str | None:
     return None
 
 
-def choose_effort(task: str, key: str | None) -> str:
-    """One bounded Jev call; a failed or unusable answer keeps the host profile."""
-    if not key:
-        print("Jev: no TYPESAFE_API_KEY; using Sonnet 5.5 medium", file=sys.stderr)
-        return "medium"
-    body = build_request_body(task)
+def ask_jev(body: dict[str, object], key: str) -> dict[str, object] | None:
+    """Imperative shell: one bounded call. None means there was no usable answer."""
     request = urllib.request.Request(
         JEV_URL,
         data=json.dumps(body).encode("utf-8"),
@@ -106,7 +120,7 @@ def choose_effort(task: str, key: str | None) -> str:
             answers = json.load(response)["answers"]
         if not isinstance(answers, dict):
             raise TypeError("answers is not an object")
-        return effort_from_answers(answers)
+        return answers
     except (
         urllib.error.URLError,
         TimeoutError,
@@ -115,17 +129,40 @@ def choose_effort(task: str, key: str | None) -> str:
         TypeError,
     ) as error:
         # Never print exception bodies/headers: upstream errors may echo the key.
-        print(
-            f"Jev: no valid selection ({type(error).__name__}); using Sonnet 5.5 medium",
-            file=sys.stderr,
-        )
+        print(f"Jev: no valid selection ({type(error).__name__})", file=sys.stderr)
+        return None
+
+
+def choose_effort(task: str, key: str | None) -> str:
+    """One Jev call; no key, no answer or an unusable one keeps the host profile."""
+    if not key:
+        print("Jev: no TYPESAFE_API_KEY; using Sonnet 5.5 medium", file=sys.stderr)
         return "medium"
+    answers = ask_jev(build_request_body(task), key)
+    return effort_from_answers(answers) if answers is not None else "medium"
+
+
+def choose_codex(task: str, key: str | None) -> tuple[str, str]:
+    """(model, effort) for a Codex worker; without an answer, Sol at medium."""
+    if not key:
+        print("Jev: no TYPESAFE_API_KEY; using gpt-6.1-sol medium", file=sys.stderr)
+        return codex_from_answers({})
+    return codex_from_answers(ask_jev(build_codex_request_body(task), key) or {})
 
 
 def extension_installed() -> bool:
     """The worker-effort extension consumes the key handoff; without it, hand off nothing."""
     agent = Path(os.environ.get("PI_CODING_AGENT_DIR") or Path.home() / ".pi/agent")
     return (agent / "extensions/jev-sonnet-fallback.ts").is_file()
+
+
+def codex_agents_installed() -> bool:
+    """The Jev-aware Codex agents exist; the extension only redirects to agents that do."""
+    agent = Path(os.environ.get("PI_CODING_AGENT_DIR") or Path.home() / ".pi/agent")
+    return all(
+        (agent / "agents" / name).is_file()
+        for name in ("codex-jev.md", "codex-jev-writer.md")
+    )
 
 
 def pi_route() -> str:
@@ -171,7 +208,9 @@ def main() -> None:
         print(f"Pi route: {model}", file=sys.stderr)
     extra = claude_session_args(hook_command()) if host == "claude" else []
     command = build_command(host, task, effort, model, extra)
-    env = build_env(os.environ, host, key, extension_installed())
+    env = build_env(
+        os.environ, host, key, extension_installed(), codex_agents_installed()
+    )
     if os.name == "nt":
         # Resolve mise's .cmd/.exe shim via PATHEXT before CreateProcess.
         command[0] = shutil.which(command[0]) or command[0]
