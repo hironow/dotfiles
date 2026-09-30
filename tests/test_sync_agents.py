@@ -70,7 +70,9 @@ def sandbox_repo():
         snapshots_root.mkdir(exist_ok=True)
         snapshot = tempfile.mkdtemp(prefix="snap-", dir=str(snapshots_root))
         _copy_tracked_into(str(ROOT), snapshot)
-        _SANDBOX_REPO = str(Path(lwf) / Path(snapshot).relative_to(ROOT, walk_up=True))
+        # The snapshot sits under ROOT. `uvx pytest` runs on the image's
+        # Python 3.11, which has no relative_to(walk_up=...)
+        _SANDBOX_REPO = str(Path(lwf) / Path(snapshot).relative_to(ROOT))
         yield
         _SANDBOX_REPO = None
         shutil.rmtree(snapshot, ignore_errors=True)
