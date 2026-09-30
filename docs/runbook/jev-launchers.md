@@ -117,7 +117,7 @@ just jev-claude-verify
 | --- | --- | --- |
 | `PASS` | 0 | 名前なしの worker の定義と選んだ effort を確認できた。CI と Windows の確認は別 |
 | `FAIL` | 1 | スキーマ拒否、worker の定義や effort の不一致を確認した。利用上限が同時に出てもこちらを優先する |
-| `BLOCKED` | 2 | provider のエラーイベントで利用上限を確認した。リセット後にやり直す。会話中の引用は対象外 |
+| `BLOCKED` | 2 | provider のエラーイベントで利用上限を確認した、または CLI が未ログインで終了した（結果イベントが `Not logged in`）。リセット後、またはログイン後にやり直す。会話中の引用は対象外 |
 | `PARTIAL` | 3 | worker の effort の証拠が不足するか、親と同じ `medium` で効果を区別できない。`/tasks` でも確認する |
 
 一致した名前なし worker は、それぞれに effort の記録が必要である。

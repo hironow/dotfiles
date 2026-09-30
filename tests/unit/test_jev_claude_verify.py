@@ -46,6 +46,39 @@ def test_the_weekly_limit_is_blocked_not_failed() -> None:
     assert verify.analyze(limit_stream(), [], [], "").status == "blocked"
 
 
+def test_a_logged_out_cli_is_blocked_not_failed() -> None:
+    """Seen live (WSL): `claude -p` ended at once with this result, no Agent call
+    ran, and the run was reported FAIL (a defect) although nothing was tested."""
+    stream = [
+        json.dumps(
+            {
+                "type": "result",
+                "is_error": True,
+                "result": "Not logged in · Please run /login",
+            }
+        )
+    ]
+    report = verify.analyze(stream, [], [], "")
+    assert report.status == "blocked"
+    assert "/login" in report.reason
+
+
+def test_logged_out_text_from_the_model_does_not_block() -> None:
+    stream = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "Not logged in · Please run /login"}
+                    ]
+                },
+            }
+        )
+    ]
+    assert verify.analyze(stream, [], [], "").status == "fail"
+
+
 @pytest.mark.parametrize(
     "event",
     [
