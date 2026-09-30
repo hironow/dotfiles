@@ -41,7 +41,10 @@ extend-exclude = [
 # gate failure. CPython 3.12+ only emits a SyntaxWarning for them (a future
 # release makes it a SyntaxError), so they ride through `just ci` as pytest
 # warning noise today; 7 such sites had accumulated under tests/unit/.
-extend-select = ["W605"]
+# PTH (flake8-use-pathlib) keeps filesystem code on pathlib: os.path string
+# joins and bare open() hide the Windows separator and encoding bugs this
+# repo keeps hitting on native Windows hosts.
+extend-select = ["W605", "PTH"]
 
 [tool.pytest.ini_options]
 markers = [
