@@ -44,12 +44,22 @@ class Report:
     evidence: list[str] = field(default_factory=list)
 
 
-def analyze(returncode: int, stderr: str, metas: list[dict]) -> Report:
+def analyze(
+    returncode: int, stderr: str, metas: list[dict], subagent_calls: int | None = None
+) -> Report:
     """Functional core: the verdict from the run's exit, stderr and worker records."""
     if not metas:
         if returncode != 0 and _LIMIT.search(stderr):
             return Report(
                 "blocked", "a usage limit stopped the session before a worker ran"
+            )
+        if subagent_calls == 0:
+            # The model only said it launched one (seen after a provider switch):
+            # nothing was learned about the rewrite, so this is not a defect.
+            return Report(
+                "blocked",
+                "the session made no subagent call (the model did not follow the "
+                "probe prompt); rerun",
             )
         return Report(
             "fail", "no worker ran: pi-subagents recorded no run for this session"
@@ -103,6 +113,55 @@ def worker_metas(sessions: Path, cwd_name: str) -> list[dict]:
     return metas
 
 
+def subagent_calls(sessions: Path, cwd_name: str) -> int:
+    """subagent tool calls in the top-level transcripts of this run's sessions."""
+    calls = 0
+    for path in sessions.glob("*/*.jsonl"):
+        if cwd_name not in path.parent.name:
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            message = entry.get("message") if isinstance(entry, dict) else None
+            content = message.get("content") if isinstance(message, dict) else None
+            for part in content if isinstance(content, list) else []:
+                if (
+                    isinstance(part, dict)
+                    and part.get("type") == "toolCall"
+                    and part.get("name") == "subagent"
+                ):
+                    calls += 1
+    return calls
+
+
+def _run_once(
+    command: list[str], env: dict[str, str], sessions: Path
+) -> tuple[int, str, list[dict], int]:
+    with tempfile.TemporaryDirectory() as cwd:
+        run = subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            # `pi -p` also reads a non-terminal stdin as input and waits for
+            # EOF; an inherited open pipe would hang the check.
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=900,
+            check=False,
+        )
+        name = Path(cwd).name
+        return (
+            run.returncode,
+            run.stderr,
+            worker_metas(sessions, name),
+            subagent_calls(sessions, name),
+        )
+
+
 def main() -> int:
     key = jev_key()
     if not key:
@@ -118,26 +177,20 @@ def main() -> int:
         command = build_command("pi", PROMPT, SESSION_EFFORT, route)
         command[0] = shutil.which("pi") or "pi"
         command.insert(1, "-p")
-        agent_dir = Path(
-            os.environ.get("PI_CODING_AGENT_DIR") or Path.home() / ".pi/agent"
+        sessions = (
+            Path(os.environ.get("PI_CODING_AGENT_DIR") or Path.home() / ".pi/agent")
+            / "sessions"
         )
-        with tempfile.TemporaryDirectory() as cwd:
-            run = subprocess.run(
-                command,
-                cwd=cwd,
-                env=env,
-                # `pi -p` also reads a non-terminal stdin as input and waits for
-                # EOF; an inherited open pipe would hang the check.
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=900,
-                check=False,
-            )
-            metas = worker_metas(agent_dir / "sessions", Path(cwd).name)
-        report = analyze(run.returncode, run.stderr, metas)
-        report.evidence.insert(0, f"session route: {route} at {SESSION_EFFORT}")
+        # A model can ignore the probe prompt (seen after a provider switch):
+        # when a session makes no subagent call at all, try once more.
+        for attempt in (1, 2):
+            returncode, stderr, metas, calls = _run_once(command, env, sessions)
+            if metas or calls:
+                break
+        report = analyze(returncode, stderr, metas, calls)
+        report.evidence.insert(
+            0, f"session route: {route} at {SESSION_EFFORT} (attempt {attempt})"
+        )
     print(f"{report.status.upper()}: {report.reason}")
     for line in report.evidence:
         print(f"  {line}")

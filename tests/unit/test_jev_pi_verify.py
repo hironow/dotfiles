@@ -64,9 +64,33 @@ def test_no_worker_after_a_usage_limit_is_blocked() -> None:
     assert report.status == "blocked"
 
 
-def test_no_worker_without_a_limit_is_a_failure() -> None:
-    report = verify.analyze(0, "", [])
+def test_a_subagent_call_that_left_no_worker_record_is_a_failure() -> None:
+    report = verify.analyze(0, "", [], subagent_calls=1)
     assert report.status == "fail"
+
+
+def test_a_session_that_never_called_subagent_learned_nothing() -> None:
+    # seen in WSL: after a provider switch the model only *said* it called the
+    # worker; that says nothing about the Jev rewrite
+    report = verify.analyze(0, "", [], subagent_calls=0)
+    assert report.status == "blocked"
+    assert "no subagent call" in report.reason
+
+
+def test_subagent_calls_are_counted_from_this_runs_transcript(tmp_path: Path) -> None:
+    session = tmp_path / "sessions" / "--tmp-tmpxyz--"
+    session.mkdir(parents=True)
+    call = {"type": "toolCall", "name": "subagent", "arguments": {"agent": "worker"}}
+    text = {"type": "text", "text": "Calling the worker subagent once."}
+    lines = [
+        {"type": "message", "message": {"role": "assistant", "content": [text]}},
+        {"type": "message", "message": {"role": "assistant", "content": [call]}},
+    ]
+    (session / "s.jsonl").write_text(
+        "".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8"
+    )
+    assert verify.subagent_calls(tmp_path / "sessions", "tmpxyz") == 1
+    assert verify.subagent_calls(tmp_path / "sessions", "other") == 0
 
 
 def test_one_high_worker_among_several_passes() -> None:

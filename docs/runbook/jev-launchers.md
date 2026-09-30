@@ -201,6 +201,6 @@ just jev-pi-verify
 | 結果 | 終了コード | 意味 |
 | --- | --- | --- |
 | `PASS` | 0 | worker が `:high`（Jev の選択。セッションの `medium` より上）で最後まで動いた |
-| `FAIL` | 1 | worker が起動しなかった、モデルに effort の suffix がない、または worker が失敗した |
-| `BLOCKED` | 2 | キーか拡張がない、または利用上限で worker の前に止まった |
+| `FAIL` | 1 | subagent を呼んだのに worker の記録がない、モデルに effort の suffix がない、または worker が失敗した |
+| `BLOCKED` | 2 | キーか拡張がない、利用上限で worker の前に止まった、またはモデルが subagent を呼ばなかった（1 回だけ自動でやり直す） |
 | `PARTIAL` | 3 | worker が `medium` で動き、セッションと区別できない |
