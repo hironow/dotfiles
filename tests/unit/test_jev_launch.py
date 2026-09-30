@@ -92,39 +92,56 @@ def test_home_env_key_needs_a_private_file_on_every_platform(
     assert launcher.jev_key() == "secret"
 
 
+def _my_sid() -> str:
+    """The current user's SID (CSV output, so it is locale-independent)."""
+    row = subprocess.run(
+        ["whoami", "/user", "/fo", "csv", "/nh"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    return row.strip().split(",")[-1].strip('"')
+
+
+def _icacls(*args: str) -> None:
+    subprocess.run(["icacls", *args], check=True, capture_output=True)
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="reads a real Windows ACL")
 def test_windows_acl_check_on_a_real_file(tmp_path: Path) -> None:
     # given a file made private the way the runbook says (a temp dir may grant
     # other accounts access, so its inherited ACL is not assumed)
     secret = tmp_path / ".env"
     secret.write_text("TYPESAFE_API_KEY=secret\n", encoding="utf-8")
-    me = (
-        subprocess.run(
-            ["whoami", "/user", "/fo", "csv", "/nh"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        .stdout.strip()
-        .split(",")[-1]
-        .strip('"')
-    )
-    subprocess.run(
-        ["icacls", str(secret), "/inheritance:r", "/grant:r", f"*{me}:(F)"],
-        check=True,
-        capture_output=True,
-    )
+    _icacls(str(secret), "/inheritance:r", "/grant:r", f"*{_my_sid()}:(F)")
     assert launcher.env_file_is_private(secret) is True
 
     # when Everyone (by SID, so the check is locale-independent) may read it
-    subprocess.run(
-        ["icacls", str(secret), "/grant", "*S-1-1-0:(R)"],
-        check=True,
-        capture_output=True,
-    )
+    _icacls(str(secret), "/grant", "*S-1-1-0:(R)")
 
     # then it is no longer private
     assert launcher.env_file_is_private(secret) is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="reads a real Windows ACL")
+def test_windows_acl_check_accepts_a_file_with_only_inherited_entries(
+    tmp_path: Path,
+) -> None:
+    # given a folder shaped like a default profile home (the user, SYSTEM and
+    # Administrators, inherited by new files)
+    home = tmp_path / "home"
+    home.mkdir()
+    grants = [f"*{sid}:(OI)(CI)(F)" for sid in (_my_sid(), "S-1-5-18", "S-1-5-32-544")]
+    _icacls(
+        str(home), "/inheritance:r", *[g for sid in grants for g in ("/grant:r", sid)]
+    )
+
+    # when ~/.env is created there with no ACL of its own
+    secret = home / ".env"
+    secret.write_text("TYPESAFE_API_KEY=secret\n", encoding="utf-8")
+
+    # then its inherited ACL is accepted as private without any repair
+    assert launcher.env_file_is_private(secret) is True
 
 
 def test_network_error_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
