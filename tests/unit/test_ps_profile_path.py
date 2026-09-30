@@ -30,7 +30,22 @@ LIB = ROOT / "scripts" / "ps_profile_lib.sh"
 SCRIPTS = {
     name: ROOT / "scripts" / f"{name}.sh" for name in ("deploy", "clean", "doctor")
 }
-BASH = shutil.which("bash")
+
+
+def _unwrapped_bash() -> str | None:
+    """Git for Windows' `<git>/bin/bash.exe` is a launcher that puts
+    `<git>/usr/bin` on PATH before starting the real shell, so a real
+    `cygpath` leaks into the fixture PATH (seen from PowerShell, where `bash`
+    resolves to the launcher). Use the shell behind it when there is one."""
+    found = shutil.which("bash")
+    if found is None:
+        return None
+    exe = Path(found)
+    real = exe.parent.parent / "usr" / "bin" / exe.name
+    return str(real) if exe.parent.name.lower() == "bin" and real.is_file() else found
+
+
+BASH = _unwrapped_bash()
 LEGACY_TAIL = "Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
 ONEDRIVE_WIN = (
     "C:\\Users\\u\\OneDrive\\ドキュメント\\PowerShell\\Microsoft.PowerShell_profile.ps1"
