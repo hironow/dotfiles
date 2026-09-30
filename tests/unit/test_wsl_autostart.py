@@ -301,6 +301,8 @@ def _run_payload(
         capture_output=True,
         text=True,
         env=overrides,
+        encoding="utf-8",
+        errors="replace",
     )
     return proc, log.read_text(encoding="ascii")
 

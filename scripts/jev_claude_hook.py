@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import json
 import os
+from pathlib import Path
 import sys
 from typing import TextIO
 
@@ -60,7 +61,7 @@ def decide(
 def _log(record: dict) -> None:
     path = os.environ.get("JEV_HOOK_LOG")
     if path:
-        with open(path, "a", encoding="utf-8") as log:
+        with Path(path).open("a", encoding="utf-8") as log:
             log.write(json.dumps(record) + "\n")
 
 

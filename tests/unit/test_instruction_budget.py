@@ -49,7 +49,7 @@ def test_main_reports_and_passes_under_max(
     capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     f = tmp_path / "doc.md"
-    f.write_text("- one\n- two\n")
+    f.write_text("- one\n- two\n", encoding="utf-8")
     assert main(["--max", "5", str(f)]) == 0
     out = capsys.readouterr().out
     assert "doc.md" in out
@@ -58,13 +58,13 @@ def test_main_reports_and_passes_under_max(
 
 def test_main_fails_over_max(tmp_path: Path) -> None:
     f = tmp_path / "doc.md"
-    f.write_text("- one\n- two\n- three\n")
+    f.write_text("- one\n- two\n- three\n", encoding="utf-8")
     assert main(["--max", "2", str(f)]) == 1
 
 
 def test_main_without_max_only_reports(tmp_path: Path) -> None:
     f = tmp_path / "doc.md"
-    f.write_text("- one\n" * 100)
+    f.write_text("- one\n" * 100, encoding="utf-8")
     assert main([str(f)]) == 0
 
 

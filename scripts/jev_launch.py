@@ -23,10 +23,49 @@ from jev_core import (
     claude_session_args,
     effort_from_answers,
     parse_args,
+    windows_acl_is_private,
+)
+
+# Prints the user's SID, the file owner's SID, then the SID of each Allow ACE.
+# Uses the .NET API, not Get-Acl: its module fails to autoload in Windows
+# PowerShell when pwsh 7's PSModulePath is inherited.
+_WINDOWS_ACL_SCRIPT = (
+    "$s = [Security.Principal.SecurityIdentifier]; "
+    "$a = [IO.File]::GetAccessControl($env:JEV_ACL_PATH); "
+    "[Security.Principal.WindowsIdentity]::GetCurrent().User.Value; "
+    "$a.GetOwner($s).Value; "
+    "$a.GetAccessRules($true, $true, $s)"
+    " | Where-Object { $_.AccessControlType -eq 'Allow' }"
+    " | ForEach-Object { $_.IdentityReference.Value }"
 )
 
 
-IS_WINDOWS = os.name == "nt"
+def env_file_is_private(path: Path) -> bool:
+    """~/.env may hold the key only if no one else can read or rewrite it."""
+    if sys.platform == "win32":
+        try:
+            result = subprocess.run(
+                [
+                    shutil.which("powershell") or "powershell.exe",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    _WINDOWS_ACL_SCRIPT,
+                ],
+                env={**os.environ, "JEV_ACL_PATH": str(path)},
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False  # an unreadable ACL is not a private one
+        sids = result.stdout.split()
+        return len(sids) >= 2 and windows_acl_is_private(sids[0], sids[1], sids[2:])
+    stat = path.stat()
+    return stat.st_uid == os.getuid() and not stat.st_mode & 0o077
 
 
 def jev_key() -> str | None:
@@ -42,12 +81,12 @@ def jev_key() -> str | None:
         return None
     if not path.is_file():
         return None
-    if not IS_WINDOWS:
-        # On Windows the profile directory's ACL keeps the file to its owner instead.
-        stat = path.stat()
-        if stat.st_uid != os.getuid() or stat.st_mode & 0o077:
-            print("Jev: ~/.env must be owned by you and mode 0600", file=sys.stderr)
-            return None
+    if not env_file_is_private(path):
+        rule = (
+            "no ACL entry for other users" if sys.platform == "win32" else "mode 0600"
+        )
+        print(f"Jev: ~/.env must be owned by you and {rule}", file=sys.stderr)
+        return None
     for line in path.read_text(encoding="utf-8").splitlines():
         if "=" in line:
             name, value = line.split("=", 1)
@@ -125,6 +164,8 @@ def pi_route() -> str:
                 timeout=5,
                 check=False,
                 env=env,
+                encoding="utf-8",
+                errors="replace",
             )
         except (OSError, subprocess.TimeoutExpired):
             continue
@@ -135,10 +176,10 @@ def pi_route() -> str:
 
 def hook_command() -> str:
     """The shell command Claude Code runs for the worker hook, with absolute paths."""
-    parts = [sys.executable, str(Path(__file__).with_name("jev_claude_hook.py"))]
-    if os.name == "nt":
-        return subprocess.list2cmdline(parts)
-    return " ".join(shlex.quote(part) for part in parts)
+    # Claude Code runs hooks with bash on every OS (Git Bash on Windows), which
+    # eats backslashes: C:/ paths quoted for a POSIX shell work everywhere.
+    parts = [Path(sys.executable), Path(__file__).with_name("jev_claude_hook.py")]
+    return " ".join(shlex.quote(part.as_posix()) for part in parts)
 
 
 def main() -> None:

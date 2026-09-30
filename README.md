@@ -85,7 +85,7 @@ git -C ~/dotfiles submodule update --init
 > Mac、Linux、Windows ([WSL](https://learn.microsoft.com/en-us/windows/wsl/) 内の Linux) を一級でサポートする。
 > Mac は Homebrew が前提で、operator が先に入れる。以降は install.sh が自動で進める。
 >
-> Windows native の `just deploy` は、`corepack enable`、`starship.toml` / `gitignore-global` / `config/mise/config.toml` の配置、`$PROFILE` への starship init / mise activate / `MISE_NODE_COREPACK=0` の注入、global mise toolset の install、`aliases.gitconfig` の `[include]` 配線を行う。
+> Windows native の `just deploy` は、`corepack enable`、`starship.toml` / `gitignore-global` / `config/mise/config.toml` の配置、`$PROFILE` への mise activate / starship init（starship は mise 管理のため、この順）/ `MISE_NODE_COREPACK=0` の注入、global mise toolset の install、`aliases.gitconfig` の `[include]` 配線を行う。
 > scoop は、host ごとの manifest (`dump/<host>/scoop.json`) の dump と、`just add-scoop` による復元に対応する。
 > 基本の recipe は完走し、`just ci` も green になる (一部のテストは Linux / WSL / CI 限定で skip)。
 > 詳細は [ADR 0018](docs/adr/0018-windows-native-mvp.md)、[ADR 0039](docs/adr/0039-windows-bootstrap-ps1.md) と、0019 / 0022 / 0024 / 0030 / 0031 / 0032 / 0033。

@@ -284,3 +284,26 @@ def test_pi_learns_whether_the_codex_agents_are_installed(
 ) -> None:
     env = core.build_env({}, host, None, extension_ready=True, codex_agents_ready=ready)
     assert (env.get("JEV_CODEX_AGENTS") == "1") is flag
+
+
+ME = "S-1-5-21-1-2-3-1001"
+OTHER = "S-1-5-21-1-2-3-1002"
+
+
+@pytest.mark.parametrize(
+    ("owner", "allowed", "private"),
+    [
+        (ME, [ME], True),
+        # a default profile file: the user plus SYSTEM and Administrators
+        (ME, ["S-1-5-18", "S-1-5-32-544", ME], True),
+        (ME, [ME, "S-1-1-0"], False),  # Everyone
+        (ME, [ME, "S-1-5-11"], False),  # Authenticated Users
+        (ME, [ME, "S-1-5-32-545"], False),  # Users
+        (ME, [ME, OTHER], False),
+        (OTHER, [ME], False),  # someone else owns it and can rewrite the ACL
+    ],
+)
+def test_windows_env_file_is_private_only_to_the_user(
+    owner: str, allowed: list[str], private: bool
+) -> None:
+    assert core.windows_acl_is_private(ME, owner, allowed) is private

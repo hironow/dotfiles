@@ -18,30 +18,15 @@ case "$(uname -s)" in
     cp -f ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
     mkdir -p ~/.config/mise
     cp -f ~/dotfiles/config/mise/config.toml ~/.config/mise/config.toml
-    # PowerShell 7 $PROFILE — idempotent starship init block (ADR 0022).
-    # The Microsoft.PowerShell_profile.ps1 pwsh actually loads — not always
-    # under $HOME/Documents (OneDrive redirects it; scripts/ps_profile_lib.sh).
+    # PowerShell 7 $PROFILE managed blocks. The Microsoft.PowerShell_profile.ps1
+    # pwsh actually loads — not always under $HOME/Documents (OneDrive
+    # redirects it; scripts/ps_profile_lib.sh).
     ps_profile="$(resolve_ps_profile)"
-    ps_marker_begin="# >>> dotfiles managed block: starship init >>>"
     ps_marker_end="# <<< end dotfiles managed block <<<"
     mkdir -p "$(dirname "$ps_profile")"
     touch "$ps_profile"
-    if grep -qF "$ps_marker_begin" "$ps_profile"; then
-      echo "==> PowerShell \$PROFILE starship-init block already present (skip)"
-    else
-      {
-        printf '\n%s\n' "$ps_marker_begin"
-        # shellcheck disable=SC2016  # literal backticks: written verbatim into $PROFILE
-        printf '# Managed by `just deploy` (see ADR 0022). Edits inside this block are overwritten on next deploy.\n'
-        printf 'if (Get-Command starship -ErrorAction SilentlyContinue) {\n'
-        printf '    Invoke-Expression (&starship init powershell)\n'
-        printf '}\n'
-        printf '%s\n' "$ps_marker_end"
-      } >> "$ps_profile"
-      echo "==> PowerShell \$PROFILE updated with starship-init block"
-    fi
-    # PowerShell 7 $PROFILE — mise activate block (ADR 0024). Reuses
-    # $ps_profile and $ps_marker_end defined for the starship block above.
+    # mise activate block (ADR 0024). Written before the starship block:
+    # starship is mise-managed, so its Get-Command needs mise on PATH first.
     ps_mise_marker_begin="# >>> dotfiles managed block: mise activate >>>"
     if grep -qF "$ps_mise_marker_begin" "$ps_profile"; then
       echo "==> PowerShell \$PROFILE mise-activate block already present (skip)"
@@ -56,6 +41,29 @@ case "$(uname -s)" in
         printf '%s\n' "$ps_marker_end"
       } >> "$ps_profile"
       echo "==> PowerShell \$PROFILE updated with mise-activate block"
+    fi
+    # starship init block (ADR 0022), after mise activate. Profiles deployed
+    # with the old order carry it first, where it silently skips unless mise's
+    # shims are on the persisted PATH (runner hosts only); blocks already
+    # present are never rewritten, so drop it here to re-append it below.
+    if ps_profile_starship_before_mise "$ps_profile"; then
+      ps_profile_drop_block "$ps_profile" 'starship init'
+      echo "==> PowerShell \$PROFILE starship-init block moved after mise activate"
+    fi
+    ps_marker_begin="# >>> dotfiles managed block: starship init >>>"
+    if grep -qF "$ps_marker_begin" "$ps_profile"; then
+      echo "==> PowerShell \$PROFILE starship-init block already present (skip)"
+    else
+      {
+        printf '\n%s\n' "$ps_marker_begin"
+        # shellcheck disable=SC2016  # literal backticks: written verbatim into $PROFILE
+        printf '# Managed by `just deploy` (see ADR 0022). Edits inside this block are overwritten on next deploy.\n'
+        printf 'if (Get-Command starship -ErrorAction SilentlyContinue) {\n'
+        printf '    Invoke-Expression (&starship init powershell)\n'
+        printf '}\n'
+        printf '%s\n' "$ps_marker_end"
+      } >> "$ps_profile"
+      echo "==> PowerShell \$PROFILE updated with starship-init block"
     fi
     # PowerShell 7 $PROFILE — mise node corepack carve-out (Windows; ADR
     # 0031). mise's global `[settings.node] corepack = true` runs corepack
@@ -97,8 +105,7 @@ case "$(uname -s)" in
     # reaches profiles that already carry it.
     ps_jev_marker_begin="# >>> dotfiles managed block: Jev launchers >>>"
     if grep -qF "$ps_jev_marker_begin" "$ps_profile"; then
-      awk -v b="$ps_jev_marker_begin" -v e="$ps_marker_end" -f ~/dotfiles/scripts/drop_managed_block.awk "$ps_profile" > "$ps_profile.jev.tmp" \
-        && mv "$ps_profile.jev.tmp" "$ps_profile"
+      ps_profile_drop_block "$ps_profile" 'Jev launchers'
     fi
     {
       printf '\n%s\n' "$ps_jev_marker_begin"

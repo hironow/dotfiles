@@ -91,7 +91,7 @@ def test_codex_agents_are_rendered_with_absolute_paths_and_no_shell(
         text = (agent / "agents" / name).read_text(encoding="utf-8")
         assert not (agent / "agents" / name).is_symlink()
         assert 'command: "/py/bin/python3"' in text
-        assert f'args: ["{script}", "--sandbox", "{sandbox}"]' in text
+        assert f'args: [{json.dumps(str(script))}, "--sandbox", "{sandbox}"]' in text
         assert "@PYTHON@" not in text and "@SCRIPT@" not in text
         assert "sh" != text.split("command:")[1].split()[0].strip('"')
         assert "type: external-cli" in text and "promptDelivery: stdin" in text

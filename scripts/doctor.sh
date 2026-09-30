@@ -246,6 +246,11 @@ EOF_WSL
       grep -qF "dotfiles managed block: ${marker}" "$ps_profile" 2>/dev/null \
         || stale="${stale}${stale:+, }profile:${marker##* }"
     done
+    # starship is mise-managed: before `mise activate` its block skips
+    # (unless mise shims are on the persisted PATH, as on runner hosts).
+    if ps_profile_starship_before_mise "$ps_profile"; then
+      stale="${stale}${stale:+, }profile:starship-before-mise"
+    fi
     cmp -s config/mise/config.toml "$HOME/.config/mise/config.toml" 2>/dev/null \
       || stale="${stale}${stale:+, }mise-config"
     if [ -z "$stale" ]; then

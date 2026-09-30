@@ -8,7 +8,7 @@ its data as arguments and returns a value, so it is tested without mocks.
 import json
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 SONNET = "claude-sonnet-5-5"
@@ -309,3 +309,19 @@ def plan_codex_rewrite(
     if not isinstance(prompt, str) or _EXPLICIT_CODEX_FLAG.search(prompt):
         return None
     return {**tool_input, "prompt": f"--model {model} --effort {effort} {prompt}"}
+
+
+# Who may hold access to ~/.env on Windows besides the user: SYSTEM and the
+# local Administrators group, which every file in a default profile grants.
+WINDOWS_TRUSTED_SIDS = frozenset({"S-1-5-18", "S-1-5-32-544"})
+
+
+def windows_acl_is_private(
+    user_sid: str, owner_sid: str, allowed_sids: Iterable[str]
+) -> bool:
+    """The Windows analogue of 0600: only the user (and the OS) own or read it.
+
+    A foreign owner could rewrite the ACL, so ownership counts as access.
+    """
+    trusted = WINDOWS_TRUSTED_SIDS | {user_sid}
+    return owner_sid in trusted and set(allowed_sids) <= trusted

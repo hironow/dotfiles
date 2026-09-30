@@ -18,7 +18,7 @@ MANIFEST = REPO / ".claude-plugin" / "marketplace.json"
 
 
 def _manifest() -> dict:
-    return json.loads(MANIFEST.read_text())
+    return json.loads(MANIFEST.read_text(encoding="utf-8"))
 
 
 def test_no_plugin_root_alongside_path_sources() -> None:
@@ -42,7 +42,9 @@ def test_every_source_resolves_to_a_plugin_directory() -> None:
 def test_marketplace_entries_match_plugin_manifests() -> None:
     for entry in _manifest()["plugins"]:
         plugin_json = json.loads(
-            (REPO / entry["source"] / ".claude-plugin" / "plugin.json").read_text()
+            (REPO / entry["source"] / ".claude-plugin" / "plugin.json").read_text(
+                encoding="utf-8"
+            )
         )
         assert plugin_json["name"] == entry["name"]
         assert plugin_json.get("version") == entry.get("version"), (

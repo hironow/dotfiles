@@ -140,7 +140,8 @@ def test_main_fails_and_names_expired_entries(
     mod = _load()
     py = tmp_path / "pyproject.toml"
     py.write_text(
-        _pyproject('mlflow = "2026-08-20T00:00:00Z"', 'fresh = "2026-09-05T00:00:00Z"')
+        _pyproject('mlflow = "2026-08-20T00:00:00Z"', 'fresh = "2026-09-05T00:00:00Z"'),
+        encoding="utf-8",
     )
     rc = mod.main([str(py), "--now", NOW.isoformat()])
     out = capsys.readouterr()
@@ -152,14 +153,14 @@ def test_main_fails_and_names_expired_entries(
 def test_main_passes_when_every_override_is_inside_the_window(tmp_path: Path) -> None:
     mod = _load()
     py = tmp_path / "pyproject.toml"
-    py.write_text(_pyproject('mlflow = "2026-09-04T06:00:00Z"'))
+    py.write_text(_pyproject('mlflow = "2026-09-04T06:00:00Z"'), encoding="utf-8")
     assert mod.main([str(py), "--now", NOW.isoformat()]) == 0
 
 
 def test_main_treats_a_project_without_overrides_as_clean(tmp_path: Path) -> None:
     mod = _load()
     py = tmp_path / "pyproject.toml"
-    py.write_text('[project]\nname = "x"\nversion = "0"\n')
+    py.write_text('[project]\nname = "x"\nversion = "0"\n', encoding="utf-8")
     assert mod.main([str(py), "--now", NOW.isoformat()]) == 0
 
 
@@ -171,7 +172,10 @@ def test_main_fails_on_a_missing_pyproject(tmp_path: Path) -> None:
 def test_main_skips_projects_without_a_relative_window(tmp_path: Path) -> None:
     mod = _load()
     py = tmp_path / "pyproject.toml"
-    py.write_text(_pyproject('old = "2020-01-01"', window='"2020-06-01T00:00:00Z"'))
+    py.write_text(
+        _pyproject('old = "2020-01-01"', window='"2020-06-01T00:00:00Z"'),
+        encoding="utf-8",
+    )
     assert mod.main([str(py), "--now", NOW.isoformat()]) == 0
 
 
@@ -180,7 +184,7 @@ def test_main_reports_malformed_toml_in_its_own_words(
 ) -> None:
     mod = _load()
     py = tmp_path / "pyproject.toml"
-    py.write_text("[tool.uv\nexclude-newer = 7 days\n")
+    py.write_text("[tool.uv\nexclude-newer = 7 days\n", encoding="utf-8")
     assert mod.main([str(py), "--now", NOW.isoformat()]) == 1
     err = capsys.readouterr().err
     assert "check-uv-exclude-newer" in err and str(py) in err
@@ -221,6 +225,8 @@ def test_justfile_passes_every_uv_project_to_the_gate() -> None:
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout.split()
     uv_projects = {
         rel

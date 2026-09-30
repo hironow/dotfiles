@@ -260,6 +260,8 @@ def test_parses_as_valid_powershell() -> None:
         capture_output=True,
         text=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert proc.returncode == 0, (
         "bootstrap.ps1 has PowerShell syntax errors:\n" + proc.stdout

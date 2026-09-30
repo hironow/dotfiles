@@ -46,6 +46,8 @@ def test_powershell_function_syntax() -> None:
         text=True,
         capture_output=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, result.stderr
     invoke = (
@@ -60,6 +62,8 @@ def test_powershell_function_syntax() -> None:
         text=True,
         capture_output=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert called.returncode == 0, called.stderr
 
@@ -98,6 +102,8 @@ def _refresh(profile: str) -> str:
         text=True,
         capture_output=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, result.stderr
     return result.stdout
@@ -121,4 +127,5 @@ def test_refreshing_does_not_pile_up_blank_lines() -> None:
 
 def test_the_native_deploy_refreshes_the_block_instead_of_skipping_it() -> None:
     windows_branch = DEPLOY.split("    exit 0", 1)[0]
-    assert "drop_managed_block.awk" in windows_branch
+    # ps_profile_drop_block (scripts/ps_profile_lib.sh) runs drop_managed_block.awk.
+    assert "ps_profile_drop_block \"$ps_profile\" 'Jev launchers'" in windows_branch

@@ -96,7 +96,8 @@ def test_merge_replaces_legacy_backslash_block_without_duplicate(
                     ]
                 }
             }
-        )
+        ),
+        encoding="utf-8",
     )
     agent = AgentTarget(directory=target_dir, name="Test")
     legacy_cmd = 'bash "' + str(target_dir).replace("/", "\\") + '\\hooks\\block.sh"'
@@ -112,13 +113,14 @@ def test_merge_replaces_legacy_backslash_block_without_duplicate(
                     ]
                 }
             }
-        )
+        ),
+        encoding="utf-8",
     )
 
     _merge_hook_settings(dotfiles, agent, system=system)
 
-    blocks = json.loads((target_dir / "settings.json").read_text())["hooks"][
-        "PreToolUse"
-    ]
+    blocks = json.loads((target_dir / "settings.json").read_text(encoding="utf-8"))[
+        "hooks"
+    ]["PreToolUse"]
     commands = [h["command"] for b in blocks for h in b["hooks"]]
     assert commands == [f'sh "{target_dir.as_posix()}/hooks/block.sh"']

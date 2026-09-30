@@ -66,9 +66,11 @@ def _row(
 
 
 def _setup(tmp_path: Path, config: str, rows: list[str] | None) -> None:
-    (tmp_path / "review-config.yaml").write_text(config)
+    (tmp_path / "review-config.yaml").write_text(config, encoding="utf-8")
     if rows is not None:
-        (tmp_path / "review-results.tsv").write_text(HEADER + "".join(rows))
+        (tmp_path / "review-results.tsv").write_text(
+            HEADER + "".join(rows), encoding="utf-8"
+        )
 
 
 def _next(tmp_path: Path) -> subprocess.CompletedProcess[str]:
@@ -194,6 +196,8 @@ def _parse(path: Path) -> dict:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
+        errors="replace",
     )
     return json.loads(result.stdout)
 
@@ -205,7 +209,8 @@ def test_parse_results_summarizes_counts_rate_and_reduction(tmp_path: Path) -> N
         + _row("naming", "a.py", 10, 7, "keep")
         + _row("naming", "a.py", 7, 7, "revert")
         + _row("type-safety", "b.py", 5, 2, "keep")
-        + _row("naming", "-", 0, 0, "skip")
+        + _row("naming", "-", 0, 0, "skip"),
+        encoding="utf-8",
     )
     summary = _parse(tsv)
     assert summary["total_iterations"] == 4
@@ -239,7 +244,7 @@ def test_parse_results_reports_missing_file_as_error(tmp_path: Path) -> None:
 
 def test_parse_results_header_only_file_has_zero_iterations(tmp_path: Path) -> None:
     tsv = tmp_path / "review-results.tsv"
-    tsv.write_text(HEADER)
+    tsv.write_text(HEADER, encoding="utf-8")
     summary = _parse(tsv)
     assert summary["total_iterations"] == 0
     assert "error" in summary

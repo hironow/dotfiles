@@ -64,6 +64,8 @@ def _tracked_settings_sources(root: Path) -> list[Path]:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout
     return [root / name for name in out.split("\0") if name]
 
@@ -79,7 +81,7 @@ def _sources_setting_policy(root: Path) -> list[str]:
     offenders = []
     for path in _tracked_settings_sources(root):
         if POLICY_ENV_VAR in path.read_text(encoding="utf-8"):
-            offenders.append(str(path.relative_to(root)))
+            offenders.append(path.relative_to(root).as_posix())
     return offenders
 
 

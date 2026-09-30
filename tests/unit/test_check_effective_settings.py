@@ -81,6 +81,8 @@ def test_output_survives_cp932_stdout() -> None:
         text=True,
         env=env,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert proc.returncode == 0, (
         "checker output must not crash on a cp932 stdout:\n" + proc.stderr

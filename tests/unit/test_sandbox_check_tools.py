@@ -30,7 +30,7 @@ APT_TOOLS = {"shellcheck", "jq"}
 
 
 def recipe_body(name: str) -> str:
-    lines = JUSTFILE.read_text().splitlines()
+    lines = JUSTFILE.read_text(encoding="utf-8").splitlines()
     # The name, then parameters or nothing, then the colon: `check:` and not
     # `check-agent-refs *homes:`.
     header = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(?!=)")
@@ -55,7 +55,9 @@ def tools_just_check_runs() -> set[str]:
 
 def baked_tools() -> dict[str, object]:
     m = re.search(
-        r"cat > /etc/mise/config.toml <<'EOF'\n(.*?)\nEOF", INSTALL.read_text(), re.S
+        r"cat > /etc/mise/config.toml <<'EOF'\n(.*?)\nEOF",
+        INSTALL.read_text(encoding="utf-8"),
+        re.S,
     )
     assert m, "install.sh must bake /etc/mise/config.toml"
     return tomllib.loads(m.group(1))["tools"]
@@ -91,14 +93,14 @@ def test_quint_is_baked_at_the_same_pin_as_the_workstation() -> None:
     # A checker under a mandatory gate changes its verdicts only deliberately:
     # the sandbox runs the version the workstation does (ADR 0006 parity).
     baked = baked_tools()
-    workstation = tomllib.loads(GLOBAL_MISE.read_text())["tools"]
+    workstation = tomllib.loads(GLOBAL_MISE.read_text(encoding="utf-8"))["tools"]
     key = "npm:@informalsystems/quint"
     assert key in workstation
     assert baked.get(key) == workstation[key]
 
 
 def assignment(name: str) -> str:
-    m = re.search(rf'^{name}="([^"]*)"', INSTALL.read_text(), re.M)
+    m = re.search(rf'^{name}="([^"]*)"', INSTALL.read_text(encoding="utf-8"), re.M)
     assert m, f"install.sh must set {name}"
     return m.group(1)
 
@@ -109,7 +111,7 @@ def test_quints_evaluator_is_built_from_a_pinned_commit() -> None:
     # the image is bookworm (2.36). So the image builds that release from
     # source, pinned to the tag's commit and its Cargo.lock, into the path
     # quint checks before it downloads anything.
-    script = INSTALL.read_text()
+    script = INSTALL.read_text(encoding="utf-8")
     assert re.fullmatch(r"[0-9a-f]{40}", assignment("QUINT_EVALUATOR_REV"))
     assert re.fullmatch(r"v\d+\.\d+\.\d+", assignment("QUINT_EVALUATOR_VERSION"))
     assert "cargo build --release --locked" in script
@@ -125,9 +127,11 @@ def test_quint_home_is_outside_the_home_directory() -> None:
     # cannot run on this glibc.
     m = re.search(
         r"cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'\n(.*?)\nPROFILE",
-        INSTALL.read_text(),
+        INSTALL.read_text(encoding="utf-8"),
         re.S,
     )
     assert m, "install.sh must write /etc/profile.d/dotfiles-mise.sh"
     assert re.search(r"^export QUINT_HOME=/opt/quint$", m.group(1), re.M)
-    assert re.search(r'"QUINT_HOME":\s*"/opt/quint"', DEVCONTAINER.read_text())
+    assert re.search(
+        r'"QUINT_HOME":\s*"/opt/quint"', DEVCONTAINER.read_text(encoding="utf-8")
+    )

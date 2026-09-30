@@ -35,7 +35,7 @@ def _record(model: str, effort: str) -> None:
     path = os.environ.get("JEV_HOOK_LOG")
     if path:
         record = {"kind": "codex-exec", "model": model, "effort": effort}
-        with open(path, "a", encoding="utf-8") as log:
+        with Path(path).open("a", encoding="utf-8") as log:
             log.write(json.dumps(record) + "\n")
 
 
@@ -61,7 +61,13 @@ def main(
         final = Path(tmp) / "final-message.txt"
         command = build_codex_exec_command(model, effort, sandbox, str(final))
         result = run(
-            command, input=prompt, text=True, stdout=subprocess.DEVNULL, check=False
+            command,
+            input=prompt,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             return result.returncode

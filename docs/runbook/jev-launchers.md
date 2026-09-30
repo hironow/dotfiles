@@ -8,16 +8,20 @@
 `just deploy` を実行し、新しいシェルを開く。
 Pi の拡張が未導入と表示された場合は、`just pi-extensions-install` を再実行する。
 
-TypeSafe の API キーは `TYPESAFE_API_KEY` 環境変数に設定する。
-`TYPESAFE_API_KEY=...` と書いた `~/.env` からも読み込める。
-macOS と Linux では、所有者のみ読み書き可能（0600）でなければ読まない。
-Windows では、`%USERPROFILE%\.env` を読む（権限は、プロファイルのフォルダーの ACL に任せる）。
+TypeSafe の API キーは、`TYPESAFE_API_KEY=...` と書いた `~/.env` に置く。
+起動のたびに読むため、書き換えてもシェルを開き直す必要はない。
+`TYPESAFE_API_KEY` 環境変数があれば、そちらを優先する。
 worker のフックと `codex-jev` は、キーの環境変数を除いた環境で動くので、この `.env` からキーを読む。
 そのため、これらを使うには `.env` が必要である。
-セッション中だけ設定する場合は以下を実行する。
+
+他人が読めるファイルからは読まない。
+macOS と Linux では、所有者のみ読み書きできる 0600 にする（`chmod 600 ~/.env`）。
+Windows では、所有者が自分で、自分・SYSTEM・Administrators 以外にアクセス許可が無いこと。
+ホーム直下に作ったファイルの既定の権限なら満たす。
+満たさない場合は、継承を外して自分だけに許可する。
 
 ```powershell
-$env:TYPESAFE_API_KEY = [System.Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'TypeSafe key')).Password
+icacls "$HOME\.env" /inheritance:r /grant:r "${env:USERNAME}:F"
 ```
 
 キーをリポジトリに置かない。
@@ -97,7 +101,8 @@ Claude Code の Agent ツールには effort の引数がなく、サブエー�
 判定は Pi と同じコード（`scripts/jev_core.py`）を使う。
 フックは権限の判定を返さないため、承認の確認は省略されない。
 失敗したときは何も変えず、Claude が送った起動のまま実行する。
-Windows でも、`%USERPROFILE%\.env` からキーを読むので、同じように動く（実機は未確認）。
+Windows でも同じく差し替える。
+Claude Code はフックを Git Bash で実行するため、フックのコマンドはパスを `/` 区切りで渡す。
 
 ## Codex の worker のモデルと effort
 

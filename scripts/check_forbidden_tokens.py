@@ -150,7 +150,7 @@ def load_tokens(path: Path) -> list[str]:
     directions: the haystack is lowercased too, at the single comparison site.
     """
     try:
-        raw = path.read_text(errors="replace")
+        raw = path.read_text(errors="replace", encoding="utf-8")
     except OSError:
         return []
     tokens: list[str] = []
@@ -219,6 +219,8 @@ def _git(cwd: Path, *args: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
+        errors="replace",
     )
     return result.stdout
 
@@ -451,7 +453,7 @@ def run_branch(
 def run_files(paths: Sequence[str], tokens: Sequence[str]) -> list[Finding]:
     findings: list[Finding] = []
     for raw in paths:
-        text = Path(raw).read_text(errors="replace")
+        text = Path(raw).read_text(errors="replace", encoding="utf-8")
         findings.extend(
             scan_lines(
                 (
@@ -554,7 +556,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.mode == "commit-msg":
         if tokens:
             message = recorded_message(
-                Path(args.message_file).read_text(errors="replace")
+                Path(args.message_file).read_text(errors="replace", encoding="utf-8")
             )
             findings = message_findings("commit message", message, tokens)
     elif args.mode == "branch":

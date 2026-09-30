@@ -17,6 +17,9 @@
 # paths. Nothing here fails: callers run under `set -eu`/pipefail.
 # ==============================================================================
 
+# This file's directory, for its sibling drop_managed_block.awk.
+_PS_PROFILE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 ps_profile_legacy() {
   printf '%s\n' "$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
 }
@@ -65,4 +68,35 @@ resolve_ps_profile() {
     return 0
   fi
   ps_profile_legacy
+}
+
+# Line number of a managed block's begin marker in $1, or nothing.
+_ps_profile_block_line() {
+  grep -nF "# >>> dotfiles managed block: $2 >>>" "$1" 2>/dev/null \
+    | head -n 1 | cut -d: -f1 || true
+}
+
+# Succeeds when the starship block comes before `mise activate`. starship is
+# mise-managed, so its `Get-Command starship` finds it only after mise is
+# activated — unless mise's shims are on the persisted PATH, which only the
+# self-hosted runner hosts do. Elsewhere the block silently skips.
+ps_profile_starship_before_mise() {
+  local starship mise
+  starship="$(_ps_profile_block_line "$1" 'starship init')"
+  mise="$(_ps_profile_block_line "$1" 'mise activate')"
+  [ -n "$starship" ] && [ -n "$mise" ] && [ "$starship" -lt "$mise" ]
+}
+
+# Removes the managed block named $2 from $1 with drop_managed_block.awk: the
+# exact marker lines (CRLF tolerated) and the blank line written before the
+# block. Not `sed -i`: GNU and BSD (macOS) sed disagree on its argument.
+# Writing back through `cat >` keeps the file itself (mode, owner).
+ps_profile_drop_block() {
+  local tmp rc=0
+  tmp="$(mktemp)" || return 1
+  awk -v b="# >>> dotfiles managed block: $2 >>>" -v e="# <<< end dotfiles managed block <<<" \
+    -f "$_PS_PROFILE_LIB_DIR/drop_managed_block.awk" "$1" >"$tmp" \
+    && cat "$tmp" >"$1" || rc=$?
+  rm -f "$tmp"
+  return "$rc"
 }

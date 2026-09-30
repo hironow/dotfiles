@@ -565,3 +565,23 @@ def test_login_block_does_not_hide_codex_defects_or_invent_missing_evidence(
     assert report.status == status
     if status == "blocked":
         assert "/login" in report.reason
+
+
+def test_the_claude_stream_is_decoded_as_utf8_on_every_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Claude Code writes UTF-8; decoding with the Windows locale default (cp932)
+    # crashed the reader thread and left stdout as None.
+    seen: dict[str, object] = {}
+
+    class Stop(Exception):
+        pass
+
+    def run(_command: list[str], **kwargs: object) -> None:
+        seen.update(kwargs)
+        raise Stop
+
+    monkeypatch.setattr(verify.subprocess, "run", run)
+    with pytest.raises(Stop):
+        verify.main()
+    assert seen["encoding"] == "utf-8"

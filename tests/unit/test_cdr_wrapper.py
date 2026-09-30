@@ -25,6 +25,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -47,7 +48,7 @@ def _stub_dir(
     stubs.mkdir(exist_ok=True)
     for name, body in behaviours.items():
         p = stubs / name
-        p.write_text(textwrap.dedent(body).lstrip("\n"))
+        p.write_text(textwrap.dedent(body).lstrip("\n"), encoding="utf-8", newline="\n")
         p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return stubs
 
@@ -74,6 +75,7 @@ def _run(
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
 
 
@@ -159,10 +161,13 @@ def test_cdr_fetches_secrets_and_invokes_coder(
     assert "CF_ACCESS_CLIENT_SECRET=fake-secret-payload" in r.stdout
 
     cache_dir = tmp_path / ".cache" / "exe-coder-cli"
-    assert (cache_dir / "client_id").read_text() == "fake-client-id\n"
-    assert (cache_dir / "client_secret").read_text() == "fake-secret-payload\n"
-    # Cache files must be 0600.
-    assert (cache_dir / "client_id").stat().st_mode & 0o077 == 0
+    assert (cache_dir / "client_id").read_text(encoding="utf-8") == "fake-client-id\n"
+    assert (cache_dir / "client_secret").read_text(
+        encoding="utf-8"
+    ) == "fake-secret-payload\n"
+    # Cache files must be 0600 (POSIX modes do not exist on Windows).
+    if sys.platform != "win32":
+        assert (cache_dir / "client_id").stat().st_mode & 0o077 == 0
 
 
 def test_cdr_uses_cached_secret_within_ttl(
@@ -262,6 +267,7 @@ def test_cdr_skips_when_required_tools_missing(tmp_path: Path) -> None:
         },
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     assert r.returncode != 0
     assert "missing required tool" in r.stderr.lower(), (
@@ -280,6 +286,7 @@ def test_cdr_script_is_executable() -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     )
     mode = out.stdout.split()[0]

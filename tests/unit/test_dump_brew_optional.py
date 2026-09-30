@@ -80,7 +80,8 @@ def test_brew_absent_skips_without_aborting(just_binary: str, tmp_path: Path) ->
         "  else\n"
         "    echo '==> WARN: brew not on PATH; skipping Brewfile dump' >&2\n"
         "  fi\n"
-        "  echo 'reached gcloud step'\n"
+        "  echo 'reached gcloud step'\n",
+        encoding="utf-8",
     )
     # Minimal PATH: bash/coreutils resolve, but brew is guaranteed absent.
     env = {"PATH": "/usr/bin:/bin", "HOME": os.environ.get("HOME", "/root")}
@@ -90,6 +91,8 @@ def test_brew_absent_skips_without_aborting(just_binary: str, tmp_path: Path) ->
         capture_output=True,
         text=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, (
         f"recipe aborted with brew absent (expected graceful skip).\n"

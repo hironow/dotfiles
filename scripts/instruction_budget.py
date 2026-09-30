@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from pathlib import Path
 
 _LIST_ITEM = re.compile(r"^\s*(?:[-*]|\d+\.)\s+")
 _INLINE_COMMENT = re.compile(r"<!--.*?-->")
@@ -63,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
 
     total = 0
     for name in args.files:
-        with open(name, encoding="utf-8") as fh:
+        with Path(name).open(encoding="utf-8") as fh:
             n = count_instructions(fh.read())
         total += n
         print(f"{name}: {n}")

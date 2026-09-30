@@ -28,7 +28,7 @@ def commands() -> list[str]:
     joined), comments dropped."""
     out: list[str] = []
     pending = ""
-    for raw in INSTALL.read_text().splitlines():
+    for raw in INSTALL.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not pending and (not line or line.startswith("#")):
             continue
@@ -73,4 +73,4 @@ def test_git_fetches_retry() -> None:
 
 def test_apt_retries_too() -> None:
     # apt-get fetches every package over the network as well.
-    assert re.search(r'Acquire::Retries "\d+"', INSTALL.read_text())
+    assert re.search(r'Acquire::Retries "\d+"', INSTALL.read_text(encoding="utf-8"))

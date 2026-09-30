@@ -50,6 +50,8 @@ def _run(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=timeout,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -75,7 +77,7 @@ def test_template_image_default_points_to_artifact_registry() -> None:
     string must reference asia-northeast1-docker.pkg.dev/gen-ai-hironow
     so a future PR cannot silently turn it into a generic starter
     pulling some other registry."""
-    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text(encoding="utf-8")
     import re
 
     block = re.search(
@@ -99,7 +101,7 @@ def test_template_no_envbuilder() -> None:
     ENVBUILDER_* env vars in the actual HCL (comments mentioning
     envbuilder by name in commit-message-style 'differences from
     upstream' notes are acceptable)."""
-    raw = (TEMPLATE_DIR / "main.tf").read_text()
+    raw = (TEMPLATE_DIR / "main.tf").read_text(encoding="utf-8")
     # Strip line- and block-comments before grepping so historical
     # mentions in comment headers don't false-match.
     import re
@@ -134,7 +136,7 @@ def test_template_startup_script_pulls_and_runs_image() -> None:
       - docker run with the agent init script as its command
     Without this chain the workspace VM would boot but the dev
     container would never start."""
-    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text(encoding="utf-8")
     import re
 
     m = re.search(
@@ -169,7 +171,7 @@ def test_template_provider_coder_has_internal_url_override() -> None:
     the public URL and fail OIDC.
 
     See coder/coder provisioner/terraform/provision.go provisionEnv()."""
-    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text(encoding="utf-8")
     import re
 
     block = re.search(r'provider "coder" \{(.*?)\}', main_tf, re.DOTALL)
@@ -192,7 +194,7 @@ def test_template_workspace_sa_variable_present() -> None:
     the operator stack already exports it as `exe_workspace_sa_email`.
     The template MUST receive that value through a `workspace_sa_email`
     variable and apply it on `google_compute_instance.vm`."""
-    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text(encoding="utf-8")
     import re
 
     var_block = re.search(
@@ -221,7 +223,7 @@ def test_template_startup_script_joins_tailnet() -> None:
       exe-coder over MagicDNS, which only resolves once the host is
       on the tailnet.
     """
-    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text(encoding="utf-8")
 
     # Look at the startup_script local — match the heredoc body.
     import re
@@ -267,7 +269,7 @@ def test_template_agent_startup_skips_homebrew_and_add_update() -> None:
     gcloud natively, so `command -v gcloud` short-circuits the
     install branch. The env var is no longer required and was
     removed."""
-    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text(encoding="utf-8")
     import re
 
     # Find the coder_agent.dev startup_script body.
@@ -313,7 +315,7 @@ def test_template_does_not_use_code_server_module() -> None:
     the noise. A future PR can reintroduce a music-friendly browser
     IDE with a different module if the need arises.
     """
-    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text(encoding="utf-8")
     assert "code-server" not in main_tf, (
         "module.code-server has been removed from the template — see\n"
         "test docstring for the rationale. If you need a browser IDE,\n"
@@ -327,7 +329,7 @@ def test_template_no_undeclared_agent_reference() -> None:
     `coder_agent.main` from the code-server / jetbrains modules — the
     actual resource is `coder_agent.dev[0]` (count-bound). Locking
     against that copy/paste rot."""
-    main_tf = (TEMPLATE_DIR / "main.tf").read_text()
+    main_tf = (TEMPLATE_DIR / "main.tf").read_text(encoding="utf-8")
     import re
 
     declared = set(re.findall(r'resource\s+"coder_agent"\s+"(\w+)"', main_tf))
