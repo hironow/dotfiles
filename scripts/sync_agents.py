@@ -649,7 +649,7 @@ def _is_third_party_hook(path: Path) -> bool:
     if not path.is_file():
         return False
     try:
-        with path.open(encoding="utf-8", errors="replace") as f:
+        with path.open(encoding="utf-8-sig", errors="replace") as f:
             head = [next(f, "") for _ in range(5)]
     except OSError:
         return False
@@ -672,8 +672,13 @@ def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
         command = command.replace("\\", "/")
         if marker not in command:
             return False
-        name = re.match(r'[^"\s]+', command.split(marker, 1)[1])
-        return not (name and _is_third_party_hook(agent.directory / "hooks" / name[0]))
+        prefix, _, suffix = command.partition(marker)
+        if prefix[-1:] in {'"', "'"}:
+            name = suffix.split(prefix[-1], 1)[0]
+        else:
+            match = re.match(r'[^"\s]+', suffix)
+            name = match[0] if match else ""
+        return not (name and _is_third_party_hook(agent.directory / "hooks" / name))
 
     return bool(inner) and all(managed(h.get("command", "")) for h in inner)
 

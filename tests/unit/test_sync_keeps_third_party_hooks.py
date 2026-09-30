@@ -153,3 +153,46 @@ def test_block_calling_a_missing_hook_file_is_still_managed(
     # then the dangling block is dropped as before
     merged = json.loads((agent.directory / "settings.json").read_text())
     assert "SessionStart" not in merged.get("hooks", {})
+
+
+def test_bom_hook_keeps_its_file_and_settings_block(
+    agent: AgentTarget, tmp_path: Path
+) -> None:
+    script = agent.directory / "hooks" / "herdr-agent-state.ps1"
+    script.write_text(HERDR_HEADER, encoding="utf-8-sig")
+    herdr = _herdr_block(agent)
+    settings = agent.directory / "settings.json"
+    settings.write_text(json.dumps({"hooks": {"SessionStart": [herdr]}}))
+    fragment = tmp_path / "dotfiles" / ".claude" / "settings.hooks.json"
+    fragment.parent.mkdir(parents=True)
+    fragment.write_text(json.dumps({"hooks": {}}))
+
+    assert "hooks/herdr-agent-state.ps1" not in _orphan_paths(agent, [])
+    _merge_hook_settings(tmp_path / "dotfiles", agent)
+    assert json.loads(settings.read_text())["hooks"]["SessionStart"] == [herdr]
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+def test_quoted_hook_with_spaces_keeps_its_settings_block(
+    agent: AgentTarget, tmp_path: Path, quote: str
+) -> None:
+    script = agent.directory / "hooks" / "herdr custom.ps1"
+    script.write_text(HERDR_HEADER, encoding="utf-8")
+    path = str(script).replace("/", "\\")
+    block = {
+        "hooks": [
+            {
+                "type": "command",
+                "command": f"powershell -File {quote}{path}{quote} session",
+            }
+        ]
+    }
+    settings = agent.directory / "settings.json"
+    settings.write_text(json.dumps({"hooks": {"SessionStart": [block]}}))
+    fragment = tmp_path / "dotfiles" / ".claude" / "settings.hooks.json"
+    fragment.parent.mkdir(parents=True)
+    fragment.write_text(json.dumps({"hooks": {}}))
+
+    assert "hooks/herdr custom.ps1" not in _orphan_paths(agent, [])
+    _merge_hook_settings(tmp_path / "dotfiles", agent)
+    assert json.loads(settings.read_text())["hooks"]["SessionStart"] == [block]
