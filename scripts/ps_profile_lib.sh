@@ -85,6 +85,13 @@ ps_profile_starship_before_mise() {
 }
 
 # Removes the managed block named $2 from $1 (begin marker through its end).
+# Not `sed -i`: GNU and BSD (macOS) sed disagree on its argument. Writing back
+# through `cat >` keeps the file itself (mode, owner) and its exact bytes.
 ps_profile_drop_block() {
-  sed -i "/# >>> dotfiles managed block: $2 >>>/,/# <<< end dotfiles managed block <<</d" "$1"
+  local tmp rc=0
+  tmp="$(mktemp)" || return 1
+  sed "/# >>> dotfiles managed block: $2 >>>/,/# <<< end dotfiles managed block <<</d" "$1" >"$tmp" \
+    && cat "$tmp" >"$1" || rc=$?
+  rm -f "$tmp"
+  return "$rc"
 }

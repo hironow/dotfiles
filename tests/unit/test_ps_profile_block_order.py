@@ -12,6 +12,7 @@ doctor must say when the order is wrong.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -41,23 +42,36 @@ USER_LINE = "Set-Alias ll Get-ChildItem\n"
 
 
 def _bash() -> str | None:
+    """A POSIX bash, chosen like test_ps_profile_path's ``_unwrapped_bash``:
+    never WSL's System32 launcher (it cannot read drive-lettered paths), and
+    behind Git for Windows' ``<git>/bin/bash.exe`` launcher the real
+    ``<git>/usr/bin/bash.exe``. ``_lib`` puts that bash's own directory first
+    on PATH, so the lib's sed/grep/cut come from the same toolset whether the
+    suite runs from Git Bash or PowerShell."""
     found = shutil.which("bash")
     if found is None or "system32" in found.lower():
-        return None  # WSL's System32 bash cannot read drive-lettered paths
-    return found
+        return None
+    exe = Path(found)
+    real = exe.parent.parent / "usr" / "bin" / exe.name
+    return str(real) if exe.parent.name.lower() == "bin" and real.is_file() else found
 
 
 BASH = _bash()
 needs_bash = pytest.mark.skipif(BASH is None, reason="needs a POSIX bash")
 
 
-def _lib(call: str) -> subprocess.CompletedProcess[str]:
+def _lib(
+    call: str, path_prefix: list[Path] | None = None
+) -> subprocess.CompletedProcess[str]:
     assert BASH is not None
+    entries = [*(path_prefix or []), Path(BASH).parent]
+    path = os.pathsep.join([*map(str, entries), os.environ.get("PATH", "")])
     return subprocess.run(
         [BASH, "-c", f'set -euo pipefail; . "{LIB.as_posix()}"; {call}'],
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env={**os.environ, "PATH": path},
         check=False,
     )
 
@@ -97,6 +111,36 @@ def test_drop_block_removes_only_that_block(tmp_path: Path) -> None:
     result = _lib(f'ps_profile_drop_block "{profile.as_posix()}" "starship init"')
 
     # then the user's line and the mise block are untouched
+    assert result.returncode == 0, result.stderr
+    assert profile.read_text(encoding="utf-8") == USER_LINE + MISE
+
+
+@needs_bash
+def test_drop_block_does_not_depend_on_gnu_sed_in_place(tmp_path: Path) -> None:
+    """`sed -i` differs between GNU and BSD (macOS wants `-i ''`), so the lib
+    must not use it: a sed that rejects -i stands in for BSD's here."""
+    # given a sed that refuses -i, first on PATH
+    real = shutil.which("sed", path=str(Path(BASH or "").parent)) or shutil.which("sed")
+    assert real is not None
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    script = [
+        "#!/bin/sh",
+        'for a in "$@"; do case "$a" in -i*) echo "sed: no -i" >&2; exit 1;; esac; done',
+        f'exec "{Path(real).as_posix()}" "$@"',
+    ]
+    (fake / "sed").write_text(
+        "".join(line + chr(10) for line in script), encoding="utf-8", newline=chr(10)
+    )
+    (fake / "sed").chmod(0o755)
+    profile = _profile(tmp_path, STARSHIP + USER_LINE + MISE)
+
+    # when the starship block is dropped
+    result = _lib(
+        f'ps_profile_drop_block "{profile.as_posix()}" "starship init"', [fake]
+    )
+
+    # then it still works
     assert result.returncode == 0, result.stderr
     assert profile.read_text(encoding="utf-8") == USER_LINE + MISE
 
