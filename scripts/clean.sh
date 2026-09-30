@@ -33,6 +33,11 @@ case "$(uname -s)" in
         sed -i '/# >>> dotfiles managed block: mise node corepack >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
         echo "==> PowerShell \$PROFILE mise-corepack block removed"
       fi
+      # Remove PowerShell Jev launchers block (idempotent).
+      if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: Jev launchers >>>" "$ps_profile"; then
+        sed -i '/# >>> dotfiles managed block: Jev launchers >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+        echo "==> PowerShell \$PROFILE Jev-launchers block removed"
+      fi
     done
     # Remove git-aliases include block from ~/.gitconfig (idempotent; ADR 0033).
     gitconfig="$HOME/.gitconfig"

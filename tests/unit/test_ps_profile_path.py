@@ -18,6 +18,7 @@ mojibake.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -184,3 +185,21 @@ def test_doctor_warns_on_stale_legacy_blocks() -> None:
     text = SCRIPTS["doctor"].read_text(encoding="utf-8")
     assert "ps_profile_legacy" in text
     assert "win-profile-legacy" in text
+
+
+def test_clean_removes_every_block_deploy_writes() -> None:
+    """Every managed block deploy.sh writes needs a sed range in clean.sh.
+
+    Found live: #401's Jev launchers block had no removal, so clean left it in
+    the legacy profile and doctor's `win-profile-legacy` advice (`just clean &&
+    just deploy`) could never clear the warning."""
+    marker = re.compile(r"# >>> dotfiles managed block: ([^>]+?) >>>")
+    written = set(marker.findall(SCRIPTS["deploy"].read_text(encoding="utf-8")))
+    removed = {
+        name
+        for line in SCRIPTS["clean"].read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith("sed -i")
+        for name in marker.findall(line)
+    }
+    assert written, "deploy.sh writes no managed blocks?"
+    assert written <= removed, f"clean.sh never removes: {sorted(written - removed)}"
