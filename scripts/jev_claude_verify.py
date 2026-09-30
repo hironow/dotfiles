@@ -119,8 +119,8 @@ def _analyze_worker(
 SEVERITY = {"blocked": 3, "fail": 2, "partial": 1, "pass": 0}
 
 
-def _companion_choice(command: str) -> tuple[str, str] | None:
-    """Exact model/effort argv in a simple node companion task invocation.
+def _companion_arguments(command: str) -> dict[str, str] | None:
+    """Recognized flags in a simple node companion task invocation.
 
     Evidence only, never execute the string. Compound shell commands, substitutions,
     duplicate flags and unknown options cannot prove the invocation and are refused.
@@ -172,7 +172,12 @@ def _companion_choice(command: str) -> tuple[str, str] | None:
             value = argv[index]
             index += 1
         values[name] = value
-    if "model" not in values or "effort" not in values:
+    return values
+
+
+def _companion_choice(command: str) -> tuple[str, str] | None:
+    values = _companion_arguments(command)
+    if values is None or "model" not in values or "effort" not in values:
         return None
     return values["model"], values["effort"]
 
