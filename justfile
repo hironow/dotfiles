@@ -182,7 +182,7 @@ pi-jev-test:
     @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test tests/unit/jev_sonnet_fallback.test.ts
 
 # Live check of the Claude worker hook. Run after the Claude usage limit resets.
-# Exit 0 pass, 1 fail (defect), 2 blocked (usage limit).
+# Exit 0 pass, 1 fail (defect), 2 blocked (usage limit or not logged in).
 jev-claude-verify:
     {{UV_RUN}} scripts/jev_claude_verify.py
 
