@@ -55,6 +55,8 @@ def env_file_is_private(path: Path) -> bool:
                 text=True,
                 timeout=10,
                 check=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except (OSError, subprocess.SubprocessError):
             return False  # an unreadable ACL is not a private one
@@ -137,6 +139,8 @@ def pi_route() -> str:
                 timeout=5,
                 check=False,
                 env=env,
+                encoding="utf-8",
+                errors="replace",
             )
         except (OSError, subprocess.TimeoutExpired):
             continue

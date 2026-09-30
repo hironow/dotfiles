@@ -99,6 +99,8 @@ def _my_sid() -> str:
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout
     return row.strip().split(",")[-1].strip('"')
 
@@ -308,6 +310,8 @@ def test_the_worker_hook_command_runs_in_the_hook_shell() -> None:
         text=True,
         timeout=60,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
 
     # then the hook itself started (it ignores the payload and exits 0)
