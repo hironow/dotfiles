@@ -53,6 +53,40 @@ def test_a_rejected_updated_input_schema_is_reported_from_the_debug_log() -> Non
     assert report.status == "fail" and "schema" in report.reason
 
 
+def test_unrelated_metrics_warning_does_not_reject_a_valid_rewrite() -> None:
+    # These are the two diagnostic formats captured from Claude 2.1.284.
+    debug = (
+        '[DEBUG] Hooks: Parsed initial response: {"hookSpecificOutput":'
+        '{"hookEventName":"PreToolUse","updatedInput":{"subagent_type":"worker-high"}}}\n'
+        "[DEBUG] Successfully parsed and validated hook JSON output\n"
+        "[DEBUG] Hook JSON output had unrecognized keys (ignored): metrics."
+    )
+    assert verify.analyze([], [RECORD], [OK], debug).status == "pass"
+    kept = {**OK, "agentType": "general-purpose"}
+    assert verify.analyze([], [RECORD], [kept], debug).status == "fail"
+    assert (
+        verify.analyze([], [RECORD], [{**OK, "efforts": []}], debug).status == "partial"
+    )
+    assert (
+        verify.analyze([], [RECORD], [{**OK, "efforts": ["medium"]}], debug).status
+        == "fail"
+    )
+
+
+def test_words_in_a_valid_hook_payload_are_not_schema_diagnostics() -> None:
+    debug = (
+        '[DEBUG] Hooks: Parsed initial response: {"updatedInput":'
+        '{"prompt":"Fix an unrecognized key(s) in object: updatedInput error"}}'
+    )
+    assert verify.analyze([], [RECORD], [OK], debug).status == "pass"
+
+
+def test_rejected_updated_input_in_the_captured_diagnostic_format_still_fails() -> None:
+    debug = "[DEBUG] Hook JSON output had unrecognized keys (ignored): updatedInput."
+    report = verify.analyze([], [RECORD], [OK], debug)
+    assert report.status == "fail" and "schema" in report.reason
+
+
 def test_default_type_kept_means_updated_input_was_ignored_for_agent() -> None:
     kept = {"agentType": "general-purpose", "name": None, "efforts": ["medium"]}
     report = verify.analyze([], [RECORD], [kept], "")
