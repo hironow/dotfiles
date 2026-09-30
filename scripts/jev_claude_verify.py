@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import tempfile
 
@@ -23,7 +24,7 @@ SESSION_EFFORT = (
     "medium"  # A "high" recorded on a worker can then only come from the pick.
 )
 PROMPT = (
-    "Make exactly two Agent tool calls with subagent_type general-purpose. "
+    "Make exactly three Agent tool calls. The first two use subagent_type general-purpose. "
     "Call 1 has no name. Call 2 has the name 'probe'. Both use this prompt: "
     "'Redesign the distributed lock protocol across three services, prove safety "
     "under partial failure, then plan the migration of all callers. Analysis only: "
@@ -110,6 +111,64 @@ def _analyze_worker(
 SEVERITY = {"blocked": 3, "fail": 2, "partial": 1, "pass": 0}
 
 
+def _companion_choice(command: str) -> tuple[str, str] | None:
+    """Exact model/effort argv in a simple node companion task invocation.
+
+    Evidence only, never execute the string. Compound shell commands, substitutions,
+    duplicate flags and unknown options cannot prove the invocation and are refused.
+    The task's quoted text is one argv item, not another source of flags.
+    """
+    if any(part in command for part in ("\n", "\r", "`", "$(")):
+        return None
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        argv = list(lexer)
+    except ValueError:
+        return None
+    if any(token and all(c in "();<>|&" for c in token) for token in argv):
+        return None
+    if len(argv) < 3:
+        return None
+
+    def basename(path: str) -> str:
+        return path.replace("\\", "/").rsplit("/", 1)[-1]
+
+    if basename(argv[0]) not in {"node", "node.exe"}:
+        return None
+    if basename(argv[1]) != "codex-companion.mjs" or argv[2] != "task":
+        return None
+    values: dict[str, str] = {}
+    boolean_options = {"json", "write", "resume-last", "resume", "fresh", "background"}
+    value_options = {"model", "effort", "cwd", "prompt-file"}
+    index = 3
+    while index < len(argv):
+        token = argv[index]
+        index += 1
+        if token == "--":
+            break
+        if not token.startswith("-") or token == "-":
+            continue
+        option, separator, value = token.partition("=")
+        # The companion's short-option parser only aliases the exact '-m' token.
+        if option == "-m" and separator:
+            return None
+        name = "model" if option == "-m" else option.removeprefix("--")
+        if name in boolean_options:
+            continue
+        if name not in value_options or name in values:
+            return None
+        if not separator:
+            if index == len(argv):
+                return None
+            value = argv[index]
+            index += 1
+        values[name] = value
+    if "model" not in values or "effort" not in values:
+        return None
+    return values["model"], values["effort"]
+
+
 def _analyze_codex(hook_records: list[dict], subagents: list[dict]) -> Report:
     """Did Jev's model and effort reach the Codex plugin's companion command?"""
     records = [r for r in hook_records if r.get("kind") == "codex-rescue"]
@@ -126,10 +185,7 @@ def _analyze_codex(hook_records: list[dict], subagents: list[dict]) -> Report:
         if "codex-companion" in command
     ]
     evidence = [f"codex-rescue: Jev chose {want_model} / {want_effort}"]
-    if any(
-        f"--model {want_model}" in c and f"--effort {want_effort}" in c
-        for c in commands
-    ):
+    if any(_companion_choice(c) == (want_model, want_effort) for c in commands):
         return Report("pass", "the codex flags reached codex-companion", evidence)
     return Report(
         "fail",
@@ -239,7 +295,11 @@ def main() -> int:
         debug = debug_file.read_text(encoding="utf-8") if debug_file.exists() else ""
     config = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
     report = analyze(
-        lines, records, collect_subagents(config, _session_id(lines)), debug
+        lines,
+        records,
+        collect_subagents(config, _session_id(lines)),
+        debug,
+        expect_codex=True,
     )
     print(f"{report.status.upper()}: {report.reason}")
     for line in report.evidence:

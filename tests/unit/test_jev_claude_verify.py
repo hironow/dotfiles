@@ -10,6 +10,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 spec = importlib.util.spec_from_file_location(
@@ -126,6 +128,132 @@ def test_a_model_that_differs_from_jevs_choice_is_a_failure() -> None:
 def test_no_codex_launch_is_unconfirmed_not_a_pass() -> None:
     report = verify.analyze([], [RECORD], [OK], "", expect_codex=True)
     assert report.status == "partial" and "codex" in report.reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        COMPANION.replace("gpt-6-astra", "gpt-6-astra-other").replace(
+            "--effort low", "--effort lower"
+        ),
+        'node "/p/codex-companion.mjs" task "say --model gpt-6-astra --effort low"',
+        COMPANION.replace("--model gpt-6-astra", "-m=gpt-6-astra"),
+        'node "/p/codex-companion.mjs" task # --model gpt-6-astra --effort low',
+        COMPANION.replace("--model gpt-6-astra", '--cwd "--model"'),
+        "echo 'node /p/codex-companion.mjs task --model gpt-6-astra --effort low'",
+        'echo OK; node "/p/codex-companion.mjs" task --model gpt-6-astra --effort low "fix it"',
+        COMPANION.replace(
+            "--model gpt-6-astra", "--model gpt-6-astra --model gpt-6-luna"
+        ),
+        COMPANION.replace('"fix it"', '-- "--model gpt-6-astra --effort low"').replace(
+            "--model gpt-6-astra --effort low ", "", 1
+        ),
+    ],
+)
+def test_codex_evidence_requires_actual_exact_arguments(command: str) -> None:
+    report = verify.analyze(
+        [],
+        [RECORD, CODEX_RECORD],
+        [OK, {**CODEX_OK, "commands": [command]}],
+        "",
+        expect_codex=True,
+    )
+    assert report.status != "pass"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        COMPANION,
+        COMPANION.replace(
+            "--model gpt-6-astra --effort low", "--model=gpt-6-astra --effort=low"
+        ),
+    ],
+)
+def test_a_direct_companion_invocation_with_exact_flags_passes(command: str) -> None:
+    assert (
+        verify._analyze_codex(
+            [CODEX_RECORD], [{**CODEX_OK, "commands": [command]}]
+        ).status
+        == "pass"
+    )
+
+
+@pytest.mark.parametrize(
+    "mode, want_status, want_exit",
+    [
+        ("absent", "PARTIAL", 3),
+        ("dropped", "FAIL", 1),
+        ("wrong", "FAIL", 1),
+        ("ok", "PASS", 0),
+    ],
+)
+def test_main_checks_codex_using_real_session_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+    want_status: str,
+    want_exit: int,
+) -> None:
+    config = tmp_path / "claude"
+    session = "verification-session"
+    agents = config / "projects/example" / session / "subagents"
+    agents.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+
+    def transcript(directory: Path, agent_id: str, meta: dict, content: list) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"agent-{agent_id}.meta.json").write_text(
+            json.dumps(meta), encoding="utf-8"
+        )
+        (directory / f"agent-{agent_id}.jsonl").write_text(
+            json.dumps(
+                {"type": "assistant", "effort": "high", "message": {"content": content}}
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    transcript(agents, "worker", {"agentType": "worker-high"}, [])
+    transcript(
+        config / "projects/example/decoy/subagents",
+        "decoy",
+        {"agentType": "worker-high"},
+        [],
+    )
+    # A different session must never contaminate effort/command evidence.
+    (config / "projects/example/decoy/subagents/agent-decoy.jsonl").write_text(
+        json.dumps({"type": "assistant", "effort": "medium"}), encoding="utf-8"
+    )
+    if mode != "absent":
+        command = (
+            COMPANION if mode == "ok" else 'node "/p/codex-companion.mjs" task "fix it"'
+        )
+        if mode == "wrong":
+            command = COMPANION.replace("gpt-6-astra", "gpt-6-luna")
+        transcript(
+            agents,
+            "codex",
+            {"agentType": "codex:codex-rescue"},
+            [{"name": "Bash", "input": {"command": command}}],
+        )
+
+    def run(command: list[str], *, env: dict[str, str], **_kwargs: object) -> object:
+        records = [RECORD] if mode == "absent" else [RECORD, CODEX_RECORD]
+        Path(env["JEV_HOOK_LOG"]).write_text(
+            "\n".join(json.dumps(r) for r in records), encoding="utf-8"
+        )
+        Path(command[command.index("--debug-file") + 1]).write_text(
+            "", encoding="utf-8"
+        )
+        return verify.subprocess.CompletedProcess(
+            command, 0, json.dumps({"session_id": session}), ""
+        )
+
+    monkeypatch.setattr(verify.subprocess, "run", run)
+    assert verify.main() == want_exit
+    assert capsys.readouterr().out.startswith(f"{want_status}:")
 
 
 def test_the_worse_of_the_worker_and_codex_verdicts_wins() -> None:
