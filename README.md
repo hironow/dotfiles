@@ -180,7 +180,7 @@ store が宣言とずれていると無関係な差分も出るので、差分�
 
 サードパーティは、必要な skill だけを宣言する。
 
-- `wandb/skills`: `wandb-autoresearch` と `wandb-eval-tables`（`wandb-primary` は hironow/skills の fork が優先される）
+- `wandb/skills`: `wandb-autoresearch` と `wandb-eval-tables`
 - `googleworkspace/cli`: `gws-shared` と主要 9 サービス（gmail、calendar、drive、docs、sheets、slides、tasks、forms、people）。`persona-*` と `recipe-*` は skill 一覧が長くなるので入れない
 - `vercel-labs/agent-browser`（[使い方](https://github.com/vercel-labs/agent-browser?tab=readme-ov-file#agentsmd--claudemd)）
 
