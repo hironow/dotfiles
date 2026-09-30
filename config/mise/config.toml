@@ -192,13 +192,13 @@ pin = true
 # Supply-chain quarantine for mise-managed tools was REMOVED 2026-09-03:
 # the user toolset declared in this file now tracks the true newest
 # release on `mise up` (the 7d wait cost current models/protocol fixes
-# in the LLM CLIs and was friction everywhere else). Explicit "0" is
-# required — removing the key entirely would fall back to mise's
+# in the LLM CLIs and was friction everywhere else). Use explicit "0d",
+# a valid zero-day duration — removing the key would fall back to mise's
 # built-in 24h default quarantine. Dependency installs remain
 # quarantined via the npmrc min_release_age / uv exclude-newer guards
 # written by `just harden-env` (ADR 0028). To restore temporarily:
 # minimum_release_age = "7d"
-minimum_release_age = "0"
+minimum_release_age = "0d"
 
 [settings.upgrade]
 # Do not queue the outgoing version for deletion on `mise up` (mise default:
