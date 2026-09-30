@@ -109,6 +109,28 @@ def test_pi_route_uses_metered_only_after_subscriptions(
     assert seen == ["github-copilot", "cursor", "openrouter"]
 
 
+def test_pi_without_ready_provider_exits_with_a_message_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(launcher.sys, "argv", ["jev_launch.py", "pi", "hello"])
+    monkeypatch.setattr(launcher, "jev_key", lambda: None)
+    monkeypatch.setattr(
+        launcher.subprocess,
+        "run",
+        lambda args, **_kwargs: Mock(returncode=0, stdout="not_ready"),
+    )
+    monkeypatch.setattr(
+        launcher.os,
+        "execvpe",
+        lambda *_args: pytest.fail("Pi must not start without a ready provider"),
+    )
+    with pytest.raises(SystemExit) as exited:
+        launcher.main()
+    assert exited.value.code == (
+        "Jev: no authenticated Pi Sonnet 5.5 provider (run pi /login)"
+    )
+
+
 def _launch(
     monkeypatch: pytest.MonkeyPatch, host: str
 ) -> tuple[list[str], dict[str, str]]:
