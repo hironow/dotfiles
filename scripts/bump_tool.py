@@ -65,7 +65,7 @@ def plan(repo: Path, tool: str, version: str) -> list[Edit]:
 def _lock(repo: Path, tool: str, dry_run: bool) -> int:
     for project in (repo, repo / "emulator"):
         cmd = ["uv", "lock", "--upgrade-package", tool]
-        print(f"$ (cd {project.relative_to(repo) or '.'} && {' '.join(cmd)})")
+        print(f"$ (cd {project.relative_to(repo).as_posix()} && {' '.join(cmd)})")
         if dry_run:
             continue
         done = subprocess.run(cmd, cwd=project, check=False)  # noqa: S603 - fixed argv
@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     staged: list[tuple[Edit, str, int]] = []
     problems: list[str] = []
     for edit in plan(repo, args.tool, args.version):
-        rel = edit.path.relative_to(repo)
+        rel = edit.path.relative_to(repo).as_posix()
         try:
             text = edit.path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Phase 2: write (or print) every declaration.
     for edit, new_text, n in staged:
-        rel = edit.path.relative_to(repo)
+        rel = edit.path.relative_to(repo).as_posix()
         print(
             f"{'would set' if args.dry_run else 'set'} {edit.label}: {rel} -> {args.tool} {args.version} ({n} site{'s' if n > 1 else ''})"
         )

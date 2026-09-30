@@ -464,7 +464,7 @@ def _list_dirs(path: Path) -> set[str]:
 
 
 def _load_dump(dotfiles_dir: Path) -> list[SkillRecord]:
-    data = json.loads((dotfiles_dir / DUMP_RELATIVE).read_text())
+    data = json.loads((dotfiles_dir / DUMP_RELATIVE).read_text(encoding="utf-8"))
     return [SkillRecord(**item) for item in data["skills"]]
 
 
@@ -473,7 +473,7 @@ def _load_machine_sources(home: Path) -> dict[str, str]:
     lock = machine_lock(home)
     if not lock.is_file():
         return {}
-    raw = json.loads(lock.read_text())["skills"]
+    raw = json.loads(lock.read_text(encoding="utf-8"))["skills"]
     sources: dict[str, str] = {}
     for key, entry in raw.items():
         sources[key] = entry["source"]
@@ -492,7 +492,7 @@ def _configure_output() -> None:
 
 
 def _cmd_dump(dotfiles_dir: Path, *, allow_self_drop: bool) -> int:
-    raw = json.loads(machine_lock().read_text())["skills"]
+    raw = json.loads(machine_lock().read_text(encoding="utf-8"))["skills"]
     records = normalize_lock(raw, _list_dirs(agents_store()))
     dump_path = dotfiles_dir / DUMP_RELATIVE
     if dump_path.is_file():

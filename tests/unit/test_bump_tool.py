@@ -138,7 +138,7 @@ def test_real_repo_declarations_are_all_present() -> None:
     repo = Path(__file__).resolve().parents[2]
     for tool in ("ruff", "ty"):
         plan = mod.plan(repo, tool, "9.9.9")
-        assert {str(edit.path.relative_to(repo)) for edit in plan} >= {
+        assert {edit.path.relative_to(repo).as_posix() for edit in plan} >= {
             "pyproject.toml",
             "emulator/pyproject.toml",
             "config/mise/config.toml",
