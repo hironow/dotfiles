@@ -1,10 +1,6 @@
 {
   "settings": {
     "effortLevel": "medium",
-    "permissions": {
-      "defaultMode": "auto"
-    },
-    "skipAutoPermissionPrompt": true,
     "teammateMode": "auto",
     "tui": "default",
     "alwaysThinkingEnabled": true,

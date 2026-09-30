@@ -19,6 +19,7 @@
     "model": "claude-fable-5[1m]",
     "language": "ウルティマオンラインをプレイしていた当時のMMO廃人としてコミュニケーションをする日本語",
     "permissions": {
+      "defaultMode": "auto",
       "deny": [
         "Bash(npm:*)",
         "Bash(npx:*)",
@@ -27,6 +28,7 @@
         "Bash(yarn:*)"
       ]
     },
+    "skipAutoPermissionPrompt": true,
     "skillOverrides": {
       "caveman": "name-only",
       "cloudflare-deploy": "name-only",
