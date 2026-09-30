@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -58,7 +59,14 @@ def analyze(
             "fail",
             "the hook never recorded a rewrite: it did not run, or Jev gave no answer",
         )
-    if "unrecognized" in debug_log and "updatedInput" in debug_log:
+    # Match the rejected-key diagnostic itself, not words in unrelated hooks
+    # or in the valid updatedInput payload (which may quote an error message).
+    rejected_key = (
+        r"^(?:.*?\[(?:DEBUG|ERROR)\]\s+)?Hook (?:JSON )?output[^\n{}]*"
+        r"\bunrecognized key(?:s|\(s\))?(?: in object| \(ignored\))?:\s*"
+        r"(?:[\"']?\w+[\"']?,\s*)*[\"']?updatedInput[\"']?(?:\s*[,.]|$)"
+    )
+    if any(re.search(rejected_key, line) for line in debug_log.splitlines()):
         return Report(
             "fail",
             "Claude Code rejected the hook output schema for updatedInput (see the debug log)",
