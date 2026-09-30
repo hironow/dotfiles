@@ -57,6 +57,20 @@ case $rc in
   *) log_warn 'PATH-windows' 'validation error'; echo "$win_out";;
 esac
 
+# zsh is the supported interactive shell on Linux / WSL (.zshrc, USAGE.md,
+# j-cc / j-pi). A bare WSL Ubuntu has none, and install.sh never uses sudo,
+# so it can only point at the fix; this is where a box that missed it finds out.
+if [ "$(uname -s)" = Linux ]; then
+  if ! has zsh; then
+    # shellcheck disable=SC2016  # the $(command -v zsh) is for the user to run
+    log_warn 'zsh' 'not installed -- run: sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"'
+  elif [ "${SHELL##*/}" != zsh ]; then
+    log_warn 'zsh' "login shell is ${SHELL:-unknown} -- run: chsh -s $(command -v zsh)"
+  else
+    log_ok 'zsh' "login shell ${SHELL}"
+  fi
+fi
+
 # Rogue npm-global AI CLIs shadowing the mise-managed versions (cross-platform).
 # A stray `npm install -g` — codex's built-in `codex update` above all —
 # installs into the active node's global and wins PATH over the mise npm

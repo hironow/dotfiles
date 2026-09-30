@@ -70,9 +70,14 @@ INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./i
 sudo は要らない。
 
 WSL の素の Ubuntu では、続けて次を一度だけ行う。
-`wsl-conf` と Docker の手順は sudo と、Windows 側での `wsl --shutdown` が要る。
+zsh、`wsl-conf`、Docker の手順は sudo が要り、`wsl-conf` と Docker は Windows 側での `wsl --shutdown` も要る。
 
 ```bash
+# zsh を入れてログインシェルにする（.zshrc と j-cc / j-pi は zsh 前提。install.sh は sudo を使わないので案内だけ出す）
+sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"
+# 新しいターミナルを開いてから（sheldon は install.sh が mise で入れている）
+sheldon lock
+
 just harden-env   # 機体ごとの供給網対策（npm と uv の 7 日の隔離、PyPI ミラー、GOPROXY）。追跡しない
 just wsl-conf     # /etc/wsl.conf の差分と sudo での編集手順を表示する（Windows の PATH を入れない、systemd を有効化）
 
@@ -81,7 +86,7 @@ sudo apt-get update && sudo apt-get install -y docker.io
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"   # 次の wsl --shutdown のあとで効く
 
-just doctor       # 確認: PATH-windows が OK、docker に届く、道具がそろう
+just doctor       # 確認: zsh と PATH-windows が OK、docker に届く、道具がそろう
 ```
 
 `just harden-env` は `~/.npmrc` と `~/.config/uv/uv.toml` を書き、個人の `exclude-newer` を設定する。

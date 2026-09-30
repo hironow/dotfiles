@@ -4,6 +4,15 @@ Sheldon と Starship を使った、fish に近い操作感の zsh の設定（M
 
 ## 準備
 
+Linux と WSL では、先に zsh を入れてログインシェルにする（macOS は最初から zsh）。
+`install.sh` は sudo を使わないので、zsh がなければ入れ方を表示するだけである（`just doctor` も同じく知らせる）。
+
+```bash
+sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"   # Linux と WSL だけ
+```
+
+新しいターミナルを開いてから、次を実行する（sheldon は mise が入れる）。
+
 ```bash
 just deploy   # 設定を配置する
 sheldon lock  # 初回だけ: plugin を入れる
