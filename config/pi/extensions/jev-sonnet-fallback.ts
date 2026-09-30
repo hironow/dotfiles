@@ -11,8 +11,38 @@ export const ROUTES = [
 
 // ---- Functional core: pure decisions over plain data. No env, network or Pi calls. ----
 
+const LIMIT_KINDS = new Set(["rate_limit_error", "rate_limit_exceeded", "insufficient_quota", "RESOURCE_EXHAUSTED"]);
+const errorObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+
 export function isUsageLimit(message: string): boolean {
-  return /(?:\b429\b|rate.?limit|usage.?limit|quota.?exceed|resource.?exhaust|too many requests)/i.test(message);
+  if (typeof message !== "string") return false;
+  // Known machine fields only; never search a JSON message/prompt for quota words.
+  let payload: unknown;
+  try { payload = JSON.parse(message); } catch { /* textual provider diagnostic */ }
+  if (errorObject(payload)) {
+    const details = [payload, ...(errorObject(payload.error) ? [payload.error] : [])];
+    const statuses: number[] = [];
+    for (const detail of details) {
+      for (const key of ["status", "statusCode"]) {
+        if (!(key in detail)) continue;
+        const value = detail[key];
+        if (typeof value === "string" && LIMIT_KINDS.has(value)) continue;
+        if (typeof value !== "number" && typeof value !== "string") return false;
+        if (!/^[1-5]\d{2}$/.test(String(value))) return false;
+        statuses.push(Number(value));
+      }
+    }
+    // Authentication/server errors and conflicting statuses must not switch routes.
+    if (statuses.length) return statuses.every(status => status === 429);
+    return details.some(detail => [detail.type, detail.code, detail.status].some(value => typeof value === "string" && LIMIT_KINDS.has(value)));
+  }
+  const text = message.trim();
+  const statusPrefix = /^(?:Error:\s*)?(?:(?:HTTP(?:\/[\d.]+)?|status(?:Code|\s+code)?)\s*[:=]?\s*)?([1-5]\d{2})\b(?![./]\d)/i.exec(text);
+  const explicitStatuses = [...text.matchAll(/\b(?:HTTP(?:\/[\d.]+)?|status(?:Code|\s+code)?)\s*[:=]?\s*([1-5]\d{2})\b(?![./]\d)/gi)].map(match => Number(match[1]));
+  if (explicitStatuses.some(status => status !== 429)) return false;
+  if (statusPrefix) return Number(statusPrefix[1]) === 429;
+  // Exact leading machine identifiers, not natural-language 'quota exceeded'.
+  return /^(?:rate_limit_error|rate_limit_exceeded|insufficient_quota|RESOURCE_EXHAUSTED)(?:\s*:|\s*$)/.test(text);
 }
 
 /** Did the last assistant message end in a provider usage limit? */
