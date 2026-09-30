@@ -187,6 +187,12 @@ pi-jev-test:
 jev-claude-verify:
     {{UV_RUN}} scripts/jev_claude_verify.py
 
+# Live check of Jev's per-worker effort in Pi (j-pi): one print-mode session
+# launches a worker; the verdict comes from pi-subagents' worker meta.
+# Exit 0 pass, 1 fail, 2 blocked (no key / extension / usage limit), 3 partial.
+jev-pi-verify:
+    {{UV_RUN}} scripts/jev_pi_verify.py
+
 # Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
 #   ROOT_CLAUDE.md (overlay, @AGENTS.md) -> claude-family/CLAUDE.md

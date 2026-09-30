@@ -185,3 +185,22 @@ just jev-claude-verify
 ただし、各フックの起動と全 worker の一対一の対応は検証しないので、`PASS` は全起動の差し替えを証明しない。
 Codex については、companion を呼ぶツールの引数に選んだ `--model` と `--effort` があることを確かめるが、下流の全 API リクエストに同じ effort が届いたことまでは証明しない。
 名前ありの worker（teammate）の effort が違う場合は、別に警告を出す。
+
+### Pi の worker
+
+Pi の worker の思考レベルは、次で確かめる。
+
+```sh
+just jev-pi-verify
+```
+
+`j-pi` と同じ起動を非対話（`pi -p`）で 1 回行い、難しい依頼で worker を 1 つ起動させる（セッション自体は `medium`）。
+判定は、セッションの記録ではなく、pi-subagents が run ごとに残す `subagent-artifacts/<run>_worker_meta.json` の `model`（worker が実際に動いたモデル）と終了コードで行う。
+セッションの記録には、拡張が書き換える前の起動の引数が残るので、書き換えの結果を示せないからである。
+
+| 結果 | 終了コード | 意味 |
+| --- | --- | --- |
+| `PASS` | 0 | worker が `:high`（Jev の選択。セッションの `medium` より上）で最後まで動いた |
+| `FAIL` | 1 | worker が起動しなかった、モデルに effort の suffix がない、または worker が失敗した |
+| `BLOCKED` | 2 | キーか拡張がない、または利用上限で worker の前に止まった |
+| `PARTIAL` | 3 | worker が `medium` で動き、セッションと区別できない |
