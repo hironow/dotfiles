@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Opt-in Jev routing for a new Claude Code or Pi session (imperative shell)."""
 
+import io
 import json
 import os
 from pathlib import Path
@@ -66,6 +67,17 @@ def env_file_is_private(path: Path) -> bool:
         return len(sids) >= 2 and windows_acl_is_private(sids[0], sids[1], sids[2:])
     stat = path.stat()
     return stat.st_uid == os.getuid() and not stat.st_mode & 0o077
+
+
+def use_utf8_stdio() -> None:
+    """Claude Code and Pi speak UTF-8 over stdin/stdout; the locale may not.
+
+    On Japanese Windows piped stdio defaults to cp932, which garbles a Japanese
+    prompt before Jev sees it and cannot write every character of the answer.
+    """
+    for stream in (sys.stdin, sys.stdout):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
 
 
 def jev_key() -> str | None:

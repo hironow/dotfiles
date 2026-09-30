@@ -398,3 +398,37 @@ def test_the_worker_hook_command_runs_in_the_hook_shell() -> None:
 
     # then the hook itself started (it ignores the payload and exits 0)
     assert result.returncode == 0, result.stderr
+
+
+def test_utf8_stdio_overrides_a_non_utf8_locale() -> None:
+    # given a child whose stdio would default to cp932 (Japanese Windows)
+    probe = (
+        "import sys; sys.path.insert(0, sys.argv[1]); import jev_launch; "
+        "jev_launch.use_utf8_stdio(); "
+        "sys.stdout.write(sys.stdin.read())"
+    )
+    text = "日本語のプロンプト ✅"
+
+    # when it echoes UTF-8 bytes from stdin back to stdout
+    result = subprocess.run(
+        [sys.executable, "-c", probe, str(SCRIPTS)],
+        input=text.encode("utf-8"),
+        capture_output=True,
+        env={**os.environ, "PYTHONIOENCODING": "cp932"},
+        check=False,
+    )
+
+    # then the text survives both ways
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert result.stdout.decode("utf-8") == text
+
+
+@pytest.mark.parametrize("name", ["jev_claude_hook.py", "jev_codex_exec.py"])
+def test_stdio_scripts_switch_to_utf8_before_reading(name: str) -> None:
+    # Claude Code and Pi talk UTF-8 over these pipes; the locale may not.
+    main_block = (
+        (SCRIPTS / name)
+        .read_text(encoding="utf-8")
+        .split('if __name__ == "__main__":', 1)[1]
+    )
+    assert "use_utf8_stdio()" in main_block

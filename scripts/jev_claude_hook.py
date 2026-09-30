@@ -17,7 +17,7 @@ import sys
 from typing import TextIO
 
 from jev_core import hook_output, plan_agent_rewrite, plan_codex_rewrite
-from jev_launch import choose_codex, choose_effort, jev_key
+from jev_launch import choose_codex, choose_effort, jev_key, use_utf8_stdio
 
 
 @dataclass
@@ -84,4 +84,5 @@ def main(stdin: TextIO, stdout: TextIO) -> None:
 
 
 if __name__ == "__main__":
+    use_utf8_stdio()
     main(sys.stdin, sys.stdout)

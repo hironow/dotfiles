@@ -16,7 +16,7 @@ import tempfile
 from typing import TextIO
 
 from jev_core import CODEX_SANDBOXES, build_codex_exec_command
-from jev_launch import choose_codex, jev_key
+from jev_launch import choose_codex, jev_key, use_utf8_stdio
 
 
 def _sandbox(argv: list[str]) -> str:
@@ -80,4 +80,5 @@ def main(
 
 
 if __name__ == "__main__":
+    use_utf8_stdio()
     raise SystemExit(main(sys.argv[1:], sys.stdin, sys.stdout))
