@@ -293,7 +293,7 @@ def _fingerprint(path: Path) -> str:
 
 def _same_entity(a: Path, b: Path) -> bool:
     try:
-        return a.resolve() == b.resolve() or os.path.samefile(a, b)
+        return a.resolve() == b.resolve() or a.samefile(b)
     except OSError:
         return False
 
@@ -305,9 +305,9 @@ def _remove(path: Path) -> None:
         shutil.rmtree(path)
 
 
-def _try_symlink(target: Path, relative_store: str) -> bool:
+def _try_symlink(target: Path, relative_store: Path) -> bool:
     try:
-        os.symlink(relative_store, target, target_is_directory=True)
+        target.symlink_to(relative_store, target_is_directory=True)
     except OSError:
         return False
     return True
@@ -318,7 +318,7 @@ def _symlinks_supported(skills_dir: Path) -> bool:
     probe = skills_dir / ".skills-lock-probe"
     if probe.is_symlink():
         probe.unlink()
-    ok = _try_symlink(probe, ".")
+    ok = _try_symlink(probe, Path())
     if ok:
         probe.unlink()
     return ok
@@ -335,7 +335,9 @@ def _load_state(skills_dir: Path) -> dict[str, dict[str, str]]:
 def _save_state(skills_dir: Path, state: dict[str, dict[str, str]]) -> None:
     state_file = skills_dir / STATE_FILE
     if state:
-        state_file.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+        state_file.write_text(
+            json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
     elif state_file.exists():
         state_file.unlink()
 
@@ -353,12 +355,12 @@ def _swap_in(skills_dir: Path, name: str, build: Callable[[Path], bool]) -> bool
     made_link = build(tmp)
     had_old = target.exists() or target.is_symlink()
     if had_old:
-        os.rename(target, backup)
+        target.rename(backup)
     try:
-        os.rename(tmp, target)
+        tmp.rename(target)
     except OSError:
         if had_old:
-            os.rename(backup, target)
+            backup.rename(target)
         _remove(tmp)
         raise
     if had_old:
@@ -387,7 +389,7 @@ def place(
     """
     result = PlaceResult()
     store = agents_store(home)
-    relative_store = os.path.join("..", "..", ".agents", "skills")
+    relative_store = Path("..", "..", ".agents", "skills")
     states: dict[Path, dict[str, dict[str, str]]] = {}
     can_link: dict[Path, bool] = {}
     for rec in records:
@@ -404,7 +406,7 @@ def place(
             skills_dir.mkdir(exist_ok=True)
             target = skills_dir / name
             label = f"{rel}/{name}"
-            expected = os.path.join(relative_store, name)
+            expected = relative_store / name
             state = states.setdefault(skills_dir, _load_state(skills_dir))
             if link and skills_dir not in can_link:
                 can_link[skills_dir] = _symlinks_supported(skills_dir)
@@ -415,7 +417,7 @@ def place(
             if exists and _same_entity(source, target):
                 continue  # the store itself, seen through a link: never touch
             if target.is_symlink():
-                if link and os.readlink(target) == expected:
+                if link and target.readlink() == expected:
                     continue
                 verb = "replaced"
             elif exists:
@@ -464,7 +466,7 @@ def _list_dirs(path: Path) -> set[str]:
 
 
 def _load_dump(dotfiles_dir: Path) -> list[SkillRecord]:
-    data = json.loads((dotfiles_dir / DUMP_RELATIVE).read_text())
+    data = json.loads((dotfiles_dir / DUMP_RELATIVE).read_text(encoding="utf-8"))
     return [SkillRecord(**item) for item in data["skills"]]
 
 
@@ -473,7 +475,7 @@ def _load_machine_sources(home: Path) -> dict[str, str]:
     lock = machine_lock(home)
     if not lock.is_file():
         return {}
-    raw = json.loads(lock.read_text())["skills"]
+    raw = json.loads(lock.read_text(encoding="utf-8"))["skills"]
     sources: dict[str, str] = {}
     for key, entry in raw.items():
         sources[key] = entry["source"]
@@ -492,7 +494,7 @@ def _configure_output() -> None:
 
 
 def _cmd_dump(dotfiles_dir: Path, *, allow_self_drop: bool) -> int:
-    raw = json.loads(machine_lock().read_text())["skills"]
+    raw = json.loads(machine_lock().read_text(encoding="utf-8"))["skills"]
     records = normalize_lock(raw, _list_dirs(agents_store()))
     dump_path = dotfiles_dir / DUMP_RELATIVE
     if dump_path.is_file():
@@ -511,7 +513,9 @@ def _cmd_dump(dotfiles_dir: Path, *, allow_self_drop: bool) -> int:
             indent=2,
             ensure_ascii=False,
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
+        newline="\n",  # tracked file: LF on every OS (.gitattributes pins it too)
     )
     ours = sum(1 for r in records if r.source == SELF_SOURCE)
     print(f"✅ dumped {len(records)} skills ({ours} from {SELF_SOURCE}) -> {dump_path}")

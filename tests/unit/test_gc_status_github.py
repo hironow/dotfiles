@@ -167,6 +167,8 @@ def _run_section(
         capture_output=True,
         text=True,
         env=env,
+        encoding="utf-8",
+        errors="replace",
     )
 
 

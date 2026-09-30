@@ -89,7 +89,9 @@ def test_pnpm_is_blocked(tmp_path: Path) -> None:
 
 def test_pnpm_with_lockfile_is_still_blocked(tmp_path: Path) -> None:
     """The pnpm-lock.yaml carve-out is gone: pnpm is blocked even in a locked repo."""
-    (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+    (tmp_path / "pnpm-lock.yaml").write_text(
+        "lockfileVersion: '9.0'\n", encoding="utf-8"
+    )
     assert _run_hook("pnpm install", tmp_path) == EXIT_BLOCK
 
 

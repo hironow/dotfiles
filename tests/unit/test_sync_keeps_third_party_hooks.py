@@ -69,7 +69,7 @@ def test_installer_owned_hook_file_is_not_an_orphan(
     # given a herdr-installed hook beside a dotfiles-managed one
     hooks = agent.directory / "hooks"
     (hooks / "herdr-agent-state.ps1").write_text(HERDR_HEADER, encoding="utf-8")
-    (hooks / "block-secrets.sh").write_text("#!/usr/bin/env bash\n")
+    (hooks / "block-secrets.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     sources = [_managed_source(tmp_path, "block-secrets.sh")]
 
     # when orphans are detected
@@ -84,7 +84,7 @@ def test_stale_dotfiles_hook_is_still_an_orphan(
 ) -> None:
     # given a hook whose ROOT_AGENTS_ source was removed (no installer header)
     (agent.directory / "hooks" / "old-hook.sh").write_text(
-        "#!/usr/bin/env bash\necho old\n"
+        "#!/usr/bin/env bash\necho old\n", encoding="utf-8"
     )
 
     # when orphans are detected
@@ -103,7 +103,7 @@ def test_block_calling_installer_owned_hook_survives_merge(
     )
     herdr = _herdr_block(agent)
     (agent.directory / "settings.json").write_text(
-        json.dumps({"hooks": {"SessionStart": [herdr]}})
+        json.dumps({"hooks": {"SessionStart": [herdr]}}), encoding="utf-8"
     )
     fragment = tmp_path / "dotfiles" / ".claude" / "settings.hooks.json"
     fragment.parent.mkdir(parents=True)
@@ -124,14 +124,15 @@ def test_block_calling_installer_owned_hook_survives_merge(
                     ]
                 }
             }
-        )
+        ),
+        encoding="utf-8",
     )
 
     # when the hook fragment is merged
     _merge_hook_settings(tmp_path / "dotfiles", agent)
 
     # then herdr's block is still registered
-    merged = json.loads((agent.directory / "settings.json").read_text())
+    merged = json.loads((agent.directory / "settings.json").read_text(encoding="utf-8"))
     assert merged["hooks"]["SessionStart"] == [herdr]
 
 
@@ -141,17 +142,17 @@ def test_block_calling_a_missing_hook_file_is_still_managed(
     # given a block pointing into hooks/ at a file that no longer exists
     stale = _herdr_block(agent)
     (agent.directory / "settings.json").write_text(
-        json.dumps({"hooks": {"SessionStart": [stale]}})
+        json.dumps({"hooks": {"SessionStart": [stale]}}), encoding="utf-8"
     )
     fragment = tmp_path / "dotfiles" / ".claude" / "settings.hooks.json"
     fragment.parent.mkdir(parents=True)
-    fragment.write_text(json.dumps({"hooks": {}}))
+    fragment.write_text(json.dumps({"hooks": {}}), encoding="utf-8")
 
     # when the hook fragment is merged
     _merge_hook_settings(tmp_path / "dotfiles", agent)
 
     # then the dangling block is dropped as before
-    merged = json.loads((agent.directory / "settings.json").read_text())
+    merged = json.loads((agent.directory / "settings.json").read_text(encoding="utf-8"))
     assert "SessionStart" not in merged.get("hooks", {})
 
 
@@ -162,14 +163,18 @@ def test_bom_hook_keeps_its_file_and_settings_block(
     script.write_text(HERDR_HEADER, encoding="utf-8-sig")
     herdr = _herdr_block(agent)
     settings = agent.directory / "settings.json"
-    settings.write_text(json.dumps({"hooks": {"SessionStart": [herdr]}}))
+    settings.write_text(
+        json.dumps({"hooks": {"SessionStart": [herdr]}}), encoding="utf-8"
+    )
     fragment = tmp_path / "dotfiles" / ".claude" / "settings.hooks.json"
     fragment.parent.mkdir(parents=True)
-    fragment.write_text(json.dumps({"hooks": {}}))
+    fragment.write_text(json.dumps({"hooks": {}}), encoding="utf-8")
 
     assert "hooks/herdr-agent-state.ps1" not in _orphan_paths(agent, [])
     _merge_hook_settings(tmp_path / "dotfiles", agent)
-    assert json.loads(settings.read_text())["hooks"]["SessionStart"] == [herdr]
+    assert json.loads(settings.read_text(encoding="utf-8"))["hooks"][
+        "SessionStart"
+    ] == [herdr]
 
 
 @pytest.mark.parametrize("quote", ['"', "'"])
@@ -188,11 +193,15 @@ def test_quoted_hook_with_spaces_keeps_its_settings_block(
         ]
     }
     settings = agent.directory / "settings.json"
-    settings.write_text(json.dumps({"hooks": {"SessionStart": [block]}}))
+    settings.write_text(
+        json.dumps({"hooks": {"SessionStart": [block]}}), encoding="utf-8"
+    )
     fragment = tmp_path / "dotfiles" / ".claude" / "settings.hooks.json"
     fragment.parent.mkdir(parents=True)
-    fragment.write_text(json.dumps({"hooks": {}}))
+    fragment.write_text(json.dumps({"hooks": {}}), encoding="utf-8")
 
     assert "hooks/herdr custom.ps1" not in _orphan_paths(agent, [])
     _merge_hook_settings(tmp_path / "dotfiles", agent)
-    assert json.loads(settings.read_text())["hooks"]["SessionStart"] == [block]
+    assert json.loads(settings.read_text(encoding="utf-8"))["hooks"][
+        "SessionStart"
+    ] == [block]

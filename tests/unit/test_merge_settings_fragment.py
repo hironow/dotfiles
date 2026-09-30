@@ -49,7 +49,7 @@ def _write_shared_fragment(dotfiles_dir: Path, data: dict) -> Path:
     """Write the shared settings fragment under <dotfiles>/.claude/."""
     path = dotfiles_dir / ".claude" / "settings.shared.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 
@@ -57,19 +57,19 @@ def _write_hook_fragment(dotfiles_dir: Path, data: dict) -> Path:
     """Write the hook settings fragment under <dotfiles>/.claude/."""
     path = dotfiles_dir / ".claude" / "settings.hooks.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 
 def _write_target(target_dir: Path, data: dict) -> Path:
     """Write the agent's settings.json target."""
     path = target_dir / "settings.json"
-    path.write_text(json.dumps(data, indent=2))
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return path
 
 
 def _read_target(target_dir: Path) -> dict:
-    return json.loads((target_dir / "settings.json").read_text())
+    return json.loads((target_dir / "settings.json").read_text(encoding="utf-8"))
 
 
 def test_env_replaced_wholesale(workspace: dict[str, Path]) -> None:
@@ -163,9 +163,9 @@ def test_idempotent(workspace: dict[str, Path]) -> None:
 
     # when
     first = _merge_settings_fragment(workspace["dotfiles"], agent)
-    after_first = (workspace["target"] / "settings.json").read_text()
+    after_first = (workspace["target"] / "settings.json").read_text(encoding="utf-8")
     second = _merge_settings_fragment(workspace["dotfiles"], agent)
-    after_second = (workspace["target"] / "settings.json").read_text()
+    after_second = (workspace["target"] / "settings.json").read_text(encoding="utf-8")
 
     # then
     assert first is True
@@ -178,7 +178,7 @@ def test_dry_run_detects_without_writing(workspace: dict[str, Path]) -> None:
     # given
     _write_shared_fragment(workspace["dotfiles"], {"env": {"A": "1"}})
     _write_target(workspace["target"], {"env": {"OLD": "x"}})
-    before = (workspace["target"] / "settings.json").read_text()
+    before = (workspace["target"] / "settings.json").read_text(encoding="utf-8")
     agent = _make_agent(workspace["target"])
 
     # when
@@ -186,14 +186,14 @@ def test_dry_run_detects_without_writing(workspace: dict[str, Path]) -> None:
 
     # then
     assert changed is True
-    assert (workspace["target"] / "settings.json").read_text() == before
+    assert (workspace["target"] / "settings.json").read_text(encoding="utf-8") == before
 
 
 def test_missing_fragment_is_noop(workspace: dict[str, Path]) -> None:
     """No fragment file => no change, target untouched."""
     # given
     _write_target(workspace["target"], {"env": {"A": "1"}})
-    before = (workspace["target"] / "settings.json").read_text()
+    before = (workspace["target"] / "settings.json").read_text(encoding="utf-8")
     agent = _make_agent(workspace["target"])
 
     # when
@@ -201,7 +201,7 @@ def test_missing_fragment_is_noop(workspace: dict[str, Path]) -> None:
 
     # then
     assert changed is False
-    assert (workspace["target"] / "settings.json").read_text() == before
+    assert (workspace["target"] / "settings.json").read_text(encoding="utf-8") == before
 
 
 def test_creates_target_when_absent(workspace: dict[str, Path]) -> None:
@@ -273,7 +273,7 @@ def _write_os_fragment(dotfiles_dir: Path, os_name: str, data: dict) -> Path:
     """Write an OS overlay fragment under <dotfiles>/.claude/."""
     path = dotfiles_dir / ".claude" / f"settings.shared.{os_name}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 
@@ -281,14 +281,14 @@ def _write_profile_fragment(dotfiles_dir: Path, key: str, data: dict) -> Path:
     """Write a per-profile fragment under <dotfiles>/.claude/settings.profiles/."""
     path = dotfiles_dir / ".claude" / "settings.profiles" / f"{key}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 
 def _write_machine_local(target_dir: Path, data: dict) -> Path:
     """Write the machine-local layer in the agent home (untracked, user-owned)."""
     path = target_dir / "settings.sync-local.json"
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 

@@ -150,7 +150,7 @@ def _scan(root: Path, body: str, rel: str = "tofu/exe-test/main.tf") -> Any:
     """Write `body` as a real .tf under `root` and scan the tree."""
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     return mod.scan_tofu(root)
 
 
@@ -552,6 +552,8 @@ def test_real_repo_passes_the_gate() -> None:
         capture_output=True,
         text=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("check-storage-bounds: OK")

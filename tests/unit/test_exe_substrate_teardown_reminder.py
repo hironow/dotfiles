@@ -26,7 +26,7 @@ CLUSTER = Path(__file__).resolve().parents[2] / "tofu" / "exe-cluster"
 def resource(kind: str, name: str) -> str:
     """The body of one resource block in the stack."""
     for tf in sorted(CLUSTER.glob("*.tf")):
-        text = tf.read_text()
+        text = tf.read_text(encoding="utf-8")
         m = re.search(rf'resource "{kind}" "{name}" \{{', text)
         if not m:
             continue

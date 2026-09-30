@@ -134,7 +134,7 @@ def find_violations(config: object, source: str) -> list[str]:
 
 
 def _load(path: Path) -> object:
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     if path.suffix == ".toml":
         return tomllib.loads(text)
     return json.loads(text)

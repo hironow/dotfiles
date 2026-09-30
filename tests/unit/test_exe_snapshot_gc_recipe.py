@@ -17,7 +17,7 @@ JUSTFILE = REPO / "justfile"
 
 def recipe(name: str) -> tuple[list[str], str]:
     """A recipe's attribute lines and its body, from the root justfile."""
-    lines = JUSTFILE.read_text().splitlines()
+    lines = JUSTFILE.read_text(encoding="utf-8").splitlines()
     start = next(
         i for i, line in enumerate(lines) if re.match(rf"^{re.escape(name)}\b.*:", line)
     )

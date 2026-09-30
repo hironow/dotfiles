@@ -195,6 +195,8 @@ def test_install_sh_passes_shellcheck() -> None:
         ["shellcheck", "--severity=error", str(INSTALL_SH)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     assert r.returncode == 0, (
         f"install.sh shellcheck failed:\nstdout:\n{r.stdout}\nstderr:\n{r.stderr}"
@@ -221,7 +223,7 @@ def test_install_sh_unknown_uname_exits_nonzero(tmp_path: Path) -> None:
     stubs = tmp_path / "stubs"
     stubs.mkdir()
     fake_uname = stubs / "uname"
-    fake_uname.write_text("#!/usr/bin/env bash\necho Plan9\n")
+    fake_uname.write_text("#!/usr/bin/env bash\necho Plan9\n", encoding="utf-8")
     fake_uname.chmod(0o755)
 
     env = os.environ.copy()
@@ -240,6 +242,8 @@ def test_install_sh_unknown_uname_exits_nonzero(tmp_path: Path) -> None:
         text=True,
         cwd=str(tmp_path),
         timeout=30,
+        encoding="utf-8",
+        errors="replace",
     )
     assert r.returncode != 0, (
         f"install.sh exited 0 on a Plan9 fake uname. ADR 0005 requires "

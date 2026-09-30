@@ -39,6 +39,8 @@ def _run(
         shell=isinstance(cmd, str),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -126,11 +128,11 @@ def _snapshot_tracked_worktree(src: str) -> str:
     for rel in tracked.split("\0"):
         if not rel:
             continue
-        source = os.path.join(src, rel)
-        if not os.path.isfile(source):  # skip gitlinks / vanished paths
+        source = Path(src) / rel
+        if not source.is_file():  # skip gitlinks / vanished paths
             continue
-        dest = os.path.join(snapshot, rel)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        dest = Path(snapshot) / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, dest, follow_symlinks=False)
     return snapshot
 
@@ -1214,6 +1216,8 @@ def test_install_sh_has_executable_bit_in_git_index():
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
+        errors="replace",
     )
     # Output format: "<mode> <hash> <stage>\t<path>"
     mode = out.stdout.split()[0]
@@ -1253,9 +1257,11 @@ def test_snapshot_excludes_git_untracked_and_submodule_gitlinks(tmp_path):
     _git("init", "-q")
     _git("config", "user.email", "t@e")
     _git("config", "user.name", "t")
-    (repo / "tracked.txt").write_text("first-party\n")
+    (repo / "tracked.txt").write_text("first-party\n", encoding="utf-8")
     (repo / "private").mkdir()
-    (repo / "private" / "secret.key").write_text("SECRET\n")  # untracked
+    (repo / "private" / "secret.key").write_text(
+        "SECRET\n", encoding="utf-8"
+    )  # untracked
     _git("add", "tracked.txt")
     _git("commit", "-qm", "init")
     # a submodule pointer (gitlink) staged with no checked-out file on disk
@@ -1310,7 +1316,7 @@ def test_run_in_sandbox_local_mounts_snapshot_not_host(monkeypatch):
     assert mount_source == fake_snapshot
     assert mount_source != str(ROOT)
     # ...and the snapshot is torn down once the run completes
-    assert not os.path.exists(fake_snapshot)
+    assert not Path(fake_snapshot).exists()
 
 
 def test_run_in_sandbox_ci_binds_host_path(monkeypatch):

@@ -40,11 +40,11 @@ def _copy_tracked_into(src: str, snapshot: str) -> None:
     for rel in tracked.split("\0"):
         if not rel:
             continue
-        source = os.path.join(src, rel)
-        if not os.path.isfile(source):  # skip gitlinks / vanished paths
+        source = Path(src) / rel
+        if not source.is_file():  # skip gitlinks / vanished paths
             continue
-        dest = os.path.join(snapshot, rel)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        dest = Path(snapshot) / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, dest, follow_symlinks=False)
 
 
@@ -70,7 +70,7 @@ def sandbox_repo():
         snapshots_root.mkdir(exist_ok=True)
         snapshot = tempfile.mkdtemp(prefix="snap-", dir=str(snapshots_root))
         _copy_tracked_into(str(ROOT), snapshot)
-        _SANDBOX_REPO = os.path.join(lwf, os.path.relpath(snapshot, str(ROOT)))
+        _SANDBOX_REPO = str(Path(lwf) / Path(snapshot).relative_to(ROOT, walk_up=True))
         yield
         _SANDBOX_REPO = None
         shutil.rmtree(snapshot, ignore_errors=True)
@@ -95,6 +95,8 @@ def _run(
         shell=isinstance(cmd, str),
         capture_output=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
 
 

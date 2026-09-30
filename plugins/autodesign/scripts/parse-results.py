@@ -19,7 +19,7 @@ def parse_results(filepath: str, direction: str = "higher") -> dict:
         return {"error": f"File not found: {filepath}"}
 
     rows: list[dict] = []
-    with open(path) as f:
+    with path.open(encoding="utf-8") as f:
         f.readline()  # skip header
         for line in f:
             parts = line.strip().split("\t")

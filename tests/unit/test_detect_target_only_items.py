@@ -42,7 +42,7 @@ def _make_subagent(parent: Path, name: str) -> Path:
     """Create a minimal subagent directory under agents/."""
     agent_dir = parent / "agents" / name
     agent_dir.mkdir(parents=True, exist_ok=True)
-    (agent_dir / "agent.md").write_text(f"# {name}\n")
+    (agent_dir / "agent.md").write_text(f"# {name}\n", encoding="utf-8")
     return agent_dir
 
 
@@ -51,7 +51,7 @@ def _make_command(parent: Path, name: str) -> Path:
     cmd_dir = parent / "commands"
     cmd_dir.mkdir(parents=True, exist_ok=True)
     cmd_file = cmd_dir / f"{name}.md"
-    cmd_file.write_text(f"# {name}\n")
+    cmd_file.write_text(f"# {name}\n", encoding="utf-8")
     return cmd_file
 
 
@@ -153,7 +153,7 @@ def test_source_symlinks_count_as_valid_names(workspace: dict[str, Path]) -> Non
     _make_subagent(workspace["dotfiles"], "real-agent")
     shared = workspace["dotfiles"] / "shared" / "linked-agent"
     shared.mkdir(parents=True, exist_ok=True)
-    (shared / "agent.md").write_text("# linked\n")
+    (shared / "agent.md").write_text("# linked\n", encoding="utf-8")
     (dotfiles_agents / "linked-agent").symlink_to(
         Path("..") / "shared" / "linked-agent"
     )

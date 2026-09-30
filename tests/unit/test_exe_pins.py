@@ -106,7 +106,7 @@ def _write_stack(root: Path, rel: str, body: str) -> Path:
     """Create a synthetic tofu stack dir with one .tf file in it."""
     stack = root / rel
     stack.mkdir(parents=True, exist_ok=True)
-    (stack / "main.tf").write_text(body)
+    (stack / "main.tf").write_text(body, encoding="utf-8")
     return stack
 
 
@@ -347,8 +347,8 @@ def test_reaper_gomod_replacing_either_release_is_flagged() -> None:
 
 
 def test_real_reaper_gomod_requires_the_real_pins() -> None:
-    pins = json.loads(_REAL_PINS.read_text())
-    gomod = (_REPO_ROOT / mod.REAPER_GOMOD_REL).read_text()
+    pins = json.loads(_REAL_PINS.read_text(encoding="utf-8"))
+    gomod = (_REPO_ROOT / mod.REAPER_GOMOD_REL).read_text(encoding="utf-8")
     assert mod.check_reaper_gomod(pins, gomod) == []
 
 
@@ -402,13 +402,17 @@ def test_on_repin_must_be_a_list_of_strings() -> None:
 def test_the_real_audit_reopens_the_egress_deny() -> None:
     # F5's residual: this Substrate cannot deny an actor's egress CONNECT to a
     # cluster service, so a repin must look for the setting that can.
-    audit = json.loads((_REPO_ROOT / mod.SUBSTRATE_AUDIT_REL).read_text())
+    audit = json.loads(
+        (_REPO_ROOT / mod.SUBSTRATE_AUDIT_REL).read_text(encoding="utf-8")
+    )
     assert any("default-deny egress" in item for item in audit["on_repin"])
 
 
 def test_the_real_pin_is_the_audited_one() -> None:
-    pins = json.loads(_REAL_PINS.read_text())
-    audit = json.loads((_REPO_ROOT / mod.SUBSTRATE_AUDIT_REL).read_text())
+    pins = json.loads(_REAL_PINS.read_text(encoding="utf-8"))
+    audit = json.loads(
+        (_REPO_ROOT / mod.SUBSTRATE_AUDIT_REL).read_text(encoding="utf-8")
+    )
     assert mod.check_substrate_audit(pins, audit) == []
 
 
@@ -430,7 +434,7 @@ def test_the_exclusion_end_is_read_from_the_platform_locals() -> None:
 
 
 def test_the_real_exclusion_end_puts_the_deadline_on_2027_01_24() -> None:
-    locals_tf = (_REPO_ROOT / mod.PLATFORM_LOCALS_REL).read_text()
+    locals_tf = (_REPO_ROOT / mod.PLATFORM_LOCALS_REL).read_text(encoding="utf-8")
     end = mod.upgrade_exclusion_end(locals_tf)
     assert end == _EXCLUSION_END
     assert end - mod.CERTIFICATES_API_LEAD == date(2027, 1, 24)
@@ -474,7 +478,7 @@ def test_an_unreadable_exclusion_end_is_a_violation() -> None:
 
 
 def test_the_real_pin_names_its_certificates_api() -> None:
-    pins = json.loads(_REAL_PINS.read_text())
+    pins = json.loads(_REAL_PINS.read_text(encoding="utf-8"))
     assert pins["substrate"]["certificates_api"] in mod.CERTIFICATES_APIS
 
 
@@ -751,7 +755,7 @@ def _write_mise_config(root: Path, body: str) -> Path:
     """Create a synthetic config/mise/config.toml under `root`."""
     path = root / "config" / "mise" / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     return path
 
 
@@ -861,7 +865,7 @@ def test_missing_versions_json_is_a_violation(tmp_path: Path) -> None:
 
 def test_unparsable_versions_json_is_a_violation(tmp_path: Path) -> None:
     (tmp_path / "exe").mkdir()
-    (tmp_path / "exe" / "versions.json").write_text("{ not json")
+    (tmp_path / "exe" / "versions.json").write_text("{ not json", encoding="utf-8")
     pins, violations = mod.load_pins(tmp_path)
     assert pins is None
     assert violations
@@ -869,7 +873,9 @@ def test_unparsable_versions_json_is_a_violation(tmp_path: Path) -> None:
 
 def test_load_pins_returns_the_document(tmp_path: Path) -> None:
     (tmp_path / "exe").mkdir()
-    (tmp_path / "exe" / "versions.json").write_text(json.dumps(_pins()))
+    (tmp_path / "exe" / "versions.json").write_text(
+        json.dumps(_pins()), encoding="utf-8"
+    )
     pins, violations = mod.load_pins(tmp_path)
     assert violations == []
     assert pins is not None
@@ -880,7 +886,7 @@ def test_load_pins_returns_the_document(tmp_path: Path) -> None:
 
 
 def test_real_versions_json_keeps_one_substrate_reference() -> None:
-    pins = json.loads(_REAL_PINS.read_text())
+    pins = json.loads(_REAL_PINS.read_text(encoding="utf-8"))
     substrate = pins["substrate"]
     assert substrate["version_label_value"] == substrate["version"]
     assert substrate["version_label_key"] == "ate.dev/substrate-version"
@@ -890,7 +896,7 @@ def test_real_mise_config_mirrors_the_real_ax_pin() -> None:
     """The committed mise pin and the committed ax.version must agree."""
     assert _REAL_MISE_CONFIG.is_file(), _REAL_MISE_CONFIG
     assert (_REPO_ROOT / mod.MISE_CONFIG_REL).resolve() == _REAL_MISE_CONFIG.resolve()
-    pins = json.loads(_REAL_PINS.read_text())
+    pins = json.loads(_REAL_PINS.read_text(encoding="utf-8"))
     assert mod.check_mise_pin(_REAL_MISE_CONFIG, pins) == []
 
 
@@ -899,6 +905,7 @@ def test_repo_pins_pass_the_gate() -> None:
         [sys.executable, str(_SCRIPT)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     assert result.returncode == 0, result.stderr

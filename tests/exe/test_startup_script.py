@@ -112,6 +112,8 @@ def _run(
         stderr=subprocess.PIPE,
         check=check,
         timeout=timeout,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -124,7 +126,7 @@ def _docker_available() -> bool:
 def _extract_startup_script() -> str:
     """Pull the heredoc body out of coder.tf and dummy-fill the
     HCL interpolations."""
-    text = CODER_TF.read_text()
+    text = CODER_TF.read_text(encoding="utf-8")
     match = re.search(
         r"startup_script\s*=\s*<<-EOT\s*\n(.*?)\n\s*EOT",
         text,
@@ -202,7 +204,7 @@ def test_exe_coder_auth_key_is_ephemeral() -> None:
     resolves to the active VM, but the admin UI accumulates dead
     rows over weeks of operation, and the device count quota is
     finite."""
-    tailscale_tf = (ROOT / "tofu" / "exe" / "tailscale.tf").read_text()
+    tailscale_tf = (ROOT / "tofu" / "exe" / "tailscale.tf").read_text(encoding="utf-8")
     # Find the resource block, then assert ephemeral = true on it.
     block = re.search(
         r'resource "tailscale_tailnet_key" "exe_coder" \{(.*?)^\}',
@@ -246,7 +248,7 @@ def test_coder_http_address_listens_on_all_interfaces() -> None:
     so 0.0.0.0 here is safe — the only listeners that can actually
     reach :7080 are localhost (cloudflared) and tun0 (tailscaled).
     """
-    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text(encoding="utf-8")
     assert "CODER_HTTP_ADDRESS=0.0.0.0:7080" in coder_tf, (
         "coder.service must set CODER_HTTP_ADDRESS=0.0.0.0:7080 so the\n"
         "Coder server listens on the tailnet interface as well as on\n"
@@ -269,7 +271,7 @@ def test_exe_workspace_sa_present_with_secret_reader() -> None:
     Sharing the default compute SA was rejected because the default SA
     is project-wide and granting it Secret Manager read on tailnet
     keys widens the blast radius beyond this stack."""
-    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text(encoding="utf-8")
 
     sa_block = re.search(
         r'resource "google_service_account" "exe_workspace" \{(.*?)^\}',
@@ -302,7 +304,7 @@ def test_workspace_tailnet_auth_key_resource_present() -> None:
     The corresponding Secret Manager secret must exist so the
     workspace VM's service account can read the key by name."""
     ts_tf = ROOT / "tofu" / "exe" / "tailscale.tf"
-    text = ts_tf.read_text()
+    text = ts_tf.read_text(encoding="utf-8")
 
     block = re.search(
         r'resource\s+"tailscale_tailnet_key"\s+"exe_workspace"\s*\{(.*?)^\}',
@@ -358,7 +360,7 @@ def test_acl_grants_exe_workspace_access_to_coder_listener() -> None:
         fail to download `/bin/coder-linux-amd64`.
     """
     acl_path = ROOT / "exe" / "tailscale" / "acl.hujson"
-    text = acl_path.read_text()
+    text = acl_path.read_text(encoding="utf-8")
 
     assert '"tag:exe-workspace"' in text, (
         "tag:exe-workspace must be declared in tagOwners — without it the\n"
@@ -387,7 +389,7 @@ def test_acl_has_no_ssh_block_or_only_empty() -> None:
     (or absent). Stale ssh rules are dead config that drifts away from
     the live posture."""
     acl_path = ROOT / "exe" / "tailscale" / "acl.hujson"
-    text = acl_path.read_text()
+    text = acl_path.read_text(encoding="utf-8")
     # find any `"ssh": [` followed by non-empty rules
     m = re.search(r'"ssh"\s*:\s*\[(.*?)\]', text, re.DOTALL)
     assert m is not None, "expected `ssh` key (possibly empty)"
@@ -416,7 +418,7 @@ def test_cdr_wrapper_present_and_executable() -> None:
     import os
 
     assert os.access(cdr, os.X_OK), f"wrapper not executable: {cdr}"
-    text = cdr.read_text()
+    text = cdr.read_text(encoding="utf-8")
     # The exact secret names tofu/exe/cloudflare.tf creates.
     assert "exe-coder-cli-client-id" in text
     assert "exe-coder-cli-client-secret" in text
@@ -446,7 +448,7 @@ def test_cdr_header_helper_present_and_executable() -> None:
     import os
 
     assert os.access(helper, os.X_OK), f"not executable: {helper}"
-    text = helper.read_text()
+    text = helper.read_text(encoding="utf-8")
     assert "exe-coder-cli-client-id" in text
     assert "exe-coder-cli-client-secret" in text
     # The whole point: Coder VS Code extension wants 'key=value\n'.
@@ -475,7 +477,7 @@ def test_state_encryption_is_strict() -> None:
         ROOT / "exe" / "scripts" / "teardown.sh",
     ]
     for path in targets:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         # Restrict to the encryption block / heredoc only — comments
         # mentioning the words are tolerated.
         # We approximate by checking for the literal HCL syntax that
@@ -504,7 +506,7 @@ def test_coder_telemetry_disabled_via_env() -> None:
     is the only one that actually works in cloud — the CLI flag path
     additionally tripped a heredoc 'command not found' in GCE's
     metadata-script-runner. Lock the env-only form."""
-    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text(encoding="utf-8")
     assert re.search(
         r"^\s*Environment=CODER_TELEMETRY_ENABLE=false\s*$",
         coder_tf,
@@ -546,7 +548,7 @@ def test_coder_hsts_options_is_comma_separated(startup_script: str) -> None:
 def test_startup_script_bash_syntax(startup_script: str, tmp_path: Path) -> None:
     """bash -n: catches stray quotes, missing fi/done, etc."""
     script = tmp_path / "startup.sh"
-    script.write_text(startup_script)
+    script.write_text(startup_script, encoding="utf-8")
     r = _run(["bash", "-n", str(script)])
     assert r.returncode == 0, f"bash -n failed:\n{r.stderr}"
 
@@ -559,7 +561,7 @@ def test_startup_script_shellcheck(startup_script: str, tmp_path: Path) -> None:
     if shutil.which("shellcheck") is None:
         pytest.skip("shellcheck not available locally")
     script = tmp_path / "startup.sh"
-    script.write_text(startup_script)
+    script.write_text(startup_script, encoding="utf-8")
     r = _run(["shellcheck", "--severity=error", str(script)])
     assert r.returncode == 0, f"shellcheck errors:\n{r.stdout}\n{r.stderr}"
 
@@ -666,7 +668,7 @@ def test_startup_script_runs_under_dash(
     documentation of the dash failure mode rather than as a live
     assertion."""
     harness = tmp_path / "run.sh"
-    harness.write_text(HARNESS_PRELUDE + "\n" + startup_script)
+    harness.write_text(HARNESS_PRELUDE + "\n" + startup_script, encoding="utf-8")
 
     r = _run(
         [
@@ -694,7 +696,7 @@ def test_startup_script_runs_in_container(
     writes — all real. systemctl/gcloud/tailscale are mocked so we
     don't need a live tailnet / GCS bucket."""
     harness = tmp_path / "run.sh"
-    harness.write_text(HARNESS_PRELUDE + "\n" + startup_script)
+    harness.write_text(HARNESS_PRELUDE + "\n" + startup_script, encoding="utf-8")
 
     r = _run(
         [
@@ -749,7 +751,8 @@ def test_systemd_units_validate(
         + "# /etc/default/coder must exist with the right perms (0640 root:coder).\n"
         + "test -f /etc/default/coder\n"
         + 'test "$(stat -c \'%U:%G:%a\' /etc/default/coder)" = "root:coder:640"\n'
-        + "grep -q '^CODER_PG_CONNECTION_URL=postgres://' /etc/default/coder\n"
+        + "grep -q '^CODER_PG_CONNECTION_URL=postgres://' /etc/default/coder\n",
+        encoding="utf-8",
     )
 
     r = _run(
@@ -833,7 +836,7 @@ def test_coder_variables_have_validation() -> None:
     (`\\\\` matches two literal backslashes, `\.` matches the dot).
     The earlier `\\\.` form was off-by-one and false-negatived this
     check on every run."""
-    variables_tf = (ROOT / "tofu" / "exe" / "variables.tf").read_text()
+    variables_tf = (ROOT / "tofu" / "exe" / "variables.tf").read_text(encoding="utf-8")
     # coder_version: SemVer with leading 'v'
     assert re.search(
         r'variable\s+"coder_version"\s*\{[^}]*?validation\s*\{[^}]*?'
@@ -996,7 +999,7 @@ def test_cloud_sql_resources_present() -> None:
     password user, no random_password, no Secret Manager password
     secret. CSAP runs with --auto-iam-authn=true and exchanges
     ADC for a short-lived OAuth token at every connection."""
-    cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text()
+    cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text(encoding="utf-8")
 
     inst = re.search(
         r'resource\s+"google_sql_database_instance"\s+"coder"\s*\{(.*?)^\}',
@@ -1161,7 +1164,7 @@ def test_operator_iam_db_user_provisioned_for_studio_access() -> None:
     SELECT on existing and future tables, but NOT CREATE/INSERT/UPDATE.
     Write traffic stays exclusive to coder.service via the SA user.
     """
-    cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text()
+    cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text(encoding="utf-8")
 
     # The operator user is a CLOUD_IAM_USER (individual email), not a
     # CLOUD_IAM_SERVICE_ACCOUNT. Cloud SQL distinguishes the two by
@@ -1469,7 +1472,7 @@ def test_bootstrap_enables_cloud_sql_apis() -> None:
     """The Cloud SQL instance + Service Networking peering need two
     new APIs enabled before the first tofu apply. Add them to the
     bootstrap script's REQUIRED_APIS array."""
-    bootstrap = (ROOT / "exe" / "scripts" / "bootstrap.sh").read_text()
+    bootstrap = (ROOT / "exe" / "scripts" / "bootstrap.sh").read_text(encoding="utf-8")
     assert "sqladmin.googleapis.com" in bootstrap, (
         "bootstrap.sh must enable sqladmin.googleapis.com (ADR 0010)"
     )
@@ -1498,8 +1501,8 @@ def test_cloud_sql_security_posture_no_regression() -> None:
     - The Coder DB user MUST NOT be of type BUILT_IN (would mean a
       password user snuck back in alongside or instead of IAM SA).
     """
-    cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text()
-    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+    cloudsql_tf = (ROOT / "tofu" / "exe" / "cloudsql.tf").read_text(encoding="utf-8")
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text(encoding="utf-8")
 
     # --- Privilege creep ---------------------------------------------
     forbidden_roles = [
@@ -1748,7 +1751,7 @@ def test_postgres_admin_user_is_bootstrap_only_not_runtime_path() -> None:
     use it at runtime — that is the whole point of the IAM auth
     pivot. Pin negatively: the postgres admin secret name must not
     appear in CODER_PG_CONNECTION_URL or in /etc/default/coder."""
-    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text()
+    coder_tf = (ROOT / "tofu" / "exe" / "coder.tf").read_text(encoding="utf-8")
 
     # CODER_PG_CONNECTION_URL must reference the IAM SA user via
     # PG_IAM_DB_USER_ENC, not the postgres admin user. Verify the
@@ -1779,7 +1782,9 @@ def test_uptime_check_and_alert_present() -> None:
     the monitoring posture (e.g., drop the auth headers, switch to
     a non-existent path, expand to a public endpoint that is gated
     out, etc.)."""
-    monitoring_tf = (ROOT / "tofu" / "exe" / "monitoring.tf").read_text()
+    monitoring_tf = (ROOT / "tofu" / "exe" / "monitoring.tf").read_text(
+        encoding="utf-8"
+    )
 
     # Uptime check with the right shape.
     uptime_block = re.search(
@@ -1850,7 +1855,7 @@ def test_bootstrap_enables_monitoring_api() -> None:
     monitoring.googleapis.com; bootstrap must enable that API
     before tofu init (we cannot create monitoring resources
     without it)."""
-    bootstrap = (ROOT / "exe" / "scripts" / "bootstrap.sh").read_text()
+    bootstrap = (ROOT / "exe" / "scripts" / "bootstrap.sh").read_text(encoding="utf-8")
     assert "monitoring.googleapis.com" in bootstrap, (
         "bootstrap.sh must enable monitoring.googleapis.com so the\n"
         "uptime check + alert policy can be provisioned."

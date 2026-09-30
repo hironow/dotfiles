@@ -16,13 +16,12 @@ project-local node_modules/pyright is never touched.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from _bash_hook import resolve_bash
+from _bash_hook import bash_path, resolve_bash
 from _symlinks import requires_symlinks
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -52,8 +51,8 @@ def machine(tmp_path: Path) -> dict[str, Path]:
     (nm / "index.js").write_text("stub", encoding="utf-8")
     (nm / "langserver.index.js").write_text("stub", encoding="utf-8")
     (nm / "package.json").write_text('{"name":"pyright"}', encoding="utf-8")
-    os.symlink(nm / "index.js", bindir / "pyright")
-    os.symlink(nm / "langserver.index.js", bindir / "pyright-langserver")
+    (bindir / "pyright").symlink_to(nm / "index.js")
+    (bindir / "pyright-langserver").symlink_to(nm / "langserver.index.js")
     keep = tmp_path / "prefix" / "lib" / "node_modules" / "leftpad"
     keep.mkdir()
     (keep / "package.json").write_text('{"name":"leftpad"}', encoding="utf-8")
@@ -94,7 +93,7 @@ def _run(
     return subprocess.run(
         [BASH, str(SCRIPT), mode],
         env={
-            "PATH": f"{m['bin']}:/usr/bin:/bin",
+            "PATH": f"{bash_path(m['bin'])}:/usr/bin:/bin",
             "HOME": str(m["bin"].parent),
             "STUB_LOG": str(m["log"]),
             "UV_TOOL_DIR": str(m["uvtools"]),
@@ -111,8 +110,8 @@ def test_detect_reports_every_retired_artefact(machine: dict[str, Path]) -> None
     r = _run("detect", machine)
     assert r.returncode == 0, r.stderr
     lines = set(r.stdout.splitlines())
-    assert f"path:pyright:{machine['bin'] / 'pyright'}" in lines
-    assert f"path:mypy:{machine['bin'] / 'mypy'}" in lines
+    assert f"path:pyright:{bash_path(machine['bin'] / 'pyright')}" in lines
+    assert f"path:mypy:{bash_path(machine['bin'] / 'mypy')}" in lines
     assert "uv-tool:mypy" in lines and "uv-tool:ruff" in lines
     assert "brew:ruff" in lines
     assert "mise-unmanaged:ruff@0.12.7" in lines
@@ -190,14 +189,14 @@ def test_prune_leaves_a_project_local_node_modules_pyright_alone(
     (local / "index.js").write_text("stub", encoding="utf-8")
     dotbin = proj / "node_modules" / ".bin"
     dotbin.mkdir()
-    os.symlink(local / "index.js", dotbin / "pyright")
+    (dotbin / "pyright").symlink_to(local / "index.js")
     # put the project bin FIRST on PATH and drop the global pyright
     (machine["bin"] / "pyright").unlink()
     (machine["bin"] / "pyright-langserver").unlink()
     r = subprocess.run(
         [BASH, str(SCRIPT), "prune"],
         env={
-            "PATH": f"{dotbin}:{machine['bin']}:/usr/bin:/bin",
+            "PATH": f"{bash_path(dotbin)}:{bash_path(machine['bin'])}:/usr/bin:/bin",
             "HOME": str(machine["bin"].parent),
             "STUB_LOG": str(machine["log"]),
             "UV_TOOL_DIR": str(machine["uvtools"]),
@@ -209,7 +208,7 @@ def test_prune_leaves_a_project_local_node_modules_pyright_alone(
     )
     assert r.returncode == 0, r.stderr
     assert local.exists() and (dotbin / "pyright").exists()
-    assert f"left path:pyright:{dotbin / 'pyright'}" in r.stdout
+    assert f"left path:pyright:{bash_path(dotbin / 'pyright')}" in r.stdout
 
 
 def test_unknown_mode_is_a_usage_error() -> None:

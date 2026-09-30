@@ -25,6 +25,8 @@ def test_exe_source_path_does_not_require_home_env(tmp_path: Path) -> None:
         text=True,
         capture_output=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().endswith("exe/src")

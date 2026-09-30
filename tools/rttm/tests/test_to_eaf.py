@@ -1,5 +1,5 @@
-import os
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,7 +14,9 @@ SPEAKER sample 1 1.500 2.000 <NA> <NA> speaker2 <NA> <NA>
 
 
 def test_convert_rttm_to_eaf_success(sample_rttm_content):
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as rttm_file:
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, encoding="utf-8"
+    ) as rttm_file:
         rttm_file.write(sample_rttm_content)
         rttm_path = rttm_file.name
 
@@ -46,8 +48,8 @@ def test_convert_rttm_to_eaf_success(sample_rttm_content):
             mock_eaf.to_file.assert_called_once_with(eaf_path)
 
     finally:
-        os.remove(rttm_path)
-        os.remove(eaf_path)
+        Path(rttm_path).unlink()
+        Path(eaf_path).unlink()
 
 
 def test_convert_rttm_to_eaf_file_not_found():

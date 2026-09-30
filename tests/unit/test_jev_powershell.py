@@ -44,6 +44,8 @@ def test_powershell_function_syntax() -> None:
         text=True,
         capture_output=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, result.stderr
     invoke = (
@@ -58,5 +60,7 @@ def test_powershell_function_syntax() -> None:
         text=True,
         capture_output=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert called.returncode == 0, called.stderr

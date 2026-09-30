@@ -35,6 +35,8 @@ def test_generated_artifact_is_lf_pinned(path: str) -> None:
         capture_output=True,
         text=True,
         check=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout.strip()
     # git check-attr format: "<path>: eol: <value>"
     assert out.endswith(": lf"), (

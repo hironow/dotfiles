@@ -19,7 +19,7 @@ from sync_agents import _compare_directories
 
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8")
 
 
 def test_same_size_same_mtime_different_content_is_a_difference(
