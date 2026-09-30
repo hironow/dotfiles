@@ -95,9 +95,15 @@ def jev_key() -> str | None:
         return None
     if not env_file_is_private(path):
         rule = (
-            "no ACL entry for other users" if sys.platform == "win32" else "mode 0600"
+            "no ACL entry for other accounts (list them: icacls ~/.env)"
+            if sys.platform == "win32"
+            else "mode 0600"
         )
-        print(f"Jev: ~/.env must be owned by you and {rule}", file=sys.stderr)
+        print(
+            f"Jev: ~/.env must be owned by you and {rule}; "
+            "see docs/runbook/jev-launchers.md",
+            file=sys.stderr,
+        )
         return None
     for line in path.read_text(encoding="utf-8").splitlines():
         if "=" in line:

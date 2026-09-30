@@ -85,7 +85,10 @@ def test_home_env_key_needs_a_private_file_on_every_platform(
     # when the file is not private, then the key is refused with a hint
     monkeypatch.setattr(launcher, "env_file_is_private", lambda _path: False)
     assert launcher.jev_key() is None
-    assert "~/.env" in capsys.readouterr().err
+    hint = capsys.readouterr().err
+    assert "~/.env" in hint
+    # the fix differs per machine (e.g. an ACL entry Codex's sandbox added)
+    assert "docs/runbook/jev-launchers.md" in hint
 
     # when it is private, then the key is read (Windows included)
     monkeypatch.setattr(launcher, "env_file_is_private", lambda _path: True)

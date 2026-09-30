@@ -17,11 +17,19 @@ worker のフックと `codex-jev` は、キーの環境変数を除いた環境
 他人が読める `~/.env` からは読まない。
 macOS と Linux では、所有者だけが読み書きできる 0600 にする（`chmod 600 ~/.env`）。
 Windows では、所有者が自分で、自分、SYSTEM、Administrators のほかにアクセス許可がないことを求める。
-ホーム直下に作ったファイルは既定の権限で満たし、満たさない場合は継承を外して自分だけに許可する。
+ホーム直下に作ったファイルは、既定の権限で満たすことが多い。
+満たさないときは、`icacls` で許可の一覧を見て、継承を外して自分だけに許可し、残ったほかのアカウントの明示的な許可を外す。
 
 ```powershell
-icacls "$HOME\.env" /inheritance:r /grant:r "${env:USERNAME}:F"
+icacls "$HOME\.env"                                             # 許可の一覧を見る
+icacls "$HOME\.env" /inheritance:r /grant:r "${env:USERNAME}:F"  # 継承を外して自分だけに許可する
+icacls "$HOME\.env" /remove:g "<一覧に残ったアカウント>"            # 例: <PC 名>\CodexSandboxUsers
 ```
+
+Codex の Windows のサンドボックスは、ホームのファイルに `CodexSandboxUsers` の読み取りの許可を付けることがある。
+サンドボックスの中ではモデルが決めたコマンドが動くので、この許可を残したキーのファイルは、Jev は読まない。
+`j-cc`、`j-pi`、`codex-jev` は Codex を起動する前にキーを読むので、この許可を外しても Codex の worker は動く。
+許可が付け直されたときは、Jev が起動時に `~/.env must be owned by you` と表示するので、同じ手順で外す。
 
 キーはリポジトリに置かない。
 依頼文は Jev に送られるので、パスワードなどを含めない。
