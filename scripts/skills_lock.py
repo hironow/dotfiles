@@ -335,7 +335,9 @@ def _load_state(skills_dir: Path) -> dict[str, dict[str, str]]:
 def _save_state(skills_dir: Path, state: dict[str, dict[str, str]]) -> None:
     state_file = skills_dir / STATE_FILE
     if state:
-        state_file.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+        state_file.write_text(
+            json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
     elif state_file.exists():
         state_file.unlink()
 
@@ -511,7 +513,9 @@ def _cmd_dump(dotfiles_dir: Path, *, allow_self_drop: bool) -> int:
             indent=2,
             ensure_ascii=False,
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
+        newline="\n",  # tracked file: LF on every OS (.gitattributes pins it too)
     )
     ours = sum(1 for r in records if r.source == SELF_SOURCE)
     print(f"✅ dumped {len(records)} skills ({ours} from {SELF_SOURCE}) -> {dump_path}")

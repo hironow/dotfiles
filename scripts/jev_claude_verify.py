@@ -231,8 +231,16 @@ def main() -> int:
             "--debug-file",
             str(debug_file),
         ]
+        # Claude Code writes UTF-8; the locale default (cp932 on Japanese Windows)
+        # cannot decode it.
         run = subprocess.run(
-            command, env=env, capture_output=True, text=True, timeout=600, check=False
+            command,
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600,
+            check=False,
         )
         lines = run.stdout.splitlines()
         records = (

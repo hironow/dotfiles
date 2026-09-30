@@ -95,6 +95,8 @@ def pi_route() -> str:
                 timeout=5,
                 check=False,
                 env=env,
+                encoding="utf-8",
+                errors="replace",
             )
         except (OSError, subprocess.TimeoutExpired):
             continue

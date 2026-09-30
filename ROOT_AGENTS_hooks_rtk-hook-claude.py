@@ -106,6 +106,8 @@ def _run_rtk(raw: str) -> dict | None:
             text=True,
             timeout=_RTK_TIMEOUT_SECONDS,
             check=False,
+            encoding="utf-8",
+            errors="replace",
         )
     except (OSError, subprocess.SubprocessError):
         return None
