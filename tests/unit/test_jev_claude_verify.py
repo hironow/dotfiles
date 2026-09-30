@@ -390,3 +390,110 @@ def test_the_worse_of_the_worker_and_codex_verdicts_wins() -> None:
         [], [RECORD, CODEX_RECORD], [kept, CODEX_OK], "", expect_codex=True
     )
     assert report.status == "fail" and "updatedInput" in report.reason
+
+
+def genuine_codex_limit_stream() -> list[str]:
+    return [
+        json.dumps(
+            {
+                "type": "assistant",
+                "error": "rate_limit",
+                "isApiErrorMessage": True,
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "You've hit your weekly limit"}
+                    ]
+                },
+            }
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        COMPANION.replace("gpt-6-astra", "gpt-6-luna"),
+        COMPANION.replace("--effort low", "--effort high"),
+        COMPANION.replace("--model gpt-6-astra", ""),
+        COMPANION.replace("--effort low", ""),
+    ],
+)
+def test_real_limit_does_not_hide_confirmed_codex_argument_defects(
+    command: str,
+) -> None:
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [OK, {**CODEX_OK, "commands": [command]}],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "fail"
+    assert "codex" in report.reason
+
+
+@pytest.mark.parametrize("commands", [[], [f"cd /p && {COMPANION}"]])
+def test_limit_with_missing_or_unrecognized_companion_evidence_is_blocked(
+    commands: list[str],
+) -> None:
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [OK, {**CODEX_OK, "commands": commands}],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "blocked"
+
+
+def test_codex_success_does_not_make_an_unstarted_plain_worker_a_defect() -> None:
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [CODEX_OK],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "blocked"
+
+
+def test_confirmed_codex_defect_wins_even_if_plain_worker_did_not_start() -> None:
+    wrong = {**CODEX_OK, "commands": [COMPANION.replace("gpt-6-astra", "gpt-6-luna")]}
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [wrong],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "fail"
+
+
+def test_successful_codex_does_not_hide_a_confirmed_plain_worker_defect_during_limit() -> (
+    None
+):
+    wrong = {**OK, "efforts": ["medium"]}
+    report = verify.analyze(
+        genuine_codex_limit_stream(),
+        [RECORD, CODEX_RECORD],
+        [wrong, CODEX_OK],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "fail"
+
+
+def test_ordinary_limit_quote_cannot_hide_wrong_codex_arguments() -> None:
+    quote = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {"content": "fixture: hit your weekly limit"},
+            }
+        )
+    ]
+    wrong = {**CODEX_OK, "commands": [COMPANION.replace("gpt-6-astra", "gpt-6-luna")]}
+    report = verify.analyze(
+        quote, [RECORD, CODEX_RECORD], [OK, wrong], "", expect_codex=True
+    )
+    assert report.status == "fail"

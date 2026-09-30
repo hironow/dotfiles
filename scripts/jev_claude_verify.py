@@ -151,7 +151,7 @@ def _analyze_worker(
     return Report("pass", f"a plain worker ran as {target} at effort {want}", evidence)
 
 
-SEVERITY = {"blocked": 3, "fail": 2, "partial": 1, "pass": 0}
+SEVERITY = {"fail": 3, "blocked": 2, "partial": 1, "pass": 0}
 
 
 def _companion_arguments(command: str) -> dict[str, str] | None:
@@ -217,12 +217,15 @@ def _companion_choice(command: str) -> tuple[str, str] | None:
     return values["model"], values["effort"]
 
 
-def _analyze_codex(hook_records: list[dict], subagents: list[dict]) -> Report:
+def _analyze_codex(
+    hook_records: list[dict], subagents: list[dict], blocked: bool = False
+) -> Report:
     """Did Jev's model and effort reach the Codex plugin's companion command?"""
     records = [r for r in hook_records if r.get("kind") == "codex-rescue"]
     if not records:
         return Report(
-            "partial", "codex-rescue was not launched, so the codex path is unconfirmed"
+            "blocked" if blocked else "partial",
+            "codex-rescue was not launched, so the codex path is unconfirmed",
         )
     want_model, want_effort = records[-1]["model"], records[-1]["effort"]
     commands = [
@@ -233,8 +236,19 @@ def _analyze_codex(hook_records: list[dict], subagents: list[dict]) -> Report:
         if "codex-companion" in command
     ]
     evidence = [f"codex-rescue: Jev chose {want_model} / {want_effort}"]
-    if any(_companion_choice(c) == (want_model, want_effort) for c in commands):
+    arguments = [_companion_arguments(command) for command in commands]
+    if any(
+        values is not None
+        and (values.get("model"), values.get("effort")) == (want_model, want_effort)
+        for values in arguments
+    ):
         return Report("pass", "the codex flags reached codex-companion", evidence)
+    if blocked and not any(values is not None for values in arguments):
+        return Report(
+            "blocked",
+            "Claude stopped before the codex invocation could be verified",
+            evidence,
+        )
     return Report(
         "fail",
         f"codex-companion did not receive --model {want_model} --effort {want_effort}: "
@@ -252,10 +266,23 @@ def analyze(
 ) -> Report:
     """Worse of the worker verdict and (when the run included one) the codex verdict."""
     worker_records = [r for r in hook_records if "kind" not in r]
-    report = _analyze_worker(stream_lines, worker_records, subagents, debug_log)
-    if not expect_codex or report.status == "blocked":
+    worker_subagents = (
+        [
+            s
+            for s in subagents
+            if not str(s.get("agentType", "")).endswith("codex-rescue")
+        ]
+        if expect_codex
+        else subagents
+    )
+    report = _analyze_worker(stream_lines, worker_records, worker_subagents, debug_log)
+    if not expect_codex:
         return report
-    codex = _analyze_codex(hook_records, subagents)
+    codex = _analyze_codex(
+        hook_records,
+        subagents,
+        blocked=has_provider_limit(stream_lines) or report.status == "blocked",
+    )
     worse = max((report, codex), key=lambda r: SEVERITY[r.status])
     if report.status == codex.status == "pass":
         worse = Report("pass", f"{report.reason}; {codex.reason}")
