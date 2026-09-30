@@ -24,11 +24,17 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+
+# POSIX process groups and bash/dash stubs: on Windows the guest launch hangs
+# and os.killpg does not exist. The platform check also lets ty skip the rest.
+if sys.platform == "win32":
+    pytest.skip("POSIX-only: process groups and shell stubs", allow_module_level=True)
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "exe" / "scripts"
