@@ -29,6 +29,7 @@ import argparse
 import filecmp
 import json
 import platform
+import re
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -51,6 +52,11 @@ HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
 # either alone. Retired on every sync, so a reinstall/upgrade that re-adds one
 # is undone rather than silently resurrecting the old behavior (ADR 0047).
 RETIRED_HOOK_COMMANDS = frozenset({"rtk hook claude"})
+# Header line a third-party installer writes at the top of a hook file it owns
+# inside <agent>/hooks/ (herdr: "# installed by herdr"). Such a file is not a
+# stale dotfiles hook, and a settings block calling it is not sync's to replace:
+# treating either as ours silently uninstalled the integration on every sync.
+THIRD_PARTY_HOOK_HEADERS = frozenset({"# installed by herdr"})
 # Shared settings fragment merged into each claude-family agent's settings.json:
 # the cross-machine env block (owned wholesale) plus curated top-level keys.
 SHARED_SETTINGS_FRAGMENT = ".claude/settings.shared.json"
@@ -556,6 +562,8 @@ def _detect_managed_dir_orphans(
         for child in sorted(target_dir.iterdir(), key=lambda p: p.name):
             if child.name.startswith(".") or child.name in expected:
                 continue
+            if mdir == "hooks" and _is_third_party_hook(child):
+                continue
             orphans.append(
                 _DeleteAction(
                     target=child,
@@ -635,18 +643,44 @@ def _render_hook_command(
     return rendered
 
 
+def _is_third_party_hook(path: Path) -> bool:
+    """A hooks/ file whose header names a third-party installer as its owner."""
+    path = Path(path)  # callers may hold a PurePath stand-in (tests)
+    if not path.is_file():
+        return False
+    try:
+        with path.open(encoding="utf-8-sig", errors="replace") as f:
+            head = [next(f, "") for _ in range(5)]
+    except OSError:
+        return False
+    return any(line.strip() in THIRD_PARTY_HOOK_HEADERS for line in head)
+
+
 def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
     """A hook block sync owns: every command points at the agent's hooks dir.
 
     Commands are normalized ``\\`` -> ``/`` before matching so legacy
     Windows-rendered blocks (backslash paths) are recognized as managed and
-    replaced on the next sync instead of surviving as duplicates.
+    replaced on the next sync instead of surviving as duplicates. A command
+    calling a third-party-owned hook file (see _is_third_party_hook) is the
+    installer's, so a block containing one is not managed.
     """
     inner = block.get("hooks", [])
     marker = f"{agent.directory.as_posix()}/hooks/"
-    return bool(inner) and all(
-        marker in h.get("command", "").replace("\\", "/") for h in inner
-    )
+
+    def managed(command: str) -> bool:
+        command = command.replace("\\", "/")
+        if marker not in command:
+            return False
+        prefix, _, suffix = command.partition(marker)
+        if prefix[-1:] in {'"', "'"}:
+            name = suffix.split(prefix[-1], 1)[0]
+        else:
+            match = re.match(r'[^"\s]+', suffix)
+            name = match[0] if match else ""
+        return not (name and _is_third_party_hook(agent.directory / "hooks" / name))
+
+    return bool(inner) and all(managed(h.get("command", "")) for h in inner)
 
 
 def _is_retired_hook_block(block: dict) -> bool:
