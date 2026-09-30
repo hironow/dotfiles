@@ -16,7 +16,6 @@ project-local node_modules/pyright is never touched.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
@@ -52,8 +51,8 @@ def machine(tmp_path: Path) -> dict[str, Path]:
     (nm / "index.js").write_text("stub", encoding="utf-8")
     (nm / "langserver.index.js").write_text("stub", encoding="utf-8")
     (nm / "package.json").write_text('{"name":"pyright"}', encoding="utf-8")
-    os.symlink(nm / "index.js", bindir / "pyright")
-    os.symlink(nm / "langserver.index.js", bindir / "pyright-langserver")
+    (bindir / "pyright").symlink_to(nm / "index.js")
+    (bindir / "pyright-langserver").symlink_to(nm / "langserver.index.js")
     keep = tmp_path / "prefix" / "lib" / "node_modules" / "leftpad"
     keep.mkdir()
     (keep / "package.json").write_text('{"name":"leftpad"}', encoding="utf-8")
@@ -198,7 +197,7 @@ def test_prune_leaves_a_project_local_node_modules_pyright_alone(
     (local / "index.js").write_text("stub", encoding="utf-8")
     dotbin = proj / "node_modules" / ".bin"
     dotbin.mkdir()
-    os.symlink(local / "index.js", dotbin / "pyright")
+    (dotbin / "pyright").symlink_to(local / "index.js")
     # put the project bin FIRST on PATH and drop the global pyright
     (machine["bin"] / "pyright").unlink()
     (machine["bin"] / "pyright-langserver").unlink()

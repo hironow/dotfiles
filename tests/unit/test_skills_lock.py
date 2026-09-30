@@ -219,9 +219,7 @@ def test_place_links_every_consumer_home_relatively(tmp_path: Path) -> None:
     for skills_dir in homes:
         link = skills_dir / "review"
         assert link.is_symlink()
-        assert os.readlink(link) == os.path.join(
-            "..", "..", ".agents", "skills", "review"
-        )
+        assert link.readlink() == Path("..", "..", ".agents", "skills", "review")
         assert (link / "SKILL.md").read_text(encoding="utf-8") == "# skill\n"
     assert sorted(result.linked) == sorted(f"{h.parent.name}/review" for h in homes)
     # idempotent
@@ -322,7 +320,7 @@ def test_place_never_removes_the_store_through_a_linked_skills_dir(
     target are the same entity: never delete, never replace."""
     store = _store_skill(tmp_path, "review")
     (tmp_path / ".codex").mkdir()
-    os.symlink(os.path.join("..", ".agents", "skills"), tmp_path / ".codex" / "skills")
+    (tmp_path / ".codex" / "skills").symlink_to(Path("..", ".agents", "skills"))
     result = place([_rec("review", source=SELF_SOURCE)], tmp_path)
     assert store.is_dir() and (store / "SKILL.md").exists()
     assert result.linked == [] and result.replaced == [] and result.kept == []

@@ -8,6 +8,7 @@ It fails open: any problem leaves the launch exactly as Claude sent it.
 from collections.abc import Callable
 import json
 import os
+from pathlib import Path
 import sys
 from typing import TextIO
 
@@ -42,7 +43,7 @@ def _record(before: dict, after: dict, effort: str) -> None:
             "from": before.get("subagent_type") or "general-purpose",
             "to": after["subagent_type"],
         }
-        with open(path, "a", encoding="utf-8") as log:
+        with Path(path).open("a", encoding="utf-8") as log:
             log.write(json.dumps(record) + "\n")
 
 

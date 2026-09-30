@@ -659,7 +659,7 @@ def test_readonly_files_do_not_stop_the_sweep(tmp_path: Path) -> None:
     locked.mkdir(parents=True)
     blob = locked / "cafebabe"
     blob.write_bytes(b"blob")
-    os.chmod(blob, stat.S_IREAD)
+    blob.chmod(stat.S_IREAD)
 
     proc = _run_gc(root)
 

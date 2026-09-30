@@ -1,5 +1,5 @@
-import os
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -46,8 +46,8 @@ def test_convert_rttm_to_eaf_success(sample_rttm_content):
             mock_eaf.to_file.assert_called_once_with(eaf_path)
 
     finally:
-        os.remove(rttm_path)
-        os.remove(eaf_path)
+        Path(rttm_path).unlink()
+        Path(eaf_path).unlink()
 
 
 def test_convert_rttm_to_eaf_file_not_found():

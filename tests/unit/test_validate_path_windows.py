@@ -57,7 +57,7 @@ def _run_validator(
     is injected via `VALIDATE_PATH` (never touching the real `$PATH`).
     """
     env = {
-        "PATH": f"{os.path.dirname(just_binary)}:/usr/bin:/bin:/usr/local/bin",
+        "PATH": f"{Path(just_binary).parent}:/usr/bin:/bin:/usr/local/bin",
         "HOME": os.environ.get("HOME", "/root"),
         "VALIDATE_PATH": validate_path,
     }

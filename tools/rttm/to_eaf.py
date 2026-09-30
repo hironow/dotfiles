@@ -32,7 +32,7 @@ def convert_rttm_to_eaf(rttm_file: str, output_file: str) -> None:
     media_filename: str | None = None
 
     try:
-        with open(rttm_path, "r", encoding="utf-8") as f:
+        with rttm_path.open(encoding="utf-8") as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line or line.startswith("#"):

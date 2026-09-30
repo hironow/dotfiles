@@ -1,5 +1,5 @@
-import os
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -57,8 +57,8 @@ def test_visualize_rttm_success(sample_rttm_content):
             mock_plt.savefig.assert_called_once_with(img_path)
 
     finally:
-        os.remove(rttm_path)
-        os.remove(img_path)
+        Path(rttm_path).unlink()
+        Path(img_path).unlink()
 
 
 def test_visualize_rttm_file_not_found():

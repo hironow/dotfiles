@@ -71,7 +71,7 @@ def test_detects_duplicates_across_dirs(just_binary: str, tmp_path: Path) -> Non
         exe.write_text("#!/bin/sh\n", encoding="utf-8")
         exe.chmod(0o755)
     env = {
-        "PATH": f"{os.path.dirname(just_binary)}:/usr/bin:/bin:/usr/local/bin",
+        "PATH": f"{Path(just_binary).parent}:/usr/bin:/bin:/usr/local/bin",
         "HOME": os.environ.get("HOME", "/root"),
         "VALIDATE_PATH": f"{dir_a}:{dir_b}",
     }

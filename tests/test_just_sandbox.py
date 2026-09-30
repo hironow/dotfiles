@@ -126,11 +126,11 @@ def _snapshot_tracked_worktree(src: str) -> str:
     for rel in tracked.split("\0"):
         if not rel:
             continue
-        source = os.path.join(src, rel)
-        if not os.path.isfile(source):  # skip gitlinks / vanished paths
+        source = Path(src) / rel
+        if not source.is_file():  # skip gitlinks / vanished paths
             continue
-        dest = os.path.join(snapshot, rel)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        dest = Path(snapshot) / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, dest, follow_symlinks=False)
     return snapshot
 
@@ -1310,7 +1310,7 @@ def test_run_in_sandbox_local_mounts_snapshot_not_host(monkeypatch):
     assert mount_source == fake_snapshot
     assert mount_source != str(ROOT)
     # ...and the snapshot is torn down once the run completes
-    assert not os.path.exists(fake_snapshot)
+    assert not Path(fake_snapshot).exists()
 
 
 def test_run_in_sandbox_ci_binds_host_path(monkeypatch):

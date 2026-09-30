@@ -49,6 +49,7 @@ import os
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 EXIT_ALLOW = 0
 
@@ -73,7 +74,7 @@ def _basename(token: str) -> str:
 
 def _in_isolation_worktree(payload: dict) -> bool:
     """True when this tool call runs inside a Claude Code isolation worktree."""
-    cwd = payload.get("cwd") or os.getcwd()
+    cwd = payload.get("cwd") or str(Path.cwd())
     if not isinstance(cwd, str):
         return False
     normalized = cwd.replace("\\", "/").rstrip("/") + "/"
