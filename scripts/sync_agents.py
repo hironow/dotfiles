@@ -64,8 +64,11 @@ SHARED_SETTINGS_FRAGMENT = ".claude/settings.shared.json"
 # platform.system(). A missing overlay file is simply an empty layer.
 OS_SETTINGS_OVERLAYS = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}
 # Per-profile fragments (one per claude-family AgentTarget.key) layered on top
-# of the OS overlay, capturing intentional per-profile diffs (effortLevel...).
+# of the OS overlay, capturing intentional per-profile diffs.
 PROFILE_SETTINGS_DIR = ".claude/settings.profiles"
+# Sync-owned record in the AGENT HOME of the `retired` migrations that home has
+# evaluated, so each runs once and a value the user sets later is left alone.
+SETTINGS_STATE_FILE = "settings.sync-state.json"
 # Machine-local layer read from the AGENT HOME (untracked, user-owned): the
 # final override so machine-specific env / permissions.allow survive the
 # wholesale env ownership. NOTE: Claude Code reads settings.local.json at
@@ -796,9 +799,10 @@ def _compose_settings_fragments(
     ``env`` composes key-wise; ``settings`` composes key-wise with a one-level
     deep-merge when both sides are dicts (so shared can own ``permissions.deny``
     while a profile owns ``permissions.defaultMode``). Missing layer files are
-    empty layers. ``system`` (a ``platform.system()`` value) is injectable for
-    tests. Returns the composed ``{"env": ..., "settings": ...}`` dict, or None
-    when no fragment layer exists (merge is then a no-op).
+    empty layers. ``retired`` (migration id -> {key: [values]}) composes per id,
+    key-wise. ``system`` (a ``platform.system()`` value) is injectable for
+    tests. Returns the composed ``{"env": ..., "settings": ..., "retired": ...}``
+    dict, or None when no fragment layer exists (merge is then a no-op).
     """
     os_name = OS_SETTINGS_OVERLAYS.get(system or platform.system())
     layer_paths = [
@@ -827,7 +831,32 @@ def _compose_settings_fragments(
                 settings[key] = {**settings[key], **value}
             else:
                 settings[key] = value
+        for migration, keys in layer.get("retired", {}).items():
+            composed.setdefault("retired", {}).setdefault(migration, {}).update(keys)
     return composed
+
+
+def _write_settings(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+def _retire_settings(fragment: dict, target: dict, applied: set[str]) -> list[str]:
+    """Delete retired keys still holding a value the fragments wrote; return the
+    migrations evaluated now. A migration runs once per home, and a key the
+    composed settings still set is theirs, not retired."""
+    evaluated = sorted(set(fragment.get("retired", {})) - applied)
+    for migration in evaluated:
+        for key, values in fragment["retired"][migration].items():
+            if (
+                key not in fragment.get("settings", {})
+                and key in target
+                and target[key] in values
+            ):
+                del target[key]
+    return evaluated
 
 
 def _merge_settings_fragment(
@@ -845,9 +874,12 @@ def _merge_settings_fragment(
     ``settings.sync-local.json`` layer (composed last; sync never edits it).
     The composed ``settings`` object holds curated top-level keys that are
     upserted (add/update only); every other target key (enabledPlugins, hooks,
-    statusLine, ...) is preserved untouched. Top-level key removal is not
-    auto-propagated. Idempotent; dry_run=True writes nothing. Returns True if
-    the file would change.
+    statusLine, ...) is preserved untouched. A key the fragments stop writing
+    is removed only through ``retired`` (see _retire_settings); the evaluated
+    migrations are recorded in the home's settings.sync-state.json BEFORE
+    settings.json is written, so a failure in between leaves the old value
+    rather than a later retry over a value the user set again. Idempotent;
+    dry_run=True writes nothing. Returns True if settings.json would change.
     """
     fragment = _compose_settings_fragments(dotfiles_dir, agent, system=system)
     if fragment is None:
@@ -865,15 +897,25 @@ def _merge_settings_fragment(
         target["env"] = fragment["env"]
     for key, value in fragment.get("settings", {}).items():
         target[key] = value
+    state_path = agent.directory / SETTINGS_STATE_FILE
+    state = (
+        json.loads(state_path.read_text(encoding="utf-8"))
+        if state_path.exists()
+        else {}
+    )
+    applied = set(state.get("retired", []))
+    evaluated = _retire_settings(fragment, target, applied)
 
     changed = json.dumps(target, sort_keys=True, ensure_ascii=False) != before
 
-    if changed and not dry_run:
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(
-            json.dumps(target, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+    if dry_run:
+        return changed
+    if evaluated:
+        _write_settings(
+            state_path, {**state, "retired": sorted(applied | set(evaluated))}
         )
+    if changed:
+        _write_settings(target_path, target)
     return changed
 
 
