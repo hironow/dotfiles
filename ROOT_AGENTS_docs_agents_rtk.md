@@ -4,22 +4,28 @@ Read this when running shell commands through `rtk`, checking its token
 savings, or debugging output that looks unexpectedly filtered.
 
 `rtk` is a token-optimized CLI proxy (cuts up to 90% of bash output) and is
-**mandatory base tooling** — there is no opt-out (ADR 0047). In Claude Code a
-hook rewrites commands transparently (e.g. `git status` → `rtk git status`),
-and in Pi rtk's own extension does the same for the bash tool
-(`config/pi/extensions/rtk.ts`, vendored and placed by
-`just pi-extensions-install`); other agents invoke it explicitly.
+**mandatory base tooling** — there is no opt-out (ADR 0047). In Claude Code
+and Codex a hook rewrites commands transparently (e.g. `git status` →
+`rtk git status`), and in Pi rtk's own extension does the same for the bash
+tool (`config/pi/extensions/rtk.ts`, vendored and placed by
+`just pi-extensions-install`; after an rtk upgrade, `just rtk-pi-refresh`);
+other agents invoke it explicitly.
 
 ## The hook is dotfiles-managed
 
 The PreToolUse hook is `hooks/rtk-hook-claude.sh`, declared in
 `.claude/settings.hooks.json` and distributed by `just sync-agents` like every
 other hook. It wraps `rtk hook claude` rather than replacing it, so rtk stays
-the source of truth for what gets rewritten.
+the source of truth for what gets rewritten. Codex gets
+`hooks/rtk-hook-codex.sh` from `.codex/hooks.json` the same way, passing
+`rtk hook codex`'s answer through unchanged (Codex grants no approval from it).
+`just doctor` shows whether Codex trusts the hooks (see `docs/agent-sync.md`
+in the dotfiles repo).
 
-**Never add `"command": "rtk hook claude"` to a `settings.json` by hand**, and
-if rtk's installer adds it on an upgrade, leave it — `just sync-agents` retires
-that block on every run (`RETIRED_HOOK_COMMAND` in `scripts/sync_agents.py`).
+**Never add `"command": "rtk hook claude"` (or `rtk hook codex`) to a settings
+or hooks file by hand**, and if rtk's installer adds it on an upgrade, leave it —
+`just sync-agents` retires that block on every run (`RETIRED_HOOK_COMMAND` in
+`scripts/sync_agents.py`).
 Two rewriting hooks in one session means rtk wins and the carve-out below never
 fires.
 
