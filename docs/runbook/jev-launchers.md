@@ -249,7 +249,8 @@ just doctor                                  # AI の節がすべて OK にな�
 
 proxy は 1 つで足りる。
 `j-cc` と Codex の worker は、記録ファイル（`~/.cache/jev/headroom.json`）を通して同じ proxy を使い回し、動いていなければ起動のときに自動で立てる（上の「headroom」の節）。
-ログインのときに常駐させる仕組みは置かない（使うのは `j-cc` だけで、起動の仕組みを 2 つにしないため）。
+ログインのときに常駐させる仕組みは置かない（使うのは `j-cc` と `j-pi` の Codex の worker だけで、起動の仕組みを 2 つにしないため）。
+headroom の `headroom dashboard` は既定のポート 8787 を開くが、proxy は空いているポートで立つので、`just headroom-dashboard`（記録したポートの dashboard を開く）を使う。
 
 両方が 1 つのセッションで効いていることは、次で確かめる。
 

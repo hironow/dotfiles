@@ -330,3 +330,44 @@ def test_the_state_dir_can_be_pointed_elsewhere(tmp_path: Path) -> None:
     )
     assert port == 4321
     assert world.started == []
+
+
+# --- just headroom-dashboard: open the dashboard of j-cc's proxy -----------
+# `headroom dashboard` opens port 8787, where j-cc never runs its proxy (it
+# takes a free port and records it), so the plain command opened nothing.
+
+HEALTHY = {"service": "headroom-proxy", "ready": True}
+
+
+def test_the_dashboard_of_the_recorded_running_proxy_is_opened() -> None:
+    assert hr.dashboard_plan("headroom", 62103, HEALTHY) == [
+        "headroom",
+        "dashboard",
+        "-p",
+        "62103",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("port", "health", "hint"),
+    [
+        (None, None, "no j-cc proxy is recorded"),
+        (62103, None, "not running"),
+        (62103, {"status": "ok"}, "not running"),
+    ],
+)
+def test_without_a_running_proxy_it_says_to_start_j_cc(
+    port: int | None, health: dict | None, hint: str
+) -> None:
+    plan = hr.dashboard_plan("headroom", port, health)
+    assert isinstance(plan, str)
+    assert hint in plan
+    assert "j-cc" in plan
+
+
+def test_the_recipe_runs_it() -> None:
+    justfile = (Path(__file__).resolve().parents[2] / "justfile").read_text(
+        encoding="utf-8"
+    )
+    assert "headroom-dashboard:" in justfile
+    assert "scripts/jev_headroom.py dashboard" in justfile

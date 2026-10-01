@@ -222,6 +222,11 @@ jev-pi-verify:
 jev-headroom-verify *target:
     {{UV_RUN}} scripts/jev_headroom_verify.py {{target}}
 
+# Open the savings dashboard of the headroom proxy j-cc started (plain
+# `headroom dashboard` opens port 8787, where j-cc never runs it).
+headroom-dashboard:
+    {{UV_RUN}} scripts/jev_headroom.py dashboard
+
 # Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
 #   ROOT_CLAUDE.md (overlay, @AGENTS.md) -> claude-family/CLAUDE.md

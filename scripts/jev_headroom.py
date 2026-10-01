@@ -9,7 +9,7 @@ in the same startup window may each start a proxy, and each uses its own. Every
 failure means "launch without headroom", never "j-cc does not start".
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 import contextlib
 import http.client
 import json
@@ -255,3 +255,37 @@ def ensure_proxy(
         )
         return None
     return port
+
+
+def dashboard_plan(exe: str, port: int | None, health: object) -> list[str] | str:
+    """The command that opens j-cc's proxy dashboard, or what to do instead.
+
+    `headroom dashboard` defaults to port 8787; j-cc's proxy runs on the free
+    port recorded in its state file, so the port is always passed.
+    """
+    if port is None:
+        return "no j-cc proxy is recorded: start j-cc, which starts one"
+    if not is_headroom(health):
+        return f"the recorded proxy (port {port}) is not running: start j-cc again"
+    return [exe, "dashboard", "-p", str(port)]
+
+
+def main(argv: Sequence[str]) -> int:
+    """`dashboard`: open the dashboard of the proxy j-cc recorded."""
+    if list(argv) != ["dashboard"]:
+        print("usage: jev_headroom.py dashboard", file=sys.stderr)
+        return 2
+    exe = shutil.which("headroom")
+    if not exe:
+        print("headroom not found: mise install", file=sys.stderr)
+        return 1
+    port = read_state(state_path(Path.home(), os.environ))
+    plan = dashboard_plan(exe, port, probe(port) if port is not None else None)
+    if isinstance(plan, str):
+        print(plan, file=sys.stderr)
+        return 1
+    return subprocess.run(plan, check=False).returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
