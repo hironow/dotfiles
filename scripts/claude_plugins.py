@@ -162,7 +162,7 @@ def reconcile(
             if left := steps_for(listed):
                 return done, list(dict.fromkeys(why for _, why in left))
             # fixed only once the inventory read again confirms it
-            done += [why for _, why in steps if why not in done]
+            done += [w for w in dict.fromkeys(w for _, w in steps) if w not in done]
     return done, found
 
 

@@ -114,8 +114,9 @@ def test_an_empty_home_gets_the_marketplace_and_the_plugin_once() -> None:
 def test_a_marketplace_at_another_ref_is_replaced_and_the_plugin_reinstalled() -> None:
     old = {**MARKET, "ref": "v1.0.5"}
     cli = FakeClaude([old], [{**PLUGIN, "version": "1.0.5"}])
-    _done, problems = _run(cli)
+    done, problems = _run(cli)
     assert problems == []
+    assert len(done) == len(set(done))  # remove and add share one reason
     assert cli.markets == [MARKET]
     assert cli.installed == [PLUGIN]
 
