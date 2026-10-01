@@ -1614,6 +1614,11 @@ CODEX_STEPS = (
         "Codex hooks not trusted automatically",
         "just codex-hooks-trust (or trust them in Codex's /hooks)",
     ),
+    (
+        "codex_sandbox_tools.py",
+        "Codex's Windows sandbox not given the mise tools automatically",
+        "just codex-sandbox-tools",
+    ),
 )
 
 

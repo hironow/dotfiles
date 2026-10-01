@@ -49,6 +49,18 @@ runner のジョブは mise activate を通らないので、Machine の PATH �
 mise activate を通らないプロセス（ジョブや IDE）では、PATH で先に来る scoop や bun のコピーが使われ、mise の版と少しずれることがある。
 runner のサービスを止めて対話セッションで動かしていても、User の PATH に mise の shims はないので、Machine の PATH の shims は外さない。
 
+## Codex の sandbox と mise の道具
+
+Codex の Windows の sandbox は、コマンドを別のユーザー（`CodexSandboxUsers` の一員）として実行する。
+Codex は profile の上位のディレクトリに、継承する読み取りの権限（`CodexSandboxUsers:(OI)(CI)(RX)`）を付けて、そのユーザーに読ませる。
+継承を切ったディレクトリにはこの権限が届かない。
+`%LOCALAPPDATA%\mise` の継承が切れていた機体では、mise の道具（rtk、bun、just など）が sandbox の中ですべて「アクセス拒否」になり、rtk の hook が `rtk ...` に書き換えたコマンドも失敗した。
+`just codex-sandbox-tools` が mise のディレクトリの継承を戻す（`just sync-agents x` も実行し、`just doctor` の `codex-sandbox` が検出する）。
+兄弟のディレクトリと同じ権限になるだけで、`icacls <dir> /inheritance:r` で元の状態に戻せる。
+
+sandbox のユーザーは repository の所有者と違うので、git は所有者の検査（`safe.directory`）で止まる。
+rtk とは関係がなく、素の `git status` でも同じように止まる。
+
 ## Python のファイルと文字コード
 
 日本語版の Windows では、locale の文字コードが cp932 である。

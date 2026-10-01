@@ -39,7 +39,11 @@ def _facts(**changes: object) -> check.Facts:
             }
         },
         pi_extensions={"jev-sonnet-fallback.ts": True, "rtk.ts": True},
-        codex_checks=["OK   codex-hooks - 5 dotfiles hooks trusted and enabled"],
+        codex_checks={
+            "codex_hooks_trust.py": "OK   codex-hooks - 5 dotfiles hooks trusted and enabled",
+            # off Windows the sandbox check has nothing to say
+            "codex_sandbox_tools.py": "",
+        },
         headroom_proxy=None,
     )
     return replace(good, **changes)
@@ -108,14 +112,23 @@ def test_missing_pi_extensions_warn() -> None:
 
 
 def test_codex_problems_are_passed_through() -> None:
-    lines = [
-        "WARN codex-hooks - preToolUse Bash rtk-hook-codex.sh: not trusted (run just codex-hooks-trust)"
-    ]
+    lines = {
+        "codex_hooks_trust.py": "WARN codex-hooks - preToolUse Bash rtk-hook-codex.sh: not trusted (run just codex-hooks-trust)"
+    }
     assert (
         "WARN",
         "codex-hooks",
         "preToolUse Bash rtk-hook-codex.sh: not trusted (run just codex-hooks-trust)",
     ) in check.report(_facts(codex_checks=lines))
+
+
+def test_a_codex_check_that_cannot_run_warns() -> None:
+    facts = _facts(codex_checks={"codex_sandbox_tools.py": None})
+    assert (
+        "WARN",
+        "codex",
+        "codex_sandbox_tools.py --check failed to run",
+    ) in check.report(facts)
 
 
 def test_the_proxy_state_is_shown_but_never_a_problem() -> None:

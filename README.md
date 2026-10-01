@@ -139,7 +139,7 @@ just add-brew                   # macOS: 記録から復元する
 just add-scoop                  # Windows: 記録から復元する（ADR 0032）
 
 just self-check                 # 軽い健全性検査（with_tests=1 で Docker のテストも）
-just doctor                     # 道具、PATH、Windows 固有の設定を診断する
+just doctor                     # 道具、PATH、Windows 固有の設定、AI の道具（rtk、headroom、hook）を診断する
 just validate-path-duplicates   # PATH の重複を検査する
 
 mx uv sync                      # mx は `mise exec --` の zsh alias

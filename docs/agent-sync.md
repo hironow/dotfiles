@@ -77,6 +77,7 @@ Codex は、hash を信頼済みとして記録した hook だけを実行する
 sync は `~/.codex` に配ったあと `scripts/codex_hooks_trust.py` を実行し、Codex の app-server（`hooks/list` と `config/batchWrite`）を通して、断片から作った hook だけを信頼済みにする。
 配った hook のファイルが正本と 1 byte でも違うときは信頼しない。
 `just codex-hooks-trust --check` は書き込まずに状態を表示する。
+Windows では、続けて `scripts/codex_sandbox_tools.py` を実行し、Codex の sandbox が mise の道具（rtk など）を実行できるようにする（`docs/runbook/windows-host.md`）。
 `just doctor` と `just status` も同じ検査を含む。
 
 ## sync が配らないもの
