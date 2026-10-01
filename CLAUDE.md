@@ -34,7 +34,7 @@
 
 ```bash
 just sync-agents            # ~/.claude のみ (default)
-just sync-agents a b        # + ~/.claude-work-a, -b
+just sync-agents p a b      # 名指しした home だけ (p = ~/.claude。`a b` だけだと ~/.claude は外れる)
 just sync-agents all        # 全 agent
 just sync-agents-preview …  # dry-run
 ```
