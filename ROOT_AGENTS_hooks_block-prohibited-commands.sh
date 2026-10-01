@@ -40,12 +40,17 @@ interpreters="$(type -aP python3 python 2>/dev/null || true)"
 set -f
 IFS='
 '
+python=""
 for interpreter in $interpreters; do
   case "$interpreter" in
     */WindowsApps/*) continue ;;
   esac
-  exec "$interpreter" "$companion"
+  python="$interpreter"
+  break
 done
+if [ -n "$python" ]; then
+  exec "$python" "$companion"
+fi
 
 echo "BLOCKED: no Python found for the command guard (python3 / python) — failing closed. Install one (mise python)." >&2
 exit 2
