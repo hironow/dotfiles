@@ -27,7 +27,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from doctor_lines import fmt
+from doctor_lines import Line, failed, fmt
 
 SANDBOX_GROUP = "CodexSandboxUsers"
 
@@ -84,6 +84,33 @@ def secrets_message(env_acl: str) -> tuple[str, str]:
     return ("OK", "~/.env is not readable in Codex's sandbox")
 
 
+def report(
+    env_acl: str | None, directory: str, *, before: str | None, after: str | None
+) -> list[Line]:
+    """The doctor lines from what main() gathered.
+
+    env_acl: icacls of ~/.env, None when there is none; before: the sandbox's
+    state for the mise dir, None when there is no mise dir; after: its state
+    once a repair was tried, None when none was.
+    """
+    lines: list[Line] = []
+    if env_acl is not None:
+        level, detail = secrets_message(env_acl)
+        lines.append((level, "codex-sandbox-secrets", detail))
+    if before is None:
+        return [*lines, ("OK", "codex-sandbox", f"no mise data dir at {directory}")]
+    current = before if after is None else after
+    if after == "readable":
+        granted = f"granted {SANDBOX_GROUP} read on {directory}"
+        lines.append(("OK", "codex-sandbox", granted))
+    level, detail = message(current, directory)
+    lines.append((level, "codex-sandbox", detail))
+    if current != "absent":
+        level, detail = git_message()
+        lines.append((level, "codex-sandbox-git", detail))
+    return lines
+
+
 # ---- Imperative shell ----
 
 
@@ -103,28 +130,17 @@ def main(argv: Sequence[str]) -> int:
     directory = Path(
         os.environ.get("MISE_DATA_DIR") or Path(os.environ["LOCALAPPDATA"]) / "mise"
     )
-    exposed = False
     env_file = Path.home() / ".env"
-    if env_file.is_file():
-        level, detail = secrets_message(_acl(env_file))
-        exposed = level == "WARN"
-        print(fmt((level, "codex-sandbox-secrets", detail)))
-    if not directory.is_dir():
-        print(fmt(("OK", "codex-sandbox", f"no mise data dir at {directory}")))
-        return 1 if exposed else 0
-    current = state(_acl(Path.home()), _acl(directory))
-    if current == "blocked" and "--check" not in argv:
+    env_acl = _acl(env_file) if env_file.is_file() else None
+    before = state(_acl(Path.home()), _acl(directory)) if directory.is_dir() else None
+    after = None
+    if before == "blocked" and "--check" not in argv:
         subprocess.run(fix_command(str(directory)), capture_output=True, check=False)
-        current = state(_acl(Path.home()), _acl(directory))
-        if current == "readable":
-            granted = f"granted {SANDBOX_GROUP} read on {directory}"
-            print(fmt(("OK", "codex-sandbox", granted)))
-    level, detail = message(current, str(directory))
-    print(fmt((level, "codex-sandbox", detail)))
-    if current != "absent":
-        level, detail = git_message()
-        print(fmt((level, "codex-sandbox-git", detail)))
-    return 1 if current == "blocked" or exposed else 0
+        after = state(_acl(Path.home()), _acl(directory))
+    lines = report(env_acl, str(directory), before=before, after=after)
+    for line in lines:
+        print(fmt(line))
+    return 1 if failed(lines) else 0
 
 
 if __name__ == "__main__":

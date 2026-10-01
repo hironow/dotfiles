@@ -230,3 +230,37 @@ def test_main_reports_a_repair_that_did_not_take(
     assert code == 1
     assert out[0].startswith("WARN codex-sandbox - ")
     assert out[1].startswith("OK   codex-sandbox-git - ")
+
+
+# --- report(): the lines from the gathered facts, no I/O -------------------
+
+
+def _names(lines: list[tuple[str, str, str]]) -> list[tuple[str, str]]:
+    return [(level, name) for level, name, _detail in lines]
+
+
+def test_report_names_a_repair_only_when_one_was_tried_and_took() -> None:
+    lines = sandbox.report(None, "D", before="blocked", after="readable")
+    assert lines[0] == (
+        "OK",
+        "codex-sandbox",
+        f"granted {sandbox.SANDBOX_GROUP} read on D",
+    )
+    assert _names(lines[1:]) == [("OK", "codex-sandbox"), ("OK", "codex-sandbox-git")]
+    # already readable: nothing was granted
+    assert _names(sandbox.report(None, "D", before="readable", after=None)) == [
+        ("OK", "codex-sandbox"),
+        ("OK", "codex-sandbox-git"),
+    ]
+
+
+def test_report_without_a_mise_dir_still_reports_the_env_file() -> None:
+    lines = sandbox.report(SANDBOX_ACL, "D", before=None, after=None)
+    assert _names(lines) == [("WARN", "codex-sandbox-secrets"), ("OK", "codex-sandbox")]
+    assert lines[1][2] == "no mise data dir at D"
+
+
+def test_report_has_no_git_line_without_the_sandbox() -> None:
+    assert _names(sandbox.report(None, "D", before="absent", after=None)) == [
+        ("OK", "codex-sandbox")
+    ]
