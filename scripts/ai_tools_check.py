@@ -114,14 +114,18 @@ def _claude_git_bash(facts: Facts) -> list[Line]:
     if bash is None:
         return []
     if bash.found is None:
-        target = bash.candidate or r"<Git>\bin\bash.exe"
+        fix = (
+            f"just harden-env (sets CLAUDE_CODE_GIT_BASH_PATH={bash.candidate} "
+            "for the User)"
+            if bash.candidate
+            else r"install Git for Windows, or set CLAUDE_CODE_GIT_BASH_PATH to its bin\bash.exe"
+        )
         return [
             (
                 "WARN",
                 "claude-git-bash",
                 "Claude Code finds no Git Bash, so its Bash tool is off and j-cc "
-                f"fails: set CLAUDE_CODE_GIT_BASH_PATH={target} (Windows User env, "
-                "or env in ~/.claude*/settings.sync-local.json)",
+                f"fails: {fix}",
             )
         ]
     if bash.configured and bash.configured != bash.found:

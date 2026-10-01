@@ -9,7 +9,8 @@
 #   - uv   ~/.config/uv/uv.toml   flatt mirror (default index) + exclude-newer=7d
 #   - go   GOPROXY                default checksum-verified proxy (if go present)
 #   - win  persisted User PATH     append missing Git usr\bin + cmd (native Windows)
-#   - win  persisted User env      rtk / headroom telemetry off (ADR 0047)
+#   - win  persisted User env      rtk / headroom telemetry off (ADR 0047);
+#                                  CLAUDE_CODE_GIT_BASH_PATH where Claude Code finds no Git Bash
 #
 # Portable across GNU (Linux/WSL) and BSD (macOS): it uses NO `sed -i` at all,
 # and is idempotent (safe to re-run — no duplicated lines).
@@ -126,6 +127,17 @@ if [ -n "${APPDATA:-}" ] && [ -z "${HARDEN_ENV_SKIP_WIN_PATH:-}" ] \
   _powershell -NoProfile -Command \
     "[Environment]::SetEnvironmentVariable('RTK_TELEMETRY_DISABLED', '1', 'User'); [Environment]::SetEnvironmentVariable('HEADROOM_BEACON', 'off', 'User')"
   echo "  - RTK_TELEMETRY_DISABLED=1, HEADROOM_BEACON=off: persisted for the User"
+  # Claude Code's Bash tool needs Git Bash. Where its own lookup finds none
+  # (git through a scoop shim), point CLAUDE_CODE_GIT_BASH_PATH at ours; a value
+  # already set for the User is left alone (`just doctor` checks it).
+  _git_bash="$(uv run --frozen "$(dirname "${BASH_SOURCE[0]}")/claude_git_bash.py" --to-set 2>/dev/null || true)"
+  if [ -n "$_git_bash" ]; then
+    _powershell -NoProfile -Command \
+      "[Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', '${_git_bash}', 'User')"
+    echo "  - CLAUDE_CODE_GIT_BASH_PATH=${_git_bash}: persisted for the User (Claude Code did not find Git Bash)"
+  else
+    echo "  - CLAUDE_CODE_GIT_BASH_PATH: not written (Claude Code finds Git Bash, or a value is already set)"
+  fi
 fi
 
 echo "--- ✅ Hardening applied (machine-local; not tracked in the repo) ---"

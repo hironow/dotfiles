@@ -10,6 +10,9 @@ from it, and `just harden-env` uses it to fill the variable where it is needed.
 
 from collections.abc import Callable
 import ntpath
+from pathlib import Path
+import shutil
+import sys
 
 CLAUDE_BASH_DEFAULTS = (
     r"C:\Program Files\Git\bin\bash.exe",
@@ -49,3 +52,45 @@ def candidates(sh: str | None, home: str) -> list[str]:
             0, ntpath.dirname(up) if ntpath.basename(up).lower() == "usr" else up
         )
     return [ntpath.join(root, "bin", "bash.exe") for root in roots]
+
+
+def to_set(
+    user_value: str | None, found: str | None, candidate: str | None
+) -> str | None:
+    """What harden-env writes to the User env: the candidate, only while no
+    value is set there (one set by hand, even a broken one, is never replaced;
+    doctor reports it) and Claude Code's own lookup finds no Git Bash."""
+    if user_value or found or not candidate:
+        return None
+    return candidate
+
+
+# ---- Imperative shell ----
+
+
+def _user_value() -> str | None:
+    import winreg  # noqa: PLC0415 - Windows only
+
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+        try:
+            return str(winreg.QueryValueEx(key, "CLAUDE_CODE_GIT_BASH_PATH")[0]) or None
+        except OSError:
+            return None
+
+
+def main(argv: list[str]) -> int:
+    """`--to-set`: print the Git Bash harden-env should set, or nothing."""
+    if "--to-set" not in argv or sys.platform != "win32":
+        return 0
+    exists = lambda path: Path(path).exists()  # noqa: E731
+    found = claude_git_bash(None, shutil.which("git"), exists)
+    candidate = next(
+        (c for c in candidates(shutil.which("sh"), str(Path.home())) if exists(c)), None
+    )
+    if value := to_set(_user_value(), found, candidate):
+        print(value)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

@@ -69,3 +69,48 @@ def test_candidates_start_from_the_git_this_shell_runs(sh: str, first: str) -> N
         first + r"\bin\bash.exe",
         SCOOP_GIT + r"\bin\bash.exe",
     ]
+
+
+BASH = SCOOP_GIT + r"\bin\bash.exe"
+
+
+@pytest.mark.parametrize(
+    ("user_value", "found", "candidate", "written"),
+    [
+        # Claude's lookup misses and a Git Bash exists: harden-env points it there
+        (None, None, BASH, BASH),
+        # it finds one by itself: nothing to write
+        (None, GIT + r"\bin\bash.exe", BASH, None),
+        # a value set for the User, even a broken one, is never replaced
+        (r"D:\old\bash.exe", None, BASH, None),
+        # no Git Bash to point at: doctor tells the user instead
+        (None, None, None, None),
+    ],
+)
+def test_harden_env_fills_the_variable_only_where_it_is_needed(
+    user_value: str | None,
+    found: str | None,
+    candidate: str | None,
+    written: str | None,
+) -> None:
+    assert lookup.to_set(user_value, found, candidate) == written
+
+
+@pytest.mark.parametrize(
+    ("user_value", "printed"), [(None, True), ("set by hand", False)]
+)
+def test_to_set_prints_the_git_bash_for_harden_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    user_value: str | None,
+    printed: bool,
+) -> None:
+    git_bash = tmp_path / "bash.exe"
+    git_bash.write_text("", encoding="utf-8")
+    monkeypatch.setattr(lookup.sys, "platform", "win32")
+    monkeypatch.setattr(lookup, "claude_git_bash", lambda *_: None)
+    monkeypatch.setattr(lookup, "candidates", lambda *_: [str(git_bash)])
+    monkeypatch.setattr(lookup, "_user_value", lambda: user_value)
+    assert lookup.main(["--to-set"]) == 0
+    assert capsys.readouterr().out == (f"{git_bash}\n" if printed else "")

@@ -78,7 +78,8 @@ native Windows の Claude Code は、Bash の tool に Git Bash を使い、次�
 Git を scoop で入れた機体では、最初の `git` が scoop の shim（`~\scoop\shims\git.exe`）になり、3 も外れる。
 見つからないと Bash の tool が使えなくなり、`j-cc` も `just jev-claude-verify` も失敗する。
 `just doctor` の `claude-git-bash` が検出し、指定すべき Git Bash の場所を表示する。
-値は機体ごとに違うので、追跡する断片ではなく、Windows の User の環境変数か、各 home の `settings.sync-local.json` の `env` に書く。
+`just harden-env` は、Claude Code が自分では Git Bash を見つけられない機体でだけ、見つけた Git Bash を `CLAUDE_CODE_GIT_BASH_PATH` として User の環境変数に書く（値は機体ごとに違うので、追跡する断片には置かない）。
+User の環境変数に値がすでにあれば、壊れていても書き換えない（`claude-git-bash` が知らせるので、人が直す）。
 
 ## Python のファイルと文字コード
 
