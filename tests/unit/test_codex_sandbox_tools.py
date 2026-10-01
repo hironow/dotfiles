@@ -78,3 +78,16 @@ def test_a_profile_env_file_the_sandbox_can_read_warns() -> None:
 
 def test_a_private_profile_env_file_is_ok() -> None:
     assert sandbox.secrets_message(r"C:\Users\u\.env NN\u:(F)")[0] == "OK"
+
+
+def test_the_fix_grants_the_sandbox_group_read_and_nothing_else() -> None:
+    # Re-enabling inheritance would import every inheritable entry of the
+    # parent, e.g. Users:(M) above a relocated MISE_DATA_DIR
+    command = sandbox.fix_command("D:/tools/mise")
+    assert command == [
+        "icacls",
+        "D:/tools/mise",
+        "/grant",
+        "CodexSandboxUsers:(OI)(CI)(RX)",
+        "/Q",
+    ]

@@ -55,8 +55,9 @@ Codex の Windows の sandbox は、コマンドを別のユーザー（`CodexSa
 Codex は profile の上位のディレクトリに、継承する読み取りの権限（`CodexSandboxUsers:(OI)(CI)(RX)`）を付けて、そのユーザーに読ませる。
 継承を切ったディレクトリにはこの権限が届かない。
 `%LOCALAPPDATA%\mise` の継承が切れていた機体では、mise の道具（rtk、bun、just など）が sandbox の中ですべて「アクセス拒否」になり、rtk の hook が `rtk ...` に書き換えたコマンドも失敗した。
-`just codex-sandbox-tools` が mise のディレクトリの継承を戻す（`just sync-agents x` も実行し、`just doctor` の `codex-sandbox` が検出する）。
-兄弟のディレクトリと同じ権限になるだけで、`icacls <dir> /inheritance:r` で元の状態に戻せる。
+`just codex-sandbox-tools` が、mise のディレクトリに `CodexSandboxUsers` の読み取りと実行の権限だけを付ける（`just sync-agents x` も実行し、`just doctor` の `codex-sandbox` が検出する）。
+継承を戻すと、親の継承する権限（`MISE_DATA_DIR` を移した先の親が持つ `Users` の変更権限など）まで取り込むので、そうはしない。
+`icacls <dir> /remove:g CodexSandboxUsers` で元の状態に戻せる。
 
 同じ権限は profile の直下のファイルにも届くので、`~/.env` に置いた秘密は sandbox から読める。
 Codex は sandbox を用意するたびに権限を付け直すので、`icacls` で外しても長続きしない。

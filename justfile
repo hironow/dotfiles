@@ -1548,7 +1548,7 @@ codex-hooks-trust *args:
 # Windows: Codex's sandbox reads the profile through inherited ACL entries, and
 # a mise data dir that does not inherit leaves rtk and every mise tool "access
 # denied" in it. `just sync-agents x` already runs this. --check: report only.
-# Let Codex's Windows sandbox run the mise tools (re-enables ACL inheritance)
+# Let Codex's Windows sandbox run the mise tools (grants it read on mise's dir)
 [group('Agents')]
 codex-sandbox-tools *args:
     @{{ UV_RUN }} scripts/codex_sandbox_tools.py {{ args }}
