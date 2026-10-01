@@ -155,14 +155,14 @@ def reconcile(
         for argv, why in steps:
             if cli(argv) is None:
                 return done, [f"`claude {' '.join(argv)}` failed ({why})"]
-            if why not in done:
-                done.append(why)
         if steps:
             listed = _listed(cli(inventory))
             if listed is None:
                 return done, [f"cannot read `claude {' '.join(inventory)}`"]
             if left := steps_for(listed):
                 return done, list(dict.fromkeys(why for _, why in left))
+            # fixed only once the inventory read again confirms it
+            done += [why for _, why in steps if why not in done]
     return done, found
 
 

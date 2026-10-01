@@ -46,6 +46,7 @@ class FakeClaude:
         self.markets, self.installed = markets, installed
         self.mutations: list[list[str]] = []
         self.readable = True
+        self.failing: list[str] | None = None  # e.g. ["marketplace", "add"]
 
     def __call__(self, args: list[str]) -> str | None:
         if args[-1] == "--json":
@@ -53,6 +54,8 @@ class FakeClaude:
                 return None
             return json.dumps(self.markets if "marketplace" in args else self.installed)
         self.mutations.append(args)
+        if self.failing and args[1:3] == self.failing:
+            return None
         match args[1:]:
             case ["marketplace", "add", source, "--scope", "user"]:
                 repo, ref = plugins.parse_source(source)
@@ -207,3 +210,12 @@ def test_the_check_budget_ends_before_doctor_stops_waiting() -> None:
     import ai_tools_check  # noqa: PLC0415
 
     assert plugins.CHECK_BUDGET < ai_tools_check.CHECKER_TIMEOUT
+
+
+def test_a_repair_that_fails_halfway_is_not_reported_as_done() -> None:
+    # remove succeeds, add fails: the marketplace is now missing, not fixed
+    cli = FakeClaude([{**MARKET, "ref": "v1.0.5"}], [])
+    cli.failing = ["marketplace", "add"]
+    done, problems = _run(cli)
+    assert done == []
+    assert problems and "failed" in problems[0]
