@@ -9,6 +9,7 @@ import json
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 SONNET = "claude-sonnet-5-5"
@@ -84,19 +85,74 @@ def build_request_body(task: str) -> dict[str, object]:
     return {"model": "jev-latest", "state": task[:8000], "questions": QUESTIONS}
 
 
-def parse_args(argv: list[str]) -> tuple[str, str]:
-    """Return (host, task); raise ValueError with the message to show."""
+USAGE = """Usage: jev_launch.py {claude|pi} 'task description'
+       jev_launch.py {claude|pi} -c|--continue ['prompt']
+       jev_launch.py claude -r|--resume [session] ['prompt']
+       jev_launch.py pi -r|--resume ['prompt']"""
+# The hosts' own session flags, spelled as each host spells them. Only Claude
+# Code's --resume takes a value (a session id, or a search term for its picker).
+SESSION_FLAGS = {
+    "-c": "--continue",
+    "--continue": "--continue",
+    "-r": "--resume",
+    "--resume": "--resume",
+}
+
+
+@dataclass(frozen=True)
+class Launch:
+    """What the user asked for: the host, the prompt, and the host's flags that
+    pick an earlier session (empty for a new one)."""
+
+    host: str
+    prompt: str
+    resume: tuple[str, ...] = ()
+
+
+def parse_args(argv: list[str]) -> Launch:
+    """Read the launcher's arguments; raise ValueError with the message to show."""
     if len(argv) < 2 or argv[0] not in {"claude", "pi"}:
-        raise ValueError("Usage: jev_launch.py {claude|pi} 'task description'")
+        raise ValueError(USAGE)
+    host, first, rest = argv[0], argv[1], argv[2:]
+    if first in SESSION_FLAGS or first.startswith("--resume="):
+        return _resumed(host, first, rest)
     task = " ".join(argv[1:]).strip()
     if not task:
         raise ValueError("Give the task up front so Jev can select an effort profile.")
-    return argv[0], task
+    return Launch(host, task)
+
+
+def _resumed(host: str, flag: str, words: list[str]) -> Launch:
+    """A resumed session, read the way the host reads its own flags."""
+    value = None
+    if flag.startswith("--resume="):
+        value = flag.removeprefix("--resume=")
+        if host != "claude" or not value:
+            raise ValueError(USAGE)
+    flag = SESSION_FLAGS.get(flag, "--resume")
+    takes_value = host == "claude" and flag == "--resume" and value is None
+    if takes_value and words and not words[0].startswith("-"):
+        value, words = words[0], words[1:]
+    prompt = " ".join(words).strip()
+    if prompt.startswith("-"):
+        option = prompt.split()[0]
+        raise ValueError(
+            f"{option}: only -c/--continue and -r/--resume reach the host; "
+            f"run {host} directly for other options.\n{USAGE}"
+        )
+    return Launch(host, prompt, (flag, value) if value else (flag,))
 
 
 def build_command(
-    host: str, task: str, effort: str, model: str, extra: Sequence[str] = ()
+    host: str,
+    task: str,
+    effort: str,
+    model: str,
+    extra: Sequence[str] = (),
+    *,
+    resume: Sequence[str] = (),
 ) -> list[str]:
+    """The host's argv; a resumed session without a prompt gets no positional."""
     flag = "--effort" if host == "claude" else "--thinking"
     return [
         host,
@@ -107,7 +163,8 @@ def build_command(
         "--append-system-prompt",
         SESSION_RULES,
         *extra,
-        task,
+        *resume,
+        *([task] if task else []),
     ]
 
 
