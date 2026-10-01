@@ -139,6 +139,8 @@ POWERSHELL
       MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; re-run 'just pi-extensions-install'"
       echo "==> Installing Claude Code plugins (native Windows)..."
       MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/claude_plugins.py || echo "==> WARN: Claude plugin installation failed; re-run 'just claude-plugins-install'"
+      echo "==> Registering headroom's MCP server (native Windows)..."
+      MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/headroom_mcp.py || echo "==> WARN: headroom MCP registration failed; re-run 'just headroom-mcp-register'"
     fi
     # git aliases [include] managed block (ADR 0033). Wires ONLY
     # aliases.gitconfig (pure [alias] entries) — deliberately NOT

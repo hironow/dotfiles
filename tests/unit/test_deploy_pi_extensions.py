@@ -25,3 +25,14 @@ def test_windows_deploy_restores_packages_after_global_mise_install() -> None:
     assert windows.index("MISE_NODE_COREPACK=0 mise -C / install") < windows.index(
         "MISE_NODE_COREPACK=0 mise -C / exec -- python"
     )
+
+
+def test_windows_runs_every_agent_step_the_unix_path_runs() -> None:
+    # The Windows branch exits early, so a step added only to the shared tail
+    # never reached Windows (headroom's MCP server, seen on a second host)
+    import re  # noqa: PLC0415
+
+    windows, unix = DEPLOY.split("    exit 0", 1)
+    steps = set(re.findall(r"python3? ~/dotfiles/scripts/(\w+\.py)", unix))
+    assert steps, "the Unix path runs no agent step"
+    assert steps <= set(re.findall(r"~/dotfiles/scripts/(\w+\.py)", windows))
