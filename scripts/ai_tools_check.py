@@ -29,6 +29,7 @@ import sys
 from types import ModuleType
 
 import claude_git_bash
+import claude_homes
 import doctor_lines
 from doctor_lines import Line
 import jev_headroom
@@ -44,13 +45,6 @@ TELEMETRY_OFF = {
     "HEADROOM_BEACON": "off",
     "DO_NOT_TRACK": "1",
 }
-CLAUDE_HOMES = (
-    ".claude",
-    ".claude-work-a",
-    ".claude-work-b",
-    ".claude-work-c",
-    ".claude-work-d",
-)
 PI_EXTENSIONS = ("jev-sonnet-fallback.ts", "rtk.ts")
 # What `headroom init` / `headroom wrap` write into an agent's config (headroom
 # 0.38 cli/init.py), beside a loopback ANTHROPIC_BASE_URL. j-cc is the only
@@ -726,10 +720,8 @@ def gather(home: Path) -> Facts:
     headroom = _tool_facts("headroom", ["--version"])
     rtk_exe = rtk.paths[0] if rtk.paths else None
     headroom_exe = headroom.paths[0] if headroom.paths else None
-    claude_homes = {
-        name: _json(home / name / "settings.json")
-        for name in CLAUDE_HOMES
-        if (home / name).is_dir()
+    homes = {
+        path.name: _json(path / "settings.json") for path in claude_homes.existing(home)
     }
     return Facts(
         rtk=rtk,
@@ -739,7 +731,7 @@ def gather(home: Path) -> Facts:
         ),
         env=dict(os.environ),
         user_env=_windows_user_env(),
-        claude_homes=claude_homes,
+        claude_homes=homes,
         pi_extensions={name: (pi_dir / name).is_file() for name in PI_EXTENSIONS},
         checks=checks,
         headroom_proxy=None if port is None else (port, jev_headroom.probe(port)),
@@ -758,7 +750,7 @@ def gather(home: Path) -> Facts:
             for arg in jev_headroom.proxy_command("headroom", 0)
             if arg.startswith("--")
         ),
-        claude_bash=_claude_bash(home, claude_homes.get(".claude", {})),
+        claude_bash=_claude_bash(home, homes.get(".claude", {})),
         jev_key=_jev_key_facts(home),
         mise_config=_mise_config_facts(home),
     )

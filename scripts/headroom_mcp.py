@@ -48,17 +48,11 @@ import subprocess
 import sys
 import time
 
+import claude_homes
 from doctor_lines import fmt
 
 SERVER = "headroom"
 NAME = "headroom-mcp"
-CLAUDE_HOMES = (
-    ".claude",
-    ".claude-work-a",
-    ".claude-work-b",
-    ".claude-work-c",
-    ".claude-work-d",
-)
 COMMAND = "mise"
 ARGS = ("x", "--", "headroom", "mcp", "serve")
 # Both switches, because the beacon fails open and DO_NOT_TRACK overrides it
@@ -202,9 +196,7 @@ def _homes(argv: Sequence[str]) -> list[Path]:
     given = [Path(value) for flag, value in zip(argv, argv[1:]) if flag == "--home"]
     if given:
         return given
-    return [
-        Path.home() / name for name in CLAUDE_HOMES if (Path.home() / name).is_dir()
-    ]
+    return claude_homes.existing(Path.home())
 
 
 def main(argv: Sequence[str]) -> int:

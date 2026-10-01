@@ -29,18 +29,12 @@ import subprocess
 import sys
 import time
 
+import claude_homes
 from doctor_lines import fmt
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "claude-plugins"
 DECLARATION = ROOT / "dump/harness/claude-plugins.json"
-CLAUDE_HOMES = (
-    ".claude",
-    ".claude-work-a",
-    ".claude-work-b",
-    ".claude-work-c",
-    ".claude-work-d",
-)
 MARKETPLACE_LIST = ["plugin", "marketplace", "list", "--json"]
 PLUGIN_LIST = ["plugin", "list", "--json"]
 CALL_TIMEOUT = 180.0  # one claude call
@@ -213,9 +207,7 @@ def main(argv: Sequence[str]) -> int:
         print(fmt(("WARN", NAME, "claude not on PATH: mise install")))
         return 1
     declaration = load(DECLARATION)
-    homes = [
-        Path.home() / name for name in CLAUDE_HOMES if (Path.home() / name).is_dir()
-    ]
+    homes = claude_homes.existing(Path.home())
     failed = False
     deadline = time.monotonic() + CHECK_BUDGET if check else None
     for home in homes:
