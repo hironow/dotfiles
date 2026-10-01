@@ -19,7 +19,7 @@ Pipeline (full semantics: docs/agents/enforcement.md):
 4. Token walk with a minimal shell grammar: command boundaries are
    ; && || | & ( ); NAME=VALUE prefixes and wrappers (env/sudo/...) are
    skipped at command start, as is the mandatory rtk proxy (`rtk [opts]
-   [proxy|err|test|summary|smart] <real command>`); redirect operators
+   [proxy|run|err|test|summary|smart] <real command>`); redirect operators
    consume the next token as
    their operand. Guards: pip/poetry/pipenv, npm/yarn/pnpm (and the direct
    `corepack <pm>` run form), make (command name, basename-resolved),
@@ -82,8 +82,96 @@ WRAPPERS = {"env", "sudo", "time", "nohup", "command", "xargs"}
 RTK_LAUNCHER = "rtk"
 # rtk subcommands that run a command the agent supplies rather than proxying a
 # fixed tool, so the real command sits one token further right
-# (`rtk proxy pnpm install`, `rtk err pip install …`).
-RTK_RUN_SUBCOMMANDS = {"proxy", "err", "test", "summary", "smart"}
+# (`rtk proxy pnpm install`, `rtk err pip install …`, `rtk run -- npm ci`).
+RTK_RUN_SUBCOMMANDS = {"proxy", "run", "err", "test", "summary", "smart"}
+# Every other subcommand of rtk 0.50.0, reviewed: each proxies a fixed tool (the
+# walk then checks that tool's name like a bare command: `rtk npm ci` is npm) or
+# is rtk's own verb. The guard never reads this set; it records the review, and
+# `just doctor` (rtk-guard) warns when an rtk upgrade adds a subcommand in neither.
+RTK_FILTER_SUBCOMMANDS = {
+    "ast-grep",
+    "aws",
+    "bun",
+    "bunx",
+    "cargo",
+    "cc-economics",
+    "config",
+    "ctest",
+    "curl",
+    "deno",
+    "deps",
+    "diff",
+    "discover",
+    "docker",
+    "dotnet",
+    "ecs",
+    "env",
+    "find",
+    "format",
+    "gain",
+    "gh",
+    "git",
+    "glab",
+    "go",
+    "golangci-lint",
+    "gradlew",
+    "grep",
+    "gt",
+    "help",
+    "hook",
+    "hook-audit",
+    "init",
+    "jest",
+    "json",
+    "kubectl",
+    "learn",
+    "lint",
+    "log",
+    "ls",
+    "mvn",
+    "mvnd",
+    "mypy",
+    "next",
+    "npm",
+    "npx",
+    "oc",
+    "paratest",
+    "pest",
+    "php",
+    "phpstan",
+    "phpt",
+    "phpunit",
+    "pint",
+    "pip",
+    "pipe",
+    "playwright",
+    "pnpm",
+    "prettier",
+    "prisma",
+    "psql",
+    "pytest",
+    "rake",
+    "read",
+    "recall",
+    "rewrite",
+    "rg",
+    "rspec",
+    "rubocop",
+    "ruff",
+    "sbt",
+    "session",
+    "sqlfluff",
+    "telemetry",
+    "tree",
+    "trust",
+    "tsc",
+    "untrust",
+    "uv",
+    "verify",
+    "vitest",
+    "wc",
+    "wget",
+}
 INTERPRETERS = {
     "sh",
     "bash",

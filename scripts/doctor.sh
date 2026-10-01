@@ -311,7 +311,7 @@ EOF_WSL
     winget_links="${HOME}/AppData/Local/Microsoft/WinGet/Links"
     winget_shadow=''
     if [ -d "$winget_links" ]; then
-      for _wb in codex claude copilot pi; do
+      for _wb in codex claude copilot pi rtk headroom; do
         # Only a duplicate matters: a WinGet copy of something mise does not
         # manage is just an install, not a shadow.
         if [ -e "${winget_links}/${_wb}" ] && mise which "$_wb" >/dev/null 2>&1; then
@@ -327,6 +327,28 @@ EOF_WSL
     fi
     ;;
 esac
+
+# AI tooling: rtk, headroom, their telemetry and wiring (Claude / Pi / Codex
+# hooks and extensions, headroom's proxy). The rules live in a tested script;
+# its OK/WARN lines count like the rest of doctor's.
+if has uv; then
+  ai_rc=0
+  ai_out="$(uv run --frozen "$(dirname "${BASH_SOURCE[0]}")/ai_tools_check.py" 2>&1)" || ai_rc=$?
+  ai_lines=0
+  while IFS= read -r line; do
+    case "$line" in
+      'OK   '*) ok=$((ok+1)); ai_lines=$((ai_lines+1)); printf '%s\n' "$line" ;;
+      'WARN '*) warn=$((warn+1)); ai_lines=$((ai_lines+1)); printf '%s\n' "$line" ;;
+      'ERR  '*) err=$((err+1)); ai_lines=$((ai_lines+1)); printf '%s\n' "$line" ;;
+    esac
+  done <<<"$ai_out"
+  # The check always exits 0 with lines: anything else means it did not run
+  if [ "$ai_rc" -ne 0 ] || [ "$ai_lines" -eq 0 ]; then
+    log_warn 'ai-tools' "check did not run (exit $ai_rc): $(printf '%s\n' "$ai_out" | tail -n 1)"
+  fi
+else
+  log_warn 'ai-tools' 'uv missing: cannot check rtk / headroom'
+fi
 
 echo "Doctor summary: ok=$ok warn=$warn err=$err"
 if [ "$err" -gt 0 ]; then exit 1; fi

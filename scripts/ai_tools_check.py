@@ -1,0 +1,664 @@
+#!/usr/bin/env python3
+"""Is the AI tooling complete? rtk, headroom, their telemetry and their wiring.
+
+Functional core / imperative shell: gather() collects facts (PATH, versions,
+the Windows User env, agent homes, Codex's hook trust, the headroom proxy, and
+what rtk and headroom say about themselves) and report() is a pure function
+from those facts to doctor's OK/WARN lines, so the rules are unit-tested and
+the IO stays thin. Used by `just doctor` and `just status`; always exits 0
+(doctor counts the lines).
+
+The upstream checks compare each contract dotfiles relies on with the installed
+tool, so an rtk or headroom upgrade that breaks one shows up here: telemetry
+off by the tool's own account, every rtk subcommand classified by the command
+guard, and the `headroom proxy` flags jev_headroom.proxy_command passes. Each
+contract is defined once, where it is used; this only reads it.
+"""
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+from types import ModuleType
+
+import claude_git_bash
+import jev_headroom
+import jev_launch
+
+ROOT = Path(__file__).resolve().parents[1]
+COMMAND_GUARD = ROOT / "ROOT_AGENTS_hooks_block-prohibited-commands.py"
+TELEMETRY_OFF = {"RTK_TELEMETRY_DISABLED": "1", "HEADROOM_BEACON": "off"}
+CLAUDE_HOMES = (
+    ".claude",
+    ".claude-work-a",
+    ".claude-work-b",
+    ".claude-work-c",
+    ".claude-work-d",
+)
+PI_EXTENSIONS = ("jev-sonnet-fallback.ts", "rtk.ts")
+# What `headroom init` / `headroom wrap` write into an agent's config (headroom
+# 0.38 cli/init.py), beside a loopback ANTHROPIC_BASE_URL. j-cc is the only
+# headroom route (docs/runbook/jev-launchers.md).
+HEADROOM_CLAUDE_MARKERS = ("headroom-init-claude",)
+HEADROOM_CODEX_MARKERS = ("headroom-init-codex", "# --- Headroom init provider ---")
+CODEX_FILES = ("hooks.json", "config.toml")
+# Codex checkers in scripts/, each printing doctor lines for `--check`
+CODEX_CHECKS = ("codex_hooks_trust.py", "codex_sandbox_tools.py")
+
+Line = tuple[str, str, str]  # (level, name, detail)
+
+
+@dataclass(frozen=True)
+class Tool:
+    paths: tuple[str, ...]  # every copy on PATH, in PATH order
+    version: str | None
+    mise_path: str | None  # what mise would run, if mise manages it
+
+
+@dataclass(frozen=True)
+class ClaudeBash:
+    """Windows: the Git Bash Claude Code would run, and what it was told."""
+
+    configured: str | None  # CLAUDE_CODE_GIT_BASH_PATH
+    found: str | None  # what claude_git_bash() resolves
+    candidate: str | None  # an existing Git Bash to point it at
+
+
+@dataclass(frozen=True)
+class JevKey:
+    """Where j-cc / j-pi find the Jev key; never the key itself."""
+
+    source: str | None  # "environment", a KEY_FILES name, or None
+    private: bool  # the file passes jev_launch.env_file_is_private
+    has_key: bool  # the source holds TYPESAFE_API_KEY
+
+
+@dataclass(frozen=True)
+class Facts:
+    rtk: Tool
+    headroom: Tool
+    vendored_rtk: str | None  # rtk version config/pi/extensions/rtk.ts came from
+    env: Mapping[str, str]  # this shell
+    user_env: Mapping[str, str] | None  # persisted Windows User env; None elsewhere
+    claude_homes: Mapping[str, dict]  # existing home -> its settings.json
+    pi_extensions: Mapping[str, bool]  # name -> placed
+    # CODEX_CHECKS' --check output by script (None: it did not run); None without codex
+    codex_checks: Mapping[str, str | None] | None
+    # (recorded port, its /health answer or None); None: no record
+    headroom_proxy: tuple[int, Mapping[str, object] | None] | None
+    codex_files: Mapping[str, str]  # CODEX_FILES in ~/.codex ("" when absent)
+    # What the tools say about themselves (None: no answer)
+    rtk_help: str | None  # `rtk --help`
+    rtk_telemetry: str | None  # `rtk telemetry status`
+    headroom_telemetry: Mapping[str, object] | None  # `headroom telemetry --json`
+    headroom_proxy_help: str | None  # `headroom proxy --help`
+    # The contracts, from where they are defined
+    rtk_classified: frozenset[str]  # rtk subcommands the command guard classifies
+    headroom_proxy_flags: tuple[str, ...]  # flags jev_headroom.proxy_command passes
+    # What j-cc / j-pi need from this machine
+    claude_bash: ClaudeBash | None  # None off Windows
+    jev_key: JevKey
+
+
+# ---- Functional core ----
+
+
+def _claude_git_bash(facts: Facts) -> list[Line]:
+    bash = facts.claude_bash
+    if bash is None:
+        return []
+    if bash.found is None:
+        fix = (
+            f"just harden-env (sets CLAUDE_CODE_GIT_BASH_PATH={bash.candidate} "
+            "for the User)"
+            if bash.candidate
+            else r"install Git for Windows, or set CLAUDE_CODE_GIT_BASH_PATH to its bin\bash.exe"
+        )
+        return [
+            (
+                "WARN",
+                "claude-git-bash",
+                "Claude Code finds no Git Bash, so its Bash tool is off and j-cc "
+                f"fails: {fix}",
+            )
+        ]
+    if bash.configured and bash.configured != bash.found:
+        return [
+            (
+                "WARN",
+                "claude-git-bash",
+                f"CLAUDE_CODE_GIT_BASH_PATH={bash.configured} is not an existing "
+                f"bash, so Claude Code falls back to {bash.found}: fix or unset it",
+            )
+        ]
+    return [("OK", "claude-git-bash", f"Claude Code runs {bash.found}")]
+
+
+def _jev_key(facts: Facts) -> Line:
+    key = facts.jev_key
+    runbook = "docs/runbook/jev-launchers.md"
+    if key.source is None:
+        return (
+            "WARN",
+            "jev-key",
+            f"none: j-cc / j-pi start without Jev's routing ({runbook})",
+        )
+    shown = "the environment" if key.source == "environment" else f"~/{key.source}"
+    if key.source != "environment" and not key.private:
+        rule = (
+            "icacls: no entry for other accounts"
+            if facts.user_env is not None
+            else "chmod 600"
+        )
+        return (
+            "WARN",
+            "jev-key",
+            f"{shown} is readable by others, so Jev ignores it ({rule})",
+        )
+    if not key.has_key:
+        return ("WARN", "jev-key", f"{shown} has no TYPESAFE_API_KEY= line ({runbook})")
+    if key.source == ".env":
+        return (
+            "WARN",
+            "jev-key",
+            "in ~/.env, the old place: move it to ~/.config/jev/env, which Codex's "
+            f"Windows sandbox does not read ({runbook})",
+        )
+    return ("OK", "jev-key", f"from {shown}")
+
+
+def checker_output(returncode: int, stdout: str) -> str | None:
+    """A doctor-line checker's answer: its lines (exit 1 carries WARNs), or
+    None when it died before printing any, so the failure is not dropped."""
+    lines = stdout.strip()
+    return lines if lines or returncode == 0 else None
+
+
+def vendored_version(text: str) -> str | None:
+    match = re.search(r"Vendored from rtk (\d+\.\d+\.\d+)", text)
+    return match[1] if match else None
+
+
+def _same(a: str, b: str) -> bool:
+    norm = lambda p: os.path.normcase(os.path.normpath(p)).removesuffix(".exe")  # noqa: E731
+    return norm(a) == norm(b)
+
+
+def _tool(name: str, tool: Tool, package: str) -> Line:
+    if not tool.paths:
+        return ("WARN", name, f"not on PATH: mise install {package}")
+    if len(tool.paths) > 1:
+        return (
+            "WARN",
+            name,
+            f"{len(tool.paths)} copies on PATH ({', '.join(tool.paths)}): keep the mise one "
+            "(e.g. winget uninstall rtk-ai.rtk, or remove a hand-placed ~/.local/bin copy)",
+        )
+    if tool.mise_path is None or not _same(tool.paths[0], tool.mise_path):
+        return ("WARN", name, f"{tool.paths[0]} is not mise's: mise install {package}")
+    return ("OK", name, f"{tool.version or '?'} via mise")
+
+
+def _missing_telemetry(env: Mapping[str, str]) -> list[str]:
+    return [f"{k}={v}" for k, v in TELEMETRY_OFF.items() if env.get(k) != v]
+
+
+def _rtk_pi_extension(facts: Facts) -> Line:
+    # rtk upgrades can change its own Pi extension; ours is a vendored copy
+    installed, vendored = facts.rtk.version, facts.vendored_rtk
+    if installed and vendored and installed != vendored:
+        return (
+            "WARN",
+            "rtk-pi-extension",
+            f"config/pi/extensions/rtk.ts is from rtk {vendored}, "
+            f"installed is {installed}: just rtk-pi-refresh",
+        )
+    return ("OK", "rtk-pi-extension", f"vendored from rtk {vendored or '?'}")
+
+
+def _telemetry(facts: Facts) -> Line:
+    gaps = []
+    if missing := _missing_telemetry(facts.env):
+        gaps.append(f"this shell lacks {', '.join(missing)} (mise env)")
+    for home, settings in facts.claude_homes.items():
+        if missing := _missing_telemetry(settings.get("env", {})):
+            gaps.append(f"~/{home} lacks {', '.join(missing)} (just sync-agents)")
+    if facts.user_env is not None and (missing := _missing_telemetry(facts.user_env)):
+        gaps.append(f"Windows User env lacks {', '.join(missing)} (just harden-env)")
+    if gaps:
+        return ("WARN", "telemetry", "; ".join(gaps))
+    where = "this shell and the Claude homes"
+    if facts.user_env is not None:
+        where += " and the Windows User env"
+    return ("OK", "telemetry", f"off switches set in {where}")
+
+
+def _claude_rtk_hook(facts: Facts) -> Line:
+    unhooked = [
+        home
+        for home, settings in facts.claude_homes.items()
+        if not any(
+            "rtk-hook-claude" in hook.get("command", "")
+            for blocks in settings.get("hooks", {}).values()
+            for block in blocks
+            for hook in block.get("hooks", [])
+        )
+    ]
+    if unhooked:
+        return (
+            "WARN",
+            "claude-rtk-hook",
+            f"missing in ~/{', ~/'.join(unhooked)}: just sync-agents",
+        )
+    return ("OK", "claude-rtk-hook", f"in {len(facts.claude_homes)} Claude home(s)")
+
+
+def _pi_extensions(facts: Facts) -> Line:
+    absent = [name for name, placed in facts.pi_extensions.items() if not placed]
+    if absent:
+        return (
+            "WARN",
+            "pi-extensions",
+            f"missing {', '.join(absent)}: just pi-extensions-install",
+        )
+    return ("OK", "pi-extensions", ", ".join(facts.pi_extensions))
+
+
+def _codex(facts: Facts) -> list[Line]:
+    if facts.codex_checks is None:
+        return [("OK", "codex-hooks", "codex not on PATH")]
+    lines: list[Line] = []
+    for script, out in facts.codex_checks.items():
+        if out is None:
+            lines.append(("WARN", "codex", f"{script} --check failed to run"))
+            continue
+        for raw in out.splitlines():
+            level, _, rest = raw.partition(" ")
+            name, _, detail = rest.strip().partition(" - ")
+            lines.append((level.strip(), name, detail))
+    return lines
+
+
+def _headroom_proxy(facts: Facts) -> Line:
+    if facts.headroom_proxy is None:
+        return ("OK", "headroom-proxy", "not running; j-cc starts one on demand")
+    port, answer = facts.headroom_proxy
+    if jev_headroom.is_headroom(answer):
+        return ("OK", "headroom-proxy", f"127.0.0.1:{port} running")
+    if answer is None:
+        return (
+            "OK",
+            "headroom-proxy",
+            f"127.0.0.1:{port} recorded but not answering (j-cc starts a new one)",
+        )
+    return (
+        "WARN",
+        "headroom-proxy",
+        f"127.0.0.1:{port} answers /health with keys {', '.join(sorted(answer))}, "
+        "not the shape jev_headroom.is_headroom expects: j-cc would wait for it, "
+        "then go direct",
+    )
+
+
+def _routes_claude(settings: Mapping[str, object]) -> bool:
+    env = settings.get("env")
+    base_url = str(env.get("ANTHROPIC_BASE_URL", "")) if isinstance(env, dict) else ""
+    loopback = base_url.startswith(("http://127.0.0.1", "http://localhost"))
+    text = json.dumps(settings)
+    return loopback or any(marker in text for marker in HEADROOM_CLAUDE_MARKERS)
+
+
+def _headroom_routing(facts: Facts) -> Line:
+    claude = [
+        f"~/{home}" for home, s in facts.claude_homes.items() if _routes_claude(s)
+    ]
+    codex = any(
+        marker in text
+        for text in facts.codex_files.values()
+        for marker in HEADROOM_CODEX_MARKERS
+    )
+    if not claude and not codex:
+        return ("OK", "headroom-routing", "only j-cc and its Codex workers use it")
+    fixes = (["headroom unwrap claude"] if claude else []) + (
+        ["headroom unwrap codex"] if codex else []
+    )
+    return (
+        "WARN",
+        "headroom-routing",
+        f"headroom init/wrap routes {', '.join([*claude, *(['~/.codex'] if codex else [])])} "
+        "through a local proxy, so plain claude/codex fail while it is down (and "
+        f"Claude loses Remote Control): {' and '.join(fixes)}, then just sync-agents",
+    )
+
+
+def rtk_subcommands(help_text: str) -> frozenset[str]:
+    """The names in the Commands: section of `rtk --help`."""
+    _, found, rest = help_text.partition("\nCommands:\n")
+    names = set()
+    for line in rest.splitlines() if found else []:
+        if not line.strip():
+            break
+        if match := re.match(r"  (\S+)", line):
+            names.add(match[1])
+    return frozenset(names)
+
+
+def _rtk_guard(facts: Facts) -> list[Line]:
+    if not facts.rtk.paths:
+        return []
+    found = rtk_subcommands(facts.rtk_help or "")
+    if not found:
+        return [("WARN", "rtk-guard", "cannot read the subcommands in `rtk --help`")]
+    if unclassified := sorted(found - facts.rtk_classified):
+        return [
+            (
+                "WARN",
+                "rtk-guard",
+                f"rtk {facts.rtk.version or '?'} has subcommands the command guard "
+                f"has not classified ({', '.join(unclassified)}): add each to "
+                "RTK_RUN_SUBCOMMANDS if it runs its operands, else to "
+                "RTK_FILTER_SUBCOMMANDS (ROOT_AGENTS_hooks_block-prohibited-commands.py)",
+            )
+        ]
+    return [
+        (
+            "OK",
+            "rtk-guard",
+            f"the command guard classifies all {len(found)} rtk subcommands",
+        )
+    ]
+
+
+def _rtk_telemetry(facts: Facts) -> list[Line]:
+    if not facts.rtk.paths:
+        return []
+    status = facts.rtk_telemetry or ""
+    enabled = re.search(r"^\s*enabled:\s*(\S+)", status, re.MULTILINE)
+    if enabled is None:
+        return [("WARN", "rtk-telemetry", "cannot read `rtk telemetry status`")]
+    if enabled[1] != "no":
+        return [("WARN", "rtk-telemetry", "rtk reports it on: rtk telemetry disable")]
+    if (
+        facts.env.get("RTK_TELEMETRY_DISABLED") == "1"
+        and "RTK_TELEMETRY_DISABLED" not in status
+    ):
+        return [
+            (
+                "WARN",
+                "rtk-telemetry",
+                "off, but this rtk no longer reports honouring RTK_TELEMETRY_DISABLED: "
+                "find its switch (rtk telemetry --help) before consent turns it on",
+            )
+        ]
+    return [("OK", "rtk-telemetry", "off by rtk's own account")]
+
+
+def _headroom_telemetry(facts: Facts) -> list[Line]:
+    if not facts.headroom.paths:
+        return []
+    enabled = (facts.headroom_telemetry or {}).get("beacon_enabled")
+    if enabled is False:
+        return [("OK", "headroom-telemetry", "beacon off by headroom's own account")]
+    if enabled is True:
+        honoured = facts.env.get("HEADROOM_BEACON") == "off"
+        return [
+            (
+                "WARN",
+                "headroom-telemetry",
+                "headroom reports its beacon on"
+                + (
+                    " although HEADROOM_BEACON=off: find its switch (headroom telemetry)"
+                    if honoured
+                    else ": HEADROOM_BEACON=off (mise env)"
+                ),
+            )
+        ]
+    return [("WARN", "headroom-telemetry", "cannot read `headroom telemetry --json`")]
+
+
+def _headroom_cli(facts: Facts) -> list[Line]:
+    if not facts.headroom.paths:
+        return []
+    usage = facts.headroom_proxy_help or ""
+    if missing := [flag for flag in facts.headroom_proxy_flags if flag not in usage]:
+        return [
+            (
+                "WARN",
+                "headroom-cli",
+                f"`headroom proxy --help` lacks {', '.join(missing)}: update "
+                "jev_headroom.proxy_command, or j-cc goes direct",
+            )
+        ]
+    return [
+        (
+            "OK",
+            "headroom-cli",
+            f"headroom proxy takes {', '.join(facts.headroom_proxy_flags)}",
+        )
+    ]
+
+
+def report(facts: Facts) -> list[Line]:
+    return [
+        _tool("rtk", facts.rtk, "rtk"),
+        _tool("headroom", facts.headroom, "pypi:headroom-ai"),
+        _rtk_pi_extension(facts),
+        _telemetry(facts),
+        *_rtk_telemetry(facts),
+        *_headroom_telemetry(facts),
+        *_rtk_guard(facts),
+        *_headroom_cli(facts),
+        _claude_rtk_hook(facts),
+        _pi_extensions(facts),
+        *_codex(facts),
+        _headroom_proxy(facts),
+        _headroom_routing(facts),
+        *_claude_git_bash(facts),
+        _jev_key(facts),
+    ]
+
+
+# ---- Imperative shell ----
+
+
+def _run(args: list[str], *, checker: bool = False) -> str | None:
+    """stdout of a command, or None when it cannot run or fails (a checker's
+    exit 1 still carries its WARN lines: see checker_output)."""
+    try:
+        done = subprocess.run(
+            args,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if checker:
+        return checker_output(done.returncode, done.stdout)
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _all_on_path(name: str) -> tuple[str, ...]:
+    found: list[str] = []
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        for candidate in (name, f"{name}.exe", f"{name}.cmd"):
+            path = Path(directory) / candidate
+            if path.is_file() and not any(_same(str(path), seen) for seen in found):
+                found.append(str(path))
+                break
+    return tuple(found)
+
+
+def _tool_facts(name: str, version_args: list[str]) -> Tool:
+    paths = _all_on_path(name)
+    raw = _run([paths[0], *version_args]) if paths else None
+    version = re.search(r"\d+\.\d+\.\d+", raw or "")
+    mise = shutil.which("mise")
+    mise_path = _run([mise, "which", name]) if mise else None
+    return Tool(
+        paths=paths, version=version[0] if version else None, mise_path=mise_path
+    )
+
+
+def _windows_user_env() -> dict[str, str] | None:
+    if sys.platform != "win32":
+        return None
+    import winreg  # noqa: PLC0415 - Windows only
+
+    values = {}
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+        for name in TELEMETRY_OFF:
+            try:
+                values[name] = str(winreg.QueryValueEx(key, name)[0])
+            except OSError:
+                continue
+    return values
+
+
+def _json(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _load_command_guard() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("command_guard", COMMAND_GUARD)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {COMMAND_GUARD}")
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+    return guard
+
+
+def _guard_rtk_classified() -> frozenset[str]:
+    guard = _load_command_guard()
+    return frozenset(guard.RTK_RUN_SUBCOMMANDS | guard.RTK_FILTER_SUBCOMMANDS)
+
+
+def _json_answer(text: str | None) -> dict | None:
+    try:
+        answer = json.loads(text or "")
+    except ValueError:
+        return None
+    return answer if isinstance(answer, dict) else None
+
+
+def _text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _claude_bash(home: Path, settings: Mapping[str, object]) -> ClaudeBash | None:
+    if sys.platform != "win32":
+        return None
+    env = settings.get("env")
+    configured = os.environ.get("CLAUDE_CODE_GIT_BASH_PATH") or (
+        str(env.get("CLAUDE_CODE_GIT_BASH_PATH") or "") if isinstance(env, dict) else ""
+    )
+    exists = lambda path: Path(path).exists()  # noqa: E731
+    return ClaudeBash(
+        configured=configured or None,
+        found=claude_git_bash.claude_git_bash(
+            configured or None, shutil.which("git"), exists
+        ),
+        candidate=next(
+            (
+                c
+                for c in claude_git_bash.candidates(shutil.which("sh"), str(home))
+                if exists(c)
+            ),
+            None,
+        ),
+    )
+
+
+def _jev_key_facts(home: Path) -> JevKey:
+    if os.environ.get("TYPESAFE_API_KEY") or os.environ.get("TYPESAFE_AI_API_KEY"):
+        return JevKey(source="environment", private=True, has_key=True)
+    for name in jev_launch.KEY_FILES:
+        path = home / name
+        if path.is_file():
+            return JevKey(
+                source=name.as_posix(),
+                private=jev_launch.env_file_is_private(path),
+                has_key=jev_launch.key_in(_text(path)) is not None,
+            )
+    return JevKey(source=None, private=False, has_key=False)
+
+
+def gather(home: Path) -> Facts:
+    pi_dir = (
+        Path(os.environ.get("PI_CODING_AGENT_DIR") or home / ".pi/agent") / "extensions"
+    )
+    port = jev_headroom.read_state(jev_headroom.state_path(home))
+    codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
+    codex_checks = None
+    if shutil.which("codex"):
+        codex_checks = {
+            script: _run(
+                [sys.executable, str(ROOT / "scripts" / script), "--check"],
+                checker=True,
+            )
+            for script in CODEX_CHECKS
+        }
+    rtk = _tool_facts("rtk", ["--version"])
+    headroom = _tool_facts("headroom", ["--version"])
+    rtk_exe = rtk.paths[0] if rtk.paths else None
+    headroom_exe = headroom.paths[0] if headroom.paths else None
+    claude_homes = {
+        name: _json(home / name / "settings.json")
+        for name in CLAUDE_HOMES
+        if (home / name).is_dir()
+    }
+    return Facts(
+        rtk=rtk,
+        headroom=headroom,
+        vendored_rtk=vendored_version(
+            (ROOT / "config/pi/extensions/rtk.ts").read_text(encoding="utf-8")
+        ),
+        env=dict(os.environ),
+        user_env=_windows_user_env(),
+        claude_homes=claude_homes,
+        pi_extensions={name: (pi_dir / name).is_file() for name in PI_EXTENSIONS},
+        codex_checks=codex_checks,
+        headroom_proxy=None if port is None else (port, jev_headroom.probe(port)),
+        codex_files={name: _text(codex_home / name) for name in CODEX_FILES},
+        rtk_help=_run([rtk_exe, "--help"]) if rtk_exe else None,
+        rtk_telemetry=_run([rtk_exe, "telemetry", "status"]) if rtk_exe else None,
+        headroom_telemetry=_json_answer(
+            _run([headroom_exe, "telemetry", "--json"]) if headroom_exe else None
+        ),
+        headroom_proxy_help=_run([headroom_exe, "proxy", "--help"])
+        if headroom_exe
+        else None,
+        rtk_classified=_guard_rtk_classified(),
+        headroom_proxy_flags=tuple(
+            arg
+            for arg in jev_headroom.proxy_command("headroom", 0)
+            if arg.startswith("--")
+        ),
+        claude_bash=_claude_bash(home, claude_homes.get(".claude", {})),
+        jev_key=_jev_key_facts(home),
+    )
+
+
+def main() -> int:
+    for level, name, detail in report(gather(Path.home())):
+        print(f"{level:<4} {name} - {detail}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

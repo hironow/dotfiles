@@ -177,6 +177,13 @@ deploy:
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
+# After an rtk upgrade (doctor's rtk-pi-extension WARN): re-vendor rtk's own
+# Pi extension into config/pi/extensions/rtk.ts, header kept, body verbatim.
+# Re-vendor config/pi/extensions/rtk.ts from the installed rtk
+[group('Agents')]
+rtk-pi-refresh:
+    @{{UV_RUN}} scripts/rtk_pi_refresh.py
+
 # Exercise the Pi usage-limit failover logic without consuming model tokens.
 pi-jev-test:
     @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test tests/unit/jev_sonnet_fallback.test.ts
@@ -313,6 +320,8 @@ clean-all: clean clean-cache
 [group('Disk'), windows, linux, doc('Is the disk GC actually collecting? Both runner legs, read-only')]
 status:
     bash scripts/gc_status.sh
+    @echo '--- AI tooling (rtk / headroom / hooks) ---'
+    @{{UV_RUN}} scripts/ai_tools_check.py
 
 # Disk: report host cache sizes + free space. Measures only, never deletes.
 [group('Disk'), doc('Report host cache sizes + free space (measures only, never deletes)')]
@@ -1528,6 +1537,21 @@ skills-place *args:
 [group('Agents')]
 skills-update *args:
     @{{ UV_RUN }} scripts/skills_lock.py update {{ args }}
+
+# Codex runs a hook only once it is trusted. `just sync-agents x` already runs
+# this; it trusts exactly the hooks .codex/hooks.json renders. --check: report only.
+# Trust the Codex hooks dotfiles placed (through Codex's app-server)
+[group('Agents')]
+codex-hooks-trust *args:
+    @{{ UV_RUN }} scripts/codex_hooks_trust.py {{ args }}
+
+# Windows: Codex's sandbox reads the profile through inherited ACL entries, and
+# a mise data dir that does not inherit leaves rtk and every mise tool "access
+# denied" in it. `just sync-agents x` already runs this. --check: report only.
+# Let Codex's Windows sandbox run the mise tools (grants it read on mise's dir)
+[group('Agents')]
+codex-sandbox-tools *args:
+    @{{ UV_RUN }} scripts/codex_sandbox_tools.py {{ args }}
 
 # hironow/skills wins name collisions (ADR 0043).
 # CI barrier: no third-party skill in the declaration shadows a hironow/skills name

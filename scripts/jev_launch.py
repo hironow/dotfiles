@@ -118,7 +118,12 @@ def jev_key() -> str | None:
             file=sys.stderr,
         )
         return None
-    for line in path.read_text(encoding="utf-8").splitlines():
+    return key_in(path.read_text(encoding="utf-8"))
+
+
+def key_in(text: str) -> str | None:
+    """The TYPESAFE_API_KEY a key file sets, read as data (never sourced)."""
+    for line in text.splitlines():
         if "=" in line:
             name, value = line.split("=", 1)
             if name.removeprefix("export ").strip() == "TYPESAFE_API_KEY":

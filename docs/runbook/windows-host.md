@@ -49,6 +49,41 @@ runner のジョブは mise activate を通らないので、Machine の PATH �
 mise activate を通らないプロセス（ジョブや IDE）では、PATH で先に来る scoop や bun のコピーが使われ、mise の版と少しずれることがある。
 runner のサービスを止めて対話セッションで動かしていても、User の PATH に mise の shims はないので、Machine の PATH の shims は外さない。
 
+## Codex の sandbox と mise の道具
+
+Codex の Windows の sandbox は、コマンドを別のユーザー（`CodexSandboxUsers` の一員）として実行する。
+Codex は profile の上位のディレクトリに、継承する読み取りの権限（`CodexSandboxUsers:(OI)(CI)(RX)`）を付けて、そのユーザーに読ませる。
+継承を切ったディレクトリにはこの権限が届かない。
+`%LOCALAPPDATA%\mise` の継承が切れていた機体では、mise の道具（rtk、bun、just など）が sandbox の中ですべて「アクセス拒否」になり、rtk の hook が `rtk ...` に書き換えたコマンドも失敗した。
+`just codex-sandbox-tools` が、mise のディレクトリに `CodexSandboxUsers` の読み取りと実行の権限だけを付ける（`just sync-agents x` も実行し、`just doctor` の `codex-sandbox` が検出する）。
+継承を戻すと、親の継承する権限（`MISE_DATA_DIR` を移した先の親が持つ `Users` の変更権限など）まで取り込むので、そうはしない。
+`icacls <dir> /remove:g CodexSandboxUsers` で元の状態に戻せる。
+
+同じ権限は profile の直下のファイルにも届くので、`~/.env` に置いた秘密は sandbox から読める。
+Codex は sandbox を用意するたびに権限を付け直すので、`icacls` で外しても長続きしない。
+Codex は `~/.config` を読ませないので、秘密はその下に移す（Jev のキーは `~/.config/jev/env` に置く）。
+`just doctor` の `codex-sandbox-secrets` が、sandbox から読める `~/.env` を検出する。
+
+sandbox のユーザーは repository の所有者と違うので、git は所有者の検査（`safe.directory`）で止まる。
+rtk とは関係がなく、素の `git status` でも同じように止まる。
+dotfiles は `safe.directory` を変えない。
+緩めると、sandbox の中のコードが仕込んだ `.git/config`（`core.fsmonitor` など）を、sandbox の外で動く自分の git が実行してしまうからである。
+sandbox の中で git が要る repository は、そのリスクを受け入れるときだけ手で `safe.directory` に足すか、Codex を sandbox なしで動かす（`just doctor` の `codex-sandbox-git` が同じことを表示する）。
+
+## Claude Code の Git Bash
+
+native Windows の Claude Code は、Bash の tool に Git Bash を使い、次の順で探す（2.1.285 の実装）。
+
+1. `CLAUDE_CODE_GIT_BASH_PATH`（名前が bash か sh で、実在するファイル）
+2. `C:\Program Files\Git\bin\bash.exe` と `C:\Program Files (x86)\Git\bin\bash.exe`
+3. PATH で最初に見つかる `git` から見た `..\..\bin\bash.exe`
+
+Git を scoop で入れた機体では、最初の `git` が scoop の shim（`~\scoop\shims\git.exe`）になり、3 も外れる。
+見つからないと Bash の tool が使えなくなり、`j-cc` も `just jev-claude-verify` も失敗する。
+`just doctor` の `claude-git-bash` が検出し、指定すべき Git Bash の場所を表示する。
+`just harden-env` は、Claude Code が自分では Git Bash を見つけられない機体でだけ、見つけた Git Bash を `CLAUDE_CODE_GIT_BASH_PATH` として User の環境変数に書く（値は機体ごとに違うので、追跡する断片には置かない）。
+User の環境変数に値がすでにあれば、壊れていても書き換えない（`claude-git-bash` が知らせるので、人が直す）。
+
 ## Python のファイルと文字コード
 
 日本語版の Windows では、locale の文字コードが cp932 である。

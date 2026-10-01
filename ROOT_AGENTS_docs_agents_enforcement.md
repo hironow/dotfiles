@@ -74,7 +74,7 @@ covers the long tail.
 - The known wrapper set is `env`/`sudo`/`time`/`nohup`/`command`/`xargs` plus
   **`rtk`**, whose real command is the first operand after rtk's own flags and
   sits one token further right behind a run-anything subcommand
-  (`rtk proxy|err|test|summary|smart <cmd>`). rtk is in the set, not the long
+  (`rtk proxy|run|err|test|summary|smart <cmd>`). rtk is in the set, not the long
   tail, because it is mandatory and its hook prefixes commands by default — so
   `rtk pnpm install` blocks exactly like `pnpm install` (ADR 0047).
 - Heredocs are receiver-aware: a body consumed by a data sink (`cat`, `gh`,

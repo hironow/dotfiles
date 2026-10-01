@@ -10,7 +10,7 @@
 - **base**：`ROOT_AGENTS.md`。どのエージェントでも常に読まれる短い指示
 - **overlay**：`ROOT_CLAUDE.md`。Claude 専用で、先頭の `@AGENTS.md` で base を読み込む
 - **spoke**：`ROOT_AGENTS_docs_agents_*.md`。必要なときだけ読む詳細（TDD、commit、Python など）
-- **hooks**：`ROOT_AGENTS_hooks_*` と `.claude/settings.hooks.json`。Claude の hook による機械的な強制
+- **hooks**：`ROOT_AGENTS_hooks_*` と、それを登録する `.claude/settings.hooks.json`（Claude）と `.codex/hooks.json`（Codex）。hook による機械的な強制
 - **settings の断片**：`.claude/settings.shared.json`、`.claude/settings.shared.{macos,linux,windows}.json`、`.claude/settings.profiles/<key>.json`（ADR 0037）
 
 `ROOT_AGENTS_<x>_<y>` という名前のファイルやディレクトリは、`<agent>/<x>/<y>` に配る（`_` を `/` に読み替える）。
@@ -22,7 +22,8 @@
 | base | `~/.codex/AGENTS.md`、`~/.gemini/GEMINI.md`、`~/.claude*/AGENTS.md` |
 | overlay | `~/.claude*/CLAUDE.md` |
 | spoke | `<agent>/docs/agents/*` |
-| hooks と settings | Claude 系（`~/.claude*`）だけ |
+| hooks | Claude 系（`~/.claude*`）と Codex（`~/.codex`） |
+| settings | Claude 系だけ |
 
 `~/.gemini/GEMINI.md` は、Gemini CLI と Antigravity CLI（`agy`）が共有する global な指示である（google-gemini/gemini-cli#16058）。
 既存の gemini への配布が、そのまま Antigravity を兼ねる。
@@ -56,6 +57,28 @@ settings の断片は、hook の併合の直後に 4 つの層を合成して 1 
 - settings.json には、トップレベルのキーを追加か更新だけする（`enabledPlugins` など、断片にないキーは残す）。
 - 断片から外したトップレベルのキーは、その断片の `retired` に書く（例：`.claude/settings.profiles/work-c.json`）。`retired` は移行 ID ごとに、キーと、断片がそれまでに書いた値をすべて並べる。sync は各 home で移行を 1 回だけ評価し、キーがまだそのどれかの値なら消す。評価した ID は、settings.json より先に home の `settings.sync-state.json`（sync が所有する）へ記録する。そのため、あとで利用者が同じ値を設定し直しても消さない。初回の評価の時点で利用者が同じ値を選んでいた場合は区別できないので、残したい値は 4 に書く。
 - `env` の正本は断片である。repo の `.claude/settings.json` は `env` を持たず、global から受け継ぐ。
+
+## Codex の hooks
+
+Codex は `<codex home>/hooks.json` を読む。
+block の形は Claude と同じで、shell の tool は `Bash`、apply_patch は `Write|Edit` に一致する。
+sync は `.codex/hooks.json` の断片を、Claude の settings.json と同じ所有の規則で併合し、rtk のインストーラが書く block（`RETIRED_HOOK_COMMAND`）は外す。
+hook のファイルは名前で振り分ける。
+名前に `-claude.` を含むファイルは Claude 系だけに、`-codex.` を含むファイルは Codex だけに配る。
+
+exit 2 で止める guard（`block-*.sh`）は、Codex では `guard-codex.sh <guard>` を通して呼ぶ。
+Codex は hook をセッションの shell で起動し、Windows ではそれが `pwsh -Command` になる。
+pwsh は 0 以外の exit をすべて 1 として返すので、guard の exit 2 は Codex に失敗した hook として届き、失敗した hook は素通しになる。
+`guard-codex.sh` は guard の exit 2 と stderr を、stdout の `permissionDecision: "deny"` に変える。
+stdout はどの shell も通すので、OS を問わず block が効く。
+guard の側は Claude の exit code の約束のまま変えない。
+
+Codex は、hash を信頼済みとして記録した hook だけを実行する（`~/.codex/config.toml` の `hooks.state`）。
+sync は `~/.codex` に配ったあと `scripts/codex_hooks_trust.py` を実行し、Codex の app-server（`hooks/list` と `config/batchWrite`）を通して、断片から作った hook だけを信頼済みにする。
+配った hook のファイルが正本と 1 byte でも違うときは信頼しない。
+`just codex-hooks-trust --check` は書き込まずに状態を表示する。
+Windows では、続けて `scripts/codex_sandbox_tools.py` を実行し、Codex の sandbox が mise の道具（rtk など）を実行できるようにする（`docs/runbook/windows-host.md`）。
+`just doctor` と `just status` も同じ検査を含む。
 
 ## sync が配らないもの
 

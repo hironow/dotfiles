@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install declared Pi packages and the dotfiles-owned Pi extensions and agents."""
 
+from dataclasses import dataclass
 import json
 import os
 import shutil
@@ -56,30 +57,58 @@ def vendored_body(text: str) -> str | None:
     return body if sentinel else None
 
 
+@dataclass(frozen=True)
+class Placed:
+    """What sits at an extension's destination (nothing, by default)."""
+
+    link_to_source: bool | None = None  # a symlink: does it point at our source?
+    text: str | None = None  # a regular file: its content
+
+
+def placement(source_text: str, placed: Placed, *, symlinks: bool) -> str:
+    """Functional core: what to do with one extension's destination.
+
+    "keep" (our symlink already), "place" (nothing there), "refresh" (a copy we
+    placed: its first line is the source's), "take-over" (exactly what the
+    upstream installer wrote, e.g. `rtk init`) or "refuse" (anyone else's).
+    """
+    if placed.link_to_source is not None:
+        return "keep" if placed.link_to_source else "refuse"
+    if placed.text is None:
+        return "place"
+    marker = source_text.splitlines()[0] + "\n"
+    if not symlinks and placed.text.startswith(marker):
+        return "refresh"
+    if placed.text == vendored_body(source_text):
+        return "take-over"
+    return "refuse"
+
+
+def _placed(destination: Path, source: Path) -> Placed:
+    if destination.is_symlink():
+        return Placed(link_to_source=destination.resolve() == source.resolve())
+    if destination.exists():
+        return Placed(text=destination.read_text(encoding="utf-8"))
+    return Placed()
+
+
 def _place_extension(agent_dir: Path, source: Path, *, symlinks: bool) -> None:
-    """Place one extension; its first line is the marker of a file we placed."""
-    text = source.read_text(encoding="utf-8")
-    marker = text.splitlines()[0] + "\n"
     destination = agent_dir / "extensions" / source.name
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.is_symlink():
-        if destination.resolve() == source.resolve():
-            return
-        raise RuntimeError(
-            f"refusing to replace unrelated extension symlink: {destination} (not applied)"
+    placed = _placed(destination, source)
+    action = placement(source.read_text(encoding="utf-8"), placed, symlinks=symlinks)
+    if action == "keep":
+        return
+    if action == "refuse":
+        what = (
+            "unrelated extension symlink"
+            if placed.link_to_source is not None
+            else "user extension"
         )
-    if destination.exists():
-        current = destination.read_text(encoding="utf-8")
-        if not symlinks and current.startswith(marker):
-            shutil.copyfile(source, destination)
-            return
-        # Exactly what the upstream installer wrote (e.g. `rtk init`): take it over
-        if current != vendored_body(text):
-            raise RuntimeError(
-                f"refusing to replace user extension: {destination} (not applied)"
-            )
+        raise RuntimeError(f"refusing to replace {what}: {destination} (not applied)")
+    if action == "take-over":
         destination.unlink()
-    if symlinks:
+    if symlinks and action != "refresh":
         destination.symlink_to(source)
     else:
         # Native Windows symlinks require developer mode or elevation.

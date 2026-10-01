@@ -34,8 +34,9 @@ deliberate edits. Full rationale: docs/agents/rtk.md.
    rtk answers `permissionDecision: "allow"` for everything it rewrites, which
    auto-approves most Bash traffic and suppresses the normal permission flow.
    rtk is an output optimiser, not an approver: installing it must not change
-   the permission posture. PERMISSION_DECISION_POLICY strips that field so the
-   rewrite (the token saving) survives while Claude Code still decides.
+   the permission posture. Under PERMISSION_DECISION_POLICY "strip" the
+   wrapper forwards the rewrite (the token saving) and nothing else, so
+   Claude Code still decides, whatever approving field a later rtk adds.
 
 FAILS OPEN everywhere: any error exits 0 with no stdout, leaving the command
 untouched. This is NOT a guard — block-prohibited-commands.py is, it runs
@@ -147,8 +148,16 @@ def main() -> int:
         return EXIT_ALLOW  # emit nothing: the plain command runs
 
     if PERMISSION_DECISION_POLICY == "strip":
-        hook_output.pop("permissionDecision", None)
-        hook_output.pop("permissionDecisionReason", None)
+        # Forward the rewrite and nothing else, so no approving field rtk
+        # emits, today's or a later release's, reaches Claude Code
+        if not isinstance(updated, dict):
+            return EXIT_ALLOW
+        answer = {
+            "hookSpecificOutput": {
+                "hookEventName": hook_output.get("hookEventName", "PreToolUse"),
+                "updatedInput": updated,
+            }
+        }
 
     print(json.dumps(answer))
     return EXIT_ALLOW

@@ -10,6 +10,14 @@ set -euo pipefail
 input="$(cat)"
 # Write uses content; Edit uses new_string; NotebookEdit uses new_source.
 content="$(printf '%s' "$input" | jq -r '.tool_input.content // .tool_input.new_string // .tool_input.new_source // empty')"
+# Codex's apply_patch: the whole patch is tool_input.command; its added lines
+# ("+...") are the new content (a removed line may be a leaked key going away).
+if [ -z "$content" ]; then
+  patch="$(printf '%s' "$input" | jq -r '.tool_input.command // empty')"
+  case "$patch" in
+    *'*** Begin Patch'*) content="$(printf '%s\n' "$patch" | sed -n 's/^+//p')" ;;
+  esac
+fi
 [ -z "$content" ] && exit 0
 
 # Common high-confidence token shapes (OpenAI / Anthropic / GitHub / AWS /

@@ -341,6 +341,50 @@ def test_permission_decision_is_stripped_by_default(
     assert "permissionDecisionReason" not in hso
 
 
+def test_only_the_rewrite_is_forwarded_whatever_rtk_adds(
+    tmp_path: Path, plain_repo: Path
+) -> None:
+    """A later rtk may approve some other way (the legacy top-level
+    `decision: approve`, say). The wrapper forwards the rewrite and nothing
+    else, so no field rtk adds can turn an optimiser into an approver."""
+    answer = {
+        "decision": "approve",
+        "hookSpecificOutput": {
+            **RTK_GIT_REWRITE["hookSpecificOutput"],
+            "additionalContext": "rtk says hi",
+        },
+    }
+    code, out = _run(
+        _payload("git status", plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=_rtk_stub(json.dumps(answer)),
+    )
+    assert code == EXIT_ALLOW
+    assert json.loads(out) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": {"command": "rtk git status"},
+        }
+    }
+
+
+def test_an_answer_without_a_rewrite_is_dropped(
+    tmp_path: Path, plain_repo: Path
+) -> None:
+    answer = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+        }
+    }
+    code, out = _run(
+        _payload("git status", plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=_rtk_stub(json.dumps(answer)),
+    )
+    assert (code, out) == (EXIT_ALLOW, "")
+
+
 def test_permission_decision_is_kept_when_policy_is_keep(
     tmp_path: Path, plain_repo: Path
 ) -> None:

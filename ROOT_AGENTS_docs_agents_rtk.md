@@ -4,22 +4,28 @@ Read this when running shell commands through `rtk`, checking its token
 savings, or debugging output that looks unexpectedly filtered.
 
 `rtk` is a token-optimized CLI proxy (cuts up to 90% of bash output) and is
-**mandatory base tooling** — there is no opt-out (ADR 0047). In Claude Code a
-hook rewrites commands transparently (e.g. `git status` → `rtk git status`),
-and in Pi rtk's own extension does the same for the bash tool
-(`config/pi/extensions/rtk.ts`, vendored and placed by
-`just pi-extensions-install`); other agents invoke it explicitly.
+**mandatory base tooling** — there is no opt-out (ADR 0047). In Claude Code
+and Codex a hook rewrites commands transparently (e.g. `git status` →
+`rtk git status`), and in Pi rtk's own extension does the same for the bash
+tool (`config/pi/extensions/rtk.ts`, vendored and placed by
+`just pi-extensions-install`; after an rtk upgrade, `just rtk-pi-refresh`);
+other agents invoke it explicitly.
 
 ## The hook is dotfiles-managed
 
 The PreToolUse hook is `hooks/rtk-hook-claude.sh`, declared in
 `.claude/settings.hooks.json` and distributed by `just sync-agents` like every
 other hook. It wraps `rtk hook claude` rather than replacing it, so rtk stays
-the source of truth for what gets rewritten.
+the source of truth for what gets rewritten. Codex gets
+`hooks/rtk-hook-codex.sh` from `.codex/hooks.json` the same way, passing
+`rtk hook codex`'s answer through unchanged (Codex grants no approval from it).
+`just doctor` shows whether Codex trusts the hooks (see `docs/agent-sync.md`
+in the dotfiles repo).
 
-**Never add `"command": "rtk hook claude"` to a `settings.json` by hand**, and
-if rtk's installer adds it on an upgrade, leave it — `just sync-agents` retires
-that block on every run (`RETIRED_HOOK_COMMANDS` in `scripts/sync_agents.py`).
+**Never add `"command": "rtk hook claude"` (or `rtk hook codex`) to a settings
+or hooks file by hand**, and if rtk's installer adds it on an upgrade, leave it —
+`just sync-agents` retires that block on every run (`RETIRED_HOOK_COMMAND` in
+`scripts/sync_agents.py`).
 Two rewriting hooks in one session means rtk wins and the carve-out below never
 fires.
 
@@ -38,10 +44,11 @@ write its own `RTK.md` into agent homes sync owns. Telemetry stays off through
 ## rtk does not approve commands
 
 rtk answers `permissionDecision: "allow"` for everything it rewrites, which
-would auto-approve most Bash traffic. The wrapper **strips** that field and
-forwards only the rewrite, so rewritten commands still go through the normal
-permission flow. rtk is an output optimiser, not an approver: installing it must
-not change the permission posture (ADR 0047).
+would auto-approve most Bash traffic. The wrapper **forwards only the
+rewrite** (`updatedInput`) and drops every other field, so rewritten commands
+still go through the normal permission flow, and an approving field a later rtk
+adds cannot slip through. rtk is an output optimiser, not an approver:
+installing it must not change the permission posture (ADR 0047).
 
 The wrapper's `RTK_HOOK_PERMISSION_DECISION` variable is a **test seam only** —
 never set it in managed settings (any `.claude/settings*.json` fragment, or
@@ -82,9 +89,25 @@ and split compound constructs into plain, separate commands.
 
 `block-prohibited-commands` resolves the real command behind the proxy, so
 `rtk pnpm install` is blocked exactly like `pnpm install`, including the
-run-anything subcommands (`rtk proxy …`, `rtk err …`, `rtk test …`,
-`rtk summary …`, `rtk smart …`). Prefixing a banned tool with `rtk` is not an
-escape hatch.
+run-anything subcommands (`rtk proxy …`, `rtk run …`, `rtk err …`,
+`rtk test …`, `rtk summary …`, `rtk smart …`). Prefixing a banned tool with
+`rtk` is not an escape hatch.
+
+## After an rtk upgrade
+
+mise tracks rtk's latest release, so upgrades arrive unannounced. `just doctor`
+(and `just status`) compares what dotfiles relies on with the installed rtk:
+
+- `rtk-pi-extension`: the vendored Pi extension came from an older rtk —
+  `just rtk-pi-refresh`.
+- `rtk-guard`: rtk gained a subcommand the command guard has not classified —
+  add it to `RTK_RUN_SUBCOMMANDS` if it runs a command it is given, else to
+  `RTK_FILTER_SUBCOMMANDS` (both in `hooks/block-prohibited-commands.py`).
+- `rtk-telemetry`: rtk itself reports telemetry on, or no longer mentions
+  `RTK_TELEMETRY_DISABLED` (`rtk telemetry status`).
+
+The hook blocks an rtk installer writes are retired by sync whatever their
+version or path, so `rtk init` drift needs no action.
 
 ## Meta commands (always call rtk directly)
 
