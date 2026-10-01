@@ -467,3 +467,20 @@ def test_the_jev_key_is_checked_without_showing_it(
     facts = _facts(jev_key=key)
     assert _levels(facts)["jev-key"] == level
     assert hint in _detail(facts, "jev-key")
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "answer"),
+    [
+        (0, "OK   codex-hooks - fine\n", "OK   codex-hooks - fine"),
+        (1, "WARN codex-hooks - untrusted\n", "WARN codex-hooks - untrusted"),
+        # nothing to say (the sandbox check off Windows)
+        (0, "", ""),
+        # died before printing (a traceback on stderr): doctor must not drop it
+        (1, "", None),
+    ],
+)
+def test_a_checker_that_dies_silently_counts_as_not_run(
+    returncode: int, stdout: str, answer: str | None
+) -> None:
+    assert check.checker_output(returncode, stdout) == answer

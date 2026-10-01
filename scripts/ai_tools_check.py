@@ -199,6 +199,13 @@ def _jev_key(facts: Facts) -> Line:
     return ("OK", "jev-key", f"from {shown}")
 
 
+def checker_output(returncode: int, stdout: str) -> str | None:
+    """A doctor-line checker's answer: its lines (exit 1 carries WARNs), or
+    None when it died before printing any, so the failure is not dropped."""
+    lines = stdout.strip()
+    return lines if lines or returncode == 0 else None
+
+
 def vendored_version(text: str) -> str | None:
     match = re.search(r"Vendored from rtk (\d+\.\d+\.\d+)", text)
     return match[1] if match else None
@@ -486,8 +493,9 @@ def report(facts: Facts) -> list[Line]:
 # ---- Imperative shell ----
 
 
-def _run(args: list[str], *, any_exit: bool = False) -> str | None:
-    """stdout of a command, or None when it cannot run (or fails, unless any_exit)."""
+def _run(args: list[str], *, checker: bool = False) -> str | None:
+    """stdout of a command, or None when it cannot run or fails (a checker's
+    exit 1 still carries its WARN lines: see checker_output)."""
     try:
         done = subprocess.run(
             args,
@@ -499,7 +507,9 @@ def _run(args: list[str], *, any_exit: bool = False) -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return done.stdout.strip() if any_exit or done.returncode == 0 else None
+    if checker:
+        return checker_output(done.returncode, done.stdout)
+    return done.stdout.strip() if done.returncode == 0 else None
 
 
 def _all_on_path(name: str) -> tuple[str, ...]:
@@ -625,7 +635,7 @@ def gather(home: Path) -> Facts:
         codex_checks = {
             script: _run(
                 [sys.executable, str(ROOT / "scripts" / script), "--check"],
-                any_exit=True,  # exit 1 carries the WARN lines
+                checker=True,
             )
             for script in CODEX_CHECKS
         }
