@@ -17,6 +17,8 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -92,8 +94,14 @@ def _code_lines_with(justfile: str, pattern: str) -> list[tuple[int, str]]:
     return hits
 
 
-def test_justfile_ruff_uses_frozen_only_group_lint() -> None:
-    justfile = (REPO / "justfile").read_text(encoding="utf-8")
+# The root gate, and the scaffold a new repo starts from (it must already work
+# with the lint group the docs below tell that repo to create)
+JUSTFILES = ["justfile", "templates/agent-baseline/justfile"]
+
+
+@pytest.mark.parametrize("rel", JUSTFILES)
+def test_justfile_ruff_uses_frozen_only_group_lint(rel: str) -> None:
+    justfile = (REPO / rel).read_text(encoding="utf-8")
     invocations = _code_lines_with(justfile, r"\bruff\b")
     uv_ruff = [
         (n, line)
@@ -103,13 +111,14 @@ def test_justfile_ruff_uses_frozen_only_group_lint() -> None:
     assert uv_ruff, "expected uv-run ruff invocations in the justfile"
     for n, line in uv_ruff:
         assert "--only-group lint" in line, (
-            f"justfile:{n}: ruff must use --only-group lint: {line}"
+            f"{rel}:{n}: ruff must use --only-group lint: {line}"
         )
-        assert "uvx " not in line, f"justfile:{n}: ruff must not use uvx: {line}"
+        assert "uvx " not in line, f"{rel}:{n}: ruff must not use uvx: {line}"
 
 
-def test_justfile_ty_uses_group_lint_not_only_group() -> None:
-    justfile = (REPO / "justfile").read_text(encoding="utf-8")
+@pytest.mark.parametrize("rel", JUSTFILES)
+def test_justfile_ty_uses_group_lint_not_only_group(rel: str) -> None:
+    justfile = (REPO / rel).read_text(encoding="utf-8")
     invocations = [
         (n, line)
         for n, line in _code_lines_with(justfile, r"\bty check\b")
@@ -118,10 +127,10 @@ def test_justfile_ty_uses_group_lint_not_only_group() -> None:
     assert invocations, "expected ty check invocations in the justfile"
     for n, line in invocations:
         assert "--group lint" in line, (
-            f"justfile:{n}: ty must use --group lint so imports resolve: {line}"
+            f"{rel}:{n}: ty must use --group lint so imports resolve: {line}"
         )
         assert "--only-group" not in line, (
-            f"justfile:{n}: ty must not use --only-group (it hides project deps): {line}"
+            f"{rel}:{n}: ty must not use --only-group (it hides project deps): {line}"
         )
 
 
@@ -140,3 +149,19 @@ def test_ty_is_pinned_exactly_and_to_one_version_everywhere() -> None:
 
 def test_mise_ruff_matches_the_gate_pin() -> None:
     assert _mise_pin("ruff") == _root_lint_pin("ruff")
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "ROOT_AGENTS_docs_agents_python-tooling.md",
+        "templates/agent-baseline/README-agents-setup.md",
+    ],
+)
+def test_the_docs_put_ruff_and_ty_in_the_lint_group(rel: str) -> None:
+    """The recipes run `--only-group lint` / `--group lint`, so the setup step
+    must create that group (`uv add --dev` would leave the gate with no ruff),
+    and pin exactly without copying a version number in."""
+    text = (REPO / rel).read_text(encoding="utf-8")
+    assert "uv add --group lint --bounds exact ruff ty" in text
+    assert "uv add --dev ruff ty" not in text

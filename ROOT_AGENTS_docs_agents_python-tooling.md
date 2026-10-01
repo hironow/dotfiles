@@ -9,9 +9,10 @@ Read this when writing or changing Python. Package management is `uv` (AGENTS.md
 - **ty** — static type checking (https://github.com/astral-sh/ty; replaces
   mypy / pyright)
 
-Every Python project uses all three, pinned as dev dependencies
-(`uv add --dev ruff ty`) and wired into `just fmt` / `just lint`. Do not
-introduce another package manager, linter, formatter, or type checker.
+Every Python project uses all three, with ruff and ty pinned in a `lint`
+dependency group (`uv add --group lint --bounds exact ruff ty`) and wired into
+`just fmt` / `just lint`. Do not introduce another package manager,
+linter, formatter, or type checker.
 Ruff and ty are Class 1 (docs/agents/dependency-policy.md): pin them
 **exactly** (one version, aggressive adoption), pair the seven-day uv
 cooldown with `exclude-newer-package = { ruff = false, ty = false }` so
