@@ -241,10 +241,65 @@ def _companion_choice(command: str) -> tuple[str, str] | None:
     return values["model"], values["effort"]
 
 
+def _tool_result_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            str(part.get("text", "")) for part in content if isinstance(part, dict)
+        )
+    return ""
+
+
+def codex_agent_missing(stream_lines: list[str]) -> bool:
+    """Claude Code answered the codex-rescue call itself with "not found": the
+    Codex plugin is not installed here, so the codex path cannot be checked."""
+    calls: set[str] = set()
+    for line in stream_lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        message = event.get("message") if isinstance(event, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict):
+                continue
+            tool_input = block.get("input")
+            if (
+                block.get("type") == "tool_use"
+                and block.get("name") in {"Agent", "Task"}
+                and isinstance(tool_input, dict)
+                and str(tool_input.get("subagent_type", "")).endswith("codex-rescue")
+            ):
+                calls.add(str(block.get("id")))
+            elif (
+                block.get("type") == "tool_result"
+                and block.get("tool_use_id") in calls
+                and block.get("is_error") is True
+                and re.search(
+                    r"Agent type\b.*\bnot found",
+                    _tool_result_text(block.get("content")),
+                    re.IGNORECASE,
+                )
+            ):
+                return True
+    return False
+
+
 def _analyze_codex(
-    hook_records: list[dict], subagents: list[dict], blocked: bool = False
+    hook_records: list[dict],
+    subagents: list[dict],
+    blocked: bool = False,
+    plugin_missing: bool = False,
 ) -> Report:
     """Did Jev's model and effort reach the Codex plugin's companion command?"""
+    if plugin_missing:
+        return Report(
+            "blocked",
+            "the Codex plugin (codex:codex-rescue) is not installed in Claude Code, "
+            "so the codex path cannot be checked here",
+        )
     records = [r for r in hook_records if r.get("kind") == "codex-rescue"]
     if not records:
         return Report(
@@ -306,10 +361,12 @@ def analyze(
         hook_records,
         subagents,
         blocked=has_provider_limit(stream_lines) or report.status == "blocked",
+        plugin_missing=codex_agent_missing(stream_lines),
     )
     worse = max((report, codex), key=lambda r: SEVERITY[r.status])
-    if report.status == codex.status == "pass":
-        worse = Report("pass", f"{report.reason}; {codex.reason}")
+    if report.status == "pass":
+        # Say what the workers proved even when the codex half falls short
+        worse = Report(worse.status, f"{report.reason}; {codex.reason}")
     return Report(worse.status, worse.reason, [*report.evidence, *codex.evidence])
 
 

@@ -585,3 +585,82 @@ def test_the_claude_stream_is_decoded_as_utf8_on_every_platform(
     with pytest.raises(Stop):
         verify.main()
     assert seen["encoding"] == "utf-8"
+
+
+def codex_call_stream(result: object, *, tool_use_id: str = "call-3") -> list[str]:
+    """The codex-rescue Agent call and the tool result Claude Code sent back."""
+    return [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "call-3",
+                            "name": "Agent",
+                            "input": {
+                                "subagent_type": "codex:codex-rescue",
+                                "prompt": "--model gpt-6-astra --effort low fix it",
+                            },
+                        }
+                    ]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "is_error": True,
+                            "content": result,
+                        }
+                    ]
+                },
+            }
+        ),
+    ]
+
+
+NOT_FOUND = (
+    "<tool_use_error>Agent type 'codex:codex-rescue' not found. "
+    "Available agents: general-purpose, worker-medium, worker-high</tool_use_error>"
+)
+
+
+@pytest.mark.parametrize("result", [NOT_FOUND, [{"type": "text", "text": NOT_FOUND}]])
+def test_a_missing_codex_plugin_is_blocked_not_a_failure(result: object) -> None:
+    # Without the Codex plugin the codex path cannot be checked on this machine;
+    # the workers still prove their part
+    report = verify.analyze(
+        codex_call_stream(result), [RECORD, CODEX_RECORD], [OK], "", expect_codex=True
+    )
+    assert report.status == "blocked"
+    assert "plugin" in report.reason
+    assert any("worker" in line for line in report.evidence)
+
+
+def test_not_found_from_another_call_does_not_excuse_the_codex_path() -> None:
+    report = verify.analyze(
+        codex_call_stream(NOT_FOUND, tool_use_id="call-9"),
+        [RECORD, CODEX_RECORD],
+        [OK],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "fail"
+
+
+def test_another_error_from_the_codex_call_is_still_a_failure() -> None:
+    report = verify.analyze(
+        codex_call_stream("<tool_use_error>Invalid tool parameters</tool_use_error>"),
+        [RECORD, CODEX_RECORD],
+        [OK],
+        "",
+        expect_codex=True,
+    )
+    assert report.status == "fail"

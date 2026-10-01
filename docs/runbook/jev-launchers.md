@@ -182,7 +182,7 @@ just jev-claude-verify
 | --- | --- | --- |
 | `PASS` | 0 | 名前なしの worker の定義と選んだ effort、Codex の呼び出し引数を確認できた（確認できたのは、実行した機体についてだけ） |
 | `FAIL` | 1 | スキーマの拒否、worker の定義や effort の不一致を確認した（利用上限が同時に出ても、こちらを優先する） |
-| `BLOCKED` | 2 | 提供元のエラーイベントで利用上限を確認した、または CLI が未ログインで終了した（結果イベントが `Not logged in`）。リセット後かログイン後にやり直す。会話の中の引用は対象外 |
+| `BLOCKED` | 2 | 提供元のエラーイベントで利用上限を確認した、または CLI が未ログインで終了した（結果イベントが `Not logged in`）。リセット後かログイン後にやり直す。会話の中の引用は対象外。Codex のプラグインが入っていない機体では、`codex:codex-rescue` の呼び出しに Claude Code が `not found` を返すので、Codex の経路だけ確かめられずにこれになる（worker の結果は理由に併記する） |
 | `PARTIAL` | 3 | worker の effort の証拠が足りないか、親と同じ `medium` で効果を区別できない。`/tasks` でも確かめる |
 
 一致した名前なしの worker には、それぞれ effort の記録が要る。
