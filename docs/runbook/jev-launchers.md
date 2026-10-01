@@ -13,27 +13,33 @@ Pi の拡張とその依存は npm の 7 日の隔離を受けない（`just har
 更新が `ETARGET` で止まる機体は、`just harden-env` を実行してからやり直す。
 機体ごとに拡張の版がずれると、同じ設定でも片方だけ失敗することがある。
 
-TypeSafe の API キーは、`TYPESAFE_API_KEY=...` と書いた `~/.env` に置く。
+TypeSafe の API キーは、`TYPESAFE_API_KEY=...` と書いた `~/.config/jev/env` に置く。
 起動のたびに読むので、書き換えてもシェルを開き直す必要はない。
 環境変数の `TYPESAFE_API_KEY`（または `TYPESAFE_AI_API_KEY`）があれば、そちらを優先する。
-worker のフックと `codex-jev` は、キーの環境変数を除いた環境で動くので、`~/.env` からしかキーを読めない。
+worker のフックと `codex-jev` は、キーの環境変数を除いた環境で動くので、このファイルからしかキーを読めない。
+`~/.config/jev/env` がない機体では、これまでの `~/.env` を読む（ファイルがあるのに読めないときは、`~/.env` に戻らない）。
 
-他人が読める `~/.env` からは読まない。
-macOS と Linux では、所有者だけが読み書きできる 0600 にする（`chmod 600 ~/.env`）。
-Windows では、所有者が自分で、自分、SYSTEM、Administrators のほかにアクセス許可がないことを求める。
-ホーム直下に作ったファイルは、既定の権限で満たすことが多い。
-満たさないときは、`icacls` で許可の一覧を見て、継承を外して自分だけに許可し、残ったほかのアカウントの明示的な許可を外す。
+置き場所が `~/.config` なのは、Codex の Windows のサンドボックスのためである。
+サンドボックスは Codex を使うたびに、ホーム直下のほぼすべての項目へ `CodexSandboxUsers` の読み取りの許可を付け直す。
+除外は `.ssh`、`.aws`、`.config` などの固定の一覧だけで、`~/.env` は入っていない。
+サンドボックスの中ではモデルが決めたコマンドが動くので、この許可のあるキーのファイルは、Jev は読まない。
 
-```powershell
-icacls "$HOME\.env"                                             # 許可の一覧を見る
-icacls "$HOME\.env" /inheritance:r /grant:r "${env:USERNAME}:F"  # 継承を外して自分だけに許可する
-icacls "$HOME\.env" /remove:g "<一覧に残ったアカウント>"            # 例: <PC 名>\CodexSandboxUsers
+```sh
+mkdir -p ~/.config/jev
+grep '^TYPESAFE_API_KEY=' ~/.env > ~/.config/jev/env   # ~/.env から移す場合
+chmod 600 ~/.config/jev/env                              # macOS と Linux
 ```
 
-Codex の Windows のサンドボックスは、ホームのファイルに `CodexSandboxUsers` の読み取りの許可を付けることがある。
-サンドボックスの中ではモデルが決めたコマンドが動くので、この許可を残したキーのファイルは、Jev は読まない。
-`j-cc`、`j-pi`、`codex-jev` は Codex を起動する前にキーを読むので、この許可を外しても Codex の worker は動く。
-許可が付け直されたときは、Jev が起動時に `~/.env must be owned by you` と表示するので、同じ手順で外す。
+他人が読めるキーのファイルからは読まない。
+macOS と Linux では、所有者だけが読み書きできる 0600 にする。
+Windows では、所有者が自分で、自分、SYSTEM、Administrators のほかにアクセス許可がないことを求める。
+`~/.config` の下に作ったファイルは、既定の権限で満たすことが多い。
+満たさないときは、Jev が起動時に `~/.config/jev/env must be owned by you` と表示するので、`icacls` で許可の一覧を見て、継承を外して自分だけに許可する。
+
+```powershell
+icacls "$HOME\.config\jev\env"                                             # 許可の一覧を見る
+icacls "$HOME\.config\jev\env" /inheritance:r /grant:r "${env:USERNAME}:F"  # 継承を外して自分だけに許可する
+```
 
 キーはリポジトリに置かない。
 依頼文は Jev に送られるので、パスワードなどを含めない。

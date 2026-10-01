@@ -453,3 +453,55 @@ def test_stdio_scripts_switch_to_utf8_before_reading(name: str) -> None:
         .split('if __name__ == "__main__":', 1)[1]
     )
     assert "use_utf8_stdio()" in main_block
+
+
+def _key_files(
+    monkeypatch: pytest.MonkeyPatch,
+    home: Path,
+    *,
+    config: str | None,
+    legacy: str | None,
+) -> Path:
+    """Lay out ~/.config/jev/env and ~/.env under a fake home without a key in env."""
+    monkeypatch.setattr(launcher.Path, "home", lambda: home)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_AI_API_KEY", raising=False)
+    config_file = home / ".config" / "jev" / "env"
+    if config is not None:
+        config_file.parent.mkdir(parents=True)
+        config_file.write_text(f"TYPESAFE_API_KEY={config}\n", encoding="utf-8")
+    if legacy is not None:
+        (home / ".env").write_text(f"TYPESAFE_API_KEY={legacy}\n", encoding="utf-8")
+    return config_file
+
+
+def test_the_key_file_under_config_wins(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Codex's Windows sandbox grants itself read access to every entry directly
+    # under the profile except a fixed list that includes .config, so the key
+    # lives there; ~/.env stays readable for machines that have not moved it
+    _key_files(monkeypatch, tmp_path, config="new", legacy="old")
+    monkeypatch.setattr(launcher, "env_file_is_private", lambda _path: True)
+    assert launcher.jev_key() == "new"
+
+
+def test_home_env_is_read_while_the_config_file_does_not_exist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _key_files(monkeypatch, tmp_path, config=None, legacy="old")
+    monkeypatch.setattr(launcher, "env_file_is_private", lambda _path: True)
+    assert launcher.jev_key() == "old"
+
+
+def test_a_shared_config_key_file_is_refused_without_falling_back(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_file = _key_files(monkeypatch, tmp_path, config="new", legacy="old")
+    monkeypatch.setattr(
+        launcher, "env_file_is_private", lambda path: path != config_file
+    )
+    assert launcher.jev_key() is None
+    assert "~/.config/jev/env" in capsys.readouterr().err

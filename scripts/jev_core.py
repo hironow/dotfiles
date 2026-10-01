@@ -312,7 +312,7 @@ def plan_codex_rewrite(
     return {**tool_input, "prompt": f"--model {model} --effort {effort} {prompt}"}
 
 
-# Who may hold access to ~/.env on Windows besides the user: SYSTEM and the
+# Who may hold access to the key file on Windows besides the user: SYSTEM and the
 # local Administrators group, which every file in a default profile grants.
 WINDOWS_TRUSTED_SIDS = frozenset({"S-1-5-18", "S-1-5-32-544"})
 

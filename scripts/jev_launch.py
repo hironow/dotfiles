@@ -41,8 +41,11 @@ _WINDOWS_ACL_SCRIPT = (
 )
 
 
+KEY_FILES = (Path(".config/jev/env"), Path(".env"))  # relative to home, preferred first
+
+
 def env_file_is_private(path: Path) -> bool:
-    """~/.env may hold the key only if no one else can read or rewrite it."""
+    """A key file may hold the key only if no one else can read or rewrite it."""
     if sys.platform == "win32":
         try:
             result = subprocess.run(
@@ -88,19 +91,27 @@ def jev_key() -> str | None:
     # source for children whose environment is scrubbed. Do not source it: arbitrary
     # shell content must never run during routing.
     try:
-        path = Path.home() / ".env"
+        home = Path.home()
     except (RuntimeError, OSError):  # a scrubbed environment may not name a home
         return None
-    if not path.is_file():
+    # ~/.config/jev/env first: Codex's Windows sandbox grants itself read access to
+    # every entry directly under the profile except a fixed list that includes
+    # .config. ~/.env is read only while the new file does not exist.
+    for name in KEY_FILES:
+        path = home / name
+        if path.is_file():
+            break
+    else:
         return None
     if not env_file_is_private(path):
+        shown = f"~/{name.as_posix()}"
         rule = (
-            "no ACL entry for other accounts (list them: icacls ~/.env)"
+            f"no ACL entry for other accounts (list them: icacls {shown})"
             if sys.platform == "win32"
             else "mode 0600"
         )
         print(
-            f"Jev: ~/.env must be owned by you and {rule}; "
+            f"Jev: {shown} must be owned by you and {rule}; "
             "see docs/runbook/jev-launchers.md",
             file=sys.stderr,
         )

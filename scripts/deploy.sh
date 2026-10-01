@@ -119,7 +119,7 @@ case "$(uname -s)" in
     fi
     # Opt-in Jev commands (j-cc, j-pi) for the next PowerShell session. Keep the
     # key out of this profile; the operator supplies TYPESAFE_API_KEY as an env
-    # var (or a ~/.env file). The block is rewritten on every deploy, so a rename
+    # var (or ~/.config/jev/env). The block is rewritten on every deploy, so a rename
     # reaches profiles that already carry it.
     ps_jev_marker_begin="# >>> dotfiles managed block: Jev launchers >>>"
     if grep -qF "$ps_jev_marker_begin" "$ps_profile"; then
