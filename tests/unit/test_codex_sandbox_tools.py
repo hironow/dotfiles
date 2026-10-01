@@ -117,3 +117,13 @@ def test_a_relocated_mise_dir_is_still_fixed(
     assert sandbox.main([]) == 0
     assert granted == [sandbox.fix_command(str(mise))]
     assert "can run mise tools" in capsys.readouterr().out
+
+
+def test_git_in_the_sandbox_is_explained_not_changed() -> None:
+    # The sandbox runs as another user, so git stops at its ownership check;
+    # loosening safe.directory would let sandboxed code plant a .git/config
+    # that the owner's git later runs, so doctor only explains (an OK line)
+    level, detail = sandbox.git_message()
+    assert level == "OK"
+    assert "safe.directory" in detail
+    assert "without the sandbox" in detail

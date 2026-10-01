@@ -60,6 +60,17 @@ def fix_command(directory: str) -> list[str]:
     return ["icacls", directory, "/grant", f"{SANDBOX_GROUP}:(OI)(CI)(RX)", "/Q"]
 
 
+def git_message() -> tuple[str, str]:
+    """Why git stops inside the sandbox, and what dotfiles leaves to the owner."""
+    return (
+        "OK",
+        "git in the sandbox runs as another user and stops at safe.directory; "
+        "add a repo to it by hand only if you accept that sandboxed code may "
+        "then plant a .git/config your own git runs, or run Codex without the "
+        "sandbox (docs/runbook/windows-host.md)",
+    )
+
+
 def secrets_message(env_acl: str) -> tuple[str, str]:
     """From the icacls output for ~/.env."""
     if SANDBOX_GROUP in env_acl:
@@ -107,6 +118,9 @@ def main(argv: Sequence[str]) -> int:
             print(f"OK   codex-sandbox - granted {SANDBOX_GROUP} read on {directory}")
     level, detail = message(current, str(directory))
     print(f"{level:<4} codex-sandbox - {detail}")
+    if current != "absent":
+        level, detail = git_message()
+        print(f"{level:<4} codex-sandbox-git - {detail}")
     return 1 if current == "blocked" or exposed else 0
 
 

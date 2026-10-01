@@ -66,6 +66,9 @@ Codex は `~/.config` を読ませないので、秘密はその下に移す（J
 
 sandbox のユーザーは repository の所有者と違うので、git は所有者の検査（`safe.directory`）で止まる。
 rtk とは関係がなく、素の `git status` でも同じように止まる。
+dotfiles は `safe.directory` を変えない。
+緩めると、sandbox の中のコードが仕込んだ `.git/config`（`core.fsmonitor` など）を、sandbox の外で動く自分の git が実行してしまうからである。
+sandbox の中で git が要る repository は、そのリスクを受け入れるときだけ手で `safe.directory` に足すか、Codex を sandbox なしで動かす（`just doctor` の `codex-sandbox-git` が同じことを表示する）。
 
 ## Claude Code の Git Bash
 
