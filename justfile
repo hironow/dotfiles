@@ -916,11 +916,23 @@ pre-commit:
 #
 # The forbidden-token list lives OUTSIDE the repo
 # (~/.config/dotfiles/forbidden-tokens, mode 0600, or $DOTFILES_FORBIDDEN_TOKENS):
-# tracking it would publish the very strings it protects. With no list the
-# checker is a no-op, so these recipes are safe in CI and on a fresh clone.
+# tracking it would publish the very strings it protects.
+#
+# The two recipes `just ci` runs pass FORBIDDEN_TOKEN_GATE, which makes a missing
+# or empty list a FAILURE rather than a skip: a list that moved, or a typo in the
+# env var, would otherwise leave the gate printing "OK" while scanning nothing.
+# `--min-tokens` is the floor underneath that -- it is what notices an entry being
+# dropped, including the one naming where this stack's work moved to. Raise it
+# when the list grows; lowering it is a decision, not a fix. Nothing in GitHub
+# Actions runs `just ci` (the workflows call pytest and tofu directly), so this
+# fails closed for the operator without breaking CI or a fresh clone -- a plain
+# `python3 scripts/check_forbidden_tokens.py tree` still skips with no list.
+#
 # Called as bare `python3` (stdlib-only script, and `uv run` in a commit hook
 # can regenerate the root uv.lock mid-commit — a known trap here).
 # ------------------------------
+
+FORBIDDEN_TOKEN_GATE := "--require-list --min-tokens 11"
 
 # Scan the staged diff, staged paths and unreviewable blobs (what pre-commit runs)
 [group('Lint')]
@@ -933,7 +945,15 @@ check-forbidden-tokens:
 # merge base; override with `just check-forbidden-tokens-branch --base REF`.
 [group('Lint')]
 check-forbidden-tokens-branch *args:
-    python3 scripts/check_forbidden_tokens.py branch {{ args }}
+    python3 scripts/check_forbidden_tokens.py branch {{ FORBIDDEN_TOKEN_GATE }} {{ args }}
+
+# The staged and branch scans read diffs, so neither can ever see a token that is
+# already committed -- this is the leg that keeps the tracked tree clean once it
+# has been cleaned.
+# Scan EVERY tracked blob and pathname at HEAD (about a second on this repo)
+[group('Lint')]
+check-forbidden-tokens-tree *args:
+    python3 scripts/check_forbidden_tokens.py tree {{ FORBIDDEN_TOKEN_GATE }} {{ args }}
 
 # Scan a PR body (or any file) in full before `gh pr create --body-file`
 [group('Lint')]
@@ -942,7 +962,7 @@ check-pr-body file:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac test-iac-exe instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac test-iac-exe instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch check-forbidden-tokens-tree
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
