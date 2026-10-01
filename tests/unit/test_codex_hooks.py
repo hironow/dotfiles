@@ -51,6 +51,7 @@ def test_the_codex_target_receives_codex_hooks() -> None:
         (True, True, "hooks/block-secrets.sh"),
         (True, False, "hooks/rtk-hook-claude.py"),
         (False, True, "hooks/rtk-hook-codex.sh"),
+        (False, True, "hooks/guard-codex.sh"),
         (True, True, "docs/agents/rtk.md"),
     ],
 )
@@ -71,7 +72,8 @@ def test_codex_commands_render_into_the_codex_home() -> None:
         directory=cast(Path, PureWindowsPath(r"C:\Users\x\.codex")), name="Codex"
     )
     command = 'bash "$CODEX_HOME/hooks/rtk-hook-codex.sh"'
-    # Codex runs hooks through cmd.exe on Windows: Git's sh, never System32 bash
+    # Codex runs hooks through the session shell (pwsh on Windows), which
+    # resolves bare bash to System32's WSL launcher: Git's sh instead
     assert _render_hook_command(command, windows, system="Windows") == (
         'sh "C:/Users/x/.codex/hooks/rtk-hook-codex.sh"'
     )
@@ -89,14 +91,25 @@ def test_the_codex_fragment_runs_the_guards_and_rtk() -> None:
         for block in blocks
         for hook in block["hooks"]
     }
+    # the exit-2 guards go through the deny adapter (test_codex_guard_adapter)
+    guarded = 'bash "$CODEX_HOME/hooks/guard-codex.sh" '
     for script in ("block-prohibited-files.sh", "block-secrets.sh"):
         assert (
             "PreToolUse",
             "Write|Edit|NotebookEdit",
-            f'bash "$CODEX_HOME/hooks/{script}"',
+            guarded + script,
         ) in commands
-    for script in ("block-prohibited-commands.sh", "rtk-hook-codex.sh"):
-        assert ("PreToolUse", "Bash", f'bash "$CODEX_HOME/hooks/{script}"') in commands
+    assert (
+        "PreToolUse",
+        "Bash",
+        guarded + "block-prohibited-commands.sh",
+    ) in commands
+    # rtk answers with JSON on stdout already
+    assert (
+        "PreToolUse",
+        "Bash",
+        'bash "$CODEX_HOME/hooks/rtk-hook-codex.sh"',
+    ) in commands
 
 
 def test_merging_keeps_foreign_blocks_and_retires_rtks_own(tmp_path: Path) -> None:

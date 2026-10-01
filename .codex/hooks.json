@@ -4,14 +4,14 @@
       {
         "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/block-prohibited-files.sh\"" },
-          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/block-secrets.sh\"" }
+          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/guard-codex.sh\" block-prohibited-files.sh" },
+          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/guard-codex.sh\" block-secrets.sh" }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/block-prohibited-commands.sh\"" }
+          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/guard-codex.sh\" block-prohibited-commands.sh" }
         ]
       },
       {

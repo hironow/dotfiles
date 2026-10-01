@@ -66,6 +66,13 @@ sync は `.codex/hooks.json` の断片を、Claude の settings.json と同じ�
 hook のファイルは名前で振り分ける。
 名前に `-claude.` を含むファイルは Claude 系だけに、`-codex.` を含むファイルは Codex だけに配る。
 
+exit 2 で止める guard（`block-*.sh`）は、Codex では `guard-codex.sh <guard>` を通して呼ぶ。
+Codex は hook をセッションの shell で起動し、Windows ではそれが `pwsh -Command` になる。
+pwsh は 0 以外の exit をすべて 1 として返すので、guard の exit 2 は Codex に失敗した hook として届き、失敗した hook は素通しになる。
+`guard-codex.sh` は guard の exit 2 と stderr を、stdout の `permissionDecision: "deny"` に変える。
+stdout はどの shell も通すので、OS を問わず block が効く。
+guard の側は Claude の exit code の約束のまま変えない。
+
 Codex は、hash を信頼済みとして記録した hook だけを実行する（`~/.codex/config.toml` の `hooks.state`）。
 sync は `~/.codex` に配ったあと `scripts/codex_hooks_trust.py` を実行し、Codex の app-server（`hooks/list` と `config/batchWrite`）を通して、断片から作った hook だけを信頼済みにする。
 配った hook のファイルが正本と 1 byte でも違うときは信頼しない。
