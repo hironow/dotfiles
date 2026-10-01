@@ -5,9 +5,8 @@ package only when it is missing and deliberately leaves healthy ones alone.
 Without an explicit update path, each machine kept whatever version it first
 installed: a Windows host stayed on a pi-background-tasks release that aborts
 every Sonnet 5.5 session once the anthropic provider is logged in, while WSL
-had moved on. `pi update --extensions` goes through npm, so ~/.npmrc's
-seven-day quarantine (`just harden-env`) still gates the packages it does not
-exempt.
+had moved on. `pi update --extensions` goes through npm with Pi's package
+prefix, where `just harden-env` lifts the seven-day quarantine.
 """
 
 from __future__ import annotations
@@ -35,8 +34,7 @@ def test_update_all_updates_the_pi_extensions(recipe: str) -> None:
     assert "pi update --extensions" in body
     # a machine without Pi skips the step instead of failing the whole update
     assert "command -v pi" in body
-    # npm's quarantine can refuse a fresh transitive dependency of an exempt
-    # extension (ETARGET); that is the quarantine working, so warn and go on
-    # with the remaining updates instead of aborting them
+    # npm can still fail (offline, or ETARGET on a machine that has not re-run
+    # harden-env); warn and go on with the remaining updates
     step = next(line for line in body.splitlines() if "pi update --extensions" in line)
     assert "pi update --extensions ||" in step

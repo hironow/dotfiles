@@ -9,6 +9,8 @@ Jev の答えから、セッションと worker の Sonnet 5.5 の思考レベ�
 `just deploy` を実行し、新しいシェルを開く。
 Pi の拡張が未導入と表示された場合は、`just pi-extensions-install` を実行する。
 `just deploy` は導入済みの Pi の拡張を更新しないので、更新は `just update-all`（中で `pi update --extensions`）で行う。
+Pi の拡張とその依存は npm の 7 日の隔離を受けない（`just harden-env` が `~/.pi/agent/npm/.npmrc` に `min-release-age=0` を書く）。
+更新が `ETARGET` で止まる機体は、`just harden-env` を実行してからやり直す。
 機体ごとに拡張の版がずれると、同じ設定でも片方だけ失敗することがある。
 
 TypeSafe の API キーは、`TYPESAFE_API_KEY=...` と書いた `~/.env` に置く。

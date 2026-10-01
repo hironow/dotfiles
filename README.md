@@ -90,6 +90,7 @@ just doctor       # 確認: zsh と PATH-windows が OK、docker に届く、道
 ```
 
 `just harden-env` は `~/.npmrc` と `~/.config/uv/uv.toml` を書き、個人の `exclude-newer` を設定する。
+Pi の拡張とその依存は隔離の対象外にする（Pi が npm を走らせる `~/.pi/agent/npm` に `min-release-age=0` の `.npmrc` を置く）。
 コミットする lock は `just relock-uv` で期間指定なしに保つ（ADR 0028）。
 
 ### Windows（native）
