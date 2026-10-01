@@ -146,6 +146,8 @@ Astra は Sol より単価がはるかに高いので、確信度が高いとき
 依頼文にすでに `--model` か `--effort` があれば、そちらを優先して何もしない。
 `--effort` は、プラグインが受け付ける `xhigh` までに収まる。
 この経路には、Claude Code に Codex のプラグイン（`codex:codex-rescue`）が入っている必要がある。
+`just deploy` が、存在するすべての Claude の home にタグで固定した版を入れる（宣言は `dump/harness/claude-plugins.json`、ADR 0048）。
+入っていない home は `just doctor` の `claude-plugins` が知らせるので、`just claude-plugins-install` で入れる。
 
 ### Pi から
 

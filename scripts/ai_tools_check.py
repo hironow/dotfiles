@@ -53,6 +53,7 @@ CODEX_FILES = ("hooks.json", "config.toml")
 # for `--check`, and the line shown when that tool is missing
 CHECKERS = {
     "codex": ("codex-hooks", ("codex_hooks_trust.py", "codex_sandbox_tools.py")),
+    "claude": ("claude-plugins", ("claude_plugins.py",)),
 }
 
 Line = tuple[str, str, str]  # (level, name, detail)
@@ -484,7 +485,7 @@ def _run(args: list[str], *, checker: bool = False) -> str | None:
             capture_output=True,
             encoding="utf-8",
             errors="replace",
-            timeout=60,
+            timeout=300 if checker else 60,  # a checker may query five homes
             check=False,
         )
     except (OSError, subprocess.SubprocessError):

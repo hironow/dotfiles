@@ -111,6 +111,10 @@ def test_toplevel_keys_upserted_and_unrelated_preserved(
             "theme": "dark-daltonized",
             "language": "japanese",
             "enabledPlugins": {"x@y": True},
+            # written by `claude plugin marketplace add` (scripts/claude_plugins.py)
+            "extraKnownMarketplaces": {
+                "y": {"source": {"source": "github", "repo": "o/r"}}
+            },
             "statusLine": {"type": "command", "command": "x"},
         },
     )
@@ -128,6 +132,9 @@ def test_toplevel_keys_upserted_and_unrelated_preserved(
     assert result["theme"] == "dark-daltonized"
     assert result["language"] == "japanese"
     assert result["enabledPlugins"] == {"x@y": True}
+    assert result["extraKnownMarketplaces"] == {
+        "y": {"source": {"source": "github", "repo": "o/r"}}
+    }
     assert result["statusLine"] == {"type": "command", "command": "x"}
 
 
