@@ -117,8 +117,9 @@ if [ -n "${APPDATA:-}" ] && [ -z "${HARDEN_ENV_SKIP_WIN_PATH:-}" ] \
     if [[ "${_persisted,,}" == *"${_win_dir,,}"* ]]; then
       echo "  - ${_win_dir}: already on persisted PATH"
     else
-      _powershell -NoProfile -Command \
-        "[Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';${_win_dir}'), 'User')"
+      # The directory travels as data in the environment, never in the script text
+      HARDEN_ENV_DIR="$_win_dir" _powershell -NoProfile -Command \
+        "[Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';' + \$env:HARDEN_ENV_DIR), 'User')"
       echo "  - ${_win_dir}: appended to persisted User PATH (open a new session to pick it up)"
     fi
   done
