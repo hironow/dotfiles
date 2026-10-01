@@ -50,6 +50,11 @@ case "$(uname -s)" in
 esac
 echo "==> Remove dotfiles in your home directory..."
 rm -vrf ~/.zshrc
+# deploy appended a block to ~/.zprofile; the user's own lines stay.
+# `-i.bak` works with both GNU and BSD (macOS) sed.
+if [ -f ~/.zprofile ] && grep -qF "# >>> dotfiles managed block: login PATH >>>" ~/.zprofile; then
+  sed -i.bak '/# >>> dotfiles managed block: login PATH >>>/,/# <<< end dotfiles managed block <<</d' ~/.zprofile && rm -f ~/.zprofile.bak
+fi
 rm -vrf ~/.config/sheldon/plugins.toml
 rm -vrf ~/.config/starship.toml
 rm -vrf ~/.tmux.conf

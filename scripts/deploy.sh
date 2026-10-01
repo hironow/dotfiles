@@ -9,6 +9,24 @@
 set -eu
 # shellcheck source=scripts/ps_profile_lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/ps_profile_lib.sh"
+
+ensure_zprofile_login_path() {
+  # A zsh login shell reads ~/.zprofile, never ~/.profile, and only an
+  # interactive one reads .zshrc: `zsh -lc '...'` (scripts, agents) missed the
+  # ~/.local/bin bash got from ~/.profile. Append a block, not a symlink: a Mac
+  # usually keeps its own lines (brew shellenv) in ~/.zprofile.
+  marker="# >>> dotfiles managed block: login PATH >>>"
+  if grep -qF "$marker" "$HOME/.zprofile" 2>/dev/null; then
+    return 0
+  fi
+  {
+    printf '\n%s\n' "$marker"
+    # shellcheck disable=SC2016 # written literally; expands at login
+    printf '%s\n' 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) [ -d "$HOME/.local/bin" ] && PATH="$HOME/.local/bin:$PATH" ;; esac'
+    printf '%s\n' "# <<< end dotfiles managed block <<<"
+  } >>"$HOME/.zprofile"
+}
+
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     echo "==> Deploy dotfiles (windows subset)..."
@@ -148,6 +166,7 @@ POWERSHELL
 esac
 echo "==> Start to deploy dotfiles to home directory."
 ln -sf ~/dotfiles/.zshrc ~/.zshrc
+ensure_zprofile_login_path
 mkdir -p ~/.config/sheldon
 ln -sf ~/dotfiles/sheldon-plugins.toml ~/.config/sheldon/plugins.toml
 ln -sf ~/dotfiles/starship.toml ~/.config/starship.toml

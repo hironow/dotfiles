@@ -68,6 +68,7 @@ INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./i
 
 `install.sh` は mise（固定版、SHA 検証つき、`~/.local/bin`）を入れ、道具を `mise install` し、設定を symlink する。
 sudo は要らない。
+zsh のログインシェルは `~/.profile` を読まないので、`just deploy` が `~/.zprofile` に `~/.local/bin` を足すブロックを追記する（`zsh -lc` で動くスクリプトやエージェント用。`~/.zprofile` の既存の行は残す）。
 
 WSL の素の Ubuntu では、続けて次を一度だけ行う。
 zsh、`wsl-conf`、Docker の手順は sudo が要り、`wsl-conf` と Docker は Windows 側での `wsl --shutdown` も要る。
