@@ -450,3 +450,36 @@ def test_a_launch_with_the_dashboard_off_never_opens_it(
     monkeypatch.setattr(launcher, "open_url", opened.append)
     launcher.headroom_env("claude", {"PATH": "p", "JEV_HEADROOM_DASHBOARD": "off"})
     assert opened == []
+
+
+@pytest.mark.parametrize(
+    ("platform", "environ", "can"),
+    [
+        ("win32", {}, True),
+        ("darwin", {}, True),
+        ("linux", {"WSL_DISTRO_NAME": "Ubuntu"}, True),
+        ("linux", {"DISPLAY": ":0"}, True),
+        ("linux", {"WAYLAND_DISPLAY": "wayland-0"}, True),
+        # a headless box: a terminal browser would take over the launch's tty
+        ("linux", {}, False),
+    ],
+)
+def test_a_browser_is_tried_only_where_one_can_show(
+    platform: str, environ: dict[str, str], can: bool
+) -> None:
+    assert hr.can_open_browser(platform, environ) is can
+
+
+def test_the_browser_opens_in_a_process_the_launch_never_waits_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # webbrowser can wait for the browser it starts (lynx, a foreground
+    # $BROWSER, osascript); a separate process cannot hold the launch up
+    started: list[list[str]] = []
+    monkeypatch.setattr(hr.sys, "platform", "darwin")
+    monkeypatch.delenv("WSL_DISTRO_NAME", raising=False)
+    monkeypatch.setattr(hr.subprocess, "Popen", lambda argv, **_k: started.append(argv))
+    hr.open_url("http://127.0.0.1:1/dashboard")
+    [argv] = started
+    assert argv[0] == hr.sys.executable
+    assert argv[-1] == "http://127.0.0.1:1/dashboard"

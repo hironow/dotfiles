@@ -21,7 +21,6 @@ import socket
 import subprocess
 import sys
 import time
-import webbrowser
 from typing import Protocol
 
 HOST = "127.0.0.1"
@@ -274,20 +273,38 @@ def dashboard_wanted(environ: Mapping[str, str]) -> bool:
     return environ.get("JEV_HEADROOM_DASHBOARD", "").strip().lower() not in OFF
 
 
+def can_open_browser(platform: str, environ: Mapping[str, str]) -> bool:
+    """Whether a graphical browser can show here: not on a headless Linux,
+    where webbrowser would fall back to a terminal browser on the launch's tty."""
+    if platform != "linux" or environ.get("WSL_DISTRO_NAME"):
+        return True
+    return bool(environ.get("DISPLAY") or environ.get("WAYLAND_DISPLAY"))
+
+
 def open_url(url: str) -> None:
     """Open url in the user's browser, best effort: a failure leaves the shown
-    URL, and nothing here may stop or block the launch."""
+    URL, and nothing here may stop or block the launch.
+
+    The browser is started from a separate process that is never waited for:
+    webbrowser itself can wait for what it starts (a foreground $BROWSER,
+    osascript on macOS)."""
+    if not can_open_browser(sys.platform, os.environ):
+        return
+    if os.environ.get("WSL_DISTRO_NAME") and shutil.which("explorer.exe"):
+        # WSL: the browser is Windows'; explorer.exe opens a URL there
+        argv = ["explorer.exe", url]
+    else:
+        opener = "import sys, webbrowser; webbrowser.open_new_tab(sys.argv[1])"
+        argv = [sys.executable, "-c", opener, url]
     try:
-        if os.environ.get("WSL_DISTRO_NAME") and shutil.which("explorer.exe"):
-            # WSL: the browser is Windows'; explorer.exe opens a URL there
-            subprocess.Popen(
-                ["explorer.exe", url],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        else:
-            webbrowser.open_new_tab(url)
-    except (OSError, webbrowser.Error):
+        subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=os.name != "nt",  # off the launch's terminal
+        )
+    except OSError:
         pass
 
 
