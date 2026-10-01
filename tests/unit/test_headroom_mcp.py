@@ -26,6 +26,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import claude_homes  # noqa: E402
 import headroom_mcp as hm  # noqa: E402
 
 GOOD = {"mcpServers": {"headroom": hm._registration()}}
@@ -193,7 +194,7 @@ def test_main_prints_each_home_then_the_summary(
         "a": ("no headroom MCP server", None),
         "b": (None, "could not read the MCP registry"),
     }
-    monkeypatch.setattr(hm.shutil, "which", lambda _: "claude")
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
     monkeypatch.setattr(hm, "_read", lambda home: home)
     monkeypatch.setattr(
         hm, "reconcile", lambda home, _cli, *, check: results[home.name]

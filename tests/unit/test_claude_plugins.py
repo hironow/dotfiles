@@ -17,6 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
+import claude_homes  # noqa: E402
 import claude_plugins as plugins  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -204,7 +205,7 @@ def test_main_prints_each_home_then_the_summary(
         ".claude-work-b": ([], ["cannot read `claude plugin list --json`"]),
     }
     monkeypatch.setattr(plugins.Path, "home", lambda: tmp_path)
-    monkeypatch.setattr(plugins.shutil, "which", lambda _: "claude")
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
     monkeypatch.setattr(
         plugins, "reconcile", lambda _d, cli, *, check: results[cli.home.name]
     )

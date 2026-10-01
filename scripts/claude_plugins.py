@@ -23,12 +23,9 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
-import shutil
 import sys
-import time
 
 import claude_homes
-from doctor_lines import fmt
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "claude-plugins"
@@ -164,28 +161,20 @@ def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
 
 
 def main(argv: Sequence[str]) -> int:
-    check = "--check" in argv
-    claude = shutil.which("claude")
-    if not claude:
-        print(fmt(("WARN", NAME, "claude not on PATH: mise install")))
-        return 1
     declaration = load(DECLARATION)
-    homes = claude_homes.existing(Path.home())
-    failed = False
-    deadline = time.monotonic() + claude_homes.CHECK_BUDGET if check else None
-    for home in homes:
-        cli = _cli(claude, home, deadline)
-        done, problems = reconcile(declaration, cli, check=check)
-        for fixed in done:
-            print(fmt(("OK", NAME, f"~/{home.name}: fixed: {fixed}")))
-        for problem in problems:
-            failed = True
-            fix = "just claude-plugins-install" if check else "see the line above"
-            print(fmt(("WARN", NAME, f"~/{home.name}: {problem}: {fix}")))
-    if not failed:
-        summary = f"{', '.join(declaration.plugins)} in {len(homes)} Claude home(s)"
-        print(fmt(("OK", NAME, summary)))
-    return 1 if failed else 0
+
+    def one(claude: str, home: Path, deadline: float | None) -> tuple[list, list]:
+        return reconcile(declaration, _cli(claude, home, deadline), check=check)
+
+    check = "--check" in argv
+    return claude_homes.visit(
+        NAME,
+        claude_homes.existing(Path.home()),
+        one,
+        check=check,
+        recipe="just claude-plugins-install",
+        summary=lambda n: f"{', '.join(declaration.plugins)} in {n} Claude home(s)",
+    )
 
 
 if __name__ == "__main__":

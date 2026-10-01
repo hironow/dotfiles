@@ -6,11 +6,14 @@ Code's own CLI there; ai_tools_check reads each home's settings. The home
 names live here once, in the order the scripts report them.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import time
+
+from doctor_lines import Line, failed, fmt
 
 NAMES = (
     ".claude",
@@ -78,3 +81,46 @@ def runner(
         return done.stdout if done.returncode == 0 else None
 
     return run
+
+
+# ---- Reporting a visit, as doctor lines ----
+
+Visit = Callable[[str, Path, float | None], tuple[Sequence[str], Sequence[str]]]
+
+
+def home_lines(
+    name: str, home: Path, fixed: Sequence[str], problems: Sequence[str], fix: str
+) -> list[Line]:
+    """One home's lines: what was fixed there, then what is still wrong."""
+    return [("OK", name, f"~/{home.name}: fixed: {item}") for item in fixed] + [
+        ("WARN", name, f"~/{home.name}: {problem}: {fix}") for problem in problems
+    ]
+
+
+def visit(
+    name: str,
+    homes: Sequence[Path],
+    one: Visit,
+    *,
+    check: bool,
+    recipe: str,
+    summary: Callable[[int], str],
+) -> int:
+    """Run `one(claude, home, deadline)` for each home, printing each home's
+    lines as it goes (a later failure cannot swallow them), then the summary
+    when nothing is wrong. Exit 1 on a WARN, as a checker does."""
+    claude = shutil.which("claude")
+    if not claude:
+        print(fmt(("WARN", name, "claude not on PATH: mise install")))
+        return 1
+    deadline = time.monotonic() + CHECK_BUDGET if check else None
+    fix = recipe if check else "see the line above"
+    found = False
+    for home in homes:
+        lines = home_lines(name, home, *one(claude, home, deadline), fix)
+        for line in lines:
+            print(fmt(line))
+        found = found or failed(lines)
+    if not found:
+        print(fmt(("OK", name, summary(len(homes)))))
+    return 1 if found else 0

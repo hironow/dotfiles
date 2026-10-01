@@ -92,3 +92,60 @@ def test_a_spent_budget_skips_the_call(
 ) -> None:
     monkeypatch.setattr(claude_homes.subprocess, "run", lambda *_a, **_k: Done(0, "x"))
     assert claude_homes.runner("claude", tmp_path, deadline=0.0)(["x"]) is None
+
+
+def test_a_home_reports_what_it_fixed_then_what_is_wrong(tmp_path: Path) -> None:
+    lines = claude_homes.home_lines(
+        "x", tmp_path / ".claude", ["a"], ["b", "c"], "just fix-it"
+    )
+    assert lines == [
+        ("OK", "x", "~/.claude: fixed: a"),
+        ("WARN", "x", "~/.claude: b: just fix-it"),
+        ("WARN", "x", "~/.claude: c: just fix-it"),
+    ]
+
+
+def test_visit_streams_each_home_then_sums_up(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    homes = [tmp_path / "a", tmp_path / "b"]
+    results = {"a": (["f"], []), "b": ([], ["p"])}
+    seen: list[float | None] = []
+
+    def one(claude: str, home: Path, deadline: float | None) -> tuple[list, list]:
+        seen.append(deadline)
+        return results[home.name]
+
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
+    code = claude_homes.visit(
+        "x", homes, one, check=True, recipe="just r", summary=lambda n: f"{n} ok"
+    )
+    assert code == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "OK   x - ~/a: fixed: f",
+        "WARN x - ~/b: p: just r",
+    ]
+    # one budget for the whole run, not one per home
+    assert len(set(seen)) == 1 and seen[0] is not None
+    results["b"] = ([], [])
+    assert (
+        claude_homes.visit(
+            "x", homes, one, check=False, recipe="just r", summary=lambda n: f"{n} ok"
+        )
+        == 0
+    )
+    assert capsys.readouterr().out.splitlines()[-1] == "OK   x - 2 ok"
+    assert seen[-1] is None  # installing: no overall budget
+
+
+def test_visit_without_claude_warns(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: None)
+    code = claude_homes.visit(
+        "x", [], lambda *_: ([], []), check=True, recipe="r", summary=str
+    )
+    assert code == 1
+    assert capsys.readouterr().out == "WARN x - claude not on PATH: mise install\n"

@@ -42,12 +42,9 @@ Prints doctor-style OK/WARN lines; exit 1 on a WARN.
 from collections.abc import Callable, Mapping, Sequence
 import json
 from pathlib import Path
-import shutil
 import sys
-import time
 
 import claude_homes
-from doctor_lines import fmt
 
 SERVER = "headroom"
 NAME = "headroom-mcp"
@@ -177,34 +174,21 @@ def _homes(argv: Sequence[str]) -> list[Path]:
 
 def main(argv: Sequence[str]) -> int:
     check = "--check" in argv
-    claude = shutil.which("claude")
-    if not claude:
-        print(fmt(("WARN", NAME, "claude not on PATH: mise install")))
-        return 1
-    homes = _homes(argv)
-    failed = False
-    deadline = time.monotonic() + claude_homes.CHECK_BUDGET if check else None
-    for home in homes:
+
+    def one(claude: str, home: Path, deadline: float | None) -> tuple[list, list]:
         fixed, problem = reconcile(
             _read(home), _cli(claude, home, deadline), check=check
         )
-        if fixed:
-            print(fmt(("OK", NAME, f"~/{home.name}: fixed: {fixed}")))
-        if problem:
-            failed = True
-            fix = "just headroom-mcp-register" if check else "see the line above"
-            print(fmt(("WARN", NAME, f"~/{home.name}: {problem}: {fix}")))
-    if not failed:
-        print(
-            fmt(
-                (
-                    "OK",
-                    NAME,
-                    f"{SERVER} registered, egress pinned, in {len(homes)} Claude home(s)",
-                )
-            )
-        )
-    return 1 if failed else 0
+        return ([fixed] if fixed else [], [problem] if problem else [])
+
+    return claude_homes.visit(
+        NAME,
+        _homes(argv),
+        one,
+        check=check,
+        recipe="just headroom-mcp-register",
+        summary=lambda n: f"{SERVER} registered, egress pinned, in {n} Claude home(s)",
+    )
 
 
 if __name__ == "__main__":
