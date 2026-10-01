@@ -37,14 +37,12 @@ terraform.tfstate.backup
 # `git status` after every `mise install`.
 mise.lock
 
-# exe.hironow.dev — local secrets / generated runtime files
-# (real values live in GCP Secret Manager; never commit plaintext)
+# exe — local secrets / generated runtime files
+# (real values live in GCP Secret Manager; never commit plaintext).
+# The retired Coder stack's own entries (its cloudflared cert and credentials,
+# its tailscale authkey, tofu/exe's tfvars) went with the stack; each stack's
+# .gitignore covers its own.
 exe/**/*.local.*
-exe/cloudflared/cert.pem
-exe/cloudflared/*.json
-exe/tailscale/*.authkey
-tofu/exe/terraform.tfvars
-tofu/exe/*.auto.tfvars
 
 # Cargo
 /target/

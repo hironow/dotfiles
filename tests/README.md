@@ -10,20 +10,14 @@ no mocks of project code.
 |---|---|
 | [`test_devcontainer.py`](./test_devcontainer.py) | Dev container image runtime smoke (`mise current`, `MISE_DATA_DIR`, AI CLI `--version`) |
 | [`unit/test_install_os_dispatch.py`](./unit/test_install_os_dispatch.py) | `install.sh` OS dispatch contract (uname → DOTFILES_OS, `step_*` helpers) |
-| [`unit/test_mise_data_dir_relocation.py`](./unit/test_mise_data_dir_relocation.py) | `MISE_DATA_DIR=/opt/mise` invariant across 4 files |
-| [`unit/test_vm_bootstrap.py`](./unit/test_vm_bootstrap.py) | Workspace VM startup_script supply-chain regressions (no curl\|bash, fingerprint pins) |
-| [`unit/test_publish_workflow.py`](./unit/test_publish_workflow.py) | `publish-devcontainer.yaml` GHA WIF auth + tag invariants |
-| [`unit/test_cdr_wrapper.py`](./unit/test_cdr_wrapper.py) | `exe/scripts/cdr` Secret Manager fetch + cleanup-on-failure |
-| [`test_actor_type_injection.py`](./test_actor_type_injection.py) | `RUNOPS_ACTOR_TYPE` env injection static checks (ADR 0012, four caller paths) |
-| [`unit/test_justfile_env_checks.py`](./unit/test_justfile_env_checks.py) | justfile `exe-*` recipes fail fast on missing `CLOUDFLARE_API_TOKEN` / `TAILSCALE_API_KEY` |
+| [`unit/test_mise_data_dir_relocation.py`](./unit/test_mise_data_dir_relocation.py) | `MISE_DATA_DIR=/opt/mise` invariant across 3 files |
 | [`unit/test_justfile_windows_subset.py`](./unit/test_justfile_windows_subset.py) | `deploy` / `clean` Windows native cross-platform subset (ADR 0018) |
+| [`unit/test_justfile_env_checks.py`](./unit/test_justfile_env_checks.py) | `${VAR:?msg}` env guards actually fire in shebang recipes (`$$` does not) |
 | [`test_just_sandbox.py`](./test_just_sandbox.py) | `just <recipe>` end-to-end inside the dev container |
 | [`test_sync_agents.py`](./test_sync_agents.py) | `just sync-agents` (Claude / Gemini / Codex agent file mirroring) |
-| [`exe/test_startup_script.py`](./exe/test_startup_script.py) | Control-plane VM startup_script (heredoc extraction + bash lint + systemd-analyze) |
-| [`exe/test_template.py`](./exe/test_template.py) | `exe/coder/templates/...` HCL static checks |
 | [`unit/`](./unit/) | Host-only tests, no Docker: pure-Python helpers and static checks of files (`just test-unit`, part of `just ci`) |
+| [`docker/`](./docker/) | Dockerfiles the heavier suites build (`InstallTest.Dockerfile` for `just test-install`) |
 | [`e2e/exe/`](./e2e/exe/) | The exe stack's stop paths against the real cluster; skipped unless `EXE_E2E=1` (`just exe-e2e`, see its README) |
-| [`docker/`](./docker/) | Dockerfiles supporting the heavier exe smoke tests |
 
 ## Running
 

@@ -17,15 +17,13 @@ cache survives. This relocation is what unblocks
 `MISE_OFFLINE=1` re-enable at workspace runtime (decision detail
 5). FHS-wise `/opt` is the right home for add-on package trees.
 
-These assertions live across four files:
+These assertions live across three files:
 - `.devcontainer/features/dotfiles-tools/install.sh`
   (build-time installs into /opt/mise)
 - `.devcontainer/devcontainer.json`
   (containerEnv exposes MISE_DATA_DIR + shim PATH)
 - `.devcontainer/post-create.sh`
   (post-create mise install honours the relocation)
-- `exe/coder/templates/dotfiles-devcontainer/main.tf`
-  (workspace agent startup_script propagates MISE_DATA_DIR + flips MISE_OFFLINE back to 1)
 
 A regression that re-introduces /root/.local/share/mise anywhere
 breaks the relocation contract; this test catches it at PR-review
@@ -47,9 +45,6 @@ FEATURE_INSTALL_SH = (
 )
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 POST_CREATE_SH = ROOT / ".devcontainer" / "post-create.sh"
-WORKSPACE_TF = (
-    ROOT / "exe" / "coder" / "templates" / "dotfiles-devcontainer" / "main.tf"
-)
 
 
 # ---------- feature install.sh ------------------------------------
@@ -180,41 +175,4 @@ def test_post_create_does_not_force_mise_offline_zero() -> None:
     assert not re.search(r"\bMISE_OFFLINE=0\b", text), (
         "post-create.sh still forces MISE_OFFLINE=0; per ADR 0006 the "
         "data-dir relocation removes the need for this override."
-    )
-
-
-# ---------- workspace agent startup_script ------------------------
-
-
-def test_workspace_startup_script_sets_mise_data_dir() -> None:
-    """The agent startup_script must export MISE_DATA_DIR=/opt/mise
-    so the runtime mise install reaches the relocated cache."""
-    text = WORKSPACE_TF.read_text(encoding="utf-8")
-    assert re.search(
-        r"MISE_DATA_DIR=/opt/mise",
-        text,
-    ), (
-        "main.tf agent startup_script must propagate "
-        "MISE_DATA_DIR=/opt/mise to the workspace mise install."
-    )
-
-
-def test_workspace_startup_script_re_enables_mise_offline() -> None:
-    """Per ADR 0006 decision 5, the workspace runtime mise install
-    runs with MISE_OFFLINE=1 because the relocation makes the cache
-    available without network."""
-    text = WORKSPACE_TF.read_text(encoding="utf-8")
-    # The relevant block lives in the agent startup_script heredoc.
-    block = re.search(r"startup_script\s*=[^<]*<<-EOT(.*?)EOT", text, re.DOTALL)
-    assert block is not None, "could not locate workspace startup_script"
-    body = block.group(1)
-    # Must invoke mise install with MISE_OFFLINE=1.
-    assert re.search(r"MISE_OFFLINE=1\s+mise\s+install", body), (
-        "main.tf agent startup_script should run `MISE_OFFLINE=1 mise install` "
-        "now that the cache lives at /opt/mise."
-    )
-    # Must NOT contain MISE_OFFLINE=0 anymore.
-    assert not re.search(r"MISE_OFFLINE=0\s+mise", body), (
-        "main.tf agent startup_script still forces MISE_OFFLINE=0; "
-        "remove it per ADR 0006 decision 5."
     )

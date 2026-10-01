@@ -889,7 +889,7 @@ check-pr-body file:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac test-iac-exe instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac-exe instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -914,17 +914,6 @@ ci-emu:
 [group('CI')]
 check-all: pre-commit ci-all
     @echo "✅ all checks passed"
-
-# Run OpenTofu native tests for the Coder workspace template
-# (variable defaults + image-tag pattern; see ADR 0024 in the
-# runops-gateway repo for the IaC test split rationale). Uses
-# `tofu test` rather than `terraform test` to keep the local
-# .terraform.lock.hcl on the opentofu registry that the rest of
-# the repo's tofu/exe stack uses; running `terraform test` here
-# rewrites the lock to the terraform.io registry.
-[group('Check')]
-test-iac:
-    @cd exe/coder/templates/dotfiles-devcontainer && mise x -- tofu init -backend=false >/dev/null && mise x -- tofu test
 
 # The offline tofu suites of the exe stacks and the tailnet: mock providers,
 # exe-platform's state as override_data, no backend and no credentials, so the
@@ -1335,6 +1324,31 @@ doctor:
 prune-rogue-npm-globals:
     @bash scripts/rogue_npm_globals.sh prune
 
+# The retired Coder stack's wrappers were symlinked into ~/.local/bin by a
+# recipe that no longer exists, so nothing else will ever clean them up. Each
+# now points at a deleted file: a dangling symlink that still wins PATH, so
+# `cdr …` fails with a confusing "No such file or directory" rather than
+# "command not found". Removes only symlinks whose target is gone, and only
+# these five names, so a real binary someone put there is never touched.
+# Idempotent; prints nothing to do when there is nothing.
+[group('Setup')]
+prune-retired-cdr-symlinks:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    found=0
+    for name in cdr cdr-header cdr-job cdr-exec cdr-project; do
+      link="${HOME}/.local/bin/${name}"
+      if [ -L "$link" ] && [ ! -e "$link" ]; then
+        target="$(readlink "$link")"
+        rm -- "$link"
+        echo "✓ removed dangling symlink: $link -> $target"
+        found=$((found + 1))
+      elif [ -L "$link" ]; then
+        echo "⚠ $link still resolves; left alone (check it by hand)"
+      fi
+    done
+    [ "$found" -eq 0 ] && echo "nothing to prune" || true
+
 # ADR 0044: remove the Python tools the uv + ruff + ty trio retired -- mypy /
 # pyright executables (pyright as a rogue npm global), `uv tool` mypy / ruff,
 # Homebrew ruff / pyright, mise ruff / ty versions the config no longer pins.
@@ -1553,29 +1567,6 @@ check-free:
 docs-view:
     mo --clear --no-open
     mo --foreground -w 'docs/**/*.md'
-
-# ------------------------------
-# exe.hironow.dev — OpenTofu wrapper recipes
-# ------------------------------
-#
-# All `exe-*` recipes operate on the tofu/exe stack. They:
-#   1. cd tofu/exe
-#   2. export TF_ENCRYPTION_PASSPHRASE from ~/.config/tofu/exe.passphrase
-#      so state encryption is transparent.
-#   3. require TAILSCALE_API_KEY in env (the recipe fails fast if it is
-#      unset, with a hint). The stack's retirement (Phase 7) parked its
-#      Cloudflare objects outside any state and dropped the provider, so
-#      no recipe here needs CLOUDFLARE_API_TOKEN any more.
-#
-# First-time setup before any `exe-*` recipe:
-#   bash exe/scripts/bootstrap.sh
-#   cp tofu/exe/terraform.tfvars.example tofu/exe/terraform.tfvars
-#   $EDITOR tofu/exe/terraform.tfvars
-
-# Run the bootstrap (idempotent): enable APIs, create state bucket, generate passphrase.
-[group('Exe')]
-exe-bootstrap:
-    @bash exe/scripts/bootstrap.sh
 
 # ==============================================================================
 # exe-platform — the google/ax migration's GCP foundation (tofu/exe-platform).
@@ -2048,9 +2039,11 @@ exe-cluster-apply:
 
 _TAILNET_DIR := "tofu/tailnet"
 
-# Build the TF_ENCRYPTION HCL payload from the local passphrase, exactly as
-# _exe-encryption does for the retired stack, but from this stack's OWN
-# passphrase file: the retired stack's goes when it does. Generate it once with
+# Build the TF_ENCRYPTION HCL payload from the local passphrase: pbkdf2 +
+# aes_gcm, enforced for the state and for saved plans, mirroring the static
+# block in tofu/tailnet/main.tf. This is the mechanism the retired Coder stack
+# used, kept here with its OWN passphrase file so nothing of this stack depended
+# on that one. Generate it once with
 #   umask 077 && openssl rand -base64 48 > ~/.config/tofu/tailnet.passphrase
 _tailnet-encryption:
     #!/usr/bin/env bash
@@ -2281,228 +2274,6 @@ exe-spike-task-image: exe-cluster-src
     digest="$(mise x -- gcloud artifacts docker images describe "$tag" --project "$project" \
         --format='value(image_summary.digest)')"
     echo "${tag}@${digest}"
-
-# Build the TF_ENCRYPTION HCL payload from the local passphrase.
-# State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
-# Mirrors the static block in tofu/exe/main.tf. HCL form (NOT JSON);
-# JSON parsing is ambiguous in 1.11.
-_exe-encryption:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    pass=$(cat "${HOME}/.config/tofu/exe.passphrase")
-    cat <<EOF
-    key_provider "pbkdf2" "default" {
-      passphrase = "${pass}"
-    }
-    method "aes_gcm" "default" {
-      keys = key_provider.pbkdf2.default
-    }
-    state {
-      method   = method.aes_gcm.default
-      enforced = true
-    }
-    plan {
-      method   = method.aes_gcm.default
-      enforced = true
-    }
-    EOF
-
-# tofu init for the exe stack. (init talks only to the GCS backend
-# and the provider registry; CF / TS API tokens are not required yet.)
-[group('Exe')]
-exe-init:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu init
-
-# tofu plan against the live state.
-[group('Exe')]
-exe-plan:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu plan
-
-# tofu apply (interactive — full plan).
-[group('Exe')]
-exe-apply:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply
-
-# The Tailscale slice of the exe stack (tailscale.tf): the rotation clock, the
-# three auth keys, and their Secret Manager containers/versions (the ACL moved
-# to tofu/tailnet). One place so plan and apply cannot drift.
-_exe_tailscale_targets := "-target=time_rotating.tailscale_keys -target=tailscale_tailnet_key.exe_coder -target=tailscale_tailnet_key.exe_workspace -target=tailscale_tailnet_key.agent -target=google_secret_manager_secret.exe_coder_authkey -target=google_secret_manager_secret.exe_workspace_authkey -target=google_secret_manager_secret.agent_authkey -target=google_secret_manager_secret_version.exe_coder_authkey -target=google_secret_manager_secret_version.exe_workspace_authkey -target=google_secret_manager_secret_version.agent_authkey"
-
-# Use case: pushing an acl.hujson change without touching the VM/tunnel.
-# The targeted refresh never configures the cloudflare provider, so only
-# the Tailscale token is required; expect tofu's "targeted plan" notice.
-# Targeted plan of ONLY the Tailscale slice (ACL + keys + their secrets).
-[group('Exe')]
-exe-plan-tailscale:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu plan {{ _exe_tailscale_targets }}
-
-# Targeted apply of ONLY the Tailscale slice (interactive; same target set as the plan).
-[group('Exe')]
-exe-apply-tailscale:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply {{ _exe_tailscale_targets }}
-
-# The mothball transition slice (ADR 0034): Cloud SQL activation, AR
-# retention, uptime check + alert. All four are google-provider-only,
-# so no Cloudflare/Tailscale token is needed (same targeted-refresh
-# reasoning as exe-plan-tailscale). Shared between plan and apply so
-# they cannot drift.
-_exe_mothball_targets := "-target=google_sql_database_instance.coder -target=google_artifact_registry_repository.dotfiles -target=google_monitoring_uptime_check_config.exe_coder_healthz -target=google_monitoring_alert_policy.exe_coder_healthz_down"
-
-# Targeted plan of the mothball slice, written to a plan file so what
-# was reviewed is exactly what exe-apply-mothball applies.
-[group('Exe')]
-exe-plan-mothball:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu plan {{ _exe_mothball_targets }} -out=mothball.tfplan
-
-# Apply the saved mothball plan file (run exe-plan-mothball first).
-[group('Exe')]
-exe-apply-mothball:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply mothball.tfplan
-
-# Wake step 1: start Cloud SQL alone (targeted). While the instance is
-# stopped, a full refresh may 400 on google_sql_user reads, so the wake
-# order is: set stack_mode = "active" in tfvars -> exe-apply-wake ->
-# full `just exe-apply` (needs CF/TS tokens) for the VM + monitoring.
-[group('Exe')]
-exe-apply-wake:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply -target=google_sql_database_instance.coder
-
-# Common targets:
-#   just exe-replace 'google_compute_instance.exe_coder[0]'
-#     # re-run startup-script after VM image / metadata changes (the
-#     # [0] index is required: an unindexed -replace on a counted
-#     # resource is a silent no-op, and the quotes stop shell globbing)
-#   just exe-replace time_rotating.tailscale_keys
-#     # force-rotate Tailscale auth keys
-#   just exe-replace random_id.tunnel_secret
-#     # rotate cloudflared tunnel credentials
-# Force-replace one resource via tofu apply -replace=<target>.
-[group('Exe')]
-exe-replace target:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply -replace={{ target }}
-
-# tofu destroy of the VM only (keeps tunnel/secrets; cheap recreate).
-[group('Exe')]
-exe-down:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu destroy \
-      -target='google_compute_instance.exe_coder[0]'
-
-# tofu destroy of every resource (VM, net, secrets, tunnel, DNS, Access).
-[group('Exe')]
-exe-down-all:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu destroy
-
-# tofu fmt -check + provider-only init + validate. No state access; safe.
-[group('Exe')]
-exe-validate:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    cd tofu/exe
-    tofu fmt -check -diff
-    tofu init -backend=false -input=false >/dev/null
-    tofu validate
-
-# tofu output (JSON for scripts).
-[group('Exe')]
-exe-output *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu output {{ args }}
-
-# Post-deploy smoke checks (DNS, Access gate, VM state, secrets).
-[group('Exe')]
-exe-smoke:
-    @bash exe/scripts/smoke.sh
-
-# Staged destroy: stage=vm (default) | stack | nuke.
-[group('Exe')]
-exe-teardown stage="vm":
-    @bash exe/scripts/teardown.sh {{ stage }}
-
-# Run the startup-script e2e tests inside the Ubuntu 24.04 container.
-# Catches keyring-path / installer-flag / 404 / dash-HOME / non-root
-# postgres regressions BEFORE 'just exe-apply' burns 10 minutes on cloud.
-[group('Exe')]
-exe-test:
-    uvx --with pytest pytest -v -m exe tests/exe/
-
-# Symlink exe/scripts/cdr and cdr-header into ~/.local/bin.
-#   cdr        : Coder CLI wrapper, injects CF Access service-token headers
-#   cdr-header : same headers in 'key=value\n' form for the Coder VS Code
-#                extension's 'Coder: Header Command' setting
-[group('Exe')]
-exe-cdr-install:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    mkdir -p "${HOME}/.local/bin"
-    for name in cdr cdr-header cdr-job cdr-exec cdr-project; do
-      src="$(pwd)/exe/scripts/$name"
-      dst="${HOME}/.local/bin/$name"
-      ln -sf "$src" "$dst"
-      echo "✓ symlinked: $dst -> $src"
-    done
-    case ":$PATH:" in
-      *":${HOME}/.local/bin:"*) ;;
-      *) echo "  hint: add ${HOME}/.local/bin to PATH (e.g. in ~/.zshrc)" ;;
-    esac
-    echo "  first use:"
-    echo "    cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"
-    echo "    VS Code -> Settings -> Coder: Header Command ->"
-    echo "      ${HOME}/.local/bin/cdr-header"
 
 # ------------------------------
 # Emulator (emulator/) — vendored local emulator stack
