@@ -129,8 +129,9 @@ def main(argv: list[str] | None = None) -> int:
     if rc:
         return rc
     print(
-        "\nnext: hironow/skills pins the same tools in its own pyproject --\n"
-        f"  (cd <skills clone> && uv add --dev '{args.tool}=={args.version}' && just check)\n"
+        "\nnext: hironow/skills pins the same tools in its own lint group --\n"
+        f"  (cd <skills clone> && uv add --group lint '{args.tool}=={args.version}'"
+        " && just check)\n"
         "then: just check   # tests/unit/test_ruff_ty_pins.py must be green"
     )
     return 0
