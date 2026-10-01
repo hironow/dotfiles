@@ -340,6 +340,39 @@ def test_every_launcher_rtk_adds_names_the_mise_copy_and_nothing_else(
     )
 
 
+@pytest.mark.parametrize(
+    ("typed", "rewrite", "expected"),
+    [
+        # an argument spelled like the launcher is an argument (found in review)
+        ("cat rtk read", "rtk read rtk read", "{L} read rtk read"),
+        ("FOO=1 git log", "FOO=1 rtk git log", "FOO=1 {L} git log"),
+        ("echo x | grep x", "echo x | rtk grep x", "echo x | {L} grep x"),
+        ("cat <<'E'\nrtk x\nE", "rtk read <<'E'\nrtk x\nE", "{L} read <<'E'\nrtk x\nE"),
+        # typed by hand it is just as unreachable on this PATH
+        ("rtk gain", "rtk gain", "{L} gain"),
+    ],
+)
+def test_only_launchers_in_command_position_are_replaced(
+    tmp_path: Path, plain_repo: Path, typed: str, rewrite: str, expected: str
+) -> None:
+    answer = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": {"command": rewrite},
+        }
+    }
+    rtk = _executable(tmp_path / "mise-rtk", _rtk_stub(json.dumps(answer)))
+    code, out = _run(
+        _payload(typed, plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=None,
+        extra_bin={"mise": _mise_stub(rtk, witness=tmp_path / "asked")},
+    )
+    assert code == EXIT_ALLOW
+    command = json.loads(out)["hookSpecificOutput"]["updatedInput"]["command"]
+    assert command == expected.replace("{L}", shlex.quote(rtk.as_posix()))
+
+
 def test_an_rtk_on_path_keeps_the_bare_launcher(
     tmp_path: Path, plain_repo: Path
 ) -> None:
