@@ -66,7 +66,7 @@ RTK_PROMPT = (
     "with the Bash tool, then reply DONE. Do nothing else."
 )
 CODEX_PROMPT = f"{CODEX} Reply with the single word OK."
-_CODEX_LIMIT = re.compile(r"usage limit|rate limit|429", re.IGNORECASE)
+_CODEX_LIMIT = re.compile(r"usage limit|rate limit|\b429\b", re.IGNORECASE)
 
 
 def first_user_text(messages: Sequence[object]) -> str:
