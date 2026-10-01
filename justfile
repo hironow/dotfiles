@@ -177,6 +177,13 @@ deploy:
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
+# After an rtk upgrade (doctor's rtk-pi-extension WARN): re-vendor rtk's own
+# Pi extension into config/pi/extensions/rtk.ts, header kept, body verbatim.
+# Re-vendor config/pi/extensions/rtk.ts from the installed rtk
+[group('Agents')]
+rtk-pi-refresh:
+    @{{UV_RUN}} scripts/rtk_pi_refresh.py
+
 # Exercise the Pi usage-limit failover logic without consuming model tokens.
 pi-jev-test:
     @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test tests/unit/jev_sonnet_fallback.test.ts
@@ -313,6 +320,8 @@ clean-all: clean clean-cache
 [group('Disk'), windows, linux, doc('Is the disk GC actually collecting? Both runner legs, read-only')]
 status:
     bash scripts/gc_status.sh
+    @echo '--- AI tooling (rtk / headroom / hooks) ---'
+    @{{UV_RUN}} scripts/ai_tools_check.py
 
 # Disk: report host cache sizes + free space. Measures only, never deletes.
 [group('Disk'), doc('Report host cache sizes + free space (measures only, never deletes)')]
