@@ -33,7 +33,9 @@ def fake_codex(final: str | None = "DONE", returncode: int = 0):
     return run, calls
 
 
-def run_wrapper(argv, prompt="do the work", *, run, choice=("gpt-6.1-sol", "medium")):
+def run_wrapper(
+    argv, prompt="do the work", *, run, choice=("gpt-6.1-sol", "medium"), port=None
+):
     out = io.StringIO()
     code = wrapper.main(
         argv,
@@ -42,8 +44,29 @@ def run_wrapper(argv, prompt="do the work", *, run, choice=("gpt-6.1-sol", "medi
         run=run,
         choose=lambda _task, _key: choice,
         key_of=lambda: "secret",
+        proxy=lambda _environ: port,
     )
     return code, out.getvalue()
+
+
+def test_codex_goes_through_headroom_when_a_proxy_is_ready() -> None:
+    run, calls = fake_codex()
+    code, _ = run_wrapper([], run=run, port=4321)
+    assert code == 0
+    command = calls[0]["command"]
+    # The config key moves ChatGPT-login traffic; --ignore-user-config means
+    # only a command-line override can set it
+    assert (
+        command[command.index('openai_base_url="http://127.0.0.1:4321/v1"') - 1] == "-c"
+    )
+    assert calls[0]["env"]["OPENAI_BASE_URL"] == "http://127.0.0.1:4321/v1"
+
+
+def test_without_a_proxy_codex_runs_exactly_as_before() -> None:
+    run, calls = fake_codex()
+    run_wrapper([], run=run, port=None)
+    assert not any("openai_base_url" in part for part in calls[0]["command"])
+    assert "OPENAI_BASE_URL" not in (calls[0].get("env") or {})
 
 
 def test_the_prompt_goes_to_codex_with_jevs_model_effort_and_the_requested_sandbox() -> (

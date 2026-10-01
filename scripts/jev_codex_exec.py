@@ -6,7 +6,7 @@ select a model. This runner is the same one-shot run with `-m` and the reasoning
 added. Prompt on stdin, final message on stdout, like every command-runner agent.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 import json
 import os
 from pathlib import Path
@@ -16,6 +16,7 @@ import tempfile
 from typing import TextIO
 
 from jev_core import CODEX_SANDBOXES, build_codex_exec_command
+from jev_headroom import codex_base_url, codex_env, ensure_proxy, proxy_port
 from jev_launch import choose_codex, jev_key, use_utf8_stdio
 
 
@@ -47,6 +48,9 @@ def main(
     run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
     choose: Callable[[str, str | None], tuple[str, str]] = choose_codex,
     key_of: Callable[[], str | None] = jev_key,
+    proxy: Callable[[Mapping[str, str]], int | None] = lambda environ: proxy_port(
+        environ, Path.home(), ensure=ensure_proxy
+    ),
 ) -> int:
     try:
         sandbox = _sandbox(argv)
@@ -57,11 +61,18 @@ def main(
     model, effort = choose(prompt, key_of())
     print(f"Jev: codex {model} / {effort} ({sandbox})", file=sys.stderr)
     _record(model, effort)
+    # Through the same headroom proxy j-cc uses, when one can be had
+    port = proxy(os.environ)
+    env = codex_env(os.environ, port) if port is not None else None
+    base_url = codex_base_url(port) if port is not None else None
     with tempfile.TemporaryDirectory() as tmp:
         final = Path(tmp) / "final-message.txt"
-        command = build_codex_exec_command(model, effort, sandbox, str(final))
+        command = build_codex_exec_command(
+            model, effort, sandbox, str(final), base_url=base_url
+        )
         result = run(
             command,
+            env=env,
             input=prompt,
             text=True,
             stdout=subprocess.DEVNULL,

@@ -264,11 +264,21 @@ def codex_from_answers(answers: Mapping[str, object]) -> tuple[str, str]:
 
 
 def build_codex_exec_command(
-    model: str, effort: str, sandbox: str, final_message_path: str
+    model: str,
+    effort: str,
+    sandbox: str,
+    final_message_path: str,
+    base_url: str | None = None,
 ) -> list[str]:
-    """`codex exec` the way pi-subagents' own adapter runs it, plus the model and effort."""
+    """`codex exec` the way pi-subagents' own adapter runs it, plus the model and effort.
+
+    base_url routes the run through a proxy. --ignore-user-config leaves only the
+    command line to set it, and this config key (not OPENAI_BASE_URL alone) is
+    what moves ChatGPT-login traffic.
+    """
     if sandbox not in CODEX_SANDBOXES:
         raise ValueError(f"sandbox must be one of {CODEX_SANDBOXES}")
+    routing = ["-c", f'openai_base_url="{base_url}"'] if base_url else []
     return [
         "codex",
         "exec",
@@ -287,6 +297,7 @@ def build_codex_exec_command(
         f'model_reasoning_effort="{effort}"',
         "-c",
         'approval_policy="never"',
+        *routing,
         "--output-last-message",
         final_message_path,
         "-",

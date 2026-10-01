@@ -8,16 +8,24 @@ session's first user message carries MAIN, the worker's carries WORKER) and the
 hook's record of the worker rewrite, never from model text. The log holds
 message content, so it lives in a temp dir removed afterwards.
 
+The `codex` target runs the real Codex worker runner (jev_codex_exec.py) against
+the same kind of dedicated proxy, handed to it through JEV_HEADROOM_STATE_DIR,
+and needs a proxied request carrying CODEX plus the runner's final message.
+
+Usage: jev_headroom_verify.py [claude|codex ...]  (default: both)
 Exit 0 = pass, 1 = fail, 2 = blocked (no key, no headroom, usage limit, no
 login, or the model launched no worker; nothing learned).
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+import contextlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -31,10 +39,13 @@ from jev_headroom import (
     proxy_env,
     start,
     wait_ready,
+    write_state,
 )
 from jev_launch import hook_command, jev_key
 
 EXIT = {"pass": 0, "fail": 1, "blocked": 2}
+SEVERITY = {"pass": 0, "blocked": 1, "fail": 2}
+TARGETS = ("claude", "codex")
 MAIN = "JEV-HEADROOM-MAIN"
 WORKER = "JEV-HEADROOM-WORKER"
 PROMPT = (
@@ -42,6 +53,9 @@ PROMPT = (
     f"subagent_type general-purpose and the prompt '{WORKER} Reply with the single "
     "word OK.' Do nothing else. After the worker returns, reply DONE."
 )
+CODEX = "JEV-HEADROOM-CODEX"
+CODEX_PROMPT = f"{CODEX} Reply with the single word OK."
+_CODEX_LIMIT = re.compile(r"usage limit|rate limit|429", re.IGNORECASE)
 
 
 def first_user_text(messages: Sequence[object]) -> str:
@@ -60,21 +74,40 @@ def first_user_text(messages: Sequence[object]) -> str:
     return ""
 
 
-def proxied_requests(log: Path) -> list[list]:
-    """The messages of every request the proxy logged (JSONL, --log-messages)."""
+def proxied_rows(log: Path) -> list[dict]:
+    """Every request row the proxy logged (JSONL, --log-file)."""
     try:
         lines = log.read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
-    requests = []
+    rows = []
     for line in lines:
         try:
             row = json.loads(line)
         except ValueError:
             continue
-        if isinstance(row, dict) and isinstance(row.get("request_messages"), list):
-            requests.append(row["request_messages"])
-    return requests
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def proxied_requests(log: Path) -> list[list]:
+    """The messages of every request the proxy logged with --log-messages."""
+    return [
+        row["request_messages"]
+        for row in proxied_rows(log)
+        if isinstance(row.get("request_messages"), list)
+    ]
+
+
+def _is_codex(row: dict) -> bool:
+    # headroom logs a Codex (Responses API) request without its messages but
+    # tags its client; the dedicated proxy serves only the runner under test
+    tags = row.get("tags")
+    messages = row.get("request_messages")
+    return (isinstance(tags, dict) and tags.get("client") == "codex") or (
+        isinstance(messages, list) and CODEX in first_user_text(messages)
+    )
 
 
 def _launched_agent(stream_lines: list[str]) -> bool:
@@ -128,78 +161,146 @@ def analyze(
     )
 
 
-def _run(exe: str, key: str) -> Report:
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        log, hook_log = Path(tmp) / "requests.jsonl", Path(tmp) / "hook.log"
-        port = free_port()
+def analyze_codex(
+    returncode: int, final: str, stderr: str, port: int, rows: list[dict]
+) -> Report:
+    """Functional core for the Codex worker: runner result plus the proxy log."""
+    if returncode != 0 and _CODEX_LIMIT.search(stderr):
+        return Report("blocked", "a Codex usage limit stopped the check")
+    hits = sum(_is_codex(row) for row in rows)
+    evidence = [f"proxied requests: {len(rows)} (Codex worker {hits})"]
+    if returncode != 0 or not final.strip():
+        return Report(
+            "fail",
+            f"the Codex runner failed (exit {returncode}) or wrote no final message",
+            evidence,
+        )
+    if f"127.0.0.1:{port}" not in stderr:
+        return Report("fail", "the runner did not reuse the dedicated proxy", evidence)
+    if hits == 0:
+        return Report(
+            "fail", "the Codex worker's requests did not go through the proxy", evidence
+        )
+    return Report("pass", "the Codex worker went through headroom", evidence)
+
+
+def targets(argv: Sequence[str]) -> list[str]:
+    chosen = list(argv) or list(TARGETS)
+    unknown = [target for target in chosen if target not in TARGETS]
+    if unknown:
+        raise SystemExit(f"usage: jev_headroom_verify.py [{'|'.join(TARGETS)} ...]")
+    return chosen
+
+
+@contextlib.contextmanager
+def _dedicated_proxy(exe: str) -> Iterator[tuple[bool, int, Path, Path]]:
+    """A proxy that logs request messages to a temp dir, removed afterwards."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_name:
+        tmp = Path(tmp_name)
+        log, port = tmp / "requests.jsonl", free_port()
         command = [*proxy_command(exe, port), "--log-file", str(log), "--log-messages"]
-        proxy = start(command, proxy_env(os.environ), Path(tmp) / "proxy.out")
+        proxy = start(command, proxy_env(os.environ), tmp / "proxy.out")
         try:
-            if not wait_ready(port, probe, 90.0):
-                return Report("fail", f"the headroom proxy did not get ready on {port}")
-            env = claude_env(
-                {
-                    **build_env(os.environ, "claude", key, False),
-                    "JEV_HOOK_LOG": str(hook_log),
-                },
-                port,
-            )
-            claude = [
-                shutil.which("claude") or "claude",
-                "-p",
-                PROMPT,
-                "--model",
-                SONNET,
-                "--effort",
-                "medium",
-                *claude_session_args(hook_command()),
-                "--output-format",
-                "stream-json",
-                "--verbose",
-            ]
-            # Claude Code writes UTF-8; the locale default (cp932) cannot decode it
-            run = subprocess.run(
-                claude,
-                env=env,
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=600,
-                check=False,
-            )
-            records = (
-                [
-                    json.loads(line)
-                    for line in hook_log.read_text(encoding="utf-8").splitlines()
-                ]
-                if hook_log.exists()
-                else []
-            )
-            return analyze(run.stdout.splitlines(), records, proxied_requests(log))
+            yield wait_ready(port, probe, 90.0), port, log, tmp
         finally:
             proxy.terminate()
             time.sleep(1)  # let Windows release the log before the dir goes
 
 
-def main() -> int:
+def _run_claude(exe: str, key: str) -> Report:
+    with _dedicated_proxy(exe) as (ready, port, log, tmp):
+        if not ready:
+            return Report("fail", f"the headroom proxy did not get ready on {port}")
+        hook_log = tmp / "hook.log"
+        env = claude_env(
+            {
+                **build_env(os.environ, "claude", key, False),
+                "JEV_HOOK_LOG": str(hook_log),
+            },
+            port,
+        )
+        claude = [
+            shutil.which("claude") or "claude",
+            "-p",
+            PROMPT,
+            "--model",
+            SONNET,
+            "--effort",
+            "medium",
+            *claude_session_args(hook_command()),
+            "--output-format",
+            "stream-json",
+            "--verbose",
+        ]
+        # Claude Code writes UTF-8; the locale default (cp932) cannot decode it
+        run = subprocess.run(
+            claude,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600,
+            check=False,
+        )
+        records = (
+            [
+                json.loads(line)
+                for line in hook_log.read_text(encoding="utf-8").splitlines()
+            ]
+            if hook_log.exists()
+            else []
+        )
+        return analyze(run.stdout.splitlines(), records, proxied_requests(log))
+
+
+def _run_codex(exe: str) -> Report:
+    with _dedicated_proxy(exe) as (ready, port, log, tmp):
+        if not ready:
+            return Report("fail", f"the headroom proxy did not get ready on {port}")
+        # Hand the runner this proxy the way a real launch finds one: the state
+        write_state(tmp / "headroom.json", port)
+        env = {**os.environ, "JEV_HEADROOM_STATE_DIR": str(tmp)}
+        env.pop("JEV_HEADROOM", None)
+        run = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("jev_codex_exec.py"))],
+            input=CODEX_PROMPT,
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600,
+            check=False,
+        )
+        return analyze_codex(
+            run.returncode, run.stdout, run.stderr, port, proxied_rows(log)
+        )
+
+
+def _report_for(target: str, exe: str | None) -> Report:
+    if not exe:
+        return Report("blocked", "headroom not found (mise installs pypi:headroom-ai)")
+    if target == "codex":
+        return _run_codex(exe)
     key = jev_key()
-    exe = shutil.which("headroom")
     if not key:
-        report = Report(
+        return Report(
             "blocked", "no TYPESAFE_API_KEY: the worker hook rewrites nothing"
         )
-    elif not exe:
-        report = Report(
-            "blocked", "headroom not found (mise installs pypi:headroom-ai)"
-        )
-    else:
-        report = _run(exe, key)
-    print(f"{report.status.upper()}: {report.reason}")
-    for line in report.evidence:
-        print(f"  {line}")
-    return EXIT[report.status]
+    return _run_claude(exe, key)
+
+
+def main(argv: Sequence[str]) -> int:
+    exe = shutil.which("headroom")
+    worst = "pass"
+    for target in targets(argv):
+        report = _report_for(target, exe)
+        print(f"{target}: {report.status.upper()}: {report.reason}")
+        for line in report.evidence:
+            print(f"  {line}")
+        worst = max(worst, report.status, key=SEVERITY.__getitem__)
+    return EXIT[worst]
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

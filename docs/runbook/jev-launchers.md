@@ -173,15 +173,18 @@ OpenRouter は従量課金なので最後にする。
 「quota exceeded」のような曖昧な文章や、認証エラーやサーバーエラーと矛盾するステータスでは切り替えず、元のエラーを表示する。
 切り替え先の認証済みの提供元がなければ、元のエラーを表示する。
 
-## headroom（j-cc だけ）
+## headroom（j-cc と Codex の worker）
 
 `j-cc` は、起動する Claude とその worker のリクエストを headroom の proxy に通し、モデルに届く内容を圧縮する。
 `ANTHROPIC_BASE_URL` を渡すのは、その Claude のプロセスにだけである。
 `ANTHROPIC_BASE_URL` が `api.anthropic.com` 以外を指すと Claude Code の Remote Control が使えなくなるので、素の `claude` は直結のままにする。
-`j-pi` と Codex は経由しない。
+`j-pi` から起動する Codex の worker（`codex-jev`）も、同じ proxy を通す（`codex exec` に `-c openai_base_url=http://127.0.0.1:<port>/v1` と `OPENAI_BASE_URL` を付ける。`--ignore-user-config` なので、設定ファイルではなくコマンドラインで渡す）。
+`j-pi` 自身の通信は経由しない。
+Anthropic の経路は pi-background-tasks が公式の `https://api.anthropic.com` 以外を拒む。
+GitHub Copilot の経路は、ログインのトークンから毎回接続先を決め直すので、拡張から向け先を変えられないからである。
 headroom は mise で入る（`pypi:headroom-ai`）。
 
-`j-cc` は起動のたびに、次の順で proxy を用意する。
+`j-cc` と Codex の worker は起動のたびに、次の順で proxy を用意する。
 
 1. `~/.cache/jev/headroom.json` に記録したポートの `/health` が、準備のできた headroom の proxy を返せば、それを使う
 2. そうでなければ、空いているポートで `headroom proxy --host 127.0.0.1` を起動し（beacon は off）、準備ができたらポートを記録する。出力は `~/.cache/jev/headroom-proxy.log` に追記する
@@ -250,15 +253,18 @@ just jev-pi-verify
 
 ### headroom の経路
 
-`j-cc` のセッションと worker が headroom を通ることは、次で確かめる。
+`j-cc` のセッションと worker、Codex の worker が headroom を通ることは、次で確かめる。
 
 ```sh
-just jev-headroom-verify
+just jev-headroom-verify          # 両方
+just jev-headroom-verify codex    # Codex の worker だけ（Jev のキーがなくても動く）
 ```
 
 確認のためだけの proxy を空いているポートで起動し、リクエストのメッセージを一時ディレクトリのログに残す（終わったら proxy を止め、ログごと消す）。
 その proxy に向けて、`j-cc` と同じ環境とフックで非対話（`claude -p`）のセッションを 1 回動かし、素の worker を 1 つ起動させる。
 判定は、proxy のログ（セッションと worker の最初のメッセージの目印）とフックの記録で行い、モデルの返答には頼らない。
+Codex の確認では、本物の `jev_codex_exec.py` を動かし、記録ファイル（`JEV_HEADROOM_STATE_DIR`）で確認用の proxy を再利用させる。
+headroom は Codex の（Responses API の）リクエストのメッセージをログに残さないが、client を `codex` と記録するので、それを数える（確認用の proxy を使うのは、この runner だけである）。
 
 | 結果 | 終了コード | 意味 |
 | --- | --- | --- |

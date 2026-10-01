@@ -196,8 +196,8 @@ jev-pi-verify:
 # Live check that j-cc's session and its workers go through headroom: a
 # dedicated proxy logs the requests; one print-mode session launches a worker.
 # Exit 0 pass, 1 fail, 2 blocked (no key / headroom / usage limit / no worker).
-jev-headroom-verify:
-    {{UV_RUN}} scripts/jev_headroom_verify.py
+jev-headroom-verify *target:
+    {{UV_RUN}} scripts/jev_headroom_verify.py {{target}}
 
 # Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md

@@ -104,3 +104,67 @@ def test_proxied_requests_are_read_from_the_log(tmp_path: Path) -> None:
     )
     assert verify.proxied_requests(log) == [MAIN, WORKER]
     assert verify.proxied_requests(tmp_path / "missing.jsonl") == []
+
+
+# headroom logs a Codex (Responses API) request without its messages, but tags
+# the client; the dedicated proxy serves only the runner under test
+CODEX_ROW = {"provider": "openai", "tags": {"client": "codex"}}
+CLAUDE_ROW = {
+    "provider": "anthropic",
+    "tags": {"client": "claude-code"},
+    "request_messages": MAIN,
+}
+
+
+def test_a_codex_worker_through_the_proxy_passes() -> None:
+    report = verify.analyze_codex(
+        0, "OK", "Headroom: http://127.0.0.1:4321", 4321, [CODEX_ROW]
+    )
+    assert report.status == "pass"
+
+
+def test_a_codex_worker_that_bypassed_the_proxy_fails() -> None:
+    report = verify.analyze_codex(
+        0, "OK", "Headroom: http://127.0.0.1:4321", 4321, [CLAUDE_ROW]
+    )
+    assert report.status == "fail"
+
+
+def test_a_runner_that_did_not_reuse_the_dedicated_proxy_fails() -> None:
+    # It started or reused another proxy: the check would not see its requests
+    report = verify.analyze_codex(
+        0, "OK", "Headroom: http://127.0.0.1:9999", 4321, [CODEX_ROW]
+    )
+    assert report.status == "fail"
+
+
+def test_a_codex_run_without_a_final_message_fails() -> None:
+    report = verify.analyze_codex(1, "", "", 4321, [])
+    assert report.status == "fail"
+
+
+def test_a_codex_usage_limit_blocks() -> None:
+    report = verify.analyze_codex(
+        1, "", "You've hit your usage limit. Try again later.", 4321, []
+    )
+    assert report.status == "blocked"
+
+
+@pytest.mark.parametrize(
+    ("argv", "targets"),
+    [([], ["claude", "codex"]), (["codex"], ["codex"]), (["claude"], ["claude"])],
+)
+def test_targets_default_to_both(argv: list[str], targets: list[str]) -> None:
+    assert verify.targets(argv) == targets
+
+
+def test_an_unknown_target_is_refused() -> None:
+    with pytest.raises(SystemExit):
+        verify.targets(["pi"])
+
+
+def test_log_rows_are_read_whole(tmp_path: Path) -> None:
+    log = tmp_path / "requests.jsonl"
+    lines = [json.dumps(CODEX_ROW), "[1, 2]", "not json"]
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert verify.proxied_rows(log) == [CODEX_ROW]
