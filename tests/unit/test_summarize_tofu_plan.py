@@ -184,6 +184,11 @@ def test_an_empty_plan_is_reported_as_zero_not_as_success_noise() -> None:
     assert "0 resource change(s)" in result.stdout
 
 
+def test_a_plan_that_is_not_an_object_is_a_type_error() -> None:
+    with pytest.raises(TypeError, match="object"):
+        mod.load_plan("[]")
+
+
 # --- --expect-changes -------------------------------------------------------
 #
 # The gate for a plan that legitimately contains updates, which `--creates-only`
