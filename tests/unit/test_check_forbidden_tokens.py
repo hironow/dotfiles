@@ -708,3 +708,206 @@ def test_prek_install_really_creates_a_commit_msg_hook(tmp_path: Path) -> None:
         assert path.is_file(), f"{hook} shim missing"
         assert path.stat().st_mode & stat.S_IXUSR
         assert "prek" in path.read_text(encoding="utf-8")
+
+
+# --- tree mode: every tracked file at HEAD -----------------------------------
+#
+# The staged and branch scans read a diff, so a token that is already committed
+# is invisible to both of them forever. `tree` is the standing proof that the
+# tracked tree itself is clean: it reads every blob and every pathname at HEAD.
+# HEAD, not the worktree -- an uncommitted edit is the staged leg's job, and a
+# gate that failed on a scratch file nobody is about to push would be switched
+# off within the week.
+
+
+def _commit(repo: Path, rel: str, content: str, message: str = "chore: add") -> None:
+    _stage(repo, rel, content)
+    _git(repo, "commit", "-q", "-m", message)
+
+
+def test_tree_rejects_a_token_already_committed(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, "docs/note.md", f"the host is {TOKEN_A} today\n")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "docs/note.md:1" in result.stderr
+
+
+def test_tree_rejects_a_token_in_a_tracked_path(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, f"docs/{TOKEN_A}-notes.md", "clean body\n")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "tracked path" in result.stderr
+
+
+def test_tree_never_prints_the_token(tmp_path: Path) -> None:
+    """Both legs at once: this output can reach a public log."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, f"docs/{TOKEN_A}.md", f"body with {TOKEN_A}\n")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 1
+    combined = result.stdout + result.stderr
+    assert TOKEN_A not in combined.lower()
+    assert mod.REDACTED in combined
+
+
+def test_tree_is_clean_on_a_clean_tree(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, "docs/note.md", "nothing to see\n")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_ignores_an_untracked_file(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    (repo / "scratch.txt").write_text(f"{TOKEN_A}\n", encoding="utf-8")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_reads_head_not_the_worktree(tmp_path: Path) -> None:
+    """An uncommitted edit belongs to the staged leg, not to this one."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, "docs/note.md", "clean when committed\n")
+    (repo / "docs" / "note.md").write_text(f"dirty with {TOKEN_A}\n", encoding="utf-8")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_skips_a_binary_blob_without_crashing(tmp_path: Path) -> None:
+    """A binary blob cannot be scanned for text; staging one is already refused."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    blob = repo / "logo.bin"
+    blob.write_bytes(b"\x00\x01" + TOKEN_A.encode() + b"\x00")
+    _git(repo, "add", "-f", "--", "logo.bin")
+    _git(repo, "commit", "-q", "-m", "chore: binary")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_survives_a_gitlink(tmp_path: Path) -> None:
+    """A submodule's commit is not a blob in this tree, and a fresh clone has
+    the directory empty -- reading it is both impossible and not our business."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "update-index", "--add", "--cacheinfo", f"160000,{head},vendor/dep")
+    _git(repo, "commit", "-q", "-m", "chore: gitlink")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_without_a_token_list_passes(tmp_path: Path) -> None:
+    """A fresh clone and CI have no list; this script is not a secret scanner."""
+    repo = _init_repo(tmp_path)
+    _commit(repo, "docs/note.md", f"{TOKEN_A}\n")
+
+    result = _run(repo, "tree")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+# --- --require-list: fail closed where the operator runs it ------------------
+#
+# The default is skip-on-no-list, which is right for a fresh clone and wrong for
+# the operator's own gate: a list that moved, or a typo in the env var, would
+# turn the wall into a no-op and say "OK". `just ci` passes --require-list so a
+# missing list is a failure there, and --min-tokens is the floor that catches a
+# truncated one.
+
+
+def test_require_list_fails_without_a_list(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+
+    result = _run(repo, "tree", "--require-list")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "--require-list" in result.stderr
+
+
+def test_require_list_fails_on_an_empty_list(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    empty = _token_list(tmp_path)
+
+    result = _run(repo, "tree", "--require-list", token_list=empty)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_require_list_fails_when_the_env_path_does_not_exist(tmp_path: Path) -> None:
+    """A typo in DOTFILES_FORBIDDEN_TOKENS must not read as 'clean'."""
+    repo = _init_repo(tmp_path)
+
+    result = _run(
+        repo,
+        "tree",
+        "--require-list",
+        extra_env={mod.TOKENS_ENV: str(tmp_path / "nope")},
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_require_list_passes_with_a_loaded_list(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+
+    result = _run(repo, "tree", "--require-list", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_require_list_also_guards_branch_mode(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+
+    result = _run(repo, "branch", "--require-list")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_min_tokens_fails_when_the_list_shrank(tmp_path: Path) -> None:
+    """The floor is what notices that an entry was dropped from the list."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A, TOKEN_B)
+
+    result = _run(
+        repo, "tree", "--require-list", "--min-tokens", "3", token_list=tokens
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "--min-tokens" in result.stderr
+
+
+def test_min_tokens_passes_at_and_above_the_floor(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A, TOKEN_B, TOKEN_NUM)
+
+    for floor in ("2", "3"):
+        result = _run(
+            repo, "tree", "--require-list", "--min-tokens", floor, token_list=tokens
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
