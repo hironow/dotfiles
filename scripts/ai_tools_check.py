@@ -15,11 +15,10 @@ guard, and the `headroom proxy` flags jev_headroom.proxy_command passes. Each
 contract is defined once, where it is used; this only reads it.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 import importlib.util
 import json
-import ntpath
 import os
 from pathlib import Path
 import re
@@ -28,6 +27,7 @@ import subprocess
 import sys
 from types import ModuleType
 
+import claude_git_bash
 import jev_headroom
 import jev_launch
 
@@ -107,36 +107,6 @@ class Facts:
 
 
 # ---- Functional core ----
-
-
-# Claude Code 2.1.285 on Windows: CLAUDE_CODE_GIT_BASH_PATH when it names an
-# existing bash/sh, else Git's default install, else <git>\..\..\bin\bash.exe
-# for the first git on PATH. Without one its Bash tool is off.
-CLAUDE_BASH_DEFAULTS = (
-    r"C:\Program Files\Git\bin\bash.exe",
-    r"C:\Program Files (x86)\Git\bin\bash.exe",
-)
-
-
-def claude_git_bash(
-    configured: str | None, git: str | None, exists: Callable[[str], bool]
-) -> str | None:
-    """The bash.exe Claude Code would run, by its own lookup."""
-    names = {"bash.exe", "sh.exe", "bash", "sh"}
-    if (
-        configured
-        and ntpath.basename(configured).lower() in names
-        and exists(configured)
-    ):
-        return configured
-    for default in CLAUDE_BASH_DEFAULTS:
-        if exists(default):
-            return default
-    if git:
-        derived = ntpath.normpath(ntpath.join(git, "..", "..", "bin", "bash.exe"))
-        if exists(derived):
-            return derived
-    return None
 
 
 def _claude_git_bash(facts: Facts) -> list[Line]:
@@ -593,20 +563,20 @@ def _claude_bash(home: Path, settings: Mapping[str, object]) -> ClaudeBash | Non
     configured = os.environ.get("CLAUDE_CODE_GIT_BASH_PATH") or (
         str(env.get("CLAUDE_CODE_GIT_BASH_PATH") or "") if isinstance(env, dict) else ""
     )
-    # Git's root, from the sh this shell runs (<Git>\usr\bin or <Git>\bin)
-    roots = [home / "scoop/apps/git/current"]
-    if sh := shutil.which("sh"):
-        parent = Path(sh).parent
-        roots.insert(
-            0, parent.parent.parent if parent.parent.name == "usr" else parent.parent
-        )
-    candidates = [str(root / "bin" / "bash.exe") for root in roots]
+    exists = lambda path: Path(path).exists()  # noqa: E731
     return ClaudeBash(
         configured=configured or None,
-        found=claude_git_bash(
-            configured or None, shutil.which("git"), lambda path: Path(path).exists()
+        found=claude_git_bash.claude_git_bash(
+            configured or None, shutil.which("git"), exists
         ),
-        candidate=next((c for c in candidates if Path(c).exists()), None),
+        candidate=next(
+            (
+                c
+                for c in claude_git_bash.candidates(shutil.which("sh"), str(home))
+                if exists(c)
+            ),
+            None,
+        ),
     )
 
 

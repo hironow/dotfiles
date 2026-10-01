@@ -358,49 +358,6 @@ GIT = r"C:\Program Files\Git"
 SCOOP_GIT = r"C:\Users\u\scoop\apps\git\current"
 
 
-def _exists(*paths: str):
-    return lambda path: path in paths
-
-
-@pytest.mark.parametrize(
-    ("configured", "git", "present", "found"),
-    [
-        (None, None, (GIT + r"\bin\bash.exe",), GIT + r"\bin\bash.exe"),
-        # git through a scoop shim: <shims>\..\..\bin\bash.exe is no Git Bash
-        (
-            None,
-            r"C:\Users\u\scoop\shims\git.exe",
-            (SCOOP_GIT + r"\bin\bash.exe",),
-            None,
-        ),
-        (
-            None,
-            SCOOP_GIT + r"\cmd\git.exe",
-            (SCOOP_GIT + r"\bin\bash.exe",),
-            SCOOP_GIT + r"\bin\bash.exe",
-        ),
-        (
-            SCOOP_GIT + r"\bin\bash.exe",
-            None,
-            (SCOOP_GIT + r"\bin\bash.exe",),
-            SCOOP_GIT + r"\bin\bash.exe",
-        ),
-        # a configured path that is not a bash, or not there, falls back
-        (SCOOP_GIT + r"\bin\git.exe", None, (SCOOP_GIT + r"\bin\git.exe",), None),
-        (
-            r"D:\nowhere\bash.exe",
-            None,
-            (GIT + r"\bin\bash.exe",),
-            GIT + r"\bin\bash.exe",
-        ),
-    ],
-)
-def test_claude_codes_git_bash_lookup_is_mirrored(
-    configured: str | None, git: str | None, present: tuple[str, ...], found: str | None
-) -> None:
-    assert check.claude_git_bash(configured, git, _exists(*present)) == found
-
-
 def test_a_missing_git_bash_warns_with_the_path_to_set() -> None:
     facts = _facts(
         claude_bash=check.ClaudeBash(
