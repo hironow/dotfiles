@@ -51,6 +51,12 @@ def _run(hook: Path, patch: str) -> int:
         ),
         _patch("*** Add File: docker-compose.yaml\n+services: {}\n"),
         _patch("*** Add File: ok.yaml\n+a: 1\n", "*** Add File: bad.yml\n+b: 2\n"),
+        # editing a .yml in place, as Claude's Edit of one is blocked
+        _patch("*** Update File: ci.yml\n@@\n-a\n+b\n"),
+        _patch(
+            "*** Update File: a.yml\n*** Move to: a.yaml\n@@\n-a\n+b\n",
+            "*** Update File: b.yml\n@@\n-a\n+b\n",
+        ),
     ],
 )
 def test_a_patch_that_creates_a_prohibited_name_is_blocked(patch: str) -> None:
@@ -65,6 +71,11 @@ def test_a_patch_that_creates_a_prohibited_name_is_blocked(patch: str) -> None:
             "*** Update File: src/app.py\n@@\n-a\n+b\n",
         ),
         _patch("*** Delete File: old.yml\n"),
+        # the renames the block message asks for: only the destination remains
+        _patch("*** Update File: old.yml\n*** Move to: old.yaml\n@@\n-a\n+b\n"),
+        _patch(
+            "*** Update File: docker-compose.yaml\n*** Move to: compose.yaml\n@@\n-a\n+b\n"
+        ),
         _patch(
             "*** Update File: docs/agents/enforcement.md\n@@\n-x\n+mentions ci.yml\n"
         ),

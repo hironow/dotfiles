@@ -13,12 +13,21 @@ input="$(cat)"
 paths="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')"
 
 # Codex's apply_patch has no file_path: the whole patch is tool_input.command,
-# and its Add File / Update File / Move to headers name every file it writes.
+# and its Add File / Update File headers name every file it writes. An Update
+# File followed by Move to leaves only the destination, so only that is
+# checked (renaming old.yml to old.yaml must pass).
 if [ -z "$paths" ]; then
   patch="$(printf '%s' "$input" | jq -r '.tool_input.command // empty')"
   case "$patch" in
     *'*** Begin Patch'*)
-      paths="$(printf '%s\n' "$patch" | sed -n -E 's/^\*\*\* (Add File|Update File|Move to): (.*)$/\2/p')"
+      paths="$(printf '%s\n' "$patch" | awk '
+        function flush() { if (pending != "") print pending; pending = "" }
+        /^\*\*\* Add File: /    { flush(); print substr($0, 15); next }
+        /^\*\*\* Update File: / { flush(); pending = substr($0, 18); next }
+        /^\*\*\* Move to: /     { pending = substr($0, 14); next }
+        /^\*\*\* /              { flush() }
+        END                     { flush() }
+      ')"
       ;;
   esac
 fi
