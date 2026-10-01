@@ -31,6 +31,7 @@ import json
 import platform
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1574,6 +1575,11 @@ def sync_mode(
             else:
                 print(f"  ⏭️  {icon} {deletion.relative_path}: Skipped")
 
+        # Codex runs a hook only once it is trusted: trust the ones just synced
+        # (exactly the fragment's, through Codex's app-server; best effort).
+        if plan.agent.receives_codex_hooks:
+            _trust_codex_hooks(plan.agent)
+
     # Update manifest: union of current dotfiles + existing manifest
     for dir_name in SYNC_DIRECTORIES:
         dir_path = dotfiles_dir / dir_name
@@ -1592,6 +1598,32 @@ def sync_mode(
     _save_manifest(dotfiles_dir, manifest)
 
     print("\n✨ Sync completed!")
+
+
+def _trust_codex_hooks(agent: AgentTarget) -> None:
+    """Run scripts/codex_hooks_trust.py for this Codex home; never fail the sync."""
+    if agent.directory != Path.home() / ".codex":
+        return  # the trust step reads CODEX_HOME / ~/.codex only
+    # A separate process: the trust step builds on this module, so importing it
+    # here would make the two depend on each other.
+    script = Path(__file__).with_name("codex_hooks_trust.py")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        print(
+            f"  ⚠️  Codex hooks not trusted automatically ({error}); "
+            "run: just codex-hooks-trust (or trust them in Codex's /hooks)"
+        )
+        return
+    for line in (result.stdout + result.stderr).splitlines():
+        print(f"  {line}")
 
 
 def orphans_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) -> None:

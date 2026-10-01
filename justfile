@@ -1529,6 +1529,13 @@ skills-place *args:
 skills-update *args:
     @{{ UV_RUN }} scripts/skills_lock.py update {{ args }}
 
+# Codex runs a hook only once it is trusted. `just sync-agents x` already runs
+# this; it trusts exactly the hooks .codex/hooks.json renders. --check: report only.
+# Trust the Codex hooks dotfiles placed (through Codex's app-server)
+[group('Agents')]
+codex-hooks-trust *args:
+    @{{ UV_RUN }} scripts/codex_hooks_trust.py {{ args }}
+
 # hironow/skills wins name collisions (ADR 0043).
 # CI barrier: no third-party skill in the declaration shadows a hironow/skills name
 [group('Validation')]
