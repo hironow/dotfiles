@@ -156,6 +156,19 @@ module leaseCore {
   /// actors on its own (`goldenIgnored`).
   const golden_ignored: bool
 
+  /// After clearing a wedged actor's worker, L1 never deletes its task again,
+  /// so the task stays Terminating: AX does not retry a delete that failed
+  /// (`noRedelete`).
+  const no_redelete: bool
+
+  /// L1 drops its record of an owed delete when AX refuses the delete, instead
+  /// of keeping it for the next tick (`redeleteDroppedOnFailure`).
+  const redelete_dropped_on_failure: bool
+
+  /// L1's Cancel rebuilds drain.json without the owed deletes
+  /// (`redeleteLostOnCancel`).
+  const redelete_lost_on_cancel: bool
+
   /// How long the node really takes to leave after setSize(0). The decided
   /// design runs with the measured stop_latency_minutes; `pdbHoldsTheDrain`
   /// runs with a disruption budget holding the drain for an hour.
@@ -320,7 +333,9 @@ module leaseCore {
   /// is), carried here because L1 is a CronJob with no memory between runs.
   /// `baselineCrashed` is the actors that were already CRASHED when the drain
   /// began: any other crash before `drained` is a loss. `wedgeSeen` maps each
-  /// actor stuck in DELETING to the tick L1 first saw it so.
+  /// actor stuck in DELETING to the tick L1 first saw it so. `redelete` maps
+  /// each actor whose wedge L1 cleared to the tick it did: the task's delete
+  /// that L1 owes AX again, because AX does not retry one that failed (W3).
   type Drain = {
     state: DrainState,
     heartbeat: int,
@@ -330,6 +345,7 @@ module leaseCore {
     idleSince: int,
     baselineCrashed: Set[int],
     wedgeSeen: int -> int,
+    redelete: int -> int,
   }
 
   /// enforce.json, plus L2's consecutive-read-failure counter and the
@@ -359,6 +375,9 @@ module leaseCore {
   ///   crashed        CRASHED: state lost
   ///   deleting       DELETING and stuck, still holding a worker (the Phase 4
   ///                  wedge: TerminateWorkload failing forever)
+  ///   terminating    a wedge L1 cleared: its worker is gone and holds nothing,
+  ///                  but AX still lists its task as Terminating until the
+  ///                  delete is issued again (W3)
   ///   gone           deleted
   ///   (the rest)     SUSPENDED
   ///
@@ -377,6 +396,7 @@ module leaseCore {
     doomed: Set[int],
     crashed: Set[int],
     deleting: Set[int],
+    terminating: Set[int],
     gone: Set[int],
     goldenAwake: bool,
     templatePending: bool,
@@ -402,6 +422,11 @@ module leaseCore {
   /// Ghost state. Nothing reads it; it exists so the invariants can be written
   /// about events rather than about the current instant, and every flag is
   /// monotone so a later action cannot mask an earlier violation.
+  ///
+  /// Two fields are not flags: `clearedAtTick` maps each actor whose wedge L1
+  /// cleared to the number of the L1 tick that cleared it, and `redeleteRefused`
+  /// is the actors whose last owed delete AX refused. They let a property speak
+  /// of "the next L1 tick" and of "AX answered".
   type Evidence = {
     lastShrink: Shrink,
     gracefulCrash: bool,
@@ -411,6 +436,8 @@ module leaseCore {
     drainEverFailed: bool,
     leaseEverUnreadable: bool,
     clearedLiveActor: bool,
+    clearedAtTick: int -> int,
+    redeleteRefused: Set[int],
   }
 
   /// Ghost: the branch the last L1 tick took, and how many ticks there have
@@ -444,7 +471,7 @@ module leaseCore {
   def suspendedIn(c: Cluster): Set[int] =
     ACTORS
       .exclude(c.awake).exclude(c.checkpointing).exclude(c.doomed)
-      .exclude(c.crashed).exclude(c.deleting).exclude(c.gone)
+      .exclude(c.crashed).exclude(c.deleting).exclude(c.terminating).exclude(c.gone)
 
   val suspendedActors = suspendedIn(cluster)
 
@@ -951,6 +978,9 @@ module leaseCore {
       leaseGen: lease.gen,
       reason: NoReason,
       baselineCrashed: Set(),
+      // A new record keeps what L1 still owes: the idle clock, the wedges and
+      // the deletes to issue again (redeleteLostOnCancel drops those).
+      redelete: if (redelete_lost_on_cancel) Map() else d0.redelete,
     },
     cluster' = reopened(c0),
     evidence' = e0,
@@ -1159,24 +1189,44 @@ module leaseCore {
   /// One L1 tick, at minute `l1Due`. `progress` says whether the suspend
   /// requests this tick sends are acted on -- `l1Tick` leaves that open, and
   /// the scripted tests pin it so an incident replay is deterministic.
-  action l1TickWith(progress: bool): bool = {
+  action l1TickWith(progress: bool): bool = l1TickAnswered(progress, true)
+
+  /// One L1 tick, `axAnswers` saying whether AX carries out the task deletes L1
+  /// issues again this tick (a flaky AX refuses them, and the next tick tries
+  /// again).
+  action l1TickAnswered(progress: bool, axAnswers: bool): bool = {
     val t = clock.l1Due
     val idleSince = observedIdleSince(t)
     val seen = observedWedges(t)
     val cleared = wedgesToClear(t, seen)
+    // The deletes L1 owes, as it observes them: an entry whose task is gone
+    // is done and leaves the record; the rest stay, and those cleared on an
+    // earlier tick are issued again now. Not on the clearing tick itself: the
+    // cleared worker's pod is still going, and a delete sent at it could fail
+    // and use the event up the same way (W3).
+    val owed = drain.redelete.keys().filter(a => cluster.terminating.contains(a))
+    val reissued = if (no_redelete) Set() else owed.filter(a => drain.redelete.get(a) < t)
+    val answered = if (axAnswers) reissued else Set()
+    val refused = reissued.exclude(answered)
+    val kept = if (redelete_dropped_on_failure) owed.exclude(refused) else owed
     val c0 = {
       ...cluster,
       deleting: cluster.deleting.exclude(cleared),
-      gone: cluster.gone.union(cleared),
+      terminating: cluster.terminating.union(cleared).exclude(answered),
+      gone: cluster.gone.union(answered),
     }
     val d0 = {
       ...drain,
       idleSince: idleSince,
       wedgeSeen: seen.keys().exclude(cleared).mapBy(a => seen.get(a)),
+      redelete: kept.union(cleared).mapBy(a => if (cleared.contains(a)) t else drain.redelete.get(a)),
     }
     val e0 = {
       ...evidence,
       clearedLiveActor: evidence.clearedLiveActor or cleared.intersect(storeAwake) != Set(),
+      clearedAtTick: evidence.clearedAtTick.keys().exclude(answered).union(cleared)
+        .mapBy(a => if (cleared.contains(a)) l1Last.ticks + 1 else evidence.clearedAtTick.get(a)),
+      redeleteRefused: evidence.redeleteRefused.exclude(reissued).union(refused),
     }
     val trigger = l1TriggerWith(t, idleSince)
     val ceilingBlown = t - drain.startedAt >= drain_ceiling_minutes
@@ -1209,7 +1259,12 @@ module leaseCore {
     }
   }
 
-  action l1Tick = any { l1TickWith(true), l1TickWith(false) }
+  action l1Tick = any {
+    l1TickAnswered(true, true),
+    l1TickAnswered(true, false),
+    l1TickAnswered(false, true),
+    l1TickAnswered(false, false),
+  }
 
   /// The reaper stops ticking: the CronJob is wedged, the KSA lost its binding,
   /// the node is NotReady but still counted. Nothing in the cluster changes --
@@ -1569,6 +1624,7 @@ module leaseCore {
     idleSince: -1,
     baselineCrashed: Set(),
     wedgeSeen: Map(),
+    redelete: Map(),
   }
 
   pure val emptyEnforce: Enforce = {
@@ -1588,6 +1644,7 @@ module leaseCore {
     doomed: Set(),
     crashed: Set(),
     deleting: Set(),
+    terminating: Set(),
     gone: Set(),
     goldenAwake: false,
     templatePending: false,
@@ -1607,6 +1664,8 @@ module leaseCore {
     drainEverFailed: false,
     leaseEverUnreadable: false,
     clearedLiveActor: false,
+    clearedAtTick: Map(),
+    redeleteRefused: Set(),
   }
 
   /// The cluster starts asleep with no lease. `l3At` fixes what local time the
@@ -1800,6 +1859,7 @@ module leaseCore {
     | Doomed
     | Crashed
     | Deleting
+    | Terminating
     | Gone
 
   pure def placed(p: int -> Placement, s: Placement): Set[int] = ACTORS.filter(a => p.get(a) == s)
@@ -1835,6 +1895,7 @@ module leaseCore {
       idleSince: idleSince,
       baselineCrashed: baselineCrashed,
       wedgeSeen: wedgeSeen,
+      redelete: Map(),
     },
     enforce' = emptyEnforce,
     cluster' = {
@@ -1845,6 +1906,7 @@ module leaseCore {
       doomed: placed(placement, Doomed),
       crashed: placed(placement, Crashed),
       deleting: placed(placement, Deleting),
+      terminating: placed(placement, Terminating),
       gone: placed(placement, Gone),
       goldenAwake: goldenAwake,
       templatePending: templatePending,
@@ -2014,6 +2076,24 @@ module leaseCore {
   /// that is already being deleted.
   val ClearingNeverLosesState = not(evidence.clearedLiveActor)
 
+  /// MANDATORY 7. What L1 owes is never forgotten: every task whose wedge L1
+  /// cleared keeps its entry in drain.json until the task is gone. AX does not
+  /// retry a delete that failed (W3), so a lost entry is a task left
+  /// Terminating for good -- across a failed call and across every drain
+  /// transition, Cancel included.
+  val RedeleteIsKept =
+    cluster.terminating.forall(a => drain.redelete.keys().contains(a))
+
+  /// MANDATORY 8. Bounded response, as far as it can honestly be promised: a
+  /// cleared wedge's task is gone by the end of the next L1 tick, unless AX
+  /// refused that tick's delete -- then it is still owed (MANDATORY 7) and the
+  /// tick after tries again. Written in L1 ticks, not minutes, because a node
+  /// that sleeps runs no L1 at all.
+  val ClearedTaskGoesOnTheNextTick =
+    cluster.terminating.forall(a =>
+      l1Last.ticks <= evidence.clearedAtTick.get(a)
+        or evidence.redeleteRefused.contains(a))
+
   val Safety = and {
     NoCrashOnGracefulSleep,
     NoSilentLoss,
@@ -2021,6 +2101,8 @@ module leaseCore {
     NodesEventuallyZero,
     ExtendBeatsStaleDrained,
     ClearingNeverLosesState,
+    RedeleteIsKept,
+    ClearedTaskGoesOnTheNextTick,
   }
 
   /// The lemma NoCrashOnGracefulSleep rests on, checked separately so that a
@@ -2071,11 +2153,14 @@ module leaseCore {
       not(cluster.goldenAwake),
     },
     cluster.awake.size() + cluster.checkpointing.size() + cluster.doomed.size()
-      + cluster.crashed.size() + cluster.deleting.size() + cluster.gone.size()
+      + cluster.crashed.size() + cluster.deleting.size() + cluster.terminating.size()
+      + cluster.gone.size()
       == cluster.awake.union(cluster.checkpointing).union(cluster.doomed)
-           .union(cluster.crashed).union(cluster.deleting).union(cluster.gone).size(),
+           .union(cluster.crashed).union(cluster.deleting).union(cluster.terminating)
+           .union(cluster.gone).size(),
     cluster.awake.union(cluster.checkpointing).union(cluster.doomed)
-      .union(cluster.crashed).union(cluster.deleting).union(cluster.gone).subseteq(ACTORS),
+      .union(cluster.crashed).union(cluster.deleting).union(cluster.terminating)
+      .union(cluster.gone).subseteq(ACTORS),
     clock.now <= clock.l2Due,
     lease.deadline >= 0,
     enforce.leaseReadFailures >= 0,
@@ -2110,6 +2195,9 @@ module twoWriterLease {
     controller_left_up = false,
     scale_is_barrier = false,
     golden_ignored = false,
+    no_redelete = false,
+    redelete_dropped_on_failure = false,
+    redelete_lost_on_cancel = false,
     stop_latency_actual = 5,
   ).*
 
@@ -2155,6 +2243,9 @@ module naiveShrinkFirst {
     controller_left_up = false,
     scale_is_barrier = false,
     golden_ignored = false,
+    no_redelete = false,
+    redelete_dropped_on_failure = false,
+    redelete_lost_on_cancel = false,
     stop_latency_actual = 5,
   ).*
 
@@ -2194,6 +2285,9 @@ module routerLeftOpen {
     controller_left_up = false,
     scale_is_barrier = false,
     golden_ignored = false,
+    no_redelete = false,
+    redelete_dropped_on_failure = false,
+    redelete_lost_on_cancel = false,
     stop_latency_actual = 5,
   ).*
 
@@ -2240,6 +2334,9 @@ module controllerLeftUp {
     controller_left_up = true,
     scale_is_barrier = false,
     golden_ignored = false,
+    no_redelete = false,
+    redelete_dropped_on_failure = false,
+    redelete_lost_on_cancel = false,
     stop_latency_actual = 5,
   ).*
 
@@ -2279,6 +2376,9 @@ module scaleIsNotABarrier {
     controller_left_up = false,
     scale_is_barrier = true,
     golden_ignored = false,
+    no_redelete = false,
+    redelete_dropped_on_failure = false,
+    redelete_lost_on_cancel = false,
     stop_latency_actual = 5,
   ).*
 
@@ -2320,6 +2420,9 @@ module goldenIgnored {
     controller_left_up = false,
     scale_is_barrier = false,
     golden_ignored = true,
+    no_redelete = false,
+    redelete_dropped_on_failure = false,
+    redelete_lost_on_cancel = false,
     stop_latency_actual = 5,
   ).*
 
@@ -2366,6 +2469,9 @@ module pdbHoldsTheDrain {
     controller_left_up = false,
     scale_is_barrier = false,
     golden_ignored = false,
+    no_redelete = false,
+    redelete_dropped_on_failure = false,
+    redelete_lost_on_cancel = false,
     stop_latency_actual = 60,
   ).*
 
@@ -2420,6 +2526,9 @@ module lease {
     controller_left_up = false,
     scale_is_barrier = false,
     golden_ignored = false,
+    no_redelete = false,
+    redelete_dropped_on_failure = false,
+    redelete_lost_on_cancel = false,
     stop_latency_actual = 5,
   ).*
 
@@ -2992,19 +3101,54 @@ module lease {
 
   /// A delete that wedges holds a worker forever. After wedge_clear_minutes L1
   /// deletes that worker's pod -- and nothing else: the actor was already
-  /// being deleted, so nothing is lost.
-  run wedgedDeleteIsClearedTest =
+  /// being deleted, so nothing is lost. AX does not retry a delete that
+  /// failed, so the task is left Terminating and L1 owes AX the delete again
+  /// (W3).
+  run wedgeJustCleared =
     initWith(10 * minutes_per_hour)
       .then(wakeFor(default_lease_minutes))
       .then(operatorResume)
       .then(deleteTaskWith(true))         // the delete wedges
       .then(l1Tick)                       // 1: first seen
       .expect(and { cluster.deleting == Set(1), drain.wedgeSeen.get(1) == 1 })
-      .then(12.reps(_ => anyTick))        // 2..10 and L2 at 10; 11: cleared
+      .then(11.reps(_ => anyTick))        // 2..10 and L2 at 10; 11: cleared
+
+  run wedgedDeleteIsClearedTest =
+    wedgeJustCleared
       .expect(and {
         cluster.deleting == Set(),
-        cluster.gone == Set(1),
+        cluster.terminating == Set(1),
+        cluster.gone == Set(),
+        drain.redelete.keys() == Set(1),
         not(evidence.clearedLiveActor),
+        Safety,
+      })
+
+  /// The tick after the clear issues the delete again, and AX carries it out.
+  run clearedTaskIsDeletedOnTheNextTickTest =
+    wedgeJustCleared
+      .then(l1TickAnswered(true, true))
+      .expect(and {
+        cluster.terminating == Set(),
+        cluster.gone == Set(1),
+        Safety,
+      })
+
+  /// A delete AX refuses stays owed: L1 keeps the entry, and the tick after
+  /// issues it again.
+  run refusedRedeleteIsTriedAgainTest =
+    wedgeJustCleared
+      .then(l1TickAnswered(true, false))
+      .expect(and {
+        cluster.terminating == Set(1),
+        drain.redelete.keys() == Set(1),
+        evidence.redeleteRefused == Set(1),
+        Safety,
+      })
+      .then(l1TickAnswered(true, true))
+      .expect(and {
+        cluster.terminating == Set(),
+        cluster.gone == Set(1),
         Safety,
       })
 

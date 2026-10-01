@@ -87,6 +87,14 @@ a run that fails.
   idle stop about the current lease, which is the plan's rule.
 - **`ClearingNeverLosesState`**: the only pod L1 deletes on its own, a wedged
   actor's worker, never hosts anything awake or mid-checkpoint.
+- **`RedeleteIsKept`**: what L1 owes is never forgotten. AX does not retry a
+  delete that failed (W3), so clearing a wedge leaves the task `Terminating`,
+  and L1 keeps an entry in `drain.json` until the task is gone. The entry
+  survives a refused delete and every drain transition, Cancel included.
+- **`ClearedTaskGoesOnTheNextTick`**: bounded response. A cleared wedge's task
+  is gone by the end of the next L1 tick, unless AX refused that tick's
+  delete; then it is still owed and the tick after tries again. Stated in L1
+  ticks, not minutes, because a node that sleeps runs no L1 at all.
 
 Three more are checked beside `Safety` rather than inside it:
 
