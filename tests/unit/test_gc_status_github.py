@@ -172,7 +172,7 @@ def _run_section(
     )
 
 
-LINE = "trade win|https://github.com/m4k3-co|{up}|just runner-svc-restart\n"
+LINE = "trade win|https://github.com/example-org|{up}|just runner-svc-restart\n"
 
 
 @winskip

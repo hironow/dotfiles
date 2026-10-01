@@ -1,6 +1,6 @@
 """The native Windows runner SERVICE must be repo-managed, like the WSL leg.
 
-Found live (2026-08-20): service `actions.runner.m4k3-co.gpu-win` sat
+Found live (2026-08-20): service `actions.runner.example-org.gpu-win` sat
 Stopped + StartType=Disabled for an unknown stretch — GitHub showed the
 runner offline and nothing on the host said so. The install/restart helpers
 lived as ad-hoc scripts inside the runner directory (unversioned, host

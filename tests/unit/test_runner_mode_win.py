@@ -2,7 +2,7 @@
 
 Why this exists (2026-08-21, second live report): the gpu-win runner was
 re-enabled as a LocalSystem service (#312) — but that box runs GUI e2e
-(manga-uri: WebView2 windows) and CodeQL jobs that need the user's profile.
+(example-repo-a: WebView2 windows) and CodeQL jobs that need the user's profile.
 Under Session 0 the jobs fail in three measured ways: CodeQL resolved its
 config under C:\\WINDOWS\\system32\\config\\systemprofile, autobuild died on
 UnauthorizedAccess with git missing from the (Machine) PATH, and WebView2
