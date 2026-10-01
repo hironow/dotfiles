@@ -1516,6 +1516,8 @@ def sync_mode(
     if not has_changes:
         print("\n✅ All files are already in sync!")
         _save_manifest(dotfiles_dir, manifest)
+        # Nothing to copy, but a trust or grant that failed last time retries
+        _run_codex_steps_for(plans)
         return
 
     print()
@@ -1580,11 +1582,6 @@ def sync_mode(
             else:
                 print(f"  ⏭️  {icon} {deletion.relative_path}: Skipped")
 
-        # Codex runs a hook only once it is trusted: trust the ones just synced
-        # (exactly the fragment's, through Codex's app-server; best effort).
-        if plan.agent.receives_codex_hooks:
-            _run_codex_steps(plan.agent)
-
     # Update manifest: union of current dotfiles + existing manifest
     for dir_name in SYNC_DIRECTORIES:
         dir_path = dotfiles_dir / dir_name
@@ -1601,6 +1598,10 @@ def sync_mode(
         del manifest.items[stale]
 
     _save_manifest(dotfiles_dir, manifest)
+
+    # Codex runs a hook only once it is trusted: trust the ones just synced
+    # (exactly the fragment's, through Codex's app-server; best effort).
+    _run_codex_steps_for(plans)
 
     print("\n✨ Sync completed!")
 
@@ -1620,6 +1621,13 @@ CODEX_STEPS = (
         "just codex-sandbox-tools",
     ),
 )
+
+
+def _run_codex_steps_for(plans: list[_SyncPlan]) -> None:
+    for plan in plans:
+        if plan.agent.receives_codex_hooks:
+            print(f"\n📋 {plan.agent.name}: hook trust and sandbox")
+            _run_codex_steps(plan.agent)
 
 
 def _run_codex_steps(agent: AgentTarget) -> None:

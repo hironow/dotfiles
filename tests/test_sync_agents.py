@@ -1361,6 +1361,8 @@ def test_hub_and_spoke_codex_gets_codex_hooks_gemini_base_only(docker_image):
     [ -f /root/.codex/hooks/rtk-hook-codex.sh ] && echo "codex-rtk-shim"
     [ -e /root/.codex/hooks/rtk-hook-claude.sh ] && echo "ERR-codex-claude-wrapper" || echo "codex-no-claude-wrapper"
     grep -q '/root/.codex/hooks/guard-codex.sh' /root/.codex/hooks.json && echo "codex-hooks-json-absolute"
+    # nothing left to copy: Codex's trust step still runs (a failed one retries)
+    just sync-agents x 2>&1 | grep -q 'codex-hooks' && echo "codex-steps-rerun"
     [ -d /root/.gemini/hooks ] && echo "ERR-gemini-hooks" || echo "gemini-no-hooks"
     [ -f /root/.codex/CLAUDE.md ] && echo "ERR-codex-overlay" || echo "codex-no-overlay"
     """
@@ -1375,6 +1377,7 @@ def test_hub_and_spoke_codex_gets_codex_hooks_gemini_base_only(docker_image):
         "codex-rtk-shim",
         "codex-no-claude-wrapper",
         "codex-hooks-json-absolute",
+        "codex-steps-rerun",
         "gemini-no-hooks",
         "codex-no-overlay",
     ):
