@@ -1343,9 +1343,11 @@ def test_hub_and_spoke_claude_gets_overlay_base_spokes_hooks(docker_image):
         assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
 
 
-def test_hub_and_spoke_codex_gemini_base_only_no_hooks(docker_image):
-    """codex/gemini get the base directly (no overlay, no hooks); spokes present
-    with refs rewritten to each agent's own absolute path."""
+def test_hub_and_spoke_codex_gets_codex_hooks_gemini_base_only(docker_image):
+    """codex/gemini get the base directly (no overlay); spokes present with refs
+    rewritten to each agent's own absolute path. Codex also gets the guards,
+    its deny adapter and rtk shim (never the Claude rtk wrapper) registered in
+    hooks.json by absolute path; gemini gets no hooks."""
     cmd = r"""
     set -euo pipefail
     cd /root/dotfiles && just sync-agents x g
@@ -1354,7 +1356,11 @@ def test_hub_and_spoke_codex_gemini_base_only_no_hooks(docker_image):
     grep -q 'Non-negotiables' /root/.gemini/GEMINI.md && echo "gemini-base"
     [ -f /root/.codex/docs/agents/testing.md ] && echo "codex-spoke"
     grep -q '/root/.codex/docs/agents/testing.md' /root/.codex/AGENTS.md && echo "codex-spoke-ref-absolute"
-    [ -d /root/.codex/hooks ] && echo "ERR-codex-hooks" || echo "codex-no-hooks"
+    [ -x /root/.codex/hooks/guard-codex.sh ] && echo "codex-guard-adapter"
+    [ -x /root/.codex/hooks/block-prohibited-commands.sh ] && echo "codex-guard"
+    [ -f /root/.codex/hooks/rtk-hook-codex.sh ] && echo "codex-rtk-shim"
+    [ -e /root/.codex/hooks/rtk-hook-claude.sh ] && echo "ERR-codex-claude-wrapper" || echo "codex-no-claude-wrapper"
+    grep -q '/root/.codex/hooks/guard-codex.sh' /root/.codex/hooks.json && echo "codex-hooks-json-absolute"
     [ -d /root/.gemini/hooks ] && echo "ERR-gemini-hooks" || echo "gemini-no-hooks"
     [ -f /root/.codex/CLAUDE.md ] && echo "ERR-codex-overlay" || echo "codex-no-overlay"
     """
@@ -1364,7 +1370,11 @@ def test_hub_and_spoke_codex_gemini_base_only_no_hooks(docker_image):
         "gemini-base",
         "codex-spoke",
         "codex-spoke-ref-absolute",
-        "codex-no-hooks",
+        "codex-guard-adapter",
+        "codex-guard",
+        "codex-rtk-shim",
+        "codex-no-claude-wrapper",
+        "codex-hooks-json-absolute",
         "gemini-no-hooks",
         "codex-no-overlay",
     ):
