@@ -217,4 +217,13 @@ if command -v mise >/dev/null 2>&1; then
 else
     echo "==> mise not on PATH; run 'just claude-plugins-install' after provisioning"
 fi
+# headroom's MCP server in every Claude home, egress pinned on the server
+# itself; same reason as the plugins, and a new home is filled by
+# `just headroom-mcp-register`
+if command -v mise >/dev/null 2>&1; then
+    echo "==> Registering headroom's MCP server..."
+    mise -C / exec -- python ~/dotfiles/scripts/headroom_mcp.py || echo "==> WARN: headroom MCP registration failed; run 'just headroom-mcp-register' after resolving the error"
+else
+    echo "==> mise not on PATH; run 'just headroom-mcp-register' after provisioning"
+fi
 echo "==> Deploy complete!"

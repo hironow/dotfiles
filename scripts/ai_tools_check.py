@@ -53,7 +53,7 @@ CODEX_FILES = ("hooks.json", "config.toml")
 # for `--check`, and the line shown when that tool is missing
 CHECKERS = {
     "codex": ("codex-hooks", ("codex_hooks_trust.py", "codex_sandbox_tools.py")),
-    "claude": ("claude-plugins", ("claude_plugins.py",)),
+    "claude": ("claude-plugins", ("claude_plugins.py", "headroom_mcp.py")),
 }
 
 # A checker may query several homes (claude_plugins.CHECK_BUDGET stays below)

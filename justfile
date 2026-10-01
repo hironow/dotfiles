@@ -183,6 +183,14 @@ pi-extensions-install:
 claude-plugins-install *args:
     @{{ UV_RUN }} scripts/claude_plugins.py {{ args }}
 
+# Register headroom's MCP server (headroom_compress / _retrieve / _stats) in
+# every Claude home, with its egress switches pinned on the server itself.
+# Through `claude mcp add --scope user`, so Claude Code owns its own
+# .claude.json. `just deploy` already runs this. --check: report only.
+[group('Agents')]
+headroom-mcp-register *args:
+    @{{ UV_RUN }} scripts/headroom_mcp.py {{ args }}
+
 # After an rtk upgrade (doctor's rtk-pi-extension WARN): re-vendor rtk's own
 # Pi extension into config/pi/extensions/rtk.ts, header kept, body verbatim.
 # Re-vendor config/pi/extensions/rtk.ts from the installed rtk
