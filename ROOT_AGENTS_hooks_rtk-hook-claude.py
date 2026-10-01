@@ -131,8 +131,10 @@ def _is_vetoed_rewrite(command: str) -> bool:
 
     It errs toward vetoing: a false match only drops the rewrite, and plain git
     runs, while a miss hands the guard a launcher it refuses."""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True  # operators split even without spaces
     try:
-        tokens = shlex.split(command, comments=False, posix=True)
+        tokens = list(lexer)
     except ValueError:
         return VETOED_COMMAND in command  # unparseable: veto if git appears at all
     for index, token in enumerate(tokens):

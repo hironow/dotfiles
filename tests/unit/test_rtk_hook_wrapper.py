@@ -208,6 +208,9 @@ def test_flagged_rtk_git_rewrite_is_suppressed(
         ("FOO=1 git log", "FOO=1 rtk git log"),
         ("cd sub && git status", "cd sub && rtk git status"),
         ("ls && git status", "rtk ls && rtk git status"),
+        # operators need no spaces around them
+        ("cd sub&&git status", "cd sub&&rtk git status"),
+        ("(git log)", "(rtk git log)"),
     ],
 )
 def test_a_git_rewrite_anywhere_in_the_command_is_suppressed(
