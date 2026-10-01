@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -141,60 +140,20 @@ def _is_vetoed_rewrite(command: str) -> bool:
     return False
 
 
-_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=[^\s;&|()]*")
-_LAUNCHER_WORD = re.compile(re.escape(RTK_LAUNCHER) + r"(?=[\s;&|)]|$)")
-_COMMAND_START = set(";&|(\n")
-
-
-def _with_launcher(command: str, launcher: str) -> str:
-    """command, with each `rtk` in command position replaced by launcher.
+def _with_launcher(command: str, launcher: str) -> str | None:
+    """`launcher <args>` for a rewrite of the plain shape `rtk <args>`, else None.
 
     Used when rtk came from mise: the shell that runs the rewrite has the same
     PATH as this hook, without rtk, so a bare `rtk` there is "command not
-    found". Command position means unquoted, at the start or after `;` `&` `|`
-    `(` or a newline, past any NAME=value prefixes; an `rtk` anywhere else (an
-    argument, a quoted commit message, a heredoc body) stays as it is.
+    found". Only a rewrite whose leading launcher is its only `rtk` is kept.
+    Finding the launchers in compound shell takes a shell parser (quotes,
+    command substitution, comments, heredocs, line continuations), and a missed
+    one fails the command; dropping the rewrite only costs the compression.
     """
-    quoted = shlex.quote(launcher)
-    out: list[str] = []
-    i, at_start, quote = 0, True, ""
-    while i < len(command):
-        char = command[i]
-        if quote:
-            if char == "\\" and quote == '"':
-                out.append(command[i : i + 2])
-                i += 2
-                continue
-            quote = "" if char == quote else quote
-            out.append(char)
-            i += 1
-            continue
-        if command.startswith("<<", i):  # a heredoc body is data: leave the rest
-            out.append(command[i:])
-            break
-        if char in "'\"":
-            quote, at_start = char, False
-        elif char == "\\":
-            out.append(command[i : i + 2])
-            i, at_start = i + 2, False
-            continue
-        elif char in _COMMAND_START:
-            at_start = True
-        elif char.isspace():
-            pass
-        elif at_start and (word := _LAUNCHER_WORD.match(command, i)):
-            out.append(quoted)
-            i, at_start = word.end(), False
-            continue
-        elif at_start and (assignment := _ASSIGNMENT.match(command, i)):
-            out.append(assignment[0])
-            i = assignment.end()
-            continue
-        else:
-            at_start = False
-        out.append(char)
-        i += 1
-    return "".join(out)
+    prefix = RTK_LAUNCHER + " "
+    if not command.startswith(prefix) or RTK_LAUNCHER in command[len(prefix) :]:
+        return None
+    return shlex.quote(launcher) + command[len(RTK_LAUNCHER) :]
 
 
 def _run_rtk(raw: str) -> tuple[dict, str | None] | None:
@@ -255,7 +214,10 @@ def main() -> int:
         return EXIT_ALLOW  # emit nothing: the plain command runs
 
     if off_path and isinstance(rewritten, str) and isinstance(updated, dict):
-        updated["command"] = _with_launcher(rewritten, off_path)
+        named = _with_launcher(rewritten, off_path)
+        if named is None:
+            return EXIT_ALLOW  # emit nothing: the typed command runs as it is
+        updated["command"] = named
 
     if PERMISSION_DECISION_POLICY == "strip":
         # Forward the rewrite and nothing else, so no approving field rtk

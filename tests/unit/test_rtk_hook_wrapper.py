@@ -314,46 +314,25 @@ def test_rtk_absent_from_path_is_resolved_through_mise(
     assert "permissionDecision" not in answer
 
 
-def test_every_launcher_rtk_adds_names_the_mise_copy_and_nothing_else(
-    tmp_path: Path, plain_repo: Path
-) -> None:
-    rewrite = {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "updatedInput": {
-                "command": 'rtk git commit -m "a; rtk b" && rtk read README.md'
-            },
-        }
-    }
-    rtk = _executable(tmp_path / "mise-rtk", _rtk_stub(json.dumps(rewrite)))
-    code, out = _run(
-        _payload('git commit -m "a; rtk b" && cat README.md', plain_repo),
-        tmp_path=tmp_path,
-        rtk_stub=None,
-        extra_bin={"mise": _mise_stub(rtk, witness=tmp_path / "asked")},
-    )
-    assert code == EXIT_ALLOW
-    launcher = shlex.quote(rtk.as_posix())
-    # the `rtk` in the user's own commit message is left alone
-    assert json.loads(out)["hookSpecificOutput"]["updatedInput"]["command"] == (
-        f'{launcher} git commit -m "a; rtk b" && {launcher} read README.md'
-    )
-
-
 @pytest.mark.parametrize(
     ("typed", "rewrite", "expected"),
     [
-        # an argument spelled like the launcher is an argument (found in review)
-        ("cat rtk read", "rtk read rtk read", "{L} read rtk read"),
-        ("FOO=1 git log", "FOO=1 rtk git log", "FOO=1 {L} git log"),
-        ("echo x | grep x", "echo x | rtk grep x", "echo x | {L} grep x"),
-        ("cat <<'E'\nrtk x\nE", "rtk read <<'E'\nrtk x\nE", "{L} read <<'E'\nrtk x\nE"),
-        # typed by hand it is just as unreachable on this PATH
         ("rtk gain", "rtk gain", "{L} gain"),
+        ("cat README.md", "rtk read README.md", "{L} read README.md"),
+        # Anything but the plain `rtk <command>` shape is left unrewritten: the
+        # typed command runs as it is. Finding the launchers in compound shell
+        # needs a shell parser (quotes, $( ), comments, heredocs, line
+        # continuations, arithmetic, redirections: all found in review), and a
+        # missed one fails with "command not found" while no rewrite never does.
+        ("cat rtk read", "rtk read rtk read", None),
+        ("git status && ls", "rtk git status && rtk ls", None),
+        ("FOO=1 git log", "FOO=1 rtk git log", None),
+        ('git commit -m "a; rtk b"', 'rtk git commit -m "a; rtk b"', None),
+        ("echo x | grep x", "echo x | rtk grep x", None),
     ],
 )
-def test_only_launchers_in_command_position_are_replaced(
-    tmp_path: Path, plain_repo: Path, typed: str, rewrite: str, expected: str
+def test_a_mise_rtk_rewrite_is_kept_only_in_the_plain_shape(
+    tmp_path: Path, plain_repo: Path, typed: str, rewrite: str, expected: str | None
 ) -> None:
     answer = {
         "hookSpecificOutput": {
@@ -369,6 +348,9 @@ def test_only_launchers_in_command_position_are_replaced(
         extra_bin={"mise": _mise_stub(rtk, witness=tmp_path / "asked")},
     )
     assert code == EXIT_ALLOW
+    if expected is None:
+        assert out == ""
+        return
     command = json.loads(out)["hookSpecificOutput"]["updatedInput"]["command"]
     assert command == expected.replace("{L}", shlex.quote(rtk.as_posix()))
 
