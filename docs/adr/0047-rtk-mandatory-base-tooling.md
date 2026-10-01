@@ -1,7 +1,11 @@
 # 0047. rtk is mandatory base tooling and dotfiles owns its Claude hook
 
 **Date:** 2026-09-29
-**Status:** Accepted (operator directive, 2026-09-29).
+**Status:** Accepted (operator directive, 2026-09-29). The decision below stands;
+its description of what rtk answers is corrected for 0.50.0 by
+[0049](./0049-headroom-mandatory-base-tooling.md) ("Superseding note on ADR
+0047") — rtk no longer sends `permissionDecision` for every rewrite, and the
+wrapper's policy is still required for the rewrites where it does.
 
 ## Context
 
