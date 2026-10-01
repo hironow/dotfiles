@@ -172,8 +172,8 @@ def test_doctor_checks_and_deploy_installs_the_plugins() -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     assert "claude-plugins-install *args:" in justfile
     deploy = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
-    # both the native Windows path and the Unix path
-    assert deploy.count("claude_plugins.py") >= 2
+    # one of the agent steps every OS runs (test_deploy_pi_extensions)
+    assert "claude_plugins.py claude-plugins-install" in deploy
 
 
 @pytest.mark.parametrize(
