@@ -62,7 +62,7 @@ def test_other_states_are_ok(state: str) -> None:
 
 def test_syncing_codex_fixes_it_and_doctor_checks_it() -> None:
     assert "codex_sandbox_tools.py" in [step[0] for step in sync_agents.CODEX_STEPS]
-    assert "codex_sandbox_tools.py" in ai_tools_check.CODEX_CHECKS
+    assert "codex_sandbox_tools.py" in ai_tools_check.CHECKERS["codex"][1]
 
 
 ENV_READABLE = r"""C:\Users\u\.env nn\CodexSandboxUsers:(RX)
