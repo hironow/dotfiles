@@ -31,23 +31,31 @@ design and writes the `settings.json` env that sync owns; `just doctor`'s
 
 ## What it actually compresses
 
-Measured on 0.38.0 with the installed `proxy,code` extras, through a real
-`headroom_compress` call:
+Measured on 0.39.1 with the installed `proxy,code` extras, through a real
+`headroom_compress` call. `just headroom-compress-measure` reproduces this:
 
 | payload | ratio |
 |---|---|
-| 700 log lines | **0.009** |
-| 700-object JSON array | **0.335** |
-| 700-line `ls -la` listing | 1.000 — unchanged |
+| 700 log lines | **0.001** |
+| 700-object JSON array | **0.334** |
+| 700-line `ls -la` listing | **0.890** |
 | repetitive prose | 1.000 — unchanged |
 
-The two 1.000 rows are the ML route, which is OFF here: the server logs
-`WARNING: Kompress model not ready; requests will not be compressed`, because
-the model wants `headroom-ai[ml]` plus a first-run warmup that downloads from
-huggingface.co. That download is egress we have not invited, so the gap is
-deliberate: structured output (logs, JSON, search results) compresses with no
-network at all, and prose does not compress. Read a flat canary result in that
-light before blaming the proxy.
+So: structured output compresses hard, a columnar directory listing compresses
+slightly, and prose comes back byte for byte. Read a flat canary result in that
+light before blaming the proxy — on prose a ratio of 1.000 is the expected
+answer, not a broken proxy.
+
+The recipe's four payloads are byte-identical on every run
+(`tests/unit/test_headroom_compress_measure.py` pins each one's sha256), which
+is the only reason the ratios above mean anything after a bump: re-run the
+recipe, and a moved number is the compressor moving rather than a different
+input. Do that whenever the pin moves, and correct this table when it happens.
+
+No claim is made here about *why* prose does not compress. The pinned extras do
+install an ONNX stack (`onnxruntime`, `transformers`, `tokenizers`), so "the ML
+route needs `headroom-ai[ml]`" is not the explanation; what is left is
+unmeasured, and guessing it in a doc is worse than leaving it open.
 
 ## Egress
 
@@ -56,13 +64,24 @@ mise's global `[env]`, the shared Claude settings env, the persisted Windows
 User env, the MCP registration's own `env` block, and the proxy process
 `jev_headroom` starts. Two switches because the beacon fails OPEN — any value
 but the literal `off` uploads — and because `DO_NOT_TRACK=1` is the stronger of
-the two: measured on 0.38.0, it turns the beacon off even against an explicit
-`HEADROOM_BEACON=on`.
+the two: measured on 0.39.1, it turns the beacon off even against an explicit
+`HEADROOM_BEACON=on`. `HEADROOM_BEACON=off` on its own is also enough, with no
+`DO_NOT_TRACK` behind it; we set both so that neither one is load-bearing.
 
 `just doctor` checks both in the shell, in every Claude home's settings and in
 the Windows User env, and asks headroom itself
 (`headroom telemetry --json` → `beacon_enabled`). Update checks, licence
 reporting and model downloads remain allowed; the beacon does not.
+
+Re-measuring after a version bump is safe: `headroom telemetry` only prints the
+payload the beacon *would* send, so reading it costs no egress even in the one
+combination that leaves the beacon enabled. The switches govern new processes
+only — a proxy started before a bump keeps serving its old version until it is
+restarted — so read them off the running process (`ps -Ewww -p <pid>`) instead
+of trusting the config it was launched with. Find those pids by matching
+`headroom(\.cli)?\s+(proxy|mcp)` against `ps -axo pid=,command=`: a looser
+`pgrep -f headroom` both misses the real argv (`python -m headroom.cli proxy`)
+and matches the searching shell itself.
 
 In an outage, bypass is per process and needs no sync: `JEV_HEADROOM=off j-cc`
 skips the proxy, and removing the MCP server (`claude mcp remove headroom
