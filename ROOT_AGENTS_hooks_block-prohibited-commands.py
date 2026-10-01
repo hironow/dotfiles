@@ -19,7 +19,7 @@ Pipeline (full semantics: docs/agents/enforcement.md):
 4. Token walk with a minimal shell grammar: command boundaries are
    ; && || | & ( ); NAME=VALUE prefixes and wrappers (env/sudo/...) are
    skipped at command start, as is the mandatory rtk proxy (`rtk [opts]
-   [proxy|err|test|summary|smart] <real command>`); redirect operators
+   [proxy|run|err|test|summary|smart] <real command>`); redirect operators
    consume the next token as
    their operand. Guards: pip/poetry/pipenv, npm/yarn/pnpm (and the direct
    `corepack <pm>` run form), make (command name, basename-resolved),
@@ -82,8 +82,8 @@ WRAPPERS = {"env", "sudo", "time", "nohup", "command", "xargs"}
 RTK_LAUNCHER = "rtk"
 # rtk subcommands that run a command the agent supplies rather than proxying a
 # fixed tool, so the real command sits one token further right
-# (`rtk proxy pnpm install`, `rtk err pip install …`).
-RTK_RUN_SUBCOMMANDS = {"proxy", "err", "test", "summary", "smart"}
+# (`rtk proxy pnpm install`, `rtk err pip install …`, `rtk run -- npm ci`).
+RTK_RUN_SUBCOMMANDS = {"proxy", "run", "err", "test", "summary", "smart"}
 INTERPRETERS = {
     "sh",
     "bash",

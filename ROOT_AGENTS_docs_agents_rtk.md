@@ -88,9 +88,9 @@ and split compound constructs into plain, separate commands.
 
 `block-prohibited-commands` resolves the real command behind the proxy, so
 `rtk pnpm install` is blocked exactly like `pnpm install`, including the
-run-anything subcommands (`rtk proxy …`, `rtk err …`, `rtk test …`,
-`rtk summary …`, `rtk smart …`). Prefixing a banned tool with `rtk` is not an
-escape hatch.
+run-anything subcommands (`rtk proxy …`, `rtk run …`, `rtk err …`,
+`rtk test …`, `rtk summary …`, `rtk smart …`). Prefixing a banned tool with
+`rtk` is not an escape hatch.
 
 ## Meta commands (always call rtk directly)
 

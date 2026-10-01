@@ -126,7 +126,7 @@ def test_corepack_enable_is_allowed(tmp_path: Path) -> None:
 # --- rtk, the mandatory output proxy, is a wrapper too (ADR 0047) -----------
 #
 # rtk proxies commands (`rtk pnpm install`) and also runs arbitrary ones through
-# `proxy`/`err`/`test`/`summary`/`smart`. Its PreToolUse hook rewrites bare
+# `proxy`/`run`/`err`/`test`/`summary`/`smart`. Its PreToolUse hook rewrites bare
 # commands into that form by default, so agents see the prefix constantly.
 # Measured before this was handled: `rtk pnpm install`, `rtk proxy pnpm install`,
 # `rtk err pip install foo` and `rtk make --version` all returned EXIT_ALLOW —
@@ -161,6 +161,12 @@ def test_rtk_test_make_is_blocked(tmp_path: Path) -> None:
 
 def test_rtk_smart_npm_is_blocked(tmp_path: Path) -> None:
     assert _run_hook("rtk smart npm ci", tmp_path) == EXIT_BLOCK
+
+
+@pytest.mark.parametrize("command", ["rtk run pnpm install", "rtk run -- npm ci"])
+def test_rtk_run_is_transparent(tmp_path: Path, command: str) -> None:
+    """`rtk run` (rtk 0.50) executes its operands raw, like `rtk proxy`."""
+    assert _run_hook(command, tmp_path) == EXIT_BLOCK
 
 
 def test_rtk_with_its_own_flags_still_unwraps(tmp_path: Path) -> None:
