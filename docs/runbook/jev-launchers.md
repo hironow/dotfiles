@@ -222,6 +222,53 @@ Get-CimInstance Win32_Process | Where-Object CommandLine -match 'headroom.*proxy
 taskkill /T /F /PID <headroom.exe の ProcessId>
 ```
 
+## rtk と headroom を両方使う
+
+rtk はコマンドの出力を圧縮し、headroom はモデルに届く内容を圧縮する。
+両方とも mise で入る基盤の道具で（ADR 0047）、効く範囲は起動のしかたで決まる。
+
+| 起動のしかた | rtk | headroom の proxy | headroom の MCP サーバー |
+| --- | --- | --- | --- |
+| `j-cc`（Claude Code） | 効く（Bash の hook） | 通す（セッションと worker） | 使える |
+| 素の `claude` | 効く | 通さない（Remote Control を残すため） | 使える |
+| `j-pi`（Pi 自身） | 効く（Pi の bash の拡張） | 通さない（上の理由） | なし |
+| `j-pi` から起動する Codex の worker | 効かない | 通す | なし |
+| 素の `codex` | 効く（Codex の hook） | 通さない | なし |
+
+`j-pi` の Codex の worker は `--ignore-user-config` で起動するので、Codex は利用者の `hooks.json` を読まない。
+そのため rtk も、dotfiles の guard の hook も、この worker には効かない。
+
+両方を使えるようにする手順は次のとおりである（`just deploy` は、headroom の MCP サーバーの登録と Codex のプラグインの導入も行う）。
+
+```sh
+just deploy
+just harden-env                              # 両方の telemetry を off にする（Windows は User の環境変数にも書く）
+just sync-agents && just sync-agents a b c d x   # Claude と Codex の hook を配り、Codex の hook を信頼済みにする
+just doctor                                  # AI の節がすべて OK になるまで、表示される手順に従う
+```
+
+proxy は 1 つで足りる。
+`j-cc` と Codex の worker は、記録ファイル（`~/.cache/jev/headroom.json`）を通して同じ proxy を使い回し、動いていなければ起動のときに自動で立てる（上の「headroom」の節）。
+ログインのときに常駐させる仕組みは置かない（使うのは `j-cc` だけで、起動の仕組みを 2 つにしないため）。
+
+両方が 1 つのセッションで効いていることは、次で確かめる。
+
+```sh
+just jev-headroom-verify rtk   # j-cc と同じ環境のセッションが proxy を通り、その Bash が rtk を通る
+rtk gain                       # rtk が圧縮したコマンドの数と、減らせたトークン
+headroom savings               # headroom が減らしたトークン（proxy をまたいで 30 日分）
+```
+
+headroom を使うときに、利用者がすることは 2 つだけである。
+
+- モデルに届く内容を圧縮したいセッションは、`j-cc` で起動する（proxy は自動で用意される）
+- どの Claude のセッションでも、headroom の MCP の道具（`mcp__headroom__headroom_compress`、`…_retrieve`、`…_stats`）が使える
+
+全体の状態は `just doctor` の AI の節で見る。
+`headroom doctor` は、headroom 自身の配線（`headroom wrap` や `headroom init` が Claude と Codex の設定に proxy を書き込む形）を前提にしている。
+そのため、この環境では claude と codex を「not routed」と表示し、`headroom wrap claude` を勧めるが、それには従わない（素の `claude` も proxy を通るようになり、Remote Control が使えなくなる）。
+`headroom doctor` を使うなら、記録したポート（`~/.cache/jev/headroom.json` の `port`）を `-p` で渡し、`proxy` と `version` の行だけを見る（既定の 8787 には proxy がいないので、`proxy` は失敗と出る）。
+
 ## 動作確認
 
 Agent ツールで `updatedInput` が効くか、`effort` が実際に効くかは、実際のリクエストでしか確かめられない。
@@ -269,8 +316,9 @@ just jev-pi-verify
 `j-cc` のセッションと worker、Codex の worker が headroom を通ることは、次で確かめる。
 
 ```sh
-just jev-headroom-verify          # 両方
+just jev-headroom-verify          # 3 つすべて
 just jev-headroom-verify codex    # Codex の worker だけ（Jev のキーがなくても動く）
+just jev-headroom-verify rtk      # 1 つのセッションで headroom と rtk の両方（Jev のキーがなくても動く）
 ```
 
 確認のためだけの proxy を空いているポートで起動し、リクエストのメッセージを一時ディレクトリのログに残す（終わったら proxy を止め、ログごと消す）。
@@ -278,9 +326,11 @@ just jev-headroom-verify codex    # Codex の worker だけ（Jev のキーが�
 判定は、proxy のログ（セッションと worker の最初のメッセージの目印）とフックの記録で行い、モデルの返答には頼らない。
 Codex の確認では、本物の `jev_codex_exec.py` を動かし、記録ファイル（`JEV_HEADROOM_STATE_DIR`）で確認用の proxy を再利用させる。
 headroom は Codex の（Responses API の）リクエストのメッセージをログに残さないが、client を `codex` と記録するので、それを数える（確認用の proxy を使うのは、この runner だけである）。
+`rtk` の確認では、`j-cc` と同じ環境のセッションを空の一時ディレクトリで動かし、Bash で `ls -la` を 1 回実行させる。
+proxy のログにそのセッションのリクエストがあり、rtk 自身がそのディレクトリで数えたコマンド（`rtk gain -p`）が 1 件以上あれば `PASS` である（後者を増やせるのは Claude の rtk の hook だけである）。
 
 | 結果 | 終了コード | 意味 |
 | --- | --- | --- |
 | `PASS` | 0 | セッションと、`worker-<effort>` に差し替えた worker のリクエストが、両方とも proxy を通った |
-| `FAIL` | 1 | proxy が起動しない、セッションか worker のリクエストが proxy を通らない、またはフックが差し替えを記録しない |
-| `BLOCKED` | 2 | キーか headroom がない、利用上限、未ログイン、またはモデルが worker を起動しなかった |
+| `FAIL` | 1 | proxy が起動しない、セッションか worker のリクエストが proxy を通らない、フックが差し替えを記録しない、または Bash のコマンドが rtk を通らない |
+| `BLOCKED` | 2 | キー、headroom、rtk がない、利用上限、未ログインかログインの期限切れ（`claude` を起動して `/login`）、またはモデルが worker を起動しなかったか Bash を実行しなかった |
