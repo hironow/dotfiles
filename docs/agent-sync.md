@@ -91,6 +91,10 @@ CLI には `-a universal` で store だけを書かせ、home には触らせな
 - `just restore-skills-lock`：新しい機体で、宣言から store を復元して配置する
 - `just skills-update`：hironow/skills の merge 後などに、store を更新して配置する
 
+**Claude Code のプラグイン**：settings の断片は `enabledPlugins` と `extraKnownMarketplaces` を持たない（ADR 0037。plugin CLI が書き換えるため）。
+dotfiles が必須とするプラグインは `dump/harness/claude-plugins.json` に宣言し、`just deploy`（単独では `just claude-plugins-install`）が plugin CLI で各 home に入れる（ADR 0048）。
+sync はこの 2 つのキーを書き換えない。
+
 **Antigravity CLI（`agy`）の skill、settings、MCP**：Antigravity は、skill を `agy plugin`（`~/.gemini/antigravity-cli/plugins/<name>/skills/`）で、settings と MCP を `agy import`（`~/.gemini/antigravity-cli/settings.json` と `mcp/`）で自分で管理する（ADR 0026）。
 これらを直接配ると、その自己管理を迂回して上書きしてしまうので、dotfiles は触らない。
 共有するのは指示の層（`~/.gemini/GEMINI.md`）だけである。

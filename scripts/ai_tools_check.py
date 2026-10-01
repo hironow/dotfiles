@@ -49,7 +49,15 @@ HEADROOM_CLAUDE_MARKERS = ("headroom-init-claude",)
 HEADROOM_CODEX_MARKERS = ("headroom-init-codex", "# --- Headroom init provider ---")
 CODEX_FILES = ("hooks.json", "config.toml")
 # Codex checkers in scripts/, each printing doctor lines for `--check`
-CODEX_CHECKS = ("codex_hooks_trust.py", "codex_sandbox_tools.py")
+# Checkers in scripts/ by the tool they need on PATH, each printing doctor lines
+# for `--check`, and the line shown when that tool is missing
+CHECKERS = {
+    "codex": ("codex-hooks", ("codex_hooks_trust.py", "codex_sandbox_tools.py")),
+    "claude": ("claude-plugins", ("claude_plugins.py",)),
+}
+
+# A checker may query several homes (claude_plugins.CHECK_BUDGET stays below)
+CHECKER_TIMEOUT = 300
 
 Line = tuple[str, str, str]  # (level, name, detail)
 
@@ -88,8 +96,9 @@ class Facts:
     user_env: Mapping[str, str] | None  # persisted Windows User env; None elsewhere
     claude_homes: Mapping[str, dict]  # existing home -> its settings.json
     pi_extensions: Mapping[str, bool]  # name -> placed
-    # CODEX_CHECKS' --check output by script (None: it did not run); None without codex
-    codex_checks: Mapping[str, str | None] | None
+    # CHECKERS' --check output: tool -> script -> output (None: it did not run);
+    # a tool not on PATH maps to None
+    checks: Mapping[str, Mapping[str, str | None] | None]
     # (recorded port, its /health answer or None); None: no record
     headroom_proxy: tuple[int, Mapping[str, object] | None] | None
     codex_files: Mapping[str, str]  # CODEX_FILES in ~/.codex ("" when absent)
@@ -270,18 +279,21 @@ def _pi_extensions(facts: Facts) -> Line:
     return ("OK", "pi-extensions", ", ".join(facts.pi_extensions))
 
 
-def _codex(facts: Facts) -> list[Line]:
-    if facts.codex_checks is None:
-        return [("OK", "codex-hooks", "codex not on PATH")]
+def _checkers(facts: Facts) -> list[Line]:
     lines: list[Line] = []
-    for script, out in facts.codex_checks.items():
-        if out is None:
-            lines.append(("WARN", "codex", f"{script} --check failed to run"))
+    for tool, outputs in facts.checks.items():
+        if outputs is None:
+            absent = CHECKERS[tool][0] if tool in CHECKERS else f"{tool}-checks"
+            lines.append(("OK", absent, f"{tool} not on PATH"))
             continue
-        for raw in out.splitlines():
-            level, _, rest = raw.partition(" ")
-            name, _, detail = rest.strip().partition(" - ")
-            lines.append((level.strip(), name, detail))
+        for script, out in outputs.items():
+            if out is None:
+                lines.append(("WARN", tool, f"{script} --check failed to run"))
+                continue
+            for raw in out.splitlines():
+                level, _, rest = raw.partition(" ")
+                name, _, detail = rest.strip().partition(" - ")
+                lines.append((level.strip(), name, detail))
     return lines
 
 
@@ -456,7 +468,7 @@ def report(facts: Facts) -> list[Line]:
         *_headroom_cli(facts),
         _claude_rtk_hook(facts),
         _pi_extensions(facts),
-        *_codex(facts),
+        *_checkers(facts),
         _headroom_proxy(facts),
         _headroom_routing(facts),
         *_claude_git_bash(facts),
@@ -476,7 +488,7 @@ def _run(args: list[str], *, checker: bool = False) -> str | None:
             capture_output=True,
             encoding="utf-8",
             errors="replace",
-            timeout=60,
+            timeout=CHECKER_TIMEOUT if checker else 60,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
@@ -604,15 +616,18 @@ def gather(home: Path) -> Facts:
     )
     port = jev_headroom.read_state(jev_headroom.state_path(home))
     codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
-    codex_checks = None
-    if shutil.which("codex"):
-        codex_checks = {
+    checks = {
+        tool: {
             script: _run(
                 [sys.executable, str(ROOT / "scripts" / script), "--check"],
                 checker=True,
             )
-            for script in CODEX_CHECKS
+            for script in scripts
         }
+        if shutil.which(tool)
+        else None
+        for tool, (_absent, scripts) in CHECKERS.items()
+    }
     rtk = _tool_facts("rtk", ["--version"])
     headroom = _tool_facts("headroom", ["--version"])
     rtk_exe = rtk.paths[0] if rtk.paths else None
@@ -632,7 +647,7 @@ def gather(home: Path) -> Facts:
         user_env=_windows_user_env(),
         claude_homes=claude_homes,
         pi_extensions={name: (pi_dir / name).is_file() for name in PI_EXTENSIONS},
-        codex_checks=codex_checks,
+        checks=checks,
         headroom_proxy=None if port is None else (port, jev_headroom.probe(port)),
         codex_files={name: _text(codex_home / name) for name in CODEX_FILES},
         rtk_help=_run([rtk_exe, "--help"]) if rtk_exe else None,

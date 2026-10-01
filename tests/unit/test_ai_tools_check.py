@@ -67,10 +67,12 @@ def _facts(**changes: object) -> check.Facts:
             }
         },
         pi_extensions={"jev-sonnet-fallback.ts": True, "rtk.ts": True},
-        codex_checks={
-            "codex_hooks_trust.py": "OK   codex-hooks - 5 dotfiles hooks trusted and enabled",
-            # off Windows the sandbox check has nothing to say
-            "codex_sandbox_tools.py": "",
+        checks={
+            "codex": {
+                "codex_hooks_trust.py": "OK   codex-hooks - 5 dotfiles hooks trusted and enabled",
+                # off Windows the sandbox check has nothing to say
+                "codex_sandbox_tools.py": "",
+            }
         },
         headroom_proxy=None,
         rtk_help=RTK_HELP,
@@ -156,11 +158,11 @@ def test_codex_problems_are_passed_through() -> None:
         "WARN",
         "codex-hooks",
         "preToolUse Bash rtk-hook-codex.sh: not trusted (run just codex-hooks-trust)",
-    ) in check.report(_facts(codex_checks=lines))
+    ) in check.report(_facts(checks={"codex": lines}))
 
 
 def test_a_codex_check_that_cannot_run_warns() -> None:
-    facts = _facts(codex_checks={"codex_sandbox_tools.py": None})
+    facts = _facts(checks={"codex": {"codex_sandbox_tools.py": None}})
     assert (
         "WARN",
         "codex",
@@ -441,3 +443,9 @@ def test_a_checker_that_dies_silently_counts_as_not_run(
     returncode: int, stdout: str, answer: str | None
 ) -> None:
     assert check.checker_output(returncode, stdout) == answer
+
+
+def test_a_missing_tool_skips_its_checkers() -> None:
+    assert ("OK", "codex-hooks", "codex not on PATH") in check.report(
+        _facts(checks={"codex": None})
+    )

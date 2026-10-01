@@ -131,6 +131,7 @@ just help                       # recipe の一覧
 
 just sync-agents-preview        # エージェント指示の配布を試す（書き込まない）
 just sync-agents                # ~/.claude などへ配る
+just claude-plugins-install     # 各 Claude の home に必須のプラグイン（Codex）を入れる（deploy も実行する）
 just lint-claude                # 配る Claude 設定の検査（ADR 0029）
 
 just update-all                 # 道具を更新する（mise、gh、Pi の拡張など）

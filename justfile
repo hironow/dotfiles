@@ -177,6 +177,12 @@ deploy:
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
+# Install the Claude Code plugins every Claude home must have
+# (dump/harness/claude-plugins.json; the Codex plugin j-cc delegates to).
+# `just deploy` already runs this. --check: report only.
+claude-plugins-install *args:
+    @{{ UV_RUN }} scripts/claude_plugins.py {{ args }}
+
 # After an rtk upgrade (doctor's rtk-pi-extension WARN): re-vendor rtk's own
 # Pi extension into config/pi/extensions/rtk.ts, header kept, body verbatim.
 # Re-vendor config/pi/extensions/rtk.ts from the installed rtk

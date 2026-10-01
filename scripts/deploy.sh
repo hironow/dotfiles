@@ -137,6 +137,8 @@ POWERSHELL
     if command -v mise >/dev/null 2>&1; then
       echo "==> Installing Pi extensions (native Windows)..."
       MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; re-run 'just pi-extensions-install'"
+      echo "==> Installing Claude Code plugins (native Windows)..."
+      MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/claude_plugins.py || echo "==> WARN: Claude plugin installation failed; re-run 'just claude-plugins-install'"
     fi
     # git aliases [include] managed block (ADR 0033). Wires ONLY
     # aliases.gitconfig (pure [alias] entries) — deliberately NOT
@@ -206,5 +208,13 @@ elif command -v pi >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     python3 ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; run 'just pi-extensions-install' after resolving the error"
 else
     echo "==> pi or Python not on PATH; run 'just pi-extensions-install' after provisioning"
+fi
+# Plugins every Claude home must have (dump/harness/claude-plugins.json); a home
+# sync-agents creates later is filled by `just claude-plugins-install`
+if command -v mise >/dev/null 2>&1; then
+    echo "==> Installing Claude Code plugins..."
+    mise -C / exec -- python ~/dotfiles/scripts/claude_plugins.py || echo "==> WARN: Claude plugin installation failed; run 'just claude-plugins-install' after resolving the error"
+else
+    echo "==> mise not on PATH; run 'just claude-plugins-install' after provisioning"
 fi
 echo "==> Deploy complete!"
