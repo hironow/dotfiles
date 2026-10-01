@@ -142,8 +142,8 @@ def test_baked_mise_pins_go_and_golangci_lint() -> None:
         f"got {go!r}"
     )
     golangci = tools.get("aqua:golangci/golangci-lint")
-    assert golangci == "2.13.0", (
-        "bake aqua:golangci/golangci-lint 2.13.0 into /etc/mise so sandbox "
+    assert golangci == "2.14.0", (
+        "bake aqua:golangci/golangci-lint 2.14.0 into /etc/mise so sandbox "
         f"just check can run go-lint, got {golangci!r}"
     )
 
