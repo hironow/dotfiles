@@ -133,6 +133,7 @@ def _is_vetoed_rewrite(command: str) -> bool:
     runs, while a miss hands the guard a launcher it refuses."""
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True  # operators split even without spaces
+    lexer.commenters = ""  # a `#` inside a word (issue#1) starts no comment
     try:
         tokens = list(lexer)
     except ValueError:

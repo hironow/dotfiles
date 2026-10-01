@@ -211,6 +211,8 @@ def test_flagged_rtk_git_rewrite_is_suppressed(
         # operators need no spaces around them
         ("cd sub&&git status", "cd sub&&rtk git status"),
         ("(git log)", "(rtk git log)"),
+        # `#` inside a word is no comment in bash
+        ("echo issue#1 && git status", "echo issue#1 && rtk git status"),
     ],
 )
 def test_a_git_rewrite_anywhere_in_the_command_is_suppressed(
