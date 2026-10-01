@@ -56,6 +56,9 @@ CHECKERS = {
     "claude": ("claude-plugins", ("claude_plugins.py",)),
 }
 
+# A checker may query several homes (claude_plugins.CHECK_BUDGET stays below)
+CHECKER_TIMEOUT = 300
+
 Line = tuple[str, str, str]  # (level, name, detail)
 
 
@@ -485,7 +488,7 @@ def _run(args: list[str], *, checker: bool = False) -> str | None:
             capture_output=True,
             encoding="utf-8",
             errors="replace",
-            timeout=300 if checker else 60,  # a checker may query five homes
+            timeout=CHECKER_TIMEOUT if checker else 60,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):

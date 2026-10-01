@@ -57,7 +57,7 @@ class FakeClaude:
             case ["marketplace", "add", source, "--scope", "user"]:
                 repo, ref = plugins.parse_source(source)
                 self.markets.append({"name": "openai-codex", "repo": repo, "ref": ref})
-            case ["marketplace", "remove", name]:
+            case ["marketplace", "remove", name, "--scope", "user"]:
                 # removing a marketplace uninstalls what came from it
                 self.markets = [m for m in self.markets if m["name"] != name]
                 self.installed = [
@@ -186,3 +186,24 @@ def test_no_settings_fragment_claims_the_plugin_keys(fragment: Path) -> None:
     sections = [data, data.get("settings", {})]
     for key in ("enabledPlugins", "extraKnownMarketplaces"):
         assert all(key not in section for section in sections)
+
+
+@pytest.mark.parametrize(
+    ("deadline", "now", "timeout"),
+    [
+        (None, 0.0, plugins.CALL_TIMEOUT),  # installing: no overall budget
+        (1000.0, 0.0, plugins.CALL_TIMEOUT),
+        (100.0, 90.0, 10.0),  # the budget's rest, so doctor gets every line
+        (100.0, 100.0, None),  # spent: skip, reported as unreadable
+    ],
+)
+def test_each_call_fits_the_overall_budget(
+    deadline: float | None, now: float, timeout: float | None
+) -> None:
+    assert plugins.call_timeout(deadline, now) == timeout
+
+
+def test_the_check_budget_ends_before_doctor_stops_waiting() -> None:
+    import ai_tools_check  # noqa: PLC0415
+
+    assert plugins.CHECK_BUDGET < ai_tools_check.CHECKER_TIMEOUT
