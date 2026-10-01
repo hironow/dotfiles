@@ -31,15 +31,21 @@ def stack_text(stack: Path) -> str:
     return "\n".join(tf.read_text() for tf in sorted(stack.glob("*.tf")))
 
 
-def block(text: str, header: str) -> str:
-    """The body of the first block whose header matches `header` (a regex)."""
-    m = re.search(header + r"\s*\{", text)
-    assert m, f"no block matching {header!r}"
-    depth, i = 1, m.end()
-    while depth:
-        depth += {"{": 1, "}": -1}.get(text[i], 0)
-        i += 1
-    return text[m.end() : i - 1]
+def block(text: str, header: str, contains: str = "") -> str:
+    """The body of the first block whose header matches `header` (a regex).
+
+    `contains` (also a regex) picks between same-headed blocks: the retirement
+    has ten `removed` blocks now, and only one of them is the ACL's.
+    """
+    for m in re.finditer(header + r"\s*\{", text):
+        depth, i = 1, m.end()
+        while depth:
+            depth += {"{": 1, "}": -1}.get(text[i], 0)
+            i += 1
+        body = text[m.end() : i - 1]
+        if not contains or re.search(contains, body):
+            return body
+    raise AssertionError(f"no block matching {header!r} containing {contains!r}")
 
 
 def test_the_new_stack_imports_the_live_acl() -> None:
@@ -59,8 +65,7 @@ def test_the_old_stack_lets_go_of_the_acl_without_destroying_it() -> None:
     assert not re.search(r'resource "tailscale_acl"', text), (
         "tofu/exe must not manage the ACL any more: tofu/tailnet owns it"
     )
-    removed = block(text, r"\bremoved")
-    assert re.search(r"from\s*=\s*tailscale_acl\.this\b", removed)
+    removed = block(text, r"\bremoved", r"from\s*=\s*tailscale_acl\.this\b")
     assert re.search(r"destroy\s*=\s*false", removed), (
         "without destroy = false, dropping the resource would delete the live ACL"
     )

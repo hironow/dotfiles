@@ -75,6 +75,12 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 7.0"
     }
+    # Retirement (Phase 7): no provider block and no resource any more,
+    # so nothing configures or calls it and no step needs a Cloudflare
+    # API token. It stays required only so the state's Cloudflare
+    # entries decode with the v5 provider that wrote them until the
+    # forget (cloudflare.tf) drops them, and so `tofu init` keeps its
+    # lock-file pin.
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "~> 5.0"
@@ -98,11 +104,6 @@ provider "google" {
   project = var.gcp_project_id
   region  = var.gcp_region
   zone    = var.gcp_zone
-}
-
-provider "cloudflare" {
-  # CLOUDFLARE_API_TOKEN env var is read implicitly. Token scope:
-  #   Zone:Read, DNS:Edit, Access:Edit, Tunnel:Edit  (apex: hironow.dev only)
 }
 
 provider "tailscale" {

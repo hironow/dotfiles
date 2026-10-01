@@ -2,6 +2,25 @@
 
 OpenTofu stack provisioning `exe.hironow.dev`.
 
+## Retirement (Phase 7)
+
+This stack is being retired. Its configuration now only lets go of what
+outlives it and destroys the rest, run from the old project's step sheet:
+
+- Forgotten, never destroyed (`removed` blocks, `destroy = false`): the
+  tailnet's ACL (tofu/tailnet imports it), the shared Workload Identity
+  pool `github` (it pre-existed this stack, and other repositories use
+  it), and the eight Cloudflare objects, which the operator parks
+  unmanaged.
+- `tofu plan -destroy` ignores `removed` blocks, so those ten leave the
+  state first, in one targeted plan held to
+  `expected-changes/retire-2-forget.txt`; the destroy comes after.
+- The database is started and unprotected first
+  (`expected-changes/retire-1-database.txt`), so its deletion leaves a
+  30-day final backup.
+- No step needs a Cloudflare API token: nothing here reads a Cloudflare
+  attribute any more.
+
 ## Inputs
 
 Source of truth: [`variables.tf`](./variables.tf). Defaults shown are
@@ -18,9 +37,6 @@ operator-supplied via `terraform.tfvars`.
 | `gcp_zone` | `asia-northeast1-a` | Primary zone |
 | `domain` | `exe.hironow.dev` | Cloudflare-managed apex |
 | `sandbox_subdomain` | `sandbox.hironow.dev` | Wildcard parent for Coder app preview hostnames |
-| `cf_zone_name` | `hironow.dev` | Cloudflare zone holding both `domain` and `sandbox_subdomain` |
-| `cf_zone_id` | (required, `terraform.tfvars`) | Cloudflare zone identifier |
-| `cf_account_id` | (required, `terraform.tfvars`) | Cloudflare account identifier |
 | `tailnet` | (required, `terraform.tfvars`, e.g. `hironow.github`) | Tailscale tailnet identifier |
 | `owner_email` | `hironow365@gmail.com` | CF Access allowlist + uptime alert recipient |
 

@@ -91,21 +91,6 @@ EOF
   value = one([for i in google_compute_instance.exe_coder : "http://${i.name}:7080"])
 }
 
-output "cloudflare_tunnel_id" {
-  description = "Argo Tunnel ID (also the CNAME target as <id>.cfargotunnel.com)."
-  value       = cloudflare_zero_trust_tunnel_cloudflared.exe.id
-}
-
-output "cloudflare_tunnel_cname" {
-  description = "CNAME target the DNS records point at."
-  value       = "${cloudflare_zero_trust_tunnel_cloudflared.exe.id}.cfargotunnel.com"
-}
-
-output "access_application_id" {
-  description = "Cloudflare Access Application ID protecting the Coder UI."
-  value       = cloudflare_zero_trust_access_application.coder.id
-}
-
 output "coder_cli_secret_client_id" {
   description = "Secret Manager resource name for the Coder CLI Cloudflare Access client_id."
   value       = google_secret_manager_secret.coder_cli_client_id.name

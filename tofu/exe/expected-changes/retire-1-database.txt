@@ -1,0 +1,7 @@
+# The reviewed change list for the retirement's first apply on this stack
+# (Phase 7, 7.5's IaC half), a plan targeted at the Cloud SQL instance and run
+# with stack_mode=active from the old project's step sheet: the instance is
+# started, loses both deletion protections and gains its final-backup
+# setting, so the destroy (7.7) can take it and a 30-day copy stays behind.
+# Anything else in the plan stops the sheet until it has been reviewed.
+~ google_sql_database_instance.coder

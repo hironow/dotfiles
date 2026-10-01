@@ -27,27 +27,26 @@ resource "google_artifact_registry_repository_iam_member" "gha_writer" {
   member     = "serviceAccount:${google_service_account.gha_publish.email}"
 }
 
-# ---- WIF pool ------------------------------------------------------
-# `import` block adopts an existing pool (created out-of-band on a
-# previous experiment in this project) into tofu state instead of
-# erroring with "Requested entity already exists" on first apply.
-# Safe to leave in place — `import` is idempotent post-adoption.
-import {
-  to = google_iam_workload_identity_pool.github
-  id = "projects/${var.gcp_project_id}/locations/global/workloadIdentityPools/github"
-}
+# ---- WIF pool: shared, so forgotten, never destroyed ---------------
+# The pool `github` pre-existed this stack (an `import` block adopted
+# it) and other repositories' providers and deployers use it. The
+# retirement (Phase 7) drops it from this stack's state only;
+# destroy = false leaves it, and every other provider in it, exactly
+# as it is. A `tofu plan -destroy` ignores this block, so the
+# retirement sheet applies the forget before any destroy plan exists.
+# This stack's own provider (github-actions) below is still destroyed.
+removed {
+  from = google_iam_workload_identity_pool.github
 
-resource "google_iam_workload_identity_pool" "github" {
-  project                   = var.gcp_project_id
-  workload_identity_pool_id = "github"
-  display_name              = "GitHub OIDC pool"
-  description               = "Federates GitHub Actions tokens into GCP."
+  lifecycle {
+    destroy = false
+  }
 }
 
 # ---- WIF provider tied to github.com -------------------------------
 resource "google_iam_workload_identity_pool_provider" "github" {
   project                            = var.gcp_project_id
-  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
+  workload_identity_pool_id          = "github"
   workload_identity_pool_provider_id = "github-actions"
   display_name                       = "GitHub Actions"
 
@@ -68,10 +67,12 @@ resource "google_iam_workload_identity_pool_provider" "github" {
 }
 
 # ---- Bind the SA to the WIF provider for this repo only ------------
+# The pool's full name (projects/<number>/.../workloadIdentityPools/github)
+# is the provider's own name without its "/providers/<id>" tail.
 resource "google_service_account_iam_member" "gha_publish_wif" {
   service_account_id = google_service_account.gha_publish.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/hironow/dotfiles"
+  member             = "principalSet://iam.googleapis.com/${regex("^(.+)/providers/[^/]+$", google_iam_workload_identity_pool_provider.github.name)[0]}/attribute.repository/hironow/dotfiles"
 }
 
 # ---- Workspace VM — pull rights on the AR repo ---------------------

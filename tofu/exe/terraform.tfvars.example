@@ -16,15 +16,6 @@ gcp_zone       = "asia-northeast1-a"
 # Domain — owns both the Coder UI host and the sandbox wildcard.
 domain            = "exe.hironow.dev"
 sandbox_subdomain = "sandbox.hironow.dev"
-cf_zone_name      = "hironow.dev"
-
-# Cloudflare account ID (NOT the API token). Find it at
-# https://dash.cloudflare.com/<account-id>/...
-cf_account_id = "REPLACE_ME"
-
-# Cloudflare zone ID for cf_zone_name. Find via:
-#   cf zones list | jq -r '.[] | select(.name=="hironow.dev") | .id'
-cf_zone_id = "REPLACE_ME"
 
 # Tailscale tailnet (e.g. "hironow365@github" or "<org>.ts.net").
 tailnet = "REPLACE_ME"

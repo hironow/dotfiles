@@ -1562,8 +1562,10 @@ docs-view:
 #   1. cd tofu/exe
 #   2. export TF_ENCRYPTION_PASSPHRASE from ~/.config/tofu/exe.passphrase
 #      so state encryption is transparent.
-#   3. require CLOUDFLARE_API_TOKEN and TAILSCALE_API_KEY in env
-#      (the recipe fails fast if either is unset, with a hint).
+#   3. require TAILSCALE_API_KEY in env (the recipe fails fast if it is
+#      unset, with a hint). The stack's retirement (Phase 7) parked its
+#      Cloudflare objects outside any state and dropped the provider, so
+#      no recipe here needs CLOUDFLARE_API_TOKEN any more.
 #
 # First-time setup before any `exe-*` recipe:
 #   bash exe/scripts/bootstrap.sh
@@ -2293,7 +2295,6 @@ exe-plan:
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu plan
@@ -2304,7 +2305,6 @@ exe-apply:
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu apply
@@ -2390,7 +2390,6 @@ exe-replace target:
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu apply -replace={{ target }}
@@ -2401,7 +2400,6 @@ exe-down:
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu destroy \
@@ -2413,7 +2411,6 @@ exe-down-all:
     #!/usr/bin/env bash
     set -euo pipefail
     eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
     : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
     export TF_ENCRYPTION="$(just _exe-encryption)"
     cd tofu/exe && tofu destroy

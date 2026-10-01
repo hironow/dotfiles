@@ -1,0 +1,21 @@
+# The reviewed change list for the retirement's forget (Phase 7, 7.4 and the
+# old stack's hand-off), one plan targeted at exactly these ten addresses and
+# run from the old project's step sheet. Each leaves this stack's state and
+# stays live, exactly as it is: "forget", never a delete.
+#   - the tailnet's ACL, for tofu/tailnet to import next (7.3);
+#   - the Workload Identity pool `github`: it pre-existed this stack and
+#     other repositories use it;
+#   - the eight Cloudflare objects, parked unmanaged by the operator.
+# A `tofu plan -destroy` ignores `removed` blocks and would delete all ten,
+# so this is applied, and checked gone from the state, before any destroy
+# plan exists. Anything else in the plan stops the sheet.
+. tailscale_acl.this
+. google_iam_workload_identity_pool.github
+. cloudflare_zero_trust_tunnel_cloudflared.exe
+. cloudflare_zero_trust_tunnel_cloudflared_config.exe
+. cloudflare_dns_record.coder
+. cloudflare_dns_record.sandbox_wildcard
+. cloudflare_zero_trust_access_policy.coder_owner
+. cloudflare_zero_trust_access_service_token.coder_cli
+. cloudflare_zero_trust_access_policy.coder_service_token
+. cloudflare_zero_trust_access_application.coder

@@ -54,23 +54,6 @@ variable "sandbox_subdomain" {
   default     = "sandbox.hironow.dev"
 }
 
-variable "cf_zone_name" {
-  description = "Cloudflare zone managing both domain and sandbox_subdomain."
-  type        = string
-  default     = "hironow.dev"
-}
-
-variable "cf_zone_id" {
-  description = "Cloudflare zone ID for cf_zone_name. Discovered via `cf zones list` once and pinned to avoid runtime data-source variability."
-  type        = string
-}
-
-variable "cf_account_id" {
-  description = "Cloudflare account ID. Set via TF_VAR_cf_account_id; never committed."
-  type        = string
-  sensitive   = true
-}
-
 variable "tailnet" {
   description = "Tailscale tailnet identifier (e.g. <user>@github or <org>.ts.net)."
   type        = string

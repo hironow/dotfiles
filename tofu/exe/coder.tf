@@ -168,7 +168,9 @@ locals {
     HOSTNAME_VM='${local.vm_name}'
     TS_SECRET='${google_secret_manager_secret.exe_coder_authkey.secret_id}'
     CF_SECRET='${google_secret_manager_secret.tunnel_credentials.secret_id}'
-    CF_TUNNEL_ID='${cloudflare_zero_trust_tunnel_cloudflared.exe.id}'
+    # Retired (Phase 7): the tunnel is parked outside this stack, so no
+    # boot of this VM brings the old UI back through it.
+    CF_TUNNEL_ID='retired'
     PROJECT='${var.gcp_project_id}'
     CODER_ACCESS_URL='https://${local.coder_host}'
     CODER_WILDCARD='${local.sandbox_host}'
