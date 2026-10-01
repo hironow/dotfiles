@@ -99,7 +99,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends mise
 
 # ---- uv (Python package manager) ------------------------------------
-UV_VERSION="0.12.5"
+UV_VERSION="0.12.21"
 case "$ARCH" in
   x86_64)  UV_TARGET="x86_64-unknown-linux-gnu" ;;
   aarch64) UV_TARGET="aarch64-unknown-linux-gnu" ;;
@@ -266,36 +266,36 @@ cat > /etc/mise/config.toml <<'EOF'
 package_manager = "bun"
 
 [tools]
-bun = "1.4.0"
+bun = "1.4.2"
 just = "1.58.0"
-markdownlint-cli2 = "0.23.2"
-prek = "0.4.14"
-uv = "0.12.5"
-vp = "0.3.0"
-node = "24.19.0"
+markdownlint-cli2 = "0.23.3"
+prek = "0.5.4"
+uv = "0.12.21"
+vp = "1.0.0"
+node = "24.21.0"
 # Go + golangci-lint: `just check` runs `just go-lint`. The one-shot
 # sandbox has no project mise.toml, so /etc/mise must already pin both
 # (golangci typechecks with Go; recipes invoke
 # `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
 go = "1.27.1"
-"aqua:golangci/golangci-lint" = "2.13.0"
+"aqua:golangci/golangci-lint" = "2.14.0"
 # quint: `just check` ends in `just spec-check`, the formal-methods gate
 # (`mise x -- quint`). Same pin as config/mise/config.toml: a checker under a
 # mandatory gate changes its verdicts only deliberately (ADR 0006 parity).
 # npm: backend through bun, like the other npm tools here.
-"npm:@informalsystems/quint" = "0.32.0"
-"npm:@openai/codex" = "0.153.4"
+"npm:@informalsystems/quint" = "0.33.0"
+"npm:@openai/codex" = "0.159.3"
 # Under bun (package_manager above) mise ignores npm_args (bun reads
 # bun_args only). claude-code's postinstall still runs — the package is on
 # bun's default-trusted dependencies list — and the apt install further
 # below overlays the real native binary regardless. See ADR 0040.
-"npm:@anthropic-ai/claude-code" = "2.1.258"
-"npm:@github/copilot" = "1.0.80"
-"npm:@earendil-works/pi-coding-agent" = "0.84.3"
-"github:google-antigravity/antigravity-cli" = { version = "1.1.27", exe = "antigravity" }
-"npm:cf" = "0.8.0"
-"npm:resend-cli" = "2.16.0"
-"npm:@stripe/cli" = "1.50.5"
+"npm:@anthropic-ai/claude-code" = "2.1.286"
+"npm:@github/copilot" = "1.0.90"
+"npm:@earendil-works/pi-coding-agent" = "0.99.2"
+"github:google-antigravity/antigravity-cli" = { version = "1.2.14", exe = "antigravity" }
+"npm:cf" = "1.0.0-beta.10"
+"npm:resend-cli" = "2.23.0"
+"npm:@stripe/cli" = "1.53.0"
 EOF
 echo "[dotfiles-tools] pre-installing mise tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (
@@ -317,17 +317,17 @@ MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 # its Cargo.lock (--locked), and install it where quint looks before it
 # downloads: $QUINT_HOME/rust-evaluator-<version>/quint_evaluator.
 #
-# QUINT_EVALUATOR_VERSION is the one the baked quint asks for (quint 0.32.0
-# asks for v0.6.0). A quint bump that asks for another makes quint try the
+# QUINT_EVALUATOR_VERSION is the one the baked quint asks for (quint 0.33.0
+# asks for v0.7.0). A quint bump that asks for another makes quint try the
 # download again, and the warm-up run below then fails the build rather than
 # the sandbox's `just check`. Rust is the workstation's pin
 # (config/mise/config.toml), from a rustup-init pinned by SHA256 per arch,
 # and lives in /tmp only for the build.
 export QUINT_HOME=/opt/quint
-QUINT_EVALUATOR_VERSION="v0.6.0"
-QUINT_EVALUATOR_REV="513910b6a3831ed3040296cc66ef5d0f84db185c" # tag evaluator/v0.6.0
+QUINT_EVALUATOR_VERSION="v0.7.0"
+QUINT_EVALUATOR_REV="034db864f92e53e94258e19dd4df6526eedf3c48" # tag evaluator/v0.7.0
 RUSTUP_VERSION="1.29.1"
-RUST_TOOLCHAIN="1.98.0"
+RUST_TOOLCHAIN="1.99.0"
 case "$ARCH" in
   x86_64)
     RUSTUP_TARGET="x86_64-unknown-linux-gnu"
