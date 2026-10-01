@@ -282,3 +282,84 @@ def test_the_exit_code_is_non_zero_when_something_has_no_bound() -> None:
 @pytest.mark.parametrize("name", ["artifact_registry", "buckets", "disks", "addresses"])
 def test_the_probes_cover_what_the_plan_names(name: str) -> None:
     assert name in audit.PROBES
+
+
+# --- What the REAL gcloud returns, learned by running it ----------------
+#
+# Every case below is a false positive or a hazard the first live run produced.
+# Fixtures written from a plan or from memory would not have caught any of them.
+
+
+def test_the_policies_come_from_describe_because_list_omits_them() -> None:
+    """`gcloud artifacts repositories list` returns no `cleanupPolicies` at all
+    -- only `describe` does. Reading them off the list made the audit report two
+    repositories with three policies each as having none, which is the worst kind
+    of wrong: it calls a bounded sink unbounded."""
+    assert "artifact_registry_describe" in audit.PROBES
+    argv = audit.PROBES["artifact_registry_describe"]
+    assert "describe" in argv
+    assert "{repository}" in argv and "{location}" in argv
+
+
+def test_a_bucket_lifecycle_is_read_from_the_key_gcloud_actually_uses() -> None:
+    """`gcloud storage buckets list --format=json` emits `lifecycle_config`,
+    snake_case, not `lifecycle`. Reading the wrong key made every bucket in the
+    project look unbounded."""
+    aged = {
+        "name": "bounded",
+        "lifecycle_config": {
+            "rule": [{"action": {"type": "Delete"}, "condition": {"age": 7}}]
+        },
+    }
+    assert _levels(audit.buckets([aged], project=PROJECT))["bucket:bounded"] == "OK"
+
+    generations = {
+        "name": "capped",
+        "lifecycle_config": {
+            "rule": [
+                {
+                    "action": {"type": "Delete"},
+                    "condition": {"isLive": False, "numNewerVersions": 5},
+                }
+            ]
+        },
+    }
+    assert (
+        _levels(audit.buckets([generations], project=PROJECT))["bucket:capped"] == "OK"
+    )
+
+
+def test_every_probe_is_quiet_so_none_can_prompt() -> None:
+    """Without --quiet, `gcloud sql instances list` against a project whose API
+    is off asks "Would you like to enable and retry? (y/N)". A read-only audit
+    must not be one keystroke away from enabling an API."""
+    for name, argv in audit.PROBES.items():
+        assert "--quiet" in argv, f"{name} can prompt"
+
+
+def test_a_scheduler_probe_with_no_location_is_not_checked() -> None:
+    """`gcloud scheduler jobs list` REQUIRES --location; without one it always
+    fails, and "could not be read" would read as a finding rather than as a
+    missing argument."""
+    lines = audit.report(
+        {"schedulers": None}, project=PROJECT, billing=None, location=None
+    )
+    assert _levels(lines)["scheduler"] == "OK"
+    assert "not checked" in _detail(lines, "scheduler")
+
+
+def test_soft_delete_retention_is_a_cost_and_is_reported() -> None:
+    """Its default keeps every deleted object for 7 days as billed storage.
+    Nobody asks for it and nobody sees it; the spoke names it, so the tool has
+    to find it."""
+    on = {
+        "name": "soft",
+        "lifecycle_config": {
+            "rule": [{"action": {"type": "Delete"}, "condition": {"age": 7}}]
+        },
+        "soft_delete_policy": {"retentionDurationSeconds": "604800"},
+    }
+    assert _levels(audit.buckets([on], project=PROJECT))["soft-delete:soft"] == "WARN"
+
+    off = {**on, "soft_delete_policy": {"retentionDurationSeconds": "0"}}
+    assert "soft-delete:soft" not in _levels(audit.buckets([off], project=PROJECT))

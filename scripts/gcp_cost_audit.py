@@ -39,8 +39,18 @@ Line = tuple[str, str, str]  # (level, name, detail)
 
 PROBE_TIMEOUT = 180.0
 
-# Every probe is read-only. `{project}` is substituted at run time; no id is ever
-# a literal here. tests/unit/test_gcp_cost_audit.py asserts both properties.
+# Every probe is read-only, and every probe is `--quiet`. `{project}` and friends
+# are substituted at run time; no id is ever a literal here.
+# tests/unit/test_gcp_cost_audit.py asserts all three properties.
+#
+# --quiet is not tidiness. Without it, `gcloud sql instances list` against a
+# project whose API is off asks "API [sqladmin.googleapis.com] not enabled …
+# Would you like to enable and retry? (y/N)" -- a read-only audit must not be one
+# keystroke away from enabling an API and its billing.
+#
+# The Artifact Registry policies need TWO calls: `repositories list` does not
+# return `cleanupPolicies` at all, only `describe` does. Reading them off the list
+# made the audit report two repositories with three policies each as having none.
 PROBES: dict[str, list[str]] = {
     "artifact_registry": [
         "artifacts",
@@ -48,14 +58,44 @@ PROBES: dict[str, list[str]] = {
         "list",
         "--project",
         "{project}",
+        "--quiet",
     ],
-    "buckets": ["storage", "buckets", "list", "--project", "{project}"],
-    "disks": ["compute", "disks", "list", "--project", "{project}"],
-    "addresses": ["compute", "addresses", "list", "--project", "{project}"],
-    "sql": ["sql", "instances", "list", "--project", "{project}"],
-    "clusters": ["container", "clusters", "list", "--project", "{project}"],
-    "schedulers": ["scheduler", "jobs", "list", "--project", "{project}"],
-    "budgets": ["billing", "budgets", "list", "--billing-account", "{billing}"],
+    "artifact_registry_describe": [
+        "artifacts",
+        "repositories",
+        "describe",
+        "{repository}",
+        "--location",
+        "{location}",
+        "--project",
+        "{project}",
+        "--quiet",
+    ],
+    "buckets": ["storage", "buckets", "list", "--project", "{project}", "--quiet"],
+    "disks": ["compute", "disks", "list", "--project", "{project}", "--quiet"],
+    "addresses": ["compute", "addresses", "list", "--project", "{project}", "--quiet"],
+    "sql": ["sql", "instances", "list", "--project", "{project}", "--quiet"],
+    "clusters": ["container", "clusters", "list", "--project", "{project}", "--quiet"],
+    # `scheduler jobs list` REQUIRES --location; with none given the probe is
+    # skipped and reported as "not checked" rather than as a finding.
+    "schedulers": [
+        "scheduler",
+        "jobs",
+        "list",
+        "--location",
+        "{location}",
+        "--project",
+        "{project}",
+        "--quiet",
+    ],
+    "budgets": [
+        "billing",
+        "budgets",
+        "list",
+        "--billing-account",
+        "{billing}",
+        "--quiet",
+    ],
 }
 
 # A snapshot bucket must have NO delete lifecycle: a rule cannot tell a
@@ -115,7 +155,10 @@ def artifact_registry(repos: Sequence[Mapping[str, object]]) -> list[Line]:
 
 
 def _has_delete_lifecycle(bucket: Mapping[str, object]) -> bool:
-    lifecycle = bucket.get("lifecycle")
+    """`gcloud storage buckets list --format=json` emits `lifecycle_config`,
+    snake_case. The camelCase name belongs to the older surfaces, and reading
+    only that one made every bucket in a project look unbounded."""
+    lifecycle = bucket.get("lifecycle_config") or bucket.get("lifecycle")
     rules = lifecycle.get("rule") if isinstance(lifecycle, dict) else None
     if not isinstance(rules, list):
         return False
@@ -124,6 +167,15 @@ def _has_delete_lifecycle(bucket: Mapping[str, object]) -> bool:
         if isinstance(action, dict) and str(action.get("type", "")).lower() == "delete":
             return True
     return False
+
+
+def _soft_delete_seconds(bucket: Mapping[str, object]) -> int:
+    policy = bucket.get("soft_delete_policy") or bucket.get("softDeletePolicy")
+    raw = policy.get("retentionDurationSeconds") if isinstance(policy, dict) else None
+    try:
+        return int(str(raw))
+    except (TypeError, ValueError):
+        return 0
 
 
 def buckets(found: Sequence[Mapping[str, object]], *, project: str) -> list[Line]:
@@ -135,6 +187,18 @@ def buckets(found: Sequence[Mapping[str, object]], *, project: str) -> list[Line
         name = str(bucket.get("name", "?"))
         label = f"bucket:{name}"
         bounded = _has_delete_lifecycle(bucket)
+        # Soft delete defaults to keeping every deleted object for 7 days as
+        # billed storage. Nobody asks for it and nobody sees it.
+        seconds = _soft_delete_seconds(bucket)
+        if seconds:
+            lines.append(
+                (
+                    "WARN",
+                    f"soft-delete:{name}",
+                    f"deleted objects are kept {seconds // 86400} day(s) as billed "
+                    "storage; set soft_delete_policy deliberately or to 0",
+                )
+            )
         if SNAPSHOT_MARKER in name:
             if bounded:
                 lines.append(
@@ -297,13 +361,21 @@ _UNREADABLE = {
 
 
 def report(
-    probed: Mapping[str, object], *, project: str, billing: str | None
+    probed: Mapping[str, object],
+    *,
+    project: str,
+    billing: str | None,
+    location: str | None = None,
 ) -> list[Line]:
     """Every rule's lines, in reading order.
 
     A probe that answered `None` could not be read -- an API that is off, or a
     permission we lack. That is reported, never treated as "nothing there": an
     audit that cannot see must not say a project is clean.
+
+    The scheduler is the one exception, and for a different reason: its probe
+    REQUIRES a location, so with none given it was never asked. "Not checked"
+    must not read as a finding any more than it reads as "fine".
     """
     lines: list[Line] = []
 
@@ -313,7 +385,19 @@ def report(
             return None
         return list(value) if isinstance(value, list) else []
 
+    if not location:
+        lines.append(
+            (
+                "OK",
+                "scheduler",
+                "not checked: pass --location, which `gcloud scheduler jobs list` "
+                "requires",
+            )
+        )
+
     for key, label in _UNREADABLE.items():
+        if key == "schedulers" and not location:
+            continue
         if key in probed and probed[key] is None:
             lines.append(
                 (
@@ -344,7 +428,7 @@ def report(
     if gke is not None:
         lines += clusters(gke)
     jobs = answered("schedulers")
-    if jobs is not None:
+    if location and jobs is not None:
         lines += schedulers(jobs)
     return lines
 
@@ -376,16 +460,58 @@ def _gcloud(argv: list[str]) -> object | None:
         return None
 
 
-def gather(project: str, billing: str | None) -> dict[str, object]:
+def _repo_location(resource: str) -> str:
+    """The location out of `projects/P/locations/L/repositories/R`."""
+    parts = resource.split("/")
+    return parts[parts.index("locations") + 1] if "locations" in parts else ""
+
+
+def _with_policies(
+    repos: Sequence[Mapping[str, object]], project: str
+) -> list[Mapping[str, object]] | None:
+    """Each repository, with the cleanup policies only `describe` returns.
+
+    A describe that fails drops the whole answer rather than that one repository:
+    a partial list would under-report, which for this tool means calling an
+    unbounded sink bounded by omission.
+    """
+    enriched: list[Mapping[str, object]] = []
+    for repo in repos:
+        resource = str(repo.get("name", ""))
+        argv = [
+            token.replace("{project}", project)
+            .replace("{repository}", _basename(resource))
+            .replace("{location}", _repo_location(resource))
+            for token in PROBES["artifact_registry_describe"]
+        ]
+        described = _gcloud(argv)
+        if not isinstance(described, dict):
+            return None
+        enriched.append({**repo, **described})
+    return enriched
+
+
+def gather(
+    project: str, billing: str | None, location: str | None = None
+) -> dict[str, object]:
     probed: dict[str, object] = {}
     for key, template in PROBES.items():
+        if "{repository}" in template:
+            continue  # driven per repository below, not on its own
         if "{billing}" in template and not billing:
             continue
+        if "{location}" in template and not location:
+            continue
         argv = [
-            token.replace("{project}", project).replace("{billing}", billing or "")
+            token.replace("{project}", project)
+            .replace("{billing}", billing or "")
+            .replace("{location}", location or "")
             for token in template
         ]
         probed[key] = _gcloud(argv)
+    repos = probed.get("artifact_registry")
+    if isinstance(repos, list):
+        probed["artifact_registry"] = _with_policies(repos, project)
     return probed
 
 
@@ -399,11 +525,18 @@ def main(argv: Sequence[str]) -> int:
         )
         return 2
     project = args[0]
-    billing = None
+    billing = location = None
     for flag, value in zip(args, args[1:]):
         if flag == "--billing-account":
             billing = value
-    lines = report(gather(project, billing), project=project, billing=billing)
+        elif flag == "--location":
+            location = value
+    lines = report(
+        gather(project, billing, location),
+        project=project,
+        billing=billing,
+        location=location,
+    )
     for level, name, detail in lines:
         print(f"{level:<4} {name} - {detail}")
     warns = sum(1 for level, _n, _d in lines if level == "WARN")
