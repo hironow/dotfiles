@@ -14,6 +14,8 @@ from pathlib import Path
 import shutil
 import sys
 
+import windows_env
+
 CLAUDE_BASH_DEFAULTS = (
     r"C:\Program Files\Git\bin\bash.exe",
     r"C:\Program Files (x86)\Git\bin\bash.exe",
@@ -68,25 +70,17 @@ def to_set(
 # ---- Imperative shell ----
 
 
-MACHINE_ENVIRONMENT = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+VARIABLE = "CLAUDE_CODE_GIT_BASH_PATH"
 
 
 def _persisted(machine: bool) -> str | None:
-    """CLAUDE_CODE_GIT_BASH_PATH as persisted for the User or the Machine."""
-    if sys.platform != "win32":
-        return None
-    import winreg  # noqa: PLC0415 - Windows only
-
-    root, path = (
-        (winreg.HKEY_LOCAL_MACHINE, MACHINE_ENVIRONMENT)
-        if machine
-        else (winreg.HKEY_CURRENT_USER, "Environment")
-    )
+    """The variable as persisted for the User or the Machine; None when it is
+    unset, empty, unreadable, or off Windows."""
     try:
-        with winreg.OpenKey(root, path) as key:
-            return str(winreg.QueryValueEx(key, "CLAUDE_CODE_GIT_BASH_PATH")[0]) or None
+        values = windows_env.persisted([VARIABLE], machine=machine)
     except OSError:
         return None
+    return (values or {}).get(VARIABLE) or None
 
 
 def _user_value() -> str | None:

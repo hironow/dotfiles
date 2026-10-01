@@ -34,6 +34,7 @@ import doctor_lines
 from doctor_lines import Line
 import jev_headroom
 import jev_launch
+import windows_env
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND_GUARD = ROOT / "ROOT_AGENTS_hooks_block-prohibited-commands.py"
@@ -589,21 +590,6 @@ def _tool_facts(name: str, version_args: list[str]) -> Tool:
     )
 
 
-def _windows_user_env() -> dict[str, str] | None:
-    if sys.platform != "win32":
-        return None
-    import winreg  # noqa: PLC0415 - Windows only
-
-    values = {}
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
-        for name in TELEMETRY_OFF:
-            try:
-                values[name] = str(winreg.QueryValueEx(key, name)[0])
-            except OSError:
-                continue
-    return values
-
-
 def _json(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -730,7 +716,7 @@ def gather(home: Path) -> Facts:
             (ROOT / "config/pi/extensions/rtk.ts").read_text(encoding="utf-8")
         ),
         env=dict(os.environ),
-        user_env=_windows_user_env(),
+        user_env=windows_env.persisted(TELEMETRY_OFF),
         claude_homes=homes,
         pi_extensions={name: (pi_dir / name).is_file() for name in PI_EXTENSIONS},
         checks=checks,
