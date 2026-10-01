@@ -109,6 +109,17 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
 
 ## このリポ特有の罠 (memory 参照)
 
+- **`~/.config/mise/config.toml` が main tree への symlink** になっている機体がある
+  (この operator の Mac は 2026-09-17 以降そう)。つまり **main tree を別 commit へ
+  checkout すると、そのマシンの live な tool set と `[env]` が丸ごと入れ替わる**。
+  2026-10-01 に main tree を #420 以前の commit へ detach した結果、rtk 0.50.0 と
+  headroom が約40分 machine-wide で無効化され (`mise ls --current` から消え、
+  `mise x -- rtk` が `~/.local/bin` の 0.45.0 へ落ち、`shims/headroom` が
+  "No version is set for shim" でエラー、telemetry の env も消えた)、誰も警告しなかった。
+  **`/Users/nino/dotfiles` は常に main に置き、ブランチ作業は worktree だけで行う。**
+  `scripts/deploy.sh` の `cp -f` は symlink を貫通して**同じファイルを自分自身へ上書き**
+  するので `just deploy` では直らない — 直し方は checkout を main へ戻すこと。
+  `just doctor` の `mise-config` が live と `origin/main` の差分を検出する。
 - **`.git/info/exclude` の `skills/` glob** が `plugins/*/skills/**` の新規 SKILL.md を
   silent drop する → `git add -f` 必須 (memory `project_dotfiles_skills_exclude`)。
 - **prek の stash/rollback** は staged を取りこぼすことがあり、**untracked は stash しない**

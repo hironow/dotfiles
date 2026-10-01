@@ -51,6 +51,7 @@ Options:
   --host TEXT      Host to bind to
   --port INTEGER   Port to bind to
 """
+MISE_CONFIG_TEXT = '[tools]\nrtk = "latest"\n\n[env]\nDO_NOT_TRACK = "1"\n'
 
 
 def _facts(**changes: object) -> check.Facts:
@@ -86,6 +87,12 @@ def _facts(**changes: object) -> check.Facts:
         codex_files={"hooks.json": "{}", "config.toml": 'model = "gpt"'},
         claude_bash=None,
         jev_key=check.JevKey(source=".config/jev/env", private=True, has_key=True),
+        mise_config=check.MiseConfig(
+            live=MISE_CONFIG_TEXT,
+            tracked=MISE_CONFIG_TEXT,
+            live_path="/home/u/.config/mise/config.toml",
+            symlinked_into=None,
+        ),
     )
     return replace(good, **changes)
 
@@ -100,6 +107,82 @@ def _detail(facts: check.Facts, name: str) -> str:
 
 def test_a_complete_setup_is_all_ok() -> None:
     assert set(_levels(_facts()).values()) == {"OK"}
+
+
+# --- the live mise config ---------------------------------------------------
+#
+# `just deploy` puts ~/.config/mise/config.toml in place, and on this operator's
+# Mac it is a SYMLINK into the dotfiles checkout. So the machine's live tool set
+# and [env] are whatever the main tree has checked out: detaching it at a
+# pre-rtk commit switched rtk and headroom off machine-wide for 40 minutes on
+# 2026-10-01, and nothing warned. `cp -f` through that symlink copies the file
+# onto itself, so `just deploy` cannot repair it either.
+
+
+def test_a_live_mise_config_that_matches_origin_main_is_ok() -> None:
+    assert _levels(_facts())["mise-config"] == "OK"
+
+
+def test_a_live_mise_config_that_differs_from_origin_main_warns() -> None:
+    facts = _facts(
+        mise_config=check.MiseConfig(
+            live='[tools]\nbun = "latest"\n',
+            tracked=MISE_CONFIG_TEXT,
+            live_path="/home/u/.config/mise/config.toml",
+            symlinked_into="/home/u/dotfiles/config/mise/config.toml",
+        )
+    )
+    assert _levels(facts)["mise-config"] == "WARN"
+    detail = _detail(facts, "mise-config")
+    assert "origin/main" in detail
+    # the message has to name the actual cause, or the operator reads it as a
+    # deploy problem and runs the one command that cannot fix it
+    assert "symlink" in detail
+    assert "/home/u/dotfiles/config/mise/config.toml" in detail
+
+
+def test_a_missing_live_mise_config_warns_to_deploy() -> None:
+    facts = _facts(
+        mise_config=check.MiseConfig(
+            live=None,
+            tracked=MISE_CONFIG_TEXT,
+            live_path="/home/u/.config/mise/config.toml",
+            symlinked_into=None,
+        )
+    )
+    assert _levels(facts)["mise-config"] == "WARN"
+    assert "just deploy" in _detail(facts, "mise-config")
+
+
+def test_line_endings_and_a_trailing_newline_are_not_a_difference() -> None:
+    """The two halves arrive differently shaped: `git show` is read through a
+    runner that strips its output, and a checked-out file keeps the platform's
+    line endings (CRLF on Windows with core.autocrlf). Comparing them raw made
+    this check warn on every machine, which it did when first run live."""
+    facts = _facts(
+        mise_config=check.MiseConfig(
+            live=MISE_CONFIG_TEXT.replace("\n", "\r\n") + "\r\n",
+            tracked=MISE_CONFIG_TEXT.strip(),
+            live_path="/home/u/.config/mise/config.toml",
+            symlinked_into="/home/u/dotfiles/config/mise/config.toml",
+        )
+    )
+    assert _levels(facts)["mise-config"] == "OK"
+
+
+def test_without_origin_main_there_is_nothing_to_compare() -> None:
+    """A fresh clone with no fetch, or no git at all: say so rather than claim
+    the config is right."""
+    facts = _facts(
+        mise_config=check.MiseConfig(
+            live=MISE_CONFIG_TEXT,
+            tracked=None,
+            live_path="/home/u/.config/mise/config.toml",
+            symlinked_into=None,
+        )
+    )
+    assert _levels(facts)["mise-config"] == "OK"
+    assert "not compared" in _detail(facts, "mise-config")
 
 
 def test_a_missing_tool_warns_with_the_fix() -> None:
