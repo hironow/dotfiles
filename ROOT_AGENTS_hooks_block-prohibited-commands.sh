@@ -34,9 +34,13 @@ fi
 
 # A real interpreter: on Windows `python3` can be the Microsoft Store stub under
 # WindowsApps, which runs nothing and exits non-zero (read as "allow").
-# (Collected first: stdin carries the hook payload for the companion.)
-mapfile -t interpreters < <(type -aP python3 python 2>/dev/null || true)
-for interpreter in "${interpreters[@]}"; do
+# Collected into a string and split on newlines (no read loop: stdin carries
+# the hook payload for the companion; no array: macOS's bash 3.2 runs this).
+interpreters="$(type -aP python3 python 2>/dev/null || true)"
+set -f
+IFS='
+'
+for interpreter in $interpreters; do
   case "$interpreter" in
     */WindowsApps/*) continue ;;
   esac
