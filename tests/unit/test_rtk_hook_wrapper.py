@@ -77,18 +77,27 @@ def _rtk_stub(stdout: str, exit_code: int = 0) -> str:
     )
 
 
-def _path_without_rtk() -> str:
-    """The real PATH with every entry that provides an `rtk` removed.
+def _path_without(*names: str) -> str:
+    """The real PATH with every entry that provides one of `names` removed.
 
-    Lets the fail-open test assert on a genuinely rtk-less environment without
-    hand-building a PATH (which would also have to carry python3 and bash).
+    Lets a test assert on a genuinely rtk-less environment without hand-building
+    a PATH (which would also have to carry python3 and bash). `mise` is taken
+    out too wherever the test means "there is no way to reach rtk at all": the
+    wrapper asks mise when rtk is not on PATH, so leaving a real mise in place
+    would let it find the real rtk and pass the test for the wrong reason.
     """
     keep = [
         entry
         for entry in os.environ.get("PATH", "").split(os.pathsep)
-        if entry and not (Path(entry) / "rtk").exists()
+        if entry and not any((Path(entry) / name).exists() for name in names)
     ]
     return os.pathsep.join(keep)
+
+
+def _executable(path: Path, script: str) -> Path:
+    path.write_text(script, encoding="utf-8")
+    path.chmod(0o755)
+    return path
 
 
 def _run(
@@ -96,16 +105,23 @@ def _run(
     *,
     tmp_path: Path,
     rtk_stub: str | None,
+    extra_bin: dict[str, str] | None = None,
+    hide: tuple[str, ...] = ("rtk", "mise"),
     env_overrides: dict[str, str] | None = None,
 ) -> tuple[int, str]:
-    """Feed a PreToolUse payload to the wrapper; return (exit code, stdout)."""
+    """Feed a PreToolUse payload to the wrapper; return (exit code, stdout).
+
+    `extra_bin` writes further stubs next to the rtk one (a fake `mise`, say);
+    `hide` names the real executables PATH must not provide.
+    """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    path = _path_without_rtk()
+    path = _path_without(*hide)
+    for name, script in (extra_bin or {}).items():
+        _executable(bin_dir / name, script)
     if rtk_stub is not None:
-        stub = bin_dir / "rtk"
-        stub.write_text(rtk_stub, encoding="utf-8")
-        stub.chmod(0o755)
+        _executable(bin_dir / "rtk", rtk_stub)
+    if rtk_stub is not None or extra_bin:
         path = f"{bin_dir}{os.pathsep}{path}"
     env = {**os.environ, "PATH": path}
     env.pop("RTK_HOOK_PERMISSION_DECISION", None)
@@ -240,11 +256,104 @@ def test_wrapper_is_transparent_when_rtk_declines(
 
 
 def test_wrapper_fails_open_when_rtk_missing(tmp_path: Path, plain_repo: Path) -> None:
-    """No rtk on PATH must not break every Bash call in the session."""
+    """Neither rtk nor a mise that could find one must break every Bash call."""
     code, out = _run(
         _payload("git status", plain_repo),
         tmp_path=tmp_path,
         rtk_stub=None,
+    )
+    assert code == EXIT_ALLOW
+    assert out == ""
+
+
+# --- Resolving rtk when PATH has none --------------------------------------
+#
+# A Claude Code session's environment is a snapshot taken when it started, so a
+# tool mise installed afterwards is invisible to it, and after the hand-placed
+# ~/.local/bin/rtk 0.45.0 is pruned a stale session has no rtk at all. mise
+# answers from its own configuration rather than from PATH, so asking it is the
+# difference between "rtk works in this session" and "no rewrites until the
+# session is restarted".
+
+
+def _mise_stub(rtk_path: Path | str, *, exit_code: int = 0, witness: Path) -> str:
+    """A fake `mise` that answers `which rtk`, and records that it was asked."""
+    return (
+        "#!/bin/sh\n"
+        f"printf 'asked %s\\n' \"$*\" >> {json.dumps(str(witness))}\n"
+        f'[ "$1" = which ] || exit 1\n'
+        f"printf '%s\\n' {json.dumps(str(rtk_path))}\n"
+        f"exit {exit_code}\n"
+    )
+
+
+def test_rtk_absent_from_path_is_resolved_through_mise(
+    tmp_path: Path, plain_repo: Path
+) -> None:
+    rtk = _executable(tmp_path / "mise-rtk", _rtk_stub(json.dumps(RTK_GIT_REWRITE)))
+    witness = tmp_path / "mise-was-asked"
+    code, out = _run(
+        _payload("git status", plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=None,
+        extra_bin={"mise": _mise_stub(rtk, witness=witness)},
+    )
+    assert code == EXIT_ALLOW
+    assert witness.exists(), "the wrapper never asked mise"
+    # The rewrite landed, which it could not have done from PATH alone. Outside
+    # an isolation worktree the git rewrite is kept, minus the auto-approval.
+    answer = json.loads(out)["hookSpecificOutput"]
+    assert answer["updatedInput"]["command"] == "rtk git status"
+    assert "permissionDecision" not in answer
+
+
+def test_an_rtk_on_path_wins_and_mise_is_never_asked(
+    tmp_path: Path, plain_repo: Path
+) -> None:
+    """PATH first, always. Preferring mise's copy would override whatever the
+    operator deliberately put in front of it, and when mise's own config is
+    stale its answer is the WORSE one -- measured: a stale config made
+    `mise x -- rtk` resolve to the 0.45.0 shadow."""
+    witness = tmp_path / "mise-was-asked"
+    code, out = _run(
+        _payload("git status", plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=_rtk_stub(json.dumps(RTK_GIT_REWRITE)),
+        extra_bin={"mise": _mise_stub("/nowhere/rtk", witness=witness)},
+    )
+    assert code == EXIT_ALLOW
+    assert not witness.exists(), "mise was asked although rtk was on PATH"
+    assert json.loads(out)["hookSpecificOutput"]["updatedInput"]["command"] == (
+        "rtk git status"
+    )
+
+
+def test_a_mise_that_cannot_find_rtk_still_fails_open(
+    tmp_path: Path, plain_repo: Path
+) -> None:
+    """`mise which rtk` exits non-zero when the tool is not active in this
+    directory -- which is exactly what a stale live config produces."""
+    witness = tmp_path / "mise-was-asked"
+    code, out = _run(
+        _payload("git status", plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=None,
+        extra_bin={"mise": _mise_stub("", exit_code=1, witness=witness)},
+    )
+    assert code == EXIT_ALLOW
+    assert out == ""
+    assert witness.exists()
+
+
+def test_a_mise_answer_that_is_not_executable_fails_open(
+    tmp_path: Path, plain_repo: Path
+) -> None:
+    witness = tmp_path / "mise-was-asked"
+    code, out = _run(
+        _payload("git status", plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=None,
+        extra_bin={"mise": _mise_stub(tmp_path / "does-not-exist", witness=witness)},
     )
     assert code == EXIT_ALLOW
     assert out == ""
@@ -283,7 +392,10 @@ def test_wrapper_fails_open_on_unparseable_payload(tmp_path: Path) -> None:
         cwd=tmp_path,
         companions=(COMPANION,),
         input="}{ not json",
-        env={**os.environ, "PATH": f"{bin_dir}{os.pathsep}{_path_without_rtk()}"},
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{_path_without('rtk', 'mise')}",
+        },
         capture_output=True,
         text=True,
         check=False,
@@ -307,7 +419,10 @@ def test_missing_cwd_falls_back_to_process_cwd(
         cwd=isolation_worktree,
         companions=(COMPANION,),
         input=json.dumps(payload),
-        env={**os.environ, "PATH": f"{bin_dir}{os.pathsep}{_path_without_rtk()}"},
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{_path_without('rtk', 'mise')}",
+        },
         capture_output=True,
         text=True,
         check=False,

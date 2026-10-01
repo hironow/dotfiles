@@ -41,6 +41,27 @@ write its own `RTK.md` into agent homes sync owns. Telemetry stays off through
 `[env]`, the shared Claude settings env, and on Windows the persisted User env
 (`just harden-env`).
 
+### Which rtk the hook runs: PATH, then mise
+
+**PATH first, always.** Whatever is in front of the session's PATH wins, so a
+copy the operator put there deliberately is never overridden — and mise's answer
+is not reliably the better one: when the live mise config does not declare rtk,
+`mise x -- rtk` falls through to PATH and resolves exactly the stale copy a
+prune is meant to retire.
+
+**mise second**, when PATH has no rtk at all. A Claude Code session's
+environment is a snapshot taken when the session started: a tool mise installed
+afterwards is invisible to it, and once a hand-placed `~/.local/bin/rtk` is
+pruned such a session has no rtk on PATH. `mise which rtk` answers from mise's
+own configuration, so the hook reaches the pinned copy without the session being
+restarted. That subprocess is paid only in the case where the hook would
+otherwise do nothing at all.
+
+Both routes failing is normal, not an error: `mise which` exits non-zero when
+the tool is not active in this directory, and the hook then fails open — the
+command runs unrewritten. `just doctor` is what notices a shadowing or non-mise
+copy.
+
 ## rtk does not approve commands
 
 rtk answers `permissionDecision: "allow"` for everything it rewrites, which

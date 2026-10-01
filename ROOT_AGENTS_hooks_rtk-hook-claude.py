@@ -48,6 +48,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -67,10 +68,52 @@ RTK_LAUNCHER = "rtk"
 VETOED_COMMAND = "git"
 
 _RTK_TIMEOUT_SECONDS = 10
+_MISE_TIMEOUT_SECONDS = 10
 
 
 def _basename(token: str) -> str:
     return token.replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def _rtk_executable() -> str | None:
+    """Where to find rtk: PATH first, then mise. None when there is no rtk.
+
+    PATH first, always. Whatever the operator put in front wins, and mise's
+    answer is not reliably the better one -- a live mise config that does not
+    declare rtk makes `mise x -- rtk` fall through to PATH and resolve the very
+    copy the pruning is meant to retire (measured 2026-10-01).
+
+    mise second, because a Claude Code session's environment is a snapshot taken
+    when the session started: a tool mise installed afterwards is invisible to
+    it, and once the hand-placed ~/.local/bin/rtk is pruned such a session has
+    no rtk on PATH at all. `mise which` answers from mise's own configuration,
+    so it reaches the pinned copy without the session being restarted. The
+    subprocess is paid only when PATH has no rtk, which is the case where the
+    hook would otherwise do nothing.
+    """
+    found = shutil.which(RTK_LAUNCHER)
+    if found:
+        return found
+    if not shutil.which("mise"):
+        return None
+    try:
+        proc = subprocess.run(  # noqa: S603,S607 - fixed argv, PATH lookup intended
+            ["mise", "which", RTK_LAUNCHER],
+            capture_output=True,
+            text=True,
+            timeout=_MISE_TIMEOUT_SECONDS,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None  # the tool is not active here: a stale or absent config
+    candidate = proc.stdout.strip()
+    if not candidate or not os.access(candidate, os.X_OK):
+        return None
+    return candidate
 
 
 def _in_isolation_worktree(payload: dict) -> bool:
@@ -99,9 +142,12 @@ def _is_vetoed_rewrite(command: str) -> bool:
 
 def _run_rtk(raw: str) -> dict | None:
     """rtk's hook answer, or None when it declines / is absent / misbehaves."""
+    launcher = _rtk_executable()
+    if launcher is None:
+        return None
     try:
-        proc = subprocess.run(  # noqa: S603,S607 - fixed argv, PATH lookup intended
-            [RTK_LAUNCHER, "hook", "claude"],
+        proc = subprocess.run(  # noqa: S603 - resolved argv, no shell
+            [launcher, "hook", "claude"],
             input=raw,
             capture_output=True,
             text=True,
