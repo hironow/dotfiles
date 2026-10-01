@@ -213,17 +213,37 @@ def _same(a: str, b: str) -> bool:
     return norm(a) == norm(b)
 
 
+def _parts(path: str) -> list[str]:
+    return [part for part in re.split(r"[\\/]+", os.path.normcase(path)) if part]
+
+
+def _is_mise_copy(path: str, mise_path: str | None) -> bool:
+    """path is mise's own copy: the install mise resolves, or its shim (a
+    shim in <mise data>/shims runs that install)."""
+    if mise_path is None:
+        return False
+    if _same(path, mise_path):
+        return True
+    install = _parts(mise_path)
+    if "installs" not in install:
+        return False
+    root = install[: len(install) - 1 - install[::-1].index("installs")]
+    return _parts(path)[:-1] == [*root, "shims"]
+
+
 def _tool(name: str, tool: Tool, package: str) -> Line:
     if not tool.paths:
         return ("WARN", name, f"not on PATH: mise install {package}")
-    if len(tool.paths) > 1:
+    others = [path for path in tool.paths if not _is_mise_copy(path, tool.mise_path)]
+    if others and len(tool.paths) > 1:
         return (
             "WARN",
             name,
-            f"{len(tool.paths)} copies on PATH ({', '.join(tool.paths)}): keep the mise one "
-            "(e.g. winget uninstall rtk-ai.rtk, or remove a hand-placed ~/.local/bin copy)",
+            f"copies on PATH that mise does not manage ({', '.join(others)}): "
+            "remove them, keeping mise's (a winget package, a hand-placed "
+            "~/.local/bin copy)",
         )
-    if tool.mise_path is None or not _same(tool.paths[0], tool.mise_path):
+    if others:
         return ("WARN", name, f"{tool.paths[0]} is not mise's: mise install {package}")
     return ("OK", name, f"{tool.version or '?'} via mise")
 

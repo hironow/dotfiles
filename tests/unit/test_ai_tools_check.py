@@ -534,3 +534,52 @@ def test_a_missing_tool_skips_its_checkers() -> None:
     assert ("OK", "codex-hooks", "codex not on PATH") in check.report(
         _facts(checks={"codex": None})
     )
+
+
+# --- copies of a tool: mise's shim and mise's install are one copy ---------
+
+WIN_MISE = "C:/Users/u/AppData/Local/mise"
+WIN_INSTALL = f"{WIN_MISE}/installs/rtk/0.50.0/rtk.exe"
+
+
+@pytest.mark.parametrize(
+    ("paths", "mise_path", "level"),
+    [
+        # a stale shell had both mise's shims dir and the install dir on PATH
+        ((f"{WIN_MISE}/shims/rtk.exe", WIN_INSTALL), WIN_INSTALL, "OK"),
+        ((WIN_INSTALL, f"{WIN_MISE}/shims/rtk.exe"), WIN_INSTALL, "OK"),
+        # PATH with mise's shims alone (a runner, an IDE): still mise's rtk
+        ((f"{WIN_MISE}/shims/rtk.exe",), WIN_INSTALL, "OK"),
+        (
+            ("/home/u/.local/share/mise/shims/rtk", MISE_RTK),
+            MISE_RTK,
+            "OK",
+        ),
+        # a copy mise does not manage is still a second copy
+        (
+            ("C:/Users/u/AppData/Local/Microsoft/WinGet/Links/rtk.exe", WIN_INSTALL),
+            WIN_INSTALL,
+            "WARN",
+        ),
+        (("/home/u/.local/bin/rtk", MISE_RTK), MISE_RTK, "WARN"),
+    ],
+)
+def test_mises_shim_and_install_count_as_one_copy(
+    paths: tuple[str, ...], mise_path: str, level: str
+) -> None:
+    facts = _facts(rtk=check.Tool(paths=paths, version="0.50.0", mise_path=mise_path))
+    assert _levels(facts)["rtk"] == level
+
+
+def test_the_duplicate_warning_names_only_the_copies_to_remove() -> None:
+    winget = "C:/Users/u/AppData/Local/Microsoft/WinGet/Links/rtk.exe"
+    facts = _facts(
+        rtk=check.Tool(
+            paths=(f"{WIN_MISE}/shims/rtk.exe", winget, WIN_INSTALL),
+            version="0.50.0",
+            mise_path=WIN_INSTALL,
+        )
+    )
+    detail = _detail(facts, "rtk")
+    assert winget in detail
+    assert "shims" not in detail
