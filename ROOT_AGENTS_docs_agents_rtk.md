@@ -19,7 +19,7 @@ the source of truth for what gets rewritten.
 
 **Never add `"command": "rtk hook claude"` to a `settings.json` by hand**, and
 if rtk's installer adds it on an upgrade, leave it — `just sync-agents` retires
-that block on every run (`RETIRED_HOOK_COMMANDS` in `scripts/sync_agents.py`).
+that block on every run (`RETIRED_HOOK_COMMAND` in `scripts/sync_agents.py`).
 Two rewriting hooks in one session means rtk wins and the carve-out below never
 fires.
 

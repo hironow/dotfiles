@@ -198,3 +198,27 @@ def test_the_rtk_shim_passes_rtks_answer_through_and_fails_open(tmp_path: Path) 
     assert json.loads(with_rtk.stdout) == json.loads(answer)
     without = run("/usr/bin:/bin")
     assert (without.returncode, without.stdout) == (0, "")
+
+
+@pytest.mark.parametrize(
+    ("command", "retired"),
+    [
+        ("rtk hook claude", True),
+        ("rtk hook codex", True),
+        # what a later rtk installer may write: still rtk's own block
+        ("rtk hook codex --format json", True),
+        ("rtk.exe hook claude", True),
+        (
+            '"C:/Users/u/AppData/Local/mise/installs/rtk/0.51.0/rtk.exe" hook codex',
+            True,
+        ),
+        # a user's own wrapper around it is theirs
+        ("my-wrapper rtk hook codex", False),
+        ("rtk git status", False),
+    ],
+)
+def test_rtk_installer_blocks_are_recognised_across_rtk_versions(
+    command: str, retired: bool
+) -> None:
+    block = {"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}
+    assert sync_agents._is_retired_hook_block(block) is retired

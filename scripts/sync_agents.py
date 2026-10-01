@@ -54,7 +54,12 @@ CODEX_HOOK_FRAGMENT = ".codex/hooks.json"
 # and preserve them forever — next to the replacement, which is worse than
 # either alone. Retired on every sync, so a reinstall/upgrade that re-adds one
 # is undone rather than silently resurrecting the old behavior (ADR 0047).
-RETIRED_HOOK_COMMANDS = frozenset({"rtk hook claude", "rtk hook codex"})
+# rtk's `rtk hook claude` / `rtk hook codex`, also as a later rtk may write
+# them: the binary by name or by a (quoted) path, with or without .exe, plus
+# arguments of its own. A user's wrapper around it does not match.
+RETIRED_HOOK_COMMAND = re.compile(
+    r'^(?:"[^"]*[/\\])?rtk(?:\.exe)?"?\s+hook\s+(?:claude|codex)(?:\s|$)'
+)
 # Header line a third-party installer writes at the top of a hook file it owns
 # inside <agent>/hooks/ (herdr: "# installed by herdr"). Such a file is not a
 # stale dotfiles hook, and a settings block calling it is not sync's to replace:
@@ -723,7 +728,7 @@ def _is_retired_hook_block(block: dict) -> bool:
     """
     inner = block.get("hooks", [])
     return bool(inner) and all(
-        h.get("command", "").strip() in RETIRED_HOOK_COMMANDS for h in inner
+        RETIRED_HOOK_COMMAND.match(h.get("command", "").strip()) for h in inner
     )
 
 
@@ -742,7 +747,7 @@ def _merge_hook_settings(
     managed blocks are replaced by the current fragment (so a changed/removed
     hook command does not leave a stale duplicate), while user-authored blocks
     and other settings keys are preserved untouched. The one exception to
-    "preserve user blocks" is RETIRED_HOOK_COMMANDS (see _is_retired_hook_block):
+    "preserve user blocks" is RETIRED_HOOK_COMMAND (see _is_retired_hook_block):
     third-party installer blocks dotfiles now replaces, dropped on every run so a
     reinstall cannot resurrect them. Re-running with an unchanged fragment is a
     no-op. With dry_run=True nothing is written. Returns True if the file would
