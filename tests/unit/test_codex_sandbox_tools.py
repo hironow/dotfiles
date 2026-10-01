@@ -98,6 +98,12 @@ def test_a_relocated_mise_dir_is_still_fixed(
 ) -> None:
     # MISE_DATA_DIR moved to a drive whose top Codex never touched: whether
     # the sandbox exists is read from the profile, not from the dir's parent
+    #
+    # HOME first: main() reads ~/.env when that file exists, so on a host that
+    # has one the fake _acl below is asked about a path this test never set up.
+    # A tmp home has none, which is also the case this test means to exercise.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     mise = tmp_path / "tools" / "mise"
     mise.mkdir(parents=True)
     granted: list[list[str]] = []
