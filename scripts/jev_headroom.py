@@ -9,7 +9,7 @@ in the same startup window may each start a proxy, and each uses its own. Every
 failure means "launch without headroom", never "j-cc does not start".
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 import contextlib
 import http.client
 import json
@@ -221,8 +221,12 @@ def ensure_proxy(
     start: Callable[[list[str], dict[str, str], Path], Proxy] = start,
     free_port: Callable[[], int] = free_port,
     wait_seconds: float = 60.0,
+    on_start: Callable[[int], None] | None = None,
 ) -> int | None:
-    """The port of a ready headroom proxy, or None (with a notice) to go direct."""
+    """The port of a ready headroom proxy, or None (with a notice) to go direct.
+
+    on_start is called with the port when this call started the proxy (not
+    when it reused a running one): j-cc and j-pi open the dashboard then."""
     exe = which("headroom")
     if not exe:
         print("Jev: headroom not found; launching without it", file=sys.stderr)
@@ -254,4 +258,85 @@ def ensure_proxy(
             file=sys.stderr,
         )
         return None
+    if on_start is not None:
+        on_start(port)
     return port
+
+
+def dashboard_url(port: int) -> str:
+    return f"http://{HOST}:{port}/dashboard"
+
+
+def dashboard_wanted(environ: Mapping[str, str]) -> bool:
+    """Open the dashboard in a browser for a new proxy unless
+    JEV_HEADROOM_DASHBOARD turns it off (the URL is shown either way)."""
+    return environ.get("JEV_HEADROOM_DASHBOARD", "").strip().lower() not in OFF
+
+
+def can_open_browser(platform: str, environ: Mapping[str, str]) -> bool:
+    """Whether a graphical browser can show here: not on a headless Linux,
+    where webbrowser would fall back to a terminal browser on the launch's tty."""
+    if platform != "linux" or environ.get("WSL_DISTRO_NAME"):
+        return True
+    return bool(environ.get("DISPLAY") or environ.get("WAYLAND_DISPLAY"))
+
+
+def open_url(url: str) -> None:
+    """Open url in the user's browser, best effort: a failure leaves the shown
+    URL, and nothing here may stop or block the launch.
+
+    The browser is started from a separate process that is never waited for:
+    webbrowser itself can wait for what it starts (a foreground $BROWSER,
+    osascript on macOS)."""
+    if not can_open_browser(sys.platform, os.environ):
+        return
+    if os.environ.get("WSL_DISTRO_NAME") and shutil.which("explorer.exe"):
+        # WSL: the browser is Windows'; explorer.exe opens a URL there
+        argv = ["explorer.exe", url]
+    else:
+        opener = "import sys, webbrowser; webbrowser.open_new_tab(sys.argv[1])"
+        argv = [sys.executable, "-c", opener, url]
+    try:
+        subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=os.name != "nt",  # off the launch's terminal
+        )
+    except OSError:
+        pass
+
+
+def dashboard_plan(exe: str, port: int | None, health: object) -> list[str] | str:
+    """The command that opens j-cc's proxy dashboard, or what to do instead.
+
+    `headroom dashboard` defaults to port 8787; j-cc's proxy runs on the free
+    port recorded in its state file, so the port is always passed.
+    """
+    if port is None:
+        return "no j-cc proxy is recorded: start j-cc, which starts one"
+    if not is_headroom(health):
+        return f"the recorded proxy (port {port}) is not running: start j-cc again"
+    return [exe, "dashboard", "-p", str(port)]
+
+
+def main(argv: Sequence[str]) -> int:
+    """`dashboard`: open the dashboard of the proxy j-cc recorded."""
+    if list(argv) != ["dashboard"]:
+        print("usage: jev_headroom.py dashboard", file=sys.stderr)
+        return 2
+    exe = shutil.which("headroom")
+    if not exe:
+        print("headroom not found: mise install", file=sys.stderr)
+        return 1
+    port = read_state(state_path(Path.home(), os.environ))
+    plan = dashboard_plan(exe, port, probe(port) if port is not None else None)
+    if isinstance(plan, str):
+        print(plan, file=sys.stderr)
+        return 1
+    return subprocess.run(plan, check=False).returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

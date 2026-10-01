@@ -21,6 +21,10 @@ it (`ANTHROPIC_BASE_URL`). Any problem means "launch without headroom", never
 plain `claude` stays direct. This per-launch, fail-open proxy IS the proxy canary:
 there is no launchd service, on purpose — one mechanism, not two.
 
+A j-cc session gets both layers: headroom's proxy for what reaches the model,
+rtk's hook for what its commands print. `just jev-headroom-verify rtk` checks
+the two together in one session (a proxied request plus rtk's own count).
+
 Do not run `headroom wrap claude` or `headroom init`. `wrap` is fail-closed by
 design and writes the `settings.json` env that sync owns; `just doctor`'s
 `headroom-routing` line warns if either has run.

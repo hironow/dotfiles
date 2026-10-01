@@ -27,7 +27,14 @@ from jev_core import (
     parse_args,
     windows_acl_is_private,
 )
-from jev_headroom import claude_env, ensure_proxy, proxy_port
+from jev_headroom import (
+    claude_env,
+    dashboard_url,
+    dashboard_wanted,
+    ensure_proxy,
+    open_url,
+    proxy_port,
+)
 
 # Prints the user's SID, the file owner's SID, then the SID of each Allow ACE.
 # Uses the .NET API, not Get-Acl: its module fails to autoload in Windows
@@ -219,17 +226,30 @@ def hook_command() -> str:
 
 
 def headroom_env(host: str, environ: Mapping[str, str]) -> dict[str, str]:
-    """j-cc's Claude goes through a headroom proxy when one can be had.
+    """j-cc's Claude goes through a headroom proxy when one can be had; j-pi
+    only readies it, for its Codex workers (Pi's own traffic stays direct).
 
     Only this process and its workers: a custom base URL turns Remote Control
     off, so plain `claude` stays direct. JEV_HEADROOM=off opts out. Any failure
-    launches without headroom; it never stops j-cc.
+    launches without headroom; it never stops the launch. The dashboard's URL is
+    shown, and opened in a browser when this launch started the proxy
+    (JEV_HEADROOM_DASHBOARD=off keeps the browser closed).
     """
     env = dict(environ)
-    if host != "claude":
+
+    def on_start(port: int) -> None:
+        if dashboard_wanted(environ):
+            open_url(dashboard_url(port))
+
+    port = proxy_port(
+        environ,
+        Path.home(),
+        ensure=lambda env_, home: ensure_proxy(env_, home, on_start=on_start),
+    )
+    if port is None:
         return env
-    port = proxy_port(environ, Path.home(), ensure=ensure_proxy)
-    return env if port is None else claude_env(env, port)
+    print(f"Headroom dashboard: {dashboard_url(port)}", file=sys.stderr)
+    return claude_env(env, port) if host == "claude" else env
 
 
 def main() -> None:

@@ -215,10 +215,17 @@ jev-pi-verify:
     {{UV_RUN}} scripts/jev_pi_verify.py
 
 # Live check that j-cc's session and its workers go through headroom: a
-# dedicated proxy logs the requests; one print-mode session launches a worker.
+# dedicated proxy logs the requests; one print-mode session launches a worker
+# (claude), the Codex worker runner runs (codex), and one session's Bash goes
+# through rtk as well (rtk). Targets: claude codex rtk (default: all).
 # Exit 0 pass, 1 fail, 2 blocked (no key / headroom / usage limit / no worker).
 jev-headroom-verify *target:
     {{UV_RUN}} scripts/jev_headroom_verify.py {{target}}
+
+# Open the savings dashboard of the headroom proxy j-cc started (plain
+# `headroom dashboard` opens port 8787, where j-cc never runs it).
+headroom-dashboard:
+    {{UV_RUN}} scripts/jev_headroom.py dashboard
 
 # Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
