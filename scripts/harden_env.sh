@@ -132,8 +132,9 @@ if [ -n "${APPDATA:-}" ] && [ -z "${HARDEN_ENV_SKIP_WIN_PATH:-}" ] \
   # already set for the User is left alone (`just doctor` checks it).
   _git_bash="$(uv run --frozen "$(dirname "${BASH_SOURCE[0]}")/claude_git_bash.py" --to-set 2>/dev/null || true)"
   if [ -n "$_git_bash" ]; then
-    _powershell -NoProfile -Command \
-      "[Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', '${_git_bash}', 'User')"
+    # The path travels as data in the environment, never inside the script text
+    HARDEN_ENV_GIT_BASH="$_git_bash" _powershell -NoProfile -Command \
+      "[Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', \$env:HARDEN_ENV_GIT_BASH, 'User')"
     echo "  - CLAUDE_CODE_GIT_BASH_PATH=${_git_bash}: persisted for the User (Claude Code did not find Git Bash)"
   else
     echo "  - CLAUDE_CODE_GIT_BASH_PATH: not written (Claude Code finds Git Bash, or a value is already set)"

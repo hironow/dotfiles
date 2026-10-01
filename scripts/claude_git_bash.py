@@ -68,14 +68,31 @@ def to_set(
 # ---- Imperative shell ----
 
 
-def _user_value() -> str | None:
+MACHINE_ENVIRONMENT = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+
+
+def _persisted(machine: bool) -> str | None:
+    """CLAUDE_CODE_GIT_BASH_PATH as persisted for the User or the Machine."""
     import winreg  # noqa: PLC0415 - Windows only
 
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
-        try:
+    root, path = (
+        (winreg.HKEY_LOCAL_MACHINE, MACHINE_ENVIRONMENT)
+        if machine
+        else (winreg.HKEY_CURRENT_USER, "Environment")
+    )
+    try:
+        with winreg.OpenKey(root, path) as key:
             return str(winreg.QueryValueEx(key, "CLAUDE_CODE_GIT_BASH_PATH")[0]) or None
-        except OSError:
-            return None
+    except OSError:
+        return None
+
+
+def _user_value() -> str | None:
+    return _persisted(machine=False)
+
+
+def _machine_value() -> str | None:
+    return _persisted(machine=True)
 
 
 def main(argv: list[str]) -> int:
@@ -83,7 +100,8 @@ def main(argv: list[str]) -> int:
     if "--to-set" not in argv or sys.platform != "win32":
         return 0
     exists = lambda path: Path(path).exists()  # noqa: E731
-    found = claude_git_bash(None, shutil.which("git"), exists)
+    # A Machine-wide value reaches Claude Code too; a User one would override it
+    found = claude_git_bash(_machine_value(), shutil.which("git"), exists)
     candidate = next(
         (c for c in candidates(shutil.which("sh"), str(Path.home())) if exists(c)), None
     )

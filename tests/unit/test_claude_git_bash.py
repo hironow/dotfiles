@@ -114,3 +114,24 @@ def test_to_set_prints_the_git_bash_for_harden_env(
     monkeypatch.setattr(lookup, "_user_value", lambda: user_value)
     assert lookup.main(["--to-set"]) == 0
     assert capsys.readouterr().out == (f"{git_bash}\n" if printed else "")
+
+
+@pytest.mark.parametrize(("machine", "printed"), [("M:/bash.exe", False), (None, True)])
+def test_a_machine_wide_value_counts_as_claudes_setting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    machine: str | None,
+    printed: bool,
+) -> None:
+    # Claude Code sees the Machine scope too: a working value there needs no
+    # User value on top (which would override it)
+    git_bash = tmp_path / "bash.exe"
+    git_bash.write_text("", encoding="utf-8")
+    monkeypatch.setattr(lookup.sys, "platform", "win32")
+    monkeypatch.setattr(lookup, "claude_git_bash", lambda configured, *_: configured)
+    monkeypatch.setattr(lookup, "candidates", lambda *_: [str(git_bash)])
+    monkeypatch.setattr(lookup, "_user_value", lambda: None)
+    monkeypatch.setattr(lookup, "_machine_value", lambda: machine)
+    assert lookup.main(["--to-set"]) == 0
+    assert bool(capsys.readouterr().out) is printed
