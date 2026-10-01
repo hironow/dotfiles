@@ -35,12 +35,14 @@ SANDBOX_GROUP = "CodexSandboxUsers"
 # ---- Functional core ----
 
 
-def state(profile_acl: str, acl: str) -> str:
-    """'absent' (no elevated sandbox), 'readable' or 'blocked', from icacls output.
+def state(sandbox_exists: bool, acl: str) -> str:
+    """'absent' (no elevated sandbox), 'readable' or 'blocked'.
 
-    Codex grants the sandbox group read on the profile itself when it sets the
-    sandbox up, so the profile tells whether it exists, wherever mise lives."""
-    if SANDBOX_GROUP not in profile_acl:
+    sandbox_exists: Windows has the sandbox's group, which Codex creates when it
+    sets its elevated sandbox up. Where Codex granted read varies by host (the
+    profile itself on one, only its entries on another), so no ACL tells it;
+    acl is the mise dir's icacls output."""
+    if not sandbox_exists:
         return "absent"
     return "readable" if SANDBOX_GROUP in acl else "blocked"
 
@@ -124,6 +126,17 @@ def _acl(path: Path) -> str:
     ).stdout
 
 
+def _group_exists() -> bool:
+    """Whether Windows has the sandbox's group (net: 0 found, 2 no such group)."""
+    try:
+        done = subprocess.run(
+            ["net", "localgroup", SANDBOX_GROUP], capture_output=True, check=False
+        )
+    except OSError:
+        return False
+    return done.returncode == 0
+
+
 def main(argv: Sequence[str]) -> int:
     if sys.platform != "win32":
         return 0
@@ -132,11 +145,12 @@ def main(argv: Sequence[str]) -> int:
     )
     env_file = Path.home() / ".env"
     env_acl = _acl(env_file) if env_file.is_file() else None
-    before = state(_acl(Path.home()), _acl(directory)) if directory.is_dir() else None
+    exists = _group_exists()
+    before = state(exists, _acl(directory)) if directory.is_dir() else None
     after = None
     if before == "blocked" and "--check" not in argv:
         subprocess.run(fix_command(str(directory)), capture_output=True, check=False)
-        after = state(_acl(Path.home()), _acl(directory))
+        after = state(exists, _acl(directory))
     lines = report(env_acl, str(directory), before=before, after=after)
     for line in lines:
         print(fmt(line))

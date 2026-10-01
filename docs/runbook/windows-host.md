@@ -56,6 +56,8 @@ Codex は profile の上位のディレクトリに、継承する読み取り�
 継承を切ったディレクトリにはこの権限が届かない。
 `%LOCALAPPDATA%\mise` の継承が切れていた機体では、mise の道具（rtk、bun、just など）が sandbox の中ですべて「アクセス拒否」になり、rtk の hook が `rtk ...` に書き換えたコマンドも失敗した。
 `just codex-sandbox-tools` が、mise のディレクトリに `CodexSandboxUsers` の読み取りと実行の権限だけを付ける（`just sync-agents x` も実行し、`just doctor` の `codex-sandbox` が検出する）。
+sandbox が用意されているかは、`CodexSandboxUsers` のグループがあるか（`net localgroup CodexSandboxUsers`）で判定する。
+Codex が読み取りの権限を付ける場所は機体によって違い（profile 自体に付く機体と、`~/.codex` などの直下の項目にだけ付く機体がある）、ACL からは判定できないからである。
 継承を戻すと、親の継承する権限（`MISE_DATA_DIR` を移した先の親が持つ `Users` の変更権限など）まで取り込むので、そうはしない。
 `icacls <dir> /remove:g CodexSandboxUsers` で元の状態に戻せる。
 
