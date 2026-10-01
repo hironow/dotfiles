@@ -5,8 +5,10 @@ savings, or debugging output that looks unexpectedly filtered.
 
 `rtk` is a token-optimized CLI proxy (cuts up to 90% of bash output) and is
 **mandatory base tooling** — there is no opt-out (ADR 0047). In Claude Code a
-hook rewrites commands transparently (e.g. `git status` → `rtk git status`);
-other agents invoke it explicitly.
+hook rewrites commands transparently (e.g. `git status` → `rtk git status`),
+and in Pi rtk's own extension does the same for the bash tool
+(`config/pi/extensions/rtk.ts`, vendored and placed by
+`just pi-extensions-install`); other agents invoke it explicitly.
 
 ## The hook is dotfiles-managed
 
@@ -23,6 +25,15 @@ fires.
 
 The wrapper **fails open**: if rtk is missing or errors, the command runs
 unchanged. It is an optimiser, not a guard.
+
+## Install and telemetry
+
+rtk (and headroom) come from mise on every OS (`config/mise/config.toml`), so
+`rtk init -g` is never needed: it would add the hook block sync retires and
+write its own `RTK.md` into agent homes sync owns. Telemetry stays off through
+`RTK_TELEMETRY_DISABLED=1` (and `HEADROOM_BEACON=off`), set in mise's global
+`[env]`, the shared Claude settings env, and on Windows the persisted User env
+(`just harden-env`).
 
 ## rtk does not approve commands
 

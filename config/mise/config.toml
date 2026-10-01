@@ -94,6 +94,19 @@ starship = "1.26.0"
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
 fzf = "0.74.3"
 
+# rtk + headroom — base tooling every agent session goes through (ADR 0047):
+# rtk compresses command output (dotfiles owns its Claude hook; never run
+# `rtk init -g`), headroom compresses what reaches the model through its local
+# proxy. Every OS, Windows included. headroom's `proxy` extra carries the
+# server `headroom proxy` / `wrap` run, `code` its AST-aware code compression
+# (`all` would add torch and more); Python 3.13 is the version its docs install
+# with (no CI leg covers 3.14). headroom is pinned: mise
+# resolves `latest` without uv's 7-day exclude-newer (ADR 0028), which then
+# refuses the release; move the pin once a newer release is a week old. Their
+# telemetry is pinned off in [env] below.
+rtk = "latest"
+"pypi:headroom-ai" = { version = "0.38.0", extras = "proxy,code", uvx_args = "--python 3.13" }
+
 # google/ax + Agent Substrate toolchain. Declared here rather than per-repo
 # for the ADR 0023 activate-only reason as above: the migration is driven from
 # outside any single repo, so these have to resolve in every dir.
@@ -179,6 +192,14 @@ fzf = "0.74.3"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
 "npm:@dataform/cli" = "latest"
+
+[env]
+# Anonymous telemetry off for the base tools (ADR 0047): rtk only reports after
+# an opt-in, headroom's beacon is on by default. The same values sit in
+# .claude/settings.shared.json (Claude Code and its hooks, wherever launched)
+# and the persisted Windows User env (scripts/harden_env.sh).
+RTK_TELEMETRY_DISABLED = "1"
+HEADROOM_BEACON = "off"
 
 [settings]
 # Disable asdf-style .python-version / .nvmrc auto-detection so only
