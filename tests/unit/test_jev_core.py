@@ -235,6 +235,17 @@ def test_exec_command_owns_the_sandbox_and_pins_model_and_effort() -> None:
     assert command[command.index("--output-last-message") + 1] == "/tmp/out.txt"
 
 
+def test_exec_command_routes_through_a_proxy_only_when_given_one() -> None:
+    plain = core.build_codex_exec_command("gpt-6.1-sol", "high", "read-only", "/tmp/o")
+    routed = core.build_codex_exec_command(
+        "gpt-6.1-sol", "high", "read-only", "/tmp/o", base_url="http://127.0.0.1:1/v1"
+    )
+    assert not any("openai_base_url" in part for part in plain)
+    override = routed.index('openai_base_url="http://127.0.0.1:1/v1"')
+    assert routed[override - 1] == "-c"
+    assert routed[-1] == "-"
+
+
 def test_exec_command_refuses_an_unknown_sandbox() -> None:
     with pytest.raises(ValueError, match="sandbox"):
         core.build_codex_exec_command(

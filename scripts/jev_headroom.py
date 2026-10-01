@@ -54,12 +54,18 @@ def disabled(environ: Mapping[str, str]) -> bool:
     return environ.get("JEV_HEADROOM", "").strip().lower() in OFF
 
 
-def state_path(home: Path) -> Path:
-    return home / ".cache" / "jev" / "headroom.json"
+def _state_dir(home: Path, environ: Mapping[str, str] | None = None) -> Path:
+    # JEV_HEADROOM_STATE_DIR: the live check hands a runner its dedicated proxy
+    override = (environ or {}).get("JEV_HEADROOM_STATE_DIR")
+    return Path(override) if override else home / ".cache" / "jev"
 
 
-def log_path(home: Path) -> Path:
-    return home / ".cache" / "jev" / "headroom-proxy.log"
+def state_path(home: Path, environ: Mapping[str, str] | None = None) -> Path:
+    return _state_dir(home, environ) / "headroom.json"
+
+
+def log_path(home: Path, environ: Mapping[str, str] | None = None) -> Path:
+    return _state_dir(home, environ) / "headroom-proxy.log"
 
 
 def read_state(path: Path) -> int | None:
@@ -124,6 +130,38 @@ def claude_env(environ: Mapping[str, str], port: int) -> dict[str, str]:
     }
 
 
+def codex_base_url(port: int) -> str:
+    return f"http://{HOST}:{port}/v1"
+
+
+def codex_env(environ: Mapping[str, str], port: int) -> dict[str, str]:
+    # headroom's own per-process recipe sets this next to `-c openai_base_url=`
+    return {**environ, "OPENAI_BASE_URL": codex_base_url(port)}
+
+
+def proxy_port(
+    environ: Mapping[str, str],
+    home: Path,
+    *,
+    ensure: Callable[[Mapping[str, str], Path], int | None],
+) -> int | None:
+    """The port to route through, or None: JEV_HEADROOM=off, no proxy, or any
+    failure on the way. It never stops the launch."""
+    if disabled(environ):
+        return None
+    try:
+        port = ensure(environ, home)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print(
+            f"Jev: headroom unavailable ({error}); launching without it",
+            file=sys.stderr,
+        )
+        return None
+    if port is not None:
+        print(f"Headroom: http://{HOST}:{port}", file=sys.stderr)
+    return port
+
+
 def start(command: list[str], env: dict[str, str], log: Path) -> ProxyProcess:
     """Start the proxy detached from this launch, so it outlives j-cc."""
     return ProxyProcess(_spawn(command, env, log).pid)
@@ -185,12 +223,12 @@ def ensure_proxy(
     if not exe:
         print("Jev: headroom not found; launching without it", file=sys.stderr)
         return None
-    state = state_path(home)
+    state = state_path(home, environ)
     port = read_state(state)
     if port is not None and is_headroom(probe(port)):
         return port
     port = free_port()
-    log = log_path(home)
+    log = log_path(home, environ)
     try:
         proxy = start(proxy_command(exe, port), proxy_env(environ), log)
     except (OSError, subprocess.SubprocessError) as error:

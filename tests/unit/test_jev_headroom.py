@@ -9,6 +9,7 @@ headroom", never "j-cc does not start".
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 import socket
 import sys
@@ -282,3 +283,46 @@ def test_terminate_stops_the_whole_proxy_tree(monkeypatch: pytest.MonkeyPatch) -
 
     assert calls[0] == ["taskkill", "/T", "/F", "/PID", "1234"]
     assert calls[1] == ("killpg", 1234, hr.signal.SIGTERM)
+
+
+def test_codex_gets_the_proxy_as_its_openai_base_url() -> None:
+    env = hr.codex_env({"PATH": "p"}, 4321)
+    assert env["OPENAI_BASE_URL"] == "http://127.0.0.1:4321/v1"
+    assert hr.codex_base_url(4321) == "http://127.0.0.1:4321/v1"
+
+
+def test_proxy_port_never_stops_the_launch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def broken(_environ: Mapping[str, str], _home: Path) -> int:
+        raise OSError("cache is a file")
+
+    assert hr.proxy_port({}, tmp_path, ensure=broken) is None
+    assert "launching without it" in capsys.readouterr().err
+    called: list[bool] = []
+    assert (
+        hr.proxy_port(
+            {"JEV_HEADROOM": "off"}, tmp_path, ensure=lambda *_a: called.append(True)
+        )
+        is None
+    )
+    assert called == []
+
+
+def test_the_state_dir_can_be_pointed_elsewhere(tmp_path: Path) -> None:
+    # The live check hands a runner its dedicated proxy this way
+    world = World(tmp_path / "home")
+    other = tmp_path / "verify"
+    hr.write_state(other / "headroom.json", 4321)
+    world.health[4321] = READY
+    port = hr.ensure_proxy(
+        {"JEV_HEADROOM_STATE_DIR": str(other)},
+        world.home,
+        which=world.which,
+        probe=world.probe,
+        start=world.start,
+        free_port=lambda: 5555,
+        wait_seconds=0.0,
+    )
+    assert port == 4321
+    assert world.started == []
