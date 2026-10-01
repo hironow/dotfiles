@@ -33,7 +33,14 @@ import jev_launch
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND_GUARD = ROOT / "ROOT_AGENTS_hooks_block-prohibited-commands.py"
-TELEMETRY_OFF = {"RTK_TELEMETRY_DISABLED": "1", "HEADROOM_BEACON": "off"}
+# Two switches for headroom, not one: HEADROOM_BEACON is its own and
+# DO_NOT_TRACK the cross-vendor opt-out it also honours. The beacon fails open
+# (any value but "off" uploads), so neither stands in for the other.
+TELEMETRY_OFF = {
+    "RTK_TELEMETRY_DISABLED": "1",
+    "HEADROOM_BEACON": "off",
+    "DO_NOT_TRACK": "1",
+}
 CLAUDE_HOMES = (
     ".claude",
     ".claude-work-a",

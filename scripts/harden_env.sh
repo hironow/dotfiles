@@ -125,9 +125,11 @@ if [ -n "${APPDATA:-}" ] && [ -z "${HARDEN_ENV_SKIP_WIN_PATH:-}" ] \
   done
   # rtk / headroom telemetry off for processes no shell starts (ADR 0047; the
   # same values live in mise's global [env] and the shared Claude settings env).
+  # DO_NOT_TRACK is the cross-vendor opt-out headroom also honours; its beacon
+  # fails open, so both switches are persisted.
   _powershell -NoProfile -Command \
-    "[Environment]::SetEnvironmentVariable('RTK_TELEMETRY_DISABLED', '1', 'User'); [Environment]::SetEnvironmentVariable('HEADROOM_BEACON', 'off', 'User')"
-  echo "  - RTK_TELEMETRY_DISABLED=1, HEADROOM_BEACON=off: persisted for the User"
+    "[Environment]::SetEnvironmentVariable('RTK_TELEMETRY_DISABLED', '1', 'User'); [Environment]::SetEnvironmentVariable('HEADROOM_BEACON', 'off', 'User'); [Environment]::SetEnvironmentVariable('DO_NOT_TRACK', '1', 'User')"
+  echo "  - RTK_TELEMETRY_DISABLED=1, HEADROOM_BEACON=off, DO_NOT_TRACK=1: persisted for the User"
   # Claude Code's Bash tool needs Git Bash. Where its own lookup finds none
   # (git through a scoop shim), point CLAUDE_CODE_GIT_BASH_PATH at ours; a value
   # already set for the User is left alone (`just doctor` checks it).

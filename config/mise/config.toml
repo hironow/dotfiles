@@ -199,8 +199,13 @@ rtk = "latest"
 # an opt-in, headroom's beacon is on by default. The same values sit in
 # .claude/settings.shared.json (Claude Code and its hooks, wherever launched)
 # and the persisted Windows User env (scripts/harden_env.sh).
+#
+# Two switches for headroom, not one: HEADROOM_BEACON is its own and
+# DO_NOT_TRACK is the cross-vendor opt-out it also honours. The beacon fails
+# OPEN -- any value but "off" uploads -- so neither stands in for the other.
 RTK_TELEMETRY_DISABLED = "1"
 HEADROOM_BEACON = "off"
+DO_NOT_TRACK = "1"
 
 [settings]
 # Disable asdf-style .python-version / .nvmrc auto-detection so only
