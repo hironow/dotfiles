@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from sync_agents import (  # noqa: E402
+from sync_agents import (
     AGENTS,
     OS_SETTINGS_OVERLAYS,
     AgentTarget,
@@ -58,7 +58,7 @@ def _tracked_settings_sources(root: Path) -> list[Path]:
     (a `settings.shared.linux.json`, another profile) is policed the moment it
     is tracked, without an edit here.
     """
-    out = subprocess.run(  # noqa: S603 - fixed argv, test-only
+    out = subprocess.run(
         ["git", "ls-files", "-z", ".claude/settings*.json"],
         cwd=root,
         capture_output=True,
@@ -155,8 +155,8 @@ def repo_copy(tmp_path: Path) -> Path:
     for path in _tracked_settings_sources(ROOT):
         target = dest / path.relative_to(ROOT)
         target.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    subprocess.run(["git", "init", "-q"], cwd=dest, check=True)  # noqa: S603,S607
-    subprocess.run(["git", "add", "-A"], cwd=dest, check=True)  # noqa: S603,S607
+    subprocess.run(["git", "init", "-q"], cwd=dest, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=dest, check=True)
     return dest
 
 
@@ -183,7 +183,7 @@ def test_scan_detects_the_variable_in_any_tracked_source(
     data = json.loads(target.read_text(encoding="utf-8"))
     data.setdefault("env", {})[POLICY_ENV_VAR] = "keep"
     target.write_text(json.dumps(data), encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=repo_copy, check=True)  # noqa: S603,S607
+    subprocess.run(["git", "add", "-A"], cwd=repo_copy, check=True)
 
     assert relative in _sources_setting_policy(repo_copy)
 

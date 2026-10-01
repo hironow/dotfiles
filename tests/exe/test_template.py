@@ -47,11 +47,11 @@ def _run(
         cmd,
         cwd=str(cwd) if cwd else None,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         timeout=timeout,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
 
 

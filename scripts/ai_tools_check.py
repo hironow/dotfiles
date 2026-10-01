@@ -15,26 +15,26 @@ guard, and the `headroom proxy` flags jev_headroom.proxy_command passes. Each
 contract is defined once, where it is used; this only reads it.
 """
 
-from collections.abc import Mapping
 import contextlib
-from dataclasses import dataclass
 import importlib.util
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
 from types import ModuleType
 
 import claude_git_bash
 import claude_homes
 import doctor_lines
-from doctor_lines import Line
 import jev_headroom
 import jev_launch
 import windows_env
+from doctor_lines import Line
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND_GUARD = ROOT / "ROOT_AGENTS_hooks_block-prohibited-commands.py"
@@ -147,8 +147,10 @@ def _claude_git_bash(facts: Facts) -> list[Line]:
             (
                 "WARN",
                 "claude-git-bash",
-                "Claude Code finds no Git Bash, so its Bash tool is off and j-cc "
-                f"fails: {fix}",
+                (
+                    "Claude Code finds no Git Bash, so its Bash tool is off and j-cc "
+                    f"fails: {fix}"
+                ),
             )
         ]
     if bash.configured and bash.configured != bash.found:
@@ -156,8 +158,10 @@ def _claude_git_bash(facts: Facts) -> list[Line]:
             (
                 "WARN",
                 "claude-git-bash",
-                f"CLAUDE_CODE_GIT_BASH_PATH={bash.configured} is not an existing "
-                f"bash, so Claude Code falls back to {bash.found}: fix or unset it",
+                (
+                    f"CLAUDE_CODE_GIT_BASH_PATH={bash.configured} is not an existing "
+                    f"bash, so Claude Code falls back to {bash.found}: fix or unset it"
+                ),
             )
         ]
     return [("OK", "claude-git-bash", f"Claude Code runs {bash.found}")]
@@ -190,8 +194,10 @@ def _jev_key(facts: Facts) -> Line:
         return (
             "WARN",
             "jev-key",
-            "in ~/.env, the old place: move it to ~/.config/jev/env, which Codex's "
-            f"Windows sandbox does not read ({runbook})",
+            (
+                "in ~/.env, the old place: move it to ~/.config/jev/env, which Codex's "
+                f"Windows sandbox does not read ({runbook})"
+            ),
         )
     return ("OK", "jev-key", f"from {shown}")
 
@@ -209,7 +215,7 @@ def vendored_version(text: str) -> str | None:
 
 
 def _same(a: str, b: str) -> bool:
-    norm = lambda p: os.path.normcase(os.path.normpath(p)).removesuffix(".exe")  # noqa: E731
+    norm = lambda p: os.path.normcase(os.path.normpath(p)).removesuffix(".exe")
     return norm(a) == norm(b)
 
 
@@ -239,9 +245,11 @@ def _tool(name: str, tool: Tool, package: str) -> Line:
         return (
             "WARN",
             name,
-            f"copies on PATH that mise does not manage ({', '.join(others)}): "
-            "remove them, keeping mise's (a winget package, a hand-placed "
-            "~/.local/bin copy)",
+            (
+                f"copies on PATH that mise does not manage ({', '.join(others)}): "
+                "remove them, keeping mise's (a winget package, a hand-placed "
+                "~/.local/bin copy)"
+            ),
         )
     if others:
         return ("WARN", name, f"{tool.paths[0]} is not mise's: mise install {package}")
@@ -259,8 +267,10 @@ def _rtk_pi_extension(facts: Facts) -> Line:
         return (
             "WARN",
             "rtk-pi-extension",
-            f"config/pi/extensions/rtk.ts is from rtk {vendored}, "
-            f"installed is {installed}: just rtk-pi-refresh",
+            (
+                f"config/pi/extensions/rtk.ts is from rtk {vendored}, "
+                f"installed is {installed}: just rtk-pi-refresh"
+            ),
         )
     return ("OK", "rtk-pi-extension", f"vendored from rtk {vendored or '?'}")
 
@@ -343,9 +353,11 @@ def _headroom_proxy(facts: Facts) -> Line:
     return (
         "WARN",
         "headroom-proxy",
-        f"127.0.0.1:{port} answers /health with keys {', '.join(sorted(answer))}, "
-        "not the shape jev_headroom.is_headroom expects: j-cc would wait for it, "
-        "then go direct",
+        (
+            f"127.0.0.1:{port} answers /health with keys {', '.join(sorted(answer))}, "
+            "not the shape jev_headroom.is_headroom expects: j-cc would wait for it, "
+            "then go direct"
+        ),
     )
 
 
@@ -374,9 +386,11 @@ def _headroom_routing(facts: Facts) -> Line:
     return (
         "WARN",
         "headroom-routing",
-        f"headroom init/wrap routes {', '.join([*claude, *(['~/.codex'] if codex else [])])} "
-        "through a local proxy, so plain claude/codex fail while it is down (and "
-        f"Claude loses Remote Control): {' and '.join(fixes)}, then just sync-agents",
+        (
+            f"headroom init/wrap routes {', '.join([*claude, *(['~/.codex'] if codex else [])])} "
+            "through a local proxy, so plain claude/codex fail while it is down (and "
+            f"Claude loses Remote Control): {' and '.join(fixes)}, then just sync-agents"
+        ),
     )
 
 
@@ -403,10 +417,12 @@ def _rtk_guard(facts: Facts) -> list[Line]:
             (
                 "WARN",
                 "rtk-guard",
-                f"rtk {facts.rtk.version or '?'} has subcommands the command guard "
-                f"has not classified ({', '.join(unclassified)}): add each to "
-                "RTK_RUN_SUBCOMMANDS if it runs its operands, else to "
-                "RTK_FILTER_SUBCOMMANDS (ROOT_AGENTS_hooks_block-prohibited-commands.py)",
+                (
+                    f"rtk {facts.rtk.version or '?'} has subcommands the command guard "
+                    f"has not classified ({', '.join(unclassified)}): add each to "
+                    "RTK_RUN_SUBCOMMANDS if it runs its operands, else to "
+                    "RTK_FILTER_SUBCOMMANDS (ROOT_AGENTS_hooks_block-prohibited-commands.py)"
+                ),
             )
         ]
     return [
@@ -435,8 +451,10 @@ def _rtk_telemetry(facts: Facts) -> list[Line]:
             (
                 "WARN",
                 "rtk-telemetry",
-                "off, but this rtk no longer reports honouring RTK_TELEMETRY_DISABLED: "
-                "find its switch (rtk telemetry --help) before consent turns it on",
+                (
+                    "off, but this rtk no longer reports honouring RTK_TELEMETRY_DISABLED: "
+                    "find its switch (rtk telemetry --help) before consent turns it on"
+                ),
             )
         ]
     return [("OK", "rtk-telemetry", "off by rtk's own account")]
@@ -474,8 +492,10 @@ def _headroom_cli(facts: Facts) -> list[Line]:
             (
                 "WARN",
                 "headroom-cli",
-                f"`headroom proxy --help` lacks {', '.join(missing)}: update "
-                "jev_headroom.proxy_command, or j-cc goes direct",
+                (
+                    f"`headroom proxy --help` lacks {', '.join(missing)}: update "
+                    "jev_headroom.proxy_command, or j-cc goes direct"
+                ),
             )
         ]
     return [
@@ -516,15 +536,19 @@ def _mise_config(facts: Facts) -> Line:
         return (
             "WARN",
             "mise-config",
-            f"no {config.live_path}: no tool or [env] of this repo is active -- "
-            "run: just deploy",
+            (
+                f"no {config.live_path}: no tool or [env] of this repo is active -- "
+                "run: just deploy"
+            ),
         )
     if config.tracked is None:
         return (
             "OK",
             "mise-config",
-            f"{config.live_path} present, not compared (origin/main's copy is "
-            "unreadable: no git, or no fetch yet)",
+            (
+                f"{config.live_path} present, not compared (origin/main's copy is "
+                "unreadable: no git, or no fetch yet)"
+            ),
         )
     if _comparable(config.live) == _comparable(config.tracked):
         return ("OK", "mise-config", f"{config.live_path} matches origin/main")
@@ -532,16 +556,20 @@ def _mise_config(facts: Facts) -> Line:
         return (
             "WARN",
             "mise-config",
-            f"{config.live_path} differs from origin/main's and is a symlink to "
-            f"{config.symlinked_into}, so this machine's tools and [env] are "
-            "whatever that checkout holds -- put it back on main (`just deploy` "
-            "copies the file onto itself through the symlink and cannot fix it)",
+            (
+                f"{config.live_path} differs from origin/main's and is a symlink to "
+                f"{config.symlinked_into}, so this machine's tools and [env] are "
+                "whatever that checkout holds -- put it back on main (`just deploy` "
+                "copies the file onto itself through the symlink and cannot fix it)"
+            ),
         )
     return (
         "WARN",
         "mise-config",
-        f"{config.live_path} differs from origin/main's: the deployed copy is "
-        "stale or edited by hand -- run: just deploy",
+        (
+            f"{config.live_path} differs from origin/main's: the deployed copy is "
+            "stale or edited by hand -- run: just deploy"
+        ),
     )
 
 
@@ -673,7 +701,7 @@ def _claude_bash(home: Path, settings: Mapping[str, object]) -> ClaudeBash | Non
     configured = os.environ.get("CLAUDE_CODE_GIT_BASH_PATH") or (
         str(env.get("CLAUDE_CODE_GIT_BASH_PATH") or "") if isinstance(env, dict) else ""
     )
-    exists = lambda path: Path(path).exists()  # noqa: E731
+    exists = lambda path: Path(path).exists()
     return ClaudeBash(
         configured=configured or None,
         found=claude_git_bash.claude_git_bash(

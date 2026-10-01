@@ -27,7 +27,6 @@ from pathlib import Path
 
 from _bash_hook import resolve_bash
 
-
 ROOT = Path(__file__).resolve().parents[2]
 HARDEN = ROOT / "scripts" / "harden_env.sh"
 # Not `shutil.which("bash")`: on Windows that is the WSL launcher, which runs

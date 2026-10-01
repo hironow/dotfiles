@@ -69,7 +69,7 @@ def visualize_rttm(
                 segments.append(
                     {"start": start_time, "end": end_time, "speaker": speaker}
                 )
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.error(f"Failed to read RTTM file: {e}")
         sys.exit(1)
 
@@ -78,7 +78,7 @@ def visualize_rttm(
         return
 
     # Assign Y coordinates and colors for each speaker
-    sorted_speakers = sorted(list(speakers))
+    sorted_speakers = sorted(speakers)
     y_positions = {speaker: i for i, speaker in enumerate(sorted_speakers)}
     num_speakers = len(sorted_speakers)
 
@@ -145,7 +145,7 @@ def visualize_rttm(
         try:
             plt.savefig(output_file)
             logger.info(f"Visualization saved to {output_file}")
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.error(f"Failed to save visualization: {e}")
             sys.exit(1)
     else:

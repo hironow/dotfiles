@@ -1,9 +1,9 @@
 """Jev PowerShell launchers are installed for the native Windows bootstrap."""
 
 import os
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 

@@ -58,7 +58,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 GC = SCRIPTS / "runner_gc.sh"
@@ -169,11 +168,11 @@ def test_compaction_stays_advisory() -> None:
     """Compaction stops the distro and kills CI; never self-apply it."""
     text = COMPACT.read_text(encoding="utf-8")
     assert "--shutdown" in text, "wsl_compact.sh should document the shutdown."
-    assert not re.search(r"^\s*[^#]*wsl\.exe --shutdown", text, re.M), (
+    assert not re.search(r"^\s*[^#]*wsl\.exe --shutdown", text, re.MULTILINE), (
         "wsl_compact.sh must not execute `wsl --shutdown` itself — it would "
         "take the self-hosted runner offline without asking."
     )
-    assert not re.search(r"^\s*[^#]*--allow-unsafe", text, re.M), (
+    assert not re.search(r"^\s*[^#]*--allow-unsafe", text, re.MULTILINE), (
         "sparse VHD is disabled by Microsoft over data corruption (ADR 0035); "
         "never force it on a CI host."
     )
@@ -330,7 +329,7 @@ def test_toolcache_keeps_the_newest_patch_of_each_series() -> None:
     assert "RUNNER_GC_TOOLCACHE_KEEP" in text, (
         "the number of retained series must stay configurable."
     )
-    assert re.search(r"series", text, re.I), (
+    assert re.search(r"series", text, re.IGNORECASE), (
         "toolcache reaping must group versions by major.minor series; a flat "
         "newest-N count evicts versions the matrices still pin."
     )
@@ -380,7 +379,7 @@ def test_toolcache_reaping_never_races_a_running_job() -> None:
         "the top-level guard must be _foreign_worker, bypassable by FORCE."
     )
     # Toolcache guard: separate, and FORCE must not reach it.
-    assert re.search(r"^if _foreign_worker; then$", text, re.M), (
+    assert re.search(r"^if _foreign_worker; then$", text, re.MULTILINE), (
         "the toolcache leg needs its own `_foreign_worker` guard with no FORCE "
         "escape, separate from the top-level docker guard."
     )
@@ -402,6 +401,7 @@ def test_scripts_parse() -> None:
             text=True,
             encoding="utf-8",
             errors="replace",
+            check=False,
         )
         assert proc.returncode == 0, f"{script.name}: {proc.stderr}"
 
@@ -527,8 +527,10 @@ def _age_link(path: Path, hours: float) -> None:
             PWSH,
             "-NoProfile",
             "-Command",
-            f"(Get-Item -LiteralPath '{path}' -Force).LastWriteTime = "
-            f"(Get-Date).AddHours(-{hours})",
+            (
+                f"(Get-Item -LiteralPath '{path}' -Force).LastWriteTime = "
+                f"(Get-Date).AddHours(-{hours})"
+            ),
         ],
         capture_output=True,
         check=True,
@@ -572,6 +574,7 @@ def _run_gc(root: Path, *extra: str, env: dict[str, str] | None = None):
         env=overrides,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
 
 
@@ -819,7 +822,7 @@ def test_gc_discards_freed_blocks_back_to_the_host() -> None:
     43.5 GB returned to C: in a single call on the runner host.
     """
     text = GC.read_text(encoding="utf-8")
-    assert re.search(r"^\s*[^#]*\bfstrim\b", text, re.M), (
+    assert re.search(r"^\s*[^#]*\bfstrim\b", text, re.MULTILINE), (
         "runner_gc.sh must fstrim after pruning, or the space it frees never "
         "reaches the Windows host."
     )
@@ -971,7 +974,7 @@ def test_windows_hook_is_a_path_not_a_command_line() -> None:
     assert re.search(
         r"^\s*\$hookCmd\s*=\s*\$payload\s*(-replace\s+'\\\\',\s*'/')?\s*$",
         text,
-        re.M,
+        re.MULTILINE,
     ), (
         "the Windows hook must be the bare .ps1 path; a `powershell.exe "
         "-File <script>` wrapper fails the runner's path validation."
@@ -1021,9 +1024,9 @@ def test_status_validates_the_hook_rather_than_its_presence() -> None:
         "status must validate the hook extension the runner requires."
     )
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    assert re.search(r"^status:\n\s+bash scripts/gc_status\.sh", justfile, re.M), (
-        "`just status` must be wired to scripts/gc_status.sh."
-    )
+    assert re.search(
+        r"^status:\n\s+bash scripts/gc_status\.sh", justfile, re.MULTILINE
+    ), "`just status` must be wired to scripts/gc_status.sh."
 
 
 def test_status_never_claims_proof_for_a_hook_that_is_not_set() -> None:
@@ -1251,6 +1254,7 @@ def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
         timeout=90,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     elapsed = time.monotonic() - start
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -1306,7 +1310,7 @@ def test_disk_gc_huggingface_optin_reaches_both_legs() -> None:
     """
     text = DISK.read_text(encoding="utf-8")
     block = re.search(
-        r'if \[ "\$_win" -eq 1 \]; then(.*?)\selse\s(.*?)\sfi\s', text, re.S
+        r'if \[ "\$_win" -eq 1 \]; then(.*?)\selse\s(.*?)\sfi\s', text, re.DOTALL
     )
     assert block is not None, "expected the per-OS cache list if/else"
     assert "DISK_GC_HUGGINGFACE" not in block.group(

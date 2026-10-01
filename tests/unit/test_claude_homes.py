@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import claude_homes  # noqa: E402
+import claude_homes
 
 
 def test_the_homes_in_report_order() -> None:
@@ -52,7 +52,7 @@ def test_each_call_fits_the_overall_budget(
 
 
 def test_the_check_budget_ends_before_doctor_stops_waiting() -> None:
-    import ai_tools_check  # noqa: PLC0415
+    import ai_tools_check
 
     assert claude_homes.CHECK_BUDGET < ai_tools_check.CHECKER_TIMEOUT
 

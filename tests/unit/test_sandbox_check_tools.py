@@ -57,7 +57,7 @@ def baked_tools() -> dict[str, object]:
     m = re.search(
         r"cat > /etc/mise/config.toml <<'EOF'\n(.*?)\nEOF",
         INSTALL.read_text(encoding="utf-8"),
-        re.S,
+        re.DOTALL,
     )
     assert m, "install.sh must bake /etc/mise/config.toml"
     return tomllib.loads(m.group(1))["tools"]
@@ -100,7 +100,9 @@ def test_quint_is_baked_at_the_same_pin_as_the_workstation() -> None:
 
 
 def assignment(name: str) -> str:
-    m = re.search(rf'^{name}="([^"]*)"', INSTALL.read_text(encoding="utf-8"), re.M)
+    m = re.search(
+        rf'^{name}="([^"]*)"', INSTALL.read_text(encoding="utf-8"), re.MULTILINE
+    )
     assert m, f"install.sh must set {name}"
     return m.group(1)
 
@@ -128,10 +130,10 @@ def test_quint_home_is_outside_the_home_directory() -> None:
     m = re.search(
         r"cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'\n(.*?)\nPROFILE",
         INSTALL.read_text(encoding="utf-8"),
-        re.S,
+        re.DOTALL,
     )
     assert m, "install.sh must write /etc/profile.d/dotfiles-mise.sh"
-    assert re.search(r"^export QUINT_HOME=/opt/quint$", m.group(1), re.M)
+    assert re.search(r"^export QUINT_HOME=/opt/quint$", m.group(1), re.MULTILINE)
     assert re.search(
         r'"QUINT_HOME":\s*"/opt/quint"', DEVCONTAINER.read_text(encoding="utf-8")
     )

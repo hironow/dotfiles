@@ -24,7 +24,7 @@ BASH = resolve_bash()
 
 def _function(name: str) -> str:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    match = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", text, re.M | re.S)
+    match = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", text, re.MULTILINE | re.DOTALL)
     assert match, f"install.sh has no {name}()"
     return match.group(0)
 
@@ -109,7 +109,7 @@ def test_zsh_as_the_login_shell_is_quiet(tmp_path: Path, bin_dir: Path) -> None:
 
 def test_install_sh_runs_the_zsh_step() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
-    assert re.search(r"^step_zsh$", text, re.M)
+    assert re.search(r"^step_zsh$", text, re.MULTILINE)
 
 
 def test_doctor_reports_zsh_on_linux() -> None:

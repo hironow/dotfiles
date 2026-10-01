@@ -20,8 +20,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import sync_agents  # noqa: E402
-from sync_agents import (  # noqa: E402
+import sync_agents
+from _bash_hook import bash_path, resolve_bash
+from sync_agents import (
     AgentTarget,
     _detect_managed_dir_orphans,
     _merge_hook_settings,
@@ -29,7 +30,6 @@ from sync_agents import (  # noqa: E402
     _SyncItem,
     _wants_hook,
 )
-from _bash_hook import bash_path, resolve_bash  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 

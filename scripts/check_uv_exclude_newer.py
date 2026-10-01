@@ -47,14 +47,14 @@ _RELATIVE_SPAN = re.compile(r"^\s*(\d+)\s*([a-zA-Z]+)\s*$")
 def _parse_cutoff(pkg: str, raw: object) -> datetime:
     """RFC 3339 timestamp or bare YYYY-MM-DD (= midnight UTC), as uv accepts."""
     if not isinstance(raw, str):
-        raise ValueError(
+        raise TypeError(
             f"{pkg}: exclude-newer-package value must be a string, got {raw!r}"
         )
     text = raw.strip()
     if len(text) == 10:
         text += "T00:00:00Z"
     try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(text)
     except ValueError as exc:
         raise ValueError(
             f"{pkg}: cannot parse exclude-newer-package cutoff {raw!r}"
@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
             if window is None:
                 continue  # no relative quarantine here -> nothing can expire
             expired = expired_overrides(text, now=now, window=window)
-        except (ValueError, tomllib.TOMLDecodeError) as exc:
+        except (TypeError, ValueError, tomllib.TOMLDecodeError) as exc:
             print(f"check-uv-exclude-newer: {path}: {exc}", file=sys.stderr)
             failed = True
             continue

@@ -21,11 +21,11 @@ Prints doctor-style OK/WARN lines; exit 1 on a WARN. Windows only: elsewhere
 Codex's sandbox reads the whole disk.
 """
 
-from collections.abc import Sequence
 import os
-from pathlib import Path
 import subprocess
 import sys
+from collections.abc import Sequence
+from pathlib import Path
 
 from doctor_lines import Line, failed, fmt
 
@@ -51,8 +51,10 @@ def message(current: str, directory: str) -> tuple[str, str]:
     if current == "blocked":
         return (
             "WARN",
-            f"{directory} lacks the {SANDBOX_GROUP} read access, so rtk and "
-            "every mise tool fail inside Codex's sandbox: just codex-sandbox-tools",
+            (
+                f"{directory} lacks the {SANDBOX_GROUP} read access, so rtk and "
+                "every mise tool fail inside Codex's sandbox: just codex-sandbox-tools"
+            ),
         )
     if current == "absent":
         return ("OK", "Codex's elevated sandbox is not set up; nothing to reach")
@@ -68,10 +70,12 @@ def git_message() -> tuple[str, str]:
     """Why git stops inside the sandbox, and what dotfiles leaves to the owner."""
     return (
         "OK",
-        "git in the sandbox runs as another user and stops at safe.directory; "
-        "add a repo to it by hand only if you accept that sandboxed code may "
-        "then plant a .git/config your own git runs, or run Codex without the "
-        "sandbox (docs/runbook/windows-host.md)",
+        (
+            "git in the sandbox runs as another user and stops at safe.directory; "
+            "add a repo to it by hand only if you accept that sandboxed code may "
+            "then plant a .git/config your own git runs, or run Codex without the "
+            "sandbox (docs/runbook/windows-host.md)"
+        ),
     )
 
 
@@ -80,8 +84,10 @@ def secrets_message(env_acl: str) -> tuple[str, str]:
     if SANDBOX_GROUP in env_acl:
         return (
             "WARN",
-            "Codex's sandbox can read ~/.env, and Codex grants that again on setup: "
-            "move its secrets under ~/.config (which it skips) and delete ~/.env",
+            (
+                "Codex's sandbox can read ~/.env, and Codex grants that again on setup: "
+                "move its secrets under ~/.config (which it skips) and delete ~/.env"
+            ),
         )
     return ("OK", "~/.env is not readable in Codex's sandbox")
 

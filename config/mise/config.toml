@@ -32,15 +32,15 @@ opentofu = "1.13.0"
 # (ADR 0006): ruff/ty to the exact version the lint group pins
 # (`just bump-tool ruff|ty <ver>` moves both), so a hand-run `ruff check`
 # in a mise-activated shell reports what `just check` reports (a newer
-# ruff widens the default rules: 0.16 showed 88 findings the gate does
-# not); ty because it is still 0.0.x and a "latest" pre-release could
+# ruff can change the default rules: 0.16 widened them from 59 to 413);
+# ty because it is still 0.0.x and a "latest" pre-release could
 # change diagnostics under a mandatory gate. tests/unit/test_ruff_ty_pins.py
 # keeps the three declarations in step. These global copies serve
 # interactive use only: per-repo gates and the Claude format-after-edit
 # hook run `uv run --frozen --only-group lint ruff`, i.e. that repo's own
 # lint-group pin, never these.
 uv = "latest"
-ruff = "0.15.22"
+ruff = "0.16.9"
 ty = "0.0.84"
 # golangci-lint v2: the Go quality gate (`just go-lint` / `just check`).
 # Aqua backend. Bare `mise exec -- golangci-lint` can still resolve Go's

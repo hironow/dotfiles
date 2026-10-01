@@ -169,8 +169,10 @@ def load_pins(root: Path) -> tuple[dict[str, Any] | None, list[str]]:
     path = root / PINS_REL
     if not path.is_file():
         return None, [
-            f"{PINS_REL}: missing -- this repo must always carry the pin "
-            f"document; every exe stack reads it with jsondecode(file(...))."
+            (
+                f"{PINS_REL}: missing -- this repo must always carry the pin "
+                f"document; every exe stack reads it with jsondecode(file(...))."
+            )
         ]
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
@@ -290,13 +292,16 @@ def check_single_substrate_ref(pins: dict[str, Any]) -> list[str]:
 
     version = substrate.get("version")
     label_value = substrate.get("version_label_value")
-    if isinstance(version, str) and isinstance(label_value, str):
-        if label_value != version:
-            violations.append(
-                f"{PINS_REL}: substrate -- version_label_value "
-                f"'{label_value}' != version '{version}'. The label stamped on "
-                f"nodes is the version, not a second pin."
-            )
+    if (
+        isinstance(version, str)
+        and isinstance(label_value, str)
+        and label_value != version
+    ):
+        violations.append(
+            f"{PINS_REL}: substrate -- version_label_value "
+            f"'{label_value}' != version '{version}'. The label stamped on "
+            f"nodes is the version, not a second pin."
+        )
 
     for key, value in substrate.items():
         if key.startswith("_") or key in _SUBSTRATE_VERSION_KEYS:
@@ -400,18 +405,24 @@ def check_ax_gomod(pins: dict[str, Any], gomod: str) -> list[str]:
     versions, replaced = _gomod_requirements(gomod, SUBSTRATE_MODULE)
     if replaced:
         return [
-            f"ax go.mod: a replace directive overrides {SUBSTRATE_MODULE}; the "
-            f"requirement is not what the build uses."
+            (
+                f"ax go.mod: a replace directive overrides {SUBSTRATE_MODULE}; the "
+                f"requirement is not what the build uses."
+            )
         ]
     if len(versions) != 1:
         return [
-            f"ax go.mod: expected exactly one requirement of {SUBSTRATE_MODULE}, "
-            f"found {versions or 'none'}."
+            (
+                f"ax go.mod: expected exactly one requirement of {SUBSTRATE_MODULE}, "
+                f"found {versions or 'none'}."
+            )
         ]
     if versions[0] != recorded:
         return [
-            f"ax go.mod requires {SUBSTRATE_MODULE} {versions[0]}, but "
-            f"{PINS_REL} records ax.go_mod_substrate = {recorded!r}."
+            (
+                f"ax go.mod requires {SUBSTRATE_MODULE} {versions[0]}, but "
+                f"{PINS_REL} records ax.go_mod_substrate = {recorded!r}."
+            )
         ]
     return []
 
@@ -470,9 +481,11 @@ def check_substrate_audit(pins: dict[str, Any], audit: object) -> list[str]:
         or not all(isinstance(item, str) for item in on_repin)
     ):
         return [
-            f"{SUBSTRATE_AUDIT_REL}: missing or malformed; it must record the "
-            "Substrate commit the task TTL's write-path audit was done at, and "
-            "on_repin as a list of strings."
+            (
+                f"{SUBSTRATE_AUDIT_REL}: missing or malformed; it must record the "
+                "Substrate commit the task TTL's write-path audit was done at, and "
+                "on_repin as a list of strings."
+            )
         ]
     substrate = pins.get("substrate")
     pinned = substrate.get("sha") if isinstance(substrate, dict) else None
@@ -493,7 +506,7 @@ def check_substrate_audit(pins: dict[str, Any], audit: object) -> list[str]:
 # --- check 2f: the certificates API before the upgrade exclusion ends --------
 
 _EXCLUSION_END_RE = re.compile(
-    r'^\s*upgrade_exclusion_end\s*=\s*"(\d{4}-\d{2}-\d{2})T', re.M
+    r'^\s*upgrade_exclusion_end\s*=\s*"(\d{4}-\d{2}-\d{2})T', re.MULTILINE
 )
 
 
@@ -502,7 +515,7 @@ def upgrade_exclusion_end(locals_tf: str) -> date | None:
     m = _EXCLUSION_END_RE.search(locals_tf)
     if not m:
         return None
-    return datetime.strptime(m.group(1), "%Y-%m-%d").date()
+    return date.fromisoformat(m.group(1))
 
 
 def check_certificates_api(
@@ -522,25 +535,31 @@ def check_certificates_api(
     api = substrate.get("certificates_api") if isinstance(substrate, dict) else None
     if api not in CERTIFICATES_APIS:
         return [
-            f"{PINS_REL}: substrate.certificates_api is {api!r}; it must say "
-            f"which certificates.k8s.io version the pinned Substrate speaks, one "
-            f"of {', '.join(CERTIFICATES_APIS)}."
+            (
+                f"{PINS_REL}: substrate.certificates_api is {api!r}; it must say "
+                f"which certificates.k8s.io version the pinned Substrate speaks, one "
+                f"of {', '.join(CERTIFICATES_APIS)}."
+            )
         ]
     if exclusion_end is None:
         return [
-            f"{PLATFORM_LOCALS_REL}: upgrade_exclusion_end not found; the "
-            "certificates API deadline is counted from it."
+            (
+                f"{PLATFORM_LOCALS_REL}: upgrade_exclusion_end not found; the "
+                "certificates API deadline is counted from it."
+            )
         ]
     deadline = exclusion_end - CERTIFICATES_API_LEAD
     if api == "v1beta1" and today >= deadline:
         return [
-            f"{PINS_REL}: the pinned Substrate still speaks certificates.k8s.io/"
-            f"v1beta1, and the upgrade exclusion that holds the cluster on its "
-            f"minor ends on {exclusion_end.isoformat()} ({PLATFORM_LOCALS_REL}). "
-            "Kubernetes 1.40 stops serving the beta. Repin to a Substrate that "
-            "speaks certificates.k8s.io/v1, set substrate.certificates_api to "
-            "v1, and drop the two beta APIs in tofu/exe-platform/gke.tf, before "
-            "the exclusion ends."
+            (
+                f"{PINS_REL}: the pinned Substrate still speaks certificates.k8s.io/"
+                f"v1beta1, and the upgrade exclusion that holds the cluster on its "
+                f"minor ends on {exclusion_end.isoformat()} ({PLATFORM_LOCALS_REL}). "
+                "Kubernetes 1.40 stops serving the beta. Repin to a Substrate that "
+                "speaks certificates.k8s.io/v1, set substrate.certificates_api to "
+                "v1, and drop the two beta APIs in tofu/exe-platform/gke.tf, before "
+                "the exclusion ends."
+            )
         ]
     return []
 
@@ -603,7 +622,7 @@ def _github_tag_sha(repo: str, tag: str) -> str | None:
     if len(parts) != 3 or parts[0] != "github.com":
         return None
     url = f"https://api.github.com/repos/{parts[1]}/{parts[2]}/git/refs/tags/{tag}"
-    request = urllib.request.Request(  # noqa: S310 - fixed https api.github.com
+    request = urllib.request.Request(
         url, headers={"Accept": "application/vnd.github+json"}
     )
     try:
@@ -808,8 +827,10 @@ def check_stacks(root: Path, pins: dict[str, Any]) -> list[str]:
     stacks = pins.get("stacks")
     if not isinstance(stacks, list) or not stacks:
         return [
-            f"{PINS_REL}: stacks -- must declare at least one stack path; an "
-            f"empty list makes the hardcoded-pin check vacuous."
+            (
+                f"{PINS_REL}: stacks -- must declare at least one stack path; an "
+                f"empty list makes the hardcoded-pin check vacuous."
+            )
         ]
 
     literals = _pinned_literals(pins)
@@ -918,18 +939,22 @@ def check_mise_pin(mise_config_path: Path, pins: dict[str, Any]) -> list[str]:
     value = tools.get(MISE_AX_TOOL_KEY) if isinstance(tools, dict) else None
     if value is None:
         return [
-            f"{MISE_CONFIG_REL}: [tools] does not declare "
-            f"'{MISE_AX_TOOL_KEY}'. The ax CLI must be pinned somewhere "
-            f"mechanical, and this is that place: it mirrors ax.version "
-            f"('{expected}') from {PINS_REL}."
+            (
+                f"{MISE_CONFIG_REL}: [tools] does not declare "
+                f"'{MISE_AX_TOOL_KEY}'. The ax CLI must be pinned somewhere "
+                f"mechanical, and this is that place: it mirrors ax.version "
+                f"('{expected}') from {PINS_REL}."
+            )
         ]
 
     versions = _mise_tool_versions(value)
     if versions is None:
         return [
-            f"{MISE_CONFIG_REL}: [tools]['{MISE_AX_TOOL_KEY}'] has an "
-            f"unrecognised shape ({value!r}); mise declares a tool as a version "
-            f"string, a table with a 'version' key, or a list of either."
+            (
+                f"{MISE_CONFIG_REL}: [tools]['{MISE_AX_TOOL_KEY}'] has an "
+                f"unrecognised shape ({value!r}); mise declares a tool as a version "
+                f"string, a table with a 'version' key, or a list of either."
+            )
         ]
 
     for version in versions:
@@ -1003,7 +1028,7 @@ def main() -> int:
                 upgrade_exclusion_end(
                     (root / PLATFORM_LOCALS_REL).read_text(encoding="utf-8")
                 ),
-                date.today(),
+                datetime.now().astimezone().date(),
             )
         )
 

@@ -39,7 +39,7 @@ WINDOWS_SH = Path("C:/Program Files/Git/usr/bin/sh.exe")
 def _windows_shell_argv() -> list[str]:
     """Parse the `set windows-shell := [...]` array from the justfile."""
     text = JUSTFILE.read_text(encoding="utf-8")
-    m = re.search(r"^set windows-shell := \[(.+)\]\s*$", text, flags=re.M)
+    m = re.search(r"^set windows-shell := \[(.+)\]\s*$", text, flags=re.MULTILINE)
     assert m, "justfile must have a single-line `set windows-shell := [...]`"
     # just string literals: '...' is raw, "..." is escaped; neither kind is
     # nested inside the other in this line, so a simple alternation works.

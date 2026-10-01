@@ -76,7 +76,9 @@ def test_no_role_binding_names_the_gcs_ksa() -> None:
 
 def local_value(stack: Path, name: str) -> str:
     for tf in sorted(stack.glob("*.tf")):
-        m = re.search(rf"^\s*{name}\s*=\s*(.+)$", tf.read_text(encoding="utf-8"), re.M)
+        m = re.search(
+            rf"^\s*{name}\s*=\s*(.+)$", tf.read_text(encoding="utf-8"), re.MULTILINE
+        )
         if m:
             return m.group(1).strip()
     raise AssertionError(f"no local {name} in {stack.name}")

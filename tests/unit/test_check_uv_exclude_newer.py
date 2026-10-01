@@ -20,7 +20,7 @@ import pytest
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_uv_exclude_newer.py"
 
 
-def _load():  # noqa: ANN202 - module object
+def _load():
     spec = importlib.util.spec_from_file_location("check_uv_exclude_newer", _SCRIPT)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
@@ -193,8 +193,20 @@ def test_main_reports_malformed_toml_in_its_own_words(
 
 def test_non_string_cutoff_is_rejected_naming_the_package() -> None:
     mod = _load()
-    with pytest.raises(ValueError, match="mlflow"):
+    with pytest.raises(TypeError, match="mlflow"):
         mod.expired_overrides(_pyproject("mlflow = 20260904"), now=NOW, window=WINDOW)
+
+
+def test_main_reports_a_non_string_cutoff_in_its_own_words(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mod = _load()
+    py = tmp_path / "pyproject.toml"
+    py.write_text(_pyproject("mlflow = 20260904"), encoding="utf-8")
+    assert mod.main([str(py), "--now", NOW.isoformat()]) == 1
+    err = capsys.readouterr().err
+    assert "mlflow" in err and str(py) in err
+    assert "Traceback" not in err
 
 
 def test_boolean_false_is_a_pin_exemption_not_a_cutoff() -> None:

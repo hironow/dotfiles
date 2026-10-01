@@ -11,9 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import ai_tools_check  # noqa: E402
-import install_pi_extensions  # noqa: E402
-import rtk_pi_refresh as refresh  # noqa: E402
+import ai_tools_check
+import install_pi_extensions
+import rtk_pi_refresh as refresh
 
 ROOT = Path(__file__).resolve().parents[2]
 CURRENT = (ROOT / "config/pi/extensions/rtk.ts").read_text(encoding="utf-8")

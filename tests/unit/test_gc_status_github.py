@@ -169,6 +169,7 @@ def _run_section(
         env=env,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
 
 

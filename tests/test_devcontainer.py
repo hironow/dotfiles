@@ -26,7 +26,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
@@ -261,6 +260,7 @@ def _docker_available() -> bool:
             text=True,
             encoding="utf-8",
             errors="replace",
+            check=False,
         ).returncode
         == 0
     )
@@ -274,6 +274,7 @@ def _image_exists(image: str) -> bool:
             text=True,
             encoding="utf-8",
             errors="replace",
+            check=False,
         ).returncode
         == 0
     )
@@ -289,6 +290,7 @@ def _run_in_image(script: str) -> subprocess.CompletedProcess:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
 
 
@@ -375,6 +377,7 @@ def test_image_runs_a_quint_simulation_offline(saved_image: str) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     assert result.returncode == 0, (
         "quint could not simulate offline inside the saved image.\n"
@@ -464,6 +467,7 @@ def test_image_devcontainer_metadata_smoke(saved_image: str) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     assert result.returncode == 0, f"failed to inspect image:\nstderr:\n{result.stderr}"
     labels_json = result.stdout.strip()

@@ -78,6 +78,7 @@ def _run(plan_json: str, *args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
 
 
@@ -182,6 +183,11 @@ def test_an_empty_plan_is_reported_as_zero_not_as_success_noise() -> None:
     result = _run(json.dumps({"resource_changes": []}), "--creates-only")
     assert result.returncode == 0
     assert "0 resource change(s)" in result.stdout
+
+
+def test_a_plan_that_is_not_an_object_is_a_type_error() -> None:
+    with pytest.raises(TypeError, match="object"):
+        mod.load_plan("[]")
 
 
 # --- --expect-changes -------------------------------------------------------

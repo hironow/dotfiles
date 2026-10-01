@@ -68,7 +68,7 @@ def _lock(repo: Path, tool: str, dry_run: bool) -> int:
         print(f"$ (cd {project.relative_to(repo).as_posix()} && {' '.join(cmd)})")
         if dry_run:
             continue
-        done = subprocess.run(cmd, cwd=project, check=False)  # noqa: S603 - fixed argv
+        done = subprocess.run(cmd, cwd=project, check=False)
         if done.returncode != 0:
             print(f"bump-tool: uv lock failed in {project}", file=sys.stderr)
             return done.returncode

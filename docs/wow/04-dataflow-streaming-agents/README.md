@@ -92,10 +92,11 @@ with beam.Pipeline() as p:
 with beam.Pipeline(options=pipeline_options) as p:
     (
         p
-        | "Read"  >> beam.io.ReadFromPubSub(subscription="projects/.../subscriptions/...")
-        | "Prep"  >> beam.Map(to_action_ready_context)   # Dataflow 側で enrichment
+        | "Read"
+        >> beam.io.ReadFromPubSub(subscription="projects/.../subscriptions/...")
+        | "Prep" >> beam.Map(to_action_ready_context)  # Dataflow 側で enrichment
         | "Agent" >> RunInference(ADKAgentModelHandler(agent=agent))
-        | "Sink"  >> beam.Map(dispatch_action)           # 結果を下流へ
+        | "Sink" >> beam.Map(dispatch_action)  # 結果を下流へ
     )
 ```
 

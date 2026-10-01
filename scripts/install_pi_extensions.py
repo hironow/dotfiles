@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Install declared Pi packages and the dotfiles-owned Pi extensions and agents."""
 
-from dataclasses import dataclass
 import json
 import os
 import shutil
-from pathlib import Path
 import subprocess
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "dump/harness/pi-packages.json"

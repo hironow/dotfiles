@@ -22,7 +22,7 @@ MARKER = "# >>> dotfiles managed block: login PATH >>>"
 
 
 def _function(name: str) -> str:
-    match = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", DEPLOY, re.M | re.S)
+    match = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", DEPLOY, re.MULTILINE | re.DOTALL)
     assert match, f"deploy.sh has no {name}()"
     return match.group(0)
 

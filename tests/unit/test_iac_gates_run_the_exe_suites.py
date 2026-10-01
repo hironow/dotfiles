@@ -35,14 +35,14 @@ def workflow_job(name: str) -> str:
     m = re.search(
         rf"^  {re.escape(name)}:\n(.*?)(?=^  \S|\Z)",
         WORKFLOW.read_text(encoding="utf-8"),
-        re.M | re.S,
+        re.MULTILINE | re.DOTALL,
     )
     assert m, f"{WORKFLOW.name} has no {name} job"
     return m.group(1)
 
 
 def test_just_ci_runs_both_exe_suites() -> None:
-    m = re.search(r"^ci:(.*)$", JUSTFILE.read_text(encoding="utf-8"), re.M)
+    m = re.search(r"^ci:(.*)$", JUSTFILE.read_text(encoding="utf-8"), re.MULTILINE)
     assert m, "the justfile has no ci recipe"
     assert "test-iac-exe" in m.group(1).split()
     body = recipe_body("test-iac-exe")

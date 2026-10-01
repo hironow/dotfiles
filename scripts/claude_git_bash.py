@@ -8,11 +8,11 @@ off and j-cc fails. This is that contract, in one place: `just doctor` reports
 from it, and `just harden-env` uses it to fill the variable where it is needed.
 """
 
-from collections.abc import Callable
 import ntpath
-from pathlib import Path
 import shutil
 import sys
+from collections.abc import Callable
+from pathlib import Path
 
 import windows_env
 
@@ -95,7 +95,7 @@ def main(argv: list[str]) -> int:
     """`--to-set`: print the Git Bash harden-env should set, or nothing."""
     if "--to-set" not in argv or sys.platform != "win32":
         return 0
-    exists = lambda path: Path(path).exists()  # noqa: E731
+    exists = lambda path: Path(path).exists()
     # A Machine-wide value reaches Claude Code too; a User one would override it
     found = claude_git_bash(_machine_value(), shutil.which("git"), exists)
     candidate = next(

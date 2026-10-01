@@ -22,7 +22,7 @@ JUSTFILE = Path(__file__).resolve().parents[2] / "justfile"
 def _recipe_body(name: str) -> str:
     text = JUSTFILE.read_text(encoding="utf-8")
     match = re.search(
-        rf"^{re.escape(name)}:\n((?:[ \t]+.*\n|\n)+?)(?=^\S|\Z)", text, re.M
+        rf"^{re.escape(name)}:\n((?:[ \t]+.*\n|\n)+?)(?=^\S|\Z)", text, re.MULTILINE
     )
     assert match, f"recipe {name} not found"
     return match.group(1)

@@ -13,14 +13,14 @@ Usage: codex_hooks_trust.py [--check]   (--check reports without writing)
 Prints doctor-style OK/WARN lines; exit 1 when a hook would not run.
 """
 
-from collections.abc import Iterable, Iterator, Sequence
 import contextlib
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable, Iterator, Sequence
+from pathlib import Path
 from typing import Protocol
 
 from doctor_lines import Line, failed, fmt

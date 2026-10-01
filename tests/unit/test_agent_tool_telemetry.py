@@ -40,8 +40,8 @@ HEADROOM_OFF = {k: v for k, v in TELEMETRY_OFF.items() if k != "RTK_TELEMETRY_DI
 
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import ai_tools_check  # noqa: E402
-import jev_headroom as hr  # noqa: E402
+import ai_tools_check
+import jev_headroom as hr
 
 
 def _mise() -> dict:

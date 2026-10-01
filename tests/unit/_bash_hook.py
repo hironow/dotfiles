@@ -92,14 +92,16 @@ def run_bash(
     # for something else.
     if kwargs.get("text") and "encoding" not in kwargs:
         kwargs["encoding"] = "utf-8"
+    check = kwargs.pop("check", False)
     cwd_p = Path(os.fspath(cwd))
     script_p = Path(os.fspath(script))
     rel = os.path.relpath(script_p, cwd_p)
     if not rel.startswith(".."):
         # Script already descends from cwd — MSYS bash can open it directly.
-        return subprocess.run(  # noqa: S603 - fixed argv, test-only helper
+        return subprocess.run(
             [_BASH, rel.replace(os.sep, "/"), *args],
             cwd=str(cwd_p),
+            check=check,
             **kwargs,
         )
     # Script lives outside cwd: stage it (+ companions) into a descendant dir.
@@ -110,9 +112,10 @@ def run_bash(
             comp_p = Path(os.fspath(comp))
             shutil.copy(comp_p, staged / comp_p.name)
         staged_rel = os.path.relpath(staged / script_p.name, cwd_p).replace(os.sep, "/")
-        return subprocess.run(  # noqa: S603 - fixed argv, test-only helper
+        return subprocess.run(
             [_BASH, staged_rel, *args],
             cwd=str(cwd_p),
+            check=check,
             **kwargs,
         )
     finally:

@@ -209,22 +209,28 @@ RAW_GUARDS: list[tuple[re.Pattern[str], str]] = [
     ),
     (
         re.compile(r"gcloud[\s].*(add-iam-policy-binding|set-iam-policy)"),
-        "IAM changes go through OpenTofu (iam_*.tf) + PR, not gcloud. See "
-        "docs/agents/iac-drift-policy.md.",
+        (
+            "IAM changes go through OpenTofu (iam_*.tf) + PR, not gcloud. See "
+            "docs/agents/iac-drift-policy.md."
+        ),
     ),
     (
         re.compile(
             r"gcloud[\s]+(compute|run|sql|secrets)[\s].*"
             r"(set-machine-type|resize|update|deploy|versions[\s]+add)"
         ),
-        "This gcloud command mutates IaC-managed infra and will drift from "
-        "tofu. Open an IaC PR. (Read-only debug is fine; emergency rollback "
-        "must be followed by an IaC PR same session.)",
+        (
+            "This gcloud command mutates IaC-managed infra and will drift from "
+            "tofu. Open an IaC PR. (Read-only debug is fine; emergency rollback "
+            "must be followed by an IaC PR same session.)"
+        ),
     ),
     (
         re.compile(r"cdr[\s]+workspaces[\s]+(update|edit)"),
-        "Patch the Coder template (coder_parameter), not the running "
-        "workspace. See docs/agents/iac-drift-policy.md.",
+        (
+            "Patch the Coder template (coder_parameter), not the running "
+            "workspace. See docs/agents/iac-drift-policy.md."
+        ),
     ),
 ]
 
@@ -371,9 +377,8 @@ class _CommandWalker:
                 block(MSG_NODE)
         if name == "make":
             block(MSG_MAKE)
-        if name == "git" and "push" in args:
-            if _force_pushes_protected_ref(args):
-                block(MSG_FORCE_PUSH)
+        if name == "git" and "push" in args and _force_pushes_protected_ref(args):
+            block(MSG_FORCE_PUSH)
         if name in YML_CREATION_COMMANDS:
             self._check_yml_creation(name, args)
 

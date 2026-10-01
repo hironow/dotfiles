@@ -48,9 +48,16 @@ each test/session; document setup in `tests/e2e/README.md`.
 @pytest.mark.parametrize(
     "input_data,expected_status,expected_result",
     [
-        pytest.param({"valid": "data"}, 200, {"success": True}, id="valid-input-succeeds"),
+        pytest.param(
+            {"valid": "data"}, 200, {"success": True}, id="valid-input-succeeds"
+        ),
         pytest.param({}, 400, {"error": "missing fields"}, id="empty-input-fails"),
-        pytest.param({"invalid": "schema"}, 422, {"error": "validation"}, id="invalid-schema-fails"),
+        pytest.param(
+            {"invalid": "schema"},
+            422,
+            {"error": "validation"},
+            id="invalid-schema-fails",
+        ),
     ],
 )
 def test_api_endpoint(input_data, expected_status, expected_result) -> None:

@@ -57,7 +57,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 AUTOSTART = SCRIPTS / "wsl_autostart.ps1"
@@ -303,6 +302,7 @@ def _run_payload(
         env=overrides,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     return proc, log.read_text(encoding="ascii")
 

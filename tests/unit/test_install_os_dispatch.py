@@ -47,7 +47,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SH = ROOT / "install.sh"
 BASH = shutil.which("bash") or "/bin/bash"
@@ -197,6 +196,7 @@ def test_install_sh_passes_shellcheck() -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     assert r.returncode == 0, (
         f"install.sh shellcheck failed:\nstdout:\n{r.stdout}\nstderr:\n{r.stderr}"
@@ -244,6 +244,7 @@ def test_install_sh_unknown_uname_exits_nonzero(tmp_path: Path) -> None:
         timeout=30,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     assert r.returncode != 0, (
         f"install.sh exited 0 on a Plan9 fake uname. ADR 0005 requires "

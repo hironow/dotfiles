@@ -604,11 +604,13 @@ def _check_soft_delete(where: str, body: str) -> list[str]:
     policies = sub_blocks(body, "soft_delete_policy")
     if not policies:
         violations = [
-            f"{where}: no soft_delete_policy block. The default retains every "
-            f"deleted object for 7 days as billed storage, so a bucket whose "
-            f"lifecycle deletes aggressively still pays for a week of what it "
-            f"deleted. Declare a soft_delete_policy block with "
-            f"retention_duration_seconds = 0."
+            (
+                f"{where}: no soft_delete_policy block. The default retains every "
+                f"deleted object for 7 days as billed storage, so a bucket whose "
+                f"lifecycle deletes aggressively still pays for a week of what it "
+                f"deleted. Declare a soft_delete_policy block with "
+                f"retention_duration_seconds = 0."
+            )
         ]
         return violations
 

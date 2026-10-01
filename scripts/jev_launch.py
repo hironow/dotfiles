@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Opt-in Jev routing for a new Claude Code or Pi session (imperative shell)."""
 
-from collections.abc import Mapping
 import io
 import json
 import os
-from pathlib import Path
 import shlex
 import shutil
 import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
+from pathlib import Path
 
 from jev_core import (
     JEV_URL,
@@ -21,8 +21,8 @@ from jev_core import (
     build_command,
     build_env,
     build_request_body,
-    codex_from_answers,
     claude_session_args,
+    codex_from_answers,
     effort_from_answers,
     parse_args,
     windows_acl_is_private,

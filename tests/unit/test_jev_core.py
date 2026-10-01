@@ -9,7 +9,7 @@ import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-import jev_core as core  # noqa: E402
+import jev_core as core
 
 CASES = json.loads(
     (Path(__file__).parent / "jev_effort_cases.json").read_text(encoding="utf-8")
@@ -25,7 +25,7 @@ def test_effort_composes_score_noul_and_confidence(case: dict[str, object]) -> N
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), 10**400])
 @pytest.mark.parametrize("field", ["score", "confidence", "noul"])
 def test_nonfinite_or_overflowing_answers_do_not_raise_effort(
-    field: str, value: float | int
+    field: str, value: float
 ) -> None:
     difficulty = {"score": 0, "confidence": 0.9}
     structure = {"noul": 0}

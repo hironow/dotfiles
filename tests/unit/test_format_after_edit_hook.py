@@ -105,19 +105,16 @@ def test_a_codex_patch_formats_each_file_it_writes(tmp_path: Path) -> None:
     # Codex's apply_patch hands the whole patch as tool_input.command
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
     (tmp_path / "b.go").write_text("package b\n", encoding="utf-8")
-    patch = "\n".join(
-        [
-            "*** Begin Patch",
-            "*** Update File: a.py",
-            "@@",
-            "-x=1",
-            "+x = 1",
-            "*** Add File: b.go",
-            "+package b",
-            "*** Delete File: gone.py",
-            "*** End Patch",
-            "",
-        ]
+    patch = (
+        "*** Begin Patch\n"
+        "*** Update File: a.py\n"
+        "@@\n"
+        "-x=1\n"
+        "+x = 1\n"
+        "*** Add File: b.go\n"
+        "+package b\n"
+        "*** Delete File: gone.py\n"
+        "*** End Patch\n"
     )
     log = _run_hook(tmp_path, tmp_path / "a.py", ["uv", "gofmt"], {"command": patch})
     lines = log.read_text(encoding="utf-8").splitlines()

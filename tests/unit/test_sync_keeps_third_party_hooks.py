@@ -21,7 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from sync_agents import (  # noqa: E402
+from sync_agents import (
     AgentTarget,
     _detect_managed_dir_orphans,
     _merge_hook_settings,

@@ -268,7 +268,7 @@ def test_watchdog_install_keeps_a_task_it_cannot_replace() -> None:
     m = re.search(
         r"Unregister-ScheduledTask -TaskName \$watchTask[^\r\n]*\s(.*?)Register-ScheduledTask -TaskName \$watchTask",
         text,
-        re.S,
+        re.DOTALL,
     )
     assert m is not None, "expected the watchdog unregister/register pair"
     between = m.group(1)

@@ -9,14 +9,14 @@ Exit 0 = pass, 1 = fail (a real defect), 2 = blocked (usage limit or no login; n
 3 = partial (works, but the effort could not be confirmed; check /tasks by eye).
 """
 
-from dataclasses import dataclass, field
 import json
 import os
-from pathlib import Path
 import re
 import shlex
 import subprocess
 import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
 
 from jev_core import SONNET, claude_session_args
 from jev_launch import hook_command
@@ -53,11 +53,14 @@ def has_provider_limit(stream_lines: list[str]) -> bool:
             continue
         if not isinstance(event, dict):
             continue
-        if event.get("type") == "assistant" and event.get("error") == "rate_limit":
+        if (
+            event.get("type") == "assistant"
+            and event.get("error") == "rate_limit"
             # stream-json may omit the transcript-only marker; if present it
             # must be a real boolean true, not a string or an ordinary message.
-            if "isApiErrorMessage" not in event or event["isApiErrorMessage"] is True:
-                return True
+            and ("isApiErrorMessage" not in event or event["isApiErrorMessage"] is True)
+        ):
+            return True
         if event.get("type") == "result" and event.get("is_error") is True:
             result = event.get("result")
             if isinstance(result, str) and re.match(

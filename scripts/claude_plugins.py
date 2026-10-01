@@ -18,12 +18,12 @@ Usage: claude_plugins.py [--check]   (--check reports without changing)
 Prints doctor-style OK/WARN lines; exit 1 on a WARN.
 """
 
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import re
 import sys
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
 import claude_homes
 

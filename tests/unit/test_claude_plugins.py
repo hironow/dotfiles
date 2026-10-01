@@ -17,8 +17,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import claude_homes  # noqa: E402
-import claude_plugins as plugins  # noqa: E402
+import claude_homes
+import claude_plugins as plugins
 
 ROOT = Path(__file__).resolve().parents[2]
 DECLARED = plugins.Declaration(
@@ -101,7 +101,7 @@ def _run(cli: FakeClaude, *, check: bool = False) -> tuple[list[str], list[str]]
 
 def test_an_empty_home_gets_the_marketplace_and_the_plugin_once() -> None:
     cli = FakeClaude([], [])
-    done, problems = _run(cli)
+    _done, problems = _run(cli)
     assert problems == []
     assert [m[1:3] for m in cli.mutations] == [
         ["marketplace", "add"],
@@ -166,7 +166,7 @@ def test_a_complete_home_has_no_steps() -> None:
 
 
 def test_doctor_checks_and_deploy_installs_the_plugins() -> None:
-    import ai_tools_check  # noqa: PLC0415
+    import ai_tools_check
 
     assert "claude_plugins.py" in ai_tools_check.CHECKERS["claude"][1]
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
@@ -215,8 +215,10 @@ def test_main_prints_each_home_then_the_summary(
     assert plugins.main(["--check"]) == 1
     assert capsys.readouterr().out.splitlines() == [
         "OK   claude-plugins - ~/.claude: fixed: marketplace openai-codex is missing",
-        "WARN claude-plugins - ~/.claude-work-b: cannot read `claude plugin list --json`:"
-        " just claude-plugins-install",
+        (
+            "WARN claude-plugins - ~/.claude-work-b: cannot read `claude plugin list --json`:"
+            " just claude-plugins-install"
+        ),
     ]
     results[".claude-work-b"] = ([], [])
     assert plugins.main([]) == 0

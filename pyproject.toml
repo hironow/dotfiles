@@ -36,7 +36,8 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-# On top of ruff's default rule set (E4/E7/E9/F). W605 turns invalid escape
+# On top of ruff's default rule set (413 rules since ruff 0.16, listed at
+# https://docs.astral.sh/ruff/default-rules/). W605 turns invalid escape
 # sequences (e.g. "\A" in a Windows path inside a non-raw string) into a
 # gate failure. CPython 3.12+ only emits a SyntaxWarning for them (a future
 # release makes it a SyntaxError), so they ride through `just ci` as pytest
@@ -64,7 +65,7 @@ dev = [
 # format-after-edit). ty uses `--group lint` so it still sees project imports.
 lint = [
     # lock pin; tests/unit/test_ruff_ty_pins.py keeps this equal across projects
-    "ruff==0.15.22",
+    "ruff==0.16.9",
     # pre-1.0: pinned exactly, bumped deliberately (ADR 0044)
     "ty==0.0.84",
 ]

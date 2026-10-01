@@ -30,7 +30,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import gcp_cost_audit as audit  # noqa: E402
+import gcp_cost_audit as audit
 
 PROJECT = "a-project"
 
