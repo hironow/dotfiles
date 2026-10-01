@@ -126,17 +126,24 @@ def _in_isolation_worktree(payload: dict) -> bool:
 
 
 def _is_vetoed_rewrite(command: str) -> bool:
-    """True for `rtk [rtk-options] git …` — the form the guard cannot verify."""
+    """True when any `rtk [rtk-options] git …` appears in the rewrite — the form
+    the guard cannot verify — wherever it sits (after NAME=value, after `&&`).
+
+    It errs toward vetoing: a false match only drops the rewrite, and plain git
+    runs, while a miss hands the guard a launcher it refuses."""
     try:
-        tokens = shlex.split(command)
+        tokens = shlex.split(command, comments=False, posix=True)
     except ValueError:
-        return False
-    if not tokens or _basename(tokens[0]) != RTK_LAUNCHER:
-        return False
-    for token in tokens[1:]:
-        if token.startswith("-"):
-            continue  # rtk's own options, e.g. --ultra-compact
-        return _basename(token) == VETOED_COMMAND
+        return VETOED_COMMAND in command  # unparseable: veto if git appears at all
+    for index, token in enumerate(tokens):
+        if _basename(token) != RTK_LAUNCHER:
+            continue
+        for operand in tokens[index + 1 :]:
+            if operand.startswith("-"):
+                continue  # rtk's own options, e.g. --ultra-compact
+            if _basename(operand) == VETOED_COMMAND:
+                return True
+            break
     return False
 
 

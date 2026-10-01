@@ -201,6 +201,32 @@ def test_flagged_rtk_git_rewrite_is_suppressed(
     assert out == ""
 
 
+@pytest.mark.parametrize(
+    ("typed", "rewrite"),
+    [
+        # git need not be the first command (found in review)
+        ("FOO=1 git log", "FOO=1 rtk git log"),
+        ("cd sub && git status", "cd sub && rtk git status"),
+        ("ls && git status", "rtk ls && rtk git status"),
+    ],
+)
+def test_a_git_rewrite_anywhere_in_the_command_is_suppressed(
+    tmp_path: Path, isolation_worktree: Path, typed: str, rewrite: str
+) -> None:
+    answer = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": {"command": rewrite},
+        }
+    }
+    code, out = _run(
+        _payload(typed, isolation_worktree),
+        tmp_path=tmp_path,
+        rtk_stub=_rtk_stub(json.dumps(answer)),
+    )
+    assert (code, out) == (EXIT_ALLOW, "")
+
+
 # --- Everything else keeps rtk ---------------------------------------------
 
 
