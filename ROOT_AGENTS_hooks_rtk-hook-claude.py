@@ -126,25 +126,54 @@ def _in_isolation_worktree(payload: dict) -> bool:
 
 
 def _is_vetoed_rewrite(command: str) -> bool:
-    """True for `rtk [rtk-options] git …` — the form the guard cannot verify."""
+    """True when any `rtk [rtk-options] git …` appears in the rewrite — the form
+    the guard cannot verify — wherever it sits (after NAME=value, after `&&`).
+
+    It errs toward vetoing: a false match only drops the rewrite, and plain git
+    runs, while a miss hands the guard a launcher it refuses."""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True  # operators split even without spaces
+    lexer.commenters = ""  # a `#` inside a word (issue#1) starts no comment
     try:
-        tokens = shlex.split(command)
+        tokens = list(lexer)
     except ValueError:
-        return False
-    if not tokens or _basename(tokens[0]) != RTK_LAUNCHER:
-        return False
-    for token in tokens[1:]:
-        if token.startswith("-"):
-            continue  # rtk's own options, e.g. --ultra-compact
-        return _basename(token) == VETOED_COMMAND
+        return VETOED_COMMAND in command  # unparseable: veto if git appears at all
+    for index, token in enumerate(tokens):
+        if _basename(token) != RTK_LAUNCHER:
+            continue
+        for operand in tokens[index + 1 :]:
+            if operand.startswith("-"):
+                continue  # rtk's own options, e.g. --ultra-compact
+            if _basename(operand) == VETOED_COMMAND:
+                return True
+            break
     return False
 
 
-def _run_rtk(raw: str) -> dict | None:
-    """rtk's hook answer, or None when it declines / is absent / misbehaves."""
+def _with_launcher(command: str, launcher: str) -> str | None:
+    """`launcher <args>` for a rewrite of the plain shape `rtk <args>`, else None.
+
+    Used when rtk came from mise: the shell that runs the rewrite has the same
+    PATH as this hook, without rtk, so a bare `rtk` there is "command not
+    found". Only a rewrite whose leading launcher is its only `rtk` is kept.
+    Finding the launchers in compound shell takes a shell parser (quotes,
+    command substitution, comments, heredocs, line continuations), and a missed
+    one fails the command; dropping the rewrite only costs the compression.
+    """
+    prefix = RTK_LAUNCHER + " "
+    if not command.startswith(prefix) or RTK_LAUNCHER in command[len(prefix) :]:
+        return None
+    return shlex.quote(launcher) + command[len(RTK_LAUNCHER) :]
+
+
+def _run_rtk(raw: str) -> tuple[dict, str | None] | None:
+    """rtk's hook answer and, when rtk came from mise rather than PATH, the
+    launcher a rewrite must name; None when rtk declines / is absent /
+    misbehaves."""
     launcher = _rtk_executable()
     if launcher is None:
         return None
+    off_path = None if shutil.which(RTK_LAUNCHER) else Path(launcher).as_posix()
     try:
         proc = subprocess.run(  # noqa: S603 - resolved argv, no shell
             [launcher, "hook", "claude"],
@@ -164,7 +193,7 @@ def _run_rtk(raw: str) -> dict | None:
         answer = json.loads(proc.stdout)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
-    return answer if isinstance(answer, dict) else None
+    return (answer, off_path) if isinstance(answer, dict) else None
 
 
 def main() -> int:
@@ -176,9 +205,10 @@ def main() -> int:
     if not isinstance(payload, dict):
         return EXIT_ALLOW
 
-    answer = _run_rtk(raw)
-    if answer is None:
+    ran = _run_rtk(raw)
+    if ran is None:
         return EXIT_ALLOW
+    answer, off_path = ran
 
     hook_output = answer.get("hookSpecificOutput")
     if not isinstance(hook_output, dict):
@@ -192,6 +222,12 @@ def main() -> int:
         and _is_vetoed_rewrite(rewritten)
     ):
         return EXIT_ALLOW  # emit nothing: the plain command runs
+
+    if off_path and isinstance(rewritten, str) and isinstance(updated, dict):
+        named = _with_launcher(rewritten, off_path)
+        if named is None:
+            return EXIT_ALLOW  # emit nothing: the typed command runs as it is
+        updated["command"] = named
 
     if PERMISSION_DECISION_POLICY == "strip":
         # Forward the rewrite and nothing else, so no approving field rtk

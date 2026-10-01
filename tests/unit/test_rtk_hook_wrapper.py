@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -200,6 +201,37 @@ def test_flagged_rtk_git_rewrite_is_suppressed(
     assert out == ""
 
 
+@pytest.mark.parametrize(
+    ("typed", "rewrite"),
+    [
+        # git need not be the first command (found in review)
+        ("FOO=1 git log", "FOO=1 rtk git log"),
+        ("cd sub && git status", "cd sub && rtk git status"),
+        ("ls && git status", "rtk ls && rtk git status"),
+        # operators need no spaces around them
+        ("cd sub&&git status", "cd sub&&rtk git status"),
+        ("(git log)", "(rtk git log)"),
+        # `#` inside a word is no comment in bash
+        ("echo issue#1 && git status", "echo issue#1 && rtk git status"),
+    ],
+)
+def test_a_git_rewrite_anywhere_in_the_command_is_suppressed(
+    tmp_path: Path, isolation_worktree: Path, typed: str, rewrite: str
+) -> None:
+    answer = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": {"command": rewrite},
+        }
+    }
+    code, out = _run(
+        _payload(typed, isolation_worktree),
+        tmp_path=tmp_path,
+        rtk_stub=_rtk_stub(json.dumps(answer)),
+    )
+    assert (code, out) == (EXIT_ALLOW, "")
+
+
 # --- Everything else keeps rtk ---------------------------------------------
 
 
@@ -303,8 +335,69 @@ def test_rtk_absent_from_path_is_resolved_through_mise(
     # The rewrite landed, which it could not have done from PATH alone. Outside
     # an isolation worktree the git rewrite is kept, minus the auto-approval.
     answer = json.loads(out)["hookSpecificOutput"]
-    assert answer["updatedInput"]["command"] == "rtk git status"
+    # The shell that runs the rewrite has the same PATH, without rtk: a bare
+    # `rtk git status` would fail with "rtk: command not found" (seen live on
+    # Windows, where it broke every rewritable Bash call), so the rewrite
+    # names the copy mise found.
+    assert (
+        answer["updatedInput"]["command"] == f"{shlex.quote(rtk.as_posix())} git status"
+    )
     assert "permissionDecision" not in answer
+
+
+@pytest.mark.parametrize(
+    ("typed", "rewrite", "expected"),
+    [
+        ("rtk gain", "rtk gain", "{L} gain"),
+        ("cat README.md", "rtk read README.md", "{L} read README.md"),
+        # Anything but the plain `rtk <command>` shape is left unrewritten: the
+        # typed command runs as it is. Finding the launchers in compound shell
+        # needs a shell parser (quotes, $( ), comments, heredocs, line
+        # continuations, arithmetic, redirections: all found in review), and a
+        # missed one fails with "command not found" while no rewrite never does.
+        ("cat rtk read", "rtk read rtk read", None),
+        ("git status && ls", "rtk git status && rtk ls", None),
+        ("FOO=1 git log", "FOO=1 rtk git log", None),
+        ('git commit -m "a; rtk b"', 'rtk git commit -m "a; rtk b"', None),
+        ("echo x | grep x", "echo x | rtk grep x", None),
+    ],
+)
+def test_a_mise_rtk_rewrite_is_kept_only_in_the_plain_shape(
+    tmp_path: Path, plain_repo: Path, typed: str, rewrite: str, expected: str | None
+) -> None:
+    answer = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": {"command": rewrite},
+        }
+    }
+    rtk = _executable(tmp_path / "mise-rtk", _rtk_stub(json.dumps(answer)))
+    code, out = _run(
+        _payload(typed, plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=None,
+        extra_bin={"mise": _mise_stub(rtk, witness=tmp_path / "asked")},
+    )
+    assert code == EXIT_ALLOW
+    if expected is None:
+        assert out == ""
+        return
+    command = json.loads(out)["hookSpecificOutput"]["updatedInput"]["command"]
+    assert command == expected.replace("{L}", shlex.quote(rtk.as_posix()))
+
+
+def test_an_rtk_on_path_keeps_the_bare_launcher(
+    tmp_path: Path, plain_repo: Path
+) -> None:
+    code, out = _run(
+        _payload("git status", plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=_rtk_stub(json.dumps(RTK_GIT_REWRITE)),
+    )
+    assert code == EXIT_ALLOW
+    assert json.loads(out)["hookSpecificOutput"]["updatedInput"]["command"] == (
+        "rtk git status"
+    )
 
 
 def test_an_rtk_on_path_wins_and_mise_is_never_asked(
