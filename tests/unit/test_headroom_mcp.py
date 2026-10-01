@@ -26,6 +26,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import claude_homes  # noqa: E402
 import headroom_mcp as hm  # noqa: E402
 
 GOOD = {"mcpServers": {"headroom": hm._registration()}}
@@ -181,3 +182,48 @@ def test_the_real_cli_writes_the_registration_we_expect(tmp_path: Path) -> None:
     )
     assert again.returncode == 0, again.stdout + again.stderr
     assert "registered, egress pinned" in again.stdout
+
+
+def test_main_prints_each_home_then_the_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    homes = [tmp_path / "a", tmp_path / "b"]
+    results = {
+        "a": ("no headroom MCP server", None),
+        "b": (None, "could not read the MCP registry"),
+    }
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
+    monkeypatch.setattr(hm, "_read", lambda home: home)
+    monkeypatch.setattr(
+        hm, "reconcile", lambda home, _cli, *, check: results[home.name]
+    )
+    argv = [arg for home in homes for arg in ("--home", str(home))]
+    assert hm.main(["--check", *argv]) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "OK   headroom-mcp - ~/a: fixed: no headroom MCP server",
+        "WARN headroom-mcp - ~/b: could not read the MCP registry:"
+        " just headroom-mcp-register",
+    ]
+    results["b"] = (None, None)
+    assert hm.main(argv) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "OK   headroom-mcp - headroom registered, egress pinned, in 2 Claude home(s)"
+    )
+
+
+def test_each_claude_call_runs_in_the_home_with_no_stdin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # as claude_plugins does: no project-scoped .mcp.json of whatever
+    # directory doctor ran from applies, and claude never waits on a terminal
+    seen: dict[str, object] = {}
+
+    def run(_argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(_argv, 0, "", "")
+
+    monkeypatch.setattr(claude_homes.subprocess, "run", run)
+    assert hm._cli("claude", tmp_path, None)(["mcp", "list"]) is True
+    assert (seen["cwd"], seen["stdin"]) == (tmp_path, subprocess.DEVNULL)

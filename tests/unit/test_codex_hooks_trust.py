@@ -190,3 +190,26 @@ def test_the_client_initializes_before_its_requests() -> None:
         "initialized",
         "hooks/list",
     ]
+
+
+@pytest.mark.parametrize(
+    ("trusted", "found", "printed"),
+    [
+        (0, [], ["OK   codex-hooks - 5 dotfiles hooks trusted and enabled"]),
+        (
+            3,
+            [],
+            [
+                "OK   codex-hooks - trusted 3 dotfiles hook(s) through codex app-server",
+                "OK   codex-hooks - 5 dotfiles hooks trusted and enabled",
+            ],
+        ),
+        (0, ["x: not trusted"], ["WARN codex-hooks - x: not trusted"]),
+    ],
+)
+def test_a_trust_run_prints_what_it_trusted_then_what_is_wrong(
+    trusted: int, found: list[str], printed: list[str]
+) -> None:
+    from doctor_lines import fmt  # noqa: PLC0415
+
+    assert [fmt(line) for line in trust.trust_lines(trusted, found, 5)] == printed

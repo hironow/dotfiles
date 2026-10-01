@@ -23,6 +23,7 @@ import subprocess
 import sys
 from typing import Protocol
 
+from doctor_lines import Line, failed, fmt
 from sync_agents import (
     CODEX_HOOK_FRAGMENT,
     AgentTarget,
@@ -31,6 +32,7 @@ from sync_agents import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+NAME = "codex-hooks"
 TRUSTABLE = {"untrusted", "modified"}
 
 Hook = tuple[str, str | None, str]  # (eventName, matcher, command) as hooks/list shows
@@ -220,21 +222,40 @@ def list_hooks(client: AppServerClient, cwd: Path) -> list[dict]:
     return [hook for item in result.get("data", []) for hook in item.get("hooks", [])]
 
 
+def trust_lines(trusted: int, found: Sequence[str], expected: int) -> list[Line]:
+    """The doctor lines for one trust run: what it trusted, then what is wrong."""
+    lines: list[Line] = []
+    if trusted:
+        lines.append(
+            (
+                "OK",
+                NAME,
+                f"trusted {trusted} dotfiles hook(s) through codex app-server",
+            )
+        )
+    lines += [("WARN", NAME, problem) for problem in found]
+    if not found:
+        lines.append(("OK", NAME, f"{expected} dotfiles hooks trusted and enabled"))
+    return lines
+
+
 def main(argv: Sequence[str]) -> int:
     check = "--check" in argv
     codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
     codex = shutil.which("codex")
     if not codex:
-        print("OK   codex-hooks - codex not on PATH; nothing to trust")
+        print(fmt(("OK", NAME, "codex not on PATH; nothing to trust")))
         return 0
     if not (codex_home / "hooks.json").is_file():
-        print("WARN codex-hooks - no ~/.codex/hooks.json: run just sync-agents x")
+        print(fmt(("WARN", NAME, "no ~/.codex/hooks.json: run just sync-agents x")))
         return 1
     changed = changed_files(ROOT, codex_home)
     if changed:
-        print(
-            f"WARN codex-hooks - hook files differ from the repo ({', '.join(changed)}): run just sync-agents x"
+        detail = (
+            f"hook files differ from the repo ({', '.join(changed)}): "
+            "run just sync-agents x"
         )
+        print(fmt(("WARN", NAME, detail)))
         return 1
     expected = expected_hooks(ROOT, codex_home)
     with app_server(codex) as client:
@@ -243,15 +264,11 @@ def main(argv: Sequence[str]) -> int:
         if chosen:
             client.request("config/batchWrite", batch_write_params(chosen))
             entries = list_hooks(client, Path.home())
-            print(
-                f"OK   codex-hooks - trusted {len(chosen)} dotfiles hook(s) through codex app-server"
-            )
         found = problems(entries, expected, codex_home)
-    for problem in found:
-        print(f"WARN codex-hooks - {problem}")
-    if not found:
-        print(f"OK   codex-hooks - {len(expected)} dotfiles hooks trusted and enabled")
-    return 1 if found else 0
+    lines = trust_lines(len(chosen), found, len(expected))
+    for line in lines:
+        print(fmt(line))
+    return 1 if failed(lines) else 0
 
 
 if __name__ == "__main__":

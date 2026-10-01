@@ -21,29 +21,17 @@ Prints doctor-style OK/WARN lines; exit 1 on a WARN.
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
 import re
-import shutil
-import subprocess
 import sys
-import time
+
+import claude_homes
 
 ROOT = Path(__file__).resolve().parents[1]
+NAME = "claude-plugins"
 DECLARATION = ROOT / "dump/harness/claude-plugins.json"
-CLAUDE_HOMES = (
-    ".claude",
-    ".claude-work-a",
-    ".claude-work-b",
-    ".claude-work-c",
-    ".claude-work-d",
-)
 MARKETPLACE_LIST = ["plugin", "marketplace", "list", "--json"]
 PLUGIN_LIST = ["plugin", "list", "--json"]
-CALL_TIMEOUT = 180.0  # one claude call
-# --check as a whole: below doctor's wait for a checker (ai_tools_check), so a
-# hanging home costs its own lines, never the report of the others
-CHECK_BUDGET = 240.0
 
 Step = tuple[list[str], str]  # (claude argv, what is wrong until it runs)
 Cli = Callable[[list[str]], str | None]  # claude argv -> stdout, None on failure
@@ -112,15 +100,6 @@ def plugin_steps(
     return steps
 
 
-def call_timeout(deadline: float | None, now: float) -> float | None:
-    """How long the next claude call may take; None when the budget is spent."""
-    if deadline is None:
-        return CALL_TIMEOUT
-    if now >= deadline:
-        return None
-    return min(CALL_TIMEOUT, deadline - now)
-
-
 def _listed(out: str | None) -> list[dict] | None:
     try:
         listed = json.loads(out or "")
@@ -177,59 +156,24 @@ def load(path: Path) -> Declaration:
 
 
 def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
-    # A native path in a copied environment: one home per subprocess
-    env = {**os.environ, "CLAUDE_CONFIG_DIR": str(home)}
-
-    def run(args: list[str]) -> str | None:
-        timeout = call_timeout(deadline, time.monotonic())
-        if timeout is None:
-            return None
-        try:
-            done = subprocess.run(
-                [claude, *args],
-                cwd=home,  # no project or local plugin scope applies here
-                env=env,
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return done.stdout if done.returncode == 0 else None
-
-    return run
+    return claude_homes.runner(claude, home, deadline)
 
 
 def main(argv: Sequence[str]) -> int:
-    check = "--check" in argv
-    claude = shutil.which("claude")
-    if not claude:
-        print("WARN claude-plugins - claude not on PATH: mise install")
-        return 1
     declaration = load(DECLARATION)
-    homes = [
-        Path.home() / name for name in CLAUDE_HOMES if (Path.home() / name).is_dir()
-    ]
-    failed = False
-    deadline = time.monotonic() + CHECK_BUDGET if check else None
-    for home in homes:
-        cli = _cli(claude, home, deadline)
-        done, problems = reconcile(declaration, cli, check=check)
-        for fixed in done:
-            print(f"OK   claude-plugins - ~/{home.name}: fixed: {fixed}")
-        for problem in problems:
-            failed = True
-            fix = "just claude-plugins-install" if check else "see the line above"
-            print(f"WARN claude-plugins - ~/{home.name}: {problem}: {fix}")
-    if not failed:
-        print(
-            f"OK   claude-plugins - {', '.join(declaration.plugins)} "
-            f"in {len(homes)} Claude home(s)"
-        )
-    return 1 if failed else 0
+
+    def one(claude: str, home: Path, deadline: float | None) -> tuple[list, list]:
+        return reconcile(declaration, _cli(claude, home, deadline), check=check)
+
+    check = "--check" in argv
+    return claude_homes.visit(
+        NAME,
+        claude_homes.existing(Path.home()),
+        one,
+        check=check,
+        recipe="just claude-plugins-install",
+        summary=lambda n: f"{', '.join(declaration.plugins)} in {n} Claude home(s)",
+    )
 
 
 if __name__ == "__main__":

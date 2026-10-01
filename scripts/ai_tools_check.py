@@ -29,8 +29,12 @@ import sys
 from types import ModuleType
 
 import claude_git_bash
+import claude_homes
+import doctor_lines
+from doctor_lines import Line
 import jev_headroom
 import jev_launch
+import windows_env
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND_GUARD = ROOT / "ROOT_AGENTS_hooks_block-prohibited-commands.py"
@@ -42,13 +46,6 @@ TELEMETRY_OFF = {
     "HEADROOM_BEACON": "off",
     "DO_NOT_TRACK": "1",
 }
-CLAUDE_HOMES = (
-    ".claude",
-    ".claude-work-a",
-    ".claude-work-b",
-    ".claude-work-c",
-    ".claude-work-d",
-)
 PI_EXTENSIONS = ("jev-sonnet-fallback.ts", "rtk.ts")
 # What `headroom init` / `headroom wrap` write into an agent's config (headroom
 # 0.38 cli/init.py), beside a loopback ANTHROPIC_BASE_URL. j-cc is the only
@@ -64,10 +61,8 @@ CHECKERS = {
     "claude": ("claude-plugins", ("claude_plugins.py", "headroom_mcp.py")),
 }
 
-# A checker may query several homes (claude_plugins.CHECK_BUDGET stays below)
+# A checker may query several homes (claude_homes.CHECK_BUDGET stays below)
 CHECKER_TIMEOUT = 300
-
-Line = tuple[str, str, str]  # (level, name, detail)
 
 
 @dataclass(frozen=True)
@@ -218,17 +213,37 @@ def _same(a: str, b: str) -> bool:
     return norm(a) == norm(b)
 
 
+def _parts(path: str) -> list[str]:
+    return [part for part in re.split(r"[\\/]+", os.path.normcase(path)) if part]
+
+
+def _is_mise_copy(path: str, mise_path: str | None) -> bool:
+    """path is mise's own copy: the install mise resolves, or its shim (a
+    shim in <mise data>/shims runs that install)."""
+    if mise_path is None:
+        return False
+    if _same(path, mise_path):
+        return True
+    install = _parts(mise_path)
+    if "installs" not in install:
+        return False
+    root = install[: len(install) - 1 - install[::-1].index("installs")]
+    return _parts(path)[:-1] == [*root, "shims"]
+
+
 def _tool(name: str, tool: Tool, package: str) -> Line:
     if not tool.paths:
         return ("WARN", name, f"not on PATH: mise install {package}")
-    if len(tool.paths) > 1:
+    others = [path for path in tool.paths if not _is_mise_copy(path, tool.mise_path)]
+    if others and len(tool.paths) > 1:
         return (
             "WARN",
             name,
-            f"{len(tool.paths)} copies on PATH ({', '.join(tool.paths)}): keep the mise one "
-            "(e.g. winget uninstall rtk-ai.rtk, or remove a hand-placed ~/.local/bin copy)",
+            f"copies on PATH that mise does not manage ({', '.join(others)}): "
+            "remove them, keeping mise's (a winget package, a hand-placed "
+            "~/.local/bin copy)",
         )
-    if tool.mise_path is None or not _same(tool.paths[0], tool.mise_path):
+    if others:
         return ("WARN", name, f"{tool.paths[0]} is not mise's: mise install {package}")
     return ("OK", name, f"{tool.version or '?'} via mise")
 
@@ -309,10 +324,7 @@ def _checkers(facts: Facts) -> list[Line]:
             if out is None:
                 lines.append(("WARN", tool, f"{script} --check failed to run"))
                 continue
-            for raw in out.splitlines():
-                level, _, rest = raw.partition(" ")
-                name, _, detail = rest.strip().partition(" - ")
-                lines.append((level.strip(), name, detail))
+            lines += doctor_lines.parse(out)
     return lines
 
 
@@ -598,21 +610,6 @@ def _tool_facts(name: str, version_args: list[str]) -> Tool:
     )
 
 
-def _windows_user_env() -> dict[str, str] | None:
-    if sys.platform != "win32":
-        return None
-    import winreg  # noqa: PLC0415 - Windows only
-
-    values = {}
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
-        for name in TELEMETRY_OFF:
-            try:
-                values[name] = str(winreg.QueryValueEx(key, name)[0])
-            except OSError:
-                continue
-    return values
-
-
 def _json(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -729,10 +726,8 @@ def gather(home: Path) -> Facts:
     headroom = _tool_facts("headroom", ["--version"])
     rtk_exe = rtk.paths[0] if rtk.paths else None
     headroom_exe = headroom.paths[0] if headroom.paths else None
-    claude_homes = {
-        name: _json(home / name / "settings.json")
-        for name in CLAUDE_HOMES
-        if (home / name).is_dir()
+    homes = {
+        path.name: _json(path / "settings.json") for path in claude_homes.existing(home)
     }
     return Facts(
         rtk=rtk,
@@ -741,8 +736,8 @@ def gather(home: Path) -> Facts:
             (ROOT / "config/pi/extensions/rtk.ts").read_text(encoding="utf-8")
         ),
         env=dict(os.environ),
-        user_env=_windows_user_env(),
-        claude_homes=claude_homes,
+        user_env=windows_env.persisted(TELEMETRY_OFF),
+        claude_homes=homes,
         pi_extensions={name: (pi_dir / name).is_file() for name in PI_EXTENSIONS},
         checks=checks,
         headroom_proxy=None if port is None else (port, jev_headroom.probe(port)),
@@ -761,16 +756,16 @@ def gather(home: Path) -> Facts:
             for arg in jev_headroom.proxy_command("headroom", 0)
             if arg.startswith("--")
         ),
-        claude_bash=_claude_bash(home, claude_homes.get(".claude", {})),
+        claude_bash=_claude_bash(home, homes.get(".claude", {})),
         jev_key=_jev_key_facts(home),
         mise_config=_mise_config_facts(home),
     )
 
 
 def main() -> int:
-    for level, name, detail in report(gather(Path.home())):
-        print(f"{level:<4} {name} - {detail}")
-    return 0
+    for line in report(gather(Path.home())):
+        print(doctor_lines.fmt(line))
+    return 0  # doctor counts the lines; this never fails the run
 
 
 if __name__ == "__main__":

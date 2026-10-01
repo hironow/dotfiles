@@ -17,6 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
+import claude_homes  # noqa: E402
 import claude_plugins as plugins  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -171,8 +172,8 @@ def test_doctor_checks_and_deploy_installs_the_plugins() -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     assert "claude-plugins-install *args:" in justfile
     deploy = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
-    # both the native Windows path and the Unix path
-    assert deploy.count("claude_plugins.py") >= 2
+    # one of the agent steps every OS runs (test_deploy_pi_extensions)
+    assert "claude_plugins.py claude-plugins-install" in deploy
 
 
 @pytest.mark.parametrize(
@@ -192,25 +193,36 @@ def test_no_settings_fragment_claims_the_plugin_keys(fragment: Path) -> None:
         assert all(key not in section for section in sections)
 
 
-@pytest.mark.parametrize(
-    ("deadline", "now", "timeout"),
-    [
-        (None, 0.0, plugins.CALL_TIMEOUT),  # installing: no overall budget
-        (1000.0, 0.0, plugins.CALL_TIMEOUT),
-        (100.0, 90.0, 10.0),  # the budget's rest, so doctor gets every line
-        (100.0, 100.0, None),  # spent: skip, reported as unreadable
-    ],
-)
-def test_each_call_fits_the_overall_budget(
-    deadline: float | None, now: float, timeout: float | None
+def test_main_prints_each_home_then_the_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert plugins.call_timeout(deadline, now) == timeout
-
-
-def test_the_check_budget_ends_before_doctor_stops_waiting() -> None:
-    import ai_tools_check  # noqa: PLC0415
-
-    assert plugins.CHECK_BUDGET < ai_tools_check.CHECKER_TIMEOUT
+    for name in (".claude", ".claude-work-b"):
+        (tmp_path / name).mkdir()
+    results = {
+        ".claude": (["marketplace openai-codex is missing"], []),
+        ".claude-work-b": ([], ["cannot read `claude plugin list --json`"]),
+    }
+    monkeypatch.setattr(plugins.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
+    monkeypatch.setattr(
+        plugins, "reconcile", lambda _d, cli, *, check: results[cli.home.name]
+    )
+    monkeypatch.setattr(
+        plugins, "_cli", lambda _c, home, _deadline: type("C", (), {"home": home})()
+    )
+    assert plugins.main(["--check"]) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "OK   claude-plugins - ~/.claude: fixed: marketplace openai-codex is missing",
+        "WARN claude-plugins - ~/.claude-work-b: cannot read `claude plugin list --json`:"
+        " just claude-plugins-install",
+    ]
+    results[".claude-work-b"] = ([], [])
+    assert plugins.main([]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "OK   claude-plugins - codex@openai-codex in 2 Claude home(s)"
+    )
 
 
 def test_a_repair_that_fails_halfway_is_not_reported_as_done() -> None:

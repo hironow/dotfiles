@@ -27,6 +27,24 @@ ensure_zprofile_login_path() {
   } >>"$HOME/.zprofile"
 }
 
+# Agent steps every OS runs once mise has installed the tools: the script under
+# scripts/, the recipe that re-runs it by hand, and what it does. One list for
+# both paths: the native Windows branch exits early, and a step written only in
+# the shared tail never reached it (headroom's MCP server, once).
+AGENT_STEPS='install_pi_extensions.py pi-extensions-install Installing Pi extensions
+claude_plugins.py claude-plugins-install Installing Claude Code plugins
+headroom_mcp.py headroom-mcp-register Registering headroom'"'"'s MCP server'
+
+run_agent_steps() {
+  while read -r script recipe what; do
+    echo "==> $what..."
+    mise -C / exec -- python ~/dotfiles/scripts/"$script" ||
+      echo "==> WARN: $script failed; run 'just $recipe' after resolving the error"
+  done <<EOF
+$AGENT_STEPS
+EOF
+}
+
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     echo "==> Deploy dotfiles (windows subset)..."
@@ -135,10 +153,7 @@ POWERSHELL
     } >> "$ps_profile"
     echo "==> PowerShell \$PROFILE updated with Jev launchers"
     if command -v mise >/dev/null 2>&1; then
-      echo "==> Installing Pi extensions (native Windows)..."
-      MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; re-run 'just pi-extensions-install'"
-      echo "==> Installing Claude Code plugins (native Windows)..."
-      MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/claude_plugins.py || echo "==> WARN: Claude plugin installation failed; re-run 'just claude-plugins-install'"
+      (export MISE_NODE_COREPACK=0 && run_agent_steps)
     fi
     # git aliases [include] managed block (ADR 0033). Wires ONLY
     # aliases.gitconfig (pure [alias] entries) — deliberately NOT
@@ -202,28 +217,11 @@ if [ ! -d ~/.local/share/fzf-tab ]; then
     git clone --depth 1 https://github.com/Aloxaf/fzf-tab ~/.local/share/fzf-tab
 fi
 if command -v mise >/dev/null 2>&1; then
-    echo "==> Installing Pi extensions..."
-    mise -C / exec -- python ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; run 'just pi-extensions-install' after resolving the error"
+    run_agent_steps
 elif command -v pi >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     python3 ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; run 'just pi-extensions-install' after resolving the error"
+    echo "==> mise not on PATH; run 'just claude-plugins-install' and 'just headroom-mcp-register' after provisioning"
 else
-    echo "==> pi or Python not on PATH; run 'just pi-extensions-install' after provisioning"
-fi
-# Plugins every Claude home must have (dump/harness/claude-plugins.json); a home
-# sync-agents creates later is filled by `just claude-plugins-install`
-if command -v mise >/dev/null 2>&1; then
-    echo "==> Installing Claude Code plugins..."
-    mise -C / exec -- python ~/dotfiles/scripts/claude_plugins.py || echo "==> WARN: Claude plugin installation failed; run 'just claude-plugins-install' after resolving the error"
-else
-    echo "==> mise not on PATH; run 'just claude-plugins-install' after provisioning"
-fi
-# headroom's MCP server in every Claude home, egress pinned on the server
-# itself; same reason as the plugins, and a new home is filled by
-# `just headroom-mcp-register`
-if command -v mise >/dev/null 2>&1; then
-    echo "==> Registering headroom's MCP server..."
-    mise -C / exec -- python ~/dotfiles/scripts/headroom_mcp.py || echo "==> WARN: headroom MCP registration failed; run 'just headroom-mcp-register' after resolving the error"
-else
-    echo "==> mise not on PATH; run 'just headroom-mcp-register' after provisioning"
+    echo "==> mise not on PATH; run 'just pi-extensions-install', 'just claude-plugins-install' and 'just headroom-mcp-register' after provisioning"
 fi
 echo "==> Deploy complete!"

@@ -27,18 +27,22 @@ from pathlib import Path
 import subprocess
 import sys
 
+from doctor_lines import Line, failed, fmt
+
 SANDBOX_GROUP = "CodexSandboxUsers"
 
 
 # ---- Functional core ----
 
 
-def state(profile_acl: str, acl: str) -> str:
-    """'absent' (no elevated sandbox), 'readable' or 'blocked', from icacls output.
+def state(sandbox_exists: bool, acl: str) -> str:
+    """'absent' (no elevated sandbox), 'readable' or 'blocked'.
 
-    Codex grants the sandbox group read on the profile itself when it sets the
-    sandbox up, so the profile tells whether it exists, wherever mise lives."""
-    if SANDBOX_GROUP not in profile_acl:
+    sandbox_exists: Windows has the sandbox's group, which Codex creates when it
+    sets its elevated sandbox up. Where Codex granted read varies by host (the
+    profile itself on one, only its entries on another), so no ACL tells it;
+    acl is the mise dir's icacls output."""
+    if not sandbox_exists:
         return "absent"
     return "readable" if SANDBOX_GROUP in acl else "blocked"
 
@@ -82,6 +86,33 @@ def secrets_message(env_acl: str) -> tuple[str, str]:
     return ("OK", "~/.env is not readable in Codex's sandbox")
 
 
+def report(
+    env_acl: str | None, directory: str, *, before: str | None, after: str | None
+) -> list[Line]:
+    """The doctor lines from what main() gathered.
+
+    env_acl: icacls of ~/.env, None when there is none; before: the sandbox's
+    state for the mise dir, None when there is no mise dir; after: its state
+    once a repair was tried, None when none was.
+    """
+    lines: list[Line] = []
+    if env_acl is not None:
+        level, detail = secrets_message(env_acl)
+        lines.append((level, "codex-sandbox-secrets", detail))
+    if before is None:
+        return [*lines, ("OK", "codex-sandbox", f"no mise data dir at {directory}")]
+    current = before if after is None else after
+    if after == "readable":
+        granted = f"granted {SANDBOX_GROUP} read on {directory}"
+        lines.append(("OK", "codex-sandbox", granted))
+    level, detail = message(current, directory)
+    lines.append((level, "codex-sandbox", detail))
+    if current != "absent":
+        level, detail = git_message()
+        lines.append((level, "codex-sandbox-git", detail))
+    return lines
+
+
 # ---- Imperative shell ----
 
 
@@ -95,33 +126,35 @@ def _acl(path: Path) -> str:
     ).stdout
 
 
+def _group_exists() -> bool:
+    """Whether Windows has the sandbox's group (net: 0 found, 2 no such group)."""
+    try:
+        done = subprocess.run(
+            ["net", "localgroup", SANDBOX_GROUP], capture_output=True, check=False
+        )
+    except OSError:
+        return False
+    return done.returncode == 0
+
+
 def main(argv: Sequence[str]) -> int:
     if sys.platform != "win32":
         return 0
     directory = Path(
         os.environ.get("MISE_DATA_DIR") or Path(os.environ["LOCALAPPDATA"]) / "mise"
     )
-    exposed = False
     env_file = Path.home() / ".env"
-    if env_file.is_file():
-        level, detail = secrets_message(_acl(env_file))
-        exposed = level == "WARN"
-        print(f"{level:<4} codex-sandbox-secrets - {detail}")
-    if not directory.is_dir():
-        print(f"OK   codex-sandbox - no mise data dir at {directory}")
-        return 1 if exposed else 0
-    current = state(_acl(Path.home()), _acl(directory))
-    if current == "blocked" and "--check" not in argv:
+    env_acl = _acl(env_file) if env_file.is_file() else None
+    exists = _group_exists()
+    before = state(exists, _acl(directory)) if directory.is_dir() else None
+    after = None
+    if before == "blocked" and "--check" not in argv:
         subprocess.run(fix_command(str(directory)), capture_output=True, check=False)
-        current = state(_acl(Path.home()), _acl(directory))
-        if current == "readable":
-            print(f"OK   codex-sandbox - granted {SANDBOX_GROUP} read on {directory}")
-    level, detail = message(current, str(directory))
-    print(f"{level:<4} codex-sandbox - {detail}")
-    if current != "absent":
-        level, detail = git_message()
-        print(f"{level:<4} codex-sandbox-git - {detail}")
-    return 1 if current == "blocked" or exposed else 0
+        after = state(exists, _acl(directory))
+    lines = report(env_acl, str(directory), before=before, after=after)
+    for line in lines:
+        print(fmt(line))
+    return 1 if failed(lines) else 0
 
 
 if __name__ == "__main__":

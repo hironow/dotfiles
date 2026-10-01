@@ -41,30 +41,18 @@ Prints doctor-style OK/WARN lines; exit 1 on a WARN.
 
 from collections.abc import Callable, Mapping, Sequence
 import json
-import os
 from pathlib import Path
-import shutil
-import subprocess
 import sys
-import time
+
+import claude_homes
 
 SERVER = "headroom"
-CLAUDE_HOMES = (
-    ".claude",
-    ".claude-work-a",
-    ".claude-work-b",
-    ".claude-work-c",
-    ".claude-work-d",
-)
+NAME = "headroom-mcp"
 COMMAND = "mise"
 ARGS = ("x", "--", "headroom", "mcp", "serve")
 # Both switches, because the beacon fails open and DO_NOT_TRACK overrides it
 EGRESS = {"HEADROOM_BEACON": "off", "DO_NOT_TRACK": "1"}
 
-CALL_TIMEOUT = 180.0  # one claude call
-# --check as a whole: below doctor's wait for a checker, so a hanging home costs
-# its own lines and never the report of the others
-CHECK_BUDGET = 240.0
 
 Cli = Callable[[list[str]], bool]  # claude argv -> did it succeed
 Read = Callable[[], Mapping[str, object] | None]  # the registry, None if unreadable
@@ -150,27 +138,9 @@ def reconcile(read: Read, cli: Cli, *, check: bool) -> tuple[str | None, str | N
 
 
 def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
-    def run(args: list[str]) -> bool:
-        timeout = CALL_TIMEOUT
-        if deadline is not None:
-            timeout = min(timeout, max(0.0, deadline - time.monotonic()))
-            if timeout <= 0:
-                return False
-        try:
-            done = subprocess.run(  # noqa: S603 - resolved argv, no shell
-                [claude, *args],
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout,
-                check=False,
-                env={**os.environ, "CLAUDE_CONFIG_DIR": str(home)},
-            )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        return done.returncode == 0
-
-    return run
+    run = claude_homes.runner(claude, home, deadline)
+    # success is the exit status: an empty stdout still counts
+    return lambda args: run(args) is not None
 
 
 def _read(home: Path) -> Read:
@@ -199,36 +169,26 @@ def _homes(argv: Sequence[str]) -> list[Path]:
     given = [Path(value) for flag, value in zip(argv, argv[1:]) if flag == "--home"]
     if given:
         return given
-    return [
-        Path.home() / name for name in CLAUDE_HOMES if (Path.home() / name).is_dir()
-    ]
+    return claude_homes.existing(Path.home())
 
 
 def main(argv: Sequence[str]) -> int:
     check = "--check" in argv
-    claude = shutil.which("claude")
-    if not claude:
-        print("WARN headroom-mcp - claude not on PATH: mise install")
-        return 1
-    homes = _homes(argv)
-    failed = False
-    deadline = time.monotonic() + CHECK_BUDGET if check else None
-    for home in homes:
+
+    def one(claude: str, home: Path, deadline: float | None) -> tuple[list, list]:
         fixed, problem = reconcile(
             _read(home), _cli(claude, home, deadline), check=check
         )
-        if fixed:
-            print(f"OK   headroom-mcp - ~/{home.name}: fixed: {fixed}")
-        if problem:
-            failed = True
-            fix = "just headroom-mcp-register" if check else "see the line above"
-            print(f"WARN headroom-mcp - ~/{home.name}: {problem}: {fix}")
-    if not failed:
-        print(
-            f"OK   headroom-mcp - {SERVER} registered, egress pinned, "
-            f"in {len(homes)} Claude home(s)"
-        )
-    return 1 if failed else 0
+        return ([fixed] if fixed else [], [problem] if problem else [])
+
+    return claude_homes.visit(
+        NAME,
+        _homes(argv),
+        one,
+        check=check,
+        recipe="just headroom-mcp-register",
+        summary=lambda n: f"{SERVER} registered, egress pinned, in {n} Claude home(s)",
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,172 @@
+"""What every per-home Claude script shares: which homes, and how to visit them.
+
+claude_plugins and headroom_mcp (and doctor's settings checks) each carried
+their own copy of the five home names; claude_homes holds them, in the order
+the scripts report them, and only existing homes are visited.
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+import claude_homes  # noqa: E402
+
+
+def test_the_homes_in_report_order() -> None:
+    assert claude_homes.NAMES == (
+        ".claude",
+        ".claude-work-a",
+        ".claude-work-b",
+        ".claude-work-c",
+        ".claude-work-d",
+    )
+
+
+def test_only_existing_homes_are_visited(tmp_path: Path) -> None:
+    for name in (".claude-work-c", ".claude"):
+        (tmp_path / name).mkdir()
+    (tmp_path / ".claude-work-a").write_text("not a dir", encoding="utf-8")
+    assert claude_homes.existing(tmp_path) == [
+        tmp_path / ".claude",
+        tmp_path / ".claude-work-c",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("deadline", "now", "timeout"),
+    [
+        (None, 0.0, claude_homes.CALL_TIMEOUT),  # installing: no overall budget
+        (1000.0, 0.0, claude_homes.CALL_TIMEOUT),
+        (100.0, 90.0, 10.0),  # the budget's rest, so doctor gets every line
+        (100.0, 100.0, None),  # spent: skip, reported as unreadable
+    ],
+)
+def test_each_call_fits_the_overall_budget(
+    deadline: float | None, now: float, timeout: float | None
+) -> None:
+    assert claude_homes.call_timeout(deadline, now) == timeout
+
+
+def test_the_check_budget_ends_before_doctor_stops_waiting() -> None:
+    import ai_tools_check  # noqa: PLC0415
+
+    assert claude_homes.CHECK_BUDGET < ai_tools_check.CHECKER_TIMEOUT
+
+
+class Done:
+    def __init__(self, code: int, out: str) -> None:
+        self.returncode, self.stdout = code, out
+
+
+@pytest.mark.parametrize(
+    ("code", "out", "answer"), [(0, "", ""), (0, "x", "x"), (1, "x", None)]
+)
+def test_a_call_runs_in_its_home_and_answers_stdout_or_none(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code: int,
+    out: str,
+    answer: str | None,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def run(argv: list[str], **kwargs: object) -> Done:
+        seen.update(kwargs, argv=argv)
+        return Done(code, out)
+
+    monkeypatch.setattr(claude_homes.subprocess, "run", run)
+    call = claude_homes.runner("claude", tmp_path, None)
+    assert call(["plugin", "list"]) == answer
+    assert seen["argv"] == ["claude", "plugin", "list"]
+    env = seen["env"]
+    assert isinstance(env, dict) and env["CLAUDE_CONFIG_DIR"] == str(tmp_path)
+    assert (seen["cwd"], seen["stdin"]) == (tmp_path, subprocess.DEVNULL)
+
+
+def test_a_spent_budget_skips_the_call(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(claude_homes.subprocess, "run", lambda *_a, **_k: Done(0, "x"))
+    assert claude_homes.runner("claude", tmp_path, deadline=0.0)(["x"]) is None
+
+
+def test_a_home_reports_what_it_fixed_then_what_is_wrong(tmp_path: Path) -> None:
+    lines = claude_homes.home_lines(
+        "x", tmp_path / ".claude", ["a"], ["b", "c"], "just fix-it"
+    )
+    assert lines == [
+        ("OK", "x", "~/.claude: fixed: a"),
+        ("WARN", "x", "~/.claude: b: just fix-it"),
+        ("WARN", "x", "~/.claude: c: just fix-it"),
+    ]
+
+
+def test_visit_streams_each_home_then_sums_up(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    homes = [tmp_path / "a", tmp_path / "b"]
+    results = {"a": (["f"], []), "b": ([], ["p"])}
+    seen: list[float | None] = []
+
+    def one(claude: str, home: Path, deadline: float | None) -> tuple[list, list]:
+        seen.append(deadline)
+        return results[home.name]
+
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
+    code = claude_homes.visit(
+        "x", homes, one, check=True, recipe="just r", summary=lambda n: f"{n} ok"
+    )
+    assert code == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "OK   x - ~/a: fixed: f",
+        "WARN x - ~/b: p: just r",
+    ]
+    # one budget for the whole run, not one per home
+    assert len(set(seen)) == 1 and seen[0] is not None
+    results["b"] = ([], [])
+    assert (
+        claude_homes.visit(
+            "x", homes, one, check=False, recipe="just r", summary=lambda n: f"{n} ok"
+        )
+        == 0
+    )
+    assert capsys.readouterr().out.splitlines()[-1] == "OK   x - 2 ok"
+    assert seen[-1] is None  # installing: no overall budget
+
+
+def test_visit_without_claude_warns(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: None)
+    code = claude_homes.visit(
+        "x", [], lambda *_: ([], []), check=True, recipe="r", summary=str
+    )
+    assert code == 1
+    assert capsys.readouterr().out == "WARN x - claude not on PATH: mise install\n"
+
+
+def test_a_relative_home_is_made_absolute_before_the_call_moves_into_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # cwd is the home, so a relative CLAUDE_CONFIG_DIR would point at
+    # <home>/<home> (found in review; headroom_mcp --home takes any path)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".claude-work-a").mkdir()
+    seen: dict[str, object] = {}
+
+    def run(argv: list[str], **kwargs: object) -> Done:
+        seen.update(kwargs)
+        return Done(0, "")
+
+    monkeypatch.setattr(claude_homes.subprocess, "run", run)
+    claude_homes.runner("claude", Path(".claude-work-a"), None)(["x"])
+    env = seen["env"]
+    assert isinstance(env, dict)
+    assert env["CLAUDE_CONFIG_DIR"] == str(tmp_path / ".claude-work-a")
+    assert seen["cwd"] == tmp_path / ".claude-work-a"

@@ -17,10 +17,8 @@ def test_powershell_launchers_are_in_native_deploy() -> None:
         'ps_jev_marker_begin="# >>> dotfiles managed block: Jev launchers >>>"'
         in windows_branch
     )
-    assert (
-        "MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/install_pi_extensions.py"
-        in windows_branch
-    )
+    # the Pi extensions come with the agent steps (test_deploy_pi_extensions)
+    assert "(export MISE_NODE_COREPACK=0 && run_agent_steps)" in windows_branch
     assert "function j-cc" in windows_branch
     assert "function j-pi" in windows_branch
     assert "function jev-claude" not in windows_branch
