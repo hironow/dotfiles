@@ -222,6 +222,14 @@ jev-pi-verify:
 jev-headroom-verify *target:
     {{UV_RUN}} scripts/jev_headroom_verify.py {{target}}
 
+# Measure what headroom's compressor does to four byte-identical payloads, via
+# a real `headroom mcp serve` + headroom_compress call. Reproduces the table in
+# the headroom spoke, so re-run it after a headroom bump and update that table
+# if a ratio moved. Deliberately not in `just ci` (it starts a live server);
+# `tests/unit/test_headroom_compress_measure.py` pins the payloads instead.
+headroom-compress-measure *executable:
+    {{UV_RUN}} scripts/headroom_compress_measure.py {{executable}}
+
 # Open the savings dashboard of the headroom proxy j-cc started (plain
 # `headroom dashboard` opens port 8787, where j-cc never runs it).
 headroom-dashboard:
