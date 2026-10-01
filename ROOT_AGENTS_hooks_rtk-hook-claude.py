@@ -116,11 +116,8 @@ def _rtk_executable() -> str | None:
     return candidate
 
 
-def _in_isolation_worktree(payload: dict) -> bool:
-    """True when this tool call runs inside a Claude Code isolation worktree."""
-    cwd = payload.get("cwd") or str(Path.cwd())
-    if not isinstance(cwd, str):
-        return False
+def _in_isolation_worktree(cwd: str) -> bool:
+    """True when the tool call's cwd is inside a Claude Code isolation worktree."""
     normalized = cwd.replace("\\", "/").rstrip("/") + "/"
     return ISOLATION_WORKTREE_MARKER in normalized
 
@@ -196,6 +193,52 @@ def _run_rtk(raw: str) -> tuple[dict, str | None] | None:
     return (answer, off_path) if isinstance(answer, dict) else None
 
 
+def respond(
+    answer: dict, *, cwd: str, off_path: str | None, strip: bool
+) -> dict | None:
+    """Functional core: what to print for rtk's hook answer, or None.
+
+    cwd is the tool call's working directory; off_path is mise's rtk when PATH
+    has none; strip is the permission policy (ADR 0047). In order: the
+    worktree git veto, then mise's launcher, then the permission strip. rtk's
+    answer is never mutated.
+    """
+    hook_output = answer.get("hookSpecificOutput")
+    if not isinstance(hook_output, dict):
+        return None
+    updated = hook_output.get("updatedInput")
+    rewritten = updated.get("command") if isinstance(updated, dict) else None
+    if (
+        isinstance(rewritten, str)
+        and _in_isolation_worktree(cwd)
+        and _is_vetoed_rewrite(rewritten)
+    ):
+        return None  # the plain command runs
+
+    if off_path and isinstance(rewritten, str) and isinstance(updated, dict):
+        named = _with_launcher(rewritten, off_path)
+        if named is None:
+            return None  # the typed command runs as it is
+        updated = {**updated, "command": named}
+        answer = {
+            **answer,
+            "hookSpecificOutput": {**hook_output, "updatedInput": updated},
+        }
+
+    if strip:
+        # Forward the rewrite and nothing else, so no approving field rtk
+        # emits, today's or a later release's, reaches Claude Code
+        if not isinstance(updated, dict):
+            return None
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": hook_output.get("hookEventName", "PreToolUse"),
+                "updatedInput": updated,
+            }
+        }
+    return answer
+
+
 def main() -> int:
     raw = sys.stdin.read()
     try:
@@ -210,38 +253,15 @@ def main() -> int:
         return EXIT_ALLOW
     answer, off_path = ran
 
-    hook_output = answer.get("hookSpecificOutput")
-    if not isinstance(hook_output, dict):
-        return EXIT_ALLOW
-
-    updated = hook_output.get("updatedInput")
-    rewritten = updated.get("command") if isinstance(updated, dict) else None
-    if (
-        isinstance(rewritten, str)
-        and _in_isolation_worktree(payload)
-        and _is_vetoed_rewrite(rewritten)
-    ):
-        return EXIT_ALLOW  # emit nothing: the plain command runs
-
-    if off_path and isinstance(rewritten, str) and isinstance(updated, dict):
-        named = _with_launcher(rewritten, off_path)
-        if named is None:
-            return EXIT_ALLOW  # emit nothing: the typed command runs as it is
-        updated["command"] = named
-
-    if PERMISSION_DECISION_POLICY == "strip":
-        # Forward the rewrite and nothing else, so no approving field rtk
-        # emits, today's or a later release's, reaches Claude Code
-        if not isinstance(updated, dict):
-            return EXIT_ALLOW
-        answer = {
-            "hookSpecificOutput": {
-                "hookEventName": hook_output.get("hookEventName", "PreToolUse"),
-                "updatedInput": updated,
-            }
-        }
-
-    print(json.dumps(answer))
+    cwd = payload.get("cwd") or str(Path.cwd())
+    out = respond(
+        answer,
+        cwd=cwd if isinstance(cwd, str) else "",
+        off_path=off_path,
+        strip=PERMISSION_DECISION_POLICY == "strip",
+    )
+    if out is not None:
+        print(json.dumps(out))
     return EXIT_ALLOW
 
 
