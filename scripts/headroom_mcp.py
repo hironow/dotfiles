@@ -138,7 +138,7 @@ def reconcile(read: Read, cli: Cli, *, check: bool) -> tuple[str | None, str | N
 
 
 def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
-    run = claude_homes.runner(claude, home, deadline)
+    run = claude_homes.runner(claude, home, deadline, cwd=home, no_stdin=True)
     # success is the exit status: an empty stdout still counts
     return lambda args: run(args) is not None
 

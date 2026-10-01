@@ -211,3 +211,19 @@ def test_main_prints_each_home_then_the_summary(
     assert capsys.readouterr().out.splitlines()[-1] == (
         "OK   headroom-mcp - headroom registered, egress pinned, in 2 Claude home(s)"
     )
+
+
+def test_each_claude_call_runs_in_the_home_with_no_stdin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # as claude_plugins does: no project-scoped .mcp.json of whatever
+    # directory doctor ran from applies, and claude never waits on a terminal
+    seen: dict[str, object] = {}
+
+    def run(_argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(_argv, 0, "", "")
+
+    monkeypatch.setattr(claude_homes.subprocess, "run", run)
+    assert hm._cli("claude", tmp_path, None)(["mcp", "list"]) is True
+    assert (seen["cwd"], seen["stdin"]) == (tmp_path, subprocess.DEVNULL)
