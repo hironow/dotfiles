@@ -45,13 +45,15 @@ BASE_FILE = "ROOT_AGENTS.md"
 OVERLAY_FILE = "ROOT_CLAUDE.md"
 # Hooks settings fragment merged into each claude-family agent's settings.json.
 HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
+# Codex reads Claude-shaped hook blocks from <codex home>/hooks.json.
+CODEX_HOOK_FRAGMENT = ".codex/hooks.json"
 # Hook commands a third-party installer writes into the agent home that dotfiles
 # has since replaced with a managed hook. Their commands do not point at
 # <agent>/hooks/, so _is_managed_hook_block would classify them as user blocks
 # and preserve them forever — next to the replacement, which is worse than
 # either alone. Retired on every sync, so a reinstall/upgrade that re-adds one
 # is undone rather than silently resurrecting the old behavior (ADR 0047).
-RETIRED_HOOK_COMMANDS = frozenset({"rtk hook claude"})
+RETIRED_HOOK_COMMANDS = frozenset({"rtk hook claude", "rtk hook codex"})
 # Header line a third-party installer writes at the top of a hook file it owns
 # inside <agent>/hooks/ (herdr: "# installed by herdr"). Such a file is not a
 # stale dotfiles hook, and a settings block calling it is not sync's to replace:
@@ -99,9 +101,12 @@ class AgentTarget:
     #                         so a CLAUDE.md `@AGENTS.md` import resolves.
     # receives_hooks       -> hooks/* and the settings.json hook merge apply only
     #                         to claude-family agents (Claude-only mechanism).
+    # receives_codex_hooks -> hooks/* (minus the Claude-only *-claude.* files,
+    #                         plus *-codex.*) and the hooks.json merge for Codex.
     overlay_main: bool = False
     base_secondary: str | None = None
     receives_hooks: bool = False
+    receives_codex_hooks: bool = False
 
     def get_sync_directories(self) -> list[str]:
         """Return directories to sync for this agent."""
@@ -176,6 +181,7 @@ AGENTS: list[AgentTarget] = [
         key="codex",
         main_file="AGENTS.md",
         is_import_source=True,
+        receives_codex_hooks=True,
     ),
 ]
 
@@ -548,7 +554,7 @@ def _detect_managed_dir_orphans(
     dirs are NOT manifest-tracked; the current source set is the source of truth.
     """
     managed_dirs = ["docs/agents"]
-    if agent.receives_hooks:
+    if agent.receives_hooks or agent.receives_codex_hooks:
         managed_dirs.append("hooks")
 
     orphans: list[_DeleteAction] = []
@@ -558,6 +564,7 @@ def _detect_managed_dir_orphans(
             item.relative_path[len(prefix) :]
             for item in additional_sources
             if item.relative_path.startswith(prefix)
+            and _wants_hook(agent, item.relative_path)
         }
         target_dir = agent.directory / mdir
         if not target_dir.is_dir():
@@ -628,6 +635,23 @@ def _is_spoke(relative_path: str) -> bool:
     return relative_path.startswith("docs/agents/") and relative_path.endswith(".md")
 
 
+def _wants_hook(agent: AgentTarget, relative_path: str) -> bool:
+    """Whether this agent receives a distributed item.
+
+    hooks/ goes to claude-family agents and Codex only. `*-claude.*` files
+    (the Claude rtk wrapper, which strips an approval Claude would honor) are
+    Claude's; `*-codex.*` files are Codex's.
+    """
+    if not relative_path.startswith("hooks/"):
+        return True
+    name = relative_path.rsplit("/", 1)[-1]
+    if agent.receives_hooks:
+        return "-codex." not in name
+    if agent.receives_codex_hooks:
+        return "-claude." not in name
+    return False
+
+
 def _render_hook_command(
     command: str, agent: AgentTarget, system: str | None = None
 ) -> str:
@@ -640,7 +664,9 @@ def _render_hook_command(
     is bash) — same strategy as the justfile's windows-shell (ADR 0037).
     """
     hooks_prefix = f'"{agent.directory.as_posix()}/hooks/'
-    rendered = command.replace('"$CLAUDE_PROJECT_DIR/.claude/hooks/', hooks_prefix)
+    rendered = command.replace(
+        '"$CLAUDE_PROJECT_DIR/.claude/hooks/', hooks_prefix
+    ).replace('"$CODEX_HOME/hooks/', hooks_prefix)
     if (system or platform.system()) == "Windows":
         rendered = rendered.replace(f"bash {hooks_prefix}", f"sh {hooks_prefix}")
     return rendered
@@ -721,11 +747,15 @@ def _merge_hook_settings(
     no-op. With dry_run=True nothing is written. Returns True if the file would
     change.
     """
-    fragment_path = dotfiles_dir / HOOK_SETTINGS_FRAGMENT
+    fragment_path = dotfiles_dir / (
+        CODEX_HOOK_FRAGMENT if agent.receives_codex_hooks else HOOK_SETTINGS_FRAGMENT
+    )
     if not fragment_path.exists():
         return False
     fragment = json.loads(fragment_path.read_text(encoding="utf-8"))
-    target_path = agent.directory / "settings.json"
+    target_path = agent.directory / (
+        "hooks.json" if agent.receives_codex_hooks else "settings.json"
+    )
     target = (
         json.loads(target_path.read_text(encoding="utf-8"))
         if target_path.exists()
@@ -987,8 +1017,8 @@ def _build_sync_plan(
             item_dir = item.relative_path.split("/")[0]
             if item_dir not in agent.sync_directories:
                 continue
-        # Hooks are a Claude-only mechanism: skip for non-claude agents.
-        if item.relative_path.startswith("hooks/") and not agent.receives_hooks:
+        # hooks/ goes to claude-family agents and Codex only (see _wants_hook).
+        if not _wants_hook(agent, item.relative_path):
             continue
 
         # Spokes (docs/agents/*.md) are rendered like the base/overlay.
@@ -1079,10 +1109,13 @@ def _print_plan(
             elif verbose:
                 print(f"  ✅ {icon} {action.relative_path} [SYNCED]")
 
-        if plan.agent.receives_hooks and _merge_hook_settings(
-            dotfiles_dir, plan.agent, dry_run=True
-        ):
-            print("  📝 📄 settings.json [HOOKS MERGE]")
+        if (
+            plan.agent.receives_hooks or plan.agent.receives_codex_hooks
+        ) and _merge_hook_settings(dotfiles_dir, plan.agent, dry_run=True):
+            hooks_file = (
+                "hooks.json" if plan.agent.receives_codex_hooks else "settings.json"
+            )
+            print(f"  📝 📄 {hooks_file} [HOOKS MERGE]")
             has_changes = True
 
         if plan.agent.receives_hooks and _merge_settings_fragment(
@@ -1505,8 +1538,13 @@ def sync_mode(
 
         # Merge the Claude hook fragment into the agent's settings.json
         # (claude-family only; idempotent, manifest-independent).
-        if plan.agent.receives_hooks and _merge_hook_settings(dotfiles_dir, plan.agent):
-            print("  ✅ 📄 settings.json: hooks merged")
+        if (
+            plan.agent.receives_hooks or plan.agent.receives_codex_hooks
+        ) and _merge_hook_settings(dotfiles_dir, plan.agent):
+            hooks_file = (
+                "hooks.json" if plan.agent.receives_codex_hooks else "settings.json"
+            )
+            print(f"  ✅ 📄 {hooks_file}: hooks merged")
 
         # Merge the shared settings fragment (env owned wholesale + curated
         # top-level keys; claude-family only). Sequential after the hook merge so
