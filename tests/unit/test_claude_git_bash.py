@@ -109,9 +109,12 @@ def test_to_set_prints_the_git_bash_for_harden_env(
     git_bash = tmp_path / "bash.exe"
     git_bash.write_text("", encoding="utf-8")
     monkeypatch.setattr(lookup.sys, "platform", "win32")
+    # off Windows, shutil.which would take its win32 path too
+    monkeypatch.setattr(lookup.shutil, "which", lambda *_: None)
     monkeypatch.setattr(lookup, "claude_git_bash", lambda *_: None)
     monkeypatch.setattr(lookup, "candidates", lambda *_: [str(git_bash)])
     monkeypatch.setattr(lookup, "_user_value", lambda: user_value)
+    monkeypatch.setattr(lookup, "_machine_value", lambda: None)
     assert lookup.main(["--to-set"]) == 0
     assert capsys.readouterr().out == (f"{git_bash}\n" if printed else "")
 
@@ -129,6 +132,8 @@ def test_a_machine_wide_value_counts_as_claudes_setting(
     git_bash = tmp_path / "bash.exe"
     git_bash.write_text("", encoding="utf-8")
     monkeypatch.setattr(lookup.sys, "platform", "win32")
+    # off Windows, shutil.which would take its win32 path too
+    monkeypatch.setattr(lookup.shutil, "which", lambda *_: None)
     monkeypatch.setattr(lookup, "claude_git_bash", lambda configured, *_: configured)
     monkeypatch.setattr(lookup, "candidates", lambda *_: [str(git_bash)])
     monkeypatch.setattr(lookup, "_user_value", lambda: None)

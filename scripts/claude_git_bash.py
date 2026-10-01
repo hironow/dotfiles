@@ -73,6 +73,8 @@ MACHINE_ENVIRONMENT = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environ
 
 def _persisted(machine: bool) -> str | None:
     """CLAUDE_CODE_GIT_BASH_PATH as persisted for the User or the Machine."""
+    if sys.platform != "win32":
+        return None
     import winreg  # noqa: PLC0415 - Windows only
 
     root, path = (
