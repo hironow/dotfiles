@@ -44,10 +44,11 @@ write its own `RTK.md` into agent homes sync owns. Telemetry stays off through
 ## rtk does not approve commands
 
 rtk answers `permissionDecision: "allow"` for everything it rewrites, which
-would auto-approve most Bash traffic. The wrapper **strips** that field and
-forwards only the rewrite, so rewritten commands still go through the normal
-permission flow. rtk is an output optimiser, not an approver: installing it must
-not change the permission posture (ADR 0047).
+would auto-approve most Bash traffic. The wrapper **forwards only the
+rewrite** (`updatedInput`) and drops every other field, so rewritten commands
+still go through the normal permission flow, and an approving field a later rtk
+adds cannot slip through. rtk is an output optimiser, not an approver:
+installing it must not change the permission posture (ADR 0047).
 
 The wrapper's `RTK_HOOK_PERMISSION_DECISION` variable is a **test seam only** —
 never set it in managed settings (any `.claude/settings*.json` fragment, or
