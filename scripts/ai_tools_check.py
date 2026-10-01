@@ -139,7 +139,10 @@ def _telemetry(facts: Facts) -> Line:
         gaps.append(f"Windows User env lacks {', '.join(missing)} (just harden-env)")
     if gaps:
         return ("WARN", "telemetry", "; ".join(gaps))
-    return ("OK", "telemetry", "off switches set for shells, Claude and Windows")
+    where = "this shell and the Claude homes"
+    if facts.user_env is not None:
+        where += " and the Windows User env"
+    return ("OK", "telemetry", f"off switches set in {where}")
 
 
 def _claude_rtk_hook(facts: Facts) -> Line:
