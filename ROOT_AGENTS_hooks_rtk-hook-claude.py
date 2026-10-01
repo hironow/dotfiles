@@ -45,8 +45,10 @@ independently, and it sees the original command (hooks are not chained).
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -140,11 +142,37 @@ def _is_vetoed_rewrite(command: str) -> bool:
     return False
 
 
-def _run_rtk(raw: str) -> dict | None:
-    """rtk's hook answer, or None when it declines / is absent / misbehaves."""
+def _with_launcher(original: str, rewritten: str, launcher: str) -> str:
+    """rewritten, with each `rtk` word rtk added replaced by launcher.
+
+    Used when rtk came from mise: the shell that runs the rewrite has the same
+    PATH as this hook, without rtk, so a bare `rtk` there is "command not
+    found". Only words absent from the original count (a token-level diff), so
+    an `rtk` the user wrote, in a commit message say, stays as it is.
+    """
+    before = re.split(r"(\s+)", original)
+    after = re.split(r"(\s+)", rewritten)
+    quoted = shlex.quote(launcher)
+    parts: list[str] = []
+    for tag, _i1, _i2, j1, j2 in difflib.SequenceMatcher(
+        None, before, after, autojunk=False
+    ).get_opcodes():
+        added = tag in ("insert", "replace")
+        parts += [
+            quoted if added and token == RTK_LAUNCHER else token
+            for token in after[j1:j2]
+        ]
+    return "".join(parts)
+
+
+def _run_rtk(raw: str) -> tuple[dict, str | None] | None:
+    """rtk's hook answer and, when rtk came from mise rather than PATH, the
+    launcher a rewrite must name; None when rtk declines / is absent /
+    misbehaves."""
     launcher = _rtk_executable()
     if launcher is None:
         return None
+    off_path = None if shutil.which(RTK_LAUNCHER) else Path(launcher).as_posix()
     try:
         proc = subprocess.run(  # noqa: S603 - resolved argv, no shell
             [launcher, "hook", "claude"],
@@ -164,7 +192,7 @@ def _run_rtk(raw: str) -> dict | None:
         answer = json.loads(proc.stdout)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
-    return answer if isinstance(answer, dict) else None
+    return (answer, off_path) if isinstance(answer, dict) else None
 
 
 def main() -> int:
@@ -176,9 +204,10 @@ def main() -> int:
     if not isinstance(payload, dict):
         return EXIT_ALLOW
 
-    answer = _run_rtk(raw)
-    if answer is None:
+    ran = _run_rtk(raw)
+    if ran is None:
         return EXIT_ALLOW
+    answer, off_path = ran
 
     hook_output = answer.get("hookSpecificOutput")
     if not isinstance(hook_output, dict):
@@ -192,6 +221,12 @@ def main() -> int:
         and _is_vetoed_rewrite(rewritten)
     ):
         return EXIT_ALLOW  # emit nothing: the plain command runs
+
+    original = (payload.get("tool_input") or {}).get("command")
+    if off_path and isinstance(rewritten, str) and isinstance(updated, dict):
+        updated["command"] = _with_launcher(
+            original if isinstance(original, str) else "", rewritten, off_path
+        )
 
     if PERMISSION_DECISION_POLICY == "strip":
         # Forward the rewrite and nothing else, so no approving field rtk

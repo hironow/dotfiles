@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -303,8 +304,54 @@ def test_rtk_absent_from_path_is_resolved_through_mise(
     # The rewrite landed, which it could not have done from PATH alone. Outside
     # an isolation worktree the git rewrite is kept, minus the auto-approval.
     answer = json.loads(out)["hookSpecificOutput"]
-    assert answer["updatedInput"]["command"] == "rtk git status"
+    # The shell that runs the rewrite has the same PATH, without rtk: a bare
+    # `rtk git status` would fail with "rtk: command not found" (seen live on
+    # Windows, where it broke every rewritable Bash call), so the rewrite
+    # names the copy mise found.
+    assert (
+        answer["updatedInput"]["command"] == f"{shlex.quote(rtk.as_posix())} git status"
+    )
     assert "permissionDecision" not in answer
+
+
+def test_every_launcher_rtk_adds_names_the_mise_copy_and_nothing_else(
+    tmp_path: Path, plain_repo: Path
+) -> None:
+    rewrite = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": {
+                "command": 'rtk git commit -m "a; rtk b" && rtk read README.md'
+            },
+        }
+    }
+    rtk = _executable(tmp_path / "mise-rtk", _rtk_stub(json.dumps(rewrite)))
+    code, out = _run(
+        _payload('git commit -m "a; rtk b" && cat README.md', plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=None,
+        extra_bin={"mise": _mise_stub(rtk, witness=tmp_path / "asked")},
+    )
+    assert code == EXIT_ALLOW
+    launcher = shlex.quote(rtk.as_posix())
+    # the `rtk` in the user's own commit message is left alone
+    assert json.loads(out)["hookSpecificOutput"]["updatedInput"]["command"] == (
+        f'{launcher} git commit -m "a; rtk b" && {launcher} read README.md'
+    )
+
+
+def test_an_rtk_on_path_keeps_the_bare_launcher(
+    tmp_path: Path, plain_repo: Path
+) -> None:
+    code, out = _run(
+        _payload("git status", plain_repo),
+        tmp_path=tmp_path,
+        rtk_stub=_rtk_stub(json.dumps(RTK_GIT_REWRITE)),
+    )
+    assert code == EXIT_ALLOW
+    assert json.loads(out)["hookSpecificOutput"]["updatedInput"]["command"] == (
+        "rtk git status"
+    )
 
 
 def test_an_rtk_on_path_wins_and_mise_is_never_asked(

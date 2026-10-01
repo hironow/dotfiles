@@ -55,7 +55,10 @@ afterwards is invisible to it, and once a hand-placed `~/.local/bin/rtk` is
 pruned such a session has no rtk on PATH. `mise which rtk` answers from mise's
 own configuration, so the hook reaches the pinned copy without the session being
 restarted. That subprocess is paid only in the case where the hook would
-otherwise do nothing at all.
+otherwise do nothing at all. The shell that runs the rewritten command has the
+same PATH, without rtk, so the hook replaces each `rtk` that rtk's rewrite adds
+with the absolute path mise gave (an `rtk` already in the typed command is left
+alone); a bare `rtk …` there would fail with "command not found".
 
 Both routes failing is normal, not an error: `mise which` exits non-zero when
 the tool is not active in this directory, and the hook then fails open — the
