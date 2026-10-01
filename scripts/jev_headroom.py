@@ -117,8 +117,12 @@ def proxy_command(exe: str, port: int) -> list[str]:
 
 
 def proxy_env(environ: Mapping[str, str]) -> dict[str, str]:
-    # The beacon runs in the proxy process, which does not read Claude's settings
-    return {**environ, "HEADROOM_BEACON": "off"}
+    # The beacon runs in the proxy process, which reads neither Claude's
+    # settings nor an interactive shell's mise env, so both switches are set
+    # here: HEADROOM_BEACON is headroom's own, DO_NOT_TRACK the cross-vendor
+    # opt-out it also honours. Forced, not defaulted -- an inherited "on" from
+    # a stale environment must not win.
+    return {**environ, "HEADROOM_BEACON": "off", "DO_NOT_TRACK": "1"}
 
 
 def claude_env(environ: Mapping[str, str], port: int) -> dict[str, str]:

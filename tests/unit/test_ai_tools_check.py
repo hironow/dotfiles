@@ -19,7 +19,9 @@ MISE_RTK = "/home/u/.local/share/mise/installs/rtk/0.50.0/rtk"
 MISE_HEADROOM = (
     "/home/u/.local/share/mise/installs/pypi-headroom-ai/0.38.0/bin/headroom"
 )
-TELEMETRY = {"RTK_TELEMETRY_DISABLED": "1", "HEADROOM_BEACON": "off"}
+# The posture itself, so a switch added there is immediately one a complete
+# setup has to carry (tests/unit/test_agent_tool_telemetry.py owns the values).
+TELEMETRY = dict(check.TELEMETRY_OFF)
 RTK_HOOK = 'bash "/home/u/.claude/hooks/rtk-hook-claude.sh"'
 # Trimmed answers of rtk 0.50.0 and headroom 0.38.0
 RTK_HELP = """A high-performance CLI proxy.
@@ -124,7 +126,7 @@ def test_the_vendored_pi_extension_must_match_the_installed_rtk() -> None:
     assert "just rtk-pi-refresh" in _detail(facts, "rtk-pi-extension")
 
 
-@pytest.mark.parametrize("missing", ["RTK_TELEMETRY_DISABLED", "HEADROOM_BEACON"])
+@pytest.mark.parametrize("missing", sorted(TELEMETRY))
 def test_telemetry_must_be_off_in_the_shell_and_in_claude(missing: str) -> None:
     env = {k: v for k, v in TELEMETRY.items() if k != missing}
     assert _levels(_facts(env=env))["telemetry"] == "WARN"

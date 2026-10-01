@@ -78,8 +78,12 @@ def test_the_proxy_runs_on_loopback_with_its_beacon_off() -> None:
         "--port",
         "4321",
     ]
-    env = hr.proxy_env({"HEADROOM_BEACON": "on", "PATH": "p"})
+    # Both telemetry switches, forced: the proxy reads neither Claude's
+    # settings nor an interactive shell's mise env (tests/unit/
+    # test_agent_tool_telemetry.py owns the posture).
+    env = hr.proxy_env({"HEADROOM_BEACON": "on", "DO_NOT_TRACK": "0", "PATH": "p"})
     assert env["HEADROOM_BEACON"] == "off"
+    assert env["DO_NOT_TRACK"] == "1"
     assert env["PATH"] == "p"
 
 

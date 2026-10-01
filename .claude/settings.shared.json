@@ -10,7 +10,8 @@
     "CLAUDE_CODE_PACKAGE_MANAGER_AUTO_UPDATE": "1",
     "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5",
     "RTK_TELEMETRY_DISABLED": "1",
-    "HEADROOM_BEACON": "off"
+    "HEADROOM_BEACON": "off",
+    "DO_NOT_TRACK": "1"
   },
   "settings": {
     "includeGitInstructions": false,
