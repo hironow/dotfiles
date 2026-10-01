@@ -78,6 +78,7 @@ def _run(plan_json: str, *args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
 
 

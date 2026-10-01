@@ -34,7 +34,7 @@ def test_fsck_stays_advisory() -> None:
     """Repair kills the runner and rewrites the filesystem; never self-apply."""
     text = _text()
     assert "--shutdown" in text, "the runbook must document the shutdown."
-    assert not re.search(r"^\s*[^#]*wsl\.exe --shutdown", text, re.M), (
+    assert not re.search(r"^\s*[^#]*wsl\.exe --shutdown", text, re.MULTILINE), (
         "wsl_fsck.sh must not execute `wsl --shutdown` itself."
     )
     for line in text.splitlines():

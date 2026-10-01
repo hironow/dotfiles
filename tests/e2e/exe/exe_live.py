@@ -44,7 +44,7 @@ def stamp(t: datetime) -> str:
 
 
 def parse_time(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return datetime.fromisoformat(value)
 
 
 def parse_duration(value: str) -> timedelta:

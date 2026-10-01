@@ -20,7 +20,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from _bash_hook import bash_path, resolve_bash
 from _symlinks import requires_symlinks
 

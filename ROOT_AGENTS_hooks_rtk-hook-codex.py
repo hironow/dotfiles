@@ -95,7 +95,7 @@ def respond(answer: dict, launcher: str) -> dict | None:
 
 def _run(argv: list[str], stdin: str | None = None) -> str | None:
     try:
-        proc = subprocess.run(  # noqa: S603 - resolved argv, no shell
+        proc = subprocess.run(
             argv,
             input=stdin,
             capture_output=True,

@@ -34,7 +34,7 @@ dev = [
 # ty uses `--group lint` so it still sees project imports.
 lint = [
     # == the root lint-group pin; tests/unit/test_ruff_ty_pins.py keeps it equal.
-    "ruff==0.15.22",
+    "ruff==0.16.9",
     "ty==0.0.84",
 ]
 

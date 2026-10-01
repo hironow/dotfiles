@@ -78,7 +78,7 @@ def visualize_rttm(
         return
 
     # Assign Y coordinates and colors for each speaker
-    sorted_speakers = sorted(list(speakers))
+    sorted_speakers = sorted(speakers)
     y_positions = {speaker: i for i, speaker in enumerate(sorted_speakers)}
     num_speakers = len(sorted_speakers)
 

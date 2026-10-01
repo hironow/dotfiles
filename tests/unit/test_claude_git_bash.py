@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import claude_git_bash as lookup  # noqa: E402
+import claude_git_bash as lookup
 
 GIT = r"C:\Program Files\Git"
 SCOOP_GIT = r"C:\Users\u\scoop\apps\git\current"

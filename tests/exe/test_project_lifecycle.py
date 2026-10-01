@@ -61,11 +61,11 @@ def test_bash_syntax_check(script: Path) -> None:
     result = subprocess.run(
         [BASH, "-n", str(script)],
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         timeout=10,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     assert result.returncode == 0, f"bash -n failed for {script.name}: {result.stderr}"
 
@@ -83,11 +83,11 @@ def test_shellcheck_warnings_zero(script: Path) -> None:
     result = subprocess.run(
         ["shellcheck", str(script)],
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         timeout=10,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     assert result.returncode == 0, (
         f"shellcheck failed for {script.name}:\n{result.stdout}"
@@ -166,11 +166,11 @@ def _run_cdr_project(
         text=True,
         env=env,
         input=stdin_input,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         timeout=10,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     log_lines = (
         log_file.read_text(encoding="utf-8").splitlines() if log_file.exists() else []
@@ -425,11 +425,11 @@ def test_project_up_rejects_invalid_id(tmp_path: Path, bad_id: str) -> None:
         [BASH, str(PROJECT_UP), bad_id],
         text=True,
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         timeout=5,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     assert result.returncode != 0, (
         f"project-up.sh should reject {bad_id!r}, got rc=0; stderr:\n{result.stderr}"

@@ -8,8 +8,8 @@ for ai_tools_check (telemetry switches) and claude_git_bash
 cannot be opened.
 """
 
-from collections.abc import Iterable
 import sys
+from collections.abc import Iterable
 
 MACHINE_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
 
@@ -22,7 +22,7 @@ def persisted(names: Iterable[str], *, machine: bool = False) -> dict[str, str] 
     """
     if sys.platform != "win32":
         return None
-    import winreg  # noqa: PLC0415 - Windows only
+    import winreg
 
     root, path = (
         (winreg.HKEY_LOCAL_MACHINE, MACHINE_KEY)

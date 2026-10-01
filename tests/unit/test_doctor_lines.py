@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import doctor_lines  # noqa: E402
+import doctor_lines
 
 
 @pytest.mark.parametrize(

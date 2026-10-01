@@ -15,7 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import jev_headroom_verify as verify  # noqa: E402
+import jev_headroom_verify as verify
 
 REWRITE = {"effort": "high", "from": "general-purpose", "to": "worker-high"}
 

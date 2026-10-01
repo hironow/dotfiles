@@ -4,16 +4,15 @@ Tests the CLI argument resolution that turns user-supplied identifiers
 (e.g. "p", "a", "claude", "work-a", "all") into canonical AgentTarget keys.
 """
 
-from pathlib import Path
-
 # Import from scripts (add parent to path)
 import sys
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from sync_agents import (  # noqa: E402
+from sync_agents import (
     AGENTS,
     _resolve_targets,
 )

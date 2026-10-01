@@ -8,12 +8,12 @@ Injected only into `j-cc` sessions (--settings); see docs/runbook/jev-launchers.
 It fails open: any problem leaves the launch exactly as Claude sent it.
 """
 
-from collections.abc import Callable
-from dataclasses import dataclass
 import json
 import os
-from pathlib import Path
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TextIO
 
 from jev_core import hook_output, plan_agent_rewrite, plan_codex_rewrite

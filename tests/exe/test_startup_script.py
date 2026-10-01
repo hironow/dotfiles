@@ -108,8 +108,7 @@ def _run(
         env=env,
         text=True,
         shell=isinstance(cmd, str),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=check,
         timeout=timeout,
         encoding="utf-8",
@@ -1260,10 +1259,14 @@ def test_operator_iam_user_grants_are_read_only(startup_script: str) -> None:
     # Negative pins: the buggy table-level GRANTs that caused the
     # 2026-05-04 outage MUST NOT come back.
     forbidden_table_level_patterns = [
-        r"GRANT\s+SELECT\s+ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public\s+"
-        r'TO\s+"\$PG_OPERATOR_DB_USER"',
-        r"ALTER\s+DEFAULT\s+PRIVILEGES.*?"
-        r'GRANT\s+SELECT\s+ON\s+TABLES\s+TO\s+"\$PG_OPERATOR_DB_USER"',
+        (
+            r"GRANT\s+SELECT\s+ON\s+ALL\s+TABLES\s+IN\s+SCHEMA\s+public\s+"
+            r'TO\s+"\$PG_OPERATOR_DB_USER"'
+        ),
+        (
+            r"ALTER\s+DEFAULT\s+PRIVILEGES.*?"
+            r'GRANT\s+SELECT\s+ON\s+TABLES\s+TO\s+"\$PG_OPERATOR_DB_USER"'
+        ),
     ]
     for pattern in forbidden_table_level_patterns:
         assert not re.search(pattern, startup_script, re.DOTALL), (

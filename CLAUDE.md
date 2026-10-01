@@ -55,7 +55,7 @@ just sync-agents-preview …  # dry-run
 ## Python lint の範囲 (repo-side の例外)
 
 - Python toolchain は global 規約どおり **uv + ruff + ty** (ADR 0044)。ただし **repo root
-  (`scripts/` `tests/` `tools/` など) の ruff は default rule + W605 + PTH (pathlib 強制)**で、
+  (`scripts/` `tests/` `tools/` など) の ruff は default rule (ruff 0.16 以降は 413 rule) + W605 + PTH (pathlib 強制)**で、
   spoke の canonical select は当てない
   (2026-09-08 計測: canonical は tests の ANN を除外しても 851 件。tests 中心の tooling に対して
   作業量が価値に見合わない)。

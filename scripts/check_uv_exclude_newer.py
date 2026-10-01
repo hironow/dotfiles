@@ -54,7 +54,7 @@ def _parse_cutoff(pkg: str, raw: object) -> datetime:
     if len(text) == 10:
         text += "T00:00:00Z"
     try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(text)
     except ValueError as exc:
         raise ValueError(
             f"{pkg}: cannot parse exclude-newer-package cutoff {raw!r}"

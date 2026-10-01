@@ -31,7 +31,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CDR = ROOT / "exe" / "scripts" / "cdr"
 
@@ -76,6 +75,7 @@ def _run(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=False,
     )
 
 
@@ -268,6 +268,7 @@ def test_cdr_skips_when_required_tools_missing(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        check=False,
     )
     assert r.returncode != 0
     assert "missing required tool" in r.stderr.lower(), (

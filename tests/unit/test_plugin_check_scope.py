@@ -16,7 +16,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from _bash_hook import run_bash
 from _symlinks import requires_symlinks
 

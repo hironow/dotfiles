@@ -34,7 +34,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from _bash_hook import run_bash
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -287,7 +286,7 @@ def test_documents_why_this_bucket_is_an_iac_exception() -> None:
 def test_shellcheck_clean() -> None:
     """`just check` runs shellcheck over every tracked *.sh; keep the gate green
     here rather than discovering it at commit time."""
-    result = subprocess.run(  # noqa: S603 - fixed argv, test-only
+    result = subprocess.run(
         [shutil.which("shellcheck") or "shellcheck", str(SCRIPT)],
         capture_output=True,
         text=True,

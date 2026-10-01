@@ -19,7 +19,7 @@ import pytest
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "bump_tool.py"
 
 
-def _load():  # noqa: ANN202 - module object
+def _load():
     spec = importlib.util.spec_from_file_location("bump_tool", _SCRIPT)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)

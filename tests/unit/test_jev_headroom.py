@@ -9,19 +9,18 @@ headroom", never "j-cc does not start".
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import json
 import socket
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import jev_headroom as hr  # noqa: E402
-import jev_launch as launcher  # noqa: E402
+import jev_headroom as hr
+import jev_launch as launcher
 
 READY = {"service": "headroom-proxy", "ready": True}
 

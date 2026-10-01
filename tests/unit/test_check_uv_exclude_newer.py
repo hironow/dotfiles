@@ -20,7 +20,7 @@ import pytest
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_uv_exclude_newer.py"
 
 
-def _load():  # noqa: ANN202 - module object
+def _load():
     spec = importlib.util.spec_from_file_location("check_uv_exclude_newer", _SCRIPT)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)

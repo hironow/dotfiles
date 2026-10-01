@@ -63,6 +63,7 @@ def run_git(args: list[str], cwd: Path | None = None) -> str:
         cwd=cwd or ROOT,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     return result.stdout.strip()
 

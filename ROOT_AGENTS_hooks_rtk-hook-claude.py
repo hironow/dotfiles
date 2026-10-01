@@ -97,7 +97,7 @@ def _rtk_executable() -> str | None:
     if not shutil.which("mise"):
         return None
     try:
-        proc = subprocess.run(  # noqa: S603,S607 - fixed argv, PATH lookup intended
+        proc = subprocess.run(
             ["mise", "which", RTK_LAUNCHER],
             capture_output=True,
             text=True,
@@ -172,7 +172,7 @@ def _run_rtk(raw: str) -> tuple[dict, str | None] | None:
         return None
     off_path = None if shutil.which(RTK_LAUNCHER) else Path(launcher).as_posix()
     try:
-        proc = subprocess.run(  # noqa: S603 - resolved argv, no shell
+        proc = subprocess.run(
             [launcher, "hook", "claude"],
             input=raw,
             capture_output=True,

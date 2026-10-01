@@ -30,10 +30,11 @@ gate a rollout step), 2 on a usage error.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import itertools
 import json
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
 
 Line = tuple[str, str, str]  # (level, name, detail)
 
@@ -141,8 +142,10 @@ def artifact_registry(repos: Sequence[Mapping[str, object]]) -> list[Line]:
                 (
                     "WARN",
                     label,
-                    f"{len(policies)} policy(ies) but no DELETE: a KEEP-only "
-                    "repository deletes nothing, forever",
+                    (
+                        f"{len(policies)} policy(ies) but no DELETE: a KEEP-only "
+                        "repository deletes nothing, forever"
+                    ),
                 )
             )
         elif repo.get("cleanupPolicyDryRun") is True:
@@ -195,8 +198,10 @@ def buckets(found: Sequence[Mapping[str, object]], *, project: str) -> list[Line
                 (
                     "WARN",
                     f"soft-delete:{name}",
-                    f"deleted objects are kept {seconds // 86400} day(s) as billed "
-                    "storage; set soft_delete_policy deliberately or to 0",
+                    (
+                        f"deleted objects are kept {seconds // 86400} day(s) as billed "
+                        "storage; set soft_delete_policy deliberately or to 0"
+                    ),
                 )
             )
         if SNAPSHOT_MARKER in name:
@@ -205,8 +210,10 @@ def buckets(found: Sequence[Mapping[str, object]], *, project: str) -> list[Line
                     (
                         "WARN",
                         label,
-                        "a snapshot bucket must NOT have a delete lifecycle: a rule "
-                        "cannot tell a referenced snapshot from an abandoned one",
+                        (
+                            "a snapshot bucket must NOT have a delete lifecycle: a rule "
+                            "cannot tell a referenced snapshot from an abandoned one"
+                        ),
                     )
                 )
             else:
@@ -220,8 +227,10 @@ def buckets(found: Sequence[Mapping[str, object]], *, project: str) -> list[Line
                 (
                     "WARN",
                     label,
-                    "no lifecycle: this is Cloud Build's default source bucket, "
-                    "created on the first build and never pruned",
+                    (
+                        "no lifecycle: this is Cloud Build's default source bucket, "
+                        "created on the first build and never pruned"
+                    ),
                 )
             )
         else:
@@ -269,8 +278,10 @@ def idle_resources(
             (
                 "WARN",
                 f"sql:{_basename(str(instance.get('name', '?')))}",
-                f"state {instance.get('state', '?')}: an instance bills for its "
-                f"{size} GiB disk and its backups even STOPPED",
+                (
+                    f"state {instance.get('state', '?')}: an instance bills for its "
+                    f"{size} GiB disk and its backups even STOPPED"
+                ),
             )
         )
     return lines or [("OK", "idle-resources", "no idle disk, address or SQL instance")]
@@ -287,8 +298,10 @@ def budgets(found: Sequence[Mapping[str, object]] | None) -> list[Line]:
             (
                 "OK",
                 "budget",
-                "not checked: pass --billing-account to look (the id is an "
-                "argument, never a tracked value)",
+                (
+                    "not checked: pass --billing-account to look (the id is an "
+                    "argument, never a tracked value)"
+                ),
             )
         ]
     if not found:
@@ -390,8 +403,10 @@ def report(
             (
                 "OK",
                 "scheduler",
-                "not checked: pass --location, which `gcloud scheduler jobs list` "
-                "requires",
+                (
+                    "not checked: pass --location, which `gcloud scheduler jobs list` "
+                    "requires"
+                ),
             )
         )
 
@@ -403,8 +418,10 @@ def report(
                 (
                     "WARN",
                     label,
-                    f"`gcloud {key.replace('_', ' ')} list` could not be read: "
-                    "the API may be disabled or the identity may lack the role",
+                    (
+                        f"`gcloud {key.replace('_', ' ')} list` could not be read: "
+                        "the API may be disabled or the identity may lack the role"
+                    ),
                 )
             )
 
@@ -442,7 +459,7 @@ def exit_code(lines: Sequence[Line]) -> int:
 
 def _gcloud(argv: list[str]) -> object | None:
     try:
-        done = subprocess.run(  # noqa: S603,S607 - fixed argv, PATH lookup intended
+        done = subprocess.run(
             ["gcloud", *argv, "--format=json"],
             capture_output=True,
             encoding="utf-8",
@@ -526,7 +543,7 @@ def main(argv: Sequence[str]) -> int:
         return 2
     project = args[0]
     billing = location = None
-    for flag, value in zip(args, args[1:]):
+    for flag, value in itertools.pairwise(args):
         if flag == "--billing-account":
             billing = value
         elif flag == "--location":

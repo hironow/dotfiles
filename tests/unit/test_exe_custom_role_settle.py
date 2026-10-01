@@ -43,7 +43,9 @@ def bindings_of_custom_roles() -> dict[str, str]:
     return {
         address: body
         for address, body in blocks().items()
-        if re.search(r"^\s*role\s*=\s*google_project_iam_custom_role\.", body, re.M)
+        if re.search(
+            r"^\s*role\s*=\s*google_project_iam_custom_role\.", body, re.MULTILINE
+        )
     }
 
 
