@@ -80,7 +80,10 @@ def is_logged_out(stream_lines: list[str]) -> bool:
             and event.get("type") == "result"
             and event.get("is_error") is True
             and isinstance(event.get("result"), str)
-            and re.match(r"^Not logged in\b", event["result"])
+            and re.match(
+                r"^(Not logged in\b|Failed to authenticate: OAuth session expired)",
+                event["result"],
+            )
         ):
             return True
     return False
@@ -113,7 +116,7 @@ def _analyze_worker(
     if not hook_records and is_logged_out(stream_lines):
         return Report(
             "blocked",
-            "Claude Code is not logged in (run claude, then /login); nothing was verified",
+            "Claude Code is not logged in or its login expired (run claude, then /login); nothing was verified",
         )
     if not hook_records:
         return Report(

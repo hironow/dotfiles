@@ -63,6 +63,19 @@ def test_a_logged_out_cli_is_blocked_not_failed() -> None:
     assert "/login" in report.reason
 
 
+@pytest.mark.parametrize(
+    "result",
+    [
+        "Not logged in · Please run /login",
+        # seen live (WSL, 2026-10-01): the login had expired, not gone
+        "Failed to authenticate: OAuth session expired and could not be refreshed",
+    ],
+)
+def test_every_no_login_result_is_recognised(result: str) -> None:
+    event = {"type": "result", "is_error": True, "result": result}
+    assert verify.is_logged_out([json.dumps(event)])
+
+
 def test_logged_out_text_from_the_model_does_not_block() -> None:
     stream = [
         json.dumps(

@@ -150,7 +150,10 @@ def analyze(
     if has_provider_limit(stream_lines):
         return Report("blocked", "a Claude usage limit stopped the check")
     if is_logged_out(stream_lines):
-        return Report("blocked", "Claude Code is not logged in")
+        return Report(
+            "blocked",
+            "Claude Code is not logged in or its login expired (run claude, then /login)",
+        )
     texts = [first_user_text(messages) for messages in proxied]
     main = sum(MAIN in text for text in texts)
     worker = sum(WORKER in text and MAIN not in text for text in texts)
@@ -216,7 +219,10 @@ def analyze_rtk(
     if has_provider_limit(stream_lines):
         return Report("blocked", "a Claude usage limit stopped the check")
     if is_logged_out(stream_lines):
-        return Report("blocked", "Claude Code is not logged in")
+        return Report(
+            "blocked",
+            "Claude Code is not logged in or its login expired (run claude, then /login)",
+        )
     session = sum(RTK in first_user_text(messages) for messages in proxied)
     evidence = [
         f"proxied requests: {len(proxied)} (session {session})",
