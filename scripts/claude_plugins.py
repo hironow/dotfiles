@@ -21,11 +21,9 @@ Prints doctor-style OK/WARN lines; exit 1 on a WARN.
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
 import sys
 import time
 
@@ -37,10 +35,6 @@ NAME = "claude-plugins"
 DECLARATION = ROOT / "dump/harness/claude-plugins.json"
 MARKETPLACE_LIST = ["plugin", "marketplace", "list", "--json"]
 PLUGIN_LIST = ["plugin", "list", "--json"]
-CALL_TIMEOUT = 180.0  # one claude call
-# --check as a whole: below doctor's wait for a checker (ai_tools_check), so a
-# hanging home costs its own lines, never the report of the others
-CHECK_BUDGET = 240.0
 
 Step = tuple[list[str], str]  # (claude argv, what is wrong until it runs)
 Cli = Callable[[list[str]], str | None]  # claude argv -> stdout, None on failure
@@ -109,15 +103,6 @@ def plugin_steps(
     return steps
 
 
-def call_timeout(deadline: float | None, now: float) -> float | None:
-    """How long the next claude call may take; None when the budget is spent."""
-    if deadline is None:
-        return CALL_TIMEOUT
-    if now >= deadline:
-        return None
-    return min(CALL_TIMEOUT, deadline - now)
-
-
 def _listed(out: str | None) -> list[dict] | None:
     try:
         listed = json.loads(out or "")
@@ -174,30 +159,8 @@ def load(path: Path) -> Declaration:
 
 
 def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
-    # A native path in a copied environment: one home per subprocess
-    env = {**os.environ, "CLAUDE_CONFIG_DIR": str(home)}
-
-    def run(args: list[str]) -> str | None:
-        timeout = call_timeout(deadline, time.monotonic())
-        if timeout is None:
-            return None
-        try:
-            done = subprocess.run(
-                [claude, *args],
-                cwd=home,  # no project or local plugin scope applies here
-                env=env,
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return done.stdout if done.returncode == 0 else None
-
-    return run
+    # cwd in the home: no project or local plugin scope applies there
+    return claude_homes.runner(claude, home, deadline, cwd=home, no_stdin=True)
 
 
 def main(argv: Sequence[str]) -> int:
@@ -209,7 +172,7 @@ def main(argv: Sequence[str]) -> int:
     declaration = load(DECLARATION)
     homes = claude_homes.existing(Path.home())
     failed = False
-    deadline = time.monotonic() + CHECK_BUDGET if check else None
+    deadline = time.monotonic() + claude_homes.CHECK_BUDGET if check else None
     for home in homes:
         cli = _cli(claude, home, deadline)
         done, problems = reconcile(declaration, cli, check=check)

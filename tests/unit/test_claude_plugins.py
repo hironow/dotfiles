@@ -192,36 +192,6 @@ def test_no_settings_fragment_claims_the_plugin_keys(fragment: Path) -> None:
         assert all(key not in section for section in sections)
 
 
-@pytest.mark.parametrize(
-    ("deadline", "now", "timeout"),
-    [
-        (None, 0.0, plugins.CALL_TIMEOUT),  # installing: no overall budget
-        (1000.0, 0.0, plugins.CALL_TIMEOUT),
-        (100.0, 90.0, 10.0),  # the budget's rest, so doctor gets every line
-        (100.0, 100.0, None),  # spent: skip, reported as unreadable
-    ],
-)
-def test_each_call_fits_the_overall_budget(
-    deadline: float | None, now: float, timeout: float | None
-) -> None:
-    assert plugins.call_timeout(deadline, now) == timeout
-
-
-def test_the_check_budget_ends_before_doctor_stops_waiting() -> None:
-    import ai_tools_check  # noqa: PLC0415
-
-    assert plugins.CHECK_BUDGET < ai_tools_check.CHECKER_TIMEOUT
-
-
-def test_a_repair_that_fails_halfway_is_not_reported_as_done() -> None:
-    # remove succeeds, add fails: the marketplace is now missing, not fixed
-    cli = FakeClaude([{**MARKET, "ref": "v1.0.5"}], [])
-    cli.failing = ["marketplace", "add"]
-    done, problems = _run(cli)
-    assert done == []
-    assert problems and "failed" in problems[0]
-
-
 def test_main_prints_each_home_then_the_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -252,3 +222,12 @@ def test_main_prints_each_home_then_the_summary(
     assert capsys.readouterr().out.splitlines()[-1] == (
         "OK   claude-plugins - codex@openai-codex in 2 Claude home(s)"
     )
+
+
+def test_a_repair_that_fails_halfway_is_not_reported_as_done() -> None:
+    # remove succeeds, add fails: the marketplace is now missing, not fixed
+    cli = FakeClaude([{**MARKET, "ref": "v1.0.5"}], [])
+    cli.failing = ["marketplace", "add"]
+    done, problems = _run(cli)
+    assert done == []
+    assert problems and "failed" in problems[0]

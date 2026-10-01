@@ -60,7 +60,7 @@ CHECKERS = {
     "claude": ("claude-plugins", ("claude_plugins.py", "headroom_mcp.py")),
 }
 
-# A checker may query several homes (claude_plugins.CHECK_BUDGET stays below)
+# A checker may query several homes (claude_homes.CHECK_BUDGET stays below)
 CHECKER_TIMEOUT = 300
 
 

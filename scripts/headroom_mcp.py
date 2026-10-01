@@ -41,10 +41,8 @@ Prints doctor-style OK/WARN lines; exit 1 on a WARN.
 
 from collections.abc import Callable, Mapping, Sequence
 import json
-import os
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 import time
 
@@ -58,10 +56,6 @@ ARGS = ("x", "--", "headroom", "mcp", "serve")
 # Both switches, because the beacon fails open and DO_NOT_TRACK overrides it
 EGRESS = {"HEADROOM_BEACON": "off", "DO_NOT_TRACK": "1"}
 
-CALL_TIMEOUT = 180.0  # one claude call
-# --check as a whole: below doctor's wait for a checker, so a hanging home costs
-# its own lines and never the report of the others
-CHECK_BUDGET = 240.0
 
 Cli = Callable[[list[str]], bool]  # claude argv -> did it succeed
 Read = Callable[[], Mapping[str, object] | None]  # the registry, None if unreadable
@@ -147,27 +141,9 @@ def reconcile(read: Read, cli: Cli, *, check: bool) -> tuple[str | None, str | N
 
 
 def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
-    def run(args: list[str]) -> bool:
-        timeout = CALL_TIMEOUT
-        if deadline is not None:
-            timeout = min(timeout, max(0.0, deadline - time.monotonic()))
-            if timeout <= 0:
-                return False
-        try:
-            done = subprocess.run(  # noqa: S603 - resolved argv, no shell
-                [claude, *args],
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout,
-                check=False,
-                env={**os.environ, "CLAUDE_CONFIG_DIR": str(home)},
-            )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        return done.returncode == 0
-
-    return run
+    run = claude_homes.runner(claude, home, deadline)
+    # success is the exit status: an empty stdout still counts
+    return lambda args: run(args) is not None
 
 
 def _read(home: Path) -> Read:
@@ -207,7 +183,7 @@ def main(argv: Sequence[str]) -> int:
         return 1
     homes = _homes(argv)
     failed = False
-    deadline = time.monotonic() + CHECK_BUDGET if check else None
+    deadline = time.monotonic() + claude_homes.CHECK_BUDGET if check else None
     for home in homes:
         fixed, problem = reconcile(
             _read(home), _cli(claude, home, deadline), check=check
