@@ -396,7 +396,13 @@ def test_toolcache_reaping_never_races_a_running_job() -> None:
 def test_scripts_parse() -> None:
     """`bash -n` every script so a syntax error cannot ship."""
     for script in (GC, INSTALL, COMPACT, SCRIPTS / "disk_gc.sh"):
-        proc = subprocess.run([BASH, "-n", str(script)], capture_output=True, text=True)
+        proc = subprocess.run(
+            [BASH, "-n", str(script)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
         assert proc.returncode == 0, f"{script.name}: {proc.stderr}"
 
 
@@ -564,6 +570,8 @@ def _run_gc(root: Path, *extra: str, env: dict[str, str] | None = None):
         capture_output=True,
         text=True,
         env=overrides,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -573,8 +581,8 @@ pwshonly = pytest.mark.skipif(PWSH is None, reason="needs pwsh to run the GC")
 @pwshonly
 def test_cold_workspace_goes_warm_workspace_stays(tmp_path: Path) -> None:
     root = _make_runner_root(tmp_path)
-    cold = _workspace(root, "manga-uri", age_hours=5)
-    warm = _workspace(root, "auto-amv", age_hours=0.5)
+    cold = _workspace(root, "example-repo-a", age_hours=5)
+    warm = _workspace(root, "example-repo-b", age_hours=0.5)
 
     proc = _run_gc(root)
 
@@ -587,7 +595,7 @@ def test_cold_workspace_goes_warm_workspace_stays(tmp_path: Path) -> None:
 def test_marker_outranks_a_stale_directory_timestamp(tmp_path: Path) -> None:
     """The regression the marker exists for: old directory, fresh marker."""
     root = _make_runner_root(tmp_path)
-    ws = _workspace(root, "manga-uri", age_hours=800)
+    ws = _workspace(root, "example-repo-a", age_hours=800)
     _age(ws / MARKER, 0.25)
 
     proc = _run_gc(root)
@@ -602,9 +610,9 @@ def test_marker_outranks_a_stale_directory_timestamp(tmp_path: Path) -> None:
 @pwshonly
 def test_live_workspace_survives_even_when_cold(tmp_path: Path) -> None:
     root = _make_runner_root(tmp_path)
-    live = _workspace(root, "manga-uri", age_hours=99)
+    live = _workspace(root, "example-repo-a", age_hours=99)
 
-    proc = _run_gc(root, env={"RUNNER_WORKSPACE": str(live / "manga-uri")})
+    proc = _run_gc(root, env={"RUNNER_WORKSPACE": str(live / "example-repo-a")})
 
     assert proc.returncode == 0, proc.stderr
     assert live.exists(), (
@@ -617,9 +625,9 @@ def test_live_workspace_survives_even_when_cold(tmp_path: Path) -> None:
 def test_hook_stamps_the_marker_for_the_finishing_job(tmp_path: Path) -> None:
     """Without this the workspace of the *last* job ages from its checkout."""
     root = _make_runner_root(tmp_path)
-    ws = _workspace(root, "manga-uri", age_hours=99, marker=False)
+    ws = _workspace(root, "example-repo-a", age_hours=99, marker=False)
 
-    proc = _run_gc(root, env={"GITHUB_REPOSITORY": "m4k3-co/manga-uri"})
+    proc = _run_gc(root, env={"GITHUB_REPOSITORY": "example-org/example-repo-a"})
 
     assert proc.returncode == 0, proc.stderr
     assert ws.exists(), "the workspace of the job we just ran must be kept"
@@ -654,12 +662,12 @@ def test_runner_owned_directories_are_never_swept(tmp_path: Path) -> None:
 def test_readonly_files_do_not_stop_the_sweep(tmp_path: Path) -> None:
     """`.git/objects` is read-only; a naive delete aborts the whole tree."""
     root = _make_runner_root(tmp_path)
-    ws = _workspace(root, "manga-uri", age_hours=9)
-    locked = ws / "manga-uri" / ".git" / "objects"
+    ws = _workspace(root, "example-repo-a", age_hours=9)
+    locked = ws / "example-repo-a" / ".git" / "objects"
     locked.mkdir(parents=True)
     blob = locked / "cafebabe"
     blob.write_bytes(b"blob")
-    os.chmod(blob, stat.S_IREAD)
+    blob.chmod(stat.S_IREAD)
 
     proc = _run_gc(root)
 
@@ -697,13 +705,13 @@ def test_a_single_stale_log_does_not_throw(tmp_path: Path) -> None:
 def test_dry_run_reports_without_deleting(tmp_path: Path) -> None:
     """Rehearsal before pointing this at a real 5 GB runner root."""
     root = _make_runner_root(tmp_path)
-    cold = _workspace(root, "manga-uri", age_hours=5)
+    cold = _workspace(root, "example-repo-a", age_hours=5)
 
     proc = _run_gc(root, "-DryRun")
 
     assert proc.returncode == 0, proc.stderr
     assert cold.exists(), "-DryRun must not delete anything"
-    assert "manga-uri" in proc.stdout, (
+    assert "example-repo-a" in proc.stdout, (
         "-DryRun has to name what it would collect, or it cannot be reviewed."
     )
 
@@ -773,12 +781,19 @@ def test_sweep_does_not_follow_a_junction_out_of_the_workspace(
 ) -> None:
     """A junction in a checkout must cost the link, never the target."""
     root = _make_runner_root(tmp_path)
-    ws = _workspace(root, "manga-uri", age_hours=9)
+    ws = _workspace(root, "example-repo-a", age_hours=9)
     outside = tmp_path / "precious"
     outside.mkdir()
     (outside / "keep.txt").write_text("keep", encoding="utf-8")
     subprocess.run(
-        ["cmd", "/c", "mklink", "/J", str(ws / "manga-uri" / "linked"), str(outside)],
+        [
+            "cmd",
+            "/c",
+            "mklink",
+            "/J",
+            str(ws / "example-repo-a" / "linked"),
+            str(outside),
+        ],
         capture_output=True,
         check=True,
     )
@@ -1234,6 +1249,8 @@ def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
             "PATH": f"{stub_dir}{os.pathsep}" + os.environ.get("PATH", ""),
         },
         timeout=90,
+        encoding="utf-8",
+        errors="replace",
     )
     elapsed = time.monotonic() - start
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -1248,9 +1265,9 @@ def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
 
 def test_win_gc_sweeps_bun_stale_renames_with_a_day_floor() -> None:
     r"""The hub's setup-bun-canary renames a busy bun.exe/bunx.exe aside as
-    `*.stale-<guid>` instead of fighting the lock (m4k3-co/.github#70;
+    `*.stale-<guid>` instead of fighting the lock (example-org/.github#70;
     bunx is a HARDLINK of bun, so any live bun process blocks an overwrite -
-    manga-uri light-0201). Its own sweep runs only at the NEXT install and is
+    example-repo-a light-0201). Its own sweep runs only at the NEXT install and is
     best-effort, so on a box where interactive bun runs live for hours the
     86MB-per-file litter can sit in ~/.bun/bin indefinitely. The hourly GC is
     the natural janitor.

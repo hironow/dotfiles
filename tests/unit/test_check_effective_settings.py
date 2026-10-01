@@ -37,7 +37,9 @@ def test_effective_settings_reflect_layering(tmp_path: Path) -> None:
     generated = generate(DOTFILES, tmp_path)
 
     work_c_mac = json.loads(generated["work-c-macos"].read_text(encoding="utf-8"))
-    assert work_c_mac["effortLevel"] == "xhigh"
+    # work profiles follow each model's default effort (/effort saves per model)
+    assert "effortLevel" not in work_c_mac
+    assert work_c_mac["permissions"]["defaultMode"] == "auto"
     assert "Bash(npm:*)" in work_c_mac["permissions"]["deny"]
     assert work_c_mac["preferredNotifChannel"] == "ghostty"
     assert work_c_mac["skillOverrides"]["yeet"] == "name-only"
@@ -81,6 +83,8 @@ def test_output_survives_cp932_stdout() -> None:
         text=True,
         env=env,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
     assert proc.returncode == 0, (
         "checker output must not crash on a cp932 stdout:\n" + proc.stderr

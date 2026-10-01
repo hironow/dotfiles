@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Let Codex's Windows sandbox run the tools mise installs, rtk above all.
+
+Codex's elevated Windows sandbox runs commands as separate users and reaches
+the profile through inheritable CodexSandboxUsers:(RX) entries it sets on the
+profile's top directories (codex-rs windows-sandbox-rs setup). A directory that
+does not inherit keeps those users out. %LOCALAPPDATA%\\mise was one, so every
+mise tool was "access denied" in the sandbox and each command the rtk hook
+rewrote to `rtk ...` failed. The fix grants that group read and execute on the
+mise dir and nothing more (turning inheritance back on would also import any
+other inheritable entry of the parent); `icacls <dir> /remove:g
+CodexSandboxUsers` undoes it.
+
+The same entries reach files directly under the profile, so a secret kept in
+~/.env is readable in the sandbox; Codex skips ~/.config, where the Jev key
+lives. That is reported, never changed: Codex grants the entry again when it
+sets its sandbox up, so only moving the secret lasts.
+
+Usage: codex_sandbox_tools.py [--check]   (--check reports without changing)
+Prints doctor-style OK/WARN lines; exit 1 on a WARN. Windows only: elsewhere
+Codex's sandbox reads the whole disk.
+"""
+
+from collections.abc import Sequence
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+from doctor_lines import Line, failed, fmt
+
+SANDBOX_GROUP = "CodexSandboxUsers"
+
+
+# ---- Functional core ----
+
+
+def state(sandbox_exists: bool, acl: str) -> str:
+    """'absent' (no elevated sandbox), 'readable' or 'blocked'.
+
+    sandbox_exists: Windows has the sandbox's group, which Codex creates when it
+    sets its elevated sandbox up. Where Codex granted read varies by host (the
+    profile itself on one, only its entries on another), so no ACL tells it;
+    acl is the mise dir's icacls output."""
+    if not sandbox_exists:
+        return "absent"
+    return "readable" if SANDBOX_GROUP in acl else "blocked"
+
+
+def message(current: str, directory: str) -> tuple[str, str]:
+    if current == "blocked":
+        return (
+            "WARN",
+            f"{directory} lacks the {SANDBOX_GROUP} read access, so rtk and "
+            "every mise tool fail inside Codex's sandbox: just codex-sandbox-tools",
+        )
+    if current == "absent":
+        return ("OK", "Codex's elevated sandbox is not set up; nothing to reach")
+    return ("OK", "Codex's sandbox can run mise tools")
+
+
+def fix_command(directory: str) -> list[str]:
+    """Read and execute for the sandbox group, inherited below, and nothing else."""
+    return ["icacls", directory, "/grant", f"{SANDBOX_GROUP}:(OI)(CI)(RX)", "/Q"]
+
+
+def git_message() -> tuple[str, str]:
+    """Why git stops inside the sandbox, and what dotfiles leaves to the owner."""
+    return (
+        "OK",
+        "git in the sandbox runs as another user and stops at safe.directory; "
+        "add a repo to it by hand only if you accept that sandboxed code may "
+        "then plant a .git/config your own git runs, or run Codex without the "
+        "sandbox (docs/runbook/windows-host.md)",
+    )
+
+
+def secrets_message(env_acl: str) -> tuple[str, str]:
+    """From the icacls output for ~/.env."""
+    if SANDBOX_GROUP in env_acl:
+        return (
+            "WARN",
+            "Codex's sandbox can read ~/.env, and Codex grants that again on setup: "
+            "move its secrets under ~/.config (which it skips) and delete ~/.env",
+        )
+    return ("OK", "~/.env is not readable in Codex's sandbox")
+
+
+def report(
+    env_acl: str | None, directory: str, *, before: str | None, after: str | None
+) -> list[Line]:
+    """The doctor lines from what main() gathered.
+
+    env_acl: icacls of ~/.env, None when there is none; before: the sandbox's
+    state for the mise dir, None when there is no mise dir; after: its state
+    once a repair was tried, None when none was.
+    """
+    lines: list[Line] = []
+    if env_acl is not None:
+        level, detail = secrets_message(env_acl)
+        lines.append((level, "codex-sandbox-secrets", detail))
+    if before is None:
+        return [*lines, ("OK", "codex-sandbox", f"no mise data dir at {directory}")]
+    current = before if after is None else after
+    if after == "readable":
+        granted = f"granted {SANDBOX_GROUP} read on {directory}"
+        lines.append(("OK", "codex-sandbox", granted))
+    level, detail = message(current, directory)
+    lines.append((level, "codex-sandbox", detail))
+    if current != "absent":
+        level, detail = git_message()
+        lines.append((level, "codex-sandbox-git", detail))
+    return lines
+
+
+# ---- Imperative shell ----
+
+
+def _acl(path: Path) -> str:
+    return subprocess.run(
+        ["icacls", str(path)],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    ).stdout
+
+
+def _group_exists() -> bool:
+    """Whether Windows has the sandbox's group (net: 0 found, 2 no such group)."""
+    try:
+        done = subprocess.run(
+            ["net", "localgroup", SANDBOX_GROUP], capture_output=True, check=False
+        )
+    except OSError:
+        return False
+    return done.returncode == 0
+
+
+def main(argv: Sequence[str]) -> int:
+    if sys.platform != "win32":
+        return 0
+    directory = Path(
+        os.environ.get("MISE_DATA_DIR") or Path(os.environ["LOCALAPPDATA"]) / "mise"
+    )
+    env_file = Path.home() / ".env"
+    env_acl = _acl(env_file) if env_file.is_file() else None
+    exists = _group_exists()
+    before = state(exists, _acl(directory)) if directory.is_dir() else None
+    after = None
+    if before == "blocked" and "--check" not in argv:
+        subprocess.run(fix_command(str(directory)), capture_output=True, check=False)
+        after = state(exists, _acl(directory))
+    lines = report(env_acl, str(directory), before=before, after=after)
+    for line in lines:
+        print(fmt(line))
+    return 1 if failed(lines) else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

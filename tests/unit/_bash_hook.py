@@ -22,7 +22,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 
@@ -117,3 +117,18 @@ def run_bash(
         )
     finally:
         shutil.rmtree(staged, ignore_errors=True)
+
+
+def bash_path(path: PurePath) -> str:
+    """``path`` as a PATH entry bash can use.
+
+    bash splits PATH on ':', so a native Windows entry breaks at its drive
+    colon; Git Bash resolves the drive form as ``/c/...`` and a UNC share as
+    ``//server/share/...``. POSIX paths pass through unchanged.
+    """
+    drive = path.drive
+    if not drive:
+        return str(path)
+    if drive.startswith(("\\\\", "//")):  # a UNC share
+        return path.as_posix()
+    return f"/{drive[0].lower()}{path.as_posix()[len(drive) :]}"

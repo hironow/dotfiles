@@ -6,7 +6,7 @@
 ## Context
 
 The Windows host ran out of C: space (12.9 GB free of 461 GB). It carries
-**two** self-hosted runners — `actions.runner.m4k3-co.trade_linux_wsl` inside a
+**two** self-hosted runners — `actions.runner.example-org.trade_linux_wsl` inside a
 WSL distro, and a native Windows one at `~/actions-runner-win` — and neither
 collected anything.
 
@@ -21,7 +21,7 @@ magnitude behind, at **6.1 GB** and climbing with no GC of any kind:
 | `_work/_update` + superseded `bin.*`/`externals.*` + installer `.zip` | 0.6 GB |
 | `_work/_temp`                       | 12 KB  |
 
-`manga-uri` alone accounts for 4.1 GB of that, 3.7 GB of it a Rust `target/`.
+`example-repo-a` alone accounts for 4.1 GB of that, 3.7 GB of it a Rust `target/`.
 The scratch directory an incomplete sweep would reach for is five orders of
 magnitude smaller than the workspaces that actually grow.
 
@@ -152,9 +152,9 @@ CodeQL alone.
 1.25.x`, `node-version: 22.x`, `python-version: 3.13` — and `setup-*` resolves
 it to the newest patch within that series. A flat "keep the newest N versions"
 therefore evicts versions the matrices still need: three repos on this runner
-(`rvc-hfie` 3.10, `m4k3` 3.13, `just-ag` 3.14) pin three different Python
-series between them, so keeping only the newest would re-download two of them on
-every job. Keeping **the newest patch of each series** protects exactly what a
+(`example-repo-c` 3.10, `example-repo-d` 3.13, `example-repo-e` 3.14) pin three
+different Python series between them, so keeping only the newest would
+re-download two of them on every job. Keeping **the newest patch of each series** protects exactly what a
 series pin resolves to, and still reaps the patches it superseded.
 `RUNNER_GC_TOOLCACHE_KEEP` (default 5) bounds how many series survive, so the
 cache cannot grow without limit either; raise it if the matrices pin more series
@@ -198,7 +198,7 @@ equally forceable.
 here whose collection is irreversible — so it is aged on a marker file
 (`.runner-gc-last-used`) the GC stamps itself, never on the directory
 timestamp. **Windows does not bump a directory's `LastWriteTime` when a nested
-file changes**: `manga-uri` was rebuilt the day before this was written and
+file changes**: `example-repo-a` was rebuilt the day before this was written and
 still reported a mtime seven weeks old. Ageing on that inverts the policy
 outright — hot checkouts read cold and get deleted, cold ones look fresh and
 survive. Whatever `RUNNER_WORKSPACE`/`GITHUB_WORKSPACE` point at is excluded on

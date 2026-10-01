@@ -29,7 +29,9 @@ import argparse
 import filecmp
 import json
 import platform
+import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +46,25 @@ BASE_FILE = "ROOT_AGENTS.md"
 OVERLAY_FILE = "ROOT_CLAUDE.md"
 # Hooks settings fragment merged into each claude-family agent's settings.json.
 HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
+# Codex reads Claude-shaped hook blocks from <codex home>/hooks.json.
+CODEX_HOOK_FRAGMENT = ".codex/hooks.json"
+# Hook commands a third-party installer writes into the agent home that dotfiles
+# has since replaced with a managed hook. Their commands do not point at
+# <agent>/hooks/, so _is_managed_hook_block would classify them as user blocks
+# and preserve them forever — next to the replacement, which is worse than
+# either alone. Retired on every sync, so a reinstall/upgrade that re-adds one
+# is undone rather than silently resurrecting the old behavior (ADR 0047).
+# rtk's `rtk hook claude` / `rtk hook codex`, also as a later rtk may write
+# them: the binary by name or by a (quoted) path, with or without .exe, plus
+# arguments of its own. A user's wrapper around it does not match.
+RETIRED_HOOK_COMMAND = re.compile(
+    r'^(?:"[^"]*[/\\])?rtk(?:\.exe)?"?\s+hook\s+(?:claude|codex)(?:\s|$)'
+)
+# Header line a third-party installer writes at the top of a hook file it owns
+# inside <agent>/hooks/ (herdr: "# installed by herdr"). Such a file is not a
+# stale dotfiles hook, and a settings block calling it is not sync's to replace:
+# treating either as ours silently uninstalled the integration on every sync.
+THIRD_PARTY_HOOK_HEADERS = frozenset({"# installed by herdr"})
 # Shared settings fragment merged into each claude-family agent's settings.json:
 # the cross-machine env block (owned wholesale) plus curated top-level keys.
 SHARED_SETTINGS_FRAGMENT = ".claude/settings.shared.json"
@@ -51,8 +72,11 @@ SHARED_SETTINGS_FRAGMENT = ".claude/settings.shared.json"
 # platform.system(). A missing overlay file is simply an empty layer.
 OS_SETTINGS_OVERLAYS = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}
 # Per-profile fragments (one per claude-family AgentTarget.key) layered on top
-# of the OS overlay, capturing intentional per-profile diffs (effortLevel...).
+# of the OS overlay, capturing intentional per-profile diffs.
 PROFILE_SETTINGS_DIR = ".claude/settings.profiles"
+# Sync-owned record in the AGENT HOME of the `retired` migrations that home has
+# evaluated, so each runs once and a value the user sets later is left alone.
+SETTINGS_STATE_FILE = "settings.sync-state.json"
 # Machine-local layer read from the AGENT HOME (untracked, user-owned): the
 # final override so machine-specific env / permissions.allow survive the
 # wholesale env ownership. NOTE: Claude Code reads settings.local.json at
@@ -83,9 +107,12 @@ class AgentTarget:
     #                         so a CLAUDE.md `@AGENTS.md` import resolves.
     # receives_hooks       -> hooks/* and the settings.json hook merge apply only
     #                         to claude-family agents (Claude-only mechanism).
+    # receives_codex_hooks -> hooks/* (minus the Claude-only *-claude.* files,
+    #                         plus *-codex.*) and the hooks.json merge for Codex.
     overlay_main: bool = False
     base_secondary: str | None = None
     receives_hooks: bool = False
+    receives_codex_hooks: bool = False
 
     def get_sync_directories(self) -> list[str]:
         """Return directories to sync for this agent."""
@@ -160,6 +187,7 @@ AGENTS: list[AgentTarget] = [
         key="codex",
         main_file="AGENTS.md",
         is_import_source=True,
+        receives_codex_hooks=True,
     ),
 ]
 
@@ -532,7 +560,7 @@ def _detect_managed_dir_orphans(
     dirs are NOT manifest-tracked; the current source set is the source of truth.
     """
     managed_dirs = ["docs/agents"]
-    if agent.receives_hooks:
+    if agent.receives_hooks or agent.receives_codex_hooks:
         managed_dirs.append("hooks")
 
     orphans: list[_DeleteAction] = []
@@ -542,12 +570,15 @@ def _detect_managed_dir_orphans(
             item.relative_path[len(prefix) :]
             for item in additional_sources
             if item.relative_path.startswith(prefix)
+            and _wants_hook(agent, item.relative_path)
         }
         target_dir = agent.directory / mdir
         if not target_dir.is_dir():
             continue
         for child in sorted(target_dir.iterdir(), key=lambda p: p.name):
             if child.name.startswith(".") or child.name in expected:
+                continue
+            if mdir == "hooks" and _is_third_party_hook(child):
                 continue
             orphans.append(
                 _DeleteAction(
@@ -610,6 +641,23 @@ def _is_spoke(relative_path: str) -> bool:
     return relative_path.startswith("docs/agents/") and relative_path.endswith(".md")
 
 
+def _wants_hook(agent: AgentTarget, relative_path: str) -> bool:
+    """Whether this agent receives a distributed item.
+
+    hooks/ goes to claude-family agents and Codex only. `*-claude.*` files
+    (the Claude rtk wrapper, which strips an approval Claude would honor) are
+    Claude's; `*-codex.*` files are Codex's.
+    """
+    if not relative_path.startswith("hooks/"):
+        return True
+    name = relative_path.rsplit("/", 1)[-1]
+    if agent.receives_hooks:
+        return "-codex." not in name
+    if agent.receives_codex_hooks:
+        return "-claude." not in name
+    return False
+
+
 def _render_hook_command(
     command: str, agent: AgentTarget, system: str | None = None
 ) -> str:
@@ -622,10 +670,25 @@ def _render_hook_command(
     is bash) — same strategy as the justfile's windows-shell (ADR 0037).
     """
     hooks_prefix = f'"{agent.directory.as_posix()}/hooks/'
-    rendered = command.replace('"$CLAUDE_PROJECT_DIR/.claude/hooks/', hooks_prefix)
+    rendered = command.replace(
+        '"$CLAUDE_PROJECT_DIR/.claude/hooks/', hooks_prefix
+    ).replace('"$CODEX_HOME/hooks/', hooks_prefix)
     if (system or platform.system()) == "Windows":
         rendered = rendered.replace(f"bash {hooks_prefix}", f"sh {hooks_prefix}")
     return rendered
+
+
+def _is_third_party_hook(path: Path) -> bool:
+    """A hooks/ file whose header names a third-party installer as its owner."""
+    path = Path(path)  # callers may hold a PurePath stand-in (tests)
+    if not path.is_file():
+        return False
+    try:
+        with path.open(encoding="utf-8-sig", errors="replace") as f:
+            head = [next(f, "") for _ in range(5)]
+    except OSError:
+        return False
+    return any(line.strip() in THIRD_PARTY_HOOK_HEADERS for line in head)
 
 
 def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
@@ -633,12 +696,39 @@ def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
 
     Commands are normalized ``\\`` -> ``/`` before matching so legacy
     Windows-rendered blocks (backslash paths) are recognized as managed and
-    replaced on the next sync instead of surviving as duplicates.
+    replaced on the next sync instead of surviving as duplicates. A command
+    calling a third-party-owned hook file (see _is_third_party_hook) is the
+    installer's, so a block containing one is not managed.
     """
     inner = block.get("hooks", [])
     marker = f"{agent.directory.as_posix()}/hooks/"
+
+    def managed(command: str) -> bool:
+        command = command.replace("\\", "/")
+        if marker not in command:
+            return False
+        prefix, _, suffix = command.partition(marker)
+        if prefix[-1:] in {'"', "'"}:
+            name = suffix.split(prefix[-1], 1)[0]
+        else:
+            match = re.match(r'[^"\s]+', suffix)
+            name = match[0] if match else ""
+        return not (name and _is_third_party_hook(agent.directory / "hooks" / name))
+
+    return bool(inner) and all(managed(h.get("command", "")) for h in inner)
+
+
+def _is_retired_hook_block(block: dict) -> bool:
+    """A block owned by a third-party installer that dotfiles has replaced.
+
+    Retired only when EVERY command in the block is a retired one (the same
+    all() shape as _is_managed_hook_block), so a hand-written block that merely
+    also calls one is the user's and is left alone rather than silently
+    trimmed.
+    """
+    inner = block.get("hooks", [])
     return bool(inner) and all(
-        marker in h.get("command", "").replace("\\", "/") for h in inner
+        RETIRED_HOOK_COMMAND.match(h.get("command", "").strip()) for h in inner
     )
 
 
@@ -656,15 +746,22 @@ def _merge_hook_settings(
     point at ``<agent>/hooks/`` (see _is_managed_hook_block): on each run those
     managed blocks are replaced by the current fragment (so a changed/removed
     hook command does not leave a stale duplicate), while user-authored blocks
-    and other settings keys are preserved untouched. Re-running with an unchanged
-    fragment is a no-op. With dry_run=True nothing is written. Returns True if the
-    file would change.
+    and other settings keys are preserved untouched. The one exception to
+    "preserve user blocks" is RETIRED_HOOK_COMMAND (see _is_retired_hook_block):
+    third-party installer blocks dotfiles now replaces, dropped on every run so a
+    reinstall cannot resurrect them. Re-running with an unchanged fragment is a
+    no-op. With dry_run=True nothing is written. Returns True if the file would
+    change.
     """
-    fragment_path = dotfiles_dir / HOOK_SETTINGS_FRAGMENT
+    fragment_path = dotfiles_dir / (
+        CODEX_HOOK_FRAGMENT if agent.receives_codex_hooks else HOOK_SETTINGS_FRAGMENT
+    )
     if not fragment_path.exists():
         return False
     fragment = json.loads(fragment_path.read_text(encoding="utf-8"))
-    target_path = agent.directory / "settings.json"
+    target_path = agent.directory / (
+        "hooks.json" if agent.receives_codex_hooks else "settings.json"
+    )
     target = (
         json.loads(target_path.read_text(encoding="utf-8"))
         if target_path.exists()
@@ -695,8 +792,13 @@ def _merge_hook_settings(
     changed = False
     for event in set(hooks) | set(desired):
         existing = hooks.get(event, [])
-        # keep user (unmanaged) blocks; replace managed ones with the current set
-        kept = [b for b in existing if not _is_managed_hook_block(b, agent)]
+        # keep user (unmanaged) blocks; replace managed ones with the current
+        # set; drop retired third-party blocks dotfiles has replaced
+        kept = [
+            b
+            for b in existing
+            if not _is_managed_hook_block(b, agent) and not _is_retired_hook_block(b)
+        ]
         new_list = kept + desired.get(event, [])
         if new_list != existing:
             changed = True
@@ -733,9 +835,10 @@ def _compose_settings_fragments(
     ``env`` composes key-wise; ``settings`` composes key-wise with a one-level
     deep-merge when both sides are dicts (so shared can own ``permissions.deny``
     while a profile owns ``permissions.defaultMode``). Missing layer files are
-    empty layers. ``system`` (a ``platform.system()`` value) is injectable for
-    tests. Returns the composed ``{"env": ..., "settings": ...}`` dict, or None
-    when no fragment layer exists (merge is then a no-op).
+    empty layers. ``retired`` (migration id -> {key: [values]}) composes per id,
+    key-wise. ``system`` (a ``platform.system()`` value) is injectable for
+    tests. Returns the composed ``{"env": ..., "settings": ..., "retired": ...}``
+    dict, or None when no fragment layer exists (merge is then a no-op).
     """
     os_name = OS_SETTINGS_OVERLAYS.get(system or platform.system())
     layer_paths = [
@@ -764,7 +867,32 @@ def _compose_settings_fragments(
                 settings[key] = {**settings[key], **value}
             else:
                 settings[key] = value
+        for migration, keys in layer.get("retired", {}).items():
+            composed.setdefault("retired", {}).setdefault(migration, {}).update(keys)
     return composed
+
+
+def _write_settings(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+def _retire_settings(fragment: dict, target: dict, applied: set[str]) -> list[str]:
+    """Delete retired keys still holding a value the fragments wrote; return the
+    migrations evaluated now. A migration runs once per home, and a key the
+    composed settings still set is theirs, not retired."""
+    evaluated = sorted(set(fragment.get("retired", {})) - applied)
+    for migration in evaluated:
+        for key, values in fragment["retired"][migration].items():
+            if (
+                key not in fragment.get("settings", {})
+                and key in target
+                and target[key] in values
+            ):
+                del target[key]
+    return evaluated
 
 
 def _merge_settings_fragment(
@@ -782,9 +910,12 @@ def _merge_settings_fragment(
     ``settings.sync-local.json`` layer (composed last; sync never edits it).
     The composed ``settings`` object holds curated top-level keys that are
     upserted (add/update only); every other target key (enabledPlugins, hooks,
-    statusLine, ...) is preserved untouched. Top-level key removal is not
-    auto-propagated. Idempotent; dry_run=True writes nothing. Returns True if
-    the file would change.
+    statusLine, ...) is preserved untouched. A key the fragments stop writing
+    is removed only through ``retired`` (see _retire_settings); the evaluated
+    migrations are recorded in the home's settings.sync-state.json BEFORE
+    settings.json is written, so a failure in between leaves the old value
+    rather than a later retry over a value the user set again. Idempotent;
+    dry_run=True writes nothing. Returns True if settings.json would change.
     """
     fragment = _compose_settings_fragments(dotfiles_dir, agent, system=system)
     if fragment is None:
@@ -802,15 +933,25 @@ def _merge_settings_fragment(
         target["env"] = fragment["env"]
     for key, value in fragment.get("settings", {}).items():
         target[key] = value
+    state_path = agent.directory / SETTINGS_STATE_FILE
+    state = (
+        json.loads(state_path.read_text(encoding="utf-8"))
+        if state_path.exists()
+        else {}
+    )
+    applied = set(state.get("retired", []))
+    evaluated = _retire_settings(fragment, target, applied)
 
     changed = json.dumps(target, sort_keys=True, ensure_ascii=False) != before
 
-    if changed and not dry_run:
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(
-            json.dumps(target, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+    if dry_run:
+        return changed
+    if evaluated:
+        _write_settings(
+            state_path, {**state, "retired": sorted(applied | set(evaluated))}
         )
+    if changed:
+        _write_settings(target_path, target)
     return changed
 
 
@@ -882,8 +1023,8 @@ def _build_sync_plan(
             item_dir = item.relative_path.split("/")[0]
             if item_dir not in agent.sync_directories:
                 continue
-        # Hooks are a Claude-only mechanism: skip for non-claude agents.
-        if item.relative_path.startswith("hooks/") and not agent.receives_hooks:
+        # hooks/ goes to claude-family agents and Codex only (see _wants_hook).
+        if not _wants_hook(agent, item.relative_path):
             continue
 
         # Spokes (docs/agents/*.md) are rendered like the base/overlay.
@@ -974,10 +1115,13 @@ def _print_plan(
             elif verbose:
                 print(f"  ✅ {icon} {action.relative_path} [SYNCED]")
 
-        if plan.agent.receives_hooks and _merge_hook_settings(
-            dotfiles_dir, plan.agent, dry_run=True
-        ):
-            print("  📝 📄 settings.json [HOOKS MERGE]")
+        if (
+            plan.agent.receives_hooks or plan.agent.receives_codex_hooks
+        ) and _merge_hook_settings(dotfiles_dir, plan.agent, dry_run=True):
+            hooks_file = (
+                "hooks.json" if plan.agent.receives_codex_hooks else "settings.json"
+            )
+            print(f"  📝 📄 {hooks_file} [HOOKS MERGE]")
             has_changes = True
 
         if plan.agent.receives_hooks and _merge_settings_fragment(
@@ -1372,6 +1516,8 @@ def sync_mode(
     if not has_changes:
         print("\n✅ All files are already in sync!")
         _save_manifest(dotfiles_dir, manifest)
+        # Nothing to copy, but a trust or grant that failed last time retries
+        _run_codex_steps_for(plans)
         return
 
     print()
@@ -1400,8 +1546,13 @@ def sync_mode(
 
         # Merge the Claude hook fragment into the agent's settings.json
         # (claude-family only; idempotent, manifest-independent).
-        if plan.agent.receives_hooks and _merge_hook_settings(dotfiles_dir, plan.agent):
-            print("  ✅ 📄 settings.json: hooks merged")
+        if (
+            plan.agent.receives_hooks or plan.agent.receives_codex_hooks
+        ) and _merge_hook_settings(dotfiles_dir, plan.agent):
+            hooks_file = (
+                "hooks.json" if plan.agent.receives_codex_hooks else "settings.json"
+            )
+            print(f"  ✅ 📄 {hooks_file}: hooks merged")
 
         # Merge the shared settings fragment (env owned wholesale + curated
         # top-level keys; claude-family only). Sequential after the hook merge so
@@ -1448,7 +1599,56 @@ def sync_mode(
 
     _save_manifest(dotfiles_dir, manifest)
 
+    # Codex runs a hook only once it is trusted: trust the ones just synced
+    # (exactly the fragment's, through Codex's app-server; best effort).
+    _run_codex_steps_for(plans)
+
     print("\n✨ Sync completed!")
+
+
+# Steps for ~/.codex after its files are synced: (script, what failed, what to
+# run by hand). Each runs as a separate process: the steps import this module,
+# so importing them here would create an import cycle.
+CODEX_STEPS = (
+    (
+        "codex_hooks_trust.py",
+        "Codex hooks not trusted automatically",
+        "just codex-hooks-trust (or trust them in Codex's /hooks)",
+    ),
+    (
+        "codex_sandbox_tools.py",
+        "Codex's Windows sandbox not given the mise tools automatically",
+        "just codex-sandbox-tools",
+    ),
+)
+
+
+def _run_codex_steps_for(plans: list[_SyncPlan]) -> None:
+    for plan in plans:
+        if plan.agent.receives_codex_hooks:
+            print(f"\n📋 {plan.agent.name}: hook trust and sandbox")
+            _run_codex_steps(plan.agent)
+
+
+def _run_codex_steps(agent: AgentTarget) -> None:
+    """Run CODEX_STEPS for this Codex home; never fail the sync."""
+    if agent.directory != Path.home() / ".codex":
+        return  # the steps read CODEX_HOME / ~/.codex only
+    for script, failure, fallback in CODEX_STEPS:
+        try:
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).with_name(script))],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            print(f"  ⚠️  {failure} ({error}); run: {fallback}")
+            continue
+        for line in (result.stdout + result.stderr).splitlines():
+            print(f"  {line}")
 
 
 def orphans_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) -> None:

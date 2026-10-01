@@ -29,6 +29,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _bash_hook import bash_path
 
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
@@ -57,7 +58,7 @@ def _run_validator(
     is injected via `VALIDATE_PATH` (never touching the real `$PATH`).
     """
     env = {
-        "PATH": f"{os.path.dirname(just_binary)}:/usr/bin:/bin:/usr/local/bin",
+        "PATH": f"{bash_path(Path(just_binary).parent)}:/usr/bin:/bin:/usr/local/bin",
         "HOME": os.environ.get("HOME", "/root"),
         "VALIDATE_PATH": validate_path,
     }
@@ -67,6 +68,8 @@ def _run_validator(
         capture_output=True,
         text=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
 
 

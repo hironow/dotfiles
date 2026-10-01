@@ -167,10 +167,12 @@ def _run_section(
         capture_output=True,
         text=True,
         env=env,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
-LINE = "trade win|https://github.com/m4k3-co|{up}|just runner-svc-restart\n"
+LINE = "trade win|https://github.com/example-org|{up}|just runner-svc-restart\n"
 
 
 @winskip

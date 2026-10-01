@@ -51,9 +51,36 @@ jobs:
       - name: Run unit tests
         run: uvx pytest -q -ra tests/unit/
 
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Check Pi provider failover
+        run: bun test tests/unit/jev_sonnet_fallback.test.ts
+
       # Keep --max in sync with the `instruction-budget` recipe in the
       # justfile (the recipe is not callable here because the justfile
       # wraps tools with `mise exec`).
       - name: Instruction budget
         # --frozen: install from the committed root uv.lock, never rewrite it.
         run: uv run --frozen scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
+
+  windows-jev:
+    name: Jev launcher + just HOME on PowerShell
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install just
+        run: |
+          uv tool install rust-just
+          (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Check PowerShell launchers and HOME-less justfile
+        shell: pwsh
+        run: |
+          Remove-Item Env:HOME -ErrorAction SilentlyContinue
+          just --evaluate _EXE_SRC_DIR
+          uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_jev_pi_verify.py tests/unit/test_jev_codex_exec.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py
+          bun test tests/unit/jev_sonnet_fallback.test.ts

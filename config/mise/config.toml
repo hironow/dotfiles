@@ -94,6 +94,20 @@ starship = "1.26.0"
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
 fzf = "0.74.3"
 
+# rtk + headroom — base tooling every agent session goes through (ADR 0047):
+# rtk compresses command output (dotfiles owns its Claude hook; never run
+# `rtk init -g`), headroom compresses what reaches the model through its local
+# proxy. Every OS, Windows included. headroom's `proxy` extra carries the
+# server `headroom proxy` / `wrap` run, `code` its AST-aware code compression
+# (`all` would add torch and more); Python 3.13 is the version its docs install
+# with (no CI leg covers 3.14). headroom is pinned: mise
+# resolves `latest` without uv's 7-day exclude-newer (ADR 0028), which then
+# refuses the release; move the pin once a newer release is a week old. Their
+# telemetry is pinned off in [env] below. After either moves, `just doctor`
+# checks the contracts dotfiles relies on (rtk-guard, *-telemetry, headroom-cli).
+rtk = "latest"
+"pypi:headroom-ai" = { version = "0.38.0", extras = "proxy,code", uvx_args = "--python 3.13" }
+
 # google/ax + Agent Substrate toolchain. Declared here rather than per-repo
 # for the ADR 0023 activate-only reason as above: the migration is driven from
 # outside any single repo, so these have to resolve in every dir.
@@ -149,13 +163,7 @@ fzf = "0.74.3"
 # (ADR 0040 corrects ADR 0036 on this point).
 "npm:@anthropic-ai/claude-code" = "latest"
 "npm:@github/copilot" = "latest"
-# trust_policy_excludes: the 2026-08-14 @smithy/* batch (core@3.33.0,
-# node-http-handler@4.11.0) was published by aws-sdk-bot (a listed maintainer)
-# without provenance attestations, while the prior releases had them — aube's
-# no-downgrade policy (mise >= 2026.8.6) blocks the install. Verified against
-# npmjs.org 2026-08-15 (benign publish outside the trusted workflow, not
-# tampering). Drop once provenance-attested @smithy releases ship.
-"npm:@earendil-works/pi-coding-agent" = { version = "latest", trust_policy_excludes = ["@smithy/core@3.33.0", "@smithy/node-http-handler@4.11.0"] }
+"npm:@earendil-works/pi-coding-agent" = "latest"
 
 # antigravity (Google's agentic CLI) — replaces gemini-cli (per Google's
 # "Transitioning Gemini CLI to Antigravity CLI"). GitHub-release binary
@@ -173,10 +181,25 @@ fzf = "0.74.3"
 # backend avoids registry-alias ambiguity.
 #   cf -> Cloudflare CLI, resend-cli -> Resend, @stripe/cli -> Stripe,
 #   @dataform/cli -> Dataform (BigQuery ELT)
-"npm:cf" = "latest"
+# cf's npm dist-tag "latest" is 1.0.0-beta.5, but mise points its `latest` link at the
+# newest stable (0.13.0), so "latest" never activates the beta. Pin it until 1.0.0.
+"npm:cf" = "1.0.0-beta.5"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
 "npm:@dataform/cli" = "latest"
+
+[env]
+# Anonymous telemetry off for the base tools (ADR 0047): rtk only reports after
+# an opt-in, headroom's beacon is on by default. The same values sit in
+# .claude/settings.shared.json (Claude Code and its hooks, wherever launched)
+# and the persisted Windows User env (scripts/harden_env.sh).
+#
+# Two switches for headroom, not one: HEADROOM_BEACON is its own and
+# DO_NOT_TRACK is the cross-vendor opt-out it also honours. The beacon fails
+# OPEN -- any value but "off" uploads -- so neither stands in for the other.
+RTK_TELEMETRY_DISABLED = "1"
+HEADROOM_BEACON = "off"
+DO_NOT_TRACK = "1"
 
 [settings]
 # Disable asdf-style .python-version / .nvmrc auto-detection so only
@@ -192,13 +215,13 @@ pin = true
 # Supply-chain quarantine for mise-managed tools was REMOVED 2026-09-03:
 # the user toolset declared in this file now tracks the true newest
 # release on `mise up` (the 7d wait cost current models/protocol fixes
-# in the LLM CLIs and was friction everywhere else). Explicit "0" is
-# required — removing the key entirely would fall back to mise's
+# in the LLM CLIs and was friction everywhere else). Use explicit "0d",
+# a valid zero-day duration — removing the key would fall back to mise's
 # built-in 24h default quarantine. Dependency installs remain
 # quarantined via the npmrc min_release_age / uv exclude-newer guards
 # written by `just harden-env` (ADR 0028). To restore temporarily:
 # minimum_release_age = "7d"
-minimum_release_age = "0"
+minimum_release_age = "0d"
 
 [settings.upgrade]
 # Do not queue the outgoing version for deletion on `mise up` (mise default:

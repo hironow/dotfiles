@@ -17,12 +17,18 @@ Three design choices make it a wall rather than theatre:
 what it protects. A checkout without one (CI, a fresh clone) scans nothing and
 passes -- so this script is useless as a CI-side secret scanner, and is not one.
 
-**Only ADDED lines are scanned.** Six tracked files and nine `main` commit
-messages already contain the org token; cleaning those is a separate work unit.
-A whole-file scanner would fail every commit forever and be switched off within
-the hour, so the staged scan reads the added lines of the staged diff plus the
-staged pathnames, and the branch scan reads the added lines of
-`<base>..HEAD` plus each commit message in that range.
+**The tracked tree is scanned whole; only ADDED lines are scanned in a diff.**
+The staged scan reads the added lines of the staged diff plus the staged
+pathnames, and the branch scan reads the added lines of `<base>..HEAD` plus
+each commit message in that range. Neither can ever see a token that is
+already committed, so `tree` reads every blob and every pathname at HEAD and is
+the standing proof that the tracked tree is clean. It is a gate rather than a
+backlog because the tree was cleaned first: the identifiers that used to sit in
+six tracked files were replaced with neutral placeholders, and this mode is
+what keeps them from coming back. Nine `main` commit messages still carry the
+org name; by operator decision the history is left as it is -- rewriting it
+would republish the same strings in a new place and break every SHA -- so the
+messages in range are scanned going forward and the ones behind us stay.
 
 **Matched text is never printed.** Output reports `path:line` and the token's
 index in the list, because this output can end up in a public log. The list is
@@ -38,7 +44,15 @@ Modes:
     staged                 pre-commit: added lines + paths + blob refusal
     commit-msg <file>      commit-msg: the message about to be recorded
     branch [--base REF]    `just ci`: the whole branch diff and every message
+    tree                   `just ci`: every tracked blob and path at HEAD
     file <path>...         a PR body (or any file) scanned in full
+
+`tree` and `branch` also take `--require-list` and `--min-tokens N`, which turn
+the skip-on-no-list default into a failure. `just ci` passes both: a list that
+moved, or a typo in `$DOTFILES_FORBIDDEN_TOKENS`, would otherwise turn the wall
+into a no-op that prints "OK", and a floor on the entry count is what notices
+that an entry was dropped from the list. A plain run without the flags still
+passes with no list, so a fresh clone and CI are unaffected.
 
 Exit code: 0 = clean, 1 = findings (listed on stderr). Stdlib only, and no `uv`
 anywhere in its invocation: a hook that runs `uv run` can rewrite the root
@@ -150,7 +164,7 @@ def load_tokens(path: Path) -> list[str]:
     directions: the haystack is lowercased too, at the single comparison site.
     """
     try:
-        raw = path.read_text(errors="replace")
+        raw = path.read_text(errors="replace", encoding="utf-8")
     except OSError:
         return []
     tokens: list[str] = []
@@ -218,6 +232,24 @@ def _git(cwd: Path, *args: str) -> str:
         cwd=cwd,
         capture_output=True,
         text=True,
+        check=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return result.stdout
+
+
+def _git_bytes(cwd: Path, *args: str, stdin: bytes | None = None) -> bytes:
+    """Raw bytes, for `cat-file --batch`, whose records are length-delimited.
+
+    Decoding first would move every offset the parser counts on: one `errors=
+    "replace"` substitution is three bytes where the original was one.
+    """
+    result = subprocess.run(
+        ["git", "-c", "core.quotePath=false", *args],
+        cwd=cwd,
+        input=stdin,
+        capture_output=True,
         check=True,
     )
     return result.stdout
@@ -451,7 +483,7 @@ def run_branch(
 def run_files(paths: Sequence[str], tokens: Sequence[str]) -> list[Finding]:
     findings: list[Finding] = []
     for raw in paths:
-        text = Path(raw).read_text(errors="replace")
+        text = Path(raw).read_text(errors="replace", encoding="utf-8")
         findings.extend(
             scan_lines(
                 (
@@ -460,6 +492,101 @@ def run_files(paths: Sequence[str], tokens: Sequence[str]) -> list[Finding]:
                 ),
                 tokens,
             )
+        )
+    return findings
+
+
+# --- the whole tracked tree at HEAD -----------------------------------------
+
+
+def head_entries(cwd: Path) -> list[tuple[str, str]]:
+    """(blob oid, path) for every scannable entry tracked at HEAD.
+
+    Gitlinks (mode 160000) are dropped: the entry's object is another
+    repository's commit, not a blob in this tree, and in a fresh clone the
+    directory is empty -- `git cat-file` would refuse it and a populated one
+    would report another project's lines as ours. Symlinks (120000) are kept:
+    their blob is the target path, which is text worth reading.
+    """
+    output = _git(cwd, "ls-tree", "-r", "-z", "--full-tree", "HEAD")
+    entries: list[tuple[str, str]] = []
+    for record in output.split("\0"):
+        if not record:
+            continue
+        meta, _, path = record.partition("\t")
+        fields = meta.split(" ")
+        if len(fields) != 3 or not path:
+            continue
+        mode, _kind, oid = fields
+        if mode == "160000":
+            continue
+        entries.append((oid, path))
+    return entries
+
+
+def head_blob_texts(
+    cwd: Path, entries: Sequence[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    """(path, text) per entry, in ONE `cat-file --batch` pass.
+
+    One `git show` per file is a subprocess per tracked file, which is seconds
+    of a gate that runs on every `just ci`. Oids go on stdin rather than paths:
+    a pathname can hold a newline, which would split the request, and a hex oid
+    cannot.
+
+    A blob holding NUL is binary. Binary cannot be scanned for text tokens at
+    all -- which is why staging one is refused outright -- so it is skipped
+    here rather than decoded into noise.
+    """
+    if not entries:
+        return []
+    request = "".join(f"{oid}\n" for oid, _ in entries).encode("ascii")
+    out = _git_bytes(cwd, "cat-file", "--batch", stdin=request)
+    texts: list[tuple[str, str]] = []
+    pos = 0
+    for _oid, path in entries:
+        newline = out.find(b"\n", pos)
+        if newline < 0:
+            break
+        header = out[pos:newline].decode("utf-8", errors="replace").split(" ")
+        if len(header) != 3 or not header[2].isdigit():
+            # "<oid> missing" and friends: nothing to read, nothing to skip past.
+            pos = newline + 1
+            continue
+        size = int(header[2])
+        payload = out[newline + 1 : newline + 1 + size]
+        pos = newline + 1 + size + 1  # git writes a newline after the payload
+        if b"\0" in payload:
+            continue
+        texts.append((path, payload.decode("utf-8", errors="replace")))
+    return texts
+
+
+def run_tree(cwd: Path, tokens: Sequence[str]) -> list[Finding]:
+    """Every tracked pathname and every tracked blob at HEAD.
+
+    The whole tree is three orders of magnitude more lines than a diff, so the
+    per-line work is kept to the one `match_indices` the scan needs: a file's
+    label is redacted once, not once per line, and only a file that actually
+    matched pays for building a location string.
+    """
+    entries = head_entries(cwd)
+    findings: list[Finding] = [
+        Finding(f"tracked path '{redact(path, tokens)}'", index)
+        for _oid, path in entries
+        for index in match_indices(path, tokens)
+    ]
+    for path, text in head_blob_texts(cwd, entries):
+        hits = [
+            (number, index)
+            for number, line in enumerate(text.splitlines(), start=1)
+            for index in match_indices(line, tokens)
+        ]
+        if not hits:
+            continue
+        label = redact(path, tokens)
+        findings.extend(
+            Finding(f"tracked {label}:{number}", index) for number, index in hits
         )
     return findings
 
@@ -477,8 +604,23 @@ def _parser() -> argparse.ArgumentParser:
     commit_msg.add_argument("message_file")
     branch = modes.add_parser("branch", help="rescan the whole branch")
     branch.add_argument("--base", default=None)
+    tree = modes.add_parser("tree", help="scan every tracked file at HEAD")
     files = modes.add_parser("file", help="scan whole files (e.g. a PR body)")
     files.add_argument("paths", nargs="+")
+    # Fail-closed options, on the two modes `just ci` runs.
+    for gate in (branch, tree):
+        gate.add_argument(
+            "--require-list",
+            action="store_true",
+            help="fail instead of skipping when no token list loads",
+        )
+        gate.add_argument(
+            "--min-tokens",
+            type=int,
+            default=0,
+            metavar="N",
+            help="fail when the list holds fewer than N tokens",
+        )
     return parser
 
 
@@ -535,16 +677,41 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     list_path = tokens_path(env)
     tokens = load_tokens(list_path) if list_path is not None else []
-    if list_path is None:
+    require_list = getattr(args, "require_list", False)
+    # Not under --require-list: there the next block FAILS on the same fact, and
+    # a gate that prints "skipped" and "FAILED" about one list reads as a bug.
+    if list_path is None and not require_list:
         print(
             "check-forbidden-tokens: no forbidden-token list "
             f"(${TOKENS_ENV}, $XDG_CONFIG_HOME/{TOKENS_REL.as_posix()} or "
             f"~/.config/{TOKENS_REL.as_posix()}); token scan skipped."
         )
-    else:
+    elif list_path is not None:
         warning = list_permission_warning(list_path)
         if warning:
             print(f"check-forbidden-tokens: {warning}", file=sys.stderr)
+
+    # Fail closed where the operator asked for it, BEFORE any scan: a scan that
+    # ran against an empty list and printed "OK" is the failure mode these two
+    # flags exist to remove.
+    if require_list and not tokens:
+        print(
+            "check-forbidden-tokens: FAILED -- --require-list was given and no "
+            f"forbidden token loaded (list: {list_path}). Point "
+            f"${TOKENS_ENV} at the list, or drop --require-list to allow the "
+            "skip.",
+            file=sys.stderr,
+        )
+        return EXIT_FAIL
+    floor = getattr(args, "min_tokens", 0)
+    if floor and len(tokens) < floor:
+        print(
+            f"check-forbidden-tokens: FAILED -- --min-tokens {floor} was given "
+            f"and the list holds {len(tokens)}. An entry was dropped, or the "
+            "floor is stale; neither may pass silently.",
+            file=sys.stderr,
+        )
+        return EXIT_FAIL
 
     blocked: list[str] = []
     findings: list[Finding] = []
@@ -554,7 +721,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.mode == "commit-msg":
         if tokens:
             message = recorded_message(
-                Path(args.message_file).read_text(errors="replace")
+                Path(args.message_file).read_text(errors="replace", encoding="utf-8")
             )
             findings = message_findings("commit message", message, tokens)
     elif args.mode == "branch":
@@ -567,6 +734,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         elif tokens:
             blocked, findings = run_branch(cwd, base, tokens)
+    elif args.mode == "tree" and tokens:
+        findings = run_tree(cwd, tokens)
     elif args.mode == "file" and tokens:
         findings = run_files(args.paths, tokens)
 

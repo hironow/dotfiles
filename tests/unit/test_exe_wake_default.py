@@ -31,7 +31,7 @@ def _minutes(duration: str) -> int:
 def _recipe_default(recipe: str) -> str:
     match = re.search(
         rf'^{re.escape(recipe)} duration="([^"]+)":',
-        _JUSTFILE.read_text(),
+        _JUSTFILE.read_text(encoding="utf-8"),
         re.MULTILINE,
     )
     assert match, f"{recipe} with a duration default not found in the justfile"
@@ -39,7 +39,9 @@ def _recipe_default(recipe: str) -> str:
 
 
 def _default_lease_minutes() -> int:
-    return int(json.loads(_CONSTANTS.read_text())["default_lease_minutes"])
+    return int(
+        json.loads(_CONSTANTS.read_text(encoding="utf-8"))["default_lease_minutes"]
+    )
 
 
 def test_exe_wake_default_is_the_default_lease() -> None:

@@ -4,10 +4,13 @@
 # Development environment hardening (machine-local; ADR 0028)
 # ------------------------------------------------------------------------------
 # Writes the supply-chain guards that must NOT live in the committed repo:
-#   - npm  ~/.npmrc               min-release-age=7 (four Pi extension exceptions)
+#   - npm  ~/.npmrc               min-release-age=7
+#          <pi agent>/npm/.npmrc  min-release-age=0 (Pi packages and their deps)
 #   - uv   ~/.config/uv/uv.toml   flatt mirror (default index) + exclude-newer=7d
 #   - go   GOPROXY                default checksum-verified proxy (if go present)
 #   - win  persisted User PATH     append missing Git usr\bin + cmd (native Windows)
+#   - win  persisted User env      rtk / headroom telemetry off (ADR 0047);
+#                                  CLAUDE_CODE_GIT_BASH_PATH where Claude Code finds no Git Bash
 #
 # Portable across GNU (Linux/WSL) and BSD (macOS): it uses NO `sed -i` at all,
 # and is idempotent (safe to re-run — no duplicated lines).
@@ -21,23 +24,28 @@ set -eu
 
 echo "--- 🛡️  Hardening environment (flatt mirror + 7-day quarantine) ---"
 
-# 1. npm — idempotent age + four named Pi extension exceptions.
-# Keep dependency installs quarantined; no pi-* / scope-wide exemptions.
+# 1. npm — idempotent 7-day age for everything but Pi's own packages.
+# Pi installs extensions with `npm install <pkg> --prefix <agent>/npm`, so the
+# project .npmrc in that prefix sets their age (user decision 2026-10-01: Pi
+# agent extensions and their dependencies install without the quarantine; a
+# name exclusion here could not reach a fresh dependency such as undici).
 # Preserve unrelated user settings, including user-owned age exclusions.
+_set_npm_age() { # <npmrc> <days> [extra grep -E alternative to drop]
+  _tmp="$(mktemp)"
+  if [ -f "$1" ]; then
+    # `|| true` handles grep's exit 1 when every input line is filtered out.
+    grep -Ev "^[[:space:]]*min-release-age[[:space:]]*=${3:+|$3}" "$1" >"$_tmp" || true
+  fi
+  printf 'min-release-age=%s\n' "$2" >>"$_tmp"
+  mv "$_tmp" "$1"
+}
 _npmrc="$HOME/.npmrc"
-echo "[1/4] npm: ${_npmrc} (min-release-age=7; four Pi extension exceptions)"
-_tmp="$(mktemp)"
-if [ -f "$_npmrc" ]; then
-  # Replace only the age key and our exact package exceptions. `|| true`
-  # handles grep's exit 1 when every input line is filtered out.
-  grep -Ev '^[[:space:]]*min-release-age[[:space:]]*=|^[[:space:]]*min-release-age-exclude\[\][[:space:]]*=[[:space:]]*(pi-goal-x|pi-subagents|pi-web-access|pi-background-tasks)[[:space:]]*$' \
-    "$_npmrc" >"$_tmp" || true
-fi
-printf 'min-release-age=7\n' >>"$_tmp"
-for _pkg in pi-goal-x pi-subagents pi-web-access pi-background-tasks; do
-  printf 'min-release-age-exclude[]=%s\n' "$_pkg" >>"$_tmp"
-done
-mv "$_tmp" "$_npmrc"
+_pi_npm="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/npm"
+echo "[1/4] npm: ${_npmrc} (min-release-age=7); ${_pi_npm}/.npmrc (min-release-age=0)"
+# Also retire the four named Pi exclusions earlier runs wrote
+_set_npm_age "$_npmrc" 7 '^[[:space:]]*min-release-age-exclude\[\][[:space:]]*=[[:space:]]*(pi-goal-x|pi-subagents|pi-web-access|pi-background-tasks)[[:space:]]*$'
+mkdir -p "$_pi_npm"
+_set_npm_age "$_pi_npm/.npmrc" 0
 
 # 2. uv — flatt default index + 7-day quarantine (overwrite = idempotent).
 _uv_dir="$HOME/.config/uv"
@@ -109,11 +117,31 @@ if [ -n "${APPDATA:-}" ] && [ -z "${HARDEN_ENV_SKIP_WIN_PATH:-}" ] \
     if [[ "${_persisted,,}" == *"${_win_dir,,}"* ]]; then
       echo "  - ${_win_dir}: already on persisted PATH"
     else
-      _powershell -NoProfile -Command \
-        "[Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';${_win_dir}'), 'User')"
+      # The directory travels as data in the environment, never in the script text
+      HARDEN_ENV_DIR="$_win_dir" _powershell -NoProfile -Command \
+        "[Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path','User').TrimEnd(';') + ';' + \$env:HARDEN_ENV_DIR), 'User')"
       echo "  - ${_win_dir}: appended to persisted User PATH (open a new session to pick it up)"
     fi
   done
+  # rtk / headroom telemetry off for processes no shell starts (ADR 0047; the
+  # same values live in mise's global [env] and the shared Claude settings env).
+  # DO_NOT_TRACK is the cross-vendor opt-out headroom also honours; its beacon
+  # fails open, so both switches are persisted.
+  _powershell -NoProfile -Command \
+    "[Environment]::SetEnvironmentVariable('RTK_TELEMETRY_DISABLED', '1', 'User'); [Environment]::SetEnvironmentVariable('HEADROOM_BEACON', 'off', 'User'); [Environment]::SetEnvironmentVariable('DO_NOT_TRACK', '1', 'User')"
+  echo "  - RTK_TELEMETRY_DISABLED=1, HEADROOM_BEACON=off, DO_NOT_TRACK=1: persisted for the User"
+  # Claude Code's Bash tool needs Git Bash. Where its own lookup finds none
+  # (git through a scoop shim), point CLAUDE_CODE_GIT_BASH_PATH at ours; a value
+  # already set for the User is left alone (`just doctor` checks it).
+  _git_bash="$(uv run --frozen "$(dirname "${BASH_SOURCE[0]}")/claude_git_bash.py" --to-set 2>/dev/null || true)"
+  if [ -n "$_git_bash" ]; then
+    # The path travels as data in the environment, never inside the script text
+    HARDEN_ENV_GIT_BASH="$_git_bash" _powershell -NoProfile -Command \
+      "[Environment]::SetEnvironmentVariable('CLAUDE_CODE_GIT_BASH_PATH', \$env:HARDEN_ENV_GIT_BASH, 'User')"
+    echo "  - CLAUDE_CODE_GIT_BASH_PATH=${_git_bash}: persisted for the User (Claude Code did not find Git Bash)"
+  else
+    echo "  - CLAUDE_CODE_GIT_BASH_PATH: not written (Claude Code finds Git Bash, or a value is already set)"
+  fi
 fi
 
 echo "--- ✅ Hardening applied (machine-local; not tracked in the repo) ---"

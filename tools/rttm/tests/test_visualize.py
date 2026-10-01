@@ -1,5 +1,5 @@
-import os
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -37,7 +37,9 @@ def test_find_overlaps():
 
 
 def test_visualize_rttm_success(sample_rttm_content):
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as rttm_file:
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, encoding="utf-8"
+    ) as rttm_file:
         rttm_file.write(sample_rttm_content)
         rttm_path = rttm_file.name
 
@@ -57,8 +59,8 @@ def test_visualize_rttm_success(sample_rttm_content):
             mock_plt.savefig.assert_called_once_with(img_path)
 
     finally:
-        os.remove(rttm_path)
-        os.remove(img_path)
+        Path(rttm_path).unlink()
+        Path(img_path).unlink()
 
 
 def test_visualize_rttm_file_not_found():

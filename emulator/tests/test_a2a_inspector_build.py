@@ -7,14 +7,16 @@ _PY312_SLIM = re.compile(r"^FROM python:3\.12(\.\d+)?-slim\b")
 
 
 def test_a2a_inspector_dockerfile_uses_python_312() -> None:
-    dockerfile_lines = Path("a2a-inspector/Dockerfile").read_text().splitlines()
+    dockerfile_lines = (
+        Path("a2a-inspector/Dockerfile").read_text(encoding="utf-8").splitlines()
+    )
     assert any(_PY312_SLIM.match(line.strip()) for line in dockerfile_lines), (
         "Expected runtime stage to base on python:3.12(.x)-slim"
     )
 
 
 def test_docker_compose_uses_local_a2a_inspector_context() -> None:
-    compose_text = Path("compose.yaml").read_text()
+    compose_text = Path("compose.yaml").read_text(encoding="utf-8")
     assert "context: ./a2a-inspector" in compose_text, (
         "compose.yaml should build a2a-inspector from the local Dockerfile "
         "to ensure Python 3.12 is used"

@@ -130,24 +130,44 @@ def test_writes_uv_toml_and_is_idempotent(tmp_path: Path) -> None:
             )
 
 
-def test_only_four_pi_extensions_bypass_release_age(tmp_path: Path) -> None:
+def test_pi_packages_install_outside_the_release_age(tmp_path: Path) -> None:
+    # Pi runs `npm install <pkg> --prefix <agent>/npm`; that prefix's project
+    # .npmrc lifts the quarantine for every Pi package and its dependencies (a
+    # name exclusion in ~/.npmrc left pi-web-access behind on a fresh undici)
     home = tmp_path / "home"
     home.mkdir()
     for _ in range(2):
         result = _run_harden(_env(home))
         assert result.returncode == 0, result.stderr
+    pi_npmrc = home / ".pi" / "agent" / "npm" / ".npmrc"
+    assert pi_npmrc.read_text(encoding="utf-8").splitlines() == ["min-release-age=0"]
     lines = (home / ".npmrc").read_text(encoding="utf-8").splitlines()
-    exclusions = [line for line in lines if line.startswith("min-release-age-exclude")]
-    assert sorted(exclusions) == sorted(
-        f"min-release-age-exclude[]={name}"
-        for name in (
-            "pi-goal-x",
-            "pi-subagents",
-            "pi-web-access",
-            "pi-background-tasks",
-        )
-    )
+    assert not [line for line in lines if line.startswith("min-release-age-exclude")]
     assert lines.count("min-release-age=7") == 1
+
+
+def test_pi_npmrc_follows_pi_coding_agent_dir(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    agent = tmp_path / "pi-agent"
+    result = _run_harden(_env(home, PI_CODING_AGENT_DIR=str(agent)))
+    assert result.returncode == 0, result.stderr
+    assert (agent / "npm" / ".npmrc").read_text(
+        encoding="utf-8"
+    ) == "min-release-age=0\n"
+    assert not (home / ".pi").exists()
+
+
+def test_pi_npmrc_keeps_other_settings(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    pi_npm = home / ".pi" / "agent" / "npm"
+    pi_npm.mkdir(parents=True)
+    (pi_npm / ".npmrc").write_text("fund=false\nmin-release-age=7\n", encoding="utf-8")
+    result = _run_harden(_env(home))
+    assert result.returncode == 0, result.stderr
+    assert (pi_npm / ".npmrc").read_text(
+        encoding="utf-8"
+    ) == "fund=false\nmin-release-age=0\n"
 
 
 def test_preserves_user_npm_settings_and_exclusions(tmp_path: Path) -> None:
@@ -169,7 +189,8 @@ def test_preserves_user_npm_settings_and_exclusions(tmp_path: Path) -> None:
     content = npmrc.read_text(encoding="utf-8")
     assert content.startswith(preserved)
     lines = content.splitlines()
-    assert lines.count("min-release-age-exclude[]=pi-subagents") == 1
+    # The named Pi exclusions earlier runs wrote are retired
+    assert lines.count("min-release-age-exclude[]=pi-subagents") == 0
     assert [line for line in lines if line.startswith("min-release-age=")] == [
         "min-release-age=7"
     ]

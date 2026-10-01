@@ -267,8 +267,8 @@ foreach ($root in $runnerRoots) {
 
     # ~/.bun/bin rename-away litter: the hub's setup-bun-canary renames a
     # BUSY bun.exe/bunx.exe aside as *.stale-<guid> instead of fighting the
-    # image lock (m4k3-co/.github#70; bunx is a HARDLINK of bun, so any live
-    # bun process blocks an overwrite - manga-uri light-0201). Its own sweep
+    # image lock (example-org/.github#70; bunx is a HARDLINK of bun, so any live
+    # bun process blocks an overwrite - example-repo-a light-0201). Its own sweep
     # runs only at the next install and is best-effort, so on a box where an
     # interactive bun lives for hours the 86MB-per-file litter can sit
     # indefinitely. 24h floor, deliberately NOT the 2h retention: a fresher

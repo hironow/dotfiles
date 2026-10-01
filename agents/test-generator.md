@@ -3,8 +3,7 @@ name: test-generator
 description: |
   TDD の Red フェーズ専用エージェント。失敗するテストだけを書く —
   実装コードは書かず、提案もしない（Green/Refactor は呼び出し元が担う）。
-  TDD サイクル全体の進め方は docs/agents/tdd-workflow.md、`tdd` /
-  `tdd-workflow` skill が「サイクル全体のガイド」なのに対し、本 agent は
+  TDD サイクル全体の進め方は docs/agents/tdd-workflow.md が扱い、本 agent は
   「Red のテストコード生成」だけを切り出した実働役。
 model: inherit
 tools: [Read, Grep, Glob, Write]

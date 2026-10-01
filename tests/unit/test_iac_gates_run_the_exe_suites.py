@@ -20,7 +20,7 @@ STACKS = ("tofu/exe-platform", "tofu/exe-cluster", "tofu/tailnet")
 
 
 def recipe_body(name: str) -> str:
-    lines = JUSTFILE.read_text().splitlines()
+    lines = JUSTFILE.read_text(encoding="utf-8").splitlines()
     header = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(?!=)")
     start = next(i for i, line in enumerate(lines) if header.match(line))
     body = []
@@ -33,14 +33,16 @@ def recipe_body(name: str) -> str:
 
 def workflow_job(name: str) -> str:
     m = re.search(
-        rf"^  {re.escape(name)}:\n(.*?)(?=^  \S|\Z)", WORKFLOW.read_text(), re.M | re.S
+        rf"^  {re.escape(name)}:\n(.*?)(?=^  \S|\Z)",
+        WORKFLOW.read_text(encoding="utf-8"),
+        re.M | re.S,
     )
     assert m, f"{WORKFLOW.name} has no {name} job"
     return m.group(1)
 
 
 def test_just_ci_runs_both_exe_suites() -> None:
-    m = re.search(r"^ci:(.*)$", JUSTFILE.read_text(), re.M)
+    m = re.search(r"^ci:(.*)$", JUSTFILE.read_text(encoding="utf-8"), re.M)
     assert m, "the justfile has no ci recipe"
     assert "test-iac-exe" in m.group(1).split()
     body = recipe_body("test-iac-exe")
@@ -48,6 +50,10 @@ def test_just_ci_runs_both_exe_suites() -> None:
         assert stack in body
     assert "tofu init -backend=false" in body
     assert "tofu test" in body
+    assert "TF_DATA_DIR" in body, (
+        "local .terraform may retain an encrypted live backend"
+    )
+    assert "mktemp -d" in body and "trap" in body
 
 
 def test_the_pr_ci_runs_both_exe_suites_offline() -> None:

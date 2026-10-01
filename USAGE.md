@@ -1,68 +1,59 @@
-# Zsh Configuration Usage
+# zsh の使い方
 
-Fish-like zsh setup with Sheldon + Starship.
+Sheldon と Starship を使った、fish に近い操作感の zsh の設定（Mac、Linux、WSL）。
 
-## Quick Start
+## 準備
+
+Linux と WSL では、先に zsh を入れてログインシェルにする（macOS は最初から zsh）。
+`install.sh` は sudo を使わないので、zsh がなければ入れ方を表示するだけである（`just doctor` も同じく知らせる）。
 
 ```bash
-# Deploy dotfiles
-just deploy
-
-# Install plugins (first time only)
-sheldon lock
+sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"   # Linux と WSL だけ
 ```
 
-## Keyboard Shortcuts
+新しいターミナルを開いてから、次を実行する（sheldon は mise が入れる）。
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+R` | Fuzzy search command history (fzf) |
-| `ESC ESC` | Add sudo to current command |
-| `Tab` | Fuzzy completion with preview (fzf-tab) |
-| `<` / `>` | Switch completion groups in fzf-tab |
+```bash
+just deploy   # 設定を配置する
+sheldon lock  # 初回だけ: plugin を入れる
+```
 
-## Commands
+## キー操作
 
-### Aliases
+| キー | 動作 |
+| --- | --- |
+| `Ctrl+R` | 履歴をあいまい検索する（fzf） |
+| `Tab` | プレビューつきであいまい補完する（fzf-tab） |
+| `<` / `>` | fzf-tab の補完グループを切り替える |
 
-| Alias | Command |
-|-------|---------|
+## alias と関数
+
+| 名前 | 実体 |
+| --- | --- |
 | `k` | `kubectl` |
 | `j` | `just` |
 | `mx` | `mise exec --` |
 | `mr` | `mise run` |
-| `cc` | Claude Code (`RUNOPS_ACTOR_TYPE=ai-agent` wrapper defined in `.zshrc`) |
+| `cc` | `RUNOPS_ACTOR_TYPE=ai-agent claude` |
+| `j-cc` / `j-pi` | Jev で思考レベルを選んで Claude Code / Pi を起動する（[手順](docs/runbook/jev-launchers.md)） |
 
-## Maintenance
+## キャッシュ
 
-```bash
-# Rebuild caches (after updating tools)
-just clean-cache
-sheldon lock
+起動を速くするため、次のキャッシュを作る。
+道具を更新したら `just clean-cache` で消し、`sheldon lock` を実行し直す（`just clean-all` は配置した設定も消す）。
 
-# Full cleanup
-just clean-all
-```
+| キャッシュ | 用途 |
+| --- | --- |
+| `~/.cache/zsh/kubectl_completion.zsh` | kubectl の補完 |
+| `~/.cache/zsh/fzf_init.zsh` | fzf のキー操作と補完 |
+| `~/.zcompdump*` | zsh の補完 |
+| `~/.local/share/sheldon/` | Sheldon の plugin |
+| `~/.local/share/fzf-tab/` | fzf-tab |
 
-## Cache Files
+## 起動時間
 
-The following caches are created for faster startup:
-
-| Cache | Purpose |
-|-------|---------|
-| `~/.cache/zsh/kubectl_completion.zsh` | kubectl completion |
-| `~/.cache/zsh/fzf_init.zsh` | fzf keybindings |
-| `~/.zcompdump*` | zsh completion cache |
-| `~/.local/share/sheldon/` | Sheldon plugins |
-| `~/.local/share/fzf-tab/` | fzf-tab plugin |
-
-Use `just clean-cache` to remove all caches.
-
-## Startup Time
-
-Target: < 300ms
+目標は 300ms 未満である。
 
 ```bash
-# Measure startup time
 time zsh -i -c exit
 ```

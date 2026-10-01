@@ -389,16 +389,43 @@ step_symlink_dotfiles() {
   just deploy
 }
 
+step_zsh() {
+  # zsh is the supported interactive shell (.zshrc, USAGE.md, j-cc / j-pi),
+  # but a bare Linux box (e.g. a fresh WSL Ubuntu) has none. Installing it
+  # needs sudo, which install.sh never uses, so say exactly what to run.
+  case "$DOTFILES_OS" in
+    linux)
+      if ! command -v zsh >/dev/null 2>&1; then
+        echo "[install] step_zsh: zsh is not installed (the supported shell); run: sudo apt-get install -y zsh && chsh -s \"\$(command -v zsh)\", then open a new terminal" >&2
+      else
+        case "${SHELL:-}" in
+          */zsh) ;;
+          *) echo "[install] step_zsh: login shell is ${SHELL:-unknown}, not zsh; run: chsh -s $(command -v zsh), then open a new terminal" >&2 ;;
+        esac
+      fi
+      ;;
+    mac)
+      : # macOS ships zsh as the default login shell
+      ;;
+    windows)
+      _skip_windows "step_zsh" "zsh is not used on Windows native (WSL covers the zsh use case)"
+      ;;
+  esac
+}
+
 step_sheldon() {
-  # Cross-platform: zsh plugin lock. Sheldon is provided by brew on
-  # Mac and by the dev container feature on Linux. Windows path is
-  # TODO until a Windows host actually exists.
+  # Cross-platform: zsh plugin lock. sheldon comes from mise (aqua backend,
+  # pinned in config/mise/config.toml for linux and macos) and on a Mac also
+  # from brew. install.sh runs before mise is activated, so a mise-installed
+  # sheldon is not on PATH yet: go through `mise exec`.
   case "$DOTFILES_OS" in
     mac|linux)
       if command -v sheldon >/dev/null 2>&1; then
         sheldon lock --update >/dev/null || true
+      elif command -v mise >/dev/null 2>&1; then
+        mise exec -- sheldon lock --update >/dev/null || echo "[install] step_sheldon: 'mise exec -- sheldon lock' failed; run 'mise install' then 'sheldon lock'" >&2
       else
-        echo "[install] step_sheldon: sheldon not on PATH; skipping"
+        echo "[install] step_sheldon: neither sheldon nor mise on PATH; run 'mise install' then 'sheldon lock'" >&2
       fi
       ;;
     windows)
@@ -451,6 +478,7 @@ step_gcloud_bundle
 step_corepack
 step_update_all
 step_symlink_dotfiles
+step_zsh
 step_sheldon
 step_prek_shim
 

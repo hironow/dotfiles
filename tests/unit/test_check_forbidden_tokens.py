@@ -75,6 +75,7 @@ def _git(repo: Path, *args: str) -> str:
         cwd=repo,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     )
     return result.stdout
@@ -88,7 +89,7 @@ def _init_repo(tmp_path: Path) -> Path:
     _git(repo, "config", "user.email", "test@example.invalid")
     _git(repo, "config", "user.name", "Test")
     _git(repo, "config", "commit.gpgsign", "false")
-    (repo / "README.md").write_text("clean baseline\n")
+    (repo / "README.md").write_text("clean baseline\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-q", "-m", "chore: baseline")
     return repo
@@ -97,7 +98,7 @@ def _init_repo(tmp_path: Path) -> Path:
 def _token_list(tmp_path: Path, *tokens: str, mode: int = 0o600) -> Path:
     path = tmp_path / "forbidden-tokens"
     body = "# synthetic list for tests\n\n" + "".join(f"{t}\n" for t in tokens)
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8", newline="\n")
     path.chmod(mode)
     return path
 
@@ -123,6 +124,7 @@ def _run(
         cwd=repo,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
     )
 
@@ -137,7 +139,7 @@ def _stage(repo: Path, rel: str, content: str) -> None:
     """
     path = repo / rel
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8", newline="\n")
     _git(repo, "add", "-f", "--", rel)
 
 
@@ -146,13 +148,17 @@ def _stage(repo: Path, rel: str, content: str) -> None:
 
 def test_list_parsing_drops_comments_and_blanks(tmp_path: Path) -> None:
     path = tmp_path / "list"
-    path.write_text(f"# a comment\n\n  {TOKEN_A}  \n{TOKEN_B}\n\n# trailing\n")
+    path.write_text(
+        f"# a comment\n\n  {TOKEN_A}  \n{TOKEN_B}\n\n# trailing\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     assert mod.load_tokens(path) == [TOKEN_A.lower(), TOKEN_B.lower()]
 
 
 def test_list_is_lowercased_for_case_insensitive_matching(tmp_path: Path) -> None:
     path = tmp_path / "list"
-    path.write_text("MiXeDCaSeToKeN\n")
+    path.write_text("MiXeDCaSeToKeN\n", encoding="utf-8", newline="\n")
     assert mod.load_tokens(path) == ["mixedcasetoken"]
 
 
@@ -168,9 +174,9 @@ def test_list_path_prefers_env_then_xdg_then_home(tmp_path: Path) -> None:
     (home / ".config" / "dotfiles").mkdir(parents=True)
     xdg_list = xdg / "dotfiles" / "forbidden-tokens"
     home_list = home / ".config" / "dotfiles" / "forbidden-tokens"
-    xdg_list.write_text("")
-    home_list.write_text("")
-    env_path.write_text("")
+    xdg_list.write_text("", encoding="utf-8", newline="\n")
+    home_list.write_text("", encoding="utf-8", newline="\n")
+    env_path.write_text("", encoding="utf-8", newline="\n")
 
     assert (
         mod.tokens_path(
@@ -231,7 +237,7 @@ def test_untouched_tracked_content_with_a_token_passes(tmp_path: Path) -> None:
     """The six pre-existing tracked occurrences must not fail every commit."""
     repo = _init_repo(tmp_path)
     legacy = repo / "legacy.md"
-    legacy.write_text(f"historical {TOKEN_A}\n")
+    legacy.write_text(f"historical {TOKEN_A}\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "legacy.md")
     _git(repo, "commit", "-q", "-m", "chore: legacy")
     tokens = _token_list(tmp_path, TOKEN_A)
@@ -243,11 +249,13 @@ def test_untouched_tracked_content_with_a_token_passes(tmp_path: Path) -> None:
 def test_appending_a_clean_line_to_a_tainted_file_passes(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     tainted = repo / "legacy.md"
-    tainted.write_text(f"historical {TOKEN_A}\n")
+    tainted.write_text(f"historical {TOKEN_A}\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "legacy.md")
     _git(repo, "commit", "-q", "-m", "chore: legacy")
     tokens = _token_list(tmp_path, TOKEN_A)
-    tainted.write_text(f"historical {TOKEN_A}\nan innocent new line\n")
+    tainted.write_text(
+        f"historical {TOKEN_A}\nan innocent new line\n", encoding="utf-8", newline="\n"
+    )
     _git(repo, "add", "legacy.md")
     result = _run(repo, "staged", token_list=tokens)
     assert result.returncode == 0, result.stderr
@@ -256,11 +264,11 @@ def test_appending_a_clean_line_to_a_tainted_file_passes(tmp_path: Path) -> None
 def test_removing_a_tainted_line_passes(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     tainted = repo / "legacy.md"
-    tainted.write_text(f"historical {TOKEN_A}\nkeep\n")
+    tainted.write_text(f"historical {TOKEN_A}\nkeep\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "legacy.md")
     _git(repo, "commit", "-q", "-m", "chore: legacy")
     tokens = _token_list(tmp_path, TOKEN_A)
-    tainted.write_text("keep\n")
+    tainted.write_text("keep\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "legacy.md")
     result = _run(repo, "staged", token_list=tokens)
     assert result.returncode == 0, result.stderr
@@ -293,6 +301,9 @@ def test_clean_staged_change_passes(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX file modes do not exist on Windows"
+)
 def test_a_world_readable_list_warns_but_still_enforces(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     tokens = _token_list(tmp_path, TOKEN_A, mode=0o644)
@@ -376,7 +387,7 @@ def test_commit_message_with_a_token_is_rejected(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     tokens = _token_list(tmp_path, TOKEN_A)
     msg = repo / "MSG"
-    msg.write_text(f"feat: wire up {TOKEN_A}\n")
+    msg.write_text(f"feat: wire up {TOKEN_A}\n", encoding="utf-8", newline="\n")
     result = _run(repo, "commit-msg", str(msg), token_list=tokens)
     assert result.returncode == 1
     assert "commit message" in result.stderr.lower()
@@ -386,7 +397,9 @@ def test_clean_commit_message_passes(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     tokens = _token_list(tmp_path, TOKEN_A)
     msg = repo / "MSG"
-    msg.write_text("feat: wire up the private project\n")
+    msg.write_text(
+        "feat: wire up the private project\n", encoding="utf-8", newline="\n"
+    )
     result = _run(repo, "commit-msg", str(msg), token_list=tokens)
     assert result.returncode == 0, result.stderr
 
@@ -397,7 +410,8 @@ def test_commit_message_git_comment_lines_are_ignored(tmp_path: Path) -> None:
     tokens = _token_list(tmp_path, TOKEN_A)
     msg = repo / "MSG"
     msg.write_text(
-        f"feat: something clean\n\n# On branch {TOKEN_A}\n# Changes staged:\n"
+        f"feat: something clean\n\n# On branch {TOKEN_A}\n# Changes staged:\n",
+        encoding="utf-8",
     )
     result = _run(repo, "commit-msg", str(msg), token_list=tokens)
     assert result.returncode == 0, result.stderr
@@ -410,7 +424,8 @@ def test_commit_message_body_below_scissors_is_ignored(tmp_path: Path) -> None:
     msg.write_text(
         "feat: clean subject\n\n"
         "# ------------------------ >8 ------------------------\n"
-        f"diff --git a/x b/x\n+{TOKEN_A}\n"
+        f"diff --git a/x b/x\n+{TOKEN_A}\n",
+        encoding="utf-8",
     )
     result = _run(repo, "commit-msg", str(msg), token_list=tokens)
     assert result.returncode == 0, result.stderr
@@ -430,7 +445,7 @@ def _branch_repo(tmp_path: Path) -> Path:
     """A repo whose `main` is the merge base of a two-commit feature branch."""
     repo = _init_repo(tmp_path)
     _git(repo, "checkout", "-q", "-b", "feat/guarded")
-    (repo / "a.md").write_text("first\n")
+    (repo / "a.md").write_text("first\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "a.md")
     _git(repo, "commit", "-q", "-m", "feat: first step")
     return repo
@@ -438,10 +453,10 @@ def _branch_repo(tmp_path: Path) -> Path:
 
 def test_branch_mode_flags_an_earlier_commit_message(tmp_path: Path) -> None:
     repo = _branch_repo(tmp_path)
-    (repo / "b.md").write_text("second\n")
+    (repo / "b.md").write_text("second\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "b.md")
     _git(repo, "commit", "-q", "-m", f"feat: touch {TOKEN_A}")
-    (repo / "c.md").write_text("third\n")
+    (repo / "c.md").write_text("third\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "c.md")
     _git(repo, "commit", "-q", "-m", "feat: clean again")
     tokens = _token_list(tmp_path, TOKEN_A)
@@ -454,7 +469,7 @@ def test_branch_mode_flags_an_added_line_from_an_earlier_commit(
     tmp_path: Path,
 ) -> None:
     repo = _branch_repo(tmp_path)
-    (repo / "b.md").write_text(f"leaks {TOKEN_A}\n")
+    (repo / "b.md").write_text(f"leaks {TOKEN_A}\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "b.md")
     _git(repo, "commit", "-q", "-m", "feat: clean subject")
     tokens = _token_list(tmp_path, TOKEN_A)
@@ -473,11 +488,11 @@ def test_branch_mode_passes_on_a_clean_branch(tmp_path: Path) -> None:
 def test_branch_mode_ignores_history_before_the_base(tmp_path: Path) -> None:
     """`main`'s nine tainted messages are out of scope by construction."""
     repo = _init_repo(tmp_path)
-    (repo / "old.md").write_text("old\n")
+    (repo / "old.md").write_text("old\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "old.md")
     _git(repo, "commit", "-q", "-m", f"chore: historic {TOKEN_A}")
     _git(repo, "checkout", "-q", "-b", "feat/guarded")
-    (repo / "new.md").write_text("new\n")
+    (repo / "new.md").write_text("new\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "new.md")
     _git(repo, "commit", "-q", "-m", "feat: clean")
     tokens = _token_list(tmp_path, TOKEN_A)
@@ -501,7 +516,7 @@ def test_branch_mode_defaults_to_the_origin_main_merge_base(tmp_path: Path) -> N
     # Fake an `origin/main` remote-tracking ref at the merge base.
     head_of_main = _git(repo, "rev-parse", "main").strip()
     _git(repo, "update-ref", "refs/remotes/origin/main", head_of_main)
-    (repo / "b.md").write_text("second\n")
+    (repo / "b.md").write_text("second\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "b.md")
     _git(repo, "commit", "-q", "-m", f"feat: touch {TOKEN_A}")
     tokens = _token_list(tmp_path, TOKEN_A)
@@ -517,7 +532,9 @@ def test_file_mode_flags_a_pr_body(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     tokens = _token_list(tmp_path, TOKEN_A)
     body = tmp_path / "pr-body.md"
-    body.write_text(f"## Summary\n\nMigrates {TOKEN_A} to ax.\n")
+    body.write_text(
+        f"## Summary\n\nMigrates {TOKEN_A} to ax.\n", encoding="utf-8", newline="\n"
+    )
     result = _run(repo, "file", str(body), token_list=tokens)
     assert result.returncode == 1
     assert "pr-body.md:3" in result.stderr
@@ -527,7 +544,11 @@ def test_file_mode_passes_a_clean_pr_body(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     tokens = _token_list(tmp_path, TOKEN_A)
     body = tmp_path / "pr-body.md"
-    body.write_text("## Summary\n\nMigrates the private project to ax.\n")
+    body.write_text(
+        "## Summary\n\nMigrates the private project to ax.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     result = _run(repo, "file", str(body), token_list=tokens)
     assert result.returncode == 0, result.stderr
 
@@ -536,7 +557,7 @@ def test_file_mode_scans_whole_content_not_just_added_lines(tmp_path: Path) -> N
     repo = _init_repo(tmp_path)
     tokens = _token_list(tmp_path, TOKEN_A)
     body = tmp_path / "pr-body.md"
-    body.write_text(f"{TOKEN_A}\n")
+    body.write_text(f"{TOKEN_A}\n", encoding="utf-8", newline="\n")
     assert _run(repo, "file", str(body), token_list=tokens).returncode == 1
 
 
@@ -630,7 +651,7 @@ def test_added_lines_does_not_mistake_the_plus_plus_plus_header() -> None:
 
 
 def test_prek_config_declares_both_install_hook_types() -> None:
-    config = (_REPO_ROOT / ".pre-commit-config.yaml").read_text()
+    config = (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert "default_install_hook_types:" in config
     block = config.split("default_install_hook_types:", 1)[1].split("\n", 1)[0]
     assert "pre-commit" in block
@@ -638,21 +659,21 @@ def test_prek_config_declares_both_install_hook_types() -> None:
 
 
 def test_prek_config_runs_the_guard_at_both_stages() -> None:
-    config = (_REPO_ROOT / ".pre-commit-config.yaml").read_text()
+    config = (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert "check_forbidden_tokens.py staged" in config
     assert "check_forbidden_tokens.py commit-msg" in config
     assert "stages: [commit-msg]" in config
 
 
 def test_install_hooks_recipe_installs_the_commit_msg_shim() -> None:
-    justfile = (_REPO_ROOT / "justfile").read_text()
+    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
     recipe = justfile.split("\ninstall-hooks:", 1)[1].split("\n\n", 1)[0]
     assert "--hook-type commit-msg" in recipe
     assert "--hook-type pre-commit" in recipe
 
 
 def test_ci_recipe_rescans_the_branch() -> None:
-    justfile = (_REPO_ROOT / "justfile").read_text()
+    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
     ci_line = next(
         line for line in justfile.splitlines() if line.startswith("ci: check ")
     )
@@ -660,11 +681,14 @@ def test_ci_recipe_rescans_the_branch() -> None:
 
 
 def test_pr_body_check_recipe_exists() -> None:
-    justfile = (_REPO_ROOT / "justfile").read_text()
+    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
     assert "\ncheck-pr-body " in justfile
 
 
 @pytest.mark.skipif(shutil.which("prek") is None, reason="prek not on PATH")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX file modes do not exist on Windows"
+)
 def test_prek_install_really_creates_a_commit_msg_hook(tmp_path: Path) -> None:
     """The DoD is "hooks actually installed", so install them for real."""
     repo = _init_repo(tmp_path)
@@ -676,10 +700,214 @@ def test_prek_install_really_creates_a_commit_msg_hook(tmp_path: Path) -> None:
         cwd=repo,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     )
     for hook in ("pre-commit", "commit-msg"):
         path = repo / ".git" / "hooks" / hook
         assert path.is_file(), f"{hook} shim missing"
         assert path.stat().st_mode & stat.S_IXUSR
-        assert "prek" in path.read_text()
+        assert "prek" in path.read_text(encoding="utf-8")
+
+
+# --- tree mode: every tracked file at HEAD -----------------------------------
+#
+# The staged and branch scans read a diff, so a token that is already committed
+# is invisible to both of them forever. `tree` is the standing proof that the
+# tracked tree itself is clean: it reads every blob and every pathname at HEAD.
+# HEAD, not the worktree -- an uncommitted edit is the staged leg's job, and a
+# gate that failed on a scratch file nobody is about to push would be switched
+# off within the week.
+
+
+def _commit(repo: Path, rel: str, content: str, message: str = "chore: add") -> None:
+    _stage(repo, rel, content)
+    _git(repo, "commit", "-q", "-m", message)
+
+
+def test_tree_rejects_a_token_already_committed(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, "docs/note.md", f"the host is {TOKEN_A} today\n")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "docs/note.md:1" in result.stderr
+
+
+def test_tree_rejects_a_token_in_a_tracked_path(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, f"docs/{TOKEN_A}-notes.md", "clean body\n")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "tracked path" in result.stderr
+
+
+def test_tree_never_prints_the_token(tmp_path: Path) -> None:
+    """Both legs at once: this output can reach a public log."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, f"docs/{TOKEN_A}.md", f"body with {TOKEN_A}\n")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 1
+    combined = result.stdout + result.stderr
+    assert TOKEN_A not in combined.lower()
+    assert mod.REDACTED in combined
+
+
+def test_tree_is_clean_on_a_clean_tree(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, "docs/note.md", "nothing to see\n")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_ignores_an_untracked_file(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    (repo / "scratch.txt").write_text(f"{TOKEN_A}\n", encoding="utf-8")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_reads_head_not_the_worktree(tmp_path: Path) -> None:
+    """An uncommitted edit belongs to the staged leg, not to this one."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    _commit(repo, "docs/note.md", "clean when committed\n")
+    (repo / "docs" / "note.md").write_text(f"dirty with {TOKEN_A}\n", encoding="utf-8")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_skips_a_binary_blob_without_crashing(tmp_path: Path) -> None:
+    """A binary blob cannot be scanned for text; staging one is already refused."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    blob = repo / "logo.bin"
+    blob.write_bytes(b"\x00\x01" + TOKEN_A.encode() + b"\x00")
+    _git(repo, "add", "-f", "--", "logo.bin")
+    _git(repo, "commit", "-q", "-m", "chore: binary")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_survives_a_gitlink(tmp_path: Path) -> None:
+    """A submodule's commit is not a blob in this tree, and a fresh clone has
+    the directory empty -- reading it is both impossible and not our business."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+    head = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "update-index", "--add", "--cacheinfo", f"160000,{head},vendor/dep")
+    _git(repo, "commit", "-q", "-m", "chore: gitlink")
+
+    result = _run(repo, "tree", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tree_without_a_token_list_passes(tmp_path: Path) -> None:
+    """A fresh clone and CI have no list; this script is not a secret scanner."""
+    repo = _init_repo(tmp_path)
+    _commit(repo, "docs/note.md", f"{TOKEN_A}\n")
+
+    result = _run(repo, "tree")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+# --- --require-list: fail closed where the operator runs it ------------------
+#
+# The default is skip-on-no-list, which is right for a fresh clone and wrong for
+# the operator's own gate: a list that moved, or a typo in the env var, would
+# turn the wall into a no-op and say "OK". `just ci` passes --require-list so a
+# missing list is a failure there, and --min-tokens is the floor that catches a
+# truncated one.
+
+
+def test_require_list_fails_without_a_list(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+
+    result = _run(repo, "tree", "--require-list")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "--require-list" in result.stderr
+
+
+def test_require_list_fails_on_an_empty_list(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    empty = _token_list(tmp_path)
+
+    result = _run(repo, "tree", "--require-list", token_list=empty)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_require_list_fails_when_the_env_path_does_not_exist(tmp_path: Path) -> None:
+    """A typo in DOTFILES_FORBIDDEN_TOKENS must not read as 'clean'."""
+    repo = _init_repo(tmp_path)
+
+    result = _run(
+        repo,
+        "tree",
+        "--require-list",
+        extra_env={mod.TOKENS_ENV: str(tmp_path / "nope")},
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_require_list_passes_with_a_loaded_list(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A)
+
+    result = _run(repo, "tree", "--require-list", token_list=tokens)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_require_list_also_guards_branch_mode(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+
+    result = _run(repo, "branch", "--require-list")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_min_tokens_fails_when_the_list_shrank(tmp_path: Path) -> None:
+    """The floor is what notices that an entry was dropped from the list."""
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A, TOKEN_B)
+
+    result = _run(
+        repo, "tree", "--require-list", "--min-tokens", "3", token_list=tokens
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "--min-tokens" in result.stderr
+
+
+def test_min_tokens_passes_at_and_above_the_floor(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A, TOKEN_B, TOKEN_NUM)
+
+    for floor in ("2", "3"):
+        result = _run(
+            repo, "tree", "--require-list", "--min-tokens", floor, token_list=tokens
+        )
+        assert result.returncode == 0, result.stdout + result.stderr

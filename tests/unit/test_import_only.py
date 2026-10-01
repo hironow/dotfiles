@@ -25,7 +25,7 @@ def _make_skill(parent: Path, name: str, content: str = "skill") -> Path:
     """Create a minimal skill directory with SKILL.md."""
     skill_dir = parent / "skills" / name
     skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(f"# {name}\n{content}\n")
+    (skill_dir / "SKILL.md").write_text(f"# {name}\n{content}\n", encoding="utf-8")
     return skill_dir
 
 
@@ -34,7 +34,7 @@ def _make_command(parent: Path, name: str) -> Path:
     commands_dir = parent / "commands"
     commands_dir.mkdir(parents=True, exist_ok=True)
     command = commands_dir / f"{name}.md"
-    command.write_text(f"# {name}\n")
+    command.write_text(f"# {name}\n", encoding="utf-8")
     return command
 
 
@@ -47,7 +47,7 @@ def workspace(tmp_path: Path) -> dict[str, Path]:
     dotfiles.mkdir()
     target_a.mkdir()
     target_b.mkdir()
-    (dotfiles / "ROOT_AGENTS.md").write_text("# base\n")
+    (dotfiles / "ROOT_AGENTS.md").write_text("# base\n", encoding="utf-8")
     return {"dotfiles": dotfiles, "target_a": target_a, "target_b": target_b}
 
 

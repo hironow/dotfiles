@@ -83,7 +83,7 @@ def run_function(
         ("gcloud", GCLOUD_STUB),
     ):
         stub = bin_dir / name
-        stub.write_text(body)
+        stub.write_text(body, encoding="utf-8")
         stub.chmod(0o755)
     log = tmp_path / "calls.log"
     log.touch()
@@ -113,8 +113,10 @@ def run_function(
         text=True,
         check=False,
         timeout=60,
+        encoding="utf-8",
+        errors="replace",
     )
-    return result, log.read_text().splitlines()
+    return result, log.read_text(encoding="utf-8").splitlines()
 
 
 RESTART = 'restart_workers_from_a_replaced_store "ate-setup"'

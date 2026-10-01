@@ -1,0 +1,33 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/guard-codex.sh\" block-prohibited-files.sh" },
+          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/guard-codex.sh\" block-secrets.sh" }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/guard-codex.sh\" block-prohibited-commands.sh" }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/rtk-hook-codex.sh\"" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CODEX_HOME/hooks/format-after-edit.sh\"" }
+        ]
+      }
+    ]
+  }
+}

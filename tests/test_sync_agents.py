@@ -40,11 +40,11 @@ def _copy_tracked_into(src: str, snapshot: str) -> None:
     for rel in tracked.split("\0"):
         if not rel:
             continue
-        source = os.path.join(src, rel)
-        if not os.path.isfile(source):  # skip gitlinks / vanished paths
+        source = Path(src) / rel
+        if not source.is_file():  # skip gitlinks / vanished paths
             continue
-        dest = os.path.join(snapshot, rel)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        dest = Path(snapshot) / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, dest, follow_symlinks=False)
 
 
@@ -70,7 +70,9 @@ def sandbox_repo():
         snapshots_root.mkdir(exist_ok=True)
         snapshot = tempfile.mkdtemp(prefix="snap-", dir=str(snapshots_root))
         _copy_tracked_into(str(ROOT), snapshot)
-        _SANDBOX_REPO = os.path.join(lwf, os.path.relpath(snapshot, str(ROOT)))
+        # The snapshot sits under ROOT. `uvx pytest` runs on the image's
+        # Python 3.11, which has no relative_to(walk_up=...)
+        _SANDBOX_REPO = str(Path(lwf) / Path(snapshot).relative_to(ROOT))
         yield
         _SANDBOX_REPO = None
         shutil.rmtree(snapshot, ignore_errors=True)
@@ -95,6 +97,8 @@ def _run(
         shell=isinstance(cmd, str),
         capture_output=True,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -1339,9 +1343,11 @@ def test_hub_and_spoke_claude_gets_overlay_base_spokes_hooks(docker_image):
         assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
 
 
-def test_hub_and_spoke_codex_gemini_base_only_no_hooks(docker_image):
-    """codex/gemini get the base directly (no overlay, no hooks); spokes present
-    with refs rewritten to each agent's own absolute path."""
+def test_hub_and_spoke_codex_gets_codex_hooks_gemini_base_only(docker_image):
+    """codex/gemini get the base directly (no overlay); spokes present with refs
+    rewritten to each agent's own absolute path. Codex also gets the guards,
+    its deny adapter and rtk shim (never the Claude rtk wrapper) registered in
+    hooks.json by absolute path; gemini gets no hooks."""
     cmd = r"""
     set -euo pipefail
     cd /root/dotfiles && just sync-agents x g
@@ -1350,7 +1356,13 @@ def test_hub_and_spoke_codex_gemini_base_only_no_hooks(docker_image):
     grep -q 'Non-negotiables' /root/.gemini/GEMINI.md && echo "gemini-base"
     [ -f /root/.codex/docs/agents/testing.md ] && echo "codex-spoke"
     grep -q '/root/.codex/docs/agents/testing.md' /root/.codex/AGENTS.md && echo "codex-spoke-ref-absolute"
-    [ -d /root/.codex/hooks ] && echo "ERR-codex-hooks" || echo "codex-no-hooks"
+    [ -x /root/.codex/hooks/guard-codex.sh ] && echo "codex-guard-adapter"
+    [ -x /root/.codex/hooks/block-prohibited-commands.sh ] && echo "codex-guard"
+    [ -f /root/.codex/hooks/rtk-hook-codex.sh ] && echo "codex-rtk-shim"
+    [ -e /root/.codex/hooks/rtk-hook-claude.sh ] && echo "ERR-codex-claude-wrapper" || echo "codex-no-claude-wrapper"
+    grep -q '/root/.codex/hooks/guard-codex.sh' /root/.codex/hooks.json && echo "codex-hooks-json-absolute"
+    # nothing left to copy: Codex's trust step still runs (a failed one retries)
+    just sync-agents x 2>&1 | grep -q 'codex-hooks' && echo "codex-steps-rerun"
     [ -d /root/.gemini/hooks ] && echo "ERR-gemini-hooks" || echo "gemini-no-hooks"
     [ -f /root/.codex/CLAUDE.md ] && echo "ERR-codex-overlay" || echo "codex-no-overlay"
     """
@@ -1360,7 +1372,12 @@ def test_hub_and_spoke_codex_gemini_base_only_no_hooks(docker_image):
         "gemini-base",
         "codex-spoke",
         "codex-spoke-ref-absolute",
-        "codex-no-hooks",
+        "codex-guard-adapter",
+        "codex-guard",
+        "codex-rtk-shim",
+        "codex-no-claude-wrapper",
+        "codex-hooks-json-absolute",
+        "codex-steps-rerun",
         "gemini-no-hooks",
         "codex-no-overlay",
     ):

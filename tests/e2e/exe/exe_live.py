@@ -20,13 +20,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import shlex
 import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,25 @@ def stamp(t: datetime) -> str:
 
 def parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def parse_duration(value: str) -> timedelta:
+    """A duration as `just exe-wake` takes it (Go's time.ParseDuration: 1h30m, 30m, 90s)."""
+    parts = re.findall(r"(\d+)([hms])", value)
+    if not parts or "".join(n + u for n, u in parts) != value:
+        raise ValueError(f"not a duration: {value!r}")
+    unit = {"h": "hours", "m": "minutes", "s": "seconds"}
+    return sum((timedelta(**{unit[u]: int(n)}) for n, u in parts), timedelta())
+
+
+def wake_would_shorten(deadline: datetime | None, now: datetime, duration: str) -> bool:
+    """A wake for `duration` would end before the lease already standing.
+
+    `just exe-wake` sets the deadline to now plus its duration, so a module
+    that wakes for 30 minutes inside a longer window would cut the window
+    short (W3). The standing lease keeps the node up anyway.
+    """
+    return deadline is not None and deadline > now + parse_duration(duration)
 
 
 def log(message: str) -> None:
@@ -81,6 +101,8 @@ class Exe:
                 text=True,
                 timeout=timeout,
                 check=False,
+                encoding="utf-8",
+                errors="replace",
             )
         except subprocess.TimeoutExpired as exc:
             raise CommandFailed(
@@ -140,7 +162,7 @@ class Exe:
 
     def measure(self, what: str, **values: Any) -> None:
         log(f"measured {what}: {values}")
-        with (self.out / "measurements.jsonl").open("a") as f:
+        with (self.out / "measurements.jsonl").open("a", encoding="utf-8") as f:
             f.write(
                 json.dumps({"what": what, "at": stamp(utcnow()), **values}, default=str)
                 + "\n"
@@ -217,8 +239,14 @@ class Exe:
         return int(ready.strip() or 0)
 
     def wake(self, duration: str = "1h") -> datetime:
+        """`just exe-wake`, unless a longer lease already stands (wake_would_shorten)."""
         woke = utcnow()
-        self.just("exe-wake", duration)
+        if wake_would_shorten(self.lease_deadline(), woke, duration):
+            log(
+                f"a lease longer than {duration} stands; not waking, which would shorten it"
+            )
+        else:
+            self.just("exe-wake", duration)
         self.wait_ready()
         self.measure(
             "wake_to_ready", woke=stamp(woke), seconds=(utcnow() - woke).total_seconds()
@@ -329,7 +357,8 @@ class Exe:
             f"  atespace: {ATESPACE}\n"
             "spec:\n"
             f'  image: "{self.image}"\n'
-            "  debug: true\n"
+            "  debug: true\n",
+            encoding="utf-8",
         )
         self.tasks.append(name)
         self.run("mise", "x", "--", "ax", "apply", "-f", str(manifest))

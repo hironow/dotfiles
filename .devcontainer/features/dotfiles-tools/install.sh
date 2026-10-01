@@ -291,13 +291,7 @@ go = "1.27.1"
 # below overlays the real native binary regardless. See ADR 0040.
 "npm:@anthropic-ai/claude-code" = "2.1.258"
 "npm:@github/copilot" = "1.0.80"
-# trust_policy_excludes: the 2026-08-14 @smithy/* batch (core@3.33.0,
-# node-http-handler@4.11.0) was published by aws-sdk-bot (a listed maintainer)
-# without provenance attestations, while the prior releases had them — aube's
-# no-downgrade policy blocks the install. Verified against npmjs.org
-# 2026-08-15 (benign publish outside the trusted workflow, not tampering).
-# Drop the excludes once provenance-attested @smithy releases ship.
-"npm:@earendil-works/pi-coding-agent" = { version = "0.84.3", trust_policy_excludes = ["@smithy/core@3.33.0", "@smithy/node-http-handler@4.11.0"] }
+"npm:@earendil-works/pi-coding-agent" = "0.84.3"
 "github:google-antigravity/antigravity-cli" = { version = "1.1.27", exe = "antigravity" }
 "npm:cf" = "0.8.0"
 "npm:resend-cli" = "2.16.0"

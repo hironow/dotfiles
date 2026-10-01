@@ -18,7 +18,9 @@ Pipeline (full semantics: docs/agents/enforcement.md):
    into single tokens that never equal a tool name, across lines too.
 4. Token walk with a minimal shell grammar: command boundaries are
    ; && || | & ( ); NAME=VALUE prefixes and wrappers (env/sudo/...) are
-   skipped at command start; redirect operators consume the next token as
+   skipped at command start, as is the mandatory rtk proxy (`rtk [opts]
+   [proxy|run|err|test|summary|smart] <real command>`); redirect operators
+   consume the next token as
    their operand. Guards: pip/poetry/pipenv, npm/yarn/pnpm (and the direct
    `corepack <pm>` run form), make (command name, basename-resolved),
    force-push to a protected branch (any force flag + a main/master refspec,
@@ -73,6 +75,103 @@ NODE_COMMANDS = {"npm", "yarn", "pnpm"}
 COREPACK_PMS = {"pnpm", "yarn", "npm"}
 COREPACK_VALUE_FLAGS = {"--cwd"}  # corepack global flags that consume the next token
 WRAPPERS = {"env", "sudo", "time", "nohup", "command", "xargs"}
+# rtk is the mandatory output proxy (ADR 0047) and its PreToolUse hook rewrites
+# bare commands into `rtk <cmd> …`, so the prefix is everywhere. It is a wrapper
+# whose real command is the first operand after rtk's own flags — unwrap it, or
+# `rtk pnpm install` walks straight past the ban list.
+RTK_LAUNCHER = "rtk"
+# rtk subcommands that run a command the agent supplies rather than proxying a
+# fixed tool, so the real command sits one token further right
+# (`rtk proxy pnpm install`, `rtk err pip install …`, `rtk run -- npm ci`).
+RTK_RUN_SUBCOMMANDS = {"proxy", "run", "err", "test", "summary", "smart"}
+# Every other subcommand of rtk 0.50.0, reviewed: each proxies a fixed tool (the
+# walk then checks that tool's name like a bare command: `rtk npm ci` is npm) or
+# is rtk's own verb. The guard never reads this set; it records the review, and
+# `just doctor` (rtk-guard) warns when an rtk upgrade adds a subcommand in neither.
+RTK_FILTER_SUBCOMMANDS = {
+    "ast-grep",
+    "aws",
+    "bun",
+    "bunx",
+    "cargo",
+    "cc-economics",
+    "config",
+    "ctest",
+    "curl",
+    "deno",
+    "deps",
+    "diff",
+    "discover",
+    "docker",
+    "dotnet",
+    "ecs",
+    "env",
+    "find",
+    "format",
+    "gain",
+    "gh",
+    "git",
+    "glab",
+    "go",
+    "golangci-lint",
+    "gradlew",
+    "grep",
+    "gt",
+    "help",
+    "hook",
+    "hook-audit",
+    "init",
+    "jest",
+    "json",
+    "kubectl",
+    "learn",
+    "lint",
+    "log",
+    "ls",
+    "mvn",
+    "mvnd",
+    "mypy",
+    "next",
+    "npm",
+    "npx",
+    "oc",
+    "paratest",
+    "pest",
+    "php",
+    "phpstan",
+    "phpt",
+    "phpunit",
+    "pint",
+    "pip",
+    "pipe",
+    "playwright",
+    "pnpm",
+    "prettier",
+    "prisma",
+    "psql",
+    "pytest",
+    "rake",
+    "read",
+    "recall",
+    "rewrite",
+    "rg",
+    "rspec",
+    "rubocop",
+    "ruff",
+    "sbt",
+    "session",
+    "sqlfluff",
+    "telemetry",
+    "tree",
+    "trust",
+    "tsc",
+    "untrust",
+    "uv",
+    "verify",
+    "vitest",
+    "wc",
+    "wget",
+}
 INTERPRETERS = {
     "sh",
     "bash",
@@ -209,6 +308,7 @@ class _CommandWalker:
     def walk(self, tokens: list[str]) -> None:
         at_start = True
         pending_redirect = False
+        in_rtk = False
         name: str | None = None
         args: list[str] = []
         for token in tokens:
@@ -217,7 +317,7 @@ class _CommandWalker:
                     pending_redirect = True
                 if token in COMMAND_SEPARATORS:
                     self._finalize(name, args)
-                    name, args, at_start = None, [], True
+                    name, args, at_start, in_rtk = None, [], True, False
                 continue
             if pending_redirect:
                 pending_redirect = False
@@ -227,9 +327,19 @@ class _CommandWalker:
             if at_start:
                 if ASSIGNMENT_RE.match(token):
                     continue
-                if _basename(token) in WRAPPERS:
+                base = _basename(token)
+                if base in WRAPPERS:
                     continue
-                name = _basename(token)
+                if base == RTK_LAUNCHER:
+                    in_rtk = True
+                    continue
+                if in_rtk:
+                    if token.startswith("-"):
+                        continue  # rtk's own options, e.g. --ultra-compact
+                    if base in RTK_RUN_SUBCOMMANDS:
+                        continue  # transparent: the real command is next
+                    in_rtk = False
+                name = base
                 at_start = False
                 continue
             args.append(token)

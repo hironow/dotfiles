@@ -24,11 +24,17 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+
+# POSIX process groups and bash/dash stubs: on Windows the guest launch hangs
+# and os.killpg does not exist. The platform check also lets ty skip the rest.
+if sys.platform == "win32":
+    pytest.skip("POSIX-only: process groups and shell stubs", allow_module_level=True)
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "exe" / "scripts"
@@ -190,10 +196,13 @@ class Run:
 
     def task(self, name: str) -> str | None:
         f = self.state / "tasks" / name
-        return f.read_text().strip() if f.exists() else None
+        return f.read_text(encoding="utf-8").strip() if f.exists() else None
 
     def applied(self) -> list[str]:
-        return [p.read_text() for p in sorted((self.state / "applied").glob("*.yaml"))]
+        return [
+            p.read_text(encoding="utf-8")
+            for p in sorted((self.state / "applied").glob("*.yaml"))
+        ]
 
 
 def setup(tmp_path: Path, tasks: dict[str, str] | None = None) -> None:
@@ -206,13 +215,13 @@ def setup(tmp_path: Path, tasks: dict[str, str] | None = None) -> None:
         ("setsid", SETSID_SHIM),
     ):
         stub = bin_dir / name
-        stub.write_text(body)
+        stub.write_text(body, encoding="utf-8")
         stub.chmod(0o755)
     (tmp_path / "state" / "tasks").mkdir(parents=True, exist_ok=True)
     (tmp_path / "state" / "applied").mkdir(exist_ok=True)
     (tmp_path / "guest").mkdir(exist_ok=True)
     for name, phase in (tasks or {}).items():
-        (tmp_path / "state" / "tasks" / name).write_text(phase + "\n")
+        (tmp_path / "state" / "tasks" / name).write_text(phase + "\n", encoding="utf-8")
 
 
 def run(tmp_path: Path, script: Path, *args: str, **fake: str) -> Run:
@@ -245,9 +254,14 @@ def run(tmp_path: Path, script: Path, *args: str, **fake: str) -> Run:
         text=True,
         check=False,
         timeout=120,
+        encoding="utf-8",
+        errors="replace",
     )
     return Run(
-        result, log.read_text().splitlines(), tmp_path / "state", tmp_path / "guest"
+        result,
+        log.read_text(encoding="utf-8").splitlines(),
+        tmp_path / "state",
+        tmp_path / "guest",
     )
 
 
@@ -365,7 +379,7 @@ def test_the_task_is_the_image_with_debug_and_nothing_else(tmp_path: Path) -> No
 
 def test_a_name_already_taken_is_refused(tmp_path: Path) -> None:
     setup(tmp_path)
-    (tmp_path / "state" / "tasks" / "j1").write_text("Suspended\n")
+    (tmp_path / "state" / "tasks" / "j1").write_text("Suspended\n", encoding="utf-8")
     r = job(tmp_path, "true")
     assert r.code == 1
     assert not r.called("ax apply")
@@ -453,7 +467,7 @@ def test_the_timeout_kills_the_commands_whole_process_group(tmp_path: Path) -> N
     assert r.code == 124, r.result.stderr
     assert time.monotonic() - started < 40
     # then both are gone, the backgrounded one too
-    recorded = [int(p) for p in pids.read_text().split()]
+    recorded = [int(p) for p in pids.read_text(encoding="utf-8").split()]
     assert len(recorded) == 2
     assert all(gone(p) for p in recorded), recorded
     assert r.called("ax delete task j1")
@@ -470,7 +484,7 @@ def test_a_lost_launch_reply_does_not_run_the_command_twice(tmp_path: Path) -> N
     r = job(tmp_path, "sh", "-c", f"echo once >> {ran}", FAKE_SSH_LOST_REPLY="launch:1")
     assert r.code == 0, r.result.stderr
     assert len(r.ssh("launch")) == 2
-    assert ran.read_text().splitlines() == ["once"]
+    assert ran.read_text(encoding="utf-8").splitlines() == ["once"]
 
 
 def test_a_drain_that_suspends_the_task_mid_command_keeps_it(tmp_path: Path) -> None:
@@ -610,21 +624,23 @@ def guest(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     setup(tmp_path)
     env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}"}
     return subprocess.run(
-        [GUEST_SH, "-c", GUEST.read_text(), "ax-job-guest", *args],
+        [GUEST_SH, "-c", GUEST.read_text(encoding="utf-8"), "ax-job-guest", *args],
         env=env,
         capture_output=True,
         text=True,
         check=False,
         timeout=30,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
 def test_guest_poll_reads_from_the_offset_then_the_status(tmp_path: Path) -> None:
     d = tmp_path / "j"
     d.mkdir()
-    (d / "log").write_text("abcdef")
+    (d / "log").write_text("abcdef", encoding="utf-8")
     assert guest(tmp_path, "poll", str(d), "2", "T0").stdout == "cdef\nT0 6 running\n"
-    (d / "exit").write_text("3\n")
+    (d / "exit").write_text("3\n", encoding="utf-8")
     assert guest(tmp_path, "poll", str(d), "6", "T0").stdout == "\nT0 6 3\n"
 
 
@@ -644,8 +660,8 @@ def test_guest_launch_starts_the_command_once(tmp_path: Path) -> None:
     deadline = time.monotonic() + 10
     while not (d / "exit").exists() and time.monotonic() < deadline:
         time.sleep(0.05)
-    assert (d / "exit").read_text().strip() == "9"
-    assert count.read_text().splitlines() == ["x"]
+    assert (d / "exit").read_text(encoding="utf-8").strip() == "9"
+    assert count.read_text(encoding="utf-8").splitlines() == ["x"]
 
 
 def test_guest_kill_takes_the_whole_group(tmp_path: Path) -> None:
@@ -653,7 +669,7 @@ def test_guest_kill_takes_the_whole_group(tmp_path: Path) -> None:
     # its own process group
     d = tmp_path / "ax-job" / "j"
     guest(tmp_path, "launch", str(d), "sh", "-c", "sleep 60 & sleep 60")
-    pgid = int((d / "pid").read_text())
+    pgid = int((d / "pid").read_text(encoding="utf-8"))
     assert os.getpgid(pgid) == pgid
     # when it is killed, then the whole group is gone
     assert "killed" in guest(tmp_path, "kill", str(d)).stdout
@@ -667,7 +683,7 @@ def _no_stray_jobs(tmp_path: Path):
     yield
     for pid_file in tmp_path.rglob("ax-job/*/pid"):
         try:
-            os.killpg(int(pid_file.read_text()), signal.SIGKILL)
+            os.killpg(int(pid_file.read_text(encoding="utf-8")), signal.SIGKILL)
         except (ProcessLookupError, ValueError, PermissionError):
             pass
 
@@ -679,7 +695,7 @@ JUSTFILE = REPO / "justfile"
 
 def recipe(name: str) -> tuple[list[str], str]:
     """A recipe's attribute lines and its body, from the root justfile."""
-    lines = JUSTFILE.read_text().splitlines()
+    lines = JUSTFILE.read_text(encoding="utf-8").splitlines()
     start = next(
         i for i, line in enumerate(lines) if re.match(rf"^{re.escape(name)}\b.*:", line)
     )
@@ -714,7 +730,9 @@ def wrapper_env() -> set[str]:
     """Every EXE_ variable ax-job, ax-exec and ax-lib.sh require (${VAR:?...})."""
     names: set[str] = set()
     for script in (AX_JOB, AX_EXEC, SCRIPTS / "ax-lib.sh"):
-        names |= set(re.findall(r"\$\{(EXE_[A-Z_]+):\?", script.read_text()))
+        names |= set(
+            re.findall(r"\$\{(EXE_[A-Z_]+):\?", script.read_text(encoding="utf-8"))
+        )
     return names
 
 

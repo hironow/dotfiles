@@ -89,7 +89,9 @@ def test_pnpm_is_blocked(tmp_path: Path) -> None:
 
 def test_pnpm_with_lockfile_is_still_blocked(tmp_path: Path) -> None:
     """The pnpm-lock.yaml carve-out is gone: pnpm is blocked even in a locked repo."""
-    (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+    (tmp_path / "pnpm-lock.yaml").write_text(
+        "lockfileVersion: '9.0'\n", encoding="utf-8"
+    )
     assert _run_hook("pnpm install", tmp_path) == EXIT_BLOCK
 
 
@@ -119,6 +121,74 @@ def test_corepack_enable_is_allowed(tmp_path: Path) -> None:
     """Provisioning subcommands (corepack enable/prepare/use) stay allowed: the
     machine-level corepack supply is retained (ADR 0017, unchanged by 0027)."""
     assert _run_hook("corepack enable", tmp_path) == EXIT_ALLOW
+
+
+# --- rtk, the mandatory output proxy, is a wrapper too (ADR 0047) -----------
+#
+# rtk proxies commands (`rtk pnpm install`) and also runs arbitrary ones through
+# `proxy`/`run`/`err`/`test`/`summary`/`smart`. Its PreToolUse hook rewrites bare
+# commands into that form by default, so agents see the prefix constantly.
+# Measured before this was handled: `rtk pnpm install`, `rtk proxy pnpm install`,
+# `rtk err pip install foo` and `rtk make --version` all returned EXIT_ALLOW —
+# the ban was one prefix away. rtk is mandatory base tooling, so this is a known
+# wrapper, not the accepted long tail enforcement.md describes.
+
+
+def test_rtk_prefixed_pnpm_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("rtk pnpm install", tmp_path) == EXIT_BLOCK
+
+
+def test_rtk_prefixed_make_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("rtk make --version", tmp_path) == EXIT_BLOCK
+
+
+def test_rtk_proxy_pnpm_is_blocked(tmp_path: Path) -> None:
+    """`rtk proxy <cmd>` runs <cmd> raw — the subcommand is transparent."""
+    assert _run_hook("rtk proxy pnpm install", tmp_path) == EXIT_BLOCK
+
+
+def test_rtk_err_pip_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("rtk err pip install requests", tmp_path) == EXIT_BLOCK
+
+
+def test_rtk_summary_poetry_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("rtk summary poetry add httpx", tmp_path) == EXIT_BLOCK
+
+
+def test_rtk_test_make_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("rtk test make build", tmp_path) == EXIT_BLOCK
+
+
+def test_rtk_smart_npm_is_blocked(tmp_path: Path) -> None:
+    assert _run_hook("rtk smart npm ci", tmp_path) == EXIT_BLOCK
+
+
+@pytest.mark.parametrize("command", ["rtk run pnpm install", "rtk run -- npm ci"])
+def test_rtk_run_is_transparent(tmp_path: Path, command: str) -> None:
+    """`rtk run` (rtk 0.50) executes its operands raw, like `rtk proxy`."""
+    assert _run_hook(command, tmp_path) == EXIT_BLOCK
+
+
+def test_rtk_with_its_own_flags_still_unwraps(tmp_path: Path) -> None:
+    assert _run_hook("rtk --ultra-compact pnpm install", tmp_path) == EXIT_BLOCK
+
+
+def test_rtk_ls_is_allowed(tmp_path: Path) -> None:
+    """Unwrapping must not ban rtk itself — only what it is asked to run."""
+    assert _run_hook("rtk ls -la", tmp_path) == EXIT_ALLOW
+
+
+def test_rtk_git_is_allowed(tmp_path: Path) -> None:
+    assert _run_hook("rtk git status", tmp_path) == EXIT_ALLOW
+
+
+def test_rtk_meta_command_is_allowed(tmp_path: Path) -> None:
+    """`rtk gain` takes no wrapped command; the operand is rtk's own verb."""
+    assert _run_hook("rtk gain --history", tmp_path) == EXIT_ALLOW
+
+
+def test_rtk_proxy_uv_is_allowed(tmp_path: Path) -> None:
+    assert _run_hook("rtk proxy uv sync", tmp_path) == EXIT_ALLOW
 
 
 def test_pnpm_mention_in_commit_message_is_allowed(unlocked_repo: Path) -> None:

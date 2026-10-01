@@ -45,9 +45,9 @@ def workspace(tmp_path: Path) -> dict[str, Path]:
     (target / "commands").mkdir(parents=True)
     skills = target / "skills"
     (skills / "cli-managed").mkdir(parents=True)
-    (skills / "cli-managed" / "SKILL.md").write_text("# cli\n")
+    (skills / "cli-managed" / "SKILL.md").write_text("# cli\n", encoding="utf-8")
     (skills / "stale-copy").mkdir()
-    (skills / "stale-copy" / "SKILL.md").write_text("# stale\n")
+    (skills / "stale-copy" / "SKILL.md").write_text("# stale\n", encoding="utf-8")
     return {"dotfiles": dotfiles, "target": target, "skills": skills}
 
 

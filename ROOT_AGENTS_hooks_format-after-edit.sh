@@ -10,9 +10,21 @@
 set -uo pipefail
 
 input="$(cat)"
-file_path="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')"
-[ -z "$file_path" ] && exit 0
-[ -f "$file_path" ] || exit 0
+paths="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty')"
+# Codex's apply_patch: the whole patch is tool_input.command; format each file
+# it added or updated (a moved file under its new name).
+if [ -z "$paths" ]; then
+  patch="$(printf '%s' "$input" | jq -r '.tool_input.command // empty')"
+  case "$patch" in
+    *'*** Begin Patch'*)
+      paths="$(printf '%s\n' "$patch" | sed -n -E 's/^\*\*\* (Add File|Update File|Move to): (.*)$/\2/p')"
+      ;;
+  esac
+fi
+[ -z "$paths" ] && exit 0
+
+while IFS= read -r file_path; do
+[ -f "$file_path" ] || continue
 
 case "$file_path" in
   *.py)
@@ -39,5 +51,6 @@ case "$file_path" in
   # single-file formatter, and running `just fmt` (project-wide) per edit
   # pollutes unrelated diffs. The gate is `just check` / CI.
 esac
+done <<<"$paths"
 
 exit 0

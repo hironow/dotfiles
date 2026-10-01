@@ -173,6 +173,60 @@ wslconfig:
 deploy:
     @bash scripts/deploy.sh
 
+# Restore declared Pi packages and install the dotfiles Pi extensions (Jev, rtk).
+pi-extensions-install:
+    @python3 scripts/install_pi_extensions.py
+
+# Install the Claude Code plugins every Claude home must have
+# (dump/harness/claude-plugins.json; the Codex plugin j-cc delegates to).
+# `just deploy` already runs this. --check: report only.
+claude-plugins-install *args:
+    @{{ UV_RUN }} scripts/claude_plugins.py {{ args }}
+
+# Register headroom's MCP server (headroom_compress / _retrieve / _stats) in
+# every Claude home, with its egress switches pinned on the server itself.
+# Through `claude mcp add --scope user`, so Claude Code owns its own
+# .claude.json. `just deploy` already runs this. --check: report only.
+[group('Agents')]
+headroom-mcp-register *args:
+    @{{ UV_RUN }} scripts/headroom_mcp.py {{ args }}
+
+# After an rtk upgrade (doctor's rtk-pi-extension WARN): re-vendor rtk's own
+# Pi extension into config/pi/extensions/rtk.ts, header kept, body verbatim.
+# Re-vendor config/pi/extensions/rtk.ts from the installed rtk
+[group('Agents')]
+rtk-pi-refresh:
+    @{{UV_RUN}} scripts/rtk_pi_refresh.py
+
+# Exercise the Pi usage-limit failover logic without consuming model tokens.
+pi-jev-test:
+    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test tests/unit/jev_sonnet_fallback.test.ts
+
+# Live check of the Claude worker hook. Run after the Claude usage limit resets.
+# Exit 0 pass, 1 fail (defect), 2 blocked (usage limit or not logged in),
+# 3 partial (works, but the effort could not be confirmed).
+jev-claude-verify:
+    {{UV_RUN}} scripts/jev_claude_verify.py
+
+# Live check of Jev's per-worker effort in Pi (j-pi): one print-mode session
+# launches a worker; the verdict comes from pi-subagents' worker meta.
+# Exit 0 pass, 1 fail, 2 blocked (no key / extension / usage limit), 3 partial.
+jev-pi-verify:
+    {{UV_RUN}} scripts/jev_pi_verify.py
+
+# Live check that j-cc's session and its workers go through headroom: a
+# dedicated proxy logs the requests; one print-mode session launches a worker
+# (claude), the Codex worker runner runs (codex), and one session's Bash goes
+# through rtk as well (rtk). Targets: claude codex rtk (default: all).
+# Exit 0 pass, 1 fail, 2 blocked (no key / headroom / usage limit / no worker).
+jev-headroom-verify *target:
+    {{UV_RUN}} scripts/jev_headroom_verify.py {{target}}
+
+# Open the savings dashboard of the headroom proxy j-cc started (plain
+# `headroom dashboard` opens port 8787, where j-cc never runs it).
+headroom-dashboard:
+    {{UV_RUN}} scripts/jev_headroom.py dashboard
+
 # Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
 #   ROOT_CLAUDE.md (overlay, @AGENTS.md) -> claude-family/CLAUDE.md
@@ -287,6 +341,8 @@ clean-all: clean clean-cache
 [group('Disk'), windows, linux, doc('Is the disk GC actually collecting? Both runner legs, read-only')]
 status:
     bash scripts/gc_status.sh
+    @echo '--- AI tooling (rtk / headroom / hooks) ---'
+    @{{UV_RUN}} scripts/ai_tools_check.py
 
 # Disk: report host cache sizes + free space. Measures only, never deletes.
 [group('Disk'), doc('Report host cache sizes + free space (measures only, never deletes)')]
@@ -575,7 +631,7 @@ fmt:
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp fmt
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp fmt
     @echo '✅ fmt done.'
 
 # lint: report violations (auto-fixes where possible). Tool per language:
@@ -594,7 +650,9 @@ lint:
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔍 JS/TS (vp lint)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp lint
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp lint
+    @echo '🔍 Pi extension (Bun build + tests; vp has no root JS workspace)...'
+    just pi-jev-test
     @echo '🔍 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
     @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
@@ -619,7 +677,9 @@ check:
     @echo '🔎 Markdown (markdownlint-cli2)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2
     @echo '🔎 JS/TS (vp check)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- vp check
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp check
+    @echo '🔎 Pi extension (Bun build + tests; vp has no root JS workspace)...'
+    just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
     uvx semgrep --config .semgrep/rules/meta/ --error .
     @echo '🔎 No mocks in e2e tests (semgrep)...'
@@ -863,11 +923,23 @@ pre-commit:
 #
 # The forbidden-token list lives OUTSIDE the repo
 # (~/.config/dotfiles/forbidden-tokens, mode 0600, or $DOTFILES_FORBIDDEN_TOKENS):
-# tracking it would publish the very strings it protects. With no list the
-# checker is a no-op, so these recipes are safe in CI and on a fresh clone.
+# tracking it would publish the very strings it protects.
+#
+# The two recipes `just ci` runs pass FORBIDDEN_TOKEN_GATE, which makes a missing
+# or empty list a FAILURE rather than a skip: a list that moved, or a typo in the
+# env var, would otherwise leave the gate printing "OK" while scanning nothing.
+# `--min-tokens` is the floor underneath that -- it is what notices an entry being
+# dropped, including the one naming where this stack's work moved to. Raise it
+# when the list grows; lowering it is a decision, not a fix. Nothing in GitHub
+# Actions runs `just ci` (the workflows call pytest and tofu directly), so this
+# fails closed for the operator without breaking CI or a fresh clone -- a plain
+# `python3 scripts/check_forbidden_tokens.py tree` still skips with no list.
+#
 # Called as bare `python3` (stdlib-only script, and `uv run` in a commit hook
 # can regenerate the root uv.lock mid-commit — a known trap here).
 # ------------------------------
+
+FORBIDDEN_TOKEN_GATE := "--require-list --min-tokens 11"
 
 # Scan the staged diff, staged paths and unreviewable blobs (what pre-commit runs)
 [group('Lint')]
@@ -880,7 +952,15 @@ check-forbidden-tokens:
 # merge base; override with `just check-forbidden-tokens-branch --base REF`.
 [group('Lint')]
 check-forbidden-tokens-branch *args:
-    python3 scripts/check_forbidden_tokens.py branch {{ args }}
+    python3 scripts/check_forbidden_tokens.py branch {{ FORBIDDEN_TOKEN_GATE }} {{ args }}
+
+# The staged and branch scans read diffs, so neither can ever see a token that is
+# already committed -- this is the leg that keeps the tracked tree clean once it
+# has been cleaned.
+# Scan EVERY tracked blob and pathname at HEAD (about a second on this repo)
+[group('Lint')]
+check-forbidden-tokens-tree *args:
+    python3 scripts/check_forbidden_tokens.py tree {{ FORBIDDEN_TOKEN_GATE }} {{ args }}
 
 # Scan a PR body (or any file) in full before `gh pr create --body-file`
 [group('Lint')]
@@ -889,7 +969,7 @@ check-pr-body file:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac-exe instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac-exe instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch check-forbidden-tokens-tree
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -927,7 +1007,14 @@ test-iac-exe:
     set -euo pipefail
     for stack in tofu/exe-platform tofu/exe-cluster tofu/tailnet; do
       echo "🧪 tofu test $stack"
-      (cd "$stack" && mise x -- tofu init -backend=false -input=false >/dev/null && mise x -- tofu test)
+      (
+        data_dir="$(mktemp -d)"
+        trap 'rm -rf "$data_dir"' EXIT
+        export TF_DATA_DIR="$data_dir"
+        cd "$stack"
+        mise x -- tofu init -backend=false -input=false >/dev/null
+        mise x -- tofu test
+      )
     done
 
 # ------------------------------
@@ -1038,6 +1125,8 @@ update-all:
     @if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
     @echo "◆ vscode extensions..."
     @if command -v code >/dev/null 2>&1; then NODE_NO_WARNINGS=1 code --update-extensions; else echo 'code not found; skip'; fi
+    @echo "◆ pi extensions..."
+    @if command -v pi >/dev/null 2>&1; then pi update --extensions || echo 'WARN: pi update failed; on npm ETARGET run just harden-env (it lifts the 7-day quarantine for Pi packages) and retry'; else echo 'pi not found; skip'; fi
 
 # Update (all, safe): same as update-all (kept as alias for muscle memory)
 [group('Update')]
@@ -1054,6 +1143,8 @@ update-all-safe:
     @if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
     @echo "◆ vscode extensions..."
     @if command -v code >/dev/null 2>&1; then NODE_NO_WARNINGS=1 code --update-extensions; else echo 'code not found; skip'; fi
+    @echo "◆ pi extensions..."
+    @if command -v pi >/dev/null 2>&1; then pi update --extensions || echo 'WARN: pi update failed; on npm ETARGET run just harden-env (it lifts the 7-day quarantine for Pi packages) and retry'; else echo 'pi not found; skip'; fi
 
 # Update: update and cleanup Homebrew
 [group('Update')]
@@ -1503,6 +1594,21 @@ skills-place *args:
 skills-update *args:
     @{{ UV_RUN }} scripts/skills_lock.py update {{ args }}
 
+# Codex runs a hook only once it is trusted. `just sync-agents x` already runs
+# this; it trusts exactly the hooks .codex/hooks.json renders. --check: report only.
+# Trust the Codex hooks dotfiles placed (through Codex's app-server)
+[group('Agents')]
+codex-hooks-trust *args:
+    @{{ UV_RUN }} scripts/codex_hooks_trust.py {{ args }}
+
+# Windows: Codex's sandbox reads the profile through inherited ACL entries, and
+# a mise data dir that does not inherit leaves rtk and every mise tool "access
+# denied" in it. `just sync-agents x` already runs this. --check: report only.
+# Let Codex's Windows sandbox run the mise tools (grants it read on mise's dir)
+[group('Agents')]
+codex-sandbox-tools *args:
+    @{{ UV_RUN }} scripts/codex_sandbox_tools.py {{ args }}
+
 # hironow/skills wins name collisions (ADR 0043).
 # CI barrier: no third-party skill in the declaration shadows a hironow/skills name
 [group('Validation')]
@@ -1941,7 +2047,7 @@ _tofu-out stack name:
 # ==============================================================================
 
 _EXE_CLUSTER_DIR := "tofu/exe-cluster"
-_EXE_SRC_DIR := env("XDG_CACHE_HOME", env("HOME") + "/.cache") + "/exe/src"
+_EXE_SRC_DIR := env("XDG_CACHE_HOME", home_directory() + "/.cache") + "/exe/src"
 
 # Fetch the pinned ax and Agent Substrate checkouts (exe/versions.json) into the
 # local cache, and verify each is at its pinned commit. Idempotent.
