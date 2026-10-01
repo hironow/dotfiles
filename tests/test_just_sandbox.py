@@ -901,21 +901,21 @@ def test_just_lint_detects_ruff_violation(docker_image):
     """`just lint` exits non-zero when a Python file has a ruff violation
     that ruff cannot auto-fix.
 
-    Uses E741 (ambiguous variable name 'l'), which ruff reports but does NOT
-    auto-fix — so even with `--fix` the lint step fails.
+    Uses F821 (undefined name), which is in ruff's default rule set and has
+    no auto-fix — so even with `--fix` the lint step fails.
     """
     script = (
         _MISE_STUB
         + _GIT_INIT
-        + "printf 'def f():\\n    l = 1\\n    return l\\n' > bad_lint.py && "
+        + "printf 'def f():\\n    return undefined_name\\n' > bad_lint.py && "
         + "just lint"
     )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode != 0, (
-        "just lint should fail on E741 violation\n"
+        "just lint should fail on F821 violation\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
-    assert "E741" in result.stdout or "E741" in result.stderr
+    assert "F821" in result.stdout or "F821" in result.stderr
 
 
 # =============================================================================
