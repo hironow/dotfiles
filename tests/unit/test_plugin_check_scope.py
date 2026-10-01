@@ -50,7 +50,7 @@ def _run_hook(
 ) -> subprocess.CompletedProcess[str]:
     """Run the canonical hook in cwd with a PreToolUse payload."""
     if config is not None:
-        (cwd / ARGS[0]).write_text(config)
+        (cwd / ARGS[0]).write_text(config, encoding="utf-8")
     payload = json.dumps({"tool_input": {"file_path": file_path}})
     return run_bash(
         CANONICAL,

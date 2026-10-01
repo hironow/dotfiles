@@ -1,10 +1,8 @@
 {
-  "settings": {
-    "effortLevel": "medium",
-    "permissions": {
-      "defaultMode": "auto"
-    },
-    "skipAutoPermissionPrompt": true,
-    "tui": "default"
+  "retired": {
+    "2026-10-recommended-defaults": {
+      "effortLevel": ["medium"],
+      "tui": ["default", "fullscreen"]
+    }
   }
 }

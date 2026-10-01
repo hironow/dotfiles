@@ -64,6 +64,8 @@ def test_bash_syntax_check(script: Path) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=10,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, f"bash -n failed for {script.name}: {result.stderr}"
 
@@ -84,6 +86,8 @@ def test_shellcheck_warnings_zero(script: Path) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=10,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, (
         f"shellcheck failed for {script.name}:\n{result.stdout}"
@@ -105,7 +109,7 @@ EXPECTED_MAX_LEN = "64"
 def test_project_id_validation_canonical(script: Path) -> None:
     """All three scripts use the same project_id regex + max-len constants
     as the runops-gateway domain spec (= drift detection)."""
-    text = script.read_text()
+    text = script.read_text(encoding="utf-8")
     assert EXPECTED_REGEX in text, (
         f"{script.name}: missing canonical project_id regex {EXPECTED_REGEX!r}"
     )
@@ -123,7 +127,7 @@ def _make_stub(stubs_dir: Path, name: str, body: str) -> Path:
     """Create an executable stub script under `stubs_dir` and return its
     path. `body` is the bash content (with optional dedent)."""
     p = stubs_dir / name
-    p.write_text(textwrap.dedent(body).lstrip("\n"))
+    p.write_text(textwrap.dedent(body).lstrip("\n"), encoding="utf-8")
     p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return p
 
@@ -165,8 +169,12 @@ def _run_cdr_project(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=10,
+        encoding="utf-8",
+        errors="replace",
     )
-    log_lines = log_file.read_text().splitlines() if log_file.exists() else []
+    log_lines = (
+        log_file.read_text(encoding="utf-8").splitlines() if log_file.exists() else []
+    )
     return result, log_lines
 
 
@@ -420,6 +428,8 @@ def test_project_up_rejects_invalid_id(tmp_path: Path, bad_id: str) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=5,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode != 0, (
         f"project-up.sh should reject {bad_id!r}, got rc=0; stderr:\n{result.stderr}"
@@ -441,7 +451,7 @@ def test_project_id_regex_literal_is_byte_identical_across_scripts() -> None:
     in all three scripts (= byte-identical canonical, drift detector)."""
     expected_literal = "PROJECT_ID_RE='^[a-zA-Z0-9_-]+$'"
     for script in ALL_SCRIPTS:
-        text = script.read_text()
+        text = script.read_text(encoding="utf-8")
         # cdr-project declares the regex at module scope; the .sh files use
         # the same literal; we check exact occurrence in each.
         # (Allow either single-line declaration or multi-line; use re.search

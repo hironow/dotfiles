@@ -29,6 +29,7 @@ import argparse
 import filecmp
 import json
 import platform
+import re
 import shutil
 import sys
 from dataclasses import dataclass, field
@@ -51,6 +52,11 @@ HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
 # either alone. Retired on every sync, so a reinstall/upgrade that re-adds one
 # is undone rather than silently resurrecting the old behavior (ADR 0047).
 RETIRED_HOOK_COMMANDS = frozenset({"rtk hook claude"})
+# Header line a third-party installer writes at the top of a hook file it owns
+# inside <agent>/hooks/ (herdr: "# installed by herdr"). Such a file is not a
+# stale dotfiles hook, and a settings block calling it is not sync's to replace:
+# treating either as ours silently uninstalled the integration on every sync.
+THIRD_PARTY_HOOK_HEADERS = frozenset({"# installed by herdr"})
 # Shared settings fragment merged into each claude-family agent's settings.json:
 # the cross-machine env block (owned wholesale) plus curated top-level keys.
 SHARED_SETTINGS_FRAGMENT = ".claude/settings.shared.json"
@@ -58,8 +64,11 @@ SHARED_SETTINGS_FRAGMENT = ".claude/settings.shared.json"
 # platform.system(). A missing overlay file is simply an empty layer.
 OS_SETTINGS_OVERLAYS = {"Darwin": "macos", "Linux": "linux", "Windows": "windows"}
 # Per-profile fragments (one per claude-family AgentTarget.key) layered on top
-# of the OS overlay, capturing intentional per-profile diffs (effortLevel...).
+# of the OS overlay, capturing intentional per-profile diffs.
 PROFILE_SETTINGS_DIR = ".claude/settings.profiles"
+# Sync-owned record in the AGENT HOME of the `retired` migrations that home has
+# evaluated, so each runs once and a value the user sets later is left alone.
+SETTINGS_STATE_FILE = "settings.sync-state.json"
 # Machine-local layer read from the AGENT HOME (untracked, user-owned): the
 # final override so machine-specific env / permissions.allow survive the
 # wholesale env ownership. NOTE: Claude Code reads settings.local.json at
@@ -556,6 +565,8 @@ def _detect_managed_dir_orphans(
         for child in sorted(target_dir.iterdir(), key=lambda p: p.name):
             if child.name.startswith(".") or child.name in expected:
                 continue
+            if mdir == "hooks" and _is_third_party_hook(child):
+                continue
             orphans.append(
                 _DeleteAction(
                     target=child,
@@ -635,18 +646,44 @@ def _render_hook_command(
     return rendered
 
 
+def _is_third_party_hook(path: Path) -> bool:
+    """A hooks/ file whose header names a third-party installer as its owner."""
+    path = Path(path)  # callers may hold a PurePath stand-in (tests)
+    if not path.is_file():
+        return False
+    try:
+        with path.open(encoding="utf-8-sig", errors="replace") as f:
+            head = [next(f, "") for _ in range(5)]
+    except OSError:
+        return False
+    return any(line.strip() in THIRD_PARTY_HOOK_HEADERS for line in head)
+
+
 def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
     """A hook block sync owns: every command points at the agent's hooks dir.
 
     Commands are normalized ``\\`` -> ``/`` before matching so legacy
     Windows-rendered blocks (backslash paths) are recognized as managed and
-    replaced on the next sync instead of surviving as duplicates.
+    replaced on the next sync instead of surviving as duplicates. A command
+    calling a third-party-owned hook file (see _is_third_party_hook) is the
+    installer's, so a block containing one is not managed.
     """
     inner = block.get("hooks", [])
     marker = f"{agent.directory.as_posix()}/hooks/"
-    return bool(inner) and all(
-        marker in h.get("command", "").replace("\\", "/") for h in inner
-    )
+
+    def managed(command: str) -> bool:
+        command = command.replace("\\", "/")
+        if marker not in command:
+            return False
+        prefix, _, suffix = command.partition(marker)
+        if prefix[-1:] in {'"', "'"}:
+            name = suffix.split(prefix[-1], 1)[0]
+        else:
+            match = re.match(r'[^"\s]+', suffix)
+            name = match[0] if match else ""
+        return not (name and _is_third_party_hook(agent.directory / "hooks" / name))
+
+    return bool(inner) and all(managed(h.get("command", "")) for h in inner)
 
 
 def _is_retired_hook_block(block: dict) -> bool:
@@ -762,9 +799,10 @@ def _compose_settings_fragments(
     ``env`` composes key-wise; ``settings`` composes key-wise with a one-level
     deep-merge when both sides are dicts (so shared can own ``permissions.deny``
     while a profile owns ``permissions.defaultMode``). Missing layer files are
-    empty layers. ``system`` (a ``platform.system()`` value) is injectable for
-    tests. Returns the composed ``{"env": ..., "settings": ...}`` dict, or None
-    when no fragment layer exists (merge is then a no-op).
+    empty layers. ``retired`` (migration id -> {key: [values]}) composes per id,
+    key-wise. ``system`` (a ``platform.system()`` value) is injectable for
+    tests. Returns the composed ``{"env": ..., "settings": ..., "retired": ...}``
+    dict, or None when no fragment layer exists (merge is then a no-op).
     """
     os_name = OS_SETTINGS_OVERLAYS.get(system or platform.system())
     layer_paths = [
@@ -793,7 +831,32 @@ def _compose_settings_fragments(
                 settings[key] = {**settings[key], **value}
             else:
                 settings[key] = value
+        for migration, keys in layer.get("retired", {}).items():
+            composed.setdefault("retired", {}).setdefault(migration, {}).update(keys)
     return composed
+
+
+def _write_settings(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+def _retire_settings(fragment: dict, target: dict, applied: set[str]) -> list[str]:
+    """Delete retired keys still holding a value the fragments wrote; return the
+    migrations evaluated now. A migration runs once per home, and a key the
+    composed settings still set is theirs, not retired."""
+    evaluated = sorted(set(fragment.get("retired", {})) - applied)
+    for migration in evaluated:
+        for key, values in fragment["retired"][migration].items():
+            if (
+                key not in fragment.get("settings", {})
+                and key in target
+                and target[key] in values
+            ):
+                del target[key]
+    return evaluated
 
 
 def _merge_settings_fragment(
@@ -811,9 +874,12 @@ def _merge_settings_fragment(
     ``settings.sync-local.json`` layer (composed last; sync never edits it).
     The composed ``settings`` object holds curated top-level keys that are
     upserted (add/update only); every other target key (enabledPlugins, hooks,
-    statusLine, ...) is preserved untouched. Top-level key removal is not
-    auto-propagated. Idempotent; dry_run=True writes nothing. Returns True if
-    the file would change.
+    statusLine, ...) is preserved untouched. A key the fragments stop writing
+    is removed only through ``retired`` (see _retire_settings); the evaluated
+    migrations are recorded in the home's settings.sync-state.json BEFORE
+    settings.json is written, so a failure in between leaves the old value
+    rather than a later retry over a value the user set again. Idempotent;
+    dry_run=True writes nothing. Returns True if settings.json would change.
     """
     fragment = _compose_settings_fragments(dotfiles_dir, agent, system=system)
     if fragment is None:
@@ -831,15 +897,25 @@ def _merge_settings_fragment(
         target["env"] = fragment["env"]
     for key, value in fragment.get("settings", {}).items():
         target[key] = value
+    state_path = agent.directory / SETTINGS_STATE_FILE
+    state = (
+        json.loads(state_path.read_text(encoding="utf-8"))
+        if state_path.exists()
+        else {}
+    )
+    applied = set(state.get("retired", []))
+    evaluated = _retire_settings(fragment, target, applied)
 
     changed = json.dumps(target, sort_keys=True, ensure_ascii=False) != before
 
-    if changed and not dry_run:
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(
-            json.dumps(target, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+    if dry_run:
+        return changed
+    if evaluated:
+        _write_settings(
+            state_path, {**state, "retired": sorted(applied | set(evaluated))}
         )
+    if changed:
+        _write_settings(target_path, target)
     return changed
 
 

@@ -7,6 +7,26 @@
 # (starship.toml + gitignore-global). zsh/sheldon/tmux/ghostty/fzf-tab
 # are Unix-only and are skipped. See ADR 0018.
 set -eu
+# shellcheck source=scripts/ps_profile_lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/ps_profile_lib.sh"
+
+ensure_zprofile_login_path() {
+  # A zsh login shell reads ~/.zprofile, never ~/.profile, and only an
+  # interactive one reads .zshrc: `zsh -lc '...'` (scripts, agents) missed the
+  # ~/.local/bin bash got from ~/.profile. Append a block, not a symlink: a Mac
+  # usually keeps its own lines (brew shellenv) in ~/.zprofile.
+  marker="# >>> dotfiles managed block: login PATH >>>"
+  if grep -qF "$marker" "$HOME/.zprofile" 2>/dev/null; then
+    return 0
+  fi
+  {
+    printf '\n%s\n' "$marker"
+    # shellcheck disable=SC2016 # written literally; expands at login
+    printf '%s\n' 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) [ -d "$HOME/.local/bin" ] && PATH="$HOME/.local/bin:$PATH" ;; esac'
+    printf '%s\n' "# <<< end dotfiles managed block <<<"
+  } >>"$HOME/.zprofile"
+}
+
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     echo "==> Deploy dotfiles (windows subset)..."
@@ -16,28 +36,15 @@ case "$(uname -s)" in
     cp -f ~/dotfiles/dump/gitignore-global ~/.config/git/ignore
     mkdir -p ~/.config/mise
     cp -f ~/dotfiles/config/mise/config.toml ~/.config/mise/config.toml
-    # PowerShell 7 $PROFILE — idempotent starship init block (ADR 0022).
-    ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
-    ps_marker_begin="# >>> dotfiles managed block: starship init >>>"
+    # PowerShell 7 $PROFILE managed blocks. The Microsoft.PowerShell_profile.ps1
+    # pwsh actually loads — not always under $HOME/Documents (OneDrive
+    # redirects it; scripts/ps_profile_lib.sh).
+    ps_profile="$(resolve_ps_profile)"
     ps_marker_end="# <<< end dotfiles managed block <<<"
     mkdir -p "$(dirname "$ps_profile")"
     touch "$ps_profile"
-    if grep -qF "$ps_marker_begin" "$ps_profile"; then
-      echo "==> PowerShell \$PROFILE starship-init block already present (skip)"
-    else
-      {
-        printf '\n%s\n' "$ps_marker_begin"
-        # shellcheck disable=SC2016  # literal backticks: written verbatim into $PROFILE
-        printf '# Managed by `just deploy` (see ADR 0022). Edits inside this block are overwritten on next deploy.\n'
-        printf 'if (Get-Command starship -ErrorAction SilentlyContinue) {\n'
-        printf '    Invoke-Expression (&starship init powershell)\n'
-        printf '}\n'
-        printf '%s\n' "$ps_marker_end"
-      } >> "$ps_profile"
-      echo "==> PowerShell \$PROFILE updated with starship-init block"
-    fi
-    # PowerShell 7 $PROFILE — mise activate block (ADR 0024). Reuses
-    # $ps_profile and $ps_marker_end defined for the starship block above.
+    # mise activate block (ADR 0024). Written before the starship block:
+    # starship is mise-managed, so its Get-Command needs mise on PATH first.
     ps_mise_marker_begin="# >>> dotfiles managed block: mise activate >>>"
     if grep -qF "$ps_mise_marker_begin" "$ps_profile"; then
       echo "==> PowerShell \$PROFILE mise-activate block already present (skip)"
@@ -52,6 +59,29 @@ case "$(uname -s)" in
         printf '%s\n' "$ps_marker_end"
       } >> "$ps_profile"
       echo "==> PowerShell \$PROFILE updated with mise-activate block"
+    fi
+    # starship init block (ADR 0022), after mise activate. Profiles deployed
+    # with the old order carry it first, where it silently skips unless mise's
+    # shims are on the persisted PATH (runner hosts only); blocks already
+    # present are never rewritten, so drop it here to re-append it below.
+    if ps_profile_starship_before_mise "$ps_profile"; then
+      ps_profile_drop_block "$ps_profile" 'starship init'
+      echo "==> PowerShell \$PROFILE starship-init block moved after mise activate"
+    fi
+    ps_marker_begin="# >>> dotfiles managed block: starship init >>>"
+    if grep -qF "$ps_marker_begin" "$ps_profile"; then
+      echo "==> PowerShell \$PROFILE starship-init block already present (skip)"
+    else
+      {
+        printf '\n%s\n' "$ps_marker_begin"
+        # shellcheck disable=SC2016  # literal backticks: written verbatim into $PROFILE
+        printf '# Managed by `just deploy` (see ADR 0022). Edits inside this block are overwritten on next deploy.\n'
+        printf 'if (Get-Command starship -ErrorAction SilentlyContinue) {\n'
+        printf '    Invoke-Expression (&starship init powershell)\n'
+        printf '}\n'
+        printf '%s\n' "$ps_marker_end"
+      } >> "$ps_profile"
+      echo "==> PowerShell \$PROFILE updated with starship-init block"
     fi
     # PowerShell 7 $PROFILE — mise node corepack carve-out (Windows; ADR
     # 0031). mise's global `[settings.node] corepack = true` runs corepack
@@ -87,20 +117,23 @@ case "$(uname -s)" in
     else
       echo "==> mise not on PATH; skipping global tool install (install mise via scoop, then re-run 'just deploy')"
     fi
-    # Opt-in Jev commands for the next PowerShell session. Keep the key out
-    # of this profile; the operator supplies TYPESAFE_API_KEY as an env var.
+    # Opt-in Jev commands (j-cc, j-pi) for the next PowerShell session. Keep the
+    # key out of this profile; the operator supplies TYPESAFE_API_KEY as an env
+    # var (or ~/.config/jev/env). The block is rewritten on every deploy, so a rename
+    # reaches profiles that already carry it.
     ps_jev_marker_begin="# >>> dotfiles managed block: Jev launchers >>>"
-    if ! grep -qF "$ps_jev_marker_begin" "$ps_profile"; then
-      {
-        printf '\n%s\n' "$ps_jev_marker_begin"
-        cat <<'POWERSHELL'
-function jev-claude { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" claude @args }
-function jev-pi { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" pi @args }
-POWERSHELL
-        printf '%s\n' "$ps_marker_end"
-      } >> "$ps_profile"
-      echo "==> PowerShell \$PROFILE updated with Jev launchers"
+    if grep -qF "$ps_jev_marker_begin" "$ps_profile"; then
+      ps_profile_drop_block "$ps_profile" 'Jev launchers'
     fi
+    {
+      printf '\n%s\n' "$ps_jev_marker_begin"
+      cat <<'POWERSHELL'
+function j-cc { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" claude @args }
+function j-pi { & mise exec -- python "$HOME/dotfiles/scripts/jev_launch.py" pi @args }
+POWERSHELL
+      printf '%s\n' "$ps_marker_end"
+    } >> "$ps_profile"
+    echo "==> PowerShell \$PROFILE updated with Jev launchers"
     if command -v mise >/dev/null 2>&1; then
       echo "==> Installing Pi extensions (native Windows)..."
       MISE_NODE_COREPACK=0 mise -C / exec -- python ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; re-run 'just pi-extensions-install'"
@@ -133,6 +166,7 @@ POWERSHELL
 esac
 echo "==> Start to deploy dotfiles to home directory."
 ln -sf ~/dotfiles/.zshrc ~/.zshrc
+ensure_zprofile_login_path
 mkdir -p ~/.config/sheldon
 ln -sf ~/dotfiles/sheldon-plugins.toml ~/.config/sheldon/plugins.toml
 ln -sf ~/dotfiles/starship.toml ~/.config/starship.toml

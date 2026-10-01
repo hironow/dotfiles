@@ -29,7 +29,10 @@ def block(text: str, header: str) -> str:
 
 def admitted() -> dict[str, str]:
     """The policy's callers map, namespace expression => its values list."""
-    callers = block((CLUSTER / "control_api.tf").read_text(), "control_api_callers = {")
+    callers = block(
+        (CLUSTER / "control_api.tf").read_text(encoding="utf-8"),
+        "control_api_callers = {",
+    )
     return dict(
         re.findall(
             r"\(([^)]+)\) = \{\s*key\s*=\s*\"[^\"]+\"\s*values\s*=\s*(\[[^\]]*\])",
@@ -47,7 +50,8 @@ def test_the_policy_is_read() -> None:
 
 def test_the_ax_controller_is_admitted_by_the_label_its_pods_carry() -> None:
     manifest = block(
-        (CLUSTER / "ax.tf").read_text(), 'resource "kubectl_manifest" "ax_controller"'
+        (CLUSTER / "ax.tf").read_text(encoding="utf-8"),
+        'resource "kubectl_manifest" "ax_controller"',
     )
     template = manifest[manifest.index("template") :]
     labels = set(re.findall(r'"app\.kubernetes\.io/name" = "([^"]+)"', template))
@@ -66,7 +70,7 @@ def test_l1_and_the_gc_are_admitted_by_the_locals_their_pods_carry() -> None:
         ("reaper.tf", "local.reaper_app"),
         ("snapshot_gc.tf", "local.snapshot_gc_app"),
     ):
-        text = (CLUSTER / tf).read_text()
+        text = (CLUSTER / tf).read_text(encoding="utf-8")
         pod_labels = re.findall(
             r'labels\s+=\s+merge\(local\.common_labels, \{ "app\.kubernetes\.io/name" = ([\w.]+) \}\)',
             text,

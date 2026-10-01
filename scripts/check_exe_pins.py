@@ -173,7 +173,7 @@ def load_pins(root: Path) -> tuple[dict[str, Any] | None, list[str]]:
             f"document; every exe stack reads it with jsondecode(file(...))."
         ]
     try:
-        loaded = json.loads(path.read_text())
+        loaded = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         return None, [f"{PINS_REL}: unparsable JSON ({exc})."]
     if not isinstance(loaded, dict):
@@ -830,7 +830,7 @@ def check_stacks(root: Path, pins: dict[str, Any]) -> list[str]:
         for tf in tf_files:
             # Both scans run on the comment-free body: a commented-out
             # jsondecode() is not a reference, and a commented pin is not a pin.
-            body = _strip_comments(tf.read_text())
+            body = _strip_comments(tf.read_text(encoding="utf-8"))
             for raw_path in _JSONDECODE_FILE_RE.findall(body):
                 referenced.append(raw_path)
                 if not raw_path.endswith(PINS_REL):
@@ -951,7 +951,7 @@ def main_ax_gomod(root: Path, gomod_path: Path) -> int:
     pins, violations = load_pins(root)
     if pins is not None:
         try:
-            gomod = gomod_path.read_text()
+            gomod = gomod_path.read_text(encoding="utf-8")
         except OSError as exc:
             violations.append(f"ax go.mod: unreadable ({exc}).")
         else:
@@ -966,7 +966,7 @@ def main_ax_gomod(root: Path, gomod_path: Path) -> int:
 
 def _load_audit(root: Path) -> object:
     try:
-        return json.loads((root / SUBSTRATE_AUDIT_REL).read_text())
+        return json.loads((root / SUBSTRATE_AUDIT_REL).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
@@ -992,13 +992,17 @@ def main() -> int:
         violations.extend(check_stacks(root, pins))
         violations.extend(check_mise_pin(root / MISE_CONFIG_REL, pins))
         violations.extend(
-            check_reaper_gomod(pins, (root / REAPER_GOMOD_REL).read_text())
+            check_reaper_gomod(
+                pins, (root / REAPER_GOMOD_REL).read_text(encoding="utf-8")
+            )
         )
         violations.extend(check_substrate_audit(pins, _load_audit(root)))
         violations.extend(
             check_certificates_api(
                 pins,
-                upgrade_exclusion_end((root / PLATFORM_LOCALS_REL).read_text()),
+                upgrade_exclusion_end(
+                    (root / PLATFORM_LOCALS_REL).read_text(encoding="utf-8")
+                ),
                 date.today(),
             )
         )

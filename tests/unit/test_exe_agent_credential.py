@@ -28,7 +28,7 @@ def _declarations() -> list[str]:
         for tf in sorted(stack.glob("*.tf")):
             found += [
                 f"{tf.relative_to(_REPO_ROOT)}: {m}"
-                for m in _FORBIDDEN.findall(tf.read_text())
+                for m in _FORBIDDEN.findall(tf.read_text(encoding="utf-8"))
             ]
     return found
 
@@ -41,6 +41,7 @@ def test_the_scan_sees_the_secret_container_itself() -> None:
     # Guard against a scan that silently finds nothing because it reads the
     # wrong place: the container must be visible to the same glob.
     text = "".join(
-        tf.read_text() for tf in (_REPO_ROOT / "tofu" / "exe-platform").glob("*.tf")
+        tf.read_text(encoding="utf-8")
+        for tf in (_REPO_ROOT / "tofu" / "exe-platform").glob("*.tf")
     )
     assert 'resource "google_secret_manager_secret" "claude_oauth_token"' in text

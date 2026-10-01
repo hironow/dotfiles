@@ -27,8 +27,8 @@ extend-exclude = [
     "telemetry",
     # templates/agent-baseline/.semgrep/tests/* are intentional-violation
     # fixtures (os.path.join / MagicMock) for the scaffold's own semgrep rules.
-    "templates",
-    "tools",
+    # Only those fixtures: tools/ and the rest of templates/ are our own code.
+    "templates/agent-baseline/.semgrep",
     # `private/certificates/` is created by Let's Encrypt with mode 0700.
     # Inside a bind-mounted dev container ruff cannot traverse it and aborts.
     # Nothing under private/ is Python source anyway.
@@ -41,7 +41,10 @@ extend-exclude = [
 # gate failure. CPython 3.12+ only emits a SyntaxWarning for them (a future
 # release makes it a SyntaxError), so they ride through `just ci` as pytest
 # warning noise today; 7 such sites had accumulated under tests/unit/.
-extend-select = ["W605"]
+# PTH (flake8-use-pathlib) keeps filesystem code on pathlib: os.path string
+# joins and bare open() hide the Windows separator and encoding bugs this
+# repo keeps hitting on native Windows hosts.
+extend-select = ["W605", "PTH"]
 
 [tool.pytest.ini_options]
 markers = [

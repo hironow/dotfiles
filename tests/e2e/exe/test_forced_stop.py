@@ -42,7 +42,9 @@ pytestmark = pytest.mark.skipif(
 # deadline and forces once HeartbeatStaleAfter is over: heartbeat_stale_ticks
 # L2 ticks (lease.HeartbeatStaleAfter), from exe/lease-constants.json. A
 # scheduled L2 tick comes at most one L2 tick after that.
-CONSTANTS = json.loads((REPO / "exe" / "lease-constants.json").read_text())
+CONSTANTS = json.loads(
+    (REPO / "exe" / "lease-constants.json").read_text(encoding="utf-8")
+)
 L2_TICK = timedelta(minutes=CONSTANTS["l2_tick_minutes"])
 HEARTBEAT_WINDOW = CONSTANTS["heartbeat_stale_ticks"] * L2_TICK
 

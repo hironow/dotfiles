@@ -95,7 +95,14 @@ def _run_mechanism(recipe: str) -> subprocess.CompletedProcess[str]:
     argv = _windows_shell_argv()
     argv[-1] = argv[-1].replace("exec /usr/bin/sh", f'exec "{bash}"')
     argv[0] = bash
-    return subprocess.run([*argv, recipe], capture_output=True, text=True, check=False)
+    return subprocess.run(
+        [*argv, recipe],
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def test_mechanism_recipe_sees_usr_bin_first_path() -> None:
@@ -131,6 +138,8 @@ def test_real_msys_sh_resolves_git_bash_from_system32_first_path() -> None:
         text=True,
         check=False,
         env={"PATH": r"C:\Windows\System32", "SYSTEMROOT": r"C:\Windows"},
+        encoding="utf-8",
+        errors="replace",
     )
     assert res.returncode == 0, res.stderr
     assert res.stdout.splitlines()[0] == "/usr/bin/bash"

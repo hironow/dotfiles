@@ -4,7 +4,8 @@
 # Development environment hardening (machine-local; ADR 0028)
 # ------------------------------------------------------------------------------
 # Writes the supply-chain guards that must NOT live in the committed repo:
-#   - npm  ~/.npmrc               min-release-age=7 (four Pi extension exceptions)
+#   - npm  ~/.npmrc               min-release-age=7
+#          <pi agent>/npm/.npmrc  min-release-age=0 (Pi packages and their deps)
 #   - uv   ~/.config/uv/uv.toml   flatt mirror (default index) + exclude-newer=7d
 #   - go   GOPROXY                default checksum-verified proxy (if go present)
 #   - win  persisted User PATH     append missing Git usr\bin + cmd (native Windows)
@@ -22,23 +23,28 @@ set -eu
 
 echo "--- 🛡️  Hardening environment (flatt mirror + 7-day quarantine) ---"
 
-# 1. npm — idempotent age + four named Pi extension exceptions.
-# Keep dependency installs quarantined; no pi-* / scope-wide exemptions.
+# 1. npm — idempotent 7-day age for everything but Pi's own packages.
+# Pi installs extensions with `npm install <pkg> --prefix <agent>/npm`, so the
+# project .npmrc in that prefix sets their age (user decision 2026-10-01: Pi
+# agent extensions and their dependencies install without the quarantine; a
+# name exclusion here could not reach a fresh dependency such as undici).
 # Preserve unrelated user settings, including user-owned age exclusions.
+_set_npm_age() { # <npmrc> <days> [extra grep -E alternative to drop]
+  _tmp="$(mktemp)"
+  if [ -f "$1" ]; then
+    # `|| true` handles grep's exit 1 when every input line is filtered out.
+    grep -Ev "^[[:space:]]*min-release-age[[:space:]]*=${3:+|$3}" "$1" >"$_tmp" || true
+  fi
+  printf 'min-release-age=%s\n' "$2" >>"$_tmp"
+  mv "$_tmp" "$1"
+}
 _npmrc="$HOME/.npmrc"
-echo "[1/4] npm: ${_npmrc} (min-release-age=7; four Pi extension exceptions)"
-_tmp="$(mktemp)"
-if [ -f "$_npmrc" ]; then
-  # Replace only the age key and our exact package exceptions. `|| true`
-  # handles grep's exit 1 when every input line is filtered out.
-  grep -Ev '^[[:space:]]*min-release-age[[:space:]]*=|^[[:space:]]*min-release-age-exclude\[\][[:space:]]*=[[:space:]]*(pi-goal-x|pi-subagents|pi-web-access|pi-background-tasks)[[:space:]]*$' \
-    "$_npmrc" >"$_tmp" || true
-fi
-printf 'min-release-age=7\n' >>"$_tmp"
-for _pkg in pi-goal-x pi-subagents pi-web-access pi-background-tasks; do
-  printf 'min-release-age-exclude[]=%s\n' "$_pkg" >>"$_tmp"
-done
-mv "$_tmp" "$_npmrc"
+_pi_npm="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/npm"
+echo "[1/4] npm: ${_npmrc} (min-release-age=7); ${_pi_npm}/.npmrc (min-release-age=0)"
+# Also retire the four named Pi exclusions earlier runs wrote
+_set_npm_age "$_npmrc" 7 '^[[:space:]]*min-release-age-exclude\[\][[:space:]]*=[[:space:]]*(pi-goal-x|pi-subagents|pi-web-access|pi-background-tasks)[[:space:]]*$'
+mkdir -p "$_pi_npm"
+_set_npm_age "$_pi_npm/.npmrc" 0
 
 # 2. uv — flatt default index + 7-day quarantine (overwrite = idempotent).
 _uv_dir="$HOME/.config/uv"

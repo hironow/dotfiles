@@ -4,6 +4,8 @@
 # can stay a plain-bash one-liner that starts from any shell and any just
 # version — a diagnostics tool must not depend on the machinery it diagnoses.
 set -euo pipefail
+# shellcheck source=scripts/ps_profile_lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/ps_profile_lib.sh"
 
 echo '🩺 Running environment doctor...'
 ok=0; warn=0; err=0
@@ -54,6 +56,20 @@ case $rc in
   2) log_warn 'PATH-windows' 'Windows dirs leaking into PATH'; echo "$win_out";;
   *) log_warn 'PATH-windows' 'validation error'; echo "$win_out";;
 esac
+
+# zsh is the supported interactive shell on Linux / WSL (.zshrc, USAGE.md,
+# j-cc / j-pi). A bare WSL Ubuntu has none, and install.sh never uses sudo,
+# so it can only point at the fix; this is where a box that missed it finds out.
+if [ "$(uname -s)" = Linux ]; then
+  if ! has zsh; then
+    # shellcheck disable=SC2016  # the $(command -v zsh) is for the user to run
+    log_warn 'zsh' 'not installed -- run: sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"'
+  elif [ "${SHELL##*/}" != zsh ]; then
+    log_warn 'zsh' "login shell is ${SHELL:-unknown} -- run: chsh -s $(command -v zsh)"
+  else
+    log_ok 'zsh' "login shell ${SHELL}"
+  fi
+fi
 
 # Rogue npm-global AI CLIs shadowing the mise-managed versions (cross-platform).
 # A stray `npm install -g` — codex's built-in `codex update` above all —
@@ -238,18 +254,31 @@ EOF_WSL
     # 2) deploy-managed state: PowerShell profile blocks + global mise
     #    config. Stale mise config is the nastiest drift (an ungated
     #    sheldon aborts every `mise exec` recipe), so surface it early.
-    ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+    ps_profile="$(resolve_ps_profile)"
     stale=''
     for marker in 'starship init' 'mise activate' 'mise node corepack'; do
       grep -qF "dotfiles managed block: ${marker}" "$ps_profile" 2>/dev/null \
         || stale="${stale}${stale:+, }profile:${marker##* }"
     done
+    # starship is mise-managed: before `mise activate` its block skips
+    # (unless mise shims are on the persisted PATH, as on runner hosts).
+    if ps_profile_starship_before_mise "$ps_profile"; then
+      stale="${stale}${stale:+, }profile:starship-before-mise"
+    fi
     cmp -s config/mise/config.toml "$HOME/.config/mise/config.toml" 2>/dev/null \
       || stale="${stale}${stale:+, }mise-config"
     if [ -z "$stale" ]; then
       log_ok 'win-deploy' 'PowerShell profile blocks + mise config in sync'
     else
       log_warn 'win-deploy' "stale/missing: ${stale} -- run: just deploy"
+    fi
+    # Deploys before the $PROFILE path was resolved wrote the blocks to the
+    # legacy Documents path; with Documents redirected (OneDrive) pwsh never
+    # loads that file, so the leftovers only mislead whoever reads it.
+    ps_legacy="$(ps_profile_legacy)"
+    if [ "$ps_legacy" != "$ps_profile" ] \
+      && grep -qF 'dotfiles managed block:' "$ps_legacy" 2>/dev/null; then
+      log_warn 'win-profile-legacy' "managed blocks in ${ps_legacy} (pwsh loads ${ps_profile}) -- run: just clean && just deploy"
     fi
 
     # 3) uv hardening: native Windows uv reads %APPDATA%\uv\uv.toml (not

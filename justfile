@@ -173,13 +173,31 @@ wslconfig:
 deploy:
     @bash scripts/deploy.sh
 
-# Restore declared Pi packages and install the dotfiles Jev fallback extension.
+# Restore declared Pi packages and install the dotfiles Pi extensions (Jev, rtk).
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
 # Exercise the Pi usage-limit failover logic without consuming model tokens.
 pi-jev-test:
-    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test tests/unit/jev_sonnet_fallback.test.ts
+    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test tests/unit/jev_sonnet_fallback.test.ts
+
+# Live check of the Claude worker hook. Run after the Claude usage limit resets.
+# Exit 0 pass, 1 fail (defect), 2 blocked (usage limit or not logged in),
+# 3 partial (works, but the effort could not be confirmed).
+jev-claude-verify:
+    {{UV_RUN}} scripts/jev_claude_verify.py
+
+# Live check of Jev's per-worker effort in Pi (j-pi): one print-mode session
+# launches a worker; the verdict comes from pi-subagents' worker meta.
+# Exit 0 pass, 1 fail, 2 blocked (no key / extension / usage limit), 3 partial.
+jev-pi-verify:
+    {{UV_RUN}} scripts/jev_pi_verify.py
+
+# Live check that j-cc's session and its workers go through headroom: a
+# dedicated proxy logs the requests; one print-mode session launches a worker.
+# Exit 0 pass, 1 fail, 2 blocked (no key / headroom / usage limit / no worker).
+jev-headroom-verify *target:
+    {{UV_RUN}} scripts/jev_headroom_verify.py {{target}}
 
 # Sync: distribute the hub-and-spoke agent instructions to agent home dirs.
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
@@ -1067,6 +1085,8 @@ update-all:
     @if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
     @echo "◆ vscode extensions..."
     @if command -v code >/dev/null 2>&1; then NODE_NO_WARNINGS=1 code --update-extensions; else echo 'code not found; skip'; fi
+    @echo "◆ pi extensions..."
+    @if command -v pi >/dev/null 2>&1; then pi update --extensions || echo 'WARN: pi update failed; on npm ETARGET run just harden-env (it lifts the 7-day quarantine for Pi packages) and retry'; else echo 'pi not found; skip'; fi
 
 # Update (all, safe): same as update-all (kept as alias for muscle memory)
 [group('Update')]
@@ -1083,6 +1103,8 @@ update-all-safe:
     @if command -v git >/dev/null 2>&1 && git ignore --help >/dev/null 2>&1; then git ignore --update; else echo 'git ignore helper not found; skip'; fi
     @echo "◆ vscode extensions..."
     @if command -v code >/dev/null 2>&1; then NODE_NO_WARNINGS=1 code --update-extensions; else echo 'code not found; skip'; fi
+    @echo "◆ pi extensions..."
+    @if command -v pi >/dev/null 2>&1; then pi update --extensions || echo 'WARN: pi update failed; on npm ETARGET run just harden-env (it lifts the 7-day quarantine for Pi packages) and retry'; else echo 'pi not found; skip'; fi
 
 # Update: update and cleanup Homebrew
 [group('Update')]

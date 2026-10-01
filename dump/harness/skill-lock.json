@@ -47,30 +47,12 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "alloydb-basics",
-      "upstream_name": "alloydb-basics",
-      "lock_key": "alloydb-basics",
-      "source": "hironow/skills",
-      "skill_path": "alloydb-basics/SKILL.md",
-      "skill_folder_hash": "b28ad3a34375ae245869723b11d72332884e2487741cba2ad4198e73e98d93c8",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "argument-gap-edit",
       "upstream_name": "argument-gap-edit",
       "lock_key": "argument-gap-edit",
       "source": "hironow/skills",
       "skill_path": "argument-gap-edit/SKILL.md",
       "skill_folder_hash": "29df878348ea71197807d32b2e9aab0601cb10dd",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "bigquery-basics",
-      "upstream_name": "bigquery-basics",
-      "lock_key": "bigquery-basics",
-      "source": "hironow/skills",
-      "skill_path": "bigquery-basics/SKILL.md",
-      "skill_folder_hash": "6e63a09c0165025e1c4eee945c029aa5b2c35295e488495c2820d152dcef4dd3",
       "resolved_by": "installed"
     },
     {
@@ -128,24 +110,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "cloud-run-basics",
-      "upstream_name": "cloud-run-basics",
-      "lock_key": "cloud-run-basics",
-      "source": "hironow/skills",
-      "skill_path": "cloud-run-basics/SKILL.md",
-      "skill_folder_hash": "4b20635854193bf5df40f2fdf94e7a379364d4e148987a69991dd2dc9962df5e",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "cloud-sql-basics",
-      "upstream_name": "cloud-sql-basics",
-      "lock_key": "cloud-sql-basics",
-      "source": "hironow/skills",
-      "skill_path": "cloud-sql-basics/SKILL.md",
-      "skill_folder_hash": "804f4de2527637888e6a852f31aa5b1df90819b475983983571d1bfae6c2e6ed",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "cloudflare-deploy",
       "upstream_name": "cloudflare-deploy",
       "lock_key": "cloudflare-deploy",
@@ -188,15 +152,6 @@
       "source": "hironow/skills",
       "skill_path": "decision-record-governance/SKILL.md",
       "skill_folder_hash": "ef9001fe6e42cc338c7d14dd80658d3ac8e490b4cecfa666149ba2e73d0e5b9c",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "deploy-to-vercel",
-      "upstream_name": "deploy-to-vercel",
-      "lock_key": "deploy-to-vercel",
-      "source": "hironow/skills",
-      "skill_path": "deploy-to-vercel/SKILL.md",
-      "skill_folder_hash": "034a677ffc0ce5ff8dcc1c23920f1ca30bd762342d0f374066ac259b731f852f",
       "resolved_by": "installed"
     },
     {
@@ -263,39 +218,12 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "electron",
-      "upstream_name": "electron",
-      "lock_key": "electron",
-      "source": "hironow/skills",
-      "skill_path": "electron/SKILL.md",
-      "skill_folder_hash": "3d181f9030fed4355ff97626b3a75d3e324091563595b8950592347e49e3e238",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "fallacy-check",
       "upstream_name": "fallacy-check",
       "lock_key": "fallacy-check",
       "source": "hironow/skills",
       "skill_path": "fallacy-check/SKILL.md",
       "skill_folder_hash": "7369d517bfff059acc8760c94cc5a07f42cc8172",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "find-skills",
-      "upstream_name": "find-skills",
-      "lock_key": "find-skills",
-      "source": "hironow/skills",
-      "skill_path": "find-skills/SKILL.md",
-      "skill_folder_hash": "645b891da1edbae76ab79c7b088d4e73397464f8396edaf773c0e01971ce75d6",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "firebase-basics",
-      "upstream_name": "firebase-basics",
-      "lock_key": "firebase-basics",
-      "source": "hironow/skills",
-      "skill_path": "firebase-basics/SKILL.md",
-      "skill_folder_hash": "8f7ea5a2698cb3c09b74b6bdeba1d49878ef361899930061997f108a30279f6a",
       "resolved_by": "installed"
     },
     {
@@ -326,33 +254,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "gemini-api",
-      "upstream_name": "gemini-api",
-      "lock_key": "gemini-api",
-      "source": "hironow/skills",
-      "skill_path": "gemini-api/SKILL.md",
-      "skill_folder_hash": "0409d5a219aa675d7703c71dbf511f68bc3e36357306245d4ffb99961d0c43ac",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "gemini-api-dev",
-      "upstream_name": "gemini-api-dev",
-      "lock_key": "gemini-api-dev",
-      "source": "hironow/skills",
-      "skill_path": "gemini-api-dev/SKILL.md",
-      "skill_folder_hash": "2ca262894d6e040e5c3b5fbe296e8f36d1680aead0bd1176584b3fbf9b2cf56a",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "gemini-live-api-dev",
-      "upstream_name": "gemini-live-api-dev",
-      "lock_key": "gemini-live-api-dev",
-      "source": "hironow/skills",
-      "skill_path": "gemini-live-api-dev/SKILL.md",
-      "skill_folder_hash": "a93aa23b2a4cac2cab9d238b3cc751c6172146bd801959dfe340626f3a82dafa",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "gh-address-comments",
       "upstream_name": "gh-address-comments",
       "lock_key": "gh-address-comments",
@@ -368,15 +269,6 @@
       "source": "hironow/skills",
       "skill_path": "gh-fix-ci/SKILL.md",
       "skill_folder_hash": "62b4c9b9aeb0e52925882185019e65c7785da8e7fa16ddb95dd3aaa00883961a",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "gke-basics",
-      "upstream_name": "gke-basics",
-      "lock_key": "gke-basics",
-      "source": "hironow/skills",
-      "skill_path": "gke-basics/SKILL.md",
-      "skill_folder_hash": "a2378a32487eb876047e211a72e8e54a03bfb24815670a196bcc61ce5a038806",
       "resolved_by": "installed"
     },
     {
@@ -440,78 +332,6 @@
       "source": "google/agents-cli",
       "skill_path": "skills/google-agents-cli-workflow/SKILL.md",
       "skill_folder_hash": "f324551cbec07a0faeb433c9bd75515e848e158b",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "google-cloud-networking-observability",
-      "upstream_name": "google-cloud-networking-observability",
-      "lock_key": "google-cloud-networking-observability",
-      "source": "hironow/skills",
-      "skill_path": "google-cloud-networking-observability/SKILL.md",
-      "skill_folder_hash": "98271da626980ae1d7ca4d771c5de04ecc21cd5008686909942606ef07a8bb79",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "google-cloud-recipe-auth",
-      "upstream_name": "google-cloud-recipe-auth",
-      "lock_key": "google-cloud-recipe-auth",
-      "source": "hironow/skills",
-      "skill_path": "google-cloud-recipe-auth/SKILL.md",
-      "skill_folder_hash": "90d9d648f587f2ca9b8b5f817df5844298b998c3ef03793cb3dc8807f104f084",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "google-cloud-recipe-onboarding",
-      "upstream_name": "google-cloud-recipe-onboarding",
-      "lock_key": "google-cloud-recipe-onboarding",
-      "source": "hironow/skills",
-      "skill_path": "google-cloud-recipe-onboarding/SKILL.md",
-      "skill_folder_hash": "c0b09253496d805e8f44ba9efa94c334c0688e59f1908f56f4a03eaa84a947d2",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "google-cloud-waf-cost-optimization",
-      "upstream_name": "google-cloud-waf-cost-optimization",
-      "lock_key": "google-cloud-waf-cost-optimization",
-      "source": "hironow/skills",
-      "skill_path": "google-cloud-waf-cost-optimization/SKILL.md",
-      "skill_folder_hash": "e91b8ef387a077c6f84b784a00673b424d9bcac6f5ab84142f378c5a3bfe8fc6",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "google-cloud-waf-reliability",
-      "upstream_name": "google-cloud-waf-reliability",
-      "lock_key": "google-cloud-waf-reliability",
-      "source": "hironow/skills",
-      "skill_path": "google-cloud-waf-reliability/SKILL.md",
-      "skill_folder_hash": "738a725fa0fd4e642880e77ca11dd626921743bdb9da0fbc0702117b25ba33fa",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "google-cloud-waf-security",
-      "upstream_name": "google-cloud-waf-security",
-      "lock_key": "google-cloud-waf-security",
-      "source": "hironow/skills",
-      "skill_path": "google-cloud-waf-security/SKILL.md",
-      "skill_folder_hash": "b49e3f41dd7758c3392cde1ff10fbed769d7e089cd8c4a8bf0c914749f1276e3",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "grill-me",
-      "upstream_name": "grill-me",
-      "lock_key": "grill-me",
-      "source": "hironow/skills",
-      "skill_path": "grill-me/SKILL.md",
-      "skill_folder_hash": "daf64ca15f4fa081a6747766db538e2dbd1131725ed4fcdd3d538dc62c7035ba",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "grill-with-docs",
-      "upstream_name": "grill-with-docs",
-      "lock_key": "grill-with-docs",
-      "source": "hironow/skills",
-      "skill_path": "grill-with-docs/SKILL.md",
-      "skill_folder_hash": "59849672f8fce76b73055f6c9270236212e444c9aa63d02481bdf3cf788edb9f",
       "resolved_by": "installed"
     },
     {
@@ -605,15 +425,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "handoff",
-      "upstream_name": "handoff",
-      "lock_key": "handoff",
-      "source": "hironow/skills",
-      "skill_path": "handoff/SKILL.md",
-      "skill_folder_hash": "3fdffd9dce6fc3e9f9f756ba79d694c5f162e11c7e7fbc72a0958f204312e0b1",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "hatch-pet",
       "upstream_name": "hatch-pet",
       "lock_key": "hatch-pet",
@@ -629,15 +440,6 @@
       "source": "hironow/skills",
       "skill_path": "imagegen/SKILL.md",
       "skill_folder_hash": "8d74b5ae9635b883835bbb340582572156969f1f66138d243fc0b4bcc9bfa904",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "improve-codebase-architecture",
-      "upstream_name": "improve-codebase-architecture",
-      "lock_key": "improve-codebase-architecture",
-      "source": "hironow/skills",
-      "skill_path": "improve-codebase-architecture/SKILL.md",
-      "skill_folder_hash": "5d9444ffe5c240f2d20081c42c547112e1b8c372375a14e4c98df4d94bde11e1",
       "resolved_by": "installed"
     },
     {
@@ -677,15 +479,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "linear",
-      "upstream_name": "linear",
-      "lock_key": "linear",
-      "source": "hironow/skills",
-      "skill_path": "linear/SKILL.md",
-      "skill_folder_hash": "d798e8a2da07a2a228a46c506fcc547693bedfb935e561e582ce9a706f380f67",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "loop-me",
       "upstream_name": "loop-me",
       "lock_key": "loop-me",
@@ -719,15 +512,6 @@
       "source": "anthropics/skills",
       "skill_path": "skills/mcp-builder/SKILL.md",
       "skill_folder_hash": "b866bcfb57b780c10b587c7b543e871a91661ce0",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "microsoft-foundry",
-      "upstream_name": "microsoft-foundry",
-      "lock_key": "microsoft-foundry",
-      "source": "hironow/skills",
-      "skill_path": "microsoft-foundry/SKILL.md",
-      "skill_folder_hash": "18c8bf06ae931ac52e4d6e77e6e04a3bf3028e1fde29d944bb3a2d7eba213a1b",
       "resolved_by": "installed"
     },
     {
@@ -767,24 +551,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "pdf",
-      "upstream_name": "pdf",
-      "lock_key": "pdf",
-      "source": "hironow/skills",
-      "skill_path": "pdf/SKILL.md",
-      "skill_folder_hash": "af1e0791f5356b6de053e6b97d7703fe0d7ea1997371b9023afd4720bebcf93f",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "playwright",
-      "upstream_name": "playwright",
-      "lock_key": "playwright",
-      "source": "hironow/skills",
-      "skill_path": "playwright/SKILL.md",
-      "skill_folder_hash": "e4296d5d41b811928377b1e1b46ca419fa9614b3fc2e8d232b95e5af34f7f7f9",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "playwright-cli",
       "upstream_name": "playwright-cli",
       "lock_key": "playwright-cli",
@@ -803,24 +569,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "prompt-review",
-      "upstream_name": "prompt-review",
-      "lock_key": "prompt-review",
-      "source": "hironow/skills",
-      "skill_path": "prompt-review/SKILL.md",
-      "skill_folder_hash": "d638bd29058c25ecd37e44dfd14ed9050491c7a83e16b4be581f923f06495b64",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "prototype",
-      "upstream_name": "prototype",
-      "lock_key": "prototype",
-      "source": "hironow/skills",
-      "skill_path": "prototype/SKILL.md",
-      "skill_folder_hash": "f52c019c3e0af2ad1807332d553b9ee7282a28c162d78cdeddd89dc8456b73ff",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "qa",
       "upstream_name": "qa",
       "lock_key": "qa",
@@ -828,15 +576,6 @@
       "skill_path": "qa/SKILL.md",
       "skill_folder_hash": "a9688ecf233a79362fa35a6c85beced42392a908",
       "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "release",
-      "upstream_name": "release",
-      "lock_key": "Release",
-      "source": "hironow/skills",
-      "skill_path": "release/SKILL.md",
-      "skill_folder_hash": "3e11cae4953176b19ae12e54c692ef4a6027a44ea922709cfec42e36766bb6dc",
-      "resolved_by": "skillPath"
     },
     {
       "installed_dir": "request-refactor-plan",
@@ -911,15 +650,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "setup-matt-pocock-skills",
-      "upstream_name": "setup-matt-pocock-skills",
-      "lock_key": "setup-matt-pocock-skills",
-      "source": "hironow/skills",
-      "skill_path": "setup-matt-pocock-skills/SKILL.md",
-      "skill_folder_hash": "f686b246e95afeaeeb3ff21b0f9f2c1ab29b02958468170cc9802fb477508488",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "setup-ts-deep-modules",
       "upstream_name": "setup-ts-deep-modules",
       "lock_key": "setup-ts-deep-modules",
@@ -935,15 +665,6 @@
       "source": "shadcn/ui",
       "skill_path": "skills/shadcn/SKILL.md",
       "skill_folder_hash": "b5791523e07794a4deb201e78eab3f3adbd022c0",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "sibyl",
-      "upstream_name": "sibyl",
-      "lock_key": "sibyl",
-      "source": "hironow/skills",
-      "skill_path": "sibyl/SKILL.md",
-      "skill_folder_hash": "db763f95347ec3d81afc63494ff73189d37ce115d9a7e911f9a1ecdf03a8efba",
       "resolved_by": "installed"
     },
     {
@@ -965,39 +686,12 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "tdd",
-      "upstream_name": "tdd",
-      "lock_key": "tdd",
-      "source": "hironow/skills",
-      "skill_path": "tdd/SKILL.md",
-      "skill_folder_hash": "78b31b2120c5fe7aced1cebfd4c7c94acb0037fd4f89c83c67584414aa4173bd",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "tdd-workflow",
-      "upstream_name": "tdd-workflow",
-      "lock_key": "tdd-workflow",
-      "source": "hironow/skills",
-      "skill_path": "tdd-workflow/SKILL.md",
-      "skill_folder_hash": "a35db3ed6b86d385071b0d2bd607af2209505cded80082abf3af2b097a0a3725",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "template-skill",
       "upstream_name": "template",
       "lock_key": "template-skill",
       "source": "anthropics/skills",
       "skill_path": "template/SKILL.md",
       "skill_folder_hash": "a38aa7fa73fd2835b9ce77a60274f7dc62d015a6",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "terraform-skill",
-      "upstream_name": "terraform-skill",
-      "lock_key": "terraform-skill",
-      "source": "hironow/skills",
-      "skill_path": "terraform-skill/SKILL.md",
-      "skill_folder_hash": "e938033d258d7a440e6861e473d72ab84aa8d808abf105c367773651ded11a0f",
       "resolved_by": "installed"
     },
     {
@@ -1055,15 +749,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "triage",
-      "upstream_name": "triage",
-      "lock_key": "triage",
-      "source": "hironow/skills",
-      "skill_path": "triage/SKILL.md",
-      "skill_folder_hash": "56ff15b41bbebfa4cb329d96150d9b297c1d919ce30784d883b8755b4bfd8e7e",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "ubiquitous-language",
       "upstream_name": "ubiquitous-language",
       "lock_key": "ubiquitous-language",
@@ -1082,24 +767,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "vercel-cli-with-tokens",
-      "upstream_name": "vercel-cli-with-tokens",
-      "lock_key": "vercel-cli-with-tokens",
-      "source": "hironow/skills",
-      "skill_path": "vercel-cli-with-tokens/SKILL.md",
-      "skill_folder_hash": "d3ad6e1d6278a4df322ee5bf49211f921f4aaea1148fb127b4e928de04b39fef",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "vercel-composition-patterns",
-      "upstream_name": "vercel-composition-patterns",
-      "lock_key": "vercel-composition-patterns",
-      "source": "hironow/skills",
-      "skill_path": "vercel-composition-patterns/SKILL.md",
-      "skill_folder_hash": "10eb4ec94577b79ae98c63ce3e7f35f8a6a06436a4011bff083b397de6960eeb",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "vercel-optimize",
       "upstream_name": "vercel-optimize",
       "lock_key": "vercel-optimize",
@@ -1115,24 +782,6 @@
       "source": "vercel-labs/agent-skills",
       "skill_path": "skills/react-best-practices/SKILL.md",
       "skill_folder_hash": "343db72180d05814949fef7d46be96b5c6ee86b3",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "vercel-react-native-skills",
-      "upstream_name": "vercel-react-native-skills",
-      "lock_key": "vercel-react-native-skills",
-      "source": "hironow/skills",
-      "skill_path": "vercel-react-native-skills/SKILL.md",
-      "skill_folder_hash": "a804b4e848059822638c390359976f7021380bcefb1469d473aa4e9202c15ecb",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "vercel-react-view-transitions",
-      "upstream_name": "vercel-react-view-transitions",
-      "lock_key": "vercel-react-view-transitions",
-      "source": "hironow/skills",
-      "skill_path": "vercel-react-view-transitions/SKILL.md",
-      "skill_folder_hash": "db55fee57546ae8b7cee3d9cc08e8e810bf78cce43e2d3dd26eea69e1bf357ae",
       "resolved_by": "installed"
     },
     {
@@ -1181,15 +830,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "wandb-primary",
-      "upstream_name": "wandb-primary",
-      "lock_key": "wandb-primary",
-      "source": "hironow/skills",
-      "skill_path": "wandb-primary/SKILL.md",
-      "skill_folder_hash": "93ec7179c13f54a1eb163c94e4fe5e84237db8d0fb2df9d6e3581d88fbb71558",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "wayfinder",
       "upstream_name": "wayfinder",
       "lock_key": "wayfinder",
@@ -1208,15 +848,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "web-design-guidelines",
-      "upstream_name": "web-design-guidelines",
-      "lock_key": "web-design-guidelines",
-      "source": "hironow/skills",
-      "skill_path": "web-design-guidelines/SKILL.md",
-      "skill_folder_hash": "d8e7d3afe37dcc8a97b99ffb5afdb4d0919ae0092ea8b68f44eb201f035e33ac",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "webapp-testing",
       "upstream_name": "webapp-testing",
       "lock_key": "webapp-testing",
@@ -1232,15 +863,6 @@
       "source": "mattpocock/skills",
       "skill_path": "skills/engineering/wizard/SKILL.md",
       "skill_folder_hash": "359db2fb13dc168346632556185252cab9dbec77",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "write-a-skill",
-      "upstream_name": "write-a-skill",
-      "lock_key": "write-a-skill",
-      "source": "hironow/skills",
-      "skill_path": "write-a-skill/SKILL.md",
-      "skill_folder_hash": "3b58a16bde08f84ed490cd449ecdc40289216d660e070c485f53bc2d1ed2b843",
       "resolved_by": "installed"
     },
     {

@@ -25,7 +25,7 @@ def blocks() -> dict[str, str]:
     """Every resource block in the stack, by address, body only."""
     out: dict[str, str] = {}
     for tf in sorted(PLATFORM.glob("*.tf")):
-        text = tf.read_text()
+        text = tf.read_text(encoding="utf-8")
         for m in re.finditer(r'resource "([\w-]+)" "([\w-]+)" \{', text):
             depth, i = 1, m.end()
             while depth:

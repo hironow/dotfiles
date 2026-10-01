@@ -5,28 +5,40 @@
 # PowerShell (tests/unit/test_deploy_clean_linewise.py guards this).
 # Windows native removes only what `just deploy` placed (ADR 0018 subset).
 set -eu
+# shellcheck source=scripts/ps_profile_lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/ps_profile_lib.sh"
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     echo "==> Remove dotfiles (windows subset)..."
     rm -vrf ~/.config/starship.toml
     rm -vrf ~/.config/git/ignore
     rm -vrf ~/.config/mise/config.toml
-    # Remove PowerShell starship-init block (idempotent; ADR 0022).
-    ps_profile="$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
-    if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: starship init >>>" "$ps_profile"; then
-      sed -i '/# >>> dotfiles managed block: starship init >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
-      echo "==> PowerShell \$PROFILE starship-init block removed"
-    fi
-    # Remove PowerShell mise-activate block (idempotent; ADR 0024).
-    if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise activate >>>" "$ps_profile"; then
-      sed -i '/# >>> dotfiles managed block: mise activate >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
-      echo "==> PowerShell \$PROFILE mise-activate block removed"
-    fi
-    # Remove PowerShell mise-node-corepack block (idempotent; ADR 0031).
-    if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise node corepack >>>" "$ps_profile"; then
-      sed -i '/# >>> dotfiles managed block: mise node corepack >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
-      echo "==> PowerShell \$PROFILE mise-corepack block removed"
-    fi
+    # PowerShell 7 Microsoft.PowerShell_profile.ps1: the one pwsh loads, plus
+    # the legacy $HOME/Documents path that deploy used before it resolved the
+    # real $PROFILE (hosts with OneDrive-redirected Documents still carry the
+    # managed blocks there). Sweeping the same file twice is a no-op.
+    for ps_profile in "$(resolve_ps_profile)" "$(ps_profile_legacy)"; do
+      # Remove PowerShell starship-init block (idempotent; ADR 0022).
+      if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: starship init >>>" "$ps_profile"; then
+        sed -i '/# >>> dotfiles managed block: starship init >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+        echo "==> PowerShell \$PROFILE starship-init block removed"
+      fi
+      # Remove PowerShell mise-activate block (idempotent; ADR 0024).
+      if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise activate >>>" "$ps_profile"; then
+        sed -i '/# >>> dotfiles managed block: mise activate >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+        echo "==> PowerShell \$PROFILE mise-activate block removed"
+      fi
+      # Remove PowerShell mise-node-corepack block (idempotent; ADR 0031).
+      if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: mise node corepack >>>" "$ps_profile"; then
+        sed -i '/# >>> dotfiles managed block: mise node corepack >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+        echo "==> PowerShell \$PROFILE mise-corepack block removed"
+      fi
+      # Remove PowerShell Jev launchers block (idempotent).
+      if [ -f "$ps_profile" ] && grep -qF "# >>> dotfiles managed block: Jev launchers >>>" "$ps_profile"; then
+        sed -i '/# >>> dotfiles managed block: Jev launchers >>>/,/# <<< end dotfiles managed block <<</d' "$ps_profile"
+        echo "==> PowerShell \$PROFILE Jev-launchers block removed"
+      fi
+    done
     # Remove git-aliases include block from ~/.gitconfig (idempotent; ADR 0033).
     gitconfig="$HOME/.gitconfig"
     if [ -f "$gitconfig" ] && grep -qF "# >>> dotfiles managed block: git aliases include >>>" "$gitconfig"; then
@@ -38,6 +50,13 @@ case "$(uname -s)" in
 esac
 echo "==> Remove dotfiles in your home directory..."
 rm -vrf ~/.zshrc
+# deploy appended a block to ~/.zprofile; the user's own lines stay.
+# `-i.bak` works with both GNU and BSD (macOS) sed.
+zprofile="$HOME/.zprofile"
+if [ -f "$zprofile" ] && grep -qF "# >>> dotfiles managed block: login PATH >>>" "$zprofile"; then
+  sed -i.bak '/# >>> dotfiles managed block: login PATH >>>/,/# <<< end dotfiles managed block <<</d' "$zprofile"
+  rm -f "$zprofile.bak"
+fi
 rm -vrf ~/.config/sheldon/plugins.toml
 rm -vrf ~/.config/starship.toml
 rm -vrf ~/.tmux.conf

@@ -1,17 +1,10 @@
-# Tools
+# tools/
 
-このディレクトリには、開発やテストに使用する各種ツールが含まれています。
+開発やテストで使う補助ツール。
 
-## ディレクトリ構成
+- [rttm](./rttm/README.md)：RTTM ファイルを ELAN（EAF）形式に変換し、可視化する Python のツール
+- [simple-server](./simple-server/README.md)：localhost の https を確かめる Go の簡易サーバー
+- [tmux](./tmux/CHEATSHEET.md)：tmux のキー操作の早見表
 
-- **[rttm](./rttm/README.md)**: RTTM ファイルを ELAN (EAF) 形式に変換したり、可視化したりする Python ツール
-- **[simple-server](./simple-server/README.md)**: Go 言語で書かれた簡易サーバー (ローカル HTTPS のテスト用)
-- **[tmux](./tmux/CHEATSHEET.md)**: tmux のキーバインド早見表
-
-各ツールの詳細な使用方法については、それぞれのディレクトリ内の
-`README.md` (存在する場合) またはソースコードを参照してください。
-
-## Related docs
-
-- [`../README.md`](../README.md) — リポジトリ全体のアーキテクチャと
-  doc tree のエントリポイント
+使い方は、各ディレクトリの README かソースコードにある。
+リポジトリ全体の構成は [`../README.md`](../README.md) にある。

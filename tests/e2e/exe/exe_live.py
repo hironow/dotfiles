@@ -81,6 +81,8 @@ class Exe:
                 text=True,
                 timeout=timeout,
                 check=False,
+                encoding="utf-8",
+                errors="replace",
             )
         except subprocess.TimeoutExpired as exc:
             raise CommandFailed(
@@ -140,7 +142,7 @@ class Exe:
 
     def measure(self, what: str, **values: Any) -> None:
         log(f"measured {what}: {values}")
-        with (self.out / "measurements.jsonl").open("a") as f:
+        with (self.out / "measurements.jsonl").open("a", encoding="utf-8") as f:
             f.write(
                 json.dumps({"what": what, "at": stamp(utcnow()), **values}, default=str)
                 + "\n"
@@ -329,7 +331,8 @@ class Exe:
             f"  atespace: {ATESPACE}\n"
             "spec:\n"
             f'  image: "{self.image}"\n'
-            "  debug: true\n"
+            "  debug: true\n",
+            encoding="utf-8",
         )
         self.tasks.append(name)
         self.run("mise", "x", "--", "ax", "apply", "-f", str(manifest))

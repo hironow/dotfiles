@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install declared Pi packages and the dotfiles-owned Jev extension."""
+"""Install declared Pi packages and the dotfiles-owned Pi extensions and agents."""
 
 import json
 import os
@@ -10,7 +10,12 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "dump/harness/pi-packages.json"
-EXTENSION = ROOT / "config/pi/extensions/jev-sonnet-fallback.ts"
+EXTENSIONS_DIR = ROOT / "config/pi/extensions"
+EXTENSION = EXTENSIONS_DIR / "jev-sonnet-fallback.ts"
+# A vendored extension (rtk.ts) keeps the upstream file verbatim below this line
+VENDORED_SENTINEL = "// --- upstream rtk.ts follows, unmodified ---\n"
+AGENTS_DIR = ROOT / "config/pi/agents"
+AGENT_MARKER = "<!-- dotfiles-managed: jev-codex-agent -->"
 
 
 def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
@@ -33,26 +38,81 @@ def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
     npm = agent_dir / "npm/node_modules"
     if any(not (npm / source.removeprefix("npm:")).is_dir() for source in sources):
         subprocess.run(["pi", "update", "--extensions"], check=True)
-    destination = agent_dir / "extensions/jev-sonnet-fallback.ts"
+    # One extension that cannot be placed must not hold back the others
+    refused = []
+    for extension in sorted(EXTENSIONS_DIR.glob("*.ts")):
+        try:
+            _place_extension(agent_dir, extension, symlinks=symlinks)
+        except RuntimeError as error:
+            refused.append(str(error))
+    _render_agents(agent_dir)
+    if refused:
+        raise RuntimeError("; ".join(refused))
+
+
+def vendored_body(text: str) -> str | None:
+    """What the upstream tool itself writes: a vendored file below its header."""
+    _header, sentinel, body = text.partition(VENDORED_SENTINEL)
+    return body if sentinel else None
+
+
+def _place_extension(agent_dir: Path, source: Path, *, symlinks: bool) -> None:
+    """Place one extension; its first line is the marker of a file we placed."""
+    text = source.read_text(encoding="utf-8")
+    marker = text.splitlines()[0] + "\n"
+    destination = agent_dir / "extensions" / source.name
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_symlink():
-        if destination.resolve() == EXTENSION:
+        if destination.resolve() == source.resolve():
             return
         raise RuntimeError(
-            f"refusing to replace unrelated extension symlink: {destination}"
+            f"refusing to replace unrelated extension symlink: {destination} (not applied)"
         )
     if destination.exists():
-        if not symlinks and destination.read_text(encoding="utf-8").startswith(
-            "// dotfiles-managed: jev-sonnet-fallback\n"
-        ):
-            shutil.copyfile(EXTENSION, destination)
+        current = destination.read_text(encoding="utf-8")
+        if not symlinks and current.startswith(marker):
+            shutil.copyfile(source, destination)
             return
-        raise RuntimeError(f"refusing to replace user extension: {destination}")
+        # Exactly what the upstream installer wrote (e.g. `rtk init`): take it over
+        if current != vendored_body(text):
+            raise RuntimeError(
+                f"refusing to replace user extension: {destination} (not applied)"
+            )
+        destination.unlink()
     if symlinks:
-        destination.symlink_to(EXTENSION)
+        destination.symlink_to(source)
     else:
         # Native Windows symlinks require developer mode or elevation.
-        shutil.copyfile(EXTENSION, destination)
+        shutil.copyfile(source, destination)
+
+
+def _yaml_quoted(value: str) -> str:
+    """The inside of a YAML double-quoted scalar (a JSON string) for this value."""
+    return json.dumps(value)[1:-1]
+
+
+def _render_agents(agent_dir: Path) -> None:
+    """Write each agent with this interpreter and script as absolute paths.
+
+    No `sh` and no fixed `$HOME/dotfiles`, so the same agents work on native Windows.
+    A file we wrote is refreshed on every run (the interpreter may have moved); a file
+    the user owns is never replaced.
+    """
+    target_dir = agent_dir / "agents"
+    script = ROOT / "scripts/jev_codex_exec.py"
+    for template in sorted(AGENTS_DIR.glob("*.md")):
+        text = template.read_text(encoding="utf-8")
+        text = text.replace("@PYTHON@", _yaml_quoted(sys.executable))
+        text = text.replace("@SCRIPT@", _yaml_quoted(str(script)))
+        rendered = f"{text.rstrip()}\n\n{AGENT_MARKER}\n"
+        destination = target_dir / template.name
+        if destination.exists() or destination.is_symlink():
+            if AGENT_MARKER not in destination.read_text(encoding="utf-8"):
+                raise RuntimeError(f"refusing to replace user agent: {destination}")
+            if destination.read_text(encoding="utf-8") == rendered:
+                continue
+        target_dir.mkdir(parents=True, exist_ok=True)
+        destination.write_text(rendered, encoding="utf-8")
 
 
 if __name__ == "__main__":
