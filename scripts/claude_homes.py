@@ -48,16 +48,11 @@ def call_timeout(deadline: float | None, now: float) -> float | None:
     return min(CALL_TIMEOUT, deadline - now)
 
 
-def runner(
-    claude: str,
-    home: Path,
-    deadline: float | None,
-    *,
-    cwd: Path | None = None,
-    no_stdin: bool = False,
-) -> Run:
+def runner(claude: str, home: Path, deadline: float | None) -> Run:
     """`claude <args>` against one home: CLAUDE_CONFIG_DIR set to its native
-    path in a copied environment, within what is left of `deadline`."""
+    path in a copied environment, run from the home (no project or local scope
+    of another directory applies) with stdin closed, within what is left of
+    `deadline`."""
     env = {**os.environ, "CLAUDE_CONFIG_DIR": str(home)}
 
     def run(args: list[str]) -> str | None:
@@ -67,9 +62,9 @@ def runner(
         try:
             done = subprocess.run(  # noqa: S603 - resolved argv, no shell
                 [claude, *args],
-                cwd=cwd,
+                cwd=home,
                 env=env,
-                stdin=subprocess.DEVNULL if no_stdin else None,
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 encoding="utf-8",
                 errors="replace",

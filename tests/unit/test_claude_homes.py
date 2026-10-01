@@ -79,7 +79,7 @@ def test_a_call_runs_in_its_home_and_answers_stdout_or_none(
         return Done(code, out)
 
     monkeypatch.setattr(claude_homes.subprocess, "run", run)
-    call = claude_homes.runner("claude", tmp_path, None, cwd=tmp_path, no_stdin=True)
+    call = claude_homes.runner("claude", tmp_path, None)
     assert call(["plugin", "list"]) == answer
     assert seen["argv"] == ["claude", "plugin", "list"]
     env = seen["env"]

@@ -156,8 +156,7 @@ def load(path: Path) -> Declaration:
 
 
 def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
-    # cwd in the home: no project or local plugin scope applies there
-    return claude_homes.runner(claude, home, deadline, cwd=home, no_stdin=True)
+    return claude_homes.runner(claude, home, deadline)
 
 
 def main(argv: Sequence[str]) -> int:
