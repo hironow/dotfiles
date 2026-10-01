@@ -16,6 +16,7 @@ contract is defined once, where it is used; this only reads it.
 """
 
 from collections.abc import Mapping
+import contextlib
 from dataclasses import dataclass
 import importlib.util
 import json
@@ -88,6 +89,16 @@ class JevKey:
 
 
 @dataclass(frozen=True)
+class MiseConfig:
+    """The mise config this machine actually reads, against origin/main's."""
+
+    live: str | None  # the deployed file's text; None when there is none
+    tracked: str | None  # origin/main's copy; None when it cannot be read
+    live_path: str  # where the deployed file is looked for
+    symlinked_into: str | None  # what it is a symlink to, if it is one
+
+
+@dataclass(frozen=True)
 class Facts:
     rtk: Tool
     headroom: Tool
@@ -113,6 +124,7 @@ class Facts:
     # What j-cc / j-pi need from this machine
     claude_bash: ClaudeBash | None  # None off Windows
     jev_key: JevKey
+    mise_config: MiseConfig
 
 
 # ---- Functional core ----
@@ -456,8 +468,67 @@ def _headroom_cli(facts: Facts) -> list[Line]:
     ]
 
 
+def _comparable(text: str) -> str:
+    """A config's text in comparable form: LF line endings, no trailing blanks.
+
+    Both halves of the comparison arrive differently shaped. `git show` is read
+    through a runner that strips its output, while a checked-out file keeps the
+    platform's line endings -- on Windows with core.autocrlf that is CRLF. Left
+    raw, every machine would report a difference, and a check that always warns
+    is a check nobody reads.
+    """
+    return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def _mise_config(facts: Facts) -> Line:
+    """The live mise config against origin/main's.
+
+    mise's global config decides which tools exist and what `[env]` every shell
+    gets, so a live copy that differs from origin/main's silently changes the
+    machine. `just deploy` writes that file; on this operator's Mac it is a
+    SYMLINK into the dotfiles checkout, which makes the live tool set whatever
+    the main tree has checked out -- detaching it at a pre-rtk commit switched
+    rtk and headroom off machine-wide for 40 minutes (2026-10-01), and nothing
+    warned. Worse, `cp -f` through that symlink copies the file onto itself, so
+    `just deploy` cannot repair it: the fix is to put the checkout back on main.
+    """
+    config = facts.mise_config
+    if config.live is None:
+        return (
+            "WARN",
+            "mise-config",
+            f"no {config.live_path}: no tool or [env] of this repo is active -- "
+            "run: just deploy",
+        )
+    if config.tracked is None:
+        return (
+            "OK",
+            "mise-config",
+            f"{config.live_path} present, not compared (origin/main's copy is "
+            "unreadable: no git, or no fetch yet)",
+        )
+    if _comparable(config.live) == _comparable(config.tracked):
+        return ("OK", "mise-config", f"{config.live_path} matches origin/main")
+    if config.symlinked_into:
+        return (
+            "WARN",
+            "mise-config",
+            f"{config.live_path} differs from origin/main's and is a symlink to "
+            f"{config.symlinked_into}, so this machine's tools and [env] are "
+            "whatever that checkout holds -- put it back on main (`just deploy` "
+            "copies the file onto itself through the symlink and cannot fix it)",
+        )
+    return (
+        "WARN",
+        "mise-config",
+        f"{config.live_path} differs from origin/main's: the deployed copy is "
+        "stale or edited by hand -- run: just deploy",
+    )
+
+
 def report(facts: Facts) -> list[Line]:
     return [
+        _mise_config(facts),
         _tool("rtk", facts.rtk, "rtk"),
         _tool("headroom", facts.headroom, "pypi:headroom-ai"),
         _rtk_pi_extension(facts),
@@ -572,6 +643,25 @@ def _text(path: Path) -> str:
         return ""
 
 
+def _mise_config_facts(home: Path) -> MiseConfig:
+    config_dir = os.environ.get("MISE_CONFIG_DIR") or (
+        Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "mise"
+    )
+    live = Path(config_dir) / "config.toml"
+    target: str | None = None
+    if live.is_symlink():
+        with contextlib.suppress(OSError):
+            target = str(live.resolve())
+    return MiseConfig(
+        live=live.read_text(encoding="utf-8") if live.is_file() else None,
+        tracked=_run(
+            ["git", "-C", str(ROOT), "show", "origin/main:config/mise/config.toml"]
+        ),
+        live_path=str(live),
+        symlinked_into=target,
+    )
+
+
 def _claude_bash(home: Path, settings: Mapping[str, object]) -> ClaudeBash | None:
     if sys.platform != "win32":
         return None
@@ -666,6 +756,7 @@ def gather(home: Path) -> Facts:
         ),
         claude_bash=_claude_bash(home, claude_homes.get(".claude", {})),
         jev_key=_jev_key_facts(home),
+        mise_config=_mise_config_facts(home),
     )
 
 
