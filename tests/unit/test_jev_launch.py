@@ -9,6 +9,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 from unittest.mock import Mock
@@ -220,13 +221,16 @@ def test_pi_without_ready_provider_exits_with_a_message_not_a_traceback(
 
 
 def _launch(
-    monkeypatch: pytest.MonkeyPatch, host: str
+    monkeypatch: pytest.MonkeyPatch,
+    host: str,
+    args: tuple[str, ...] = ("hello",),
+    choose: Callable[[str, str | None], str] | None = None,
 ) -> tuple[list[str], dict[str, str]]:
     """Run main() with the effects stubbed; return what would be executed."""
     seen: dict[str, tuple[list[str], dict[str, str]]] = {}
-    monkeypatch.setattr(launcher.sys, "argv", ["jev_launch.py", host, "hello"])
+    monkeypatch.setattr(launcher.sys, "argv", ["jev_launch.py", host, *args])
     monkeypatch.setattr(launcher, "jev_key", lambda: "secret")
-    monkeypatch.setattr(launcher, "choose_effort", lambda *_args: "high")
+    monkeypatch.setattr(launcher, "choose_effort", choose or (lambda *_args: "high"))
     monkeypatch.setattr(launcher, "extension_installed", lambda: True)
     monkeypatch.setattr(launcher, "codex_agents_installed", lambda: True)
     monkeypatch.setattr(
@@ -283,6 +287,37 @@ def test_claude_gets_the_worker_hook_and_agents_but_pi_does_not(
     }
     argv, _ = _launch(monkeypatch, "pi")
     assert "--settings" not in argv and "--agents" not in argv
+
+
+def test_a_resumed_j_cc_session_keeps_the_jev_wiring(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[str] = []
+
+    def choose(task: str, _key: str | None) -> str:
+        asked.append(task)
+        return "high"
+
+    argv, _ = _launch(monkeypatch, "claude", ("-r", "abc", "do", "more"), choose)
+    assert asked == ["do more"]  # Jev judges the new prompt, as for a new task
+    assert argv[1:5] == ["--model", launcher.SONNET, "--effort", "high"]
+    assert "--settings" in argv and "--agents" in argv
+    assert "--append-system-prompt" in argv
+    assert argv[-3:] == ["--resume", "abc", "do more"]
+
+
+def test_a_resumed_j_pi_session_without_a_prompt_skips_jev(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def must_not_ask(*_args: object) -> str:
+        raise AssertionError("Jev has no prompt to judge")
+
+    argv, env = _launch(monkeypatch, "pi", ("-c",), must_not_ask)
+    assert argv[3:5] == ["--thinking", "medium"]
+    assert argv[-1] == "--continue"
+    # The key still reaches the extension, which asks Jev for each worker
+    assert env["JEV_KEY_HANDOFF"] == "secret"
+    assert "resuming without a prompt" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("installed", [True, False])

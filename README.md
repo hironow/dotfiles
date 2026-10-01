@@ -163,6 +163,7 @@ mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
 ## Jev でのコーディングセッション
 
 作業リポジトリで `j-cc '依頼文'` または `j-pi '依頼文'` を実行すると、依頼に合わせて Claude Code と Pi の思考レベル、Codex のモデルを選んで起動する。
+`-c`（直近のセッションを続ける）と `-r`（選んで再開する）は、Claude Code と Pi と同じように使える。
 キーの置き場所、初回準備、提供元の切り替えは [runbook](docs/runbook/jev-launchers.md) にある。
 `j-cc` のセッションは rtk（コマンドの出力の圧縮）と headroom の proxy（モデルに届く内容の圧縮）の両方を通る。
 起動のしかたごとの違いと確かめ方（`just jev-headroom-verify rtk`）は、同じ runbook の「rtk と headroom を両方使う」にある。

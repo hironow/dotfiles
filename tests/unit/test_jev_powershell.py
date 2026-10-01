@@ -66,6 +66,43 @@ def test_powershell_function_syntax() -> None:
     assert called.returncode == 0, called.stderr
 
 
+@pytest.mark.parametrize(
+    ("call", "forwarded"),
+    [
+        ("j-cc -r abc 'next step'", ["claude", "-r", "abc", "next step"]),
+        ("j-pi --continue", ["pi", "--continue"]),
+        ("j-cc --resume=abc", ["claude", "--resume=abc"]),
+    ],
+)
+def test_powershell_forwards_the_resume_flags(call: str, forwarded: list[str]) -> None:
+    # A function without a param block leaves -r / --continue in $args, so
+    # they reach jev_launch.py as the hosts would read them
+    pwsh = shutil.which("pwsh")
+    if not pwsh:
+        pytest.skip("PowerShell unavailable; Windows CI runs this")
+    env = os.environ.copy()
+    env["JEV_FUNCTIONS"] = DEPLOY.split("cat <<'POWERSHELL'\n", 1)[1].split(
+        "\nPOWERSHELL", 1
+    )[0]
+    invoke = (
+        "function mise { $global:seen = @($args) }; "
+        "Invoke-Expression $env:JEV_FUNCTIONS; "
+        f"{call}; "
+        f"($global:seen | Select-Object -Last {len(forwarded)}) -join '|'"
+    )
+    called = subprocess.run(
+        [pwsh, "-NoProfile", "-Command", invoke],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert called.returncode == 0, called.stderr
+    assert called.stdout.strip() == "|".join(forwarded)
+
+
 def test_the_zsh_launchers_are_short_names() -> None:
     zshrc = (ROOT / ".zshrc").read_text(encoding="utf-8")
     assert (

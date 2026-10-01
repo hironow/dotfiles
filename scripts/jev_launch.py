@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in Jev routing for a new Claude Code or Pi session (imperative shell)."""
+"""Opt-in Jev routing for a Claude Code or Pi session, new or resumed (imperative shell)."""
 
 import io
 import json
@@ -17,6 +17,7 @@ from jev_core import (
     JEV_URL,
     PI_ROUTES,
     SONNET,
+    Launch,
     build_codex_request_body,
     build_command,
     build_env,
@@ -173,6 +174,16 @@ def choose_effort(task: str, key: str | None) -> str:
     return effort_from_answers(answers) if answers is not None else "medium"
 
 
+def session_effort(launch: Launch, key: str | None) -> str:
+    """Jev judges the prompt; a session resumed without one keeps the host profile."""
+    if not launch.prompt:
+        print(
+            "Jev: resuming without a prompt; using Sonnet 5.5 medium", file=sys.stderr
+        )
+        return "medium"
+    return choose_effort(launch.prompt, key)
+
+
 def choose_codex(task: str, key: str | None) -> tuple[str, str]:
     """(model, effort) for a Codex worker; without an answer, Sol at medium."""
     if not key:
@@ -254,18 +265,21 @@ def headroom_env(host: str, environ: Mapping[str, str]) -> dict[str, str]:
 
 def main() -> None:
     try:
-        host, task = parse_args(sys.argv[1:])
+        launch = parse_args(sys.argv[1:])
     except ValueError as error:
         raise SystemExit(str(error)) from error
+    host = launch.host
     key = jev_key()
-    effort = choose_effort(task, key)
+    effort = session_effort(launch, key)
     print(f"Jev: {host} Sonnet 5.5 / {effort}", file=sys.stderr)
     model = SONNET
     if host == "pi":
         model = pi_route()
         print(f"Pi route: {model}", file=sys.stderr)
     extra = claude_session_args(hook_command()) if host == "claude" else []
-    command = build_command(host, task, effort, model, extra)
+    command = build_command(
+        host, launch.prompt, effort, model, extra, resume=launch.resume
+    )
     env = headroom_env(
         host,
         build_env(
