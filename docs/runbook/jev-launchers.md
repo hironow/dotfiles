@@ -192,6 +192,11 @@ headroom は mise で入る（`pypi:headroom-ai`）。
 2. そうでなければ、空いているポートで `headroom proxy --host 127.0.0.1` を起動し（beacon は off）、準備ができたらポートを記録する。出力は `~/.cache/jev/headroom-proxy.log` に追記する
 3. headroom がない、または起動できないときは、そう表示して headroom なしで起動する
 
+`j-pi` も起動のときに同じ手順で proxy を用意する（Pi 自身の通信は通さず、Codex の worker が準備のできた proxy を使えるようにするため）。
+`j-cc` と `j-pi` は起動のたびに dashboard の URL（`http://127.0.0.1:<port>/dashboard`）を表示し、その起動で proxy を新しく立てたときだけブラウザで開く。
+ブラウザで開かないようにするには `JEV_HEADROOM_DASHBOARD=off` を付けて起動する（URL は表示する）。
+あとから開くには `just headroom-dashboard` を使う（素の `headroom dashboard` は既定のポート 8787 を開くので、この proxy の dashboard は開けない）。
+
 proxy は `j-cc` が終わっても残り、次の起動で使い回す（起動にかかる数秒は初回だけ）。
 使わないときは `JEV_HEADROOM=off` を付けて起動する。
 セッションの途中で proxy が止まると、そのセッションはモデルに届かなくなるので、`j-cc` を起動し直す（新しい proxy が立つ）。
@@ -250,7 +255,6 @@ just doctor                                  # AI の節がすべて OK にな�
 proxy は 1 つで足りる。
 `j-cc` と Codex の worker は、記録ファイル（`~/.cache/jev/headroom.json`）を通して同じ proxy を使い回し、動いていなければ起動のときに自動で立てる（上の「headroom」の節）。
 ログインのときに常駐させる仕組みは置かない（使うのは `j-cc` と `j-pi` の Codex の worker だけで、起動の仕組みを 2 つにしないため）。
-headroom の `headroom dashboard` は既定のポート 8787 を開くが、proxy は空いているポートで立つので、`just headroom-dashboard`（記録したポートの dashboard を開く）を使う。
 
 両方が 1 つのセッションで効いていることは、次で確かめる。
 

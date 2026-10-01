@@ -21,6 +21,7 @@ import socket
 import subprocess
 import sys
 import time
+import webbrowser
 from typing import Protocol
 
 HOST = "127.0.0.1"
@@ -221,8 +222,12 @@ def ensure_proxy(
     start: Callable[[list[str], dict[str, str], Path], Proxy] = start,
     free_port: Callable[[], int] = free_port,
     wait_seconds: float = 60.0,
+    on_start: Callable[[int], None] | None = None,
 ) -> int | None:
-    """The port of a ready headroom proxy, or None (with a notice) to go direct."""
+    """The port of a ready headroom proxy, or None (with a notice) to go direct.
+
+    on_start is called with the port when this call started the proxy (not
+    when it reused a running one): j-cc and j-pi open the dashboard then."""
     exe = which("headroom")
     if not exe:
         print("Jev: headroom not found; launching without it", file=sys.stderr)
@@ -254,7 +259,36 @@ def ensure_proxy(
             file=sys.stderr,
         )
         return None
+    if on_start is not None:
+        on_start(port)
     return port
+
+
+def dashboard_url(port: int) -> str:
+    return f"http://{HOST}:{port}/dashboard"
+
+
+def dashboard_wanted(environ: Mapping[str, str]) -> bool:
+    """Open the dashboard in a browser for a new proxy unless
+    JEV_HEADROOM_DASHBOARD turns it off (the URL is shown either way)."""
+    return environ.get("JEV_HEADROOM_DASHBOARD", "").strip().lower() not in OFF
+
+
+def open_url(url: str) -> None:
+    """Open url in the user's browser, best effort: a failure leaves the shown
+    URL, and nothing here may stop or block the launch."""
+    try:
+        if os.environ.get("WSL_DISTRO_NAME") and shutil.which("explorer.exe"):
+            # WSL: the browser is Windows'; explorer.exe opens a URL there
+            subprocess.Popen(
+                ["explorer.exe", url],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            webbrowser.open_new_tab(url)
+    except (OSError, webbrowser.Error):
+        pass
 
 
 def dashboard_plan(exe: str, port: int | None, health: object) -> list[str] | str:

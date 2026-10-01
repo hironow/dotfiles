@@ -13,6 +13,7 @@ from collections.abc import Mapping
 import json
 import socket
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -145,7 +146,7 @@ class World:
             self.health[int(command[-1])] = READY
         return self.proxy
 
-    def ensure(self) -> int | None:
+    def ensure(self, on_start: Callable[[int], None] | None = None) -> int | None:
         return hr.ensure_proxy(
             {"PATH": "p"},
             self.home,
@@ -154,6 +155,7 @@ class World:
             start=self.start,
             free_port=lambda: 5555,
             wait_seconds=0.0,
+            on_start=on_start,
         )
 
     @property
@@ -225,7 +227,7 @@ def test_a_state_that_cannot_be_written_stops_the_proxy(
     assert world.proxy.terminated
 
 
-def test_j_cc_gets_the_proxy_and_plain_launches_do_not(
+def test_j_cc_routes_through_the_proxy_and_j_pi_only_readies_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[str] = []
@@ -239,11 +241,12 @@ def test_j_cc_gets_the_proxy_and_plain_launches_do_not(
     claude_env = launcher.headroom_env("claude", {"PATH": "p"})
     assert claude_env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:4321"
 
+    # j-pi readies the proxy for its Codex workers; Pi's own traffic stays direct
     pi_env = launcher.headroom_env("pi", {"PATH": "p"})
     assert "ANTHROPIC_BASE_URL" not in pi_env
     off_env = launcher.headroom_env("claude", {"PATH": "p", "JEV_HEADROOM": "off"})
     assert "ANTHROPIC_BASE_URL" not in off_env
-    assert calls == ["ensure"]
+    assert calls == ["ensure", "ensure"]
 
 
 def test_an_unexpected_failure_still_launches_claude(
@@ -371,3 +374,79 @@ def test_the_recipe_runs_it() -> None:
     )
     assert "headroom-dashboard:" in justfile
     assert "scripts/jev_headroom.py dashboard" in justfile
+
+
+# --- the dashboard at launch: URL every time, the browser once per proxy ---
+
+
+def test_on_start_is_called_only_for_a_proxy_this_launch_started(
+    tmp_path: Path,
+) -> None:
+    opened: list[int] = []
+    world = World(tmp_path)
+    assert world.ensure(on_start=opened.append) == 5555
+    assert opened == [5555]
+    assert world.ensure(on_start=opened.append) == 5555  # reused: not again
+    assert opened == [5555]
+
+
+def test_the_dashboard_url_names_the_proxys_port() -> None:
+    assert hr.dashboard_url(4321) == "http://127.0.0.1:4321/dashboard"
+
+
+@pytest.mark.parametrize(
+    ("environ", "wanted"),
+    [
+        ({}, True),
+        ({"JEV_HEADROOM_DASHBOARD": "off"}, False),
+        ({"JEV_HEADROOM_DASHBOARD": "0"}, False),
+    ],
+)
+def test_opening_the_dashboard_can_be_turned_off(
+    environ: dict[str, str], wanted: bool
+) -> None:
+    assert hr.dashboard_wanted(environ) is wanted
+
+
+@pytest.mark.parametrize(
+    ("host", "started"), [("claude", True), ("pi", True), ("claude", False)]
+)
+def test_a_launch_shows_the_url_and_opens_it_only_for_a_new_proxy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    host: str,
+    started: bool,
+) -> None:
+    opened: list[str] = []
+
+    def ensure(_environ: dict[str, str], _home: Path, **kwargs: object) -> int:
+        on_start = kwargs.get("on_start")
+        if started and callable(on_start):
+            on_start(4321)
+        return 4321
+
+    monkeypatch.setattr(launcher.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(launcher, "ensure_proxy", ensure)
+    monkeypatch.setattr(launcher, "open_url", opened.append)
+    launcher.headroom_env(host, {"PATH": "p"})
+    assert "http://127.0.0.1:4321/dashboard" in capsys.readouterr().err
+    assert opened == (["http://127.0.0.1:4321/dashboard"] if started else [])
+
+
+def test_a_launch_with_the_dashboard_off_never_opens_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    opened: list[str] = []
+
+    def ensure(_environ: dict[str, str], _home: Path, **kwargs: object) -> int:
+        on_start = kwargs.get("on_start")
+        if callable(on_start):
+            on_start(4321)
+        return 4321
+
+    monkeypatch.setattr(launcher.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(launcher, "ensure_proxy", ensure)
+    monkeypatch.setattr(launcher, "open_url", opened.append)
+    launcher.headroom_env("claude", {"PATH": "p", "JEV_HEADROOM_DASHBOARD": "off"})
+    assert opened == []
