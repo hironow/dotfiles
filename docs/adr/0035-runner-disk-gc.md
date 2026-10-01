@@ -152,9 +152,9 @@ CodeQL alone.
 1.25.x`, `node-version: 22.x`, `python-version: 3.13` — and `setup-*` resolves
 it to the newest patch within that series. A flat "keep the newest N versions"
 therefore evicts versions the matrices still need: three repos on this runner
-(`example-runner-a` 3.10, `example-runner-b` 3.13, `example-runner-c` 3.14) pin three different Python
-series between them, so keeping only the newest would re-download two of them on
-every job. Keeping **the newest patch of each series** protects exactly what a
+(`example-repo-c` 3.10, `example-repo-d` 3.13, `example-repo-e` 3.14) pin three
+different Python series between them, so keeping only the newest would
+re-download two of them on every job. Keeping **the newest patch of each series** protects exactly what a
 series pin resolves to, and still reaps the patches it superseded.
 `RUNNER_GC_TOOLCACHE_KEEP` (default 5) bounds how many series survive, so the
 cache cannot grow without limit either; raise it if the matrices pin more series
