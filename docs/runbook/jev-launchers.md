@@ -173,6 +173,39 @@ OpenRouter は従量課金なので最後にする。
 「quota exceeded」のような曖昧な文章や、認証エラーやサーバーエラーと矛盾するステータスでは切り替えず、元のエラーを表示する。
 切り替え先の認証済みの提供元がなければ、元のエラーを表示する。
 
+## headroom（j-cc だけ）
+
+`j-cc` は、起動する Claude とその worker のリクエストを headroom の proxy に通し、モデルに届く内容を圧縮する。
+`ANTHROPIC_BASE_URL` を渡すのは、その Claude のプロセスにだけである。
+`ANTHROPIC_BASE_URL` が `api.anthropic.com` 以外を指すと Claude Code の Remote Control が使えなくなるので、素の `claude` は直結のままにする。
+`j-pi` と Codex は経由しない。
+headroom は mise で入る（`pypi:headroom-ai`）。
+
+`j-cc` は起動のたびに、次の順で proxy を用意する。
+
+1. `~/.cache/jev/headroom.json` に記録したポートの `/health` が、準備のできた headroom の proxy を返せば、それを使う
+2. そうでなければ、空いているポートで `headroom proxy --host 127.0.0.1` を起動し（beacon は off）、準備ができたらポートを記録する。出力は `~/.cache/jev/headroom-proxy.log` に追記する
+3. headroom がない、または起動できないときは、そう表示して headroom なしで起動する
+
+proxy は `j-cc` が終わっても残り、次の起動で使い回す（起動にかかる数秒は初回だけ）。
+使わないときは `JEV_HEADROOM=off` を付けて起動する。
+セッションの途中で proxy が止まると、そのセッションはモデルに届かなくなるので、`j-cc` を起動し直す（新しい proxy が立つ）。
+`j-cc` をほぼ同時に 2 つ起動すると、proxy が 2 つ立つことがある（それぞれ自分の proxy を使う）。
+
+proxy を止めるときは、記録したファイルに頼らず、自分の headroom の proxy をコマンドラインで探して止める。
+止めた proxy を使っている `j-cc` のセッションは、モデルに届かなくなる。
+
+```sh
+pgrep -u "$USER" -af 'headroom proxy --host 127\.0\.0\.1'   # macOS と Linux: 一覧
+kill <PID>
+```
+
+```powershell
+# Windows: headroom.exe の下に python.exe が 2 つ動くので、親ごと止める
+Get-CimInstance Win32_Process | Where-Object CommandLine -match 'headroom.*proxy --host 127\.0\.0\.1' | Select-Object ProcessId, ParentProcessId, Name
+taskkill /T /F /PID <headroom.exe の ProcessId>
+```
+
 ## 動作確認
 
 Agent ツールで `updatedInput` が効くか、`effort` が実際に効くかは、実際のリクエストでしか確かめられない。
@@ -214,3 +247,21 @@ just jev-pi-verify
 | `FAIL` | 1 | subagent を呼んだのに worker の記録がない、モデルに effort の suffix がない、または worker が失敗した |
 | `BLOCKED` | 2 | キーか拡張がない、利用上限で worker の前に止まった、2.6.9 より古い pi-background-tasks が anthropic の Sonnet 5.5 を拒んだ（`no Claude Code model policy`）、またはモデルが subagent を呼ばなかった（提供元のエラーがないときだけ、1 回自動でやり直す）。上限と拒否は、Pi が終了コード 0 で終わっても、セッションの記録に残る提供元のエラーから判定する |
 | `PARTIAL` | 3 | worker が `medium` で動き、セッションと区別できない |
+
+### headroom の経路
+
+`j-cc` のセッションと worker が headroom を通ることは、次で確かめる。
+
+```sh
+just jev-headroom-verify
+```
+
+確認のためだけの proxy を空いているポートで起動し、リクエストのメッセージを一時ディレクトリのログに残す（終わったら proxy を止め、ログごと消す）。
+その proxy に向けて、`j-cc` と同じ環境とフックで非対話（`claude -p`）のセッションを 1 回動かし、素の worker を 1 つ起動させる。
+判定は、proxy のログ（セッションと worker の最初のメッセージの目印）とフックの記録で行い、モデルの返答には頼らない。
+
+| 結果 | 終了コード | 意味 |
+| --- | --- | --- |
+| `PASS` | 0 | セッションと、`worker-<effort>` に差し替えた worker のリクエストが、両方とも proxy を通った |
+| `FAIL` | 1 | proxy が起動しない、セッションか worker のリクエストが proxy を通らない、またはフックが差し替えを記録しない |
+| `BLOCKED` | 2 | キーか headroom がない、利用上限、未ログイン、またはモデルが worker を起動しなかった |
