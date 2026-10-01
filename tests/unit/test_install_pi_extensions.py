@@ -214,3 +214,28 @@ def test_the_vendored_rtk_extension_only_rewrites_bash_and_fails_open() -> None:
     assert 'event.toolName === "bash"' in body
     assert 'process.env.RTK_DISABLED === "1"' in body
     assert "Fail open" in body
+
+
+# The decision alone (installer.placement), without a filesystem
+SOURCE = (
+    "// dotfiles-managed: rtk\n// header\n" + installer.VENDORED_SENTINEL + "body\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("placed", "symlinks", "action"),
+    [
+        (installer.Placed(), True, "place"),
+        (installer.Placed(link_to_source=True), True, "keep"),
+        (installer.Placed(link_to_source=False), True, "refuse"),
+        (installer.Placed(text=SOURCE), False, "refresh"),
+        # what `rtk init` writes is the vendored body alone
+        (installer.Placed(text="body\n"), True, "take-over"),
+        (installer.Placed(text="body\n"), False, "take-over"),
+        (installer.Placed(text="// the user's own\n"), False, "refuse"),
+    ],
+)
+def test_placement_decides_from_what_is_there(
+    placed: object, symlinks: bool, action: str
+) -> None:
+    assert installer.placement(SOURCE, placed, symlinks=symlinks) == action
