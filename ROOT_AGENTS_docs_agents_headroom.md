@@ -56,13 +56,24 @@ mise's global `[env]`, the shared Claude settings env, the persisted Windows
 User env, the MCP registration's own `env` block, and the proxy process
 `jev_headroom` starts. Two switches because the beacon fails OPEN — any value
 but the literal `off` uploads — and because `DO_NOT_TRACK=1` is the stronger of
-the two: measured on 0.38.0, it turns the beacon off even against an explicit
-`HEADROOM_BEACON=on`.
+the two: measured on 0.39.1, it turns the beacon off even against an explicit
+`HEADROOM_BEACON=on`. `HEADROOM_BEACON=off` on its own is also enough, with no
+`DO_NOT_TRACK` behind it; we set both so that neither one is load-bearing.
 
 `just doctor` checks both in the shell, in every Claude home's settings and in
 the Windows User env, and asks headroom itself
 (`headroom telemetry --json` → `beacon_enabled`). Update checks, licence
 reporting and model downloads remain allowed; the beacon does not.
+
+Re-measuring after a version bump is safe: `headroom telemetry` only prints the
+payload the beacon *would* send, so reading it costs no egress even in the one
+combination that leaves the beacon enabled. The switches govern new processes
+only — a proxy started before a bump keeps serving its old version until it is
+restarted — so read them off the running process (`ps -Ewww -p <pid>`) instead
+of trusting the config it was launched with. Find those pids by matching
+`headroom(\.cli)?\s+(proxy|mcp)` against `ps -axo pid=,command=`: a looser
+`pgrep -f headroom` both misses the real argv (`python -m headroom.cli proxy`)
+and matches the searching shell itself.
 
 In an outage, bypass is per process and needs no sync: `JEV_HEADROOM=off j-cc`
 skips the proxy, and removing the MCP server (`claude mcp remove headroom
