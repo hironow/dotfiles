@@ -21,6 +21,33 @@ MISE_HEADROOM = (
 )
 TELEMETRY = {"RTK_TELEMETRY_DISABLED": "1", "HEADROOM_BEACON": "off"}
 RTK_HOOK = 'bash "/home/u/.claude/hooks/rtk-hook-claude.sh"'
+# Trimmed answers of rtk 0.50.0 and headroom 0.38.0
+RTK_HELP = """A high-performance CLI proxy.
+
+Usage: rtk [OPTIONS] <COMMAND>
+
+Commands:
+  ls             List directory contents with token-optimized output
+  git            Git commands with compact output
+  proxy          Execute command without filtering but track usage
+  help           Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose...
+"""
+RTK_TELEMETRY = """Telemetry status:
+  consent:       never asked
+  enabled:       no
+  env override:  RTK_TELEMETRY_DISABLED=1 (blocked)
+"""
+PROXY_HELP = """Usage: headroom proxy [OPTIONS]
+
+  Start the optimization proxy server.
+
+Options:
+  --host TEXT      Host to bind to
+  --port INTEGER   Port to bind to
+"""
 
 
 def _facts(**changes: object) -> check.Facts:
@@ -45,6 +72,12 @@ def _facts(**changes: object) -> check.Facts:
             "codex_sandbox_tools.py": "",
         },
         headroom_proxy=None,
+        rtk_help=RTK_HELP,
+        rtk_classified=frozenset({"ls", "git", "proxy", "help"}),
+        rtk_telemetry=RTK_TELEMETRY,
+        headroom_telemetry={"beacon_enabled": False},
+        headroom_proxy_help=PROXY_HELP,
+        headroom_proxy_flags=("--host", "--port"),
     )
     return replace(good, **changes)
 
@@ -141,3 +174,91 @@ def test_the_vendored_version_is_read_from_its_header() -> None:
     header = "// dotfiles-managed: rtk\n// Vendored from rtk 0.50.0 (`rtk init -g --agent pi`), https://x\n"
     assert check.vendored_version(header) == "0.50.0"
     assert check.vendored_version("no header\n") is None
+
+
+# --- upstream contracts: what an rtk or headroom upgrade could break ---------
+
+
+def test_rtks_subcommands_come_from_its_help() -> None:
+    assert check.rtk_subcommands(RTK_HELP) == {"ls", "git", "proxy", "help"}
+
+
+def test_an_rtk_subcommand_the_guard_has_not_classified_warns() -> None:
+    help_text = RTK_HELP.replace(
+        "  help ", "  run            Execute a shell command\n  help "
+    )
+    facts = _facts(rtk_help=help_text)
+    assert _levels(facts)["rtk-guard"] == "WARN"
+    detail = _detail(facts, "rtk-guard")
+    assert "run" in detail
+    assert "RTK_RUN_SUBCOMMANDS" in detail
+
+
+def test_unreadable_rtk_help_warns() -> None:
+    assert _levels(_facts(rtk_help="usage: something else"))["rtk-guard"] == "WARN"
+
+
+@pytest.mark.parametrize(
+    ("answer", "level"),
+    [
+        (RTK_TELEMETRY, "OK"),
+        (RTK_TELEMETRY.replace("enabled:       no", "enabled:       yes"), "WARN"),
+        # our variable set, but this rtk no longer reports honouring it
+        (
+            RTK_TELEMETRY.replace(
+                "  env override:  RTK_TELEMETRY_DISABLED=1 (blocked)\n", ""
+            ),
+            "WARN",
+        ),
+        ("Telemetry: a new format", "WARN"),
+        (None, "WARN"),
+    ],
+)
+def test_rtk_is_asked_whether_its_telemetry_is_off(
+    answer: str | None, level: str
+) -> None:
+    assert _levels(_facts(rtk_telemetry=answer))["rtk-telemetry"] == level
+
+
+@pytest.mark.parametrize(
+    ("answer", "level"),
+    [
+        ({"beacon_enabled": False}, "OK"),
+        ({"beacon_enabled": True}, "WARN"),
+        ({"schema_version": 3}, "WARN"),
+        (None, "WARN"),
+    ],
+)
+def test_headroom_is_asked_whether_its_beacon_is_off(
+    answer: dict | None, level: str
+) -> None:
+    assert _levels(_facts(headroom_telemetry=answer))["headroom-telemetry"] == level
+
+
+def test_a_headroom_proxy_without_host_and_port_flags_warns() -> None:
+    facts = _facts(
+        headroom_proxy_help=PROXY_HELP.replace("--port INTEGER", "--listen ADDR")
+    )
+    assert _levels(facts)["headroom-cli"] == "WARN"
+    assert "proxy_command" in _detail(facts, "headroom-cli")
+
+
+def test_upstream_checks_wait_for_the_tool_itself() -> None:
+    absent = check.Tool(paths=(), version=None, mise_path=None)
+    facts = _facts(
+        rtk=absent,
+        headroom=absent,
+        rtk_help=None,
+        rtk_telemetry=None,
+        headroom_telemetry=None,
+        headroom_proxy_help=None,
+    )
+    names = _levels(facts)
+    for name in ("rtk-guard", "rtk-telemetry", "headroom-telemetry", "headroom-cli"):
+        assert name not in names
+
+
+def test_the_guard_records_each_rtk_subcommand_once() -> None:
+    guard = check._load_command_guard()
+    assert not guard.RTK_RUN_SUBCOMMANDS & guard.RTK_FILTER_SUBCOMMANDS
+    assert {"run", "proxy", "git", "help"} <= check._guard_rtk_classified()

@@ -92,6 +92,22 @@ run-anything subcommands (`rtk proxy …`, `rtk run …`, `rtk err …`,
 `rtk test …`, `rtk summary …`, `rtk smart …`). Prefixing a banned tool with
 `rtk` is not an escape hatch.
 
+## After an rtk upgrade
+
+mise tracks rtk's latest release, so upgrades arrive unannounced. `just doctor`
+(and `just status`) compares what dotfiles relies on with the installed rtk:
+
+- `rtk-pi-extension`: the vendored Pi extension came from an older rtk —
+  `just rtk-pi-refresh`.
+- `rtk-guard`: rtk gained a subcommand the command guard has not classified —
+  add it to `RTK_RUN_SUBCOMMANDS` if it runs a command it is given, else to
+  `RTK_FILTER_SUBCOMMANDS` (both in `hooks/block-prohibited-commands.py`).
+- `rtk-telemetry`: rtk itself reports telemetry on, or no longer mentions
+  `RTK_TELEMETRY_DISABLED` (`rtk telemetry status`).
+
+The hook blocks an rtk installer writes are retired by sync whatever their
+version or path, so `rtk init` drift needs no action.
+
 ## Meta commands (always call rtk directly)
 
 ```bash

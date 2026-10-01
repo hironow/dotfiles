@@ -103,7 +103,8 @@ fzf = "0.74.3"
 # with (no CI leg covers 3.14). headroom is pinned: mise
 # resolves `latest` without uv's 7-day exclude-newer (ADR 0028), which then
 # refuses the release; move the pin once a newer release is a week old. Their
-# telemetry is pinned off in [env] below.
+# telemetry is pinned off in [env] below. After either moves, `just doctor`
+# checks the contracts dotfiles relies on (rtk-guard, *-telemetry, headroom-cli).
 rtk = "latest"
 "pypi:headroom-ai" = { version = "0.38.0", extras = "proxy,code", uvx_args = "--python 3.13" }
 

@@ -195,6 +195,12 @@ proxy は `j-cc` が終わっても残り、次の起動で使い回す（起動
 セッションの途中で proxy が止まると、そのセッションはモデルに届かなくなるので、`j-cc` を起動し直す（新しい proxy が立つ）。
 `j-cc` をほぼ同時に 2 つ起動すると、proxy が 2 つ立つことがある（それぞれ自分の proxy を使う）。
 
+headroom の版は固定してあり（`config/mise/config.toml`）、上げるのは手作業である。
+上げたら `just doctor` で 2 つの約束を確かめる。
+`headroom-telemetry` は、headroom 自身が beacon を off と答えるか（`headroom telemetry --json`）を見る。
+`headroom-cli` は、`headroom proxy --help` に `jev_headroom.proxy_command` が渡すフラグが載っているかを見る。
+`/health` の答えの形と、Codex の worker の経路は、proxy を動かさないと分からないので、`just jev-headroom-verify` で確かめる。
+
 proxy を止めるときは、記録したファイルに頼らず、自分の headroom の proxy をコマンドラインで探して止める。
 止めた proxy を使っている `j-cc` のセッションは、モデルに届かなくなる。
 

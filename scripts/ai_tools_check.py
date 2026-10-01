@@ -2,14 +2,22 @@
 """Is the AI tooling complete? rtk, headroom, their telemetry and their wiring.
 
 Functional core / imperative shell: gather() collects facts (PATH, versions,
-the Windows User env, agent homes, Codex's hook trust, the headroom proxy) and
-report() is a pure function from those facts to doctor's OK/WARN lines, so the
-rules are unit-tested and the IO stays thin. Used by `just doctor` and
-`just status`; always exits 0 (doctor counts the lines).
+the Windows User env, agent homes, Codex's hook trust, the headroom proxy, and
+what rtk and headroom say about themselves) and report() is a pure function
+from those facts to doctor's OK/WARN lines, so the rules are unit-tested and
+the IO stays thin. Used by `just doctor` and `just status`; always exits 0
+(doctor counts the lines).
+
+The upstream checks compare each contract dotfiles relies on with the installed
+tool, so an rtk or headroom upgrade that breaks one shows up here: telemetry
+off by the tool's own account, every rtk subcommand classified by the command
+guard, and the `headroom proxy` flags jev_headroom.proxy_command passes. Each
+contract is defined once, where it is used; this only reads it.
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,8 +25,10 @@ import re
 import shutil
 import subprocess
 import sys
+from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[1]
+COMMAND_GUARD = ROOT / "ROOT_AGENTS_hooks_block-prohibited-commands.py"
 TELEMETRY_OFF = {"RTK_TELEMETRY_DISABLED": "1", "HEADROOM_BEACON": "off"}
 CLAUDE_HOMES = (
     ".claude",
@@ -53,6 +63,14 @@ class Facts:
     # CODEX_CHECKS' --check output by script (None: it did not run); None without codex
     codex_checks: Mapping[str, str | None] | None
     headroom_proxy: tuple[int, bool] | None  # (recorded port, healthy); None: no record
+    # What the tools say about themselves (None: no answer)
+    rtk_help: str | None  # `rtk --help`
+    rtk_telemetry: str | None  # `rtk telemetry status`
+    headroom_telemetry: Mapping[str, object] | None  # `headroom telemetry --json`
+    headroom_proxy_help: str | None  # `headroom proxy --help`
+    # The contracts, from where they are defined
+    rtk_classified: frozenset[str]  # rtk subcommands the command guard classifies
+    headroom_proxy_flags: tuple[str, ...]  # flags jev_headroom.proxy_command passes
 
 
 # ---- Functional core ----
@@ -111,7 +129,7 @@ def _telemetry(facts: Facts) -> Line:
         gaps.append(f"Windows User env lacks {', '.join(missing)} (just harden-env)")
     if gaps:
         return ("WARN", "telemetry", "; ".join(gaps))
-    return ("OK", "telemetry", "rtk and headroom telemetry off")
+    return ("OK", "telemetry", "off switches set for shells, Claude and Windows")
 
 
 def _claude_rtk_hook(facts: Facts) -> Line:
@@ -170,12 +188,123 @@ def _headroom_proxy(facts: Facts) -> Line:
     return ("OK", "headroom-proxy", f"127.0.0.1:{port} {state}")
 
 
+def rtk_subcommands(help_text: str) -> frozenset[str]:
+    """The names in the Commands: section of `rtk --help`."""
+    _, found, rest = help_text.partition("\nCommands:\n")
+    names = set()
+    for line in rest.splitlines() if found else []:
+        if not line.strip():
+            break
+        if match := re.match(r"  (\S+)", line):
+            names.add(match[1])
+    return frozenset(names)
+
+
+def _rtk_guard(facts: Facts) -> list[Line]:
+    if not facts.rtk.paths:
+        return []
+    found = rtk_subcommands(facts.rtk_help or "")
+    if not found:
+        return [("WARN", "rtk-guard", "cannot read the subcommands in `rtk --help`")]
+    if unclassified := sorted(found - facts.rtk_classified):
+        return [
+            (
+                "WARN",
+                "rtk-guard",
+                f"rtk {facts.rtk.version or '?'} has subcommands the command guard "
+                f"has not classified ({', '.join(unclassified)}): add each to "
+                "RTK_RUN_SUBCOMMANDS if it runs its operands, else to "
+                "RTK_FILTER_SUBCOMMANDS (ROOT_AGENTS_hooks_block-prohibited-commands.py)",
+            )
+        ]
+    return [
+        (
+            "OK",
+            "rtk-guard",
+            f"the command guard classifies all {len(found)} rtk subcommands",
+        )
+    ]
+
+
+def _rtk_telemetry(facts: Facts) -> list[Line]:
+    if not facts.rtk.paths:
+        return []
+    status = facts.rtk_telemetry or ""
+    enabled = re.search(r"^\s*enabled:\s*(\S+)", status, re.MULTILINE)
+    if enabled is None:
+        return [("WARN", "rtk-telemetry", "cannot read `rtk telemetry status`")]
+    if enabled[1] != "no":
+        return [("WARN", "rtk-telemetry", "rtk reports it on: rtk telemetry disable")]
+    if (
+        facts.env.get("RTK_TELEMETRY_DISABLED") == "1"
+        and "RTK_TELEMETRY_DISABLED" not in status
+    ):
+        return [
+            (
+                "WARN",
+                "rtk-telemetry",
+                "off, but this rtk no longer reports honouring RTK_TELEMETRY_DISABLED: "
+                "find its switch (rtk telemetry --help) before consent turns it on",
+            )
+        ]
+    return [("OK", "rtk-telemetry", "off by rtk's own account")]
+
+
+def _headroom_telemetry(facts: Facts) -> list[Line]:
+    if not facts.headroom.paths:
+        return []
+    enabled = (facts.headroom_telemetry or {}).get("beacon_enabled")
+    if enabled is False:
+        return [("OK", "headroom-telemetry", "beacon off by headroom's own account")]
+    if enabled is True:
+        honoured = facts.env.get("HEADROOM_BEACON") == "off"
+        return [
+            (
+                "WARN",
+                "headroom-telemetry",
+                "headroom reports its beacon on"
+                + (
+                    " although HEADROOM_BEACON=off: find its switch (headroom telemetry)"
+                    if honoured
+                    else ": HEADROOM_BEACON=off (mise env)"
+                ),
+            )
+        ]
+    return [("WARN", "headroom-telemetry", "cannot read `headroom telemetry --json`")]
+
+
+def _headroom_cli(facts: Facts) -> list[Line]:
+    if not facts.headroom.paths:
+        return []
+    usage = facts.headroom_proxy_help or ""
+    if missing := [flag for flag in facts.headroom_proxy_flags if flag not in usage]:
+        return [
+            (
+                "WARN",
+                "headroom-cli",
+                f"`headroom proxy --help` lacks {', '.join(missing)}: update "
+                "jev_headroom.proxy_command, or j-cc goes direct",
+            )
+        ]
+    return [
+        (
+            "OK",
+            "headroom-cli",
+            f"headroom proxy takes {', '.join(facts.headroom_proxy_flags)}",
+        )
+    ]
+
+
 def report(facts: Facts) -> list[Line]:
     return [
         _tool("rtk", facts.rtk, "rtk"),
         _tool("headroom", facts.headroom, "pypi:headroom-ai"),
         _rtk_pi_extension(facts),
         _telemetry(facts),
+        *_rtk_telemetry(facts),
+        *_headroom_telemetry(facts),
+        *_rtk_guard(facts),
+        *_headroom_cli(facts),
         _claude_rtk_hook(facts),
         _pi_extensions(facts),
         *_codex(facts),
@@ -247,6 +376,28 @@ def _json(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _load_command_guard() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("command_guard", COMMAND_GUARD)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {COMMAND_GUARD}")
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+    return guard
+
+
+def _guard_rtk_classified() -> frozenset[str]:
+    guard = _load_command_guard()
+    return frozenset(guard.RTK_RUN_SUBCOMMANDS | guard.RTK_FILTER_SUBCOMMANDS)
+
+
+def _json_answer(text: str | None) -> dict | None:
+    try:
+        answer = json.loads(text or "")
+    except ValueError:
+        return None
+    return answer if isinstance(answer, dict) else None
+
+
 def gather(home: Path) -> Facts:
     sys.path.insert(0, str(Path(__file__).parent))
     import jev_headroom  # noqa: PLC0415 - sibling script
@@ -264,9 +415,13 @@ def gather(home: Path) -> Facts:
             )
             for script in CODEX_CHECKS
         }
+    rtk = _tool_facts("rtk", ["--version"])
+    headroom = _tool_facts("headroom", ["--version"])
+    rtk_exe = rtk.paths[0] if rtk.paths else None
+    headroom_exe = headroom.paths[0] if headroom.paths else None
     return Facts(
-        rtk=_tool_facts("rtk", ["--version"]),
-        headroom=_tool_facts("headroom", ["--version"]),
+        rtk=rtk,
+        headroom=headroom,
         vendored_rtk=vendored_version(
             (ROOT / "config/pi/extensions/rtk.ts").read_text(encoding="utf-8")
         ),
@@ -282,6 +437,20 @@ def gather(home: Path) -> Facts:
         headroom_proxy=None
         if port is None
         else (port, jev_headroom.is_headroom(jev_headroom.probe(port))),
+        rtk_help=_run([rtk_exe, "--help"]) if rtk_exe else None,
+        rtk_telemetry=_run([rtk_exe, "telemetry", "status"]) if rtk_exe else None,
+        headroom_telemetry=_json_answer(
+            _run([headroom_exe, "telemetry", "--json"]) if headroom_exe else None
+        ),
+        headroom_proxy_help=_run([headroom_exe, "proxy", "--help"])
+        if headroom_exe
+        else None,
+        rtk_classified=_guard_rtk_classified(),
+        headroom_proxy_flags=tuple(
+            arg
+            for arg in jev_headroom.proxy_command("headroom", 0)
+            if arg.startswith("--")
+        ),
     )
 
 
