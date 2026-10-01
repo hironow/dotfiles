@@ -87,31 +87,20 @@ def _missing_telemetry(env: Mapping[str, str]) -> list[str]:
     return [f"{k}={v}" for k, v in TELEMETRY_OFF.items() if env.get(k) != v]
 
 
-def report(facts: Facts) -> list[Line]:
-    lines = [
-        _tool("rtk", facts.rtk, "rtk"),
-        _tool("headroom", facts.headroom, "pypi:headroom-ai"),
-    ]
-
+def _rtk_pi_extension(facts: Facts) -> Line:
     # rtk upgrades can change its own Pi extension; ours is a vendored copy
-    if (
-        facts.rtk.version
-        and facts.vendored_rtk
-        and facts.rtk.version != facts.vendored_rtk
-    ):
-        lines.append(
-            (
-                "WARN",
-                "rtk-pi-extension",
-                f"config/pi/extensions/rtk.ts is from rtk {facts.vendored_rtk}, "
-                f"installed is {facts.rtk.version}: just rtk-pi-refresh",
-            )
+    installed, vendored = facts.rtk.version, facts.vendored_rtk
+    if installed and vendored and installed != vendored:
+        return (
+            "WARN",
+            "rtk-pi-extension",
+            f"config/pi/extensions/rtk.ts is from rtk {vendored}, "
+            f"installed is {installed}: just rtk-pi-refresh",
         )
-    else:
-        lines.append(
-            ("OK", "rtk-pi-extension", f"vendored from rtk {facts.vendored_rtk or '?'}")
-        )
+    return ("OK", "rtk-pi-extension", f"vendored from rtk {vendored or '?'}")
 
+
+def _telemetry(facts: Facts) -> Line:
     gaps = []
     if missing := _missing_telemetry(facts.env):
         gaps.append(f"this shell lacks {', '.join(missing)} (mise env)")
@@ -120,12 +109,12 @@ def report(facts: Facts) -> list[Line]:
             gaps.append(f"~/{home} lacks {', '.join(missing)} (just sync-agents)")
     if facts.user_env is not None and (missing := _missing_telemetry(facts.user_env)):
         gaps.append(f"Windows User env lacks {', '.join(missing)} (just harden-env)")
-    lines.append(
-        ("WARN", "telemetry", "; ".join(gaps))
-        if gaps
-        else ("OK", "telemetry", "rtk and headroom telemetry off")
-    )
+    if gaps:
+        return ("WARN", "telemetry", "; ".join(gaps))
+    return ("OK", "telemetry", "rtk and headroom telemetry off")
 
+
+def _claude_rtk_hook(facts: Facts) -> Line:
     unhooked = [
         home
         for home, settings in facts.claude_homes.items()
@@ -136,30 +125,31 @@ def report(facts: Facts) -> list[Line]:
             for hook in block.get("hooks", [])
         )
     ]
-    lines.append(
-        (
+    if unhooked:
+        return (
             "WARN",
             "claude-rtk-hook",
             f"missing in ~/{', ~/'.join(unhooked)}: just sync-agents",
         )
-        if unhooked
-        else ("OK", "claude-rtk-hook", f"in {len(facts.claude_homes)} Claude home(s)")
-    )
+    return ("OK", "claude-rtk-hook", f"in {len(facts.claude_homes)} Claude home(s)")
 
+
+def _pi_extensions(facts: Facts) -> Line:
     absent = [name for name, placed in facts.pi_extensions.items() if not placed]
-    lines.append(
-        (
+    if absent:
+        return (
             "WARN",
             "pi-extensions",
             f"missing {', '.join(absent)}: just pi-extensions-install",
         )
-        if absent
-        else ("OK", "pi-extensions", ", ".join(facts.pi_extensions))
-    )
+    return ("OK", "pi-extensions", ", ".join(facts.pi_extensions))
 
+
+def _codex(facts: Facts) -> list[Line]:
     if facts.codex_checks is None:
-        lines.append(("OK", "codex-hooks", "codex not on PATH"))
-    for script, out in (facts.codex_checks or {}).items():
+        return [("OK", "codex-hooks", "codex not on PATH")]
+    lines: list[Line] = []
+    for script, out in facts.codex_checks.items():
         if out is None:
             lines.append(("WARN", "codex", f"{script} --check failed to run"))
             continue
@@ -167,18 +157,30 @@ def report(facts: Facts) -> list[Line]:
             level, _, rest = raw.partition(" ")
             name, _, detail = rest.strip().partition(" - ")
             lines.append((level.strip(), name, detail))
-
-    if facts.headroom_proxy is None:
-        lines.append(("OK", "headroom-proxy", "not running; j-cc starts one on demand"))
-    else:
-        port, healthy = facts.headroom_proxy
-        state = (
-            "running"
-            if healthy
-            else "recorded but not answering (j-cc starts a new one)"
-        )
-        lines.append(("OK", "headroom-proxy", f"127.0.0.1:{port} {state}"))
     return lines
+
+
+def _headroom_proxy(facts: Facts) -> Line:
+    if facts.headroom_proxy is None:
+        return ("OK", "headroom-proxy", "not running; j-cc starts one on demand")
+    port, healthy = facts.headroom_proxy
+    state = (
+        "running" if healthy else "recorded but not answering (j-cc starts a new one)"
+    )
+    return ("OK", "headroom-proxy", f"127.0.0.1:{port} {state}")
+
+
+def report(facts: Facts) -> list[Line]:
+    return [
+        _tool("rtk", facts.rtk, "rtk"),
+        _tool("headroom", facts.headroom, "pypi:headroom-ai"),
+        _rtk_pi_extension(facts),
+        _telemetry(facts),
+        _claude_rtk_hook(facts),
+        _pi_extensions(facts),
+        *_codex(facts),
+        _headroom_proxy(facts),
+    ]
 
 
 # ---- Imperative shell ----
