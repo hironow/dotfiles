@@ -12,7 +12,13 @@ The `codex` target runs the real Codex worker runner (jev_codex_exec.py) against
 the same kind of dedicated proxy, handed to it through JEV_HEADROOM_STATE_DIR,
 and needs a proxied request carrying CODEX plus the runner's final message.
 
-Usage: jev_headroom_verify.py [claude|codex ...]  (default: both)
+The `rtk` target checks that both layers work in one j-cc session: it runs a
+session with j-cc's environment through the same kind of proxy, in an empty
+temp dir, and asks it to run `ls -la` once with Bash. It needs a proxied request
+carrying RTK and rtk's own count of commands in that dir (`rtk gain -p`), which
+only the Claude rtk hook can have raised. It needs no Jev key.
+
+Usage: jev_headroom_verify.py [claude|codex|rtk ...]  (default: all)
 Exit 0 = pass, 1 = fail, 2 = blocked (no key, no headroom, usage limit, no
 login, or the model launched no worker; nothing learned).
 """
@@ -45,7 +51,7 @@ from jev_launch import hook_command, jev_key
 
 EXIT = {"pass": 0, "fail": 1, "blocked": 2}
 SEVERITY = {"pass": 0, "blocked": 1, "fail": 2}
-TARGETS = ("claude", "codex")
+TARGETS = ("claude", "codex", "rtk")
 MAIN = "JEV-HEADROOM-MAIN"
 WORKER = "JEV-HEADROOM-WORKER"
 PROMPT = (
@@ -54,6 +60,11 @@ PROMPT = (
     "word OK.' Do nothing else. After the worker returns, reply DONE."
 )
 CODEX = "JEV-HEADROOM-CODEX"
+RTK = "JEV-HEADROOM-RTK"
+RTK_PROMPT = (
+    f"{RTK} This is a routing check. Run the shell command `ls -la` exactly once "
+    "with the Bash tool, then reply DONE. Do nothing else."
+)
 CODEX_PROMPT = f"{CODEX} Reply with the single word OK."
 _CODEX_LIMIT = re.compile(r"usage limit|rate limit|429", re.IGNORECASE)
 
@@ -111,6 +122,10 @@ def _is_codex(row: dict) -> bool:
 
 
 def _launched_agent(stream_lines: list[str]) -> bool:
+    return _used_tool(stream_lines, {"Agent", "Task"})
+
+
+def _used_tool(stream_lines: list[str], names: set[str]) -> bool:
     for line in stream_lines:
         try:
             event = json.loads(line)
@@ -122,7 +137,7 @@ def _launched_agent(stream_lines: list[str]) -> bool:
             if (
                 isinstance(block, dict)
                 and block.get("type") == "tool_use"
-                and block.get("name") in {"Agent", "Task"}
+                and block.get("name") in names
             ):
                 return True
     return False
@@ -182,6 +197,42 @@ def analyze_codex(
             "fail", "the Codex worker's requests did not go through the proxy", evidence
         )
     return Report("pass", "the Codex worker went through headroom", evidence)
+
+
+def rtk_commands(out: str | None) -> int | None:
+    """rtk's count of commands in one dir, from `rtk gain -p --format json`."""
+    try:
+        summary = json.loads(out or "").get("summary")
+    except (ValueError, AttributeError):
+        return None
+    count = summary.get("total_commands") if isinstance(summary, dict) else None
+    return count if isinstance(count, int) else None
+
+
+def analyze_rtk(
+    stream_lines: list[str], proxied: list[list], rtk_commands: int | None
+) -> Report:
+    """Functional core: one j-cc session through headroom, its Bash through rtk."""
+    if has_provider_limit(stream_lines):
+        return Report("blocked", "a Claude usage limit stopped the check")
+    if is_logged_out(stream_lines):
+        return Report("blocked", "Claude Code is not logged in")
+    session = sum(RTK in first_user_text(messages) for messages in proxied)
+    evidence = [
+        f"proxied requests: {len(proxied)} (session {session})",
+        f"rtk commands in the session's dir: {rtk_commands}",
+    ]
+    if not _used_tool(stream_lines, {"Bash"}):
+        return Report("blocked", "the model ran no Bash command; rerun", evidence)
+    if rtk_commands is None:
+        return Report("blocked", "rtk's count could not be read", evidence)
+    if session == 0:
+        return Report("fail", "no request of the session reached the proxy", evidence)
+    if rtk_commands == 0:
+        return Report("fail", "the Bash command did not go through rtk", evidence)
+    return Report(
+        "pass", "the session went through headroom and its Bash through rtk", evidence
+    )
 
 
 def targets(argv: Sequence[str]) -> list[str]:
@@ -277,11 +328,79 @@ def _run_codex(exe: str) -> Report:
         )
 
 
+def _rtk_exe() -> str | None:
+    if found := shutil.which("rtk"):
+        return found
+    mise = shutil.which("mise")
+    if not mise:
+        return None
+    done = subprocess.run(
+        [mise, "which", "rtk"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    return done.stdout.strip() or None if done.returncode == 0 else None
+
+
+def _run_rtk(exe: str) -> Report:
+    rtk = _rtk_exe()
+    if not rtk:
+        return Report("blocked", "rtk not found (mise installs rtk)")
+    with _dedicated_proxy(exe) as (ready, port, log, tmp):
+        if not ready:
+            return Report("fail", f"the headroom proxy did not get ready on {port}")
+        work = tmp / "work"  # empty: rtk counts only what this session ran
+        work.mkdir()
+        env = claude_env(build_env(os.environ, "claude", None, False), port)
+        claude = [
+            shutil.which("claude") or "claude",
+            "-p",
+            RTK_PROMPT,
+            "--model",
+            SONNET,
+            "--effort",
+            "medium",
+            "--allowedTools",
+            "Bash",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+        ]
+        run = subprocess.run(
+            claude,
+            cwd=work,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=600,
+            check=False,
+        )
+        counted = subprocess.run(
+            [rtk, "gain", "-p", "--format", "json"],
+            cwd=work,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        return analyze_rtk(
+            run.stdout.splitlines(),
+            proxied_requests(log),
+            rtk_commands(counted.stdout if counted.returncode == 0 else None),
+        )
+
+
 def _report_for(target: str, exe: str | None) -> Report:
     if not exe:
         return Report("blocked", "headroom not found (mise installs pypi:headroom-ai)")
     if target == "codex":
         return _run_codex(exe)
+    if target == "rtk":
+        return _run_rtk(exe)
     key = jev_key()
     if not key:
         return Report(

@@ -152,9 +152,14 @@ def test_a_codex_usage_limit_blocks() -> None:
 
 @pytest.mark.parametrize(
     ("argv", "targets"),
-    [([], ["claude", "codex"]), (["codex"], ["codex"]), (["claude"], ["claude"])],
+    [
+        ([], ["claude", "codex", "rtk"]),
+        (["codex"], ["codex"]),
+        (["claude"], ["claude"]),
+        (["rtk"], ["rtk"]),
+    ],
 )
-def test_targets_default_to_both(argv: list[str], targets: list[str]) -> None:
+def test_targets_default_to_all(argv: list[str], targets: list[str]) -> None:
     assert verify.targets(argv) == targets
 
 
@@ -168,3 +173,65 @@ def test_log_rows_are_read_whole(tmp_path: Path) -> None:
     lines = [json.dumps(CODEX_ROW), "[1, 2]", "not json"]
     log.write_text("\n".join(lines) + "\n", encoding="utf-8")
     assert verify.proxied_rows(log) == [CODEX_ROW]
+
+
+# --- rtk: one j-cc session through headroom, its Bash through rtk ----------
+
+RTK_SESSION = _request(f"{verify.RTK} run ls once")
+
+
+def _bash_call() -> str:
+    return json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "b", "name": "Bash", "input": {}}
+                ]
+            },
+        }
+    )
+
+
+def test_a_session_through_headroom_with_bash_through_rtk_passes() -> None:
+    report = verify.analyze_rtk([_bash_call()], [RTK_SESSION], rtk_commands=1)
+    assert report.status == "pass"
+
+
+def test_a_bash_call_rtk_never_saw_fails() -> None:
+    report = verify.analyze_rtk([_bash_call()], [RTK_SESSION], rtk_commands=0)
+    assert report.status == "fail"
+    assert "rtk" in report.reason
+
+
+def test_a_session_that_bypassed_the_proxy_fails() -> None:
+    report = verify.analyze_rtk([_bash_call()], [], rtk_commands=1)
+    assert report.status == "fail"
+    assert "proxy" in report.reason
+
+
+def test_no_bash_call_learned_nothing() -> None:
+    assert verify.analyze_rtk([], [RTK_SESSION], rtk_commands=0).status == "blocked"
+
+
+def test_an_unreadable_rtk_count_blocks() -> None:
+    # rtk missing or its tracking unreadable: nothing about the hook was learned
+    assert (
+        verify.analyze_rtk([_bash_call()], [RTK_SESSION], rtk_commands=None).status
+        == "blocked"
+    )
+
+
+@pytest.mark.parametrize(
+    ("out", "count"),
+    [
+        ('{"summary": {"total_commands": 2}}', 2),
+        ('{"summary": {}}', None),
+        ("not json", None),
+        (None, None),
+    ],
+)
+def test_rtk_counts_come_from_its_per_project_summary(
+    out: str | None, count: int | None
+) -> None:
+    assert verify.rtk_commands(out) == count
