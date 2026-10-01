@@ -41,6 +41,8 @@ REAL = "C:/Users/u/AppData/Local/mise/installs/rtk/0.50.0/rtk.exe"
         (None, "/home/u/.local/bin/rtk", "/home/u/.local/bin/rtk"),
         # a shim needs mise's config, which the sandbox cannot read
         (None, "C:/Users/u/AppData/Local/mise/shims/rtk.exe", None),
+        # Windows paths ignore case (found in review)
+        (None, r"C:\Users\u\AppData\Local\mise\SHIMS\rtk.exe", None),
         (None, None, None),
     ],
 )
@@ -59,6 +61,8 @@ def test_the_real_binary_is_preferred_and_a_shim_never_used(
         ("FOO=1 rtk git log", REAL, None),
         # a path that needs quoting would need pwsh's & on Windows
         ("rtk ls", "C:/Users/John Doe/rtk.exe", None),
+        # a backslash in a POSIX path is part of a name, not a separator
+        ("rtk ls", r"/opt/tools\local/bin/rtk", None),
     ],
 )
 def test_only_a_plain_rewrite_with_an_unquoted_path_is_named(

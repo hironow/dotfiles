@@ -34,6 +34,7 @@ EXIT_ALLOW = 0
 RTK_LAUNCHER = "rtk"
 # A path pwsh and sh both run as a command without quoting
 UNQUOTED_PATH = re.compile(r"[A-Za-z0-9_./:-]+")
+WINDOWS_PATH = re.compile(r"[A-Za-z]:[\\/]")
 _TIMEOUT_SECONDS = 10
 
 
@@ -44,9 +45,17 @@ def choose_launcher(mise_answer: str | None, on_path: str | None) -> str | None:
     """rtk's real binary: mise's answer, else PATH's copy unless it is a shim."""
     if mise_answer:
         return mise_answer
-    if on_path and on_path.replace("\\", "/").split("/")[-2:-1] != ["shims"]:
+    if on_path and [part.lower() for part in _posix(on_path).split("/")[-2:-1]] != [
+        "shims"  # a Windows path ignores case
+    ]:
         return on_path
     return None
+
+
+def _posix(path: str) -> str:
+    """A Windows path (drive letter) with forward slashes; any other path as
+    it is, since a backslash there is part of a name, not a separator."""
+    return path.replace("\\", "/") if WINDOWS_PATH.match(path) else path
 
 
 def named(command: str, launcher: str) -> str | None:
@@ -54,7 +63,7 @@ def named(command: str, launcher: str) -> str | None:
     prefix = RTK_LAUNCHER + " "
     if not command.startswith(prefix) or RTK_LAUNCHER in command[len(prefix) :]:
         return None
-    path = launcher.replace("\\", "/")
+    path = _posix(launcher)
     if not UNQUOTED_PATH.fullmatch(path):
         return None
     return path + command[len(RTK_LAUNCHER) :]
