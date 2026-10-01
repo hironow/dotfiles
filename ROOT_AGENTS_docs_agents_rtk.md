@@ -24,6 +24,15 @@ fires.
 The wrapper **fails open**: if rtk is missing or errors, the command runs
 unchanged. It is an optimiser, not a guard.
 
+## Install and telemetry
+
+rtk (and headroom) come from mise on every OS (`config/mise/config.toml`), so
+`rtk init -g` is never needed: it would add the hook block sync retires and
+write its own `RTK.md` into agent homes sync owns. Telemetry stays off through
+`RTK_TELEMETRY_DISABLED=1` (and `HEADROOM_BEACON=off`), set in mise's global
+`[env]`, the shared Claude settings env, and on Windows the persisted User env
+(`just harden-env`).
+
 ## rtk does not approve commands
 
 rtk answers `permissionDecision: "allow"` for everything it rewrites, which

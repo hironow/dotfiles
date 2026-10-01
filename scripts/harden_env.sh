@@ -8,6 +8,7 @@
 #   - uv   ~/.config/uv/uv.toml   flatt mirror (default index) + exclude-newer=7d
 #   - go   GOPROXY                default checksum-verified proxy (if go present)
 #   - win  persisted User PATH     append missing Git usr\bin + cmd (native Windows)
+#   - win  persisted User env      rtk / headroom telemetry off (ADR 0047)
 #
 # Portable across GNU (Linux/WSL) and BSD (macOS): it uses NO `sed -i` at all,
 # and is idempotent (safe to re-run — no duplicated lines).
@@ -114,6 +115,11 @@ if [ -n "${APPDATA:-}" ] && [ -z "${HARDEN_ENV_SKIP_WIN_PATH:-}" ] \
       echo "  - ${_win_dir}: appended to persisted User PATH (open a new session to pick it up)"
     fi
   done
+  # rtk / headroom telemetry off for processes no shell starts (ADR 0047; the
+  # same values live in mise's global [env] and the shared Claude settings env).
+  _powershell -NoProfile -Command \
+    "[Environment]::SetEnvironmentVariable('RTK_TELEMETRY_DISABLED', '1', 'User'); [Environment]::SetEnvironmentVariable('HEADROOM_BEACON', 'off', 'User')"
+  echo "  - RTK_TELEMETRY_DISABLED=1, HEADROOM_BEACON=off: persisted for the User"
 fi
 
 echo "--- ✅ Hardening applied (machine-local; not tracked in the repo) ---"
