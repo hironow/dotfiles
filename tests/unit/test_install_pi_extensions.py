@@ -140,3 +140,77 @@ def test_a_user_owned_agent_of_the_same_name_is_never_replaced(
     with pytest.raises(RuntimeError, match="refusing to replace user agent"):
         _install(agent, monkeypatch)
     assert (agent / "agents/codex-jev.md").read_text(encoding="utf-8") == "mine"
+
+
+RTK = Path(__file__).resolve().parents[2] / "config/pi/extensions/rtk.ts"
+
+
+def _upstream_rtk() -> str:
+    """What `rtk init -g --agent pi` writes: the vendored file below its header."""
+    return installer.vendored_body(RTK.read_text(encoding="utf-8"))
+
+
+def test_rtk_is_placed_next_to_jev(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    _install(agent, monkeypatch)
+    placed = agent / "extensions/rtk.ts"
+    assert placed.read_text(encoding="utf-8") == RTK.read_text(encoding="utf-8")
+    assert (agent / "extensions/jev-sonnet-fallback.ts").is_file()
+
+
+def test_a_file_rtk_init_wrote_is_taken_over(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    (agent / "extensions").mkdir(parents=True)
+    (agent / "extensions/rtk.ts").write_text(_upstream_rtk(), encoding="utf-8")
+    _install(agent, monkeypatch)
+    assert (agent / "extensions/rtk.ts").read_text(encoding="utf-8") == RTK.read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize("content", ["// an older rtk.ts\n", "user edits\n"])
+def test_another_rtk_file_is_kept_and_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, content: str
+) -> None:
+    agent = tmp_path / "agent"
+    (agent / "extensions").mkdir(parents=True)
+    existing = agent / "extensions/rtk.ts"
+    existing.write_text(content, encoding="utf-8")
+    with pytest.raises(RuntimeError, match=r"rtk\.ts.*not applied"):
+        _install(agent, monkeypatch)
+    assert existing.read_text(encoding="utf-8") == content
+    # one extension that cannot be placed does not hold back the rest
+    assert (agent / "extensions/jev-sonnet-fallback.ts").is_file()
+    assert (agent / "agents/codex-jev.md").is_file()
+
+
+def test_an_unrelated_rtk_symlink_is_kept_and_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    (agent / "extensions").mkdir(parents=True)
+    other = tmp_path / "elsewhere.ts"
+    other.write_text("other", encoding="utf-8")
+    link = agent / "extensions/rtk.ts"
+    try:
+        link.symlink_to(other)
+    except OSError:
+        pytest.skip("this host cannot create symlinks")
+    with pytest.raises(RuntimeError, match=r"rtk\.ts"):
+        _install(agent, monkeypatch)
+    assert link.resolve() == other.resolve()
+
+
+def test_the_vendored_rtk_extension_only_rewrites_bash_and_fails_open() -> None:
+    text = RTK.read_text(encoding="utf-8")
+    assert text.startswith("// dotfiles-managed: rtk\n")
+    assert "Apache License 2.0" in text.split(installer.VENDORED_SENTINEL)[0]
+    body = _upstream_rtk()
+    assert 'event.toolName === "bash"' in body
+    assert 'process.env.RTK_DISABLED === "1"' in body
+    assert "Fail open" in body
