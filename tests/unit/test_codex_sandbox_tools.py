@@ -4,7 +4,7 @@ Codex's elevated Windows sandbox runs commands as separate users and reaches
 the profile through inheritable CodexSandboxUsers:(RX) entries. On this host
 %LOCALAPPDATA%\\mise did not inherit, so rtk was "access denied" in the sandbox
 and every command the rtk hook rewrote failed. The check reads icacls output
-for the mise data dir and its parent; the fix turns inheritance back on.
+for the mise data dir and the profile; the fix grants the sandbox group read.
 """
 
 import sys
@@ -34,7 +34,7 @@ NO_SANDBOX = r"""C:\Users\u\AppData\Local NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
 
 
 @pytest.mark.parametrize(
-    ("parent", "acl", "expected"),
+    ("profile", "acl", "expected"),
     [
         (PARENT, PROTECTED, "blocked"),
         (PARENT, INHERITING, "readable"),
@@ -43,9 +43,9 @@ NO_SANDBOX = r"""C:\Users\u\AppData\Local NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
     ],
 )
 def test_the_state_comes_from_the_two_acls(
-    parent: str, acl: str, expected: str
+    profile: str, acl: str, expected: str
 ) -> None:
-    assert sandbox.state(parent, acl) == expected
+    assert sandbox.state(profile, acl) == expected
 
 
 def test_a_blocked_dir_warns_with_the_fix() -> None:
@@ -91,3 +91,29 @@ def test_the_fix_grants_the_sandbox_group_read_and_nothing_else() -> None:
         "CodexSandboxUsers:(OI)(CI)(RX)",
         "/Q",
     ]
+
+
+def test_a_relocated_mise_dir_is_still_fixed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # MISE_DATA_DIR moved to a drive whose top Codex never touched: whether
+    # the sandbox exists is read from the profile, not from the dir's parent
+    mise = tmp_path / "tools" / "mise"
+    mise.mkdir(parents=True)
+    granted: list[list[str]] = []
+    acls = {Path.home(): PARENT, mise.parent: NO_SANDBOX}
+
+    def acl(path: Path) -> str:
+        if path == mise:
+            return INHERITING if granted else PROTECTED
+        return acls[path]
+
+    monkeypatch.setattr(sandbox.sys, "platform", "win32")
+    monkeypatch.setenv("MISE_DATA_DIR", str(mise))
+    monkeypatch.setattr(sandbox, "_acl", acl)
+    monkeypatch.setattr(
+        sandbox.subprocess, "run", lambda args, **_: granted.append(args)
+    )
+    assert sandbox.main([]) == 0
+    assert granted == [sandbox.fix_command(str(mise))]
+    assert "can run mise tools" in capsys.readouterr().out

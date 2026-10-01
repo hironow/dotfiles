@@ -33,9 +33,12 @@ SANDBOX_GROUP = "CodexSandboxUsers"
 # ---- Functional core ----
 
 
-def state(parent_acl: str, acl: str) -> str:
-    """'absent' (no elevated sandbox), 'readable' or 'blocked', from icacls output."""
-    if SANDBOX_GROUP not in parent_acl:
+def state(profile_acl: str, acl: str) -> str:
+    """'absent' (no elevated sandbox), 'readable' or 'blocked', from icacls output.
+
+    Codex grants the sandbox group read on the profile itself when it sets the
+    sandbox up, so the profile tells whether it exists, wherever mise lives."""
+    if SANDBOX_GROUP not in profile_acl:
         return "absent"
     return "readable" if SANDBOX_GROUP in acl else "blocked"
 
@@ -96,10 +99,10 @@ def main(argv: Sequence[str]) -> int:
     if not directory.is_dir():
         print(f"OK   codex-sandbox - no mise data dir at {directory}")
         return 1 if exposed else 0
-    current = state(_acl(directory.parent), _acl(directory))
+    current = state(_acl(Path.home()), _acl(directory))
     if current == "blocked" and "--check" not in argv:
         subprocess.run(fix_command(str(directory)), capture_output=True, check=False)
-        current = state(_acl(directory.parent), _acl(directory))
+        current = state(_acl(Path.home()), _acl(directory))
         if current == "readable":
             print(f"OK   codex-sandbox - granted {SANDBOX_GROUP} read on {directory}")
     level, detail = message(current, str(directory))
