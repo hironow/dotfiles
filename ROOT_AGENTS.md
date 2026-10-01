@@ -151,6 +151,7 @@ Open the matching file the moment the trigger applies:
 | writing or placing tests / asking "mock?"      | docs/agents/testing.md              |
 | adding telemetry, spans, or a service          | docs/agents/observability.md        |
 | touching `tofu/`, `gcloud`, `cdr`, Cloud Run   | docs/agents/iac-drift-policy.md     |
+| creating a GCP storage sink, build, or compute that runs unattended | docs/agents/gcp-cost-guardrails.md |
 | adding/maintaining a Semgrep rule              | docs/agents/semgrep.md              |
 | editing docs / writing an ADR / intent / handover | docs/agents/docs-discipline.md   |
 | creating dirs/files or unsure where code goes  | docs/agents/project-structure.md    |

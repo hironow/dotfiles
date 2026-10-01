@@ -1434,6 +1434,23 @@ connect-azurite:
 gcloud-list:
     gcloud config configurations list
 
+# Audit a GCP project for anything that accumulates cost with no bound: an
+# Artifact Registry repository with no DELETE policy or still in dry run, a
+# bucket with no lifecycle (Cloud Build's default one above all), a disk or
+# address nobody uses, a SQL instance that bills while STOPPED, a missing
+# budget, nodes left up, a scheduler job that stopped stopping things.
+#
+# READ-ONLY: every probe is a `gcloud … list`, so it needs no change window.
+# Fix findings through IaC, never by hand -- the next apply would undo it.
+# The project (and the optional billing account) are ARGUMENTS: ids never enter
+# a tracked file, and neither does the report, so redirect it somewhere local.
+#   just gcp-cost-audit my-project > ~/audit.txt
+#   just gcp-cost-audit my-project --billing-account 0X0X0X-0X0X0X-0X0X0X
+# Exit 1 when something has no bound. docs/agents/gcp-cost-guardrails.md.
+[group('Cloud')]
+gcp-cost-audit project *args:
+    @{{ UV_RUN }} scripts/gcp_cost_audit.py {{ project }} {{ args }}
+
 # List: Azure accounts
 [group('Cloud')]
 azure-list:
