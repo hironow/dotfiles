@@ -24,6 +24,13 @@ launcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launcher)
 
 
+@pytest.fixture(autouse=True)
+def no_headroom_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    # main() would otherwise start a real headroom proxy on a machine that has
+    # headroom (tests/unit/test_jev_headroom.py covers that path with fakes)
+    monkeypatch.setattr(launcher, "ensure_proxy", lambda *_args, **_kwargs: None)
+
+
 HARD = (
     b'{"answers":{"difficulty":{"type":"score","score":1.9,"confidence":0.9},'
     b'"strict_structure":{"type":"noul","noul":0.1}}}'

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Opt-in Jev routing for a new Claude Code or Pi session (imperative shell)."""
 
+from collections.abc import Mapping
 import io
 import json
 import os
@@ -26,6 +27,7 @@ from jev_core import (
     parse_args,
     windows_acl_is_private,
 )
+from jev_headroom import claude_env, disabled, ensure_proxy
 
 # Prints the user's SID, the file owner's SID, then the SID of each Allow ACE.
 # Uses the .NET API, not Get-Acl: its module fails to autoload in Windows
@@ -211,6 +213,30 @@ def hook_command() -> str:
     return " ".join(shlex.quote(part.as_posix()) for part in parts)
 
 
+def headroom_env(host: str, environ: Mapping[str, str]) -> dict[str, str]:
+    """j-cc's Claude goes through a headroom proxy when one can be had.
+
+    Only this process and its workers: a custom base URL turns Remote Control
+    off, so plain `claude` stays direct. JEV_HEADROOM=off opts out. Any failure
+    launches without headroom; it never stops j-cc.
+    """
+    env = dict(environ)
+    if host != "claude" or disabled(environ):
+        return env
+    try:
+        port = ensure_proxy(environ, Path.home())
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print(
+            f"Jev: headroom unavailable ({error}); launching without it",
+            file=sys.stderr,
+        )
+        return env
+    if port is None:
+        return env
+    print(f"Headroom: http://127.0.0.1:{port}", file=sys.stderr)
+    return claude_env(env, port)
+
+
 def main() -> None:
     try:
         host, task = parse_args(sys.argv[1:])
@@ -225,8 +251,11 @@ def main() -> None:
         print(f"Pi route: {model}", file=sys.stderr)
     extra = claude_session_args(hook_command()) if host == "claude" else []
     command = build_command(host, task, effort, model, extra)
-    env = build_env(
-        os.environ, host, key, extension_installed(), codex_agents_installed()
+    env = headroom_env(
+        host,
+        build_env(
+            os.environ, host, key, extension_installed(), codex_agents_installed()
+        ),
     )
     if os.name == "nt":
         # Resolve mise's .cmd/.exe shim via PATHEXT before CreateProcess.

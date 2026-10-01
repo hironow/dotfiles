@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""headroom proxy for j-cc: reuse a ready one, else start one on a free port.
+
+Only the Claude process j-cc starts is pointed at the proxy (ANTHROPIC_BASE_URL
+disables Remote Control, so plain `claude` stays direct). The proxy outlives the
+launch and later launches reuse it. The state file is only a hint that /health
+re-verifies on every launch; there is no lock and no stored PID, so two launches
+in the same startup window may each start a proxy, and each uses its own. Every
+failure means "launch without headroom", never "j-cc does not start".
+"""
+
+from collections.abc import Callable, Mapping
+import contextlib
+import http.client
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+from typing import Protocol
+
+HOST = "127.0.0.1"
+OFF = {"0", "off", "false", "no"}
+
+
+class Proxy(Protocol):
+    def terminate(self) -> None: ...
+
+
+class ProxyProcess:
+    """A started proxy, stopped as a whole tree: on Windows headroom.exe is a
+    trampoline over python.exe children; on POSIX it leads its own session."""
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+
+    def terminate(self) -> None:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(self.pid)],
+                capture_output=True,
+                check=False,
+            )
+        else:
+            with contextlib.suppress(OSError):
+                os.killpg(self.pid, signal.SIGTERM)
+
+
+def disabled(environ: Mapping[str, str]) -> bool:
+    return environ.get("JEV_HEADROOM", "").strip().lower() in OFF
+
+
+def state_path(home: Path) -> Path:
+    return home / ".cache" / "jev" / "headroom.json"
+
+
+def log_path(home: Path) -> Path:
+    return home / ".cache" / "jev" / "headroom-proxy.log"
+
+
+def read_state(path: Path) -> int | None:
+    """The port the last launch recorded, or None when there is no usable hint."""
+    try:
+        port = json.loads(path.read_text(encoding="utf-8")).get("port")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return port if isinstance(port, int) and 0 < port < 65536 else None
+
+
+def write_state(path: Path, port: int) -> None:
+    """Replace the state atomically: a concurrent reader never sees half a file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps({"port": port}), encoding="utf-8")
+    tmp.replace(path)
+
+
+def is_headroom(answer: object) -> bool:
+    return (
+        isinstance(answer, dict)
+        and answer.get("service") == "headroom-proxy"
+        and answer.get("ready") is True
+    )
+
+
+def probe(port: int, timeout: float = 2.0) -> dict | None:
+    """GET /health on loopback (http.client never routes through HTTP(S)_PROXY)."""
+    connection = http.client.HTTPConnection(HOST, port, timeout=timeout)
+    try:
+        connection.request("GET", "/health")
+        answer = json.loads(connection.getresponse().read().decode("utf-8"))
+    except (OSError, ValueError, http.client.HTTPException):
+        return None
+    finally:
+        connection.close()
+    return answer if isinstance(answer, dict) else None
+
+
+def free_port() -> int:
+    with socket.socket() as probe_socket:
+        probe_socket.bind((HOST, 0))
+        return probe_socket.getsockname()[1]
+
+
+def proxy_command(exe: str, port: int) -> list[str]:
+    return [exe, "proxy", "--host", HOST, "--port", str(port)]
+
+
+def proxy_env(environ: Mapping[str, str]) -> dict[str, str]:
+    # The beacon runs in the proxy process, which does not read Claude's settings
+    return {**environ, "HEADROOM_BEACON": "off"}
+
+
+def claude_env(environ: Mapping[str, str], port: int) -> dict[str, str]:
+    # Claude Code turns MCP tool search off behind a non-first-party base URL
+    return {
+        **environ,
+        "ANTHROPIC_BASE_URL": f"http://{HOST}:{port}",
+        "ENABLE_TOOL_SEARCH": "true",
+    }
+
+
+def start(command: list[str], env: dict[str, str], log: Path) -> ProxyProcess:
+    """Start the proxy detached from this launch, so it outlives j-cc."""
+    return ProxyProcess(_spawn(command, env, log).pid)
+
+
+def _spawn(command: list[str], env: dict[str, str], log: Path) -> subprocess.Popen:
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("ab") as output:
+        if sys.platform != "win32":
+            return subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                env=env,
+                start_new_session=True,
+            )
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        # Leave a kill-on-close job (some terminals) so the proxy survives it;
+        # a job that forbids breakaway rejects the flag, so retry without it
+        for creationflags in (flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, flags):
+            try:
+                return subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    env=env,
+                    creationflags=creationflags,
+                )
+            except OSError:
+                if creationflags == flags:
+                    raise
+        raise AssertionError("unreachable")
+
+
+def wait_ready(port: int, check: Callable[[int], object], wait_seconds: float) -> bool:
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        if is_headroom(check(port)):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.5)
+
+
+def ensure_proxy(
+    environ: Mapping[str, str],
+    home: Path,
+    *,
+    which: Callable[[str], str | None] = shutil.which,
+    probe: Callable[[int], dict | None] = probe,
+    start: Callable[[list[str], dict[str, str], Path], Proxy] = start,
+    free_port: Callable[[], int] = free_port,
+    wait_seconds: float = 60.0,
+) -> int | None:
+    """The port of a ready headroom proxy, or None (with a notice) to go direct."""
+    exe = which("headroom")
+    if not exe:
+        print("Jev: headroom not found; launching without it", file=sys.stderr)
+        return None
+    state = state_path(home)
+    port = read_state(state)
+    if port is not None and is_headroom(probe(port)):
+        return port
+    port = free_port()
+    log = log_path(home)
+    try:
+        proxy = start(proxy_command(exe, port), proxy_env(environ), log)
+    except (OSError, subprocess.SubprocessError) as error:
+        print(
+            f"Jev: headroom proxy did not start ({error}); launching without it",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        if not wait_ready(port, probe, wait_seconds):
+            raise TimeoutError(f"not ready on port {port} after {wait_seconds:.0f}s")
+        write_state(state, port)
+    except (OSError, ValueError) as error:
+        # Never leave behind a proxy no state points at
+        proxy.terminate()
+        print(
+            f"Jev: headroom proxy did not start ({error}; see {log}); "
+            "launching without it",
+            file=sys.stderr,
+        )
+        return None
+    return port
