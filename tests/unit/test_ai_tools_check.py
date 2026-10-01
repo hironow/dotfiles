@@ -80,6 +80,8 @@ def _facts(**changes: object) -> check.Facts:
         headroom_proxy_help=PROXY_HELP,
         headroom_proxy_flags=("--host", "--port"),
         codex_files={"hooks.json": "{}", "config.toml": 'model = "gpt"'},
+        claude_bash=None,
+        jev_key=check.JevKey(source=".config/jev/env", private=True, has_key=True),
     )
     return replace(good, **changes)
 
@@ -348,3 +350,120 @@ def test_headroom_init_or_wrap_rewiring_an_agent_warns(
     detail = _detail(facts, "headroom-routing")
     assert where in detail
     assert fix in detail
+
+
+# --- what j-cc / j-pi need from this machine --------------------------------
+
+GIT = r"C:\Program Files\Git"
+SCOOP_GIT = r"C:\Users\u\scoop\apps\git\current"
+
+
+def _exists(*paths: str):
+    return lambda path: path in paths
+
+
+@pytest.mark.parametrize(
+    ("configured", "git", "present", "found"),
+    [
+        (None, None, (GIT + r"\bin\bash.exe",), GIT + r"\bin\bash.exe"),
+        # git through a scoop shim: <shims>\..\..\bin\bash.exe is no Git Bash
+        (
+            None,
+            r"C:\Users\u\scoop\shims\git.exe",
+            (SCOOP_GIT + r"\bin\bash.exe",),
+            None,
+        ),
+        (
+            None,
+            SCOOP_GIT + r"\cmd\git.exe",
+            (SCOOP_GIT + r"\bin\bash.exe",),
+            SCOOP_GIT + r"\bin\bash.exe",
+        ),
+        (
+            SCOOP_GIT + r"\bin\bash.exe",
+            None,
+            (SCOOP_GIT + r"\bin\bash.exe",),
+            SCOOP_GIT + r"\bin\bash.exe",
+        ),
+        # a configured path that is not a bash, or not there, falls back
+        (SCOOP_GIT + r"\bin\git.exe", None, (SCOOP_GIT + r"\bin\git.exe",), None),
+        (
+            r"D:\nowhere\bash.exe",
+            None,
+            (GIT + r"\bin\bash.exe",),
+            GIT + r"\bin\bash.exe",
+        ),
+    ],
+)
+def test_claude_codes_git_bash_lookup_is_mirrored(
+    configured: str | None, git: str | None, present: tuple[str, ...], found: str | None
+) -> None:
+    assert check.claude_git_bash(configured, git, _exists(*present)) == found
+
+
+def test_a_missing_git_bash_warns_with_the_path_to_set() -> None:
+    facts = _facts(
+        claude_bash=check.ClaudeBash(
+            configured=None, found=None, candidate=SCOOP_GIT + r"\bin\bash.exe"
+        )
+    )
+    assert _levels(facts)["claude-git-bash"] == "WARN"
+    detail = _detail(facts, "claude-git-bash")
+    assert "CLAUDE_CODE_GIT_BASH_PATH=" + SCOOP_GIT + r"\bin\bash.exe" in detail
+
+
+def test_a_wrong_git_bash_setting_warns_even_when_claude_falls_back() -> None:
+    facts = _facts(
+        claude_bash=check.ClaudeBash(
+            configured=r"D:\nowhere\bash.exe",
+            found=GIT + r"\bin\bash.exe",
+            candidate=None,
+        )
+    )
+    assert _levels(facts)["claude-git-bash"] == "WARN"
+
+
+def test_a_found_git_bash_is_ok_and_off_windows_there_is_no_line() -> None:
+    facts = _facts(
+        claude_bash=check.ClaudeBash(
+            configured=None, found=GIT + r"\bin\bash.exe", candidate=None
+        )
+    )
+    assert _levels(facts)["claude-git-bash"] == "OK"
+    assert "claude-git-bash" not in _levels(_facts())
+
+
+@pytest.mark.parametrize(
+    ("key", "level", "hint"),
+    [
+        (check.JevKey(source=".config/jev/env", private=True, has_key=True), "OK", ""),
+        (check.JevKey(source="environment", private=True, has_key=True), "OK", ""),
+        (
+            check.JevKey(source=None, private=False, has_key=False),
+            "WARN",
+            "jev-launchers.md",
+        ),
+        (
+            check.JevKey(source=".config/jev/env", private=False, has_key=True),
+            "WARN",
+            "readable by others",
+        ),
+        (
+            check.JevKey(source=".config/jev/env", private=True, has_key=False),
+            "WARN",
+            "TYPESAFE_API_KEY",
+        ),
+        # the old place: Codex's Windows sandbox reads files directly under the profile
+        (
+            check.JevKey(source=".env", private=True, has_key=True),
+            "WARN",
+            ".config/jev/env",
+        ),
+    ],
+)
+def test_the_jev_key_is_checked_without_showing_it(
+    key: object, level: str, hint: str
+) -> None:
+    facts = _facts(jev_key=key)
+    assert _levels(facts)["jev-key"] == level
+    assert hint in _detail(facts, "jev-key")

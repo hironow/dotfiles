@@ -63,3 +63,18 @@ def test_other_states_are_ok(state: str) -> None:
 def test_syncing_codex_fixes_it_and_doctor_checks_it() -> None:
     assert "codex_sandbox_tools.py" in [step[0] for step in sync_agents.CODEX_STEPS]
     assert "codex_sandbox_tools.py" in ai_tools_check.CODEX_CHECKS
+
+
+ENV_READABLE = r"""C:\Users\u\.env nn\CodexSandboxUsers:(RX)
+                 NN\u:(F)
+"""
+
+
+def test_a_profile_env_file_the_sandbox_can_read_warns() -> None:
+    level, detail = sandbox.secrets_message(ENV_READABLE)
+    assert level == "WARN"
+    assert "~/.config" in detail
+
+
+def test_a_private_profile_env_file_is_ok() -> None:
+    assert sandbox.secrets_message(r"C:\Users\u\.env NN\u:(F)")[0] == "OK"

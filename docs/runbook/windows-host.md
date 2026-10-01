@@ -58,8 +58,26 @@ Codex は profile の上位のディレクトリに、継承する読み取り�
 `just codex-sandbox-tools` が mise のディレクトリの継承を戻す（`just sync-agents x` も実行し、`just doctor` の `codex-sandbox` が検出する）。
 兄弟のディレクトリと同じ権限になるだけで、`icacls <dir> /inheritance:r` で元の状態に戻せる。
 
+同じ権限は profile の直下のファイルにも届くので、`~/.env` に置いた秘密は sandbox から読める。
+Codex は sandbox を用意するたびに権限を付け直すので、`icacls` で外しても長続きしない。
+Codex は `~/.config` を読ませないので、秘密はその下に移す（Jev のキーは `~/.config/jev/env` に置く）。
+`just doctor` の `codex-sandbox-secrets` が、sandbox から読める `~/.env` を検出する。
+
 sandbox のユーザーは repository の所有者と違うので、git は所有者の検査（`safe.directory`）で止まる。
 rtk とは関係がなく、素の `git status` でも同じように止まる。
+
+## Claude Code の Git Bash
+
+native Windows の Claude Code は、Bash の tool に Git Bash を使い、次の順で探す（2.1.285 の実装）。
+
+1. `CLAUDE_CODE_GIT_BASH_PATH`（名前が bash か sh で、実在するファイル）
+2. `C:\Program Files\Git\bin\bash.exe` と `C:\Program Files (x86)\Git\bin\bash.exe`
+3. PATH で最初に見つかる `git` から見た `..\..\bin\bash.exe`
+
+Git を scoop で入れた機体では、最初の `git` が scoop の shim（`~\scoop\shims\git.exe`）になり、3 も外れる。
+見つからないと Bash の tool が使えなくなり、`j-cc` も `just jev-claude-verify` も失敗する。
+`just doctor` の `claude-git-bash` が検出し、指定すべき Git Bash の場所を表示する。
+値は機体ごとに違うので、追跡する断片ではなく、Windows の User の環境変数か、各 home の `settings.sync-local.json` の `env` に書く。
 
 ## Python のファイルと文字コード
 

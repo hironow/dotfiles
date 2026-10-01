@@ -9,9 +9,14 @@ mise tool was "access denied" in the sandbox and each command the rtk hook
 rewrote to `rtk ...` failed. Turning its inheritance back on gives it the same
 entries as its siblings and nothing more; `icacls <dir> /inheritance:r` undoes it.
 
+The same entries reach files directly under the profile, so a secret kept in
+~/.env is readable in the sandbox; Codex skips ~/.config, where the Jev key
+lives. That is reported, never changed: Codex grants the entry again when it
+sets its sandbox up, so only moving the secret lasts.
+
 Usage: codex_sandbox_tools.py [--check]   (--check reports without changing)
-Prints a doctor-style OK/WARN line; exit 1 while the sandbox cannot run mise
-tools. Windows only: elsewhere Codex's sandbox reads the whole disk.
+Prints doctor-style OK/WARN lines; exit 1 on a WARN. Windows only: elsewhere
+Codex's sandbox reads the whole disk.
 """
 
 from collections.abc import Sequence
@@ -45,6 +50,17 @@ def message(current: str, directory: str) -> tuple[str, str]:
     return ("OK", "Codex's sandbox can run mise tools")
 
 
+def secrets_message(env_acl: str) -> tuple[str, str]:
+    """From the icacls output for ~/.env."""
+    if SANDBOX_GROUP in env_acl:
+        return (
+            "WARN",
+            "Codex's sandbox can read ~/.env, and Codex grants that again on setup: "
+            "move its secrets under ~/.config (which it skips) and delete ~/.env",
+        )
+    return ("OK", "~/.env is not readable in Codex's sandbox")
+
+
 # ---- Imperative shell ----
 
 
@@ -64,9 +80,15 @@ def main(argv: Sequence[str]) -> int:
     directory = Path(
         os.environ.get("MISE_DATA_DIR") or Path(os.environ["LOCALAPPDATA"]) / "mise"
     )
+    exposed = False
+    env_file = Path.home() / ".env"
+    if env_file.is_file():
+        level, detail = secrets_message(_acl(env_file))
+        exposed = level == "WARN"
+        print(f"{level:<4} codex-sandbox-secrets - {detail}")
     if not directory.is_dir():
         print(f"OK   codex-sandbox - no mise data dir at {directory}")
-        return 0
+        return 1 if exposed else 0
     current = state(_acl(directory.parent), _acl(directory))
     if current == "blocked" and "--check" not in argv:
         subprocess.run(
@@ -79,7 +101,7 @@ def main(argv: Sequence[str]) -> int:
             print(f"OK   codex-sandbox - {directory} inherits again")
     level, detail = message(current, str(directory))
     print(f"{level:<4} codex-sandbox - {detail}")
-    return 1 if current == "blocked" else 0
+    return 1 if current == "blocked" or exposed else 0
 
 
 if __name__ == "__main__":

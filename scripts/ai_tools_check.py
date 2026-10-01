@@ -15,10 +15,11 @@ guard, and the `headroom proxy` flags jev_headroom.proxy_command passes. Each
 contract is defined once, where it is used; this only reads it.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import importlib.util
 import json
+import ntpath
 import os
 from pathlib import Path
 import re
@@ -28,6 +29,7 @@ import sys
 from types import ModuleType
 
 import jev_headroom
+import jev_launch
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND_GUARD = ROOT / "ROOT_AGENTS_hooks_block-prohibited-commands.py"
@@ -60,6 +62,24 @@ class Tool:
 
 
 @dataclass(frozen=True)
+class ClaudeBash:
+    """Windows: the Git Bash Claude Code would run, and what it was told."""
+
+    configured: str | None  # CLAUDE_CODE_GIT_BASH_PATH
+    found: str | None  # what claude_git_bash() resolves
+    candidate: str | None  # an existing Git Bash to point it at
+
+
+@dataclass(frozen=True)
+class JevKey:
+    """Where j-cc / j-pi find the Jev key; never the key itself."""
+
+    source: str | None  # "environment", a KEY_FILES name, or None
+    private: bool  # the file passes jev_launch.env_file_is_private
+    has_key: bool  # the source holds TYPESAFE_API_KEY
+
+
+@dataclass(frozen=True)
 class Facts:
     rtk: Tool
     headroom: Tool
@@ -81,9 +101,102 @@ class Facts:
     # The contracts, from where they are defined
     rtk_classified: frozenset[str]  # rtk subcommands the command guard classifies
     headroom_proxy_flags: tuple[str, ...]  # flags jev_headroom.proxy_command passes
+    # What j-cc / j-pi need from this machine
+    claude_bash: ClaudeBash | None  # None off Windows
+    jev_key: JevKey
 
 
 # ---- Functional core ----
+
+
+# Claude Code 2.1.285 on Windows: CLAUDE_CODE_GIT_BASH_PATH when it names an
+# existing bash/sh, else Git's default install, else <git>\..\..\bin\bash.exe
+# for the first git on PATH. Without one its Bash tool is off.
+CLAUDE_BASH_DEFAULTS = (
+    r"C:\Program Files\Git\bin\bash.exe",
+    r"C:\Program Files (x86)\Git\bin\bash.exe",
+)
+
+
+def claude_git_bash(
+    configured: str | None, git: str | None, exists: Callable[[str], bool]
+) -> str | None:
+    """The bash.exe Claude Code would run, by its own lookup."""
+    names = {"bash.exe", "sh.exe", "bash", "sh"}
+    if (
+        configured
+        and ntpath.basename(configured).lower() in names
+        and exists(configured)
+    ):
+        return configured
+    for default in CLAUDE_BASH_DEFAULTS:
+        if exists(default):
+            return default
+    if git:
+        derived = ntpath.normpath(ntpath.join(git, "..", "..", "bin", "bash.exe"))
+        if exists(derived):
+            return derived
+    return None
+
+
+def _claude_git_bash(facts: Facts) -> list[Line]:
+    bash = facts.claude_bash
+    if bash is None:
+        return []
+    if bash.found is None:
+        target = bash.candidate or r"<Git>\bin\bash.exe"
+        return [
+            (
+                "WARN",
+                "claude-git-bash",
+                "Claude Code finds no Git Bash, so its Bash tool is off and j-cc "
+                f"fails: set CLAUDE_CODE_GIT_BASH_PATH={target} (Windows User env, "
+                "or env in ~/.claude*/settings.sync-local.json)",
+            )
+        ]
+    if bash.configured and bash.configured != bash.found:
+        return [
+            (
+                "WARN",
+                "claude-git-bash",
+                f"CLAUDE_CODE_GIT_BASH_PATH={bash.configured} is not an existing "
+                f"bash, so Claude Code falls back to {bash.found}: fix or unset it",
+            )
+        ]
+    return [("OK", "claude-git-bash", f"Claude Code runs {bash.found}")]
+
+
+def _jev_key(facts: Facts) -> Line:
+    key = facts.jev_key
+    runbook = "docs/runbook/jev-launchers.md"
+    if key.source is None:
+        return (
+            "WARN",
+            "jev-key",
+            f"none: j-cc / j-pi start without Jev's routing ({runbook})",
+        )
+    shown = "the environment" if key.source == "environment" else f"~/{key.source}"
+    if key.source != "environment" and not key.private:
+        rule = (
+            "icacls: no entry for other accounts"
+            if facts.user_env is not None
+            else "chmod 600"
+        )
+        return (
+            "WARN",
+            "jev-key",
+            f"{shown} is readable by others, so Jev ignores it ({rule})",
+        )
+    if not key.has_key:
+        return ("WARN", "jev-key", f"{shown} has no TYPESAFE_API_KEY= line ({runbook})")
+    if key.source == ".env":
+        return (
+            "WARN",
+            "jev-key",
+            "in ~/.env, the old place: move it to ~/.config/jev/env, which Codex's "
+            f"Windows sandbox does not read ({runbook})",
+        )
+    return ("OK", "jev-key", f"from {shown}")
 
 
 def vendored_version(text: str) -> str | None:
@@ -365,6 +478,8 @@ def report(facts: Facts) -> list[Line]:
         *_codex(facts),
         _headroom_proxy(facts),
         _headroom_routing(facts),
+        *_claude_git_bash(facts),
+        _jev_key(facts),
     ]
 
 
@@ -461,6 +576,44 @@ def _text(path: Path) -> str:
         return ""
 
 
+def _claude_bash(home: Path, settings: Mapping[str, object]) -> ClaudeBash | None:
+    if sys.platform != "win32":
+        return None
+    env = settings.get("env")
+    configured = os.environ.get("CLAUDE_CODE_GIT_BASH_PATH") or (
+        str(env.get("CLAUDE_CODE_GIT_BASH_PATH") or "") if isinstance(env, dict) else ""
+    )
+    # Git's root, from the sh this shell runs (<Git>\usr\bin or <Git>\bin)
+    roots = [home / "scoop/apps/git/current"]
+    if sh := shutil.which("sh"):
+        parent = Path(sh).parent
+        roots.insert(
+            0, parent.parent.parent if parent.parent.name == "usr" else parent.parent
+        )
+    candidates = [str(root / "bin" / "bash.exe") for root in roots]
+    return ClaudeBash(
+        configured=configured or None,
+        found=claude_git_bash(
+            configured or None, shutil.which("git"), lambda path: Path(path).exists()
+        ),
+        candidate=next((c for c in candidates if Path(c).exists()), None),
+    )
+
+
+def _jev_key_facts(home: Path) -> JevKey:
+    if os.environ.get("TYPESAFE_API_KEY") or os.environ.get("TYPESAFE_AI_API_KEY"):
+        return JevKey(source="environment", private=True, has_key=True)
+    for name in jev_launch.KEY_FILES:
+        path = home / name
+        if path.is_file():
+            return JevKey(
+                source=name.as_posix(),
+                private=jev_launch.env_file_is_private(path),
+                has_key=jev_launch.key_in(_text(path)) is not None,
+            )
+    return JevKey(source=None, private=False, has_key=False)
+
+
 def gather(home: Path) -> Facts:
     pi_dir = (
         Path(os.environ.get("PI_CODING_AGENT_DIR") or home / ".pi/agent") / "extensions"
@@ -480,6 +633,11 @@ def gather(home: Path) -> Facts:
     headroom = _tool_facts("headroom", ["--version"])
     rtk_exe = rtk.paths[0] if rtk.paths else None
     headroom_exe = headroom.paths[0] if headroom.paths else None
+    claude_homes = {
+        name: _json(home / name / "settings.json")
+        for name in CLAUDE_HOMES
+        if (home / name).is_dir()
+    }
     return Facts(
         rtk=rtk,
         headroom=headroom,
@@ -488,11 +646,7 @@ def gather(home: Path) -> Facts:
         ),
         env=dict(os.environ),
         user_env=_windows_user_env(),
-        claude_homes={
-            name: _json(home / name / "settings.json")
-            for name in CLAUDE_HOMES
-            if (home / name).is_dir()
-        },
+        claude_homes=claude_homes,
         pi_extensions={name: (pi_dir / name).is_file() for name in PI_EXTENSIONS},
         codex_checks=codex_checks,
         headroom_proxy=None if port is None else (port, jev_headroom.probe(port)),
@@ -511,6 +665,8 @@ def gather(home: Path) -> Facts:
             for arg in jev_headroom.proxy_command("headroom", 0)
             if arg.startswith("--")
         ),
+        claude_bash=_claude_bash(home, claude_homes.get(".claude", {})),
+        jev_key=_jev_key_facts(home),
     )
 
 
