@@ -133,3 +133,100 @@ def test_git_in_the_sandbox_is_explained_not_changed() -> None:
     assert level == "OK"
     assert "safe.directory" in detail
     assert "without the sandbox" in detail
+
+
+# --- main(), pinned before its phases were split into a pure report ---------
+
+SANDBOX_ACL = "x nn\\CodexSandboxUsers:(OI)(CI)(RX)\n"
+OWNER_ACL = "x NN\\u:(F)\n"
+
+
+def _main(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    argv: list[str],
+    profile: str = SANDBOX_ACL,
+    env_acl: str | None = None,
+    mise: str | None = OWNER_ACL,
+    grant_works: bool = True,
+) -> tuple[int, list[str]]:
+    home = tmp_path / "home"
+    home.mkdir()
+    directory = tmp_path / "mise"
+    if mise is not None:
+        directory.mkdir()
+    if env_acl is not None:
+        (home / ".env").write_text("", encoding="utf-8")
+    acls = {home: profile, home / ".env": env_acl or "", directory: mise or ""}
+    monkeypatch.setattr(sandbox.sys, "platform", "win32")
+    monkeypatch.setenv("MISE_DATA_DIR", str(directory))
+    monkeypatch.setattr(sandbox.Path, "home", lambda: home)
+    monkeypatch.setattr(sandbox, "_acl", lambda path: acls[path])
+
+    def run(args: list[str], **_: object) -> None:
+        if grant_works:
+            acls[directory] = SANDBOX_ACL
+
+    monkeypatch.setattr(sandbox.subprocess, "run", run)
+    code = sandbox.main(argv)
+    return code, capsys.readouterr().out.splitlines()
+
+
+def test_main_reports_an_exposed_env_then_repairs_mise(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _main(tmp_path, monkeypatch, capsys, argv=[], env_acl=SANDBOX_ACL)
+    assert code == 1
+    assert [line[:30] for line in out] == [
+        "WARN codex-sandbox-secrets - C",
+        "OK   codex-sandbox - granted C",
+        "OK   codex-sandbox - Codex's s",
+        "OK   codex-sandbox-git - git i",
+    ]
+    assert out[1].endswith(f"read on {tmp_path / 'mise'}")
+
+
+def test_main_with_check_reports_without_repairing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _main(tmp_path, monkeypatch, capsys, argv=["--check"])
+    assert code == 1
+    assert len(out) == 2
+    assert out[0].startswith("WARN codex-sandbox - ")
+    assert "just codex-sandbox-tools" in out[0]
+    assert out[1].startswith("OK   codex-sandbox-git - ")
+
+
+def test_main_without_the_elevated_sandbox_has_nothing_to_say_about_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _main(tmp_path, monkeypatch, capsys, argv=[], profile=OWNER_ACL)
+    assert (code, out) == (
+        0,
+        [
+            "OK   codex-sandbox - Codex's elevated sandbox is not set up; nothing to reach"
+        ],
+    )
+
+
+def test_main_without_a_mise_dir_still_reports_the_env_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _main(
+        tmp_path, monkeypatch, capsys, argv=[], env_acl=SANDBOX_ACL, mise=None
+    )
+    assert code == 1
+    assert out[0].startswith("WARN codex-sandbox-secrets - ")
+    assert out[1] == f"OK   codex-sandbox - no mise data dir at {tmp_path / 'mise'}"
+    assert len(out) == 2
+
+
+def test_main_reports_a_repair_that_did_not_take(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _main(tmp_path, monkeypatch, capsys, argv=[], grant_works=False)
+    assert code == 1
+    assert out[0].startswith("WARN codex-sandbox - ")
+    assert out[1].startswith("OK   codex-sandbox-git - ")

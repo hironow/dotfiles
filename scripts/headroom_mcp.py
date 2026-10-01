@@ -48,7 +48,10 @@ import subprocess
 import sys
 import time
 
+from doctor_lines import fmt
+
 SERVER = "headroom"
+NAME = "headroom-mcp"
 CLAUDE_HOMES = (
     ".claude",
     ".claude-work-a",
@@ -208,7 +211,7 @@ def main(argv: Sequence[str]) -> int:
     check = "--check" in argv
     claude = shutil.which("claude")
     if not claude:
-        print("WARN headroom-mcp - claude not on PATH: mise install")
+        print(fmt(("WARN", NAME, "claude not on PATH: mise install")))
         return 1
     homes = _homes(argv)
     failed = False
@@ -218,15 +221,20 @@ def main(argv: Sequence[str]) -> int:
             _read(home), _cli(claude, home, deadline), check=check
         )
         if fixed:
-            print(f"OK   headroom-mcp - ~/{home.name}: fixed: {fixed}")
+            print(fmt(("OK", NAME, f"~/{home.name}: fixed: {fixed}")))
         if problem:
             failed = True
             fix = "just headroom-mcp-register" if check else "see the line above"
-            print(f"WARN headroom-mcp - ~/{home.name}: {problem}: {fix}")
+            print(fmt(("WARN", NAME, f"~/{home.name}: {problem}: {fix}")))
     if not failed:
         print(
-            f"OK   headroom-mcp - {SERVER} registered, egress pinned, "
-            f"in {len(homes)} Claude home(s)"
+            fmt(
+                (
+                    "OK",
+                    NAME,
+                    f"{SERVER} registered, egress pinned, in {len(homes)} Claude home(s)",
+                )
+            )
         )
     return 1 if failed else 0
 

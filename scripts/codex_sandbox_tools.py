@@ -27,6 +27,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from doctor_lines import fmt
+
 SANDBOX_GROUP = "CodexSandboxUsers"
 
 
@@ -106,21 +108,22 @@ def main(argv: Sequence[str]) -> int:
     if env_file.is_file():
         level, detail = secrets_message(_acl(env_file))
         exposed = level == "WARN"
-        print(f"{level:<4} codex-sandbox-secrets - {detail}")
+        print(fmt((level, "codex-sandbox-secrets", detail)))
     if not directory.is_dir():
-        print(f"OK   codex-sandbox - no mise data dir at {directory}")
+        print(fmt(("OK", "codex-sandbox", f"no mise data dir at {directory}")))
         return 1 if exposed else 0
     current = state(_acl(Path.home()), _acl(directory))
     if current == "blocked" and "--check" not in argv:
         subprocess.run(fix_command(str(directory)), capture_output=True, check=False)
         current = state(_acl(Path.home()), _acl(directory))
         if current == "readable":
-            print(f"OK   codex-sandbox - granted {SANDBOX_GROUP} read on {directory}")
+            granted = f"granted {SANDBOX_GROUP} read on {directory}"
+            print(fmt(("OK", "codex-sandbox", granted)))
     level, detail = message(current, str(directory))
-    print(f"{level:<4} codex-sandbox - {detail}")
+    print(fmt((level, "codex-sandbox", detail)))
     if current != "absent":
         level, detail = git_message()
-        print(f"{level:<4} codex-sandbox-git - {detail}")
+        print(fmt((level, "codex-sandbox-git", detail)))
     return 1 if current == "blocked" or exposed else 0
 
 

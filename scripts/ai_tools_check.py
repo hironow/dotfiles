@@ -29,6 +29,8 @@ import sys
 from types import ModuleType
 
 import claude_git_bash
+import doctor_lines
+from doctor_lines import Line
 import jev_headroom
 import jev_launch
 
@@ -66,8 +68,6 @@ CHECKERS = {
 
 # A checker may query several homes (claude_plugins.CHECK_BUDGET stays below)
 CHECKER_TIMEOUT = 300
-
-Line = tuple[str, str, str]  # (level, name, detail)
 
 
 @dataclass(frozen=True)
@@ -309,10 +309,7 @@ def _checkers(facts: Facts) -> list[Line]:
             if out is None:
                 lines.append(("WARN", tool, f"{script} --check failed to run"))
                 continue
-            for raw in out.splitlines():
-                level, _, rest = raw.partition(" ")
-                name, _, detail = rest.strip().partition(" - ")
-                lines.append((level.strip(), name, detail))
+            lines += doctor_lines.parse(out)
     return lines
 
 
@@ -768,9 +765,9 @@ def gather(home: Path) -> Facts:
 
 
 def main() -> int:
-    for level, name, detail in report(gather(Path.home())):
-        print(f"{level:<4} {name} - {detail}")
-    return 0
+    for line in report(gather(Path.home())):
+        print(doctor_lines.fmt(line))
+    return 0  # doctor counts the lines; this never fails the run
 
 
 if __name__ == "__main__":

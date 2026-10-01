@@ -29,7 +29,10 @@ import subprocess
 import sys
 import time
 
+from doctor_lines import fmt
+
 ROOT = Path(__file__).resolve().parents[1]
+NAME = "claude-plugins"
 DECLARATION = ROOT / "dump/harness/claude-plugins.json"
 CLAUDE_HOMES = (
     ".claude",
@@ -207,7 +210,7 @@ def main(argv: Sequence[str]) -> int:
     check = "--check" in argv
     claude = shutil.which("claude")
     if not claude:
-        print("WARN claude-plugins - claude not on PATH: mise install")
+        print(fmt(("WARN", NAME, "claude not on PATH: mise install")))
         return 1
     declaration = load(DECLARATION)
     homes = [
@@ -219,16 +222,14 @@ def main(argv: Sequence[str]) -> int:
         cli = _cli(claude, home, deadline)
         done, problems = reconcile(declaration, cli, check=check)
         for fixed in done:
-            print(f"OK   claude-plugins - ~/{home.name}: fixed: {fixed}")
+            print(fmt(("OK", NAME, f"~/{home.name}: fixed: {fixed}")))
         for problem in problems:
             failed = True
             fix = "just claude-plugins-install" if check else "see the line above"
-            print(f"WARN claude-plugins - ~/{home.name}: {problem}: {fix}")
+            print(fmt(("WARN", NAME, f"~/{home.name}: {problem}: {fix}")))
     if not failed:
-        print(
-            f"OK   claude-plugins - {', '.join(declaration.plugins)} "
-            f"in {len(homes)} Claude home(s)"
-        )
+        summary = f"{', '.join(declaration.plugins)} in {len(homes)} Claude home(s)"
+        print(fmt(("OK", NAME, summary)))
     return 1 if failed else 0
 
 

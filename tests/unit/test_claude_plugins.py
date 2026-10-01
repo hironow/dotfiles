@@ -220,3 +220,35 @@ def test_a_repair_that_fails_halfway_is_not_reported_as_done() -> None:
     done, problems = _run(cli)
     assert done == []
     assert problems and "failed" in problems[0]
+
+
+def test_main_prints_each_home_then_the_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    for name in (".claude", ".claude-work-b"):
+        (tmp_path / name).mkdir()
+    results = {
+        ".claude": (["marketplace openai-codex is missing"], []),
+        ".claude-work-b": ([], ["cannot read `claude plugin list --json`"]),
+    }
+    monkeypatch.setattr(plugins.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(plugins.shutil, "which", lambda _: "claude")
+    monkeypatch.setattr(
+        plugins, "reconcile", lambda _d, cli, *, check: results[cli.home.name]
+    )
+    monkeypatch.setattr(
+        plugins, "_cli", lambda _c, home, _deadline: type("C", (), {"home": home})()
+    )
+    assert plugins.main(["--check"]) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "OK   claude-plugins - ~/.claude: fixed: marketplace openai-codex is missing",
+        "WARN claude-plugins - ~/.claude-work-b: cannot read `claude plugin list --json`:"
+        " just claude-plugins-install",
+    ]
+    results[".claude-work-b"] = ([], [])
+    assert plugins.main([]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "OK   claude-plugins - codex@openai-codex in 2 Claude home(s)"
+    )
