@@ -29,7 +29,7 @@ from sync_agents import (  # noqa: E402
     _SyncItem,
     _wants_hook,
 )
-from _bash_hook import resolve_bash  # noqa: E402
+from _bash_hook import bash_path, resolve_bash  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -51,6 +51,7 @@ def test_the_codex_target_receives_codex_hooks() -> None:
         (True, True, "hooks/block-secrets.sh"),
         (True, False, "hooks/rtk-hook-claude.py"),
         (False, True, "hooks/rtk-hook-codex.sh"),
+        (False, True, "hooks/rtk-hook-codex.py"),
         (False, True, "hooks/guard-codex.sh"),
         (True, True, "docs/agents/rtk.md"),
     ],
@@ -177,16 +178,30 @@ def test_a_stale_codex_hook_file_is_an_orphan_but_the_claude_wrapper_is_not_expe
 
 
 @pytest.mark.skipif(
-    shutil.which("sh") is None and sys.platform == "win32", reason="no sh"
+    sys.platform == "win32",
+    reason="the fake rtk is a shell script, which native Python cannot run; "
+    "test_rtk_hook_codex covers the logic on every OS",
 )
-def test_the_rtk_shim_passes_rtks_answer_through_and_fails_open(tmp_path: Path) -> None:
-    # Codex reads permissionDecision:"allow" only as the carrier of
-    # updatedInput (it grants no approval), so nothing is stripped
+@pytest.mark.parametrize(("rtk_dir", "named"), [("bin", True), ("shims", False)])
+def test_the_rtk_shim_names_the_real_binary_and_fails_open(
+    tmp_path: Path, rtk_dir: str, named: bool
+) -> None:
+    """The shell entry runs the Python companion (test_rtk_hook_codex) with the
+    first real Python, as the command guard's does. A shim-only rtk forwards
+    nothing: it needs mise's config, which Codex's sandbox cannot read."""
     bash = resolve_bash()
-    shim = (ROOT / "ROOT_AGENTS_hooks_rtk-hook-codex.sh").as_posix()
-    bin_dir = tmp_path / "bin"
+    shim = ROOT / "ROOT_AGENTS_hooks_rtk-hook-codex.sh"
+    companion = ROOT / "ROOT_AGENTS_hooks_rtk-hook-codex.py"
+    staged = tmp_path / "hooks"
+    staged.mkdir()
+    shutil.copy(shim, staged / "rtk-hook-codex.sh")
+    shutil.copy(companion, staged / "rtk-hook-codex.py")
+    bin_dir = tmp_path / rtk_dir
     bin_dir.mkdir()
-    answer = '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"command":"rtk git status"}}}'
+    answer = (
+        '{"hookSpecificOutput":{"hookEventName":"PreToolUse",'
+        '"permissionDecision":"allow","updatedInput":{"command":"rtk git status"}}}'
+    )
     fake = bin_dir / "rtk"
     fake.write_text(
         f"#!/bin/sh\ncat >/dev/null\nprintf '%s' '{answer}'\n",
@@ -194,10 +209,15 @@ def test_the_rtk_shim_passes_rtks_answer_through_and_fails_open(tmp_path: Path) 
         newline="\n",
     )
     fake.chmod(0o755)
+    python_dir = bash_path(Path(sys.executable).parent)
 
     def run(path: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [bash, "-c", f'PATH="{path}"; . "{shim}"'],
+            [
+                bash,
+                "-c",
+                f'PATH="{path}"; . "{(staged / "rtk-hook-codex.sh").as_posix()}"',
+            ],
             input='{"tool_name":"Bash","tool_input":{"command":"git status"}}',
             capture_output=True,
             text=True,
@@ -206,10 +226,17 @@ def test_the_rtk_shim_passes_rtks_answer_through_and_fails_open(tmp_path: Path) 
             check=False,
         )
 
-    with_rtk = run(f"$(cd '{bin_dir.as_posix()}' && pwd):/usr/bin:/bin")
-    assert with_rtk.returncode == 0
-    assert json.loads(with_rtk.stdout) == json.loads(answer)
-    without = run("/usr/bin:/bin")
+    with_rtk = run(f"$(cd '{bin_dir.as_posix()}' && pwd):{python_dir}:/usr/bin:/bin")
+    assert with_rtk.returncode == 0, with_rtk.stderr
+    if named:
+        out = json.loads(with_rtk.stdout)["hookSpecificOutput"]
+        assert out["permissionDecision"] == "allow"
+        command = out["updatedInput"]["command"]
+        assert command.endswith("/rtk git status")
+        assert command != "rtk git status"
+    else:
+        assert with_rtk.stdout == ""
+    without = run(f"{python_dir}:/usr/bin:/bin")
     assert (without.returncode, without.stdout) == (0, "")
 
 

@@ -18,7 +18,12 @@ The PreToolUse hook is `hooks/rtk-hook-claude.sh`, declared in
 other hook. It wraps `rtk hook claude` rather than replacing it, so rtk stays
 the source of truth for what gets rewritten. Codex gets
 `hooks/rtk-hook-codex.sh` from `.codex/hooks.json` the same way, passing
-`rtk hook codex`'s answer through unchanged (Codex grants no approval from it).
+`rtk hook codex`'s answer through with its approval (Codex grants none from it)
+but naming rtk's real binary (`mise which rtk`) in the rewrite: the command runs
+in Codex's sandbox, where a mise shim cannot read mise's config ("No version is
+set for shim: rtk"). As in the Claude wrapper, only a plain `rtk <command>`
+rewrite is kept, and only with a path that needs no quoting (pwsh runs it on
+Windows); otherwise the typed command runs.
 `just doctor` shows whether Codex trusts the hooks (see `docs/agent-sync.md`
 in the dotfiles repo).
 
