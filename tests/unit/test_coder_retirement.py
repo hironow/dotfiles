@@ -35,7 +35,9 @@ OLD_STATE_BUCKET = "gen-ai-hironow-tofu-state"
 
 
 def stack_text(stack: Path) -> str:
-    return "\n".join(tf.read_text() for tf in sorted(stack.glob("*.tf")))
+    return "\n".join(
+        tf.read_text(encoding="utf-8") for tf in sorted(stack.glob("*.tf"))
+    )
 
 
 def code_only(text: str) -> str:
@@ -68,7 +70,8 @@ def test_the_tailnets_state_does_not_touch_the_private_project() -> None:
         assert forbidden not in text, (
             f"{forbidden} ties the tailnet's state to the private exe project"
         )
-    assert not (TAILNET / "variables.tf").read_text().count("state_kms_key")
+    variables = (TAILNET / "variables.tf").read_text(encoding="utf-8")
+    assert "state_kms_key" not in variables
 
 
 def test_the_tailnets_backend_is_the_old_personal_bucket_spelled_out() -> None:
@@ -102,7 +105,7 @@ def test_the_tailnets_state_is_passphrase_encrypted_and_fails_closed() -> None:
 def test_the_tailnet_recipes_supply_the_passphrase_and_no_backend_config() -> None:
     """Its own passphrase file, which is why the retired stack's going did not
     take this stack's state with it."""
-    text = JUSTFILE.read_text()
+    text = JUSTFILE.read_text(encoding="utf-8")
     assert "_tailnet-encryption" in text, (
         "the recipes must build TF_ENCRYPTION from the local passphrase file"
     )

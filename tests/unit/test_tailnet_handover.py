@@ -26,7 +26,9 @@ TAILNET = REPO / "tofu" / "tailnet"
 
 
 def stack_text(stack: Path) -> str:
-    return "\n".join(tf.read_text() for tf in sorted(stack.glob("*.tf")))
+    return "\n".join(
+        tf.read_text(encoding="utf-8") for tf in sorted(stack.glob("*.tf"))
+    )
 
 
 def block(text: str, header: str, contains: str = "") -> str:
