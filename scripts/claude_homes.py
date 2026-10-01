@@ -53,6 +53,7 @@ def runner(claude: str, home: Path, deadline: float | None) -> Run:
     path in a copied environment, run from the home (no project or local scope
     of another directory applies) with stdin closed, within what is left of
     `deadline`."""
+    home = home.absolute()  # the call moves into it: a relative path would nest
     env = {**os.environ, "CLAUDE_CONFIG_DIR": str(home)}
 
     def run(args: list[str]) -> str | None:

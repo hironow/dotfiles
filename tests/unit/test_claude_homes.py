@@ -149,3 +149,24 @@ def test_visit_without_claude_warns(
     )
     assert code == 1
     assert capsys.readouterr().out == "WARN x - claude not on PATH: mise install\n"
+
+
+def test_a_relative_home_is_made_absolute_before_the_call_moves_into_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # cwd is the home, so a relative CLAUDE_CONFIG_DIR would point at
+    # <home>/<home> (found in review; headroom_mcp --home takes any path)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".claude-work-a").mkdir()
+    seen: dict[str, object] = {}
+
+    def run(argv: list[str], **kwargs: object) -> Done:
+        seen.update(kwargs)
+        return Done(0, "")
+
+    monkeypatch.setattr(claude_homes.subprocess, "run", run)
+    claude_homes.runner("claude", Path(".claude-work-a"), None)(["x"])
+    env = seen["env"]
+    assert isinstance(env, dict)
+    assert env["CLAUDE_CONFIG_DIR"] == str(tmp_path / ".claude-work-a")
+    assert seen["cwd"] == tmp_path / ".claude-work-a"
