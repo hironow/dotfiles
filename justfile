@@ -173,13 +173,13 @@ wslconfig:
 deploy:
     @bash scripts/deploy.sh
 
-# Restore declared Pi packages and install the dotfiles Jev fallback extension.
+# Restore declared Pi packages and install the dotfiles Pi extensions (Jev, rtk).
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
 # Exercise the Pi usage-limit failover logic without consuming model tokens.
 pi-jev-test:
-    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test tests/unit/jev_sonnet_fallback.test.ts
+    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test tests/unit/jev_sonnet_fallback.test.ts
 
 # Live check of the Claude worker hook. Run after the Claude usage limit resets.
 # Exit 0 pass, 1 fail (defect), 2 blocked (usage limit or not logged in),
