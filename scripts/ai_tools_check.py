@@ -28,6 +28,8 @@ CLAUDE_HOMES = (
     ".claude-work-d",
 )
 PI_EXTENSIONS = ("jev-sonnet-fallback.ts", "rtk.ts")
+# Codex checkers in scripts/, each printing doctor lines for `--check`
+CODEX_CHECKS = ("codex_hooks_trust.py",)
 
 Line = tuple[str, str, str]  # (level, name, detail)
 
@@ -48,7 +50,7 @@ class Facts:
     user_env: Mapping[str, str] | None  # persisted Windows User env; None elsewhere
     claude_homes: Mapping[str, dict]  # existing home -> its settings.json
     pi_extensions: Mapping[str, bool]  # name -> placed
-    codex_hooks: list[str] | None  # codex_hooks_trust --check lines; None without codex
+    codex_checks: list[str] | None  # CODEX_CHECKS' --check lines; None without codex
     headroom_proxy: tuple[int, bool] | None  # (recorded port, healthy); None: no record
 
 
@@ -154,9 +156,9 @@ def report(facts: Facts) -> list[Line]:
         else ("OK", "pi-extensions", ", ".join(facts.pi_extensions))
     )
 
-    if facts.codex_hooks is None:
+    if facts.codex_checks is None:
         lines.append(("OK", "codex-hooks", "codex not on PATH"))
-    for raw in facts.codex_hooks or []:
+    for raw in facts.codex_checks or []:
         level, _, rest = raw.partition(" ")
         name, _, detail = rest.strip().partition(" - ")
         lines.append((level.strip(), name, detail))
@@ -248,13 +250,15 @@ def gather(home: Path) -> Facts:
     port = jev_headroom.read_state(jev_headroom.state_path(home))
     codex_lines = None
     if shutil.which("codex"):
-        out = _run(
-            [sys.executable, str(ROOT / "scripts/codex_hooks_trust.py"), "--check"],
-            any_exit=True,  # exit 1 carries the WARN lines
-        )
-        codex_lines = (
-            out or "WARN codex-hooks - check failed: run just codex-hooks-trust --check"
-        ).splitlines()
+        codex_lines = []
+        for script in CODEX_CHECKS:
+            out = _run(
+                [sys.executable, str(ROOT / "scripts" / script), "--check"],
+                any_exit=True,  # exit 1 carries the WARN lines
+            )
+            codex_lines += (
+                out or f"WARN codex - {script} --check failed to run"
+            ).splitlines()
     return Facts(
         rtk=_tool_facts("rtk", ["--version"]),
         headroom=_tool_facts("headroom", ["--version"]),
@@ -269,7 +273,7 @@ def gather(home: Path) -> Facts:
             if (home / name).is_dir()
         },
         pi_extensions={name: (pi_dir / name).is_file() for name in PI_EXTENSIONS},
-        codex_hooks=codex_lines,
+        codex_checks=codex_lines,
         headroom_proxy=None
         if port is None
         else (port, jev_headroom.is_headroom(jev_headroom.probe(port))),

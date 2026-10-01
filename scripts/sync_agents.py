@@ -1583,7 +1583,7 @@ def sync_mode(
         # Codex runs a hook only once it is trusted: trust the ones just synced
         # (exactly the fragment's, through Codex's app-server; best effort).
         if plan.agent.receives_codex_hooks:
-            _trust_codex_hooks(plan.agent)
+            _run_codex_steps(plan.agent)
 
     # Update manifest: union of current dotfiles + existing manifest
     for dir_name in SYNC_DIRECTORIES:
@@ -1605,30 +1605,37 @@ def sync_mode(
     print("\n✨ Sync completed!")
 
 
-def _trust_codex_hooks(agent: AgentTarget) -> None:
-    """Run scripts/codex_hooks_trust.py for this Codex home; never fail the sync."""
+# Steps for ~/.codex after its files are synced: (script, what failed, what to
+# run by hand). Each runs as a separate process: the steps import this module,
+# so importing them here would create an import cycle.
+CODEX_STEPS = (
+    (
+        "codex_hooks_trust.py",
+        "Codex hooks not trusted automatically",
+        "just codex-hooks-trust (or trust them in Codex's /hooks)",
+    ),
+)
+
+
+def _run_codex_steps(agent: AgentTarget) -> None:
+    """Run CODEX_STEPS for this Codex home; never fail the sync."""
     if agent.directory != Path.home() / ".codex":
-        return  # the trust step reads CODEX_HOME / ~/.codex only
-    # A separate process: the trust step builds on this module, so importing it
-    # here would make the two depend on each other.
-    script = Path(__file__).with_name("codex_hooks_trust.py")
-    try:
-        result = subprocess.run(
-            [sys.executable, str(script)],
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as error:
-        print(
-            f"  ⚠️  Codex hooks not trusted automatically ({error}); "
-            "run: just codex-hooks-trust (or trust them in Codex's /hooks)"
-        )
-        return
-    for line in (result.stdout + result.stderr).splitlines():
-        print(f"  {line}")
+        return  # the steps read CODEX_HOME / ~/.codex only
+    for script, failure, fallback in CODEX_STEPS:
+        try:
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).with_name(script))],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            print(f"  ⚠️  {failure} ({error}); run: {fallback}")
+            continue
+        for line in (result.stdout + result.stderr).splitlines():
+            print(f"  {line}")
 
 
 def orphans_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) -> None:

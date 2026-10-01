@@ -39,7 +39,7 @@ def _facts(**changes: object) -> check.Facts:
             }
         },
         pi_extensions={"jev-sonnet-fallback.ts": True, "rtk.ts": True},
-        codex_hooks=["OK   codex-hooks - 5 dotfiles hooks trusted and enabled"],
+        codex_checks=["OK   codex-hooks - 5 dotfiles hooks trusted and enabled"],
         headroom_proxy=None,
     )
     return replace(good, **changes)
@@ -115,7 +115,7 @@ def test_codex_problems_are_passed_through() -> None:
         "WARN",
         "codex-hooks",
         "preToolUse Bash rtk-hook-codex.sh: not trusted (run just codex-hooks-trust)",
-    ) in check.report(_facts(codex_hooks=lines))
+    ) in check.report(_facts(codex_checks=lines))
 
 
 def test_the_proxy_state_is_shown_but_never_a_problem() -> None:
