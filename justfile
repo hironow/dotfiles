@@ -2039,26 +2039,53 @@ exe-cluster-apply:
 
 # --- tofu/tailnet: the tailnet's policy file ------------------------------
 #
-# State in the exe project's state bucket (prefix tailnet), KMS-encrypted like
-# exe-cluster's; tofu/tailnet/README.md. The Tailscale credential comes from
-# the environment only, never a variable, so it cannot reach state or a plan.
+# State in the OLD personal project's state bucket (prefix tailnet), encrypted
+# by passphrase like the retired stack's; tofu/tailnet/README.md. This stack
+# lives in a public repo, so it stays out of the private exe project: a bucket
+# or KMS key of that project would tie the two together. The Tailscale
+# credential comes from the environment only, never a variable, so it cannot
+# reach state or a plan.
 
 _TAILNET_DIR := "tofu/tailnet"
+
+# Build the TF_ENCRYPTION HCL payload from the local passphrase, exactly as
+# _exe-encryption does for the retired stack, but from this stack's OWN
+# passphrase file: the retired stack's goes when it does. Generate it once with
+#   umask 077 && openssl rand -base64 48 > ~/.config/tofu/tailnet.passphrase
+_tailnet-encryption:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pass=$(cat "${HOME}/.config/tofu/tailnet.passphrase")
+    cat <<EOF
+    key_provider "pbkdf2" "default" {
+      passphrase = "${pass}"
+    }
+    method "aes_gcm" "default" {
+      keys = key_provider.pbkdf2.default
+    }
+    state {
+      method   = method.aes_gcm.default
+      enforced = true
+    }
+    plan {
+      method   = method.aes_gcm.default
+      enforced = true
+    }
+    EOF
 
 _tailnet-tofu *args:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{ justfile_directory() }}/{{ _TAILNET_DIR }}"
-    if [ -f terraform.tfvars ]; then
-      GOOGLE_CLOUD_QUOTA_PROJECT="$(python3 -c 'import re; print(re.search(r"(?m)^state_kms_key\s*=\s*\"projects/([^/\"]+)/", open("terraform.tfvars").read()).group(1))')"
-      export GOOGLE_CLOUD_QUOTA_PROJECT
-    fi
+    TF_ENCRYPTION="$(just _tailnet-encryption)"
+    export TF_ENCRYPTION
     exec mise x -- tofu {{ args }}
 
-# Initialise the backend from the gitignored partial config (backend.hcl).
+# Initialise the backend. Bucket and prefix are spelled out in main.tf: both
+# are public values, and a partial config could start a second, empty state.
 [group('Tailnet')]
 tailnet-init *args:
-    @just _tailnet-tofu init -input=false -backend-config=backend.hcl {{ args }}
+    @just _tailnet-tofu init -input=false {{ args }}
 
 # Offline invariant tests (plan + a mock provider, no credentials, no network).
 [group('Tailnet')]
@@ -2066,7 +2093,8 @@ tailnet-test *args:
     cd {{ _TAILNET_DIR }} && mise x -- tofu test {{ args }}
 
 # Needs a Tailscale API key (TAILSCALE_API_KEY) or an OAuth client
-# (TAILSCALE_OAUTH_CLIENT_ID and _SECRET), and the exe project's ADC.
+# (TAILSCALE_OAUTH_CLIENT_ID and _SECRET), the old personal project's ADC for
+# the state bucket, and ~/.config/tofu/tailnet.passphrase.
 # Plan against the live tailnet, saved for review.
 [group('Tailnet')]
 tailnet-plan *args:

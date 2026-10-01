@@ -9,12 +9,6 @@ variable "adopt_live_acl" {
   default     = true
 }
 
-variable "state_kms_key" {
-  description = "The KMS key that encrypts this stack's state and saved plans: exe-platform's state_kms_key output (projects/P/locations/L/keyRings/R/cryptoKeys/K)."
-  type        = string
-
-  validation {
-    condition     = can(regex("^projects/[^/]+/locations/[^/]+/keyRings/[^/]+/cryptoKeys/[^/]+$", var.state_kms_key))
-    error_message = "state_kms_key must be a KMS key's resource name, projects/P/locations/L/keyRings/R/cryptoKeys/K."
-  }
-}
+# There is no variable for the state's encryption: a passphrase is a secret, so
+# it reaches OpenTofu through TF_ENCRYPTION only (main.tf), never a variable a
+# plan file or the state could record.

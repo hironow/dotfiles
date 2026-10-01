@@ -10,14 +10,17 @@
 # from its own state with a `removed` block (destroy = false): the policy never
 # had two owners and never went away (Phase 7: 7.4, then 7.3).
 #
-# STATE lives in the exe project's state bucket under the prefix tailnet,
-# encrypted with the KMS key exe-platform owns, like exe-cluster's. That ties
-# the tailnet's state to the exe project's lifetime: README.md says how to
-# move it if the project goes.
+# STATE lives in the OLD personal project's state bucket under the prefix
+# tailnet, encrypted by passphrase like the retired stack's. This stack stays
+# in this public repo, so it stays out of the private exe project: that
+# project's bucket is named after it and its KMS key belongs to it, so either
+# would tie the public repo to the private project. The bucket already holds
+# the retired stack's state and other stacks' besides; the prefix keeps them
+# apart, and the bucket outlives the retirement.
 #
-# CONFIDENTIALITY: the project is private and this repo is public. The state
-# key and the tailnet's name come from terraform.tfvars, the bucket from
-# backend.hcl; both are gitignored (see .gitignore).
+# CONFIDENTIALITY: the bucket and the prefix are public values, so they are
+# spelled out below. Only the tailnet's name comes from terraform.tfvars
+# (gitignored), and the passphrase never leaves ~/.config/tofu.
 
 terraform {
   required_version = ">= 1.12.0"
@@ -31,32 +34,47 @@ terraform {
     }
   }
 
-  # Partial backend config: `tofu init -backend-config=backend.hcl`, the exe
-  # project's state bucket (its name embeds the project id). The prefix is
-  # pinned here so a typo cannot start a second, empty state.
+  # The old personal project's state bucket, which the retired stack also
+  # used. Both values are public and both are pinned here: a partial config
+  # lets a typo start a second, empty state, and an empty state means the next
+  # plan proposes to create the ACL this stack already owns.
   backend "gcs" {
+    bucket = "gen-ai-hironow-tofu-state"
     prefix = "tailnet"
   }
 
+  # State encryption, the retired stack's mechanism (tofu/exe/main.tf): pbkdf2
+  # over a local passphrase, aes_gcm, enforced for the state AND for a saved
+  # plan. The passphrase below is a SENTINEL that fails closed -- every
+  # `just tailnet-*` recipe overrides this block with TF_ENCRYPTION, built by
+  # `just _tailnet-encryption` from ~/.config/tofu/tailnet.passphrase (mode
+  # 0600). Run without that override and OpenTofu encrypts with the sentinel,
+  # which the operator cannot decrypt afterwards: wrong, but deterministic and
+  # caught on the spot rather than silently.
+  #
+  # Why it matters here: the ACL is the tailnet's whole authorization model,
+  # and the state holds its text. A Tailscale credential never reaches the
+  # state (the provider reads the environment), but the policy does.
+  #
+  # Its own passphrase, not the retired stack's: that one goes when the stack
+  # does. This state is empty until 7.3's first apply, so there is nothing to
+  # migrate.
   encryption {
-    key_provider "gcp_kms" "state" {
-      kms_encryption_key = var.state_kms_key
-      key_length         = 32
+    key_provider "pbkdf2" "default" {
+      passphrase = "OVERRIDDEN_BY_TF_ENCRYPTION_ENV"
     }
 
-    method "aes_gcm" "state" {
-      keys = key_provider.gcp_kms.state
+    method "aes_gcm" "default" {
+      keys = key_provider.pbkdf2.default
     }
 
-    # enforced: OpenTofu refuses to write this stack's state, or a saved plan
-    # of it, in plaintext.
     state {
-      method   = method.aes_gcm.state
+      method   = method.aes_gcm.default
       enforced = true
     }
 
     plan {
-      method   = method.aes_gcm.state
+      method   = method.aes_gcm.default
       enforced = true
     }
   }
