@@ -12,14 +12,36 @@
 #   exit 2  -> BLOCK (stderr -> Claude). exit 1 would NOT block.
 set -euo pipefail
 
-dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Builtins only up to the interpreter lookup (no dirname): PATH may be minimal.
+case "${BASH_SOURCE[0]}" in
+  */*) dir="${BASH_SOURCE[0]%/*}" ;;
+  *) dir=. ;;
+esac
+dir="$(cd "$dir" && pwd)"
+companion=""
 for candidate in \
   "$dir/block-prohibited-commands.py" \
   "$dir/ROOT_AGENTS_hooks_block-prohibited-commands.py"; do
   if [ -f "$candidate" ]; then
-    exec python3 "$candidate"
+    companion="$candidate"
+    break
   fi
 done
+if [ -z "$companion" ]; then
+  echo "BLOCKED: companion guard block-prohibited-commands.py not found next to the wrapper (incomplete sync?) — failing closed." >&2
+  exit 2
+fi
 
-echo "BLOCKED: companion guard block-prohibited-commands.py not found next to the wrapper (incomplete sync?) — failing closed." >&2
+# A real interpreter: on Windows `python3` can be the Microsoft Store stub under
+# WindowsApps, which runs nothing and exits non-zero (read as "allow").
+# (Collected first: stdin carries the hook payload for the companion.)
+mapfile -t interpreters < <(type -aP python3 python 2>/dev/null || true)
+for interpreter in "${interpreters[@]}"; do
+  case "$interpreter" in
+    */WindowsApps/*) continue ;;
+  esac
+  exec "$interpreter" "$companion"
+done
+
+echo "BLOCKED: no Python found for the command guard (python3 / python) — failing closed. Install one (mise python)." >&2
 exit 2
