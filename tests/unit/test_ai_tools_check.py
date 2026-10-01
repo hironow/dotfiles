@@ -40,6 +40,7 @@ RTK_TELEMETRY = """Telemetry status:
   enabled:       no
   env override:  RTK_TELEMETRY_DISABLED=1 (blocked)
 """
+HEALTH = {"service": "headroom-proxy", "ready": True}
 PROXY_HELP = """Usage: headroom proxy [OPTIONS]
 
   Start the optimization proxy server.
@@ -78,6 +79,7 @@ def _facts(**changes: object) -> check.Facts:
         headroom_telemetry={"beacon_enabled": False},
         headroom_proxy_help=PROXY_HELP,
         headroom_proxy_flags=("--host", "--port"),
+        codex_files={"hooks.json": "{}", "config.toml": 'model = "gpt"'},
     )
     return replace(good, **changes)
 
@@ -165,8 +167,10 @@ def test_a_codex_check_that_cannot_run_warns() -> None:
 
 
 def test_the_proxy_state_is_shown_but_never_a_problem() -> None:
-    assert _levels(_facts(headroom_proxy=(4321, True)))["headroom-proxy"] == "OK"
-    assert "4321" in _detail(_facts(headroom_proxy=(4321, True)), "headroom-proxy")
+    running = _facts(headroom_proxy=(4321, HEALTH))
+    assert _levels(running)["headroom-proxy"] == "OK"
+    assert "4321" in _detail(running, "headroom-proxy")
+    assert _levels(_facts(headroom_proxy=(4321, None)))["headroom-proxy"] == "OK"
     assert _levels(_facts(headroom_proxy=None))["headroom-proxy"] == "OK"
 
 
@@ -262,3 +266,85 @@ def test_the_guard_records_each_rtk_subcommand_once() -> None:
     guard = check._load_command_guard()
     assert not guard.RTK_RUN_SUBCOMMANDS & guard.RTK_FILTER_SUBCOMMANDS
     assert {"run", "proxy", "git", "help"} <= check._guard_rtk_classified()
+
+
+def test_a_proxy_answering_health_in_a_new_shape_warns() -> None:
+    # j-cc would never recognise it: each launch waits, then goes direct
+    facts = _facts(headroom_proxy=(4321, {"status": "ok"}))
+    assert _levels(facts)["headroom-proxy"] == "WARN"
+    assert "jev_headroom.is_headroom" in _detail(facts, "headroom-proxy")
+
+
+def test_only_jcc_routes_through_headroom_by_default() -> None:
+    assert _levels(_facts())["headroom-routing"] == "OK"
+
+
+@pytest.mark.parametrize(
+    ("changes", "where", "fix"),
+    [
+        (
+            {
+                "claude_homes": {
+                    ".claude": {
+                        "env": {
+                            **TELEMETRY,
+                            "ANTHROPIC_BASE_URL": "http://127.0.0.1:8787",
+                        }
+                    }
+                }
+            },
+            "~/.claude",
+            "headroom unwrap claude",
+        ),
+        (
+            {
+                "claude_homes": {
+                    ".claude": {
+                        "env": TELEMETRY,
+                        "hooks": {
+                            "SessionStart": [
+                                {
+                                    "hooks": [
+                                        {
+                                            "command": "headroom init hook ensure --marker headroom-init-claude"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                    }
+                }
+            },
+            "~/.claude",
+            "headroom unwrap claude",
+        ),
+        (
+            {
+                "codex_files": {
+                    "hooks.json": '{"hooks": {"x": "headroom-init-codex"}}',
+                    "config.toml": "",
+                }
+            },
+            "~/.codex",
+            "headroom unwrap codex",
+        ),
+        (
+            {
+                "codex_files": {
+                    "hooks.json": "{}",
+                    "config.toml": "# --- Headroom init provider ---\nopenai_base_url = 1\n",
+                }
+            },
+            "~/.codex",
+            "headroom unwrap codex",
+        ),
+    ],
+)
+def test_headroom_init_or_wrap_rewiring_an_agent_warns(
+    changes: dict, where: str, fix: str
+) -> None:
+    facts = _facts(**changes)
+    assert _levels(facts)["headroom-routing"] == "WARN"
+    detail = _detail(facts, "headroom-routing")
+    assert where in detail
+    assert fix in detail

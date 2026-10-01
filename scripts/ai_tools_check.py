@@ -27,6 +27,8 @@ import subprocess
 import sys
 from types import ModuleType
 
+import jev_headroom
+
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND_GUARD = ROOT / "ROOT_AGENTS_hooks_block-prohibited-commands.py"
 TELEMETRY_OFF = {"RTK_TELEMETRY_DISABLED": "1", "HEADROOM_BEACON": "off"}
@@ -38,6 +40,12 @@ CLAUDE_HOMES = (
     ".claude-work-d",
 )
 PI_EXTENSIONS = ("jev-sonnet-fallback.ts", "rtk.ts")
+# What `headroom init` / `headroom wrap` write into an agent's config (headroom
+# 0.38 cli/init.py), beside a loopback ANTHROPIC_BASE_URL. j-cc is the only
+# headroom route (docs/runbook/jev-launchers.md).
+HEADROOM_CLAUDE_MARKERS = ("headroom-init-claude",)
+HEADROOM_CODEX_MARKERS = ("headroom-init-codex", "# --- Headroom init provider ---")
+CODEX_FILES = ("hooks.json", "config.toml")
 # Codex checkers in scripts/, each printing doctor lines for `--check`
 CODEX_CHECKS = ("codex_hooks_trust.py", "codex_sandbox_tools.py")
 
@@ -62,7 +70,9 @@ class Facts:
     pi_extensions: Mapping[str, bool]  # name -> placed
     # CODEX_CHECKS' --check output by script (None: it did not run); None without codex
     codex_checks: Mapping[str, str | None] | None
-    headroom_proxy: tuple[int, bool] | None  # (recorded port, healthy); None: no record
+    # (recorded port, its /health answer or None); None: no record
+    headroom_proxy: tuple[int, Mapping[str, object] | None] | None
+    codex_files: Mapping[str, str]  # CODEX_FILES in ~/.codex ("" when absent)
     # What the tools say about themselves (None: no answer)
     rtk_help: str | None  # `rtk --help`
     rtk_telemetry: str | None  # `rtk telemetry status`
@@ -181,11 +191,53 @@ def _codex(facts: Facts) -> list[Line]:
 def _headroom_proxy(facts: Facts) -> Line:
     if facts.headroom_proxy is None:
         return ("OK", "headroom-proxy", "not running; j-cc starts one on demand")
-    port, healthy = facts.headroom_proxy
-    state = (
-        "running" if healthy else "recorded but not answering (j-cc starts a new one)"
+    port, answer = facts.headroom_proxy
+    if jev_headroom.is_headroom(answer):
+        return ("OK", "headroom-proxy", f"127.0.0.1:{port} running")
+    if answer is None:
+        return (
+            "OK",
+            "headroom-proxy",
+            f"127.0.0.1:{port} recorded but not answering (j-cc starts a new one)",
+        )
+    return (
+        "WARN",
+        "headroom-proxy",
+        f"127.0.0.1:{port} answers /health with keys {', '.join(sorted(answer))}, "
+        "not the shape jev_headroom.is_headroom expects: j-cc would wait for it, "
+        "then go direct",
     )
-    return ("OK", "headroom-proxy", f"127.0.0.1:{port} {state}")
+
+
+def _routes_claude(settings: Mapping[str, object]) -> bool:
+    env = settings.get("env")
+    base_url = str(env.get("ANTHROPIC_BASE_URL", "")) if isinstance(env, dict) else ""
+    loopback = base_url.startswith(("http://127.0.0.1", "http://localhost"))
+    text = json.dumps(settings)
+    return loopback or any(marker in text for marker in HEADROOM_CLAUDE_MARKERS)
+
+
+def _headroom_routing(facts: Facts) -> Line:
+    claude = [
+        f"~/{home}" for home, s in facts.claude_homes.items() if _routes_claude(s)
+    ]
+    codex = any(
+        marker in text
+        for text in facts.codex_files.values()
+        for marker in HEADROOM_CODEX_MARKERS
+    )
+    if not claude and not codex:
+        return ("OK", "headroom-routing", "only j-cc and its Codex workers use it")
+    fixes = (["headroom unwrap claude"] if claude else []) + (
+        ["headroom unwrap codex"] if codex else []
+    )
+    return (
+        "WARN",
+        "headroom-routing",
+        f"headroom init/wrap routes {', '.join([*claude, *(['~/.codex'] if codex else [])])} "
+        "through a local proxy, so plain claude/codex fail while it is down (and "
+        f"Claude loses Remote Control): {' and '.join(fixes)}, then just sync-agents",
+    )
 
 
 def rtk_subcommands(help_text: str) -> frozenset[str]:
@@ -309,6 +361,7 @@ def report(facts: Facts) -> list[Line]:
         _pi_extensions(facts),
         *_codex(facts),
         _headroom_proxy(facts),
+        _headroom_routing(facts),
     ]
 
 
@@ -398,14 +451,19 @@ def _json_answer(text: str | None) -> dict | None:
     return answer if isinstance(answer, dict) else None
 
 
-def gather(home: Path) -> Facts:
-    sys.path.insert(0, str(Path(__file__).parent))
-    import jev_headroom  # noqa: PLC0415 - sibling script
+def _text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
 
+
+def gather(home: Path) -> Facts:
     pi_dir = (
         Path(os.environ.get("PI_CODING_AGENT_DIR") or home / ".pi/agent") / "extensions"
     )
     port = jev_headroom.read_state(jev_headroom.state_path(home))
+    codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex")
     codex_checks = None
     if shutil.which("codex"):
         codex_checks = {
@@ -434,9 +492,8 @@ def gather(home: Path) -> Facts:
         },
         pi_extensions={name: (pi_dir / name).is_file() for name in PI_EXTENSIONS},
         codex_checks=codex_checks,
-        headroom_proxy=None
-        if port is None
-        else (port, jev_headroom.is_headroom(jev_headroom.probe(port))),
+        headroom_proxy=None if port is None else (port, jev_headroom.probe(port)),
+        codex_files={name: _text(codex_home / name) for name in CODEX_FILES},
         rtk_help=_run([rtk_exe, "--help"]) if rtk_exe else None,
         rtk_telemetry=_run([rtk_exe, "telemetry", "status"]) if rtk_exe else None,
         headroom_telemetry=_json_answer(

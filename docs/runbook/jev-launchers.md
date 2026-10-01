@@ -199,7 +199,12 @@ headroom の版は固定してあり（`config/mise/config.toml`）、上げる�
 上げたら `just doctor` で 2 つの約束を確かめる。
 `headroom-telemetry` は、headroom 自身が beacon を off と答えるか（`headroom telemetry --json`）を見る。
 `headroom-cli` は、`headroom proxy --help` に `jev_headroom.proxy_command` が渡すフラグが載っているかを見る。
-`/health` の答えの形と、Codex の worker の経路は、proxy を動かさないと分からないので、`just jev-headroom-verify` で確かめる。
+`/health` の答えの形は、proxy が動いていれば `headroom-proxy` が確かめる（形が変わると、`j-cc` は proxy を待ったあと headroom なしで起動する）。
+Codex の worker の経路は、`just jev-headroom-verify` で確かめる。
+
+`headroom init` と `headroom wrap` は、Claude や Codex の設定そのものに proxy への経路を書き込む。
+すると素の `claude` や `codex` も proxy なしでは動かなくなり、Claude は Remote Control も使えなくなるので、ここでは使わない。
+書き込まれると `just doctor` の `headroom-routing` が知らせるので、`headroom unwrap claude` か `headroom unwrap codex` で外し、`just sync-agents` を実行する。
 
 proxy を止めるときは、記録したファイルに頼らず、自分の headroom の proxy をコマンドラインで探して止める。
 止めた proxy を使っている `j-cc` のセッションは、モデルに届かなくなる。
