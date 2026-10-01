@@ -139,3 +139,62 @@ def test_pi_gets_an_empty_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(verify.subprocess, "run", run)
     verify.main()
     assert seen["stdin"] is subprocess.DEVNULL
+
+
+ATTRIBUTION = (
+    "Anthropic attribution has no Claude Code model policy for claude-sonnet-5-5"
+)
+
+
+def test_an_old_background_tasks_extension_is_named_as_the_blocker() -> None:
+    # Seen on a Windows host: Copilot hit its quota, the extension switched to
+    # anthropic, and pi-background-tasks 2.6.5 refused that route. Pi exited 0
+    # and the session made no call, which read as "the model ignored the prompt"
+    errors = ["429 quota exceeded\n", ATTRIBUTION]
+    report = verify.analyze(0, "", [], subagent_calls=0, errors=errors)
+    assert report.status == "blocked"
+    assert "pi-background-tasks" in report.reason
+    assert "pi update" in report.reason
+
+
+def test_a_usage_limit_recorded_in_the_session_is_blocked() -> None:
+    report = verify.analyze(
+        0, "", [], subagent_calls=0, errors=["429 quota exceeded\n"]
+    )
+    assert report.status == "blocked"
+    assert "usage limit" in report.reason
+
+
+def test_a_session_error_does_not_hide_a_worker_that_ran() -> None:
+    report = verify.analyze(
+        0, "", [_meta("anthropic/claude-sonnet-5-5:high")], errors=[ATTRIBUTION]
+    )
+    assert report.status == "pass"
+
+
+def test_session_errors_are_read_from_this_runs_transcript(tmp_path: Path) -> None:
+    session = tmp_path / "sessions" / "--tmp-tmpxyz--"
+    session.mkdir(parents=True)
+    lines = [
+        {"type": "message", "message": {"role": "user", "content": "say 429"}},
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [],
+                "stopReason": "error",
+                "errorMessage": "429 quota exceeded\n",
+            },
+        },
+        {
+            "type": "message",
+            "message": {"role": "assistant", "content": [], "stopReason": "stop"},
+        },
+    ]
+    (session / "s.jsonl").write_text(
+        "".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8"
+    )
+    assert verify.session_errors(tmp_path / "sessions", "tmpxyz") == [
+        "429 quota exceeded\n"
+    ]
+    assert verify.session_errors(tmp_path / "sessions", "other") == []

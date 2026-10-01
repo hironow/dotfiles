@@ -206,5 +206,5 @@ just jev-pi-verify
 | --- | --- | --- |
 | `PASS` | 0 | worker が `:high`（Jev の選択。セッションの `medium` より上）で最後まで動いた |
 | `FAIL` | 1 | subagent を呼んだのに worker の記録がない、モデルに effort の suffix がない、または worker が失敗した |
-| `BLOCKED` | 2 | キーか拡張がない、利用上限で worker の前に止まった、またはモデルが subagent を呼ばなかった（1 回だけ自動でやり直す） |
+| `BLOCKED` | 2 | キーか拡張がない、利用上限で worker の前に止まった、2.6.9 より古い pi-background-tasks が anthropic の Sonnet 5.5 を拒んだ（`no Claude Code model policy`）、またはモデルが subagent を呼ばなかった（提供元のエラーがないときだけ、1 回自動でやり直す）。上限と拒否は、Pi が終了コード 0 で終わっても、セッションの記録に残る提供元のエラーから判定する |
 | `PARTIAL` | 3 | worker が `medium` で動き、セッションと区別できない |

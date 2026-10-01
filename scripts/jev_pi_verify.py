@@ -12,6 +12,7 @@ usage limit; nothing learned), 3 = partial (works, but a medium pick cannot be
 told apart from the session's own medium).
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 import json
 import os
@@ -35,6 +36,8 @@ PROMPT = (
 EXIT = {"pass": 0, "fail": 1, "blocked": 2, "partial": 3}
 _EFFORT = re.compile(r":(medium|high)$")
 _LIMIT = re.compile(r"\b429\b|rate_limit|insufficient_quota|RESOURCE_EXHAUSTED")
+# pi-background-tasks before 2.6.9 refuses Sonnet 5.5 on the anthropic provider
+_ATTRIBUTION = re.compile(r"no Claude Code model policy")
 
 
 @dataclass
@@ -45,11 +48,23 @@ class Report:
 
 
 def analyze(
-    returncode: int, stderr: str, metas: list[dict], subagent_calls: int | None = None
+    returncode: int,
+    stderr: str,
+    metas: list[dict],
+    subagent_calls: int | None = None,
+    errors: Sequence[str] = (),
 ) -> Report:
-    """Functional core: the verdict from the run's exit, stderr and worker records."""
+    """Functional core: the verdict from the run's exit, stderr, worker records and
+    the provider errors the session transcript recorded."""
     if not metas:
-        if returncode != 0 and _LIMIT.search(stderr):
+        recorded = "\n".join(errors)
+        if _ATTRIBUTION.search(recorded) or _ATTRIBUTION.search(stderr):
+            return Report(
+                "blocked",
+                "pi-background-tasks refused Sonnet 5.5 on the anthropic provider "
+                "(older than 2.6.9); run just harden-env, then pi update --extensions",
+            )
+        if _LIMIT.search(recorded) or (returncode != 0 and _LIMIT.search(stderr)):
             return Report(
                 "blocked", "a usage limit stopped the session before a worker ran"
             )
@@ -136,9 +151,32 @@ def subagent_calls(sessions: Path, cwd_name: str) -> int:
     return calls
 
 
+def session_errors(sessions: Path, cwd_name: str) -> list[str]:
+    """Provider errors (assistant stopReason "error") in this run's top-level
+    transcripts: Pi records them there even when it exits 0."""
+    errors = []
+    for path in sessions.glob("*/*.jsonl"):
+        if cwd_name not in path.parent.name:
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            message = entry.get("message") if isinstance(entry, dict) else None
+            if (
+                isinstance(message, dict)
+                and message.get("role") == "assistant"
+                and message.get("stopReason") == "error"
+                and isinstance(message.get("errorMessage"), str)
+            ):
+                errors.append(message["errorMessage"])
+    return errors
+
+
 def _run_once(
     command: list[str], env: dict[str, str], sessions: Path
-) -> tuple[int, str, list[dict], int]:
+) -> tuple[int, str, list[dict], int, list[str]]:
     with tempfile.TemporaryDirectory() as cwd:
         run = subprocess.run(
             command,
@@ -159,6 +197,7 @@ def _run_once(
             run.stderr,
             worker_metas(sessions, name),
             subagent_calls(sessions, name),
+            session_errors(sessions, name),
         )
 
 
@@ -182,12 +221,13 @@ def main() -> int:
             / "sessions"
         )
         # A model can ignore the probe prompt (seen after a provider switch):
-        # when a session makes no subagent call at all, try once more.
+        # when a session makes no subagent call and records no provider error,
+        # try once more.
         for attempt in (1, 2):
-            returncode, stderr, metas, calls = _run_once(command, env, sessions)
-            if metas or calls:
+            returncode, stderr, metas, calls, errors = _run_once(command, env, sessions)
+            if metas or calls or errors:
                 break
-        report = analyze(returncode, stderr, metas, calls)
+        report = analyze(returncode, stderr, metas, calls, errors)
         report.evidence.insert(
             0, f"session route: {route} at {SESSION_EFFORT} (attempt {attempt})"
         )
