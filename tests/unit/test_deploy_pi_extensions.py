@@ -95,3 +95,13 @@ def test_each_step_runs_through_mise_and_a_failure_only_warns(tmp_path: Path) ->
         done.stdout
     )
     assert "==> Registering headroom's MCP server..." in done.stdout
+
+
+def test_without_mise_every_skipped_step_is_named() -> None:
+    # pi and python3 alone install the Pi extensions; the other steps need
+    # mise, and each must still be named (found in review: the refactor
+    # dropped the reminders in that branch)
+    tail = UNIX[UNIX.index("    run_agent_steps\n") :]
+    fallback = tail[: tail.index("\nfi\n")]
+    for recipe in ("claude-plugins-install", "headroom-mcp-register"):
+        assert fallback.count(f"just {recipe}") == 2, recipe

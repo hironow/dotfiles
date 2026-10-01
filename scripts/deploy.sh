@@ -220,6 +220,7 @@ if command -v mise >/dev/null 2>&1; then
     run_agent_steps
 elif command -v pi >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     python3 ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; run 'just pi-extensions-install' after resolving the error"
+    echo "==> mise not on PATH; run 'just claude-plugins-install' and 'just headroom-mcp-register' after provisioning"
 else
     echo "==> mise not on PATH; run 'just pi-extensions-install', 'just claude-plugins-install' and 'just headroom-mcp-register' after provisioning"
 fi
