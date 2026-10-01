@@ -371,9 +371,8 @@ class _CommandWalker:
                 block(MSG_NODE)
         if name == "make":
             block(MSG_MAKE)
-        if name == "git" and "push" in args:
-            if _force_pushes_protected_ref(args):
-                block(MSG_FORCE_PUSH)
+        if name == "git" and "push" in args and _force_pushes_protected_ref(args):
+            block(MSG_FORCE_PUSH)
         if name in YML_CREATION_COMMANDS:
             self._check_yml_creation(name, args)
 

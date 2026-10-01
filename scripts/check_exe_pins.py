@@ -290,13 +290,16 @@ def check_single_substrate_ref(pins: dict[str, Any]) -> list[str]:
 
     version = substrate.get("version")
     label_value = substrate.get("version_label_value")
-    if isinstance(version, str) and isinstance(label_value, str):
-        if label_value != version:
-            violations.append(
-                f"{PINS_REL}: substrate -- version_label_value "
-                f"'{label_value}' != version '{version}'. The label stamped on "
-                f"nodes is the version, not a second pin."
-            )
+    if (
+        isinstance(version, str)
+        and isinstance(label_value, str)
+        and label_value != version
+    ):
+        violations.append(
+            f"{PINS_REL}: substrate -- version_label_value "
+            f"'{label_value}' != version '{version}'. The label stamped on "
+            f"nodes is the version, not a second pin."
+        )
 
     for key, value in substrate.items():
         if key.startswith("_") or key in _SUBSTRATE_VERSION_KEYS:
@@ -502,7 +505,7 @@ def upgrade_exclusion_end(locals_tf: str) -> date | None:
     m = _EXCLUSION_END_RE.search(locals_tf)
     if not m:
         return None
-    return datetime.strptime(m.group(1), "%Y-%m-%d").date()
+    return date.fromisoformat(m.group(1))
 
 
 def check_certificates_api(
@@ -1003,7 +1006,7 @@ def main() -> int:
                 upgrade_exclusion_end(
                     (root / PLATFORM_LOCALS_REL).read_text(encoding="utf-8")
                 ),
-                date.today(),
+                datetime.now().astimezone().date(),
             )
         )
 

@@ -53,11 +53,14 @@ def has_provider_limit(stream_lines: list[str]) -> bool:
             continue
         if not isinstance(event, dict):
             continue
-        if event.get("type") == "assistant" and event.get("error") == "rate_limit":
+        if (
+            event.get("type") == "assistant"
+            and event.get("error") == "rate_limit"
             # stream-json may omit the transcript-only marker; if present it
             # must be a real boolean true, not a string or an ordinary message.
-            if "isApiErrorMessage" not in event or event["isApiErrorMessage"] is True:
-                return True
+            and ("isApiErrorMessage" not in event or event["isApiErrorMessage"] is True)
+        ):
+            return True
         if event.get("type") == "result" and event.get("is_error") is True:
             result = event.get("result")
             if isinstance(result, str) and re.match(

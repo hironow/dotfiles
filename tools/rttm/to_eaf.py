@@ -60,7 +60,7 @@ def convert_rttm_to_eaf(rttm_file: str, output_file: str) -> None:
                 segments.append(
                     {"start": start_time, "end": end_time, "speaker": speaker}
                 )
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.error(f"Failed to read RTTM file: {e}")
         sys.exit(1)
 
@@ -99,7 +99,7 @@ def convert_rttm_to_eaf(rttm_file: str, output_file: str) -> None:
     try:
         eaf.to_file(output_file)
         logger.info(f"EAF file saved to {output_file}")
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.error(f"Failed to save EAF file: {e}")
         sys.exit(1)
 
