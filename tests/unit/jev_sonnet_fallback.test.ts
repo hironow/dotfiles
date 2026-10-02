@@ -1,6 +1,31 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import cases from "./jev_effort_cases.json";
 import fallback, { buildRequestBody, redirectCodexAgent, chooseEffort, effortFromAnswers, fallbackCandidates, hitUsageLimit, isUsageLimit, ROUTES, workerBaseModel } from "../../config/pi/extensions/jev-sonnet-fallback";
+
+// The extension decides what to register from these variables, and a dev shell
+// can already carry them (Pi running under the Jev launcher exports
+// JEV_ROUTED_SESSION and JEV_CODEX_AGENTS to its children). Each test sets only
+// the variables it means to set, so start from a clean slate and put the
+// ambient values back afterwards — otherwise a leaked JEV_CODEX_AGENTS alone
+// registers the tool_call handler and the child-session test cannot pass.
+const JEV_ENV = ["JEV_ROUTED_SESSION", "JEV_KEY_HANDOFF", "JEV_CODEX_AGENTS"] as const;
+
+let ambient: Record<string, string | undefined> = {};
+
+beforeEach(() => {
+  ambient = {};
+  for (const name of JEV_ENV) {
+    ambient[name] = process.env[name];
+    delete process.env[name];
+  }
+});
+
+afterEach(() => {
+  for (const name of JEV_ENV) {
+    if (ambient[name] === undefined) delete process.env[name];
+    else process.env[name] = ambient[name];
+  }
+});
 
 test("only provider usage limits trigger a switch", () => {
   expect(isUsageLimit("HTTP 429: usage limit reached")).toBe(true);
