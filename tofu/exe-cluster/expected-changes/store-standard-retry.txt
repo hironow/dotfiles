@@ -1,9 +1,0 @@
-# The reviewed change list for re-running the store move after the first apply
-# failed on an expired token (the saved plan carried google_client_config's
-# access token, which lives an hour): that apply only removed the install
-# step's state record, so the step is now a plain create; the rest is the
-# same as store-standard.txt.
-#   just exe-cluster-plan && just exe-cluster-plan-summary --expect-changes expected-changes/store-standard-retry.txt
-+   terraform_data.ate_system
--/+ kubernetes_stateful_set_v1.postgres
-+   kubernetes_network_policy_v1.ax_server

@@ -542,7 +542,7 @@ test:
     	echo '   Hint: npm i -g @devcontainers/cli'; \
     fi
     @echo '🧪 Running pytest (verbose with skip reasons)...'
-    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_actor_type_injection.py tests/test_sync_agents.py
+    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_sync_agents.py
     @echo '✅ Tests finished.'
 
 # Test (unit): fast host-side unit tests — no Docker. Covers sync_agents
@@ -690,22 +690,16 @@ check:
     just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
     uvx semgrep --config .semgrep/rules/meta/ --error .
-    @echo '🔎 No mocks in e2e tests (semgrep)...'
-    uvx semgrep --config .semgrep/rules/e2e/ --error tests/e2e
     @echo '🔎 uv flatt index (ADR 0028)...'
     bash scripts/check_uv_flatt_index.sh
     @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
     @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
-    @echo '🔎 exe pins (exe/versions.json is the single source)...'
-    @{{UV_RUN}} scripts/check_exe_pins.py
     @echo '🔎 storage bounds (every tofu sink declares its cap)...'
     @{{UV_RUN}} scripts/check_storage_bounds.py
     @echo '🔎 Go tests (tools/ modules)...'
     just go-test
-    @echo '🔎 Formal methods (Quint model + seeded simulation)...'
-    just spec-check
     @echo '✅ All checks passed.'
 
 # ADR 0028: assert every uv project declares the flatt PyPI mirror as its
@@ -733,8 +727,8 @@ check-ty:
 # Scope is deliberate. The emulator/*-cli modules need running emulators and a
 # populated module cache, which is what `just ci-emu` is for; putting them in the
 # fast gate would make `just check` depend on Docker. tools/ modules are
-# stdlib-only and run in seconds. `-short` leaves out the exe-reaper seed sweep,
-# which `just spec-check` runs in full (and `just check` runs both).
+# stdlib-only and run in seconds, so `-short` costs nothing here and keeps the
+# contract for any module that later adds a long sweep behind it.
 #
 # Strict bash: just's default `sh -cu` would let a failing iteration inside the
 # loop pass unnoticed.
@@ -747,97 +741,6 @@ go-test:
       echo "🧪 go test -short $dir"
       (cd "$dir" && mise x -- go test -short ./...)
     done
-
-# spec-check: the formal-methods gate (docs/agents/formal-methods.md).
-#
-# Two halves, and both are required. The Quint model proves the lease rules are
-# internally consistent; the seeded simulation proves the SHIPPED Go functions
-# implement those rules under interleavings no hand-written scenario would think
-# of. A model without the simulation tells you the design is fine while the code
-# does something else. Where the two encode the same table (L2's), they are
-# also compared directly, decision by decision.
-#
-# Strict bash, and Quint pinned through one variable, per the spoke: with just's
-# default `sh -cu` a failing iteration in the loop below would pass silently.
-[group('Lint')]
-spec-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    QUINT="mise x -- quint"
-    for spec in $(git ls-files '*.qnt'); do
-      echo "🔬 quint parse $spec"
-      $QUINT parse "$spec"
-      echo "🔬 quint typecheck $spec"
-      $QUINT typecheck "$spec"
-      echo "🔬 quint test $spec"
-      $QUINT test --max-samples=200 "$spec"
-    done
-    # Random search over the decided design against the invariants
-    # exe/spec/README.md names. A bug finder, not a proof; seeded so a failure
-    # replays, and bounded so the gate stays fast (about ten seconds).
-    echo "🔬 quint run exe/spec/lease.qnt: Safety, WellFormed, DrainedRecordStaysTrue"
-    $QUINT run exe/spec/lease.qnt --invariants Safety WellFormed DrainedRecordStaysTrue \
-      --max-steps=120 --max-samples=5000 --seed=0x1ea5e --verbosity=1
-    echo "🔬 quint run exe/spec/retention.qnt: Retention"
-    $QUINT run exe/spec/retention.qnt --invariants Retention \
-      --max-steps=150 --max-samples=3000 --seed=0x1ea5e --verbosity=1
-    # The rejected designs (exe/spec/README.md) are kept as FAILING instances,
-    # so the gate requires them to fail, and to fail on their expectation
-    # (QNT508) rather than because a module or test went missing. A rejected
-    # design that starts passing means the model can no longer tell it from the
-    # decided one.
-    for rejected in \
-      "lease twoWriterLease twoWritersLoseTheOperatorsLease" \
-      "lease naiveShrinkFirst shrinkingFirstCrashesTheRunningActor" \
-      "lease routerLeftOpen leftOpenRouterRevivesAnActorAfterDrained" \
-      "lease controllerLeftUp controllerLeftUpLetsARawResumeThrough" \
-      "lease scaleIsNotABarrier scaleAloneLetsALingeringControllerResume" \
-      "lease goldenIgnored goldenReconcilerResumesAfterDrained" \
-      "lease pdbHoldsTheDrain aDisruptionBudgetOutlivesTheBound" \
-      "retention sharedJobTag sharedTagLetsAFreshTasksImageBeCollected" \
-      "retention ttlByFirstSight firstSightDeletesATaskUsedYesterday" \
-      "retention backgroundWriteRefreshes aBackgroundWriteKeepsATaskForever"; do
-      read -r spec module run <<<"$rejected"
-      echo "🔬 quint test $module.$run (must fail)"
-      if out="$($QUINT test --main="$module" --match="$run" "exe/spec/$spec.qnt" 2>&1)"; then
-        echo "❌ rejected design $module passed $run: the model no longer rejects it" >&2
-        exit 1
-      fi
-      if ! grep -q "QNT508" <<<"$out"; then
-        echo "❌ $module.$run failed, but not on its expectation:" >&2
-        echo "$out" >&2
-        exit 1
-      fi
-    done
-    # The detector that covers the stop-latency assumption: on the instance
-    # where a disruption budget holds the drain, L2 must raise the alarm.
-    echo "🔬 quint test pdbHoldsTheDrain.theSlowStopIsPagedTest (must pass)"
-    $QUINT test --main=pdbHoldsTheDrain --match=theSlowStopIsPagedTest exe/spec/lease.qnt
-    echo "🔬 seeded simulation of the real Go code"
-    (cd tools/exe-reaper && mise x -- go test ./internal/lease/ -run 'TestSimulation' -count=1)
-    # The model and DecideL2 encode one L2 table twice, so they are compared
-    # rather than trusted: sampled rows of the model's table (l2WorldStep) are
-    # replayed through the Go decision, which must take the same branch on every
-    # tick and reach every branch (exe/spec/README.md).
-    echo "🔬 replay the model's L2 decisions through DecideL2"
-    traces="$(mktemp -d)"
-    trap 'rm -rf "$traces"' EXIT
-    $QUINT run exe/spec/lease.qnt --init=l2World --step=l2WorldStep --max-steps=30 \
-      --max-samples=200 --n-traces=200 --seed=0x1ea5e --verbosity=0 \
-      --out-itf="$traces/l2_{seq}.itf.json"
-    (cd tools/exe-reaper && EXE_REAPER_L2_TRACES="$traces" \
-      mise x -- go test ./internal/lease/ -run 'TestDecideL2AgreesWithTheModel' -count=1)
-    # The same for L1's thirteen branches: sampled observations (l1WorldStep),
-    # each replayed through DecideL1, which must take the same branch and leave
-    # the same drain.json, replica counts, suspends and pod deletions.
-    echo "🔬 replay the model's L1 decisions through DecideL1"
-    l1traces="$traces/l1"
-    mkdir -p "$l1traces"
-    $QUINT run exe/spec/lease.qnt --init=l1World --step=l1WorldStep --max-steps=6 \
-      --max-samples=300 --n-traces=300 --seed=0x1ea5e --verbosity=0 \
-      --out-itf="$l1traces/l1_{seq}.itf.json"
-    (cd tools/exe-reaper && EXE_REAPER_L1_TRACES="$l1traces" \
-      mise x -- go test ./internal/lease/ -run 'TestDecideL1AgreesWithTheModel' -count=1)
 
 [group('Lint')]
 go-lint:
@@ -977,7 +880,7 @@ check-pr-body file:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac test-iac-exe instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch check-forbidden-tokens-tree
+ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch check-forbidden-tokens-tree
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -1003,27 +906,20 @@ ci-emu:
 check-all: pre-commit ci-all
     @echo "✅ all checks passed"
 
-# Run OpenTofu native tests for the Coder workspace template
-# (variable defaults + image-tag pattern; see ADR 0024 in the
-# runops-gateway repo for the IaC test split rationale). Uses
-# `tofu test` rather than `terraform test` to keep the local
-# .terraform.lock.hcl on the opentofu registry that the rest of
-# the repo's tofu/exe stack uses; running `terraform test` here
-# rewrites the lock to the terraform.io registry.
+# The offline tofu suites of every stack under tofu/: mock providers, no
+# backend and no credentials, so the PR CI runs them too
+# (.github/workflows/iac-test.yaml). Every test file states the variables it
+# depends on, so an operator's gitignored terraform.tfvars, which `tofu test`
+# also loads, changes nothing.
+#
+# The stacks are discovered rather than listed: a new stack with a suite is
+# picked up without editing this recipe, and a stack that leaves cannot strand
+# a dead path here.
 [group('Check')]
 test-iac:
-    @cd exe/coder/templates/dotfiles-devcontainer && mise x -- tofu init -backend=false >/dev/null && mise x -- tofu test
-
-# The exe stacks' offline tofu suites: mock providers, exe-platform's state as
-# override_data, no backend and no credentials, so the PR CI runs them too
-# (.github/workflows/iac-test.yaml, tests/unit/test_iac_gates_run_the_exe_suites.py).
-# Every test file states the variables it depends on, so an operator's
-# gitignored terraform.tfvars, which `tofu test` also loads, changes nothing.
-[group('Check')]
-test-iac-exe:
     #!/usr/bin/env bash
     set -euo pipefail
-    for stack in tofu/exe-platform tofu/exe-cluster; do
+    for stack in $(git ls-files '*.tofutest.hcl' | xargs -r -n1 dirname | sed 's#/tests$##' | sort -u); do
       echo "🧪 tofu test $stack"
       (
         data_dir="$(mktemp -d)"
@@ -1433,6 +1329,31 @@ doctor:
 prune-rogue-npm-globals:
     @bash scripts/rogue_npm_globals.sh prune
 
+# The retired Coder stack's wrappers were symlinked into ~/.local/bin by a
+# recipe that no longer exists, so nothing else will ever clean them up. Each
+# now points at a deleted file: a dangling symlink that still wins PATH, so
+# `cdr …` fails with a confusing "No such file or directory" rather than
+# "command not found". Removes only symlinks whose target is gone, and only
+# these five names, so a real binary someone put there is never touched.
+# Idempotent; prints nothing to do when there is nothing.
+[group('Setup')]
+prune-retired-cdr-symlinks:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    found=0
+    for name in cdr cdr-header cdr-job cdr-exec cdr-project; do
+      link="${HOME}/.local/bin/${name}"
+      if [ -L "$link" ] && [ ! -e "$link" ]; then
+        target="$(readlink "$link")"
+        rm -- "$link"
+        echo "✓ removed dangling symlink: $link -> $target"
+        found=$((found + 1))
+      elif [ -L "$link" ]; then
+        echo "⚠ $link still resolves; left alone (check it by hand)"
+      fi
+    done
+    [ "$found" -eq 0 ] && echo "nothing to prune" || true
+
 # ADR 0044: remove the Python tools the uv + ruff + ty trio retired -- mypy /
 # pyright executables (pyright as a rogue npm global), `uv tool` mypy / ruff,
 # Homebrew ruff / pyright, mise ruff / ty versions the config no longer pins.
@@ -1684,658 +1605,27 @@ docs-view:
     mo --clear --no-open
     mo --foreground -w 'docs/**/*.md'
 
-# ------------------------------
-# exe.hironow.dev — OpenTofu wrapper recipes
-# ------------------------------
+# --- tofu/tailnet: the tailnet's policy file ------------------------------
 #
-# All `exe-*` recipes operate on the tofu/exe stack. They:
-#   1. cd tofu/exe
-#   2. export TF_ENCRYPTION_PASSPHRASE from ~/.config/tofu/exe.passphrase
-#      so state encryption is transparent.
-#   3. require CLOUDFLARE_API_TOKEN and TAILSCALE_API_KEY in env
-#      (the recipe fails fast if either is unset, with a hint).
-#
-# First-time setup before any `exe-*` recipe:
-#   bash exe/scripts/bootstrap.sh
-#   cp tofu/exe/terraform.tfvars.example tofu/exe/terraform.tfvars
-#   $EDITOR tofu/exe/terraform.tfvars
+# State in the OLD personal project's state bucket (prefix tailnet), encrypted
+# by passphrase like the retired stack's; tofu/tailnet/README.md. This stack
+# lives in a public repo, so it stays out of the private exe project: a bucket
+# or KMS key of that project would tie the two together. The Tailscale
+# credential comes from the environment only, never a variable, so it cannot
+# reach state or a plan.
 
-# Run the bootstrap (idempotent): enable APIs, create state bucket, generate passphrase.
-[group('Exe')]
-exe-bootstrap:
-    @bash exe/scripts/bootstrap.sh
+_TAILNET_DIR := "tofu/tailnet"
 
-# ==============================================================================
-# exe-platform — the google/ax migration's GCP foundation (tofu/exe-platform).
-#
-# Separate recipe names from the legacy `exe-*` Coder recipes above on purpose:
-# both stacks coexist until the legacy one is retired, and a shared name would
-# make it possible to plan one and apply the other.
-#
-# Every identifier lives in tofu/exe-platform/terraform.tfvars and backend.hcl,
-# both gitignored. The recipes read them from there or from `tofu output`; none
-# is written into this file.
-#
-# APPLY IS THE OPERATOR'S. Agents produce a saved plan; a human applies it.
-# ==============================================================================
-
-_EXE_PLATFORM_DIR := "tofu/exe-platform"
-_EXE_PLATFORM_PLAN := "tofu/exe-platform/exe-platform.tfplan"
-
-# Create the OpenTofu state bucket for exe-platform (UBLA, PAP, versioning,
-# 10 noncurrent versions, soft delete off). Out-of-band because a stack cannot
-# create its own backend. Idempotent; pass --dry-run to see the commands first.
-[group('Exe')]
-exe-platform-bootstrap *args:
-    @bash scripts/exe_platform_bootstrap.sh {{ args }}
-
-# Initialise the backend from the gitignored partial config.
-[group('Exe')]
-exe-platform-init *args:
-    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu init -input=false -backend-config=backend.hcl {{ args }}
-
-# Offline invariant tests (plan + mock_provider, no credentials, no network).
-[group('Exe')]
-exe-platform-test *args:
-    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu test {{ args }}
-
-[group('Exe')]
-exe-platform-validate:
-    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu fmt -check -recursive . && mise x -- tofu validate
-
-# Write a saved plan for the operator to apply. The plan file is gitignored AND
-# the forbidden-token guard refuses to stage a *.tfplan at all: plan output is
-# dense with private identifiers, so it never reaches the repo, a commit message
-# or a PR.
-[group('Exe')]
-exe-platform-plan *args:
-    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu plan -input=false -out=exe-platform.tfplan {{ args }}
-    @echo '📋 saved plan: {{ _EXE_PLATFORM_PLAN }} (gitignored; never paste its output anywhere public)'
-
-# Summarise a saved plan by action and resource type — enough to review intent
-# without printing attribute values. Extra args go to the summariser, e.g.
-# `--expect-changes FILE` to hold the plan to a reviewed change list; the recipe
-# runs from the stack directory, so a relative FILE resolves there.
-[group('Exe')]
-exe-platform-plan-summary *args:
-    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu show -json exe-platform.tfplan | {{ UV_RUN }} ../../scripts/summarize_tofu_plan.py {{ args }}
-
-# OPERATOR ONLY. Applies the saved plan produced above.
-[group('Exe')]
-exe-platform-apply:
-    cd {{ _EXE_PLATFORM_DIR }} && mise x -- tofu apply -input=false exe-platform.tfplan
-
-# Write a kubeconfig that reaches the cluster through its IAM-guarded DNS
-# endpoint. There is no IP endpoint, so this is the only route in. The project id
-# comes from `tofu output`, never from this file.
-[group('Exe')]
-exe-ctx:
+# Build the TF_ENCRYPTION HCL payload from the local passphrase: pbkdf2 +
+# aes_gcm, enforced for the state and for saved plans, mirroring the static
+# block in tofu/tailnet/main.tf. This is the mechanism the retired Coder stack
+# used, kept here with its OWN passphrase file so nothing of this stack depended
+# on that one. Generate it once with
+#   umask 077 && openssl rand -base64 48 > ~/.config/tofu/tailnet.passphrase
+_tailnet-encryption:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd {{ _EXE_PLATFORM_DIR }}
-    project="$(just _tofu-out exe-platform project_id)"
-    cluster="$(just _tofu-out exe-platform cluster_name)"
-    zone="$(just _tofu-out exe-platform zone)"
-    kubeconfig="${XDG_CONFIG_HOME:-$HOME/.config}/exe/kubeconfig"
-    mkdir -p "$(dirname "$kubeconfig")"
-    KUBECONFIG="$kubeconfig" mise x -- gcloud container clusters get-credentials \
-        "$cluster" --zone "$zone" --project "$project" --dns-endpoint
-    chmod 600 "$kubeconfig"
-    echo "✅ kubeconfig written (DNS endpoint, IAM only):"
-    echo "   export KUBECONFIG=$kubeconfig"
-
-# Read-only: how many nodes are running right now. The money question.
-[group('Exe')]
-exe-platform-nodes:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd {{ _EXE_PLATFORM_DIR }}
-    project="$(just _tofu-out exe-platform project_id)"
-    cluster="$(just _tofu-out exe-platform cluster_name)"
-    zone="$(just _tofu-out exe-platform zone)"
-    pool="$(just _tofu-out exe-platform node_pool_name)"
-    mise x -- gcloud container node-pools describe "$pool" \
-        --cluster "$cluster" --zone "$zone" --project "$project" \
-        --format='value(initialNodeCount)'
-    mise x -- gcloud compute instances list --project "$project" \
-        --filter="name~^gke-${cluster}-" --format='table(name,status)'
-
-# Run the L3 daily-stop job now: take the node pool to 0 immediately. Also the
-# proof that L3 actually works, which is why it is a recipe and not a one-off.
-[group('Exe')]
-exe-platform-stop:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd {{ _EXE_PLATFORM_DIR }}
-    project="$(just _tofu-out exe-platform project_id)"
-    region="$(just _tofu-out exe-platform region)"
-    job="$(just _tofu-out exe-platform l3_scheduler_job)"
-    mise x -- gcloud scheduler jobs run "$job" --location "$region" --project "$project"
-    echo "✅ L3 triggered. Node pool goes to 0; check with: just exe-platform-nodes"
-
-# --- the lease (L0): exe-reaper on the operator's own credentials -----------
-#
-# Every exe node runs under a lease with a deadline (plan section 3.2): 1h by
-# default, 8h at most per wake or extend, never past 03:00 JST. These recipes
-# are the operator's side of it; L1 drains, L2 enforces the deadline from
-# outside the cluster, and L3 stops the pool every night regardless. Identifiers
-# come from `tofu output` (the private values stay in state and never reach the
-# repo), the token from the operator's gcloud login. Nothing here needs the
-# cluster to be up, so `exe-status` answers while it is asleep.
-
-# Authorise a node for DURATION (default 1h) and start it: `just exe-wake 5m`.
-[group('Exe')]
-exe-wake duration="1h":
-    @just _exe-reaper wake -for {{ duration }}
-
-# Push the deadline to DURATION from now; invalidates an earlier drained record.
-[group('Exe')]
-exe-extend duration="1h":
-    @just _exe-reaper extend -for {{ duration }}
-
-# Expire the lease now: L1 drains, then L2 stops the pool.
-[group('Exe')]
-exe-sleep:
-    @just _exe-reaper sleep
-
-# The lease, the drain and enforcement records, and the pool size, from GCP APIs.
-[group('Exe')]
-exe-status:
-    @just _exe-reaper status
-
-# keep.json in the ops bucket has one writer, this recipe, and every write is
-# conditional on the generation it read; L1 only reads it.
-# Exempt a task from the 30-day TTL (add TASK), stop (rm TASK), or list (ls).
-[group('Exe')]
-exe-keep action *task:
-    @just _exe-reaper keep {{ action }} {{ task }}
-
-_exe-reaper *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd {{ _EXE_PLATFORM_DIR }}
-    out() { just _tofu-out exe-platform "$1"; }
-    EXE_PROJECT_ID="$(out project_id)"
-    EXE_ZONE="$(out zone)"
-    EXE_CLUSTER_NAME="$(out cluster_name)"
-    EXE_NODE_POOL="$(out node_pool_name)"
-    EXE_NODE_POOL_SET_SIZE_URI="$(out node_pool_set_size_uri)"
-    EXE_OPS_BUCKET="$(out bucket_ops)"
-    GOOGLE_OAUTH_ACCESS_TOKEN="$(mise x -- gcloud auth print-access-token)"
-    export EXE_PROJECT_ID EXE_ZONE EXE_CLUSTER_NAME EXE_NODE_POOL EXE_NODE_POOL_SET_SIZE_URI EXE_OPS_BUCKET GOOGLE_OAUTH_ACCESS_TOKEN
-    cd ../../tools/exe-reaper
-    exec mise x -- go run . {{ args }}
-
-# --- work in AX tasks: ax-job / ax-exec (exe/scripts) ------------------------
-#
-# The operator's way to run a command in a task (plan D12). Both check the
-# lease with `exe-reaper may-start` before they start anything and again right
-# before the launch, and run the command detached in the task, following it
-# with short `ax ssh` polls. Every word after the recipe name reaches the
-# wrapper as its own argument, so quote the command as you would for ssh:
-#   just exe-ax-job --image <exe-task>/task:<tag>@sha256:<digest> -- sh -c 'make test'
-# Needs the kubeconfig from `just exe-ctx` and a node up (`just exe-wake`).
-
-# Run one command in a fresh task, then delete it: --image (digest-pinned in
-# exe-task) [--name N] [--timeout 30m] [--claude] -- CMD...
-[group('Exe')]
-[positional-arguments]
-exe-ax-job *args:
-    @just _exe-ax ax-job "$@"
-
-# Run one command in an existing task, resuming it if Suspended and
-# suspending it again afterwards: NAME [--timeout 30m] [--claude] -- CMD...
-[group('Exe')]
-[positional-arguments]
-exe-ax-exec *args:
-    @just _exe-ax ax-exec "$@"
-
-# The wrappers' environment: identifiers from `tofu output` (never from the
-# repo), the operator's token for may-start, and exe-reaper built into a fresh
-# temp dir rather than the module (M32).
-[positional-arguments]
-_exe-ax tool *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    tool="$1"
-    shift
-    repo="$(pwd)"
-    KUBECONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/exe/kubeconfig"
-    if [ ! -f "$KUBECONFIG" ]; then
-        echo "no kubeconfig at $KUBECONFIG: run just exe-ctx first" >&2
-        exit 1
-    fi
-    cd {{ _EXE_PLATFORM_DIR }}
-    out() { just _tofu-out exe-platform "$1"; }
-    EXE_PROJECT_ID="$(out project_id)"
-    EXE_OPS_BUCKET="$(out bucket_ops)"
-    EXE_AR_TASK_REPO="$(out ar_task_repo)"
-    EXE_CLAUDE_SECRET="$(out claude_token_secret)"
-    GOOGLE_OAUTH_ACCESS_TOKEN="$(mise x -- gcloud auth print-access-token)"
-    export KUBECONFIG EXE_PROJECT_ID EXE_OPS_BUCKET EXE_AR_TASK_REPO EXE_CLAUDE_SECRET GOOGLE_OAUTH_ACCESS_TOKEN
-    bin="$(mktemp -d)"
-    (cd "$repo/tools/exe-reaper" && mise x -- go build -o "$bin/exe-reaper" .)
-    rc=0
-    PATH="$bin:$PATH" mise x -- bash "$repo/exe/scripts/$tool" "$@" || rc=$?
-    rm -f "$bin/exe-reaper"
-    rmdir "$bin"
-    exit "$rc"
-
-# The live end-to-end tests of the stop paths (plan D13; tests/e2e/exe/README.md).
-# They wake the node, run tasks and stop the pool: they cost node time, and every
-# one leaves 0 nodes. EXE_E2E_IMAGE is the task image, pinned by digest (`just
-# exe-image` prints one). Name a test file to run just it; the forced stop (W3)
-# also needs EXE_E2E_FORCED=1.
-[group('Exe')]
-[positional-arguments]
-exe-e2e *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    : "${EXE_E2E_IMAGE:?EXE_E2E_IMAGE must be a task image pinned by digest (just exe-image prints one)}"
-    export KUBECONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/exe/kubeconfig"
-    if [ ! -f "$KUBECONFIG" ]; then
-        echo "no kubeconfig at $KUBECONFIG: run just exe-ctx first" >&2
-        exit 1
-    fi
-    # The whole suite only when nothing is named: a path runs only that path.
-    if [ "$#" -eq 0 ]; then
-        set -- tests/e2e/exe
-    fi
-    EXE_E2E=1 {{ UV_RUN }} pytest -v -s -rs -p no:cacheprovider "$@"
-
-# The orphan-snapshot GC (plan D11): prefixes of actors a lost store forgot.
-# Runs `exe-reap snapshot-gc` in a one-off Job made from the suspended
-# exe-snapshot-gc CronJob, as the GC's own KSA, prints its report, and deletes
-# the Job. A dry run unless told `-apply`; `-allow <prefix>` names a prefix a
-# task without an actor holds. Needs a node up.
-[group('Exe')]
-[positional-arguments]
-exe-snapshot-gc *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    export KUBECONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/exe/kubeconfig"
-    if [ ! -f "$KUBECONFIG" ]; then
-        echo "no kubeconfig at $KUBECONFIG: run just exe-ctx first" >&2
-        exit 1
-    fi
-    if [ -z "$(kubectl get nodes -o name)" ]; then
-        echo "no node is up, and the Job would only wait Pending: just exe-wake first" >&2
-        exit 1
-    fi
-    ns="$(kubectl get cronjobs -A -l app.kubernetes.io/name=exe-snapshot-gc -o jsonpath='{.items[0].metadata.namespace}')"
-    if [ -z "$ns" ]; then
-        echo "no exe-snapshot-gc CronJob: apply tofu/exe-cluster first" >&2
-        exit 1
-    fi
-    job="exe-snapshot-gc-$(date +%s)"
-    trap 'kubectl -n "$ns" delete job "$job" --ignore-not-found --wait=false >/dev/null' EXIT
-    # The Job is this recipe's, not the CronJob's: `--from` makes the CronJob
-    # its owner, and with a history limit of 0 its controller deletes the
-    # finished Job, and the report with it, before it can be read. `--` keeps
-    # jq from reading -apply and -allow as its own options.
-    kubectl -n "$ns" create job "$job" --from=cronjob/exe-snapshot-gc --dry-run=client -o json |
-        jq 'del(.metadata.ownerReferences) | .spec.template.spec.containers[0].args += $ARGS.positional' --args -- "$@" |
-        kubectl -n "$ns" create -f - >/dev/null
-    echo "job $job started; waiting for it (at most 15 min)" >&2
-    for _ in $(seq 1 180); do
-        status="$(kubectl -n "$ns" get job "$job" -o jsonpath='{.status.succeeded}/{.status.failed}')" || {
-            echo "job $job is gone before it finished" >&2
-            exit 1
-        }
-        case "$status" in
-        1/* | */1) break ;;
-        esac
-        sleep 5
-    done
-    kubectl -n "$ns" logs "job/$job"
-    [ "$(kubectl -n "$ns" get job "$job" -o jsonpath='{.status.succeeded}')" = 1 ]
-
-# --- L2: the enforcer image and an on-demand run ----------------------------
-
-# Build exe-reaper with ko and push it to the exe-platform registry (linux/amd64,
-# no SBOM, tagged with the commit). Prints the digest-pinned ref, which is the
-# enforcer_image value that deploys L2 (gitignored terraform.tfvars, or `-var` on
-# the plan). Writes to the private registry only; its cleanup policy bounds how
-# many versions stay.
-[group('Exe')]
-exe-reaper-image:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd {{ _EXE_PLATFORM_DIR }}
-    repo="$(just _tofu-out exe-platform ar_platform_repo)"
-    tag="$(git rev-parse --short=12 HEAD)"
-    cd ../../tools/exe-reaper
-    KO_DOCKER_REPO="${repo}/exe-reaper" mise exec aqua:ko-build/ko -- \
-        ko build --bare --platform=linux/amd64 --sbom=none --tags="${tag}" .
-
-# Run one L2 enforcement pass now, as the job itself (its own identity and env),
-# and wait for it. The tick only reports that an execution was CREATED; this is
-# where a failed pass shows up.
-[group('Exe')]
-exe-l2-run:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd {{ _EXE_PLATFORM_DIR }}
-    job="$(just _tofu-out exe-platform l2_enforcer_job)"
-    if [ "$job" = "null" ]; then
-        echo "L2 is not deployed (enforcer_image is empty)." >&2
-        exit 1
-    fi
-    project="$(just _tofu-out exe-platform project_id)"
-    region="$(just _tofu-out exe-platform region)"
-    mise x -- gcloud run jobs execute "$(just _tofu-out exe-platform l2_enforcer_job)" \
-        --region "$region" --project "$project" --wait
-
-# One output of an exe stack, read with retries. `tofu output` can race a state
-# write and read an intermediate snapshot with no outputs; it then prints a
-# warning on stdout and exits 0, which a caller would take for the value (seen
-# on 2026-09-27). So the whole output set is read as JSON and only a non-empty
-# object counts; a missing NAME in a non-empty set fails at once. Strings print
-# raw, anything else (null included) as JSON.
-_tofu-out stack name:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{ justfile_directory() }}/tofu/{{ stack }}"
-    for attempt in 1 2 3 4; do
-      if json="$(mise x -- tofu output -json 2>/dev/null)"; then
-        set +e
-        value="$(printf '%s' "$json" | python3 -c '
-    import json, sys
-    try:
-        outputs = json.load(sys.stdin)
-    except ValueError:
-        sys.exit(3)
-    if not isinstance(outputs, dict) or not outputs:
-        sys.exit(3)
-    if sys.argv[1] not in outputs:
-        sys.exit(4)
-    value = outputs[sys.argv[1]]["value"]
-    print(value if isinstance(value, str) else json.dumps(value))
-    ' "{{ name }}")"
-        status=$?
-        set -e
-        case "$status" in
-          0) printf '%s\n' "$value"; exit 0 ;;
-          4) echo "tofu/{{ stack }} has no output {{ name }}" >&2; exit 1 ;;
-        esac
-      fi
-      sleep "$attempt"
-    done
-    echo "tofu/{{ stack }}: outputs unreadable after 4 tries" >&2
-    exit 1
-
-# ==============================================================================
-# exe-cluster — everything inside the cluster (tofu/exe-cluster): the Substrate
-# store, Agent Substrate via its pinned installer, the gVisor SandboxConfig and
-# mirror, AX, the WorkerPool.
-#
-# Its state is ENCRYPTED (gcp_kms, exe-platform's state key): tfvars carries
-# state_kms_key. The upstream checkouts it builds from are fetched and verified
-# by exe-cluster-src into a local cache, never into the repo.
-#
-# APPLY IS THE OPERATOR'S, and an apply that (re)runs the Substrate install
-# needs a node up under a lease (`just exe-wake`).
-# ==============================================================================
-
-_EXE_CLUSTER_DIR := "tofu/exe-cluster"
-_EXE_SRC_DIR := env("XDG_CACHE_HOME", home_directory() + "/.cache") + "/exe/src"
-
-# Fetch the pinned ax and Agent Substrate checkouts (exe/versions.json) into the
-# local cache, and verify each is at its pinned commit. Idempotent.
-[group('Exe')]
-exe-cluster-src:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    src="{{ _EXE_SRC_DIR }}"
-    mkdir -p "$src"
-    pin() { python3 -c 'import json, sys; print(json.load(open("exe/versions.json"))[sys.argv[1]][sys.argv[2]])' "$1" "$2"; }
-    for name in ax substrate; do
-      repo="https://$(pin "$name" repo)"
-      sha="$(pin "$name" sha)"
-      dir="$src/$name"
-      if [ ! -d "$dir/.git" ]; then
-        git init --quiet "$dir"
-        git -C "$dir" remote add origin "$repo"
-      fi
-      if [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null || true)" != "$sha" ]; then
-        git -C "$dir" fetch --quiet --depth 1 origin "$sha"
-        git -C "$dir" checkout --quiet --detach FETCH_HEAD
-      fi
-      head="$(git -C "$dir" rev-parse HEAD)"
-      if [ "$head" != "$sha" ]; then
-        echo "exe-cluster-src: $dir is at $head, want $sha" >&2
-        exit 1
-      fi
-      echo "✅ $name at $sha ($dir)"
-    done
-    # The Substrate pin may be ax's go.mod pseudo-version; hold the recorded
-    # requirement to the go.mod actually fetched (fails closed).
-    python3 scripts/check_exe_pins.py ax-gomod "$src/ax/go.mod"
-
-# tofu in the exe-cluster stack, with the private project as the quota project.
-# The state key's KMS calls (and the backend's) run on the operator's user ADC,
-# which bills requests to whatever project gcloud defaults to, and that project
-# need not have KMS enabled; GOOGLE_CLOUD_QUOTA_PROJECT pins it to the project
-# the key lives in, read from the gitignored terraform.tfvars.
-_exe-cluster-tofu *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{ justfile_directory() }}/{{ _EXE_CLUSTER_DIR }}"
-    if [ -f terraform.tfvars ]; then
-      GOOGLE_CLOUD_QUOTA_PROJECT="$(python3 -c 'import re; print(re.search(r"(?m)^gcp_project_id\s*=\s*\"([^\"]+)\"", open("terraform.tfvars").read()).group(1))')"
-      export GOOGLE_CLOUD_QUOTA_PROJECT
-    fi
-    exec mise x -- tofu {{ args }}
-
-# Initialise the backend (the platform's state bucket, prefix exe-cluster) from
-# the gitignored partial config. The state key comes from terraform.tfvars.
-[group('Exe')]
-exe-cluster-init *args:
-    @just _exe-cluster-tofu init -input=false -backend-config=backend.hcl {{ args }}
-
-# Offline invariant tests (plan + mock providers, no credentials, no network).
-[group('Exe')]
-exe-cluster-test *args:
-    cd {{ _EXE_CLUSTER_DIR }} && mise x -- tofu test {{ args }}
-
-[group('Exe')]
-exe-cluster-validate:
-    cd {{ _EXE_CLUSTER_DIR }} && mise x -- tofu fmt -check -recursive . && mise x -- tofu validate
-
-# Write an ENCRYPTED saved plan for the operator to apply. ko_build rebuilds the
-# AX images locally on every plan, so the checkouts must be in place first. The
-# plan holds no cluster credential (the providers mint a token at apply time),
-# so it stays applicable until the state changes; before 2026-09-27 it carried
-# a one-hour token and expired with it.
-[group('Exe')]
-exe-cluster-plan *args: exe-cluster-src
-    @TF_VAR_exe_src_dir="{{ _EXE_SRC_DIR }}" just _exe-cluster-tofu plan -input=false -out=exe-cluster.tfplan {{ args }}
-    @echo '📋 saved plan: {{ _EXE_CLUSTER_DIR }}/exe-cluster.tfplan (encrypted, gitignored)'
-
-# Summarise the saved plan by address (`--expect-changes FILE` holds it to a
-# reviewed change list; FILE is relative to the stack directory).
-[group('Exe')]
-exe-cluster-plan-summary *args:
-    @just _exe-cluster-tofu show -json exe-cluster.tfplan | (cd {{ _EXE_CLUSTER_DIR }} && {{ UV_RUN }} ../../scripts/summarize_tofu_plan.py {{ args }})
-
-# OPERATOR ONLY. Applies the saved plan. Its terraform_data steps run here: the
-# gVisor mirror copy, the Substrate install (ko builds + rollout waits; needs a
-# node up), and the WorkerPool guard.
-[group('Exe')]
-exe-cluster-apply:
-    @just _exe-cluster-tofu apply -input=false exe-cluster.tfplan
-
-# Run after the exe-cluster destroy, which prints this command with its
-# arguments (terraform_data.substrate_teardown_reminder): upstream's own
-# `ate-setup delete ate-system` from the exact commit that installed it (SHA
-# and VERSION are that install's substrate.sha and substrate.version, from
-# exe/versions.json's git history -- not the current pin), then the
-# podcertificate ClusterTrustBundles the controller publishes at runtime,
-# which no manifest owns. Prints what went and fails if any of it is still
-# there. The delete ignores objects that are already gone, so a rerun is
-# harmless.
-# OPERATOR ONLY. Remove what a Substrate install created outside tofu state.
-[group('Exe')]
-exe-substrate-teardown sha version:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if ! printf '%s' "{{ sha }}" | grep -Eq '^[0-9a-f]{40}$'; then
-      echo "exe-substrate-teardown: SHA must be the full 40-hex commit" >&2
-      exit 1
-    fi
-    repo="https://$(python3 -c 'import json; print(json.load(open("exe/versions.json"))["substrate"]["repo"])')"
-    project="$(just _tofu-out exe-platform project_id)"
-    cluster="$(just _tofu-out exe-platform cluster_name)"
-    zone="$(just _tofu-out exe-platform zone)"
-    ar="$(just _tofu-out exe-platform ar_platform_repo)"
-    work="$(mktemp -d)"
-    trap 'rm -rf "$work"' EXIT
-    git init --quiet "$work/substrate"
-    git -C "$work/substrate" remote add origin "$repo"
-    git -C "$work/substrate" fetch --quiet --depth 1 origin "{{ sha }}"
-    git -C "$work/substrate" checkout --quiet --detach FETCH_HEAD
-    if [ "$(git -C "$work/substrate" rev-parse HEAD)" != "{{ sha }}" ]; then
-      echo "exe-substrate-teardown: fetched $(git -C "$work/substrate" rev-parse HEAD), want {{ sha }}" >&2
-      exit 1
-    fi
-    export KUBECONFIG="$work/kubeconfig"
-    mise x -- gcloud container clusters get-credentials "$cluster" \
-        --zone "$zone" --project "$project" --dns-endpoint >/dev/null 2>&1
-    context="$(kubectl config current-context)"
-    signers='podidentity.podcert.ate.dev/identity|servicedns.podcert.ate.dev/identity'
-    inventory() {
-      kubectl get namespaces -o name | grep -E '/(ate-system|podcertificate-controller-system)$' || true
-      kubectl get customresourcedefinitions -o name | grep -E '\.ate\.dev$' || true
-      kubectl get clustertrustbundles.certificates.k8s.io \
-          -o custom-columns='N:.metadata.name,S:.spec.signerName' --no-headers |
-        awk -v s="$signers" '$2 ~ "^(" s ")$" {print "clustertrustbundle/" $1}'
-    }
-    inventory | sort > "$work/before"
-    (cd "$work/substrate" &&
-      KO_DOCKER_REPO="$ar/substrate" KO_DEFAULTPLATFORMS=linux/amd64 VERSION="{{ version }}" NO_DEV_ENV=1 \
-      PROJECT_ID="$project" CLUSTER_NAME="$cluster" CLUSTER_LOCATION="$zone" \
-      mise x -- go run ./cmd/ate-setup --kubeconfig "$KUBECONFIG" --context "$context" --no-dev-env \
-        delete ate-system)
-    kubectl get clustertrustbundles.certificates.k8s.io \
-        -o custom-columns='N:.metadata.name,S:.spec.signerName' --no-headers |
-      awk -v s="$signers" '$2 ~ "^(" s ")$" {print $1}' |
-      while read -r bundle; do kubectl delete clustertrustbundles.certificates.k8s.io "$bundle"; done
-    # Namespace and CRD deletion finish asynchronously; wait before judging.
-    while read -r object; do
-      kubectl wait --for=delete "$object" --timeout=5m >/dev/null 2>&1 || true
-    done < "$work/before"
-    inventory | sort > "$work/after"
-    echo "exe-substrate-teardown: removed (Substrate {{ version }} at {{ sha }}):"
-    comm -23 "$work/before" "$work/after" | sed 's/^/  - /'
-    if [ -s "$work/after" ]; then
-      echo "exe-substrate-teardown: still present:" >&2
-      sed 's/^/  - /' "$work/after" >&2
-      exit 1
-    fi
-
-# Build and push the Substrate worker images with upstream's own
-# `ate-setup publish worker-images`, from the pinned checkout. Prints their
-# digest refs; the gVisor one is the exe-cluster `ateom_gvisor_image` tfvars
-# value. Writes to the private registry only.
-[group('Exe')]
-exe-worker-images: exe-cluster-src
-    #!/usr/bin/env bash
-    set -euo pipefail
-    repo="$(just _tofu-out exe-platform ar_platform_repo)"
-    version="$(python3 -c 'import json; print(json.load(open("exe/versions.json"))["substrate"]["version_label_value"])')"
-    cd "{{ _EXE_SRC_DIR }}/substrate"
-    KO_DOCKER_REPO="${repo}/substrate" KO_DEFAULTPLATFORMS=linux/amd64 VERSION="$version" NO_DEV_ENV=1 \
-        mise x -- go run ./cmd/ate-setup --no-dev-env publish worker-images
-
-# Build and push the task image (docker/exe-task.Dockerfile) with Cloud Build in
-# the private project: default pool, the exe-build service account, source
-# staged in the 7-day exe-build bucket, logs to Cloud Logging only. The context
-# is staged here: the Dockerfile, ax-task-runner cross-compiled from the pinned
-# ax checkout, and its bootstrap script; the tag is the context's content hash.
-# After the push it reads the manifest back, refuses anything but linux/amd64,
-# and prints the digest ref a Task's spec.image takes.
-[group('Exe')]
-exe-image: exe-cluster-src
-    #!/usr/bin/env bash
-    set -euo pipefail
-    project="$(just _tofu-out exe-platform project_id)"
-    region="$(just _tofu-out exe-platform region)"
-    repo="$(just _tofu-out exe-platform ar_task_repo)"
-    bucket="$(just _tofu-out exe-platform bucket_build)"
-    sa="$(just _tofu-out exe-platform service_account_emails | python3 -c 'import json, sys; print(json.load(sys.stdin)["build"])')"
-    work="$(mktemp -d)"
-    trap 'rm -rf "$work"' EXIT
-    mkdir "$work/context"
-    cp docker/exe-task.Dockerfile "$work/context/Dockerfile"
-    cp "{{ _EXE_SRC_DIR }}/ax/cmd/ax-task-runner/antigravity_bootstrap.py" "$work/context/"
-    (cd "{{ _EXE_SRC_DIR }}/ax" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-        mise x -- go build -trimpath -ldflags="-s -w" -o "$work/context/ax-task-runner" ./cmd/ax-task-runner)
-    hash="$(cd "$work/context" && shasum -a 256 Dockerfile ax-task-runner antigravity_bootstrap.py | shasum -a 256 | cut -c1-16)"
-    tag="${repo}/task:${hash}"
-    mise x -- gcloud builds submit "$work/context" --project "$project" --region "$region" \
-        --config exe/ax/cloudbuild.yaml --substitutions "_IMAGE=${tag}" \
-        --gcs-source-staging-dir "gs://${bucket}/source" \
-        --service-account "projects/${project}/serviceAccounts/${sa}"
-    digest="$(mise x -- gcloud artifacts docker images describe "$tag" --project "$project" \
-        --format='value(image_summary.digest)')"
-    case "$digest" in
-      sha256:*) ;;
-      *) echo "exe-image: no sha256 digest for ${tag}: '${digest}'" >&2; exit 1 ;;
-    esac
-    host="${repo%%/*}"
-    path="${repo#*/}/task"
-    token="$(mise x -- gcloud auth print-access-token)"
-    registry() { curl -fsSL -H "Authorization: Bearer ${token}" -H "Accept: $2" "https://${host}/v2/${path}/$1"; }
-    manifest_types='application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
-    config="$(registry "manifests/${digest}" "$manifest_types" |
-        python3 -c 'import json, sys; print(json.load(sys.stdin)["config"]["digest"])')"
-    platform="$(registry "blobs/${config}" '*/*' |
-        python3 -c 'import json, sys; c = json.load(sys.stdin); print(c["os"] + "/" + c["architecture"])')"
-    if [ "$platform" != "linux/amd64" ]; then
-      echo "exe-image: ${tag}@${digest} is ${platform}, not linux/amd64" >&2
-      exit 1
-    fi
-    echo "${tag}@${digest}"
-
-# Build and push a MINIMAL task image for the Phase 4 spike: upstream's
-# ax-task-runner at /usr/local/bin (where AX runs it) over the runner's
-# alpine/git base from exe/ax/.ko.yaml (pinned by digest), nothing else. See
-# exe/ax/spike-task.Dockerfile for why this is not a ko build. The real task
-# image, with the agent CLIs, is Phase 5's `just exe-image`. Prints the digest
-# ref a Task's spec.image takes.
-[group('Exe')]
-exe-spike-task-image: exe-cluster-src
-    #!/usr/bin/env bash
-    set -euo pipefail
-    repo="$(just _tofu-out exe-platform ar_task_repo)"
-    project="$(just _tofu-out exe-platform project_id)"
-    base="$(sed -n 's#^ *github.com/google/ax/cmd/ax-task-runner: *##p' exe/ax/.ko.yaml)"
-    case "$base" in
-      *@sha256:*) ;;
-      *) echo "exe-spike-task-image: no digest-pinned runner base in exe/ax/.ko.yaml" >&2; exit 1 ;;
-    esac
-    work="$(mktemp -d)"
-    trap 'rm -rf "$work"' EXIT
-    cp exe/ax/spike-task.Dockerfile "$work/Dockerfile"
-    cd "{{ _EXE_SRC_DIR }}/ax"
-    tag="${repo}/spike-task-runner:$(git rev-parse --short=12 HEAD)"
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 mise x -- go build -trimpath -ldflags="-s -w" \
-        -o "$work/ax-task-runner" ./cmd/ax-task-runner
-    # --push: a docker-container buildx builder keeps its result in the build
-    # cache only, so a separate `docker push` would find no image to push.
-    docker buildx build --platform linux/amd64 --build-arg BASE_IMAGE="$base" -t "$tag" --push "$work"
-    digest="$(mise x -- gcloud artifacts docker images describe "$tag" --project "$project" \
-        --format='value(image_summary.digest)')"
-    echo "${tag}@${digest}"
-
-# Build the TF_ENCRYPTION HCL payload from the local passphrase.
-# State + plan encrypted with pbkdf2 + aes_gcm, enforced (no fallback).
-# Mirrors the static block in tofu/exe/main.tf. HCL form (NOT JSON);
-# JSON parsing is ambiguous in 1.11.
-_exe-encryption:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    pass=$(cat "${HOME}/.config/tofu/exe.passphrase")
+    pass=$(cat "${HOME}/.config/tofu/tailnet.passphrase")
     cat <<EOF
     key_provider "pbkdf2" "default" {
       passphrase = "${pass}"
@@ -2353,207 +1643,51 @@ _exe-encryption:
     }
     EOF
 
-# tofu init for the exe stack. (init talks only to the GCS backend
-# and the provider registry; CF / TS API tokens are not required yet.)
-[group('Exe')]
-exe-init:
+_tailnet-tofu *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu init
+    cd "{{ justfile_directory() }}/{{ _TAILNET_DIR }}"
+    TF_ENCRYPTION="$(just _tailnet-encryption)"
+    export TF_ENCRYPTION
+    exec mise x -- tofu {{ args }}
 
-# tofu plan against the live state.
-[group('Exe')]
-exe-plan:
+# Initialise the backend. Bucket and prefix are spelled out in main.tf: both
+# are public values, and a partial config could start a second, empty state.
+[group('Tailnet')]
+tailnet-init *args:
+    @just _tailnet-tofu init -input=false {{ args }}
+
+# Offline invariant tests (plan + a mock provider, no credentials, no network).
+[group('Tailnet')]
+tailnet-test *args:
+    cd {{ _TAILNET_DIR }} && mise x -- tofu test {{ args }}
+
+# Needs a Tailscale API key (TAILSCALE_API_KEY) or an OAuth client
+# (TAILSCALE_OAUTH_CLIENT_ID and _SECRET), the old personal project's ADC for
+# the state bucket, and ~/.config/tofu/tailnet.passphrase.
+# Plan against the live tailnet, saved for review.
+[group('Tailnet')]
+tailnet-plan *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu plan
+    if [ -z "${TAILSCALE_API_KEY:-}" ] && [ -z "${TAILSCALE_OAUTH_CLIENT_ID:-}" ]; then
+      echo "tailnet-plan: set TAILSCALE_API_KEY, or TAILSCALE_OAUTH_CLIENT_ID and TAILSCALE_OAUTH_CLIENT_SECRET" >&2
+      exit 1
+    fi
+    just _tailnet-tofu plan -input=false -out=tailnet.tfplan {{ args }}
+    echo '📋 saved plan: {{ _TAILNET_DIR }}/tailnet.tfplan (encrypted, gitignored)'
 
-# tofu apply (interactive — full plan).
-[group('Exe')]
-exe-apply:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply
+# `--expect-changes FILE` (relative to the stack directory) holds the plan to
+# a reviewed change list.
+# Summarise the saved plan by address.
+[group('Tailnet')]
+tailnet-plan-summary *args:
+    @just _tailnet-tofu show -json tailnet.tfplan | (cd {{ _TAILNET_DIR }} && {{ UV_RUN }} ../../scripts/summarize_tofu_plan.py {{ args }})
 
-# The Tailscale slice of the exe stack (tailscale.tf): the ACL bind, the
-# rotation clock, the three auth keys, and their Secret Manager containers/
-# versions. One place so plan and apply cannot drift.
-_exe_tailscale_targets := "-target=tailscale_acl.this -target=time_rotating.tailscale_keys -target=tailscale_tailnet_key.exe_coder -target=tailscale_tailnet_key.exe_workspace -target=tailscale_tailnet_key.agent -target=google_secret_manager_secret.exe_coder_authkey -target=google_secret_manager_secret.exe_workspace_authkey -target=google_secret_manager_secret.agent_authkey -target=google_secret_manager_secret_version.exe_coder_authkey -target=google_secret_manager_secret_version.exe_workspace_authkey -target=google_secret_manager_secret_version.agent_authkey"
-
-# Use case: pushing an acl.hujson change without touching the VM/tunnel.
-# The targeted refresh never configures the cloudflare provider, so only
-# the Tailscale token is required; expect tofu's "targeted plan" notice.
-# Targeted plan of ONLY the Tailscale slice (ACL + keys + their secrets).
-[group('Exe')]
-exe-plan-tailscale:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu plan {{ _exe_tailscale_targets }}
-
-# Targeted apply of ONLY the Tailscale slice (interactive; same target set as the plan).
-[group('Exe')]
-exe-apply-tailscale:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply {{ _exe_tailscale_targets }}
-
-# The mothball transition slice (ADR 0034): Cloud SQL activation, AR
-# retention, uptime check + alert. All four are google-provider-only,
-# so no Cloudflare/Tailscale token is needed (same targeted-refresh
-# reasoning as exe-plan-tailscale). Shared between plan and apply so
-# they cannot drift.
-_exe_mothball_targets := "-target=google_sql_database_instance.coder -target=google_artifact_registry_repository.dotfiles -target=google_monitoring_uptime_check_config.exe_coder_healthz -target=google_monitoring_alert_policy.exe_coder_healthz_down"
-
-# Targeted plan of the mothball slice, written to a plan file so what
-# was reviewed is exactly what exe-apply-mothball applies.
-[group('Exe')]
-exe-plan-mothball:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu plan {{ _exe_mothball_targets }} -out=mothball.tfplan
-
-# Apply the saved mothball plan file (run exe-plan-mothball first).
-[group('Exe')]
-exe-apply-mothball:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply mothball.tfplan
-
-# Wake step 1: start Cloud SQL alone (targeted). While the instance is
-# stopped, a full refresh may 400 on google_sql_user reads, so the wake
-# order is: set stack_mode = "active" in tfvars -> exe-apply-wake ->
-# full `just exe-apply` (needs CF/TS tokens) for the VM + monitoring.
-[group('Exe')]
-exe-apply-wake:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply -target=google_sql_database_instance.coder
-
-# Common targets:
-#   just exe-replace 'google_compute_instance.exe_coder[0]'
-#     # re-run startup-script after VM image / metadata changes (the
-#     # [0] index is required: an unindexed -replace on a counted
-#     # resource is a silent no-op, and the quotes stop shell globbing)
-#   just exe-replace time_rotating.tailscale_keys
-#     # force-rotate Tailscale auth keys
-#   just exe-replace random_id.tunnel_secret
-#     # rotate cloudflared tunnel credentials
-# Force-replace one resource via tofu apply -replace=<target>.
-[group('Exe')]
-exe-replace target:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu apply -replace={{ target }}
-
-# tofu destroy of the VM only (keeps tunnel/secrets; cheap recreate).
-[group('Exe')]
-exe-down:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu destroy \
-      -target='google_compute_instance.exe_coder[0]'
-
-# tofu destroy of every resource (VM, net, secrets, tunnel, DNS, Access).
-[group('Exe')]
-exe-down-all:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN before running}"
-    : "${TAILSCALE_API_KEY:?set TAILSCALE_API_KEY before running}"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu destroy
-
-# tofu fmt -check + provider-only init + validate. No state access; safe.
-[group('Exe')]
-exe-validate:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    cd tofu/exe
-    tofu fmt -check -diff
-    tofu init -backend=false -input=false >/dev/null
-    tofu validate
-
-# tofu output (JSON for scripts).
-[group('Exe')]
-exe-output *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    eval "$(mise activate bash)"
-    export TF_ENCRYPTION="$(just _exe-encryption)"
-    cd tofu/exe && tofu output {{ args }}
-
-# Post-deploy smoke checks (DNS, Access gate, VM state, secrets).
-[group('Exe')]
-exe-smoke:
-    @bash exe/scripts/smoke.sh
-
-# Staged destroy: stage=vm (default) | stack | nuke.
-[group('Exe')]
-exe-teardown stage="vm":
-    @bash exe/scripts/teardown.sh {{ stage }}
-
-# Run the startup-script e2e tests inside the Ubuntu 24.04 container.
-# Catches keyring-path / installer-flag / 404 / dash-HOME / non-root
-# postgres regressions BEFORE 'just exe-apply' burns 10 minutes on cloud.
-[group('Exe')]
-exe-test:
-    uvx --with pytest pytest -v -m exe tests/exe/
-
-# Symlink exe/scripts/cdr and cdr-header into ~/.local/bin.
-#   cdr        : Coder CLI wrapper, injects CF Access service-token headers
-#   cdr-header : same headers in 'key=value\n' form for the Coder VS Code
-#                extension's 'Coder: Header Command' setting
-[group('Exe')]
-exe-cdr-install:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    mkdir -p "${HOME}/.local/bin"
-    for name in cdr cdr-header cdr-job cdr-exec cdr-project; do
-      src="$(pwd)/exe/scripts/$name"
-      dst="${HOME}/.local/bin/$name"
-      ln -sf "$src" "$dst"
-      echo "✓ symlinked: $dst -> $src"
-    done
-    case ":$PATH:" in
-      *":${HOME}/.local/bin:"*) ;;
-      *) echo "  hint: add ${HOME}/.local/bin to PATH (e.g. in ~/.zshrc)" ;;
-    esac
-    echo "  first use:"
-    echo "    cdr login https://exe.hironow.dev --token <CODER_API_TOKEN>"
-    echo "    VS Code -> Settings -> Coder: Header Command ->"
-    echo "      ${HOME}/.local/bin/cdr-header"
+# OPERATOR ONLY. Applies the saved plan.
+[group('Tailnet')]
+tailnet-apply:
+    @just _tailnet-tofu apply -input=false tailnet.tfplan
 
 # ------------------------------
 # Emulator (emulator/) — vendored local emulator stack

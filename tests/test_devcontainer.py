@@ -317,7 +317,8 @@ REQUIRED_TOOLS = (
     ("sheldon", "--version"),
     ("shellcheck", "--version"),
     ("jq", "--version"),
-    # quint: `just check` ends in `just spec-check`, the formal-methods gate.
+    # quint: the formal-methods gate's checker, base tooling for any repo
+    # opened in this image (dotfiles itself no longer carries a model).
     ("quint", "--version"),
     # node runtime pinned in mise.toml. Required by the 4 npm-
     # backed AI CLIs below; their `#!/usr/bin/env node` shebang
@@ -354,7 +355,7 @@ def test_image_provides_tool(saved_image: str, tool: str, flag: str) -> None:
 
 
 def test_image_runs_a_quint_simulation_offline(saved_image: str) -> None:
-    """`just spec-check` runs `quint run` and `quint test`, which execute on
+    """The formal-methods gate runs `quint run` and `quint test`, which execute on
     quint's Rust evaluator. quint downloads that evaluator on first use, and
     its Linux release binaries need a newer glibc than bookworm's, so
     install.sh builds it from source into $QUINT_HOME. A simulation with no

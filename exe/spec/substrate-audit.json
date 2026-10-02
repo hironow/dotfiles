@@ -1,8 +1,0 @@
-{
-  "_what": "The Substrate commit at which every actor write path was audited for the task TTL's clock (exe/spec/README.md, the retention.qnt section: nothing writes a SUSPENDED actor's row in the background, so update_time only moves when someone suspends, resumes, pauses or deletes it). scripts/check_exe_pins.py fails while exe/versions.json pins any other commit: redo the audit at the new commit, update the README's list, then move this SHA. retention.qnt's backgroundWriteRefreshes shows what a background writer would do to the TTL. on_repin lists what else this commit could not settle, which the gate repeats on a repin.",
-  "sha": "672533541dbfcd29084e4de2475267088bda3651",
-  "audit": "exe/spec/README.md",
-  "on_repin": [
-    "Plan F5's residual: this Substrate cannot deny an actor's egress CONNECT to a cluster service. atenet-egress routes every CONNECT to a dynamic forward proxy (manifests/ate-install/atenet-egress.yaml, the connect_route), and its ext_proc egress handler authenticates the actor but never looks at the destination (cmd/atenet/internal/router/egress/egress.go:94-142). A NetworkPolicy cannot tell the gateway's forwarded traffic from its own sidecar's Control API calls, since both leave the same pod. If the new Substrate offers default-deny egress for cluster services, enable it, then re-run tests/e2e/exe/test_control_api_barrier.py."
-  ]
-}

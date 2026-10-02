@@ -1,0 +1,27 @@
+# This stack's state holds the tailnet's whole authorization model, and its
+# saved plans hold the same text. Nothing here may be tracked.
+#
+# scripts/check_forbidden_tokens.py is the second wall: it refuses to stage
+# *.tfplan / *.tfstate* / terraform.tfvars / backend.hcl outright, because their
+# content cannot be reviewed. This file is the first wall.
+
+# Variable values (no HCL variable here carries a default, so this is required)
+terraform.tfvars
+*.auto.tfvars
+!terraform.tfvars.example
+
+# The backend is spelled out in main.tf, so there is no partial config to keep.
+# These stay ignored anyway: a stray one would silently point the stack at
+# another bucket.
+backend.hcl
+*.tfbackend
+
+# Saved plans and any state that ever lands locally
+*.tfplan
+*.tfstate
+*.tfstate.*
+
+# Provider plugins and lock-adjacent working files
+.terraform/
+crash.log
+crash.*.log

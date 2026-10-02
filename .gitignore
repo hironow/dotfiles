@@ -37,14 +37,12 @@ terraform.tfstate.backup
 # `git status` after every `mise install`.
 mise.lock
 
-# exe.hironow.dev — local secrets / generated runtime files
-# (real values live in GCP Secret Manager; never commit plaintext)
+# exe — local secrets / generated runtime files
+# (real values live in GCP Secret Manager; never commit plaintext).
+# The retired Coder stack's own entries (its cloudflared cert and credentials,
+# its tailscale authkey, tofu/exe's tfvars) went with the stack; each stack's
+# .gitignore covers its own.
 exe/**/*.local.*
-exe/cloudflared/cert.pem
-exe/cloudflared/*.json
-exe/tailscale/*.authkey
-tofu/exe/terraform.tfvars
-tofu/exe/*.auto.tfvars
 
 # Cargo
 /target/
@@ -103,15 +101,6 @@ __pycache__/
 # glob, which would also swallow legitimately named files elsewhere.
 tools/simple-server/simple-server
 tools/simple-server/simple-server.exe
-# tools/exe-reaper builds two binaries: exe-reaper (the module root) and
-# exe-reap (cmd/exe-reap), either of which `go build` can drop in the module or
-# in cmd/exe-reap. Exact paths, as above.
-/tools/exe-reaper/exe-reaper
-/tools/exe-reaper/exe-reaper.exe
-/tools/exe-reaper/exe-reap
-/tools/exe-reaper/exe-reap.exe
-/tools/exe-reaper/cmd/exe-reap/exe-reap
-/tools/exe-reaper/cmd/exe-reap/exe-reap.exe
 
 # Stray `bunx skills` output. The CLI's real lock is ~/.agents/.skill-lock.json
 # in the agent home (dot-prefixed, singular); running the CLI from the repo root

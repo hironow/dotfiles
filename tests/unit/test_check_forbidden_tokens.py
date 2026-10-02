@@ -320,14 +320,14 @@ def test_a_world_readable_list_warns_but_still_enforces(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "rel",
     [
-        "tofu/exe-platform/plan.tfplan",
-        "tofu/exe-platform/terraform.tfstate",
-        "tofu/exe-platform/terraform.tfstate.backup",
-        "tofu/exe-platform/terraform.tfstate.1700000000.backup",
-        "tofu/exe-platform/terraform.tfvars",
-        "tofu/exe-platform/prod.auto.tfvars",
-        "tofu/exe-platform/backend.hcl",
-        "tofu/exe-platform/.terraform/terraform.tfstate",
+        "tofu/tailnet/plan.tfplan",
+        "tofu/tailnet/terraform.tfstate",
+        "tofu/tailnet/terraform.tfstate.backup",
+        "tofu/tailnet/terraform.tfstate.1700000000.backup",
+        "tofu/tailnet/terraform.tfvars",
+        "tofu/tailnet/prod.auto.tfvars",
+        "tofu/tailnet/backend.hcl",
+        "tofu/tailnet/.terraform/terraform.tfstate",
     ],
 )
 def test_unreviewable_paths_are_refused(tmp_path: Path, rel: str) -> None:
@@ -349,9 +349,9 @@ def test_unreviewable_refusal_does_not_need_a_token_list(tmp_path: Path) -> None
 @pytest.mark.parametrize(
     "rel",
     [
-        "tofu/exe-platform/terraform.tfvars.example",
-        "tofu/exe-platform/main.tf",
-        "tofu/exe-platform/variables.tf",
+        "tofu/tailnet/terraform.tfvars.example",
+        "tofu/tailnet/main.tf",
+        "tofu/tailnet/variables.tf",
         "docs/plan/notes.md",
     ],
 )

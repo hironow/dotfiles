@@ -45,10 +45,6 @@ OS ごとに違うのは、導入の経路だけである。
 
 - [`docs/adr/`](./docs/adr/): 設計判断の記録（ADR）
 - [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md): Jev を使った `j-cc` / `j-pi` の手順
-- [`exe/docs/architecture.md`](./exe/docs/architecture.md): exe.hironow.dev の全体図（Cloudflare、Tailscale、Coder、GCP）
-- [`exe/docs/runbook.md`](./exe/docs/runbook.md): exe.hironow.dev の運用手順
-- [`exe/coder/templates/dotfiles-devcontainer/README.md`](./exe/coder/templates/dotfiles-devcontainer/README.md): Coder template の push と作成
-- [`exe/scripts/README.md`](./exe/scripts/README.md): `cdr`（Cloudflare Access のサービストークン経由で `coder` CLI を実行するラッパー）
 - [`tools/README.md`](./tools/README.md): RTTM 変換などの補助ツール
 - `docs/intent.md`: いま取り組んでいる作業の意図（operator だけが書く。git では追跡しない）
 
@@ -233,11 +229,11 @@ just portless-ls      # 有効な経路の一覧（片付けは just portless-do
 ## Dev Container
 
 `.devcontainer/devcontainer.json`（debian 12、Microsoft 公式の feature、ローカルの `dotfiles-tools` feature）が [Dev Container](https://containers.dev/) を定義する。
-同じ定義を CI（`devcontainers/ci`）と Coder の template が使い、Coder は Artifact Registry の作成済み image を pull する（ADR 0002）。
+同じ定義を CI（`devcontainers/ci`）が使う（ADR 0002）。
 
 中には `just`、`mise`、`prek`、`ruff`、`shellcheck`、`markdownlint-cli2`、Node.js（LTS）と、5 つの AI CLI（`codex`、`antigravity`、`claude`、`copilot`、`pi`）が入る。
 エージェントが `just fmt|lint|check|test` を実行するサンドボックスとして使う。
-CLI の認証は、workspace ごとに operator が一度行う（[runbook](./exe/docs/runbook.md#ai-agent-cli-authentication)）。
+CLI の認証は、コンテナごとに operator が一度行う。
 
 - Claude Code: `/devcontainer`
 - VS Code / Cursor: Dev Containers 拡張を入れて `Reopen in Container`

@@ -40,8 +40,9 @@ nothing. Policies are evaluated with a lag of roughly a day, so read actual size
 rather than inferring it from the config, and pair `tag_state` with
 `tag_prefixes` when a tag is what marks "in use".
 
-A working shape, from `tofu/exe-platform`: KEEP what is tagged in-use, KEEP the
-newest few, DELETE older than N days — three policies, dry run off.
+A working shape, taken from a registry that runs it: KEEP what is tagged
+in-use, KEEP the newest few, DELETE older than N days — three policies, dry run
+off.
 
 ## Buckets: a bound, except where a bound is the bug
 

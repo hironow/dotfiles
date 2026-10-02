@@ -1,6 +1,0 @@
-# The reviewed change list for right-sizing the node (M20 T3, sized by S7):
-# the node pool's machine type moves to e2-highmem-2 in place, and nothing else
-# changes. Apply it at zero nodes, under a live lease: GKE then only swaps the
-# instance template, and the next wake boots the new type.
-#   just exe-platform-plan && just exe-platform-plan-summary --expect-changes expected-changes/node-right-size.txt
-~ google_container_node_pool.main

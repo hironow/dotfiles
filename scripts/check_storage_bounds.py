@@ -3,10 +3,11 @@
 
 An unbounded sink is how a personal GCP project quietly accumulates cost.
 Nothing fails, no alert fires, no review catches it: images and objects just
-keep landing, and the bill grows a little every month. This repo already has the
-receipt -- the dev container repository in tofu/exe/ reached 20+ versions and
-~21 GiB because its only DELETE policy targeted UNTAGGED versions and every
-publish tagged its image (ADR 0034). The policy looked like a bound and was not.
+keep landing, and the bill grows a little every month. There is a receipt for it
+here -- the dev container repository of the since-retired Coder stack reached
+20+ versions and ~21 GiB because its only DELETE policy targeted UNTAGGED
+versions and every publish tagged its image (ADR 0034, which outlives the stack
+it was written about). The policy looked like a bound and was not.
 
 Artifact Registry has two traps that read as protection:
 
@@ -745,7 +746,7 @@ def main() -> int:
     if result.violations:
         print(
             "check-storage-bounds: FAILED -- every storage sink must declare an "
-            "explicit bound (docs/plan/exe-google-ax.md section 3.3):",
+            "explicit bound (docs/agents/gcp-cost-guardrails.md):",
             file=sys.stderr,
         )
         for violation in result.violations:

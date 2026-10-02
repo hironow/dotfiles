@@ -58,12 +58,16 @@ _MARKERS: dict[tuple[str, ...], str] = {
     ("delete", "create"): "-/+",  # replace
     ("create", "delete"): "+/-",  # replace, create first
     ("read",): "<",
+    # A `removed` block with destroy = false: out of the state, still in the
+    # world. OpenTofu's own plan marks it with a dot.
+    ("forget",): ".",
     ("no-op",): " ",
 }
 
 # Actions a reviewer must be told about loudly, because on a shared project they
-# mean this stack is touching something that already existed.
-_DESTRUCTIVE = {"delete", "update"}
+# mean this stack is touching something that already existed. A forget does
+# not change the thing, but it gives up managing it, so it counts too.
+_DESTRUCTIVE = {"delete", "update", "forget"}
 
 # Markers an expectation file may use: exactly the ones this tool prints, so a
 # reviewer writes down what they read rather than translating it. The no-op
