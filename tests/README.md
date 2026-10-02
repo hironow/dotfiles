@@ -27,6 +27,7 @@ uv run pytest tests/unit/test_<name>.py   # 1 ファイル
 - e2e のテストは本物の依存だけを使う（mock しない）。本物を使えないテストは unit か結合テストに置く。
 - unit のテストも、できるだけ本物のファイル、git、プロセスを使う。外部のサービス（gcloud、claude、npm など）は PATH に置いた stub で置き換え、`monkeypatch` は境界の I/O に限る。
 - サンドボックステストは、既存の fixture（`docker_image`、`saved_image`）で 1 テストに 1 つの `--rm` コンテナを使う。
+- `just test` はホストから実行する。コンテナの中では `git init` と `.git/info/exclude` の上書きが走るので、使い捨てだと CI が宣言した checkout 以外を bind mount しようとすると `_mount_mode` が拒否する（Dev Container の中からの実行がこれに当たる）。
 - 準備が込み入るテストは、本文を given / when / then で区切る。
 - Docker に届かないときは `pytest.skip` する。Docker のない機体でも残りは通る。
 
