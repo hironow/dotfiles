@@ -25,6 +25,11 @@ sheldon lock  # 初回だけ: plugin を入れる
 | `Ctrl+R` | 履歴をあいまい検索する（fzf） |
 | `Tab` | プレビューつきであいまい補完する（fzf-tab） |
 | `<` / `>` | fzf-tab の補完グループを切り替える |
+| `Ctrl+Enter` | 改行する（送信はしない。Ghostty / iTerm2 で、tmux の中でも効く） |
+| `Option+←` / `Option+→` | 1 単語戻る / 進む |
+| `Ctrl+←` / `Ctrl+→` | 1 単語戻る / 進む（Windows Terminal が Alt+矢印を使うので Windows と WSL はこちら） |
+
+`Ctrl+Enter` を tmux の中で効かせるには tmux 3.2a 以降が要る（確認は `tmux -V`。未満だと警告が出るだけで他は動く）。単語の区切りと止まる位置は zsh 既定のままで、Windows の PowerShell は PSReadLine 既定のため `Ctrl+→` の着地点が少し違う（端末ごとの差は `docs/plan/terminal-keys.md`）。
 
 ## alias と関数
 
