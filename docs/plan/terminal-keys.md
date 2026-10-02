@@ -53,6 +53,20 @@ enable extended keys is sent, if tmux knows that it is supported.`（マージ�
 これは *親端末への要求* の話。ペインへの出力モードは上記 man の記述を採る。本ホストに
 tmux が無く実験しないので、実機確認項目に挙げる。）
 
+**F4-実測（2026-10-02、WSL の tmux 3.4、PTY を端末役にして 2 ラウンド再現）**: 配布 conf
+（`always` + `xterm*:extkeys`）では `ESC [13;5u`（Ghostty の送る CSI-u）がそのまま届き、
+mode-1 の `ESC [27;5;13~` も CSI-u に正規化されて届く（F5 の予想どおり 3.4 は CSI u 側）。
+**`extended-keys` の行が無い既定 off ではペインに何も届かない**（CR ではない。未割当の
+シーケンス `ESC [199~` はそのまま届くので、拡張キーとして認識した上で捨てている）。`on` を
+代入した場合や、明示的に `off` を代入した場合はこの環境では届いた（未代入の既定 off と代入後の
+`off` で挙動が違う = 3.4 固有の可能性）。副作用なし: 素の Enter は `0d`、`ESC [1;5D`
+（Ctrl+←）と `ESC b`（Option+←）は無変化。ソース側の裏付けは `tty.c`（`ENEKS` は option が
+非 0 のときだけ送る）と `input.c`（`extended-keys == 2` のときアプリの mode 要求を無視する）、
+および 3.5a の `options-table.c`（`extended-keys` の既定は `off`、`extended-keys-format` の
+選択肢は `csi-u`/`xterm` で既定は `xterm` = `default_num = 1`）。
+macOS 3.5a の実機確認は引き続きチェックリスト項目（3.5 は `extended-keys-format` の既定が
+`xterm` なので、ペインが受ける綴りは `ESC [27;5;13~` 側になるはず = F5）。
+
 **F5. `extended-keys-format` の既定は `xterm`、その形式では C-S-a は `^[[27;6;65~`。**
 man: `For example, C-S-a will be reported as '^[[27;6;65~' when set to xterm, and as
 '^[[65;6u' when set to csi-u.`（modifiers = 1 + (1 shift / 2 alt / 4 ctrl)）
@@ -163,13 +177,9 @@ keybind = opt+right=esc:f
 TrueColor ブロックの直後に追加（既存行は変更しない）。
 
 ```
-# Extended keys (modifyOtherKeys): Ctrl+Enter inside a pane. zsh cannot request
-# extended keys itself and tmux's default is off, so Ctrl+Enter arrived as a
-# plain CR (= Enter). `always` forces the extended form for clients that never
-# asked; mode 1 leaves keys that already have a standard form (ESC b/f,
-# ESC [1;5D) alone. Needs tmux >= 3.2a: on older tmux this is one warning line
-# and the rest of the file still loads (tmux(1)), so the only loss is Ctrl+Enter
-# inside tmux. Do not add xterm-keys: it has defaulted to on since tmux 2.4.
+# Extended keys (modifyOtherKeys): Ctrl+Enter inside a pane. The shipped file
+# (tools/tmux/tmux.conf) carries the measured rationale; this block is only the
+# spec for the two commands.
 set -s extended-keys always
 # tmux only asks the outer terminal for extended keys when it knows it is
 # supported; this is the tmux wiki's Modifier-Keys line. Terminals that ignore
@@ -287,11 +297,15 @@ Enter も、拡張キー非対応の Ctrl+Enter も、同じ改行に見える�
 stty raw -echo; dd bs=1 count=1 2>/dev/null | od -An -tx1; stty sane
 ```
 
-- 素の Enter / 拡張キー非対応の Ctrl+Enter → `0d`
+- 素の Enter /（端末直下で）拡張キー非対応の Ctrl+Enter → `0d`（F14 の Terminal.app 等）
 - 拡張キー対応の Ctrl+Enter → `1b`（ESC。残りのバイトはプロンプトに残るので `Ctrl+U`）
+- **tmux の中は別**: `extended-keys` の行が無い既定 off だと何も届かない（F4-実測。`0d`
+  ではない）。何も出ないと `dd` は待ち続けるので、普通の Enter か `Ctrl+C` を押せば 1 バイト
+  読んで戻る（`stty raw` 中は `Ctrl+C` が SIGINT にならず 1 バイトとして届く）
 
 つまり **「Ctrl+Enter が `0d` を出す」= Enter と区別できない** が結論で、`^M` が見える
-ことは期待しない（見えたら ICRNL が切れている別の状態）。
+ことは期待しない（見えたら ICRNL が切れている別の状態）。生バイトを見るなら tmux の外
+（端末直下）が確実で、tmux の中は上記のとおり「何も出ない」ことがある。
 
 **F4 の mode 1 の読みが外れていた場合**（Option+← が `^[[27;3;68~` のような別形で
 届く）は、その形を `.zshrc` に追記する。`extended-keys on` に落とす選択肢もあるが、
