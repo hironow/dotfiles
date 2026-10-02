@@ -30,3 +30,8 @@ resize-overlay = never
 window-inherit-working-directory = true
 tab-inherit-working-directory = true
 split-inherit-working-directory = true
+
+# Keybind
+# Send CSI-u for ctrl+enter; the default is a bare CR, which Claude Code cannot
+# tell apart from a plain Enter.
+keybind = ctrl+enter=text:\x1b[13;5u
