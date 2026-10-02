@@ -24,8 +24,13 @@ anything.
 Usage:
     just gcp-cost-audit <project> [--billing-account ID] [--location REGION]
 
-Exit code: 0 when every sink has a bound, 1 when something does not (so it can
-gate a rollout step), 2 on a usage error.
+A check the flags did not let it run is reported at WARN as "not verified", not
+at OK: `OK budget - not checked` is read as a pass by anyone skimming for the
+word WARN, and a pass is the one thing an audit that did not look must not give.
+
+Exit code: 0 when every sink has a bound AND every check ran, 1 when something
+has no bound or could not be verified (so it can gate a rollout step), 2 on a
+usage error.
 """
 
 from __future__ import annotations
@@ -78,7 +83,7 @@ PROBES: dict[str, list[str]] = {
     "sql": ["sql", "instances", "list", "--project", "{project}", "--quiet"],
     "clusters": ["container", "clusters", "list", "--project", "{project}", "--quiet"],
     # `scheduler jobs list` REQUIRES --location; with none given the probe is
-    # skipped and reported as "not checked" rather than as a finding.
+    # skipped and reported as "not verified" -- a WARN, because it did not run.
     "schedulers": [
         "scheduler",
         "jobs",
@@ -290,16 +295,19 @@ def idle_resources(
 def budgets(found: Sequence[Mapping[str, object]] | None) -> list[Line]:
     """A budget is the only thing that notices a drip nobody is looking at.
 
-    `None` means the audit had no billing account to ask with -- that is "not
-    checked", and it must not read as "fine".
+    `None` means the audit had no billing account to ask with. That is not a
+    pass: it is reported at WARN so that the exit code and the summary count it
+    among the things nobody has verified.
     """
     if found is None:
         return [
             (
-                "OK",
+                "WARN",
                 "budget",
                 (
-                    "not checked: pass --billing-account to look (the id is an "
+                    "not verified: pass --billing-account to look (find it with "
+                    "`gcloud billing projects describe <project> "
+                    "--format='value(billingAccountName)'`; the id is an "
                     "argument, never a tracked value)"
                 ),
             )
@@ -387,8 +395,9 @@ def report(
     audit that cannot see must not say a project is clean.
 
     The scheduler is the one exception, and for a different reason: its probe
-    REQUIRES a location, so with none given it was never asked. "Not checked"
-    must not read as a finding any more than it reads as "fine".
+    REQUIRES a location, so with none given it was never asked. That is reported
+    as "not verified" rather than as "could not be read" -- a missing argument,
+    not a blind probe -- but still at WARN, because both leave the same hole.
     """
     lines: list[Line] = []
 
@@ -401,11 +410,11 @@ def report(
     if not location:
         lines.append(
             (
-                "OK",
+                "WARN",
                 "scheduler",
                 (
-                    "not checked: pass --location, which `gcloud scheduler jobs list` "
-                    "requires"
+                    "not verified: pass --location, which `gcloud scheduler jobs "
+                    "list` requires"
                 ),
             )
         )
@@ -557,7 +566,7 @@ def main(argv: Sequence[str]) -> int:
     for level, name, detail in lines:
         print(f"{level:<4} {name} - {detail}")
     warns = sum(1 for level, _n, _d in lines if level == "WARN")
-    print(f"\n{len(lines)} check(s), {warns} without a bound.")
+    print(f"\n{len(lines)} check(s), {warns} unbounded or not verified.")
     return exit_code(lines)
 
 

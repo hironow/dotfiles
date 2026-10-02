@@ -201,12 +201,16 @@ def test_no_budget_warns_and_one_budget_is_ok() -> None:
     assert _levels(audit.budgets([{"displayName": "exe"}]))["budget"] == "OK"
 
 
-def test_without_a_billing_account_the_budget_is_not_claimed_either_way() -> None:
+def test_without_a_billing_account_the_budget_is_reported_as_not_verified() -> None:
     """A billing account id is a forbidden token here, so it arrives as an
-    argument or not at all -- and "not checked" must not read as "fine"."""
+    argument or not at all -- and a check that did not run is not a pass.
+    Reported at OK it printed `OK budget - not checked` into a report a reader
+    skims for the word WARN, which is a FALSE OK about the one thing that
+    notices a drip."""
     lines = audit.budgets(None)
-    assert _levels(lines)["budget"] == "OK"
-    assert "not checked" in _detail(lines, "budget")
+    assert _levels(lines)["budget"] == "WARN"
+    assert "not verified" in _detail(lines, "budget")
+    assert "--billing-account" in _detail(lines, "budget")
 
 
 def test_running_nodes_are_the_money_signal() -> None:
@@ -337,15 +341,43 @@ def test_every_probe_is_quiet_so_none_can_prompt() -> None:
         assert "--quiet" in argv, f"{name} can prompt"
 
 
-def test_a_scheduler_probe_with_no_location_is_not_checked() -> None:
-    """`gcloud scheduler jobs list` REQUIRES --location; without one it always
-    fails, and "could not be read" would read as a finding rather than as a
-    missing argument."""
+def test_a_scheduler_probe_with_no_location_is_reported_as_not_verified() -> None:
+    """`gcloud scheduler jobs list` REQUIRES --location, so with none given the
+    probe never ran. "Could not be read" would misname it, but OK is worse: the
+    spoke promises this audit warns on a paused job, and a reader who passed no
+    --location was told OK about jobs nobody had asked for."""
     lines = audit.report(
         {"schedulers": None}, project=PROJECT, billing=None, location=None
     )
-    assert _levels(lines)["scheduler"] == "OK"
-    assert "not checked" in _detail(lines, "scheduler")
+    assert _levels(lines)["scheduler"] == "WARN"
+    assert "not verified" in _detail(lines, "scheduler")
+    assert "--location" in _detail(lines, "scheduler")
+
+
+_CLEAN: dict[str, object] = {
+    "artifact_registry": [],
+    "buckets": [],
+    "disks": [],
+    "addresses": [],
+    "sql": [],
+    "clusters": [],
+}
+
+
+def test_a_clean_project_exits_zero_only_when_every_check_actually_ran() -> None:
+    """The whole point of the level change, at the exit code: a flagless run
+    printed two `OK … not checked` lines, summarised "0 without a bound" and
+    exited 0 -- a green audit of two things nobody looked at."""
+    blind = audit.report(dict(_CLEAN), project=PROJECT, billing=None, location=None)
+    assert audit.exit_code(blind) == 1
+
+    asked = audit.report(
+        {**_CLEAN, "schedulers": [], "budgets": [{"displayName": "cap"}]},
+        project=PROJECT,
+        billing="<billing-account>",
+        location="<region>",
+    )
+    assert audit.exit_code(asked) == 0
 
 
 def test_soft_delete_retention_is_a_cost_and_is_reported() -> None:

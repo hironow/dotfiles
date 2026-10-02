@@ -23,14 +23,21 @@ OpenTofu, and anything on a work account.
 ### 1. Audit, read-only
 
 ```sh
-just gcp-cost-audit <project> > ~/gcp-audit/<project>-$(date +%F).txt
-just gcp-cost-audit <project> --billing-account <id> >> ~/gcp-audit/<project>-$(date +%F).txt
+OUT=~/gcp-audit/<project>-$(date +%F).txt
+just gcp-cost-audit <project> --location <region> --billing-account <id> > "$OUT"
 ```
+
+Pass both flags. Without `--location` the scheduler leg never runs and without
+`--billing-account` the budget leg never runs; each is then reported as `WARN …
+not verified`, so a flagless run cannot exit 0 and must not be read as one.
+Find the billing account read-only with
+`gcloud billing projects describe <project> --format='value(billingAccountName)'`.
 
 Read-only, so no change window and no announcement. **Keep the output local**:
 it names the project, every bucket and every instance.
 
-Exit 0 means every sink has a bound — record that and move to the next project.
+Exit 0 means every check ran and every sink has a bound — record that and move
+to the next project.
 
 ### 2. Triage what it found
 
@@ -81,7 +88,8 @@ repo, so a sink added here without a bound fails the gate rather than the bill.
 ### 5. Re-audit, and keep the receipt
 
 ```sh
-just gcp-cost-audit <project>      # expect exit 0
+just gcp-cost-audit <project> --location <region> --billing-account <id>
+# expect exit 0 — which both flags are required for
 ```
 
 Record the before and after totals locally. The audit is cheap, so put it on a
@@ -93,7 +101,8 @@ monthly rhythm rather than trusting that the bound stayed.
 - every finding either deleted, bounded in IaC, or written down as a deliberate
   exception with the reason (a snapshot bucket is the canonical exception);
 - a budget with alerts on the billing account;
-- `just gcp-cost-audit` exits 0 for every project, or the exceptions are listed;
+- `just gcp-cost-audit` with both flags exits 0 for every project, or the
+  exceptions are listed;
 - a monthly re-audit on the calendar, because a bound that was true once is not
   a bound that stays true.
 

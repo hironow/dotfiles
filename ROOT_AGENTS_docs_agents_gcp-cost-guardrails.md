@@ -90,20 +90,37 @@ thing stops the workload when now is past it.
   alert when IT fires, because that firing means every earlier layer failed.
 - **A scheduler job is usually the only thing that turns something off.** Its
   failure is silent by construction, so audit its last attempt and alert on a
-  paused one. `just gcp-cost-audit` warns on both.
+  paused one. `just gcp-cost-audit <project> --location <region>` warns on both;
+  without `--location` that leg never runs (see Auditing).
 - **A budget is the only thing that notices a drip nobody is looking at.** Set
   it with alert thresholds before the first expensive thing runs, not after.
 
 ## Auditing
 
 ```sh
-just gcp-cost-audit <project>                               # read-only
-just gcp-cost-audit <project> --billing-account <id>        # also checks budgets
-just gcp-cost-audit <project> > ~/audit-$(date +%F).txt     # keep it LOCAL
+just gcp-cost-audit <project>                                # sinks only
+just gcp-cost-audit <project> --location <region>            # + scheduler jobs
+just gcp-cost-audit <project> --billing-account <id>         # + budgets
+just gcp-cost-audit <project> --location <region> --billing-account <id>
+just gcp-cost-audit <project> … > ~/audit-$(date +%F).txt    # keep it LOCAL
 ```
 
-Exit 1 means something has no bound. Every probe is a `gcloud … list`, so it is
-safe to run against a live project with no change window.
+**A check whose flag is missing is reported as `WARN … not verified`, never at
+OK**, and it counts toward exit 1 — a check that did not run cannot pass.
+`--location` exists because `gcloud scheduler jobs list` requires one;
+`--billing-account` because the budget lives on the account, not the project. So
+the flagless run audits the sinks and has looked at **neither brake**: only the
+form carrying both flags checks everything.
+
+Find the billing account read-only, without writing it anywhere:
+
+```sh
+gcloud billing projects describe <project> --format='value(billingAccountName)'
+```
+
+Exit 1 means something has no bound, or a check could not be verified. Every
+probe is a `gcloud … list`, so it is safe to run against a live project with no
+change window.
 
 **The report stays local.** It names the project, every bucket and every
 instance; in a public repo that is exactly the content that must not be
