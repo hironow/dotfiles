@@ -353,3 +353,18 @@ if _cmd_exists eza; then
     alias ls='eza --icons --git'
     alias ll='eza -al --icons --git'
 fi
+
+# Ctrl+Enter inserts a newline instead of running the line (multi-line editing).
+# tools/ghostty-config makes ctrl+enter send the CSI-u encoding so Claude Code
+# can tell it apart from plain Enter; zle echoes back any sequence no keymap
+# claims as `[13;5u` garbage, so zsh has to claim it too. Both spellings are
+# bound because terminals disagree: CSI-u (Ghostty, kitty) and xterm
+# modifyOtherKeys. Defined last, after sheldon's plugins and `fzf --zsh`, so
+# nothing rebinds over it; bare `bindkey` follows the `main` keymap, which zsh
+# linked to emacs or viins from EDITOR/VISUAL before this file ran.
+_ctrl_enter_newline() {
+    LBUFFER+=$'\n'
+}
+zle -N _ctrl_enter_newline
+bindkey '^[[13;5u' _ctrl_enter_newline
+bindkey '^[[27;5;13~' _ctrl_enter_newline
