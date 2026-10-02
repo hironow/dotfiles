@@ -1,9 +1,8 @@
 // Dev Container Specification — https://containers.dev
 //
-// Single source of truth shared by three consumers:
+// Single source of truth shared by two consumers:
 //   1. local IDE   — VS Code / Cursor / JetBrains "Reopen in Container"
 //   2. CI sandbox  — `devcontainers/ci` action in test-just.yaml
-//   3. Coder workspace — envbuilder reads this file on workspace boot
 //
 // Trust policy (see ADR 0001):
 //   - features: ONLY Microsoft-curated `ghcr.io/devcontainers/features/*`
@@ -52,16 +51,19 @@
   "onCreateCommand": "bash .devcontainer/post-create.sh",
 
   // install-hooks wires prek into .git/hooks for the local-dev case.
-  // It is skipped silently in CI / Coder workspaces where the bind
-  // mount may not expose a writable .git/ that prek can introspect;
-  // those environments don't commit so hooks are not needed.
+  // It is skipped silently in CI, where the bind mount may not expose
+  // a writable .git/ that prek can introspect; CI doesn't commit so
+  // hooks are not needed there.
   "postCreateCommand": "if [ -d /root/dotfiles/.git ]; then just install-hooks || echo '[post-create] install-hooks failed; non-fatal'; else echo '[post-create] no .git, skipping install-hooks'; fi",
 
   "containerEnv": {
     "MISE_OFFLINE": "1",
-    // mise data dir is relocated to /opt/mise per ADR 0006 so the
-    // Coder workspace `/home/<user>:/root` volume mount cannot mask
-    // the build-time-baked installs. Shims live alongside.
+    // mise data dir is relocated to /opt/mise per ADR 0006. The
+    // retired Coder workspace mounted a volume over `/root`, which
+    // masked the build-time-baked installs under $HOME; /opt is
+    // outside any such mount, so the relocation keeps the baked
+    // toolset reachable and MISE_OFFLINE=1 honest. Shims live
+    // alongside.
     "MISE_DATA_DIR": "/opt/mise",
     // quint's Rust evaluator is baked under /opt/quint (built from source
     // for bookworm's glibc by features/dotfiles-tools/install.sh); outside
