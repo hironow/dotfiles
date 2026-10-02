@@ -1,7 +1,7 @@
 # 0011. exe-coder workspace VM multi-project systemd env delivery
 
 **Date:** 2026-05-07
-**Status:** Accepted
+**Status:** Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) — the Coder control plane was destroyed 2026-10-01 and the paths this ADR names no longer exist
 
 ## Context
 

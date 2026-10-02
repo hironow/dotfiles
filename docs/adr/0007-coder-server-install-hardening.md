@@ -1,7 +1,7 @@
 # 0007. Coder server install hardening on the control-plane VM
 
 **Date:** 2026-05-02
-**Status:** Accepted (2026-05-02)
+**Status:** Accepted (2026-05-02); superseded by [0045](./0045-coder-control-plane-retired.md) — the Coder control plane was destroyed 2026-10-01 and the paths this ADR names no longer exist
 
 ## Context
 

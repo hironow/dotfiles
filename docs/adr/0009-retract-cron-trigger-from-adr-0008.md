@@ -1,7 +1,7 @@
 # 0009. Retract the systemd-timer cron trigger from ADR 0008
 
 **Date:** 2026-05-03
-**Status:** Accepted (2026-05-04 — cron / systemd-timer infrastructure was reverted in PR #76 and is intentionally absent from the current implementation; operator-pulled `cdr-job` / `cdr-exec` paths in `exe/scripts/` remain the sole job entry points)
+**Status:** Accepted (2026-05-04 — cron / systemd-timer infrastructure was reverted in PR #76 and never returned); superseded by [0045](./0045-coder-control-plane-retired.md) — the operator-pulled job entry points this ADR kept went with the control plane when it was destroyed 2026-10-01
 **Supersedes:** [0008](./0008-event-driven-workspace-runner.md) (partial — see Decision)
 
 ## Context

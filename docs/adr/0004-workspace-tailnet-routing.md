@@ -1,7 +1,7 @@
 # 0004. Workspace VMs reach the Coder control plane over the tailnet (B-plan)
 
 **Date:** 2026-05-02
-**Status:** Accepted (recorded retroactively for PR #47)
+**Status:** Accepted (recorded retroactively for PR #47); superseded by [0045](./0045-coder-control-plane-retired.md) — the Coder control plane was destroyed 2026-10-01 and the paths this ADR names no longer exist
 
 ## Context
 

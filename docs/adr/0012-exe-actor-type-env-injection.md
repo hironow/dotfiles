@@ -1,7 +1,7 @@
 # 0012. exe-coder workspace VM RUNOPS_ACTOR_TYPE env injection (per caller path)
 
 **Date:** 2026-05-09
-**Status:** Accepted
+**Status:** Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) — the Coder control plane was destroyed 2026-10-01 and the paths this ADR names no longer exist
 
 ## Context
 
