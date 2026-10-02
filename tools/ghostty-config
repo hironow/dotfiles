@@ -35,3 +35,9 @@ split-inherit-working-directory = true
 # Send CSI-u for ctrl+enter; the default is a bare CR, which Claude Code cannot
 # tell apart from a plain Enter.
 keybind = ctrl+enter=text:\x1b[13;5u
+# Option+left/right move by one word. `esc:` sends an ESC-prefixed sequence
+# (the docs' own example is esc:d = M-d) and `opt` is an alias for `alt`;
+# ESC b / ESC f are zsh's built-in backward-word / forward-word, so this keeps
+# working inside tmux too (see tools/tmux/tmux.conf).
+keybind = opt+left=esc:b
+keybind = opt+right=esc:f

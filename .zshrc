@@ -368,3 +368,18 @@ _ctrl_enter_newline() {
 zle -N _ctrl_enter_newline
 bindkey '^[[13;5u' _ctrl_enter_newline
 bindkey '^[[27;5;13~' _ctrl_enter_newline
+
+# Word movement for modifier+arrow. zsh's default emacs keymap binds only the
+# *bare* cursor keys (Src/Zle/zle_keymap.c: add_cursor_key), so the xterm
+# spellings for modifier+arrow are unclaimed and zle echoes them back as
+# `[1;3D` / `[1;5D` garbage. `^[[1;3D` / `^[[1;3C` are Option+left/right
+# (iTerm2; Ghostty is pinned to `esc:b` / `esc:f` in tools/ghostty-config,
+# which are zsh's built-in M-b / M-f and need no binding here). `^[[1;5D` /
+# `^[[1;5C` are Ctrl+left/right, the pair Windows Terminal does not claim for
+# pane focus. Same placement rule as the ctrl+enter block above: after
+# sheldon and `fzf --zsh`, so nothing rebinds over it. See
+# docs/plan/terminal-keys.md.
+bindkey '^[[1;3D' backward-word
+bindkey '^[[1;3C' forward-word
+bindkey '^[[1;5D' backward-word
+bindkey '^[[1;5C' forward-word
