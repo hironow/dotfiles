@@ -380,6 +380,72 @@ def test_a_clean_project_exits_zero_only_when_every_check_actually_ran() -> None
     assert audit.exit_code(asked) == 0
 
 
+# --- One blind probe must not take the readable ones down with it -------
+
+
+def test_a_failed_sql_probe_leaves_the_disk_and_address_findings_evaluated() -> None:
+    """`if None not in (disks, addresses, sql)` dropped the WHOLE idle leg, so
+    one unreadable probe hid an unattached disk and a reserved address that had
+    both been read successfully -- findings, silently never evaluated."""
+    lines = audit.report(
+        {
+            "disks": [{"name": "orphan", "sizeGb": "50", "users": []}],
+            "addresses": [{"name": "parked", "status": "RESERVED"}],
+            "sql": None,
+        },
+        project=PROJECT,
+        billing=None,
+    )
+    assert _levels(lines)["disk:orphan"] == "WARN"
+    assert _levels(lines)["address:parked"] == "WARN"
+
+
+def test_a_failed_sql_probe_is_reported_on_a_line_of_its_own() -> None:
+    lines = audit.report(
+        {"disks": [], "addresses": [], "sql": None}, project=PROJECT, billing=None
+    )
+    assert _levels(lines)["sql"] == "WARN"
+    assert "could not be read" in _detail(lines, "sql")
+
+
+def test_a_blind_probe_is_never_summarised_as_nothing_idle() -> None:
+    """The summary line `no idle disk, address or SQL instance` claims the one
+    thing the audit could not see, so it names only what it actually read."""
+    lines = audit.report(
+        {"disks": [], "addresses": [], "sql": None}, project=PROJECT, billing=None
+    )
+    assert _levels(lines)["idle-resources"] == "OK"
+    assert _detail(lines, "idle-resources") == "no idle disk or address"
+
+
+def test_a_failed_disk_probe_is_reported_rather_than_passed_over() -> None:
+    """disks and addresses had no entry of their own in the unreadable table --
+    only sql did, under the shared `idle-resources` label -- so a disk probe
+    that failed produced no line at all."""
+    lines = audit.report(
+        {"disks": None, "addresses": [], "sql": []}, project=PROJECT, billing=None
+    )
+    assert _levels(lines)["disks"] == "WARN"
+    assert "gcloud compute disks list" in _detail(lines, "disks")
+
+
+def test_a_failed_budget_probe_is_not_reported_as_a_missing_flag() -> None:
+    """Two different holes wore one message. With --billing-account given and
+    the Budget API off, "not verified: pass --billing-account" tells the reader
+    to pass the flag they just passed, so they read the line as the tool being
+    confused rather than as the budget being unknown."""
+    lines = audit.report({"budgets": None}, project=PROJECT, billing="<billing>")
+    assert _levels(lines)["budget"] == "WARN"
+    assert "could not be read" in _detail(lines, "budget")
+    assert "pass --billing-account" not in _detail(lines, "budget")
+
+
+def test_idle_resources_claims_only_the_probes_it_was_given() -> None:
+    assert audit.idle_resources(disks=None, addresses=None, sql=None) == []
+    only_disks = audit.idle_resources(disks=[], addresses=None, sql=None)
+    assert _detail(only_disks, "idle-resources") == "no idle disk"
+
+
 def test_soft_delete_retention_is_a_cost_and_is_reported() -> None:
     """Its default keeps every deleted object for 7 days as billed storage.
     Nobody asks for it and nobody sees it; the spoke names it, so the tool has
