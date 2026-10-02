@@ -24,8 +24,13 @@ anything.
 Usage:
     just gcp-cost-audit <project> [--billing-account ID] [--location REGION]
 
-Exit code: 0 when every sink has a bound, 1 when something does not (so it can
-gate a rollout step), 2 on a usage error.
+A check the flags did not let it run is reported at WARN as "not verified", not
+at OK: `OK budget - not checked` is read as a pass by anyone skimming for the
+word WARN, and a pass is the one thing an audit that did not look must not give.
+
+Exit code: 0 when every sink has a bound AND every check ran, 1 when something
+has no bound or could not be verified (so it can gate a rollout step), 2 on a
+usage error.
 """
 
 from __future__ import annotations
@@ -78,7 +83,7 @@ PROBES: dict[str, list[str]] = {
     "sql": ["sql", "instances", "list", "--project", "{project}", "--quiet"],
     "clusters": ["container", "clusters", "list", "--project", "{project}", "--quiet"],
     # `scheduler jobs list` REQUIRES --location; with none given the probe is
-    # skipped and reported as "not checked" rather than as a finding.
+    # skipped and reported as "not verified" -- a WARN, because it did not run.
     "schedulers": [
         "scheduler",
         "jobs",
@@ -242,14 +247,22 @@ def buckets(found: Sequence[Mapping[str, object]], *, project: str) -> list[Line
 
 def idle_resources(
     *,
-    disks: Sequence[Mapping[str, object]],
-    addresses: Sequence[Mapping[str, object]],
-    sql: Sequence[Mapping[str, object]],
+    disks: Sequence[Mapping[str, object]] | None,
+    addresses: Sequence[Mapping[str, object]] | None,
+    sql: Sequence[Mapping[str, object]] | None,
 ) -> list[Line]:
     """What bills while nothing uses it. "Stopped" is the trap: a stopped SQL
-    instance still pays for its data disk and its backups."""
+    instance still pays for its data disk and its backups.
+
+    `None` for one probe means only that probe could not be read, so each is
+    evaluated on its own: the three used to be all-or-nothing, and an unreadable
+    SQL probe therefore threw away disk and address answers that had come back
+    fine -- findings that were never evaluated and never reported. report()
+    reports each blind probe on its own line; the closing summary here then
+    claims only the kinds that were actually read.
+    """
     lines: list[Line] = []
-    for disk in disks:
+    for disk in disks or []:
         if not disk.get("users"):
             lines.append(
                 (
@@ -258,7 +271,7 @@ def idle_resources(
                     f"{disk.get('sizeGb', '?')} GiB attached to nothing, billed monthly",
                 )
             )
-    for address in addresses:
+    for address in addresses or []:
         if str(address.get("status", "")).upper() == "RESERVED":
             lines.append(
                 (
@@ -267,7 +280,7 @@ def idle_resources(
                     "reserved and unused, which is the case that is charged",
                 )
             )
-    for instance in sql:
+    for instance in sql or []:
         settings = instance.get("settings")
         size = (
             (settings or {}).get("dataDiskSizeGb", "?")
@@ -284,22 +297,39 @@ def idle_resources(
                 ),
             )
         )
-    return lines or [("OK", "idle-resources", "no idle disk, address or SQL instance")]
+    if lines:
+        return lines
+    read = [
+        kind
+        for kind, found in (
+            ("disk", disks),
+            ("address", addresses),
+            ("SQL instance", sql),
+        )
+        if found is not None
+    ]
+    if not read:
+        return []
+    kinds = f"{', '.join(read[:-1])} or {read[-1]}" if len(read) > 1 else read[0]
+    return [("OK", "idle-resources", f"no idle {kinds}")]
 
 
 def budgets(found: Sequence[Mapping[str, object]] | None) -> list[Line]:
     """A budget is the only thing that notices a drip nobody is looking at.
 
-    `None` means the audit had no billing account to ask with -- that is "not
-    checked", and it must not read as "fine".
+    `None` means the audit had no billing account to ask with. That is not a
+    pass: it is reported at WARN so that the exit code and the summary count it
+    among the things nobody has verified.
     """
     if found is None:
         return [
             (
-                "OK",
+                "WARN",
                 "budget",
                 (
-                    "not checked: pass --billing-account to look (the id is an "
+                    "not verified: pass --billing-account to look (find it with "
+                    "`gcloud billing projects describe <project> "
+                    "--format='value(billingAccountName)'`; the id is an "
                     "argument, never a tracked value)"
                 ),
             )
@@ -364,13 +394,34 @@ def schedulers(found: Sequence[Mapping[str, object]]) -> list[Line]:
     return lines
 
 
+# The label a probe that could not be read is reported under. disks, addresses
+# and sql each get their own: sql alone used to be listed here, under the shared
+# `idle-resources` label, so a disk or address probe that failed produced no line
+# at all -- and one failure spoke for all three.
 _UNREADABLE = {
     "artifact_registry": "artifact-registry",
     "buckets": "buckets",
-    "sql": "idle-resources",
+    "disks": "disks",
+    "addresses": "addresses",
+    "sql": "sql",
     "clusters": "gke",
     "schedulers": "scheduler",
+    "budgets": "budget",
 }
+
+
+def _probe_command(key: str) -> str:
+    """The command a probe actually runs, read off the probe itself.
+
+    Spelling it from the key would print `gcloud disks list` and `gcloud sql
+    list`, neither of which exists, so a reader could not retry what failed.
+    """
+    words = [
+        token
+        for token in PROBES[key]
+        if not token.startswith("-") and "{" not in token  # flags and their values
+    ]
+    return " ".join(["gcloud", *words])
 
 
 def report(
@@ -384,11 +435,16 @@ def report(
 
     A probe that answered `None` could not be read -- an API that is off, or a
     permission we lack. That is reported, never treated as "nothing there": an
-    audit that cannot see must not say a project is clean.
+    audit that cannot see must not say a project is clean. It costs that probe
+    and no other: the disk, address and SQL probes feed one rule, and dropping
+    the rule when any one of them failed left the other two unevaluated.
 
-    The scheduler is the one exception, and for a different reason: its probe
-    REQUIRES a location, so with none given it was never asked. "Not checked"
-    must not read as a finding any more than it reads as "fine".
+    Two legs have a second way of going unchecked: the scheduler probe REQUIRES
+    a --location and the budget probe a --billing-account, so without the flag
+    they were never asked at all. That is reported as "not verified" rather than
+    as "could not be read" -- a missing argument is not a blind probe, and only
+    one of the two is fixed by passing something -- but still at WARN, because
+    both leave the same hole.
     """
     lines: list[Line] = []
 
@@ -401,11 +457,11 @@ def report(
     if not location:
         lines.append(
             (
-                "OK",
+                "WARN",
                 "scheduler",
                 (
-                    "not checked: pass --location, which `gcloud scheduler jobs list` "
-                    "requires"
+                    "not verified: pass --location, which `gcloud scheduler jobs "
+                    "list` requires"
                 ),
             )
         )
@@ -413,14 +469,16 @@ def report(
     for key, label in _UNREADABLE.items():
         if key == "schedulers" and not location:
             continue
+        if key == "budgets" and not billing:
+            continue
         if key in probed and probed[key] is None:
             lines.append(
                 (
                     "WARN",
                     label,
                     (
-                        f"`gcloud {key.replace('_', ' ')} list` could not be read: "
-                        "the API may be disabled or the identity may lack the role"
+                        f"`{_probe_command(key)}` could not be read: the API may "
+                        "be disabled or the identity may lack the role"
                     ),
                 )
             )
@@ -431,16 +489,19 @@ def report(
     found = answered("buckets")
     if found is not None:
         lines += buckets(found, project=project)
-    disks, addresses, sql = (
-        answered("disks"),
-        answered("addresses"),
-        answered("sql"),
+    lines += idle_resources(
+        disks=answered("disks"),
+        addresses=answered("addresses"),
+        sql=answered("sql"),
     )
-    if None not in (disks, addresses, sql):
-        lines += idle_resources(
-            disks=disks or [], addresses=addresses or [], sql=sql or []
-        )
-    lines += budgets(answered("budgets") if billing else None)
+    # Not asked and asked-but-blind are different holes: with no billing account
+    # the flag is the fix, and with one the probe itself failed (the Budget API
+    # is off as often as not), which the loop above has already said.
+    budget_probe = answered("budgets")
+    if not billing:
+        lines += budgets(None)
+    elif budget_probe is not None:
+        lines += budgets(budget_probe)
     gke = answered("clusters")
     if gke is not None:
         lines += clusters(gke)
@@ -557,7 +618,7 @@ def main(argv: Sequence[str]) -> int:
     for level, name, detail in lines:
         print(f"{level:<4} {name} - {detail}")
     warns = sum(1 for level, _n, _d in lines if level == "WARN")
-    print(f"\n{len(lines)} check(s), {warns} without a bound.")
+    print(f"\n{len(lines)} check(s), {warns} unbounded or not verified.")
     return exit_code(lines)
 
 

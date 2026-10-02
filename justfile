@@ -1410,7 +1410,11 @@ gcloud-list:
 # a tracked file, and neither does the report, so redirect it somewhere local.
 #   just gcp-cost-audit my-project > ~/audit.txt
 #   just gcp-cost-audit my-project --billing-account 0X0X0X-0X0X0X-0X0X0X
-# Exit 1 when something has no bound. docs/agents/gcp-cost-guardrails.md.
+#   just gcp-cost-audit my-project --location a-region   # the scheduler leg
+# A check whose flag is missing is reported as "not verified" at WARN, never at
+# OK: pass BOTH flags for a run that checks everything.
+# Exit 1 when something has no bound or a check could not be verified.
+# docs/agents/gcp-cost-guardrails.md.
 [group('Cloud')]
 gcp-cost-audit project *args:
     @{{ UV_RUN }} scripts/gcp_cost_audit.py {{ project }} {{ args }}

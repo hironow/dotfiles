@@ -201,12 +201,16 @@ def test_no_budget_warns_and_one_budget_is_ok() -> None:
     assert _levels(audit.budgets([{"displayName": "exe"}]))["budget"] == "OK"
 
 
-def test_without_a_billing_account_the_budget_is_not_claimed_either_way() -> None:
+def test_without_a_billing_account_the_budget_is_reported_as_not_verified() -> None:
     """A billing account id is a forbidden token here, so it arrives as an
-    argument or not at all -- and "not checked" must not read as "fine"."""
+    argument or not at all -- and a check that did not run is not a pass.
+    Reported at OK it printed `OK budget - not checked` into a report a reader
+    skims for the word WARN, which is a FALSE OK about the one thing that
+    notices a drip."""
     lines = audit.budgets(None)
-    assert _levels(lines)["budget"] == "OK"
-    assert "not checked" in _detail(lines, "budget")
+    assert _levels(lines)["budget"] == "WARN"
+    assert "not verified" in _detail(lines, "budget")
+    assert "--billing-account" in _detail(lines, "budget")
 
 
 def test_running_nodes_are_the_money_signal() -> None:
@@ -337,15 +341,109 @@ def test_every_probe_is_quiet_so_none_can_prompt() -> None:
         assert "--quiet" in argv, f"{name} can prompt"
 
 
-def test_a_scheduler_probe_with_no_location_is_not_checked() -> None:
-    """`gcloud scheduler jobs list` REQUIRES --location; without one it always
-    fails, and "could not be read" would read as a finding rather than as a
-    missing argument."""
+def test_a_scheduler_probe_with_no_location_is_reported_as_not_verified() -> None:
+    """`gcloud scheduler jobs list` REQUIRES --location, so with none given the
+    probe never ran. "Could not be read" would misname it, but OK is worse: the
+    spoke promises this audit warns on a paused job, and a reader who passed no
+    --location was told OK about jobs nobody had asked for."""
     lines = audit.report(
         {"schedulers": None}, project=PROJECT, billing=None, location=None
     )
-    assert _levels(lines)["scheduler"] == "OK"
-    assert "not checked" in _detail(lines, "scheduler")
+    assert _levels(lines)["scheduler"] == "WARN"
+    assert "not verified" in _detail(lines, "scheduler")
+    assert "--location" in _detail(lines, "scheduler")
+
+
+_CLEAN: dict[str, object] = {
+    "artifact_registry": [],
+    "buckets": [],
+    "disks": [],
+    "addresses": [],
+    "sql": [],
+    "clusters": [],
+}
+
+
+def test_a_clean_project_exits_zero_only_when_every_check_actually_ran() -> None:
+    """The whole point of the level change, at the exit code: a flagless run
+    printed two `OK … not checked` lines, summarised "0 without a bound" and
+    exited 0 -- a green audit of two things nobody looked at."""
+    blind = audit.report(dict(_CLEAN), project=PROJECT, billing=None, location=None)
+    assert audit.exit_code(blind) == 1
+
+    asked = audit.report(
+        {**_CLEAN, "schedulers": [], "budgets": [{"displayName": "cap"}]},
+        project=PROJECT,
+        billing="<billing-account>",
+        location="<region>",
+    )
+    assert audit.exit_code(asked) == 0
+
+
+# --- One blind probe must not take the readable ones down with it -------
+
+
+def test_a_failed_sql_probe_leaves_the_disk_and_address_findings_evaluated() -> None:
+    """`if None not in (disks, addresses, sql)` dropped the WHOLE idle leg, so
+    one unreadable probe hid an unattached disk and a reserved address that had
+    both been read successfully -- findings, silently never evaluated."""
+    lines = audit.report(
+        {
+            "disks": [{"name": "orphan", "sizeGb": "50", "users": []}],
+            "addresses": [{"name": "parked", "status": "RESERVED"}],
+            "sql": None,
+        },
+        project=PROJECT,
+        billing=None,
+    )
+    assert _levels(lines)["disk:orphan"] == "WARN"
+    assert _levels(lines)["address:parked"] == "WARN"
+
+
+def test_a_failed_sql_probe_is_reported_on_a_line_of_its_own() -> None:
+    lines = audit.report(
+        {"disks": [], "addresses": [], "sql": None}, project=PROJECT, billing=None
+    )
+    assert _levels(lines)["sql"] == "WARN"
+    assert "could not be read" in _detail(lines, "sql")
+
+
+def test_a_blind_probe_is_never_summarised_as_nothing_idle() -> None:
+    """The summary line `no idle disk, address or SQL instance` claims the one
+    thing the audit could not see, so it names only what it actually read."""
+    lines = audit.report(
+        {"disks": [], "addresses": [], "sql": None}, project=PROJECT, billing=None
+    )
+    assert _levels(lines)["idle-resources"] == "OK"
+    assert _detail(lines, "idle-resources") == "no idle disk or address"
+
+
+def test_a_failed_disk_probe_is_reported_rather_than_passed_over() -> None:
+    """disks and addresses had no entry of their own in the unreadable table --
+    only sql did, under the shared `idle-resources` label -- so a disk probe
+    that failed produced no line at all."""
+    lines = audit.report(
+        {"disks": None, "addresses": [], "sql": []}, project=PROJECT, billing=None
+    )
+    assert _levels(lines)["disks"] == "WARN"
+    assert "gcloud compute disks list" in _detail(lines, "disks")
+
+
+def test_a_failed_budget_probe_is_not_reported_as_a_missing_flag() -> None:
+    """Two different holes wore one message. With --billing-account given and
+    the Budget API off, "not verified: pass --billing-account" tells the reader
+    to pass the flag they just passed, so they read the line as the tool being
+    confused rather than as the budget being unknown."""
+    lines = audit.report({"budgets": None}, project=PROJECT, billing="<billing>")
+    assert _levels(lines)["budget"] == "WARN"
+    assert "could not be read" in _detail(lines, "budget")
+    assert "pass --billing-account" not in _detail(lines, "budget")
+
+
+def test_idle_resources_claims_only_the_probes_it_was_given() -> None:
+    assert audit.idle_resources(disks=None, addresses=None, sql=None) == []
+    only_disks = audit.idle_resources(disks=[], addresses=None, sql=None)
+    assert _detail(only_disks, "idle-resources") == "no idle disk"
 
 
 def test_soft_delete_retention_is_a_cost_and_is_reported() -> None:
