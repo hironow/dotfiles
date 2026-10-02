@@ -4,8 +4,8 @@ Linux/WSL host — not merely assume the devcontainer feature already did.
 Why this exists
 ---------------
 install.sh's Linux path historically skipped almost everything with
-"covered by apt + dev container feature". That is true inside a Coder /
-devcontainer image, but a plain WSL Ubuntu box running `curl … | bash`
+"covered by apt + dev container feature". That is true inside a dev
+container image, but a plain WSL Ubuntu box running `curl … | bash`
 gets no mise, hence no uv/node/prek/… and every downstream step self-skips.
 
 Two new steps close that, without disturbing the container flow (both are

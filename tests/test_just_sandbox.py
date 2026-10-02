@@ -528,8 +528,8 @@ def test_doctor_reports_just(docker_image):
         ),
         pytest.param(
             "Check: docker ports guarded",
-            # docker-cli is installed in the dev container image (Coder's
-            # agent shells out to `docker ps`), but no dockerd runs inside
+            # docker-cli is installed in the dev container image (by the
+            # docker-outside-of-docker feature), but no dockerd runs inside
             # the sandbox. Guard on actual daemon reachability so the
             # CLI-without-daemon case is treated as 'no docker available'
             # — which it effectively is for any operation that matters.
@@ -1350,18 +1350,18 @@ def test_deploy_mise_install_is_global_scoped(docker_image):
 
 @pytest.mark.check
 def test_install_sh_has_executable_bit_in_git_index():
-    """Coder's `coder dotfiles` (the per-workspace dotfiles loader)
-    clones this repo and tries to run install.sh directly via exec —
-    not 'bash install.sh'. If install.sh in the git index has mode
-    100644 instead of 100755, the exec fails with:
+    """Anything that clones this repo and execs install.sh directly —
+    rather than running 'bash install.sh' — depends on the execute bit.
+    If install.sh in the git index has mode 100644 instead of 100755,
+    the exec fails with:
 
       error: script "install.sh" does not have execute permissions
 
-    and dotfiles personalisation silently degrades. Local fs mode
-    is irrelevant — what matters is the *index mode*, because that
-    is what `git clone` reproduces on the workspace VM.
+    and the install silently degrades to nothing. Local fs mode is
+    irrelevant — what matters is the *index mode*, because that is
+    what `git clone` reproduces for whoever does the exec.
 
-    Reproduce the upstream check with `git ls-files -s`."""
+    Check it the way they do, with `git ls-files -s`."""
     import subprocess
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -1379,7 +1379,7 @@ def test_install_sh_has_executable_bit_in_git_index():
     assert mode == "100755", (
         f"install.sh git index mode is {mode}, expected 100755.\n"
         "Run: git update-index --chmod=+x install.sh && commit\n"
-        "Otherwise 'coder dotfiles' fails to exec the script after clone."
+        "Otherwise a direct exec of the script fails after a clone."
     )
 
 
