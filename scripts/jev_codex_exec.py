@@ -6,13 +6,13 @@ select a model. This runner is the same one-shot run with `-m` and the reasoning
 added. Prompt on stdin, final message on stdout, like every command-runner agent.
 """
 
-from collections.abc import Callable, Mapping
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import TextIO
 
 from jev_core import CODEX_SANDBOXES, build_codex_exec_command

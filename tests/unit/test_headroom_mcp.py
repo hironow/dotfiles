@@ -26,8 +26,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import claude_homes  # noqa: E402
-import headroom_mcp as hm  # noqa: E402
+import claude_homes
+import headroom_mcp as hm
 
 GOOD = {"mcpServers": {"headroom": hm._registration()}}
 
@@ -154,7 +154,7 @@ def test_the_real_cli_writes_the_registration_we_expect(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
     script = ROOT / "scripts" / "headroom_mcp.py"
-    first = subprocess.run(  # noqa: S603 - fixed argv, test-only
+    first = subprocess.run(
         [sys.executable, str(script), "--home", str(home)],
         capture_output=True,
         text=True,
@@ -171,7 +171,7 @@ def test_the_real_cli_writes_the_registration_we_expect(tmp_path: Path) -> None:
     assert hm.wrong(entry) is None, hm.wrong(entry)
     assert entry["env"] == hm.EGRESS, "the egress switches must be on the server itself"
 
-    again = subprocess.run(  # noqa: S603 - fixed argv, test-only
+    again = subprocess.run(
         [sys.executable, str(script), "--check", "--home", str(home)],
         capture_output=True,
         text=True,
@@ -203,8 +203,10 @@ def test_main_prints_each_home_then_the_summary(
     assert hm.main(["--check", *argv]) == 1
     assert capsys.readouterr().out.splitlines() == [
         "OK   headroom-mcp - ~/a: fixed: no headroom MCP server",
-        "WARN headroom-mcp - ~/b: could not read the MCP registry:"
-        " just headroom-mcp-register",
+        (
+            "WARN headroom-mcp - ~/b: could not read the MCP registry:"
+            " just headroom-mcp-register"
+        ),
     ]
     results["b"] = (None, None)
     assert hm.main(argv) == 0

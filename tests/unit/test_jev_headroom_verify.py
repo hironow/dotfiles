@@ -15,7 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import jev_headroom_verify as verify  # noqa: E402
+import jev_headroom_verify as verify
 
 REWRITE = {"effort": "high", "from": "general-purpose", "to": "worker-high"}
 
@@ -148,6 +148,18 @@ def test_a_codex_usage_limit_blocks() -> None:
         1, "", "You've hit your usage limit. Try again later.", 4321, []
     )
     assert report.status == "blocked"
+
+
+def test_a_codex_http_429_blocks() -> None:
+    report = verify.analyze_codex(
+        1, "", "stream error: unexpected status 429 Too Many Requests", 4321, []
+    )
+    assert report.status == "blocked"
+
+
+def test_a_429_inside_a_longer_number_is_not_a_limit() -> None:
+    report = verify.analyze_codex(1, "", "request id 14290 failed", 4321, [])
+    assert report.status == "fail"
 
 
 @pytest.mark.parametrize(

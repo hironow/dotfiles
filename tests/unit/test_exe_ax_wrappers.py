@@ -368,10 +368,10 @@ def test_the_task_is_the_image_with_debug_and_nothing_else(tmp_path: Path) -> No
     r = job(tmp_path, "true")
     (manifest,) = r.applied()
     assert "kind: Task" in manifest
-    assert re.search(r"^\s+name: j1$", manifest, re.M)
-    assert re.search(r"^\s+atespace: exe$", manifest, re.M)
+    assert re.search(r"^\s+name: j1$", manifest, re.MULTILINE)
+    assert re.search(r"^\s+atespace: exe$", manifest, re.MULTILINE)
     assert f'image: "{IMAGE}"' in manifest
-    assert re.search(r"^\s+debug: true$", manifest, re.M)
+    assert re.search(r"^\s+debug: true$", manifest, re.MULTILINE)
     # no command (the runner is the image's), no env, no workspace
     for field in ("command:", "env:", "workspaces:"):
         assert field not in manifest

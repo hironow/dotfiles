@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import filecmp
+import functools
 import hashlib
 import json
 import os
@@ -313,6 +314,15 @@ def _try_symlink(target: Path, relative_store: Path) -> bool:
     return True
 
 
+def _build_entry(tmp: Path, *, source: Path, store: Path, link: bool) -> bool:
+    """Fill `tmp` with a symlink to `store` when asked and allowed, else a
+    copy of `source`. Returns True when it made a symlink."""
+    if link and _try_symlink(tmp, store):
+        return True
+    shutil.copytree(source, tmp, symlinks=False)
+    return False
+
+
 def _symlinks_supported(skills_dir: Path) -> bool:
     """Probe once per consumer dir whether this process may create symlinks."""
     probe = skills_dir / ".skills-lock-probe"
@@ -438,13 +448,10 @@ def place(
             else:
                 verb = "linked" if will_link else "copied"
 
-            def _build(tmp: Path) -> bool:
-                if will_link and _try_symlink(tmp, expected):
-                    return True
-                shutil.copytree(source, tmp, symlinks=False)
-                return False
-
-            made_link = _swap_in(skills_dir, name, _build)
+            build = functools.partial(
+                _build_entry, source=source, store=expected, link=will_link
+            )
+            made_link = _swap_in(skills_dir, name, build)
             if made_link:
                 state.pop(name, None)
             else:

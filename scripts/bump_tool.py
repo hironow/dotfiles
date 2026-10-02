@@ -68,7 +68,7 @@ def _lock(repo: Path, tool: str, dry_run: bool) -> int:
         print(f"$ (cd {project.relative_to(repo).as_posix()} && {' '.join(cmd)})")
         if dry_run:
             continue
-        done = subprocess.run(cmd, cwd=project, check=False)  # noqa: S603 - fixed argv
+        done = subprocess.run(cmd, cwd=project, check=False)
         if done.returncode != 0:
             print(f"bump-tool: uv lock failed in {project}", file=sys.stderr)
             return done.returncode
@@ -129,8 +129,9 @@ def main(argv: list[str] | None = None) -> int:
     if rc:
         return rc
     print(
-        "\nnext: hironow/skills pins the same tools in its own pyproject --\n"
-        f"  (cd <skills clone> && uv add --dev '{args.tool}=={args.version}' && just check)\n"
+        "\nnext: hironow/skills pins the same tools in its own lint group --\n"
+        f"  (cd <skills clone> && uv add --group lint '{args.tool}=={args.version}'"
+        " && just check)\n"
         "then: just check   # tests/unit/test_ruff_ty_pins.py must be green"
     )
     return 0

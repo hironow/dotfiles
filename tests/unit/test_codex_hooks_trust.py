@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import codex_hooks_trust as trust  # noqa: E402
+import codex_hooks_trust as trust
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -176,7 +176,7 @@ class FakeServer:
     def flush(self) -> None:
         pass
 
-    def __iter__(self):  # noqa: ANN204
+    def __iter__(self):
         while self._out:
             yield self._out.pop(0)
 
@@ -210,6 +210,6 @@ def test_the_client_initializes_before_its_requests() -> None:
 def test_a_trust_run_prints_what_it_trusted_then_what_is_wrong(
     trusted: int, found: list[str], printed: list[str]
 ) -> None:
-    from doctor_lines import fmt  # noqa: PLC0415
+    from doctor_lines import fmt
 
     assert [fmt(line) for line in trust.trust_lines(trusted, found, 5)] == printed

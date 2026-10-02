@@ -23,17 +23,17 @@ Exit 0 = pass, 1 = fail, 2 = blocked (no key, no headroom, usage limit, no
 login, or the model launched no worker; nothing learned).
 """
 
-from collections.abc import Iterator, Sequence
 import contextlib
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator, Sequence
+from pathlib import Path
 
 from jev_claude_verify import Report, has_provider_limit, is_logged_out
 from jev_core import SONNET, build_env, claude_session_args
@@ -66,7 +66,7 @@ RTK_PROMPT = (
     "with the Bash tool, then reply DONE. Do nothing else."
 )
 CODEX_PROMPT = f"{CODEX} Reply with the single word OK."
-_CODEX_LIMIT = re.compile(r"usage limit|rate limit|429", re.IGNORECASE)
+_CODEX_LIMIT = re.compile(r"usage limit|rate limit|\b429\b", re.IGNORECASE)
 
 
 def first_user_text(messages: Sequence[object]) -> str:

@@ -41,7 +41,7 @@ def test_the_recipe_passes_each_word_to_the_gc_as_its_own_argument() -> None:
     assert "[positional-arguments]" in attributes
     assert "{{" not in body
     # and jq takes -apply and -allow as arguments, not as its own options
-    assert re.search(r"\$ARGS\.positional.*--args -- \"\$@\"", body, re.S)
+    assert re.search(r"\$ARGS\.positional.*--args -- \"\$@\"", body, re.DOTALL)
 
 
 def test_the_job_comes_from_the_suspended_template() -> None:
@@ -66,7 +66,7 @@ def test_a_job_that_vanishes_ends_the_wait() -> None:
 
 def test_the_job_is_deleted_whatever_happens() -> None:
     _, body = recipe("exe-snapshot-gc")
-    trap = re.search(r"^\s*trap '([^']*)' EXIT", body, re.M)
+    trap = re.search(r"^\s*trap '([^']*)' EXIT", body, re.MULTILINE)
     assert trap, "no EXIT trap"
     assert "delete job" in trap.group(1)
 

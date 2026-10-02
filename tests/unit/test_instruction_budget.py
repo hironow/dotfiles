@@ -17,7 +17,7 @@ REPO = Path(__file__).resolve().parents[2]
 # Import from scripts (add parent to path)
 sys.path.insert(0, str(REPO / "scripts"))
 
-from instruction_budget import count_instructions, main  # noqa: E402
+from instruction_budget import count_instructions, main
 
 
 def test_counts_dash_star_and_numbered_items() -> None:

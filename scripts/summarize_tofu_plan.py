@@ -154,7 +154,7 @@ def compare_expectations(
 def load_plan(text: str) -> dict[str, Any]:
     plan = json.loads(text)
     if not isinstance(plan, dict):
-        raise ValueError("plan JSON must be an object")
+        raise TypeError("plan JSON must be an object")
     return plan
 
 

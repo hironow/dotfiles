@@ -20,7 +20,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 sys.path.insert(0, str(REPO / "scripts"))
 
-from check_agent_home_refs import _scan_file  # noqa: E402
+from check_agent_home_refs import _scan_file
 
 
 def _scan_text(tmp_path: Path, text: str) -> list[str]:

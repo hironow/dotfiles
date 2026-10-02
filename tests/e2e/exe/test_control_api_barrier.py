@@ -31,7 +31,6 @@ import secrets
 from collections.abc import Iterator
 
 import pytest
-
 from exe_live import Exe, stamp, utcnow
 
 POLICY = os.environ.get("EXE_E2E_API_POLICY", "")

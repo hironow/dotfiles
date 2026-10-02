@@ -63,6 +63,7 @@ def run_git(args: list[str], cwd: Path | None = None) -> str:
         cwd=cwd or ROOT,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     return result.stdout.strip()
 
@@ -189,8 +190,7 @@ def generate_section(submodule_path: str) -> str:
     if all_notable:
         lines.append("#### 主要な変更点")
         lines.append("")
-        for entry in all_notable[:20]:
-            lines.append(entry)
+        lines.extend(all_notable[:20])
         lines.append("")
 
     if breaking:
@@ -358,8 +358,7 @@ def generate_notable_section(submodules: list[str]) -> str:
     for path in submodules:
         all_security.extend(collect_security_updates(path))
     if all_security:
-        for sec in all_security[:10]:
-            lines.append(sec)
+        lines.extend(all_security[:10])
     else:
         lines.append("- セキュリティ関連の更新なし")
     lines.append("")
@@ -368,7 +367,7 @@ def generate_notable_section(submodules: list[str]) -> str:
 
 
 def generate_changelog() -> str:
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().astimezone().strftime("%Y-%m-%d")
     submodules = get_submodule_paths()
 
     protocols = [s for s in submodules if s.startswith(PROTOCOL_PREFIX)]

@@ -20,7 +20,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _load(name: str, file: str):  # noqa: ANN202 - a module loaded by path
+def _load(name: str, file: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / file)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

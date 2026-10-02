@@ -104,7 +104,10 @@ sync はこの 2 つのキーを書き換えない。
 
 ```bash
 just sync-agents            # ~/.claude だけ（既定）
-just sync-agents a b        # ~/.claude-work-a と -b も
+just sync-agents p a b      # 名指しした home だけ（p は ~/.claude）
 just sync-agents all        # すべてのエージェント
 just sync-agents-preview …  # 書き込まずに差分を見る
 ```
+
+名指しすると、既定の `~/.claude` は対象から外れる。
+`just sync-agents a b` は `~/.claude-work-a` と `-b` だけに配るので、`~/.claude` も要るときは `p` を足すか `all` にする。

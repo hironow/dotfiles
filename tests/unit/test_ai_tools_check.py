@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import ai_tools_check as check  # noqa: E402
+import ai_tools_check as check
 
 MISE_RTK = "/home/u/.local/share/mise/installs/rtk/0.50.0/rtk"
 MISE_HEADROOM = (

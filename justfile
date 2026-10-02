@@ -222,6 +222,14 @@ jev-pi-verify:
 jev-headroom-verify *target:
     {{UV_RUN}} scripts/jev_headroom_verify.py {{target}}
 
+# Measure what headroom's compressor does to four byte-identical payloads, via
+# a real `headroom mcp serve` + headroom_compress call. Reproduces the table in
+# the headroom spoke, so re-run it after a headroom bump and update that table
+# if a ratio moved. Deliberately not in `just ci` (it starts a live server);
+# `tests/unit/test_headroom_compress_measure.py` pins the payloads instead.
+headroom-compress-measure *executable:
+    {{UV_RUN}} scripts/headroom_compress_measure.py {{executable}}
+
 # Open the savings dashboard of the headroom proxy j-cc started (plain
 # `headroom dashboard` opens port 8787, where j-cc never runs it).
 headroom-dashboard:
@@ -1483,6 +1491,23 @@ connect-azurite:
 [group('Cloud')]
 gcloud-list:
     gcloud config configurations list
+
+# Audit a GCP project for anything that accumulates cost with no bound: an
+# Artifact Registry repository with no DELETE policy or still in dry run, a
+# bucket with no lifecycle (Cloud Build's default one above all), a disk or
+# address nobody uses, a SQL instance that bills while STOPPED, a missing
+# budget, nodes left up, a scheduler job that stopped stopping things.
+#
+# READ-ONLY: every probe is a `gcloud … list`, so it needs no change window.
+# Fix findings through IaC, never by hand -- the next apply would undo it.
+# The project (and the optional billing account) are ARGUMENTS: ids never enter
+# a tracked file, and neither does the report, so redirect it somewhere local.
+#   just gcp-cost-audit my-project > ~/audit.txt
+#   just gcp-cost-audit my-project --billing-account 0X0X0X-0X0X0X-0X0X0X
+# Exit 1 when something has no bound. docs/agents/gcp-cost-guardrails.md.
+[group('Cloud')]
+gcp-cost-audit project *args:
+    @{{ UV_RUN }} scripts/gcp_cost_audit.py {{ project }} {{ args }}
 
 # List: Azure accounts
 [group('Cloud')]

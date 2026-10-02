@@ -14,7 +14,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from _bash_hook import run_bash
 
 HOOK = (

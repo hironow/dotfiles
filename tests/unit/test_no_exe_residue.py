@@ -111,7 +111,7 @@ RETIRED_IN_FILES = {
 
 
 def _tracked() -> list[str]:
-    out = subprocess.run(  # noqa: S603 - fixed argv, test-only
+    out = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files"],
         capture_output=True,
         text=True,
@@ -188,5 +188,10 @@ def test_what_survives_is_still_here() -> None:
         "docs/plan",
         "tofu/tailnet",
         "ROOT_AGENTS_docs_agents_formal-methods.md",
+        # The docstring above has always named both generic spokes as kept, but
+        # only formal-methods was asserted. This one arrived on main with #439,
+        # after this branch forked, which is why it is added here at the merge
+        # rather than in the retirement commits.
+        "ROOT_AGENTS_docs_agents_gcp-cost-guardrails.md",
     ):
         assert (ROOT / kept).exists(), f"{kept} is not residue and must stay"

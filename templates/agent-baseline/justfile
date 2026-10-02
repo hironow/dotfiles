@@ -15,14 +15,17 @@ check: fmt lint semgrep test
 test:
     uv run pytest
 
-# Lint + type-check (ruff + ty: the uv/ruff/ty trio, no mypy/pyright)
+# Lint + type-check (ruff + ty: the uv/ruff/ty trio, no mypy/pyright).
+# ruff only parses source, so it runs with the lint group alone; ty resolves
+# imports, so it also gets the default groups (python-tooling spoke).
 lint:
-    uv run ruff check .
-    uv run ty check
+    uv run --locked --only-group lint ruff check .
+    uv run --locked --only-group lint ruff format --check .
+    uv run --locked --group lint ty check
 
 # Format code
 fmt:
-    uv run ruff format .
+    uv run --locked --only-group lint ruff format .
 
 # Run e2e tests
 test-e2e:

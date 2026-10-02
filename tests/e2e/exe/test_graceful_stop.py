@@ -34,7 +34,6 @@ from datetime import datetime
 from typing import Any
 
 import pytest
-
 from exe_live import Exe, log, stamp, utcnow
 
 

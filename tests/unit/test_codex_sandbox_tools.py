@@ -14,9 +14,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import ai_tools_check  # noqa: E402
-import codex_sandbox_tools as sandbox  # noqa: E402
-import sync_agents  # noqa: E402
+import ai_tools_check
+import codex_sandbox_tools as sandbox
+import sync_agents
 
 PARENT = r"""C:\Users\u\AppData\Local nn\CodexSandboxUsers:(I)(OI)(CI)(RX)
                           NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)

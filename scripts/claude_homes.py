@@ -6,12 +6,12 @@ Code's own CLI there; ai_tools_check reads each home's settings. The home
 names live here once, in the order the scripts report them.
 """
 
-from collections.abc import Callable, Sequence
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import time
+from collections.abc import Callable, Sequence
+from pathlib import Path
 
 from doctor_lines import Line, failed, fmt
 
@@ -61,7 +61,7 @@ def runner(claude: str, home: Path, deadline: float | None) -> Run:
         if timeout is None:
             return None
         try:
-            done = subprocess.run(  # noqa: S603 - resolved argv, no shell
+            done = subprocess.run(
                 [claude, *args],
                 cwd=home,
                 env=env,

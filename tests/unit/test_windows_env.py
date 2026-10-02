@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-import windows_env  # noqa: E402
+import windows_env
 
 
 def test_off_windows_there_is_nothing_to_read(monkeypatch: pytest.MonkeyPatch) -> None:

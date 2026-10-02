@@ -9,7 +9,7 @@ import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
-import jev_core as core  # noqa: E402
+import jev_core as core
 
 CASES = json.loads(
     (Path(__file__).parent / "jev_effort_cases.json").read_text(encoding="utf-8")
@@ -25,7 +25,7 @@ def test_effort_composes_score_noul_and_confidence(case: dict[str, object]) -> N
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), 10**400])
 @pytest.mark.parametrize("field", ["score", "confidence", "noul"])
 def test_nonfinite_or_overflowing_answers_do_not_raise_effort(
-    field: str, value: float | int
+    field: str, value: float
 ) -> None:
     difficulty = {"score": 0, "confidence": 0.9}
     structure = {"noul": 0}
@@ -66,10 +66,75 @@ def test_request_asks_one_score_and_one_noul() -> None:
 
 
 def test_parse_task_joins_arguments_and_rejects_bad_usage() -> None:
-    assert core.parse_args(["claude", "fix", "the", "bug"]) == ("claude", "fix the bug")
+    assert core.parse_args(["claude", "fix", "the", "bug"]) == core.Launch(
+        "claude", "fix the bug"
+    )
     for argv in (["claude"], ["gemini", "task"], ["pi", "  "]):
         with pytest.raises(ValueError, match="Usage|task"):
             core.parse_args(argv)
+
+
+@pytest.mark.parametrize(
+    ("argv", "launch"),
+    [
+        # Claude Code: -c/--continue takes no value; -r/--resume takes an
+        # optional session id or search term, then the prompt follows
+        (["claude", "-c"], core.Launch("claude", "", ("--continue",))),
+        (
+            ["claude", "--continue", "next", "step"],
+            core.Launch("claude", "next step", ("--continue",)),
+        ),
+        (["claude", "-r"], core.Launch("claude", "", ("--resume",))),
+        (["claude", "-r", "abc"], core.Launch("claude", "", ("--resume", "abc"))),
+        (
+            ["claude", "--resume", "abc", "do", "more"],
+            core.Launch("claude", "do more", ("--resume", "abc")),
+        ),
+        (
+            ["claude", "--resume=abc", "do more"],
+            core.Launch("claude", "do more", ("--resume", "abc")),
+        ),
+        # Pi: both flags take no value, so what follows is the prompt
+        (["pi", "-c"], core.Launch("pi", "", ("--continue",))),
+        (["pi", "-r"], core.Launch("pi", "", ("--resume",))),
+        (
+            ["pi", "--resume", "next", "step"],
+            core.Launch("pi", "next step", ("--resume",)),
+        ),
+    ],
+)
+def test_resume_flags_follow_each_host(argv: list[str], launch: object) -> None:
+    assert core.parse_args(argv) == launch
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["pi", "--resume=abc"],  # Pi's --resume takes no value
+        ["claude", "--resume="],
+        ["claude", "-c", "--fork-session"],  # other host options are not passed on
+        ["claude", "-r", "abc", "-x"],
+        ["pi", "-c", "-r"],
+    ],
+)
+def test_resume_rejects_what_the_host_would_read_differently(argv: list[str]) -> None:
+    with pytest.raises(ValueError, match="Usage|option"):
+        core.parse_args(argv)
+
+
+def test_build_command_puts_the_resume_flags_before_the_prompt() -> None:
+    command = core.build_command(
+        "claude",
+        "do more",
+        "high",
+        core.SONNET,
+        ["--x", "1"],
+        resume=("--resume", "abc"),
+    )
+    assert command[-5:] == ["--x", "1", "--resume", "abc", "do more"]
+    # Resumed without a prompt: no empty positional for the host to send
+    command = core.build_command("pi", "", "medium", "cursor/x", resume=("--continue",))
+    assert command[-1] == "--continue"
 
 
 def test_build_command_pins_model_effort_and_rules() -> None:

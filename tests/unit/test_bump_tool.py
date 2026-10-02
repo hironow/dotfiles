@@ -19,7 +19,7 @@ import pytest
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "bump_tool.py"
 
 
-def _load():  # noqa: ANN202 - module object
+def _load():
     spec = importlib.util.spec_from_file_location("bump_tool", _SCRIPT)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
@@ -70,6 +70,9 @@ def test_bump_ruff_rewrites_every_declaration(
     assert '"ty==0.0.77"' in (repo / "pyproject.toml").read_text(encoding="utf-8")
     out = capsys.readouterr().out
     assert "hironow/skills" in out and "0.15.23" in out
+    # hironow/skills keeps ruff and ty in its lint group, as this repo does
+    assert "uv add --group lint 'ruff==0.15.23'" in out
+    assert "--dev" not in out
 
 
 def test_bump_ty_leaves_the_justfile_alone(repo: Path) -> None:

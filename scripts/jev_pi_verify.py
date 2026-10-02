@@ -12,16 +12,16 @@ usage limit; nothing learned), 3 = partial (works, but a medium pick cannot be
 told apart from the session's own medium).
 """
 
-from collections.abc import Sequence
-from dataclasses import dataclass, field
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
 
 from jev_core import build_command, build_env
 from jev_launch import extension_installed, jev_key, pi_route

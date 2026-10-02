@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from sync_agents import AgentTarget, _merge_settings_fragment  # noqa: E402
+from sync_agents import AgentTarget, _merge_settings_fragment
 
 DOTFILES = Path(__file__).resolve().parents[2]
 MIGRATION = "2026-10-test-migration"

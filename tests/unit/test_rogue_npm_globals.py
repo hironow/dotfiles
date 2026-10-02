@@ -22,7 +22,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from _bash_hook import resolve_bash
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -57,7 +56,7 @@ def _make_windows_rogue(installs: Path, ver: str, pkg: str, bin_name: str) -> No
     """npm global on Windows: package under <ver>/node_modules, bins in <ver>/."""
     pkgdir = installs / ver / "node_modules" / pkg
     pkgdir.mkdir(parents=True, exist_ok=True)
-    (pkgdir / "package.json").write_text('{"name":"%s"}' % pkg, encoding="utf-8")
+    (pkgdir / "package.json").write_text(f'{{"name":"{pkg}"}}', encoding="utf-8")
     for suffix in ("", ".cmd", ".ps1"):
         (installs / ver / f"{bin_name}{suffix}").write_text("stub", encoding="utf-8")
 
@@ -66,7 +65,7 @@ def _make_unix_rogue(installs: Path, ver: str, pkg: str, bin_name: str) -> None:
     """npm global on Unix: package under <ver>/lib/node_modules, bin in <ver>/bin."""
     pkgdir = installs / ver / "lib" / "node_modules" / pkg
     pkgdir.mkdir(parents=True, exist_ok=True)
-    (pkgdir / "package.json").write_text('{"name":"%s"}' % pkg, encoding="utf-8")
+    (pkgdir / "package.json").write_text(f'{{"name":"{pkg}"}}', encoding="utf-8")
     bindir = installs / ver / "bin"
     bindir.mkdir(parents=True, exist_ok=True)
     (bindir / bin_name).write_text("stub", encoding="utf-8")

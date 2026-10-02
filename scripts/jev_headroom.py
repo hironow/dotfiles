@@ -9,18 +9,18 @@ in the same startup window may each start a proxy, and each uses its own. Every
 failure means "launch without headroom", never "j-cc does not start".
 """
 
-from collections.abc import Callable, Mapping, Sequence
 import contextlib
 import http.client
 import json
 import os
-from pathlib import Path
 import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Protocol
 
 HOST = "127.0.0.1"

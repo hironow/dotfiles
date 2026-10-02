@@ -15,12 +15,12 @@ bun = "latest"
 go = "latest"
 node = "lts"
 just = "latest"
-rust = "1.98.0"
+rust = "1.99.0"
 # opentofu — terraform-compatible IaC. Required by `just test-iac`
 # so `mise x -- tofu` resolves from the non-mise-activated bash
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
 # no shims PATH). Pinned for repeatable IaC test runs across machines.
-opentofu = "1.12.6"
+opentofu = "1.13.0"
 # Python toolchain = the astral trio, always: uv (packages/runner), ruff
 # (lint + format), ty (type checking; https://github.com/astral-sh/ty).
 # mypy / pyright are retired (2026-09-08) — do not reintroduce them. Declared
@@ -32,20 +32,20 @@ opentofu = "1.12.6"
 # (ADR 0006): ruff/ty to the exact version the lint group pins
 # (`just bump-tool ruff|ty <ver>` moves both), so a hand-run `ruff check`
 # in a mise-activated shell reports what `just check` reports (a newer
-# ruff widens the default rules: 0.16 showed 88 findings the gate does
-# not); ty because it is still 0.0.x and a "latest" pre-release could
+# ruff can change the default rules: 0.16 widened them from 59 to 413);
+# ty because it is still 0.0.x and a "latest" pre-release could
 # change diagnostics under a mandatory gate. tests/unit/test_ruff_ty_pins.py
 # keeps the three declarations in step. These global copies serve
 # interactive use only: per-repo gates and the Claude format-after-edit
 # hook run `uv run --frozen --only-group lint ruff`, i.e. that repo's own
 # lint-group pin, never these.
 uv = "latest"
-ruff = "0.15.22"
+ruff = "0.16.9"
 ty = "0.0.84"
 # golangci-lint v2: the Go quality gate (`just go-lint` / `just check`).
 # Aqua backend. Bare `mise exec -- golangci-lint` can still resolve Go's
 # GOBIN copy, so justfile recipes pin `aqua:golangci/golangci-lint`.
-"aqua:golangci/golangci-lint" = "2.13.0"
+"aqua:golangci/golangci-lint" = "2.14.0"
 kotlin = "latest"
 java = "latest"
 gradle = "latest"
@@ -92,7 +92,7 @@ starship = "1.26.0"
 # Declared here so WSL (no Homebrew) gets it; on a Mac brew also provides it.
 # Pinned for cross-machine reproducibility. (opentofu, the other
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
-fzf = "0.74.3"
+fzf = "0.74.4"
 
 # rtk + headroom — base tooling every agent session goes through (ADR 0047):
 # rtk compresses command output (dotfiles owns its Claude hook; never run
@@ -100,13 +100,14 @@ fzf = "0.74.3"
 # proxy. Every OS, Windows included. headroom's `proxy` extra carries the
 # server `headroom proxy` / `wrap` run, `code` its AST-aware code compression
 # (`all` would add torch and more); Python 3.13 is the version its docs install
-# with (no CI leg covers 3.14). headroom is pinned: mise
-# resolves `latest` without uv's 7-day exclude-newer (ADR 0028), which then
-# refuses the release; move the pin once a newer release is a week old. Their
+# with (no CI leg covers 3.14). headroom is pinned so a move is a deliberate,
+# changelog-read step; headroom-ai itself is exempt from uv's 7-day
+# exclude-newer (ADR 0028, user decision 2026-10-01) so the pin can take the
+# newest release, while its dependencies stay quarantined. Their
 # telemetry is pinned off in [env] below. After either moves, `just doctor`
 # checks the contracts dotfiles relies on (rtk-guard, *-telemetry, headroom-cli).
 rtk = "latest"
-"pypi:headroom-ai" = { version = "0.38.0", extras = "proxy,code", uvx_args = "--python 3.13" }
+"pypi:headroom-ai" = { version = "0.39.1", extras = "proxy,code", uvx_args = "--python 3.13 --exclude-newer-package headroom-ai=false" }
 
 # google/ax + Agent Substrate toolchain. Declared here rather than per-repo
 # for the ADR 0023 activate-only reason as above: the migration is driven from
@@ -134,7 +135,7 @@ rtk = "latest"
 # exactly (ADR 0006): a checker sitting under a mandatory gate must change its
 # verdicts deliberately. `quint verify` (apalache) needs a JVM, `quint run` /
 # `quint test` do not — `java` is already declared above either way.
-"npm:@informalsystems/quint" = "0.32.0"
+"npm:@informalsystems/quint" = "0.33.0"
 # ax — the google/ax CLI. Upstream publishes NO release binaries and NO release
 # assets (verified: the v0.3.1 release carries zero assets), so building from
 # source through mise's Go backend is the only install route; the command lives
@@ -181,9 +182,9 @@ rtk = "latest"
 # backend avoids registry-alias ambiguity.
 #   cf -> Cloudflare CLI, resend-cli -> Resend, @stripe/cli -> Stripe,
 #   @dataform/cli -> Dataform (BigQuery ELT)
-# cf's npm dist-tag "latest" is 1.0.0-beta.5, but mise points its `latest` link at the
-# newest stable (0.13.0), so "latest" never activates the beta. Pin it until 1.0.0.
-"npm:cf" = "1.0.0-beta.5"
+# cf's npm dist-tag "latest" is 1.0.0-beta.10, but mise points its `latest` link at the
+# newest stable (0.15.0), so "latest" never activates the beta. Pin it until 1.0.0.
+"npm:cf" = "1.0.0-beta.10"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
 "npm:@dataform/cli" = "latest"

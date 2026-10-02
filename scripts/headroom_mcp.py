@@ -39,10 +39,11 @@ Usage: headroom_mcp.py [--check] [--home DIR ...]
 Prints doctor-style OK/WARN lines; exit 1 on a WARN.
 """
 
-from collections.abc import Callable, Mapping, Sequence
+import itertools
 import json
-from pathlib import Path
 import sys
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 
 import claude_homes
 
@@ -166,7 +167,9 @@ def _read(home: Path) -> Read:
 
 
 def _homes(argv: Sequence[str]) -> list[Path]:
-    given = [Path(value) for flag, value in zip(argv, argv[1:]) if flag == "--home"]
+    given = [
+        Path(value) for flag, value in itertools.pairwise(argv) if flag == "--home"
+    ]
     if given:
         return given
     return claude_homes.existing(Path.home())

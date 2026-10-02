@@ -11,7 +11,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-
 from exe_live import Exe, leave_asleep, log
 
 

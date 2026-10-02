@@ -8,11 +8,11 @@ body below the sentinel with the new upstream file, verbatim.
 """
 
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 from ai_tools_check import vendored_version
 from install_pi_extensions import VENDORED_SENTINEL

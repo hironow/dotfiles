@@ -258,7 +258,7 @@ Read no invariant as covering any of this:
 ## How to run it
 
 Quint is pinned in `config/mise/config.toml`
-(`"npm:@informalsystems/quint" = "0.32.0"`), so every command goes through mise:
+(`"npm:@informalsystems/quint" = "0.33.0"`), so every command goes through mise:
 
 ```sh
 mise x -- quint parse      exe/spec/lease.qnt

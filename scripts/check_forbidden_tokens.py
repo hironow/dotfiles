@@ -276,7 +276,7 @@ def added_lines(diff: str) -> list[tuple[str, int, str]]:
             target = raw[4:].strip()
             path = None if target == "/dev/null" else _DIFF_PREFIX_RE.sub("", target, 1)
             continue
-        if raw.startswith("--- ") or raw.startswith("diff --git "):
+        if raw.startswith(("--- ", "diff --git ")):
             continue
         hunk = _HUNK_RE.match(raw)
         if hunk:
