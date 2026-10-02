@@ -25,10 +25,13 @@ already committed, so `tree` reads every blob and every pathname at HEAD and is
 the standing proof that the tracked tree is clean. It is a gate rather than a
 backlog because the tree was cleaned first: the identifiers that used to sit in
 six tracked files were replaced with neutral placeholders, and this mode is
-what keeps them from coming back. Nine `main` commit messages still carry the
-org name; by operator decision the history is left as it is -- rewriting it
-would republish the same strings in a new place and break every SHA -- so the
-messages in range are scanned going forward and the ones behind us stay.
+what keeps them from coming back. A small, known set of `main` commit messages
+still carries a forbidden token; by operator decision the history is left as it
+is -- rewriting it would republish the same strings in a new place and break
+every SHA -- so the messages in range are scanned going forward and the ones
+behind us stay. No count is recorded here: one was, it was wrong when a reader
+next counted, and a stale number reads as a complete inventory. Count it
+locally, against the list, if the number ever matters.
 
 **Matched text is never printed.** Output reports `path:line` and the token's
 index in the list, because this output can end up in a public log. The list is

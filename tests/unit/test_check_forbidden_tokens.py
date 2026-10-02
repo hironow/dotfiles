@@ -10,8 +10,10 @@ path, so the wall has to be mechanical.
 Two properties of that wall are what make it usable rather than theatre, and
 they are what most of these tests pin:
 
-1. **Added lines only.** Six tracked files and nine commit messages on `main`
-   already contain the org token; cleaning those is a separate work unit. A
+1. **Added lines only.** Six tracked files and a small, known set of `main`
+   commit messages already contained a forbidden token: the files were cleaned,
+   and the messages are left as they are by operator decision (their count is
+   deliberately not recorded here -- a stale one reads as an inventory). A
    whole-file scanner would therefore fail every commit forever and get
    switched off within the hour. So the staged scan reads the ADDED lines of
    the staged diff (plus the staged paths), never the files.
@@ -487,7 +489,7 @@ def test_branch_mode_passes_on_a_clean_branch(tmp_path: Path) -> None:
 
 
 def test_branch_mode_ignores_history_before_the_base(tmp_path: Path) -> None:
-    """`main`'s nine tainted messages are out of scope by construction."""
+    """`main`'s tainted messages are out of scope by construction."""
     repo = _init_repo(tmp_path)
     (repo / "old.md").write_text("old\n", encoding="utf-8", newline="\n")
     _git(repo, "add", "old.md")
