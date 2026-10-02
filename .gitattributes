@@ -17,3 +17,12 @@ docs/portless-urls.md text eol=lf
 # See ADR 0020.
 *.sh   text eol=lf
 *.bash text eol=lf
+
+# Go sources must be LF for the same reason: gofmt / gofumpt — reached through
+# `golangci-lint run` and `golangci-lint fmt --diff` in `go-lint` — report a
+# CRLF working tree as "File is not properly formatted". With core.autocrlf=true
+# a Windows checkout fails `just check` on an untouched .go file while the
+# committed blob is LF. A fresh clone needs nothing; an existing Windows
+# checkout needs a forced re-checkout, because git skips stat-clean paths (see
+# ADR 0050). Same shape as the *.sh pin above.
+*.go   text eol=lf
