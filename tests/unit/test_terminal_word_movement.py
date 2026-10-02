@@ -8,12 +8,16 @@ does not take for pane focus); `tools/ghostty-config` pins Option+arrow to
 ESC b / ESC f, zsh's built-in M-b / M-f, which also survive tmux.
 
 The third artifact is tmux itself: `extended-keys always` is what lets
-Ctrl+Enter reach Claude Code inside a pane (the default is `off`, and zsh never
-asks for extended keys, so the key arrives as a plain CR). `xterm-keys` must
-stay out -- it has defaulted to `on` since tmux 2.4, so adding it would only
-mislead. The option needs tmux >= 3.2a; older versions print one warning and
-still load the rest of the file, so that requirement is documented rather than
-guarded.
+Ctrl+Enter reach Claude Code inside a pane. With no `extended-keys` line (the
+unset default) the pane does not get a distinct Ctrl+Enter -- how it fails is
+version-gated, and both outcomes were measured with a PTY playing the terminal:
+tmux 3.4 sent the pane nothing at all, while tmux 3.7c fell back to a bare CR.
+tmux 3.5 revamped key handling, which is the likely boundary; 3.5/3.5a/3.6 are
+unmeasured.
+`xterm-keys` must stay out -- it has defaulted to `on` since tmux 2.4, so adding
+it would only mislead. The option needs tmux >= 3.2a; older versions print one
+warning and still load the rest of the file, so that requirement is documented
+rather than guarded.
 
 tmux, zsh and Ghostty are all absent on native-Windows dev hosts, so these are
 static checks on the tracked files plus `zsh -n`, which is skipped where zsh is
