@@ -11,8 +11,9 @@
 
 PR #452 は Ghostty の keybind と `.zshrc` の zle widget で Ctrl+Enter を改行にしたが、
 **tmux の中では効かない**（tmux の `extended-keys` は既定 off で、拡張キーを要求しない
-アプリには拡張キーを渡さないため、ペイン内の zsh には素の CR = Enter と区別できない形で
-届く）。あわせて **単語移動（←/→ の 1 単語版）が端末ごとにばらつく**。
+アプリには拡張キーを渡さないため、ペイン内の zsh は Ctrl+Enter を区別できる形では受け取れ
+ない。落ち方はバージョン依存で、3.4 は何も届かず、3.7c は素の CR = Enter に落ちる =
+F4-実測 / F4-実測-2）。あわせて **単語移動（←/→ の 1 単語版）が端末ごとにばらつく**。
 
 本変更は次の 2 点を揃える。
 
@@ -47,11 +48,12 @@ forward extended keys to applications even if they do not request them.`
 `When set to always, the client requests are ignored, and mode 1 output is forced.` /
 `With respect to parent terminals, when set to on or always, the escape sequence to
 enable extended keys is sent, if tmux knows that it is supported.`（マージ済み PR #4038）
-→ zsh は拡張キーを要求しないので、`on` では Ctrl+Enter が素の CR のままで Enter と
-区別できない。**`always` が必要**。
+→ zsh は拡張キーを要求しないので、この man（3.5 以降）に従えば `on` では client 要求が無く
+Ctrl+Enter は素の CR のまま = Enter と同じ。**`always` が必要**。（3.4 では明示 `on` でも
+届いた = F4-実測。バージョン依存の挙動には依拠しない。）
 （同 PR のリリース告知コメントには「on/always では既定で mode 2 を要求する」とあるが、
-これは *親端末への要求* の話。ペインへの出力モードは上記 man の記述を採る。本ホストに
-tmux が無く実験しないので、実機確認項目に挙げる。）
+これは *親端末への要求* の話。ペインへの出力モードは上記 man の記述を採る。Windows
+ホストには tmux が無いので静的検査のみで、実測は下の F4-実測 / F4-実測-2 に置く。）
 
 **F4-実測（2026-10-02、WSL の tmux 3.4、PTY を端末役にして 2 ラウンド再現）**: 配布 conf
 （`always` + `xterm*:extkeys`）では `ESC [13;5u`（Ghostty の送る CSI-u）がそのまま届き、
@@ -59,13 +61,31 @@ mode-1 の `ESC [27;5;13~` も CSI-u に正規化されて届く（F5 の予想�
 **`extended-keys` の行が無い既定 off ではペインに何も届かない**（CR ではない。未割当の
 シーケンス `ESC [199~` はそのまま届くので、拡張キーとして認識した上で捨てている）。`on` を
 代入した場合や、明示的に `off` を代入した場合はこの環境では届いた（未代入の既定 off と代入後の
-`off` で挙動が違う = 3.4 固有の可能性）。副作用なし: 素の Enter は `0d`、`ESC [1;5D`
+`off` で挙動が違う = 3.4 固有の可能性が高い。3.7c の既定は CR だったので同じ差は出ないと
+見られるが、3.7c の明示 `off` は未測）。副作用なし: 素の Enter は `0d`、`ESC [1;5D`
 （Ctrl+←）と `ESC b`（Option+←）は無変化。ソース側の裏付けは `tty.c`（`ENEKS` は option が
 非 0 のときだけ送る）と `input.c`（`extended-keys == 2` のときアプリの mode 要求を無視する）、
 および 3.5a の `options-table.c`（`extended-keys` の既定は `off`、`extended-keys-format` の
 選択肢は `csi-u`/`xterm` で既定は `xterm` = `default_num = 1`）。
-macOS 3.5a の実機確認は引き続きチェックリスト項目（3.5 は `extended-keys-format` の既定が
-`xterm` なので、ペインが受ける綴りは `ESC [27;5;13~` 側になるはず = F5）。
+macOS 3.7c の実機確認は下の F4-実測-2。
+
+**F4-実測-2（2026-10-02、macOS の tmux 3.7c、利用者のレビュー実測。#460 と同じ隔離ソケット +
+PTY 方式で 2 ラウンド再現）**: 配布 conf では CSI-u 入力 `ESC [13;5u` も mode-1 入力
+`ESC [27;5;13~` もペインには `ESC [27;5;13~` で届く。入力形をそのまま返すのではなく
+**mode 1 出力に固定** であり、F4 の man 記述（`always` は client 要求を無視して mode 1 出力を
+強制）と整合する（「親端末へは mode 2 を要求する」という読みはこの測定では観測していない。
+根拠は CHANGES / man）。
+`always` のみ（features 行なし）でも同じ。
+**既定（`extended-keys` の行なし）では `0d`（bare CR）= Enter と区別できない**。3.4 の
+「何も届かない」と食い違う境界は CHANGES 3.5 の "Revamp extended keys support to more closely
+match xterm and support mode 2 as well as mode 1. This is a substantial change to key handling
+which changes tmux to always request mode 2 from parent terminal, changes to an unambiguous
+internal representation of keys"（3.5 で key 処理が総入れ替え。3.4 は認識して捨てる）。
+**境界の候補は 3.5** だが、根拠は CHANGES の記述であって厳密な境界の実測ではない
+（実測は 3.4 と 3.7c のみ、3.5/3.5a/3.6 は未測）。対照の `ESC [199~` は両バージョンで素通り（= 「パースできない
+ので落ちる」ではない）。副作用なし: 素の Enter `0d`、`ESC [1;5D`、`ESC b` は無変化。
+利用者の実機（3.7c）では確認できたが、「3.5 以降すべて」とは言えない。Ghostty の物理キーに
+よる end-to-end だけが未実施（手順は末尾のチェックリスト）。
 
 **F5. `extended-keys-format` の既定は `xterm`、その形式では C-S-a は `^[[27;6;65~`。**
 man: `For example, C-S-a will be reported as '^[[27;6;65~' when set to xterm, and as
@@ -299,13 +319,15 @@ stty raw -echo; dd bs=1 count=1 2>/dev/null | od -An -tx1; stty sane
 
 - 素の Enter /（端末直下で）拡張キー非対応の Ctrl+Enter → `0d`（F14 の Terminal.app 等）
 - 拡張キー対応の Ctrl+Enter → `1b`（ESC。残りのバイトはプロンプトに残るので `Ctrl+U`）
-- **tmux の中は別**: `extended-keys` の行が無い既定 off だと何も届かない（F4-実測。`0d`
-  ではない）。何も出ないと `dd` は待ち続けるので、普通の Enter か `Ctrl+C` を押せば 1 バイト
-  読んで戻る（`stty raw` 中は `Ctrl+C` が SIGINT にならず 1 バイトとして届く）
+- **tmux の中は別**: `extended-keys` の行が無い既定 off は **バージョンで結果が違う** —
+  tmux 3.4 は何も届かず（`0d` ではない）、3.7c は `0d`（= Enter と同じ）。何も出ない
+  と `dd` は待ち続けるので、普通の Enter か `Ctrl+C` を押せば 1 バイト読んで戻る
+  （`stty raw` 中は `Ctrl+C` が SIGINT にならず 1 バイトとして届く）
 
 つまり **「Ctrl+Enter が `0d` を出す」= Enter と区別できない** が結論で、`^M` が見える
 ことは期待しない（見えたら ICRNL が切れている別の状態）。生バイトを見るなら tmux の外
-（端末直下）が確実で、tmux の中は上記のとおり「何も出ない」ことがある。
+（端末直下）が確実で、tmux の中は上記のとおりバージョンで挙動が違う（3.4 は何も出ない、
+3.7c は `0d`）。
 
 **F4 の mode 1 の読みが外れていた場合**（Option+← が `^[[27;3;68~` のような別形で
 届く）は、その形を `.zshrc` に追記する。`extended-keys on` に落とす選択肢もあるが、
@@ -325,7 +347,7 @@ Ctrl+Enter が効かなくなるので取らない。
 | `$PROFILE` で `Ctrl+RightArrow` を `ForwardWord` に上書きして着地点を揃える | 動いている Windows 既定を配布物で上書きしない（F8 の決定）。必要になったら 1 行 + 既存の managed block の型（F13）で足せる |
 | WT の `settings.json` を repo で管理して `unbound` を書く | JSONC + GUID だらけの GUI 管理ファイルで、他の設定と同じ marker 方式が使えない。手順の文書化に留める |
 | `setw -g xterm-keys on` を足す | F2。no-op で誤解を招く |
-| `extended-keys on` を使う | F4。zsh は要求しないので Ctrl+Enter が区別できない |
+| `extended-keys on` を使う | F4（3.5 以降の man）。zsh は要求しないので Ctrl+Enter が素の CR のまま |
 | `extended-keys-format csi-u` に変更 | F5。既定 xterm の `^[[27;5;13~` は既に `.zshrc` が束縛済み。利益ゼロ・検証不能なリスク |
 | `default-terminal` を `tmux-256color` に | 本目的に無関係。terminfo 不在リスクだけ増える |
 | `%if` でバージョン分岐 / doctor に tmux の版チェック | F12 により 3.2a 未満の実害は警告 1 行 + 機能が効かないことだけ。`%if` は tmux 2.4 以降でしか解釈されず、比較の format 演算子も版依存なので、古い tmux を守るつもりが別の壊れ方をする。前提はコメントと USAGE.md に明示する方針に寄せた |
