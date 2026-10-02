@@ -1,7 +1,7 @@
 # IaC Drift Avoidance
 
-Read this before any `gcloud`, `cdr`, `kubectl`, or console action against
-production. Root summary is in AGENTS.md.
+Read this before any `gcloud`, `kubectl`, provisioning-CLI, or console
+action against production. Root summary is in AGENTS.md.
 
 Production infra (GCP resources, IAM, Cloud Run revisions, cloud VMs) is
 managed **exclusively** through OpenTofu + the standard PR + CD flow. Manual
@@ -17,8 +17,9 @@ either silently reverts your change or fails on unexpected state.
   `iam_*.tf` — IAM drift is the top source of "works for me / fails in CI".
 - `gcloud secrets versions add` with content the IaC doesn't know about — add
   only secrets for which tofu has reserved a slot.
-- `cdr workspaces update` / `... edit` to change parameters that belong as
-  `coder_parameter` defaults — push the template, don't patch the running VM.
+- Editing a running instance through the CLI of whatever provisioned it,
+  to change a parameter that belongs in the template or module that
+  created it — push the template, don't patch the instance.
 - Editing live Cloud Run revisions in the console (env vars, traffic split) when
   managed by `google_cloud_run_v2_service` / CD `gcloud run deploy`.
 
@@ -27,11 +28,12 @@ either silently reverts your change or fails on unexpected state.
 - One-off **bootstrap** before IaC can manage the resource (e.g. `bootstrap.sh`
   creates the GCS state bucket; the bucket is then not tofu-managed, by design).
 - **Read-only debug** (`gcloud compute ssh ... --command 'df -h'`,
-  `... get-serial-port-output`, `cdr show`, …).
+  `... get-serial-port-output`, any `describe` / `show` / `get`, …).
 - **Emergency rollback when CD itself is broken** — open an incident, run the
   manual command, then immediately file a PR re-syncing the IaC.
-- **Interactive prompts IaC can't pre-fill** (e.g. `cdr create`'s region
-  selector) — choose at create-time; don't edit the workspace afterwards.
+- **Interactive prompts IaC can't pre-fill** (e.g. a region selector a
+  provisioning CLI asks for at create time) — choose it then; don't
+  edit the instance afterwards.
 
 ## When drift happens — recover same session
 
@@ -53,8 +55,8 @@ either silently reverts your change or fails on unexpected state.
 
 ## Agent directive
 
-- Default to the IaC PR path. Suggest a manual `gcloud`/`cdr` command only for
-  one of the four exceptions above.
+- Default to the IaC PR path. Suggest a manual `gcloud`/`kubectl` command
+  only for one of the four exceptions above.
 - If a manual command is unavoidable to unblock the operator, spell out the IaC
   follow-up in the same message ("this bridges the gap; PR XYZ lands within the
   hour to capture it permanently").
@@ -62,5 +64,5 @@ either silently reverts your change or fails on unexpected state.
   a sequence means the IaC needs restructuring.
 
 (A PreToolUse hook blocks — exit 2, no confirmation flow — `gcloud …
-add-iam-policy-binding` / `… update` / `… resize` / `… deploy` and
-`cdr workspaces update/edit`; see docs/agents/enforcement.md.)
+add-iam-policy-binding` / `… set-iam-policy` / `… update` / `… resize` /
+`… deploy`; see docs/agents/enforcement.md.)

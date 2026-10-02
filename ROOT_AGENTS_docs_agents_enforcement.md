@@ -46,7 +46,7 @@ covers the long tail.
   `npm`/`yarn`/`pnpm` and `corepack <pm>` (the direct `corepack pnpm`/`yarn`
   run form — `@version` and `--cwd` variants included), `make` (as command
   names), root deletion, force-push to main/master, drift-causing
-  `gcloud`/`cdr` mutations (open an IaC PR instead), and **creating `.yml`
+  `gcloud` mutations (open an IaC PR instead), and **creating `.yml`
   files via Bash** (redirect targets, `touch`/`tee` args, `cp`/`mv`
   destinations — reads stay allowed). Node is bun-only (ADR 0027); the
   `corepack enable`/`prepare`/`use` provisioning subcommands stay allowed.
