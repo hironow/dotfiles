@@ -636,12 +636,18 @@ def test_doctor_sandbox(docker_image):
 def test_add_recipes_guard_empty_dump(docker_image, recipe, filename):
     # given: a synthetic host dir 'testhost' holding an empty manifest. We only
     # ADD dump/testhost/ (never truncate the tracked dump/<host>/ manifests) so
-    # CI's bind-mounted checkout is never corrupted for later tests (ADR 0030).
+    # CI's bind-mounted checkout is never corrupted for later tests (ADR 0030),
+    # and we remove it again afterwards for the same reason — CI mounts one
+    # checkout for the whole job, so what a test adds, a test must take away.
     # when: the recipe restores from that host (DOTFILES_HOST=testhost)
     # then: it exits 1 with a clear "missing or empty" message
     script = (
-        f"mkdir -p dump/testhost && : > dump/testhost/{filename} "
-        f"&& DOTFILES_HOST=testhost just {recipe}"
+        f"mkdir -p dump/testhost && : > dump/testhost/{filename} ; "
+        f"rc=0 && DOTFILES_HOST=testhost just {recipe} || rc=$? ; "
+        # rmdir, not a recursive delete: it must fail loudly rather than erase
+        # anything the recipe was not supposed to leave in there.
+        f"rm -f dump/testhost/{filename} ; rmdir dump/testhost ; "
+        "exit $rc"
     )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode == 1, (
@@ -883,11 +889,19 @@ def test_just_check_passes_on_clean_tree(docker_image):
 
 @pytest.mark.check
 def test_just_install_hooks_wires_prek_into_git(docker_image):
-    """`just install-hooks` runs `prek install` and writes a git pre-commit hook."""
+    """`just install-hooks` runs `prek install` and writes a git pre-commit hook.
+
+    The hook it writes is removed again: in CI the mounted `.git` is the real
+    checkout's, and nothing else in the suite wants a pre-commit hook there.
+    Only the one file prek creates is removed, never `.git/hooks` itself.
+    """
     script = (
         _GIT_INIT
-        + "just install-hooks && "
-        + "[ -f .git/hooks/pre-commit ] && echo 'pre-commit hook present'"
+        + "rc=0 && { just install-hooks && "
+        + "[ -f .git/hooks/pre-commit ] && echo 'pre-commit hook present' ; } "
+        + "|| rc=$? ; "
+        + "rm -f .git/hooks/pre-commit ; "
+        + "exit $rc"
     )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode == 0, (
@@ -903,12 +917,19 @@ def test_just_lint_detects_ruff_violation(docker_image):
 
     Uses F821 (undefined name), which is in ruff's default rule set and has
     no auto-fix — so even with `--fix` the lint step fails.
+
+    The plant is removed again before the script exits; see the note above
+    `_planted` below for why that is not optional in CI. Left behind, this one
+    file made every later `just check` in the job die at ruff instead of
+    reaching the leg it was testing.
     """
     script = (
         _MISE_STUB
         + _GIT_INIT
-        + "printf 'def f():\\n    return undefined_name\\n' > bad_lint.py && "
-        + "just lint"
+        + "printf 'def f():\\n    return undefined_name\\n' > bad_lint.py ; "
+        + "rc=0 && just lint || rc=$? ; "
+        + "rm -f bad_lint.py ; "
+        + "exit $rc"
     )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode != 0, (
@@ -916,6 +937,136 @@ def test_just_lint_detects_ruff_violation(docker_image):
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
     assert "F821" in result.stdout or "F821" in result.stderr
+
+
+# `just check` passing on a clean tree says the gate runs; it does not say the
+# gate would notice anything. These two plant a violation and require a
+# non-zero exit, so a leg that is dropped from the recipe fails a test instead
+# of quietly widening what we ship. They were written against a justfile with
+# the matching leg deleted and they failed there first; with the leg present
+# they pass.
+#
+# One leg each from the two kinds of discovery the recipe uses, because the two
+# disagree about untracked files and both behaviours are load-bearing:
+# markdownlint is fed from `git ls-files`, so it sees tracked files only, while
+# check_storage_bounds.py globs the filesystem and sees a sink that was never
+# added.
+#
+# Both clean up the file they plant, which matters only in CI: with
+# LOCAL_WORKSPACE_FOLDER set, run_in_sandbox bind-mounts the real checkout
+# instead of a per-call snapshot, so a planted violation left behind would
+# travel to every later test in the job and fail the clean-tree checks. The
+# `|| rc=$?` is what makes that reachable -- the harness runs under `set -e`,
+# so a bare `just check` on a failing gate would exit before any cleanup.
+
+
+def _planted(setup: str, cleanup: str) -> str:
+    """Run `just check` with a violation planted, then undo it and re-raise.
+
+    Keeps the gate's own exit status as the script's, so the assertions below
+    read the gate and not the cleanup.
+    """
+    return (
+        _MISE_STUB
+        + _GIT_INIT
+        + setup
+        + "rc=0 && just check || rc=$? ; "
+        + cleanup
+        + "exit $rc"
+    )
+
+
+@pytest.mark.check
+def test_just_check_detects_markdownlint_violation(docker_image):
+    """`just check` exits non-zero when a TRACKED markdown file breaks a rule.
+
+    MD047 (single trailing newline) is in markdownlint's default set and
+    `.markdownlint.json` does not switch it off, so a file with no final
+    newline violates exactly that one rule and nothing else.
+
+    The `git add` is load-bearing, not tidiness: the recipe pipes
+    `git ls-files '*.md'` into markdownlint, so an untracked .md is invisible
+    to this leg. `docs/` is used because `.markdownlint-cli2.yaml` ignores the
+    `ROOT_AGENTS_*.md` instruction sources and `templates/**` by design -- a
+    violation planted there would prove nothing.
+    """
+    script = _planted(
+        setup=(
+            "printf 'Planted: this file has no trailing newline.' "
+            "> docs/planted_md_violation.md && "
+            "git add docs/planted_md_violation.md && "
+        ),
+        cleanup=(
+            "git rm -q --cached docs/planted_md_violation.md ; "
+            "rm -f docs/planted_md_violation.md ; "
+        ),
+    )
+    result = run_in_sandbox(docker_image, script)
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0, (
+        "just check should fail on an MD047 violation in a tracked .md\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "MD047" in combined, f"expected MD047 in the output:\n{combined}"
+    # The gate reached this leg rather than dying earlier for some other reason.
+    # Do NOT assert on "All checks passed" here: that is ruff's and ty's own
+    # per-step output, printed well before the recipe's `✅ All checks passed.`
+    # banner, so it appears in a run that failed.
+    assert "Markdown (markdownlint-cli2)" in result.stdout, (
+        f"the gate never reached the markdownlint leg:\n{result.stdout}"
+    )
+
+
+@pytest.mark.check
+def test_just_check_detects_unbounded_storage_sink(docker_image):
+    """`just check` exits non-zero when a tofu bucket declares no bound.
+
+    The planted bucket is deliberately correct in every other respect --
+    uniform bucket-level access, enforced public-access prevention, zero
+    soft-delete retention -- so the single thing it fails is the bound rule
+    itself. `tests/unit/test_storage_bounds.py` owns whether that rule is
+    right; this test owns whether `just check` actually runs it.
+
+    Nothing is staged here, unlike the markdownlint leg above:
+    check_storage_bounds.py globs `tofu/**/*.tf` off the filesystem, so an
+    untracked sink is still caught. That asymmetry is the point of having both.
+    """
+    # Single-quoted for the shell below, so the HCL's double quotes need no
+    # escaping; only the newlines are printf escapes.
+    bucket = (
+        'resource "google_storage_bucket" "planted" {\\n'
+        '  name                        = "planted-no-bound"\\n'
+        '  location                    = "US"\\n'
+        "  uniform_bucket_level_access = true\\n"
+        '  public_access_prevention    = "enforced"\\n'
+        "  soft_delete_policy {\\n"
+        "    retention_duration_seconds = 0\\n"
+        "  }\\n"
+        "}\\n"
+    )
+    script = _planted(
+        setup=(f"mkdir -p tofu/planted && printf '{bucket}' > tofu/planted/bad.tf && "),
+        # rmdir, not a recursive delete: if anything else ever lands in that
+        # directory the cleanup should fail loudly rather than erase it.
+        cleanup="rm -f tofu/planted/bad.tf ; rmdir tofu/planted ; ",
+    )
+    result = run_in_sandbox(docker_image, script)
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0, (
+        "just check should fail on a google_storage_bucket with no bound\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "check-storage-bounds: FAILED" in combined, (
+        f"expected the storage-bounds gate to report a failure:\n{combined}"
+    )
+    assert "is unbounded" in combined, (
+        f"expected the unbounded-sink violation to name the sink:\n{combined}"
+    )
+    # See the note in the markdownlint test: "All checks passed" is ruff's and
+    # ty's own output and says nothing about the recipe's verdict.
+    assert "storage bounds" in result.stdout, (
+        f"the gate never reached the storage-bounds leg:\n{result.stdout}"
+    )
 
 
 # =============================================================================
@@ -1098,10 +1249,15 @@ def test_just_self_check_succeeds(docker_image):
 def test_just_add_all_fails_when_dumps_empty(docker_image):
     """`just add-all` is a composite. With empty per-host manifests it must
     fail at the first add-* guard (rc!=0, "missing or empty"), not silently
-    succeed. Uses a synthetic dump/testhost/ (ADR 0030)."""
+    succeed. Uses a synthetic dump/testhost/ (ADR 0030), removed again so the
+    bind-mounted CI checkout is as clean after the test as before it."""
     script = (
         "mkdir -p dump/testhost && : > dump/testhost/Brewfile "
-        "&& : > dump/testhost/gcloud && DOTFILES_HOST=testhost just add-all"
+        "&& : > dump/testhost/gcloud ; "
+        "rc=0 && DOTFILES_HOST=testhost just add-all || rc=$? ; "
+        "rm -f dump/testhost/Brewfile dump/testhost/gcloud ; "
+        "rmdir dump/testhost ; "
+        "exit $rc"
     )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode != 0
