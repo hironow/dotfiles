@@ -46,6 +46,11 @@ write its own `RTK.md` into agent homes sync owns. Telemetry stays off through
 `[env]`, the shared Claude settings env, and on Windows the persisted User env
 (`just harden-env`).
 
+rtk's own "No hook installed — run `rtk init -g`" notice, and `rtk init --show`
+reporting "Hook: not found", are expected: rtk only looks for its installer's
+layout, not for the dotfiles-managed hook above. Ignore them; `just doctor`'s
+`claude-rtk-hook` line is the real check.
+
 ### Which rtk the hook runs: PATH, then mise
 
 **PATH first, always.** Whatever is in front of the session's PATH wins, so a
