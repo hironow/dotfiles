@@ -636,12 +636,18 @@ def test_doctor_sandbox(docker_image):
 def test_add_recipes_guard_empty_dump(docker_image, recipe, filename):
     # given: a synthetic host dir 'testhost' holding an empty manifest. We only
     # ADD dump/testhost/ (never truncate the tracked dump/<host>/ manifests) so
-    # CI's bind-mounted checkout is never corrupted for later tests (ADR 0030).
+    # CI's bind-mounted checkout is never corrupted for later tests (ADR 0030),
+    # and we remove it again afterwards for the same reason — CI mounts one
+    # checkout for the whole job, so what a test adds, a test must take away.
     # when: the recipe restores from that host (DOTFILES_HOST=testhost)
     # then: it exits 1 with a clear "missing or empty" message
     script = (
-        f"mkdir -p dump/testhost && : > dump/testhost/{filename} "
-        f"&& DOTFILES_HOST=testhost just {recipe}"
+        f"mkdir -p dump/testhost && : > dump/testhost/{filename} ; "
+        f"rc=0 && DOTFILES_HOST=testhost just {recipe} || rc=$? ; "
+        # rmdir, not a recursive delete: it must fail loudly rather than erase
+        # anything the recipe was not supposed to leave in there.
+        f"rm -f dump/testhost/{filename} ; rmdir dump/testhost ; "
+        "exit $rc"
     )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode == 1, (
@@ -883,11 +889,19 @@ def test_just_check_passes_on_clean_tree(docker_image):
 
 @pytest.mark.check
 def test_just_install_hooks_wires_prek_into_git(docker_image):
-    """`just install-hooks` runs `prek install` and writes a git pre-commit hook."""
+    """`just install-hooks` runs `prek install` and writes a git pre-commit hook.
+
+    The hook it writes is removed again: in CI the mounted `.git` is the real
+    checkout's, and nothing else in the suite wants a pre-commit hook there.
+    Only the one file prek creates is removed, never `.git/hooks` itself.
+    """
     script = (
         _GIT_INIT
-        + "just install-hooks && "
-        + "[ -f .git/hooks/pre-commit ] && echo 'pre-commit hook present'"
+        + "rc=0 && { just install-hooks && "
+        + "[ -f .git/hooks/pre-commit ] && echo 'pre-commit hook present' ; } "
+        + "|| rc=$? ; "
+        + "rm -f .git/hooks/pre-commit ; "
+        + "exit $rc"
     )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode == 0, (
@@ -903,12 +917,19 @@ def test_just_lint_detects_ruff_violation(docker_image):
 
     Uses F821 (undefined name), which is in ruff's default rule set and has
     no auto-fix — so even with `--fix` the lint step fails.
+
+    The plant is removed again before the script exits; see the note above
+    `_planted` below for why that is not optional in CI. Left behind, this one
+    file made every later `just check` in the job die at ruff instead of
+    reaching the leg it was testing.
     """
     script = (
         _MISE_STUB
         + _GIT_INIT
-        + "printf 'def f():\\n    return undefined_name\\n' > bad_lint.py && "
-        + "just lint"
+        + "printf 'def f():\\n    return undefined_name\\n' > bad_lint.py ; "
+        + "rc=0 && just lint || rc=$? ; "
+        + "rm -f bad_lint.py ; "
+        + "exit $rc"
     )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode != 0, (
@@ -1228,10 +1249,15 @@ def test_just_self_check_succeeds(docker_image):
 def test_just_add_all_fails_when_dumps_empty(docker_image):
     """`just add-all` is a composite. With empty per-host manifests it must
     fail at the first add-* guard (rc!=0, "missing or empty"), not silently
-    succeed. Uses a synthetic dump/testhost/ (ADR 0030)."""
+    succeed. Uses a synthetic dump/testhost/ (ADR 0030), removed again so the
+    bind-mounted CI checkout is as clean after the test as before it."""
     script = (
         "mkdir -p dump/testhost && : > dump/testhost/Brewfile "
-        "&& : > dump/testhost/gcloud && DOTFILES_HOST=testhost just add-all"
+        "&& : > dump/testhost/gcloud ; "
+        "rc=0 && DOTFILES_HOST=testhost just add-all || rc=$? ; "
+        "rm -f dump/testhost/Brewfile dump/testhost/gcloud ; "
+        "rmdir dump/testhost ; "
+        "exit $rc"
     )
     result = run_in_sandbox(docker_image, script)
     assert result.returncode != 0
