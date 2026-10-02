@@ -4,10 +4,10 @@ tests/test_just_sandbox.py runs `just check` inside the dev container image,
 which has no project mise.toml: it resolves tools only from the
 /etc/mise/config.toml that .devcontainer/features/dotfiles-tools/install.sh
 bakes, or from the apt packages the same script installs. When `just check`
-gained the formal-methods gate (`just spec-check`, which runs `mise x --
-quint`), the image had no quint, and PR #385's sandbox job failed with
-"quint couldn't exec process". This test reads the recipes `just check` runs
-and the baked config, and fails on any tool the image would not have.
+gained a formal-methods gate that ran `mise x -- quint`, the image had no
+quint, and PR #385's sandbox job failed with "quint couldn't exec process".
+This test reads the recipes `just check` runs and the baked config, and fails
+on any tool the image would not have.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ DEVCONTAINER = REPO / ".devcontainer" / "devcontainer.json"
 GLOBAL_MISE = REPO / "config" / "mise" / "config.toml"
 
 # The recipes `just check` runs, itself included.
-CHECK_RECIPES = ("check", "go-lint", "go-test", "spec-check")
+CHECK_RECIPES = ("check", "go-lint", "go-test")
 
 # Tools install.sh puts on PATH through apt, not mise.
 APT_TOOLS = {"shellcheck", "jq"}
@@ -71,8 +71,15 @@ def binary_of(tool: str, spec: object) -> str:
 
 
 def test_the_scan_sees_the_tools_it_should() -> None:
+    """A floor on the scanner, so an empty scan cannot look like a clean one.
+
+    quint is deliberately NOT in this set any more: `just check` stopped running
+    a formal-methods gate when the Quint model moved out with the exe stack, so
+    requiring it here would assert a tool the recipes no longer invoke. quint is
+    still pinned in config/mise/config.toml as base tooling for other repos --
+    that is a different claim, and config/mise's own tests make it.
+    """
     assert {
-        "quint",
         "golangci-lint",
         "go",
         "shellcheck",

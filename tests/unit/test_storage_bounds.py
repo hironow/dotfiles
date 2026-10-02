@@ -496,7 +496,7 @@ def test_url_in_a_string_is_not_read_as_a_comment(tmp_path: Path) -> None:
 
 def test_nested_stack_directories_are_scanned(tmp_path: Path) -> None:
     body = _bucket(ubla="false")
-    result = _scan(tmp_path, body, rel="tofu/exe-cluster/modules/state/main.tf")
+    result = _scan(tmp_path, body, rel="tofu/some-stack/modules/state/main.tf")
     assert result.buckets == 1
     assert _flagged(result.violations, "uniform_bucket_level_access")
 

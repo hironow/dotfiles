@@ -6,8 +6,9 @@
 | --- | --- | --- |
 | [`unit/`](./unit/) | Docker の要らないテスト。純粋な Python の関数と、ファイルの静的検査 | `just test-unit`（`just ci` に含まれる） |
 | `tests/*.py` | Dev Container の image の中で動かすサンドボックステスト | `just test`（先に image を作る） |
-| [`e2e/exe/`](./e2e/exe/) | 実際のクラスタに対する exe の停止経路。`EXE_E2E=1` のときだけ動く（`just exe-e2e` は digest で固定した `EXE_E2E_IMAGE` と `EXE_E2E_FORCED=1` も要る） | `just exe-e2e`（[README](./e2e/exe/README.md)） |
 | [`docker/`](./docker/) | 重いテストが使う Dockerfile（`InstallTest.Dockerfile` は `just test-install`） | |
+
+e2e のディレクトリは無い。本物の依存を要する経路はこのリポジトリに残っていない。
 
 Docker が要らない静的検査は `unit/` に置く。
 `tests/` の直下に置くと、`just test` だけが拾い、`just ci` には乗らない。

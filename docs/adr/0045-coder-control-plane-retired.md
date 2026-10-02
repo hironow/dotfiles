@@ -18,9 +18,9 @@ database, and nobody was watching any of them. The decision was to finish the
 job: destroy it, and be explicit about the handful of things that must survive
 its destruction.
 
-<!-- PLACEHOLDER, filled at the cutover: one sentence recording that the exe
-     mechanism itself left this repository, so dotfiles keeps only the generic
-     agent base environment. The destination is deliberately not named. -->
+The replacement mechanism has since been moved out of this repository as well,
+so what remains here is the generic agent base environment and the tailnet
+policy — dotfiles no longer defines, pins or operates any execution stack.
 
 ## Decision
 

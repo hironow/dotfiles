@@ -1,6 +1,0 @@
-# The reviewed change list for moving the Substrate pin (exe/versions.json):
-# the node pool's ate.dev/substrate-version label follows
-# substrate.version_label_value, in place, and nothing else changes. At zero
-# nodes nothing is recreated; a woken node boots with the new label.
-#   just exe-platform-plan && just exe-platform-plan-summary --expect-changes expected-changes/substrate-label.txt
-~ google_container_node_pool.main

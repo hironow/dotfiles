@@ -5,9 +5,11 @@ isolated stack with its own backend / state file.
 
 | Stack | Purpose |
 |---|---|
-| [`exe-platform/`](./exe-platform/) | GCP foundation for the google/ax stack in the private project: GKE, buckets, registries, IAM, the L2/L3 money stops, alerts, budget, the exe-cluster state key |
-| [`exe-cluster/`](./exe-cluster/) | Everything inside that cluster: the Substrate store, Agent Substrate (upstream installer, pinned), its gVisor SandboxConfig and mirror, AX, the WorkerPool (state encrypted with the platform's KMS key) |
 | [`tailnet/`](./tailnet/) | The tailnet's policy file, and nothing else. State in the old personal project's bucket under a passphrase; see its README for why not the private project's |
+
+`tailnet/` is the only stack here. The exe stacks that used to sit beside it are
+operated from elsewhere now, and the Coder stack before them is destroyed — the
+section below is the record of what that destruction deliberately left behind.
 
 ## The retired stack, and what it left outside IaC
 

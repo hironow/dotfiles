@@ -66,9 +66,9 @@ installed. The reasons are given so you generalize correctly to unlisted cases.
 - **No mocks in e2e tests.** If a real dependency can't be used, it isn't an e2e
   test — move it to integration. Mocked e2e tests assert nothing about reality.
 - **No manual mutation of IaC-managed infra.** Production (GCP, IAM, Cloud Run,
-  Coder VMs) changes only through OpenTofu + PR + CD. A stray `gcloud ... update`
-  creates drift the next `tofu apply` silently reverts. Details:
-  docs/agents/iac-drift-policy.md.
+  cloud VMs, clusters) changes only through OpenTofu + PR + CD. A stray
+  `gcloud ... update` creates drift the next `tofu apply` silently reverts.
+  Details: docs/agents/iac-drift-policy.md.
 - **Never weaken the gates to pass.** Do not edit ruff/ty/semgrep/golangci
   config to silence a finding, and never commit with failing tests or
   non-zero lint/type findings. Fix the cause.

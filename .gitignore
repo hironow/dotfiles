@@ -101,15 +101,6 @@ __pycache__/
 # glob, which would also swallow legitimately named files elsewhere.
 tools/simple-server/simple-server
 tools/simple-server/simple-server.exe
-# tools/exe-reaper builds two binaries: exe-reaper (the module root) and
-# exe-reap (cmd/exe-reap), either of which `go build` can drop in the module or
-# in cmd/exe-reap. Exact paths, as above.
-/tools/exe-reaper/exe-reaper
-/tools/exe-reaper/exe-reaper.exe
-/tools/exe-reaper/exe-reap
-/tools/exe-reaper/exe-reap.exe
-/tools/exe-reaper/cmd/exe-reap/exe-reap
-/tools/exe-reaper/cmd/exe-reap/exe-reap.exe
 
 # Stray `bunx skills` output. The CLI's real lock is ~/.agents/.skill-lock.json
 # in the agent home (dot-prefixed, singular); running the CLI from the repo root

@@ -1,6 +1,0 @@
-# The reviewed change list for the exe-cluster state key: the KMS API, the key
-# ring and the key (kms.tf), and nothing else.
-#   just exe-platform-plan && just exe-platform-plan-summary --expect-changes expected-changes/state-key.txt
-+ google_kms_crypto_key.state
-+ google_kms_key_ring.state
-+ google_project_service.enabled["cloudkms.googleapis.com"]

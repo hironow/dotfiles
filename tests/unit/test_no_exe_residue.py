@@ -1,10 +1,9 @@
-"""Neither the old Coder stack nor (later) the new exe stack is left in dotfiles.
+"""Neither the old Coder stack nor the new exe stack is left in dotfiles.
 
 The end state this pins: dotfiles keeps the generic agent base environment and
-`tofu/tailnet`, and the exe mechanism lives elsewhere. Two retirements reach that
-state at different times -- the old Coder stack now, the new exe stack after its
-parity proof -- so the paths are listed in two sets and only the first is
-asserted yet. The second is here to be switched on, not to be rediscovered.
+`tofu/tailnet`, and the exe mechanism lives elsewhere. Both retirements have
+happened, so there is one set of paths and it is asserted -- no "not yet"
+half, which is what let four files slip through the first time (see below).
 
 Three checks, and the shape of each is deliberate (the mover's plan, §F-5):
 
@@ -24,12 +23,17 @@ would delete it:
 
 - `docs/adr/` -- 0011, 0012 and 0034 are accepted and therefore immutable. The
   history of a decision outlives the thing it decided.
-- `docs/plan/` -- the plan that drove the migration describes it in the past
-  tense; a record of what was done is not residue.
 - `tofu/tailnet/` -- created by this very retirement, and the ACL outlives both
   stacks.
 - the generic spokes (formal methods, cost guardrails) and the test fixtures
   that carry synthetic paths as STRINGS.
+
+`docs/plan/` is in NEITHER list. The migration plan moved with the stack it
+planned, so `docs/plan/exe-google-ax.md` is named as retired -- but the
+directory itself is not, because #439 put an unrelated live plan in it. Listing
+the directory would make this test delete-by-assertion for a document that has
+nothing to do with either stack; listing it as a survivor would assert something
+this retirement does not require.
 """
 
 from __future__ import annotations
@@ -41,8 +45,17 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # --- check 1: paths ----------------------------------------------------
 
-# The old Coder control plane. Every one of these is gone as of K2.
+# The old Coder control plane, retired by K2.
+#
+# `exe/README.md` and `exe/docs/` are named individually even though the
+# `exe/` entry below already covers them. They are the four files K2 missed:
+# pure Coder documentation, left describing a destroyed stack and linking to a
+# `tofu/exe/` that K2 had already deleted. They slipped through because the
+# only asserted set was this one and nobody had put them in it. Naming them
+# means a future edit cannot quietly drop the coverage along with the prefix.
 OLD_CODER_PATHS = (
+    "exe/README.md",
+    "exe/docs/",
     "exe/coder/",
     "exe/cloudflared/",
     "exe/tailscale/",
@@ -69,18 +82,26 @@ OLD_CODER_PATHS = (
     "exe/scripts/test-fetch-projects-env.sh",
 )
 
-# The new exe stack on google/ax. NOT asserted yet: it is still operated from
-# here until its parity proof in the infra repo. When that lands, move this
-# tuple into the assertion below and the end state is complete.
-NEW_EXE_PATHS_NOT_YET_REMOVED = (
+# The new exe stack on google/ax, moved out at the cutover. `exe/` is listed
+# whole: nothing under it stayed, so a prefix is both shorter and safer than an
+# enumeration that a later addition could sidestep.
+NEW_EXE_PATHS = (
+    "exe/",
     "tofu/exe-platform/",
     "tofu/exe-cluster/",
     "tools/exe-reaper/",
-    "exe/spec/",
-    "exe/versions.json",
-    "tests/e2e/exe/",
+    "tests/e2e/",
+    # The one file, not the directory: `docs/plan/` also holds the
+    # cost-guardrails rollout plan (#439), which is neither stack's residue.
     "docs/plan/exe-google-ax.md",
+    "docker/exe-task.Dockerfile",
+    "scripts/check_exe_pins.py",
+    "scripts/exe_platform_bootstrap.sh",
+    ".semgrep/rules/e2e/",
+    "submodules/",
 )
+
+RETIRED_PATHS = OLD_CODER_PATHS + NEW_EXE_PATHS
 
 # --- check 2: recipe and workflow names --------------------------------
 
@@ -99,6 +120,26 @@ RETIRED_RECIPES = (
     "exe-cdr-install",
     "_exe-encryption",
     "_exe_tailscale_targets",
+    # The new exe stack's recipes, plus the two gates that only ever had exe
+    # inputs: spec-check (exe/spec + the exe-reaper simulation) and the
+    # exe-specific name the tofu suite ran under.
+    "exe-platform",
+    "exe-cluster",
+    "exe-reaper",
+    "exe-ctx",
+    "exe-sleep",
+    "exe-status",
+    "exe-keep",
+    "exe-ax-job",
+    "exe-ax-exec",
+    "exe-e2e",
+    "exe-snapshot-gc",
+    "exe-l2-run",
+    "exe-substrate-teardown",
+    "exe-worker-images",
+    "exe-spike-task-image",
+    "spec-check",
+    "test-iac-exe",
 )
 
 # --- check 3: operational files, named one by one ----------------------
@@ -106,7 +147,18 @@ RETIRED_RECIPES = (
 RETIRED_IN_FILES = {
     ".pre-commit-config.yaml": ("coder", "tofu/exe"),
     "pyproject.toml": ('"exe:',),
-    ".github/workflows/iac-test.yaml": ("Coder template", "tofu/exe/"),
+    ".github/workflows/iac-test.yaml": (
+        "Coder template",
+        "tofu/exe/",
+        "exe-platform",
+        "exe-cluster",
+    ),
+    # The two tool pins that existed only for the exe stack. quint and java are
+    # NOT listed: they are base tooling for a non-negotiable that other repos on
+    # this machine rely on, and they stay even though dotfiles has no model.
+    "config/mise/config.toml": ("google/ax", "ko-build/ko"),
+    ".github/dependabot.yaml": ("exe-reaper",),
+    ".gitignore": ("exe-reaper",),
 }
 
 
@@ -121,30 +173,29 @@ def _tracked() -> list[str]:
     return out.stdout.splitlines()
 
 
-def test_no_file_of_the_old_coder_stack_is_tracked() -> None:
+def test_no_file_of_either_retired_stack_is_tracked() -> None:
+    """The one end-state check: neither stack has a tracked file left."""
     tracked = _tracked()
     left = sorted(
         path
         for path in tracked
-        for retired in OLD_CODER_PATHS
+        for retired in RETIRED_PATHS
         if path == retired or path.startswith(retired)
     )
-    assert left == [], f"the old Coder stack is still tracked: {left}"
+    assert left == [], f"a retired stack is still tracked: {left}"
 
 
-def test_the_new_exe_paths_are_listed_for_the_later_half() -> None:
-    """Not an absence check, and deliberately not an existence one either.
+def test_the_retired_path_list_is_well_formed() -> None:
+    """Cheap guards on the list itself, so a typo cannot disarm the check above.
 
-    The new exe stack is still operated from here, so asserting its paths are
-    gone would fail today; asserting they are PRESENT would fail the moment the
-    mover removes them, which is the reversed assert this whole test exists to
-    avoid. What is checkable now is that the list is well formed and does not
-    overlap the half already retired, so switching it on later is one line.
+    A path with a leading slash or stray whitespace would match nothing that
+    `git ls-files` prints, and the absence check would pass for a reason that
+    has nothing to do with the repository.
     """
-    assert set(NEW_EXE_PATHS_NOT_YET_REMOVED).isdisjoint(OLD_CODER_PATHS)
-    for path in NEW_EXE_PATHS_NOT_YET_REMOVED:
+    for path in RETIRED_PATHS:
         assert not path.startswith("/"), f"{path!r} is absolute, not a repo path"
         assert path.strip() == path, f"{path!r} has stray whitespace"
+    assert len(set(RETIRED_PATHS)) == len(RETIRED_PATHS), "duplicate retired path"
 
 
 def test_no_recipe_of_the_old_coder_stack_survives() -> None:
@@ -185,8 +236,11 @@ def test_what_survives_is_still_here() -> None:
     have deleted the record of why any of it happened."""
     for kept in (
         "docs/adr",
-        "docs/plan",
         "tofu/tailnet",
+        # Kept although dotfiles no longer has a Quint model of its own: the
+        # non-negotiable it states applies to every repo this machine scaffolds,
+        # and deleting the guidance with the last local model is how a rule
+        # quietly stops being one.
         "ROOT_AGENTS_docs_agents_formal-methods.md",
         # The docstring above has always named both generic spokes as kept, but
         # only formal-methods was asserted. This one arrived on main with #439,

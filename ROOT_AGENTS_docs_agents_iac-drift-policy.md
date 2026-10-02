@@ -3,15 +3,15 @@
 Read this before any `gcloud`, `cdr`, `kubectl`, or console action against
 production. Root summary is in AGENTS.md.
 
-Production infra (GCP resources, IAM, Cloud Run revisions, Coder workspace VMs)
-is managed **exclusively** through OpenTofu + the standard PR + CD flow. Manual
+Production infra (GCP resources, IAM, Cloud Run revisions, cloud VMs) is
+managed **exclusively** through OpenTofu + the standard PR + CD flow. Manual
 mutations create drift between live infra and the repo; the next `tofu apply`
 either silently reverts your change or fails on unexpected state.
 
 ## Prohibited (these mutate state OpenTofu owns)
 
 - `gcloud compute disks resize` / `... instances set-machine-type` against any
-  resource declared in `tofu/exe/` or `tofu/`.
+  resource declared under `tofu/`.
 - `gcloud iam service-accounts add-iam-policy-binding` /
   `gcloud projects add-iam-policy-binding` for bindings that exist in
   `iam_*.tf` — IAM drift is the top source of "works for me / fails in CI".

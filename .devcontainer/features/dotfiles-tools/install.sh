@@ -279,9 +279,10 @@ node = "24.21.0"
 # `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
 go = "1.27.1"
 "aqua:golangci/golangci-lint" = "2.14.0"
-# quint: `just check` ends in `just spec-check`, the formal-methods gate
-# (`mise x -- quint`). Same pin as config/mise/config.toml: a checker under a
-# mandatory gate changes its verdicts only deliberately (ADR 0006 parity).
+# quint: the formal-methods gate's checker (`mise x -- quint`), mandatory for
+# autonomous stop/delete logic in any repo opened in this image. Same pin as
+# config/mise/config.toml: a checker under a mandatory gate changes its
+# verdicts only deliberately (ADR 0006 parity).
 # npm: backend through bun, like the other npm tools here.
 "npm:@informalsystems/quint" = "0.33.0"
 "npm:@openai/codex" = "0.159.3"
@@ -309,8 +310,8 @@ echo "[dotfiles-tools] pre-installing mise tools at build time (MISE_DATA_DIR=/o
 MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 
 # ---- quint's Rust evaluator, built for this image's glibc ----
-# `quint run` and `quint test` (the formal-methods gate, `just spec-check`)
-# execute on quint's Rust evaluator, which quint downloads from its GitHub
+# `quint run` and `quint test` (the formal-methods gate) execute on
+# quint's Rust evaluator, which quint downloads from its GitHub
 # releases on first use. Those Linux binaries need GLIBC_2.39 and bookworm has
 # 2.36, so the download cannot run here. Build the same release from source
 # against this image's glibc instead, pinned to the release tag's commit and

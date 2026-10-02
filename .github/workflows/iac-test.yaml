@@ -1,12 +1,11 @@
 name: IaC Tests (OpenTofu)
 
-# One IaC gate on every push and PR: `tofu test` for tofu/exe-platform,
-# tofu/exe-cluster and tofu/tailnet — offline suites on mock providers, with
-# exe-platform's state as override_data, no backend, no tfvars and no
-# credentials.
+# One IaC gate on every push and PR: `tofu test` for tofu/tailnet — an offline
+# suite on mock providers, with no backend, no tfvars and no credentials.
 #
 # The retired Coder stack's two gates (a `tofu test` for its workspace template
-# and a `tofu validate` for tofu/exe) went with the stack itself.
+# and a `tofu validate` for tofu/exe) went with the stack itself, and the exe
+# stacks' suites went with theirs. tofu/tailnet is what is left here.
 # ADR 0024 (in the runops-gateway repo) is the canonical rationale
 # for splitting IaC tests across `tofu test` (variable defaults /
 # validation) and pytest (heredoc body content, systemd-analyze).
@@ -36,7 +35,7 @@ permissions:
   contents: read
 
 jobs:
-  test-iac-exe:
+  test-iac:
     name: tofu test (${{ matrix.stack }})
     # Draft pull requests do not run CI; runs start when the PR is marked
     # ready for review.
@@ -45,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [tofu/exe-platform, tofu/exe-cluster, tofu/tailnet]
+        stack: [tofu/tailnet]
 
     steps:
       - name: Checkout
@@ -55,10 +54,10 @@ jobs:
         with:
           tofu_version: 1.12.3
 
-      # Offline: mock providers, exe-platform's state as override_data, no
-      # backend, no tfvars and no credentials, so the suites never reach the
-      # private project. Mirrors `just test-iac-exe`
-      # (tests/unit/test_iac_gates_run_the_exe_suites.py pins both).
+      # Offline: mock providers, no backend, no tfvars and no credentials, so
+      # the suite never reaches a real tailnet. Mirrors `just test-iac`, which
+      # discovers its stacks from the tracked `*.tofutest.hcl` files rather
+      # than listing them, so the two cannot drift apart by one being edited.
       - name: tofu test
         working-directory: ${{ matrix.stack }}
         run: |

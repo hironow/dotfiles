@@ -24,9 +24,16 @@ Applies to **every repo** that matches the trigger above.
 
 ## Gate
 
-`just spec-check` is a **strict bash** recipe (`set -euo pipefail`; just's
-default `sh -cu` hides a failing `for` iteration) calling Quint through one
-pinned `QUINT` variable, inside `just check`. CI runs the same recipe.
+The gate is a `just spec-check` recipe wired into `just check`, so CI runs the
+same thing a developer does. Write it as **strict bash** (`set -euo pipefail`):
+just's default `sh -cu` hides a failing `for` iteration, which is how a model
+silently stops being checked. Call Quint through one pinned variable rather than
+bare `quint`, so the gate cannot drift onto whatever version is on PATH.
+
+dotfiles itself no longer carries such a recipe — its model moved out with the
+stack it described — so treat this section as the shape to build, not a recipe
+to run here. `quint` stays pinned in the global mise config for exactly that
+reason.
 
 Tools: **Quint** (`@informalsystems/quint`) + the simulation. Apalache
 (`quint verify`) is an optional bug finder, never a gate. TLA+ and Lean are
