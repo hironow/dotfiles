@@ -196,11 +196,11 @@ cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'
 export MISE_TRUSTED_CONFIG_PATHS=/root/dotfiles:/root/sandbox/dotfiles-fresh
 
 # Relocate mise's data directory (installs + shims + cache) outside
-# of $HOME per ADR 0006. The Coder workspace template binds
-# `/home/<user>:/root` for operator-state persistence, which masks
-# the build-time-baked $HOME/.local/share/mise. Putting the data
-# dir at /opt/mise keeps the cache out of the bind-mount path so
-# pinned versions are reachable at runtime without re-fetch.
+# of $HOME per ADR 0006. The retired Coder workspace template bound
+# `/home/<user>:/root` for operator-state persistence, which masked
+# the build-time-baked $HOME/.local/share/mise. Keeping the data
+# dir at /opt/mise puts the cache outside any mount over $HOME, so
+# pinned versions stay reachable at runtime without a re-fetch.
 export MISE_DATA_DIR=/opt/mise
 
 # quint's Rust evaluator is built into the image (see "quint's Rust
@@ -241,8 +241,9 @@ git config --system --add safe.directory /root/sandbox/dotfiles-fresh
 # bump them in dedicated PRs.
 #
 # Per ADR 0006 the data dir is /opt/mise, NOT $HOME/.local/share/mise.
-# The /home/<user>:/root volume mount on Coder workspaces would
-# otherwise mask everything we install here.
+# The retired Coder workspace's /home/<user>:/root volume mount would
+# otherwise have masked everything we install here, and /opt keeps any
+# future mount over $HOME from doing the same.
 #
 # The config is also written to /etc/mise/config.toml (mise's
 # system-wide global config) so that shims resolve to the pinned

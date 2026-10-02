@@ -1,40 +1,44 @@
 # Architecture Decision Records (ADR)
 
 This directory captures the **why** behind significant architecture
-and tooling decisions across the dotfiles repository (local IDE
-environment, Coder workspace, `exe.hironow.dev` stack, CI). Live
-documentation under `docs/`, `exe/docs/`, and `tofu/exe/` describes
-the **what** of the current implementation; this index points to the
-recorded decisions that shaped it.
+and tooling decisions across the dotfiles repository (the host
+environment, the dev container image, CI, the tailnet policy). Live
+documentation under `docs/` describes the **what** of the current
+implementation; this index points to the recorded decisions that
+shaped it. The records of the retired control plane stay here too —
+[0045](./0045-coder-control-plane-retired.md) says what was destroyed
+and what outlived it.
 
 ## Conventions
 
 - File naming: `NNNN-short-title.md` (sequential, lowercase, hyphens)
 - Status workflow: `Proposed` → `Accepted` → (`Deprecated` |
-  `Superseded by [NNNN]`)
+  `Superseded by [NNNN]`). A `Proposed` record that is never decided
+  and whose subject goes away becomes `Withdrawn`.
 - Once `Accepted`, ADRs are **immutable**. To revisit a decision,
   write a new ADR that supersedes the old one and update the old
   ADR's status line — that is the only allowed modification.
-- Template lives in [`CLAUDE.md`](../../CLAUDE.md) under
-  `<adr-guidelines>`.
+- Template lives in
+  [`ROOT_AGENTS_docs_agents_docs-discipline.md`](../../ROOT_AGENTS_docs_agents_docs-discipline.md)
+  (the source of the spoke agents read as `docs/agents/docs-discipline.md`).
 
 ## Index
 
 | #    | Title                                                                                       | Status                                       | Date       | Affects                          |
 | ---- | ------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------- | -------------------------------- |
 | 0001 | [Migrate dev container to debian-12 + features (single SoT)](./0001-devcontainer-debian-features.md) | Accepted                                     | 2026-05-02 | `.devcontainer/`                 |
-| 0002 | [Coder workspace template uses a prebuilt dev container image](./0002-coder-prebuilt-image.md)       | Accepted                                     | 2026-05-02 | `exe/coder/templates/`           |
+| 0002 | [Coder workspace template uses a prebuilt dev container image](./0002-coder-prebuilt-image.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-02 | removed: `exe/coder/templates/` |
 | 0003 | [Pin GitHub Actions to commit SHAs and add Dependabot updates](./0003-actions-pin-sha.md)            | Accepted (PR #48)                            | 2026-05-02 | `.github/workflows/`             |
-| 0004 | [Workspace VMs reach the Coder control plane over the tailnet (B-plan)](./0004-workspace-tailnet-routing.md) | Accepted (PR #47)                    | 2026-05-02 | `exe/coder/templates/`, `exe/tailscale/acl.hujson` |
-| 0005 | [Rationalise install paths across Mac host and Coder workspace (Linux)](./0005-install-path-rationalization.md) | Accepted                          | 2026-05-02 | `install.sh`, `Brewfile`         |
-| 0006 | [mise tool version pinning strategy](./0006-mise-version-pinning.md)                                 | Accepted                                     | 2026-05-02 | `mise.toml`                      |
-| 0007 | [Coder server install hardening on the control-plane VM](./0007-coder-server-install-hardening.md)   | Accepted                                     | 2026-05-02 | `tofu/exe/coder.tf`, `tofu/exe/variables.tf` |
-| 0008 | [Event-driven Coder workspace runner (GHA-style without GHA)](./0008-event-driven-workspace-runner.md) | Superseded by [0009](./0009-retract-cron-trigger-from-adr-0008.md) (partial — trigger source 2 retracted) | 2026-05-03 | `exe/coder/templates/dotfiles-job/`, `exe/scripts/cdr-job` |
-| 0009 | [Retract the systemd-timer cron trigger from ADR 0008](./0009-retract-cron-trigger-from-adr-0008.md) | Accepted (2026-05-04 — cron infra reverted in PR #76, intentionally absent) | 2026-05-03 | retracts `tofu/exe` cron / systemd timer (none added) |
-| 0010 | [Cloud SQL Postgres for Coder data plane](./0010-cloud-sql-postgres-for-coder.md)                    | Accepted                                     | 2026-05-03 | `tofu/exe/cloudsql.tf`, `tofu/exe/coder.tf`, `tofu/exe/monitoring.tf` |
-| 0011 | [exe-coder workspace VM multi-project systemd env delivery](./0011-exe-multi-project-systemd-env.md) | Accepted | 2026-05-07 | `exe/coder/templates/`, `exe/scripts/` |
-| 0012 | [exe-coder workspace VM RUNOPS_ACTOR_TYPE env injection (per caller path)](./0012-exe-actor-type-env-injection.md) | Accepted | 2026-05-09 | `exe/coder/templates/`, `exe/scripts/cdr-exec` |
-| 0013 | [Project lifecycle severity classification (= cdr-project / runops project)](./0013-project-lifecycle-severity-classification.md) | Proposed | 2026-05-09 | `exe/` runops project lifecycle |
+| 0004 | [Workspace VMs reach the Coder control plane over the tailnet (B-plan)](./0004-workspace-tailnet-routing.md) | Accepted (PR #47); superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-02 | removed: `exe/coder/templates/`, `exe/tailscale/acl.hujson` (the ACL now lives in `tofu/tailnet/`) |
+| 0005 | [Rationalise install paths across Mac host and Coder workspace (Linux)](./0005-install-path-rationalization.md) | Accepted (the Linux consumer is now the dev container) | 2026-05-02 | `install.sh`, `dump/<host>/Brewfile` |
+| 0006 | [mise tool version pinning strategy](./0006-mise-version-pinning.md) | Accepted | 2026-05-02 | `config/mise/config.toml` |
+| 0007 | [Coder server install hardening on the control-plane VM](./0007-coder-server-install-hardening.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-02 | removed: `tofu/exe/coder.tf`, `tofu/exe/variables.tf` |
+| 0008 | [Event-driven Coder workspace runner (GHA-style without GHA)](./0008-event-driven-workspace-runner.md) | Superseded by [0009](./0009-retract-cron-trigger-from-adr-0008.md) (partial — trigger source 2 retracted), then in full by [0045](./0045-coder-control-plane-retired.md) | 2026-05-03 | removed: `exe/coder/templates/dotfiles-job/`, `exe/scripts/` |
+| 0009 | [Retract the systemd-timer cron trigger from ADR 0008](./0009-retract-cron-trigger-from-adr-0008.md) | Accepted (2026-05-04 — cron infra reverted in PR #76, never returned); superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-03 | retracted a cron / systemd timer that was never added; the stack it would have run on is removed |
+| 0010 | [Cloud SQL Postgres for Coder data plane](./0010-cloud-sql-postgres-for-coder.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-03 | removed: `tofu/exe/cloudsql.tf`, `tofu/exe/coder.tf`, `tofu/exe/monitoring.tf` |
+| 0011 | [exe-coder workspace VM multi-project systemd env delivery](./0011-exe-multi-project-systemd-env.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-07 | removed: `exe/coder/templates/`, `exe/scripts/` |
+| 0012 | [exe-coder workspace VM RUNOPS_ACTOR_TYPE env injection (per caller path)](./0012-exe-actor-type-env-injection.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-09 | removed: `exe/coder/templates/`, `exe/scripts/` |
+| 0013 | [Project lifecycle severity classification (= cdr-project / runops project)](./0013-project-lifecycle-severity-classification.md) | Withdrawn — never decided; see [0045](./0045-coder-control-plane-retired.md) | 2026-05-09 | would have affected the removed `exe/` project lifecycle |
 | 0014 | [Vendor emulator and telemetry from submodules into dotfiles](./0014-vendor-emulator-telemetry-from-submodules.md) | Accepted | 2026-05-30 | `emulator/`, `telemetry/` |
 | 0015 | [Adopt portless for stable .localhost URLs of local HTTP UIs](./0015-adopt-portless-for-local-dev-urls.md) | Accepted | 2026-05-30 | `config/portless-aliases.yaml`, `docs/portless-urls.md` |
 | 0016 | [Integrate vercel-labs/emulate API emulators via npx wrapper](./0016-integrate-emulate-api-emulators-via-npx.md) | Accepted | 2026-05-30 | `emulator/emulate/`, `justfile` (`emu-api`) |
@@ -55,7 +59,7 @@ recorded decisions that shaped it.
 | 0031 | [Disable mise `node.corepack` on Windows (`just deploy` `$PROFILE` carve-out)](./0031-disable-mise-corepack-on-windows.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `config/mise/config.toml` |
 | 0032 | [Windows scoop restore: add `add-scoop` (supersede ADR 0019 record-only)](./0032-windows-scoop-restore-add-scoop.md) | Accepted; supersedes [0019](./0019-windows-scoop-dump-record-only.md) (record-only stance) | 2026-07-05 | `justfile` (`add-scoop`), `dump/<host>/scoop.json` |
 | 0033 | [Windows `just deploy` installs the global mise toolset (+ git aliases)](./0033-windows-deploy-global-mise-install.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `~/.gitconfig` |
-| 0034 | [exe stack mothball mode (`stack_mode`) + AR retention bound](./0034-exe-stack-mothball-mode.md) | Accepted | 2026-07-20 | `tofu/exe/`, `exe/docs/` |
+| 0034 | [exe stack mothball mode (`stack_mode`) + AR retention bound](./0034-exe-stack-mothball-mode.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-07-20 | removed: `tofu/exe/`, `exe/docs/` |
 | 0035 | [Time-based disk GC for the self-hosted runners (2h retention)](./0035-runner-disk-gc.md) | Accepted | 2026-07-31 | `scripts/runner_gc*.{sh,ps1}`, `scripts/disk_gc.sh`, `scripts/gc_status.sh`, `justfile` (Disk) |
 | 0036 | [Install mise `npm:` tools with bun, not the embedded aube](./0036-mise-npm-backend-bun.md) | Accepted; amended by [0040](./0040-npm-args-inert-under-bun.md) (npm_args rationale) | 2026-07-31 | `config/mise/config.toml` |
 | 0037 | [Layered Claude settings fragments (shared / OS / profile / machine-local)](./0037-layered-claude-settings-fragments.md) | Accepted | 2026-08-05 | `scripts/sync_agents.py`, `.claude/settings.shared*.json`, `.claude/settings.profiles/` |
@@ -75,21 +79,21 @@ recorded decisions that shaped it.
 
 1. [`0001`](./0001-devcontainer-debian-features.md) — why debian-12
    with devcontainer features instead of an Alpine or Ubuntu base.
-2. [`0002`](./0002-coder-prebuilt-image.md) — why a prebuilt image
-   instead of envbuilder; same SoT as local IDE and CI.
-3. [`0007`](./0007-coder-server-install-hardening.md) — supply-chain
-   hardening on the control-plane VM (sha256 pin, no curl|bash).
-4. [`0010`](./0010-cloud-sql-postgres-for-coder.md) — current data
-   plane (Cloud SQL with IAM auth via CSAP `--auto-iam-authn`).
-5. [`0008`](./0008-event-driven-workspace-runner.md) followed by
-   [`0009`](./0009-retract-cron-trigger-from-adr-0008.md) — read as a
-   pair: 0008 framed the runner; 0009 retracted its cron trigger
-   while keeping the operator-pulled job runner.
+2. [`0005`](./0005-install-path-rationalization.md) — why `install.sh`
+   is one entry point with a per-OS dispatch.
+3. [`0006`](./0006-mise-version-pinning.md) — how tool versions are
+   pinned so every consumer installs the same ones.
+4. [`0044`](./0044-python-toolchain-uv-ruff-ty.md) — the Python
+   toolchain (uv + ruff + ty) this repo and its scaffolds enforce.
+5. [`0045`](./0045-coder-control-plane-retired.md) — what the retired
+   control plane was, and the three classes of object that outlived
+   its destruction. Read it before any ADR between 0002 and 0013.
 
 ## Related
 
-- [`../../CLAUDE.md`](../../CLAUDE.md) — ADR template + when to write
-  one (`<adr-guidelines>` section)
-- [`../../exe/docs/architecture.md`](../../exe/docs/architecture.md)
-  — current `exe.hironow.dev` architecture
-- [`../../tofu/exe/README.md`](../../tofu/exe/README.md) — IaC overview
+- [`../../ROOT_AGENTS_docs_agents_docs-discipline.md`](../../ROOT_AGENTS_docs_agents_docs-discipline.md)
+  — ADR template + when to write one
+- [`../../tofu/tailnet/README.md`](../../tofu/tailnet/README.md) — the
+  one IaC stack this repository still owns
+- [`../agent-sync.md`](../agent-sync.md) — how the `ROOT_*` sources
+  reach each agent's home

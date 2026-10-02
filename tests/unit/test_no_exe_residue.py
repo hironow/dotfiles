@@ -159,6 +159,12 @@ RETIRED_IN_FILES = {
     "config/mise/config.toml": ("google/ax", "ko-build/ko"),
     ".github/dependabot.yaml": ("exe-reaper",),
     ".gitignore": ("exe-reaper",),
+    # The guard had a rule for the retired CLI's `workspaces update/edit`,
+    # which blocked an agent from even editing the documents that cite it.
+    # The justfile's `prune-retired-cdr-symlinks` is NOT covered: that recipe
+    # exists BECAUSE the command is gone (ADR 0045), so a repo-wide ban on the
+    # name would delete the cleanup along with the thing it cleans up.
+    "ROOT_AGENTS_hooks_block-prohibited-commands.py": ("cdr",),
 }
 
 

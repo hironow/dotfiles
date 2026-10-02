@@ -3,19 +3,19 @@ required by ADR 0006 (Accepted 2026-05-02).
 
 What this guards
 ----------------
-The Coder workspace template binds `/home/<user>:/root` to
-persist operator state across container restarts within a VM.
-That bind-mount masks `$HOME/.local/share/mise/installs/` —
+The retired Coder workspace template bound `/home/<user>:/root`
+to persist operator state across container restarts within a VM.
+That bind-mount masked `$HOME/.local/share/mise/installs/` —
 the default location where the dev container feature pre-installs
-the pinned mise.toml tools. With the cache hidden, the workspace
+the pinned mise.toml tools. With the cache hidden, a container
 falls back to runtime fetches from api.github.com / aqua-registry
 on every start, defeating the whole point of pinning.
 
 Per ADR 0006 decision detail 4, the data dir is relocated to
-`/opt/mise`. `/opt` is outside the volume-mount path, so the
-cache survives. This relocation is what unblocks
-`MISE_OFFLINE=1` re-enable at workspace runtime (decision detail
-5). FHS-wise `/opt` is the right home for add-on package trees.
+`/opt/mise`. `/opt` is outside any mount over $HOME, so the cache
+survives — which is what lets `MISE_OFFLINE=1` stay on at runtime
+(decision detail 5). FHS-wise `/opt` is the right home for add-on
+package trees.
 
 These assertions live across three files:
 - `.devcontainer/features/dotfiles-tools/install.sh`
@@ -27,7 +27,8 @@ These assertions live across three files:
 
 A regression that re-introduces /root/.local/share/mise anywhere
 breaks the relocation contract; this test catches it at PR-review
-time before the workspace boot fails three weeks later.
+time rather than three weeks later, in a container that mounts
+something over $HOME.
 """
 
 from __future__ import annotations

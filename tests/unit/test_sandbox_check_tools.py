@@ -131,8 +131,9 @@ def test_quints_evaluator_is_built_from_a_pinned_commit() -> None:
 
 
 def test_quint_home_is_outside_the_home_directory() -> None:
-    # Coder binds the user's home over /root (ADR 0006), which would hide an
-    # evaluator baked into ~/.quint, and quint would then download one that
+    # A mount over /root hides whatever was baked under $HOME; the retired
+    # Coder workspace did exactly that (ADR 0006). An evaluator baked into
+    # ~/.quint would be hidden, and quint would then download one that
     # cannot run on this glibc.
     m = re.search(
         r"cat > /etc/profile.d/dotfiles-mise.sh <<'PROFILE'\n(.*?)\nPROFILE",

@@ -402,7 +402,3 @@ def test_gcloud_iam_binding_is_blocked(tmp_path: Path) -> None:
 
 def test_gcloud_run_deploy_is_blocked(tmp_path: Path) -> None:
     assert _run_hook("gcloud run deploy api --image x", tmp_path) == EXIT_BLOCK
-
-
-def test_cdr_workspace_update_is_blocked(tmp_path: Path) -> None:
-    assert _run_hook("cdr workspaces update my-ws", tmp_path) == EXIT_BLOCK

@@ -1,15 +1,14 @@
 """Structural assertions on .devcontainer/devcontainer.json.
 
 The devcontainer.json file is the *single source of truth* shared by
-three consumers:
+two consumers:
   1. local IDE  (VS Code / Cursor / JetBrains "Reopen in Container")
   2. CI test    (devcontainers/ci action in .github/workflows/test-just.yaml)
-  3. Coder workspace (envbuilder reads it on workspace VM boot)
 
-Migrating it once moves all three together. These tests pin the
+Migrating it once moves both together. These tests pin the
 *structure* — base image and required features — so accidental edits
 that drop, say, google-cloud-cli, surface as a unit-test failure long
-before the Coder workspace stops booting.
+before the CI sandbox stops building.
 
 The trailing `@pytest.mark.devcontainer_up` block adds runtime
 smoke tests that exercise the actual `devcontainer up` lifecycle
@@ -129,10 +128,9 @@ def test_devcontainer_declares_required_features(devcontainer: dict) -> None:
 
 
 def test_devcontainer_remote_user_is_root(devcontainer: dict) -> None:
-    """remoteUser=root is intentional for this PR: tests, install.sh
-    deploy logic, and Coder workspace all assume HOME=/root and
-    /root/dotfiles workspace path. Switching to vscode user is a
-    separate follow-up PR."""
+    """remoteUser=root is intentional: the tests and install.sh's deploy
+    logic both assume HOME=/root and the /root/dotfiles workspace path.
+    Switching to the vscode user is a separate change."""
     assert devcontainer.get("remoteUser") == "root", (
         f"remoteUser must be 'root', got {devcontainer.get('remoteUser')!r}. "
         "Switching to non-root requires updating ~30 test assertions."
@@ -240,7 +238,7 @@ def test_mise_trusted_paths_are_scoped(devcontainer: dict) -> None:
 # materialised as expected baked-in state. They cover three gaps the
 # raw `docker run` fixture in test_just_sandbox.py does not:
 #   A) the `devcontainer up` lifecycle path actually completes
-#      (the same path local IDE / Coder workspace / CI all use)
+#      (the same path the local IDE and CI both use)
 #   B) trust-boundary scoping is in effect at runtime — not just in
 #      the JSON file (a future revert to `/root` or `*` would be
 #      caught even if the JSON is otherwise updated)

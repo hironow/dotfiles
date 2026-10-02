@@ -1,7 +1,7 @@
 # 0034. exe stack mothball mode (`stack_mode`) + AR retention bound
 
 **Date:** 2026-07-20
-**Status:** Accepted
+**Status:** Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) — the stack this ADR mothballed was destroyed 2026-10-01 and `tofu/exe/` no longer exists
 
 ## Context
 

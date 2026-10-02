@@ -1,7 +1,7 @@
 # 0013. Project lifecycle severity classification (= cdr-project / runops project)
 
 **Date:** 2026-05-09
-**Status:** Proposed
+**Status:** Withdrawn — never accepted, and the project lifecycle it would have classified went with the Coder control plane; see [0045](./0045-coder-control-plane-retired.md)
 
 ## Context
 

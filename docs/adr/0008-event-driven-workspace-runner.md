@@ -1,7 +1,7 @@
 # 0008. Event-driven Coder workspace runner (GHA-style without GHA)
 
 **Date:** 2026-05-03
-**Status:** Superseded by [0009](./0009-retract-cron-trigger-from-adr-0008.md) (partial — trigger source 2 retracted)
+**Status:** Superseded by [0009](./0009-retract-cron-trigger-from-adr-0008.md) (partial — trigger source 2 retracted), then in full by [0045](./0045-coder-control-plane-retired.md) — the Coder control plane the runner ran on was destroyed 2026-10-01
 
 ## Context
 

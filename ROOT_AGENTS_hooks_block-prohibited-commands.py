@@ -12,7 +12,7 @@ Pipeline (full semantics: docs/agents/enforcement.md):
    bodies fed to interpreters (bash, python, node, ...) are executable code
    and are re-analyzed recursively.
 2. Raw-string guards on the heredoc-cleaned text for destructive/IaC
-   commands (rm -rf /, gcloud/cdr mutations) — over-blocking is the safe
+   commands (rm -rf /, gcloud mutations) — over-blocking is the safe
    side there, so quoting is deliberately ignored.
 3. shlex tokenization (POSIX, punctuation_chars): quoted prose collapses
    into single tokens that never equal a tool name, across lines too.
@@ -223,13 +223,6 @@ RAW_GUARDS: list[tuple[re.Pattern[str], str]] = [
             "This gcloud command mutates IaC-managed infra and will drift from "
             "tofu. Open an IaC PR. (Read-only debug is fine; emergency rollback "
             "must be followed by an IaC PR same session.)"
-        ),
-    ),
-    (
-        re.compile(r"cdr[\s]+workspaces[\s]+(update|edit)"),
-        (
-            "Patch the Coder template (coder_parameter), not the running "
-            "workspace. See docs/agents/iac-drift-policy.md."
         ),
     ),
 ]

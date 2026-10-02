@@ -25,8 +25,8 @@ These tests are **regex assertions on install.sh source text**
 plus a small set of runtime executions of `install.sh --check`
 or equivalent dry-run flag. They do NOT execute the heavy
 install steps themselves; doing so would require a real Mac
-host and a real Coder workspace, both already covered by other
-tests.
+host, and the Linux path is exercised inside the dev container
+by the sandbox tests.
 
 Why these exist
 ---------------

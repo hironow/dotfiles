@@ -28,7 +28,7 @@ jobs:
       # Build the dev container declared by .devcontainer/devcontainer.json
       # (debian-12 + features) and run `just test` inside it. The action
       # handles BuildKit, GHA cache wiring, and feature resolution so the
-      # local IDE / Coder workspace / CI all consume the same image graph.
+      # local IDE and CI both consume the same image graph.
       #
       # imageName=dotfiles-just-sandbox tags the resulting image so the
       # pytest fixture in tests/test_just_sandbox.py finds it via
