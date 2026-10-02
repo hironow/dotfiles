@@ -1,45 +1,42 @@
 # dotfiles
 
-Zsh、mise、just などの設定と、それを Mac、Linux、Windows、Dev Container、Coder workspace に配る仕組みをまとめたリポジトリ。
+Zsh、mise、just などの設定と、それを Mac、Linux、Windows、Dev Container に配る仕組みをまとめたリポジトリ。
 
 ## 構成
 
-3 つの環境が、同じ正本（`config/mise/config.toml`、`.devcontainer/devcontainer.json`、`install.sh`）から同じバージョンの道具を入れる。
+2 つの環境が、同じ正本（`config/mise/config.toml`、`.devcontainer/devcontainer.json`、`install.sh`）から同じバージョンの道具を入れる。
 OS ごとに違うのは、導入の経路だけである。
 
 ```
-   +---------------+     +-----------------+     +------------------+
-   |   Mac host    |     |  Dev container  |     |  Coder workspace |
-   |  (daily       |     |  (CI sandbox    |     |  (exe.hironow.   |
-   |   driver)     |     |   + IDE)        |     |   dev)           |
-   +-------+-------+     +--------+--------+     +---------+--------+
-           |                      |                        |
-   brew + mise          devcontainer.json         docker pull prebuilt
-   (just deploy)        + features/                image (Artifact Reg.)
-                        dotfiles-tools             then docker run
-                                                   (--volume /home:/root)
-           |                      |                        |
-           +----------+-----------+------------+-----------+
-                                              |
-                                              v
-                          +-------------------------------------+
-                          |  Single source of truth (this repo) |
-                          |                                     |
-                          |  - install.sh        (OS dispatch)  |
-                          |  - config/mise/config.toml (pins)   |
-                          |  - .devcontainer/    (image SoT)    |
-                          |  - dump/<host>/      (brew/gcloud)  |
-                          +-------------------------------------+
+   +---------------+     +-----------------+
+   |   Mac host    |     |  Dev container  |
+   |  (daily       |     |  (CI sandbox    |
+   |   driver)     |     |   + IDE)        |
+   +-------+-------+     +--------+--------+
+           |                      |
+   brew + mise          devcontainer.json
+   (just deploy)        + features/
+                        dotfiles-tools
+           |                      |
+           +----------+-----------+
+                      |
+                      v
+   +-------------------------------------+
+   |  Single source of truth (this repo) |
+   |                                     |
+   |  - install.sh        (OS dispatch)  |
+   |  - config/mise/config.toml (pins)   |
+   |  - .devcontainer/    (image SoT)    |
+   |  - dump/<host>/      (brew/gcloud)  |
+   +-------------------------------------+
 ```
 
 凡例:
 
 - Mac host: 普段使いの機体（日常の作業機）
 - Dev container: CI と IDE が共有するサンドボックス（CI とエディタの実行環境）
-- Coder workspace: exe.hironow.dev 上の作業環境（リモート開発環境）
 - install.sh (OS dispatch): `uname` で mac / linux / windows を振り分ける（OS 判定。ADR 0005）
 - config/mise/config.toml (pins): just、uv、prek、vp、markdownlint-cli2、node と 5 つの AI CLI（codex、antigravity、claude、copilot、pi）のバージョンを 3 OS で揃える（バージョン固定。ADR 0006）
-- Artifact Reg.: main への merge で GitHub Actions が push した image を、Coder の VM が pull する（イメージ置き場）
 
 関連文書:
 

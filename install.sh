@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Entry point for `curl ... install.sh | bash` style bootstraps and
-# `coder dotfiles -y`. Routes each install step through a per-OS
-# dispatch (DOTFILES_OS) so the same script handles macOS hosts,
-# Linux Coder workspaces, and (future) Windows scoop hosts.
+# Entry point for `curl ... install.sh | bash` style bootstraps, and for
+# anything that execs the script directly after a clone. Routes each
+# install step through a per-OS dispatch (DOTFILES_OS) so the same script
+# handles macOS hosts, Linux hosts and dev containers, and (future)
+# Windows scoop hosts.
 #
 # Per ADR 0005 (Accepted 2026-05-02): a single entry point with
 # `step_*` helper functions that branch on DOTFILES_OS. Existing
@@ -148,8 +149,8 @@ step_gcloud_components() {
 
 step_mise_bootstrap() {
   # Ensure `mise` is on PATH before the steps that consume it (mise install,
-  # prek shim). Dev containers / Coder workspaces get mise from the devcontainer
-  # feature (apt), so the `command -v mise` guard early-returns there — a no-op
+  # prek shim). Dev containers get mise from the devcontainer feature (apt),
+  # so the `command -v mise` guard early-returns there — a no-op
   # on any box that already has mise. On a bare Linux/WSL host, download the
   # pinned mise release binary to ~/.local/bin (user-local, no sudo), SHA256-
   # verified against the release SHASUMS — the same posture as
