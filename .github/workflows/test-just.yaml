@@ -48,9 +48,18 @@ jobs:
           # the authenticated 5000/hr quota instead of the anonymous
           # 60/hr limit. The pytest fixture passes it on to inner
           # one-shot containers via `docker run -e GITHUB_TOKEN`.
+          #
+          # DOTFILES_SANDBOX_DISPOSABLE_CHECKOUT states that this
+          # checkout dies with the job, which lets the sandbox
+          # bind-mount it and run `git init` / `git add -A` in it.
+          # devcontainer.json exports LOCAL_WORKSPACE_FOLDER inside
+          # every dev container, CI or not, so it alone is not proof;
+          # without this line the sandbox refuses to bind a checkout
+          # (tests/test_just_sandbox.py `_mount_mode`).
           env: |
             PYTEST_ADDOPTS=--junitxml=/root/dotfiles/pytest-report.xml
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+            DOTFILES_SANDBOX_DISPOSABLE_CHECKOUT=1
 
       - name: Upload test report
         if: always()

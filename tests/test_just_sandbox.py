@@ -4,13 +4,53 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
 IMAGE = "dotfiles-just-sandbox:latest"
+
+# CI sets this (the `env:` block of .github/workflows/test-just.yaml) to state
+# that the checkout at LOCAL_WORKSPACE_FOLDER is a runner checkout thrown away
+# with the job, and may therefore be bind-mounted and written to.
+DISPOSABLE_CHECKOUT_ENV = "DOTFILES_SANDBOX_DISPOSABLE_CHECKOUT"
+
+
+def _mount_mode(env: Mapping[str, str]) -> Literal["bind", "snapshot"]:
+    """Decide what `run_in_sandbox` may mount at /root/dotfiles.
+
+    Every sandbox script is prefixed with `_GIT_INIT`, which runs `git init`,
+    OVERWRITES `.git/info/exclude` and `git add -A` in the mounted tree, and
+    recipes like `just fmt` write to it as well. That is only ever safe on a
+    disposable copy.
+
+    LOCAL_WORKSPACE_FOLDER is NOT that proof: devcontainer.json exports it
+    inside the dev container too, so `just test` from a dev container on a
+    developer machine would point it at the real working repo. Only CI knows
+    its checkout is disposable, so CI has to say so explicitly.
+
+    The remaining case -- LOCAL_WORKSPACE_FOLDER set, nothing declaring it
+    disposable -- is refused rather than silently snapshotted: a snapshot made
+    inside the dev container is a CONTAINER path that the outer daemon cannot
+    resolve, so `-v` would mount an empty dir and the whole suite would fail
+    obscurely. Fail loudly with the reason instead.
+    """
+    local_workspace = env.get("LOCAL_WORKSPACE_FOLDER")
+    if local_workspace is None:
+        return "snapshot"
+    if env.get(DISPOSABLE_CHECKOUT_ENV) == "1":
+        return "bind"
+    raise RuntimeError(
+        f"refusing to bind-mount {local_workspace!r} into the sandbox: it looks "
+        "like a real working checkout, and the sandbox runs `git init`, "
+        "overwrites .git/info/exclude and `git add -A` in whatever it mounts. "
+        f"Only CI may bind a checkout, by setting {DISPOSABLE_CHECKOUT_ENV}=1. "
+        "Run `just test` from the host, not from inside the dev container."
+    )
 
 
 def _host_workspace_path() -> str:
@@ -139,11 +179,11 @@ def _snapshot_tracked_worktree(src: str) -> str:
 def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
     # The dev container image does NOT bake /root/dotfiles into its layers —
     # that path is the workspace mount. A fresh `docker run` starts empty, so we
-    # recreate it. Under docker-outside-of-docker (CI; LOCAL_WORKSPACE_FOLDER
-    # set) the mount source must be a host path and the checkout is ephemeral,
-    # so we bind-mount it directly. Locally we snapshot only git-tracked files
-    # into a host tempdir and mount THAT, so the real repo (and its .git) never
-    # enters the throwaway container and tests can never pollute the host.
+    # recreate it. Under docker-outside-of-docker (CI) the mount source must be
+    # a host path and the checkout is ephemeral, so we bind-mount it directly.
+    # Locally we snapshot only git-tracked files into a host tempdir and mount
+    # THAT, so the real repo (and its .git) never enters the throwaway container
+    # and tests can never pollute the host. `_mount_mode` holds that fence.
     full_script = textwrap.dedent(
         f"""
         set -e
@@ -153,7 +193,7 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
     ).strip()
     src = _host_workspace_path()
     snapshot_dir = None
-    if "LOCAL_WORKSPACE_FOLDER" in os.environ:
+    if _mount_mode(os.environ) == "bind":
         mount_source = src
     else:
         snapshot_dir = _snapshot_tracked_worktree(src)
@@ -840,9 +880,11 @@ _MISE_STUB = _MISE_PRETTIER_STUB
 # scan third-party code the recipes are designed to skip. We derive the
 # exclusion list dynamically from .gitmodules so nested submodules
 # (e.g. tools/tmux/plugins/tmux-resurrect) are covered too.
-# SAFETY: run_in_sandbox mounts a throwaway snapshot of only the tracked working
-# tree (no host .git — see _snapshot_tracked_worktree), so every git write here
-# lands on the disposable copy and can never reach the host repo. We therefore
+# SAFETY: the git writes below (including the `.git/info/exclude` overwrite) are
+# only safe on a disposable tree, so `_mount_mode` guarantees one: locally a
+# throwaway snapshot of just the tracked files (no host .git — see
+# _snapshot_tracked_worktree), in CI the runner checkout it declares disposable,
+# and a refusal in every other case. They can never reach a real repo. We
 # init a normal repo at /root/dotfiles/.git, which `prek install` /
 # `just install-hooks` need (they wire hooks into .git/hooks).
 _GIT_INIT = (
@@ -952,8 +994,8 @@ def test_just_lint_detects_ruff_violation(docker_image):
 # check_storage_bounds.py globs the filesystem and sees a sink that was never
 # added.
 #
-# Both clean up the file they plant, which matters only in CI: with
-# LOCAL_WORKSPACE_FOLDER set, run_in_sandbox bind-mounts the real checkout
+# Both clean up the file they plant, which matters only in CI: there
+# run_in_sandbox bind-mounts the (disposable) runner checkout itself
 # instead of a per-call snapshot, so a planted violation left behind would
 # travel to every later test in the job and fail the clean-tree checks. The
 # `|| rc=$?` is what makes that reachable -- the harness runs under `set -e`,
@@ -1475,10 +1517,13 @@ def test_run_in_sandbox_local_mounts_snapshot_not_host(monkeypatch):
 
 
 def test_run_in_sandbox_ci_binds_host_path(monkeypatch):
-    """In CI (LOCAL_WORKSPACE_FOLDER set, ephemeral runner) the sandbox binds
-    the host path directly and must NOT take the local snapshot branch."""
-    # given: CI-style env points at a host workspace path
+    """In CI (LOCAL_WORKSPACE_FOLDER set plus the disposable-checkout
+    declaration) the sandbox binds the host path directly and must NOT take the
+    local snapshot branch. Without the declaration it refuses instead — see
+    tests/unit/test_sandbox_mount_fence.py."""
+    # given: CI-style env points at a host workspace path it declares disposable
     monkeypatch.setenv("LOCAL_WORKSPACE_FOLDER", "/work/ci-checkout")
+    monkeypatch.setenv(DISPOSABLE_CHECKOUT_ENV, "1")
 
     def _boom(_src):
         raise AssertionError("must not snapshot in CI mode")
