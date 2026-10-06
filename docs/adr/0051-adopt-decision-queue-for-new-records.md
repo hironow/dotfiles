@@ -1,42 +1,45 @@
 # 0051. 新しい決定記録をdecision queueで追跡する
 
 **Date:** 2026-10-06
-**Status:** Proposed
+**Status:** Accepted
 **ID:** ADR-0051
 **Title:** 新しい決定記録をdecision queueで追跡する
-**Decided-date:** —
-**Decision-maker:** Hiroto N.（裁定待ち）
+**Decided-date:** 2026-10-06
+**Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Pi（owner session）
 **Author-contact:** @hironow
 **Supersedes:** none
 **Superseded-by:** none
 **Related:** [ADR索引](README.md)、[文書規約](../../ROOT_AGENTS_docs_agents_docs-discipline.md)、[既存のignore規則](../../.gitignore)
-**Consultation-trace:** [公開PR #461](https://github.com/hironow/dotfiles/pull/461)
+**Consultation-trace:** [公開PR #461の所有者裁定](https://github.com/hironow/dotfiles/pull/461#issuecomment-6020609790)
 
 ## やさしい説明
 
-今は判断待ちの決定案を一覧できない。
-誰がいつ判断するか、相談場所も含めて一覧にするか決める。
+新しい判断待ちの決定案を、誰がいつ判断するか、相談場所も含めた公開一覧で追跡する。
 採択済みの古い決定を勝手に書き換えたり、関係者の連絡先を推測で埋めたりはしない。
 
 ## Context
 
 このリポジトリには採択済みを含む49件のADR（技術的な決定記録）があり、`docs/adr/README.md`に索引がある。
-一方、追跡済みの`docs/decision-queue.md`はまだない。
+採択前は、追跡済みの`docs/decision-queue.md`がなかった。
 [文書規約](../../ROOT_AGENTS_docs_agents_docs-discipline.md)はdecision queue（決裁待ち一覧）とPDR（製品上の決定記録）を任意採用とし、採用自体をADRに記録するよう求める。
 しかし[既存のignore規則](../../.gitignore)は、同じパスをtooling-patrol（ツール点検作業）のローカル専用出力として2026-06-10からGitの追跡対象から除外している。
 今回の公開queue案は、この誤公開防止策の変更を伴う。
-作業中の元の端末には同名ファイルがないが、他の端末と外部patrolの出力先は未確認である。
+2026-10-06に所有者は全端末に同名のローカル専用ファイルがなく、外部patrolが追跡対象の旧パスへ今後書かないことを確認した。
+この確認とA案の採択は[公開PRの裁定](https://github.com/hironow/dotfiles/pull/461#issuecomment-6020609790)に記録した。
 
 このリポジトリのGitHub Issuesは無効である。
 今後の相談には、公開可能な内容だけを含めたGitHub PR（変更提案）の本文と議論を使える。
-今回の決定記録の起票手順はqueueへの登録を必須とするため、本ADR自身の行を決裁待ちとして仮置きする。
+今回の決定記録の起票時には本ADR自身の行を決裁待ちとして仮置きし、裁定後に決定済みログへ移した。
 2026-10-06、所有者はFlatt経路に関する後続ADRを起票する前に、decision queueの採用を別ADRとして提案する順序を選んだ。
 
 ## Decision
 
-（Proposed。確定後にAcceptedのMUST/SHALL、Rejectedの理由、またはDeferredの再検討条件を記述。）
+1. 新たに起票するADR/PDRは、提案ファイルと`docs/decision-queue.md`の決裁待ち行を同時に作らなければならない（MUST）。作者と決裁者の安定した連絡先、期限、公開可能な相談先を記録する。連絡先を推測で埋めてはならない（MUST NOT）。
+2. 裁定後はqueueの行を決定済みログへ移し、ADR/PDR本文と索引を同時に更新しなければならない（MUST）。採択済み本文は、後続の新しい決定記録による置換以外では変更しない。
+3. Gitの追跡対象に戻すのは`docs/decision-queue.md`だけとし、`docs/decision-queue-*.md`のローカル専用保護を維持しなければならない（MUST）。過去49件を遡及変更せず、外部patrolの新しい出力先や非公開情報を公開queueに記載してはならない（MUST NOT）。
+4. GitHub Issuesは無効なので、公開可能な内容だけを含むPRで決裁と相談を行い、queueにそのURLを記録しなければならない（MUST）。
 
 ## Options Considered
 
@@ -46,9 +49,9 @@
 
 ## Consequences
 
-- **Positive**：A案なら新しい未決記録と決裁期限、相談先を一か所で見られる。
-- **Negative**：A案では提案、決裁、置換のたびにADR/PDR、queue、索引を同期する手間が増える。従来のignore保護を外すと、patrolが旧パスへ書き続けた場合にローカルの内容を公開する危険がある。公開PRに書く事実を確認し、非公開の運用情報は転載しない。
-- **Neutral**：過去49件の状態と履歴は既存ADRとREADME索引に残る。この提案の起票だけで古い記録の状態・本文、パッケージ取得設定は変わらない。ignore（追跡除外設定）の変更はレビュー用PRの案であり、現行main（既定ブランチ）には反映しない。
+- **Positive**：新しい未決記録と決裁期限、相談先を一か所で見られる。
+- **Negative**：提案、決裁、置換のたびにADR/PDR、queue、索引を同期する手間が増える。ignore保護を外す対象を広げるとローカルの内容を公開する危険があるため、単一パスだけを追跡し、公開前に本文を確認する。
+- **Neutral**：過去49件の状態と履歴は既存ADRとREADME索引に残る。本裁定はパッケージ取得設定や既存Accepted ADRの本文を変更しない。
 
 ## 他のDRとの照合
 
@@ -56,31 +59,22 @@
 関連する既存記録の本文と文書規約も確認した。
 旧記録の作者や連絡先が不明な箇所を、新しいqueueのために推測して補わない。
 既存のignore規則との衝突はADR同士の矛盾ではないが、2026-10-06に当該規則の作者である所有者へ確認した。
-所有者の裁定は「公開queueへの切替を後続ADRで**提案**し、既存のローカル出力先と他端末の状態を採択・merge（本流への取り込み）前に確認する」であり、採択の承認ではない。
-この提案だけを認めた裁定は[公開PR #461](https://github.com/hironow/dotfiles/pull/461)の相談本文にも記録した。
+初回の相談では、所有者は公開queueへの切替を提案することだけを認め、採択は安全確認後まで保留した。
+その後、全端末とpatrolの確認を終え、同じ所有者がA案の採択を[公開PR #461](https://github.com/hironow/dotfiles/pull/461#issuecomment-6020609790)で裁定した。
 
 ## 裁定・merge前の停止条件
 
-- 他端末に同名の無追跡ローカルファイルがあるか、所有者が確認する。あれば自動移動・公開せず、別のignoredパスへ安全に退避してからcheckoutする。
-- 外部tooling-patrolの出力先を所有者が確認し、追跡対象の`docs/decision-queue.md`へ書かないことを確かめる。ローカル出力には引き続きignoredとなる`docs/decision-queue-local.md`などを使う。
-- この公開queueとPRの追加内容に非公開情報が含まれないことを確認する。どれかを証明できなければ採択・mergeしない。
+- 所有者は全端末に同名のローカル専用ファイルがないと確認した。既存ファイルを移動・公開する必要はない。
+- 所有者は外部tooling-patrolが追跡対象の旧パスへ今後書かないと確認した。新しい出力先は公開しない。
+- PR #461の差分は公開可能な決定記録と正確なignoreの例外だけであり、非公開情報を転載しない。これらの確認とA案の裁定は[PRの議論](https://github.com/hironow/dotfiles/pull/461#issuecomment-6020609790)に残した。
 
 ## 反転記録 (Reversal)
 
 none（既存のAccepted ADRを置き換えない。）
 
-## 決定（記入待ち）
+## 決定（2026-10-06）
 
-- [ ] A案でAccept
-- [ ] B案でAccept
-- [ ] C案でAccept
-- [ ] 修正のうえAccept（修正点: ____）
-- [ ] Reject（理由: ____）
-- [ ] Deferred（再検討条件: ____）
-- 決定者・日付: ____
-- A案Accept時のアクション: 上記停止条件を確認し、以後の新しいADR/PDRにはqueueの行、連絡先、期限、相談記録を必須とする。採択後は決定済みログと索引を更新し、文書規約に採用を反映する。過去49件の連絡先を推測で遡及記載しない。
-- B案Accept時のアクション: このADRの行は決定済みログに残す。今後のADR起票が必須のqueue規則と矛盾しない代替手順を人が裁定するまで、追加起票を止める。
-- C案Accept時のアクション: このADRの行は決定済みログに残す。PRだけで必須のqueue規則を代替できるか別途裁定し、それまで追加起票を止める。
-- 修正Accept時のアクション: 修正された適用範囲とqueueの運用を文書規約に反映する。
-- Reject時のアクション: 理由を記録し、このADRの行は決定済みログに残す。以後の起票方法を人が決めるまで追加起票を止める。
-- Deferred時のアクション: 再検討条件と期限を記録し、次のADR起票方法を人に確認する。
+- **A案をAccepted**。決定者：Hiroto N.（@hironow）。[公開PR #461の裁定](https://github.com/hironow/dotfiles/pull/461#issuecomment-6020609790)。
+- B案を却下：索引と個別ADRだけでは未決事項の期限・連絡先・相談の進捗を一覧できない。
+- C案を却下：PRだけでは終了後も残る未決事項と裁定済み記録の関係を、リポジトリ内から追いにくい。
+- 次の作業：確認済みの停止条件を維持し、queueの行を決定済みログへ移す。以後の新しいADR/PDRにはqueue、安定した連絡先、期限、PR相談記録を必須とする。過去49件は遡及変更しない。

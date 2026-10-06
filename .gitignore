@@ -76,9 +76,8 @@ docs/intent-*.md
 docs/handover.md
 docs/handover-*.md
 docs/setup.md
-# Tooling-patrol working queues remain local-only; e.g.
-# docs/decision-queue-local.md. The proposed public governance queue at
-# docs/decision-queue.md is tracked for review; ADR-0051 is not yet accepted.
+# Tooling-patrol working queues remain local-only. ADR-0051 adopts the
+# tracked public governance queue at docs/decision-queue.md only.
 docs/decision-queue-*.md
 node_modules
 
