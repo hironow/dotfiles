@@ -8,7 +8,7 @@
 
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0051 | 新しい決定案を公開一覧で追跡するか | ADR | Pi（owner session） | @hironow | Hiroto N.（裁定待ち） | @hironow | 2026-10-13 | Proposed | —（公開PR作成後にURLを記録） | — | 旧ローカル専用ignoreの変更案。採択・merge前に他端末の同名ファイルとpatrol出力先を確認。旧ADR49件は遡及変更しない | [adr/0051-adopt-decision-queue-for-new-records.md](adr/0051-adopt-decision-queue-for-new-records.md) |
+| ADR-0051 | 新しい決定案を公開一覧で追跡するか | ADR | Pi（owner session） | @hironow | Hiroto N.（裁定待ち） | @hironow | 2026-10-13 | Proposed | [公開PR #461](https://github.com/hironow/dotfiles/pull/461) | — | 旧ローカル専用ignoreの変更案。採択・merge前に他端末の同名ファイルとpatrol出力先を確認。旧ADR49件は遡及変更しない | [adr/0051-adopt-decision-queue-for-new-records.md](adr/0051-adopt-decision-queue-for-new-records.md) |
 
 ## 決定済みログ
 

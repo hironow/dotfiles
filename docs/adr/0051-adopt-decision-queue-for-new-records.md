@@ -12,7 +12,7 @@
 **Supersedes:** none
 **Superseded-by:** none
 **Related:** [ADR索引](README.md)、[文書規約](../../ROOT_AGENTS_docs_agents_docs-discipline.md)、[既存のignore規則](../../.gitignore)
-**Consultation-trace:** —（公開PR作成後にURLを記録）
+**Consultation-trace:** [公開PR #461](https://github.com/hironow/dotfiles/pull/461)
 
 ## やさしい説明
 
@@ -57,7 +57,7 @@
 旧記録の作者や連絡先が不明な箇所を、新しいqueueのために推測して補わない。
 既存のignore規則との衝突はADR同士の矛盾ではないが、2026-10-06に当該規則の作者である所有者へ確認した。
 所有者の裁定は「公開queueへの切替を後続ADRで**提案**し、既存のローカル出力先と他端末の状態を採択・merge（本流への取り込み）前に確認する」であり、採択の承認ではない。
-この裁定は公開PRの相談記録に残す。
+この提案だけを認めた裁定は[公開PR #461](https://github.com/hironow/dotfiles/pull/461)の相談本文にも記録した。
 
 ## 裁定・merge前の停止条件
 
