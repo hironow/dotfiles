@@ -146,7 +146,10 @@ ADR is authoritative for local adaptations.
   (Proposed) ADR/PDRs: file a record → register it in the queue → the human
   decides → move the row to the decided log. Record the adoption itself as an
   ADR; that ADR governs local profiles (e.g. a solo profile without Slack, or
-  retiring `intent.md` in favor of PDRs).
+  retiring `intent.md` in favor of PDRs). This repo adopted the queue for all
+  **new** ADR/PDRs in [ADR-0051](https://github.com/hironow/dotfiles/blob/main/docs/adr/0051-adopt-decision-queue-for-new-records.md):
+  consult in a public-safe PR because Issues are disabled, and do not rewrite
+  or infer contacts for the older 49 ADRs.
 - **`docs/plan/`** — phased execution plans (HOW; decisions stay in DRs). Keep a
   standard status header (state / related DRs / blocking decisions). Never leave
   a pending human decision inside a plan — file a DR into the queue and mark the
