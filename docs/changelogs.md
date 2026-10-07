@@ -1,6 +1,6 @@
 # プロトコル変更ログ
 
-最終更新: 2026-09-22
+最終更新: 2026-10-08
 
 各プロトコル・Google Cloud サブモジュールの主要な変更点をまとめたドキュメント。
 
@@ -999,9 +999,14 @@
 
 ### MCP-Apps
 
-**現行バージョン**: **v2.0.0 (2026-09-08)**
+**現行バージョン**: **v2.0.3 (2026-09-25)**
 
-**チェックアウト状態**: `6d9bdc7b` (`v2.0.0-2-g6d9bdc7b`、 HEAD 2026-09-09。 v2.0.0 タグ直後の repo URL / CI 追従)
+**チェックアウト状態**: `82221c0c` (HEAD 2026-09-25 = v2.0.3 タグ)
+
+#### 2026-09-23〜2026-09-25 新着 (**v2.0.1〜v2.0.3**: patch のみ)
+
+- **v2.0.1**: example servers が Node 20.11 未満で起動時クラッシュする問題を修正、 依存分離チェックを `@modelcontextprotocol/client` 2.1 に追従
+- **v2.0.2 / v2.0.3**: pdf-server の `pdfjs-dist` を 5.4.530、 `@cantoo/pdf-lib` を 2.6.5 に pin、 npm audit 指摘の依存を更新 (#792 / #793)
 
 #### 2026-09-01〜2026-09-15 新着 (**v2.0.0**: MCP TypeScript SDK 2.x へ移行。 wire は互換、 TS API / peer は破壊的)
 
@@ -1895,9 +1900,17 @@
 
 ### ADK Python
 
-**現行バージョン**: **v2.9.2 (2026-09-18)** / v1.39.1 (2026-08-27, stable lts)
+**現行バージョン**: **v2.11.0 (2026-10-01)** / v1.39.1 (2026-08-27, stable lts)
 
-**チェックアウト状態**: `fc16a78a` (OSS mirror main の HEAD、 HEAD 2026-09-21。 Copybara 運用のため `git describe` は `v1.32.0` 系列を出すが、 CHANGELOG 先頭は `[2.9.2] (2026-09-18)`。 バージョン参照は明示タグ/CHANGELOG を正とする)
+**チェックアウト状態**: `2f2243dc` (OSS mirror main の HEAD、 HEAD 2026-10-07。 Copybara 運用のため `git describe` は `v1.32.0` 系列を出すが、 CHANGELOG 先頭は `[2.11.0] (2026-10-01)`。 バージョン参照は明示タグ/CHANGELOG を正とする)
+
+#### 2026-09-23〜2026-10-07 新着 (**v2.10.0 / v2.11.0**: 実行キャンセル / workflow tool confirmation / ModelConsultTool / SQLite memory)
+
+- **v2.10.0 (2026-09-24)**: **Skills の ephemeral lifecycle と active skill 上限** (experimental、 `ADK_ENABLE_SKILL_LIFECYCLE=1`)、 **MongoDB toolset** (vector / hybrid search)、 **eval に duration / token / model call 数メトリクス**、 OpenAI reasoning model の request parameter 自動適応と reasoning token 報告
+- **破壊的/挙動変更 (v2.10.0)**: BigQuery protected write mode は dry run が session の anonymous dataset を宛先とする非 SELECT のみ実行 (multi-statement script / `CALL` / `EXPORT DATA` は拒否)、 BigQuery protected mode の session は process memory 保持 (再起動・別 replica へ持ち越さない)、 `OpenAIResponsesLlm` は `thinking_config` を警告つき無視 (`OpenAIGenerateContentConfig.effort` を使う)、 `AgentEvaluator.evaluate` / `evaluate_eval_set` は eval case 0 件で `ValueError`、 instruction templating は `${var}` と `\{var}` をそのまま残す、 旧 live-audio modules (`google.adk.flows.llm_flows` 配下) は `DeprecationWarning` (`google.adk.live` へ移行)
+- **v2.11.0 (2026-10-01)**: **`abort_signal` で Runner / Workflow / Node を graceful cancel** (`/run_sse` はクライアント切断で run をキャンセル)、 **Tool node が `RequestInput` で tool confirmation を一時停止** (LlmAgent と同挙動)、 **`ModelConsultTool`** (他モデルへ作業中に相談、 turn / session 予算で上限)、 **SQLite memory service** (`sqlite://` URI)、 **MCP SDK 2.x の opt-in modern-protocol 接続経路**、 `ToolCallIntegrityPlugin`、 BigQuery tools を CMEK 必須環境で利用可、 Vertex project を GCP metadata から既定化
+- **破壊的 (v2.11.0)**: **Dev UI runtime config をサーバが配信** (`/dev-ui/assets/config/runtime-config.json` をリクエスト毎に返し、 package 内に書き込まない)。 ロゴは `--logo-text` / `--logo-image-url` で設定し、 config はサーバから取得する
+- **HEAD (v2.11.0 以降)**: main 上の未リリース変更 (詳細は CHANGELOG 参照)
 
 #### 2026-09-16〜2026-09-22 新着 (**v2.9.1 / v2.9.2** + HEAD)
 
@@ -2426,9 +2439,15 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ### ADK Go
 
-**現行バージョン**: **v2.4.0 (2026-09-11)**（v1 系は v1.7.0 を継続メンテ）
+**現行バージョン**: **v2.5.0 (2026-09-30)**（v1 系は v1.8.0 を継続メンテ）
 
-**チェックアウト状態**: `437a384e` (HEAD 2026-09-22 = v2.4.0 + 6 commits。 `git describe` は軽量タグ運用により `v2.4.0-15-g437a384e` を出す)
+**チェックアウト状態**: `44d41c9c` (HEAD 2026-10-07 = v2.5.0 + 約 30 commits。 軽量タグ運用により素の `git describe` は実態とずれる)
+
+#### 2026-09-23〜2026-10-07 新着 (**v2.5.0 / v1.8.0** + 約 78 commits: OpenAI Chat Completions / SECURITY 硬化 / Gemini continuation)
+
+- **v2.5.0 (2026-09-30)**: **OpenAI Chat Completions API サポート** (#1642。 Chat Completions / Responses を sub-package に分離 #1643)、 **BigQuery event logging table の daily time partitioning** (#1377)、 **artifact version metadata の保証** (#1440)、 session/database が input/output transcriptions を永続化 (#1662)、 agentengine の `[]byte` field を base64 化 (#1387)
+- **SECURITY**: adkrest `/run_live` WebSocket の message size 制限 (#1664)、 web launcher の全 route で Host / Origin を検査 (#1641)、 session ファイル名を GCS 共有 listing に出さない (#1708 / #1673)
+- **HEAD (v2.5.0 以降)**: **Gemini の continuation token で停止した生成を再開** (#1715)、 **A2A remoteagent に per-request auth (`Config.Auth`)** (#1150)、 SSE write timeout の既定 120s (#1686)、 PubSubController が `MaxConcurrentRuns` を尊重 (#1720)、 mcptoolset のキャンセル / close / 構成検証 (#1717 / #1713 / #1687)、 vertexai session が ExecutableCode / CodeExecutionResult を保持 (#1729)、 `${var}` placeholder を literal 維持 (#1682)、 toolset を毎 step 再評価 (#785)
 
 #### 2026-09-16〜2026-09-22 新着 (6 commits: web server SECURITY 硬化 + OpenAI model 修正)
 
@@ -2619,9 +2638,16 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ### ADK JS
 
-**現行バージョン**: **v2.1.0 (adk-v2.1.0 / devtools-v2.1.0 / integrations-v2.1.0、 2026-09-15)**
+**現行バージョン**: **v2.2.1 (adk-v2.2.1 / devtools-v2.2.1 / integrations-v2.2.1、 2026-10-06)** (v2.2.0 は 2026-09-30)
 
-**チェックアウト状態**: `1729ddd` (HEAD 2026-09-21 = v2.1.0 + 13 commits。 軽量タグ運用による素の `git describe` の注意は従前どおり)
+**チェックアウト状態**: `9839754d` (HEAD 2026-10-07 = v2.2.1 + 数 commits。 軽量タグ運用による素の `git describe` の注意は従前どおり)
+
+#### 2026-09-23〜2026-10-07 新着 (**v2.2.0 / v2.2.1**: adk-python parity 拡充 + planners)
+
+- **v2.2.0 (2026-09-30, #910)**: **planner 対応** (`BasePlanner` / `BuiltInPlanner` / `PlanReActPlanner`、 LlmAgent に planner #941/#948)、 `DebugLoggingPlugin` (#920)、 opt-in `autoCreateSession` (#967)、 ExampleTool の構築時検証 (#968)、 MCP HTTP に ADK tracking headers (#962)、 `MemoryEntry.id` を Vertex memoryId へ転送 (#947)
+- **v2.2.1 (2026-10-06)**: **`ToolCallIntegrityPlugin`** (#979)、 `__adk_internal_` customMetadata key の予約 (#977)
+- **SECURITY / fix**: 取得した agent card の RPC url を取得元 origin に固定 (#829)、 暗黙の Google API auth に HTTPS を要求 (#952)、 中断された invocation を session history で seal (#976)、 `${...}` を instruction で literal 維持 (#959)
+- **HEAD (v2.2.1 以降)**: **Gemini の continuation token 再開** (#985)、 models / telemetry を adk-python v0.1.0 と parity (#981 / #963)、 code_executors を既定で client-side 実行 (#1003)、 planner が先頭の並列 function call を全て保持 (#991)、 `@google/genai` ^2.27
 
 #### 2026-09-16〜2026-09-22 新着 (**v2.1.0 リリース** + 13 commits)
 
@@ -2846,9 +2872,14 @@ main の HEAD が `ca8baf19...d3c21d71` の 67 commits 進行。 主要なもの
 
 ### Cloud Run MCP
 
-**現行バージョン**: v1.10.0
+**現行バージョン**: **v1.11.0 (2026-09-28)**
 
-**チェックアウト状態**: `560558a` (`git describe` は祖先タグ `v1.9.0` + 70 だが package.json は `1.10.0`。 `v1.10.0` タグは別コミットの別系列で HEAD の祖先ではない、 HEAD 2026-08-20)
+**チェックアウト状態**: `5dcae110` (HEAD 2026-10-06 = v1.11.0 + 2 commits)
+
+#### 2026-09-23〜2026-10-07 新着 (**v1.11.0** + SECURITY fix)
+
+- **v1.11.0 (2026-09-28, #319)**: 依存更新中心 (yargs 17.7.3 / qs 6.16.0 / hono 4.13.7 / protobufjs / fast-uri / js-yaml 4.3.2)。 npm publish は Node 24 へ (#320)
+- **SECURITY (HEAD)**: cache-poisoning 攻撃への脆弱性を修正 (#322)
 
 #### 2026-08-01〜2026-08-20 新着 (1 commit、 依存 bump のみ)
 
@@ -3337,9 +3368,15 @@ NO_NEW_COMMITS — HEAD 日付のみ 2026-06-15 に更新。 google.golang.org/a
 
 ### GenAI Toolbox
 
-**現行バージョン**: **v1.12.0 (2026-09-17)**
+**現行バージョン**: **v1.13.1 (2026-09-25)** (v1.13.0 も同日。 v1.12.0 は 2026-09-17)
 
-**チェックアウト状態**: `5700630c132` (`v1.12.0-7-g5700630c132`、 HEAD 2026-09-21。 リポ URL は `googleapis/mcp-toolbox`)
+**チェックアウト状態**: `69aa2f25` (HEAD 2026-10-06 = v1.13.1 + 約 15 commits。 リポ URL は `googleapis/mcp-toolbox`)
+
+#### 2026-09-23〜2026-10-07 新着 (**v1.13.0 / v1.13.1** + HEAD: looker / BigQuery / Spanner Omni)
+
+- **v1.13.1**: 「sources を first use で connect」を revert (#4137)、 geminidataanalytics v1.4.0 (Spanner region 廃止 #3920)
+- **v1.13.0 周辺**: `conversational-analytics-list-accessible-data-agents` が全 data agents を返し手動 paging 対応 (#4066)、 looker field metadata に `value_format` / `value_format_name` (#4094)、 tool annotations を ConfigBase へ移動 (#4064)、 `parseEnv` の YAML comment 処理を修正 (#4039)
+- **HEAD (v1.13.1 以降)**: **Spanner Omni source** (#4198)、 **`looker-get-explore` tool** (#4173)、 looker `get_dashboards` に LookML dashboards (#4216)、 **BigQuery の authorized views と dataset restriction** (#2561)、 BigQuery が dry run 前に字句的参照 dataset を検査 (#4164)、 Firestore `get_schema` で requester header を伝播 (#4131)、 gemini-data-analytics-query が Bigtable / Firestore 参照に対応 (#4136)、 resource-template URI scheme を小文字へ正規化 (#4023)
 
 #### 2026-09-16〜2026-09-22 新着 (**v1.12.0**: OpenAI Apps challenge + looker 拡張 + bigtable prebuilt)
 
