@@ -9,6 +9,15 @@ CVEs and the most people looking at it upstream. But "newest" is safe only when
 the package is well tested by wide use. So sort every dependency into one of
 two classes, and treat the classes in opposite ways.
 
+## Before you add a dependency
+
+1. Check the language's standard library first, including features added in
+   its newest version. If it covers the need, use it.
+2. If you still need a package, count what it pulls in (Go: `go mod graph`;
+   Rust: `cargo tree`; Python: `uv tree`; TS: `bun pm ls --all`). Prefer the
+   package with fewer dependencies, or write the small part you need yourself.
+3. Write the reason for the new dependency in the PR.
+
 ## Class 1: foundational or widely used
 
 Language toolchains and libraries everyone uses: **TypeScript, bun, Go, uv,

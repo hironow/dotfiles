@@ -54,6 +54,11 @@ apply it to cases it does not list.
 - **Draft PRs run no Actions.** Gate every job that `pull_request` can reach on
   `draft == false`, and list `ready_for_review` in the workflow's triggers.
   Details: docs/agents/draft-ci.md.
+- **Use few dependencies; use the standard library first.** In every language,
+  use the official standard library before a third-party package, and use its
+  newest features and methods. A third-party package needs a reason the
+  standard library cannot meet. Fewer packages mean less supply-chain risk and
+  fewer upgrades.
 - **Take the newest, more secure dependency, by class.** Class 1 (toolchains,
   Ruff, ty, Go, bun, ...): adopt the latest version aggressively and fix forward.
   Class 2 (niche packages): wait out a cooldown and read the changelog. If you
@@ -103,7 +108,7 @@ Do not write a one-off script (see docs/agents/project-structure.md).
 
 If you are unsure, write a test that pins down the requirement before you code.
 
-## How to work (TDD and Tidy First)
+## How to work (Tidy First, TDD, YAGNI, KISS, DRY, SOLID)
 
 - Start every change with a failing test: **Red → Green → Refactor.** Write
   only enough code to pass. Refactor only when tests are green. Full cycle and
@@ -112,6 +117,14 @@ If you are unsure, write a test that pins down the requirement before you code.
   structural change first. The Conventional Commit *type* says which kind a
   commit is, so one commit never mixes types. Type list and examples:
   docs/agents/commit-discipline.md.
+- **Build only what is needed, as simply as possible.** YAGNI: build only what
+  a current requirement or test asks for. KISS: choose the simplest design that
+  works. DRY: keep each piece of knowledge in one place, but do not merge code
+  that only looks alike. SOLID: give each unit one reason to change, and depend
+  on ports, not on concrete adapters.
+- **Name things specifically.** Choose the name that says what the thing does
+  in this domain. Do not use generic words such as `Manager`, `Helper`, or
+  `Util`. Rules and examples: docs/agents/naming.md.
 - **Check before you say it is done.** Run `just check`. Report the results
   honestly, including failures.
 
@@ -176,6 +189,7 @@ Open the matching file as soon as its trigger applies:
 | writing a `pull_request` workflow              | docs/agents/draft-ci.md             |
 | in the Red/Green/Refactor loop                 | docs/agents/tdd-workflow.md         |
 | writing a commit message                       | docs/agents/commit-discipline.md    |
+| naming a package, file, type, function, or variable | docs/agents/naming.md          |
 | writing or placing tests / asking "mock?"      | docs/agents/testing.md              |
 | splitting code, calling anything outside the process, or adding a fake | docs/agents/core-shell-ports.md |
 | adding telemetry, spans, or a service          | docs/agents/observability.md        |
