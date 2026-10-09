@@ -54,7 +54,10 @@ rust-test:
 
 ## Ship binaries
 
-Build one static binary per target. List the targets in the `justfile`, for
-example `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`,
-`aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Use `cargo build --release
---target <triple>`.
+Ship one executable per supported OS and CPU. List each target and the linker
+or SDK it needs in the root `justfile`, for example
+`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`,
+`aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Build with
+`cargo build --release --target <triple>`. Do not assume the result is fully
+static: set the runtime linkage for each target (for example, the static C
+runtime on MSVC), inspect the artifact, and run it on its target OS.

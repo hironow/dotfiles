@@ -6,9 +6,7 @@ mock. The TDD *cycle* is in docs/agents/tdd-workflow.md.
 ## Kinds of tests
 
 The kind of a test depends on what it touches, not on where its file lives.
-Place test files the way the language does it (Go: `*_test.go` next to the
-code; Rust: `#[cfg(test)]` modules and `tests/` per crate; Python and TS: the
-project's existing layout).
+These instructions do not require a test directory or a test-file layout.
 
 | kind        | what it touches                                       |
 | ----------- | ----------------------------------------------------- |

@@ -45,7 +45,7 @@ apply it to cases it does not list.
   TypeScript, Ruby, or shell. Ship one binary per OS and CPU so the same tool
   runs on every device. Go 1.27 is the minimum; use the newest stable Go the
   module compiles with, and its standard library: `uuid`, not
-  `github.com/google/uuid`; `encoding/json/v2` with `GOEXPERIMENT=jsonv2`. Lint
+  `github.com/google/uuid`; `encoding/json/v2`. Lint
   and format with golangci-lint v2 and gofumpt. Details:
   docs/agents/go-tooling.md. Use Rust only for no-GC, tight-memory, or WASM
   targets, or an existing Rust codebase: docs/agents/rust-tooling.md.
@@ -91,10 +91,10 @@ apply it to cases it does not list.
 
 ```sh
 just            # list all tasks (default: help)
-just check      # the full local gate: fmt + lint + types + semgrep + test
-just test       # uv run pytest
-just lint       # ruff check + ty check
-just fmt        # ruff format
+just check      # the full local gate: fmt + lint + types + semgrep + test, for every language in the repo
+just test       # the repo's tests (go test / cargo test / uv run pytest / bun test)
+just lint       # lint + type checks (golangci-lint / clippy / ruff + ty)
+just fmt        # format (golangci-lint fmt / cargo fmt / ruff format)
 just semgrep    # semgrep --config .semgrep/rules/ --error  (when .semgrep/ exists)
 just install-hooks   # prek install --hook-type pre-commit (run once per clone)
 ```

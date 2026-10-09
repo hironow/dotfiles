@@ -51,7 +51,9 @@ compose.yaml                  api.Dockerfile
 
 ## scripts/ rules
 
-- Use the shebang `#!/usr/bin/env bash` for portability.
+- Keep `#!/usr/bin/env bash` as the shebang of Bash scripts, for portability.
+  Write a new executable tool in Go (Rust when Go does not fit), not in shell
+  (docs/agents/go-tooling.md).
 - Make scripts idempotent.
 - Process arguments early.
 - Prefer defining common tasks in the `justfile` over standalone scripts.
@@ -66,6 +68,10 @@ experiments/YYYY-MM-DD_{name}.md                   # experiment plan
 experiments/run_{name}_benchmark.sh                # benchmark script
 experiments/test_{name}.py                         # experiment test
 ```
+
+The `.sh` and `.py` names show the existing layout. Write new benchmark tools
+in Go (Rust when Go does not fit), and keep existing experiments in their
+current language. Run benchmarks through the root `justfile`.
 
 Experiment doc header: Date, Objective, Status (🟢 Complete / 🟡 In Progress /
 ⚪ Not Started). Body: Background, Hypothesis, Experiment Design, Expected

@@ -132,8 +132,8 @@ local runs from touching real systems by accident.
   real leg fails, update the fake in the same change.
 - **A fake may simulate failures** (timeouts, rate limits, rejected payments)
   through explicit settings, so tests can cover error paths.
-- **Fakes never ship to production.** Production code does not import `fake/`
-  except in the wiring that is chosen by configuration.
+- **Production never uses a fake.** Only start-up wiring and tests may
+  import `fake/`. The wiring checks below reject every fake in production.
 
 ## Wiring rules that prevent accidents
 

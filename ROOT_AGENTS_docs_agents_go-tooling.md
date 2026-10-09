@@ -21,9 +21,9 @@ version:
 
 - **UUID**: `uuid` (`uuid.New`, `uuid.NewV7`, `uuid.Parse`). Not
   `github.com/google/uuid`.
-- **JSON**: `encoding/json/v2` under `GOEXPERIMENT=jsonv2` (in 1.27 the v2
-  import needs the experiment). New marshal/unmarshal code uses v2; existing
-  `encoding/json` code stays until that code is migrated.
+- **JSON**: `encoding/json/v2`. Go 1.27 provides it without an experiment
+  flag. New marshal/unmarshal code uses v2; existing `encoding/json` code stays
+  until that code is migrated.
 - **HTTP, crypto, sync, testing, log/slog**: standard library.
 
 `golang.org/x/*` is the exception when the standard library package is still
