@@ -134,6 +134,10 @@ score below 3 on any blocking axis means stop and clarify.
 
 ## Documentation rules (short version)
 
+- **Write in plain language, in every language.** Put the main point first, use
+  short sentences, the active voice, and common words. This covers docs, code
+  comments, commit and PR text, and answers. Rules and a checklist:
+  docs/agents/plain-language.md.
 - `docs/*.md` describe the system as it is **now**. No history, no TODOs, no
   roadmap. An outdated doc is a bug: update docs in the same commit as the code.
 - `docs/adr/*.md` record **why** a significant decision was made. An accepted
@@ -164,6 +168,7 @@ Open the matching file as soon as its trigger applies:
 | creating a GCP storage sink, build, or compute that runs unattended | docs/agents/gcp-cost-guardrails.md |
 | adding or maintaining a Semgrep rule           | docs/agents/semgrep.md              |
 | editing docs / writing an ADR / intent / handover | docs/agents/docs-discipline.md   |
+| writing any text a person or agent reads       | docs/agents/plain-language.md       |
 | creating dirs or files, or unsure where code goes | docs/agents/project-structure.md |
 | blocked by a hook / tuning or adding a hook    | docs/agents/enforcement.md          |
 | using the `rtk` output-filter proxy / debugging filtered output | docs/agents/rtk.md |

@@ -2,7 +2,8 @@
 
 Read this when you edit docs, write an ADR or PDR, or touch `intent.md`,
 `handover.md`, `decision-queue.md`, `plan/`, or `research/`. AGENTS.md has the
-short version.
+short version. Write every document in plain language
+(docs/agents/plain-language.md).
 
 Each kind of document answers one question. The rows from
 `docs/decision-queue.md` down are opt-in: only repos that adopted them have
