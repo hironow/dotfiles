@@ -76,6 +76,7 @@ and what outlived it.
 | 0049 | [headroom is mandatory base tooling: MCP in every home, the j-cc proxy as its canary, telemetry off](./0049-headroom-mandatory-base-tooling.md) | Accepted | 2026-10-01 | `config/mise/config.toml`, `scripts/headroom_mcp.py`, `scripts/jev_headroom.py`, `scripts/ai_tools_check.py`, `scripts/harden_env.sh`, `.claude/settings.shared.json`, `ROOT_AGENTS_docs_agents_headroom.md` |
 | 0050 | [Pin Go sources to LF via `.gitattributes` (go-lint on Windows)](./0050-pin-go-sources-to-lf.md) | Accepted | 2026-10-02 | `.gitattributes`, `tests/unit/test_gitattributes_eol.py` |
 | 0051 | [新しい決定記録をdecision queueで追跡する](./0051-adopt-decision-queue-for-new-records.md) | Accepted (PR #461) | 2026-10-06 | `docs/decision-queue.md`、今後のADR/PDR |
+| 0052 | [全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language）](./0052-renew-global-agent-instructions.md) | Proposed (PR #463) | 2026-10-09 | `ROOT_AGENTS.md`、`ROOT_CLAUDE.md`、`ROOT_AGENTS_docs_agents_*.md` |
 
 ## Reading order for newcomers
 
