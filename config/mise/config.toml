@@ -20,7 +20,7 @@ rust = "1.99.0"
 # so `mise x -- tofu` resolves from the non-mise-activated bash
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
 # no shims PATH). Pinned for repeatable IaC test runs across machines.
-opentofu = "1.13.0"
+opentofu = "1.13.1"
 # Python toolchain = the astral trio, always: uv (packages/runner), ruff
 # (lint + format), ty (type checking; https://github.com/astral-sh/ty).
 # mypy / pyright are retired (2026-09-08) — do not reintroduce them. Declared
@@ -40,8 +40,8 @@ opentofu = "1.13.0"
 # hook run `uv run --frozen --only-group lint ruff`, i.e. that repo's own
 # lint-group pin, never these.
 uv = "latest"
-ruff = "0.16.9"
-ty = "0.0.84"
+ruff = "0.16.10"
+ty = "0.0.85"
 # golangci-lint v2: the Go quality gate (`just go-lint` / `just check`).
 # Aqua backend. Bare `mise exec -- golangci-lint` can still resolve Go's
 # GOBIN copy, so justfile recipes pin `aqua:golangci/golangci-lint`.
@@ -59,7 +59,7 @@ prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
-"npm:portless" = "0.15.6"
+"npm:portless" = "0.15.7"
 # eza — modern ls replacement aliased unconditionally-now-guarded in
 # .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
 # it on PATH for every dir; without a config source the installed
@@ -107,7 +107,7 @@ fzf = "0.74.4"
 # telemetry is pinned off in [env] below. After either moves, `just doctor`
 # checks the contracts dotfiles relies on (rtk-guard, *-telemetry, headroom-cli).
 rtk = "latest"
-"pypi:headroom-ai" = { version = "0.39.1", extras = "proxy,code", uvx_args = "--python 3.13 --exclude-newer-package headroom-ai=false" }
+"pypi:headroom-ai" = { version = "0.40.0", extras = "proxy,code", uvx_args = "--python 3.13 --exclude-newer-package headroom-ai=false" }
 
 # quint — the Quint model checker, i.e. the formal-methods gate: a Quint model
 # plus a seeded simulation is mandatory for autonomous stop/delete logic in any
@@ -160,7 +160,7 @@ rtk = "latest"
 #   @dataform/cli -> Dataform (BigQuery ELT)
 # cf's npm dist-tag "latest" is 1.0.0-beta.10, but mise points its `latest` link at the
 # newest stable (0.15.0), so "latest" never activates the beta. Pin it until 1.0.0.
-"npm:cf" = "1.0.0-beta.10"
+"npm:cf" = "1.0.0-beta.14"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
 "npm:@dataform/cli" = "latest"
