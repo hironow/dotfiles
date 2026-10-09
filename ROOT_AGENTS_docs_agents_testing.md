@@ -19,11 +19,14 @@ project's existing layout).
 
 ## Mock policy by test type
 
-- **Unit** — Use as few mocks as you can; prefer real code. Mock only an
-  external dependency that is impractical to use in a test. Do not write large
-  or complex mocks.
-- **Integration** — Mock *external services only*, and as little as you can.
-  Prefer test containers or local instances.
+- **Unit** — Test the core with plain values; it needs no fake and no mock.
+  Test the shell with the fakes in `fake/` (docs/agents/core-shell-ports.md).
+  Mock only an external dependency that has no fake and is impractical to use
+  in a test. Do not write large or complex mocks.
+- **Integration** — Use fakes for external services you are not testing, and as
+  few mocks as you can. Prefer test containers or local instances. Run each
+  port's contract tests against the real adapter here, with a dedicated test
+  account or a local emulator.
 - **e2e** — **Mocks are strictly prohibited.** Every dependency is real (DB,
   services, filesystem, network). If you cannot use a real dependency, the test
   is not e2e: move it to integration. The agent-baseline Semgrep rule checks

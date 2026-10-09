@@ -115,6 +115,20 @@ If you are unsure, write a test that pins down the requirement before you code.
 - **Check before you say it is done.** Run `just check`. Report the results
   honestly, including failures.
 
+## Design (functional core, imperative shell, ports and adapters)
+
+- **Keep the core pure.** Business logic takes values (including the current
+  time) and returns values. It does no I/O and calls no port. The shell reads
+  through ports, calls the core, and writes the result through ports.
+- **Reach the outside only through ports.** A port is an interface named for
+  its purpose (`Mailer`, not `SMTPClient`). Each technology gets its own
+  adapter; changing a technology never changes the port.
+- **Every external service gets a fake in `fake/`.** A fake is a small working
+  in-memory version of the port. Tests and local runs use fakes by default; a
+  real adapter needs explicit configuration, so nothing calls a real service by
+  accident. Details, examples, and wiring checks:
+  docs/agents/core-shell-ports.md.
+
 ## GRIT (required both ways: show it yourself and demand it of others)
 
 GRIT = Guts (度胸) / Resilience (復元力) / Initiative (主体性) / Tenacity (執念).
@@ -163,6 +177,7 @@ Open the matching file as soon as its trigger applies:
 | in the Red/Green/Refactor loop                 | docs/agents/tdd-workflow.md         |
 | writing a commit message                       | docs/agents/commit-discipline.md    |
 | writing or placing tests / asking "mock?"      | docs/agents/testing.md              |
+| splitting code, calling anything outside the process, or adding a fake | docs/agents/core-shell-ports.md |
 | adding telemetry, spans, or a service          | docs/agents/observability.md        |
 | touching `tofu/`, `gcloud`, `kubectl`, Cloud Run | docs/agents/iac-drift-policy.md   |
 | creating a GCP storage sink, build, or compute that runs unattended | docs/agents/gcp-cost-guardrails.md |

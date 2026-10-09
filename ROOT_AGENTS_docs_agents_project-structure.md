@@ -16,6 +16,7 @@ repos) are exempt.
 | `output/`       | generated artifacts and build outputs                         |
 | `examples/`     | usage examples and sample code                                |
 | `scripts/`      | development and utility scripts                               |
+| `fake/`         | in-memory fakes of external services, one per driven port (docs/agents/core-shell-ports.md) |
 | `docker/`       | *(optional)* Dockerfiles — only when there are ≥2 (see below) |
 | `.semgrep/`     | *(optional)* project-specific Semgrep rules                   |
 
