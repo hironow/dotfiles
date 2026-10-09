@@ -19,7 +19,8 @@
 # AGENTS.md
 
 This is production code for an agentic engineering ecosystem. One person runs
-it, with a human on the loop. It is Go services plus Python tooling on GCP.
+it, with a human on the loop, on GCP. New code is Go (Rust when Go does not
+fit); existing Python and TypeScript tooling stays where it is.
 Change things carefully: make the smallest correct change, prove it works, and
 leave every check green.
 
@@ -33,19 +34,21 @@ Code, hooks block violations in every repo. Other tools rely on pre-commit and
 CI where the agent baseline is installed. Each rule gives its reason so you can
 apply it to cases it does not list.
 
-- **Python uses `uv`, `ruff`, and `ty`. No substitutes.** Use `uv` to install
+- **Existing Python uses `uv`, `ruff`, and `ty`. No substitutes.** Use `uv` to install
   and run (`uv sync`, `uv add`, `uv run`). Never use `pip`, `poetry`, or
   `pipenv`: two resolvers put the lockfile out of sync. Use `ruff` to lint and
   format, and `ty` (astral-sh/ty) to check types. Never use `mypy`, `pyright`,
   `flake8`, `black`, or `isort`. One toolchain, one config, one gate. Details:
   docs/agents/python-tooling.md.
-- **Services are Go 1.27 or newer, standard library first.** Write new services
-  (and the control plane) in Go, not Python, TypeScript, or shell. Go 1.27 is
-  the minimum; use the newest stable Go the module compiles with. Use the
-  standard library before third-party modules: `uuid`, not
+- **New code is Go, newest stable; Rust only when Go does not fit.** Write new
+  services, CLIs, and tools (and the control plane) in Go, not Python,
+  TypeScript, Ruby, or shell. Ship one binary per OS and CPU so the same tool
+  runs on every device. Go 1.27 is the minimum; use the newest stable Go the
+  module compiles with, and its standard library: `uuid`, not
   `github.com/google/uuid`; `encoding/json/v2` with `GOEXPERIMENT=jsonv2`. Lint
   and format with golangci-lint v2 and gofumpt. Details:
-  docs/agents/go-tooling.md.
+  docs/agents/go-tooling.md. Use Rust only for no-GC, tight-memory, or WASM
+  targets, or an existing Rust codebase: docs/agents/rust-tooling.md.
 - **Model distributed state in Quint.** This covers an at-least-once queue, a
   lock or lease, a reconciler or janitor, and anything that deletes or releases
   on its own. Each one needs a Quint model and a seeded simulation of the real
@@ -184,6 +187,7 @@ Open the matching file as soon as its trigger applies:
 | ---------------------------------------------- | ----------------------------------- |
 | writing or changing Python                     | docs/agents/python-tooling.md       |
 | writing or changing Go or a service            | docs/agents/go-tooling.md           |
+| choosing Rust, or writing or changing Rust     | docs/agents/rust-tooling.md         |
 | modelling distributed state / Quint            | docs/agents/formal-methods.md       |
 | adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |
 | writing a `pull_request` workflow              | docs/agents/draft-ci.md             |

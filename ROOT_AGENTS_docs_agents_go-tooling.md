@@ -1,7 +1,8 @@
 # Go Tooling
 
-Read this when you write or change a **service**, or any new Go code.
-AGENTS.md sets the language choice: services are Go; Python tooling and bun
+Read this when you write or change a **service**, a CLI, a tool, or any new Go
+code. AGENTS.md sets the language choice: new code is Go, and Rust only when Go
+does not fit (docs/agents/rust-tooling.md). Existing Python tooling and bun
 frontends stay where they already are.
 
 ## Minimum version
@@ -58,3 +59,17 @@ That is a convenience, not the gate. Run tests with `go test ./...`. Use
 deterministic clocks instead of wall-clock sleeps. HTTP tests use `httptest`
 or bind `:0`. CI pins golangci-lint and installs the Go version that the
 module's `go` / `toolchain` directive requires.
+
+## Ship binaries for every device
+
+Build one static binary per target, with no C toolchain:
+
+```sh
+CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -o dist/<name>-linux-amd64 ./cmd/<name>
+CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o dist/<name>-linux-arm64 ./cmd/<name>
+CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -o dist/<name>-darwin-arm64 ./cmd/<name>
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o dist/<name>-windows-amd64.exe ./cmd/<name>
+```
+
+Put the target list in one `just` recipe. Keep `CGO_ENABLED=0`; a dependency
+that needs cgo breaks cross-compiling, so it needs an explicit reason.
