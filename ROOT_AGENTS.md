@@ -1,79 +1,85 @@
 <!--
-  AGENTS.md — cross-tool agent instructions (read by Codex, Cursor, Copilot,
-  Claude Code via @import, and others). Keep this file SHORT and always-loaded.
+  AGENTS.md: cross-tool agent instructions. Codex, Cursor, Copilot, Claude Code
+  (through @import), and other tools read it. Keep it SHORT; it is always loaded.
 
-  Why short: frontier models reliably follow ~150-200 instructions (a working
-  heuristic, not a measured constant); the agent's own system prompt already
-  spends ~50. Every line here dilutes every other line. Adherence — not token
-  cost — is the constraint. Anything that is not needed on turn one lives in
-  docs/agents/*.md and is read on demand (see the index below).
-  `just instruction-budget` gates a list-item proxy of this file + the overlay
-  so the always-loaded set cannot grow unnoticed.
+  Why short: frontier models follow about 150-200 instructions reliably. That
+  number is a working heuristic, not a measured constant. The agent's own system
+  prompt already uses about 50. Every extra line dilutes every other line, so
+  adherence, not token cost, is the limit. Anything not needed on turn one goes
+  in docs/agents/*.md, read on demand (see the index below).
+  `just instruction-budget` gates this file and the overlay on a list-item count
+  (a proxy for instructions), so the always-loaded set cannot grow unnoticed.
 
-  Self-reference: this file and docs/agents/*.md intentionally name a few
-  prohibited patterns as examples. Exclude them from repo scans:
+  Self-reference: this file and docs/agents/*.md name some prohibited patterns
+  as examples. Exclude them from repo scans:
     git grep: add :(exclude)**/AGENTS.md :(exclude)**/CLAUDE.md :(exclude)docs/agents/**
     semgrep : paths.exclude: [AGENTS.md, CLAUDE.md, "docs/agents/**"]
 -->
 
 # AGENTS.md
 
-Production code for a solo-operated, human-on-the-loop agentic engineering
-ecosystem (Go services + Python tooling on GCP). Treat changes conservatively:
-prefer the smallest correct change, prove it, and leave the tree green.
+This is production code for an agentic engineering ecosystem. One person runs
+it, with a human on the loop. It is Go services plus Python tooling on GCP.
+Change things carefully: make the smallest correct change, prove it works, and
+leave every check green.
 
-When instructions conflict, the closest file to the edited file wins, and an
-explicit chat instruction overrides everything here.
+When instructions conflict, the file closest to the edited file wins. An
+explicit instruction in the chat overrides everything here.
 
-## Non-negotiables (enforced by hooks + CI — see Enforcement)
+## Rules you must not break
 
-These are not preferences. Hooks gate them mechanically for Claude Code in every
-repo; other tools rely on the pre-commit + CI gate where the agent baseline is
-installed. The reasons are given so you generalize correctly to unlisted cases.
+Hooks, pre-commit, and CI enforce these rules (see Enforcement). For Claude
+Code, hooks block violations in every repo. Other tools rely on pre-commit and
+CI where the agent baseline is installed. Each rule gives its reason so you can
+apply it to cases it does not list.
 
-- **Python = the `uv` + `ruff` + `ty` trio, always.** `uv` for packages and
-  running (`uv sync`, `uv add`, `uv run`) — never `pip`, `poetry`, `pipenv`
-  (mixed resolvers desync the lockfile). `ruff` for lint + format, `ty`
-  (astral-sh/ty) for type checking — never `mypy`, `pyright`, `flake8`,
-  `black`, `isort`. One toolchain, one config, one gate. Details:
+- **Python uses `uv`, `ruff`, and `ty`. No substitutes.** Use `uv` to install
+  and run (`uv sync`, `uv add`, `uv run`). Never use `pip`, `poetry`, or
+  `pipenv`: two resolvers put the lockfile out of sync. Use `ruff` to lint and
+  format, and `ty` (astral-sh/ty) to check types. Never use `mypy`, `pyright`,
+  `flake8`, `black`, or `isort`. One toolchain, one config, one gate. Details:
   docs/agents/python-tooling.md.
-- **Services are Go, 1.27+ floor, stdlib first.** New services (and the
-  control plane) are Go — not Python, TypeScript, or shell. Floor is Go
-  1.27; take the newest stable the module compiles. Prefer stdlib — `uuid`
-  (not `github.com/google/uuid`), `encoding/json/v2` under
-  `GOEXPERIMENT=jsonv2` — over third-party modules. Lint/format:
-  golangci-lint v2 + gofumpt. Details: docs/agents/go-tooling.md.
-- **Distributed state is modelled in Quint.** An at-least-once queue,
-  lock/lease, reconciler/janitor, or anything that deletes or releases on
-  its own carries a Quint model and a seeded simulation of the real code,
-  both in `just check`. Single-process logic stays unit tests. Details:
-  docs/agents/formal-methods.md.
-- **Draft PRs run no Actions.** Every job reachable from `pull_request` is
-  gated `draft == false`, and the workflow declares `ready_for_review`.
+- **Services are Go 1.27 or newer, standard library first.** Write new services
+  (and the control plane) in Go, not Python, TypeScript, or shell. Go 1.27 is
+  the minimum; use the newest stable Go the module compiles with. Use the
+  standard library before third-party modules: `uuid`, not
+  `github.com/google/uuid`; `encoding/json/v2` with `GOEXPERIMENT=jsonv2`. Lint
+  and format with golangci-lint v2 and gofumpt. Details:
+  docs/agents/go-tooling.md.
+- **Model distributed state in Quint.** This covers an at-least-once queue, a
+  lock or lease, a reconciler or janitor, and anything that deletes or releases
+  on its own. Each one needs a Quint model and a seeded simulation of the real
+  code, and both run in `just check`. Logic inside one process stays in unit
+  tests. Details: docs/agents/formal-methods.md.
+- **Draft PRs run no Actions.** Gate every job that `pull_request` can reach on
+  `draft == false`, and list `ready_for_review` in the workflow's triggers.
   Details: docs/agents/draft-ci.md.
-- **Dependencies: newest and more-secure, by class.** Class 1 (toolchains,
-  Ruff, ty, Go, bun, ...) adopt latest aggressively and fix-forward. Class 2
-  (niche) cooldown + changelog. Unsure → Class 2. Details:
-  docs/agents/dependency-policy.md.
-- **`bun` only** for Node. Never `npm`/`yarn`/`pnpm` (incl. `corepack pnpm`) —
-  same lockfile-desync reason. (corepack stays installed for machine
-  provisioning; agents just never invoke a package manager through it.)
-- **`just` is the only task runner.** Exactly one `justfile` at the repo root,
-  no subdirectory justfiles, no `make`. One entrypoint = one place to look.
-- **`.yaml`, never `.yml`.** Compose files are `compose.yaml` (Compose Spec v2+);
-  `docker-compose.y{a,}ml` is the deprecated v1 name. One spelling avoids
-  tool-discovery misses and review churn.
-- **No mocks in e2e tests.** If a real dependency can't be used, it isn't an e2e
-  test — move it to integration. Mocked e2e tests assert nothing about reality.
-- **No manual mutation of IaC-managed infra.** Production (GCP, IAM, Cloud Run,
-  cloud VMs, clusters) changes only through OpenTofu + PR + CD. A stray
-  `gcloud ... update` creates drift the next `tofu apply` silently reverts.
-  Details: docs/agents/iac-drift-policy.md.
-- **Never weaken the gates to pass.** Do not edit ruff/ty/semgrep/golangci
-  config to silence a finding, and never commit with failing tests or
-  non-zero lint/type findings. Fix the cause.
+- **Take the newest, more secure dependency, by class.** Class 1 (toolchains,
+  Ruff, ty, Go, bun, ...): adopt the latest version aggressively and fix forward.
+  Class 2 (niche packages): wait out a cooldown and read the changelog. If you
+  are unsure, treat it as Class 2. Details: docs/agents/dependency-policy.md.
+- **Use only `bun` for Node.** Never use `npm`, `yarn`, or `pnpm`, including
+  `corepack pnpm`. The reason is the same: lockfiles go out of sync. Corepack
+  stays installed to set up machines; agents never run a package manager
+  through it.
+- **`just` is the only task runner.** Keep exactly one `justfile`, at the repo
+  root. No `justfile` in subdirectories, and no `make`. One entry point means
+  one place to look.
+- **Use `.yaml`, never `.yml`.** Name Compose files `compose.yaml` (Compose
+  Spec v2+). `docker-compose.y{a,}ml` is the old v1 name. One spelling stops
+  tools from missing files and stops review churn.
+- **No mocks in e2e tests.** If a test cannot use a real dependency, it is not
+  an e2e test; move it to integration. A mocked e2e test proves nothing about
+  the real system.
+- **Never change IaC-managed infrastructure by hand.** Change production (GCP,
+  IAM, Cloud Run, cloud VMs, clusters) only through OpenTofu, a PR, and CD. A
+  stray `gcloud ... update` creates drift, and the next `tofu apply` silently
+  reverts it. Details: docs/agents/iac-drift-policy.md.
+- **Never weaken a check to make it pass.** Do not edit ruff, ty, semgrep, or
+  golangci config to hide a finding. Never commit with failing tests or with
+  lint or type findings. Fix the cause.
 
-## Golden-path commands
+## Main commands
 
 ```sh
 just            # list all tasks (default: help)
@@ -85,64 +91,68 @@ just semgrep    # semgrep --config .semgrep/rules/ --error  (when .semgrep/ exis
 just install-hooks   # prek install --hook-type pre-commit (run once per clone)
 ```
 
-If a command you need isn't a `just` task, add it to the root `justfile` rather
-than inventing a one-off script (see docs/agents/project-structure.md).
+If you need a command that is not a `just` task, add it to the root `justfile`.
+Do not write a one-off script (see docs/agents/project-structure.md).
 
-## Decision priorities (when principles conflict)
+## When principles conflict
 
-1. Safety & correctness over performance.
-2. Passing tests over code elegance.
-3. Readability over brevity.
-4. Explicit over implicit.
+1. Safety and correctness come before performance.
+2. Passing tests come before elegant code.
+3. Readable code comes before short code.
+4. Explicit comes before implicit.
 
-When in doubt, write a test to pin down the requirement before coding.
+If you are unsure, write a test that pins down the requirement before you code.
 
-## How to work here (TDD + Tidy First, in brief)
+## How to work (TDD and Tidy First)
 
-- Drive every change with a failing test first: **Red → Green → Refactor.**
-  Write the minimum to pass; refactor only on green. Full cycle + worked example:
-  docs/agents/tdd-workflow.md.
-- **Separate structural from behavioral changes** — never in the same commit.
-  Structural first, behavioral second. The Conventional Commit *type* encodes
-  which is which; mixing types in one commit is forbidden. Full mapping +
-  examples: docs/agents/commit-discipline.md.
-- **Verify before claiming done.** Run `just check`. State results honestly;
-  report failures rather than papering over them.
+- Start every change with a failing test: **Red → Green → Refactor.** Write
+  only enough code to pass. Refactor only when tests are green. Full cycle and
+  a worked example: docs/agents/tdd-workflow.md.
+- **Keep structural and behavioral changes in separate commits.** Commit the
+  structural change first. The Conventional Commit *type* says which kind a
+  commit is, so one commit never mixes types. Type list and examples:
+  docs/agents/commit-discipline.md.
+- **Check before you say it is done.** Run `just check`. Report the results
+  honestly, including failures.
 
-## GRIT (required both ways — embody it AND demand it from collaborators)
+## GRIT (required both ways: show it yourself and demand it of others)
 
 GRIT = Guts (度胸) / Resilience (復元力) / Initiative (主体性) / Tenacity (執念).
-**Guts**: hit the scariest/least-known part first; state unknowns plainly.
-**Resilience**: failure means change the hypothesis and retry — never stop or
-hand back a half-result. **Initiative**: take the obvious next step unprompted;
-still confirm irreversible or out-of-scope actions. **Tenacity**: define "done"
-concretely and grind to it; never claim success unproven.
+**Guts**: do the scariest, least-known part first, and say plainly what you do
+not know. **Resilience**: when something fails, change your hypothesis and try
+again. Never stop or hand back half a result. **Initiative**: take the obvious
+next step without being asked, but still confirm actions that cannot be undone
+or are out of scope. **Tenacity**: define "done" in concrete terms and keep
+going until you reach it. Never claim success you have not proven.
 
-On weak resolve — a vague finish line, an unfaced unknown, a "waiting on someone
-else" gap — stop and press for a concrete commitment; record uncommitted risks
-in docs/handover.md. When delegating, demand a definition of done, a
-failure-recovery path, and proof of completion. Rubric (1-5):
-`grilling:grit-grill` skill; below 3 on any blocking axis = stop and clarify.
+When resolve is weak (an unclear finish line, an unknown nobody has faced, a
+gap where someone is "waiting on someone else"), stop and press for a concrete
+commitment. Record risks nobody has committed to in docs/handover.md. When you
+delegate, demand a definition of done, a way to recover from failure, and
+proof of completion. Scoring rubric (1-5): the `grilling:grit-grill` skill. A
+score below 3 on any blocking axis means stop and clarify.
 
-## Documentation contract (short version)
+## Documentation rules (short version)
 
-- `docs/*.md` describe the **current** system only — no history, no TODOs, no
-  roadmap. Outdated docs are bugs; update docs in the same commit as the code.
-- `docs/adr/*.md` capture the **why** behind significant decisions; immutable
-  once accepted.
-- `docs/intent.md` = "why we're doing this now" (human-authored; never guess it —
-  ask). `docs/handover.md` = "where we are, what's next" (update each session).
-- Full rules — incl. opt-in decision-record governance (`decision-queue.md`,
-  `docs/pdr/`, `docs/plan/`, `docs/research/`): docs/agents/docs-discipline.md.
+- `docs/*.md` describe the system as it is **now**. No history, no TODOs, no
+  roadmap. An outdated doc is a bug: update docs in the same commit as the code.
+- `docs/adr/*.md` record **why** a significant decision was made. An accepted
+  ADR does not change.
+- `docs/intent.md` says why we are doing this work now. A human writes it;
+  never guess it, ask. `docs/handover.md` says where we are and what comes
+  next; update it every session.
+- Full rules, including the opt-in decision-record process
+  (`decision-queue.md`, `docs/pdr/`, `docs/plan/`, `docs/research/`):
+  docs/agents/docs-discipline.md.
 
-## Detailed playbooks — read on demand (do not preload)
+## Detailed guides: read when needed, not before
 
-Open the matching file the moment the trigger applies:
+Open the matching file as soon as its trigger applies:
 
 | When you are…                                  | Read                                |
 | ---------------------------------------------- | ----------------------------------- |
-| writing/changing Python                        | docs/agents/python-tooling.md       |
-| writing/changing Go or a service               | docs/agents/go-tooling.md           |
+| writing or changing Python                     | docs/agents/python-tooling.md       |
+| writing or changing Go or a service            | docs/agents/go-tooling.md           |
 | modelling distributed state / Quint            | docs/agents/formal-methods.md       |
 | adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |
 | writing a `pull_request` workflow              | docs/agents/draft-ci.md             |
@@ -152,20 +162,23 @@ Open the matching file the moment the trigger applies:
 | adding telemetry, spans, or a service          | docs/agents/observability.md        |
 | touching `tofu/`, `gcloud`, `kubectl`, Cloud Run | docs/agents/iac-drift-policy.md   |
 | creating a GCP storage sink, build, or compute that runs unattended | docs/agents/gcp-cost-guardrails.md |
-| adding/maintaining a Semgrep rule              | docs/agents/semgrep.md              |
+| adding or maintaining a Semgrep rule           | docs/agents/semgrep.md              |
 | editing docs / writing an ADR / intent / handover | docs/agents/docs-discipline.md   |
-| creating dirs/files or unsure where code goes  | docs/agents/project-structure.md    |
+| creating dirs or files, or unsure where code goes | docs/agents/project-structure.md |
 | blocked by a hook / tuning or adding a hook    | docs/agents/enforcement.md          |
 | using the `rtk` output-filter proxy / debugging filtered output | docs/agents/rtk.md |
 | using headroom (its MCP tools, the j-cc proxy, its egress)      | docs/agents/headroom.md |
 | adding, comparing, retiring, or distributing a skill (hironow/skills, `skill-lock.json`) | docs/agents/skills-maintenance.md |
 
-## Enforcement (deterministic — independent of model judgment)
+## Enforcement (works no matter what the model decides)
 
-Instructions here are advisory; three mechanical gates are not, and hold the
-non-negotiables regardless of what an agent decides: Claude Code hooks (synced
-to `~/.claude`, pre/post tool call), Git pre-commit (`just install-hooks` =
-`prek install`; runs the hook set `.pre-commit-config.yaml` selects), and CI
-(`just check` + `tofu plan` drift). A block is policy, not
-a suggestion — read the reason and change approach, never route around it.
-Layers, exit-code contract, per-hook coverage, and tuning: docs/agents/enforcement.md.
+The text here is advice. Three mechanical gates are not advice. They hold the
+rules above whatever an agent decides: Claude Code hooks (synced to
+`~/.claude`, run before and after tool calls), Git pre-commit
+(`just install-hooks` = `prek install`; runs the hooks that
+`.pre-commit-config.yaml` selects), and CI (`just check` plus a `tofu plan`
+drift check).
+
+A block is policy, not a suggestion. Read the reason and change your approach;
+never work around it. Layers, the exit-code contract, what each hook covers, and
+tuning: docs/agents/enforcement.md.

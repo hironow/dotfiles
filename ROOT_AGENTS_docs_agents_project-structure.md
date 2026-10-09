@@ -1,10 +1,11 @@
 # Project Structure
 
-Read this when creating directories/files or when unsure where something goes.
+Read this when you create directories or files, or when you are not sure where
+something goes.
 
-Standard directories exist **once**, at the repository root. They must not be
-duplicated in subdirectories. External dependencies (submodules, cloned repos)
-are exempt.
+Each standard directory exists **once**, at the repository root. Do not
+duplicate it in a subdirectory. External dependencies (submodules, cloned
+repos) are exempt.
 
 ## Root directories
 
@@ -29,11 +30,11 @@ are exempt.
 
 ## Docker layout
 
-- **One** Dockerfile → keep it at the repo root as `Dockerfile`.
-- **Two or more** → create `docker/` at the root and put all inside
+- **One** Dockerfile: keep it at the repo root as `Dockerfile`.
+- **Two or more**: create `docker/` at the root and put them all there
   (`docker/api.Dockerfile`, `docker/worker.Dockerfile`, …).
-- `compose.yaml` stays at the root regardless, referencing `docker/*.Dockerfile`
-  via `build.dockerfile`.
+- `compose.yaml` always stays at the root. It points to `docker/*.Dockerfile`
+  with `build.dockerfile`.
 
 ```
 # single-service           # multi-service
@@ -51,17 +52,17 @@ compose.yaml                  api.Dockerfile
 ## tests/ subdirectories
 
 `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/runn/` (scenario
-`*.yaml`), `tests/utils/` (only importable test location). See
+`*.yaml`), and `tests/utils/` (the only test location you may import from). See
 docs/agents/testing.md.
 
 ## scripts/ rules
 
-- Shebang `#!/usr/bin/env bash` for portability.
-- Scripts must be idempotent.
+- Use the shebang `#!/usr/bin/env bash` for portability.
+- Make scripts idempotent.
 - Process arguments early.
 - Prefer defining common tasks in the `justfile` over standalone scripts.
-- Optimize for: standardization & error prevention, developer experience,
-  idempotency, and clear guidance for the next action.
+- Aim for: standardization and error prevention; a good developer experience;
+  idempotency; and clear guidance on the next action.
 
 ## experiments/ layout
 
@@ -76,14 +77,14 @@ Experiment doc header: Date, Objective, Status (🟢 Complete / 🟡 In Progress
 ⚪ Not Started). Body: Background, Hypothesis, Experiment Design, Expected
 Results, Results, Conclusion.
 
-Generated output naming (required: experiment-variable id; recommended:
-resolution, step count, guidance scale, other params):
+Name generated output with the experiment-variable id (required) and, if you
+can, resolution, step count, guidance scale, and other parameters:
 
 ```
 preprocessed/{experiment_note_name}/{resolution}/
 output/{experiment_note_name}/sage_attention_720p_steps20_cfg5.0.mp4
 ```
 
-Keep the `experiments/README.md` index updated; summary results there are
-reference-only — always check the full note. Organize by status: Complete /
+Keep the `experiments/README.md` index up to date. Its summary results are for
+reference only; always read the full note. Group entries by status: Complete /
 In Progress / Planned.

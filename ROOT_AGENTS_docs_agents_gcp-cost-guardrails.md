@@ -1,69 +1,72 @@
-# GCP cost guardrails — bounds on what accumulates, brakes on what runs alone
+# GCP cost guardrails: bound what piles up, brake what runs alone
 
-Two principles, and everything below is an instance of one of them:
+Two rules. Everything below applies one of them:
 
-1. **Anything that accumulates gets an explicit upper bound.**
-2. **Anything that runs unattended gets something that stops it by itself.**
+1. **Give anything that piles up an explicit upper bound.**
+2. **Give anything that runs unattended something that stops it on its own.**
 
-A personal project's bill is not a spike, it is a drip. Nothing fails, no alert
-fires: images and objects keep landing and the total grows a little every month.
-This repo has the receipt — a dev container repository reached 20+ versions and
-~21 GiB because its only DELETE policy targeted UNTAGGED versions while every
-publish tagged its image (ADR 0034). The policy looked like a bound and was not.
+A personal project's bill does not spike. It drips. Nothing fails and no alert
+fires: images and objects keep arriving, and the total grows a little each
+month. This repo has the receipt. A dev container repository reached 20+
+versions and ~21 GiB. Its only DELETE policy targeted UNTAGGED versions, but
+every publish tagged its image (ADR 0034). The policy looked like a bound. It
+was not one.
 
-Two gates exist, and they see different things:
+Two gates exist, and each sees different things:
 
-- `scripts/check_storage_bounds.py` (in `just check`) reads the repo's OpenTofu
-  and refuses to let a sink be DECLARED without a bound.
-- `just gcp-cost-audit <project>` asks a LIVE project, so it also sees what was
-  made by hand, left behind by a deleted VM, or never put in tofu at all.
+- `scripts/check_storage_bounds.py` (in `just check`) reads the repo's OpenTofu.
+  It refuses a sink that is DECLARED without a bound.
+- `just gcp-cost-audit <project>` queries a LIVE project. So it also sees what
+  someone made by hand, what a deleted VM left behind, and what never went into
+  tofu.
 
-Fix what either finds **through IaC**, never by hand: the next `tofu apply`
-would undo a manual change, silently.
+Fix what either gate finds **through IaC**, never by hand. The next
+`tofu apply` would silently undo a manual change.
 
-## Artifact Registry: three traps that read as protection
+## Artifact Registry: three traps that look like protection
 
-- **KEEP beats DELETE.** When both policies match a version, the version
-  survives. A KEEP written to protect one rolling tag widens into "protect
-  everything" the moment its condition is broader than intended.
+- **KEEP beats DELETE.** When both policies match a version, the version stays.
+  A KEEP written to protect one rolling tag turns into "protect everything" as
+  soon as its condition is broader than you meant.
 - **`most_recent_versions` is a floor, not a cap.** It means "never delete the
-  newest N", not "keep at most N". A repository whose only policy is a
-  `most_recent_versions` KEEP therefore deletes **nothing, forever**.
-- **One policy block carries a `condition` OR a `most_recent_versions`, never
-  both.** The rejection comes from the API at apply time; `tofu plan` is
-  perfectly happy. Ten policies per repository is the hard limit, so the
-  pressure to merge two KEEPs into one mixed block is real, and that is exactly
-  how the error gets written.
+  newest N", not "keep at most N". So a repository whose only policy is a
+  `most_recent_versions` KEEP deletes **nothing, forever**.
+- **One policy block has a `condition` OR a `most_recent_versions`, never
+  both.** The API rejects the mix at apply time; `tofu plan` accepts it. A
+  repository allows at most ten policies. That limit pushes you to merge two
+  KEEPs into one mixed block, and that is exactly how this error gets written.
 
-Also: `cleanup_policy_dry_run = false`, or the policies report and delete
-nothing. Policies are evaluated with a lag of roughly a day, so read actual size
-rather than inferring it from the config, and pair `tag_state` with
-`tag_prefixes` when a tag is what marks "in use".
+Also:
 
-A working shape, taken from a registry that runs it: KEEP what is tagged
-in-use, KEEP the newest few, DELETE older than N days — three policies, dry run
-off.
+- Set `cleanup_policy_dry_run = false`. Otherwise the policies only report and
+  delete nothing.
+- Policies run about a day late. Read the actual size; do not infer it from the
+  config.
+- Pair `tag_state` with `tag_prefixes` when a tag is what marks "in use".
 
-## Buckets: a bound, except where a bound is the bug
+A working shape, from a registry that runs it: KEEP what is tagged in use, KEEP
+the newest few, DELETE what is older than N days. Three policies, dry run off.
+
+## Buckets: always a bound, except where a bound is the bug
 
 - Every bucket needs a delete lifecycle rule or a generation cap.
 - **A snapshot bucket must have NO delete lifecycle.** A lifecycle rule cannot
-  tell a referenced snapshot from an abandoned one, and deleting a referenced one
-  makes a suspended workload impossible to resume. Bound it by the lifetime of
-  the thing that refers to it, and collect orphans with a dry-run-by-default
-  tool a human starts.
+  tell a referenced snapshot from an abandoned one. Deleting a referenced one
+  makes a suspended workload impossible to resume. Bound the bucket by the
+  lifetime of the thing that refers to it. Collect orphans with a tool that a
+  human starts and that defaults to dry run.
 - **Cloud Build's default source bucket (`<project>_cloudbuild`) keeps every
-  upload forever** and is created behind your back on the first build. Point
-  builds at a bucket with a 7-day lifecycle and send logs to
+  upload forever.** Cloud Build creates it silently on the first build. Point
+  builds at a bucket with a 7-day lifecycle, and send logs to
   `CLOUD_LOGGING_ONLY`.
-- `soft_delete_policy` defaults to keeping every deleted object for 7 days as
-  billed storage. Nobody asks for it and nobody sees it.
-- State buckets: cap old generations (10 is plenty). Ops buckets that carry
+- `soft_delete_policy` by default keeps every deleted object for 7 days as
+  billed storage. Nobody asks for it, and nobody sees it.
+- State buckets: cap old generations (10 is plenty). Ops buckets that hold
   leases and flags: fewer (5).
 
-## What bills while idle
+## What you pay for while idle
 
-"Stopped" reads as "free" and is not:
+"Stopped" sounds free. It is not:
 
 | thing | charged when |
 |---|---|
@@ -76,24 +79,23 @@ off.
 
 ## Brakes on unattended compute
 
-A lease is the shape that works: something writes an expiry, and a separate
-thing stops the workload when now is past it.
+Use a lease. One thing writes an expiry time. A separate thing stops the
+workload once the current time is past it.
 
-- **One writer.** Two things extending the same lease is how a lease never
-  expires.
-- **The expiry is a formula, not a countdown**, so a crash cannot leave it
-  pending forever.
-- **A heartbeat needs a ceiling.** "Extend while work continues" with no cap is
-  an unbounded lease wearing a seatbelt.
-- **A last resort with no judgement in it.** The final stop must not reason
-  about whether stopping is a good idea; it must only check the clock. Then
-  alert when IT fires, because that firing means every earlier layer failed.
-- **A scheduler job is usually the only thing that turns something off.** Its
-  failure is silent by construction, so audit its last attempt and alert on a
-  paused one. `just gcp-cost-audit <project> --location <region>` warns on both;
-  without `--location` that leg never runs (see Auditing).
-- **A budget is the only thing that notices a drip nobody is looking at.** Set
-  it with alert thresholds before the first expensive thing runs, not after.
+- **One writer.** If two things extend the same lease, it never expires.
+- **Compute the expiry from a formula, not a countdown.** Then a crash cannot
+  leave it pending forever.
+- **Cap the heartbeat.** "Extend while work continues" with no cap is an
+  unbounded lease that only looks safe.
+- **Make the last resort judgement-free.** The final stop must not reason about
+  whether stopping is a good idea. It checks the clock and nothing else. Alert
+  when IT fires: that means every earlier layer failed.
+- **A scheduler job is usually the only thing that turns something off.** When
+  it fails, it fails silently. So audit its last attempt, and alert when a job
+  is paused. `just gcp-cost-audit <project> --location <region>` warns on both;
+  without `--location` that check never runs (see Auditing).
+- **Only a budget notices a drip nobody is looking at.** Set one, with alert
+  thresholds, before the first expensive thing runs, not after.
 
 ## Auditing
 
@@ -105,12 +107,12 @@ just gcp-cost-audit <project> --location <region> --billing-account <id>
 just gcp-cost-audit <project> … > ~/audit-$(date +%F).txt    # keep it LOCAL
 ```
 
-**A check whose flag is missing is reported as `WARN … not verified`, never at
-OK**, and it counts toward exit 1 — a check that did not run cannot pass.
-`--location` exists because `gcloud scheduler jobs list` requires one;
-`--billing-account` because the budget lives on the account, not the project. So
-the flagless run audits the sinks and has looked at **neither brake**: only the
-form carrying both flags checks everything.
+**A check whose flag is missing reports `WARN … not verified`, never OK**, and
+it counts toward exit 1. A check that did not run cannot pass. `--location`
+exists because `gcloud scheduler jobs list` requires one. `--billing-account`
+exists because the budget belongs to the billing account, not the project. So a
+run without flags audits the sinks and checks **neither brake**. Only the run
+with both flags checks everything.
 
 Find the billing account read-only, without writing it anywhere:
 
@@ -119,12 +121,12 @@ gcloud billing projects describe <project> --format='value(billingAccountName)'
 ```
 
 Exit 1 means something has no bound, or a check could not be verified. Every
-probe is a `gcloud … list`, so it is safe to run against a live project with no
+probe is a `gcloud … list`, so you can run it against a live project without a
 change window.
 
-**The report stays local.** It names the project, every bucket and every
-instance; in a public repo that is exactly the content that must not be
-committed. The same goes for the billing account id — it is an argument, never a
-tracked value.
+**Keep the report local.** It names the project, every bucket, and every
+instance. In a public repo, that is exactly what must not be committed. The
+same goes for the billing account id: pass it as an argument, never store it in
+a tracked file.
 
-Rolling this out to another project: `docs/plan/gcp-cost-guardrails-rollout.md`.
+To roll this out to another project: `docs/plan/gcp-cost-guardrails-rollout.md`.

@@ -1,24 +1,24 @@
 # Python Tooling
 
-Read this when writing or changing Python. Package management is `uv` (AGENTS.md).
+Read this when you write or change Python. Use `uv` for packages (AGENTS.md).
 
-## Required tools — the trio, no substitutes
+## Required tools: these three, no substitutes
 
-- **uv** — packages + runner (`uv sync`, `uv add`, `uv add --dev`, `uv run`, `uvx`)
-- **ruff** — linting + formatting (replaces flake8 / black / isort)
+- **uv** — packages and runner (`uv sync`, `uv add`, `uv add --dev`, `uv run`, `uvx`)
+- **ruff** — linting and formatting (replaces flake8 / black / isort)
 - **ty** — static type checking (https://github.com/astral-sh/ty; replaces
   mypy / pyright)
 
-Every Python project uses all three, with ruff and ty pinned in a `lint`
-dependency group (`uv add --group lint --bounds exact ruff ty`) and wired into
-`just fmt` / `just lint`. Do not introduce another package manager,
-linter, formatter, or type checker.
-Ruff and ty are Class 1 (docs/agents/dependency-policy.md): pin them
-**exactly** (one version, aggressive adoption), pair the seven-day uv
-cooldown with `exclude-newer-package = { ruff = false, ty = false }` so
-the pin can move, and do not copy a version number into this file — it
-goes stale. Wire the gate with this justfile split (load-bearing: ruff
-only parses source, ty **resolves imports**):
+Every Python project uses all three. Pin ruff and ty in a `lint` dependency
+group (`uv add --group lint --bounds exact ruff ty`) and wire them into
+`just fmt` / `just lint`. Do not add another package manager, linter,
+formatter, or type checker.
+Ruff and ty are Class 1 (docs/agents/dependency-policy.md). Pin them
+**exactly** (one version, adopt new releases aggressively). Pair the seven-day uv
+cooldown with `exclude-newer-package = { ruff = false, ty = false }` so the pin
+can move. Do not copy a version number into this file; it goes stale. Wire the
+gate with this justfile split. The split matters: ruff only parses source, but
+ty **resolves imports**:
 
 ```just
 fmt:
@@ -30,15 +30,15 @@ lint:
     uv run --locked --group lint ty check
 ```
 
-Never "fix" ty's `unresolved-import` by silencing the rule — it means ty
-cannot see the project's dependencies and is checking nothing. Give it the
-deps instead (`--group lint`, not `--only-group`). Keep one ruff.toml /
-ty.toml shape per *project*; change only project-local path and exclude
+Never "fix" ty's `unresolved-import` by silencing the rule. It means ty cannot
+see the project's dependencies and is checking nothing. Give ty the
+dependencies instead (`--group lint`, not `--only-group`). Keep one ruff.toml /
+ty.toml shape per *project*; change only the project's own path and exclude
 blocks.
 
 ## ruff configuration (canonical — in `pyproject.toml`)
 
-Do **not** modify this without explicit human approval, and never relax it to
+Do **not** change this without explicit human approval. Never relax it to
 silence a finding.
 
 ```toml
@@ -72,22 +72,22 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
 
 ## ty
 
-- All code is type-annotated — enforced by ruff's `ANN` rules above, because ty
-  has no `--strict`: `[tool.ty.terminal] error-on-warning = true` only raises
-  severity, it adds no checks.
-- `uv run ty check` passes with zero diagnostics before commit.
-- Configure under `[tool.ty]` in `pyproject.toml`; raise rule levels, never
+- All code has type annotations. ruff's `ANN` rules above enforce this,
+  because ty has no `--strict`: `[tool.ty.terminal] error-on-warning = true`
+  only raises severity; it adds no checks.
+- `uv run ty check` must pass with zero diagnostics before you commit.
+- Configure ty under `[tool.ty]` in `pyproject.toml`. Raise rule levels; never
   lower them to silence a finding.
-- Avoid `# ty: ignore[rule]`; if unavoidable, add a one-line justification
-  comment.
+- Avoid `# ty: ignore[rule]`. If you cannot avoid it, add a one-line comment
+  that explains why.
 
-## Refactoring rules (Python-specific)
+## Refactoring rules (Python only)
 
-- Imports at the top of the file — never inside function/method bodies.
-- Use `pathlib.Path` for path manipulation; `os.path` is deprecated here.
-- Iterate dicts as `for key in d`, not `for key in d.keys()`.
-- Combine multiple context managers with 3.10+ parenthesized form.
-- All code conforms to the ruff + ty rules above.
+- Put imports at the top of the file, never inside a function or method body.
+- Use `pathlib.Path` for paths; `os.path` is deprecated here.
+- Iterate a dict as `for key in d`, not `for key in d.keys()`.
+- Combine several context managers with the parenthesized form from 3.10.
+- All code follows the ruff and ty rules above.
 
 ## Pre-commit sequence
 
@@ -100,13 +100,13 @@ just test   # uv run pytest
 ```
 
 (The `format-after-edit` hook already runs `ruff format` + `ruff check --fix`
-on each edited `.py` file, so most violations are fixed before you reach commit.)
+on each edited `.py` file, so most violations are fixed before you commit.)
 
-## External data & encoding
+## External data and encoding
 
-All text processed in-repo must be strict UTF-8. Convert legacy Japanese
-encodings with `iconv` (POSIX-standard, pre-installed) the moment a web-fetched
-page or external file is unreadable:
+All text you process in the repo must be strict UTF-8. When a fetched web page
+or an external file is unreadable, convert it from a legacy Japanese encoding
+right away with `iconv` (POSIX standard, pre-installed):
 
 ```sh
 iconv -f SHIFT-JIS -t UTF-8 input > output

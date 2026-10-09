@@ -1,39 +1,41 @@
 # TDD Workflow (Red → Green → Refactor)
 
-Read this when you are in the implementation loop. The root contract is in
-AGENTS.md; this file is the full procedure.
+Read this when you are in the implementation loop. AGENTS.md has the root
+rule; this file has the full procedure.
 
 ## The cycle
 
-1. **Red** — write the simplest *failing* test that defines one small increment
-   of behavior. Use a behavior-describing name
+1. **Red** — Write the simplest *failing* test for one small step of behavior.
+   Give it a name that describes the behavior
    (`test_should_sum_two_positive_numbers`). Make the failure message clear.
-2. **Green** — write the *minimum* code to pass. No more. With type annotations.
-3. **Verify** — run `just check` (the full gate). When running pieces
-   individually, format before linting: `just fmt` → `just lint` →
-   `just semgrep` (when `.semgrep/` exists) → `just test`.
-4. **Refactor** — only on green. One refactoring at a time; run tests after each.
-   Prioritize removing duplication and clarifying intent.
-5. **Commit** — structural and behavioral changes as *separate* commits
+2. **Green** — Write the *minimum* code that passes. No more. Add type
+   annotations.
+3. **Verify** — Run `just check` (the full gate). If you run the steps one by
+   one, format before you lint: `just fmt` → `just lint` → `just semgrep`
+   (when `.semgrep/` exists) → `just test`.
+4. **Refactor** — Only on green. Do one refactoring at a time and run the tests
+   after each. Remove duplication and make the intent clear first.
+5. **Commit** — Commit structural and behavioral changes *separately*
    (Tidy First). See docs/agents/commit-discipline.md.
-6. Repeat for the next increment.
+6. Repeat for the next step.
 
-Always: one test at a time → make it run → improve structure. Run all tests
-(except long-running) each time.
+Always: write one test at a time → make it run → improve the structure. Run
+all tests (except long-running ones) each time.
 
 ## Fixing a defect
 
-1. Write a failing test at the API level that expresses the defect.
+1. Write a failing test at the API level that shows the defect.
 2. Write the smallest test that reproduces the root cause.
 3. Make both pass.
 
 ## Tidy First — structural vs behavioral
 
-- **Structural**: rearranging code without changing behavior (rename, extract,
-  move). Validate behavior is unchanged by running tests before *and* after.
-- **Behavioral**: adding or changing functionality.
-- Never mix them in one commit. When a change needs both, do the structural part
-  first, commit it, then the behavioral part.
+- **Structural**: you rearrange code without changing behavior (rename,
+  extract, move). Run the tests before *and* after to confirm the behavior did
+  not change.
+- **Behavioral**: you add or change functionality.
+- Never mix the two in one commit. When a change needs both, do the structural
+  part first, commit it, then do the behavioral part.
 
 ## Worked example — adding a validator
 
@@ -69,17 +71,18 @@ just semgrep  # when .semgrep/ exists
 just test     # uv run pytest
 ```
 
-**[Refactor]** (separate commit) — extract once a pattern emerges:
+**[Refactor]** (separate commit) — extract the code once a pattern appears:
 
 ```
 refactor(validation): extract email validator into dedicated module
 ```
 
-## Test mechanics
+## How to write a test
 
 - Structure every test as **given / when / then**.
-- No try/except inside tests. Keep tests flat; avoid deep nesting.
-- Prefer function-based tests over class-based.
-- Only import helpers from `tests/utils/`.
-- Prefer real code over mocks; parameterize when several similar scenarios exist.
-- For *which* test type and the mock policy per type, see docs/agents/testing.md.
+- Do not put try/except inside tests. Keep tests flat; avoid deep nesting.
+- Prefer tests written as functions over classes.
+- Import helpers only from `tests/utils/`.
+- Prefer real code over mocks. When several scenarios are alike, parameterize.
+- docs/agents/testing.md says *which* test type to write and the mock policy
+  for each type.
