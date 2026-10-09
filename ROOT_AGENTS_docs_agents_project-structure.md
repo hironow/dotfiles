@@ -16,7 +16,6 @@ repos) are exempt.
 | `output/`       | generated artifacts and build outputs                         |
 | `examples/`     | usage examples and sample code                                |
 | `scripts/`      | development and utility scripts                               |
-| `tests/`        | all test code (unit, integration, e2e, scenario)              |
 | `docker/`       | *(optional)* Dockerfiles — only when there are ≥2 (see below) |
 | `.semgrep/`     | *(optional)* project-specific Semgrep rules                   |
 
@@ -48,12 +47,6 @@ compose.yaml                  api.Dockerfile
 ## docs/ subdirectories
 
 - `docs/adr/` — Architecture Decision Records (see docs/agents/docs-discipline.md).
-
-## tests/ subdirectories
-
-`tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/runn/` (scenario
-`*.yaml`), and `tests/utils/` (the only test location you may import from). See
-docs/agents/testing.md.
 
 ## scripts/ rules
 

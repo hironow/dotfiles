@@ -82,7 +82,6 @@ refactor(validation): extract email validator into dedicated module
 - Structure every test as **given / when / then**.
 - Do not put try/except inside tests. Keep tests flat; avoid deep nesting.
 - Prefer tests written as functions over classes.
-- Import helpers only from `tests/utils/`.
 - Prefer real code over mocks. When several scenarios are alike, parameterize.
 - docs/agents/testing.md says *which* test type to write and the mock policy
   for each type.

@@ -3,15 +3,19 @@
 Read this when you write or place a test, or when you are about to use a
 mock. The TDD *cycle* is in docs/agents/tdd-workflow.md.
 
-## Where tests live
+## Kinds of tests
 
-| dir                  | purpose                                              |
-| -------------------- | ---------------------------------------------------- |
-| `tests/unit/`        | isolated component tests                             |
-| `tests/integration/` | component-interaction tests                          |
-| `tests/e2e/`         | full-system tests with **real** dependencies         |
-| `tests/runn/`        | scenario tests (`*.yaml`) — API/CLI/agent workflows  |
-| `tests/utils/`       | shared helpers (the only importable test location)   |
+The kind of a test depends on what it touches, not on where its file lives.
+Place test files the way the language does it (Go: `*_test.go` next to the
+code; Rust: `#[cfg(test)]` modules and `tests/` per crate; Python and TS: the
+project's existing layout).
+
+| kind        | what it touches                                       |
+| ----------- | ----------------------------------------------------- |
+| unit        | one component, isolated                               |
+| integration | several components, or one real external service      |
+| e2e         | the full system with **real** dependencies only       |
+| scenario    | API, CLI, or agent workflows written as `runn` YAML   |
 
 ## Mock policy by test type
 
@@ -22,15 +26,15 @@ mock. The TDD *cycle* is in docs/agents/tdd-workflow.md.
   Prefer test containers or local instances.
 - **e2e** — **Mocks are strictly prohibited.** Every dependency is real (DB,
   services, filesystem, network). If you cannot use a real dependency, the test
-  is not e2e: move it to integration. A Semgrep rule enforces this (see
-  docs/agents/semgrep.md); it is not just a convention.
+  is not e2e: move it to integration. The agent-baseline Semgrep rule checks
+  this only for Python files under `tests/e2e/` (see docs/agents/semgrep.md).
+  Everywhere else, review enforces it.
 
 ## Unit test rules
 
 - Structure each test as **given / when / then**.
 - Do not put try/except inside tests. Keep tests flat; avoid deep nesting.
 - Prefer tests written as functions over classes.
-- Import only from `tests/utils/`.
 - Use real code, not large mocks.
 
 ## e2e test rules
@@ -44,7 +48,7 @@ every run deterministic and repeatable; keep each test independent.
   network.
 
 Use a dedicated test environment with real services. Clean up test data after
-each test or session. Document the setup in `tests/e2e/README.md`.
+each test or session. Write down how to set up the environment.
 
 ### Parameterize for coverage
 
@@ -181,11 +185,11 @@ With two programs, a leaf can fall out of *both*. Add a guard test that walks
 the derived list and asserts that each leaf is excluded from the shared program
 and included in the bun one.
 
-## runn scenario tests (`tests/runn/`)
+## runn scenario tests
 
 `runn` is a scenario runner for API and CLI testing, driven by YAML.
 
-- Files: `tests/runn/*.yaml` and `tests/runn/vars/*.yaml` (never `.yml`).
+- Files: runbooks and their `vars/` files are `*.yaml` (never `.yml`).
 - Terms: a *runbook* is the YAML scenario; a *step* is one HTTP or command
   action; *vars* are values passed between steps.
 - Make scenarios realistic. They do not need unit- or integration-level
