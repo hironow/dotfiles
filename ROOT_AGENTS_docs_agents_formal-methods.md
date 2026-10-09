@@ -1,45 +1,48 @@
 # Formal methods (distributed state)
 
-Read this when the component holds **distributed state**: an at-least-once
-queue, a lock or lease, a reconciler or janitor, a retention / cleanup
-policy, or anything that deletes or releases something on its own.
-Single-process deterministic logic stays unit-test territory.
+Read this when a component holds **distributed state**: an at-least-once
+queue, a lock or lease, a reconciler or janitor, a retention or cleanup policy,
+or anything that deletes or releases something on its own. Logic that runs in
+one process and is deterministic stays with unit tests.
 
-Applies to **every repo** that matches the trigger above.
+This applies to **every repo** that matches the trigger above.
 
 ## What to produce
 
-- **Design**: `<component>/spec/*.qnt` — state machine, invariants, every
-  recorded incident as a scripted `*Test`, design variants as instances.
-  `Safety` holds **mandatory** properties only. An expected failure stays a
-  named run; the model header records its scope, who accepted it, and the
-  compensating control.
-- **Implementation**: a **seeded, replayable simulation of the real code**
-  (stub I/O, never the logic). Check the model's invariants each step; print
-  seed + trace on failure; one-seed replay by env var. Per invariant: model
-  action boundary → implementation I/O boundary → covering test. Name the
-  properties the simulation does **not** reproduce as outside the guarantee.
-- **Autonomous delete / release**: the precondition is a model invariant; the
-  code's guard mirrors it; a lockstep test holds shared constants equal.
+- **Design**: `<component>/spec/*.qnt`. It holds the state machine, the
+  invariants, every recorded incident as a scripted `*Test`, and design
+  variants as instances. `Safety` holds **mandatory** properties only. An
+  expected failure stays a named run, and the model header records its scope,
+  who accepted it, and the control that compensates for it.
+- **Implementation**: a **seeded simulation of the real code that you can
+  replay**. Stub the I/O, never the logic. Check the model's invariants at each
+  step. On failure, print the seed and the trace. Allow replay of one seed
+  through an env var. For each invariant, map the model's action boundary to
+  the implementation's I/O boundary and to the test that covers it. Name the
+  properties the simulation does **not** reproduce, and state that they are
+  outside the guarantee.
+- **Deletes or releases that happen on their own**: make the precondition a
+  model invariant, make the code's guard mirror it, and keep shared constants
+  equal with a lockstep test.
 
 ## Gate
 
-The gate is a `just spec-check` recipe wired into `just check`, so CI runs the
-same thing a developer does. Write it as **strict bash** (`set -euo pipefail`):
-just's default `sh -cu` hides a failing `for` iteration, which is how a model
-silently stops being checked. Call Quint through one pinned variable rather than
-bare `quint`, so the gate cannot drift onto whatever version is on PATH.
+The gate is a `just spec-check` recipe that `just check` runs, so CI runs what a
+developer runs. Write it in **strict bash** (`set -euo pipefail`). just's
+default `sh -cu` hides a failing `for` iteration, and that is how a model
+silently stops being checked. Call Quint through one pinned variable, not bare
+`quint`, so the gate cannot drift onto whatever version is on PATH.
 
-dotfiles itself no longer carries such a recipe — its model moved out with the
-stack it described — so treat this section as the shape to build, not a recipe
-to run here. `quint` stays pinned in the global mise config for exactly that
+dotfiles itself no longer has such a recipe: its model left together with the
+stack it described. So treat this section as the shape to build, not a recipe to
+run here. `quint` stays pinned in the global mise config for exactly that
 reason.
 
-Tools: **Quint** (`@informalsystems/quint`) + the simulation. Apalache
-(`quint verify`) is an optional bug finder, never a gate. TLA+ and Lean are
-not used.
+Tools: **Quint** (`@informalsystems/quint`) plus the simulation. Apalache
+(`quint verify`) is an optional bug finder, never a gate. TLA+ and Lean are not
+used.
 
-Start from a small lease example (a lock without a lease, with a lease,
-with a fencing token) and grow from there. Applicability is a human
-judgement, not a grep; an out-of-scope repo needs nothing in its own tree.
-Findings go to `docs/plan/<topic>.md` as what / how-found / status.
+Start from a small lease example (a lock without a lease, with a lease, with a
+fencing token) and grow from there. Whether this applies is a human judgement,
+not a grep. A repo out of scope needs nothing in its own tree. Write findings to
+`docs/plan/<topic>.md` as what / how found / status.

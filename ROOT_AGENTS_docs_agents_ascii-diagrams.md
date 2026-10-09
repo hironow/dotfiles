@@ -1,10 +1,11 @@
 # ASCII Diagrams in Responses
 
-Read this when you are about to include an ASCII diagram, box-art, or flow
-sketch in a response. Claude-specific; the root rule + pointer is in CLAUDE.md.
+Read this when you are about to put an ASCII diagram, box art, or flow sketch
+in a response. This is Claude-specific; CLAUDE.md has the rule and a pointer
+here.
 
-- Use **single-byte ASCII only** inside the diagram — no Japanese/Chinese/
-  Korean/emoji. Multi-byte characters break monospace alignment.
+- Use **single-byte ASCII only** inside the diagram: no Japanese, Chinese,
+  Korean, or emoji. Multi-byte characters break monospace alignment.
 - Always add a legend directly below the diagram, with Japanese glosses unless
   told otherwise (`English term: 日本語`).
 

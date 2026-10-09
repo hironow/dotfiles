@@ -1,17 +1,17 @@
 # Commit Discipline
 
-Read this before writing a commit message. Root summary is in AGENTS.md.
+Read this before you write a commit message. AGENTS.md has the short version.
 
-## Pre-commit conditions (ALL must hold)
+## Before you commit, all of these must hold
 
 - All tests pass.
-- Zero ruff violations, zero ty diagnostics.
-- Zero semgrep findings under `.semgrep/` (when it exists).
-- The change is a single logical unit of work.
-- Message follows Conventional Commits v1.0.0.
+- ruff reports zero violations and ty reports zero diagnostics.
+- semgrep reports zero findings under `.semgrep/` (when it exists).
+- The change is one logical unit of work.
+- The message follows Conventional Commits v1.0.0.
 
-`just check` runs the whole gate; the git pre-commit hook runs it too, so a red
-tree cannot be committed (see docs/agents/enforcement.md).
+`just check` runs the whole gate. The git pre-commit hook runs it too, so you
+cannot commit a red tree (see docs/agents/enforcement.md).
 
 ## Format
 
@@ -23,17 +23,18 @@ tree cannot be committed (see docs/agents/enforcement.md).
 <footer>
 ```
 
-- Subject: imperative mood, lowercase, no trailing period, ≤72 chars.
-- Scope: optional but recommended in monorepos / multi-module repos
-  (e.g. `feat(sightjack):`).
-- Breaking change: `!` after type/scope **and** a `BREAKING CHANGE:` footer.
+- Subject: imperative mood, lowercase, no period at the end, 72 characters at most.
+- Scope: optional, but recommended in monorepos and multi-module repos
+  (for example `feat(sightjack):`).
+- Breaking change: put `!` after the type or scope **and** add a
+  `BREAKING CHANGE:` footer.
 
-## Type ⇄ Tidy First mapping (fixed — mixing is forbidden)
+## Each type is either behavioral or structural (fixed — never mix)
 
-Each type is permanently either behavioral or structural. One commit = one type.
-If a change needs two types, it needs two commits — structural first.
+Every type is always behavioral or always structural. One commit has one type.
+If a change needs two types, make two commits, structural first.
 
-**Behavioral** (changes what the system does):
+**Behavioral** — changes what the system does:
 
 | type   | meaning                                          |
 | ------ | ------------------------------------------------ |
@@ -41,7 +42,7 @@ If a change needs two types, it needs two commits — structural first.
 | `fix`  | bug fix (behavior corrected)                     |
 | `perf` | performance change (measurable behavior change)  |
 
-**Structural** (no behavior change):
+**Structural** — does not change behavior:
 
 | type       | meaning                                            |
 | ---------- | -------------------------------------------------- |
@@ -53,7 +54,8 @@ If a change needs two types, it needs two commits — structural first.
 | `build`    | build system or external dependency changes        |
 | `ci`       | CI/CD configuration changes                        |
 
-Never add `[STRUCTURAL]` / `[BEHAVIORAL]` tags — the type already encodes it.
+Never add `[STRUCTURAL]` or `[BEHAVIORAL]` tags. The type already says which
+one it is.
 
 ## Examples
 
@@ -76,5 +78,5 @@ feat: refactor auth and add new endpoint     # two types in one commit
 
 ## Practice
 
-- Small, frequent commits over large, infrequent ones.
-- When you catch yourself wanting an "and" in the subject, split the commit.
+- Make small, frequent commits, not large, rare ones.
+- If you want to write "and" in the subject, split the commit.

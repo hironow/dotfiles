@@ -1,10 +1,13 @@
 # Documentation Discipline
 
-Read this when editing docs, writing an ADR/PDR, or touching `intent.md`/
-`handover.md`/`decision-queue.md`/`plan/`/`research/`. Root summary is in AGENTS.md.
+Read this when you edit docs, write an ADR or PDR, or touch `intent.md`,
+`handover.md`, `decision-queue.md`, `plan/`, or `research/`. AGENTS.md has the
+short version. Write every document in plain language
+(docs/agents/plain-language.md).
 
-Core documentation kinds, one question each (rows below the divider are
-opt-in categories — present only in repos that use them):
+Each kind of document answers one question. The rows from
+`docs/decision-queue.md` down are opt-in: only repos that adopted them have
+them.
 
 | file              | answers                                  | mutability             |
 | ----------------- | ---------------------------------------- | ---------------------- |
@@ -19,25 +22,32 @@ opt-in categories — present only in repos that use them):
 
 ## `docs/*.md` — current state only
 
-- Document only the current implementation. No history, no "why we changed from
-  X to Y" (that's an ADR), no TODOs, no roadmap, no deprecated-feature notes.
-- Docs and implementation stay consistent at all times; when code changes, update
+- Describe only the current implementation. No history, no "why we changed
+  from X to Y" (that belongs in an ADR), no TODOs, no roadmap, no notes on
+  deprecated features.
+- Keep docs and code consistent at all times. When code changes, update the
   docs in the **same commit**. Outdated docs are bugs.
-- Use code references where possible to keep accuracy.
-- Exempt from "current state only": `docs/adr/`, `docs/intent.md`,
+- Point to code where you can; it keeps docs accurate.
+- These are exempt from "current state only": `docs/adr/`, `docs/intent.md`,
   `docs/handover.md`, and the opt-in categories `docs/decision-queue.md`,
   `docs/pdr/`, `docs/plan/`, `docs/research/`.
 
 ## `docs/adr/` — Architecture Decision Records
 
-Capture the *why* behind significant decisions (docs only capture the *what*).
+An ADR records the *why* behind a significant decision. Docs record only the
+*what*.
 
-Create one when: introducing a new technology/framework; changing an established
-pattern; making a non-obvious tradeoff with significant consequences; deprecating
-or replacing an approach; making a decision future developers might question.
+Write one when you:
 
-Naming: `docs/adr/NNNN-short-title.md` (sequential `0001`, `0002`, …; lowercase
-hyphenated title), e.g. `docs/adr/0001-use-fastapi-for-api-layer.md`.
+- introduce a new technology or framework;
+- change an established pattern;
+- make a non-obvious tradeoff with significant consequences;
+- deprecate or replace an approach;
+- make a decision future developers might question.
+
+Name it `docs/adr/NNNN-short-title.md`: a sequential number (`0001`, `0002`,
+…) and a lowercase, hyphenated title. Example:
+`docs/adr/0001-use-fastapi-for-api-layer.md`.
 
 Template:
 
@@ -62,17 +72,17 @@ Template:
 - {Implication that's neither clearly positive nor negative}
 ```
 
-Immutability: ADRs are never modified after acceptance. To change a decision,
-write a **new** ADR that supersedes the old one, and set the old one's status to
-`Superseded by [NNNN]` — the only allowed edit. ADRs complement docs; they don't
-replace them.
+Never change an ADR after it is accepted. To change a decision, write a
+**new** ADR that supersedes the old one, and set the old one's status to
+`Superseded by [NNNN]`. That status change is the only allowed edit. ADRs add
+to docs; they do not replace them.
 
 ## `docs/intent.md` — the human's intent for the current work unit
 
-**Before creating or updating it, clarify ambiguous intent by asking the human.
-Never guess; never fill gaps with assumptions.** If any of these are unclear,
-STOP and ask: goal, success criteria, scope boundaries, non-goals, constraints,
-deadlines, affected components, rollback conditions.
+**Before you create or update it, ask the human about anything unclear.
+Never guess, and never fill gaps with assumptions.** If any of these are
+unclear, STOP and ask: goal, success criteria, scope boundaries, non-goals,
+constraints, deadlines, affected components, rollback conditions.
 
 ```markdown
 # Intent
@@ -100,12 +110,12 @@ deadlines, affected components, rollback conditions.
 - [ ] {Resolve before implementation}
 ```
 
-Update when the requester's intent changes (not every implementation detail).
-Superseded versions live in git history, not in the file.
+Update it when the requester's intent changes, not for every implementation
+detail. Old versions live in git history, not in the file.
 
 ## `docs/handover.md` — for the next actor
 
-Optimized to be read in under two minutes; consumable by both humans and agents.
+Write it so a human or an agent can read it in under two minutes.
 
 ```markdown
 # Handover
@@ -133,28 +143,31 @@ Optimized to be read in under two minutes; consumable by both humans and agents.
 - `just {command}` — {what it does}
 ```
 
-Update at the end of every significant work session (session-level, not
-commit-level). Don't duplicate `intent.md`; reference it.
+Update it at the end of every significant work session (per session, not per
+commit). Do not copy `intent.md` into it; link to it.
 
 ## Opt-in categories (adopt per repo)
 
-Use these only in repos that have adopted them; the adopting repo's governance
-ADR is authoritative for local adaptations.
+Use these only in repos that adopted them. In such a repo, its governance ADR
+decides any local changes to these rules.
 
 - **`docs/decision-queue.md` + `docs/pdr/`** — decision-record governance (see
-  the `decision-record-governance` skill). The queue is the SSoT of unapproved
-  (Proposed) ADR/PDRs: file a record → register it in the queue → the human
-  decides → move the row to the decided log. Record the adoption itself as an
-  ADR; that ADR governs local profiles (e.g. a solo profile without Slack, or
-  retiring `intent.md` in favor of PDRs). This repo adopted the queue for all
-  **new** ADR/PDRs in [ADR-0051](https://github.com/hironow/dotfiles/blob/main/docs/adr/0051-adopt-decision-queue-for-new-records.md):
+  the `decision-record-governance` skill). The queue is the single source of
+  truth for unapproved (Proposed) ADRs and PDRs. The flow: file a record →
+  add it to the queue → the human decides → move the row to the decided log.
+  Record the adoption itself as an ADR. That ADR sets local profiles (for
+  example a solo profile without Slack, or replacing `intent.md` with PDRs).
+  This repo adopted the queue for all **new** ADRs and PDRs in
+  [ADR-0051](https://github.com/hironow/dotfiles/blob/main/docs/adr/0051-adopt-decision-queue-for-new-records.md):
   consult in a public-safe PR because Issues are disabled, and do not rewrite
-  or infer contacts for the older 49 ADRs.
-- **`docs/plan/`** — phased execution plans (HOW; decisions stay in DRs). Keep a
-  standard status header (state / related DRs / blocking decisions). Never leave
-  a pending human decision inside a plan — file a DR into the queue and mark the
-  plan blocked. On completion, move permanent explanations to
-  architecture/ADR and mark the plan `done(→destination)`; a plan that embodies
-  no new decision graduates into architecture, not into a why-less ADR.
+  or guess contacts for the older 49 ADRs.
+- **`docs/plan/`** — phased execution plans (the HOW; decisions stay in
+  decision records). Keep a standard status header (state / related decision
+  records / blocking decisions). Never leave a pending human decision inside a
+  plan: file a decision record into the queue and mark the plan blocked. When
+  the plan is done, move lasting explanations to the architecture docs or an
+  ADR, and mark the plan `done(→destination)`. A plan that contains no new
+  decision moves into the architecture docs, not into an ADR with no why.
 - **`docs/research/`** — dated investigation snapshots (`YYYY-MM-…` filenames).
-  Newer research supersedes older; never treat them as current-state docs.
+  Newer research replaces older research. Never treat them as current-state
+  docs.

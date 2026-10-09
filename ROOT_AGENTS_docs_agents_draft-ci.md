@@ -1,27 +1,28 @@
 # Draft PRs run no Actions
 
-Read this when writing or changing a GitHub Actions workflow that can fire on
+Read this when you write or change a GitHub Actions workflow that can run on
 `pull_request`.
 
-A draft PR is a declaration that the change is not ready to spend CI. Skip
-every job until the author marks it ready. Open PRs **ready**, not draft — a
-draft now exempts itself from the gates that would have reviewed it.
+A draft PR says the change is not ready to spend CI on. Skip every job until
+the author marks the PR ready. Open PRs as **ready**, not draft: a draft skips
+the gates that would have reviewed it.
 
-## What every caller carries
+## What every workflow must have
 
-- Every job reachable from `pull_request` has `github.event.pull_request.draft == false`,
-  or is skipped because something it `needs` does.
-- `always()` / `!cancelled()` / `failure()` jobs run anyway and **repeat** the
-  draft gate themselves.
-- The workflow declares `ready_for_review` in `pull_request.types`. Without it
-  the skipped run never comes back when the PR leaves draft, and the PR cannot
-  merge (or merges untested).
-- The fork gate is a separate protection, checked independently — one does not
+- Every job reachable from `pull_request` has
+  `github.event.pull_request.draft == false`, or is skipped because a job it
+  `needs` is skipped.
+- Jobs with `always()`, `!cancelled()`, or `failure()` run anyway, so they
+  **repeat** the draft gate themselves.
+- The workflow lists `ready_for_review` in `pull_request.types`. Without it,
+  the skipped run never comes back when the PR leaves draft, and the PR
+  cannot merge (or merges untested).
+- The fork gate is a separate protection. Check it on its own: one does not
   imply the other.
 
-Reusable `workflow_call` callees inherit the caller's job gate. Workflows that
-never see `pull_request` (push-only, schedule, `labeled`-only CodeQL) need no
-draft gate.
+A reusable `workflow_call` callee inherits the caller's job gate. Workflows
+that never see `pull_request` (push-only, schedule, `labeled`-only CodeQL) need
+no draft gate.
 
-Enforce the gate in CI so a missing `draft == false` or a missing
-`ready_for_review` type fails the workflow lint, not a later review.
+Enforce the gate in CI, so a missing `draft == false` or a missing
+`ready_for_review` type fails the workflow lint instead of a later review.

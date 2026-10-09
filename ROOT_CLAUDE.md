@@ -1,38 +1,37 @@
 <!--
-  CLAUDE.md — Claude Code overlay. The shared, cross-tool base lives in AGENTS.md
-  and is imported below. Put ONLY Claude-specific behavior here so the two files
-  never drift. Codex reads AGENTS.md and ignores this file; Claude Code reads both.
-  Keep this short for the same adherence-budget reason AGENTS.md is short.
+  CLAUDE.md: the Claude Code overlay. The shared base for all tools is AGENTS.md,
+  imported below. Put ONLY Claude-specific behavior here, so the two files never
+  drift apart. Codex reads AGENTS.md and ignores this file; Claude Code reads
+  both. Keep this file short for the same reason AGENTS.md is short.
 -->
 
 @AGENTS.md
 
 # CLAUDE.md (Claude-specific overlay)
 
-Everything in AGENTS.md applies. The items below are additional behaviors that
-only make sense for Claude Code.
+Everything in AGENTS.md applies. The rules below apply only to Claude Code.
 
-## Response format
+## How to format answers
 
-- Always label which TDD phase a suggestion belongs to: **[Red] / [Green] /
-  [Refactor]**.
-- When proposing code, **show the failing test first**, then the implementation.
-- All Python suggestions include type annotations.
-- Propose commit messages in Conventional Commits form; the type prefix already
-  encodes structural-vs-behavioral, so never add `[STRUCTURAL]`/`[BEHAVIORAL]`
-  tags (see docs/agents/commit-discipline.md).
+- Label each suggestion with its TDD phase: **[Red] / [Green] / [Refactor]**.
+- When you propose code, **show the failing test first**, then the
+  implementation.
+- Give every Python suggestion type annotations.
+- Write proposed commit messages as Conventional Commits. The type prefix
+  already says whether a change is structural or behavioral, so never add
+  `[STRUCTURAL]`/`[BEHAVIORAL]` tags (see docs/agents/commit-discipline.md).
 
-## Plan review (before showing a plan to the human)
+## Plan review (before you show a plan to the human)
 
-Every non-trivial implementation plan gets an independent second pair of eyes
-**before** it is presented — never skipped, and never an inline self-review in
-the authoring context. Codex is the preferred reviewer; if it is unavailable,
-spawn an independent subagent instead. Full procedure, lenses, and commands:
+Every non-trivial implementation plan gets an independent review **before** you
+show it. Never skip it, and never review it yourself in the context that wrote
+it. Codex is the preferred reviewer. If Codex is unavailable, start an
+independent subagent instead. Full steps, the three lenses, and commands:
 docs/agents/plan-review.md.
 
-## ASCII diagrams in responses
+## ASCII diagrams in answers
 
-Single-byte ASCII only inside diagrams (multi-byte breaks monospace alignment),
-and always add a legend directly below with Japanese glosses unless told
-otherwise (`English term: 日本語`). Full rules and a worked example:
-docs/agents/ascii-diagrams.md.
+Use only single-byte ASCII inside a diagram; multi-byte characters break
+monospace alignment. Always add a legend directly below it with Japanese
+glosses (`English term: 日本語`), unless told otherwise. Full rules and a worked
+example: docs/agents/ascii-diagrams.md.

@@ -8,6 +8,7 @@
 
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0052 | 全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language） | ADR | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-16 | Proposed | [PR #463](https://github.com/hironow/dotfiles/pull/463) | none | `templates/agent-baseline/`は別PR | [adr/0052-renew-global-agent-instructions.md](adr/0052-renew-global-agent-instructions.md) |
 
 ## 決定済みログ
 
