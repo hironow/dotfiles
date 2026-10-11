@@ -1,10 +1,10 @@
 # 0052. 全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language）
 
 **Date:** 2026-10-09
-**Status:** Proposed
+**Status:** Accepted
 **ID:** ADR-0052
 **Title:** 全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language）
-**Decided-date:** none
+**Decided-date:** 2026-10-11
 **Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Claude Code（owner session）
@@ -13,7 +13,7 @@
 **Supersedes:** none
 **Superseded-by:** none
 **Related:** [ADR-0044](0044-python-toolchain-uv-ruff-ty.md)、[ADR-0051](0051-adopt-decision-queue-for-new-records.md)、[base](../../ROOT_AGENTS.md)、[設計spoke](../../ROOT_AGENTS_docs_agents_core-shell-ports.md)
-**Consultation-trace:** [公開PR #463](https://github.com/hironow/dotfiles/pull/463)
+**Consultation-trace:** [公開PR #463の所有者裁定](https://github.com/hironow/dotfiles/pull/463#issuecomment-6104926585)
 
 ## やさしい説明
 
@@ -78,9 +78,14 @@ ADR-0051の決裁待ち一覧の手順に従い、この記録を決裁待ちと
 
 ## 裁定・merge前の停止条件
 
-- 所有者がPR #463で裁定するまでmergeしない。
-- 裁定後は、この記録の状態、決裁待ち一覧の行、ADR索引を同じ変更で更新する（ADR-0051）。
+- 所有者は 2026-10-11 に [PR #463](https://github.com/hironow/dotfiles/pull/463#issuecomment-6104926585) で裁定した。
+- 同じ PR で、この記録の状態、決裁待ち一覧の行、ADR 索引を更新してから merge した（ADR-0051）。
 
 ## 反転記録 (Reversal)
 
 none（既存のAccepted ADRを置き換えない。）
+
+## 決定（2026-10-11）
+
+- **Accepted**。決定者：Hiroto N.（@hironow）。[公開PR #463の裁定](https://github.com/hironow/dotfiles/pull/463#issuecomment-6104926585)。
+- 次の作業：merge 後に `just sync-agents all` で各 home へ配る。`templates/agent-baseline/` の追従は別の PR で行う。

@@ -1,10 +1,10 @@
 # 0053. Flatt のパッケージミラーをやめ、公式の取得元に戻す
 
 **Date:** 2026-10-11
-**Status:** Proposed
+**Status:** Accepted
 **ID:** ADR-0053
 **Title:** Flatt のパッケージミラーをやめ、公式の取得元に戻す
-**Decided-date:** none
+**Decided-date:** 2026-10-11
 **Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Claude Code（owner session）
@@ -13,7 +13,7 @@
 **Supersedes:** [ADR-0028](0028-flatt-pypi-mirror-default-index.md)
 **Superseded-by:** none
 **Related:** [ADR-0052](0052-renew-global-agent-instructions.md)、[依存の方針](../../ROOT_AGENTS_docs_agents_dependency-policy.md)
-**Consultation-trace:** [公開PR #463](https://github.com/hironow/dotfiles/pull/463)
+**Consultation-trace:** [公開PR #463の所有者裁定](https://github.com/hironow/dotfiles/pull/463#issuecomment-6104926585)
 
 ## やさしい説明
 
@@ -66,9 +66,15 @@ ADR-0051 の決裁待ち一覧の手順に従い、この記録を決裁待ち�
 
 ## 裁定・merge前の停止条件
 
-- 所有者が PR #463 で裁定するまで merge しない。
-- 裁定後は、この記録の状態、ADR-0028 の状態（`Superseded by [0053]`）、決裁待ち一覧の行、ADR 索引を同じ変更で更新する（ADR-0051）。
+- 所有者は 2026-10-11 に [PR #463](https://github.com/hironow/dotfiles/pull/463#issuecomment-6104926585) で裁定した。
+- 同じ PR で、この記録の状態、決裁待ち一覧の行、ADR 索引を更新してから merge した（ADR-0051）。
 
 ## 反転記録 (Reversal)
 
 none（ADR-0028 を置き換える。ADR-0028 の本文は変えない。）
+
+## 決定（2026-10-11）
+
+- **Accepted**。決定者：Hiroto N.（@hironow）。[公開PR #463の裁定](https://github.com/hironow/dotfiles/pull/463#issuecomment-6104926585)。
+- ADR-0028 の状態を `Superseded by [0053]` にした。
+- 次の作業：ほかの機体で `just harden-env` を実行する。ほかの repo の Flatt の設定は別の作業で扱う。
