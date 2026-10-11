@@ -13,7 +13,7 @@
 **Supersedes:** [ADR-0015](0015-adopt-portless-for-local-dev-urls.md) の一部（別名の一括登録と CA 信頼を just の recipe で行う点）
 **Superseded-by:** none
 **Related:** [ADR-0015](0015-adopt-portless-for-local-dev-urls.md)、[ADR-0016](0016-integrate-emulate-api-emulators-via-npx.md)、[portless の別名一覧](../portless-urls.md)
-**Consultation-trace:** 公開PR（この記録を含む PR）
+**Consultation-trace:** [公開PR #468](https://github.com/hironow/dotfiles/pull/468)
 
 ## やさしい説明
 
@@ -57,7 +57,7 @@ ADR-0051 の決裁待ち一覧の手順に従い、この記録を決裁待ち�
 
 ## 裁定・merge前の停止条件
 
-- 所有者がこの記録を含む PR で裁定するまで merge しない。
+- 所有者が PR #468 で裁定するまで merge しない。
 - 裁定後は、この記録の状態、ADR-0015 の状態の行、決裁待ち一覧の行、ADR 索引を同じ変更で更新する（ADR-0051）。
 
 ## 反転記録 (Reversal)

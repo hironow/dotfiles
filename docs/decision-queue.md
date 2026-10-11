@@ -8,7 +8,7 @@
 
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0054 | portless を just の recipe で包まず、直接使う | ADR | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-18 | Proposed | 公開PR（この記録を含む PR） | none | ADR-0015 の一部を置き換える | [adr/0054-run-portless-directly.md](adr/0054-run-portless-directly.md) |
+| ADR-0054 | portless を just の recipe で包まず、直接使う | ADR | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-18 | Proposed | [PR #468](https://github.com/hironow/dotfiles/pull/468) | none | ADR-0015 の一部を置き換える | [adr/0054-run-portless-directly.md](adr/0054-run-portless-directly.md) |
 
 ## 決定済みログ
 
