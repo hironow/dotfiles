@@ -104,7 +104,7 @@ install:
     mise install
 
 # Harden: write machine-local supply-chain guards (npm min-release-age, uv
-# flatt mirror + exclude-newer, go proxy). Idempotent; not tracked (ADR 0028).
+# exclude-newer, go proxy). Idempotent; not tracked.
 [group('Setup')]
 harden-env:
     bash scripts/harden_env.sh
@@ -661,8 +661,6 @@ lint:
     git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp lint
     @echo '🔍 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
-    @echo '🔍 uv flatt index (ADR 0028)...'
-    bash scripts/check_uv_flatt_index.sh
     @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
     @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
@@ -690,8 +688,6 @@ check:
     just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
     uvx semgrep --config .semgrep/rules/meta/ --error .
-    @echo '🔎 uv flatt index (ADR 0028)...'
-    bash scripts/check_uv_flatt_index.sh
     @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
     @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
@@ -701,12 +697,6 @@ check:
     @echo '🔎 Go tests (tools/ modules)...'
     just go-test
     @echo '✅ All checks passed.'
-
-# ADR 0028: assert every uv project declares the flatt PyPI mirror as its
-# default index and no committed lock falls back to raw pypi.org (grep only).
-[group('Lint')]
-check-uv-flatt-index:
-    bash scripts/check_uv_flatt_index.sh
 
 # ADR 0028 quarantine: a `[tool.uv] exclude-newer-package` entry lets ONE security
 # fix through the 7-day hold with an absolute cutoff that never expires on its
@@ -796,14 +786,6 @@ lint-claude:
         mise exec -- claude plugin validate --strict . ; \
         for m in plugins/*/.claude-plugin/plugin.json; do mise exec -- claude plugin validate --strict "${m%/.claude-plugin/plugin.json}"; done ; \
       else echo '  (claude CLI not available via mise -- skipping official validate)'; fi
-
-# ADR 0028: regenerate the pypi.org-resolving uv locks through the flatt mirror
-# with the machine-local hardening config neutralized (each lock reflects only
-# its project pyproject — emulator keeps its repo `exclude-newer`, tools/rttm
-# stays span-less). Run after changing dependencies in emulator/ or tools/rttm/.
-[group('CI')]
-relock-uv:
-    bash scripts/relock_uv.sh
 
 # ------------------------------
 # prek (j178/prek) — Rust reimplementation of pre-commit

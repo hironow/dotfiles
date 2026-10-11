@@ -4,7 +4,7 @@ idempotent, and must not touch the tracked shell rc.
 Why this exists
 ---------------
 `harden_env.sh` writes the machine-local supply-chain guards (npm
-`min-release-age`, uv `~/.config/uv/uv.toml` with the flatt mirror +
+`min-release-age`, uv `~/.config/uv/uv.toml` with
 `exclude-newer = "7 days"`). It was macOS-flavoured and broke on WSL:
 
 - `sed -i ''` is BSD syntax; on GNU sed the empty `''` becomes the
@@ -70,8 +70,8 @@ def test_no_bsd_sed_in_place() -> None:
 
 
 def test_does_not_write_shell_rc() -> None:
-    """The flatt `PIP_INDEX_URL` / `alias pip` block is already committed in
-    the tracked `.zshrc`; the script must not append it (it would dirty the
+    """The `alias pip` block is already committed in the tracked `.zshrc`;
+    the script must not append a shell-rc block (it would dirty the
     symlinked repo file and duplicate on re-run)."""
     text = HARDEN.read_text(encoding="utf-8")
     assert "PIP_INDEX_URL" not in text, (
@@ -110,7 +110,8 @@ def test_writes_uv_toml_and_is_idempotent(tmp_path: Path) -> None:
     assert uv_toml.is_file(), "did not write ~/.config/uv/uv.toml"
     uv_content = uv_toml.read_text(encoding="utf-8")
     assert 'exclude-newer = "7 days"' in uv_content
-    assert "pypi.flatt.tech" in uv_content
+    assert "flatt" not in uv_content, "uv must resolve from pypi.org, not a mirror"
+    assert "[[index]]" not in uv_content
 
     npmrc = home / ".npmrc"
     assert npmrc.is_file(), "did not write ~/.npmrc"
@@ -271,3 +272,40 @@ def test_powershell_fallback_when_system32_off_path() -> None:
         "must fall back to powershell.exe by absolute path (via SYSTEMROOT) "
         "when it is not on PATH"
     )
+
+
+def test_removes_only_the_flatt_npm_registry(tmp_path: Path) -> None:
+    """Machines set `registry=https://npm.flatt.tech/` by hand; the script
+    retires exactly that line and keeps every other registry and auth line."""
+    home = tmp_path / "home"
+    home.mkdir()
+    npmrc = home / ".npmrc"
+    kept = [
+        "@internal:registry=https://npm.example.com/",
+        "//registry.npmjs.org/:_authToken=${NPM_TOKEN}",
+    ]
+    npmrc.write_text(
+        "registry=https://npm.flatt.tech/\r\n"
+        + "\n".join(kept)
+        + "\n  registry = https://npm.flatt.tech  \n",
+        encoding="utf-8",
+    )
+    for _ in range(2):
+        result = _run_harden(_env(home))
+        assert result.returncode == 0, result.stderr
+    lines = npmrc.read_text(encoding="utf-8").splitlines()
+    assert [line for line in lines if "flatt" in line] == []
+    assert lines == [*kept, "min-release-age=7"]
+
+
+def test_keeps_a_non_flatt_npm_registry(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    npmrc = home / ".npmrc"
+    npmrc.write_text("registry=https://registry.npmjs.org/\n", encoding="utf-8")
+    result = _run_harden(_env(home))
+    assert result.returncode == 0, result.stderr
+    assert npmrc.read_text(encoding="utf-8").splitlines() == [
+        "registry=https://registry.npmjs.org/",
+        "min-release-age=7",
+    ]

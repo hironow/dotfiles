@@ -8,8 +8,8 @@ yarn) therefore slips into a committed MCP config unchecked. This static gate is
 the wall for that path: it parses the repo's active MCP client configs and fails
 if any server launches Node tooling via a banned runner.
 
-Scope is the explicit list of MCP client configs this repo deploys (mirrors the
-hardcoded-targets style of check_uv_flatt_index.sh). It deliberately does NOT
+Scope is the explicit list of MCP client configs this repo deploys (a
+hardcoded list of targets). It deliberately does NOT
 auto-discover every tracked json/toml: example MCP snippets under vendored
 submodules or docs are not launched and must not fail the gate, and an unrelated
 malformed config must not break this policy check. Add a new client config here
