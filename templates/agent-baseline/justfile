@@ -27,14 +27,27 @@ lint:
 fmt:
     uv run --locked --only-group lint ruff format .
 
-# Run e2e tests
-test-e2e:
-    uv run pytest tests/e2e/
+# List the e2e test files: test files whose path contains `e2e` (a directory
+# such as tests/e2e/, or a file such as test_checkout_e2e.py). The Semgrep
+# fixtures in .semgrep/tests/ are not tests.
+e2e-tests:
+    @git ls-files -- '*e2e*.py' ':(exclude).semgrep/**' | grep -E '(^|/)(test_[^/]*|[^/]*_test)\.py$' || true
 
-# Run semgrep (project-specific rules). No-op-safe when .semgrep/ is absent.
+# Run the e2e tests (real dependencies only; no mocks)
+test-e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files="$(just e2e-tests)"
+    if [ -z "$files" ]; then echo "no e2e tests"; exit 0; fi
+    printf '%s\n' "$files" | tr '\n' '\0' | xargs -0 uv run pytest
+
+# Run semgrep (project-specific rules). Skips only when .semgrep/rules/ is
+# absent; a finding or a semgrep error fails the recipe.
 semgrep:
-    @test -d .semgrep/rules && semgrep --config .semgrep/rules/ --error || \
-     echo "no .semgrep/rules — skipping"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -d .semgrep/rules ]; then echo "no .semgrep/rules — skipping"; exit 0; fi
+    semgrep --config .semgrep/rules/ --error
 
 # Wire the repo-managed git hooks (run once per clone).
 install-hooks:
