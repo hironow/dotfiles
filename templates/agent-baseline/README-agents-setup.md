@@ -58,10 +58,12 @@ inside Claude Code. Put personal experiments in `.claude/settings.local.json`
 
 ## e2e tests
 
-An e2e test is a Python test file whose path contains `e2e`: a directory such
-as `tests/e2e/`, or a file such as `test_checkout_e2e.py`. `just e2e-tests`
-lists them, `just test-e2e` runs them, and the Semgrep rule
-`agentcore-testing-no-mock-in-e2e` fails on any mock or patch in them.
+Give each e2e test a path that contains `e2e`: a directory such as
+`tests/e2e/`, or a file such as `test_checkout_e2e.py`. The name only picks the
+files; the kind of a test still depends on what it touches. `just e2e-tests`
+lists those files (untracked ones too), `just test-e2e` runs them, and the
+Semgrep rule `agentcore-testing-no-mock-in-e2e` fails on any mock or patch in
+them.
 
 ## Scanning for banned patterns
 

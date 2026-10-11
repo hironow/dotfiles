@@ -1,8 +1,8 @@
 # .github/workflows/quality-gate.yaml
 # Required check before merge. Mirrors `just check` so local == CI, and adds a
 # tofu drift check (see docs/agents/iac-drift-policy.md).
-# Draft PRs run no jobs (docs/agents/draft-ci.md); marking the PR ready starts
-# them. Actions are pinned to full commit SHAs.
+# Draft PRs run no jobs; marking the PR ready starts them.
+# Actions are pinned to full commit SHAs.
 
 name: quality-gate
 

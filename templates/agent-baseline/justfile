@@ -28,10 +28,13 @@ fmt:
     uv run --locked --only-group lint ruff format .
 
 # List the e2e test files: test files whose path contains `e2e` (a directory
-# such as tests/e2e/, or a file such as test_checkout_e2e.py). The Semgrep
-# fixtures in .semgrep/tests/ are not tests.
+# such as tests/e2e/, or a file such as test_checkout_e2e.py), tracked or not
+# (ignored files excluded). The Semgrep fixtures in .semgrep/tests/ are not tests.
 e2e-tests:
-    @git ls-files -- '*e2e*.py' ':(exclude).semgrep/**' | grep -E '(^|/)(test_[^/]*|[^/]*_test)\.py$' || true
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files="$(git ls-files --cached --others --exclude-standard -- '*e2e*.py' ':(exclude).semgrep/**')"
+    printf '%s\n' "$files" | grep -E '(^|/)(test_[^/]*|[^/]*_test)\.py$' | sort -u || true
 
 # Run the e2e tests (real dependencies only; no mocks)
 test-e2e:

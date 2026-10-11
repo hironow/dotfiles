@@ -88,8 +88,9 @@ semgrep-test:
 # Check the agent-baseline scaffold in a throwaway repo (called by semgrep-test,
 # so CI runs it): its Semgrep rules pass their own fixtures; a normal scan finds
 # the e2e mock in every path that contains `e2e` and nowhere else; `just semgrep`
-# fails on a finding; `just e2e-tests` lists only e2e test files. `--test` alone
-# cannot show the scope: it ignores a rule's `paths`.
+# fails on a finding and passes without one; `just e2e-tests` lists e2e test
+# files, untracked ones too; `just test-e2e` runs them and fails when one fails.
+# `semgrep --test` alone cannot show the scope: it ignores a rule's `paths`.
 [group('Validation')]
 agent-baseline-test:
     #!/usr/bin/env bash
@@ -100,10 +101,13 @@ agent-baseline-test:
     trap 'rm -rf "$tmp"' EXIT
     cp -R "$src/." "$tmp/"
     mkdir -p "$tmp/bin" "$tmp/tests/e2e" "$tmp/tests/unit" "$tmp/pkg"
+    # The scaffold calls `semgrep` and `uv run pytest`; run both through uvx.
     printf '#!/usr/bin/env bash\nexec uvx semgrep "$@"\n' > "$tmp/bin/semgrep"
-    chmod +x "$tmp/bin/semgrep"
+    printf '#!/usr/bin/env bash\n[ "$1 $2" = "run pytest" ] || exit 64\nshift 2\nexec uvx pytest -p no:cacheprovider "$@"\n' > "$tmp/bin/uv"
+    chmod +x "$tmp/bin/semgrep" "$tmp/bin/uv"
     export PATH="$tmp/bin:$PATH"
     cd "$tmp"
+    fail() { printf 'agent-baseline: %s\n' "$*" >&2; exit 1; }
     bad='from unittest.mock import MagicMock\n\n\ndef test_x() -> None:\n    assert MagicMock() is not None\n'
     printf "$bad" > tests/e2e/test_old_layout.py
     printf "$bad" > pkg/test_checkout_e2e.py
@@ -114,20 +118,22 @@ agent-baseline-test:
     want="$(printf '%s\n' pkg/test_checkout_e2e.py tests/e2e/test_old_layout.py)"
     got="$(semgrep scan --config .semgrep/rules/ --json --quiet --metrics=off . \
       | python3 -c 'import json,sys; print("\n".join(sorted({r["path"] for r in json.load(sys.stdin)["results"]})))')"
-    if [ "$got" != "$want" ]; then
-      printf 'agent-baseline: e2e rule scope is wrong\nwant:\n%s\ngot:\n%s\n' "$want" "$got" >&2
-      exit 1
-    fi
-    if just semgrep >/dev/null 2>&1; then
-      echo "agent-baseline: just semgrep passed despite a finding" >&2
-      exit 1
-    fi
-    got="$(just e2e-tests | sort)"
-    if [ "$got" != "$want" ]; then
-      printf 'agent-baseline: e2e-tests picked the wrong files\nwant:\n%s\ngot:\n%s\n' "$want" "$got" >&2
-      exit 1
-    fi
-    echo "✅ agent-baseline: rules, e2e scope, semgrep gate, and e2e selection OK"
+    [ "$got" = "$want" ] || fail "e2e rule scope is wrong; want: $want; got: $got"
+    if just semgrep >/dev/null 2>&1; then fail "just semgrep passed despite a finding"; fi
+    # Replace the mocks with real-looking tests: the gate must pass again.
+    ok='def test_x() -> None:\n    assert 1 + 1 == 2\n'
+    printf "$ok" > tests/e2e/test_old_layout.py
+    printf "$ok" > pkg/test_checkout_e2e.py
+    just semgrep >/dev/null 2>&1 || fail "just semgrep failed without a finding"
+    # An untracked e2e test is listed, and its failure fails test-e2e.
+    printf 'def test_new() -> None:\n    assert False\n' > tests/e2e/test_new_untracked.py
+    want="$(printf '%s\n' pkg/test_checkout_e2e.py tests/e2e/test_new_untracked.py tests/e2e/test_old_layout.py)"
+    got="$(just e2e-tests)"
+    [ "$got" = "$want" ] || fail "e2e-tests picked the wrong files; want: $want; got: $got"
+    if just test-e2e >/dev/null 2>&1; then fail "test-e2e passed although an e2e test failed"; fi
+    rm tests/e2e/test_new_untracked.py
+    just test-e2e >/dev/null 2>&1 || fail "test-e2e failed although every e2e test passes"
+    echo "✅ agent-baseline: rules, e2e scope, semgrep gate, e2e selection, and test-e2e OK"
 
 # Full validation of rule files
 [group('Validation')]
