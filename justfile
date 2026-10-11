@@ -907,7 +907,7 @@ check-pr-body file:
 
 # Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
-ci: check lint-claude test-unit semgrep-test portless-doc-check test-iac instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch check-forbidden-tokens-tree
+ci: check lint-claude test-unit semgrep-test test-iac instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch check-forbidden-tokens-tree
     @echo "✅ ci (fast gate) passed"
 
 # Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
@@ -1937,69 +1937,3 @@ tel-check:
 [group('Telemetry')]
 tel-logs svc='':
     cd telemetry && docker compose logs -f {{svc}}
-
-# ------------------------------
-# portless (vercel-labs/portless) — stable .localhost URLs for local HTTP UIs
-# Static aliases live in config/portless-aliases.yaml; only HTTP(S) UIs (no TCP).
-# ------------------------------
-
-# Emit "name port" pairs parsed from config/portless-aliases.yaml
-[private]
-_portless-pairs:
-    @awk '/^aliases:/{b=1;next} b&&/^[^[:space:]#]/{b=0} b&&/^[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*[0-9]+/{l=$0;sub(/#.*/,"",l);gsub(/[[:space:]]/,"",l);n=index(l,":");print substr(l,1,n-1), substr(l,n+1)}' config/portless-aliases.yaml
-
-# Start portless proxy and register all aliases from config/portless-aliases.yaml
-[group('Portless')]
-portless-up:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v portless >/dev/null 2>&1 || { echo '❌ portless not found. Install: npm i -g portless (or: mise use -g npm:portless)'; exit 127; }
-    echo '▶ starting portless proxy...'
-    portless proxy start || true
-    echo '▶ registering aliases...'
-    just _portless-pairs | while read -r name port; do
-      [ -z "$name" ] && continue
-      echo "  $name -> 127.0.0.1:$port"
-      portless alias "$name" "$port" --force
-    done
-    echo '✅ aliases registered. Inspect: just portless-ls'
-
-# Remove all configured aliases and stop the portless proxy
-[group('Portless')]
-portless-down:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v portless >/dev/null 2>&1 || { echo 'portless not found; nothing to do'; exit 0; }
-    just _portless-pairs | while read -r name port; do
-      [ -z "$name" ] && continue
-      portless alias --remove "$name" 2>/dev/null || true
-    done
-    portless proxy stop || true
-    echo '✅ aliases removed, proxy stopped.'
-
-# Trust the portless local CA (one-time, enables HTTPS without warnings)
-[group('Portless')]
-portless-trust:
-    portless trust
-
-# List active portless routes
-[group('Portless')]
-portless-ls:
-    portless list
-
-# Generate docs/portless-urls.md (service -> .localhost URL + suggested env var) from the alias config
-[group('Portless')]
-portless-doc:
-    @just _portless-pairs | scripts/generate-portless-doc.sh > docs/portless-urls.md
-    @echo "✅ wrote docs/portless-urls.md"
-
-# Verify docs/portless-urls.md is in sync with config/portless-aliases.yaml (CI guard)
-[group('Portless')]
-portless-doc-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if ! diff -u docs/portless-urls.md <(just _portless-pairs | scripts/generate-portless-doc.sh); then
-      echo '❌ docs/portless-urls.md is stale — run `just portless-doc`' >&2
-      exit 1
-    fi
-    echo '✅ docs/portless-urls.md is in sync'

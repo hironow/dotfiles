@@ -147,7 +147,7 @@ mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
 
 | コマンド | 内容 | Docker |
 | --- | --- | --- |
-| `just ci` | `just check`（Python、Go、shell、Markdown、JS/TS の lint、Pi 拡張のテスト、Go のテスト、Quint のモデル）、Claude 設定の検査、unit テスト、semgrep の規則テスト、IaC のテスト、portless の文書、指示量の予算、skill 宣言、emulator の lint、禁止トークン | 不要 |
+| `just ci` | `just check`（Python、Go、shell、Markdown、JS/TS の lint、Pi 拡張のテスト、Go のテスト、Quint のモデル）、Claude 設定の検査、unit テスト、semgrep の規則テスト、IaC のテスト、指示量の予算、skill 宣言、emulator の lint、禁止トークン | 不要 |
 | `just ci-all` | `ci` と Dev Container のサンドボックステストと `install.sh` の検証（単独では `just test-install`） | 要る |
 | `just ci-emu` | emulator 群の lint、起動、高速テスト、e2e | 要る |
 | `just check-all` | prek の hook と `ci-all`（push 前の最終ゲート） | 要る |
@@ -210,14 +210,12 @@ just emu-api                         # API emulator を 4100-4108 で前面に�
 
 重いサービスと amd64 のサービスを既定で起動しないのは、OrbStack の VM をメモリ上限内に収めるためである。
 
-HTTP の UI には、[portless](https://github.com/vercel-labs/portless) が `https://<name>.localhost` の固定 URL を与える（ADR 0015、別名は [`config/portless-aliases.yaml`](./config/portless-aliases.yaml)）。
+HTTP の UI には、[portless](https://github.com/vercel-labs/portless) が `https://<name>.localhost` の固定 URL を与える（ADR 0015）。
 postgres、bolt、gRPC などの TCP のプロトコルはルーティングできないので、ポートのまま使う。
-
-```shell
-just portless-trust   # 初回だけ: portless の CA を信頼する
-just portless-up      # proxy を起動して別名を登録する（firebase.localhost、grafana.localhost など）
-just portless-ls      # 有効な経路の一覧（片付けは just portless-down）
-```
+`portless` は just を通さず直接使う。
+初回は `portless trust` で CA を信頼し、`portless proxy start` のあとで別名を `portless alias <name> <port> --force` で登録する。
+登録する別名の一覧は [`docs/portless-urls.md`](./docs/portless-urls.md) にある。
+経路は `portless list` で確かめる。
 
 別名を登録しても、裏のスタックは起動しない。
 `https://*.localhost` が応答するのは、`just emu-up`、`just tel-up`、`just emu-api` のあとである。

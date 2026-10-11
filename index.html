@@ -233,7 +233,7 @@
       </div>
 
       <!-- local-dev -->
-      <p class="ln ps" id="local"><span class="u">hironow</span><span class="at">@</span><span class="h">mac</span> <span class="p">~/dotfiles</span> <span class="g">❯</span> <span class="cmd">just emu-start <span class="fl">&amp;&amp;</span> just tel-up <span class="fl">&amp;&amp;</span> just portless-up</span></p>
+      <p class="ln ps" id="local"><span class="u">hironow</span><span class="at">@</span><span class="h">mac</span> <span class="p">~/dotfiles</span> <span class="g">❯</span> <span class="cmd">just emu-start <span class="fl">&amp;&amp;</span> just tel-up <span class="fl">&amp;&amp;</span> portless proxy start</span></p>
       <div class="out">
         <table>
           <thead><tr><th scope="col">stack</th><th scope="col" class="hide-narrow">services</th><th scope="col">what comes up</th></tr></thead>
@@ -283,7 +283,7 @@
             <tr><td class="k">restore-skills-lock</td><td>install every declared skill into the store, then link the homes</td></tr>
             <tr><td class="k">ci</td><td>the fast gate: format, lint, semgrep self-tests, unit tests, IaC <span class="mut">(no docker)</span></td></tr>
             <tr><td class="k">test</td><td>the dev container sandbox suite <span class="mut">(tracked files only, nothing mounted)</span></td></tr>
-            <tr><td class="k">emu-start, tel-up, portless-up</td><td>bring the local stacks up; <span class="k">emu-stop</span>, <span class="k">tel-down</span> take them down</td></tr>
+            <tr><td class="k">emu-start, tel-up</td><td>bring the local stacks up; <span class="k">emu-stop</span>, <span class="k">tel-down</span> take them down</td></tr>
           </tbody>
         </table>
       </div>
