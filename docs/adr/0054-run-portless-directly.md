@@ -29,7 +29,7 @@ ADR-0015 は portless を採用し、別名を `config/portless-aliases.yaml` �
 `portless-up` と `portless-down` は YAML を読んで `portless alias` を繰り返す。
 portless には、ファイルから別名をまとめて登録する機能はない。
 
-2026-10-11、所有者は portless の recipe を6つとも消し、使う箇所では `portless` を直接使うと決めた。
+2026-10-11、所有者は portless の recipe を6つとも消し、使う箇所では `portless` を直接使うよう指示した。この記録は、その指示を決定として裁定してもらうためのものである。
 
 ## Decision
 

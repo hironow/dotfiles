@@ -107,8 +107,8 @@ def test_url_scheme_is_not_a_windows_drive(tmp_path: Path, line: str) -> None:
 @pytest.mark.parametrize(
     "line",
     [
-        "see C:/Users/nobody/.claude/docs/agents/testing.md\n",
-        "see [x](D:\\Users\\nobody\\.claude/docs/agents/testing.md)\n",
+        "see C:/agent-home/.claude/docs/agents/testing.md\n",
+        "see [x](D:\\agent-home\\.claude/docs/agents/testing.md)\n",
     ],
 )
 def test_windows_drive_after_punctuation_is_still_checked(

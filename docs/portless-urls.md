@@ -42,8 +42,9 @@ portless alias resend 4108 --force
 ```
 
 Then start the stack behind the aliases (`just tel-up`, `just emu-start`, or
-`just emu-api`). Check the routes with `portless list`, or print one URL with
-`portless get <name>`. In an app, read the URL from an env var named after the
+`just emu-api`). Check the routes with `portless list`, or print one alias URL with
+`portless get <name> --no-worktree` (without the flag, a git worktree adds a
+branch prefix to the name). In an app, read the URL from an env var named after the
 alias, for example `FIREBASE_URL=https://firebase.localhost`.
 
 When a port changes, change its line here. The emulate ports are the base port
