@@ -36,10 +36,10 @@ maps as:
 | 4103 | apple     | | 4108 | resend |
 | 4104 | microsoft | |      |        |
 
-These ports are pre-registered in
-[`../../config/portless-aliases.yaml`](../../config/portless-aliases.yaml) — run
-`just portless-up` to expose them as `https://<service>.localhost`. If you change
-the `services=` set/order, update those alias ports to match.
+To reach them as `https://<service>.localhost`, register them with
+`portless alias <service> <port> --force`; the full list is in
+[`../../docs/portless-urls.md`](../../docs/portless-urls.md). If you change
+the `services=` set or order, update those alias ports to match.
 
 ## Config
 

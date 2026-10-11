@@ -1,12 +1,14 @@
 # .github/workflows/quality-gate.yaml
 # Required check before merge. Mirrors `just check` so local == CI, and adds a
 # tofu drift check (see docs/agents/iac-drift-policy.md).
-# Note: GitHub Actions accepts .yaml, so this respects the .yaml-only rule.
+# Draft PRs run no jobs; marking the PR ready starts them.
+# Actions are pinned to full commit SHAs.
 
 name: quality-gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -15,17 +17,16 @@ permissions:
 
 jobs:
   gate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install uv
-        # setup-uv stopped publishing @vN major tags from v8 (supply-chain
-        # hardening); pin the full immutable tag instead of a floating major.
-        uses: astral-sh/setup-uv@v8.2.0
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
 
       - name: Install just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
 
       - name: Install Semgrep
         run: uv tool install semgrep
@@ -38,20 +39,35 @@ jobs:
         run: just check
 
   iac-drift:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('tofu/**') != '' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # hashFiles() is not available in a job-level `if`, so check for tofu/
+      # here and skip the IaC steps when the repo has none.
+      - name: Find tofu/
+        id: tofu
+        run: |
+          if [ -d tofu ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "no tofu/ directory: nothing to check"
+          fi
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v2
+        if: steps.tofu.outputs.present == 'true'
+        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
 
       - name: tofu init
+        if: steps.tofu.outputs.present == 'true'
         working-directory: tofu
         run: tofu init -backend=false
 
       # -detailed-exitcode: 0 = no changes, 2 = drift, 1 = error.
       # A non-empty plan on a PR means live infra and the repo disagree.
       - name: tofu plan (fail on drift)
+        if: steps.tofu.outputs.present == 'true'
         working-directory: tofu
         run: tofu plan -detailed-exitcode -lock=false

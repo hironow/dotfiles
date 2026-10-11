@@ -1,0 +1,8 @@
+# Semgrep ignores tests/ by default when this file is missing, which hides the
+# e2e mock rule. This file replaces that default list: keep tests in scope.
+.semgrep/tests/
+.git/
+.venv/
+node_modules/
+dist/
+build/

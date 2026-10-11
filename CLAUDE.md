@@ -44,7 +44,7 @@ just sync-agents-preview …  # dry-run
 | recipe | 内容 |
 |---|---|
 | `just` / `just help` | recipe 一覧 |
-| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `portless-doc-check` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) + `check-forbidden-tokens-branch`。`check` 自体に Go / JS・TS / Pi 拡張 / Quint の leg も入る |
+| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) + `check-forbidden-tokens-branch`。`check` 自体に Go / JS・TS / Pi 拡張 / Quint の leg も入る |
 | `just lint-claude` | 公式 `claude plugin validate --strict` (claude CLI 不在時は skip) + stdlib の effective-settings 検証 (ADR 0037/0041)。サードパーティ claudelint は**退役済み** (ADR 0041、trust 判断)。CI gate は `Claude Config Lint` workflow が pinned `bunx @anthropic-ai/claude-code` で公式 validate を回す (CI は `just ci` 非実行) |
 | `just ci-all` | `ci` + `test` + `test-install` (Docker サンドボックス込み) |
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |
@@ -98,10 +98,10 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
       `down` も profile-gate するため、無指定だと lite しか落とせず profiled heavy が残る。
 - **telemetry** (`telemetry/compose.yaml`): `just tel-up` (otel-collector :4317 →
   Tempo/Grafana) / `tel-down`。`shared-otel-net` を emulator と共有。
-- **portless** (`config/portless-aliases.yaml`): `just portless-up` で HTTP UI を
-  `https://<name>.localhost` に。**HTTP(S) UI のみ** — Pub/Sub(9399) / Firestore(8080) /
-  OTLP gRPC(4317) 等の wire protocol は不可で `localhost:PORT` のまま。`just portless-doc`
-  が `docs/portless-urls.md` を生成 (`portless-doc-check` が drift を ci で防ぐ)。
+- **portless**: just の recipe は無い。`portless` を直接使い、別名は `docs/portless-urls.md` の
+  `portless alias <name> <port> --force` 一覧で登録して HTTP UI を `https://<name>.localhost` に。
+  **HTTP(S) UI のみ** — Pub/Sub(9399) / Firestore(8080) / OTLP gRPC(4317) 等の wire protocol は
+  不可で `localhost:PORT` のまま。port や `just emu-api` の service 順を変えたら、その一覧も直す。
 - **emu-api** (`just emu-api`): vercel-labs/emulate を host npx で (4100-4108)。`emu-api-stop`。
 - OrbStack VM は **16 GiB / 4 vCPU** 推奨 (`orb config set memory_mib 16384` / `cpu 4`、
   要再起動)。10 GiB だとフルスタック + 外部 repo の二重起動で guest OOM。
