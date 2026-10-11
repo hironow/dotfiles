@@ -70,7 +70,10 @@ def test_main_without_max_only_reports(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "doc",
-    ["ROOT_AGENTS.md", "templates/agent-baseline/README-agents-setup.md"],
+    [
+        "scripts/instruction_budget.py",
+        "templates/agent-baseline/README-agents-setup.md",
+    ],
 )
 def test_adherence_claim_is_marked_as_heuristic(doc: str) -> None:
     """The ~150-200-instruction figure has no citation; it must present
