@@ -66,8 +66,8 @@ updates:
       include: "scope"
     ignore:
       # ruff and ty are pinned == in three places (root and emulator lint
-      # groups, mise) and bumped together by `just bump-tool`; a one-place
-      # Dependabot bump only turns tests/unit/test_ruff_ty_pins.py red.
+      # groups, mise) and bumped together by `just bump-tool`, so a one-place
+      # Dependabot bump would leave them apart.
       - dependency-name: "ruff"
       - dependency-name: "ty"
 

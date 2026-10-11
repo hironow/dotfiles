@@ -63,24 +63,19 @@ dev = [
 # ruff + ty only: `uv run --frozen --only-group lint ruff` (just fmt/lint/check,
 # format-after-edit). ty uses `--group lint` so it still sees project imports.
 lint = [
-    # lock pin; tests/unit/test_ruff_ty_pins.py keeps this equal across projects
+    # lock pin; `just bump-tool` moves it together with emulator and mise
     "ruff==0.16.9",
     # pre-1.0: pinned exactly, bumped deliberately (ADR 0044)
     "ty==0.0.84",
 ]
 
 [tool.uv]
-# Same supply-chain settings as every uv project here (emulator/pyproject.toml
-# has the full rationale): 7-day release quarantine, resolution through the
-# malware-scanning flatt PyPI mirror (ADR 0028). ruff/ty = false so an exact
+# Same supply-chain setting as every uv project here (emulator/pyproject.toml
+# has the full rationale): a 7-day release quarantine. ruff/ty = false so an exact
 # pin can move without waiting out the window (docs/agents/python-tooling.md).
 exclude-newer = "7 days"
 exclude-newer-package = { ruff = false, ty = false }
 
-[[tool.uv.index]]
-name = "flatt"
-url = "https://pypi.flatt.tech/simple/"
-default = true
 
 # ty (ADR 0044): the root tooling in scripts/ and its tests. extra-paths lets
 # the tests' bare `from sync_agents import ...` resolve against scripts/.
@@ -93,11 +88,3 @@ extra-paths = ["scripts"]
 
 [tool.ty.terminal]
 error-on-warning = true
-
-[[tool.uv.index]]
-name = "pypi"
-url = "https://pypi.org/simple/"
-explicit = true
-
-[tool.uv.sources]
-ty = { index = "pypi" }

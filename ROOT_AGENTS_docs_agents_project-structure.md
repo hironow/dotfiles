@@ -1,10 +1,11 @@
-# Project Structure
+# Project structure
 
-Read this when creating directories/files or when unsure where something goes.
+Read this when you create directories or files, or when you are not sure where
+something goes.
 
-Standard directories exist **once**, at the repository root. They must not be
-duplicated in subdirectories. External dependencies (submodules, cloned repos)
-are exempt.
+Each standard directory exists **once**, at the repository root. Do not
+duplicate it in a subdirectory. External dependencies (submodules, cloned
+repos) are exempt.
 
 ## Root directories
 
@@ -15,7 +16,7 @@ are exempt.
 | `output/`       | generated artifacts and build outputs                         |
 | `examples/`     | usage examples and sample code                                |
 | `scripts/`      | development and utility scripts                               |
-| `tests/`        | all test code (unit, integration, e2e, scenario)              |
+| `fake/`         | in-memory fakes of external services, one per driven port (docs/agents/core-shell-ports.md) |
 | `docker/`       | *(optional)* Dockerfiles — only when there are ≥2 (see below) |
 | `.semgrep/`     | *(optional)* project-specific Semgrep rules                   |
 
@@ -29,61 +30,22 @@ are exempt.
 
 ## Docker layout
 
-- **One** Dockerfile → keep it at the repo root as `Dockerfile`.
-- **Two or more** → create `docker/` at the root and put all inside
+- **One** Dockerfile: keep it at the repo root as `Dockerfile`.
+- **Two or more**: create `docker/` at the root and put them all there
   (`docker/api.Dockerfile`, `docker/worker.Dockerfile`, …).
-- `compose.yaml` stays at the root regardless, referencing `docker/*.Dockerfile`
-  via `build.dockerfile`.
-
-```
-# single-service           # multi-service
-Dockerfile                  docker/
-compose.yaml                  api.Dockerfile
-                              worker.Dockerfile
-                              migration.Dockerfile
-                            compose.yaml
-```
+- `compose.yaml` always stays at the root. It points to `docker/*.Dockerfile`
+  with `build.dockerfile`.
 
 ## docs/ subdirectories
 
 - `docs/adr/` — Architecture Decision Records (see docs/agents/docs-discipline.md).
 
-## tests/ subdirectories
-
-`tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/runn/` (scenario
-`*.yaml`), `tests/utils/` (only importable test location). See
-docs/agents/testing.md.
-
 ## scripts/ rules
 
-- Shebang `#!/usr/bin/env bash` for portability.
-- Scripts must be idempotent.
+- Keep `#!/usr/bin/env bash` as the shebang of Bash scripts, for portability.
+  Write a new executable tool in Go (Rust when Go does not fit), not in shell
+  (docs/agents/go-tooling.md).
+- Make scripts idempotent: running a script twice has the same effect as
+  running it once.
 - Process arguments early.
 - Prefer defining common tasks in the `justfile` over standalone scripts.
-- Optimize for: standardization & error prevention, developer experience,
-  idempotency, and clear guidance for the next action.
-
-## experiments/ layout
-
-```
-experiments/README.md                              # overview + index table
-experiments/YYYY-MM-DD_{name}.md                   # experiment plan
-experiments/run_{name}_benchmark.sh                # benchmark script
-experiments/test_{name}.py                         # experiment test
-```
-
-Experiment doc header: Date, Objective, Status (🟢 Complete / 🟡 In Progress /
-⚪ Not Started). Body: Background, Hypothesis, Experiment Design, Expected
-Results, Results, Conclusion.
-
-Generated output naming (required: experiment-variable id; recommended:
-resolution, step count, guidance scale, other params):
-
-```
-preprocessed/{experiment_note_name}/{resolution}/
-output/{experiment_note_name}/sage_attention_720p_steps20_cfg5.0.mp4
-```
-
-Keep the `experiments/README.md` index updated; summary results there are
-reference-only — always check the full note. Organize by status: Complete /
-In Progress / Planned.

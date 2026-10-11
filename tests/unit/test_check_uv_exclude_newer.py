@@ -226,7 +226,7 @@ def test_boolean_false_does_not_hide_a_sibling_expired_cutoff() -> None:
 
 
 def test_justfile_passes_every_uv_project_to_the_gate() -> None:
-    """The project list is hardcoded in the justfile (like check_uv_flatt_index.sh);
+    """The project list is hardcoded in the justfile;
     a fourth uv project must not slip past both."""
     import re
     import subprocess

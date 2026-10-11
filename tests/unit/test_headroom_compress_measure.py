@@ -1,6 +1,6 @@
 """The compression payloads must be deterministic to the byte.
 
-The spoke publishes a ratio per payload. A ratio is only comparable across
+The runbook publishes a ratio per payload. A ratio is only comparable across
 headroom versions if the input is identical, so these tests pin the payloads by
 hash: changing one is allowed, but it has to be a deliberate edit here too, and
 the published table has to be re-measured when it happens.
@@ -30,7 +30,7 @@ from headroom_compress_measure import (
 #
 # These are not arbitrary: headroom's own answer carries a `hash` field that is
 # this sha256 truncated to 24 hex characters, which is how the table published
-# in the spoke was confirmed to have been measured over exactly these bytes.
+# in the runbook was confirmed to have been measured over exactly these bytes.
 EXPECTED: dict[str, tuple[int, str]] = {
     "700 log lines": (
         71289,
@@ -94,7 +94,7 @@ def test_format_table_marks_a_missing_row_instead_of_dropping_it() -> None:
 
 
 def test_format_table_calls_an_unchanged_payload_unchanged() -> None:
-    """Ratio 1.000 reads as `unchanged`, which is what the spoke publishes."""
+    """Ratio 1.000 reads as `unchanged`, which is what the runbook publishes."""
     table = format_table(
         [Measurement("prose", 500, 500)], version="headroom, version 0.0.0"
     )

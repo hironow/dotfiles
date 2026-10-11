@@ -1325,7 +1325,7 @@ def test_hub_and_spoke_claude_gets_overlay_base_spokes_hooks(docker_image):
     cd /root/dotfiles && just sync-agents p
 
     grep -q '^@AGENTS.md' /root/.claude/CLAUDE.md && echo "overlay-imports-base"
-    grep -q 'Non-negotiables' /root/.claude/AGENTS.md && echo "base-is-agents-md"
+    grep -q '^# AGENTS.md$' /root/.claude/AGENTS.md && echo "base-is-agents-md"
     [ -f /root/.claude/docs/agents/python-tooling.md ] && echo "spoke-present"
     [ -x /root/.claude/hooks/block-prohibited-commands.sh ] && echo "hook-executable"
     grep -q '/root/.claude/docs/agents/python-tooling.md' /root/.claude/AGENTS.md && echo "spoke-ref-absolute"
@@ -1352,8 +1352,8 @@ def test_hub_and_spoke_codex_gets_codex_hooks_gemini_base_only(docker_image):
     set -euo pipefail
     cd /root/dotfiles && just sync-agents x g
 
-    grep -q 'Non-negotiables' /root/.codex/AGENTS.md && echo "codex-base"
-    grep -q 'Non-negotiables' /root/.gemini/GEMINI.md && echo "gemini-base"
+    grep -q '^# AGENTS.md$' /root/.codex/AGENTS.md && echo "codex-base"
+    grep -q '^# AGENTS.md$' /root/.gemini/GEMINI.md && echo "gemini-base"
     [ -f /root/.codex/docs/agents/testing.md ] && echo "codex-spoke"
     grep -q '/root/.codex/docs/agents/testing.md' /root/.codex/AGENTS.md && echo "codex-spoke-ref-absolute"
     [ -x /root/.codex/hooks/guard-codex.sh ] && echo "codex-guard-adapter"

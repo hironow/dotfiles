@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Move a ruff or ty pin in every declaration at once (`just bump-tool <tool> <ver>`).
 
-ruff and ty are pinned exactly in three places that must agree
-(tests/unit/test_ruff_ty_pins.py): the root and emulator lint groups
+ruff and ty are pinned exactly in three places that are kept together:
+the root and emulator lint groups
 (`"<tool>==<ver>"`), and the shared mise config (`<tool> = "<ver>"`). The
 justfile gate is `uv run --frozen --only-group lint ruff` (no uvx pin).
 Dependabot ignores both tools, so this script is the one path a pin moves
@@ -132,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
         "\nnext: hironow/skills pins the same tools in its own lint group --\n"
         f"  (cd <skills clone> && uv add --group lint '{args.tool}=={args.version}'"
         " && just check)\n"
-        "then: just check   # tests/unit/test_ruff_ty_pins.py must be green"
+        "then: just check"
     )
     return 0
 

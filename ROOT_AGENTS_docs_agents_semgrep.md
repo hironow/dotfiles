@@ -1,31 +1,31 @@
-# Semgrep Rules (`.semgrep/`)
+# Semgrep rules (`.semgrep/`)
 
-Read this when adding or maintaining a project-specific static-analysis rule.
-Start light at project inception; grow rules as patterns stabilize.
+Read this when you add or maintain a static-analysis rule for one project.
+Start with few rules when the project starts; add rules as patterns settle.
 
-## Philosophy
+## Why rules exist
 
-- Rules codify the team's *unwritten* rules — what reviewers catch repeatedly.
-- Write a rule the **second** time you catch the same issue in review (once is a
-  coincidence, twice is a pattern).
-- Density grows toward mid-lifecycle, once architectural patterns settle.
+- Rules turn the team's *unwritten* rules into checks: the things reviewers
+  catch again and again.
+- Write a rule the **second** time you catch the same issue in review. Once is
+  a coincidence; twice is a pattern.
+- The number of rules grows toward the middle of the project's life, once the
+  architecture settles.
 
 ## Directory structure
 
-```
-.semgrep/rules/{category}/{rule-id}.yaml
-.semgrep/tests/{category}/{rule-id}.{py|go|ts|…}
-.semgrep/README.md          # ruleset overview + how to add a rule
-```
+Put each rule in `.semgrep/rules/{category}/{rule-id}.yaml` and its test in
+`.semgrep/tests/{category}/{rule-id}.{py|go|ts|…}`. `.semgrep/README.md` gives
+the ruleset overview and how to add a rule.
 
 ## Rule file convention
 
-- One rule per file; filename matches the rule id.
-- `.yaml` extension (never `.yml`).
+- One rule per file; the filename matches the rule id.
+- Use the `.yaml` extension (never `.yml`).
 - Rule id: `{project-prefix}-{category}-{short-name}`
-  (e.g. `paintress-concurrency-unguarded-goroutine`).
-- Every rule has a test file with at least one positive (matching) and one
-  negative (non-matching) example.
+  (for example `paintress-concurrency-unguarded-goroutine`).
+- Every rule has a test file with at least one example that matches and one
+  that does not.
 
 ## Rule template
 
@@ -47,22 +47,22 @@ rules:
       adr: docs/adr/NNNN-goroutine-context.md
 ```
 
-## Execution
+## Running the rules
 
 - `just semgrep` runs `semgrep --config .semgrep/rules/ --error`.
-- Wire semgrep into CI as a required check before merge (see the quality-gate
-  workflow).
-- Pre-commit runs semgrep alongside ruff + ty.
+- Make semgrep a required CI check before merge (see
+  `.github/workflows/quality-gate.yaml` from the agent baseline).
+- Pre-commit runs semgrep together with ruff and ty.
 
 ## When to add a rule
 
-- The same review comment has been made twice or more.
-- An ADR decision needs mechanical enforcement (e.g. "always Cloud SQL
+- Reviewers made the same comment twice or more.
+- An ADR decision needs a mechanical check (for example "always Cloud SQL
   PostgreSQL, never Spanner").
-- A production incident's root cause is expressible as a code pattern.
+- You can express the root cause of a production incident as a code pattern.
 
 ## When *not* to add a rule
 
-- A type checker would catch it — let ty do its job.
+- A type checker would catch it: let ty do its job.
 - ruff already has a built-in rule for it.
-- It would fire false positives frequently — tune or drop it.
+- It would often fire false positives: tune it or drop it.
