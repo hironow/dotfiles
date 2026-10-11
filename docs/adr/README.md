@@ -53,7 +53,7 @@ and what outlived it.
 | 0025 | [Wrap mise-managed tools at every justfile call site (補強 of ADR 0023)](./0025-justfile-mise-tool-wrap.md) | Accepted | 2026-06-02 | `justfile` |
 | 0026 | [Antigravity CLI: instruction 層のみ共有、skills/settings/mcp は agy 委譲](./0026-antigravity-cli-instruction-layer.md) | Accepted | 2026-06-10 | `~/.gemini/GEMINI.md`, `scripts/sync_agents.py` |
 | 0027 | [Bun-only Node policy: retire the per-repo pnpm carve-out](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | Accepted; partial supersede by [0037](./0037-layered-claude-settings-fragments.md) (permissions distribution) | 2026-06-14 | `.claude/` hooks, `ROOT_AGENTS*` |
-| 0028 | [Standardize on the Flatt Security PyPI mirror as the default uv index](./0028-flatt-pypi-mirror-default-index.md) | Accepted | 2026-06-19 | `*/pyproject.toml`, `*/uv.lock` |
+| 0028 | [Standardize on the Flatt Security PyPI mirror as the default uv index](./0028-flatt-pypi-mirror-default-index.md) | Superseded by [0054](0054-use-official-package-registries.md) | 2026-06-19 | `*/pyproject.toml`, `*/uv.lock` |
 | 0029 | [Gate the distributed Claude config with claudelint + official plugin validate](./0029-claude-config-lint-gate.md) | Accepted; partial supersede by [0041](./0041-retire-third-party-claudelint.md) (claudelint retired) | 2026-06-22 | `justfile`, `.github/workflows/claude-lint.yaml` |
 | 0030 | [Per-host dump layout (`dump/<host>/`)](./0030-per-host-dump-layout.md) | Accepted | 2026-07-01 | `justfile`, `scripts/dump_host.sh`, `dump/<host>/`, `install.sh` |
 | 0031 | [Disable mise `node.corepack` on Windows (`just deploy` `$PROFILE` carve-out)](./0031-disable-mise-corepack-on-windows.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `config/mise/config.toml` |
@@ -76,6 +76,7 @@ and what outlived it.
 | 0049 | [headroom is mandatory base tooling: MCP in every home, the j-cc proxy as its canary, telemetry off](./0049-headroom-mandatory-base-tooling.md) | Accepted | 2026-10-01 | `config/mise/config.toml`, `scripts/headroom_mcp.py`, `scripts/jev_headroom.py`, `scripts/ai_tools_check.py`, `scripts/harden_env.sh`, `.claude/settings.shared.json`, `ROOT_AGENTS_docs_agents_headroom.md` |
 | 0050 | [Pin Go sources to LF via `.gitattributes` (go-lint on Windows)](./0050-pin-go-sources-to-lf.md) | Accepted | 2026-10-02 | `.gitattributes`, `tests/unit/test_gitattributes_eol.py` |
 | 0051 | [新しい決定記録をdecision queueで追跡する](./0051-adopt-decision-queue-for-new-records.md) | Accepted (PR #461) | 2026-10-06 | `docs/decision-queue.md`、今後のADR/PDR |
+| 0054 | [Flatt のミラーをやめ公式の取得元を使う](0054-use-official-package-registries.md) | Accepted | 2026-10-11 | uv projects、シェル設定、CI |
 
 ## Reading order for newcomers
 

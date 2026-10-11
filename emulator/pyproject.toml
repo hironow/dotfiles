@@ -33,9 +33,9 @@ dev = [
 # ruff + ty only: `uv run --frozen --only-group lint ruff` (emu-fmt / emu-lint).
 # ty uses `--group lint` so it still sees project imports.
 lint = [
-    # == the root lint-group pin; tests/unit/test_ruff_ty_pins.py keeps it equal.
-    "ruff==0.16.9",
-    "ty==0.0.84",
+    # the root lint-group pin; `just bump-tool` moves both together.
+    "ruff==0.16.10",
+    "ty==0.0.85",
 ]
 
 # ty (ADR 0044): type-check the emulator tooling; warnings fail `just emu-lint`.
@@ -105,21 +105,3 @@ exclude-newer = "7 days"
 # ruff/ty = false so an exact pin can move without waiting out the window
 # (docs/agents/python-tooling.md).
 exclude-newer-package = { ruff = false, ty = false }
-
-# ADR 0028: route resolution through the Flatt Security PyPI mirror (malware-
-# scanned). flatt becomes the default index, replacing the implicit pypi.org.
-# Public, no-auth endpoint -- no secret distribution. The invariant (enforced by
-# `just check-uv-flatt-index`) is the ABSENCE of raw pypi.org in the committed
-# lock. exclude-newer above is orthogonal and preserved (P7D stays in the lock).
-[[tool.uv.index]]
-name = "flatt"
-url = "https://pypi.flatt.tech/simple/"
-default = true
-
-[[tool.uv.index]]
-name = "pypi"
-url = "https://pypi.org/simple/"
-explicit = true
-
-[tool.uv.sources]
-ty = { index = "pypi" }

@@ -252,16 +252,8 @@ if _file_exists "$HOME/.vite-plus/env"; then
     . "$HOME/.vite-plus/env"
 fi
 
-# guard for Python package index
-# see: https://shisho.dev/docs/ja/r/202603-takumi-guard-pypi/
-
-# --- Security Hardening (Added by script) ---
-# Enforce Flatt Security's PyPI Proxy for pip
-export PIP_INDEX_URL="https://pypi.flatt.tech/simple/"
-
 # Use uv for python packages where possible
 alias pip='uv pip'
-# --- End Security ---
 
 # Added by dbt Fusion extension (ensure dbt binary dir on PATH)
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then

@@ -1,7 +1,7 @@
 # 0028. Standardize on the Flatt Security PyPI mirror as the default uv index
 
 **Date:** 2026-06-19
-**Status:** Accepted
+**Status:** Superseded by [0054](0054-use-official-package-registries.md)
 
 ## Context
 

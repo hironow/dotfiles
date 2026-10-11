@@ -30,12 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      # ADR 0028: assert every uv project routes through the flatt PyPI mirror
-      # and no committed lock falls back to raw pypi.org. Pure grep (no uv /
-      # network), so it runs before the uv install and fails fast.
-      - name: Check uv flatt index (ADR 0028)
-        run: bash scripts/check_uv_flatt_index.sh
-
       # CI は mise 非依存 (mise.toml はローカル開発用)。uv は公式
       # インストーラで導入。just は recipe-propagation テスト
       # (tests/unit/test_plugin_check_scope.py) が実行する — ubuntu の

@@ -17,3 +17,4 @@
 | ID | 何を決めた | 結論 | 作者 | 作者連絡先 | 決定者 | 決裁者連絡先 | 決定日 | 相談記録 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0051 | 新しい決定案を公開一覧で追跡する | A案 Accepted | Pi（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-06 | [PR #461の裁定](https://github.com/hironow/dotfiles/pull/461#issuecomment-6020609790) | 全端末の同名ローカルファイルなし・patrolは旧パスに書かないと所有者確認。過去49件は遡及変更しない | [adr/0051-adopt-decision-queue-for-new-records.md](adr/0051-adopt-decision-queue-for-new-records.md) |
+| ADR-0054 | Flatt のミラーをやめ公式の取得元を使う | Accepted | Codex | @hironow | Hiroto N. | @hironow | 2026-10-11 | [除去 PR](https://github.com/hironow/dotfiles/compare/main...fix/remove-flatt) | 所有者が除去・検証・squash merge を依頼 | [adr/0054-use-official-package-registries.md](adr/0054-use-official-package-registries.md) |
