@@ -53,30 +53,32 @@ each test or session. Write down how to set up the environment.
 
 ### Parameterize for coverage
 
-```python
-@pytest.mark.parametrize(
-    "input_data,expected_status,expected_result",
-    [
-        pytest.param(
-            {"valid": "data"}, 200, {"success": True}, id="valid-input-succeeds"
-        ),
-        pytest.param({}, 400, {"error": "missing fields"}, id="empty-input-fails"),
-        pytest.param(
-            {"invalid": "schema"},
-            422,
-            {"error": "validation"},
-            id="invalid-schema-fails",
-        ),
-    ],
-)
-def test_api_endpoint(input_data, expected_status, expected_result) -> None:
-    # given
-    client = create_real_client()
-    # when
-    response = client.post("/api/endpoint", json=input_data)
-    # then
-    assert response.status_code == expected_status
-    assert response.json() == expected_result
+Put the cases in a table and run each one as a named subtest:
+
+```go
+func TestCreateOrderEndpoint(t *testing.T) {
+	cases := []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{"valid input succeeds", `{"item":"book","quantity":1}`, http.StatusCreated},
+		{"empty input fails", `{}`, http.StatusBadRequest},
+		{"negative quantity fails", `{"item":"book","quantity":-1}`, http.StatusUnprocessableEntity},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// given
+			client := newRealClient(t)
+			// when
+			status := client.Post(t, "/orders", tc.body)
+			// then
+			if status != tc.wantStatus {
+				t.Fatalf("status = %d, want %d", status, tc.wantStatus)
+			}
+		})
+	}
+}
 ```
 
 ## TypeScript tests

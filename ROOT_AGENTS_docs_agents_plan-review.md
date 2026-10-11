@@ -1,4 +1,4 @@
-# Plan review (codex first, independent subagent fallback)
+# Plan review (Codex first, independent subagent fallback)
 
 Read this before you show the human a plan that changes behavior: code,
 config, dependencies, infrastructure, or the rules in these instructions. A
@@ -24,17 +24,17 @@ Ask for *actionable* findings: each one comes with a concrete fix or
 resolution, ordered by severity. Observations that cannot become a fix only
 make the list longer; they do not move the plan forward.
 
-## Primary path: codex
+## Primary path: Codex
 
 ```sh
-# Model selection is owned by ~/.codex/config.toml — never pin -m here
-# (a pinned model id rots when codex retires it and breaks every review).
+# ~/.codex/config.toml chooses the model. Never pin -m here: a pinned model id
+# stops working when Codex retires that model, and then every review fails.
 
-# First review of a new plan:
+# Review a new plan for the first time:
 codex exec --skip-git-repo-check \
   "このプランを批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})"
 
-# Reviewing an updated plan — keep prior context with `resume --last`:
+# Review an updated plan (`resume --last` keeps the earlier context):
 codex exec resume --skip-git-repo-check --last \
   "プランを更新したから批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})"
 ```
@@ -43,7 +43,7 @@ The reviewer model's knowledge can be out of date. To correct for that,
 collect current docs and URLs into a temp file and pass its path in the
 prompt.
 
-## Fallback: independent subagent (when codex is unavailable)
+## Fallback: independent subagent (when Codex is unavailable)
 
 Codex is unavailable when it hits a rate limit (for example "You've hit your
 usage limit…") or any hard error. Then review the plan in a **separate context
@@ -56,9 +56,9 @@ independence the review is for.
    plan.
 2. Put these in its prompt, word for word: the plan's full path, the
    AGENTS.md full path as the ruleset reference, the three lenses above, and
-   the same instruction you give codex ("actionable findings only, paired with
+   the same instruction you give Codex ("actionable findings only, paired with
    concrete fixes, ordered by severity").
-3. Treat its findings exactly like codex's: check each one (trust nothing)
+3. Treat its findings exactly like Codex's: check each one (trust nothing)
    before you act on it.
 
 ## After the review

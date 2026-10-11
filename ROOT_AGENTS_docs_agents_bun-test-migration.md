@@ -13,7 +13,7 @@ converted leaves (2026-08-31).
 ## The naive transform is wrong
 
 ```ts
-ok("名", 条件, 補足)  →  test("名", () => { expect(条件).toBe(true) })   // ✗
+ok("name", cond, note)  →  test("name", () => { expect(cond).toBe(true) })   // ✗
 ```
 
 Bun's own docs list `expect(users.length === 3).toBe(true)` under **Avoid**.
@@ -23,7 +23,7 @@ that carries the values:
 
 ```ts
 expect(xs.length).toBe(3)            // not expect(xs.length === 3).toBe(true)
-expect(() => f(bad)).toThrow("用途")  // not a try/catch + flag
+expect(() => f(bad)).toThrow("usage") // not a try/catch + flag
 expect(offenders).toEqual([])        // not expect(offenders.length === 0).toBe(true)
 ```
 
@@ -32,7 +32,7 @@ the failure prints exactly which items broke. The old `ok()` never did that.
 
 ## Loops and shared state
 
-- A `console.log("\n── 節 ──")` section header becomes a `describe`.
+- A `console.log("\n── section ──")` section header becomes a `describe`.
 - A `const` computed between `ok()` calls stays where it is, inside the
   `describe` body. Move it to `beforeAll` only if it is expensive or mutable.
 - **A loop over a small fixed table becomes `test.each`**: one named case per
@@ -44,10 +44,10 @@ the failure prints exactly which items broke. The old `ok()` never did that.
   an empty collection cannot pass silently:
 
 ```ts
-test("語を歩けている", () => { expect(WORDS.length).toBeGreaterThanOrEqual(30) })
-test("どの語にも両言語が在る", () => {
+test("walks enough words", () => { expect(WORDS.length).toBeGreaterThanOrEqual(30) })
+test("every word has both locales", () => {
   const missing = WORDS.flatMap(([p, w]) =>
-    LOCALES.filter((lo) => t(w, lo).trim() === "").map((lo) => `${p} の ${lo}`))
+    LOCALES.filter((lo) => t(w, lo).trim() === "").map((lo) => `${p} in ${lo}`))
   expect(missing).toEqual([])
 })
 ```
@@ -97,7 +97,8 @@ on which runner.** If you forget an entry, the old runner skips the leaf ("it
 imports `bun:test`") and the new runner never lists it ("not on the list"). The
 leaf then runs *nowhere*, and the suite still goes green. Derive the set from
 the files themselves (grep for the `bun:test` import) in one script that every
-consumer reads: the old runner, the new runner, and the type-config guard.
+consumer reads: the old runner, the new runner, and the type-config guard (see "Bun types need
+their own tsconfig").
 
 ## Bun types need their own tsconfig
 

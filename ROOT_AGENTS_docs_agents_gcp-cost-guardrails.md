@@ -79,8 +79,9 @@ the newest few, DELETE what is older than N days. Three policies, dry run off.
 
 ## Brakes on unattended compute
 
-Use a lease. One thing writes an expiry time. A separate thing stops the
-workload once the current time is past it.
+Use a lease. The lease writer records an
+expiry time. A separate component stops the workload once the current time
+passes that expiry.
 
 - **One writer.** If two things extend the same lease, it never expires.
 - **Compute the expiry from a formula, not a countdown.** Then a crash cannot
@@ -92,12 +93,15 @@ workload once the current time is past it.
   when IT fires: that means every earlier layer failed.
 - **A scheduler job is usually the only thing that turns something off.** When
   it fails, it fails silently. So audit its last attempt, and alert when a job
-  is paused. `just gcp-cost-audit <project> --location <region>` warns on both;
+  is paused. `just gcp-cost-audit <project> --location <region>` (a dotfiles recipe) warns on both;
   without `--location` that check never runs (see Auditing).
 - **Only a budget notices a drip nobody is looking at.** Set one, with alert
   thresholds, before the first expensive thing runs, not after.
 
 ## Auditing
+
+Run these from the dotfiles repo:
+
 
 ```sh
 just gcp-cost-audit <project>                                # sinks only

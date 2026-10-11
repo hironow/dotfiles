@@ -1,6 +1,7 @@
 # Documentation discipline
 
-Read this when you edit docs, write an ADR or PDR, or touch `intent.md`,
+Read this when you edit docs, write an ADR (architecture decision record)
+or PDR (product decision record), or touch `intent.md`,
 `handover.md`, `decision-queue.md`, `plan/`, or `research/`. AGENTS.md has the
 short version. Write every document in plain language
 (docs/agents/plain-language.md).
@@ -58,10 +59,10 @@ Template:
 **Status:** Proposed / Accepted / Deprecated / Superseded by [NNNN]
 
 ## Context
-{The problem and constraints at the time. What forces are at play?}
+{The problem, and the limits that applied when you decided.}
 
 ## Decision
-{What we are doing. State it clearly and concisely.}
+{What we decided, in one or two sentences.}
 
 ## Consequences
 ### Positive
@@ -69,7 +70,7 @@ Template:
 ### Negative
 - {Tradeoff}
 ### Neutral
-- {Implication that's neither clearly positive nor negative}
+- {An effect that is neither clearly good nor bad}
 ```
 
 Never change an ADR after it is accepted. To change a decision, write a

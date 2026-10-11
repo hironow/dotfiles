@@ -4,8 +4,8 @@ Read this when you add, bump, or triage a dependency (including a Dependabot
 PR).
 
 Rule of thumb: **prefer the newest version and the more secure choice.**
-Staying current is a security stance: the newest release has the fewest known
-CVEs and the most people looking at it upstream. But "newest" is safe only when
+Staying current is a security stance: the newest release has the fewest known CVEs
+(Common Vulnerabilities and Exposures) and the most people looking at it upstream. But "newest" is safe only when
 the package is well tested by wide use. So sort every dependency into one of
 two classes, and treat the classes in opposite ways.
 
@@ -32,7 +32,7 @@ position.
   code. Never pin back.
 - A **preview / RC / canary** major is opt-in and kept apart. Do not adopt it
   just because Dependabot proposed it. Once a repo has opted in, moving
-  *forward within that channel* (beta → RC → GA) is ordinary aggressive
+  *forward within that channel* (beta → release candidate (RC) → general availability (GA)) is ordinary aggressive
   adoption. Only **entering** a channel from stable is a decision for that
   repo's maintainer.
 
@@ -50,8 +50,7 @@ does more damage through the supply chain.
 
 - Turn security **alerts** ON and **automatic** security-fix PRs OFF. Adopt
   security fixes promptly, but after review, never by blind merge.
-- Prefer one Dependabot PR per repo per week, so separate PRs per ecosystem do
-  not flood the pool. The mechanical gates stay the per-repo CI (frozen or
+- Prefer one Dependabot PR per repo per week, so separate PRs per ecosystem do not flood the CI runner pool. The per-repo CI stays the mechanical gate (frozen or
   locked lockfiles, lint, types). No bot auto-merges a PR because of its dependency class.
 
 When a Dependabot PR is red, restore its lockfiles from main. Never re-lock

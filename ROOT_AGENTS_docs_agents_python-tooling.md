@@ -9,16 +9,20 @@ Read this when you write or change Python. Use `uv` for packages (AGENTS.md).
 - **ty** — static type checking (https://github.com/astral-sh/ty; replaces
   mypy / pyright)
 
-Every Python project uses all three. Pin ruff and ty in a `lint` dependency
-group (`uv add --group lint --bounds exact ruff ty`) and wire them into
-`just fmt` / `just lint`. Do not add another package manager, linter,
-formatter, or type checker.
-Ruff and ty are Class 1 (docs/agents/dependency-policy.md). Pin them
-**exactly** (one version, adopt new releases aggressively). Pair the seven-day uv
-cooldown with `exclude-newer-package = { ruff = false, ty = false }` so the pin
-can move. Do not copy a version number into this guide; it goes stale. Wire the
-gate with this justfile split. The split matters: ruff only parses source, but
-ty **resolves imports**:
+Every Python project uses all three. Do not add another package manager,
+linter, formatter, or type checker.
+
+- Pin ruff and ty in a `lint` dependency group
+  (`uv add --group lint --bounds exact ruff ty`), and wire them into
+  `just fmt` / `just lint`.
+- Ruff and ty are Class 1 (docs/agents/dependency-policy.md). Pin them
+  **exactly** (one version, adopt new releases aggressively).
+- Pair the seven-day uv cooldown with
+  `exclude-newer-package = { ruff = false, ty = false }` so the pin can move.
+- Do not copy a version number into this guide; it goes stale.
+
+Wire the gate with this justfile split. The split matters: ruff only parses
+source, but ty **resolves imports**:
 
 ```just
 fmt:
@@ -32,8 +36,8 @@ lint:
 
 Never "fix" ty's `unresolved-import` by silencing the rule. It means ty cannot
 see the project's dependencies and is checking nothing. Give ty the
-dependencies instead (`--group lint`, not `--only-group`). Keep one ruff.toml /
-ty.toml shape per *project*; change only the project's own path and exclude
+dependencies instead (`--group lint`, not `--only-group`). Keep one ruff and ty config shape per *project* (`ruff.toml` / `ty.toml`, or
+the `pyproject.toml` tables below); change only the project's own path and exclude
 blocks.
 
 ## ruff configuration (canonical — in `pyproject.toml`)

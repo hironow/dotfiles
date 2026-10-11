@@ -48,7 +48,7 @@ apply it to cases it does not list.
 - **Use `.yaml`, never `.yml`.** Name Compose files `compose.yaml` (Compose
   Spec v2+). `docker-compose.y{a,}ml` is the old v1 name. One spelling stops
   tools from missing files and stops review churn.
-- **Never change IaC-managed infrastructure by hand.** Change production (GCP,
+- **Never change infrastructure managed as code (IaC) by hand.** Change production (GCP,
   IAM, Cloud Run, cloud VMs, clusters) only through OpenTofu, a PR, and CD. A
   stray `gcloud ... update` creates drift, and the next `tofu apply` silently
   reverts it. Details: docs/agents/iac-drift-policy.md.
@@ -78,7 +78,7 @@ If you are unsure, write a test that pins down the requirement before you code.
 - Start every change with a failing test: **Red → Green → Refactor.** Write
   only enough code to pass. Refactor only when tests are green. Full cycle:
   docs/agents/tdd-workflow.md.
-- **Keep structural and behavioral changes in separate commits.** Commit the
+- **Keep structural and behavioral changes in separate commits (Tidy First).** Commit the
   structural change first. The Conventional Commit *type* says which kind a
   commit is, so one commit never mixes types. Type list and examples:
   docs/agents/commit-discipline.md.

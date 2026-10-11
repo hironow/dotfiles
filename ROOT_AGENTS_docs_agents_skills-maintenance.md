@@ -16,12 +16,13 @@ covers the procedure around them and how skills reach the agent homes
   dotfiles holds no copy of it.
 - **`~/.agents/skills` (the store)** holds every skill, ours and third-party.
   The `bunx skills` CLI installs them, and dotfiles declares them in
-  `dump/harness/skill-lock.json` (`source: hironow/skills` for ours). pi reads
+  `dump/harness/skill-lock.json` (`source: hironow/skills` for ours). Pi reads
   the store directly. Only ever ask the CLI to write the store
   (`-a universal`).
 - **Consumer homes** (`~/.claude/skills`, `~/.claude-work-{a..d}/skills`,
   `~/.codex/skills`, `~/.gemini/skills`) hold relative symlinks into the store.
-  `scripts/skills_lock.py place` (`just skills-place`) places them; where the
+  In the dotfiles repo, `scripts/skills_lock.py place` (`just skills-place`)
+  places them; where the
   OS refuses symlinks, it places a tracked copy. Never edit a skill inside a
   home: `just skills-place` keeps and reports a differing real directory,
   and the CLI's own `update` would overwrite it. Edit in the skill's source
@@ -124,11 +125,11 @@ on purpose.
      `just skills-update`, and run `just dump-skills-lock --allow-self-drop`.
      Dropping our record is the intended outcome here, so say so explicitly.
    - afterwards: run `just skills-place` (0 kept, 0 missing) and, in the
-     hironow/skills clone, `just audit-consumers`. Then confirm with pi (below).
-6. **Confirm routing** with a fresh pi session (a session that already
+     hironow/skills clone, `just audit-consumers`. Then confirm with Pi (below).
+6. **Confirm routing** with a fresh Pi session (a session that already
    discussed the removed skill keeps naming it):
    `pi -p --tools read --no-session --model opencode-go/glm-5.3 "<routing prompt>" < /dev/null`.
-   To see pi's own view of the installed skills, without a model call:
+   To see Pi's own view of the installed skills, without a model call:
    `printf '{"id":"1","type":"get_commands"}\n' | pi --mode rpc --offline`.
 
 ### Judge prompt
@@ -136,7 +137,7 @@ on purpose.
 ```
 You are an independent judge comparing two versions of the same agent skill. Read both files
 (read-only): FORK <path>, UPSTREAM HEAD <path> (fetched <date>).
-Rules: "newest" is not automatically "better"; the operator's tooling rules are uv only, bun/bunx
+Rules: "newest" is not automatically "better"; the owner's tooling rules are uv only, bun/bunx
 only, just as task runner, .yaml not .yml (a contradiction is a defect); text that only works in
 one harness is a portability cost unless guarded.
 Step 1 — capability inventory: every capability, phase, or output each version provides, marked

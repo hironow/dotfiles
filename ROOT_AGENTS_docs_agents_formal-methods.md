@@ -39,6 +39,6 @@ Tools: **Quint** (`@informalsystems/quint`) plus the simulation. Apalache
 (`quint verify`) is an optional bug finder, never a gate. TLA+ and Lean are not
 used.
 
-Start from a small lease example (a lock without a lease, with a lease, with a
-fencing token) and grow from there. Write findings to
+Start by writing a small lease model (a lock without a lease, with a lease,
+with a fencing token), then grow it. Write findings to
 `docs/plan/<topic>.md` as what / how found / status.

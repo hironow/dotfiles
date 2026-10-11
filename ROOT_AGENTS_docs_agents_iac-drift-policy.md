@@ -1,7 +1,7 @@
 # IaC drift: change production only through OpenTofu
 
 Read this before any `gcloud`, `kubectl`, provisioning-CLI, or console action
-against production. The root summary is in AGENTS.md.
+against production. AGENTS.md has the short version.
 
 Change production infra (GCP resources, IAM, Cloud Run revisions, cloud VMs)
 **only** through OpenTofu plus the standard PR and CD flow. A manual change

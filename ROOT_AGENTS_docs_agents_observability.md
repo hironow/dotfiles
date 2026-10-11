@@ -7,7 +7,7 @@ the shared dotfiles telemetry stack (otel-collector → Tempo/Grafana). A Jaeger
 per project is the fallback when you need isolation. Each project picks its
 production backend in an ADR.
 
-## Scope
+## What to instrument
 
 In scope: distributed tracing (traces and spans), structured logs that carry
 `trace_id`/`span_id`, and metrics over OTLP where they apply.
@@ -31,19 +31,19 @@ Out of scope: vendor SDKs that are not OTel. Use OTel with an exporter instead.
 - Every LLM call (Anthropic, Gemini, …) → a span with `gen_ai.*` attributes
   (model, input tokens, output tokens, latency).
 
-## Python setup
-
-```sh
-uv add opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
-# plus opentelemetry-instrumentation-* per framework: fastapi, httpx, sqlalchemy, …
-```
-
 ## Go setup
 
 ```
 go.opentelemetry.io/otel
 go.opentelemetry.io/otel/sdk
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
+```
+
+## Python setup (existing Python services)
+
+```sh
+uv add opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
+# plus opentelemetry-instrumentation-* per framework: fastapi, httpx, sqlalchemy, …
 ```
 
 ## Local telemetry

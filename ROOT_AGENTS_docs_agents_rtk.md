@@ -1,5 +1,7 @@
 # RTK — Rust Token Killer
 
+Every script and `just` recipe in this guide belongs to the dotfiles repo.
+
 Read this when you run shell commands through `rtk`, check its token savings,
 or debug output that looks filtered when you did not expect it.
 
@@ -60,13 +62,12 @@ real check is the `claude-rtk-hook` line of `just doctor`.
 ## rtk does not approve commands
 
 rtk answers `permissionDecision: "allow"` for everything it rewrites. That
-would auto-approve most Bash traffic. So the wrapper **forwards only the
-rewrite** (`updatedInput`) and drops every other field. Rewritten commands still
+would auto-approve most Bash traffic. So the Claude Code wrapper **forwards only the rewrite** (`updatedInput`) and drops every other field. Rewritten commands still
 go through the normal permission flow, and an approving field that a later rtk
 adds cannot slip through. rtk optimizes output; it does not approve. Installing
 it must not change the permission posture (dotfiles ADR 0047).
 
-The wrapper's `RTK_HOOK_PERMISSION_DECISION` variable is a **test seam only**.
+The wrapper's `RTK_HOOK_PERMISSION_DECISION` variable is an override **for tests only**.
 Never set it in managed settings (any `.claude/settings*.json` fragment, or
 `settings.sync-local.json`). Any value other than `strip` brings back rtk's
 blanket auto-approval, and a unit test fails the build if a tracked fragment

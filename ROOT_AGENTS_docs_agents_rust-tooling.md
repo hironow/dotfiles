@@ -11,7 +11,7 @@ Read this when you write or change Rust. Go is the default for new code
 
 Write the reason in the PR, or in an ADR when it starts a new codebase.
 
-## Version
+## Use the newest stable Rust
 
 - Use the newest stable Rust and the newest edition it supports. Set
   `rust-version` and `edition` in `Cargo.toml`, and pin the toolchain in

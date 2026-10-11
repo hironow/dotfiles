@@ -1,6 +1,7 @@
 # headroom — the context optimization layer
 
-headroom is mandatory base tooling, next to [rtk](./rtk.md). mise installs it
+headroom is mandatory base tooling, next to [rtk](./rtk.md). Every script and
+`just` recipe in this guide belongs to the dotfiles repo. mise installs it
 (`pypi:headroom-ai`, extras `proxy,code`). rtk compresses what a *command*
 prints to your terminal; headroom compresses what reaches the *model*.
 
@@ -15,12 +16,12 @@ three tools that the agent calls when it needs them:
 name is normal MCP namespacing). If the server is down, the tools disappear and
 the session carries on. A broken headroom costs a tool, never a session.
 
-**The proxy: `j-cc` only.** `scripts/jev_headroom.py` starts one proxy on a
+**The proxy: only `j-cc`, the dotfiles launcher for Claude Code.** `scripts/jev_headroom.py` starts one proxy on a
 free port per launch, or reuses one that is ready. It points only the Claude
 process it starts at that proxy (`ANTHROPIC_BASE_URL`). Any problem means
 "launch without headroom", never "j-cc does not start". A custom base URL turns
-off Remote Control, which is why plain `claude` stays direct. This per-launch,
-fail-open proxy IS the proxy canary. There is no launchd service, on purpose:
+off Remote Control, which is why plain `claude` stays direct. This per-launch, fail-open proxy IS the proxy canary (the only place the proxy
+runs). There is no launchd service, on purpose:
 one mechanism, not two.
 
 A j-cc session gets both layers: headroom's proxy for what reaches the model,

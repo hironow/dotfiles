@@ -54,6 +54,7 @@ compose.yaml                  api.Dockerfile
 - Keep `#!/usr/bin/env bash` as the shebang of Bash scripts, for portability.
   Write a new executable tool in Go (Rust when Go does not fit), not in shell
   (docs/agents/go-tooling.md).
-- Make scripts idempotent.
+- Make scripts idempotent: running a script twice has the same effect as
+  running it once.
 - Process arguments early.
 - Prefer defining common tasks in the `justfile` over standalone scripts.

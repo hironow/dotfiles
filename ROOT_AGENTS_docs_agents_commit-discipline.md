@@ -13,7 +13,7 @@ Read this before you write a commit message. AGENTS.md has the short version.
 `just check` runs the whole gate. The git pre-commit hook runs it too, so you
 cannot commit a red tree (see docs/agents/enforcement.md).
 
-## Format
+## Message format
 
 ```
 <type>(<scope>)<!>: <subject>
@@ -76,7 +76,7 @@ feat: refactor auth and add new endpoint     # two types in one commit
 [BEHAVIORAL] feat: add login                  # redundant tag
 ```
 
-## Practice
+## Commit small and often
 
 - Make small, frequent commits, not large, rare ones.
 - If you want to write "and" in the subject, split the commit.
