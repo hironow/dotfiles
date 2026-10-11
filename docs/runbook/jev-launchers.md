@@ -251,7 +251,7 @@ taskkill /T /F /PID <headroom.exe の ProcessId>
 
 ### headroom が縮めるもの（実測）
 
-headroom 0.39.1 と `proxy,code` の extras で、実際に `headroom_compress` を呼んで測った。
+headroom 0.40.0 と `proxy,code` の extras で、実際に `headroom_compress` を呼んで測った。
 `just headroom-compress-measure` で同じ測定をやり直せる。
 
 | payload | ratio |
