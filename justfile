@@ -1260,6 +1260,9 @@ validate-path-duplicates:
       # vite-plus bundled node toolchain)
       if (index(p, home "/.bun/bin/") == 1) return "structural"
       if (index(p, home "/.vite-plus/bin/") == 1) return "structural"
+      # vite-plus appends fallback-bin to the END of PATH on purpose, so mise
+      # (earlier) wins and its bun/pnpm/yarn shims are only a last resort
+      if (index(p, home "/.vite-plus/fallback-bin/") == 1) return "structural"
       if (index(p, "/usr/local/share/dotnet/") == 1) return "structural"
       if (index(p, home "/Library/Android/sdk/") == 1) return "structural"
       # grok CLI installer root (same rationale as .bun/.swiftly: a managed
