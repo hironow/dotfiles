@@ -77,6 +77,7 @@ and what outlived it.
 | 0050 | [Pin Go sources to LF via `.gitattributes` (go-lint on Windows)](./0050-pin-go-sources-to-lf.md) | Accepted | 2026-10-02 | `.gitattributes`, `tests/unit/test_gitattributes_eol.py` |
 | 0051 | [新しい決定記録をdecision queueで追跡する](./0051-adopt-decision-queue-for-new-records.md) | Accepted (PR #461) | 2026-10-06 | `docs/decision-queue.md`、今後のADR/PDR |
 | 0052 | [全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language）](./0052-renew-global-agent-instructions.md) | Proposed (PR #463) | 2026-10-09 | `ROOT_AGENTS.md`、`ROOT_CLAUDE.md`、`ROOT_AGENTS_docs_agents_*.md` |
+| 0053 | [Flatt のパッケージミラーをやめ、公式の取得元に戻す](./0053-stop-using-flatt-mirrors.md) | Proposed (PR #463); would supersede [0028](./0028-flatt-pypi-mirror-default-index.md) | 2026-10-11 | `pyproject.toml` と各 `uv.lock`、`scripts/harden_env.sh`、`.zshrc`、`justfile` |
 
 ## Reading order for newcomers
 
