@@ -88,3 +88,33 @@ def test_existing_windows_drive_ref_resolves(tmp_path: Path) -> None:
     ref = str(tmp_path).replace("/", "\\") + "/docs/agents/spoke.md"
     problems = _scan_text(tmp_path, f"see {ref} here\n")
     assert problems == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "see [ADR-0051](https://github.com/hironow/dotfiles/blob/main/docs/adr/0051-x.md)\n",
+        "raw: https://example.com/docs/guide.md and http://example.com/a.yaml\n",
+    ],
+)
+def test_url_scheme_is_not_a_windows_drive(tmp_path: Path, line: str) -> None:
+    """`https://…/x.md` holds `s:/` after the scheme letters; that is part of a
+    URL, not the drive `s:` followed by a path, so it must not be reported as a
+    dead path."""
+    assert _scan_text(tmp_path, line) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "see C:/Users/nobody/.claude/docs/agents/testing.md\n",
+        "see [x](D:\\Users\\nobody\\.claude/docs/agents/testing.md)\n",
+    ],
+)
+def test_windows_drive_after_punctuation_is_still_checked(
+    tmp_path: Path, line: str
+) -> None:
+    """A real drive path stays existence-checked, with forward slashes or
+    inside a Markdown link."""
+    problems = _scan_text(tmp_path, line)
+    assert any("dead path reference" in p for p in problems), problems
