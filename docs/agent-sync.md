@@ -58,6 +58,21 @@ settings の断片は、hook の併合の直後に 4 つの層を合成して 1 
 - 断片から外したトップレベルのキーは、その断片の `retired` に書く（例：`.claude/settings.profiles/work-c.json`）。`retired` は移行 ID ごとに、キーと、断片がそれまでに書いた値をすべて並べる。sync は各 home で移行を 1 回だけ評価し、キーがまだそのどれかの値なら消す。評価した ID は、settings.json より先に home の `settings.sync-state.json`（sync が所有する）へ記録する。そのため、あとで利用者が同じ値を設定し直しても消さない。初回の評価の時点で利用者が同じ値を選んでいた場合は区別できないので、残したい値は 4 に書く。
 - `env` の正本は断片である。repo の `.claude/settings.json` は `env` を持たず、global から受け継ぐ。
 
+## hook を変えるとき
+
+hook の正本は `ROOT_AGENTS_hooks_*.sh` と、command guard の `ROOT_AGENTS_hooks_block-prohibited-commands.py` である。
+unit test は `tests/unit/test_agent_hooks.py` にある。
+配布先の `~/.claude/hooks/*` を直接編集しても、次の sync で上書きされる。
+正本を直し、test を足してから `just sync-agents` を実行する。
+
+1 つの hook だけを試すには、JSON を標準入力で渡す。
+`exit=2` は止める、`exit=0` は通すという意味である。
+
+```sh
+echo '{"tool_input":{"command":"npm install"}}' | bash ~/.claude/hooks/block-prohibited-commands.sh; echo "exit=$?"
+echo '{"tool_input":{"file_path":"config.yml"}}' | bash ~/.claude/hooks/block-prohibited-files.sh; echo "exit=$?"
+```
+
 ## Codex の hooks
 
 Codex は `<codex home>/hooks.json` を読む。

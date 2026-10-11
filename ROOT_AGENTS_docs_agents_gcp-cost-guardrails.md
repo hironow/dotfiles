@@ -128,5 +128,3 @@ change window.
 instance. In a public repo, that is exactly what must not be committed. The
 same goes for the billing account id: pass it as an argument, never store it in
 a tracked file.
-
-To roll this out to another project: `docs/plan/gcp-cost-guardrails-rollout.md`.

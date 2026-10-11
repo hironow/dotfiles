@@ -28,15 +28,6 @@ all tests (except long-running ones) each time.
 2. Write the smallest test that reproduces the root cause.
 3. Make both pass.
 
-## Tidy First — structural vs behavioral
-
-- **Structural**: you rearrange code without changing behavior (rename,
-  extract, move). Run the tests before *and* after to confirm the behavior did
-  not change.
-- **Behavioral**: you add or change functionality.
-- Never mix the two in one commit. When a change needs both, do the structural
-  part first, commit it, then do the behavioral part.
-
 ## Worked example — adding a validator
 
 **[Red]** failing test:
@@ -77,11 +68,7 @@ just test     # uv run pytest
 refactor(validation): extract email validator into dedicated module
 ```
 
-## How to write a test
+## Which test to write
 
-- Structure every test as **given / when / then**.
-- Do not put try/except inside tests. Keep tests flat; avoid deep nesting.
-- Prefer tests written as functions over classes.
-- Prefer real code over mocks. When several scenarios are alike, parameterize.
-- docs/agents/testing.md says *which* test type to write and the mock policy
-  for each type.
+docs/agents/testing.md says which kind of test to write, how to write it, and
+the mock policy for each kind.

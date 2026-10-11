@@ -170,14 +170,3 @@ model: original vs rewrite, reporting only semantic differences (omission,
 addition, meaning change, reference break) with both quotes and a severity,
 and a verdict of FAITHFUL or NEEDS_FIX. Revert every medium or high finding
 before merging.
-
-## Before making hironow/skills public
-
-1. Run `gitleaks git` and `trufflehog git --only-verified` over the full
-   history.
-2. Grep the tree and history for mention IDs, emails, internal hostnames, org
-   names, and personal profiles.
-3. Reconcile every derived skill's license obligations (LICENSE file kept,
-   changes stated).
-
-Report the results; do not change the visibility.

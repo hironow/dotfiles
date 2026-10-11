@@ -33,11 +33,6 @@ default `sh -cu` hides a failing `for` iteration, and that is how a model
 silently stops being checked. Call Quint through one pinned variable, not bare
 `quint`, so the gate cannot drift onto whatever version is on PATH.
 
-dotfiles itself no longer has such a recipe: its model left together with the
-stack it described. So treat this section as the shape to build, not a recipe to
-run here. `quint` stays pinned in the global mise config for exactly that
-reason.
-
 Tools: **Quint** (`@informalsystems/quint`) plus the simulation. Apalache
 (`quint verify`) is an optional bug finder, never a gate. TLA+ and Lean are not
 used.

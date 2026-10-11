@@ -157,10 +157,6 @@ decides any local changes to these rules.
   add it to the queue → the human decides → move the row to the decided log.
   Record the adoption itself as an ADR. That ADR sets local profiles (for
   example a solo profile without Slack, or replacing `intent.md` with PDRs).
-  This repo adopted the queue for all **new** ADRs and PDRs in
-  [ADR-0051](https://github.com/hironow/dotfiles/blob/main/docs/adr/0051-adopt-decision-queue-for-new-records.md):
-  consult in a public-safe PR because Issues are disabled, and do not rewrite
-  or guess contacts for the older 49 ADRs.
 - **`docs/plan/`** — phased execution plans (the HOW; decisions stay in
   decision records). Keep a standard status header (state / related decision
   records / blocking decisions). Never leave a pending human decision inside a

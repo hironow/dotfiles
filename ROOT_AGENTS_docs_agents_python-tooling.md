@@ -84,23 +84,8 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
 ## Refactoring rules (Python only)
 
 - Put imports at the top of the file, never inside a function or method body.
-- Use `pathlib.Path` for paths; `os.path` is deprecated here.
 - Iterate a dict as `for key in d`, not `for key in d.keys()`.
 - Combine several context managers with the parenthesized form from 3.10.
-- All code follows the ruff and ty rules above.
-
-## Pre-commit sequence
-
-```sh
-just check  # the full gate; or piecewise (format before linting):
-just fmt    # uv run ruff format .
-just lint   # uv run ruff check .  &&  uv run ty check
-just semgrep   # when .semgrep/ exists
-just test   # uv run pytest
-```
-
-(The `format-after-edit` hook already runs `ruff format` + `ruff check --fix`
-on each edited `.py` file, so most violations are fixed before you commit.)
 
 ## External data and encoding
 

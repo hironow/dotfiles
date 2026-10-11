@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure what headroom's compressor actually does, reproducibly.
 
-The spoke (`ROOT_AGENTS_docs_agents_headroom.md`) publishes a ratio per payload
+The headroom runbook (`docs/runbook/jev-launchers.md`) publishes a ratio per payload
 kind. That table used to be a one-off measurement whose payloads were never
 written down, so after a version bump there was no way to tell a real change
 from a different input -- which is exactly the trap this script removes. The
@@ -118,7 +118,7 @@ class Measurement:
 
 
 def format_table(measurements: Sequence[Measurement], *, version: str) -> str:
-    """Render the measurements as the markdown table the spoke publishes."""
+    """Render the measurements as the markdown table the runbook publishes."""
     lines = [f"# {version}", "", "| payload | ratio |", "|---|---|"]
     for m in measurements:
         if m.ratio is None:

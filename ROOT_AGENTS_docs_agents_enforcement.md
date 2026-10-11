@@ -95,20 +95,11 @@ rules cover the long tail.
   (for example a prose mention the tokenizer cannot tell apart), ask the user
   to run the command themselves with the `!` prefix.
 
-## Tuning the hooks
+## Hook sources
 
-Hook sources live in the dotfiles repo as `ROOT_AGENTS_hooks_*.sh` (plus the
-`*.py` companion for the command guard). Their unit tests are in
-`tests/unit/test_agent_hooks.py`. Never edit `~/.claude/hooks/*` directly: the
-next sync overwrites them. Edit the source, extend the tests, then run
-`just sync-agents` (from the dotfiles repo). To test one hook on its own:
-
-```sh
-echo '{"tool_input":{"command":"npm install"}}' | bash ~/.claude/hooks/block-prohibited-commands.sh; echo "exit=$?"
-echo '{"tool_input":{"file_path":"config.yml"}}' | bash ~/.claude/hooks/block-prohibited-files.sh; echo "exit=$?"
-```
-
-(`exit=2` means the guard would block; `exit=0` means it would allow.)
+Never edit `~/.claude/hooks/*` directly: the next `just sync-agents` overwrites
+them. Change the sources in the dotfiles repo; its `docs/agent-sync.md` says
+how to change and test a hook.
 
 ## Policy files name the patterns they forbid
 

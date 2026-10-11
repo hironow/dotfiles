@@ -53,34 +53,6 @@ the shared Claude settings env, and on Windows the persisted User env
 
 rtk's own "No hook installed — run `rtk init -g`" notice, and `rtk init --show` reporting "Hook: not found", are expected: rtk only looks for its installer's layout, not for the dotfiles-managed hook above. Ignore them; `just doctor`'s `claude-rtk-hook` line is the real check.
 
-### Which rtk the hook runs: PATH first, then mise
-
-**PATH first, always.** The rtk at the front of the session's PATH wins. This
-way the hook never overrides a copy the operator put there on purpose. mise's
-answer is also not always better: when the live mise config does not declare
-rtk, `mise x -- rtk` falls back to PATH and finds exactly the stale copy that a
-prune is meant to retire.
-
-**mise second**, only when PATH has no rtk at all. A Claude Code session's
-environment is a snapshot taken when the session started. It cannot see a tool
-that mise installed later. Once a hand-placed `~/.local/bin/rtk` is pruned, such
-a session has no rtk on PATH. `mise which rtk` answers from mise's own
-configuration, so the hook reaches the pinned copy without restarting the
-session. The hook pays for that subprocess only when it would otherwise do
-nothing.
-
-The shell that runs the rewritten command has the same PATH, without rtk. There,
-a bare `rtk …` would fail with "command not found". So the hook keeps a rewrite
-only when it has the plain shape `rtk <command>` (the leading launcher is its
-only `rtk`), and names the absolute path that mise gave. The hook drops any
-other rewrite (compound commands, an assignment prefix), and the typed command
-runs as typed. That costs the compression, never the command.
-
-If both routes fail, that is normal, not an error. `mise which` exits non-zero
-when the tool is not active in this directory, and the hook then fails open:
-the command runs without a rewrite. `just doctor` is what notices a shadowing
-copy or a copy not from mise.
-
 ## rtk does not approve commands
 
 rtk answers `permissionDecision: "allow"` for everything it rewrites. That
@@ -134,24 +106,6 @@ blocks `rtk pnpm install` exactly like `pnpm install`. This includes the
 run-anything subcommands (`rtk proxy …`, `rtk run …`, `rtk err …`,
 `rtk test …`, `rtk summary …`, `rtk smart …`). Putting `rtk` in front of a
 banned tool does not get around the ban.
-
-## After an rtk upgrade
-
-mise tracks rtk's latest release, so upgrades arrive without notice.
-`just doctor` (and `just status`) compares what dotfiles relies on with the
-installed rtk:
-
-- `rtk-pi-extension`: the vendored Pi extension came from an older rtk. Run
-  `just rtk-pi-refresh`.
-- `rtk-guard`: rtk gained a subcommand the command guard has not classified.
-  If the subcommand runs a command it is given, add it to
-  `RTK_RUN_SUBCOMMANDS`; otherwise add it to `RTK_FILTER_SUBCOMMANDS` (both in
-  `hooks/block-prohibited-commands.py`).
-- `rtk-telemetry`: rtk itself reports telemetry on, or no longer mentions
-  `RTK_TELEMETRY_DISABLED` (`rtk telemetry status`).
-
-Sync retires the hook blocks that an rtk installer writes, whatever their
-version or path. So `rtk init` drift needs no action.
 
 ## Meta commands (always call rtk directly)
 

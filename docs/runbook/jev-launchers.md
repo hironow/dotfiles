@@ -249,6 +249,29 @@ Get-CimInstance Win32_Process | Where-Object CommandLine -match 'headroom.*proxy
 taskkill /T /F /PID <headroom.exe の ProcessId>
 ```
 
+### headroom が縮めるもの（実測）
+
+headroom 0.39.1 と `proxy,code` の extras で、実際に `headroom_compress` を呼んで測った。
+`just headroom-compress-measure` で同じ測定をやり直せる。
+
+| payload | ratio |
+|---|---|
+| 700 log lines | **0.001** |
+| 700-object JSON array | **0.334** |
+| 700-line `ls -la` listing | **0.890** |
+| repetitive prose | 1.000 — unchanged |
+
+構造のある出力は大きく縮み、列のそろった一覧は少し縮み、文章はそのまま返る。
+canary の結果が平らでも、文章なら比率 1.000 が正しい答えであり、proxy の故障ではない。
+
+測定に使う 4 つの入力は毎回同じバイト列である（`tests/unit/test_headroom_compress_measure.py` が各 sha256 を固定している）。
+だから版を上げたあとに数字が動けば、動いたのは圧縮器である。
+版を上げたら測り直し、数字が変わればこの表を直す。
+
+文章が縮まない理由は、ここでは決めつけない。
+固定した extras は ONNX 一式（`onnxruntime`、`transformers`、`tokenizers`）を入れるので、「ML の経路には `headroom-ai[ml]` が要る」は理由にならない。
+それ以外は測っていない。
+
 ## rtk と headroom を両方使う
 
 rtk はコマンドの出力を圧縮し、headroom はモデルに届く内容を圧縮する。

@@ -1,19 +1,6 @@
 <!--
   AGENTS.md: cross-tool agent instructions. Codex, Cursor, Copilot, Claude Code
   (through @import), and other tools read it. Keep it SHORT; it is always loaded.
-
-  Why short: frontier models follow about 150-200 instructions reliably. That
-  number is a working heuristic, not a measured constant. The agent's own system
-  prompt already uses about 50. Every extra line dilutes every other line, so
-  adherence, not token cost, is the limit. Anything not needed on turn one goes
-  in docs/agents/*.md, read on demand (see the index below).
-  `just instruction-budget` gates this file and the overlay on a list-item count
-  (a proxy for instructions), so the always-loaded set cannot grow unnoticed.
-
-  Self-reference: this file and docs/agents/*.md name some prohibited patterns
-  as examples. Exclude them from repo scans:
-    git grep: add :(exclude)**/AGENTS.md :(exclude)**/CLAUDE.md :(exclude)docs/agents/**
-    semgrep : paths.exclude: [AGENTS.md, CLAUDE.md, "docs/agents/**"]
 -->
 
 # AGENTS.md
@@ -44,41 +31,22 @@ apply it to cases it does not list.
   services, CLIs, and tools (and the control plane) in Go, not Python,
   TypeScript, Ruby, or shell. Ship one binary per OS and CPU so the same tool
   runs on every device. Go 1.27 is the minimum; use the newest stable Go the
-  module compiles with, and its standard library: `uuid`, not
-  `github.com/google/uuid`; `encoding/json/v2`. Lint
-  and format with golangci-lint v2 and gofumpt. Details:
-  docs/agents/go-tooling.md. Use Rust only for no-GC, tight-memory, or WASM
-  targets, or an existing Rust codebase: docs/agents/rust-tooling.md.
-- **Model distributed state in Quint.** This covers an at-least-once queue, a
-  lock or lease, a reconciler or janitor, and anything that deletes or releases
-  on its own. Each one needs a Quint model and a seeded simulation of the real
-  code, and both run in `just check`. Logic inside one process stays in unit
-  tests. Details: docs/agents/formal-methods.md.
-- **Draft PRs run no Actions.** Gate every job that `pull_request` can reach on
-  `draft == false`, and list `ready_for_review` in the workflow's triggers.
-  Details: docs/agents/draft-ci.md.
+  module compiles with. Details: docs/agents/go-tooling.md. Use Rust only for
+  no-GC, tight-memory, or WASM targets, or an existing Rust codebase:
+  docs/agents/rust-tooling.md.
 - **Use few dependencies; use the standard library first.** In every language,
   use the official standard library before a third-party package, and use its
   newest features and methods. A third-party package needs a reason the
   standard library cannot meet. Fewer packages mean less supply-chain risk and
   fewer upgrades.
-- **Take the newest, more secure dependency, by class.** Class 1 (toolchains,
-  Ruff, ty, Go, bun, ...): adopt the latest version aggressively and fix forward.
-  Class 2 (niche packages): wait out a cooldown and read the changelog. If you
-  are unsure, treat it as Class 2. Details: docs/agents/dependency-policy.md.
 - **Use only `bun` for Node.** Never use `npm`, `yarn`, or `pnpm`, including
-  `corepack pnpm`. The reason is the same: lockfiles go out of sync. Corepack
-  stays installed to set up machines; agents never run a package manager
-  through it.
+  `corepack pnpm`. The reason is the same: lockfiles go out of sync.
 - **`just` is the only task runner.** Keep exactly one `justfile`, at the repo
   root. No `justfile` in subdirectories, and no `make`. One entry point means
   one place to look.
 - **Use `.yaml`, never `.yml`.** Name Compose files `compose.yaml` (Compose
   Spec v2+). `docker-compose.y{a,}ml` is the old v1 name. One spelling stops
   tools from missing files and stops review churn.
-- **No mocks in e2e tests.** If a test cannot use a real dependency, it is not
-  an e2e test; move it to integration. A mocked e2e test proves nothing about
-  the real system.
 - **Never change IaC-managed infrastructure by hand.** Change production (GCP,
   IAM, Cloud Run, cloud VMs, clusters) only through OpenTofu, a PR, and CD. A
   stray `gcloud ... update` creates drift, and the next `tofu apply` silently
@@ -89,15 +57,8 @@ apply it to cases it does not list.
 
 ## Main commands
 
-```sh
-just            # list all tasks (default: help)
-just check      # the full local gate: fmt + lint + types + semgrep + test, for every language in the repo
-just test       # the repo's tests (go test / cargo test / uv run pytest / bun test)
-just lint       # lint + type checks (golangci-lint / clippy / ruff + ty)
-just fmt        # format (golangci-lint fmt / cargo fmt / ruff format)
-just semgrep    # semgrep --config .semgrep/rules/ --error  (when .semgrep/ exists)
-just install-hooks   # prek install --hook-type pre-commit (run once per clone)
-```
+Run `just` to list the repo's tasks. `just check` is the full local gate for
+every language in the repo.
 
 If you need a command that is not a `just` task, add it to the root `justfile`.
 Do not write a one-off script (see docs/agents/project-structure.md).
@@ -170,14 +131,9 @@ score below 3 on any blocking axis means stop and clarify.
   docs/agents/plain-language.md.
 - `docs/*.md` describe the system as it is **now**. No history, no TODOs, no
   roadmap. An outdated doc is a bug: update docs in the same commit as the code.
-- `docs/adr/*.md` record **why** a significant decision was made. An accepted
-  ADR does not change.
 - `docs/intent.md` says why we are doing this work now. A human writes it;
   never guess it, ask. `docs/handover.md` says where we are and what comes
   next; update it every session.
-- Full rules, including the opt-in decision-record process
-  (`decision-queue.md`, `docs/pdr/`, `docs/plan/`, `docs/research/`):
-  docs/agents/docs-discipline.md.
 
 ## Detailed guides: read when needed, not before
 
@@ -195,28 +151,21 @@ Open the matching file as soon as its trigger applies:
 | writing a commit message                       | docs/agents/commit-discipline.md    |
 | naming a package, file, type, function, or variable | docs/agents/naming.md          |
 | writing or placing tests / asking "mock?"      | docs/agents/testing.md              |
+| converting a hand-rolled TypeScript test harness to `bun:test` | docs/agents/bun-test-migration.md |
 | splitting code, calling anything outside the process, or adding a fake | docs/agents/core-shell-ports.md |
 | adding telemetry, spans, or a service          | docs/agents/observability.md        |
 | touching `tofu/`, `gcloud`, `kubectl`, Cloud Run | docs/agents/iac-drift-policy.md   |
 | creating a GCP storage sink, build, or compute that runs unattended | docs/agents/gcp-cost-guardrails.md |
 | adding or maintaining a Semgrep rule           | docs/agents/semgrep.md              |
 | editing docs / writing an ADR / intent / handover | docs/agents/docs-discipline.md   |
-| writing any text a person or agent reads       | docs/agents/plain-language.md       |
 | creating dirs or files, or unsure where code goes | docs/agents/project-structure.md |
-| blocked by a hook / tuning or adding a hook    | docs/agents/enforcement.md          |
+| blocked by a hook, or scanning a repo for banned patterns | docs/agents/enforcement.md |
 | using the `rtk` output-filter proxy / debugging filtered output | docs/agents/rtk.md |
 | using headroom (its MCP tools, the j-cc proxy, its egress)      | docs/agents/headroom.md |
 | adding, comparing, retiring, or distributing a skill (hironow/skills, `skill-lock.json`) | docs/agents/skills-maintenance.md |
 
 ## Enforcement (works no matter what the model decides)
 
-The text here is advice. Three mechanical gates are not advice. They hold the
-rules above whatever an agent decides: Claude Code hooks (synced to
-`~/.claude`, run before and after tool calls), Git pre-commit
-(`just install-hooks` = `prek install`; runs the hooks that
-`.pre-commit-config.yaml` selects), and CI (`just check` plus a `tofu plan`
-drift check).
-
 A block is policy, not a suggestion. Read the reason and change your approach;
-never work around it. Layers, the exit-code contract, what each hook covers, and
-tuning: docs/agents/enforcement.md.
+never work around it. Layers, the exit-code contract, and what each hook covers:
+docs/agents/enforcement.md.
