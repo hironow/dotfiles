@@ -75,8 +75,8 @@ If you are unsure, write a test that pins down the requirement before you code.
 ## How to work (Tidy First, TDD, YAGNI, KISS, DRY, SOLID)
 
 - Start every change with a failing test: **Red → Green → Refactor.** Write
-  only enough code to pass. Refactor only when tests are green. Full cycle and
-  a worked example: docs/agents/tdd-workflow.md.
+  only enough code to pass. Refactor only when tests are green. Full cycle:
+  docs/agents/tdd-workflow.md.
 - **Keep structural and behavioral changes in separate commits.** Commit the
   structural change first. The Conventional Commit *type* says which kind a
   commit is, so one commit never mixes types. Type list and examples:

@@ -19,8 +19,7 @@ Out of scope: vendor SDKs that are not OTel. Use OTel with an exporter instead.
 - Export over **OTLP**: gRPC first (`:4317`), HTTP as the fallback (`:4318`).
 - Read the endpoint from the standard `OTEL_EXPORTER_OTLP_ENDPOINT` env var.
   Never hard-code it, and above all never hard-code a production endpoint.
-- Set `OTEL_SERVICE_NAME` to the tool or module name (`sightjack`, `paintress`,
-  `amadeus`, `phonewave`, `dominator`).
+- Set `OTEL_SERVICE_NAME` to the tool or module name.
 - Propagate W3C Trace Context across process boundaries (the SDK default).
 - Never put PII or secrets in span attributes. Scrub them before export.
 
@@ -28,8 +27,7 @@ Out of scope: vendor SDKs that are not OTel. Use OTel with an exporter instead.
 
 - Every inbound RPC/HTTP handler → a root span.
 - Every outbound RPC/HTTP client call → a child span.
-- Every message-bus enqueue or dequeue (including D-Mail Protocol inbox/outbox
-  writes) → a span with `messaging.*` attributes.
+- Every message-bus enqueue or dequeue → a span with `messaging.*` attributes.
 - Every LLM call (Anthropic, Gemini, …) → a span with `gen_ai.*` attributes
   (model, input tokens, output tokens, latency).
 

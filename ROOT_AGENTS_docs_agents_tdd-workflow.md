@@ -28,46 +28,6 @@ all tests (except long-running ones) each time.
 2. Write the smallest test that reproduces the root cause.
 3. Make both pass.
 
-## Worked example — adding a validator
-
-**[Red]** failing test:
-
-```python
-def test_validate_email_rejects_missing_at_symbol() -> None:
-    # given
-    invalid_email = "userexample.com"
-
-    # when
-    result = validate_email(invalid_email)
-
-    # then
-    assert result is False
-```
-
-**[Green]** minimum implementation (typed):
-
-```python
-def validate_email(email: str) -> bool:
-    return "@" in email
-```
-
-**[Verify]**:
-
-```sh
-just check    # the full gate: fmt + lint + types + semgrep + test
-# or piecewise (format before linting):
-just fmt      # uv run ruff format .
-just lint     # uv run ruff check . && uv run ty check
-just semgrep  # when .semgrep/ exists
-just test     # uv run pytest
-```
-
-**[Refactor]** (separate commit) — extract the code once a pattern appears:
-
-```
-refactor(validation): extract email validator into dedicated module
-```
-
 ## Which test to write
 
 docs/agents/testing.md says which kind of test to write, how to write it, and
