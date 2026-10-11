@@ -7,10 +7,10 @@ Two rules. Everything below applies one of them:
 
 A personal project's bill does not spike. It drips. Nothing fails and no alert
 fires: images and objects keep arriving, and the total grows a little each
-month. The dotfiles repo has the receipt. Its dev container
-repository reached 20+ versions and ~21 GiB. Its only DELETE policy targeted UNTAGGED versions, but
-every publish tagged its image (dotfiles ADR 0034). The policy looked like a bound. It
-was not one.
+month. The dotfiles repo has the receipt. Its dev container repository reached
+20+ versions and ~21 GiB. Its only DELETE policy targeted UNTAGGED versions, but
+every publish tagged its image (dotfiles ADR 0034). The policy looked like a
+bound. It was not one.
 
 The dotfiles repo has two gates, and each sees different things:
 
@@ -93,10 +93,11 @@ passes that expiry.
   when IT fires: that means every earlier layer failed.
 - **A scheduler job is usually the only thing that turns something off.** When
   it fails, it fails silently. So audit its last attempt, and alert when a job
-  is paused. `just gcp-cost-audit <project> --location <region>` (a dotfiles recipe) warns on both;
-  without `--location` that check never runs (see Auditing).
-- **Only a budget notices a drip nobody is looking at.** Set one, with alert
-  thresholds, before the first expensive thing runs, not after.
+  is paused. `just gcp-cost-audit <project> --location <region>` (a dotfiles
+  recipe) warns on both; without `--location` that check never runs (see
+  Auditing).
+- **Only a budget notices a slow cost increase that nobody is watching.** Set
+  one, with alert thresholds, before the first expensive thing runs, not after.
 
 ## Auditing
 

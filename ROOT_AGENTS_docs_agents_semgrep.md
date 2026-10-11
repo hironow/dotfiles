@@ -52,7 +52,8 @@ rules:
 ## Running the rules
 
 - `just semgrep` runs `semgrep --config .semgrep/rules/ --error`.
-- Make semgrep a required CI check before merge (see `.github/workflows/quality-gate.yaml` from the agent baseline).
+- Make semgrep a required CI check before merge (see
+  `.github/workflows/quality-gate.yaml` from the agent baseline).
 - Pre-commit runs semgrep together with ruff and ty.
 
 ## When to add a rule

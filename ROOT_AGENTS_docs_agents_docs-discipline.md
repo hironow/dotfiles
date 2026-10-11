@@ -35,8 +35,8 @@ them.
 
 ## `docs/adr/` — Architecture Decision Records
 
-An ADR records the *why* behind a decision that the list below covers. Docs record only the
-*what*.
+An ADR records the *why* behind a decision that the list below covers. Docs
+record only the *what*.
 
 Write one when you:
 
@@ -144,8 +144,8 @@ Write it so a human or an agent can read it in under two minutes.
 - `just {command}` — {what it does}
 ```
 
-Update it at the end of every work session that changed code or plans (per session, not per
-commit). Do not copy `intent.md` into it; link to it.
+Update it at the end of every work session that changed code or plans (per
+session, not per commit). Do not copy `intent.md` into it; link to it.
 
 ## Opt-in categories (adopt per repo)
 

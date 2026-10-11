@@ -85,10 +85,10 @@ upstream), and `just audit` rejects a derived skill whose contract is
 incomplete.
 
 Skills that must not be published do not belong in hironow/skills at all.
-Personal ones go to hironow/skills-private; organization-internal ones go to
-that organization's own skills repository. Both reach the homes like any other
-source: `bunx skills add <repo> -g -s <name> -y -a universal`,
-`just dump-skills-lock`, `just skills-place`.
+Personal ones go to a private personal skills repository; organization-internal
+ones go to that organization's own skills repository. Both reach the homes like
+any other source: `bunx skills add <repo> -g -s <name> -y -a universal`, `just
+dump-skills-lock`, `just skills-place`.
 
 ## Comparing a fork with its upstream (the dedup procedure)
 
@@ -126,11 +126,11 @@ on purpose.
      Dropping our record is the intended outcome here, so say so explicitly.
    - afterwards: run `just skills-place` (0 kept, 0 missing) and, in the
      hironow/skills clone, `just audit-consumers`. Then confirm with Pi (below).
-6. **Confirm routing** with a fresh Pi session (a session that already
-   discussed the removed skill keeps naming it):
-   `pi -p --tools read --no-session --model opencode-go/glm-5.3 "<routing prompt>" < /dev/null`.
-   To see Pi's own view of the installed skills, without a model call:
-   `printf '{"id":"1","type":"get_commands"}\n' | pi --mode rpc --offline`.
+6. **Confirm routing** with a fresh Pi session (a session that already discussed
+   the removed skill keeps naming it): `pi -p --tools read --no-session --model
+   opencode-go/glm-5.3 "<routing prompt>" < /dev/null`. To see Pi's own view of
+   the installed skills, without a model call: `printf
+   '{"id":"1","type":"get_commands"}\n' | pi --mode rpc --offline`.
 
 ### Judge prompt
 

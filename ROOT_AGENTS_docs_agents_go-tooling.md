@@ -38,10 +38,12 @@ Lint and format with **golangci-lint v2**: one tool, one config.
 - `golangci-lint fmt` formats, with **gofumpt only**. If you also enable
   goimports, `fmt` and `run` disagree on import groups.
 
-Keep one golangci-lint v2 config shape: gofumpt as the only formatter, the standard linters plus `bodyclose`, `errorlint`, `gocritic`, `gocyclo`, `gosec`,
-`misspell`, `nilerr`, `perfsprint`, `revive`, `unconvert`, and `unparam`. Copy the dotfiles `.golangci.yaml` to the module root and change
-only build tags, `gofumpt.module-path`, and per-path exclusions. Change the
-linter set in one place, not in each repo.
+Keep one golangci-lint v2 config shape: gofumpt as the only formatter, the
+standard linters plus `bodyclose`, `errorlint`, `gocritic`, `gocyclo`, `gosec`,
+`misspell`, `nilerr`, `perfsprint`, `revive`, `unconvert`, and `unparam`. Copy
+the dotfiles `.golangci.yaml` to the module root and change only build tags,
+`gofumpt.module-path`, and per-path exclusions. Change the linter set in one
+place, not in each repo.
 
 Wire it into the root `justfile` and `just check`:
 

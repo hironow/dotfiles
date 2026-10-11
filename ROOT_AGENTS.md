@@ -5,9 +5,9 @@
 
 # AGENTS.md
 
-This is production code for an agentic engineering ecosystem. One person runs it on
-GCP and supervises the agents as the human on the loop. New code is Go (Rust when Go does not
-fit); existing Python and TypeScript tooling stays where it is.
+This is production code for an agentic engineering ecosystem. One person runs it
+on GCP and supervises the agents as the human on the loop. New code is Go (Rust
+when Go does not fit); existing Python and TypeScript tooling stays where it is.
 Change things carefully: make the smallest correct change, prove it works, and
 leave every check green.
 
@@ -82,11 +82,11 @@ If you are unsure, write a test that pins down the requirement before you code.
   structural change first. The Conventional Commit *type* says which kind a
   commit is, so one commit never mixes types. Type list and examples:
   docs/agents/commit-discipline.md.
-- **Build only what is needed, as simply as possible.** YAGNI: build only what
-  a current requirement or test asks for. KISS: choose the simplest design that
+- **Build only what is needed, as simply as possible.** YAGNI: build only what a
+  current requirement or test asks for. KISS: choose the simplest design that
   works. DRY: keep each piece of knowledge in one place, but do not merge code
-  that only looks alike. SOLID: give each unit one reason to change, and depend on ports (purpose-named interfaces; see Design), not on concrete
-  adapters.
+  that only looks alike. SOLID: give each unit one reason to change, and depend
+  on ports (purpose-named interfaces; see Design), not on concrete adapters.
 - **Name things specifically.** Choose the name that says what the thing does
   in this domain. Do not use generic words such as `Manager`, `Helper`, or
   `Util`. Rules and examples: docs/agents/naming.md.
@@ -124,8 +124,7 @@ Stop and press for a concrete commitment when resolve is weak: an unclear
 finish line, an unknown nobody has faced, or a gap where someone is "waiting
 on someone else". Record risks nobody has committed to in docs/handover.md.
 When you delegate, demand a definition of done, a way to recover from failure, and
-proof of completion. Scoring rubric (1-5): the `grilling:grit-grill` skill. A
-score below 3 on any blocking axis means stop and clarify.
+proof of completion. Scoring rubric (1-5): the `grilling:grit-grill` skill.
 
 ## Documentation rules (short version)
 

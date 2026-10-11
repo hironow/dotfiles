@@ -3,11 +3,12 @@
 Read this when you add, bump, or triage a dependency (including a Dependabot
 PR).
 
-Rule of thumb: **prefer the newest version and the more secure choice.**
-Staying current is a security stance: the newest release has the fewest known CVEs
-(Common Vulnerabilities and Exposures) and the most people looking at it upstream. But "newest" is safe only when
-the package is well tested by wide use. So sort every dependency into one of
-two classes, and treat the classes in opposite ways.
+Rule of thumb: **prefer the newest version and the more secure choice.** Staying
+current is a security stance: the newest release has the fewest known CVEs
+(Common Vulnerabilities and Exposures) and the most people looking at it
+upstream. But "newest" is safe only when the package is well tested by wide use.
+So sort every dependency into one of two classes, and treat the classes in
+opposite ways.
 
 ## Before you add a dependency
 
@@ -30,19 +31,19 @@ position.
   the Python 3.15 pre-release line, ...).
 - When a **stable** major removes or renames an API, **fix forward**: update the
   code. Never pin back.
-- A **preview / RC / canary** major is opt-in and kept apart. Do not adopt it
-  just because Dependabot proposed it. Once a repo has opted in, moving
-  *forward within that channel* (beta → release candidate (RC) → general availability (GA)) is ordinary aggressive
-  adoption. Only **entering** a channel from stable is a decision for that
-  repo's maintainer.
+- A **preview / release candidate (RC) / canary** major is opt-in and kept
+  apart. Do not adopt it just because Dependabot proposed it. Once a repo has
+  opted in, moving *forward within that channel* (beta → RC → general
+  availability (GA)) is ordinary aggressive adoption. Only **entering** a
+  channel from stable is a decision for that repo's maintainer.
 
 ## Class 2: niche or little used
 
 Few users, single-maintainer utilities, anything obscure. A compromise here
 does more damage through the supply chain.
 
-- Use `cooldown`, so upstream finds a malicious or yanked
-  release before you adopt it.
+- Use `cooldown`: a waiting period before you adopt a new release. Upstream
+  then finds a malicious or yanked release before you adopt it.
 - Read the changelog before you merge a major.
 - **If you are unsure which class a dependency belongs to, treat it as Class 2.**
 
@@ -50,8 +51,10 @@ does more damage through the supply chain.
 
 - Turn security **alerts** ON and **automatic** security-fix PRs OFF. Adopt
   security fixes promptly, but after review, never by blind merge.
-- Prefer one Dependabot PR per repo per week, so separate PRs per ecosystem do not flood the CI runner pool. The per-repo CI stays the mechanical gate (frozen or
-  locked lockfiles, lint, types). No bot auto-merges a PR because of its dependency class.
+- Prefer one Dependabot PR per repo per week, so separate PRs per ecosystem do
+  not flood the CI runner pool. The per-repo CI stays the mechanical gate
+  (frozen or locked lockfiles, lint, types). No bot auto-merges a PR because of
+  its dependency class.
 
 When a Dependabot PR is red, restore its lockfiles from main. Never re-lock
 everything.

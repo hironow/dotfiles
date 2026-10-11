@@ -35,10 +35,10 @@ lint:
 ```
 
 Never "fix" ty's `unresolved-import` by silencing the rule. It means ty cannot
-see the project's dependencies and is checking nothing. Give ty the
-dependencies instead (`--group lint`, not `--only-group`). Keep one ruff and ty config shape per *project* (`ruff.toml` / `ty.toml`, or
-the `pyproject.toml` tables below); change only the project's own path and exclude
-blocks.
+see the project's dependencies and is checking nothing. Give ty the dependencies
+instead (`--group lint`, not `--only-group`). Keep one ruff and ty config shape
+per *project* (`ruff.toml` / `ty.toml`, or the `pyproject.toml` tables below);
+change only the project's own path and exclude blocks.
 
 ## ruff configuration (canonical — in `pyproject.toml`)
 

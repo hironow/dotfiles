@@ -25,13 +25,13 @@ rewritten.
 
 Codex gets `hooks/rtk-hook-codex.sh` from `.codex/hooks.json` the same way. This
 wrapper passes on `rtk hook codex`'s answer, approval field included; Codex
-grants no approval from that field. The wrapper does change the rewrite: it names rtk's real binary
-(`mise which rtk`). The command runs in Codex's sandbox, and there a mise shim
-cannot read mise's config ("No version is set for shim: rtk"). As in the Claude
-wrapper, the hook keeps only a plain `rtk <command>` rewrite, and only when the
-path needs no quoting (pwsh runs it on Windows). In every other case, the typed
-command runs. `just doctor` shows whether Codex trusts the hooks (see
-`docs/agent-sync.md` in the dotfiles repo).
+grants no approval from that field. The wrapper does change the rewrite: it
+names rtk's real binary (`mise which rtk`). The command runs in Codex's sandbox,
+and there a mise shim cannot read mise's config ("No version is set for shim:
+rtk"). As in the Claude wrapper, the hook keeps only a plain `rtk <command>`
+rewrite, and only when the path needs no quoting (pwsh runs it on Windows). In
+every other case, the typed command runs. `just doctor` shows whether Codex
+trusts the hooks (see `docs/agent-sync.md` in the dotfiles repo).
 
 **Never add `"command": "rtk hook claude"` (or `rtk hook codex`) to a settings
 or hooks file by hand.** If rtk's installer adds it during an upgrade, leave it:
@@ -46,8 +46,9 @@ unchanged. It is an optimizer, not a guard.
 ## Install and telemetry
 
 rtk (and headroom) come from mise on every OS (`config/mise/config.toml`). So
-you never need `rtk init -g`. Running it would add the hook block that sync
-retires, and write its own `RTK.md` into agent homes that sync owns.
+you never need `rtk init -g`. Running it would add the hook block that
+`just sync-agents` retires, and write its own `RTK.md` into agent homes that
+`just sync-agents` owns.
 
 Telemetry stays off through `RTK_TELEMETRY_DISABLED=1` (and
 `HEADROOM_BEACON=off`). These are set in three places: mise's global `[env]`,
@@ -61,8 +62,9 @@ real check is the `claude-rtk-hook` line of `just doctor`.
 
 ## rtk does not approve commands
 
-rtk answers `permissionDecision: "allow"` for everything it rewrites. That
-would auto-approve most Bash traffic. So the Claude Code wrapper **forwards only the rewrite** (`updatedInput`) and drops every other field. Rewritten commands still
+rtk answers `permissionDecision: "allow"` for everything it rewrites. That would
+auto-approve most Bash traffic. So the Claude Code wrapper **forwards only the
+rewrite** (`updatedInput`) and drops every other field. Rewritten commands still
 go through the normal permission flow, and an approving field that a later rtk
 adds cannot slip through. rtk optimizes output; it does not approve. Installing
 it must not change the permission posture (dotfiles ADR 0047).

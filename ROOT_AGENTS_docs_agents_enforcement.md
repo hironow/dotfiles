@@ -6,8 +6,8 @@ you need the exact exit-code contract. AGENTS.md has the short version.
 ## The three layers, and why written rules are not enough
 
 Instructions in AGENTS.md and CLAUDE.md are advisory. An agent usually follows
-them, but it can decide a rule does not apply. Rules that must hold every time need a machine to enforce them, at three
-points:
+them, but it can decide a rule does not apply. Rules that must hold every time
+need a machine to enforce them, at three points:
 
 1. **Claude Code hooks** run before and after tool calls, whatever the model
    decides. They are global: the dotfiles repo distributes them with

@@ -53,28 +53,31 @@ each test or session. Write down how to set up the environment.
 
 ### Parameterize for coverage
 
-Put the cases in a table and run each one as a named subtest:
+Put the cases in a table and run each one as a named subtest.
+`newRealClient(t)` is your helper: it talks to the real test environment, and
+its `Post` returns the status code and the response body as compact JSON.
 
 ```go
-func TestCreateOrderEndpoint(t *testing.T) {
+func TestAPIEndpoint(t *testing.T) {
 	cases := []struct {
 		name       string
 		body       string
 		wantStatus int
+		wantBody   string
 	}{
-		{"valid input succeeds", `{"item":"book","quantity":1}`, http.StatusCreated},
-		{"empty input fails", `{}`, http.StatusBadRequest},
-		{"negative quantity fails", `{"item":"book","quantity":-1}`, http.StatusUnprocessableEntity},
+		{"valid input succeeds", `{"valid":"data"}`, http.StatusOK, `{"success":true}`},
+		{"empty input fails", `{}`, http.StatusBadRequest, `{"error":"missing fields"}`},
+		{"invalid schema fails", `{"invalid":"schema"}`, http.StatusUnprocessableEntity, `{"error":"validation"}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			// given
 			client := newRealClient(t)
 			// when
-			status := client.Post(t, "/orders", tc.body)
+			status, body := client.Post(t, "/api/endpoint", tc.body)
 			// then
-			if status != tc.wantStatus {
-				t.Fatalf("status = %d, want %d", status, tc.wantStatus)
+			if status != tc.wantStatus || body != tc.wantBody {
+				t.Fatalf("got %d %s, want %d %s", status, body, tc.wantStatus, tc.wantBody)
 			}
 		})
 	}

@@ -4,11 +4,11 @@ Read this when you convert a hand-rolled TypeScript test harness to
 `bun:test`. docs/agents/testing.md has the general test rules.
 
 Write new TypeScript suites with `bun:test`: `describe` / `test` / `expect`.
-Never write a hand-rolled harness such as
-`let pass = 0; const ok = (name, cond) => …`. When you migrate an existing hand-rolled leaf
-(one test file that a runner executes), the conversion must **preserve behavior**: it exercises the
-same inputs and catches the same failures. The rules below come from 7
-converted leaves (2026-08-31).
+Never write a hand-rolled harness such as `let pass = 0; const ok = (name, cond)
+=> …`. When you migrate an existing hand-rolled leaf (one test file that a
+runner executes), the conversion must **preserve behavior**: it exercises the
+same inputs and catches the same failures. The rules below come from 7 converted
+leaves (2026-08-31).
 
 ## The naive transform is wrong
 
@@ -44,7 +44,7 @@ the failure prints exactly which items broke. The old `ok()` never did that.
   an empty collection cannot pass silently:
 
 ```ts
-test("walks enough words", () => { expect(WORDS.length).toBeGreaterThanOrEqual(30) })
+test("has at least 30 words", () => { expect(WORDS.length).toBeGreaterThanOrEqual(30) })
 test("every word has both locales", () => {
   const missing = WORDS.flatMap(([p, w]) =>
     LOCALES.filter((lo) => t(w, lo).trim() === "").map((lo) => `${p} in ${lo}`))
@@ -92,13 +92,13 @@ single-line edits, and run every converted leaf.
 
 ## During a dual-runner migration
 
-While both runners exist, **never keep a hand-written list of which leaf runs
-on which runner.** If you forget an entry, the old runner skips the leaf ("it
+While both runners exist, **never keep a hand-written list of which leaf runs on
+which runner.** If you forget an entry, the old runner skips the leaf ("it
 imports `bun:test`") and the new runner never lists it ("not on the list"). The
 leaf then runs *nowhere*, and the suite still goes green. Derive the set from
 the files themselves (grep for the `bun:test` import) in one script that every
-consumer reads: the old runner, the new runner, and the type-config guard (see "Bun types need
-their own tsconfig").
+consumer reads: the old runner, the new runner, and the type-config guard (see
+"Bun types need their own tsconfig").
 
 ## Bun types need their own tsconfig
 

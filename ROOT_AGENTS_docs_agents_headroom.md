@@ -16,18 +16,21 @@ three tools that the agent calls when it needs them:
 name is normal MCP namespacing). If the server is down, the tools disappear and
 the session carries on. A broken headroom costs a tool, never a session.
 
-**The proxy: only `j-cc`, the dotfiles launcher for Claude Code.** `scripts/jev_headroom.py` starts one proxy on a
-free port per launch, or reuses one that is ready. It points only the Claude
-process it starts at that proxy (`ANTHROPIC_BASE_URL`). Any problem means
-"launch without headroom", never "j-cc does not start". A custom base URL turns
-off Remote Control, which is why plain `claude` stays direct. This per-launch, fail-open proxy IS the proxy canary (the only place the proxy
-runs). There is no launchd service, on purpose:
-one mechanism, not two.
+**The proxy: the dotfiles launchers only.** `j-cc` (the launcher for Claude
+Code) sends its Claude through the proxy; `j-pi` readies the same proxy for its
+Codex workers. `scripts/jev_headroom.py` starts one proxy on a free port per
+launch, or reuses one that is ready. It points only the Claude process it starts
+at that proxy (`ANTHROPIC_BASE_URL`). Any problem means "launch without
+headroom", never "j-cc does not start". A custom base URL turns off Remote
+Control, which is why plain `claude` stays direct. The launchers start or reuse
+the proxy, and it fails open. It is also the canary that shows the proxy works.
+There is no launchd service, on purpose: one mechanism, not two.
 
 A j-cc session gets both layers: headroom's proxy for what reaches the model,
 and rtk's hook for what its commands print. `just jev-headroom-verify rtk`
 checks both together in one session (a proxied request plus rtk's own count).
 
-Do not run `headroom wrap claude` or `headroom init`. `wrap` fails closed by design
-(when headroom breaks, the Claude session fails too) and writes the `settings.json` env that sync owns. `just doctor`'s
+Do not run `headroom wrap claude` or `headroom init`. `wrap` fails closed by
+design (when headroom breaks, the Claude session fails too) and writes the
+`settings.json` env that `just sync-agents` owns. `just doctor`'s
 `headroom-routing` line warns if either one has run.
