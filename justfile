@@ -1366,8 +1366,7 @@ prune-retired-python-tools:
 # ADR 0044: move the ruff or ty pin in EVERY declaration at once (justfile uvx
 # gate pin, root + emulator dev groups, mise config), re-lock both uv projects,
 # and print the hironow/skills follow-up. Dependabot ignores both tools, so this
-# is the only path a pin moves through; tests/unit/test_ruff_ty_pins.py
-# guards the result. Usage: just bump-tool ruff 0.15.23 / just bump-tool ty 0.0.79
+# is the path a pin moves through. Usage: just bump-tool ruff 0.15.23 / just bump-tool ty 0.0.79
 [group('Setup')]
 bump-tool tool version:
     @{{UV_RUN}} scripts/bump_tool.py {{ tool }} {{ version }}

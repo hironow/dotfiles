@@ -33,7 +33,7 @@ dev = [
 # ruff + ty only: `uv run --frozen --only-group lint ruff` (emu-fmt / emu-lint).
 # ty uses `--group lint` so it still sees project imports.
 lint = [
-    # == the root lint-group pin; tests/unit/test_ruff_ty_pins.py keeps it equal.
+    # the root lint-group pin; `just bump-tool` moves both together.
     "ruff==0.16.9",
     "ty==0.0.84",
 ]

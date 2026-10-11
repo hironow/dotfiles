@@ -1,7 +1,7 @@
 """Unit tests for scripts/bump_tool.py (`just bump-tool ruff|ty <ver>`).
 
 ruff and ty are pinned exactly in three declarations (root and emulator lint
-groups, mise config) that tests/unit/test_ruff_ty_pins.py requires to agree;
+groups, mise config) that are kept together;
 Dependabot ignores both. This script is therefore the only way a pin moves: it
 rewrites every declaration in one go, re-locks both uv projects, and prints
 the hironow/skills follow-up. The justfile no longer carries a `uvx ruff@<ver>`
