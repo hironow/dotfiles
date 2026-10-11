@@ -59,8 +59,8 @@ module's `go` / `toolchain` directive requires.
 
 Build one static binary per target, with no C toolchain, for example
 `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o
-dist/<name>-linux-arm64 ./cmd/<name>`. Cover linux/amd64, linux/arm64,
-darwin/arm64, and windows/amd64.
+dist/<name>-linux-arm64 ./cmd/<name>`. Cover linux/amd64, linux/arm64, darwin/arm64, and windows/amd64. Name each
+output `dist/<name>-<os>-<arch>`, with `.exe` added for Windows.
 
 Put the target list in one `just` recipe. Keep `CGO_ENABLED=0`; a dependency
 that needs cgo breaks cross-compiling, so it needs an explicit reason.

@@ -31,10 +31,12 @@ Write the reason in the PR, or in an ADR when it starts a new codebase.
 
 ## Quality gate
 
-Wire these into the root `justfile` and `just check`: `cargo fmt --all --check`
-and `cargo clippy --all-targets --all-features -- -D warnings` (lint),
-`cargo fmt --all` (format), and `cargo test --all-targets --all-features`
-(test).
+Add three recipes to the root `justfile`, and call them from `just check`:
+
+- `rust-lint`: `cargo fmt --all --check` and
+  `cargo clippy --all-targets --all-features -- -D warnings`
+- `rust-fmt`: `cargo fmt --all`
+- `rust-test`: `cargo test --all-targets --all-features`
 
 - Fix clippy findings. Do not add `#[allow(...)]` to hide one; if you must,
   write the reason on the line above.

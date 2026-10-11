@@ -54,7 +54,8 @@ each test or session. Write down how to set up the environment.
 ### Parameterize for coverage
 
 Put the cases in a table and run each one as a named subtest (`t.Run`), so a
-failure names the case.
+failure names the case. Assert the status and the response body, and compare
+JSON bodies as decoded values, not as strings.
 
 ## TypeScript tests
 
