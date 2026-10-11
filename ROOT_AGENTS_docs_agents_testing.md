@@ -55,7 +55,7 @@ each test or session. Write down how to set up the environment.
 
 Put the cases in a table and run each one as a named subtest.
 `newRealClient(t)` is your helper: it talks to the real test environment, and
-its `Post` returns the status code and the response body as compact JSON.
+its `Post` returns the status code and the response body.
 
 ```go
 func TestAPIEndpoint(t *testing.T) {
@@ -76,8 +76,18 @@ func TestAPIEndpoint(t *testing.T) {
 			// when
 			status, body := client.Post(t, "/api/endpoint", tc.body)
 			// then
-			if status != tc.wantStatus || body != tc.wantBody {
-				t.Fatalf("got %d %s, want %d %s", status, body, tc.wantStatus, tc.wantBody)
+						if status != tc.wantStatus {
+				t.Fatalf("status = %d, want %d", status, tc.wantStatus)
+			}
+			var got, want any
+			if err := json.Unmarshal([]byte(body), &got); err != nil {
+				t.Fatalf("decode body %s: %v", body, err)
+			}
+			if err := json.Unmarshal([]byte(tc.wantBody), &want); err != nil {
+				t.Fatalf("decode want %s: %v", tc.wantBody, err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("body = %s, want %s", body, tc.wantBody)
 			}
 		})
 	}

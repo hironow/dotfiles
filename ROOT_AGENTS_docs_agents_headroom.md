@@ -23,8 +23,9 @@ launch, or reuses one that is ready. It points only the Claude process it starts
 at that proxy (`ANTHROPIC_BASE_URL`). Any problem means "launch without
 headroom", never "j-cc does not start". A custom base URL turns off Remote
 Control, which is why plain `claude` stays direct. The launchers start or reuse
-the proxy, and it fails open. It is also the canary that shows the proxy works.
-There is no launchd service, on purpose: one mechanism, not two.
+the proxy. If proxy setup fails, they launch without it. It is also the canary
+that shows the proxy works. There is no launchd service, on purpose: one
+mechanism, not two.
 
 A j-cc session gets both layers: headroom's proxy for what reaches the model,
 and rtk's hook for what its commands print. `just jev-headroom-verify rtk`
