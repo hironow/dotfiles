@@ -83,6 +83,51 @@ semgrep-test:
         ;;
     esac
     uvx semgrep --test --config .semgrep/rules/ .semgrep/rules/
+    just agent-baseline-test
+
+# Check the agent-baseline scaffold in a throwaway repo (called by semgrep-test,
+# so CI runs it): its Semgrep rules pass their own fixtures; a normal scan finds
+# the e2e mock in every path that contains `e2e` and nowhere else; `just semgrep`
+# fails on a finding; `just e2e-tests` lists only e2e test files. `--test` alone
+# cannot show the scope: it ignores a rule's `paths`.
+[group('Validation')]
+agent-baseline-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src="{{ justfile_directory() }}/templates/agent-baseline"
+    uvx semgrep --test --config "$src/.semgrep/rules/" "$src/.semgrep/tests/"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    cp -R "$src/." "$tmp/"
+    mkdir -p "$tmp/bin" "$tmp/tests/e2e" "$tmp/tests/unit" "$tmp/pkg"
+    printf '#!/usr/bin/env bash\nexec uvx semgrep "$@"\n' > "$tmp/bin/semgrep"
+    chmod +x "$tmp/bin/semgrep"
+    export PATH="$tmp/bin:$PATH"
+    cd "$tmp"
+    bad='from unittest.mock import MagicMock\n\n\ndef test_x() -> None:\n    assert MagicMock() is not None\n'
+    printf "$bad" > tests/e2e/test_old_layout.py
+    printf "$bad" > pkg/test_checkout_e2e.py
+    printf "$bad" > tests/unit/test_unit_mock.py
+    printf 'def helper() -> int:\n    return 1\n' > tests/e2e/helpers.py
+    git init -q
+    git add -A
+    want="$(printf '%s\n' pkg/test_checkout_e2e.py tests/e2e/test_old_layout.py)"
+    got="$(semgrep scan --config .semgrep/rules/ --json --quiet --metrics=off . \
+      | python3 -c 'import json,sys; print("\n".join(sorted({r["path"] for r in json.load(sys.stdin)["results"]})))')"
+    if [ "$got" != "$want" ]; then
+      printf 'agent-baseline: e2e rule scope is wrong\nwant:\n%s\ngot:\n%s\n' "$want" "$got" >&2
+      exit 1
+    fi
+    if just semgrep >/dev/null 2>&1; then
+      echo "agent-baseline: just semgrep passed despite a finding" >&2
+      exit 1
+    fi
+    got="$(just e2e-tests | sort)"
+    if [ "$got" != "$want" ]; then
+      printf 'agent-baseline: e2e-tests picked the wrong files\nwant:\n%s\ngot:\n%s\n' "$want" "$got" >&2
+      exit 1
+    fi
+    echo "✅ agent-baseline: rules, e2e scope, semgrep gate, and e2e selection OK"
 
 # Full validation of rule files
 [group('Validation')]
