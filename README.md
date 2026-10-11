@@ -250,6 +250,7 @@ claude mcp add -s user -t http vercel https://mcp.vercel.com
 claude mcp add -s user -t http livekit-docs https://docs.livekit.io/mcp
 claude mcp add -s user -t http openai https://developers.openai.com/mcp
 # Google Cloud: https://developers.google.com/knowledge/mcp#gcloud-cli
+# 手元の MCP 接続の設定で、一度だけ行う。tofu が管理する本番のリソースには使わない
 YOUR_PROJECT_ID=<your-project-id>
 gcloud beta services mcp enable developerknowledge.googleapis.com --project=$YOUR_PROJECT_ID
 # 認証が要る: gcloud auth login / gcloud auth application-default login
