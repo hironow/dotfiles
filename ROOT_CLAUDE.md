@@ -12,8 +12,9 @@ Everything in AGENTS.md applies. The rules below apply only to Claude Code.
 
 ## Plan review (before you show a plan to the human)
 
-Every non-trivial implementation plan gets an independent review **before** you
-show it. Never skip it, and never review it yourself in the context that wrote
+Every plan that changes behavior (code, config, dependencies, infrastructure, or
+the rules in these instructions) gets an independent review **before** you show
+it. A plan that only fixes typos, comments, or formatting needs none. Never skip it, and never review it yourself in the context that wrote
 it. Codex is the preferred reviewer. If Codex is unavailable, start an
 independent subagent instead. Full steps, the three lenses, and commands:
 docs/agents/plan-review.md.

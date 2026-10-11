@@ -1,6 +1,8 @@
 # Plan review (codex first, independent subagent fallback)
 
-Read this before you show any non-trivial implementation plan to the human.
+Read this before you show the human a plan that changes behavior: code,
+config, dependencies, infrastructure, or the rules in these instructions. A
+plan that only fixes typos, comments, or formatting needs no review.
 Someone independent must review the plan **before** the human sees it. Never
 skip this review. CLAUDE.md has the pointer here.
 
