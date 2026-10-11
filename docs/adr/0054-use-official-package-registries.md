@@ -9,7 +9,7 @@
 **Author:** Codex
 **Author-contact:** @hironow
 **Supersedes:** [ADR-0028](0028-flatt-pypi-mirror-default-index.md)
-**Consultation-trace:** [除去 PR の差分](https://github.com/hironow/dotfiles/compare/main...fix/remove-flatt)
+**Consultation-trace:** [除去 PR の差分](https://github.com/hironow/dotfiles/pull/464)
 
 ## Context
 
