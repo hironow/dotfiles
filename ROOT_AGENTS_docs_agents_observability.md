@@ -33,18 +33,14 @@ Out of scope: vendor SDKs that are not OTel. Use OTel with an exporter instead.
 
 ## Go setup
 
-```
-go.opentelemetry.io/otel
-go.opentelemetry.io/otel/sdk
-go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
-```
+Use `go.opentelemetry.io/otel`, `go.opentelemetry.io/otel/sdk`, and
+`go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc`.
 
 ## Python setup (existing Python services)
 
-```sh
-uv add opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
-# plus opentelemetry-instrumentation-* per framework: fastapi, httpx, sqlalchemy, …
-```
+Run `uv add opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp`,
+plus the `opentelemetry-instrumentation-*` package for each framework you use
+(fastapi, httpx, sqlalchemy, …).
 
 ## Local telemetry
 
@@ -52,13 +48,10 @@ With either option below, apps set
 `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` and
 `OTEL_SERVICE_NAME=<module>`.
 
-**First choice: the shared stack (run it from the dotfiles repo).**
-
-```sh
-just tel-up     # otel-collector (OTLP :4317 gRPC / :4318 HTTP) -> Tempo + Grafana
-just tel-down   # stop it
-# UI: Grafana at http://localhost:3010 (https://grafana.localhost via portless)
-```
+**First choice: the shared stack (run it from the dotfiles repo).** `just tel-up`
+starts an otel-collector (OTLP `:4317` gRPC / `:4318` HTTP) that feeds Tempo and
+Grafana; `just tel-down` stops it. Grafana is at `http://localhost:3010`
+(`https://grafana.localhost` through portless).
 
 You need no telemetry services in each repo. Point apps at the shared
 collector.

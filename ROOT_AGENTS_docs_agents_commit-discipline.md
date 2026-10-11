@@ -57,25 +57,6 @@ If a change needs two types, make two commits, structural first.
 Never add `[STRUCTURAL]` or `[BEHAVIORAL]` tags. The type already says which
 one it is.
 
-## Examples
-
-Good:
-
-```
-feat(auth): add refresh token rotation
-refactor(paintress): extract gauge tracker into dedicated module
-fix(d-mail): handle empty outbox on startup
-chore(deps): bump otelcol-contrib to 0.110.0
-```
-
-Bad:
-
-```
-update stuff
-feat: refactor auth and add new endpoint     # two types in one commit
-[BEHAVIORAL] feat: add login                  # redundant tag
-```
-
 ## Commit small and often
 
 - Make small, frequent commits, not large, rare ones.

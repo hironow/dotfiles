@@ -101,16 +101,9 @@ passes that expiry.
 
 ## Auditing
 
-Run these from the dotfiles repo:
-
-
-```sh
-just gcp-cost-audit <project>                                # sinks only
-just gcp-cost-audit <project> --location <region>            # + scheduler jobs
-just gcp-cost-audit <project> --billing-account <id>         # + budgets
-just gcp-cost-audit <project> --location <region> --billing-account <id>
-just gcp-cost-audit <project> … > ~/audit-$(date +%F).txt    # keep it LOCAL
-```
+Run the audit from the dotfiles repo. The full check is
+`just gcp-cost-audit <project> --location <region> --billing-account <id>`.
+`--location` adds the scheduler jobs, and `--billing-account` adds the budgets.
 
 **A check whose flag is missing reports `WARN … not verified`, never OK**, and
 it counts toward exit 1. A check that did not run cannot pass. `--location`
@@ -120,10 +113,7 @@ run without flags audits the sinks and checks **neither brake**. Only the run
 with both flags checks everything.
 
 Find the billing account read-only, without writing it anywhere:
-
-```sh
-gcloud billing projects describe <project> --format='value(billingAccountName)'
-```
+`gcloud billing projects describe <project> --format='value(billingAccountName)'`.
 
 Exit 1 means something has no bound, or a check could not be verified. Every
 probe is a `gcloud … list`, so you can run it against a live project without a

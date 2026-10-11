@@ -115,23 +115,13 @@ run-anything subcommands (`rtk proxy …`, `rtk run …`, `rtk err …`,
 `rtk test …`, `rtk summary …`, `rtk smart …`). Putting `rtk` in front of a
 banned tool does not get around the ban.
 
-## Meta commands (always call rtk directly)
+## rtk's own commands
 
-```bash
-rtk gain              # Show token savings analytics
-rtk gain --history    # Show command usage history with savings
-rtk discover          # Analyze command history for missed opportunities
-rtk proxy <cmd>       # Execute raw command without filtering (for debugging)
-```
-
-## Check the installation
-
-```bash
-rtk --version         # Should show: rtk X.Y.Z
-rtk gain              # Should work (not "command not found")
-which rtk             # Verify correct binary
-rtk hook check "<cmd>"  # Dry-run: how the hook engine would rewrite <cmd>
-```
+Call these directly: `rtk gain` shows the token savings (`--history` per
+command), `rtk discover` finds commands that rtk could have filtered, and
+`rtk proxy <cmd>` runs a command without filtering. To check the install, run
+`rtk --version` and `which rtk`; `rtk hook check "<cmd>"` shows how the hook
+would rewrite a command.
 
 ⚠️ **Name collision**: if `rtk gain` fails, you may have the wrong rtk:
 reachingforthejack/rtk (Rust Type Kit).

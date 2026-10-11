@@ -12,9 +12,8 @@ leaves (2026-08-31).
 
 ## The naive transform is wrong
 
-```ts
-ok("name", cond, note)  →  test("name", () => { expect(cond).toBe(true) })   // ✗
-```
+Do not turn `ok("name", cond, note)` into
+`test("name", () => { expect(cond).toBe(true) })`.
 
 Bun's own docs list `expect(users.length === 3).toBe(true)` under **Avoid**.
 The condition becomes `true` or `false` before `expect` sees it, so the failure
@@ -41,17 +40,7 @@ the failure prints exactly which items broke. The old `ok()` never did that.
   over 1346 words × 2 locales produced 2692 assertions; as separate tests that
   is unreadable and slow. Collapse it into one assertion over the collected
   offenders, and **keep a separate check that the collection is not empty**, so
-  an empty collection cannot pass silently:
-
-```ts
-test("has at least 30 words", () => { expect(WORDS.length).toBeGreaterThanOrEqual(30) })
-test("every word has both locales", () => {
-  const missing = WORDS.flatMap(([p, w]) =>
-    LOCALES.filter((lo) => t(w, lo).trim() === "").map((lo) => `${p} in ${lo}`))
-  expect(missing).toEqual([])
-})
-```
-
+  an empty collection cannot pass silently.
 - Delete the trailing `console.log(\`${pass} passed\`)` and `process.exit(1)`
   completely. The runner owns the tally and the exit code.
 

@@ -14,11 +14,9 @@ Start with few rules when the project starts; add rules as patterns settle.
 
 ## Directory structure
 
-```
-.semgrep/rules/{category}/{rule-id}.yaml
-.semgrep/tests/{category}/{rule-id}.{py|go|ts|…}
-.semgrep/README.md          # ruleset overview + how to add a rule
-```
+Put each rule in `.semgrep/rules/{category}/{rule-id}.yaml` and its test in
+`.semgrep/tests/{category}/{rule-id}.{py|go|ts|…}`. `.semgrep/README.md` gives
+the ruleset overview and how to add a rule.
 
 ## Rule file convention
 

@@ -105,11 +105,8 @@ how to change and test a hook.
 
 AGENTS.md and the guide files in this directory name prohibited patterns on
 purpose, as examples. When you scan a repo for violations, exclude the policy
-files themselves, for example:
-
-```sh
-git grep <pattern> -- ':(exclude)**/AGENTS.md' ':(exclude)**/CLAUDE.md'
-```
+files themselves, for example
+`git grep <pattern> -- ':(exclude)**/AGENTS.md' ':(exclude)**/CLAUDE.md'`.
 
 Also exclude the repo's agent-guide directory if it has one. The
 `block-prohibited-files` hook already skips these paths.

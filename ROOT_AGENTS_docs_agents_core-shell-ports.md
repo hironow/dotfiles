@@ -10,33 +10,6 @@ https://alistair.cockburn.us/hexagonal-architecture).
 
 ## How the code is split
 
-```
- driving adapters        shell                            driven adapters
- (start the work)                                         (used by the work)
-
- CLI  ---+      +-----------------------------+          +--> real adapter --> DB / API / mail
- HTTP ---+----> | 1. read through ports  -----+--port--->+
- job  ---+      | 2. call the core            |          +--> fake adapter --> memory (fake/)
- test ---+      | 3. write through ports -----+--port--->+
-                +--------------+--------------+
-                               | plain values in, values out
-                               v
-                +-----------------------------+
-                | core: pure functions        |
-                | no I/O, no clock, no random |
-                | values, no ports            |
-                +-----------------------------+
-
-Legend / 凡例:
-- driving adapter: 駆動する側のアダプター (処理を始める)
-- driven adapter: 駆動される側のアダプター (処理が使う外部)
-- shell: シェル (副作用を担う外殻)
-- core: コア (純粋な業務ロジック)
-- port: ポート (目的ごとに名付けた境界の型)
-- real adapter: 本物のアダプター
-- fake adapter: フェイク (メモリ上で動く代役)
-```
-
 - **The core is pure.** It takes values and returns values. It does not read
   files, call the network, read the clock, make random numbers, or call a port.
   The shell passes in the current time and any random values.

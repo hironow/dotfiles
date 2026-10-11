@@ -53,46 +53,8 @@ each test or session. Write down how to set up the environment.
 
 ### Parameterize for coverage
 
-Put the cases in a table and run each one as a named subtest.
-`newRealClient(t)` is your helper: it talks to the real test environment, and
-its `Post` returns the status code and the response body.
-
-```go
-func TestAPIEndpoint(t *testing.T) {
-	cases := []struct {
-		name       string
-		body       string
-		wantStatus int
-		wantBody   string
-	}{
-		{"valid input succeeds", `{"valid":"data"}`, http.StatusOK, `{"success":true}`},
-		{"empty input fails", `{}`, http.StatusBadRequest, `{"error":"missing fields"}`},
-		{"invalid schema fails", `{"invalid":"schema"}`, http.StatusUnprocessableEntity, `{"error":"validation"}`},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			// given
-			client := newRealClient(t)
-			// when
-			status, body := client.Post(t, "/api/endpoint", tc.body)
-			// then
-						if status != tc.wantStatus {
-				t.Fatalf("status = %d, want %d", status, tc.wantStatus)
-			}
-			var got, want any
-			if err := json.Unmarshal([]byte(body), &got); err != nil {
-				t.Fatalf("decode body %s: %v", body, err)
-			}
-			if err := json.Unmarshal([]byte(tc.wantBody), &want); err != nil {
-				t.Fatalf("decode want %s: %v", tc.wantBody, err)
-			}
-			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("body = %s, want %s", body, tc.wantBody)
-			}
-		})
-	}
-}
-```
+Put the cases in a table and run each one as a named subtest (`t.Run`), so a
+failure names the case.
 
 ## TypeScript tests
 

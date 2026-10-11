@@ -95,9 +95,5 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
 
 All text you process in the repo must be strict UTF-8. When a fetched web page
 or an external file is unreadable, convert it from a legacy Japanese encoding
-right away with `iconv` (POSIX standard, pre-installed):
-
-```sh
-iconv -f SHIFT-JIS -t UTF-8 input > output
-iconv -f EUC-JP   -t UTF-8 input > output
-```
+right away with `iconv` (POSIX standard, pre-installed), for example
+`iconv -f SHIFT-JIS -t UTF-8 input > output` (or `-f EUC-JP`).

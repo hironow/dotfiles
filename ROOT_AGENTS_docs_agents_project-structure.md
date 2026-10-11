@@ -36,15 +36,6 @@ repos) are exempt.
 - `compose.yaml` always stays at the root. It points to `docker/*.Dockerfile`
   with `build.dockerfile`.
 
-```
-# single-service           # multi-service
-Dockerfile                  docker/
-compose.yaml                  api.Dockerfile
-                              worker.Dockerfile
-                              migration.Dockerfile
-                            compose.yaml
-```
-
 ## docs/ subdirectories
 
 - `docs/adr/` — Architecture Decision Records (see docs/agents/docs-discipline.md).
