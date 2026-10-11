@@ -1,10 +1,10 @@
 # 0054. portless を just の recipe で包まず、直接使う
 
 **Date:** 2026-10-11
-**Status:** Proposed
+**Status:** Accepted
 **ID:** ADR-0054
 **Title:** portless を just の recipe で包まず、直接使う
-**Decided-date:** none
+**Decided-date:** 2026-10-11
 **Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Claude Code（owner session）
@@ -13,7 +13,7 @@
 **Supersedes:** [ADR-0015](0015-adopt-portless-for-local-dev-urls.md) の一部（別名の一括登録と CA 信頼を just の recipe で行う点）
 **Superseded-by:** none
 **Related:** [ADR-0015](0015-adopt-portless-for-local-dev-urls.md)、[ADR-0016](0016-integrate-emulate-api-emulators-via-npx.md)、[portless の別名一覧](../portless-urls.md)
-**Consultation-trace:** [公開PR #468](https://github.com/hironow/dotfiles/pull/468)
+**Consultation-trace:** [公開PR #468の所有者裁定](https://github.com/hironow/dotfiles/pull/468#issuecomment-6106249810)
 
 ## やさしい説明
 
@@ -57,9 +57,15 @@ ADR-0051 の決裁待ち一覧の手順に従い、この記録を決裁待ち�
 
 ## 裁定・merge前の停止条件
 
-- 所有者が PR #468 で裁定するまで merge しない。
-- 裁定後は、この記録の状態、ADR-0015 の状態の行、決裁待ち一覧の行、ADR 索引を同じ変更で更新する（ADR-0051）。
+- 所有者は 2026-10-11 に [PR #468](https://github.com/hironow/dotfiles/pull/468#issuecomment-6106249810) で裁定した。
+- 同じ PR で、この記録の状態、ADR-0015 の状態の行、決裁待ち一覧の行、ADR 索引を更新してから merge した（ADR-0051）。
 
 ## 反転記録 (Reversal)
 
 none（ADR-0015 の一部を置き換える。ADR-0015 の本文は変えない。）
+
+## 決定（2026-10-11）
+
+- **Accepted**。決定者：Hiroto N.（@hironow）。[公開PR #468の裁定](https://github.com/hironow/dotfiles/pull/468#issuecomment-6106249810)。
+- ADR-0015 の状態の行に、一部を置き換えたことを書いた。
+- 次の作業：merge 後に `just sync-agents all` を実行する。
