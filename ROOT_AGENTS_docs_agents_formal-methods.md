@@ -5,7 +5,9 @@ queue, a lock or lease, a reconciler or janitor, a retention or cleanup policy,
 or anything that deletes or releases something on its own. Logic that runs in
 one process and is deterministic stays with unit tests.
 
-This applies to **every repo** that matches the trigger above.
+This applies to **every repo** that matches the trigger above. Whether a repo
+matches is a human judgment, not a grep. A repo out of scope needs nothing in
+its own tree.
 
 ## What to produce
 
@@ -25,7 +27,7 @@ This applies to **every repo** that matches the trigger above.
   model invariant, make the code's guard mirror it, and keep shared constants
   equal with a lockstep test.
 
-## Gate
+## The `just spec-check` gate
 
 The gate is a `just spec-check` recipe that `just check` runs, so CI runs what a
 developer runs. Write it in **strict bash** (`set -euo pipefail`). just's
@@ -38,6 +40,5 @@ Tools: **Quint** (`@informalsystems/quint`) plus the simulation. Apalache
 used.
 
 Start from a small lease example (a lock without a lease, with a lease, with a
-fencing token) and grow from there. Whether this applies is a human judgement,
-not a grep. A repo out of scope needs nothing in its own tree. Write findings to
+fencing token) and grow from there. Write findings to
 `docs/plan/<topic>.md` as what / how found / status.

@@ -17,8 +17,9 @@ the gates that would have reviewed it.
 - The workflow lists `ready_for_review` in `pull_request.types`. Without it,
   the skipped run never comes back when the PR leaves draft, and the PR
   cannot merge (or merges untested).
-- The fork gate is a separate protection. Check it on its own: one does not
-  imply the other.
+- The fork gate (a job condition that keeps pull requests from forks away from
+  secrets) is a separate protection. Check it on its own: one does not imply
+  the other.
 
 A reusable `workflow_call` callee inherits the caller's job gate. Workflows
 that never see `pull_request` (push-only, schedule, `labeled`-only CodeQL) need

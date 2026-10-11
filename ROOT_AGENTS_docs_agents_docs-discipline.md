@@ -1,4 +1,4 @@
-# Documentation Discipline
+# Documentation discipline
 
 Read this when you edit docs, write an ADR or PDR, or touch `intent.md`,
 `handover.md`, `decision-queue.md`, `plan/`, or `research/`. AGENTS.md has the
@@ -34,7 +34,7 @@ them.
 
 ## `docs/adr/` — Architecture Decision Records
 
-An ADR records the *why* behind a significant decision. Docs record only the
+An ADR records the *why* behind a decision that the list below covers. Docs record only the
 *what*.
 
 Write one when you:
@@ -143,7 +143,7 @@ Write it so a human or an agent can read it in under two minutes.
 - `just {command}` — {what it does}
 ```
 
-Update it at the end of every significant work session (per session, not per
+Update it at the end of every work session that changed code or plans (per session, not per
 commit). Do not copy `intent.md` into it; link to it.
 
 ## Opt-in categories (adopt per repo)

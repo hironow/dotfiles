@@ -1,4 +1,4 @@
-# Semgrep Rules (`.semgrep/`)
+# Semgrep rules (`.semgrep/`)
 
 Read this when you add or maintain a static-analysis rule for one project.
 Start with few rules when the project starts; add rules as patterns settle.
@@ -25,7 +25,7 @@ Start with few rules when the project starts; add rules as patterns settle.
 - One rule per file; the filename matches the rule id.
 - Use the `.yaml` extension (never `.yml`).
 - Rule id: `{project-prefix}-{category}-{short-name}`
-  (e.g. `paintress-concurrency-unguarded-goroutine`).
+  (for example `paintress-concurrency-unguarded-goroutine`).
 - Every rule has a test file with at least one example that matches and one
   that does not.
 
@@ -59,7 +59,7 @@ rules:
 ## When to add a rule
 
 - Reviewers made the same comment twice or more.
-- An ADR decision needs a mechanical check (e.g. "always Cloud SQL
+- An ADR decision needs a mechanical check (for example "always Cloud SQL
   PostgreSQL, never Spanner").
 - You can express the root cause of a production incident as a code pattern.
 

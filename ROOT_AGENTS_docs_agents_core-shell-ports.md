@@ -8,7 +8,7 @@ https://testing.googleblog.com/2025/10/simplify-your-code-functional-core.html)
 and "Hexagonal Architecture" (Alistair Cockburn,
 https://alistair.cockburn.us/hexagonal-architecture).
 
-## The shape
+## How the code is split
 
 ```
  driving adapters        shell                            driven adapters

@@ -41,7 +41,8 @@ position.
 Few users, single-maintainer utilities, anything obscure. A compromise here
 does more damage through the supply chain.
 
-- Use `cooldown`, so a malicious or yanked release shows up upstream first.
+- Use `cooldown`, so upstream finds a malicious or yanked
+  release before you adopt it.
 - Read the changelog before you merge a major.
 - **If you are unsure which class a dependency belongs to, treat it as Class 2.**
 
@@ -51,7 +52,7 @@ does more damage through the supply chain.
   security fixes promptly, but after review, never by blind merge.
 - Prefer one Dependabot PR per repo per week, so separate PRs per ecosystem do
   not flood the pool. The mechanical gates stay the per-repo CI (frozen or
-  locked lockfiles, lint, types). No bot auto-merges by class.
+  locked lockfiles, lint, types). No bot auto-merges a PR because of its dependency class.
 
 When a Dependabot PR is red, restore its lockfiles from main. Never re-lock
 everything.

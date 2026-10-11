@@ -1,4 +1,4 @@
-# Project Structure
+# Project structure
 
 Read this when you create directories or files, or when you are not sure where
 something goes.
@@ -57,5 +57,3 @@ compose.yaml                  api.Dockerfile
 - Make scripts idempotent.
 - Process arguments early.
 - Prefer defining common tasks in the `justfile` over standalone scripts.
-- Aim for: standardization and error prevention; a good developer experience;
-  idempotency; and clear guidance on the next action.

@@ -15,7 +15,7 @@ These instructions do not require a test directory or a test-file layout.
 | e2e         | the full system with **real** dependencies only       |
 | scenario    | API, CLI, or agent workflows written as `runn` YAML   |
 
-## Mock policy by test type
+## Mock policy by test kind
 
 - **Unit** — Test the core with plain values; it needs no fake and no mock.
   Test the shell with the fakes in `fake/` (docs/agents/core-shell-ports.md).

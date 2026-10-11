@@ -6,8 +6,8 @@ you need the exact exit-code contract. AGENTS.md has the short version.
 ## The three layers, and why written rules are not enough
 
 Instructions in AGENTS.md and CLAUDE.md are advisory. An agent usually follows
-them, but it can decide a rule does not apply. Rules that must hold every time
-are enforced by machines at three points:
+them, but it can decide a rule does not apply. Rules that must hold every time need a machine to enforce them, at three
+points:
 
 1. **Claude Code hooks** run before and after tool calls, whatever the model
    decides. They are global: the dotfiles repo distributes them with
@@ -51,10 +51,10 @@ rules cover the long tail.
   `gcloud` mutations that cause drift (open an IaC PR instead); and
   **creating `.yml` files via Bash** (redirect targets, `touch`/`tee`
   arguments, `cp`/`mv` destinations; reading stays allowed). Node is bun-only
-  (ADR 0027). The `corepack enable`/`prepare`/`use` provisioning subcommands
+  (dotfiles ADR 0027). The `corepack enable`/`prepare`/`use` provisioning subcommands
   stay allowed.
 - `rtk-hook-claude.sh` (Bash): wraps `rtk hook claude`, the rewriter of the
-  mandatory output proxy (ADR 0047). It is not a guard. It **fails open**: on
+  mandatory output proxy (dotfiles ADR 0047). It is not a guard. It **fails open**: on
   any error it exits 0 and leaves the command unchanged, and it is the one hook
   here that may exit non-zero without blocking. It removes rtk's
   `permissionDecision: "allow"`, so rewritten commands keep the normal
@@ -80,7 +80,7 @@ rules cover the long tail.
   (`rtk proxy|run|err|test|summary|smart <cmd>`) it sits one token further
   right. rtk is in the set, not the long tail, because it is mandatory and its
   hook adds it in front of commands by default. So `rtk pnpm install` is
-  blocked exactly like `pnpm install` (ADR 0047).
+  blocked exactly like `pnpm install` (dotfiles ADR 0047).
 - Heredocs are judged by who receives them. A body read by a data sink
   (`cat`, `gh`, `git`, …) is treated as prose and skipped by **all** guards
   (so PR bodies via `gh pr create --body-file -` or `$(cat <<'EOF' …)` are
@@ -92,7 +92,7 @@ rules cover the long tail.
   there. Put long prose in a heredoc or a file (`git commit -F`,
   `--body-file`).
 - Command parsing is best effort. If a guard blocks something it should not
-  (for example a prose mention the tokenizer cannot tell apart), ask the user
+  (for example a prose mention the tokenizer cannot tell apart), ask the human
   to run the command themselves with the `!` prefix.
 
 ## Hook sources
@@ -103,7 +103,7 @@ how to change and test a hook.
 
 ## Policy files name the patterns they forbid
 
-AGENTS.md and the playbook files in this directory name prohibited patterns on
+AGENTS.md and the guide files in this directory name prohibited patterns on
 purpose, as examples. When you scan a repo for violations, exclude the policy
 files themselves, for example:
 
@@ -111,5 +111,5 @@ files themselves, for example:
 git grep <pattern> -- ':(exclude)**/AGENTS.md' ':(exclude)**/CLAUDE.md'
 ```
 
-Also exclude the repo's agent-playbook directory if it has one. The
+Also exclude the repo's agent-guide directory if it has one. The
 `block-prohibited-files` hook already skips these paths.

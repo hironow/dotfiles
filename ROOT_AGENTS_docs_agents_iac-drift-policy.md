@@ -41,7 +41,7 @@ either silently reverts your change or fails on state it did not expect.
 1. If a manual change shipped, open a PR **in this session** that puts it into
    IaC. Do not leave live state ahead of the repo overnight.
 2. If the IaC PR cannot land right away (it waits on review), record the drift
-   in `docs/handover.md`. Then the next operator will not run `tofu apply`
+   in `docs/handover.md`. Then the next actor will not run `tofu apply`
    blindly and revert the fix.
 3. About to type `gcloud ... update/resize` on a resource that appears anywhere
    in `tofu/`? **Stop. Open a PR.** 30 minutes of delay beats a drift incident.
@@ -58,7 +58,7 @@ either silently reverts your change or fails on state it did not expect.
 
 - Default to the IaC PR path. Suggest a manual `gcloud`/`kubectl` command only
   for one of the four exceptions above.
-- If a manual command is the only way to unblock the operator, state the IaC
+- If a manual command is the only way to unblock the human, state the IaC
   follow-up in the same message ("this bridges the gap; PR XYZ lands within the
   hour to capture it permanently").
 - Refuse to **chain** manual changes. One emergency change is acceptable; a

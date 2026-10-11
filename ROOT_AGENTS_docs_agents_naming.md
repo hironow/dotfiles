@@ -43,7 +43,7 @@ Kubernetes controller). Then they name a real role.
 | `handle()` | `rejectDuplicateOrder()` |
 | `data`, `info`, `result` | `expiredUsers`, `quota`, `refundDecision` |
 
-## Other rules
+## Keep names consistent
 
 - Use the same name for the same concept everywhere: code, tests, docs, logs,
   and metrics.

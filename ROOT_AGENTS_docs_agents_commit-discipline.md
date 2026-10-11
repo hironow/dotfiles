@@ -1,4 +1,4 @@
-# Commit Discipline
+# Commit discipline
 
 Read this before you write a commit message. AGENTS.md has the short version.
 

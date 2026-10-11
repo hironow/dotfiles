@@ -4,7 +4,7 @@ Read this when you run shell commands through `rtk`, check its token savings,
 or debug output that looks filtered when you did not expect it.
 
 `rtk` is a CLI proxy that cuts command output to save tokens (up to 90% of bash
-output). It is **mandatory base tooling**, and you cannot opt out (ADR 0047).
+output). It is **mandatory base tooling**, and you cannot opt out (dotfiles ADR 0047).
 Each agent reaches it in one of these ways:
 
 - **Claude Code and Codex**: a hook rewrites commands for you (for example,
@@ -22,8 +22,8 @@ wraps `rtk hook claude` instead of replacing it, so rtk still decides what gets
 rewritten.
 
 Codex gets `hooks/rtk-hook-codex.sh` from `.codex/hooks.json` the same way. This
-wrapper passes on `rtk hook codex`'s answer with its approval (Codex grants no
-approval from it). It does change the rewrite: it names rtk's real binary
+wrapper passes on `rtk hook codex`'s answer, approval field included; Codex
+grants no approval from that field. The wrapper does change the rewrite: it names rtk's real binary
 (`mise which rtk`). The command runs in Codex's sandbox, and there a mise shim
 cannot read mise's config ("No version is set for shim: rtk"). As in the Claude
 wrapper, the hook keeps only a plain `rtk <command>` rewrite, and only when the
@@ -35,10 +35,11 @@ command runs. `just doctor` shows whether Codex trusts the hooks (see
 or hooks file by hand.** If rtk's installer adds it during an upgrade, leave it:
 `just sync-agents` retires that block on every run (`RETIRED_HOOK_COMMAND` in
 `scripts/sync_agents.py`). With two rewriting hooks in one session, rtk wins and
-the carve-out below never fires.
+the worktree git carve-out below
+("Worktree-isolated agents") never fires.
 
 The wrapper **fails open**: if rtk is missing or fails, the command runs
-unchanged. It is an optimiser, not a guard.
+unchanged. It is an optimizer, not a guard.
 
 ## Install and telemetry
 
@@ -51,7 +52,10 @@ Telemetry stays off through `RTK_TELEMETRY_DISABLED=1` (and
 the shared Claude settings env, and on Windows the persisted User env
 (`just harden-env`).
 
-rtk's own "No hook installed — run `rtk init -g`" notice, and `rtk init --show` reporting "Hook: not found", are expected: rtk only looks for its installer's layout, not for the dotfiles-managed hook above. Ignore them; `just doctor`'s `claude-rtk-hook` line is the real check.
+rtk may print "No hook installed — run `rtk init -g`", and `rtk init --show`
+may report "Hook: not found". Both are expected: rtk looks only for its
+installer's layout, not for the dotfiles-managed hook above. Ignore them. The
+real check is the `claude-rtk-hook` line of `just doctor`.
 
 ## rtk does not approve commands
 
@@ -59,8 +63,8 @@ rtk answers `permissionDecision: "allow"` for everything it rewrites. That
 would auto-approve most Bash traffic. So the wrapper **forwards only the
 rewrite** (`updatedInput`) and drops every other field. Rewritten commands still
 go through the normal permission flow, and an approving field that a later rtk
-adds cannot slip through. rtk optimises output; it does not approve. Installing
-it must not change the permission posture (ADR 0047).
+adds cannot slip through. rtk optimizes output; it does not approve. Installing
+it must not change the permission posture (dotfiles ADR 0047).
 
 The wrapper's `RTK_HOOK_PERMISSION_DECISION` variable is a **test seam only**.
 Never set it in managed settings (any `.claude/settings*.json` fragment, or
@@ -75,7 +79,8 @@ drops rtk's git rewrite, so plain `git` runs. Everything else (`ls`, `grep`,
 `rg`, `docker`, …) keeps rtk's compression. Outside such a worktree, nothing
 changes.
 
-Why: the isolation guard reads the command *after* hook rewrites. It sees a
+Why: the Claude Code harness's isolation check reads the command *after*
+hook rewrites. It sees a
 launcher it cannot look through and refuses the whole call. For a command typed
 as a bare `git`, it says:
 
@@ -83,10 +88,10 @@ as a bare `git`, it says:
 > it, and from which directory or root, cannot be read here … so what it runs
 > cannot be shown not to be git. Refusing to run it …
 
-## When the isolation guard still refuses: use `/usr/bin/git`
+## When the harness still refuses: use `/usr/bin/git`
 
 Two refusals come from the Claude Code harness itself, not from rtk or any
-dotfiles hook, so nothing here can fix them. You can recognise both by the
+dotfiles hook, so nothing here can fix them. You can recognize both by the
 words "too complex to verify":
 
 1. **`git` matched inside an unrelated word.** The harness refuses

@@ -47,7 +47,7 @@ rust-test:
 
 - Fix clippy findings. Do not add `#[allow(...)]` to hide one; if you must,
   write the reason on the line above.
-- Do not use `unsafe` unless there is no safe way. Put a `// SAFETY:` comment
+- Use `unsafe` only when there is no safe way. Put a `// SAFETY:` comment
   on every `unsafe` block.
 - Return errors with `Result`. Do not use `unwrap()` or `expect()` outside
   tests and `main` start-up code.

@@ -5,11 +5,12 @@ hironow/skills, and any installed third-party skill that overlaps with one of
 ours. The conventions for the skills themselves, and the tooling that checks
 them (`scripts/`, `tests/`, `justfile`, CI), live in hironow/skills. This file
 covers the procedure around them and how skills reach the agent homes
-(ADR 0043).
+(dotfiles ADR 0043).
 
 ## Where skills live and how they reach agents
 
-- **hironow/skills** (a normal clone, e.g. `~/ghq/github.com/hironow/skills`)
+- **hironow/skills** (a normal clone, for example
+  `~/ghq/github.com/hironow/skills`)
   holds self-authored skills and forks that carry a deliberate local change.
   Changes go branch → PR (`just check` locally and in its CI) → squash merge.
   dotfiles holds no copy of it.
@@ -22,8 +23,9 @@ covers the procedure around them and how skills reach the agent homes
   `~/.codex/skills`, `~/.gemini/skills`) hold relative symlinks into the store.
   `scripts/skills_lock.py place` (`just skills-place`) places them; where the
   OS refuses symlinks, it places a tracked copy. Never edit a skill inside a
-  home: the tool keeps and reports a differing real directory, and the CLI's
-  own `update` would overwrite it. Edit in the repository.
+  home: `just skills-place` keeps and reports a differing real directory,
+  and the CLI's own `update` would overwrite it. Edit in the skill's source
+  repository.
 - **hironow/skills wins a name collision** with a third-party skill: `dump`
   keeps our record, `check` fails on a collision, and `restore` installs ours
   last and repairs a store entry whose source is not ours.
@@ -82,12 +84,12 @@ upstream), and `just audit` rejects a derived skill whose contract is
 incomplete.
 
 Skills that must not be published do not belong in hironow/skills at all.
-Personal ones go to hironow/skills-private; organisation-internal ones go to
-that organisation's own skills repository. Both reach the homes like any other
+Personal ones go to hironow/skills-private; organization-internal ones go to
+that organization's own skills repository. Both reach the homes like any other
 source: `bunx skills add <repo> -g -s <name> -y -a universal`,
 `just dump-skills-lock`, `just skills-place`.
 
-## Comparing a fork with its upstream (the dedup playbook)
+## Comparing a fork with its upstream (the dedup procedure)
 
 Start this when a skill of ours and an installed third-party skill answer the
 same request (a routing dry-run names one as a close runner-up of the other).
@@ -166,7 +168,7 @@ Write instructions in English. Keep the reader's language for the
 Japanese-writing skills and for anything printed or filled in for a person
 (templates, assets, Slack messages, report formats, setup notices, quoted
 trigger phrases). After a rewrite, run a fidelity check with a read-only
-model: original vs rewrite, reporting only semantic differences (omission,
-addition, meaning change, reference break) with both quotes and a severity,
-and a verdict of FAITHFUL or NEEDS_FIX. Revert every medium or high finding
-before merging.
+model. It compares the original with the rewrite and reports only semantic
+differences (omission, addition, meaning change, reference break), each with
+both quotes and a severity. It ends with a verdict: FAITHFUL or NEEDS_FIX.
+Before merging, restore the original meaning for every medium or high finding.

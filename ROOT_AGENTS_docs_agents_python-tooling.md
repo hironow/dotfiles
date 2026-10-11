@@ -1,4 +1,4 @@
-# Python Tooling
+# Python tooling
 
 Read this when you write or change Python. Use `uv` for packages (AGENTS.md).
 
@@ -16,7 +16,7 @@ formatter, or type checker.
 Ruff and ty are Class 1 (docs/agents/dependency-policy.md). Pin them
 **exactly** (one version, adopt new releases aggressively). Pair the seven-day uv
 cooldown with `exclude-newer-package = { ruff = false, ty = false }` so the pin
-can move. Do not copy a version number into this file; it goes stale. Wire the
+can move. Do not copy a version number into this guide; it goes stale. Wire the
 gate with this justfile split. The split matters: ruff only parses source, but
 ty **resolves imports**:
 
@@ -38,7 +38,7 @@ blocks.
 
 ## ruff configuration (canonical — in `pyproject.toml`)
 
-Do **not** change this without explicit human approval. Never relax it to
+Change this only with explicit human approval. Never relax it to
 silence a finding.
 
 ```toml

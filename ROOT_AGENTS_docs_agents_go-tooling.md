@@ -1,4 +1,4 @@
-# Go Tooling
+# Go tooling
 
 Read this when you write or change a **service**, a CLI, a tool, or any new Go
 code. AGENTS.md sets the language choice: new code is Go, and Rust only when Go
@@ -26,8 +26,8 @@ version:
   until that code is migrated.
 - **HTTP, crypto, sync, testing, log/slog**: standard library.
 
-`golang.org/x/*` is the exception when the standard library package is still
-evolving there. Treat it as Class 1, not as a niche utility. Dependency
+`golang.org/x/*` is the exception when a package lives there before it moves
+into the standard library. Treat it as Class 1, not as a niche utility. Dependency
 classes: docs/agents/dependency-policy.md.
 
 ## Quality gate
@@ -38,8 +38,8 @@ Lint and format with **golangci-lint v2**: one tool, one config.
 - `golangci-lint fmt` formats, with **gofumpt only**. If you also enable
   goimports, `fmt` and `run` disagree on import groups.
 
-Keep one golangci-lint v2 config shape: gofumpt as the only formatter, the
-standard linters plus the usual extras. Copy it to the module root and change
+Keep one golangci-lint v2 config shape: gofumpt as the only formatter, the standard linters plus `bodyclose`, `errorlint`, `gocritic`, `gocyclo`, `gosec`,
+`misspell`, `nilerr`, `perfsprint`, `revive`, `unconvert`, and `unparam`. Copy it to the module root and change
 only build tags, `gofumpt.module-path`, and per-path exclusions. Change the
 linter set in one place, not in each repo.
 

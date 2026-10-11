@@ -5,8 +5,8 @@
 
 # AGENTS.md
 
-This is production code for an agentic engineering ecosystem. One person runs
-it, with a human on the loop, on GCP. New code is Go (Rust when Go does not
+This is production code for an agentic engineering ecosystem. One person runs it on
+GCP and supervises the agents as the human on the loop. New code is Go (Rust when Go does not
 fit); existing Python and TypeScript tooling stays where it is.
 Change things carefully: make the smallest correct change, prove it works, and
 leave every check green.
@@ -18,7 +18,8 @@ explicit instruction in the chat overrides everything here.
 
 Hooks, pre-commit, and CI enforce these rules (see Enforcement). For Claude
 Code, hooks block violations in every repo. Other tools rely on pre-commit and
-CI where the agent baseline is installed. Each rule gives its reason so you can
+CI where the agent baseline (the per-repo justfile, pre-commit, and CI
+scaffold from the dotfiles repo) is installed. Each rule gives its reason so you can
 apply it to cases it does not list.
 
 - **Existing Python uses `uv`, `ruff`, and `ty`. No substitutes.** Use `uv` to install
@@ -84,8 +85,8 @@ If you are unsure, write a test that pins down the requirement before you code.
 - **Build only what is needed, as simply as possible.** YAGNI: build only what
   a current requirement or test asks for. KISS: choose the simplest design that
   works. DRY: keep each piece of knowledge in one place, but do not merge code
-  that only looks alike. SOLID: give each unit one reason to change, and depend
-  on ports, not on concrete adapters.
+  that only looks alike. SOLID: give each unit one reason to change, and depend on ports (purpose-named interfaces; see Design), not on concrete
+  adapters.
 - **Name things specifically.** Choose the name that says what the thing does
   in this domain. Do not use generic words such as `Manager`, `Helper`, or
   `Util`. Rules and examples: docs/agents/naming.md.
@@ -109,17 +110,20 @@ If you are unsure, write a test that pins down the requirement before you code.
 ## GRIT (required both ways: show it yourself and demand it of others)
 
 GRIT = Guts (度胸) / Resilience (復元力) / Initiative (主体性) / Tenacity (執念).
-**Guts**: do the scariest, least-known part first, and say plainly what you do
-not know. **Resilience**: when something fails, change your hypothesis and try
-again. Never stop or hand back half a result. **Initiative**: take the obvious
-next step without being asked, but still confirm actions that cannot be undone
-or are out of scope. **Tenacity**: define "done" in concrete terms and keep
-going until you reach it. Never claim success you have not proven.
 
-When resolve is weak (an unclear finish line, an unknown nobody has faced, a
-gap where someone is "waiting on someone else"), stop and press for a concrete
-commitment. Record risks nobody has committed to in docs/handover.md. When you
-delegate, demand a definition of done, a way to recover from failure, and
+- **Guts**: do the scariest, least-known part first, and say plainly what you
+  do not know.
+- **Resilience**: when something fails, change your hypothesis and try again.
+  Never stop or hand back half a result.
+- **Initiative**: take the obvious next step without being asked, but still
+  confirm actions that cannot be undone or are out of scope.
+- **Tenacity**: define "done" in concrete terms and keep going until you
+  reach it. Never claim success you have not proven.
+
+Stop and press for a concrete commitment when resolve is weak: an unclear
+finish line, an unknown nobody has faced, or a gap where someone is "waiting
+on someone else". Record risks nobody has committed to in docs/handover.md.
+When you delegate, demand a definition of done, a way to recover from failure, and
 proof of completion. Scoring rubric (1-5): the `grilling:grit-grill` skill. A
 score below 3 on any blocking axis means stop and clarify.
 
@@ -144,7 +148,7 @@ Open the matching file as soon as its trigger applies:
 | writing or changing Python                     | docs/agents/python-tooling.md       |
 | writing or changing Go or a service            | docs/agents/go-tooling.md           |
 | choosing Rust, or writing or changing Rust     | docs/agents/rust-tooling.md         |
-| modelling distributed state / Quint            | docs/agents/formal-methods.md       |
+| modeling distributed state / Quint            | docs/agents/formal-methods.md       |
 | adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |
 | writing a `pull_request` workflow              | docs/agents/draft-ci.md             |
 | in the Red/Green/Refactor loop                 | docs/agents/tdd-workflow.md         |

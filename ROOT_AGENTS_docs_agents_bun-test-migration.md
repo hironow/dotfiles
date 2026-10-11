@@ -5,8 +5,8 @@ Read this when you convert a hand-rolled TypeScript test harness to
 
 Write new TypeScript suites with `bun:test`: `describe` / `test` / `expect`.
 Never write a hand-rolled harness such as
-`let pass = 0; const ok = (name, cond) => …`. When you migrate an existing
-hand-rolled leaf, the conversion must **preserve behaviour**: it exercises the
+`let pass = 0; const ok = (name, cond) => …`. When you migrate an existing hand-rolled leaf
+(one test file that a runner executes), the conversion must **preserve behavior**: it exercises the
 same inputs and catches the same failures. The rules below come from 7
 converted leaves (2026-08-31).
 
@@ -99,7 +99,7 @@ leaf then runs *nowhere*, and the suite still goes green. Derive the set from
 the files themselves (grep for the `bun:test` import) in one script that every
 consumer reads: the old runner, the new runner, and the type-config guard.
 
-## Type seat
+## Bun types need their own tsconfig
 
 `@types/bun` replaces the ambient `fetch` with Bun's, which has `preconnect`.
 Any `typeof fetch` injection point then fails with TS2741. So bun types usually

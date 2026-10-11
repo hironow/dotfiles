@@ -7,12 +7,12 @@ Two rules. Everything below applies one of them:
 
 A personal project's bill does not spike. It drips. Nothing fails and no alert
 fires: images and objects keep arriving, and the total grows a little each
-month. This repo has the receipt. A dev container repository reached 20+
-versions and ~21 GiB. Its only DELETE policy targeted UNTAGGED versions, but
-every publish tagged its image (ADR 0034). The policy looked like a bound. It
+month. The dotfiles repo has the receipt. Its dev container
+repository reached 20+ versions and ~21 GiB. Its only DELETE policy targeted UNTAGGED versions, but
+every publish tagged its image (dotfiles ADR 0034). The policy looked like a bound. It
 was not one.
 
-Two gates exist, and each sees different things:
+The dotfiles repo has two gates, and each sees different things:
 
 - `scripts/check_storage_bounds.py` (in `just check`) reads the repo's OpenTofu.
   It refuses a sink that is DECLARED without a bound.
@@ -87,7 +87,7 @@ workload once the current time is past it.
   leave it pending forever.
 - **Cap the heartbeat.** "Extend while work continues" with no cap is an
   unbounded lease that only looks safe.
-- **Make the last resort judgement-free.** The final stop must not reason about
+- **Make the last resort judgment-free.** The final stop must not reason about
   whether stopping is a good idea. It checks the clock and nothing else. Alert
   when IT fires: that means every earlier layer failed.
 - **A scheduler job is usually the only thing that turns something off.** When

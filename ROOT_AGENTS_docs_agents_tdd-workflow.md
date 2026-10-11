@@ -1,4 +1,4 @@
-# TDD Workflow (Red → Green → Refactor)
+# TDD workflow (Red → Green → Refactor)
 
 Read this when you are in the implementation loop. AGENTS.md has the root
 rule; this file has the full procedure.
