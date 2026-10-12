@@ -19,7 +19,7 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Generator, Iterable, Sequence
 from pathlib import Path
 from typing import Protocol
 
@@ -197,7 +197,7 @@ class AppServerClient:
 
 
 @contextlib.contextmanager
-def app_server(codex: str) -> Iterator[AppServerClient]:
+def app_server(codex: str) -> Generator[AppServerClient]:
     proc = subprocess.Popen(
         [codex, "app-server"],
         stdin=subprocess.PIPE,

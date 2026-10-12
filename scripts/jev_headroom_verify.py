@@ -32,7 +32,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from pathlib import Path
 
 from jev_claude_verify import Report, has_provider_limit, is_logged_out
@@ -250,7 +250,7 @@ def targets(argv: Sequence[str]) -> list[str]:
 
 
 @contextlib.contextmanager
-def _dedicated_proxy(exe: str) -> Iterator[tuple[bool, int, Path, Path]]:
+def _dedicated_proxy(exe: str) -> Generator[tuple[bool, int, Path, Path]]:
     """A proxy that logs request messages to a temp dir, removed afterwards."""
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_name:
         tmp = Path(tmp_name)

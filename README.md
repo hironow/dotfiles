@@ -147,7 +147,7 @@ mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
 
 | コマンド | 内容 | Docker |
 | --- | --- | --- |
-| `just ci` | `just check`（Python、Go、shell、Markdown、JS/TS の lint、Pi 拡張のテスト、Go のテスト、Quint のモデル）、Claude 設定の検査、unit テスト、semgrep の規則テスト、IaC のテスト、portless の文書、指示量の予算、skill 宣言、emulator の lint、禁止トークン | 不要 |
+| `just ci` | `just check`（Python、Go、shell、Markdown、JS/TS の lint、Pi 拡張のテスト、Go のテスト、Quint のモデル）、Claude 設定の検査、unit テスト、semgrep の規則テスト、IaC のテスト、指示量の予算、skill 宣言、emulator の lint、禁止トークン | 不要 |
 | `just ci-all` | `ci` と Dev Container のサンドボックステストと `install.sh` の検証（単独では `just test-install`） | 要る |
 | `just ci-emu` | emulator 群の lint、起動、高速テスト、e2e | 要る |
 | `just check-all` | prek の hook と `ci-all`（push 前の最終ゲート） | 要る |
@@ -194,7 +194,7 @@ store が宣言とずれていると無関係な差分も出るので、差分�
 ## ローカル開発スタック
 
 `emulator/`（データストアとインスペクタの emulator）と `telemetry/`（OTel、Grafana、Loki、Prometheus、Tempo）はこのリポジトリにある（ADR 0014）。
-API や SaaS の emulator は、vercel-labs/emulate を npx 経由で動かす（ADR 0016）。
+API や SaaS の emulator は、vercel-labs/emulate を bunx 経由で動かす（ADR 0016。bunx への切り替えは ADR 0055）。
 
 ```shell
 just emu-up                          # 既定は GCP の中核だけ（firebase、spanner、pgadapter、postgres。別名 emu-up-lite）
@@ -210,14 +210,12 @@ just emu-api                         # API emulator を 4100-4108 で前面に�
 
 重いサービスと amd64 のサービスを既定で起動しないのは、OrbStack の VM をメモリ上限内に収めるためである。
 
-HTTP の UI には、[portless](https://github.com/vercel-labs/portless) が `https://<name>.localhost` の固定 URL を与える（ADR 0015、別名は [`config/portless-aliases.yaml`](./config/portless-aliases.yaml)）。
+HTTP の UI には、[portless](https://github.com/vercel-labs/portless) が `https://<name>.localhost` の固定 URL を与える（ADR 0015）。
 postgres、bolt、gRPC などの TCP のプロトコルはルーティングできないので、ポートのまま使う。
-
-```shell
-just portless-trust   # 初回だけ: portless の CA を信頼する
-just portless-up      # proxy を起動して別名を登録する（firebase.localhost、grafana.localhost など）
-just portless-ls      # 有効な経路の一覧（片付けは just portless-down）
-```
+`portless` は just を通さず直接使う。
+初回は `portless trust` で CA を信頼し、`portless proxy start` のあとで別名を `portless alias <name> <port> --force` で登録する。
+登録する別名の一覧は [`docs/portless-urls.md`](./docs/portless-urls.md) にある。
+経路は `portless list` で確かめる。
 
 別名を登録しても、裏のスタックは起動しない。
 `https://*.localhost` が応答するのは、`just emu-up`、`just tel-up`、`just emu-api` のあとである。
@@ -252,6 +250,7 @@ claude mcp add -s user -t http vercel https://mcp.vercel.com
 claude mcp add -s user -t http livekit-docs https://docs.livekit.io/mcp
 claude mcp add -s user -t http openai https://developers.openai.com/mcp
 # Google Cloud: https://developers.google.com/knowledge/mcp#gcloud-cli
+# 手元の MCP 接続の設定で、一度だけ行う。tofu が管理する本番のリソースには使わない
 YOUR_PROJECT_ID=<your-project-id>
 gcloud beta services mcp enable developerknowledge.googleapis.com --project=$YOUR_PROJECT_ID
 # 認証が要る: gcloud auth login / gcloud auth application-default login

@@ -1,7 +1,7 @@
 # 0016. Integrate vercel-labs/emulate API emulators via npx wrapper
 
 **Date:** 2026-05-30
-**Status:** Accepted
+**Status:** Superseded by [0055](0055-run-emulate-with-bunx.md) (partial — `just emu-api` が `npx` で動く点)
 
 ## Context
 

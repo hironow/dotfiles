@@ -1,11 +1,10 @@
 """`.gitattributes` must pin generated, diff-checked artifacts to LF on every OS.
 
-`docs/portless-urls.md` is produced by `just portless-doc` (LF, from a bash
-generator) and verified by `just portless-doc-check` with a raw `diff` in `ci`.
-Without an `eol=lf` pin a Windows checkout yields CRLF, and the raw diff reports
-the doc stale even though the committed blob is LF — git normalizes on compare,
-so `git status` stays clean and the breakage surfaces only in the recipe's diff.
-Mirrors the `dump/scoop.json` pin (ADR 0019) and `*.sh` / `*.bash` (ADR 0020).
+`dump/windows/scoop.json` is a generated artifact that recipes diff byte for
+byte. Without an `eol=lf` pin a Windows checkout yields CRLF, and the raw diff
+reports it stale even though the committed blob is LF — git normalizes on
+compare, so `git status` stays clean and the breakage surfaces only in the diff.
+See ADR 0019, and `*.sh` / `*.bash` (ADR 0020).
 Go sources are pinned for a different tool: gofmt / gofumpt — reached through
 `golangci-lint run` and `golangci-lint fmt --diff` in `go-lint` — report a CRLF
 working tree as "File is not properly formatted", so an untouched `.go` file
@@ -53,7 +52,7 @@ def _tracked(pattern: str) -> list[str]:
     return [name for name in out.decode("utf-8").split("\0") if name]
 
 
-@pytest.mark.parametrize("path", ["docs/portless-urls.md", "dump/windows/scoop.json"])
+@pytest.mark.parametrize("path", ["dump/windows/scoop.json"])
 def test_generated_artifact_is_lf_pinned(path: str) -> None:
     """The artifact must resolve to `eol=lf` via .gitattributes so every
     platform (esp. Windows, where core.autocrlf can introduce CRLF) checks it

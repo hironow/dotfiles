@@ -1,7 +1,7 @@
 # 0015. Adopt portless for stable .localhost URLs of local HTTP UIs
 
 **Date:** 2026-05-30
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0054](0054-run-portless-directly.md) (the just recipes and the alias YAML)
 
 ## Context
 
