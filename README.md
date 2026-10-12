@@ -194,7 +194,7 @@ store が宣言とずれていると無関係な差分も出るので、差分�
 ## ローカル開発スタック
 
 `emulator/`（データストアとインスペクタの emulator）と `telemetry/`（OTel、Grafana、Loki、Prometheus、Tempo）はこのリポジトリにある（ADR 0014）。
-API や SaaS の emulator は、vercel-labs/emulate を npx 経由で動かす（ADR 0016）。
+API や SaaS の emulator は、vercel-labs/emulate を bunx 経由で動かす（ADR 0016。bunx への切り替えは ADR 0055）。
 
 ```shell
 just emu-up                          # 既定は GCP の中核だけ（firebase、spanner、pgadapter、postgres。別名 emu-up-lite）

@@ -602,24 +602,25 @@ def test_doctor_reports_just(docker_image):
             marks=pytest.mark.check,
         ),
         pytest.param(
-            "Check: npm globals available",
-            # npm is shipped in the sandbox image (needed by mise's npm-backed
-            # tools), so the guard always falls through to the real recipe.
-            # `npm ls --global --depth 0` exits 0 even with no globals.
-            "just check-npm-g",
+            "Check: bun globals available",
+            # bun is shipped in the sandbox image (mise installs it from the
+            # shared config), so the recipe always runs for real.
+            # With no global package.json (a fresh machine) the recipe prints
+            # 'no bun globals' and exits 0; `bun pm ls -g` alone would exit 1.
+            "just check-bun-g",
             0,
             "",
-            id="Check: npm globals available",
+            id="Check: bun globals available",
             marks=pytest.mark.check,
         ),
         pytest.param(
             # check-pnpm-dlx is a record-only listing (grep over dump/npm-dlx).
-            # pnpm itself is not required; the recipe always exits 0 and
+            # bunx itself is not required; the recipe always exits 0 and
             # prints the header line.
             "Check: pnpm dlx record listed",
             "just check-pnpm-dlx",
             0,
-            "pnpm dlx packages",
+            "bunx packages",
             id="Check: pnpm dlx record listed",
             marks=pytest.mark.check,
         ),

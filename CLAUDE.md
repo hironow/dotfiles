@@ -102,7 +102,7 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   `portless alias <name> <port> --force` 一覧で登録して HTTP UI を `https://<name>.localhost` に。
   **HTTP(S) UI のみ** — Pub/Sub(9399) / Firestore(8080) / OTLP gRPC(4317) 等の wire protocol は
   不可で `localhost:PORT` のまま。port や `just emu-api` の service 順を変えたら、その一覧も直す。
-- **emu-api** (`just emu-api`): vercel-labs/emulate を host npx で (4100-4108)。`emu-api-stop`。
+- **emu-api** (`just emu-api`): vercel-labs/emulate を host bunx で (4100-4108)。`emu-api-stop`。
 - OrbStack VM は **16 GiB / 4 vCPU** 推奨 (`orb config set memory_mib 16384` / `cpu 4`、
   要再起動)。10 GiB だとフルスタック + 外部 repo の二重起動で guest OOM。
   `restart: unless-stopped` のコンテナは VM 起動時に自動復活する (telemetry は復活しない)。
@@ -110,12 +110,12 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
 ## このリポ特有の罠 (memory 参照)
 
 - **`~/.config/mise/config.toml` が main tree への symlink** になっている機体がある
-  (この operator の Mac は 2026-09-17 以降そう)。つまり **main tree を別 commit へ
+  (この operator の Mac はそう)。つまり **main tree を別 commit へ
   checkout すると、そのマシンの live な tool set と `[env]` が丸ごと入れ替わる**。
-  2026-10-01 に main tree を #420 以前の commit へ detach した結果、rtk 0.50.0 と
-  headroom が約40分 machine-wide で無効化され (`mise ls --current` から消え、
-  `mise x -- rtk` が `~/.local/bin` の 0.45.0 へ落ち、`shims/headroom` が
-  "No version is set for shim" でエラー、telemetry の env も消えた)、誰も警告しなかった。
+  古い commit へ detach すると、その commit に無い rtk と headroom が machine-wide で
+  無効化され (`mise ls --current` から消え、`mise x -- rtk` が `~/.local/bin` の古い版へ
+  落ち、`shims/headroom` が "No version is set for shim" でエラー、telemetry の env も消える)、
+  誰も警告しない。
   **`/Users/nino/dotfiles` は常に main に置き、ブランチ作業は worktree だけで行う。**
   `scripts/deploy.sh` の `cp -f` は symlink を貫通して**同じファイルを自分自身へ上書き**
   するので `just deploy` では直らない — 直し方は checkout を main へ戻すこと。
