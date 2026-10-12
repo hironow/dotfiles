@@ -590,7 +590,7 @@ test:
     	devcontainer build --workspace-folder . --image-name dotfiles-just-sandbox:latest || echo '⚠️ devcontainer build failed (tests may skip)'; \
     else \
     	echo '⚠️ docker or @devcontainers/cli not found; tests may skip'; \
-    	echo '   Hint: npm i -g @devcontainers/cli'; \
+    	echo '   Hint: mise use -g npm:@devcontainers/cli'; \
     fi
     @echo '🧪 Running pytest (verbose with skip reasons)...'
     uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_sync_agents.py
@@ -1165,15 +1165,15 @@ check-brew:
 check-gcloud:
     gcloud components list
 
-# Check: list npm global packages
+# Check: list bun global packages
 [group('Check')]
-check-npm-g:
-    npm ls --global --depth 0
+check-bun-g:
+    @if [ -f "${BUN_INSTALL:-$HOME/.bun}/install/global/package.json" ]; then bun pm ls -g; else echo 'no bun globals'; fi
 
-# Check: list pnpm dlx packages (record-only; not auto-installed)
+# Check: list bunx packages (record-only; not auto-installed)
 [group('Check')]
 check-pnpm-dlx:
-    @echo "📋 pnpm dlx packages (record-only, run with: pnpm dlx <package>)"
+    @echo "📋 bunx packages (record-only, run with: bunx <package>)"
     @grep -v '^#' dump/npm-dlx | grep -v '^$' || true
 
 # Check: print rustc cfg
@@ -1893,19 +1893,19 @@ emu-lint:
     echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'
     git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2
 
-# Start emulate API emulators (vercel-labs/emulate) via npx on host (base 4100; Ctrl+C, or
+# Start emulate API emulators (vercel-labs/emulate) via bunx on host (base 4100; Ctrl+C, or
 # `just emu-api-stop` if backgrounded)
 # Override `services=` to drop any rejected by the published CLI (see emulator/emulate/README.md)
 [group('Emulator')]
 emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v npx >/dev/null 2>&1 || { echo '❌ npx not found (need Node.js)'; exit 127; }
+    command -v bunx >/dev/null 2>&1 || { echo '❌ bunx not found (need bun)'; exit 127; }
     cd emulator/emulate
     echo "▶ emulate@0.8.0 services={{services}} base=4100 (Ctrl+C to stop)"
-    npx -y emulate@0.8.0 --service '{{services}}' --port 4100 --seed emulate.config.yaml
+    bunx emulate@0.8.0 --service '{{services}}' --port 4100 --seed emulate.config.yaml
 
-# Stop the emulate API emulators started by `just emu-api` (the host npx/emulate process; no
+# Stop the emulate API emulators started by `just emu-api` (the host bunx/emulate process; no
 # Docker container is involved, unlike emu-stop / tel-down)
 [group('Emulator')]
 emu-api-stop:

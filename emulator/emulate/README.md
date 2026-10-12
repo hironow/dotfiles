@@ -2,7 +2,7 @@
 
 Local, stateful drop-in replacements for SaaS APIs via
 [vercel-labs/emulate](https://github.com/vercel-labs/emulate), integrated as a
-thin `npx` wrapper (not vendored — kept current via npm, pinned to a version).
+thin `bunx` wrapper (not vendored — kept current via npm, pinned to a version).
 
 This complements the datastore emulators in [`../`](../README.md) (postgres,
 bigtable, spanner/pgadapter, neo4j, qdrant, elasticsearch, firebase) with
@@ -16,11 +16,11 @@ just emu-api                 # full requested set on base port 4100 (foreground)
 just emu-api services=github,google,slack   # custom subset
 ```
 
-`just emu-api` runs `npx -y emulate@0.8.0 --service <list> --port 4100 --seed emulate.config.yaml`
+`just emu-api` runs `bunx emulate@0.8.0 --service <list> --port 4100 --seed emulate.config.yaml`
 on the host, binding to `127.0.0.1` from base port `4100` upward. Stop with Ctrl+C.
 
-> Host `npx` (not a compose service) is used on purpose: `emulate` is a Node CLI
-> and binding it directly on the host avoids container localhost-binding pitfalls.
+> Host `bunx` (not a compose service) is used on purpose: `emulate` is a Node CLI
+> (its `#!/usr/bin/env node` shebang is honored) and binding it directly on the host avoids container localhost-binding pitfalls.
 
 ## Services & ports
 
@@ -44,5 +44,5 @@ the `services=` set or order, update those alias ports to match.
 ## Config
 
 [`emulate.config.yaml`](./emulate.config.yaml) holds `tokens:` + per-service seed
-data. Regenerate a canonical starter with `npx emulate@0.8.0 init` if the schema
+data. Regenerate a canonical starter with `bunx emulate@0.8.0 init` if the schema
 changes in a newer version.
