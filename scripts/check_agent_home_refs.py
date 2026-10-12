@@ -27,8 +27,11 @@ from pathlib import Path
 # Four ref shapes: macOS absolute, Linux absolute, tilde, and Windows drive
 # paths. The sync rewrites with the home's native separators, so Windows refs
 # arrive with a backslash home prefix and forward-slash tail — accept both
-# separators there.
-_PATH_RE = re.compile(r"(?:/Users/|/home/|~/)[\w@./*-]+|[A-Za-z]:[\\/][\w@.\\/*-]+")
+# separators there. A drive letter never follows a word character, which keeps
+# the `s:/` inside `https://` from reading as a drive.
+_PATH_RE = re.compile(
+    r"(?:/Users/|/home/|~/)[\w@./*-]+|(?<!\w)[A-Za-z]:[\\/][\w@.\\/*-]+"
+)
 _SUFFIXES = {".md", ".sh", ".yaml"}
 _TRAILING_PUNCT = ".,;:'\")"
 

@@ -19,13 +19,15 @@ semgrep --test --config .semgrep/rules/ .semgrep/tests/   # validate the rules t
 ```
 
 CI runs `just semgrep` as part of the required quality gate; the pre-commit hook
-runs it too.
+runs it too. `.semgrepignore` at the repo root keeps `tests/` in scope (Semgrep
+skips it by default when that file is missing) and leaves out the rule fixtures
+in `.semgrep/tests/`.
 
 ## Current rules
 
 | id                                    | enforces                                  |
 | ------------------------------------- | ----------------------------------------- |
-| `agentcore-testing-no-mock-in-e2e`    | no mocks/patching under `tests/e2e/`      |
+| `agentcore-testing-no-mock-in-e2e`    | no mocks or patching in Python test files whose path contains `e2e` |
 | `agentcore-python-no-os-path`         | `pathlib.Path` instead of `os.path`       |
 
 ## Adding a rule
