@@ -10,8 +10,8 @@
 # PORTS: emulate@0.8.0 takes a single base `--port` (we use 4100) and assigns
 # ports as base + index in the `--service` order. Verified mapping for the
 # default `just emu-api` set: github 4100, google 4101, slack 4102, apple 4103,
-# microsoft 4104, stripe 4105, clerk 4106, okta 4107, resend 4108. These are
-# pre-registered in config/portless-aliases.yaml.
+# microsoft 4104, stripe 4105, clerk 4106, okta 4107, resend 4108. The portless
+# aliases for them are listed in docs/portless-urls.md.
 #
 # SERVICE AVAILABILITY: all 9 requested services (github google slack apple
 # microsoft stripe clerk okta resend) are exposed by emulate@0.8.0 (verified).

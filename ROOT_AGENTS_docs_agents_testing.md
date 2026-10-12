@@ -27,9 +27,11 @@ These instructions do not require a test directory or a test-file layout.
   account or a local emulator.
 - **e2e** — **Mocks are strictly prohibited.** Every dependency is real (DB,
   services, filesystem, network). If you cannot use a real dependency, the test
-  is not e2e: move it to integration. The agent-baseline Semgrep rule checks
-  this only for Python files under `tests/e2e/` (see docs/agents/semgrep.md).
-  Everywhere else, review enforces it.
+  is not e2e: move it to integration. The agent-baseline Semgrep rule checks Python test files whose path contains
+  `e2e` (a directory such as `tests/e2e/`, or a file such as
+  `test_checkout_e2e.py`), so give e2e tests such a path. The name only picks
+  the files to check; the kind still depends on what the test touches. Review
+  enforces the rule everywhere else (see docs/agents/semgrep.md).
 
 ## Unit test rules
 

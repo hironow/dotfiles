@@ -91,3 +91,37 @@ def test_detects_duplicates_across_dirs(just_binary: str, tmp_path: Path) -> Non
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
     assert "dupcmd" in combined, f"expected duplicate name in output:\n{combined}"
+
+
+def test_vite_plus_fallback_bin_shadow_is_structural(
+    just_binary: str, tmp_path: Path
+) -> None:
+    """vite-plus appends ~/.vite-plus/fallback-bin to the END of PATH on
+    purpose, so mise (earlier) always wins. Its bun/pnpm/yarn shims shadowed
+    by mise are expected, like ~/.vite-plus/bin, and must not be flagged."""
+    home = tmp_path / "home"
+    mise_bin = home / ".local/share/mise/installs/tool/1.0/bin"
+    fallback = home / ".vite-plus/fallback-bin"
+    for d in (mise_bin, fallback):
+        d.mkdir(parents=True)
+        exe = d / "dupcmd"
+        exe.write_text("#!/bin/sh\n", encoding="utf-8")
+        exe.chmod(0o755)
+    env = {
+        "PATH": f"{bash_path(Path(just_binary).parent)}:/usr/bin:/bin:/usr/local/bin",
+        "HOME": str(home),
+        "VALIDATE_PATH": f"{mise_bin}:{fallback}",
+    }
+    result = subprocess.run(
+        [just_binary, "-f", str(JUSTFILE), "validate-path-duplicates"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert result.returncode == 0, (
+        f"fallback-bin shadow must be structural, got {result.returncode}.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )

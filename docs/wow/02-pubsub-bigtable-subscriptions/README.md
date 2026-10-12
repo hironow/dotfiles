@@ -37,6 +37,9 @@ Pub/Sub のメッセージを **subscriber クライアントを書かずに、�
 
 ## 実装：エンドツーエンド例（gcloud）
 
+> この手順は挙動を学ぶための例である。使い捨ての検証用プロジェクトで試す。
+> 本番の GCP は OpenTofu と PR でだけ変える（IaC 方針）。
+
 ```bash
 # 1. Bigtable インスタンス
 gcloud bigtable instances create my-instance --display-name="My instance" \

@@ -40,8 +40,8 @@ and what outlived it.
 | 0012 | [exe-coder workspace VM RUNOPS_ACTOR_TYPE env injection (per caller path)](./0012-exe-actor-type-env-injection.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-09 | removed: `exe/coder/templates/`, `exe/scripts/` |
 | 0013 | [Project lifecycle severity classification (= cdr-project / runops project)](./0013-project-lifecycle-severity-classification.md) | Withdrawn — never decided; see [0045](./0045-coder-control-plane-retired.md) | 2026-05-09 | would have affected the removed `exe/` project lifecycle |
 | 0014 | [Vendor emulator and telemetry from submodules into dotfiles](./0014-vendor-emulator-telemetry-from-submodules.md) | Accepted | 2026-05-30 | `emulator/`, `telemetry/` |
-| 0015 | [Adopt portless for stable .localhost URLs of local HTTP UIs](./0015-adopt-portless-for-local-dev-urls.md) | Accepted | 2026-05-30 | `config/portless-aliases.yaml`, `docs/portless-urls.md` |
-| 0016 | [Integrate vercel-labs/emulate API emulators via npx wrapper](./0016-integrate-emulate-api-emulators-via-npx.md) | Accepted | 2026-05-30 | `emulator/emulate/`, `justfile` (`emu-api`) |
+| 0015 | [Adopt portless for stable .localhost URLs of local HTTP UIs](./0015-adopt-portless-for-local-dev-urls.md) | Accepted; partly superseded by [0054](./0054-run-portless-directly.md) | 2026-05-30 | `config/portless-aliases.yaml`, `docs/portless-urls.md` |
+| 0016 | [Integrate vercel-labs/emulate API emulators via npx wrapper](./0016-integrate-emulate-api-emulators-via-npx.md) | Partly superseded by [0055](./0055-run-emulate-with-bunx.md) | 2026-05-30 | `emulator/emulate/`, `justfile` (`emu-api`) |
 | 0017 | [Retire the pnpm-global subsystem in favor of corepack + mise npm](./0017-retire-pnpm-global-for-corepack.md) | Accepted; partial supersede by [0027](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | 2026-06-02 | `mise.toml`, `install.sh`, `dump/npm-global` |
 | 0018 | [Windows native: minimum-viable deploy with explicit-skip step_*](./0018-windows-native-mvp.md) | Accepted; partial supersede by [0039](./0039-windows-bootstrap-ps1.md) (bootstrap scope) | 2026-06-02 | `install.sh`, `justfile` (Windows deploy) |
 | 0019 | [Windows scoop manifest in `dump/` — record-only](./0019-windows-scoop-dump-record-only.md) | Accepted; partial supersede by [0030](./0030-per-host-dump-layout.md) (path) + [0032](./0032-windows-scoop-restore-add-scoop.md) (record-only) | 2026-06-02 | `dump/<host>/scoop.json`, `justfile` |
@@ -78,6 +78,8 @@ and what outlived it.
 | 0051 | [新しい決定記録をdecision queueで追跡する](./0051-adopt-decision-queue-for-new-records.md) | Accepted (PR #461) | 2026-10-06 | `docs/decision-queue.md`、今後のADR/PDR |
 | 0052 | [全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language）](./0052-renew-global-agent-instructions.md) | Accepted (PR #463) | 2026-10-09 | `ROOT_AGENTS.md`、`ROOT_CLAUDE.md`、`ROOT_AGENTS_docs_agents_*.md` |
 | 0053 | [Flatt のパッケージミラーをやめ、公式の取得元に戻す](./0053-stop-using-flatt-mirrors.md) | Accepted (PR #463); supersedes [0028](./0028-flatt-pypi-mirror-default-index.md) | 2026-10-11 | `pyproject.toml` と各 `uv.lock`、`scripts/harden_env.sh`、`.zshrc`、`justfile` |
+| 0054 | [portless を just の recipe で包まず、直接使う](./0054-run-portless-directly.md) | Accepted (PR #468); supersedes part of [0015](./0015-adopt-portless-for-local-dev-urls.md) | 2026-10-11 | `justfile`、`docs/portless-urls.md` |
+| 0055 | [emulate は npx ではなく bunx で動かす](./0055-run-emulate-with-bunx.md) | Accepted (PR #470); supersedes part of [0016](./0016-integrate-emulate-api-emulators-via-npx.md) | 2026-10-12 | `justfile`、`tests/unit/test_justfile_bun_only.py` |
 
 ## Reading order for newcomers
 
@@ -112,3 +114,7 @@ and what outlived it.
   [公開PR #463の裁定](https://github.com/hironow/dotfiles/pull/463#issuecomment-6104926585)。
 - 2026-10-11: [ADR-0053](./0053-stop-using-flatt-mirrors.md)を採択し、[ADR-0028](./0028-flatt-pypi-mirror-default-index.md)を置き換えた。
   Flatt のミラーをやめ、pypi.org と npmjs から取る。[公開PR #463の裁定](https://github.com/hironow/dotfiles/pull/463#issuecomment-6104926585)。
+- 2026-10-11: [ADR-0054](./0054-run-portless-directly.md)を採択し、[ADR-0015](./0015-adopt-portless-for-local-dev-urls.md)の一部を置き換えた。
+  portless を just の recipe で包まず、直接使う。[公開PR #468の裁定](https://github.com/hironow/dotfiles/pull/468#issuecomment-6106249810)。
+- 2026-10-12: [ADR-0055](./0055-run-emulate-with-bunx.md)を採択し、[ADR-0016](./0016-integrate-emulate-api-emulators-via-npx.md)の一部を置き換えた。
+  emulate は npx ではなく bunx で動かす。[公開PR #470の所有者裁定](https://github.com/hironow/dotfiles/pull/470#issuecomment-6113089576)。
