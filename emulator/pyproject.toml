@@ -34,8 +34,8 @@ dev = [
 # ty uses `--group lint` so it still sees project imports.
 lint = [
     # the root lint-group pin; `just bump-tool` moves both together.
-    "ruff==0.16.9",
-    "ty==0.0.84",
+    "ruff==0.16.10",
+    "ty==0.0.85",
 ]
 
 # ty (ADR 0044): type-check the emulator tooling; warnings fail `just emu-lint`.
