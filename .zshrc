@@ -69,8 +69,6 @@ fi
 
 # Editor
 export EDITOR=vim
-# GPG agent support
-export GPG_TTY=$(tty)
 
 # Google Cloud SDK
 # Source path setup only if PATH does not already contain the SDK bin to avoid duplicates
@@ -375,3 +373,5 @@ bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 bindkey '^[[1;5D' backward-word
 bindkey '^[[1;5C' forward-word
+
+export GPG_TTY=$(tty)
