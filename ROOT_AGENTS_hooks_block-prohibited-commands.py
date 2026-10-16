@@ -19,7 +19,9 @@ Pipeline (full semantics: docs/agents/enforcement.md):
 4. Token walk with a minimal shell grammar: command boundaries are
    ; && || | & ( ); NAME=VALUE prefixes and wrappers (env/sudo/...) are
    skipped at command start, as is the mandatory rtk proxy (`rtk [opts]
-   [proxy|run|err|test|summary|smart] <real command>`); redirect operators
+   [bypass|proxy|run|err|test|summary|smart] <real command>`, and the one
+   shell string of `rtk run -c "<cmd>"` / `rtk err --shell sh "<cmd>"`, which
+   is re-analyzed); redirect operators
    consume the next token as
    their operand. Guards: pip/poetry/pipenv, npm/yarn/pnpm (and the direct
    `corepack <pm>` run form), make (command name, basename-resolved),
@@ -83,8 +85,12 @@ RTK_LAUNCHER = "rtk"
 # rtk subcommands that run a command the agent supplies rather than proxying a
 # fixed tool, so the real command sits one token further right
 # (`rtk proxy pnpm install`, `rtk err pip install …`, `rtk run -- npm ci`).
-RTK_RUN_SUBCOMMANDS = {"proxy", "run", "err", "test", "summary", "smart"}
-# Every other subcommand of rtk 0.50.0, reviewed: each proxies a fixed tool (the
+RTK_RUN_SUBCOMMANDS = {"bypass", "proxy", "run", "err", "test", "summary", "smart"}
+# These also take one quoted command string that rtk runs through a shell
+# (`rtk run -c "npm ci"`, `rtk err --shell sh "npm ci"`); the walk re-analyzes it.
+RTK_SHELL_STRING_FLAGS = {"-c", "--command"}
+RTK_SHELL_NAME_FLAG = "--shell"  # takes the shell's name; the string is an operand
+# Every other subcommand of rtk 1.0.1, reviewed: each proxies a fixed tool (the
 # walk then checks that tool's name like a bare command: `rtk npm ci` is npm) or
 # is rtk's own verb. The guard never reads this set; it records the review, and
 # `just doctor` (rtk-guard) warns when an rtk upgrade adds a subcommand in neither.
@@ -126,8 +132,10 @@ RTK_FILTER_SUBCOMMANDS = {
     "kubectl",
     "learn",
     "lint",
+    "llm-proxy",
     "log",
     "ls",
+    "methods",
     "mvn",
     "mvnd",
     "mypy",
@@ -144,7 +152,9 @@ RTK_FILTER_SUBCOMMANDS = {
     "pint",
     "pip",
     "pipe",
+    "pipeline",
     "playwright",
+    "plugins",
     "pnpm",
     "prettier",
     "prisma",
@@ -161,6 +171,7 @@ RTK_FILTER_SUBCOMMANDS = {
     "sbt",
     "session",
     "sqlfluff",
+    "tasks",
     "telemetry",
     "tree",
     "trust",
@@ -308,6 +319,9 @@ class _CommandWalker:
         at_start = True
         pending_redirect = False
         in_rtk = False
+        rtk_ran = False  # past a RTK_RUN_SUBCOMMANDS verb, still inside rtk's options
+        shell_string = False  # a -c/--shell flag says an operand is a shell string
+        skip_value = False  # the next token is --shell's value (a shell name)
         name: str | None = None
         args: list[str] = []
         for token in tokens:
@@ -317,6 +331,7 @@ class _CommandWalker:
                 if token in COMMAND_SEPARATORS:
                     self._finalize(name, args)
                     name, args, at_start, in_rtk = None, [], True, False
+                    rtk_ran = shell_string = skip_value = False
                 continue
             if pending_redirect:
                 pending_redirect = False
@@ -331,11 +346,26 @@ class _CommandWalker:
                     continue
                 if base == RTK_LAUNCHER:
                     in_rtk = True
+                    rtk_ran = shell_string = skip_value = False
                     continue
                 if in_rtk:
+                    if skip_value:
+                        skip_value = False
+                        continue
+                    if rtk_ran and (
+                        token in RTK_SHELL_STRING_FLAGS or token == RTK_SHELL_NAME_FLAG
+                    ):
+                        shell_string = True
+                        skip_value = token == RTK_SHELL_NAME_FLAG
+                        continue
                     if token.startswith("-"):
                         continue  # rtk's own options, e.g. --ultra-compact
+                    if rtk_ran and shell_string:
+                        analyze(token, 1)  # rtk runs this one string through a shell
+                        at_start, in_rtk = False, False
+                        continue
                     if base in RTK_RUN_SUBCOMMANDS:
+                        rtk_ran = True
                         continue  # transparent: the real command is next
                     in_rtk = False
                 name = base

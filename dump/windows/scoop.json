@@ -12,22 +12,32 @@
   "apps": [
     {
       "Name": "7zip",
-      "Version": "25.01",
+      "Version": "26.04",
+      "Source": "main"
+    },
+    {
+      "Name": "dark",
+      "Version": "3.14.1",
       "Source": "main"
     },
     {
       "Name": "gh",
-      "Version": "2.83.0",
+      "Version": "2.102.0",
+      "Source": "main"
+    },
+    {
+      "Name": "innounp",
+      "Version": "2.71.2",
       "Source": "main"
     },
     {
       "Name": "jq",
-      "Version": "1.8.1",
+      "Version": "1.8.2",
       "Source": "main"
     },
     {
       "Name": "just",
-      "Version": "1.43.0",
+      "Version": "1.59.0",
       "Source": "main"
     },
     {
@@ -37,18 +47,18 @@
     },
     {
       "Name": "nmap",
-      "Version": "7.98",
+      "Version": "7.992",
       "Source": "main"
     },
     {
       "Name": "nodejs",
-      "Version": "24.10.0",
+      "Version": "26.12.0",
       "Source": "main"
     },
     {
-      "Name": "ollama",
-      "Version": "0.20.2",
-      "Source": "main"
+      "Name": "ollama-full",
+      "Version": "0.40.5",
+      "Source": "extras"
     },
     {
       "Name": "shellcheck",

@@ -1,5 +1,5 @@
 // dotfiles-managed: rtk
-// Vendored from rtk 0.51.0 (`rtk init -g --agent pi`), https://github.com/rtk-ai/rtk
+// Vendored from rtk 1.0.1 (`rtk init -g --agent pi`), https://github.com/rtk-ai/rtk
 // Copyright the rtk authors; Apache License 2.0 (https://github.com/rtk-ai/rtk/blob/master/LICENSE).
 // scripts/install_pi_extensions.py places it in every Pi agent dir, so rtk rewrites
 // bash commands in every Pi session (ADR 0047: dotfiles owns rtk's integration points).
