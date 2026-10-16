@@ -1,10 +1,10 @@
 # 0056. 5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする
 
 **Date:** 2026-10-16
-**Status:** Proposed
+**Status:** Accepted
 **ID:** ADR-0056
 **Title:** 5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする
-**Decided-date:** —
+**Decided-date:** 2026-10-16
 **Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Claude Code（owner session）
@@ -12,7 +12,7 @@
 **Supersedes:** [ADR-0048](0048-required-claude-plugins.md) の一部（Decision 1「各 marketplace をリリースタグで pin する」を、claude-plugins-official と hironow-plugins について）
 **Superseded-by:** none
 **Related:** [ADR-0048](0048-required-claude-plugins.md)、[ADR-0037](0037-layered-claude-settings-fragments.md)、[ADR-0044](0044-python-toolchain-uv-ruff-ty.md)、[ADR-0049](0049-headroom-mandatory-base-tooling.md)
-**Consultation-trace:** —（この PR で所有者の裁定を受ける）
+**Consultation-trace:** [公開PR #475の所有者裁定](https://github.com/hironow/dotfiles/pull/475#issuecomment-6209808795)
 
 ## やさしい説明
 
@@ -48,7 +48,13 @@ Decision 1 は、各 marketplace（plugin の配布元）をリリースタグ�
 
 ## Decision
 
-（Proposed。裁定後に Accepted の MUST 文を書く。提案の中身は Options の A 案。）
+A 案を採択した。
+
+1. `dump/harness/claude-plugins.json` は、5 つの home で user scope かつ有効な plugin の和集合から `pyright-lsp`、`bigquery-data-analytics`、`knowledge-catalog` を除いた 40 個を宣言しなければならない（MUST）。配布先は ADR-0048 のとおり、存在するすべての Claude home である。
+2. GitHub の marketplace はリリースタグで pin しなければならない（MUST）。例外は `claude-plugins-official` だけで、pin せず既定ブランチに追従する。
+3. hironow-plugins は repo 相対パス（`./.claude-plugin/marketplace.json`）で宣言しなければならない（MUST）。`scripts/claude_plugins.py` が repo root 基準の絶対パスに直す。
+4. タグは、公開から 7 日以上たった版を選ばなければならない（MUST）。
+5. `pyright-lsp` を宣言してはならない（MUST NOT）。`tests/unit/test_claude_plugins.py` が 2〜5 を見張る。
 
 ## Options
 
@@ -62,11 +68,11 @@ Decision 1 は、各 marketplace（plugin の配布元）をリリースタグ�
     - 利点: どの home でも同じ道具が使える。新しい機体も `just deploy` 1 回でそろう。
     - コスト: claude-plugins-official の更新は、レビューなしで入る。MCP を持つ plugin（firebase、linear、context7、playwright など）が全 home で起動する。
 
-- **B) 個人 home（`~/.claude`）だけに宣言を足し、work home は codex だけのままにする**
+- **B) 個人 home（`~/.claude`）だけに宣言を足し、work home は codex だけのままにする**（却下: home ごとの宣言形式が要り、ばらつきも残る。operator は全 home 一律を選んだ）
     - 利点: work 用アカウントの home に個人の道具が入らない。
     - コスト: home ごとの宣言が必要になり、`claude_plugins.py` の宣言形式を変えることになる。home ごとのばらつきも残る。
 
-- **C) claude-plugins-official を自前で fork し、タグを打って pin する**
+- **C) claude-plugins-official を自前で fork し、タグを打って pin する**（却下: fork の同期作業と、全 home での marketplace 差し替えの負担が、追従のリスクに見合わない）
     - 利点: 公式の更新もレビューを通る。
     - コスト: fork の同期作業が増える。全 home で marketplace の差し替え（＝plugin を一度消して入れ直す）が起きる。
 
@@ -95,9 +101,9 @@ none
 
 ## 裁定欄
 
-- [ ] A 案で採択 / [ ] B 案で採択 / [ ] C 案で採択 / [ ] 修正のうえ採択（修正点: ____） / [ ] 却下（理由: ____） / [ ] 保留
-- 決定者・日付:
-- A 案で採択したときの作業: ADR-0048 の Status を `Superseded by [0056]`（部分）に変える（これだけが許される編集）。merge 後に main の checkout で `just claude-plugins-install` を実行する。work home から pyright-lsp を外し、`~/.claude` の bigquery-data-analytics と knowledge-catalog を無効にする。
+- [x] A 案で採択 / [ ] B 案で採択 / [ ] C 案で採択 / [ ] 修正のうえ採択（修正点: ____） / [ ] 却下（理由: ____） / [ ] 保留
+- 決定者・日付: Hiroto N.、2026-10-16（[公開PR #475の所有者裁定](https://github.com/hironow/dotfiles/pull/475#issuecomment-6209808795)）
+- A 案で採択したときの作業: ADR-0048 の Status を `Superseded by [0056]`（部分）に変える（これだけが許される編集）。実施済み。merge 後に main の checkout で `just claude-plugins-install` を実行する。work home から pyright-lsp を外し、`~/.claude` の bigquery-data-analytics と knowledge-catalog を無効にする。
 - B 案で採択したときの作業: 宣言を codex だけに戻し、home ごとの宣言形式を別 PR で提案する。
 - C 案で採択したときの作業: fork を作ってタグを打ち、宣言の source を fork に替える。
 - 却下・保留したときの作業: 宣言を codex だけに戻す。local marketplace 対応のコード（`resolve_source`）は残してよい。
