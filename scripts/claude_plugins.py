@@ -20,6 +20,14 @@ every time, since its folder can change under the same key.
 switches its plugins off once per home and is then recorded in the home's
 claude-plugins.sync-state.json, so a plugin the user enables later stays on.
 
+An LSP plugin only names the command its server runs; the command itself has
+to be on this machine (mise provides it, config/mise/config.toml). The command
+comes from each home's marketplace manifest -- the published plugin spec that
+`claude plugin validate` checks, located through `marketplace list --json`,
+not Claude Code's runtime state -- and is checked once per machine: on PATH,
+and answering its version query (rustup's proxy is on PATH yet runs nothing until
+the component is added).
+
 Functional core / imperative shell: the steps come from the declaration and the
 CLI's own --json inventory; reconcile() runs them through an injected CLI and
 reads the inventory again before judging. A marketplace step runs first, since
@@ -33,13 +41,17 @@ Prints doctor-style OK/WARN lines; exit 1 on a WARN.
 
 import json
 import re
+import shutil
+import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import claude_homes
+from doctor_lines import fmt
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "claude-plugins"
@@ -48,6 +60,9 @@ MARKETPLACE_LIST = ["plugin", "marketplace", "list", "--json"]
 PLUGIN_LIST = ["plugin", "list", "--json"]
 STATE_FILE = "claude-plugins.sync-state.json"  # in each home, owned by dotfiles
 SCHEMA_READERS = 8  # parallel `configure --json` reads, about a second each
+PROBE_TIMEOUT = 10.0  # seconds for an LSP command to answer `--version`
+# Commands that answer something other than `--version` (gopls: "unknown flag")
+VERSION_ARGS: Mapping[str, tuple[str, ...]] = {"gopls": ("version",)}
 
 Step = tuple[list[str], str]  # (claude argv, what is wrong until it runs)
 Cli = Callable[[list[str]], str | None]  # claude argv -> stdout, None on failure
@@ -250,6 +265,64 @@ def settings_problems(
     return problems, fresh
 
 
+def lsp_commands(entry: Mapping[str, object]) -> list[str]:
+    """The commands a marketplace entry's LSP servers run (`lspServers` given
+    inline; a path to a separate file is not followed)."""
+    servers = entry.get("lspServers")
+    if not isinstance(servers, Mapping):
+        return []
+    return [
+        server["command"]
+        for server in servers.values()
+        if isinstance(server, Mapping) and isinstance(server.get("command"), str)
+    ]
+
+
+Manifests = Mapping[str, Mapping[str, object] | None]  # marketplace -> manifest
+
+
+def lsp_problems(
+    declaration: Declaration,
+    homes: Sequence[Manifests | None],
+    probe: Callable[[str], str | None],
+) -> list[str]:
+    """What keeps a declared plugin's LSP server from starting on this machine.
+
+    The commands are gathered from every home's manifests, since homes keep
+    their own marketplace copies; each command is probed once. `probe` says
+    why a command is unusable, or None when it answers."""
+    problems: list[str] = []
+    needs: dict[str, set[str]] = {}
+    for manifests in homes:
+        if manifests is None:  # never taken for "no LSP plugins here"
+            unreadable = f"cannot read `claude {' '.join(MARKETPLACE_LIST)}`"
+            if unreadable not in problems:
+                problems.append(unreadable)
+            continue
+        for pid in declaration.plugins:
+            name, _, market = pid.partition("@")
+            if market not in manifests:
+                continue
+            manifest = manifests[market]
+            if manifest is None:
+                unreadable = f"cannot read the {market} marketplace manifest"
+                if unreadable not in problems:
+                    problems.append(unreadable)
+                continue
+            entries = manifest.get("plugins")
+            for entry in entries if isinstance(entries, list) else []:
+                if isinstance(entry, Mapping) and entry.get("name") == name:
+                    for command in lsp_commands(entry):
+                        needs.setdefault(command, set()).add(pid)
+    for command in sorted(needs):
+        if (why := probe(command)) is not None:
+            problems.append(
+                f"{', '.join(sorted(needs[command]))} needs `{command}` for its LSP"
+                f" server, but it {why}; provide it with mise (config/mise/config.toml)"
+            )
+    return problems
+
+
 def _listed(out: str | None) -> list[dict] | None:
     try:
         listed = json.loads(out or "")
@@ -386,6 +459,60 @@ def visit_home(
     return done, found
 
 
+def probe_command(
+    command: str, path: str | None = None, timeout: float = PROBE_TIMEOUT
+) -> str | None:
+    """None when `command` is on PATH and answers its version query in time."""
+    found = shutil.which(command, path=path)
+    if found is None:
+        return "is not on PATH"
+    ask = [found, *VERSION_ARGS.get(command, ("--version",))]
+    try:
+        done = subprocess.run(
+            ask,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return f"does not start (`{' '.join(ask)}`)"
+    if done.returncode != 0:
+        return f"does not start (`{' '.join(ask)}` exits {done.returncode})"
+    return None
+
+
+def read_manifests(cli: Cli) -> dict[str, Mapping[str, object] | None] | None:
+    """Each marketplace's manifest, found through `marketplace list --json`;
+    None for one that cannot be read, and None for all when the list itself
+    cannot be read."""
+    listed = _listed(cli(MARKETPLACE_LIST))
+    if listed is None:
+        return None
+    manifests: dict[str, Mapping[str, object] | None] = {}
+    for market in listed:
+        name, path, root = (
+            market.get("name"),
+            market.get("path"),
+            market.get("installLocation"),
+        )
+        if not isinstance(name, str):
+            continue
+        if isinstance(path, str):
+            file = Path(path)
+        elif isinstance(root, str):
+            file = Path(root) / ".claude-plugin/marketplace.json"
+        else:
+            manifests[name] = None
+            continue
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = None
+        manifests[name] = data if isinstance(data, dict) else None
+    return manifests
+
+
 def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
     return claude_homes.runner(claude, home, deadline)
 
@@ -397,14 +524,35 @@ def main(argv: Sequence[str]) -> int:
         return visit_home(declaration, _cli(claude, home, deadline), home, check=check)
 
     check = "--check" in argv
-    return claude_homes.visit(
+    # --check runs under doctor's wait: the LSP check shares visit()'s budget
+    deadline = time.monotonic() + claude_homes.CHECK_BUDGET if check else None
+    homes = claude_homes.existing(Path.home())
+    found = claude_homes.visit(
         NAME,
-        claude_homes.existing(Path.home()),
+        homes,
         one,
         check=check,
         recipe="just claude-plugins-install",
         summary=lambda n: f"{len(declaration.plugins)} plugin(s) in {n} Claude home(s)",
     )
+    claude = shutil.which("claude")
+    if claude is None:  # visit() has said so
+        return found
+    with ThreadPoolExecutor(max_workers=len(homes) or 1) as pool:
+        manifests = list(
+            pool.map(lambda home: read_manifests(_cli(claude, home, deadline)), homes)
+        )
+
+    def probe(command: str) -> str | None:
+        left = claude_homes.call_timeout(deadline, time.monotonic())
+        if left is None:
+            return "was not checked (doctor's time budget ran out)"
+        return probe_command(command, timeout=min(PROBE_TIMEOUT, left))
+
+    lsp = lsp_problems(declaration, manifests, probe)
+    for problem in lsp:
+        print(fmt(("WARN", NAME, problem)))
+    return 1 if lsp else found
 
 
 if __name__ == "__main__":
