@@ -168,6 +168,47 @@ def test_rtk_run_is_transparent(tmp_path: Path, command: str) -> None:
     assert _run_hook(command, tmp_path) == EXIT_BLOCK
 
 
+@pytest.mark.parametrize(
+    "command",
+    ["rtk bypass pnpm install", "rtk bypass -- npm ci", "rtk bypass pip install x"],
+)
+def test_rtk_bypass_is_transparent(tmp_path: Path, command: str) -> None:
+    """`rtk bypass` (rtk 1.0) is the new name of `rtk proxy`: it runs operands raw."""
+    assert _run_hook(command, tmp_path) == EXIT_BLOCK
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'rtk run -c "pnpm install"',
+        "rtk run --command 'pip install x'",
+        'rtk run --shell bash -c "npm ci"',
+        'rtk err --shell sh "npm ci"',
+        'rtk test --shell bash "pnpm test"',
+        'rtk summary --shell sh "poetry add x"',
+    ],
+)
+def test_rtk_shell_string_forms_are_checked(tmp_path: Path, command: str) -> None:
+    """rtk 1.0 runs one quoted string through a shell (`run -c`, `--shell`)."""
+    assert _run_hook(command, tmp_path) == EXIT_BLOCK
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rtk bypass uv sync",
+        'rtk run -c "uv sync"',
+        'rtk err --shell sh "uv sync"',
+        "rtk pipeline show",
+        "rtk plugins list",
+    ],
+)
+def test_rtk_shell_string_and_new_verbs_allow_clean_commands(
+    tmp_path: Path, command: str
+) -> None:
+    assert _run_hook(command, tmp_path) == EXIT_ALLOW
+
+
 def test_rtk_with_its_own_flags_still_unwraps(tmp_path: Path) -> None:
     assert _run_hook("rtk --ultra-compact pnpm install", tmp_path) == EXIT_BLOCK
 
