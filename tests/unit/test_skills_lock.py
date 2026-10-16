@@ -459,3 +459,137 @@ def test_output_survives_cp932_stdout() -> None:
     assert proc.returncode == 0, (
         "skills_lock output must not crash on a cp932 stdout:\n" + proc.stderr
     )
+
+
+# --- dump keeps sources that are not public out of the declaration ---
+# The declaration is public. A skill from a private repository named there
+# leaks the repository's name, and dump would re-add it on every run.
+
+PUBLIC = "example/public-skills"
+PRIVATE = "example/private-skills"
+UNKNOWN = "example/unreachable-skills"
+
+
+def test_records_are_split_by_the_visibility_of_their_source() -> None:
+    from skills_lock import withhold_private
+
+    records = [
+        _rec("a", source=PUBLIC),
+        _rec("b", source=PRIVATE),
+        _rec("c", source=UNKNOWN),
+        _rec("d", source="example/never-asked"),
+    ]
+    visibility = {PUBLIC: True, PRIVATE: False, UNKNOWN: None}
+    kept, withheld, unknown = withhold_private(records, visibility)
+    assert [r.installed_dir for r in kept] == ["a"]
+    assert [r.installed_dir for r in withheld] == ["b"]
+    assert unknown == ["example/never-asked", UNKNOWN]
+
+
+@pytest.fixture
+def fake_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    if sys.platform == "win32":
+        pytest.skip("the fake gh is a sh script")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    # `gh api --hostname github.com repos/<source> --jq .private`; any other
+    # host is a wrong answer (an Enterprise GH_HOST must not be asked)
+    gh.write_text(
+        "#!/bin/sh\n"
+        '[ "$2" = --hostname ] && [ "$3" = github.com ] || exit 1\n'
+        'case "$4" in\n'
+        "  repos/example/public-skills) echo false ;;\n"
+        "  repos/example/private-skills) echo true ;;\n"
+        "  repos/example/null-skills) echo null ;;\n"
+        "  repos/example/empty-skills) ;;\n"
+        "  *) echo 'HTTP 404' >&2; exit 1 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin")
+    monkeypatch.setenv("GH_HOST", "ghe.example.com")  # every source is on github.com
+    return gh
+
+
+def test_visibility_is_read_from_gh(fake_gh: Path) -> None:
+    from skills_lock import source_visibility
+
+    sources = [PUBLIC, PRIVATE, "example/null-skills", "example/empty-skills", UNKNOWN]
+    assert source_visibility(sources) == {
+        PUBLIC: True,
+        PRIVATE: False,
+        "example/null-skills": None,
+        "example/empty-skills": None,
+        UNKNOWN: None,
+    }
+
+
+def test_visibility_is_unknown_without_gh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from skills_lock import source_visibility
+
+    monkeypatch.setenv("PATH", str(tmp_path))  # no gh anywhere
+    assert source_visibility([PUBLIC]) == {PUBLIC: None}
+
+
+def _dump_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A machine whose store holds `a` (public source) and `b` (private), and a
+    previous declaration that carried both -- the mistake dump must not repeat."""
+    import json
+
+    home = tmp_path / "home"
+    for name in ("a", "b"):
+        _store_skill(home, name)
+    lock = {
+        "a": _entry(PUBLIC, "skills/a/SKILL.md"),
+        "b": _entry(PRIVATE, "skills/b/SKILL.md"),
+    }
+    (home / ".agents" / ".skill-lock.json").write_text(
+        json.dumps({"skills": lock}), encoding="utf-8"
+    )
+    monkeypatch.setenv("SKILLS_LOCK_HOME", str(home))
+    harness = tmp_path / "dump" / "harness"
+    harness.mkdir(parents=True)
+    (harness / "skill-lock.json").write_text(
+        json_dumps_records([_rec("a", source=PUBLIC), _rec("b", source=PRIVATE)]),
+        encoding="utf-8",
+    )
+    return harness / "skill-lock.json"
+
+
+def test_dump_writes_no_skill_from_a_private_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import json
+
+    import skills_lock
+
+    declaration = _dump_world(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        skills_lock, "source_visibility", lambda _s: {PUBLIC: True, PRIVATE: False}
+    )
+    assert skills_lock._cmd_dump(tmp_path, allow_self_drop=False) == 0
+    written = json.loads(declaration.read_text(encoding="utf-8"))["skills"]
+    assert [r["installed_dir"] for r in written] == ["a"]
+    assert PRIVATE not in declaration.read_text(encoding="utf-8")
+    assert "withheld" in capsys.readouterr().err
+
+
+def test_dump_writes_nothing_when_a_source_cannot_be_confirmed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # never guess: a network or auth failure keeps the previous declaration
+    import skills_lock
+
+    declaration = _dump_world(tmp_path, monkeypatch)
+    before = declaration.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        skills_lock, "source_visibility", lambda _s: {PUBLIC: None, PRIVATE: False}
+    )
+    assert skills_lock._cmd_dump(tmp_path, allow_self_drop=False) == 1
+    assert declaration.read_text(encoding="utf-8") == before

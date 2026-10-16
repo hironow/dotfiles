@@ -16,7 +16,10 @@ home is populated by `place` below, never by the CLI.
 Subcommands:
     dump     normalize the machine lock into the committed declaration; fails
              when a previously declared hironow/skills record vanished or was
-             re-sourced (the CLI's lock replaces a same-named key silently)
+             re-sourced (the CLI's lock replaces a same-named key silently).
+             The declaration is public, so a skill whose source `gh` reports
+             private is left out (named on stderr), and a source whose
+             visibility cannot be told stops the dump before it writes
     restore  install into the store every declared skill that is missing or
              whose machine-lock source is not the declared one (hironow/skills
              last, so ours wins), then `place`
@@ -47,7 +50,7 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -195,6 +198,26 @@ def find_dropped_self_records(
         for r in previous
         if r.source == SELF_SOURCE and now.get(r.installed_dir) != SELF_SOURCE
     )
+
+
+def withhold_private(
+    records: list[SkillRecord], visibility: Mapping[str, bool | None]
+) -> tuple[list[SkillRecord], list[SkillRecord], list[str]]:
+    """(records to declare, records withheld as private, sources that could not
+    be confirmed either way). The declaration is public: a skill from a private
+    repository would leak the repository's name."""
+    kept: list[SkillRecord] = []
+    withheld: list[SkillRecord] = []
+    unknown: set[str] = set()
+    for record in records:
+        public = visibility.get(record.source)
+        if public is True:
+            kept.append(record)
+        elif public is False:
+            withheld.append(record)
+        else:
+            unknown.add(record.source)
+    return kept, withheld, sorted(unknown)
 
 
 def restore_order(records: list[SkillRecord]) -> list[SkillRecord]:
@@ -490,6 +513,43 @@ def _load_machine_sources(home: Path) -> dict[str, str]:
     return sources
 
 
+def source_visibility(sources: Iterable[str]) -> dict[str, bool | None]:
+    """Whether each source is public, from `gh api repos/<source>` on
+    github.com: True public, False private, None when it cannot be told (no
+    gh, not logged in, offline, or an answer other than true / false)."""
+    gh = shutil.which("gh")
+    visibility: dict[str, bool | None] = {}
+    for source in dict.fromkeys(sources):
+        answer = ""
+        if gh is not None:
+            try:
+                done = subprocess.run(
+                    # every source is a github.com repo: pin the host so an
+                    # Enterprise GH_HOST is never asked about it
+                    [
+                        gh,
+                        "api",
+                        "--hostname",
+                        "github.com",
+                        f"repos/{source}",
+                        "--jq",
+                        ".private",
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=30,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError):
+                done = None
+            if done is not None and done.returncode == 0:
+                answer = done.stdout.strip()
+        visibility[source] = {"false": True, "true": False}.get(answer)
+    return visibility
+
+
 def _configure_output() -> None:
     # Windows Git Bash hands Python a cp932 stdout; the emoji progress lines
     # then raise UnicodeEncodeError and kill the whole command. Re-encode to
@@ -514,6 +574,22 @@ def _cmd_dump(dotfiles_dir: Path, *, allow_self_drop: bool) -> int:
                 file=sys.stderr,
             )
             return 1
+    visibility = source_visibility(sorted({r.source for r in records}))
+    records, withheld, unknown = withhold_private(records, visibility)
+    if unknown:
+        print(
+            "❌ could not confirm that these sources are public (gh missing, not "
+            f"logged in, or offline); the declaration is left as it was: "
+            f"{', '.join(unknown)}",
+            file=sys.stderr,
+        )
+        return 1
+    if withheld:
+        print(
+            "⚠️  withheld from the public declaration (private source): "
+            f"{', '.join(r.installed_dir for r in withheld)}",
+            file=sys.stderr,
+        )
     dump_path.write_text(
         json.dumps(
             {"version": 1, "skills": [asdict(r) for r in records]},

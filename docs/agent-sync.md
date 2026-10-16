@@ -101,6 +101,7 @@ Windows では、続けて `scripts/codex_sandbox_tools.py` を実行し、Codex
 各 home の `skills/` には、`just skills-place` が store への相対 symlink を張る（張れなければ追跡つきのコピー）。
 CLI には `-a universal` で store だけを書かせ、home には触らせない。
 同名の skill は hironow/skills が優先される（`just skills-lock-check` が `just ci` の中で検査する）。
+宣言は公開されるので、`just dump-skills-lock` は `gh` で非公開と分かった source の skill を宣言に入れない。公開か確かめられない source があるときは、何も書かずに失敗する。
 
 - `just dump-skills-lock`：store から宣言を作り直す（hironow/skills の記録が消える変更は拒む）
 - `just restore-skills-lock`：新しい機体で、宣言から store を復元して配置する
