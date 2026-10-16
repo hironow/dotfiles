@@ -51,6 +51,20 @@ def parse_source(source: str) -> tuple[str, str | None]:
     return repo, ref or None
 
 
+def resolve_source(source: str, root: Path) -> str:
+    """A `./` source is a marketplace file in this repo; the CLI wants it absolute."""
+    return str(root / source) if source.startswith("./") else source
+
+
+def _is_current(source: str, current: Mapping[str, object]) -> bool:
+    if Path(source).is_absolute():  # a local marketplace, listed by its path
+        return isinstance(path := current.get("path"), str) and Path(path) == Path(
+            source
+        )
+    repo, ref = parse_source(source)
+    return current.get("repo") == repo and current.get("ref") == ref
+
+
 def _version(ref: str | None) -> str | None:
     """The plugin version a release tag stands for (v1.0.6 -> 1.0.6)."""
     match = re.fullmatch(r"v?(\d+\.\d+\.\d+)", ref or "")
@@ -62,12 +76,11 @@ def marketplace_steps(
 ) -> list[Step]:
     steps: list[Step] = []
     for name, source in declared.items():
-        repo, ref = parse_source(source)
         add = ["plugin", "marketplace", "add", source, "--scope", "user"]
         current = next((m for m in listed if m.get("name") == name), None)
         if current is None:
             steps.append((add, f"marketplace {name} is missing"))
-        elif current.get("repo") != repo or current.get("ref") != ref:
+        elif not _is_current(source, current):
             why = f"marketplace {name} is not {source}"
             remove = ["plugin", "marketplace", "remove", name, "--scope", "user"]
             steps += [(remove, why), (add, why)]
@@ -148,10 +161,14 @@ def reconcile(
 # ---- Imperative shell ----
 
 
-def load(path: Path) -> Declaration:
+def load(path: Path, root: Path = ROOT) -> Declaration:
     data = json.loads(path.read_text(encoding="utf-8"))
     return Declaration(
-        marketplaces=dict(data["marketplaces"]), plugins=tuple(data["plugins"])
+        marketplaces={
+            name: resolve_source(source, root)
+            for name, source in data["marketplaces"].items()
+        },
+        plugins=tuple(data["plugins"]),
     )
 
 
@@ -172,7 +189,7 @@ def main(argv: Sequence[str]) -> int:
         one,
         check=check,
         recipe="just claude-plugins-install",
-        summary=lambda n: f"{', '.join(declaration.plugins)} in {n} Claude home(s)",
+        summary=lambda n: f"{len(declaration.plugins)} plugin(s) in {n} Claude home(s)",
     )
 
 
