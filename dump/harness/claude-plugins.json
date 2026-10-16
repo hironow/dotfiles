@@ -14,7 +14,6 @@
     "claude-code-setup@claude-plugins-official",
     "claude-md-management@claude-plugins-official",
     "claude-security@claude-plugins-official",
-    "cloud-sql-sqlserver@claude-plugins-official",
     "cloudflare@claude-plugins-official",
     "code-modernization@claude-plugins-official",
     "code-review@claude-plugins-official",
@@ -25,7 +24,6 @@
     "duckdb-skills@claude-plugins-official",
     "feature-dev@claude-plugins-official",
     "firebase@claude-plugins-official",
-    "firestore-native@claude-plugins-official",
     "frontend-design@claude-plugins-official",
     "gopls-lsp@claude-plugins-official",
     "grilling@hironow-plugins",
@@ -46,5 +44,16 @@
     "skill-creator@claude-plugins-official",
     "typescript-lsp@claude-plugins-official",
     "unreal-engine-skills-for-claude-code@claude-plugins-official"
-  ]
+  ],
+  "disabled": [
+    "pyright-lsp@claude-plugins-official"
+  ],
+  "retired": {
+    "2026-10-16-gcp-per-home-settings": [
+      "bigquery-data-analytics@claude-plugins-official",
+      "cloud-sql-sqlserver@claude-plugins-official",
+      "firestore-native@claude-plugins-official",
+      "knowledge-catalog@claude-plugins-official"
+    ]
+  }
 }

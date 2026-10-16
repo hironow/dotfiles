@@ -505,3 +505,12 @@ def test_a_broken_state_file_is_reported_and_runs_no_migration(tmp_path: Path) -
     assert next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] is True
     state = (tmp_path / plugins.STATE_FILE).read_text(encoding="utf-8")
     assert state == "{not json"
+
+
+def test_the_repo_declares_nothing_both_shared_and_switched_off() -> None:
+    declared = plugins.load(plugins.DECLARATION)
+    off = set(declared.disabled) | {
+        pid for ids in declared.retired.values() for pid in ids
+    }
+    assert PYRIGHT in declared.disabled
+    assert not off & set(declared.plugins)

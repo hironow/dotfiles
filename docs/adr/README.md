@@ -81,6 +81,7 @@ and what outlived it.
 | 0054 | [portless を just の recipe で包まず、直接使う](./0054-run-portless-directly.md) | Accepted (PR #468); supersedes part of [0015](./0015-adopt-portless-for-local-dev-urls.md) | 2026-10-11 | `justfile`、`docs/portless-urls.md` |
 | 0055 | [emulate は npx ではなく bunx で動かす](./0055-run-emulate-with-bunx.md) | Accepted (PR #470); supersedes part of [0016](./0016-integrate-emulate-api-emulators-via-npx.md) | 2026-10-12 | `justfile`、`tests/unit/test_justfile_bun_only.py` |
 | 0056 | [5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする](./0056-common-claude-plugin-set.md) | Accepted (PR #475); supersedes part of [0048](./0048-required-claude-plugins.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
+| 0057 | [共通セットの plugin は、home ごとの設定なしで動くものに限る](./0057-shared-plugins-need-no-per-home-settings.md) | Proposed; supersedes part of [0056](./0056-common-claude-plugin-set.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
 
 ## Reading order for newcomers
 

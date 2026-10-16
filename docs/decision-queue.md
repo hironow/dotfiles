@@ -8,6 +8,7 @@
 
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0057 | 共通セットの plugin は home ごとの設定なしで動くものに限り、doctor で見張る | ADR | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-23 | Proposed | この PR | — | ADR-0056 の一部（40 個と除外、pyright-lsp の扱い）を置き換える。DR 間整合検査: 0048・0044・0037・0049 と整合、0056 は意図した部分置換のみ | [adr/0057-shared-plugins-need-no-per-home-settings.md](adr/0057-shared-plugins-need-no-per-home-settings.md) |
 
 ## 決定済みログ
 
