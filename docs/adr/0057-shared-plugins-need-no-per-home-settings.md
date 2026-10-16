@@ -48,13 +48,14 @@ firestore-native の `firestore_database` は説明に「Optional」とあるの
 
 - **A) 外して、規則にし、移行も script で行う（提案）**
   1. 共通セットの plugin は、home ごとの設定なしで動かなければならない（MUST）。判定は保守的に行う。`configure --json` の schema に default の無い項目が 1 つでもあれば、home ごとの設定が要る可能性があるとして共通セットに入れない。項目が本当に必須かどうかは判定しない。
-  2. `scripts/claude_plugins.py` は、宣言した plugin の schema を install のときも `--check`（doctor）のときも読み、1 に当たるものを WARN にする（MUST）。読めなければ、それも WARN にする。
+  2. `scripts/claude_plugins.py` は、宣言した plugin の schema を install のときも `--check`（doctor）のときも確かめ、1 に当たるものを WARN にする（MUST）。読めなければ、それも WARN にする。
+     読んだ結果は home の `claude-plugins.sync-state.json` に、`plugin list --json` の version と lastUpdated を key にして保存してよい。key が変わったときと、`readFromFolder`（repo のフォルダを直接読む plugin）のときは、毎回読み直す。保存は install のときだけ行い、doctor は読むだけにする。
   3. 宣言は cloud-sql-sqlserver と firestore-native を外した 38 個とする（MUST）。
   4. 宣言の `disabled` に書いた plugin は、user scope で有効なら毎回無効にする（MUST）。pyright-lsp をここに書く。plugin は pyright の起動設定なので、無効にすれば pyright は動かない（ADR-0044 と整合）。
   5. 宣言の `retired` に書いた移行（ID と plugin の組）は、各 home で 1 回だけ、user scope で有効な対象を無効にする（MUST）。対象がすべて無効だと確かめたら、ほかの WARN の有無にかかわらず、その home の `claude-plugins.sync-state.json` に ID を記録する。記録後に利用者が設定して有効にした plugin は残す。記録が読めないときは移行を走らせず、WARN にする。GCP 系の 4 個をこの移行に書く。
 
     - 利点: 共通セットが、どの home でも設定なしで動く。upstream が同じ version のまま設定を要求し始めても、doctor が知らせる。ほかの機体の home も、次の `just deploy` で同じ状態に移る。GCP 系を使いたい home では、設定すれば使い続けられる（ADR-0056 の Neutral のとおり）。
-    - コスト: doctor の `claude-plugins` 行が、home ごとに約 38 回 CLI を呼ぶ（8 並列）。home の中に dotfiles 所有のファイルが 1 つ増える。default の無い任意項目しか持たない plugin も外れる。
+    - コスト: 初回と更新後は、home ごとに最大 38 回 CLI を呼ぶ（8 並列）。home の中に dotfiles 所有のファイルが 1 つ増える。default の無い任意項目しか持たない plugin も外れる。
 
 - **B) 2 つを外すだけにする**
     - 利点: script の変更が要らない。
@@ -74,7 +75,8 @@ firestore-native の `firestore_database` は説明に「Optional」とあるの
 
 ### Negative
 
-- doctor の `claude-plugins` 行が遅くなる。目安は 5 home の合計で 20 秒以内の増分。超えたら、`plugin list --json` の `(id, version, lastUpdated)` をキーにした結果のキャッシュを別に提案する。
+- 結果を保存しないと、doctor の `claude-plugins` 行は 5 秒から 40 秒前後に延びた（2026-10-16 の実測、`configure --json` は 1 回約 0.55 秒）。保存した結果を使うので、普段の増分は `plugin list --json` の 1 回分と、`readFromFolder` の plugin の読み直しだけになる。
+- 保存した結果は、home の中の plugin が install か update で入れ替わるまで使い回す。入れ替われば lastUpdated が変わるので読み直すが、state ファイルを手で書き換えれば検査をすり抜けられる。
 - 保守的な判定なので、default の無い任意項目だけを持つ plugin も共通セットに入れられない。入れたいときは、この ADR を置き換える。
 - pyright-lsp は無効にするだけで、ファイルは home に残る。
 
