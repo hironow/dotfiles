@@ -8,6 +8,7 @@
 
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0056 | 5 つの Claude home で使う plugin の和集合（40 個）を全 home 共通に宣言する | ADR | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-23 | Proposed | この PR | — | ADR-0048 の「各 marketplace をタグで pin」を一部置き換える（official は追従、hironow-plugins は repo 相対）。DR 間整合検査: 0037・0044・0049 と整合、0048 は意図した部分置換のみ | [adr/0056-common-claude-plugin-set.md](adr/0056-common-claude-plugin-set.md) |
 
 ## 決定済みログ
 

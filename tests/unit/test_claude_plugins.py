@@ -1,8 +1,9 @@
-"""Every Claude home gets the plugins dotfiles requires (codex@openai-codex).
+"""Every Claude home gets the shared plugin set (ADR 0048, ADR 0056).
 
 j-cc hands Codex work to `codex:codex-rescue`, which only exists with the Codex
 plugin; jev-claude-verify stayed BLOCKED on hosts without it. The plugins are
-declared in dump/harness/claude-plugins.json (marketplaces pinned to a tag) and
+declared in dump/harness/claude-plugins.json (marketplaces pinned to a tag,
+except the untagged official one and this repo's own `./` marketplace) and
 installed through Claude Code's own plugin CLI. The steps come from that CLI's
 --json inventory; a fake CLI with real state checks the whole round trip:
 replacing a marketplace drops its plugins, a second run changes nothing, and
@@ -33,6 +34,47 @@ def test_the_repo_declares_the_codex_plugin_pinned_to_a_tag() -> None:
     repo, ref = plugins.parse_source(declared.marketplaces["openai-codex"])
     assert repo == "openai/codex-plugin-cc"
     assert ref is not None and ref.startswith("v")
+
+
+# ADR 0056: official has no tags and the CLI clones `--branch <ref>`, so it
+# cannot take a commit SHA; a `./` source is this repo's own tracked content
+UNPINNED = {"claude-plugins-official"}
+
+
+def test_every_remote_marketplace_is_pinned_to_a_tag_but_the_unpinned_one() -> None:
+    raw = json.loads(
+        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
+    )
+    for name, source in raw["marketplaces"].items():
+        if source.startswith("./"):
+            assert (ROOT / source).is_file(), name
+            continue
+        ref = plugins.parse_source(source)[1]
+        if name in UNPINNED:
+            assert ref is None, name
+        else:
+            assert ref is not None and plugins._version(ref), name
+
+
+def test_the_unpinned_exception_names_a_declared_marketplace() -> None:
+    # a stale exception would let a later marketplace of that name go unpinned
+    raw = json.loads(
+        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
+    )
+    assert set(raw["marketplaces"]) >= UNPINNED
+
+
+def test_every_declared_plugin_comes_from_a_declared_marketplace() -> None:
+    declared = plugins.load(plugins.DECLARATION)
+    assert len(declared.plugins) == len(set(declared.plugins))
+    for pid in declared.plugins:
+        assert pid.partition("@")[2] in declared.marketplaces, pid
+
+
+def test_pyright_is_never_declared() -> None:
+    # ADR 0044: ty is the only Python type checker
+    declared = plugins.load(plugins.DECLARATION)
+    assert not [pid for pid in declared.plugins if "pyright" in pid]
 
 
 def test_a_source_splits_into_repo_and_ref() -> None:

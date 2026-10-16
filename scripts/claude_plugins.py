@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Install the Claude Code plugins dotfiles requires in every Claude home.
+"""Install the Claude Code plugins every Claude home shares.
 
 j-cc hands Codex work to `codex:codex-rescue`, which exists only with the Codex
-plugin. The required plugins are declared in dump/harness/claude-plugins.json,
-each marketplace pinned to a tag, and installed through Claude Code's own
-plugin CLI with CLAUDE_CONFIG_DIR set per home (ADR 0048; ADR 0037 keeps
-enabledPlugins and extraKnownMarketplaces out of the settings fragments). Only
-homes that exist are touched, and only the user scope counts.
+plugin; the rest of the set is what the operator's homes use (ADR 0056). The
+plugins are declared in dump/harness/claude-plugins.json, each marketplace
+pinned to a tag except claude-plugins-official (no tags) and this repo's own
+marketplace (a `./` path), and installed through Claude Code's own plugin CLI
+with CLAUDE_CONFIG_DIR set per home (ADR 0048; ADR 0037 keeps enabledPlugins
+and extraKnownMarketplaces out of the settings fragments). Only homes that
+exist are touched, and only the user scope counts.
 
 Functional core / imperative shell: the steps come from the declaration and the
 CLI's own --json inventory; reconcile() runs them through an injected CLI and

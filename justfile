@@ -228,8 +228,8 @@ deploy:
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
-# Install the Claude Code plugins every Claude home must have
-# (dump/harness/claude-plugins.json; the Codex plugin j-cc delegates to).
+# Install the Claude Code plugins every Claude home shares
+# (dump/harness/claude-plugins.json; ADR 0048, ADR 0056).
 # `just deploy` already runs this. --check: report only.
 claude-plugins-install *args:
     @{{ UV_RUN }} scripts/claude_plugins.py {{ args }}
