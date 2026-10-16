@@ -93,11 +93,16 @@ class FakeClaude:
     ) -> None:
         self.markets, self.installed = markets, installed
         self.names = names or {"openai/codex-plugin-cc#v1.0.6": "openai-codex"}
+        # plugin id -> `configure --json` schema; None makes the read fail
+        self.schemas: dict[str, dict | None] = {}
         self.mutations: list[list[str]] = []
         self.readable = True
         self.failing: list[str] | None = None  # e.g. ["marketplace", "add"]
 
     def __call__(self, args: list[str]) -> str | None:
+        if args[:2] == ["plugin", "configure"]:
+            schema = self.schemas.get(args[2], {})
+            return None if schema is None else json.dumps({"schema": schema})
         if args[-1] == "--json":
             if not self.readable:
                 return None
@@ -131,10 +136,10 @@ class FakeClaude:
                     for p in self.installed
                     if not (p["id"] == pid and p["scope"] == "user")
                 ]
-            case ["enable", pid, "--scope", "user"]:
+            case ["enable" | "disable" as verb, pid, "--scope", "user"]:
                 for p in self.installed:
                     if p["id"] == pid and p["scope"] == "user":
-                        p["enabled"] = True
+                        p["enabled"] = verb == "enable"
             case _:
                 raise AssertionError(f"unexpected claude {args}")
         return ""
@@ -261,7 +266,7 @@ def test_main_prints_each_home_then_the_summary(
     monkeypatch.setattr(plugins.Path, "home", lambda: tmp_path)
     monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
     monkeypatch.setattr(
-        plugins, "reconcile", lambda _d, cli, *, check: results[cli.home.name]
+        plugins, "visit_home", lambda _d, _cli, home, *, check: results[home.name]
     )
     monkeypatch.setattr(
         plugins, "_cli", lambda _c, home, _deadline: type("C", (), {"home": home})()
@@ -356,3 +361,147 @@ def test_a_local_marketplace_and_its_plugin_converge_once(tmp_path: Path) -> Non
     cli.mutations.clear()
     assert plugins.reconcile(declared, cli, check=False) == ([], [])
     assert cli.mutations == []
+
+
+# ---- ADR 0057: per-home settings, disabled and retired plugins ----
+
+FIRESTORE = "firestore-native@claude-plugins-official"
+BIGQUERY = "bigquery-data-analytics@claude-plugins-official"
+PYRIGHT = "pyright-lsp@claude-plugins-official"
+GCP = "2026-10-16-gcp-per-home-settings"
+# firestore-native as the CLI reports it: the database is described as
+# optional, yet it has no default either
+FIRESTORE_SCHEMA = {
+    "firestore_project": {"type": "string", "title": "Project ID"},
+    "firestore_database": {
+        "type": "string",
+        "title": "Database ID",
+        "description": "(Optional) ID of the Firestore database",
+    },
+}
+
+
+def _user(pid: str, *, enabled: bool = True) -> dict:
+    return {"id": pid, "version": "1.0.0", "scope": "user", "enabled": enabled}
+
+
+def test_an_option_without_a_default_may_need_per_home_settings() -> None:
+    # conservative: whether the option is really required is not judged
+    assert plugins.settings_needed(FIRESTORE_SCHEMA) == [
+        "firestore_project",
+        "firestore_database",
+    ]
+    with_defaults = {"track": {"type": "string", "default": "auto"}}
+    assert plugins.settings_needed(with_defaults) == []
+    assert plugins.settings_needed({}) == []
+
+
+@pytest.mark.parametrize("check", [True, False])
+def test_a_declared_plugin_needing_per_home_settings_is_reported(check: bool) -> None:
+    # doctor (check) too: `claude plugin update` never passes through reconcile
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN)])
+    cli.schemas["codex@openai-codex"] = FIRESTORE_SCHEMA
+    _done, problems = _run(cli, check=check)
+    assert len(problems) == 1
+    assert "codex@openai-codex" in problems[0]
+    assert "firestore_project, firestore_database" in problems[0]
+    assert "ADR 0057" in problems[0]
+
+
+def test_an_unreadable_settings_schema_is_reported_never_passed() -> None:
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN)])
+    cli.schemas["codex@openai-codex"] = None
+    assert _run(cli, check=True)[1] == [
+        "cannot read `claude plugin configure codex@openai-codex --json`"
+    ]
+
+
+def _gcp_declaration() -> plugins.Declaration:
+    return plugins.Declaration(
+        marketplaces=DECLARED.marketplaces,
+        plugins=DECLARED.plugins,
+        disabled=(PYRIGHT,),
+        retired={GCP: (BIGQUERY, FIRESTORE)},
+    )
+
+
+def test_a_disabled_plugin_is_disabled_on_every_run() -> None:
+    declaration = _gcp_declaration()
+    listed = [_user(PYRIGHT)]
+    steps = plugins.disable_steps(declaration, frozenset({GCP}), listed)
+    assert [argv for argv, _ in steps] == [
+        ["plugin", "disable", PYRIGHT, "--scope", "user"]
+    ]
+    for already in ([_user(PYRIGHT, enabled=False)], []):
+        assert plugins.disable_steps(declaration, frozenset(), already) == []
+
+
+def test_a_retired_plugin_is_disabled_until_its_migration_is_evaluated() -> None:
+    declaration = _gcp_declaration()
+    listed = [_user(FIRESTORE), _user(BIGQUERY, enabled=False)]
+    steps = plugins.disable_steps(declaration, frozenset(), listed)
+    assert [argv for argv, _ in steps] == [
+        ["plugin", "disable", FIRESTORE, "--scope", "user"]
+    ]
+    # evaluated once: what the user enables afterwards is theirs
+    assert plugins.disable_steps(declaration, frozenset({GCP}), listed) == []
+
+
+def test_a_migration_converges_when_none_of_its_plugins_is_enabled() -> None:
+    retired = {GCP: (BIGQUERY, FIRESTORE)}
+    assert plugins.converged_migrations(retired, frozenset(), []) == {GCP}
+    on = [_user(FIRESTORE)]
+    assert plugins.converged_migrations(retired, frozenset(), on) == set()
+    assert plugins.converged_migrations(retired, frozenset({GCP}), []) == set()
+
+
+def _state(home: Path) -> object:
+    return json.loads((home / plugins.STATE_FILE).read_text(encoding="utf-8"))
+
+
+def test_a_home_records_a_migration_once_and_keeps_a_later_enable(
+    tmp_path: Path,
+) -> None:
+    declaration = _gcp_declaration()
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN), _user(FIRESTORE)])
+    assert plugins.visit_home(declaration, cli, tmp_path, check=False)[1] == []
+    assert next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] is False
+    assert _state(tmp_path) == {"retired": [GCP]}
+    # the user configures firestore-native in this home and enables it again
+    next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] = True
+    cli.mutations.clear()
+    assert plugins.visit_home(declaration, cli, tmp_path, check=False) == ([], [])
+    assert cli.mutations == []
+
+
+def test_an_unrelated_problem_does_not_hold_back_a_converged_migration(
+    tmp_path: Path,
+) -> None:
+    declaration = _gcp_declaration()
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN), _user(FIRESTORE)])
+    cli.schemas["codex@openai-codex"] = None  # a WARN that has nothing to do with it
+    _done, problems = plugins.visit_home(declaration, cli, tmp_path, check=False)
+    assert problems and "configure" in problems[0]
+    assert _state(tmp_path) == {"retired": [GCP]}
+    next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] = True
+    plugins.visit_home(declaration, cli, tmp_path, check=False)
+    assert next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] is True
+
+
+def test_check_reports_a_pending_migration_and_writes_no_state(tmp_path: Path) -> None:
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN), _user(FIRESTORE)])
+    _done, problems = plugins.visit_home(_gcp_declaration(), cli, tmp_path, check=True)
+    assert any(FIRESTORE in p for p in problems)
+    assert cli.mutations == []
+    assert not (tmp_path / plugins.STATE_FILE).exists()
+
+
+def test_a_broken_state_file_is_reported_and_runs_no_migration(tmp_path: Path) -> None:
+    # never read a broken record as "evaluated", nor redo what it may hold
+    (tmp_path / plugins.STATE_FILE).write_text("{not json", encoding="utf-8")
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN), _user(FIRESTORE)])
+    _done, problems = plugins.visit_home(_gcp_declaration(), cli, tmp_path, check=False)
+    assert any(plugins.STATE_FILE in p for p in problems)
+    assert next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] is True
+    state = (tmp_path / plugins.STATE_FILE).read_text(encoding="utf-8")
+    assert state == "{not json"

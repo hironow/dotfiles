@@ -10,11 +10,19 @@ with CLAUDE_CONFIG_DIR set per home (ADR 0048; ADR 0037 keeps enabledPlugins
 and extraKnownMarketplaces out of the settings fragments). Only homes that
 exist are touched, and only the user scope counts.
 
+The shared set must work without per-home settings (ADR 0057): a declared
+plugin whose `configure --json` schema has an option without a default is
+reported, on every run (`claude plugin update` never passes through here).
+`disabled` plugins are switched off on every run; each `retired` migration
+switches its plugins off once per home and is then recorded in the home's
+claude-plugins.sync-state.json, so a plugin the user enables later stays on.
+
 Functional core / imperative shell: the steps come from the declaration and the
 CLI's own --json inventory; reconcile() runs them through an injected CLI and
 reads the inventory again before judging. A marketplace step runs first, since
 replacing a marketplace uninstalls its plugins. An inventory that cannot be read
-stops that home, and is never taken for "missing".
+stops that home, and is never taken for "missing". visit_home() owns the
+state file around it.
 
 Usage: claude_plugins.py [--check]   (--check reports without changing)
 Prints doctor-style OK/WARN lines; exit 1 on a WARN.
@@ -24,7 +32,8 @@ import json
 import re
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import claude_homes
@@ -34,6 +43,8 @@ NAME = "claude-plugins"
 DECLARATION = ROOT / "dump/harness/claude-plugins.json"
 MARKETPLACE_LIST = ["plugin", "marketplace", "list", "--json"]
 PLUGIN_LIST = ["plugin", "list", "--json"]
+STATE_FILE = "claude-plugins.sync-state.json"  # in each home, owned by dotfiles
+SCHEMA_READERS = 8  # parallel `configure --json` reads, about a second each
 
 Step = tuple[list[str], str]  # (claude argv, what is wrong until it runs)
 Cli = Callable[[list[str]], str | None]  # claude argv -> stdout, None on failure
@@ -43,6 +54,9 @@ Cli = Callable[[list[str]], str | None]  # claude argv -> stdout, None on failur
 class Declaration:
     marketplaces: Mapping[str, str]  # name -> "owner/repo#ref"
     plugins: tuple[str, ...]  # "plugin@marketplace"
+    disabled: tuple[str, ...] = ()  # switched off on every run
+    # migration id -> plugin ids switched off once per home
+    retired: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 # ---- Functional core ----
@@ -115,6 +129,82 @@ def plugin_steps(
     return steps
 
 
+def _enabled_for_user(pid: str, listed: Sequence[Mapping[str, object]]) -> bool:
+    return any(
+        p.get("id") == pid and p.get("scope") == "user" and p.get("enabled") is True
+        for p in listed
+    )
+
+
+def disable_steps(
+    declaration: Declaration,
+    evaluated: frozenset[str],
+    listed: Sequence[Mapping[str, object]],
+) -> list[Step]:
+    """Switch off the disabled plugins, and those of a migration not yet
+    evaluated in this home."""
+    reasons = [(pid, f"{pid} is declared disabled") for pid in declaration.disabled]
+    reasons += [
+        (pid, f"{pid} is retired by {mid}")
+        for mid, ids in declaration.retired.items()
+        if mid not in evaluated
+        for pid in ids
+    ]
+    return [
+        (["plugin", "disable", pid, "--scope", "user"], why)
+        for pid, why in reasons
+        if _enabled_for_user(pid, listed)
+    ]
+
+
+def converged_migrations(
+    retired: Mapping[str, Sequence[str]],
+    evaluated: frozenset[str],
+    listed: Sequence[Mapping[str, object]],
+) -> set[str]:
+    """The migrations not yet evaluated whose plugins are all off for the user."""
+    return {
+        mid
+        for mid, ids in retired.items()
+        if mid not in evaluated
+        and not any(_enabled_for_user(pid, listed) for pid in ids)
+    }
+
+
+def settings_needed(schema: Mapping[str, object]) -> list[str]:
+    """The options without a default. Such a plugin may need per-home settings;
+    whether an option is really required is not judged (ADR 0057)."""
+    return [
+        name
+        for name, spec in schema.items()
+        if not (isinstance(spec, Mapping) and "default" in spec)
+    ]
+
+
+def _settings_problem(pid: str, out: str | None) -> str | None:
+    unreadable = f"cannot read `claude plugin configure {pid} --json`"
+    try:
+        schema = json.loads(out or "")["schema"]
+    except (ValueError, KeyError, TypeError):
+        return unreadable
+    if not isinstance(schema, Mapping):
+        return unreadable
+    if names := settings_needed(schema):
+        return (
+            f"{pid} has options without a default ({', '.join(names)}); it may"
+            " need per-home settings, so it stays out of the shared set (ADR 0057)"
+        )
+    return None
+
+
+def settings_problems(declaration: Declaration, cli: Cli) -> list[str]:
+    def read(pid: str) -> str | None:
+        return _settings_problem(pid, cli(["plugin", "configure", pid, "--json"]))
+
+    with ThreadPoolExecutor(max_workers=SCHEMA_READERS) as pool:
+        return [p for p in pool.map(read, declaration.plugins) if p]
+
+
 def _listed(out: str | None) -> list[dict] | None:
     try:
         listed = json.loads(out or "")
@@ -126,7 +216,11 @@ def _listed(out: str | None) -> list[dict] | None:
 
 
 def reconcile(
-    declaration: Declaration, cli: Cli, *, check: bool
+    declaration: Declaration,
+    cli: Cli,
+    *,
+    check: bool,
+    evaluated: frozenset[str] = frozenset(),
 ) -> tuple[list[str], list[str]]:
     """(what was fixed, what is still wrong) for one Claude home."""
     done: list[str] = []
@@ -136,7 +230,13 @@ def reconcile(
             MARKETPLACE_LIST,
             lambda listed: marketplace_steps(declaration.marketplaces, listed),
         ),
-        (PLUGIN_LIST, lambda listed: plugin_steps(declaration, listed)),
+        (
+            PLUGIN_LIST,
+            lambda listed: (
+                plugin_steps(declaration, listed)
+                + disable_steps(declaration, evaluated, listed)
+            ),
+        ),
     ]
     for inventory, steps_for in phases:
         listed = _listed(cli(inventory))
@@ -157,7 +257,7 @@ def reconcile(
                 return done, list(dict.fromkeys(why for _, why in left))
             # fixed only once the inventory read again confirms it
             done += [w for w in dict.fromkeys(w for _, w in steps) if w not in done]
-    return done, found
+    return done, found + settings_problems(declaration, cli)
 
 
 # ---- Imperative shell ----
@@ -171,7 +271,48 @@ def load(path: Path, root: Path = ROOT) -> Declaration:
             for name, source in data["marketplaces"].items()
         },
         plugins=tuple(data["plugins"]),
+        disabled=tuple(data.get("disabled", ())),
+        retired={mid: tuple(ids) for mid, ids in data.get("retired", {}).items()},
     )
+
+
+def read_state(home: Path) -> frozenset[str] | None:
+    """The migrations evaluated in `home`; None when the record is unreadable."""
+    path = home / STATE_FILE
+    if not path.exists():
+        return frozenset()
+    try:
+        retired = json.loads(path.read_text(encoding="utf-8"))["retired"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(retired, list) or not all(isinstance(m, str) for m in retired):
+        return None
+    return frozenset(retired)
+
+
+def visit_home(
+    declaration: Declaration, cli: Cli, home: Path, *, check: bool
+) -> tuple[list[str], list[str]]:
+    """reconcile() with the home's record of evaluated migrations around it.
+
+    A migration is recorded once its plugins are confirmed off, whatever else
+    is still wrong in the home. A broken record runs no migration and is left
+    as it is, so it is never read as "evaluated" nor redone over a choice."""
+    evaluated = read_state(home)
+    if evaluated is None:
+        no_migrations = replace(declaration, retired={})
+        done, found = reconcile(no_migrations, cli, check=check)
+        return done, [f"cannot read ~/{home.name}/{STATE_FILE}", *found]
+    done, found = reconcile(declaration, cli, check=check, evaluated=evaluated)
+    if check:
+        return done, found
+    listed = _listed(cli(PLUGIN_LIST))
+    if listed is not None and (
+        new := converged_migrations(declaration.retired, evaluated, listed)
+    ):
+        record = {"retired": sorted(evaluated | new)}
+        (home / STATE_FILE).write_text(json.dumps(record) + "\n", encoding="utf-8")
+    return done, found
 
 
 def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
@@ -182,7 +323,7 @@ def main(argv: Sequence[str]) -> int:
     declaration = load(DECLARATION)
 
     def one(claude: str, home: Path, deadline: float | None) -> tuple[list, list]:
-        return reconcile(declaration, _cli(claude, home, deadline), check=check)
+        return visit_home(declaration, _cli(claude, home, deadline), home, check=check)
 
     check = "--check" in argv
     return claude_homes.visit(
