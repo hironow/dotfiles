@@ -110,7 +110,7 @@ CLI には `-a universal` で store だけを書かせ、home には触らせな
 全 home 共通のプラグインは `dump/harness/claude-plugins.json` に宣言し、`just deploy`（単独では `just claude-plugins-install`）が plugin CLI で各 home に入れる（ADR 0048、ADR 0056）。
 marketplace はタグで固定する。例外は、タグの無い claude-plugins-official（追従）と、repo 相対パス（`./`）で書く dotfiles 自身の hironow-plugins である。
 共通セットには home ごとの設定が要らない plugin だけを置き、script は設定項目に default の無い plugin を doctor でも WARN にする（ADR 0057）。
-LSP の plugin は起動コマンドの名前しか持たないので、コマンドは mise で入れる（`config/mise/config.toml`）。script は各 home の marketplace manifest から LSP のコマンドを集め、PATH に無いか、バージョンの問い合わせ（既定は `--version`、gopls は `gopls version`）に答えないものを doctor で WARN にする。
+LSP の plugin は起動コマンドの名前しか持たないので、コマンドは mise で入れる（`config/mise/config.toml`）。typescript-lsp は、workspace の `node_modules` に `tsserver.js` を持つ TypeScript（6 系まで）がある場所でだけ動く（TypeScript 7 には `tsserver.js` が無い）。script は各 home の marketplace manifest から LSP のコマンドを集め、PATH に無いか、バージョンの問い合わせ（既定は `--version`、gopls は `gopls version`）に答えないものを doctor で WARN にする。
 宣言の `disabled` は毎回、`retired` は移行 ID ごとに home で 1 回だけ無効にし、済んだ移行と schema の読み取り結果を home の `claude-plugins.sync-state.json` に記録する（install のときだけ書く）。
 sync はこの 2 つのキーを書き換えない。
 

@@ -15,7 +15,10 @@ bun = "latest"
 go = "latest"
 node = "lts"
 just = "latest"
-rust = "1.99.0"
+# rust-analyzer: the LSP server of the shared rust-analyzer-lsp Claude plugin
+# (ADR 0057). A component of this toolchain, so it moves with the pin; rustup's
+# proxy alone runs nothing ("Unknown binary 'rust-analyzer'").
+rust = { version = "1.99.0", components = ["rust-analyzer"] }
 # opentofu — terraform-compatible IaC. Required by `just test-iac`
 # so `mise x -- tofu` resolves from the non-mise-activated bash
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
@@ -121,6 +124,20 @@ rtk = "latest"
 # verdicts deliberately. `quint verify` (apalache) needs a JVM, `quint run` /
 # `quint test` do not — `java` is already declared above either way.
 "npm:@informalsystems/quint" = "0.33.0"
+
+# LSP servers for the shared Claude plugins (dump/harness/claude-plugins.json,
+# ADR 0057): gopls-lsp runs `gopls`, typescript-lsp runs
+# `typescript-language-server --stdio`. A plugin only names the command;
+# `just doctor` warns when one is missing or does not start. Editor tooling,
+# not a gate, so "latest" like the CLIs below. gopls is not in mise's
+# registry: the go backend `go install`s it.
+# typescript-language-server only uses the workspace's own TypeScript: it needs
+# node_modules/typescript with lib/tsserver.js (TypeScript 6 or older), so it
+# starts in neither a folder without TypeScript nor a TypeScript 7 project (the
+# native port ships no tsserver.js). A TypeScript declared here does not help:
+# it is never searched (checked 2026-10-16 with 6.0.2).
+"go:golang.org/x/tools/gopls" = "latest"
+"npm:typescript-language-server" = "latest"
 
 # AI agent CLIs. Declared at "latest" so they resolve globally on every
 # host (ADR 0023 activate-only: a repo-only tool is only on PATH inside
