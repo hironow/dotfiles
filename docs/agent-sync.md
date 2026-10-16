@@ -109,6 +109,8 @@ CLI には `-a universal` で store だけを書かせ、home には触らせな
 **Claude Code のプラグイン**：settings の断片は `enabledPlugins` と `extraKnownMarketplaces` を持たない（ADR 0037。plugin CLI が書き換えるため）。
 全 home 共通のプラグインは `dump/harness/claude-plugins.json` に宣言し、`just deploy`（単独では `just claude-plugins-install`）が plugin CLI で各 home に入れる（ADR 0048、ADR 0056）。
 marketplace はタグで固定する。例外は、タグの無い claude-plugins-official（追従）と、repo 相対パス（`./`）で書く dotfiles 自身の hironow-plugins である。
+共通セットには home ごとの設定が要らない plugin だけを置き、script は設定項目に default の無い plugin を doctor でも WARN にする（ADR 0057）。
+宣言の `disabled` は毎回、`retired` は移行 ID ごとに home で 1 回だけ無効にし、済んだ移行と schema の読み取り結果を home の `claude-plugins.sync-state.json` に記録する（install のときだけ書く）。
 sync はこの 2 つのキーを書き換えない。
 
 **Antigravity CLI（`agy`）の skill、settings、MCP**：Antigravity は、skill を `agy plugin`（`~/.gemini/antigravity-cli/plugins/<name>/skills/`）で、settings と MCP を `agy import`（`~/.gemini/antigravity-cli/settings.json` と `mcp/`）で自分で管理する（ADR 0026）。

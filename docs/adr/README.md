@@ -80,7 +80,8 @@ and what outlived it.
 | 0053 | [Flatt のパッケージミラーをやめ、公式の取得元に戻す](./0053-stop-using-flatt-mirrors.md) | Accepted (PR #463); supersedes [0028](./0028-flatt-pypi-mirror-default-index.md) | 2026-10-11 | `pyproject.toml` と各 `uv.lock`、`scripts/harden_env.sh`、`.zshrc`、`justfile` |
 | 0054 | [portless を just の recipe で包まず、直接使う](./0054-run-portless-directly.md) | Accepted (PR #468); supersedes part of [0015](./0015-adopt-portless-for-local-dev-urls.md) | 2026-10-11 | `justfile`、`docs/portless-urls.md` |
 | 0055 | [emulate は npx ではなく bunx で動かす](./0055-run-emulate-with-bunx.md) | Accepted (PR #470); supersedes part of [0016](./0016-integrate-emulate-api-emulators-via-npx.md) | 2026-10-12 | `justfile`、`tests/unit/test_justfile_bun_only.py` |
-| 0056 | [5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする](./0056-common-claude-plugin-set.md) | Accepted (PR #475); supersedes part of [0048](./0048-required-claude-plugins.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
+| 0056 | [5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする](./0056-common-claude-plugin-set.md) | Accepted (PR #475); supersedes part of [0048](./0048-required-claude-plugins.md); partly superseded by [0057](./0057-shared-plugins-need-no-per-home-settings.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
+| 0057 | [共通セットの plugin は、home ごとの設定なしで動くものに限る](./0057-shared-plugins-need-no-per-home-settings.md) | Accepted (PR #476); supersedes part of [0056](./0056-common-claude-plugin-set.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
 
 ## Reading order for newcomers
 
@@ -121,3 +122,5 @@ and what outlived it.
   emulate は npx ではなく bunx で動かす。[公開PR #470の所有者裁定](https://github.com/hironow/dotfiles/pull/470#issuecomment-6113089576)。
 - 2026-10-16: [ADR-0056](./0056-common-claude-plugin-set.md)を採択し、[ADR-0048](./0048-required-claude-plugins.md)の一部を置き換えた。
   5 つの Claude home で使う plugin の和集合 40 個を全 home 共通にする。[公開PR #475の所有者裁定](https://github.com/hironow/dotfiles/pull/475#issuecomment-6209808795)。
+- 2026-10-16: [ADR-0057](./0057-shared-plugins-need-no-per-home-settings.md)を採択し、[ADR-0056](./0056-common-claude-plugin-set.md)の一部を置き換えた。
+  共通セットは home ごとの設定なしで動く plugin に限り、doctor で見張る。[公開PR #476の所有者裁定](https://github.com/hironow/dotfiles/pull/476#issuecomment-6211696383)。

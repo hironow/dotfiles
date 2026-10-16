@@ -93,14 +93,27 @@ class FakeClaude:
     ) -> None:
         self.markets, self.installed = markets, installed
         self.names = names or {"openai/codex-plugin-cc#v1.0.6": "openai-codex"}
+        # plugin id -> `configure --json` schema; None makes the read fail
+        self.schemas: dict[str, dict | None] = {}
+        self.schema_reads: list[str] = []
+        # successful `plugin list --json` reads before they start to fail
+        self.plugin_lists_left: int | None = None
         self.mutations: list[list[str]] = []
         self.readable = True
         self.failing: list[str] | None = None  # e.g. ["marketplace", "add"]
 
     def __call__(self, args: list[str]) -> str | None:
+        if args[:2] == ["plugin", "configure"]:
+            self.schema_reads.append(args[2])
+            schema = self.schemas.get(args[2], {})
+            return None if schema is None else json.dumps({"schema": schema})
         if args[-1] == "--json":
             if not self.readable:
                 return None
+            if args == plugins.PLUGIN_LIST and self.plugin_lists_left is not None:
+                if self.plugin_lists_left == 0:
+                    return None
+                self.plugin_lists_left -= 1
             return json.dumps(self.markets if "marketplace" in args else self.installed)
         self.mutations.append(args)
         if self.failing and args[1:3] == self.failing:
@@ -131,10 +144,10 @@ class FakeClaude:
                     for p in self.installed
                     if not (p["id"] == pid and p["scope"] == "user")
                 ]
-            case ["enable", pid, "--scope", "user"]:
+            case ["enable" | "disable" as verb, pid, "--scope", "user"]:
                 for p in self.installed:
                     if p["id"] == pid and p["scope"] == "user":
-                        p["enabled"] = True
+                        p["enabled"] = verb == "enable"
             case _:
                 raise AssertionError(f"unexpected claude {args}")
         return ""
@@ -261,7 +274,7 @@ def test_main_prints_each_home_then_the_summary(
     monkeypatch.setattr(plugins.Path, "home", lambda: tmp_path)
     monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
     monkeypatch.setattr(
-        plugins, "reconcile", lambda _d, cli, *, check: results[cli.home.name]
+        plugins, "visit_home", lambda _d, _cli, home, *, check: results[home.name]
     )
     monkeypatch.setattr(
         plugins, "_cli", lambda _c, home, _deadline: type("C", (), {"home": home})()
@@ -356,3 +369,221 @@ def test_a_local_marketplace_and_its_plugin_converge_once(tmp_path: Path) -> Non
     cli.mutations.clear()
     assert plugins.reconcile(declared, cli, check=False) == ([], [])
     assert cli.mutations == []
+
+
+# ---- ADR 0057: per-home settings, disabled and retired plugins ----
+
+FIRESTORE = "firestore-native@claude-plugins-official"
+BIGQUERY = "bigquery-data-analytics@claude-plugins-official"
+PYRIGHT = "pyright-lsp@claude-plugins-official"
+GCP = "2026-10-16-gcp-per-home-settings"
+# firestore-native as the CLI reports it: the database is described as
+# optional, yet it has no default either
+FIRESTORE_SCHEMA = {
+    "firestore_project": {"type": "string", "title": "Project ID"},
+    "firestore_database": {
+        "type": "string",
+        "title": "Database ID",
+        "description": "(Optional) ID of the Firestore database",
+    },
+}
+
+
+def _user(pid: str, *, enabled: bool = True) -> dict:
+    return {"id": pid, "version": "1.0.0", "scope": "user", "enabled": enabled}
+
+
+def test_an_option_without_a_default_may_need_per_home_settings() -> None:
+    # conservative: whether the option is really required is not judged
+    assert plugins.settings_needed(FIRESTORE_SCHEMA) == [
+        "firestore_project",
+        "firestore_database",
+    ]
+    with_defaults = {"track": {"type": "string", "default": "auto"}}
+    assert plugins.settings_needed(with_defaults) == []
+    assert plugins.settings_needed({}) == []
+
+
+@pytest.mark.parametrize("check", [True, False])
+def test_a_declared_plugin_needing_per_home_settings_is_reported(
+    check: bool, tmp_path: Path
+) -> None:
+    # doctor (check) too: `claude plugin update` never passes through reconcile
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN)])
+    cli.schemas["codex@openai-codex"] = FIRESTORE_SCHEMA
+    _done, problems = plugins.visit_home(DECLARED, cli, tmp_path, check=check)
+    assert len(problems) == 1
+    assert "codex@openai-codex" in problems[0]
+    assert "firestore_project, firestore_database" in problems[0]
+    assert "ADR 0057" in problems[0]
+
+
+def test_an_unreadable_settings_schema_is_reported_never_passed(
+    tmp_path: Path,
+) -> None:
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN)])
+    cli.schemas["codex@openai-codex"] = None
+    assert plugins.visit_home(DECLARED, cli, tmp_path, check=True)[1] == [
+        "cannot read `claude plugin configure codex@openai-codex --json`"
+    ]
+    # nothing is cached for a read that failed
+    plugins.visit_home(DECLARED, cli, tmp_path, check=False)
+    state = tmp_path / plugins.STATE_FILE
+    assert not state.exists() or "codex@openai-codex" not in state.read_text(
+        encoding="utf-8"
+    )
+
+
+def _codex(**changes: object) -> dict:
+    return {**PLUGIN, "lastUpdated": "2026-10-16T00:00:00Z", **changes}
+
+
+def test_an_unchanged_plugin_reuses_its_cached_schema(tmp_path: Path) -> None:
+    cli = FakeClaude([dict(MARKET)], [_codex()])
+    plugins.visit_home(DECLARED, cli, tmp_path, check=False)
+    assert cli.schema_reads == ["codex@openai-codex"]
+    cli.schema_reads.clear()
+    assert plugins.visit_home(DECLARED, cli, tmp_path, check=True) == ([], [])
+    assert cli.schema_reads == []
+    # `claude plugin update` moves lastUpdated: read again, even in doctor
+    cli.installed = [_codex(lastUpdated="2026-10-17T00:00:00Z")]
+    cli.schemas["codex@openai-codex"] = FIRESTORE_SCHEMA
+    _done, problems = plugins.visit_home(DECLARED, cli, tmp_path, check=True)
+    assert cli.schema_reads == ["codex@openai-codex"]
+    assert problems and "ADR 0057" in problems[0]
+
+
+def test_check_reads_the_cache_but_never_writes_it(tmp_path: Path) -> None:
+    cli = FakeClaude([dict(MARKET)], [_codex()])
+    plugins.visit_home(DECLARED, cli, tmp_path, check=False)
+    before = (tmp_path / plugins.STATE_FILE).read_text(encoding="utf-8")
+    cli.installed = [_codex(lastUpdated="2026-10-17T00:00:00Z")]
+    plugins.visit_home(DECLARED, cli, tmp_path, check=True)
+    assert (tmp_path / plugins.STATE_FILE).read_text(encoding="utf-8") == before
+
+
+def test_a_plugin_read_from_a_folder_is_read_every_time(tmp_path: Path) -> None:
+    # its schema can change in the folder while version and lastUpdated stay
+    cli = FakeClaude([dict(MARKET)], [_codex(readFromFolder=str(tmp_path / "p"))])
+    plugins.visit_home(DECLARED, cli, tmp_path, check=False)
+    plugins.visit_home(DECLARED, cli, tmp_path, check=True)
+    assert cli.schema_reads == ["codex@openai-codex", "codex@openai-codex"]
+
+
+def test_a_state_holding_only_the_cache_is_not_broken(tmp_path: Path) -> None:
+    (tmp_path / plugins.STATE_FILE).write_text('{"schemas": {}}', encoding="utf-8")
+    assert plugins.read_state(tmp_path) is not None
+
+
+def test_a_failed_final_inventory_is_reported_and_records_nothing(
+    tmp_path: Path,
+) -> None:
+    # reconcile reads the inventory fine; the read after it fails
+    cli = FakeClaude([dict(MARKET)], [_codex(), _user(FIRESTORE)])
+    declaration = _gcp_declaration()
+    for check in (True, False):
+        # check: the plugin phase; apply: that and its re-read after disabling
+        cli.plugin_lists_left = 1 if check else 2
+        _done, problems = plugins.visit_home(declaration, cli, tmp_path, check=check)
+        assert "cannot read `claude plugin list --json`" in problems
+    assert not (tmp_path / plugins.STATE_FILE).exists()
+
+
+def _gcp_declaration() -> plugins.Declaration:
+    return plugins.Declaration(
+        marketplaces=DECLARED.marketplaces,
+        plugins=DECLARED.plugins,
+        disabled=(PYRIGHT,),
+        retired={GCP: (BIGQUERY, FIRESTORE)},
+    )
+
+
+def test_a_disabled_plugin_is_disabled_on_every_run() -> None:
+    declaration = _gcp_declaration()
+    listed = [_user(PYRIGHT)]
+    steps = plugins.disable_steps(declaration, frozenset({GCP}), listed)
+    assert [argv for argv, _ in steps] == [
+        ["plugin", "disable", PYRIGHT, "--scope", "user"]
+    ]
+    for already in ([_user(PYRIGHT, enabled=False)], []):
+        assert plugins.disable_steps(declaration, frozenset(), already) == []
+
+
+def test_a_retired_plugin_is_disabled_until_its_migration_is_evaluated() -> None:
+    declaration = _gcp_declaration()
+    listed = [_user(FIRESTORE), _user(BIGQUERY, enabled=False)]
+    steps = plugins.disable_steps(declaration, frozenset(), listed)
+    assert [argv for argv, _ in steps] == [
+        ["plugin", "disable", FIRESTORE, "--scope", "user"]
+    ]
+    # evaluated once: what the user enables afterwards is theirs
+    assert plugins.disable_steps(declaration, frozenset({GCP}), listed) == []
+
+
+def test_a_migration_converges_when_none_of_its_plugins_is_enabled() -> None:
+    retired = {GCP: (BIGQUERY, FIRESTORE)}
+    assert plugins.converged_migrations(retired, frozenset(), []) == {GCP}
+    on = [_user(FIRESTORE)]
+    assert plugins.converged_migrations(retired, frozenset(), on) == set()
+    assert plugins.converged_migrations(retired, frozenset({GCP}), []) == set()
+
+
+def _state(home: Path) -> dict:
+    return json.loads((home / plugins.STATE_FILE).read_text(encoding="utf-8"))
+
+
+def test_a_home_records_a_migration_once_and_keeps_a_later_enable(
+    tmp_path: Path,
+) -> None:
+    declaration = _gcp_declaration()
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN), _user(FIRESTORE)])
+    assert plugins.visit_home(declaration, cli, tmp_path, check=False)[1] == []
+    assert next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] is False
+    assert _state(tmp_path)["retired"] == [GCP]
+    # the user configures firestore-native in this home and enables it again
+    next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] = True
+    cli.mutations.clear()
+    assert plugins.visit_home(declaration, cli, tmp_path, check=False) == ([], [])
+    assert cli.mutations == []
+
+
+def test_an_unrelated_problem_does_not_hold_back_a_converged_migration(
+    tmp_path: Path,
+) -> None:
+    declaration = _gcp_declaration()
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN), _user(FIRESTORE)])
+    cli.schemas["codex@openai-codex"] = None  # a WARN that has nothing to do with it
+    _done, problems = plugins.visit_home(declaration, cli, tmp_path, check=False)
+    assert problems and "configure" in problems[0]
+    assert _state(tmp_path)["retired"] == [GCP]
+    next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] = True
+    plugins.visit_home(declaration, cli, tmp_path, check=False)
+    assert next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] is True
+
+
+def test_check_reports_a_pending_migration_and_writes_no_state(tmp_path: Path) -> None:
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN), _user(FIRESTORE)])
+    _done, problems = plugins.visit_home(_gcp_declaration(), cli, tmp_path, check=True)
+    assert any(FIRESTORE in p for p in problems)
+    assert cli.mutations == []
+    assert not (tmp_path / plugins.STATE_FILE).exists()
+
+
+def test_a_broken_state_file_is_reported_and_runs_no_migration(tmp_path: Path) -> None:
+    # never read a broken record as "evaluated", nor redo what it may hold
+    (tmp_path / plugins.STATE_FILE).write_text("{not json", encoding="utf-8")
+    cli = FakeClaude([dict(MARKET)], [dict(PLUGIN), _user(FIRESTORE)])
+    _done, problems = plugins.visit_home(_gcp_declaration(), cli, tmp_path, check=False)
+    assert any(plugins.STATE_FILE in p for p in problems)
+    assert next(p for p in cli.installed if p["id"] == FIRESTORE)["enabled"] is True
+    state = (tmp_path / plugins.STATE_FILE).read_text(encoding="utf-8")
+    assert state == "{not json"
+
+
+def test_the_repo_declares_nothing_both_shared_and_switched_off() -> None:
+    declared = plugins.load(plugins.DECLARATION)
+    off = set(declared.disabled) | {
+        pid for ids in declared.retired.values() for pid in ids
+    }
+    assert PYRIGHT in declared.disabled
+    assert not off & set(declared.plugins)
