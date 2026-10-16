@@ -14,10 +14,8 @@ docker-credential-gcr
 gke-gcloud-auth-plugin
 gsutil
 istioctl
-kpt
 kubectl
 kubectl-oidc
-kustomize
 local-extract
 log-streaming
 package-go-module
