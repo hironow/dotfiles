@@ -39,7 +39,7 @@ covers the procedure around them and how skills reach the agent homes
 | in hironow/skills: `just audit-consumers` | every home resolves each skill to bytes identical to the checkout (through the links); no dangling symlinks |
 | in hironow/skills: `just compare <fork> /abs/<upstream>...` | size, description, tooling-rule violations, and body diff of two or more versions |
 | dotfiles: `just skills-lock-check` (in `ci`) | the committed declaration lets no third-party skill shadow a hironow/skills name |
-| dotfiles: `just dump-skills-lock` | normalize the CLI's machine lock into the declaration; refuses to drop a hironow/skills record silently (`--allow-self-drop`) |
+| dotfiles: `just dump-skills-lock` | normalize the CLI's machine lock into the declaration; refuses to drop a hironow/skills record silently (`--allow-self-drop`); leaves out a skill whose source is private (asks `gh`), and writes nothing when a source's visibility cannot be told |
 | dotfiles: `just skills-update` | after a hironow/skills merge or any upstream change: `skills update -g -y` on the store, then re-place the homes |
 | dotfiles: `just skills-place` | (re)link the homes; idempotent; `--force` replaces differing real directories, `--copy` forces tracked copies |
 | dotfiles: `just restore-skills-lock` | new machine: install every declared skill into the store (hironow/skills last), then place |
@@ -86,9 +86,13 @@ incomplete.
 
 Skills that must not be published do not belong in hironow/skills at all.
 Personal ones go to a private personal skills repository; organization-internal
-ones go to that organization's own skills repository. Both reach the homes like
-any other source: `bunx skills add <repo> -g -s <name> -y -a universal`, `just
-dump-skills-lock`, `just skills-place`.
+ones go to that organization's own skills repository. Never name such a
+repository in dotfiles: the declaration is public, so `just dump-skills-lock`
+leaves their skills out. Install them on each machine by hand
+(`bunx skills add <repo> -g -s <name> -y -a universal`) and link them into the
+homes the same way `skills-place` does (`<home>/skills/<name>` ->
+`../../.agents/skills/<name>`). `skills-place` neither places nor removes an
+undeclared skill.
 
 ## Comparing a fork with its upstream (the dedup procedure)
 
