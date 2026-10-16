@@ -8,7 +8,6 @@
 
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ADR-0057 | 共通セットの plugin は home ごとの設定なしで動くものに限り、doctor で見張る | ADR | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-23 | Proposed | この PR | — | ADR-0056 の一部（40 個と除外、pyright-lsp の扱い）を置き換える。DR 間整合検査: 0048・0044・0037・0049 と整合、0056 は意図した部分置換のみ | [adr/0057-shared-plugins-need-no-per-home-settings.md](adr/0057-shared-plugins-need-no-per-home-settings.md) |
 
 ## 決定済みログ
 
@@ -23,3 +22,4 @@
 | ADR-0054 | portless を just の recipe で包まず、直接使う | Accepted（ADR-0015 の一部を置き換え） | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-11 | [PR #468の裁定](https://github.com/hironow/dotfiles/pull/468#issuecomment-6106249810) | merge 後に `just sync-agents all` | [adr/0054-run-portless-directly.md](adr/0054-run-portless-directly.md) |
 | ADR-0055 | emulate を npx ではなく bunx で動かす | A案 Accepted（ADR-0016 の一部を置き換え） | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-12 | [PR #470の裁定](https://github.com/hironow/dotfiles/pull/470#issuecomment-6113089576) | — | [adr/0055-run-emulate-with-bunx.md](adr/0055-run-emulate-with-bunx.md) |
 | ADR-0056 | 5 つの Claude home で使う plugin の和集合（40 個）を全 home 共通に宣言する | A案 Accepted（ADR-0048 の一部を置き換え） | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-16 | [PR #475の所有者裁定](https://github.com/hironow/dotfiles/pull/475#issuecomment-6209808795) | official は追従、hironow-plugins は repo 相対。DR 間整合検査: 0037・0044・0049 と整合、0048 は意図した部分置換のみ。merge 後に main で `just claude-plugins-install` | [adr/0056-common-claude-plugin-set.md](adr/0056-common-claude-plugin-set.md) |
+| ADR-0057 | 共通セットの plugin は home ごとの設定なしで動くものに限り、doctor で見張る | A案 Accepted（ADR-0056 の一部を置き換え） | Claude Code（owner session） | @hironow | Hiroto N. | @hironow | 2026-10-16 | [PR #476の所有者裁定](https://github.com/hironow/dotfiles/pull/476#issuecomment-6211696383) | 宣言 38 個、pyright-lsp は毎回・GCP 系 4 個は 1 回だけ無効化。DR 間整合検査: 0048・0044・0037・0049 と整合、0056 は意図した部分置換のみ | [adr/0057-shared-plugins-need-no-per-home-settings.md](adr/0057-shared-plugins-need-no-per-home-settings.md) |

@@ -1,7 +1,7 @@
 # 0056. 5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする
 
 **Date:** 2026-10-16
-**Status:** Accepted
+**Status:** Accepted. Superseded by [0057](./0057-shared-plugins-need-no-per-home-settings.md) (partial — Decision 1 の 40 個と除外、Decision 5 の pyright-lsp の扱い)
 **ID:** ADR-0056
 **Title:** 5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする
 **Decided-date:** 2026-10-16

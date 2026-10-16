@@ -1,10 +1,10 @@
 # 0057. 共通セットの plugin は、home ごとの設定なしで動くものに限る
 
 **Date:** 2026-10-16
-**Status:** Proposed
+**Status:** Accepted
 **ID:** ADR-0057
 **Title:** 共通セットの plugin は、home ごとの設定なしで動くものに限る
-**Decided-date:** —
+**Decided-date:** 2026-10-16
 **Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Claude Code（owner session）
@@ -12,7 +12,7 @@
 **Supersedes:** [ADR-0056](0056-common-claude-plugin-set.md) の一部（Decision 1 の「40 個」と除外 3 個、Decision 5 の pyright-lsp の扱い）
 **Superseded-by:** none
 **Related:** [ADR-0056](0056-common-claude-plugin-set.md)、[ADR-0048](0048-required-claude-plugins.md)、[ADR-0044](0044-python-toolchain-uv-ruff-ty.md)、[ADR-0037](0037-layered-claude-settings-fragments.md)、[ADR-0049](0049-headroom-mandatory-base-tooling.md)
-**Consultation-trace:** —（この PR で所有者の裁定を受ける）
+**Consultation-trace:** [公開PR #476の所有者裁定](https://github.com/hironow/dotfiles/pull/476#issuecomment-6211696383)
 
 ## やさしい説明
 
@@ -42,7 +42,14 @@ firestore-native の `firestore_database` は説明に「Optional」とあるの
 
 ## Decision
 
-（Proposed。裁定後に Accepted の MUST 文を書く。提案の中身は Options の A 案。）
+A 案を採択した。
+
+1. 共通セットの plugin は、home ごとの設定なしで動かなければならない（MUST）。判定は保守的に行う。`configure --json` の schema に default の無い項目が 1 つでもあれば、home ごとの設定が要る可能性があるとして共通セットに入れない。項目が本当に必須かどうかは判定しない。
+2. `scripts/claude_plugins.py` は、宣言した plugin の schema を install のときも `--check`（doctor）のときも確かめ、1 に当たるものを WARN にする（MUST）。読めなければ、それも WARN にする。
+   読んだ結果は home の `claude-plugins.sync-state.json` に、`plugin list --json` の version と lastUpdated を key にして保存する。key が変わったときと、`readFromFolder`（repo のフォルダを直接読む plugin）のときは、毎回読み直す。保存は install のときだけ行い、doctor は読むだけにする。
+3. 宣言は cloud-sql-sqlserver と firestore-native を外した 38 個とする（MUST）。
+4. 宣言の `disabled` に書いた plugin は、user scope で有効なら毎回無効にする（MUST）。pyright-lsp をここに書く。plugin は pyright の起動設定なので、無効にすれば pyright は動かない（ADR-0044 と整合）。
+5. 宣言の `retired` に書いた移行（ID と plugin の組）は、各 home で 1 回だけ、user scope で有効な対象を無効にする（MUST）。対象がすべて無効だと確かめたら、ほかの WARN の有無にかかわらず、その home の `claude-plugins.sync-state.json` に ID を記録する。記録後に利用者が設定して有効にした plugin は残す。記録が読めないときは移行を走らせず、WARN にする。GCP 系の 4 個をこの移行に書く。
 
 ## Options
 
@@ -57,11 +64,11 @@ firestore-native の `firestore_database` は説明に「Optional」とあるの
     - 利点: 共通セットが、どの home でも設定なしで動く。upstream が同じ version のまま設定を要求し始めても、doctor が知らせる。ほかの機体の home も、次の `just deploy` で同じ状態に移る。GCP 系を使いたい home では、設定すれば使い続けられる（ADR-0056 の Neutral のとおり）。
     - コスト: 初回と更新後は、home ごとに最大 38 回 CLI を呼ぶ（8 並列）。home の中に dotfiles 所有のファイルが 1 つ増える。default の無い任意項目しか持たない plugin も外れる。
 
-- **B) 2 つを外すだけにする**
+- **B) 2 つを外すだけにする**（却下: 同じすり抜けを見張れず、ほかの機体に 2 つが有効なまま残る）
     - 利点: script の変更が要らない。
     - コスト: 同じすり抜けを見張れない。ほかの機体では 2 つが有効なまま残る。
 
-- **C) 共通セットに残し、各 home で project を設定する**
+- **C) 共通セットに残し、各 home で project を設定する**（却下: 共通セットの「設定なしでそろう」が崩れる）
     - 利点: 宣言を変えずに済む。
     - コスト: home ごと、機体ごとに設定が要る。共通セットの意味（設定なしでそろう）が崩れる。
 
@@ -91,9 +98,9 @@ none
 
 ## 裁定欄
 
-- [ ] A 案で採択 / [ ] B 案で採択 / [ ] C 案で採択 / [ ] 修正のうえ採択（修正点: ____） / [ ] 却下（理由: ____） / [ ] 保留
-- 決定者・日付:
-- A 案で採択したときの作業: ADR-0056 の Status を `Superseded by [0057]`（部分）に変える（これだけが許される編集）。merge 後に main の checkout で 5 home を退避してから `just claude-plugins-install` を実行し、`claude mcp list` を確かめる。
+- [x] A 案で採択 / [ ] B 案で採択 / [ ] C 案で採択 / [ ] 修正のうえ採択（修正点: ____） / [ ] 却下（理由: ____） / [ ] 保留
+- 決定者・日付: Hiroto N.、2026-10-16（[公開PR #476の所有者裁定](https://github.com/hironow/dotfiles/pull/476#issuecomment-6211696383)）
+- A 案で採択したときの作業: ADR-0056 の Status を `Superseded by [0057]`（部分）に変える（これだけが許される編集）。実施済み。merge 後に main の checkout で 5 home を退避してから `just claude-plugins-install` を実行し、`claude mcp list` を確かめる。
 - B 案で採択したときの作業: schema 検査と `disabled` / `retired` のコードを外し、宣言を 38 個だけにする。この Mac の 5 home で 2 つを手で無効にする。
 - C 案で採択したときの作業: 宣言を 40 個に戻し、project ID を受け取って各 home で `/plugin configure` する。
 - 却下・保留したときの作業: 宣言を 40 個に戻す。
