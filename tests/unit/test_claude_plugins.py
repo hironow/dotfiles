@@ -1,8 +1,9 @@
-"""Every Claude home gets the plugins dotfiles requires (codex@openai-codex).
+"""Every Claude home gets the shared plugin set (ADR 0048, ADR 0056).
 
 j-cc hands Codex work to `codex:codex-rescue`, which only exists with the Codex
 plugin; jev-claude-verify stayed BLOCKED on hosts without it. The plugins are
-declared in dump/harness/claude-plugins.json (marketplaces pinned to a tag) and
+declared in dump/harness/claude-plugins.json (marketplaces pinned to a tag,
+except the untagged official one and this repo's own `./` marketplace) and
 installed through Claude Code's own plugin CLI. The steps come from that CLI's
 --json inventory; a fake CLI with real state checks the whole round trip:
 replacing a marketplace drops its plugins, a second run changes nothing, and
@@ -35,6 +36,47 @@ def test_the_repo_declares_the_codex_plugin_pinned_to_a_tag() -> None:
     assert ref is not None and ref.startswith("v")
 
 
+# ADR 0056: official has no tags and the CLI clones `--branch <ref>`, so it
+# cannot take a commit SHA; a `./` source is this repo's own tracked content
+UNPINNED = {"claude-plugins-official"}
+
+
+def test_every_remote_marketplace_is_pinned_to_a_tag_but_the_unpinned_one() -> None:
+    raw = json.loads(
+        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
+    )
+    for name, source in raw["marketplaces"].items():
+        if source.startswith("./"):
+            assert (ROOT / source).is_file(), name
+            continue
+        ref = plugins.parse_source(source)[1]
+        if name in UNPINNED:
+            assert ref is None, name
+        else:
+            assert ref is not None and plugins._version(ref), name
+
+
+def test_the_unpinned_exception_names_a_declared_marketplace() -> None:
+    # a stale exception would let a later marketplace of that name go unpinned
+    raw = json.loads(
+        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
+    )
+    assert set(raw["marketplaces"]) >= UNPINNED
+
+
+def test_every_declared_plugin_comes_from_a_declared_marketplace() -> None:
+    declared = plugins.load(plugins.DECLARATION)
+    assert len(declared.plugins) == len(set(declared.plugins))
+    for pid in declared.plugins:
+        assert pid.partition("@")[2] in declared.marketplaces, pid
+
+
+def test_pyright_is_never_declared() -> None:
+    # ADR 0044: ty is the only Python type checker
+    declared = plugins.load(plugins.DECLARATION)
+    assert not [pid for pid in declared.plugins if "pyright" in pid]
+
+
 def test_a_source_splits_into_repo_and_ref() -> None:
     assert plugins.parse_source("o/r#v1.2.3") == ("o/r", "v1.2.3")
     assert plugins.parse_source("o/r") == ("o/r", None)
@@ -43,8 +85,14 @@ def test_a_source_splits_into_repo_and_ref() -> None:
 class FakeClaude:
     """`claude plugin ...` against in-memory state, as the real CLI behaves."""
 
-    def __init__(self, markets: list[dict], installed: list[dict]) -> None:
+    def __init__(
+        self,
+        markets: list[dict],
+        installed: list[dict],
+        names: dict[str, str] | None = None,  # declared source -> marketplace name
+    ) -> None:
         self.markets, self.installed = markets, installed
+        self.names = names or {"openai/codex-plugin-cc#v1.0.6": "openai-codex"}
         self.mutations: list[list[str]] = []
         self.readable = True
         self.failing: list[str] | None = None  # e.g. ["marketplace", "add"]
@@ -59,8 +107,14 @@ class FakeClaude:
             return None
         match args[1:]:
             case ["marketplace", "add", source, "--scope", "user"]:
-                repo, ref = plugins.parse_source(source)
-                self.markets.append({"name": "openai-codex", "repo": repo, "ref": ref})
+                name = self.names[source]
+                if Path(source).is_absolute():
+                    self.markets.append(
+                        {"name": name, "source": "file", "path": source}
+                    )
+                else:
+                    repo, ref = plugins.parse_source(source)
+                    self.markets.append({"name": name, "repo": repo, "ref": ref})
             case ["marketplace", "remove", name, "--scope", "user"]:
                 # removing a marketplace uninstalls what came from it
                 self.markets = [m for m in self.markets if m["name"] != name]
@@ -222,8 +276,10 @@ def test_main_prints_each_home_then_the_summary(
     ]
     results[".claude-work-b"] = ([], [])
     assert plugins.main([]) == 0
+    # a count, not every id: the declaration is too long for one doctor line
+    count = len(plugins.load(plugins.DECLARATION).plugins)
     assert capsys.readouterr().out.splitlines()[-1] == (
-        "OK   claude-plugins - codex@openai-codex in 2 Claude home(s)"
+        f"OK   claude-plugins - {count} plugin(s) in 2 Claude home(s)"
     )
 
 
@@ -234,3 +290,69 @@ def test_a_repair_that_fails_halfway_is_not_reported_as_done() -> None:
     done, problems = _run(cli)
     assert done == []
     assert problems and "failed" in problems[0]
+
+
+def test_a_relative_source_resolves_against_the_repo_root(tmp_path: Path) -> None:
+    # a local marketplace is listed by its absolute path, which differs per
+    # checkout and OS, so the declaration names it relative to the repo
+    local = "./.claude-plugin/marketplace.json"
+    assert plugins.resolve_source(local, tmp_path) == str(
+        tmp_path / ".claude-plugin/marketplace.json"
+    )
+    assert plugins.resolve_source("o/r#v1.2.3", tmp_path) == "o/r#v1.2.3"
+    declaration = tmp_path / "claude-plugins.json"
+    declaration.write_text(
+        json.dumps({"marketplaces": {"local": local}, "plugins": ["p@local"]}),
+        encoding="utf-8",
+    )
+    loaded = plugins.load(declaration, tmp_path)
+    assert loaded.marketplaces == {"local": str(tmp_path / local)}
+
+
+def _local(path: Path) -> dict:
+    return {"name": "hironow-plugins", "source": "file", "path": str(path)}
+
+
+def test_a_local_marketplace_at_the_declared_path_has_no_steps(tmp_path: Path) -> None:
+    path = tmp_path / ".claude-plugin/marketplace.json"
+    declared = {"hironow-plugins": str(path)}
+    assert plugins.marketplace_steps(declared, [_local(path)]) == []
+
+
+def test_a_local_marketplace_at_another_path_is_replaced(tmp_path: Path) -> None:
+    # e.g. registered from an old checkout or a worktree
+    path = tmp_path / "dotfiles/.claude-plugin/marketplace.json"
+    old = tmp_path / "old/.claude-plugin/marketplace.json"
+    steps = plugins.marketplace_steps({"hironow-plugins": str(path)}, [_local(old)])
+    assert [argv for argv, _ in steps] == [
+        ["plugin", "marketplace", "remove", "hironow-plugins", "--scope", "user"],
+        ["plugin", "marketplace", "add", str(path), "--scope", "user"],
+    ]
+
+
+def test_an_unpinned_marketplace_matches_a_listing_without_a_ref() -> None:
+    # claude-plugins-official has no tags (ADR 0056); the CLI lists no ref key
+    listed = [
+        {
+            "name": "claude-plugins-official",
+            "source": "github",
+            "repo": "anthropics/claude-plugins-official",
+        }
+    ]
+    declared = {"claude-plugins-official": "anthropics/claude-plugins-official"}
+    assert plugins.marketplace_steps(declared, listed) == []
+
+
+def test_a_local_marketplace_and_its_plugin_converge_once(tmp_path: Path) -> None:
+    path = str(tmp_path / ".claude-plugin/marketplace.json")
+    declared = plugins.Declaration(
+        marketplaces={"hironow-plugins": path}, plugins=("grilling@hironow-plugins",)
+    )
+    old = {**_local(tmp_path / "old.json")}
+    cli = FakeClaude([old], [], names={path: "hironow-plugins"})
+    assert plugins.reconcile(declared, cli, check=False)[1] == []
+    assert cli.markets == [_local(Path(path))]
+    assert [p["id"] for p in cli.installed] == ["grilling@hironow-plugins"]
+    cli.mutations.clear()
+    assert plugins.reconcile(declared, cli, check=False) == ([], [])
+    assert cli.mutations == []

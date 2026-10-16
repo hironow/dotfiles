@@ -1,7 +1,7 @@
 # 0048. Claude Code plugins dotfiles requires are declared and installed through the plugin CLI
 
 **Date:** 2026-10-01
-**Status:** Accepted (operator directive, 2026-10-01).
+**Status:** Accepted (operator directive, 2026-10-01). Superseded by [0056](./0056-common-claude-plugin-set.md) (partial — Decision 1's tag pin: claude-plugins-official follows its default branch, and hironow-plugins is declared by a repo-relative path).
 
 ## Context
 

@@ -1,8 +1,50 @@
 {
   "marketplaces": {
-    "openai-codex": "openai/codex-plugin-cc#v1.0.6"
+    "openai-codex": "openai/codex-plugin-cc#v1.0.6",
+    "claude-plugins-official": "anthropics/claude-plugins-official",
+    "googlechrome": "GoogleChrome/modern-web-guidance#v0.0.193",
+    "hironow-plugins": "./.claude-plugin/marketplace.json"
   },
   "plugins": [
-    "codex@openai-codex"
+    "agent-sdk-dev@claude-plugins-official",
+    "autodesign@hironow-plugins",
+    "autoresearch@hironow-plugins",
+    "autoreview@hironow-plugins",
+    "chrome-devtools-mcp@claude-plugins-official",
+    "claude-code-setup@claude-plugins-official",
+    "claude-md-management@claude-plugins-official",
+    "claude-security@claude-plugins-official",
+    "cloud-sql-sqlserver@claude-plugins-official",
+    "cloudflare@claude-plugins-official",
+    "code-modernization@claude-plugins-official",
+    "code-review@claude-plugins-official",
+    "code-simplifier@claude-plugins-official",
+    "codex@openai-codex",
+    "commit-commands@claude-plugins-official",
+    "context7@claude-plugins-official",
+    "duckdb-skills@claude-plugins-official",
+    "feature-dev@claude-plugins-official",
+    "firebase@claude-plugins-official",
+    "firestore-native@claude-plugins-official",
+    "frontend-design@claude-plugins-official",
+    "gopls-lsp@claude-plugins-official",
+    "grilling@hironow-plugins",
+    "hookify@claude-plugins-official",
+    "linear@claude-plugins-official",
+    "mcp-apps@claude-plugins-official",
+    "mcp-server-dev@claude-plugins-official",
+    "mcp-tunnels@claude-plugins-official",
+    "modern-web-guidance@googlechrome",
+    "nvidia-skills@claude-plugins-official",
+    "playwright@claude-plugins-official",
+    "plugin-dev@claude-plugins-official",
+    "pr-review-toolkit@claude-plugins-official",
+    "remember@claude-plugins-official",
+    "rust-analyzer-lsp@claude-plugins-official",
+    "security-guidance@claude-plugins-official",
+    "semgrep@claude-plugins-official",
+    "skill-creator@claude-plugins-official",
+    "typescript-lsp@claude-plugins-official",
+    "unreal-engine-skills-for-claude-code@claude-plugins-official"
   ]
 }
