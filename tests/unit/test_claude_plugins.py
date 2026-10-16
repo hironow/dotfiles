@@ -279,6 +279,7 @@ def test_main_prints_each_home_then_the_summary(
     monkeypatch.setattr(
         plugins, "_cli", lambda _c, home, _deadline: type("C", (), {"home": home})()
     )
+    monkeypatch.setattr(plugins, "read_manifests", lambda _cli: {})  # no LSP here
     assert plugins.main(["--check"]) == 1
     assert capsys.readouterr().out.splitlines() == [
         "OK   claude-plugins - ~/.claude: fixed: marketplace openai-codex is missing",
@@ -587,3 +588,133 @@ def test_the_repo_declares_nothing_both_shared_and_switched_off() -> None:
     }
     assert PYRIGHT in declared.disabled
     assert not off & set(declared.plugins)
+
+
+# ---- LSP servers need their command on this machine ----
+
+GOPLS = "gopls-lsp@claude-plugins-official"
+TSLS = "typescript-lsp@claude-plugins-official"
+OFFICIAL = "claude-plugins-official"
+
+
+def _manifest(*entries: dict) -> dict:
+    return {"name": OFFICIAL, "plugins": list(entries)}
+
+
+def _lsp(name: str, command: str) -> dict:
+    return {"name": name, "lspServers": {name: {"command": command}}}
+
+
+def _lsp_declaration(*pids: str) -> plugins.Declaration:
+    return plugins.Declaration(marketplaces={OFFICIAL: "o/r"}, plugins=pids)
+
+
+def test_an_lsp_entry_names_the_commands_it_runs() -> None:
+    entry = {
+        "name": "typescript-lsp",
+        "lspServers": {"typescript": {"command": "typescript-language-server"}},
+    }
+    assert plugins.lsp_commands(entry) == ["typescript-language-server"]
+    assert plugins.lsp_commands({"name": "code-review"}) == []
+    assert plugins.lsp_commands({"lspServers": "./lsp.json"}) == []
+    assert plugins.lsp_commands({"lspServers": {"x": {"args": []}}}) == []
+
+
+def test_a_missing_or_broken_lsp_command_is_reported_once() -> None:
+    manifest = _manifest(_lsp("gopls-lsp", "gopls"), _lsp("typescript-lsp", "tsls"))
+    probed: list[str] = []
+
+    def probe(command: str) -> str | None:
+        probed.append(command)
+        return {"gopls": "is not on PATH", "tsls": None}[command]
+
+    homes = [{OFFICIAL: manifest}, {OFFICIAL: manifest}]
+    problems = plugins.lsp_problems(_lsp_declaration(GOPLS, TSLS), homes, probe)
+    assert len(problems) == 1
+    assert GOPLS in problems[0] and "`gopls`" in problems[0]
+    assert "is not on PATH" in problems[0] and "mise" in problems[0]
+    assert sorted(probed) == ["gopls", "tsls"]  # once per command, not per home
+
+
+def test_a_command_only_a_later_home_asks_for_is_checked() -> None:
+    # homes keep their own copy of a marketplace, and it can differ (ADR 0057)
+    homes = [
+        {OFFICIAL: _manifest({"name": "gopls-lsp"})},
+        {OFFICIAL: _manifest(_lsp("gopls-lsp", "gopls"))},
+    ]
+    problems = plugins.lsp_problems(
+        _lsp_declaration(GOPLS), homes, lambda _cmd: "does not start"
+    )
+    assert problems and "`gopls`" in problems[0]
+
+
+def test_an_unreadable_marketplace_manifest_is_reported() -> None:
+    problems = plugins.lsp_problems(
+        _lsp_declaration(GOPLS), [{OFFICIAL: None}], lambda _cmd: None
+    )
+    assert problems == [f"cannot read the {OFFICIAL} marketplace manifest"]
+
+
+def test_probe_reports_a_command_found_but_failing(tmp_path: Path) -> None:
+    # rustup's proxy: on PATH, yet `Unknown binary 'rust-analyzer'` on any call
+    broken = tmp_path / "rust-analyzer"
+    broken.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    broken.chmod(0o755)
+    working = tmp_path / "gopls"
+    working.write_text("#!/bin/sh\necho v1\n", encoding="utf-8")
+    working.chmod(0o755)
+    path = str(tmp_path)
+    if sys.platform == "win32":
+        pytest.skip("sh stubs need a Unix shell")
+    assert plugins.probe_command("rust-analyzer", path) is not None
+    assert plugins.probe_command("gopls", path) is None
+    assert plugins.probe_command("no-such-lsp", path) == "is not on PATH"
+
+
+def test_probe_asks_gopls_with_its_own_subcommand(tmp_path: Path) -> None:
+    # gopls rejects `--version` ("unknown flag") and answers `gopls version`
+    if sys.platform == "win32":
+        pytest.skip("sh stubs need a Unix shell")
+    gopls = tmp_path / "gopls"
+    gopls.write_text(
+        '#!/bin/sh\n[ "$1" = version ] && echo v0.24.0 && exit 0\nexit 2\n',
+        encoding="utf-8",
+    )
+    gopls.chmod(0o755)
+    assert plugins.probe_command("gopls", str(tmp_path)) is None
+
+
+def test_an_unreadable_marketplace_list_is_reported_not_skipped() -> None:
+    # a home whose list cannot be read must not pass for "no LSP plugins here"
+    assert plugins.read_manifests(lambda _argv: None) is None
+    problems = plugins.lsp_problems(_lsp_declaration(GOPLS), [None], lambda _c: None)
+    assert problems == ["cannot read `claude plugin marketplace list --json`"]
+
+
+def test_probe_gives_up_within_its_timeout(tmp_path: Path) -> None:
+    if sys.platform == "win32":
+        pytest.skip("sh stubs need a Unix shell")
+    slow = tmp_path / "gopls"
+    slow.write_text("#!/bin/sh\nsleep 5\n", encoding="utf-8")
+    slow.chmod(0o755)
+    why = plugins.probe_command("gopls", str(tmp_path), timeout=0.2)
+    assert why is not None and "does not start" in why
+
+
+def test_the_lsp_check_shares_doctors_time_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # --check runs under doctor's wait: every claude call gets a deadline
+    (tmp_path / ".claude").mkdir()
+    deadlines: list[float | None] = []
+
+    def cli(_claude: str, _home: Path, deadline: float | None):
+        deadlines.append(deadline)
+        return lambda _argv: None
+
+    monkeypatch.setattr(plugins.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
+    monkeypatch.setattr(plugins, "visit_home", lambda *_a, **_k: ([], []))
+    monkeypatch.setattr(plugins, "_cli", cli)
+    assert plugins.main(["--check"]) == 1  # the list cannot be read: a WARN
+    assert deadlines and all(d is not None for d in deadlines)

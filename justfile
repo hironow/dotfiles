@@ -35,6 +35,12 @@ UV_RUN := "mise exec -- uv run --frozen"
 # *script* lockfile that does not exist. tests/unit/test_justfile_uv_run_modes.py
 # keeps every invocation on the right runner.
 UV_RUN_SCRIPT := "mise exec -- uv run"
+# The gcloud components installed here, one id per line, as `dump` records them
+# and `add-gcloud` compares against. A component with an update waiting is
+# installed too ("Update Available"). Exact matches: `state.name:` matches
+# substrings, and "Not Installed" contains "Installed".
+# tests/unit/test_gcloud_installed.py runs both recipes against a stub gcloud.
+GCLOUD_INSTALLED := "gcloud components list --filter='state.name=\"Installed\" OR state.name=\"Update Available\"' --format='value(id)'"
 
 # Default: show help
 [group('Meta')]
@@ -565,7 +571,21 @@ dump:
       echo "==> WARN: brew not on PATH; skipping Brewfile dump (dump/$host/Brewfile left as-is)" >&2
     fi
     cp ~/.config/git/ignore ./dump/gitignore-global
-    gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u > "./dump/$host/gcloud"
+    # Replace the record only from a listing that worked: a failed or empty
+    # one (no network, no auth) keeps the previous record and fails loudly.
+    # Sorted beside the record, then moved over it, so a failed write never
+    # leaves it truncated.
+    listing="$(mktemp "./dump/$host/.gcloud.XXXXXX")"
+    trap 'rm -f "$listing"' EXIT
+    if ! {{ GCLOUD_INSTALLED }} > "$listing" 2>/dev/null || [ ! -s "$listing" ]; then
+      echo "==> ERROR: gcloud did not list its components; dump/$host/gcloud left as-is" >&2
+      exit 1
+    fi
+    if ! sort -u -o "$listing" "$listing"; then
+      echo "==> ERROR: could not write the gcloud listing; dump/$host/gcloud left as-is" >&2
+      exit 1
+    fi
+    mv "$listing" "./dump/$host/gcloud"
     echo "==> Dump complete for host '$host' (dump/$host/{Brewfile,gcloud} + shared dump/gitignore-global)"
 
 # Setup: record this machine's dump host alias in dump/.host (untracked, ADR 0030).
@@ -1001,7 +1021,9 @@ add-gcloud host="":
     if [[ ! -s "$dump" ]]; then
         echo "❌ $dump is missing or empty"; exit 1
     fi
-    installed=$(gcloud components list --filter='state.name=Installed' --format='value(id)' 2>/dev/null | sort -u)
+    if ! installed=$({{ GCLOUD_INSTALLED }} 2>/dev/null | sort -u) || [[ -z "$installed" ]]; then
+        echo "❌ gcloud did not list its components; nothing installed"; exit 1
+    fi
     missing=$(comm -23 <(sort -u "$dump") <(echo "$installed"))
     if [[ -z "$missing" ]]; then
         echo "✅ all gcloud components in $dump are already installed"
