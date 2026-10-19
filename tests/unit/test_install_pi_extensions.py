@@ -14,6 +14,15 @@ installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
 
+def _no_ollama_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skip the Ollama bootstrap: it would add one more subprocess call."""
+    monkeypatch.setattr(
+        installer.shutil,
+        "which",
+        lambda name: "/usr/bin/ollama" if name == "ollama" else None,
+    )
+
+
 def test_deploy_keeps_existing_packages_and_places_extension(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -21,10 +30,14 @@ def test_deploy_keeps_existing_packages_and_places_extension(
     agent.mkdir()
     settings = {"theme": "dark", "packages": ["npm:pi-goal-x", "npm:personal-plugin"]}
     (agent / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+    _no_ollama_bootstrap(monkeypatch)
     install = Mock()
     monkeypatch.setattr(installer.subprocess, "run", install)
     installer.install(agent, symlinks=False)
-    assert json.loads((agent / "settings.json").read_text(encoding="utf-8")) == settings
+    # The personal declaration stays; only the telemetry keys are added (ADR 0058).
+    assert json.loads((agent / "settings.json").read_text(encoding="utf-8")) == (
+        settings | installer.TELEMETRY_OFF
+    )
     assert install.call_count == 10  # Nine missing declarations + one reconciliation.
     assert all(call.args[0][0] == "pi" for call in install.call_args_list)
     extension = agent / "extensions/jev-sonnet-fallback.ts"
@@ -40,6 +53,7 @@ def test_windows_copy_updates_only_managed_extension(
 ) -> None:
     agent = tmp_path / "agent"
     agent.mkdir()
+    _no_ollama_bootstrap(monkeypatch)
     monkeypatch.setattr(installer.subprocess, "run", Mock())
     installer.install(agent, symlinks=False)
     extension = agent / "extensions/jev-sonnet-fallback.ts"
@@ -61,6 +75,7 @@ def test_deploy_refuses_user_extension(
     (agent / "extensions/jev-sonnet-fallback.ts").write_text(
         "user extension", encoding="utf-8"
     )
+    _no_ollama_bootstrap(monkeypatch)
     monkeypatch.setattr(installer.subprocess, "run", Mock())
     with pytest.raises(RuntimeError, match="refusing to replace user extension"):
         installer.install(agent, symlinks=False)
@@ -72,6 +87,7 @@ AGENT_NAMES = ("codex-jev.md", "codex-jev-writer.md")
 def _install(
     agent: Path, monkeypatch: pytest.MonkeyPatch, python: str = "/py/bin/python3"
 ) -> None:
+    _no_ollama_bootstrap(monkeypatch)
     monkeypatch.setattr(installer.subprocess, "run", Mock())
     monkeypatch.setattr(installer.sys, "executable", python)
     installer.install(agent, symlinks=False)
@@ -239,3 +255,149 @@ def test_placement_decides_from_what_is_there(
     placed: object, symlinks: bool, action: str
 ) -> None:
     assert installer.placement(SOURCE, placed, symlinks=symlinks) == action
+
+
+# The retired web extension (ADR 0058): still configured entries go, personal
+# declarations and other pins stay.
+
+
+def test_a_still_configured_pi_web_access_is_removed_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    (agent / "settings.json").write_text(
+        json.dumps({"packages": ["npm:pi-web-access@0.37.0", "npm:personal-plugin"]}),
+        encoding="utf-8",
+    )
+    _no_ollama_bootstrap(monkeypatch)
+    install = Mock()
+    monkeypatch.setattr(installer.subprocess, "run", install)
+    installer.install(agent, symlinks=False)
+    removed = [
+        call.args[0]
+        for call in install.call_args_list
+        if call.args[0][:2] == ["pi", "remove"]
+    ]
+    assert removed == [["pi", "remove", "npm:pi-web-access"]]
+
+
+@pytest.mark.parametrize(
+    ("packages", "retired"),
+    [
+        ([], []),
+        (["npm:pi-goal-x"], []),
+        (["npm:pi-web-access"], ["npm:pi-web-access"]),
+        (["npm:pi-web-access@0.37.0"], ["npm:pi-web-access"]),
+        ([{"source": "npm:pi-web-access@1.0.0"}], ["npm:pi-web-access"]),
+    ],
+)
+def test_retirement_matches_bare_names_pins_and_object_forms(
+    packages: list, retired: list[str]
+) -> None:
+    assert installer.retired_configured(packages) == retired
+
+
+# Pi's own metrics, off in settings.json on every machine (ADR 0058).
+
+
+def test_telemetry_is_written_last_over_a_pi_rewrite_and_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    settings = {"theme": "dark", "enableAnalytics": True, "packages": []}
+    path = agent / "settings.json"
+    path.write_text(json.dumps(settings), encoding="utf-8")
+    _no_ollama_bootstrap(monkeypatch)
+    monkeypatch.setattr(
+        installer.subprocess, "run", Mock(side_effect=lambda *a, **k: None)
+    )
+    installer.install(agent, symlinks=False)
+    written = json.loads(path.read_text(encoding="utf-8"))
+    assert written == settings | installer.TELEMETRY_OFF
+    before = path.read_text(encoding="utf-8")
+    installer.install(agent, symlinks=False)
+    assert path.read_text(encoding="utf-8") == before  # no rewrite when already off
+
+
+@pytest.mark.parametrize(
+    ("settings", "edits"),
+    [
+        ({}, dict(installer.TELEMETRY_OFF)),
+        (dict(installer.TELEMETRY_OFF), {}),
+        (
+            {"enableInstallTelemetry": True, "enableAnalytics": False},
+            {"enableInstallTelemetry": False},
+        ),
+    ],
+)
+def test_telemetry_edits_are_only_the_keys_that_differ(
+    settings: dict, edits: dict
+) -> None:
+    assert installer.telemetry_edits(settings) == edits
+
+
+# The Ollama bootstrap for the web-search extension (ADR 0058), per
+# https://ollama.com/download.
+
+
+@pytest.mark.parametrize(
+    ("sources", "ollama", "missing"),
+    [
+        ([], None, False),  # not declared: never bootstrap
+        (["npm:@ollama/pi-web-search"], "/usr/bin/ollama", False),
+        (["npm:@ollama/pi-web-search"], None, True),
+    ],
+)
+def test_ollama_is_bootstrapped_only_when_declared_and_missing(
+    sources: list, ollama: str | None, missing: bool
+) -> None:
+    assert installer.ollama_missing(sources, ollama) is missing
+
+
+@pytest.mark.parametrize(
+    ("platform", "command"),
+    [
+        (
+            "darwin",
+            ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
+        ),
+        (
+            "linux",
+            ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
+        ),
+        (
+            "win32",
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "irm https://ollama.com/install.ps1 | iex",
+            ],
+        ),
+        ("sunos", None),
+    ],
+)
+def test_the_installer_is_ollamas_own_download_page_command(
+    platform: str, command: list[str] | None
+) -> None:
+    assert installer.ollama_command(platform) == command
+
+
+def test_a_missing_ollama_is_installed_and_a_failure_only_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    (agent / "settings.json").write_text(json.dumps({"packages": []}), encoding="utf-8")
+    # Ollama missing, and the installer fails: the placement still completes.
+    monkeypatch.setattr(installer.shutil, "which", lambda name: None)
+    monkeypatch.setattr(installer.sys, "platform", "linux")
+    failed = Mock(returncode=1)
+    monkeypatch.setattr(installer.subprocess, "run", Mock(return_value=failed))
+    installer.install(agent, symlinks=False)
+    assert (agent / "extensions/jev-sonnet-fallback.ts").is_file()
+    out = capsys.readouterr()
+    assert "Installing Ollama" in out.out
+    assert "WARN: Ollama install failed" in out.err

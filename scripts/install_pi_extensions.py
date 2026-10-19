@@ -11,6 +11,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "dump/harness/pi-packages.json"
+# The web-search extension talks to a local Ollama (localhost:11434), so the
+# package needs the server on every machine that installs it (ADR 0058).
+OLLAMA_PACKAGE = "npm:@ollama/pi-web-search"
+# Replaced by OLLAMA_PACKAGE: both register a "web_search" tool and Pi refuses
+# to load the second one. Still configured entries (any pin) are removed.
+RETIRED_PACKAGES = ("npm:pi-web-access",)
+# Pi's own metrics, off on every machine (ADR 0058): the anonymous
+# install/update report to pi.dev and the opt-in analytics share nothing.
+TELEMETRY_OFF = {"enableInstallTelemetry": False, "enableAnalytics": False}
 EXTENSIONS_DIR = ROOT / "config/pi/extensions"
 EXTENSION = EXTENSIONS_DIR / "jev-sonnet-fallback.ts"
 # A vendored extension (rtk.ts) keeps the upstream file verbatim below this line
@@ -31,6 +40,9 @@ def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
         for item in settings.get("packages", [])
     }
     sources = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    for retired in retired_configured(settings.get("packages", [])):
+        # Bare name: also retires a pin such as npm:pi-web-access@0.37.0.
+        subprocess.run(["pi", "remove", retired], check=True)
     for source in sources:
         if source not in configured:
             subprocess.run(["pi", "install", source], check=True)
@@ -39,6 +51,20 @@ def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
     npm = agent_dir / "npm/node_modules"
     if any(not (npm / source.removeprefix("npm:")).is_dir() for source in sources):
         subprocess.run(["pi", "update", "--extensions"], check=True)
+    # `pi` rewrote settings.json above (removals, installs); edit it last so
+    # this stays the final word on the telemetry keys.
+    settings = (
+        json.loads(settings_path.read_text(encoding="utf-8"))
+        if settings_path.exists()
+        else {}
+    )
+    edits = telemetry_edits(settings)
+    if edits:
+        settings.update(edits)
+        settings_path.write_text(
+            json.dumps(settings, indent=2) + "\n", encoding="utf-8"
+        )
+    _ensure_ollama(sources)
     # One extension that cannot be placed must not hold back the others
     refused = []
     for extension in sorted(EXTENSIONS_DIR.glob("*.ts")):
@@ -55,6 +81,71 @@ def vendored_body(text: str) -> str | None:
     """What the upstream tool itself writes: a vendored file below its header."""
     _header, sentinel, body = text.partition(VENDORED_SENTINEL)
     return body if sentinel else None
+
+
+def retired_configured(packages: list) -> list[str]:
+    """Retired declarations still configured, bare or pinned to a version."""
+    names = (
+        item if isinstance(item, str) else item.get("source", "") for item in packages
+    )
+    return [
+        retired
+        for retired in RETIRED_PACKAGES
+        if any(name == retired or name.startswith(f"{retired}@") for name in names)
+    ]
+
+
+def telemetry_edits(settings: dict) -> dict:
+    """The telemetry keys to write; empty when they are already off."""
+    return {
+        key: value for key, value in TELEMETRY_OFF.items() if settings.get(key) != value
+    }
+
+
+def ollama_missing(sources: list, ollama_on_path: str | None) -> bool:
+    """The Ollama web-search package is declared and no Ollama serves it."""
+    return OLLAMA_PACKAGE in sources and ollama_on_path is None
+
+
+def ollama_command(platform: str) -> list[str] | None:
+    """Ollama's own installer per https://ollama.com/download, or None when
+    that page has no installer for the platform (then we only report)."""
+    if platform in ("darwin", "linux"):
+        return ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"]
+    if platform == "win32":
+        return [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "irm https://ollama.com/install.ps1 | iex",
+        ]
+    return None
+
+
+def _ensure_ollama(sources: list) -> None:
+    """Install Ollama when the web-search package needs it and it is missing.
+
+    Never fatal: one missing server must not hold back the extension placement,
+    the same way one refused extension does not hold back the others.
+    """
+    if not ollama_missing(sources, shutil.which("ollama")):
+        return
+    print(f"==> Installing Ollama for {OLLAMA_PACKAGE} (https://ollama.com/download)")
+    command = ollama_command(sys.platform)
+    if command is None:
+        print(
+            f"    WARN: no official Ollama installer on {sys.platform};"
+            " install one from https://ollama.com/download",
+            file=sys.stderr,
+        )
+        return
+    if subprocess.run(command, check=False).returncode != 0:
+        print(
+            "    WARN: Ollama install failed; the web_search tool needs"
+            " `ollama serve` on localhost:11434"
+            " (https://ollama.com/download)",
+            file=sys.stderr,
+        )
 
 
 @dataclass(frozen=True)
