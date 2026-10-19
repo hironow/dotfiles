@@ -18,7 +18,7 @@ just = "latest"
 # rust-analyzer: the LSP server of the shared rust-analyzer-lsp Claude plugin
 # (ADR 0057). A component of this toolchain, so it moves with the pin; rustup's
 # proxy alone runs nothing ("Unknown binary 'rust-analyzer'").
-rust = { version = "1.99.0", components = ["rust-analyzer"] }
+rust = { version = "1.99.1", components = ["rust-analyzer"] }
 # opentofu — terraform-compatible IaC. Required by `just test-iac`
 # so `mise x -- tofu` resolves from the non-mise-activated bash
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
@@ -42,12 +42,12 @@ opentofu = "1.13.1"
 # hook run `uv run --frozen --only-group lint ruff`, i.e. that repo's own
 # lint-group pin, never these.
 uv = "latest"
-ruff = "0.16.10"
-ty = "0.0.85"
+ruff = "0.17.1"
+ty = "0.0.89"
 # golangci-lint v2: the Go quality gate (`just go-lint` / `just check`).
 # Aqua backend. Bare `mise exec -- golangci-lint` can still resolve Go's
 # GOBIN copy, so justfile recipes pin `aqua:golangci/golangci-lint`.
-"aqua:golangci/golangci-lint" = "2.14.0"
+"aqua:golangci/golangci-lint" = "2.15.0"
 kotlin = "latest"
 java = "latest"
 gradle = "latest"
@@ -61,7 +61,7 @@ prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
-"npm:portless" = "0.15.7"
+"npm:portless" = "0.15.8"
 # eza — modern ls replacement aliased unconditionally-now-guarded in
 # .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
 # it on PATH for every dir; without a config source the installed
@@ -87,14 +87,14 @@ shellcheck = "0.11.0"
 # an ungated entry makes `mise install` / `mise exec` hard-fail on Windows
 # (incl. WSL git hooks that pick up the Windows mise on the /mnt/c PATH). sheldon
 # is a zsh plugin manager — irrelevant on Windows anyway.
-starship = "1.26.0"
+starship = "1.27.0"
 "aqua:rossmacarthur/sheldon" = { version = "0.8.5", os = ["linux", "macos"] }
 # fzf — fuzzy finder. Its Ctrl-R / completion init (`fzf --zsh`) lives in
 # .zshrc AFTER `mise activate` for the same reason as the prompt tools above.
 # Declared here so WSL (no Homebrew) gets it; on a Mac brew also provides it.
 # Pinned for cross-machine reproducibility. (opentofu, the other
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
-fzf = "0.74.4"
+fzf = "0.74.5"
 
 # rtk + headroom — base tooling every agent session goes through (ADR 0047):
 # rtk compresses command output (dotfiles owns its Claude hook; never run
@@ -109,7 +109,7 @@ fzf = "0.74.4"
 # telemetry is pinned off in [env] below. After either moves, `just doctor`
 # checks the contracts dotfiles relies on (rtk-guard, *-telemetry, headroom-cli).
 rtk = "latest"
-"pypi:headroom-ai" = { version = "0.40.0", extras = "proxy,code", uvx_args = "--python 3.13 --exclude-newer-package headroom-ai=false" }
+"pypi:headroom-ai" = { version = "0.41.0", extras = "proxy,code", uvx_args = "--python 3.13 --exclude-newer-package headroom-ai=false" }
 
 # quint — the Quint model checker, i.e. the formal-methods gate: a Quint model
 # plus a seeded simulation is mandatory for autonomous stop/delete logic in any
@@ -178,7 +178,7 @@ rtk = "latest"
 #   @dataform/cli -> Dataform (BigQuery ELT)
 # cf's npm dist-tag "latest" is 1.0.0-beta.10, but mise points its `latest` link at the
 # newest stable (0.15.0), so "latest" never activates the beta. Pin it until 1.0.0.
-"npm:cf" = "1.0.0-beta.14"
+"npm:cf" = "1.0.0-beta.18"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
 "npm:@dataform/cli" = "latest"

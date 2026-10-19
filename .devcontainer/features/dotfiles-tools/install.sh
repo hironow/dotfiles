@@ -279,7 +279,7 @@ node = "24.22.0"
 # (golangci typechecks with Go; recipes invoke
 # `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
 go = "1.27.2"
-"aqua:golangci/golangci-lint" = "2.14.0"
+"aqua:golangci/golangci-lint" = "2.15.0"
 # quint: the formal-methods gate's checker (`mise x -- quint`), mandatory for
 # autonomous stop/delete logic in any repo opened in this image. Same pin as
 # config/mise/config.toml: a checker under a mandatory gate changes its
@@ -295,7 +295,7 @@ go = "1.27.2"
 "npm:@github/copilot" = "1.0.98"
 "npm:@earendil-works/pi-coding-agent" = "1.3.0"
 "github:google-antigravity/antigravity-cli" = { version = "1.4.2", rename_exe = "antigravity" }
-"npm:cf" = "1.0.0-beta.14"
+"npm:cf" = "1.0.0-beta.18"
 "npm:resend-cli" = "2.26.0"
 "npm:@stripe/cli" = "1.54.0"
 EOF
