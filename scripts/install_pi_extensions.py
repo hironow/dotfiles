@@ -6,11 +6,26 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "dump/harness/pi-packages.json"
+# The web-search extension talks to a local Ollama (localhost:11434), so the
+# package needs the server on every machine that installs it (ADR 0058).
+OLLAMA_PACKAGE = "npm:@ollama/pi-web-search"
+# Packages dotfiles no longer installs, removed from any settings that still
+# declare them (bare name or pin). pi-web-access is replaced by OLLAMA_PACKAGE
+# (both register a "web_search" tool and Pi refuses to load the second).
+# remote-pi declares the host-provided @earendil-works/* and typebox packages
+# in `dependencies` instead of `peerDependencies`, so npm vendors old 0.79.10
+# copies into the Pi npm dir that extensions then resolve instead of the
+# host's (pi warns about exactly this; ADR 0059).
+RETIRED_PACKAGES = ("npm:pi-web-access", "npm:remote-pi")
+# Pi's own metrics, off on every machine (ADR 0058): the anonymous
+# install/update report to pi.dev and the opt-in analytics share nothing.
+TELEMETRY_OFF = {"enableInstallTelemetry": False, "enableAnalytics": False}
 EXTENSIONS_DIR = ROOT / "config/pi/extensions"
 EXTENSION = EXTENSIONS_DIR / "jev-sonnet-fallback.ts"
 # A vendored extension (rtk.ts) keeps the upstream file verbatim below this line
@@ -31,6 +46,9 @@ def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
         for item in settings.get("packages", [])
     }
     sources = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    for retired in retired_configured(settings.get("packages", [])):
+        # Bare name: also retires a pin such as npm:pi-web-access@0.37.0.
+        subprocess.run(["pi", "remove", retired], check=True)
     for source in sources:
         if source not in configured:
             subprocess.run(["pi", "install", source], check=True)
@@ -39,6 +57,20 @@ def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
     npm = agent_dir / "npm/node_modules"
     if any(not (npm / source.removeprefix("npm:")).is_dir() for source in sources):
         subprocess.run(["pi", "update", "--extensions"], check=True)
+    # `pi` rewrote settings.json above (removals, installs); edit it last so
+    # this stays the final word on the telemetry keys.
+    settings = (
+        json.loads(settings_path.read_text(encoding="utf-8"))
+        if settings_path.exists()
+        else {}
+    )
+    edits = telemetry_edits(settings)
+    if edits:
+        settings.update(edits)
+        settings_path.write_text(
+            json.dumps(settings, indent=2) + "\n", encoding="utf-8"
+        )
+    _ensure_ollama(sources)
     # One extension that cannot be placed must not hold back the others
     refused = []
     for extension in sorted(EXTENSIONS_DIR.glob("*.ts")):
@@ -55,6 +87,136 @@ def vendored_body(text: str) -> str | None:
     """What the upstream tool itself writes: a vendored file below its header."""
     _header, sentinel, body = text.partition(VENDORED_SENTINEL)
     return body if sentinel else None
+
+
+def retired_configured(packages: list) -> list[str]:
+    """Retired declarations still configured, bare or pinned to a version."""
+    names = [
+        item if isinstance(item, str) else item.get("source", "") for item in packages
+    ]
+    return [
+        retired
+        for retired in RETIRED_PACKAGES
+        if any(name == retired or name.startswith(f"{retired}@") for name in names)
+    ]
+
+
+def telemetry_edits(settings: dict) -> dict:
+    """The telemetry keys to write; empty when they are already off."""
+    return {
+        key: value for key, value in TELEMETRY_OFF.items() if settings.get(key) != value
+    }
+
+
+def ollama_missing(sources: list, ollama_on_path: str | None, reachable: bool) -> bool:
+    """The Ollama web-search package is declared and no reachable Ollama serves
+    localhost:11434 — as a binary on this PATH or over the loopback."""
+    return OLLAMA_PACKAGE in sources and ollama_on_path is None and not reachable
+
+
+def wsl_owns_ollama(
+    system: str, wsl_distro: str | None, ollama_on_path: str | None, reachable: bool
+) -> bool:
+    """A native Windows + WSL machine where the one Ollama lives on the WSL side.
+
+    Windows reaches a WSL server over localhost by default (WSL's NAT mode
+    forwards Windows loopback into the distro), while WSL cannot reach Windows
+    over localhost — so a native install would be a second server the WSL
+    side could not even use. Mirrored-mode machines are caught earlier: their
+    Windows-side Ollama answers the loopback probe from WSL (ADR 0058).
+    """
+    return (
+        system == "win32"
+        and wsl_distro is not None
+        and ollama_on_path is None
+        and not reachable
+    )
+
+
+def ollama_command(platform: str) -> list[str] | None:
+    """Ollama's own installer per https://ollama.com/download, or None when
+    that page has no installer for the platform (then we only report)."""
+    if platform in ("darwin", "linux"):
+        return ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"]
+    if platform == "win32":
+        return [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "irm https://ollama.com/install.ps1 | iex",
+        ]
+    return None
+
+
+def _ollama_reachable() -> bool:
+    """Does an Ollama already answer on localhost:11434 (any side of it)?"""
+    try:
+        with urllib.request.urlopen(
+            "http://localhost:11434/api/version", timeout=2
+        ) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
+def _wsl_distro() -> str | None:
+    """A WSL distro name when this Windows machine has WSL (else None).
+
+    `wsl --list --quiet` prints UTF-16LE on some hosts; stripping the NUL
+    bytes reads ASCII distro names the same either way. Display-only: a
+    garbled non-ASCII name must not change the decision.
+    """
+    try:
+        done = subprocess.run(
+            ["wsl.exe", "--list", "--quiet"],
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = done.stdout.replace(b"\x00", b"").decode(encoding="utf-8", errors="replace")
+    names = [line.strip() for line in text.splitlines() if line.strip()]
+    return names[0] if names else None
+
+
+def _ensure_ollama(sources: list) -> None:
+    """Install Ollama when the web-search package needs it and it is missing.
+
+    Never fatal: one missing server must not hold back the extension placement,
+    the same way one refused extension does not hold back the others.
+    """
+    ollama = shutil.which("ollama")
+    if OLLAMA_PACKAGE not in sources or ollama is not None:
+        return
+    reachable = _ollama_reachable()
+    if not ollama_missing(sources, ollama, reachable):
+        return
+    wsl = _wsl_distro() if sys.platform == "win32" else None
+    if wsl_owns_ollama(sys.platform, wsl, ollama, reachable):
+        print(
+            f"==> NOTE: {OLLAMA_PACKAGE} needs Ollama; on a Windows + WSL"
+            f" machine the one Ollama lives on the WSL side ({wsl}) and"
+            " Windows reaches it over WSL localhost forwarding"
+            " — install it from WSL (https://ollama.com/download)"
+        )
+        return
+    print(f"==> Installing Ollama for {OLLAMA_PACKAGE} (https://ollama.com/download)")
+    command = ollama_command(sys.platform)
+    if command is None:
+        print(
+            f"    WARN: no official Ollama installer on {sys.platform};"
+            " install one from https://ollama.com/download",
+            file=sys.stderr,
+        )
+        return
+    if subprocess.run(command, check=False).returncode != 0:
+        print(
+            "    WARN: Ollama install failed; the web_search tool needs"
+            " `ollama serve` on localhost:11434"
+            " (https://ollama.com/download)",
+            file=sys.stderr,
+        )
 
 
 @dataclass(frozen=True)

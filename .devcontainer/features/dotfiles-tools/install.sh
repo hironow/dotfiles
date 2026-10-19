@@ -267,37 +267,37 @@ cat > /etc/mise/config.toml <<'EOF'
 package_manager = "bun"
 
 [tools]
-bun = "1.4.2"
-just = "1.58.0"
+bun = "1.4.3"
+just = "1.59.0"
 markdownlint-cli2 = "0.23.3"
-prek = "0.5.4"
-uv = "0.12.21"
-vp = "1.0.0"
-node = "24.21.0"
+prek = "0.5.6"
+uv = "0.13.1"
+vp = "1.3.0"
+node = "24.22.0"
 # Go + golangci-lint: `just check` runs `just go-lint`. The one-shot
 # sandbox has no project mise.toml, so /etc/mise must already pin both
 # (golangci typechecks with Go; recipes invoke
 # `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
-go = "1.27.1"
-"aqua:golangci/golangci-lint" = "2.14.0"
+go = "1.27.2"
+"aqua:golangci/golangci-lint" = "2.15.0"
 # quint: the formal-methods gate's checker (`mise x -- quint`), mandatory for
 # autonomous stop/delete logic in any repo opened in this image. Same pin as
 # config/mise/config.toml: a checker under a mandatory gate changes its
 # verdicts only deliberately (ADR 0006 parity).
 # npm: backend through bun, like the other npm tools here.
 "npm:@informalsystems/quint" = "0.33.0"
-"npm:@openai/codex" = "0.159.3"
+"npm:@openai/codex" = "0.163.0"
 # Under bun (package_manager above) mise ignores npm_args (bun reads
 # bun_args only). claude-code's postinstall still runs — the package is on
 # bun's default-trusted dependencies list — and the apt install further
 # below overlays the real native binary regardless. See ADR 0040.
-"npm:@anthropic-ai/claude-code" = "2.1.286"
-"npm:@github/copilot" = "1.0.90"
-"npm:@earendil-works/pi-coding-agent" = "0.99.2"
-"github:google-antigravity/antigravity-cli" = { version = "1.2.14", exe = "antigravity" }
-"npm:cf" = "1.0.0-beta.10"
-"npm:resend-cli" = "2.23.0"
-"npm:@stripe/cli" = "1.53.0"
+"npm:@anthropic-ai/claude-code" = "2.1.303"
+"npm:@github/copilot" = "1.0.98"
+"npm:@earendil-works/pi-coding-agent" = "1.3.0"
+"github:google-antigravity/antigravity-cli" = { version = "1.4.2", rename_exe = "antigravity" }
+"npm:cf" = "1.0.0-beta.18"
+"npm:resend-cli" = "2.26.0"
+"npm:@stripe/cli" = "1.54.0"
 EOF
 echo "[dotfiles-tools] pre-installing mise tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"
 (

@@ -29,6 +29,12 @@ UV := "mise exec -- uv"
 # (or machine uv config differs), instead of failing. The lock changes only via
 # an explicit `uv lock`.
 UV_RUN := "mise exec -- uv run --frozen"
+# semgrep's CLI wrapper. The interpreter is pinned to 3.14: on Python 3.15
+# semgrep-core dies at startup on Linux, because semgrep derives its stack soft
+# limit from an unlimited RLIMIT_STACK and 3.15 started reporting that as a huge
+# positive number instead of -1 (https://github.com/semgrep/semgrep/issues/11979).
+# Without the pin, uvx picks the newest Python (3.15) after a uv upgrade.
+SEMGREP := "uvx --python 3.14 semgrep"
 # Script mode, for scripts/ files with a PEP 723 `# /// script` block (today:
 # sync_agents.py). uv runs those in their own isolated environment and never
 # touches uv.lock, so --frozen is pointless there -- and rejected: it demands a
@@ -68,7 +74,7 @@ pdoc port="8888" pkg=".":
 # Run meta semgrep rules against rule files (ROOT_AGENTS.md etc.)
 [group('Validation')]
 meta-semgrep:
-    uvx semgrep --config .semgrep/rules/meta/ --error .
+    {{SEMGREP}} --config .semgrep/rules/meta/ --error .
 
 # Unit-test ALL semgrep rules against their co-located test fixtures
 # (.semgrep/rules/**/<rule>.{py,md,...}). `semgrep --test` needs the rules dir
@@ -88,7 +94,7 @@ semgrep-test:
         exit 0
         ;;
     esac
-    uvx semgrep --test --config .semgrep/rules/ .semgrep/rules/
+    {{SEMGREP}} --test --config .semgrep/rules/ .semgrep/rules/
     just agent-baseline-test
 
 # Check the agent-baseline scaffold in a throwaway repo (called by semgrep-test,
@@ -102,13 +108,13 @@ agent-baseline-test:
     #!/usr/bin/env bash
     set -euo pipefail
     src="{{ justfile_directory() }}/templates/agent-baseline"
-    uvx semgrep --test --config "$src/.semgrep/rules/" "$src/.semgrep/tests/"
+    {{SEMGREP}} --test --config "$src/.semgrep/rules/" "$src/.semgrep/tests/"
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
     cp -R "$src/." "$tmp/"
     mkdir -p "$tmp/bin" "$tmp/tests/e2e" "$tmp/tests/unit" "$tmp/pkg"
     # The scaffold calls `semgrep` and `uv run pytest`; run both through uvx.
-    printf '#!/usr/bin/env bash\nexec uvx semgrep "$@"\n' > "$tmp/bin/semgrep"
+    printf '#!/usr/bin/env bash\nexec uvx --python 3.14 semgrep "$@"\n' > "$tmp/bin/semgrep"
     printf '#!/usr/bin/env bash\n[ "$1 $2" = "run pytest" ] || exit 64\nshift 2\nexec uvx pytest -p no:cacheprovider "$@"\n' > "$tmp/bin/uv"
     chmod +x "$tmp/bin/semgrep" "$tmp/bin/uv"
     export PATH="$tmp/bin:$PATH"
@@ -758,7 +764,7 @@ check:
     @echo '🔎 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
-    uvx semgrep --config .semgrep/rules/meta/ --error .
+    {{SEMGREP}} --config .semgrep/rules/meta/ --error .
     @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
     @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
@@ -1911,7 +1917,7 @@ emu-lint:
     echo '🔍 ty (ADR 0044)...'
     uv run --frozen --group lint ty check
     echo '🔍 semgrep (root .semgrep/rules/python, emulator .semgrepignore)...'
-    uvx semgrep --config ../.semgrep/rules/python/ --error .
+    {{SEMGREP}} --config ../.semgrep/rules/python/ --error .
     echo '🔍 markdownlint (git-tracked only; excludes .venv etc.)...'
     git ls-files -z '*.md' | xargs -0 -r mise x -- markdownlint-cli2
 
