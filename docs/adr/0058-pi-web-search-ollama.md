@@ -37,13 +37,22 @@ web 検索の新しい extension はローカルの Ollama がないと動かな
 - 環境変数の上書きは `PI_TELEMETRY` だけ。この dotfiles の各 shell が export している `DO_NOT_TRACK=1` を Pi は読まない。
 - この時点で `~/.pi/agent/settings.json` にこれらの key はなく、install report は匿名で送られていた。
 
-新しい extension は `http://localhost:11434` の Ollama（`/api/experimental/web_search`）に無認証で接続する。API key の類はなく、Ollama 本体がその機体にないと動かない。Ollama 公式の download page（<https://ollama.com/download）は> 2026-10-19 時点で macOS・Linux に `curl -fsSL https://ollama.com/install.sh | sh`、Windows（PowerShell）に `irm https://ollama.com/install.ps1 | iex` を示している（install.sh は macOS と Linux 両方に対応し、macOS では /Applications への app 導入と `ollama` command の symlink まで行う）。
+新しい extension は `http://localhost:11434` の Ollama（`/api/experimental/web_search`）に無認証で接続する。API key の類はなく、Ollama 本体がその機体にないと動かない。Ollama 公式の download page（<https://ollama.com/download>）は 2026-10-19 時点で macOS・Linux に `curl -fsSL https://ollama.com/install.sh | sh`、Windows（PowerShell）に `irm https://ollama.com/install.ps1 | iex` を示している（install.sh は macOS と Linux 両方に対応し、macOS では /Applications への app 導入と `ollama` command の symlink まで行う）。
+
+もう一つの制約が共存機（1 台の Windows に native 環境と WSL が同居する構成。self-hosted runner 機がそう: ADR 0031 の Windows 11 host、ADR 0035 の native Windows runner と WSL runner の同居）である。Microsoft の WSL networking 文書（<https://learn.microsoft.com/windows/wsl/networking>）で 2026-10-19 に確認した:
+
+- 既定の NAT mode では、**Windows から WSL へは localhost で届く**（「Accessing Linux networking apps from Windows (localhost)」）。逆向き（WSL から Windows）の localhost は通らず、host の IP を引く必要がある。
+- mirrored mode（Windows 11 22H2+ で `.wslconfig` に `networkingMode=mirrored`）なら双方向 localhost だが、この dotfiles は `.wslconfig` を管理しておらず、runner の WSL は既定 NAT。
+- runner 機は `dotfiles-wsl-autostart`（ADR 0035）でログオン時に WSL の systemd を自動起動している。つまり共存機では logon 後 WSL は常駐し、その systemd service は動いている。
+
+extension 側は host を `http://localhost:11434` 固定で持ち、環境変数での上書き口がない。
 
 ## Decision
 
 1. Pi の web 系 extension は `npm:pi-web-access` をやめ、`npm:@ollama/pi-web-search` に一本化する。宣言は `dump/harness/pi-packages.json`。`scripts/install_pi_extensions.py` は、設定に残った `npm:pi-web-access`（pin 付きも）を `pi remove` で排除してから宣言を入れる。
 2. Pi 本体の計測は全機体で止める。`scripts/install_pi_extensions.py` が `~/.pi/agent/settings.json`（`PI_CODING_AGENT_DIR` 尊重）に `enableInstallTelemetry: false` と `enableAnalytics: false` を書く。個人の package 宣言など他の設定はそのまま残す。
-3. 宣言に `npm:@ollama/pi-web-search` があり、その機体に `ollama` がないとき、`scripts/install_pi_extensions.py` は <https://ollama.com/download> の公式 command で Ollama を入れる。失敗しても WARN で止まらない（extension 配置は続く。refuse された extension が他を止めないのと同じ規則）。
+3. 宣言に `npm:@ollama/pi-web-search` があり、その機体に `ollama` がなく `localhost:11434` にも応答がないとき、`scripts/install_pi_extensions.py` は <https://ollama.com/download> の公式 command で Ollama を入れる。失敗しても WARN で止まらない（extension 配置は続く。refuse された extension が他を止めないのと同じ規則）。
+4. 共存機（native Windows + WSL）では、Ollama は **WSL 側に 1 台だけ**置く。native Windows 側の bootstrap は、`wsl --list --quiet` に distro があるなら install を行わず NOTE で案内する（Windows からは WSL の既定 localhost forwarding で届くため、native 側に入れると 2 台目になる。mirrored mode で Windows 側に既にある場合は 3 の直前の loopback probe が応答を検知し、WSL 側でも二重に入れない）。
 
 ## Consequences
 
@@ -58,6 +67,7 @@ web 検索の新しい extension はローカルの Ollama がないと動かな
 - web 検索がローカルの Ollama に依存する。Ollama を入れられない（あるいは入れたくない）機体では `web_search` が使えない。
 - Ollama の導入・起動は機体の性能と権限に左右される（macOS の install.sh は /Applications への導入と symlink を行い、`ollama serve` の常駐は別途必要）。
 - `pi-web-access` が提供していた他の tool（fetch 系など）が同じ名前では使えなくなる。
+- 共存機では、Windows 側の `web_search` は WSL の稼働に縛られる（runner 機は logon autostart で常駐するが、`wsl --shutdown` 後は WSL 側が再起動するまで届かない）。Ollama の model は WSL 側の disk に置かれ、ADR 0035 の vhdx 容量圧力が増える。
 
 ### Neutral
 

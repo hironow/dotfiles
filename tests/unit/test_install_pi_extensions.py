@@ -343,17 +343,40 @@ def test_telemetry_edits_are_only_the_keys_that_differ(
 
 
 @pytest.mark.parametrize(
-    ("sources", "ollama", "missing"),
+    ("sources", "ollama", "reachable", "missing"),
     [
-        ([], None, False),  # not declared: never bootstrap
-        (["npm:@ollama/pi-web-search"], "/usr/bin/ollama", False),
-        (["npm:@ollama/pi-web-search"], None, True),
+        ([], None, False, False),  # not declared: never bootstrap
+        (["npm:@ollama/pi-web-search"], "/usr/bin/ollama", False, False),
+        # a server already answering on localhost:11434 serves the extension
+        (["npm:@ollama/pi-web-search"], None, True, False),
+        (["npm:@ollama/pi-web-search"], None, False, True),
     ],
 )
-def test_ollama_is_bootstrapped_only_when_declared_and_missing(
-    sources: list, ollama: str | None, missing: bool
+def test_ollama_is_bootstrapped_only_when_declared_and_unserved(
+    sources: list, ollama: str | None, reachable: bool, missing: bool
 ) -> None:
-    assert installer.ollama_missing(sources, ollama) is missing
+    assert installer.ollama_missing(sources, ollama, reachable) is missing
+
+
+@pytest.mark.parametrize(
+    ("system", "wsl", "ollama", "reachable", "owns"),
+    [
+        # Windows alone installs as usual
+        ("win32", None, None, False, False),
+        ("win32", "Ubuntu", "/usr/bin/ollama.exe", False, False),
+        # mirrored mode: the Windows-side server answers from WSL
+        ("win32", "Ubuntu", None, True, False),
+        # the coexistence machine: one Ollama, on the WSL side
+        ("win32", "Ubuntu", None, False, True),
+        # WSL and other platforms are never told to skip
+        ("linux", "Ubuntu", None, False, False),
+        ("darwin", None, None, False, False),
+    ],
+)
+def test_a_windows_wsl_machine_keeps_its_one_ollama_on_the_wsl_side(
+    system: str, wsl: str | None, ollama: str | None, reachable: bool, owns: bool
+) -> None:
+    assert installer.wsl_owns_ollama(system, wsl, ollama, reachable) is owns
 
 
 @pytest.mark.parametrize(
@@ -391,8 +414,10 @@ def test_a_missing_ollama_is_installed_and_a_failure_only_warns(
     agent = tmp_path / "agent"
     agent.mkdir()
     (agent / "settings.json").write_text(json.dumps({"packages": []}), encoding="utf-8")
-    # Ollama missing, and the installer fails: the placement still completes.
+    # Ollama missing (binary and loopback), and the installer fails: the
+    # placement still completes.
     monkeypatch.setattr(installer.shutil, "which", lambda name: None)
+    monkeypatch.setattr(installer, "_ollama_reachable", lambda: False)
     monkeypatch.setattr(installer.sys, "platform", "linux")
     failed = Mock(returncode=1)
     monkeypatch.setattr(installer.subprocess, "run", Mock(return_value=failed))
@@ -401,3 +426,27 @@ def test_a_missing_ollama_is_installed_and_a_failure_only_warns(
     out = capsys.readouterr()
     assert "Installing Ollama" in out.out
     assert "WARN: Ollama install failed" in out.err
+
+
+def test_a_windows_wsl_machine_installs_no_second_ollama(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    (agent / "settings.json").write_text(json.dumps({"packages": []}), encoding="utf-8")
+    monkeypatch.setattr(installer.shutil, "which", lambda name: None)
+    monkeypatch.setattr(installer, "_ollama_reachable", lambda: False)
+    monkeypatch.setattr(installer, "_wsl_distro", lambda: "Ubuntu")
+    monkeypatch.setattr(installer.sys, "platform", "win32")
+    run = Mock()
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    installer.install(agent, symlinks=False)
+    # only the pi package commands ran: no second Ollama was installed
+    assert not any(
+        "ollama.com" in " ".join(str(part) for part in call.args[0])
+        for call in run.call_args_list
+    )
+    assert (agent / "extensions/jev-sonnet-fallback.ts").is_file()
+    out = capsys.readouterr()
+    assert "one Ollama lives on the WSL side (Ubuntu)" in out.out
+    assert "install it from WSL" in out.out

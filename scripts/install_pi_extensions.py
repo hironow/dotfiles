@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -102,9 +103,29 @@ def telemetry_edits(settings: dict) -> dict:
     }
 
 
-def ollama_missing(sources: list, ollama_on_path: str | None) -> bool:
-    """The Ollama web-search package is declared and no Ollama serves it."""
-    return OLLAMA_PACKAGE in sources and ollama_on_path is None
+def ollama_missing(sources: list, ollama_on_path: str | None, reachable: bool) -> bool:
+    """The Ollama web-search package is declared and no reachable Ollama serves
+    localhost:11434 — as a binary on this PATH or over the loopback."""
+    return OLLAMA_PACKAGE in sources and ollama_on_path is None and not reachable
+
+
+def wsl_owns_ollama(
+    system: str, wsl_distro: str | None, ollama_on_path: str | None, reachable: bool
+) -> bool:
+    """A native Windows + WSL machine where the one Ollama lives on the WSL side.
+
+    Windows reaches a WSL server over localhost by default (WSL's NAT mode
+    forwards Windows loopback into the distro), while WSL cannot reach Windows
+    over localhost — so a native install would be a second server the WSL
+    side could not even use. Mirrored-mode machines are caught earlier: their
+    Windows-side Ollama answers the loopback probe from WSL (ADR 0058).
+    """
+    return (
+        system == "win32"
+        and wsl_distro is not None
+        and ollama_on_path is None
+        and not reachable
+    )
 
 
 def ollama_command(platform: str) -> list[str] | None:
@@ -122,13 +143,58 @@ def ollama_command(platform: str) -> list[str] | None:
     return None
 
 
+def _ollama_reachable() -> bool:
+    """Does an Ollama already answer on localhost:11434 (any side of it)?"""
+    try:
+        with urllib.request.urlopen(
+            "http://localhost:11434/api/version", timeout=2
+        ) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
+def _wsl_distro() -> str | None:
+    """A WSL distro name when this Windows machine has WSL (else None).
+
+    `wsl --list --quiet` prints UTF-16LE on some hosts; stripping the NUL
+    bytes reads ASCII distro names the same either way. Display-only: a
+    garbled non-ASCII name must not change the decision.
+    """
+    try:
+        done = subprocess.run(
+            ["wsl.exe", "--list", "--quiet"],
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = done.stdout.replace(b"\x00", b"").decode(encoding="utf-8", errors="replace")
+    names = [line.strip() for line in text.splitlines() if line.strip()]
+    return names[0] if names else None
+
+
 def _ensure_ollama(sources: list) -> None:
     """Install Ollama when the web-search package needs it and it is missing.
 
     Never fatal: one missing server must not hold back the extension placement,
     the same way one refused extension does not hold back the others.
     """
-    if not ollama_missing(sources, shutil.which("ollama")):
+    ollama = shutil.which("ollama")
+    if OLLAMA_PACKAGE not in sources or ollama is not None:
+        return
+    reachable = _ollama_reachable()
+    if not ollama_missing(sources, ollama, reachable):
+        return
+    wsl = _wsl_distro() if sys.platform == "win32" else None
+    if wsl_owns_ollama(sys.platform, wsl, ollama, reachable):
+        print(
+            f"==> NOTE: {OLLAMA_PACKAGE} needs Ollama; on a Windows + WSL"
+            f" machine the one Ollama lives on the WSL side ({wsl}) and"
+            " Windows reaches it over WSL localhost forwarding"
+            " — install it from WSL (https://ollama.com/download)"
+        )
         return
     print(f"==> Installing Ollama for {OLLAMA_PACKAGE} (https://ollama.com/download)")
     command = ollama_command(sys.platform)
