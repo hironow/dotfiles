@@ -15,9 +15,14 @@ MANIFEST = ROOT / "dump/harness/pi-packages.json"
 # The web-search extension talks to a local Ollama (localhost:11434), so the
 # package needs the server on every machine that installs it (ADR 0058).
 OLLAMA_PACKAGE = "npm:@ollama/pi-web-search"
-# Replaced by OLLAMA_PACKAGE: both register a "web_search" tool and Pi refuses
-# to load the second one. Still configured entries (any pin) are removed.
-RETIRED_PACKAGES = ("npm:pi-web-access",)
+# Packages dotfiles no longer installs, removed from any settings that still
+# declare them (bare name or pin). pi-web-access is replaced by OLLAMA_PACKAGE
+# (both register a "web_search" tool and Pi refuses to load the second).
+# remote-pi declares the host-provided @earendil-works/* and typebox packages
+# in `dependencies` instead of `peerDependencies`, so npm vendors old 0.79.10
+# copies into the Pi npm dir that extensions then resolve instead of the
+# host's (pi warns about exactly this; ADR 0059).
+RETIRED_PACKAGES = ("npm:pi-web-access", "npm:remote-pi")
 # Pi's own metrics, off on every machine (ADR 0058): the anonymous
 # install/update report to pi.dev and the opt-in analytics share nothing.
 TELEMETRY_OFF = {"enableInstallTelemetry": False, "enableAnalytics": False}
@@ -86,9 +91,9 @@ def vendored_body(text: str) -> str | None:
 
 def retired_configured(packages: list) -> list[str]:
     """Retired declarations still configured, bare or pinned to a version."""
-    names = (
+    names = [
         item if isinstance(item, str) else item.get("source", "") for item in packages
-    )
+    ]
     return [
         retired
         for retired in RETIRED_PACKAGES

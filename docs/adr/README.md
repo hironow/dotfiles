@@ -83,6 +83,7 @@ and what outlived it.
 | 0056 | [5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする](./0056-common-claude-plugin-set.md) | Accepted (PR #475); supersedes part of [0048](./0048-required-claude-plugins.md); partly superseded by [0057](./0057-shared-plugins-need-no-per-home-settings.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
 | 0057 | [共通セットの plugin は、home ごとの設定なしで動くものに限る](./0057-shared-plugins-need-no-per-home-settings.md) | Accepted (PR #476); supersedes part of [0056](./0056-common-claude-plugin-set.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
 | 0058 | [Pi の web 検索を Ollama 経由に寄せ、pi 本体の計測を全機体で止める](./0058-pi-web-search-ollama.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
+| 0059 | [remote-pi を外し、host 提供パッケージを vendor させない](./0059-retire-remote-pi.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
 
 ## Reading order for newcomers
 
@@ -127,3 +128,5 @@ and what outlived it.
   共通セットは home ごとの設定なしで動く plugin に限り、doctor で見張る。[公開PR #476の所有者裁定](https://github.com/hironow/dotfiles/pull/476#issuecomment-6211696383)。
 - 2026-10-19: [ADR-0058](./0058-pi-web-search-ollama.md)を採択。
   Pi の web 検索は `npm:@ollama/pi-web-search` に一本化し、pi 本体の計測（install report と opt-in analytics）は全機体で止め、Ollama がなければ公式 download 手順で自動導入する。本セッションでの所有者の直接指示。
+- 2026-10-19: [ADR-0059](./0059-retire-remote-pi.md)を採択。
+  `npm:remote-pi` は host 提供パッケージを `dependencies` で宣言して古い実体を vendor するため retire し、他機体の settings からも `pi remove` で除く。本セッションでの所有者の選択（A）。

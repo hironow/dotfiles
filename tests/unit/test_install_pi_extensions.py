@@ -38,7 +38,7 @@ def test_deploy_keeps_existing_packages_and_places_extension(
     assert json.loads((agent / "settings.json").read_text(encoding="utf-8")) == (
         settings | installer.TELEMETRY_OFF
     )
-    assert install.call_count == 10  # Nine missing declarations + one reconciliation.
+    assert install.call_count == 9  # Eight missing declarations + one reconciliation.
     assert all(call.args[0][0] == "pi" for call in install.call_args_list)
     extension = agent / "extensions/jev-sonnet-fallback.ts"
     assert extension.read_text(encoding="utf-8") == installer.EXTENSION.read_text(
@@ -257,17 +257,24 @@ def test_placement_decides_from_what_is_there(
     assert installer.placement(SOURCE, placed, symlinks=symlinks) == action
 
 
-# The retired web extension (ADR 0058): still configured entries go, personal
-# declarations and other pins stay.
+# The retired web extension and remote-pi (ADR 0058, ADR 0059): still
+# configured entries go, personal declarations and other pins stay.
 
 
-def test_a_still_configured_pi_web_access_is_removed_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("declared", "removed_source"),
+    [
+        ("npm:pi-web-access@0.37.0", "npm:pi-web-access"),
+        ("npm:remote-pi@0.7.0", "npm:remote-pi"),
+    ],
+)
+def test_a_still_configured_retired_package_is_removed_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, declared: str, removed_source: str
 ) -> None:
     agent = tmp_path / "agent"
     agent.mkdir()
     (agent / "settings.json").write_text(
-        json.dumps({"packages": ["npm:pi-web-access@0.37.0", "npm:personal-plugin"]}),
+        json.dumps({"packages": [declared, "npm:personal-plugin"]}),
         encoding="utf-8",
     )
     _no_ollama_bootstrap(monkeypatch)
@@ -279,7 +286,7 @@ def test_a_still_configured_pi_web_access_is_removed_once(
         for call in install.call_args_list
         if call.args[0][:2] == ["pi", "remove"]
     ]
-    assert removed == [["pi", "remove", "npm:pi-web-access"]]
+    assert removed == [["pi", "remove", removed_source]]
 
 
 @pytest.mark.parametrize(
@@ -290,6 +297,12 @@ def test_a_still_configured_pi_web_access_is_removed_once(
         (["npm:pi-web-access"], ["npm:pi-web-access"]),
         (["npm:pi-web-access@0.37.0"], ["npm:pi-web-access"]),
         ([{"source": "npm:pi-web-access@1.0.0"}], ["npm:pi-web-access"]),
+        (["npm:remote-pi"], ["npm:remote-pi"]),
+        (["npm:remote-pi@0.7.0"], ["npm:remote-pi"]),
+        (
+            ["npm:pi-web-access@0.37.0", "npm:remote-pi@0.7.0", "npm:pi-goal-x"],
+            ["npm:pi-web-access", "npm:remote-pi"],
+        ),
     ],
 )
 def test_retirement_matches_bare_names_pins_and_object_forms(
