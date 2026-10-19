@@ -137,8 +137,8 @@ def test_baked_mise_pins_go_and_golangci_lint() -> None:
     mise.toml, so /etc/mise must already pin Go and golangci-lint."""
     tools = _baked_mise_tools()
     go = tools.get("go")
-    assert go == "1.27.1", (
-        "bake go 1.27.1 into /etc/mise so sandbox just check can run go-lint, "
+    assert go == "1.27.2", (
+        "bake go 1.27.2 into /etc/mise so sandbox just check can run go-lint, "
         f"got {go!r}"
     )
     golangci = tools.get("aqua:golangci/golangci-lint")
