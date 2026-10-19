@@ -294,7 +294,7 @@ go = "1.27.1"
 "npm:@anthropic-ai/claude-code" = "2.1.286"
 "npm:@github/copilot" = "1.0.90"
 "npm:@earendil-works/pi-coding-agent" = "0.99.2"
-"github:google-antigravity/antigravity-cli" = { version = "1.2.14", exe = "antigravity" }
+"github:google-antigravity/antigravity-cli" = { version = "1.2.14", rename_exe = "antigravity" }
 "npm:cf" = "1.0.0-beta.10"
 "npm:resend-cli" = "2.23.0"
 "npm:@stripe/cli" = "1.53.0"
