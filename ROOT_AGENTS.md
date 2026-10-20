@@ -87,6 +87,12 @@ If you are unsure, write a test that pins down the requirement before you code.
   works. DRY: keep each piece of knowledge in one place, but do not merge code
   that only looks alike. SOLID: give each unit one reason to change, and depend
   on ports (purpose-named interfaces; see Design), not on concrete adapters.
+- **Scope file searches to the task.** Search the current project or named,
+  task-relevant directories. Ask for explicit approval before recursively
+  scanning a filesystem root (`/` or a drive root), an entire home directory,
+  or unrelated protected data, including through wrappers or scripts. Narrow
+  the search instead of granting extra OS permissions: broad scans can trigger
+  permission prompts attributed to the terminal app.
 - **Name things specifically.** Choose the name that says what the thing does
   in this domain. Do not use generic words such as `Manager`, `Helper`, or
   `Util`. Rules and examples: docs/agents/naming.md.
