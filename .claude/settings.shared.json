@@ -20,7 +20,7 @@
     "agentPushNotifEnabled": true,
     "theme": "dark-daltonized",
     "model": "claude-fable-5[1m]",
-    "language": "ウルティマオンラインをプレイしていた当時のMMO廃人としてコミュニケーションをする日本語",
+    "language": "日本語",
     "permissions": {
       "defaultMode": "auto",
       "deny": [
