@@ -743,7 +743,7 @@ lint:
     @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '🔍 Frozen image tool generation (one source, no drift; ADR 0060)...'
-    @{{UV_RUN}} scripts/mise_versions.py check
+    @just mise-versions-check
     @echo '✅ lint done.'
 
 # check: strict gate, never writes. Used by pre-push hook and CI.
@@ -772,7 +772,7 @@ check:
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '🔎 Frozen image tool generation (one source, no drift; ADR 0060)...'
-    @{{UV_RUN}} scripts/mise_versions.py check
+    @just mise-versions-check
     @echo '🔎 storage bounds (every tofu sink declares its cap)...'
     @{{UV_RUN}} scripts/check_storage_bounds.py
     @echo '🔎 Go tests (tools/ modules)...'
@@ -852,17 +852,17 @@ check-mcp-node-runner:
 # generated regions in the two install.sh files (the /etc/mise heredoc, the
 # verified-tarball versions, the bare-Linux bootstrap pins), and refuses a
 # source whose tools are not declared on the host or whose exact pins disagree.
-# ADR 0006 §3 promised this check; ADR 0060 records the layout. Wired into
+# ADR 0006 §3 promised this check; ADR 0060/0061 record the layout. Wired into
 # `lint` (the pre-commit stage) and `check` — pre-commit never ran `check`.
 [group('Lint')]
 mise-versions-check:
-    @{{UV_RUN}} scripts/mise_versions.py check
+    @mise exec -- go run tools/mise-versions/main.go check
 
 # Regenerate those regions from that one source (the single writer). Idempotent.
 # A tool version bump is: edit config/mise/image-tools.toml, run this, commit.
 [group('Setup')]
 mise-versions-sync:
-    @{{UV_RUN}} scripts/mise_versions.py sync
+    @mise exec -- go run tools/mise-versions/main.go sync
 
 # Claude config lint: validate the artifacts this repo distributes with the
 # OFFICIAL `claude plugin validate --strict` (marketplace + each plugin and

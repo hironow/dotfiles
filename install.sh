@@ -249,7 +249,7 @@ step_just_bootstrap() {
       # ~/.local/bin (user-local, no sudo) and verify it against the release's
       # SHA256SUMS. We deliberately avoid `curl | bash` (repo guardrail forbids
       # piping remote scripts to a shell). The version below is generated from
-      # config/mise/image-tools.toml ([tools].just) by scripts/mise_versions.py:
+      # config/mise/image-tools.toml ([tools].just) by tools/mise-versions/main.go:
       # edit that source and run `just mise-versions-sync`.
       _just_ver="1.59.0"
       case "$(uname -m)" in

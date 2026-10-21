@@ -11,7 +11,7 @@
 # ビルドを別物にする（ADR 0006、Strategy A）。
 #
 # 版は **道具ごとに 1 回だけ** ここに書く。どの経路へ配るかは生成器
-# `scripts/mise_versions.py`（唯一の writer）が持つ:
+# `tools/mise-versions/main.go`（唯一の writer）が持つ:
 #
 #   [tools]            -> 画像の /etc/mise/config.toml（mise install）
 #   [tools].uv / .just -> さらに SHA/attestation 検証つき tarball で

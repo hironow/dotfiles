@@ -85,6 +85,7 @@ and what outlived it.
 | 0058 | [Pi の web 検索を Ollama 経由に寄せ、pi 本体の計測を全機体で止める](./0058-pi-web-search-ollama.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
 | 0059 | [remote-pi を外し、host 提供パッケージを vendor させない](./0059-retire-remote-pi.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
 | 0060 | [画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する](./0060-frozen-image-generation-has-one-source.md) | Accepted | 2026-10-21 | `config/mise/image-tools.toml`、`scripts/mise_versions.py`、`install.sh`、`.devcontainer/features/dotfiles-tools/install.sh`、`justfile`、`tests/unit/test_mise_versions.py` |
+| 0061 | [版本の生成器を Go にする（stdlib のみ、TOML サブセット + Python oracle）](./0061-version-generator-in-go.md) | Proposed; proposes to partly supersede [0060](./0060-frozen-image-generation-has-one-source.md) | 2026-10-21 | `tools/mise-versions/`、`justfile`、`tests/unit/test_mise_versions.py` |
 
 ## Reading order for newcomers
 

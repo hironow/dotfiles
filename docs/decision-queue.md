@@ -8,6 +8,7 @@
 
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0061 | 版本の生成器を Go にする（stdlib のみ、TOML は自作サブセット + Python oracle） | ADR | Pi（owner session） | @hironow | Hiroto N. | @hironow | PR merge 前 | Proposed | 本セッションで実装方針を選択済み。PR で部分置換の裁定を記録予定 | — | 0060 Decision 5 と Decision 2 の writer 指定、および 0052 Decision 1 の本生成器だけの配布例外。所有者は正確な範囲と go run を承認、公開 PR に代理記録予定。全 gate と再レビュー待ち | [adr/0061-version-generator-in-go.md](adr/0061-version-generator-in-go.md) |
 
 ## 決定済みログ
 
