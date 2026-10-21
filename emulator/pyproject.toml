@@ -35,7 +35,7 @@ dev = [
 lint = [
     # the root lint-group pin; `just bump-tool` moves both together.
     "ruff==0.17.1",
-    "ty==0.0.89",
+    "ty==0.0.90",
 ]
 
 # ty (ADR 0044): type-check the emulator tooling; warnings fail `just emu-lint`.
