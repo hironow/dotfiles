@@ -1,7 +1,7 @@
 # mise 道具の版本を SSOT 化する（正本 1 つ + 生成 + drift check）
 
 **Date:** 2026-10-21
-**Status:** Proposed（独立レビュー #1・#2 の指摘を検証して反映済み。再レビュー #3 待ち）
+**Status:** Proposed（独立レビュー #1〜#3: #3 で APPROVE。実装と gate は下記。利用者の裁定待ち）
 **Branch:** `feat/mise-version-ssot`
 **Related:** ADR 0006（mise の pin 戦略。本件はその §3 が約束した build-time check を一般化して実現する）/ ADR 0005（install path）/ ADR 0036・0040（npm backend は bun）/ ADR 0027（bun-only）/ ADR 0044（ruff/ty）/ ADR 0051（決定は queue で追跡）/ 前段: PR #484（playwright-cli）
 **Blocking decisions:** なし（利用者に 2026-10-21 に確認済み: 対象は **mise が持つ道具だけ**、画像が検証つき tarball で入れる **uv / just / sheldon の定数も含める**、正本は **新規 1 ファイル**、生成器は **Python（言語規約の例外として plan と ADR に記録。下の「例外裁定」）**）
@@ -176,11 +176,15 @@ decision-queue の「決裁待ち」行（ADR 0051 の形式: ID / 何を決め�
 - **指摘 4 の残件（ADR の置換対象に `system` backend と Decision 1 の全体 pin が抜けていた）**: ADR 0006 Decision 1 は「`= "latest"` を全部 concrete pin に」、Decision 3 は「`mise use --system` で検証済みバイナリを再利用」。現行の host は用途別方針で、画像は `mise use --system` を使っていない（実測: install.sh に一致 0 件、通常の `mise install` で `/opt/mise` に別コピー）。
   → **採用**。ADR 0060 の「置き換える」に、Decision 1 の全体 pin、Decision 3 の system backend、build-time check の形（生成 + コミット時/CI 検査に置換）を明記した。これらは**本件が導入する変更ではなく既にそうなっている事実**で、ADR 0060 が決定として記録する。
 
+### #3（Codex `codex exec resume --last`、2026-10-21）— APPROVE
+
+前回の残り 2 件（比較先の分離、ADR の置換範囲）の解消を確認。追加の修正必須事項なし（実装・テスト結果の承認は含まない、との留保つき）。
+
 ### 実装と gate（2026-10-21）
 
 - RED → GREEN: `tests/unit/test_mise_versions.py` は sync 前に **3 failed / 9 passed**（drift 依存の 3 件だけ）、sync 後に **12 passed**。既存の install.sh 依存 5 テスト（26 tests）も緑（heredoc の形と定数行を壊していない = F8）。
 - 生成の差分: `UV_VERSION` 0.12.21 → 0.13.1、`JUST_VERSION` 1.58.0 → 1.59.0、`_just_ver` 1.58.0 → 1.59.0。heredoc は道具の集合と値が同一（コメントが正本へ移り、生成ヘッダが付く）。
-- `just lint`（pre-commit が呼ぶ実体）と `just check` / `just ci` が緑。
+- `just lint`（pre-commit が呼ぶ実体）と `just ci` が緑（最終: `just ci` EXIT 0、unit 1726 passed / 33 skipped）。実装差分の独立レビューは #3 で APPROVE（それまでの指摘 4 件は全件採用、下記）。
 - **自分の誤り 2 件（記録）**: (a) テストの `tmp_path / <絶対パス>` は pathlib の仕様で絶対パスのままになり、負例テストが**実ファイル（config/mise/config.toml・install.sh 2 本・正本）を書き換えた**（`git checkout` と正本の手修正で復旧）。原因の class を潰すため、テスト側に「相対パスだけ」「checkout の外へ出ない」「`str.replace` が空振りしたら失敗」の 3 assert を入れた（`tree()` / `mutate()`）。(b) 前 PR（#484）で「各 commit は `just check` 通過」と報告したのは誤り — pre-commit が呼ぶのは `just lint`。F9 とレビュー #2 に訂正済み。
 - **差分レビュー #1（Codex）＝ REVISE（P2 ×2）→ 全件採用**（再現確認つき）:
     - 正本側に `latest` を書いても整合検査を通っていた（host が pin のまま画像だけ最新を取得できる）→ 正本の値は具体版のみ許可、host が pin なら厳密一致を要求。負例（quint を `latest`）を追加。
