@@ -8,6 +8,7 @@
 
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0060 | 画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する | 設計 | Pi（owner session） | @hironow | Hiroto N. | @hironow | この PR の裁定 | 提案中 | [本セッションの選択](plan/mise-version-ssot.md)（対象・手段・正本・生成器の言語） | - | 対象は mise が持つ道具だけ。生成器は Python の例外裁定。計画は独立レビュー #1〜#3 を経て APPROVE | [adr/0060-frozen-image-generation-has-one-source.md](adr/0060-frozen-image-generation-has-one-source.md) |
 
 ## 決定済みログ
 
