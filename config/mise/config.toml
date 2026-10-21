@@ -43,7 +43,7 @@ opentofu = "1.13.1"
 # lint-group pin, never these.
 uv = "latest"
 ruff = "0.17.1"
-ty = "0.0.89"
+ty = "0.0.90"
 # golangci-lint v2: the Go quality gate (`just go-lint` / `just check`).
 # Aqua backend. Bare `mise exec -- golangci-lint` can still resolve Go's
 # GOBIN copy, so justfile recipes pin `aqua:golangci/golangci-lint`.
@@ -184,14 +184,13 @@ rtk = "latest"
 
 # Cloud-service dev CLIs (npm-distributed). Declared "latest" like the
 # AI CLIs above — tracks the true newest release. Concrete pins for the
-# devcontainer image live in
-# .devcontainer/features/dotfiles-tools/install.sh. Explicit `npm:`
+# devcontainer image live in config/mise/image-tools.toml. Explicit `npm:`
 # backend avoids registry-alias ambiguity.
 #   cf -> Cloudflare CLI, resend-cli -> Resend, @stripe/cli -> Stripe,
 #   @dataform/cli -> Dataform (BigQuery ELT)
-# cf's npm dist-tag "latest" is 1.0.0-beta.10, but mise points its `latest` link at the
-# newest stable (0.15.0), so "latest" never activates the beta. Pin it until 1.0.0.
-"npm:cf" = "1.0.0-beta.18"
+# Keep cf on an explicit beta pin until 1.0.0. When bumping it, also update
+# config/mise/image-tools.toml and run `just mise-versions-sync` for host/image parity.
+"npm:cf" = "1.0.0-beta.20"
 "npm:resend-cli" = "latest"
 "npm:@stripe/cli" = "latest"
 "npm:@dataform/cli" = "latest"
