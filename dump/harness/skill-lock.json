@@ -196,7 +196,7 @@
       "lock_key": "decision-record-governance",
       "source": "hironow/skills",
       "skill_path": "decision-record-governance/SKILL.md",
-      "skill_folder_hash": "c86593c30a509b93ce26c20a3271d9ac6f3a3190",
+      "skill_folder_hash": "0b220561a737a807b03b67e4353161c91047948d",
       "resolved_by": "installed"
     },
     {
@@ -484,7 +484,7 @@
       "lock_key": "google-cloud-networking-observability",
       "source": "google/skills",
       "skill_path": "skills/cloud/google-cloud-networking-observability/SKILL.md",
-      "skill_folder_hash": "512d03e5a8eb8ce27a5619788bd8219b35ff7d92",
+      "skill_folder_hash": "6b2c3f39ce8fe0686d1423081e8fe2050e536b14",
       "resolved_by": "installed"
     },
     {
@@ -494,15 +494,6 @@
       "source": "google/skills",
       "skill_path": "skills/cloud/google-cloud-recipe-auth/SKILL.md",
       "skill_folder_hash": "a42449bc4dc3d411321e9aa63b8ea12c1e5eaa89",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "google-cloud-recipe-networking-observability",
-      "upstream_name": "google-cloud-networking-observability",
-      "lock_key": "google-cloud-recipe-networking-observability",
-      "source": "google/skills",
-      "skill_path": "skills/cloud/google-cloud-networking-observability/SKILL.md",
-      "skill_folder_hash": "60a7d611ef06a0700bb33eef1bf45c3b3430f4e1",
       "resolved_by": "installed"
     },
     {
