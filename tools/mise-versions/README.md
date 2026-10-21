@@ -45,8 +45,8 @@ unchanged; multi-file atomicity on disk write failures is not guaranteed.
 
 ## Why Go, and why a hand-rolled TOML reader
 
-ADR 0060 recorded the Python exception; ADR 0061 proposes replacing it and
-exempting this repo-local generator from binary distribution. Go has no
+ADR 0060 recorded the Python exception; ADR 0061 replaces it and exempts this
+repo-local generator from binary distribution. Go has no
 standard-library TOML reader and this repo asks for the standard library first,
 so only the subset these two files use is parsed — comments, table headers,
 bare and quoted keys, basic strings with escapes, inline tables and string

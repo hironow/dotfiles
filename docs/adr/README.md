@@ -76,7 +76,7 @@ and what outlived it.
 | 0049 | [headroom is mandatory base tooling: MCP in every home, the j-cc proxy as its canary, telemetry off](./0049-headroom-mandatory-base-tooling.md) | Accepted | 2026-10-01 | `config/mise/config.toml`, `scripts/headroom_mcp.py`, `scripts/jev_headroom.py`, `scripts/ai_tools_check.py`, `scripts/harden_env.sh`, `.claude/settings.shared.json`, `ROOT_AGENTS_docs_agents_headroom.md` |
 | 0050 | [Pin Go sources to LF via `.gitattributes` (go-lint on Windows)](./0050-pin-go-sources-to-lf.md) | Accepted | 2026-10-02 | `.gitattributes`, `tests/unit/test_gitattributes_eol.py` |
 | 0051 | [新しい決定記録をdecision queueで追跡する](./0051-adopt-decision-queue-for-new-records.md) | Accepted (PR #461) | 2026-10-06 | `docs/decision-queue.md`、今後のADR/PDR |
-| 0052 | [全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language）](./0052-renew-global-agent-instructions.md) | Accepted (PR #463) | 2026-10-09 | `ROOT_AGENTS.md`、`ROOT_CLAUDE.md`、`ROOT_AGENTS_docs_agents_*.md` |
+| 0052 | [全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language）](./0052-renew-global-agent-instructions.md) | Accepted (PR #463); limited distribution exception in [0061](./0061-version-generator-in-go.md) | 2026-10-09 | `ROOT_AGENTS.md`、`ROOT_CLAUDE.md`、`ROOT_AGENTS_docs_agents_*.md` |
 | 0053 | [Flatt のパッケージミラーをやめ、公式の取得元に戻す](./0053-stop-using-flatt-mirrors.md) | Accepted (PR #463); supersedes [0028](./0028-flatt-pypi-mirror-default-index.md) | 2026-10-11 | `pyproject.toml` と各 `uv.lock`、`scripts/harden_env.sh`、`.zshrc`、`justfile` |
 | 0054 | [portless を just の recipe で包まず、直接使う](./0054-run-portless-directly.md) | Accepted (PR #468); supersedes part of [0015](./0015-adopt-portless-for-local-dev-urls.md) | 2026-10-11 | `justfile`、`docs/portless-urls.md` |
 | 0055 | [emulate は npx ではなく bunx で動かす](./0055-run-emulate-with-bunx.md) | Accepted (PR #470); supersedes part of [0016](./0016-integrate-emulate-api-emulators-via-npx.md) | 2026-10-12 | `justfile`、`tests/unit/test_justfile_bun_only.py` |
@@ -84,8 +84,8 @@ and what outlived it.
 | 0057 | [共通セットの plugin は、home ごとの設定なしで動くものに限る](./0057-shared-plugins-need-no-per-home-settings.md) | Accepted (PR #476); supersedes part of [0056](./0056-common-claude-plugin-set.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
 | 0058 | [Pi の web 検索を Ollama 経由に寄せ、pi 本体の計測を全機体で止める](./0058-pi-web-search-ollama.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
 | 0059 | [remote-pi を外し、host 提供パッケージを vendor させない](./0059-retire-remote-pi.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
-| 0060 | [画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する](./0060-frozen-image-generation-has-one-source.md) | Accepted | 2026-10-21 | `config/mise/image-tools.toml`、`scripts/mise_versions.py`、`install.sh`、`.devcontainer/features/dotfiles-tools/install.sh`、`justfile`、`tests/unit/test_mise_versions.py` |
-| 0061 | [版本の生成器を Go にする（stdlib のみ、TOML サブセット + Python oracle）](./0061-version-generator-in-go.md) | Proposed; proposes to partly supersede [0060](./0060-frozen-image-generation-has-one-source.md) | 2026-10-21 | `tools/mise-versions/`、`justfile`、`tests/unit/test_mise_versions.py` |
+| 0060 | [画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する](./0060-frozen-image-generation-has-one-source.md) | Accepted; partly superseded by [0061](./0061-version-generator-in-go.md) | 2026-10-21 | `config/mise/image-tools.toml`、`scripts/mise_versions.py`、`install.sh`、`.devcontainer/features/dotfiles-tools/install.sh`、`justfile`、`tests/unit/test_mise_versions.py` |
+| 0061 | [版本の生成器を Go にする（stdlib のみ、TOML サブセット + Python oracle）](./0061-version-generator-in-go.md) | Accepted (PR #486); partly supersedes [0060](./0060-frozen-image-generation-has-one-source.md) and adds a limited exception to [0052](./0052-renew-global-agent-instructions.md) | 2026-10-21 | `tools/mise-versions/`、`justfile`、`tests/unit/test_mise_versions.py` |
 
 ## Reading order for newcomers
 
@@ -134,3 +134,5 @@ and what outlived it.
   `npm:remote-pi` は host 提供パッケージを `dependencies` で宣言して古い実体を vendor するため retire し、他機体の settings からも `pi remove` で除く。本セッションでの所有者の選択（A）。
 - 2026-10-21: [ADR-0060](./0060-frozen-image-generation-has-one-source.md)を採択（[ADR-0006](./0006-mise-version-pinning.md) の一部を置換）。
   画像の凍結世代（bake する mise 道具、検証つき tarball、bare Linux の bootstrap）を `config/mise/image-tools.toml` 1 か所に集め、`scripts/mise_versions.py` が `install.sh` の版本領域を生成し、`just lint` / `just check` が drift を落とす。本セッションでの所有者の裁定（[PR #485](https://github.com/hironow/dotfiles/pull/485)）。
+- 2026-10-21: [ADR-0060](./0060-frozen-image-generation-has-one-source.md) の Python/writer 指定と [ADR-0052](./0052-renew-global-agent-instructions.md) の本生成器の配布要件 → [ADR-0061](./0061-version-generator-in-go.md)。
+  Go＋自作 TOML サブセット＋Python oracle に変更し、repo 内の生成器だけ `go run` の限定例外とする。他の決定は維持。[PR #486 の所有者裁定](https://github.com/hironow/dotfiles/pull/486#issuecomment-6314535355)。

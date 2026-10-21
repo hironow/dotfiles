@@ -1,18 +1,18 @@
 # 0061. 版本の生成器を Go にする（stdlib のみ、TOML サブセット + Python oracle）
 
 **Date:** 2026-10-21
-**Status:** Proposed
+**Status:** Accepted
 **ID:** ADR-0061
 **Title:** 版本の生成器を Go にする（stdlib のみ、TOML サブセット + Python oracle）
-**Decided-date:** —
+**Decided-date:** 2026-10-21
 **Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Pi（owner session）
 **Author-contact:** @hironow
-**Supersedes:** [ADR-0060](0060-frozen-image-generation-has-one-source.md) Decision 5、および Decision 2 の writer 実装・パス指定のみ。[ADR-0052](0052-renew-global-agent-instructions.md) Decision 1 のバイナリ配布要件について、本生成器だけ限定例外を提案
+**Supersedes:** [ADR-0060](0060-frozen-image-generation-has-one-source.md) Decision 5、および Decision 2 の writer 実装・パス指定のみ。[ADR-0052](0052-renew-global-agent-instructions.md) Decision 1 のバイナリ配布要件について、本生成器だけ限定例外とする
 **Superseded-by:** none
 **Related:** [ADR-0006](0006-mise-version-pinning.md)（画像の版管理）、[ADR-0025](0025-justfile-mise-tool-wrap.md)（mise 経由の実行）、[ADR-0044](0044-python-toolchain-uv-ruff-ty.md)（既存 Python テスト）、[ADR-0050](0050-pin-go-sources-to-lf.md)（Go ソースの改行）、[ADR-0051](0051-adopt-decision-queue-for-new-records.md)（公開 PR の裁定）、[ADR-0052](0052-renew-global-agent-instructions.md)（Go 優先）、[ADR-0060](0060-frozen-image-generation-has-one-source.md)（正本と生成領域）、[計画](../plan/mise-versions-go.md)
-**Consultation-trace:** 所有者は本セッションで Go・標準ライブラリのみ・自作 TOML サブセット・Python の独立検証を選択。追加の整合相談で、0060 の正確な置換範囲と本生成器だけの `go run` 限定例外を承認し、今回の PR への代理記録を許可した。公開 PR の記録 URL を追記してから確定する
+**Consultation-trace:** [PR #486 の所有者裁定（明示許可による代理記録）](https://github.com/hironow/dotfiles/pull/486#issuecomment-6314535355)。0060 の正確な置換範囲、0052 の本生成器だけの `go run` 限定例外、Go＋自作 TOML＋Python の独立検証を承認
 
 ## やさしい説明
 
@@ -38,9 +38,9 @@ Go の標準機能には、この設定形式（TOML）の読み取り機能が�
 
 ## Decision
 
-（Proposed。確定後にAcceptedのMUST/SHALL、Rejectedの理由、またはDeferredの再検討条件を記述。）
+以下の5項を必須事項（MUST）として採択する。
 
-### 提案内容
+### 採択内容
 
 1. 生成器を `tools/mise-versions/`（Go、標準ライブラリのみ）とする。`sync` / `check` と `--root` を維持する。既定 root はソースファイルの位置から解決し、cwd（起動時のディレクトリ）に依存させない。
 2. 必要な TOML サブセットだけを読む。対象はコメント、テーブルヘッダ（表の見出し）、引用符なし・ありのキー、basic string（二重引用符の文字列）とエスケープ（特殊文字の表記）、インラインテーブル（行内の表）、文字列配列。対象内の不正構文と未知の構文を、行番号つきで拒否する。host は `[tools]` の範囲を検査する。
@@ -82,7 +82,7 @@ Go の標準機能には、この設定形式（TOML）の読み取り機能が�
 - 旧: ADR-0060 Decision 5 の Python 指定、および Decision 2 の `scripts/mise_versions.py` 指定。
 - 新: Go の `tools/mise-versions/` に変更する。唯一 writer、正本、生成領域、整合検査、凍結版の方針は反転しない。
 - ADR-0052 Decision 1 の配布要件は本生成器だけ例外にする。他のツールには引き続き適用する。
-- 元記録の決裁者・作者の連絡先はいずれも `@hironow`。所有者は本セッションで上記の正確な範囲と限定例外を選択し、今回の PR に代理記録することを許可した。公開 URL の記録前は Proposed を維持する。
+- 元記録の決裁者・作者の連絡先はいずれも `@hironow`。所有者は本セッションで上記の正確な範囲と限定例外を選択し、今回の PR に代理記録することを許可した。[公開裁定記録](https://github.com/hironow/dotfiles/pull/486#issuecomment-6314535355)を残して確定した。
 
 ## 他の DR との照合
 
@@ -91,7 +91,7 @@ Go の標準機能には、この設定形式（TOML）の読み取り機能が�
 親も 0060 Decision 2/5 と 0052 Decision 1 の原文を確認し、所有者に追加相談した。
 所有者は正確な置換範囲と本生成器だけの例外を承認した。
 その他の Decision の衝突は検出していない。
-確定前に公開 PR の裁定 URL と、修正後の再確認結果を追記する。
+Codex 最終再レビューは限定範囲との整合を確認して APPROVE。[公開裁定記録](https://github.com/hironow/dotfiles/pull/486#issuecomment-6314535355)を確認し、queue と索引・旧 ADR の Status 行を更新した。
 
 ## 検証
 
@@ -102,11 +102,8 @@ Go の標準機能には、この設定形式（TOML）の読み取り機能が�
 - 初回 `just ci` は Python テスト整形で EXIT 1。コード固定後の `just ci`（`bb427c485`）は EXIT 0、1743 passed / 33 skipped。新 Go module の lint/test と生成 drift 検査も含む。Docker sandbox の `just test` は実行中。
 - 速度の単発計測: Python 版 2.07s / Go 版 2.12s（`mise exec` 込み、ビルドキャッシュあり）。一般的な性能同等性を保証する計測ではない。
 
-## 決定（記入待ち）
+## 決定（2026-10-21）
 
-決定者: Hiroto N.（@hironow）。決定日: —。
-
-- [ ] 採択: 提案を確定し、公開裁定 URL を記録する。0060 と 0052 の Status 行だけに限定置換を記す。queue を決定済みへ移し、索引と変更ログを更新する。
-- [ ] 差し戻し: 既存 ADR を維持し、指摘に応じて実装・提案を修正する。
-- [ ] 却下: 既存実装を維持し、提案を Rejected にして理由と裁定 URL を記録する。
-- [ ] 保留: 再検討条件を記録し、提案を Deferred にして裁定 URL を残す。
+- **Accepted**。決定者: Hiroto N.（@hironow）。[公開 PR の裁定](https://github.com/hironow/dotfiles/pull/486#issuecomment-6314535355)は本人の明示許可に基づく代理記録。
+- 整合相談で検出した関係誤認・配布要件との差異を、0060 Decision 2 の writer 指定と Decision 5 の部分置換、および 0052 Decision 1 の本生成器だけの例外として裁定した。その他の決定は維持する。
+- 後続: PR の全 CI と Docker sandbox を確認後に squash merge。

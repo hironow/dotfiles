@@ -1,7 +1,7 @@
 # 0052. 全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language）
 
 **Date:** 2026-10-09
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0061](0061-version-generator-in-go.md) (Decision 1 の配布要件は repo 内の mise-versions だけ go run の限定例外。他のツール・決定は維持)
 **ID:** ADR-0052
 **Title:** 全エージェント共通の指示を刷新する（Go優先、fake/、core/shell設計、Plain Language）
 **Decided-date:** 2026-10-11

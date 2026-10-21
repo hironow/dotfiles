@@ -1,7 +1,7 @@
 # 版本の生成器を Python から Go へ移植する（stdlib のみ + Python を oracle に）
 
 **Date:** 2026-10-21
-**Status:** Implementing（独立計画レビュー #2 APPROVE。全 gate と実装レビュー中）
+**Status:** PR #486（コード固定後の全 gate 成功・実装最終レビュー APPROVE。Docker sandbox と PR CI 待ち）
 **Branch:** `refactor/mise-versions-go`
 **Related:** [ADR-0060](../adr/0060-frozen-image-generation-has-one-source.md)（Decision 5 と Decision 2 の writer 指定を置換 → ADR-0061）、[ADR-0052](../adr/0052-renew-global-agent-instructions.md)（本生成器だけ go run の配布例外）/ `ROOT_AGENTS_docs_agents_go-tooling.md`（stdlib 優先・サードパーティ module には platform reason）/ `ROOT_AGENTS_docs_agents_dependency-policy.md` / 前段: PR #485（版本の SSOT 化）
 **Blocking decisions:** なし（利用者に 2026-10-21 に確認済み: **Go は stdlib のみ**、TOML は**必要な部分だけの自作パーサ**、正しさは**残す Python テストを oracle（`tomllib`）にして独立検証**）
@@ -153,3 +153,4 @@ ADR 再採点は 17/20（1/2/2/2/2/2/1/2/2/1）。不足の日本語説明を追
 - 新 ADR・plan・queue・索引の相対 Markdown リンクを親が実在確認し、0025/0050 の誤パスを修正した。
 - `just test`（Docker sandbox）は実行中。merge 前に結果を確認する。
 - ADR の filing 再評価（親）: R1〜R10 = 1/2/2/2/2/2/2/2/2/1（18/20）。公開裁定 URL 記録前なので確定しない。
+- 所有者の許可に基づく [PR #486 の代理裁定記録](https://github.com/hironow/dotfiles/pull/486#issuecomment-6314535355)を API でも本文・URL 照合した。0061 を Accepted にし、0060/0052 は Status 行だけ更新、queue と索引を同期した。採択時 rubric（親）: R1〜R10 はすべて2（20/20）。根拠は公開裁定、独立レビュー、相互参照と不変性検査。

@@ -1,7 +1,7 @@
 # 0060. 画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する
 
 **Date:** 2026-10-21
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0061](0061-version-generator-in-go.md) (Decision 5 と Decision 2 の writer 実装・パス指定のみ。唯一 writer、正本、生成領域、検査、凍結版は維持)
 **ID:** ADR-0060
 **Title:** 画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する
 **Decided-date:** 2026-10-21
