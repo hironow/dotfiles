@@ -25,7 +25,8 @@ OS ごとに違うのは、導入の経路だけである。
    |  Single source of truth (this repo) |
    |                                     |
    |  - install.sh        (OS dispatch)  |
-   |  - config/mise/config.toml (pins)   |
+   |  - config/mise/config.toml (host)   |
+   |  - config/mise/image-tools.toml     |
    |  - .devcontainer/    (image SoT)    |
    |  - dump/<host>/      (brew/gcloud)  |
    +-------------------------------------+
@@ -36,7 +37,8 @@ OS ごとに違うのは、導入の経路だけである。
 - Mac host: 普段使いの機体（日常の作業機）
 - Dev container: CI と IDE が共有するサンドボックス（CI とエディタの実行環境）
 - install.sh (OS dispatch): `uname` で mac / linux / windows を振り分ける（OS 判定。ADR 0005）
-- config/mise/config.toml (pins): just、uv、prek、vp、markdownlint-cli2、node と 5 つの AI CLI（codex、antigravity、claude、copilot、pi）のバージョンを 3 OS で揃える（バージョン固定。ADR 0006）
+- config/mise/config.toml (host): just、uv、prek、vp、markdownlint-cli2、node と 5 つの AI CLI（codex、antigravity、claude、copilot、pi）のバージョンを 3 OS で揃える（バージョン固定。ADR 0006）
+- config/mise/image-tools.toml (image generation): devcontainer が bake する `/etc/mise/config.toml`、検証つき tarball の版、mise の無い Linux 機体の bootstrap の版を 1 か所に持つ。`install.sh` の該当領域はここから生成され、`just lint` / `just check` が食い違いを落とす（ADR 0060）
 
 関連文書:
 
