@@ -328,6 +328,43 @@ EOF_WSL
     ;;
 esac
 
+# CA health and incidents: native Go binary, with source/policy freshness checks.
+# Never compile/download as a side effect of diagnosing a broken environment.
+_ca_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+_ca_bin="${_ca_root}/output/ca-doctor/ca-doctor"
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) _ca_bin="${_ca_bin}.exe" ;; esac
+if [ -x "$_ca_bin" ]; then
+  _ca_rc=0
+  _ca_args=()
+  if [ "${CA_DOCTOR_OFFLINE:-0}" = 1 ]; then _ca_args+=(--offline); fi
+  _ca_out="$("$_ca_bin" --source "${_ca_root}/tools/ca-doctor" "${_ca_args[@]}" 2>&1)" || _ca_rc=$?
+  _ca_ok=0; _ca_warn=0; _ca_err=0; _ca_bad=0
+  while IFS= read -r line; do
+    case "$line" in
+      'OK   '*) _ca_ok=$((_ca_ok+1)) ;;
+      'WARN '*) _ca_warn=$((_ca_warn+1)) ;;
+      'ERR  '*) _ca_err=$((_ca_err+1)) ;;
+      *) _ca_bad=1 ;;
+    esac
+  done <<<"$_ca_out"
+  # Check exit status AND findings before accepting even one OK line. A crash,
+  # empty result or inconsistent protocol must not launder a partial success.
+  _ca_valid=0
+  if [ "$_ca_bad" -eq 0 ]; then
+    if [ "$_ca_rc" -eq 0 ] && [ "$_ca_ok" -gt 0 ] && [ "$_ca_warn" -eq 0 ] && [ "$_ca_err" -eq 0 ]; then _ca_valid=1; fi
+    if [ "$_ca_rc" -eq 1 ] && [ "$_ca_warn" -gt 0 ] && [ "$_ca_err" -eq 0 ]; then _ca_valid=1; fi
+    if [ "$_ca_rc" -eq 2 ] && [ "$_ca_err" -gt 0 ]; then _ca_valid=1; fi
+  fi
+  if [ "$_ca_valid" -eq 1 ]; then
+    ok=$((ok+_ca_ok)); warn=$((warn+_ca_warn)); err=$((err+_ca_err))
+    printf '%s\n' "$_ca_out"
+  else
+    log_warn 'ca-check' "checker did not finish consistently (exit $_ca_rc); CA health/incident remediation unverified"
+  fi
+else
+  log_warn 'ca-build' 'CA check unavailable -- run: just ca-doctor-build; then just doctor (docs/runbook/ca-doctor.md)'
+fi
+
 # AI tooling: rtk, headroom, their telemetry and wiring (Claude / Pi / Codex
 # hooks and extensions, headroom's proxy). The rules live in a tested script;
 # its OK/WARN lines count like the rest of doctor's.
