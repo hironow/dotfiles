@@ -31,7 +31,7 @@ and what outlived it.
 | 0003 | [Pin GitHub Actions to commit SHAs and add Dependabot updates](./0003-actions-pin-sha.md)            | Accepted (PR #48)                            | 2026-05-02 | `.github/workflows/`             |
 | 0004 | [Workspace VMs reach the Coder control plane over the tailnet (B-plan)](./0004-workspace-tailnet-routing.md) | Accepted (PR #47); superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-02 | removed: `exe/coder/templates/`, `exe/tailscale/acl.hujson` (the ACL now lives in `tofu/tailnet/`) |
 | 0005 | [Rationalise install paths across Mac host and Coder workspace (Linux)](./0005-install-path-rationalization.md) | Accepted (the Linux consumer is now the dev container) | 2026-05-02 | `install.sh`, `dump/<host>/Brewfile` |
-| 0006 | [mise tool version pinning strategy](./0006-mise-version-pinning.md) | Accepted | 2026-05-02 | `config/mise/config.toml` |
+| 0006 | [mise tool version pinning strategy](./0006-mise-version-pinning.md) | Accepted; partly superseded by [0060](./0060-frozen-image-generation-has-one-source.md) | 2026-05-02 | `config/mise/config.toml` |
 | 0007 | [Coder server install hardening on the control-plane VM](./0007-coder-server-install-hardening.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-02 | removed: `tofu/exe/coder.tf`, `tofu/exe/variables.tf` |
 | 0008 | [Event-driven Coder workspace runner (GHA-style without GHA)](./0008-event-driven-workspace-runner.md) | Superseded by [0009](./0009-retract-cron-trigger-from-adr-0008.md) (partial — trigger source 2 retracted), then in full by [0045](./0045-coder-control-plane-retired.md) | 2026-05-03 | removed: `exe/coder/templates/dotfiles-job/`, `exe/scripts/` |
 | 0009 | [Retract the systemd-timer cron trigger from ADR 0008](./0009-retract-cron-trigger-from-adr-0008.md) | Accepted (2026-05-04 — cron infra reverted in PR #76, never returned); superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-03 | retracted a cron / systemd timer that was never added; the stack it would have run on is removed |
@@ -84,6 +84,7 @@ and what outlived it.
 | 0057 | [共通セットの plugin は、home ごとの設定なしで動くものに限る](./0057-shared-plugins-need-no-per-home-settings.md) | Accepted (PR #476); supersedes part of [0056](./0056-common-claude-plugin-set.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
 | 0058 | [Pi の web 検索を Ollama 経由に寄せ、pi 本体の計測を全機体で止める](./0058-pi-web-search-ollama.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
 | 0059 | [remote-pi を外し、host 提供パッケージを vendor させない](./0059-retire-remote-pi.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
+| 0060 | [画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する](./0060-frozen-image-generation-has-one-source.md) | Accepted | 2026-10-21 | `config/mise/image-tools.toml`、`scripts/mise_versions.py`、`install.sh`、`.devcontainer/features/dotfiles-tools/install.sh`、`justfile`、`tests/unit/test_mise_versions.py` |
 
 ## Reading order for newcomers
 
@@ -130,3 +131,5 @@ and what outlived it.
   Pi の web 検索は `npm:@ollama/pi-web-search` に一本化し、pi 本体の計測（install report と opt-in analytics）は全機体で止め、Ollama がなければ公式 download 手順で自動導入する。本セッションでの所有者の直接指示。
 - 2026-10-19: [ADR-0059](./0059-retire-remote-pi.md)を採択。
   `npm:remote-pi` は host 提供パッケージを `dependencies` で宣言して古い実体を vendor するため retire し、他機体の settings からも `pi remove` で除く。本セッションでの所有者の選択（A）。
+- 2026-10-21: [ADR-0060](./0060-frozen-image-generation-has-one-source.md)を採択（[ADR-0006](./0006-mise-version-pinning.md) の一部を置換）。
+  画像の凍結世代（bake する mise 道具、検証つき tarball、bare Linux の bootstrap）を `config/mise/image-tools.toml` 1 か所に集め、`scripts/mise_versions.py` が `install.sh` の版本領域を生成し、`just lint` / `just check` が drift を落とす。本セッションでの所有者の裁定（[PR #485](https://github.com/hironow/dotfiles/pull/485)）。

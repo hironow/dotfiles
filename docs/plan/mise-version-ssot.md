@@ -1,7 +1,7 @@
 # mise 道具の版本を SSOT 化する（正本 1 つ + 生成 + drift check）
 
 **Date:** 2026-10-21
-**Status:** Proposed（独立レビュー #1〜#3: #3 で APPROVE。実装と gate は下記。利用者の裁定待ち）
+**Status:** Accepted（2026-10-21、所有者の裁定。PR #485）/ 実装済み
 **Branch:** `feat/mise-version-ssot`
 **Related:** ADR 0006（mise の pin 戦略。本件はその §3 が約束した build-time check を一般化して実現する）/ ADR 0005（install path）/ ADR 0036・0040（npm backend は bun）/ ADR 0027（bun-only）/ ADR 0044（ruff/ty）/ ADR 0051（決定は queue で追跡）/ 前段: PR #484（playwright-cli）
 **Blocking decisions:** なし（利用者に 2026-10-21 に確認済み: 対象は **mise が持つ道具だけ**、画像が検証つき tarball で入れる **uv / just / sheldon の定数も含める**、正本は **新規 1 ファイル**、生成器は **Python（言語規約の例外として plan と ADR に記録。下の「例外裁定」）**）
@@ -108,7 +108,7 @@ mise = "2026.9.0"    # just は [tools].just をそのまま使う
 - root `install.sh` / feature `install.sh` の定数が正本の値と一致する。
 - 既存 5 テスト（F8）が読む形（heredoc が `tomllib` で読める、定数行が論理行として残る）が保たれている。
 
-### 7. `docs/adr/0060-*.md`（Proposed）と `docs/decision-queue.md` の決裁待ち行、ADR 0006 の Status
+### 7. `docs/adr/0060-*.md`（裁定後 Accepted）と `docs/decision-queue.md`（裁定後は決定済みログ）、ADR 0006 の Status
 
 ADR 0060 に、**維持する事項**と**置き換える事項**を明示する（独立レビュー #1 の指摘 4）。
 
@@ -147,6 +147,7 @@ decision-queue の「決裁待ち」行（ADR 0051 の形式: ID / 何を決め�
 - apt で入れる mise 本体（apt repo の現行版。固定は apt の pinning の話で、本件の正本は「mise が入れる道具」の版）。scoop / brew / GitHub Actions / plugin / skill の ref（lifecycle が違い、`dump` や Dependabot が動かす）。
 - `dump/macbook/Brewfile` と `dump/harness/*.json`（実機の記録・別の lock 機構）。
 - （前 PR から繰り越し）global gitignore への `.playwright-cli/` 追加。
+- **生成器の Go 書き直し** — 所有者の希望（2026-10-21。「それは先の話」）。今回は repo のグルーとして Python + 例外で入れた（ADR 0060 の Neutral にも記録）。書き直すときは `scripts/mise_versions.py` を Go のツールに置き換え、`just lint` / `just check` の配線とテスト（現在は pytest）を移す。
 
 ## リスク / 未検証
 
@@ -155,6 +156,10 @@ decision-queue の「決裁待ち」行（ADR 0051 の形式: ID / 何を決め�
 - 生成物であることを忘れて人が heredoc を直接編集すると、次の `just check` が落ちる（意図した挙動。block 内のコメントと plan に明記）。
 - sheldon の SHA256 はオフラインで生成できないので、sheldon を上げるときは正本 1 行 + install.sh 2 行の更新になる（「版は 1 か所、ハッシュは取得の隣」という切り分け。正本のコメントに手順を書く）。
 - Windows native / 他機体は未検証（本件は repo 内のファイルと生成器の話で、実行時に効くのは install.sh 経由のみ）。
+
+## 裁定（2026-10-21）
+
+所有者が本セッションで Accepted（「okです」）。Go への書き直しは将来の作業として「対象外」に記録した。ADR-0060 を Accepted に、decision-queue の行を決定済みログへ移し、ADR-0006 の Status 行だけを部分置換に更新した。
 
 ## レビュー
 

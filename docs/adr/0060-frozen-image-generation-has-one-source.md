@@ -1,18 +1,18 @@
 # 0060. 画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する
 
 **Date:** 2026-10-21
-**Status:** Proposed
+**Status:** Accepted
 **ID:** ADR-0060
 **Title:** 画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する
-**Decided-date:** （裁定待ち）
+**Decided-date:** 2026-10-21
 **Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Pi（owner session）
 **Author-contact:** @hironow
-**Supersedes:** none（[ADR-0006](0006-mise-version-pinning.md) の一部を置き換える予定。裁定後に 0006 の Status 行だけを編集する）
+**Supersedes:** [ADR-0006](0006-mise-version-pinning.md) の一部（Decision 1 の「全 concrete pin」、Decision 3 の `mise use --system` と build-time check の形）。0006 の Status 行に後継を記した
 **Superseded-by:** none
 **Related:** [ADR-0006](0006-mise-version-pinning.md)、[ADR-0005](0005-install-path-rationalization.md)、[ADR-0027](0027-bun-only-retire-per-repo-pnpm-carveout.md)、[ADR-0036](0036-mise-npm-backend-bun.md)、[ADR-0040](0040-npm-args-inert-under-bun.md)、[ADR-0051](0051-adopt-decision-queue-for-new-records.md)
-**Consultation-trace:** 本セッションでの所有者の選択（対象 = mise が持つ道具だけ / 画像の検証つき tarball の定数も含める / 正本は新規 1 ファイル / 生成器は Python の例外）、計画は `docs/plan/mise-version-ssot.md`（独立レビュー #1〜#3 で APPROVE）
+**Consultation-trace:** 本セッションでの所有者の選択（対象 = mise が持つ道具だけ / 画像の検証つき tarball の定数も含める / 正本は新規 1 ファイル / 生成器は Python の例外）→ 2026-10-21 に所有者が本セッションで裁定（Accepted）。計画は `docs/plan/mise-version-ssot.md`（独立レビュー #1〜#3 で APPROVE）。裁定の PR: [#485](https://github.com/hironow/dotfiles/pull/485)
 
 ## やさしい説明
 
@@ -61,6 +61,7 @@
 
 - `config/mise/config.toml` は今までどおり host の唯一の宣言で、手書きの理由コメントもそのまま。
 - ruff / ty は対象外（3 か所にあるが `just bump-tool` が一括で動かす既存機構がある）。
+- **所有者は、将来この生成器を Go で書き直したいという希望を持っている**（2026-10-21。今回は repo のグルーとして Python + 例外で入れ、`docs/plan/mise-version-ssot.md` の「対象外」に follow-up として記録した）
 
 ## 維持する事項 / 置き換える事項（ADR 0006 との関係）
 

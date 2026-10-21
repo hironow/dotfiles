@@ -1,7 +1,7 @@
 # 0006. mise tool version pinning strategy
 
 **Date:** 2026-05-02
-**Status:** Accepted (2026-05-02)
+**Status:** Accepted (2026-05-02); partly superseded by [0060](0060-frozen-image-generation-has-one-source.md) (Decision 1 の「`= "latest"` を全部 concrete pin にする」、Decision 3 の `mise use --system` と build-time check の形。検証付き取得・`/opt/mise`・`MISE_OFFLINE`・mise.lock 却下は維持)
 **Blocks:** ADR 0005 (install path rationalization) — accepted in same wave
 
 ## Context
