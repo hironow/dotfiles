@@ -707,12 +707,13 @@ test-mark marker="":
 #   - Don't pass `--exclude` to ruff: CLI replaces built-in defaults
 #     (.venv, __pycache__, dist, build, ...). Excludes belong in pyproject.toml.
 #   - Use `git ls-files -z | xargs -0 -r` for null-delimited, empty-safe pipes.
-#   - ruff/ty versions live in [dependency-groups].lint (root + emulator) and
+#   - ruff/ty versions live in [dependency-groups].lint (root/emulator/RTTM) and
 #     uv.lock; `just bump-tool` moves them. `--frozen` keeps sandbox == CI.
 [group('Lint')]
 fmt:
     @echo '🔧 Python (ruff format)...'
     {{UV_RUN}} --only-group lint ruff format .
+    @just rttm-fmt
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
@@ -730,6 +731,7 @@ lint:
     {{UV_RUN}} --only-group lint ruff check . --fix
     @echo '🔍 Python (ty check, ADR 0044)...'
     @{{UV_RUN}} --group lint ty check
+    @just rttm-lint rttm-typecheck
     @echo '🔍 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
@@ -755,6 +757,7 @@ check:
     {{UV_RUN}} --only-group lint ruff check .
     @echo '🔎 Python (ty check, ADR 0044)...'
     @{{UV_RUN}} --group lint ty check
+    @just rttm-check
     @echo '🔎 Go (golangci-lint)...'
     just go-lint
     @echo '🔎 Shell (shellcheck)...'
@@ -789,6 +792,27 @@ check:
 [group('Lint')]
 check-ty:
     @{{UV_RUN}} --group lint ty check
+
+# RTTM is a separate uv project; its ty scope and dependencies must be local.
+[group('Lint')]
+[working-directory: 'tools/rttm']
+rttm-fmt:
+    @{{UV_RUN}} --only-group lint ruff format .
+
+[group('Lint')]
+[working-directory: 'tools/rttm']
+rttm-lint:
+    @{{UV_RUN}} --only-group lint ruff check .
+    @{{UV_RUN}} --only-group lint ruff format --check .
+
+[group('Lint')]
+[working-directory: 'tools/rttm']
+rttm-typecheck:
+    @{{UV_RUN}} --group lint ty check
+
+[group('Lint')]
+rttm-check: rttm-lint rttm-typecheck
+    @cd tools/rttm && MPLBACKEND=Agg {{UV_RUN}} --group lint python -m pytest -q tests
 
 # Go quality gate (docs/agents/go-tooling.md): golangci-lint v2, one root
 # config, gofumpt-only formatters. Per module because this repo has several
@@ -1463,8 +1487,8 @@ prune-retired-cdr-symlinks:
 prune-retired-python-tools:
     @bash scripts/retired_python_tools.sh prune
 
-# ADR 0044: move the ruff or ty pin in EVERY declaration at once (justfile uvx
-# gate pin, root + emulator dev groups, mise config), re-lock both uv projects,
+# ADR 0044: move the ruff or ty pin in root/emulator/RTTM/mise at once (justfile uvx
+# gates use lint-group pins + locks), re-lock all three uv projects,
 # and print the hironow/skills follow-up. Dependabot ignores both tools, so this
 # is the path a pin moves through. Usage: just bump-tool ruff 0.15.23 / just bump-tool ty 0.0.79
 [group('Setup')]

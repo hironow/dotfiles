@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Move a ruff or ty pin in every declaration at once (`just bump-tool <tool> <ver>`).
 
-ruff and ty are pinned exactly in three places that are kept together:
-the root and emulator lint groups
+ruff and ty are pinned exactly in four places that are kept together:
+the root, emulator and RTTM lint groups
 (`"<tool>==<ver>"`), and the shared mise config (`<tool> = "<ver>"`). The
 justfile gate is `uv run --frozen --only-group lint ruff` (no uvx pin).
 Dependabot ignores both tools, so this script is the one path a pin moves
 through. It rewrites all declarations (refusing, with no writes, if any is
-missing or not an exact pin), re-locks both uv projects with
+missing or not an exact pin), re-locks all three uv projects with
 `uv lock --upgrade-package <tool>`, and prints the hironow/skills follow-up.
 
 Usage: bump_tool.py {ruff,ty} VERSION [--repo DIR] [--no-lock] [--dry-run]
@@ -54,6 +54,12 @@ def plan(repo: Path, tool: str, version: str) -> list[Edit]:
             "emulator lint group",
         ),
         Edit(
+            repo / "tools" / "rttm" / "pyproject.toml",
+            re.compile(rf'"{tool}=={ver}"'),
+            f'"{tool}=={version}"',
+            "RTTM lint group",
+        ),
+        Edit(
             repo / "config" / "mise" / "config.toml",
             re.compile(rf'^{tool} = "{ver}"$', re.MULTILINE),
             f'{tool} = "{version}"',
@@ -63,7 +69,7 @@ def plan(repo: Path, tool: str, version: str) -> list[Edit]:
 
 
 def _lock(repo: Path, tool: str, dry_run: bool) -> int:
-    for project in (repo, repo / "emulator"):
+    for project in (repo, repo / "emulator", repo / "tools" / "rttm"):
         cmd = ["uv", "lock", "--upgrade-package", tool]
         print(f"$ (cd {project.relative_to(repo).as_posix()} && {' '.join(cmd)})")
         if dry_run:

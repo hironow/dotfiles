@@ -63,7 +63,7 @@ dev = [
 # ruff + ty only: `uv run --frozen --only-group lint ruff` (just fmt/lint/check,
 # format-after-edit). ty uses `--group lint` so it still sees project imports.
 lint = [
-    # lock pin; `just bump-tool` moves it together with emulator and mise
+    # lock pin; `just bump-tool` moves it with emulator, RTTM and mise
     "ruff==0.17.1",
     # pre-1.0: pinned exactly, bumped deliberately (ADR 0044)
     "ty==0.0.90",
