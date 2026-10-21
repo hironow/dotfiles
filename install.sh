@@ -155,7 +155,9 @@ step_mise_bootstrap() {
   # pinned mise release binary to ~/.local/bin (user-local, no sudo), SHA256-
   # verified against the release SHASUMS — the same posture as
   # step_just_bootstrap. No pipe-to-shell (repo guardrail). Keep _mise_ver in
-  # sync with the devcontainer feature's apt mise.
+  # sync with the devcontainer feature's apt mise; the value below is generated
+  # from config/mise/image-tools.toml ([bootstrap].mise) — see
+  # `just mise-versions-sync`.
   if command -v mise >/dev/null 2>&1; then
     return
   fi
@@ -246,10 +248,10 @@ step_just_bootstrap() {
       # feature and no brew, download the pinned `just` release binary to
       # ~/.local/bin (user-local, no sudo) and verify it against the release's
       # SHA256SUMS. We deliberately avoid `curl | bash` (repo guardrail forbids
-      # piping remote scripts to a shell). Version pinned — bump together
-      # with config/mise/config.toml's `just` entry (repo mise.toml was
-      # removed 2026-08-05, f013378).
-      _just_ver="1.58.0"
+      # piping remote scripts to a shell). The version below is generated from
+      # config/mise/image-tools.toml ([tools].just) by scripts/mise_versions.py:
+      # edit that source and run `just mise-versions-sync`.
+      _just_ver="1.59.0"
       case "$(uname -m)" in
         x86_64) _just_tgt="x86_64-unknown-linux-musl" ;;
         aarch64 | arm64) _just_tgt="aarch64-unknown-linux-musl" ;;

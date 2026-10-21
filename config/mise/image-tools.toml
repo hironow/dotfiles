@@ -1,0 +1,90 @@
+# 画像（devcontainer）の凍結世代 = 版本の正本（画像側）。
+#
+# このファイルが存在する理由
+# --------------------------
+# 同じ道具を 2 つの環境が入れる: host（`config/mise/config.toml` を
+# `~/.config/mise/config.toml` に配る）と devcontainer の画像。画像はビルド時に
+# repo の `config/mise/config.toml` を読めない（mise は repo 内の
+# `config/mise/config.toml` を project config として読まない。画像が見るのは
+# 自分に bake した `/etc/mise/config.toml` だけ）。だから画像には画像の世代が要る。
+# そしてその世代は **凍結** する: 画像の `latest` は、1 時間違いの 2 回の
+# ビルドを別物にする（ADR 0006、Strategy A）。
+#
+# 版は **道具ごとに 1 回だけ** ここに書く。どの経路へ配るかは生成器
+# `scripts/mise_versions.py`（唯一の writer）が持つ:
+#
+#   [tools]            -> 画像の /etc/mise/config.toml（mise install）
+#   [tools].uv / .just -> さらに SHA/attestation 検証つき tarball で
+#                         /usr/local/bin にも置く（PATH では shim が勝つ。2 つの
+#                         コピーは「生成で一致」させ、食い違いを残さない）
+#   [fetch]            -> tarball だけで入れる道具（sheldon）と、[tools] から
+#                         版を借りる道具の名前
+#   [bootstrap]        -> install.sh が mise の無い Linux 機体で使う版
+#                         （mise 自身は mise 道具ではないので [tools] に無い）
+#
+# `just mise-versions-sync` が生成領域を書き、`just lint`（pre-commit の gate）と
+# `just check` / `just ci` が「再生成して差分なし」を検査する。検査は host との
+# 整合も見る: [tools] と [fetch] の道具は `config/mise/config.toml` に存在し、
+# host が exact pin の道具は値も一致すること（今日は quint / golangci-lint /
+# cf / sheldon がこの規則で守られている）。[bootstrap].mise は host に無いので、
+# 比較先は root `install.sh` の `_mise_ver` だけ。
+
+[settings.npm]
+# Install npm: tools with bun instead of mise's embedded `aube` (parity with
+# the distributed global config, ADR 0036). Live breakage this prevents:
+# aube's no-downgrade trust policy hard-fails the whole toolset install when
+# any transitive dep publishes without provenance (seen 2026-08-15:
+# @smithy/core@3.33.0 lost attestations and pi-coding-agent's install sank
+# every CI devcontainer build).
+package_manager = "bun"
+
+[tools]
+bun = "1.4.3"
+just = "1.59.0"
+markdownlint-cli2 = "0.23.3"
+prek = "0.5.6"
+uv = "0.13.1"
+vp = "1.3.0"
+node = "24.22.0"
+# Go + golangci-lint: `just check` runs `just go-lint`. The one-shot
+# sandbox has no project mise.toml, so /etc/mise must already pin both
+# (golangci typechecks with Go; recipes invoke
+# `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
+go = "1.27.2"
+"aqua:golangci/golangci-lint" = "2.15.0"
+# quint: the formal-methods gate's checker (`mise x -- quint`), mandatory for
+# autonomous stop/delete logic in any repo opened in this image. Same pin as
+# config/mise/config.toml: a checker under a mandatory gate changes its
+# verdicts only deliberately (ADR 0006 parity).
+# npm: backend through bun, like the other npm tools here.
+"npm:@informalsystems/quint" = "0.33.0"
+"npm:@openai/codex" = "0.163.0"
+# Under bun (package_manager above) mise ignores npm_args (bun reads
+# bun_args only). claude-code's postinstall still runs — the package is on
+# bun's default-trusted dependencies list — and the apt install further
+# below overlays the real native binary regardless. See ADR 0040.
+"npm:@anthropic-ai/claude-code" = "2.1.303"
+"npm:@github/copilot" = "1.0.98"
+"npm:@earendil-works/pi-coding-agent" = "1.3.0"
+"github:google-antigravity/antigravity-cli" = { version = "1.4.2", rename_exe = "antigravity" }
+"npm:cf" = "1.0.0-beta.18"
+"npm:resend-cli" = "2.26.0"
+"npm:@stripe/cli" = "1.54.0"
+
+[fetch]
+# 画像はこれらの道具を、検証つき tarball（uv は sha256 sidecar + `gh attestation
+# verify`、just は release の SHA256SUMS、sheldon は per-arch の SHA256）でも
+# /usr/local/bin に入れる。mise 道具でもあるものは名前だけをここに書き、版は
+# [tools] から取る（同じ値を 2 か所に書かない）。
+mise_tools = ["uv", "just"]
+# mise 道具ではないので、版をここに書く。host 側は
+# `aqua:rossmacarthur/sheldon`（`config/mise/config.toml`）で、生成器が値の一致を
+# 検査する。tarball の per-arch SHA256 はハッシュであって版ではないので
+# install.sh に残す（この版を上げるときは、release の新しい sums を install.sh の
+# 2 行に入れる。生成器はネットワークを使わない）。
+"aqua:rossmacarthur/sheldon" = "0.8.5"
+
+[bootstrap]
+# install.sh の bare Linux 経路（mise がまだ無い機体）が使う版。just は
+# [tools].just をそのまま使う（生成器が対応付ける）。
+mise = "2026.9.0"

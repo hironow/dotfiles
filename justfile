@@ -742,6 +742,8 @@ lint:
     @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
+    @echo '🔍 Frozen image tool generation (one source, no drift; ADR 0060)...'
+    @{{UV_RUN}} scripts/mise_versions.py check
     @echo '✅ lint done.'
 
 # check: strict gate, never writes. Used by pre-push hook and CI.
@@ -769,6 +771,8 @@ check:
     @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
+    @echo '🔎 Frozen image tool generation (one source, no drift; ADR 0060)...'
+    @{{UV_RUN}} scripts/mise_versions.py check
     @echo '🔎 storage bounds (every tofu sink declares its cap)...'
     @{{UV_RUN}} scripts/check_storage_bounds.py
     @echo '🔎 Go tests (tools/ modules)...'
@@ -842,6 +846,23 @@ check-uv-exclude-newer:
 [group('Lint')]
 check-mcp-node-runner:
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
+
+# The image's frozen tool generation has one source
+# (config/mise/image-tools.toml). This reports drift between it and the
+# generated regions in the two install.sh files (the /etc/mise heredoc, the
+# verified-tarball versions, the bare-Linux bootstrap pins), and refuses a
+# source whose tools are not declared on the host or whose exact pins disagree.
+# ADR 0006 §3 promised this check; ADR 0060 records the layout. Wired into
+# `lint` (the pre-commit stage) and `check` — pre-commit never ran `check`.
+[group('Lint')]
+mise-versions-check:
+    @{{UV_RUN}} scripts/mise_versions.py check
+
+# Regenerate those regions from that one source (the single writer). Idempotent.
+# A tool version bump is: edit config/mise/image-tools.toml, run this, commit.
+[group('Setup')]
+mise-versions-sync:
+    @{{UV_RUN}} scripts/mise_versions.py sync
 
 # Claude config lint: validate the artifacts this repo distributes with the
 # OFFICIAL `claude plugin validate --strict` (marketplace + each plugin and
