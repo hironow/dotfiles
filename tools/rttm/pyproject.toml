@@ -7,10 +7,24 @@ requires-python = ">=3.11"
 dependencies = [
     "matplotlib>=3.11.1",
     "pympi-ling>=1.71",
-    "ruff>=0.16.1",
     "pytest>=9.1.1",
 ]
 
+[dependency-groups]
+# Updated with root/emulator/mise by `just bump-tool`.
+lint = ["ruff==0.17.1", "ty==0.0.90"]
+
 [tool.uv]
-# 7-day release quarantine, the same as every uv project in this repo.
+# Keep the quarantine for application dependencies, not Class 1 lint tools.
 exclude-newer = "7 days"
+exclude-newer-package = { ruff = false, ty = false }
+
+# Own scope: otherwise ty discovers the parent's scripts/tests-only project.
+[tool.ty.src]
+include = ["to_eaf.py", "visualize.py", "tests"]
+
+[tool.ty.environment]
+extra-paths = ["."]
+
+[tool.ty.terminal]
+error-on-warning = true

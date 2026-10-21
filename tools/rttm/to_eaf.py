@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pympi  # type: ignore
+import pympi
 
 # Configure logging
 logging.basicConfig(

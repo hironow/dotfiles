@@ -65,7 +65,7 @@ updates:
       prefix: "chore"
       include: "scope"
     ignore:
-      # ruff and ty are pinned == in three places (root and emulator lint
+      # ruff and ty are pinned == in four places (root/emulator/RTTM lint
       # groups, mise) and bumped together by `just bump-tool`, so a one-place
       # Dependabot bump would leave them apart.
       - dependency-name: "ruff"
@@ -81,6 +81,10 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    ignore:
+      # Same synchronized pin-update path as root and emulator.
+      - dependency-name: "ruff"
+      - dependency-name: "ty"
 
   # emulator/ is a vendored, self-contained uv project (ADR 0014/0016) with real
   # runtime deps (aiohttp, litellm, mlflow, ...); grouped to one weekly PR.
