@@ -1403,6 +1403,21 @@ validate-path-windows:
 doctor:
     @bash scripts/doctor.sh
 
+# Explicit builds only: doctor itself must not install or download a compiler.
+# Linewise recipes also start from PowerShell without shebang/cygpath setup.
+[group('Setup')]
+ca-doctor-build:
+    @cd tools/ca-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local mise exec -- go build -trimpath -o ../../output/ca-doctor/ .
+
+[group('Test')]
+ca-doctor *args:
+    @bash -c 'bin=output/ca-doctor/ca-doctor; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) bin="$bin.exe" ;; esac; if [ ! -x "$bin" ]; then echo "WARN ca-build - run just ca-doctor-build first"; exit 1; fi; exec "$bin" --source tools/ca-doctor "$@"' -- {{args}}
+
+# Static native binaries for each supported OS/CPU; no C toolchain required.
+[group('Setup')]
+ca-doctor-build-all:
+    @bash -c 'set -eu; for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do os="${target%/*}"; arch="${target#*/}"; suffix=""; if [ "$os" = windows ]; then suffix=.exe; fi; (cd tools/ca-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS="$os" GOARCH="$arch" mise exec -- go build -trimpath -o "../../output/ca-doctor/ca-doctor-$os-$arch$suffix" .); done'
+
 # Prune rogue global installs of mise-managed AI CLIs (codex/claude-code/
 # copilot/pi). A stray `npm install -g` — codex's built-in `codex update`
 # most of all — drops the package into the active node's global each time,

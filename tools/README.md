@@ -2,6 +2,7 @@
 
 開発やテストで使う補助ツール。
 
+- [ca-doctor](../docs/runbook/ca-doctor.md)：CA設定の健全性とレビュー済みのCA事故を診断するGoツール
 - [rttm](./rttm/README.md)：RTTM ファイルを ELAN（EAF）形式に変換し、可視化する Python のツール
 - [simple-server](./simple-server/README.md)：localhost の https を確かめる Go の簡易サーバー
 - [tmux](./tmux/CHEATSHEET.md)：tmux のキー操作の早見表
