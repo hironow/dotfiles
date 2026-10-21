@@ -1,9 +1,9 @@
 """Unit tests for scripts/bump_tool.py (`just bump-tool ruff|ty <ver>`).
 
-ruff and ty are pinned exactly in three declarations (root and emulator lint
-groups, mise config) that are kept together;
+ruff and ty are pinned exactly in four declarations (root, emulator and RTTM
+lint groups, mise config) that are kept together;
 Dependabot ignores both. This script is therefore the only way a pin moves: it
-rewrites every declaration in one go, re-locks both uv projects, and prints
+rewrites every declaration in one go, re-locks all three uv projects, and prints
 the hironow/skills follow-up. The justfile no longer carries a `uvx ruff@<ver>`
 pin — the lint group + lock are the gate.
 """
@@ -45,6 +45,11 @@ def repo(tmp_path: Path) -> Path:
         '[dependency-groups]\ndev = [\n    "pytest>=9.1.0",\n]\nlint = [\n    "ruff==0.15.22",\n    "ty==0.0.77",\n]\n',
         encoding="utf-8",
     )
+    (tmp_path / "tools" / "rttm").mkdir(parents=True)
+    (tmp_path / "tools" / "rttm" / "pyproject.toml").write_text(
+        '[dependency-groups]\nlint = [\n    "ruff==0.15.22",\n    "ty==0.0.77",\n]\n',
+        encoding="utf-8",
+    )
     (tmp_path / "config" / "mise").mkdir(parents=True)
     (tmp_path / "config" / "mise" / "config.toml").write_text(
         '[tools]\nuv = "latest"\nruff = "0.15.22"\nty = "0.0.77"\n', encoding="utf-8"
@@ -66,6 +71,9 @@ def test_bump_ruff_rewrites_every_declaration(
     assert 'ruff = "0.15.23"' in (repo / "config" / "mise" / "config.toml").read_text(
         encoding="utf-8"
     )
+    assert '"ruff==0.15.23"' in (repo / "tools/rttm/pyproject.toml").read_text(
+        encoding="utf-8"
+    )
     # ty untouched
     assert '"ty==0.0.77"' in (repo / "pyproject.toml").read_text(encoding="utf-8")
     out = capsys.readouterr().out
@@ -84,6 +92,9 @@ def test_bump_ty_leaves_the_justfile_alone(repo: Path) -> None:
         encoding="utf-8"
     )
     assert 'ty = "0.0.79"' in (repo / "config" / "mise" / "config.toml").read_text(
+        encoding="utf-8"
+    )
+    assert '"ty==0.0.79"' in (repo / "tools/rttm/pyproject.toml").read_text(
         encoding="utf-8"
     )
 
@@ -145,4 +156,34 @@ def test_real_repo_declarations_are_all_present() -> None:
             "pyproject.toml",
             "emulator/pyproject.toml",
             "config/mise/config.toml",
+            "tools/rttm/pyproject.toml",
         }
+
+
+def test_bump_locks_all_three_projects(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mod = _load()
+    calls = []
+
+    def run(cmd, *, cwd, check):
+        calls.append((cmd, cwd, check))
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(mod.subprocess, "run", run)
+    assert mod.main(["ruff", "0.15.23", "--repo", str(repo)]) == 0
+    assert calls == [
+        (["uv", "lock", "--upgrade-package", "ruff"], project, False)
+        for project in (repo, repo / "emulator", repo / "tools/rttm")
+    ]
+
+
+def test_missing_rttm_pin_refuses_before_any_write(repo: Path) -> None:
+    mod = _load()
+    (repo / "tools/rttm/pyproject.toml").write_text(
+        '[dependency-groups]\nlint = ["ruff>=0.15", "ty==0.0.77"]\n',
+        encoding="utf-8",
+    )
+    before = {p: p.read_bytes() for p in repo.rglob("*") if p.is_file()}
+    assert mod.main(["ruff", "0.15.23", "--repo", str(repo), "--no-lock"]) == 1
+    assert before == {p: p.read_bytes() for p in repo.rglob("*") if p.is_file()}

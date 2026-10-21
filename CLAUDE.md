@@ -65,7 +65,7 @@ just sync-agents-preview …  # dry-run
   `tests/unit/` は native Windows でも全部通る状態を保つ。`emulator/` は canonical を適用済み (tests/** は ANN / PLR2004 /
   PLR0911 / PLR0915 を除外、理由は `emulator/pyproject.toml`)。gate の ruff 版は root /
   emulator の `[dependency-groups].lint` と uv.lock が正で、mise の pin は手元で使う版にすぎない
-  (`just bump-tool` で 3 か所をまとめて動かせる)。justfile は
+  (`just bump-tool` で RTTM を含む 4 か所をまとめて動かせる)。justfile は
   `uv run --frozen --only-group lint ruff` で呼ぶ。
 
 ## テストモデル (重要)

@@ -17,13 +17,13 @@ RTTM (Rich Transcription Time Marked) file tool for [ELAN](https://archive.mpi.n
 ### Convert RTTM to EAF
 
 ```shell
-mx uv run python to_eaf.py input.rttm output.eaf
+uv run --frozen python to_eaf.py input.rttm output.eaf
 ```
 
 ### Visualize RTTM
 
 ```shell
-mx uv run python visualize.py input.rttm -o output.png
+uv run --frozen python visualize.py input.rttm -o output.png
 ```
 
 Optional arguments:
@@ -32,9 +32,16 @@ Optional arguments:
 
 ### Development
 
-Format and lint code:
+From the repository root:
 
 ```shell
-mx uv run ruff check . --fix
-mx uv run ruff format .
+just rttm-fmt        # formatting
+just rttm-check      # Ruff, ty, and tests (headless plotting)
 ```
+
+The root `just fmt`, `just lint`, and `just check` also reach the RTTM project.
+Ruff and ty live in the `lint` dependency group with exact pins matching root,
+emulator, and mise; `just bump-tool ruff|ty VERSION` updates all declarations
+and all three uv locks. Other dependencies retain the seven-day quarantine.
+The RTTM-local ty configuration checks the CLI files and tests with the
+application dependencies available; it does not inherit root's scripts/tests-only scope.
