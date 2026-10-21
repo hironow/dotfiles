@@ -158,6 +158,19 @@ rtk = "latest"
 "npm:@github/copilot" = "latest"
 "npm:@earendil-works/pi-coding-agent" = "latest"
 
+# playwright-cli (microsoft/playwright-cli) — the browser-automation CLI the
+# hironow/skills `playwright-cli` skill runs. Without this declaration no host
+# has the binary the skill calls: its documented fallback (`bunx --package
+# @playwright/mcp playwright-cli`) cannot work, because @playwright/mcp ships
+# only a `playwright-mcp` bin — `playwright-cli` comes from @playwright/cli.
+# "latest" like the agent-facing CLIs above (not a gate), and the npm backend
+# resolves it through bun ([settings.npm], ADR 0036/0040), so this is not an
+# npm/yarn/pnpm invocation (ADR 0027). No bundled browser is installed: use
+# `--browser=chrome`, or `playwright-cli install-browser` on a host without
+# Chrome. Do NOT run `playwright-cli install --skills`: skills are hironow/skills'
+# and arrive via `just skills-place`.
+"npm:@playwright/cli" = "latest"
+
 # antigravity (Google's agentic CLI) — replaces gemini-cli (per Google's
 # "Transitioning Gemini CLI to Antigravity CLI"). GitHub-release binary
 # via mise's github backend; the release archive already contains the
