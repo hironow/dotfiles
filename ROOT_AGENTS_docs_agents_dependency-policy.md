@@ -58,3 +58,51 @@ does more damage through the supply chain.
 
 When a Dependabot PR is red, restore its lockfiles from main. Never re-lock
 everything.
+
+## Banned: LiteLLM
+
+**Do not add LiteLLM**, in any repo, language, or Docker image. This is not a
+Class 1 / Class 2 judgement — it is a named exception, because the project's
+release channel itself has been the attack twice in one year:
+
+- **2026-03**: `litellm` 1.82.7 and 1.82.8 shipped credential-harvesting
+  malware from a compromised pipeline.
+- **2026-10-21**: `litellm` 1.107.0 shipped a credential stealer plus an hourly
+  remote-code loader in **all seven wheels**. It was live on PyPI for about two
+  hours (11:39–13:23 UTC), and the Docker Hub / GHCR tags `v1.107.0`, `latest`,
+  `main-latest` and `main-stable` pointed at the same build for about two and a
+  half hours. Stolen GitHub CLI tokens let the release workflow build from a
+  lookalike repository (`Berri-AI/litellm`), so the git tag and the sdist both
+  looked clean — only the built artifacts carried the payload.
+
+Why a cooldown is not enough here: a cooldown is sized for a bad release that
+stays up long enough to be noticed and yanked. Both LiteLLM incidents were
+pulled within hours, so the whole exposure window sits *inside* the window the
+cooldown is meant to cover. One pull during it compromises the machine, and the
+payload installs `cook.pth` / `sitecustomize.py` into `site-packages`, so every
+later `python` or `pip` run in that environment re-runs it.
+
+What to do instead:
+
+- Call the provider's SDK directly (OpenAI, Anthropic, Google Gen AI, ...), or
+  use a framework model class that does not route through LiteLLM.
+- Until a use is removed, cap it at `<=1.106.2` — the last release published
+  before the 2026-10-21 compromise — and keep the seven-day cooldown. The cap
+  matters because raising it must be a deliberate, reviewable act.
+- Removal is the destination, not the cap. Do not extend an existing use.
+
+### Inventory (2026-10-22) and the removal for each
+
+Everything here was verified by reading the manifests, locks and call sites;
+each entry says which kind of work the removal is.
+
+| Where | How LiteLLM is reached | Removal |
+| --- | --- | --- |
+| `hironow/advena` `backend/genai` | `smolagents[litellm]` plus `LiteLLMModel` (`src/llm/agent.py`); a separate `import litellm` there is unused | Replace the model class (e.g. a non-LiteLLM smolagents model) or the SDK call. **Deployed service — needs the provider decision first.** |
+| `hironow/dotfiles` `emulator` | Declared in `emulator/pyproject.toml`; **no code in the tree imports it** | Delete the declaration, re-lock. No behaviour change. |
+| `hironow/adk-stream-protocol` | Transitive: `google-adk[extensions]` pulls it | Stop enabling that extra, or drop whatever requires it. |
+| `m4k3-co/just-ag` | `experiments/impl/transport/litellm_transport.py` calls `litellm.acompletion`; the root dev group declares it too | Replace the transport with a provider SDK, or retire that experiment. |
+| `m4k3-co/m4k3` `backend/cue`, `backend/dune` | Declared in each `pyproject.toml`; **no code imports it** | Delete the declaration, re-lock (`dune` is a workspace member, so the root `uv.lock` carries it). |
+
+`backend/echo` (m4k3-co/m4k3) has LiteLLM in its lock transitively; it goes
+with `cue`/`dune` or with whatever pulls it.
