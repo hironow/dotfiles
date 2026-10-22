@@ -13,7 +13,12 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "asyncpg>=0.30.0",
     "aiohttp>=3.14.3",
-    "litellm>=1.96.0",
+    # Capped at the last release published before the 2026-10-21 supply-chain
+    # compromise of litellm (1.107.0 was live on PyPI for about two hours with a
+    # credential stealer in every wheel; the 2026-03 incident was 1.82.7/1.82.8).
+    # The 7-day cooldown below is the primary control; this cap is the second
+    # layer, so raising it stays a deliberate, reviewable act.
+    "litellm>=1.96.0,<=1.106.2",
     "python-dotenv>=1.1.1",
     "pyyaml>=6.0.2",
     "typer>=0.27.1",
