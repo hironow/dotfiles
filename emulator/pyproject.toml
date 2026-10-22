@@ -3,22 +3,10 @@ name = "emulator-workspace"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-# Capped below 3.14: litellm went from a pure-python wheel (1.91.0, py3) to
-# Rust extension wheels (1.92.0, cp310-cp313 only). With no cp314 wheel, uv
-# falls back to the sdist, whose maturin/pyo3 build refuses 3.14 outright
-# ("the configured Python interpreter version (3.14) is newer than PyO3's
-# maximum supported version"). litellm itself declares requires-python <3.14.
-# Lift once litellm ships cp314 wheels (and bump test-emulators.yaml back).
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.13"
 dependencies = [
     "asyncpg>=0.30.0",
     "aiohttp>=3.14.3",
-    # Capped at the last release published before the 2026-10-21 supply-chain
-    # compromise of litellm (1.107.0 was live on PyPI for about two hours with a
-    # credential stealer in every wheel; the 2026-03 incident was 1.82.7/1.82.8).
-    # The 7-day cooldown below is the primary control; this cap is the second
-    # layer, so raising it stays a deliberate, reviewable act.
-    "litellm>=1.96.0,<=1.106.2",
     "python-dotenv>=1.1.1",
     "pyyaml>=6.0.2",
     "typer>=0.27.1",
