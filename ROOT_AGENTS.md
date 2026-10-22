@@ -40,6 +40,13 @@ apply it to cases it does not list.
   newest features and methods. A third-party package needs a reason the
   standard library cannot meet. Fewer packages mean less supply-chain risk and
   fewer upgrades.
+- **Never use LiteLLM, in any repo or language.** The PyPI package was
+  compromised twice in 2026 (1.82.7/1.82.8 in March, 1.107.0 on 2026-10-21 —
+  every wheel of the latter carried a credential stealer and an hourly
+  remote-code loader, and it was live for about two hours). A cooldown cannot
+  cover that: one pull during the window is enough. Call a provider SDK
+  directly. Existing uses are removed, not extended. Details:
+  docs/agents/dependency-policy.md.
 - **Use only `bun` for Node.** Never use `npm`, `yarn`, or `pnpm`, including
   `corepack pnpm`. The reason is the same: lockfiles go out of sync.
 - **`just` is the only task runner.** Keep exactly one `justfile`, at the repo
