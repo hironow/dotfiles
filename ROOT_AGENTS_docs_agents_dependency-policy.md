@@ -101,8 +101,8 @@ each entry says which kind of work the removal is.
 | `hironow/advena` `backend/genai` | `smolagents[litellm]` plus `LiteLLMModel` (`src/llm/agent.py`); a separate `import litellm` there is unused | Replace the model class (e.g. a non-LiteLLM smolagents model) or the SDK call. **Deployed service — needs the provider decision first.** |
 | `hironow/dotfiles` `emulator` | Declared in `emulator/pyproject.toml`; **no code in the tree imports it** | Delete the declaration, re-lock. No behaviour change. |
 | `hironow/adk-stream-protocol` | Transitive: `google-adk[extensions]` pulls it | Stop enabling that extra, or drop whatever requires it. |
-| `m4k3-co/just-ag` | `experiments/impl/transport/litellm_transport.py` calls `litellm.acompletion`; the root dev group declares it too | Replace the transport with a provider SDK, or retire that experiment. |
-| `m4k3-co/m4k3` `backend/cue`, `backend/dune` | Declared in each `pyproject.toml`; **no code imports it** | Delete the declaration, re-lock (`dune` is a workspace member, so the root `uv.lock` carries it). |
+| a private experiments repo | `experiments/impl/transport/litellm_transport.py` calls `litellm.acompletion`; the root dev group declares it too | Replace the transport with a provider SDK, or retire that experiment. |
+| a private monorepo `backend/cue`, `backend/dune` | Declared in each `pyproject.toml`; **no code imports it** | Delete the declaration, re-lock (`dune` is a workspace member, so the root `uv.lock` carries it). |
 
-`backend/echo` (m4k3-co/m4k3) has LiteLLM in its lock transitively; it goes
+`backend/echo` (a private monorepo) has LiteLLM in its lock transitively; it goes
 with `cue`/`dune` or with whatever pulls it.
