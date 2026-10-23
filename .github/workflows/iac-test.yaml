@@ -50,9 +50,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
+      # Keep this equal to the host `opentofu` pin in
+      # config/mise/config.toml, so this gate and `just test-iac` run the same
+      # binary.
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
-          tofu_version: 1.12.3
+          tofu_version: 1.13.2
 
       # Offline: mock providers, no backend, no tfvars and no credentials, so
       # the suite never reaches a real tailnet. Mirrors `just test-iac`, which
