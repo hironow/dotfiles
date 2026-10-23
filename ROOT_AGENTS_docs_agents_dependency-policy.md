@@ -95,14 +95,15 @@ What to do instead:
 
 Everything here was verified by reading the manifests, locks and call sites;
 each entry says which kind of work the removal is.
+Private project identifiers and paths are omitted from this public policy.
 
 | Where | How LiteLLM is reached | Removal |
 | --- | --- | --- |
 | `hironow/advena` `backend/genai` | `smolagents[litellm]` plus `LiteLLMModel` (`src/llm/agent.py`); a separate `import litellm` there is unused | Replace the model class (e.g. a non-LiteLLM smolagents model) or the SDK call. **Deployed service — needs the provider decision first.** |
 | `hironow/dotfiles` `emulator` | Declared in `emulator/pyproject.toml`; **no code in the tree imports it** | Delete the declaration, re-lock. No behaviour change. |
 | `hironow/adk-stream-protocol` | Transitive: `google-adk[extensions]` pulls it | Stop enabling that extra, or drop whatever requires it. |
-| `m4k3-co/just-ag` | `experiments/impl/transport/litellm_transport.py` calls `litellm.acompletion`; the root dev group declares it too | Replace the transport with a provider SDK, or retire that experiment. |
-| `m4k3-co/m4k3` `backend/cue`, `backend/dune` | Declared in each `pyproject.toml`; **no code imports it** | Delete the declaration, re-lock (`dune` is a workspace member, so the root `uv.lock` carries it). |
+| Private experiment | A transport calls `litellm.acompletion`; a development dependency also declares it | Replace the transport with a provider SDK, or retire that experiment. |
+| Two projects in a private workspace | Declared in each `pyproject.toml`; **no code imports it** | Delete the declarations and re-lock; update the root lock for the workspace member. |
 
-`backend/echo` (m4k3-co/m4k3) has LiteLLM in its lock transitively; it goes
-with `cue`/`dune` or with whatever pulls it.
+A third project in that private workspace has LiteLLM in its lock transitively;
+remove it by following the lock's actual dependency graph.
