@@ -12,7 +12,7 @@ dependencies = [
 
 [dependency-groups]
 # Updated with root/emulator/mise by `just bump-tool`.
-lint = ["ruff==0.17.1", "ty==0.0.90"]
+lint = ["ruff==0.17.2", "ty==0.0.91"]
 
 [tool.uv]
 # Keep the quarantine for application dependencies, not Class 1 lint tools.
