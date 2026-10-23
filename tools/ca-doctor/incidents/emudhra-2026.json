@@ -3,7 +3,7 @@
   "type": "tls-endpoint-and-version",
   "title": "eMudhra intermediate CA private key compromise",
   "source": "https://emudhra.we-have-a-problem.com/",
-  "reviewedAt": "2026-10-21",
+  "reviewedAt": "2026-10-23",
   "reviewAfter": "2026-11-20",
   "controlURL": "https://emudhra.we-have-a-problem.com/",
   "hosts": [
@@ -18,7 +18,9 @@
     "ov-g3b-aaa-emudhra.we-have-a-problem.com",
     "ov-g3c-aaa-emudhra.we-have-a-problem.com",
     "ev-g3b-aaa-emudhra.we-have-a-problem.com",
-    "ev-g3c-aaa-emudhra.we-have-a-problem.com"
+    "ev-g3c-aaa-emudhra.we-have-a-problem.com",
+    "dv-g3b-noct-emudhra.we-have-a-problem.com",
+    "dv-g3b-aaa-noct-emudhra.we-have-a-problem.com"
   ],
   "floors": {
     "go": [{"branch": "1.27", "minimum": "1.27.3"}, {"branch": "1.26", "minimum": "1.26.10"}],
@@ -26,9 +28,11 @@
     "uv": [{"branch": "0.13", "minimum": "0.13.4"}],
     "certifi": [{"branch": "2026", "minimum": "2026.10.19"}],
     "pip": [{"branch": "26", "minimum": "26.2.2"}],
-    "rustup": [{"branch": "1", "minimum": "1.29.2"}]
+    "rustup": [{"branch": "1", "minimum": "1.29.2"}],
+    "bun": [{"branch": "1.4", "minimum": "1.4.4"}],
+    "mise": [{"branch": "2026", "minimum": "2026.10.17"}]
   },
-  "pending": ["bun"],
+  "pending": [],
   "advice": [
     "OS/browser revocation, PEM bundles and runtime CA stores are independent; update each consumer.",
     "Rust: inspect each Cargo.lock for rustls-webpki 0.103.16 and webpki-roots/webpki-root-certs 1.0.10 fixes or a documented backport; rustc alone is not evidence."

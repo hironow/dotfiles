@@ -39,18 +39,18 @@
 package_manager = "bun"
 
 [tools]
-bun = "1.4.3"
+bun = "1.4.4"
 just = "1.59.0"
 markdownlint-cli2 = "0.23.3"
 prek = "0.5.6"
-uv = "0.13.1"
+uv = "0.13.5"
 vp = "1.3.0"
-node = "24.22.0"
+node = "24.22.1"
 # Go + golangci-lint: `just check` runs `just go-lint`. The one-shot
 # sandbox has no project mise.toml, so /etc/mise must already pin both
 # (golangci typechecks with Go; recipes invoke
 # `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
-go = "1.27.2"
+go = "1.27.3"
 "aqua:golangci/golangci-lint" = "2.15.0"
 # quint: the formal-methods gate's checker (`mise x -- quint`), mandatory for
 # autonomous stop/delete logic in any repo opened in this image. Same pin as
@@ -87,4 +87,4 @@ mise_tools = ["uv", "just"]
 [bootstrap]
 # install.sh の bare Linux 経路（mise がまだ無い機体）が使う版。just は
 # [tools].just をそのまま使う（生成器が対応付ける）。
-mise = "2026.9.0"
+mise = "2026.10.17"

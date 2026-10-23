@@ -61,8 +61,8 @@ func RunCLI(parent context.Context, args []string, out io.Writer) int {
 	kernel, _ := os.ReadFile("/proc/sys/kernel/osrelease")
 	findings := []Finding{
 		{"OK", "ca-build", fmt.Sprintf("binary source and incident data match checkout; %d incident policies", len(incidents))},
-		{"WARN", "ca-platform", PlatformScope(runtime.GOOS, string(kernel), env["WSL_DISTRO_NAME"] != "") + "; OS/browser revocation updates not independently verified"},
 	}
+	findings = append(findings, PlatformFindings(runtime.GOOS, string(kernel), env["WSL_DISTRO_NAME"] != "")...)
 	findings = append(findings, EnvironmentEvidence(env)...)
 	findings = append(findings, Finding{"OK", "ca-build-go", "diagnostic binary built with " + runtime.Version() + "; does not attest other compiled Go applications"})
 	findings = append(findings, allVersionEvidence("go", strings.TrimPrefix(runtime.Version(), "go"))...)
@@ -131,6 +131,7 @@ func discoverTools() []toolSpec {
 		{Name: "go", Command: "go", Args: []string{"version"}},
 		{Name: "node", Command: "node", Kind: "node", Args: []string{"--version"}},
 		{Name: "uv", Command: "uv", Args: []string{"--version"}},
+		{Name: "mise", Command: "mise", Args: []string{"--version"}},
 		{Name: "rustup", Command: "rustup", Args: []string{"--version"}},
 		{Name: "rustc", Command: "rustc", Args: []string{"--version"}},
 		{Name: "bun", Command: "bun", Kind: "bun", Args: []string{"--version"}},
@@ -177,6 +178,9 @@ func ExtractVersion(tool, output string) string {
 		return strings.TrimPrefix(text, "v")
 	}
 	fields := strings.Fields(text)
+	if tool == "mise" && len(fields) > 0 && !strings.Contains(text, "\n") {
+		return fields[0]
+	}
 	if tool == "go" && len(fields) == 4 && fields[0] == "go" && fields[1] == "version" {
 		return strings.TrimPrefix(fields[2], "go")
 	}
@@ -213,7 +217,7 @@ func inspectTool(ctx context.Context, tool toolSpec) []Finding {
 		return findings
 	}
 	switch tool.Name {
-	case "go", "node", "uv", "rustup":
+	case "go", "node", "uv", "rustup", "mise":
 		findings = append(findings, allVersionEvidence(tool.Name, ExtractVersion(tool.Name, result.Stdout))...)
 	case "git":
 		verify := commands.Run(ctx, tool.Path, "config", "--get-urlmatch", "http.sslVerify", baselineControlURL)

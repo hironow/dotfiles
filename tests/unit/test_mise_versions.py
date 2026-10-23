@@ -185,7 +185,7 @@ def test_a_host_only_edit_is_reported(tool: Path, tmp_path: Path) -> None:
 
 def test_a_mutated_generated_region_is_reported(tool: Path, tmp_path: Path) -> None:
     root = tree(tmp_path)
-    mutate(root, REL_FEATURE, 'bun = "1.4.3"', 'bun = "1.4.4"')
+    mutate(root, REL_FEATURE, 'bun = "1.4.4"', 'bun = "1.4.5"')
     result = check(tool, root)
     assert result.returncode != 0
     assert "mise-versions-sync" in result.stderr
@@ -193,7 +193,7 @@ def test_a_mutated_generated_region_is_reported(tool: Path, tmp_path: Path) -> N
 
 def test_a_mutated_bootstrap_constant_is_reported(tool: Path, tmp_path: Path) -> None:
     root = tree(tmp_path)
-    mutate(root, REL_BOOTSTRAP, '_mise_ver="2026.9.0"', '_mise_ver="2026.8.0"')
+    mutate(root, REL_BOOTSTRAP, '_mise_ver="2026.10.17"', '_mise_ver="2026.8.0"')
     result = check(tool, root)
     assert result.returncode != 0
     assert "_mise_ver" in result.stdout
@@ -203,7 +203,7 @@ def test_a_partial_or_empty_version_is_rejected(tool: Path, tmp_path: Path) -> N
     """mise resolves `24` / `prefix:24` / `""` to a moving target, not a pin."""
     for spec in ('"24"', '"prefix:24"', '""'):
         root = tree(tmp_path)
-        mutate(root, REL_SOURCE, 'node = "24.22.0"', f"node = {spec}")
+        mutate(root, REL_SOURCE, 'node = "24.22.1"', f"node = {spec}")
         result = check(tool, root)
         assert result.returncode != 0, spec
         assert "node" in result.stderr, spec
@@ -212,13 +212,13 @@ def test_a_partial_or_empty_version_is_rejected(tool: Path, tmp_path: Path) -> N
 @pytest.mark.parametrize(
     ("old", "new"),
     [
-        ('bun = "1.4.3"', 'bun = "1.4.3"\nbun = "1.4.3"'),
+        ('bun = "1.4.4"', 'bun = "1.4.4"\nbun = "1.4.4"'),
         ("[tools]\n", "[tools]\n[tools]\n"),
         ('rename_exe = "antigravity"', 'rename_exe = "anti\\qgravity"'),
         ('mise_tools = ["uv", "just"]', 'mise_tools = ["uv",,"just"]'),
         ('mise_tools = ["uv", "just"]', 'mise_tools = [,"uv", "just"]'),
-        ('uv = "0.13.1"', 'uv = { version = "0.13.1", }'),
-        ('uv = "0.13.1"', 'uv = { version = "0.13.1",, os = ["linux"] }'),
+        ('uv = "0.13.5"', 'uv = { version = "0.13.5", }'),
+        ('uv = "0.13.5"', 'uv = { version = "0.13.5",, os = ["linux"] }'),
         ('rename_exe = "antigravity"', 'rename_exe = "anti\x01gravity"'),
         ('rename_exe = "antigravity"', 'rename_exe = "anti\x7fgravity"'),
     ],
@@ -261,7 +261,7 @@ def test_non_toml_whitespace_is_not_normalized(
     tool: Path, tmp_path: Path, space: str
 ) -> None:
     root = tree(tmp_path)
-    mutate(root, REL_SOURCE, 'node = "24.22.0"', f'node{space}= "24.22.0"')
+    mutate(root, REL_SOURCE, 'node = "24.22.1"', f'node{space}= "24.22.1"')
     assert_parse_rejected_without_writes(tool, root, REL_SOURCE)
 
 
@@ -280,7 +280,7 @@ def test_host_non_tools_headers_are_outside_the_subset(
 
 def test_inline_table_cannot_be_redeclared(tool: Path, tmp_path: Path) -> None:
     root = tree(tmp_path)
-    mutate(root, REL_SOURCE, 'uv = "0.13.1"', 'uv = { version = "0.13.1" }')
+    mutate(root, REL_SOURCE, 'uv = "0.13.5"', 'uv = { version = "0.13.5" }')
     path = root / REL_SOURCE
     path.write_text(
         path.read_text(encoding="utf-8") + "\n[tools.uv]\n",
@@ -317,7 +317,7 @@ def test_invalid_utf8_is_rejected_without_writes(tool: Path, tmp_path: Path) -> 
 def test_a_failed_sync_writes_neither_file(tool: Path, tmp_path: Path) -> None:
     root = tree(tmp_path)
     before = (root / REL_FEATURE).read_bytes() + (root / REL_BOOTSTRAP).read_bytes()
-    mutate(root, REL_SOURCE, 'node = "24.22.0"', 'node = "24"')
+    mutate(root, REL_SOURCE, 'node = "24.22.1"', 'node = "24"')
     assert cli(tool, "sync", "--root", str(root)).returncode != 0
     after = (root / REL_FEATURE).read_bytes() + (root / REL_BOOTSTRAP).read_bytes()
     assert before == after, "a failed sync wrote to disk"
@@ -383,12 +383,12 @@ def test_a_value_needing_escaping_round_trips(tool: Path, tmp_path: Path) -> Non
 def test_an_inline_table_entry_yields_a_version_constant(
     tool: Path, tmp_path: Path
 ) -> None:
-    """`uv = { version = "0.13.1" }` must write UV_VERSION="0.13.1", not a dict."""
+    """An inline version table must write a string constant, not a dict."""
     root = tree(tmp_path)
-    mutate(root, REL_SOURCE, 'uv = "0.13.1"', 'uv = { version = "0.13.1" }')
+    mutate(root, REL_SOURCE, 'uv = "0.13.5"', 'uv = { version = "0.13.5" }')
     assert cli(tool, "sync", "--root", str(root)).returncode == 0
     feature = (root / REL_FEATURE).read_text(encoding="utf-8")
-    assert re.search(r'^UV_VERSION="0\.13\.1"$', feature, re.MULTILINE)
+    assert re.search(r'^UV_VERSION="0\.13\.5"$', feature, re.MULTILINE)
 
 
 def test_the_generated_constants_come_from_the_single_source() -> None:

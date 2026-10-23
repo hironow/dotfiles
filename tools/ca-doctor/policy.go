@@ -51,6 +51,26 @@ func PlatformScope(goos, kernel string, wsl bool) string {
 	}
 }
 
+// PlatformFindings keeps scope and remediation together for CLI assembly.
+// Advice is read-only and never asserts that another trust store is repaired.
+func PlatformFindings(goos, kernel string, wsl bool) []Finding {
+	advice := "update the OS vendor trust package and each runtime CA store separately"
+	switch {
+	case goos == "windows":
+		advice = "check Windows Update and organization trust policy; independent PEM/runtime bundles and WSL need separate updates"
+	case goos == "linux" && (wsl || strings.Contains(strings.ToLower(kernel), "microsoft")):
+		advice = "update ca-certificates inside each WSL distro; Windows host trust updates do not repair Linux bundles"
+	case goos == "darwin":
+		advice = "check OS and Homebrew CA updates separately; Apple Python/LibreSSL may ignore SSL_CERT_FILE; verify actual TLS, not just environment paths"
+	case goos == "linux":
+		advice = "update the distribution CA package; independent runtime bundles, containers and static applications need separate updates"
+	}
+	return []Finding{
+		{"WARN", "ca-platform", PlatformScope(goos, kernel, wsl) + "; OS/browser revocation updates not independently verified"},
+		{"WARN", "ca-remediation", advice + "; no changes applied; see docs/runbook/ca-doctor.md"},
+	}
+}
+
 // Windows environment variable names are case-insensitive; Unix names are not.
 func NormalizeEnvironment(env map[string]string, goos string) map[string]string {
 	result := make(map[string]string, len(env))

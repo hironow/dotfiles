@@ -96,7 +96,7 @@ func ParseIncident(data []byte) (Incident, error) {
 
 func versionToolSupported(tool string) bool {
 	switch tool {
-	case "go", "node", "uv", "rustup", "certifi", "pip":
+	case "go", "node", "uv", "rustup", "certifi", "pip", "bun", "mise":
 		return true
 	default:
 		return false
