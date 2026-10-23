@@ -376,8 +376,8 @@ func TestCheckReportsEveryOneSidedEdit(t *testing.T) {
 	for name, tc := range map[string]struct{ rel, old, new string }{
 		"source only":      {sourceRel, `"aqua:rossmacarthur/sheldon" = "0.8.5"`, `"aqua:rossmacarthur/sheldon" = "0.9.0"`},
 		"host only":        {hostRel, `"aqua:rossmacarthur/sheldon" = { version = "0.8.5"`, `"aqua:rossmacarthur/sheldon" = { version = "0.9.0"`},
-		"generated region": {featureRel, `bun = "1.4.3"`, `bun = "1.4.4"`},
-		"bootstrap const":  {bootstrapRel, `_mise_ver="2026.9.0"`, `_mise_ver="2026.8.0"`},
+		"generated region": {featureRel, `bun = "1.4.4"`, `bun = "1.4.5"`},
+		"bootstrap const":  {bootstrapRel, `_mise_ver="2026.10.17"`, `_mise_ver="2026.8.0"`},
 	} {
 		root := tree(t)
 		mutate(t, root, tc.rel, tc.old, tc.new)
@@ -403,7 +403,7 @@ func TestSyncIsIdempotentAndWritesNothingWhenItFails(t *testing.T) {
 	// A broken source must not touch either file.
 	broken := tree(t)
 	before := read(t, filepath.Join(broken, featureRel)) + read(t, filepath.Join(broken, bootstrapRel))
-	mutate(t, broken, sourceRel, `node = "24.22.0"`, `node = "24"`)
+	mutate(t, broken, sourceRel, `node = "24.22.1"`, `node = "24"`)
 	if code, _, _ := runCLI(t, "sync", "--root", broken); code == 0 {
 		t.Fatal("sync accepted a partial version")
 	}

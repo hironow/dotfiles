@@ -91,6 +91,46 @@ macOSのKeychainの失効情報とPEM束も別物である。
 ブラウザやOSの失効リスト配信状態、他のPATH上のコピー、別の仮想環境、pip内部のvendored CA束、Electron、コンテナ、既存の静的Go/Rustバイナリは保証しない。
 OSのパッケージ情報は収集するが、異なるディストリビューションの版を単純比較しない。
 
+## OS別の確認と修復
+
+同じOSでも、PATHで選ぶ実行ファイル、仮想環境、明示されたCAファイルによって結果は変わる。
+まず `ca-tool-*` の実行ファイルと `ca-env` を確認し、正常系が成功したかと、事故テスト先ごとの結果を記録する。
+`unknown` が残る検査は完了扱いにしない。
+`ca-remediation` はOS別の確認先を案内するだけで、更新や信頼ストアの変更を行わない。
+社内CAやTLS中継を使う端末では、CA束を置き換える前に管理者と確認する。
+
+| 環境 | 確認と修復 | 別途確認する範囲 |
+| --- | --- | --- |
+| macOS | OS更新に加え、Homebrewの `ca-certificates` と実際に使うPEM束を確認する | Keychain、`/etc/ssl/cert.pem`、Pythonの既定CAは同一ではない |
+| native Windows | Windows Updateと組織の証明書配信状態を確認する | OSストアを使うSchannelと、独立したPEM束を持つPythonやNode.jsなどは別々に更新する |
+| WSL | 各ディストリビューションの `ca-certificates` をその環境内で更新する | Windows本体の更新や別のWSLディストリビューションには反映されない |
+| Linux | ディストリビューションの公式パッケージ更新でCA束を更新する | コンテナ、仮想環境、静的バイナリ、独立したCA束は別々に確認する |
+
+LinuxとWSLでは、端末の管理方針に従い、Debian/Ubuntuなら `apt`、Fedora系なら `dnf`、Alpineなら `apk` でCAパッケージを更新する。
+バックポートがあるため、異なるディストリビューションの版番号を単純比較しない。
+Windowsの診断はWSL経由で代用せず、Windows本体でビルドしたバイナリをPowerShellから `just ca-doctor` で実行する（recipeはGit Bashを経由する）。
+ツールの更新後は、新しいプロセスから同じ診断を実行する。
+Windows、WSL、Linuxの実行結果は、それぞれの実機で確認する必要がある。
+Macでの成功やクロスビルドの成功を、他OSでの修復確認とはしない。
+
+### Macでユーザー領域のCA束を選ぶ
+
+HomebrewのCAパッケージを更新したうえで、実ファイルと実接続を確認する。
+Apple Siliconでは通常 `/opt/homebrew/etc/ca-certificates/cert.pem`、Intel Macでは通常 `/usr/local/etc/ca-certificates/cert.pem` だが、配置は端末ごとに確認する。
+既存のCA環境変数がある場合は、追加の変数で優先順位を変えず、その設定の管理者と調整する。
+
+既存のCA指定がない端末では、更新済みCA束を `SSL_CERT_FILE`（対応するPythonの標準ssl）、`CURL_CA_BUNDLE`（curl）、`REQUESTS_CA_BUNDLE`（Requests）、`PIP_CERT`（pip）としてユーザーのシェル設定で指定する方法がある。
+これは各クライアント向けの指定であり、OSの信頼ストアを修復する操作ではない。
+環境変数を設定したシェルから新しく起動するプロセスにだけ反映され、起動済みのエディタ、GUI、サービスには遡って反映されない。
+
+Apple付属のPython/LibreSSLでは、`SSL_CERT_FILE` が表示上の既定パスに反映されても、TLSの既定CA読み込みに使われない場合がある。
+MacのPython 3.9.6／LibreSSL 2.8.3でこの挙動を実測したため、変数の表示だけで修復済みと判断しない。
+その場合は、修正済みの管理下Pythonを使うか、アプリが提供するCA指定を使う。
+Pythonの標準sslを使うアプリなら `ssl.create_default_context(cafile="更新済みCA束の絶対パス")` を明示して検証できるが、他のHTTPライブラリへ自動適用されるものではない。
+システムPythonを使い続けて接続受理が残る場合は、`ERR` を残す。
+診断コードを変えてその接続だけ別のCA束に切り替えたり、警告を消すために `sitecustomize.py` を追加したりしない。
+OS管理ファイルやKeychainの修復は、ユーザー環境変数の変更と分け、管理者の承認を得て行う。
+
 ## 事故別ルールの追加と更新
 
 正本は `tools/ca-doctor/incidents/*.json` である。
