@@ -45,13 +45,17 @@ repos:
   #
   # Invoked as bare `python3`, not through a just recipe or `uv run`: the
   # script is stdlib-only, and `uv run` inside a commit hook can regenerate the
-  # root uv.lock mid-commit (a known trap here). No local list => no-op.
+  # root uv.lock mid-commit (a known trap here). Both hooks pass the same
+  # fail-closed gate `just ci` uses (--require-list --min-tokens 11, mirroring
+  # FORBIDDEN_TOKEN_GATE in the justfile): a missing, empty or truncated list
+  # FAILS the commit instead of skipping the scan. A bare invocation without
+  # the flags still skips when no list is present.
   # ======================================================================
   - repo: local
     hooks:
       - id: forbidden-tokens-staged
         name: forbidden tokens (staged diff + unreviewable blobs)
-        entry: python3 scripts/check_forbidden_tokens.py staged
+        entry: python3 scripts/check_forbidden_tokens.py staged --require-list --min-tokens 11
         language: system
         pass_filenames: false
         always_run: true
@@ -60,7 +64,7 @@ repos:
 
       - id: forbidden-tokens-commit-msg
         name: forbidden tokens (commit message)
-        entry: python3 scripts/check_forbidden_tokens.py commit-msg
+        entry: python3 scripts/check_forbidden_tokens.py commit-msg --require-list --min-tokens 11
         language: system
         stages: [commit-msg]
         description: Refuse a commit message that leaks a private identifier.

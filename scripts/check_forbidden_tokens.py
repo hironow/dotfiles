@@ -14,8 +14,11 @@ Three design choices make it a wall rather than theatre:
 **The token list lives outside the repo.** `~/.config/dotfiles/forbidden-tokens`
 (mode 0600), or `$XDG_CONFIG_HOME/dotfiles/forbidden-tokens`, or whatever
 `DOTFILES_FORBIDDEN_TOKENS` points at. Committing the list would publish exactly
-what it protects. A checkout without one (CI, a fresh clone) scans nothing and
-passes -- so this script is useless as a CI-side secret scanner, and is not one.
+what it protects. A bare invocation with no list (CI, a fresh clone) scans
+nothing and passes -- so this script is useless as a CI-side secret scanner, and
+is not one. The installed commit hooks are the exception: they pass the
+fail-closed gate below, so a clone that has a hook installed but no list cannot
+commit.
 
 **The tracked tree is scanned whole; only ADDED lines are scanned in a diff.**
 The staged scan reads the added lines of the staged diff plus the staged
@@ -50,12 +53,15 @@ Modes:
     tree                   `just ci`: every tracked blob and path at HEAD
     file <path>...         a PR body (or any file) scanned in full
 
-`tree` and `branch` also take `--require-list` and `--min-tokens N`, which turn
-the skip-on-no-list default into a failure. `just ci` passes both: a list that
-moved, or a typo in `$DOTFILES_FORBIDDEN_TOKENS`, would otherwise turn the wall
-into a no-op that prints "OK", and a floor on the entry count is what notices
-that an entry was dropped from the list. A plain run without the flags still
-passes with no list, so a fresh clone and CI are unaffected.
+`staged`, `commit-msg`, `branch` and `tree` also take `--require-list` and
+`--min-tokens N`, which turn the skip-on-no-list default into a failure. The two
+commit hooks and `just ci` (the `FORBIDDEN_TOKEN_GATE` just variable) pass both:
+a list that moved, or a typo in `$DOTFILES_FORBIDDEN_TOKENS`, would otherwise
+turn the wall into a no-op that prints "OK", and a floor on the entry count is
+what notices that an entry was dropped from the list. A plain run without the
+flags still passes with no list, so CI and a bare script invocation are
+unaffected; a commit in a clone with no list fails, the deliberate price of a
+wall that cannot silently open.
 
 Exit code: 0 = clean, 1 = findings (listed on stderr). Stdlib only, and no `uv`
 anywhere in its invocation: a hook that runs `uv run` can rewrite the root
@@ -602,7 +608,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="check_forbidden_tokens.py", description=__doc__
     )
     modes = parser.add_subparsers(dest="mode", required=True)
-    modes.add_parser("staged", help="scan the staged diff (pre-commit)")
+    staged = modes.add_parser("staged", help="scan the staged diff (pre-commit)")
     commit_msg = modes.add_parser("commit-msg", help="scan a commit message file")
     commit_msg.add_argument("message_file")
     branch = modes.add_parser("branch", help="rescan the whole branch")
@@ -610,8 +616,10 @@ def _parser() -> argparse.ArgumentParser:
     tree = modes.add_parser("tree", help="scan every tracked file at HEAD")
     files = modes.add_parser("file", help="scan whole files (e.g. a PR body)")
     files.add_argument("paths", nargs="+")
-    # Fail-closed options, on the two modes `just ci` runs.
-    for gate in (branch, tree):
+    # Fail-closed options, on the two commit-time modes (the hooks pass them)
+    # and the two `just ci` modes: a missing or truncated list must FAIL rather
+    # than turn the wall into a no-op that prints "OK".
+    for gate in (staged, commit_msg, branch, tree):
         gate.add_argument(
             "--require-list",
             action="store_true",
