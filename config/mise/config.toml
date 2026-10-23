@@ -23,7 +23,7 @@ rust = { version = "1.99.1", components = ["rust-analyzer"] }
 # so `mise x -- tofu` resolves from the non-mise-activated bash
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
 # no shims PATH). Pinned for repeatable IaC test runs across machines.
-opentofu = "1.13.1"
+opentofu = "1.13.2"
 # Python toolchain = the astral trio, always: uv (packages/runner), ruff
 # (lint + format), ty (type checking; https://github.com/astral-sh/ty).
 # mypy / pyright are retired (2026-09-08) — do not reintroduce them. Declared
@@ -42,8 +42,8 @@ opentofu = "1.13.1"
 # hook run `uv run --frozen --only-group lint ruff`, i.e. that repo's own
 # lint-group pin, never these.
 uv = "latest"
-ruff = "0.17.1"
-ty = "0.0.90"
+ruff = "0.17.2"
+ty = "0.0.91"
 # golangci-lint v2: the Go quality gate (`just go-lint` / `just check`).
 # Aqua backend. Bare `mise exec -- golangci-lint` can still resolve Go's
 # GOBIN copy, so justfile recipes pin `aqua:golangci/golangci-lint`.
@@ -61,7 +61,7 @@ prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
-"npm:portless" = "0.15.8"
+"npm:portless" = "0.15.9"
 # eza — modern ls replacement aliased unconditionally-now-guarded in
 # .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
 # it on PATH for every dir; without a config source the installed

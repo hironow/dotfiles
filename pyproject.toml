@@ -64,9 +64,9 @@ dev = [
 # format-after-edit). ty uses `--group lint` so it still sees project imports.
 lint = [
     # lock pin; `just bump-tool` moves it with emulator, RTTM and mise
-    "ruff==0.17.1",
+    "ruff==0.17.2",
     # pre-1.0: pinned exactly, bumped deliberately (ADR 0044)
-    "ty==0.0.90",
+    "ty==0.0.91",
 ]
 
 [tool.uv]
