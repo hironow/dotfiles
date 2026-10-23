@@ -940,15 +940,18 @@ pre-commit:
 # (~/.config/dotfiles/forbidden-tokens, mode 0600, or $DOTFILES_FORBIDDEN_TOKENS):
 # tracking it would publish the very strings it protects.
 #
-# The two recipes `just ci` runs pass FORBIDDEN_TOKEN_GATE, which makes a missing
-# or empty list a FAILURE rather than a skip: a list that moved, or a typo in the
-# env var, would otherwise leave the gate printing "OK" while scanning nothing.
-# `--min-tokens` is the floor underneath that -- it is what notices an entry being
-# dropped, including the one naming where this stack's work moved to. Raise it
-# when the list grows; lowering it is a decision, not a fix. Nothing in GitHub
-# Actions runs `just ci` (the workflows call pytest and tofu directly), so this
-# fails closed for the operator without breaking CI or a fresh clone -- a plain
-# `python3 scripts/check_forbidden_tokens.py tree` still skips with no list.
+# The two recipes `just ci` runs AND the two pre-commit hooks
+# (.pre-commit-config.yaml) pass FORBIDDEN_TOKEN_GATE, which makes a missing or
+# empty list a FAILURE rather than a skip: a list that moved, or a typo in the
+# env var, would otherwise leave the gate printing "OK" while scanning nothing --
+# and a commit-time hook that skipped silently is how a private identifier
+# reached `main` before (see #496). `--min-tokens` is the floor underneath that --
+# it is what notices an entry being dropped, including the one naming where this
+# stack's work moved to. Raise it when the list grows; lowering it is a decision,
+# not a fix. Nothing in GitHub Actions runs `just ci` or the hooks (the workflows
+# call pytest and tofu directly), so this cannot break CI; a bare `python3
+# scripts/check_forbidden_tokens.py <mode>` still skips with no list, but a clone
+# with no list can no longer commit -- the deliberate price of the wall.
 #
 # Called as bare `python3` (stdlib-only script, and `uv run` in a commit hook
 # can regenerate the root uv.lock mid-commit — a known trap here).
@@ -959,7 +962,7 @@ FORBIDDEN_TOKEN_GATE := "--require-list --min-tokens 11"
 # Scan the staged diff, staged paths and unreviewable blobs (what pre-commit runs)
 [group('Lint')]
 check-forbidden-tokens:
-    python3 scripts/check_forbidden_tokens.py staged
+    python3 scripts/check_forbidden_tokens.py staged {{ FORBIDDEN_TOKEN_GATE }}
 
 # Rescan the whole branch: added lines of <base>..HEAD plus EVERY commit message
 # there. Squashing or amending cannot hide a token from this; the per-commit

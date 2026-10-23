@@ -20,8 +20,9 @@ they are what most of these tests pin:
 2. **The token list lives outside the repo.** `~/.config/dotfiles/forbidden-tokens`,
    mode 0600, is the only place the real strings exist -- putting them in a
    tracked config would publish exactly what the guard protects. A checkout
-   with no list (CI, a fresh clone) therefore scans nothing and passes; these
-   tests only ever use synthetic tokens.
+   with no list (CI, a fresh clone) therefore scans nothing and passes **when
+   the script is run bare**; the installed commit hooks pass the fail-closed
+   gate and do not skip. These tests only ever use synthetic tokens.
 
 The blob refusal is the one unconditional leg: `*.tfplan` / `*.tfstate*` /
 `terraform.tfvars` / `backend.hcl` and anything git calls binary cannot be
@@ -914,3 +915,91 @@ def test_min_tokens_passes_at_and_above_the_floor(tmp_path: Path) -> None:
             repo, "tree", "--require-list", "--min-tokens", floor, token_list=tokens
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+# --- the commit-time hooks are fail-closed too -------------------------------
+#
+# `just ci` was the only fail-closed caller, so the two hooks that run on every
+# local commit (`staged`, `commit-msg`) still skipped with no list -- a silent
+# no-op that is how a private identifier reached `main` in #493. The hooks now
+# pass FORBIDDEN_TOKEN_GATE, so a missing, empty or truncated list fails the
+# commit instead of printing "OK". A bare invocation stays permissive: a fresh
+# clone or CI that runs the script without the flags still skips.
+
+
+def test_require_list_guards_staged_mode(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _stage(repo, "notes.md", "clean line\n")
+
+    result = _run(repo, "staged", "--require-list")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "--require-list" in result.stderr
+
+
+def test_min_tokens_guards_staged_mode(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tokens = _token_list(tmp_path, TOKEN_A, TOKEN_B)
+    _stage(repo, "notes.md", "clean line\n")
+
+    result = _run(
+        repo, "staged", "--require-list", "--min-tokens", "3", token_list=tokens
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "--min-tokens" in result.stderr
+
+
+def test_require_list_guards_commit_msg_mode(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    msg = repo / "MSG"
+    msg.write_text("feat: clean subject\n", encoding="utf-8", newline="\n")
+
+    result = _run(repo, "commit-msg", str(msg), "--require-list")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_staged_without_the_gate_still_skips_with_no_list(tmp_path: Path) -> None:
+    """The permissive default is kept for a bare invocation (fresh clone, CI)."""
+    repo = _init_repo(tmp_path)
+    _stage(repo, "notes.md", "clean line\n")
+
+    result = _run(repo, "staged")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "skipped" in result.stdout
+
+
+def _justfile_gate() -> str:
+    """The one place the gate flags are declared: the justfile variable."""
+    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
+    line = next(
+        line
+        for line in justfile.splitlines()
+        if line.startswith("FORBIDDEN_TOKEN_GATE := ")
+    )
+    return line.split(":=", 1)[1].strip().strip('"')
+
+
+def test_prek_hooks_pass_the_fail_closed_gate() -> None:
+    gate = _justfile_gate()
+    assert gate.startswith("--require-list --min-tokens "), gate
+    config = (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    entries = [
+        line.strip()
+        for line in config.splitlines()
+        if "check_forbidden_tokens.py staged" in line
+        or "check_forbidden_tokens.py commit-msg" in line
+    ]
+    assert len(entries) == 2, entries
+    # endswith, not a substring test: a hook quietly moved to `--min-tokens 1`
+    # fails here, and the value is pinned to the justfile's single source.
+    for entry in entries:
+        assert entry.endswith(gate), entry
+
+
+def test_staged_recipe_passes_the_gate() -> None:
+    justfile = (_REPO_ROOT / "justfile").read_text(encoding="utf-8")
+    recipe = justfile.split("\ncheck-forbidden-tokens:", 1)[1].split("\n\n", 1)[0]
+    assert "FORBIDDEN_TOKEN_GATE" in recipe
