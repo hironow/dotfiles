@@ -70,6 +70,8 @@ Windows の socket timeout は方向ごとに300秒とする。
 - WSL の native binary、package、process、system/user service、モデル配置を調べる。
 - ブリッジの管理対象 unit、実行ファイル、PID、待受 socket、転送後の version 応答を照合する。
 - 停止中や接続不能の WSL は起動せず、未検査の WARN とする。プラットフォーム管理の distro も未検査と表示する。
+- Windows が届かないだけで unit や socket が正しく管理されているブリッジは、構成違反ではなく通常の停止として WARN にする。identity や version の不一致は ERR のままである。
+- WSL2 のカーネルを共有する Docker / Podman コンテナは Windows との相互運用を持たないため、この方針の適用外（該当なし）と判定する。
 
 既知の配置や実行中のプロセスから外れた休眠コピーまで、存在しないと保証する検査ではない。
 構成違反は ERR、検査不能や停止中の正規 backend は WARN とし、HTTP 応答だけで正しい所有者とは判定しない。

@@ -162,14 +162,31 @@ foreach($scope in @('Process','User','Machine')){
 )
 
 
-def host_policy(system: str | None = None, release: str | None = None) -> str | None:
+_CONTAINER_SENTINELS = (Path("/.dockerenv"), Path("/run/.containerenv"))
+
+
+def _in_container() -> bool:
+    if sys.platform != "linux":
+        return False
+    return any(sentinel.exists() for sentinel in _CONTAINER_SENTINELS)
+
+
+def host_policy(
+    system: str | None = None,
+    release: str | None = None,
+    container: bool | None = None,
+) -> str | None:
     system = sys.platform if system is None else system
     release = platform.release() if release is None else release
     if system == "win32":
         return "windows-full"
-    if system == "linux" and "microsoft" in release.lower():
-        return "wsl-client"
-    return None
+    if system != "linux" or "microsoft" not in release.lower():
+        return None
+    # Containers on a WSL2 host inherit the Microsoft kernel but have no
+    # Windows interop or user systemd; the singleton policy is inapplicable.
+    return (
+        None if (_in_container() if container is None else container) else "wsl-client"
+    )
 
 
 def _inside(path: str, root: str) -> bool:
@@ -325,20 +342,27 @@ def wsl_findings(
         data.get(key)
         for key in ("client_managed", "bridge_managed", "bridge_active", "bridge_owned")
     )
-    healthy = (
-        isinstance(data.get("version"), str)
-        and bool(data["version"])
-        and (windows_version is None or data["version"] == windows_version)
-    )
-    rows.append(
-        (
-            "OK" if identity and healthy else "ERR",
-            "ollama-bridge",
-            "managed loopback bridge reaches Windows backend"
-            if identity and healthy
-            else "bridge identity, service, socket ownership or end-to-end version check failed",
+    if not identity:
+        state, message = (
+            "ERR",
+            "managed client, bridge service, socket ownership, or end-to-end check failed; rerun ollama_host.py --setup",
         )
-    )
+    elif not isinstance(data.get("version"), str) or not data["version"]:
+        # A correctly managed bridge that cannot reach the backend is an
+        # ordinary outage (the runbook's stopped-backend case), not a
+        # configuration error; identity failures above remain ERR.
+        state, message = (
+            "WARN",
+            "Windows backend unreachable through the managed bridge; start the canonical Windows Ollama full application or rerun ollama_host.py --setup",
+        )
+    elif windows_version is not None and data["version"] != windows_version:
+        state, message = (
+            "ERR",
+            f"bridge reached version {data['version']} but Windows reports {windows_version}",
+        )
+    else:
+        state, message = "OK", "managed loopback bridge reaches Windows backend"
+    rows.append((state, "ollama-bridge", message))
     rows.append(
         (
             "OK"
@@ -608,6 +632,7 @@ def client_command(args: list[str]) -> int:
         "signin",
         "signout",
         "list",
+        "ls",
         "ps",
         "cp",
         "rm",
@@ -888,8 +913,17 @@ async def _relay(
                     await asyncio.wait_for(process.communicate(), timeout=5)
         finally:
             writer.close()
-            with contextlib.suppress(OSError, TimeoutError):
+            try:
                 await asyncio.wait_for(writer.wait_closed(), timeout=5)
+            except TimeoutError:
+                # A client that stops reading pins the graceful drain; force
+                # the socket closed so server.wait_closed() cannot outlive
+                # the unit's stop timeout.
+                transport = writer.transport
+                if transport is not None:
+                    transport.abort()
+            except OSError:
+                pass
             # The slot covers the entire child lifetime, including reaping.
             if acquired:
                 slots.release()
@@ -905,6 +939,10 @@ async def serve() -> None:
 
     def finished(task: asyncio.Task, writer: asyncio.StreamWriter) -> None:
         # Cancellation before the coroutine's first step skips its finally.
+        transport = writer.transport
+        if closing and transport is not None:
+            # Shutdown must not wait on a drain that cannot finish.
+            transport.abort()
         writer.close()
         active.discard(task)
         if not task.cancelled() and task.exception() is not None:

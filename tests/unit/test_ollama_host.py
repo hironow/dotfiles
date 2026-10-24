@@ -345,6 +345,33 @@ def test_wsl_bridge_version_must_match_canonical_backend() -> None:
     )
 
 
+def test_backend_outage_is_warned_but_identity_failure_stays_err() -> None:
+    data = _wsl()
+    data["version"] = ""
+    assert _has(host.wsl_findings(data, windows_version=""), "WARN", "ollama-bridge")
+    data["bridge_active"] = False
+    assert _has(host.wsl_findings(data, windows_version=""), "ERR", "ollama-bridge")
+
+
+def test_wsl_kernel_container_is_never_a_wsl_client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    assert (
+        host.host_policy("linux", "6.6-microsoft-standard-WSL2", container=True) is None
+    )
+    assert (
+        host.host_policy("linux", "6.6-microsoft-standard-WSL2", container=False)
+        == "wsl-client"
+    )
+    sentinels = (tmp_path / "dockerenv", tmp_path / "containerenv")
+    monkeypatch.setattr(host, "_CONTAINER_SENTINELS", sentinels)
+    monkeypatch.setattr(host.sys, "platform", "linux")
+    monkeypatch.setattr(host.platform, "release", lambda: "6.6-microsoft-standard-WSL2")
+    assert host.host_policy() == "wsl-client"
+    sentinels[0].write_text("", encoding="utf-8")
+    assert host.host_policy() is None
+
+
 def test_missing_transport_and_invalid_version_fail_closed() -> None:
     data = _windows()
     data["python"] = ""
@@ -376,6 +403,24 @@ def test_client_refuses_daemon_menu_and_unknown_entrypoints(
     )
     with pytest.raises(RuntimeError):
         host.client_command(args)
+
+
+def test_managed_client_accepts_the_ls_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "windows_snapshot", _windows)
+    monkeypatch.setattr(host, "interop_environment", lambda: {"WSLENV": ""})
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(host.subprocess, "run", run)
+    assert host.client_command(["ls"]) == 0
+    assert calls[0][0].endswith("ollama.exe")
+    assert calls[0][1:] == ["ls"]
 
 
 def test_client_preserves_args_and_wslenv_but_pins_windows_loopback(
@@ -857,6 +902,121 @@ def test_service_shutdown_reaps_active_helper_before_server_closure(
     asyncio.run(exercise())
 
 
+def test_service_forces_closed_backpressured_client_during_shutdown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "windows_snapshot", _windows)
+    monkeypatch.setattr(host, "interop_environment", os.environ.copy)
+    state = tmp_path / "bridge-state.json"
+    monkeypatch.setattr(host, "_state_path", lambda: state)
+    original_server = asyncio.start_server
+    original_spawn = asyncio.create_subprocess_exec
+    servers, children, writers = [], [], []
+    drain_state = {"inside": 0}
+
+    async def exercise():
+        started = asyncio.Event()
+
+        async def start(callback, address, port, **kwargs):
+            async def capturing(reader, writer):
+                writers.append(writer)
+                original_drain = writer.drain
+
+                async def instrumented():
+                    drain_state["inside"] += 1
+                    try:
+                        await original_drain()
+                    finally:
+                        drain_state["inside"] -= 1
+
+                # accepted is a plain callback; only await an awaitable.
+                writer.drain = instrumented
+                result = callback(reader, writer)
+                if result is not None:
+                    await result
+
+            server = await original_server(capturing, address, 0, **kwargs)
+            servers.append(server)
+            return server
+
+        async def spawn(*args, **kwargs):
+            # Stream far more than socket buffers hold while the client
+            # never reads, so graceful drain could never finish.
+            process = await original_spawn(
+                sys.executable,
+                "-u",
+                "-c",
+                "import sys\nfor _ in range(512):\n sys.stdout.buffer.write(b'x' * 32768)\n",
+                **kwargs,
+            )
+            children.append(process)
+            started.set()
+            return process
+
+        monkeypatch.setattr(host.asyncio, "start_server", start)
+        monkeypatch.setattr(host.asyncio, "create_subprocess_exec", spawn)
+        service = asyncio.create_task(host.serve())
+        client = None
+        try:
+            async with asyncio.timeout(5):
+                while not state.exists():
+                    await asyncio.sleep(0.01)
+            reader, client = await asyncio.open_connection(
+                "127.0.0.1", servers[0].sockets[0].getsockname()[1]
+            )
+            client.write(b"request")
+            await client.drain()
+            await asyncio.wait_for(started.wait(), 5)
+            # Prove the download reached a genuinely blocked drain: the
+            # instrumented drain must stay suspended across a settle delay
+            # (16 MiB backlog, this client never reads), otherwise shutdown
+            # would exercise no backpressure path.
+            async with asyncio.timeout(10):
+                while True:
+                    if drain_state["inside"]:
+                        await asyncio.sleep(0.2)
+                        if drain_state["inside"]:
+                            break
+                    await asyncio.sleep(0.01)
+            service.cancel()
+            # The forced close must keep shutdown far inside TimeoutStopSec.
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(service, 15)
+            assert not state.exists()
+            assert len(children) == 1 and children[0].returncode is not None
+            # The forced close discards the backlog instead of draining all
+            # 16 MiB before EOF; a graceful close would only finish after
+            # this read loop drained everything. Kernel auto-tuning may
+            # deliver a few MiB that were already in flight, so only the
+            # full-stream amount would prove a graceful drain.
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 10
+            received = 0
+            while True:
+                remaining = deadline - loop.time()
+                chunk = await asyncio.wait_for(reader.read(1 << 16), remaining)
+                if not chunk:
+                    break
+                received += len(chunk)
+            assert 0 < received < (15 << 20), received
+        finally:
+            if client:
+                client.close()
+                with contextlib.suppress(OSError):
+                    await client.wait_closed()
+            for child in children:
+                if child.returncode is None:
+                    child.kill()
+                    await asyncio.wait_for(child.wait(), 5)
+            if not service.done():
+                service.cancel()
+                with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                    await asyncio.wait_for(service, 15)
+
+    asyncio.run(exercise())
+
+
 def test_service_closes_client_cancelled_before_handler_first_step(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -868,6 +1028,7 @@ def test_service_closes_client_cancelled_before_handler_first_step(
 
     class Writer:
         closed = False
+        transport = None
 
         def close(self):
             self.closed = True
