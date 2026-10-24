@@ -99,7 +99,7 @@ apt-get update -y
 apt-get install -y --no-install-recommends mise
 
 # ---- uv (Python package manager) ------------------------------------
-UV_VERSION="0.13.1"
+UV_VERSION="0.13.5"
 case "$ARCH" in
   x86_64)  UV_TARGET="x86_64-unknown-linux-gnu" ;;
   aarch64) UV_TARGET="aarch64-unknown-linux-gnu" ;;
@@ -264,14 +264,14 @@ cat > /etc/mise/config.toml <<'EOF'
 package_manager = "bun"
 
 [tools]
-bun = "1.4.3"
+bun = "1.4.4"
 just = "1.59.0"
 markdownlint-cli2 = "0.23.3"
 prek = "0.5.6"
-uv = "0.13.1"
+uv = "0.13.5"
 vp = "1.3.0"
-node = "24.22.0"
-go = "1.27.2"
+node = "24.22.1"
+go = "1.27.3"
 "aqua:golangci/golangci-lint" = "2.15.0"
 "npm:@informalsystems/quint" = "0.33.0"
 "npm:@openai/codex" = "0.163.0"
@@ -313,15 +313,15 @@ MISE_TRUSTED_CONFIG_PATHS=/etc/mise mise reshim || true
 export QUINT_HOME=/opt/quint
 QUINT_EVALUATOR_VERSION="v0.7.0"
 QUINT_EVALUATOR_REV="034db864f92e53e94258e19dd4df6526eedf3c48" # tag evaluator/v0.7.0
-RUSTUP_VERSION="1.29.1"
-RUST_TOOLCHAIN="1.99.0"
+RUSTUP_VERSION="1.29.2"
+RUST_TOOLCHAIN="1.99.1"
 case "$ARCH" in
   x86_64)
     RUSTUP_TARGET="x86_64-unknown-linux-gnu"
-    RUSTUP_SHA256="dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71" ;;
+    RUSTUP_SHA256="5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4" ;;
   aarch64)
     RUSTUP_TARGET="aarch64-unknown-linux-gnu"
-    RUSTUP_SHA256="15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433" ;;
+    RUSTUP_SHA256="a9c168dbea81a84671c6b7a5c1795cb0eb699020110d107ddfca427bd797e697" ;;
   *) echo "[dotfiles-tools] unsupported arch: $ARCH" >&2; exit 1 ;;
 esac
 echo "[dotfiles-tools] building quint's Rust evaluator ${QUINT_EVALUATOR_VERSION} (${QUINT_EVALUATOR_REV}) with Rust ${RUST_TOOLCHAIN}"

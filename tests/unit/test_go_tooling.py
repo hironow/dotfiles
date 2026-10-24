@@ -136,16 +136,15 @@ def test_baked_mise_pins_go_and_golangci_lint() -> None:
     """Sandbox `just check` runs go-lint; the one-shot image has no project
     mise.toml, so /etc/mise must already pin Go and golangci-lint."""
     tools = _baked_mise_tools()
-    go = tools.get("go")
-    assert go == "1.27.2", (
-        "bake go 1.27.2 into /etc/mise so sandbox just check can run go-lint, "
-        f"got {go!r}"
-    )
-    golangci = tools.get("aqua:golangci/golangci-lint")
-    assert golangci == "2.15.0", (
-        "bake aqua:golangci/golangci-lint 2.15.0 into /etc/mise so sandbox "
-        f"just check can run go-lint, got {golangci!r}"
-    )
+    source = tomllib.loads(
+        (REPO / "config/mise/image-tools.toml").read_text(encoding="utf-8")
+    )["tools"]
+    for name in ("go", "aqua:golangci/golangci-lint"):
+        assert name in source, f"SSOT must declare {name} for sandbox just check"
+        assert tools.get(name) == source[name], (
+            f"bake {name} from image-tools.toml so sandbox just check can run "
+            f"go-lint: expected {source[name]!r}, got {tools.get(name)!r}"
+        )
 
 
 def test_emu_fmt_uses_golangci_not_go_fmt() -> None:

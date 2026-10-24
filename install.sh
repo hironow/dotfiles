@@ -171,7 +171,7 @@ step_mise_bootstrap() {
       fi
       ;;
     linux)
-      _mise_ver="2026.9.0"
+      _mise_ver="2026.10.17"
       case "$(uname -m)" in
         x86_64) _mise_tgt="linux-x64-musl" ;;
         aarch64 | arm64) _mise_tgt="linux-arm64-musl" ;;
