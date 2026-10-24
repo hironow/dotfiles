@@ -2,10 +2,14 @@
 
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/install_pi_extensions.py"
 spec = importlib.util.spec_from_file_location("install_pi_extensions", SCRIPT)
@@ -16,6 +20,7 @@ spec.loader.exec_module(installer)
 
 def _no_ollama_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
     """Skip the Ollama bootstrap: it would add one more subprocess call."""
+    monkeypatch.setattr(installer, "host_policy", lambda: None)
     monkeypatch.setattr(
         installer.shutil,
         "which",
@@ -372,27 +377,6 @@ def test_ollama_is_bootstrapped_only_when_declared_and_unserved(
 
 
 @pytest.mark.parametrize(
-    ("system", "wsl", "ollama", "reachable", "owns"),
-    [
-        # Windows alone installs as usual
-        ("win32", None, None, False, False),
-        ("win32", "Ubuntu", "/usr/bin/ollama.exe", False, False),
-        # mirrored mode: the Windows-side server answers from WSL
-        ("win32", "Ubuntu", None, True, False),
-        # the coexistence machine: one Ollama, on the WSL side
-        ("win32", "Ubuntu", None, False, True),
-        # WSL and other platforms are never told to skip
-        ("linux", "Ubuntu", None, False, False),
-        ("darwin", None, None, False, False),
-    ],
-)
-def test_a_windows_wsl_machine_keeps_its_one_ollama_on_the_wsl_side(
-    system: str, wsl: str | None, ollama: str | None, reachable: bool, owns: bool
-) -> None:
-    assert installer.wsl_owns_ollama(system, wsl, ollama, reachable) is owns
-
-
-@pytest.mark.parametrize(
     ("platform", "command"),
     [
         (
@@ -403,15 +387,7 @@ def test_a_windows_wsl_machine_keeps_its_one_ollama_on_the_wsl_side(
             "linux",
             ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"],
         ),
-        (
-            "win32",
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                "irm https://ollama.com/install.ps1 | iex",
-            ],
-        ),
+        ("win32", None),
         ("sunos", None),
     ],
 )
@@ -432,6 +408,7 @@ def test_a_missing_ollama_is_installed_and_a_failure_only_warns(
     monkeypatch.setattr(installer.shutil, "which", lambda name: None)
     monkeypatch.setattr(installer, "_ollama_reachable", lambda: False)
     monkeypatch.setattr(installer.sys, "platform", "linux")
+    monkeypatch.setattr(installer, "host_policy", lambda: None)
     failed = Mock(returncode=1)
     monkeypatch.setattr(installer.subprocess, "run", Mock(return_value=failed))
     installer.install(agent, symlinks=False)
@@ -441,25 +418,37 @@ def test_a_missing_ollama_is_installed_and_a_failure_only_warns(
     assert "WARN: Ollama install failed" in out.err
 
 
-def test_a_windows_wsl_machine_installs_no_second_ollama(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+@pytest.mark.parametrize("policy", ["windows-full", "wsl-client"])
+@pytest.mark.parametrize("present", [True, False])
+def test_coexistence_policy_precedes_binary_and_health_shortcuts(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    policy: str,
+    present: bool,
 ) -> None:
-    agent = tmp_path / "agent"
-    agent.mkdir()
-    (agent / "settings.json").write_text(json.dumps({"packages": []}), encoding="utf-8")
-    monkeypatch.setattr(installer.shutil, "which", lambda name: None)
-    monkeypatch.setattr(installer, "_ollama_reachable", lambda: False)
-    monkeypatch.setattr(installer, "_wsl_distro", lambda: "Ubuntu")
-    monkeypatch.setattr(installer.sys, "platform", "win32")
-    run = Mock()
-    monkeypatch.setattr(installer.subprocess, "run", run)
-    installer.install(agent, symlinks=False)
-    # only the pi package commands ran: no second Ollama was installed
-    assert not any(
-        "ollama.com" in " ".join(str(part) for part in call.args[0])
-        for call in run.call_args_list
+    monkeypatch.setattr(installer, "host_policy", lambda: policy)
+    monkeypatch.setattr(
+        installer.shutil, "which", lambda name: "/wrong/ollama" if present else None
     )
-    assert (agent / "extensions/jev-sonnet-fallback.ts").is_file()
-    out = capsys.readouterr()
-    assert "one Ollama lives on the WSL side (Ubuntu)" in out.out
-    assert "install it from WSL" in out.out
+    monkeypatch.setattr(installer, "_ollama_reachable", lambda: present)
+    run = Mock(return_value=Mock(returncode=1))
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    installer._ensure_ollama([installer.OLLAMA_PACKAGE])
+    command = run.call_args.args[0]
+    assert command[-1] == "--setup"
+    assert command[-2].endswith("ollama_host.py")
+    assert "ollama.com" not in " ".join(command)
+    assert run.call_count == 1  # No Linux/standalone fallback after failed setup.
+    assert "policy/bridge setup incomplete" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "failure", [OSError("launch unavailable"), subprocess.TimeoutExpired("setup", 90)]
+)
+def test_policy_setup_failure_cannot_suppress_extension_placement(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, failure: Exception
+) -> None:
+    monkeypatch.setattr(installer, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(installer.subprocess, "run", Mock(side_effect=failure))
+    installer._ensure_ollama([installer.OLLAMA_PACKAGE])
+    assert "policy/bridge setup incomplete" in capsys.readouterr().err

@@ -58,8 +58,8 @@ case $rc in
 esac
 
 # zsh is the supported interactive shell on Linux / WSL (.zshrc, USAGE.md,
-# j-cc / j-pi). A bare WSL Ubuntu has none, and install.sh never uses sudo,
-# so it can only point at the fix; this is where a box that missed it finds out.
+# j-cc / j-pi). A bare WSL Ubuntu has none, and install.sh's zsh step does
+# not use sudo, so it only points at the fix; doctor catches a missed step.
 if [ "$(uname -s)" = Linux ]; then
   if ! has zsh; then
     # shellcheck disable=SC2016  # the $(command -v zsh) is for the user to run
@@ -69,6 +69,31 @@ if [ "$(uname -s)" = Linux ]; then
   else
     log_ok 'zsh' "login shell ${SHELL}"
   fi
+fi
+
+# WSLg clipboard tools are OS packages, not part of mise. Do not read or
+# overwrite the clipboard during diagnostics; command presence and the
+# Wayland socket are prerequisites, not proof of a Pi/Herdr UI copy action.
+if [ "$(uname -s)" = Linux ]; then
+  case "$(uname -r)" in
+    *[Mm]icrosoft*)
+      if ! has wl-copy || ! has wl-paste; then
+        log_warn 'wsl-clipboard' 'wl-copy/wl-paste missing -- run: sudo apt-get update && sudo apt-get install -y wl-clipboard'
+      elif [ -z "${WAYLAND_DISPLAY:-}" ] || [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+        log_warn 'wsl-clipboard' 'tools installed, but WAYLAND_DISPLAY/XDG_RUNTIME_DIR missing -- open a WSLg-enabled session'
+      else
+        case "$WAYLAND_DISPLAY" in
+          /*) clipboard_socket="$WAYLAND_DISPLAY" ;;
+          *) clipboard_socket="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ;;
+        esac
+        if [ -S "$clipboard_socket" ]; then
+          log_ok 'wsl-clipboard' 'wl-copy/wl-paste installed; Wayland socket present (UI copy not tested)'
+        else
+          log_warn 'wsl-clipboard' 'tools installed, but Wayland socket missing -- check WSLg and session environment'
+        fi
+      fi
+      ;;
+  esac
 fi
 
 # Rogue npm-global AI CLIs shadowing the mise-managed versions (cross-platform).
@@ -385,6 +410,26 @@ if has uv; then
   fi
 else
   log_warn 'ai-tools' 'uv missing: cannot check rtk / headroom'
+fi
+
+# Canonical Ollama ownership and WSL transport. Read-only: no installer,
+# service startup, stopped-distro boot, uninstall, or network changes here.
+if has uv; then
+  ollama_rc=0
+  ollama_out="$(uv run --frozen "$(dirname "${BASH_SOURCE[0]}")/ollama_host.py" --check 2>&1)" || ollama_rc=$?
+  ollama_lines=0
+  while IFS= read -r line; do
+    case "$line" in
+      'OK   '*) ok=$((ok+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
+      'WARN '*) warn=$((warn+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
+      'ERR  '*) err=$((err+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
+    esac
+  done <<<"$ollama_out"
+  if [ "$ollama_lines" -eq 0 ] || [ "$ollama_rc" -gt 1 ]; then
+    log_warn 'ollama-inspection' "checker unavailable (exit $ollama_rc); configuration unverified"
+  fi
+else
+  log_warn 'ollama-inspection' 'uv missing: Ollama ownership unverified'
 fi
 
 echo "Doctor summary: ok=$ok warn=$warn err=$err"
