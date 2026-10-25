@@ -57,9 +57,17 @@ function Test-DotfilesWslForwarder([string]$Executable,[string]$Address,[int]$Po
   }catch{return $false}
 }
 """
-WINDOWS_PROBE = (
-    WINDOWS_FORWARDER_CLASSIFIER
-    + r"""
+# Each outside call the probe body makes through a named function, so a test can
+# replace it between these definitions and WINDOWS_PROBE_BODY.
+WINDOWS_PROBE_FUNCTIONS = r"""
+function Get-DotfilesBackendVersion{
+  $request=[Net.HttpWebRequest]::Create('http://127.0.0.1:11434/api/version')
+  $request.Proxy=$null;$request.Timeout=2000;$request.ReadWriteTimeout=2000
+  $response=$request.GetResponse()
+  try{$reader=[IO.StreamReader]::new($response.GetResponseStream());return ($reader.ReadToEnd()|ConvertFrom-Json).version}finally{$response.Dispose()}
+}
+"""
+WINDOWS_PROBE_BODY = r"""
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new()
 $errorsList=[Collections.Generic.List[string]]::new()
@@ -111,12 +119,7 @@ foreach($entry in $backendListeners){
   if($entry.port -ne 11434 -or $entry.address -notin @('127.0.0.1','::1') -or -not (@($aliases|Where-Object{$entry.path -and $entry.path.StartsWith($_+'\',[StringComparison]::OrdinalIgnoreCase)}).Count)){$owned=$false}
 }
 if($owned -and @($backendListeners.pid|Select-Object -Unique).Count -eq 1){
-  try{
-    $request=[Net.HttpWebRequest]::Create('http://127.0.0.1:11434/api/version')
-    $request.Proxy=$null;$request.Timeout=2000;$request.ReadWriteTimeout=2000
-    $response=$request.GetResponse()
-    try{$reader=[IO.StreamReader]::new($response.GetResponseStream());$version=($reader.ReadToEnd()|ConvertFrom-Json).version}finally{$response.Dispose()}
-  }catch{$errorsList.Add('canonical Windows backend did not return a version')}
+  try{$version=Get-DotfilesBackendVersion}catch{$errorsList.Add('canonical Windows backend did not return a version')}
 }
 $miseDir=''
 foreach($scope in @('Process','User','Machine')){
@@ -159,6 +162,8 @@ foreach($scope in @('Process','User','Machine')){
 }
 @{full_dir=$physical;full_paths=@($aliases);full_bucket=$bucket;duplicates=@($duplicates);listeners=@($listeners);processes=@($processRows);python=$python;python_error=$pythonError;version=$version;conflicting_config=$conflictingConfig;errors=@($errorsList)}|ConvertTo-Json -Depth 5 -Compress
 """
+WINDOWS_PROBE = (
+    WINDOWS_FORWARDER_CLASSIFIER + WINDOWS_PROBE_FUNCTIONS + WINDOWS_PROBE_BODY
 )
 
 
@@ -202,16 +207,17 @@ def _loopback(address: str) -> bool:
         return False
 
 
+def _wsl_forwarder(row: dict) -> bool:
+    """The signed Microsoft ::1 forwarder the probe verified, not a backend."""
+    return (
+        row.get("windows_forwarder") is True
+        and row.get("address") == "::1"
+        and row.get("port", 11434) == 11434
+    )
+
+
 def _backend_listeners(data: dict) -> list[dict]:
-    return [
-        row
-        for row in data.get("listeners", [])
-        if not (
-            row.get("windows_forwarder") is True
-            and row.get("address") == "::1"
-            and row.get("port", 11434) == 11434
-        )
-    ]
+    return [row for row in data.get("listeners", []) if not _wsl_forwarder(row)]
 
 
 def backend_owned(data: dict) -> bool:
@@ -272,7 +278,7 @@ def windows_findings(data: dict) -> list[tuple[str, str, str]]:
             else "no canonical Windows backend, conflicting owner, or multiple serving backends",
         )
     )
-    if len(backends) != len(listeners):
+    if any(_wsl_forwarder(row) for row in listeners):
         rows.append(
             (
                 "OK",
