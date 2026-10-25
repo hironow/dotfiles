@@ -447,10 +447,15 @@ def powershell() -> str:
 
 
 def _run(
-    args: list[str], *, timeout: int = 15, interop: bool = False
+    args: list[str],
+    *,
+    timeout: int = 15,
+    interop: bool = False,
+    input: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         args,
+        input=input,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -461,12 +466,30 @@ def _run(
     )
 
 
-def windows_snapshot() -> dict:
-    command = base64.b64encode(WINDOWS_PROBE.encode("utf-16-le")).decode("ascii")
-    result = _run(
-        [powershell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", command],
-        interop=sys.platform != "win32",
+# The probe is longer than a Windows command line can carry (32,767 characters,
+# and -EncodedCommand doubles and base64-expands a script). This short fixed
+# bootstrap reads the fixed script from standard input as UTF-8 and dot-sources
+# it, so it runs in the same scope as if it had been the command itself.
+POWERSHELL_STDIN_BOOTSTRAP = "$dotfilesProbe=[IO.StreamReader]::new([Console]::OpenStandardInput(),[Text.UTF8Encoding]::new($false)).ReadToEnd();. ([scriptblock]::Create($dotfilesProbe))"
+
+
+def run_powershell(
+    script: str, *, timeout: int = 15
+) -> subprocess.CompletedProcess[str]:
+    """Runs fixed Windows PowerShell 5.1 code, passed on standard input."""
+    command = base64.b64encode(POWERSHELL_STDIN_BOOTSTRAP.encode("utf-16-le")).decode(
+        "ascii"
     )
+    return _run(
+        [powershell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", command],
+        timeout=timeout,
+        interop=sys.platform != "win32",
+        input=script,
+    )
+
+
+def windows_snapshot() -> dict:
+    result = run_powershell(WINDOWS_PROBE)
     if result.returncode:
         raise RuntimeError("Windows inventory did not complete; ownership unverified")
     data = json.loads(result.stdout.lstrip("\ufeff"))

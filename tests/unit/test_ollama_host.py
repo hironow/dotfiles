@@ -1183,3 +1183,23 @@ def test_windows_ci_runs_these_tests_on_windows() -> None:
     ]
     assert "runs-on: windows-latest" in job
     assert "uvx pytest -q -ra tests/unit/test_ollama_host.py" in job
+
+
+def test_the_probe_travels_on_stdin_not_the_command_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Windows caps a command line at 32,767 characters, and -EncodedCommand
+    # doubles and base64-expands the script; the probe is longer than that.
+    calls = []
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append((args, kwargs.get("input")))
+        return subprocess.CompletedProcess(args, 0, '{"listeners":[],"errors":[]}', "")
+
+    monkeypatch.setattr(host, "_run", run)
+    monkeypatch.setattr(host, "powershell", lambda: "powershell.exe")
+    host.windows_snapshot()
+    args, sent = calls[0]
+    assert sent == host.WINDOWS_PROBE
+    assert sum(len(arg) + 1 for arg in args) < 8191
+    assert host.WINDOWS_PROBE.isascii()

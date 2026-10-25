@@ -64,6 +64,7 @@ Windows の socket timeout は方向ごとに300秒とする。
 
 `just doctor` は `scripts/ollama_host.py --check` を呼ぶ。
 検査は読み取り専用であり、修復やサービス起動は行わない。
+Windows の調べのスクリプトは、Windows のコマンド行の長さの上限（32,767 文字）を超えるので、標準入力で PowerShell に渡す。
 
 - Windows のフル版と Scoop の bucket、既知の重複インストール、動作中の Ollama の実行ファイルを調べる。
 - 待受 PID、ポート、アドレスから、本体の所有者と loopback 以外への公開を検査する。
