@@ -60,6 +60,7 @@ Node.js、Python、Goは直接接続し、curlとBunはそれぞれのプロキ�
 必要なツールがなければ、診断のために導入せず未確認とする。
 コマンドのキャンセル時には子プロセスの終了も試み、出力パイプ待ちにも期限を設ける。
 Windowsの子孫プロセス終了はSystem32のtaskkillによるbest effortであり、権限やshimの構成に依存する。
+taskkillの場所はWindowsのAPIが返すsystemディレクトリから決め、環境変数`SystemRoot`には頼らない。
 PATH検索やファイル読み取りなど、OSのI/O全般を厳密な実時間で制限するものではない。
 
 ## 結果と限界
