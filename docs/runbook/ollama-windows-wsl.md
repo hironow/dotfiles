@@ -24,7 +24,12 @@ Ollama のフル版アプリケーションが Windows の `127.0.0.1:11434` を
 
 ## WSL 側の共有
 
-WSL の `just deploy` は、Pi の拡張導入時にユーザーの `ollama-windows-bridge.service` を設定する。
+WSL の網の形は、WSL の中で `wslinfo --networking-mode` を読んで決める（WSL 2.0.4 以降）。
+`nat` なら、この節のブリッジを置く。
+`mirrored` なら、ブリッジを置かない（次の節）。
+それ以外か読めない時は、ブリッジを作らずに止まる。`wsl --update` で WSL を新しくする。
+
+NAT の WSL では、`just deploy` が Pi の拡張導入時にユーザーの `ollama-windows-bridge.service` を設定する。
 Windows のフル版と mise 管理の Windows Python が先に必要であり、不足していても WSL に Linux 版を導入しない。
 ユーザーの systemd と Windows interop が利用できなければ、不足を表示する。
 ヘルパーは `~/.local/lib/dotfiles/ollama_host.py` に管理対象としてコピーし、`/usr/bin/python3` で動かす。
@@ -46,7 +51,7 @@ Windows の `MISE_DATA_DIR` に対応し、完全なバージョン番号のデ�
 この shim は backend の状態にかかわらず先に配置し、既存の導入処理が停止中の backend を Linux 版の不足と誤認しないようにする。
 `serve`、`launch`、未知のコマンドは拒否し、既知の client コマンドだけを正規 backend の稼働確認後に渡す。
 Windows に渡す `OLLAMA_HOST` は loopback に固定し、既存の `WSLENV` の他の項目は残す。
-Ollama 本体やモデルは持たず、NAT と `appendWindowsPath=false` を維持する。
+Ollama 本体やモデルは持たず、`appendWindowsPath=false` を維持する。
 ユーザーサービス内では、セッションごとの socket を設定に固定せず、利用可能な interop socket を確認する。
 
 接続ごとに Windows の待受 PID と実行ファイルを確認し、`127.0.0.1:11434` を Scoop のフル版が所有している場合だけ接続する。
@@ -59,6 +64,40 @@ Windows の socket timeout は方向ごとに300秒とする。
 アップロードが続いていても、応答が300秒間届かなければ受信側は失敗する。
 送信スレッドのエラーも失敗として伝え、stdout は転送データだけに使う。
 ポートの競合時に既存のプロセスを停止したり、別のアドレスへ公開したりしない。
+
+## mirrored の WSL（loopback を Windows と共有する）
+
+`.wslconfig` で `networkingMode=mirrored` にした WSL は、`127.0.0.1` を Windows と共有する（[ADR-0064](../adr/0064-mirrored-wsl-uses-the-shared-loopback.md)）。
+WSL から `127.0.0.1:11434` に繋ぐと、ブリッジ無しで Windows の本体に届く。
+ここにブリッジを置くと、Windows の本体と同じ番号を取り合うので置かない。
+dotfiles は `.wslconfig` を変えない。
+
+mirrored の `just deploy` は、CLI の口 `~/.local/bin/ollama` とヘルパーだけを置き、ブリッジの unit は書かない。
+ブリッジの unit が有効か動いている、ブリッジのプロセスがいる、WSL に 11434 の待受がある、のどれかなら、何も変えずに止まる。
+それらの状態を読めない時も止まる。
+NAT から mirrored に変えた機体では、先に古いブリッジを止める。
+
+```bash
+systemctl --user disable --now ollama-windows-bridge.service
+just deploy
+just doctor
+```
+
+古いブリッジが手で起こされても、mirrored では待ち受けずに終わる。
+CLI の口は、mirrored でも Windows 側の所有を確かめてから Windows の CLI を呼ぶ。
+
+WSL の doctor は、次の順で確かめる。
+途中で外れたら、通信を1回もしない。
+
+1. 網の形が mirrored と決まった。
+2. WSL の待受の調べが成功し、11434 の待受が無い。
+3. Windows で `127.0.0.1:11434` を持つのが正規の本体だと確かめた。
+4. WSL から `127.0.0.1:11434/api/version` を1回聞き、Windows と同じ版が返る。
+
+Windows の doctor が WSL の中で走らせる調べは、Windows 側の判定を受け取らないので、通信しない。
+HTTP で直接 `localhost:11434` に繋ぐ道具（Pi の web 検索など）は、ブリッジの接続ごとの確認を通らない。
+これは mirrored の網の性質で、その代わり doctor が上の順で確かめる。
+本体は IPv4 の loopback だけで待ち受けるので、`localhost` を先に `::1` で試す道具は、断られてから `127.0.0.1` に落ちる。
 
 ## tailnet の中だけの Tailscale 転送を認める（宣言した機体だけ）
 
@@ -98,7 +137,7 @@ Windows の調べのスクリプトは、Windows のコマンド行の長さの�
 - Windows のフル版と Scoop の bucket、既知の重複インストール、動作中の Ollama の実行ファイルを調べる。
 - 待受 PID、ポート、アドレスから、本体の所有者と loopback 以外への公開を検査する。宣言した機体では、tailnet の中だけの Tailscale 転送を確かめ、認めた物は公開と数えない。
 - WSL の native binary、package、process、system/user service、モデル配置を調べる。
-- ブリッジの管理対象 unit、実行ファイル、PID、待受 socket、転送後の version 応答を照合する。
+- NAT の WSL では、ブリッジの管理対象 unit、実行ファイル、PID、待受 socket、転送後の version 応答を照合する。mirrored の WSL では、上の順で共有の loopback を確かめる。網の形が分からない WSL は WARN にする。
 - 停止中や接続不能の WSL は起動せず、未検査の WARN とする。プラットフォーム管理の distro も未検査と表示する。
 - Windows が届かないだけで unit や socket が正しく管理されているブリッジは、構成違反ではなく通常の停止として WARN にする。identity や version の不一致は ERR のままである。
 - WSL2 のカーネルを共有する Docker / Podman コンテナは Windows との相互運用を持たないため、この方針の適用外（該当なし）と判定する。

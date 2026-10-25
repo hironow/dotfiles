@@ -512,8 +512,71 @@ def windows_findings(data: dict) -> list[tuple[str, str, str]]:
     return rows
 
 
+def _shared_loopback_row(
+    data: dict, windows_version: str | None, windows_owned: bool | None
+) -> tuple[str, str, str]:
+    """Mirrored WSL has no bridge: its 127.0.0.1:11434 is Windows' own."""
+    if data.get("networking_mode") != "mirrored":
+        return (
+            "WARN",
+            "ollama-network",
+            "WSL networking mode unknown (wslinfo --networking-mode needs WSL 2.0.4+; run wsl --update); no bridge is set up",
+        )
+    name = "ollama-loopback"
+    if not data.get("listener_inventory_ok"):
+        return (
+            "WARN",
+            name,
+            "WSL listener inventory unavailable; shared loopback unverified",
+        )
+    if any(
+        data.get(key)
+        for key in ("listening", "bridge_enabled", "bridge_running", "serve_running")
+    ):
+        stop = f"systemctl --user disable --now {UNIT}"
+        return (
+            "ERR",
+            name,
+            f"under mirrored networking a WSL listener or the dotfiles bridge collides with the Windows backend on 11434; {stop}",
+        )
+    if not data.get("client_managed"):
+        return (
+            "ERR",
+            name,
+            "managed client missing or modified; rerun ollama_host.py --setup",
+        )
+    seen = data.get("loopback_version")
+    if seen is None:
+        if windows_owned is False:
+            return (
+                "WARN",
+                name,
+                "Windows backend not canonical or stopped; shared loopback not checked",
+            )
+        return (
+            "OK",
+            name,
+            "mirrored networking and no WSL listener on 11434; the WSL doctor checks the shared loopback end to end",
+        )
+    if not seen:
+        return ("ERR", name, "the shared loopback did not reach the Windows backend")
+    if windows_version and seen != windows_version:
+        return (
+            "ERR",
+            name,
+            f"the shared loopback reached version {seen} but Windows reports {windows_version}",
+        )
+    return (
+        "OK",
+        name,
+        "the shared mirrored loopback reaches the canonical Windows backend",
+    )
+
+
 def wsl_findings(
-    data: dict, windows_version: str | None = None
+    data: dict,
+    windows_version: str | None = None,
+    windows_owned: bool | None = None,
 ) -> list[tuple[str, str, str]]:
     rows = []
     native = data.get("native", []) + data.get("services", [])
@@ -534,6 +597,24 @@ def wsl_findings(
                 "WSL model storage exists; Windows must own model/authentication state (no automatic deletion)",
             )
         )
+    if data.get("networking_mode", "nat") != "nat":
+        rows.append(_shared_loopback_row(data, windows_version, windows_owned))
+        # Nothing in WSL may listen; any listener is already an error above.
+        exposed = data.get("conflicting_config") or (
+            data.get("listening") and not data.get("loopback_only")
+        )
+        rows.append(
+            (
+                "ERR" if exposed else "OK",
+                "ollama-exposure",
+                "WSL listener exposure or OLLAMA_HOST conflicts with the shared loopback"
+                if exposed
+                else "no WSL listener exposure and no conflicting OLLAMA_HOST",
+            )
+        )
+        if data.get("errors"):
+            rows.append(("WARN", "ollama-inspection", "; ".join(data["errors"])))
+        return rows
     identity = all(
         data.get(key)
         for key in ("client_managed", "bridge_managed", "bridge_active", "bridge_owned")
@@ -789,7 +870,22 @@ def _write_owned(path: Path, text: str, previous_hash: str | None, mode: int) ->
             temporary.unlink()
 
 
-def install_client_files() -> None:
+def wsl_networking_mode() -> str:
+    """WSL's own answer (`wslinfo`, WSL 2.0.4+): `nat`, `mirrored` or `unknown`.
+
+    Under mirrored networking WSL shares Windows' loopback, so a bridge on
+    127.0.0.1:11434 would collide with the Windows backend. Anything but a clear
+    `nat` therefore gets no bridge.
+    """
+    try:
+        result = _run(["wslinfo", "--networking-mode"], timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    mode = result.stdout.strip().lower()
+    return mode if result.returncode == 0 and mode in {"nat", "mirrored"} else "unknown"
+
+
+def install_client_files(*, bridge_unit_file: bool = True) -> None:
     # Stable user-owned copy, never a disposable worktree or uv venv path.
     target = deployment_source()
     if target.parent.is_symlink() or not Path(DURABLE_PYTHON).is_file():
@@ -810,12 +906,15 @@ def install_client_files() -> None:
     texts = {
         "helper": (target, SOURCE.read_text(encoding="utf-8"), 0o600),
         "shim": (Path.home() / ".local/bin/ollama", cli_wrapper(str(target)), 0o755),
-        "unit": (
+    }
+    # The bridge unit exists only where WSL's loopback is its own (NAT). An old
+    # unit is left as it is; setup refuses to go on while one is enabled or runs.
+    if bridge_unit_file:
+        texts["unit"] = (
             Path.home() / ".config/systemd/user" / UNIT,
             bridge_unit(DURABLE_PYTHON, str(target)),
             0o644,
-        ),
-    }
+        )
     # Preflight all files before making changes; a marker alone grants no ownership.
     for key, (path, text, _mode) in texts.items():
         expected = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -919,7 +1018,8 @@ def managed_unit(text: str, source: str) -> bool:
         return False
 
 
-def wsl_snapshot() -> dict:
+def wsl_snapshot(networking_mode: str | None = None) -> dict:
+    mode = wsl_networking_mode() if networking_mode is None else networking_mode
     native = []
     errors = []
     deployed = deployment_source()
@@ -979,7 +1079,28 @@ def wsl_snapshot() -> dict:
         unit.read_text(encoding="utf-8"), str(deployed)
     )
     service = _run(
-        ["systemctl", "--user", "show", UNIT, "-p", "ActiveState", "-p", "ExecMainPID"]
+        [
+            "systemctl",
+            "--user",
+            "show",
+            UNIT,
+            "-p",
+            "ActiveState",
+            "-p",
+            "ExecMainPID",
+            "-p",
+            "UnitFileState",
+        ]
+    )
+    unit_state = dict(
+        line.split("=", 1) for line in service.stdout.splitlines() if "=" in line
+    )
+    # Any bridge process, managed or not, would claim 11434 on a shared loopback.
+    arguments = _run(["ps", "-eo", "args="])
+    serve_running = any(
+        "--serve" in line.split()
+        and any(part.endswith("ollama_host.py") for part in line.split())
+        for line in arguments.stdout.splitlines()
     )
     state = {}
     with contextlib.suppress(OSError, ValueError):
@@ -1008,7 +1129,9 @@ def wsl_snapshot() -> dict:
     ]
     loopback_only = bool(addresses) and all(_loopback(address) for address in addresses)
     version = ""
-    if owned and loopback_only:
+    # Only NAT has a bridge to ask; on a shared loopback the WSL doctor asks
+    # Windows' backend itself, after checking its owner (mirrored_loopback_version).
+    if mode == "nat" and owned and loopback_only:
         with contextlib.suppress(OSError, ValueError, RuntimeError):
             version = _version()
     models = Path.home() / ".ollama/models"
@@ -1034,7 +1157,36 @@ def wsl_snapshot() -> dict:
         "bridge_owned": owned,
         "loopback_only": loopback_only,
         "version": version,
+        "networking_mode": mode,
+        "listener_inventory_ok": sockets.returncode == 0,
+        "listening": bool(lines),
+        "service_inventory_ok": service.returncode == 0,
+        "bridge_enabled": unit_state.get("UnitFileState", "")
+        not in {"", "disabled", "masked", "masked-runtime"},
+        "bridge_running": unit_state.get("ActiveState", "")
+        in {"active", "activating", "reloading", "refreshing", "deactivating"},
+        "process_inventory_ok": arguments.returncode == 0,
+        "serve_running": serve_running,
     }
+
+
+def mirrored_loopback_version(local: dict, windows_owned: bool) -> str | None:
+    """The version WSL's own 127.0.0.1:11434 answers under mirrored networking.
+
+    Asked once, and only when the mode is known to be mirrored, nothing in WSL
+    listens on 11434 (the inventory itself succeeded), and Windows' canonical
+    backend owns the port. None when it was not asked; "" when nothing answered.
+    """
+    if local.get("networking_mode") != "mirrored":
+        return None
+    if not local.get("listener_inventory_ok") or local.get("listening"):
+        return None
+    if not windows_owned:
+        return None
+    try:
+        return _version()
+    except (OSError, ValueError, RuntimeError):
+        return ""
 
 
 def bridge_unit(python: str, source: str) -> str:
@@ -1151,6 +1303,14 @@ async def _relay(
 async def serve() -> None:
     if host_policy() != "wsl-client":
         raise RuntimeError("the bridge runs only in WSL")
+    mode = wsl_networking_mode()
+    if mode != "nat":
+        # A unit left from a NAT setup must not claim the shared loopback.
+        print(
+            f"WARN ollama-bridge: WSL networking is {mode}; the bridge does not listen",
+            file=sys.stderr,
+        )
+        return
     slots = asyncio.Semaphore(MAX_CONNECTIONS)
     servers = []
     active: set[asyncio.Task] = set()
@@ -1219,14 +1379,54 @@ async def serve() -> None:
                 _state_path().unlink()
 
 
+def _setup_shared_loopback(mode: str) -> None:
+    """WSL that shares Windows' loopback gets the CLI client only.
+
+    A bridge on 127.0.0.1:11434 would collide with the Windows backend, so
+    anything left of one stops setup before it changes anything; an unknown
+    mode changes nothing either.
+    """
+    if mode != "mirrored":
+        raise RuntimeError(
+            "WSL networking mode unknown (wslinfo --networking-mode needs WSL 2.0.4+; run wsl --update); nothing changed"
+        )
+    local = wsl_snapshot(networking_mode=mode)
+    if local["native"] or local["services"]:
+        raise RuntimeError(
+            "remove conflicting WSL native Ollama before setup; models are never removed automatically"
+        )
+    if not (
+        local["listener_inventory_ok"]
+        and local["service_inventory_ok"]
+        and local["process_inventory_ok"]
+    ):
+        raise RuntimeError(
+            "cannot confirm that no dotfiles bridge or WSL listener remains; nothing changed"
+        )
+    if any(
+        local[key]
+        for key in ("listening", "bridge_enabled", "bridge_running", "serve_running")
+    ):
+        raise RuntimeError(
+            f"WSL networking is {mode}: a bridge or WSL listener on 11434 collides with the Windows backend; "
+            f"stop it first (systemctl --user disable --now {UNIT}); nothing changed"
+        )
+    # Only now, with nothing in the way: the client, never the bridge unit.
+    install_client_files(bridge_unit_file=False)
+
+
 def setup() -> None:
     policy = host_policy()
     if policy is None:
         return
     if policy == "wsl-client":
+        mode = wsl_networking_mode()
+        if mode != "nat":
+            _setup_shared_loopback(mode)
+            return
         # Provision compatibility client BEFORE interop/backend availability;
         # an old deploy must not mistake downtime for a missing Linux server.
-        install_client_files()
+        install_client_files(bridge_unit_file=True)
     data = windows_snapshot()
     if policy == "windows-full":
         if (
@@ -1299,7 +1499,12 @@ def check() -> list[tuple[str, str, str]]:
         rows = [("WARN", "ollama-inspection", str(error))]
         data = {}
     if policy == "wsl-client":
-        rows += wsl_findings(wsl_snapshot(), windows_version=data.get("version", ""))
+        local = wsl_snapshot()
+        owned = bool(data) and backend_owned(data)
+        local["loopback_version"] = mirrored_loopback_version(local, owned)
+        rows += wsl_findings(
+            local, windows_version=data.get("version", ""), windows_owned=owned
+        )
     else:
         try:
             all_result = subprocess.run(
@@ -1356,6 +1561,7 @@ def check() -> list[tuple[str, str, str]]:
                         for severity, name, detail in wsl_findings(
                             json.loads(result.stdout),
                             windows_version=data.get("version", ""),
+                            windows_owned=bool(data) and backend_owned(data),
                         )
                     ]
         except (

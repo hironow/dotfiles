@@ -975,10 +975,13 @@ def test_stable_client_install_is_idempotent_and_preserves_user_edits(
 def test_client_files_precede_backend_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     order = []
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
-    monkeypatch.setattr(host, "install_client_files", lambda: order.append("files"))
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
+    monkeypatch.setattr(
+        host, "install_client_files", lambda **kwargs: order.append(("files", kwargs))
+    )
 
     def unavailable():
-        assert order == ["files"]
+        assert order == [("files", {"bridge_unit_file": True})]
         raise RuntimeError("interop unavailable")
 
     monkeypatch.setattr(host, "windows_snapshot", unavailable)
@@ -1184,6 +1187,7 @@ def test_port_conflict_does_not_remove_an_existing_bridge_state(
     state = tmp_path / "state.json"
     state.write_text('{"pid":123}', encoding="utf-8")
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
     monkeypatch.setattr(host, "_state_path", lambda: state)
 
     async def conflict(*args, **kwargs):
@@ -1326,6 +1330,7 @@ def test_service_shutdown_reaps_active_helper_before_server_closure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
     monkeypatch.setattr(host, "windows_snapshot", _windows)
     monkeypatch.setattr(host, "interop_environment", os.environ.copy)
     state = tmp_path / "bridge-state.json"
@@ -1392,6 +1397,7 @@ def test_service_forces_closed_backpressured_client_during_shutdown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
     monkeypatch.setattr(host, "windows_snapshot", _windows)
     monkeypatch.setattr(host, "interop_environment", os.environ.copy)
     state = tmp_path / "bridge-state.json"
@@ -1507,6 +1513,7 @@ def test_service_closes_client_cancelled_before_handler_first_step(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
     state = tmp_path / "early-cancel-state.json"
     monkeypatch.setattr(host, "_state_path", lambda: state)
     callbacks, entered = [], []
@@ -1638,3 +1645,280 @@ def test_the_probe_travels_on_stdin_not_the_command_line(
     assert sent == host.WINDOWS_PROBE
     assert sum(len(arg) + 1 for arg in args) < 8191
     assert host.WINDOWS_PROBE.isascii()
+
+
+# --- WSL under mirrored networking: one loopback shared with Windows --------
+
+
+@pytest.mark.parametrize(
+    "result,mode",
+    [
+        (subprocess.CompletedProcess([], 0, "mirrored\n", ""), "mirrored"),
+        (subprocess.CompletedProcess([], 0, "nat\n", ""), "nat"),
+        (subprocess.CompletedProcess([], 0, "virtioproxy\n", ""), "unknown"),
+        (subprocess.CompletedProcess([], 1, "", "unknown option"), "unknown"),
+        (FileNotFoundError("wslinfo"), "unknown"),
+    ],
+)
+def test_networking_mode_comes_from_wslinfo(
+    monkeypatch: pytest.MonkeyPatch, result: object, mode: str
+) -> None:
+    def run(args: list[str], **kwargs: object) -> object:
+        assert args == ["wslinfo", "--networking-mode"]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(host, "_run", run)
+    assert host.wsl_networking_mode() == mode
+
+
+def _mirrored(**changes: object) -> dict:
+    local = _wsl() | {
+        "networking_mode": "mirrored",
+        "listener_inventory_ok": True,
+        "service_inventory_ok": True,
+        "process_inventory_ok": True,
+        "listening": False,
+        "bridge_enabled": False,
+        "bridge_running": False,
+        "serve_running": False,
+        "bridge_managed": False,
+        "bridge_active": False,
+        "bridge_owned": False,
+        "loopback_only": False,
+        "version": "",
+    }
+    local.update(changes)
+    return local
+
+
+def _setup_without_changes(monkeypatch: pytest.MonkeyPatch, local: dict) -> list:
+    """Runs setup() on WSL with `local` as the snapshot; returns what it did."""
+    done: list = []
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: local["networking_mode"])
+    monkeypatch.setattr(
+        host, "install_client_files", lambda **kwargs: done.append(("files", kwargs))
+    )
+    monkeypatch.setattr(host, "wsl_snapshot", lambda **kwargs: local)
+    monkeypatch.setattr(
+        host,
+        "windows_snapshot",
+        lambda: pytest.fail("a shared-loopback setup needs no Windows probe"),
+    )
+    monkeypatch.setattr(
+        host.subprocess, "run", lambda args, **kwargs: done.append(("run", args))
+    )
+    return done
+
+
+def test_mirrored_setup_places_only_the_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    done = _setup_without_changes(monkeypatch, _mirrored())
+    host.setup()
+    assert done == [("files", {"bridge_unit_file": False})]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"listening": True},
+        {"bridge_enabled": True},
+        {"bridge_running": True},
+        {"serve_running": True},
+        {"listener_inventory_ok": False},
+        {"service_inventory_ok": False},
+        {"process_inventory_ok": False},
+        {"native": ["/usr/local/bin/ollama"]},
+        {"networking_mode": "unknown"},
+    ],
+)
+def test_shared_loopback_setup_refuses_and_changes_nothing(
+    monkeypatch: pytest.MonkeyPatch, change: dict
+) -> None:
+    done = _setup_without_changes(monkeypatch, _mirrored(**change))
+    with pytest.raises(RuntimeError):
+        host.setup()
+    assert done == []
+
+
+def test_nat_setup_still_installs_the_bridge_unit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    done = []
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
+    monkeypatch.setattr(
+        host, "install_client_files", lambda **kwargs: done.append(("files", kwargs))
+    )
+
+    def unavailable():
+        raise RuntimeError("interop unavailable")
+
+    monkeypatch.setattr(host, "windows_snapshot", unavailable)
+    with pytest.raises(RuntimeError, match="interop unavailable"):
+        host.setup()
+    assert done == [("files", {"bridge_unit_file": True})]
+
+
+def test_client_files_without_the_bridge_unit_leave_an_old_unit_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(host.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(host, "DURABLE_PYTHON", sys.executable)
+    host.install_client_files(bridge_unit_file=False)
+    unit = tmp_path / ".config/systemd/user" / host.UNIT
+    assert not unit.exists()
+    assert host.managed_cli(tmp_path / ".local/bin/ollama", host.deployment_source())
+    host.install_client_files()
+    before = unit.read_bytes()
+    host.install_client_files(bridge_unit_file=False)
+    assert unit.read_bytes() == before
+
+
+@pytest.mark.parametrize("mode", ["mirrored", "unknown"])
+def test_the_bridge_never_listens_on_a_shared_loopback(
+    monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: mode)
+
+    async def bind(*args: object, **kwargs: object) -> None:
+        pytest.fail("the bridge bound a port")
+
+    monkeypatch.setattr(host.asyncio, "start_server", bind)
+    asyncio.run(host.serve())
+
+
+@pytest.mark.parametrize(
+    "change,windows_owned,severity",
+    [
+        ({"loopback_version": "0.40.10"}, True, "OK"),
+        ({}, True, "OK"),  # the Windows doctor's view: no HTTP from WSL
+        ({}, False, "WARN"),
+        ({"loopback_version": ""}, True, "ERR"),
+        ({"loopback_version": "0.39.0"}, True, "ERR"),
+        ({"listening": True}, True, "ERR"),
+        ({"bridge_enabled": True}, True, "ERR"),
+        ({"bridge_running": True}, True, "ERR"),
+        ({"serve_running": True}, True, "ERR"),
+        ({"client_managed": False}, True, "ERR"),
+        ({"listener_inventory_ok": False}, True, "WARN"),
+    ],
+)
+def test_mirrored_doctor_checks_the_shared_loopback(
+    change: dict, windows_owned: bool, severity: str
+) -> None:
+    rows = host.wsl_findings(
+        _mirrored(**change), windows_version="0.40.10", windows_owned=windows_owned
+    )
+    assert _has(rows, severity, "ollama-loopback"), rows
+    assert not any(row[1] == "ollama-bridge" for row in rows)
+
+
+def test_mirrored_exposure_is_about_wsl_listeners_and_the_host_setting() -> None:
+    clean = _mirrored(loopback_version="0.40.10")
+    assert _has(host.wsl_findings(clean, "0.40.10", True), "OK", "ollama-exposure")
+    conflicting = _mirrored(conflicting_config=True)
+    assert _has(
+        host.wsl_findings(conflicting, "0.40.10", True), "ERR", "ollama-exposure"
+    )
+
+
+def test_unknown_networking_is_a_warning_without_a_bridge_row() -> None:
+    rows = host.wsl_findings(_mirrored(networking_mode="unknown"), "0.40.10", True)
+    assert _has(rows, "WARN", "ollama-network")
+    assert not any(row[1] in {"ollama-bridge", "ollama-loopback"} for row in rows)
+
+
+@pytest.mark.parametrize(
+    "local,windows_owned,calls",
+    [
+        (_mirrored(), True, 1),
+        (_mirrored(), False, 0),
+        (_mirrored(listening=True), True, 0),
+        (_mirrored(listener_inventory_ok=False), True, 0),
+        (_mirrored(networking_mode="nat"), True, 0),
+        (_mirrored(networking_mode="unknown"), True, 0),
+    ],
+)
+def test_the_shared_loopback_is_asked_only_after_every_precondition(
+    monkeypatch: pytest.MonkeyPatch, local: dict, windows_owned: bool, calls: int
+) -> None:
+    asked = []
+    monkeypatch.setattr(host, "_version", lambda: asked.append(1) or "0.40.10")
+    seen = host.mirrored_loopback_version(local, windows_owned)
+    assert len(asked) == calls
+    assert seen == ("0.40.10" if calls else None)
+
+
+def test_an_unanswered_shared_loopback_is_an_empty_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refused() -> str:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(host, "_version", refused)
+    assert host.mirrored_loopback_version(_mirrored(), True) == ""
+
+
+def test_wsl_doctor_asks_the_shared_loopback_once_windows_is_owned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = []
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "windows_snapshot", _windows)
+    monkeypatch.setattr(host, "wsl_snapshot", lambda **kwargs: _mirrored())
+    monkeypatch.setattr(host, "_version", lambda: asked.append(1) or "0.40.10")
+    rows = host.check()
+    assert asked == [1]
+    assert _has(rows, "OK", "ollama-loopback")
+
+
+def test_wsl_doctor_never_asks_when_windows_is_not_owned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+
+    def unavailable():
+        raise RuntimeError("interop unavailable")
+
+    monkeypatch.setattr(host, "windows_snapshot", unavailable)
+    monkeypatch.setattr(host, "wsl_snapshot", lambda **kwargs: _mirrored())
+    monkeypatch.setattr(host, "_version", lambda: pytest.fail("asked without an owner"))
+    assert _has(host.check(), "WARN", "ollama-loopback")
+
+
+def test_wsl_snapshot_reads_the_mode_and_never_asks_a_bridge_when_mirrored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(host.Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setattr(host, "_version", lambda: pytest.fail("asked a bridge"))
+    listening = (
+        'LISTEN 0 4096 127.0.0.1:11434 0.0.0.0:* users:(("python3",pid=9,fd=3))\n'
+    )
+    bridge = "ActiveState=active\nExecMainPID=9\nUnitFileState=enabled\n"
+    serving = "/usr/bin/python3 /home/u/.local/lib/dotfiles/ollama_host.py --serve\n"
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        out = ""
+        if args[:1] == ["wslinfo"]:
+            out = "mirrored\n"
+        elif args[:1] == ["ss"]:
+            out = listening
+        elif args[:3] == ["systemctl", "--user", "show"] and host.UNIT in args:
+            out = bridge
+        elif args == ["ps", "-eo", "args="]:
+            out = serving
+        return subprocess.CompletedProcess(args, 0, out, "")
+
+    monkeypatch.setattr(host, "_run", run)
+    local = host.wsl_snapshot()
+    assert local["networking_mode"] == "mirrored"
+    assert local["listener_inventory_ok"] and local["listening"]
+    assert (
+        local["bridge_enabled"] and local["bridge_running"] and local["serve_running"]
+    )
+    assert local["service_inventory_ok"] and local["process_inventory_ok"]
+    assert _has(host.wsl_findings(local, "0.40.10", True), "ERR", "ollama-loopback")
