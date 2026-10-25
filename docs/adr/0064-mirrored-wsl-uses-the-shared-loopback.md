@@ -12,7 +12,7 @@
 **Supersedes:** none
 **Superseded-by:** none
 **Related:** [ADR-0062](0062-one-windows-ollama-for-wsl.md)、[ADR-0063](0063-declared-tailnet-forward-of-ollama.md)、[ADR-0058](0058-pi-web-search-ollama.md)、[runbook](../runbook/ollama-windows-wsl.md)、[計画](../plan/ollama-tailnet-forward-and-mirrored-wsl.md)
-**Consultation-trace:** 所有者が 2026-10-25 の本セッションで、説明を受けた後に「B で進める」と回答した。計画は独立レビューを 3 回受けた。裁定は公開 PR に代理記録した（本人の明示許可）。
+**Consultation-trace:** 所有者が 2026-10-25 の本セッションで、説明を受けた後に「B で進める」と回答した。計画は独立レビューを 3 回受けた。裁定は [PR #504 の所有者裁定（明示許可による代理記録）](https://github.com/hironow/dotfiles/pull/504#issuecomment-6400086305) に記録した。
 
 ## やさしい説明
 
@@ -75,4 +75,4 @@ ADR-0035 と ADR-0039 は WSL の disk と bootstrap の記録で、網の形に
 
 ## 決定（2026-10-25）
 
-- **Accepted**。決定者: Hiroto N.（@hironow）。本セッションでの所有者の回答を、公開 PR に代理記録した。
+- **Accepted**。決定者: Hiroto N.（@hironow）。本セッションでの所有者の回答を、[PR #504 の所有者裁定（明示許可による代理記録）](https://github.com/hironow/dotfiles/pull/504#issuecomment-6400086305)。

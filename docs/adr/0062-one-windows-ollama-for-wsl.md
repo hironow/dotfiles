@@ -12,7 +12,7 @@
 **Supersedes:** [ADR-0058](0058-pi-web-search-ollama.md) の一部（Decision 4 の全体と、Decision 3 の Windows・WSL での適用）。0058 の Status 行に後継を記した
 **Superseded-by:** none
 **Related:** [ADR-0058](0058-pi-web-search-ollama.md)、[ADR-0035](0035-runner-disk-gc.md)、[ADR-0063](0063-declared-tailnet-forward-of-ollama.md)、[ADR-0064](0064-mirrored-wsl-uses-the-shared-loopback.md)、[runbook](../runbook/ollama-windows-wsl.md)、[PR #502](https://github.com/hironow/dotfiles/pull/502)
-**Consultation-trace:** DR 間整合検査で、ADR-0058 の Decision 3・4 と PR #502 の実装の矛盾を検出した。所有者が 2026-10-25 の本セッションで「別の ADR で置き換える」と裁定し、裁定は公開 PR に代理記録した（本人の明示許可）。
+**Consultation-trace:** DR 間整合検査で、ADR-0058 の Decision 3・4 と PR #502 の実装の矛盾を検出した。所有者が 2026-10-25 の本セッションで「別の ADR で置き換える」と裁定し、裁定は [PR #504 の所有者裁定（明示許可による代理記録）](https://github.com/hironow/dotfiles/pull/504#issuecomment-6400086305) に記録した。
 
 ## やさしい説明
 
@@ -81,5 +81,5 @@ ADR-0059 は ADR-0058 を関連として挙げるだけで、Ollama の置き場
 
 ## 決定（2026-10-25）
 
-- **Accepted**。決定者: Hiroto N.（@hironow）。本セッションでの所有者の裁定を、公開 PR に代理記録した。
+- **Accepted**。決定者: Hiroto N.（@hironow）。本セッションでの所有者の裁定を、[PR #504 の所有者裁定（明示許可による代理記録）](https://github.com/hironow/dotfiles/pull/504#issuecomment-6400086305)。
 - ADR-0058 は Status 行だけを更新し、本文は変えない。

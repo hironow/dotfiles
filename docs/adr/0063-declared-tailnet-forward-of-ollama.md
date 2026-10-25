@@ -12,7 +12,7 @@
 **Supersedes:** none
 **Superseded-by:** none
 **Related:** [ADR-0062](0062-one-windows-ollama-for-wsl.md)、[ADR-0064](0064-mirrored-wsl-uses-the-shared-loopback.md)、[tailnet の ACL](../../tofu/tailnet/acl.hujson)、[runbook](../runbook/ollama-windows-wsl.md)、[計画](../plan/ollama-tailnet-forward-and-mirrored-wsl.md)
-**Consultation-trace:** 所有者が 2026-10-25 の本セッションで、ある共存機の 11434 の tailnet 転送を「要る：dotfiles 側で認める」と回答した。計画は独立レビューを 3 回受けた（6 件を反映し、止める点なし）。裁定は公開 PR に代理記録した（本人の明示許可）。
+**Consultation-trace:** 所有者が 2026-10-25 の本セッションで、ある共存機の 11434 の tailnet 転送を「要る：dotfiles 側で認める」と回答した。計画は独立レビューを 3 回受けた（6 件を反映し、止める点なし）。裁定は [PR #504 の所有者裁定（明示許可による代理記録）](https://github.com/hironow/dotfiles/pull/504#issuecomment-6400086305) に記録した。
 
 ## やさしい説明
 
@@ -81,4 +81,4 @@ tailnet の ACL（IaC）の Funnel を許さない方針と一致する。
 
 ## 決定（2026-10-25）
 
-- **Accepted**。決定者: Hiroto N.（@hironow）。本セッションでの所有者の回答を、公開 PR に代理記録した。
+- **Accepted**。決定者: Hiroto N.（@hironow）。本セッションでの所有者の回答を、[PR #504 の所有者裁定（明示許可による代理記録）](https://github.com/hironow/dotfiles/pull/504#issuecomment-6400086305)。
