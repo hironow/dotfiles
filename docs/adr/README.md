@@ -82,10 +82,13 @@ and what outlived it.
 | 0055 | [emulate は npx ではなく bunx で動かす](./0055-run-emulate-with-bunx.md) | Accepted (PR #470); supersedes part of [0016](./0016-integrate-emulate-api-emulators-via-npx.md) | 2026-10-12 | `justfile`、`tests/unit/test_justfile_bun_only.py` |
 | 0056 | [5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする](./0056-common-claude-plugin-set.md) | Accepted (PR #475); supersedes part of [0048](./0048-required-claude-plugins.md); partly superseded by [0057](./0057-shared-plugins-need-no-per-home-settings.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
 | 0057 | [共通セットの plugin は、home ごとの設定なしで動くものに限る](./0057-shared-plugins-need-no-per-home-settings.md) | Accepted (PR #476); supersedes part of [0056](./0056-common-claude-plugin-set.md) | 2026-10-16 | `dump/harness/claude-plugins.json`、`scripts/claude_plugins.py`、`tests/unit/test_claude_plugins.py` |
-| 0058 | [Pi の web 検索を Ollama 経由に寄せ、pi 本体の計測を全機体で止める](./0058-pi-web-search-ollama.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
+| 0058 | [Pi の web 検索を Ollama 経由に寄せ、pi 本体の計測を全機体で止める](./0058-pi-web-search-ollama.md) | Accepted; partly superseded by [0062](./0062-one-windows-ollama-for-wsl.md) | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
 | 0059 | [remote-pi を外し、host 提供パッケージを vendor させない](./0059-retire-remote-pi.md) | Accepted | 2026-10-19 | `dump/harness/pi-packages.json`、`scripts/install_pi_extensions.py`、`tests/unit/test_install_pi_extensions.py` |
 | 0060 | [画像の凍結世代を 1 か所に持ち、install.sh の版本領域を生成する](./0060-frozen-image-generation-has-one-source.md) | Accepted; partly superseded by [0061](./0061-version-generator-in-go.md) | 2026-10-21 | `config/mise/image-tools.toml`、`scripts/mise_versions.py`、`install.sh`、`.devcontainer/features/dotfiles-tools/install.sh`、`justfile`、`tests/unit/test_mise_versions.py` |
 | 0061 | [版本の生成器を Go にする（stdlib のみ、TOML サブセット + Python oracle）](./0061-version-generator-in-go.md) | Accepted (PR #486); partly supersedes [0060](./0060-frozen-image-generation-has-one-source.md) and adds a limited exception to [0052](./0052-renew-global-agent-instructions.md) | 2026-10-21 | `tools/mise-versions/`、`justfile`、`tests/unit/test_mise_versions.py` |
+| 0062 | [共存機の Ollama は Windows の Scoop ollama-full に 1 台だけ置き、WSL はクライアントにする](./0062-one-windows-ollama-for-wsl.md) | Accepted; partly supersedes [0058](./0058-pi-web-search-ollama.md) | 2026-10-25 | `scripts/ollama_host.py`、`scripts/install_pi_extensions.py`、`docs/runbook/ollama-windows-wsl.md` |
+| 0063 | [宣言した機体だけ、tailnet の中だけの Tailscale 転送を Ollama の公開と数えない](./0063-declared-tailnet-forward-of-ollama.md) | Accepted | 2026-10-25 | `scripts/ollama_host.py`、`tests/unit/test_ollama_host.py`、`.github/workflows/unit-test.yaml`、`docs/runbook/ollama-windows-wsl.md` |
+| 0064 | [mirrored の WSL にはブリッジを置かず、共有の loopback で Windows の Ollama を使う](./0064-mirrored-wsl-uses-the-shared-loopback.md) | Accepted | 2026-10-25 | `scripts/ollama_host.py`、`tests/unit/test_ollama_host.py`、`docs/runbook/ollama-windows-wsl.md` |
 
 ## Reading order for newcomers
 
@@ -136,3 +139,7 @@ and what outlived it.
   画像の凍結世代（bake する mise 道具、検証つき tarball、bare Linux の bootstrap）を `config/mise/image-tools.toml` 1 か所に集め、`scripts/mise_versions.py` が `install.sh` の版本領域を生成し、`just lint` / `just check` が drift を落とす。本セッションでの所有者の裁定（[PR #485](https://github.com/hironow/dotfiles/pull/485)）。
 - 2026-10-21: [ADR-0060](./0060-frozen-image-generation-has-one-source.md) の Python/writer 指定と [ADR-0052](./0052-renew-global-agent-instructions.md) の本生成器の配布要件 → [ADR-0061](./0061-version-generator-in-go.md)。
   Go＋自作 TOML サブセット＋Python oracle に変更し、repo 内の生成器だけ `go run` の限定例外とする。他の決定は維持。[PR #486 の所有者裁定](https://github.com/hironow/dotfiles/pull/486#issuecomment-6314535355)。
+- 2026-10-25: [ADR-0062](./0062-one-windows-ollama-for-wsl.md)を採択し、[ADR-0058](./0058-pi-web-search-ollama.md) の Decision 4 と、Decision 3 の Windows・WSL での適用を置き換えた。
+  共存機の Ollama は Windows の Scoop `extras/ollama-full` に 1 台だけ置き、WSL はクライアントにする（PR #502 の実装の記録）。DR 間整合検査で検出した矛盾を所有者が裁定した。
+- 2026-10-25: [ADR-0063](./0063-declared-tailnet-forward-of-ollama.md)を採択。宣言した機体だけ、tailnet の中だけの Tailscale 転送を、厳しい条件で Ollama の公開と数えない。Funnel は認めない。
+- 2026-10-25: [ADR-0064](./0064-mirrored-wsl-uses-the-shared-loopback.md)を採択。mirrored の WSL にはブリッジを置かず、共有の loopback で Windows の Ollama を使い、doctor が接続の前に持ち主を確かめる。

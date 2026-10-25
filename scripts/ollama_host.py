@@ -57,9 +57,164 @@ function Test-DotfilesWslForwarder([string]$Executable,[string]$Address,[int]$Po
   }catch{return $false}
 }
 """
-WINDOWS_PROBE = (
-    WINDOWS_FORWARDER_CLASSIFIER
-    + r"""
+# Decisions on a declared Tailscale forward of 11434 (docs/runbook/ollama-windows-wsl.md).
+# Pure: every input comes in as an argument from Get-DotfilesTailnetFacts. Each
+# returns '' to accept, or the reason it refuses.
+WINDOWS_TAILNET_CLASSIFIER = r"""
+function Test-DotfilesTargetPort([string]$Target,[int]$Port){
+  if(-not $Target -or $Target.StartsWith('unix:')){return $false}
+  $authority=(($Target -replace '^[A-Za-z][A-Za-z0-9+.-]*://','') -split '/',2)[0]
+  if($authority -match '^\d+$'){$digits=$authority}elseif($authority -match ':(\d+)$'){$digits=$Matches[1]}else{return $false}
+  return $digits.TrimStart('0') -eq [string]$Port
+}
+function Test-DotfilesServeConfig($Config,[bool]$LoopbackV6Taken){
+  if($null -eq $Config){return 'no serve configuration'}
+  # Foreground sessions win over the background config, so read them all.
+  $sessions=[Collections.Generic.List[object]]::new()
+  $sessions.Add(@{Config=$Config;Background=$true})
+  if($Config.PSObject.Properties['Foreground']){foreach($entry in $Config.Foreground.PSObject.Properties){$sessions.Add(@{Config=$entry.Value;Background=$false})}}
+  foreach($session in $sessions){
+    $c=$session.Config
+    if($c.PSObject.Properties['AllowFunnel']){foreach($entry in $c.AllowFunnel.PSObject.Properties){if($entry.Value -eq $true){return 'Funnel is on'}}}
+  }
+  $forward=$null
+  foreach($session in $sessions){
+    $c=$session.Config
+    $groups=[Collections.Generic.List[object]]::new()
+    $groups.Add(@{TCP=$c.TCP;Web=$c.Web;Primary=$session.Background})
+    if($c.PSObject.Properties['Services']){
+      foreach($service in $c.Services.PSObject.Properties){
+        if($service.Value.Tun -eq $true){return 'a Tun service forwards every port'}
+        $groups.Add(@{TCP=$service.Value.TCP;Web=$service.Value.Web;Primary=$false})
+      }
+    }
+    foreach($group in $groups){
+      if($group.TCP){foreach($entry in $group.TCP.PSObject.Properties){
+        if($entry.Name -eq '11434'){
+          if(-not $group.Primary){return 'another serve handler takes port 11434'}
+          $forward=$entry.Value
+        }elseif(Test-DotfilesTargetPort ([string]$entry.Value.TCPForward) 11434){return "the forward of port $($entry.Name) also reaches 11434"}
+      }}
+      if($group.Web){foreach($site in $group.Web.PSObject.Properties){
+        if($site.Name -match ':11434$'){return 'a web handler takes port 11434'}
+        if($site.Value.Handlers){foreach($handler in $site.Value.Handlers.PSObject.Properties){
+          if(Test-DotfilesTargetPort ([string]$handler.Value.Proxy) 11434){return 'a web proxy also reaches 11434'}
+        }}
+      }}
+    }
+  }
+  if($null -eq $forward){return 'no TCP forward of port 11434'}
+  if($forward.HTTPS -or $forward.HTTP -or $forward.TerminateTLS -or $forward.ProxyProtocol){return 'the forward of port 11434 is not a plain TCP forward'}
+  $target=[string]$forward.TCPForward
+  if($target -eq '127.0.0.1:11434'){return ''}
+  if($target -eq 'localhost:11434'){
+    # localhost may resolve to ::1, where something other than the backend listens.
+    if($LoopbackV6Taken){return 'localhost may reach the listener on [::1]:11434 instead of the backend'}
+    return ''
+  }
+  return "port 11434 is forwarded to $target"
+}
+function Test-DotfilesTailnetAddress([string]$Address,[string[]]$NodeAddresses){
+  try{$ip=[Net.IPAddress]::Parse($Address)}catch{return $false}
+  $known=@()
+  foreach($entry in @($NodeAddresses)){if($entry){try{$known+=[Net.IPAddress]::Parse($entry.Trim()).ToString()}catch{}}}
+  if($known -notcontains $ip.ToString()){return $false}
+  $bytes=$ip.GetAddressBytes()
+  # Tailscale's address ranges: 100.64.0.0/10 and fd7a:115c:a1e0::/48.
+  if($ip.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork){return $bytes[0] -eq 100 -and ($bytes[1] -band 0xC0) -eq 64}
+  return $bytes.Length -eq 16 -and $bytes[0] -eq 0xfd -and $bytes[1] -eq 0x7a -and $bytes[2] -eq 0x11 -and $bytes[3] -eq 0x5c -and $bytes[4] -eq 0xa1 -and $bytes[5] -eq 0xe0
+}
+function Test-DotfilesTailnetLineage($Facts,[int]$OwnerPid){
+  $servicePid=[int]$Facts.Service.ProcessId
+  if([string]$Facts.Service.State -ne 'Running' -or $servicePid -le 0){return $false}
+  if($OwnerPid -eq $servicePid){return $true}
+  $child=$Facts.Processes[$OwnerPid];$parent=$Facts.Processes[$servicePid]
+  if($null -eq $child -or $null -eq $parent){return $false}
+  # A parent newer than its child is a reused pid, not the child's parent.
+  return [int]$child.ParentProcessId -eq $servicePid -and [string]$child.Name -ieq 'tailscaled.exe' -and $parent.CreationDate -is [datetime] -and $child.CreationDate -is [datetime] -and $parent.CreationDate -le $child.CreationDate
+}
+function Test-DotfilesTailnetForward($Facts,[string]$Address,[int]$Port,[int]$OwnerPid){
+  if($null -eq $Facts -or -not $Facts.Declared){return 'not declared on this machine'}
+  if($Facts.Error){return [string]$Facts.Error}
+  if($Port -ne 11434){return 'not port 11434'}
+  if(-not (Test-DotfilesTailnetLineage $Facts $OwnerPid)){return 'the listener is not the Tailscale service or its tailscaled child'}
+  if(-not $Facts.ServiceBinaryTrusted){return 'the Tailscale service is not the signed tailscaled.exe under Program Files'}
+  if(-not (Test-DotfilesTailnetAddress $Address $Facts.NodeAddresses)){return 'not a tailnet address of this machine'}
+  return [string](Test-DotfilesServeConfig $Facts.Serve $Facts.LoopbackV6Taken)
+}
+"""
+# Each outside call the probe body makes through a named function, so a test can
+# replace it between these definitions and WINDOWS_PROBE_BODY.
+WINDOWS_PROBE_FUNCTIONS = r"""
+function Test-DotfilesSignedBinary([string]$Path,[string]$Organization){
+  try{
+    $item=Get-Item -LiteralPath $Path -ErrorAction Stop
+    $parent=Get-Item -LiteralPath (Split-Path -Parent $Path) -ErrorAction Stop
+    if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($parent.Attributes -band [IO.FileAttributes]::ReparsePoint)){return $false}
+    $signature=Get-AuthenticodeSignature -FilePath $item.FullName -ErrorAction Stop
+    return [string]$signature.Status -eq 'Valid' -and $signature.SignerCertificate.Subject -match ('(^|,\s*)O='+[regex]::Escape($Organization)+'(,|$)')
+  }catch{return $false}
+}
+function Read-DotfilesTailnetDeclaration{
+  try{return ([IO.File]::ReadAllText((Join-Path $env:USERPROFILE '.config\dotfiles\ollama-tailnet-forward'))).Trim() -eq '11434'}catch{return $false}
+}
+function Invoke-DotfilesTailscale([string[]]$Arguments){
+  $cli=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Tailscale\tailscale.exe'
+  if(-not (Test-DotfilesSignedBinary $cli 'Tailscale Inc.')){throw 'the Tailscale CLI is not the signed one under Program Files'}
+  $start=[Diagnostics.ProcessStartInfo]::new()
+  $start.FileName=$cli;$start.Arguments=($Arguments -join ' ')
+  $start.UseShellExecute=$false;$start.CreateNoWindow=$true
+  $start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
+  $run=[Diagnostics.Process]::new();$run.StartInfo=$start
+  try{
+    [void]$run.Start()
+    $output=$run.StandardOutput.ReadToEndAsync();[void]$run.StandardError.ReadToEndAsync()
+    if(-not $run.WaitForExit(5000)){$run.Kill();[void]$run.WaitForExit(1000);throw 'the Tailscale CLI timed out'}
+    if($run.ExitCode -ne 0){throw 'the Tailscale CLI failed'}
+    return $output.GetAwaiter().GetResult()
+  }finally{$run.Dispose()}
+}
+function Get-DotfilesTailnetFacts([bool]$LoopbackV6Taken){
+  # Undeclared machines run no Tailscale command at all.
+  if(-not (Read-DotfilesTailnetDeclaration)){return @{Declared=$false}}
+  try{
+    $service=Get-CimInstance Win32_Service -Filter "Name='Tailscale'" -ErrorAction Stop
+    if($null -eq $service){return @{Declared=$true;Error='the Tailscale service is not installed'}}
+    $processes=@{}
+    foreach($entry in @(Get-CimInstance Win32_Process -Filter "Name='tailscaled.exe'" -ErrorAction Stop)){
+      $processes[[int]$entry.ProcessId]=@{ParentProcessId=[int]$entry.ParentProcessId;Name=[string]$entry.Name;CreationDate=$entry.CreationDate}
+    }
+    $expected=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Tailscale\tailscaled.exe'
+    $binary=([string]$service.PathName).Trim()
+    if($binary.StartsWith('"')){$binary=$binary.Substring(1).Split('"')[0]}
+    $addresses=@((Invoke-DotfilesTailscale @('ip','-4')) -split '\s+')+@((Invoke-DotfilesTailscale @('ip','-6')) -split '\s+')
+    $serve=(Invoke-DotfilesTailscale @('serve','status','--json'))|ConvertFrom-Json
+    return @{
+      Declared=$true;Error=''
+      Service=@{State=[string]$service.State;ProcessId=[int]$service.ProcessId}
+      Processes=$processes
+      ServiceBinaryTrusted=($binary -ieq $expected -and (Test-DotfilesSignedBinary $expected 'Tailscale Inc.'))
+      NodeAddresses=@($addresses|Where-Object{$_})
+      Serve=$serve
+      LoopbackV6Taken=$LoopbackV6Taken
+    }
+  }catch{return @{Declared=$true;Error='the declared tailnet forward could not be inspected'}}
+}
+function Confirm-DotfilesTailnetFacts($Facts){
+  # The service pid read again after the checks: a restart in between voids them.
+  try{
+    $service=Get-CimInstance Win32_Service -Filter "Name='Tailscale'" -ErrorAction Stop
+    return $null -ne $service -and [string]$service.State -eq 'Running' -and [int]$service.ProcessId -eq [int]$Facts.Service.ProcessId
+  }catch{return $false}
+}
+function Get-DotfilesBackendVersion{
+  $request=[Net.HttpWebRequest]::Create('http://127.0.0.1:11434/api/version')
+  $request.Proxy=$null;$request.Timeout=2000;$request.ReadWriteTimeout=2000
+  $response=$request.GetResponse()
+  try{$reader=[IO.StreamReader]::new($response.GetResponseStream());return ($reader.ReadToEnd()|ConvertFrom-Json).version}finally{$response.Dispose()}
+}
+"""
+WINDOWS_PROBE_BODY = r"""
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new()
 $errorsList=[Collections.Generic.List[string]]::new()
@@ -85,15 +240,22 @@ foreach($key in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
   Get-ItemProperty $key -ErrorAction SilentlyContinue|Where-Object{$_.DisplayName -match '^Ollama(\s|$)'}|ForEach-Object{$duplicates.Add('registered installer: '+$_.PSChildName)}
 }
 $listeners=@();$processRows=@()
+$tailnetRefusals=[Collections.Generic.List[object]]::new()
 try{
   $processes=@(Get-CimInstance Win32_Process -Filter "Name='ollama.exe' OR Name='ollama app.exe'")
   $servers=@($processes|Where-Object{$_.Name -eq 'ollama.exe' -and $_.CommandLine -notmatch '\srunner(\s|$)'}|ForEach-Object{$_.ProcessId})
-  $sockets=@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue|Where-Object{$_.LocalPort -eq 11434 -or $_.OwningProcess -in $servers})
+  $sockets=@(Get-NetTCPConnection -State Listen -ErrorAction Stop|Where-Object{$_.LocalPort -eq 11434 -or $_.OwningProcess -in $servers})
+  $tailnetFacts=Get-DotfilesTailnetFacts (@($sockets|Where-Object{$_.LocalAddress -eq '::1' -and $_.LocalPort -eq 11434}).Count -gt 0)
   $listeners=@($sockets|ForEach-Object{
     $owner=Get-Process -Id $_.OwningProcess -ErrorAction Stop
     $forwarder=Test-DotfilesWslForwarder $owner.Path $_.LocalAddress $_.LocalPort
-    @{address=$_.LocalAddress;port=$_.LocalPort;pid=$_.OwningProcess;path=$owner.Path;windows_forwarder=$forwarder}
+    $reason=Test-DotfilesTailnetForward $tailnetFacts ([string]$_.LocalAddress) ([int]$_.LocalPort) ([int]$_.OwningProcess)
+    if($tailnetFacts.Declared -and $reason -and -not [Net.IPAddress]::IsLoopback([Net.IPAddress]::Parse([string]$_.LocalAddress))){$tailnetRefusals.Add(@{address=[string]$_.LocalAddress;reason=$reason})}
+    @{address=$_.LocalAddress;port=$_.LocalPort;pid=$_.OwningProcess;path=$owner.Path;windows_forwarder=$forwarder;tailnet_forward=($reason -eq '')}
   })
+  if(@($listeners|Where-Object{$_.tailnet_forward}).Count -and -not (Confirm-DotfilesTailnetFacts $tailnetFacts)){
+    foreach($entry in $listeners){if($entry.tailnet_forward){$entry.tailnet_forward=$false;$tailnetRefusals.Add(@{address=[string]$entry.address;reason='the Tailscale service changed during the check'})}}
+  }
   $shimExe=Join-Path $scoop 'shims\ollama.exe'
   $shimConfig=Join-Path $scoop 'shims\ollama.shim'
   $shimTrusted=(Test-Path $shimConfig) -and (Get-Content -Raw $shimConfig).Trim() -eq ('path = "'+$full+'\ollama.exe"')
@@ -104,19 +266,14 @@ try{
 $version=''
 # Do NOT make a loopback health request without a canonical native owner:
 # Windows localhost may otherwise forward back into the WSL bridge.
-$backendListeners=@($listeners|Where-Object{-not($_.windows_forwarder -eq $true -and $_.address -eq '::1' -and $_.port -eq 11434)})
+$backendListeners=@($listeners|Where-Object{-not($_.windows_forwarder -eq $true -and $_.address -eq '::1' -and $_.port -eq 11434) -and -not($_.tailnet_forward -eq $true -and $_.port -eq 11434)})
 $owned=$backendListeners.Count -gt 0 -and $physical -ne '' -and $duplicates.Count -eq 0 -and $bucket -eq 'extras'
 if(-not @($backendListeners|Where-Object{$_.address -eq '127.0.0.1' -and $_.port -eq 11434}).Count){$owned=$false}
 foreach($entry in $backendListeners){
   if($entry.port -ne 11434 -or $entry.address -notin @('127.0.0.1','::1') -or -not (@($aliases|Where-Object{$entry.path -and $entry.path.StartsWith($_+'\',[StringComparison]::OrdinalIgnoreCase)}).Count)){$owned=$false}
 }
 if($owned -and @($backendListeners.pid|Select-Object -Unique).Count -eq 1){
-  try{
-    $request=[Net.HttpWebRequest]::Create('http://127.0.0.1:11434/api/version')
-    $request.Proxy=$null;$request.Timeout=2000;$request.ReadWriteTimeout=2000
-    $response=$request.GetResponse()
-    try{$reader=[IO.StreamReader]::new($response.GetResponseStream());$version=($reader.ReadToEnd()|ConvertFrom-Json).version}finally{$response.Dispose()}
-  }catch{$errorsList.Add('canonical Windows backend did not return a version')}
+  try{$version=Get-DotfilesBackendVersion}catch{$errorsList.Add('canonical Windows backend did not return a version')}
 }
 $miseDir=''
 foreach($scope in @('Process','User','Machine')){
@@ -157,8 +314,13 @@ foreach($scope in @('Process','User','Machine')){
   $hostValue=[Environment]::GetEnvironmentVariable('OLLAMA_HOST',$scope)
   if($hostValue -and $hostValue.TrimEnd('/') -notin $allowedHost){$conflictingConfig=$true}
 }
-@{full_dir=$physical;full_paths=@($aliases);full_bucket=$bucket;duplicates=@($duplicates);listeners=@($listeners);processes=@($processRows);python=$python;python_error=$pythonError;version=$version;conflicting_config=$conflictingConfig;errors=@($errorsList)}|ConvertTo-Json -Depth 5 -Compress
+@{full_dir=$physical;full_paths=@($aliases);full_bucket=$bucket;duplicates=@($duplicates);listeners=@($listeners);processes=@($processRows);python=$python;python_error=$pythonError;version=$version;conflicting_config=$conflictingConfig;tailnet_refusals=@($tailnetRefusals);errors=@($errorsList)}|ConvertTo-Json -Depth 5 -Compress
 """
+WINDOWS_PROBE = (
+    WINDOWS_FORWARDER_CLASSIFIER
+    + WINDOWS_TAILNET_CLASSIFIER
+    + WINDOWS_PROBE_FUNCTIONS
+    + WINDOWS_PROBE_BODY
 )
 
 
@@ -202,15 +364,26 @@ def _loopback(address: str) -> bool:
         return False
 
 
+def _wsl_forwarder(row: dict) -> bool:
+    """The signed Microsoft ::1 forwarder the probe verified, not a backend."""
+    return (
+        row.get("windows_forwarder") is True
+        and row.get("address") == "::1"
+        and row.get("port", 11434) == 11434
+    )
+
+
+def _tailnet_forward(row: dict) -> bool:
+    """A Tailscale forward of 11434 the probe verified against this machine's
+    declaration (tailnet only, no Funnel), not a backend."""
+    return row.get("tailnet_forward") is True and row.get("port", 11434) == 11434
+
+
 def _backend_listeners(data: dict) -> list[dict]:
     return [
         row
         for row in data.get("listeners", [])
-        if not (
-            row.get("windows_forwarder") is True
-            and row.get("address") == "::1"
-            and row.get("port", 11434) == 11434
-        )
+        if not _wsl_forwarder(row) and not _tailnet_forward(row)
     ]
 
 
@@ -272,7 +445,7 @@ def windows_findings(data: dict) -> list[tuple[str, str, str]]:
             else "no canonical Windows backend, conflicting owner, or multiple serving backends",
         )
     )
-    if len(backends) != len(listeners):
+    if any(_wsl_forwarder(row) for row in listeners):
         rows.append(
             (
                 "OK",
@@ -280,8 +453,31 @@ def windows_findings(data: dict) -> list[tuple[str, str, str]]:
                 "verified Microsoft ::1 forwarding listener is not another Ollama backend",
             )
         )
+    refusals = data.get("tailnet_refusals") or []
+    if not isinstance(refusals, list):
+        refusals = [{"reason": "the probe returned an invalid refusal record"}]
+    for refusal in refusals:
+        where = refusal.get("address", "?")
+        why = refusal.get("reason", "unverified")
+        rows.append(
+            (
+                "ERR",
+                "ollama-tailnet-forward",
+                f"declared tailnet forward refused on {where}: {why}",
+            )
+        )
+    if not refusals and any(_tailnet_forward(row) for row in listeners):
+        rows.append(
+            (
+                "OK",
+                "ollama-tailnet-forward",
+                "declared tailnet-only Tailscale forward of 11434 (no Funnel) is not a second backend",
+            )
+        )
     exposed = data.get("conflicting_config", False) or any(
-        not _loopback(row.get("address", "")) for row in listeners
+        not _loopback(row.get("address", ""))
+        for row in listeners
+        if not _tailnet_forward(row)
     )
     rows.append(
         (
@@ -316,8 +512,71 @@ def windows_findings(data: dict) -> list[tuple[str, str, str]]:
     return rows
 
 
+def _shared_loopback_row(
+    data: dict, windows_version: str | None, windows_owned: bool | None
+) -> tuple[str, str, str]:
+    """Mirrored WSL has no bridge: its 127.0.0.1:11434 is Windows' own."""
+    if data.get("networking_mode") != "mirrored":
+        return (
+            "WARN",
+            "ollama-network",
+            "WSL networking mode unknown (wslinfo --networking-mode needs WSL 2.0.4+; run wsl --update); no bridge is set up",
+        )
+    name = "ollama-loopback"
+    if not data.get("listener_inventory_ok"):
+        return (
+            "WARN",
+            name,
+            "WSL listener inventory unavailable; shared loopback unverified",
+        )
+    if any(
+        data.get(key)
+        for key in ("listening", "bridge_enabled", "bridge_running", "serve_running")
+    ):
+        stop = f"systemctl --user disable --now {UNIT}"
+        return (
+            "ERR",
+            name,
+            f"under mirrored networking a WSL listener or the dotfiles bridge collides with the Windows backend on 11434; {stop}",
+        )
+    if not data.get("client_managed"):
+        return (
+            "ERR",
+            name,
+            "managed client missing or modified; rerun ollama_host.py --setup",
+        )
+    seen = data.get("loopback_version")
+    if seen is None:
+        if windows_owned is False:
+            return (
+                "WARN",
+                name,
+                "Windows backend not canonical or stopped; shared loopback not checked",
+            )
+        return (
+            "OK",
+            name,
+            "mirrored networking and no WSL listener on 11434; the WSL doctor checks the shared loopback end to end",
+        )
+    if not seen:
+        return ("ERR", name, "the shared loopback did not reach the Windows backend")
+    if windows_version and seen != windows_version:
+        return (
+            "ERR",
+            name,
+            f"the shared loopback reached version {seen} but Windows reports {windows_version}",
+        )
+    return (
+        "OK",
+        name,
+        "the shared mirrored loopback reaches the canonical Windows backend",
+    )
+
+
 def wsl_findings(
-    data: dict, windows_version: str | None = None
+    data: dict,
+    windows_version: str | None = None,
+    windows_owned: bool | None = None,
 ) -> list[tuple[str, str, str]]:
     rows = []
     native = data.get("native", []) + data.get("services", [])
@@ -338,6 +597,24 @@ def wsl_findings(
                 "WSL model storage exists; Windows must own model/authentication state (no automatic deletion)",
             )
         )
+    if data.get("networking_mode", "nat") != "nat":
+        rows.append(_shared_loopback_row(data, windows_version, windows_owned))
+        # Nothing in WSL may listen; any listener is already an error above.
+        exposed = data.get("conflicting_config") or (
+            data.get("listening") and not data.get("loopback_only")
+        )
+        rows.append(
+            (
+                "ERR" if exposed else "OK",
+                "ollama-exposure",
+                "WSL listener exposure or OLLAMA_HOST conflicts with the shared loopback"
+                if exposed
+                else "no WSL listener exposure and no conflicting OLLAMA_HOST",
+            )
+        )
+        if data.get("errors"):
+            rows.append(("WARN", "ollama-inspection", "; ".join(data["errors"])))
+        return rows
     identity = all(
         data.get(key)
         for key in ("client_managed", "bridge_managed", "bridge_active", "bridge_owned")
@@ -408,10 +685,15 @@ def powershell() -> str:
 
 
 def _run(
-    args: list[str], *, timeout: int = 15, interop: bool = False
+    args: list[str],
+    *,
+    timeout: int = 15,
+    interop: bool = False,
+    input: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         args,
+        input=input,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -422,12 +704,30 @@ def _run(
     )
 
 
-def windows_snapshot() -> dict:
-    command = base64.b64encode(WINDOWS_PROBE.encode("utf-16-le")).decode("ascii")
-    result = _run(
-        [powershell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", command],
-        interop=sys.platform != "win32",
+# The probe is longer than a Windows command line can carry (32,767 characters,
+# and -EncodedCommand doubles and base64-expands a script). This short fixed
+# bootstrap reads the fixed script from standard input as UTF-8 and dot-sources
+# it, so it runs in the same scope as if it had been the command itself.
+POWERSHELL_STDIN_BOOTSTRAP = "$dotfilesProbe=[IO.StreamReader]::new([Console]::OpenStandardInput(),[Text.UTF8Encoding]::new($false)).ReadToEnd();. ([scriptblock]::Create($dotfilesProbe))"
+
+
+def run_powershell(
+    script: str, *, timeout: int = 15
+) -> subprocess.CompletedProcess[str]:
+    """Runs fixed Windows PowerShell 5.1 code, passed on standard input."""
+    command = base64.b64encode(POWERSHELL_STDIN_BOOTSTRAP.encode("utf-16-le")).decode(
+        "ascii"
     )
+    return _run(
+        [powershell(), "-NoProfile", "-NonInteractive", "-EncodedCommand", command],
+        timeout=timeout,
+        interop=sys.platform != "win32",
+        input=script,
+    )
+
+
+def windows_snapshot() -> dict:
+    result = run_powershell(WINDOWS_PROBE)
     if result.returncode:
         raise RuntimeError("Windows inventory did not complete; ownership unverified")
     data = json.loads(result.stdout.lstrip("\ufeff"))
@@ -570,7 +870,22 @@ def _write_owned(path: Path, text: str, previous_hash: str | None, mode: int) ->
             temporary.unlink()
 
 
-def install_client_files() -> None:
+def wsl_networking_mode() -> str:
+    """WSL's own answer (`wslinfo`, WSL 2.0.4+): `nat`, `mirrored` or `unknown`.
+
+    Under mirrored networking WSL shares Windows' loopback, so a bridge on
+    127.0.0.1:11434 would collide with the Windows backend. Anything but a clear
+    `nat` therefore gets no bridge.
+    """
+    try:
+        result = _run(["wslinfo", "--networking-mode"], timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    mode = result.stdout.strip().lower()
+    return mode if result.returncode == 0 and mode in {"nat", "mirrored"} else "unknown"
+
+
+def install_client_files(*, bridge_unit_file: bool = True) -> None:
     # Stable user-owned copy, never a disposable worktree or uv venv path.
     target = deployment_source()
     if target.parent.is_symlink() or not Path(DURABLE_PYTHON).is_file():
@@ -591,12 +906,15 @@ def install_client_files() -> None:
     texts = {
         "helper": (target, SOURCE.read_text(encoding="utf-8"), 0o600),
         "shim": (Path.home() / ".local/bin/ollama", cli_wrapper(str(target)), 0o755),
-        "unit": (
+    }
+    # The bridge unit exists only where WSL's loopback is its own (NAT). An old
+    # unit is left as it is; setup refuses to go on while one is enabled or runs.
+    if bridge_unit_file:
+        texts["unit"] = (
             Path.home() / ".config/systemd/user" / UNIT,
             bridge_unit(DURABLE_PYTHON, str(target)),
             0o644,
-        ),
-    }
+        )
     # Preflight all files before making changes; a marker alone grants no ownership.
     for key, (path, text, _mode) in texts.items():
         expected = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -700,7 +1018,8 @@ def managed_unit(text: str, source: str) -> bool:
         return False
 
 
-def wsl_snapshot() -> dict:
+def wsl_snapshot(networking_mode: str | None = None) -> dict:
+    mode = wsl_networking_mode() if networking_mode is None else networking_mode
     native = []
     errors = []
     deployed = deployment_source()
@@ -760,7 +1079,28 @@ def wsl_snapshot() -> dict:
         unit.read_text(encoding="utf-8"), str(deployed)
     )
     service = _run(
-        ["systemctl", "--user", "show", UNIT, "-p", "ActiveState", "-p", "ExecMainPID"]
+        [
+            "systemctl",
+            "--user",
+            "show",
+            UNIT,
+            "-p",
+            "ActiveState",
+            "-p",
+            "ExecMainPID",
+            "-p",
+            "UnitFileState",
+        ]
+    )
+    unit_state = dict(
+        line.split("=", 1) for line in service.stdout.splitlines() if "=" in line
+    )
+    # Any bridge process, managed or not, would claim 11434 on a shared loopback.
+    arguments = _run(["ps", "-eo", "args="])
+    serve_running = any(
+        "--serve" in line.split()
+        and any(part.endswith("ollama_host.py") for part in line.split())
+        for line in arguments.stdout.splitlines()
     )
     state = {}
     with contextlib.suppress(OSError, ValueError):
@@ -789,7 +1129,9 @@ def wsl_snapshot() -> dict:
     ]
     loopback_only = bool(addresses) and all(_loopback(address) for address in addresses)
     version = ""
-    if owned and loopback_only:
+    # Only NAT has a bridge to ask; on a shared loopback the WSL doctor asks
+    # Windows' backend itself, after checking its owner (mirrored_loopback_version).
+    if mode == "nat" and owned and loopback_only:
         with contextlib.suppress(OSError, ValueError, RuntimeError):
             version = _version()
     models = Path.home() / ".ollama/models"
@@ -815,7 +1157,36 @@ def wsl_snapshot() -> dict:
         "bridge_owned": owned,
         "loopback_only": loopback_only,
         "version": version,
+        "networking_mode": mode,
+        "listener_inventory_ok": sockets.returncode == 0,
+        "listening": bool(lines),
+        "service_inventory_ok": service.returncode == 0,
+        "bridge_enabled": unit_state.get("UnitFileState", "")
+        not in {"", "disabled", "masked", "masked-runtime"},
+        "bridge_running": unit_state.get("ActiveState", "")
+        in {"active", "activating", "reloading", "refreshing", "deactivating"},
+        "process_inventory_ok": arguments.returncode == 0,
+        "serve_running": serve_running,
     }
+
+
+def mirrored_loopback_version(local: dict, windows_owned: bool) -> str | None:
+    """The version WSL's own 127.0.0.1:11434 answers under mirrored networking.
+
+    Asked once, and only when the mode is known to be mirrored, nothing in WSL
+    listens on 11434 (the inventory itself succeeded), and Windows' canonical
+    backend owns the port. None when it was not asked; "" when nothing answered.
+    """
+    if local.get("networking_mode") != "mirrored":
+        return None
+    if not local.get("listener_inventory_ok") or local.get("listening"):
+        return None
+    if not windows_owned:
+        return None
+    try:
+        return _version()
+    except (OSError, ValueError, RuntimeError):
+        return ""
 
 
 def bridge_unit(python: str, source: str) -> str:
@@ -932,6 +1303,14 @@ async def _relay(
 async def serve() -> None:
     if host_policy() != "wsl-client":
         raise RuntimeError("the bridge runs only in WSL")
+    mode = wsl_networking_mode()
+    if mode != "nat":
+        # A unit left from a NAT setup must not claim the shared loopback.
+        print(
+            f"WARN ollama-bridge: WSL networking is {mode}; the bridge does not listen",
+            file=sys.stderr,
+        )
+        return
     slots = asyncio.Semaphore(MAX_CONNECTIONS)
     servers = []
     active: set[asyncio.Task] = set()
@@ -1000,14 +1379,54 @@ async def serve() -> None:
                 _state_path().unlink()
 
 
+def _setup_shared_loopback(mode: str) -> None:
+    """WSL that shares Windows' loopback gets the CLI client only.
+
+    A bridge on 127.0.0.1:11434 would collide with the Windows backend, so
+    anything left of one stops setup before it changes anything; an unknown
+    mode changes nothing either.
+    """
+    if mode != "mirrored":
+        raise RuntimeError(
+            "WSL networking mode unknown (wslinfo --networking-mode needs WSL 2.0.4+; run wsl --update); nothing changed"
+        )
+    local = wsl_snapshot(networking_mode=mode)
+    if local["native"] or local["services"]:
+        raise RuntimeError(
+            "remove conflicting WSL native Ollama before setup; models are never removed automatically"
+        )
+    if not (
+        local["listener_inventory_ok"]
+        and local["service_inventory_ok"]
+        and local["process_inventory_ok"]
+    ):
+        raise RuntimeError(
+            "cannot confirm that no dotfiles bridge or WSL listener remains; nothing changed"
+        )
+    if any(
+        local[key]
+        for key in ("listening", "bridge_enabled", "bridge_running", "serve_running")
+    ):
+        raise RuntimeError(
+            f"WSL networking is {mode}: a bridge or WSL listener on 11434 collides with the Windows backend; "
+            f"stop it first (systemctl --user disable --now {UNIT}); nothing changed"
+        )
+    # Only now, with nothing in the way: the client, never the bridge unit.
+    install_client_files(bridge_unit_file=False)
+
+
 def setup() -> None:
     policy = host_policy()
     if policy is None:
         return
     if policy == "wsl-client":
+        mode = wsl_networking_mode()
+        if mode != "nat":
+            _setup_shared_loopback(mode)
+            return
         # Provision compatibility client BEFORE interop/backend availability;
         # an old deploy must not mistake downtime for a missing Linux server.
-        install_client_files()
+        install_client_files(bridge_unit_file=True)
     data = windows_snapshot()
     if policy == "windows-full":
         if (
@@ -1080,7 +1499,12 @@ def check() -> list[tuple[str, str, str]]:
         rows = [("WARN", "ollama-inspection", str(error))]
         data = {}
     if policy == "wsl-client":
-        rows += wsl_findings(wsl_snapshot(), windows_version=data.get("version", ""))
+        local = wsl_snapshot()
+        owned = bool(data) and backend_owned(data)
+        local["loopback_version"] = mirrored_loopback_version(local, owned)
+        rows += wsl_findings(
+            local, windows_version=data.get("version", ""), windows_owned=owned
+        )
     else:
         try:
             all_result = subprocess.run(
@@ -1137,6 +1561,7 @@ def check() -> list[tuple[str, str, str]]:
                         for severity, name, detail in wsl_findings(
                             json.loads(result.stdout),
                             windows_version=data.get("version", ""),
+                            windows_owned=bool(data) and backend_owned(data),
                         )
                     ]
         except (

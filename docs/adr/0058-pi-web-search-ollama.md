@@ -1,7 +1,7 @@
 # 0058. Pi の web 検索を Ollama 経由に寄せ、pi 本体の計測を全機体で止める
 
 **Date:** 2026-10-19
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0062](0062-one-windows-ollama-for-wsl.md) (Decision 4 と、Decision 3 の Windows・WSL での適用のみ。Pi の web 検索の一本化、計測の停止、WSL のない Linux・macOS での導入は維持)
 **ID:** ADR-0058
 **Title:** Pi の web 検索を Ollama 経由に寄せ、pi 本体の計測を全機体で止める
 **Decided-date:** 2026-10-19

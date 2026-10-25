@@ -78,3 +78,20 @@ jobs:
           just --evaluate _EXE_SRC_DIR
           uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_jev_pi_verify.py tests/unit/test_jev_codex_exec.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py
           bun test tests/unit/jev_sonnet_fallback.test.ts
+
+  # The Ollama host checks run Windows PowerShell classifiers (the WSL
+  # forwarder, the declared tailnet forward) that only a Windows runner can
+  # execute; on ubuntu-latest those tests skip.
+  windows-ollama-host:
+    name: Ollama host checks on Windows PowerShell
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Run the Ollama host tests
+        shell: pwsh
+        run: uvx pytest -q -ra tests/unit/test_ollama_host.py

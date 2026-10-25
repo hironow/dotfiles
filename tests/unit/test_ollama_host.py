@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -253,6 +254,440 @@ def test_windows_security_module_ignores_inherited_powershell7_paths() -> None:
     assert json.loads(result.stdout) is True
 
 
+windows_only = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="exercise the Windows PowerShell code, not a Python reimplementation",
+)
+
+
+def _powershell(script: str) -> str:
+    """Runs Windows PowerShell 5.1 the way the probe does; returns stdout."""
+    result = host.run_powershell(script, timeout=60)
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+# A generic serve configuration with the shapes a GPU box carries: an HTTPS
+# web proxy on 443, unrelated TCP forwards, and the declared 11434 forward.
+SERVE: dict[str, Any] = {
+    "TCP": {
+        "443": {"HTTPS": True},
+        "8775": {"TCPForward": "localhost:8775"},
+        "11434": {"TCPForward": "localhost:11434"},
+        "18021": {"TCPForward": "localhost:18020"},
+    },
+    "Web": {
+        "node.example.ts.net:443": {
+            "Handlers": {"/": {"Proxy": "http://127.0.0.1:8188"}}
+        }
+    },
+}
+
+
+def _serve(**changes: Any) -> dict[str, Any]:
+    config: dict[str, Any] = copy.deepcopy(SERVE)
+    for key, value in changes.items():
+        if key == "forward":
+            config["TCP"]["11434"] = value
+        elif key == "tcp":
+            config["TCP"].update(value)
+        elif key == "web":
+            config["Web"].update(value)
+        else:
+            config[key] = value
+    return config
+
+
+@windows_only
+@pytest.mark.parametrize(
+    "config,v6_taken,accepted",
+    [
+        pytest.param(_serve(), False, True, id="the-declared-shape"),
+        pytest.param(
+            _serve(forward={"TCPForward": "127.0.0.1:11434"}),
+            True,
+            True,
+            id="ipv4-target",
+        ),
+        pytest.param(_serve(), True, False, id="localhost-with-a-v6-listener"),
+        pytest.param(
+            _serve(AllowFunnel={"node.example.ts.net:443": True}),
+            False,
+            False,
+            id="funnel-on-443",
+        ),
+        pytest.param(
+            _serve(AllowFunnel={"node.example.ts.net:443": False}),
+            False,
+            True,
+            id="funnel-off",
+        ),
+        pytest.param(
+            _serve(
+                Foreground={"s": {"AllowFunnel": {"node.example.ts.net:8443": True}}}
+            ),
+            False,
+            False,
+            id="funnel-in-a-foreground-session",
+        ),
+        pytest.param(
+            _serve(
+                Foreground={"s": {"TCP": {"11434": {"TCPForward": "localhost:9999"}}}}
+            ),
+            False,
+            False,
+            id="foreground-takes-11434",
+        ),
+        pytest.param(
+            _serve(forward={"TCPForward": "localhost:8080"}),
+            False,
+            False,
+            id="other-target",
+        ),
+        pytest.param(
+            _serve(forward={"TCPForward": "0.0.0.0:11434"}),
+            False,
+            False,
+            id="wildcard-target",
+        ),
+        pytest.param(_serve(forward={"HTTPS": True}), False, False, id="web-not-tcp"),
+        pytest.param(
+            _serve(
+                forward={"TCPForward": "localhost:11434", "TerminateTLS": "n.example"}
+            ),
+            False,
+            False,
+            id="tls-terminated",
+        ),
+        pytest.param(
+            _serve(forward={"TCPForward": "localhost:11434", "ProxyProtocol": 1}),
+            False,
+            False,
+            id="proxy-protocol",
+        ),
+        pytest.param(
+            _serve(tcp={"18000": {"TCPForward": "localhost:11434"}}),
+            False,
+            False,
+            id="second-forward-to-11434",
+        ),
+        pytest.param(
+            _serve(
+                web={
+                    "n.example.ts.net:8443": {
+                        "Handlers": {"/": {"Proxy": "http://127.0.0.1:11434"}}
+                    }
+                }
+            ),
+            False,
+            False,
+            id="web-proxy-to-11434",
+        ),
+        pytest.param(
+            _serve(
+                web={"n.example.ts.net:8443": {"Handlers": {"/": {"Proxy": "11434"}}}}
+            ),
+            False,
+            False,
+            id="bare-port-proxy-to-11434",
+        ),
+        pytest.param(
+            _serve(web={"n.example.ts.net:11434": {"Handlers": {"/": {"Text": "hi"}}}}),
+            False,
+            False,
+            id="web-site-on-11434",
+        ),
+        pytest.param(
+            _serve(
+                Services={
+                    "svc:x": {"TCP": {"11434": {"TCPForward": "localhost:11434"}}}
+                }
+            ),
+            False,
+            False,
+            id="service-takes-11434",
+        ),
+        pytest.param(
+            _serve(Services={"svc:x": {"Tun": True}}), False, False, id="tun-service"
+        ),
+        pytest.param(
+            {"TCP": {"8775": {"TCPForward": "localhost:8775"}}},
+            False,
+            False,
+            id="no-forward",
+        ),
+        pytest.param({}, False, False, id="empty"),
+    ],
+)
+def test_powershell_serve_config_rules(
+    config: dict, v6_taken: bool, accepted: bool
+) -> None:
+    script = (
+        host.WINDOWS_FORWARDER_CLASSIFIER
+        + host.WINDOWS_TAILNET_CLASSIFIER
+        + "\n$config=@'\n"
+        + json.dumps(config)
+        + "\n'@|ConvertFrom-Json\n"
+        + f"@{{reason=[string](Test-DotfilesServeConfig $config ${str(v6_taken).lower()})}}|ConvertTo-Json -Compress"
+    )
+    reason = json.loads(_powershell(script))["reason"]
+    assert (reason == "") is accepted, reason
+
+
+@windows_only
+@pytest.mark.parametrize(
+    "address,nodes,accepted",
+    [
+        ("100.64.12.34", ["100.64.12.34", "fd7a:115c:a1e0::5678"], True),
+        ("fd7a:115c:a1e0::5678", ["100.64.12.34", "fd7a:115c:a1e0::5678"], True),
+        ("fd7a:115c:a1e0:0:0:0:0:5678", ["fd7a:115c:a1e0::5678"], True),
+        ("100.64.12.35", ["100.64.12.34"], False),
+        ("192.168.1.20", ["192.168.1.20"], False),
+        ("100.128.0.1", ["100.128.0.1"], False),
+        ("fd7a:115c:a1e1::1", ["fd7a:115c:a1e1::1"], False),
+        ("0.0.0.0", ["0.0.0.0"], False),
+        ("not-an-address", ["100.64.12.34"], False),
+    ],
+)
+def test_powershell_tailnet_address_rules(
+    address: str, nodes: list[str], accepted: bool
+) -> None:
+    script = (
+        host.WINDOWS_FORWARDER_CLASSIFIER
+        + host.WINDOWS_TAILNET_CLASSIFIER
+        + f"\nTest-DotfilesTailnetAddress '{address}' @({','.join(repr(n) for n in nodes)})|ConvertTo-Json"
+    )
+    assert json.loads(_powershell(script)) is accepted
+
+
+# The service process (pid 70) and its tailscaled child (pid 100), as
+# Win32_Process reports them; a normal user cannot see their paths.
+LINEAGE = r"""
+$facts=@{
+  Service=@{State='Running';ProcessId=70}
+  Processes=@{
+    70=@{ParentProcessId=4;Name='tailscaled.exe';CreationDate=[datetime]'2026-01-01T00:00:00'}
+    100=@{ParentProcessId=70;Name='tailscaled.exe';CreationDate=[datetime]'2026-01-01T00:00:01'}
+  }
+}
+"""
+
+
+@windows_only
+@pytest.mark.parametrize(
+    "change,owner,accepted",
+    [
+        ("", 100, True),
+        ("", 70, True),
+        ("$facts.Service.State='Stopped'", 100, False),
+        ("$facts.Service.ProcessId=0", 0, False),
+        ("$facts.Processes[100].ParentProcessId=71", 100, False),
+        ("$facts.Processes[100].Name='other.exe'", 100, False),
+        ("$facts.Processes[70].CreationDate=[datetime]'2026-01-02'", 100, False),
+        ("$facts.Processes[100].CreationDate=$null", 100, False),
+        ("", 999, False),
+    ],
+)
+def test_powershell_tailnet_lineage_rules(
+    change: str, owner: int, accepted: bool
+) -> None:
+    script = (
+        host.WINDOWS_FORWARDER_CLASSIFIER
+        + host.WINDOWS_TAILNET_CLASSIFIER
+        + LINEAGE
+        + change
+        + f"\nTest-DotfilesTailnetLineage $facts {owner}|ConvertTo-Json"
+    )
+    assert json.loads(_powershell(script)) is accepted
+
+
+@windows_only
+@pytest.mark.parametrize(
+    "change,port,accepted",
+    [
+        ("", 11434, True),
+        ("$facts.Declared=$false", 11434, False),
+        ("$facts.Error='could not inspect'", 11434, False),
+        ("", 11435, False),
+        ("$facts.ServiceBinaryTrusted=$false", 11434, False),
+        ("$facts.NodeAddresses=@('100.64.99.99')", 11434, False),
+        ("$facts.Serve=$null", 11434, False),
+    ],
+)
+def test_powershell_tailnet_forward_needs_every_condition(
+    change: str, port: int, accepted: bool
+) -> None:
+    script = (
+        host.WINDOWS_FORWARDER_CLASSIFIER
+        + host.WINDOWS_TAILNET_CLASSIFIER
+        + LINEAGE
+        + "\n$facts.Declared=$true;$facts.Error='';$facts.ServiceBinaryTrusted=$true"
+        + "\n$facts.NodeAddresses=@('100.64.12.34');$facts.LoopbackV6Taken=$false"
+        + "\n$facts.Serve=@'\n"
+        + json.dumps(SERVE)
+        + "\n'@|ConvertFrom-Json\n"
+        + change
+        + f"\n@{{reason=[string](Test-DotfilesTailnetForward $facts '100.64.12.34' {port} 100)}}|ConvertTo-Json -Compress"
+    )
+    reason = json.loads(_powershell(script))["reason"]
+    assert (reason == "") is accepted, reason
+
+
+@windows_only
+@pytest.mark.parametrize(
+    "content,declared",
+    [("11434\r\n", True), ("11434", True), ("11435\n", False), (None, False)],
+)
+def test_powershell_tailnet_declaration_is_one_exact_line(
+    tmp_path: Path, content: str | None, declared: bool
+) -> None:
+    if content is not None:
+        (tmp_path / ".config/dotfiles").mkdir(parents=True)
+        (tmp_path / ".config/dotfiles/ollama-tailnet-forward").write_text(
+            content, encoding="utf-8"
+        )
+    script = (
+        host.WINDOWS_FORWARDER_CLASSIFIER
+        + host.WINDOWS_TAILNET_CLASSIFIER
+        + host.WINDOWS_PROBE_FUNCTIONS
+        + f"\n$env:USERPROFILE='{tmp_path}'\nRead-DotfilesTailnetDeclaration|ConvertTo-Json"
+    )
+    assert json.loads(_powershell(script)) is declared
+
+
+# Stand-ins for what the facts collector reads: the service, the processes,
+# the signature check and the Tailscale CLI. $script:* switches change them.
+FACT_STUBS = r"""
+$ErrorActionPreference='Stop'
+$script:declared=$true;$script:serviceCalls=0;$script:cliCalls=0;$script:cliFails=$false
+$script:servicePids=@(70);$script:pathName='"C:\Program Files\Tailscale\tailscaled.exe"'
+$script:serve='{"TCP":{"11434":{"TCPForward":"localhost:11434"}}}'
+function Read-DotfilesTailnetDeclaration{$script:declared}
+function Test-DotfilesSignedBinary{param($Path,$Organization) $true}
+function Invoke-DotfilesTailscale{
+  param([string[]]$Arguments)
+  $script:cliCalls++
+  if($script:cliFails){throw 'tailscale failed'}
+  switch($Arguments -join ' '){'ip -4'{'100.64.12.34'} 'ip -6'{'fd7a:115c:a1e0::5678'} 'serve status --json'{$script:serve}}
+}
+function Get-CimInstance{
+  param([string]$ClassName,[string]$Filter,$ErrorAction)
+  if($ClassName -eq 'Win32_Service'){
+    $index=[Math]::Min($script:serviceCalls,$script:servicePids.Count-1);$script:serviceCalls++
+    return [pscustomobject]@{Name='Tailscale';State='Running';ProcessId=$script:servicePids[$index];PathName=$script:pathName}
+  }
+  if($Filter -like "*tailscaled.exe*"){return @(
+    [pscustomobject]@{ProcessId=70;ParentProcessId=4;Name='tailscaled.exe';CreationDate=[datetime]'2026-01-01T00:00:00'},
+    [pscustomobject]@{ProcessId=100;ParentProcessId=70;Name='tailscaled.exe';CreationDate=[datetime]'2026-01-01T00:00:01'})}
+  return @([pscustomobject]@{ProcessId=42;Name='ollama.exe';CommandLine='"C:\fake\scoop\apps\ollama-full\current\ollama.exe" serve';ExecutablePath='C:\fake\scoop\apps\ollama-full\0.40.10\ollama.exe'})
+}
+"""
+
+
+@windows_only
+@pytest.mark.parametrize(
+    "change,expect",
+    [
+        ("", "trusted"),
+        ("$script:declared=$false", "undeclared"),
+        ("$script:pathName='C:\\Temp\\tailscaled.exe'", "untrusted"),
+        ("$script:cliFails=$true", "error"),
+    ],
+)
+def test_powershell_tailnet_facts_collector(change: str, expect: str) -> None:
+    script = (
+        host.WINDOWS_FORWARDER_CLASSIFIER
+        + host.WINDOWS_TAILNET_CLASSIFIER
+        + host.WINDOWS_PROBE_FUNCTIONS
+        + FACT_STUBS
+        + change
+        + "\n$facts=Get-DotfilesTailnetFacts $false"
+        + "\n@{declared=[bool]$facts.Declared;error=[string]$facts.Error;trusted=[bool]$facts.ServiceBinaryTrusted"
+        + ";addresses=@($facts.NodeAddresses);child=$(if($facts.Processes){[int]$facts.Processes[100].ParentProcessId}else{0});cli=$script:cliCalls"
+        + ";confirmed=(Confirm-DotfilesTailnetFacts $facts)}|ConvertTo-Json -Compress"
+    )
+    result = json.loads(_powershell(script))
+    if expect == "undeclared":
+        assert result["declared"] is False and result["cli"] == 0
+        return
+    assert result["declared"] is True
+    if expect == "error":
+        assert result["error"]
+        return
+    assert result["error"] == ""
+    assert result["addresses"] == ["100.64.12.34", "fd7a:115c:a1e0::5678"]
+    assert result["child"] == 70
+    assert result["confirmed"] is True
+    assert result["trusted"] is (expect == "trusted")
+
+
+# The probe body around the stubs: one canonical backend on 127.0.0.1 and
+# tailscaled's child on both tailnet addresses.
+PROBE_STUBS = (
+    FACT_STUBS
+    + r"""
+$env:SCOOP='C:\fake\scoop';$script:versionCalls=0;$script:netError=$false
+function Get-DotfilesBackendVersion{$script:versionCalls++;'0.40.10'}
+function Test-Path{param([string]$Path) $Path -in @('C:\fake\scoop\apps\ollama-full\current','C:\fake\scoop\apps\ollama-full\current\scoop-install.json')}
+function Get-Item{param([string]$Path,[string]$LiteralPath,$ErrorAction) [pscustomobject]@{Target='C:\fake\scoop\apps\ollama-full\0.40.10';FullName=$Path;Attributes=[IO.FileAttributes]::Directory}}
+function Get-Content{param([string]$Path,[switch]$Raw) '{"bucket":"extras"}'}
+function Get-ChildItem{param($Path,[switch]$Directory,$ErrorAction) @()}
+function Get-ItemProperty{param($Path,$ErrorAction) @()}
+function Get-NetTCPConnection{param($State,$ErrorAction) @(
+  [pscustomobject]@{LocalAddress='127.0.0.1';LocalPort=11434;OwningProcess=42},
+  [pscustomobject]@{LocalAddress='100.64.12.34';LocalPort=11434;OwningProcess=100},
+  [pscustomobject]@{LocalAddress='fd7a:115c:a1e0::5678';LocalPort=11434;OwningProcess=100})
+  # Like the real cmdlet, the caller's -ErrorAction decides whether this stops it.
+  if($script:netError){Write-Error 'the listener table was cut short' -ErrorAction $ErrorAction}}
+function Get-Process{param($Id,$ErrorAction) [pscustomobject]@{Path=$(if($Id -eq 42){'C:\fake\scoop\apps\ollama-full\0.40.10\ollama.exe'}else{$null})}}
+"""
+)
+
+
+@windows_only
+@pytest.mark.parametrize(
+    "change,forwards,refused,versions",
+    [
+        ("", 2, "", 1),
+        (
+            '$script:serve=\'{"TCP":{"11434":{"TCPForward":"localhost:11434"}},"AllowFunnel":{"n:443":true}}\'',
+            0,
+            "Funnel is on",
+            0,
+        ),
+        ("$script:declared=$false", 0, "", 0),
+        ("$script:servicePids=@(70,71)", 0, "changed during the check", 0),
+        ("$script:netError=$true", 0, "", 0),
+    ],
+)
+def test_windows_probe_wires_the_tailnet_forward(
+    change: str, forwards: int, refused: str, versions: int
+) -> None:
+    script = (
+        host.WINDOWS_FORWARDER_CLASSIFIER
+        + host.WINDOWS_TAILNET_CLASSIFIER
+        + host.WINDOWS_PROBE_FUNCTIONS
+        + PROBE_STUBS
+        + change
+        + host.WINDOWS_PROBE_BODY
+        + '\n"VERSION_CALLS=$script:versionCalls"'
+    )
+    lines = _powershell(script).strip().splitlines()
+    data = json.loads(lines[0].lstrip("\ufeff"))
+    assert lines[1] == f"VERSION_CALLS={versions}"
+    assert (
+        sum(row.get("tailnet_forward") is True for row in data["listeners"]) == forwards
+    )
+    reasons = [refusal["reason"] for refusal in data.get("tailnet_refusals", [])]
+    if refused:
+        assert len(reasons) == 2 and all(refused in reason for reason in reasons), (
+            reasons
+        )
+    else:
+        assert reasons == []
+    assert host.backend_owned(data) is (forwards == 2)
+
+
 def test_signed_windows_ipv6_forwarder_is_not_a_second_ollama() -> None:
     data = _windows()
     data["listeners"].append(
@@ -302,6 +737,57 @@ def test_unsigned_or_exposed_forwarder_is_not_exempted() -> None:
             }
         )
         assert not host.backend_owned(data)
+
+
+def _tailnet_listeners(verified: bool, port: int = 11434) -> list[dict]:
+    # tailscaled's own listeners on the machine's tailnet addresses; the probe
+    # cannot see a service child's path without elevation.
+    return [
+        {"address": address, "port": port, "pid": 7, "path": None}
+        | ({"tailnet_forward": True} if verified else {})
+        for address in ("100.64.12.34", "fd7a:115c:a1e0::5678")
+    ]
+
+
+def test_declared_tailnet_forward_is_neither_a_backend_nor_an_exposure() -> None:
+    data = _windows()
+    data["listeners"] += _tailnet_listeners(verified=True)
+    rows = host.windows_findings(data)
+    assert _has(rows, "OK", "ollama-owner")
+    assert _has(rows, "OK", "ollama-exposure")
+    assert _has(rows, "OK", "ollama-tailnet-forward")
+    assert host.backend_owned(data)
+
+
+def test_unverified_tailnet_listener_stays_a_second_owner_and_an_exposure() -> None:
+    data = _windows()
+    data["listeners"] += _tailnet_listeners(verified=False)
+    rows = host.windows_findings(data)
+    assert _has(rows, "ERR", "ollama-owner")
+    assert _has(rows, "ERR", "ollama-exposure")
+    assert not any(row[1] == "ollama-tailnet-forward" for row in rows)
+    assert not host.backend_owned(data)
+
+
+def test_tailnet_flag_exempts_only_port_11434() -> None:
+    data = _windows()
+    data["listeners"] += _tailnet_listeners(verified=True, port=11435)
+    assert _has(host.windows_findings(data), "ERR", "ollama-owner")
+    assert not host.backend_owned(data)
+
+
+def test_a_refused_declared_forward_is_an_error_with_its_reason() -> None:
+    data = _windows()
+    data["listeners"] += _tailnet_listeners(verified=False)
+    data["tailnet_refusals"] = [{"address": "100.64.12.34", "reason": "Funnel is on"}]
+    rows = host.windows_findings(data)
+    assert any(
+        row[0] == "ERR"
+        and row[1] == "ollama-tailnet-forward"
+        and "Funnel is on" in row[2]
+        for row in rows
+    )
+    assert not host.backend_owned(data)
 
 
 def test_additional_serving_backend_is_rejected() -> None:
@@ -489,10 +975,13 @@ def test_stable_client_install_is_idempotent_and_preserves_user_edits(
 def test_client_files_precede_backend_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     order = []
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
-    monkeypatch.setattr(host, "install_client_files", lambda: order.append("files"))
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
+    monkeypatch.setattr(
+        host, "install_client_files", lambda **kwargs: order.append(("files", kwargs))
+    )
 
     def unavailable():
-        assert order == ["files"]
+        assert order == [("files", {"bridge_unit_file": True})]
         raise RuntimeError("interop unavailable")
 
     monkeypatch.setattr(host, "windows_snapshot", unavailable)
@@ -698,6 +1187,7 @@ def test_port_conflict_does_not_remove_an_existing_bridge_state(
     state = tmp_path / "state.json"
     state.write_text('{"pid":123}', encoding="utf-8")
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
     monkeypatch.setattr(host, "_state_path", lambda: state)
 
     async def conflict(*args, **kwargs):
@@ -840,6 +1330,7 @@ def test_service_shutdown_reaps_active_helper_before_server_closure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
     monkeypatch.setattr(host, "windows_snapshot", _windows)
     monkeypatch.setattr(host, "interop_environment", os.environ.copy)
     state = tmp_path / "bridge-state.json"
@@ -906,6 +1397,7 @@ def test_service_forces_closed_backpressured_client_during_shutdown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
     monkeypatch.setattr(host, "windows_snapshot", _windows)
     monkeypatch.setattr(host, "interop_environment", os.environ.copy)
     state = tmp_path / "bridge-state.json"
@@ -1021,6 +1513,7 @@ def test_service_closes_client_cancelled_before_handler_first_step(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
     state = tmp_path / "early-cancel-state.json"
     monkeypatch.setattr(host, "_state_path", lambda: state)
     callbacks, entered = [], []
@@ -1120,3 +1613,312 @@ def test_doctor_inspects_only_running_distros_and_never_repairs(
         for command in calls
         for arg in command
     )
+
+
+def test_windows_ci_runs_these_tests_on_windows() -> None:
+    # The PowerShell classifiers skip on ubuntu-latest; only this job runs them.
+    workflow = (
+        Path(__file__).resolve().parents[2] / ".github/workflows/unit-test.yaml"
+    ).read_text(encoding="utf-8")
+    job = workflow.split("\n  windows-ollama-host:\n", 1)[-1].split("\n  windows-", 1)[
+        0
+    ]
+    assert "runs-on: windows-latest" in job
+    assert "uvx pytest -q -ra tests/unit/test_ollama_host.py" in job
+
+
+def test_the_probe_travels_on_stdin_not_the_command_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Windows caps a command line at 32,767 characters, and -EncodedCommand
+    # doubles and base64-expands the script; the probe is longer than that.
+    calls = []
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append((args, kwargs.get("input")))
+        return subprocess.CompletedProcess(args, 0, '{"listeners":[],"errors":[]}', "")
+
+    monkeypatch.setattr(host, "_run", run)
+    monkeypatch.setattr(host, "powershell", lambda: "powershell.exe")
+    host.windows_snapshot()
+    args, sent = calls[0]
+    assert sent == host.WINDOWS_PROBE
+    assert sum(len(arg) + 1 for arg in args) < 8191
+    assert host.WINDOWS_PROBE.isascii()
+
+
+# --- WSL under mirrored networking: one loopback shared with Windows --------
+
+
+@pytest.mark.parametrize(
+    "result,mode",
+    [
+        (subprocess.CompletedProcess([], 0, "mirrored\n", ""), "mirrored"),
+        (subprocess.CompletedProcess([], 0, "nat\n", ""), "nat"),
+        (subprocess.CompletedProcess([], 0, "virtioproxy\n", ""), "unknown"),
+        (subprocess.CompletedProcess([], 1, "", "unknown option"), "unknown"),
+        (FileNotFoundError("wslinfo"), "unknown"),
+    ],
+)
+def test_networking_mode_comes_from_wslinfo(
+    monkeypatch: pytest.MonkeyPatch, result: object, mode: str
+) -> None:
+    def run(args: list[str], **kwargs: object) -> object:
+        assert args == ["wslinfo", "--networking-mode"]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(host, "_run", run)
+    assert host.wsl_networking_mode() == mode
+
+
+def _mirrored(**changes: object) -> dict:
+    local = _wsl() | {
+        "networking_mode": "mirrored",
+        "listener_inventory_ok": True,
+        "service_inventory_ok": True,
+        "process_inventory_ok": True,
+        "listening": False,
+        "bridge_enabled": False,
+        "bridge_running": False,
+        "serve_running": False,
+        "bridge_managed": False,
+        "bridge_active": False,
+        "bridge_owned": False,
+        "loopback_only": False,
+        "version": "",
+    }
+    local.update(changes)
+    return local
+
+
+def _setup_without_changes(monkeypatch: pytest.MonkeyPatch, local: dict) -> list:
+    """Runs setup() on WSL with `local` as the snapshot; returns what it did."""
+    done: list = []
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: local["networking_mode"])
+    monkeypatch.setattr(
+        host, "install_client_files", lambda **kwargs: done.append(("files", kwargs))
+    )
+    monkeypatch.setattr(host, "wsl_snapshot", lambda **kwargs: local)
+    monkeypatch.setattr(
+        host,
+        "windows_snapshot",
+        lambda: pytest.fail("a shared-loopback setup needs no Windows probe"),
+    )
+    monkeypatch.setattr(
+        host.subprocess, "run", lambda args, **kwargs: done.append(("run", args))
+    )
+    return done
+
+
+def test_mirrored_setup_places_only_the_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    done = _setup_without_changes(monkeypatch, _mirrored())
+    host.setup()
+    assert done == [("files", {"bridge_unit_file": False})]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"listening": True},
+        {"bridge_enabled": True},
+        {"bridge_running": True},
+        {"serve_running": True},
+        {"listener_inventory_ok": False},
+        {"service_inventory_ok": False},
+        {"process_inventory_ok": False},
+        {"native": ["/usr/local/bin/ollama"]},
+        {"networking_mode": "unknown"},
+    ],
+)
+def test_shared_loopback_setup_refuses_and_changes_nothing(
+    monkeypatch: pytest.MonkeyPatch, change: dict
+) -> None:
+    done = _setup_without_changes(monkeypatch, _mirrored(**change))
+    with pytest.raises(RuntimeError):
+        host.setup()
+    assert done == []
+
+
+def test_nat_setup_still_installs_the_bridge_unit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    done = []
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
+    monkeypatch.setattr(
+        host, "install_client_files", lambda **kwargs: done.append(("files", kwargs))
+    )
+
+    def unavailable():
+        raise RuntimeError("interop unavailable")
+
+    monkeypatch.setattr(host, "windows_snapshot", unavailable)
+    with pytest.raises(RuntimeError, match="interop unavailable"):
+        host.setup()
+    assert done == [("files", {"bridge_unit_file": True})]
+
+
+def test_client_files_without_the_bridge_unit_leave_an_old_unit_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(host.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(host, "DURABLE_PYTHON", sys.executable)
+    host.install_client_files(bridge_unit_file=False)
+    unit = tmp_path / ".config/systemd/user" / host.UNIT
+    assert not unit.exists()
+    assert host.managed_cli(tmp_path / ".local/bin/ollama", host.deployment_source())
+    host.install_client_files()
+    before = unit.read_bytes()
+    host.install_client_files(bridge_unit_file=False)
+    assert unit.read_bytes() == before
+
+
+@pytest.mark.parametrize("mode", ["mirrored", "unknown"])
+def test_the_bridge_never_listens_on_a_shared_loopback(
+    monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "wsl_networking_mode", lambda: mode)
+
+    async def bind(*args: object, **kwargs: object) -> None:
+        pytest.fail("the bridge bound a port")
+
+    monkeypatch.setattr(host.asyncio, "start_server", bind)
+    asyncio.run(host.serve())
+
+
+@pytest.mark.parametrize(
+    "change,windows_owned,severity",
+    [
+        ({"loopback_version": "0.40.10"}, True, "OK"),
+        ({}, True, "OK"),  # the Windows doctor's view: no HTTP from WSL
+        ({}, False, "WARN"),
+        ({"loopback_version": ""}, True, "ERR"),
+        ({"loopback_version": "0.39.0"}, True, "ERR"),
+        ({"listening": True}, True, "ERR"),
+        ({"bridge_enabled": True}, True, "ERR"),
+        ({"bridge_running": True}, True, "ERR"),
+        ({"serve_running": True}, True, "ERR"),
+        ({"client_managed": False}, True, "ERR"),
+        ({"listener_inventory_ok": False}, True, "WARN"),
+    ],
+)
+def test_mirrored_doctor_checks_the_shared_loopback(
+    change: dict, windows_owned: bool, severity: str
+) -> None:
+    rows = host.wsl_findings(
+        _mirrored(**change), windows_version="0.40.10", windows_owned=windows_owned
+    )
+    assert _has(rows, severity, "ollama-loopback"), rows
+    assert not any(row[1] == "ollama-bridge" for row in rows)
+
+
+def test_mirrored_exposure_is_about_wsl_listeners_and_the_host_setting() -> None:
+    clean = _mirrored(loopback_version="0.40.10")
+    assert _has(host.wsl_findings(clean, "0.40.10", True), "OK", "ollama-exposure")
+    conflicting = _mirrored(conflicting_config=True)
+    assert _has(
+        host.wsl_findings(conflicting, "0.40.10", True), "ERR", "ollama-exposure"
+    )
+
+
+def test_unknown_networking_is_a_warning_without_a_bridge_row() -> None:
+    rows = host.wsl_findings(_mirrored(networking_mode="unknown"), "0.40.10", True)
+    assert _has(rows, "WARN", "ollama-network")
+    assert not any(row[1] in {"ollama-bridge", "ollama-loopback"} for row in rows)
+
+
+@pytest.mark.parametrize(
+    "local,windows_owned,calls",
+    [
+        (_mirrored(), True, 1),
+        (_mirrored(), False, 0),
+        (_mirrored(listening=True), True, 0),
+        (_mirrored(listener_inventory_ok=False), True, 0),
+        (_mirrored(networking_mode="nat"), True, 0),
+        (_mirrored(networking_mode="unknown"), True, 0),
+    ],
+)
+def test_the_shared_loopback_is_asked_only_after_every_precondition(
+    monkeypatch: pytest.MonkeyPatch, local: dict, windows_owned: bool, calls: int
+) -> None:
+    asked = []
+    monkeypatch.setattr(host, "_version", lambda: asked.append(1) or "0.40.10")
+    seen = host.mirrored_loopback_version(local, windows_owned)
+    assert len(asked) == calls
+    assert seen == ("0.40.10" if calls else None)
+
+
+def test_an_unanswered_shared_loopback_is_an_empty_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refused() -> str:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(host, "_version", refused)
+    assert host.mirrored_loopback_version(_mirrored(), True) == ""
+
+
+def test_wsl_doctor_asks_the_shared_loopback_once_windows_is_owned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked = []
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+    monkeypatch.setattr(host, "windows_snapshot", _windows)
+    monkeypatch.setattr(host, "wsl_snapshot", lambda **kwargs: _mirrored())
+    monkeypatch.setattr(host, "_version", lambda: asked.append(1) or "0.40.10")
+    rows = host.check()
+    assert asked == [1]
+    assert _has(rows, "OK", "ollama-loopback")
+
+
+def test_wsl_doctor_never_asks_when_windows_is_not_owned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
+
+    def unavailable():
+        raise RuntimeError("interop unavailable")
+
+    monkeypatch.setattr(host, "windows_snapshot", unavailable)
+    monkeypatch.setattr(host, "wsl_snapshot", lambda **kwargs: _mirrored())
+    monkeypatch.setattr(host, "_version", lambda: pytest.fail("asked without an owner"))
+    assert _has(host.check(), "WARN", "ollama-loopback")
+
+
+def test_wsl_snapshot_reads_the_mode_and_never_asks_a_bridge_when_mirrored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(host.Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setattr(host, "_version", lambda: pytest.fail("asked a bridge"))
+    listening = (
+        'LISTEN 0 4096 127.0.0.1:11434 0.0.0.0:* users:(("python3",pid=9,fd=3))\n'
+    )
+    bridge = "ActiveState=active\nExecMainPID=9\nUnitFileState=enabled\n"
+    serving = "/usr/bin/python3 /home/u/.local/lib/dotfiles/ollama_host.py --serve\n"
+
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        out = ""
+        if args[:1] == ["wslinfo"]:
+            out = "mirrored\n"
+        elif args[:1] == ["ss"]:
+            out = listening
+        elif args[:3] == ["systemctl", "--user", "show"] and host.UNIT in args:
+            out = bridge
+        elif args == ["ps", "-eo", "args="]:
+            out = serving
+        return subprocess.CompletedProcess(args, 0, out, "")
+
+    monkeypatch.setattr(host, "_run", run)
+    local = host.wsl_snapshot()
+    assert local["networking_mode"] == "mirrored"
+    assert local["listener_inventory_ok"] and local["listening"]
+    assert (
+        local["bridge_enabled"] and local["bridge_running"] and local["serve_running"]
+    )
+    assert local["service_inventory_ok"] and local["process_inventory_ok"]
+    assert _has(host.wsl_findings(local, "0.40.10", True), "ERR", "ollama-loopback")
