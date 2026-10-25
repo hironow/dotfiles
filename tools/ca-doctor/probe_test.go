@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -48,6 +49,9 @@ func TestExternalProbeAdaptersAgainstLocalTLS(t *testing.T) {
 			if err != nil {
 				t.Skip("not installed")
 			}
+			if tc.kind == "curl" && schannelOnlyCurl(command) {
+				t.Skip("this curl uses Windows' Schannel, which ignores CURL_CA_BUNDLE")
+			}
 			t.Setenv("HTTPS_PROXY", "")
 			t.Setenv("https_proxy", "")
 			t.Setenv("ALL_PROXY", "")
@@ -63,4 +67,15 @@ func TestExternalProbeAdaptersAgainstLocalTLS(t *testing.T) {
 			}
 		})
 	}
+}
+
+// schannelOnlyCurl reports a curl whose only TLS backend is Schannel, which
+// trusts the Windows certificate store and ignores CURL_CA_BUNDLE.
+func schannelOnlyCurl(path string) bool {
+	out, err := exec.Command(path, "--version").Output()
+	if err != nil {
+		return false
+	}
+	first, _, _ := strings.Cut(string(out), "\n")
+	return strings.Contains(first, "Schannel") && !strings.Contains(first, "OpenSSL")
 }

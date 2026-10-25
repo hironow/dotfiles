@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -102,7 +103,13 @@ func TestExplicitCABundleHealth(t *testing.T) {
 	if len(missing) != 1 || missing[0].Level != "ERR" {
 		t.Fatal(missing)
 	}
-	paths := CheckCAPaths(map[string]string{"SSL_CERT_DIR": dir + ":" + dir + ":"}, "linux", now)
+	// The list separator follows the system the temp paths come from: a Windows
+	// temp dir carries a drive colon, so ':' would split it.
+	goos, sep := "linux", ":"
+	if runtime.GOOS == "windows" {
+		goos, sep = "windows", ";"
+	}
+	paths := CheckCAPaths(map[string]string{"SSL_CERT_DIR": dir + sep + dir + sep}, goos, now)
 	if len(paths) != 3 || paths[0].Level != "WARN" || paths[2].Level != "WARN" {
 		t.Fatal(paths)
 	}
