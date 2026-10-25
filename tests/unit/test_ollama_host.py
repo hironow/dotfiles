@@ -304,6 +304,57 @@ def test_unsigned_or_exposed_forwarder_is_not_exempted() -> None:
         assert not host.backend_owned(data)
 
 
+def _tailnet_listeners(verified: bool, port: int = 11434) -> list[dict]:
+    # tailscaled's own listeners on the machine's tailnet addresses; the probe
+    # cannot see a service child's path without elevation.
+    return [
+        {"address": address, "port": port, "pid": 7, "path": None}
+        | ({"tailnet_forward": True} if verified else {})
+        for address in ("100.64.12.34", "fd7a:115c:a1e0::5678")
+    ]
+
+
+def test_declared_tailnet_forward_is_neither_a_backend_nor_an_exposure() -> None:
+    data = _windows()
+    data["listeners"] += _tailnet_listeners(verified=True)
+    rows = host.windows_findings(data)
+    assert _has(rows, "OK", "ollama-owner")
+    assert _has(rows, "OK", "ollama-exposure")
+    assert _has(rows, "OK", "ollama-tailnet-forward")
+    assert host.backend_owned(data)
+
+
+def test_unverified_tailnet_listener_stays_a_second_owner_and_an_exposure() -> None:
+    data = _windows()
+    data["listeners"] += _tailnet_listeners(verified=False)
+    rows = host.windows_findings(data)
+    assert _has(rows, "ERR", "ollama-owner")
+    assert _has(rows, "ERR", "ollama-exposure")
+    assert not any(row[1] == "ollama-tailnet-forward" for row in rows)
+    assert not host.backend_owned(data)
+
+
+def test_tailnet_flag_exempts_only_port_11434() -> None:
+    data = _windows()
+    data["listeners"] += _tailnet_listeners(verified=True, port=11435)
+    assert _has(host.windows_findings(data), "ERR", "ollama-owner")
+    assert not host.backend_owned(data)
+
+
+def test_a_refused_declared_forward_is_an_error_with_its_reason() -> None:
+    data = _windows()
+    data["listeners"] += _tailnet_listeners(verified=False)
+    data["tailnet_refusals"] = [{"address": "100.64.12.34", "reason": "Funnel is on"}]
+    rows = host.windows_findings(data)
+    assert any(
+        row[0] == "ERR"
+        and row[1] == "ollama-tailnet-forward"
+        and "Funnel is on" in row[2]
+        for row in rows
+    )
+    assert not host.backend_owned(data)
+
+
 def test_additional_serving_backend_is_rejected() -> None:
     data = _windows()
     data["listeners"].append(

@@ -216,8 +216,18 @@ def _wsl_forwarder(row: dict) -> bool:
     )
 
 
+def _tailnet_forward(row: dict) -> bool:
+    """A Tailscale forward of 11434 the probe verified against this machine's
+    declaration (tailnet only, no Funnel), not a backend."""
+    return row.get("tailnet_forward") is True and row.get("port", 11434) == 11434
+
+
 def _backend_listeners(data: dict) -> list[dict]:
-    return [row for row in data.get("listeners", []) if not _wsl_forwarder(row)]
+    return [
+        row
+        for row in data.get("listeners", [])
+        if not _wsl_forwarder(row) and not _tailnet_forward(row)
+    ]
 
 
 def backend_owned(data: dict) -> bool:
@@ -286,8 +296,31 @@ def windows_findings(data: dict) -> list[tuple[str, str, str]]:
                 "verified Microsoft ::1 forwarding listener is not another Ollama backend",
             )
         )
+    refusals = data.get("tailnet_refusals") or []
+    if not isinstance(refusals, list):
+        refusals = [{"reason": "the probe returned an invalid refusal record"}]
+    for refusal in refusals:
+        where = refusal.get("address", "?")
+        why = refusal.get("reason", "unverified")
+        rows.append(
+            (
+                "ERR",
+                "ollama-tailnet-forward",
+                f"declared tailnet forward refused on {where}: {why}",
+            )
+        )
+    if not refusals and any(_tailnet_forward(row) for row in listeners):
+        rows.append(
+            (
+                "OK",
+                "ollama-tailnet-forward",
+                "declared tailnet-only Tailscale forward of 11434 (no Funnel) is not a second backend",
+            )
+        )
     exposed = data.get("conflicting_config", False) or any(
-        not _loopback(row.get("address", "")) for row in listeners
+        not _loopback(row.get("address", ""))
+        for row in listeners
+        if not _tailnet_forward(row)
     )
     rows.append(
         (
