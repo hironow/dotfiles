@@ -60,6 +60,35 @@ Windows の socket timeout は方向ごとに300秒とする。
 送信スレッドのエラーも失敗として伝え、stdout は転送データだけに使う。
 ポートの競合時に既存のプロセスを停止したり、別のアドレスへ公開したりしない。
 
+## tailnet の中だけの Tailscale 転送を認める（宣言した機体だけ）
+
+所有者が、Tailscale の TCP 転送で 11434 を tailnet に出すと決めた機体がある（例: `tailscale serve --bg --tcp=11434 tcp://localhost:11434`）。
+その機体では、ユーザーの宣言ファイルを置くと、転送を2つ目の本体とも公開とも数えない（[ADR-0063](../adr/0063-declared-tailnet-forward-of-ollama.md)）。
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\dotfiles" | Out-Null
+Set-Content -NoNewline "$env:USERPROFILE\.config\dotfiles\ollama-tailnet-forward" '11434'
+```
+
+宣言はユーザー単位の設定の選択で、本人に対する認可の境界ではない。
+ファイルを消せば、元の判定（転送の待受は ERR）に戻る。
+宣言の無い機体では、Tailscale のコマンドを1回も実行しない。
+dotfiles は Tailscale の設定を作りも消しもしない。
+
+宣言があっても、次をすべて満たす待受だけを認める。
+1つでも読めない・調べられない時は認めない。
+
+- ポートが 11434。
+- 待受のプロセスが、動いている Tailscale サービスそのものか、その直接の子の `tailscaled.exe`。子の時は、親の作成時刻が子より前。確かめた後でサービスの pid を読み直し、変わっていない。
+- サービスの実行ファイルが `%ProgramFiles%\Tailscale\tailscaled.exe` で、そのファイルと親フォルダがリンクでなく、Tailscale Inc. の有効な署名がある。CLI の `tailscale.exe` も同じ検証の後で使う。
+- 待受のアドレスが、`tailscale ip` が返すこの機体のアドレスで、`100.64.0.0/10` か `fd7a:115c:a1e0::/48` に入る。
+- serve の設定のどこにも（foreground のセッションを含む）有効な Funnel（`AllowFunnel`）が無い。
+- 11434 の転送先が `127.0.0.1:11434`、または `[::1]:11434` に待受が無い時の `localhost:11434`。11434 を別の handler（foreground、Tailscale Services、web、Tun）が持たず、ほかの転送や web の proxy が 11434 を指さない。
+
+認めた転送は、doctor に `OK ollama-tailnet-forward` と出る。
+宣言があるのに認めなかった待受は、`ERR ollama-tailnet-forward` に理由が出て、公開の ERR も残る。
+tailnet の ACL（`tofu/tailnet/acl.hujson`）は、どの機体にも Funnel を許していない。
+
 ## Doctor の検査範囲
 
 `just doctor` は `scripts/ollama_host.py --check` を呼ぶ。
@@ -67,7 +96,7 @@ Windows の socket timeout は方向ごとに300秒とする。
 Windows の調べのスクリプトは、Windows のコマンド行の長さの上限（32,767 文字）を超えるので、標準入力で PowerShell に渡す。
 
 - Windows のフル版と Scoop の bucket、既知の重複インストール、動作中の Ollama の実行ファイルを調べる。
-- 待受 PID、ポート、アドレスから、本体の所有者と loopback 以外への公開を検査する。
+- 待受 PID、ポート、アドレスから、本体の所有者と loopback 以外への公開を検査する。宣言した機体では、tailnet の中だけの Tailscale 転送を確かめ、認めた物は公開と数えない。
 - WSL の native binary、package、process、system/user service、モデル配置を調べる。
 - ブリッジの管理対象 unit、実行ファイル、PID、待受 socket、転送後の version 応答を照合する。
 - 停止中や接続不能の WSL は起動せず、未検査の WARN とする。プラットフォーム管理の distro も未検査と表示する。

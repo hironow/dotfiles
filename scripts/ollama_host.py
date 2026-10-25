@@ -57,9 +57,156 @@ function Test-DotfilesWslForwarder([string]$Executable,[string]$Address,[int]$Po
   }catch{return $false}
 }
 """
+# Decisions on a declared Tailscale forward of 11434 (docs/runbook/ollama-windows-wsl.md).
+# Pure: every input comes in as an argument from Get-DotfilesTailnetFacts. Each
+# returns '' to accept, or the reason it refuses.
+WINDOWS_TAILNET_CLASSIFIER = r"""
+function Test-DotfilesTargetPort([string]$Target,[int]$Port){
+  if(-not $Target -or $Target.StartsWith('unix:')){return $false}
+  $authority=(($Target -replace '^[A-Za-z][A-Za-z0-9+.-]*://','') -split '/',2)[0]
+  if($authority -match '^\d+$'){$digits=$authority}elseif($authority -match ':(\d+)$'){$digits=$Matches[1]}else{return $false}
+  return $digits.TrimStart('0') -eq [string]$Port
+}
+function Test-DotfilesServeConfig($Config,[bool]$LoopbackV6Taken){
+  if($null -eq $Config){return 'no serve configuration'}
+  # Foreground sessions win over the background config, so read them all.
+  $sessions=[Collections.Generic.List[object]]::new()
+  $sessions.Add(@{Config=$Config;Background=$true})
+  if($Config.PSObject.Properties['Foreground']){foreach($entry in $Config.Foreground.PSObject.Properties){$sessions.Add(@{Config=$entry.Value;Background=$false})}}
+  foreach($session in $sessions){
+    $c=$session.Config
+    if($c.PSObject.Properties['AllowFunnel']){foreach($entry in $c.AllowFunnel.PSObject.Properties){if($entry.Value -eq $true){return 'Funnel is on'}}}
+  }
+  $forward=$null
+  foreach($session in $sessions){
+    $c=$session.Config
+    $groups=[Collections.Generic.List[object]]::new()
+    $groups.Add(@{TCP=$c.TCP;Web=$c.Web;Primary=$session.Background})
+    if($c.PSObject.Properties['Services']){
+      foreach($service in $c.Services.PSObject.Properties){
+        if($service.Value.Tun -eq $true){return 'a Tun service forwards every port'}
+        $groups.Add(@{TCP=$service.Value.TCP;Web=$service.Value.Web;Primary=$false})
+      }
+    }
+    foreach($group in $groups){
+      if($group.TCP){foreach($entry in $group.TCP.PSObject.Properties){
+        if($entry.Name -eq '11434'){
+          if(-not $group.Primary){return 'another serve handler takes port 11434'}
+          $forward=$entry.Value
+        }elseif(Test-DotfilesTargetPort ([string]$entry.Value.TCPForward) 11434){return "the forward of port $($entry.Name) also reaches 11434"}
+      }}
+      if($group.Web){foreach($site in $group.Web.PSObject.Properties){
+        if($site.Name -match ':11434$'){return 'a web handler takes port 11434'}
+        if($site.Value.Handlers){foreach($handler in $site.Value.Handlers.PSObject.Properties){
+          if(Test-DotfilesTargetPort ([string]$handler.Value.Proxy) 11434){return 'a web proxy also reaches 11434'}
+        }}
+      }}
+    }
+  }
+  if($null -eq $forward){return 'no TCP forward of port 11434'}
+  if($forward.HTTPS -or $forward.HTTP -or $forward.TerminateTLS -or $forward.ProxyProtocol){return 'the forward of port 11434 is not a plain TCP forward'}
+  $target=[string]$forward.TCPForward
+  if($target -eq '127.0.0.1:11434'){return ''}
+  if($target -eq 'localhost:11434'){
+    # localhost may resolve to ::1, where something other than the backend listens.
+    if($LoopbackV6Taken){return 'localhost may reach the listener on [::1]:11434 instead of the backend'}
+    return ''
+  }
+  return "port 11434 is forwarded to $target"
+}
+function Test-DotfilesTailnetAddress([string]$Address,[string[]]$NodeAddresses){
+  try{$ip=[Net.IPAddress]::Parse($Address)}catch{return $false}
+  $known=@()
+  foreach($entry in @($NodeAddresses)){if($entry){try{$known+=[Net.IPAddress]::Parse($entry.Trim()).ToString()}catch{}}}
+  if($known -notcontains $ip.ToString()){return $false}
+  $bytes=$ip.GetAddressBytes()
+  # Tailscale's address ranges: 100.64.0.0/10 and fd7a:115c:a1e0::/48.
+  if($ip.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork){return $bytes[0] -eq 100 -and ($bytes[1] -band 0xC0) -eq 64}
+  return $bytes.Length -eq 16 -and $bytes[0] -eq 0xfd -and $bytes[1] -eq 0x7a -and $bytes[2] -eq 0x11 -and $bytes[3] -eq 0x5c -and $bytes[4] -eq 0xa1 -and $bytes[5] -eq 0xe0
+}
+function Test-DotfilesTailnetLineage($Facts,[int]$OwnerPid){
+  $servicePid=[int]$Facts.Service.ProcessId
+  if([string]$Facts.Service.State -ne 'Running' -or $servicePid -le 0){return $false}
+  if($OwnerPid -eq $servicePid){return $true}
+  $child=$Facts.Processes[$OwnerPid];$parent=$Facts.Processes[$servicePid]
+  if($null -eq $child -or $null -eq $parent){return $false}
+  # A parent newer than its child is a reused pid, not the child's parent.
+  return [int]$child.ParentProcessId -eq $servicePid -and [string]$child.Name -ieq 'tailscaled.exe' -and $parent.CreationDate -is [datetime] -and $child.CreationDate -is [datetime] -and $parent.CreationDate -le $child.CreationDate
+}
+function Test-DotfilesTailnetForward($Facts,[string]$Address,[int]$Port,[int]$OwnerPid){
+  if($null -eq $Facts -or -not $Facts.Declared){return 'not declared on this machine'}
+  if($Facts.Error){return [string]$Facts.Error}
+  if($Port -ne 11434){return 'not port 11434'}
+  if(-not (Test-DotfilesTailnetLineage $Facts $OwnerPid)){return 'the listener is not the Tailscale service or its tailscaled child'}
+  if(-not $Facts.ServiceBinaryTrusted){return 'the Tailscale service is not the signed tailscaled.exe under Program Files'}
+  if(-not (Test-DotfilesTailnetAddress $Address $Facts.NodeAddresses)){return 'not a tailnet address of this machine'}
+  return [string](Test-DotfilesServeConfig $Facts.Serve $Facts.LoopbackV6Taken)
+}
+"""
 # Each outside call the probe body makes through a named function, so a test can
 # replace it between these definitions and WINDOWS_PROBE_BODY.
 WINDOWS_PROBE_FUNCTIONS = r"""
+function Test-DotfilesSignedBinary([string]$Path,[string]$Organization){
+  try{
+    $item=Get-Item -LiteralPath $Path -ErrorAction Stop
+    $parent=Get-Item -LiteralPath (Split-Path -Parent $Path) -ErrorAction Stop
+    if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($parent.Attributes -band [IO.FileAttributes]::ReparsePoint)){return $false}
+    $signature=Get-AuthenticodeSignature -FilePath $item.FullName -ErrorAction Stop
+    return [string]$signature.Status -eq 'Valid' -and $signature.SignerCertificate.Subject -match ('(^|,\s*)O='+[regex]::Escape($Organization)+'(,|$)')
+  }catch{return $false}
+}
+function Read-DotfilesTailnetDeclaration{
+  try{return ([IO.File]::ReadAllText((Join-Path $env:USERPROFILE '.config\dotfiles\ollama-tailnet-forward'))).Trim() -eq '11434'}catch{return $false}
+}
+function Invoke-DotfilesTailscale([string[]]$Arguments){
+  $cli=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Tailscale\tailscale.exe'
+  if(-not (Test-DotfilesSignedBinary $cli 'Tailscale Inc.')){throw 'the Tailscale CLI is not the signed one under Program Files'}
+  $start=[Diagnostics.ProcessStartInfo]::new()
+  $start.FileName=$cli;$start.Arguments=($Arguments -join ' ')
+  $start.UseShellExecute=$false;$start.CreateNoWindow=$true
+  $start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
+  $run=[Diagnostics.Process]::new();$run.StartInfo=$start
+  try{
+    [void]$run.Start()
+    $output=$run.StandardOutput.ReadToEndAsync();[void]$run.StandardError.ReadToEndAsync()
+    if(-not $run.WaitForExit(5000)){$run.Kill();[void]$run.WaitForExit(1000);throw 'the Tailscale CLI timed out'}
+    if($run.ExitCode -ne 0){throw 'the Tailscale CLI failed'}
+    return $output.GetAwaiter().GetResult()
+  }finally{$run.Dispose()}
+}
+function Get-DotfilesTailnetFacts([bool]$LoopbackV6Taken){
+  # Undeclared machines run no Tailscale command at all.
+  if(-not (Read-DotfilesTailnetDeclaration)){return @{Declared=$false}}
+  try{
+    $service=Get-CimInstance Win32_Service -Filter "Name='Tailscale'" -ErrorAction Stop
+    if($null -eq $service){return @{Declared=$true;Error='the Tailscale service is not installed'}}
+    $processes=@{}
+    foreach($entry in @(Get-CimInstance Win32_Process -Filter "Name='tailscaled.exe'" -ErrorAction Stop)){
+      $processes[[int]$entry.ProcessId]=@{ParentProcessId=[int]$entry.ParentProcessId;Name=[string]$entry.Name;CreationDate=$entry.CreationDate}
+    }
+    $expected=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Tailscale\tailscaled.exe'
+    $binary=([string]$service.PathName).Trim()
+    if($binary.StartsWith('"')){$binary=$binary.Substring(1).Split('"')[0]}
+    $addresses=@((Invoke-DotfilesTailscale @('ip','-4')) -split '\s+')+@((Invoke-DotfilesTailscale @('ip','-6')) -split '\s+')
+    $serve=(Invoke-DotfilesTailscale @('serve','status','--json'))|ConvertFrom-Json
+    return @{
+      Declared=$true;Error=''
+      Service=@{State=[string]$service.State;ProcessId=[int]$service.ProcessId}
+      Processes=$processes
+      ServiceBinaryTrusted=($binary -ieq $expected -and (Test-DotfilesSignedBinary $expected 'Tailscale Inc.'))
+      NodeAddresses=@($addresses|Where-Object{$_})
+      Serve=$serve
+      LoopbackV6Taken=$LoopbackV6Taken
+    }
+  }catch{return @{Declared=$true;Error='the declared tailnet forward could not be inspected'}}
+}
+function Confirm-DotfilesTailnetFacts($Facts){
+  # The service pid read again after the checks: a restart in between voids them.
+  try{
+    $service=Get-CimInstance Win32_Service -Filter "Name='Tailscale'" -ErrorAction Stop
+    return $null -ne $service -and [string]$service.State -eq 'Running' -and [int]$service.ProcessId -eq [int]$Facts.Service.ProcessId
+  }catch{return $false}
+}
 function Get-DotfilesBackendVersion{
   $request=[Net.HttpWebRequest]::Create('http://127.0.0.1:11434/api/version')
   $request.Proxy=$null;$request.Timeout=2000;$request.ReadWriteTimeout=2000
@@ -93,15 +240,22 @@ foreach($key in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
   Get-ItemProperty $key -ErrorAction SilentlyContinue|Where-Object{$_.DisplayName -match '^Ollama(\s|$)'}|ForEach-Object{$duplicates.Add('registered installer: '+$_.PSChildName)}
 }
 $listeners=@();$processRows=@()
+$tailnetRefusals=[Collections.Generic.List[object]]::new()
 try{
   $processes=@(Get-CimInstance Win32_Process -Filter "Name='ollama.exe' OR Name='ollama app.exe'")
   $servers=@($processes|Where-Object{$_.Name -eq 'ollama.exe' -and $_.CommandLine -notmatch '\srunner(\s|$)'}|ForEach-Object{$_.ProcessId})
-  $sockets=@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue|Where-Object{$_.LocalPort -eq 11434 -or $_.OwningProcess -in $servers})
+  $sockets=@(Get-NetTCPConnection -State Listen -ErrorAction Stop|Where-Object{$_.LocalPort -eq 11434 -or $_.OwningProcess -in $servers})
+  $tailnetFacts=Get-DotfilesTailnetFacts (@($sockets|Where-Object{$_.LocalAddress -eq '::1' -and $_.LocalPort -eq 11434}).Count -gt 0)
   $listeners=@($sockets|ForEach-Object{
     $owner=Get-Process -Id $_.OwningProcess -ErrorAction Stop
     $forwarder=Test-DotfilesWslForwarder $owner.Path $_.LocalAddress $_.LocalPort
-    @{address=$_.LocalAddress;port=$_.LocalPort;pid=$_.OwningProcess;path=$owner.Path;windows_forwarder=$forwarder}
+    $reason=Test-DotfilesTailnetForward $tailnetFacts ([string]$_.LocalAddress) ([int]$_.LocalPort) ([int]$_.OwningProcess)
+    if($tailnetFacts.Declared -and $reason -and -not [Net.IPAddress]::IsLoopback([Net.IPAddress]::Parse([string]$_.LocalAddress))){$tailnetRefusals.Add(@{address=[string]$_.LocalAddress;reason=$reason})}
+    @{address=$_.LocalAddress;port=$_.LocalPort;pid=$_.OwningProcess;path=$owner.Path;windows_forwarder=$forwarder;tailnet_forward=($reason -eq '')}
   })
+  if(@($listeners|Where-Object{$_.tailnet_forward}).Count -and -not (Confirm-DotfilesTailnetFacts $tailnetFacts)){
+    foreach($entry in $listeners){if($entry.tailnet_forward){$entry.tailnet_forward=$false;$tailnetRefusals.Add(@{address=[string]$entry.address;reason='the Tailscale service changed during the check'})}}
+  }
   $shimExe=Join-Path $scoop 'shims\ollama.exe'
   $shimConfig=Join-Path $scoop 'shims\ollama.shim'
   $shimTrusted=(Test-Path $shimConfig) -and (Get-Content -Raw $shimConfig).Trim() -eq ('path = "'+$full+'\ollama.exe"')
@@ -112,7 +266,7 @@ try{
 $version=''
 # Do NOT make a loopback health request without a canonical native owner:
 # Windows localhost may otherwise forward back into the WSL bridge.
-$backendListeners=@($listeners|Where-Object{-not($_.windows_forwarder -eq $true -and $_.address -eq '::1' -and $_.port -eq 11434)})
+$backendListeners=@($listeners|Where-Object{-not($_.windows_forwarder -eq $true -and $_.address -eq '::1' -and $_.port -eq 11434) -and -not($_.tailnet_forward -eq $true -and $_.port -eq 11434)})
 $owned=$backendListeners.Count -gt 0 -and $physical -ne '' -and $duplicates.Count -eq 0 -and $bucket -eq 'extras'
 if(-not @($backendListeners|Where-Object{$_.address -eq '127.0.0.1' -and $_.port -eq 11434}).Count){$owned=$false}
 foreach($entry in $backendListeners){
@@ -160,10 +314,13 @@ foreach($scope in @('Process','User','Machine')){
   $hostValue=[Environment]::GetEnvironmentVariable('OLLAMA_HOST',$scope)
   if($hostValue -and $hostValue.TrimEnd('/') -notin $allowedHost){$conflictingConfig=$true}
 }
-@{full_dir=$physical;full_paths=@($aliases);full_bucket=$bucket;duplicates=@($duplicates);listeners=@($listeners);processes=@($processRows);python=$python;python_error=$pythonError;version=$version;conflicting_config=$conflictingConfig;errors=@($errorsList)}|ConvertTo-Json -Depth 5 -Compress
+@{full_dir=$physical;full_paths=@($aliases);full_bucket=$bucket;duplicates=@($duplicates);listeners=@($listeners);processes=@($processRows);python=$python;python_error=$pythonError;version=$version;conflicting_config=$conflictingConfig;tailnet_refusals=@($tailnetRefusals);errors=@($errorsList)}|ConvertTo-Json -Depth 5 -Compress
 """
 WINDOWS_PROBE = (
-    WINDOWS_FORWARDER_CLASSIFIER + WINDOWS_PROBE_FUNCTIONS + WINDOWS_PROBE_BODY
+    WINDOWS_FORWARDER_CLASSIFIER
+    + WINDOWS_TAILNET_CLASSIFIER
+    + WINDOWS_PROBE_FUNCTIONS
+    + WINDOWS_PROBE_BODY
 )
 
 
