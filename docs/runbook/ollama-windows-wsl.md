@@ -1,6 +1,6 @@
 # Windows と WSL の Ollama を一本化する
 
-Windows と WSL が共存する機体では、Scoop の `extras/ollama-full` だけを Ollama 本体として使う。
+Windows と WSL が共存する機体では、Scoop の `extras/ollama-full` だけを Ollama 本体として使う（[ADR-0062](../adr/0062-one-windows-ollama-for-wsl.md)）。
 モデルと認証情報も Windows 側に置く。
 Scoop の CLI 版 `main/ollama`、WinGet 版、単独インストーラ版、WSL の Linux 版を併設しない。
 WSL のない Linux と macOS の導入方法は変えない。
