@@ -81,3 +81,18 @@ Windows と WSL が同居する機体（以下、共存機）で、所有者は 
 
 A（と承認されれば B）の単体テストが Linux と Windows の CI で緑、`just ci` が緑、上の実機の確認がすべて通り、PR が merge され、所有者に結果を返している。
 dotfiles のコミットには機体の禁止語の一覧（`~/.config/dotfiles/forbidden-tokens`）が要る。共存機に一覧が置かれるまで、コミットは待つ。
+
+## 実機の確認（2026-10-25〜26、共存機）
+
+| 段 6 の項目 | 結果 |
+| --- | --- |
+| 宣言の前 | `--check` は今と同じく `ollama-owner` と `ollama-exposure` が ERR |
+| 宣言の後、本体あり | `ollama-install`・`ollama-owner`・`ollama-tailnet-forward`・`ollama-exposure` が OK、版も取れた（`ollama-health` の WARN なし） |
+| tailnet の住所 | IPv4 と IPv6 のどちらでも 11434 が版を返した（転送の経路が本体に届く） |
+| LAN の住所 | 繋がらない。この機体の LAN の住所は DHCP で 100.64.0.0/10 の中にあったが、`tailscale ip` の住所ではないので転送とは数えない |
+| WSL（何も置かずに読むだけ） | mirrored、WSL の待受なし、橋なし、Windows の持ち主を確認した上で、共有の loopback が同じ版を返した |
+| 本体を止めた後 | tailnet の住所への接続も切れた。`ollama-owner` は本体なしの WARN、`ollama-tailnet-forward` は OK。WSL は持ち主を確認できないので通信しなかった |
+| Windows の調べの長さ | 標準入力で渡し、実機の `--check` が通った（`-EncodedCommand` では 47,256 文字になり上限を超えていた） |
+
+WSL の `just deploy`（main を pull して CLI の口を置き、doctor の `ollama-loopback` を OK にする）は merge の後に行う。
+Pi の web 検索が WSL から届くことも、その時に確かめる。
