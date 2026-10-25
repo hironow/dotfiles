@@ -62,14 +62,19 @@ INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./i
 ```
 
 `install.sh` は mise（固定版、SHA 検証つき、`~/.local/bin`）を入れ、道具を `mise install` し、設定を symlink する。
-sudo は要らない。
+通常は sudo は要らない。
+WSL では、`wl-copy` / `wl-paste` がなければ `wl-clipboard` を apt で導入する（Pi / Herdr のコピー用）。
+この処理だけは root または非対話で使える `sudo -n` が必要で、パスワードが必要な場合は導入コマンドを表示して続行する。
+`install.sh` 全体を sudo で実行しない。
 zsh のログインシェルは `~/.profile` を読まないので、`just deploy` が `~/.zprofile` に `~/.local/bin` を足すブロックを追記する（`zsh -lc` で動くスクリプトやエージェント用。`~/.zprofile` の既存の行は残す）。
 
 WSL の素の Ubuntu では、続けて次を一度だけ行う。
 zsh、`wsl-conf`、Docker の手順は sudo が要り、`wsl-conf` と Docker は Windows 側での `wsl --shutdown` も要る。
 
 ```bash
-# zsh を入れてログインシェルにする（.zshrc と j-cc / j-pi は zsh 前提。install.sh は sudo を使わないので案内だけ出す）
+# install.sh が権限不足などで wl-clipboard を入れられなかった場合（WSLg が必要）
+sudo apt-get update && sudo apt-get install -y wl-clipboard
+# zsh を入れてログインシェルにする（.zshrc と j-cc / j-pi は zsh 前提。この処理は案内のみ）
 sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"
 # 新しいターミナルを開いてから（sheldon は install.sh が mise で入れている）
 sheldon lock
@@ -82,7 +87,7 @@ sudo apt-get update && sudo apt-get install -y docker.io
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"   # 次の wsl --shutdown のあとで効く
 
-just doctor       # 確認: zsh と PATH-windows が OK、docker に届く、道具がそろう
+just doctor       # 確認: zsh、PATH-windows、WSLg の clipboard、docker、道具一式
 ```
 
 `just harden-env` は `~/.npmrc` と `~/.config/uv/uv.toml` を書き、個人の `exclude-newer` を設定する。
@@ -90,6 +95,10 @@ Pi の拡張とその依存は隔離の対象外にする（Pi が npm を走ら
 コミットする lock の 7 日の隔離は、各 project の `pyproject.toml` が自分で宣言する（`exclude-newer`）。
 
 ### Windows（native）
+
+Windows と WSL が共存する機体の Ollama は、Windows の Scoop `extras/ollama-full` に一本化する。
+WSL は loopback のブリッジを使い、Linux 版の本体やモデルは持たない。
+構成違反は `just doctor` で検出する（[導入と検査範囲](docs/runbook/ollama-windows-wsl.md)）。
 
 まっさらな機体に、PowerShell の 1 行で入る（ADR 0039）。
 

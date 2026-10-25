@@ -10,6 +10,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from ollama_host import host_policy
+
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "dump/harness/pi-packages.json"
 # The web-search extension talks to a local Ollama (localhost:11434), so the
@@ -114,37 +116,11 @@ def ollama_missing(sources: list, ollama_on_path: str | None, reachable: bool) -
     return OLLAMA_PACKAGE in sources and ollama_on_path is None and not reachable
 
 
-def wsl_owns_ollama(
-    system: str, wsl_distro: str | None, ollama_on_path: str | None, reachable: bool
-) -> bool:
-    """A native Windows + WSL machine where the one Ollama lives on the WSL side.
-
-    Windows reaches a WSL server over localhost by default (WSL's NAT mode
-    forwards Windows loopback into the distro), while WSL cannot reach Windows
-    over localhost — so a native install would be a second server the WSL
-    side could not even use. Mirrored-mode machines are caught earlier: their
-    Windows-side Ollama answers the loopback probe from WSL (ADR 0058).
-    """
-    return (
-        system == "win32"
-        and wsl_distro is not None
-        and ollama_on_path is None
-        and not reachable
-    )
-
-
 def ollama_command(platform: str) -> list[str] | None:
     """Ollama's own installer per https://ollama.com/download, or None when
     that page has no installer for the platform (then we only report)."""
     if platform in ("darwin", "linux"):
         return ["sh", "-c", "curl -fsSL https://ollama.com/install.sh | sh"]
-    if platform == "win32":
-        return [
-            "powershell",
-            "-NoProfile",
-            "-Command",
-            "irm https://ollama.com/install.ps1 | iex",
-        ]
     return None
 
 
@@ -159,47 +135,38 @@ def _ollama_reachable() -> bool:
         return False
 
 
-def _wsl_distro() -> str | None:
-    """A WSL distro name when this Windows machine has WSL (else None).
-
-    `wsl --list --quiet` prints UTF-16LE on some hosts; stripping the NUL
-    bytes reads ASCII distro names the same either way. Display-only: a
-    garbled non-ASCII name must not change the decision.
-    """
-    try:
-        done = subprocess.run(
-            ["wsl.exe", "--list", "--quiet"],
-            capture_output=True,
-            timeout=15,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    text = done.stdout.replace(b"\x00", b"").decode(encoding="utf-8", errors="replace")
-    names = [line.strip() for line in text.splitlines() if line.strip()]
-    return names[0] if names else None
-
-
 def _ensure_ollama(sources: list) -> None:
     """Install Ollama when the web-search package needs it and it is missing.
 
     Never fatal: one missing server must not hold back the extension placement,
     the same way one refused extension does not hold back the others.
     """
+    if OLLAMA_PACKAGE not in sources:
+        return
+    # Ownership precedes PATH/HTTP shortcuts: a wrong healthy backend must not
+    # legitimize a second install. WSL NEVER falls back to the Linux installer;
+    # Windows NEVER falls back to a standalone/WinGet installer.
+    if host_policy() is not None:
+        failed = True
+        try:
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/ollama_host.py"), "--setup"],
+                check=False,
+                timeout=90,
+            )
+            failed = result.returncode != 0
+        except (OSError, subprocess.SubprocessError):
+            pass  # A failed setup cannot suppress unrelated extension placement.
+        if failed:
+            print(
+                "WARN: Windows Ollama Full policy/bridge setup incomplete; run just doctor",
+                file=sys.stderr,
+            )
+        return
     ollama = shutil.which("ollama")
-    if OLLAMA_PACKAGE not in sources or ollama is not None:
+    if ollama is not None:
         return
-    reachable = _ollama_reachable()
-    if not ollama_missing(sources, ollama, reachable):
-        return
-    wsl = _wsl_distro() if sys.platform == "win32" else None
-    if wsl_owns_ollama(sys.platform, wsl, ollama, reachable):
-        print(
-            f"==> NOTE: {OLLAMA_PACKAGE} needs Ollama; on a Windows + WSL"
-            f" machine the one Ollama lives on the WSL side ({wsl}) and"
-            " Windows reaches it over WSL localhost forwarding"
-            " — install it from WSL (https://ollama.com/download)"
-        )
+    if not ollama_missing(sources, ollama, _ollama_reachable()):
         return
     print(f"==> Installing Ollama for {OLLAMA_PACKAGE} (https://ollama.com/download)")
     command = ollama_command(sys.platform)

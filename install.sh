@@ -392,10 +392,43 @@ step_symlink_dotfiles() {
   just deploy
 }
 
+step_wsl_clipboard() {
+  # Pi and Herdr use wl-copy/wl-paste under WSLg. Only this WSL package
+  # step may elevate; never run the entire installer as root to install it.
+  [ "$DOTFILES_OS" = linux ] || return 0
+  case "$(uname -r)" in
+    *[Mm]icrosoft*) ;;
+    *) return 0 ;;
+  esac
+  if command -v wl-copy >/dev/null 2>&1 && command -v wl-paste >/dev/null 2>&1; then
+    echo "[install] step_wsl_clipboard: wl-copy and wl-paste already installed"
+    return 0
+  fi
+  if ! command -v apt-get >/dev/null 2>&1; then
+    echo "[install] step_wsl_clipboard: apt-get unavailable; install wl-clipboard with this distribution's package manager" >&2
+    return 0
+  fi
+  local -a elevate=()
+  if [ "$(id -u)" != 0 ]; then
+    if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+      echo "[install] step_wsl_clipboard: sudo unavailable without a prompt; run: sudo apt-get update && sudo apt-get install -y wl-clipboard" >&2
+      return 0
+    fi
+    elevate=(sudo -n)
+  fi
+  if "${elevate[@]}" apt-get update && "${elevate[@]}" apt-get install -y --no-install-recommends wl-clipboard; then
+    if command -v wl-copy >/dev/null 2>&1 && command -v wl-paste >/dev/null 2>&1; then
+      echo "[install] step_wsl_clipboard: wl-clipboard installed (WSLg session required)"
+      return 0
+    fi
+  fi
+  echo "[install] step_wsl_clipboard: WARN installation incomplete; run: sudo apt-get update && sudo apt-get install -y wl-clipboard; then check wl-copy and wl-paste on PATH" >&2
+}
+
 step_zsh() {
   # zsh is the supported interactive shell (.zshrc, USAGE.md, j-cc / j-pi),
-  # but a bare Linux box (e.g. a fresh WSL Ubuntu) has none. Installing it
-  # needs sudo, which install.sh never uses, so say exactly what to run.
+  # but a bare Linux box (e.g. a fresh WSL Ubuntu) has none. This step does not
+  # use sudo, so say exactly what to run.
   case "$DOTFILES_OS" in
     linux)
       if ! command -v zsh >/dev/null 2>&1; then
@@ -481,6 +514,7 @@ step_gcloud_bundle
 step_corepack
 step_update_all
 step_symlink_dotfiles
+step_wsl_clipboard
 step_zsh
 step_sheldon
 step_prek_shim
