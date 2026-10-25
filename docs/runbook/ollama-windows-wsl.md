@@ -22,6 +22,24 @@ just doctor
 Ollama のフル版アプリケーションが Windows の `127.0.0.1:11434` を所有する構成にする。
 `0.0.0.0` や WSL のゲートウェイへ公開せず、ファイアウォールの例外や portproxy は追加しない。
 
+### 単独インストーラ版を外すときはモデルを先に移す
+
+単独インストーラ版（`%LOCALAPPDATA%\Programs\Ollama`）のアンインストーラは、既定パス `%USERPROFILE%\.ollama\models` のモデルを消す。
+既定パスに `models\blobs` があると「Remove models」を既定で選び、`/VERYSILENT` でもそのまま `models\blobs` と `models\manifests` を消す。
+`OLLAMA_MODELS` は見ない。
+既定パスに別のドライブへのリンク（ジャンクションやシンボリックリンク）があると、リンク先の実体も同じように消える。
+ごみ箱は通らない。
+
+アンインストールの前に、次の順で進める。
+
+1. Ollama をすべて終了する。
+2. 既定パスのモデルを別のドライブへ写し、各ブロブの SHA-256 がファイル名と一致することを確かめる。
+3. User 環境変数 `OLLAMA_MODELS` で写し先を指し、新しく開いた端末で `ollama list` の digest が元と同じことを確かめる。
+4. 既定パスにはフォルダもリンクも残さない。見るためのリンクは別の名前で作る。
+5. アンインストールした後に、写し先をもう一度照合する。
+
+画面の「Remove models」を外すだけに頼らない。既定のままの実行や `/VERYSILENT` では消える。
+
 ## WSL 側の共有
 
 WSL の網の形は、WSL の中で `wslinfo --networking-mode` を読んで決める（WSL 2.0.4 以降）。
