@@ -108,13 +108,16 @@ updates:
 
   # emulator/*-cli and tools/simple-server are small vendored Go modules
   # (one go.mod each); grouped to one weekly PR so transitive golang.org/x/*
-  # bumps don't rot unwatched.
+  # bumps don't rot unwatched. Those modules are `// indirect` in go.mod, and
+  # Dependabot's Go updater skips indirect modules unless `allow` says "all".
   - package-ecosystem: "gomod"
     directories:
       - "/emulator/*"
       - "/tools/simple-server"
     schedule:
       interval: "weekly"
+    allow:
+      - dependency-type: "all"
     cooldown:
       default-days: 7
     labels: ["dependencies", "go", "emulator"]
