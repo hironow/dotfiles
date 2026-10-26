@@ -1,12 +1,17 @@
 """The CA checker is optional to launch but cannot silently pass on failure."""
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
 from _bash_hook import run_bash
 
 ROOT = Path(__file__).resolve().parents[2]
+# doctor.sh runs `ca-doctor.exe` under Git Bash (uname MINGW*/MSYS*/CYGWIN*), and
+# run_bash always picks Git Bash on native Windows. Git Bash runs a shebang
+# script even when its name ends in .exe, so the fake only needs that name.
+CA_DOCTOR_NAME = "ca-doctor.exe" if sys.platform == "win32" else "ca-doctor"
 
 
 def _run(tmp_path: Path, output: str | None, rc: int = 0) -> str:
@@ -17,7 +22,7 @@ def _run(tmp_path: Path, output: str | None, rc: int = 0) -> str:
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     if output is not None:
-        binary = tmp_path / "output" / "ca-doctor" / "ca-doctor"
+        binary = tmp_path / "output" / "ca-doctor" / CA_DOCTOR_NAME
         binary.parent.mkdir(parents=True)
         binary.write_text(
             "#!/bin/sh\n"
