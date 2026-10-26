@@ -103,7 +103,7 @@ OSのパッケージ情報は収集するが、異なるディストリビュー
 | 環境 | 確認と修復 | 別途確認する範囲 |
 | --- | --- | --- |
 | macOS | OS更新に加え、Homebrewの `ca-certificates` と実際に使うPEM束を確認する | Keychain、`/etc/ssl/cert.pem`、Pythonの既定CAは同一ではない |
-| native Windows | Windows Updateと組織の証明書配信状態を確認する | OSストアを使うSchannelと、独立したPEM束を持つPythonやNode.jsなどは別々に更新する |
+| native Windows | Windows Updateと組織の証明書配信状態を確認する | Schannelは、OSストアとMicrosoftの拒否リスト（CTL）を使う。CPythonの標準sslは、OSストアのルートだけを使う（[WindowsのPython](#windowsのpython)）。Node.jsなどの独立したPEM束は別々に更新する |
 | WSL | 各ディストリビューションの `ca-certificates` をその環境内で更新する | Windows本体の更新や別のWSLディストリビューションには反映されない |
 | Linux | ディストリビューションの公式パッケージ更新でCA束を更新する | コンテナ、仮想環境、静的バイナリ、独立したCA束は別々に確認する |
 
@@ -131,6 +131,28 @@ Pythonの標準sslを使うアプリなら `ssl.create_default_context(cafile="�
 システムPythonを使い続けて接続受理が残る場合は、`ERR` を残す。
 診断コードを変えてその接続だけ別のCA束に切り替えたり、警告を消すために `sitecustomize.py` を追加したりしない。
 OS管理ファイルやKeychainの修復は、ユーザー環境変数の変更と分け、管理者の承認を得て行う。
+
+### WindowsのPython
+
+WindowsのCPythonの標準sslは、WindowsのROOTストアとCAストアにある証明書を、信頼の起点として読み込む。
+Microsoftが自動更新で配る拒否リスト（CTL）とDisallowedストアは見ない。
+そのため、Windowsが拒否する中間CAでも、ROOTストアのルートまで辿れれば、Pythonは接続を受け入れる。
+eMudhraの事故では、AAA Certificate Servicesが署名した中間CA（`-aaa-` の7本）がこれに当たる。
+Windows自身はこの7本を拒否するので、Windowsの検証器を使うGoなどの結果から、Pythonの結果を推測しない。
+
+CPythonの修正（gh-160040、CVE-2026-115557）は、漏れた鍵を含むチェーンを拒否する。
+修正版が出たら、PATHのPythonと、uvなどが管理する各Pythonを更新し、`just ca-doctor` を実行し直す。
+EOLの系列には修正が出ない。
+
+修正版が出るまで、OSストアのAAA Certificate Servicesの用途（EKUの属性）を変える方法は使わない。
+2026-10-26の実測では、次の2つが起きた。
+
+- Windowsのルートの自動更新が、約30分で属性を元に戻した。
+- 変えている間、AAAが相互証明書を出している別のルート（SSL.comなど）のチェーンが、Windowsの検証器でもPythonでも失敗した。このルート本体がOSストアに無い端末では、`https://example.com/` も失敗した。
+
+自動更新を止めると、拒否リストの配布も止まるので、これもしない。
+診断のPythonだけを別のCA束に切り替えたり、`sitecustomize.py` で警告を消したりはしない。
+修正版が出るまで、`ERR` は残す。
 
 ## 事故別ルールの追加と更新
 
