@@ -24,6 +24,7 @@
 #   github-actions -> .github/workflows/*.yaml (SHA-pinned actions)
 #   uv             -> / (root: pytest in dev, ruff/ty in lint -- ADR 0044)
 #                     + tools/rttm (rttm CLI) + emulator (vendored dev stack)
+#                     + telemetry/examples (FastAPI + OpenTelemetry example)
 #   docker         -> tests/docker test images + emulator/* service Dockerfiles
 #   gomod          -> emulator/*-cli Go helper CLIs + tools/simple-server
 #                     (emulator CLIs added 2026-07-10 after 14 x/crypto &
@@ -71,6 +72,10 @@ updates:
       - dependency-name: "ruff"
       - dependency-name: "ty"
 
+  # rttm, emulator and telemetry/examples get their vulnerable packages
+  # transitively (pillow via matplotlib, certifi and urllib3 via requests).
+  # Version updates skip transitive packages unless `allow` says "all", so
+  # these entries allow all and group them into one weekly PR each.
   - package-ecosystem: "uv"
     directory: "/tools/rttm"
     schedule:
@@ -81,13 +86,18 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    allow:
+      - dependency-type: "all"
     ignore:
       # Same synchronized pin-update path as root and emulator.
       - dependency-name: "ruff"
       - dependency-name: "ty"
+    groups:
+      rttm-python:
+        patterns: ["*"]
 
   # emulator/ is a vendored, self-contained uv project (ADR 0014/0016) with real
-  # runtime deps (aiohttp, litellm, mlflow, ...); grouped to one weekly PR.
+  # runtime deps (aiohttp, mlflow, ...); grouped to one weekly PR.
   - package-ecosystem: "uv"
     directory: "/emulator"
     schedule:
@@ -98,12 +108,30 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    allow:
+      - dependency-type: "all"
     ignore:
       # same reason as the root entry: bumped via `just bump-tool`.
       - dependency-name: "ruff"
       - dependency-name: "ty"
     groups:
       emulator-python:
+        patterns: ["*"]
+
+  - package-ecosystem: "uv"
+    directory: "/telemetry/examples"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    labels: ["dependencies", "python", "telemetry"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    allow:
+      - dependency-type: "all"
+    groups:
+      telemetry-examples-python:
         patterns: ["*"]
 
   # emulator/*-cli and tools/simple-server are small vendored Go modules
