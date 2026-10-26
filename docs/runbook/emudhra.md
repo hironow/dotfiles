@@ -47,6 +47,7 @@ SSOTの更新だけでは、起動中のプロセスや既存画像は更新さ�
 
 Mac、native Windows、WSL、Linuxでは、OSの信頼ストアと各ランタイムのCA束を別々に確認する。
 [CA doctorのOS別手順](ca-doctor.md#os別の確認と修復)に従い、同じ端末と起動環境で診断を再実行する。
+native WindowsのCPythonは、Windowsが拒否するAAA経由の7本を受け入れる。CPythonの修正版が出るまでの扱いは[WindowsのPython](ca-doctor.md#windowsのpython)にある。
 [公式のrustup 1.29.2告知](https://blog.rust-lang.org/2026/10/20/Rustup-1.29.2/)は `rustup self update` を案内しているが、古い更新クライアント自身の取得経路も確認する。
 CA環境変数を設定しただけで、静的に組み込まれたrustlsの信頼設定まで変わるとは判断しない。
 
