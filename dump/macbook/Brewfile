@@ -36,8 +36,6 @@ brew "shellcheck"
 brew "actionlint"
 # Next-gen compiler infrastructure
 brew "llvm"
-# Command-line interface for SQLite
-brew "sqlite"
 # American Fuzzy Lop++
 brew "afl++"
 # Simple, modern, secure file encryption
