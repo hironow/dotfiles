@@ -210,6 +210,37 @@ def test_prune_leaves_a_project_local_node_modules_pyright_alone(
     assert f"left path:pyright:{bash_path(dotbin / 'pyright')}" in r.stdout
 
 
+@requires_symlinks
+def test_prune_removes_pyright_installed_as_a_uv_tool(tmp_path: Path) -> None:
+    """`uv tool install pyright` (the PyPI wrapper) puts its bin links in PATH.
+
+    prune skips those links as "removed with its uv tool", so the uv tool
+    itself has to be one prune removes, or doctor reports it forever.
+    """
+    # given pyright as a uv tool, its bin links on PATH, and no npm copy
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    uvtools = tmp_path / "uv-tools"
+    tool_bin = uvtools / "pyright" / "bin"
+    tool_bin.mkdir(parents=True)
+    for exe in ("pyright", "pyright-langserver"):
+        (tool_bin / exe).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (tool_bin / exe).chmod(0o755)
+        (bindir / exe).symlink_to(tool_bin / exe)
+    _stub(bindir, "uv", "exit 0")
+    m = {"bin": bindir, "uvtools": uvtools, "log": tmp_path / "stub.log"}
+
+    # when detect and then prune run
+    detected = _run("detect", m)
+    pruned = _run("prune", m)
+
+    # then the uv tool is reported and uninstalled
+    assert "uv-tool:pyright" in detected.stdout.splitlines(), detected.stdout
+    assert pruned.returncode == 0, pruned.stderr
+    calls = m["log"].read_text(encoding="utf-8").splitlines()
+    assert "uv tool uninstall pyright" in calls
+
+
 def test_unknown_mode_is_a_usage_error() -> None:
     r = subprocess.run(
         [BASH, str(SCRIPT), "bogus"],

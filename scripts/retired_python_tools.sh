@@ -4,7 +4,8 @@
 # The Python toolchain is uv + ruff + ty, with mise as the single provider of
 # the interactive ruff / ty copies. A machine that predates the switch still
 # carries: mypy / pyright executables on PATH (pyright typically as a rogue npm
-# global under <prefix>/lib/node_modules), `uv tool` installs of mypy and ruff,
+# global under <prefix>/lib/node_modules), `uv tool` installs of mypy, ruff and
+# pyright (the PyPI wrapper; its PATH links go with the tool),
 # a Homebrew ruff or pyright, mise ruff / ty versions no config asks for (what
 # `mise ls` shows without a source column), and the mypy VS Code extension.
 # `just doctor` runs `detect` (label `python-retired`);
@@ -25,7 +26,7 @@ set -euo pipefail
 UV_TOOLS="${UV_TOOL_DIR:-$HOME/.local/share/uv/tools}"
 
 RETIRED_EXES='mypy dmypy pyright pyright-langserver'
-RETIRED_UV_TOOLS='mypy ruff'
+RETIRED_UV_TOOLS='mypy ruff pyright'
 RETIRED_BREW='ruff pyright'
 MISE_MANAGED='ruff ty'
 VSCODE_EXT='ms-python.mypy-type-checker'
