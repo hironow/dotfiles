@@ -42,6 +42,18 @@ func main() { os.Exit(RunCLI(os.Args[1:], os.Stdout)) }
 
 // RunCLI is exported for the tests; the process entrypoint only wires stdio.
 func RunCLI(args []string, out io.Writer) int {
+	return run(args, out, runtime.GOOS, Collect)
+}
+
+// run takes the host OS and the collector as parameters, so a test can drive
+// every host shape on any machine — a test that instead relied on the real
+// runtime.GOOS asserted a macOS-only outcome and would have failed the gate on
+// the Linux the sandbox runs.
+//
+// Injecting the collector is also what makes the --osrelease contract
+// checkable: a supplied version must perform NO local read, not merely discard
+// the result afterwards.
+func run(args []string, out io.Writer, goos string, collect func(string) Probe) int {
 	flags := flag.NewFlagSet("kernel-doctor", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "JSON output")
@@ -67,14 +79,16 @@ func RunCLI(args []string, out io.Writer) int {
 		}
 	})
 
-	probe := Collect(runtime.GOOS)
+	var probe Probe
 	if override {
-		probe = Override(runtime.GOOS, *osrelease)
+		probe = Override(goos, *osrelease)
+	} else {
+		probe = collect(goos)
 	}
-	found := findings(probe, *source, time.Now())
 
+	result := evaluate(probe, *source, time.Now())
 	if *asJSON {
-		report := JSONReport{Notice: notice, Scope: scopeText(probe), Assessments: assessments(probe), Findings: found}
+		report := JSONReport{Notice: notice, Scope: scopeText(probe), Assessments: result.assessments, Findings: result.findings}
 		data, err := json.Marshal(report)
 		if err != nil {
 			return 1
@@ -82,31 +96,43 @@ func RunCLI(args []string, out io.Writer) int {
 		if _, err := out.Write(append(data, '\n')); err != nil {
 			return 1
 		}
-		for _, f := range found {
+		for _, f := range result.findings {
 			if f.Level != "OK" {
 				return 1
 			}
 		}
 		return 0
 	}
-	return Report(out, found)
+	return Report(out, result.findings)
 }
 
-func findings(probe Probe, source string, now time.Time) []Finding {
+// evaluation holds the line findings and the structured assessments together,
+// so the two outputs cannot disagree about whether a comparison was allowed.
+//
+// They used to be computed independently, and the JSON then advertised
+// `at-or-above-reviewed-fix-floor` while the findings said only that the binary
+// was stale and no finding should be trusted. The structured output has to be
+// withheld for exactly the reason the line output is.
+type evaluation struct {
+	findings    []Finding
+	assessments []Assessment
+}
+
+func evaluate(probe Probe, source string, now time.Time) evaluation {
 	if !SourceMatches(source) {
-		return []Finding{{"WARN", "kernel-build", "missing/changed source or stale binary; run just kernel-doctor-build before trusting any finding"}}
+		return evaluation{findings: []Finding{{"WARN", "kernel-build", "missing/changed source or stale binary; run just kernel-doctor-build before trusting any finding"}}}
 	}
 	if incidentError != nil {
 		// The record lives in this repository, so naming the fault is a
 		// developer aid, not a leak of host data.
-		return []Finding{{"WARN", "kernel-policy", "invalid embedded incident data (" + incidentError.Error() + "); review the source and rebuild; no comparison performed"}}
+		return evaluation{findings: []Finding{{"WARN", "kernel-policy", "invalid embedded incident data (" + incidentError.Error() + "); review the source and rebuild; no comparison performed"}}}
 	}
 	out := []Finding{{"OK", "kernel-build", fmt.Sprintf("binary source and incident data match the checkout; %d reviewed record(s)", len(incidents))}}
 	out = append(out, scopeFindings(probe)...)
 	if probe.GOOS != "linux" && !probe.Override {
 		// No Linux kernel to assess. There is nothing to compare, and saying
 		// more would read as a clearance.
-		return append(out, coverageFinding())
+		return evaluation{findings: append(out, coverageFinding())}
 	}
 	for _, incident := range incidents {
 		out = append(out, assessmentFindings(probe, incident)...)
@@ -114,7 +140,7 @@ func findings(probe Probe, source string, now time.Time) []Finding {
 	for _, incident := range incidents {
 		out = append(out, freshnessFindings(incident, now)...)
 	}
-	return append(out, coverageFinding())
+	return evaluation{findings: append(out, coverageFinding()), assessments: assessments(probe)}
 }
 
 func scopeFindings(probe Probe) []Finding {

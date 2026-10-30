@@ -82,7 +82,7 @@ mainline は 7.3。修正は `inet_sock_destruct()` と `tcp_v4_reqsk_destructor
 
 Red Hat の優先度は critical ではなく **high**（Bugzilla は `NEW`、修正版は未確定）。
 EPSS は 0.00388（約 0.4%）、CISA KEV 未収載。
-**KEV 未収載は「CISA が実悪用を把握していない」であり、公開 exploit の不在の証明ではない。**
+**観測時点で KEV 未収載。これは実悪用の有無・公開 exploit の有無・CISA の評価状況のいずれについても証拠にならない。**
 
 引き金は 2 つ。どちらも到達には条件が要る。
 

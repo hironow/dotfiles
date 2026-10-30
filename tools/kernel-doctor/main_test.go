@@ -16,6 +16,23 @@ func linuxProbe(version, migrateReq string, migrateOK bool) Probe {
 
 func darwinProbe() Probe { return Probe{GOOS: "darwin"} }
 
+// findingsOf runs the real evaluation and returns only its line findings.
+func findingsOf(probe Probe, source string, now time.Time) []Finding {
+	return evaluate(probe, source, now).findings
+}
+
+// fakeCollector stands in for the host so a test can drive a Linux shape on
+// macOS, and can count the reads a run actually performs.
+type fakeCollector struct {
+	probe Probe
+	calls int
+}
+
+func (f *fakeCollector) collect(string) Probe {
+	f.calls++
+	return f.probe
+}
+
 // The freshness boundary the review asked to pin: still fresh on the
 // review-after date, overdue from 00:00 the next day.
 func TestFreshnessBoundary(t *testing.T) {
@@ -66,7 +83,7 @@ func TestCollectNonLinuxKeepsProcUnread(t *testing.T) {
 	}
 }
 
-// The P1 the review found: on a non-Linux host the tool must still let an
+// The P1 the plan review found: on a non-Linux host the tool must still let an
 // explicit --osrelease through, or its main use (assessing a Windows host's
 // WSL kernel from macOS) is unimplementable.
 func TestOverrideOutranksTheNonLinuxGate(t *testing.T) {
@@ -86,11 +103,33 @@ func TestOverrideOutranksTheNonLinuxGate(t *testing.T) {
 	}
 }
 
+// The documented contract is that the local /proc and /etc/os-release are NOT
+// READ, not merely that their values are discarded. Reading and discarding
+// would still touch the target host's files on a Linux run.
+func TestOverridePerformsNoLocalCollection(t *testing.T) {
+	fake := &fakeCollector{probe: linuxProbe("6.6.150", "0", true)}
+	var out bytes.Buffer
+	if code := run([]string{"--source", ".", "--json", "--osrelease", "6.6.159"}, &out, "linux", fake.collect); code == 2 {
+		t.Fatalf("an override must not be a usage error:\n%s", out.String())
+	}
+	if fake.calls != 0 {
+		t.Errorf("--osrelease must not consult the local host; collector ran %d time(s)", fake.calls)
+	}
+	var report JSONReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("--json output must decode: %v", err)
+	}
+	if len(report.Assessments) != 1 || report.Assessments[0].Outcome != AtOrAboveFloor {
+		t.Errorf("the supplied version must still be assessed: %+v", report.Assessments)
+	}
+}
+
 // An empty override is an explicit input, not a missing one, and must not be
 // confused with the local host's version.
 func TestEmptyOverrideIsAnExplicitInput(t *testing.T) {
+	fake := &fakeCollector{probe: linuxProbe("6.6.159", "0", true)}
 	var out bytes.Buffer
-	_ = RunCLI([]string{"--source", ".", "--osrelease", ""}, &out)
+	_ = run([]string{"--source", ".", "--osrelease", ""}, &out, "linux", fake.collect)
 	text := out.String()
 	if !strings.Contains(text, "assessing only the version given to --osrelease") {
 		t.Errorf("an empty override must still be treated as an override:\n%s", text)
@@ -98,12 +137,79 @@ func TestEmptyOverrideIsAnExplicitInput(t *testing.T) {
 	if !strings.Contains(text, "unverified-version") {
 		t.Errorf("an empty override must yield no comparison:\n%s", text)
 	}
+	if fake.calls != 0 {
+		t.Errorf("an empty override must not fall back to the local host (calls=%d)", fake.calls)
+	}
+}
+
+// A host shape must be driven by the injected collector, not by the machine
+// running the test: this is the assertion that used to encode a macOS-only
+// outcome and would have failed the gate on Linux.
+func TestAReadableHostIsAssessed(t *testing.T) {
+	fake := &fakeCollector{probe: linuxProbe("6.6.150", "0", true)}
+	var out bytes.Buffer
+	_ = run([]string{"--source", ".", "--json"}, &out, "linux", fake.collect)
+	if fake.calls != 1 {
+		t.Errorf("a local run must consult the host exactly once, got %d", fake.calls)
+	}
+	var report JSONReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("--json output must decode: %v", err)
+	}
+	if len(report.Assessments) != 1 || report.Assessments[0].Outcome != BelowFloor {
+		t.Fatalf("a readable kernel must produce exactly one assessment: %+v", report.Assessments)
+	}
+}
+
+// The complement, on the same entry point: nothing read means nothing claimed.
+func TestUnreadableHostYieldsNoAssessments(t *testing.T) {
+	fake := &fakeCollector{probe: Probe{GOOS: "linux"}}
+	var out bytes.Buffer
+	_ = run([]string{"--source", ".", "--json"}, &out, "linux", fake.collect)
+	var report JSONReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("--json output must decode: %v", err)
+	}
+	if len(report.Assessments) != 0 {
+		t.Errorf("an unreadable kernel must yield no assessment: %+v", report.Assessments)
+	}
+	if !strings.Contains(dump(report.Findings), "running kernel version unavailable") {
+		t.Errorf("an unreadable kernel must be reported as unverified:\n%s", dump(report.Findings))
+	}
+}
+
+// A stale binary must withhold the structured comparison for the same reason
+// it withholds the line findings: the JSON used to carry
+// `at-or-above-reviewed-fix-floor` while the findings said not to trust any of
+// them.
+func TestAssessmentsAreWithheldWhenTheSourceIsUnverified(t *testing.T) {
+	fake := &fakeCollector{probe: linuxProbe("6.6.159", "0", true)}
+	var jsonOut bytes.Buffer
+	if code := run([]string{"--source", t.TempDir(), "--json"}, &jsonOut, "linux", fake.collect); code != 1 {
+		t.Errorf("a stale source must still be a warning, got exit %d", code)
+	}
+	var report JSONReport
+	if err := json.Unmarshal(jsonOut.Bytes(), &report); err != nil {
+		t.Fatalf("--json output must decode: %v", err)
+	}
+	if len(report.Assessments) != 0 {
+		t.Errorf("a stale binary must not publish a comparison in --json: %+v", report.Assessments)
+	}
+	if len(report.Findings) != 1 || report.Findings[0].Name != "kernel-build" {
+		t.Fatalf("a stale source must stop at the build finding: %+v", report.Findings)
+	}
+
+	var lineOut bytes.Buffer
+	_ = run([]string{"--source", t.TempDir()}, &lineOut, "linux", fake.collect)
+	if strings.Contains(lineOut.String(), "kernel-version-cve") {
+		t.Errorf("the line output must be withheld too:\n%s", lineOut.String())
+	}
 }
 
 // A non-Linux host must say what it is NOT covering, rather than reading as a
 // clean bill of health for the WSL or Linux VM the operator actually uses.
 func TestNonLinuxScopeExcludesWSLAndLinuxVMs(t *testing.T) {
-	found := findings(darwinProbe(), ".", time.Now())
+	found := findingsOf(darwinProbe(), ".", time.Now())
 	joined := dump(found)
 	if !strings.Contains(joined, "kernel-not-applicable") {
 		t.Fatalf("expected a not-applicable finding:\n%s", joined)
@@ -123,9 +229,7 @@ func TestNoFindingIsEverAnError(t *testing.T) {
 	probes := []Probe{
 		darwinProbe(),
 		{GOOS: "windows"},
-		{
-			GOOS: "linux",
-		},
+		{GOOS: "linux"},
 		linuxProbe("6.6.150", "0", true),
 		linuxProbe("6.6.150", "1", true),
 		linuxProbe("6.6.159", "0", false),
@@ -135,7 +239,7 @@ func TestNoFindingIsEverAnError(t *testing.T) {
 		Override("linux", "6.6.159"),
 	}
 	for _, probe := range probes {
-		found := findings(probe, ".", time.Now())
+		found := findingsOf(probe, ".", time.Now())
 		if len(found) == 0 {
 			t.Fatalf("probe %+v produced no findings at all", probe)
 		}
@@ -192,7 +296,7 @@ func TestNonZeroMigrationSysctlRaisesAWarning(t *testing.T) {
 // A stale or missing binary must not be laundered into a finding about the
 // kernel.
 func TestStaleSourceYieldsOnlyABuildWarning(t *testing.T) {
-	found := findings(darwinProbe(), t.TempDir(), time.Now())
+	found := findingsOf(darwinProbe(), t.TempDir(), time.Now())
 	if len(found) != 1 || found[0].Name != "kernel-build" {
 		t.Fatalf("a stale source must stop at the build finding: %+v", found)
 	}
@@ -243,21 +347,9 @@ func TestRunCLIJSONCarriesTheNoticeAndScope(t *testing.T) {
 	}
 }
 
-func TestRunCLIJSONWithoutAVersionSkipsAssessments(t *testing.T) {
-	var out bytes.Buffer
-	_ = RunCLI([]string{"--source", ".", "--json"}, &out)
-	var report JSONReport
-	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
-		t.Fatalf("--json output must decode: %v", err)
-	}
-	if len(report.Assessments) != 0 {
-		t.Errorf("nothing to assess means no assessments: %+v", report.Assessments)
-	}
-}
-
 func TestLinuxRunReportsTheRunningKernel(t *testing.T) {
 	probe := linuxProbe("6.6.87.2-microsoft-standard-WSL2", "0", true)
-	joined := dump(findings(probe, ".", time.Now()))
+	joined := dump(findingsOf(probe, ".", time.Now()))
 	if !strings.Contains(joined, "6.6.87.2-microsoft-standard-WSL2") {
 		t.Errorf("the running kernel must be reported:\n%s", joined)
 	}
@@ -267,7 +359,7 @@ func TestLinuxRunReportsTheRunningKernel(t *testing.T) {
 }
 
 func TestUnreadableRunningKernelIsUnverified(t *testing.T) {
-	joined := dump(findings(Probe{GOOS: "linux"}, ".", time.Now()))
+	joined := dump(findingsOf(Probe{GOOS: "linux"}, ".", time.Now()))
 	if !strings.Contains(joined, "running kernel version unavailable") {
 		t.Errorf("an unreadable kernel must be unverified, not clean:\n%s", joined)
 	}
@@ -280,7 +372,7 @@ func TestUnreadableRunningKernelIsUnverified(t *testing.T) {
 // the non-Linux early return, or the tool reads as an attestation.
 func TestCoverageCaveatAlwaysAppears(t *testing.T) {
 	for _, probe := range []Probe{darwinProbe(), linuxProbe("6.6.150", "0", true), Override("darwin", "6.6.159")} {
-		if !strings.Contains(dump(findings(probe, ".", time.Now())), "kernel-coverage") {
+		if !strings.Contains(dump(findingsOf(probe, ".", time.Now())), "kernel-coverage") {
 			t.Errorf("probe %+v lost the coverage caveat", probe)
 		}
 	}
@@ -291,7 +383,7 @@ func TestCoverageCaveatAlwaysAppears(t *testing.T) {
 func TestVersionCannotForgeADoctorLine(t *testing.T) {
 	probe := Override("darwin", "6.6.150\nOK   kernel-fake - everything is fine")
 	var out bytes.Buffer
-	_ = Report(&out, findings(probe, ".", time.Now()))
+	_ = Report(&out, findingsOf(probe, ".", time.Now()))
 	if strings.Contains(out.String(), "\nOK   kernel-fake") {
 		t.Errorf("a newline in a version string forged a doctor line:\n%s", out.String())
 	}
