@@ -357,6 +357,14 @@ def test_the_guard_records_each_rtk_subcommand_once() -> None:
     assert {"run", "proxy", "git", "help"} <= check._guard_rtk_classified()
 
 
+def test_rtk_1_1_ng_is_recorded_as_a_fixed_tool_proxy() -> None:
+    # rtk 1.1.0 added `ng`: it runs the Angular CLI, not operands the agent
+    # supplies, so the walk checks `ng` like a bare command
+    guard = check._load_command_guard()
+    assert "ng" in guard.RTK_FILTER_SUBCOMMANDS
+    assert "ng" not in guard.RTK_RUN_SUBCOMMANDS
+
+
 def test_a_proxy_answering_health_in_a_new_shape_warns() -> None:
     # j-cc would never recognise it: each launch waits, then goes direct
     facts = _facts(headroom_proxy=(4321, {"status": "ok"}))

@@ -15,10 +15,6 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-certifi = "2026-10-20T02:25:00Z"
-mlflow = "2026-10-21T02:10:00Z"
-mlflow-skinny = "2026-10-21T02:10:00Z"
-mlflow-tracing = "2026-10-21T02:10:00Z"
 ruff = false
 ty = false
 

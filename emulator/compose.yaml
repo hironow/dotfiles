@@ -201,7 +201,8 @@ services:
       dockerfile: Dockerfile
       args:
         A2A_INSPECTOR_REPO: ${A2A_INSPECTOR_REPO:-https://github.com/a2aproject/a2a-inspector.git}
-        A2A_INSPECTOR_REF: ${A2A_INSPECTOR_REF:-main}
+        # Pinned commit: upstream main is a Go rewrite (see a2a-inspector/Dockerfile)
+        A2A_INSPECTOR_REF: ${A2A_INSPECTOR_REF:-8aa064639af106ff771d60428ef6d460f5454743}
     container_name: a2a-inspector
     profiles:
       - inspect

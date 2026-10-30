@@ -94,7 +94,7 @@ ports via `.env.local`.
 | ES Exporter    | `elasticsearch-exporter` | 9114 → 9114 (Prometheus)            | HTTP   | –   |
 | PG Exporter    | `postgres-exporter`  | 9187 → 9187 (Prometheus)                 | HTTP   | –   |
 
-> Note: Set `A2A_INSPECTOR_REPO=<git-url>` and/or `A2A_INSPECTOR_REF=<git-ref>` before `just emu-start` to pin the upstream inspector checkout. The image builds via the local `a2a-inspector/Dockerfile`, which fetches the repository and runs on Python 3.12 to satisfy its runtime requirement.
+> Note: Set `A2A_INSPECTOR_REPO=<git-url>` and/or `A2A_INSPECTOR_REF=<git-ref>` before `just emu-start` to override the upstream inspector checkout (any commit, tag or branch). The default is a pinned commit with the Python/TypeScript layout, because upstream `main` is now a Go rewrite this Dockerfile cannot build. The image builds via the local `a2a-inspector/Dockerfile`, which fetches the repository and runs on Python 3.12 to satisfy its runtime requirement.
 >
 > Note: Set `MCP_INSPECTOR_REPO=<git-url>` and/or `MCP_INSPECTOR_REF=<git-ref>` before `just emu-start` to pin the upstream MCP Inspector checkout. The image builds via the local `mcp-inspector/Dockerfile`, which fetches the repository and runs on Node.js 24.
 

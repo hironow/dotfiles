@@ -260,6 +260,23 @@ windows_only = pytest.mark.skipif(
 )
 
 
+def _ipv6_loopback_bindable() -> bool:
+    """True when this host can listen on ::1 (some containers disable IPv6)."""
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as probe:
+            probe.bind(("::1", 0))
+    except OSError:
+        return False
+    return True
+
+
+# serve() binds 127.0.0.1 and ::1 and refuses to run on one of them alone, so
+# a test that really binds needs both; without IPv6 it is untested, not broken.
+requires_ipv6_loopback = pytest.mark.skipif(
+    not _ipv6_loopback_bindable(), reason="this host cannot bind ::1 (IPv6 disabled)"
+)
+
+
 def _powershell(script: str) -> str:
     """Runs Windows PowerShell 5.1 the way the probe does; returns stdout."""
     result = host.run_powershell(script, timeout=60)
@@ -1326,6 +1343,7 @@ def test_client_reset_reaps_a_helper_blocked_without_response(
     asyncio.run(exercise())
 
 
+@requires_ipv6_loopback
 def test_service_shutdown_reaps_active_helper_before_server_closure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1393,6 +1411,7 @@ def test_service_shutdown_reaps_active_helper_before_server_closure(
     asyncio.run(exercise())
 
 
+@requires_ipv6_loopback
 def test_service_forces_closed_backpressured_client_during_shutdown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

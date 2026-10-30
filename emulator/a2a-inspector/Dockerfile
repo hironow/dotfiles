@@ -1,14 +1,22 @@
 # syntax=docker/dockerfile:1.22
 
 ARG A2A_INSPECTOR_REPO=https://github.com/a2aproject/a2a-inspector.git
-ARG A2A_INSPECTOR_REF=main
+# The last commit with the Python/TypeScript layout this file builds
+# (backend/, frontend/, pyproject.toml). Upstream main is a Go rewrite since
+# a2aproject/a2a-inspector#221 (2026-10-27), which this Dockerfile cannot build.
+# Any commit, tag or branch works as an override; keep compose.yaml in step.
+ARG A2A_INSPECTOR_REF=8aa064639af106ff771d60428ef6d460f5454743
 
 # Stage 0: fetch source once and reuse from later stages
 FROM alpine/git AS source
 ARG A2A_INSPECTOR_REPO
 ARG A2A_INSPECTOR_REF
 WORKDIR /src
-RUN git clone --depth 1 --branch "${A2A_INSPECTOR_REF}" "${A2A_INSPECTOR_REPO}" repo
+# init + fetch instead of `clone --branch`: --branch takes no commit SHA
+RUN git init -q repo && \
+    git -C repo remote add origin "${A2A_INSPECTOR_REPO}" && \
+    git -C repo fetch --depth 1 origin "${A2A_INSPECTOR_REF}" && \
+    git -C repo -c advice.detachedHead=false checkout -q FETCH_HEAD
 
 # Stage 1: build frontend assets
 FROM node:26-alpine AS frontend-builder

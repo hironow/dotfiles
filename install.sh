@@ -345,8 +345,12 @@ step_corepack() {
       # Guard: the minimal Ubuntu install-test image has no node/corepack.
       # corepack is provided by `npm "corepack"` in dump/Brewfile (brew
       # bundle) or by the dev container node feature.
+      # Best-effort: under mise, corepack is a shim for the node the deployed
+      # config asks for (`node = "lts"`), which a rerun with
+      # INSTALL_SKIP_ADD_UPDATE=1 may not have installed yet. A convenience
+      # shim must not stop the installer before the dotfiles are deployed.
       if command -v corepack >/dev/null 2>&1; then
-        corepack enable
+        corepack enable || echo "[install] step_corepack: WARN 'corepack enable' failed; run 'mise install' (the node it needs may be missing), then 'corepack enable'" >&2
       else
         echo "[install] step_corepack: corepack not on PATH; skipping (provided by brew bundle / dev container feature)"
       fi
@@ -482,9 +486,12 @@ step_prek_shim() {
   # .zshrc) so the fallback resolves everywhere. ADR 0023 keeps the general
   # toolchain activate-only; this is a narrow, deliberate exception for the one
   # binary git must invoke outside an activated shell.
+  # mise makes `latest` a symlink to the version dir; the trailing slash makes
+  # find descend into it (a symlinked start point is otherwise not followed),
+  # and the shim keeps naming latest/ so a prek upgrade carries it along.
   case "$DOTFILES_OS" in
     mac | linux)
-      _prek_bin="$(find "$HOME/.local/share/mise/installs/prek/latest" -maxdepth 2 -name prek -type f 2>/dev/null | head -1)"
+      _prek_bin="$(find "$HOME/.local/share/mise/installs/prek/latest/" -maxdepth 2 -name prek -type f 2>/dev/null | head -1)"
       if [ -z "$_prek_bin" ]; then
         _prek_bin="$(command -v prek 2>/dev/null || true)"
       fi
