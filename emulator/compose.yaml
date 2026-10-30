@@ -194,15 +194,15 @@ services:
     profiles:
       - cli  # Only run when explicitly requested
 
-  # A2A Inspector (real build using local multi-stage Dockerfile)
+  # A2A Inspector (the Go binary, built from upstream source by the local Dockerfile)
   a2a-inspector:
     build:
       context: ./a2a-inspector
       dockerfile: Dockerfile
       args:
         A2A_INSPECTOR_REPO: ${A2A_INSPECTOR_REPO:-https://github.com/a2aproject/a2a-inspector.git}
-        # Pinned commit: upstream main is a Go rewrite (see a2a-inspector/Dockerfile)
-        A2A_INSPECTOR_REF: ${A2A_INSPECTOR_REF:-8aa064639af106ff771d60428ef6d460f5454743}
+        # Pinned commit: v0.2.0 of the Go inspector (see a2a-inspector/Dockerfile)
+        A2A_INSPECTOR_REF: ${A2A_INSPECTOR_REF:-275f52360168f49d359eaf390cc8ffe848cc291f}
     container_name: a2a-inspector
     profiles:
       - inspect
@@ -210,12 +210,8 @@ services:
     platform: linux/amd64
     ports:
       - "127.0.0.1:${A2A_INSPECTOR_PORT:-8081}:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+    # No healthcheck: the distroless image has no shell or curl to run one;
+    # scripts/wait-for-services.sh checks http://localhost:8081 from the host.
     restart: unless-stopped
 
   # MCP Inspector (Model Context Protocol debugging tool)

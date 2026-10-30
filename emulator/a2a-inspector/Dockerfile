@@ -1,11 +1,16 @@
 # syntax=docker/dockerfile:1.22
 
 ARG A2A_INSPECTOR_REPO=https://github.com/a2aproject/a2a-inspector.git
-# The last commit with the Python/TypeScript layout this file builds
-# (backend/, frontend/, pyproject.toml). Upstream main is a Go rewrite since
-# a2aproject/a2a-inspector#221 (2026-10-27), which this Dockerfile cannot build.
-# Any commit, tag or branch works as an override; keep compose.yaml in step.
-ARG A2A_INSPECTOR_REF=8aa064639af106ff771d60428ef6d460f5454743
+# v0.2.0, the first release of the Go rewrite (a2aproject/a2a-inspector#221):
+# one static binary with the UI embedded. A commit, not a branch, so an
+# upstream layout change cannot break the build unannounced. Any commit, tag or
+# branch works as an override; keep compose.yaml in step.
+ARG A2A_INSPECTOR_REF=275f52360168f49d359eaf390cc8ffe848cc291f
+
+# The stages below repeat upstream's own Dockerfile at that ref, so the base
+# images stay pinned here and under Dependabot. Differences: the UI builds on
+# Node 26 (the current LTS, as in this repo's image) and the binary on Go 1.27
+# (this repo's Go minimum); upstream uses 24 and 1.26.
 
 # Stage 0: fetch source once and reuse from later stages
 FROM alpine/git AS source
@@ -18,48 +23,30 @@ RUN git init -q repo && \
     git -C repo fetch --depth 1 origin "${A2A_INSPECTOR_REF}" && \
     git -C repo -c advice.detachedHead=false checkout -q FETCH_HEAD
 
-# Stage 1: build frontend assets
-FROM node:26-alpine AS frontend-builder
-WORKDIR /app
-
-COPY --from=source /src/repo/frontend/package*.json ./
-COPY --from=source /src/repo/frontend/tsconfig.json ./
-COPY --from=source /src/repo/frontend/src ./src
+# Stage 1: build the UI
+FROM node:26-slim AS ui
+WORKDIR /src/ui
+COPY --from=source /src/repo/ui/package.json /src/repo/ui/package-lock.json ./
 RUN npm ci
-COPY --from=source /src/repo/frontend/ ./
-RUN npm rebuild esbuild
+COPY --from=source /src/repo/ui/ ./
 RUN npm run build
 
-# Stage 2: assemble runtime image.
-# Kept on python 3.12 (NOT 3.14): a2a-inspector's deps lack cp314 wheels, so
-# `uv sync` falls back to building from sdist, which needs gcc -- absent in the
-# slim image -> build fails. Re-verified 2026-06 on 3.14.5-slim: cffi 1.17.1 /
-# pydantic-core / asyncpg build from sdist and die with "gcc: No such file".
-# Dependabot is told to ignore python minor/major bumps here (see dependabot
-# .yaml); revisit when upstream publishes 3.14 wheels.
-FROM python:3.12.15-slim
-WORKDIR /app
+# Stage 2: build the binary, with the UI from stage 1 embedded
+FROM golang:1.27 AS go
+WORKDIR /src
+COPY --from=source /src/repo/go.mod /src/repo/go.sum ./
+RUN go mod download
+COPY --from=source /src/repo/main.go ./
+COPY --from=source /src/repo/inspector/ inspector/
+COPY --from=source /src/repo/internal/ internal/
+COPY --from=source /src/repo/ui/embed.go ui/
+COPY --from=ui /src/ui/dist ui/dist
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /a2a-inspector .
 
-# Install uv (no pip required)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/* && \
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-
-ENV PATH="/root/.local/bin:$PATH"
-ENV UV_PYTHON_PREFER_SYSTEM=1
-
-COPY --from=source /src/repo/pyproject.toml ./
-COPY --from=source /src/repo/uv.lock ./
-RUN uv sync --no-cache
-RUN uv pip install validators
-
-COPY --from=source /src/repo/backend ./backend/
-
-RUN mkdir -p /app/frontend
-COPY --from=frontend-builder /app/public /app/frontend/public
-
-WORKDIR /app/backend
+# Stage 3: run it. Distroless has no shell and no curl, so compose.yaml has no
+# in-container healthcheck; scripts/wait-for-services.sh checks the UI from
+# the host. The UI at / needs no token (only the API does), so a plain GET works.
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=go /a2a-inspector /a2a-inspector
 EXPOSE 8080
-
-CMD ["uv", "run", "--", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+ENTRYPOINT ["/a2a-inspector", "--host", "0.0.0.0", "--port", "8080", "--no-open"]
