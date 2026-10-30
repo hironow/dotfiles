@@ -90,7 +90,7 @@ RTK_RUN_SUBCOMMANDS = {"bypass", "proxy", "run", "err", "test", "summary", "smar
 # (`rtk run -c "npm ci"`, `rtk err --shell sh "npm ci"`); the walk re-analyzes it.
 RTK_SHELL_STRING_FLAGS = {"-c", "--command"}
 RTK_SHELL_NAME_FLAG = "--shell"  # takes the shell's name; the string is an operand
-# Every other subcommand of rtk 1.0.1, reviewed: each proxies a fixed tool (the
+# Every other subcommand of rtk 1.1.0, reviewed: each proxies a fixed tool (the
 # walk then checks that tool's name like a bare command: `rtk npm ci` is npm) or
 # is rtk's own verb. The guard never reads this set; it records the review, and
 # `just doctor` (rtk-guard) warns when an rtk upgrade adds a subcommand in neither.
@@ -140,6 +140,7 @@ RTK_FILTER_SUBCOMMANDS = {
     "mvnd",
     "mypy",
     "next",
+    "ng",
     "npm",
     "npx",
     "oc",
