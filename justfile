@@ -1459,6 +1459,22 @@ brotli-doctor *args:
 brotli-doctor-build-all:
     @bash -c 'set -eu; for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do os="${target%/*}"; arch="${target#*/}"; suffix=""; if [ "$os" = windows ]; then suffix=.exe; fi; (cd tools/brotli-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS="$os" GOARCH="$arch" mise exec -- go build -trimpath -o "../../output/brotli-doctor/brotli-doctor-$os-$arch$suffix" .); done'
 
+# Opt-in Linux kernel CVE evidence. Compares the kernel version a host
+# reports against reviewed, source-cited fix floors; never a verdict, and it
+# patches nothing. doctor treats its output as advisory only (ADR-0065).
+[group('Setup')]
+kernel-doctor-build:
+    @cd tools/kernel-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local mise exec -- go build -trimpath -o ../../output/kernel-doctor/ .
+
+[group('Test')]
+[positional-arguments]
+kernel-doctor *args:
+    @bash -c 'bin=output/kernel-doctor/kernel-doctor; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) bin="$bin.exe" ;; esac; if [ ! -x "$bin" ]; then echo "WARN kernel-build - run just kernel-doctor-build first"; exit 1; fi; exec "$bin" --source tools/kernel-doctor "$@"' -- "$@"
+
+[group('Setup')]
+kernel-doctor-build-all:
+    @bash -c 'set -eu; for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do os="${target%/*}"; arch="${target#*/}"; suffix=""; if [ "$os" = windows ]; then suffix=.exe; fi; (cd tools/kernel-doctor && CGO_ENABLED=0 GOTOOLCHAIN=local GOOS="$os" GOARCH="$arch" mise exec -- go build -trimpath -o "../../output/kernel-doctor/kernel-doctor-$os-$arch$suffix" .); done'
+
 # Prune rogue global installs of mise-managed AI CLIs (codex/claude-code/
 # copilot/pi). A stray `npm install -g` — codex's built-in `codex update`
 # most of all — drops the package into the active node's global each time,

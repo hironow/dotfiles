@@ -7,7 +7,8 @@
 ## 早見表（決裁待ち）
 
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0065 | Linux カーネルの CVE は dotfiles が直さず、報告と助言だけを行う | ADR | Pi（owner session） | @hironow | Hiroto N. | @hironow | — | 決裁待ち | 2026-10-29 の本セッションで所有者が選択（深さ = runbook + `just doctor` の advisory + Go の `kernel-doctor`、記録 = ADR + 本行、WSL 方針 = 維持） | — | 独立レビュー（Codex 0.164.0）は REVISE、8 指摘を全件実測確認して反映済み。`just doctor` の exit 契約を守るため kernel の所見は `err` に入れない | [docs/adr/0065-kernel-cve-is-evidence-only.md](adr/0065-kernel-cve-is-evidence-only.md) | --- |
 
 ## 決定済みログ
 

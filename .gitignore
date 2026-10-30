@@ -102,6 +102,7 @@ tools/simple-server/simple-server
 tools/simple-server/simple-server.exe
 /output/ca-doctor/
 /output/brotli-doctor/
+/output/kernel-doctor/
 
 # Stray `bunx skills` output. The CLI's real lock is ~/.agents/.skill-lock.json
 # in the agent home (dot-prefixed, singular); running the CLI from the repo root
