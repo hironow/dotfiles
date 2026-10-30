@@ -482,9 +482,12 @@ step_prek_shim() {
   # .zshrc) so the fallback resolves everywhere. ADR 0023 keeps the general
   # toolchain activate-only; this is a narrow, deliberate exception for the one
   # binary git must invoke outside an activated shell.
+  # mise makes `latest` a symlink to the version dir; the trailing slash makes
+  # find descend into it (a symlinked start point is otherwise not followed),
+  # and the shim keeps naming latest/ so a prek upgrade carries it along.
   case "$DOTFILES_OS" in
     mac | linux)
-      _prek_bin="$(find "$HOME/.local/share/mise/installs/prek/latest" -maxdepth 2 -name prek -type f 2>/dev/null | head -1)"
+      _prek_bin="$(find "$HOME/.local/share/mise/installs/prek/latest/" -maxdepth 2 -name prek -type f 2>/dev/null | head -1)"
       if [ -z "$_prek_bin" ]; then
         _prek_bin="$(command -v prek 2>/dev/null || true)"
       fi
