@@ -389,6 +389,46 @@ if [ -x "$_ca_bin" ]; then
 else
   log_warn 'ca-build' 'CA check unavailable -- run: just ca-doctor-build; then just doctor (docs/runbook/ca-doctor.md)'
 fi
+# --- end CA health and incidents ---
+
+# Linux kernel CVE evidence: native Go binary, advisory only. This repository
+# ships, builds and pins no Linux kernel, so nothing here is the repository's
+# to fix. That is why the findings below are added to `warn` and never to
+# `err`: an ERR would make `just doctor` exit 1, which breaks `just self-check`
+# and test_doctor_sandbox over a condition only the operator can fix, and only
+# outside this repository. An ERR from the checker is therefore downgraded to
+# a single WARN. See ADR-0065 and docs/runbook/kernel-doctor.md.
+_kernel_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+_kernel_bin="${_kernel_root}/output/kernel-doctor/kernel-doctor"
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) _kernel_bin="${_kernel_bin}.exe" ;; esac
+if [ -x "$_kernel_bin" ]; then
+  _kernel_rc=0
+  _kernel_out="$("$_kernel_bin" --source "${_kernel_root}/tools/kernel-doctor" 2>&1)" || _kernel_rc=$?
+  _kernel_ok=0; _kernel_warn=0; _kernel_err=0; _kernel_bad=0
+  while IFS= read -r line; do
+    case "$line" in
+      'OK   '*) _kernel_ok=$((_kernel_ok+1)) ;;
+      'WARN '*) _kernel_warn=$((_kernel_warn+1)) ;;
+      'ERR  '*) _kernel_err=$((_kernel_err+1)) ;;
+      *) _kernel_bad=1 ;;
+    esac
+  done <<<"$_kernel_out"
+  # An empty result, a crash, an odd line, a stray ERR or an inconsistent exit
+  # code all mean the same thing: nothing was verified.
+  _kernel_valid=0
+  if [ "$_kernel_bad" -eq 0 ] && [ "$_kernel_err" -eq 0 ]; then
+    if [ "$_kernel_rc" -eq 0 ] && [ "$_kernel_ok" -gt 0 ] && [ "$_kernel_warn" -eq 0 ]; then _kernel_valid=1; fi
+    if [ "$_kernel_rc" -eq 1 ] && [ "$_kernel_warn" -gt 0 ]; then _kernel_valid=1; fi
+  fi
+  if [ "$_kernel_valid" -eq 1 ]; then
+    ok=$((ok+_kernel_ok)); warn=$((warn+_kernel_warn))
+    printf '%s\n' "$_kernel_out"
+  else
+    log_warn 'kernel-check' "checker did not finish consistently (exit $_kernel_rc); kernel CVE evidence unverified"
+  fi
+else
+  log_warn 'kernel-build' 'kernel check unavailable -- run: just kernel-doctor-build; then just doctor (docs/runbook/kernel-doctor.md)'
+fi
 
 # AI tooling: rtk, headroom, their telemetry and wiring (Claude / Pi / Codex
 # hooks and extensions, headroom's proxy). The rules live in a tested script;

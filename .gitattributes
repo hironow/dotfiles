@@ -20,6 +20,10 @@ dump/harness/skill-lock.json text eol=lf
 # checkout needs a forced re-checkout, because git skips stat-clean paths (see
 # ADR 0050). Same shape as the *.sh pin above.
 *.go   text eol=lf
-# CA doctor embeds these bytes for stale-binary detection across host OSes.
+# The doctor tools embed these bytes and compare them against the working
+# tree, so they must be LF on every OS or a CRLF checkout reports a stale
+# binary for an unchanged commit.
 tools/ca-doctor/go.mod text eol=lf
 tools/ca-doctor/incidents/*.json text eol=lf
+tools/kernel-doctor/go.mod text eol=lf
+tools/kernel-doctor/incidents/*.json text eol=lf

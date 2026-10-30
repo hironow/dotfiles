@@ -17,7 +17,13 @@ CA_DOCTOR_NAME = "ca-doctor.exe" if sys.platform == "win32" else "ca-doctor"
 def _run(tmp_path: Path, output: str | None, rc: int = 0) -> str:
     text = (ROOT / "scripts" / "doctor.sh").read_text(encoding="utf-8")
     helpers = re.search(r"(?ms)^log_ok\(\).*?^has\(\).*?$", text)
-    block = re.search(r"(?ms)^# CA health and incidents:.*?(?=^# AI tooling:)", text)
+    # Stop at the CA block's own end marker, not at the next section: the
+    # kernel block sits in between and would otherwise be executed here too,
+    # adding its own `WARN kernel-build` to every count this file asserts.
+    block = re.search(
+        r"(?ms)^# CA health and incidents:.*?(?=^# --- end CA health and incidents ---)",
+        text,
+    )
     assert helpers and block, "doctor must wire the CA incident check cross-platform"
     scripts = tmp_path / "scripts"
     scripts.mkdir()
