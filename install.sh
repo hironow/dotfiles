@@ -345,8 +345,12 @@ step_corepack() {
       # Guard: the minimal Ubuntu install-test image has no node/corepack.
       # corepack is provided by `npm "corepack"` in dump/Brewfile (brew
       # bundle) or by the dev container node feature.
+      # Best-effort: under mise, corepack is a shim for the node the deployed
+      # config asks for (`node = "lts"`), which a rerun with
+      # INSTALL_SKIP_ADD_UPDATE=1 may not have installed yet. A convenience
+      # shim must not stop the installer before the dotfiles are deployed.
       if command -v corepack >/dev/null 2>&1; then
-        corepack enable
+        corepack enable || echo "[install] step_corepack: WARN 'corepack enable' failed; run 'mise install' (the node it needs may be missing), then 'corepack enable'" >&2
       else
         echo "[install] step_corepack: corepack not on PATH; skipping (provided by brew bundle / dev container feature)"
       fi
