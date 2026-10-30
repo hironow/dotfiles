@@ -97,9 +97,10 @@ timeout_method = "thread"
 exclude-newer = "7 days"
 # ruff/ty = false so an exact pin can move without waiting out the window
 # (docs/agents/python-tooling.md).
-# Security fixes inside the window (2026-10-26), cutoff just after each upload;
-# remove on or after 2026-10-28 (scripts/check_uv_exclude_newer.py fails then):
-# certifi 2026.10.19 (eMudhra CA removal, uploaded 2026-10-20T02:24Z) and
-# mlflow / mlflow-skinny / mlflow-tracing 3.17.2 (GHSA-wqmh-qccw-pqwf,
-# uploaded 2026-10-21T02:08Z).
-exclude-newer-package = { ruff = false, ty = false, certifi = "2026-10-20T02:25:00Z", mlflow = "2026-10-21T02:10:00Z", mlflow-skinny = "2026-10-21T02:10:00Z", mlflow-tracing = "2026-10-21T02:10:00Z" }
+# The 2026-10-26 security-fix cutoffs (certifi 2026.10.19, the eMudhra CA
+# removal, uploaded 2026-10-20T02:24Z; mlflow / mlflow-skinny /
+# mlflow-tracing 3.17.2, GHSA-wqmh-qccw-pqwf, uploaded 2026-10-21T02:08Z) were
+# dropped on 2026-10-30: those releases are now older than the 7-day window,
+# so the relative span admits them on its own and the absolute cutoff would
+# only freeze the packages there.
+exclude-newer-package = { ruff = false, ty = false }
