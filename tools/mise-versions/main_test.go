@@ -403,7 +403,7 @@ func TestSyncIsIdempotentAndWritesNothingWhenItFails(t *testing.T) {
 	// A broken source must not touch either file.
 	broken := tree(t)
 	before := read(t, filepath.Join(broken, featureRel)) + read(t, filepath.Join(broken, bootstrapRel))
-	mutate(t, broken, sourceRel, `node = "24.22.1"`, `node = "24"`)
+	mutate(t, broken, sourceRel, `node = "26.13.0"`, `node = "24"`)
 	if code, _, _ := runCLI(t, "sync", "--root", broken); code == 0 {
 		t.Fatal("sync accepted a partial version")
 	}

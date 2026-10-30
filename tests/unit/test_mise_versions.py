@@ -203,7 +203,7 @@ def test_a_partial_or_empty_version_is_rejected(tool: Path, tmp_path: Path) -> N
     """mise resolves `24` / `prefix:24` / `""` to a moving target, not a pin."""
     for spec in ('"24"', '"prefix:24"', '""'):
         root = tree(tmp_path)
-        mutate(root, REL_SOURCE, 'node = "24.22.1"', f"node = {spec}")
+        mutate(root, REL_SOURCE, 'node = "26.13.0"', f"node = {spec}")
         result = check(tool, root)
         assert result.returncode != 0, spec
         assert "node" in result.stderr, spec
@@ -261,7 +261,7 @@ def test_non_toml_whitespace_is_not_normalized(
     tool: Path, tmp_path: Path, space: str
 ) -> None:
     root = tree(tmp_path)
-    mutate(root, REL_SOURCE, 'node = "24.22.1"', f'node{space}= "24.22.1"')
+    mutate(root, REL_SOURCE, 'node = "26.13.0"', f'node{space}= "26.13.0"')
     assert_parse_rejected_without_writes(tool, root, REL_SOURCE)
 
 
@@ -317,7 +317,7 @@ def test_invalid_utf8_is_rejected_without_writes(tool: Path, tmp_path: Path) -> 
 def test_a_failed_sync_writes_neither_file(tool: Path, tmp_path: Path) -> None:
     root = tree(tmp_path)
     before = (root / REL_FEATURE).read_bytes() + (root / REL_BOOTSTRAP).read_bytes()
-    mutate(root, REL_SOURCE, 'node = "24.22.1"', 'node = "24"')
+    mutate(root, REL_SOURCE, 'node = "26.13.0"', 'node = "24"')
     assert cli(tool, "sync", "--root", str(root)).returncode != 0
     after = (root / REL_FEATURE).read_bytes() + (root / REL_BOOTSTRAP).read_bytes()
     assert before == after, "a failed sync wrote to disk"

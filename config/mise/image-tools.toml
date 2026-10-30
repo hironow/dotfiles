@@ -45,7 +45,7 @@ markdownlint-cli2 = "0.23.3"
 prek = "0.5.6"
 uv = "0.13.5"
 vp = "1.3.0"
-node = "24.22.1"
+node = "26.13.0"
 # Go + golangci-lint: `just check` runs `just go-lint`. The one-shot
 # sandbox has no project mise.toml, so /etc/mise must already pin both
 # (golangci typechecks with Go; recipes invoke
