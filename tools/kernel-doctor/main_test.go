@@ -107,20 +107,27 @@ func TestOverrideOutranksTheNonLinuxGate(t *testing.T) {
 // READ, not merely that their values are discarded. Reading and discarding
 // would still touch the target host's files on a Linux run.
 func TestOverridePerformsNoLocalCollection(t *testing.T) {
-	fake := &fakeCollector{probe: linuxProbe("6.6.150", "0", true)}
-	var out bytes.Buffer
-	if code := run([]string{"--source", ".", "--json", "--osrelease", "6.6.159"}, &out, "linux", fake.collect); code == 2 {
-		t.Fatalf("an override must not be a usage error:\n%s", out.String())
-	}
-	if fake.calls != 0 {
-		t.Errorf("--osrelease must not consult the local host; collector ran %d time(s)", fake.calls)
-	}
-	var report JSONReport
-	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
-		t.Fatalf("--json output must decode: %v", err)
-	}
-	if len(report.Assessments) != 1 || report.Assessments[0].Outcome != AtOrAboveFloor {
-		t.Errorf("the supplied version must still be assessed: %+v", report.Assessments)
+	for _, goos := range []string{"linux", "darwin", "windows"} {
+		t.Run(goos, func(t *testing.T) {
+			fake := &fakeCollector{probe: Probe{GOOS: goos}}
+			var out bytes.Buffer
+			if code := run([]string{"--source", ".", "--json", "--osrelease", "6.6.159"}, &out, goos, fake.collect); code != 1 {
+				t.Fatalf("an override must report advisory warnings, got exit %d:\n%s", code, out.String())
+			}
+			if fake.calls != 0 {
+				t.Errorf("--osrelease must not consult the local host; collector ran %d time(s)", fake.calls)
+			}
+			var report JSONReport
+			if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+				t.Fatalf("--json output must decode: %v", err)
+			}
+			if report.Scope != "override-version-only" {
+				t.Errorf("override scope = %q", report.Scope)
+			}
+			if len(report.Assessments) != 1 || report.Assessments[0].Outcome != AtOrAboveFloor {
+				t.Errorf("the supplied version must still be assessed: %+v", report.Assessments)
+			}
+		})
 	}
 }
 
@@ -158,6 +165,28 @@ func TestAReadableHostIsAssessed(t *testing.T) {
 	}
 	if len(report.Assessments) != 1 || report.Assessments[0].Outcome != BelowFloor {
 		t.Fatalf("a readable kernel must produce exactly one assessment: %+v", report.Assessments)
+	}
+}
+
+// Drive non-Linux hosts through the real CLI, not evaluate alone. Otherwise
+// all test calls pass linux, and unparam sees goos as constant on Linux CI.
+func TestNonLinuxCLIYieldsNoAssessments(t *testing.T) {
+	for _, goos := range []string{"darwin", "windows"} {
+		t.Run(goos, func(t *testing.T) {
+			fake := &fakeCollector{probe: Probe{GOOS: goos}}
+			var out bytes.Buffer
+			_ = run([]string{"--source", ".", "--json"}, &out, goos, fake.collect)
+			var report JSONReport
+			if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+				t.Fatalf("--json output must decode: %v", err)
+			}
+			if fake.calls != 1 || report.Scope != goos || len(report.Assessments) != 0 {
+				t.Fatalf("non-Linux scope/collection mismatch: calls=%d report=%+v", fake.calls, report)
+			}
+			if !strings.Contains(dump(report.Findings), "kernel-not-applicable") {
+				t.Errorf("non-Linux CLI must report its limited scope: %+v", report.Findings)
+			}
+		})
 	}
 }
 
