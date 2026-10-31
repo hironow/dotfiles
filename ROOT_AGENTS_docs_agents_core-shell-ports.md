@@ -25,44 +25,16 @@ https://alistair.cockburn.us/hexagonal-architecture).
 - **Driving adapters** (CLI, HTTP handler, job runner, test) start the work.
   **Driven adapters** (database, external API, mail, clock) are used by it.
 
-## Example (Go)
-
 ```go
-// core: pure. Same input, same output. No fake needed to test it.
-func ExpiredSubscriptions(subs []Subscription, now time.Time) []Subscription {
-	var expired []Subscription
-	for _, s := range subs {
-		if !s.FreeTrial && !s.EndsAt.After(now) {
-			expired = append(expired, s)
-		}
-	}
-	return expired
-}
-
-func ExpiryEmails(subs []Subscription) []Email {
-	emails := make([]Email, 0, len(subs))
-	for _, s := range subs {
-		emails = append(emails, Email{To: s.Address, Body: "Your account has expired, " + s.Name + "."})
-	}
-	return emails
-}
+// core: pure values in, values out.
+func ExpiredSubscriptions(subs []Subscription, now time.Time) []Subscription
+func ExpiryEmails(subs []Subscription) []Email
 
 // ports: named for the purpose.
-type Subscriptions interface {
-	All(ctx context.Context) ([]Subscription, error)
-}
+type Subscriptions interface{ All(ctx context.Context) ([]Subscription, error) }
+type Mailer interface{ SendAll(ctx context.Context, emails []Email) error }
 
-type Mailer interface {
-	SendAll(ctx context.Context, emails []Email) error
-}
-
-// shell: read, call the core, write.
-type ExpiryNotifier struct {
-	subs   Subscriptions
-	mailer Mailer
-	now    func() time.Time
-}
-
+// shell: read through ports, call the core, write through ports.
 func (n ExpiryNotifier) Run(ctx context.Context) error {
 	subs, err := n.subs.All(ctx)
 	if err != nil {

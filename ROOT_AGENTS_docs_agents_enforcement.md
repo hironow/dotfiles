@@ -5,26 +5,18 @@ you need the exact exit-code contract. AGENTS.md has the short version.
 
 ## The three layers, and why written rules are not enough
 
-Instructions in AGENTS.md and CLAUDE.md are advisory. An agent usually follows
-them, but it can decide a rule does not apply. Rules that must hold every time
-need a machine to enforce them, at three points:
+Instructions in AGENTS.md and CLAUDE.md are advisory. Rules that must hold
+every time are enforced at three points:
 
-1. **Claude Code hooks** run before and after tool calls, whatever the model
-   decides. They are global: the dotfiles repo distributes them with
-   `just sync-agents` into `~/.claude/settings.json` + `~/.claude/hooks/*.sh`,
-   so they apply in every repo Claude Code touches. Other tools (Codex,
-   Cursor, Copilot) do not run them.
-2. **Git pre-commit** (`.githooks/pre-commit` → `just check`) is the same gate
-   for humans and for any tool that runs `git commit`. Repos scaffolded from
-   the agent baseline have it; turn it on once per clone with
-   `just install-hooks`.
+1. **Claude Code and Codex hooks** run before and after tool calls. The
+   dotfiles repo distributes them with `just sync-agents`.
+2. **Git pre-commit** (`.githooks/pre-commit` → `just check`) is the gate for
+   humans and any tool that runs `git commit` (`just install-hooks` per clone).
 3. **CI** (`.github/workflows/quality-gate.yaml`) is the merge gate:
-   `just check` plus a `tofu plan` drift check. The agent baseline provides it
-   too.
+   `just check` plus a `tofu plan` drift check.
 
-Written rules still matter: they carry the *why*, and the why lets you apply a
-rule to cases a hook does not match. Hooks cover the common cases; written
-rules cover the long tail.
+Hooks cover the common cases; written rules carry the *why* and cover the long
+tail.
 
 ## Hook exit-code contract (PreToolUse)
 
@@ -40,73 +32,38 @@ rules cover the long tail.
   Compose v1 names (`docker-compose.y{a,}ml`).
 - `block-secrets.sh` (Write|Edit): obvious secrets in file writes
   (OpenAI/GitHub/AWS/Slack/GitLab/Google-API-key shapes + PEM headers).
-  The list is minimal on purpose, as an extra layer of defense. The main wall
-  is a real secret scanner in CI (for example gitleaks), not this hook.
-- `block-prohibited-commands.sh` (Bash): a thin wrapper around a stdlib-only
-  Python guard (`block-prohibited-commands.py`, same directory). The guard
-  parses the command instead of scanning it with regexes. It blocks:
-  `pip`/`poetry`/`pipenv`; `npm`/`yarn`/`pnpm` and `corepack <pm>` (the direct
-  `corepack pnpm`/`yarn` run form, `@version` and `--cwd` variants included);
-  `make` (as command names); root deletion; force-push to main/master;
-  `gcloud` mutations that cause drift (open an IaC PR instead); and
-  **creating `.yml` files via Bash** (redirect targets, `touch`/`tee`
-  arguments, `cp`/`mv` destinations; reading stays allowed). Node is bun-only
-  (dotfiles ADR 0027). The `corepack enable`/`prepare`/`use` provisioning subcommands
-  stay allowed.
-- `rtk-hook-claude.sh` (Bash): wraps `rtk hook claude`, the rewriter of the
-  mandatory output proxy (dotfiles ADR 0047). It is not a guard. It **fails open**: on
-  any error it exits 0 and leaves the command unchanged, and it is the one hook
-  here that may exit non-zero without blocking. It removes rtk's
-  `permissionDecision: "allow"`, so rewritten commands keep the normal
-  permission flow. Inside a Claude Code isolation worktree it drops rtk's
-  `git` rewrite, because there the harness refuses any git command it can only
-  see through a launcher. Details: docs/agents/rtk.md.
+- `block-prohibited-commands.sh` (Bash): wraps `block-prohibited-commands.py`
+  (same directory; parser pipeline documented in its module docstring). Blocks:
+  `pip`/`poetry`/`pipenv`; `npm`/`yarn`/`pnpm` and `corepack <pm>` (provisioning
+  `corepack enable`/`prepare`/`use` stays allowed); `make`; root deletion;
+  force-push to main/master; `gcloud` mutations that cause drift; and creating
+  `.yml` files via Bash (redirects, `touch`/`tee`, `cp`/`mv` destinations). It
+  also unwraps `rtk` (including `rtk proxy|run|err|test|summary|smart <cmd>`) so
+  `rtk pnpm install` is blocked like `pnpm install`.
+- `rtk-hook-claude.sh` / `rtk-hook-codex.sh` (Bash): wraps `rtk hook` for the
+  mandatory output proxy (dotfiles ADR 0047). Fails open (`exit 0` on error)
+  and strips `permissionDecision` so rewritten commands keep the normal
+  permission flow. Details: docs/agents/rtk.md.
 - `format-after-edit.sh` (PostToolUse Write|Edit): runs `ruff format` +
   `ruff check --fix` on the edited Python file, and `gofmt -w` on the edited Go
-  file. It always works on a single file. It does not format TS/JS per edit on
-  purpose: a project-wide `just fmt` on every edit adds unrelated changes to
-  the diff. The gate is `just check` / CI.
+  file (single file only).
 
-## How the guard parses commands (and the long tail it accepts)
+## Avoiding false positives in Bash commands
 
-- A quoted string becomes one word. So prose that mentions a tool name (commit
-  messages, echo strings, multi-line ones too) never triggers the tooling
-  guards. The other side: a quoted invocation (`bash -c "npm i"`) and wrappers
-  outside the known set (`mise exec -- pnpm …`) get past them. This long tail
-  is accepted; written rules and review cover it.
-- The known wrapper set is `env`/`sudo`/`time`/`nohup`/`command`/`xargs` plus
-  **`rtk`**. For rtk, the real command is the first operand after rtk's own
-  flags. Behind a run-anything subcommand
-  (`rtk proxy|run|err|test|summary|smart <cmd>`) it sits one token further
-  right. rtk is in the set, not the long tail, because it is mandatory and its
-  hook adds it in front of commands by default. So `rtk pnpm install` is
-  blocked exactly like `pnpm install` (dotfiles ADR 0047).
-- Heredocs are judged by who receives them. A body read by a data sink
-  (`cat`, `gh`, `git`, …) is treated as prose and skipped by **all** guards
-  (so PR bodies via `gh pr create --body-file -` or `$(cat <<'EOF' …)` are
-  safe). A body fed to an interpreter (`bash`, `python`, `node`, …) is code
-  and is scanned like the top-level command.
-- The destructive and IaC guards still scan quoted text (only data-heredoc
-  bodies are skipped). So a prose mention of, for example, a gcloud mutation
-  inside `-m "…"` can block by mistake. Blocking too much is the safe side
-  there. Put long prose in a heredoc or a file (`git commit -F`,
-  `--body-file`).
-- Command parsing is best effort. If a guard blocks something it should not
-  (for example a prose mention the tokenizer cannot tell apart), ask the human
-  to run the command themselves with the `!` prefix.
+- Destructive and IaC guards scan quoted strings too, and skip only data-sink
+  heredoc bodies (`cat`, `gh`, `git`, `tee`). Put long commit or PR prose that
+  mentions `gcloud` or `rm` in a heredoc or file (`git commit -F`,
+  `gh pr create --body-file -`) instead of `-m "…"`.
+- If a guard blocks a safe command by mistake, ask the human to run it with the
+  `!` prefix. Never work around the guard.
 
-## Hook sources
+## Hook sources and repo scans
 
-Never edit `~/.claude/hooks/*` directly: the next `just sync-agents` overwrites
-them. Change the sources in the dotfiles repo; its `docs/agent-sync.md` says
-how to change and test a hook.
+Never edit `~/.claude/hooks/*` or `~/.codex/hooks/*` directly: the next
+`just sync-agents` overwrites them. Change the sources in the dotfiles repo
+(see `docs/agent-sync.md` there).
 
-## Policy files name the patterns they forbid
-
-AGENTS.md and the guide files in this directory name prohibited patterns on
-purpose, as examples. When you scan a repo for violations, exclude the policy
-files themselves, for example
-`git grep <pattern> -- ':(exclude)**/AGENTS.md' ':(exclude)**/CLAUDE.md'`.
-
-Also exclude the repo's agent-guide directory if it has one. The
-`block-prohibited-files` hook already skips these paths.
+Policy files name prohibited patterns as examples. Exclude them when scanning a
+repo for violations:
+`git grep <pattern> -- ':(exclude)**/AGENTS.md' ':(exclude)**/CLAUDE.md'` (plus
+any agent-guide directory).

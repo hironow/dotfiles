@@ -1,7 +1,5 @@
 # RTK — Rust Token Killer
 
-Every script and `just` recipe in this guide belongs to the dotfiles repo.
-
 Read this when you run shell commands through `rtk`, check its token savings,
 or debug output that looks filtered when you did not expect it.
 
@@ -9,119 +7,52 @@ or debug output that looks filtered when you did not expect it.
 output). It is **mandatory base tooling**, and you cannot opt out (dotfiles ADR 0047).
 Each agent reaches it in one of these ways:
 
-- **Claude Code and Codex**: a hook rewrites commands for you (for example,
-  `git status` becomes `rtk git status`).
-- **Pi**: rtk's own extension does the same for the bash tool
-  (`config/pi/extensions/rtk.ts`, vendored and placed by
-  `just pi-extensions-install`; after an rtk upgrade, run `just rtk-pi-refresh`).
+- **Claude Code and Codex**: a PreToolUse hook (`hooks/rtk-hook-claude.sh` /
+  `hooks/rtk-hook-codex.sh`, distributed by `just sync-agents`) rewrites
+  commands automatically (for example `git status` → `rtk git status`).
+- **Pi**: `config/pi/extensions/rtk.ts` does the same for the bash tool (placed
+  by `just pi-extensions-install`; refresh after an rtk upgrade with
+  `just rtk-pi-refresh`).
 - **Other agents**: call `rtk` explicitly.
 
-## dotfiles manages the hook
+## Hook and permission rules
 
-The PreToolUse hook is `hooks/rtk-hook-claude.sh`. `.claude/settings.hooks.json`
-declares it, and `just sync-agents` distributes it like every other hook. It
-wraps `rtk hook claude` instead of replacing it, so rtk still decides what gets
-rewritten.
-
-Codex gets `hooks/rtk-hook-codex.sh` from `.codex/hooks.json` the same way. This
-wrapper passes on `rtk hook codex`'s answer, approval field included; Codex
-grants no approval from that field. The wrapper does change the rewrite: it
-names rtk's real binary (`mise which rtk`). The command runs in Codex's sandbox,
-and there a mise shim cannot read mise's config ("No version is set for shim:
-rtk"). As in the Claude wrapper, the hook keeps only a plain `rtk <command>`
-rewrite, and only when the path needs no quoting (pwsh runs it on Windows). In
-every other case, the typed command runs. `just doctor` shows whether Codex
-trusts the hooks (see `docs/agent-sync.md` in the dotfiles repo).
-
-**Never add `"command": "rtk hook claude"` (or `rtk hook codex`) to a settings
-or hooks file by hand.** If rtk's installer adds it during an upgrade, leave it:
-`just sync-agents` retires that block on every run (`RETIRED_HOOK_COMMAND` in
-`scripts/sync_agents.py`). With two rewriting hooks in one session, rtk wins and
-the worktree git carve-out below
-("Worktree-isolated agents") never fires.
-
-The wrapper **fails open**: if rtk is missing or fails, the command runs
-unchanged. It is an optimizer, not a guard.
-
-## Install and telemetry
-
-rtk (and headroom) come from mise on every OS (`config/mise/config.toml`). So
-you never need `rtk init -g`. Running it would add the hook block that
-`just sync-agents` retires, and write its own `RTK.md` into agent homes that
-`just sync-agents` owns.
-
-Telemetry stays off through `RTK_TELEMETRY_DISABLED=1` (and
-`HEADROOM_BEACON=off`). These are set in three places: mise's global `[env]`,
-the shared Claude settings env, and on Windows the persisted User env
-(`just harden-env`).
+- **Never run `rtk init -g` or add `"command": "rtk hook claude"` /
+  `"rtk hook codex"` by hand.** mise installs rtk (`config/mise/config.toml`),
+  and `just sync-agents` owns the hook entries and retires any raw installer
+  block (`RETIRED_HOOK_COMMAND`).
+- **The hook fails open and never auto-approves.** If rtk is missing or fails,
+  the original command runs. The Claude wrapper forwards only `updatedInput` and
+  strips `permissionDecision`, so rewritten commands keep the normal permission
+  flow. Never set `RTK_HOOK_PERMISSION_DECISION` in any settings file (it is a
+  test-only seam).
+- **Telemetry stays off** via `RTK_TELEMETRY_DISABLED=1` (and
+  `HEADROOM_BEACON=off`) in mise's global `[env]`, shared Claude settings, and
+  Windows User env (`just harden-env`).
 
 rtk may print "No hook installed — run `rtk init -g`", and `rtk init --show`
 may report "Hook: not found". Both are expected: rtk looks only for its
 installer's layout, not for the dotfiles-managed hook above. Ignore them. The
 real check is the `claude-rtk-hook` line of `just doctor`.
 
-## rtk does not approve commands
-
-rtk answers `permissionDecision: "allow"` for everything it rewrites. That would
-auto-approve most Bash traffic. So the Claude Code wrapper **forwards only the
-rewrite** (`updatedInput`) and drops every other field. Rewritten commands still
-go through the normal permission flow, and an approving field that a later rtk
-adds cannot slip through. rtk optimizes output; it does not approve. Installing
-it must not change the permission posture (dotfiles ADR 0047).
-
-The wrapper's `RTK_HOOK_PERMISSION_DECISION` variable is an override **for tests only**.
-Never set it in managed settings (any `.claude/settings*.json` fragment, or
-`settings.sync-local.json`). Any value other than `strip` brings back rtk's
-blanket auto-approval, and a unit test fails the build if a tracked fragment
-sets it.
-
-## Worktree-isolated agents: the hook does not rewrite git
+## Worktree-isolated agents: git and compound commands
 
 Inside a Claude Code isolation worktree (`*/.claude/worktrees/*`), the wrapper
-drops rtk's git rewrite, so plain `git` runs. Everything else (`ls`, `grep`,
-`rg`, `docker`, …) keeps rtk's compression. Outside such a worktree, nothing
-changes.
+drops rtk's git rewrite so plain `git` runs, while other commands (`ls`, `grep`,
+`rg`, `docker`, …) keep rtk's compression.
 
-Why: the Claude Code harness's isolation check reads the command *after*
-hook rewrites. It sees a
-launcher it cannot look through and refuses the whole call. For a command typed
-as a bare `git`, it says:
-
-> …but this command runs rtk with a git command among its operands: what runs
-> it, and from which directory or root, cannot be read here … so what it runs
-> cannot be shown not to be git. Refusing to run it …
-
-## When the harness still refuses: use `/usr/bin/git`
-
-Two refusals come from the Claude Code harness itself, not from rtk or any
-dotfiles hook, so nothing here can fix them. You can recognize both by the
-words "too complex to verify":
-
-1. **`git` matched inside an unrelated word.** The harness refuses
-   `for f in gitpython; do echo "$f"; done`, but runs the same loop over
-   `pythonlib`.
-2. **Any compound construct.** The harness refuses `eval "$(echo echo hi)"`,
-   even though it names neither git nor a launcher. It refuses loops and
-   command substitutions that run `bash`/`mise`/`eval` the same way.
-
-Workarounds: call `/usr/bin/git` (a full path, so rtk does not rewrite it), and
-split compound constructs into plain, separate commands.
-
-## The command guard looks through rtk
-
-`block-prohibited-commands` finds the real command behind the proxy. So it
-blocks `rtk pnpm install` exactly like `pnpm install`. This includes the
-run-anything subcommands (`rtk proxy …`, `rtk run …`, `rtk err …`,
-`rtk test …`, `rtk summary …`, `rtk smart …`). Putting `rtk` in front of a
-banned tool does not get around the ban.
+If the Claude Code harness itself still refuses a command inside a worktree with
+"too complex to verify" (for example `git` matched inside a word like
+`gitpython`, or a compound loop/`eval`), call `/usr/bin/git` directly and split
+compound constructs into separate commands.
 
 ## rtk's own commands
 
-Call these directly: `rtk gain` shows the token savings (`--history` per
-command), `rtk discover` finds commands that rtk could have filtered, and
-`rtk proxy <cmd>` runs a command without filtering. To check the install, run
-`rtk --version` and `which rtk`; `rtk hook check "<cmd>"` shows how the hook
-would rewrite a command.
+Call these directly: `rtk gain` shows token savings (`--history` per command),
+`rtk discover` finds commands rtk could have filtered, and `rtk proxy <cmd>`
+runs a command without filtering (`block-prohibited-commands` still inspects the
+wrapped command; see docs/agents/enforcement.md). To check the install, run
+`rtk --version`, `which rtk`, and `rtk hook check "<cmd>"`.
 
 ⚠️ **Name collision**: if `rtk gain` fails, you may have the wrong rtk:
 reachingforthejack/rtk (Rust Type Kit).

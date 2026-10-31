@@ -1,55 +1,41 @@
 # Skills maintenance
 
-Read this when you add, compare, retire, or distribute a skill. That covers
-hironow/skills, and any installed third-party skill that overlaps with one of
-ours. The conventions for the skills themselves, and the tooling that checks
-them (`scripts/`, `tests/`, `justfile`, CI), live in hironow/skills. This file
-covers the procedure around them and how skills reach the agent homes
-(dotfiles ADR 0043).
+Read this when you add, compare, retire, or distribute a skill (`hironow/skills`
+or third-party skills in `dump/harness/skill-lock.json`).
 
 ## Where skills live and how they reach agents
 
-- **hironow/skills** (a normal clone, for example
-  `~/ghq/github.com/hironow/skills`)
-  holds self-authored skills and forks that carry a deliberate local change.
-  Changes go branch → PR (`just check` locally and in its CI) → squash merge.
-  dotfiles holds no copy of it.
-- **`~/.agents/skills` (the store)** holds every skill, ours and third-party.
-  The `bunx skills` CLI installs them, and dotfiles declares them in
-  `dump/harness/skill-lock.json` (`source: hironow/skills` for ours). Pi reads
-  the store directly. Only ever ask the CLI to write the store
-  (`-a universal`).
-- **Consumer homes** (`~/.claude/skills`, `~/.claude-work-{a..d}/skills`,
-  `~/.codex/skills`, `~/.gemini/skills`) hold relative symlinks into the store.
-  In the dotfiles repo, `scripts/skills_lock.py place` (`just skills-place`)
-  places them; where the
-  OS refuses symlinks, it places a tracked copy. Never edit a skill inside a
-  home: `just skills-place` keeps and reports a differing real directory,
-  and the CLI's own `update` would overwrite it. Edit in the skill's source
-  repository.
-- **hironow/skills wins a name collision** with a third-party skill: `dump`
-  keeps our record, `check` fails on a collision, and `restore` installs ours
-  last and repairs a store entry whose source is not ours.
+- **hironow/skills** holds self-authored skills and forks with local changes
+  (branch → PR with `just check` → squash merge).
+- **`~/.agents/skills` (the store)** holds every skill, installed by
+  `bunx skills` (`-a universal` so the CLI writes only the store) and declared
+  in `dump/harness/skill-lock.json` (dotfiles ADR 0043). Pi reads the store
+  directly.
+- **Consumer homes** (`~/.claude*`, `~/.codex`, `~/.gemini`) get relative
+  symlinks (or tracked copies) into the store via `just skills-place`. Never
+  edit a skill inside a home; edit in its source repository.
+- **hironow/skills wins name collisions**: `just skills-lock-check` (in `just ci`)
+  enforces this, and `just restore-skills-lock` installs `hironow/skills` last.
+- **Private skills** never go into `hironow/skills` or `skill-lock.json`
+  (`just dump-skills-lock` excludes private sources via `gh` and fails closed if
+  visibility cannot be verified). Install private skills per machine with
+  `bunx skills add <repo> -g -s <name> -y -a universal` and link them manually.
 
-## Gates and recipes
+| repo | command | purpose |
+| --- | --- | --- |
+| hironow/skills | `just check` | frontmatter, links, fences, provenance contract, README sync |
+| hironow/skills | `just audit-consumers` | every home resolves each skill to checkout-identical bytes |
+| hironow/skills | `just compare <fork> /abs/<upstream>...` | size, description, tooling violations, and body diff |
+| dotfiles | `just dump-skills-lock` | update `skill-lock.json` from store (refuses silent self-drop unless `--allow-self-drop`) |
+| dotfiles | `just restore-skills-lock` | new machine: install declared skills into store, then place |
+| dotfiles | `just skills-update` | `skills update -g -y` on store, then re-place homes |
+| dotfiles | `just skills-place` | (re)link homes (`--force` replaces differing dirs, `--copy` forces copies) |
 
-| command | what it proves / does |
-| --- | --- |
-| in hironow/skills: `just check` (`audit`, `readme-check`, tests, ruff, ty — the same uv/ruff/ty trio, pinned in that repo's own pyproject) | frontmatter shape, links and anchors, balanced fences, no emoji, Japanese only in the allowed places, provenance contract, README tables in sync; its CI runs the same on every PR |
-| in hironow/skills: `just audit-consumers` | every home resolves each skill to bytes identical to the checkout (through the links); no dangling symlinks |
-| in hironow/skills: `just compare <fork> /abs/<upstream>...` | size, description, tooling-rule violations, and body diff of two or more versions |
-| dotfiles: `just skills-lock-check` (in `ci`) | the committed declaration lets no third-party skill shadow a hironow/skills name |
-| dotfiles: `just dump-skills-lock` | normalize the CLI's machine lock into the declaration; refuses to drop a hironow/skills record silently (`--allow-self-drop`); leaves out a skill whose source is private (asks `gh`), and writes nothing when a source's visibility cannot be told |
-| dotfiles: `just skills-update` | after a hironow/skills merge or any upstream change: `skills update -g -y` on the store, then re-place the homes |
-| dotfiles: `just skills-place` | (re)link the homes; idempotent; `--force` replaces differing real directories, `--copy` forces tracked copies |
-| dotfiles: `just restore-skills-lock` | new machine: install every declared skill into the store (hironow/skills last), then place |
-
-`SKILLS_LOCK_HOME=<dir>` points the script and the child CLI at another home,
-for a rehearsal. A full rehearsal still belongs in a container.
+Use `SKILLS_LOCK_HOME=<dir>` for a rehearsal in a separate home.
 
 ## Provenance contract (derived skills)
 
-A skill that started from someone else's work carries this in its frontmatter:
+A skill derived from upstream work carries this frontmatter:
 
 ```yaml
 license: Apache-2.0                          # SPDX id of the license we redistribute under
@@ -60,81 +46,37 @@ metadata:
   changes: "one line on what changed here"   # quote it: a bare value must not contain ': '
 ```
 
-Rules for derived skills:
+- Keep the upstream `LICENSE*` file untouched in the skill directory.
+- Add a first-line modification notice (`<!-- Modified from owner/repo@sha:path; ... -->`
+  or `#` comment) to every bundled file that differs from upstream.
+- For gists, use `upstream: gist:<owner>/<gist-id>@<revision-sha>:<file>`. If
+  origin is unknown, write `upstream: unknown`.
+- Original skills use `provenance: original` (and optional `metadata.inspired-by`
+  URLs separated by `; `). Run `just readme-index` and `just audit` in
+  `hironow/skills`.
 
-- Keep the upstream `LICENSE*` file in the skill directory and never edit it
-  (Apache-2.0 and MIT both require it). For a public-domain dedication such as
-  the Unlicense, bundle the text with a note on where the author declared it.
-- Every bundled file that differs from the upstream revision carries a
-  modification notice on its first line
-  (`<!-- Modified from owner/repo@sha:path; ... -->`, or a `#` comment in
-  scripts). Apache-2.0 section 4(b) asks for this.
-- Write a gist as `upstream: gist:<owner>/<gist-id>@<revision-sha>:<file>`
-  (take the revision from `gh api gists/<id>`, `history[].version`).
-- If you do not know the origin, write `upstream: unknown` and say so in
-  `changes`. Never guess an author.
+## Comparing a fork with its upstream (dedup procedure)
 
-A skill you wrote yourself gets `provenance: original` once that is confirmed:
-the first commit was authored in-repo, no public copy is older than it, and
-nothing in the cloned upstreams matches it. Without the key, the skill is
-listed as "origin not yet confirmed". An original skill whose idea came from a
-public post or article names it in `metadata.inspired-by` (URLs separated by
-`; `), and the README lists it as idea credit. In hironow/skills,
-`just readme-index` turns all this into the README credits block (one row per
-upstream), and `just audit` rejects a derived skill whose contract is
-incomplete.
-
-Skills that must not be published do not belong in hironow/skills at all.
-Personal ones go to a private personal skills repository; organization-internal
-ones go to that organization's own skills repository. Never name such a
-repository in dotfiles: the declaration is public, so `just dump-skills-lock`
-leaves their skills out. Install them on each machine by hand
-(`bunx skills add <repo> -g -s <name> -y -a universal`) and link them into the
-homes the same way `skills-place` does (`<home>/skills/<name>` ->
-`../../.agents/skills/<name>`). `skills-place` neither places nor removes an
-undeclared skill.
-
-## Comparing a fork with its upstream (the dedup procedure)
-
-Start this when a skill of ours and an installed third-party skill answer the
-same request (a routing dry-run names one as a close runner-up of the other).
-"Newest upstream" is not automatically better: we removed cruft from our forks
-on purpose.
-
-1. **Fetch, do not install.** `git clone --depth 1` the upstream into a scratch
-   directory. Never run `bunx skills check` or `update` before comparing: they
-   rewrite the store copy of anything the CLI tracks, including forks it once
-   installed.
-2. **Quantitative pass.** In the hironow/skills clone, run
-   `just compare <fork> /abs/<scratch>/<upstream-skill>` for size, description
-   length, tooling violations, and diff size.
-3. **Independent judge.** Give a read-only model both files with the prompt
-   below (capability inventory first, scores with quoted evidence, one of
-   four verdicts). Check every quoted line against the files before you act on
-   a finding.
+1. **Fetch, do not install.** `git clone --depth 1` upstream into a scratch dir.
+   Never run `bunx skills check` or `update` before comparing.
+2. **Quantitative pass.** In `hironow/skills`, run
+   `just compare <fork> /abs/<scratch>/<upstream-skill>`.
+3. **Independent judge.** Give a read-only model both files with the judge
+   prompt below. Verify every quoted line against the files before acting.
 4. **Decide**: `KEEP_FORK` / `PORT_UPSTREAM_INTO_FORK` /
-   `REPLACE_FORK_WITH_UPSTREAM` / `KEEP_BOTH_DIFFERENTIATE`. In the last case,
-   edit only the fork's description: an edit to an installed skill is lost on
-   reinstall.
-5. **Execute in this order: place the successor → verify every consumer can
-   read it → retire the old copy.**
-   - keep/port: edit the fork in hironow/skills, PR, merge, then in dotfiles
-     run `just skills-update` (store refresh + place). Retire the upstream
-     install with `bunx skills remove -g <upstream-name> -y` (the default scope
-     is the project, so `-g` is mandatory). Then run `just dump-skills-lock`
-     and `just skills-place` (a removed store entry is reported as missing
-     until the declaration drops it).
-   - replace: run `bunx skills add <repo> -g -s <name> -y -a universal` (store
-     only). Then delete the fork in hironow/skills (PR, merge), run
-     `just skills-update`, and run `just dump-skills-lock --allow-self-drop`.
-     Dropping our record is the intended outcome here, so say so explicitly.
-   - afterwards: run `just skills-place` (0 kept, 0 missing) and, in the
-     hironow/skills clone, `just audit-consumers`. Then confirm with Pi (below).
-6. **Confirm routing** with a fresh Pi session (a session that already discussed
-   the removed skill keeps naming it): `pi -p --tools read --no-session --model
-   opencode-go/glm-5.3 "<routing prompt>" < /dev/null`. To see Pi's own view of
-   the installed skills, without a model call: `printf
-   '{"id":"1","type":"get_commands"}\n' | pi --mode rpc --offline`.
+   `REPLACE_FORK_WITH_UPSTREAM` / `KEEP_BOTH_DIFFERENTIATE` (edit only the
+   fork's description).
+5. **Execute (place successor → verify consumers → retire old copy)**:
+   - keep/port: merge in `hironow/skills`, run `just skills-update`, retire
+     upstream with `bunx skills remove -g <upstream-name> -y`, then run
+     `just dump-skills-lock` and `just skills-place`.
+   - replace: `bunx skills add <repo> -g -s <name> -y -a universal`, delete fork
+     in `hironow/skills` (PR, merge), then run `just skills-update` and
+     `just dump-skills-lock --allow-self-drop`.
+   - verify: `just skills-place` (0 kept, 0 missing) and `just audit-consumers`
+     in `hironow/skills`.
+6. **Confirm routing** with a fresh Pi session:
+   `pi -p --tools read --no-session --model opencode-go/glm-5.3 "<routing prompt>" < /dev/null`.
 
 ### Judge prompt
 
@@ -164,16 +106,10 @@ first (exact skill:<name> or "none"), the runner-up if one was a close candidate
 sentence why. Requests: 1. "..." 2. "..." ... Output a markdown table: # | chosen | runner-up | why.
 ```
 
-Run it before and after the change with the same requests. The evidence is a
-same-purpose runner-up that disappears.
-
 ## Rewriting a skill in another language
 
-Write instructions in English. Keep the reader's language for the
-Japanese-writing skills and for anything printed or filled in for a person
-(templates, assets, Slack messages, report formats, setup notices, quoted
-trigger phrases). After a rewrite, run a fidelity check with a read-only
-model. It compares the original with the rewrite and reports only semantic
-differences (omission, addition, meaning change, reference break), each with
-both quotes and a severity. It ends with a verdict: FAITHFUL or NEEDS_FIX.
-Before merging, restore the original meaning for every medium or high finding.
+Write instructions in English; keep the reader's language for Japanese-writing
+skills and human-facing templates/outputs. After a rewrite, run a read-only
+model fidelity check comparing original and rewrite for semantic differences
+(omission, addition, meaning change, reference break) and fix every medium/high
+finding before merging.

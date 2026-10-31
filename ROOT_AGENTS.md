@@ -16,37 +16,29 @@ explicit instruction in the chat overrides everything here.
 
 ## Rules you must not break
 
-Hooks, pre-commit, and CI enforce these rules (see Enforcement). For Claude
-Code, hooks block violations in every repo. Other tools rely on pre-commit and
-CI where the agent baseline (the per-repo justfile, pre-commit, and CI
-scaffold from the dotfiles repo) is installed. Each rule gives its reason so you can
-apply it to cases it does not list.
+Hooks, pre-commit, and CI enforce these rules (see Enforcement). Each rule gives
+its reason so you can apply it to cases a check does not list.
 
 - **Existing Python uses `uv`, `ruff`, and `ty`. No substitutes.** Use `uv` to install
   and run (`uv sync`, `uv add`, `uv run`). Never use `pip`, `poetry`, or
   `pipenv`: two resolvers put the lockfile out of sync. Use `ruff` to lint and
   format, and `ty` (astral-sh/ty) to check types. Never use `mypy`, `pyright`,
-  `flake8`, `black`, or `isort`. One toolchain, one config, one gate. Details:
-  docs/agents/python-tooling.md.
+  `flake8`, `black`, or `isort`. One toolchain, one config, one gate.
 - **New code is Go, newest stable; Rust only when Go does not fit.** Write new
   services, CLIs, and tools (and the control plane) in Go, not Python,
   TypeScript, Ruby, or shell. Ship one binary per OS and CPU so the same tool
   runs on every device. Go 1.27 is the minimum; use the newest stable Go the
-  module compiles with. Details: docs/agents/go-tooling.md. Use Rust only for
-  no-GC, tight-memory, or WASM targets, or an existing Rust codebase:
-  docs/agents/rust-tooling.md.
+  module compiles with. Use Rust only for no-GC, tight-memory, or WASM targets,
+  or an existing Rust codebase.
 - **Use few dependencies; use the standard library first.** In every language,
   use the official standard library before a third-party package, and use its
   newest features and methods. A third-party package needs a reason the
   standard library cannot meet. Fewer packages mean less supply-chain risk and
   fewer upgrades.
-- **Never use LiteLLM, in any repo or language.** The PyPI package was
-  compromised twice in 2026 (1.82.7/1.82.8 in March, 1.107.0 on 2026-10-21 —
-  every wheel of the latter carried a credential stealer and an hourly
-  remote-code loader, and it was live for about two hours). A cooldown cannot
-  cover that: one pull during the window is enough. Call a provider SDK
-  directly. Existing uses are removed, not extended. Details:
-  docs/agents/dependency-policy.md.
+- **Never use LiteLLM, in any repo or language.** Its PyPI release channel
+  shipped credential-stealing malware twice in 2026 within hours, faster than
+  any cooldown window can cover. Call a provider SDK directly. Existing uses are
+  removed, not extended.
 - **Use only `bun` for Node.** Never use `npm`, `yarn`, or `pnpm`, including
   `corepack pnpm`. The reason is the same: lockfiles go out of sync.
 - **`just` is the only task runner.** Keep exactly one `justfile`, at the repo
@@ -58,7 +50,7 @@ apply it to cases it does not list.
 - **Never change infrastructure managed as code (IaC) by hand.** Change production (GCP,
   IAM, Cloud Run, cloud VMs, clusters) only through OpenTofu, a PR, and CD. A
   stray `gcloud ... update` creates drift, and the next `tofu apply` silently
-  reverts it. Details: docs/agents/iac-drift-policy.md.
+  reverts it.
 - **Never weaken a check to make it pass.** Do not edit ruff, ty, semgrep, or
   golangci config to hide a finding. Never commit with failing tests or with
   lint or type findings. Fix the cause.
@@ -69,7 +61,7 @@ Run `just` to list the repo's tasks. `just check` is the full local gate for
 every language in the repo.
 
 If you need a command that is not a `just` task, add it to the root `justfile`.
-Do not write a one-off script (see docs/agents/project-structure.md).
+Do not write a one-off script.
 
 ## When principles conflict
 
@@ -83,12 +75,10 @@ If you are unsure, write a test that pins down the requirement before you code.
 ## How to work (Tidy First, TDD, YAGNI, KISS, DRY, SOLID)
 
 - Start every change with a failing test: **Red → Green → Refactor.** Write
-  only enough code to pass. Refactor only when tests are green. Full cycle:
-  docs/agents/tdd-workflow.md.
+  only enough code to pass. Refactor only when tests are green.
 - **Keep structural and behavioral changes in separate commits (Tidy First).** Commit the
   structural change first. The Conventional Commit *type* says which kind a
-  commit is, so one commit never mixes types. Type list and examples:
-  docs/agents/commit-discipline.md.
+  commit is, so one commit never mixes types.
 - **Build only what is needed, as simply as possible.** YAGNI: build only what a
   current requirement or test asks for. KISS: choose the simplest design that
   works. DRY: keep each piece of knowledge in one place, but do not merge code
@@ -102,7 +92,7 @@ If you are unsure, write a test that pins down the requirement before you code.
   permission prompts attributed to the terminal app.
 - **Name things specifically.** Choose the name that says what the thing does
   in this domain. Do not use generic words such as `Manager`, `Helper`, or
-  `Util`. Rules and examples: docs/agents/naming.md.
+  `Util`.
 - **Check before you say it is done.** Run `just check`. Report the results
   honestly, including failures.
 
@@ -117,8 +107,7 @@ If you are unsure, write a test that pins down the requirement before you code.
 - **Every external service gets a fake in `fake/`.** A fake is a small working
   in-memory version of the port. Tests and local runs use fakes by default; a
   real adapter needs explicit configuration, so nothing calls a real service by
-  accident. Details, examples, and wiring checks:
-  docs/agents/core-shell-ports.md.
+  accident.
 
 ## GRIT (required both ways: show it yourself and demand it of others)
 
@@ -143,8 +132,7 @@ proof of completion. Scoring rubric (1-5): the `grilling:grit-grill` skill.
 
 - **Write in plain language, in every language.** Put the main point first, use
   short sentences, the active voice, and common words. This covers docs, code
-  comments, commit and PR text, and answers. Rules and a checklist:
-  docs/agents/plain-language.md.
+  comments, commit and PR text, and answers.
 - `docs/*.md` describe the system as it is **now**. No history, no TODOs, no
   roadmap. An outdated doc is a bug: update docs in the same commit as the code.
 - `docs/intent.md` says why we are doing this work now. A human writes it;

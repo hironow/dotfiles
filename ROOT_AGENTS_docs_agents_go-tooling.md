@@ -34,26 +34,18 @@ classes: docs/agents/dependency-policy.md.
 
 Lint and format with **golangci-lint v2**: one tool, one config.
 
-- `golangci-lint run` lints (it includes `go vet`, staticcheck, errcheck, ...).
+- `golangci-lint run` lints (includes `go vet`, staticcheck, errcheck, ...).
 - `golangci-lint fmt` formats, with **gofumpt only**. If you also enable
   goimports, `fmt` and `run` disagree on import groups.
-
-Keep one golangci-lint v2 config shape: gofumpt as the only formatter, the
-standard linters plus `bodyclose`, `errorlint`, `gocritic`, `gocyclo`, `gosec`,
-`misspell`, `nilerr`, `perfsprint`, `revive`, `unconvert`, and `unparam`. Copy
-the dotfiles `.golangci.yaml` to the module root and change only build tags,
-`gofumpt.module-path`, and per-path exclusions. Change the linter set in one
-place, not in each repo.
-
-Wire it into the root `justfile`: a `go-lint` recipe that runs
-`golangci-lint run ./...` and `golangci-lint fmt --diff ./...` (called from
-`just check`), and a `go-fmt` recipe that runs `golangci-lint fmt ./...`.
-
-The Claude `format-after-edit` hook still runs `gofmt -w` on each edited file.
-That is a convenience, not the gate. Run tests with `go test ./...`. Use
-deterministic clocks instead of wall-clock sleeps. HTTP tests use `httptest`
-or bind `:0`. CI pins golangci-lint and installs the Go version that the
-module's `go` / `toolchain` directive requires.
+- Copy the dotfiles `.golangci.yaml` to the module root and change only build
+  tags, `gofumpt.module-path`, and per-path exclusions. Change the linter set in
+  one place, not in each repo.
+- Wire it into the root `justfile`: `go-lint` (`golangci-lint run ./...` and
+  `golangci-lint fmt --diff ./...`, called from `just check`) and `go-fmt`
+  (`golangci-lint fmt ./...`).
+- Run tests with `go test ./...`. Use deterministic clocks instead of wall-clock
+  sleeps. HTTP tests use `httptest` or bind `:0`. CI pins golangci-lint and
+  installs the Go version that the module's `go` / `toolchain` directive requires.
 
 ## Ship binaries for every device
 

@@ -1,37 +1,21 @@
 # headroom — the context optimization layer
 
-headroom is mandatory base tooling, next to [rtk](./rtk.md). Every script and
-`just` recipe in this guide belongs to the dotfiles repo. mise installs it
+headroom is mandatory base tooling, next to [rtk](./rtk.md). mise installs it
 (`pypi:headroom-ai`, extras `proxy,code`). rtk compresses what a *command*
 prints to your terminal; headroom compresses what reaches the *model*.
 
-## Two routes, with different blast radius on purpose
+## Two routes
 
-**The MCP server: every Claude home.** In the dotfiles repo,
-`just headroom-mcp-register` (and `just deploy`) registers `headroom mcp serve`
-through Claude Code's own
-`claude mcp add --scope user`, with `CLAUDE_CONFIG_DIR` set per home. It offers
-three tools that the agent calls when it needs them:
-`mcp__headroom__headroom_compress`, `…_retrieve`, and `…_stats` (the doubled
-name is normal MCP namespacing). If the server is down, the tools disappear and
-the session carries on. A broken headroom costs a tool, never a session.
+- **MCP server (every Claude home)**: `just headroom-mcp-register` (and
+  `just deploy`) registers `headroom mcp serve` via `claude mcp add --scope user`.
+  It exposes `mcp__headroom__headroom_compress`, `…_retrieve`, and `…_stats`. If
+  the server is down, only those tools disappear; the session continues.
+- **Proxy (`j-cc` and `j-pi` Codex workers only)**: `scripts/jev_headroom.py`
+  starts or reuses one local proxy and points only the launched process at it
+  (fail-open: if proxy setup fails, the launcher starts without headroom). Plain
+  `claude` stays direct so Remote Control keeps working. Verify both headroom
+  and rtk together with `just jev-headroom-verify rtk`.
 
-**The proxy: the dotfiles launchers only.** `j-cc` (the launcher for Claude
-Code) sends its Claude through the proxy; `j-pi` readies the same proxy for its
-Codex workers. `scripts/jev_headroom.py` starts one proxy on a free port per
-launch, or reuses one that is ready. It points only the Claude process it starts
-at that proxy (`ANTHROPIC_BASE_URL`). Any problem means "launch without
-headroom", never "j-cc does not start". A custom base URL turns off Remote
-Control, which is why plain `claude` stays direct. The launchers start or reuse
-the proxy. If proxy setup fails, they launch without it. It is also the canary
-that shows the proxy works. There is no launchd service, on purpose: one
-mechanism, not two.
-
-A j-cc session gets both layers: headroom's proxy for what reaches the model,
-and rtk's hook for what its commands print. `just jev-headroom-verify rtk`
-checks both together in one session (a proxied request plus rtk's own count).
-
-Do not run `headroom wrap claude` or `headroom init`. `wrap` fails closed by
-design (when headroom breaks, the Claude session fails too) and writes the
-`settings.json` env that `just sync-agents` owns. `just doctor`'s
-`headroom-routing` line warns if either one has run.
+Do not run `headroom wrap claude` or `headroom init`. `wrap` fails closed and
+overwrites the `settings.json` env that `just sync-agents` owns (`just doctor`'s
+`headroom-routing` check warns if either has run).
