@@ -86,7 +86,7 @@ def test_egm_only_install_is_scoped_and_preserves_the_selected_home(
     assert not (agent / "extensions").exists()
     assert sorted(p.name for p in (agent / "agents").iterdir()) == ["egm-reviewer.md"]
     assert (agent / "docs/agents/egm.md").is_file()
-    assert str(agent / "docs/agents/egm.md") in (agent / "AGENTS.md").read_text(
+    assert (agent / "docs/agents/egm.md").as_posix() in (agent / "AGENTS.md").read_text(
         encoding="utf-8"
     )
 
@@ -337,7 +337,7 @@ def test_pi_context_preserves_user_text_and_refreshes_only_its_block(
     refreshed = installer.egm_context(decorated, moved)
     assert refreshed.startswith(original)
     assert refreshed.endswith("\nAdditional user instructions.\n")
-    assert str(moved) in refreshed and str(guide) not in refreshed
+    assert moved.as_posix() in refreshed and guide.as_posix() not in refreshed
 
 
 @pytest.mark.parametrize(
