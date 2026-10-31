@@ -1,8 +1,11 @@
 """Jev PowerShell launchers are installed for the native Windows bootstrap."""
 
 import os
+import re
 import shutil
 import subprocess
+import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -164,3 +167,67 @@ def test_the_native_deploy_refreshes_the_block_instead_of_skipping_it() -> None:
     windows_branch = DEPLOY.split("    exit 0", 1)[0]
     # ps_profile_drop_block (scripts/ps_profile_lib.sh) runs drop_managed_block.awk.
     assert "ps_profile_drop_block \"$ps_profile\" 'Jev launchers'" in windows_branch
+
+
+@pytest.mark.parametrize("fail_at", ["just", "uvx", ""])
+def test_windows_ci_cannot_mask_a_native_failure(tmp_path: Path, fail_at: str) -> None:
+    pwsh = shutil.which("pwsh")
+    if not pwsh:
+        pytest.skip("PowerShell unavailable; Windows CI runs this")
+    workflow = (ROOT / ".github/workflows/unit-test.yaml").read_text(encoding="utf-8")
+    matches = re.findall(
+        r"^      - name: Check PowerShell launchers and HOME-less justfile\n"
+        r"        shell: pwsh\n        run: \|\n((?:          [^\n]*\n)+)",
+        workflow,
+        re.MULTILINE,
+    )
+    assert len(matches) == 1, "missing or ambiguous Windows check step"
+    body = textwrap.dedent(matches[0])
+    guard = "$PSNativeCommandUseErrorActionPreference = $true"
+    assert body.count(guard) == 1
+    trace = tmp_path / "calls.txt"
+    script = tmp_path / "ci-check.ps1"
+    env = os.environ | {
+        "JEV_CI_CALLS": str(trace),
+        "JEV_CI_PYTHON": sys.executable,
+        "JEV_CI_FAIL": fail_at,
+    }
+    # Each fake command invokes a real native process; no throw/exit in the
+    # functions can accidentally make the old workflow pass this regression.
+    functions = "\n".join(
+        f"function {command} {{\n"
+        f"  Add-Content -LiteralPath $env:JEV_CI_CALLS -Value '{command}'\n"
+        "  & $env:JEV_CI_PYTHON -c "
+        f'\'import os, sys; sys.exit(23 if os.environ["JEV_CI_FAIL"] == "{command}" else 0)\'\n'
+        "}\n"
+        for command in ("just", "uvx", "bun")
+    )
+    for hardened in [True, False] if fail_at else [True]:
+        trace.unlink(missing_ok=True)
+        tested = body if hardened else body.replace(guard, "")
+        # Match GitHub's pwsh wrapper; the extracted body alone must enable
+        # native fail-fast. Removing its guard is the negative control.
+        script.write_text(
+            "$ErrorActionPreference = 'Stop'\n"
+            + functions
+            + tested
+            + "\nif (Test-Path variable:\\LASTEXITCODE) { exit $LASTEXITCODE }\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [pwsh, "-NoProfile", "-NonInteractive", "-File", str(script)],
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            check=False,
+        )
+        calls = trace.read_text(encoding="utf-8").splitlines()
+        if hardened and fail_at:
+            assert result.returncode != 0, result.stdout + result.stderr
+            assert calls == (["just"] if fail_at == "just" else ["just", "uvx"])
+        else:
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert calls == ["just", "uvx", "bun"]
