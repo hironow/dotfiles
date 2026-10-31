@@ -1,49 +1,29 @@
 # dotfiles
 
-Zsh、mise、just などの設定と、それを Mac、Linux、Windows、Dev Container に配る仕組みをまとめたリポジトリ。
+Zsh、mise、just、AI エージェントなどの設定と、それを macOS、Linux、Windows、Dev Container に配る仕組みをまとめたリポジトリ。
 
 ## 構成
 
-2 つの環境が、同じ正本（`config/mise/config.toml`、`.devcontainer/devcontainer.json`、`install.sh`）から同じバージョンの道具を入れる。
-OS ごとに違うのは、導入の経路だけである。
+すべての環境が、このリポジトリの正本から同じバージョンの道具と設定を入れる。
+OS ごとに違うのは導入の経路だけである。
 
-```
-   +---------------+     +-----------------+
-   |   Mac host    |     |  Dev container  |
-   |  (daily       |     |  (CI sandbox    |
-   |   driver)     |     |   + IDE)        |
-   +-------+-------+     +--------+--------+
-           |                      |
-   brew + mise          devcontainer.json
-   (just deploy)        + features/
-                        dotfiles-tools
-           |                      |
-           +----------+-----------+
-                      |
-                      v
-   +-------------------------------------+
-   |  Single source of truth (this repo) |
-   |                                     |
-   |  - install.sh        (OS dispatch)  |
-   |  - config/mise/config.toml (host)   |
-   |  - config/mise/image-tools.toml     |
-   |  - .devcontainer/    (image SoT)    |
-   |  - dump/<host>/      (brew/gcloud)  |
-   +-------------------------------------+
-```
-
-凡例:
-
-- Mac host: 普段使いの機体（日常の作業機）
-- Dev container: CI と IDE が共有するサンドボックス（CI とエディタの実行環境）
-- install.sh (OS dispatch): `uname` で mac / linux / windows を振り分ける（OS 判定。ADR 0005）
-- config/mise/config.toml (host): just、uv、prek、vp、markdownlint-cli2、node と 5 つの AI CLI（codex、antigravity、claude、copilot、pi）のバージョンを 3 OS で揃える（バージョン固定。ADR 0006）
-- config/mise/image-tools.toml (image generation): devcontainer が bake する `/etc/mise/config.toml`、検証つき tarball の版、mise の無い Linux 機体の bootstrap の版を 1 か所に持つ。`install.sh` の該当領域はここから生成され、`just lint` / `just check` が食い違いを落とす（ADR 0060）
+| 正本 | 役割 |
+| --- | --- |
+| `install.sh` / `bootstrap.ps1` | OS を判定して初期導入する（ADR 0005、ADR 0039） |
+| `config/mise/config.toml` | host に入れる道具（`just`、`uv`、`prek`、`vp`、`markdownlint-cli2`、`node`、5 つの AI CLI など）の版を 3 OS で揃える（ADR 0006） |
+| `config/mise/image-tools.toml` | Dev Container が bake する `/etc/mise/config.toml`、検証つき tarball、Linux bootstrap の版を 1 か所に持つ。`install.sh` の該当領域はここから生成し、`just lint` / `just check` が食い違いを検出する（ADR 0060） |
+| `.devcontainer/devcontainer.json` | CI と IDE が共有するサンドボックスの定義（ADR 0001、ADR 0002） |
+| `dump/<host>/` | OS ごとのパッケージ記録（Homebrew、Scoop、gcloud など。ADR 0030） |
+| `ROOT_*` / `dump/harness/` | エージェントの指示、hook、skill、Claude プラグインの正本（[`docs/agent-sync.md`](./docs/agent-sync.md)） |
 
 関連文書:
 
+- [`docs/agent-sync.md`](./docs/agent-sync.md): エージェント指示、hook、skill、プラグインの配布
+- [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md): `j-cc` / `j-pi`、rtk、headroom の手順
+- [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md): Windows と WSL の Ollama 共有と検査範囲
+- [`docs/runbook/windows-host.md`](./docs/runbook/windows-host.md): native Windows で動かすときの注意点
+- [`docs/portless-urls.md`](./docs/portless-urls.md): ローカル UI の `https://<name>.localhost` 別名一覧
 - [`docs/adr/`](./docs/adr/): 設計判断の記録（ADR）
-- [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md): Jev を使った `j-cc` / `j-pi` の手順
 - [`tools/README.md`](./tools/README.md): RTTM 変換などの補助ツール
 - `docs/intent.md`: いま取り組んでいる作業の意図（operator だけが書く。git では追跡しない）
 
@@ -63,23 +43,23 @@ INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./i
 
 `install.sh` は mise（固定版、SHA 検証つき、`~/.local/bin`）を入れ、道具を `mise install` し、設定を symlink する。
 通常は sudo は要らない。
-WSL では、`wl-copy` / `wl-paste` がなければ `wl-clipboard` を apt で導入する（Pi / Herdr のコピー用）。
-この処理だけは root または非対話で使える `sudo -n` が必要で、パスワードが必要な場合は導入コマンドを表示して続行する。
 `install.sh` 全体を sudo で実行しない。
-zsh のログインシェルは `~/.profile` を読まないので、`just deploy` が `~/.zprofile` に `~/.local/bin` を足すブロックを追記する（`zsh -lc` で動くスクリプトやエージェント用。`~/.zprofile` の既存の行は残す）。
+WSL では `wl-copy` / `wl-paste` がなければ `wl-clipboard` を apt で導入する（Pi / Herdr のコピー用）。
+この処理だけは root または非対話の `sudo -n` が要り、パスワードが必要な場合は導入コマンドを表示して続行する。
+zsh のログインシェルは `~/.profile` を読まないので、`just deploy` が `~/.zprofile` の既存行を残したまま `~/.local/bin` を足すブロックを追記する。
 
-WSL の素の Ubuntu では、続けて次を一度だけ行う。
-zsh、`wsl-conf`、Docker の手順は sudo が要り、`wsl-conf` と Docker は Windows 側での `wsl --shutdown` も要る。
+WSL の素の Ubuntu（fresh WSL provisioning baseline）では、続けて次を一度だけ実行する。
+`wsl-conf` と Docker の反映には、Windows 側での `wsl --shutdown` も要る。
 
 ```bash
-# install.sh が権限不足などで wl-clipboard を入れられなかった場合（WSLg が必要）
+# install.sh が wl-clipboard を入れられなかった場合（WSLg が必要）
 sudo apt-get update && sudo apt-get install -y wl-clipboard
-# zsh を入れてログインシェルにする（.zshrc と j-cc / j-pi は zsh 前提。この処理は案内のみ）
+# zsh を入れてログインシェルにする（.zshrc と j-cc / j-pi は zsh 前提）
 sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"
-# 新しいターミナルを開いてから（sheldon は install.sh が mise で入れている）
+# 新しいターミナルを開いてから（sheldon は install.sh が mise で導入済み）
 sheldon lock
 
-just harden-env   # 機体ごとの供給網対策（npm と uv の 7 日の隔離、PyPI ミラー、GOPROXY）。追跡しない
+just harden-env   # 機体ごとの供給網対策（npm と uv の 7 日の隔離、GOPROXY）。追跡しない
 just wsl-conf     # /etc/wsl.conf の差分と sudo での編集手順を表示する（Windows の PATH を入れない、systemd を有効化）
 
 # WSL の中で Docker を動かす（just test と Dev Container のサンドボックス用）
@@ -90,38 +70,29 @@ sudo usermod -aG docker "$USER"   # 次の wsl --shutdown のあとで効く
 just doctor       # 確認: zsh、PATH-windows、WSLg の clipboard、docker、道具一式
 ```
 
-`just harden-env` は `~/.npmrc` と `~/.config/uv/uv.toml` を書き、個人の `exclude-newer` を設定する。
-Pi の拡張とその依存は隔離の対象外にする（Pi が npm を走らせる `~/.pi/agent/npm` に `min-release-age=0` の `.npmrc` を置く）。
-コミットする lock の 7 日の隔離は、各 project の `pyproject.toml` が自分で宣言する（`exclude-newer`）。
+`just harden-env` は `~/.npmrc` と `~/.config/uv/uv.toml` に 7 日の隔離（`min-release-age=7`、`exclude-newer = "7 days"`）を書く。
+Pi の拡張とその依存は隔離から外す（`~/.pi/agent/npm/.npmrc` に `min-release-age=0` を置く）。
+コミットする lock の 7 日の隔離は、各 project の `pyproject.toml` が自分で宣言する。
 
 ### Windows（native）
 
-Windows と WSL が共存する機体の Ollama は、Windows の Scoop `extras/ollama-full` に一本化する。
-WSL は loopback のブリッジを使い、Linux 版の本体やモデルは持たない。
-構成違反は `just doctor` で検出する（[導入と検査範囲](docs/runbook/ollama-windows-wsl.md)）。
-
-まっさらな機体に、PowerShell の 1 行で入る（ADR 0039）。
+まっさらな機体に PowerShell の 1 行で導入する（ADR 0039）。
 
 ```powershell
 # scoop の manifest を別の host のものにする場合は先に: $env:DOTFILES_HOST = '<host>'
 irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex
 ```
 
-bootstrap は scoop、git、just、jq、mise、pwsh を入れ、HTTPS で `~\dotfiles` に clone する。
-続けて `add-scoop`、`deploy`、`harden-env`、`sync-agents`、`restore-skills-lock`、`doctor` を実行する（Windows の `harden-env` は、`%APPDATA%\uv\uv.toml` と、User の PATH にある Git の `usr\bin` と `cmd` も整える）。
+`bootstrap.ps1` は scoop、git、just、jq、mise、pwsh を入れ、HTTPS で `~\dotfiles` に clone する。
+続けて `add-scoop`、`deploy`、`harden-env`、`sync-agents`、`restore-skills-lock`、`doctor` を実行する。
 何度実行しても安全であり、終わったら新しい pwsh を開く（`$PROFILE` はそこで効く）。
 
-`just deploy` は Windows では次を行う。
+- **`just deploy`（Windows）**: `starship.toml`、`gitignore-global`、`config/mise/config.toml` をコピーし、pwsh の `$PROFILE`（mise activate、starship init、`MISE_NODE_COREPACK=0`、`j-cc` / `j-pi`）を書き、mise の道具と Pi の拡張を入れ、`aliases.gitconfig` を `[include]` で読み込ませる。
+- **`just harden-env`（Windows）**: `%APPDATA%\uv\uv.toml`、User PATH の Git `usr\bin` と `cmd`、telemetry 無効化の環境変数、必要に応じた `CLAUDE_CODE_GIT_BASH_PATH` も設定する（詳細: [`docs/runbook/windows-host.md`](./docs/runbook/windows-host.md)）。
+- **Scoop**: `dump/<host>/scoop.json` に記録し、`just add-scoop` で復元する。
+- **Ollama**: Windows と WSL が共存する機体では、Windows の Scoop `extras/ollama-full` に一本化する。WSL は loopback のブリッジまたは共有 loopback を使い、Linux 版の本体やモデルは持たない。構成違反は `just doctor` が検出する（詳細: [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md)）。
 
-- `starship.toml`、`gitignore-global`、`config/mise/config.toml` を置く（symlink ではなくコピー）
-- pwsh の `$PROFILE` に、mise activate、starship init（mise の管理下なので mise activate より後）、`MISE_NODE_COREPACK=0`、`j-cc` / `j-pi` のブロックを書く
-- mise の道具一式と、Pi の拡張を入れる
-- `aliases.gitconfig` を `[include]` で読み込ませる
-
-scoop の中身は `dump/<host>/scoop.json` に記録し、`just add-scoop` で復元する。
-`tests/unit/` は native Windows でも通る（POSIX 専用の検査は skip する）。
-
-SSH 鍵を設定したら、remote を SSH に替え、submodule を取得する（submodule は SSH の URL なので bootstrap は触らない）。
+SSH 鍵を設定したら、remote を SSH に替えて submodule を取得する。
 
 ```powershell
 git -C ~/dotfiles remote set-url origin git@github.com:hironow/dotfiles.git
@@ -134,8 +105,8 @@ git -C ~/dotfiles submodule update --init
 just help                       # recipe の一覧
 
 just sync-agents-preview        # エージェント指示の配布を試す（書き込まない）
-just sync-agents                # ~/.claude などへ配る
-just claude-plugins-install     # 各 Claude の home に必須のプラグイン（Codex）を入れる（deploy も実行する）
+just sync-agents                # ~/.claude などへ配る（all で全エージェント）
+just claude-plugins-install     # 各 Claude の home に必須プラグインを入れる（deploy も実行する）
 just lint-claude                # 配る Claude 設定の検査（ADR 0029）
 
 just update-all                 # 道具を更新する（mise、gh、Pi の拡張など）
@@ -158,35 +129,25 @@ mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
 
 | コマンド | 内容 | Docker |
 | --- | --- | --- |
-| `just ci` | `just check`（Python、Go、shell、Markdown、JS/TS の lint、Pi 拡張のテスト、Go のテスト、Quint のモデル）、Claude 設定の検査、unit テスト、semgrep の規則テスト、IaC のテスト、指示量の予算、skill 宣言、emulator の lint、禁止トークン | 不要 |
-| `just ci-all` | `ci` と Dev Container のサンドボックステストと `install.sh` の検証（単独では `just test-install`） | 要る |
+| `just ci` | `just check`（Python・Go・shell・Markdown・JS/TS の lint、Pi 拡張・Go のテスト、Quint のモデル）、Claude 設定検査、unit テスト、semgrep 規則テスト、IaC テスト、指示量予算、skill 宣言、emulator の lint、禁止トークン | 不要 |
+| `just ci-all` | `ci` + Dev Container のサンドボックステスト + `install.sh` の検証（単独は `just test-install`） | 要る |
 | `just ci-emu` | emulator 群の lint、起動、高速テスト、e2e | 要る |
 | `just check-all` | prek の hook と `ci-all`（push 前の最終ゲート） | 要る |
-| `just test` | Dev Container の中のサンドボックステスト（`just test-mark marker=validate` のように install、validate、versions、deploy、check で絞れる） | 要る |
+| `just test` | Dev Container 内のサンドボックステスト（`just test-mark marker=validate` のように `install`、`validate`、`versions`、`deploy`、`check` で絞れる） | 要る |
+
+`tests/unit/` は native Windows でも通る（POSIX 専用の検査は skip する）。
 
 ## Jev でのコーディングセッション
 
-作業リポジトリで `j-cc '依頼文'` または `j-pi '依頼文'` を実行すると、依頼に合わせて Claude Code と Pi の思考レベル、Codex のモデルを選んで起動する。
-`-c`（直近のセッションを続ける）と `-r`（選んで再開する）は、Claude Code と Pi と同じように使える。
-キーの置き場所、初回準備、提供元の切り替えは [runbook](docs/runbook/jev-launchers.md) にある。
-`j-cc` のセッションは rtk（コマンドの出力の圧縮）と headroom の proxy（モデルに届く内容の圧縮）の両方を通る。
-起動のしかたごとの違いと確かめ方（`just jev-headroom-verify rtk`）は、同じ runbook の「rtk と headroom を両方使う」にある。
-
-## EGMによる設計書の作成とレビュー
-
-[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)は、設計書を作り、新しい会話contextのエージェントにレビューさせる。
-`just sync-agents-preview all` で通常の指示配布の差分を確認し、`just egm-install` で固定版の完全なbundleをClaude Code、Codex、Antigravity、Piに導入する。
-EGM限定のinstallerは他のpackageやpluginを更新しないが、最初の指示syncには既存のsettingsとhooksも含まれる。
-
-Piは上流の公式対応先ではない。
-導入とskillの発見を、レビュー分離の動作確認と取り違えない。
-呼び出し、既存skillの移行、検証条件は [EGM runbook](docs/runbook/egm.md) にある。
+作業リポジトリで `j-cc '依頼文'` または `j-pi '依頼文'` を実行すると、依頼に応じて Claude Code・Pi の思考レベルと Codex worker のモデルを選んで起動する。
+`-c`（直近のセッションを続ける）と `-r`（選んで再開する）もそのまま使える。
+`j-cc` のセッションは rtk（コマンド出力の圧縮）と headroom の proxy（モデルへの送信内容の圧縮）の両方を通る。
+初回準備、キーの置き場所、動作確認（`just jev-headroom-verify rtk`）は [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md) にある。
 
 ## skill
 
-skill は、自作（[hironow/skills](https://github.com/hironow/skills)）もサードパーティも宣言で管理する（ADR 0038、ADR 0043）。
-実体は skills CLI が `~/.agents/skills`（store）に置き、git は宣言の `dump/harness/skill-lock.json` だけを追跡する。
-各エージェントの home（`~/.claude*`、`~/.codex`、`~/.gemini`）には、`skills-place` が store への相対 symlink を張る（張れない環境では追跡つきのコピー）。
+skill は自作（[hironow/skills](https://github.com/hironow/skills)）もサードパーティも `dump/harness/skill-lock.json` で宣言管理する（ADR 0038、ADR 0043、[`docs/agent-sync.md`](./docs/agent-sync.md)）。
+実体は skills CLI が `~/.agents/skills`（store）に置き、`skills-place` が各エージェントの home（`~/.claude*`、`~/.codex`、`~/.gemini`）へ相対 symlink を張る（張れない環境では追跡つきのコピー）。
 同名の skill は hironow/skills が優先される（`just ci` の `skills-lock-check` が検査する）。
 
 ```bash
@@ -200,63 +161,43 @@ just dump-skills-lock
 just skills-place
 ```
 
-`just dump-skills-lock` は、その機体の store 全体から宣言を作り直す。
-store が宣言とずれていると無関係な差分も出るので、差分を確認してからコミットする。
-
-サードパーティは、必要な skill だけを宣言する。
-
-- `wandb/skills`: `wandb-autoresearch` と `wandb-eval-tables`
-- `googleworkspace/cli`: `gws-shared` と主要 9 サービス（gmail、calendar、drive、docs、sheets、slides、tasks、forms、people）。`persona-*` と `recipe-*` は skill 一覧が長くなるので入れない
-- `vercel-labs/agent-browser`（[使い方](https://github.com/vercel-labs/agent-browser?tab=readme-ov-file#agentsmd--claudemd)）
-
-`just env=a skills ls -g` のように、`just skills` は `CLAUDE_CONFIG_DIR` を切り替えて CLI を呼ぶ（`env=p` は `~/.claude`、`a` から `d` は `~/.claude-work-a` から `-d`）。
-参照だけに使い、追加には使わない（home に直接書き込み、store と宣言から外れるため）。
+`just dump-skills-lock` はその機体の store 全体から宣言を作り直すため、差分を確認してからコミットする。
+サードパーティは必要な skill だけを宣言する（例: `googleworkspace/cli` は `gws-shared` と主要 9 サービスに絞り、`persona-*` と `recipe-*` は入れない）。
+`just env=a skills ls -g` のように `just skills` で home ごとの一覧を参照できる（`env=p` は `~/.claude`、`a`〜`d` は `~/.claude-work-a`〜`-d`）。
+`just skills` は参照だけに使い、追加には使わない。
 
 ## ローカル開発スタック
 
-`emulator/`（データストアとインスペクタの emulator）と `telemetry/`（OTel、Grafana、Loki、Prometheus、Tempo）はこのリポジトリにある（ADR 0014）。
-API や SaaS の emulator は、vercel-labs/emulate を bunx 経由で動かす（ADR 0016。bunx への切り替えは ADR 0055）。
+`emulator/`（データストアとインスペクタ）と `telemetry/`（OTel、Grafana、Loki、Prometheus、Tempo）はこのリポジトリにある（ADR 0014）。
+API や SaaS の emulator は `vercel-labs/emulate` を `bunx` 経由で動かす（ADR 0016、ADR 0055）。
+OrbStack の VM をメモリ上限内に収めるため、重いサービスと amd64 のサービスは既定では起動しない。
 
 ```shell
 just emu-up                          # 既定は GCP の中核だけ（firebase、spanner、pgadapter、postgres。別名 emu-up-lite）
-just emu-up-only firebase-emulator   # 名指しで起動する（別リポジトリから Firebase だけ借りるときなど）
+just emu-up-only firebase-emulator   # 名指しで起動する
 just emu-up-group search             # 中核に機能群を足す（bigtable search graph vector ml inspect exporters full）
 just emu-up-full                     # 重いものも含む全データサービス（対話用の *-cli は除く）
 just emu-check                       # 状態と接続先
 just emu-stop                        # firebase のデータを書き出して止める
 
-just tel-up                          # telemetry を起動する（止めるのは just tel-down）
+just tel-up                          # telemetry を起動する（停止は just tel-down）
 just emu-api                         # API emulator を 4100-4108 で前面に起動する（emulator/emulate/README.md）
 ```
 
-重いサービスと amd64 のサービスを既定で起動しないのは、OrbStack の VM をメモリ上限内に収めるためである。
-
-HTTP の UI には、[portless](https://github.com/vercel-labs/portless) が `https://<name>.localhost` の固定 URL を与える（ADR 0015）。
-postgres、bolt、gRPC などの TCP のプロトコルはルーティングできないので、ポートのまま使う。
-`portless` は just を通さず直接使う。
-初回は `portless trust` で CA を信頼し、`portless proxy start` のあとで別名を `portless alias <name> <port> --force` で登録する。
-登録する別名の一覧は [`docs/portless-urls.md`](./docs/portless-urls.md) にある。
-経路は `portless list` で確かめる。
-
-別名を登録しても、裏のスタックは起動しない。
-`https://*.localhost` が応答するのは、`just emu-up`、`just tel-up`、`just emu-api` のあとである。
-`portless service install` で proxy をログイン時に起動すれば、再起動後も経路が残る。
+HTTP の UI には [portless](https://github.com/vercel-labs/portless) で `https://<name>.localhost` の固定 URL を付ける（ADR 0015、ADR 0054）。
+初回に `portless trust`（必要なら `portless service install`）を実行し、`portless proxy start` のあとで別名を登録する。
+別名の一覧と対象外の TCP ポートは [`docs/portless-urls.md`](./docs/portless-urls.md) にある。
 
 ## Dev Container
 
-`.devcontainer/devcontainer.json`（debian 12、Microsoft 公式の feature、ローカルの `dotfiles-tools` feature）が [Dev Container](https://containers.dev/) を定義する。
-同じ定義を CI（`devcontainers/ci`）が使う（ADR 0002）。
-
-中には `just`、`mise`、`prek`、`ruff`、`shellcheck`、`markdownlint-cli2`、Node.js（LTS）と、5 つの AI CLI（`codex`、`antigravity`、`claude`、`copilot`、`pi`）が入る。
-エージェントが `just fmt|lint|check|test` を実行するサンドボックスとして使う。
-CLI の認証は、コンテナごとに operator が一度行う。
+`.devcontainer/devcontainer.json`（Debian 12、Microsoft 公式 feature、ローカルの `dotfiles-tools` feature）が [Dev Container](https://containers.dev/) と CI（`devcontainers/ci`）の共通環境を定義する（ADR 0002）。
+中には `just`、`mise`、`prek`、`ruff`、`shellcheck`、`markdownlint-cli2`、Node.js（LTS）、5 つの AI CLI（`codex`、`antigravity`、`claude`、`copilot`、`pi`）が入る。
+CLI の認証はコンテナごとに operator が一度行う。
+clone に `.git` があれば、`postCreateCommand` が `just install-hooks` で prek の hook を入れる。
 
 - Claude Code: `/devcontainer`
-- VS Code / Cursor: Dev Containers 拡張を入れて `Reopen in Container`
+- VS Code / Cursor: Dev Containers 拡張で `Reopen in Container`
 - JetBrains: `File > Remote Development > Dev Containers`
-
-clone に `.git` があれば、`postCreateCommand` が `just install-hooks` で prek の hook を入れる。
-失敗してもコンテナの起動は止めない。
 
 ## MCP
 
