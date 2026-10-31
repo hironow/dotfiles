@@ -372,6 +372,17 @@ OTHER = "S-1-5-21-1-2-3-1002"
         (ME, [ME], True),
         # a default profile file: the user plus SYSTEM and Administrators
         (ME, ["S-1-5-18", "S-1-5-32-544", ME], True),
+        # OWNER RIGHTS refers to the actual owner, not an additional account.
+        (ME, [ME, "S-1-3-4"], True),
+        ("S-1-5-18", ["S-1-5-18", ME, "S-1-3-4"], True),
+        ("S-1-5-32-544", ["S-1-5-18", "S-1-5-32-544", ME, "S-1-3-4"], True),
+        (OTHER, [ME, "S-1-3-4"], False),
+        ("S-1-3-4", [ME, "S-1-3-4"], False),  # not a trusted owner identity
+        (ME, ["S-1-3-4", "S-1-1-0"], False),  # Everyone is still foreign
+        (ME, ["S-1-3-4", "S-1-5-11"], False),
+        (ME, ["S-1-3-4", "S-1-5-32-545"], False),
+        (ME, ["S-1-3-4", OTHER], False),
+        (ME, ["S-1-3-4", "S-1-3-0"], False),  # no other placeholder is resolved
         (ME, [ME, "S-1-1-0"], False),  # Everyone
         (ME, [ME, "S-1-5-11"], False),  # Authenticated Users
         (ME, [ME, "S-1-5-32-545"], False),  # Users

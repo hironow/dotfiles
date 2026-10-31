@@ -32,7 +32,9 @@ chmod 600 ~/.config/jev/env                              # macOS と Linux
 
 他人が読めるキーのファイルからは読まない。
 macOS と Linux では、所有者だけが読み書きできる 0600 にする。
-Windows では、所有者が自分で、自分、SYSTEM、Administrators のほかにアクセス許可がないことを求める。
+Windows では、所有者とアクセス許可の相手が、自分、SYSTEM、Administrators のいずれかであることを求める。
+`OWNER RIGHTS`（`S-1-3-4`）の許可は、[現在の所有者への許可](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-identifiers#well-known-sids)として判定する。
+所有者が上記以外なら、`OWNER RIGHTS` があっても拒否する。
 `~/.config` の下に作ったファイルは、既定の権限で満たすことが多い。
 満たさないときは、Jev が起動時に `~/.config/jev/env must be owned by you` と表示するので、`icacls` で許可の一覧を見て、継承を外して自分だけに許可する。
 

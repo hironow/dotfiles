@@ -160,7 +160,13 @@ def test_windows_acl_check_on_a_real_file(tmp_path: Path) -> None:
     # other accounts access, so its inherited ACL is not assumed)
     secret = tmp_path / ".env"
     secret.write_text("TYPESAFE_API_KEY=secret\n", encoding="utf-8")
-    _icacls(str(secret), "/inheritance:r", "/grant:r", f"*{_my_sid()}:(F)")
+    _icacls(
+        str(secret),
+        "/inheritance:r",
+        "/grant:r",
+        f"*{_my_sid()}:(F)",
+        "*S-1-3-4:(R)",
+    )
     _assert_private_windows_file(secret)
 
     # when Everyone (by SID, so the check is locale-independent) may read it
@@ -179,6 +185,7 @@ def test_windows_acl_check_accepts_a_file_with_only_inherited_entries(
     home = tmp_path / "home"
     home.mkdir()
     grants = [f"*{sid}:(OI)(CI)(F)" for sid in (_my_sid(), "S-1-5-18", "S-1-5-32-544")]
+    grants.append("*S-1-3-4:(OI)(CI)(R)")
     _icacls(
         str(home), "/inheritance:r", *[g for sid in grants for g in ("/grant:r", sid)]
     )
