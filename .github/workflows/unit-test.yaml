@@ -68,14 +68,16 @@ jobs:
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
       - name: Install just
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           uv tool install rust-just
           (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Check PowerShell launchers and HOME-less justfile
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           Remove-Item Env:HOME -ErrorAction SilentlyContinue
-          just --evaluate _EXE_SRC_DIR
+          just --summary
           uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_jev_pi_verify.py tests/unit/test_jev_codex_exec.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py
           bun test tests/unit/jev_sonnet_fallback.test.ts
 

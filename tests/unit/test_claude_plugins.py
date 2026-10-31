@@ -77,6 +77,55 @@ def test_pyright_is_never_declared() -> None:
     assert not [pid for pid in declared.plugins if "pyright" in pid]
 
 
+def test_egm_only_never_reconciles_other_plugins_or_probes_lsp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / ".claude"
+    home.mkdir()
+    personal = {"id": "personal@elsewhere", "scope": "user", "enabled": True}
+    fake = FakeClaude(
+        [], [personal.copy()], names={"google/elephant-goldfish-model#v0.1.0": "egm"}
+    )
+    cache = {"personal@elsewhere": {"key": "local", "needed": []}}
+    (home / plugins.STATE_FILE).write_text(
+        json.dumps({"retired": ["previous-migration"], "schemas": cache}),
+        encoding="utf-8",
+    )
+
+    def cli(args: list[str]) -> str | None:
+        result = fake(args)
+        if args[:3] == ["plugin", "install", "egm@egm"]:
+            fake.installed[-1]["version"] = "0.1.0"
+        return result
+
+    monkeypatch.setattr(plugins.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(claude_homes.shutil, "which", lambda _: "claude")
+    monkeypatch.setattr(plugins, "_cli", lambda *_args: cli)
+    monkeypatch.setattr(
+        plugins, "read_manifests", lambda *_args: pytest.fail("unrelated LSP probe")
+    )
+    assert plugins.main(["--egm-only"]) == 0
+    assert fake.mutations == [
+        [
+            "plugin",
+            "marketplace",
+            "add",
+            "google/elephant-goldfish-model#v0.1.0",
+            "--scope",
+            "user",
+        ],
+        ["plugin", "install", "egm@egm", "--scope", "user"],
+    ]
+    assert fake.schema_reads == ["egm@egm"]
+    assert personal in fake.installed
+    state = json.loads((home / plugins.STATE_FILE).read_text(encoding="utf-8"))
+    assert state["schemas"]["personal@elsewhere"] == cache["personal@elsewhere"]
+    assert state["retired"] == ["previous-migration"]
+    fake.mutations.clear()
+    assert plugins.main(["--egm-only"]) == 0
+    assert fake.mutations == []
+
+
 def test_a_source_splits_into_repo_and_ref() -> None:
     assert plugins.parse_source("o/r#v1.2.3") == ("o/r", "v1.2.3")
     assert plugins.parse_source("o/r") == ("o/r", None)

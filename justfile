@@ -246,6 +246,19 @@ pi-extensions-install:
 claude-plugins-install *args:
     @{{ UV_RUN }} scripts/claude_plugins.py {{ args }}
 
+# Complete EGM bundle + local compatibility policy. Explicitly opt in after
+# reviewing sync-agents-preview all: sync also applies the existing settings/hooks.
+# No unrelated package/plugin installers, machine bootstrap, or skill retirement.
+[group('Agents')]
+egm-install:
+    @just sync-agents all
+    @{{ UV_RUN }} scripts/install_pi_extensions.py --egm-only
+    @{{ UV_RUN }} scripts/claude_plugins.py --egm-only
+    codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.0 --json
+    codex plugin add egm@egm --json
+    @{{ UV_RUN }} scripts/install_pi_extensions.py --verify-egm
+    agy plugin install "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/google/elephant-goldfish-model"
+
 # Register headroom's MCP server (headroom_compress / _retrieve / _stats) in
 # every Claude home, with its egress switches pinned on the server itself.
 # Through `claude mcp add --scope user`, so Claude Code owns its own

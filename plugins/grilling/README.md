@@ -1,50 +1,29 @@
 # grilling
 
-Socratic grilling skills that interview you about a plan or design until you reach
-a shared understanding. Derived from the standalone `grill-me` skill.
+Socratic plan grilling with a GRIT resolve check and human-approved intent capture.
 
-## Skills
-
-### `grit-grill`
+## `grit-grill`
 
 Invoke with `/grilling:grit-grill`.
 
-Grills your plan one question at a time (each with a recommended answer), then
-pressure-tests both the plan and your resolve to finish it along the four GRIT axes:
+Grills the plan one question at a time, then pressure-tests the plan and resolve
+along four axes:
 
-- **G**uts — 度胸・闘志
-- **R**esilience — 復元力・粘り強さ
-- **I**nitiative — 自発性・主体性
-- **T**enacity — 執念・やり切る力
+- **Guts**: willingness to face the hardest unknown.
+- **Resilience**: recovery when the current approach fails.
+- **Initiative**: taking the next concrete action.
+- **Tenacity**: commitment to the defined finish line.
 
-It ends with an ASCII radar-style scorecard (1-5 per axis, anchored to a rubric)
-and names the single weakest axis with one concrete next move.
+It ends with an ASCII radar-style scorecard (1–5 per axis, anchored to a rubric)
+and names the weakest axis with one concrete next move. It then drafts
+`docs/intent.md` from the answers and writes it only after human confirmation.
+Unresolved branches remain in Open Questions; the scorecard stays in chat.
 
-Finally, it crystallizes the shared understanding reached during grilling into
-`docs/intent.md` (canonical Goal / Success Criteria / Scope / Constraints / Open
-Questions format) — drafted from the answers, written only after you confirm.
-Unresolved branches land in **Open Questions**; the scorecard stays in the chat.
+## Related workflows
 
-### `handover`
-
-Invoke with `/grilling:handover`.
-
-Compacts the current work session into `docs/handover.md` (canonical Current State /
-In Progress / Next Actions / Known Risks / Context / Relevant Files format) so the next
-actor — a fresh agent, a teammate, or future you — can pick up in under two minutes.
-Drafted from the conversation, written only after you confirm. Redacts secrets, references
-`docs/intent.md` instead of repeating the goal, and folds suggested skills into Next Actions.
-An optional argument describes what the next session will focus on.
-
-Extends the standalone `/handoff` skill, which writes the same kind of summary to the OS
-temp directory instead of persisting it in the repo.
-
-## Relation to grill-me / handoff
-
-- `grill-me` (standalone) grills a plan along the design tree only.
-- `grit-grill` adds the GRIT resolve interrogation, the scorecard, and `docs/intent.md` output.
-- `handoff` (standalone) writes a session handover to the OS temp directory (ephemeral).
-- `handover` persists the session handover to `docs/handover.md` (repo, durable).
-
-Together, `grit-grill` captures the **intent** (why / what) and `handover` captures the
-**state** (where / next) — the two repo-level docs the project treats as living memory.
+- The standalone `grilling` skill explores a plan's design decisions.
+- This plugin adds resolve interrogation, a GRIT scorecard, and intent capture.
+- [`intent-handover-governance`](https://github.com/hironow/skills/tree/main/intent-handover-governance)
+  owns session handover creation and maintenance, including repository-specific
+  tracking policy. Use that skill to write `docs/handover.md`.
+- EGM reviews design documents; it does not replace the GRIT interview.

@@ -35,7 +35,8 @@ replacing a marketplace uninstalls its plugins. An inventory that cannot be read
 stops that home, and is never taken for "missing". visit_home() owns the
 state file around it.
 
-Usage: claude_plugins.py [--check]   (--check reports without changing)
+Usage: claude_plugins.py [--check] [--egm-only]
+--check reports without changing; --egm-only touches only the EGM declaration.
 Prints doctor-style OK/WARN lines; exit 1 on a WARN.
 """
 
@@ -422,7 +423,12 @@ def read_state(home: Path) -> State | None:
 
 
 def visit_home(
-    declaration: Declaration, cli: Cli, home: Path, *, check: bool
+    declaration: Declaration,
+    cli: Cli,
+    home: Path,
+    *,
+    check: bool,
+    preserve_schema_cache: bool = False,
 ) -> tuple[list[str], list[str]]:
     """reconcile() with the home's state file around it, then the settings check.
 
@@ -449,6 +455,8 @@ def visit_home(
         return cli(["plugin", "configure", pid, "--json"])
 
     problems, schemas = settings_problems(declaration, listed, state.schemas, read)
+    if preserve_schema_cache:
+        schemas = dict(state.schemas) | schemas
     found = list(dict.fromkeys([*found, *problems]))
     if check or broken:
         return done, found
@@ -519,8 +527,22 @@ def _cli(claude: str, home: Path, deadline: float | None) -> Cli:
 
 def main(argv: Sequence[str]) -> int:
     declaration = load(DECLARATION)
+    egm_only = "--egm-only" in argv
+    if egm_only:
+        declaration = Declaration(
+            marketplaces={"egm": declaration.marketplaces["egm"]},
+            plugins=("egm@egm",),
+        )
 
     def one(claude: str, home: Path, deadline: float | None) -> tuple[list, list]:
+        if egm_only:
+            return visit_home(
+                declaration,
+                _cli(claude, home, deadline),
+                home,
+                check=check,
+                preserve_schema_cache=True,
+            )
         return visit_home(declaration, _cli(claude, home, deadline), home, check=check)
 
     check = "--check" in argv
@@ -535,6 +557,8 @@ def main(argv: Sequence[str]) -> int:
         recipe="just claude-plugins-install",
         summary=lambda n: f"{len(declaration.plugins)} plugin(s) in {n} Claude home(s)",
     )
+    if egm_only:
+        return found  # No unrelated marketplace scans or machine LSP probes.
     claude = shutil.which("claude")
     if claude is None:  # visit() has said so
         return found

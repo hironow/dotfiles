@@ -393,4 +393,9 @@ def windows_acl_is_private(
     A foreign owner could rewrite the ACL, so ownership counts as access.
     """
     trusted = WINDOWS_TRUSTED_SIDS | {user_sid}
-    return owner_sid in trusted and set(allowed_sids) <= trusted
+    # OWNER RIGHTS names the actual owner, not another trusted principal.
+    # Keep the owner check separate: a foreign owner still controls the ACL.
+    return (
+        owner_sid in trusted
+        and {owner_sid if sid == "S-1-3-4" else sid for sid in allowed_sids} <= trusted
+    )

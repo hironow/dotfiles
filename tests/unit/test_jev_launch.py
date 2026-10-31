@@ -120,14 +120,54 @@ def _icacls(*args: str) -> None:
     subprocess.run(["icacls", *args], check=True, capture_output=True)
 
 
+def _assert_private_windows_file(path: Path) -> None:
+    if launcher.env_file_is_private(path):
+        return
+    # Only a failed synthetic-fixture check is probed. Never print key contents
+    # or the environment; retain the original rejection if the probe also fails.
+    try:
+        result = subprocess.run(
+            [
+                shutil.which("powershell") or "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                launcher._WINDOWS_ACL_SCRIPT,
+            ],
+            env={**os.environ, "JEV_ACL_PATH": str(path)},
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        pytest.fail(
+            "private Windows fixture was rejected; "
+            f"diagnostic could not run: {type(error).__name__}"
+        )
+    pytest.fail(
+        "private Windows fixture was rejected; "
+        f"ACL probe exit={result.returncode}; "
+        f"stdout={result.stdout!r}; stderr={result.stderr!r}"
+    )
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="reads a real Windows ACL")
 def test_windows_acl_check_on_a_real_file(tmp_path: Path) -> None:
     # given a file made private the way the runbook says (a temp dir may grant
     # other accounts access, so its inherited ACL is not assumed)
     secret = tmp_path / ".env"
     secret.write_text("TYPESAFE_API_KEY=secret\n", encoding="utf-8")
-    _icacls(str(secret), "/inheritance:r", "/grant:r", f"*{_my_sid()}:(F)")
-    assert launcher.env_file_is_private(secret) is True
+    _icacls(
+        str(secret),
+        "/inheritance:r",
+        "/grant:r",
+        f"*{_my_sid()}:(F)",
+        "*S-1-3-4:(R)",
+    )
+    _assert_private_windows_file(secret)
 
     # when Everyone (by SID, so the check is locale-independent) may read it
     _icacls(str(secret), "/grant", "*S-1-1-0:(R)")
@@ -145,6 +185,7 @@ def test_windows_acl_check_accepts_a_file_with_only_inherited_entries(
     home = tmp_path / "home"
     home.mkdir()
     grants = [f"*{sid}:(OI)(CI)(F)" for sid in (_my_sid(), "S-1-5-18", "S-1-5-32-544")]
+    grants.append("*S-1-3-4:(OI)(CI)(R)")
     _icacls(
         str(home), "/inheritance:r", *[g for sid in grants for g in ("/grant:r", sid)]
     )
@@ -154,7 +195,7 @@ def test_windows_acl_check_accepts_a_file_with_only_inherited_entries(
     secret.write_text("TYPESAFE_API_KEY=secret\n", encoding="utf-8")
 
     # then its inherited ACL is accepted as private without any repair
-    assert launcher.env_file_is_private(secret) is True
+    _assert_private_windows_file(secret)
 
 
 def test_network_error_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:

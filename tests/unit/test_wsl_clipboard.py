@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -41,7 +43,9 @@ def sandbox(tmp_path: Path) -> Path:
     )
     # Keep the subprocess PATH hermetic, but allow the apt stub to create tools.
     for name in ("cp", "chmod"):
-        _stub(bin_dir, name, f'/usr/bin/{name} "$@"')
+        executable = shutil.which(name)
+        assert executable is not None, f"fixture needs {name} on PATH"
+        _stub(bin_dir, name, f'{shlex.quote(bash_path(Path(executable)))} "$@"')
     return tmp_path
 
 
