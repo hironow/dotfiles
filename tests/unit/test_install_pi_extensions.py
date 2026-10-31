@@ -18,6 +18,13 @@ installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
 
 
+@pytest.fixture(autouse=True)
+def _fake_package_git_verification(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This file fakes Pi installation. Real git integrity cases live in
+    # test_egm_integration.py, without this fixture.
+    monkeypatch.setattr(installer, "verify_egm", lambda _root: None)
+
+
 def _no_ollama_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
     """Skip the Ollama bootstrap: it would add one more subprocess call."""
     monkeypatch.setattr(installer, "host_policy", lambda: None)
@@ -43,7 +50,7 @@ def test_deploy_keeps_existing_packages_and_places_extension(
     assert json.loads((agent / "settings.json").read_text(encoding="utf-8")) == (
         settings | installer.TELEMETRY_OFF
     )
-    assert install.call_count == 9  # Eight missing declarations + one reconciliation.
+    assert install.call_count == 10  # Nine missing declarations + npm reconciliation.
     assert all(call.args[0][0] == "pi" for call in install.call_args_list)
     extension = agent / "extensions/jev-sonnet-fallback.ts"
     assert extension.read_text(encoding="utf-8") == installer.EXTENSION.read_text(
@@ -51,6 +58,37 @@ def test_deploy_keeps_existing_packages_and_places_extension(
     )
     installer.install(agent, symlinks=False)
     assert extension.is_file()
+
+
+def test_egm_only_install_is_scoped_and_preserves_the_selected_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    path = agent / "settings.json"
+    settings = {"theme": "dark", "npmCommand": ["bun"], "packages": ["npm:personal"]}
+    path.write_text(json.dumps(settings), encoding="utf-8")
+    run = Mock()
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    monkeypatch.setattr(installer, "verify_egm", lambda _root: None, raising=False)
+    monkeypatch.setattr(
+        installer, "_ensure_ollama", lambda _sources: pytest.fail("unrelated bootstrap")
+    )
+    installer.install(agent, symlinks=False, egm_only=True)
+    assert [call.args[0] for call in run.call_args_list] == [
+        ["pi", "install", "git:github.com/google/elephant-goldfish-model@v0.1.0"]
+    ]
+    assert run.call_args.kwargs["env"]["PI_CODING_AGENT_DIR"] == str(agent.resolve())
+    assert (
+        json.loads(path.read_text(encoding="utf-8"))
+        == settings | installer.TELEMETRY_OFF
+    )
+    assert not (agent / "extensions").exists()
+    assert sorted(p.name for p in (agent / "agents").iterdir()) == ["egm-reviewer.md"]
+    assert (agent / "docs/agents/egm.md").is_file()
+    assert str(agent / "docs/agents/egm.md") in (agent / "AGENTS.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_windows_copy_updates_only_managed_extension(
@@ -235,6 +273,107 @@ def test_the_vendored_rtk_extension_only_rewrites_bash_and_fails_open() -> None:
     assert 'event.toolName === "bash"' in body
     assert 'process.env.RTK_DISABLED === "1"' in body
     assert "Fail open" in body
+
+
+def test_a_configured_missing_egm_is_reinstalled_without_global_updates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    settings = {"packages": [installer.EGM_SOURCE]}
+    (agent / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
+    run = Mock()
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    installer.install(agent, egm_only=True)
+    assert [call.args[0] for call in run.call_args_list] == [
+        ["pi", "install", installer.EGM_SOURCE]
+    ]
+    # A healthy configured git package must not trigger the npm recovery path.
+    (agent / installer.EGM_RELATIVE).mkdir(parents=True)
+    run.reset_mock()
+    installer.install(agent, egm_only=True)
+    assert run.call_count == 0
+
+
+def test_general_npm_recovery_cannot_change_egm_after_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    sources = json.loads(installer.MANIFEST.read_text(encoding="utf-8"))
+    (agent / "settings.json").write_text(
+        json.dumps({"packages": sources}), encoding="utf-8"
+    )
+    (agent / installer.EGM_RELATIVE).mkdir(parents=True)
+    state = {"approved": True}
+
+    def verify(_root: Path) -> None:
+        if not state["approved"]:
+            raise RuntimeError("recovery moved EGM off its approved revision")
+
+    def run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        if args == ["pi", "update", "--extensions"]:
+            state["approved"] = False
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(installer, "verify_egm", verify)
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    monkeypatch.setattr(installer, "_ensure_ollama", lambda _sources: None)
+    with pytest.raises(RuntimeError, match="recovery moved EGM"):
+        installer.install(agent, symlinks=False)
+    assert not (agent / "docs/agents/egm.md").exists()
+
+
+def test_pi_context_preserves_user_text_and_refreshes_only_its_block(
+    tmp_path: Path,
+) -> None:
+    guide = tmp_path / "docs/agents/egm.md"
+    original = "# Personal instructions\nKeep my choices.\n"
+    first = installer.egm_context(original, guide)
+    assert first.startswith(original)
+    assert installer.egm_context(first, guide) == first
+    decorated = first + "\nAdditional user instructions.\n"
+    moved = tmp_path / "moved guide.md"
+    refreshed = installer.egm_context(decorated, moved)
+    assert refreshed.startswith(original)
+    assert refreshed.endswith("\nAdditional user instructions.\n")
+    assert str(moved) in refreshed and str(guide) not in refreshed
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        installer.EGM_START,
+        installer.EGM_END,
+        installer.EGM_END + installer.EGM_START,
+        installer.EGM_START * 2 + installer.EGM_END,
+    ],
+)
+def test_malformed_context_is_refused_without_writes(tmp_path: Path, text: str) -> None:
+    context = tmp_path / "AGENTS.md"
+    context.write_text(text, encoding="utf-8")
+    with pytest.raises(RuntimeError, match="malformed EGM"):
+        installer._place_egm_guide(tmp_path)
+    assert context.read_text(encoding="utf-8") == text
+    assert not (tmp_path / "docs/agents/egm.md").exists()
+
+
+def test_pi_uses_the_effective_context_file_and_keeps_user_guides(
+    tmp_path: Path,
+) -> None:
+    override = tmp_path / "AGENTS.override.md"
+    override.write_text("User override\n", encoding="utf-8")
+    installer._place_egm_guide(tmp_path)
+    assert override.read_text(encoding="utf-8").startswith("User override\n")
+    assert installer.EGM_START in override.read_text(encoding="utf-8")
+    assert not (tmp_path / "AGENTS.md").exists()
+    guide = tmp_path / "docs/agents/egm.md"
+    guide.write_text("User guide\n", encoding="utf-8")
+    before = override.read_bytes()
+    with pytest.raises(RuntimeError, match="user EGM guide"):
+        installer._place_egm_guide(tmp_path)
+    assert guide.read_text(encoding="utf-8") == "User guide\n"
+    assert override.read_bytes() == before
 
 
 # The decision alone (installer.placement), without a filesystem

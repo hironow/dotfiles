@@ -179,6 +179,7 @@ Open the matching file as soon as its trigger applies:
 | using the `rtk` output-filter proxy / debugging filtered output | docs/agents/rtk.md |
 | using headroom (its MCP tools, the j-cc proxy, its egress)      | docs/agents/headroom.md |
 | adding, comparing, retiring, or distributing a skill (hironow/skills, `skill-lock.json`) | docs/agents/skills-maintenance.md |
+| invoking an EGM design, review, or documentation workflow | docs/agents/egm.md |
 
 ## Enforcement (works no matter what the model decides)
 

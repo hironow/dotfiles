@@ -1073,15 +1073,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "to-spec",
-      "upstream_name": "to-spec",
-      "lock_key": "to-spec",
-      "source": "mattpocock/skills",
-      "skill_path": "skills/engineering/to-spec/SKILL.md",
-      "skill_folder_hash": "136b9651747cfccbfbb7c50a6b0dfb757e7547d2",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "to-tickets",
       "upstream_name": "to-tickets",
       "lock_key": "to-tickets",

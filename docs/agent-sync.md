@@ -107,6 +107,14 @@ CLI には `-a universal` で store だけを書かせ、home には触らせな
 - `just restore-skills-lock`：新しい機体で、宣言から store を復元して配置する
 - `just skills-update`：hironow/skills の merge 後などに、store を更新して配置する
 
+**EGM**：通常のstore管理skillではなく、参照先を含む完全なplugin/packageとして配る。
+`just egm-install` は `sync-agents all` でこの補足を各homeへ先に配り、EGMだけをネイティブCLIで導入する。
+このsyncには既存の共通settingsとhooksの配布も含まれるので、先に `just sync-agents-preview all` を確認する。
+Piは固定したgit packageを使い、既存installerが同じ補足とread-only reviewerを置く。
+Piのglobal context fileでは、EGM用のマーカー内だけを管理して他の本文を残す。
+EGMのskillを `bunx skills` で切り離して導入しない。
+導入順序、ローカル方針との優先順位、レビュー分離の限界は [EGM runbook](runbook/egm.md) にある。
+
 **Claude Code のプラグイン**：settings の断片は `enabledPlugins` と `extraKnownMarketplaces` を持たない（ADR 0037。plugin CLI が書き換えるため）。
 全 home 共通のプラグインは `dump/harness/claude-plugins.json` に宣言し、`just deploy`（単独では `just claude-plugins-install`）が plugin CLI で各 home に入れる（ADR 0048、ADR 0056）。
 marketplace はタグで固定する。例外は、タグの無い claude-plugins-official（追従）と、repo 相対パス（`./`）で書く dotfiles 自身の hironow-plugins である。

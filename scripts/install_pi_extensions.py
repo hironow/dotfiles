@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install declared Pi packages and the dotfiles-owned Pi extensions and agents."""
 
+import argparse
 import json
 import os
 import shutil
@@ -34,9 +35,46 @@ EXTENSION = EXTENSIONS_DIR / "jev-sonnet-fallback.ts"
 VENDORED_SENTINEL = "// --- upstream rtk.ts follows, unmodified ---\n"
 AGENTS_DIR = ROOT / "config/pi/agents"
 AGENT_MARKER = "<!-- dotfiles-managed: jev-codex-agent -->"
+EGM_AGENT_MARKER = "<!-- dotfiles-managed: egm-reviewer -->"
+EGM_SOURCE = "git:github.com/google/elephant-goldfish-model@v0.1.0"
+EGM_COMMIT = "b3a35956759bf7f024af2ff061b2e0b44b438e4c"
+EGM_RELATIVE = Path("git/github.com/google/elephant-goldfish-model")
+EGM_GUIDE = ROOT / "ROOT_AGENTS_docs_agents_egm.md"
+EGM_GUIDE_MARKER = "<!-- dotfiles-managed: egm-guide -->\n"
+EGM_START = "<!-- dotfiles-managed: egm:start -->"
+EGM_END = "<!-- dotfiles-managed: egm:end -->"
+EGM_SKILLS = (
+    "bootstrap",
+    "brainstorm",
+    "draft",
+    "drift_report",
+    "resolve",
+    "review",
+    "review_loop",
+)
+EGM_PERSONAS = (
+    "bootstrap_orchestrator",
+    "codebase_details",
+    "comprehension",
+    "design_critic",
+    "implementation_readiness",
+    "structural",
+    "style",
+    "synthesizer",
+    "zoom_out",
+)
+EGM_STANDARDS = (
+    "feature-spec",
+    "heilmeier",
+    "implementation-readiness",
+    "re-implementation",
+    "zoom-out",
+)
 
 
-def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
+def install(
+    agent_dir: Path, *, symlinks: bool = os.name != "nt", egm_only: bool = False
+) -> None:
     settings_path = agent_dir / "settings.json"
     settings = (
         json.loads(settings_path.read_text(encoding="utf-8"))
@@ -48,17 +86,33 @@ def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
         for item in settings.get("packages", [])
     }
     sources = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    for retired in retired_configured(settings.get("packages", [])):
+    if egm_only:
+        if EGM_SOURCE not in sources:
+            raise RuntimeError("EGM is not declared")
+        sources = [EGM_SOURCE]
+    env = os.environ | {"PI_CODING_AGENT_DIR": str(agent_dir.resolve())}
+    bundle = agent_dir / EGM_RELATIVE
+    if EGM_SOURCE in sources and (bundle.exists() or bundle.is_symlink()):
+        verify_egm(bundle)
+    for retired in [] if egm_only else retired_configured(settings.get("packages", [])):
         # Bare name: also retires a pin such as npm:pi-web-access@0.37.0.
-        subprocess.run(["pi", "remove", retired], check=True)
+        subprocess.run(["pi", "remove", retired], check=True, env=env)
     for source in sources:
-        if source not in configured:
-            subprocess.run(["pi", "install", source], check=True)
+        if source not in configured or (source == EGM_SOURCE and not bundle.is_dir()):
+            subprocess.run(["pi", "install", source], check=True, env=env)
+    if EGM_SOURCE in sources:
+        verify_egm(bundle)
     # Reconcile a settings entry whose installed files were lost; do not update
     # healthy unpinned packages just because `just deploy` ran again.
     npm = agent_dir / "npm/node_modules"
-    if any(not (npm / source.removeprefix("npm:")).is_dir() for source in sources):
-        subprocess.run(["pi", "update", "--extensions"], check=True)
+    if any(
+        not (npm / source.removeprefix("npm:")).is_dir()
+        for source in sources
+        if source.startswith("npm:")
+    ):
+        subprocess.run(["pi", "update", "--extensions"], check=True, env=env)
+        if EGM_SOURCE in sources:
+            verify_egm(bundle)  # Recovery also reconciles pinned git packages.
     # `pi` rewrote settings.json above (removals, installs); edit it last so
     # this stays the final word on the telemetry keys.
     settings = (
@@ -72,17 +126,119 @@ def install(agent_dir: Path, *, symlinks: bool = os.name != "nt") -> None:
         settings_path.write_text(
             json.dumps(settings, indent=2) + "\n", encoding="utf-8"
         )
-    _ensure_ollama(sources)
+    if not egm_only:
+        _ensure_ollama(sources)
     # One extension that cannot be placed must not hold back the others
     refused = []
-    for extension in sorted(EXTENSIONS_DIR.glob("*.ts")):
+    extensions = [] if egm_only else sorted(EXTENSIONS_DIR.glob("*.ts"))
+    for extension in extensions:
         try:
             _place_extension(agent_dir, extension, symlinks=symlinks)
         except RuntimeError as error:
             refused.append(str(error))
-    _render_agents(agent_dir)
+    _render_agents(agent_dir, egm_only=egm_only)
+    if EGM_SOURCE in sources:
+        _place_egm_guide(agent_dir)
     if refused:
         raise RuntimeError("; ".join(refused))
+
+
+def verify_egm(root: Path) -> None:
+    """Accept only the approved complete checkout; never repair over local edits."""
+    required = [
+        "LICENSE",
+        "docs/harnesses.md",
+        "docs/claude.md",
+        "docs/codex.md",
+        "resources/execution_instructions.md",
+        ".claude-plugin/plugin.json",
+        ".agents/plugins/marketplace.json",
+        *(f"skills/egm_{name}/SKILL.md" for name in EGM_SKILLS),
+        *(f"agents/{name}.md" for name in EGM_PERSONAS),
+        *(f"resources/document_standards/{name}-standard.md" for name in EGM_STANDARDS),
+    ]
+    if root.is_symlink() or not (root / ".git").is_dir():
+        raise RuntimeError(f"EGM is not a managed git checkout: {root}")
+    for path in required:
+        if not (root / path).is_file():
+            raise RuntimeError(f"EGM bundle is incomplete: {root / path}")
+    for args, expected in (
+        (["rev-parse", "HEAD"], EGM_COMMIT),
+        # Include ignored files: an ignored extra skill can still be discovered.
+        (["status", "--porcelain=v1", "--untracked-files=all", "--ignored"], ""),
+    ):
+        done = subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if done.stdout.strip() != expected:
+            raise RuntimeError(
+                f"EGM checkout has the wrong revision or local changes: {root}; "
+                "preserve your changes and resolve it before installing (no reset applied)"
+            )
+    flags = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-v", "-z"],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    ).stdout
+    if any(record and record[0] != "H" for record in flags.split("\0")):
+        raise RuntimeError(
+            f"EGM checkout has an unsafe index state: {root}; "
+            "sparse/skip-worktree and assume-unchanged entries are not accepted"
+        )
+
+
+def egm_context(text: str, guide: Path) -> str:
+    """Replace only our context block, preserving user text byte for byte."""
+    block = (
+        f"{EGM_START}\nWhen invoking EGM, first read `{guide.as_posix()}`.\n{EGM_END}"
+    )
+    if EGM_START not in text and EGM_END not in text:
+        return text + ("\n\n" if text else "") + block + "\n"
+    if text.count(EGM_START) != 1 or text.count(EGM_END) != 1:
+        raise RuntimeError("malformed EGM context markers (not applied)")
+    start, end = text.index(EGM_START), text.index(EGM_END)
+    if end < start:
+        raise RuntimeError("malformed EGM context markers (not applied)")
+    return text[:start] + block + text[end + len(EGM_END) :]
+
+
+def _place_egm_guide(agent_dir: Path) -> None:
+    guide = agent_dir / "docs/agents/egm.md"
+    wanted = EGM_GUIDE_MARKER + EGM_GUIDE.read_text(encoding="utf-8")
+    if guide.is_symlink() or (
+        guide.exists()
+        and not guide.read_text(encoding="utf-8").startswith(EGM_GUIDE_MARKER)
+    ):
+        raise RuntimeError(f"refusing to replace user EGM guide: {guide}")
+    # Follow Pi's documented precedence; an override must not hide our pointer.
+    candidates = (
+        "AGENTS.override.md",
+        "AGENTS.md",
+        "AGENTS.MD",
+        "CLAUDE.md",
+        "CLAUDE.MD",
+    )
+    context = next(
+        (agent_dir / name for name in candidates if (agent_dir / name).exists()),
+        agent_dir / "AGENTS.md",
+    )
+    if context.is_symlink():
+        raise RuntimeError(f"refusing to edit symlinked Pi context: {context}")
+    previous = context.read_text(encoding="utf-8") if context.exists() else ""
+    rendered = egm_context(previous, guide.resolve())
+    guide.parent.mkdir(parents=True, exist_ok=True)
+    if not guide.exists() or guide.read_text(encoding="utf-8") != wanted:
+        guide.write_text(wanted, encoding="utf-8")
+    if rendered != previous:
+        context.write_text(rendered, encoding="utf-8")
 
 
 def vendored_body(text: str) -> str | None:
@@ -249,7 +405,7 @@ def _yaml_quoted(value: str) -> str:
     return json.dumps(value)[1:-1]
 
 
-def _render_agents(agent_dir: Path) -> None:
+def _render_agents(agent_dir: Path, *, egm_only: bool = False) -> None:
     """Write each agent with this interpreter and script as absolute paths.
 
     No `sh` and no fixed `$HOME/dotfiles`, so the same agents work on native Windows.
@@ -259,13 +415,16 @@ def _render_agents(agent_dir: Path) -> None:
     target_dir = agent_dir / "agents"
     script = ROOT / "scripts/jev_codex_exec.py"
     for template in sorted(AGENTS_DIR.glob("*.md")):
+        if egm_only and template.stem != "egm-reviewer":
+            continue
+        marker = EGM_AGENT_MARKER if template.stem == "egm-reviewer" else AGENT_MARKER
         text = template.read_text(encoding="utf-8")
         text = text.replace("@PYTHON@", _yaml_quoted(sys.executable))
         text = text.replace("@SCRIPT@", _yaml_quoted(str(script)))
-        rendered = f"{text.rstrip()}\n\n{AGENT_MARKER}\n"
+        rendered = f"{text.rstrip()}\n\n{marker}\n"
         destination = target_dir / template.name
         if destination.exists() or destination.is_symlink():
-            if AGENT_MARKER not in destination.read_text(encoding="utf-8"):
+            if marker not in destination.read_text(encoding="utf-8"):
                 raise RuntimeError(f"refusing to replace user agent: {destination}")
             if destination.read_text(encoding="utf-8") == rendered:
                 continue
@@ -274,10 +433,22 @@ def _render_agents(agent_dir: Path) -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--egm-only", action="store_true", help="install only EGM and its adapter"
+    )
+    parser.add_argument(
+        "--verify-egm", action="store_true", help="verify the installed bundle only"
+    )
+    args = parser.parse_args()
+    agent_dir = Path(
+        os.environ.get("PI_CODING_AGENT_DIR", str(Path.home() / ".pi/agent"))
+    )
     try:
-        install(
-            Path(os.environ.get("PI_CODING_AGENT_DIR", str(Path.home() / ".pi/agent")))
-        )
+        if args.verify_egm:
+            verify_egm(agent_dir / EGM_RELATIVE)
+        else:
+            install(agent_dir, egm_only=args.egm_only)
     except (
         OSError,
         ValueError,

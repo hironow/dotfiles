@@ -172,6 +172,16 @@ mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
 `j-cc` のセッションは rtk（コマンドの出力の圧縮）と headroom の proxy（モデルに届く内容の圧縮）の両方を通る。
 起動のしかたごとの違いと確かめ方（`just jev-headroom-verify rtk`）は、同じ runbook の「rtk と headroom を両方使う」にある。
 
+## EGMによる設計書の作成とレビュー
+
+[Elephant-Goldfish Model](https://github.com/google/elephant-goldfish-model)は、設計書を作り、新しい会話contextのエージェントにレビューさせる。
+`just sync-agents-preview all` で通常の指示配布の差分を確認し、`just egm-install` で固定版の完全なbundleをClaude Code、Codex、Antigravity、Piに導入する。
+EGM限定のinstallerは他のpackageやpluginを更新しないが、最初の指示syncには既存のsettingsとhooksも含まれる。
+
+Piは上流の公式対応先ではない。
+導入とskillの発見を、レビュー分離の動作確認と取り違えない。
+呼び出し、既存skillの移行、検証条件は [EGM runbook](docs/runbook/egm.md) にある。
+
 ## skill
 
 skill は、自作（[hironow/skills](https://github.com/hironow/skills)）もサードパーティも宣言で管理する（ADR 0038、ADR 0043）。

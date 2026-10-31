@@ -3,6 +3,7 @@
     "openai-codex": "openai/codex-plugin-cc#v1.0.6",
     "claude-plugins-official": "anthropics/claude-plugins-official",
     "googlechrome": "GoogleChrome/modern-web-guidance#v0.0.193",
+    "egm": "google/elephant-goldfish-model#v0.1.0",
     "hironow-plugins": "./.claude-plugin/marketplace.json"
   },
   "plugins": [
@@ -22,6 +23,7 @@
     "commit-commands@claude-plugins-official",
     "context7@claude-plugins-official",
     "duckdb-skills@claude-plugins-official",
+    "egm@egm",
     "feature-dev@claude-plugins-official",
     "firebase@claude-plugins-official",
     "frontend-design@claude-plugins-official",
