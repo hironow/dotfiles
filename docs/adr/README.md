@@ -90,7 +90,7 @@ and what outlived it.
 | 0063 | [宣言した機体だけ、tailnet の中だけの Tailscale 転送を Ollama の公開と数えない](./0063-declared-tailnet-forward-of-ollama.md) | Accepted | 2026-10-25 | `scripts/ollama_host.py`、`tests/unit/test_ollama_host.py`、`.github/workflows/unit-test.yaml`、`docs/runbook/ollama-windows-wsl.md` |
 | 0064 | [mirrored の WSL にはブリッジを置かず、共有の loopback で Windows の Ollama を使う](./0064-mirrored-wsl-uses-the-shared-loopback.md) | Accepted | 2026-10-25 | `scripts/ollama_host.py`、`tests/unit/test_ollama_host.py`、`docs/runbook/ollama-windows-wsl.md` |
 | 0065 | [Linux カーネルの CVE は dotfiles が直さず、報告と助言だけを行う](./0065-kernel-cve-is-evidence-only.md) | Proposed（決裁待ち） | 2026-10-29 | `tools/kernel-doctor/`、`justfile`、`scripts/doctor.sh`、`tests/unit/test_doctor_kernel.py`、`docs/runbook/kernel-doctor.md` |
-| 0066 | [doctor の WARN は手を動かすべきことだけにし、注意書きは INFO で出し、OS に合わない行は出さない](./0066-doctor-warns-only-what-needs-action.md) | Proposed（決裁待ち） | 2026-11-01 | `scripts/doctor.sh`、`scripts/doctor_lines.py`、`scripts/ollama_host.py`、`tools/ca-doctor/`、`tools/kernel-doctor/`、`docs/runbook/ca-doctor.md`、`docs/runbook/kernel-doctor.md` |
+| 0066 | [doctor の WARN は手を動かすべきことだけにし、注意書きは INFO で出し、OS に合わない行は出さない](./0066-doctor-warns-only-what-needs-action.md) | Proposed（決裁待ち） | 2026-11-01 | `scripts/doctor.sh`、`scripts/doctor_lines.py`、`scripts/ollama_host.py`、`tools/ca-doctor/`、`tools/kernel-doctor/`、`docs/runbook/ca-doctor.md`、`docs/runbook/kernel-doctor.md`、`docs/runbook/ollama-windows-wsl.md` |
 
 ## Reading order for newcomers
 
