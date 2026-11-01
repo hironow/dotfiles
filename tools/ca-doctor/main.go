@@ -248,6 +248,12 @@ func inspectTool(ctx context.Context, tool toolSpec) []Finding {
 }
 
 func storeInventory(ctx context.Context, goos string) []Finding {
+	if goos == "windows" {
+		// No package carries the Windows root store or its disallowed list
+		// (CTL); Windows Update replaces them, so there is no version to read
+		// and a WARN could never clear.
+		return []Finding{{"INFO", "ca-os-bundle", "Windows root store and disallowed list are updated by Windows Update, not by a package; not inventoried here; check Windows Update and organisational certificate distribution (docs/runbook/ca-doctor.md)"}}
+	}
 	// Read-only package queries are inventory, not naive cross-distro version
 	// comparisons. A vendor backport or browser block list is separate evidence.
 	candidates := []struct {

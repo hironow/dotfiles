@@ -168,3 +168,34 @@ func TestOSBundleInventoryIsInfo(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// Windows keeps its root store and disallowed list up to date through Windows
+// Update; there is no package whose version could be read, so a WARN there
+// could never clear.
+func TestOSBundleOnWindowsIsInfoWithoutAPackageQuery(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake package query is a shell script")
+	}
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "queried")
+	query := filepath.Join(dir, "dpkg-query")
+	if err := os.WriteFile(query, []byte("#!/bin/sh\ntouch '"+marker+"'\nprintf '20260101'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	got := storeInventory(context.Background(), "windows")
+	if len(got) != 1 || got[0].Name != "ca-os-bundle" || got[0].Level != "INFO" || !strings.Contains(got[0].Detail, "Windows Update") {
+		t.Fatal(got)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("a package query ran on Windows")
+	}
+}
+
+func TestOSBundleUnknownOnLinuxStaysWarn(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	got := storeInventory(context.Background(), "linux")
+	if len(got) != 1 || got[0].Level != "WARN" {
+		t.Fatal(got)
+	}
+}
