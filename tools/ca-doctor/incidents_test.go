@@ -16,6 +16,7 @@ func TestIncidentManifestValidation(t *testing.T) {
 		{"credentials", "https://emudhra.we-have-a-problem.com/", "https://user:password@emudhra.we-have-a-problem.com/"},
 		{"unknown mode", "tls-endpoint-and-version", "arbitrary-shell"},
 		{"invalid floor", "1.27.3", "1.27.3-rc.1"},
+		{"two-part floor", "26.2.2", "26.2"},
 		{"invalid date", "2026-11-20", "2026-10-01"},
 		{"unknown field", "\"title\":", "\"unrecognized\":true, \"title\":"},
 	} {

@@ -85,7 +85,7 @@ PATH検索やファイル読み取りなど、OSのI/O全般を厳密な実時�
 | `ERR ca-live-*` / `ERR ca-chain-*` | 事故のテストホストへのTLS接続を受け入れた。`ca-live-*` は受け入れたホスト名を並べる。CA束とTLS中継の有無を調べる |
 | `INFO ca-live-*` / `INFO ca-chain-*` と `certificate-rejected` | 正常系は通り、テストホストの証明書をすべて拒否した。当該CAの不信頼化が理由とは立証できないので合格にはしない |
 | `WARN` と `unknown` | 通信、実行、解析などに失敗した。安全とは判定しない |
-| `WARN ca-version-*`（`outside the reviewed fix branches`） | 入っている版が、修正版を確認した系列の外にある |
+| `WARN ca-version-*`（`outside the reviewed fix branches`） | 入っている版が、修正版を確認した系列の外にある。ツールが `24.0` のように2要素で出した版は `24.0.0` として比べる（事故別ルールの修正版下限は3要素で書く） |
 | `INFO ca-version-*`（`not installed`） | そのPythonにcertifiやpipが入っていない。比べる対象がない |
 | `INFO ca-tool-*` / `ca-env`（CAファイルの変数） / `ca-git-verify`（上書きなし） | 調べた実行ファイル、設定済みのCAファイル変数、Gitの既定の検証が上書きされていないこと。どれも事実で、対処はない |
 | `INFO ca-platform` / `ca-remediation` / `ca-advice-*` / `ca-rust` / `ca-os-bundle` / `ca-coverage` | 確認範囲の限界と、OS別の確認先 |

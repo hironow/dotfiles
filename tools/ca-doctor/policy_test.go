@@ -228,3 +228,27 @@ func TestVersionEvidenceNamesWhatItCouldNotCompare(t *testing.T) {
 		t.Fatal(f)
 	}
 }
+
+// pip and Go print a release with a zero patch as two parts (pip 24.0, Go
+// 1.27). PEP 440 and Go both read the missing part as 0.
+func TestVersionEvidenceReadsTwoPartReleasesAsPatchZero(t *testing.T) {
+	for _, tc := range []struct{ version, level, detail string }{
+		{"24.0", "WARN", "24.0 is outside the reviewed fix branches (26)"},
+		{"26.3", "OK", "26.3; published fix floor 26.2.2"},
+		{"26.2", "ERR", "26.2; published fix floor 26.2.2"},
+		{"26", "WARN", "unparseable"},
+		{"26.3rc1", "WARN", "unparseable"},
+		{"26.3.", "WARN", "unparseable"},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			f := VersionEvidenceFor(incidents[0], "pip", tc.version)
+			if f.Level != tc.level || !strings.Contains(f.Detail, tc.detail) {
+				t.Fatal(f)
+			}
+		})
+	}
+	branch := Incident{ID: "future", Floors: map[string][]VersionFloor{"tool": {{Branch: "3.1", Minimum: "3.1.9"}}}}
+	if f := VersionEvidenceFor(branch, "tool", "3.1"); f.Level != "ERR" {
+		t.Fatalf("3.1 is 3.1.0, below the 3.1.9 floor: %v", f)
+	}
+}
