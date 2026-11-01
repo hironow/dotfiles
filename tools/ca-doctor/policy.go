@@ -176,6 +176,18 @@ func clean(s string) string {
 
 var stableVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
+// twoPartRelease is a release a tool prints without its zero patch part (pip
+// 24.0, Go 1.27). Only observed versions are read this way; a fix floor in an
+// incident file must still be written with three parts.
+var twoPartRelease = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
+
+func comparableVersion(observed string) string {
+	if twoPartRelease.MatchString(observed) {
+		return observed + ".0"
+	}
+	return observed
+}
+
 func versionParts(s string) ([3]int, bool) {
 	var v [3]int
 	if !stableVersion.MatchString(s) {

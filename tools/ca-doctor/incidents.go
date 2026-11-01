@@ -159,14 +159,15 @@ func VersionEvidenceFor(incident Incident, tool, version string) Finding {
 		return Finding{"INFO", name, "not installed in this Python; nothing to compare"}
 	}
 	f := Finding{"WARN", name, "unsupported/unparseable release; remediation unverified"}
-	v, valid := versionParts(version)
+	compared := comparableVersion(version)
+	v, valid := versionParts(compared)
 	if !valid {
 		return f
 	}
 	branches := make([]string, 0, len(incident.Floors[tool]))
 	for _, candidate := range incident.Floors[tool] {
 		branches = append(branches, candidate.Branch)
-		if !strings.HasPrefix(version, candidate.Branch+".") {
+		if !strings.HasPrefix(compared, candidate.Branch+".") {
 			continue
 		}
 		floor, valid := versionParts(candidate.Minimum)

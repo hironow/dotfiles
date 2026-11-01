@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -78,4 +79,131 @@ func schannelOnlyCurl(path string) bool {
 	}
 	first, _, _ := strings.Cut(string(out), "\n")
 	return strings.Contains(first, "Schannel") && !strings.Contains(first, "OpenSSL")
+}
+
+// Schannel (curl on Windows) maps only SEC_E_UNTRUSTED_ROOT and
+// SEC_E_WRONG_PRINCIPAL to exit 60; every other handshake failure, including a
+// revoked certificate, is exit 35 with the SSPI name on stderr.
+func TestCurlOutcomeReadsSchannelCertificateRejections(t *testing.T) {
+	const prefix = "curl: (35) schannel: next InitializeSecurityContext failed: "
+	cases := []struct {
+		name   string
+		result CommandResult
+		want   Outcome
+	}{
+		{"revoked", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_REVOKED (0x80092010) - The certificate is revoked.\n"}, CertRejected},
+		{"expired", CommandResult{Code: 35, Stderr: prefix + "SEC_E_CERT_EXPIRED (0x80090328) - The received certificate has expired.\n"}, CertRejected},
+		{"wrong usage", CommandResult{Code: 35, Stderr: prefix + "SEC_E_CERT_WRONG_USAGE (0x80090349) - The certificate is not valid for the requested usage.\n"}, CertRejected},
+		{"revocation server offline", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_REVOCATION_OFFLINE (0x80092013) - The revocation function was unable to check revocation because the revocation server was offline.\n"}, Unknown},
+		{"no revocation check", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_NO_REVOCATION_CHECK (0x80092012)\n"}, Unknown},
+		{"unspecific certificate error", CommandResult{Code: 35, Stderr: prefix + "SEC_E_CERT_UNKNOWN (0x80090327)\n"}, Unknown},
+		{"connection reset", CommandResult{Code: 35, Stderr: "curl: (35) Recv failure: Connection was reset\n"}, Unknown},
+		{"name without schannel", CommandResult{Code: 35, Stderr: "curl: (35) OpenSSL SSL_connect: CRYPT_E_REVOKED (0x80092010)\n"}, Unknown},
+		{"name without code", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_REVOKED\n"}, Unknown},
+		{"truncated", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_REVOKED (0x80092010)\n", Truncated: true}, Unknown},
+		{"other exit with the name", CommandResult{Code: 28, Stderr: prefix + "CRYPT_E_REVOKED (0x80092010)\n"}, Unknown},
+		{"untrusted root stays exit 60", CommandResult{Code: 60, Stderr: "curl: (60) schannel: SEC_E_UNTRUSTED_ROOT (0x80090325)\n"}, CertRejected},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := CurlOutcome(c.result); got != c.want {
+				t.Fatalf("got %s, want %s", got, c.want)
+			}
+		})
+	}
+}
+
+// scriptedProber answers each URL from a queue and counts the calls. The last
+// answer repeats once the queue is empty.
+type scriptedProber struct {
+	mu      sync.Mutex
+	answers map[string][]Outcome
+	calls   map[string]int
+}
+
+func (p *scriptedProber) Probe(_ context.Context, url string) Outcome {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls[url]++
+	queue := p.answers[url]
+	answer := queue[0]
+	if len(queue) > 1 {
+		p.answers[url] = queue[1:]
+	}
+	return answer
+}
+
+func probeIncident() Incident {
+	return Incident{ID: "test-2026", ControlURL: "https://control.example/", Hosts: []string{"a.example", "b.example"}}
+}
+
+// The control asks only whether this client can make a TLS connection at all.
+// One reset (seen on Windows, cause not established) does not answer that.
+func TestProbeClientRepeatsAnUnknownControl(t *testing.T) {
+	cases := []struct {
+		name      string
+		control   []Outcome
+		wantLevel string
+		wantCalls int
+	}{
+		{"reset then accepted", []Outcome{Unknown, Accepted}, "INFO", 2},
+		{"unknown three times", []Outcome{Unknown}, "WARN", 3},
+		{"accepted at once", []Outcome{Accepted}, "INFO", 1},
+		{"rejected is an answer", []Outcome{CertRejected}, "WARN", 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			incident := probeIncident()
+			p := &scriptedProber{
+				answers: map[string][]Outcome{
+					incident.ControlURL:  c.control,
+					"https://a.example/": {CertRejected},
+					"https://b.example/": {CertRejected},
+				},
+				calls: map[string]int{},
+			}
+			got := ProbeClient(context.Background(), incident, "fake", p, make(chan struct{}, 1))
+			if got[0].Level != c.wantLevel {
+				t.Fatalf("level %s, want %s: %v", got[0].Level, c.wantLevel, got[0])
+			}
+			if p.calls[incident.ControlURL] != c.wantCalls {
+				t.Fatalf("control probed %d times, want %d", p.calls[incident.ControlURL], c.wantCalls)
+			}
+		})
+	}
+}
+
+// A test chain is never repeated: an unreachable host would multiply the
+// timeout, and a repeated answer is not new evidence.
+func TestProbeClientDoesNotRepeatTestChains(t *testing.T) {
+	incident := probeIncident()
+	p := &scriptedProber{
+		answers: map[string][]Outcome{
+			incident.ControlURL:  {Accepted},
+			"https://a.example/": {Unknown},
+			"https://b.example/": {CertRejected},
+		},
+		calls: map[string]int{},
+	}
+	got := ProbeClient(context.Background(), incident, "fake", p, make(chan struct{}, 1))
+	if p.calls["https://a.example/"] != 1 {
+		t.Fatalf("test chain probed %d times, want 1", p.calls["https://a.example/"])
+	}
+	if got[0].Level != "WARN" {
+		t.Fatalf("an unknown chain must stay WARN: %v", got[0])
+	}
+}
+
+func TestProbeClientStopsRepeatingWhenCancelled(t *testing.T) {
+	incident := probeIncident()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	p := &scriptedProber{
+		answers: map[string][]Outcome{incident.ControlURL: {Unknown}, "https://a.example/": {Unknown}, "https://b.example/": {Unknown}},
+		calls:   map[string]int{},
+	}
+	got := ProbeClient(ctx, incident, "fake", p, make(chan struct{}))
+	if got[0].Level != "WARN" || p.calls[incident.ControlURL] != 0 {
+		t.Fatalf("cancelled run: level %s, control calls %d", got[0].Level, p.calls[incident.ControlURL])
+	}
 }

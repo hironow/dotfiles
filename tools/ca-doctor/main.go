@@ -84,7 +84,7 @@ func RunCLI(parent context.Context, args []string, out io.Writer) int {
 	for _, result := range observations {
 		findings = append(findings, result...)
 	}
-	findings = append(findings, storeInventory(ctx)...)
+	findings = append(findings, storeInventory(ctx, runtime.GOOS)...)
 	if *offline {
 		findings = append(findings, Finding{"WARN", "ca-live", "offline requested; baseline HTTPS and all incident TLS chains unverified"})
 	} else {
@@ -247,7 +247,13 @@ func inspectTool(ctx context.Context, tool toolSpec) []Finding {
 	return findings
 }
 
-func storeInventory(ctx context.Context) []Finding {
+func storeInventory(ctx context.Context, goos string) []Finding {
+	if goos == "windows" {
+		// No package carries the Windows root store or its disallowed list
+		// (CTL); Windows Update replaces them, so there is no version to read
+		// and a WARN could never clear.
+		return []Finding{{"INFO", "ca-os-bundle", "Windows root store and disallowed list are updated by Windows Update, not by a package; not inventoried here; check Windows Update and organisational certificate distribution (docs/runbook/ca-doctor.md)"}}
+	}
 	// Read-only package queries are inventory, not naive cross-distro version
 	// comparisons. A vendor backport or browser block list is separate evidence.
 	candidates := []struct {
@@ -258,7 +264,7 @@ func storeInventory(ctx context.Context) []Finding {
 		{"rpm", []string{"-q", "--qf", "%{VERSION}-%{RELEASE}", "ca-certificates"}},
 		{"apk", []string{"info", "-v", "ca-certificates"}},
 	}
-	if runtime.GOOS == "darwin" {
+	if goos == "darwin" {
 		candidates = append(candidates, struct {
 			command string
 			args    []string

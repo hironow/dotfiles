@@ -37,6 +37,11 @@ Linux VM を調べていないことも述べている。
 カーネルの版を調べた機体（Linux、WSL、`--osrelease`）では、調べていない範囲を
 `INFO kernel-coverage` で出す。
 
+第三者の数値（`kernel-observed-*`）と記録にある助言（`kernel-advice-*`）は、
+毎回同じ文で、この機体の状態を表さないので `INFO` で出す。
+CVE ごとの警告は `kernel-version-*` の行（修正床に届かない、または未判定）と、
+sysctl の行である。
+
 ## 出力の読み方
 
 版の比較結果は 5 つ。`patch_status` と `backport_state` は**常に `unverified`**。

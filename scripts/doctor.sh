@@ -14,6 +14,7 @@ ok=0; warn=0; err=0; info=0
 log_ok(){ printf 'OK   %s%s\n' "$1" "${2:+ - $2}"; ok=$((ok+1)); }
 log_warn(){ printf 'WARN %s%s\n' "$1" "${2:+ - $2}"; warn=$((warn+1)); }
 log_err(){ printf 'ERR  %s%s\n' "$1" "${2:+ - $2}"; err=$((err+1)); }
+log_info(){ printf 'INFO %s%s\n' "$1" "${2:+ - $2}"; info=$((info+1)); }
 has(){ command -v "$1" >/dev/null 2>&1; }
 
 # Core
@@ -27,7 +28,16 @@ else log_warn 'docker' 'missing'; fi
 if has just; then log_ok 'just' "$(just --version 2>/dev/null || true)"; else log_warn 'just' 'missing'; fi
 if has uv; then log_ok 'uv' "$(uv --version 2>/dev/null || true)"; else log_warn 'uv' 'missing'; fi
 if has mise; then log_ok 'mise' "$(mise --version 2>/dev/null || true)"; else log_warn 'mise' 'missing'; fi
-if has brew; then log_ok 'brew' "$(brew --version | head -n1 2>/dev/null || true)"; else log_warn 'brew' 'missing'; fi
+# Homebrew is used on macOS. The justfile treats it as optional on Linux (WSL
+# and mise-managed hosts have none; the Brewfile steps skip) and never uses it
+# on native Windows, so a missing brew is only a WARN on macOS. (An if, not a
+# case: the first `case "$(uname -s)"` below is the Windows-only section.)
+brew_os="$(uname -s)"
+if [ "$brew_os" = Linux ]; then
+  if has brew; then log_ok 'brew' "$(brew --version | head -n1 2>/dev/null || true)"; else log_info 'brew' 'not installed (optional on Linux; Brewfile steps are skipped)'; fi
+elif [[ $brew_os != MINGW* && $brew_os != MSYS* && $brew_os != CYGWIN* ]]; then
+  if has brew; then log_ok 'brew' "$(brew --version | head -n1 2>/dev/null || true)"; else log_warn 'brew' 'missing'; fi
+fi
 if has gcloud; then log_ok 'gcloud' "$(gcloud --version 2>/dev/null | head -n1 || true)"; else log_warn 'gcloud' 'missing'; fi
 if has pnpm; then log_ok 'pnpm' "$(pnpm --version 2>/dev/null || true)"; else log_warn 'pnpm' 'missing'; fi
 if has npm; then log_ok 'npm' "$(npm --version 2>/dev/null || true)"; else log_warn 'npm' 'missing'; fi

@@ -109,11 +109,29 @@ func (p ExternalProbe) Probe(ctx context.Context, url string) Outcome {
 	}
 }
 
+// schannelRejections are the SSPI names that mean Windows judged the
+// certificate itself. curl's Schannel backend reports them as exit 35, not 60
+// (only SEC_E_UNTRUSTED_ROOT and SEC_E_WRONG_PRINCIPAL become 60). Names that
+// mean the revocation status could not be checked are left out on purpose.
+var schannelRejections = []string{"CRYPT_E_REVOKED", "SEC_E_CERT_EXPIRED", "SEC_E_CERT_WRONG_USAGE"}
+
+func schannelRejected(stderr string) bool {
+	if !strings.Contains(stderr, "schannel:") {
+		return false
+	}
+	for _, name := range schannelRejections {
+		if strings.Contains(stderr, name+" (0x") {
+			return true
+		}
+	}
+	return false
+}
+
 func CurlOutcome(result CommandResult) Outcome {
 	if result.Truncated {
 		return Unknown
 	}
-	if result.Code == 60 {
+	if result.Code == 60 || (result.Code == 35 && schannelRejected(result.Stderr)) {
 		return CertRejected
 	}
 	status := strings.TrimSpace(result.Stdout)
@@ -123,6 +141,12 @@ func CurlOutcome(result CommandResult) Outcome {
 	return Unknown
 }
 
+// controlAttempts bounds how often an unknown control probe is tried. The
+// control only asks whether this client can make a TLS connection at all, and
+// one connection reset (seen on Windows, cause not established) does not
+// answer that. Three unknowns stay unknown. Test chains are tried once.
+const controlAttempts = 3
+
 // ProbeClient runs a fixed list, with a global concurrency cap shared by all
 // clients. Result order is stable irrespective of completion order.
 func ProbeClient(ctx context.Context, incident Incident, name string, p TLSProber, slots chan struct{}) []Finding {
@@ -130,16 +154,28 @@ func ProbeClient(ctx context.Context, incident Incident, name string, p TLSProbe
 	for _, host := range incident.Hosts {
 		urls = append(urls, "https://"+host+"/")
 	}
+	probeOnce := func(url string) Outcome {
+		select {
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
+			return p.Probe(ctx, url)
+		case <-ctx.Done():
+			return Unknown
+		}
+	}
 	results := make([]Outcome, len(urls))
 	var wg sync.WaitGroup
 	for i, url := range urls {
+		attempts := 1
+		if i == 0 {
+			attempts = controlAttempts
+		}
 		wg.Go(func() {
-			select {
-			case slots <- struct{}{}:
-				defer func() { <-slots }()
-				results[i] = p.Probe(ctx, url)
-			case <-ctx.Done():
-				results[i] = Unknown
+			for range attempts {
+				results[i] = probeOnce(url)
+				if results[i] != Unknown || ctx.Err() != nil {
+					return
+				}
 			}
 		})
 	}
