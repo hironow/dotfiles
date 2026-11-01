@@ -14,7 +14,9 @@ ROOT = Path(__file__).resolve().parents[2]
 CA_DOCTOR_NAME = "ca-doctor.exe" if sys.platform == "win32" else "ca-doctor"
 
 
-def _run(tmp_path: Path, output: str | None, rc: int = 0) -> str:
+def _run(
+    tmp_path: Path, output: str | None, rc: int = 0, body: str | None = None
+) -> str:
     text = (ROOT / "scripts" / "doctor.sh").read_text(encoding="utf-8")
     helpers = re.search(r"(?ms)^log_ok\(\).*?^has\(\).*?$", text)
     # Stop at the CA block's own end marker, not at the next section: the
@@ -27,25 +29,21 @@ def _run(tmp_path: Path, output: str | None, rc: int = 0) -> str:
     assert helpers and block, "doctor must wire the CA incident check cross-platform"
     scripts = tmp_path / "scripts"
     scripts.mkdir()
-    if output is not None:
+    if body is None and output is not None:
+        body = (
+            "printf '%s\\n' '" + output.replace("'", "'\"'\"'") + "'\n" + f"exit {rc}\n"
+        )
+    if body is not None:
         binary = tmp_path / "output" / "ca-doctor" / CA_DOCTOR_NAME
         binary.parent.mkdir(parents=True)
-        binary.write_text(
-            "#!/bin/sh\n"
-            + "printf '%s\\n' '"
-            + output.replace("'", "'\"'\"'")
-            + "'\n"
-            + f"exit {rc}\n",
-            encoding="utf-8",
-            newline="\n",
-        )
+        binary.write_text("#!/bin/sh\n" + body, encoding="utf-8", newline="\n")
         binary.chmod(0o755)
     harness = scripts / "doctor.sh"
     harness.write_text(
         helpers[0]
-        + "\nok=0; warn=0; err=0\n"
+        + "\nok=0; warn=0; err=0; info=0\n"
         + block[0]
-        + '\necho "counts $ok $warn $err"\n',
+        + '\necho "counts $ok $warn $err"\necho "info $info"\n',
         encoding="utf-8",
         newline="\n",
     )
@@ -100,3 +98,57 @@ def test_crash_empty_or_inconsistent_results_are_unverified(
     out = _run(tmp_path, output, rc)
     assert "WARN ca-check" in out
     assert "counts 0 1 0" in out
+
+
+def test_info_lines_are_shown_but_counted_apart(tmp_path: Path) -> None:
+    out = _run(tmp_path, "OK   ca-build - fresh\nINFO ca-coverage - scope", 0)
+    assert "INFO ca-coverage - scope" in out
+    assert "counts 1 0 0" in out
+    assert "info 1" in out
+
+
+def test_info_alone_is_not_a_clean_scan(tmp_path: Path) -> None:
+    """An exit 0 with no OK line verified nothing, whatever INFO it printed."""
+    out = _run(tmp_path, "INFO ca-coverage - scope", 0)
+    assert "WARN ca-check" in out
+    assert "counts 0 1 0" in out
+    assert "info 0" in out
+
+
+# The binary from before --summary rejects the flag before its freshness check,
+# with exactly this line and exit 2 (tools/ca-doctor/main.go). That is a stale
+# build, not a security finding: doctor must ask for a rebuild, not count an ERR.
+OLD_BINARY = (
+    'case " $* " in *" --summary "*)\n'
+    "  printf '%s\\n' 'ERR  ca-arguments - usage: ca-doctor --source <tools/ca-doctor> [--offline]'\n"
+    "  exit 2 ;;\n"
+    "esac\n"
+    "printf '%s\\n' 'OK   ca-build - fresh'\n"
+)
+
+
+def test_a_binary_without_summary_asks_for_a_rebuild(tmp_path: Path) -> None:
+    out = _run(tmp_path, None, body=OLD_BINARY)
+    assert "WARN ca-build" in out
+    assert "just ca-doctor-build" in out
+    assert "counts 0 1 0" in out
+    assert "ERR  ca-arguments" not in out
+
+
+def test_doctor_asks_for_the_summary(tmp_path: Path) -> None:
+    new_binary = (
+        'case " $* " in *" --summary "*)\n'
+        "  printf '%s\\n' 'OK   ca-build - summary'\n"
+        "  exit 0 ;;\n"
+        "esac\n"
+        "printf '%s\\n' 'OK   ca-build - full'\n"
+    )
+    out = _run(tmp_path, None, body=new_binary)
+    assert "OK   ca-build - summary" in out
+    assert "counts 1 0 0" in out
+
+
+def test_a_real_security_error_is_still_counted(tmp_path: Path) -> None:
+    out = _run(tmp_path, "ERR  ca-live-x-python - accepted chains: a", 2)
+    assert "counts 0 0 1" in out
+    assert "WARN ca-build" not in out

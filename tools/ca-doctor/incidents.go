@@ -154,12 +154,18 @@ func allVersionEvidence(tool, version string) []Finding {
 }
 
 func VersionEvidenceFor(incident Incident, tool, version string) Finding {
-	f := Finding{"WARN", "ca-version-" + incident.ID + "-" + tool, "unsupported/unparseable release; remediation unverified"}
+	name := "ca-version-" + incident.ID + "-" + tool
+	if version == absentPackage {
+		return Finding{"INFO", name, "not installed in this Python; nothing to compare"}
+	}
+	f := Finding{"WARN", name, "unsupported/unparseable release; remediation unverified"}
 	v, valid := versionParts(version)
 	if !valid {
 		return f
 	}
+	branches := make([]string, 0, len(incident.Floors[tool]))
 	for _, candidate := range incident.Floors[tool] {
+		branches = append(branches, candidate.Branch)
 		if !strings.HasPrefix(version, candidate.Branch+".") {
 			continue
 		}
@@ -183,5 +189,6 @@ func VersionEvidenceFor(incident Incident, tool, version string) Finding {
 		}
 		return f
 	}
+	f.Detail = version + " is outside the reviewed fix branches (" + strings.Join(branches, ", ") + "); remediation unverified"
 	return f
 }

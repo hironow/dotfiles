@@ -49,9 +49,9 @@ def _run(tmp_path: Path, output: str | None, rc: int = 0) -> tuple[str, int]:
     harness = scripts / "doctor.sh"
     harness.write_text(
         helpers[0]
-        + "\nok=0; warn=0; err=0\n"
+        + "\nok=0; warn=0; err=0; info=0\n"
         + block[0]
-        + '\necho "counts $ok $warn $err"\n',
+        + '\necho "counts $ok $warn $err"\necho "info $info"\n',
         encoding="utf-8",
         newline="\n",
     )
@@ -123,4 +123,14 @@ def test_an_err_never_reaches_doctors_error_count(tmp_path: Path) -> None:
     out, code = _run(tmp_path, "ERR  kernel-coverage - something is badly wrong", 2)
     assert "counts 0 1 0" in out, out
     assert " 0 0 1" not in out, out
+    assert code == 0
+
+
+def test_the_coverage_caveat_is_info_not_a_warning(tmp_path: Path) -> None:
+    out, code = _run(
+        tmp_path, "OK   kernel-scope - 6.6.159\nINFO kernel-coverage - caveat", 0
+    )
+    assert "INFO kernel-coverage - caveat" in out
+    assert "counts 1 0 0" in out
+    assert "info 1" in out
     assert code == 0

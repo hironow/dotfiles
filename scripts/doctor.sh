@@ -8,7 +8,9 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/ps_profile_lib.sh"
 
 echo '🩺 Running environment doctor...'
-ok=0; warn=0; err=0
+# info counts INFO lines: a caveat or a fact about this host. It is shown, but
+# it is neither a pass nor a problem, and it never changes the exit code.
+ok=0; warn=0; err=0; info=0
 log_ok(){ printf 'OK   %s%s\n' "$1" "${2:+ - $2}"; ok=$((ok+1)); }
 log_warn(){ printf 'WARN %s%s\n' "$1" "${2:+ - $2}"; warn=$((warn+1)); }
 log_err(){ printf 'ERR  %s%s\n' "$1" "${2:+ - $2}"; err=$((err+1)); }
@@ -45,17 +47,24 @@ case $rc in
   *) log_warn 'PATH' 'validation error'; echo "$dup_out";;
 esac
 
-# Windows PATH contamination (WSL /mnt leak; no-op on non-WSL hosts)
-set +e
-win_out=$(just validate-path-windows 2>&1)
-rc=$?
-win_out=$(printf '%s\n' "$win_out" | grep -v '^error: recipe .* failed with exit code')
-set -e
-case $rc in
-  0) log_ok 'PATH-windows' 'no /mnt Windows leakage';;
-  2) log_warn 'PATH-windows' 'Windows dirs leaking into PATH'; echo "$win_out";;
-  *) log_warn 'PATH-windows' 'validation error'; echo "$win_out";;
-esac
+# Windows PATH contamination: only WSL mounts Windows drives under /mnt, so
+# the check (and its line) exists only there.
+if [ "$(uname -s)" = Linux ]; then
+  case "$(uname -r)" in
+    *[Mm]icrosoft*)
+      set +e
+      win_out=$(just validate-path-windows 2>&1)
+      rc=$?
+      win_out=$(printf '%s\n' "$win_out" | grep -v '^error: recipe .* failed with exit code')
+      set -e
+      case $rc in
+        0) log_ok 'PATH-windows' 'no /mnt Windows leakage';;
+        2) log_warn 'PATH-windows' 'Windows dirs leaking into PATH'; echo "$win_out";;
+        *) log_warn 'PATH-windows' 'validation error'; echo "$win_out";;
+      esac
+      ;;
+  esac
+fi
 
 # zsh is the supported interactive shell on Linux / WSL (.zshrc, USAGE.md,
 # j-cc / j-pi). A bare WSL Ubuntu has none, and install.sh's zsh step does
@@ -362,13 +371,16 @@ if [ -x "$_ca_bin" ]; then
   _ca_rc=0
   _ca_args=()
   if [ "${CA_DOCTOR_OFFLINE:-0}" = 1 ]; then _ca_args+=(--offline); fi
-  _ca_out="$("$_ca_bin" --source "${_ca_root}/tools/ca-doctor" "${_ca_args[@]}" 2>&1)" || _ca_rc=$?
-  _ca_ok=0; _ca_warn=0; _ca_err=0; _ca_bad=0
+  # --summary prints one line per client instead of one per test chain; the
+  # full evidence stays in `just ca-doctor`.
+  _ca_out="$("$_ca_bin" --source "${_ca_root}/tools/ca-doctor" --summary "${_ca_args[@]}" 2>&1)" || _ca_rc=$?
+  _ca_ok=0; _ca_warn=0; _ca_err=0; _ca_info=0; _ca_bad=0
   while IFS= read -r line; do
     case "$line" in
       'OK   '*) _ca_ok=$((_ca_ok+1)) ;;
       'WARN '*) _ca_warn=$((_ca_warn+1)) ;;
       'ERR  '*) _ca_err=$((_ca_err+1)) ;;
+      'INFO '*) _ca_info=$((_ca_info+1)) ;;
       *) _ca_bad=1 ;;
     esac
   done <<<"$_ca_out"
@@ -380,8 +392,14 @@ if [ -x "$_ca_bin" ]; then
     if [ "$_ca_rc" -eq 1 ] && [ "$_ca_warn" -gt 0 ] && [ "$_ca_err" -eq 0 ]; then _ca_valid=1; fi
     if [ "$_ca_rc" -eq 2 ] && [ "$_ca_err" -gt 0 ]; then _ca_valid=1; fi
   fi
-  if [ "$_ca_valid" -eq 1 ]; then
-    ok=$((ok+_ca_ok)); warn=$((warn+_ca_warn)); err=$((err+_ca_err))
+  # A binary built before --summary existed rejects it before its freshness
+  # check, with exactly one `ERR  ca-arguments` line and exit 2. That is a
+  # stale build, not a security finding, so ask for a rebuild instead.
+  if [ "$_ca_rc" -eq 2 ] && [ "$_ca_err" -eq 1 ] && [ "$_ca_ok" -eq 0 ] && [ "$_ca_warn" -eq 0 ] && [ "$_ca_info" -eq 0 ] \
+    && [ "${_ca_out#ERR  ca-arguments }" != "$_ca_out" ]; then
+    log_warn 'ca-build' 'CA check binary does not support this checkout -- run: just ca-doctor-build; then just doctor (docs/runbook/ca-doctor.md)'
+  elif [ "$_ca_valid" -eq 1 ]; then
+    ok=$((ok+_ca_ok)); warn=$((warn+_ca_warn)); err=$((err+_ca_err)); info=$((info+_ca_info))
     printf '%s\n' "$_ca_out"
   else
     log_warn 'ca-check' "checker did not finish consistently (exit $_ca_rc); CA health/incident remediation unverified"
@@ -404,12 +422,13 @@ case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) _kernel_bin="${_kernel_bin}.exe" ;; 
 if [ -x "$_kernel_bin" ]; then
   _kernel_rc=0
   _kernel_out="$("$_kernel_bin" --source "${_kernel_root}/tools/kernel-doctor" 2>&1)" || _kernel_rc=$?
-  _kernel_ok=0; _kernel_warn=0; _kernel_err=0; _kernel_bad=0
+  _kernel_ok=0; _kernel_warn=0; _kernel_err=0; _kernel_info=0; _kernel_bad=0
   while IFS= read -r line; do
     case "$line" in
       'OK   '*) _kernel_ok=$((_kernel_ok+1)) ;;
       'WARN '*) _kernel_warn=$((_kernel_warn+1)) ;;
       'ERR  '*) _kernel_err=$((_kernel_err+1)) ;;
+      'INFO '*) _kernel_info=$((_kernel_info+1)) ;;
       *) _kernel_bad=1 ;;
     esac
   done <<<"$_kernel_out"
@@ -421,7 +440,7 @@ if [ -x "$_kernel_bin" ]; then
     if [ "$_kernel_rc" -eq 1 ] && [ "$_kernel_warn" -gt 0 ]; then _kernel_valid=1; fi
   fi
   if [ "$_kernel_valid" -eq 1 ]; then
-    ok=$((ok+_kernel_ok)); warn=$((warn+_kernel_warn))
+    ok=$((ok+_kernel_ok)); warn=$((warn+_kernel_warn)); info=$((info+_kernel_info))
     printf '%s\n' "$_kernel_out"
   else
     log_warn 'kernel-check' "checker did not finish consistently (exit $_kernel_rc); kernel CVE evidence unverified"
@@ -442,6 +461,7 @@ if has uv; then
       'OK   '*) ok=$((ok+1)); ai_lines=$((ai_lines+1)); printf '%s\n' "$line" ;;
       'WARN '*) warn=$((warn+1)); ai_lines=$((ai_lines+1)); printf '%s\n' "$line" ;;
       'ERR  '*) err=$((err+1)); ai_lines=$((ai_lines+1)); printf '%s\n' "$line" ;;
+      'INFO '*) info=$((info+1)); ai_lines=$((ai_lines+1)); printf '%s\n' "$line" ;;
     esac
   done <<<"$ai_out"
   # The check always exits 0 with lines: anything else means it did not run
@@ -456,22 +476,35 @@ fi
 # service startup, stopped-distro boot, uninstall, or network changes here.
 if has uv; then
   ollama_rc=0
-  ollama_out="$(uv run --frozen "$(dirname "${BASH_SOURCE[0]}")/ollama_host.py" --check 2>&1)" || ollama_rc=$?
-  ollama_lines=0
-  while IFS= read -r line; do
-    case "$line" in
-      'OK   '*) ok=$((ok+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
-      'WARN '*) warn=$((warn+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
-      'ERR  '*) err=$((err+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
-    esac
-  done <<<"$ollama_out"
-  if [ "$ollama_lines" -eq 0 ] || [ "$ollama_rc" -gt 1 ]; then
-    log_warn 'ollama-inspection' "checker unavailable (exit $ollama_rc); configuration unverified"
+  # stdout only: the checker speaks there. stderr carries `uv run`'s own
+  # warnings (a VIRTUAL_ENV mismatch, for one), and no stderr line was ever
+  # counted or shown here, so dropping it loses nothing.
+  ollama_out="$(uv run --frozen "$(dirname "${BASH_SOURCE[0]}")/ollama_host.py" --check 2>/dev/null)" || ollama_rc=$?
+  if [ "$ollama_rc" -eq 3 ]; then
+    # Exit 3: the Windows/WSL Ollama policy does not apply to this host
+    # (ollama_host.py's host_policy() decides). Only a silent exit 3 means
+    # that; stdout with it contradicts itself, and none of it is counted.
+    if [ -n "$ollama_out" ]; then
+      log_warn 'ollama-inspection' 'checker printed output with its not-applicable exit 3; configuration unverified'
+    fi
+  else
+    ollama_lines=0
+    while IFS= read -r line; do
+      case "$line" in
+        'OK   '*) ok=$((ok+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
+        'WARN '*) warn=$((warn+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
+        'ERR  '*) err=$((err+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
+        'INFO '*) info=$((info+1)); ollama_lines=$((ollama_lines+1)); printf '%s\n' "$line" ;;
+      esac
+    done <<<"$ollama_out"
+    if [ "$ollama_lines" -eq 0 ] || [ "$ollama_rc" -gt 1 ]; then
+      log_warn 'ollama-inspection' "checker unavailable (exit $ollama_rc); configuration unverified"
+    fi
   fi
 else
   log_warn 'ollama-inspection' 'uv missing: Ollama ownership unverified'
 fi
 
-echo "Doctor summary: ok=$ok warn=$warn err=$err"
+echo "Doctor summary: ok=$ok warn=$warn err=$err info=$info"
 if [ "$err" -gt 0 ]; then exit 1; fi
 :

@@ -23,6 +23,7 @@ import doctor_lines
         (("OK", "rtk", "0.50.0 via mise"), "OK   rtk - 0.50.0 via mise"),
         (("WARN", "codex-hooks", "x - y"), "WARN codex-hooks - x - y"),
         (("ERR", "a", ""), "ERR  a - "),
+        (("INFO", "ca-coverage", "scope"), "INFO ca-coverage - scope"),
     ],
 )
 def test_a_line_prints_as_doctor_counts_it(line: doctor_lines.Line, text: str) -> None:
@@ -42,7 +43,15 @@ def test_an_odd_line_is_read_not_rejected() -> None:
 
 @pytest.mark.parametrize(
     ("levels", "failed"),
-    [(["OK", "OK"], False), (["OK", "WARN"], True), (["ERR"], True), ([], False)],
+    [
+        (["OK", "OK"], False),
+        (["OK", "WARN"], True),
+        (["ERR"], True),
+        ([], False),
+        # INFO is a caveat or a fact, never a failure.
+        (["OK", "INFO"], False),
+        (["INFO"], False),
+    ],
 )
 def test_a_warn_or_err_is_a_failure(levels: list[str], failed: bool) -> None:
     assert doctor_lines.failed([(level, "n", "d") for level in levels]) is failed

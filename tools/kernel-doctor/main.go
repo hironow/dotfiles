@@ -97,7 +97,7 @@ func run(args []string, out io.Writer, goos string, collect func(string) Probe) 
 			return 1
 		}
 		for _, f := range result.findings {
-			if f.Level != "OK" {
+			if f.Level == "WARN" {
 				return 1
 			}
 		}
@@ -130,9 +130,10 @@ func evaluate(probe Probe, source string, now time.Time) evaluation {
 	out := []Finding{{"OK", "kernel-build", fmt.Sprintf("binary source and incident data match the checkout; %d reviewed record(s)", len(incidents))}}
 	out = append(out, scopeFindings(probe)...)
 	if probe.GOOS != "linux" && !probe.Override {
-		// No Linux kernel to assess. There is nothing to compare, and saying
-		// more would read as a clearance.
-		return evaluation{findings: append(out, coverageFinding())}
+		// No Linux kernel to assess. kernel-not-applicable already says that
+		// WSL and Linux VMs are not covered, and saying more would read as a
+		// clearance, so no comparison and no coverage caveat either.
+		return evaluation{findings: out}
 	}
 	for _, incident := range incidents {
 		out = append(out, assessmentFindings(probe, incident)...)
@@ -259,7 +260,7 @@ func floorList(incident Incident) string {
 
 func coverageFinding() Finding {
 	return Finding{
-		"WARN", "kernel-coverage",
+		"INFO", "kernel-coverage",
 		"not a kernel attestation: a kernel update takes effect only when the host or VM boots the new kernel (restarting processes or containers is not enough); " +
 			"a vendor backport is invisible to this comparison; " +
 			"the first trigger path of this CVE (sockets carrying IP options) and any BPF reuseport migration are not inspected; " +

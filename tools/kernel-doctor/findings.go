@@ -37,14 +37,15 @@ func clean(s string) string {
 // fail on: `just doctor` exiting 1 would break `just self-check` and
 // test_doctor_sandbox, both of which assert exit 0, over a condition only the
 // operator can fix and only outside this repository. A version comparison that
-// cannot be made is reported as WARN, never as a verdict. See ADR-0065.
+// cannot be made is reported as WARN, never as a verdict. An INFO line (a
+// caveat about what was not inspected) never raises the code. See ADR-0065.
 func Report(out io.Writer, findings []Finding) int {
 	code := 0
 	for _, f := range findings {
 		if _, err := fmt.Fprintln(out, f.String()); err != nil {
 			return 1
 		}
-		if f.Level != "OK" && code == 0 {
+		if f.Level == "WARN" && code == 0 {
 			code = 1
 		}
 	}

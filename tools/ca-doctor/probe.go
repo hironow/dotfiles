@@ -148,14 +148,13 @@ func ProbeClient(ctx context.Context, incident Incident, name string, p TLSProbe
 	// Print exact per-chain outcomes, never network error strings or response
 	// bodies (which may contain proxy credentials or attacker-controlled text).
 	for i, result := range results[1:] {
-		level := "WARN"
-		if result == Accepted {
-			level = "ERR"
-		}
-		findings = append(findings, Finding{level, "ca-chain-" + incident.ID + "-" + name, incident.Hosts[i] + ": " + string(result)})
+		findings = append(findings, ChainEvidence(incident, name, i, result))
 	}
 	return findings
 }
+
+// absentPackage is what pythonMetadata prints for a package that is not installed.
+const absentPackage = "absent"
 
 // Runtime metadata is a separate observation from TLS behavior.
 const pythonMetadata = `import importlib.metadata, json, ssl

@@ -20,22 +20,47 @@ const (
 )
 
 // No OK path: a certificate error alone cannot establish CA-specific distrust.
+// Every chain rejected (with a working control) is INFO: there is nothing for
+// the operator to do, but the reason for the rejection stays unproven. Anything
+// unknown is WARN, and one accepted chain is ERR.
 func ProbeEvidenceFor(incident Incident, client string, control Outcome, targets []Outcome) Finding {
 	accepted, rejected := 0, 0
-	for _, result := range targets {
+	var acceptedHosts []string
+	for i, result := range targets {
 		if result == Accepted {
 			accepted++
+			if i < len(incident.Hosts) {
+				acceptedHosts = append(acceptedHosts, incident.Hosts[i])
+			}
 		}
 		if result == CertRejected {
 			rejected++
 		}
 	}
-	f := Finding{"WARN", "ca-live-" + incident.ID + "-" + client, fmt.Sprintf("control=%s; accepted=%d certificate-rejected=%d unverified=%d/%d; CA-specific distrust unverified", control, accepted, rejected, len(incident.Hosts)-accepted-rejected, len(incident.Hosts))}
-	if accepted > 0 {
-		f.Level = "ERR"
-		f.Detail += "; test endpoint accepted TLS; check CA store and TLS interception (served chain identity unverified)"
+	name := "ca-live-" + incident.ID + "-" + client
+	counts := fmt.Sprintf("control=%s; accepted=%d certificate-rejected=%d unverified=%d/%d", control, accepted, rejected, len(incident.Hosts)-accepted-rejected, len(incident.Hosts))
+	switch {
+	case accepted > 0:
+		return Finding{"ERR", name, counts + "; accepted chains: " + strings.Join(acceptedHosts, ", ") + "; test endpoint accepted TLS; check CA store and TLS interception (served chain identity unverified)"}
+	case control == Accepted && len(incident.Hosts) > 0 && rejected == len(incident.Hosts):
+		return Finding{"INFO", name, counts + "; every test chain was rejected, but a rejection alone does not show why: CA distrust is not proven"}
+	default:
+		return Finding{"WARN", name, counts + "; CA-specific distrust unverified"}
 	}
-	return f
+}
+
+// ChainEvidence is the per-chain line, with the same level rule as the
+// per-client line: accepted is ERR, rejected is INFO, unknown is WARN.
+func ChainEvidence(incident Incident, client string, host int, result Outcome) Finding {
+	level := "WARN"
+	switch result {
+	case Accepted:
+		level = "ERR"
+	case CertRejected:
+		level = "INFO"
+	case Unknown:
+	}
+	return Finding{level, "ca-chain-" + incident.ID + "-" + client, incident.Hosts[host] + ": " + string(result)}
 }
 
 func PlatformScope(goos, kernel string, wsl bool) string {
@@ -66,8 +91,8 @@ func PlatformFindings(goos, kernel string, wsl bool) []Finding {
 		advice = "update the distribution CA package; independent runtime bundles, containers and static applications need separate updates"
 	}
 	return []Finding{
-		{"WARN", "ca-platform", PlatformScope(goos, kernel, wsl) + "; OS/browser revocation updates not independently verified"},
-		{"WARN", "ca-remediation", advice + "; no changes applied; see docs/runbook/ca-doctor.md"},
+		{"INFO", "ca-platform", PlatformScope(goos, kernel, wsl) + "; OS/browser revocation updates not independently verified"},
+		{"INFO", "ca-remediation", advice + "; no changes applied; see docs/runbook/ca-doctor.md"},
 	}
 }
 
@@ -83,6 +108,13 @@ func NormalizeEnvironment(env map[string]string, goos string) map[string]string 
 	return result
 }
 
+// caFileVariables name a CA file or directory. Their contents are checked by
+// ca-file-* / ca-path-*, so the variable itself is a fact, not a warning.
+var caFileVariables = map[string]bool{
+	"SSL_CERT_FILE": true, "SSL_CERT_DIR": true, "CURL_CA_BUNDLE": true, "REQUESTS_CA_BUNDLE": true,
+	"PIP_CERT": true, "GIT_SSL_CAINFO": true, "GIT_SSL_CAPATH": true, "NODE_EXTRA_CA_CERTS": true,
+}
+
 func EnvironmentEvidence(env map[string]string) []Finding {
 	var findings []Finding
 	for _, key := range []string{"NODE_TLS_REJECT_UNAUTHORIZED", "GIT_SSL_NO_VERIFY", "PYTHONHTTPSVERIFY", "SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE", "REQUESTS_CA_BUNDLE", "PIP_CERT", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH", "NODE_EXTRA_CA_CERTS", "NODE_OPTIONS", "GODEBUG", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy"} {
@@ -91,8 +123,11 @@ func EnvironmentEvidence(env map[string]string) []Finding {
 			continue
 		}
 		level := "WARN"
-		if key == "NODE_TLS_REJECT_UNAUTHORIZED" && value == "0" || key == "GIT_SSL_NO_VERIFY" {
+		switch {
+		case key == "NODE_TLS_REJECT_UNAUTHORIZED" && value == "0" || key == "GIT_SSL_NO_VERIFY":
 			level = "ERR"
+		case caFileVariables[key]:
+			level = "INFO"
 		}
 		findings = append(findings, Finding{level, "ca-env", key + " is set (value redacted); custom CA/proxy/TLS settings limit conclusions"})
 	}
@@ -108,7 +143,8 @@ func GitVerifyEvidence(result CommandResult, noVerifyPresent bool) Finding {
 		return f
 	}
 	if result.Code == 1 && strings.TrimSpace(result.Stdout) == "" && strings.TrimSpace(result.Stderr) == "" {
-		f.Detail = "no explicit http.sslVerify for baseline URL in current config context; other URLs/repos and Git TLS remain unverified"
+		f.Level = "INFO"
+		f.Detail = "not overridden: no http.sslVerify for baseline URL in current config context, so Git's default (verify) applies; other URLs/repos and Git TLS remain unverified"
 		return f
 	}
 	if result.Code != 0 {
@@ -119,6 +155,7 @@ func GitVerifyEvidence(result CommandResult, noVerifyPresent bool) Finding {
 		f.Level = "ERR"
 		f.Detail = "effective http.sslVerify disables TLS verification for baseline URL"
 	case "true", "yes", "on", "1":
+		f.Level = "INFO"
 		f.Detail = "http.sslVerify enabled for baseline URL; effective CA trust and other URLs/repos unverified"
 	}
 	return f

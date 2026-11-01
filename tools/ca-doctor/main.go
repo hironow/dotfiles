@@ -39,8 +39,9 @@ func RunCLI(parent context.Context, args []string, out io.Writer) int {
 	flags.SetOutput(io.Discard)
 	source := flags.String("source", "tools/ca-doctor", "source directory for build freshness verification")
 	offline := flags.Bool("offline", false, "skip TLS tests, report live trust as unverified")
+	summary := flags.Bool("summary", false, "one line per client instead of one per test chain (what just doctor prints)")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
-		return Report(out, []Finding{{"ERR", "ca-arguments", "usage: ca-doctor --source <tools/ca-doctor> [--offline]"}})
+		return Report(out, []Finding{{"ERR", "ca-arguments", "usage: ca-doctor --source <tools/ca-doctor> [--offline] [--summary]"}})
 	}
 	if !SourceMatches(*source) {
 		return Report(out, []Finding{{"WARN", "ca-build", "missing/changed source or stale binary; run just ca-doctor-build; no security checks accepted"}})
@@ -70,7 +71,7 @@ func RunCLI(parent context.Context, args []string, out io.Writer) int {
 	for _, incident := range incidents {
 		findings = append(findings, IncidentFreshness(incident, time.Now()))
 		for _, advice := range incident.Advice {
-			findings = append(findings, Finding{"WARN", "ca-advice-" + incident.ID, advice})
+			findings = append(findings, Finding{"INFO", "ca-advice-" + incident.ID, advice})
 		}
 	}
 	tools := discoverTools()
@@ -110,8 +111,23 @@ func RunCLI(parent context.Context, args []string, out io.Writer) int {
 			findings = append(findings, result...)
 		}
 	}
-	findings = append(findings, Finding{"WARN", "ca-coverage", "not a complete-machine attestation: browsers/OS revocation, Git TLS, other PATH copies/venvs, pip vendored CAs, rustls/webpki crates, Electron, containers and existing static binaries require separate verification; see docs/runbook/ca-doctor.md"})
+	findings = append(findings, Finding{"INFO", "ca-coverage", "not a complete-machine attestation: browsers/OS revocation, Git TLS, other PATH copies/venvs, pip vendored CAs, rustls/webpki crates, Electron, containers and existing static binaries require separate verification; see docs/runbook/ca-doctor.md"})
+	if *summary {
+		findings = Summarize(findings)
+	}
 	return Report(out, findings)
+}
+
+// Summarize drops the per-chain lines. The per-client ca-live line keeps the
+// counts and names any accepted chain; `just ca-doctor` still prints them all.
+func Summarize(findings []Finding) []Finding {
+	kept := make([]Finding, 0, len(findings))
+	for _, f := range findings {
+		if !strings.HasPrefix(f.Name, "ca-chain-") {
+			kept = append(kept, f)
+		}
+	}
+	return kept
 }
 
 type clientProbe struct {
@@ -192,7 +208,7 @@ func ExtractVersion(tool, output string) string {
 
 func inspectTool(ctx context.Context, tool toolSpec) []Finding {
 	if tool.Path == "" {
-		return []Finding{{"WARN", "ca-tool-" + tool.Name, "not on PATH; not assessed (installation is not required)"}}
+		return []Finding{{"INFO", "ca-tool-" + tool.Name, "not on PATH; not assessed (installation is not required)"}}
 	}
 	if !ExecutableSupported(tool.Path, runtime.GOOS) {
 		return []Finding{{"WARN", "ca-tool-" + tool.Name, "unsupported non-native wrapper; resolve to a native executable to assess"}}
@@ -202,7 +218,7 @@ func inspectTool(ctx context.Context, tool toolSpec) []Finding {
 	if result.Code != 0 || result.Truncated || strings.TrimSpace(result.Stdout) == "" {
 		return []Finding{{"WARN", "ca-tool-" + tool.Name, "version command failed/timed out/overflowed; not assessed"}}
 	}
-	findings := []Finding{{"WARN", "ca-tool-" + tool.Name, "active executable: " + tool.Path + "; version/configuration evidence is not TLS remediation proof"}}
+	findings := []Finding{{"INFO", "ca-tool-" + tool.Name, "active executable: " + tool.Path + "; version/configuration evidence is not TLS remediation proof"}}
 	if tool.Kind == "python" {
 		values, valid := PythonMetadata(commands.Run(ctx, tool.Path, "-c", pythonMetadata))
 		if !valid {
@@ -226,7 +242,7 @@ func inspectTool(ctx context.Context, tool toolSpec) []Finding {
 	case "bun":
 		findings = append(findings, allVersionEvidence("bun", ExtractVersion("bun", result.Stdout))...)
 	case "rustc":
-		findings = append(findings, Finding{"WARN", "ca-rust", "rustc version does not establish compiled applications' CA dependency state; inspect each application's Cargo.lock"})
+		findings = append(findings, Finding{"INFO", "ca-rust", "rustc version does not establish compiled applications' CA dependency state; inspect each application's Cargo.lock"})
 	}
 	return findings
 }
@@ -255,7 +271,7 @@ func storeInventory(ctx context.Context) []Finding {
 		}
 		result := (OSCommands{}).Run(ctx, path, candidate.args...)
 		if result.Code == 0 && !result.Truncated && strings.TrimSpace(result.Stdout) != "" {
-			return []Finding{{"WARN", "ca-os-bundle", "ca-certificates inventory via " + candidate.command + ": " + strings.TrimSpace(result.Stdout) + "; vendor backport/effective trust unverified"}}
+			return []Finding{{"INFO", "ca-os-bundle", "ca-certificates inventory via " + candidate.command + ": " + strings.TrimSpace(result.Stdout) + "; vendor backport/effective trust unverified"}}
 		}
 	}
 	return []Finding{{"WARN", "ca-os-bundle", "OS CA bundle/revocation update state not established; update the OS/vendor trust package separately"}}

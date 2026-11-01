@@ -90,6 +90,7 @@ and what outlived it.
 | 0063 | [宣言した機体だけ、tailnet の中だけの Tailscale 転送を Ollama の公開と数えない](./0063-declared-tailnet-forward-of-ollama.md) | Accepted | 2026-10-25 | `scripts/ollama_host.py`、`tests/unit/test_ollama_host.py`、`.github/workflows/unit-test.yaml`、`docs/runbook/ollama-windows-wsl.md` |
 | 0064 | [mirrored の WSL にはブリッジを置かず、共有の loopback で Windows の Ollama を使う](./0064-mirrored-wsl-uses-the-shared-loopback.md) | Accepted | 2026-10-25 | `scripts/ollama_host.py`、`tests/unit/test_ollama_host.py`、`docs/runbook/ollama-windows-wsl.md` |
 | 0065 | [Linux カーネルの CVE は dotfiles が直さず、報告と助言だけを行う](./0065-kernel-cve-is-evidence-only.md) | Proposed（決裁待ち） | 2026-10-29 | `tools/kernel-doctor/`、`justfile`、`scripts/doctor.sh`、`tests/unit/test_doctor_kernel.py`、`docs/runbook/kernel-doctor.md` |
+| 0066 | [doctor の WARN は手を動かすべきことだけにし、注意書きは INFO で出し、OS に合わない行は出さない](./0066-doctor-warns-only-what-needs-action.md) | Proposed（決裁待ち） | 2026-11-01 | `scripts/doctor.sh`、`scripts/doctor_lines.py`、`scripts/ollama_host.py`、`tools/ca-doctor/`、`tools/kernel-doctor/`、`docs/runbook/ca-doctor.md`、`docs/runbook/kernel-doctor.md` |
 
 ## Reading order for newcomers
 
@@ -145,3 +146,4 @@ and what outlived it.
 - 2026-10-25: [ADR-0063](./0063-declared-tailnet-forward-of-ollama.md)を採択。宣言した機体だけ、tailnet の中だけの Tailscale 転送を、厳しい条件で Ollama の公開と数えない。Funnel は認めない。
 - 2026-10-25: [ADR-0064](./0064-mirrored-wsl-uses-the-shared-loopback.md)を採択。mirrored の WSL にはブリッジを置かず、共有の loopback で Windows の Ollama を使い、doctor が接続の前に持ち主を確かめる。
 - 2026-10-29: [ADR-0065](./0065-kernel-cve-is-evidence-only.md)を起票（Proposed、決裁待ち）。CVE-2026-98432（Linux カーネル IPv4 TCP の use-after-free）を契機に、カーネルは dotfiles が直さないこと、版の比較はクリーンな上流形かつレビュー済み branch のときだけ行い未判定を修正済みと数えないこと、kernel-doctor の所見は doctor の `err` に入れないこと、WSL カーネルを管理しない方針（0058 / 0064）を維持することを定める。
+- 2026-11-01: [ADR-0066](./0066-doctor-warns-only-what-needs-action.md)を起票（Proposed、決裁待ち）。`just doctor` の WARN を、その機体で手を動かすべきことだけにする。範囲の注意書きと事実は INFO で出して警告に数えず、`ca-doctor --summary` でクライアントごとの 1 行にまとめ、その OS に合わない検査の行は出さない。ERR と終了コードの契約は変えない。
