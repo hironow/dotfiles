@@ -39,7 +39,7 @@ ADR-0066 Decision 1 の基準（WARN は「その機体で operator が見るか
 
 効果: Windows の `ca-live-emudhra-2026-curl` が `unverified=14/14` の WARN から、全部拒否の INFO（ADR-0066 Decision 3）になる。受け入れたホストがあれば ERR のまま。
 
-### 2.2 Windows で control の接続が時々リセットされる（報告 2、原因は不明）
+### 2.2 Windows で control の接続が時々リセットされる（報告 2、原因は IPv6）
 
 事実: trade 機の Windows から control URL へ 10 回中 3 回 `Connection was reset`（curl と python）。WSL からは 10 回とも成功。テストホスト 14 本はリセットされていない（`certificate-rejected=14 unverified=0`）。原因はまだ確かめていない。
 
@@ -49,7 +49,7 @@ ADR-0066 Decision 1 の基準（WARN は「その機体で operator が見るか
 
 テスト: fake の `TLSProber`（control だけ 1 回目 `Unknown`、2 回目 `Accepted`）で INFO になること、3 回とも `Unknown` なら WARN で、control の試行が 3 回で止まること、`CertRejected` の control は 1 回しか試さないこと。
 
-原因の調査は別に残す（handover の Windows の節）: trade 機で `curl.exe -4` と `curl.exe -6` を各 10 回ずつ control URL へ実行し、IPv6 の経路の問題かを切り分ける。
+原因は IPv6 だった（2026-11-01、trade 機。[ca-control-ipv4](ca-control-ipv4.md) §1）。control URL は IPv4 と IPv6 の両方のアドレスを持ち、Windows は IPv6 を先に使う。その IPv6 の接続の約半数がリセットされた（curl `-6` は 30 回中 19 回、`-4` は 0 回）。テストホストは IPv4 のアドレスしか持たない。上の 3 回の再試行だけでは揺れが残ったので（8 回中 4 回で WARN）、[#529](https://github.com/hironow/dotfiles/pull/529) で 2 回目を IPv4 に限った（Bun を除く）。どこでリセットされるかは確かめていない。
 
 ### 2.3 版の要素が 2 つ（pip `24.0`）だと「解析できない」になる（報告 3）
 
@@ -159,4 +159,4 @@ trade 機で `git pull`（merge 後の SHA であることを `git rev-parse --s
 - `just ci` は exit 0（unit 1995 passed。golangci-lint と `go test` は ca-doctor と kernel-doctor の両方で通った）。
 - worktree で binary を作り直して `just doctor`: `ok=52 warn=6 err=1 info=31` で、前の計画の §11 と同じ。WARN 6 件のうち 5 件は worktree から実行したための `claude-plugins`、1 件は system pip 21.2.4（系列外）。ERR は system python の `ca-live` の 1 行。本計画の変更は Windows と WSL で効くもので、この Mac の行は変わらない。
 - 実装中に計画から変えた点: 2.4 の brew の行は `case "$(uname -s)" in` でなく `if` で書いた。既存のテスト 3 本（`test_doctor_windows.py`、`test_doctor_npm_rogue.py`、`test_retired_python_tools.py`）が「最初の `case "$(uname -s)" in` が Windows 専用の節」として位置を確かめており、最初の `just ci` でそれを壊したため。
-- Windows と WSL の再確認は、merge 後に #526 へ依頼する（§7）。結果が届くまで、本計画は「実装済み・実機確認待ち」。
+- Windows と WSL の再確認は、merge 後に #526 へ依頼した（2026-11-01 20:09、[コメント](https://github.com/hironow/dotfiles/pull/526#issuecomment-6557133995)、§7）。`ca-live` の行は [#529](https://github.com/hironow/dotfiles/pull/529) の確認で Windows と WSL の両方で INFO になった。`just doctor` 全体の結果はまだ届いていないので、本計画は「実装済み・実機確認待ち」。
