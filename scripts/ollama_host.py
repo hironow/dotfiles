@@ -1528,12 +1528,23 @@ def check() -> list[tuple[str, str, str]]:
                 raise RuntimeError("WSL distribution inventory unavailable")
             running = _decode_wsl(running_result.stdout)
             for distro in _decode_wsl(all_result.stdout):
-                if distro not in running or distro == "docker-desktop":
+                if distro == "docker-desktop":
+                    # Docker Desktop's own distro is never an Ollama client
+                    # (ADR-0062), so not inspecting it is a fact, not a warning.
+                    rows.append(
+                        (
+                            "INFO",
+                            "ollama-inspection",
+                            f"WSL {distro}: platform-managed, not an Ollama client; not inspected",
+                        )
+                    )
+                    continue
+                if distro not in running:
                     rows.append(
                         (
                             "WARN",
                             "ollama-inspection",
-                            f"WSL {distro}: stopped/platform-managed, uninspected (not started)",
+                            f"WSL {distro}: stopped, uninspected (not started)",
                         )
                     )
                     continue

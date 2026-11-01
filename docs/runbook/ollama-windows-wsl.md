@@ -156,7 +156,7 @@ Windows の調べのスクリプトは、Windows のコマンド行の長さの�
 - 待受 PID、ポート、アドレスから、本体の所有者と loopback 以外への公開を検査する。宣言した機体では、tailnet の中だけの Tailscale 転送を確かめ、認めた物は公開と数えない。
 - WSL の native binary、package、process、system/user service、モデル配置を調べる。
 - NAT の WSL では、ブリッジの管理対象 unit、実行ファイル、PID、待受 socket、転送後の version 応答を照合する。mirrored の WSL では、上の順で共有の loopback を確かめる。網の形が分からない WSL は WARN にする。
-- 停止中や接続不能の WSL は起動せず、未検査の WARN とする。プラットフォーム管理の distro も未検査と表示する。
+- 停止中や接続不能の WSL は起動せず、未検査の WARN とする。プラットフォーム管理の distro（`docker-desktop`）は Ollama のクライアントにならないので、検査せず、未検査であることを INFO で表示する。
 - Windows が届かないだけで unit や socket が正しく管理されているブリッジは、構成違反ではなく通常の停止として WARN にする。identity や version の不一致は ERR のままである。
 - WSL2 のカーネルを共有する Docker / Podman コンテナは Windows との相互運用を持たないため、この方針の適用外（該当なし）と判定する。
 

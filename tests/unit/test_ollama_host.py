@@ -1657,6 +1657,42 @@ def test_doctor_inspects_only_running_distros_and_never_repairs(
     )
 
 
+@pytest.mark.parametrize("docker_desktop_running", [False, True])
+def test_the_platform_managed_distro_is_shown_as_info(
+    monkeypatch: pytest.MonkeyPatch, docker_desktop_running: bool
+) -> None:
+    """docker-desktop belongs to Docker Desktop and is never an Ollama client
+    (ADR-0062), so leaving it uninspected is a fact, not a warning. The runbook
+    keeps a stopped distro of the operator's own as a WARN."""
+    monkeypatch.setattr(host, "host_policy", lambda: "windows-full")
+    monkeypatch.setattr(host, "windows_snapshot", _windows)
+    calls = []
+    running = "Ubuntu\ndocker-desktop\n" if docker_desktop_running else "Ubuntu\n"
+
+    def run(command, **kwargs):
+        calls.append(command)
+        names = (
+            running if "--running" in command else "Ubuntu\nStopped\ndocker-desktop\n"
+        )
+        return subprocess.CompletedProcess(command, 0, names.encode("utf-16-le"), b"")
+
+    def run_text(command, **kwargs):
+        calls.append(command)
+        output = "/mapped/checker.py" if "wslpath" in command else json.dumps(_wsl())
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    monkeypatch.setattr(host.subprocess, "run", run)
+    monkeypatch.setattr(host, "_run", run_text)
+    rows = host.check()
+    docker = [row for row in rows if "docker-desktop" in row[2]]
+    stopped = [row for row in rows if "Stopped" in row[2]]
+    assert [row[0] for row in docker] == ["INFO"]
+    assert "platform-managed" in docker[0][2] and "not inspected" in docker[0][2]
+    assert [row[0] for row in stopped] == ["WARN"]
+    assert "uninspected" in stopped[0][2]
+    assert not any("docker-desktop" in command for command in calls if "-d" in command)
+
+
 def test_windows_ci_runs_these_tests_on_windows() -> None:
     # The PowerShell classifiers skip on ubuntu-latest; only this job runs them.
     workflow = (
