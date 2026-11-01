@@ -32,7 +32,7 @@ def _harness(tmp_path: Path, block_re: str, fakes: str) -> str:
         + fakes
         + "\n"
         + block[0]
-        + '\necho "counts $ok $warn $err"\n',
+        + '\necho "counts $ok $warn $err $info"\n',
         encoding="utf-8",
         newline="\n",
     )
@@ -129,3 +129,40 @@ def test_an_applicable_host_is_read_as_before(
     out = _harness(tmp_path, OLLAMA, _uv(output, rc))
     assert "counts " + counts in out
     assert ("WARN ollama-inspection" in out) is unavailable
+
+
+BREW = r"(?ms)^# Homebrew is used on macOS.*?^fi$"
+WITH_BREW = "brew(){ echo 'Homebrew 9.9.9'; }\n"
+WITHOUT_BREW = (
+    'has(){ [ "$1" = brew ] && return 1; command -v "$1" >/dev/null 2>&1; }\n'
+)
+
+
+@pytest.mark.parametrize(
+    ("host", "fake", "line", "counts"),
+    [
+        (("Darwin", "25.2.0"), WITH_BREW, "OK   brew - Homebrew 9.9.9", "1 0 0 0"),
+        (("Darwin", "25.2.0"), WITHOUT_BREW, "WARN brew - missing", "0 1 0 0"),
+        (("Linux", "6.8.0-45-generic"), WITH_BREW, "OK   brew", "1 0 0 0"),
+        (
+            ("Linux", "6.8.0-45-generic"),
+            WITHOUT_BREW,
+            "INFO brew - not installed (optional on Linux",
+            "0 0 0 1",
+        ),
+        (WSL, WITHOUT_BREW, "INFO brew - not installed", "0 0 0 1"),
+        (("MINGW64_NT-10.0-26100", "3.6.4"), WITH_BREW, None, "0 0 0 0"),
+        (("MINGW64_NT-10.0-26100", "3.6.4"), WITHOUT_BREW, None, "0 0 0 0"),
+    ],
+)
+def test_brew_is_required_only_on_macos(
+    tmp_path: Path, host: tuple[str, str], fake: str, line: str | None, counts: str
+) -> None:
+    """The justfile treats Homebrew as optional on Linux (WSL and mise-managed
+    hosts have none) and never uses it on native Windows."""
+    out = _harness(tmp_path, BREW, _uname(*host) + fake)
+    if line is None:
+        assert "brew" not in out
+    else:
+        assert line in out
+    assert "counts " + counts in out
