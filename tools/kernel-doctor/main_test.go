@@ -473,3 +473,42 @@ func dump(found []Finding) string {
 	}
 	return builder.String()
 }
+
+// Third-party figures and the advice text in the incident record are the same
+// on every run and describe nothing about this host, so they are INFO
+// (ADR-0066 Decision 2). The version line stays the one warning per CVE: a
+// vendor kernel is never judged (ADR-0065 Decision 3).
+func TestFiguresAndAdviceAreInfoAndTheVersionStaysAWarning(t *testing.T) {
+	reviewed := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	wsl := linuxProbe("6.18.54.1-microsoft-standard-WSL2", "0", true)
+	var observed, advice, versions int
+	for _, f := range findingsOf(wsl, ".", reviewed) {
+		switch {
+		case strings.HasPrefix(f.Name, "kernel-observed-"):
+			observed++
+			if f.Level != "INFO" {
+				t.Errorf("%s is %s, want INFO", f.Name, f.Level)
+			}
+		case strings.HasPrefix(f.Name, "kernel-advice-"):
+			advice++
+			if f.Level != "INFO" {
+				t.Errorf("%s is %s, want INFO", f.Name, f.Level)
+			}
+		case strings.HasPrefix(f.Name, "kernel-version-"):
+			versions++
+			if f.Level != "WARN" {
+				t.Errorf("an unverified vendor kernel must stay a WARN: %v", f)
+			}
+		}
+	}
+	if observed == 0 || advice == 0 || versions == 0 {
+		t.Fatalf("lines lost: observed=%d advice=%d version=%d", observed, advice, versions)
+	}
+	// With the version at the floor and migration off, nothing is left to act
+	// on: the fixed text alone must not make the run a warning.
+	for _, f := range findingsOf(linuxProbe("6.18.56", "0", true), ".", reviewed) {
+		if f.Level == "WARN" || f.Level == "ERR" {
+			t.Errorf("a kernel at the floor still warns: %v", f)
+		}
+	}
+}

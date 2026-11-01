@@ -197,13 +197,16 @@ func assessmentFindings(probe Probe, incident Incident) []Finding {
 	}
 	out = append(out, sysctlFindings(probe, incident)...)
 	// One line for every third-party figure: they are context for a human, not
-	// separate actions, and one line each would dominate `just doctor`.
+	// separate actions, and one line each would dominate `just doctor`. The
+	// figures and the advice text are the same on every run and say nothing
+	// about this host, so they are INFO (ADR-0066 Decision 2); the version line
+	// above is the one warning per CVE.
 	out = append(out, Finding{
-		"WARN", "kernel-observed-" + incident.ID,
+		"INFO", "kernel-observed-" + incident.ID,
 		observationList(incident) + "; third-party figures read on their observation dates, not measured here",
 	})
 	for _, advice := range incident.Advice {
-		out = append(out, Finding{"WARN", "kernel-advice-" + incident.ID, advice})
+		out = append(out, Finding{"INFO", "kernel-advice-" + incident.ID, advice})
 	}
 	return out
 }
