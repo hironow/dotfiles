@@ -130,6 +130,14 @@ brew "dnscontrol"
 brew "dnstwist"
 # DNS query and resolution tool
 brew "dnsx"
+# Pack, ship and run any application as a lightweight container
+brew "docker"
+# Docker CLI plugin for extended build capabilities with BuildKit
+brew "docker-buildx"
+# Isolated development environments using Docker
+brew "docker-compose"
+# Platform keystore credential helper for Docker
+brew "docker-credential-helper"
 # Command-line tool for DigitalOcean
 brew "doctl"
 # Command-line DNS Client for Humans
@@ -590,8 +598,6 @@ cask "gpg-suite"
 cask "keycastr"
 # Intercept, modify, replay, save HTTP/S traffic
 cask "mitmproxy"
-# Replacement for Docker Desktop
-cask "orbstack"
 # Application for inspecting installer packages
 cask "suspicious-package"
 # Rust-based terminal
