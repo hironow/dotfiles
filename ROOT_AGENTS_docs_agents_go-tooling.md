@@ -3,7 +3,10 @@
 Read this when you write or change a **service**, a CLI, a tool, or any new Go
 code. AGENTS.md sets the language choice: new code is Go, and Rust only when Go
 does not fit (docs/agents/rust-tooling.md). Existing Python tooling and bun
-frontends stay where they already are.
+frontends stay where they already are. A prototype is new code too: write it in
+Go, not Python, so that it never has to be ported before it can be made fast.
+The one exception is GPU work that targets CUDA, through PyTorch or another
+CUDA library, which may be Python (AGENTS.md).
 
 ## Minimum version
 
@@ -56,3 +59,17 @@ output `dist/<name>-<os>-<arch>`, with `.exe` added for Windows.
 
 Put the target list in one `just` recipe. Keep `CGO_ENABLED=0`; a dependency
 that needs cgo breaks cross-compiling, so it needs an explicit reason.
+
+## Measure before you optimise
+
+- Find where the time goes before you change anything for speed. Use the
+  standard tools: `go test -bench`, `-cpuprofile` and `-memprofile` with
+  `go tool pprof`, and `runtime/trace`.
+- If most of the time is the network, a disk, or another service, making this
+  code faster changes little. Fix the slow dependency or the call pattern first.
+- Keep hot state in plain in-memory data structures owned by one goroutine
+  by default. If the state must survive a restart, stay consistent, or be
+  recoverable, meet that requirement from the start (an embedded database is
+  fine). Add complexity for speed (shared memory, lock-free queues, more
+  goroutines, a database or cache for speed) only when a measurement shows the
+  simple version is the bottleneck.

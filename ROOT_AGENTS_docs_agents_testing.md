@@ -59,11 +59,51 @@ Put the cases in a table and run each one as a named subtest (`t.Run`), so a
 failure names the case. Assert the status and the response body, and compare
 JSON bodies as decoded values, not as strings.
 
+### Web and mobile apps: `e2e` (tester-army/e2e)
+
+Write new end-to-end suites for web and mobile apps with `e2e`
+(https://github.com/tester-army/e2e): Playwright for browsers, agent-device for
+iOS and Android simulators and emulators. These suites use the `test` of their
+engine (`@e2e-dev/web`, `@e2e-dev/mobile`) and the `expect` of `e2e`, not
+`bun:test`. Existing suites in another framework stay until someone migrates
+them. Exploratory checks that are not a committed suite (a bug bash,
+dogfooding) are not covered.
+
+- Install a version that has passed the dependency cooldown, pinned exactly:
+  `bun add -d --exact e2e@<version>` and the engine package the same way. Run
+  it from a root `just` recipe with `bunx --no-install e2e run`, so it never
+  fetches an unpinned copy. Never `npx`. It is pre-1.0, so read the release
+  notes on every bump (docs/agents/dependency-policy.md).
+- The e2e rules above still apply: real dependencies, no mocks.
+- Agent steps (`agent.act`) are recorded and replayed. That cuts model calls
+  but does not remove them: a step with no recording, a retry, and every
+  agent judgment (`agent.assert`, `agent.waitFor`, `agent.extract`) call the
+  model. Give each `agent.act` one goal, decide pass or fail with locator
+  assertions (`expect(...)`), and keep agent judgments out of a required CI
+  suite.
+- Run the required CI job with `CI=1 bunx --no-install e2e run --strict-cache
+  --retries 0`, and set no positive `retries` on a test or a `describe` in that
+  suite: they override the flag, and a retry runs every goal live. A stale
+  recording then fails instead of quietly running live.
+- A step that was never recorded still runs live, so the required job needs a
+  model credential as a CI secret. Cap the spend on the provider side (a key
+  with a spend or token limit), and bound the job with `--max-duration` and
+  `timeout-minutes`; `--max-failures` only stops a broken run early. If the
+  provider cannot cap spend, keep agent steps out of the required job.
+- Commit the replay cache (`.e2e/cache/`) and review it like test code: it
+  stores typed values verbatim and replays with your permissions. Register
+  every credential as a `Secret`, so the cache stores only its name.
+- Turn off its telemetry: the repo's e2e recipe and CI set
+  `E2E_TELEMETRY_DISABLED=1`.
+- Screenshots reach the model provider. Use test accounts, never production
+  secrets.
+
 ## TypeScript tests
 
 Write new TypeScript suites with `bun:test` (`describe` / `test` / `expect`),
-never a hand-rolled harness. To convert an existing hand-rolled harness, follow
-docs/agents/bun-test-migration.md.
+never a hand-rolled harness. Web and mobile end-to-end suites are the
+exception: they use `e2e` (above). To convert an existing hand-rolled harness
+to `bun:test`, follow docs/agents/bun-test-migration.md.
 
 ## runn scenario tests
 

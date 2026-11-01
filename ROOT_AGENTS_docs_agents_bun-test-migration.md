@@ -4,6 +4,8 @@ Read this when you convert a hand-rolled TypeScript test harness to
 `bun:test`. docs/agents/testing.md has the general test rules.
 
 Write new TypeScript suites with `bun:test`: `describe` / `test` / `expect`.
+Web and mobile end-to-end suites are the exception: they use `e2e`
+(docs/agents/testing.md), so do not convert them to `bun:test`.
 Never write a hand-rolled harness such as `let pass = 0; const ok = (name, cond)
 => …`. When you migrate an existing hand-rolled leaf, the conversion must
 **preserve behavior**: it exercises the same inputs and catches the same

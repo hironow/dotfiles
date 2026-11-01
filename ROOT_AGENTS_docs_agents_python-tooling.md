@@ -2,6 +2,19 @@
 
 Read this when you write or change Python. Use `uv` for packages (AGENTS.md).
 
+## Speed: move the slow part, do not tune Python
+
+Do not do systems-level speed work in Python (C extensions, Cython, shared
+memory, lock-free structures). When a Python tool is too slow, measure first,
+then fix I/O, queries, the call pattern, and the algorithm in Python. Only if
+the computation itself still misses the requirement, move that part to Go
+(Rust only when Go does not fit; see docs/agents/rust-tooling.md). Existing
+Python tooling otherwise stays where it is.
+
+GPU work that targets CUDA, through PyTorch or another CUDA library, is the one
+place where new code may be Python (AGENTS.md). There the speed comes from the library on the GPU, so
+measure, then fix the data pipeline and how you call the library first.
+
 ## Required tools: these three, no substitutes
 
 - **uv** — packages and runner (`uv sync`, `uv add`, `uv add --dev`, `uv run`, `uvx`)

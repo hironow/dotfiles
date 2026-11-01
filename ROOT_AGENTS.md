@@ -19,17 +19,20 @@ explicit instruction in the chat overrides everything here.
 Hooks, pre-commit, and CI enforce these rules (see Enforcement). Each rule gives
 its reason so you can apply it to cases a check does not list.
 
-- **Existing Python uses `uv`, `ruff`, and `ty`. No substitutes.** Use `uv` to install
+- **Python uses `uv`, `ruff`, and `ty`. No substitutes.** Use `uv` to install
   and run (`uv sync`, `uv add`, `uv run`). Never use `pip`, `poetry`, or
   `pipenv`: two resolvers put the lockfile out of sync. Use `ruff` to lint and
   format, and `ty` (astral-sh/ty) to check types. Never use `mypy`, `pyright`,
   `flake8`, `black`, or `isort`. One toolchain, one config, one gate.
 - **New code is Go, newest stable; Rust only when Go does not fit.** Write new
   services, CLIs, and tools (and the control plane) in Go, not Python,
-  TypeScript, Ruby, or shell. Ship one binary per OS and CPU so the same tool
-  runs on every device. Go 1.27 is the minimum; use the newest stable Go the
-  module compiles with. Use Rust only for no-GC, tight-memory, or WASM targets,
-  or an existing Rust codebase.
+  TypeScript, Ruby, shell, C++, or Java. The one exception is GPU work that
+  targets CUDA, through PyTorch or another CUDA library, which may be Python.
+  Ship one binary per OS and CPU so the same tool runs on every device. Go 1.27
+  is the minimum; use the newest stable Go the module compiles with. Use Rust
+  only for no-GC, tight-memory, or WASM targets, or an existing Rust codebase.
+  Wanting more speed is not a reason by itself: measure first
+  (docs/agents/rust-tooling.md).
 - **Use few dependencies; use the standard library first.** In every language,
   use the official standard library before a third-party package, and use its
   newest features and methods. A third-party package needs a reason the
@@ -147,7 +150,7 @@ Open the matching file as soon as its trigger applies:
 | ---------------------------------------------- | ----------------------------------- |
 | writing or changing Python                     | docs/agents/python-tooling.md       |
 | writing or changing Go or a service            | docs/agents/go-tooling.md           |
-| choosing Rust, or writing or changing Rust     | docs/agents/rust-tooling.md         |
+| choosing between Go and Rust, or writing or changing Rust | docs/agents/rust-tooling.md |
 | modeling distributed state / Quint            | docs/agents/formal-methods.md       |
 | adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |
 | writing a `pull_request` workflow              | docs/agents/draft-ci.md             |
