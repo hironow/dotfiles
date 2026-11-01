@@ -103,9 +103,7 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   **HTTP(S) UI のみ** — Pub/Sub(9399) / Firestore(8080) / OTLP gRPC(4317) 等の wire protocol は
   不可で `localhost:PORT` のまま。port や `just emu-api` の service 順を変えたら、その一覧も直す。
 - **emu-api** (`just emu-api`): vercel-labs/emulate を host bunx で (4100-4108)。`emu-api-stop`。
-- OrbStack VM は **16 GiB / 4 vCPU** 推奨 (`orb config set memory_mib 16384` / `cpu 4`、
-  要再起動)。10 GiB だとフルスタック + 外部 repo の二重起動で guest OOM。
-  `restart: unless-stopped` のコンテナは VM 起動時に自動復活する (telemetry は復活しない)。
+- emulator の `restart: unless-stopped` のコンテナは Docker の VM の起動時に自動復活する (telemetry は復活しない)。
 
 ## このリポ特有の罠 (memory 参照)
 
