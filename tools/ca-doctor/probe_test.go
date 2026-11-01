@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,6 +27,32 @@ func TestTLSProbeDoesNotConfuseHTTPFailureAndCertificateFailure(t *testing.T) {
 	}
 	if got := (GoProbe{}).Probe(context.Background(), "https://127.0.0.1:1/"); got != Unknown {
 		t.Fatal(got)
+	}
+}
+
+// The IPv4 probe still reaches an IPv4 server and never dials IPv6, which is
+// the path that reset about half the control connections on a Windows host.
+func TestGoProbeIPv4DialsOnlyIPv4(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) })
+	server := httptest.NewTLSServer(handler)
+	defer server.Close()
+	if got := (GoProbe{IPv4: true}).Probe(context.Background(), server.URL); got != CertRejected {
+		t.Fatalf("IPv4 server = %s", got)
+	}
+	listener, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skip("no IPv6 loopback")
+	}
+	ipv6 := httptest.NewUnstartedServer(handler)
+	_ = ipv6.Listener.Close()
+	ipv6.Listener = listener
+	ipv6.StartTLS()
+	defer ipv6.Close()
+	if got := (GoProbe{}).Probe(context.Background(), ipv6.URL); got != CertRejected {
+		t.Fatalf("default probe to an IPv6 server = %s", got)
+	}
+	if got := (GoProbe{IPv4: true}).Probe(context.Background(), ipv6.URL); got != Unknown {
+		t.Fatalf("IPv4 probe to an IPv6 server = %s", got)
 	}
 }
 
@@ -66,6 +93,19 @@ func TestExternalProbeAdaptersAgainstLocalTLS(t *testing.T) {
 			}
 			if got := probe.Probe(context.Background(), "https://127.0.0.1:1/"); got != Unknown {
 				t.Fatalf("network failure = %s", got)
+			}
+			probe.IPv4 = true
+			if tc.kind == "bun" {
+				if got := probe.Probe(context.Background(), server.URL); got != Unknown {
+					t.Fatalf("bun cannot limit fetch to IPv4, got %s", got)
+				}
+				return
+			}
+			if got := probe.Probe(context.Background(), server.URL); got != Accepted {
+				t.Fatalf("IPv4 probe to an IPv4 server must be accepted, got %s", got)
+			}
+			if got := probe.Probe(context.Background(), "https://127.0.0.1:1/"); got != Unknown {
+				t.Fatalf("IPv4 network failure = %s", got)
 			}
 		})
 	}
@@ -146,6 +186,33 @@ func TestExternalProbeDefaultArguments(t *testing.T) {
 	}
 }
 
+// The IPv4 probe adds one switch to the default arguments. Bun's fetch has no
+// address-family option, so an IPv4 bun probe runs nothing and stays unknown.
+func TestExternalProbeIPv4Arguments(t *testing.T) {
+	const url = "https://h.example/"
+	cases := []struct {
+		kind string
+		want []string
+	}{
+		{"curl", []string{"-q", "--proto", "=https", "--connect-timeout", "3", "--max-time", "4", "--silent", "--show-error", "--output", os.DevNull, "--write-out", "%{http_code}", "--ipv4", url}},
+		{"node", []string{"--eval", nodeProbe, url, "4"}},
+		{"python", []string{"-c", pythonProbe, url, "4"}},
+		{"bun", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.kind, func(t *testing.T) {
+			commands := &recordedCommands{}
+			got := ExternalProbe{Path: "client", Kind: c.kind, Commands: commands, IPv4: true}.Probe(context.Background(), url)
+			if !slices.Equal(commands.args, c.want) {
+				t.Fatalf("args %q, want %q", commands.args, c.want)
+			}
+			if c.want == nil && got != Unknown {
+				t.Fatalf("outcome %s, want unknown", got)
+			}
+		})
+	}
+}
+
 // scriptedProber answers each URL from a queue and counts the calls. The last
 // answer repeats once the queue is empty.
 type scriptedProber struct {
@@ -170,37 +237,52 @@ func probeIncident() Incident {
 	return Incident{ID: "test-2026", ControlURL: "https://control.example/", Hosts: []string{"a.example", "b.example"}}
 }
 
+// newScriptedProber answers the control from control and every test chain from
+// chains.
+func newScriptedProber(incident Incident, control []Outcome, chains Outcome) *scriptedProber {
+	answers := map[string][]Outcome{incident.ControlURL: control}
+	for _, host := range incident.Hosts {
+		answers["https://"+host+"/"] = []Outcome{chains}
+	}
+	return &scriptedProber{answers: answers, calls: map[string]int{}}
+}
+
 // The control asks only whether this client can make a TLS connection at all.
-// One reset (seen on Windows, cause not established) does not answer that.
+// One reset does not answer that. The second try is over IPv4, the family the
+// test hosts use (on a Windows host the control's IPv6 path reset about half
+// the connections); the third goes back to the default so an IPv6-only network
+// keeps its second chance. Every test chain is rejected in these cases.
 func TestProbeClientRepeatsAnUnknownControl(t *testing.T) {
 	cases := []struct {
-		name      string
-		control   []Outcome
-		wantLevel string
-		wantCalls int
+		name                     string
+		control, ipv4Control     []Outcome
+		noIPv4                   bool
+		wantLevel                string
+		wantDefault, wantIPv4Hit int
 	}{
-		{"reset then accepted", []Outcome{Unknown, Accepted}, "INFO", 2},
-		{"unknown three times", []Outcome{Unknown}, "WARN", 3},
-		{"accepted at once", []Outcome{Accepted}, "INFO", 1},
-		{"rejected is an answer", []Outcome{CertRejected}, "WARN", 1},
+		{"reset then accepted over IPv4", []Outcome{Unknown}, []Outcome{Accepted}, false, "INFO", 1, 1},
+		{"IPv4 unknown, default recovers", []Outcome{Unknown, Accepted}, []Outcome{Unknown}, false, "INFO", 2, 1},
+		{"unknown on every try", []Outcome{Unknown}, []Outcome{Unknown}, false, "WARN", 2, 1},
+		{"accepted at once", []Outcome{Accepted}, []Outcome{Unknown}, false, "INFO", 1, 0},
+		{"rejected is an answer", []Outcome{CertRejected}, []Outcome{Accepted}, false, "WARN", 1, 0},
+		{"no IPv4 probe: default three times", []Outcome{Unknown}, nil, true, "WARN", 3, 0},
+		{"no IPv4 probe: default recovers", []Outcome{Unknown, Accepted}, nil, true, "INFO", 2, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			incident := probeIncident()
-			p := &scriptedProber{
-				answers: map[string][]Outcome{
-					incident.ControlURL:  c.control,
-					"https://a.example/": {CertRejected},
-					"https://b.example/": {CertRejected},
-				},
-				calls: map[string]int{},
+			p := newScriptedProber(incident, c.control, CertRejected)
+			ipv4 := newScriptedProber(incident, c.ipv4Control, Accepted)
+			var ipv4Prober TLSProber = ipv4
+			if c.noIPv4 {
+				ipv4Prober = nil
 			}
-			got := ProbeClient(context.Background(), incident, "fake", p, make(chan struct{}, 1))
+			got := ProbeClient(context.Background(), incident, "fake", p, ipv4Prober, make(chan struct{}, 1))
 			if got[0].Level != c.wantLevel {
 				t.Fatalf("level %s, want %s: %v", got[0].Level, c.wantLevel, got[0])
 			}
-			if p.calls[incident.ControlURL] != c.wantCalls {
-				t.Fatalf("control probed %d times, want %d", p.calls[incident.ControlURL], c.wantCalls)
+			if p.calls[incident.ControlURL] != c.wantDefault || ipv4.calls[incident.ControlURL] != c.wantIPv4Hit {
+				t.Fatalf("control probed %d times by default and %d over IPv4, want %d and %d", p.calls[incident.ControlURL], ipv4.calls[incident.ControlURL], c.wantDefault, c.wantIPv4Hit)
 			}
 		})
 	}
@@ -218,9 +300,13 @@ func TestProbeClientDoesNotRepeatTestChains(t *testing.T) {
 		},
 		calls: map[string]int{},
 	}
-	got := ProbeClient(context.Background(), incident, "fake", p, make(chan struct{}, 1))
+	ipv4 := newScriptedProber(incident, []Outcome{Accepted}, Accepted)
+	got := ProbeClient(context.Background(), incident, "fake", p, ipv4, make(chan struct{}, 1))
 	if p.calls["https://a.example/"] != 1 {
 		t.Fatalf("test chain probed %d times, want 1", p.calls["https://a.example/"])
+	}
+	if ipv4.calls["https://a.example/"] != 0 || ipv4.calls["https://b.example/"] != 0 {
+		t.Fatalf("test chains must use the default probe only: %v", ipv4.calls)
 	}
 	if got[0].Level != "WARN" {
 		t.Fatalf("an unknown chain must stay WARN: %v", got[0])
@@ -235,8 +321,9 @@ func TestProbeClientStopsRepeatingWhenCancelled(t *testing.T) {
 		answers: map[string][]Outcome{incident.ControlURL: {Unknown}, "https://a.example/": {Unknown}, "https://b.example/": {Unknown}},
 		calls:   map[string]int{},
 	}
-	got := ProbeClient(ctx, incident, "fake", p, make(chan struct{}))
-	if got[0].Level != "WARN" || p.calls[incident.ControlURL] != 0 {
-		t.Fatalf("cancelled run: level %s, control calls %d", got[0].Level, p.calls[incident.ControlURL])
+	ipv4 := newScriptedProber(incident, []Outcome{Unknown}, Unknown)
+	got := ProbeClient(ctx, incident, "fake", p, ipv4, make(chan struct{}))
+	if got[0].Level != "WARN" || p.calls[incident.ControlURL] != 0 || ipv4.calls[incident.ControlURL] != 0 {
+		t.Fatalf("cancelled run: level %s, control calls %d default and %d IPv4", got[0].Level, p.calls[incident.ControlURL], ipv4.calls[incident.ControlURL])
 	}
 }

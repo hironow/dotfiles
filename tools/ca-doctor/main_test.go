@@ -78,6 +78,35 @@ func TestLiveClientsStartWithTheDiagnosticBinaryAndSkipUnusableTools(t *testing.
 	}
 }
 
+// The control's IPv4 retry is only for clients that can keep their own way to
+// connect and limit it to IPv4. Bun's fetch cannot, and a direct node:tls
+// connection would answer for a different path than its test chains.
+func TestLiveClientsGiveAnIPv4ProbeOnlyWhereTheClientCanKeepItsPath(t *testing.T) {
+	tools := []toolSpec{
+		{Name: "curl", Kind: "curl", Path: "/usr/bin/curl"},
+		{Name: "node", Kind: "node", Path: "/usr/bin/node"},
+		{Name: "python", Kind: "python", Path: "/usr/bin/python3"},
+		{Name: "bun", Kind: "bun", Path: "/usr/bin/bun"},
+	}
+	clients := liveClients(tools, "linux")
+	if got, ok := clients[0].IPv4.(GoProbe); !ok || !got.IPv4 {
+		t.Fatalf("diagnostic-go IPv4 prober is %#v", clients[0].IPv4)
+	}
+	for _, client := range clients[1:] {
+		if client.Name == "bun" {
+			if client.IPv4 != nil {
+				t.Fatalf("bun must have no IPv4 prober, got %#v", client.IPv4)
+			}
+			continue
+		}
+		probe, ok := client.IPv4.(ExternalProbe)
+		def, _ := client.Prober.(ExternalProbe)
+		if !ok || !probe.IPv4 || probe.Path != def.Path || probe.Kind != def.Kind || def.IPv4 {
+			t.Fatalf("%s: default %#v, IPv4 %#v", client.Name, client.Prober, client.IPv4)
+		}
+	}
+}
+
 func TestDiscoveryIncludesMise(t *testing.T) {
 	for _, tool := range discoverTools() {
 		if tool.Name == "mise" && tool.Command == "mise" && len(tool.Args) == 1 && tool.Args[0] == "--version" {

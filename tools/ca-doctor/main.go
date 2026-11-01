@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -97,7 +98,7 @@ func RunCLI(parent context.Context, args []string, out io.Writer) int {
 			wg.Go(func() {
 				live[i] = []Finding{ProbeBaseline(ctx, client.Name, client.Prober, slots)}
 				for _, incident := range incidents {
-					live[i] = append(live[i], ProbeClient(ctx, incident, client.Name, client.Prober, slots)...)
+					live[i] = append(live[i], ProbeClient(ctx, incident, client.Name, client.Prober, client.IPv4, slots)...)
 				}
 			})
 		}
@@ -128,16 +129,31 @@ func Summarize(findings []Finding) []Finding {
 type clientProbe struct {
 	Name   string
 	Prober TLSProber
+	// IPv4 is the same client limited to IPv4, used for one control retry; nil
+	// when the client cannot keep its own way to connect on IPv4 only.
+	IPv4 TLSProber
 }
+
+// ipv4Kinds are the external clients that can limit their own way to connect
+// to IPv4. Bun is missing on purpose: its fetch has no address-family option,
+// and a direct node:tls connection would answer for a different path than the
+// fetch (and proxy settings) its test chains use.
+var ipv4Kinds = []string{"curl", "node", "python"}
 
 // liveClients lists the TLS clients that probe the baseline and each incident:
 // the diagnostic binary first, then each discovered tool that has a probe kind
 // and a path this OS can run.
 func liveClients(tools []toolSpec, goos string) []clientProbe {
-	clients := []clientProbe{{"diagnostic-go", GoProbe{}}}
+	clients := []clientProbe{{"diagnostic-go", GoProbe{}, GoProbe{IPv4: true}}}
 	for _, tool := range tools {
 		if tool.Path != "" && tool.Kind != "" && ExecutableSupported(tool.Path, goos) {
-			clients = append(clients, clientProbe{tool.Name, ExternalProbe{tool.Path, tool.Kind, OSCommands{}}})
+			probe := ExternalProbe{Path: tool.Path, Kind: tool.Kind, Commands: OSCommands{}}
+			client := clientProbe{Name: tool.Name, Prober: probe}
+			if slices.Contains(ipv4Kinds, tool.Kind) {
+				probe.IPv4 = true
+				client.IPv4 = probe
+			}
+			clients = append(clients, client)
 		}
 	}
 	return clients
