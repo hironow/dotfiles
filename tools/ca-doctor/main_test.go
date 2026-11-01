@@ -163,7 +163,7 @@ func TestOSBundleInventoryIsInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
-	got := storeInventory(context.Background())
+	got := storeInventory(context.Background(), "linux")
 	if len(got) != 1 || got[0].Name != "ca-os-bundle" || got[0].Level != "INFO" {
 		t.Fatal(got)
 	}
