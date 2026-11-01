@@ -106,3 +106,37 @@ def test_ci_emu_runs_only_scripts_the_emulator_workflow_runs() -> None:
         f"ci-emu runs {extra}, which the emulator workflow does not run. "
         "Keep the local gate to the workflow's steps."
     )
+
+
+def _service_block(name: str) -> str:
+    text = (EMULATOR / "compose.yaml").read_text(encoding="utf-8")
+    match = re.search(
+        rf"^  {re.escape(name)}:\n(.*?)(?=^  [\w-]+:\n|^\S)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert match, f"compose.yaml has no {name} service"
+    return match.group(1)
+
+
+def test_mcp_inspector_publishes_its_proxy_for_the_browser() -> None:
+    # The Inspector UI runs in the browser and calls its proxy directly on
+    # <page host>:6277 (upstream client/src/utils/configUtils.ts). The proxy
+    # accepts only origins in ALLOWED_ORIGINS and needs its session token.
+    block = _service_block("mcp-inspector")
+    ports = re.findall(r'^\s+- "([^"]+)"', block, re.MULTILINE)
+    assert ports, "mcp-inspector publishes no port"
+    assert all(port.startswith("127.0.0.1:") for port in ports), (
+        f"bind every Inspector port to loopback: {ports}"
+    )
+    assert "127.0.0.1:${MCP_INSPECTOR_PORT:-6274}:6274" in ports
+    assert any(port.endswith(":6277") for port in ports), (
+        "publish the proxy port 6277; the browser UI cannot reach it otherwise"
+    )
+    origins = re.search(r"^\s+- ALLOWED_ORIGINS=(\S+)$", block, re.MULTILINE)
+    assert origins, "set ALLOWED_ORIGINS so the proxy accepts the published UI"
+    assert "http://localhost:${MCP_INSPECTOR_PORT:-6274}" in origins.group(1).split(",")
+    assert re.search(r"^\s+- MCP_AUTO_OPEN_ENABLED=false$", block, re.MULTILINE), (
+        "turn off the auto-open; there is no browser inside the container"
+    )
+    assert "DANGEROUSLY_OMIT_AUTH" not in block, "keep the proxy's auth token"

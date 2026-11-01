@@ -20,7 +20,6 @@ list is the one place that names the aliases:
 portless alias firebase 4000 --force        # Firebase Emulator Suite UI
 portless alias neo4j 7474 --force           # Neo4j Browser (HTTP)
 portless alias a2a-inspector 8081 --force   # A2A Inspector UI
-portless alias mcp-inspector 6274 --force   # MCP Inspector UI
 portless alias mlflow 5252 --force          # MLflow UI
 portless alias qdrant 6333 --force          # Qdrant REST and dashboard
 portless alias elasticsearch 9200 --force   # Elasticsearch REST
@@ -59,6 +58,11 @@ portless proxies HTTP(S) only, not raw TCP. These wire protocols stay on their
 `127.0.0.1` ports: postgres 5433, pgadapter 55432, neo4j bolt 7687, bigtable
 gRPC 8086, spanner gRPC 9010, qdrant gRPC 6334, and elasticsearch transport
 9300.
+
+The MCP Inspector has no alias either. Its UI calls its proxy on the page's own
+host at port 6277, which portless does not serve, so open it at
+`http://localhost:6274` (see `emulator/README.md`). If you registered the old
+alias, remove it with `portless alias --remove mcp-inspector`.
 
 ## Remove the aliases
 

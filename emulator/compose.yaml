@@ -234,8 +234,17 @@ services:
     profiles:
       - inspect
       - full
+    # The UI runs in the browser and calls the proxy directly on
+    # <page host>:6277, so both ports are published. With a non-default
+    # MCP_INSPECTOR_PROXY_PORT, add &MCP_PROXY_PORT=<port> to the UI URL.
+    # The proxy accepts only the origins below and needs the session token
+    # the container prints (docker logs mcp-inspector).
     ports:
       - "127.0.0.1:${MCP_INSPECTOR_PORT:-6274}:6274"  # Client UI
+      - "127.0.0.1:${MCP_INSPECTOR_PROXY_PORT:-6277}:6277"  # Proxy
+    environment:
+      - ALLOWED_ORIGINS=http://localhost:${MCP_INSPECTOR_PORT:-6274},http://127.0.0.1:${MCP_INSPECTOR_PORT:-6274}
+      - MCP_AUTO_OPEN_ENABLED=false
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6274"]
       interval: 30s

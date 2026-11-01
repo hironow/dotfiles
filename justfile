@@ -1959,7 +1959,7 @@ emu-port-check:
     echo '🔍 Checking emulator port usage...'
     # Includes the cross-stack collision ports (9399/4000/4400 firebase, 4317/4318
     # OTLP) that previously went unchecked and let runops-gateway double-bind.
-    for port in 9099 8080 9399 4000 4400 8086 9010 9020 55432 7474 7687 8081 6274 5252 6333 6334 5433 9200 9300 4317 4318; do
+    for port in 9099 8080 9399 4000 4400 8086 9010 9020 55432 7474 7687 8081 6274 6277 5252 6333 6334 5433 9200 9300 4317 4318; do
       result=$(witr --port "$port" --short 2>/dev/null || true)
       [ -n "$result" ] && echo "⚠️  Port $port: $result"
     done
