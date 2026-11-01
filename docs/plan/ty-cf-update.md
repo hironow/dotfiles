@@ -1,7 +1,7 @@
 # ty 0.0.90 と cf beta.20 の宣言を揃える
 
 **Date:** 2026-10-21
-**Status:** Reviewed（計画 #2 と実装の独立レビューは APPROVE。最終チェック結果はこの branch の PR に記録する）
+**Status:** done。[#487](https://github.com/hironow/dotfiles/pull/487) で merge（main `9508e5c3`）。版を上げただけで、移す説明はない（cf の固定の方針は `config/mise/config.toml` のコメント）
 **Scope:** dotfiles のみ。Go 移植 PR #486 の後に別 worktree と別 PR で実施する。
 
 ## 所有者の依頼と現状

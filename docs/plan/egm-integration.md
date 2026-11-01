@@ -1,10 +1,6 @@
 # EGM integration
 
-State: done (current usage: [EGM runbook](../runbook/egm.md)).
-The owner has been notified and authorized commits and PR publication from
-`feat/egm-integration`, followed by squash merge only after all applicable CI
-passes on the exact PR head. Commit the clipboard fixture fix first (structural),
-then the EGM feature. Live deployment remains outside this authorization.
+**Status:** done(→[EGM runbook](../runbook/egm.md)). Merged in [#523](https://github.com/hironow/dotfiles/pull/523) (main `9cc6a76f`). Installing on each live host is outside this plan.
 
 ## Confirmed boundaries
 

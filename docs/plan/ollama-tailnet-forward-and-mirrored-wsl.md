@@ -1,7 +1,7 @@
 # Windows 共存機の Ollama：宣言した tailnet 転送を認め、mirrored の WSL にはブリッジを置かない
 
 **Date:** 2026-10-25
-**Status:** 実装中。独立レビュー 1 回目の 6 件（Funnel の確認範囲、`localhost` の転送先、PID の再利用、接続前の所有確認の順序、稼働中のブリッジ、配線の証明）を反映し、2 回目と 3 回目は止める点なし。A と B は所有者が決めた（2026-10-25）。決定は [ADR-0062](../adr/0062-one-windows-ollama-for-wsl.md)・[ADR-0063](../adr/0063-declared-tailnet-forward-of-ollama.md)・[ADR-0064](../adr/0064-mirrored-wsl-uses-the-shared-loopback.md)。
+**Status:** done(→[Ollama runbook](../runbook/ollama-windows-wsl.md)、ADR-0062・0063・0064)。3 本は [#504 の裁定](https://github.com/hironow/dotfiles/pull/504#issuecomment-6400086305) で Accepted。[#504](https://github.com/hironow/dotfiles/pull/504) で merge（main `6098696e`）。独立レビューは 1 回目の 6 件を反映し、2 回目と 3 回目は止める点なし
 **Scope:** `scripts/ollama_host.py`、`tests/unit/test_ollama_host.py`、`docs/runbook/ollama-windows-wsl.md`、ADR 1 本と `docs/decision-queue.md` の 1 行。Tailscale の設定、`.wslconfig`、Ollama の起動口は変えない。
 
 ## 所有者の依頼と現状
