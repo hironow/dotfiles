@@ -9,6 +9,7 @@
 | ID | 何を決める（ひとことで） | 種別 | 作者 | 作者連絡先 | 決める人 | 決裁者連絡先 | 期限 | 状態 | 相談記録 | 最終催促日 | 備考 | 元ファイル |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ADR-0065 | Linux カーネルの CVE は dotfiles が直さず、報告と助言だけを行う | ADR | Pi（owner session） | @hironow | Hiroto N. | @hironow | — | 決裁待ち | 2026-10-29 の本セッションで所有者が選択（深さ = runbook + `just doctor` の advisory + Go の `kernel-doctor`、記録 = ADR + 本行、WSL 方針 = 維持） | — | 独立レビュー（Codex 0.164.0）は REVISE、8 指摘を全件実測確認して反映済み。`just doctor` の exit 契約を守るため kernel の所見は `err` に入れない | [docs/adr/0065-kernel-cve-is-evidence-only.md](adr/0065-kernel-cve-is-evidence-only.md) | --- |
+| ADR-0066 | doctor の WARN は手を動かすべきことだけにし、注意書きは INFO で出し、OS に合わない行は出さない | ADR | Claude Code（owner session 6f9f9d8e） | @hironow | Hiroto N. | @hironow | — | 決裁待ち | 2026-11-01 17:07 の本セッションで所有者が計画を承認（D1 = 全部拒否は INFO、D2 = 本 ADR を起票）。決裁は実装 PR で記録する | — | 独立レビュー（Codex）2 回で REVISE 4 指摘を全件コードで確認して反映。DR 間整合検査: 0065（Proposed、WARN 止まりの範囲内）・0062 Decision 4・0064 と矛盾なし。kernel の計画 D3（coverage を常に出す）はカーネルを調べた機体に狭める | [docs/adr/0066-doctor-warns-only-what-needs-action.md](adr/0066-doctor-warns-only-what-needs-action.md) |
 
 ## 決定済みログ
 
