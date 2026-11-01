@@ -79,3 +79,35 @@ func schannelOnlyCurl(path string) bool {
 	first, _, _ := strings.Cut(string(out), "\n")
 	return strings.Contains(first, "Schannel") && !strings.Contains(first, "OpenSSL")
 }
+
+// Schannel (curl on Windows) maps only SEC_E_UNTRUSTED_ROOT and
+// SEC_E_WRONG_PRINCIPAL to exit 60; every other handshake failure, including a
+// revoked certificate, is exit 35 with the SSPI name on stderr.
+func TestCurlOutcomeReadsSchannelCertificateRejections(t *testing.T) {
+	const prefix = "curl: (35) schannel: next InitializeSecurityContext failed: "
+	cases := []struct {
+		name   string
+		result CommandResult
+		want   Outcome
+	}{
+		{"revoked", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_REVOKED (0x80092010) - The certificate is revoked.\n"}, CertRejected},
+		{"expired", CommandResult{Code: 35, Stderr: prefix + "SEC_E_CERT_EXPIRED (0x80090328) - The received certificate has expired.\n"}, CertRejected},
+		{"wrong usage", CommandResult{Code: 35, Stderr: prefix + "SEC_E_CERT_WRONG_USAGE (0x80090349) - The certificate is not valid for the requested usage.\n"}, CertRejected},
+		{"revocation server offline", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_REVOCATION_OFFLINE (0x80092013) - The revocation function was unable to check revocation because the revocation server was offline.\n"}, Unknown},
+		{"no revocation check", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_NO_REVOCATION_CHECK (0x80092012)\n"}, Unknown},
+		{"unspecific certificate error", CommandResult{Code: 35, Stderr: prefix + "SEC_E_CERT_UNKNOWN (0x80090327)\n"}, Unknown},
+		{"connection reset", CommandResult{Code: 35, Stderr: "curl: (35) Recv failure: Connection was reset\n"}, Unknown},
+		{"name without schannel", CommandResult{Code: 35, Stderr: "curl: (35) OpenSSL SSL_connect: CRYPT_E_REVOKED (0x80092010)\n"}, Unknown},
+		{"name without code", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_REVOKED\n"}, Unknown},
+		{"truncated", CommandResult{Code: 35, Stderr: prefix + "CRYPT_E_REVOKED (0x80092010)\n", Truncated: true}, Unknown},
+		{"other exit with the name", CommandResult{Code: 28, Stderr: prefix + "CRYPT_E_REVOKED (0x80092010)\n"}, Unknown},
+		{"untrusted root stays exit 60", CommandResult{Code: 60, Stderr: "curl: (60) schannel: SEC_E_UNTRUSTED_ROOT (0x80090325)\n"}, CertRejected},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := CurlOutcome(c.result); got != c.want {
+				t.Fatalf("got %s, want %s", got, c.want)
+			}
+		})
+	}
+}

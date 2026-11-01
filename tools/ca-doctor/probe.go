@@ -109,11 +109,29 @@ func (p ExternalProbe) Probe(ctx context.Context, url string) Outcome {
 	}
 }
 
+// schannelRejections are the SSPI names that mean Windows judged the
+// certificate itself. curl's Schannel backend reports them as exit 35, not 60
+// (only SEC_E_UNTRUSTED_ROOT and SEC_E_WRONG_PRINCIPAL become 60). Names that
+// mean the revocation status could not be checked are left out on purpose.
+var schannelRejections = []string{"CRYPT_E_REVOKED", "SEC_E_CERT_EXPIRED", "SEC_E_CERT_WRONG_USAGE"}
+
+func schannelRejected(stderr string) bool {
+	if !strings.Contains(stderr, "schannel:") {
+		return false
+	}
+	for _, name := range schannelRejections {
+		if strings.Contains(stderr, name+" (0x") {
+			return true
+		}
+	}
+	return false
+}
+
 func CurlOutcome(result CommandResult) Outcome {
 	if result.Truncated {
 		return Unknown
 	}
-	if result.Code == 60 {
+	if result.Code == 60 || (result.Code == 35 && schannelRejected(result.Stderr)) {
 		return CertRejected
 	}
 	status := strings.TrimSpace(result.Stdout)
