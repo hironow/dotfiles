@@ -60,7 +60,7 @@ help:
 # Lint markdown files
 [group('Check')]
 lint-md:
-    @{{MARKDOWNLINT}} --fix "docs/**/*.md" "README.md" "experiments/**/*.md" "!submodules/**" "!sets/**" "!input/**" "!output/**"
+    @{{MARKDOWNLINT}} --fix "docs/**/*.md" "README.md" "!sets/**" "!input/**" "!output/**"
 
 [group('Check')]
 pdoc port="8888" pkg=".":
