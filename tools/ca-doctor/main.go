@@ -91,12 +91,7 @@ func RunCLI(parent context.Context, args []string, out io.Writer) int {
 		// One semaphore across all clients prevents an explosion of simultaneous
 		// sockets/processes while the same overall deadline bounds the whole run.
 		slots := make(chan struct{}, 12)
-		clients := []clientProbe{{"diagnostic-go", GoProbe{}}}
-		for _, tool := range tools {
-			if tool.Path != "" && tool.Kind != "" && ExecutableSupported(tool.Path, runtime.GOOS) {
-				clients = append(clients, clientProbe{tool.Name, ExternalProbe{tool.Path, tool.Kind, OSCommands{}}})
-			}
-		}
+		clients := liveClients(tools, runtime.GOOS)
 		live := make([][]Finding, len(clients))
 		for i, client := range clients {
 			wg.Go(func() {
@@ -133,6 +128,19 @@ func Summarize(findings []Finding) []Finding {
 type clientProbe struct {
 	Name   string
 	Prober TLSProber
+}
+
+// liveClients lists the TLS clients that probe the baseline and each incident:
+// the diagnostic binary first, then each discovered tool that has a probe kind
+// and a path this OS can run.
+func liveClients(tools []toolSpec, goos string) []clientProbe {
+	clients := []clientProbe{{"diagnostic-go", GoProbe{}}}
+	for _, tool := range tools {
+		if tool.Path != "" && tool.Kind != "" && ExecutableSupported(tool.Path, goos) {
+			clients = append(clients, clientProbe{tool.Name, ExternalProbe{tool.Path, tool.Kind, OSCommands{}}})
+		}
+	}
+	return clients
 }
 
 type toolSpec struct {

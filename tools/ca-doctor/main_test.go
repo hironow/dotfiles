@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -41,6 +42,39 @@ func TestReportExitContract(t *testing.T) {
 		if strings.Count(out.String(), "\n") != 1 {
 			t.Fatal("line protocol injection", out.String())
 		}
+	}
+}
+
+func TestLiveClientsStartWithTheDiagnosticBinaryAndSkipUnusableTools(t *testing.T) {
+	tools := []toolSpec{
+		{Name: "curl", Kind: "curl", Path: `C:\tools\curl.exe`},
+		{Name: "git", Path: `C:\tools\git.exe`},
+		{Name: "node", Kind: "node"},
+		{Name: "bun", Kind: "bun", Path: `C:\tools\bun.cmd`},
+	}
+	for _, tc := range []struct {
+		goos string
+		want []string
+	}{
+		{"linux", []string{"diagnostic-go", "curl", "bun"}},
+		{"windows", []string{"diagnostic-go", "curl"}},
+	} {
+		t.Run(tc.goos, func(t *testing.T) {
+			clients := liveClients(tools, tc.goos)
+			names := make([]string, 0, len(clients))
+			for _, client := range clients {
+				names = append(names, client.Name)
+			}
+			if !slices.Equal(names, tc.want) {
+				t.Fatalf("clients %v, want %v", names, tc.want)
+			}
+			if _, ok := clients[0].Prober.(GoProbe); !ok {
+				t.Fatalf("diagnostic-go prober is %T", clients[0].Prober)
+			}
+			if probe, ok := clients[1].Prober.(ExternalProbe); !ok || probe.Path != tools[0].Path || probe.Kind != "curl" {
+				t.Fatalf("curl prober is %#v", clients[1].Prober)
+			}
+		})
 	}
 }
 
