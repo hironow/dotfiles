@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -108,6 +109,38 @@ func TestCurlOutcomeReadsSchannelCertificateRejections(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			if got := CurlOutcome(c.result); got != c.want {
 				t.Fatalf("got %s, want %s", got, c.want)
+			}
+		})
+	}
+}
+
+// recordedCommands keeps the arguments of the last command instead of running it.
+type recordedCommands struct{ args []string }
+
+func (c *recordedCommands) Run(_ context.Context, _ string, args ...string) CommandResult {
+	c.args = args
+	return CommandResult{Code: 1}
+}
+
+// The default probe of each external client keeps the arguments it has always
+// used, so a new way to connect cannot change the default one by accident.
+func TestExternalProbeDefaultArguments(t *testing.T) {
+	const url = "https://h.example/"
+	cases := []struct {
+		kind string
+		want []string
+	}{
+		{"curl", []string{"-q", "--proto", "=https", "--connect-timeout", "3", "--max-time", "4", "--silent", "--show-error", "--output", os.DevNull, "--write-out", "%{http_code}", url}},
+		{"node", []string{"--eval", nodeProbe, url}},
+		{"python", []string{"-c", pythonProbe, url}},
+		{"bun", []string{"--eval", bunProbe, url}},
+	}
+	for _, c := range cases {
+		t.Run(c.kind, func(t *testing.T) {
+			commands := &recordedCommands{}
+			ExternalProbe{Path: "client", Kind: c.kind, Commands: commands}.Probe(context.Background(), url)
+			if !slices.Equal(commands.args, c.want) {
+				t.Fatalf("args %q, want %q", commands.args, c.want)
 			}
 		})
 	}
