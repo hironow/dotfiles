@@ -3,9 +3,11 @@
 
 Every checker (codex_hooks_trust, codex_sandbox_tools, claude_plugins,
 headroom_mcp, ai_tools_check) prints `LEVEL name - detail` lines, LEVEL padded
-to four (OK, WARN, ERR), and exits 1 on a WARN. scripts/doctor.sh counts the
-lines; ai_tools_check reads a checker's output back with parse(). Defining both
-sides here keeps the writers and the readers in step.
+to four (OK, WARN, ERR, INFO), and exits 1 on a WARN. WARN means the operator
+should look or act on this host; INFO is a caveat or a fact, shown but never a
+failure and never a pass. scripts/doctor.sh counts the lines; ai_tools_check
+reads a checker's output back with parse(). Defining both sides here keeps the
+writers and the readers in step.
 """
 
 from collections.abc import Iterable

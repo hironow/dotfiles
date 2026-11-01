@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -30,7 +33,7 @@ func TestReportExitContract(t *testing.T) {
 	for _, tc := range []struct {
 		level string
 		want  int
-	}{{"OK", 0}, {"WARN", 1}, {"ERR", 2}} {
+	}{{"OK", 0}, {"INFO", 0}, {"WARN", 1}, {"ERR", 2}} {
 		var out bytes.Buffer
 		if got := Report(&out, []Finding{{tc.level, "test", "detail\nERR forged"}}); got != tc.want {
 			t.Fatal(got)
@@ -65,5 +68,103 @@ func TestVersionExtractionRejectsTrailingPrereleaseAndGarbage(t *testing.T) {
 		if got := ExtractVersion(tc.tool, tc.output); got != tc.want {
 			t.Errorf("%s: %q want %q", tc.tool, got, tc.want)
 		}
+	}
+}
+
+// The scope and advice lines read the same on every run, so they are INFO.
+func TestOfflineCLIReportsCaveatsAsInfo(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	var out bytes.Buffer
+	_ = RunCLI(context.Background(), []string{"--source", ".", "--offline"}, &out)
+	text := out.String()
+	for _, want := range []string{"INFO ca-coverage - ", "INFO ca-platform - ", "INFO ca-remediation - ", "INFO ca-advice-"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q:\n%s", want, text)
+		}
+	}
+	for _, unwanted := range []string{"WARN ca-coverage", "WARN ca-advice", "WARN ca-platform"} {
+		if strings.Contains(text, unwanted) {
+			t.Errorf("caveat still warns: %q", unwanted)
+		}
+	}
+}
+
+// --summary is what doctor passes. The usage line must name it, so an old
+// binary's ca-arguments error is recognisable as "rebuild me".
+func TestCLIAcceptsSummary(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	var out bytes.Buffer
+	_ = RunCLI(context.Background(), []string{"--source", ".", "--offline", "--summary"}, &out)
+	if strings.Contains(out.String(), "ca-arguments") {
+		t.Fatal(out.String())
+	}
+	out.Reset()
+	if code := RunCLI(context.Background(), []string{"--bogus"}, &out); code != 2 || !strings.Contains(out.String(), "[--summary]") {
+		t.Fatal(code, out.String())
+	}
+}
+
+// Summary mode drops the per-chain lines; the per-client line carries the counts.
+func TestSummaryDropsPerChainLines(t *testing.T) {
+	findings := []Finding{
+		{"INFO", "ca-live-x-node", "control=accepted"},
+		{"INFO", "ca-chain-x-node", "a: certificate-rejected"},
+		{"ERR", "ca-chain-x-curl", "b: accepted"},
+		{"OK", "ca-https-node", "baseline"},
+	}
+	got := Summarize(findings)
+	if len(got) != 2 || got[0].Name != "ca-live-x-node" || got[1].Name != "ca-https-node" {
+		t.Fatal(got)
+	}
+}
+
+// A per-chain line carries the same level rule as the per-client line.
+func TestChainLevels(t *testing.T) {
+	for _, tc := range []struct {
+		outcome Outcome
+		want    string
+	}{{Accepted, "ERR"}, {CertRejected, "INFO"}, {Unknown, "WARN"}} {
+		if got := ChainEvidence(incidents[0], "test", 0, tc.outcome); got.Level != tc.want {
+			t.Fatalf("%s: %+v want %s", tc.outcome, got, tc.want)
+		}
+	}
+}
+
+func TestMissingToolIsInfo(t *testing.T) {
+	got := inspectTool(context.Background(), toolSpec{Name: "rustc"})
+	if len(got) != 1 || got[0].Level != "INFO" || got[0].Name != "ca-tool-rustc" {
+		t.Fatal(got)
+	}
+}
+
+// A tool that runs is a fact about this machine, not a problem.
+func TestActiveToolAndRustCaveatAreInfo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake tool is a shell script")
+	}
+	dir := t.TempDir()
+	rustc := filepath.Join(dir, "rustc")
+	if err := os.WriteFile(rustc, []byte("#!/bin/sh\necho 'rustc 1.99.1 (fake)'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := inspectTool(context.Background(), toolSpec{Name: "rustc", Path: rustc, Args: []string{"--version"}})
+	if len(got) != 2 || got[0].Name != "ca-tool-rustc" || got[0].Level != "INFO" || got[1].Name != "ca-rust" || got[1].Level != "INFO" {
+		t.Fatal(got)
+	}
+}
+
+func TestOSBundleInventoryIsInfo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake package query is a shell script")
+	}
+	dir := t.TempDir()
+	query := filepath.Join(dir, "dpkg-query")
+	if err := os.WriteFile(query, []byte("#!/bin/sh\nprintf '20260101'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	got := storeInventory(context.Background())
+	if len(got) != 1 || got[0].Name != "ca-os-bundle" || got[0].Level != "INFO" {
+		t.Fatal(got)
 	}
 }

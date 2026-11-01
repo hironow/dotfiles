@@ -71,6 +71,29 @@ def test_platform_policy(system: str, release: str, expected: str | None) -> Non
     assert host.host_policy(system, release) == expected
 
 
+@pytest.mark.parametrize("system", ["darwin", "linux"])
+def test_check_is_silent_with_exit_3_where_the_policy_does_not_apply(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], system: str
+) -> None:
+    """doctor reads a silent exit 3 as "not this host" and prints nothing."""
+    monkeypatch.setattr(host.sys, "platform", system)
+    monkeypatch.setattr(host.platform, "release", lambda: "6.8.0-45-generic")
+    monkeypatch.setattr(host.sys, "argv", ["ollama_host.py", "--check"])
+    assert host.main() == 3
+    assert capsys.readouterr().out == ""
+
+
+def test_check_is_silent_in_a_container_on_a_wsl_kernel(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(host.sys, "platform", "linux")
+    monkeypatch.setattr(host.platform, "release", lambda: "6.6-microsoft-standard-WSL2")
+    monkeypatch.setattr(host, "_in_container", lambda: True)
+    monkeypatch.setattr(host.sys, "argv", ["ollama_host.py", "--check"])
+    assert host.main() == 3
+    assert capsys.readouterr().out == ""
+
+
 def test_checker_and_stable_deployment_can_have_different_paths(tmp_path: Path) -> None:
     checker = tmp_path / "checkout.py"
     deployed = tmp_path / "stable.py"

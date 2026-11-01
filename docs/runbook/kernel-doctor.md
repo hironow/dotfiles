@@ -28,7 +28,14 @@ just kernel-doctor --osrelease="$(wsl.exe -d Ubuntu -- uname -r)"
 ```
 
 終了コードは 0 が警告なし、1 が警告または未判定、2 が引数エラー。
+`INFO` の行（調べていない範囲の注意書き）は終了コードを上げない。
 **0 を「安全」の条件にしない。** 未判定の行が無いことを意味するだけである。
+
+Linux カーネルが動いていない機体（macOS、native Windows）では、比較をせず
+`OK kernel-not-applicable` の 1 行だけを出す。この行は、その機体から使う WSL や
+Linux VM を調べていないことも述べている。
+カーネルの版を調べた機体（Linux、WSL、`--osrelease`）では、調べていない範囲を
+`INFO kernel-coverage` で出す。
 
 ## 出力の読み方
 

@@ -54,13 +54,14 @@ func TestGitVerifyFailureIsNeverSilent(t *testing.T) {
 		r     CommandResult
 		level string
 	}{
-		{CommandResult{Code: 1}, "WARN"},
+		// No http.sslVerify set: Git's default (verify) is not overridden.
+		{CommandResult{Code: 1}, "INFO"},
 		{CommandResult{Code: 128}, "WARN"},
 		{CommandResult{Code: -1}, "WARN"},
 		{CommandResult{Stdout: "false", Code: 0}, "ERR"},
 		{CommandResult{Stdout: "garbage", Code: 0}, "WARN"},
 		{CommandResult{Stdout: "true", Code: 0, Truncated: true}, "WARN"},
-		{CommandResult{Stdout: "true", Code: 0}, "WARN"},
+		{CommandResult{Stdout: "true", Code: 0}, "INFO"},
 	} {
 		if f := GitVerifyEvidence(tc.r, false); f.Level != tc.level {
 			t.Fatal(f)

@@ -273,7 +273,7 @@ func TestNoFindingIsEverAnError(t *testing.T) {
 			t.Fatalf("probe %+v produced no findings at all", probe)
 		}
 		for _, f := range found {
-			if f.Level != "OK" && f.Level != "WARN" {
+			if f.Level != "OK" && f.Level != "WARN" && f.Level != "INFO" {
 				t.Errorf("probe %+v produced level %q: %s", probe, f.Level, f.Detail)
 			}
 		}
@@ -397,13 +397,53 @@ func TestUnreadableRunningKernelIsUnverified(t *testing.T) {
 	}
 }
 
-// The coverage caveat is the one line that must survive every path, including
-// the non-Linux early return, or the tool reads as an attestation.
-func TestCoverageCaveatAlwaysAppears(t *testing.T) {
-	for _, probe := range []Probe{darwinProbe(), linuxProbe("6.6.150", "0", true), Override("darwin", "6.6.159")} {
-		if !strings.Contains(dump(findingsOf(probe, ".", time.Now())), "kernel-coverage") {
+// The coverage caveat belongs only where a kernel version was assessed. On a
+// host with no Linux kernel, kernel-not-applicable already says that WSL and
+// Linux VMs are not assessed, so a second caveat would only add a warning the
+// operator can do nothing about. Where it appears it is INFO, never a WARN.
+func TestCoverageCaveatOnlyWhereAKernelIsAssessed(t *testing.T) {
+	for _, probe := range []Probe{darwinProbe(), {GOOS: "windows"}} {
+		if strings.Contains(dump(findingsOf(probe, ".", time.Now())), "kernel-coverage") {
+			t.Errorf("probe %+v assessed no kernel but printed the coverage caveat", probe)
+		}
+	}
+	for _, probe := range []Probe{linuxProbe("6.6.150", "0", true), Override("darwin", "6.6.159")} {
+		found := false
+		for _, f := range findingsOf(probe, ".", time.Now()) {
+			if f.Name == "kernel-coverage" {
+				found = true
+				if f.Level != "INFO" {
+					t.Errorf("probe %+v: the coverage caveat is %s, want INFO", probe, f.Level)
+				}
+			}
+		}
+		if !found {
 			t.Errorf("probe %+v lost the coverage caveat", probe)
 		}
+	}
+}
+
+// A host with no Linux kernel has nothing to warn about: exit 0 in both the
+// line and the JSON output.
+func TestNonLinuxHostExitsCleanly(t *testing.T) {
+	for _, goos := range []string{"darwin", "windows"} {
+		for _, args := range [][]string{{"--source", "."}, {"--source", ".", "--json"}} {
+			fake := &fakeCollector{probe: Probe{GOOS: goos}}
+			var out bytes.Buffer
+			if code := run(args, &out, goos, fake.collect); code != 0 {
+				t.Errorf("%s %v: exit %d, want 0:\n%s", goos, args, code, out.String())
+			}
+		}
+	}
+}
+
+func TestInfoDoesNotRaiseTheExitCode(t *testing.T) {
+	var out bytes.Buffer
+	if code := Report(&out, []Finding{{"OK", "a", "b"}, {"INFO", "c", "d"}}); code != 0 {
+		t.Fatalf("INFO raised the exit code to %d", code)
+	}
+	if code := Report(&out, []Finding{{"INFO", "c", "d"}, {"WARN", "e", "f"}}); code != 1 {
+		t.Fatalf("a WARN must still exit 1, got %d", code)
 	}
 }
 

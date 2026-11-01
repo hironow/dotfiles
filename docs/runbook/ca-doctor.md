@@ -16,12 +16,15 @@ just doctor
 ```
 
 CA診断だけを実行する場合は `just ca-doctor` を使う。
+`just doctor` は `--summary` を付けて実行し、事故のテストホストごとの `ca-chain-*` 行を省いて、クライアントごとの `ca-live-*` 1 行にまとめる。
+ホストごとの全行は `just ca-doctor` で見る。
 通信を行わない場合は `just ca-doctor --offline` を使う。
 `CA_DOCTOR_OFFLINE=1 just doctor` でもCA検査の通信だけを省ける。
 PowerShellでは先に `$env:CA_DOCTOR_OFFLINE='1'` を設定する。
 通信を省いた結果は `WARN` になる。
 
 バイナリがない場合、`doctor` は `WARN ca-build` とビルド手順を表示する。
+`--summary` を知らない古いバイナリ（`ERR ca-arguments` と終了コード2だけを返す）も、検査結果としては受理せず、同じ `WARN ca-build` で再ビルドを求める。
 Goソース、テスト、事故別JSON、`go.mod` をバイナリに埋め込み、現在のcheckoutのファイル集合とバイト列を照合する。
 不一致なら検査結果を受理せず、再ビルドを求める。
 この照合は更新漏れを検出するもので、悪意ある実行ファイルの真正性を証明するものではない。
@@ -65,15 +68,24 @@ PATH検索やファイル読み取りなど、OSのI/O全般を厳密な実時�
 
 ## 結果と限界
 
+`WARN` は、この端末で操作者が確認するか手を動かすべきことにだけ使う。
+検査の範囲の注意書きと、端末についての事実は `INFO` で出す。
+`INFO` は合格でも問題でもなく、`doctor` の `info=` に数え、終了コードを変えない。
+
 | 表示 | 意味 |
 | --- | --- |
 | `OK ca-file-*` | 指定ファイルを解析できた。信頼性や失効状態の保証ではない |
 | `OK ca-https-*` | 当該クライアントが正常系へのTLS接続を受け入れた。その接続だけの観測 |
 | `OK ca-version-*` | 事故別の修正版下限を満たす。実効CA束まで安全だという意味ではない |
 | `ERR ca-version-*` | 既知の対象系列で修正版より古い |
-| `ERR ca-live-*` / `ERR ca-chain-*` | 事故のテストホストへのTLS接続を受け入れた。CA束とTLS中継の有無を調べる |
-| `WARN` と `certificate-rejected` | 証明書を拒否したが、当該CAの不信頼化が理由とは立証できない |
+| `ERR ca-live-*` / `ERR ca-chain-*` | 事故のテストホストへのTLS接続を受け入れた。`ca-live-*` は受け入れたホスト名を並べる。CA束とTLS中継の有無を調べる |
+| `INFO ca-live-*` / `INFO ca-chain-*` と `certificate-rejected` | 正常系は通り、テストホストの証明書をすべて拒否した。当該CAの不信頼化が理由とは立証できないので合格にはしない |
 | `WARN` と `unknown` | 通信、実行、解析などに失敗した。安全とは判定しない |
+| `WARN ca-version-*`（`outside the reviewed fix branches`） | 入っている版が、修正版を確認した系列の外にある |
+| `INFO ca-version-*`（`not installed`） | そのPythonにcertifiやpipが入っていない。比べる対象がない |
+| `INFO ca-tool-*` / `ca-env`（CAファイルの変数） / `ca-git-verify`（上書きなし） | 調べた実行ファイル、設定済みのCAファイル変数、Gitの既定の検証が上書きされていないこと。どれも事実で、対処はない |
+| `INFO ca-platform` / `ca-remediation` / `ca-advice-*` / `ca-rust` / `ca-os-bundle` / `ca-coverage` | 確認範囲の限界と、OS別の確認先 |
+| `WARN ca-env`（プロキシ、`NODE_OPTIONS`、`GODEBUG`、`PYTHONHTTPSVERIFY`、`NODE_TLS_REJECT_UNAUTHORIZED`） | TLSの挙動を変えうる設定がある |
 | `WARN ca-policy-*` | レビュー期限を過ぎた。公開元の告知に照らしてルールを見直す |
 
 HTTP 4xx、5xx、リダイレクトでもTLS接続を受け入れた事実は変わらない。
@@ -83,8 +95,8 @@ TLS中継がある場合、接続成功だけで漏洩した証明書自体を�
 
 単体コマンドの終了コードは、`0` が警告なし、`1` が未確認を含む、`2` が `ERR` を含む。
 `doctor` は結果と終了コードの整合性を確かめて集計し、`ERR` があれば既存仕様どおり終了コード1を返す。
-通常は確認範囲の限界を示す `WARN ca-coverage` が残る。
-警告を消すために未確認項目を合格にしない。
+確認範囲の限界は、毎回 `INFO ca-coverage` として残る。
+警告を減らすために未確認項目を合格にしない。`INFO` にするのは、対処のない注意書きと事実だけである。
 
 WSLではLinux側だけを調べる。
 Windows本体での実行はWSL内を保証しない。

@@ -333,6 +333,11 @@ def _in_container() -> bool:
     return any(sentinel.exists() for sentinel in _CONTAINER_SENTINELS)
 
 
+# `--check` exits 3, silently, on a host the singleton policy does not cover.
+# 0 and 1 are the check's results; argparse uses 2 for a usage error.
+EXIT_NOT_APPLICABLE = 3
+
+
 def host_policy(
     system: str | None = None,
     release: str | None = None,
@@ -1599,6 +1604,10 @@ def main() -> int:
         elif args.setup:
             setup()
         else:
+            if host_policy() is None:
+                # Not a Windows host or a WSL client: print nothing, and say so
+                # with the exit code doctor.sh reads as "not this host".
+                return EXIT_NOT_APPLICABLE
             rows = check()
             for severity, name, detail in rows:
                 print(f"{severity:<4} {name} - {detail}")

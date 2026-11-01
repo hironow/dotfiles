@@ -67,7 +67,7 @@ sudo apt-get update && sudo apt-get install -y docker.io
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"   # 次の wsl --shutdown のあとで効く
 
-just doctor       # 確認: zsh、PATH-windows、WSLg の clipboard、docker、道具一式
+just doctor       # 確認: zsh、PATH-windows（WSL のみ）、WSLg の clipboard、docker、道具一式
 ```
 
 `just harden-env` は `~/.npmrc` と `~/.config/uv/uv.toml` に 7 日の隔離（`min-release-age=7`、`exclude-newer = "7 days"`）を書く。
