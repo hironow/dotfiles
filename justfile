@@ -60,7 +60,7 @@ help:
 # Lint markdown files
 [group('Check')]
 lint-md:
-    @{{MARKDOWNLINT}} --fix "docs/**/*.md" "README.md" "experiments/**/*.md" "!submodules/**" "!sets/**" "!input/**" "!output/**"
+    @{{MARKDOWNLINT}} --fix "docs/**/*.md" "README.md" "!sets/**" "!input/**" "!output/**"
 
 [group('Check')]
 pdoc port="8888" pkg=".":
@@ -1009,6 +1009,8 @@ ci-all: ci test test-install
     @echo "✅ ci-all passed"
 
 # Emulator suite (mirrors .github/workflows/test-emulators.yaml): lint + bring up + fast + e2e.
+# Elasticsearch is not in the lite stack, so its standalone check stays manual
+# (emulator/scripts/test-elasticsearch.sh after `just emu-up-group search`), as in CI.
 # Heavy: needs Docker + emulator uv env. Leaves emulators up (stop with `just emu-stop`).
 [group('CI')]
 ci-emu:
@@ -1016,7 +1018,6 @@ ci-emu:
     set -euo pipefail
     just emu-lint
     just emu-start
-    cd emulator && bash scripts/test-elasticsearch.sh
     just emu-test-fast
     just emu-test-e2e
     echo '✅ ci-emu passed'
@@ -1958,7 +1959,7 @@ emu-port-check:
     echo '🔍 Checking emulator port usage...'
     # Includes the cross-stack collision ports (9399/4000/4400 firebase, 4317/4318
     # OTLP) that previously went unchecked and let runops-gateway double-bind.
-    for port in 9099 8080 9399 4000 4400 8086 9010 9020 55432 7474 7687 8081 6274 5252 6333 6334 5433 9200 9300 4317 4318; do
+    for port in 9099 8080 9399 4000 4400 8086 9010 9020 55432 7474 7687 8081 6274 6277 5252 6333 6334 5433 9200 9300 4317 4318; do
       result=$(witr --port "$port" --short 2>/dev/null || true)
       [ -n "$result" ] && echo "⚠️  Port $port: $result"
     done

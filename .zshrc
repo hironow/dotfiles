@@ -367,8 +367,8 @@ bindkey '^[[27;5;13~' _ctrl_enter_newline
 # which are zsh's built-in M-b / M-f and need no binding here). `^[[1;5D` /
 # `^[[1;5C` are Ctrl+left/right, the pair Windows Terminal does not claim for
 # pane focus. Same placement rule as the ctrl+enter block above: after
-# sheldon and `fzf --zsh`, so nothing rebinds over it. See
-# docs/plan/terminal-keys.md.
+# sheldon and `fzf --zsh`, so nothing rebinds over it. Per-terminal
+# settings: USAGE.md.
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 bindkey '^[[1;5D' backward-word

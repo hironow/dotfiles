@@ -45,7 +45,7 @@ example `POSTGRES_PORT`).
 | Neo4j | `neo4j` | `graph` | 7474 (HTTP), 7687 (Bolt) |
 | Qdrant | `qdrant` | `vector` | 6333 (REST), 6334 (gRPC) |
 | MLflow | `mlflow` | `ml` | 5252 |
-| A2A Inspector / MCP Inspector | `a2a-inspector`, `mcp-inspector` | `inspect` | 8081 / 6274 |
+| A2A Inspector / MCP Inspector | `a2a-inspector`, `mcp-inspector` | `inspect` | 8081 / 6274 (UI), 6277 (proxy) |
 | PostgreSQL exporter | `postgres-exporter` | `exporters` | 9187 |
 
 The `full` group holds every service above. The `cli` group holds the
@@ -68,6 +68,11 @@ Logins:
   `postgres:5432`, `mlflow:5000`.
 - In the A2A or MCP Inspector UI, `localhost` means the inspector container.
   Use `host.docker.internal` to reach a server on the host.
+- Open the MCP Inspector with its session token: read it from
+  `docker logs mcp-inspector`, then open
+  `http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=<token>`. The `0.0.0.0` URL in
+  the log does not work in a browser. If you changed
+  `MCP_INSPECTOR_PROXY_PORT`, add `&MCP_PROXY_PORT=<port>` to the URL.
 
 ### Notes
 

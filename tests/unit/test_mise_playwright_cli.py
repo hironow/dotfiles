@@ -3,15 +3,11 @@
 Why this exists
 ---------------
 hironow/skills ships a `playwright-cli` skill (deployed to `~/.agents/skills`
-and symlinked into the Claude/Codex homes) whose first line reads: if
-`playwright-cli` is not on PATH, run
-`bunx --package @playwright/mcp playwright-cli <args>`.
-
-That fallback cannot work. `@playwright/mcp`'s only bin is `playwright-mcp` --
-true for the last 14 published versions (npm registry, checked 2026-10-21) --
-and the package that does ship a `playwright-cli` bin is `@playwright/cli`. So
-unless a machine's initial setup puts `playwright-cli` on PATH, the skill has
-nothing to run at all.
+and symlinked into the Claude/Codex homes) that runs `playwright-cli` from PATH
+and only falls back to `bunx --package @playwright/cli playwright-cli <args>`.
+The package that ships the `playwright-cli` bin is `@playwright/cli`;
+`@playwright/mcp` ships only `playwright-mcp`. So the initial setup puts
+`playwright-cli` on PATH.
 
 `config/mise/config.toml` is that setup's single source of truth: `install.sh`
 and `just install` materialise its `[tools]` on a Mac, Linux or WSL host (a
@@ -52,9 +48,9 @@ def test_the_initial_setup_declares_playwright_cli() -> None:
     """Only this file puts `playwright-cli` on PATH for the skill to find."""
     assert TOOL in _tools(), (
         f"config/mise/config.toml must declare {TOOL!r}. The hironow/skills "
-        "`playwright-cli` skill runs `playwright-cli`, and its documented "
-        "`bunx --package @playwright/mcp playwright-cli` fallback has no such "
-        "bin (that package ships only `playwright-mcp`)."
+        "`playwright-cli` skill runs `playwright-cli` from PATH, and only "
+        "@playwright/cli ships that bin (@playwright/mcp ships only "
+        "`playwright-mcp`)."
     )
 
 

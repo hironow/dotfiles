@@ -1,7 +1,7 @@
 # 端末キー: tmux 越しの Ctrl+Enter と、単語移動キーの揃え
 
 **Date:** 2026-10-02
-**Status:** Proposed（独立レビュー #1・#2 の指摘を検証して反映済み。#3 待ち）
+**Status:** done(→[USAGE.md](../../USAGE.md) の「キー操作」と「端末ごとの設定」)。[#457](https://github.com/hironow/dotfiles/pull/457)（main `9d9c9025`）と [#460](https://github.com/hironow/dotfiles/pull/460)（main `8b98bbcb`）で merge。「実機で確認が必要な点」の 1〜7（打鍵の確認）は結果の記録が無い。tmux の版は #460 に記録がある。所有者の指示（2026-11-02、チャット）で閉じた
 **Branch:** `feat/terminal-keys`（未作成）
 **Related:** PR #452（Ctrl+Enter の初版。本件はその tmux 対応） / ADR 0022・0024・0031・0033（`$PROFILE` の managed block。本件では使わない）
 **Blocking decisions:** なし（利用者への確認は回答済み: Windows は Ctrl+←/→ を足す / macOS の tmux は 3.2a 以上）

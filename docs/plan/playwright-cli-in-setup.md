@@ -1,7 +1,7 @@
 # playwright-cli を初期設定（mise の宣言）に入れる
 
 **Date:** 2026-10-21
-**Status:** Proposed（独立レビュー #1・#2 済み: #1 の 2 件を反映し、#2 で APPROVE。利用者の裁定待ち）
+**Status:** done(→`config/mise/config.toml` の playwright-cli のコメント)。[#484](https://github.com/hironow/dotfiles/pull/484) で merge（main `bfb36079`）。hironow/skills の fallback 行の follow-up も済み（skill は `bunx --package @playwright/cli` を案内する）。所有者の指示（2026-11-02、チャット）で閉じた
 **Branch:** `feat/playwright-cli-mise`
 **Related:** ADR 0006（mise の pin 戦略）/ ADR 0023（activate-only）/ ADR 0017（pnpm global の退役 → global CLI は mise の `npm:` バックエンド）/ ADR 0027・0036・0040（Node は bun、npm backend は bun、bun は `bun_args`）/ hironow/skills の `playwright-cli` skill（`dump/harness/skill-lock.json` で宣言）
 **Blocking decisions:** なし（利用者に 2026-10-21 に確認済み: 版は `latest` / 同梱ブラウザは入れない / 範囲は `config/mise/config.toml` だけ）

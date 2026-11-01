@@ -31,14 +31,11 @@
 /tests/*.py
 /tests/README.md
 /tests/unit/
-/tests/exe/
 /tests/docker/
 
 # has some constructs that AST_to_IL has trouble translating ('...' in target code)
 *.pyi
 
-/experiments
-/submodules
 /private
 /dump
 
