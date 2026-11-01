@@ -22,6 +22,7 @@ OS ごとに違うのは導入の経路だけである。
 - [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md): `j-cc` / `j-pi`、rtk、headroom の手順
 - [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md): Windows と WSL の Ollama 共有と検査範囲
 - [`docs/runbook/windows-host.md`](./docs/runbook/windows-host.md): native Windows で動かすときの注意点
+- [`docs/runbook/ca-doctor.md`](./docs/runbook/ca-doctor.md) / [`docs/runbook/kernel-doctor.md`](./docs/runbook/kernel-doctor.md): `just doctor` の CA と kernel の行の読み方
 - [`docs/portless-urls.md`](./docs/portless-urls.md): ローカル UI の `https://<name>.localhost` 別名一覧
 - [`docs/adr/`](./docs/adr/): 設計判断の記録（ADR）
 - [`tools/README.md`](./tools/README.md): RTTM 変換などの補助ツール
@@ -42,14 +43,12 @@ INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./i
 ```
 
 `install.sh` は mise（固定版、SHA 検証つき、`~/.local/bin`）を入れ、道具を `mise install` し、設定を symlink する。
-通常は sudo は要らない。
-`install.sh` 全体を sudo で実行しない。
-WSL では `wl-copy` / `wl-paste` がなければ `wl-clipboard` を apt で導入する（Pi / Herdr のコピー用）。
-この処理だけは root または非対話の `sudo -n` が要り、パスワードが必要な場合は導入コマンドを表示して続行する。
-zsh のログインシェルは `~/.profile` を読まないので、`just deploy` が `~/.zprofile` の既存行を残したまま `~/.local/bin` を足すブロックを追記する。
+sudo は要らない。`install.sh` 全体を sudo で実行しない。
+例外は WSL の `wl-clipboard`（Pi と Herdr のコピー用）で、root か非対話の `sudo -n` で入れる。パスワードが要るときは、導入コマンドを表示して先へ進む。
+`just deploy` は `~/.zprofile` に `~/.local/bin` を足す（zsh のログインシェルは `~/.profile` を読まない）。
 
-WSL の素の Ubuntu（fresh WSL provisioning baseline）では、続けて次を一度だけ実行する。
-`wsl-conf` と Docker の反映には、Windows 側での `wsl --shutdown` も要る。
+WSL の素の Ubuntu では、続けて次を一度だけ実行する。
+`wsl-conf` と Docker を効かせるには、Windows 側で `wsl --shutdown` も要る。
 
 ```bash
 # install.sh が wl-clipboard を入れられなかった場合（WSLg が必要）
@@ -115,7 +114,7 @@ just add-brew                   # macOS: 記録から復元する
 just add-scoop                  # Windows: 記録から復元する（ADR 0032）
 
 just self-check                 # 軽い健全性検査（with_tests=1 で Docker のテストも）
-just doctor                     # 道具、PATH、Windows 固有の設定、AI の道具（rtk、headroom、hook）を診断する
+just doctor                     # 道具、PATH、OS 固有の設定、AI の道具、CA、kernel を診断する（ERR があれば exit 1）
 just validate-path-duplicates   # PATH の重複を検査する
 
 mx uv sync                      # mx は `mise exec --` の zsh alias
@@ -136,6 +135,9 @@ mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
 | `just test` | Dev Container 内のサンドボックステスト（`just test-mark marker=validate` のように `install`、`validate`、`versions`、`deploy`、`check` で絞れる） | 要る |
 
 `tests/unit/` は native Windows でも通る（POSIX 専用の検査は skip する）。
+
+`just doctor` の行は `OK`、`WARN`、`ERR`、`INFO` のどれかで始まる。
+`WARN` はその機体で手を動かすべきこと、`INFO` は検査の範囲と事実で、`INFO` は終了コードを変えない（ADR 0066）。
 
 ## Jev でのコーディングセッション
 
@@ -170,7 +172,7 @@ just skills-place
 
 `emulator/`（データストアとインスペクタ）と `telemetry/`（OTel、Grafana、Loki、Prometheus、Tempo）はこのリポジトリにある（ADR 0014）。
 API や SaaS の emulator は `vercel-labs/emulate` を `bunx` 経由で動かす（ADR 0016、ADR 0055）。
-OrbStack の VM をメモリ上限内に収めるため、重いサービスと amd64 のサービスは既定では起動しない。
+Docker の VM（OrbStack か podman machine）のメモリに収めるため、重いサービスと amd64 のサービスは既定では起動しない。
 
 ```shell
 just emu-up                          # 既定は GCP の中核だけ（firebase、spanner、pgadapter、postgres。別名 emu-up-lite）
@@ -201,8 +203,9 @@ clone に `.git` があれば、`postCreateCommand` が `just install-hooks` で
 
 ## MCP
 
+Chrome DevTools の MCP は必須プラグイン（`dump/harness/claude-plugins.json`）が入れるので、ここには書かない。
+
 ```bash
-claude mcp add -s user chrome-devtools bunx chrome-devtools-mcp@latest
 claude mcp add -s user -t http deepwiki https://mcp.deepwiki.com/mcp
 
 # ドキュメント系（user スコープ）

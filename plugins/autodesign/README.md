@@ -1,139 +1,64 @@
 # autodesign
 
-Autonomous web design exploration plugin for Claude Code.
+Claude Code plugin that explores web design variations in a loop. It keeps a
+change only when it passes quality constraints and raises the composite score.
+It follows the keep/revert pattern of [autoresearch](../autoresearch/).
 
-Iteratively explores design variations under quality constraints using git-based keep/revert cycles, inspired by [autoresearch](../autoresearch/).
+## How it works
 
-## How It Works
-
-```
+```text
 LOOP:
-  1. Form design hypothesis (select exploration axis)
-  2. Modify target file(s)
+  1. Pick an exploration axis and form a hypothesis
+  2. Change the target files
   3. git commit
-  4. Run evaluation (with timeout)
-  5. Check quality constraints (immediate revert if violated)
-  6. Compare composite_score (keep if improved, revert if not)
-  7. Log result to design-results.tsv
-  8. Repeat
+  4. Run the evaluators (with a timeout)
+  5. Revert at once if a quality constraint fails
+  6. Keep if composite_score improved, otherwise revert
+  7. Append the result to design-results.tsv
 ```
 
-## Components
+Quality metrics are floors, not targets: the goal is to explore new designs,
+not only to fix issues. The rules and the decision tree are in
+[skills/design-loop/SKILL.md](skills/design-loop/SKILL.md).
 
-| Component | Type | Purpose |
-|-----------|------|---------|
-| design-loop | Skill | Core exploration loop knowledge |
-| setup-design | Skill | Exploration initialization |
-| analyze-results | Skill | Results analysis and insights |
-| /design | Command (Skill) | Start exploration loop |
-| /analyze-results | Command (Skill) | Analyze exploration results |
-| designer | Agent | Autonomous exploration subagent |
-| PreToolUse guard | Hook | Warn on out-of-scope file edits |
-| evaluators/* | Scripts | Bundled quality evaluators |
-| eval-composite.sh | Script | Evaluation orchestrator |
-| parse-results.py | Script | Results parser |
+## Use it
 
-## Quick Start
-
-### 1. Install
+Claude Code installs this plugin from the `hironow-plugins` marketplace
+(`just claude-plugins-install`). To load a local copy:
 
 ```bash
-claude --plugin-dir /path/to/plugins/autodesign
+claude --plugin-dir plugins/autodesign
 ```
 
-### 2. Setup
+| Command | What it does |
+| --- | --- |
+| `/autodesign:design [tag]` | Sets up (if needed) and runs the loop |
+| `/autodesign:analyze-results` | Reports progress, keep rate per axis, and next steps |
 
-```
-/design my-redesign
-```
+The first run calls the `setup-design` skill. It creates the `design/<tag>`
+branch, `design-config.yaml`, and `design-results.tsv`, then measures the
+baseline. The `designer` agent runs each iteration. A PreToolUse hook asks
+for confirmation before an edit outside `target_files`.
 
-This creates `design-config.yaml`, initializes `design-results.tsv`, and runs the baseline.
+The config fields, default weights, and constraints are in
+[skills/setup-design/SKILL.md](skills/setup-design/SKILL.md).
 
-### 3. Run
+## Evaluators
 
-The designer agent autonomously explores design variations. Each cycle:
+`scripts/eval-composite.sh` runs the enabled evaluators and prints
+`composite_score`.
 
-- Selects an exploration axis (layout, color, typography, etc.)
-- Modifies only designated target files
-- Evaluates against quality constraints
-- Keeps improvements, reverts failures
-- Logs everything to design-results.tsv
-
-### 4. Analyze
-
-```
-/analyze-results
-```
-
-View exploration progress, axis performance, constraint violations, and recommendations.
-
-## Configuration
-
-Create `design-config.yaml` in your project root:
-
-```yaml
-tag: "experiment-name"
-target_files:
-  - "src/app/page.tsx"
-eval_target: "http://localhost:3000"
-eval_command: "bash ${CLAUDE_PLUGIN_ROOT}/scripts/eval-composite.sh"
-metric_name: "composite_score"
-metric_direction: "higher"
-timeout_seconds: 90
-results_file: "design-results.tsv"
-
-# Optional: generate initial design from prompt
-# initial_prompt: "Modern cafe page, Tailwind CSS, Japanese, mobile-first"
-
-evaluators:
-  structure:
-    enabled: true
-    weight: 0.30
-  readability:
-    enabled: true
-    weight: 0.20
-  lighthouse:
-    enabled: true
-    weight: 0.30
-  completeness:
-    enabled: true
-    weight: 0.20
-
-constraints:
-  structure_errors_max: 3
-  aeo_score_min: 50
-  lighthouse_avg_min: 70
-  completeness_score_min: 60
-
-exploration_axes:
-  - layout
-  - color
-  - typography
-  - animation
-  - spacing
-  - imagery
-```
-
-## Bundled Evaluators
-
-| Evaluator | Metric | Chrome Required |
-|-----------|--------|-----------------|
-| structure.sh | Pa11y a11y errors | Yes |
-| readability.sh | AEO score (0-100) | No |
-| lighthouse.sh | Lighthouse average (0-100) | Yes |
-| completeness.sh | Placeholder detection (0-100) | No |
-| html-validate.sh | HTML validation errors | No |
-
-## Design Principles
-
-1. **Exploratory, not diagnostic**: Explore design variations, don't just fix issues
-2. **Quality as constraint**: Metrics are floors (constraints), not optimization targets
-3. **Immutable evaluation**: Evaluation harness is never modified
-4. **Single target**: Only designated files are changed per iteration
-5. **Fixed budget**: Each iteration runs within a time budget
-6. **Append-only log**: All results preserved regardless of keep/revert
+| Evaluator | Metric | Needs Chrome |
+| --- | --- | --- |
+| `structure.sh` | Pa11y a11y errors | Yes |
+| `readability.sh` | AEO score (0-100) | No |
+| `lighthouse.sh` | Lighthouse average (0-100) | Yes |
+| `completeness.sh` | Placeholder detection (0-100) | No |
+| `html-validate.sh` | HTML validation errors | No |
 
 ## Dependencies
 
-Required: Node.js, Git, jq (the out-of-scope edit guard fails open without it)
-Optional: Chrome/Chromium (for structure.sh, lighthouse.sh), yq (for YAML parsing)
+- Required: Git, bun, bc, python3, and jq (without jq the scope hook does
+  nothing).
+- Optional: Chrome or Chromium (for `structure.sh` and `lighthouse.sh`), and
+  yq (the config reader falls back to grep and sed without it).

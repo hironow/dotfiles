@@ -1,101 +1,53 @@
 # autoresearch
 
-Autonomous experiment loop plugin for Claude Code, inspired by [karpathy/autoresearch](https://github.com/karpathy/autoresearch).
+Claude Code plugin that runs an experiment loop on your code. It changes the
+target files, measures a fixed metric, and keeps a change only when the metric
+improves. It is inspired by
+[karpathy/autoresearch](https://github.com/karpathy/autoresearch).
 
-Iteratively modifies target code, evaluates against fixed metrics, and keeps only improvements via git-based keep/revert cycles.
+## How it works
 
-## How It Works
-
-```
+```text
 LOOP:
-  1. Form hypothesis
-  2. Modify target file(s)
+  1. Form a hypothesis
+  2. Change the target files
   3. git commit
-  4. Run evaluation (with timeout)
-  5. Extract metric
-  6. Keep if improved, revert if not
-  7. Log result to results.tsv
-  8. Repeat
+  4. Run the evaluation (with a timeout)
+  5. Read the metric
+  6. Keep if it improved, otherwise revert
+  7. Append the result to results.tsv
 ```
 
-## Components
+The evaluation never changes, and an equal metric with simpler code also
+counts as a win. The rules and the decision tree are in
+[skills/research-loop/SKILL.md](skills/research-loop/SKILL.md).
 
-| Component | Type | Purpose |
-|-----------|------|---------|
-| research-loop | Skill | Core experiment loop knowledge |
-| setup-experiment | Skill | Experiment initialization |
-| analyze-results | Skill | Results analysis and insights |
-| /research | Command (Skill) | Start experiment loop |
-| /analyze-results | Command (Skill) | Analyze experiment results |
-| researcher | Agent | Autonomous experiment subagent |
-| PreToolUse guard | Hook | Warn on out-of-scope file edits |
+Good fits: run time or memory, hyperparameters, prompt scores, test coverage,
+and bundle size.
 
-## Quick Start
+## Use it
 
-### 1. Install
+Claude Code installs this plugin from the `hironow-plugins` marketplace
+(`just claude-plugins-install`). To load a local copy:
 
 ```bash
-claude --plugin-dir /path/to/plugins/autoresearch
+claude --plugin-dir plugins/autoresearch
 ```
 
-### 2. Setup
+| Command | What it does |
+| --- | --- |
+| `/autoresearch:research [tag]` | Sets up (if needed) and runs the loop |
+| `/autoresearch:analyze-results` | Reports progress, keep rate, and next experiments |
 
-```
-/research my-experiment
-```
+The first run calls the `setup-experiment` skill. It creates the
+`experiment/<tag>` branch, `experiment-config.yaml`, and `results.tsv`, then
+measures the baseline. The `researcher` agent runs each iteration. A
+PreToolUse hook asks for confirmation before an edit outside `target_files`.
 
-This creates `experiment-config.yaml`, initializes `results.tsv`, and runs the baseline.
-
-### 3. Run
-
-The researcher agent autonomously runs experiments. Each cycle:
-
-- Modifies only designated target files
-- Evaluates against the fixed metric
-- Keeps improvements, reverts failures
-- Logs everything to results.tsv
-
-### 4. Analyze
-
-```
-/analyze-results
-```
-
-View experiment progress, keep rate, improvement trajectory, and recommendations.
-
-## Configuration
-
-Create `experiment-config.yaml` in your project root:
-
-```yaml
-tag: "experiment-name"
-target_files:
-  - "src/algorithm.py"
-eval_command: "just test"
-metric_name: "score"
-metric_direction: "lower"    # "lower" or "higher" is better
-timeout_seconds: 120
-results_file: "results.tsv"
-```
-
-## Use Cases
-
-- Code performance optimization (execution time, memory)
-- Hyperparameter tuning (model training, config optimization)
-- Prompt engineering (evaluation score optimization)
-- Test coverage improvement
-- Bundle size optimization
-
-## Design Principles
-
-From the original autoresearch:
-
-1. **Immutable evaluation**: Evaluation harness is never modified
-2. **Single target**: Only designated files are changed per experiment
-3. **Fixed budget**: Each experiment runs within a time/resource budget
-4. **Simplicity criterion**: Reject complex code for marginal gains
-5. **Append-only log**: All results preserved regardless of keep/revert
+The config fields are in
+[skills/research-loop/SKILL.md](skills/research-loop/SKILL.md).
 
 ## Dependencies
 
-Required: Git, jq (the out-of-scope edit guard fails open without it)
+Git, python3 (results parser), and jq (without jq the scope hook does
+nothing).

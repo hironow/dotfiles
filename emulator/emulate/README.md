@@ -1,48 +1,26 @@
-# emulate — API/SaaS emulators
+# emulate: SaaS API emulators
 
-Local, stateful drop-in replacements for SaaS APIs via
-[vercel-labs/emulate](https://github.com/vercel-labs/emulate), integrated as a
-thin `bunx` wrapper (not vendored — kept current via npm, pinned to a version).
-
-This complements the datastore emulators in [`../`](../README.md) (postgres,
-bigtable, spanner/pgadapter, neo4j, qdrant, elasticsearch, firebase) with
-auth / commerce / messaging API emulators, useful for agent + `payments/`
-(ACP, AP2) development.
-
-## Run
+Local, stateful stand-ins for SaaS APIs (GitHub, Google, Slack, Apple,
+Microsoft, Stripe, Clerk, Okta, Resend) from
+[vercel-labs/emulate](https://github.com/vercel-labs/emulate). They complement
+the datastore emulators in [`../README.md`](../README.md).
 
 ```sh
-just emu-api                 # full requested set on base port 4100 (foreground)
-just emu-api services=github,google,slack   # custom subset
+just emu-api                                # all nine services, foreground
+just emu-api services=github,google,slack   # a subset
+just emu-api-stop                           # stop a backgrounded run
 ```
 
-`just emu-api` runs `bunx emulate@0.8.0 --service <list> --port 4100 --seed emulate.config.yaml`
-on the host, binding to `127.0.0.1` from base port `4100` upward. Stop with Ctrl+C.
+The recipe runs a pinned `emulate` with `bunx` on the host, not in Docker
+([ADR 0055](../../docs/adr/0055-run-emulate-with-bunx.md)). It binds to
+`127.0.0.1`. Ports start at 4100 and follow the `--service` order (base +
+index), so the default set uses 4100-4108. If the published CLI rejects a
+service, drop it from `services=`.
 
-> Host `bunx` (not a compose service) is used on purpose: `emulate` is a Node CLI
-> (its `#!/usr/bin/env node` shebang is honored) and binding it directly on the host avoids container localhost-binding pitfalls.
+[`../../docs/portless-urls.md`](../../docs/portless-urls.md) lists the port
+of each service and its `https://<service>.localhost` alias. If you change the
+service set or order, update those ports too.
 
-## Services & ports
-
-All requested services run on `emulate@0.8.0` (verified). Ports are deterministic:
-`base + index` in the `--service` order used by `just emu-api`, so the default set
-maps as:
-
-| Port | Service | | Port | Service |
-|------|---------|-|------|---------|
-| 4100 | github    | | 4105 | stripe |
-| 4101 | google    | | 4106 | clerk  |
-| 4102 | slack     | | 4107 | okta   |
-| 4103 | apple     | | 4108 | resend |
-| 4104 | microsoft | |      |        |
-
-To reach them as `https://<service>.localhost`, register them with
-`portless alias <service> <port> --force`; the full list is in
-[`../../docs/portless-urls.md`](../../docs/portless-urls.md). If you change
-the `services=` set or order, update those alias ports to match.
-
-## Config
-
-[`emulate.config.yaml`](./emulate.config.yaml) holds `tokens:` + per-service seed
-data. Regenerate a canonical starter with `bunx emulate@0.8.0 init` if the schema
-changes in a newer version.
+[`emulate.config.yaml`](emulate.config.yaml) holds the `tokens:` and the seed
+data for each service. If a newer `emulate` changes the schema, generate a
+fresh starter with `bunx emulate@<version> init`.

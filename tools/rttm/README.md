@@ -1,47 +1,30 @@
 # RTTM Tool
 
-RTTM (Rich Transcription Time Marked) file tool for [ELAN](https://archive.mpi.nl/tla/elan).
+Converts RTTM (Rich Transcription Time Marked) files to the ELAN Annotation
+Format (EAF) for [ELAN](https://archive.mpi.nl/tla/elan), and plots them,
+including speaker overlaps.
 
-## Features
-
-- **Convert RTTM to EAF**: Converts RTTM files to ELAN Annotation Format (EAF).
-- **Visualize RTTM**: Generates a visualization of the RTTM data, including speaker overlaps.
-
-## Requirements
-
-- Python 3.11+
-- Dependencies are managed via `uv`.
+It is its own uv project (Python 3.11+). Run the commands from `tools/rttm/`.
 
 ## Usage
 
-### Convert RTTM to EAF
-
 ```shell
 uv run --frozen python to_eaf.py input.rttm output.eaf
-```
-
-### Visualize RTTM
-
-```shell
 uv run --frozen python visualize.py input.rttm -o output.png
 ```
 
-Optional arguments:
+`visualize.py --font <family>` sets the font. The default is "Hiragino Sans"
+on macOS and "Noto Sans CJK JP" elsewhere.
 
-- `--font`: Specify a font family (e.g., "Arial"). Defaults to "Hiragino Sans" on macOS and "Noto Sans CJK JP" elsewhere.
-
-### Development
+## Development
 
 From the repository root:
 
 ```shell
-just rttm-fmt        # formatting
-just rttm-check      # Ruff, ty, and tests (headless plotting)
+just rttm-fmt     # format
+just rttm-check   # Ruff, ty, and tests (headless plotting)
 ```
 
-The root `just fmt`, `just lint`, and `just check` also reach the RTTM project.
-Ruff and ty live in the `lint` dependency group with exact pins matching root,
-emulator, and mise; `just bump-tool ruff|ty VERSION` updates all declarations
-and all three uv locks. Other dependencies retain the seven-day quarantine.
-The RTTM-local ty configuration checks the CLI files and tests with the
-application dependencies available; it does not inherit root's scripts/tests-only scope.
+The root `just fmt`, `just lint`, and `just check` also cover this project.
+`pyproject.toml` explains the lint pins (moved by `just bump-tool`), the
+dependency quarantine, and the local ty scope.

@@ -1,384 +1,162 @@
 # Emulator Suite
 
-Local, reproducible emulator stack for app development and testing.
+Local emulators for GCP and data services, run with Docker Compose. The root
+`justfile` drives them (`just --list`, group `Emulator`). The default is a
+small "lite" stack; heavier services start only when you ask for them.
 
-Includes Firebase (Auth / Firestore / Storage / Pub/Sub / Eventarc / Tasks),
-Spanner (+ pgAdapter), Neo4j, Elasticsearch, Qdrant, A2A Inspector, and MCP
-Inspector. Handy Go-based CLIs and just tasks make day‑to‑day work fast and
-predictable.
-
-## Table of Contents
-
-- Quick Start
-- Services Overview
-- Developer Commands
-- Testing
-- Configuration
-- Access
-- Data & Persistence
-- CLI Tools (details)
-- Troubleshooting
-- CI
-
-## Quick Start
-
-Pre-flight (recommended)
+## Quick start
 
 ```bash
-# Validate gcloud user login + ADC and common misconfigurations
-just emu-gcloud-auth-check
-# or: bash scripts/check-gcloud-auth.sh --details --strict --verbose
+just emu-gcloud-auth-check           # optional: check gcloud login and ADC first
+just emu-up                          # lite: firebase + spanner + pgadapter + postgres
+just emu-up-group search             # lite + one group (see Services)
+just emu-up-only firebase-emulator   # only the named services
+just emu-up-full                     # every data service
+just emu-check                       # status and endpoints
+just emu-stop                        # stop every service, lite and heavy
 ```
 
-Note: The Firebase emulator does not need production credentials, but Google SDKs and tools may still read ADC. Running the pre‑flight helps catch expired tokens, missing files, or account mismatches before you start.
+Lite is the default so the Docker VM (OrbStack or podman machine) stays light.
+`just emu-start` and `just emu-start-full` first delete all volumes, then build
+and wait for readiness. `just emu-clean` deletes the volumes only.
 
-Start emulators (recommended)
+The emulators do not need production credentials, but Google SDKs may still
+read ADC. The auth check catches expired tokens and account mismatches early.
 
-```bash
-# Lite default = the GCP core only: firebase + spanner + pgadapter + postgres.
-# This keeps the OrbStack VM well under its memory cap; heavy/amd64 services
-# (Elasticsearch, Neo4j, Bigtable, inspectors, ...) are opt-in.
-just emu-up                          # detached, lite (== just emu-up-lite)
-just emu-start                       # clean volumes -> prebuild -> up lite -> wait
+SaaS API emulators (GitHub, Stripe, Slack, ...) run separately with
+`just emu-api`; see [`emulate/README.md`](emulate/README.md).
 
-# Start only specific service(s) — what an external consumer reuses.
-just emu-up-only firebase-emulator   # e.g. reuse Pub/Sub on :9399 from another repo
+## Services
 
-# Start lite + a capability group: bigtable search graph vector ml inspect exporters full
-just emu-up-group search             # lite + Elasticsearch
+All services use project ID `test-project`. Ports bind to `127.0.0.1`; each
+host port has an override variable in [`compose.yaml`](compose.yaml) (for
+example `POSTGRES_PORT`).
 
-# The whole heavy stack (every data service; excludes interactive *-cli)
-just emu-up-full                     # == just emu-start-full for the clean variant
-```
+| Service | Compose service | Group | Host ports |
+| --- | --- | --- | --- |
+| Firebase UI / Auth / Firestore | `firebase-emulator` | lite | 4000 / 9099 / 8080 |
+| Firebase Storage / Pub/Sub | `firebase-emulator` | lite | 9199 / 9399 |
+| Firebase Eventarc / Tasks | `firebase-emulator` | lite | 9299 / 9499 |
+| Spanner | `spanner-emulator` | lite | 9010 (gRPC), 9020 (REST) |
+| pgAdapter (Spanner, PostgreSQL protocol) | `pgadapter` | lite | 55432 |
+| PostgreSQL 18 | `postgres` | lite | 5433 |
+| Bigtable | `bigtable-emulator` | `bigtable` | 8086 (gRPC) |
+| Elasticsearch + exporter | `elasticsearch`, `elasticsearch-exporter` | `search` | 9200, 9300 / 9114 |
+| Neo4j | `neo4j` | `graph` | 7474 (HTTP), 7687 (Bolt) |
+| Qdrant | `qdrant` | `vector` | 6333 (REST), 6334 (gRPC) |
+| MLflow | `mlflow` | `ml` | 5252 |
+| A2A Inspector / MCP Inspector | `a2a-inspector`, `mcp-inspector` | `inspect` | 8081 / 6274 |
+| PostgreSQL exporter | `postgres-exporter` | `exporters` | 9187 |
 
-Stop emulators (recommended)
+The `full` group holds every service above. The `cli` group holds the
+interactive CLIs (see below).
 
-```bash
-just emu-stop
-```
+Logins:
 
-Or use Docker Compose directly
+- pgAdapter: user `user`, database `test-instance`, no password.
+- PostgreSQL: user `postgres`, password `password`, database `postgres`.
+- Neo4j: `neo4j` / `password`.
 
-```bash
-docker compose up -d                 # lite (default profile only)
-COMPOSE_PROFILES=full docker compose up -d   # the whole heavy stack
-# ... later
-docker compose down
-```
+### Connecting
 
-## Services Overview
+- From the host: copy [`.env.local.example`](.env.local.example) to
+  `.env.local` and `source` it. It sets `*_EMULATOR_HOST` and the project IDs.
+- From another container: the services join the Docker network
+  `shared-otel-net` (`scripts/start-services.sh` creates it; the telemetry
+  stack shares it). Use the compose service name and the container port, for
+  example `firebase-emulator:8080`, `spanner-emulator:9010`, `pgadapter:5432`,
+  `postgres:5432`, `mlflow:5000`.
+- In the A2A or MCP Inspector UI, `localhost` means the inspector container.
+  Use `host.docker.internal` to reach a server on the host.
 
-All services run on the `emulator-network`. Defaults are shown; you can change
-ports via `.env.local`.
+### Notes
 
-| Service        | Container            | Ports (host → container)                 | Health | CLI |
-|----------------|----------------------|------------------------------------------|--------|-----|
-| Bigtable       | `bigtable-emulator`  | 8086 → 8086 (gRPC)                       | TCP    | ✓   |
-| Firebase UI    | `firebase-emulator`  | 4000 → 4000                              | HTTP   | –   |
-| Firestore      | `firebase-emulator`  | 8080 → 8080                              | TCP    | –   |
-| Auth           | `firebase-emulator`  | 9099 → 9099                              | TCP    | –   |
-| Pub/Sub        | `firebase-emulator`  | 9399 → 9399                              | HTTP   | –   |
-| Storage        | `firebase-emulator`  | 9199 → 9199                              | HTTP   | –   |
-| Eventarc       | `firebase-emulator`  | 9299 → 9299                              | HTTP   | –   |
-| Tasks          | `firebase-emulator`  | 9499 → 9499                              | HTTP   | –   |
-| Spanner gRPC   | `spanner-emulator`   | 9010 → 9010                              | TCP    | –   |
-| Spanner REST   | `spanner-emulator`   | 9020 → 9020                              | TCP    | –   |
-| pgAdapter      | `pgadapter-emulator` | 55432 → 5432 (PostgreSQL)                | TCP    | ✓   |
-| Neo4j          | `neo4j-emulator`     | 7474 → 7474 (HTTP), 7687 → 7687 (Bolt)   | HTTP   | ✓   |
-| Elasticsearch  | `elasticsearch-emulator` | 9200 → 9200 (REST), 9300 → 9300     | HTTP   | ✓   |
-| Qdrant         | `qdrant-emulator`    | 6333 → 6333 (REST), 6334 → 6334 (gRPC)   | HTTP   | ✓   |
-| A2A Inspector  | `a2a-inspector`      | 8081 → 8080                              | HTTP   | –   |
-| MCP Inspector  | `mcp-inspector`      | 6274 → 6274                              | HTTP   | –   |
-| MLflow         | `mlflow-server`      | 5252 → 5000                              | HTTP   | –   |
-| PostgreSQL     | `postgres-18`        | 5433 → 5432 (PostgreSQL)                 | TCP    | ✓   |
-| ES Exporter    | `elasticsearch-exporter` | 9114 → 9114 (Prometheus)            | HTTP   | –   |
-| PG Exporter    | `postgres-exporter`  | 9187 → 9187 (Prometheus)                 | HTTP   | –   |
+- Bigtable and A2A Inspector images are amd64-only. On Apple Silicon they run
+  under emulation (`platform: linux/amd64`).
+- On macOS, Control Center (AirPlay) holds ports 5000 and 7000. That is why
+  MLflow uses host port 5252.
+- The inspectors build from upstream source at a pinned ref. Set
+  `A2A_INSPECTOR_REPO` / `A2A_INSPECTOR_REF` or `MCP_INSPECTOR_REPO` /
+  `MCP_INSPECTOR_REF` before building to use another checkout. The defaults and
+  the reasons for the pins are in [`compose.yaml`](compose.yaml) and each
+  inspector's `Dockerfile`.
+- Firebase UI can take 30-60 seconds to start. The Firestore root URL does not
+  return 200; check the port or the UI instead.
+- Debug a service with `docker compose logs -f <service>` or
+  `docker compose exec <service> ...`, run from `emulator/`.
 
-> Note: Set `A2A_INSPECTOR_REPO=<git-url>` and/or `A2A_INSPECTOR_REF=<git-ref>` before `just emu-start` to override the upstream inspector checkout (any commit, tag or branch). The default is a pinned commit with the Python/TypeScript layout, because upstream `main` is now a Go rewrite this Dockerfile cannot build. The image builds via the local `a2a-inspector/Dockerfile`, which fetches the repository and runs on Python 3.12 to satisfy its runtime requirement.
->
-> Note: Set `MCP_INSPECTOR_REPO=<git-url>` and/or `MCP_INSPECTOR_REF=<git-ref>` before `just emu-start` to pin the upstream MCP Inspector checkout. The image builds via the local `mcp-inspector/Dockerfile`, which fetches the repository and runs on Node.js 24.
+## Data
 
-CLI availability (✓) means a matching Go-based REPL is included and runnable
-via Docker Compose profiles.
+- Firebase imports `firebase/data/` on start and exports to it on exit.
+- MLflow keeps its database and artifacts in `mlflow-data/`.
+- The other services use named Docker volumes.
+- PostgreSQL ships `pgvector` and `postgis`.
+  [`postgres/docker-entrypoint-initdb.d/01-extensions.sql`](postgres/docker-entrypoint-initdb.d/01-extensions.sql)
+  enables them only when the volume is first created. On an older volume, run
+  `CREATE EXTENSION` yourself or delete the volume with `just emu-clean`.
 
-### Prometheus Exporters
+## Metrics
 
-The following Prometheus exporters are included for telemetry integration:
+The telemetry stack's OTel Collector scrapes `elasticsearch-exporter:9114`,
+`postgres-exporter:9187`, and Qdrant's own `/metrics` on 6333 (see
+[`../telemetry/config/otel/otel-collector-config.yaml`](../telemetry/config/otel/otel-collector-config.yaml)).
+Grafana shows them on the "Emulator Metrics" dashboard. Neo4j Community
+Edition has no Prometheus metrics.
 
-| Exporter | Target Service | Metrics Endpoint | Notes |
-|----------|---------------|------------------|-------|
-| `elasticsearch-exporter` | Elasticsearch | `:9114/metrics` | Cluster health, nodes, JVM, indices |
-| `postgres-exporter` | PostgreSQL 18 | `:9187/metrics` | Connections, DB size, QPS, cache hits |
+## Interactive CLIs
 
-These exporters are scraped by the OTEL Collector in the `telemetry` stack via the shared `shared-otel-net` Docker network. Metrics are visualized in the Grafana "Emulator Metrics" dashboard.
-
-**Native metrics support:**
-
-- **Qdrant**: Native `/metrics` endpoint on port 6333
-- **Neo4j**: Prometheus metrics require Enterprise Edition (Community Edition does not support this feature)
-
-## Developer Commands
-
-All recipes live in the repo-root `justfile` under the `Emulator` group
-(run `just --list`):
-
-- `just emu-up` / `just emu-up-lite` — start detached, lite (firebase+spanner+pgadapter+postgres = GCP core)
-- `just emu-up-only <service...>` — start exactly the named service(s), bypassing profile gating
-- `just emu-up-group <cap>` — start lite + a capability group (`bigtable search graph vector ml inspect exporters full`)
-- `just emu-up-full` — start the whole heavy stack (every data service; excludes interactive *-cli)
-- `just emu-start` / `just emu-start-full` — clean+prebuild+up+wait, lite / full
-- `just emu-stop` / `just emu-check` / `just emu-wait` — stop / status / wait for readiness
-- `just emu-port-check` — check host port usage (incl. cross-stack collision ports) before starting
-- `just emu-test` / `just emu-test-fast` / `just emu-test-e2e` — pytest (all / non-e2e / e2e)
-- `just emu-lint` / `just emu-fmt` — ruff + semgrep + markdownlint / formatters
-- `just emu-pg-verify` — PostgreSQL 18 verification
-- `just emu-gcloud-auth-check` — pre-flight gcloud auth/ADC check (strict + details)
-
-## Testing
-
-Run all tests
-
-```bash
-just emu-test
-```
-
-Coverage highlights
-
-- Firestore: Create/Get via REST (runs with emulator-specific permissive rules)
-- Auth: SignUp / SignInWithPassword
-- Storage: Upload/Download (continues even when the bucket-creation API is unimplemented)
-- Pub/Sub: Topic / Subscription / Publish / Pull / Ack via REST
-- Eventarc: Port connectivity smoke test
-- Spanner / pgAdapter: Container liveness and TCP port checks
-- Neo4j / Elasticsearch / Qdrant: Health verification
-
-Test groups
-
-- Smoke: CLI help/info/exit sanity checks
-- CRUD: End‑to‑end create/read flows per CLI (with cleanup)
-- Features: Aggregations, relationships, filtered vector search
-- Negative: pgAdapter/Spanner incompat tests (e.g., missing PK, sequence)
-
-About skipped tests (expected)
-
-- Pub/Sub REST: Some emulator builds or environments may return 500s because of HTTP/2 requirements or unstable REST responses.
-    - Tests use aiohttp and skip instead of fail when responses are flaky.
-    - On environments where the emulator mandates HTTP/2, the test skips automatically.
-- Cloud Tasks REST: Frequently unimplemented; we detect that ahead of time and skip.
-
-Note: Firestore security rules are switched to fully permissive mode for the local emulator to simplify tests. Never use this configuration in production.
-
-## Configuration
-
-All emulators use the same project ID: `test-project`.
-
-Copy example envs and/or export in your shell.
-
-```bash
-# Core project configuration
-export CLOUDSDK_CORE_PROJECT=test-project
-export GOOGLE_CLOUD_PROJECT=test-project
-export FIREBASE_PROJECT_ID=test-project
-
-# Firebase Emulator hosts
-export FIREBASE_AUTH_EMULATOR_HOST=localhost:9099
-export FIRESTORE_EMULATOR_HOST=localhost:8080
-export FIREBASE_STORAGE_EMULATOR_HOST=localhost:9199
-export PUBSUB_EMULATOR_HOST=localhost:9399
-
-# Spanner Emulator host
-export SPANNER_EMULATOR_HOST=localhost:9010
-export BIGTABLE_EMULATOR_HOST=localhost:8086
-export POSTGRES_PORT=5433
-export PGADAPTER_PORT=55432
-
-# Authentication (empty for emulators)
-export GOOGLE_APPLICATION_CREDENTIALS=""
-
-# Optional
-export CLOUD_TASKS_EMULATOR_HOST=localhost:9090
-export EVENTARC_EMULATOR=localhost:9299
-export JAVA_TOOL_OPTIONS="-Xmx4g"
-export CLOUDSDK_SURVEY_DISABLE_PROMPTS=1
-```
-
-Docker-to-Docker networking
-
-```bash
-export FIREBASE_AUTH_EMULATOR_HOST=firebase:9099
-export FIRESTORE_EMULATOR_HOST=firebase:8080
-export FIREBASE_STORAGE_EMULATOR_HOST=firebase:9199
-export PUBSUB_EMULATOR_HOST=firebase:9399
-export SPANNER_EMULATOR_HOST=spanner:9010
-export BIGTABLE_EMULATOR_HOST=bigtable-emulator:8086
-
-# MLflow client (inside another container)
-export MLFLOW_TRACKING_URI=http://mlflow:5000
-
-Local host client (MLflow)
-
-```bash
-export MLFLOW_TRACKING_URI=http://localhost:5252
-```
-
-**macOS Port Conflicts**
-
-- On macOS, Control Center (AirPlay) commonly binds ports `5000` and `7000`.
-- Avoid exposing emulator services on these host ports. This repo uses `5252` for MLflow by default.
-
-## Access
-
-- pgAdapter (PostgreSQL): host `localhost`, port `55432`, user `user`, db `test-instance`
-- Bigtable: gRPC `localhost:8086`
-- Neo4j: Bolt `localhost:7687`, HTTP `localhost:7474` (neo4j / password)
-- Elasticsearch: REST `localhost:9200`
-- Qdrant: REST `localhost:6333`
-- A2A Inspector: `http://localhost:8081`
-- MCP Inspector: `http://localhost:6274`
-- MLflow UI: `http://localhost:5252`
-- PostgreSQL: host `localhost`, port `5433`, user `postgres`, db `postgres`
-
-Note (A2A Inspector): Entering `localhost` in the web UI resolves inside the container; use `host.docker.internal` to reach the host.
-
-## Data & Persistence
-
-- Firebase data persists under `firebase/data/`.
-- Firebase emulator exports on exit automatically (export-on-exit). `just emu-stop` simply stops containers.
-- MLflow experiment data (backend + artifacts) persists under `mlflow-data/`.
-
-## CLI Tools (details)
-
-Docs
-
-- [Firebase Emulator](firebase/README.md)
-- [pgAdapter CLI](pgadapter-cli/README.md)
-- [Neo4j CLI](neo4j-cli/README.md)
-- [Elasticsearch CLI](elasticsearch-cli/README.md)
-- [Qdrant CLI](qdrant-cli/README.md)
-- [Bigtable CLI](bigtable-cli/README.md)
-
-PostgreSQL CLI
-
-```bash
-docker compose --profile cli run --rm postgres-cli
-```
-
-PostgreSQL 18 verification
-
-```bash
-just emu-pg-verify
-```
-
-Run with Docker Compose profiles. Examples:
-
-pgAdapter CLI
+Each data service has a small Go REPL behind the `cli` profile. Run it from
+`emulator/` while its service is up:
 
 ```bash
 docker compose --profile cli run --rm pgadapter-cli
 ```
 
-Neo4j CLI
+The CLIs are `bigtable-cli`, `elasticsearch-cli`, `neo4j-cli`,
+`pgadapter-cli`, `postgres-cli`, and `qdrant-cli`. Type `\h` inside for
+commands and examples. Compose sets each CLI's connection variables.
+
+- `bigtable-cli`: run `init` first. It creates the instance and cluster if
+  they are missing and is safe to repeat.
+- `pgadapter-cli` and `postgres-cli` read the standard libpq variables
+  (`PGHOST`, `PGPORT`, ...). From the host, use port 55432 for pgAdapter and
+  5433 for PostgreSQL.
+- `elasticsearch-cli`: see [its README](elasticsearch-cli/README.md).
+
+## pgAdapter vs PostgreSQL
+
+`pgadapter` speaks the PostgreSQL protocol on top of Spanner. `postgres` is
+stock PostgreSQL 18 and does not depend on Spanner. Use `postgres` when you
+need exact PostgreSQL behavior. `just emu-pg-verify` checks its version,
+`uuidv7()`, and generated columns.
+
+Through pgAdapter, write PostgreSQL type names:
+
+| Spanner (GoogleSQL) | PostgreSQL (via pgAdapter) |
+| --- | --- |
+| `INT64` | `BIGINT` |
+| `STRING(n)` / `STRING` | `VARCHAR(n)` / `TEXT` |
+| `FLOAT64` | `DOUBLE PRECISION` |
+| `NUMERIC` | `NUMERIC` |
+| `TIMESTAMP` | `TIMESTAMPTZ` |
+
+- Every table needs a primary key (`id BIGINT PRIMARY KEY`).
+- `SERIAL` and sequences are generally not supported.
+- Keep DDL simple: explicit primary key, basic types.
+
+## Tests and CI
 
 ```bash
-docker compose --profile cli run --rm neo4j-cli
+just emu-test        # all tests
+just emu-test-fast   # skip e2e
+just emu-test-e2e    # e2e only
 ```
 
-Bigtable CLI
+Firestore runs with fully open security rules
+([`firebase/firestore.rules`](firebase/firestore.rules)) so the tests stay
+simple. Never use them in production. The Cloud Tasks test skips when the
+emulator does not implement the REST API.
 
-```bash
-docker compose --profile cli run --rm bigtable-cli
-```
-
-Elasticsearch CLI
-
-```bash
-docker compose --profile cli run --rm elasticsearch-cli
-```
-
-Qdrant CLI
-
-```bash
-docker compose --profile cli run --rm qdrant-cli
-```
-
-All CLIs support multi‑line input and print tabular results for readability.
-
-Apple Silicon (arm64)
-
-- Bigtable emulator image is amd64-only; the compose service sets `platform: linux/amd64` to run via emulation.
-- Performance impact is usually small for local testing. If you prefer native arm64, consider running the emulator directly on host via `gcloud`.
-
-## Troubleshooting
-
-Health checks
-
-```bash
-just emu-check
-```
-
-Tips
-
-- Firebase UI may take 30–60s to fully start.
-- Firestore root endpoint does not return 200; use port listen checks and UI.
-- Inspect logs: `docker compose logs -f <service>`
-- Test from inside container: `docker compose exec <service> curl ...`
-- Verify messages like "ready", "started", or "listening" in logs.
-
-## CI
-
-GitHub Actions workflow `.github/workflows/test-emulators.yaml` (repo root,
-`paths:` scoped to `emulator/**`, `working-directory: emulator`):
-
-- Installs dependencies via `uv sync --all-extras --frozen` (lockfile に準拠)
-- Runs tests via `uv run pytest`
-
-Run the same suite locally with `just ci-emu` (lint + start + fast + e2e).
-
-## pgAdapter / Spanner Dialect Differences
-
-When using pgAdapter (PostgreSQL protocol) on top of Spanner, prefer PostgreSQL
-type names and be aware of some limitations. Quick mapping:
-
-| Concept                     | Spanner (GoogleSQL)         | PostgreSQL (via pgAdapter) |
-|----------------------------|-----------------------------|-----------------------------|
-| Integer                    | `INT64`                     | `BIGINT`                    |
-| String (fixed length)      | `STRING(n)`                 | `VARCHAR(n)`                |
-| String (unbounded)         | `STRING`                    | `TEXT`                      |
-| Floating point             | `FLOAT64`                   | `DOUBLE PRECISION`          |
-| Exact decimal              | `NUMERIC`                   | `NUMERIC`                   |
-| Timestamp                  | `TIMESTAMP`                 | `TIMESTAMPTZ`               |
-| Primary key                | `PRIMARY KEY (id)`          | `id BIGINT PRIMARY KEY` or table-level PK |
-
-Notes
-
-- Every table must have a PRIMARY KEY (Spanner requirement).
-- `SERIAL` / `SEQUENCE` are generally unsupported.
-- Some PostgreSQL features may be limited compared to stock PostgreSQL.
-- Keep DDL simple (explicit PK, basic types) for best compatibility.
-
-## PostgreSQL 18
-
-Highlights (stock PostgreSQL, not pgAdapter):
-
-- Asynchronous I/O for reads improves performance in sequential scan, bitmap heap scan, and VACUUM read paths (benchmarks show up to ~3x on targeted operations)
-- `uuidv7()` function to generate time-ordered UUIDs (millisecond timestamp prefix)
-- Generated columns: support for virtual generated columns in addition to stored
-- OAuth 2.0 authentication support and upgrade-safe statistics retention
-
-How to use
-
-- Start with the rest of the suite: `just emu-start`
-- CLI (Docker profile): `docker compose --profile cli run --rm postgres-cli`
-- Host access: `psql -h localhost -p ${POSTGRES_PORT:-5433} -U postgres -d postgres`
-- Quick verification of version, `uuidv7()`, and generated columns: `just emu-pg-verify`
-
-Notes
-
-- This PostgreSQL 18 service is independent from Spanner/pgAdapter. Use it when you need exact PostgreSQL behavior or to try 18-specific features.
-- Inside Docker, connect to `postgres:5432`. From the host, the default mapped port is `5433` (change via `POSTGRES_PORT`).
-
-Extensions
-
-- Preinstalled: `pgvector`, `postgis`
-- Auto-enabled on first initialization via `postgres/docker-entrypoint-initdb.d/01-extensions.sql`
-- If you created the data volume before this change, either run `CREATE EXTENSION` manually inside the DB or remove the `postgres_data` volume to trigger the init script
+CI runs [`.github/workflows/test-emulators.yaml`](../.github/workflows/test-emulators.yaml)
+when files under `emulator/` change (Markdown excluded). `just ci-emu` runs a
+local equivalent.

@@ -1,39 +1,27 @@
 # Simple Server
 
-A simple HTTP/HTTPS static file server written in Go.
+A small Go static file server for HTTP or HTTPS. It shuts down cleanly on
+Ctrl-C (SIGINT) or SIGTERM.
 
-## Features
-
-- Serves static files from a specified directory.
-- Supports HTTP and HTTPS.
-- Graceful shutdown support.
-- Configurable via command-line flags.
+`just check-localhost-tls` (macOS and Linux) uses it to check the
+`localhost.hironow.dev` certificate on port 443.
 
 ## Usage
 
-Build the server:
+Run these from `tools/simple-server/`:
 
 ```bash
 go build -o simple-server main.go
-```
 
-Run the server:
-
-```bash
-# Run on default port 8080 serving current directory
-./simple-server
-
-# Run on custom port and directory
+./simple-server                         # http://localhost:8080, serves .
 ./simple-server -port 3000 -dir ./assets
-
-# Run with HTTPS
-./simple-server -cert path/to/cert.pem -key path/to/key.pem
+./simple-server -cert path/to/cert.pem -key path/to/key.pem   # HTTPS
 ```
 
 ## Flags
 
-- `-host`: Hostname to bind to (default: "localhost")
-- `-port`: Port to listen on (default: "8080")
-- `-dir`: Directory to serve (default: ".")
-- `-cert`: Path to TLS certificate file (optional)
-- `-key`: Path to TLS private key file (optional)
+- `-host`: host name to bind (default `localhost`)
+- `-port`: port to listen on (default `8080`)
+- `-dir`: directory to serve (default `.`)
+- `-cert`, `-key`: TLS certificate and key files. HTTPS needs both; with
+  either one missing, it serves plain HTTP.

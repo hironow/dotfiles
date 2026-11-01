@@ -1,7 +1,7 @@
 # Pub/Sub AI Inference SMT（GA）
 
-Pub/Sub のメッセージが流れる途中で、**外部サービスを挟まずに直接モデル推論を呼び、結果を
-メッセージに付与する** 機能。SMT = Single Message Transform（単一メッセージ変換）。
+Pub/Sub が、流れるメッセージごとに **外部サービスを挟まず直接モデル推論を呼び、結果を
+メッセージに付ける** 機能。SMT = Single Message Transform（単一メッセージ変換）。
 
 - Launch stage: **GA（一般提供）**
 - 公式: <https://docs.cloud.google.com/pubsub/docs/smts/ai-inference-smt>
@@ -12,9 +12,10 @@ Pub/Sub のメッセージが流れる途中で、**外部サービスを挟ま�
 - 記事の「Pub/Sub ストリーミング内での直接モデル呼び出し」「Gemini Enterprise Agent
   Platform 対応」「NLP / 不正検知 / セマンティック検索」は **公式の use case と一致**（公式は
   real-time enrichment / simplified AI pipelines / reduced latency / enhanced flow control を挙げる）。
-- 記事の **GA 表記は正しい**（公式ブログ "Streaming AI news from Next '26" で GA と明記）。
-- 「Gemini Enterprise Agent Platform」は **Vertex AI のリブランド**。IAM ロール・API は
-  旧称（`Vertex AI ...` / `aiplatform.*`）のままなので注意。
+- **GA 表記は正しい**（公式ブログ "Streaming AI news from Next '26" が GA と明記）。
+- 「Gemini Enterprise Agent Platform」は **Vertex AI のリブランド**（Next '26 前後で改称）。公式 docs も
+  "Agent Platform (previously Vertex AI)" と併記する。IAM ロール・API は旧称
+  （`Vertex AI ...` / `aiplatform.*`）のまま。
 
 ## SMT は 2 種類ある
 
@@ -143,10 +144,9 @@ Mistral、DeepSeek、Qwen3、GPT-OSS、各種 embedding 等。一部（一部 em
 エンドポイント過負荷を避けるため、Pub/Sub がレイテンシ・quota に応じて **リクエストレートを
 自動調整** する（unary pull API 利用時は非対応）。バックプレッシャーを自前で組まなくてよい。
 
-> **用語注意（ファクトチェック）**: 元記事の「Elastic Inference Queue」は **公式ドキュメントに
-> 該当用語がない**。製品 / 機能名ではなく、ここで説明した **フロー制御（レート自動調整）** を
-> セッションスライドで言い換えた表現とみられる。実装上「Elastic Inference Queue」という設定や
-> API は存在しないため、固有名として探さないこと。
+> **用語注意**: 元記事の「Elastic Inference Queue」は公式ドキュメントにない用語。この
+> **フロー制御（レート自動調整）** をスライドで言い換えたものとみられる。その名前の設定や API は
+> ないので、固有名として探さない。
 
 ## 制約・落とし穴
 
@@ -169,7 +169,7 @@ Mistral、DeepSeek、Qwen3、GPT-OSS、各種 embedding 等。一部（一部 em
 - 監視: `topic/message_transform_latencies`（status / filtered ラベル）、`topic/byte_cost`
   （`operation_type` / `response_code`）。
 
-## 公式サンプル実装（2026-06 確認）
+## 公式サンプル実装
 
 - Python サンプル群（`pubsub_v1` クライアント。SMT は `MessageTransform` /
   `JavaScriptUDF` 型を使う）:
@@ -183,14 +183,10 @@ Mistral、DeepSeek、Qwen3、GPT-OSS、各種 embedding 等。一部（一部 em
 
 ## 関連リンク
 
-- AI Inference SMT: <https://docs.cloud.google.com/pubsub/docs/smts/ai-inference-smt>
-  （本ドキュメントは 2026-06 時点の公式版に基づく）
-- SMT 概要 / 発表ブログ:
-  <https://docs.cloud.google.com/pubsub/docs/smts/smts-overview> /
+本ノートは 2026-06 時点の公式版に基づく。
+
+- SMT 発表ブログ:
   <https://cloud.google.com/blog/products/data-analytics/pub-sub-single-message-transforms>
-- topic に SMT を付ける: <https://docs.cloud.google.com/pubsub/docs/smts/create-topic-smt>
-- subscription に SMT を付ける:
-  <https://docs.cloud.google.com/pubsub/docs/smts/create-subscription-smt>
 - topic / subscription どちらに付けるか:
   <https://docs.cloud.google.com/pubsub/docs/smts/choose-smts>
 - Pub/Sub リリースノート: <https://docs.cloud.google.com/pubsub/docs/release-notes>

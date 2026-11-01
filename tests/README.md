@@ -5,13 +5,12 @@
 | 場所 | 内容 | 実行 |
 | --- | --- | --- |
 | [`unit/`](./unit/) | Docker の要らないテスト。純粋な Python の関数と、ファイルの静的検査 | `just test-unit`（`just ci` に含まれる） |
-| `tests/*.py` | Dev Container の image の中で動かすサンドボックステスト | `just test`（先に image を作る） |
-| [`docker/`](./docker/) | 重いテストが使う Dockerfile（`InstallTest.Dockerfile` は `just test-install`） | |
-
-e2e のディレクトリは無い。本物の依存を要する経路はこのリポジトリに残っていない。
+| `tests/*.py` | Dev Container の image を使うサンドボックステスト | `just test`（先に image を作る） |
+| [`docker/`](./docker/) | `just test-install` が使う `InstallTest.Dockerfile` | |
 
 Docker が要らない静的検査は `unit/` に置く。
-`tests/` の直下に置くと、`just test` だけが拾い、`just ci` には乗らない。
+`tests/` の直下に置くと `just test` だけが拾い、`just ci` には乗らない。
+e2e のディレクトリは無い。本物の依存を要する経路はこのリポジトリに残っていない。
 
 ## 実行
 
@@ -24,11 +23,12 @@ uv run pytest tests/unit/test_<name>.py   # 1 ファイル
 
 ## 書き方の決まり
 
-- e2e のテストは本物の依存だけを使う（mock しない）。本物を使えないテストは unit か結合テストに置く。
+テスト全般の決まり（mock の方針、given / when / then）は
+[testing の spoke](../ROOT_AGENTS_docs_agents_testing.md) にある。このリポジトリ固有の決まりは次のとおり。
+
 - unit のテストも、できるだけ本物のファイル、git、プロセスを使う。外部のサービス（gcloud、claude、npm など）は PATH に置いた stub で置き換え、`monkeypatch` は境界の I/O に限る。
 - サンドボックステストは、既存の fixture（`docker_image`、`saved_image`）で 1 テストに 1 つの `--rm` コンテナを使う。
-- `just test` はホストから実行する。コンテナの中では `git init` と `.git/info/exclude` の上書きが走るので、使い捨てだと CI が宣言した checkout 以外を bind mount しようとすると `_mount_mode` が拒否する（Dev Container の中からの実行がこれに当たる）。
-- 準備が込み入るテストは、本文を given / when / then で区切る。
+- `just test` はホストから実行する。サンドボックスは mount した tree で `git init` と `.git/info/exclude` の上書きを行うので、ホストでは使い捨ての snapshot を mount する。checkout をそのまま bind mount できるのは、`DOTFILES_SANDBOX_DISPOSABLE_CHECKOUT=1` で使い捨てだと宣言した CI だけで、それ以外（Dev Container の中からの実行など）は `_mount_mode` が拒否する。
 - Docker に届かないときは `pytest.skip` する。Docker のない機体でも残りは通る。
 
 ## Windows で動かす
@@ -42,6 +42,4 @@ uv run pytest tests/unit/test_<name>.py   # 1 ファイル
 
 ## 関連文書
 
-- [`../README.md`](../README.md)：リポジトリの概要
-- [`../docs/adr/`](../docs/adr/)：テストが守っている設計判断
 - [`../docs/runbook/windows-host.md`](../docs/runbook/windows-host.md)：native Windows の罠

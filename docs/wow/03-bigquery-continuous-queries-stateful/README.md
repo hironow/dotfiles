@@ -1,8 +1,8 @@
 # BigQuery Continuous Queries — Stateful Data Processing（Preview）
 
-**常駐し続ける SQL** で、BigQuery に着信したデータをリアルタイム処理し、結果を BigQuery
-テーブル / Pub/Sub / Bigtable / Spanner に書き出す。記事の目玉は、その中の **stateful 処理
-（JOIN・集約・タンブリングウィンドウ）が Preview で使えるようになった** 点。
+**常駐し続ける SQL** が、BigQuery に着信したデータをリアルタイム処理し、結果を BigQuery
+テーブル / Pub/Sub / Bigtable / Spanner に書き出す。記事の目玉は、**stateful 処理
+（JOIN・集約・タンブリングウィンドウ）が Preview で使える** 点。
 
 - Continuous queries 自体: 既存機能
 - **Stateful operations（JOIN / aggregations / windowing）: Preview**
@@ -14,7 +14,7 @@
 - 記事の「集約関数・タンブリングウィンドウ・JOIN 処理対応」「30 分平均の計算」「異なる
   ストリーム間のイベント相関」「AI.GENERATE_TEXT 等の生成 AI 直接統合」「Bigtable / Spanner /
   Pub/Sub へのリバース ETL」は **すべて公式と一致**。
-- 記事の **Preview 表記は正しい**（stateful operations セクションに Pre-GA バナーあり。
+- **Preview 表記は正しい**（stateful operations セクションに Pre-GA バナーあり。
   フィードバック窓口 `bq-continuous-queries-feedback@google.com`）。
 
 ## 何が "stateful" なのか
@@ -62,7 +62,7 @@ Dataflow → BigQuery / Datastream append-only など）。
 時間起点の制御には変更履歴 TVF を使う:
 
 - `APPENDS(TABLE ..., start_timestamp)` — 指定時刻以降の追加行を処理
-- `CHANGES(...)` — 追加 + 変更を処理（**stateful 操作とは併用不可**、Pub/Sub export 時のみ）
+- `CHANGES(...)` — 追加 + 変更を処理（Pub/Sub export 時のみ。**stateful 操作とは併用不可**）
 
 ## 実装例
 
@@ -150,6 +150,10 @@ GROUP BY window_end, geohash;
 `EXPORT DATA` で **Pub/Sub / Bigtable / Spanner** に書き出せる（それ以外の宛先は不可）。分析
 結果を低レイテンシのサービング系（Bigtable / Spanner）へ書き戻す reverse ETL が代表用途。
 
+- [Pub/Sub へ export](https://docs.cloud.google.com/bigquery/docs/export-to-pubsub)
+- [Bigtable へ export](https://docs.cloud.google.com/bigquery/docs/export-to-bigtable)
+- [Spanner へ export](https://docs.cloud.google.com/bigquery/docs/export-to-spanner)
+
 ## 制約・落とし穴（重要）
 
 - **実行時間上限**: ユーザーアカウント実行は **最大 2 日**、サービスアカウント実行は **最大
@@ -165,7 +169,7 @@ GROUP BY window_end, geohash;
 - column-level / row-level security 非対応。
 - リージョン: Bigtable / Spanner / Pub/Sub locational endpoint への export は、クエリ元
   BigQuery dataset と **同一リージョン境界** 内のリソースのみ（Pub/Sub global endpoint は例外）。
-- `CHANGES` は stateful 操作と併用不可。
+- `CHANGES` は stateful 操作と併用不可（[入力データソース](#入力データソース)）。
 
 ## エージェント連携（記事の "考えるデータ" の核）
 
@@ -175,7 +179,9 @@ GROUP BY window_end, geohash;
   [BigQuery agent analytics plugin](https://adk.dev/integrations/bigquery-agent-analytics/)
   でエージェントの trace / tool 使用 / ログを BigQuery にストリームして可観測性を確保。
 
-## 公式サンプル実装 / codelab（2026-06 実在確認済み）
+## 公式サンプル実装 / codelab
+
+2026-06-08 に実在を確認した。
 
 ### 目玉: イベント駆動データエージェント（CQ stateful + Pub/Sub SMT + ADK の E2E）
 
@@ -189,7 +195,7 @@ GROUP BY window_end, geohash;
 - 公式ブログ:
   [Building Event-Driven Data Agents with BigQuery, Pub/Sub, and ADK](https://cloud.google.com/blog/topics/developers-practitioners/building-event-driven-data-agents-with-bigquery-pubsub-and-adk)
 - GitHub: [`GoogleCloudPlatform/devrel-demos` → `data-analytics/event_driven_agents_demo`](https://github.com/GoogleCloudPlatform/devrel-demos/tree/main/data-analytics/event_driven_agents_demo)
-  （2026-06-08 にファイル構成を実在確認）
+  の主なファイル:
     - `setup/continuous_query.sql` — stateful CQ 定義（取引 × 顧客プロファイルの JOIN）
     - `setup/transform.yaml` + `setup/pubsub_to_adk_transform.js` — Pub/Sub SMT（JavaScript
       UDF）。BigQuery export の payload を unwrap・normalize して Agent Engine の envelope へ整形
@@ -208,13 +214,3 @@ GROUP BY window_end, geohash;
   / [codelab](https://codelabs.developers.google.com/adk-bigquery-agent-analytics-plugin)
 - 参考（コミュニティ / 非公式・stateful CQ + ADK の Telco 監視事例）:
   [Stream processing with BigQuery STATEFUL continuous queries and ADK agents](https://medium.com/google-cloud/stream-processing-with-bigquery-stateful-continuous-queries-and-adk-agents-for-telco-network-97a3e6973c8e)
-
-## 関連リンク
-
-- 概要: <https://docs.cloud.google.com/bigquery/docs/continuous-queries-introduction>
-- 実装: <https://docs.cloud.google.com/bigquery/docs/continuous-queries>
-- JOINs: <https://docs.cloud.google.com/bigquery/docs/continuous-query-joins>
-- windowing: <https://docs.cloud.google.com/bigquery/docs/window-aggregations>
-- Pub/Sub へ export: <https://docs.cloud.google.com/bigquery/docs/export-to-pubsub>
-- Bigtable へ export: <https://docs.cloud.google.com/bigquery/docs/export-to-bigtable>
-- Spanner へ export（reverse ETL）: <https://docs.cloud.google.com/bigquery/docs/export-to-spanner>

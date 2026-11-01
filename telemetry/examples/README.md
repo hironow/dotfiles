@@ -1,69 +1,44 @@
 # FastAPI OpenTelemetry Example
 
-This example demonstrates a FastAPI application with comprehensive OpenTelemetry instrumentation for traces, metrics, and logs.
+A FastAPI app that sends traces, metrics and logs to the telemetry stack. It
+shows automatic route and httpx instrumentation, custom metrics (counter,
+histogram, up-down counter), logs that carry the trace ID, and recorded
+exceptions.
 
-## Features
+## Run it
 
-- Distributed tracing with automatic span creation
-- Custom metrics (counters, histograms, up-down counters)
-- Structured logging with trace correlation
-- Automatic instrumentation of FastAPI routes
-- HTTP client instrumentation (httpx)
-- Error tracking and exception recording
-
-## Running the Application
-
-1. Make sure the Docker Compose stack is running:
+1. Start the stack from the repo root: `just tel-up`.
+2. Start the app from this directory:
 
    ```bash
-   cd ..
-   docker compose up -d
+   uv sync
+   uv run python app.py   # listens on http://localhost:8000
    ```
 
-2. Run the FastAPI application:
+The app sends OTLP to `OTEL_EXPORTER_OTLP_ENDPOINT`, which defaults to
+`localhost:4317`. It reports as service `fastapi-example`.
 
-   ```bash
-   export OTEL_EXPORTER_OTLP_ENDPOINT="localhost:4317"
-   uv sync  
-   uv run python app.py
-   ```
+## Endpoints
 
-## API Endpoints
+| Endpoint | What it does |
+| --- | --- |
+| `GET /` | Root endpoint |
+| `GET /api/users/{user_id}` | Returns a user; `user_id=999` returns 404 |
+| `POST /api/orders` | Creates an order |
+| `GET /api/external` | Calls `https://httpbin.org/json` (needs the internet) |
+| `GET /api/slow` | Slow operation with several child spans |
+| `GET /health` | Health check |
 
-- `GET /` - Root endpoint
-- `GET /api/users/{user_id}` - Get user by ID (404 if user_id=999)
-- `POST /api/orders` - Create a new order
-- `GET /api/external` - Call external service (httpbin.org)
-- `GET /api/slow` - Simulate slow operation with multiple steps
-- `GET /health` - Health check endpoint
-
-## Testing
-
-Send some requests to generate telemetry data:
+Send some traffic:
 
 ```bash
-# Basic request
 curl http://localhost:8000/
-
-# Get user
 curl http://localhost:8000/api/users/123
-
-# Create order
 curl -X POST http://localhost:8000/api/orders \
   -H "Content-Type: application/json" \
   -d '{"items": [{"name": "item1", "price": 10}, {"name": "item2", "price": 20}]}'
-
-# Slow operation
 curl http://localhost:8000/api/slow
-
-# External API call
-curl http://localhost:8000/api/external
 ```
 
-## View in Grafana
-
-Open Grafana at <http://localhost:3010> (admin/admin) to view:
-
-- Traces in Tempo
-- Metrics in Prometheus
-- Logs in Loki
+Then open Grafana at <http://localhost:3010> (admin/admin) and use the
+**OpenTelemetry Overview** dashboard.

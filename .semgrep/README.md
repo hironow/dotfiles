@@ -1,79 +1,29 @@
 # .semgrep/
 
-Project-wide Semgrep rules. Organized by category.
+Semgrep rules for this repository, one directory per category. Each rule file
+sits next to its test fixture (same base name, any extension).
 
-## Layout
+| Rule file | What it checks | Runs in |
+| --- | --- | --- |
+| [`rules/meta/compose-v1-filename-must-be-sentineled.yaml`](rules/meta/compose-v1-filename-must-be-sentineled.yaml) | In rule files (`ROOT_AGENTS.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`), every literal Compose v1 filename sits inside a `<prohibited-filename>` tag, so a rule file never breaks its own rule | `just check`, `just meta-semgrep` |
+| [`rules/python/python-custom.yaml`](rules/python/python-custom.yaml) | Python style rules (specific class names, no `os.path`, no `print`, and more) | `just emu-lint`, on `emulator/` only |
 
-```
-.semgrep/
-  rules/
-    meta/       # Self-consistency rules for rule files (ROOT_AGENTS.md etc.)
-    {domain}/   # Project-specific rules (concurrency, api, persistence, ...)
-  README.md
-```
+`just semgrep-test` (part of `just ci`) runs every rule against its fixture.
 
-## Categories
-
-### meta/
-
-Rules that enforce the self-consistency of the rule files themselves
-(ROOT_AGENTS.md, AGENTS.md, CLAUDE.md, .cursorrules). These rules prevent
-the "the rule file violates its own rules" failure mode.
-
-Currently enforces:
-
-- **compose-v1-filename-must-be-sentineled** — Every literal occurrence of
-  deprecated Compose v1 filenames (`docker-compose.yaml`, `docker-compose.yml`)
-  in a rule file must be wrapped in `<prohibited-filename>...</prohibited-filename>`.
-
-dotfiles has no e2e suite of its own, so there is no `e2e/` category here. The
-generic no-mocks-in-e2e rule for repos that do have one is scaffolded from
-`templates/agent-baseline/.semgrep/rules/testing/`.
-
-## Running
-
-```bash
-# Full scan (all categories)
-semgrep --config .semgrep/rules/ --error .
-
-# Meta only (fast; validates rule files)
-semgrep --config .semgrep/rules/meta/ --error .
-
-# Run the rule's own test cases
-semgrep --test --config .semgrep/rules/meta/
-```
+This repository has no e2e suite, so there is no e2e rule here. The
+no-mocks-in-e2e rule for repositories that have one ships with the scaffold in
+[`templates/agent-baseline/.semgrep/`](../templates/agent-baseline/.semgrep/README.md).
 
 ## Adding a rule
 
-1. Create `rules/{category}/{rule-id}.yaml`
-   - One rule per file
-   - Filename matches rule id
-   - Rule id format: `{project-prefix | meta}-{category}-{short-name}`
-2. Create companion test `rules/{category}/{rule-id}.test.{ext}`
-   - Use `<!-- ruleid: ... -->` above lines that SHOULD match
-   - Use `<!-- ok: ... -->` above lines that SHOULD NOT match
-   - Pick an extension that the rule's `languages:` covers
-3. Run `semgrep --test --config rules/{category}/` and verify green
-4. Add to CI
+1. Write the rule in `rules/{category}/{name}.yaml`.
+2. Write the fixture next to it, `rules/{category}/{name}.{ext}`, with an
+   extension the rule's `languages:` covers. Mark each line that should match
+   with a `ruleid:` comment above it, and each line that should not with an
+   `ok:` comment.
+3. Run `just semgrep-test`.
+4. Make sure a recipe scans with it (see "Runs in" above). `just semgrep-test`
+   only tests the rule; it does not scan the repository.
 
-## Distribution across projects
-
-Place this `.semgrep/` directory at the repo root, per project.
-If rules are shared across projects, reference a single source of truth:
-
-**Option 1 — symlink from dotfiles (simplest)**
-
-```bash
-ln -s ~/dotfiles/.semgrep/rules/meta ~/work/myproject/.semgrep/rules/meta
-```
-
-**Option 2 — git subtree** (when you want per-project divergence history;
-`dotfiles-semgrep.git` below is a placeholder for wherever you publish the shared rules)
-
-```bash
-git subtree add --prefix .semgrep/rules/meta \
-  git@github.com:hironow/dotfiles-semgrep.git main --squash
-```
-
-Meta rules are the natural candidate for sharing — domain rules usually stay
-project-local.
+When to write a rule, and the id format, are in the
+[Semgrep spoke](../ROOT_AGENTS_docs_agents_semgrep.md).
