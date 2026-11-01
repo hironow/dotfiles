@@ -97,16 +97,17 @@ test -f <eval_target> && echo "OK" || echo "NOT FOUND"
 
 ### 5. Check Evaluator Dependencies
 
-For each enabled evaluator, verify dependencies are available:
+Every evaluator runs on bun (`bun -e` or `bun x`). For each enabled evaluator, verify dependencies are available:
 
-- **structure** (Pa11y): Requires Chrome/Chromium
-- **readability**: Requires Node.js (no Chrome)
-- **lighthouse**: Requires Chrome/Chromium
-- **completeness**: Requires Node.js (no Chrome)
-- **html-validate**: Requires Node.js (no Chrome)
+- **structure** (Pa11y): Requires bun and Chrome/Chromium
+- **readability**: Requires bun (no Chrome)
+- **lighthouse**: Requires bun and Chrome/Chromium
+- **completeness**: Requires bun (no Chrome)
+- **html-validate**: Requires bun (no Chrome)
 
 ```bash
-# Check Chrome availability
+# Check bun and Chrome availability
+which bun || echo "bun not found"
 which google-chrome || which chromium || echo "Chrome not found"
 ```
 
