@@ -1,11 +1,11 @@
 # 版本の生成器を Python から Go へ移植する（stdlib のみ + Python を oracle に）
 
 **Date:** 2026-10-21
-**Status:** Verified（[PR #486](https://github.com/hironow/dotfiles/pull/486)。Go 実装・独立レビュー・ローカル全 gate / sandbox 成功。最終記録の CI 成功後に squash merge）
+**Status:** done(→[ADR-0061](../adr/0061-version-generator-in-go.md)、[tools/mise-versions/README.md](../../tools/mise-versions/README.md))。ADR-0061 は [#486 の裁定](https://github.com/hironow/dotfiles/pull/486#issuecomment-6314535355) で Accepted。[#486](https://github.com/hironow/dotfiles/pull/486) で merge（main `b59476e1`）
 **Branch:** `refactor/mise-versions-go`
 **Related:** [ADR-0060](../adr/0060-frozen-image-generation-has-one-source.md)（Decision 5 と Decision 2 の writer 指定を置換 → ADR-0061）、[ADR-0052](../adr/0052-renew-global-agent-instructions.md)（本生成器だけ go run の配布例外）/ `ROOT_AGENTS_docs_agents_go-tooling.md`（stdlib 優先・サードパーティ module には platform reason）/ `ROOT_AGENTS_docs_agents_dependency-policy.md` / 前段: PR #485（版本の SSOT 化）
 **Blocking decisions:** なし（利用者に 2026-10-21 に確認済み: **Go は stdlib のみ**、TOML は**必要な部分だけの自作パーサ**、正しさは**残す Python テストを oracle（`tomllib`）にして独立検証**）
-**Graduates to:** ADR-0061（Proposed、利用者の裁定で Accepted）。安定後 done。
+**Graduates to:** ADR-0061（Accepted）
 
 ## 目的
 

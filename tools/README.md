@@ -2,8 +2,10 @@
 
 開発やテストで使う補助ツール。
 
+- [brotli-doctor](../docs/runbook/brotli-doctor.md)：導入済みCLIのバイナリを実行せずに調べ、Brotliの証拠を集めるGoツール（判定ではない）
 - [ca-doctor](../docs/runbook/ca-doctor.md)：CA設定の健全性とレビュー済みのCA事故を診断するGoツール
 - [kernel-doctor](../docs/runbook/kernel-doctor.md)：実行中または報告されたLinuxカーネル版を、レビュー済みのCVE修正床と突き合わせるGoツール（判定ではない）
+- [mise-versions](./mise-versions/README.md)：`config/mise/image-tools.toml` の版を2つの `install.sh` に書き込み、ずれを検査するGoツール
 - [rttm](./rttm/README.md)：RTTM ファイルを ELAN（EAF）形式に変換し、可視化する Python のツール
 - [simple-server](./simple-server/README.md)：localhost の https を確かめる Go の簡易サーバー
 - [tmux](./tmux/CHEATSHEET.md)：tmux のキー操作の早見表

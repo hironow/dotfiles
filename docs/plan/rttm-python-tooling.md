@@ -1,7 +1,7 @@
 # RTTMのPython検査を既存の規約に揃える
 
 **Date:** 2026-10-22
-**Status:** Implemented; local gates passed; PR CI pending
+**Status:** done(→[RTTM README](../../tools/rttm/README.md) の開発手順)。[#489](https://github.com/hironow/dotfiles/pull/489) で merge（main `7a487650`）。Windows の実機での実行は未確認
 **Branch:** `chore/rttm-python-tooling`
 **Related:** ADR 0044 / `ROOT_AGENTS_docs_agents_python-tooling.md`
 **Blocking decisions:** なし。所有者はsession `01a159fd`でlint group・正確なpin・tyまで揃える方針を承認し、session `01a15f0e`で復帰を選択した。

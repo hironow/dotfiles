@@ -1,43 +1,42 @@
 # autoreview
 
-Autonomous code review plugin powered by [guardrails/semgrep](../../guardrails/semgrep/) rules.
+Claude Code plugin that reviews and fixes code in a keep/revert loop, using the
+[guardrails/semgrep](../../guardrails/semgrep/) rules. Its rule categories and
+counts are listed in that repo's README.
 
 ## Modes
 
-### scan-fix
+- **scan-fix**: scans existing code with Semgrep, fixes one finding per
+  iteration, and keeps the fix only if it lowers the findings count (or keeps
+  it equal with simpler code).
+- **spec-review**: reviews type definitions, interfaces, and specs before the
+  code exists. An LLM judge applies the guardrails rules and scores each
+  category from 1 to 10.
 
-Scans existing code with Semgrep (65 rules across 11 categories), auto-fixes violations,
-and validates each fix via git-based keep/revert cycles.
+Languages: Go, Python, TypeScript.
 
-**Metric**: Semgrep findings count (fewer = better).
+## Use it
 
-### spec-review
+```text
+/autoreview:review                  # interactive setup
+/autoreview:review apr16-naming     # start or resume with a tag
+```
 
-Reviews type definitions, interfaces, and specs before implementation exists.
-Uses LLM-as-judge to apply guardrails rules conceptually and improve design quality.
+The first run calls the `setup-review` skill. It creates the `review/<tag>`
+branch, `review-config.yaml`, and `review-results.tsv`. The `reviewer` agent
+runs each iteration. A PreToolUse hook asks for confirmation before an edit
+outside `target_paths`.
 
-**Metric**: LLM quality score based on guardrails principles.
+Other skills:
 
-## Supported Languages
-
-Go, Python, TypeScript
+- `/autoreview:analyze-results` summarizes `review-results.tsv`.
+- `/autoreview:distill-rule` turns a finding or a kept fix into a new Semgrep
+  rule with tests under the project's `.semgrep/`.
 
 ## Prerequisites
 
-- [Semgrep](https://semgrep.dev/) installed (`semgrep` on PATH)
-- `guardrails/semgrep` submodule initialized in the repository
-- `jq` on PATH (the out-of-scope edit guard fails open without it)
-
-## Usage
-
-```
-/review                    # Interactive setup
-/review apr16-naming       # Start with tag
-```
-
-## Rule Categories (11)
-
-(as of 2026-09, derived from `guardrails/semgrep`)
-
-naming, type-safety, immutability, encapsulation, structure, complexity,
-layer-dependency, repository, error-handling, security, backward-compat
+- `semgrep` on PATH.
+- The rules at `guardrails/semgrep/.semgrep/`: initialize the
+  `guardrails/semgrep` submodule. `scripts/resolve-guardrails.sh` looks for
+  them under the git root, then two levels above the plugin.
+- `jq` on PATH (without it the scope hook does nothing).

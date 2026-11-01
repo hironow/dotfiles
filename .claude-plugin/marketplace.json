@@ -27,7 +27,7 @@
       "name": "autodesign",
       "source": "./plugins/autodesign",
       "description": "Autonomous web design exploration plugin. Explores design variations under quality constraints using git-based keep/revert cycles with bundled evaluators for a11y, readability, performance, and completeness.",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "category": "design",
       "tags": [
         "design",

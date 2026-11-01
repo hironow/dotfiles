@@ -4,7 +4,7 @@ The guardrails were built for one project. This is how they reach the others.
 The method is deliberately boring: **audit, then bound through IaC, then
 re-audit**, one project at a time, with nothing destructive in the loop.
 
-Prerequisite knowledge is one spoke: [`docs/agents/gcp-cost-guardrails.md`](../agents/gcp-cost-guardrails.md).
+Prerequisite knowledge is one spoke: [`gcp-cost-guardrails`](../../ROOT_AGENTS_docs_agents_gcp-cost-guardrails.md) (deployed as `docs/agents/gcp-cost-guardrails.md` in each agent home).
 Reading it plus running the audit should be enough to do this without having
 been there, which is the point of writing it down.
 

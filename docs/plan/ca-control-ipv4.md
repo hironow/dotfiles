@@ -1,8 +1,8 @@
 # 計画: ca-doctor の control の再試行を IPv4 で行い、Windows の `control=unknown` の揺れを止める
 
 **Date:** 2026-11-01
-**Status:** Approved（2026-11-01 21:46、所有者。Windows と WSL の両方で worktree を使うことも承認）
-**Branch:** `fix/ca-doctor-control-ipv4`（worktree `C:\Users\absin\dotfiles-ca-control-ipv4`）
+**Status:** done(→[CA runbook](../runbook/ca-doctor.md) の「通信と実行の制限」)。Approved（2026-11-01 21:46、所有者。Windows と WSL の両方で worktree を使うことも承認）。[#529](https://github.com/hironow/dotfiles/pull/529) で merge（main `a3dbd5c7`）。結果は §12
+**Branch:** `fix/ca-doctor-control-ipv4`（worktree はホームの下の `dotfiles-ca-control-ipv4`）
 **Related:** [Windows と WSL の追補計画](doctor-windows-wsl-warn.md)（§2.2 で control の再試行を入れ、原因の切り分けを残した）、[ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md)（Proposed、D3 = control の再試行を入れる）、[CA runbook](../runbook/ca-doctor.md) 56-61 行
 **Blocking decisions:** なし（D1 は独立レビューの指摘で (b) に決まった。§10）
 
@@ -98,7 +98,7 @@ bun を外す理由: Bun 1.4.4 の `fetch` は `family` を無視する（A し�
 
 ## 6. 作業の場所と流れ
 
-- この機体の `C:\Users\absin\dotfiles` は main から動かさない（runner の GC / autostart の実行元）。`git worktree add ..\dotfiles-ca-control-ipv4 -b fix/ca-doctor-control-ipv4 origin/main` で作業し、終わったら `git worktree remove` する。
+- この機体の `%USERPROFILE%\dotfiles` は main から動かさない（runner の GC / autostart の実行元）。`git worktree add ..\dotfiles-ca-control-ipv4 -b fix/ca-doctor-control-ipv4 origin/main` で作業し、終わったら `git worktree remove` する。
 - この機体には署名鍵がないので、ブランチの commit は署名なしになる。ruleset（`protect`）は main の削除と強制 push を禁じるだけで、署名は求めていない。main の commit は GitHub の squash merge が署名する。
 - draft PR → `go test -race` と golangci-lint（ca-doctor）と `just ci` → ready → CI 全 pass を `gh pr checks --watch` で確かめる。merge は所有者が決める。
 
@@ -106,7 +106,7 @@ bun を外す理由: Bun 1.4.4 の `fetch` は `family` を無視する（A し�
 
 - 4 のテストが先に失敗し、実装で通る。`go test -race ./...`（tools/ca-doctor）、golangci-lint、`just ci` が通る。native Windows で `just ci` の一部が動かない場合は、動かなかった leg と理由を PR に書き、CI の結果で補う。
 - trade 機の Windows で、worktree で作った binary の `ca-doctor --summary` を 10 回実行し、`control=unknown` が 0 回（変更前は 8 回中 4 回）。各回の `ca-live-*` の level を PR に貼る。
-- trade 機の WSL で、同じ SHA を Linux 側でビルドして確かめる（Windows の `.exe` を WSL から起動すると Windows のプロセスとして動き、Linux 側の検査にならない）。WSL の `/home/tt/dotfiles` も main から動かさず、`git worktree add` で別の worktree を作り、zsh のログインシェルで `just ca-doctor-build` → `just ca-doctor --summary` を 1 回実行する。条件: `OK ca-build`、`INFO ca-platform - WSL Linux; ...`、各 `ca-tool-*` が Linux 側の実行ファイル、`ca-live-*` が変更前と同じ（5 クライアントとも INFO）。
+- trade 機の WSL で、同じ SHA を Linux 側でビルドして確かめる（Windows の `.exe` を WSL から起動すると Windows のプロセスとして動き、Linux 側の検査にならない）。WSL の `~/dotfiles` も main から動かさず、`git worktree add` で別の worktree を作り、zsh のログインシェルで `just ca-doctor-build` → `just ca-doctor --summary` を 1 回実行する。条件: `OK ca-build`、`INFO ca-platform - WSL Linux; ...`、各 `ca-tool-*` が Linux 側の実行ファイル、`ca-live-*` が変更前と同じ（5 クライアントとも INFO）。
 - PR の CI がすべて成功。
 
 ## 8. 失敗したときの戻し方
@@ -134,3 +134,11 @@ squash merge 1 つなので `git revert <merge commit>`。ローカルの binary
 | P2 | Windows の `.exe` を WSL から起動しても Windows のプロセスとして動くので、WSL の確認にならない | `tools/ca-doctor/main.go` は `runtime.GOOS` で検査を分ける | WSL では同じ SHA を Linux 側でビルドする手順と、確かめる行を §7 に書いた |
 
 2 回目（Codex、`resume --last`、判定 APPROVE、新しい指摘なし）。前回の 3 件はすべて計画上解消と判定された。
+
+## 12. 実装の結果（2026-11-01、[#529](https://github.com/hironow/dotfiles/pull/529)）
+
+- trade 機の Windows で、変更後の binary の `ca-doctor --summary` を 10 回実行し、`control=unknown` は 0 回（変更前は 8 回中 4 回）。
+- trade 機の WSL で、同じ SHA を Linux 側でビルドした: `ca-build` は OK、`ca-platform` は WSL Linux、`ca-tool-*` は Linux のパス。main（`8ad86f8`）と変更後の binary を 5 回ずつ交互に実行し、10 回とも 5 クライアントの `ca-live` が INFO で `control=accepted`。
+- `go test`（Windows と WSL）、`go test -race`（WSL）、golangci-lint、markdownlint は通った。native Windows の `just ci` は、golangci-lint が `emulator/bigtable-cli` を処理している途中で機体のメモリが足りなくなり止めた（その前の ruff、ty、pytest は通った）。PR の CI は全 pass。
+- この Mac で、PR のブランチの `go test -race`（156 件）、golangci-lint、Windows と Linux へのクロスビルドが通った。`ca-doctor --summary` を 3 回実行し、5 クライアントの `ca-live` は毎回 INFO。WARN と ERR の行は main と同じ（system python の 2 行）。
+- 範囲外で見たこと: 変更後の binary の 24 回中 2 回（Windows 18 回中 1、WSL 6 回中 1）、curl のテストチェーン 1 本が unknown（`unverified=1/14`）になり WARN になった。control は 2 回とも通っていた。Windows で curl を 42 回続けて試しても再現しなかった。原因は未確認。本計画はテストチェーンの経路を変えていない。

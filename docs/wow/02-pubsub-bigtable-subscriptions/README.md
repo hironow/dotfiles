@@ -1,8 +1,8 @@
 # Pub/Sub Bigtable Subscriptions（Preview）
 
-Pub/Sub のメッセージを **subscriber クライアントを書かずに、そのまま Bigtable テーブルへ
-書き込む** export subscription の一種。記事の「カスタム ETL 不要」「サブミリ秒サービング向け」
-はこれを指す。
+Pub/Sub のメッセージを、**subscriber クライアントを書かずにそのまま Bigtable テーブルへ
+書き込む** export subscription。記事の「カスタム ETL 不要」「サブミリ秒サービング向け」は
+これを指す。
 
 - Launch stage: **Preview**（Pre-GA。`gcloud beta` 系コマンド）
 - 概要: <https://docs.cloud.google.com/pubsub/docs/bigtable-subscriptions>
@@ -12,9 +12,9 @@ Pub/Sub のメッセージを **subscriber クライアントを書かずに、�
 
 - 記事の「Pub/Sub から Bigtable への直接書き込み」「カスタム ETL 不要」「リアルタイム
   サービング向け」は **公式と一致**。
-- 記事の **Preview 表記は正しい**（公式ページに Pre-GA バナーあり）。
-- 「サブミリ秒レイテンシ」は **Bigtable の読み取りサービング特性** を指した表現。書き込み
-  経路自体は at-least-once で、重複排除はしない点に注意（後述）。
+- **Preview 表記は正しい**（公式ページに Pre-GA バナーあり）。
+- 「サブミリ秒レイテンシ」は **Bigtable の読み取り** の特性を指す。書き込み経路は
+  at-least-once で、重複排除はしない（後述）。
 
 ## 位置づけ（いつ使うか）
 
@@ -22,12 +22,11 @@ Pub/Sub のメッセージを **subscriber クライアントを書かずに、�
   subscription**。
 - 複雑な変換が必要 → **Dataflow + pull subscription** を推奨（公式が明記）。
 
-> **用語注意（ファクトチェック）**: 元記事のアーキ図に出てくる「Bigtable のマテリアライズド
-> ビュー」は、この **Bigtable Subscriptions とは別の機能**。後者は raw メッセージを Bigtable に
-> 直接書き込む export subscription だが、前者は
+> **用語注意**: 元記事のアーキ図にある「Bigtable のマテリアライズドビュー」は、Bigtable
+> Subscriptions とは **別の機能**。こちらは raw メッセージを直接書き込む。あちらは
 > [Bigtable continuous materialized views](https://docs.cloud.google.com/bigtable/docs/continuous-materialized-views)
 > という **SQL 定義の背景集約ビュー**（着信データを増分集約し、update / delete も伝播、
-> eventually consistent）である。両者とも実在するが役割が異なるので混同しないこと。
+> eventually consistent）。
 
 ## 前提条件
 
@@ -81,13 +80,9 @@ SELECT _key, JSON_VALUE(CAST(data[''] AS STRING), '$.name') AS name FROM table-1
   型** で 1 セル。cell timestamp = メッセージの **publish time**。
 - **row key**: `projects/PROJECT_NUMBER/subscriptions/SUBSCRIPTION_ID#SALT_PREFIX#MESSAGE_ID`
   （subscription ID + salt prefix + message ID の連結）。salt prefix がホットスポットを散らす。
-- **メタデータ**（`--bigtable-write-metadata` 時、`pubsub_metadata` family）:
-
-| Column | 値 | 型 |
-|---|---|---|
-| `subscription_name` | subscription 名 | String |
-| `message_id` | メッセージ ID | String |
-| `attributes` | メッセージ属性の JSON | String |
+- **メタデータ**（`--bigtable-write-metadata` 時、`pubsub_metadata` family）: String 型の
+  `subscription_name`（subscription 名）/ `message_id`（メッセージ ID）/ `attributes`
+  （メッセージ属性の JSON）。
 
 ```text
 Bigtable table : 1 message = 1 row
@@ -137,21 +132,19 @@ Inference によるラベル付与など）を SMT で済ませてから Bigtabl
 
 ## 制約・落とし穴
 
-- **テーブルと `data` family は事前作成必須**（subscription が勝手に作らない）。
-- app profile は **single-cluster routing** に限定。
+- テーブルと `data` family は subscription が作らない（[前提条件](#前提条件)）。
 - リージョン / quota: Bigtable subscriber スループットにリージョン単位の quota あり。
-- 厳密な順序保証・重複排除は提供しない（at-least-once）。
+- 厳密な順序保証・重複排除はない（at-least-once）。
 - トラブルシュート:
   <https://docs.cloud.google.com/pubsub/docs/troubleshoot-bigtable-subscriptions>
 
 ## サンプル実装（2026-06 確認）
 
-Bigtable subscription は **subscriber コードを書かない**（gcloud / Console で完結する）のが
-売りなので、専用の「アプリ実装」サンプルは無く、公式の作成手順がそのままサンプルになる。
-パブリッシュ側や周辺操作の Python サンプルは以下。
+Bigtable subscription は subscriber コードを書かない（gcloud / Console で完結する）。
+専用のアプリ実装サンプルはなく、上の実装例の出典である公式の
+[作成手順](https://docs.cloud.google.com/pubsub/docs/create-bigtable-subscription) がサンプルになる。
+publish 側や周辺操作の Python サンプルは以下。
 
-- 公式 E2E 手順（gcloud。本ドキュメントの実装例の出典）:
-  <https://docs.cloud.google.com/pubsub/docs/create-bigtable-subscription>
 - Pub/Sub Python サンプル群:
   [`GoogleCloudPlatform/python-docs-samples` → `pubsub/cloud-client`](https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/pubsub/cloud-client)
   / [`GoogleCloudPlatform/cloud-pubsub-samples-python`](https://github.com/GoogleCloudPlatform/cloud-pubsub-samples-python)
@@ -161,7 +154,5 @@ Bigtable subscription は **subscriber コードを書かない**（gcloud / Con
 
 ## 関連リンク
 
-- Bigtable subscriptions: <https://docs.cloud.google.com/pubsub/docs/bigtable-subscriptions>
-- 作成手順: <https://docs.cloud.google.com/pubsub/docs/create-bigtable-subscription>
 - subscription タイプの選び方: <https://docs.cloud.google.com/pubsub/docs/subscriber>
 - Bigtable 概要: <https://docs.cloud.google.com/bigtable/docs/overview>

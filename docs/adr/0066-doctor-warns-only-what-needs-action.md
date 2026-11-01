@@ -11,8 +11,8 @@
 **Author-contact:** @hironow
 **Supersedes:** none
 **Superseded-by:** none
-**Related:** [ADR-0065](0065-kernel-cve-is-evidence-only.md)（Proposed。kernel の所見は WARN 止まり）、[ADR-0062](0062-one-windows-ollama-for-wsl.md)（Decision 4: Ollama の判定は `ollama_host.py --check`）、[ADR-0064](0064-mirrored-wsl-uses-the-shared-loopback.md)、計画 [doctor-os-aware-warn](../plan/doctor-os-aware-warn.md)、計画 [kernel-cve-evidence](../plan/kernel-cve-evidence.md)（D3）、計画 [doctor-windows-wsl-warn](../plan/doctor-windows-wsl-warn.md)（Windows と WSL の実測からの追補）、[CA runbook](../runbook/ca-doctor.md)、[Ollama runbook](../runbook/ollama-windows-wsl.md)
-**Consultation-trace:** 2026-11-01 17:07 の本セッションで所有者が計画を承認した（D1 = テストホストを全部拒否したクライアントは INFO、D2 = 本 ADR を起票）。決裁は PR で記録する。2026-11-01 19:32 に所有者が Windows と WSL の実測からの追補計画を承認した（D1 = kernel の数値と助言は INFO、D2 = docker-desktop は INFO、D3 = control の再試行を入れる）
+**Related:** [ADR-0065](0065-kernel-cve-is-evidence-only.md)（Proposed。kernel の所見は WARN 止まり）、[ADR-0062](0062-one-windows-ollama-for-wsl.md)（Decision 4: Ollama の判定は `ollama_host.py --check`）、[ADR-0064](0064-mirrored-wsl-uses-the-shared-loopback.md)、計画 [doctor-os-aware-warn](../plan/doctor-os-aware-warn.md)、計画 [kernel-cve-evidence](../plan/kernel-cve-evidence.md)（D3）、計画 [doctor-windows-wsl-warn](../plan/doctor-windows-wsl-warn.md)（Windows と WSL の実測からの追補）、計画 [ca-control-ipv4](../plan/ca-control-ipv4.md)（D3 の再試行の 2 回目を IPv4 にする）、[CA runbook](../runbook/ca-doctor.md)、[Ollama runbook](../runbook/ollama-windows-wsl.md)
+**Consultation-trace:** 2026-11-01 17:07 の本セッションで所有者が計画を承認した（D1 = テストホストを全部拒否したクライアントは INFO、D2 = 本 ADR を起票）。決裁は PR で記録する。2026-11-01 19:32 に所有者が Windows と WSL の実測からの追補計画を承認した（D1 = kernel の数値と助言は INFO、D2 = docker-desktop は INFO、D3 = control の再試行を入れる）。2026-11-01 21:46 に所有者が、再試行の 2 回目を IPv4 にする計画を承認した（trade 機のセッション、[#529](https://github.com/hironow/dotfiles/pull/529)）
 
 ## やさしい説明
 
@@ -42,7 +42,7 @@
 - 2026-11-01、trade 機の native Windows で `ok=61 warn=11 err=1 info=20`、WSL（Ubuntu 24.04）で `ok=54 warn=12 err=1 info=26` だった（#526 のコメント）。
   WARN の判定と出し分けに、Mac では見えなかった誤りが 7 種あった。
   Windows の curl（Schannel）が証明書の拒否を終了コード 35 で返すので「未確認」になる。
-  Windows で正常系への接続が時々リセットされる（原因は未確認）。
+  Windows で正常系への接続が時々リセットされる（あとで、正常系の IPv6 の経路だけで起きると分かった。[ca-control-ipv4](../plan/ca-control-ipv4.md)）。
   pip の `24.0` のような 2 要素の版を「解析できない」とする。
   Homebrew が無いことを、使わない Windows と任意の Linux でも WARN にする。
   Windows の OS の CA ストアに版を問い合わせる手段が無く、常に WARN になる。
@@ -98,7 +98,7 @@ none
 
 - [ ] A 案で Accept / [ ] E 案で Accept / [ ] 修正のうえ Accept（修正点: ____） / [ ] Reject（理由: ____） / [ ] Deferred
 - 決定者・日付:
-- A 案 Accept 時のアクション: 追加の実装は無い（#526 と [doctor-windows-wsl-warn](../plan/doctor-windows-wsl-warn.md) の PR で main に入っている）。status、decision-queue、README の索引を更新する。
+- A 案 Accept 時のアクション: 追加の実装は無い（#526、[doctor-windows-wsl-warn](../plan/doctor-windows-wsl-warn.md) の #527、[ca-control-ipv4](../plan/ca-control-ipv4.md) の #529 で main に入っている）。status、decision-queue、README の索引を更新する。
 - E 案 Accept 時のアクション: `ProbeEvidenceFor` と `ChainEvidence` の全部拒否を WARN に戻し、runbook の表を直す。
 - 修正 Accept 時のアクション: 修正点を計画と実装に反映し、テストを直す。
 - Reject 時のアクション: #526 と doctor-windows-wsl-warn の PR の振る舞いの変更を戻し、INFO の無い WARN の扱いに戻す。

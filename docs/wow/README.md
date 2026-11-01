@@ -1,10 +1,9 @@
 # What's New in Streaming (Google Cloud Next '26) — ファクトチェック済みノート
 
-このディレクトリは、KDDI アイレットの記事
-[Google Cloud Next '26: ストリーミング基盤の最新アップデート (iret.media/194869)](https://iret.media/194869)
-の内容を **一次情報（cloud.google.com 公式ドキュメント・Google Cloud Blog・Apache Beam
-pydoc）と突き合わせて裏取りし**、「実際にどう実装で使えるのか」まで踏み込んでまとめた
-技術ノートである。
+Next '26 のストリーミング新機能 4 つを、一次情報（cloud.google.com 公式ドキュメント・
+Google Cloud Blog・Apache Beam pydoc）で裏取りし、実装で使える形にまとめたノート。
+元は KDDI アイレットの記事
+[Google Cloud Next '26: ストリーミング基盤の最新アップデート (iret.media/194869)](https://iret.media/194869)。
 
 - 元記事: 田村直樹（KDDI アイレット / Google Cloud Partner Top Engineer 2025 & 2026）
   による Next '26 セッション **"What's new in streaming: Real-time data for agentic AI"**
@@ -14,70 +13,32 @@ pydoc）と突き合わせて裏取りし**、「実際にどう実装で使え�
 - 公式総括ブログ:
   [Streaming AI news from Next '26 (Google Cloud Blog, 2026-05-19)](https://cloud.google.com/blog/products/data-analytics/streaming-ai-news-from-next26)
 
-## TL;DR — テーマ
+## テーマ
 
-ストリーミング基盤の位置づけが「データを **運ぶ** パイプライン（data transfer pipeline）」
-から「エージェント向けに **意味づけ・推論する** インテリジェンスパイプライン（intelligence
-pipeline for agents）」へ移った、というのが Next '26 の主張。記事のキャッチコピー
-「流れるデータを、考えるデータへ」はこの転換を指しており、**公式ブログの内容と整合する**。
+Next '26 の主張は、ストリーミング基盤が「データを **運ぶ** パイプライン」から
+「エージェント向けに **意味づけ・推論する** パイプライン」へ移った、というもの。記事の
+キャッチコピー「流れるデータを、考えるデータへ」はこの転換を指し、公式ブログと整合する。
 
-## ファクトチェック結果サマリ
+## 4 機能と判定
 
-記事が挙げた 4 つの目玉は **すべて実在の機能** であり、launch stage の記述も公式と一致する。
-1 点だけ用語の注意が要る（下表 ★）。
+記事の 4 機能は **すべて実在** し、launch stage も公式と一致する。#4 だけ名前が記事の意訳。
+記載ごとの判定は [fact-check.md](fact-check.md) にある。
 
-| # | 記事の記述 | 公式での正式名称 / 実体 | Launch stage | 判定 |
+| # | 機能（詳細ノート） | 公式での実体 | Launch stage | 判定 |
 |---|---|---|---|---|
-| 1 | Pub/Sub AI Inference SMT | AI Inference [Single Message Transform](https://docs.cloud.google.com/pubsub/docs/smts/ai-inference-smt) | **GA** | ✅ 正確 |
-| 2 | Pub/Sub Bigtable Subscriptions | [Bigtable subscription](https://docs.cloud.google.com/pubsub/docs/bigtable-subscriptions)（export subscription の一種） | **Preview** | ✅ 正確 |
-| 3 | BigQuery Continuous Query — Stateful Data Processing | [continuous queries](https://docs.cloud.google.com/bigquery/docs/continuous-queries) の stateful operations（JOIN / 集約 / windowing） | **Preview** | ✅ 正確 |
-| 4 | Dataflow — In-stream Agents | ★ Dataflow + `RunInference` + [`ADKAgentModelHandler`](https://beam.apache.org/releases/pydoc/current/apache_beam.ml.inference.agent_development_kit.html) + ADK | GA（RunInference は GA。ADKAgentModelHandler は Beam 同梱） | ⚠️ 機能は実在。ただし "In-stream Agents" は **正式な製品名ではなく記事の意訳** |
+| 1 | [Pub/Sub AI Inference SMT](01-pubsub-ai-inference-smt/README.md) — Pub/Sub の中で直接モデルを呼ぶ | AI Inference Single Message Transform | **GA** | ✅ 正確 |
+| 2 | [Pub/Sub Bigtable Subscriptions](02-pubsub-bigtable-subscriptions/README.md) — コード不要で Pub/Sub → Bigtable | Bigtable subscription（export subscription の一種） | **Preview** | ✅ 正確 |
+| 3 | [BigQuery Continuous Query — Stateful](03-bigquery-continuous-queries-stateful/README.md) — 常駐 SQL で JOIN / windowing / 生成 AI | continuous queries の stateful operations | **Preview** | ✅ 正確 |
+| 4 | [Dataflow — In-stream Agents](04-dataflow-streaming-agents/README.md) — Dataflow に ADK エージェントを組み込む | Dataflow + `RunInference` + `ADKAgentModelHandler` + ADK | GA（RunInference）。ADKAgentModelHandler は Beam 同梱 | ⚠️ 機能は実在。"In-stream Agents" は製品名ではない |
 
-### ★ 用語の注意（重要）
+用語の注意（「In-stream Agents」「Elastic Inference Queue」「Gemini Enterprise Agent
+Platform」）は [fact-check.md の要注意点まとめ](fact-check.md#要注意点まとめ) を見る。
+記事の図にある Bigtable のマテリアライズドビューは Bigtable Subscriptions とは別機能
+（[02](02-pubsub-bigtable-subscriptions/README.md) を参照）。
 
-記載ごとの判定は [fact-check.md](fact-check.md) に分離した。要注意は以下の 4 点。
+## 記事にない関連発表（公式ブログより）
 
-- **「In-stream Agents」は SKU / 製品名ではない。** 公式は "event-driven autonomous
-  agents in Dataflow" や「agentic logic を Dataflow パイプラインの first-class node として
-  扱う」と表現する。実装の実体は **Apache Beam の `RunInference` トランスフォーム + 新しい
-  `ADKAgentModelHandler` モデルハンドラ + [ADK (Agent Development Kit)](https://google.github.io/adk-docs/)**
-  の組み合わせ。詳細は [04-dataflow-streaming-agents/](04-dataflow-streaming-agents/README.md)。
-- **「Elastic Inference Queue」は公式用語ではない。** 公式ドキュメントに該当する製品 / 機能名は
-  存在せず、AI Inference SMT の **フロー制御機能**（エンドポイント過負荷を避けるための
-  レート自動調整）をスライドで言い換えた表現とみられる。詳細は
-  [01-pubsub-ai-inference-smt/](01-pubsub-ai-inference-smt/README.md)。
-- **「Gemini Enterprise Agent Platform」= Vertex AI のリブランド。** Next '26 前後で
-  Vertex AI が "Agent Platform" / "Gemini Enterprise Agent Platform" に改称された。公式
-  docs も "Agent Platform (previously Vertex AI)" と併記する。ただし **IAM ロール名
-  （`Vertex AI Service Agent` / `Vertex AI User`）や API（`aiplatform.endpoints.predict`）
-  は旧称のまま** なので、実装時は両方の名前が混在する点に注意。
-- **「Bigtable のマテリアライズドビュー」は Bigtable Subscriptions とは別機能。**
-  記事のアーキ図に出てくる Bigtable materialized view は実在する
-  [Bigtable continuous materialized views](https://docs.cloud.google.com/bigtable/docs/continuous-materialized-views)
-  （SQL 定義の背景集約ビュー）であり、目玉の **Bigtable Subscriptions（raw メッセージの
-  直接書き込み）とは別物**。混同しないこと。
-
-## ドキュメント構成
-
-- [fact-check.md](fact-check.md)
-  — 記事の **記載ごと** の判定（✅ / ⚠️ / ℹ️ / ❓）の詳細表
-
-実装手順・gcloud / SQL / Beam コード・制約・公式リンク・開発リポジトリは機能ごとのフォルダに
-分割した（各フォルダの本体は `README.md`）。
-
-1. [01-pubsub-ai-inference-smt/](01-pubsub-ai-inference-smt/README.md)
-   — Pub/Sub の中で直接モデルを呼ぶ（GA）
-2. [02-pubsub-bigtable-subscriptions/](02-pubsub-bigtable-subscriptions/README.md)
-   — コード不要で Pub/Sub → Bigtable に materialize（Preview）
-3. [03-bigquery-continuous-queries-stateful/](03-bigquery-continuous-queries-stateful/README.md)
-   — 常駐 SQL で JOIN / windowing / 生成 AI（Preview）
-4. [04-dataflow-streaming-agents/](04-dataflow-streaming-agents/README.md)
-   — Dataflow に ADK エージェントを組み込む（= 記事の "In-stream Agents"）
-
-## 記事が触れていない関連発表（公式ブログより補足）
-
-記事は 4 機能に絞っているが、同じセッション / ブログでは以下も発表されている。エージェントから
-ストリーミング基盤を「使う」側の話なので、実装の全体像として押さえておくと良い。
+同じセッション / ブログで、エージェントからストリーミング基盤を「使う」側の発表もあった。
 
 - **Model Context Protocol (MCP) support（GA）** — エージェントがフルマネージドな MCP
   エンドポイント経由で各サービスを操作できる。
@@ -89,9 +50,8 @@ pipeline for agents）」へ移った、というのが Next '26 の主張。記
 - **ADK integration（GA）** — ADK エージェントが Pub/Sub / Bigtable / BigQuery 等の
   リアルタイムデータに pre-built integration で接続:
   <https://adk.dev/integrations/?topic=google>
-- **Dataflow unified embeddings sinks** — ストリーム内で埋め込み生成し、Cloud Spanner
-  （新ベクトル検索）/ AlloyDB に materialize（エージェント RAG の long-term memory 用途）。
-  参考: [Deploying EmbeddingGemma at scale with Dataflow](https://developers.googleblog.com/en/deploying-embeddinggemma-at-scale-with-dataflow/)
+- **Dataflow unified embeddings sinks** — 詳細は
+  [04 の関連機能](04-dataflow-streaming-agents/README.md#関連機能-dataflow-unified-embeddings-sinks)。
 
 ## アーキテクチャ全体像
 
@@ -126,39 +86,12 @@ Legend / 凡例:
 - RunInference + ADK agent: Dataflow にエージェントを組み込むノード
 - serving: アプリへの低レイテンシ配信
 
-## サンプル実装 / codelab（2026-06 実在確認済み）
+## 最初に触るなら
 
-各機能の詳細サンプルは機能別ドキュメントの「サンプル実装」節に記載。**最初に触るなら** 以下の
-2 つが効率的。
+- 3 機能横断の E2E デモ（BigQuery stateful CQ + Pub/Sub SMT + ADK）:
+  [03 の公式サンプル](03-bigquery-continuous-queries-stateful/README.md#公式サンプル実装--codelab)
+- Dataflow にエージェントを載せる最小例:
+  [04 の検証済み最小例](04-dataflow-streaming-agents/README.md#検証済み最小例)
 
-- **3 機能横断 E2E デモ**（BigQuery stateful CQ + Pub/Sub SMT + ADK エージェント）:
-  公式 codelab
-  [Build an Event-Driven Data Agent with BigQuery and ADK](https://codelabs.developers.google.com/next26/bigquery-adk-event-driven-agents)
-  / GitHub
-  [`GoogleCloudPlatform/devrel-demos` → `data-analytics/event_driven_agents_demo`](https://github.com/GoogleCloudPlatform/devrel-demos/tree/main/data-analytics/event_driven_agents_demo)
-- **Dataflow にエージェントを載せる最小例**: Apache Beam の `ADKAgentModelHandler` 本体 +
-  テスト
-  [`sdks/python/apache_beam/ml/inference/agent_development_kit.py`](https://github.com/apache/beam/blob/master/sdks/python/apache_beam/ml/inference/agent_development_kit.py)
-  / [`..._test.py`](https://github.com/apache/beam/blob/master/sdks/python/apache_beam/ml/inference/agent_development_kit_test.py)
-
-> GitHub のパス・codelab・docs はいずれも 2026-06-08 に GitHub API / 実フェッチで到達確認済み。
-
-## 一次情報リンク集
-
-- Pub/Sub SMT 概要: <https://docs.cloud.google.com/pubsub/docs/smts/smts-overview>
-- AI Inference SMT: <https://docs.cloud.google.com/pubsub/docs/smts/ai-inference-smt>
-- JavaScript UDF SMT: <https://docs.cloud.google.com/pubsub/docs/smts/udfs-overview>
-- Bigtable subscriptions: <https://docs.cloud.google.com/pubsub/docs/bigtable-subscriptions>
-- Bigtable subscription 作成: <https://docs.cloud.google.com/pubsub/docs/create-bigtable-subscription>
-- Continuous queries 概要: <https://docs.cloud.google.com/bigquery/docs/continuous-queries-introduction>
-- Continuous queries 実装: <https://docs.cloud.google.com/bigquery/docs/continuous-queries>
-- Dataflow ML: <https://docs.cloud.google.com/dataflow/docs/machine-learning>
-- Apache Beam RunInference: <https://beam.apache.org/documentation/ml/about-ml/>
-- `ADKAgentModelHandler` pydoc:
-  <https://beam.apache.org/releases/pydoc/current/apache_beam.ml.inference.agent_development_kit.html>
-- ADK ドキュメント: <https://google.github.io/adk-docs/>
-- 公式ブログ（Next '26 総括）:
-  <https://cloud.google.com/blog/products/data-analytics/streaming-ai-news-from-next26>
-
-> 検証日: 2026-06-08 時点の公式ドキュメントに基づく。Preview 機能は仕様が変わりうるため、
-> 実装前に必ず各公式ページの最新版を確認すること。
+> 検証日: 2026-06-08 時点の公式ドキュメントに基づく。Preview 機能は仕様が変わりうるので、
+> 実装前に各公式ページの最新版を確認する。
