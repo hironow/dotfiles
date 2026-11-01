@@ -209,6 +209,18 @@ def test_the_vendored_pi_extension_must_match_the_installed_rtk() -> None:
     assert "just rtk-pi-refresh" in _detail(facts, "rtk-pi-extension")
 
 
+def test_an_rtk_older_than_the_vendored_extension_is_upgraded_not_refreshed() -> None:
+    # rtk-pi-refresh re-vendors from the installed rtk, so on an older rtk it
+    # would roll the tracked file back; the fix is the rtk upgrade.
+    facts = _facts(
+        rtk=check.Tool(paths=(MISE_RTK,), version="0.49.0", mise_path=MISE_RTK)
+    )
+    assert _levels(facts)["rtk-pi-extension"] == "WARN"
+    detail = _detail(facts, "rtk-pi-extension")
+    assert "mise up rtk" in detail
+    assert "rtk-pi-refresh" not in detail
+
+
 @pytest.mark.parametrize("missing", sorted(TELEMETRY))
 def test_telemetry_must_be_off_in_the_shell_and_in_claude(missing: str) -> None:
     env = {k: v for k, v in TELEMETRY.items() if k != missing}

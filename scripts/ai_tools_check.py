@@ -264,12 +264,18 @@ def _rtk_pi_extension(facts: Facts) -> Line:
     # rtk upgrades can change its own Pi extension; ours is a vendored copy
     installed, vendored = facts.rtk.version, facts.vendored_rtk
     if installed and vendored and installed != vendored:
+        # rtk-pi-refresh copies from the installed rtk: on an older rtk it
+        # would roll the tracked file back, so upgrade rtk instead.
+        older = [int(p) for p in installed.split(".")] < [
+            int(p) for p in vendored.split(".")
+        ]
+        fix = "mise up rtk" if older else "just rtk-pi-refresh"
         return (
             "WARN",
             "rtk-pi-extension",
             (
                 f"config/pi/extensions/rtk.ts is from rtk {vendored}, "
-                f"installed is {installed}: just rtk-pi-refresh"
+                f"installed is {installed}: {fix}"
             ),
         )
     return ("OK", "rtk-pi-extension", f"vendored from rtk {vendored or '?'}")
