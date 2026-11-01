@@ -21,7 +21,8 @@ rather than guarded.
 
 tmux, zsh and Ghostty are all absent on native-Windows dev hosts, so these are
 static checks on the tracked files plus `zsh -n`, which is skipped where zsh is
-missing. Behaviour is confirmed by hand on macOS (`docs/plan/terminal-keys.md`).
+missing. The keystrokes themselves need a person at each terminal; the
+per-terminal settings are in USAGE.md.
 """
 
 from __future__ import annotations

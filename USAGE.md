@@ -29,7 +29,14 @@ sheldon lock  # 初回だけ: plugin を入れる
 | `Option+←` / `Option+→` | 1 単語戻る / 進む |
 | `Ctrl+←` / `Ctrl+→` | 1 単語戻る / 進む（Windows Terminal が Alt+矢印を使うので Windows と WSL はこちら） |
 
-`Ctrl+Enter` を tmux の中で効かせるには tmux 3.2a 以降が要る（確認は `tmux -V`。未満だと警告が出るだけで他は動く）。単語の区切りと止まる位置は zsh 既定のままで、Windows の PowerShell は PSReadLine 既定のため `Ctrl+→` の着地点が少し違う（端末ごとの差は `docs/plan/terminal-keys.md`）。
+`Ctrl+Enter` を tmux の中で効かせるには tmux 3.2a 以降が要る（確認は `tmux -V`。未満だと警告が出るだけで他は動く）。単語の区切りと止まる位置は zsh 既定のままで、Windows の PowerShell は PSReadLine 既定のため `Ctrl+→` の着地点が少し違う。
+
+端末ごとの設定:
+
+- Ghostty: 設定は要らない（`tools/ghostty-config` が `Option+←` / `Option+→` を単語移動に固定する）。
+- Terminal.app: `Option+←` / `Option+→` は設定なしで単語移動になる。拡張キーを送れないので、`Ctrl+Enter` の改行は効かない。
+- iTerm2: Profiles → Keys で `⌥←` / `⌥→` に "Send Escape Sequence" の `b` / `f` を割り当てる。`Ctrl+Enter` を改行にするには、`^⏎` に "Send Hex Code" で `0x1b 0x5b 0x32 0x37 0x3b 0x35 0x3b 0x31 0x33 0x7e`（`^[[27;5;13~`）を割り当てる。
+- Windows Terminal（PowerShell と WSL）: 設定は要らない。`Alt+←` / `Alt+→` は Windows Terminal がペインの移動に使うので、`Ctrl+←` / `Ctrl+→` を使う。
 
 ## alias と関数
 

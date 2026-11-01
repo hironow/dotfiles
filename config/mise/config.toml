@@ -159,11 +159,10 @@ rtk = "latest"
 "npm:@earendil-works/pi-coding-agent" = "latest"
 
 # playwright-cli (microsoft/playwright-cli) — the browser-automation CLI the
-# hironow/skills `playwright-cli` skill runs. Without this declaration no host
-# has the binary the skill calls: its documented fallback (`bunx --package
-# @playwright/mcp playwright-cli`) cannot work, because @playwright/mcp ships
-# only a `playwright-mcp` bin — `playwright-cli` comes from @playwright/cli.
-# "latest" like the agent-facing CLIs above (not a gate), and the npm backend
+# hironow/skills `playwright-cli` skill runs. The skill expects
+# `playwright-cli` on PATH and only falls back to `bunx --package
+# @playwright/cli playwright-cli`. This declaration puts the binary on PATH on
+# every host. "latest" like the agent-facing CLIs above (not a gate), and the npm backend
 # resolves it through bun ([settings.npm], ADR 0036/0040), so this is not an
 # npm/yarn/pnpm invocation (ADR 0027). No bundled browser is installed: use
 # `--browser=chrome`, or `playwright-cli install-browser` on a host without
