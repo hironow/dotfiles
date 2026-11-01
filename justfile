@@ -1009,6 +1009,8 @@ ci-all: ci test test-install
     @echo "✅ ci-all passed"
 
 # Emulator suite (mirrors .github/workflows/test-emulators.yaml): lint + bring up + fast + e2e.
+# Elasticsearch is not in the lite stack, so its standalone check stays manual
+# (emulator/scripts/test-elasticsearch.sh after `just emu-up-group search`), as in CI.
 # Heavy: needs Docker + emulator uv env. Leaves emulators up (stop with `just emu-stop`).
 [group('CI')]
 ci-emu:
@@ -1016,7 +1018,6 @@ ci-emu:
     set -euo pipefail
     just emu-lint
     just emu-start
-    cd emulator && bash scripts/test-elasticsearch.sh
     just emu-test-fast
     just emu-test-e2e
     echo '✅ ci-emu passed'
