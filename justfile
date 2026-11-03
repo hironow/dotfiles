@@ -835,9 +835,11 @@ rttm-check: rttm-lint rttm-typecheck
 #
 # Scope is deliberate. The emulator/*-cli modules need running emulators and a
 # populated module cache, which is what `just ci-emu` is for; putting them in the
-# fast gate would make `just check` depend on Docker. tools/ modules are
-# stdlib-only and run in seconds, so `-short` costs nothing here and keeps the
-# contract for any module that later adds a long sweep behind it.
+# fast gate would make `just check` depend on Docker. tools/ modules run in
+# seconds and need no service (tools/agent-hooks has one dependency, go-json,
+# which go fetches into the module cache on first use), so `-short` costs
+# nothing here and keeps the contract for any module that later adds a long
+# sweep behind it.
 #
 # Strict bash: just's default `sh -cu` would let a failing iteration inside the
 # loop pass unnoticed.
@@ -850,6 +852,15 @@ go-test:
       echo "🧪 go test -short $dir"
       (cd "$dir" && mise x -- go test -short ./...)
     done
+
+# tools/agent-hooks/internal/guardcorpus/command-guard.jsonl is what the Go command guard is
+# tested against, and commandguard/pyword_table.go is Python's \w for it. Both follow
+# Python 3.14 (Unicode 16.0). Run this after changing the Python guard or its tests
+# (tests/unit/test_command_guard_corpus.py fails until you do).
+# Rewrite the Go command guard's test corpus from the Python guard (the reference).
+[group('Test')]
+command-guard-corpus:
+    @{{UV_RUN}} --python 3.14 scripts/command_guard_corpus.py
 
 [group('Lint')]
 go-lint:

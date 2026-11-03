@@ -45,6 +45,14 @@ jobs:
       - name: Run unit tests
         run: uvx pytest -q -ra tests/unit/
 
+      # The command guard corpus and word table follow Python 3.14 (Unicode
+      # 16.0). The system Python above skips the checks that need it; this
+      # step makes them on 3.14, where a skip fails instead.
+      - name: Command guard corpus on Python 3.14
+        env:
+          COMMAND_GUARD_CORPUS_STRICT: "1"
+        run: uvx --python 3.14 pytest -q -ra tests/unit/test_command_guard_corpus.py
+
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Check Pi provider failover
         run: bun test tests/unit/jev_sonnet_fallback.test.ts
