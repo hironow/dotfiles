@@ -108,3 +108,23 @@ def test_secret_via_notebook_new_source_is_blocked() -> None:
         check=False,
     )
     assert result.returncode == EXIT_BLOCK
+
+
+# A large write must not slip past the guard. The guard used to pipe the content
+# into `grep -q`, which exits at the first match; when more than a pipe buffer of
+# content followed the secret, the writer died of SIGPIPE and pipefail turned the
+# match into "no match", so the write went through (measured: a key followed by
+# 256 KiB passed every time, by 32 KiB was blocked).
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("sk-" + "a" * 20 + "\n" + "x" * (1 << 20), id="key-then-1MiB"),
+        pytest.param("x" * (1 << 20) + "\n" + "sk-" + "a" * 20, id="1MiB-then-key"),
+        pytest.param(
+            "x" * (512 << 10) + "\nAKIA" + "A" * 16 + "\n" + "x" * (512 << 10),
+            id="key-in-the-middle",
+        ),
+    ],
+)
+def test_a_secret_in_a_large_write_is_blocked(content: str) -> None:
+    assert _run_hook(content) == EXIT_BLOCK

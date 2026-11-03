@@ -36,7 +36,9 @@ case "$file_path" in
       uv run --frozen --only-group lint ruff check --fix "$file_path"   >/dev/null 2>&1 || true
       # Surface anything auto-fix couldn't resolve, as feedback for Claude.
       remaining="$(uv run --frozen --only-group lint ruff check "$file_path" 2>&1 || true)"
-      if [ -n "$remaining" ] && ! printf '%s' "$remaining" | grep -q "All checks passed"; then
+      # Without pipefail: grep -q exits early, and the writer's SIGPIPE would
+      # otherwise read as "no match".
+      if [ -n "$remaining" ] && ! (set +o pipefail; printf '%s' "$remaining" | grep -q "All checks passed"); then
         echo "ruff still reports issues in $file_path:" >&2
         printf '%s\n' "$remaining" >&2
       fi
@@ -51,6 +53,8 @@ case "$file_path" in
   # single-file formatter, and running `just fmt` (project-wide) per edit
   # pollutes unrelated diffs. The gate is `just check` / CI.
 esac
-done <<<"$paths"
+# Process substitution, not a here-string: bash 3.2 writes a here-string to a
+# temp file, and where none can be written the loop never ran (a pass).
+done < <(printf '%s\n' "$paths")
 
 exit 0
