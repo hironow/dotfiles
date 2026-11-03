@@ -1,7 +1,7 @@
 # Plan: agent-hook — one Go engine, harness definitions as data, a log line at every firing
 
 **Date:** 2026-11-03
-**Status:** Approved (owner, 2026-11-03, chat; Codex review 6: APPROVE). PR 0 in progress on `feat/agent-hooks-ownership`.
+**Status:** Approved (owner, 2026-11-03, chat; Codex review 6: APPROVE). PR 0 merged as [#534](https://github.com/hironow/dotfiles/pull/534) (main `504987fd`); PR 1 in progress on `feat/agent-hooks-engine`.
 **Related:** [hook contracts per harness](agent-hooks-go-contracts.md) (2026-11-03 snapshot, with the agy probe records), [agent sync](../agent-sync.md), [#533](https://github.com/hironow/dotfiles/pull/533) (Codex hooks rendered from the one source, from main `8d55d1b7`)
 **Blocking decisions:** none (D1–D3 decided by the owner on 2026-11-03; no ADR, by the owner's decision)
 
@@ -42,9 +42,9 @@ Outcome --encode(definition)--> native answer (stdout + exit code)
 manifest + definitions --render--> each harness's registration (+ loss report)
 ```
 
-- Module `tools/agent-hooks` (Go 1.27.3, `CGO_ENABLED=0`), binary `agent-hook`. Packages: `engine` (pure guards, formatter decision, rtk policy), `definition` (loads harness definitions, validates payloads, maps fields), `launch` (process I/O, deadlines), `logsink` (port + `FileSink`), `cmd`.
+- Module `tools/agent-hooks` (Go 1.27.3, `CGO_ENABLED=0`), binary `agent-hook`. Packages live under `internal/` and are named by role (the naming guide rules out `engine` as a name; "the engine" here means the pure hook packages): `ir` (the call and the outcome), one package per hook (`commandguard`, later `fileguard`, `secretguard`, `formatter`, `rtkpolicy`), `pyshlex` (Python's shlex, the command guard's tokenizer), `definition` (loads harness definitions, validates payloads, maps fields), `launch` (process I/O, deadlines), `logsink` (port + `FileSink`), and `cmd/agent-hook`.
 - Dependencies: `github.com/goccy/go-json` v0.12.0 (v2 package, owner waiver) and `github.com/google/jsonschema-go` v0.4.3 (MIT; Google; used by the MCP Go SDK; only `go-cmp`, for its tests, in its module graph). Everything else is the standard library. No OTel SDK (owner decision; the observability guide's TracerProvider rule is overridden for this binary and recorded in the PR).
-- `engine` never sees a native payload; definitions never see each other.
+- The hook packages never see a native payload; definitions never see each other.
 
 ### Harness definitions are data
 
@@ -137,15 +137,18 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
 - Command guard: the algorithm ported, not a shell parser: a Go tokenizer reproducing Python `shlex(posix=True, punctuation_chars=True, whitespace_split=True)` with comments; heredoc split with its quirks; regexes moved to RE2 with Python's Unicode `\s`/`\w` spelled out; rtk run verbs; the legacy scan; bash `case` globs as written.
 - Files guard, secrets guard (9 patterns, line by line), formatter (same commands, project directory, only after success), rtk (Claude: worktree veto, mise launcher, strip; Codex: real binary, pwsh-safe path, allow + updatedInput; Pi: `rtk rewrite`, bash only).
 - Parity tests: the old scripts stay as references until the last PR; differential tests at token, heredoc, and verdict level over all fixtures and a generated corpus (empty quotes, trailing escapes, comments, newlines, Unicode, unbalanced quotes); the existing subprocess tests run against both; the Claude `file_path` route of the files guard gets the test it lacks. The corpus and expected values stay as engine tests afterwards.
+- How PR 1 does it for the command guard: `just command-guard-corpus` writes `internal/guardcorpus/command-guard.jsonl` from the Python guard: every command the guard's own tests use (read from their AST), edge cases for each quirk, each Python space and word-boundary character where it matters, pairs of fragments, and seeded random inputs, each with Python's tokens or tokenizer error, heredoc split, and verdict. `tests/unit/test_command_guard_corpus.py` fails when the file is stale; the Go tests check the port against it. The subprocess tests run against both once the binary decodes payloads (PR 2).
+- Python's `\w` is not Go's. Go 1.27's tables are Unicode 17.0 and Python 3.14's are 16.0, and every letter Go adds would hide a name from the guard (a Unicode 17.0 letter after `bash` turns a block into a pass). So the port reads Python's own `\w`, written as a Go table (`internal/commandguard/pyword_table.go`) by the same recipe. The corpus and the table follow Python 3.14 (Unicode 16.0, pinned in the script): the script refuses to write them from another version, a test on every Python checks the table's version, and the checks that need Python 3.14 run in their own CI step on 3.14, where a skip fails instead (CI's other unit tests run on Python 3.12).
+- Known differences: inputs Python can hold but UTF-8 cannot (lone surrogates), and Python's recursion limit, have no Go counterpart.
 
 ## PRs (each: Red tests first, `just ci`, full `just test` when recipes change, PR CI green, squash merge)
 
 0. Ownership and compatibility: sync recognizes release-path registrations as managed (alongside script paths); the Pi installer removes the extension files it placed whose source is gone (a symlink to that source, or a copy whose first line is `// dotfiles-managed: <its own name>`). No behavior change. Uninstall moves into the binary and ships with each wiring PR (PR 3: Claude, Codex; PR 4: agy, Pi), because it removes what that PR registers; for Claude and Codex a revert plus a re-sync is already clean after PR 0.
 1. Engine core and the command guard port with the token/heredoc/verdict differential harness.
-2. Files and secrets guards, formatter, rtk policies, the definition loader with JSON Schema validation, definitions and fixtures for Claude, Codex, agy, Pi, the shim protocol, the conformance suite and capability matrix, `LogSink`/`FileSink`, the latency measurement. Not wired.
+2. Files and secrets guards, formatter, rtk policies, the definition loader with JSON Schema validation, definitions and fixtures for Claude, Codex, agy, Pi, the shim protocol, the conformance suite and capability matrix, `LogSink`/`FileSink`, the latency measurement, and the existing subprocess tests run against both the scripts and the binary. Not wired.
 3. Releases, launchers, Claude and Codex wired; doctor (per harness: registered as rendered, enabled, release fresh by rebuild, runtime deps, loss report); Codex trust. Live: old tests against the installed binary; Claude and Codex sessions block `npm --version` and a `.yml` write, rewrite `git status`, log one line per firing; launcher failure cases per OS. A round-trip test renders every launcher form (each harness, OS, and shell) and checks that sync's `_runs_agent_hook_release` accepts each one, including paths with an apostrophe, `$`, or a space, while the negative corpus in `tests/unit/test_codex_hooks.py` is still rejected, so the renderer and the ownership rule cannot drift apart.
 4. agy plugin (guards + formatter) and the Pi shim (guards + formatter + rtk; the vendored `rtk.ts` retired in the same PR). Live in scratch: blocks for `npm --version`, `x.yml`, a synthetic AWS-style key in a write and in a later edit element; an allowed write is formatted; agy compared with no plugin in auto and accept-edits modes and an owner-run interactive check; Pi rewrites `git status`; a live check that blocks and rewrites take effect. The installer places the Pi shim and counts it as a current extension: since PR 0 it removes any `// dotfiles-managed: <name>` extension it has no source for.
-5. Remove the old scripts and their name-based handling; final docs (`docs/agent-sync.md`, enforcement and rtk guides, repo `CLAUDE.md`).
+5. Remove the old scripts and their name-based handling, and move what still reads the Python guard: doctor's rtk-guard check (`scripts/ai_tools_check.py` reads its `RTK_RUN_SUBCOMMANDS` and `RTK_FILTER_SUBCOMMANDS`) and `just command-guard-corpus` with its test (the corpus stays as the Go tests' data, and the word table as the port's); final docs (`docs/agent-sync.md`, enforcement and rtk guides, repo `CLAUDE.md`).
 
 Later, each its own PR through the same definition + conformance path: OpenCode v2 (shim), dsh (shim on its native events), rtk on agy (needs agy permission settings).
 
@@ -165,6 +168,11 @@ Later, each its own PR through the same definition + conformance path: OpenCode 
 Each PR is one squash merge. Before reverting a wiring PR, run the per-harness uninstall (new code); then revert and re-sync; check that no old/new duplicates remain.
 
 ## Review record
+
+- PR 1 reviews (Codex, of the code and of this plan's changes for PR 1). The package names by role, moving the subprocess tests to PR 2, and the PR 5 moves had no findings. The code findings were confirmed with Red tests and adopted:
+    - Round 1 (REVISE): `\w` from Go's Unicode 17.0 tables turned a block into a pass (a Unicode 17.0 letter after `bash`). The port now reads Python's own `\w` table, and this plan no longer accepts that difference. The same round showed that the dev container's `just check` runs the Go tests in CI.
+    - Round 2 (REVISE): the table followed whatever Python ran the script, so a run on 3.12 would have downgraded it unnoticed. The script now pins Unicode 16.0 and refuses others; the version-bound checks run strictly on Python 3.14 in CI.
+    - Round 3 (APPROVE): no further findings.
 
 - PR 0 reviews (Codex, of the code and of this plan's PR 0 and PR 4 changes). The plan changes were accepted in round 1. The code findings were all confirmed and adopted:
     - Round 1 (REVISE): release ownership matched a mere mention of the path; an unreadable user `.ts` aborted the Pi install.
