@@ -1,10 +1,15 @@
-// Package guardcorpus holds the command guard corpus: what the Python command
-// guard (ROOT_AGENTS_hooks_block-prohibited-commands.py, the reference until
-// the old scripts are removed) does with each of its inputs. The Go tests
-// check the port against it.
+// Package guardcorpus holds the guard corpora: what each old guard (the
+// reference until the old scripts are removed) does with each of its inputs.
+// The Go tests check the ports against them.
 //
-// `just command-guard-corpus` writes command-guard.jsonl from the reference,
-// and tests/unit/test_command_guard_corpus.py fails when the file is stale.
+//   - command-guard.jsonl: the Python command guard
+//     (ROOT_AGENTS_hooks_block-prohibited-commands.py), written by
+//     `just command-guard-corpus` and checked by
+//     tests/unit/test_command_guard_corpus.py.
+//   - files-guard.jsonl and secrets-guard.jsonl: the shell guards
+//     ROOT_AGENTS_hooks_block-prohibited-files.sh and
+//     ROOT_AGENTS_hooks_block-secrets.sh, written by `just file-guards-corpus`
+//     and checked by tests/unit/test_file_guards_corpus.py.
 package guardcorpus
 
 import (
@@ -17,6 +22,12 @@ import (
 
 //go:embed command-guard.jsonl
 var corpus string
+
+//go:embed files-guard.jsonl
+var filesGuardCorpus string
+
+//go:embed secrets-guard.jsonl
+var secretsGuardCorpus string
 
 // Entry is what the Python guard made of one input.
 type Entry struct {
@@ -33,6 +44,78 @@ type Entry struct {
 func Entries(tb testing.TB) []Entry {
 	tb.Helper()
 	return decodeLines(tb, "command-guard.jsonl", corpus, func(e *Entry, line int) { e.Line = line })
+}
+
+// ShellGuardResult is what a shell guard did with one input.
+type ShellGuardResult struct {
+	Exit   int     `json:"exit"`   // 0 passes, 2 blocks; 1 fails, which no harness blocks on
+	Reason *string `json:"reason"` // why it blocks; nil unless Exit is 2
+}
+
+// FilesGuardEntry is what the files guard did with one input, handed over as
+// Claude Code does (FilePath) or as Codex does (Patch), under BSD's and under
+// GNU's basename(1).
+type FilesGuardEntry struct {
+	Line         int              `json:"-"`            // its line in files-guard.jsonl
+	FilePath     *string          `json:"filePath"`     // tool_input.file_path
+	Patch        *string          `json:"patch"`        // tool_input.command of Codex's apply_patch
+	FilePathRuns []Run            `json:"filePathRuns"` // a long FilePath, as stored
+	PatchRuns    []Run            `json:"patchRuns"`    // a long Patch, as stored
+	BSD          ShellGuardResult `json:"bsd"`
+	GNU          ShellGuardResult `json:"gnu"`
+}
+
+// SecretsGuardEntry is what the secrets guard did with one input, handed over
+// as Claude Code does (Content) or as Codex does (Patch).
+type SecretsGuardEntry struct {
+	Line        int     `json:"-"`           // its line in secrets-guard.jsonl
+	Content     *string `json:"content"`     // tool_input.content
+	Patch       *string `json:"patch"`       // tool_input.command of Codex's apply_patch
+	ContentRuns []Run   `json:"contentRuns"` // a long Content, as stored
+	PatchRuns   []Run   `json:"patchRuns"`   // a long Patch, as stored
+	Exit        int     `json:"exit"`        // as in ShellGuardResult
+	Reason      *string `json:"reason"`      // as in ShellGuardResult
+}
+
+// Run is Count copies of Char. The corpora store an input longer than 1024
+// characters as its runs, so that a 1 MiB test input takes one short line;
+// the readers join the runs back into the input.
+type Run struct {
+	Char  string `json:"char"`
+	Count int    `json:"count"`
+}
+
+// joinRuns sets *text to the input runs hold, when it is stored as runs.
+func joinRuns(text **string, runs []Run) {
+	if runs == nil {
+		return
+	}
+	var b strings.Builder
+	for _, r := range runs {
+		b.WriteString(strings.Repeat(r.Char, r.Count))
+	}
+	joined := b.String()
+	*text = &joined
+}
+
+// FilesGuardEntries returns every entry of files-guard.jsonl.
+func FilesGuardEntries(tb testing.TB) []FilesGuardEntry {
+	tb.Helper()
+	return decodeLines(tb, "files-guard.jsonl", filesGuardCorpus, func(e *FilesGuardEntry, line int) {
+		e.Line = line
+		joinRuns(&e.FilePath, e.FilePathRuns)
+		joinRuns(&e.Patch, e.PatchRuns)
+	})
+}
+
+// SecretsGuardEntries returns every entry of secrets-guard.jsonl.
+func SecretsGuardEntries(tb testing.TB) []SecretsGuardEntry {
+	tb.Helper()
+	return decodeLines(tb, "secrets-guard.jsonl", secretsGuardCorpus, func(e *SecretsGuardEntry, line int) {
+		e.Line = line
+		joinRuns(&e.Content, e.ContentRuns)
+		joinRuns(&e.Patch, e.PatchRuns)
+	})
 }
 
 // decodeLines decodes one JSON object per line of text into a T, rejecting
