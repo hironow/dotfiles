@@ -9,7 +9,8 @@ Instructions in AGENTS.md and CLAUDE.md are advisory. Rules that must hold
 every time are enforced at three points:
 
 1. **Claude Code and Codex hooks** run before and after tool calls. The
-   dotfiles repo distributes them with `just sync-agents`.
+   dotfiles repo distributes them with `just sync-agents`, from one source
+   (`.claude/settings.hooks.json`); Codex's registration is rendered from it.
 2. **Git pre-commit** (`.githooks/pre-commit` → `just check`) is the gate for
    humans and any tool that runs `git commit` (`just install-hooks` per clone).
 3. **CI** (`.github/workflows/quality-gate.yaml`) is the merge gate:

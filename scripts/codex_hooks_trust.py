@@ -5,9 +5,10 @@ Codex runs a non-managed hook only when `hooks.state.<key>.trusted_hash` in
 ~/.codex/config.toml equals the hook's current hash (codex-rs hooks/src/engine/
 discovery.rs). The TUI's /hooks review records it with two app-server calls,
 `hooks/list` and `config/batchWrite` (codex-rs tui/src/hooks_rpc.rs); this does
-the same, for exactly the entries the repo's .codex/hooks.json renders (event,
-matcher, full command) in <codex home>/hooks.json, and only while every hook file
-sync placed there is byte-identical to its source. Nothing else is trusted.
+the same, for exactly the entries sync renders from the one source,
+.claude/settings.hooks.json (event, matcher, full command), in <codex
+home>/hooks.json, and only while every hook file sync placed there is
+byte-identical to its source. Nothing else is trusted.
 
 Usage: codex_hooks_trust.py [--check]   (--check reports without writing)
 Prints doctor-style OK/WARN lines; exit 1 when a hook would not run.
@@ -25,10 +26,10 @@ from typing import Protocol
 
 from doctor_lines import Line, failed, fmt
 from sync_agents import (
-    CODEX_HOOK_FRAGMENT,
     AgentTarget,
     _render_hook_command,
     _wants_hook,
+    hook_fragment,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,10 +58,8 @@ def _event_key(event: str) -> str:
 def expected_hooks(
     dotfiles_dir: Path, codex_home: Path, system: str | None = None
 ) -> set[Hook]:
-    fragment = json.loads(
-        (dotfiles_dir / CODEX_HOOK_FRAGMENT).read_text(encoding="utf-8")
-    )
     agent = _codex(codex_home)
+    fragment = hook_fragment(dotfiles_dir, agent) or {}
     return {
         (
             _event_key(event),

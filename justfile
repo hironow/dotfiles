@@ -315,7 +315,8 @@ headroom-dashboard:
 #   ROOT_AGENTS.md (base) -> codex/AGENTS.md, gemini/GEMINI.md, claude/AGENTS.md
 #   ROOT_CLAUDE.md (overlay, @AGENTS.md) -> claude-family/CLAUDE.md
 #   ROOT_AGENTS_docs_agents_*.md (spokes) -> <agent>/docs/agents/* (abs refs)
-#   ROOT_AGENTS_hooks_*.sh + .claude/settings.hooks.json -> claude-family only
+#   ROOT_AGENTS_hooks_*.sh + .claude/settings.hooks.json -> claude-family settings.json
+#     and Codex hooks.json (rendered from the same source)
 #   .claude/settings.shared.json -> claude-family settings.json (env owned
 #     wholesale + curated top-level keys upserted; machine-local env -> settings.local.json)
 # Default scope = .claude only. Pass targets to widen:
@@ -1700,7 +1701,8 @@ skills-update *args:
     @{{ UV_RUN }} scripts/skills_lock.py update {{ args }}
 
 # Codex runs a hook only once it is trusted. `just sync-agents x` already runs
-# this; it trusts exactly the hooks .codex/hooks.json renders. --check: report only.
+# this; it trusts exactly the hooks sync renders from .claude/settings.hooks.json.
+# --check: report only.
 # Trust the Codex hooks dotfiles placed (through Codex's app-server)
 [group('Agents')]
 codex-hooks-trust *args:
