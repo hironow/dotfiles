@@ -161,6 +161,7 @@ Open the matching file as soon as its trigger applies:
 | writing or changing Python                     | docs/agents/python-tooling.md       |
 | writing or changing Go or a service            | docs/agents/go-tooling.md           |
 | choosing between Go and Rust, or writing or changing Rust | docs/agents/rust-tooling.md |
+| measuring or changing code for speed, in any language | docs/agents/performance.md |
 | modeling distributed state / Quint            | docs/agents/formal-methods.md       |
 | adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |
 | writing a `pull_request` workflow              | docs/agents/draft-ci.md             |

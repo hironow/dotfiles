@@ -106,6 +106,9 @@ that needs cgo breaks cross-compiling, so it needs an explicit reason.
 
 ## Measure before you optimise
 
+How to compare runs, read the noise, and keep the contract, in any language:
+docs/agents/performance.md. The Go tools:
+
 - Find where the time goes before you change anything for speed. Use the
   standard tools: `go test -bench`, `-cpuprofile` and `-memprofile` with
   `go tool pprof`, and `runtime/trace`.
