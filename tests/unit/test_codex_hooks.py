@@ -133,8 +133,11 @@ CODEX_FRAGMENT = {
 
 
 def test_the_codex_fragment_is_rendered_from_the_claude_source() -> None:
-    # One source: Codex's hooks are derived from .claude/settings.hooks.json.
+    # One source: Codex's hooks are derived from .claude/settings.hooks.json,
+    # so the repo ships no .codex/hooks.json that Codex would also load as
+    # project hooks (they ran twice inside this repo).
     assert codex_fragment_from_claude(_claude_source()) == CODEX_FRAGMENT
+    assert not (ROOT / ".codex" / "hooks.json").exists()
 
 
 def test_a_hook_removed_from_the_source_leaves_codex_too() -> None:

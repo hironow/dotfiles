@@ -8,7 +8,8 @@ discovery.rs). The TUI's /hooks review records it with two app-server calls,
 the same, for exactly the entries sync renders from the one source,
 .claude/settings.hooks.json (event, matcher, full command), in <codex
 home>/hooks.json, and only while every hook file sync placed there is
-byte-identical to its source. Nothing else is trusted.
+byte-identical to its source. Nothing else is trusted. It also reports a project
+hook in the dotfiles checkout that runs one of those scripts again.
 
 Usage: codex_hooks_trust.py [--check]   (--check reports without writing)
 Prints doctor-style OK/WARN lines; exit 1 when a hook would not run.
@@ -149,6 +150,35 @@ def problems(
     return found
 
 
+def _script(command: str) -> str:
+    """The hook script a command runs: the last word ending in `.sh`."""
+    words = [word.strip("\"'") for word in command.split()]
+    scripts = [word.rsplit("/", 1)[-1] for word in words if word.endswith(".sh")]
+    return scripts[-1] if scripts else ""
+
+
+def project_duplicates(entries: Iterable[dict], expected: set[Hook]) -> list[str]:
+    """Project hooks that run a dotfiles hook script again.
+
+    For a trusted project Codex also loads `<project>/.codex/hooks.json`; an
+    entry there that runs one of our scripts on the same event and matcher
+    makes that hook run twice inside the project.
+    """
+    ours = {(event, matcher, _script(command)) for event, matcher, command in expected}
+    found = []
+    for entry in entries:
+        if entry.get("source") != "project":
+            continue
+        event, matcher, command = _ident(entry)
+        script = _script(command)
+        if (event, matcher, script) in ours:
+            found.append(
+                f"{event} {matcher} {script}: also registered by "
+                f"{entry.get('sourcePath')}, so it runs twice there (delete that file)"
+            )
+    return found
+
+
 def batch_write_params(entries: Iterable[dict]) -> dict:
     return {
         "edits": [
@@ -264,6 +294,9 @@ def main(argv: Sequence[str]) -> int:
             client.request("config/batchWrite", batch_write_params(chosen))
             entries = list_hooks(client, Path.home())
         found = problems(entries, expected, codex_home)
+        # The dotfiles checkout is a trusted Codex project: anything it ships as
+        # project hooks would run on top of the global ones there.
+        found += project_duplicates(list_hooks(client, ROOT), expected)
     lines = trust_lines(len(chosen), found, len(expected))
     for line in lines:
         print(fmt(line))

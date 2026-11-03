@@ -757,7 +757,9 @@ def codex_fragment_from_claude(fragment: dict) -> dict:
     """Codex's hooks.json fragment, rendered from the one Claude source.
 
     Codex reads Claude-shaped blocks with the same event and matcher names, so
-    only the commands change.
+    only the commands change. Keeping no second copy in the repo also keeps
+    Codex from loading a project `.codex/hooks.json` there on top of the
+    global one, which ran every hook twice inside this repository.
     """
     return {
         "hooks": {

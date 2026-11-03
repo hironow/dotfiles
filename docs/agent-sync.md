@@ -79,6 +79,7 @@ Codex は `<codex home>/hooks.json` を読む。
 block の形は Claude と同じで、shell の tool は `Bash`、apply_patch は `Write|Edit` に一致する。
 sync は `.claude/settings.hooks.json` から Codex 向けの断片を作り（`codex_fragment_from_claude`）、Claude の settings.json と同じ所有の規則で併合する。rtk のインストーラが書く block（`RETIRED_HOOK_COMMAND`）は外す。
 断片は command だけを書き換える。`block-*` のガードは `guard-codex.sh` を通し、`-claude.` のスクリプトは `-codex.` の対に替え、ほかはそのまま動かす。
+repo に `.codex/hooks.json` は置かない。Codex は trusted なプロジェクトの `.codex/hooks.json` も読むので、置くとこの repo の中で hook が 2 回動く（`just codex-hooks-trust --check` と doctor の `codex-hooks` が検出する）。
 hook のファイルは名前で振り分ける。
 名前に `-claude.` を含むファイルは Claude 系だけに、`-codex.` を含むファイルは Codex だけに配る。
 
