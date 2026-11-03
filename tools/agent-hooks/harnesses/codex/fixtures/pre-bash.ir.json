@@ -1,0 +1,9 @@
+{
+  "tool": "Bash",
+  "kind": "shell",
+  "fields": {
+    "command": {
+      "string": "echo capture-bash"
+    }
+  }
+}

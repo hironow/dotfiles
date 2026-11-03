@@ -1,0 +1,9 @@
+{
+  "tool": "NotebookEdit",
+  "kind": "notebook",
+  "fields": {
+    "content": {
+      "string": "print(2)"
+    }
+  }
+}

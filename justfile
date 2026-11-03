@@ -870,6 +870,16 @@ command-guard-corpus:
 file-guards-corpus:
     @{{UV_RUN}} scripts/file_guards_corpus.py
 
+# tools/agent-hooks/internal/guardcorpus/payloads.jsonl is what the agent-hook binary is
+# tested against: every payload run through every old hook script as Claude Code and
+# Codex run them, with the answer the binary must give. Needs Python 3.14 and both
+# basename(1) flavors (on macOS, gbasename). Run this after changing a guard, its
+# tests, or guard-codex.sh (tests/unit/test_hook_payload_corpus.py fails until you do).
+# Rewrite the agent-hook binary's payload corpus by running the old hook scripts.
+[group('Test')]
+hook-payload-corpus:
+    @{{UV_RUN}} --python 3.14 scripts/hook_payload_corpus.py
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash
