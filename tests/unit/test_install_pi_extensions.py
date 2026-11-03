@@ -657,6 +657,27 @@ def test_files_that_are_not_ours_are_kept(
     assert loop.is_symlink()
 
 
+@pytest.mark.parametrize(
+    ("stored", "target"),
+    [
+        ("\\\\?\\D:\\a\\x.ts", "D:\\a\\x.ts"),
+        ("\\\\?\\UNC\\server\\share\\x.ts", "\\\\server\\share\\x.ts"),
+        ("D:\\a\\x.ts", "D:\\a\\x.ts"),
+        ("/home/u/x.ts", "/home/u/x.ts"),
+    ],
+)
+def test_a_windows_link_target_drops_its_extended_length_prefix(
+    stored: str, target: str
+) -> None:
+    # On Windows, readlink returns the NT form: \\?\D:\... or \\?\UNC\server\...
+    assert installer.drop_extended_length_prefix(stored) == target
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX follows alias before '..'; Win32 folds '..' as text, so there "
+    "the link does point at our path",
+)
 def test_a_user_link_that_only_spells_our_path_is_kept(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -389,6 +389,19 @@ def retired_extension(placed: Placed, name: str) -> bool:
     return (placed.text or "").splitlines()[:1] == [f"{EXTENSION_MARKER}{name}"]
 
 
+def drop_extended_length_prefix(stored: str) -> str:
+    """A link's stored target as the path it was created with.
+
+    On Windows, readlink returns the NT form, `\\\\?\\D:\\...` or
+    `\\\\?\\UNC\\server\\...`; the path follows the prefix (as in ntpath.realpath).
+    """
+    if stored.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + stored[len("\\\\?\\UNC\\") :]
+    if stored.startswith("\\\\?\\"):
+        return stored[len("\\\\?\\") :]
+    return stored
+
+
 def _leftover(destination: Path) -> Placed | None:
     """What sits at a destination no source names (None: a directory).
 
@@ -399,7 +412,8 @@ def _leftover(destination: Path) -> Placed | None:
     """
     if destination.is_symlink():
         source = EXTENSIONS_DIR / destination.name
-        return Placed(link_to_source=destination.readlink() == source)
+        stored = drop_extended_length_prefix(str(destination.readlink()))
+        return Placed(link_to_source=Path(stored) == source)
     if not destination.is_file():
         return None
     with destination.open(encoding="utf-8", errors="replace") as file:
