@@ -10,7 +10,7 @@
 - **base**：`ROOT_AGENTS.md`。どのエージェントでも常に読まれる短い指示
 - **overlay**：`ROOT_CLAUDE.md`。Claude 専用で、先頭の `@AGENTS.md` で base を読み込む
 - **spoke**：`ROOT_AGENTS_docs_agents_*.md`。必要なときだけ読む詳細（TDD、commit、Python など）
-- **hooks**：`ROOT_AGENTS_hooks_*` と、それを登録する `.claude/settings.hooks.json`（Claude）と `.codex/hooks.json`（Codex）。hook による機械的な強制
+- **hooks**：`ROOT_AGENTS_hooks_*` と、それを登録する `.claude/settings.hooks.json`。hook による機械的な強制。hook の正本はこの 1 つで、Codex 向けの登録は sync がここから作る
 - **settings の断片**：`.claude/settings.shared.json`、`.claude/settings.shared.{macos,linux,windows}.json`、`.claude/settings.profiles/<key>.json`（ADR 0037）
 
 `ROOT_AGENTS_<x>_<y>` という名前のファイルやディレクトリは、`<agent>/<x>/<y>` に配る（`_` を `/` に読み替える）。
@@ -77,7 +77,9 @@ echo '{"tool_input":{"file_path":"config.yml"}}' | bash ~/.claude/hooks/block-pr
 
 Codex は `<codex home>/hooks.json` を読む。
 block の形は Claude と同じで、shell の tool は `Bash`、apply_patch は `Write|Edit` に一致する。
-sync は `.codex/hooks.json` の断片を、Claude の settings.json と同じ所有の規則で併合し、rtk のインストーラが書く block（`RETIRED_HOOK_COMMAND`）は外す。
+sync は `.claude/settings.hooks.json` から Codex 向けの断片を作り（`codex_fragment_from_claude`）、Claude の settings.json と同じ所有の規則で併合する。rtk のインストーラが書く block（`RETIRED_HOOK_COMMAND`）は外す。
+断片は command だけを書き換える。`block-*` のガードは `guard-codex.sh` を通し、`-claude.` のスクリプトは `-codex.` の対に替え、ほかはそのまま動かす。
+repo に `.codex/hooks.json` は置かない。Codex は trusted なプロジェクトの `.codex/hooks.json` も読むので、置くとこの repo の中で hook が 2 回動く（`just codex-hooks-trust --check` と doctor の `codex-hooks` が検出する）。
 hook のファイルは名前で振り分ける。
 名前に `-claude.` を含むファイルは Claude 系だけに、`-codex.` を含むファイルは Codex だけに配る。
 

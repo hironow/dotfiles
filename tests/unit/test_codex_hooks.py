@@ -3,8 +3,8 @@
 Codex reads `<codex home>/hooks.json` (Claude-shaped blocks; its shell tool is
 `Bash`, apply_patch answers to `Write|Edit`). Copies of the guards sat there
 outside the sync and never ran. Sync now distributes the hook files (minus the
-Claude-only rtk wrapper, plus a Codex-only rtk shim) and merges the
-`.codex/hooks.json` fragment with the same ownership rules as Claude's:
+Claude-only rtk wrapper, plus a Codex-only rtk shim) and merges a fragment
+rendered from `.claude/settings.hooks.json` with the same ownership rules as Claude's:
 blocks pointing into `<codex home>/hooks/` are sync's, others are left alone,
 and the block `rtk init --codex` writes is retired.
 """
@@ -29,6 +29,7 @@ from sync_agents import (
     _render_hook_command,
     _SyncItem,
     _wants_hook,
+    codex_fragment_from_claude,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -84,8 +85,79 @@ def test_codex_commands_render_into_the_codex_home() -> None:
     )
 
 
+def _claude_source() -> dict:
+    return json.loads(
+        (ROOT / ".claude/settings.hooks.json").read_text(encoding="utf-8")
+    )
+
+
+def _hook(command: str) -> dict:
+    return {"type": "command", "command": command}
+
+
+# The Codex fragment the repo kept by hand as `.codex/hooks.json` until it was
+# rendered from the one source; rendering must reproduce it exactly.
+CODEX_FRAGMENT = {
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Write|Edit|NotebookEdit",
+                "hooks": [
+                    _hook(
+                        'bash "$CODEX_HOME/hooks/guard-codex.sh" block-prohibited-files.sh'
+                    ),
+                    _hook('bash "$CODEX_HOME/hooks/guard-codex.sh" block-secrets.sh'),
+                ],
+            },
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    _hook(
+                        'bash "$CODEX_HOME/hooks/guard-codex.sh" block-prohibited-commands.sh'
+                    )
+                ],
+            },
+            {
+                "matcher": "Bash",
+                "hooks": [_hook('bash "$CODEX_HOME/hooks/rtk-hook-codex.sh"')],
+            },
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Write|Edit",
+                "hooks": [_hook('bash "$CODEX_HOME/hooks/format-after-edit.sh"')],
+            }
+        ],
+    }
+}
+
+
+def test_the_codex_fragment_is_rendered_from_the_claude_source() -> None:
+    # One source: Codex's hooks are derived from .claude/settings.hooks.json,
+    # so the repo ships no .codex/hooks.json that Codex would also load as
+    # project hooks (they ran twice inside this repo).
+    assert codex_fragment_from_claude(_claude_source()) == CODEX_FRAGMENT
+    assert not (ROOT / ".codex" / "hooks.json").exists()
+
+
+def test_a_hook_removed_from_the_source_leaves_codex_too() -> None:
+    source = _claude_source()
+    del source["hooks"]["PostToolUse"]
+    assert "PostToolUse" not in codex_fragment_from_claude(source)["hooks"]
+
+
+def test_an_unknown_hook_command_stops_the_render() -> None:
+    source = {
+        "hooks": {
+            "PreToolUse": [{"matcher": "Bash", "hooks": [_hook("rtk hook claude")]}]
+        }
+    }
+    with pytest.raises(ValueError, match="rtk hook claude"):
+        codex_fragment_from_claude(source)
+
+
 def test_the_codex_fragment_runs_the_guards_and_rtk() -> None:
-    fragment = json.loads((ROOT / ".codex/hooks.json").read_text(encoding="utf-8"))
+    fragment = codex_fragment_from_claude(_claude_source())
     commands = {
         (event, block["matcher"], hook["command"])
         for event, blocks in fragment["hooks"].items()

@@ -44,10 +44,9 @@ BASE_FILE = "ROOT_AGENTS.md"
 # Claude-only overlay (imports the base via `@AGENTS.md`). Distributed as the
 # main_file for claude-family agents; the base is written alongside as AGENTS.md.
 OVERLAY_FILE = "ROOT_CLAUDE.md"
-# Hooks settings fragment merged into each claude-family agent's settings.json.
+# The one source of the dotfiles hooks: merged into each claude-family agent's
+# settings.json, and rendered for every other harness (codex_fragment_from_claude).
 HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
-# Codex reads Claude-shaped hook blocks from <codex home>/hooks.json.
-CODEX_HOOK_FRAGMENT = ".codex/hooks.json"
 # Hook commands a third-party installer writes into the agent home that dotfiles
 # has since replaced with a managed hook. Their commands do not point at
 # <agent>/hooks/, so _is_managed_hook_block would classify them as user blocks
@@ -732,6 +731,64 @@ def _is_retired_hook_block(block: dict) -> bool:
     )
 
 
+_CLAUDE_HOOK_COMMAND = re.compile(
+    r'^bash "\$CLAUDE_PROJECT_DIR/\.claude/hooks/([\w.-]+)"$'
+)
+
+
+def _codex_hook_command(command: str) -> str:
+    """One Claude hook command as Codex runs it.
+
+    The exit-2 guards (`block-*`) go through `guard-codex.sh`, which turns exit 2
+    into Codex's deny JSON (pwsh turns exit 2 into 1, and Codex fails open on
+    1). A `-claude.` script has a `-codex.` twin. The rest run as they are.
+    """
+    match = _CLAUDE_HOOK_COMMAND.match(command)
+    if match is None:
+        msg = f"hook command not in the form the renderer knows: {command}"
+        raise ValueError(msg)
+    script = match.group(1)
+    if script.startswith("block-"):
+        return f'bash "$CODEX_HOME/hooks/guard-codex.sh" {script}'
+    return f'bash "$CODEX_HOME/hooks/{script.replace("-claude.", "-codex.")}"'
+
+
+def codex_fragment_from_claude(fragment: dict) -> dict:
+    """Codex's hooks.json fragment, rendered from the one Claude source.
+
+    Codex reads Claude-shaped blocks with the same event and matcher names, so
+    only the commands change. Keeping no second copy in the repo also keeps
+    Codex from loading a project `.codex/hooks.json` there on top of the
+    global one, which ran every hook twice inside this repository.
+    """
+    return {
+        "hooks": {
+            event: [
+                {
+                    "matcher": block.get("matcher"),
+                    "hooks": [
+                        {**hook, "command": _codex_hook_command(hook["command"])}
+                        for hook in block.get("hooks", [])
+                    ],
+                }
+                for block in blocks
+            ]
+            for event, blocks in fragment.get("hooks", {}).items()
+        }
+    }
+
+
+def hook_fragment(dotfiles_dir: Path, agent: AgentTarget) -> dict | None:
+    """The hook fragment for this agent, from the one source (None without it)."""
+    source = dotfiles_dir / HOOK_SETTINGS_FRAGMENT
+    if not source.exists():
+        return None
+    fragment = json.loads(source.read_text(encoding="utf-8"))
+    return (
+        codex_fragment_from_claude(fragment) if agent.receives_codex_hooks else fragment
+    )
+
+
 def _merge_hook_settings(
     dotfiles_dir: Path,
     agent: AgentTarget,
@@ -753,12 +810,9 @@ def _merge_hook_settings(
     no-op. With dry_run=True nothing is written. Returns True if the file would
     change.
     """
-    fragment_path = dotfiles_dir / (
-        CODEX_HOOK_FRAGMENT if agent.receives_codex_hooks else HOOK_SETTINGS_FRAGMENT
-    )
-    if not fragment_path.exists():
+    fragment = hook_fragment(dotfiles_dir, agent)
+    if fragment is None:
         return False
-    fragment = json.loads(fragment_path.read_text(encoding="utf-8"))
     target_path = agent.directory / (
         "hooks.json" if agent.receives_codex_hooks else "settings.json"
     )

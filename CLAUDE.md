@@ -18,7 +18,7 @@
   `.claude/settings.shared*.json` / `.claude/settings.profiles/` = 層状 settings fragment (ADR 0037)。
 - **`just sync-agents` が各 agent home へ配る** (base → `~/.codex/AGENTS.md` /
   `~/.gemini/GEMINI.md` / `~/.claude*/AGENTS.md`、overlay → `~/.claude*/CLAUDE.md`、
-  spoke → `<agent>/docs/agents/`、hooks と settings は Claude 系のみ update-in-place マージ)。
+  spoke → `<agent>/docs/agents/`、hooks は Claude 系と Codex（Codex 向けは同じ正本から生成）、settings は Claude 系のみ。どちらも update-in-place マージ)。
   skills と Antigravity の自己管理領域は sync しない。
   `scripts/sync_agents.py`、`ROOT_*`、`.claude/settings.*.json` を触る前に
   `docs/agent-sync.md` を読む (spoke 参照の絶対パス rewrite、hook block の所有範囲と

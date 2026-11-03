@@ -213,3 +213,38 @@ def test_a_trust_run_prints_what_it_trusted_then_what_is_wrong(
     from doctor_lines import fmt
 
     assert [fmt(line) for line in trust.trust_lines(trusted, found, 5)] == printed
+
+
+def test_a_project_copy_of_a_dotfiles_hook_is_reported(tmp_path: Path) -> None:
+    # Codex also loads <project>/.codex/hooks.json for a trusted project; a
+    # project entry that runs one of our hook scripts makes it run twice.
+    home = _home(tmp_path)
+    expected = trust.expected_hooks(ROOT, home, system="Linux")
+    project = {
+        **_entry(
+            home,
+            "preToolUse",
+            "Bash",
+            'bash "$CODEX_HOME/hooks/guard-codex.sh" block-prohibited-commands.sh',
+        ),
+        "source": "project",
+        "sourcePath": "/repo/.codex/hooks.json",
+    }
+    found = trust.project_duplicates([project], expected)
+    assert found == [
+        (
+            "preToolUse Bash block-prohibited-commands.sh: also registered by "
+            "/repo/.codex/hooks.json, so it runs twice there (delete that file)"
+        )
+    ]
+
+
+def test_project_hooks_of_other_scripts_are_left_alone(tmp_path: Path) -> None:
+    home = _home(tmp_path)
+    expected = trust.expected_hooks(ROOT, home, system="Linux")
+    other = {
+        **_entry(home, "preToolUse", "Bash", "bash ./scripts/project-check.sh"),
+        "source": "project",
+        "sourcePath": "/repo/.codex/hooks.json",
+    }
+    assert trust.project_duplicates([other], expected) == []

@@ -9,7 +9,8 @@ Instructions in AGENTS.md and CLAUDE.md are advisory. Rules that must hold
 every time are enforced at three points:
 
 1. **Claude Code and Codex hooks** run before and after tool calls. The
-   dotfiles repo distributes them with `just sync-agents`.
+   dotfiles repo distributes them with `just sync-agents`, from one source
+   (`.claude/settings.hooks.json`); Codex's registration is rendered from it.
 2. **Git pre-commit** (`.githooks/pre-commit` → `just check`) is the gate for
    humans and any tool that runs `git commit` (`just install-hooks` per clone).
 3. **CI** (`.github/workflows/quality-gate.yaml`) is the merge gate:
@@ -41,9 +42,11 @@ tail.
   also unwraps `rtk` (including `rtk proxy|run|err|test|summary|smart <cmd>`) so
   `rtk pnpm install` is blocked like `pnpm install`.
 - `rtk-hook-claude.sh` / `rtk-hook-codex.sh` (Bash): wraps `rtk hook` for the
-  mandatory output proxy (dotfiles ADR 0047). Fails open (`exit 0` on error)
-  and strips `permissionDecision` so rewritten commands keep the normal
-  permission flow. Details: docs/agents/rtk.md.
+  mandatory output proxy (dotfiles ADR 0047). Fails open (`exit 0` on error).
+  The Claude wrapper strips `permissionDecision` so rewritten commands keep the
+  normal permission flow; the Codex wrapper forwards it, because Codex reads it
+  only as the carrier of the rewrite and grants no approval with it. Details:
+  docs/agents/rtk.md.
 - `format-after-edit.sh` (PostToolUse Write|Edit): runs `ruff format` +
   `ruff check --fix` on the edited Python file, and `gofmt -w` on the edited Go
   file (single file only).

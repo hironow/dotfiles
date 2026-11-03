@@ -5,9 +5,11 @@ Codex runs a non-managed hook only when `hooks.state.<key>.trusted_hash` in
 ~/.codex/config.toml equals the hook's current hash (codex-rs hooks/src/engine/
 discovery.rs). The TUI's /hooks review records it with two app-server calls,
 `hooks/list` and `config/batchWrite` (codex-rs tui/src/hooks_rpc.rs); this does
-the same, for exactly the entries the repo's .codex/hooks.json renders (event,
-matcher, full command) in <codex home>/hooks.json, and only while every hook file
-sync placed there is byte-identical to its source. Nothing else is trusted.
+the same, for exactly the entries sync renders from the one source,
+.claude/settings.hooks.json (event, matcher, full command), in <codex
+home>/hooks.json, and only while every hook file sync placed there is
+byte-identical to its source. Nothing else is trusted. It also reports a project
+hook in the dotfiles checkout that runs one of those scripts again.
 
 Usage: codex_hooks_trust.py [--check]   (--check reports without writing)
 Prints doctor-style OK/WARN lines; exit 1 when a hook would not run.
@@ -25,10 +27,10 @@ from typing import Protocol
 
 from doctor_lines import Line, failed, fmt
 from sync_agents import (
-    CODEX_HOOK_FRAGMENT,
     AgentTarget,
     _render_hook_command,
     _wants_hook,
+    hook_fragment,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,10 +59,8 @@ def _event_key(event: str) -> str:
 def expected_hooks(
     dotfiles_dir: Path, codex_home: Path, system: str | None = None
 ) -> set[Hook]:
-    fragment = json.loads(
-        (dotfiles_dir / CODEX_HOOK_FRAGMENT).read_text(encoding="utf-8")
-    )
     agent = _codex(codex_home)
+    fragment = hook_fragment(dotfiles_dir, agent) or {}
     return {
         (
             _event_key(event),
@@ -147,6 +147,35 @@ def problems(
             found.append(f"{label}: disabled in Codex (enable it in Codex's /hooks)")
         elif entry.get("async"):
             found.append(f"{label}: async, so it can neither block nor rewrite")
+    return found
+
+
+def _script(command: str) -> str:
+    """The hook script a command runs: the last word ending in `.sh`."""
+    words = [word.strip("\"'") for word in command.split()]
+    scripts = [word.rsplit("/", 1)[-1] for word in words if word.endswith(".sh")]
+    return scripts[-1] if scripts else ""
+
+
+def project_duplicates(entries: Iterable[dict], expected: set[Hook]) -> list[str]:
+    """Project hooks that run a dotfiles hook script again.
+
+    For a trusted project Codex also loads `<project>/.codex/hooks.json`; an
+    entry there that runs one of our scripts on the same event and matcher
+    makes that hook run twice inside the project.
+    """
+    ours = {(event, matcher, _script(command)) for event, matcher, command in expected}
+    found = []
+    for entry in entries:
+        if entry.get("source") != "project":
+            continue
+        event, matcher, command = _ident(entry)
+        script = _script(command)
+        if (event, matcher, script) in ours:
+            found.append(
+                f"{event} {matcher} {script}: also registered by "
+                f"{entry.get('sourcePath')}, so it runs twice there (delete that file)"
+            )
     return found
 
 
@@ -265,6 +294,9 @@ def main(argv: Sequence[str]) -> int:
             client.request("config/batchWrite", batch_write_params(chosen))
             entries = list_hooks(client, Path.home())
         found = problems(entries, expected, codex_home)
+        # The dotfiles checkout is a trusted Codex project: anything it ships as
+        # project hooks would run on top of the global ones there.
+        found += project_duplicates(list_hooks(client, ROOT), expected)
     lines = trust_lines(len(chosen), found, len(expected))
     for line in lines:
         print(fmt(line))
