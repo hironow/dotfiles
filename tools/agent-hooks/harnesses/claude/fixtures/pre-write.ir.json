@@ -1,0 +1,12 @@
+{
+  "tool": "Write",
+  "kind": "write",
+  "fields": {
+    "filePath": {
+      "string": "/home/user/project/note.md"
+    },
+    "content": {
+      "string": "hello\n"
+    }
+  }
+}

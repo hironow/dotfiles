@@ -1,0 +1,19 @@
+{
+  "name": "claude",
+  "versions": ["2.1.316", "2.1.317"],
+  "tools": {
+    "Bash": "shell",
+    "Write": "write",
+    "Edit": "edit",
+    "NotebookEdit": "notebook"
+  },
+  "events": {
+    "pre": {
+      "schema": "pre.schema.json",
+      "answers": {
+        "pass": {"exit": 0},
+        "block": {"exit": 2, "stderr": "{{.Message}}\n"}
+      }
+    }
+  }
+}

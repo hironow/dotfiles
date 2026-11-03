@@ -1,0 +1,26 @@
+{
+  "name": "codex",
+  "versions": ["0.166.0"],
+  "tools": {
+    "Bash": "shell",
+    "apply_patch": "patch"
+  },
+  "events": {
+    "pre": {
+      "schema": "pre.schema.json",
+      "answers": {
+        "pass": {"exit": 0},
+        "block": {
+          "exit": 0,
+          "stdoutJSON": {
+            "hookSpecificOutput": {
+              "hookEventName": "PreToolUse",
+              "permissionDecision": "deny",
+              "permissionDecisionReason": "{{oneLine .Message}}"
+            }
+          }
+        }
+      }
+    }
+  }
+}
