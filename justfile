@@ -835,9 +835,11 @@ rttm-check: rttm-lint rttm-typecheck
 #
 # Scope is deliberate. The emulator/*-cli modules need running emulators and a
 # populated module cache, which is what `just ci-emu` is for; putting them in the
-# fast gate would make `just check` depend on Docker. tools/ modules are
-# stdlib-only and run in seconds, so `-short` costs nothing here and keeps the
-# contract for any module that later adds a long sweep behind it.
+# fast gate would make `just check` depend on Docker. tools/ modules run in
+# seconds and need no service (tools/agent-hooks has one dependency, go-json,
+# which go fetches into the module cache on first use), so `-short` costs
+# nothing here and keeps the contract for any module that later adds a long
+# sweep behind it.
 #
 # Strict bash: just's default `sh -cu` would let a failing iteration inside the
 # loop pass unnoticed.
