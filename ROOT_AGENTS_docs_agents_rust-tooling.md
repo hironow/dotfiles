@@ -13,8 +13,8 @@ Choose Rust only when Go does not fit:
 - you extend an existing Rust codebase.
 
 These are constraints. Wanting more speed is a different reason, and not one
-by itself: measure where the time goes first ("Measure before you optimise" in
-docs/agents/go-tooling.md). When most of the end-to-end time is the network,
+by itself: measure where the time goes first (docs/agents/performance.md, and
+"Measure before you optimise" in docs/agents/go-tooling.md for the Go tools). When most of the end-to-end time is the network,
 an exchange, a disk, or another service, a faster language changes little.
 
 When Go does not fit, use Rust, never C++ or Java. Ownership and the borrow

@@ -5,8 +5,8 @@ Read this when you write or change Python. Use `uv` for packages (AGENTS.md).
 ## Speed: move the slow part, do not tune Python
 
 Do not do systems-level speed work in Python (C extensions, Cython, shared
-memory, lock-free structures). When a Python tool is too slow, measure first,
-then fix I/O, queries, the call pattern, and the algorithm in Python. Only if
+memory, lock-free structures). When a Python tool is too slow, measure first
+(docs/agents/performance.md), then fix I/O, queries, the call pattern, and the algorithm in Python. Only if
 the computation itself still misses the requirement, move that part to Go
 (Rust only when Go does not fit; see docs/agents/rust-tooling.md). Existing
 Python tooling otherwise stays where it is.
