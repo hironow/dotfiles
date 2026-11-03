@@ -32,14 +32,21 @@ type Entry struct {
 // Entries returns every entry, and fails the test when a line does not decode.
 func Entries(tb testing.TB) []Entry {
 	tb.Helper()
-	lines := strings.Split(strings.TrimSuffix(corpus, "\n"), "\n")
-	entries := make([]Entry, 0, len(lines))
+	return decodeLines(tb, "command-guard.jsonl", corpus, func(e *Entry, line int) { e.Line = line })
+}
+
+// decodeLines decodes one JSON object per line of text into a T, rejecting
+// members T does not have, and records each entry's line with at.
+func decodeLines[T any](tb testing.TB, name, text string, at func(*T, int)) []T {
+	tb.Helper()
+	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	entries := make([]T, 0, len(lines))
 	for i, line := range lines {
-		entry := Entry{Line: i + 1}
-		err := json.Unmarshal([]byte(line), &entry, json.RejectUnknownMembers(true))
-		if err != nil {
-			tb.Fatalf("command-guard.jsonl:%d: %v", entry.Line, err)
+		var entry T
+		if err := json.Unmarshal([]byte(line), &entry, json.RejectUnknownMembers(true)); err != nil {
+			tb.Fatalf("%s:%d: %v", name, i+1, err)
 		}
+		at(&entry, i+1)
 		entries = append(entries, entry)
 	}
 	return entries
