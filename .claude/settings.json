@@ -81,5 +81,12 @@
   },
   "companyAnnouncements": [
     "Welcome to dotfiles!"
+  ],
+  "claudeMdExcludes": [
+    "**/gcloud/**",
+    "**/payments/**",
+    "**/protocols/**",
+    "**/tools/tmux/plugins/**",
+    "**/knowledge-work-plugins/**"
   ]
 }
