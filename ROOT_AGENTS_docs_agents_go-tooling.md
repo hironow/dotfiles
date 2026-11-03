@@ -24,14 +24,58 @@ version:
 
 - **UUID**: `uuid` (`uuid.New`, `uuid.NewV7`, `uuid.Parse`). Not
   `github.com/google/uuid`.
-- **JSON**: `encoding/json/v2`. Go 1.27 provides it without an experiment
-  flag. New marshal/unmarshal code uses v2; existing `encoding/json` code stays
-  until that code is migrated.
 - **HTTP, crypto, sync, testing, log/slog**: standard library.
 
 `golang.org/x/*` is the exception when a package lives there before it moves
 into the standard library. Treat it as Class 1, not as a niche utility. Dependency
 classes: docs/agents/dependency-policy.md.
+
+## JSON: `github.com/goccy/go-json` (required)
+
+JSON is the one exception to "standard library first". go-json is faster than
+the standard library with the same API, and one JSON implementation in every
+repository keeps the behavior the same everywhere. In Go code the repository
+owns, never import `encoding/json`, `encoding/json/v2`, or
+`encoding/json/jsontext`:
+
+| Standard library | Use instead |
+| --- | --- |
+| `encoding/json/v2` | `github.com/goccy/go-json/v2` (new code) |
+| `encoding/json/jsontext` | `github.com/goccy/go-json/jsontext` |
+| `encoding/json` | `github.com/goccy/go-json` (code that keeps the v1 API) |
+
+Replace existing uses actively, one module at a time:
+
+- When you change a module that still imports a standard-library JSON package,
+  swap the whole module first, in its own `refactor:` commit before the
+  behavior change. A large module may get its own PR. Do not wait for a
+  rewrite.
+- Swap every JSON import of the module in that commit, and add go-json to
+  `go.mod` and `go.sum`. go-json's types are its own, not aliases of the
+  standard library's, so a half-swapped module breaks without an error:
+    - `MarshalJSONTo` / `UnmarshalJSONFrom` methods take the `Encoder` /
+      `Decoder` of `github.com/goccy/go-json/jsontext`. With
+      `github.com/goccy/go-json/v2`, methods that take the standard library's
+      are not called (the v1 package still calls them on Go 1.27). Swap them
+      anyway, so the module does not depend on which package marshals it.
+    - `errors.As` / `errors.Is` targets become go-json's error types
+      (`SyntaxError`, `SemanticError`, ...). `RawMessage`, `Number`, `Token`,
+      and `Delim` stay the standard library's.
+- Before you swap, grep the module and its direct dependencies for
+  `MarshalJSONTo` / `UnmarshalJSONFrom` that take `encoding/json/jsontext`. If
+  the module holds code you must not swap (generated code, a third-party type
+  or API bound to the standard library's JSON types), do not half-swap it: stop
+  and report it.
+- Prove the swap changed nothing: `go build ./...`, `go vet ./...`, and
+  `go test ./...` pass with the tests and fixtures unchanged, and so does the
+  repository's build for every OS and CPU it ships. If an option or function
+  you use has no go-json counterpart, stop and report it; never fall back to
+  the standard library in silence.
+- Never swap code another project owns: git submodules, vendored copies you do
+  not maintain, the module cache.
+- Where a lint rule (golangci `depguard`) is set up, it blocks the
+  standard-library imports. Elsewhere, find what is left with
+  `grep -rn --include='*.go' '"encoding/json' <module>`.
 
 ## Quality gate
 

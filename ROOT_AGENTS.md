@@ -37,7 +37,8 @@ its reason so you can apply it to cases a check does not list.
   use the official standard library before a third-party package, and use its
   newest features and methods. A third-party package needs a reason the
   standard library cannot meet. Fewer packages mean less supply-chain risk and
-  fewer upgrades.
+  fewer upgrades. Go JSON is the one exception: use `github.com/goccy/go-json`
+  (docs/agents/go-tooling.md).
 - **Never use LiteLLM, in any repo or language.** Its PyPI release channel
   shipped credential-stealing malware twice in 2026 within hours, faster than
   any cooldown window can cover. Call a provider SDK directly. Existing uses are

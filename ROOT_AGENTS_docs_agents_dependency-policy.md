@@ -46,6 +46,9 @@ does more damage through the supply chain.
   then finds a malicious or yanked release before you adopt it.
 - Read the changelog before you merge a major.
 - **If you are unsure which class a dependency belongs to, treat it as Class 2.**
+- `github.com/goccy/go-json` is a required Class 2 dependency (one maintainer,
+  v0.x; docs/agents/go-tooling.md). Keep the cooldown, and treat every v0.x
+  minor release as a major: read its changelog before you merge it.
 
 ## Cadence and security alerts
 
