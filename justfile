@@ -851,6 +851,15 @@ go-test:
       (cd "$dir" && mise x -- go test -short ./...)
     done
 
+# tools/agent-hooks/internal/guardcorpus/command-guard.jsonl is what the Go command guard is
+# tested against, and commandguard/pyword_table.go is Python's \w for it. Both follow
+# Python 3.14 (Unicode 16.0). Run this after changing the Python guard or its tests
+# (tests/unit/test_command_guard_corpus.py fails until you do).
+# Rewrite the Go command guard's test corpus from the Python guard (the reference).
+[group('Test')]
+command-guard-corpus:
+    @{{UV_RUN}} --python 3.14 scripts/command_guard_corpus.py
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash
