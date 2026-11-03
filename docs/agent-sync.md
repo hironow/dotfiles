@@ -38,7 +38,13 @@ global な規則を変えるときは、正本を編集して `just sync-agents`
 
 settings.json は利用者のキーを壊さないよう、その場で併合する（配布の manifest では追跡しない）。
 
-sync が所有する hook の block は、command がすべて `<agent>/hooks/` を指すものだけである。
+sync が所有する hook の block は、すべての command が `<agent>/hooks/` を指すか、agent-hook（`docs/plan/agent-hooks-go.md`）の版の実行ファイルを実行するものだけである。
+版の実行ファイルは `.../dotfiles/agent-hooks/releases/<版 ID>/agent-hook`（Windows は `.exe`）である。
+数えるのは、sync が描く形で、絶対パスのその実行ファイルをプログラムとして実行する command だけである（`_runs_agent_hook_release`）。
+形は、Claude の exec 形式（`args` があり、`command` がパスそのもの）、sh の `'...'`（`'` は `'\''`）、PowerShell の `& '...'`（`'` は `''`）、cmd の `"..."` の 4 つ。
+harness がまだ展開する印（cmd の `%` と `!`、Claude の exec 形式の `${`）を含むパスは数えない。
+Windows のパスは `\` と `/` を同じ区切りとして比べ、POSIX のパスは書いたとおりに比べる（POSIX では `\` はファイル名の文字）。
+引数、代入、リダイレクトでそのパスに触れるだけの command は、利用者のものとして残す。
 その block は毎回、最新の断片で置き換える（hook のコマンドを変えても、古い block が重複して残らない）。
 利用者が作った block は残す。
 `<agent>/hooks/` のファイルのうち、先頭に第三者のインストーラの見出し（`# installed by herdr` など、`THIRD_PARTY_HOOK_HEADERS`）があるものは、そのインストーラのものとして扱う。

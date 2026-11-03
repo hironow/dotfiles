@@ -59,6 +59,46 @@ HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
 RETIRED_HOOK_COMMAND = re.compile(
     r'^(?:"[^"]*[/\\])?rtk(?:\.exe)?"?\s+hook\s+(?:claude|codex)(?:\s|$)'
 )
+# An agent-hook release binary, by its absolute path:
+# <data dir>/dotfiles/agent-hooks/releases/<release-id>/agent-hook[.exe], where
+# the release ID is lowercase hex of at least 12 characters. A Windows path is
+# matched after `\` -> `/`; on POSIX `\` is a filename character, so a POSIX
+# path is matched as written.
+_RELEASE_PATH = (
+    r"/(?:[^/]+/)*dotfiles/agent-hooks/releases/[0-9a-f]{12,}/agent-hook(?:\.exe)?"
+)
+POSIX_RELEASE = re.compile(_RELEASE_PATH)
+WINDOWS_RELEASE = re.compile(r"[A-Za-z]:" + _RELEASE_PATH)
+
+
+@dataclass(frozen=True)
+class _Launcher:
+    """A shell-form launcher sync renders for a release binary."""
+
+    start: re.Pattern[str]  # the quoted program path at the start of the command
+    escaped_quote: str | None  # how `'` is written inside the quotes
+    windows: bool  # the path is a Windows path (else POSIX)
+    expanded: tuple[str, ...]  # what the shell still expands inside the quotes
+
+
+# The forms sync renders for a release binary: these shell-form launchers, and
+# Claude's exec form (`args` set: the command is the path itself, with Claude's
+# `${...}` placeholders still substituted). Sync owns a hook that runs a release
+# binary in one of them, like the hooks pointing into <agent>/hooks/: reverting
+# the agent-hook wiring and syncing again then replaces them instead of leaving
+# both. Any other command, including one that only mentions a release path,
+# stays the user's. A path holding something its harness still expands does not
+# name itself, so it never counts, and the renderer refuses to write one. The
+# renderer must write only these forms (plan: docs/plan/agent-hooks-go.md).
+AGENT_HOOK_LAUNCHERS = (
+    # sh: '<path>', with ' written as '\''; nothing expands
+    _Launcher(re.compile(r"'((?:[^']|'\\'')*)'(?=\s|$)"), "'\\''", False, ()),
+    # PowerShell: & '<path>', with ' written as ''; nothing expands
+    _Launcher(re.compile(r"&\s+'((?:[^']|'')*)'(?=[\s;]|$)"), "''", True, ()),
+    # cmd: "<path>"; %VAR% and, with delayed expansion, !VAR! still expand
+    _Launcher(re.compile(r'"([^"]*)"(?=\s|$)'), None, True, ("%", "!")),
+)
+_CLAUDE_EXEC_EXPANDED = ("${",)
 # Header line a third-party installer writes at the top of a hook file it owns
 # inside <agent>/hooks/ (herdr: "# installed by herdr"). Such a file is not a
 # stale dotfiles hook, and a settings block calling it is not sync's to replace:
@@ -690,8 +730,42 @@ def _is_third_party_hook(path: Path) -> bool:
     return any(line.strip() in THIRD_PARTY_HOOK_HEADERS for line in head)
 
 
+def _is_release_path(path: str, *, windows: bool, expanded: tuple[str, ...]) -> bool:
+    """Is this program path, as its harness runs it, a release binary?"""
+    if any(token in path for token in expanded):
+        return False
+    if windows:
+        return WINDOWS_RELEASE.fullmatch(path.replace("\\", "/")) is not None
+    return POSIX_RELEASE.fullmatch(path) is not None
+
+
+def _runs_agent_hook_release(hook: dict) -> bool:
+    """Does this hook run an agent-hook release binary as its program, in a
+    form sync renders (Claude's exec form, or AGENT_HOOK_LAUNCHERS)?"""
+    command = hook.get("command")
+    if not isinstance(command, str):
+        return False
+    if isinstance(hook.get("args"), list):  # exec form: no shell, the path itself
+        windows = re.match(r"[A-Za-z]:[\\/]", command) is not None
+        return _is_release_path(
+            command, windows=windows, expanded=_CLAUDE_EXEC_EXPANDED
+        )
+    for launcher in AGENT_HOOK_LAUNCHERS:
+        match = launcher.start.match(command.strip())
+        if match is None:
+            continue
+        path = match[1]
+        if launcher.escaped_quote is not None:
+            path = path.replace(launcher.escaped_quote, "'")
+        return _is_release_path(
+            path, windows=launcher.windows, expanded=launcher.expanded
+        )
+    return False
+
+
 def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
-    """A hook block sync owns: every command points at the agent's hooks dir.
+    """A hook block sync owns: every command points at the agent's hooks dir
+    or runs an agent-hook release binary (_runs_agent_hook_release).
 
     Commands are normalized ``\\`` -> ``/`` before matching so legacy
     Windows-rendered blocks (backslash paths) are recognized as managed and
@@ -702,8 +776,10 @@ def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
     inner = block.get("hooks", [])
     marker = f"{agent.directory.as_posix()}/hooks/"
 
-    def managed(command: str) -> bool:
-        command = command.replace("\\", "/")
+    def managed(hook: dict) -> bool:
+        if _runs_agent_hook_release(hook):
+            return True
+        command = hook.get("command", "").replace("\\", "/")
         if marker not in command:
             return False
         prefix, _, suffix = command.partition(marker)
@@ -714,7 +790,7 @@ def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
             name = match[0] if match else ""
         return not (name and _is_third_party_hook(agent.directory / "hooks" / name))
 
-    return bool(inner) and all(managed(h.get("command", "")) for h in inner)
+    return bool(inner) and all(managed(h) for h in inner)
 
 
 def _is_retired_hook_block(block: dict) -> bool:
