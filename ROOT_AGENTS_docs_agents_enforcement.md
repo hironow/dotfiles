@@ -42,9 +42,11 @@ tail.
   also unwraps `rtk` (including `rtk proxy|run|err|test|summary|smart <cmd>`) so
   `rtk pnpm install` is blocked like `pnpm install`.
 - `rtk-hook-claude.sh` / `rtk-hook-codex.sh` (Bash): wraps `rtk hook` for the
-  mandatory output proxy (dotfiles ADR 0047). Fails open (`exit 0` on error)
-  and strips `permissionDecision` so rewritten commands keep the normal
-  permission flow. Details: docs/agents/rtk.md.
+  mandatory output proxy (dotfiles ADR 0047). Fails open (`exit 0` on error).
+  The Claude wrapper strips `permissionDecision` so rewritten commands keep the
+  normal permission flow; the Codex wrapper forwards it, because Codex reads it
+  only as the carrier of the rewrite and grants no approval with it. Details:
+  docs/agents/rtk.md.
 - `format-after-edit.sh` (PostToolUse Write|Edit): runs `ruff format` +
   `ruff check --fix` on the edited Python file, and `gofmt -w` on the edited Go
   file (single file only).
