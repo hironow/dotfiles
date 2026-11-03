@@ -68,6 +68,8 @@ check() {
 
 while IFS= read -r file_path; do
   [ -n "$file_path" ] && check "$file_path"
-done <<<"$paths"
+# Process substitution, not a here-string: bash 3.2 writes a here-string to a
+# temp file, and where none can be written the loop never ran (a pass).
+done < <(printf '%s\n' "$paths")
 
 exit 0

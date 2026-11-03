@@ -29,7 +29,12 @@ fi
 # sk-proj-/sk-svcacct-/sk-admin-, GitHub fine-grained github_pat_), matched by
 # scoped-prefix classes — broadening the bare sk- class to allow '-' would
 # false-trigger on hyphenated English prose (risk-assessment-...).
-if printf '%s' "$content" | grep -Eq 'sk-(ant|proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[baprs]-[0-9][0-9A-Za-z-]{9,}|glpat-[0-9A-Za-z_-]{20,}|AIza[0-9A-Za-z_-]{35}'; then
+# Without pipefail: grep -q exits at the first match, and with more than a
+# pipe buffer of content left printf then dies of SIGPIPE, which pipefail
+# turned into "no match" (a large write holding a key passed). The status is
+# grep's alone. A here-string would avoid the pipe, but bash 3.2 writes it to
+# a temp file, and a temp dir it cannot write would skip grep entirely.
+if (set +o pipefail; printf '%s' "$content" | grep -Eq 'sk-(ant|proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[baprs]-[0-9][0-9A-Za-z-]{9,}|glpat-[0-9A-Za-z_-]{20,}|AIza[0-9A-Za-z_-]{35}'); then
   echo "BLOCKED: content looks like a live secret (API key / token / private key). Do not commit secrets; use a secret manager and reference via env var." >&2
   exit 2
 fi
