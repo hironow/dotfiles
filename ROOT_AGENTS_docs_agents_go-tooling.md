@@ -104,6 +104,12 @@ output `dist/<name>-<os>-<arch>`, with `.exe` added for Windows.
 Put the target list in one `just` recipe. Keep `CGO_ENABLED=0`; a dependency
 that needs cgo breaks cross-compiling, so it needs an explicit reason.
 
+When a requirement says a process must come back after a restart (a daemon, a
+runner, a login agent), check it once before you report: restart it in a
+development or staging environment, and confirm it comes back with no manual
+step and its saved data is still there. This is not permission to restart
+production.
+
 ## Measure before you optimise
 
 How to compare runs, read the noise, and keep the contract, in any language:

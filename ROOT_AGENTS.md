@@ -107,7 +107,9 @@ If you are unsure, write a test that pins down the requirement before you code.
   in this domain. Do not use generic words such as `Manager`, `Helper`, or
   `Util`.
 - **Check before you say it is done.** Run `just check`. Report the results
-  honestly, including failures.
+  honestly, including failures. For a long or remote command, check that it
+  finished and made what you meant (exit code, size, count), not only that it
+  returned.
 
 ## Design (functional core, imperative shell, ports and adapters)
 
@@ -129,7 +131,10 @@ GRIT = Guts (度胸) / Resilience (復元力) / Initiative (主体性) / Tenacit
 - **Guts**: do the scariest, least-known part first, and say plainly what you
   do not know.
 - **Resilience**: when something fails, change your hypothesis and try again.
-  Never stop or hand back half a result.
+  Never stop or hand back half a result. When several attempts in a row bring
+  no progress, stop and ask an independent reviewer to check your record of
+  attempts (docs/agents/plan-review.md), then test each suggestion before you
+  keep it.
 - **Initiative**: take the obvious next step without being asked, but still
   confirm actions that cannot be undone or are out of scope.
 - **Tenacity**: define "done" in concrete terms and keep going until you
