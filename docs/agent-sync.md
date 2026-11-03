@@ -71,10 +71,11 @@ unit test は `tests/unit/test_agent_hooks.py` にある。
 配布先の `~/.claude/hooks/*` を直接編集しても、次の sync で上書きされる。
 正本を直し、test を足してから `just sync-agents` を実行する。
 
-command guard には Go への移植がある（`tools/agent-hooks`、計画は `docs/plan/agent-hooks-go.md`。まだどの harness にも配線していない）。
-Python の guard と同じ判定をすることを、corpus（`tools/agent-hooks/internal/guardcorpus/command-guard.jsonl`）で確かめている。
-Python の guard かその test を変えたら、`just command-guard-corpus` で corpus を書き直し、Go 側も同じ判定に直す。
-`tests/unit/test_command_guard_corpus.py` と Go の test が、ずれを知らせる。
+command guard、files guard、secrets guard には Go への移植がある（`tools/agent-hooks`、計画は `docs/plan/agent-hooks-go.md`。まだどの harness にも配線していない）。
+元の guard と同じ判定をすることを、`tools/agent-hooks/internal/guardcorpus/` の corpus で確かめている。
+guard かその test を変えたら corpus を書き直し、Go 側も同じ判定に直す。
+command guard は `just command-guard-corpus`、files guard と secrets guard は `just file-guards-corpus` で書き直す。
+`tests/unit/test_command_guard_corpus.py`、`tests/unit/test_file_guards_corpus.py`、Go の test が、ずれを知らせる。
 
 1 つの hook だけを試すには、JSON を標準入力で渡す。
 `exit=2` は止める、`exit=0` は通すという意味である。

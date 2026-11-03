@@ -1,0 +1,231 @@
+{"patch": "*** Begin Patch\n*** Add File: .github/workflows/ci.yml\n+on: push\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'ci.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'ci.yaml'."}, "gnu": {"exit": 2, "reason": "'ci.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'ci.yaml'."}}
+{"patch": "*** Begin Patch\n*** Update File: deploy/app.yaml\n*** Move to: deploy/app.yml\n@@\n-a\n+b\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'app.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'app.yaml'."}, "gnu": {"exit": 2, "reason": "'app.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'app.yaml'."}}
+{"patch": "*** Begin Patch\n*** Add File: docker-compose.yaml\n+services: {}\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"patch": "*** Begin Patch\n*** Add File: ok.yaml\n+a: 1\n*** Add File: bad.yml\n+b: 2\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'bad.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'bad.yaml'."}, "gnu": {"exit": 2, "reason": "'bad.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'bad.yaml'."}}
+{"patch": "*** Begin Patch\n*** Update File: ci.yml\n@@\n-a\n+b\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'ci.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'ci.yaml'."}, "gnu": {"exit": 2, "reason": "'ci.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'ci.yaml'."}}
+{"patch": "*** Begin Patch\n*** Update File: a.yml\n*** Move to: a.yaml\n@@\n-a\n+b\n*** Update File: b.yml\n@@\n-a\n+b\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'b.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'b.yaml'."}, "gnu": {"exit": 2, "reason": "'b.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'b.yaml'."}}
+{"patch": "*** Begin Patch\n*** Add File: compose.yaml\n+services: {}\n*** Update File: src/app.py\n@@\n-a\n+b\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Delete File: old.yml\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Update File: old.yml\n*** Move to: old.yaml\n@@\n-a\n+b\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Update File: docker-compose.yaml\n*** Move to: compose.yaml\n@@\n-a\n+b\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Update File: docs/agents/enforcement.md\n@@\n-x\n+mentions ci.yml\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Add File: a.yml\n+x\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"patch": "*** Begin Patch\n*** Add File: a.yaml\n+x\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Update File: a.yml\n@@\n-x\n+y\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"patch": "*** Begin Patch\n*** Update File: a.yml\n*** Move to: a.yaml\n@@\n-x\n+y\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Update File: a.yaml\n*** Move to: a.yml\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"patch": "*** Begin Patch\n*** Move to: a.yml\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"patch": "*** Begin Patch\n*** Update File: a.yml\n*** Move to: \n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Add File: \n+x\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Delete File: a.yml\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Update File: a.yml\n*** End of File\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"patch": "*** Begin Patch\n*** Update File: a.yml\n*** Update File: b.yaml\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"patch": "*** Begin Patch\n*** Add File: a.yaml\n*** Add File: b.yml\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'b.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'b.yaml'."}, "gnu": {"exit": 2, "reason": "'b.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'b.yaml'."}}
+{"patch": "*** Begin Patch\n*** Update File: x/docs/agents/c.yml\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n***  Add File: a.yml\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** add file: a.yml\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Add File:a.yml\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Add File: a.yml\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "prefix *** Begin Patch\n*** Add File: a.yml\n", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"patch": "*** Begin Patch\n*** Add File: a.yml\r\n+x\r\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"patch": "*** Begin Patch\n*** Add File: docker-compose.yml\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"patch": "*** Begin Patch\n*** Update File: -x.yml\n*** End Patch\n", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"patch": "*** Begin Patch\n*** Update File: --help\n*** Add File: a.yml\n*** End Patch\n", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"patch": "*** Begin Patch\n*** Add File: --version\n*** Add File: b.yml\n*** End Patch\n", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 2, "reason": "'b.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'b.yaml'."}}
+{"patch": "*** Begin Patch\n*** Add File: a.yaml\nb\n*** Add File: c.yml\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'c.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'c.yaml'."}, "gnu": {"exit": 2, "reason": "'c.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'c.yaml'."}}
+{"patch": "*** Begin Patch\n*** Add File: a.yml\n+*** Add File: b.yaml\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"patch": "*** Begin Patch\n*** Add File: \u65e5\u672c.yml\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'\u65e5\u672c.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\u65e5\u672c.yaml'."}, "gnu": {"exit": 2, "reason": "'\u65e5\u672c.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\u65e5\u672c.yaml'."}}
+{"patch": "*** Begin Patch\n*** Update File: a.yaml\n*** Move to: b.yaml\n*** Move to: c.yml\n*** End Patch\n", "bsd": {"exit": 2, "reason": "'c.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'c.yaml'."}, "gnu": {"exit": 2, "reason": "'c.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'c.yaml'."}}
+{"patch": "*** Begin Patch\n*** End Patch\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a.yml", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "a.yaml", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "dir/a.yml", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "/abs/dir/a.yml", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": ".yml", "bsd": {"exit": 2, "reason": "'.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '.yaml'."}, "gnu": {"exit": 2, "reason": "'.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '.yaml'."}}
+{"filePath": "a.YML", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a.yml.bak", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a.ymlx", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docker-compose.yaml", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "docker-compose.yml", "bsd": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "x/docker-compose.yaml", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "docker-compose.yaml.bak", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "compose.yaml", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "compose.yml", "bsd": {"exit": 2, "reason": "'compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'compose.yaml'."}, "gnu": {"exit": 2, "reason": "'compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'compose.yaml'."}}
+{"filePath": "Docker-Compose.yaml", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "AGENTS.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x/AGENTS.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "CLAUDE.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "/r/CLAUDE.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "/repo/docs/agents/x.yml", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a/docs/agents/docker-compose.yml", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docs/agents/x.yml", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "a/docs/agents/../x.yml", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x/docs/agents/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "AGENTS.md/x.yml", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "x/AGENTS.md.yml", "bsd": {"exit": 2, "reason": "'AGENTS.md.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'AGENTS.md.yaml'."}, "gnu": {"exit": 2, "reason": "'AGENTS.md.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'AGENTS.md.yaml'."}}
+{"filePath": "xAGENTS.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a.yml/", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "a.yml//", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "///", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "dir/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a/.yml", "bsd": {"exit": 2, "reason": "'.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '.yaml'."}, "gnu": {"exit": 2, "reason": "'.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '.yaml'."}}
+{"filePath": "-x.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "--", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "a/-x.yml", "bsd": {"exit": 2, "reason": "'-x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '-x.yaml'."}, "gnu": {"exit": 2, "reason": "'-x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '-x.yaml'."}}
+{"filePath": "-", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a.yaml\nb.yml", "bsd": {"exit": 2, "reason": "'b.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'b.yaml'."}, "gnu": {"exit": 2, "reason": "'b.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'b.yaml'."}}
+{"filePath": "b.yml\na.yaml", "bsd": {"exit": 2, "reason": "'b.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'b.yaml'."}, "gnu": {"exit": 2, "reason": "'b.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'b.yaml'."}}
+{"filePath": "\na.yml", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "a.yaml\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.yml\r", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "my file.yml", "bsd": {"exit": 2, "reason": "'my file.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'my file.yaml'."}, "gnu": {"exit": 2, "reason": "'my file.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'my file.yaml'."}}
+{"filePath": "\u65e5\u672c.yml", "bsd": {"exit": 2, "reason": "'\u65e5\u672c.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\u65e5\u672c.yaml'."}, "gnu": {"exit": 2, "reason": "'\u65e5\u672c.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\u65e5\u672c.yaml'."}}
+{"filePath": "x\u0000.yml", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "\t a.yml", "bsd": {"exit": 2, "reason": "'\t a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\t a.yaml'."}, "gnu": {"exit": 2, "reason": "'\t a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\t a.yaml'."}}
+{"filePath": "--help\na.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "--h\na.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "--he\ndocker-compose.yaml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "--version\na.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "--v\na.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "--vers\na.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "--help=x\na.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "--hx\na.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "-a\na.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "--\na.yml", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "-\na.yml", "bsd": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}, "gnu": {"exit": 2, "reason": "'a.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'a.yaml'."}}
+{"filePath": "--help", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a.yml ", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": " ", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "AGENTS.md/.yml/a", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\ndocs/a", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "agents/-x /CLAUDE.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": " /", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docker-compose.yml/docker-compose.yml/../", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "AGENTS.md/AGENTS.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "compose.yamldocker-compose.ymlx.yml/AGENTS.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "..acompose.yaml/ ", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a/x.yml/", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "/aCLAUDE.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docs", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.ymlCLAUDE.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": ".yml/.yml// /", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "compose.yaml .yml/", "bsd": {"exit": 2, "reason": "'compose.yaml .yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'compose.yaml .yaml'."}, "gnu": {"exit": 2, "reason": "'compose.yaml .yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'compose.yaml .yaml'."}}
+{"filePath": "x.yml/docker-compose.yaml/", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "docs/../docker-compose.yml/", "bsd": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "-x/agentsdocs/docker-compose.yaml/", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "/\n/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\u65e5\u672c/-x/AGENTS.md/CLAUDE.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "AGENTS.mda/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": " /docs/docker-compose.yaml/AGENTS.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docker-compose.yml/", "bsd": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "docker-compose.yaml/-x/x.yaml/docs/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "-x/docker-compose.ymlagents", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "CLAUDE.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.yamla/\u65e5\u672c/..", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "-x/agents/", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "a/x.yaml/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\n/docker-compose.yml/CLAUDE.md\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "CLAUDE.mda/../\u65e5\u672c/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "//", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.yml/\ndocker-compose.yml/\n/", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "AGENTS.mddocs/CLAUDE.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "CLAUDE.md/docker-compose.yml", "bsd": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "agents/\n/\u65e5\u672c/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": ".ymlagents/\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "CLAUDE.md/a/AGENTS.md/docker-compose.yaml", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "docs /../..", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": ".ymlAGENTS.md/docker-compose.yaml/", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "x.ymlcompose.yaml/AGENTS.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "agents/AGENTS.md/AGENTS.mdCLAUDE.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.yaml/docker-compose.yml/", "bsd": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "x.yaml/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "../x.yml", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "docs/AGENTS.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.yml/", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "AGENTS.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docker-compose.yaml/", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "AGENTS.mdx.yaml/agents/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docker-compose.yaml/compose.yaml\u65e5\u672ca", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docker-compose.yml/docs/-xa/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "-x", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "-x/compose.yaml/a/docker-compose.yml/", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": " /CLAUDE.mda/docker-compose.yaml/", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "compose.yaml/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": " agents/x.yamlx.yml", "bsd": {"exit": 2, "reason": "'x.yamlx.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yamlx.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yamlx.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yamlx.yaml'."}}
+{"filePath": "docker-compose.yaml/x.yml\ndocker-compose.yml/", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "AGENTS.md/AGENTS.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "compose.yaml/docker-compose.yaml/", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "docs/acompose.yaml", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "AGENTS.md/docker-compose.yaml/-x/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "aagents/AGENTS.mddocs/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docsdocker-compose.yml/", "bsd": {"exit": 2, "reason": "'docsdocker-compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'docsdocker-compose.yaml'."}, "gnu": {"exit": 2, "reason": "'docsdocker-compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'docsdocker-compose.yaml'."}}
+{"filePath": "docker-compose.yaml/\u65e5\u672c/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "agents/a/docker-compose.yaml/", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "compose.yamla/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a docs/\n/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\u65e5\u672ccompose.yaml", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": " /compose.yaml/\u65e5\u672cx.yml/", "bsd": {"exit": 2, "reason": "'\u65e5\u672cx.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\u65e5\u672cx.yaml'."}, "gnu": {"exit": 2, "reason": "'\u65e5\u672cx.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\u65e5\u672cx.yaml'."}}
+{"filePath": "compose.yaml \u65e5\u672c", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docker-compose.yamlx.yml/", "bsd": {"exit": 2, "reason": "'docker-compose.yamlx.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'docker-compose.yamlx.yaml'."}, "gnu": {"exit": 2, "reason": "'docker-compose.yamlx.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'docker-compose.yamlx.yaml'."}}
+{"filePath": "x.yaml/x.yaml/AGENTS.mdagents", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.yml", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "../.ymldocker-compose.yml/AGENTS.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "/.yml/-x", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": ".ymldocs/x.yaml/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.yaml\nAGENTS.md/-x/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.yaml/../-x/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": " /agents/..", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.ymlcompose.yaml/CLAUDE.md/x.yaml/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.ymlagents/compose.yaml/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docs/../AGENTS.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\n/.yml/-x/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "../", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\n/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": ".ymlx.yaml/compose.yaml/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\u65e5\u672cdocker-compose.yml/", "bsd": {"exit": 2, "reason": "'\u65e5\u672cdocker-compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\u65e5\u672cdocker-compose.yaml'."}, "gnu": {"exit": 2, "reason": "'\u65e5\u672cdocker-compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '\u65e5\u672cdocker-compose.yaml'."}}
+{"filePath": "AGENTS.mdCLAUDE.md/agents", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "/ //\n", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "-x../docs", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "a/docker-compose.yml", "bsd": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "CLAUDE.mda../", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "../AGENTS.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docs/docker-compose.yml/-x/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\n/CLAUDE.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "agents/.ymlAGENTS.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "../a/agents/\n/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\u65e5\u672c/CLAUDE.md", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "x.yml/x.yaml/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "/-xx.yaml/\n/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "..a/a/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\u65e5\u672c/x.yaml/ /docker-compose.yml", "bsd": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "agents-x", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a/x.yaml/\n/a/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "-x-x/x.yaml/", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": " /docs/-x/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": ".yml//CLAUDE.md/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "agents/-x/.yml/a/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "..", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\u65e5\u672c/\u65e5\u672c/-x/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "a/ /CLAUDE.md/a/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "agents\u65e5\u672c//", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docs/..", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docker-compose.yaml//docker-compose.yml/docs", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docs/docker-compose.yaml/", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "compose.yaml/.yml", "bsd": {"exit": 2, "reason": "'.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '.yaml'."}, "gnu": {"exit": 2, "reason": "'.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '.yaml'."}}
+{"filePath": "docker-compose.yaml/docs/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": ".yml/docsagents/.yml/", "bsd": {"exit": 2, "reason": "'.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '.yaml'."}, "gnu": {"exit": 2, "reason": "'.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to '.yaml'."}}
+{"filePath": "AGENTS.mdCLAUDE.md/-x/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "docker-compose.yaml/a/", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\u65e5\u672c/x.yml/x.yml", "bsd": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}, "gnu": {"exit": 2, "reason": "'x.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'x.yaml'."}}
+{"filePath": "docker-compose.yml/CLAUDE.mddocker-compose.yml/", "bsd": {"exit": 2, "reason": "'CLAUDE.mddocker-compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'CLAUDE.mddocker-compose.yaml'."}, "gnu": {"exit": 2, "reason": "'CLAUDE.mddocker-compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'CLAUDE.mddocker-compose.yaml'."}}
+{"filePath": "CLAUDE.md//", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": " /agents", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "\ndocker-compose.yamldocker-compose.yml/", "bsd": {"exit": 2, "reason": "'docker-compose.yamldocker-compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'docker-compose.yamldocker-compose.yaml'."}, "gnu": {"exit": 2, "reason": "'docker-compose.yamldocker-compose.yml' uses '.yml'. This project uses '.yaml' exclusively. Rename to 'docker-compose.yamldocker-compose.yaml'."}}
+{"filePath": "x.yml/x.yml/ /docker-compose.yaml", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": ".yml/agents/\u65e5\u672c/docker-compose.yaml", "bsd": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}, "gnu": {"exit": 2, "reason": "'docker-compose.yaml' is the deprecated Compose v1 name. Use 'compose.yaml' (Compose Spec v2+)."}}
+{"filePath": "-x/", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}
+{"filePath": "docker-compose.yml../", "bsd": {"exit": 0, "reason": null}, "gnu": {"exit": 0, "reason": null}}
+{"filePath": "-x/docker-compose.yaml/../a", "bsd": {"exit": 1, "reason": null}, "gnu": {"exit": 1, "reason": null}}

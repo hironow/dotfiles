@@ -862,6 +862,14 @@ go-test:
 command-guard-corpus:
     @{{UV_RUN}} --python 3.14 scripts/command_guard_corpus.py
 
+# tools/agent-hooks/internal/guardcorpus/{files,secrets}-guard.jsonl are what the Go
+# file and secrets guards are tested against. Run this after changing either shell
+# guard or its tests (tests/unit/test_file_guards_corpus.py fails until you do).
+# Rewrite the Go file and secrets guards' test corpora by running the shell guards.
+[group('Test')]
+file-guards-corpus:
+    @{{UV_RUN}} scripts/file_guards_corpus.py
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash
