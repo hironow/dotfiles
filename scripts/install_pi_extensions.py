@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Install declared Pi packages and the dotfiles-owned Pi extensions and agents."""
+"""Install declared Pi packages and the dotfiles-owned Pi extensions and agents.
+
+An extension this installer placed whose source is gone is removed (see
+retired_extension); every other file in the extensions directory is left alone.
+"""
 
 import argparse
 import json
@@ -31,6 +35,9 @@ RETIRED_PACKAGES = ("npm:pi-web-access", "npm:remote-pi")
 TELEMETRY_OFF = {"enableInstallTelemetry": False, "enableAnalytics": False}
 EXTENSIONS_DIR = ROOT / "config/pi/extensions"
 EXTENSION = EXTENSIONS_DIR / "jev-sonnet-fallback.ts"
+# Every extension source starts with this marker followed by its own name
+# (`// dotfiles-managed: rtk` in rtk.ts); retirement recognizes our copies by it.
+EXTENSION_MARKER = "// dotfiles-managed: "
 # A vendored extension (rtk.ts) keeps the upstream file verbatim below this line
 VENDORED_SENTINEL = "// --- upstream rtk.ts follows, unmodified ---\n"
 AGENTS_DIR = ROOT / "config/pi/agents"
@@ -136,6 +143,8 @@ def install(
             _place_extension(agent_dir, extension, symlinks=symlinks)
         except RuntimeError as error:
             refused.append(str(error))
+    if not egm_only:
+        refused += _retire_extensions(agent_dir)
     _render_agents(agent_dir, egm_only=egm_only)
     if EGM_SOURCE in sources:
         _place_egm_guide(agent_dir)
@@ -367,6 +376,60 @@ def placement(source_text: str, placed: Placed, *, symlinks: bool) -> str:
     if placed.text == vendored_body(source_text):
         return "take-over"
     return "refuse"
+
+
+def retired_extension(placed: Placed, name: str) -> bool:
+    """Functional core: is a leftover extension (no current source has its name) ours?
+
+    Ours: a symlink to the source path of that name, or a copy whose first line is
+    our marker for that name. A copy of ours under another name is the user's.
+    """
+    if placed.link_to_source is not None:
+        return placed.link_to_source
+    return (placed.text or "").splitlines()[:1] == [f"{EXTENSION_MARKER}{name}"]
+
+
+def _leftover(destination: Path) -> Placed | None:
+    """What sits at a destination no source names (None: a directory).
+
+    A link is ours only when its stored target is exactly the absolute source
+    path we link to. Nothing is resolved or normalized: a user's link may loop,
+    or spell our path through another link and `..`. A file is read leniently
+    and only its first line: a user's file need not be UTF-8 (cp932).
+    """
+    if destination.is_symlink():
+        source = EXTENSIONS_DIR / destination.name
+        return Placed(link_to_source=destination.readlink() == source)
+    if not destination.is_file():
+        return None
+    with destination.open(encoding="utf-8", errors="replace") as file:
+        return Placed(text=file.readline())
+
+
+def _retire_extensions(agent_dir: Path) -> list[str]:
+    """Remove the extensions we placed whose source is gone; return what failed.
+
+    A leftover that cannot be checked or removed is kept (it may be a user's
+    file) and reported, and the others are still handled.
+    """
+    target_dir = agent_dir / "extensions"
+    if not target_dir.is_dir():
+        return []
+    current = {source.name for source in EXTENSIONS_DIR.glob("*.ts")}
+    failed = []
+    for destination in sorted(target_dir.iterdir()):
+        if destination.suffix != ".ts" or destination.name in current:
+            continue
+        try:
+            placed = _leftover(destination)
+            if placed is None or not retired_extension(placed, destination.stem):
+                continue
+            destination.unlink()
+        except OSError as error:
+            failed.append(f"could not check or remove {destination}: {error}")
+            continue
+        print(f"==> Removed retired Pi extension {destination}")
+    return failed
 
 
 def _placed(destination: Path, source: Path) -> Placed:

@@ -591,3 +591,146 @@ def test_policy_setup_failure_cannot_suppress_extension_placement(
     monkeypatch.setattr(installer.subprocess, "run", Mock(side_effect=failure))
     installer._ensure_ollama([installer.OLLAMA_PACKAGE])
     assert "policy/bridge setup incomplete" in capsys.readouterr().err
+
+
+# An extension dotfiles placed whose source is gone (retired or renamed) is
+# removed on the next install, so retiring one in the repo retires it on every
+# machine. Only our own placements go: a symlink to the source path of its own
+# name, or a copy whose first line is our marker for its own name
+# (`// dotfiles-managed: <name>`). A user's file, a user's copy of one of ours
+# under another name, and a symlink pointing anywhere else stay.
+
+
+def test_every_extension_source_names_itself_in_its_marker() -> None:
+    # Retirement recognizes our copies by this line, so every source must carry it.
+    for source in installer.EXTENSIONS_DIR.glob("*.ts"):
+        first = source.read_text(encoding="utf-8").splitlines()[0]
+        assert first == f"{installer.EXTENSION_MARKER}{source.stem}", source
+
+
+def test_a_retired_extension_we_placed_is_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    extensions = agent / "extensions"
+    extensions.mkdir(parents=True)
+    (extensions / "retired-link.ts").symlink_to(
+        installer.EXTENSIONS_DIR / "retired-link.ts"
+    )
+    (extensions / "retired-copy.ts").write_text(
+        "// dotfiles-managed: retired-copy\nold body\n", encoding="utf-8"
+    )
+    _no_ollama_bootstrap(monkeypatch)
+    monkeypatch.setattr(installer.subprocess, "run", Mock())
+    installer.install(agent, symlinks=True)
+    assert not (extensions / "retired-link.ts").is_symlink()
+    assert not (extensions / "retired-copy.ts").exists()
+    assert (extensions / "jev-sonnet-fallback.ts").is_symlink()
+
+
+def test_files_that_are_not_ours_are_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    extensions = agent / "extensions"
+    extensions.mkdir(parents=True)
+    user = extensions / "mine.ts"
+    user.write_text("export default function () {}\n", encoding="utf-8")
+    renamed_copy = extensions / "my-rtk.ts"
+    renamed_copy.write_text("// dotfiles-managed: rtk\nmy edits\n", encoding="utf-8")
+    not_utf8 = extensions / "legacy.ts"
+    not_utf8.write_bytes("// \u65e5\u672c\n".encode("cp932"))
+    elsewhere = extensions / "elsewhere.ts"
+    elsewhere.symlink_to(tmp_path / "somewhere-else.ts")
+    # A link to itself: resolving it raises on Python 3.12 and not on 3.13+.
+    loop = extensions / "loop.ts"
+    loop.symlink_to(loop)
+    _no_ollama_bootstrap(monkeypatch)
+    monkeypatch.setattr(installer.subprocess, "run", Mock())
+    installer.install(agent, symlinks=True)
+    assert user.read_text(encoding="utf-8") == "export default function () {}\n"
+    assert renamed_copy.read_text(encoding="utf-8") == (
+        "// dotfiles-managed: rtk\nmy edits\n"
+    )
+    assert not_utf8.exists()
+    assert elsewhere.is_symlink()
+    assert loop.is_symlink()
+
+
+def test_a_user_link_that_only_spells_our_path_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # sources/alias/../gone.ts reads like sources/gone.ts, but alias points
+    # elsewhere, so it resolves outside. Only the exact path we link to counts.
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    outside = tmp_path / "outside/subdir"
+    outside.mkdir(parents=True)
+    (sources / "alias").symlink_to(outside)
+    monkeypatch.setattr(installer, "EXTENSIONS_DIR", sources)
+    extensions = tmp_path / "agent/extensions"
+    extensions.mkdir(parents=True)
+    link = extensions / "gone.ts"
+    link.symlink_to(sources / "alias" / ".." / "gone.ts")
+    assert installer._retire_extensions(tmp_path / "agent") == []
+    assert link.is_symlink()
+
+
+def test_a_leftover_that_cannot_be_checked_is_kept_and_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # It may be a user's file: keep it, finish the rest, and report it at the end.
+    agent = tmp_path / "agent"
+    extensions = agent / "extensions"
+    extensions.mkdir(parents=True)
+    locked = extensions / "locked.ts"
+    locked.write_text("// dotfiles-managed: locked\n", encoding="utf-8")
+    retired = extensions / "retired-copy.ts"
+    retired.write_text("// dotfiles-managed: retired-copy\n", encoding="utf-8")
+    real_leftover = installer._leftover
+
+    def leftover(destination: Path) -> object:
+        if destination.name == "locked.ts":
+            raise PermissionError(13, "Permission denied", str(destination))
+        return real_leftover(destination)
+
+    monkeypatch.setattr(installer, "_leftover", leftover)
+    _no_ollama_bootstrap(monkeypatch)
+    monkeypatch.setattr(installer.subprocess, "run", Mock())
+    with pytest.raises(RuntimeError, match=r"locked\.ts"):
+        installer.install(agent, symlinks=True)
+    assert locked.exists()
+    assert not retired.exists()
+    assert (agent / "agents/codex-jev.md").exists()  # later steps still ran
+
+
+def test_an_egm_only_install_retires_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    extensions = agent / "extensions"
+    extensions.mkdir(parents=True)
+    copy = extensions / "retired-copy.ts"
+    copy.write_text("// dotfiles-managed: retired-copy\n", encoding="utf-8")
+    monkeypatch.setattr(installer.subprocess, "run", Mock())
+    monkeypatch.setattr(installer, "_place_egm_guide", lambda _agent: None)
+    installer.install(agent, symlinks=True, egm_only=True)
+    assert copy.exists()
+
+
+@pytest.mark.parametrize(
+    ("placed", "retired"),
+    [
+        (installer.Placed(link_to_source=True), True),
+        (installer.Placed(link_to_source=False), False),
+        (installer.Placed(text="// dotfiles-managed: gone\nx"), True),
+        (installer.Placed(text="// dotfiles-managed: gone\r\nx"), True),
+        (installer.Placed(text="// dotfiles-managed: other\nx"), False),
+        (installer.Placed(text="// dotfiles-managed: gone-not\nx"), False),
+        (installer.Placed(text="user file\n"), False),
+        (installer.Placed(text=""), False),
+        (installer.Placed(), False),
+    ],
+)
+def test_retirement_decides_from_what_is_there(placed: object, retired: bool) -> None:
+    assert installer.retired_extension(placed, "gone") is retired
