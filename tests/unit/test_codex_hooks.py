@@ -334,3 +334,161 @@ def test_rtk_installer_blocks_are_recognised_across_rtk_versions(
 ) -> None:
     block = {"matcher": "Bash", "hooks": [{"type": "command", "command": command}]}
     assert sync_agents._is_retired_hook_block(block) is retired
+
+
+# agent-hook registrations name the release binary. Sync must own them like the
+# script blocks it owns today, so that reverting the agent-hook wiring and
+# syncing again replaces them instead of leaving both (plan: agent-hooks-go).
+# It owns exactly the launcher forms the renderer writes, each quoted by its
+# shell's rules, so a path with an apostrophe, `$`, or a space still counts.
+
+HEX = "0123456789abcdef"
+RELEASE = f"/home/u/.local/share/dotfiles/agent-hooks/releases/{HEX}"
+WINDOWS_TAIL = f"AppData\\Local\\dotfiles\\agent-hooks\\releases\\{HEX}\\agent-hook.exe"
+ARGS = ["pre", "--hook", "prohibited-files"]
+
+
+def _hook(command: str, **fields: object) -> dict:
+    return {"type": "command", "command": command, **fields}
+
+
+# The launcher forms, one per harness, OS, and shell.
+RENDERED = {
+    # Claude, exec form (no shell): the command is the program path itself.
+    "claude exec": _hook(f"{RELEASE}/agent-hook", args=["claude", *ARGS]),
+    "claude exec, windows": _hook(
+        f"C:\\Users\\O'Brien $x\\{WINDOWS_TAIL}", args=["claude", *ARGS]
+    ),
+    # Codex, sh: single quotes, with ' written as '\''.
+    "codex sh": _hook(
+        f"'{RELEASE}/agent-hook' codex pre --hook prohibited-files"
+        " || { printf '%s\\n' 'agent-hook failed' >&2; exit 2; }"
+    ),
+    # On POSIX, `\` is a filename character, not a separator.
+    "codex sh, backslash in a name": _hook(
+        f"'/home/a\\b/.local/share/dotfiles/agent-hooks/releases/{HEX}/agent-hook' codex"
+    ),
+    "codex sh, apostrophe": _hook(
+        "'/home/o'\\''brien/.local/share/dotfiles/agent-hooks/releases/"
+        f"{HEX}/agent-hook' codex pre"
+    ),
+    # Codex, PowerShell: & and single quotes, with ' written as ''. Nothing
+    # inside single quotes expands.
+    "codex powershell": _hook(
+        f"& 'C:\\Users\\O''Brien $x %y% !z!\\{WINDOWS_TAIL}' codex pre --hook prohibited-files;"
+        " if ($LASTEXITCODE -ne 0) { '{}' }"
+    ),
+    # Codex, cmd: double quotes, content literal ($ and spaces included).
+    "codex cmd": _hook(
+        f'"C:\\Users\\build$\\A B\\{WINDOWS_TAIL}" codex pre --hook prohibited-files'
+        ' || echo {"decision":"block"}'
+    ),
+}
+
+
+@pytest.mark.parametrize("hook", RENDERED.values(), ids=RENDERED.keys())
+def test_an_agent_hook_release_block_is_managed(tmp_path: Path, hook: dict) -> None:
+    agent = _codex(tmp_path / "codex")
+    block = {"matcher": "Bash", "hooks": [hook]}
+    assert sync_agents._is_managed_hook_block(block, agent)
+
+
+def test_a_block_that_also_runs_a_user_command_is_not_managed(tmp_path: Path) -> None:
+    agent = _codex(tmp_path / "codex")
+    block = {
+        "matcher": "Bash",
+        "hooks": [RENDERED["codex sh"], _hook("./scripts/mine.sh")],
+    }
+    assert not sync_agents._is_managed_hook_block(block, agent)
+
+
+# Hooks whose program is not a release binary in a rendered form: mentioning
+# the path, a form the renderer does not write, or another program.
+NOT_RUNNING_A_RELEASE = {
+    "not a release id": _hook(
+        "'/opt/dotfiles/agent-hooks/releases/latest/agent-hook' codex"
+    ),
+    "longer name": _hook(f"'{RELEASE}/agent-hook-extra' codex"),
+    "echo": _hook(f'echo "{RELEASE}/agent-hook"'),
+    "argument": _hook(f"sha256sum {RELEASE}/agent-hook"),
+    "unbalanced quotes": _hook(f"'{RELEASE}/agent-hook\" codex pre"),
+    "assignment": _hook(f"AGENT_HOOK={RELEASE}/agent-hook printf ok"),
+    "redirection": _hook(f"sha256sum<{RELEASE}/agent-hook"),
+    "redirection after a path": _hook(f"/bin/cat<{RELEASE}/agent-hook"),
+    "relative": _hook(f"'dotfiles/agent-hooks/releases/{HEX}/agent-hook' codex"),
+    "unquoted shell form": _hook(f"{RELEASE}/agent-hook codex pre"),
+    "double-quoted posix path": _hook(f'"{RELEASE}/agent-hook" codex pre'),
+    "single-quoted windows path": _hook(f"'C:\\Users\\u\\{WINDOWS_TAIL}' codex"),
+    "powershell with a posix path": _hook(f"& '{RELEASE}/agent-hook' codex"),
+    "text after the quote": _hook(f"'{RELEASE}/agent-hook'x codex"),
+    "exec form, relative": _hook("agent-hook", args=ARGS),
+    # On POSIX these name one file whose name holds backslashes.
+    "posix backslashes, sh": _hook(
+        f"'/tmp/user\\dotfiles\\agent-hooks\\releases\\{HEX}\\agent-hook' codex"
+    ),
+    "posix backslashes, exec form": _hook(
+        f"/tmp/user\\dotfiles\\agent-hooks\\releases\\{HEX}\\agent-hook", args=ARGS
+    ),
+    # The harness still expands these, so the path does not name itself: cmd's
+    # %VAR% and !VAR! inside double quotes, Claude's ${...} placeholders.
+    "cmd, %": _hook(
+        f'"C:\\data\\%TEMP%\\dotfiles\\agent-hooks\\releases\\{HEX}\\agent-hook.exe" codex'
+    ),
+    "cmd, !": _hook(
+        f'"C:\\data\\!X!\\dotfiles\\agent-hooks\\releases\\{HEX}\\agent-hook.exe" codex'
+    ),
+    "exec form, placeholder": _hook(
+        f"/home/${{CLAUDE_PROJECT_DIR}}/dotfiles/agent-hooks/releases/{HEX}/agent-hook",
+        args=ARGS,
+    ),
+    "exec form, another program": _hook("/usr/bin/env", args=[f"{RELEASE}/agent-hook"]),
+}
+
+
+@pytest.mark.parametrize(
+    "hook", NOT_RUNNING_A_RELEASE.values(), ids=NOT_RUNNING_A_RELEASE.keys()
+)
+def test_a_hook_that_does_not_run_a_release_is_not_managed(
+    tmp_path: Path, hook: dict
+) -> None:
+    agent = _codex(tmp_path / "codex")
+    block = {"matcher": "Bash", "hooks": [hook]}
+    assert not sync_agents._is_managed_hook_block(block, agent)
+
+
+@pytest.mark.parametrize(
+    "hook", NOT_RUNNING_A_RELEASE.values(), ids=NOT_RUNNING_A_RELEASE.keys()
+)
+def test_a_user_block_that_mentions_a_release_survives_a_sync(
+    tmp_path: Path, hook: dict
+) -> None:
+    agent = _codex(tmp_path / "codex")
+    (agent.directory / "hooks").mkdir(parents=True)
+    user_block = {"matcher": "Bash", "hooks": [hook]}
+    (agent.directory / "hooks.json").write_text(
+        json.dumps({"hooks": {"PreToolUse": [user_block]}}), encoding="utf-8"
+    )
+    _merge_hook_settings(ROOT, agent, system="Linux")
+    merged = json.loads((agent.directory / "hooks.json").read_text(encoding="utf-8"))
+    assert user_block in merged["hooks"]["PreToolUse"]
+
+
+@pytest.mark.parametrize("hook", RENDERED.values(), ids=RENDERED.keys())
+def test_syncing_after_a_revert_replaces_agent_hook_blocks(
+    tmp_path: Path, hook: dict
+) -> None:
+    agent = _codex(tmp_path / "codex")
+    (agent.directory / "hooks").mkdir(parents=True)
+    release_block = {"matcher": "Bash", "hooks": [hook]}
+    (agent.directory / "hooks.json").write_text(
+        json.dumps({"hooks": {"PreToolUse": [release_block]}}), encoding="utf-8"
+    )
+    _merge_hook_settings(ROOT, agent, system="Linux")
+    merged = json.loads((agent.directory / "hooks.json").read_text(encoding="utf-8"))
+    assert release_block not in merged["hooks"]["PreToolUse"]
+    commands = [
+        hook["command"]
+        for block in merged["hooks"]["PreToolUse"]
+        for hook in block["hooks"]
+    ]
+    assert any("guard-codex.sh" in command for command in commands)

@@ -236,7 +236,7 @@ wslconfig:
 deploy:
     @bash scripts/deploy.sh
 
-# Restore declared Pi packages and install the dotfiles Pi extensions (Jev, rtk).
+# Restore declared Pi packages, install the dotfiles Pi extensions (Jev, rtk), remove retired ones.
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
