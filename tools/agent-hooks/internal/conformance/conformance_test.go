@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	json "github.com/goccy/go-json/v2"
 
@@ -117,7 +118,8 @@ var guardCases = map[string][]guardCase{
 // one until the binary fixed the old files guard (fixed-notebook-path).
 var gaps = map[[3]string][]guardCase{}
 
-// notCovered names the hooks these scenarios leave to other tests.
+// notCovered names the hooks these scenarios leave to other tests. Pi's rtk
+// is the binary's own, not a delegate, so the suite covers it (checkPiRTK).
 var notCovered = map[string]string{
 	"rtk": "a delegate to rtk's own adapters; the tool-hooks corpus (internal/toolhookcorpus) covers it",
 }
@@ -147,6 +149,8 @@ func TestEveryHarnessDoesWhatItsSupportSays(t *testing.T) {
 				}
 				t.Run(strings.Join(cell[:], "/"), func(t *testing.T) {
 					switch {
+					case hook == "rtk" && name == "pi":
+						checkPiRTK(t, tool)
 					case notCovered[hook] != "":
 						t.Skip(notCovered[hook])
 					case hook == "formatter":
@@ -332,6 +336,35 @@ func checkAgyPostFailure(t *testing.T, tool string) {
 	}
 	for _, problem := range m.Done() {
 		t.Errorf("error omitted: %s", problem)
+	}
+}
+
+// checkPiRTK: on Pi, a fake rtk's rewrite comes back as the shim protocol's
+// rewrite of the command, and no rtk equivalent is the pass.
+func checkPiRTK(t *testing.T, tool string) {
+	t.Helper()
+	pointer := members["pi"][tool][roleCommand]
+	for _, test := range []struct {
+		result process.Result
+		want   verdict
+	}{
+		{process.Result{Stdout: []byte("rtk git status\n")}, verdict{kind: rewrite, rewritten: "rtk git status"}},
+		{process.Result{Exit: 1}, passed("")},
+	} {
+		m := &fake.Machine{
+			Programs: map[string]process.Program{"rtk": {Path: "/b/rtk"}},
+			Replay: []fake.Invocation{{
+				Command: process.Command{Path: "/b/rtk", Args: []string{"rtk", "rewrite", "git status"}, Timeout: 2 * time.Second},
+				Result:  test.result,
+			}},
+		}
+		payload := scenario(t, "pi", "pre", tool, map[string]any{pointer: "git status"})
+		if got := runBinary(t, m, payload, "pi", "pre", "rtk"); got != test.want {
+			t.Errorf("rtk %+v: %+v, want %+v", test.result, got, test.want)
+		}
+		for _, problem := range m.Done() {
+			t.Error(problem)
+		}
 	}
 }
 

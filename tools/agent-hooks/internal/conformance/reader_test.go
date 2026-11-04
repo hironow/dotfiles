@@ -31,13 +31,15 @@ const (
 )
 
 // verdict is what a harness does with an answer: its kind, a block's reason
-// as the model sees it ("" for a block without one), a pass's notice, and
-// why an answer is invalid.
+// as the model sees it ("" for a block without one), a pass's notice, why an
+// answer is invalid, and the command a rewrite sets, where the reader tells
+// it.
 type verdict struct {
-	kind   string
-	reason string
-	notice string
-	why    string
+	kind      string
+	reason    string
+	notice    string
+	why       string
+	rewritten string
 }
 
 func passed(notice string) verdict      { return verdict{kind: pass, notice: notice} }
@@ -379,7 +381,9 @@ func readShim(a answer, event string) verdict {
 	case action == "block" && event == "pre" && hasReason && !hasSet:
 		return blocked(reason)
 	case action == "rewrite" && event == "pre" && commandOnly(members["set"]):
-		return verdict{kind: rewrite}
+		set, _ := object(string(members["set"]))
+		command, _, _ := stringMember(set, "command")
+		return verdict{kind: rewrite, rewritten: command}
 	default:
 		return invalidBecause(fmt.Sprintf("action %q on %s", action, event))
 	}
@@ -503,7 +507,7 @@ func TestTheReadersReadEachHarnessAsItReadsItself(t *testing.T) {
 		{"pi", "pre", answer{stdout: `{"v":"1","action":"pass"}`}, invalidBecause("v is not 1")},
 		{"pi", "pre", answer{stdout: `{"action":"pass"}`}, invalidBecause("v is not 1")},
 		{"pi", "pre", answer{stdout: `{"v":1,"action":"pass","set":{"command":"x"}}`}, invalidBecause(`action "pass" on pre`)},
-		{"pi", "pre", answer{stdout: `{"v":1,"action":"rewrite","set":{"command":"x"}}`}, verdict{kind: rewrite}},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"rewrite","set":{"command":"x"}}`}, verdict{kind: rewrite, rewritten: "x"}},
 		{"pi", "pre", answer{stdout: `{"v":1,"action":"rewrite"}`}, invalidBecause(`action "rewrite" on pre`)},
 		{"pi", "pre", answer{stdout: `{"v":1,"action":"rewrite","set":{"command":"x","cwd":"/"}}`}, invalidBecause(`action "rewrite" on pre`)},
 		{"pi", "pre", answer{stdout: `{"v":1,"action":"allow"}`}, invalidBecause(`action "allow" on pre`)},

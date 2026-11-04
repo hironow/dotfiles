@@ -49,6 +49,9 @@ func (ExecMachine) Exists(path string) (bool, error) {
 	}
 }
 
+// LookupEnv is os.LookupEnv: the variable's value, and whether it is set.
+func (ExecMachine) LookupEnv(name string) (string, bool) { return os.LookupEnv(name) }
+
 // Run runs the command in this process's environment, as the old scripts'
 // commands ran, and in its working directory unless the command names
 // another. With Combined, stdout and stderr share one pipe, as `2>&1` makes
@@ -88,6 +91,7 @@ func (ExecMachine) Run(command process.Command) (process.Result, error) {
 		return result, nil
 	case errors.As(err, &exitErr):
 		result.Exit = exitErr.ExitCode()
+		result.Signaled = signaled(exitErr)
 		return result, nil
 	default:
 		return process.Result{}, err

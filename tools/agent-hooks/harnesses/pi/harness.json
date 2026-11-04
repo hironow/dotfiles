@@ -38,8 +38,7 @@
     },
     "rtk": {
       "bash": {
-        "level": "unsupported",
-        "reason": "Pi's rtk (rtk rewrite, bash only) comes with the rewrite codec, PR 2g of docs/plan/agent-hooks-go.md; until then the vendored config/pi/extensions/rtk.ts rewrites Pi's commands."
+        "level": "supported"
       }
     },
     "formatter": {
@@ -68,6 +67,16 @@
             "v": 1,
             "action": "block",
             "reason": "{{.Message}}"
+          }
+        },
+        "rewrite": {
+          "exit": 0,
+          "stdoutJSON": {
+            "v": 1,
+            "action": "rewrite",
+            "set": {
+              "command": "{{.Set.command}}"
+            }
           }
         }
       }

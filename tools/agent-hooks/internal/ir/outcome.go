@@ -16,6 +16,9 @@ const (
 	// it is. A delegate hook (rtk on Claude and Codex) answers this way: the
 	// delegate wrote the answer for that harness.
 	Forward
+	// Rewrite lets the tool call run with one input field changed:
+	// Outcome.Set. Pi's rtk answers this way.
+	Rewrite
 )
 
 func (a Action) String() string {
@@ -26,6 +29,8 @@ func (a Action) String() string {
 		return "block"
 	case Forward:
 		return "forward"
+	case Rewrite:
+		return "rewrite"
 	default:
 		return "Action(" + strconv.Itoa(int(a)) + ")"
 	}
@@ -35,8 +40,16 @@ func (a Action) String() string {
 // a pass.
 type Outcome struct {
 	Action Action
-	Rule   string // the rule that blocked, for the log, such as "command.pip"; empty on a pass
-	Reason string // what the agent is told when the call is blocked; empty on a pass
-	Native string // the answer a Forward writes as it is
-	Notice string // what a pass reports, such as the formatter's remaining ruff findings
+	Rule   string     // the rule that blocked, for the log, such as "command.pip"; empty on a pass
+	Reason string     // what the agent is told when the call is blocked; empty on a pass
+	Native string     // the answer a Forward writes as it is
+	Notice string     // what a pass reports, such as the formatter's remaining ruff findings
+	Set    Assignment // the field a Rewrite changes, and its new value
+}
+
+// Assignment is a new string value for one IR field (Field*). A rewrite
+// changes one field today: the command.
+type Assignment struct {
+	Field string
+	Value string
 }

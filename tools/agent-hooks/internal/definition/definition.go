@@ -113,6 +113,7 @@ const (
 	answerPass    = "pass"
 	answerBlock   = "block"
 	answerForward = "forward"
+	answerRewrite = "rewrite"
 )
 
 // Answer is what the binary writes for one outcome.
@@ -294,6 +295,7 @@ func loadEvent(fsys fs.FS, harness, name string, file eventFile, owner harnessFi
 		{Notice: "check"},
 		{Action: ir.Block, Rule: "check", Reason: "check"},
 		{Action: ir.Forward, Native: "{}"},
+		{Action: ir.Rewrite, Set: ir.Assignment{Field: ir.FieldCommand, Value: "check"}},
 	} {
 		if _, ok := answers[answerKey(outcome.Action)]; !ok {
 			continue
@@ -740,6 +742,8 @@ type answerData struct {
 	Message string // "BLOCKED: " and the reason: what the old guards wrote
 	Native  string // a forwarded answer, as the delegate wrote it
 	Notice  string // what a pass reports
+	// Set maps the field a rewrite changes to its new value ({{.Set.command}}).
+	Set map[string]string
 }
 
 var templateFuncs = template.FuncMap{"oneLine": oneLine}
@@ -790,6 +794,8 @@ func (e Event) Answer(outcome ir.Outcome) (Answer, error) {
 		data = answerData{Rule: outcome.Rule, Reason: outcome.Reason, Message: "BLOCKED: " + outcome.Reason}
 	case ir.Forward:
 		data = answerData{Native: outcome.Native}
+	case ir.Rewrite:
+		data = answerData{Set: map[string]string{outcome.Set.Field: outcome.Set.Value}}
 	}
 	chosen, ok := e.answers[key]
 	if !ok {
@@ -818,6 +824,8 @@ func answerKey(action ir.Action) string {
 		return answerBlock
 	case ir.Forward:
 		return answerForward
+	case ir.Rewrite:
+		return answerRewrite
 	default:
 		return answerPass
 	}
