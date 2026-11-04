@@ -10,6 +10,50 @@
     "Edit": "edit",
     "NotebookEdit": "notebook"
   },
+  "hookCwd": "session",
+  "support": {
+    "command-guard": {
+      "Bash": {
+        "level": "supported"
+      }
+    },
+    "files-guard": {
+      "Write": {
+        "level": "supported"
+      },
+      "Edit": {
+        "level": "supported"
+      },
+      "NotebookEdit": {
+        "level": "degraded",
+        "reason": "The guard reads file_path, and NotebookEdit names its file notebook_path. The old script did the same; changing it is a review item."
+      }
+    },
+    "secrets-guard": {
+      "Write": {
+        "level": "supported"
+      },
+      "Edit": {
+        "level": "supported"
+      },
+      "NotebookEdit": {
+        "level": "supported"
+      }
+    },
+    "rtk": {
+      "Bash": {
+        "level": "supported"
+      }
+    },
+    "formatter": {
+      "Write": {
+        "level": "supported"
+      },
+      "Edit": {
+        "level": "supported"
+      }
+    }
+  },
   "events": {
     "pre": {
       "schema": "pre.schema.json",

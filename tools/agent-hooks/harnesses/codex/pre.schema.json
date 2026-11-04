@@ -46,6 +46,7 @@
       "then": {"properties": {"tool_input": {"$ref": "#/definitions/CommandInput"}}}
     }
   ],
+  "x-ir-tool": "/tool_name",
   "x-ir": {
     "command": ["/tool_input/command"],
     "filePath": ["/tool_input/file_path"],

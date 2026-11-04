@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	json "github.com/goccy/go-json/v2"
 
@@ -16,8 +17,8 @@ import (
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/ir"
 )
 
-// The harnesses this PR defines.
-var names = []string{"claude", "codex"}
+// The harnesses defined so far.
+var names = []string{"claude", "codex", "agy"}
 
 // events are the events every harness here defines.
 var events = []string{"pre", "post"}
@@ -40,22 +41,178 @@ func loadEvent(t *testing.T, name, event string) definition.Event {
 	return loaded
 }
 
-func TestEveryHarnessMapsTheFieldsTheScriptsRead(t *testing.T) {
+func TestEveryHarnessMapsTheFieldsItsHooksRead(t *testing.T) {
 	// The old scripts read these fields whatever the harness, the event, and
 	// the tool; the rtk hook reads the payload's cwd.
-	want := map[string][]string{
+	scripts := map[string][]string{
 		ir.FieldCommand:  {"/tool_input/command"},
 		ir.FieldFilePath: {"/tool_input/file_path"},
 		ir.FieldContent:  {"/tool_input/content", "/tool_input/new_string", "/tool_input/new_source"},
 		ir.FieldCwd:      {"/cwd"},
 	}
+	// agy's tools name their arguments themselves (run_command CommandLine,
+	// write_file Path and Content, edit_file Path and Replacement), and each
+	// call names its workspaces.
+	agy := map[string][]string{
+		ir.FieldCommand:   {"/toolCall/args/CommandLine"},
+		ir.FieldFilePath:  {"/toolCall/args/Path"},
+		ir.FieldContent:   {"/toolCall/args/Content", "/toolCall/args/Replacement"},
+		ir.ListWorkspaces: {"/workspacePaths/*"},
+	}
+	want := map[string]map[string][]string{"claude": scripts, "codex": scripts, "agy": agy}
 	for _, name := range names {
 		for _, event := range events {
 			t.Run(name+"/"+event, func(t *testing.T) {
-				if got := loadEvent(t, name, event).IR; !maps.EqualFunc(got, want, slices.Equal) {
-					t.Errorf("x-ir = %v, want %v", got, want)
+				if got := loadEvent(t, name, event).IR; !maps.EqualFunc(got, want[name], slices.Equal) {
+					t.Errorf("x-ir = %v, want %v", got, want[name])
 				}
 			})
+		}
+	}
+}
+
+func TestEveryHarnessRegistersItsHooksForTodaysTools(t *testing.T) {
+	// The tools each hook is registered for (supported or degraded) are the
+	// matchers of today's registrations: .claude/settings.hooks.json for
+	// Claude, the same blocks for Codex under Codex's names, and agy's plugin
+	// (PR 4) for the tools seen in its payloads.
+	want := map[string]map[string][]string{
+		"claude": {
+			"command-guard": {"Bash"},
+			"files-guard":   {"Edit", "NotebookEdit", "Write"},
+			"secrets-guard": {"Edit", "NotebookEdit", "Write"},
+			"rtk":           {"Bash"},
+			"formatter":     {"Edit", "Write"},
+		},
+		"codex": {
+			"command-guard": {"Bash"},
+			"files-guard":   {"apply_patch"},
+			"secrets-guard": {"apply_patch"},
+			"rtk":           {"Bash"},
+			"formatter":     {"apply_patch"},
+		},
+		"agy": {
+			"command-guard": {"run_command"},
+			"files-guard":   {"edit_file", "write_file"},
+			"secrets-guard": {"edit_file", "write_file"},
+			"rtk":           nil,
+			"formatter":     {"edit_file", "write_file"},
+		},
+	}
+	for _, name := range names {
+		def := loadDefinition(t, name)
+		for hook, tools := range want[name] {
+			if got := def.Registered(hook); !slices.Equal(got, tools) {
+				t.Errorf("%s %s: registered for %v, want %v", name, hook, got, tools)
+			}
+		}
+		if len(def.Support) != len(want[name]) {
+			t.Errorf("%s: support names hooks %v, want %v", name, slices.Sorted(maps.Keys(def.Support)),
+				slices.Sorted(maps.Keys(want[name])))
+		}
+	}
+}
+
+func TestEveryKnownGapIsDegradedOrUnsupportedWithItsReason(t *testing.T) {
+	// Every other cell is supported.
+	gaps := map[[3]string]string{
+		// The guard reads file_path; NotebookEdit names notebook_path. The
+		// old script did the same.
+		{"claude", "files-guard", "NotebookEdit"}: definition.LevelDegraded,
+		// agy's sandbox cannot run rtk, and agy checks its permission rules
+		// against the rewritten command.
+		{"agy", "rtk", "run_command"}: definition.LevelUnsupported,
+	}
+	for _, name := range names {
+		def := loadDefinition(t, name)
+		for hook, tools := range def.Support {
+			for tool, support := range tools {
+				want, gap := gaps[[3]string{name, hook, tool}]
+				if !gap {
+					want = definition.LevelSupported
+				}
+				if support.Level != want || (gap && support.Reason == "") {
+					t.Errorf("%s %s %s: %+v, want level %s (with a reason: %v)", name, hook, tool, support, want, gap)
+				}
+			}
+		}
+	}
+}
+
+func TestEveryHarnessSaysWhereItRunsItsHooks(t *testing.T) {
+	// Claude and Codex run a hook in the session's directory, which the old
+	// scripts relied on; agy runs it in the directory holding hooks.json.
+	want := map[string]string{
+		"claude": ir.HookCwdSession,
+		"codex":  ir.HookCwdSession,
+		"agy":    ir.HookCwdRegistration,
+	}
+	for _, name := range names {
+		if got := loadDefinition(t, name).HookCwd; got != want[name] {
+			t.Errorf("%s: hookCwd %q, want %q", name, got, want[name])
+		}
+	}
+}
+
+func TestAgyListsTheToolsItsDocsNameButNoPayloadShowed(t *testing.T) {
+	want := []string{"multi_replace_file_content", "replace_file_content", "write_to_file"}
+	if got := loadDefinition(t, "agy").Pending; !slices.Equal(slices.Sorted(slices.Values(got)), want) {
+		t.Errorf("pending = %v, want %v", got, want)
+	}
+}
+
+func TestLoadRejectsSupportItCannotUse(t *testing.T) {
+	harness := func(extra string) []byte {
+		return []byte(`{"name":"h","versions":["1"],"tools":{"T":"shell"},` + extra +
+			`"events":{"pre":{"schema":"pre.schema.json","answers":{"pass":{"exit":0}}}}}`)
+	}
+	tests := map[string]string{
+		"an unknown level":                    `"hookCwd":"session","support":{"x":{"T":{"level":"maybe"}}},`,
+		"a degraded level with no reason":     `"hookCwd":"session","support":{"x":{"T":{"level":"degraded"}}},`,
+		"an unsupported level with no reason": `"hookCwd":"session","support":{"x":{"T":{"level":"unsupported"}}},`,
+		"a tool the harness does not map":     `"hookCwd":"session","support":{"x":{"U":{"level":"supported"}}},`,
+		"a pending tool that is mapped":       `"hookCwd":"session","pending":["T"],`,
+		"an unknown hook directory":           `"hookCwd":"plugin",`,
+		"no hook directory":                   ``,
+	}
+	control := `"hookCwd":"registration","pending":["U"],"support":{"x":{"T":{"level":"degraded","reason":"r"}}},`
+	if _, err := definition.Load(fstest.MapFS{
+		"h/harness.json":    {Data: harness(control)},
+		"h/pre.schema.json": {Data: []byte(`{"x-ir-tool":"/tool","x-ir":{}}`)},
+	}, "h"); err != nil {
+		t.Fatalf("the control: Load = %v, want it loaded", err)
+	}
+	for what, extra := range tests {
+		_, err := definition.Load(fstest.MapFS{
+			"h/harness.json":    {Data: harness(extra)},
+			"h/pre.schema.json": {Data: []byte(`{"x-ir-tool":"/tool","x-ir":{}}`)},
+		}, "h")
+		if err == nil {
+			t.Errorf("%s: Load = nil, want an error", what)
+		}
+	}
+}
+
+func loadDefinition(t *testing.T, name string) definition.Definition {
+	t.Helper()
+	def, err := definition.Load(harnesses.FS, name)
+	if err != nil {
+		t.Fatalf("Load(%q): %v", name, err)
+	}
+	return def
+}
+
+func TestEverySchemaNamesWhereItsToolNameIs(t *testing.T) {
+	want := map[string]string{"claude": "/tool_name", "codex": "/tool_name", "agy": "/toolCall/name"}
+	for _, name := range names {
+		for _, event := range events {
+			loaded := loadEvent(t, name, event)
+			if loaded.Tool != want[name] {
+				t.Errorf("%s %s: x-ir-tool = %q, want %q", name, event, loaded.Tool, want[name])
+			}
+			if !loaded.Declares(loaded.Tool) {
+				t.Errorf("%s %s: the schema does not declare its tool pointer %q", name, event, loaded.Tool)
+			}
 		}
 	}
 }
@@ -66,6 +223,7 @@ func TestEveryIRPointerIsDeclaredInItsSchema(t *testing.T) {
 	wantUndeclared := map[string][]string{
 		"claude": nil,
 		"codex":  {"/tool_input/file_path", "/tool_input/content", "/tool_input/new_string", "/tool_input/new_source"},
+		"agy":    nil,
 	}
 	for _, name := range names {
 		for _, event := range events {
@@ -100,13 +258,25 @@ func TestDeclaresIsFalseForAPointerTheSchemaLacks(t *testing.T) {
 			t.Errorf("Declares(%q) = true, want false", pointer)
 		}
 	}
+	// "*" is declared by an array's items, not by an object's members.
+	agy := load(t, "agy")
+	for _, pointer := range []string{"/toolCall/*", "/workspacePaths/*/x", "/stepIdx/*"} {
+		if agy.Declares(pointer) {
+			t.Errorf("agy: Declares(%q) = true, want false", pointer)
+		}
+	}
+	if !agy.Declares("/workspacePaths/*") {
+		t.Error(`agy: Declares("/workspacePaths/*") = false, want true`)
+	}
 }
 
 // expectedCall is a fixture's hand-written IR.
 type expectedCall struct {
-	Tool   string                   `json:"tool"`
-	Kind   string                   `json:"kind"`
-	Fields map[string]expectedValue `json:"fields"`
+	Tool       string                     `json:"tool"`
+	Kind       string                     `json:"kind"`
+	Fields     map[string]expectedValue   `json:"fields"`
+	Lists      map[string][]expectedValue `json:"lists"`
+	ToolFailed bool                       `json:"toolFailed"`
 }
 
 type expectedValue struct {
@@ -156,9 +326,17 @@ func TestEveryFixtureValidatesAndDecodesToItsIR(t *testing.T) {
 				for field, value := range want.Fields {
 					wantFields[field] = value.value()
 				}
+				wantLists := map[string][]ir.Value{}
+				for field, values := range want.Lists {
+					for _, value := range values {
+						wantLists[field] = append(wantLists[field], value.value())
+					}
+				}
 				if got.Harness != name || got.Event != event || got.Tool != want.Tool || got.Kind != want.Kind ||
-					!maps.Equal(got.Fields, wantFields) {
-					t.Errorf("Decode = %+v, want tool %q kind %q fields %+v", got, want.Tool, want.Kind, wantFields)
+					!maps.Equal(got.Fields, wantFields) || !maps.EqualFunc(got.Lists, wantLists, slices.Equal) ||
+					got.ToolFailed != want.ToolFailed {
+					t.Errorf("Decode = %+v, want tool %q kind %q fields %+v lists %+v tool failed %v",
+						got, want.Tool, want.Kind, wantFields, wantLists, want.ToolFailed)
 				}
 			})
 		}
@@ -169,17 +347,27 @@ func TestEveryFixtureValidatesAndDecodesToItsIR(t *testing.T) {
 }
 
 func TestValidateRejectsAPayloadOutsideTheSchema(t *testing.T) {
+	// Each harness's shell call, with its command made a number.
+	shell := map[string]struct {
+		fixture string
+		break_  func(payload map[string]any)
+	}{
+		"claude": {"pre-bash.json", func(p map[string]any) { p["tool_input"] = map[string]any{"command": 1} }},
+		"codex":  {"pre-bash.json", func(p map[string]any) { p["tool_input"] = map[string]any{"command": 1} }},
+		"agy": {"pre-run-command.json", func(p map[string]any) {
+			p["toolCall"] = map[string]any{"name": "run_command", "args": map[string]any{"CommandLine": 1}}
+		}},
+	}
 	for _, name := range names {
 		pre := load(t, name)
 		if err := pre.Validate([]byte(`{}`)); err == nil {
 			t.Errorf("%s: Validate({}) = nil, want an error", name)
 		}
-		// A Bash call whose command is not a string.
 		var payload map[string]any
-		if err := json.Unmarshal(read(t, path.Join(name, "fixtures", "pre-bash.json")), &payload); err != nil {
+		if err := json.Unmarshal(read(t, path.Join(name, "fixtures", shell[name].fixture)), &payload); err != nil {
 			t.Fatal(err)
 		}
-		payload["tool_input"] = map[string]any{"command": 1}
+		shell[name].break_(payload)
 		data, err := json.Marshal(payload)
 		if err != nil {
 			t.Fatal(err)
@@ -273,14 +461,292 @@ func TestDecodeReadsTheToolAndItsKind(t *testing.T) {
 		{"claude", "WebFetch", ""},
 		{"codex", "Bash", ir.KindShell},
 		{"codex", "apply_patch", ir.KindPatch},
+		{"agy", "run_command", ir.KindShell},
+		{"agy", "write_file", ir.KindWrite},
+		{"agy", "edit_file", ir.KindEdit},
+		{"agy", "read_file", ""},
+		// Named in agy's public docs, never seen in a payload: not mapped.
+		{"agy", "write_to_file", ""},
+	}
+	// Where each harness names the tool.
+	payload := map[string]func(tool string) string{
+		"claude": func(tool string) string { return `{"tool_name":"` + tool + `"}` },
+		"codex":  func(tool string) string { return `{"tool_name":"` + tool + `"}` },
+		"agy":    func(tool string) string { return `{"toolCall":{"name":"` + tool + `"}}` },
 	}
 	for _, test := range tests {
-		got, err := load(t, test.harness).Decode([]byte(`{"tool_name":"` + test.tool + `"}`))
+		got, err := load(t, test.harness).Decode([]byte(payload[test.harness](test.tool)))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got.Tool != test.tool || got.Kind != test.kind {
 			t.Errorf("%s %s: tool %q kind %q, want kind %q", test.harness, test.tool, got.Tool, got.Kind, test.kind)
+		}
+	}
+	// A tool name elsewhere, or not a string, is no tool.
+	for _, test := range []struct{ harness, payload string }{
+		{"agy", `{"tool_name":"run_command"}`},
+		{"agy", `{"toolCall":{"name":1}}`},
+		{"agy", `{"toolCall":"run_command"}`},
+		{"claude", `{"toolCall":{"name":"Bash"}}`},
+	} {
+		got, err := load(t, test.harness).Decode([]byte(test.payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Tool != "" || got.Kind != "" {
+			t.Errorf("%s %s: tool %q kind %q, want none", test.harness, test.payload, got.Tool, got.Kind)
+		}
+	}
+}
+
+func TestDecodeReadsAListFieldElementByElement(t *testing.T) {
+	// Each element is read as a single field is: null and false are skipped,
+	// any other value is taken, a string as it is and the rest as JSON text.
+	// A list with no element taken is missing.
+	pre := load(t, "agy")
+	text := func(s string) ir.Value { return ir.Value{Text: s, IsString: true} }
+	tests := []struct {
+		payload string
+		want    []ir.Value
+	}{
+		{`{"workspacePaths":["/a"]}`, []ir.Value{text("/a")}},
+		{
+			`{"workspacePaths":["/a",null,false,"/b",1,"",["/c"]]}`,
+			[]ir.Value{text("/a"), text("/b"), {Text: "1"}, text(""), {Text: `["/c"]`}},
+		},
+		{`{"workspacePaths":[null,false]}`, nil},
+		{`{"workspacePaths":[]}`, nil},
+		{`{"workspacePaths":null}`, nil},
+		{`{"workspacePaths":"/a"}`, nil},
+		// "*" selects an array's elements; it is never a member's name.
+		{`{"workspacePaths":{"*":"/a"}}`, nil},
+		{`{}`, nil},
+	}
+	for _, test := range tests {
+		got, err := pre.Decode([]byte(test.payload))
+		if err != nil {
+			t.Fatalf("Decode(%s): %v", test.payload, err)
+		}
+		list, ok := got.Lists[ir.ListWorkspaces]
+		if !slices.Equal(list, test.want) || ok != (test.want != nil) {
+			t.Errorf("Decode(%s): workspaces %+v (present %v), want %+v", test.payload, list, ok, test.want)
+		}
+	}
+}
+
+func TestDecodeReadsAListPointerThroughEachElement(t *testing.T) {
+	// A pointer goes on after "*" inside each element; an element where it
+	// finds nothing, or null or false, adds nothing.
+	def, err := definition.Load(fstest.MapFS{
+		"h/harness.json": {Data: []byte(`{"name":"h","versions":["1"],"tools":{},"hookCwd":"session",` +
+			`"events":{"pre":{"schema":"pre.schema.json","answers":{"pass":{"exit":0}}}}}`)},
+		"h/pre.schema.json": {Data: []byte(`{"type":"object","x-ir-tool":"/tool",` +
+			`"x-ir":{"contents":["/input/edits/*/newText"]}}`)},
+	}, "h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pre, _ := def.Event("pre")
+	got, err := pre.Decode([]byte(`{"input":{"edits":[{"newText":"a"},{"oldText":"x"},{"newText":null},` +
+		`"b",{"newText":"c","n":2}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ir.Value{{Text: "a", IsString: true}, {Text: "c", IsString: true}}
+	if !slices.Equal(got.Lists["contents"], want) {
+		t.Errorf("contents = %+v, want %+v", got.Lists["contents"], want)
+	}
+}
+
+func TestDecodeReadsWhetherThePostedToolCallFailed(t *testing.T) {
+	// agy's post payload carries error: "" after a success. Its docs make
+	// error optional, set on failure, so an omitted error is a success too;
+	// anything else is a failure.
+	var captured map[string]any
+	if err := json.Unmarshal(read(t, "agy/fixtures/post-write-file.json"), &captured); err != nil {
+		t.Fatal(err)
+	}
+	post := loadEvent(t, "agy", "post")
+	tests := []struct {
+		error  any // the error member; omitted when nil and not set
+		omit   bool
+		failed bool
+	}{
+		{"", false, false},
+		{nil, true, false},
+		{"write failed", false, true},
+		{" ", false, true},
+		{nil, false, true}, // "error": null
+		{1, false, true},
+		{false, false, true},
+		{[]any{""}, false, true},
+		{map[string]any{}, false, true},
+		{map[string]any{"error": ""}, false, true},
+	}
+	for _, test := range tests {
+		payload := maps.Clone(captured)
+		if test.omit {
+			delete(payload, "error")
+		} else {
+			payload["error"] = test.error
+		}
+		data, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := post.Decode(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ToolFailed != test.failed {
+			t.Errorf("error %#v (omitted %v): tool failed %v, want %v", test.error, test.omit, got.ToolFailed, test.failed)
+		}
+	}
+	// The member is read as written: a number no float64 holds, as error or
+	// anywhere else, is read like any other value.
+	for payload, failed := range map[string]bool{
+		`{"error":"","x":1e400}`:                   false,
+		`{"x":[-1e400,{"y":1e-400}]}`:              false,
+		`{"error":1e400}`:                          true,
+		`{"error":123456789012345678901234567890}`: true,
+		`{"error":"\u0000"}`:                       true,
+		`{"error":"\u0061"}`:                       true,
+		`[]`:                                       false,
+	} {
+		got, err := post.Decode([]byte(payload))
+		if err != nil {
+			t.Fatalf("Decode(%s): %v", payload, err)
+		}
+		if got.ToolFailed != failed {
+			t.Errorf("Decode(%s): tool failed %v, want %v", payload, got.ToolFailed, failed)
+		}
+	}
+	// Claude's PostToolUse fires only after a success, and Codex's post has
+	// no success signal: their calls never read as failed, nor does a pre call.
+	for _, name := range names {
+		for _, event := range events {
+			if name == "agy" && event == "post" {
+				continue
+			}
+			got, err := loadEvent(t, name, event).Decode([]byte(`{"error":"x","tool_response":{"success":false}}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.ToolFailed {
+				t.Errorf("%s %s: tool failed, want no failure signal", name, event)
+			}
+		}
+	}
+}
+
+func TestDecodeReadsASuccessSignalAsWritten(t *testing.T) {
+	// Signals of the shapes other harnesses use: Pi's isError (false, or
+	// absent), and OpenCode's status, which must be there.
+	load := func(success string) definition.Event {
+		def, err := definition.Load(fstest.MapFS{
+			"h/harness.json": {Data: []byte(`{"name":"h","versions":["1"],"tools":{},"hookCwd":"session",` +
+				`"events":{"post":{"schema":"s.schema.json","answers":{"pass":{"exit":0}}}}}`)},
+			"h/s.schema.json": {Data: []byte(`{"x-ir-tool":"/tool","x-ir":{},"x-success":` + success + `}`)},
+		}, "h")
+		if err != nil {
+			t.Fatal(err)
+		}
+		post, _ := def.Event("post")
+		return post
+	}
+	isError := load(`{"pointer":"/isError","values":[false,null],"absent":true}`)
+	status := load(`{"pointer":"/result/status","values":["completed"],"absent":false}`)
+	tests := []struct {
+		event   definition.Event
+		payload string
+		failed  bool
+	}{
+		{isError, `{"isError":false}`, false},
+		{isError, `{"isError":null}`, false},
+		{isError, `{}`, false},
+		{isError, `{"isError":true}`, true},
+		{isError, `{"isError":"false"}`, true},
+		{isError, `{"isError":0}`, true},
+		{status, `{"result":{"status":"completed"}}`, false},
+		// A string is compared after decoding: its escapes do not matter.
+		{status, `{"result":{"status":"\u0063ompleted"}}`, false},
+		{status, `{"result":{"status":"completed "}}`, true},
+		{status, `{"result":{"status":"error"}}`, true},
+		{status, `{"result":{}}`, true},
+		{status, `{"result":"completed"}`, true},
+		{status, `{}`, true},
+	}
+	for _, test := range tests {
+		got, err := test.event.Decode([]byte(test.payload))
+		if err != nil {
+			t.Fatalf("Decode(%s): %v", test.payload, err)
+		}
+		if got.ToolFailed != test.failed {
+			t.Errorf("Decode(%s): tool failed %v, want %v", test.payload, got.ToolFailed, test.failed)
+		}
+	}
+}
+
+func TestLoadRejectsAPostSuccessSignalItCannotUse(t *testing.T) {
+	harness := func(event string) []byte {
+		return []byte(`{"name":"h","versions":["1"],"tools":{},"hookCwd":"session","events":{"` + event +
+			`":{"schema":"s.schema.json","answers":{"pass":{"exit":0}}}}}`)
+	}
+	schema := func(success string) string { return `{"x-ir-tool":"/tool","x-ir":{},"x-success":` + success + `}` }
+	control := `{"description":"d","pointer":"/a/b","values":["",true,false,null],"absent":false}`
+	tests := map[string]struct{ event, schema string }{
+		"x-success before the tool runs":      {"pre", schema(control)},
+		"x-success that is not an object":     {"post", schema(`1`)},
+		"an unknown member":                   {"post", schema(`{"pointer":"/a","values":[""],"absent":true,"type":"object"}`)},
+		"no pointer":                          {"post", schema(`{"values":[""],"absent":true}`)},
+		"a pointer that is not from the root": {"post", schema(`{"pointer":"a","values":[""],"absent":true}`)},
+		"a star in the pointer":               {"post", schema(`{"pointer":"/a/*","values":[""],"absent":true}`)},
+		"no values":                           {"post", schema(`{"pointer":"/a","values":[],"absent":true}`)},
+		"a number among the values":           {"post", schema(`{"pointer":"/a","values":[0],"absent":true}`)},
+		"an object among the values":          {"post", schema(`{"pointer":"/a","values":[{}],"absent":true}`)},
+		"no word on an absent member":         {"post", schema(`{"pointer":"/a","values":[""]}`)},
+	}
+	if _, err := definition.Load(fstest.MapFS{
+		"h/harness.json":  {Data: harness("post")},
+		"h/s.schema.json": {Data: []byte(schema(control))},
+	}, "h"); err != nil {
+		t.Fatalf("the control: Load = %v, want it loaded", err)
+	}
+	for what, test := range tests {
+		_, err := definition.Load(fstest.MapFS{
+			"h/harness.json":  {Data: harness(test.event)},
+			"h/s.schema.json": {Data: []byte(test.schema)},
+		}, "h")
+		if err == nil {
+			t.Errorf("%s: Load = nil, want an error", what)
+		}
+	}
+}
+
+func TestLoadRejectsAnIRMapItCannotRead(t *testing.T) {
+	harness := []byte(`{"name":"h","versions":["1"],"tools":{},"hookCwd":"session",` +
+		`"events":{"pre":{"schema":"pre.schema.json","answers":{"pass":{"exit":0}}}}}`)
+	schemas := map[string]string{
+		"a list pointer among other candidates": `{"x-ir-tool":"/tool","x-ir":{"w":["/a/*","/b"]}}`,
+		"two stars in one pointer":              `{"x-ir-tool":"/tool","x-ir":{"w":["/a/*/b/*"]}}`,
+		"no tool pointer":                       `{"x-ir":{"command":["/command"]}}`,
+		"a tool pointer that is not one":        `{"x-ir-tool":"tool","x-ir":{}}`,
+		"a star in the tool pointer":            `{"x-ir-tool":"/tools/*","x-ir":{}}`,
+	}
+	if _, err := definition.Load(fstest.MapFS{
+		"h/harness.json":    {Data: harness},
+		"h/pre.schema.json": {Data: []byte(`{"x-ir-tool":"/tool","x-ir":{"w":["/a/*/b"],"c":["/c","/d"]}}`)},
+	}, "h"); err != nil {
+		t.Fatalf("the control: Load = %v, want it loaded", err)
+	}
+	for what, schema := range schemas {
+		_, err := definition.Load(fstest.MapFS{
+			"h/harness.json":    {Data: harness},
+			"h/pre.schema.json": {Data: []byte(schema)},
+		}, "h")
+		if err == nil {
+			t.Errorf("%s: Load = nil, want an error", what)
 		}
 	}
 }
@@ -292,19 +758,16 @@ func nested(n int) string {
 }
 
 func TestDecodeReadsOneJSONValueAndNothingElse(t *testing.T) {
-	pre := load(t, "claude")
+	// Every harness and event reads the same payloads, whatever it maps.
 	readable := []string{
 		`{"tool_input":{"command":"x"}}`,
+		`{"a":-1e400,"b":1e-400,"c":123456789012345678901234567890}`,
+		`{"error":"","x":1e400}`,
 		"{\"a\":1}\n",
 		`{"a":1e400}`,
 		"{\"a\":\"\U0001F600\"}",
 		"{\"a\":\"\uffff\"}",
 		nested(10000),
-	}
-	for _, payload := range readable {
-		if _, err := pre.Decode([]byte(payload)); err != nil {
-			t.Errorf("Decode(%.40q): %v, want it read", payload, err)
-		}
 	}
 	unreadable := []string{
 		``,
@@ -327,9 +790,19 @@ func TestDecodeReadsOneJSONValueAndNothingElse(t *testing.T) {
 		`{"a":[{"b":1,"b":2}]}`,
 		nested(10001),
 	}
-	for _, payload := range unreadable {
-		if _, err := pre.Decode([]byte(payload)); !errors.Is(err, definition.ErrUnreadable) {
-			t.Errorf("Decode(%.40q) = %v, want ErrUnreadable", payload, err)
+	for _, name := range names {
+		for _, event := range events {
+			loaded := loadEvent(t, name, event)
+			for _, payload := range readable {
+				if _, err := loaded.Decode([]byte(payload)); err != nil {
+					t.Errorf("%s %s: Decode(%.40q): %v, want it read", name, event, payload, err)
+				}
+			}
+			for _, payload := range unreadable {
+				if _, err := loaded.Decode([]byte(payload)); !errors.Is(err, definition.ErrUnreadable) {
+					t.Errorf("%s %s: Decode(%.40q) = %v, want ErrUnreadable", name, event, payload, err)
+				}
+			}
 		}
 	}
 }
@@ -346,6 +819,13 @@ func TestAnswerRendersEachHarnessAnswer(t *testing.T) {
 		{"claude", block, definition.Answer{Exit: 2, Stderr: "BLOCKED: 'a.yml' uses '.yml'.\n"}},
 		{"codex", block, definition.Answer{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse",` +
 			`"permissionDecision":"deny","permissionDecisionReason":"BLOCKED: 'a.yml' uses '.yml'."}}` + "\n"}},
+		// agy's neutral answer is "ask" (no answer at all denies), and its
+		// reason reaches the model as it is: escaped, not made one line.
+		{"agy", ir.Outcome{}, definition.Answer{Stdout: `{"decision":"ask"}` + "\n"}},
+		{"agy", block, definition.Answer{Stdout: `{"decision":"deny","reason":"BLOCKED: 'a.yml' uses '.yml'."}` + "\n"}},
+		{"agy", ir.Outcome{Action: ir.Block, Reason: "two\tlines\nand \"quotes\" \\"}, definition.Answer{
+			Stdout: `{"decision":"deny","reason":"BLOCKED: two\tlines\nand \"quotes\" \\"}` + "\n",
+		}},
 	}
 	for _, test := range tests {
 		got, err := load(t, test.harness).Answer(test.outcome)
@@ -362,15 +842,22 @@ func TestAnswerWritesAForwardedAnswerAndANoticeAsTheScriptsDid(t *testing.T) {
 	native := `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"rtk ls"}}}`
 	forward := ir.Outcome{Action: ir.Forward, Native: native}
 	notice := ir.Outcome{Notice: "ruff still reports issues in a.py:\nx\n"}
+	// agy answers a post hook with {} on stdout; the others with nothing.
+	postStdout := map[string]string{"claude": "", "codex": "", "agy": "{}\n"}
 	for _, name := range names {
 		// rtk's edited answer goes to stdout as it is, with a newline (print()).
+		// agy has no rtk, so its pre event has no forward answer.
 		got, err := load(t, name).Answer(forward)
-		if err != nil || got != (definition.Answer{Stdout: native + "\n"}) {
+		if name == "agy" {
+			if err == nil {
+				t.Errorf("agy pre forward: Answer = %+v, want no answer", got)
+			}
+		} else if err != nil || got != (definition.Answer{Stdout: native + "\n"}) {
 			t.Errorf("%s pre forward: Answer = %+v, %v", name, got, err)
 		}
 		// The formatter's report goes to stderr; it exits 0 (a pass).
 		got, err = loadEvent(t, name, "post").Answer(notice)
-		if err != nil || got != (definition.Answer{Stderr: notice.Notice}) {
+		if err != nil || got != (definition.Answer{Stdout: postStdout[name], Stderr: notice.Notice}) {
 			t.Errorf("%s post pass: Answer = %+v, %v", name, got, err)
 		}
 		// A post hook never blocks, so the post event has no block answer.

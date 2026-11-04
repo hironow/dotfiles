@@ -47,8 +47,8 @@ func joinAsPython(dir, name string) string {
 
 // Command is one program to run. Args is the whole argv, the program's own
 // name first, as the old scripts passed it. The command always runs in the
-// binary's own working directory and environment, as the scripts' commands
-// did, so there is no field to change either.
+// binary's own environment, as the scripts' commands did, so there is no
+// field to change it.
 type Command struct {
 	Path    string
 	Args    []string
@@ -57,6 +57,10 @@ type Command struct {
 	// Combined puts stdout and stderr on one pipe, as `2>&1` does;
 	// Result.Stdout then holds both, in the order they were written.
 	Combined bool
+	// Dir is the directory to run in; "" is the binary's own, where the old
+	// scripts ran theirs. Only a harness that runs its hooks outside the
+	// session's directory (agy) sets it.
+	Dir string
 }
 
 // Result is what a command did.

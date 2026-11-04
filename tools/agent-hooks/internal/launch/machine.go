@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -54,9 +56,29 @@ func (ExecMachine) IsRegularFile(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// Run runs the command in this process's working directory and environment,
-// as the old scripts' commands ran. With Combined, stdout and stderr share
-// one pipe, as `2>&1` makes them, and Result.Stdout holds both.
+// RealPath follows every symlink in an absolute path.
+func (ExecMachine) RealPath(path string) (string, error) {
+	return filepath.EvalSymlinks(path)
+}
+
+// Exists reports whether there is an entry at the path, a final symlink not
+// followed. "No such file" is no entry; any other error is the lookup's.
+func (ExecMachine) Exists(path string) (bool, error) {
+	_, err := os.Lstat(path)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
+// Run runs the command in this process's environment, as the old scripts'
+// commands ran, and in its working directory unless the command names
+// another. With Combined, stdout and stderr share one pipe, as `2>&1` makes
+// them, and Result.Stdout holds both.
 func (ExecMachine) Run(command process.Command) (process.Result, error) {
 	ctx := context.Background()
 	if command.Timeout > 0 {
@@ -70,6 +92,7 @@ func (ExecMachine) Run(command process.Command) (process.Result, error) {
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.CommandContext(ctx, command.Path) //nolint:gosec // G204: audited above
 	cmd.Args = command.Args
+	cmd.Dir = command.Dir
 	cmd.WaitDelay = waitDelay
 	if command.Stdin != nil {
 		cmd.Stdin = bytes.NewReader(command.Stdin)

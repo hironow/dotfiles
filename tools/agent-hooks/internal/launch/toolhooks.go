@@ -159,11 +159,23 @@ func isJSONObject(text []byte) bool {
 // on PATH. A formatter found through a relative PATH entry is not run, and
 // its file is left as it is. It always passes, reporting what ruff still
 // finds.
+//
+// Claude and Codex run the hook in the session's directory, and the commands
+// run there with the path as given, as the script's did. agy runs it where
+// its hooks.json is, so the commands run in the file's project (locate),
+// with the file's real path; a file it cannot place is left as it is.
 func formatterHook(call ir.Call, machine Machine) ir.Outcome {
 	var notice strings.Builder
 	for _, path := range formatter.Paths(call) {
-		formatting, ok := formatter.For(path)
-		if !ok || !machine.IsRegularFile(path) {
+		target, dir := path, ""
+		if call.HookCwd == ir.HookCwdRegistration {
+			var placed bool
+			if dir, target, placed = locate(call, path, machine); !placed {
+				continue
+			}
+		}
+		formatting, ok := formatter.For(target)
+		if !ok || !machine.IsRegularFile(target) {
 			continue
 		}
 		program, found := machine.LookPath(formatting.Program)
@@ -172,7 +184,7 @@ func formatterHook(call ir.Call, machine Machine) ir.Outcome {
 		}
 		for i, args := range formatting.Commands {
 			reported := i == formatting.Reported
-			result, err := machine.Run(process.Command{Path: program.Path, Args: args, Combined: reported})
+			result, err := machine.Run(process.Command{Path: program.Path, Args: args, Combined: reported, Dir: dir})
 			if reported && err == nil {
 				notice.WriteString(formatter.Notice(path, bashsubst.Output(string(result.Stdout))))
 			}

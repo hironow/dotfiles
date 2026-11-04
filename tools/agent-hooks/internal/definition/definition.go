@@ -36,7 +36,41 @@ type Definition struct {
 	Name     string
 	Versions []string          // the harness versions it was written for
 	Tools    map[string]string // the harness's tool names, each to its kind (ir.Kind*)
-	events   map[string]Event
+	// Pending lists tools the harness's docs name but no captured payload
+	// showed. They are not mapped, so no hook is registered for them.
+	Pending []string
+	// HookCwd is where the harness runs its hooks (ir.HookCwd*).
+	HookCwd string
+	// Support holds each hook's level (Level*) for each tool, by the hook's
+	// manifest id and the harness's tool name.
+	Support map[string]map[string]Support
+	events  map[string]Event
+}
+
+// Support is one hook's level for one tool, and why it is not supported.
+type Support struct {
+	Level  string `json:"level"`
+	Reason string `json:"reason"`
+}
+
+// The levels of a hook for a tool.
+const (
+	LevelSupported   = "supported"   // registered, and it does its whole job
+	LevelDegraded    = "degraded"    // registered, with a known gap: the reason
+	LevelUnsupported = "unsupported" // not registered: the reason says why
+)
+
+// Registered returns the tools a hook is registered for, sorted: those for
+// which it is supported or degraded.
+func (d Definition) Registered(hook string) []string {
+	var tools []string
+	for tool, support := range d.Support[hook] {
+		if support.Level != LevelUnsupported {
+			tools = append(tools, tool)
+		}
+	}
+	slices.Sort(tools)
+	return tools
 }
 
 // Event returns the definition of one event, such as "pre".
@@ -47,18 +81,23 @@ func (d Definition) Event(name string) (Event, bool) {
 
 // Event is one event's part of a definition.
 type Event struct {
+	// Tool is the schema's "x-ir-tool": the JSON Pointer to the tool's name.
+	Tool string
 	// IR holds the schema's "x-ir": each IR field to its candidate JSON
 	// Pointers, in order. Decode takes the first candidate that is present
-	// and not null or false, as jq's `//` does.
+	// and not null or false, as jq's `//` does. A list field has one pointer,
+	// with one "*" token for every element of the array there.
 	IR map[string][]string
 	// Undeclared lists the x-ir pointers the schema does not declare: fields
 	// the old guards read for every harness, though this one never sends them.
 	Undeclared []string
 
 	harness, name string
+	hookCwd       string // where the harness runs its hooks (ir.HookCwd*)
 	tools         map[string]string
 	schema        any // the schema as parsed JSON, for Declares
 	compiled      *compiledSchema
+	success       *successRule // "x-success", or nil: how a post payload tells that the tool call succeeded
 	answers       map[string]answer
 }
 
@@ -78,10 +117,13 @@ type Answer struct {
 
 // harnessFile is harness.json.
 type harnessFile struct {
-	Name     string               `json:"name"`
-	Versions []string             `json:"versions"`
-	Tools    map[string]string    `json:"tools"`
-	Events   map[string]eventFile `json:"events"`
+	Name     string                        `json:"name"`
+	Versions []string                      `json:"versions"`
+	Tools    map[string]string             `json:"tools"`
+	Pending  []string                      `json:"pending"`
+	HookCwd  string                        `json:"hookCwd"`
+	Support  map[string]map[string]Support `json:"support"`
+	Events   map[string]eventFile          `json:"events"`
 }
 
 type eventFile struct {
@@ -101,7 +143,9 @@ type answerFile struct {
 
 // schemaFile is the part of a schema the loader reads itself.
 type schemaFile struct {
+	Tool       string              `json:"x-ir-tool"`
 	IR         map[string][]string `json:"x-ir"`
+	Success    jsontext.Value      `json:"x-success"`
 	Undeclared struct {
 		Pointers []string `json:"pointers"`
 	} `json:"x-ir-undeclared"`
@@ -124,9 +168,20 @@ func Load(fsys fs.FS, name string) (Definition, error) {
 			return Definition{}, fmt.Errorf("%s: tool %s has unknown kind %q", name, tool, kind)
 		}
 	}
-	def := Definition{Name: name, Versions: file.Versions, Tools: file.Tools, events: map[string]Event{}}
+	if err := checkHarness(file); err != nil {
+		return Definition{}, fmt.Errorf("%s/harness.json: %w", name, err)
+	}
+	def := Definition{
+		Name:     name,
+		Versions: file.Versions,
+		Tools:    file.Tools,
+		Pending:  file.Pending,
+		HookCwd:  file.HookCwd,
+		Support:  file.Support,
+		events:   map[string]Event{},
+	}
 	for eventName, eventDef := range file.Events {
-		event, err := loadEvent(fsys, name, eventName, eventDef, file.Tools)
+		event, err := loadEvent(fsys, name, eventName, eventDef, file)
 		if err != nil {
 			return Definition{}, fmt.Errorf("%s %s: %w", name, eventName, err)
 		}
@@ -135,7 +190,38 @@ func Load(fsys fs.FS, name string) (Definition, error) {
 	return def, nil
 }
 
-func loadEvent(fsys fs.FS, harness, name string, file eventFile, tools map[string]string) (Event, error) {
+// checkHarness checks what harness.json says beyond its tools: where hooks
+// run, the pending tools (never mapped), and each support level (a known
+// level, on a mapped tool, with a reason unless supported).
+func checkHarness(file harnessFile) error {
+	if file.HookCwd != ir.HookCwdSession && file.HookCwd != ir.HookCwdRegistration {
+		return fmt.Errorf("hookCwd %q is neither %q nor %q", file.HookCwd, ir.HookCwdSession, ir.HookCwdRegistration)
+	}
+	for _, tool := range file.Pending {
+		if _, mapped := file.Tools[tool]; mapped {
+			return fmt.Errorf("pending tool %s is mapped", tool)
+		}
+	}
+	for hook, tools := range file.Support {
+		for tool, support := range tools {
+			if _, mapped := file.Tools[tool]; !mapped {
+				return fmt.Errorf("support for %s names %s, which is not a mapped tool", hook, tool)
+			}
+			switch support.Level {
+			case LevelSupported:
+			case LevelDegraded, LevelUnsupported:
+				if support.Reason == "" {
+					return fmt.Errorf("support for %s on %s is %s with no reason", hook, tool, support.Level)
+				}
+			default:
+				return fmt.Errorf("support for %s on %s has unknown level %q", hook, tool, support.Level)
+			}
+		}
+	}
+	return nil
+}
+
+func loadEvent(fsys fs.FS, harness, name string, file eventFile, owner harnessFile) (Event, error) {
 	schemaPath := path.Join(harness, file.Schema)
 	raw, err := fs.ReadFile(fsys, schemaPath)
 	if err != nil {
@@ -145,12 +231,12 @@ func loadEvent(fsys fs.FS, harness, name string, file eventFile, tools map[strin
 	if err := json.Unmarshal(raw, &schema); err != nil {
 		return Event{}, fmt.Errorf("%s: %w", schemaPath, err)
 	}
-	for field, pointers := range schema.IR {
-		for _, pointer := range pointers {
-			if !strings.HasPrefix(pointer, "/") {
-				return Event{}, fmt.Errorf("%s: x-ir %s: %q is not a JSON Pointer from the root", schemaPath, field, pointer)
-			}
-		}
+	if err := checkIR(schema); err != nil {
+		return Event{}, fmt.Errorf("%s: %w", schemaPath, err)
+	}
+	success, err := parseSuccess(name, schema.Success)
+	if err != nil {
+		return Event{}, fmt.Errorf("%s: %w", schemaPath, err)
 	}
 	var tree any
 	if err := json.Unmarshal(raw, &tree); err != nil {
@@ -170,13 +256,16 @@ func loadEvent(fsys fs.FS, harness, name string, file eventFile, tools map[strin
 		return Event{}, fmt.Errorf("no %s answer", answerPass)
 	}
 	event := Event{
+		Tool:       schema.Tool,
 		IR:         schema.IR,
 		Undeclared: schema.Undeclared.Pointers,
 		harness:    harness,
 		name:       name,
-		tools:      tools,
+		hookCwd:    owner.HookCwd,
+		tools:      owner.Tools,
 		schema:     tree,
 		compiled:   &compiledSchema{raw: raw},
+		success:    success,
 		answers:    answers,
 	}
 	// Render each answer once, so a template that fails to run fails here.
@@ -193,6 +282,124 @@ func loadEvent(fsys fs.FS, harness, name string, file eventFile, tools map[strin
 		}
 	}
 	return event, nil
+}
+
+// successFile is a post schema's "x-success": the member that tells whether
+// the tool call succeeded, the values that mean it did, and whether an
+// absent member means it did.
+type successFile struct {
+	Description string           `json:"description"`
+	Pointer     string           `json:"pointer"`
+	Values      []jsontext.Value `json:"values"`
+	Absent      *bool            `json:"absent"`
+}
+
+// successRule is a parsed "x-success".
+type successRule struct {
+	pointer string
+	values  []jsontext.Value // each a string, true, false, or null
+	absent  bool
+}
+
+// parseSuccess reads a post event's "x-success". Only a post event has one,
+// since only after the call is there an outcome to read. The values are
+// strings, booleans, or null, compared exactly; a number would need a
+// representation that every reader agrees on, and no harness signals with
+// one.
+func parseSuccess(event string, raw jsontext.Value) (*successRule, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	if event != "post" {
+		return nil, fmt.Errorf("x-success on the %s event: only a post event has a tool call's outcome", event)
+	}
+	var file successFile
+	if err := json.Unmarshal(raw, &file, json.RejectUnknownMembers(true)); err != nil {
+		return nil, fmt.Errorf("x-success: %w", err)
+	}
+	tokens, ok := pointerTokens(file.Pointer)
+	if file.Pointer == "" || !ok || slices.Contains(tokens, wildcard) {
+		return nil, fmt.Errorf("x-success: pointer %q is not a JSON Pointer from the root to one value", file.Pointer)
+	}
+	if len(file.Values) == 0 {
+		return nil, errors.New("x-success: no values")
+	}
+	for _, value := range file.Values {
+		if !slices.Contains([]jsontext.Kind{'"', 't', 'f', 'n'}, value.Kind()) {
+			return nil, fmt.Errorf("x-success: value %s is not a string, a boolean, or null", value)
+		}
+	}
+	if file.Absent == nil {
+		return nil, errors.New("x-success: absent does not say what an absent member means")
+	}
+	return &successRule{pointer: file.Pointer, values: file.Values, absent: *file.Absent}, nil
+}
+
+// succeeded reads the rule's member from the payload as written, so a number
+// anywhere is read like any other value.
+func (s successRule) succeeded(objects objectReader, root jsontext.Value) bool {
+	value, found := objects.resolve(root, s.pointer)
+	if !found {
+		return s.absent
+	}
+	for _, want := range s.values {
+		if sameLiteral(value, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// sameLiteral reports whether a JSON value is the string, boolean, or null
+// want: a string compared after decoding, so its escapes do not matter.
+func sameLiteral(value, want jsontext.Value) bool {
+	if value.Kind() != want.Kind() {
+		return false
+	}
+	if want.Kind() != '"' {
+		return true
+	}
+	var got, wanted string
+	return json.Unmarshal(value, &got) == nil && json.Unmarshal(want, &wanted) == nil && got == wanted
+}
+
+// wildcard is the reference token that selects every element of an array.
+const wildcard = "*"
+
+// checkIR checks that the schema says where the tool's name is, and that every
+// x-ir pointer is one Decode can read: a JSON Pointer from the root, with at
+// most one "*", which makes it its field's only candidate.
+func checkIR(schema schemaFile) error {
+	tokens, ok := pointerTokens(schema.Tool)
+	if schema.Tool == "" || !ok || slices.Contains(tokens, wildcard) {
+		return fmt.Errorf("x-ir-tool %q is not a JSON Pointer from the root to one value", schema.Tool)
+	}
+	for field, pointers := range schema.IR {
+		for _, pointer := range pointers {
+			tokens, ok := pointerTokens(pointer)
+			if pointer == "" || !ok {
+				return fmt.Errorf("x-ir %s: %q is not a JSON Pointer from the root", field, pointer)
+			}
+			switch stars := countWildcards(tokens); {
+			case stars > 1:
+				return fmt.Errorf("x-ir %s: %q has more than one %q", field, pointer, wildcard)
+			case stars == 1 && len(pointers) > 1:
+				return fmt.Errorf("x-ir %s: the list pointer %q is not the field's only candidate", field, pointer)
+			}
+		}
+	}
+	return nil
+}
+
+// countWildcards counts a pointer's "*" tokens.
+func countWildcards(tokens []string) int {
+	count := 0
+	for _, token := range tokens {
+		if token == wildcard {
+			count++
+		}
+	}
+	return count
 }
 
 func readJSON(fsys fs.FS, name string, v any) error {
@@ -242,7 +449,8 @@ func (e Event) Validate(payload []byte) error {
 
 // Declares reports whether the schema declares a property at the pointer:
 // a chain of "properties", through allOf, anyOf, and oneOf members, the then
-// and else of an if, and local $refs.
+// and else of an if, and local $refs. A "*" is declared by an array's
+// "items".
 func (e Event) Declares(pointer string) bool {
 	tokens, ok := pointerTokens(pointer)
 	return ok && declares(e.schema, e.schema, tokens)
@@ -253,8 +461,15 @@ func declares(root, node any, tokens []string) bool {
 		return true
 	}
 	for _, schema := range subschemas(root, node) {
-		properties, _ := schema["properties"].(map[string]any)
-		if child, ok := properties[tokens[0]]; ok && declares(root, child, tokens[1:]) {
+		var child any
+		var ok bool
+		if tokens[0] == wildcard {
+			child, ok = schema["items"].(map[string]any)
+		} else {
+			properties, _ := schema["properties"].(map[string]any)
+			child, ok = properties[tokens[0]]
+		}
+		if ok && declares(root, child, tokens[1:]) {
 			return true
 		}
 	}
@@ -331,22 +546,39 @@ func pointerTokens(pointer string) ([]string, bool) {
 // not one JSON value gives ErrUnreadable. A payload that is one, whatever its
 // shape, decodes: a field the payload lacks is missing from the call.
 func (e Event) Decode(payload []byte) (ir.Call, error) {
-	call := ir.Call{Harness: e.harness, Event: e.name, Fields: map[string]ir.Value{}}
+	call := ir.Call{Harness: e.harness, Event: e.name, HookCwd: e.hookCwd, Fields: map[string]ir.Value{}}
 	var root jsontext.Value
 	if err := json.Unmarshal(payload, &root); err != nil {
 		return call, fmt.Errorf("%w: %w", ErrUnreadable, err)
 	}
 	objects := objectReader{}
-	if tool, ok := objects.member(root, "", "tool_name"); ok && tool.Kind() == '"' {
+	if e.success != nil {
+		call.ToolFailed = !e.success.succeeded(objects, root)
+	}
+	if tool, ok := objects.resolve(root, e.Tool); ok && tool.Kind() == '"' {
 		if err := json.Unmarshal(tool, &call.Tool); err != nil {
 			return call, err
 		}
 		call.Kind = e.tools[call.Tool]
 	}
 	for _, field := range slices.Sorted(maps.Keys(e.IR)) {
-		for _, pointer := range e.IR[field] {
+		pointers := e.IR[field]
+		if before, after, ok := cutWildcard(pointers[0]); ok {
+			list, err := objects.resolveEach(root, before, after)
+			if err != nil {
+				return call, err
+			}
+			if len(list) > 0 {
+				if call.Lists == nil {
+					call.Lists = map[string][]ir.Value{}
+				}
+				call.Lists[field] = list
+			}
+			continue
+		}
+		for _, pointer := range pointers {
 			value, ok := objects.resolve(root, pointer)
-			if !ok || value.Kind() == 'n' || value.Kind() == 'f' {
+			if !taken(value, ok) {
 				continue
 			}
 			irValue, err := toIRValue(value)
@@ -358,6 +590,25 @@ func (e Event) Decode(payload []byte) (ir.Call, error) {
 		}
 	}
 	return call, nil
+}
+
+// taken reports whether jq's `//` takes a value: one that is present and not
+// null or false.
+func taken(value jsontext.Value, present bool) bool {
+	return present && value.Kind() != 'n' && value.Kind() != 'f'
+}
+
+// cutWildcard splits a list pointer at its "*": the pointer to the array, and
+// the pointer from each element on ("" for the element itself).
+func cutWildcard(pointer string) (before, after string, ok bool) {
+	if pointer == "/"+wildcard {
+		return "", "", true
+	}
+	if before, after, ok = strings.Cut(pointer, "/"+wildcard+"/"); ok {
+		return before, "/" + after, true
+	}
+	before, ok = strings.CutSuffix(pointer, "/"+wildcard)
+	return before, "", ok
 }
 
 // toIRValue keeps a string as it is, and prints any other value as compact
@@ -396,6 +647,34 @@ func (o objectReader) resolve(root jsontext.Value, pointer string) (jsontext.Val
 		at += "/" + strings.ReplaceAll(strings.ReplaceAll(token, "~", "~0"), "/", "~1")
 	}
 	return value, true
+}
+
+// resolveEach reads a list pointer, split at its "*" (cutWildcard): for every
+// element of the array at before, the value after points to in it, when jq's
+// `//` would take it. Past anything but an array it finds nothing.
+func (o objectReader) resolveEach(root jsontext.Value, before, after string) ([]ir.Value, error) {
+	array, ok := o.resolve(root, before)
+	if !ok || array.Kind() != '[' {
+		return nil, nil
+	}
+	var elements []jsontext.Value
+	if err := json.Unmarshal(array, &elements); err != nil {
+		return nil, err
+	}
+	var list []ir.Value
+	for _, element := range elements {
+		// Each element is read once, so it needs no shared cache.
+		value, ok := objectReader{}.resolve(element, after)
+		if !taken(value, ok) {
+			continue
+		}
+		irValue, err := toIRValue(value)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, irValue)
+	}
+	return list, nil
 }
 
 // member returns the named member of value, the object at the JSON Pointer at.
