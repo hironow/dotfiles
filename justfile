@@ -900,6 +900,12 @@ tool-hooks-corpus:
 pi-paths-corpus:
     cd tools/agent-hooks && mise x -- go run ./internal/pipath/writecorpus
 
+# Record the vendored rtk extension with Pi 1.4.0's execCommand and fake rtk.
+# Needs node, Pi 1.4.0 and /bin/sh; the header pins the extension's SHA-256.
+[group('Test')]
+pi-rtk-corpus:
+    cd tools/agent-hooks && mise x -- go run ./internal/toolhookcorpus/writepirtk
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash

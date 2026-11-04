@@ -134,3 +134,12 @@ func TestResolveRejectsOtherFileURLs(t *testing.T) {
 		})
 	}
 }
+
+func TestCorpusIsASCII(t *testing.T) {
+	// Some tools split lines on U+2028 or U+0085; the corpus holds none.
+	for i, b := range readCorpus(t) {
+		if b > 0x7f {
+			t.Fatalf("byte %d is not ASCII; run just pi-paths-corpus", i)
+		}
+	}
+}

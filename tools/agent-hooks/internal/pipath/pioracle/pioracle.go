@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	json "github.com/goccy/go-json/v2"
 )
@@ -44,6 +46,20 @@ type Answer struct {
 // its package's dist/bundle/cli.js; a mise shim is followed to the program
 // it runs. Any other Pi version is refused.
 func Find() (node, module string, err error) {
+	node, root, err := FindPackage()
+	if err != nil {
+		return "", "", err
+	}
+	module = filepath.Join(root, "dist", "core", "tools", "path-utils.js")
+	if _, err := os.Stat(module); err != nil {
+		return "", "", fmt.Errorf("pi's path-utils module: %w", err)
+	}
+	return node, module, nil
+}
+
+// FindPackage returns node and the installed Pi 1.4.0 package root. Both
+// oracles use this discovery so they cannot silently select different Pi releases.
+func FindPackage() (node, root string, err error) {
 	node, err = exec.LookPath("node")
 	if err != nil {
 		return "", "", fmt.Errorf("no node on PATH: %w", err)
@@ -65,7 +81,7 @@ func Find() (node, module string, err error) {
 	if filepath.Base(real) != "cli.js" || filepath.Base(filepath.Dir(real)) != "bundle" {
 		return "", "", errors.New("pi on PATH is not a package's dist/bundle/cli.js")
 	}
-	root := filepath.Dir(filepath.Dir(filepath.Dir(real)))
+	root = filepath.Dir(filepath.Dir(filepath.Dir(real)))
 	manifest, err := os.ReadFile(filepath.Join(root, "package.json"))
 	if err != nil {
 		return "", "", fmt.Errorf("pi's package.json: %w", err)
@@ -80,11 +96,7 @@ func Find() (node, module string, err error) {
 	if pkg.Name != piPackage || pkg.Version != PiVersion {
 		return "", "", fmt.Errorf("pi on PATH is %s %s, not %s %s", pkg.Name, pkg.Version, piPackage, PiVersion)
 	}
-	module = filepath.Join(root, "dist", "core", "tools", "path-utils.js")
-	if _, err := os.Stat(module); err != nil {
-		return "", "", fmt.Errorf("pi's path-utils module: %w", err)
-	}
-	return node, module, nil
+	return node, root, nil
 }
 
 // programBehindShim is the real path of the pi program a mise shim runs.
@@ -170,17 +182,38 @@ func Render(cases []Case, answers []Answer) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out.Write(line)
+	out.Write(ASCIILine(line))
 	out.WriteByte('\n')
 	for i := range cases {
 		line, err := json.Marshal(Entry{Case: cases[i], Answer: answers[i]})
 		if err != nil {
 			return nil, err
 		}
-		out.Write(line)
+		out.Write(ASCIILine(line))
 		out.WriteByte('\n')
 	}
 	return out.Bytes(), nil
+}
+
+// ASCIILine escapes every non-ASCII character of a JSON line as \uXXXX
+// (a surrogate pair above U+FFFF), as Python's json.dumps writes the
+// repo's other corpora. A corpus then holds no U+2028, U+0085, or other
+// character that some tools split lines on. Non-ASCII characters only
+// stand inside JSON strings, where the escape means the same.
+func ASCIILine(line []byte) []byte {
+	var out bytes.Buffer
+	for _, r := range string(line) {
+		switch {
+		case r < utf8.RuneSelf:
+			out.WriteRune(r)
+		case r > 0xffff:
+			high, low := utf16.EncodeRune(r)
+			fmt.Fprintf(&out, "\\u%04x\\u%04x", high, low)
+		default:
+			fmt.Fprintf(&out, "\\u%04x", r)
+		}
+	}
+	return out.Bytes()
 }
 
 // Parse reads a corpus Render wrote.
