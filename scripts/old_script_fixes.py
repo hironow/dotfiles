@@ -70,6 +70,21 @@ FIXES: dict[str, Fix] = {
         ),
         bug="The guard read file_path only, so NotebookEdit's notebook_path was never checked.",
     ),
+    "docs-agents-relative": Fix(
+        script=FILES_GUARD,
+        edits=(
+            (
+                "    */AGENTS.md|AGENTS.md|*/CLAUDE.md|CLAUDE.md|*/docs/agents/*) return 0 ;;\n",
+                (
+                    "    # fixed-docs-agents-relative: a relative path under docs/agents/ too,\n"
+                    "    # as Codex's patch names its files; a bare AGENTS.md was already exempt.\n"
+                    "    */AGENTS.md|AGENTS.md|*/CLAUDE.md|CLAUDE.md|*/docs/agents/*|docs/agents/*) return 0 ;;\n"
+                ),
+            ),
+        ),
+        bug="The exemption */docs/agents/* needs a / before docs, so a relative path under "
+        "docs/agents/ (as Codex's patch names files) was blocked, though a bare AGENTS.md is exempt.",
+    ),
     "one-path": Fix(
         script=FORMATTER,
         edits=(

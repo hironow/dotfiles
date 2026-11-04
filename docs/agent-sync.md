@@ -83,6 +83,7 @@ command guard は `just command-guard-corpus`、files guard と secrets guard �
 直し方は旧スクリプトへの名前付きの修正として `scripts/old_script_fixes.py` に置き、corpus を書き直すときは旧スクリプトと直した版の両方を走らせる。
 答えが違う所は `fixed-<名前>` の差分 ID になり、binary は直した版の答えを返す。
 どの差分 ID にも種類と理由があることを `tests/unit/test_corpus_differences.py` が確かめ、Go の corpus の test は `parity/` と差分 ID の名前で subtest を分ける（`go test -run '/fixed-'` で直した所だけを見られる）。
+旧スクリプトでは再現できない修正（hook の panic で guard が止める、など）は binary だけの修正として同じ test に登録し、それを確かめる Go の test を名指しする。
 
 1 つの hook だけを試すには、JSON を標準入力で渡す。
 `exit=2` は止める、`exit=0` は通すという意味である。

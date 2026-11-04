@@ -48,13 +48,18 @@ func Check(paths []string) ir.Outcome {
 // exempt is the shell guard's `case` pattern
 // `*/AGENTS.md|AGENTS.md|*/CLAUDE.md|CLAUDE.md|*/docs/agents/*`: the policy
 // files may name prohibited patterns as examples.
+//
+// fixed-docs-agents-relative: `*/docs/agents/*` needs a "/" before docs, so
+// the shell guard blocked a relative path under docs/agents/ (Codex's patch
+// names its files relative to the session), though it exempts a bare
+// AGENTS.md. Here that path is exempt too.
 func exempt(path string) bool {
 	for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
 		if path == name || strings.HasSuffix(path, "/"+name) {
 			return true
 		}
 	}
-	return strings.Contains(path, "/docs/agents/")
+	return strings.Contains(path, "/docs/agents/") || strings.HasPrefix(path, "docs/agents/")
 }
 
 // checkName applies the two naming rules to a file's base name.

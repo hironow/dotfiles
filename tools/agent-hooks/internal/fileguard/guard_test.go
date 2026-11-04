@@ -68,7 +68,6 @@ func TestCheckKeepsTheShellGuardsQuirks(t *testing.T) {
 		{"each line of a path is a path", []string{"a.yaml\nb.yml"}, true},
 		{"a lone - is a name", []string{"-", "a.yml"}, true},
 		{"the instruction files may name examples", []string{"/repo/docs/agents/x.yml"}, false},
-		{"only a docs/agents/ under a directory is exempt", []string{"docs/agents/x.yml"}, true},
 		{"trailing slashes are not part of the name", []string{"a.yml/"}, true},
 		{"bash drops NUL bytes", []string{"x\x00.yml"}, true},
 	}
