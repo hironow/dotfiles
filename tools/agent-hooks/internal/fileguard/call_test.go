@@ -59,31 +59,6 @@ func TestPathsReadsTheCallAsTheShellGuardDoes(t *testing.T) {
 	}
 }
 
-func TestNeedsBasenameOnlyForAPathTheFlavorsReadApart(t *testing.T) {
-	// BSD's and GNU's basename part ways only on --help, --version, and
-	// their prefixes: GNU's succeeds on them, and the guard reads on.
-	cases := []struct {
-		paths []string
-		want  bool
-	}{
-		{[]string{"a.yml"}, false},
-		{[]string{"-"}, false},
-		{[]string{"-x\na.yml"}, false},
-		{[]string{"--"}, false},
-		{[]string{"--help\na.yml"}, true},
-		{[]string{"--h"}, true},
-		{[]string{"a.yaml", "b\n--vers"}, true},
-		{[]string{"--\x00help"}, true},
-		{[]string{"--helpx"}, false},
-		{nil, false},
-	}
-	for _, c := range cases {
-		if got := fileguard.NeedsBasename(c.paths); got != c.want {
-			t.Errorf("NeedsBasename(%q) = %v, want %v", c.paths, got, c.want)
-		}
-	}
-}
-
 // tools are calls' tools that must not change the reading: none, one no
 // definition maps, and known tools of other kinds.
 var tools = []struct{ name, kind string }{

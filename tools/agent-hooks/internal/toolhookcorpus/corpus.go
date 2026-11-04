@@ -102,8 +102,9 @@ type Lookup struct {
 // Run is one script run on a scenario, as one harness runs it.
 type Run struct {
 	Harness    string         `json:"harness"`
-	Difference string         `json:"difference"`
-	Legacy     jsontext.Value `json:"legacy"` // what the script did; the Python test reads it
+	Difference string         `json:"difference"` // the difference IDs that apply, joined by "+"; "" for none
+	Fixed      jsontext.Value `json:"fixed"`      // the run of the script with its bugs fixed, where that differs
+	Legacy     jsontext.Value `json:"legacy"`     // what the script did; the Python test reads it
 	ExpectedGo Expected       `json:"expectedGo"`
 }
 

@@ -20,16 +20,6 @@ var binary string
 // faketool stands in for rtk, mise, uv, and gofmt (not on Windows).
 var faketool string
 
-// fakeBasename holds, per flavor, a directory with a basename(1) that answers
-// `--version` as that flavor does: GNU's succeeds, BSD's fails. Put first on
-// PATH, it checks the binary's real probe and how its answer reaches the guard.
-var fakeBasename = map[string]string{}
-
-var fakeBasenameScripts = map[string]string{
-	"gnu": "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\nexit 1\n",
-	"bsd": "#!/bin/sh\nexit 1\n",
-}
-
 func TestMain(m *testing.M) {
 	os.Exit(buildAndRun(m))
 }
@@ -57,33 +47,19 @@ func buildAndRun(m *testing.M) int {
 			return 1
 		}
 	}
-	for flavor, script := range fakeBasenameScripts {
-		fakeBasename[flavor] = filepath.Join(dir, flavor)
-		if err := os.Mkdir(fakeBasename[flavor], 0o700); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		if err := os.WriteFile(filepath.Join(fakeBasename[flavor], "basename"), []byte(script), 0o700); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-	}
 	return m.Run()
 }
 
-// runBinary runs the built binary in an empty directory (it needs no
-// checkout), with the flavor's fake basename(1) first on PATH.
-func runBinary(t *testing.T, flavor string, stdin []byte, args ...string) guardcorpus.Answer {
+// runBinary runs the built binary in an empty directory: it needs no
+// checkout, and it runs no program for the guards (the old files guard ran
+// basename(1); the binary takes base names itself: fixed-dash-line).
+func runBinary(t *testing.T, stdin []byte, args ...string) guardcorpus.Answer {
 	t.Helper()
-	if flavor == "" {
-		flavor = "bsd" // the hook does not ask
-	}
 	// Audited: binary is the agent-hook this test built into its own temporary
 	// directory, and args are the corpus's harness and hook names or literals.
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	command := exec.Command(binary, args...)
 	command.Dir = t.TempDir()
-	command.Env = append(os.Environ(), "PATH="+fakeBasename[flavor]+string(os.PathListSeparator)+os.Getenv("PATH"))
 	command.Stdin = bytes.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
@@ -101,38 +77,39 @@ func runBinary(t *testing.T, flavor string, stdin []byte, args ...string) guardc
 func skipWithoutPOSIXShell(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip("the fake basename(1) programs are POSIX shell scripts")
+		t.Skip("the fake programs are POSIX shell scripts")
 	}
 }
 
 func TestTheBinaryAnswersAsThePayloadCorpusExpects(t *testing.T) {
-	skipWithoutPOSIXShell(t)
 	payloads := guardcorpus.Payloads(t)
 	if len(payloads) < 250 {
 		t.Fatalf("payloads.jsonl has %d payloads; expected the whole corpus", len(payloads))
 	}
 	for _, payload := range payloads {
-		t.Run(payload.Name, func(t *testing.T) {
-			t.Parallel()
-			for _, run := range payload.Runs {
-				got := runBinary(t, run.Basename, payload.Stdin, run.Harness, "pre", "--hook", run.Hook)
+		for _, run := range payload.Runs {
+			// The frame says whether the binary answers as the script did
+			// ("parity") or differs on purpose, and why (the difference IDs).
+			name := guardcorpus.Frame(run.Difference) + "/" + payload.Name + "/" + run.Harness + "/" + run.Hook + "/" + run.Basename
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+				got := runBinary(t, payload.Stdin, run.Harness, "pre", "--hook", run.Hook)
 				if got != run.ExpectedGo {
-					t.Errorf("payloads.jsonl:%d, %s %s %s (difference %q):\n got %+v\nwant %+v",
-						payload.Line, run.Harness, run.Hook, run.Basename, run.Difference, got, run.ExpectedGo)
+					t.Errorf("payloads.jsonl:%d (difference %q):\n got %+v\nwant %+v",
+						payload.Line, run.Difference, got, run.ExpectedGo)
 				}
-			}
-		})
+			})
+		}
 	}
 }
 
 func TestTheBinaryRejectsAnArgumentItDoesNotKnow(t *testing.T) {
-	skipWithoutPOSIXShell(t)
 	for _, args := range [][]string{
 		{"claude", "pre", "--hook", "no-such-hook"},
 		{"no-such-harness", "pre", "--hook", "files-guard"},
 		{"claude", "pre"},
 	} {
-		got := runBinary(t, "", []byte(`{"tool_input":{"file_path":"a.yml"}}`), args...)
+		got := runBinary(t, []byte(`{"tool_input":{"file_path":"a.yml"}}`), args...)
 		if got.Exit != 64 || got.Stdout != "" || !strings.Contains(got.Stderr, "usage: agent-hook") {
 			t.Errorf("agent-hook %q = %+v, want exit 64 and the usage", args, got)
 		}

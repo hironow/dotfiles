@@ -29,8 +29,11 @@ func Paths(call ir.Call) []string {
 		if !value.IsString {
 			return nil
 		}
-		if path := bashsubst.Output(value.Text); path != "" {
-			return strings.Split(path, "\n")
+		// fixed-one-path: the script formatted each line of file_path, NULs
+		// and trailing newlines dropped, and so could format a file the tool
+		// never wrote. The whole string names one file.
+		if value.Text != "" {
+			return []string{value.Text}
 		}
 	}
 	if value, ok := call.Fields[ir.FieldCommand]; ok && value.IsString {

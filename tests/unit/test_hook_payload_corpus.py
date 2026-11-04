@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import command_guard_corpus
 import hook_payload_corpus
+import old_script_fixes
 
 needs_the_scripts = pytest.mark.skipif(
     sys.platform == "win32"
@@ -122,10 +123,50 @@ def test_every_run_follows_from_its_legacy_run() -> None:
             difference, expected = hook_payload_corpus.classify(
                 run["harness"], stdin, run["legacy"], base
             )
-            assert (run["difference"], run["expectedGo"]) == (difference, expected), (
-                f"{entry['name']} {_key(run)}: the difference or expectedGo does not "
-                "follow from the legacy run: run `just hook-payload-corpus`"
+            if "fixed" not in run:
+                assert (run["difference"], run["expectedGo"]) == (
+                    difference,
+                    expected,
+                ), (
+                    f"{entry['name']} {_key(run)}: the difference or expectedGo does not "
+                    "follow from the legacy run: run `just hook-payload-corpus`"
+                )
+                continue
+            # or, where the fixed script answers apart from the old one, from
+            # the run of the fixed script, the reference: its noise always,
+            # and fixes exactly when its answer differs from the old one
+            full_difference, full_expected = hook_payload_corpus.classify(
+                run["harness"], stdin, run["fixed"], None
             )
+            fixes = [
+                part.removeprefix("fixed-")
+                for part in run["difference"].split("+")
+                if part.startswith("fixed-")
+            ]
+            where = f"{entry['name']} {_key(run)}"
+            if fixes:
+                assert full_expected != expected, f"{where}: the fixes change nothing"
+            else:
+                assert full_expected == expected, (
+                    f"{where}: an answer changed with no fix named"
+                )
+            assert run["expectedGo"] == full_expected, where
+            assert run["difference"] == old_script_fixes.difference(
+                fixes, full_difference
+            ), where
+
+
+def test_the_reference_is_the_fixed_script_even_where_only_noise_differs() -> None:
+    # file_path "-1": the old guard's basename failed, so it passed with a
+    # diagnostic; the fixed guard passes silently. The answers agree, so no
+    # fix is needed, but the noise is the fixed script's: none.
+    entry = next(e for e in _entries() if e["name"] == "field-file-path-negative")
+    runs = [run for run in entry["runs"] if run["hook"] == "files-guard"]
+    assert runs
+    for run in runs:
+        assert run["legacy"]["exit"] == 1, _key(run)
+        assert "fixed" in run, _key(run)
+        assert run["difference"] == "", _key(run)
 
 
 def test_a_reason_that_quotes_bashs_warning_is_kept_whole() -> None:
@@ -175,16 +216,35 @@ def test_every_input_the_guard_tests_use_is_in_the_corpus() -> None:
 
 def test_the_corpus_holds_every_difference_and_the_flavors_apart() -> None:
     entries = _entries()
-    differences = {run["difference"] for entry in entries for run in entry["runs"]}
-    assert differences == set(hook_payload_corpus.DIFFERENCES)
-    # where BSD's and GNU's basename(1) part ways, so the binary must pick right
+    parts = {
+        part
+        for entry in entries
+        for run in entry["runs"]
+        for part in run["difference"].split("+")
+    }
+    fixes = {f"fixed-{name}" for name in hook_payload_corpus.FILES_FIXES}
+    assert parts == set(hook_payload_corpus.DIFFERENCES) | fixes
+    # where BSD's and GNU's basename(1) part ways, the old guard's answers
+    # differ; fixed (fixed-dash-line), the guard needs no basename, and the
+    # binary's answer is the same under both
     help_then_yml = next(e for e in entries if e["name"] == "dash-path-0")
-    answers = {
-        run["basename"]: run["expectedGo"]["exit"]
+    runs = {
+        run["basename"]: run
         for run in help_then_yml["runs"]
         if run["harness"] == "claude" and run["hook"] == "files-guard"
     }
-    assert answers == {"bsd": 0, "gnu": 2}
+    assert {flavor: run["legacy"]["exit"] for flavor, run in runs.items()} == {
+        "bsd": 1,
+        "gnu": 2,
+    }
+    assert {flavor: run["expectedGo"]["exit"] for flavor, run in runs.items()} == {
+        "bsd": 2,
+        "gnu": 2,
+    }
+    assert {flavor: run["difference"] for flavor, run in runs.items()} == {
+        "bsd": "fixed-dash-line",
+        "gnu": "",
+    }
     # and a blocking payload made unreadable blocks today in every script
     nan = next(e for e in entries if e["name"] == "unreadable-nan-block-all")
     assert all(

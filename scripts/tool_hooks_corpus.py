@@ -65,6 +65,7 @@ from pathlib import Path, PurePosixPath
 
 import command_guard_corpus
 import hook_payload_corpus
+import old_script_fixes
 
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS_DIR = ROOT / "tools/agent-hooks/internal/toolhookcorpus"
@@ -683,6 +684,20 @@ def formatter_scenarios() -> list[Scenario]:
         )
 
     issues = answer("a.py:1:1: F401 unused\nFound 1 error.\n", exit_code=1)
+    # fixed-one-path (scripts/old_script_fixes.py): the old formatter read
+    # each line of file_path, NULs and trailing newlines dropped, and so
+    # formatted b.go, which none of these calls wrote.
+    add(
+        "fix-one-path-newline-inside",
+        edit_payload(f"{PLACEHOLDER}/work/nowhere\n{PLACEHOLDER}/work/b.go"),
+    )
+    add("fix-one-path-trailing-newline", edit_payload("b.go\n"))
+    add("fix-one-path-nul", edit_payload("b.\u0000go"))
+    add(
+        "fix-one-path-newline-in-a-go-name",
+        edit_payload("a\nb.go"),
+        files={"work/a\nb.go": "package a\n"},
+    )
     add(
         "py-clean",
         edit_payload("a.py"),
@@ -925,8 +940,11 @@ def fake_rules(rule: dict, root: str) -> dict:
     return sub_answer(rule)
 
 
-def build(scenario: Scenario, tools: dict[str, str]) -> str:
-    """The scenario's temporary root, physical, built from scratch."""
+def build(
+    scenario: Scenario, tools: dict[str, str], fixes: frozenset[str] = frozenset()
+) -> str:
+    """The scenario's temporary root, physical, built from scratch, its hooks
+    the old scripts with the named fixes made (scripts/old_script_fixes.py)."""
     root = str(Path(tempfile.mkdtemp(prefix="tool-hooks-")).resolve())
     for d in ["work", "home", "sys-bin", "hooks", *scenario.dirs]:
         Path(root, d).mkdir(parents=True, exist_ok=True)
@@ -959,7 +977,20 @@ def build(scenario: Scenario, tools: dict[str, str]) -> str:
     Path(root, "fakes.json").write_text(json.dumps(rules), encoding="utf-8")
     for harness_scripts in {SCRIPTS[(scenario.hook, h)] for h in scenario.harnesses}:
         for script in harness_scripts:
-            shutil.copy(ROOT / script, Path(root, "hooks", script))
+            mine = [
+                old_script_fixes.FIXES[name]
+                for name in sorted(fixes)
+                if old_script_fixes.FIXES[name].script == script
+            ]
+            target = Path(root, "hooks", script)
+            shutil.copy(ROOT / script, target)
+            if mine:
+                target.write_text(
+                    old_script_fixes.apply_fixes(
+                        target.read_text(encoding="utf-8"), mine
+                    ),
+                    encoding="utf-8",
+                )
     return root
 
 
@@ -1068,6 +1099,20 @@ def formatter_paths(payload: bytes) -> list[str]:
     return []
 
 
+def fixed_formatter_paths(payload: bytes) -> list[str]:
+    """The paths the formatter with its bug fixed tests (fixed-one-path): a
+    string file_path names one file, exactly as given; else as before."""
+    try:
+        value = json.loads(payload)
+    except ValueError:
+        return []
+    tool_input = value.get("tool_input") if isinstance(value, dict) else None
+    file_path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+    if isinstance(file_path, str) and file_path:
+        return [file_path]
+    return formatter_paths(payload)
+
+
 def world(scenario: Scenario, root: str) -> dict:
     """What the in-process fake Machine answers: lookups, executability, and
     regular files, evaluated on the real scenario root."""
@@ -1091,8 +1136,9 @@ def world(scenario: Scenario, root: str) -> dict:
             if not (resolved.is_file() and os.access(resolved, os.X_OK)):
                 unstartable.append(candidate)
     payload = scenario.payload.replace(PLACEHOLDER.encode(), root.encode())
-    for path in formatter_paths(payload):
-        files[path] = Path(cwd, path).is_file() if path else False
+    # The paths the old formatter tests, and those the fixed one tests.
+    for path in formatter_paths(payload) + fixed_formatter_paths(payload):
+        files[path] = bool(path) and "\x00" not in path and Path(cwd, path).is_file()
     found = placeholder(
         {
             "cwd": cwd,
@@ -1362,16 +1408,53 @@ def render_scenario(
                 base = next(
                     r for r in bases[scenario.base]["runs"] if r["harness"] == harness
                 )
+                old_script_fixes.refuse_a_base_that_needs_a_fix(
+                    scenario.name, scenario.base, base
+                )
             difference, expected = classify(scenario, harness, legacy, base)
-            record = legacy_record(scenario, legacy)
-            runs.append(
-                {
-                    "harness": harness,
-                    "difference": difference,
-                    "legacy": record,
-                    "expectedGo": expected,
-                }
-            )
+            run = {
+                "harness": harness,
+                "difference": difference,
+                "legacy": legacy_record(scenario, legacy),
+            }
+            fixes = hook_fixes(scenario.hook)
+            if fixes and base is None:
+                fixed_run = fixed_answer(scenario, harness, tools, frozenset(fixes))
+                fixed_difference, fixed_expected = classify(
+                    scenario, harness, fixed_run, None
+                )
+                # The fixed script is the reference: its noise always, and the
+                # fixes it needs exactly when its answer differs.
+                if (fixed_difference, fixed_expected) != (difference, expected):
+                    needed: list[str] = []
+
+                    def expected_with(
+                        applied: frozenset[str],
+                        harness=harness,
+                        legacy_expected=expected,
+                        fixed_expected=fixed_expected,
+                        fixes=fixes,
+                    ) -> dict:
+                        if not applied:
+                            return legacy_expected
+                        if applied == frozenset(fixes):
+                            return fixed_expected
+                        return classify(
+                            scenario,
+                            harness,
+                            fixed_answer(scenario, harness, tools, applied),
+                            None,
+                        )[1]
+
+                    if fixed_expected != expected:
+                        needed = old_script_fixes.needed(fixes, expected_with)
+                    run["difference"] = old_script_fixes.difference(
+                        needed, fixed_difference
+                    )
+                    run["fixed"] = legacy_record(scenario, fixed_run)
+                    expected = fixed_expected
+            run["expectedGo"] = expected
+            runs.append(run)
         return {
             "name": scenario.name,
             "mirrors": list(scenario.mirrors),
@@ -1388,6 +1471,28 @@ def render_scenario(
             "world": the_world,
             "runs": runs,
         }
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def hook_fixes(hook: str) -> tuple[str, ...]:
+    """The fixes of a hook's old scripts (scripts/old_script_fixes.py)."""
+    scripts = {
+        script for (h, _), names in SCRIPTS.items() if h == hook for script in names
+    }
+    return tuple(
+        name for name, fix in old_script_fixes.FIXES.items() if fix.script in scripts
+    )
+
+
+def fixed_answer(
+    scenario: Scenario, harness: str, tools: dict[str, str], fixes: frozenset[str]
+) -> dict:
+    """A run of the scenario on the old scripts with the named fixes, in a root
+    of its own, so bash's warnings name the same @ROOT@/hooks/ path."""
+    root = build(scenario, tools, fixes)
+    try:
+        return run_legacy(scenario, harness, root)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

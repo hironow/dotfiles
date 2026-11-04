@@ -4,8 +4,11 @@ package ir
 const (
 	FieldCommand  = "command"  // a shell command, or Codex's apply_patch patch
 	FieldFilePath = "filePath" // the path a write or edit names
-	FieldContent  = "content"  // the text a write, edit, or notebook edit puts in
-	FieldCwd      = "cwd"      // the tool call's working directory, as the harness gave it
+	// FieldNotebookPath is NotebookEdit's notebook_path, which the old files
+	// guard never read (fixed-notebook-path).
+	FieldNotebookPath = "notebookPath"
+	FieldContent      = "content" // the text a write, edit, or notebook edit puts in
+	FieldCwd          = "cwd"     // the tool call's working directory, as the harness gave it
 )
 
 // The IR list fields a harness definition maps: a pointer with a "*" in its

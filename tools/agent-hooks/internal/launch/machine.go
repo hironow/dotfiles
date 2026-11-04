@@ -11,12 +11,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/hironow/dotfiles/tools/agent-hooks/internal/fileguard"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
 )
-
-// basenameProbeTimeout bounds `basename --version`, which answers at once.
-const basenameProbeTimeout = 5 * time.Second
 
 // waitDelay bounds how long a command's output pipes may stay open after it
 // exits or is killed (a child it left behind may hold them).
@@ -24,28 +20,6 @@ const waitDelay = 2 * time.Second
 
 // ExecMachine is the machine this process runs on, reached with os/exec.
 type ExecMachine struct{}
-
-// Basename runs `basename --version` from PATH, found as bash finds it. Only
-// GNU's takes --version; any failure, including no basename on PATH, reads
-// as BSD's. A basename found through a relative PATH entry is not run: GNU's
-// flavor is assumed, the one that reads on past --help and so can only block
-// more.
-func (m ExecMachine) Basename() fileguard.Basename {
-	program, found := m.LookPath("basename")
-	if !found {
-		return fileguard.BSDBasename
-	}
-	if program.Relative {
-		return fileguard.GNUBasename
-	}
-	result, err := m.Run(process.Command{
-		Path: program.Path, Args: []string{"basename", "--version"}, Timeout: basenameProbeTimeout,
-	})
-	if err == nil && result.Exit == 0 {
-		return fileguard.GNUBasename
-	}
-	return fileguard.BSDBasename
-}
 
 // IsWindows reports whether this process runs on Windows.
 func (ExecMachine) IsWindows() bool { return runtime.GOOS == "windows" }

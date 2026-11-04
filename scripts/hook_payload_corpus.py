@@ -57,6 +57,7 @@ from pathlib import Path
 
 import command_guard_corpus
 import file_guards_corpus
+import old_script_fixes
 
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / "tools/agent-hooks/internal/guardcorpus/payloads.jsonl"
@@ -69,6 +70,12 @@ GUARDS = {
     "secrets-guard": "ROOT_AGENTS_hooks_block-secrets.sh",
 }
 CODEX_ADAPTER = "ROOT_AGENTS_hooks_guard-codex.sh"
+# The files guard's bugs the binary fixes (scripts/old_script_fixes.py).
+FILES_FIXES = tuple(
+    name
+    for name, fix in old_script_fixes.FIXES.items()
+    if fix.script == old_script_fixes.FILES_GUARD
+)
 HARNESSES = ("claude", "codex")
 BLOCKED = "BLOCKED: "
 UNREADABLE = (
@@ -425,6 +432,32 @@ def limit_payloads() -> list[Payload]:
     return payloads
 
 
+def fix_payloads() -> list[Payload]:
+    """The old scripts' bugs that the binary fixes (scripts/old_script_fixes.py),
+    as the harnesses hand them over: each, and what must still block."""
+    notebook = {"tool_name": "NotebookEdit"}
+    cases = {
+        # fixed-dash-line: a "-" line stopped the old files guard
+        "fix-dash-line-after-ok": {"tool_input": {"file_path": "ok\n--bogus\nbad.yml"}},
+        "fix-dash-line-itself": {"tool_input": {"file_path": "--x.yml"}},
+        # fixed-notebook-path: the old files guard never read notebook_path
+        "fix-notebook-path-alone": notebook
+        | {"tool_input": {"notebook_path": "bad.yml", "new_source": "x"}},
+        "fix-notebook-path-empty-file-path": notebook
+        | {"tool_input": {"file_path": "", "notebook_path": "bad.yml"}},
+        "fix-notebook-path-safe-file-path": notebook
+        | {"tool_input": {"file_path": "safe.md", "notebook_path": "bad.yml"}},
+        "fix-notebook-path-blocked-file-path": notebook
+        | {"tool_input": {"file_path": "bad.yml", "notebook_path": "safe.ipynb"}},
+        "fix-notebook-path-not-a-string": notebook
+        | {"tool_input": {"notebook_path": ["bad.yml"]}},
+        # both at once: neither fix alone blocks
+        "fix-notebook-path-dash-line": notebook
+        | {"tool_input": {"notebook_path": "--x.yml"}},
+    }
+    return [Payload(name, doc(value)) for name, value in cases.items()]
+
+
 def payloads() -> list[Payload]:
     """Every payload, once each, in a fixed order."""
     found = (
@@ -433,6 +466,7 @@ def payloads() -> list[Payload]:
         + test_payloads()
         + unreadable_payloads()
         + readable_payloads()
+        + fix_payloads()
     )
     seen: dict[bytes, str] = {}
     unique = []
@@ -646,8 +680,11 @@ def make_tools(root: Path, flavor_program: str | None) -> str:
     return str(root)
 
 
-def run_script(harness: str, hook: str, stdin: bytes, tools: str) -> dict:
-    """One legacy run: the script as the harness runs it today."""
+def run_script(
+    harness: str, hook: str, stdin: bytes, tools: str, scripts: Path = ROOT
+) -> dict:
+    """One legacy run: the script as the harness runs it today, from the
+    repo's scripts, or from a directory of fixed copies (same names)."""
     argv = ["bash", GUARDS[hook]]
     if harness == "codex":
         argv = ["bash", CODEX_ADAPTER, GUARDS[hook]]
@@ -657,7 +694,7 @@ def run_script(harness: str, hook: str, stdin: bytes, tools: str) -> dict:
         env=reference_env(tools),
         capture_output=True,
         check=False,
-        cwd=ROOT,
+        cwd=scripts,
     )
     return {
         "exit": done.returncode,
@@ -739,30 +776,111 @@ def render(flavors: dict[str, str]) -> list[dict]:
                 jobs,
             )
         )
-    by_payload: dict[str, dict] = {}
-    entries = []
-    for index, payload in enumerate(found):
-        runs = []
-        for k, (harness, hook, flavor) in enumerate(keys):
-            legacy = legacy_record(harness, results[index * len(keys) + k])
-            base = (
-                by_payload[payload.base][(harness, hook, flavor)]
-                if payload.base
-                else None
+        # The files guard with every fix, and with each left out of that set.
+        everything = frozenset(FILES_FIXES)
+        variants = {
+            applied: old_script_fixes.write_scripts(
+                Path(scratch)
+                / ("fixed-" + "+".join(sorted(applied)) if applied else "old"),
+                applied,
             )
-            difference, expected = classify(harness, payload.stdin, legacy, base)
-            run: dict[str, object] = {"harness": harness, "hook": hook}
-            if flavor:
-                run["basename"] = flavor
-            run |= {"difference": difference, "legacy": legacy, "expectedGo": expected}
-            runs.append(run)
-        by_payload[payload.name] = {
-            (r["harness"], r["hook"], r.get("basename", "")): r for r in runs
+            for applied in [everything, *(everything - {name} for name in FILES_FIXES)]
         }
-        entry = {"name": payload.name} | stored_stdin(payload.stdin)
-        if payload.base:
-            entry["base"] = payload.base
-        entries.append(entry | {"runs": runs})
+        fixed_jobs = [
+            (index, k)
+            for index, payload in enumerate(found)
+            for k, key in enumerate(keys)
+            if key[1] == "files-guard" and not payload.base
+        ]
+        full_results = dict(
+            zip(
+                fixed_jobs,
+                pool.map(
+                    lambda job: run_script(
+                        keys[job[1]][0],
+                        keys[job[1]][1],
+                        found[job[0]].stdin,
+                        tools[keys[job[1]][2]],
+                        variants[everything],
+                    ),
+                    fixed_jobs,
+                ),
+                strict=True,
+            )
+        )
+        by_payload: dict[str, dict] = {}
+        entries = []
+        for index, payload in enumerate(found):
+            runs = []
+            for k, (harness, hook, flavor) in enumerate(keys):
+                legacy = legacy_record(harness, results[index * len(keys) + k])
+                base = (
+                    by_payload[payload.base][(harness, hook, flavor)]
+                    if payload.base
+                    else None
+                )
+                if base is not None:
+                    old_script_fixes.refuse_a_base_that_needs_a_fix(
+                        payload.name, payload.base, base
+                    )
+                difference, expected = classify(harness, payload.stdin, legacy, base)
+                run: dict[str, object] = {"harness": harness, "hook": hook}
+                if flavor:
+                    run["basename"] = flavor
+                fixed = None
+                if (index, k) in full_results:
+                    full = legacy_record(harness, full_results[(index, k)])
+                    full_difference, full_expected = classify(
+                        harness, payload.stdin, full, None
+                    )
+                    # The fixed script is the reference: its noise always, and
+                    # the fixes it needs exactly when its answer differs.
+                    if (full_difference, full_expected) != (difference, expected):
+                        needed: list[str] = []
+
+                        def expected_with(
+                            applied: frozenset[str],
+                            harness=harness,
+                            hook=hook,
+                            flavor=flavor,
+                            stdin=payload.stdin,
+                            legacy_expected=expected,
+                            full_expected=full_expected,
+                        ) -> dict:
+                            if not applied:
+                                return legacy_expected
+                            if applied == everything:
+                                return full_expected
+                            record = legacy_record(
+                                harness,
+                                run_script(
+                                    harness,
+                                    hook,
+                                    stdin,
+                                    tools[flavor],
+                                    variants[applied],
+                                ),
+                            )
+                            return classify(harness, stdin, record, None)[1]
+
+                        if full_expected != expected:
+                            needed = old_script_fixes.needed(FILES_FIXES, expected_with)
+                        difference = old_script_fixes.difference(
+                            needed, full_difference
+                        )
+                        expected, fixed = full_expected, full
+                run |= {"difference": difference, "legacy": legacy}
+                if fixed is not None:
+                    run["fixed"] = fixed
+                run["expectedGo"] = expected
+                runs.append(run)
+            by_payload[payload.name] = {
+                (r["harness"], r["hook"], r.get("basename", "")): r for r in runs
+            }
+            entry = {"name": payload.name} | stored_stdin(payload.stdin)
+            if payload.base:
+                entry["base"] = payload.base
+            entries.append(entry | {"runs": runs})
     return entries
 
 

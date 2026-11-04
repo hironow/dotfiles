@@ -49,6 +49,8 @@ func TestEveryHarnessMapsTheFieldsItsHooksRead(t *testing.T) {
 		ir.FieldFilePath: {"/tool_input/file_path"},
 		ir.FieldContent:  {"/tool_input/content", "/tool_input/new_string", "/tool_input/new_source"},
 		ir.FieldCwd:      {"/cwd"},
+		// fixed-notebook-path: the old files guard never read it.
+		ir.FieldNotebookPath: {"/tool_input/notebook_path"},
 	}
 	// agy's tools name their arguments themselves (run_command CommandLine,
 	// write_file Path and Content, edit_file Path and Replacement), and each
@@ -116,9 +118,6 @@ func TestEveryHarnessRegistersItsHooksForTodaysTools(t *testing.T) {
 func TestEveryKnownGapIsDegradedOrUnsupportedWithItsReason(t *testing.T) {
 	// Every other cell is supported.
 	gaps := map[[3]string]string{
-		// The guard reads file_path; NotebookEdit names notebook_path. The
-		// old script did the same.
-		{"claude", "files-guard", "NotebookEdit"}: definition.LevelDegraded,
 		// agy's sandbox cannot run rtk, and agy checks its permission rules
 		// against the rewritten command.
 		{"agy", "rtk", "run_command"}: definition.LevelUnsupported,
@@ -222,8 +221,11 @@ func TestEveryIRPointerIsDeclaredInItsSchema(t *testing.T) {
 	// content, but the old guards read them for every harness.
 	wantUndeclared := map[string][]string{
 		"claude": nil,
-		"codex":  {"/tool_input/file_path", "/tool_input/content", "/tool_input/new_string", "/tool_input/new_source"},
-		"agy":    nil,
+		"codex": {
+			"/tool_input/file_path", "/tool_input/content", "/tool_input/new_string", "/tool_input/new_source",
+			"/tool_input/notebook_path",
+		},
+		"agy": nil,
 	}
 	for _, name := range names {
 		for _, event := range events {

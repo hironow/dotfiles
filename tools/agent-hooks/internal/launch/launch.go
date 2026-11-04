@@ -34,8 +34,6 @@ const usage = "usage: agent-hook <harness> <event> --hook <id>"
 
 // Machine is what the hooks need from the machine they run on.
 type Machine interface {
-	// Basename is the flavor of basename(1) the shell guard would run here.
-	Basename() fileguard.Basename
 	// LookPath finds a program on PATH as the old scripts did (process.Search).
 	LookPath(name string) (process.Program, bool)
 	// IsExecutable is access(2) with X_OK, as Python's os.access.
@@ -214,13 +212,8 @@ func commandGuard(call ir.Call, _ Machine) ir.Outcome {
 	return commandguard.Check(command)
 }
 
-func filesGuard(call ir.Call, machine Machine) ir.Outcome {
-	paths := fileguard.Paths(call)
-	flavor := fileguard.BSDBasename // the flavors read these paths alike
-	if fileguard.NeedsBasename(paths) {
-		flavor = machine.Basename()
-	}
-	return fileguard.Check(paths, flavor)
+func filesGuard(call ir.Call, _ Machine) ir.Outcome {
+	return fileguard.Check(fileguard.Paths(call))
 }
 
 func secretsGuard(call ir.Call, _ Machine) ir.Outcome {
