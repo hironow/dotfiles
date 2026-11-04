@@ -20,7 +20,22 @@ import (
 const (
 	RuleComposeV1    = "file.compose-v1"
 	RuleYMLExtension = "file.yml"
+	// RuleUnresolved blocks a path the shell could not resolve as the
+	// harness resolves it (ir.Call.PathUnresolved): the guard cannot judge a
+	// file it cannot name.
+	RuleUnresolved = "file.unresolved"
 )
+
+// CheckCall is the guard's verdict on a call: Check on its paths (Paths),
+// unless its file path could not be resolved as the harness resolves it.
+func CheckCall(call ir.Call) ir.Outcome {
+	if call.PathUnresolved {
+		return block(RuleUnresolved, "agent-hook cannot tell which file Pi writes for the path '"+
+			call.Fields[ir.FieldFilePath].Text+"' (a file: URL in an unusual form, or ~ with no home directory). "+
+			"Name the file by a plain path.")
+	}
+	return Check(Paths(call))
+}
 
 // Check returns the guard's verdict on the paths of one tool call. Like the
 // shell guard, it reads each path line by line, skips empty lines, and drops

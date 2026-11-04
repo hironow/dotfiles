@@ -1,0 +1,22 @@
+{
+  "tool": "edit",
+  "kind": "edit",
+  "fields": {
+    "cwd": {
+      "string": "/home/user/project"
+    },
+    "filePath": {
+      "string": "notes.txt"
+    }
+  },
+  "lists": {
+    "contents": [
+      {
+        "string": "one"
+      },
+      {
+        "string": "two"
+      }
+    ]
+  }
+}

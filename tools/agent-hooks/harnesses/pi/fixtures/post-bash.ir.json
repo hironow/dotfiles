@@ -1,0 +1,12 @@
+{
+  "tool": "bash",
+  "kind": "shell",
+  "fields": {
+    "cwd": {
+      "string": "/home/user/project"
+    },
+    "command": {
+      "string": "echo capture-run"
+    }
+  }
+}

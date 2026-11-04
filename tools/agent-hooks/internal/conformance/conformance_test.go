@@ -50,6 +50,12 @@ var members = map[string]map[string]map[string]string{
 		"write_file":  {rolePath: "/toolCall/args/Path", roleContent: "/toolCall/args/Content"},
 		"edit_file":   {rolePath: "/toolCall/args/Path", roleContent: "/toolCall/args/Replacement"},
 	},
+	// The shim's request carries the tool's input as Pi hands it over.
+	"pi": {
+		"bash":  {roleCommand: "/input/command"},
+		"write": {rolePath: "/input/path", roleContent: "/input/content"},
+		"edit":  {rolePath: "/input/path", roleContent: "/input/edits/0/newText"},
+	},
 }
 
 // fixtures names each harness's captured payload for an event and a tool.
@@ -65,6 +71,10 @@ var fixtures = map[string]map[string]string{
 		"pre/run_command": "pre-run-command.json", "pre/write_file": "pre-write-file.json",
 		"pre/edit_file": "pre-edit-file.json", "post/write_file": "post-write-file.json",
 		"post/edit_file": "post-edit-file.json",
+	},
+	"pi": {
+		"pre/bash": "pre-bash.json", "pre/write": "pre-write.json", "pre/edit": "pre-edit.json",
+		"pre/edit-two": "pre-edit-two.json", "post/write": "post-write.json", "post/edit": "post-edit.json",
 	},
 }
 
@@ -234,8 +244,11 @@ func checkFormatter(t *testing.T, harness string, def definition.Definition, too
 			t.Errorf("%s: %s", test.file, problem)
 		}
 	}
-	if harness == "agy" {
+	switch harness {
+	case "agy":
 		checkAgyPostFailure(t, tool)
+	case "pi":
+		checkPiPostFailure(t, tool)
 	}
 }
 
@@ -246,7 +259,53 @@ func machineFor(file string, commands []fake.Invocation) *fake.Machine {
 		Programs:  map[string]process.Program{"uv": {Path: "/b/uv"}, "gofmt": {Path: "/b/gofmt"}},
 		Files:     map[string]bool{file: true},
 		RealPaths: map[string]string{file: file, project: project},
-		Replay:    commands,
+		// The binary runs in the project, as the session harnesses and Pi's
+		// shim run it.
+		Cwd:    project,
+		Replay: commands,
+	}
+}
+
+// checkPiPostFailure: after a call that failed (ok false), Pi's formatter
+// answers the pass and runs nothing.
+func checkPiPostFailure(t *testing.T, tool string) {
+	t.Helper()
+	file := project + "/a.py"
+	m := machineFor(file, nil)
+	payload := scenario(t, "pi", "post", tool, map[string]any{members["pi"][tool][rolePath]: file, "/ok": false})
+	if got := runBinary(t, m, payload, "pi", "post", "formatter"); got != passed("") {
+		t.Errorf("ok false: %+v, want the pass and nothing run", got)
+	}
+	for _, problem := range m.Done() {
+		t.Errorf("ok false: %s", problem)
+	}
+}
+
+func TestPiJudgesTheFileItWrites(t *testing.T) {
+	// Pi's model names paths relative to the session (the fixtures do), and
+	// Pi writes the file resolveToCwd names: the guard judges that file.
+	cases := []guardCase{
+		{rolePath, "x.yml", true},
+		{rolePath, "x.yaml", false},
+		{rolePath, "@docker-compose.yaml", true},
+		{rolePath, "docs/agents/x.yml", false},
+		{rolePath, "sub/../docs/agents/x.yml", false},
+	}
+	for _, tool := range []string{"write", "edit"} {
+		checkGuard(t, "pi", "files-guard", tool, cases)
+	}
+}
+
+func TestPiChecksEveryReplacementOfAnEdit(t *testing.T) {
+	// One edit call may make several replacements; a key in a later one
+	// blocks as one in the first does.
+	for value, blocks := range map[string]bool{"aws_access_key_id = " + key + "\n": true, "two": false} {
+		payload := scenario(t, "pi", "pre", "edit-two", map[string]any{"/input/edits/1/newText": value})
+		got := runBinary(t, &fake.Machine{}, payload, "pi", "pre", "secrets-guard")
+		if blocks != (got.kind == block) || (blocks && !strings.HasPrefix(got.reason, "BLOCKED: ")) ||
+			(!blocks && got != passed("")) {
+			t.Errorf("second newText %q: %+v, want blocked %v", value, got, blocks)
+		}
 	}
 }
 
@@ -314,20 +373,42 @@ func scenario(t *testing.T, harness, event, tool string, values map[string]any) 
 	return out
 }
 
-// set writes value at an object member's pointer; omitted removes it.
+// set writes value at an object member's pointer, through objects and
+// arrays; omitted removes it.
 func set(t *testing.T, payload any, pointer string, value any) {
 	t.Helper()
 	tokens := strings.Split(strings.TrimPrefix(pointer, "/"), "/")
 	node := payload
 	for _, token := range tokens[:len(tokens)-1] {
-		node = node.(map[string]any)[token]
+		node = child(t, node, token)
 	}
-	parent := node.(map[string]any)
+	parent, ok := node.(map[string]any)
+	if !ok {
+		t.Fatalf("%s does not name an object member", pointer)
+	}
 	if value == omitted {
 		delete(parent, tokens[len(tokens)-1])
 		return
 	}
 	parent[tokens[len(tokens)-1]] = value
+}
+
+// child is the member or the array element a pointer's token names.
+func child(t *testing.T, node any, token string) any {
+	t.Helper()
+	switch node := node.(type) {
+	case map[string]any:
+		return node[token]
+	case []any:
+		i, err := strconv.Atoi(token)
+		if err != nil || i < 0 || i >= len(node) {
+			t.Fatalf("no element %s", token)
+		}
+		return node[i]
+	default:
+		t.Fatalf("no member %s", token)
+		return nil
+	}
 }
 
 // pointers lists the JSON Pointers of every object member under node.

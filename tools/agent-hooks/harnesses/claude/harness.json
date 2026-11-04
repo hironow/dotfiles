@@ -10,6 +10,8 @@
     "Edit": "edit",
     "NotebookEdit": "notebook"
   },
+  "transport": "command",
+  "pathResolution": "as-given",
   "hookCwd": "session",
   "support": {
     "command-guard": {

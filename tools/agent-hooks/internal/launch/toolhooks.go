@@ -148,6 +148,19 @@ func hasSeparator(machine Machine, program string) bool {
 	return strings.Contains(program, "/") || (machine.IsWindows() && strings.Contains(program, `\`))
 }
 
+// inShimCwd reports whether the binary runs in the call's cwd, both
+// compared physically: the shim's contract, which the formatter relies on
+// to run ruff and gofmt in the call's project. A shim that broke it would
+// otherwise format against another project's settings.
+func inShimCwd(call ir.Call, machine Machine) bool {
+	cwd, ok := call.Fields[ir.FieldCwd]
+	if !ok || !cwd.IsString {
+		return false
+	}
+	real, err := machine.RealPath(cwd.Text)
+	return err == nil && real == machine.Getwd()
+}
+
 // isJSONObject reports whether a JSON text's value is an object.
 func isJSONObject(text []byte) bool {
 	text = bytes.TrimLeft(text, " \t\r\n")
@@ -164,7 +177,13 @@ func isJSONObject(text []byte) bool {
 // run there with the path as given, as the script's did. agy runs it where
 // its hooks.json is, so the commands run in the file's project (locate),
 // with the file's real path; a file it cannot place is left as it is.
+//
+// A shim runs the binary in the call's cwd: the commands run there, as on
+// Claude, once the binary checks that it does run there (inShimCwd).
 func formatterHook(call ir.Call, machine Machine) ir.Outcome {
+	if call.Transport == ir.TransportShim && !inShimCwd(call, machine) {
+		return ir.Outcome{}
+	}
 	var notice strings.Builder
 	for _, path := range formatter.Paths(call) {
 		target, dir := path, ""

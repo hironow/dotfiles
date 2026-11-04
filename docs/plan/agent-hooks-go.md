@@ -1,7 +1,7 @@
 # Plan: agent-hook — one Go engine, harness definitions as data, a log line at every firing
 
 **Date:** 2026-11-03
-**Status:** Approved (owner, 2026-11-03, chat; Codex review 6: APPROVE). PR 0 merged as [#534](https://github.com/hironow/dotfiles/pull/534), PR 1 as [#535](https://github.com/hironow/dotfiles/pull/535), PR 2a as [#537](https://github.com/hironow/dotfiles/pull/537) after the fix [#536](https://github.com/hironow/dotfiles/pull/536); PR 2b as [#540](https://github.com/hironow/dotfiles/pull/540) (main `0c225828`), PR 2c as [#544](https://github.com/hironow/dotfiles/pull/544) (main `66b75132`), PR 2d as [#545](https://github.com/hironow/dotfiles/pull/545) (main `f93b7735`), PR 2e as [#546](https://github.com/hironow/dotfiles/pull/546) (main `7a6f70fd`), PR 2e.2 as [#548](https://github.com/hironow/dotfiles/pull/548) (main `c7baaa6c`). PR 2e.3 is on hold (owner, 2026-11-05); its work in progress is commit `cc5619c5`, which [#549](https://github.com/hironow/dotfiles/pull/549) took off main. PR 2f goes ahead of it.
+**Status:** Approved (owner, 2026-11-03, chat; Codex review 6: APPROVE). PR 0 merged as [#534](https://github.com/hironow/dotfiles/pull/534), PR 1 as [#535](https://github.com/hironow/dotfiles/pull/535), PR 2a as [#537](https://github.com/hironow/dotfiles/pull/537) after the fix [#536](https://github.com/hironow/dotfiles/pull/536); PR 2b as [#540](https://github.com/hironow/dotfiles/pull/540) (main `0c225828`), PR 2c as [#544](https://github.com/hironow/dotfiles/pull/544) (main `66b75132`), PR 2d as [#545](https://github.com/hironow/dotfiles/pull/545) (main `f93b7735`), PR 2e as [#546](https://github.com/hironow/dotfiles/pull/546) (main `7a6f70fd`), PR 2e.2 as [#548](https://github.com/hironow/dotfiles/pull/548) (main `c7baaa6c`). PR 2e.3 is on hold (owner, 2026-11-05); its work in progress is commit `cc5619c5`, which [#549](https://github.com/hironow/dotfiles/pull/549) took off main. PR 2f goes ahead of it; its first part, the port of Pi's path resolution, is [#551](https://github.com/hironow/dotfiles/pull/551).
 **Related:** [hook contracts per harness](agent-hooks-go-contracts.md) (2026-11-03 snapshot, with the agy probe records), [agent sync](../agent-sync.md), [#533](https://github.com/hironow/dotfiles/pull/533) (Codex hooks rendered from the one source, from main `8d55d1b7`)
 **Blocking decisions:** none (D1–D3 decided by the owner on 2026-11-03; no ADR, by the owner's decision)
 
@@ -183,6 +183,33 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Real process:** a test builds a workspace, a symlink out of it, and another project with `.git` on the real file system, and checks where the fake `uv` and `gofmt` ran and on which path.
     - **Not yet:** a captured payload with several workspaces (no capture had one); decoded test payloads cover that case.
 
+- How PR 2f does it: the binary also answers Pi (1.4.0) through the shim protocol, for the three guards (`pre`) and the formatter (`post`), not yet registered (PR 4 ships the shim).
+    - **The shim protocol v1** (`tools/agent-hooks/shim/`, embedded): `request.schema.json` and `response.schema.json`.
+        - A harness whose `harness.json` says `"transport": "shim"` gets each request checked against the request schema, and the request's `harness` and `event` must be the binary's arguments.
+        - A broken exchange is its own rule: input that is not one JSON value, an unknown `v`, a missing, wrong-typed, or unknown member, a relative `cwd`, or another harness or event. Before the tool, every hook blocks (`shim.broken`), rtk included; after it, nothing runs.
+        - The loader checks a shim harness's answers against the response schema, and that they exit 0.
+    - **Pi's definition** (`harnesses/pi/`):
+        - tools `bash`, `write`, and `edit` (`powershell` pending), `hookCwd` session, and rtk `unsupported` until 2g;
+        - the answers `{"v":1,"action":"pass"}` and `{"v":1,"action":"block","reason":"BLOCKED: ..."}`;
+        - `x-ir`: `command`, `filePath`, `content`, `contents` (every `newText`, a new list field), and `cwd`; `x-success` is `/ok`.
+        - The fixtures are the events captured on 2026-11-04, wrapped as requests. Pi hands its extensions the arguments after the tool's `prepareArguments`, its coercion, and its schema check, so an old-style edit arrives in `edits[]` (Pi 1.4.0 `agent-loop.js` `prepareToolCall`, `agent-session.js` `_beforeToolCall`).
+    - **Pi's paths** (`"pathResolution": "pi"`):
+        - Before any hook reads the call, the shell replaces `filePath` with the file Pi touches (`internal/pipath`, [#551](https://github.com/hironow/dotfiles/pull/551), checked against Pi itself). The home is Node's `os.homedir()` (`Machine.HomeDir`).
+        - A path the port cannot resolve exactly as Pi does blocks in the files guard (`file.unresolved`), and the formatter leaves it.
+        - The approved design named a three-way `paths` field (`lines`, `one`, `pi`). PR 2e (`fixed-one-path`, `fixed-dash-line`) and #550 made `one` read as `lines` does, so only the resolution is new.
+        - The files guard reads the resolved path by lines, as on every harness. Since #550 that is never laxer than reading one name; it is stricter for a name that holds a newline.
+    - **The secrets guard** reads every element of `contents` as it reads `content`. Claude, Codex, and agy map no `contents`, so their corpora are unchanged.
+    - **The formatter on Pi** runs only when the binary's working directory is the request's `cwd`, compared physically: that is the shim's contract, and otherwise ruff could run with another project's settings. After a failed call (`ok` false), no post hook runs.
+    - **Conformance** covers Pi:
+        - its members;
+        - a strict reader of the shim response, with negative tests;
+        - relative paths, judged as resolved;
+        - a key in an edit's second replacement.
+    - **Not yet:**
+        - the rewrite codec and Pi's rtk (2g);
+        - the shim and its wiring (PR 4);
+        - Windows (`powershell`, and Windows paths: a Windows cwd is not absolute in the protocol, so every pre hook blocks).
+
 ### Bugs of the old scripts that the binary fixes
 
 The owner decided (2026-11-04 19:30, chat) that where an old script has a bug, the binary fixes it, and the tests keep each fix apart from the faithful port.
@@ -249,6 +276,11 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
 
 ## Review record
 
+- PR 2f (Pi through the shim protocol) code reviews (Codex):
+    - Round 1 (REVISE, 1): the conformance reader of the shim response took `"reason": null` as no reason, though the protocol makes a present reason a string. It now tells null from none, with negative tests on pass, post, and rewrite. The same round confirmed that Claude's, Codex's, and agy's corpora did not change.
+    - Round 2 (APPROVE): no further findings.
+- PR 2f's revised design (for today's main, against the approved design of 2026-11-04): Codex, APPROVE, no findings. It drops the three-way `paths` field for `pathResolution` and fixes the relative `docs/agents/` exemption first (#550).
+- PR 2f's own checks: 24 mutations of its decisions. Two survived: one was a check that could never fail (a cwd that resolves to `""`), removed; the other, an unresolved path's formatting, got a test that pins it.
 - The port of Pi's path resolution (`internal/pipath`, part of PR 2f) was written by Codex from a brief, and reviewed by Claude and by an independent reviewer (a separate Claude session), each claim checked against Pi 1.4.0's own `resolveToCwd`:
     - Round 1 (REVISE, 3), found by a differential fuzz of the port against Pi:
         - A `file:` URL with an empty segment before a dot segment resolved to another file than Pi writes: the URL parser keeps an empty segment, so a later `..` removes it (`file:///w/docker-compose.yaml//..` is `/w/docker-compose.yaml`), where `path.Clean` dropped it first (`/w`), which the files guard passed. A plain URL now has no empty segment; the URL is refused otherwise.

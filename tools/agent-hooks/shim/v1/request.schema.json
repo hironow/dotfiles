@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent-hook shim protocol v1: the request",
+  "description": "What a shim (an extension that runs inside a harness, such as Pi) writes on the agent-hook binary's stdin for one hook call: one JSON object and nothing else. The binary checks every request against this schema, and checks that its harness and event are the binary's own arguments. A request that fails is a broken exchange: before the tool, every hook blocks (rule shim.broken); after it, nothing runs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "harness",
+    "event",
+    "tool",
+    "input",
+    "cwd"
+  ],
+  "properties": {
+    "v": {
+      "description": "The protocol version.",
+      "const": 1
+    },
+    "harness": {
+      "description": "The harness, as the binary's first argument names it.",
+      "type": "string",
+      "minLength": 1
+    },
+    "event": {
+      "description": "pre: before the tool runs; post: after it ran.",
+      "enum": [
+        "pre",
+        "post"
+      ]
+    },
+    "tool": {
+      "description": "The harness's own name for the tool.",
+      "type": "string",
+      "minLength": 1
+    },
+    "input": {
+      "description": "The tool's input, as the harness hands it to its extensions.",
+      "type": "object"
+    },
+    "cwd": {
+      "description": "The absolute directory the harness resolves the tool's paths against. The shim runs the binary in it.",
+      "type": "string",
+      "pattern": "^/"
+    },
+    "ok": {
+      "description": "post only: whether the tool call succeeded.",
+      "type": "boolean"
+    },
+    "context": {
+      "description": "What else the harness tells about the call, such as OpenCode's agent. No hook reads it yet.",
+      "type": "object"
+    }
+  },
+  "if": {
+    "properties": {
+      "event": {
+        "const": "post"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "ok"
+    ]
+  },
+  "else": {
+    "not": {
+      "required": [
+        "ok"
+      ]
+    }
+  }
+}

@@ -49,6 +49,7 @@ var readers = map[string]map[string]func(answer) verdict{
 	"claude": {"pre": readClaudePre, "post": readClaudePost},
 	"codex":  {"pre": readCodexPre, "post": readCodexPost},
 	"agy":    {"pre": readAgyPre, "post": readAgyPost},
+	"pi":     {"pre": readShimPre, "post": readShimPost},
 }
 
 // object reads text as one JSON object: its members, by name. Duplicate
@@ -337,6 +338,64 @@ func readAgyPost(a answer) verdict {
 	return passed(a.stderr)
 }
 
+// Pi's shim (PR 4) reads the binary's answer by the shim protocol
+// (tools/agent-hooks/shim/v1/response.schema.json): exit 0, and stdout one
+// response object, read strictly. The binary writes nothing else, so
+// anything else is invalid here.
+func readShimPre(a answer) verdict  { return readShim(a, "pre") }
+func readShimPost(a answer) verdict { return readShim(a, "post") }
+
+func readShim(a answer, event string) verdict {
+	if a.exit != 0 {
+		return invalidBecause(fmt.Sprintf("exit %d", a.exit))
+	}
+	members, err := object(a.stdout)
+	if err != nil {
+		return invalidBecause("stdout is not one JSON object")
+	}
+	for name := range members {
+		if !slices.Contains([]string{"v", "action", "reason", "set"}, name) {
+			return invalidBecause("unknown member " + name)
+		}
+	}
+	var version float64
+	if err := json.Unmarshal(members["v"], &version); err != nil || version != 1 {
+		return invalidBecause("v is not 1")
+	}
+	action, _, _ := stringMember(members, "action")
+	// A reason that is there must be a non-blank string: stringMember reads
+	// null as none, which the protocol does not.
+	rawReason, hasReason := members["reason"]
+	reason := ""
+	if hasReason && rawReason.Kind() == '"' {
+		reason = mustString(rawReason)
+	}
+	_, hasSet := members["set"]
+	switch {
+	case hasReason && (rawReason.Kind() != '"' || strings.TrimSpace(reason) == ""):
+		return invalidBecause("a reason that is blank or not a string")
+	case action == "pass" && !hasSet:
+		return passed(a.stderr)
+	case action == "block" && event == "pre" && hasReason && !hasSet:
+		return blocked(reason)
+	case action == "rewrite" && event == "pre" && commandOnly(members["set"]):
+		return verdict{kind: rewrite}
+	default:
+		return invalidBecause(fmt.Sprintf("action %q on %s", action, event))
+	}
+}
+
+// commandOnly reports whether a rewrite's set names the command, and nothing
+// else, as a string.
+func commandOnly(set jsontext.Value) bool {
+	members, err := object(string(set))
+	if err != nil || len(members) != 1 {
+		return false
+	}
+	_, present, ok := stringMember(members, "command")
+	return present && ok
+}
+
 func TestTheReadersReadEachHarnessAsItReadsItself(t *testing.T) {
 	deny := func(reason string) string {
 		return `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":` +
@@ -433,6 +492,30 @@ func TestTheReadersReadEachHarnessAsItReadsItself(t *testing.T) {
 		{"agy", "post", answer{stdout: "{}\n", stderr: "n"}, passed("n")},
 		{"agy", "post", answer{stdout: `{"decision":"ask"}`}, invalidBecause(`stdout "{\"decision\":\"ask\"}" is not {}`)},
 		{"agy", "post", answer{exit: 1, stdout: "{}"}, invalidBecause("exit 1")},
+		// Pi's shim.
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"pass"}` + "\n"}, passed("")},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"block","reason":"BLOCKED: x"}`}, blocked("BLOCKED: x")},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"block"}`}, invalidBecause(`action "block" on pre`)},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"block","reason":" \n"}`}, invalidBecause("a reason that is blank or not a string")},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"block","reason":1}`}, invalidBecause("a reason that is blank or not a string")},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"pass","decision":"ask"}`}, invalidBecause("unknown member decision")},
+		{"pi", "pre", answer{stdout: `{"v":2,"action":"pass"}`}, invalidBecause("v is not 1")},
+		{"pi", "pre", answer{stdout: `{"v":"1","action":"pass"}`}, invalidBecause("v is not 1")},
+		{"pi", "pre", answer{stdout: `{"action":"pass"}`}, invalidBecause("v is not 1")},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"pass","set":{"command":"x"}}`}, invalidBecause(`action "pass" on pre`)},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"rewrite","set":{"command":"x"}}`}, verdict{kind: rewrite}},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"rewrite"}`}, invalidBecause(`action "rewrite" on pre`)},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"rewrite","set":{"command":"x","cwd":"/"}}`}, invalidBecause(`action "rewrite" on pre`)},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"allow"}`}, invalidBecause(`action "allow" on pre`)},
+		{"pi", "pre", answer{exit: 2, stdout: `{"v":1,"action":"pass"}`}, invalidBecause("exit 2")},
+		{"pi", "pre", answer{stdout: ``}, invalidBecause("stdout is not one JSON object")},
+		{"pi", "pre", answer{stdout: `{"v":1,"v":1,"action":"pass"}`}, invalidBecause("stdout is not one JSON object")},
+		{"pi", "post", answer{stdout: `{"v":1,"action":"pass"}` + "\n", stderr: "n"}, passed("n")},
+		{"pi", "post", answer{stdout: `{"v":1,"action":"block","reason":"r"}`}, invalidBecause(`action "block" on post`)},
+		// A reason that is there must be a string: null is not none.
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"pass","reason":null}`}, invalidBecause("a reason that is blank or not a string")},
+		{"pi", "post", answer{stdout: `{"v":1,"action":"pass","reason":null}`}, invalidBecause("a reason that is blank or not a string")},
+		{"pi", "pre", answer{stdout: `{"v":1,"action":"rewrite","reason":null,"set":{"command":"x"}}`}, invalidBecause("a reason that is blank or not a string")},
 	}
 	for _, test := range tests {
 		if got := readers[test.harness][test.event](test.answer); got != test.want {

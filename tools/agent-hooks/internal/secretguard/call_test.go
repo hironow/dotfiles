@@ -62,3 +62,31 @@ var tools = []struct{ name, kind string }{
 	{"Write", ir.KindWrite},
 	{"apply_patch", ir.KindPatch},
 }
+
+func TestContentsReadsEveryReplacementOfAnEdit(t *testing.T) {
+	// Pi's edit makes one or more replacements, each newText an element of
+	// the contents list. Each is read as a content field is, beside one.
+	str := func(text string) ir.Value { return ir.Value{Text: text, IsString: true} }
+	list := func(values ...ir.Value) map[string][]ir.Value { return map[string][]ir.Value{ir.ListContents: values} }
+	cases := []struct {
+		name string
+		call ir.Call
+		want []string
+	}{
+		{"each element", ir.Call{Lists: list(str("one"), str("two"))}, []string{"one", "two"}},
+		{"NULs go, then trailing newlines", ir.Call{Lists: list(str("a\x00b\n\n"))}, []string{"ab"}},
+		{"an element that prints empty adds nothing", ir.Call{Lists: list(str("\n"), str("x"))}, []string{"x"}},
+		{"a non-string element is read as its JSON text", ir.Call{Lists: list(ir.Value{Text: `{"a":1}`})}, []string{`{"a":1}`}},
+		{
+			"beside a content field",
+			ir.Call{Fields: map[string]ir.Value{ir.FieldContent: str("c")}, Lists: list(str("e"))},
+			[]string{"c", "e"},
+		},
+		{"an empty list", ir.Call{Lists: list()}, nil},
+	}
+	for _, c := range cases {
+		if got := secretguard.Contents(c.call); !slices.Equal(got, c.want) {
+			t.Errorf("%s: Contents = %q, want %q", c.name, got, c.want)
+		}
+	}
+}

@@ -15,6 +15,9 @@ const (
 // "x-ir", read for every element of an array.
 const (
 	ListWorkspaces = "workspaces" // the session's workspace directories, as the harness gave them
+	// ListContents is each text an edit puts in, for a tool that makes several
+	// replacements in one call (Pi's edit: each newText).
+	ListContents = "contents"
 )
 
 // The kinds of tool a harness definition maps its tool names to.
@@ -32,13 +35,31 @@ const (
 	HookCwdRegistration = "registration" // in the directory of the file that registers the hook
 )
 
+// How a harness reaches the binary (a harness definition's "transport").
+const (
+	TransportCommand = "command" // the harness runs the binary as a command, with its own payload
+	TransportShim    = "shim"    // an extension inside the harness sends a shim protocol request (tools/agent-hooks/shim)
+)
+
+// How a harness turns a tool's path into the file the tool touches (a
+// harness definition's "pathResolution").
+const (
+	PathsAsGiven = "as-given" // the path names the file as it is
+	PathsPi      = "pi"       // Pi resolves the path first, against the call's cwd (internal/pipath)
+)
+
 // Call is one tool call as the hooks see it, the same for every harness.
 type Call struct {
 	Harness string // the harness's name, such as "claude"
 	Event   string // the event, such as "pre"
 	HookCwd string // where the harness runs the hook (HookCwd*)
-	Tool    string // the harness's own tool name, such as "Bash"
-	Kind    string // what the tool does (Kind*); empty when the definition does not map the tool
+	// Transport is how the harness reaches the binary (Transport*).
+	Transport string
+	// PathResolution is how the harness turns a tool's path into the file it
+	// touches (Paths*).
+	PathResolution string
+	Tool           string // the harness's own tool name, such as "Bash"
+	Kind           string // what the tool does (Kind*); empty when the definition does not map the tool
 	// Fields holds the IR fields the definition maps, by name (Field*). A
 	// field whose candidates are all absent, null, or false is missing.
 	Fields map[string]Value
@@ -48,6 +69,11 @@ type Call struct {
 	// ToolFailed is set on a post call whose payload the definition's success
 	// signal ("x-success") reads as a failed tool call.
 	ToolFailed bool
+	// PathUnresolved is set by the shell on a harness that resolves a tool's
+	// path before it writes (PathsPi), when the file path cannot be resolved
+	// as the harness resolves it: no hook can tell which file the tool
+	// touches.
+	PathUnresolved bool
 	// Native is the payload as the harness wrote it. Only a delegate hook,
 	// which hands the payload to the delegate, reads it.
 	Native []byte

@@ -4,6 +4,7 @@ package launch
 
 import (
 	"os"
+	"os/user"
 	"syscall"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
@@ -29,6 +30,22 @@ func isExecutableFile(path string) bool {
 // IsExecutable is os.access(path, X_OK).
 func (ExecMachine) IsExecutable(path string) bool {
 	return syscall.Access(path, xOK) == nil
+}
+
+// HomeDir is Node's os.homedir() (libuv's uv_os_homedir): $HOME when it
+// is set, even to "", else the password entry's home directory. Built
+// without cgo, os/user reads /etc/passwd, which may not list the user (macOS
+// keeps users elsewhere); then the home is unknown, and a ~ path is not
+// resolved, which the files guard blocks.
+func (ExecMachine) HomeDir() (string, bool) {
+	if home, ok := os.LookupEnv("HOME"); ok {
+		return home, true
+	}
+	current, err := user.Current()
+	if err != nil || current.HomeDir == "" {
+		return "", false
+	}
+	return current.HomeDir, true
 }
 
 // Getwd is the physical working directory, as Python's os.getcwd: the

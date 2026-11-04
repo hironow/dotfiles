@@ -41,6 +41,11 @@ type Definition struct {
 	Pending []string
 	// HookCwd is where the harness runs its hooks (ir.HookCwd*).
 	HookCwd string
+	// Transport is how the harness reaches the binary (ir.Transport*).
+	Transport string
+	// PathResolution is how the harness turns a tool's path into the file it
+	// touches (ir.Paths*).
+	PathResolution string
 	// Support holds each hook's level (Level*) for each tool, by the hook's
 	// manifest id and the harness's tool name.
 	Support map[string]map[string]Support
@@ -92,13 +97,15 @@ type Event struct {
 	// the old guards read for every harness, though this one never sends them.
 	Undeclared []string
 
-	harness, name string
-	hookCwd       string // where the harness runs its hooks (ir.HookCwd*)
-	tools         map[string]string
-	schema        any // the schema as parsed JSON, for Declares
-	compiled      *compiledSchema
-	success       *successRule // "x-success", or nil: how a post payload tells that the tool call succeeded
-	answers       map[string]answer
+	harness, name  string
+	hookCwd        string // where the harness runs its hooks (ir.HookCwd*)
+	transport      string // how the harness reaches the binary (ir.Transport*)
+	pathResolution string // how the harness turns a path into a file (ir.Paths*)
+	tools          map[string]string
+	schema         any // the schema as parsed JSON, for Declares
+	compiled       *compiledSchema
+	success        *successRule // "x-success", or nil: how a post payload tells that the tool call succeeded
+	answers        map[string]answer
 }
 
 // The outcomes an event has an answer for.
@@ -117,13 +124,16 @@ type Answer struct {
 
 // harnessFile is harness.json.
 type harnessFile struct {
-	Name     string                        `json:"name"`
-	Versions []string                      `json:"versions"`
-	Tools    map[string]string             `json:"tools"`
-	Pending  []string                      `json:"pending"`
-	HookCwd  string                        `json:"hookCwd"`
-	Support  map[string]map[string]Support `json:"support"`
-	Events   map[string]eventFile          `json:"events"`
+	Name     string            `json:"name"`
+	Versions []string          `json:"versions"`
+	Tools    map[string]string `json:"tools"`
+	Pending  []string          `json:"pending"`
+	HookCwd  string            `json:"hookCwd"`
+	// Transport and PathResolution are required: each names an ir constant.
+	Transport      string                        `json:"transport"`
+	PathResolution string                        `json:"pathResolution"`
+	Support        map[string]map[string]Support `json:"support"`
+	Events         map[string]eventFile          `json:"events"`
 }
 
 type eventFile struct {
@@ -177,8 +187,11 @@ func Load(fsys fs.FS, name string) (Definition, error) {
 		Tools:    file.Tools,
 		Pending:  file.Pending,
 		HookCwd:  file.HookCwd,
-		Support:  file.Support,
-		events:   map[string]Event{},
+		// Checked by checkHarness: each is one of its ir constants.
+		Transport:      file.Transport,
+		PathResolution: file.PathResolution,
+		Support:        file.Support,
+		events:         map[string]Event{},
 	}
 	for eventName, eventDef := range file.Events {
 		event, err := loadEvent(fsys, name, eventName, eventDef, file)
@@ -196,6 +209,12 @@ func Load(fsys fs.FS, name string) (Definition, error) {
 func checkHarness(file harnessFile) error {
 	if file.HookCwd != ir.HookCwdSession && file.HookCwd != ir.HookCwdRegistration {
 		return fmt.Errorf("hookCwd %q is neither %q nor %q", file.HookCwd, ir.HookCwdSession, ir.HookCwdRegistration)
+	}
+	if file.Transport != ir.TransportCommand && file.Transport != ir.TransportShim {
+		return fmt.Errorf("transport %q is neither %q nor %q", file.Transport, ir.TransportCommand, ir.TransportShim)
+	}
+	if file.PathResolution != ir.PathsAsGiven && file.PathResolution != ir.PathsPi {
+		return fmt.Errorf("pathResolution %q is neither %q nor %q", file.PathResolution, ir.PathsAsGiven, ir.PathsPi)
 	}
 	for _, tool := range file.Pending {
 		if _, mapped := file.Tools[tool]; mapped {
@@ -256,17 +275,19 @@ func loadEvent(fsys fs.FS, harness, name string, file eventFile, owner harnessFi
 		return Event{}, fmt.Errorf("no %s answer", answerPass)
 	}
 	event := Event{
-		Tool:       schema.Tool,
-		IR:         schema.IR,
-		Undeclared: schema.Undeclared.Pointers,
-		harness:    harness,
-		name:       name,
-		hookCwd:    owner.HookCwd,
-		tools:      owner.Tools,
-		schema:     tree,
-		compiled:   &compiledSchema{raw: raw},
-		success:    success,
-		answers:    answers,
+		Tool:           schema.Tool,
+		IR:             schema.IR,
+		Undeclared:     schema.Undeclared.Pointers,
+		harness:        harness,
+		name:           name,
+		hookCwd:        owner.HookCwd,
+		transport:      owner.Transport,
+		pathResolution: owner.PathResolution,
+		tools:          owner.Tools,
+		schema:         tree,
+		compiled:       &compiledSchema{raw: raw},
+		success:        success,
+		answers:        answers,
 	}
 	// Render each answer once, so a template that fails to run fails here.
 	for _, outcome := range []ir.Outcome{
@@ -277,8 +298,15 @@ func loadEvent(fsys fs.FS, harness, name string, file eventFile, owner harnessFi
 		if _, ok := answers[answerKey(outcome.Action)]; !ok {
 			continue
 		}
-		if _, err := event.Answer(outcome); err != nil {
+		rendered, err := event.Answer(outcome)
+		if err != nil {
 			return Event{}, err
+		}
+		// A shim reads the answer by the shim protocol (package shim).
+		if owner.Transport == ir.TransportShim {
+			if err := checkShimAnswer(rendered); err != nil {
+				return Event{}, fmt.Errorf("answer %s: %w", answerKey(outcome.Action), err)
+			}
 		}
 	}
 	return event, nil
@@ -546,7 +574,10 @@ func pointerTokens(pointer string) ([]string, bool) {
 // not one JSON value gives ErrUnreadable. A payload that is one, whatever its
 // shape, decodes: a field the payload lacks is missing from the call.
 func (e Event) Decode(payload []byte) (ir.Call, error) {
-	call := ir.Call{Harness: e.harness, Event: e.name, HookCwd: e.hookCwd, Fields: map[string]ir.Value{}}
+	call := ir.Call{
+		Harness: e.harness, Event: e.name, HookCwd: e.hookCwd,
+		Transport: e.transport, PathResolution: e.pathResolution, Fields: map[string]ir.Value{},
+	}
 	var root jsontext.Value
 	if err := json.Unmarshal(payload, &root); err != nil {
 		return call, fmt.Errorf("%w: %w", ErrUnreadable, err)
