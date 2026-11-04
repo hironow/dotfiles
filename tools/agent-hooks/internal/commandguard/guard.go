@@ -5,22 +5,17 @@
 // that OpenTofu manages.
 //
 // It is a port of the Python guard ROOT_AGENTS_hooks_block-prohibited-commands.py,
-// decision for decision, quirks included, except for the guard's bugs, which
-// it fixes (fixes_test.go): it reads a text as bash does (fixed-command-split,
-// bashlex.go), finds the command after bash's reserved words
-// (fixed-command-start), and reads what a shell's -c and eval run
-// (fixed-shell-string). It is tested against that guard, and against the
-// guard with those bugs fixed (scripts/old_script_fixes.py), on the corpus in
-// internal/guardcorpus. docs/agents/enforcement.md describes what the old
-// guard catches and the long tail it accepts.
+// decision for decision, quirks included, and is tested against that guard on
+// the corpus in internal/guardcorpus. docs/agents/enforcement.md describes what
+// it catches and the long tail it accepts.
 package commandguard
 
 import (
-	"errors"
 	"regexp"
 	"strings"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/ir"
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/pyshlex"
 )
 
 // The rules a block names, for the log.
@@ -108,47 +103,26 @@ func Check(command string) ir.Outcome {
 	return analyze(command, 0)
 }
 
-// analyze is the fixed Python guard's analyze (fixed-command-split): the raw
-// guards on the text without its heredoc bodies, the walk over its tokens,
-// then each substitution and interpreter heredoc body as code, one level
-// deeper. Where a quote or substitution does not end, bash runs the complete
-// lines before its line: those are walked, and the old pipeline reads the
-// whole text (line-pattern heredocs, the raw guards, the legacy scan).
+// analyze is Python's analyze: heredocs off, then the raw guards, then the
+// token walk (or the legacy scan), then each interpreter heredoc as code.
 func analyze(text string, depth int) ir.Outcome {
 	if depth > maxDepth {
 		return ir.Outcome{}
 	}
-	read, err := bashLex(text)
-	var bodies []string
-	if err != nil {
-		var unterminated *unterminatedError
-		if !errors.As(err, &unterminated) {
-			return ir.Outcome{}
-		}
-		cleaned, codeBodies := splitHeredocs(text)
-		if outcome := firstMatch(rawGuards, cleaned); outcome.Action == ir.Block {
-			return outcome
-		}
-		bodies = codeBodies
-		if before, err := bashLex(text[:unterminated.lineStart]); err == nil {
-			if outcome := walk(before.tokens, depth); outcome.Action == ir.Block {
-				return outcome
-			}
-			bodies = append(append(bodies, before.codeBodies...), before.substitutions...)
-		}
-		if outcome := legacyScan(cleaned); outcome.Action == ir.Block {
-			return outcome
-		}
-	} else {
-		if outcome := firstMatch(rawGuards, read.cleaned(text)); outcome.Action == ir.Block {
-			return outcome
-		}
-		if outcome := walk(read.tokens, depth); outcome.Action == ir.Block {
-			return outcome
-		}
-		bodies = append(append(bodies, read.codeBodies...), read.substitutions...)
+	cleaned, codeBodies := splitHeredocs(text)
+	if outcome := firstMatch(rawGuards, cleaned); outcome.Action == ir.Block {
+		return outcome
 	}
-	for _, body := range bodies {
+	var outcome ir.Outcome
+	if tokens, err := pyshlex.Split(cleaned); err != nil {
+		outcome = legacyScan(cleaned)
+	} else {
+		outcome = walk(tokens)
+	}
+	if outcome.Action == ir.Block {
+		return outcome
+	}
+	for _, body := range codeBodies {
 		if outcome := analyze(body, depth+1); outcome.Action == ir.Block {
 			return outcome
 		}

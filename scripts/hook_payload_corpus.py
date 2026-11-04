@@ -70,17 +70,12 @@ GUARDS = {
     "secrets-guard": "ROOT_AGENTS_hooks_block-secrets.sh",
 }
 CODEX_ADAPTER = "ROOT_AGENTS_hooks_guard-codex.sh"
-# Each guard's bugs the binary fixes (scripts/old_script_fixes.py).
-HOOK_FIXES = {
-    hook: tuple(
-        name for name, fix in old_script_fixes.FIXES.items() if fix.script == script
-    )
-    for hook, script in (
-        ("files-guard", old_script_fixes.FILES_GUARD),
-        ("command-guard", old_script_fixes.COMMAND_GUARD),
-    )
-}
-FILES_FIXES = HOOK_FIXES["files-guard"]
+# The files guard's bugs the binary fixes (scripts/old_script_fixes.py).
+FILES_FIXES = tuple(
+    name
+    for name, fix in old_script_fixes.FIXES.items()
+    if fix.script == old_script_fixes.FILES_GUARD
+)
 HARNESSES = ("claude", "codex")
 BLOCKED = "BLOCKED: "
 UNREADABLE = (
@@ -470,20 +465,6 @@ def fix_payloads() -> list[Payload]:
                 "command": "*** Begin Patch\n*** Add File: docs/agents/x.yml\n+a\n*** End Patch\n"
             },
         },
-        # fixed-command-split: a newline ended no command for the old guard
-        "fix-command-split-newline": {"tool_input": {"command": "cd x\nnpm i"}},
-        "fix-command-split-substitution": {
-            "tool_input": {"command": 'echo "$(npm i)"'}
-        },
-        "fix-command-split-quoted-separator": {
-            "tool_input": {"command": "echo ';' npm i"}
-        },
-        # fixed-command-start: a reserved word was taken as the command's name
-        "fix-command-start-do": {
-            "tool_input": {"command": "for d in a; do npm i; done"}
-        },
-        # fixed-shell-string: the string bash -c runs was not read
-        "fix-shell-string-bash-c": {"tool_input": {"command": "bash -c 'npm i'"}},
         "fix-docs-agents-relative-then-blocked": {
             "tool_name": "apply_patch",
             "tool_input": {
@@ -813,24 +794,21 @@ def render(flavors: dict[str, str]) -> list[dict]:
                 jobs,
             )
         )
-        # Each guard with each set of its fixes.
+        # The files guard with every fix, and with each left out of that set.
+        everything = frozenset(FILES_FIXES)
         variants = {
             applied: old_script_fixes.write_scripts(
                 Path(scratch)
                 / ("fixed-" + "+".join(sorted(applied)) if applied else "old"),
                 applied,
             )
-            for applied in {
-                applied
-                for fixes in HOOK_FIXES.values()
-                for applied in old_script_fixes.every_set(fixes)
-            }
+            for applied in [everything, *(everything - {name} for name in FILES_FIXES)]
         }
         fixed_jobs = [
             (index, k)
             for index, payload in enumerate(found)
             for k, key in enumerate(keys)
-            if key[1] in HOOK_FIXES and not payload.base
+            if key[1] == "files-guard" and not payload.base
         ]
         full_results = dict(
             zip(
@@ -841,7 +819,7 @@ def render(flavors: dict[str, str]) -> list[dict]:
                         keys[job[1]][1],
                         found[job[0]].stdin,
                         tools[keys[job[1]][2]],
-                        variants[frozenset(HOOK_FIXES[keys[job[1]][1]])],
+                        variants[everything],
                     ),
                     fixed_jobs,
                 ),
@@ -869,7 +847,6 @@ def render(flavors: dict[str, str]) -> list[dict]:
                     run["basename"] = flavor
                 fixed = None
                 if (index, k) in full_results:
-                    everything = frozenset(HOOK_FIXES[hook])
                     full = legacy_record(harness, full_results[(index, k)])
                     full_difference, full_expected = classify(
                         harness, payload.stdin, full, None
@@ -887,7 +864,6 @@ def render(flavors: dict[str, str]) -> list[dict]:
                             stdin=payload.stdin,
                             legacy_expected=expected,
                             full_expected=full_expected,
-                            everything=everything,
                         ) -> dict:
                             if not applied:
                                 return legacy_expected
@@ -906,9 +882,7 @@ def render(flavors: dict[str, str]) -> list[dict]:
                             return classify(harness, stdin, record, None)[1]
 
                         if full_expected != expected:
-                            needed = old_script_fixes.needed(
-                                HOOK_FIXES[hook], expected_with
-                            )
+                            needed = old_script_fixes.needed(FILES_FIXES, expected_with)
                         difference = old_script_fixes.difference(
                             needed, full_difference
                         )
