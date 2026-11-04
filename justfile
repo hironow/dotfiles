@@ -893,6 +893,13 @@ hook-payload-corpus:
 tool-hooks-corpus:
     @{{UV_RUN}} --python 3.14 scripts/tool_hooks_corpus.py
 
+# tools/agent-hooks/internal/pipath/corpus.jsonl records Pi 1.4.0's POSIX path
+# resolution. Run this after changing the path cases. Needs node and Pi 1.4.0.
+# Rewrite the Go Pi path corpus by running Pi's own resolveToCwd.
+[group('Test')]
+pi-paths-corpus:
+    cd tools/agent-hooks && mise x -- go run ./internal/pipath/writecorpus
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash
