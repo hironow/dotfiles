@@ -1,0 +1,9 @@
+{
+  "hooks": [
+    {"id": "command-guard", "event": "pre", "failure": "closed"},
+    {"id": "files-guard", "event": "pre", "failure": "closed"},
+    {"id": "secrets-guard", "event": "pre", "failure": "closed"},
+    {"id": "rtk", "event": "pre", "failure": "open"},
+    {"id": "formatter", "event": "post", "failure": "open"}
+  ]
+}

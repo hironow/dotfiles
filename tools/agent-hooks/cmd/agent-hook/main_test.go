@@ -17,6 +17,9 @@ import (
 // binary is agent-hook as `go build` makes it, built once for these tests.
 var binary string
 
+// faketool stands in for rtk, mise, uv, and gofmt (not on Windows).
+var faketool string
+
 // fakeBasename holds, per flavor, a directory with a basename(1) that answers
 // `--version` as that flavor does: GNU's succeeds, BSD's fails. Put first on
 // PATH, it checks the binary's real probe and how its answer reaches the guard.
@@ -44,6 +47,15 @@ func buildAndRun(m *testing.M) int {
 	if err := build.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "go build:", err)
 		return 1
+	}
+	if runtime.GOOS != "windows" {
+		faketool = filepath.Join(dir, "faketool")
+		build := exec.Command("go", "build", "-o", faketool, "../../internal/toolhookcorpus/faketool")
+		build.Stdout, build.Stderr = os.Stderr, os.Stderr
+		if err := build.Run(); err != nil {
+			fmt.Fprintln(os.Stderr, "go build faketool:", err)
+			return 1
+		}
 	}
 	for flavor, script := range fakeBasenameScripts {
 		fakeBasename[flavor] = filepath.Join(dir, flavor)

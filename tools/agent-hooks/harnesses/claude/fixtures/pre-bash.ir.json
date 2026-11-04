@@ -4,6 +4,9 @@
   "fields": {
     "command": {
       "string": "echo capture-bash"
+    },
+    "cwd": {
+      "string": "/home/user/project"
     }
   }
 }

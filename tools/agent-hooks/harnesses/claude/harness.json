@@ -1,6 +1,9 @@
 {
   "name": "claude",
-  "versions": ["2.1.316", "2.1.317"],
+  "versions": [
+    "2.1.316",
+    "2.1.317"
+  ],
   "tools": {
     "Bash": "shell",
     "Write": "write",
@@ -11,8 +14,26 @@
     "pre": {
       "schema": "pre.schema.json",
       "answers": {
-        "pass": {"exit": 0},
-        "block": {"exit": 2, "stderr": "{{.Message}}\n"}
+        "pass": {
+          "exit": 0
+        },
+        "block": {
+          "exit": 2,
+          "stderr": "{{.Message}}\n"
+        },
+        "forward": {
+          "exit": 0,
+          "stdout": "{{.Native}}\n"
+        }
+      }
+    },
+    "post": {
+      "schema": "post.schema.json",
+      "answers": {
+        "pass": {
+          "exit": 0,
+          "stderr": "{{.Notice}}"
+        }
       }
     }
   }

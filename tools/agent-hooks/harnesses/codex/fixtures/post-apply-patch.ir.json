@@ -1,0 +1,12 @@
+{
+  "tool": "apply_patch",
+  "kind": "patch",
+  "fields": {
+    "command": {
+      "string": "*** Begin Patch\n*** Add File: note.md\n+hello\n*** End Patch\n"
+    },
+    "cwd": {
+      "string": "/home/user/project"
+    }
+  }
+}
