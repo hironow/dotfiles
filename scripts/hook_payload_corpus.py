@@ -454,6 +454,24 @@ def fix_payloads() -> list[Payload]:
         # both at once: neither fix alone blocks
         "fix-notebook-path-dash-line": notebook
         | {"tool_input": {"notebook_path": "--x.yml"}},
+        # fixed-docs-agents-relative: a relative path under docs/agents/ was
+        # not exempt; Codex's patch names its files so
+        "fix-docs-agents-relative-file-path": {
+            "tool_input": {"file_path": "docs/agents/x.yml"}
+        },
+        "fix-docs-agents-relative-patch": {
+            "tool_name": "apply_patch",
+            "tool_input": {
+                "command": "*** Begin Patch\n*** Add File: docs/agents/x.yml\n+a\n*** End Patch\n"
+            },
+        },
+        "fix-docs-agents-relative-then-blocked": {
+            "tool_name": "apply_patch",
+            "tool_input": {
+                "command": "*** Begin Patch\n*** Add File: docs/agents/x.yml\n+a\n"
+                "*** Add File: docs/y.yml\n+b\n*** End Patch\n"
+            },
+        },
     }
     return [Payload(name, doc(value)) for name, value in cases.items()]
 

@@ -135,7 +135,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machi
 			} else {
 				var failure any
 				if outcome, failure = decideSafely(decide, call, machine); failure != nil {
-					_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook failed, so the call goes on: %v\n", spec.ID, failure)
+					outcome = failedOutcome(spec)
+					what := "so the call goes on"
+					if outcome.Action == ir.Block {
+						what = "so the call is blocked"
+					}
+					_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook failed, %s: %v\n", spec.ID, what, failure)
 				}
 			}
 		}
@@ -193,8 +198,24 @@ func parse(args []string, hooks map[string]hook) (definition.Event, hookSpec, ho
 	return event, spec, decide, nil
 }
 
-// decideSafely runs a hook. A hook that panics passes the call, as the old
-// guards' internal exceptions did; the panic is returned to be told.
+// failedOutcome is the outcome of a hook that failed (panicked).
+//
+// fixed-guard-failure: a guard blocks the call, as it blocks input it cannot
+// read. The old Python guard's own exceptions exited 1, which Claude and Codex
+// let through. rtk and the formatter let the call go on, as their scripts did.
+func failedOutcome(spec hookSpec) ir.Outcome {
+	if spec.Failure != failClosed {
+		return ir.Outcome{}
+	}
+	return ir.Outcome{
+		Action: ir.Block,
+		Rule:   "hook.failed",
+		Reason: "agent-hook's " + spec.ID + " hook failed, so it could not check the call.",
+	}
+}
+
+// decideSafely runs a hook. A hook that panics decides nothing; the panic is
+// returned, for the caller to answer with failedOutcome and to tell.
 func decideSafely(decide hook, call ir.Call, machine Machine) (outcome ir.Outcome, failure any) {
 	defer func() {
 		if failure = recover(); failure != nil {

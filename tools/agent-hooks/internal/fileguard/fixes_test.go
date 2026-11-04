@@ -99,3 +99,30 @@ func TestFixedNotebookPathIsCheckedBesideTheFilePath(t *testing.T) {
 		}
 	}
 }
+
+func TestFixedDocsAgentsRelativeIsExempt(t *testing.T) {
+	// fixed-docs-agents-relative: the old guard's exemption */docs/agents/*
+	// needs a "/" before docs, so a relative path under docs/agents/ (Codex's
+	// patch names its files relative to the session) was blocked, though a
+	// bare AGENTS.md or CLAUDE.md is exempt.
+	tests := []struct {
+		path string
+		rule string // "" for a pass
+	}{
+		{"docs/agents/x.yml", ""},
+		{"docs/agents/docker-compose.yml", ""},
+		{"docs/agents/sub/x.yml", ""},
+		// what is not under docs/agents/ is checked as before
+		{"docs/agentsx/x.yml", fileguard.RuleYMLExtension},
+		{"xdocs/agents/x.yml", fileguard.RuleYMLExtension},
+		{"docs/agents.yml", fileguard.RuleYMLExtension},
+		{"docs/x.yml", fileguard.RuleYMLExtension},
+		{"docs/agents", ""},
+	}
+	for _, test := range tests {
+		got := fileguard.Check([]string{test.path})
+		if got.Rule != test.rule || (got.Action == ir.Block) != (test.rule != "") {
+			t.Errorf("Check(%q) = %+v, want rule %q", test.path, got, test.rule)
+		}
+	}
+}

@@ -8,13 +8,16 @@ the binary differs from the old scripts on purpose, because they had a bug:
 
 - fixed-<name>: a named edit to an old script (scripts/old_script_fixes.py);
 - path-relative, rtk-answer-unreadable: fixes the binary made before the
-  edits existed (PR 2c), still recorded under their own IDs.
+  edits existed (PR 2c), still recorded under their own IDs;
+- BINARY_ONLY: fixes with no old-script counterpart, so no corpus holds them;
+  each is tested in the Go test named beside it.
 
 The Go corpus tests name each subtest by the same IDs ("parity" for none), so
 `go test -run '/fixed-'` lists the fixed places.
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -54,6 +57,20 @@ REGISTRY: dict[str, tuple[str, str]] = {
     f"fixed-{name}": ("fixed", fix.bug) for name, fix in old_script_fixes.FIXES.items()
 }
 
+# The binary's fixes that no old script can show: each ID, its bug, and the Go
+# test that holds it (its file and function).
+BINARY_ONLY: dict[str, tuple[str, str, str]] = {
+    "fixed-guard-failure": (
+        (
+            "a guard that panicked let the call go on, as the old Python guard's own "
+            "exceptions did (exit 1, which Claude and Codex let through)"
+        ),
+        "tools/agent-hooks/internal/launch/panic_test.go",
+        "TestFixedGuardFailureBlocks",
+    ),
+}
+REGISTRY |= {name: ("fixed", bug) for name, (bug, _, _) in BINARY_ONLY.items()}
+
 
 def _lines(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
@@ -91,7 +108,9 @@ def test_the_fixed_kind_holds_every_fix_and_nothing_else() -> None:
     fixed = {name for name, (kind, _) in REGISTRY.items() if kind == "fixed"}
     named = {f"fixed-{name}" for name in old_script_fixes.FIXES}
     assert named <= fixed
-    assert fixed - named == {"path-relative", "rtk-answer-unreadable"}
+    assert (
+        fixed - named == {"path-relative", "rtk-answer-unreadable"} | BINARY_ONLY.keys()
+    )
     for name, (kind, reason) in REGISTRY.items():
         assert kind in {"fixed", "policy", "limit", "noise"}, name
         assert reason, name
@@ -107,3 +126,46 @@ def test_every_named_fix_is_earned_somewhere() -> None:
     }
     for name in old_script_fixes.FIXES:
         assert f"fixed-{name}" in used, f"no corpus input needs fixed-{name}"
+
+
+def _go_test_body(path: Path, function: str) -> str | None:
+    """The body of a Go test function, if the file has it as one Go runs:
+    `func TestXxx(t *testing.T) {` in a _test.go file, up to its closing }."""
+    if not path.name.endswith("_test.go") or not re.fullmatch(
+        r"Test[A-Z]\w*", function
+    ):
+        return None
+    match = re.search(
+        rf"^func {function}\(t \*testing\.T\) {{\n(.*?)^}}\n",
+        path.read_text(encoding="utf-8"),
+        re.MULTILINE | re.DOTALL,
+    )
+    return match.group(1) if match else None
+
+
+def test_every_binary_only_fix_is_in_its_go_test_and_in_no_corpus() -> None:
+    used = {
+        part
+        for differences in _differences().values()
+        for difference in differences
+        for part in difference.split("+")
+    }
+    for name, (_, test, function) in BINARY_ONLY.items():
+        body = _go_test_body(ROOT / test, function)
+        assert body is not None, f"{test} has no test {function} that Go runs"
+        assert name in body, f"{function} never names {name}"
+        assert name not in used, f"{name} is binary-only, but a corpus holds it"
+
+
+def test_a_go_test_counts_only_as_one_go_runs(tmp_path: Path) -> None:
+    test = tmp_path / "x_test.go"
+    test.write_text(
+        "func TestA(t *testing.T) {\n\t// fixed-a\n}\n"
+        "func B(t *testing.T) {\n\t// fixed-b\n}\n"
+        "func TestC(t *testing.T) {\n}\n// fixed-c\n",
+        encoding="utf-8",
+    )
+    assert "fixed-a" in (_go_test_body(test, "TestA") or "")
+    assert _go_test_body(test, "B") is None  # Go does not run it
+    assert "fixed-c" not in (_go_test_body(test, "TestC") or "")
+    assert _go_test_body(tmp_path / "x.go", "TestA") is None
