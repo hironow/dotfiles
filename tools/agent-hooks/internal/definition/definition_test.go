@@ -19,32 +19,44 @@ import (
 // The harnesses this PR defines.
 var names = []string{"claude", "codex"}
 
+// events are the events every harness here defines.
+var events = []string{"pre", "post"}
+
 func load(t *testing.T, name string) definition.Event {
+	t.Helper()
+	return loadEvent(t, name, "pre")
+}
+
+func loadEvent(t *testing.T, name, event string) definition.Event {
 	t.Helper()
 	def, err := definition.Load(harnesses.FS, name)
 	if err != nil {
 		t.Fatalf("Load(%q): %v", name, err)
 	}
-	pre, ok := def.Event("pre")
+	loaded, ok := def.Event(event)
 	if !ok {
-		t.Fatalf("%s: no pre event", name)
+		t.Fatalf("%s: no %s event", name, event)
 	}
-	return pre
+	return loaded
 }
 
 func TestEveryHarnessMapsTheFieldsTheScriptsRead(t *testing.T) {
-	// The old scripts read these fields whatever the harness and the tool.
+	// The old scripts read these fields whatever the harness, the event, and
+	// the tool; the rtk hook reads the payload's cwd.
 	want := map[string][]string{
 		ir.FieldCommand:  {"/tool_input/command"},
 		ir.FieldFilePath: {"/tool_input/file_path"},
 		ir.FieldContent:  {"/tool_input/content", "/tool_input/new_string", "/tool_input/new_source"},
+		ir.FieldCwd:      {"/cwd"},
 	}
 	for _, name := range names {
-		t.Run(name, func(t *testing.T) {
-			if got := load(t, name).IR; !maps.EqualFunc(got, want, slices.Equal) {
-				t.Errorf("x-ir = %v, want %v", got, want)
-			}
-		})
+		for _, event := range events {
+			t.Run(name+"/"+event, func(t *testing.T) {
+				if got := loadEvent(t, name, event).IR; !maps.EqualFunc(got, want, slices.Equal) {
+					t.Errorf("x-ir = %v, want %v", got, want)
+				}
+			})
+		}
 	}
 }
 
@@ -56,24 +68,26 @@ func TestEveryIRPointerIsDeclaredInItsSchema(t *testing.T) {
 		"codex":  {"/tool_input/file_path", "/tool_input/content", "/tool_input/new_string", "/tool_input/new_source"},
 	}
 	for _, name := range names {
-		pre := load(t, name)
-		if !slices.Equal(pre.Undeclared, wantUndeclared[name]) {
-			t.Errorf("%s: undeclared = %v, want %v", name, pre.Undeclared, wantUndeclared[name])
-		}
-		for field, pointers := range pre.IR {
-			for _, pointer := range pointers {
-				undeclared := slices.Contains(pre.Undeclared, pointer)
-				if declared := pre.Declares(pointer); declared == undeclared {
-					t.Errorf("%s: %s pointer %s: declared %v, listed as undeclared %v",
-						name, field, pointer, declared, undeclared)
+		for _, event := range events {
+			loaded := loadEvent(t, name, event)
+			if !slices.Equal(loaded.Undeclared, wantUndeclared[name]) {
+				t.Errorf("%s %s: undeclared = %v, want %v", name, event, loaded.Undeclared, wantUndeclared[name])
+			}
+			for field, pointers := range loaded.IR {
+				for _, pointer := range pointers {
+					undeclared := slices.Contains(loaded.Undeclared, pointer)
+					if declared := loaded.Declares(pointer); declared == undeclared {
+						t.Errorf("%s %s: %s pointer %s: declared %v, listed as undeclared %v",
+							name, event, field, pointer, declared, undeclared)
+					}
 				}
 			}
-		}
-		for _, pointer := range pre.Undeclared {
-			if !slices.ContainsFunc(slices.Collect(maps.Values(pre.IR)), func(p []string) bool {
-				return slices.Contains(p, pointer)
-			}) {
-				t.Errorf("%s: undeclared pointer %s is not in x-ir", name, pointer)
+			for _, pointer := range loaded.Undeclared {
+				if !slices.ContainsFunc(slices.Collect(maps.Values(loaded.IR)), func(p []string) bool {
+					return slices.Contains(p, pointer)
+				}) {
+					t.Errorf("%s %s: undeclared pointer %s is not in x-ir", name, event, pointer)
+				}
 			}
 		}
 	}
@@ -108,8 +122,8 @@ func (e expectedValue) value() ir.Value {
 }
 
 func TestEveryFixtureValidatesAndDecodesToItsIR(t *testing.T) {
+	// A fixture's name starts with its event: pre-bash.json, post-write.json.
 	for _, name := range names {
-		pre := load(t, name)
 		dir := path.Join(name, "fixtures")
 		entries, err := fs.ReadDir(harnesses.FS, dir)
 		if err != nil {
@@ -123,8 +137,10 @@ func TestEveryFixtureValidatesAndDecodesToItsIR(t *testing.T) {
 			}
 			found++
 			t.Run(name+"/"+fixture, func(t *testing.T) {
+				event, _, _ := strings.Cut(fixture, "-")
+				loaded := loadEvent(t, name, event)
 				payload := read(t, path.Join(dir, fixture+".json"))
-				if err := pre.Validate(payload); err != nil {
+				if err := loaded.Validate(payload); err != nil {
 					t.Errorf("Validate: %v", err)
 				}
 				var want expectedCall
@@ -132,7 +148,7 @@ func TestEveryFixtureValidatesAndDecodesToItsIR(t *testing.T) {
 					json.RejectUnknownMembers(true)); err != nil {
 					t.Fatal(err)
 				}
-				got, err := pre.Decode(payload)
+				got, err := loaded.Decode(payload)
 				if err != nil {
 					t.Fatalf("Decode: %v", err)
 				}
@@ -140,7 +156,7 @@ func TestEveryFixtureValidatesAndDecodesToItsIR(t *testing.T) {
 				for field, value := range want.Fields {
 					wantFields[field] = value.value()
 				}
-				if got.Harness != name || got.Event != "pre" || got.Tool != want.Tool || got.Kind != want.Kind ||
+				if got.Harness != name || got.Event != event || got.Tool != want.Tool || got.Kind != want.Kind ||
 					!maps.Equal(got.Fields, wantFields) {
 					t.Errorf("Decode = %+v, want tool %q kind %q fields %+v", got, want.Tool, want.Kind, wantFields)
 				}
@@ -338,6 +354,28 @@ func TestAnswerRendersEachHarnessAnswer(t *testing.T) {
 		}
 		if got != test.want {
 			t.Errorf("%s %v: Answer = %+v, want %+v", test.harness, test.outcome.Action, got, test.want)
+		}
+	}
+}
+
+func TestAnswerWritesAForwardedAnswerAndANoticeAsTheScriptsDid(t *testing.T) {
+	native := `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"rtk ls"}}}`
+	forward := ir.Outcome{Action: ir.Forward, Native: native}
+	notice := ir.Outcome{Notice: "ruff still reports issues in a.py:\nx\n"}
+	for _, name := range names {
+		// rtk's edited answer goes to stdout as it is, with a newline (print()).
+		got, err := load(t, name).Answer(forward)
+		if err != nil || got != (definition.Answer{Stdout: native + "\n"}) {
+			t.Errorf("%s pre forward: Answer = %+v, %v", name, got, err)
+		}
+		// The formatter's report goes to stderr; it exits 0 (a pass).
+		got, err = loadEvent(t, name, "post").Answer(notice)
+		if err != nil || got != (definition.Answer{Stderr: notice.Notice}) {
+			t.Errorf("%s post pass: Answer = %+v, %v", name, got, err)
+		}
+		// A post hook never blocks, so the post event has no block answer.
+		if _, err := loadEvent(t, name, "post").Answer(ir.Outcome{Action: ir.Block, Reason: "x"}); err == nil {
+			t.Errorf("%s post: a block has an answer", name)
 		}
 	}
 }

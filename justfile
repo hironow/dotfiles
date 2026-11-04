@@ -880,6 +880,16 @@ file-guards-corpus:
 hook-payload-corpus:
     @{{UV_RUN}} --python 3.14 scripts/hook_payload_corpus.py
 
+# tools/agent-hooks/internal/toolhookcorpus/{rtk,formatter}.jsonl are what the agent-hook
+# binary's rtk and formatter hooks are tested against: every scenario run through the
+# old scripts with fake rtk, mise, uv, and gofmt programs, with what the binary must do.
+# Needs Python 3.14 and bash 5. Run this after changing those scripts or their tests
+# (tests/unit/test_tool_hooks_corpus.py fails until you do).
+# Rewrite the agent-hook binary's rtk and formatter corpora by running the old scripts.
+[group('Test')]
+tool-hooks-corpus:
+    @{{UV_RUN}} --python 3.14 scripts/tool_hooks_corpus.py
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash

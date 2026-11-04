@@ -7,6 +7,9 @@
     },
     "content": {
       "string": "bye"
+    },
+    "cwd": {
+      "string": "/home/user/project"
     }
   }
 }

@@ -4,6 +4,9 @@
   "fields": {
     "content": {
       "string": "print(2)"
+    },
+    "cwd": {
+      "string": "/home/user/project"
     }
   }
 }

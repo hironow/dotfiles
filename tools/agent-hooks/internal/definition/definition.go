@@ -64,8 +64,9 @@ type Event struct {
 
 // The outcomes an event has an answer for.
 const (
-	answerPass  = "pass"
-	answerBlock = "block"
+	answerPass    = "pass"
+	answerBlock   = "block"
+	answerForward = "forward"
 )
 
 // Answer is what the binary writes for one outcome.
@@ -163,10 +164,10 @@ func loadEvent(fsys fs.FS, harness, name string, file eventFile, tools map[strin
 		}
 		answers[outcome] = parsed
 	}
-	for _, outcome := range []string{answerPass, answerBlock} {
-		if _, ok := answers[outcome]; !ok {
-			return Event{}, fmt.Errorf("no %s answer", outcome)
-		}
+	// Every event can pass; which other outcomes it has answers for depends
+	// on its hooks (a post hook never blocks).
+	if _, ok := answers[answerPass]; !ok {
+		return Event{}, fmt.Errorf("no %s answer", answerPass)
 	}
 	event := Event{
 		IR:         schema.IR,
@@ -178,9 +179,18 @@ func loadEvent(fsys fs.FS, harness, name string, file eventFile, tools map[strin
 		compiled:   &compiledSchema{raw: raw},
 		answers:    answers,
 	}
-	// Render a block once, so a template that fails to run fails here.
-	if _, err := event.Answer(ir.Outcome{Action: ir.Block, Rule: "check", Reason: "check"}); err != nil {
-		return Event{}, err
+	// Render each answer once, so a template that fails to run fails here.
+	for _, outcome := range []ir.Outcome{
+		{Notice: "check"},
+		{Action: ir.Block, Rule: "check", Reason: "check"},
+		{Action: ir.Forward, Native: "{}"},
+	} {
+		if _, ok := answers[answerKey(outcome.Action)]; !ok {
+			continue
+		}
+		if _, err := event.Answer(outcome); err != nil {
+			return Event{}, err
+		}
 	}
 	return event, nil
 }
@@ -418,6 +428,8 @@ type answerData struct {
 	Rule    string // the rule that blocked
 	Reason  string // why, as the hook says it
 	Message string // "BLOCKED: " and the reason: what the old guards wrote
+	Native  string // a forwarded answer, as the delegate wrote it
+	Notice  string // what a pass reports
 }
 
 var templateFuncs = template.FuncMap{"oneLine": oneLine}
@@ -461,13 +473,18 @@ func parseTemplate(text string) (*template.Template, error) {
 
 // Answer renders the harness's answer to an outcome.
 func (e Event) Answer(outcome ir.Outcome) (Answer, error) {
-	key := answerPass
-	data := answerData{}
-	if outcome.Action == ir.Block {
-		key = answerBlock
+	key := answerKey(outcome.Action)
+	data := answerData{Notice: outcome.Notice}
+	switch outcome.Action {
+	case ir.Block:
 		data = answerData{Rule: outcome.Rule, Reason: outcome.Reason, Message: "BLOCKED: " + outcome.Reason}
+	case ir.Forward:
+		data = answerData{Native: outcome.Native}
 	}
-	chosen := e.answers[key]
+	chosen, ok := e.answers[key]
+	if !ok {
+		return Answer{}, fmt.Errorf("the %s %s event has no %s answer", e.harness, e.name, key)
+	}
 	stdout, err := execute(chosen.stdout, data)
 	if err != nil {
 		return Answer{}, err
@@ -482,6 +499,18 @@ func (e Event) Answer(outcome ir.Outcome) (Answer, error) {
 		}
 	}
 	return Answer{Exit: chosen.exit, Stdout: stdout, Stderr: stderr}, nil
+}
+
+// answerKey is the name of an action's answer in harness.json.
+func answerKey(action ir.Action) string {
+	switch action {
+	case ir.Block:
+		return answerBlock
+	case ir.Forward:
+		return answerForward
+	default:
+		return answerPass
+	}
 }
 
 // renderJSON writes StdoutJSON as compact JSON and a newline, each string

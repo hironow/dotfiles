@@ -1,6 +1,8 @@
 {
   "name": "codex",
-  "versions": ["0.166.0"],
+  "versions": [
+    "0.166.0"
+  ],
   "tools": {
     "Bash": "shell",
     "apply_patch": "patch"
@@ -9,7 +11,9 @@
     "pre": {
       "schema": "pre.schema.json",
       "answers": {
-        "pass": {"exit": 0},
+        "pass": {
+          "exit": 0
+        },
         "block": {
           "exit": 0,
           "stdoutJSON": {
@@ -19,6 +23,19 @@
               "permissionDecisionReason": "{{oneLine .Message}}"
             }
           }
+        },
+        "forward": {
+          "exit": 0,
+          "stdout": "{{.Native}}\n"
+        }
+      }
+    },
+    "post": {
+      "schema": "post.schema.json",
+      "answers": {
+        "pass": {
+          "exit": 0,
+          "stderr": "{{.Notice}}"
         }
       }
     }

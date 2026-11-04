@@ -12,6 +12,10 @@ const (
 	Pass Action = iota
 	// Block stops the tool call and tells the agent why.
 	Block
+	// Forward writes Outcome.Native, an answer in the harness's own form, as
+	// it is. A delegate hook (rtk on Claude and Codex) answers this way: the
+	// delegate wrote the answer for that harness.
+	Forward
 )
 
 func (a Action) String() string {
@@ -20,6 +24,8 @@ func (a Action) String() string {
 		return "pass"
 	case Block:
 		return "block"
+	case Forward:
+		return "forward"
 	default:
 		return "Action(" + strconv.Itoa(int(a)) + ")"
 	}
@@ -31,4 +37,6 @@ type Outcome struct {
 	Action Action
 	Rule   string // the rule that blocked, for the log, such as "command.pip"; empty on a pass
 	Reason string // what the agent is told when the call is blocked; empty on a pass
+	Native string // the answer a Forward writes as it is
+	Notice string // what a pass reports, such as the formatter's remaining ruff findings
 }

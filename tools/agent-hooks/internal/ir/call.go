@@ -5,6 +5,7 @@ const (
 	FieldCommand  = "command"  // a shell command, or Codex's apply_patch patch
 	FieldFilePath = "filePath" // the path a write or edit names
 	FieldContent  = "content"  // the text a write, edit, or notebook edit puts in
+	FieldCwd      = "cwd"      // the tool call's working directory, as the harness gave it
 )
 
 // The kinds of tool a harness definition maps its tool names to.
@@ -25,6 +26,9 @@ type Call struct {
 	// Fields holds the IR fields the definition maps, by name (Field*). A
 	// field whose candidates are all absent, null, or false is missing.
 	Fields map[string]Value
+	// Native is the payload as the harness wrote it. Only a delegate hook,
+	// which hands the payload to the delegate, reads it.
+	Native []byte
 }
 
 // Value is one IR field's value. Text is the string itself, or, for any other

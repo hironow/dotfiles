@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Claude Code PostToolUse hook input",
+  "description": "Written from the hooks reference and from PostToolUse payloads captured from Claude Code 2.1.316 (Write, Edit). Unknown members are allowed: Claude Code adds fields between versions. PostToolUse fires only after a tool call that succeeded (a failure fires PostToolUseFailure).",
+  "type": "object",
+  "required": [
+    "session_id",
+    "transcript_path",
+    "cwd",
+    "permission_mode",
+    "hook_event_name",
+    "tool_name",
+    "tool_input",
+    "tool_response",
+    "tool_use_id"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string"
+    },
+    "transcript_path": {
+      "type": "string"
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "permission_mode": {
+      "type": "string"
+    },
+    "hook_event_name": {
+      "const": "PostToolUse"
+    },
+    "tool_name": {
+      "type": "string"
+    },
+    "tool_input": {
+      "type": "object"
+    },
+    "tool_response": true,
+    "tool_use_id": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "number"
+    },
+    "prompt_id": {
+      "type": "string"
+    },
+    "effort": {
+      "type": "object"
+    },
+    "agent_id": {
+      "type": "string"
+    },
+    "agent_type": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "tool_name": {
+            "const": "Bash"
+          }
+        },
+        "required": [
+          "tool_name"
+        ]
+      },
+      "then": {
+        "properties": {
+          "tool_input": {
+            "$ref": "#/$defs/Bash"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tool_name": {
+            "const": "Write"
+          }
+        },
+        "required": [
+          "tool_name"
+        ]
+      },
+      "then": {
+        "properties": {
+          "tool_input": {
+            "$ref": "#/$defs/Write"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tool_name": {
+            "const": "Edit"
+          }
+        },
+        "required": [
+          "tool_name"
+        ]
+      },
+      "then": {
+        "properties": {
+          "tool_input": {
+            "$ref": "#/$defs/Edit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tool_name": {
+            "const": "NotebookEdit"
+          }
+        },
+        "required": [
+          "tool_name"
+        ]
+      },
+      "then": {
+        "properties": {
+          "tool_input": {
+            "$ref": "#/$defs/NotebookEdit"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Bash": {
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "number"
+        },
+        "run_in_background": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Write": {
+      "type": "object",
+      "required": [
+        "file_path",
+        "content"
+      ],
+      "properties": {
+        "file_path": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "Edit": {
+      "type": "object",
+      "required": [
+        "file_path",
+        "old_string",
+        "new_string"
+      ],
+      "properties": {
+        "file_path": {
+          "type": "string"
+        },
+        "old_string": {
+          "type": "string"
+        },
+        "new_string": {
+          "type": "string"
+        },
+        "replace_all": {
+          "type": "boolean"
+        }
+      }
+    },
+    "NotebookEdit": {
+      "type": "object",
+      "required": [
+        "notebook_path",
+        "new_source"
+      ],
+      "properties": {
+        "notebook_path": {
+          "type": "string"
+        },
+        "new_source": {
+          "type": "string"
+        },
+        "cell_id": {
+          "type": "string"
+        },
+        "cell_type": {
+          "enum": [
+            "code",
+            "markdown"
+          ]
+        },
+        "edit_mode": {
+          "enum": [
+            "replace",
+            "insert",
+            "delete"
+          ]
+        }
+      }
+    }
+  },
+  "x-ir": {
+    "command": [
+      "/tool_input/command"
+    ],
+    "filePath": [
+      "/tool_input/file_path"
+    ],
+    "content": [
+      "/tool_input/content",
+      "/tool_input/new_string",
+      "/tool_input/new_source"
+    ],
+    "cwd": [
+      "/cwd"
+    ]
+  }
+}
