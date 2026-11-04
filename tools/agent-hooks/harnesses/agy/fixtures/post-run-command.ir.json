@@ -1,0 +1,16 @@
+{
+  "tool": "run_command",
+  "kind": "shell",
+  "fields": {
+    "command": {
+      "string": "echo capture-run"
+    }
+  },
+  "lists": {
+    "workspaces": [
+      {
+        "string": "/home/user/project"
+      }
+    ]
+  }
+}

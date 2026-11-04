@@ -7,6 +7,34 @@
     "Bash": "shell",
     "apply_patch": "patch"
   },
+  "hookCwd": "session",
+  "support": {
+    "command-guard": {
+      "Bash": {
+        "level": "supported"
+      }
+    },
+    "files-guard": {
+      "apply_patch": {
+        "level": "supported"
+      }
+    },
+    "secrets-guard": {
+      "apply_patch": {
+        "level": "supported"
+      }
+    },
+    "rtk": {
+      "Bash": {
+        "level": "supported"
+      }
+    },
+    "formatter": {
+      "apply_patch": {
+        "level": "supported"
+      }
+    }
+  },
   "events": {
     "pre": {
       "schema": "pre.schema.json",

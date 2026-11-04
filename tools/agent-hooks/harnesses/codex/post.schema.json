@@ -121,6 +121,7 @@
       }
     }
   ],
+  "x-ir-tool": "/tool_name",
   "x-ir": {
     "command": [
       "/tool_input/command"

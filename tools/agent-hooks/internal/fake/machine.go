@@ -37,6 +37,13 @@ type Machine struct {
 	Unstartable map[string]bool
 	// Windows makes the machine a Windows one, for its path rules.
 	Windows bool
+	// RealPaths maps a path to its real path (symlinks followed); a path not
+	// here does not resolve.
+	RealPaths map[string]string
+	// Entries holds the paths that exist; BrokenEntries the paths whose
+	// lookup fails (for example, a directory that cannot be read).
+	Entries       map[string]bool
+	BrokenEntries map[string]bool
 
 	// Replay is what Run must be asked, in order, and what each answers.
 	Replay []Invocation
@@ -80,6 +87,23 @@ func (m *Machine) IsWindows() bool { return m.Windows }
 // Getwd returns the working directory the test set.
 func (m *Machine) Getwd() string { return m.Cwd }
 
+// RealPath returns the real path the test set for the path.
+func (m *Machine) RealPath(path string) (string, error) {
+	if real, ok := m.RealPaths[path]; ok {
+		return real, nil
+	}
+	return "", fmt.Errorf("fake: %s does not resolve", path)
+}
+
+// Exists reports whether the test made the path exist, or fails for a path
+// the test made broken.
+func (m *Machine) Exists(path string) (bool, error) {
+	if m.BrokenEntries[path] {
+		return false, fmt.Errorf("fake: %s cannot be looked up", path)
+	}
+	return m.Entries[path], nil
+}
+
 // Run replays the next invocation when the command matches it.
 func (m *Machine) Run(command process.Command) (process.Result, error) {
 	if m.Unstartable[command.Path] {
@@ -117,5 +141,5 @@ func sameCommand(a, b process.Command, anyArgv0 bool) bool {
 		argsA, argsB = argsA[1:], argsB[1:]
 	}
 	return a.Path == b.Path && slices.Equal(argsA, argsB) && bytes.Equal(a.Stdin, b.Stdin) &&
-		a.Timeout == b.Timeout && a.Combined == b.Combined
+		a.Timeout == b.Timeout && a.Combined == b.Combined && a.Dir == b.Dir
 }

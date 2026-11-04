@@ -1,0 +1,19 @@
+{
+  "tool": "edit_file",
+  "kind": "edit",
+  "fields": {
+    "filePath": {
+      "string": "/home/user/project/notes.txt"
+    },
+    "content": {
+      "string": "one\ntwo"
+    }
+  },
+  "lists": {
+    "workspaces": [
+      {
+        "string": "/home/user/project"
+      }
+    ]
+  }
+}

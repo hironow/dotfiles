@@ -1,7 +1,7 @@
 # Plan: agent-hook — one Go engine, harness definitions as data, a log line at every firing
 
 **Date:** 2026-11-03
-**Status:** Approved (owner, 2026-11-03, chat; Codex review 6: APPROVE). PR 0 merged as [#534](https://github.com/hironow/dotfiles/pull/534), PR 1 as [#535](https://github.com/hironow/dotfiles/pull/535), PR 2a as [#537](https://github.com/hironow/dotfiles/pull/537) after the fix [#536](https://github.com/hironow/dotfiles/pull/536); PR 2b as [#540](https://github.com/hironow/dotfiles/pull/540) (main `0c225828`); PR 2c in progress on `feat/agent-hooks-rtk-formatter`.
+**Status:** Approved (owner, 2026-11-03, chat; Codex review 6: APPROVE). PR 0 merged as [#534](https://github.com/hironow/dotfiles/pull/534), PR 1 as [#535](https://github.com/hironow/dotfiles/pull/535), PR 2a as [#537](https://github.com/hironow/dotfiles/pull/537) after the fix [#536](https://github.com/hironow/dotfiles/pull/536); PR 2b as [#540](https://github.com/hironow/dotfiles/pull/540) (main `0c225828`), PR 2c as [#544](https://github.com/hironow/dotfiles/pull/544) (main `66b75132`); PR 2d in progress on `feat/agent-hooks-pr2d`.
 **Related:** [hook contracts per harness](agent-hooks-go-contracts.md) (2026-11-03 snapshot, with the agy probe records), [agent sync](../agent-sync.md), [#533](https://github.com/hironow/dotfiles/pull/533) (Codex hooks rendered from the one source, from main `8d55d1b7`)
 **Blocking decisions:** none (D1–D3 decided by the owner on 2026-11-03; no ADR, by the owner's decision)
 
@@ -157,22 +157,43 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
         - Claude: the worktree git veto (Python shlex without comments), then mise's launcher (`shlex.quote` of `Path(...).as_posix()`, whose rules are `PurePosixPath`'s on Unix and `PureWindowsPath`'s on Windows), then the strip to `hookEventName` and `updatedInput`;
         - Codex: only the command changes, to rtk's real binary (mise's answer first, never a shim, an unquoted path). rtk's decision, reason, and other members stay.
     - **Programs are found as the scripts found them:** `process.Search` walks PATH as Python's `shutil.which` and bash do, joining without cleaning, so the kernel resolves `link/..` through the link (Go's `exec.LookPath` cleans first and can pick another program). A program found through a relative or empty entry is never run: the hook passes instead. 2b's `basename` probe uses the same search.
-    - **The formatter:** each `file_path` line, or every Add/Update/Move-to path of the patch, that is a regular file: `.py` through the three `uv run --frozen --only-group lint ruff` commands (the last on one pipe for stdout and stderr, as `2>&1`), `.go` through `gofmt -w`. It reports what ruff still finds on stderr and exits 0. Commands inherit the process's cwd and environment; the `Machine` port has no parameter to change either.
+    - **The formatter:** each `file_path` line, or every Add/Update/Move-to path of the patch, that is a regular file: `.py` through the three `uv run --frozen --only-group lint ruff` commands (the last on one pipe for stdout and stderr, as `2>&1`), `.go` through `gofmt -w`. It reports what ruff still finds on stderr and exits 0. Commands inherit the process's environment, and its cwd on Claude and Codex (2d lets agy's formatter name the project directory).
     - **Definitions:** `post.schema.json` for both harnesses (Claude's from captured PostToolUse Write and Edit payloads of 2.1.316; Codex's derived from its generated `post-tool-use.command.input` at `rust-v0.166.0`), a `cwd` IR field, the pre `forward` answer (rtk's edited answer, as it is) and the post `pass` answer (the notice on stderr).
     - **Parity:** `just tool-hooks-corpus` runs each scenario through each script in a root built from scratch (PATH of fake programs then `sys-bin` with bash 5, jq, and Python 3.14; nothing inherited). The fakes log the path given to execve, the arguments, stdin (rtk only reads it), the physical cwd, and `PATH`, `HOME`, and a probe variable. It writes `internal/toolhookcorpus/{rtk,formatter}.jsonl`, with difference IDs (`unreadable`, `reference-limit`, `path-relative`, `rtk-answer-unreadable`, `nul-warning`, `pass-diagnostic`) derived from the legacy runs. The formatter's notices are built from the recorded ruff output, so a body is never cut where bash's NUL warning is taken off. The Go tests check every run in-process (a fake machine that answers from the generator's world and replays the invocations) and as a real process (`faketool` behind a shebang in each fake's place). A forwarded answer compares as JSON, integers exactly. `tests/unit/test_tool_hooks_corpus.py` keeps the corpora fresh, every ID earned, and every test of the old scripts mirrored by a scenario or a Go test.
     - **Not ported:** the `RTK_HOOK_PERMISSION_DECISION=keep` seam (the strip is the policy) and the wrappers' interpreter lookup (PR 3's launcher tests).
     - **Known differences:** the IDs above; Windows uses Go's `exec.LookPath` (PATHEXT), with a relative result not found; PATH unset finds nothing (Python falls back to `/bin:/usr/bin`); a formatter that cannot start reports nothing (bash printed its error into the notice).
+- How PR 2d does it: the binary also answers agy (Antigravity CLI 1.5.0) for the three guards (`pre`) and the formatter (`post`), not yet registered (PR 4 ships the plugin).
+    - **Facts:** payloads captured on 2026-11-04 from agy 1.5.0 in a scratch workspace (`.agents/hooks.json`, `agy -p --mode accept-edits`) have the shape of the 1.4.12 probe records and no `cwd`; `error` is `""` after a success. Pi 1.4.0's events were captured too, for 2e.
+    - **Definition:** `harnesses/agy/` maps `run_command` to shell, `write_file` to write, and `edit_file` to edit; the public-doc names stay `pending`, not mapped. `x-ir`: `command` from `CommandLine`, `filePath` from `Path`, `content` from `Content` then `Replacement`, and `workspaces` from `/workspacePaths/*`. A pass is `{"decision":"ask"}`, a block `{"decision":"deny","reason":"BLOCKED: ..."}` with the reason escaped but not made one line, and a post answer `{}` with the notice on stderr.
+    - **Data, not Go:** each schema names where its tool's name is (`x-ir-tool`: `/tool_name` for Claude and Codex, `/toolCall/name` for agy), so `Decode` no longer reads `tool_name` in Go. A pointer with one `*` makes a list field (`ir.Call.Lists`), each element read as a single field is.
+    - **Success signal:** agy's post schema holds `x-success`: the member (`/error`), the values that mean success (`""`), and that an omitted member means success too. The member is read as written, so a number anywhere in the payload changes nothing. After a failed call no post hook runs, and the answer is `{}`. Claude and Codex have none, as before.
+    - **Support:** `harness.json` gives each hook a level per tool (`supported`, `degraded`, `unsupported`); the tools a hook is registered for are today's matchers. Two cells are known gaps:
+        - Claude's files guard on NotebookEdit is `degraded`: it reads `file_path`, as the old script did, so parity holds; changing it is a review item.
+        - rtk on agy is `unsupported`.
+        - Levels cover macOS and Linux; Windows levels come with PR 3's Windows launchers.
+    - **Where commands run:** `hookCwd` says where a harness runs its hooks: Claude and Codex in the session's directory, agy in the directory that holds `hooks.json`.
+        - On agy the formatter places each file (`locate`) on the machine: the file's real path, each workspace's real path, and the git root (the nearest `.git` entry; a failed lookup is a value).
+        - `internal/project` picks the longest workspace that holds the file, else the git root, else the file's directory. The commands run there (`process.Command.Dir`), with the real path.
+        - A relative path (agy sends no cwd), a path that does not resolve, and any path on Windows are not formatted.
+        - Claude and Codex run as before: the fake machine now compares `Dir`, so 2c's corpora pin it empty for every invocation.
+    - **Conformance:** `internal/conformance` (tests only) runs each hook's scenarios through every harness, on every tool the hook is registered for, in-process.
+        - A scenario writes its value at the tool's real input member, listed in the suite from the contracts file rather than taken from `x-ir`, and never adds a member.
+        - Per-harness readers, written from the contracts file and Codex's source (`parse_pre_tool_use` at `rust-v0.166.0`), read each answer as the harness does: a block with its reason, a pass, a rewrite, or invalid. Each reader has negative tests.
+        - Degraded cells pin their gap; rtk is left to the tool-hooks corpus.
+    - **Real process:** a test builds a workspace, a symlink out of it, and another project with `.git` on the real file system, and checks where the fake `uv` and `gofmt` ran and on which path.
+    - **Not yet:** a captured payload with several workspaces (no capture had one); decoded test payloads cover that case.
 
 ## PRs (each: Red tests first, `just ci`, full `just test` when recipes change, PR CI green, squash merge)
 
 0. Ownership and compatibility: sync recognizes release-path registrations as managed (alongside script paths); the Pi installer removes the extension files it placed whose source is gone (a symlink to that source, or a copy whose first line is `// dotfiles-managed: <its own name>`). No behavior change. Uninstall moves into the binary and ships with each wiring PR (PR 3: Claude, Codex; PR 4: agy, Pi), because it removes what that PR registers; for Claude and Codex a revert plus a re-sync is already clean after PR 0.
 1. Engine core and the command guard port with the token/heredoc/verdict differential harness.
-2. Not wired, in four PRs so that each stays reviewable:
+2. Not wired, in six PRs so that each stays reviewable:
     - 2a. The files and secrets guards and Codex's apply_patch reading, ported with their parity corpora. Its review found two fail-opens in the shell guards, fixed first in [#536](https://github.com/hironow/dotfiles/pull/536) as an exception to keeping every decision: the secrets guard passed a large write holding a key (`grep -q` under pipefail), and the files guard passed `a.yml` where no file could be written (a here-string on bash 3.2). A reference that passes or blocks the same input depending on its size or its environment cannot be matched.
     - 2b. The definition loader with JSON Schema validation, definitions and fixtures for Claude and Codex, decode and encode, the binary, and the existing subprocess tests run against both the scripts and the binary.
     - 2c. The rtk and formatter hooks for Claude and Codex, so that the binary runs every hook they run today. The original 2c was split here, so that each part stays reviewable; only the order changes.
-    - 2d. Definitions and fixtures for agy and Pi, `*` pointers (list fields), the shim protocol, the rewrite codec, the `ProjectLocator`, the conformance suite and capability matrix.
-    - 2e. `LogSink`/`FileSink` and the latency measurement.
+    - 2d. agy: its definition and fixtures, `*` pointers (list fields), the post success signal, the `ProjectLocator`, support levels per tool, and the conformance suite (the capability matrix is rendered from the levels in PR 3). The original 2d was split here, since agy and Pi share only the list fields; only the order changes.
+    - 2e. Pi: its definition and fixtures, the shim protocol, the rewrite codec (Pi's `rtk rewrite`), and relative paths read against the call's cwd.
+    - 2f. `LogSink`/`FileSink` and the latency measurement.
 3. Releases, launchers, Claude and Codex wired; doctor (per harness: registered as rendered, enabled, release fresh by rebuild, runtime deps, loss report); Codex trust. Live: old tests against the installed binary; Claude and Codex sessions block `npm --version` and a `.yml` write, rewrite `git status`, log one line per firing; launcher failure cases per OS. A round-trip test renders every launcher form (each harness, OS, and shell) and checks that sync's `_runs_agent_hook_release` accepts each one, including paths with an apostrophe, `$`, or a space, while the negative corpus in `tests/unit/test_codex_hooks.py` is still rejected, so the renderer and the ownership rule cannot drift apart.
 4. agy plugin (guards + formatter) and the Pi shim (guards + formatter + rtk; the vendored `rtk.ts` retired in the same PR). Live in scratch: blocks for `npm --version`, `x.yml`, a synthetic AWS-style key in a write and in a later edit element; an allowed write is formatted; agy compared with no plugin in auto and accept-edits modes and an owner-run interactive check; Pi rewrites `git status`; a live check that blocks and rewrites take effect. The installer places the Pi shim and counts it as a current extension: since PR 0 it removes any `// dotfiles-managed: <name>` extension it has no source for.
 5. Remove the old scripts and their name-based handling, and move what still reads the Python guard: doctor's rtk-guard check (`scripts/ai_tools_check.py` reads its `RTK_RUN_SUBCOMMANDS` and `RTK_FILTER_SUBCOMMANDS`) and `just command-guard-corpus` with its test (the corpus stays as the Go tests' data, and the word table as the port's); final docs (`docs/agent-sync.md`, enforcement and rtk guides, repo `CLAUDE.md`).
@@ -196,6 +217,21 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
 
 ## Review record
 
+- PR 2d code reviews (Codex). Each finding was reproduced and adopted:
+    - Round 1 (REVISE):
+        - The Codex reader took `"decision":""` beside a valid deny as a block; Codex cannot deserialize it and fails open. The reader now rejects any present `decision` other than `approve` or `block`.
+        - agy's success check decoded the whole payload into float64s, so an unused `1e400` failed it and the formatter did nothing. `x-success` is now a member and its values, read as written; the JSON acceptance test now runs on every harness and event.
+    - Round 2 (APPROVE): no further findings.
+- PR 2d design reviews (Codex). Each finding was adopted:
+    - Round 1 (REVISE):
+        - The `ProjectLocator` read paths as text: a symlink could lead a file out of its workspace, and a relative path could follow a changed directory. Files and workspaces are now resolved physically, the directory and the real path go together, and a relative or unresolvable path is not formatted.
+        - A failed agy edit was still formatted. `x-success` now reads the post payload, and no post hook runs after a failed call.
+        - The conformance suite wrote the first `x-ir` candidate, which added a member instead of changing the tool's own. It now writes each tool's real member, from its own list, and checks that none is added.
+        - The Codex reader took any `deny` as a block. Each reader now follows its harness's rules, the reason included, with negative tests.
+    - Round 2 (REVISE):
+        - The Codex reader still took `deny` with `updatedInput` as a block; it now ports every rule of `parse_pre_tool_use`.
+        - NotebookEdit was in the scope but not in the member list, and its files-guard cell would have expected a block the old guard never made. Support is now per tool; that cell is `degraded` and pinned.
+    - Round 3 (APPROVE): no further findings.
 - PR 2c code reviews (Codex). Each finding was reproduced and adopted:
     - Round 1 (REVISE):
         - On Windows, Claude's rtk through mise was refused; the separator test and the launcher's name (`PureWindowsPath.as_posix()`) now follow the OS.

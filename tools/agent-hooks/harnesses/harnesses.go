@@ -8,5 +8,5 @@ import "embed"
 
 // FS holds one directory per harness, named for it.
 //
-//go:embed claude codex
+//go:embed agy claude codex
 var FS embed.FS

@@ -47,8 +47,14 @@ type Machine interface {
 	// IsWindows reports whether paths follow Windows' rules here (the
 	// scripts' Path(...) did), as on Windows.
 	IsWindows() bool
-	// Run runs a command in this process's working directory and environment.
-	// The error is a command that could not start or ran out of time.
+	// RealPath is an absolute path with every symlink followed.
+	RealPath(path string) (string, error)
+	// Exists reports whether there is an entry at the path, not following a
+	// final symlink; the error is a lookup that could not finish.
+	Exists(path string) (bool, error)
+	// Run runs a command in this process's environment, and in its working
+	// directory unless the command names one. The error is a command that
+	// could not start or ran out of time.
 	Run(command process.Command) (process.Result, error)
 }
 
@@ -124,9 +130,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machi
 	if payload, err := io.ReadAll(stdin); err == nil {
 		if call, err := event.Decode(payload); err == nil {
 			call.Native = payload
-			var failure any
-			if outcome, failure = decideSafely(decide, call, machine); failure != nil {
-				_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook failed, so the call goes on: %v\n", spec.ID, failure)
+			if call.ToolFailed {
+				// A post hook acts on what the tool call did; a call that
+				// failed did nothing to act on.
+				outcome = ir.Outcome{}
+			} else {
+				var failure any
+				if outcome, failure = decideSafely(decide, call, machine); failure != nil {
+					_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook failed, so the call goes on: %v\n", spec.ID, failure)
+				}
 			}
 		}
 	}

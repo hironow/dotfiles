@@ -72,8 +72,10 @@ unit test は `tests/unit/test_agent_hooks.py` にある。
 正本を直し、test を足してから `just sync-agents` を実行する。
 
 command guard、files guard、secrets guard には Go への移植がある（`tools/agent-hooks`、計画は `docs/plan/agent-hooks-go.md`。まだどの harness にも配線していない）。
-binary `agent-hook <harness> pre --hook <id>`（guard と rtk）と `agent-hook <harness> post --hook formatter` は、Claude と Codex の payload を読んで、それぞれの harness が読む形で答える。
+binary `agent-hook <harness> pre --hook <id>`（guard と rtk）と `agent-hook <harness> post --hook formatter` は、Claude、Codex、agy の payload を読んで、それぞれの harness が読む形で答える（agy は guard と formatter だけ）。
 元の guard と同じ判定をすることを、`tools/agent-hooks/internal/guardcorpus/` の corpus で確かめている。
+harness ごとの定義（payload の schema、答え、hook ごとの対応状況）は `tools/agent-hooks/harnesses/` にある（`README.md` が書き方を説明する）。
+同じ scenario を全 harness に通す conformance suite（`tools/agent-hooks/internal/conformance/`）が、定義の誤りを知らせる。
 guard、rtk の hook、formatter かその test、または `guard-codex.sh` を変えたら corpus を書き直し、Go 側も同じ判定に直す。
 command guard は `just command-guard-corpus`、files guard と secrets guard は `just file-guards-corpus`、binary に通す payload は `just hook-payload-corpus`、rtk の hook と formatter は `just tool-hooks-corpus` で書き直す。
 `tests/unit/test_command_guard_corpus.py`、`tests/unit/test_file_guards_corpus.py`、`tests/unit/test_hook_payload_corpus.py`、`tests/unit/test_tool_hooks_corpus.py`、Go の test が、ずれを知らせる。

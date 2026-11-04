@@ -178,6 +178,158 @@ func TestFormatterRunsRuffAndReportsWhatItStillFinds(t *testing.T) {
 	checkReplay(t, m)
 }
 
+func TestNoPostHookRunsAfterAToolCallThatFailed(t *testing.T) {
+	// agy reports a failed tool call in error; the formatter then leaves the
+	// file alone, and the answer is agy's pass, {}. The machine would let it
+	// format the file: the control, with error "", does.
+	machine := func(replay []fake.Invocation) *fake.Machine {
+		return &fake.Machine{
+			Programs:  map[string]process.Program{"uv": {Path: "/b/uv"}},
+			Files:     map[string]bool{"/w/a.py": true},
+			RealPaths: map[string]string{"/w/a.py": "/w/a.py", "/w": "/w"},
+			Replay:    replay,
+		}
+	}
+	payload := func(failure string) string {
+		return `{"toolCall":{"name":"write_file","args":{"Path":"/w/a.py","Content":"x = 1\n"}},` +
+			`"workspacePaths":["/w"],"error":` + failure + `}`
+	}
+	control := machine(ruffIn("/w", "/w/a.py", "x\n"))
+	if got := run(t, control, payload(`""`), "agy", "post", "--hook", "formatter"); got.stderr == "" {
+		t.Errorf(`the control, error "": Run = %+v, want the file formatted`, got)
+	}
+	checkReplay(t, control)
+	for _, failure := range []string{`"write failed"`, `null`} {
+		m := machine(nil)
+		if got := run(t, m, payload(failure), "agy", "post", "--hook", "formatter"); got != (result{stdout: "{}\n"}) {
+			t.Errorf("error %s: Run = %+v, want {} and nothing run", failure, got)
+		}
+		checkReplay(t, m)
+	}
+}
+
+// agyWrite is agy's post payload for a write_file of path, with workspaces.
+func agyWrite(path string, workspaces ...string) string {
+	return `{"toolCall":{"name":"write_file","args":{"Path":"` + path + `","Content":"x = 1\n"}},` +
+		`"workspacePaths":["` + strings.Join(workspaces, `","`) + `"],"error":""}`
+}
+
+// ruffIn is the formatter's three ruff commands on path, run in dir.
+func ruffIn(dir, path string, report string) []fake.Invocation {
+	uv := func(args ...string) []string {
+		return append([]string{"uv", "run", "--frozen", "--only-group", "lint", "ruff"}, args...)
+	}
+	return []fake.Invocation{
+		{Command: process.Command{Path: "/b/uv", Args: uv("format", path), Dir: dir}},
+		{Command: process.Command{Path: "/b/uv", Args: uv("check", "--fix", path), Dir: dir}},
+		{
+			Command: process.Command{Path: "/b/uv", Args: uv("check", path), Combined: true, Dir: dir},
+			Result:  process.Result{Stdout: []byte(report), Exit: 1},
+		},
+	}
+}
+
+func TestAgyFormatterRunsInTheWorkspaceThatHoldsTheFile(t *testing.T) {
+	// agy runs a hook where its hooks.json is, so the formatter runs its
+	// commands in the project: the longest workspace holding the file.
+	m := &fake.Machine{
+		Programs:  map[string]process.Program{"uv": {Path: "/b/uv"}},
+		Files:     map[string]bool{"/w/sub/a.py": true},
+		RealPaths: map[string]string{"/w/sub/a.py": "/w/sub/a.py", "/w": "/w", "/w/sub": "/w/sub", "/v": "/v"},
+		Replay:    ruffIn("/w/sub", "/w/sub/a.py", "a.py:1:1: F401 unused\n"),
+	}
+	got := run(t, m, agyWrite("/w/sub/a.py", "/v", "/w", "/w/sub"), "agy", "post", "--hook", "formatter")
+	want := result{stdout: "{}\n", stderr: "ruff still reports issues in /w/sub/a.py:\na.py:1:1: F401 unused\n"}
+	if got != want {
+		t.Errorf("Run = %+v, want %+v", got, want)
+	}
+	checkReplay(t, m)
+}
+
+func TestAgyFormatterFollowsASymlinkOutOfTheWorkspace(t *testing.T) {
+	// /w/link leads to /other/sub, so /w/link/../a.py is /other/a.py: the
+	// file is not in /w, and the formatter runs in /other's git root with the
+	// real path. The notice names the path as agy gave it.
+	m := &fake.Machine{
+		Programs:  map[string]process.Program{"uv": {Path: "/b/uv"}},
+		Files:     map[string]bool{"/other/a.py": true},
+		RealPaths: map[string]string{"/w/link/../a.py": "/other/a.py", "/w": "/w"},
+		Entries:   map[string]bool{"/.git": true, "/other/.git": true},
+		Replay:    ruffIn("/other", "/other/a.py", "x\n"),
+	}
+	got := run(t, m, agyWrite("/w/link/../a.py", "/w"), "agy", "post", "--hook", "formatter")
+	if want := (result{stdout: "{}\n", stderr: "ruff still reports issues in /w/link/../a.py:\nx\n"}); got != want {
+		t.Errorf("Run = %+v, want %+v", got, want)
+	}
+	checkReplay(t, m)
+}
+
+func TestAgyFormatterFallsBackToTheFilesDirectoryWhenTheGitLookupFails(t *testing.T) {
+	m := &fake.Machine{
+		Programs:      map[string]process.Program{"gofmt": {Path: "/b/gofmt"}},
+		Files:         map[string]bool{"/x/y/a.go": true},
+		RealPaths:     map[string]string{"/x/y/a.go": "/x/y/a.go", "/w": "/w"},
+		Entries:       map[string]bool{"/.git": true},
+		BrokenEntries: map[string]bool{"/x/.git": true},
+		Replay: []fake.Invocation{
+			{Command: process.Command{Path: "/b/gofmt", Args: []string{"gofmt", "-w", "/x/y/a.go"}, Dir: "/x/y"}},
+		},
+	}
+	if got := run(t, m, agyWrite("/x/y/a.go", "/w"), "agy", "post", "--hook", "formatter"); got != (result{stdout: "{}\n"}) {
+		t.Errorf("Run = %+v, want {} and gofmt run in /x/y", got)
+	}
+	checkReplay(t, m)
+}
+
+func TestAgyReadsSuccessWhateverElseThePayloadHolds(t *testing.T) {
+	// A number no float64 holds, in a member nothing reads, changes nothing:
+	// the call succeeded, and the file is formatted as without it.
+	base := agyWrite("/w/a.py", "/w")
+	for _, extra := range []string{`1e400`, `-1e400`, `1e-400`, `123456789012345678901234567890`, `[1e400,{"y":-1e400}]`} {
+		payload := strings.TrimSuffix(base, "}") + `,"x":` + extra + `}`
+		m := &fake.Machine{
+			Programs:  map[string]process.Program{"uv": {Path: "/b/uv"}},
+			Files:     map[string]bool{"/w/a.py": true},
+			RealPaths: map[string]string{"/w/a.py": "/w/a.py", "/w": "/w"},
+			Replay:    ruffIn("/w", "/w/a.py", "x\n"),
+		}
+		got := run(t, m, payload, "agy", "post", "--hook", "formatter")
+		if want := (result{stdout: "{}\n", stderr: "ruff still reports issues in /w/a.py:\nx\n"}); got != want {
+			t.Errorf("x = %s: Run = %+v, want %+v", extra, got, want)
+		}
+		checkReplay(t, m)
+	}
+}
+
+func TestAgyFormatterLeavesAFileItCannotPlace(t *testing.T) {
+	// agy's payload has no cwd, so a relative path cannot be placed; nor can
+	// a path that does not resolve; nor any path on Windows (2d covers macOS
+	// and Linux).
+	tests := []struct {
+		name    string
+		path    string
+		windows bool
+	}{
+		{"a relative path", "a.py", false},
+		{"a path that does not resolve", "/w/gone.py", false},
+		{"Windows", "/w/a.py", true},
+	}
+	for _, test := range tests {
+		m := &fake.Machine{
+			Programs: map[string]process.Program{"uv": {Path: "/b/uv"}},
+			Files:    map[string]bool{"a.py": true, "/w/gone.py": true, "/w/a.py": true},
+			// EvalSymlinks resolves a relative path too, against the process's
+			// directory, which on agy is not the project.
+			RealPaths: map[string]string{"/w": "/w", "/w/a.py": "/w/a.py", "a.py": "a.py"},
+			Windows:   test.windows,
+		}
+		if got := run(t, m, agyWrite(test.path, "/w"), "agy", "post", "--hook", "formatter"); got != (result{stdout: "{}\n"}) {
+			t.Errorf("%s: Run = %+v, want {} and nothing run", test.name, got)
+		}
+		checkReplay(t, m)
+	}
+}
+
 func TestFormatterSkipsAFileWhoseFormatterIsMissingOrRelative(t *testing.T) {
 	m := &fake.Machine{
 		Programs: map[string]process.Program{"uv": {Path: "uv", Relative: true}},
