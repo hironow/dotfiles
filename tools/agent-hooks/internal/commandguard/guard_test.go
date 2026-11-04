@@ -10,19 +10,23 @@ import (
 )
 
 func TestCheckAgreesWithThePythonGuardOnTheCorpus(t *testing.T) {
+	// The port answers as the Python guard with its bugs fixed
+	// (scripts/old_script_fixes.py). Each subtest is in its frame: "parity"
+	// where that is the old guard's answer, else the fixes it needs, so that
+	// `go test -run '/fixed-'` lists where the port differs on purpose.
 	for _, entry := range guardcorpus.Entries(t) {
-		t.Run(fmt.Sprintf("line-%d", entry.Line), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/line-%d", entry.Frame(), entry.Line), func(t *testing.T) {
 			// given an input of the corpus, when the guard checks it
 			outcome := commandguard.Check(entry.Input)
-			// then it blocks, with the same reason, exactly when Python's did
-			if entry.Reason == nil {
+			// then it blocks, with the same reason, exactly when the fixed Python guard did
+			if entry.Fixed == nil {
 				if outcome.Action != ir.Pass {
 					t.Fatalf("Check(%q) blocked (%s: %s); Python passed it", entry.Input, outcome.Rule, outcome.Reason)
 				}
 				return
 			}
-			if outcome.Action != ir.Block || outcome.Reason != *entry.Reason {
-				t.Fatalf("Check(%q) = %v %q; Python blocked: %q", entry.Input, outcome.Action, outcome.Reason, *entry.Reason)
+			if outcome.Action != ir.Block || outcome.Reason != *entry.Fixed {
+				t.Fatalf("Check(%q) = %v %q; Python blocked: %q", entry.Input, outcome.Action, outcome.Reason, *entry.Fixed)
 			}
 		})
 	}

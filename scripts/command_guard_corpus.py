@@ -4,7 +4,11 @@
 Each line of tools/agent-hooks/internal/guardcorpus/command-guard.jsonl is one input and
 what the Python command guard (ROOT_AGENTS_hooks_block-prohibited-commands.py)
 makes of it: the shlex tokens or the tokenizer's error, the heredoc split, and
-the verdict (the reason it blocks, or null when it passes). The Python guard is
+the verdict (the reason it blocks, or null when it passes). It also records the
+guard with its bugs fixed (scripts/old_script_fixes.py), which the Go port
+follows: its verdict ("fixed"), the fixes that verdict needs ("difference",
+empty when it is the old one), and what its bash lexer reads ("bash": each token an operator, a quoted
+word, or a word). The Python guard is
 the reference until the agent-hook plan's last PR removes it
 (docs/plan/agent-hooks-go.md); the corpus then stays as the Go tests' data.
 
@@ -25,12 +29,19 @@ import importlib.util
 import json
 import random
 import re
+import tempfile
 import unicodedata
 from pathlib import Path
 from types import ModuleType
 
+import old_script_fixes
+
 ROOT = Path(__file__).resolve().parents[1]
 REFERENCE = ROOT / "ROOT_AGENTS_hooks_block-prohibited-commands.py"
+# The guard's fixes (scripts/old_script_fixes.py), which the Go port follows.
+COMMAND_FIXES = tuple(
+    name for name, fix in old_script_fixes.FIXES.items() if fix.script == REFERENCE.name
+)
 CORPUS = ROOT / "tools/agent-hooks/internal/guardcorpus/command-guard.jsonl"
 # Python's \w as a Go table: the port uses it instead of Go's own Unicode
 # tables, which are a newer Unicode version than Python's.
@@ -487,9 +498,158 @@ BOUNDARY_CHARS = [
 ]
 
 
+# What bash itself runs, for the command guard's fixes (scripts/old_script_fixes.py:
+# command-split, command-start, shell-string). Each input runs in bash with stub
+# programs that log their names (tests/unit/test_command_guard_bash_oracle.py),
+# and its kind says what bash does and what the fixed guard must do:
+# - "runs": bash runs a banned program or writes a .yml file; the guard blocks;
+# - "quiet": bash runs none and writes none; the guard passes;
+# - "over": bash runs none, but the guard blocks on purpose (it reads every
+#   branch, and a command with a syntax error by its complete lines).
+# Every branch of a "runs" input runs. Login shells (bash -l) reset PATH, so
+# none is used. A bash detail found later goes here first (Red), then is fixed
+# inside the fix ID it belongs to.
+BASH_ORACLE: list[tuple[str, str]] = [
+    # fixed-command-split: words and operators where bash splits them
+    ("cd .\nnpm i", "runs"),
+    ("echo x#y; npm i", "runs"),
+    ("(cd .);npm i", "runs"),
+    ("(cd .)&&npm i", "runs"),
+    ("echo |& npm i", "runs"),
+    ("< /dev/null npm i", "runs"),
+    ("2>/dev/null npm i", "runs"),
+    ("echo ';' npm i", "quiet"),
+    ("echo 'npm i'", "quiet"),
+    ("arr=(npm yarn)", "quiet"),
+    ("echo hi > x.yml", "runs"),
+    ("cat < /dev/null > x.yml", "runs"),
+    # substitutions, which bash runs
+    ("echo `npm i`", "runs"),
+    ('echo "$(npm i)"', "runs"),
+    ("cat <(npm i)", "runs"),
+    ('x=$(case y in (b) echo;; esac); "npm" i', "runs"),
+    ('echo $(case x in x) "npm" i;; esac)', "runs"),
+    ('echo $(case c in a|b) echo;; c) "npm" i;; esac)', "runs"),
+    ('echo $(case x in a) "npm" i;; esac)', "over"),
+    ("echo \"$(case esac in 'esac') npm i;; esac)\"", "runs"),
+    # after a redirection, case is its target, not a reserved word: the ) after
+    # a ends the substitution, and the rest is text in the quotes
+    ('echo "$(> case x in a) npm i;; esac)"', "quiet"),
+    ('printf \'%s\\n\' "<(npm i)" ">(npm i)"', "quiet"),
+    (
+        "unset AGENT_HOOK_UNSET; printf '%s\\n' \"${AGENT_HOOK_UNSET:-'$(npm i)'}\"",
+        "runs",
+    ),
+    ("unset AGENT_HOOK_UNSET; printf '%s\\n' ${AGENT_HOOK_UNSET:-'$(npm i)'}", "quiet"),
+    ("$'n\\x70m' i", "runs"),
+    ("$'\\156pm' i", "runs"),
+    ("$'np\\u006d' i", "runs"),
+    # $'...' decoded as bash decodes it; a NUL ends the value
+    # octal escapes above 0x7F (here the UTF-8 bytes of one emoji, so that every
+    # file system takes the name)
+    ("touch $'\\360\\237\\230\\200.yml'", "runs"),
+    ("touch $'\\u00e9\\U0001F600.yml'", "runs"),
+    ("touch $'\\cA.yml'", "runs"),
+    ("touch $'\\x.yml'", "runs"),
+    ("touch $'a\\0b.yml'", "quiet"),
+    # heredocs, as bash finds them
+    ("cat <<< EOF\nnpm i", "runs"),
+    ("cat <<EOF\n$(npm i)\nEOF", "runs"),
+    ("cat <<'EOF'\n$(npm i)\nEOF", "quiet"),
+    ("cd .\ncat <<EOF\nx\nEOF\nnpm i", "runs"),
+    ("echo \"$(cat <<'EOF'\nfix(x): a) b\nEOF\n)\"; npm i", "runs"),
+    ('# <<EOF\n"npm" i\nEOF', "runs"),
+    ('echo "<<EOF"\nnpm i\nEOF', "runs"),
+    ("sh - <<SH\necho x\nSH\nnpm i", "runs"),
+    ("cat <<A <<B\nnpm i\nA\nnpm i\nB", "quiet"),
+    ("cat <<'EOF'\n  EOF\nnpm i\nEOF", "quiet"),
+    ('cat <<EOF\nEO\\\nF\n"npm" i', "runs"),
+    ("cat <<'EOF'\nEO\\\nF\n\"npm\" i\nEOF", "quiet"),
+    ('cat <<-EOF\n\tEO\\\nF\n"npm" i', "runs"),
+    ('cat <<-EOF\n\tEO\\\n\tF\n"npm" i', "quiet"),
+    ('cat <<-EOF\n\tEOF\n"npm" i', "runs"),
+    ("cat <<EOF\nx \\\n$(npm i)\nEOF", "runs"),
+    ("cat <<$(npm i)\nbody\n$(npm i)", "quiet"),
+    ('cat <<"$(npm i)"\nbody\n$(npm i)', "quiet"),
+    ("bash <<-'EOF'\nnp\\\n\tm i\nEOF", "runs"),
+    # found in the code review: a plain { in ${...} does not nest; $(( is
+    # arithmetic only when its ( closes on a ) another ) follows; a line
+    # continuation is gone before a descriptor or a delimiter is read; \cX
+    # takes X's first byte
+    ('unset x; echo ${x:-{}; "npm" i', "runs"),
+    ("echo $((npm i); :)", "runs"),
+    ("echo $((npm i) )", "runs"),
+    ("echo $((1+2))", "quiet"),
+    ("echo $(( (1+2) * 3 ))", "quiet"),
+    ("2\\\n>/dev/null npm i", "runs"),
+    ("cat <<EO\\\nF\n$(npm i)\nEOF", "runs"),
+    ("eval $'echo \\c\u0100; npm i'", "runs"),
+    ("eval $'echo \\c?; npm i'", "runs"),
+    # found in the second code review: quotes in $(( count; a line continuation
+    # inside an operator is gone too; \c\\ is one control character
+    ("echo $((: '))'; \"npm\" i) )", "runs"),
+    ("cat <<\\\n-EOF\n\tEOF\nnpm i", "runs"),
+    ("a &\\\n& npm i", "over"),
+    ("eval $'echo \\c\\\\; npm i'", "runs"),
+    ("eval $'echo \\c\\; npm i'", "runs"),
+    # a quote or substitution that does not end: the complete lines before it
+    ('"npm" i\necho \'unterminated', "runs"),
+    ('if true; then\n  "npm" i\n  echo \'unterminated\nfi', "over"),
+    # fixed-command-start: the words after which bash starts a command
+    ("for d in a; do npm i; done", "runs"),
+    ("{ npm i; }", "runs"),
+    ("if true; then npm i; fi", "runs"),
+    ("! npm i", "runs"),
+    ("function f { npm i; }; f", "runs"),
+    ("exec npm i", "runs"),
+    ("coproc worker { npm i; }; wait", "runs"),
+    ("coproc npm i; wait", "runs"),
+    # a case's patterns are no commands; its bodies are
+    ("case bun in\n  npm) : ;;\n  bun) : ;;\nesac", "quiet"),
+    ("case x in\n  (npm|yarn) : ;;\nesac", "quiet"),
+    ("case bun in\n  bun) : ;;\n  npm) : ;;\nesac", "quiet"),
+    ("case npm in\n  npm) npm i ;;\nesac", "runs"),
+    ("case a in a) case b in b) npm i;; esac;; esac", "runs"),
+    # a quoted word is never a reserved word (exec is a builtin, no reserved word);
+    # a redirection's operand in a case body is no esac
+    ('"case" x; npm i', "runs"),
+    ('"function"; npm i', "runs"),
+    ("case x in 'esac'|npm) :;; esac", "quiet"),
+    ('"if" npm i', "quiet"),
+    ('"exec" npm i', "runs"),
+    ("case x in x) <<<esac npm i;; esac", "runs"),
+    # fixed-shell-string: what a shell runs with -c, and eval
+    ('bash -c "npm i"', "runs"),
+    ("sh -ec 'npm i'", "runs"),
+    ('bash -o pipefail -c "npm i"', "runs"),
+    ("bash -c -- 'npm i'", "runs"),
+    ("zsh -oSH_WORD_SPLIT -c 'npm i'", "runs"),
+    ('eval "npm i"', "runs"),
+    ('eval -- "npm i"', "runs"),
+    ("cd .\nnpm i; bash -c 'npm i'", "runs"),
+    ("bash ./script.sh 'npm i'", "quiet"),
+]
+
+
 def load_reference() -> ModuleType:
     """A private copy of the Python guard whose block() raises instead of exiting."""
-    spec = importlib.util.spec_from_file_location("command_guard_reference", REFERENCE)
+    return load_guard(REFERENCE, "command_guard_reference")
+
+
+def load_fixed(directory: Path) -> dict[frozenset[str], ModuleType]:
+    """The guard with each set of its fixes, written under directory."""
+    copies = {}
+    for applied in old_script_fixes.every_set(COMMAND_FIXES):
+        name = "+".join(sorted(applied)) or "old"
+        written = old_script_fixes.write_scripts(directory / name, applied)
+        module = "command_guard_" + re.sub(r"\W", "_", name)
+        copies[applied] = load_guard(written / REFERENCE.name, module)
+    return copies
+
+
+def load_guard(path: Path, name: str) -> ModuleType:
+    """A copy of a Python guard, as a module whose block() raises."""
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     reference = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(reference)
@@ -628,6 +788,7 @@ def inputs() -> list[str]:
     ordered = (
         fixture_commands()
         + EDGE_CASES
+        + [text for text, _ in BASH_ORACLE]
         + space_inputs()
         + boundary_inputs()
         + pair_inputs()
@@ -636,18 +797,59 @@ def inputs() -> list[str]:
     return list(dict.fromkeys(ordered))
 
 
-def entry(reference: ModuleType, text: str) -> dict:
-    """What the reference makes of one input."""
+def verdict(guard: ModuleType, text: str) -> str | None:
+    """Why a guard blocks the text, or None when it passes."""
+    try:
+        guard.analyze(text)
+    except Blocked as blocked:
+        return blocked.reason
+    return None
+
+
+def bash_reading(guard: ModuleType, text: str) -> dict:
+    """What the fixed guard's lexer reads in a text: its tokens (each an
+    operator or a word), the substitution bodies, the code heredoc bodies,
+    and the text without its heredoc bodies; or, where a quote or
+    substitution does not end, where its line starts and what the lines
+    before it read."""
+    try:
+        lexed = guard._bash_lex(text)
+    except guard._Unterminated as unterminated:
+        before = text[: unterminated.line_start]
+        return {"error": unterminated.line_start, "before": bash_reading(guard, before)}
+    return {
+        "tokens": [[_token_kind(guard, token), str(token)] for token in lexed.tokens],
+        "substitutions": lexed.substitutions,
+        "codeBodies": lexed.code_bodies,
+        "cleaned": lexed.cleaned(text),
+    }
+
+
+def _token_kind(guard: ModuleType, token: str) -> str:
+    """An operator, a quoted word (never a reserved word), or a plain word."""
+    if isinstance(token, guard._Op):
+        return "op"
+    return "quoted" if isinstance(token, guard._Quoted) else "word"
+
+
+def entry(
+    reference: ModuleType, fixed: dict[frozenset[str], ModuleType], text: str
+) -> dict:
+    """What the reference, and the reference with its fixes, make of one input."""
     try:
         tokens, token_error = reference._tokenize(text), None
     except ValueError as error:
         tokens, token_error = None, str(error)
     cleaned, code_bodies = reference.split_heredocs(text)
-    try:
-        reference.analyze(text)
-        reason = None
-    except Blocked as blocked:
-        reason = blocked.reason
+    reason = verdict(reference, text)
+    full = fixed[frozenset(COMMAND_FIXES)]
+    fixed_reason = verdict(full, text)
+    difference = ""
+    if fixed_reason != reason:
+        needed = old_script_fixes.needed(
+            COMMAND_FIXES, lambda applied: verdict(fixed[applied], text)
+        )
+        difference = old_script_fixes.difference(needed, "")
     return {
         "input": text,
         "tokens": tokens,
@@ -655,16 +857,21 @@ def entry(reference: ModuleType, text: str) -> dict:
         "cleaned": cleaned,
         "codeBodies": code_bodies,
         "reason": reason,
+        "fixed": fixed_reason,
+        "difference": difference,
+        "bash": bash_reading(full, text),
     }
 
 
 def render() -> str:
     """The corpus file's content: one JSON object per line, ASCII only."""
     reference = load_reference()
-    return "".join(
-        json.dumps(entry(reference, text), ensure_ascii=True) + "\n"
-        for text in inputs()
-    )
+    with tempfile.TemporaryDirectory() as scratch:
+        fixed = load_fixed(Path(scratch))
+        return "".join(
+            json.dumps(entry(reference, fixed, text), ensure_ascii=True) + "\n"
+            for text in inputs()
+        )
 
 
 def word_ranges() -> list[tuple[int, int]]:

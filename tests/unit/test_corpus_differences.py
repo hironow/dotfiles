@@ -79,6 +79,8 @@ def _lines(path: Path) -> list[dict]:
 def _differences() -> dict[str, set[str]]:
     """Every difference each corpus records, by corpus."""
     found: dict[str, set[str]] = {}
+    commands = _lines(CORPORA / "guardcorpus/command-guard.jsonl")
+    found["command-guard.jsonl"] = {entry["difference"] for entry in commands}
     files = _lines(CORPORA / "guardcorpus/files-guard.jsonl")
     found["files-guard.jsonl"] = {
         entry[flavor].get("difference", "")
@@ -126,6 +128,21 @@ def test_every_named_fix_is_earned_somewhere() -> None:
     }
     for name in old_script_fixes.FIXES:
         assert f"fixed-{name}" in used, f"no corpus input needs fixed-{name}"
+
+
+def test_every_named_fix_has_a_witness_of_its_own() -> None:
+    # A run names the smallest set of fixes that gives its answer, the first
+    # by name; a fix that only ever came with another would test nothing alone.
+    alone = {
+        part
+        for differences in _differences().values()
+        for difference in differences
+        if len(parts := [p for p in difference.split("+") if p.startswith("fixed-")])
+        == 1
+        for part in parts
+    }
+    for name in old_script_fixes.FIXES:
+        assert f"fixed-{name}" in alone, f"no corpus input needs fixed-{name} alone"
 
 
 def _go_test_body(path: Path, function: str) -> str | None:

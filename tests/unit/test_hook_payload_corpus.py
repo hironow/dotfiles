@@ -222,7 +222,11 @@ def test_the_corpus_holds_every_difference_and_the_flavors_apart() -> None:
         for run in entry["runs"]
         for part in run["difference"].split("+")
     }
-    fixes = {f"fixed-{name}" for name in hook_payload_corpus.FILES_FIXES}
+    fixes = {
+        f"fixed-{name}"
+        for names in hook_payload_corpus.HOOK_FIXES.values()
+        for name in names
+    }
     assert parts == set(hook_payload_corpus.DIFFERENCES) | fixes
     # where BSD's and GNU's basename(1) part ways, the old guard's answers
     # differ; fixed (fixed-dash-line), the guard needs no basename, and the

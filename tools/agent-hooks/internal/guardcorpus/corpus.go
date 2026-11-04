@@ -38,6 +38,37 @@ type Entry struct {
 	Cleaned    string   `json:"cleaned"`    // the input without its heredoc bodies
 	CodeBodies []string `json:"codeBodies"` // the heredoc bodies fed to an interpreter
 	Reason     *string  `json:"reason"`     // why the guard blocks; nil when it passes
+	// Fixed is why the guard with its bugs fixed (scripts/old_script_fixes.py)
+	// blocks; nil when it passes. The port follows it.
+	Fixed *string `json:"fixed"`
+	// Difference names the fixes that Fixed needs, as "fixed-<name>" joined by
+	// "+"; empty when Fixed is Reason.
+	Difference string `json:"difference"`
+	// Bash is what the fixed guard's bash lexer reads in the input.
+	Bash BashReading `json:"bash"`
+}
+
+// Frame is the frame a test puts the entry in: "parity" when the fixed
+// guard answers as the old one did, else the fixes it needs.
+func (e Entry) Frame() string {
+	if e.Difference == "" {
+		return "parity"
+	}
+	return e.Difference
+}
+
+// BashReading is what the fixed guard's lexer (scripts/fixed_command_split.py)
+// reads in a text: its tokens, the bodies of its substitutions and of its code
+// heredocs, and the text without its heredoc bodies. Where a quote or a
+// substitution does not end, Error is where its line starts, in code points,
+// and Before is what the lines before it read.
+type BashReading struct {
+	Tokens        [][2]string  `json:"tokens"` // each ["op", "quoted", or "word", text]
+	Substitutions []string     `json:"substitutions"`
+	CodeBodies    []string     `json:"codeBodies"`
+	Cleaned       string       `json:"cleaned"`
+	Error         *int         `json:"error"`
+	Before        *BashReading `json:"before"`
 }
 
 // Entries returns every entry, and fails the test when a line does not decode.
