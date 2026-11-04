@@ -73,7 +73,7 @@ unit test は `tests/unit/test_agent_hooks.py` にある。
 
 command guard、files guard、secrets guard には Go への移植がある（`tools/agent-hooks`、計画は `docs/plan/agent-hooks-go.md`。まだどの harness にも配線していない）。
 binary `agent-hook <harness> pre --hook <id>`（guard と rtk）と `agent-hook <harness> post --hook formatter` は、Claude、Codex、agy の payload を読んで、それぞれの harness が読む形で答える（agy は guard と formatter だけ）。
-Pi には、Pi の中で動く拡張（shim、PR 4 で配る）が shim protocol（`tools/agent-hooks/shim/`）の request を送り、binary は同じ protocol の形で答える（guard と formatter だけ）。
+Pi には、Pi の中で動く拡張（shim、PR 4 で配る）が shim protocol（`tools/agent-hooks/shim/`）の request を送り、binary は同じ protocol の形で答える（guard と formatter と rtk。rtk は vendored の `config/pi/extensions/rtk.ts` と同じ振る舞いで、その振る舞いを `just pi-rtk-corpus` で corpus にしてある）。
 Pi は tool の path を書く前に解決するので、binary も同じに解決したファイルを判定する（`tools/agent-hooks/internal/pipath`。Pi 1.4.0 自身の答えを `just pi-paths-corpus` で corpus にしてある）。
 元の guard と同じ判定をすることを、`tools/agent-hooks/internal/guardcorpus/` の corpus で確かめている。
 harness ごとの定義（payload の schema、答え、hook ごとの対応状況）は `tools/agent-hooks/harnesses/` にある（`README.md` が書き方を説明する）。

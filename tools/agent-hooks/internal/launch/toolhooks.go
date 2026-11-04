@@ -16,10 +16,12 @@ import (
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/rtkpolicy"
 )
 
-// The old rtk scripts' timeouts, for rtk and for `mise which rtk`.
+// The old rtk scripts' timeouts, for rtk and for `mise which rtk`, and
+// rtk.ts's for `rtk rewrite` (REWRITE_TIMEOUT_MS).
 const (
-	rtkTimeout  = 10 * time.Second
-	miseTimeout = 10 * time.Second
+	rtkTimeout   = 10 * time.Second
+	miseTimeout  = 10 * time.Second
+	piRTKTimeout = 2 * time.Second
 )
 
 // rtkHook is rtk's hook: on Claude and Codex, a delegate to rtk's own adapter
@@ -31,9 +33,44 @@ func rtkHook(call ir.Call, machine Machine) ir.Outcome {
 		return claudeRTK(call, machine)
 	case "codex":
 		return codexRTK(call, machine)
+	case "pi":
+		return piRTK(call, machine)
 	default:
 		return ir.Outcome{}
 	}
+}
+
+// piRTK is the vendored config/pi/extensions/rtk.ts, run per call: on a
+// shell tool (Pi's bash), it asks `rtk rewrite` about the command and
+// answers the rewrite rtk gives (rtkpolicy.PiRewrite), or the pass. Unlike
+// rtk.ts it does not probe `rtk --version` once per session
+// (rtk-version-probe): the binary runs once per call, and an rtk without
+// `rewrite` fails the rewrite as well. rtk found through a relative PATH
+// entry is not run (path-relative).
+func piRTK(call ir.Call, machine Machine) ir.Outcome {
+	if call.Kind != ir.KindShell {
+		return ir.Outcome{}
+	}
+	disabled, _ := machine.LookupEnv("RTK_DISABLED") // "" when not set
+	command, ok := rtkpolicy.PiCommand(call.Fields[ir.FieldCommand], disabled)
+	if !ok {
+		return ir.Outcome{}
+	}
+	program, found := machine.LookPath("rtk")
+	if !found || program.Relative {
+		return ir.Outcome{}
+	}
+	// rtk.ts runs "rtk" by name (Node's spawn), so argv[0] is "rtk".
+	result, err := machine.Run(process.Command{
+		Path: program.Path, Args: []string{"rtk", "rewrite", command}, Timeout: piRTKTimeout,
+	})
+	rewritten, ok := rtkpolicy.PiRewrite(command, rtkpolicy.PiRun{
+		Ended: err == nil, Signaled: result.Signaled, Exit: result.Exit, Stdout: result.Stdout,
+	})
+	if !ok {
+		return ir.Outcome{}
+	}
+	return ir.Outcome{Action: ir.Rewrite, Set: ir.Assignment{Field: ir.FieldCommand, Value: rewritten}}
 }
 
 // claudeRTK is ROOT_AGENTS_hooks_rtk-hook-claude.py: rtk from PATH, else

@@ -4,11 +4,18 @@ package launch
 
 import (
 	"os"
+	"os/exec"
 	"os/user"
 	"syscall"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
 )
+
+// signaled reports whether a signal ended the process.
+func signaled(exitErr *exec.ExitError) bool {
+	status, ok := exitErr.Sys().(syscall.WaitStatus)
+	return ok && status.Signaled()
+}
 
 // xOK is access(2)'s X_OK.
 const xOK = 0x1

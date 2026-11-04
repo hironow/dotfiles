@@ -20,10 +20,10 @@ One directory per harness. The binary embeds them (`harnesses.go`), so a field t
         - `degraded`: registered, with a known gap, given as the reason. The conformance suite (`internal/conformance`) pins the gap.
         - `unsupported`: not registered, for the reason given.
         - The tools a hook is registered for are today's matchers.
-    - per event (`pre`, `post`), the payload's schema and the answer to each outcome: `pass`, `block`, and `forward` (a delegate's answer written as it is: rtk's, edited).
+    - per event (`pre`, `post`), the payload's schema and the answer to each outcome: `pass`, `block`, `forward` (a delegate's answer written as it is: rtk's, edited), and `rewrite` (the call goes on with one input field changed: Pi's rtk). Before a `rewrite` answer, the binary writes the new value where `x-ir` maps the field, into a copy of the payload, and checks the result against the schema; what does not fit is no rewrite.
 - An answer has an exit code and `stdout`, `stderr`, or `stdoutJSON`.
     - Each text is a Go `text/template`. In `stdoutJSON`, every string is one, and the value is written as compact JSON and a newline.
-    - A template reads `.Reason` (why the hook blocked), `.Rule`, `.Message` (the reason after `BLOCKED:` and a space, as the old guards wrote it), `.Native` (a forwarded answer), and `.Notice` (what a pass reports, such as the formatter's).
+    - A template reads `.Reason` (why the hook blocked), `.Rule`, `.Message` (the reason after `BLOCKED:` and a space, as the old guards wrote it), `.Native` (a forwarded answer), `.Notice` (what a pass reports, such as the formatter's), and `.Set` (a rewrite's field and new value, as `{{.Set.command}}`).
     - `oneLine` makes a text one line, as `guard-codex.sh` does for Codex.
 - `pre.schema.json` and `post.schema.json`: the JSON Schemas of the native payloads.
     - `x-ir-tool` is the JSON Pointer to the tool's name.

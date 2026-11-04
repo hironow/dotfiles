@@ -44,6 +44,9 @@ type Machine interface {
 	IsRegularFile(path string) bool
 	// Getwd is the physical working directory, as Python's os.getcwd.
 	Getwd() string
+	// LookupEnv is a variable of this process's environment, and whether it
+	// is set.
+	LookupEnv(name string) (string, bool)
 	// HomeDir is the home directory as Node's os.homedir() finds it, which is
 	// how Pi expands ~: $HOME when it is set, even to "", else the password
 	// entry. ok is false when neither names one.
@@ -181,6 +184,14 @@ func decideInput(event definition.Event, spec hookSpec, decide hook, payload []b
 			what = "so the call is blocked"
 		}
 		_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook failed, %s: %v\n", spec.ID, what, failure)
+	}
+	if outcome.Action == ir.Rewrite {
+		// The codec writes the new value where the definition maps the field
+		// and checks the result; what it cannot write is no rewrite.
+		if _, err := event.Rewrite(payload, outcome.Set); err != nil {
+			_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook's rewrite was dropped, so the call goes on: %v\n", spec.ID, err)
+			return ir.Outcome{}
+		}
 	}
 	return outcome
 }

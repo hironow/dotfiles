@@ -31,6 +31,9 @@ func (ExecMachine) IsExecutable(path string) bool {
 	return err == nil
 }
 
+// signaled is false on Windows: a process there ends with an exit code.
+func signaled(*exec.ExitError) bool { return false }
+
 // HomeDir is Node's os.homedir() on Windows as far as an environment
 // variable tells it: USERPROFILE when it is set. Pi's paths are resolved
 // only on POSIX (internal/pipath), so nothing reads it yet.

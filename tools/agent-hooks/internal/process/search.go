@@ -67,4 +67,6 @@ type Command struct {
 type Result struct {
 	Stdout, Stderr []byte
 	Exit           int
+	// Signaled is set when a signal ended the program; Exit is then -1.
+	Signaled bool
 }

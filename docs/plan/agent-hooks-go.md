@@ -210,6 +210,30 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
         - the shim and its wiring (PR 4);
         - Windows (`powershell`, and Windows paths: a Windows cwd is not absolute in the protocol, so every pre hook blocks).
 
+- How PR 2g does it: the binary also answers Pi's rtk (`agent-hook pi pre --hook rtk`, bash only) as the vendored `config/pi/extensions/rtk.ts` behaves, with its first rewrite answer. It is not yet registered: PR 4 ships the shim and retires `rtk.ts`.
+    - **Pi's rtk** (`rtkpolicy.PiCommand`, `PiRewrite`):
+        - On a shell tool, a command goes to `rtk rewrite <command>` (2 s) when it is a string that JavaScript's `trim` does not leave empty, it does not start with `rtk` and a space, it holds no NUL (Node's spawn refuses one, and `rtk.ts` passes), and `RTK_DISABLED` is not `1`.
+        - On exit 0 or 3, stdout trimmed as JavaScript trims it is the new command, unless it is empty or the same.
+    - **Differences from `rtk.ts`**, each recorded in the corpus:
+        - `rtk-version-probe`: no per-session `rtk --version`;
+        - `path-relative`: rtk found through a relative PATH entry is not run;
+        - `rtk-signal`: a signal death passes, which `rtk.ts` reads as code 0;
+        - `rtk-answer-invalid-utf8`: stdout that is not UTF-8 passes;
+        - `rtk-split-utf8`: stdout read whole keeps a character that a pipe chunk splits;
+        - `rtk-late-output`: output a descendant writes after rtk exits is kept while the pipe is open (2 s).
+    - **The rewrite codec** (`definition.Event.Rewrite`) writes the new value at the field's first `x-ir` pointer, into a copy of the native payload, and validates the result against the event's schema.
+        - What it cannot write or validate is no rewrite: the pass, with why on stderr.
+        - `ir.Outcome` gains `Rewrite` and `Set`, one field: the command.
+    - **The answer:** Pi's `rewrite` answer is `{"v":1,"action":"rewrite","set":{"command":...}}`; templates read `.Set`. Claude and Codex get no rewrite answer, since rtk stays a delegate there.
+    - **Parity:**
+        - `internal/toolhookcorpus/pi-rtk.jsonl` ([#553](https://github.com/hironow/dotfiles/pull/553), `just pi-rtk-corpus`) holds 70 scenarios, each run through `rtk.ts` under node with Pi 1.4.0's `execCommand` and a fake rtk. The Go test replays every scenario through the binary, each subtest named `parity` or by its difference IDs.
+        - A real-process test runs `ExecMachine` on real scripts for what the replay cannot show: a signal, a timeout, a split character, and late output.
+    - **Conformance** covers Pi's rtk: the strict shim reader reads a fake rtk's rewrite as the rewrite of the command.
+    - **Not yet:**
+        - the shim and its hook order (PR 4): it should run the guards on the command before rtk rewrites it, as all of Claude's hooks see the original command;
+        - Claude's and Codex's rewrite answers;
+        - Windows.
+
 ### Bugs of the old scripts that the binary fixes
 
 The owner decided (2026-11-04 19:30, chat) that where an old script has a bug, the binary fixes it, and the tests keep each fix apart from the faithful port.
@@ -276,6 +300,14 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
 
 ## Review record
 
+- PR 2g (Pi's rtk) code reviews (Codex):
+    - Round 1 (APPROVE): no findings.
+    - Round 2, after the NUL gate (REVISE, 1): the corpus replay gave the fake's stderr no place, so `rewrite-stderr` could not catch stderr mixed into the rewrite. It now replays stderr apart, and a mutation that mixes them fails.
+    - Round 3 (APPROVE).
+    - Its own checks: 20 mutations of its decisions; the one that survived showed a parameter that changed nothing (`RTK_DISABLED` unset reads as `""`), which is removed.
+- PR 2g (Pi's rtk) design reviews (Codex), each claim checked against Pi 1.4.0's source:
+    - Round 1 (REVISE, 2): Pi decodes each stdout chunk on its own, so a valid UTF-8 rewrite that a chunk boundary splits becomes U+FFFD; and Pi stops reading 100 ms after rtk exits, where Go reads until the pipe closes. Both keep Go's reading, recorded as `rtk-split-utf8` and `rtk-late-output`, with corpus scenarios and a real-process test.
+    - Round 2 (APPROVE).
 - The record of what `rtk.ts` does (`internal/toolhookcorpus/pi-rtk.jsonl`, part of PR 2g) was written by Codex from a brief, and reviewed by Claude and by an independent reviewer (a separate Claude session):
     - Round 1 (REVISE, 6):
         - The signal scenario's fallback exit was 0, so its check could not fail; it is now 1, and a late write inside Pi's 100 ms grace shows that the late child does write.

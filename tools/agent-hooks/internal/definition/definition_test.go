@@ -116,7 +116,7 @@ func TestEveryHarnessRegistersItsHooksForTodaysTools(t *testing.T) {
 			"command-guard": {"bash"},
 			"files-guard":   {"edit", "write"},
 			"secrets-guard": {"edit", "write"},
-			"rtk":           nil,
+			"rtk":           {"bash"},
 			"formatter":     {"edit", "write"},
 		},
 	}
@@ -140,8 +140,6 @@ func TestEveryKnownGapIsDegradedOrUnsupportedWithItsReason(t *testing.T) {
 		// agy's sandbox cannot run rtk, and agy checks its permission rules
 		// against the rewritten command.
 		{"agy", "rtk", "run_command"}: definition.LevelUnsupported,
-		// Pi's rtk (rtk rewrite) comes with the rewrite codec, PR 2g.
-		{"pi", "rtk", "bash"}: definition.LevelUnsupported,
 	}
 	for _, name := range names {
 		def := loadDefinition(t, name)
