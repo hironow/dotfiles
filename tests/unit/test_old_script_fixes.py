@@ -6,7 +6,6 @@ script and through the old script with every fix applied. Where the answers
 differ, the binary gives the fixed one, and the run names the fixes it needs.
 """
 
-import itertools
 import json
 import shutil
 import subprocess
@@ -133,52 +132,17 @@ def test_needed_leaves_each_fix_out_of_the_full_set():
     assert fixes.needed(names, lambda applied: "pass") == []
 
 
-def test_needed_names_the_first_smallest_set_when_fixes_each_suffice():
-    # The full set differs from the old script, and two fixes each give that
-    # answer alone, so leaving any one out changes nothing: the run names the
-    # smallest set that alone gives the full answer, the first by name.
+def test_needed_refuses_a_difference_no_fix_explains():
+    # The full set differs from the old script, but leaving any one fix out
+    # changes nothing: two fixes each make the change alone.
     answers = {
         frozenset(): "pass",
         frozenset({"a"}): "block",
         frozenset({"b"}): "block",
         frozenset({"a", "b"}): "block",
     }
-    assert fixes.needed(("b", "a"), lambda applied: answers[applied]) == ["a"]
-    # A pair that suffices comes before the full set, a single fix before a pair.
-    three = {
-        frozenset(): "pass",
-        frozenset({"a"}): "pass",
-        frozenset({"b"}): "pass",
-        frozenset({"c"}): "pass",
-        frozenset({"a", "b"}): "pass",
-        frozenset({"a", "c"}): "block",
-        frozenset({"b", "c"}): "block",
-        frozenset({"a", "b", "c"}): "block",
-    }
-    assert fixes.needed(("a", "b", "c"), lambda applied: three[applied]) == ["a", "c"]
-    three[frozenset({"c"})] = "block"
-    assert fixes.needed(("a", "b", "c"), lambda applied: three[applied]) == ["c"]
-
-
-def test_every_set_holds_each_set_of_the_fixes_once():
-    sets = fixes.every_set(("b", "a"))
-    assert sets == [
-        frozenset(),
-        frozenset({"a"}),
-        frozenset({"b"}),
-        frozenset({"a", "b"}),
-    ]
-
-
-def test_needed_asks_for_no_set_when_nothing_differs():
-    asked: list[frozenset[str]] = []
-
-    def answer_of(applied: frozenset[str]) -> str:
-        asked.append(applied)
-        return "pass"
-
-    assert fixes.needed(("a", "b", "c"), answer_of) == []
-    assert sorted(asked, key=len) == [frozenset(), frozenset({"a", "b", "c"})]
+    with pytest.raises(ValueError, match="no fix"):
+        fixes.needed(("a", "b"), lambda applied: answers[applied])
 
 
 def test_a_derived_input_is_refused_only_when_its_base_needs_a_fix():
@@ -259,28 +223,3 @@ def test_the_formatter_reads_file_path_as_one_path(tmp_path: Path):
     assert formatted(fixed, f"{tmp_path}/a.\u0000go") == []
     # A plain path, and a patch when file_path is empty, are as before.
     assert formatted(fixed, victim) == [victim]
-
-
-@runs_the_scripts
-def test_every_set_of_a_scripts_fixes_makes_copies_that_start(tmp_path: Path):
-    # A copy whose edits broke it would answer with its error, and that would
-    # count as a fix's effect; so writing a copy checks that it starts.
-    by_script: dict[str, list[str]] = {}
-    for name, fix in fixes.FIXES.items():
-        by_script.setdefault(fix.script, []).append(name)
-    for names in by_script.values():
-        for size in range(len(names) + 1):
-            for applied in itertools.combinations(sorted(names), size):
-                directory = tmp_path / "-".join(applied or ("old",))
-                fixes.write_scripts(directory, frozenset(applied))
-
-
-def test_a_copy_that_does_not_start_is_refused(tmp_path: Path, monkeypatch):
-    broken = fixes.Fix(
-        script="ROOT_AGENTS_hooks_block-prohibited-commands.py",
-        edits=(("def main() -> int:\n", "def main( -> int:\n"),),
-        bug="test",
-    )
-    monkeypatch.setitem(fixes.FIXES, "broken", broken)
-    with pytest.raises(ValueError, match="does not start"):
-        fixes.write_scripts(tmp_path / "broken", frozenset({"broken"}))

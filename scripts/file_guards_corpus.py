@@ -586,7 +586,7 @@ def render(flavors: dict[str, str]) -> tuple[list[dict], list[dict]]:
             )
             for flavor, d in dirs.items()
         }
-        # The guard with each set of its fixes.
+        # The guard with every fix, and with each fix left out of that set.
         everything = frozenset(FILES_FIXES)
         variants = {
             applied: old_script_fixes.write_scripts(
@@ -595,7 +595,7 @@ def render(flavors: dict[str, str]) -> tuple[list[dict], list[dict]]:
                 applied,
             )
             / FILES_GUARD.name
-            for applied in old_script_fixes.every_set(FILES_FIXES)
+            for applied in [everything, *(everything - {name} for name in FILES_FIXES)]
         }
         full_columns = {
             flavor: list(
