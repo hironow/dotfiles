@@ -35,7 +35,9 @@ def recipe_body(name: str) -> str:
     # `check-agent-refs *homes:`.
     header = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(?!=)")
     start = next(i for i, line in enumerate(lines) if header.match(line))
-    body = []
+    # The header too: a parameter's default runs when `just check` calls the
+    # recipe with no argument (`go-test go="mise x -- go":`).
+    body = [lines[start]]
     for line in lines[start + 1 :]:
         if line and not line[0].isspace():
             break

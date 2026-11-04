@@ -843,14 +843,17 @@ rttm-check: rttm-lint rttm-typecheck
 #
 # Strict bash: just's default `sh -cu` would let a failing iteration inside the
 # loop pass unnoticed.
+#
+# `go` is the Go command: mise's by default; CI, which installs Go with
+# actions/setup-go, runs `just go-test go` (a positional argument).
 [group('Test')]
-go-test:
+go-test go="mise x -- go":
     #!/usr/bin/env bash
     set -euo pipefail
     git ls-files -z 'tools/**/go.mod' | while IFS= read -r -d '' mod; do
       dir="$(dirname "$mod")"
       echo "🧪 go test -short $dir"
-      (cd "$dir" && mise x -- go test -short ./...)
+      (cd "$dir" && {{go}} test -short ./...)
     done
 
 # tools/agent-hooks/internal/guardcorpus/command-guard.jsonl is what the Go command guard is

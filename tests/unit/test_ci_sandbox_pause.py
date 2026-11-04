@@ -1,0 +1,82 @@
+"""While the dev container job is paused, CI still runs the Go tests.
+
+The owner paused the sandbox job on 2026-11-04: it is long, and outside the
+work at hand. A repository variable turns it back on
+(`gh variable set RUN_SANDBOX_TESTS --body true`). Meanwhile the Go tests it
+ran through `just check` run in a job of their own, through the same recipe
+as a local run.
+"""
+
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+SANDBOX = (ROOT / ".github/workflows/test-just.yaml").read_text(encoding="utf-8")
+UNIT = (ROOT / ".github/workflows/unit-test.yaml").read_text(encoding="utf-8")
+DRAFT_GUARD = (
+    "github.event_name != 'pull_request' || github.event.pull_request.draft == false"
+)
+
+
+def _job(workflow: str, name: str) -> str:
+    """A job's block: from its key to the next job's key, or the end."""
+    start = workflow.index(f"\n  {name}:\n") + 1
+    following = re.search(r"\n  [a-z][a-z0-9-]*:\n", workflow[start:])
+    return (
+        workflow[start : start + following.start()] if following else workflow[start:]
+    )
+
+
+def _condition(job: str) -> str:
+    (condition,) = re.findall(r"\n    if: (.*)\n", job)
+    return condition
+
+
+def test_the_sandbox_job_runs_only_when_switched_on() -> None:
+    # Exactly: without the parentheses, && binds first, and a push to main
+    # would run the job whatever the variable says.
+    assert _condition(_job(SANDBOX, "test")) == (
+        f"({DRAFT_GUARD}) && vars.RUN_SANDBOX_TESTS == 'true'"
+    )
+
+
+def test_the_go_tests_run_in_a_job_of_their_own() -> None:
+    job = _job(UNIT, "go")
+    assert _condition(job) == DRAFT_GUARD
+    assert re.search(r"uses: actions/setup-go@[0-9a-f]{40} # v\d+\.\d+\.\d+\n", job)
+    assert "go-version-file: tools/agent-hooks/go.mod" in job
+    # the jobs share nothing, and the runner image has no just
+    assert "tool install rust-just" in job
+    run = re.search(r"^ +run: just go-test go$", job, re.MULTILINE)
+    assert run
+    assert job.index("actions/setup-go@") < run.start()
+    # setup-go writes GOTOOLCHAIN=local for the steps after it; a module that
+    # asks for a newer Go gets it only with auto
+    step = job[job.rindex("- name: Go tests") :]
+    assert re.search(r"\n        env:\n          GOTOOLCHAIN: auto\n", step), step
+    # a positional argument: "go=go" would run the shell's test, not Go
+    assert "go=go" not in job
+
+
+@pytest.mark.skipif(shutil.which("just") is None, reason="needs just")
+def test_go_test_runs_the_go_it_is_given() -> None:
+    def dry_run(*args: str) -> str:
+        done = subprocess.run(
+            ["just", "--dry-run", "go-test", *args],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+        return done.stdout + done.stderr
+
+    # CI: Go from setup-go, on PATH
+    assert '(cd "$dir" && go test -short ./...)' in dry_run("go")
+    # local, and `just check`: Go from mise, as before
+    assert '(cd "$dir" && mise x -- go test -short ./...)' in dry_run()

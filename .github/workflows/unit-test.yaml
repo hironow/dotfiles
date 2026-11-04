@@ -69,6 +69,32 @@ jobs:
         # --frozen: install from the committed root uv.lock, never rewrite it.
         run: uv run --frozen scripts/instruction_budget.py --max 40 ROOT_AGENTS.md ROOT_CLAUDE.md
 
+  go:
+    name: Go tests (tools/)
+    # The Go modules under tools/, the agent-hook binary's parity and
+    # conformance tests among them. The dev container job ran them through
+    # `just check`; it is paused (test-just.yaml), so they run here.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # Every tools/ module asks for Go 1.27.3 or older; agent-hooks names it.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/agent-hooks/go.mod
+          cache-dependency-path: tools/*/go.sum
+      # The jobs share nothing, and the runner image has no just.
+      - name: Install uv and just
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/uv" tool install rust-just
+      - name: Go tests
+        # setup-go writes GOTOOLCHAIN=local for the steps after it; auto lets a
+        # module that asks for a newer Go fetch it.
+        env:
+          GOTOOLCHAIN: auto
+        run: just go-test go
   windows-jev:
     name: Jev launcher + just HOME on PowerShell
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
