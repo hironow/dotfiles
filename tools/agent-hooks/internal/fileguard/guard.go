@@ -31,10 +31,17 @@ const (
 // a message for a prefix of --help or --version); the guard then exited 1,
 // which no harness blocks on, and checked no later line. Here the base name
 // is taken without basename(1), so every line is checked.
+//
+// Each path's first line is where the path starts (fixed-docs-agents-relative,
+// in exempt); Paths gives a file_path, each file of a patch, and a
+// notebook_path as paths of their own.
 func Check(paths []string) ir.Outcome {
 	for _, path := range paths {
+		start := true
 		for line := range strings.SplitSeq(strings.ReplaceAll(path, "\x00", ""), "\n") {
-			if line == "" || exempt(line) {
+			pathStart := start
+			start = false
+			if line == "" || exempt(line, pathStart) {
 				continue
 			}
 			if outcome := checkName(baseName(line)); outcome.Action == ir.Block {
@@ -52,14 +59,17 @@ func Check(paths []string) ir.Outcome {
 // fixed-docs-agents-relative: `*/docs/agents/*` needs a "/" before docs, so
 // the shell guard blocked a relative path under docs/agents/ (Codex's patch
 // names its files relative to the session), though it exempts a bare
-// AGENTS.md. Here that path is exempt too.
-func exempt(path string) bool {
+// AGENTS.md. Here that path is exempt too, but only on a line where a path
+// starts (pathStart): a later line is part of the path above it, so /w/x, a
+// newline, and docs/agents/y.yml names a file under no docs/agents/
+// directory, and stays blocked as the shell guard blocked it.
+func exempt(path string, pathStart bool) bool {
 	for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
 		if path == name || strings.HasSuffix(path, "/"+name) {
 			return true
 		}
 	}
-	return strings.Contains(path, "/docs/agents/") || strings.HasPrefix(path, "docs/agents/")
+	return strings.Contains(path, "/docs/agents/") || (pathStart && strings.HasPrefix(path, "docs/agents/"))
 }
 
 // checkName applies the two naming rules to a file's base name.

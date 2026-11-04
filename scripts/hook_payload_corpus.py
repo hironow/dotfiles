@@ -472,6 +472,53 @@ def fix_payloads() -> list[Payload]:
                 "*** Add File: docs/y.yml\n+b\n*** End Patch\n"
             },
         },
+        # ... only where a path starts: a later line is part of the path above
+        "fix-docs-agents-relative-later-line": {
+            "tool_input": {"file_path": "/w/x\ndocs/agents/y.yml"}
+        },
+        "fix-docs-agents-relative-notebook-later-line": notebook
+        | {"tool_input": {"notebook_path": "x\ndocs/agents/y.yml"}},
+        "fix-docs-agents-relative-notebook-own-path": notebook
+        | {
+            "tool_input": {"file_path": "/w/a.md", "notebook_path": "docs/agents/n.yml"}
+        },
+        # a notebook_path's first line starts its path after every line of
+        # file_path; the lines bash drops (a NUL, trailing newlines) do not count
+        "fix-docs-agents-relative-notebook-after-lines": notebook
+        | {
+            "tool_input": {
+                "file_path": "a.md\nb.md",
+                "notebook_path": "docs/agents/n.yml",
+            }
+        },
+        "fix-docs-agents-relative-notebook-blank-first-line": notebook
+        | {
+            "tool_input": {
+                "file_path": "a.md\nb.md",
+                "notebook_path": "\ndocs/agents/n.yml",
+            }
+        },
+        "fix-docs-agents-relative-notebook-after-dropped-lines": notebook
+        | {
+            "tool_input": {
+                "file_path": "a.md\n\u0000\n",
+                "notebook_path": "docs/agents/n.yml",
+            }
+        },
+        "fix-docs-agents-relative-patch-second-file": {
+            "tool_name": "apply_patch",
+            "tool_input": {
+                "command": "*** Begin Patch\n*** Add File: a.md\n+a\n"
+                "*** Add File: docs/agents/y.yml\n+b\n*** End Patch\n"
+            },
+        },
+        "fix-docs-agents-relative-patch-then-notebook": {
+            "tool_name": "apply_patch",
+            "tool_input": {
+                "command": "*** Begin Patch\n*** Add File: a.md\n+a\n*** End Patch\n",
+                "notebook_path": "x\ndocs/agents/y.yml",
+            },
+        },
     }
     return [Payload(name, doc(value)) for name, value in cases.items()]
 
