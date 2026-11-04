@@ -19,9 +19,9 @@ The files corpus records both, so this needs both: on macOS, BSD's is
 
 The files guard has bugs the binary fixes (scripts/old_script_fixes.py). Each
 input also runs through the guard with those fixes, which needs no basename.
-Where its answer differs from a flavor's, that flavor's result names the fixes
-it needs ("difference"), and the entry holds the fixed answer ("fixed"), which
-the Go port gives.
+Every entry holds that fixed answer ("fixed"), which the Go port gives and
+which no flavor changes. Where it differs from a flavor's, that flavor's result
+names the fixes it needs ("difference").
 
 The secrets corpus writes every character of its texts as a JSON \\u escape,
 so the file holds no token shapes that a secret scanner would flag.
@@ -475,9 +475,9 @@ def fixed_results(
     flavors: dict[str, str],
     legacy: dict[str, dict],
     run: Callable[[frozenset[str], str], dict],
-) -> tuple[dict | None, dict[str, str]]:
-    """The fixed guard's result for one input, when some flavor's old result
-    differs from it, and each such flavor's difference.
+) -> tuple[dict, dict[str, str]]:
+    """The fixed guard's result for one input, and the difference of each
+    flavor whose old result differs from it.
 
     run(fixes, flavor) runs the guard with the named fixes, under a flavor's
     basename. The full set needs no basename, so its answer is the same under
@@ -502,7 +502,7 @@ def fixed_results(
         )
         if needed:
             differences[flavor] = old_script_fixes.difference(needed, "")
-    return (full if differences else None), differences
+    return full, differences
 
 
 def _escaped(value: str | None) -> str:
@@ -618,8 +618,7 @@ def render(flavors: dict[str, str]) -> tuple[list[dict], list[dict]]:
             entry[flavor] = columns[flavor][i] | (
                 {"difference": differences[flavor]} if flavor in differences else {}
             )
-        if fixed is not None:
-            entry["fixed"] = fixed
+        entry["fixed"] = fixed
         file_entries.append(entry)
     secret_entries = [
         stored(kind, text) | result

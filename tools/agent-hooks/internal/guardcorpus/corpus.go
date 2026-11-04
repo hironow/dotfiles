@@ -58,8 +58,7 @@ type ShellGuardResult struct {
 
 // FilesGuardEntry is what the files guard did with one input, handed over as
 // Claude Code does (FilePath) or as Codex does (Patch), under BSD's and under
-// GNU's basename(1), and, where that differs, what the guard with its bugs
-// fixed does (Fixed).
+// GNU's basename(1), and what the guard with its bugs fixed does (Fixed).
 type FilesGuardEntry struct {
 	Line         int              `json:"-"`            // its line in files-guard.jsonl
 	FilePath     *string          `json:"filePath"`     // tool_input.file_path
@@ -68,8 +67,8 @@ type FilesGuardEntry struct {
 	PatchRuns    []Run            `json:"patchRuns"`    // a long Patch, as stored
 	BSD          ShellGuardResult `json:"bsd"`
 	GNU          ShellGuardResult `json:"gnu"`
-	// Fixed is the fixed guard's answer, present when it differs from a
-	// flavor's. It needs no basename(1), so one answer serves both.
+	// Fixed is the fixed guard's answer, the port's. It needs no
+	// basename(1), so one answer serves both flavors.
 	Fixed *ShellGuardResult `json:"fixed"`
 }
 
@@ -88,17 +87,13 @@ func (e FilesGuardEntry) Frame() string {
 	}
 }
 
-// Expected is the port's answer: the fixed guard's where the entry holds it,
-// else the old guard's, which must then be the same under both flavors.
+// Expected is the port's answer: the fixed guard's.
 func (e FilesGuardEntry) Expected(tb testing.TB) ShellGuardResult {
 	tb.Helper()
-	if e.Fixed != nil {
-		return *e.Fixed
+	if e.Fixed == nil {
+		tb.Fatalf("files-guard.jsonl:%d: no fixed answer: run `just file-guards-corpus`", e.Line)
 	}
-	if (e.BSD.Exit == 2) != (e.GNU.Exit == 2) || (e.BSD.Exit == 2 && *e.BSD.Reason != *e.GNU.Reason) {
-		tb.Fatalf("files-guard.jsonl:%d: the flavors disagree, and the entry holds no fixed answer", e.Line)
-	}
-	return e.BSD
+	return *e.Fixed
 }
 
 // SecretsGuardEntry is what the secrets guard did with one input, handed over

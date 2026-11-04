@@ -55,8 +55,9 @@ def test_the_corpora_are_what_the_shell_guards_say_now() -> None:
                 f"files-guard.jsonl: stale {flavor} result for {_input(now)!r}: "
                 "run `just file-guards-corpus`"
             )
-        # and the fixed guard's answer, which no flavor changes
-        assert written.get("fixed") == now.get("fixed"), (
+        # and the fixed guard's answer, which no flavor changes, so every
+        # machine checks it whatever flavors it has
+        assert written["fixed"] == now["fixed"], (
             f"files-guard.jsonl: stale fixed result for {_input(now)!r}: "
             "run `just file-guards-corpus`"
         )
@@ -152,7 +153,24 @@ def test_every_difference_names_fixes_of_the_files_guard() -> None:
         if fix.script == old_script_fixes.FILES_GUARD
     }
     for entry in _entries(file_guards_corpus.FILES_CORPUS):
-        differences = {entry[flavor].get("difference", "") for flavor in ("bsd", "gnu")}
-        assert ("fixed" in entry) == (differences != {""}), entry
-        for difference in differences - {""}:
-            assert set(difference.split("+")) <= names, difference
+        fixed = file_guards_corpus.answer(entry["fixed"])
+        for flavor in ("bsd", "gnu"):
+            difference = entry[flavor].get("difference", "")
+            # a flavor names fixes exactly when its old answer is not the fixed one
+            assert bool(difference) == (
+                file_guards_corpus.answer(entry[flavor]) != fixed
+            ), (flavor, entry)
+            if difference:
+                assert set(difference.split("+")) <= names, difference
+
+
+def test_one_flavor_alone_checks_the_fixed_answers() -> None:
+    # CI on Linux has GNU's basename only. The fixed guard needs none, so its
+    # answers, rendered with one flavor, are the committed ones.
+    flavors = file_guards_corpus.basename_flavors()
+    if "gnu" not in flavors:
+        pytest.skip("no GNU basename here")
+    files, _ = file_guards_corpus.render({"gnu": flavors["gnu"]})
+    committed = _entries(file_guards_corpus.FILES_CORPUS)
+    for written, now in zip(committed, files, strict=True):
+        assert written["fixed"] == now["fixed"], _input(now)
