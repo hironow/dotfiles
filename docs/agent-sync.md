@@ -79,6 +79,10 @@ harness ごとの定義（payload の schema、答え、hook ごとの対応状�
 guard、rtk の hook、formatter かその test、または `guard-codex.sh` を変えたら corpus を書き直し、Go 側も同じ判定に直す。
 command guard は `just command-guard-corpus`、files guard と secrets guard は `just file-guards-corpus`、binary に通す payload は `just hook-payload-corpus`、rtk の hook と formatter は `just tool-hooks-corpus` で書き直す。
 `tests/unit/test_command_guard_corpus.py`、`tests/unit/test_file_guards_corpus.py`、`tests/unit/test_hook_payload_corpus.py`、`tests/unit/test_tool_hooks_corpus.py`、Go の test が、ずれを知らせる。
+旧スクリプトのバグは binary で直す（所有者の決定、2026-11-04）。
+直し方は旧スクリプトへの名前付きの修正として `scripts/old_script_fixes.py` に置き、corpus を書き直すときは旧スクリプトと直した版の両方を走らせる。
+答えが違う所は `fixed-<名前>` の差分 ID になり、binary は直した版の答えを返す。
+どの差分 ID にも種類と理由があることを `tests/unit/test_corpus_differences.py` が確かめ、Go の corpus の test は `parity/` と差分 ID の名前で subtest を分ける（`go test -run '/fixed-'` で直した所だけを見られる）。
 
 1 つの hook だけを試すには、JSON を標準入力で渡す。
 `exit=2` は止める、`exit=0` は通すという意味である。

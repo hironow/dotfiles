@@ -46,8 +46,9 @@ type PayloadRun struct {
 	Harness    string         `json:"harness"`    // "claude" or "codex"
 	Hook       string         `json:"hook"`       // the hook id
 	Basename   string         `json:"basename"`   // the basename(1) flavor, "bsd" or "gnu"; files guard only
-	Difference string         `json:"difference"` // one of the Difference IDs
+	Difference string         `json:"difference"` // the Difference IDs that apply, joined by "+"; "" for none
 	Legacy     jsontext.Value `json:"legacy"`     // what the script did; the Python test reads it
+	Fixed      jsontext.Value `json:"fixed"`      // what the script with its bugs fixed did, where that differs
 	ExpectedGo Answer         `json:"expectedGo"` // what the binary must do
 }
 
@@ -71,4 +72,14 @@ func Payloads(tb testing.TB) []Payload {
 			p.Stdin = joined.Bytes()
 		}
 	})
+}
+
+// Frame names the frame a test puts a run in: "parity" when the binary
+// answers as the script did, else its difference IDs. A "fixed-" ID marks an
+// old script's bug the binary fixes (scripts/old_script_fixes.py).
+func Frame(difference string) string {
+	if difference == "" {
+		return "parity"
+	}
+	return difference
 }

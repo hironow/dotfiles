@@ -103,11 +103,9 @@ var guardCases = map[string][]guardCase{
 }
 
 // gaps pins what each degraded cell does today. The definitions must call
-// exactly these cells degraded.
-var gaps = map[[3]string][]guardCase{
-	// The files guard reads file_path; NotebookEdit names notebook_path.
-	{"claude", "files-guard", "NotebookEdit"}: {{rolePath, project + "/x.yml", false}},
-}
+// exactly these cells degraded. None is left: Claude's NotebookEdit cell was
+// one until the binary fixed the old files guard (fixed-notebook-path).
+var gaps = map[[3]string][]guardCase{}
 
 // notCovered names the hooks these scenarios leave to other tests.
 var notCovered = map[string]string{

@@ -20,8 +20,6 @@ func TestPathsReadsTheCallAsTheFormatterScriptDoes(t *testing.T) {
 		want   []string
 	}{
 		{"a file path", map[string]ir.Value{ir.FieldFilePath: str("/p/a.py")}, []string{"/p/a.py"}},
-		{"each line is a path", map[string]ir.Value{ir.FieldFilePath: str("a.py\nb.go")}, []string{"a.py", "b.go"}},
-		{"NULs go, then trailing newlines", map[string]ir.Value{ir.FieldFilePath: str("a.\x00py\n\n")}, []string{"a.py"}},
 		{
 			"a file path wins over a patch",
 			map[string]ir.Value{ir.FieldFilePath: str("a.go"), ir.FieldCommand: str(patchFormatting)},
@@ -29,7 +27,7 @@ func TestPathsReadsTheCallAsTheFormatterScriptDoes(t *testing.T) {
 		},
 		{
 			"an empty file path falls back to the patch",
-			map[string]ir.Value{ir.FieldFilePath: str("\n"), ir.FieldCommand: str(patchFormatting)},
+			map[string]ir.Value{ir.FieldFilePath: str(""), ir.FieldCommand: str(patchFormatting)},
 			[]string{"a.py", "b.go"},
 		},
 		{"no file path: the patch", map[string]ir.Value{ir.FieldCommand: str(patchFormatting)}, []string{"a.py", "b.go"}},

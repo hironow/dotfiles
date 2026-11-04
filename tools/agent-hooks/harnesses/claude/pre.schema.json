@@ -82,6 +82,7 @@
     "command": ["/tool_input/command"],
     "filePath": ["/tool_input/file_path"],
     "content": ["/tool_input/content", "/tool_input/new_string", "/tool_input/new_source"],
-    "cwd": ["/cwd"]
+    "cwd": ["/cwd"],
+    "notebookPath": ["/tool_input/notebook_path"]
   }
 }

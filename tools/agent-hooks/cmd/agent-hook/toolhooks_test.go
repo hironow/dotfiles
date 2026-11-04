@@ -12,6 +12,7 @@ import (
 
 	json "github.com/goccy/go-json/v2"
 
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/guardcorpus"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/toolhookcorpus"
 )
 
@@ -37,7 +38,7 @@ func TestTheBinaryDoesWhatTheToolHooksCorpusExpects(t *testing.T) {
 		event := map[string]string{"rtk": "pre", "formatter": "post"}[hook]
 		for _, scenario := range scenarios {
 			for _, run := range scenario.Runs {
-				t.Run(hook+"/"+scenario.Name+"/"+run.Harness, func(t *testing.T) {
+				t.Run(guardcorpus.Frame(run.Difference)+"/"+hook+"/"+scenario.Name+"/"+run.Harness, func(t *testing.T) {
 					t.Parallel()
 					runScenario(t, scenario, run, hook, event)
 				})

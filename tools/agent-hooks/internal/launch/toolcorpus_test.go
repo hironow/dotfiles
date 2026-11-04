@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/fake"
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/guardcorpus"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/launch"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/toolhookcorpus"
@@ -86,15 +87,20 @@ func TestRunDoesWhatTheToolHooksCorpusExpects(t *testing.T) {
 		event := map[string]string{"rtk": "pre", "formatter": "post"}[hook]
 		for _, scenario := range scenarios {
 			for _, run := range scenario.Runs {
-				m := machineFor(scenario, run.ExpectedGo)
-				var stdout, stderr bytes.Buffer
-				exit := launch.Run([]string{run.Harness, event, "--hook", hook},
-					bytes.NewReader([]byte(inRoot(string(scenario.Stdin)))), &stdout, &stderr, m)
-				where := hook + ".jsonl:" + scenario.Name + " " + run.Harness + " (difference " + run.Difference + ")"
-				run.ExpectedGo.Check(t, where, exit, stdout.String(), stderr.String(), inRoot)
-				for _, problem := range m.Done() {
-					t.Errorf("%s: %s", where, problem)
-				}
+				// The frame says whether the binary runs what the script ran
+				// ("parity") or differs on purpose, and why.
+				name := guardcorpus.Frame(run.Difference) + "/" + hook + "/" + scenario.Name + "/" + run.Harness
+				t.Run(name, func(t *testing.T) {
+					m := machineFor(scenario, run.ExpectedGo)
+					var stdout, stderr bytes.Buffer
+					exit := launch.Run([]string{run.Harness, event, "--hook", hook},
+						bytes.NewReader([]byte(inRoot(string(scenario.Stdin)))), &stdout, &stderr, m)
+					where := hook + ".jsonl:" + scenario.Name + " " + run.Harness + " (difference " + run.Difference + ")"
+					run.ExpectedGo.Check(t, where, exit, stdout.String(), stderr.String(), inRoot)
+					for _, problem := range m.Done() {
+						t.Errorf("%s: %s", where, problem)
+					}
+				})
 			}
 		}
 	}

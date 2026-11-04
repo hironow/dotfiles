@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/fake"
-	"github.com/hironow/dotfiles/tools/agent-hooks/internal/fileguard"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/launch"
 )
 
@@ -94,25 +93,17 @@ func TestRunBlocksWhenStdinCannotBeRead(t *testing.T) {
 	}
 }
 
-func TestRunProbesBasenameOnlyWhenAPathNeedsIt(t *testing.T) {
-	cases := []struct {
-		path    string
-		flavor  fileguard.Basename
-		probes  int
-		blocked bool
-	}{
-		{"a.yml", fileguard.BSDBasename, 0, true},
-		{"-x\\na.yml", fileguard.GNUBasename, 0, false},
-		{"--help\\na.yml", fileguard.BSDBasename, 1, false},
-		{"--help\\na.yml", fileguard.GNUBasename, 1, true},
-	}
-	for _, c := range cases {
-		machine := &fake.Machine{Flavor: c.flavor}
-		got := run(t, machine, `{"tool_input":{"file_path":"`+c.path+`"}}`, "claude", "pre", "--hook", "files-guard")
-		if machine.Probes != c.probes || (got.exit == 2) != c.blocked {
-			t.Errorf("%q with flavor %v: %+v after %d probes; want blocked %v after %d",
-				c.path, c.flavor, got, machine.Probes, c.blocked, c.probes)
+func TestTheFilesGuardRunsNoProgram(t *testing.T) {
+	// fixed-dash-line: the old guard ran basename(1), whose flavor changed its
+	// answer; the port takes base names itself, so a "-" line needs no program
+	// and blocks the same everywhere. The fake machine fails any Run.
+	for _, path := range []string{"a.yml", "-x\\na.yml", "--help\\na.yml", "--version.yml"} {
+		machine := &fake.Machine{}
+		got := run(t, machine, `{"tool_input":{"file_path":"`+path+`"}}`, "claude", "pre", "--hook", "files-guard")
+		if got.exit != 2 {
+			t.Errorf("%q: %+v, want a block", path, got)
 		}
+		checkReplay(t, machine)
 	}
 }
 

@@ -25,8 +25,7 @@
         "level": "supported"
       },
       "NotebookEdit": {
-        "level": "degraded",
-        "reason": "The guard reads file_path, and NotebookEdit names its file notebook_path. The old script did the same; changing it is a review item."
+        "level": "supported"
       }
     },
     "secrets-guard": {

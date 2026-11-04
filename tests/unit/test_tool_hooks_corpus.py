@@ -26,6 +26,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import command_guard_corpus
+import old_script_fixes
 import tool_hooks_corpus
 
 UNIT = Path(__file__).resolve().parent
@@ -115,13 +116,39 @@ def test_every_run_follows_from_its_legacy_run() -> None:
                 difference, expected = tool_hooks_corpus.classify(
                     scenario, run["harness"], legacy, base
                 )
-                assert (run["difference"], run["expectedGo"]) == (
-                    difference,
-                    expected,
-                ), (
-                    f"{hook}.jsonl {entry['name']} {run['harness']}: the difference or "
-                    "expectedGo does not follow from the legacy run: run `just tool-hooks-corpus`"
+                if "fixed" not in run:
+                    assert (run["difference"], run["expectedGo"]) == (
+                        difference,
+                        expected,
+                    ), (
+                        f"{hook}.jsonl {entry['name']} {run['harness']}: the difference or "
+                        "expectedGo does not follow from the legacy run: run `just tool-hooks-corpus`"
+                    )
+                    continue
+                # or, where the fixed script answers apart from the old one, from
+                # the run of the fixed script, the reference: its noise always,
+                # and fixes exactly when its answer differs from the old one
+                fixed_difference, fixed_expected = tool_hooks_corpus.classify(
+                    scenario, run["harness"], run["fixed"], None
                 )
+                fixes = [
+                    part.removeprefix("fixed-")
+                    for part in run["difference"].split("+")
+                    if part.startswith("fixed-")
+                ]
+                where = f"{hook}.jsonl {entry['name']} {run['harness']}"
+                if fixes:
+                    assert fixed_expected != expected, (
+                        f"{where}: the fixes change nothing"
+                    )
+                else:
+                    assert fixed_expected == expected, (
+                        f"{where}: an answer changed with no fix named"
+                    )
+                assert run["expectedGo"] == fixed_expected, where
+                assert run["difference"] == old_script_fixes.difference(
+                    fixes, fixed_difference
+                ), where
 
 
 def _test_functions(name: str) -> list[str]:
@@ -166,13 +193,19 @@ def test_every_test_of_the_old_scripts_is_mirrored() -> None:
 
 
 def test_the_corpora_hold_every_difference() -> None:
-    differences = {
-        run["difference"]
+    parts = {
+        part
         for hook in tool_hooks_corpus.CORPORA
         for entry in _entries(hook)
         for run in entry["runs"]
+        for part in run["difference"].split("+")
     }
-    assert differences == set(tool_hooks_corpus.DIFFERENCES)
+    fixes = {
+        f"fixed-{name}"
+        for hook in tool_hooks_corpus.CORPORA
+        for name in tool_hooks_corpus.hook_fixes(hook)
+    }
+    assert parts == set(tool_hooks_corpus.DIFFERENCES) | fixes
 
 
 def test_a_rtk_deny_stays_a_deny_for_codex() -> None:

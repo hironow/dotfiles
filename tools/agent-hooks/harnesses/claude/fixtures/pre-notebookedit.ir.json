@@ -7,6 +7,9 @@
     },
     "cwd": {
       "string": "/home/user/project"
+    },
+    "notebookPath": {
+      "string": "/home/user/project/note.ipynb"
     }
   }
 }

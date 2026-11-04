@@ -1,8 +1,6 @@
 package fileguard
 
 import (
-	"strings"
-
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/applypatch"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/bashsubst"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/ir"
@@ -15,7 +13,22 @@ import (
 // field instead. A file_path of any other type prints as JSON text: never
 // empty, so no fallback, and every line of it ends in a quote, a comma, a
 // bracket, or a literal, so it names no file the rules block.
+//
+// fixed-notebook-path: NotebookEdit's notebook_path, which the shell guard
+// never read, comes after those, read the same way, so neither an empty nor
+// a safe file_path hides it.
 func Paths(call ir.Call) []string {
+	paths := filePaths(call)
+	if value, ok := call.Fields[ir.FieldNotebookPath]; ok && value.IsString {
+		if path := bashsubst.Output(value.Text); path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+// filePaths is what the shell guard read: file_path, else a patch's files.
+func filePaths(call ir.Call) []string {
 	if value, ok := call.Fields[ir.FieldFilePath]; ok {
 		if !value.IsString {
 			return nil
@@ -28,18 +41,4 @@ func Paths(call ir.Call) []string {
 		return applypatch.FilePaths(value.Text)
 	}
 	return nil
-}
-
-// NeedsBasename reports whether the paths hold a line that BSD's and GNU's
-// basename(1) read apart (--help, --version, or a prefix of one), so that
-// Check needs the flavor this machine has.
-func NeedsBasename(paths []string) bool {
-	for _, path := range paths {
-		for line := range strings.SplitSeq(strings.ReplaceAll(path, "\x00", ""), "\n") {
-			if isGNUInfoOption(line) {
-				return true
-			}
-		}
-	}
-	return false
 }

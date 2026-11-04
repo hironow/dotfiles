@@ -17,6 +17,12 @@ the guard reads on past such a path, where BSD's fails and the guard stops.
 The files corpus records both, so this needs both: on macOS, BSD's is
 /usr/bin/basename and GNU's is gbasename (brew install coreutils).
 
+The files guard has bugs the binary fixes (scripts/old_script_fixes.py). Each
+input also runs through the guard with those fixes, which needs no basename.
+Where its answer differs from a flavor's, that flavor's result names the fixes
+it needs ("difference"), and the entry holds the fixed answer ("fixed"), which
+the Go port gives.
+
 The secrets corpus writes every character of its texts as a JSON \\u escape,
 so the file holds no token shapes that a secret scanner would flag.
 
@@ -29,12 +35,18 @@ import importlib.util
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import old_script_fixes
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES_GUARD = ROOT / "ROOT_AGENTS_hooks_block-prohibited-files.sh"
@@ -48,6 +60,17 @@ GUARD_TESTS = (
     ROOT / "tests/unit/test_block_secrets_hook.py",
 )
 BLOCKED = "BLOCKED: "
+# The diagnostics a guard can write before its BLOCKED line: bash's warning
+# when a command substitution drops a NUL.
+LEADING_DIAGNOSTICS = re.compile(
+    r"(?:[^\n]*: line [0-9]+: warning: command substitution: ignored null byte in input\n)*"
+)
+# The files guard's fixes (scripts/old_script_fixes.py).
+FILES_FIXES = tuple(
+    name
+    for name, fix in old_script_fixes.FIXES.items()
+    if fix.script == old_script_fixes.FILES_GUARD
+)
 # The parametrize argument names of the guard tests, and what each holds.
 FIXTURE_ARGS = ("patch", "token", "content")
 # An input longer than this is stored as runs of one character, so that a
@@ -62,6 +85,16 @@ def patch(*sections: str) -> str:
 
 # Paths aimed at one behavior each, grouped by the part of the guard they test.
 FILE_PATHS = [
+    # the old guard's bugs that the binary fixes (scripts/old_script_fixes.py):
+    # a line that starts with "-" stopped it, so later lines went unchecked
+    "ok\n--bogus\nbad.yml",
+    "--x.yml",
+    "--version.yml",
+    "--help.yml",
+    "-\nx.yml",
+    "--\nx.yml",
+    # a reason that holds BLOCKED: itself, read whole
+    "BLOCKED: x.yml",
     # the two rules
     "a.yml",
     "a.yaml",
@@ -132,6 +165,11 @@ FILE_PATHS = [
 ]
 
 FILE_PATCHES = [
+    # a patch whose file starts with "-": the old guard stopped there
+    patch("*** Add File: --x.yml\n+a: 1\n"),
+    patch(
+        "*** Add File: ok.yaml\n+a\n*** Add File: --bogus\n+b\n*** Add File: bad.yml\n+c\n"
+    ),
     patch("*** Add File: a.yml\n+x\n"),
     patch("*** Add File: a.yaml\n+x\n"),
     patch("*** Update File: a.yml\n@@\n-x\n+y\n"),
@@ -409,10 +447,62 @@ def run_guard(script: Path, kind: str, text: str, path_dir: str | None = None) -
     )
     reason = None
     if done.returncode == 2:
-        at = done.stderr.rfind(BLOCKED)
-        assert at >= 0, f"{script.name} exited 2 without a reason for {text!r}"
-        reason = done.stderr[at + len(BLOCKED) :].removesuffix("\n")
+        reason = blocked_reason(done.stderr)
+        assert reason is not None, (
+            f"{script.name} exited 2 without a reason for {text!r}"
+        )
     return {"exit": done.returncode, "reason": reason}
+
+
+def blocked_reason(stderr: str) -> str | None:
+    """The reason in a guard's stderr: after its known leading diagnostics,
+    from the first BLOCKED: on, whole. The reason names the file, so it can
+    hold "BLOCKED: " itself."""
+    diagnostics = LEADING_DIAGNOSTICS.match(stderr)
+    rest = stderr[diagnostics.end() if diagnostics else 0 :]
+    if not rest.startswith(BLOCKED):
+        return None
+    return rest[len(BLOCKED) :].removesuffix("\n")
+
+
+def answer(result: dict) -> tuple[bool, str | None]:
+    """What a harness makes of a result: a block and its reason, or a pass
+    (exit 0 and 1 alike)."""
+    return result["exit"] == 2, result["reason"]
+
+
+def fixed_results(
+    flavors: dict[str, str],
+    legacy: dict[str, dict],
+    run: Callable[[frozenset[str], str], dict],
+) -> tuple[dict | None, dict[str, str]]:
+    """The fixed guard's result for one input, when some flavor's old result
+    differs from it, and each such flavor's difference.
+
+    run(fixes, flavor) runs the guard with the named fixes, under a flavor's
+    basename. The full set needs no basename, so its answer is the same under
+    every flavor; the Go port has none."""
+    everything = frozenset(FILES_FIXES)
+    results = {flavor: run(everything, flavor) for flavor in flavors}
+    full = next(iter(results.values()))
+    if any(answer(r) != answer(full) for r in results.values()):
+        msg = f"the fixed guard's answer depends on basename: {results!r}"
+        raise ValueError(msg)
+    differences: dict[str, str] = {}
+    for flavor in flavors:
+        needed = old_script_fixes.needed(
+            FILES_FIXES,
+            lambda applied, f=flavor: answer(
+                legacy[f]
+                if not applied
+                else results[f]
+                if applied == everything
+                else run(applied, f)
+            ),
+        )
+        if needed:
+            differences[flavor] = old_script_fixes.difference(needed, "")
+    return (full if differences else None), differences
 
 
 def _escaped(value: str | None) -> str:
@@ -488,13 +578,49 @@ def render(flavors: dict[str, str]) -> tuple[list[dict], list[dict]]:
             )
             for flavor, d in dirs.items()
         }
+        # The guard with every fix, and with each fix left out of that set.
+        everything = frozenset(FILES_FIXES)
+        variants = {
+            applied: old_script_fixes.write_scripts(
+                Path(shims)
+                / ("fixed-" + "+".join(sorted(applied)) if applied else "old"),
+                applied,
+            )
+            / FILES_GUARD.name
+            for applied in [everything, *(everything - {name} for name in FILES_FIXES)]
+        }
+        full_columns = {
+            flavor: list(
+                pool.map(lambda kt, d=d: run_guard(variants[everything], *kt, d), files)
+            )
+            for flavor, d in dirs.items()
+        }
+        fixed_columns = []
+        for i, (kind, text) in enumerate(files):
+
+            def run(
+                applied: frozenset[str], flavor: str, i=i, kind=kind, text=text
+            ) -> dict:
+                if applied == everything:
+                    return full_columns[flavor][i]
+                return run_guard(variants[applied], kind, text, dirs[flavor])
+
+            legacy = {flavor: columns[flavor][i] for flavor in columns}
+            fixed_columns.append(fixed_results(dirs, legacy, run))
         secret_results = list(
             pool.map(lambda kt: run_guard(SECRETS_GUARD, *kt), secrets)
         )
-    file_entries = [
-        stored(kind, text) | {flavor: columns[flavor][i] for flavor in sorted(columns)}
-        for i, (kind, text) in enumerate(files)
-    ]
+    file_entries = []
+    for i, (kind, text) in enumerate(files):
+        fixed, differences = fixed_columns[i]
+        entry = stored(kind, text)
+        for flavor in sorted(columns):
+            entry[flavor] = columns[flavor][i] | (
+                {"difference": differences[flavor]} if flavor in differences else {}
+            )
+        if fixed is not None:
+            entry["fixed"] = fixed
+        file_entries.append(entry)
     secret_entries = [
         stored(kind, text) | result
         for (kind, text), result in zip(secrets, secret_results, strict=True)

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/hironow/dotfiles/tools/agent-hooks/internal/fileguard"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
 )
 
@@ -17,12 +16,6 @@ import (
 // does not match the next one in Mismatches; a test fails on any mismatch or
 // on an invocation left over.
 type Machine struct {
-	// Flavor is the basename(1) flavor Basename returns; Probes counts the
-	// calls, so a test can check that the shell asks only when a path needs
-	// the answer.
-	Flavor fileguard.Basename
-	Probes int
-
 	// Programs are the programs found on PATH, by name. A name not here is
 	// not found.
 	Programs map[string]process.Program
@@ -61,12 +54,6 @@ type Invocation struct {
 	Result   process.Result
 	Failed   bool
 	AnyArgv0 bool
-}
-
-// Basename returns the flavor the test set.
-func (m *Machine) Basename() fileguard.Basename {
-	m.Probes++
-	return m.Flavor
 }
 
 // LookPath returns the program the test set for the name.
