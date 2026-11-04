@@ -126,3 +126,35 @@ func TestFixedDocsAgentsRelativeIsExempt(t *testing.T) {
 		}
 	}
 }
+
+func TestFixedDocsAgentsRelativeHoldsOnlyWhereAPathStarts(t *testing.T) {
+	// fixed-docs-agents-relative exempts a relative path under docs/agents/,
+	// so it holds only for a line where a path starts: the first line of each
+	// path Check is given (a file_path, each file of a patch, a
+	// notebook_path). A later line is part of the same path: /w/x, a
+	// newline, and docs/agents/y.yml names a file under no docs/agents/
+	// directory, and the old guard blocked it. The old exemptions still hold
+	// on every line.
+	tests := []struct {
+		paths []string
+		rule  string // "" for a pass
+	}{
+		{[]string{"/w/x\ndocs/agents/y.yml"}, fileguard.RuleYMLExtension},
+		{[]string{"\ndocs/agents/y.yml"}, fileguard.RuleYMLExtension},
+		{[]string{"docs/agents/a\ndocs/agents/y.yml"}, fileguard.RuleYMLExtension},
+		{[]string{"docs/agents/y.yml\nz.yml"}, fileguard.RuleYMLExtension},
+		{[]string{"/w/x\ndocs/agents/docker-compose.yml"}, fileguard.RuleComposeV1},
+		// each path starts at its own first line
+		{[]string{"/w/a.md", "docs/agents/y.yml"}, ""},
+		{[]string{"docs/agents/y.yml\n/w/a.md"}, ""},
+		// the old exemptions hold on every line
+		{[]string{"x\n/docs/agents/y.yml"}, ""},
+		{[]string{"x\nCLAUDE.md"}, ""},
+	}
+	for _, test := range tests {
+		got := fileguard.Check(test.paths)
+		if got.Rule != test.rule || (got.Action == ir.Block) != (test.rule != "") {
+			t.Errorf("Check(%q) = %+v, want rule %q", test.paths, got, test.rule)
+		}
+	}
+}

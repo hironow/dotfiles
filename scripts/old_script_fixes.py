@@ -74,11 +74,53 @@ FIXES: dict[str, Fix] = {
         script=FILES_GUARD,
         edits=(
             (
+                "    *'*** Begin Patch'*)\n",
+                (
+                    "    *'*** Begin Patch'*)\n"
+                    "      # fixed-docs-agents-relative: each line names a file of its own.\n"
+                    "      from_patch=1\n"
+                ),
+            ),
+            (
+                "# Nothing to check (e.g. tool input without a path).\n",
+                (
+                    "# fixed-docs-agents-relative: count the lines read so far; a\n"
+                    "# notebook_path (fixed-notebook-path) may follow them. A path starts at\n"
+                    "# the first line, at each line of a patch, and at the first line after.\n"
+                    "nl=$'\\n'\n"
+                    'only_newlines="${paths//[!$nl]/}"\n'
+                    "read_lines=0\n"
+                    '[ -n "$paths" ] && read_lines=$((${#only_newlines} + 1))\n'
+                    "\n"
+                    "# Nothing to check (e.g. tool input without a path).\n"
+                ),
+            ),
+            (
                 "    */AGENTS.md|AGENTS.md|*/CLAUDE.md|CLAUDE.md|*/docs/agents/*) return 0 ;;\n",
                 (
-                    "    # fixed-docs-agents-relative: a relative path under docs/agents/ too,\n"
-                    "    # as Codex's patch names its files; a bare AGENTS.md was already exempt.\n"
-                    "    */AGENTS.md|AGENTS.md|*/CLAUDE.md|CLAUDE.md|*/docs/agents/*|docs/agents/*) return 0 ;;\n"
+                    "    */AGENTS.md|AGENTS.md|*/CLAUDE.md|CLAUDE.md|*/docs/agents/*) return 0 ;;\n"
+                    "    # fixed-docs-agents-relative: a relative path under docs/agents/ too, as\n"
+                    "    # Codex's patch names its files (a bare AGENTS.md was already exempt),\n"
+                    "    # but only where a path starts: a later line is part of the path above.\n"
+                    '    docs/agents/*) if [ -n "$path_start" ]; then return 0; fi ;;\n'
+                ),
+            ),
+            (
+                (
+                    "while IFS= read -r file_path; do\n"
+                    '  [ -n "$file_path" ] && check "$file_path"\n'
+                ),
+                (
+                    "line_no=0\n"
+                    "while IFS= read -r file_path; do\n"
+                    "  # fixed-docs-agents-relative: does a path start on this line?\n"
+                    "  line_no=$((line_no + 1))\n"
+                    "  path_start=\n"
+                    '  if [ "$line_no" -eq 1 ] || [ "$line_no" -eq $((read_lines + 1)) ] ||\n'
+                    '    { [ -n "${from_patch-}" ] && [ "$line_no" -le "$read_lines" ]; }; then\n'
+                    "    path_start=1\n"
+                    "  fi\n"
+                    '  [ -n "$file_path" ] && check "$file_path"\n'
                 ),
             ),
         ),
