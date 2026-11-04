@@ -24,7 +24,13 @@ const cleanRuff = "All checks passed"
 // (applypatch.FormattedPaths). A file_path of another type prints as JSON
 // text, no line of which ends in a suffix the formatter knows, so it names
 // none.
+//
+// A file path that could not be resolved as the harness resolves it
+// (ir.Call.PathUnresolved) names no file.
 func Paths(call ir.Call) []string {
+	if call.PathUnresolved {
+		return nil
+	}
 	if value, ok := call.Fields[ir.FieldFilePath]; ok {
 		if !value.IsString {
 			return nil

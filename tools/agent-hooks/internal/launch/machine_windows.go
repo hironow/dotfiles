@@ -31,6 +31,13 @@ func (ExecMachine) IsExecutable(path string) bool {
 	return err == nil
 }
 
+// HomeDir is Node's os.homedir() on Windows as far as an environment
+// variable tells it: USERPROFILE when it is set. Pi's paths are resolved
+// only on POSIX (internal/pipath), so nothing reads it yet.
+func (ExecMachine) HomeDir() (string, bool) {
+	return os.LookupEnv("USERPROFILE")
+}
+
 // Getwd is the working directory.
 func (ExecMachine) Getwd() string {
 	cwd, err := os.Getwd()

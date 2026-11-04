@@ -52,6 +52,7 @@ func TestFixedGuardFailureBlocks(t *testing.T) {
 		"claude": "pre-bash.json",
 		"codex":  "pre-bash.json",
 		"agy":    "pre-run-command.json",
+		"pi":     "pre-bash.json",
 	}
 	for _, id := range []string{"command-guard", "files-guard", "secrets-guard"} {
 		failed := ir.Outcome{

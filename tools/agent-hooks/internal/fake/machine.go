@@ -30,6 +30,9 @@ type Machine struct {
 	Unstartable map[string]bool
 	// Windows makes the machine a Windows one, for its path rules.
 	Windows bool
+	// Home is the home directory, when HasHome says the machine has one.
+	Home    string
+	HasHome bool
 	// RealPaths maps a path to its real path (symlinks followed); a path not
 	// here does not resolve.
 	RealPaths map[string]string
@@ -73,6 +76,9 @@ func (m *Machine) IsWindows() bool { return m.Windows }
 
 // Getwd returns the working directory the test set.
 func (m *Machine) Getwd() string { return m.Cwd }
+
+// HomeDir returns the home directory the test set, if any.
+func (m *Machine) HomeDir() (string, bool) { return m.Home, m.HasHome }
 
 // RealPath returns the real path the test set for the path.
 func (m *Machine) RealPath(path string) (string, error) {

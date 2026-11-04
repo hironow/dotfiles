@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 
 	json "github.com/goccy/go-json/v2"
@@ -19,6 +20,7 @@ import (
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/definition"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/fileguard"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/ir"
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/pipath"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/secretguard"
 )
@@ -42,6 +44,10 @@ type Machine interface {
 	IsRegularFile(path string) bool
 	// Getwd is the physical working directory, as Python's os.getcwd.
 	Getwd() string
+	// HomeDir is the home directory as Node's os.homedir() finds it, which is
+	// how Pi expands ~: $HOME when it is set, even to "", else the password
+	// entry. ok is false when neither names one.
+	HomeDir() (string, bool)
 	// IsWindows reports whether paths follow Windows' rules here (the
 	// scripts' Path(...) did), as on Windows.
 	IsWindows() bool
@@ -119,32 +125,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machi
 		_, _ = fmt.Fprintf(stderr, "agent-hook: %v\n%s\n", err, usage)
 		return exitUsage
 	}
-	// A guard blocks input it cannot read; rtk and the formatter let it go on
-	// and run nothing, as their scripts failed open.
-	outcome := ir.Outcome{}
-	if spec.Failure == failClosed {
-		outcome = unreadable
-	}
-	if payload, err := io.ReadAll(stdin); err == nil {
-		if call, err := event.Decode(payload); err == nil {
-			call.Native = payload
-			if call.ToolFailed {
-				// A post hook acts on what the tool call did; a call that
-				// failed did nothing to act on.
-				outcome = ir.Outcome{}
-			} else {
-				var failure any
-				if outcome, failure = decideSafely(decide, call, machine); failure != nil {
-					outcome = failedOutcome(spec)
-					what := "so the call goes on"
-					if outcome.Action == ir.Block {
-						what = "so the call is blocked"
-					}
-					_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook failed, %s: %v\n", spec.ID, what, failure)
-				}
-			}
-		}
-	}
+	payload, readErr := io.ReadAll(stdin)
+	outcome := decideInput(event, spec, decide, payload, readErr, machine, stderr)
 	answer, err := event.Answer(outcome)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "agent-hook: cannot render the answer: %v\n", err)
@@ -157,6 +139,96 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machi
 		return exitSoftware
 	}
 	return answer.Exit
+}
+
+// decideInput is the hook's outcome on the payload the harness sent.
+func decideInput(event definition.Event, spec hookSpec, decide hook, payload []byte, readErr error,
+	machine Machine, stderr io.Writer,
+) ir.Outcome {
+	if event.Transport() == ir.TransportShim {
+		if err := shimRequestError(event, payload, readErr); err != nil {
+			_, _ = fmt.Fprintf(stderr, "agent-hook: a broken shim exchange: %v\n", err)
+			return brokenExchange(spec)
+		}
+	}
+	// A guard blocks input it cannot read; rtk and the formatter let it go on
+	// and run nothing, as their scripts failed open.
+	unread := ir.Outcome{}
+	if spec.Failure == failClosed {
+		unread = unreadable
+	}
+	if readErr != nil {
+		return unread
+	}
+	call, err := event.Decode(payload)
+	if err != nil {
+		return unread
+	}
+	call.Native = payload
+	if call.PathResolution == ir.PathsPi {
+		call = resolvePiPath(call, machine)
+	}
+	if call.ToolFailed {
+		// A post hook acts on what the tool call did; a call that failed did
+		// nothing to act on.
+		return ir.Outcome{}
+	}
+	outcome, failure := decideSafely(decide, call, machine)
+	if failure != nil {
+		outcome = failedOutcome(spec)
+		what := "so the call goes on"
+		if outcome.Action == ir.Block {
+			what = "so the call is blocked"
+		}
+		_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook failed, %s: %v\n", spec.ID, what, failure)
+	}
+	return outcome
+}
+
+// resolvePiPath replaces the call's file path with the file Pi touches: Pi
+// resolves a tool's path against the call's cwd before it writes or edits
+// (internal/pipath), so the hooks judge that file. A path the port cannot
+// resolve as Pi does is marked, so that the files guard blocks it and the
+// formatter leaves it. A path that is not a string names no file, and stays.
+func resolvePiPath(call ir.Call, machine Machine) ir.Call {
+	value, ok := call.Fields[ir.FieldFilePath]
+	if !ok || !value.IsString {
+		return call
+	}
+	home, known := machine.HomeDir()
+	// The shim protocol makes the cwd an absolute path; anything else does
+	// not resolve.
+	resolved, ok := pipath.Resolve(value.Text, call.Fields[ir.FieldCwd].Text, pipath.Home{Dir: home, Known: known})
+	if !ok {
+		call.PathUnresolved = true
+		return call
+	}
+	call.Fields = maps.Clone(call.Fields)
+	call.Fields[ir.FieldFilePath] = ir.Value{Text: resolved, IsString: true}
+	return call
+}
+
+// shimRequestError is why a shim's request breaks the shim protocol, or nil.
+func shimRequestError(event definition.Event, payload []byte, readErr error) error {
+	if readErr != nil {
+		return readErr
+	}
+	return event.CheckShimRequest(payload)
+}
+
+// brokenExchange is the outcome of a shim request that breaks the shim
+// protocol: the shim and the binary are out of step, so no hook can trust
+// what it reads. Before the tool, every hook blocks, open ones (rtk)
+// included; after it, nothing runs.
+func brokenExchange(spec hookSpec) ir.Outcome {
+	if spec.Event != "pre" {
+		return ir.Outcome{}
+	}
+	return ir.Outcome{
+		Action: ir.Block,
+		Rule:   "shim.broken",
+		Reason: "agent-hook could not read the shim's request, so no hook ran: the shim and the binary are out of step.",
+	}
 }
 
 // parse reads the arguments: the harness, the event, and --hook, which must
@@ -234,7 +306,7 @@ func commandGuard(call ir.Call, _ Machine) ir.Outcome {
 }
 
 func filesGuard(call ir.Call, _ Machine) ir.Outcome {
-	return fileguard.Check(fileguard.Paths(call))
+	return fileguard.CheckCall(call)
 }
 
 func secretsGuard(call ir.Call, _ Machine) ir.Outcome {
