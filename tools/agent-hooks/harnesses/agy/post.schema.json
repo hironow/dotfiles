@@ -223,6 +223,12 @@
     ],
     "workspaces": [
       "/workspacePaths/*"
+    ],
+    "sessionId": [
+      "/conversationId"
+    ],
+    "callId": [
+      "/stepIdx"
     ]
   }
 }

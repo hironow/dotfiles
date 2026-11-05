@@ -10,6 +10,12 @@
     },
     "cwd": {
       "string": "/home/user/project"
+    },
+    "sessionId": {
+      "string": "00000000-0000-4000-8000-000000000001"
+    },
+    "callId": {
+      "string": "toolu_01FIXTUREWRITE"
     }
   }
 }

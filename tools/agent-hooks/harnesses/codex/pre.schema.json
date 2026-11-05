@@ -52,7 +52,9 @@
     "filePath": ["/tool_input/file_path"],
     "content": ["/tool_input/content", "/tool_input/new_string", "/tool_input/new_source"],
     "cwd": ["/cwd"],
-    "notebookPath": ["/tool_input/notebook_path"]
+    "notebookPath": ["/tool_input/notebook_path"],
+    "sessionId": ["/session_id"],
+    "callId": ["/tool_use_id"]
   },
   "x-ir-undeclared": {
     "description": "Pointers x-ir reads though Codex never sends them: the old guards read the same fields for every harness, and the port keeps that.",

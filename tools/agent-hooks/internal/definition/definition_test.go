@@ -71,7 +71,18 @@ func TestEveryHarnessMapsTheFieldsItsHooksRead(t *testing.T) {
 		ir.ListContents:  {"/input/edits/*/newText"},
 		ir.FieldCwd:      {"/cwd"},
 	}
-	want := map[string]map[string][]string{"claude": scripts, "codex": scripts, "agy": agy, "pi": pi}
+	// The log hashes the session's and the call's ids into a trace id, so
+	// that a call's pre and post lines share it. Pi's shim sends none yet.
+	claudeIDs := map[string][]string{ir.FieldSessionID: {"/session_id"}, ir.FieldCallID: {"/tool_use_id"}}
+	agyIDs := map[string][]string{ir.FieldSessionID: {"/conversationId"}, ir.FieldCallID: {"/stepIdx"}}
+	with := func(fields, ids map[string][]string) map[string][]string {
+		joined := maps.Clone(fields)
+		maps.Copy(joined, ids)
+		return joined
+	}
+	want := map[string]map[string][]string{
+		"claude": with(scripts, claudeIDs), "codex": with(scripts, claudeIDs), "agy": with(agy, agyIDs), "pi": pi,
+	}
 	for _, name := range names {
 		for _, event := range events {
 			t.Run(name+"/"+event, func(t *testing.T) {
