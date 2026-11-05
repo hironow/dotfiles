@@ -28,7 +28,19 @@ func execute(config options, cases []latency.Case) ([]latency.Row, error) {
 			return nil, err
 		}
 	}
-	env := environmentWith(os.Environ(), "XDG_STATE_HOME", state)
+	// Both sides share one state directory, one Python environment for the
+	// formatter's `uv run`, and one ruff cache, all temporary: the binary's
+	// file log, the project's .venv, and its .ruff_cache stay untouched. uv's
+	// own cache is the user's, which uv only adds to: a temporary one would
+	// need the network to install ruff again.
+	env := os.Environ()
+	for key, value := range map[string]string{
+		"XDG_STATE_HOME":         state,
+		"UV_PROJECT_ENVIRONMENT": filepath.Join(root, "venv"),
+		"RUFF_CACHE_DIR":         filepath.Join(root, "ruff-cache"),
+	} {
+		env = environmentWith(env, key, value)
+	}
 	if config.binary == "" {
 		config.binary = filepath.Join(root, "agent-hook")
 		if err := buildBinary(config.binary, env); err != nil {
@@ -63,7 +75,10 @@ type preparedCase struct {
 	latency.Case
 	payload  []byte
 	expected answer
-	row      latency.Row
+	// formatted is what today's formatter left in the case's file in its
+	// warm-up: every later run of either side must leave the same.
+	formatted string
+	row       latency.Row
 }
 
 func (m measurement) warm(cases []latency.Case) ([]preparedCase, error) {
@@ -74,11 +89,19 @@ func (m measurement) warm(cases []latency.Case) ([]preparedCase, error) {
 			return nil, fmt.Errorf("%s payload: %w", c.Name, err)
 		}
 		p := preparedCase{Case: c, payload: payload, row: latency.Row{Name: c.Name}}
-		expected, _, err := m.sample(p, false)
+		expected, after, _, err := m.sample(p, false)
 		if err != nil {
 			return nil, fmt.Errorf("%s warm-up old: %w", c.Name, err)
 		}
-		p.expected = expected
+		// The answer must show what the case is named for: a missing rtk or
+		// gofmt passes on both sides, fast and alike, and would time nothing.
+		if err := c.Shows(latency.Answer{Exit: expected.exit, Stdout: expected.stdout, Stderr: expected.stderr}); err != nil {
+			return nil, fmt.Errorf("%s warm-up old: %w", c.Name, err)
+		}
+		if c.Changes && after == c.Content {
+			return nil, fmt.Errorf("%s warm-up old: today's formatter left %s as it was: is its program on PATH?", c.Name, c.FileName)
+		}
+		p.expected, p.formatted = expected, after
 		if _, err := m.checked(p, true); err != nil {
 			return nil, fmt.Errorf("%s warm-up binary: %w", c.Name, err)
 		}
@@ -116,9 +139,16 @@ func (m measurement) run(cases []latency.Case) ([]latency.Row, error) {
 }
 
 func (m measurement) checked(p preparedCase, binary bool) (time.Duration, error) {
-	got, elapsed, err := m.sample(p, binary)
+	got, after, elapsed, err := m.sample(p, binary)
 	if err != nil {
 		return 0, err
+	}
+	if p.Reset && after != p.formatted {
+		side := "today's script"
+		if binary {
+			side = "the binary"
+		}
+		return 0, fmt.Errorf("%s left %s as %q; today's formatter left %q", side, p.FileName, after, p.formatted)
 	}
 	if !sameAnswer(got, p.expected) {
 		return 0, fmt.Errorf("answer mismatch (binary=%t):\n- old warm-up: exit=%d stdout=%q stderr=%q\n+ got: exit=%d stdout=%q stderr=%q",
@@ -143,10 +173,14 @@ func sameAnswer(a, b answer) bool {
 	return err == nil && same
 }
 
-func (m measurement) sample(p preparedCase, binary bool) (answer, time.Duration, error) {
+// sample runs one side once. For a formatter case it resets the file before
+// and reads it after, both outside the timed span, and returns what the run
+// left in it.
+func (m measurement) sample(p preparedCase, binary bool) (answer, string, time.Duration, error) {
+	file := filepath.Join(m.files, p.FileName)
 	if p.Reset {
-		if err := os.WriteFile(filepath.Join(m.files, p.FileName), []byte(p.Content), 0o600); err != nil {
-			return answer{}, 0, fmt.Errorf("reset formatter file: %w", err)
+		if err := os.WriteFile(file, []byte(p.Content), 0o600); err != nil {
+			return answer{}, "", 0, fmt.Errorf("reset formatter file: %w", err)
 		}
 	}
 	command := p.OldCommand(m.config.claudeHooks, m.config.codexHooks)
@@ -156,23 +190,31 @@ func (m measurement) sample(p preparedCase, binary bool) (answer, time.Duration,
 		var err error
 		before, err = countLogLines(m.state)
 		if err != nil {
-			return answer{}, 0, err
+			return answer{}, "", 0, err
 		}
 	}
 	got, elapsed, err := m.runner.Run(command, p.payload)
 	if err != nil {
-		return answer{}, 0, fmt.Errorf("run %s: %w", command, err)
+		return answer{}, "", 0, fmt.Errorf("run %s: %w", command, err)
 	}
 	if binary {
 		after, err := countLogLines(m.state)
 		if err != nil {
-			return answer{}, 0, err
+			return answer{}, "", 0, err
 		}
 		if after-before != 1 {
-			return answer{}, 0, fmt.Errorf("binary log grew by %d lines, want exactly 1", after-before)
+			return answer{}, "", 0, fmt.Errorf("binary log grew by %d lines, want exactly 1", after-before)
 		}
 	}
-	return got, elapsed, nil
+	left := ""
+	if p.Reset {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return answer{}, "", 0, fmt.Errorf("read formatter file: %w", err)
+		}
+		left = string(content)
+	}
+	return got, left, elapsed, nil
 }
 
 func countLogLines(state string) (int, error) {

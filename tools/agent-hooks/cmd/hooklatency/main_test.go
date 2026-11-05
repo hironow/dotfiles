@@ -68,6 +68,8 @@ for log in "$XDG_STATE_HOME"/dotfiles/agent-hooks/logs/*.jsonl; do
 done
 printf '%s\n' "$count" > log-count
 printf '%s\n' "$XDG_STATE_HOME" > measured-state
+printf '%s\n' "$UV_PROJECT_ENVIRONMENT" > measured-venv
+printf '%s\n' "$RUFF_CACHE_DIR" > measured-ruff-cache
 `
 	for _, name := range []string{"block-prohibited-commands.sh", "guard-codex.sh"} {
 		if err := os.WriteFile(filepath.Join(hooks, name), []byte(script), 0o600); err != nil {
@@ -105,6 +107,22 @@ printf '%s\n' "$XDG_STATE_HOME" > measured-state
 	for _, path := range []string{untouched, strings.TrimSpace(string(state))} {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("state must be untouched or cleaned up: %s (%v)", path, err)
+		}
+	}
+	// The formatter's uv environment and ruff cache are the measurement's
+	// own too, next to its state, so the project's .venv and .ruff_cache
+	// stay as they are.
+	for _, name := range []string{"measured-venv", "measured-ruff-cache"} {
+		measured, err := os.ReadFile(filepath.Join(project, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := strings.TrimSpace(string(measured))
+		if path == "" || filepath.Dir(path) != filepath.Dir(strings.TrimSpace(string(state))) {
+			t.Errorf("%s = %q; want a path in the measurement's own directory", name, path)
+		}
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s must be cleaned up: %s (%v)", name, path, err)
 		}
 	}
 

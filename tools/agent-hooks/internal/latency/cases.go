@@ -1,6 +1,7 @@
 package latency
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -14,6 +15,59 @@ type Case struct {
 	Script, Argument           string
 	Command, FileName, Content string
 	Reset                      bool
+	// Want, Changes, and Stderr say what the answer must show, so that a
+	// case times what it is named for: a guard that passes or blocks, rtk's
+	// rewrite (not a missing rtk, which every side passes), and a formatter
+	// that changes its file (not a missing gofmt) and reports what ruff
+	// still finds.
+	Want    Want
+	Changes bool   // the formatter must change FileName
+	Stderr  string // a text stderr must hold
+}
+
+// Want is the kind of answer a case must show.
+type Want int
+
+const (
+	// WantPass is exit 0 and nothing on stdout.
+	WantPass Want = iota
+	// WantBlock is Claude's block (exit 2, the reason on stderr) or Codex's
+	// (exit 0, a deny on stdout, as guard-codex.sh writes it).
+	WantBlock
+	// WantRewrite is exit 0 and stdout naming the command rtk runs instead.
+	WantRewrite
+)
+
+// Answer is what a hook command answered.
+type Answer struct {
+	Exit           int
+	Stdout, Stderr string
+}
+
+// Shows reports how the answer is not the one the case must show, or nil.
+func (c Case) Shows(a Answer) error {
+	switch c.Want {
+	case WantPass:
+		if a.Exit != 0 || a.Stdout != "" {
+			return fmt.Errorf("want a pass (exit 0, no stdout), got exit %d and stdout %q", a.Exit, a.Stdout)
+		}
+	case WantBlock:
+		if c.Harness == "codex" {
+			if a.Exit != 0 || !strings.Contains(a.Stdout, `"permissionDecision":"deny"`) {
+				return fmt.Errorf("want Codex's block (exit 0, a deny on stdout), got exit %d and stdout %q", a.Exit, a.Stdout)
+			}
+		} else if a.Exit != 2 || a.Stderr == "" {
+			return fmt.Errorf("want Claude's block (exit 2, a reason), got exit %d and stderr %q", a.Exit, a.Stderr)
+		}
+	case WantRewrite:
+		if a.Exit != 0 || !strings.Contains(a.Stdout, "rtk "+c.Command) {
+			return fmt.Errorf("want rtk's rewrite of %q (is rtk on PATH?), got exit %d and stdout %q", c.Command, a.Exit, a.Stdout)
+		}
+	}
+	if !strings.Contains(a.Stderr, c.Stderr) {
+		return fmt.Errorf("want %q on stderr, got %q", c.Stderr, a.Stderr)
+	}
+	return nil
 }
 
 // Cases covers the guards, rtk, and each formatter path on both harnesses.
@@ -24,12 +78,12 @@ func Cases() []Case {
 	for _, harness := range []string{"claude", "codex"} {
 		pre := []Case{
 			{Hook: "command-guard", Name: "pass", Command: "ls -la"},
-			{Hook: "command-guard", Name: "block", Command: "npm ci"},
+			{Hook: "command-guard", Name: "block", Command: "npm ci", Want: WantBlock},
 			{Hook: "files-guard", Name: "pass", FileName: "notes.md", Content: "hello\n"},
-			{Hook: "files-guard", Name: "block", FileName: "x.yml", Content: "hello\n"},
+			{Hook: "files-guard", Name: "block", FileName: "x.yml", Content: "hello\n", Want: WantBlock},
 			{Hook: "secrets-guard", Name: "pass", FileName: "notes.md", Content: "hello"},
-			{Hook: "secrets-guard", Name: "block", FileName: "notes.md", Content: key},
-			{Hook: "rtk", Name: "git-status", Command: "git status"},
+			{Hook: "secrets-guard", Name: "block", FileName: "notes.md", Content: key, Want: WantBlock},
+			{Hook: "rtk", Name: "git-status", Command: "git status", Want: WantRewrite},
 		}
 		for _, c := range pre {
 			c.Harness, c.Event = harness, "pre"
@@ -42,14 +96,18 @@ func Cases() []Case {
 			}
 			cases = append(cases, c)
 		}
-		for _, file := range []struct{ extension, name, content string }{
-			{"md", "notes.md", "hello\n"},
-			{"py", "x.py", "x=  [1,2]\nprint(undefined_name)\n"},
-			{"go", "x.go", "package main\nfunc main(){println(1)}\n"},
+		for _, file := range []struct {
+			extension, name, content, stderr string
+			changes                          bool
+		}{
+			{"md", "notes.md", "hello\n", "", false},
+			{"py", "x.py", "x=  [1,2]\nprint(undefined_name)\n", "ruff still reports issues in", true},
+			{"go", "x.go", "package main\nfunc main(){println(1)}\n", "", true},
 		} {
 			cases = append(cases, Case{
 				Name: harness + "/post/formatter/" + file.extension, Harness: harness, Event: "post", Hook: "formatter",
 				Script: "format-after-edit.sh", FileName: file.name, Content: file.content, Reset: true,
+				Changes: file.changes, Stderr: file.stderr,
 			})
 		}
 	}

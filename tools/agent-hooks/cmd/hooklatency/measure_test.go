@@ -19,6 +19,13 @@ type recordingCommands struct {
 	logLines    int
 	driftAt     int
 	fail        bool
+	// initial is what file must hold before every run (it was reset).
+	initial string
+	// written is what each side writes to file (false: today's script,
+	// true: the binary); a side not in it leaves file as it is.
+	written map[bool]string
+	// reply is what each side answers.
+	reply map[bool]answer
 }
 
 func (r *recordingCommands) Run(command string, _ []byte) (answer, time.Duration, error) {
@@ -32,11 +39,13 @@ func (r *recordingCommands) Run(command string, _ []byte) (answer, time.Duration
 		if err != nil {
 			return answer{}, 0, err
 		}
-		if string(content) != "hello\n" {
+		if string(content) != r.initial {
 			return answer{}, 0, errors.New("formatter file was not reset")
 		}
-		if err := os.WriteFile(r.file, []byte("formatted\n"), 0o600); err != nil {
-			return answer{}, 0, err
+		if text, ok := r.written[binary]; ok {
+			if err := os.WriteFile(r.file, []byte(text), 0o600); err != nil {
+				return answer{}, 0, err
+			}
 		}
 	}
 	if binary {
@@ -50,7 +59,7 @@ func (r *recordingCommands) Run(command string, _ []byte) (answer, time.Duration
 			return answer{}, 0, err
 		}
 	}
-	result := answer{exit: 2, stdout: "stdout\n", stderr: "stderr\n"}
+	result := r.reply[binary]
 	if len(r.order) == r.driftAt {
 		result.stderr = "changed stderr\n"
 	}
@@ -64,7 +73,7 @@ func (r *recordingCommands) Run(command string, _ []byte) (answer, time.Duration
 func trial(t *testing.T) (measurement, *recordingCommands) {
 	t.Helper()
 	dir := t.TempDir()
-	runner := &recordingCommands{state: dir, logLines: 1}
+	runner := &recordingCommands{state: dir, logLines: 1, initial: "hello\n"}
 	return measurement{config: options{runs: 3, binary: "binary", project: dir}, runner: runner, files: dir, state: dir}, runner
 }
 
@@ -75,6 +84,7 @@ func TestRoundsAlternateAndResetBothFormatterSides(t *testing.T) {
 		Script: "format-after-edit.sh", FileName: "notes.md", Content: "hello\n", Reset: true,
 	}}
 	runner.file = filepath.Join(m.files, "notes.md")
+	runner.written = map[bool]string{false: "formatted\n", true: "formatted\n"}
 	rows, err := m.run(cases)
 	if err != nil {
 		t.Fatal(err)
@@ -133,5 +143,52 @@ func TestSameAnswerReadsStdoutAsAHarnessReadsIt(t *testing.T) {
 		if got := sameAnswer(c.a, c.b); got != c.want {
 			t.Errorf("%s: sameAnswer = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+func TestMeasurementRejectsAFormatterThatDoesNotFormat(t *testing.T) {
+	goCase := latency.Case{
+		Name: "claude/post/formatter/go", Harness: "claude", Event: "post", Hook: "formatter",
+		Script: "format-after-edit.sh", FileName: "x.go", Content: "hello\n", Reset: true, Changes: true,
+	}
+	for _, test := range []struct {
+		name    string
+		written map[bool]string
+		want    string
+	}{
+		// gofmt missing on PATH: both sides skip the file, fast, and alike.
+		{"neither side formats", map[bool]string{}, "left x.go as it was"},
+		{"the binary formats differently", map[bool]string{false: "formatted\n", true: "other\n"}, "the binary left x.go"},
+		{"today's script formats differently later", map[bool]string{false: "formatted\n", true: "formatted\n"}, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m, runner := trial(t)
+			runner.file = filepath.Join(m.files, "x.go")
+			runner.written = test.written
+			_, err := m.run([]latency.Case{goCase})
+			if test.want == "" {
+				if err != nil {
+					t.Fatalf("run: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), goCase.Name) || !strings.Contains(err.Error(), test.want) {
+				t.Errorf("error = %v, want the case and %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestMeasurementRejectsAnAnswerThatTimesSomethingElse(t *testing.T) {
+	rtk := latency.Case{
+		Name: "claude/pre/rtk/git-status", Harness: "claude", Event: "pre", Hook: "rtk",
+		Script: "rtk-hook-claude.sh", Command: "git status", Want: latency.WantRewrite,
+	}
+	// given rtk missing from PATH: both sides fail open and print nothing
+	m, _ := trial(t)
+	_, err := m.run([]latency.Case{rtk})
+	// then the measurement stops, since it would time no rewrite
+	if err == nil || !strings.Contains(err.Error(), rtk.Name) || !strings.Contains(err.Error(), "rewrite") {
+		t.Errorf("error = %v, want the case and that rtk did not rewrite", err)
 	}
 }

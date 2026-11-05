@@ -256,12 +256,16 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Not yet:** the latency measurement (2h.2); Windows; doctor reading the log (PR 3); Pi's ids (PR 4).
 
 - How PR 2h.2 does it: `just agent-hooks-latency` (`cmd/hooklatency`, cases and statistics in `internal/latency`) times today's hook scripts against the binary, hook by hook. Nothing is registered yet.
-    - **Both sides run as a harness runs a hook command:** `/bin/sh -c` with the command string, the payload on stdin, the same working directory, and the same environment. `XDG_STATE_HOME` points at a temporary directory, so the binary's file log never reaches the user's.
+    - **Both sides run as a harness runs a hook command:** `/bin/sh -c` with the command string, the payload on stdin, the same working directory, and the same environment.
+        - `XDG_STATE_HOME`, `UV_PROJECT_ENVIRONMENT`, and `RUFF_CACHE_DIR` point at temporary directories the two sides share. So the binary's file log never reaches the user's, and the project's `.venv` and `.ruff_cache` stay as they are.
+        - uv's own cache is the user's, which uv only adds to: a temporary one would need the network to install ruff again.
         - Today's side is the command this Mac's Claude and Codex homes register: `bash "~/.claude/hooks/<script>.sh"`, and for Codex `guard-codex.sh <guard>.sh`, `rtk-hook-codex.sh`, and `format-after-edit.sh`.
         - The binary's side is `"<binary>" <harness> <event> --hook <id>`, built once with the release flags (`CGO_ENABLED=0 -trimpath -ldflags=-s -w`), with logging on.
     - **The cases** (20): on Claude and on Codex, each guard on a pass and a block, rtk on `git status`, and the formatter on `.md` (no program), `.py` (uv and ruff), and `.go` (gofmt).
     - **The working directory is the repository's uv project**, which the formatter's `uv run --frozen --only-group lint ruff` needs. Only the formatter's file lives in a temporary directory, and it is written back to its first content before every run, outside the timed span. The design had a fresh copy of a small project per run, but each would make a new virtual environment, which takes seconds and would bury both sides.
     - **Each answer is checked:** a warm-up run of today's script gives the expected answer, and every run of either side must give it.
+        - The warm-up answer must show what the case is named for: a pass, Claude's or Codex's block, rtk's rewrite of `git status`, or ruff's report for `.py`. A missing rtk or gofmt would pass on both sides, fast and alike, and time nothing.
+        - For `.py` and `.go`, today's formatter must change the file, and every run of either side must leave the same content in it.
         - The exit code and stderr must match byte for byte. Stdout must too, or be the same JSON value (`toolhookcorpus.SameJSON`, as the parity corpora compare): Python's `json.dumps` spaces its separators, and the binary does not.
         - Each binary run must add exactly one line to its file log.
     - **Timing:** wall time from start to exit, N rounds (default 200), today's side first in even rounds and the binary first in odd ones. Times are nearest-rank p50 and p95. The tool exits 1 when a binary p95 passes the script's by more than the budget (15 ms).
@@ -269,28 +273,28 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
 
         | Case | Script p50 | Script p95 | Binary p50 | Binary p95 | Δp95 |
         | --- | ---: | ---: | ---: | ---: | ---: |
-        | `claude/pre/command-guard/pass` | 34.8 | 36.8 | 10.8 | 11.9 | -25.0 |
-        | `claude/pre/command-guard/block` | 34.7 | 37.1 | 11.0 | 11.9 | -25.2 |
-        | `claude/pre/files-guard/pass` | 23.0 | 25.3 | 10.8 | 11.8 | -13.5 |
-        | `claude/pre/files-guard/block` | 22.7 | 25.4 | 10.6 | 11.8 | -13.6 |
-        | `claude/pre/secrets-guard/pass` | 23.2 | 25.4 | 10.6 | 11.5 | -13.9 |
-        | `claude/pre/secrets-guard/block` | 23.1 | 25.7 | 10.6 | 11.5 | -14.1 |
-        | `claude/pre/rtk/git-status` | 57.1 | 61.6 | 25.9 | 28.7 | -32.9 |
-        | `claude/post/formatter/md` | 22.1 | 24.0 | 11.7 | 12.3 | -11.6 |
-        | `claude/post/formatter/py` | 99.2 | 104.0 | 85.5 | 90.9 | -13.1 |
-        | `claude/post/formatter/go` | 25.5 | 28.3 | 15.7 | 16.9 | -11.4 |
-        | `codex/pre/command-guard/pass` | 42.7 | 46.6 | 10.5 | 11.4 | -35.2 |
-        | `codex/pre/command-guard/block` | 46.9 | 50.2 | 10.5 | 11.7 | -38.6 |
-        | `codex/pre/files-guard/pass` | 39.9 | 44.3 | 10.4 | 11.5 | -32.9 |
-        | `codex/pre/files-guard/block` | 43.9 | 48.5 | 10.4 | 11.4 | -37.1 |
-        | `codex/pre/secrets-guard/pass` | 40.1 | 44.0 | 10.4 | 11.6 | -32.4 |
-        | `codex/pre/secrets-guard/block` | 44.2 | 48.8 | 10.4 | 11.5 | -37.3 |
-        | `codex/pre/rtk/git-status` | 74.9 | 80.6 | 46.6 | 49.0 | -31.7 |
-        | `codex/post/formatter/md` | 30.3 | 33.1 | 10.7 | 12.0 | -21.2 |
-        | `codex/post/formatter/py` | 103.3 | 110.7 | 80.1 | 85.8 | -24.9 |
-        | `codex/post/formatter/go` | 34.4 | 38.2 | 15.3 | 16.9 | -21.3 |
+        | `claude/pre/command-guard/pass` | 35.7 | 38.7 | 11.1 | 12.3 | -26.4 |
+        | `claude/pre/command-guard/block` | 35.4 | 38.4 | 11.2 | 12.3 | -26.1 |
+        | `claude/pre/files-guard/pass` | 23.7 | 26.0 | 11.1 | 12.2 | -13.8 |
+        | `claude/pre/files-guard/block` | 23.6 | 25.8 | 10.8 | 11.8 | -13.9 |
+        | `claude/pre/secrets-guard/pass` | 23.9 | 26.3 | 10.9 | 12.0 | -14.4 |
+        | `claude/pre/secrets-guard/block` | 24.0 | 26.6 | 10.9 | 12.3 | -14.4 |
+        | `claude/pre/rtk/git-status` | 58.9 | 64.7 | 26.7 | 30.1 | -34.6 |
+        | `claude/post/formatter/md` | 23.0 | 24.3 | 11.9 | 12.6 | -11.7 |
+        | `claude/post/formatter/py` | 100.4 | 106.6 | 85.8 | 90.4 | -16.1 |
+        | `claude/post/formatter/go` | 26.5 | 29.1 | 16.0 | 17.6 | -11.5 |
+        | `codex/pre/command-guard/pass` | 44.1 | 47.6 | 10.8 | 12.0 | -35.6 |
+        | `codex/pre/command-guard/block` | 48.6 | 52.8 | 10.8 | 11.8 | -41.0 |
+        | `codex/pre/files-guard/pass` | 41.2 | 44.8 | 10.6 | 12.0 | -32.8 |
+        | `codex/pre/files-guard/block` | 45.0 | 50.2 | 10.5 | 11.7 | -38.5 |
+        | `codex/pre/secrets-guard/pass` | 41.3 | 44.8 | 10.6 | 12.5 | -32.3 |
+        | `codex/pre/secrets-guard/block` | 45.5 | 50.2 | 10.6 | 11.7 | -38.5 |
+        | `codex/pre/rtk/git-status` | 75.6 | 82.0 | 46.9 | 50.1 | -31.9 |
+        | `codex/post/formatter/md` | 30.7 | 34.3 | 10.8 | 11.8 | -22.5 |
+        | `codex/post/formatter/py` | 104.6 | 114.6 | 80.8 | 87.9 | -26.7 |
+        | `codex/post/formatter/go` | 35.4 | 39.4 | 15.6 | 17.2 | -22.2 |
 
-    - The binary is faster in every case. Its guards take about 11 ms end to end with logging on, where the Python command guard took 35 to 47 ms. The formatter's `.py` case is mostly uv and ruff on both sides.
+    - The binary is faster in every case. Its guards take about 11 ms end to end with logging on, where the Python command guard took 35 to 49 ms. The formatter's `.py` case is mostly uv and ruff on both sides.
     - CI does not run the measurement, since timing is noisy there. Its tests run with fake scripts and three rounds, so the tool cannot rot.
 
 ### Bugs of the old scripts that the binary fixes
