@@ -55,6 +55,23 @@
       }
     }
   },
+  "registration": {
+    "events": {"pre": "PreToolUse", "post": "PostToolUse"},
+    "blocks": [
+      {"event": "pre", "matcher": "Write|Edit|NotebookEdit", "hooks": ["files-guard", "secrets-guard"]},
+      {"event": "pre", "matcher": "Bash", "hooks": ["command-guard"]},
+      {"event": "pre", "matcher": "Bash", "hooks": ["rtk"]},
+      {"event": "post", "matcher": "Write|Edit", "hooks": ["formatter"]}
+    ],
+    "launchers": [
+      {
+        "os": ["darwin", "linux", "windows"],
+        "shell": "exec",
+        "closed": {"type": "command", "command": "{{.Binary}}", "args": ["{{.Harness}}", "{{.Event}}", "--hook", "{{.Hook}}"], "timeout": 30, "onFailure": "block"},
+        "open": {"type": "command", "command": "{{.Binary}}", "args": ["{{.Harness}}", "{{.Event}}", "--hook", "{{.Hook}}"], "timeout": 30}
+      }
+    ]
+  },
   "events": {
     "pre": {
       "schema": "pre.schema.json",
