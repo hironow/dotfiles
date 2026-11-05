@@ -95,6 +95,14 @@ jobs:
         env:
           GOTOOLCHAIN: auto
         run: just go-test go
+      - name: Vet agent-hook for Windows and for other Unix systems
+        # No job runs agent-hook on these: Windows has code of its own, and on
+        # other Unix systems (freebsd stands for them) the process adapter
+        # refuses commands. Vet keeps both compiling.
+        working-directory: tools/agent-hooks
+        run: |
+          GOOS=windows go vet ./...
+          GOOS=freebsd go vet ./internal/launch/
   go-macos:
     name: Go tests on macOS (agent-hook file log)
     # The agent-hook file log removes macOS ACLs through raw system calls

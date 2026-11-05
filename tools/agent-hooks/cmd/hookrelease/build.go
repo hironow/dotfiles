@@ -10,9 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/goccy/go-json/jsontext"
 	json "github.com/goccy/go-json/v2"
@@ -235,7 +235,23 @@ func (p releasePlan) compile(path string) error {
 	return err
 }
 
-func (p releasePlan) build(releases string) (string, error) {
+// binaryName is the release binary's file name on target.
+func binaryName(target buildTarget) string {
+	if target.OS == "windows" {
+		return "agent-hook.exe"
+	}
+	return "agent-hook"
+}
+
+// buildDirectory is the name os.MkdirTemp gives a build's temporary
+// directory (buildPattern), and nothing else in a releases directory.
+var buildDirectory = regexp.MustCompile(`^\.tmp-agent-hook-[0-9]+$`)
+
+const buildPattern = ".tmp-agent-hook-*"
+
+// build builds the host's release under the lock on releases, so builds of
+// one directory run one at a time.
+func (p releasePlan) build(releases string, stderr io.Writer) (string, error) {
 	if p.target.OS != runtime.GOOS || p.target.Arch != runtime.GOARCH {
 		return "", errors.New("build publishes only the host's release")
 	}
@@ -243,15 +259,15 @@ func (p releasePlan) build(releases string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	created, err := makeReleaseParents(releases)
+	lock, err := lockReleases(releases, stderr)
 	if err != nil {
 		return "", err
 	}
-	defer removeEmptyDirectories(created)
-	if err := removeStaleBuilds(releases, time.Now()); err != nil {
+	defer lock.release()
+	if err := removeDeadBuilds(releases); err != nil {
 		return "", err
 	}
-	tmp, err := os.MkdirTemp(releases, ".tmp-*")
+	tmp, err := os.MkdirTemp(releases, buildPattern)
 	if err != nil {
 		return "", err
 	}
@@ -259,11 +275,7 @@ func (p releasePlan) build(releases string) (string, error) {
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		return "", err
 	}
-	name := "agent-hook"
-	if p.target.OS == "windows" {
-		name += ".exe"
-	}
-	path := filepath.Join(tmp, name)
+	path := filepath.Join(tmp, binaryName(p.target))
 	if err := p.compile(path); err != nil {
 		return "", err
 	}
@@ -276,7 +288,7 @@ func (p releasePlan) build(releases string) (string, error) {
 	if err := p.ownChecks(path); err != nil {
 		return "", err
 	}
-	return p.publish(tmp, releases)
+	return p.publish(systemDisk{}, tmp, releases)
 }
 
 func removeEmptyDirectories(paths []string) {
@@ -285,20 +297,16 @@ func removeEmptyDirectories(paths []string) {
 	}
 }
 
-func removeStaleBuilds(releases string, now time.Time) error {
+// removeDeadBuilds removes every build directory in releases. The caller
+// holds the lock, and a build holds it until it ends, so each one is what a
+// killed build left, whatever its age.
+func removeDeadBuilds(releases string) error {
 	entries, err := os.ReadDir(releases)
 	if err != nil {
 		return err
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".tmp-") {
-			continue
-		}
-		stat, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if now.Sub(stat.ModTime()) > time.Hour {
+		if entry.IsDir() && buildDirectory.MatchString(entry.Name()) {
 			if err := os.RemoveAll(filepath.Join(releases, entry.Name())); err != nil {
 				return err
 			}
@@ -350,12 +358,41 @@ func (p releasePlan) ownChecks(path string) error {
 	return nil
 }
 
-func (p releasePlan) publish(tmp, releases string) (string, error) {
-	dir := filepath.Join(releases, p.id)
-	name := "agent-hook"
-	if p.target.OS == "windows" {
-		name += ".exe"
+// releaseDisk is the file system as a publish needs it. The order of these
+// steps makes a release reach the disk whole or not at all.
+type releaseDisk interface {
+	SyncFile(path string) error
+	SyncDirectory(path string) error
+	Rename(oldpath, newpath string) error
+}
+
+// systemDisk is this machine's releaseDisk.
+type systemDisk struct{}
+
+func (systemDisk) SyncFile(path string) error {
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return err
 	}
+	defer root.Close()
+	// Windows flushes only a handle open for writing.
+	file, err := root.OpenFile(filepath.Base(path), os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	err = file.Sync()
+	return errors.Join(err, file.Close())
+}
+
+func (systemDisk) SyncDirectory(path string) error { return syncDirectory(path) }
+
+func (systemDisk) Rename(oldpath, newpath string) error { return os.Rename(oldpath, newpath) }
+
+// publish moves a checked build from tmp to releases/<id>. The caller holds
+// the lock on releases, so what it finds there no other build is changing.
+func (p releasePlan) publish(disk releaseDisk, tmp, releases string) (string, error) {
+	dir := filepath.Join(releases, p.id)
+	name := binaryName(p.target)
 	path := filepath.Join(dir, name)
 	if _, err := os.Lstat(dir); err == nil {
 		old, err := fileSHA256(path)
@@ -379,27 +416,18 @@ func (p releasePlan) publish(tmp, releases string) (string, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	root, err := os.OpenRoot(tmp)
-	if err != nil {
+	// The binary and its directory reach the disk before the rename names
+	// them, and the rename reaches it after.
+	if err := disk.SyncFile(filepath.Join(tmp, name)); err != nil {
 		return "", err
 	}
-	defer root.Close()
-	binary, err := root.OpenFile(name, os.O_RDWR, 0)
-	if err != nil {
+	if err := disk.SyncDirectory(tmp); err != nil {
 		return "", err
 	}
-	err = binary.Sync()
-	closeErr := binary.Close()
-	if err != nil || closeErr != nil {
-		return "", errors.Join(err, closeErr)
-	}
-	if err := syncDirectory(tmp); err != nil {
+	if err := disk.Rename(tmp, dir); err != nil {
 		return "", err
 	}
-	if err := os.Rename(tmp, dir); err != nil {
-		return "", err
-	}
-	if err := syncDirectory(releases); err != nil {
+	if err := disk.SyncDirectory(releases); err != nil {
 		return "", err
 	}
 	return path, nil

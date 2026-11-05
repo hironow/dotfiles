@@ -92,7 +92,12 @@ func TestSwitchRefusesEscapingReleaseSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("switch is not wired on Windows")
 	}
-	root := t.TempDir()
+	// A resolved root (macOS's temporary directory is under a link), so
+	// only resolving the whole target can tell where the release is.
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	good := release(t, root, "0123456789abcdef")
 	if code, _, stderr := releaseCommand(t, "switch", "--root", root, "--home", "claude", good); code != 0 {
 		t.Fatalf("initial switch exit %d: %s", code, stderr)

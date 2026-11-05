@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"debug/buildinfo"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,7 +74,31 @@ func isolatedModule(t *testing.T) string {
 	return module
 }
 
+// skipBuildOnWindows skips a test that builds a release: on Windows, build
+// waits for its own PR (TestBuildRefusedOnWindows).
+func skipBuildOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("build is not wired on Windows in PR 3")
+	}
+}
+
+func TestBuildRefusedOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows only")
+	}
+	isolatedModule(t)
+	releases := filepath.Join(t.TempDir(), "releases")
+	if code, _, stderr := releaseCommand(t, "build", "--into", releases); code != 2 || !strings.Contains(stderr, "not wired on Windows") {
+		t.Fatalf("Windows build exit %d, want 2: %s", code, stderr)
+	}
+	if _, err := os.Stat(releases); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a refused build made %s: %v", releases, err)
+	}
+}
+
 func TestReleaseBuild(t *testing.T) {
+	skipBuildOnWindows(t)
 	module := isolatedModule(t)
 	releases := filepath.Join(t.TempDir(), "releases")
 	code, path, stderr := releaseCommand(t, "build", "--into", releases)
@@ -104,19 +129,16 @@ func TestReleaseBuild(t *testing.T) {
 	}
 	for _, name := range []string{path, filepath.Dir(path)} {
 		stat, err := os.Stat(name)
-		if err != nil || (runtime.GOOS != "windows" && stat.Mode().Perm() != 0o755) {
+		if err != nil || stat.Mode().Perm() != 0o755 {
 			t.Fatalf("release permissions: %s: %v (%v)", name, stat, err)
 		}
 	}
 	t.Run("check", func(t *testing.T) {
-		checkPath := path
-		if runtime.GOOS != "windows" {
-			root := filepath.Dir(releases)
-			if code, _, stderr := releaseCommand(t, "switch", "--root", root, "--home", "claude", path); code != 0 {
-				t.Fatalf("switch exit %d: %s", code, stderr)
-			}
-			checkPath = filepath.Join(root, "current", "claude", "agent-hook")
+		root := filepath.Dir(releases)
+		if code, _, stderr := releaseCommand(t, "switch", "--root", root, "--home", "claude", path); code != 0 {
+			t.Fatalf("switch exit %d: %s", code, stderr)
 		}
+		checkPath := filepath.Join(root, "current", "claude", "agent-hook")
 		if code, _, stderr := releaseCommand(t, "check", checkPath); code != 0 {
 			t.Fatalf("check exit %d: %s", code, stderr)
 		}

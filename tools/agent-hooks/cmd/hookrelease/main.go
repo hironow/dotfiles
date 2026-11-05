@@ -38,7 +38,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, previous)
 		return 0
 	}
-	path, err := buildCommand(args)
+	path, err := buildCommand(args, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, "hookrelease:", err)
 		return 2
@@ -47,7 +47,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func buildCommand(args []string) (string, error) {
+func buildCommand(args []string, stderr io.Writer) (string, error) {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		args = append([]string{"build"}, args...)
 	}
@@ -65,6 +65,9 @@ func buildCommand(args []string) (string, error) {
 	if flags.NArg() != 0 {
 		return "", errors.New("expected build flags only")
 	}
+	if runtime.GOOS == "windows" {
+		return "", errors.New("build is not wired on Windows in PR 3")
+	}
 	if into == "" {
 		root, err := dataRoot()
 		if err != nil {
@@ -76,7 +79,7 @@ func buildCommand(args []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return plan.build(into)
+	return plan.build(into, stderr)
 }
 
 func idCommand(args []string) (string, error) {

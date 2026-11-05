@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"debug/buildinfo"
 	"errors"
+	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -130,8 +135,14 @@ func exerciseReleaseBuild(t *testing.T, module, path, releases string) {
 	t.Run("incomplete release has no binary", func(t *testing.T) {
 		testIncompleteReleaseRecovery(t, path, releases, original, "interrupted")
 	})
-	t.Run("stale temporary builds are removed", func(t *testing.T) {
-		testStaleBuildCleanup(t, releases)
+	t.Run("a dead build's directory is removed", func(t *testing.T) {
+		testDeadBuildCleanup(t, releases)
+	})
+	t.Run("a build waits for the one that holds the lock", func(t *testing.T) {
+		testBuildWaitsForLock(t, path, releases, original)
+	})
+	t.Run("a build that waited on a removed directory starts again", func(t *testing.T) {
+		testBuildAfterRemovedDirectory(t, path, original)
 	})
 	t.Run("check uses a disposable cache", func(t *testing.T) {
 		testCheckCache(t, path, releases)
@@ -178,28 +189,189 @@ func testIncompleteReleaseRecovery(t *testing.T, path, releases string, original
 	}
 }
 
-func testStaleBuildCleanup(t *testing.T, releases string) {
+// testDeadBuildCleanup: a build holds the lock until it ends, so a build
+// directory found under the lock is a killed build's, whatever its age.
+// Only the names a build makes are removed.
+func testDeadBuildCleanup(t *testing.T, releases string) {
 	t.Helper()
-	stale := filepath.Join(releases, ".tmp-stale")
-	recent := filepath.Join(releases, ".tmp-recent")
-	for dir, age := range map[string]time.Duration{stale: 2 * time.Hour, recent: 30 * time.Minute} {
+	dead := map[string]time.Duration{".tmp-agent-hook-1": 0, ".tmp-agent-hook-22": 2 * time.Hour}
+	kept := []string{".tmp-1", ".tmp-agent-hook-notes"}
+	for _, name := range append(slices.Collect(maps.Keys(dead)), kept...) {
+		dir := filepath.Join(releases, name)
 		if err := os.Mkdir(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 		mustWrite(t, filepath.Join(dir, "agent-hook"), []byte("interrupted"))
-		when := time.Now().Add(-age)
-		if err := os.Chtimes(dir, when, when); err != nil {
-			t.Fatal(err)
+		if age := dead[name]; age != 0 {
+			when := time.Now().Add(-age)
+			if err := os.Chtimes(dir, when, when); err != nil {
+				t.Fatal(err)
+			}
 		}
 		t.Cleanup(func() { os.RemoveAll(dir) })
 	}
 	builtRelease(t, releases)
-	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("stale temporary build remains: %v", err)
+	for name := range dead {
+		if _, err := os.Stat(filepath.Join(releases, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("dead build %s remains: %v", name, err)
+		}
 	}
-	if _, err := os.Stat(recent); err != nil {
-		t.Fatalf("recent temporary build was removed: %v", err)
+	for _, name := range kept {
+		if _, err := os.Stat(filepath.Join(releases, name)); err != nil {
+			t.Fatalf("%s, which no build made, was removed: %v", name, err)
+		}
 	}
+}
+
+// testBuildWaitsForLock: while another build holds the lock, a build touches
+// nothing; once the lock is free, it sees what that build left.
+func testBuildWaitsForLock(t *testing.T, path, releases string, original []byte) {
+	t.Helper()
+	// given another build that holds the lock, has its temporary directory,
+	// and is publishing the same ID, whose binary is not there yet
+	other, err := lockReleases(releases, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	running := filepath.Join(releases, ".tmp-agent-hook-7")
+	if err := os.Mkdir(running, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(running, "agent-hook"), []byte("building"))
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	before := entryNames(t, releases)
+	// when a build starts, then it waits for the lock and changes nothing
+	build := startBuild(releases)
+	if !build.waitsForLock() {
+		other.release()
+		t.Fatalf("a build ran while another held the lock: %+v", build.result())
+	}
+	if after := entryNames(t, releases); !reflect.DeepEqual(after, before) {
+		other.release()
+		t.Fatalf("a waiting build changed the releases: %q, want %q", after, before)
+	}
+	// when the other build publishes the binary and dies without cleaning up
+	if err := os.WriteFile(path, original, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	other.release()
+	// then the waiting build keeps that release and removes the dead build's directory
+	if r := build.result(); r.code != 0 || r.path != path || !bytes.Equal(original, mustRead(t, path)) {
+		t.Fatalf("build after the lock: %+v", r)
+	}
+	if _, err := os.Stat(running); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the dead build's directory remains: %v", err)
+	}
+}
+
+// testBuildAfterRemovedDirectory: a first build that fails removes the
+// directories it made, while another build waits on one of them; that
+// build starts again on a new directory.
+func testBuildAfterRemovedDirectory(t *testing.T, path string, original []byte) {
+	t.Helper()
+	releases := filepath.Join(t.TempDir(), "new", "releases")
+	first, err := lockReleases(releases, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := startBuild(releases)
+	if !build.waitsForLock() {
+		first.release()
+		t.Fatalf("a build ran while another held the lock: %+v", build.result())
+	}
+	first.release()
+	want := filepath.Join(releases, filepath.Base(filepath.Dir(path)), filepath.Base(path))
+	if r := build.result(); r.code != 0 || r.path != want || !bytes.Equal(original, mustRead(t, want)) {
+		t.Fatalf("build after the removed directory: %+v, want %s", r, want)
+	}
+}
+
+type buildResult struct {
+	code         int
+	path, stderr string
+}
+
+// backgroundBuild is a build run on its own goroutine, with its stderr
+// watched for the line that says it waits for the lock.
+type backgroundBuild struct {
+	stderr  *lockedBuffer
+	waiting chan struct{}
+	done    chan buildResult
+}
+
+func startBuild(releases string) *backgroundBuild {
+	b := &backgroundBuild{waiting: make(chan struct{}), done: make(chan buildResult, 1)}
+	b.stderr = &lockedBuffer{watch: "waiting for another build", seen: b.waiting}
+	go func() {
+		var stdout bytes.Buffer
+		code := run([]string{"build", "--into", releases}, &stdout, b.stderr)
+		b.done <- buildResult{code, strings.TrimSpace(stdout.String()), b.stderr.String()}
+	}()
+	return b
+}
+
+// waitsForLock reports whether the build says it waits before it ends.
+func (b *backgroundBuild) waitsForLock() bool {
+	select {
+	case <-b.waiting:
+		return true
+	case r := <-b.done:
+		b.done <- r
+		return false
+	case <-time.After(3 * time.Minute):
+		return false
+	}
+}
+
+func (b *backgroundBuild) result() buildResult {
+	select {
+	case r := <-b.done:
+		b.done <- r
+		return r
+	case <-time.After(3 * time.Minute):
+		return buildResult{code: -1, stderr: "the build did not end: " + b.stderr.String()}
+	}
+}
+
+// lockedBuffer is a buffer safe for one writer and other readers, which
+// closes seen once watch has been written.
+type lockedBuffer struct {
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	watch string
+	seen  chan struct{}
+	once  sync.Once
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n, err := l.buf.Write(p)
+	if strings.Contains(l.buf.String(), l.watch) {
+		l.once.Do(func() { close(l.seen) })
+	}
+	return n, err
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+func entryNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names
 }
 
 func testCheckCache(t *testing.T, path, releases string) {
