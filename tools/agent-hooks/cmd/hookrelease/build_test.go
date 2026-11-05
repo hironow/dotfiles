@@ -24,6 +24,12 @@ func TestCheckHelpExplainsFreshCache(t *testing.T) {
 	if code != 0 || !strings.Contains(stderr, "slower") || !strings.Contains(stderr, "temporary GOCACHE") {
 		t.Fatalf("check help exit %d: %s", code, stderr)
 	}
+	// and it names each exit code, since doctor acts on them
+	for _, code := range []string{"0: the same bytes", "1: another release ID", "3: the same ID but other bytes", "2: cannot check"} {
+		if !strings.Contains(stderr, code) {
+			t.Errorf("check help does not say %q: %s", code, stderr)
+		}
+	}
 }
 
 func shellLiteral(value string) string {
@@ -152,8 +158,10 @@ func TestReleaseBuild(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer os.WriteFile(path, original, 0o755)
-		if code, _, stderr := releaseCommand(t, "check", checkPath); code != 1 {
-			t.Fatalf("changed binary check exit %d, want 1: %s", code, stderr)
+		// a release whose bytes differ from what its ID names exits 3, not 1:
+		// sync can replace another ID's release, but never this one in place
+		if code, _, stderr := releaseCommand(t, "check", checkPath); code != 3 || !strings.Contains(stderr, id) || !strings.Contains(stderr, "SHA-256") {
+			t.Fatalf("changed binary check exit %d, want 3 naming release %s and both SHA-256: %s", code, id, stderr)
 		}
 	})
 	exerciseReleaseBuild(t, module, path, releases)

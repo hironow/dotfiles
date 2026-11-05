@@ -58,6 +58,18 @@ jobs:
           tests/unit/test_hook_payload_corpus.py
           tests/unit/test_tool_hooks_corpus.py
 
+      # Doctor's real-hookrelease test needs the Go that tools/agent-hooks/go.mod
+      # asks for. The runner's system Go is older, so the run above skips it;
+      # this step gives it that Go, and a skip fails instead.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/agent-hooks/go.mod
+          cache-dependency-path: tools/agent-hooks/go.sum
+      - name: Doctor's real hookrelease check, with the module's Go
+        env:
+          AGENT_HOOK_DOCTOR_STRICT_GO: "1"
+        run: uvx pytest -q -ra tests/unit/test_agent_hook_doctor.py -k real_hookrelease
+
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Check Pi provider failover
         run: bun test tests/unit/jev_sonnet_fallback.test.ts
@@ -143,7 +155,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           Remove-Item Env:HOME -ErrorAction SilentlyContinue
           just --summary
-          uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_jev_pi_verify.py tests/unit/test_jev_codex_exec.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py
+          uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_jev_pi_verify.py tests/unit/test_jev_codex_exec.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py tests/unit/test_agent_hooks_build_recipe.py
           bun test tests/unit/jev_sonnet_fallback.test.ts
 
   # The Ollama host checks run Windows PowerShell classifiers (the WSL

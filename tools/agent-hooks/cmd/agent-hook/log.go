@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	json "github.com/goccy/go-json/v2"
+
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logline"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logsink"
 )
@@ -66,17 +68,22 @@ func (f *fileLog) Write(now time.Time, line []byte) error {
 	return sink.Write(now, line)
 }
 
-// printLog is `agent-hook log [--days N]`: the lines of the last N UTC days
-// (today's included; default 1) as a table, oldest first. A line it cannot
-// read is skipped and counted at the end. Reading makes nothing: with no log
-// directory yet, it says so.
+// printLog is `agent-hook log [--days N] [--summary]`: the lines of the last
+// N UTC days (today's included; default 1) as a table, oldest first, or with
+// --summary their counts as one JSON object (logline.Summary) for doctor. A
+// line it cannot read is skipped and counted. Reading makes nothing: with no
+// log directory yet, it says so, or gives zero counts.
 func printLog(args []string, stdout, stderr io.Writer, lookupEnv func(string) (string, bool), now time.Time) int {
 	flags := flag.NewFlagSet("agent-hook log", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	days := flags.Int("days", 1, "how many UTC days to print, today's included")
+	summary := flags.Bool("summary", false, "print the counts as JSON")
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 || *days < 1 || *days > logsink.KeepDays+1 {
-		_, _ = fmt.Fprintf(stderr, "usage: agent-hook log [--days N], with N from 1 to %d\n", logsink.KeepDays+1)
+		_, _ = fmt.Fprintf(stderr, "usage: agent-hook log [--days N] [--summary], with N from 1 to %d\n", logsink.KeepDays+1)
 		return exitUsage
+	}
+	if *summary && runtime.GOOS == "windows" {
+		return printSummary(stdout, logline.Summarize(*days, nil, 0)) // no file log on Windows yet
 	}
 	base, ok := logsink.Base(lookupEnv)
 	if !ok {
@@ -87,6 +94,9 @@ func printLog(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 	// makes nothing: it only says that there is no file log there yet.)
 	logs := filepath.Join(base, "dotfiles", "agent-hooks", "logs")
 	if _, err := os.Lstat(logs); runtime.GOOS != "windows" && errors.Is(err, fs.ErrNotExist) {
+		if *summary {
+			return printSummary(stdout, logline.Summarize(*days, nil, 0))
+		}
 		_, _ = fmt.Fprintln(stdout, "No log yet: no hook run has written one.")
 		return 0
 	}
@@ -102,6 +112,9 @@ func printLog(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 		return 1
 	}
 	if len(data) == 0 {
+		if *summary {
+			return printSummary(stdout, logline.Summarize(*days, nil, 0))
+		}
 		_, _ = fmt.Fprintf(stdout, "No log lines in the last %d UTC day(s).\n", *days)
 		return 0
 	}
@@ -115,10 +128,26 @@ func printLog(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 		}
 		lines = append(lines, line)
 	}
+	if *summary {
+		return printSummary(stdout, logline.Summarize(*days, lines, skipped))
+	}
 	slices.SortStableFunc(lines, func(a, b logline.Line) int {
 		return strings.Compare(a.Time, b.Time)
 	})
 	if _, err := io.WriteString(stdout, logline.Table(lines, skipped)); err != nil {
+		return 1
+	}
+	return 0
+}
+
+// printSummary writes the summary as one line of JSON, its maps' keys sorted
+// so the same log always gives the same bytes.
+func printSummary(stdout io.Writer, summary logline.Summary) int {
+	encoded, err := json.Marshal(summary, json.Deterministic(true))
+	if err != nil {
+		return 1
+	}
+	if _, err := stdout.Write(append(encoded, '\n')); err != nil {
 		return 1
 	}
 	return 0

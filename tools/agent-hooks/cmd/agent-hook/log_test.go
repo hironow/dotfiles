@@ -3,6 +3,7 @@ package main_test
 import (
 	"bytes"
 	"errors"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	json "github.com/goccy/go-json/v2"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/harnesses"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logline"
@@ -99,9 +102,79 @@ func TestEachRunLogsOneLineInTheStateDirectory(t *testing.T) {
 	}
 }
 
+func TestAgentHookLogSummaryCountsTheDaysLines(t *testing.T) {
+	skipOnWindows(t)
+	state := t.TempDir()
+	payload, err := harnesses.FS.ReadFile("claude/fixtures/pre-bash.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// given a day's log with one real line
+	if exit, _, _ := runIn(t, state, payload, "claude", "pre", "--hook", "command-guard"); exit != 0 {
+		t.Fatalf("hook run exit %d", exit)
+	}
+	day := filepath.Join(state, "dotfiles", "agent-hooks", "logs", time.Now().UTC().Format("2006-01-02")+".jsonl")
+	real, err := os.ReadFile(day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// and lines a reader cannot trust: a timeout, values outside the fixed
+	// sets, and a line that is no JSON object
+	var fields map[string]any
+	if err := json.Unmarshal(real, &fields); err != nil {
+		t.Fatal(err)
+	}
+	var crafted []byte
+	for _, set := range []map[string]any{
+		{"error": "hook.timeout"},
+		{"error": "weird.code", "mismatch": "odd\x01"},
+	} {
+		line := maps.Clone(fields)
+		maps.Copy(line, set)
+		encoded, err := json.Marshal(line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		crafted = append(append(crafted, encoded...), '\n')
+	}
+	crafted = append(crafted, "not a line\n"...)
+	file, err := os.OpenFile(day, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(crafted); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// when the summary is asked for
+	exit, stdout, stderr := runIn(t, state, nil, "log", "--summary")
+	// then it counts the readable lines, and names only codes it knows
+	want := `{"days":1,"lines":3,"unreadable":1,"errors":{"hook.timeout":1,"other":1},"mismatches":{"other":1}}` + "\n"
+	if exit != 0 || stdout != want || stderr != "" {
+		t.Fatalf("exit %d, stdout %q, stderr %q; want %q", exit, stdout, stderr, want)
+	}
+}
+
+func TestAgentHookLogSummaryOfNoLogMakesNothing(t *testing.T) {
+	skipOnWindows(t)
+	state := t.TempDir()
+	// given no log yet, when the summary is asked for
+	exit, stdout, stderr := runIn(t, state, nil, "log", "--summary", "--days", "2")
+	// then it gives zero counts, and makes no directory
+	want := `{"days":2,"lines":0,"unreadable":0,"errors":{},"mismatches":{}}` + "\n"
+	if exit != 0 || stdout != want || stderr != "" {
+		t.Fatalf("exit %d, stdout %q, stderr %q; want %q", exit, stdout, stderr, want)
+	}
+	if entries, err := os.ReadDir(state); err != nil || len(entries) != 0 {
+		t.Errorf("the state directory holds %v (%v); want it left empty", entries, err)
+	}
+}
+
 func TestAgentHookLogRefusesArgumentsItDoesNotKnow(t *testing.T) {
 	state := t.TempDir()
-	for _, args := range [][]string{{"log", "--days", "0"}, {"log", "extra"}, {"log", "--weeks", "1"}} {
+	for _, args := range [][]string{{"log", "--days", "0"}, {"log", "extra"}, {"log", "--weeks", "1"}, {"log", "--summary", "extra"}} {
 		exit, stdout, stderr := runIn(t, state, nil, args...)
 		if exit != 64 || stdout != "" || !strings.Contains(stderr, "usage: agent-hook log") {
 			t.Errorf("agent-hook %q: exit %d, stdout %q, stderr %q; want exit 64 and the usage", args, exit, stdout, stderr)
