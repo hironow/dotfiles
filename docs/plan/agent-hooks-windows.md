@@ -50,7 +50,10 @@ For each item, record what you ran, what happened, and whether it matches the ex
     - a non-zero exit;
     - exit 0 with malformed output;
     - a hang past the stage deadline (10 s), and past the registration timeout (30 s).
-    - Expected: a guard blocks in every failure case except a hang past the registration timeout (Codex then fails open). rtk and the formatter let the call go on.
+    - Expected: a guard blocks in every failure case except two, where Codex fails open:
+        - a hang past the registration timeout;
+        - exit 0 with malformed output, since the fallback runs only after a non-zero exit. This one is known (the plan's launcher section): a binary reaches a home only after the rebuild-digest check and `selftest`, and doctor checks the digest again.
+    - rtk and the formatter let the call go on.
 3. **The cmd form, through `cmd /C "<command>"`:** the same cases as 2.
 4. **What a shell does before the command:**
     - cmd runs the `AutoRun` value under `HKCU\Software\Microsoft\Command Processor` and `HKLM\Software\Microsoft\Command Processor` first. Anything it prints, or a non-zero exit, breaks every hook, today's scripts included. This is the Windows twin of zsh's `.zshenv`. Record both values.
