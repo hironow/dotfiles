@@ -438,6 +438,13 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
         - Found on the way: on POSIX Codex reads the command with the user's shell, not `sh`.
     - Round 2 (REVISE, 1): an unsupported shell must stop the wiring, not only show in doctor. Adopted as a precondition of 3d, with a doctor WARN in 3c.
     - Round 3: APPROVE.
+- PR 3b code reviews: Codex, in the design's session (Codex wrote most of the Go code in another), and an independent review (a Claude subagent). Each finding was adopted unless noted:
+    - Before the reviews (Claude, on Codex's code): the Go layout check was not anchored, so it accepted an empty segment that sync does not own; and the shell was chosen by the harness's name instead of the data.
+    - Round 1 (Codex REVISE, 3; the independent review REVISE, no P1):
+        - Codex: a member check that the script rule bypassed (P1); write errors that still exited 0 (P2); a Go regression on POSIX `\` the corpus could not catch (P2).
+        - The independent review: no disagreement in 2,211 fuzzed (form, path) pairs, but two one-sided mutations survived (POSIX `\`, the drive letter's case); Unicode whitespace after the program; and, at load, empty blocks, overrides on cells that are not supported, and closed hooks after the tool.
+        - Not adopted: owning only render's full command, since a changed template's older handlers would no longer be owned. The docs now say what is owned: a handler whose program is the binary, placed as render places it.
+    - Round 2 (Codex): APPROVE.
 - PR 3a code reviews: Codex, in one session (Codex wrote most of the code in others), and an independent review (a Claude subagent). Each finding was adopted unless noted:
     - Round 1 (Codex REVISE, 4; the independent review, 13):
         - Codex: `switch` could point outside the releases, through a release directory that links out; a cross build was published without its own checks; `check` could not check a home's link; foreign inputs were judged under the launching process's build tags.
