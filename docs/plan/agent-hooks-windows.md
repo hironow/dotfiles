@@ -30,7 +30,7 @@ This plan is for the operator, or the agent session, on the native Windows host.
     - The deny JSON is `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"agent-hook failed"}}`.
     - rtk and the formatter use the bare command, with no fallback.
 - **Paths render refuses on Windows:** `%`, `!`, and `"` in the cmd form; `‘ ’ ‚ ‛` and `* ? [ ]` in the PowerShell form (`&` resolves wildcards in a missing path: pwsh 7.6.9 on macOS ran another program); a UNC path; a missing `.exe`.
-- **The recipe `just agent-hooks-build`** gets no arguments on native Windows: the `windows-shell` hands a recipe no positional arguments, by its `-c` contract. So `check` and `id` cannot go through the recipe there.
+- **The recipe `just agent-hooks-build`** has a `[windows]` recipe of its own, which pastes the arguments into the line: the `windows-shell` hands a recipe no positional arguments, by its `-c` contract. `id` and a `check` path with no space or quote pass through; CI's `windows-jev` job runs `tests/unit/test_agent_hooks_build_recipe.py` on Windows. A path with a space or a quote splits there.
 - **Doctor's agent-hook checker** prints no shell lines on Windows yet.
 - **What Codex 0.166.0 does on Windows, from its source** (`hooks/src/engine/command_runner.rs`, `core/src/session/mod.rs`, `shell-command/src/shell_detect.rs`). These are not yet seen on the host.
     - Its session's shell on Windows is PowerShell when found, else a last fallback.
@@ -76,7 +76,7 @@ For each item, record what you ran, what happened, and whether it matches the ex
     - a versioned copy.
 3. **The watchdog on Windows:** put each child in a job object, so the deadline kills its descendants too.
 4. **The file log on Windows:** check the owner and the DACL through handles (`golang.org/x/sys/windows` needs the dependency policy's reason, or `syscall`), test it on a Windows runner, then log on Windows.
-5. **`just agent-hooks-build` on native Windows:** make arguments reach the recipe (for example a `windows-shell` that passes `"$@"`, which changes a contract `tests/unit/test_windows_shell_usr_bin_path.py` pins), and run `tests/unit/test_agent_hooks_build_recipe.py` on Windows.
+5. **`just agent-hooks-build` on native Windows:** make each argument reach hookrelease as given, as the `[unix]` recipe does (for example a `windows-shell` that passes `"$@"`, which changes a contract `tests/unit/test_windows_shell_usr_bin_path.py` pins). Then one recipe serves both, and the quoting test in `tests/unit/test_agent_hooks_build_recipe.py` runs on Windows too.
 6. **Sync and doctor on Windows:**
     - sync renders the form for the shell Codex uses (A1);
     - doctor's Windows lines name that shell, and check cmd's `AutoRun` (A4) and the found PowerShell executable.

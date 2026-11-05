@@ -924,13 +924,22 @@ agent-hooks-latency *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hooklatency {{args}}
 
 # Build the agent-hook binary as a release, reproducibly, into the data directory.
+# Each argument reaches hookrelease as given (positional arguments).
 # Build a host release; also: id [--goos OS --goarch ARCH], check PATH, switch --home KEY [--root DIR] PATH.
-# Each argument reaches hookrelease as given (positional arguments; none on
-# native Windows, whose windows-shell hands a recipe no positional arguments).
 [group('Agents')]
 [positional-arguments]
+[unix]
 agent-hooks-build *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease "${@:-build}"
+
+# Native Windows: windows-shell hands a recipe no positional arguments (its -c
+# contract), so the arguments are pasted into the line. `id` and a `check` path
+# with no space or quote pass through (docs/plan/agent-hooks-windows.md, B5).
+# Windows: id [--goos OS --goarch ARCH] and check PATH (build and switch wait for the Windows PR).
+[group('Agents')]
+[windows]
+agent-hooks-build *args:
+    cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease {{ if args == "" { "build" } else { args } }}
 
 [group('Lint')]
 go-lint:
