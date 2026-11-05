@@ -3,10 +3,12 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"syscall"
 )
 
@@ -25,10 +27,18 @@ var testHookBeforeOpen = func() {}
 // locks it (flock on the directory itself, so no lock file is left behind).
 // It tells stderr when it waits for another build.
 func lockReleases(releases string, stderr io.Writer) (releasesLock, error) {
+	// Every directory this build created, in any attempt, deepest first:
+	// what it removes when it fails, if they are still empty.
+	var created []string
+	fail := func(err error) (releasesLock, error) {
+		removeEmptyDirectories(created)
+		return releasesLock{}, err
+	}
 	for range 10 {
-		created, err := makeReleaseParents(releases)
+		made, err := makeReleaseParents(releases)
+		created = deepestFirst(append(created, made...))
 		if err != nil {
-			return releasesLock{}, err
+			return fail(err)
 		}
 		testHookBeforeOpen()
 		dir, err := os.Open(releases)
@@ -37,13 +47,11 @@ func lockReleases(releases string, stderr io.Writer) (releasesLock, error) {
 			continue
 		}
 		if err != nil {
-			removeEmptyDirectories(created)
-			return releasesLock{}, err
+			return fail(err)
 		}
 		if err := lockExclusive(dir, releases, stderr); err != nil {
 			dir.Close()
-			removeEmptyDirectories(created)
-			return releasesLock{}, err
+			return fail(err)
 		}
 		// A failed first build removes the directory it made. A build that
 		// waited on that directory then holds a lock on one that is gone,
@@ -55,7 +63,14 @@ func lockReleases(releases string, stderr io.Writer) (releasesLock, error) {
 		}
 		dir.Close()
 	}
-	return releasesLock{}, fmt.Errorf("%s kept changing while this build waited for it", releases)
+	return fail(fmt.Errorf("%s kept changing while this build waited for it", releases))
+}
+
+// deepestFirst orders directories of one path so that each comes before
+// its parent, each once.
+func deepestFirst(dirs []string) []string {
+	slices.SortFunc(dirs, func(a, b string) int { return cmp.Compare(len(b), len(a)) })
+	return slices.Compact(dirs)
 }
 
 func lockExclusive(dir *os.File, name string, stderr io.Writer) error {

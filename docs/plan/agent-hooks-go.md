@@ -387,6 +387,17 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
     - Round 3 (REVISE, 3): a group kill after the reap can reach a reused group ID; the journal needs the new state and the stage; the merge must keep Codex's positions for others' hooks.
     - Rounds 4 and 5 (REVISE, 1 each): waiting for the exit before reading the pipes deadlocks; `Combined`'s one pipe must stay.
     - Rounds 6 and 7: APPROVE.
+- PR 3a code reviews: Codex, in one session (Codex wrote most of the code in others), and an independent review (a Claude subagent). Each finding was adopted unless noted:
+    - Round 1 (Codex REVISE, 4; the independent review, 13):
+        - Codex: `switch` could point outside the releases, through a release directory that links out; a cross build was published without its own checks; `check` could not check a home's link; foreign inputs were judged under the launching process's build tags.
+        - The independent review: the old adapter's `WaitDelay` error, promptness and the post-exit deadline not pinned, a leader that left its group, macOS's `EPERM`, other Unix systems, a panic outside the hook, the terminal, an interrupted publish, the user's build cache in `check`, tests that missed what they claimed, Windows' environment, and one flag name for two things.
+    - Round 2 (Codex REVISE, 3; the independent review APPROVE with P3 items):
+        - Codex: recovering an empty `<id>` could remove another build's release, and the age-based sweep could remove a running build's directory, so a build now holds a lock on `releases/` for its whole run; the sync order was not pinned, so publish goes through a port.
+        - The independent review: build directories named for the tool, the `switch` escape test resolving its root, the real-process tests built for darwin and linux only, and vets for Windows and freebsd in CI.
+        - Not taken: a second recover inside `Answer`. text/template already turns a template function's panic into an error, and no test could reach that path.
+    - Round 3 (Codex REVISE, 2): a releases directory removed between its creation and its opening ended the build; the plan overstated the freebsd vet.
+    - Round 4 (Codex REVISE, 1): a retry dropped the record of the directories it had created, so a failure could leave an empty parent.
+    - Mutations: the independent review ran 16 on round 1's fixes (15 killed; the survivor is fixed in round 2), and round 2's fixes got 8, all killed. In rounds 3 and 4 each new test failed before its fix, and dropping the deepest-first order fails one too.
 
 - PR 2g (Pi's rtk) code reviews (Codex):
     - Round 1 (APPROVE): no findings.
