@@ -134,7 +134,7 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - Windows (`%LOCALAPPDATA%\dotfiles\agent-hooks\logs\`) is not logged yet. The standard library can neither read nor set a file's owner and DACL, and the Go tests run only on Linux. A Windows adapter that checks both through handles, tested on a Windows runner, is its own PR.
 - Only fixed-enum values: time, release, harness, event, tool (known names, else `other`), kind, hook id, outcome, rule id, duration ms, program and subcommand class (fixed lists, else `other`), file extension (fixed list, else `other`), a salted hash of the project directory, error code, W3C `trace_id`/`span_id` for correlating lines. No paths, command text, contents, reasons, or error messages.
 - Logging failures never change an outcome. `just agent-hooks-log` prints recent lines readably.
-- Latency budget, measured before wiring: p95 end to end within today's scripts + 15 ms on this Mac.
+- Latency budget, measured before wiring: p95 end to end within today's scripts + 15 ms on this Mac. PR 2h.2 measured it on 2026-11-05: every hook is within it, and faster than its script ("How PR 2h.2 does it" below).
 
 ### Ports (parity)
 
@@ -254,6 +254,44 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Reading it:** `agent-hook log [--days N]` (and `just agent-hooks-log`) prints the last N UTC days (N from 1 to 15, what retention keeps) as a table, sorted by time, and counts the lines it cannot read. It reads each day's file as its own, so a partial last line does not take the next day's first. A cell that is not printable ASCII is printed quoted, so a line that anything else wrote cannot send escape sequences to the terminal. Reading makes no directory. No harness can be named `log`.
     - **Tests:** the binary's own tests set `XDG_STATE_HOME` to a temporary directory, so no test writes to the user's file log.
     - **Not yet:** the latency measurement (2h.2); Windows; doctor reading the log (PR 3); Pi's ids (PR 4).
+
+- How PR 2h.2 does it: `just agent-hooks-latency` (`cmd/hooklatency`, cases and statistics in `internal/latency`) times today's hook scripts against the binary, hook by hook. Nothing is registered yet.
+    - **Both sides run as a harness runs a hook command:** `/bin/sh -c` with the command string, the payload on stdin, the same working directory, and the same environment. `XDG_STATE_HOME` points at a temporary directory, so the binary's file log never reaches the user's.
+        - Today's side is the command this Mac's Claude and Codex homes register: `bash "~/.claude/hooks/<script>.sh"`, and for Codex `guard-codex.sh <guard>.sh`, `rtk-hook-codex.sh`, and `format-after-edit.sh`.
+        - The binary's side is `"<binary>" <harness> <event> --hook <id>`, built once with the release flags (`CGO_ENABLED=0 -trimpath -ldflags=-s -w`), with logging on.
+    - **The cases** (20): on Claude and on Codex, each guard on a pass and a block, rtk on `git status`, and the formatter on `.md` (no program), `.py` (uv and ruff), and `.go` (gofmt).
+    - **The working directory is the repository's uv project**, which the formatter's `uv run --frozen --only-group lint ruff` needs. Only the formatter's file lives in a temporary directory, and it is written back to its first content before every run, outside the timed span. The design had a fresh copy of a small project per run, but each would make a new virtual environment, which takes seconds and would bury both sides.
+    - **Each answer is checked:** a warm-up run of today's script gives the expected answer, and every run of either side must give it.
+        - The exit code and stderr must match byte for byte. Stdout must too, or be the same JSON value (`toolhookcorpus.SameJSON`, as the parity corpora compare): Python's `json.dumps` spaces its separators, and the binary does not.
+        - Each binary run must add exactly one line to its file log.
+    - **Timing:** wall time from start to exit, N rounds (default 200), today's side first in even rounds and the binary first in odd ones. Times are nearest-rank p50 and p95. The tool exits 1 when a binary p95 passes the script's by more than the budget (15 ms).
+    - **Measured 2026-11-05** on this Mac (Apple M1 Max, 10 cores, 64 GB, macOS 27.2; Go 1.27.3, rtk 1.1.0, uv 0.13.6, ruff 0.17.2, Python 3.14.5, GNU bash 5.3.20), N = 200, in ms:
+
+        | Case | Script p50 | Script p95 | Binary p50 | Binary p95 | Δp95 |
+        | --- | ---: | ---: | ---: | ---: | ---: |
+        | `claude/pre/command-guard/pass` | 34.8 | 36.8 | 10.8 | 11.9 | -25.0 |
+        | `claude/pre/command-guard/block` | 34.7 | 37.1 | 11.0 | 11.9 | -25.2 |
+        | `claude/pre/files-guard/pass` | 23.0 | 25.3 | 10.8 | 11.8 | -13.5 |
+        | `claude/pre/files-guard/block` | 22.7 | 25.4 | 10.6 | 11.8 | -13.6 |
+        | `claude/pre/secrets-guard/pass` | 23.2 | 25.4 | 10.6 | 11.5 | -13.9 |
+        | `claude/pre/secrets-guard/block` | 23.1 | 25.7 | 10.6 | 11.5 | -14.1 |
+        | `claude/pre/rtk/git-status` | 57.1 | 61.6 | 25.9 | 28.7 | -32.9 |
+        | `claude/post/formatter/md` | 22.1 | 24.0 | 11.7 | 12.3 | -11.6 |
+        | `claude/post/formatter/py` | 99.2 | 104.0 | 85.5 | 90.9 | -13.1 |
+        | `claude/post/formatter/go` | 25.5 | 28.3 | 15.7 | 16.9 | -11.4 |
+        | `codex/pre/command-guard/pass` | 42.7 | 46.6 | 10.5 | 11.4 | -35.2 |
+        | `codex/pre/command-guard/block` | 46.9 | 50.2 | 10.5 | 11.7 | -38.6 |
+        | `codex/pre/files-guard/pass` | 39.9 | 44.3 | 10.4 | 11.5 | -32.9 |
+        | `codex/pre/files-guard/block` | 43.9 | 48.5 | 10.4 | 11.4 | -37.1 |
+        | `codex/pre/secrets-guard/pass` | 40.1 | 44.0 | 10.4 | 11.6 | -32.4 |
+        | `codex/pre/secrets-guard/block` | 44.2 | 48.8 | 10.4 | 11.5 | -37.3 |
+        | `codex/pre/rtk/git-status` | 74.9 | 80.6 | 46.6 | 49.0 | -31.7 |
+        | `codex/post/formatter/md` | 30.3 | 33.1 | 10.7 | 12.0 | -21.2 |
+        | `codex/post/formatter/py` | 103.3 | 110.7 | 80.1 | 85.8 | -24.9 |
+        | `codex/post/formatter/go` | 34.4 | 38.2 | 15.3 | 16.9 | -21.3 |
+
+    - The binary is faster in every case. Its guards take about 11 ms end to end with logging on, where the Python command guard took 35 to 47 ms. The formatter's `.py` case is mostly uv and ruff on both sides.
+    - CI does not run the measurement, since timing is noisy there. Its tests run with fake scripts and three rounds, so the tool cannot rot.
 
 ### Bugs of the old scripts that the binary fixes
 
