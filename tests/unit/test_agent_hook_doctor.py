@@ -7,7 +7,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -23,21 +22,30 @@ REAL_GO = shutil.which("go")
 REAL_BASH = shutil.which("bash")
 
 
-def _why_go_cannot_build_the_module() -> str:
-    """Why PATH's Go cannot build tools/agent-hooks ("" when it can).
+def _why_go_cannot_build_the_module(go: str | None, home: Path) -> str:
+    """Why this Go cannot build tools/agent-hooks ("" when it can).
 
     The real-hookrelease test builds with GOTOOLCHAIN=local, as hookrelease
     does, so a Go older than go.mod's `go` line refuses the module. CI's
-    unit-test runner has such a system Go.
+    unit-test runner has such a system Go. Go can open its telemetry
+    counters under the user's config directory even for `go env`, so it runs
+    with the given temporary home, outside the module.
     """
-    if REAL_GO is None:
+    if go is None:
         return "Go is missing"
     go_mod = (ROOT / "tools" / "agent-hooks" / "go.mod").read_text(encoding="utf-8")
     wanted = re.search(r"(?m)^go (\d+(?:\.\d+)*)\s*$", go_mod)
     found = subprocess.run(
-        [REAL_GO, "env", "GOVERSION"],
-        cwd=tempfile.gettempdir(),
-        env={**os.environ, "GOTOOLCHAIN": "local"},
+        [go, "env", "GOVERSION"],
+        cwd=home,
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": str(home / ".config"),
+            "XDG_CACHE_HOME": str(home / ".cache"),
+            "GOCACHE": str(home / ".cache" / "go-build"),
+            "GOTOOLCHAIN": "local",
+        },
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -59,7 +67,6 @@ def _why_go_cannot_build_the_module() -> str:
     return ""
 
 
-GO_CANNOT_BUILD = _why_go_cannot_build_the_module()
 # CI's unit job sets this in a step with the module's Go, where a skip
 # would hide that the real checker never ran.
 STRICT_GO = os.environ.get("AGENT_HOOK_DOCTOR_STRICT_GO") == "1"
@@ -1280,13 +1287,37 @@ def test_bad_registration_is_an_inspection_failure_and_does_not_stop_gather(
     assert _lines(facts, "inspect")[0][0] == "WARN"
 
 
-@pytest.mark.skipif(
-    bool(GO_CANNOT_BUILD) and not STRICT_GO, reason=GO_CANNOT_BUILD or "-"
-)
+def test_the_go_version_probe_runs_in_the_temporary_home(
+    isolated: Path, tmp_path: Path
+) -> None:
+    # Go can open its telemetry counters under the user's config directory,
+    # even for `go env`: the probe must run with the test's temporary home.
+    seen = tmp_path / "seen.json"
+    names = ("HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "GOCACHE", "GOTOOLCHAIN")
+    fake = _executable(
+        tmp_path / "fake-go" / "go",
+        "import json, os; "
+        f"json.dump({{n: os.environ.get(n) for n in {names!r}}}, "
+        f"open({str(seen)!r}, 'w', encoding='utf-8')); "
+        "print('go1.999.0')",
+    )
+    assert _why_go_cannot_build_the_module(str(fake), isolated) == ""
+    env = json.loads(seen.read_text(encoding="utf-8"))
+    assert env.pop("GOTOOLCHAIN") == "local"
+    assert all(value and value.startswith(str(isolated)) for value in env.values()), env
+
+
 def test_real_hookrelease_rebuilds_a_real_temporary_release(
     isolated: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert not GO_CANNOT_BUILD, GO_CANNOT_BUILD
+    why = _why_go_cannot_build_the_module(REAL_GO, isolated)
+    if why:
+        if STRICT_GO:
+            pytest.fail(why)
+        pytest.skip(why)
+    # Every Go run stays in the temporary home, telemetry included.
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(isolated / ".config"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(isolated / ".cache"))
     assert REAL_GO is not None
     bin_dir = Path(os.environ["PATH"])
     (bin_dir / "go").symlink_to(REAL_GO)
