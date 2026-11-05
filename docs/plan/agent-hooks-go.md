@@ -109,6 +109,10 @@ How Codex 0.166.0 runs a hook command (`hooks/src/engine/command_runner.rs`, `co
 - It uses the session's shell with its non-login exec arguments (for example `zsh -c`), or `$SHELL -lc` when the session has none. So on POSIX the command is read by the user's shell, not always `sh`.
     - The sh form holds for sh, bash, zsh, dash, and ksh. Under fish, the closed form's `{ ...; }` is no syntax, and its fallback would fail open.
     - So the wiring (PR 3d) refuses any other shell, or one it cannot tell, and changes nothing; doctor warns.
+    - bash and zsh read the form the same way. Single quotes, `'\''`, `{ ...; }`, `||`, `printf '%s\n'`, `>&2`, and `exit 2` behave alike, zsh's `RC_QUOTES` included. They differ in what they read first: zsh reads `.zshenv` even with `-c`, and `-lc` reads the login profile too.
+        - Anything those files print on stdout comes before the hook's answer. Codex then reads no JSON, and a guard fails open. Today's script hooks have the same exposure.
+        - So doctor (3c) checks that the Codex shell prints nothing for `:`, with `-c` and with `-lc`, and 3d's live tests run through that shell.
+        - On this Mac (2026-11-06), zsh and bash print nothing in either mode.
 - On Windows, the default `%COMSPEC% /C` (or a shell whose arguments hold `/c`) gets the command as one raw argument, wrapped in one more pair of double quotes. `/C` strips exactly that pair, so the command's own quotes reach cmd intact.
 - PowerShell's `&` resolves `*`, `?`, `[`, `]` as wildcards when the literal path is missing: pwsh 7.6.9 ran `<dir>/a/prog` for a missing `<dir>/[ab]/prog`. It also reads `‘ ’ ‚ ‛` as single quotes. The PowerShell form refuses all of these, on both sides.
 
