@@ -5,6 +5,7 @@ package fake
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -47,6 +48,8 @@ type Machine struct {
 	Time time.Time
 	Step time.Duration
 	nows int
+	// RandomFails makes Random return an error instead of deterministic bytes.
+	RandomFails bool
 
 	// Replay is what Run must be asked, in order, and what each answers.
 	Replay []Invocation
@@ -71,6 +74,17 @@ func (m *Machine) Now() time.Time {
 	now := m.Time.Add(time.Duration(m.nows) * m.Step)
 	m.nows++
 	return now
+}
+
+// Random fills p with deterministic bytes unless RandomFails is set.
+func (m *Machine) Random(p []byte) error {
+	if m.RandomFails {
+		return errors.New("fake: randomness unavailable")
+	}
+	for i := range p {
+		p[i] = 0x5a
+	}
+	return nil
 }
 
 // LookPath returns the program the test set for the name.

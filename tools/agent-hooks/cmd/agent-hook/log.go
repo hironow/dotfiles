@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -72,8 +74,8 @@ func printLog(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 	flags := flag.NewFlagSet("agent-hook log", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	days := flags.Int("days", 1, "how many UTC days to print, today's included")
-	if err := flags.Parse(args); err != nil || flags.NArg() > 0 || *days < 1 {
-		_, _ = fmt.Fprintln(stderr, "usage: agent-hook log [--days N], with N at least 1")
+	if err := flags.Parse(args); err != nil || flags.NArg() > 0 || *days < 1 || *days > logsink.KeepDays+1 {
+		_, _ = fmt.Fprintf(stderr, "usage: agent-hook log [--days N], with N from 1 to %d\n", logsink.KeepDays+1)
 		return exitUsage
 	}
 	base, ok := logsink.Base(lookupEnv)
@@ -113,6 +115,9 @@ func printLog(args []string, stdout, stderr io.Writer, lookupEnv func(string) (s
 		}
 		lines = append(lines, line)
 	}
+	slices.SortStableFunc(lines, func(a, b logline.Line) int {
+		return strings.Compare(a.Time, b.Time)
+	})
 	if _, err := io.WriteString(stdout, logline.Table(lines, skipped)); err != nil {
 		return 1
 	}

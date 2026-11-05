@@ -9,13 +9,16 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/osrand"
 )
 
 // FileSink stores lines through directory handles that survive ancestor renames.
 type FileSink struct {
-	hooks *os.Root
-	logs  *os.Root
-	uid   int
+	hooks  *os.Root
+	logs   *os.Root
+	uid    int
+	random func([]byte) error
 }
 
 // OpenFileSink opens base/dotfiles/agent-hooks/logs and checks the owned levels.
@@ -42,7 +45,7 @@ func OpenFileSink(base string, uid int) (*FileSink, error) {
 	if err != nil {
 		return nil, errors.Join(err, hooks.Close())
 	}
-	return &FileSink{hooks: hooks, logs: logs, uid: uid}, nil
+	return &FileSink{hooks: hooks, logs: logs, uid: uid, random: osrand.Read}, nil
 }
 
 // Close releases both directory handles.
@@ -154,6 +157,9 @@ func (p fileProblem) Error() string { return string(p) }
 const extraLinks fileProblem = "file has more than one link"
 
 // Write appends one line to now's UTC day file through the saved logs handle.
+// A short write, such as a full disk, leaves a partial line that joins the next
+// line in that day's file. The reader skips and counts the joined line.
+// Do not truncate: another process may have appended after this run's Stat.
 func (s *FileSink) Write(now time.Time, line []byte) error {
 	if len(line) == 0 || len(line) >= MaxLine || line[len(line)-1] != '\n' {
 		return fmt.Errorf("log line must end in a newline and contain 1 to %d bytes", MaxLine-1)

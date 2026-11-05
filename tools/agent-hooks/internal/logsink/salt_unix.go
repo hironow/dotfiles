@@ -3,7 +3,6 @@
 package logsink
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -62,25 +61,26 @@ func (s *FileSink) readSalt() ([]byte, error) {
 	return salt, nil
 }
 
-func (s *FileSink) makeSalt() error {
+func (s *FileSink) makeSalt() (err error) {
 	file, err := s.hooks.OpenFile("salt.new", os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NONBLOCK, 0o600)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Join(err, file.Close(), removeIfPresent(s.hooks, "salt.new"))
+	}()
 	if err := checkFile(s.hooks, file, "salt.new", s.uid); err != nil {
 		return err
 	}
-	if err := writeSalt(file); err != nil {
+	if err := s.writeSalt(file); err != nil {
 		return err
 	}
-	linkErr := s.hooks.Link("salt.new", "salt")
-	return errors.Join(linkErr, removeIfPresent(s.hooks, "salt.new"))
+	return s.hooks.Link("salt.new", "salt")
 }
 
-func writeSalt(file *os.File) error {
+func (s *FileSink) writeSalt(file *os.File) error {
 	salt := make([]byte, SaltSize)
-	if _, err := rand.Read(salt); err != nil {
+	if err := s.random(salt); err != nil {
 		return err
 	}
 	n, err := file.Write(salt)

@@ -238,6 +238,22 @@ func TestTheLineTellsTheRunsDurationAndEndTime(t *testing.T) {
 	}
 }
 
+func TestRandomFailureDropsTheLineWithoutChangingTheAnswer(t *testing.T) {
+	payload := claudeBash(t, func(p map[string]any) {
+		p["tool_input"] = map[string]any{"command": "npm ci"}
+	})
+	args := []string{"claude", "pre", "--hook", "command-guard"}
+	want, working := logged(t, &fake.Machine{}, &fake.LogSink{}, payload, args...)
+	oneLine(t, working)
+	got, lines := logged(t, &fake.Machine{RandomFails: true}, &fake.LogSink{}, payload, args...)
+	if got != want {
+		t.Errorf("random failure changed the answer: got %+v, want %+v", got, want)
+	}
+	if len(lines) != 0 {
+		t.Errorf("random failure logged %d lines, want none", len(lines))
+	}
+}
+
 // hashed is HMAC-SHA256 over the log's unambiguous message: each field's
 // length (4 bytes, big-endian), then its bytes.
 func hashed(salt []byte, fields ...string) string {
@@ -266,27 +282,48 @@ func TestWithASaltTheProjectIsHashedAndACallsPreAndPostShareATrace(t *testing.T)
 	}
 }
 
-// failingSink fails every write.
-type failingSink struct{}
+// faultSink checks the answer before failing in one chosen method.
+type faultSink struct {
+	stdout      *bytes.Buffer
+	want        string
+	stage       string
+	fault       string
+	answerSeen  chan bool
+	writeCalled chan struct{}
+	release     chan struct{}
+}
 
-func (failingSink) Salt() ([]byte, bool)          { return nil, false }
-func (failingSink) Write(time.Time, []byte) error { return errors.New("disk full") }
+func (s *faultSink) Salt() ([]byte, bool) {
+	s.answerSeen <- s.stdout.String() == s.want
+	if s.stage == "salt" {
+		if err := s.fail(); err != nil {
+			return nil, false
+		}
+	}
+	return bytes.Repeat([]byte{7}, logsink.SaltSize), true
+}
 
-// panickingSink panics.
-type panickingSink struct{}
+func (s *faultSink) Write(time.Time, []byte) error {
+	s.writeCalled <- struct{}{}
+	if s.stage == "write" {
+		return s.fail()
+	}
+	return nil
+}
 
-func (panickingSink) Salt() ([]byte, bool)          { panic("a broken sink") }
-func (panickingSink) Write(time.Time, []byte) error { panic("a broken sink") }
-
-// stuckSink never returns until the test ends.
-type stuckSink struct{ release chan struct{} }
-
-func (s stuckSink) Salt() ([]byte, bool)          { <-s.release; return nil, false }
-func (s stuckSink) Write(time.Time, []byte) error { <-s.release; return nil }
+func (s *faultSink) fail() error {
+	switch s.fault {
+	case "fail":
+		return errors.New("disk full")
+	case "panic":
+		panic("a broken sink")
+	case "hang":
+		<-s.release
+	}
+	return nil
+}
 
 func TestASinkThatFailsPanicsOrHangsChangesNoAnswer(t *testing.T) {
-	stuck := stuckSink{release: make(chan struct{})}
-	t.Cleanup(func() { close(stuck.release) })
 	payload := claudeBash(t, func(p map[string]any) {
 		p["tool_input"] = map[string]any{"command": "npm ci"}
 	})
@@ -294,10 +331,22 @@ func TestASinkThatFailsPanicsOrHangsChangesNoAnswer(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	exit := launch.Run(args, strings.NewReader(payload), &stdout, &stderr, &fake.Machine{}, &fake.LogSink{})
 	want := result{exit, stdout.String(), stderr.String()}
-	for name, sink := range map[string]logsink.Sink{"failing": failingSink{}, "panicking": panickingSink{}, "stuck": stuck} {
-		t.Run(name, func(t *testing.T) {
+	for _, fault := range []struct{ stage, kind string }{
+		{"salt", "fail"},
+		{"salt", "panic"},
+		{"salt", "hang"},
+		{"write", "fail"},
+		{"write", "panic"},
+		{"write", "hang"},
+	} {
+		t.Run(fault.stage+"_"+fault.kind, func(t *testing.T) {
 			// given a sink that fails, panics, or never returns
 			var stdout, stderr bytes.Buffer
+			sink := &faultSink{
+				stdout: &stdout, want: want.stdout, stage: fault.stage, fault: fault.kind,
+				answerSeen: make(chan bool, 1), writeCalled: make(chan struct{}, 1), release: make(chan struct{}),
+			}
+			t.Cleanup(func() { close(sink.release) })
 			began := time.Now()
 			// when the binary runs and logs to it
 			exit := launch.Run(args, strings.NewReader(payload), &stdout, &stderr, &fake.Machine{}, sink)
@@ -307,8 +356,23 @@ func TestASinkThatFailsPanicsOrHangsChangesNoAnswer(t *testing.T) {
 			if got := (result{exit, stdout.String(), stderr.String()}); got != want {
 				t.Errorf("got %+v, want %+v", got, want)
 			}
-			if took > 2*time.Second {
+			if took >= 750*time.Millisecond {
 				t.Errorf("the run took %v; the logging deadline is 250ms", took)
+			}
+			select {
+			case seen := <-sink.answerSeen:
+				if !seen {
+					t.Error("the sink was called before stdout held the whole answer")
+				}
+			default:
+				t.Error("the sink never checked stdout")
+			}
+			if fault.stage == "write" {
+				select {
+				case <-sink.writeCalled:
+				default:
+					t.Error("the test never reached Write")
+				}
 			}
 		})
 	}

@@ -6,7 +6,6 @@
 package launch
 
 import (
-	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -75,6 +74,8 @@ type Machine interface {
 	Run(command process.Command) (process.Result, error)
 	// Now is the time, for the log: when the run started and ended.
 	Now() time.Time
+	// Random fills p with OS randomness, returning an error on failure.
+	Random(p []byte) error
 }
 
 // hook decides on one call.
@@ -291,8 +292,12 @@ func logRun(sink logsink.Sink, firing logline.Firing, checked *validation, now t
 		}
 		var span [8]byte
 		var trace [16]byte
-		_, _ = rand.Read(span[:])
-		_, _ = rand.Read(trace[:])
+		if err := machine.Random(span[:]); err != nil {
+			return
+		}
+		if err := machine.Random(trace[:]); err != nil {
+			return
+		}
 		line, err := logline.Build(firing, salt, now, span, trace).Marshal()
 		if err != nil {
 			return

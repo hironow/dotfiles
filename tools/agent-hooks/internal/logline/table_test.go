@@ -2,6 +2,7 @@ package logline_test
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -60,5 +61,23 @@ func TestTableHandlesEmptyInputAndTheSkippedCount(t *testing.T) {
 	}
 	if got := logline.Table([]logline.Line{build(logline.Firing{})}, 0); strings.Contains(got, "Skipped") {
 		t.Errorf("zero skipped count should be omitted: %q", got)
+	}
+}
+
+func TestTableQuotesUnsafeCells(t *testing.T) {
+	for _, cell := range []string{
+		"\x1b[31mred\x1b[0m", "\x1b]0;title\a", "with\ttab", "with\nnewline", "with space", "\x00", "\x7f", "日本語",
+	} {
+		t.Run(strconv.QuoteToASCII(cell), func(t *testing.T) {
+			line := build(logline.Firing{})
+			line.Tool = cell
+			text := logline.Table([]logline.Line{line}, 0)
+			if !strings.Contains(text, strconv.QuoteToASCII(cell)) {
+				t.Errorf("table %q; want quoted cell %s", text, strconv.QuoteToASCII(cell))
+			}
+			if strings.ContainsAny(text, "\x1b\t\x00\x7f") || strings.Count(text, "\n") != 2 {
+				t.Errorf("table contains terminal controls or extra rows: %q", text)
+			}
+		})
 	}
 }

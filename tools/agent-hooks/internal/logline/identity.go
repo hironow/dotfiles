@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"math"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/ir"
 )
@@ -31,8 +32,8 @@ func typed(value ir.Value) string {
 func identityHash(salt []byte, fields ...string) string {
 	mac := hmac.New(sha256.New, salt)
 	for _, field := range fields {
-		// The mask bounds the conversion to the four-byte message length.
-		count := binary.BigEndian.AppendUint32(nil, uint32(len(field)&0xffffffff))
+		// Clamp the length to four bytes on both 32-bit and 64-bit targets.
+		count := binary.BigEndian.AppendUint32(nil, uint32(min(uint64(len(field)), math.MaxUint32)))
 		mac.Write(count)
 		mac.Write([]byte(field))
 	}

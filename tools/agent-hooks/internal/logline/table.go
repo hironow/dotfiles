@@ -26,6 +26,13 @@ func Table(lines []Line, skipped int) string {
 			for i, cell := range row {
 				if cell == "" {
 					row[i] = "-"
+					continue
+				}
+				for _, b := range []byte(cell) {
+					if b < 0x21 || b > 0x7e {
+						row[i] = strconv.QuoteToASCII(cell)
+						break
+					}
 				}
 			}
 			fmt.Fprintln(columns, strings.Join(row, "\t"))

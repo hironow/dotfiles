@@ -24,6 +24,9 @@ func (s *FileSink) Read(now time.Time, days int) ([]byte, error) {
 			return nil, err
 		}
 		lines = append(lines, contents...)
+		if len(contents) > 0 && contents[len(contents)-1] != '\n' {
+			lines = append(lines, '\n')
+		}
 	}
 	return lines, nil
 }
