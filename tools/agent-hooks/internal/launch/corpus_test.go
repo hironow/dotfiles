@@ -20,7 +20,7 @@ func TestRunAnswersAsThePayloadCorpusExpects(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				var stdout, stderr bytes.Buffer
 				exit := launch.Run([]string{run.Harness, "pre", "--hook", run.Hook},
-					bytes.NewReader(payload.Stdin), &stdout, &stderr, &fake.Machine{})
+					bytes.NewReader(payload.Stdin), &stdout, &stderr, &fake.Machine{}, &fake.LogSink{})
 				got := guardcorpus.Answer{Exit: exit, Stdout: stdout.String(), Stderr: stderr.String()}
 				if got != run.ExpectedGo {
 					t.Errorf("payloads.jsonl:%d (difference %q):\n got %+v\nwant %+v",

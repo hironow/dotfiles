@@ -166,9 +166,16 @@ type schemaFile struct {
 
 var knownKinds = []string{ir.KindShell, ir.KindWrite, ir.KindEdit, ir.KindNotebook, ir.KindPatch}
 
+// reservedNames are the binary's own commands (`agent-hook log`), which no
+// harness can be named.
+var reservedNames = []string{"log"}
+
 // Load reads the definition of the named harness from fsys, which holds one
 // directory per harness.
 func Load(fsys fs.FS, name string) (Definition, error) {
+	if slices.Contains(reservedNames, name) {
+		return Definition{}, fmt.Errorf("%q is the binary's own command, not a harness", name)
+	}
 	var file harnessFile
 	if err := readJSON(fsys, path.Join(name, "harness.json"), &file); err != nil {
 		return Definition{}, err

@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	json "github.com/goccy/go-json/v2"
 
@@ -134,5 +135,25 @@ func TestEveryDefinitionKeepsItsToolBranchesInTheTopLevelAllOf(t *testing.T) {
 				walk(schema, "")
 			})
 		}
+	}
+}
+
+func TestLoadRefusesTheNameOfTheBinarysOwnCommand(t *testing.T) {
+	// given a well-formed definition named "log", the name of `agent-hook log`
+	harness := []byte(`{"name":"log","versions":["1"],"tools":{"T":"shell"},"transport":"command",` +
+		`"pathResolution":"as-given","hookCwd":"session",` +
+		`"events":{"pre":{"schema":"pre.schema.json","answers":{"pass":{"exit":0}}}}}`)
+	files := func(name string) fstest.MapFS {
+		return fstest.MapFS{
+			name + "/harness.json":    {Data: []byte(strings.Replace(string(harness), `"log"`, `"`+name+`"`, 1))},
+			name + "/pre.schema.json": {Data: []byte(`{"x-ir-tool":"/tool","x-ir":{}}`)},
+		}
+	}
+	// when it is loaded, then it is refused; the control under another name loads
+	if _, err := definition.Load(files("log"), "log"); err == nil {
+		t.Fatal(`Load("log") = nil error; want the name refused`)
+	}
+	if _, err := definition.Load(files("h"), "h"); err != nil {
+		t.Fatalf(`the control: Load("h") = %v`, err)
 	}
 }

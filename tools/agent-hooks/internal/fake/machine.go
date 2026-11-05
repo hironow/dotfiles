@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
 )
@@ -42,6 +43,10 @@ type Machine struct {
 	// lookup fails (for example, a directory that cannot be read).
 	Entries       map[string]bool
 	BrokenEntries map[string]bool
+	// Time is what Now returns first; each later call returns Step more.
+	Time time.Time
+	Step time.Duration
+	nows int
 
 	// Replay is what Run must be asked, in order, and what each answers.
 	Replay []Invocation
@@ -59,6 +64,13 @@ type Invocation struct {
 	Result   process.Result
 	Failed   bool
 	AnyArgv0 bool
+}
+
+// Now returns Time, moved on by Step for every earlier call.
+func (m *Machine) Now() time.Time {
+	now := m.Time.Add(time.Duration(m.nows) * m.Step)
+	m.nows++
+	return now
 }
 
 // LookPath returns the program the test set for the name.

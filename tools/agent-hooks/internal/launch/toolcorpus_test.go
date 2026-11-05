@@ -94,7 +94,7 @@ func TestRunDoesWhatTheToolHooksCorpusExpects(t *testing.T) {
 					m := machineFor(scenario, run.ExpectedGo)
 					var stdout, stderr bytes.Buffer
 					exit := launch.Run([]string{run.Harness, event, "--hook", hook},
-						bytes.NewReader([]byte(inRoot(string(scenario.Stdin)))), &stdout, &stderr, m)
+						bytes.NewReader([]byte(inRoot(string(scenario.Stdin)))), &stdout, &stderr, m, &fake.LogSink{})
 					where := hook + ".jsonl:" + scenario.Name + " " + run.Harness + " (difference " + run.Difference + ")"
 					run.ExpectedGo.Check(t, where, exit, stdout.String(), stderr.String(), inRoot)
 					for _, problem := range m.Done() {

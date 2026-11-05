@@ -49,6 +49,9 @@ func (ExecMachine) Exists(path string) (bool, error) {
 	}
 }
 
+// Now is time.Now.
+func (ExecMachine) Now() time.Time { return time.Now() }
+
 // LookupEnv is os.LookupEnv: the variable's value, and whether it is set.
 func (ExecMachine) LookupEnv(name string) (string, bool) { return os.LookupEnv(name) }
 

@@ -1,16 +1,19 @@
 // Package launch is the binary's shell. It reads the arguments and the
 // payload, decodes the payload with the harness's definition, runs one hook,
-// and writes the harness's answer. The hooks themselves are pure; the machine
-// is reached only through the Machine port.
+// writes the harness's answer, and then logs the run (one line, through the
+// logsink.Sink port). The hooks themselves are pure; the machine is reached
+// only through the Machine port.
 package launch
 
 import (
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"maps"
 	"slices"
+	"time"
 
 	json "github.com/goccy/go-json/v2"
 
@@ -20,6 +23,8 @@ import (
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/definition"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/fileguard"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/ir"
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logline"
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logsink"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/pipath"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/secretguard"
@@ -33,6 +38,11 @@ const (
 )
 
 const usage = "usage: agent-hook <harness> <event> --hook <id>"
+
+// logDeadline bounds the logging after the answer: the salt, the random ids,
+// the validation, the write, and the cleanup. It is far under every harness's
+// hook timeout, so that a stuck sink never turns a run into a timeout.
+const logDeadline = 250 * time.Millisecond
 
 // Machine is what the hooks need from the machine they run on.
 type Machine interface {
@@ -63,6 +73,8 @@ type Machine interface {
 	// directory unless the command names one. The error is a command that
 	// could not start or ran out of time.
 	Run(command process.Command) (process.Result, error)
+	// Now is the time, for the log: when the run started and ended.
+	Now() time.Time
 }
 
 // hook decides on one call.
@@ -117,40 +129,70 @@ var unreadable = ir.Outcome{
 
 // Run runs the binary with its arguments (without the program's name):
 // agent-hook <harness> <event> --hook <id>. It reads the payload from stdin,
-// writes the harness's answer to stdout and stderr, and returns the exit code.
-func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machine) int {
-	return run(args, stdin, stdout, stderr, machine, hooks)
+// writes the harness's answer to stdout and stderr, logs the run to the sink,
+// and returns the exit code. Logging never changes the answer or the exit
+// code.
+func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machine, sink logsink.Sink) int {
+	return run(args, stdin, stdout, stderr, machine, sink, hooks)
 }
 
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machine, hooks map[string]hook) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machine, sink logsink.Sink,
+	hooks map[string]hook,
+) int {
+	start := machine.Now()
+	firing := logline.Firing{}
+	if len(args) > 0 {
+		firing.Harness = args[0]
+	}
 	event, spec, decide, err := parse(args, hooks)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "agent-hook: %v\n%s\n", err, usage)
+		firing.Usage, firing.Error = true, logline.ErrUsage
+		logRun(sink, firing, nil, machine.Now(), machine)
 		return exitUsage
 	}
+	firing.Event, firing.Hook = args[1], spec.ID
 	payload, readErr := io.ReadAll(stdin)
-	outcome := decideInput(event, spec, decide, payload, readErr, machine, stderr)
+	outcome := decideInput(event, spec, decide, payload, readErr, machine, stderr, &firing)
+	firing.Outcome = outcome
+	exit, ok := writeAnswer(event, outcome, stdout, stderr)
+	if !ok {
+		firing.Error = logline.ErrAnswerFailed
+	}
+	end := machine.Now()
+	firing.Duration = end.Sub(start)
+	checked := &validation{event: event, payload: payload}
+	logRun(sink, firing, checked, end, machine)
+	return exit
+}
+
+// writeAnswer renders the outcome as the harness reads it and writes it. On
+// a failure it returns exitSoftware and false.
+func writeAnswer(event definition.Event, outcome ir.Outcome, stdout, stderr io.Writer) (int, bool) {
 	answer, err := event.Answer(outcome)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "agent-hook: cannot render the answer: %v\n", err)
-		return exitSoftware
+		return exitSoftware, false
 	}
 	if _, err := io.WriteString(stdout, answer.Stdout); err != nil {
-		return exitSoftware
+		return exitSoftware, false
 	}
 	if _, err := io.WriteString(stderr, answer.Stderr); err != nil {
-		return exitSoftware
+		return exitSoftware, false
 	}
-	return answer.Exit
+	return answer.Exit, true
 }
 
-// decideInput is the hook's outcome on the payload the harness sent.
+// decideInput is the hook's outcome on the payload the harness sent. It
+// records the decoded call and what went wrong (a logline.Err* code) in the
+// firing, for the log.
 func decideInput(event definition.Event, spec hookSpec, decide hook, payload []byte, readErr error,
-	machine Machine, stderr io.Writer,
+	machine Machine, stderr io.Writer, firing *logline.Firing,
 ) ir.Outcome {
 	if event.Transport() == ir.TransportShim {
 		if err := shimRequestError(event, payload, readErr); err != nil {
 			_, _ = fmt.Fprintf(stderr, "agent-hook: a broken shim exchange: %v\n", err)
+			firing.Error = logline.ErrShimBroken
 			return brokenExchange(spec)
 		}
 	}
@@ -161,19 +203,23 @@ func decideInput(event definition.Event, spec hookSpec, decide hook, payload []b
 		unread = unreadable
 	}
 	if readErr != nil {
+		firing.Error = logline.ErrInputUnreadable
 		return unread
 	}
 	call, err := event.Decode(payload)
 	if err != nil {
+		firing.Error = logline.ErrInputUnreadable
 		return unread
 	}
 	call.Native = payload
 	if call.PathResolution == ir.PathsPi {
 		call = resolvePiPath(call, machine)
 	}
+	firing.Call = &call
 	if call.ToolFailed {
 		// A post hook acts on what the tool call did; a call that failed did
 		// nothing to act on.
+		firing.Error = logline.ErrToolFailed
 		return ir.Outcome{}
 	}
 	outcome, failure := decideSafely(decide, call, machine)
@@ -184,16 +230,81 @@ func decideInput(event definition.Event, spec hookSpec, decide hook, payload []b
 			what = "so the call is blocked"
 		}
 		_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook failed, %s: %v\n", spec.ID, what, failure)
+		firing.Error = logline.ErrHookFailed
 	}
 	if outcome.Action == ir.Rewrite {
 		// The codec writes the new value where the definition maps the field
 		// and checks the result; what it cannot write is no rewrite.
 		if _, err := event.Rewrite(payload, outcome.Set); err != nil {
 			_, _ = fmt.Fprintf(stderr, "agent-hook: the %s hook's rewrite was dropped, so the call goes on: %v\n", spec.ID, err)
+			firing.Error = logline.ErrRewriteDropped
 			return ir.Outcome{}
 		}
 	}
 	return outcome
+}
+
+// validation is what the log checks a decoded payload against: the event's
+// definition. Only the log reads the result.
+type validation struct {
+	event   definition.Event
+	payload []byte
+}
+
+// mismatch is the log's validation result for a decoded call: the first of
+// envelope, input, mapping, and unchecked that applies, or "".
+func (v *validation) mismatch(call ir.Call) string {
+	conformance := v.event.Conform(v.payload)
+	switch conformance {
+	case definition.EnvelopeMismatch:
+		return logline.MismatchEnvelope
+	case definition.InputMismatch:
+		return logline.MismatchInput
+	}
+	if call.MappingMismatch() {
+		return logline.MismatchMapping
+	}
+	if conformance == definition.Unchecked {
+		return logline.MismatchUnchecked
+	}
+	return ""
+}
+
+// logRun writes the run's line to the sink, after the answer: the
+// validation, the salt, the random ids, the write, and the sink's cleanup.
+// It waits at most logDeadline, so the run ends on time whatever the sink
+// does; a goroutine still stuck in a system call ends with the process. Every
+// error and any panic is dropped, and nothing is printed: logging never
+// changes the answer or the exit code.
+func logRun(sink logsink.Sink, firing logline.Firing, checked *validation, now time.Time, machine Machine) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = recover() }()
+		if checked != nil && firing.Call != nil {
+			firing.Mismatch = checked.mismatch(*firing.Call)
+		}
+		firing.Wd = machine.Getwd()
+		salt, ok := sink.Salt()
+		if !ok {
+			salt = nil
+		}
+		var span [8]byte
+		var trace [16]byte
+		_, _ = rand.Read(span[:])
+		_, _ = rand.Read(trace[:])
+		line, err := logline.Build(firing, salt, now, span, trace).Marshal()
+		if err != nil {
+			return
+		}
+		_ = sink.Write(now, line)
+	}()
+	deadline := time.NewTimer(logDeadline)
+	defer deadline.Stop()
+	select {
+	case <-done:
+	case <-deadline.C:
+	}
 }
 
 // resolvePiPath replaces the call's file path with the file Pi touches: Pi

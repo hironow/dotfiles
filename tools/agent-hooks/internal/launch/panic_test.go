@@ -21,7 +21,7 @@ func runPanicking(t *testing.T, harness, event, id, fixture string) (int, string
 	panicking := map[string]hook{id: func(ir.Call, Machine) ir.Outcome { panic("broken") }}
 	var stdout, stderr bytes.Buffer
 	exit := run([]string{harness, event, "--hook", id}, bytes.NewReader(payload), &stdout, &stderr,
-		&fake.Machine{}, panicking)
+		&fake.Machine{}, &fake.LogSink{}, panicking)
 	return exit, stdout.String(), stderr.String()
 }
 
