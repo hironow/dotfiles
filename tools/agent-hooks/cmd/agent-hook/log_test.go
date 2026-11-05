@@ -19,10 +19,16 @@ import (
 // to state, or with neither XDG_STATE_HOME nor HOME when state is "".
 func runIn(t *testing.T, state string, stdin []byte, args ...string) (int, string, string) {
 	t.Helper()
-	// Audited: binary is the agent-hook this test built into its own temporary
-	// directory, and args are literals.
+	return runBinaryIn(t, binary, state, stdin, args...)
+}
+
+// runBinaryIn is runIn for another build of the binary, at bin.
+func runBinaryIn(t *testing.T, bin, state string, stdin []byte, args ...string) (int, string, string) {
+	t.Helper()
+	// Audited: bin is an agent-hook this test package built into its own
+	// temporary directory, and args are literals.
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
-	command := exec.Command(binary, args...)
+	command := exec.Command(bin, args...)
 	command.Dir = t.TempDir()
 	command.Env = []string{"PATH=" + os.Getenv("PATH")}
 	if state != "" {

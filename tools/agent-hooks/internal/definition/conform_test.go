@@ -149,9 +149,12 @@ func TestLoadRefusesTheNameOfTheBinarysOwnCommand(t *testing.T) {
 			name + "/pre.schema.json": {Data: []byte(`{"x-ir-tool":"/tool","x-ir":{}}`)},
 		}
 	}
-	// when it is loaded, then it is refused; the control under another name loads
-	if _, err := definition.Load(files("log"), "log"); err == nil {
-		t.Fatal(`Load("log") = nil error; want the name refused`)
+	// when it is loaded, or one named after another of the binary's own
+	// commands, then it is refused; the control under another name loads
+	for _, name := range []string{"log", "version", "selftest"} {
+		if _, err := definition.Load(files(name), name); err == nil {
+			t.Errorf("Load(%q) = nil error; want the name refused", name)
+		}
 	}
 	if _, err := definition.Load(files("h"), "h"); err != nil {
 		t.Fatalf(`the control: Load("h") = %v`, err)

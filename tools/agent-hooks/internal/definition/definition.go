@@ -166,9 +166,9 @@ type schemaFile struct {
 
 var knownKinds = []string{ir.KindShell, ir.KindWrite, ir.KindEdit, ir.KindNotebook, ir.KindPatch}
 
-// reservedNames are the binary's own commands (`agent-hook log`), which no
-// harness can be named.
-var reservedNames = []string{"log"}
+// reservedNames are the binary's own commands (`agent-hook log`, `version`,
+// `selftest`), which no harness can be named.
+var reservedNames = []string{"log", "version", "selftest"}
 
 // Load reads the definition of the named harness from fsys, which holds one
 // directory per harness.
