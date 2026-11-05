@@ -19,6 +19,7 @@ OS ごとに違うのは導入の経路だけである。
 関連文書:
 
 - [`docs/agent-sync.md`](./docs/agent-sync.md): エージェント指示、hook、skill、プラグインの配布
+- [`docs/cli-tools.md`](./docs/cli-tools.md): 全OS共通のHunk、ripgrep、fd、sdの導入と使い方
 - [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md): `j-cc` / `j-pi`、rtk、headroom の手順
 - [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md): Windows と WSL の Ollama 共有と検査範囲
 - [`docs/runbook/windows-host.md`](./docs/runbook/windows-host.md): native Windows で動かすときの注意点

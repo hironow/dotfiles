@@ -96,6 +96,17 @@ starship = "1.27.0"
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
 fzf = "0.74.5"
 
+# Review, content search, path search, and replacement tools on every host.
+# Use upstream binaries through aqua, including native Windows (no Node
+# wrapper or Ubuntu's fdfind rename). Exact pins keep CLI syntax consistent.
+# hunk needs mise >= 2026.8.6 on Windows; its binaries support Windows x64
+# and macOS/Linux x64 or arm64 (Linux needs glibc). See docs/cli-tools.md.
+# fd 10.5.1 was released 2026-11-04; retain 10.5.0 for the 7-day cooldown.
+hunk = "0.24.1"
+ripgrep = "15.2.0"
+fd = "10.5.0"
+sd = "1.1.0"
+
 # rtk + headroom — base tooling every agent session goes through (ADR 0047):
 # rtk compresses command output (dotfiles owns its Claude hook; never run
 # `rtk init -g`), headroom compresses what reaches the model through its local
