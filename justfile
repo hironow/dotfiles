@@ -912,6 +912,12 @@ pi-rtk-corpus:
 agent-hooks-log *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/agent-hook log {{args}}
 
+# Times today's hook scripts against the binary (p50/p95 per hook); slow (N=200 by default).
+# Measure the agent-hook binary's latency against today's hook scripts.
+[group('Agents')]
+agent-hooks-latency *args:
+    cd tools/agent-hooks && mise x -- go run ./cmd/hooklatency {{args}}
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash
