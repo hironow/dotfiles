@@ -104,18 +104,22 @@ class _Launcher:
 # renderer must write only these forms (plan: docs/plan/agent-hooks-go.md).
 AGENT_HOOK_LAUNCHERS = (
     # sh: '<path>', with ' written as '\''; nothing expands
-    _Launcher(re.compile(r"'((?:[^']|'\\'')*)'(?=\s|$)"), "'\\''", False, ()),
+    # Each form is the program exactly as the renderer writes it: at the start
+    # of the command, then one ASCII space or the end. sh, bash, and zsh split
+    # words on space, tab, and newline only, so any other character after the
+    # quote (an NBSP, U+3000) is part of the program's name, not a separator.
+    _Launcher(re.compile(r"'((?:[^']|'\\'')*)'(?= |\Z)"), "'\\''", False, ()),
     # PowerShell: & '<path>', with ' written as ''. PowerShell also ends a
     # single-quoted string at ‘ ’ ‚ ‛, and `&` resolves * ? [ ] as wildcards
     # when the literal path is missing, so another program could run.
     _Launcher(
-        re.compile(r"&\s+'((?:[^']|'')*)'(?=[\s;]|$)"),
+        re.compile(r"& '((?:[^']|'')*)'(?= |\Z)"),
         "''",
         True,
         ("\u2018", "\u2019", "\u201a", "\u201b", "*", "?", "[", "]"),
     ),
     # cmd: "<path>"; %VAR% and, with delayed expansion, !VAR! still expand
-    _Launcher(re.compile(r'"([^"]*)"(?=\s|$)'), None, True, ("%", "!")),
+    _Launcher(re.compile(r'"([^"]*)"(?= |\Z)'), None, True, ("%", "!")),
 )
 _CLAUDE_EXEC_EXPANDED = ("${",)
 # Header line a third-party installer writes at the top of a hook file it owns
@@ -761,15 +765,23 @@ def _is_release_path(path: str, *, windows: bool, expanded: tuple[str, ...]) -> 
     return POSIX_RELEASE.fullmatch(path) is not None
 
 
+def _has_only_rendered_members(hook: dict, *, codex: bool) -> bool:
+    """Is this a command handler holding only members sync writes for this
+    harness? Any other member (Codex's commandWindows, async) is its author's."""
+    members = _CODEX_HANDLER_MEMBERS if codex else _CLAUDE_HANDLER_MEMBERS
+    return hook.get("type") == "command" and set(hook) <= members
+
+
 def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
     """Does this hook run an agent-hook binary (a release, or a home's stable
-    link to one) as its program, in the form sync renders for this harness
-    (Claude's exec form; Codex's AGENT_HOOK_LAUNCHERS), with no member the
-    renderer never writes?"""
+    link to one) as its program, placed and quoted as sync renders it for this
+    harness (Claude's exec form; Codex's AGENT_HOOK_LAUNCHERS), with no member
+    the renderer never writes? What follows the program is not compared, so a
+    changed template's older handlers are still owned."""
     command = hook.get("command")
-    if hook.get("type") != "command" or not isinstance(command, str):
-        return False
-    if not set(hook) <= (_CODEX_HANDLER_MEMBERS if codex else _CLAUDE_HANDLER_MEMBERS):
+    if not isinstance(command, str) or not _has_only_rendered_members(
+        hook, codex=codex
+    ):
         return False
     if not codex:
         if not isinstance(hook.get("args"), list):  # exec form: the path itself
@@ -779,7 +791,7 @@ def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
             command, windows=windows, expanded=_CLAUDE_EXEC_EXPANDED
         )
     for launcher in AGENT_HOOK_LAUNCHERS:
-        match = launcher.start.match(command.strip())
+        match = launcher.start.match(command)  # the renderer writes no padding
         if match is None:
             continue
         path = match[1]
@@ -806,6 +818,10 @@ def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
     marker = f"{agent.directory.as_posix()}/hooks/"
 
     def managed(hook: dict) -> bool:
+        # A member sync never writes makes the handler its author's, whatever
+        # its command points at (Codex's commandWindows runs another command).
+        if not _has_only_rendered_members(hook, codex=agent.receives_codex_hooks):
+            return False
         if _runs_agent_hook_release(hook, codex=agent.receives_codex_hooks):
             return True
         command = hook.get("command", "").replace("\\", "/")

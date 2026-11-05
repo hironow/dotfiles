@@ -340,11 +340,14 @@ def test_rtk_installer_blocks_are_recognised_across_rtk_versions(
 # agent-hook registrations name a release binary, or a home's stable link to
 # one. Sync must own them like the script blocks it owns today, so that
 # reverting the agent-hook wiring and syncing again replaces them instead of
-# leaving both (plan: agent-hooks-go). It owns exactly what the renderer writes
-# for each harness: Claude's exec form, and Codex's sh, PowerShell, and cmd
-# forms, each quoted by its shell's rules. So a path with an apostrophe, `$`,
-# or a space still counts, and a handler the renderer could not have written,
-# for that harness, stays its author's.
+# leaving both (plan: agent-hooks-go). It owns a handler whose program is the
+# binary, quoted and placed as the renderer writes it for that harness
+# (Claude's exec form; Codex's sh, PowerShell, and cmd forms), with no member
+# the renderer never writes. What follows the program is not compared, so a
+# changed template's older handlers are still owned. So a path with an
+# apostrophe, `$`, or a space still counts, and a handler whose program the
+# shell would read differently, or that holds another member, stays its
+# author's.
 
 HEX = "0123456789abcdef"
 DATA = "/home/u/.local/share/dotfiles/agent-hooks"
@@ -526,6 +529,20 @@ NOT_RUNNING_A_RELEASE = {
     "codex form with args": _hook(f"'{RELEASE}'{CLOSED_SH}", args=[]),
     "exec form with statusMessage": _hook(RELEASE, args=ARGS, statusMessage="checking"),
     "another type": {"type": "prompt", "command": RELEASE, "args": ARGS},
+    # The renderer writes one ASCII space after the program and nothing
+    # before it. sh, bash, and zsh split words on space, tab, and newline
+    # only, so another separator joins the next word to the program's name.
+    "nbsp after the path": _hook(f"'{RELEASE}'\u00a0codex pre"),
+    "ideographic space after the path": _hook(f"'{RELEASE}'\u3000codex pre"),
+    "unit separator after the path": _hook(f"'{RELEASE}'\x1fcodex pre"),
+    "tab after the path": _hook(f"'{RELEASE}'\tcodex pre"),
+    "a line after the path": _hook(f"'{RELEASE}'\nmine"),
+    "leading space": _hook(f" '{RELEASE}' codex pre"),
+    "leading nbsp": _hook(f"\u00a0'{RELEASE}' codex pre"),
+    "powershell, two spaces after &": _hook(
+        f"&  'C:\\Users\\u\\{WINDOWS_RELEASE}' codex"
+    ),
+    "cmd, nbsp after the path": _hook(f'"C:\\Users\\u\\{WINDOWS_RELEASE}"\u00a0codex'),
 }
 
 
@@ -538,6 +555,38 @@ def test_a_hook_that_does_not_run_a_release_is_not_managed(
 ) -> None:
     block = {"matcher": "Bash", "hooks": [hook]}
     assert not sync_agents._is_managed_hook_block(block, agent(tmp_path / "home"))
+
+
+def test_a_script_handler_with_a_member_sync_never_writes_is_not_managed(
+    tmp_path: Path,
+) -> None:
+    # A command that points into the agent's hooks dir is sync's only if the
+    # handler holds nothing sync never writes: Codex's commandWindows runs a
+    # command of the user's on Windows, so the user's handler must survive.
+    codex = _codex(tmp_path / "codex")
+    (codex.directory / "hooks").mkdir(parents=True)
+    script = f'bash "{codex.directory.as_posix()}/hooks/block-secrets.sh"'
+    user_block = {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": script, "commandWindows": "mine.cmd"}],
+    }
+    assert not sync_agents._is_managed_hook_block(user_block, codex)
+    claude = _claude(tmp_path / "claude")
+    claude_script = f'bash "{claude.directory.as_posix()}/hooks/block-secrets.sh"'
+    claude_block = {
+        "matcher": "Bash",
+        "hooks": [
+            {"type": "command", "command": claude_script, "statusMessage": "checking"}
+        ],
+    }
+    assert not sync_agents._is_managed_hook_block(claude_block, claude)
+    # and a sync keeps it
+    (codex.directory / "hooks.json").write_text(
+        json.dumps({"hooks": {"PreToolUse": [user_block]}}), encoding="utf-8"
+    )
+    _merge_hook_settings(ROOT, codex, system="Linux")
+    merged = json.loads((codex.directory / "hooks.json").read_text(encoding="utf-8"))
+    assert user_block in merged["hooks"]["PreToolUse"]
 
 
 @pytest.mark.parametrize(

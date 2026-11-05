@@ -136,6 +136,11 @@ func renderFragment(def definition.Definition, hooks []Hook, launcher definition
 			if !ok || (spec.Failure != "closed" && spec.Failure != "open") || spec.Event != block.Event {
 				return nil, fmt.Errorf("hook %q has no matching manifest entry", id)
 			}
+			// A closed entry's fallback blocks the call (Codex's names
+			// PreToolUse), which means nothing once the tool has run.
+			if spec.Failure == "closed" && spec.Event != "pre" {
+				return nil, fmt.Errorf("hook %q fails closed on %s; only a pre hook can block", id, spec.Event)
+			}
 			values := definition.RegistrationValues{Binary: binary, Harness: def.Name, Event: block.Event, Hook: id}
 			entry, err := launcher.Render(spec.Failure == "closed", values, quoting)
 			if err != nil {

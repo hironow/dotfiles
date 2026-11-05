@@ -57,6 +57,11 @@ func (l Launcher) Render(closed bool, values RegistrationValues, funcs template.
 var registrationOSes = []string{"darwin", "linux", "windows"}
 
 func checkRegistration(file harnessFile) error {
+	// The OS overrides first: their refusal names the cell, where a block's
+	// check would only say the hook has no tool.
+	if err := checkOSSupport(file); err != nil {
+		return err
+	}
 	if file.Registration != nil {
 		if err := checkBlocks(file); err != nil {
 			return fmt.Errorf("registration: %w", err)
@@ -65,7 +70,7 @@ func checkRegistration(file harnessFile) error {
 			return fmt.Errorf("registration: %w", err)
 		}
 	}
-	return checkOSSupport(file)
+	return nil
 }
 
 func checkBlocks(file harnessFile) error {
@@ -92,6 +97,10 @@ func checkBlocks(file harnessFile) error {
 		}
 		if block.Matcher == "" {
 			return errors.New("block has an empty matcher")
+		}
+		if len(block.Hooks) == 0 {
+			// sync owns only a block with hooks, so an empty one would pile up.
+			return fmt.Errorf("block %s %q has no hooks", block.Event, block.Matcher)
 		}
 		for _, hook := range block.Hooks {
 			event, ok := known[hook]
@@ -192,6 +201,10 @@ func checkOSSupport(file harnessFile) error {
 	for hook, tools := range file.Support {
 		for tool, support := range tools {
 			for os, override := range support.OS {
+				// An override marks a gap on one OS of a cell supported elsewhere.
+				if support.Level != LevelSupported {
+					return fmt.Errorf("OS support for %s on %s/%s needs a supported cell, not %q", hook, tool, os, support.Level)
+				}
 				if override.Level != LevelDegraded || override.Reason == "" {
 					return fmt.Errorf("OS support for %s on %s/%s must be degraded with a reason", hook, tool, os)
 				}
