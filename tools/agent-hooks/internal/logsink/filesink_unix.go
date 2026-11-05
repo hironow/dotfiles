@@ -84,6 +84,11 @@ func checkDirectory(parent, root *os.Root, name string, uid int, private bool) e
 	if !ok || !info.IsDir() || int64(stat.Uid) != int64(uid) {
 		return fmt.Errorf("%s: directory owner or type is unsafe", name)
 	}
+	// An ACL could reach past the mode bits, and its inheritable entries
+	// would pass to every file made in the directory (clearACL).
+	if err := clearACL(dir); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
 	if info.Mode().Perm()&0o077 != 0 {
 		return dir.Chmod(0o700)
 	}
@@ -132,6 +137,9 @@ func checkFile(root *os.Root, file *os.File, name string, uid int) error {
 	}
 	if stat.Nlink != 1 {
 		return extraLinks
+	}
+	if err := clearACL(file); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
 	}
 	if info.Mode().Perm()&0o077 != 0 {
 		return file.Chmod(0o600)

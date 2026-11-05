@@ -245,6 +245,7 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **The ids:** Claude and Codex map `session_id` and `tool_use_id`, agy `conversationId` and `stepIdx`, as the IR fields `sessionId` and `callId`. No hook reads them. Pi's shim sends none yet (PR 4).
     - **The file log** (`internal/logsink`, `FileSink`, POSIX):
         - Every level is opened as an `os.Root` inside the one above and checked through the open handle: `agent-hooks` and `logs` must be the user's directories, and lose group and other permission.
+        - On macOS, every directory and file it checks also loses any ACL, through the handle, and the sink reads that none is left (`fstat_extended` and `fchmod_extended`; the standard library has no ACL call). macOS checks an ACL before the mode bits, and a directory's inheritable entries pass to everything made in it. On Linux, a POSIX ACL's named entries are bounded by the mask, which is the mode's group bits, so 0600 and 0700 leave them nothing.
         - None of its names may be a link, even one that stays inside its directory, and a file must be the user's regular file with one link. Files are created only with `O_EXCL` and opened with `O_NONBLOCK`.
         - The salt (32 bytes) is made under a non-blocking `flock` of `salt.lock`, written to `salt.new`, synced, and linked to `salt`. The lock's holder removes what a maker that died left; a salt that is not 32 bytes is never replaced.
         - Each line goes in one write, and every write removes the day files more than 14 days old.
