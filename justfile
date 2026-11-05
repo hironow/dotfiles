@@ -925,9 +925,12 @@ agent-hooks-latency *args:
 
 # Build the agent-hook binary as a release, reproducibly, into the data directory.
 # Build a host release; also: id [--goos OS --goarch ARCH], check PATH, switch --home KEY [--root DIR] PATH.
+# Each argument reaches hookrelease as given (positional arguments; none on
+# native Windows, whose windows-shell hands a recipe no positional arguments).
 [group('Agents')]
+[positional-arguments]
 agent-hooks-build *args:
-    cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease {{ if args == "" { "build" } else { args } }}
+    cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease "${@:-build}"
 
 [group('Lint')]
 go-lint:
