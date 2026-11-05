@@ -489,8 +489,9 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
         - Found on the way (Claude, on the fixes): the group kill could come after the reap, which frees the group's ID; a pipe held from outside the group kept doctor waiting with no bound; the stdin probe's `if` made fish fail; `just --list` described the recipe with its Windows note.
     - Round 2 (Codex REVISE, 2; the independent review REVISE, 1 P2):
         - Codex: fish got the token alone, so a fish startup file that reads stdin passed (fish now gets the check in its own syntax); the grace was per pipe, so two held pipes waited 2 s, not 1.
-        - The independent review: with no agent home the checker printed nothing, which `doctor.sh` reads as a failed run; nothing pinned that gather feeds the token on stdin (a mutation survived); `read(8192)` held back a held pipe's last bytes, so it is `read1` now.
+        - The independent review: with no agent home the checker printed nothing, which `doctor.sh` reads as a failed run; nothing pinned that gather feeds the token on stdin (a mutation survived); `read(8192)` held back a held pipe's last bytes, so the pipes are read with an unbuffered `os.read` now.
         - Not adopted: SIGTERM before SIGKILL, so that a check killed at its limit removes its temporary `GOCACHE`. `hookrelease` traps no signal, so SIGTERM would leave it too, as before this PR.
+    - Round 3: Codex APPROVE; the independent review APPROVE, with one P3: this record named `read1`, which the code does not use.
     - Round 1 (REVISE, 5):
         - Adopted: PowerShell's `&` resolves `*?[]` as wildcards (reproduced with pwsh 7.6.9), so both sides refuse them; Codex ignores `args` and its `commandWindows` changes what runs, so ownership became per harness and per member set; render and ownership differed on the suffix, so both now take it by OS and refuse control characters.
         - Answered from Codex's source: cmd's `/C` quote stripping takes the extra pair Codex adds, so the cmd form is intact. The launch test with a space, `&`, and parentheses goes to the Windows PR.
