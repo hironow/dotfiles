@@ -397,6 +397,7 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
         - Not taken: a second recover inside `Answer`. text/template already turns a template function's panic into an error, and no test could reach that path.
     - Round 3 (Codex REVISE, 2): a releases directory removed between its creation and its opening ended the build; the plan overstated the freebsd vet.
     - Round 4 (Codex REVISE, 1): a retry dropped the record of the directories it had created, so a failure could leave an empty parent.
+    - Round 5 (Codex APPROVE): no new findings.
     - Mutations: the independent review ran 16 on round 1's fixes (15 killed; the survivor is fixed in round 2), and round 2's fixes got 8, all killed. In rounds 3 and 4 each new test failed before its fix, and dropping the deepest-first order fails one too.
 
 - PR 2g (Pi's rtk) code reviews (Codex):
