@@ -17,6 +17,10 @@ type releasesLock struct {
 	created []string
 }
 
+// testHookBeforeOpen runs between making sure the releases directory is
+// there and opening it, so a test can remove it in that window.
+var testHookBeforeOpen = func() {}
+
 // lockReleases makes the releases directory and its parents if needed, and
 // locks it (flock on the directory itself, so no lock file is left behind).
 // It tells stderr when it waits for another build.
@@ -26,7 +30,12 @@ func lockReleases(releases string, stderr io.Writer) (releasesLock, error) {
 		if err != nil {
 			return releasesLock{}, err
 		}
+		testHookBeforeOpen()
 		dir, err := os.Open(releases)
+		if errors.Is(err, os.ErrNotExist) {
+			// A failed first build removed it between the two steps.
+			continue
+		}
 		if err != nil {
 			removeEmptyDirectories(created)
 			return releasesLock{}, err
@@ -36,9 +45,9 @@ func lockReleases(releases string, stderr io.Writer) (releasesLock, error) {
 			removeEmptyDirectories(created)
 			return releasesLock{}, err
 		}
-		// A failed build removes the directory it made. A build that waited
-		// on that directory then holds a lock on one that is gone, and tries
-		// again.
+		// A failed first build removes the directory it made. A build that
+		// waited on that directory then holds a lock on one that is gone,
+		// and starts again.
 		held, heldErr := dir.Stat()
 		named, namedErr := os.Stat(releases)
 		if heldErr == nil && namedErr == nil && os.SameFile(held, named) {
