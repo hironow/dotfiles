@@ -36,6 +36,18 @@ func (a Action) String() string {
 	}
 }
 
+// The rules the binary's own blocks name, for the log. The guards' rules are
+// in their packages (commandguard.Rules, fileguard.Rules, secretguard.Rules).
+const (
+	// RuleInputUnreadable blocks a payload that is not one JSON value: no
+	// guard can read it.
+	RuleInputUnreadable = "input.unreadable"
+	// RuleShimBroken blocks a shim request that breaks the shim protocol.
+	RuleShimBroken = "shim.broken"
+	// RuleHookFailed blocks a call whose guard failed (panicked).
+	RuleHookFailed = "hook.failed"
+)
+
 // Outcome is what one hook decided about one tool call. The zero Outcome is
 // a pass.
 type Outcome struct {

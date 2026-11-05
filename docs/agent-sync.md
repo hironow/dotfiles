@@ -78,6 +78,7 @@ Pi は tool の path を書く前に解決するので、binary も同じに解�
 元の guard と同じ判定をすることを、`tools/agent-hooks/internal/guardcorpus/` の corpus で確かめている。
 harness ごとの定義（payload の schema、答え、hook ごとの対応状況）は `tools/agent-hooks/harnesses/` にある（`README.md` が書き方を説明する）。
 同じ scenario を全 harness に通す conformance suite（`tools/agent-hooks/internal/conformance/`）が、定義の誤りを知らせる。
+binary は実行ごとに、決まった値だけの行を 1 行ずつ `$XDG_STATE_HOME/dotfiles/agent-hooks/logs/<UTC の日付>.jsonl`（既定は `~/.local/state/...`）に書く（path、command、内容は書かない。Windows ではまだ書かない）。`just agent-hooks-log` が直近の行を表で出す。
 guard、rtk の hook、formatter かその test、または `guard-codex.sh` を変えたら corpus を書き直し、Go 側も同じ判定に直す。
 command guard は `just command-guard-corpus`、files guard と secrets guard は `just file-guards-corpus`、binary に通す payload は `just hook-payload-corpus`、rtk の hook と formatter は `just tool-hooks-corpus` で書き直す。
 `tests/unit/test_command_guard_corpus.py`、`tests/unit/test_file_guards_corpus.py`、`tests/unit/test_hook_payload_corpus.py`、`tests/unit/test_tool_hooks_corpus.py`、Go の test が、ずれを知らせる。

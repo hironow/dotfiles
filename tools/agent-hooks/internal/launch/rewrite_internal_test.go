@@ -26,7 +26,7 @@ func TestARewriteTheCodecRefusesPasses(t *testing.T) {
 			return ir.Outcome{Action: ir.Rewrite, Set: set}
 		}}
 		var stdout, stderr bytes.Buffer
-		exit := run([]string{"pi", "pre", "--hook", "rtk"}, bytes.NewReader(payload), &stdout, &stderr, &fake.Machine{}, rewriting)
+		exit := run([]string{"pi", "pre", "--hook", "rtk"}, bytes.NewReader(payload), &stdout, &stderr, &fake.Machine{}, &fake.LogSink{}, rewriting)
 		if exit != 0 || stdout.String() != `{"v":1,"action":"pass"}`+"\n" || !strings.Contains(stderr.String(), "rewrite") {
 			t.Errorf("%+v: exit %d, stdout %q, stderr %q; want the pass and why", set, exit, stdout.String(), stderr.String())
 		}
@@ -36,7 +36,7 @@ func TestARewriteTheCodecRefusesPasses(t *testing.T) {
 		return ir.Outcome{Action: ir.Rewrite, Set: ir.Assignment{Field: ir.FieldCommand, Value: "rtk ls"}}
 	}}
 	var stdout, stderr bytes.Buffer
-	run([]string{"pi", "pre", "--hook", "rtk"}, bytes.NewReader(payload), &stdout, &stderr, &fake.Machine{}, rewriting)
+	run([]string{"pi", "pre", "--hook", "rtk"}, bytes.NewReader(payload), &stdout, &stderr, &fake.Machine{}, &fake.LogSink{}, rewriting)
 	if want := `{"v":1,"action":"rewrite","set":{"command":"rtk ls"}}` + "\n"; stdout.String() != want {
 		t.Errorf("the control: stdout %q, want %q", stdout.String(), want)
 	}

@@ -18,7 +18,7 @@ type result struct {
 func run(t *testing.T, machine launch.Machine, stdin string, args ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	exit := launch.Run(args, strings.NewReader(stdin), &stdout, &stderr, machine)
+	exit := launch.Run(args, strings.NewReader(stdin), &stdout, &stderr, machine, &fake.LogSink{})
 	return result{exit, stdout.String(), stderr.String()}
 }
 
@@ -87,7 +87,7 @@ func (failingReader) Read([]byte) (int, error) { return 0, errors.New("read fail
 
 func TestRunBlocksWhenStdinCannotBeRead(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	exit := launch.Run([]string{"claude", "pre", "--hook", "files-guard"}, failingReader{}, &stdout, &stderr, &fake.Machine{})
+	exit := launch.Run([]string{"claude", "pre", "--hook", "files-guard"}, failingReader{}, &stdout, &stderr, &fake.Machine{}, &fake.LogSink{})
 	if got, want := (result{exit, stdout.String(), stderr.String()}), (result{exit: 2, stderr: unreadableReason + "\n"}); got != want {
 		t.Errorf("Run = %+v, want %+v", got, want)
 	}

@@ -476,6 +476,6 @@ func isSubset(sub, of []string) bool {
 func runBinary(t *testing.T, m *fake.Machine, payload []byte, harness, event, hook string) verdict {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	exit := launch.Run([]string{harness, event, "--hook", hook}, bytes.NewReader(payload), &stdout, &stderr, m)
+	exit := launch.Run([]string{harness, event, "--hook", hook}, bytes.NewReader(payload), &stdout, &stderr, m, &fake.LogSink{})
 	return readers[harness][event](answer{exit: exit, stdout: stdout.String(), stderr: stderr.String()})
 }

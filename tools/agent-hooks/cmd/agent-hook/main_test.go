@@ -47,6 +47,18 @@ func buildAndRun(m *testing.M) int {
 			return 1
 		}
 	}
+	// Every run of the binary logs a line to the state directory. The runs
+	// inherit this process's environment, so it is the tests' own: no test
+	// writes to the user's file log. XDG_STATE_HOME is absolute, so HOME is
+	// not used for it; LOCALAPPDATA is Windows' (no file log there yet). A
+	// test that sets a run's environment itself sets HOME to its own root.
+	state := filepath.Join(dir, "state")
+	for _, name := range []string{"XDG_STATE_HOME", "LOCALAPPDATA"} {
+		if err := os.Setenv(name, state); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+	}
 	return m.Run()
 }
 

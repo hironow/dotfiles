@@ -15,6 +15,7 @@ import (
 	"maps"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -104,7 +105,8 @@ type Event struct {
 	tools          map[string]string
 	schema         any // the schema as parsed JSON, for Declares
 	compiled       *compiledSchema
-	success        *successRule // "x-success", or nil: how a post payload tells that the tool call succeeded
+	envelope       *compiledSchema // the schema without its top-level allOf
+	success        *successRule    // "x-success", or nil: how a post payload tells that the tool call succeeded
 	answers        map[string]answer
 }
 
@@ -164,9 +166,16 @@ type schemaFile struct {
 
 var knownKinds = []string{ir.KindShell, ir.KindWrite, ir.KindEdit, ir.KindNotebook, ir.KindPatch}
 
+// reservedNames are the binary's own commands (`agent-hook log`), which no
+// harness can be named.
+var reservedNames = []string{"log"}
+
 // Load reads the definition of the named harness from fsys, which holds one
 // directory per harness.
 func Load(fsys fs.FS, name string) (Definition, error) {
+	if slices.Contains(reservedNames, name) {
+		return Definition{}, fmt.Errorf("%q is the binary's own command, not a harness", name)
+	}
 	var file harnessFile
 	if err := readJSON(fsys, path.Join(name, "harness.json"), &file); err != nil {
 		return Definition{}, err
@@ -287,6 +296,7 @@ func loadEvent(fsys fs.FS, harness, name string, file eventFile, owner harnessFi
 		tools:          owner.Tools,
 		schema:         tree,
 		compiled:       &compiledSchema{raw: raw},
+		envelope:       &compiledSchema{raw: raw, envelope: true},
 		success:        success,
 		answers:        answers,
 	}
@@ -444,9 +454,12 @@ func readJSON(fsys fs.FS, name string, v any) error {
 }
 
 // compiledSchema is the event's JSON Schema, resolved on first use: only
-// Validate needs it.
+// Validate and Conform need it.
 type compiledSchema struct {
-	raw      []byte
+	raw []byte
+	// envelope drops the schema's top-level allOf, where every definition
+	// keeps its per-tool branches: what is left checks the envelope.
+	envelope bool
 	once     sync.Once
 	resolved *jsonschema.Resolved
 	err      error
@@ -458,6 +471,9 @@ func (c *compiledSchema) get() (*jsonschema.Resolved, error) {
 		if err := json.Unmarshal(c.raw, &schema); err != nil {
 			c.err = err
 			return
+		}
+		if c.envelope {
+			schema.AllOf = nil
 		}
 		c.resolved, c.err = schema.Resolve(nil)
 	})
@@ -475,6 +491,66 @@ func (e Event) Validate(payload []byte) error {
 		return fmt.Errorf("%w: %w", ErrUnreadable, err)
 	}
 	return resolved.Validate(value)
+}
+
+// Conformance is how a payload fits its event's schema. Only the log reads
+// it: no answer depends on it.
+type Conformance int
+
+const (
+	// Conforms is a payload that fits the whole schema.
+	Conforms Conformance = iota
+	// EnvelopeMismatch is a payload that fails the schema without its
+	// top-level allOf, which holds every per-tool branch: the envelope (the
+	// ids, the event, the tool's name).
+	EnvelopeMismatch
+	// InputMismatch is a payload that fits the envelope but not the whole
+	// schema: a tool's input.
+	InputMismatch
+	// Unchecked is a payload the validator could not read. It reads numbers
+	// as float64, so a number past that range fails it, though Decode takes
+	// the payload.
+	Unchecked
+)
+
+func (c Conformance) String() string {
+	switch c {
+	case Conforms:
+		return "conforms"
+	case EnvelopeMismatch:
+		return "envelope"
+	case InputMismatch:
+		return "input"
+	case Unchecked:
+		return "unchecked"
+	default:
+		return "Conformance(" + strconv.Itoa(int(c)) + ")"
+	}
+}
+
+// Conform checks a payload against the event's envelope, then against the
+// whole schema. The validator's messages are not kept: the log takes only
+// which part failed.
+func (e Event) Conform(payload []byte) Conformance {
+	var value any
+	if err := json.Unmarshal(payload, &value); err != nil {
+		return Unchecked
+	}
+	envelope, err := e.envelope.get()
+	if err != nil {
+		return Unchecked
+	}
+	if envelope.Validate(value) != nil {
+		return EnvelopeMismatch
+	}
+	whole, err := e.compiled.get()
+	if err != nil {
+		return Unchecked
+	}
+	if whole.Validate(value) != nil {
+		return InputMismatch
+	}
+	return Conforms
 }
 
 // Declares reports whether the schema declares a property at the pointer:

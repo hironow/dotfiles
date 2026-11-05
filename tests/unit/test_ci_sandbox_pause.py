@@ -80,3 +80,21 @@ def test_go_test_runs_the_go_it_is_given() -> None:
     assert '(cd "$dir" && go test -short ./...)' in dry_run("go")
     # local, and `just check`: Go from mise, as before
     assert '(cd "$dir" && mise x -- go test -short ./...)' in dry_run()
+
+
+def test_the_file_logs_macos_code_runs_on_macos() -> None:
+    # The agent-hook file log removes macOS ACLs through raw system calls
+    # (internal/logsink/acl_darwin.go), which build and run only on macOS;
+    # the go job runs on Linux.
+    job = _job(UNIT, "go-macos")
+    assert _condition(job) == DRAFT_GUARD
+    assert re.search(r"\n    runs-on: macos-latest\n", job)
+    assert re.search(r"uses: actions/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n", job)
+    assert re.search(r"uses: actions/setup-go@[0-9a-f]{40} # v\d+\.\d+\.\d+\n", job)
+    assert "go-version-file: tools/agent-hooks/go.mod" in job
+    assert "working-directory: tools/agent-hooks" in job
+    vet = re.search(r"^ +go vet \./\.\.\.$", job, re.MULTILINE)
+    test = re.search(r"^ +go test -count=1 \./internal/logsink/$", job, re.MULTILINE)
+    assert vet
+    assert test
+    assert job.index("actions/setup-go@") < vet.start() < test.start()

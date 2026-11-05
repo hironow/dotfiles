@@ -2,6 +2,7 @@ package fileguard_test
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/applypatch"
@@ -34,6 +35,10 @@ func TestCheckAgreesWithTheShellGuardOnTheCorpus(t *testing.T) {
 			if outcome.Action != ir.Block || outcome.Reason != *want.Reason {
 				t.Fatalf("Check(%q) = %v %q; the shell guard blocked: %q",
 					paths, outcome.Action, outcome.Reason, *want.Reason)
+			}
+			// and the block names a rule the guard lists, for the log
+			if !slices.Contains(fileguard.Rules(), outcome.Rule) {
+				t.Fatalf("Check(%q) blocked by rule %q, which Rules() does not list", paths, outcome.Rule)
 			}
 		})
 	}

@@ -242,6 +242,12 @@
     ],
     "notebookPath": [
       "/tool_input/notebook_path"
+    ],
+    "sessionId": [
+      "/session_id"
+    ],
+    "callId": [
+      "/tool_use_id"
     ]
   }
 }

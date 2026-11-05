@@ -9,6 +9,11 @@ const (
 	FieldNotebookPath = "notebookPath"
 	FieldContent      = "content" // the text a write, edit, or notebook edit puts in
 	FieldCwd          = "cwd"     // the tool call's working directory, as the harness gave it
+	// FieldSessionID and FieldCallID are the session's id and the tool call's
+	// id, as the harness gave them. No hook reads them; the log hashes them
+	// into a trace id that a call's pre and post lines share.
+	FieldSessionID = "sessionId"
+	FieldCallID    = "callId"
 )
 
 // The IR list fields a harness definition maps: a pointer with a "*" in its
@@ -77,6 +82,46 @@ type Call struct {
 	// Native is the payload as the harness wrote it. Only a delegate hook,
 	// which hands the payload to the delegate, reads it.
 	Native []byte
+}
+
+// stringFields are the IR fields the hooks read only as strings. The ids
+// (FieldSessionID, FieldCallID) take any value: the log only hashes them.
+var stringFields = []string{FieldCommand, FieldFilePath, FieldNotebookPath, FieldContent, FieldCwd}
+
+// MappingMismatch reports whether the call's IR breaks what the hooks read,
+// for the log's "mapping" mismatch: a field of a type the hooks do not read
+// (any field of stringFields, or any list element, that is not a string),
+// or a kind without what it holds. A shell holds its command; a write, its
+// file path and content; an edit, its file path and its content or contents;
+// a notebook edit, its notebook path (a cell deleted has no source); a patch,
+// its text in the command field. A call of no kind (a tool the definition
+// does not map) promises nothing. No hook's decision depends on it.
+func (c Call) MappingMismatch() bool {
+	for _, field := range stringFields {
+		if value, ok := c.Fields[field]; ok && !value.IsString {
+			return true
+		}
+	}
+	for _, list := range c.Lists {
+		for _, value := range list {
+			if !value.IsString {
+				return true
+			}
+		}
+	}
+	has := func(field string) bool { _, ok := c.Fields[field]; return ok }
+	switch c.Kind {
+	case KindShell, KindPatch:
+		return !has(FieldCommand)
+	case KindWrite:
+		return !has(FieldFilePath) || !has(FieldContent)
+	case KindEdit:
+		return !has(FieldFilePath) || (!has(FieldContent) && len(c.Lists[ListContents]) == 0)
+	case KindNotebook:
+		return !has(FieldNotebookPath)
+	default:
+		return false
+	}
 }
 
 // Value is one IR field's value. Text is the string itself, or, for any other

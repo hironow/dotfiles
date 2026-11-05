@@ -26,6 +26,11 @@ const (
 	RuleUnresolved = "file.unresolved"
 )
 
+// Rules lists every rule a block of the guard names.
+func Rules() []string {
+	return []string{RuleComposeV1, RuleYMLExtension, RuleUnresolved}
+}
+
 // CheckCall is the guard's verdict on a call: Check on its paths (Paths),
 // unless its file path could not be resolved as the harness resolves it.
 func CheckCall(call ir.Call) ir.Outcome {

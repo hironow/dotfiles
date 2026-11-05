@@ -95,6 +95,24 @@ jobs:
         env:
           GOTOOLCHAIN: auto
         run: just go-test go
+  go-macos:
+    name: Go tests on macOS (agent-hook file log)
+    # The agent-hook file log removes macOS ACLs through raw system calls
+    # (tools/agent-hooks/internal/logsink/acl_darwin.go). That code builds
+    # and runs only on macOS, and the go job above runs on Linux.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/agent-hooks/go.mod
+          cache-dependency-path: tools/agent-hooks/go.sum
+      - name: Vet the module and test the file log
+        working-directory: tools/agent-hooks
+        run: |
+          go vet ./...
+          go test -count=1 ./internal/logsink/
   windows-jev:
     name: Jev launcher + just HOME on PowerShell
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false

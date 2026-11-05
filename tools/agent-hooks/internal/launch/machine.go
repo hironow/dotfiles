@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/osrand"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
 )
 
@@ -48,6 +49,12 @@ func (ExecMachine) Exists(path string) (bool, error) {
 		return false, err
 	}
 }
+
+// Now is time.Now.
+func (ExecMachine) Now() time.Time { return time.Now() }
+
+// Random fills p with OS randomness without crashing on failure.
+func (ExecMachine) Random(p []byte) error { return osrand.Read(p) }
 
 // LookupEnv is os.LookupEnv: the variable's value, and whether it is set.
 func (ExecMachine) LookupEnv(name string) (string, bool) { return os.LookupEnv(name) }

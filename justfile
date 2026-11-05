@@ -906,6 +906,12 @@ pi-paths-corpus:
 pi-rtk-corpus:
     cd tools/agent-hooks && mise x -- go run ./internal/toolhookcorpus/writepirtk
 
+# One line per hook run; `--days N` prints the last N UTC days, not only today.
+# Print the agent-hook binary's recent log lines as a table.
+[group('Agents')]
+agent-hooks-log *args:
+    cd tools/agent-hooks && mise x -- go run ./cmd/agent-hook log {{args}}
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash
