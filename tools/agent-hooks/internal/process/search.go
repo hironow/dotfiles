@@ -50,10 +50,11 @@ func joinAsPython(dir, name string) string {
 // binary's own environment, as the scripts' commands did, so there is no
 // field to change it.
 type Command struct {
-	Path    string
-	Args    []string
-	Stdin   []byte
-	Timeout time.Duration // zero: no timeout
+	Path     string
+	Args     []string
+	Stdin    []byte
+	Timeout  time.Duration // zero: no timeout
+	Deadline time.Time     // zero: no deadline
 	// Combined puts stdout and stderr on one pipe, as `2>&1` does;
 	// Result.Stdout then holds both, in the order they were written.
 	Combined bool

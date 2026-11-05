@@ -23,6 +23,7 @@ const (
 	ErrInputUnreadable = ir.RuleInputUnreadable
 	ErrShimBroken      = ir.RuleShimBroken
 	ErrHookFailed      = ir.RuleHookFailed
+	ErrHookTimeout     = ir.RuleHookTimeout
 	ErrRewriteDropped  = "rewrite.dropped"
 	ErrToolFailed      = "tool.failed"
 	ErrAnswerFailed    = "answer.failed"

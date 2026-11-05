@@ -57,6 +57,8 @@ type Machine struct {
 	Ran int
 	// Mismatches describes every Run that did not match its invocation.
 	Mismatches []string
+	// Deadlines records the stage deadlines. Replay ignores them.
+	Deadlines []time.Time
 }
 
 // Invocation is one recorded command and what it did. Failed means the
@@ -133,6 +135,7 @@ func (m *Machine) Exists(path string) (bool, error) {
 
 // Run replays the next invocation when the command matches it.
 func (m *Machine) Run(command process.Command) (process.Result, error) {
+	m.Deadlines = append(m.Deadlines, command.Deadline)
 	if m.Unstartable[command.Path] {
 		return process.Result{}, fmt.Errorf("fake: %s cannot be started", command.Path)
 	}

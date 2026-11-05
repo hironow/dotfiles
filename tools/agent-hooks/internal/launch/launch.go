@@ -6,6 +6,7 @@
 package launch
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -93,9 +94,10 @@ var hooks = map[string]hook{
 
 // hookSpec is one hook of manifest.json.
 type hookSpec struct {
-	ID      string `json:"id"`
-	Event   string `json:"event"`
-	Failure string `json:"failure"`
+	ID              string `json:"id"`
+	Event           string `json:"event"`
+	Failure         string `json:"failure"`
+	DeadlineSeconds int    `json:"deadlineSeconds"`
 }
 
 // The failure modes of manifest.json.
@@ -106,13 +108,20 @@ const (
 
 // manifest reads manifest.json.
 func manifest() ([]hookSpec, error) {
+	return decodeManifest(agenthooks.Manifest)
+}
+
+func decodeManifest(encoded []byte) ([]hookSpec, error) {
 	var file struct {
 		Hooks []hookSpec `json:"hooks"`
 	}
-	if err := json.Unmarshal(agenthooks.Manifest, &file, json.RejectUnknownMembers(true)); err != nil {
+	if err := json.Unmarshal(encoded, &file, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("manifest.json: %w", err)
 	}
 	for _, spec := range file.Hooks {
+		if spec.DeadlineSeconds <= 0 || uint64(spec.DeadlineSeconds) > uint64((1<<63-1)/time.Second) {
+			return nil, fmt.Errorf("manifest.json: hook %s needs a positive deadline in seconds that fits a duration", spec.ID)
+		}
 		if spec.Failure != failClosed && spec.Failure != failOpen {
 			return nil, fmt.Errorf("manifest.json: hook %s has failure mode %q", spec.ID, spec.Failure)
 		}
@@ -139,7 +148,9 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machi
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machine, sink logsink.Sink,
 	hooks map[string]hook,
+	stageLimit ...time.Duration,
 ) int {
+	started := time.Now()
 	start := machine.Now()
 	firing := logline.Firing{}
 	if len(args) > 0 {
@@ -153,24 +164,101 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machi
 		return exitUsage
 	}
 	firing.Event, firing.Hook = args[1], spec.ID
-	payload, readErr := io.ReadAll(stdin)
-	outcome := decideInput(event, spec, decide, payload, readErr, machine, stderr, &firing)
-	firing.Outcome = outcome
-	exit, ok := writeAnswer(event, outcome, stdout, stderr)
+	limit := time.Duration(spec.DeadlineSeconds) * time.Second
+	if len(stageLimit) > 0 {
+		limit = stageLimit[0]
+	}
+	deadline := started.Add(limit)
+	worker := make(chan stageAnswer, 1)
+	go func() {
+		worker <- decideStage(event, spec, decide, stdin, stageMachine{Machine: machine, deadline: deadline})
+	}()
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
+	var answered stageAnswer
+	var checked *validation
+	timedOut := false
+	finished := false
+	select {
+	case answered = <-worker:
+		finished = true
+		timedOut = !time.Now().Before(deadline)
+	case <-timer.C:
+		timedOut = true
+	}
+	if timedOut {
+		firing.Error = logline.ErrHookTimeout
+		firing.Outcome = timeoutOutcome(spec)
+		answered = stageAnswer{}
+		answered.answer, answered.err = event.Answer(firing.Outcome)
+	} else {
+		firing.Call, firing.Error, firing.Outcome = answered.firing.Call, answered.firing.Error, answered.firing.Outcome
+		checked = &validation{event: event, payload: answered.payload}
+		_, _ = io.WriteString(stderr, answered.diagnostics)
+	}
+	exit, ok := writeAnswer(answered.answer, answered.err, stdout, stderr)
 	if !ok {
 		firing.Error = logline.ErrAnswerFailed
 	}
 	end := machine.Now()
 	firing.Duration = end.Sub(start)
-	checked := &validation{event: event, payload: payload}
+	if timedOut && !finished {
+		cleanup := time.NewTimer(2500 * time.Millisecond)
+		defer cleanup.Stop()
+		select {
+		case <-worker:
+		case <-cleanup.C:
+		}
+	}
 	logRun(sink, firing, checked, end, machine)
 	return exit
 }
 
-// writeAnswer renders the outcome as the harness reads it and writes it. On
+// stageAnswer belongs to the worker until it sends it to the supervisor.
+type stageAnswer struct {
+	payload     []byte
+	firing      logline.Firing
+	diagnostics string
+	answer      definition.Answer
+	err         error
+}
+
+func decideStage(event definition.Event, spec hookSpec, decide hook, stdin io.Reader, machine Machine) stageAnswer {
+	var diagnostics bytes.Buffer
+	var result stageAnswer
+	payload, readErr := io.ReadAll(stdin)
+	result.payload = payload
+	result.firing.Outcome = decideInput(event, spec, decide, payload, readErr, machine, &diagnostics, &result.firing)
+	result.answer, result.err = event.Answer(result.firing.Outcome)
+	result.diagnostics = diagnostics.String()
+	return result
+}
+
+func timeoutOutcome(spec hookSpec) ir.Outcome {
+	if spec.Failure != failClosed {
+		return ir.Outcome{}
+	}
+	return ir.Outcome{
+		Action: ir.Block,
+		Rule:   ir.RuleHookTimeout,
+		Reason: "agent-hook's " + spec.ID + " hook did not finish in time, so the call is blocked.",
+	}
+}
+
+// stageMachine gives every child the stage's absolute deadline.
+type stageMachine struct {
+	Machine
+	deadline time.Time
+}
+
+func (m stageMachine) Run(command process.Command) (process.Result, error) {
+	command.Deadline = m.deadline
+	return m.Machine.Run(command)
+}
+
+// writeAnswer writes the rendered answer as the harness reads it. On
 // a failure it returns exitSoftware and false.
-func writeAnswer(event definition.Event, outcome ir.Outcome, stdout, stderr io.Writer) (int, bool) {
-	answer, err := event.Answer(outcome)
+func writeAnswer(answer definition.Answer, err error, stdout, stderr io.Writer) (int, bool) {
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "agent-hook: cannot render the answer: %v\n", err)
 		return exitSoftware, false
