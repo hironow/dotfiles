@@ -173,19 +173,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machi
 	go func() {
 		worker <- decideStage(event, spec, decide, stdin, stageMachine{Machine: machine, deadline: deadline})
 	}()
-	timer := time.NewTimer(time.Until(deadline))
-	defer timer.Stop()
-	var answered stageAnswer
 	var checked *validation
-	timedOut := false
-	finished := false
-	select {
-	case answered = <-worker:
-		finished = true
-		timedOut = !time.Now().Before(deadline)
-	case <-timer.C:
-		timedOut = true
-	}
+	answered, finished, timedOut := awaitStage(worker, deadline)
 	if timedOut {
 		firing.Error = logline.ErrHookTimeout
 		firing.Outcome = timeoutOutcome(spec)
@@ -214,6 +203,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, machine Machi
 	return exit
 }
 
+// awaitStage checks the absolute deadline even when the worker is ready first.
+func awaitStage(worker <-chan stageAnswer, deadline time.Time) (answered stageAnswer, finished, timedOut bool) {
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
+	select {
+	case answered = <-worker:
+		finished = true
+		timedOut = !time.Now().Before(deadline)
+	case <-timer.C:
+		timedOut = true
+	}
+	return answered, finished, timedOut
+}
+
 // stageAnswer belongs to the worker until it sends it to the supervisor.
 type stageAnswer struct {
 	payload     []byte
@@ -223,14 +226,21 @@ type stageAnswer struct {
 	err         error
 }
 
-func decideStage(event definition.Event, spec hookSpec, decide hook, stdin io.Reader, machine Machine) stageAnswer {
+func decideStage(event definition.Event, spec hookSpec, decide hook, stdin io.Reader, machine Machine) (result stageAnswer) {
 	var diagnostics bytes.Buffer
-	var result stageAnswer
+	defer func() {
+		if failure := recover(); failure != nil {
+			result.firing.Outcome = failedOutcome(spec)
+			result.firing.Error = logline.ErrHookFailed
+			_, _ = fmt.Fprintf(&diagnostics, "agent-hook: the %s hook failed: %v\n", spec.ID, failure)
+			result.answer, result.err = event.Answer(result.firing.Outcome)
+		}
+		result.diagnostics = diagnostics.String()
+	}()
 	payload, readErr := io.ReadAll(stdin)
 	result.payload = payload
 	result.firing.Outcome = decideInput(event, spec, decide, payload, readErr, machine, &diagnostics, &result.firing)
 	result.answer, result.err = event.Answer(result.firing.Outcome)
-	result.diagnostics = diagnostics.String()
 	return result
 }
 

@@ -9,7 +9,47 @@ import (
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/definition"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/fake"
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/ir"
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logline"
 )
+
+type panickingInput struct{}
+
+func (panickingInput) Read([]byte) (int, error) { panic("stdin read failed") }
+
+func TestStageRecoversAPanicWhileReadingStdin(t *testing.T) {
+	for _, id := range []string{"command-guard", "rtk", "formatter"} {
+		t.Run(id, func(t *testing.T) {
+			event := "pre"
+			outcome := ir.Outcome{}
+			switch id {
+			case "command-guard":
+				outcome = ir.Outcome{Action: ir.Block, Rule: "hook.failed", Reason: "agent-hook's command-guard hook failed, so it could not check the call."}
+			case "formatter":
+				event = "post"
+			}
+			want := answerTo(t, "claude", event, outcome)
+			var stdout, stderr bytes.Buffer
+			sink := &fake.LogSink{}
+			exit := run([]string{"claude", event, "--hook", id}, panickingInput{}, &stdout, &stderr,
+				&fake.Machine{}, sink, hooks)
+			if exit != want.Exit || stdout.String() != want.Stdout || !strings.Contains(stderr.String(), "stdin read failed") || !strings.HasSuffix(stderr.String(), want.Stderr) {
+				t.Errorf("exit %d, stdout %q, stderr %q; want %+v and panic diagnostics", exit, stdout.String(), stderr.String(), want)
+			}
+			entries := sink.Lines()
+			if len(entries) != 1 {
+				t.Fatalf("%d log lines, want one", len(entries))
+			}
+			line, err := logline.Parse(entries[0].Line)
+			wantOutcome := "pass"
+			if id == "command-guard" {
+				wantOutcome = "block"
+			}
+			if err != nil || line.Error != "hook.failed" || line.Rule != outcome.Rule || line.Outcome != wantOutcome {
+				t.Errorf("line %+v, %v; want hook.failed and %s", line, err, wantOutcome)
+			}
+		})
+	}
+}
 
 // runPanicking runs hook id, which panics, on a harness's fixture.
 func runPanicking(t *testing.T, harness, event, id, fixture string) (int, string, string) {

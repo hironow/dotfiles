@@ -5,6 +5,7 @@ package launch
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"runtime"
 	"slices"
 	"syscall"
@@ -30,7 +31,14 @@ func TestProcessOwnerSignalsOnlyBeforeReaping(t *testing.T) {
 				close(drained)
 			}
 			err := finishProcess(life, drained, deadline)
-			if (name == "deadline" && !errors.Is(err, context.DeadlineExceeded)) || (name != "deadline" && err != nil) {
+			var wantErr error
+			switch name {
+			case "deadline":
+				wantErr = context.DeadlineExceeded
+			case "descendant":
+				wantErr = exec.ErrWaitDelay
+			}
+			if !errors.Is(err, wantErr) {
 				t.Errorf("finishProcess = %v", err)
 			}
 			if events := life.Events(); !slices.Equal(events, want) {

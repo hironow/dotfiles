@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -32,11 +33,12 @@ if [ "$1" = heartbeat ]; then
 fi
 echo $$ >> "$1/pids"
 child=closed
-case "$2" in late|held) child="$2";; esac
+case "$2" in late|held) child="$2";; post-exit-deadline) child=held;; esac
 "$0" heartbeat "$1" "$child" &
 while [ ! -s "$1/heartbeat" ]; do sleep 0.01; done
 case "$2" in
   deadline) exec sleep 3;;
+  held) printf partial-output; printf partial-error >&2;;
   large)
     dd if=/dev/zero bs=1048576 count=1 2>/dev/null
     (dd if=/dev/zero bs=1048576 count=1 2>/dev/null) >&2;;
@@ -83,7 +85,7 @@ func stopProcessTree(t *testing.T, dir string) {
 }
 
 func TestExecMachineLeavesNoDescendant(t *testing.T) {
-	for _, mode := range []string{"closed", "late", "held", "deadline", "large", "ordered"} {
+	for _, mode := range []string{"closed", "late", "held", "deadline", "post-exit-deadline", "large", "ordered"} {
 		for _, combined := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/combined=%v", mode, combined), func(t *testing.T) {
 				t.Parallel()
@@ -94,16 +96,26 @@ func TestExecMachineLeavesNoDescendant(t *testing.T) {
 				}
 				t.Cleanup(func() { stopProcessTree(t, dir) })
 				limit := 5 * time.Second
-				if mode == "deadline" {
+				if mode == "deadline" || mode == "post-exit-deadline" {
 					limit = time.Second
 				}
 				start := time.Now()
 				got, err := (launch.ExecMachine{}).Run(process.Command{
 					Path: path, Args: []string{path, dir, mode}, Combined: combined, Deadline: start.Add(limit),
 				})
-				if mode == "deadline" {
-					if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > limit+time.Second {
+				switch mode {
+				case "closed", "large", "ordered":
+					if time.Since(start) >= time.Second {
+						t.Errorf("%s returned after %s, want under 1 s", mode, time.Since(start))
+					}
+				}
+				if mode == "deadline" || mode == "post-exit-deadline" {
+					if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > limit+300*time.Millisecond {
 						t.Errorf("deadline took %s: %v", time.Since(start), err)
+					}
+				} else if mode == "held" {
+					if !errors.Is(err, exec.ErrWaitDelay) || len(got.Stdout) != 0 || len(got.Stderr) != 0 {
+						t.Errorf("held pipe: result %+v, error %v; want WaitDelay and no output", got, err)
 					}
 				} else if err != nil || got.Exit != 0 || got.Signaled {
 					t.Errorf("Run = exit %d, signaled %v, error %v", got.Exit, got.Signaled, err)
@@ -130,25 +142,30 @@ func TestExecMachineLeavesNoDescendant(t *testing.T) {
 						t.Errorf("late output = %q", got.Stdout)
 					}
 				}
-				for _, pid := range recordedPIDs(t, dir) {
-					until := time.Now().Add(time.Second)
-					for syscall.Kill(pid, 0) == nil && time.Now().Before(until) {
-						time.Sleep(10 * time.Millisecond)
-					}
-					if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
-						t.Errorf("process %d remains after Run: %v", pid, err)
-					}
-				}
-				before, err := os.Stat(filepath.Join(dir, "heartbeat"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				time.Sleep(time.Second)
-				after, err := os.Stat(filepath.Join(dir, "heartbeat"))
-				if err != nil || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
-					t.Errorf("descendant kept touching the file: %v", err)
-				}
+				assertProcessTreeStopped(t, dir)
 			})
 		}
+	}
+}
+
+func assertProcessTreeStopped(t *testing.T, dir string) {
+	t.Helper()
+	for _, pid := range recordedPIDs(t, dir) {
+		until := time.Now().Add(time.Second)
+		for syscall.Kill(pid, 0) == nil && time.Now().Before(until) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+			t.Errorf("process %d remains after Run: %v", pid, err)
+		}
+	}
+	before, err := os.Stat(filepath.Join(dir, "heartbeat"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second)
+	after, err := os.Stat(filepath.Join(dir, "heartbeat"))
+	if err != nil || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+		t.Errorf("descendant kept touching the file: %v", err)
 	}
 }

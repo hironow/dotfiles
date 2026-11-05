@@ -3,6 +3,7 @@
 package launch_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,5 +65,29 @@ func TestExecMachineLooksUpTheEnvironment(t *testing.T) {
 	}
 	if _, ok := (launch.ExecMachine{}).LookupEnv("AGENT_HOOK_PROBE_UNSET_NAME"); ok {
 		t.Error("LookupEnv of an unset name: ok, want not set")
+	}
+}
+
+func TestExecMachineFeedsLargeStdinWithoutHanging(t *testing.T) {
+	input := bytes.Repeat([]byte("x"), 1<<20)
+	for _, mode := range []string{"cat", "ignored"} {
+		t.Run(mode, func(t *testing.T) {
+			body := "exec cat"
+			var want []byte
+			if mode == "cat" {
+				want = input
+			} else {
+				body = "exit 0"
+			}
+			path := script(t, body)
+			start := time.Now()
+			got, err := (launch.ExecMachine{}).Run(process.Command{
+				Path: path, Args: []string{path}, Stdin: input, Timeout: time.Second,
+			})
+			if err != nil || got.Exit != 0 || got.Signaled || !bytes.Equal(got.Stdout, want) || len(got.Stderr) != 0 || time.Since(start) >= time.Second {
+				t.Errorf("%s: exit %d, signaled %v, output lengths %d/%d, error %v after %s; want %d stdout bytes",
+					mode, got.Exit, got.Signaled, len(got.Stdout), len(got.Stderr), err, time.Since(start), len(want))
+			}
+		})
 	}
 }

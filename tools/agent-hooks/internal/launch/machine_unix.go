@@ -29,6 +29,8 @@ func (ExecMachine) Run(command process.Command) (process.Result, error) {
 	// nosemgrep: dangerous-exec-command, go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.Command(command.Path) //nolint:gosec // G204: audited above
 	cmd.Args, cmd.Dir = command.Args, command.Dir
+	// This background process group can stop on /dev/tty reads or writes
+	// until the deadline; rtk, uv, ruff, and gofmt do not access the terminal.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	pipes, err := openCommandPipes(cmd, command)
 	if err != nil {
@@ -53,6 +55,8 @@ func (ExecMachine) Run(command process.Command) (process.Result, error) {
 	switch {
 	case err == nil:
 		return result, nil
+	case errors.Is(err, exec.ErrWaitDelay), errors.Is(err, errors.ErrUnsupported):
+		return process.Result{}, err
 	case errors.As(err, &exitErr):
 		result.Exit, result.Signaled = exitErr.ExitCode(), signaled(exitErr)
 		return result, nil
@@ -68,14 +72,20 @@ type unixProcess struct {
 func (p unixProcess) WaitExit() error { return waitExit(p.cmd.Process.Pid) }
 
 func (p unixProcess) KillGroup() error {
-	err := syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
-	if errors.Is(err, syscall.ESRCH) {
-		return nil
+	pid := p.cmd.Process.Pid
+	groupErr := syscall.Kill(-pid, syscall.SIGKILL)
+	if errors.Is(groupErr, syscall.ESRCH) {
+		groupErr = nil
 	}
-	if err != nil {
-		return fmt.Errorf("kill process group %d: %w", p.cmd.Process.Pid, err)
+	// The unreaped leader still owns its PID, even if it left the group.
+	leaderErr := syscall.Kill(pid, syscall.SIGKILL)
+	if errors.Is(leaderErr, syscall.ESRCH) {
+		leaderErr = nil
 	}
-	return err
+	if err := errors.Join(groupErr, leaderErr); err != nil {
+		return fmt.Errorf("kill process group %d and its leader: %w", pid, err)
+	}
+	return nil
 }
 
 func (p unixProcess) Reap() error { return p.cmd.Wait() }
@@ -107,11 +117,13 @@ func finishProcess(life processLifetime, drained <-chan struct{}, deadline <-cha
 		case <-deadline:
 			limitErr = context.DeadlineExceeded
 		case <-delay.C:
+			limitErr = fmt.Errorf("command output pipes stayed open after exit: %w", exec.ErrWaitDelay)
 		}
 	}
 	cleanupErr := life.KillGroup()
-	// macOS skips zombies when signaling a group and returns EPERM when
-	// none remain alive. Keep the command's result after its unreaped exit.
+	// macOS returns EPERM for a group with only an unreaped leader, or with
+	// members this user cannot signal (such as a setuid descendant). Keep the
+	// command's result in both cases; the latter is a known cleanup limit.
 	if exitErr == nil && runtime.GOOS == "darwin" && errors.Is(cleanupErr, syscall.EPERM) {
 		cleanupErr = nil
 	}

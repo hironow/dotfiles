@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	json "github.com/goccy/go-json/v2"
@@ -87,43 +88,86 @@ func TestStageDeadlineAnswersWithoutStdinEOF(t *testing.T) {
 func TestStageDropsLateAnswersAndDiagnostics(t *testing.T) {
 	for _, late := range []bool{false, true} {
 		t.Run(strconv.FormatBool(late), func(t *testing.T) {
-			release := make(chan struct{})
-			decide := func(ir.Call, Machine) ir.Outcome {
-				if late {
-					<-release
+			synctest.Test(t, func(t *testing.T) {
+				release := make(chan struct{})
+				decide := func(ir.Call, Machine) ir.Outcome {
+					if late {
+						<-release
+					}
+					panic("worker diagnostic")
 				}
-				panic("worker diagnostic")
-			}
-			stdout := &timedAnswer{written: make(chan time.Time, 4)}
-			var stderr bytes.Buffer
-			sink := &fake.LogSink{}
-			done := make(chan int, 1)
-			go func() {
-				done <- run([]string{"claude", "pre", "--hook", "command-guard"}, strings.NewReader(`{"tool_name":"Bash","tool_input":{"command":"ls"}}`),
-					stdout, &stderr, &fake.Machine{}, sink, map[string]hook{"command-guard": decide}, 40*time.Millisecond)
-			}()
-			select {
-			case <-stdout.written:
-			case <-time.After(time.Second):
+				stdout := &timedAnswer{written: make(chan time.Time, 4)}
+				var stderr bytes.Buffer
+				sink := &fake.LogSink{}
+				done := make(chan int, 1)
+				go func() {
+					done <- run([]string{"claude", "pre", "--hook", "command-guard"}, strings.NewReader(`{"tool_name":"Bash","tool_input":{"command":"ls"}}`),
+						stdout, &stderr, &fake.Machine{}, sink, map[string]hook{"command-guard": decide}, 40*time.Millisecond)
+				}()
+				select {
+				case <-stdout.written:
+				case <-time.After(time.Second):
+					close(release)
+					<-done
+					t.Fatal("no supervised answer")
+				}
 				close(release)
-				<-done
-				t.Fatal("no supervised answer")
+				if exit := <-done; exit != 2 {
+					t.Errorf("exit %d, want block", exit)
+				}
+				if len(stdout.written) != 0 {
+					t.Error("more than one answer")
+				}
+				if strings.Contains(stderr.String(), "worker diagnostic") == late {
+					t.Errorf("late=%v diagnostics: %q", late, stderr.String())
+				}
+				line, err := logline.Parse(sink.Lines()[0].Line)
+				if err != nil || (late && (line.Error != "hook.timeout" || line.Tool != "other" || line.Kind != "none")) || (!late && line.Error != "hook.failed") {
+					t.Errorf("late=%v line %+v, %v", late, line, err)
+				}
+			})
+		})
+	}
+}
+
+func TestStageRejectsInstantAnswersAfterItsDeadline(t *testing.T) {
+	for _, id := range []string{"command-guard", "rtk", "formatter"} {
+		t.Run(id, func(t *testing.T) {
+			event := "pre"
+			wantExit, wantOutcome, wantRule := 0, "pass", ""
+			switch id {
+			case "command-guard":
+				wantExit, wantOutcome, wantRule = 2, "block", "hook.timeout"
+			case "formatter":
+				event = "post"
 			}
-			close(release)
-			if exit := <-done; exit != 2 {
-				t.Errorf("exit %d, want block", exit)
-			}
-			if len(stdout.written) != 0 {
-				t.Error("more than one answer")
-			}
-			if strings.Contains(stderr.String(), "worker diagnostic") == late {
-				t.Errorf("late=%v diagnostics: %q", late, stderr.String())
-			}
-			line, err := logline.Parse(sink.Lines()[0].Line)
-			if err != nil || (late && (line.Error != "hook.timeout" || line.Tool != "other" || line.Kind != "none")) || (!late && line.Error != "hook.failed") {
-				t.Errorf("late=%v line %+v, %v", late, line, err)
+			instant := map[string]hook{id: func(ir.Call, Machine) ir.Outcome { return ir.Outcome{} }}
+			for attempt := range 50 {
+				var stdout, stderr bytes.Buffer
+				sink := &fake.LogSink{}
+				exit := run([]string{"claude", event, "--hook", id}, strings.NewReader(`{}`),
+					&stdout, &stderr, &fake.Machine{}, sink, instant, time.Nanosecond)
+				entries := sink.Lines()
+				if len(entries) != 1 {
+					t.Fatalf("attempt %d: %d log lines, want one", attempt, len(entries))
+				}
+				line, err := logline.Parse(entries[0].Line)
+				if err != nil || exit != wantExit || line.Error != "hook.timeout" || line.Outcome != wantOutcome || line.Rule != wantRule {
+					t.Errorf("attempt %d: exit %d, line %+v, %v", attempt, exit, line, err)
+				}
 			}
 		})
+	}
+}
+
+func TestStageRejectsAReadyWorkerAfterItsDeadline(t *testing.T) {
+	for attempt := range 50 {
+		worker := make(chan stageAnswer, 1)
+		worker <- stageAnswer{}
+		_, _, timedOut := awaitStage(worker, time.Now().Add(-time.Nanosecond))
+		if !timedOut {
+			t.Errorf("attempt %d: an instant worker won after the deadline without timing out", attempt)
+		}
 	}
 }
 
