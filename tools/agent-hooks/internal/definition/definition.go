@@ -50,13 +50,31 @@ type Definition struct {
 	// Support holds each hook's level (Level*) for each tool, by the hook's
 	// manifest id and the harness's tool name.
 	Support map[string]map[string]Support
-	events  map[string]Event
+	// Registration describes the fragment render can write; nil means none.
+	Registration *Registration
+	events       map[string]Event
 }
 
 // Support is one hook's level for one tool, and why it is not supported.
 type Support struct {
+	Level  string               `json:"level"`
+	Reason string               `json:"reason"`
+	OS     map[string]OSSupport `json:"os,omitempty"`
+}
+
+// OSSupport is a known gap confined to one launcher's OS.
+type OSSupport struct {
 	Level  string `json:"level"`
 	Reason string `json:"reason"`
+}
+
+// SupportOn returns an OS override, or the cell's ordinary level and reason.
+func (d Definition) SupportOn(hook, tool, os string) OSSupport {
+	support := d.Support[hook][tool]
+	if override, ok := support.OS[os]; ok {
+		return override
+	}
+	return OSSupport{Level: support.Level, Reason: support.Reason}
 }
 
 // The levels of a hook for a tool.
@@ -137,6 +155,7 @@ type harnessFile struct {
 	PathResolution string                        `json:"pathResolution"`
 	Support        map[string]map[string]Support `json:"support"`
 	Events         map[string]eventFile          `json:"events"`
+	Registration   *Registration                 `json:"registration"`
 }
 
 type eventFile struct {
@@ -167,8 +186,8 @@ type schemaFile struct {
 var knownKinds = []string{ir.KindShell, ir.KindWrite, ir.KindEdit, ir.KindNotebook, ir.KindPatch}
 
 // reservedNames are the binary's own commands (`agent-hook log`, `version`,
-// `selftest`), which no harness can be named.
-var reservedNames = []string{"log", "version", "selftest"}
+// `selftest`, `render`), which no harness can be named.
+var reservedNames = []string{"log", "version", "selftest", "render"}
 
 // Load reads the definition of the named harness from fsys, which holds one
 // directory per harness.
@@ -201,6 +220,7 @@ func Load(fsys fs.FS, name string) (Definition, error) {
 		Transport:      file.Transport,
 		PathResolution: file.PathResolution,
 		Support:        file.Support,
+		Registration:   file.Registration,
 		events:         map[string]Event{},
 	}
 	for eventName, eventDef := range file.Events {
@@ -247,7 +267,7 @@ func checkHarness(file harnessFile) error {
 			}
 		}
 	}
-	return nil
+	return checkRegistration(file)
 }
 
 func loadEvent(fsys fs.FS, harness, name string, file eventFile, owner harnessFile) (Event, error) {
@@ -825,12 +845,19 @@ type answerData struct {
 var templateFuncs = template.FuncMap{"oneLine": oneLine}
 
 func parseAnswer(file answerFile) (answer, error) {
+	return parseAnswerWithFuncs(file, templateFuncs)
+}
+
+func parseAnswerWithFuncs(file answerFile, funcs template.FuncMap) (answer, error) {
 	parsed := answer{exit: file.Exit, stdoutJSON: file.StdoutJSON, strings: map[string]*template.Template{}}
+	parse := func(text string) (*template.Template, error) {
+		return template.New("").Funcs(funcs).Option("missingkey=error").Parse(text)
+	}
 	var err error
-	if parsed.stdout, err = parseTemplate(file.Stdout); err != nil {
+	if parsed.stdout, err = parse(file.Stdout); err != nil {
 		return answer{}, err
 	}
-	if parsed.stderr, err = parseTemplate(file.Stderr); err != nil {
+	if parsed.stderr, err = parse(file.Stderr); err != nil {
 		return answer{}, err
 	}
 	if len(file.StdoutJSON) == 0 {
@@ -850,15 +877,11 @@ func parseAnswer(file answerFile) (answer, error) {
 		}
 		if token.Kind() == '"' {
 			text := token.String()
-			if parsed.strings[text], err = parseTemplate(text); err != nil {
+			if parsed.strings[text], err = parse(text); err != nil {
 				return answer{}, err
 			}
 		}
 	}
-}
-
-func parseTemplate(text string) (*template.Template, error) {
-	return template.New("").Funcs(templateFuncs).Option("missingkey=error").Parse(text)
 }
 
 // Answer renders the harness's answer to an outcome.
@@ -909,7 +932,7 @@ func answerKey(action ir.Action) string {
 
 // renderJSON writes StdoutJSON as compact JSON and a newline, each string
 // rendered as a template and escaped again.
-func (a answer) renderJSON(data answerData) (string, error) {
+func (a answer) renderJSON(data any) (string, error) {
 	decoder := jsontext.NewDecoder(bytes.NewReader(a.stdoutJSON))
 	var out bytes.Buffer
 	encoder := jsontext.NewEncoder(&out)
@@ -934,7 +957,7 @@ func (a answer) renderJSON(data answerData) (string, error) {
 	}
 }
 
-func execute(t *template.Template, data answerData) (string, error) {
+func execute(t *template.Template, data any) (string, error) {
 	var out strings.Builder
 	if err := t.Execute(&out, data); err != nil {
 		return "", err

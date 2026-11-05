@@ -59,16 +59,27 @@ HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
 RETIRED_HOOK_COMMAND = re.compile(
     r'^(?:"[^"]*[/\\])?rtk(?:\.exe)?"?\s+hook\s+(?:claude|codex)(?:\s|$)'
 )
-# An agent-hook release binary, by its absolute path:
-# <data dir>/dotfiles/agent-hooks/releases/<release-id>/agent-hook[.exe], where
-# the release ID is lowercase hex of at least 12 characters. A Windows path is
-# matched after `\` -> `/`; on POSIX `\` is a filename character, so a POSIX
-# path is matched as written.
-_RELEASE_PATH = (
-    r"/(?:[^/]+/)*dotfiles/agent-hooks/releases/[0-9a-f]{12,}/agent-hook(?:\.exe)?"
+# An agent-hook binary, by its absolute path: a release,
+# <data dir>/dotfiles/agent-hooks/releases/<release-id>/agent-hook, where the
+# release ID is lowercase hex of at least 12 characters, or a home's stable
+# link to one, <data dir>/dotfiles/agent-hooks/current/<home>/agent-hook, where
+# <home> is lowercase ASCII letters, digits, and `-`. On Windows the name ends
+# in `.exe`, and nowhere else. A Windows path is matched after `\` -> `/`; on
+# POSIX `\` is a filename character, so a POSIX path is matched as written.
+# The renderer (`agent-hook render`) writes exactly these paths; the corpus
+# tools/agent-hooks/internal/rendercorpus/render.jsonl holds both sides to it.
+_AGENT_HOOK_PATH = (
+    r"/(?:[^/]+/)*dotfiles/agent-hooks/"
+    r"(?:releases/[0-9a-f]{12,}|current/[a-z0-9-]+)/agent-hook"
 )
-POSIX_RELEASE = re.compile(_RELEASE_PATH)
-WINDOWS_RELEASE = re.compile(r"[A-Za-z]:" + _RELEASE_PATH)
+POSIX_RELEASE = re.compile(_AGENT_HOOK_PATH)
+WINDOWS_RELEASE = re.compile(r"[A-Za-z]:" + _AGENT_HOOK_PATH + r"\.exe")
+# The members of a hook handler the renderer writes, per harness. A handler
+# with any other member is not one it wrote, and stays its author's: Codex's
+# `commandWindows` changes what runs on Windows, `async` changes when it runs,
+# and Codex ignores `args`.
+_CLAUDE_HANDLER_MEMBERS = frozenset({"type", "command", "args", "timeout", "onFailure"})
+_CODEX_HANDLER_MEMBERS = frozenset({"type", "command", "timeout"})
 
 
 @dataclass(frozen=True)
@@ -81,22 +92,34 @@ class _Launcher:
     expanded: tuple[str, ...]  # what the shell still expands inside the quotes
 
 
-# The forms sync renders for a release binary: these shell-form launchers, and
-# Claude's exec form (`args` set: the command is the path itself, with Claude's
-# `${...}` placeholders still substituted). Sync owns a hook that runs a release
-# binary in one of them, like the hooks pointing into <agent>/hooks/: reverting
-# the agent-hook wiring and syncing again then replaces them instead of leaving
-# both. Any other command, including one that only mentions a release path,
-# stays the user's. A path holding something its harness still expands does not
+# The forms sync renders for an agent-hook binary: Codex's shell-form
+# launchers, and Claude's exec form (`args` set: the command is the path
+# itself, with Claude's `${...}` placeholders still substituted). Sync owns a
+# hook that runs the binary in the form it renders for that harness, like the
+# hooks pointing into <agent>/hooks/: reverting the agent-hook wiring and
+# syncing again then replaces them instead of leaving both. Any other command,
+# including one that only mentions a release path, stays the user's. A path
+# holding something its harness still reads as other than the path does not
 # name itself, so it never counts, and the renderer refuses to write one. The
 # renderer must write only these forms (plan: docs/plan/agent-hooks-go.md).
 AGENT_HOOK_LAUNCHERS = (
     # sh: '<path>', with ' written as '\''; nothing expands
-    _Launcher(re.compile(r"'((?:[^']|'\\'')*)'(?=\s|$)"), "'\\''", False, ()),
-    # PowerShell: & '<path>', with ' written as ''; nothing expands
-    _Launcher(re.compile(r"&\s+'((?:[^']|'')*)'(?=[\s;]|$)"), "''", True, ()),
+    # Each form is the program exactly as the renderer writes it: at the start
+    # of the command, then one ASCII space or the end. sh, bash, and zsh split
+    # words on space, tab, and newline only, so any other character after the
+    # quote (an NBSP, U+3000) is part of the program's name, not a separator.
+    _Launcher(re.compile(r"'((?:[^']|'\\'')*)'(?= |\Z)"), "'\\''", False, ()),
+    # PowerShell: & '<path>', with ' written as ''. PowerShell also ends a
+    # single-quoted string at ‘ ’ ‚ ‛, and `&` resolves * ? [ ] as wildcards
+    # when the literal path is missing, so another program could run.
+    _Launcher(
+        re.compile(r"& '((?:[^']|'')*)'(?= |\Z)"),
+        "''",
+        True,
+        ("\u2018", "\u2019", "\u201a", "\u201b", "*", "?", "[", "]"),
+    ),
     # cmd: "<path>"; %VAR% and, with delayed expansion, !VAR! still expand
-    _Launcher(re.compile(r'"([^"]*)"(?=\s|$)'), None, True, ("%", "!")),
+    _Launcher(re.compile(r'"([^"]*)"(?= |\Z)'), None, True, ("%", "!")),
 )
 _CLAUDE_EXEC_EXPANDED = ("${",)
 # Header line a third-party installer writes at the top of a hook file it owns
@@ -731,27 +754,44 @@ def _is_third_party_hook(path: Path) -> bool:
 
 
 def _is_release_path(path: str, *, windows: bool, expanded: tuple[str, ...]) -> bool:
-    """Is this program path, as its harness runs it, a release binary?"""
+    """Is this program path, as its harness runs it, an agent-hook binary: a
+    release, or a home's stable link to one?"""
     if any(token in path for token in expanded):
         return False
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in path):
+        return False  # the renderer never writes a control character
     if windows:
         return WINDOWS_RELEASE.fullmatch(path.replace("\\", "/")) is not None
     return POSIX_RELEASE.fullmatch(path) is not None
 
 
-def _runs_agent_hook_release(hook: dict) -> bool:
-    """Does this hook run an agent-hook release binary as its program, in a
-    form sync renders (Claude's exec form, or AGENT_HOOK_LAUNCHERS)?"""
+def _has_only_rendered_members(hook: dict, *, codex: bool) -> bool:
+    """Is this a command handler holding only members sync writes for this
+    harness? Any other member (Codex's commandWindows, async) is its author's."""
+    members = _CODEX_HANDLER_MEMBERS if codex else _CLAUDE_HANDLER_MEMBERS
+    return hook.get("type") == "command" and set(hook) <= members
+
+
+def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
+    """Does this hook run an agent-hook binary (a release, or a home's stable
+    link to one) as its program, placed and quoted as sync renders it for this
+    harness (Claude's exec form; Codex's AGENT_HOOK_LAUNCHERS), with no member
+    the renderer never writes? What follows the program is not compared, so a
+    changed template's older handlers are still owned."""
     command = hook.get("command")
-    if not isinstance(command, str):
+    if not isinstance(command, str) or not _has_only_rendered_members(
+        hook, codex=codex
+    ):
         return False
-    if isinstance(hook.get("args"), list):  # exec form: no shell, the path itself
+    if not codex:
+        if not isinstance(hook.get("args"), list):  # exec form: the path itself
+            return False
         windows = re.match(r"[A-Za-z]:[\\/]", command) is not None
         return _is_release_path(
             command, windows=windows, expanded=_CLAUDE_EXEC_EXPANDED
         )
     for launcher in AGENT_HOOK_LAUNCHERS:
-        match = launcher.start.match(command.strip())
+        match = launcher.start.match(command)  # the renderer writes no padding
         if match is None:
             continue
         path = match[1]
@@ -765,7 +805,8 @@ def _runs_agent_hook_release(hook: dict) -> bool:
 
 def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
     """A hook block sync owns: every command points at the agent's hooks dir
-    or runs an agent-hook release binary (_runs_agent_hook_release).
+    or runs an agent-hook binary in the form sync renders for this harness
+    (_runs_agent_hook_release).
 
     Commands are normalized ``\\`` -> ``/`` before matching so legacy
     Windows-rendered blocks (backslash paths) are recognized as managed and
@@ -777,7 +818,11 @@ def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
     marker = f"{agent.directory.as_posix()}/hooks/"
 
     def managed(hook: dict) -> bool:
-        if _runs_agent_hook_release(hook):
+        # A member sync never writes makes the handler its author's, whatever
+        # its command points at (Codex's commandWindows runs another command).
+        if not _has_only_rendered_members(hook, codex=agent.receives_codex_hooks):
+            return False
+        if _runs_agent_hook_release(hook, codex=agent.receives_codex_hooks):
             return True
         command = hook.get("command", "").replace("\\", "/")
         if marker not in command:

@@ -906,6 +906,11 @@ pi-paths-corpus:
 pi-rtk-corpus:
     cd tools/agent-hooks && mise x -- go run ./internal/toolhookcorpus/writepirtk
 
+# Record registration fragments and refusals for Go and sync's ownership tests.
+[group('Test')]
+agent-hooks-render-corpus:
+    cd tools/agent-hooks && mise x -- go run ./internal/rendercorpus/writerender
+
 # One line per hook run; `--days N` prints the last N UTC days, not only today.
 # Print the agent-hook binary's recent log lines as a table.
 [group('Agents')]

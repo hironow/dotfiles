@@ -96,13 +96,25 @@ The binary validates its own answer against the harness's answer template before
 | Harness / shell | Guard stage | rtk, formatter |
 | --- | --- | --- |
 | Claude (exec form, no shell) | `"onFailure":"block"`, `timeout` 30: no start, non-0/2 exit, timeout, and invalid JSON all block (Claude ≥ 2.1.295) | no `onFailure` (default continue) |
-| Codex, sh (macOS, Linux, WSL) | `'<release>/agent-hook' codex pre --hook <id> \|\| { printf '%s\n' 'agent-hook failed' >&2; exit 2; }` | the bare command |
+| Codex, a POSIX shell (macOS, Linux, WSL) | `'<release>/agent-hook' codex pre --hook <id> \|\| { printf '%s\n' 'agent-hook failed' >&2; exit 2; }` | the bare command |
 | Codex, Windows PowerShell | `& '<release>\agent-hook.exe' codex pre --hook <id>; if ($LASTEXITCODE -ne 0) { '<deny JSON>' }` | the bare command |
 | Codex, Windows cmd (fallback shell) | `"<release>\agent-hook.exe" codex pre --hook <id> \|\| echo <deny JSON>` | the bare command |
 | agy, sh | `'<release>/agent-hook' agy pre --hook <id> \|\| printf '%s' '<deny JSON>'` | pre: `\|\| printf '%s' '{"decision":"ask"}'`; post: `\|\| printf '{}'` |
 | Pi / shims | the shim spawns the binary with a deadline; no answer, a bad answer, or a spawn error blocks | pass |
 
 Sync renders the Codex Windows line for the shell Codex is configured to use (PowerShell or cmd) and doctor checks it. The program path is absolute and quoted by its shell's rules: sh single quotes with `'` written as `'\''`, PowerShell `& '...'` with `'` written as `''`, cmd double quotes. Claude's exec form needs no quoting: `command` is the path and `args` the arguments. These forms are the contract with sync's ownership rule (`_runs_agent_hook_release`, PR 0), which recognizes exactly them. A path holding something its harness still expands does not name itself: cmd expands `%VAR%` and, with delayed expansion, `!VAR!` inside double quotes, and Claude substitutes `${...}` placeholders in exec form. The renderer refuses such a path with a diagnostic (tested in PR 3), and the ownership rule never counts one. A Windows path is compared with `\` and `/` as the same separator; a POSIX path is compared as written, since `\` is a filename character there. If PR 3's live tests need a different launcher form, the ownership change lands in its own PR before PR 3, so that reverting PR 3 keeps it.
+
+How Codex 0.166.0 runs a hook command (`hooks/src/engine/command_runner.rs`, `core/src/session/mod.rs`):
+
+- It uses the session's shell with its non-login exec arguments (for example `zsh -c`), or `$SHELL -lc` when the session has none. So on POSIX the command is read by the user's shell, not always `sh`.
+    - The sh form holds for sh, bash, zsh, dash, and ksh. Under fish, the closed form's `{ ...; }` is no syntax, and its fallback would fail open.
+    - So the wiring (PR 3d) refuses any other shell, or one it cannot tell, and changes nothing; doctor warns.
+    - bash and zsh read the form the same way. Single quotes, `'\''`, `{ ...; }`, `||`, `printf '%s\n'`, `>&2`, and `exit 2` behave alike, zsh's `RC_QUOTES` included. They differ in what they read first: zsh reads `.zshenv` even with `-c`, and `-lc` reads the login profile too.
+        - Anything those files print on stdout comes before the hook's answer. Codex then reads no JSON, and a guard fails open. Today's script hooks have the same exposure.
+        - So doctor (3c) checks that the Codex shell prints nothing for `:`, with `-c` and with `-lc`, and 3d's live tests run through that shell.
+        - On this Mac (2026-11-06), zsh and bash print nothing in either mode.
+- On Windows, the default `%COMSPEC% /C` (or a shell whose arguments hold `/c`) gets the command as one raw argument, wrapped in one more pair of double quotes. `/C` strips exactly that pair, so the command's own quotes reach cmd intact.
+- PowerShell's `&` resolves `*`, `?`, `[`, `]` as wildcards when the literal path is missing: pwsh 7.6.9 ran `<dir>/a/prog` for a missing `<dir>/[ab]/prog`. It also reads `‘ ’ ‚ ‛` as single quotes. The PowerShell form refuses all of these, on both sides.
 
 What is not guaranteed, and the mitigation:
 
@@ -314,6 +326,37 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Tests:** two copies of the module build the same bytes; a polluted environment builds them too; the ID follows every input of the target (Go, assembly, headers, `.syso`, embedded files, and the Go version) and no other target's file; `check` finds a changed byte, through a home's link too, and checks another target's release; `switch` keeps homes apart and refuses a release directory that links out; an interrupted publish and a killed build's directory are cleaned up; a build waits, touching nothing, while another holds the lock, and then keeps the release that build published; a publish syncs in its order, and reports a failed step. CI vets the whole module for Windows, and the launch package for freebsd. The watchdog answers with no stdin EOF, answers the timeout when the worker is ready only after the deadline, drops a late worker, signals only before the reap, returns within 1 s once the pipes close, and leaves no descendant alive, with 1 MiB on each stream, 1 MiB of stdin, and `Combined`'s order kept.
     - **Not yet:** rendering (3b), doctor (3c), the wiring (3d), and Windows.
 
+- How PR 3b does it: the binary renders its own registrations, and sync owns exactly what it renders. Nothing is registered yet (PR 3d).
+    - **Registration templates are data**, in Claude's and Codex's `harness.json` (`registration`):
+        - the blocks in today's order: `Write|Edit|NotebookEdit` → files and secrets guards, `Bash` → command guard, `Bash` → rtk, then `PostToolUse` `Write|Edit` → formatter;
+        - per OS and shell, a launcher with a `closed` entry (the guards) and an `open` one (rtk, the formatter), chosen by the manifest's `failure`. Each entry is a JSON value whose strings are templates, with `sh`, `powershell`, and `cmd` quoting.
+        - Claude: the exec form with `timeout` 30, and `onFailure: "block"` for the guards. Codex: the launcher table's forms, with `timeout` 30.
+        - The loader checks every manifest hook appears once, no block is empty, the templates, the entries' shape, and one launcher per (OS, shell). A closed hook must run before the tool: the fallbacks block a call.
+    - **Support per OS:** a `supported` cell may carry a `degraded` override for one OS. Codex's command guard is degraded on Windows (PowerShell text read with bash grammar, PR 2e.4).
+        - The conformance suite lists these cells (`osGaps`) and adds no scenario: the binary reads the same text the same way on every OS, so the base cell's scenarios pin its behavior, and the gap's own inputs would slip past the guard (2e.4's held work).
+    - **`agent-hook render --harness claude|codex --os darwin|linux|windows [--shell sh|powershell|cmd] --binary PATH`:**
+        - stdout: the fragment sync merges, `{"hooks":{...}}`;
+        - stderr: the loss report, one JSON object per cell not supported on that OS, written before the fragment;
+        - exit 64 for usage, 2 for a refused shell or path, and 70 when a write fails (then no fragment follows a lost report).
+        - The shell comes from the data: an OS's only launcher is the default, and an exec launcher takes no `--shell`.
+        - A path is refused unless it is absolute for its OS, holds no control character, holds nothing its form reads as other than the path (exec `${`; cmd `%`, `!`, `"`; PowerShell `‘ ’ ‚ ‛` and `* ? [ ]`), and matches the layout sync owns (`releases/<12+ hex>` or `current/<home>`, `.exe` on Windows only).
+    - **Sync owns a handler whose program is the binary, placed and quoted as render writes it** (`_runs_agent_hook_release`):
+        - the stable link as well as a release;
+        - Claude's exec form only, and Codex's sh, PowerShell, and cmd forms only;
+        - the program at the start of the command, then one ASCII space or the end (sh splits words on space, tab, and newline only, so an NBSP would join the next word to the program's name);
+        - and no handler holding a member render never writes (Codex's `commandWindows`, `async`, and `args` among them), whatever its command points at, scripts included.
+        - What follows the program is not compared, so a changed template's older handlers are still owned and a revert leaves no duplicate.
+        - Against this Mac's homes, a sync preview with the new rule plans exactly what the old one did.
+    - **One corpus, two sides:** `just agent-hooks-render-corpus` writes `internal/rendercorpus/render.jsonl`, every form for a stable and a release path (plain, and with `'`, `$`, a space, a backtick, and `日本`), each OS's reading of `\` (a separator beside `/` on Windows, with a drive letter of either case; part of a name on POSIX), and every refusal.
+        - Go checks that the binary gives every recorded answer, and that each case's exit is the one it intends.
+        - `tests/unit/test_agent_hook_render.py` checks that sync owns every rendered handler for its harness only, and no refused path written by hand into its form.
+        - It also checks that the rendered blocks run today's hooks, on the same events and matchers, in the same order, as `.claude/settings.hooks.json`.
+    - **Tests:**
+        - The ownership rule: per harness, members, suffix, control characters, and PowerShell's characters, positive and negative.
+        - The loader's refusals; the conformance suite's `osGaps`; the corpus.
+        - Mutations that drop the stable path, accept `.exe` on POSIX, or drop PowerShell's wildcards each fail the round trip.
+    - **Not yet:** doctor (3c), the wiring (3d), and Windows.
+
 ### Bugs of the old scripts that the binary fixes
 
 The owner decided (2026-11-04 19:30, chat) that where an old script has a bug, the binary fixes it, and the tests keep each fix apart from the faithful port.
@@ -387,6 +430,21 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
     - Round 3 (REVISE, 3): a group kill after the reap can reach a reused group ID; the journal needs the new state and the stage; the merge must keep Codex's positions for others' hooks.
     - Rounds 4 and 5 (REVISE, 1 each): waiting for the exit before reading the pipes deadlocks; `Combined`'s one pipe must stay.
     - Rounds 6 and 7: APPROVE.
+- PR 3b's design (Codex, three rounds; APPROVE). Each finding was checked first:
+    - Round 1 (REVISE, 5):
+        - Adopted: PowerShell's `&` resolves `*?[]` as wildcards (reproduced with pwsh 7.6.9), so both sides refuse them; Codex ignores `args` and its `commandWindows` changes what runs, so ownership became per harness and per member set; render and ownership differed on the suffix, so both now take it by OS and refuse control characters.
+        - Answered from Codex's source: cmd's `/C` quote stripping takes the extra pair Codex adds, so the cmd form is intact. The launch test with a space, `&`, and parentheses goes to the Windows PR.
+        - Not adopted: scenarios for the Windows gap. The binary reads the same text the same way on every OS, and the gap's own inputs are 2e.4's held work. Codex withdrew it in round 2.
+        - Found on the way: on POSIX Codex reads the command with the user's shell, not `sh`.
+    - Round 2 (REVISE, 1): an unsupported shell must stop the wiring, not only show in doctor. Adopted as a precondition of 3d, with a doctor WARN in 3c.
+    - Round 3: APPROVE.
+- PR 3b code reviews: Codex, in the design's session (Codex wrote most of the Go code in another), and an independent review (a Claude subagent). Each finding was adopted unless noted:
+    - Before the reviews (Claude, on Codex's code): the Go layout check was not anchored, so it accepted an empty segment that sync does not own; and the shell was chosen by the harness's name instead of the data.
+    - Round 1 (Codex REVISE, 3; the independent review REVISE, no P1):
+        - Codex: a member check that the script rule bypassed (P1); write errors that still exited 0 (P2); a Go regression on POSIX `\` the corpus could not catch (P2).
+        - The independent review: no disagreement in 2,211 fuzzed (form, path) pairs, but two one-sided mutations survived (POSIX `\`, the drive letter's case); Unicode whitespace after the program; and, at load, empty blocks, overrides on cells that are not supported, and closed hooks after the tool.
+        - Not adopted: owning only render's full command, since a changed template's older handlers would no longer be owned. The docs now say what is owned: a handler whose program is the binary, placed as render places it.
+    - Round 2 (Codex): APPROVE.
 - PR 3a code reviews: Codex, in one session (Codex wrote most of the code in others), and an independent review (a Claude subagent). Each finding was adopted unless noted:
     - Round 1 (Codex REVISE, 4; the independent review, 13):
         - Codex: `switch` could point outside the releases, through a release directory that links out; a cross build was published without its own checks; `check` could not check a home's link; foreign inputs were judged under the launching process's build tags.

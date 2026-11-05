@@ -48,3 +48,14 @@ func TestSelftestPassesAndTakesNoArgument(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderDispatchWritesAFragmentWithoutLogging(t *testing.T) {
+	state := t.TempDir()
+	exit, stdout, stderr := runIn(t, state, nil, "render", "--harness", "claude", "--os", "linux", "--binary", "/dotfiles/agent-hooks/current/claude/agent-hook")
+	if exit != 0 || !strings.HasPrefix(stdout, `{"hooks":{"PreToolUse":`) || stderr != "" {
+		t.Fatalf("render: exit %d, stdout %q, stderr %q", exit, stdout, stderr)
+	}
+	if entries, err := os.ReadDir(state); err != nil || len(entries) != 0 {
+		t.Fatalf("render wrote state: %v (%v)", entries, err)
+	}
+}
