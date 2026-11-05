@@ -16,7 +16,9 @@ import (
 // entries pass to everything made in it. So the sink removes any ACL from the
 // directories and files it checks, through their open handles, and then reads
 // that none is left. The standard library has no call for ACLs, so these are
-// the raw fstat_extended(2) and fchmod_extended(2).
+// the raw fstat64_extended and fchmod_extended system calls, which Go makes
+// through libc's deprecated syscall(2). Should a later macOS drop that, every
+// call fails, the sink logs nothing, and the macOS CI job shows it.
 //
 // The mode and the ACL change in one fchmod_extended call: a deny entry may
 // be all that guards a loose mode, and removing it before the mode narrowed
@@ -71,8 +73,8 @@ func restrict(file *os.File, mode, private os.FileMode) error {
 	return nil
 }
 
-// hasACL reads the open file's security with fstat_extended(2), and reports
-// whether it holds an ACL entry.
+// hasACL reads the open file's security with fstat64_extended (whose stat is
+// syscall.Stat_t's layout), and reports whether it holds an ACL entry.
 func hasACL(file *os.File) (bool, error) {
 	var stat syscall.Stat_t
 	var filesec [filesecHeader]byte
@@ -81,7 +83,7 @@ func hasACL(file *os.File) (bool, error) {
 		// Audited: the pointers are to this function's own variables, which
 		// stay alive through the call, and the kernel writes at most size
 		// bytes of the filesec.
-		_, _, errno := syscall.Syscall6(syscall.SYS_FSTAT_EXTENDED, fd,
+		_, _, errno := syscall.Syscall6(syscall.SYS_FSTAT64_EXTENDED, fd,
 			uintptr(unsafe.Pointer(&stat)),       //nolint:gosec // G103: audited above
 			uintptr(unsafe.Pointer(&filesec[0])), //nolint:gosec // G103: audited above
 			uintptr(unsafe.Pointer(&size)),       //nolint:gosec // G103: audited above
