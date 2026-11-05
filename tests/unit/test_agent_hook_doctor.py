@@ -331,17 +331,57 @@ def test_shell_environment_default_is_bin_sh_with_login_arguments() -> None:
     )
 
 
-def test_a_shell_of_another_kind_gets_the_token_probe_alone() -> None:
-    # fish cannot parse sh's `if ... fi`, yet it runs today's script hooks:
-    # the stdin check must not make it fail
+def test_fish_gets_a_probe_in_its_own_syntax_that_reads_stdin() -> None:
+    # fish cannot parse sh's `if ... fi`, yet it runs today's script hooks,
+    # so it gets the stdin check in fish's syntax (checked with fish 4.9.3)
+    assert check.shell_kind("/usr/local/bin/fish") == "fish"
     choice = check.ShellChoice(
-        "$SHELL -lc", "/usr/local/bin/fish", "other", "SHELL=/usr/local/bin/fish"
+        "$SHELL -lc", "/usr/local/bin/fish", "fish", "SHELL=/usr/local/bin/fish"
     )
     assert check.probe_argv(choice, "token") == (
         "/usr/local/bin/fish",
         "-lc",
+        'read -l line; if test "$line" = token; printf %s token; else; printf %s token:stdin; end',
+    )
+
+
+def test_a_shell_of_another_kind_gets_the_token_probe_alone() -> None:
+    # a shell whose syntax doctor does not know: the token alone, stdin unchecked
+    choice = check.ShellChoice(
+        "$SHELL -lc", "/usr/local/bin/nu", "other", "SHELL=/usr/local/bin/nu"
+    )
+    assert check.probe_argv(choice, "token") == (
+        "/usr/local/bin/nu",
+        "-lc",
         "printf %s token",
     )
+
+
+@pytest.mark.skipif(shutil.which("fish") is None, reason="fish is not installed")
+@pytest.mark.parametrize(
+    "config,clean", [("", True), ("read -l taken\n", False)], ids=["clean", "reads"]
+)
+def test_real_fish_shows_a_config_that_reads_stdin(
+    tmp_path: Path, config: str, clean: bool
+) -> None:
+    fish = str(shutil.which("fish"))
+    (tmp_path / "config" / "fish").mkdir(parents=True)
+    (tmp_path / "config" / "fish" / "config.fish").write_text(config, encoding="utf-8")
+    env = {
+        "HOME": str(tmp_path),
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "XDG_DATA_HOME": str(tmp_path / "data"),
+        "PATH": os.environ["PATH"],
+    }
+    choice = check.ShellChoice("$SHELL -lc", fish, "fish", f"SHELL={fish}")
+    token = "agent-hook-probe-0123456789abcdef"
+    outcome = check._run(
+        check.probe_argv(choice, token),
+        env=env,
+        timeout=10,
+        input=(token + "\n").encode("utf-8"),
+    )
+    assert check.Shell(choice, (), outcome, token).clean is clean, outcome
 
 
 def test_empty_shell_environment_has_no_executable_and_warns() -> None:
@@ -434,7 +474,7 @@ def test_bad_startup_level_depends_on_a_guard_even_for_script_hooks(
 
 def test_fish_startup_output_is_checked_before_wiring_too() -> None:
     shell = _shell(
-        "other",
+        "fish",
         route="$SHELL -lc",
         outcome=check.Outcome(stdout="hi token", stdout_bytes=8),
     )
@@ -540,36 +580,45 @@ def test_the_group_is_killed_before_its_leader_is_reaped(
 def test_a_pipe_held_from_outside_the_group_does_not_hold_doctor(
     tmp_path: Path,
 ) -> None:
-    # given a call whose grandchild leaves the group (setsid) and keeps
-    # stdout open for 30 s, where no group kill reaches it
+    # given a call that prints a line, and whose grandchild leaves the group
+    # (setsid) and keeps both pipes open for 30 s, where no group kill
+    # reaches it
     pid_file = tmp_path / "escaped.pid"
     child = (
         "import subprocess, sys, time; "
         "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], "
         "start_new_session=True); "
         f"open({str(pid_file)!r}, 'w', encoding='utf-8').write(str(p.pid)); "
-        "time.sleep(30)"
+        "print('ready', flush=True); time.sleep(30)"
     )
+    # A grace of 2 s keeps one grace shared by both pipes (2.5 s in all) far
+    # from one grace per pipe (4.5 s), even on a loaded machine.
     parent = (
-        f"import sys; sys.path.insert(0, {str(ROOT / 'scripts')!r}); "
-        "import agent_hook_doctor as check; "
+        f"import json, sys, time; sys.path.insert(0, {str(ROOT / 'scripts')!r}); "
+        "import agent_hook_doctor as check; check.PIPE_GRACE = 2; "
+        "started = time.monotonic(); "
         f"result = check._run([sys.executable, '-c', {child!r}], timeout=0.5); "
-        "print(result.timed_out, end='')"
+        "print(json.dumps([result.timed_out, time.monotonic() - started, "
+        "result.stdout]), end='')"
     )
     started = time.monotonic()
     try:
         # when doctor's call times out
         done = subprocess.run(
-            [sys.executable, "-c", parent], capture_output=True, timeout=8, check=False
+            [sys.executable, "-c", parent], capture_output=True, timeout=15, check=False
         )
     except subprocess.TimeoutExpired:
         pytest.fail("doctor waited for the escaped process to let go of the pipe")
     finally:
         if pid_file.exists():
             os.kill(int(pid_file.read_text(encoding="utf-8")), signal.SIGKILL)
-    # then the call returns, and doctor exits, long before that process does
-    assert done.returncode == 0 and done.stdout == b"True", done
-    assert time.monotonic() - started < 5
+    # then the call returns after its limit plus one grace, with the line it
+    # printed, and doctor exits long before the escaped process lets go
+    assert done.returncode == 0, done
+    timed_out, took, stdout = json.loads(done.stdout)
+    assert timed_out and stdout == "ready\n", (timed_out, stdout)
+    assert took < 0.5 + 2 + 1.0, took
+    assert time.monotonic() - started < 10
 
 
 def test_run_drains_both_streams_but_keeps_only_the_first_65536_bytes() -> None:
@@ -607,6 +656,9 @@ mode = {mode!r}
 if mode == 'timeout': time.sleep(5)
 if mode == 'exit1': sys.exit(1)
 if mode == 'exit0': sys.exit(0)
+if mode == 'run':
+    import os
+    os.execv('/bin/sh', ['/bin/sh', '-c', sys.argv[-1]])
 if mode == 'stdin':
     sys.stdin.read()
     import subprocess
@@ -915,7 +967,42 @@ def test_absent_codex_home_has_no_home_lines_or_shell_probes(
     _executable(shell, "raise SystemExit('shell probe must not run')")
     facts = check.gather(isolated)
     assert not facts.homes and not facts.shells
-    assert check.report(facts) == []
+    # doctor.sh reads exit 0 with no line as a run that failed
+    assert check.report(facts) == [
+        ("INFO", "agent-hook-wiring", "no Claude or Codex home found; nothing to check")
+    ]
+
+
+def test_the_checker_prints_one_line_where_there_is_no_agent_home(
+    isolated: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # given a machine with no Claude home and no Codex home
+    monkeypatch.delenv("CODEX_HOME")
+    # when doctor runs the checker, then it prints one INFO line and exits 0
+    done = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "agent_hook_doctor.py")],
+        env=dict(os.environ),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines() == [
+        "INFO agent-hook-wiring - no Claude or Codex home found; nothing to check"
+    ]
+
+
+def test_gather_feeds_each_probe_its_token_on_stdin(isolated: Path) -> None:
+    # given a shell that runs the probe for real, which prints the token only
+    # after it reads that token from stdin
+    _fake_shell(Path(os.environ["SHELL"]), "run")
+    # when doctor probes Codex's two shells, then both are clean
+    shells = check.gather_shells(sys.platform, dict(os.environ))
+    assert len(shells) == 2
+    assert all(shell.clean for shell in shells), shells
 
 
 @pytest.mark.parametrize("custom", [False, True])

@@ -149,7 +149,7 @@ def shell_kind(path: str) -> str:
         name = Path(name).stem
     if name in {"pwsh", "powershell"}:
         return "powershell"
-    return name if name in POSIX_SHELLS or name == "cmd" else "other"
+    return name if name in POSIX_SHELLS or name in {"cmd", "fish"} else "other"
 
 
 def derive_session_shell(
@@ -228,9 +228,12 @@ def probe_argv(choice: ShellChoice, token: str) -> tuple[str, ...]:
         command = f"$l = [Console]::In.ReadLine(); if ($l -ceq '{token}') {{ [Console]::Out.Write('{token}') }} else {{ [Console]::Out.Write('{token}:stdin') }}"
     elif choice.kind in POSIX_SHELLS:
         command = f'IFS= read -r line; if [ "$line" = {token} ]; then printf %s {token}; else printf %s {token}:stdin; fi'
+    elif choice.kind == "fish":
+        # fish cannot parse sh's `if`, yet runs today's script hooks.
+        command = f'read -l line; if test "$line" = {token}; printf %s {token}; else; printf %s {token}:stdin; end'
     else:
-        # fish and the rest cannot parse sh's `if`, yet run today's script
-        # hooks: the token alone, with stdin unchecked (3d never wires them).
+        # A shell whose syntax doctor does not know: the token alone, with
+        # stdin unchecked (3d never wires Codex under it).
         command = f"printf %s {token}"
     if choice.route != "session":
         flags = ("-lc",)
@@ -412,6 +415,16 @@ def _log_lines(log: Log, homes: tuple[str, ...]) -> list[Line]:
 
 
 def report(facts: Facts) -> list[Line]:
+    if not (facts.homes or facts.releases or facts.logs or facts.shells):
+        # No fact at all, which gather() finds only with no agent home.
+        # doctor.sh reads exit 0 with no line as a run that failed.
+        return [
+            (
+                "INFO",
+                "agent-hook-wiring",
+                "no Claude or Codex home found; nothing to check",
+            )
+        ]
     lines: list[Line] = []
     scripts = [home.name for home in facts.homes if home.scripts and not home.binaries]
     if scripts:
@@ -536,7 +549,9 @@ def _run(
     def drain(stream: BinaryIO, kept: bytearray, count_stdout: bool) -> None:
         nonlocal stdout_bytes
         with stream:
-            while chunk := stream.read(8192):
+            # One read of the pipe at a time: a buffered read waits for 8 KiB
+            # or EOF, and a pipe held from outside the group gives neither.
+            while chunk := os.read(stream.fileno(), 8192):
                 if count_stdout:
                     stdout_bytes += len(chunk)
                 kept.extend(chunk[: max(0, OUTPUT_LIMIT - len(kept))])
@@ -581,8 +596,9 @@ def _run(
             except ProcessLookupError:
                 pass  # Every process of the group had already exited.
     child.wait()
+    grace = time.monotonic() + PIPE_GRACE  # one grace for all the pipes
     for pipe in pipes:
-        pipe.join(timeout=PIPE_GRACE)
+        pipe.join(timeout=max(0, grace - time.monotonic()))
     stderr = bytes(stderr_output).decode("utf-8", errors="replace")
     reason = (
         f"timed out after {timeout:g} s"
