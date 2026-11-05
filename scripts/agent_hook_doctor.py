@@ -10,12 +10,16 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from threading import Thread
+from typing import BinaryIO
 
 import claude_homes
 import doctor_lines
@@ -31,6 +35,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PROGRAM_TIMEOUT = 30
 SHELL_TIMEOUT = 10
 CHECK_TIMEOUT = 300
+OUTPUT_LIMIT = 65536
+PIPE_GRACE = 1
 
 
 @dataclass(frozen=True)
@@ -77,6 +83,7 @@ class Home:
 class Release:
     path: str
     outcome: Outcome
+    checked: bool = False
 
 
 @dataclass(frozen=True)
@@ -179,11 +186,12 @@ def derive_session_shell(
             f"login shell {Path(login_shell or '').name}",
         )
     fallback = ("zsh", "bash") if system == "darwin" else ("bash", "zsh")
-    reason = (
-        f"login shell {Path(login_shell).name} is not one Codex runs"
-        if login_shell and login_kind not in recognised
-        else "login shell unavailable"
-    )
+    if not login_shell:
+        reason = "login shell unavailable"
+    elif login_kind in recognised:
+        reason = f"login shell {Path(login_shell).name} not found"
+    else:
+        reason = f"login shell {Path(login_shell).name} is not one Codex runs"
     for kind in fallback:
         if executable := find(kind):
             return ShellChoice(
@@ -201,24 +209,29 @@ def derive_session_shell(
 def derive_login_shell(
     shell: str | None, executables: Mapping[str, str], files: frozenset[str]
 ) -> ShellChoice:
-    path = shell or "/bin/sh"
+    if shell == "":
+        return ShellChoice("$SHELL -lc", None, "none", "SHELL is empty")
+    path = "/bin/sh" if shell is None else shell
     executable = path if path in files else executables.get(path)
     return ShellChoice(
         "$SHELL -lc",
         executable,
         shell_kind(path) if executable else "none",
-        f"SHELL={path}" if shell else "SHELL unset; /bin/sh -lc",
+        f"SHELL={path}" if shell is not None else "SHELL unset; /bin/sh -lc",
     )
 
 
 def probe_argv(choice: ShellChoice, token: str) -> tuple[str, ...]:
     if choice.executable is None:
         return ()
-    command = (
-        f"[Console]::Out.Write('{token}')"
-        if choice.kind == "powershell"
-        else f"printf %s {token}"
-    )
+    if choice.kind == "powershell":
+        command = f"$l = [Console]::In.ReadLine(); if ($l -ceq '{token}') {{ [Console]::Out.Write('{token}') }} else {{ [Console]::Out.Write('{token}:stdin') }}"
+    elif choice.kind in POSIX_SHELLS:
+        command = f'IFS= read -r line; if [ "$line" = {token} ]; then printf %s {token}; else printf %s {token}:stdin; fi'
+    else:
+        # fish and the rest cannot parse sh's `if`, yet run today's script
+        # hooks: the token alone, with stdin unchecked (3d never wires them).
+        command = f"printf %s {token}"
     if choice.route != "session":
         flags = ("-lc",)
     elif choice.kind == "powershell":
@@ -265,6 +278,8 @@ def _shell_lines(shell: Shell, *, wired: bool, guard: bool) -> list[Line]:
         detail = outcome.reason or f"exits {outcome.exit_code}"
     elif not outcome.stdout:
         detail = "exits 0 before the command runs"
+    elif outcome.stdout.endswith(shell.token + ":stdin"):
+        detail = "a startup file reads stdin, so each hook loses its input"
     elif outcome.stdout.endswith(shell.token):
         count = outcome.stdout_bytes - len(shell.token.encode("utf-8"))
         detail = f"{count} bytes come before every hook's answer"
@@ -411,7 +426,9 @@ def report(facts: Facts) -> list[Line]:
     for home in facts.homes:
         lines.extend(_home_lines(home))
     for release in facts.releases:
-        if release.outcome.ok:
+        outcome = release.outcome
+        checked = release.checked and not outcome.timed_out
+        if checked and outcome.ok:
             lines.append(
                 (
                     "OK",
@@ -419,12 +436,20 @@ def report(facts: Facts) -> list[Line]:
                     f"release {release.path} is what this checkout builds",
                 )
             )
-        elif release.outcome.exit_code == 1:
+        elif checked and outcome.exit_code == 1:
             lines.append(
                 (
                     "WARN",
                     "agent-hook-fresh",
-                    f"release {release.path} is not what this checkout builds; run just sync-agents",
+                    f"release {release.path} is not what this checkout builds ({outcome.stderr.strip()}); run just sync-agents",
+                )
+            )
+        elif checked and outcome.exit_code == 3:
+            lines.append(
+                (
+                    "WARN",
+                    "agent-hook-fresh",
+                    f"release {release.path} differs from the build its release ID names ({outcome.stderr.strip()}); sync never replaces a release in place: remove {Path(release.path).parent} and run just sync-agents",
                 )
             )
         else:
@@ -437,7 +462,7 @@ def report(facts: Facts) -> list[Line]:
                 (
                     "INFO",
                     "agent-hook-fresh",
-                    f"release {release.path}: cannot rebuild here (no Go?): {reason}",
+                    f"release {release.path}: cannot check here: {reason}",
                 )
             )
     if any(home.binaries for home in facts.homes):
@@ -479,44 +504,101 @@ def _run(
     timeout: float,
     cwd: Path | None = None,
     env: Mapping[str, str] | None = None,
+    input: bytes | None = None,
 ) -> Outcome:
-    """Keep the exit code and raw stdout size, including partial timeout output."""
+    """Run a call with a deadline, and keep what doctor reads of it.
+
+    It keeps the exit code, the first OUTPUT_LIMIT bytes of stdout and of
+    stderr, and stdout's whole size. On POSIX the call leads a session of its
+    own. Past the deadline (the call, or a pipe it left open, still running)
+    its whole process group is killed. On Windows only the call is killed
+    (job objects are the Windows host's item B3). A process outside the group
+    that still holds a pipe is not waited for past PIPE_GRACE.
+    """
     try:
-        done = subprocess.run(
+        child = subprocess.Popen(
             args,
             cwd=cwd,
             env=env,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout or b""
-        return Outcome(
-            None,
-            stdout.decode("utf-8", errors="replace"),
-            reason=f"timed out after {timeout:g} s",
-            timed_out=True,
-            stdout_bytes=len(stdout),
+            stdin=subprocess.DEVNULL if input is None else subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=os.name != "nt",
         )
     except FileNotFoundError:
         return Outcome(None, reason=f"missing: {args[0]}")
     except (OSError, ValueError) as exc:
         return Outcome(None, reason=f"cannot start: {exc}")
-    stderr = done.stderr.decode("utf-8", errors="replace")
+    stdout = bytearray()
+    stderr_output = bytearray()
+    stdout_bytes = 0
+
+    def drain(stream: BinaryIO, kept: bytearray, count_stdout: bool) -> None:
+        nonlocal stdout_bytes
+        with stream:
+            while chunk := stream.read(8192):
+                if count_stdout:
+                    stdout_bytes += len(chunk)
+                kept.extend(chunk[: max(0, OUTPUT_LIMIT - len(kept))])
+
+    def feed(stream: BinaryIO, payload: bytes) -> None:
+        try:
+            with stream:
+                stream.write(payload)
+        except OSError:
+            pass  # The call can exit, or close stdin, before it reads.
+
+    assert child.stdout is not None and child.stderr is not None
+    # Daemon threads: a pipe held from outside the group must not keep
+    # doctor from exiting.
+    pipes = [
+        Thread(target=drain, args=(child.stdout, stdout, True), daemon=True),
+        Thread(target=drain, args=(child.stderr, stderr_output, False), daemon=True),
+    ]
+    if input is not None:
+        assert child.stdin is not None
+        pipes.append(Thread(target=feed, args=(child.stdin, input), daemon=True))
+    deadline = time.monotonic() + timeout
+    for pipe in pipes:
+        pipe.start()
+    # The pipes first, then the call: the call is reaped only once it is
+    # done, so a group kill never comes after the reap. The group's ID is the
+    # call's pid, and a reap frees that pid for another process to take.
+    for pipe in pipes:
+        pipe.join(timeout=max(0, deadline - time.monotonic()))
+    timed_out = any(pipe.is_alive() for pipe in pipes)
+    if not timed_out:
+        try:
+            child.wait(timeout=max(0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            timed_out = True
+    if timed_out:
+        if os.name == "nt":
+            child.kill()
+        else:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # Every process of the group had already exited.
+    child.wait()
+    for pipe in pipes:
+        pipe.join(timeout=PIPE_GRACE)
+    stderr = bytes(stderr_output).decode("utf-8", errors="replace")
     reason = (
-        None
-        if done.returncode == 0
-        else f"exits {done.returncode}"
+        f"timed out after {timeout:g} s"
+        if timed_out
+        else None
+        if child.returncode == 0
+        else f"exits {child.returncode}"
         + (f": {stderr.strip()}" if stderr.strip() else "")
     )
     return Outcome(
-        done.returncode,
-        done.stdout.decode("utf-8", errors="replace"),
+        None if timed_out else child.returncode,
+        bytes(stdout).decode("utf-8", errors="replace"),
         stderr,
         reason,
-        stdout_bytes=len(done.stdout),
+        timed_out=timed_out,
+        stdout_bytes=stdout_bytes,
     )
 
 
@@ -547,6 +629,8 @@ def _render(path: str, harness: str, system: str) -> Render:
     outcome = _run(args, timeout=PROGRAM_TIMEOUT)
     if not outcome.ok:
         return Render(outcome)
+    if outcome.stdout_bytes > OUTPUT_LIMIT:
+        return Render(replace(outcome, reason=f"output exceeds {OUTPUT_LIMIT} bytes"))
     try:
         fragment = json.loads(outcome.stdout)
         _blocks(fragment)
@@ -571,7 +655,7 @@ def _binary(path: str, harness: str, system: str) -> Binary:
     try:
         resolved = Path(path).resolve(strict=True)
         if not resolved.is_file():
-            problem = "no release: not a file"
+            return Binary(path, None, problem="no release: not a file")
         elif (
             not sync_agents.POSIX_RELEASE.fullmatch(resolved.as_posix())
             or resolved.parent.parent.name != "releases"
@@ -580,9 +664,9 @@ def _binary(path: str, harness: str, system: str) -> Binary:
         else:
             release = str(resolved)
     except FileNotFoundError:
-        problem = "missing"
+        return Binary(path, None, problem="missing")
     except (OSError, RuntimeError) as exc:
-        problem = f"no release: {exc}"
+        return Binary(path, None, problem=f"no release: {exc}")
     return Binary(path, release, _render(path, harness, system), problem)
 
 
@@ -711,7 +795,6 @@ def _release_checks(
                         path,
                         replace(
                             built,
-                            exit_code=None,
                             reason=f"build hookrelease: {built.reason}",
                         ),
                     )
@@ -726,6 +809,7 @@ def _release_checks(
                         env=selected,
                         timeout=CHECK_TIMEOUT,
                     ),
+                    checked=True,
                 )
                 for path in paths
             )
@@ -761,6 +845,10 @@ def _log(path: str) -> Log:
     outcome = _run([path, "log", "--summary", "--days", "1"], timeout=PROGRAM_TIMEOUT)
     if not outcome.ok:
         return Log(path, outcome)
+    if outcome.stdout_bytes > OUTPUT_LIMIT:
+        return Log(
+            path, replace(outcome, reason=f"output exceeds {OUTPUT_LIMIT} bytes")
+        )
     try:
         doc = json.loads(outcome.stdout)
         if not isinstance(doc, dict) or set(doc) != {
@@ -819,7 +907,12 @@ def gather_shells(system: str, env: Mapping[str, str]) -> tuple[Shell, ...]:
         token = "agent-hook-probe-" + secrets.token_hex(8)
         argv = probe_argv(choice, token)
         outcome = (
-            _run(argv, env=env, timeout=SHELL_TIMEOUT)
+            _run(
+                argv,
+                env=env,
+                timeout=SHELL_TIMEOUT,
+                input=(token + "\n").encode("utf-8"),
+            )
             if argv
             else Outcome(None, reason="missing shell")
         )
@@ -839,9 +932,16 @@ def gather(home: Path) -> Facts:
         _home(path, claude[path.name], system) for path in claude_homes.existing(home)
     ]
     codex = next(agent for agent in sync_agents.AGENTS if agent.receives_codex_hooks)
-    homes.append(_home(Path(env.get("CODEX_HOME") or home / ".codex"), codex, system))
+    codex_home = Path(env.get("CODEX_HOME") or home / ".codex")
+    if codex_home.is_dir():
+        homes.append(_home(codex_home, codex, system))
     binaries = tuple(
-        dict.fromkeys(binary.path for found in homes for binary in found.binaries)
+        dict.fromkeys(
+            binary.path
+            for found in homes
+            for binary in found.binaries
+            if binary.render is not None
+        )
     )
     releases = tuple(
         dict.fromkeys(
@@ -863,7 +963,7 @@ def gather(home: Path) -> Facts:
         checked,
         tuple(logs),
         frozenset(tool for tool in ("uv", "gofmt") if shutil.which(tool)),
-        gather_shells(system, env),
+        gather_shells(system, env) if codex_home.is_dir() else (),
         system,
     )
 

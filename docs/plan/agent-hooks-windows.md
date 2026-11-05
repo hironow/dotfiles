@@ -77,7 +77,7 @@ For each item, record what you ran, what happened, and whether it matches the ex
     - a directory junction `current\<home>` → `releases\<id>`;
     - a tiny launcher;
     - a versioned copy.
-3. **The watchdog on Windows:** put each child in a job object, so the deadline kills its descendants too.
+3. **The watchdog on Windows, and doctor's calls:** put each child in a job object, so the deadline kills its descendants too. Doctor's `_run` (`scripts/agent_hook_doctor.py`) kills only the call there today.
 4. **The file log on Windows:** check the owner and the DACL through handles (`golang.org/x/sys/windows` needs the dependency policy's reason, or `syscall`), test it on a Windows runner, then log on Windows.
 5. **`just agent-hooks-build` on native Windows:** make each argument reach hookrelease as given, as the `[unix]` recipe does (for example a `windows-shell` that passes `"$@"`, which changes a contract `tests/unit/test_windows_shell_usr_bin_path.py` pins). Then one recipe serves both, and the quoting test in `tests/unit/test_agent_hooks_build_recipe.py` runs on Windows too.
 6. **Sync and doctor on Windows:**

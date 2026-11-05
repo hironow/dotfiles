@@ -369,20 +369,28 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
         - A log file is read as untrusted: a value outside the fixed sets counts as `other`, and an empty one is not counted.
         - With no log (or on Windows), it gives zero counts and creates nothing.
     - **A checker of its own, `scripts/agent_hook_doctor.py`, run by `just doctor` only.** The contract named `ai_tools_check`, but `just status` runs that too, and freshness rebuilds a release. It is a pure `report(facts)` and a `gather()`.
-        - **Homes:** Claude's and Codex's managed blocks, by sync's own `_is_managed_hook_block`. One INFO line names every home that runs today's scripts; a home with no managed block is an INFO; a mix of scripts and binaries, or two binary paths, is a WARN.
+        - **Homes:** Claude's and Codex's managed blocks, by sync's own `_is_managed_hook_block`. One INFO line names every home that runs today's scripts; a home with no managed block is an INFO; a mix of scripts and binaries, or two binary paths, is a WARN. With no Codex home (`$CODEX_HOME`, else `~/.codex`), there is no Codex line at all.
         - **For a wired home:**
-            - the registered binary must exist and resolve to a release;
+            - the registered binary must exist and resolve to a release (a missing one gets that WARN alone: no render or log runs);
             - its render must equal the managed blocks (WARN with the first difference);
             - each loss line is an INFO.
-        - **Freshness:** doctor builds `cmd/hookrelease` once, in `tools/agent-hooks`, with mise's Go first on PATH, and runs it on each release. It does not use the recipe, since `go run` turns a child's exit 2 into 1. Exit 0 is OK, 1 is a WARN (not what this checkout builds), and 2 or no Go is an INFO.
+        - **Freshness:** doctor builds `cmd/hookrelease` once, in `tools/agent-hooks`, with mise's Go first on PATH, and runs it on each release. It does not use the recipe, since `go run` turns a child's exit 2 into 1. Only the checker's own exit code counts:
+            - 0 is OK;
+            - 1 (another release ID than this checkout's) is a WARN to run `just sync-agents`;
+            - 3 (the same ID, other bytes: the release was damaged or changed) is a WARN to remove that release and run `just sync-agents`, since a build never replaces a release in place;
+            - 2, a timeout, or a failure before the checker runs (no Go, `mise which go`, `go build`) is an INFO.
+        - **`hookrelease check`** now exits 3, not 1, for the same ID with other bytes, and its help names each exit code.
         - **The log:** `log --summary`, from the first wired binary that answers. `shim.broken`, `hook.failed`, `hook.timeout`, `answer.failed`, or any mismatch is a WARN; other counts are INFO.
         - **A call that fails** (missing, an exit, a timeout, output that does not parse) is a WARN `agent-hook-inspect` with its reason, and never zero counts. Each call has a limit (render and log 30 s, a shell 10 s, check 300 s).
-        - **Codex's shells, on POSIX:** the session's shell, derived as Codex derives it, and `$SHELL` for `-lc` (`/bin/sh` when unset). Two questions, apart:
+            - On POSIX a call leads a session of its own. Past its limit (the call, or a pipe it left open, still running), its whole process group is killed, before the call is reaped: the group's ID is the call's pid, which the reap frees. On Windows only the call is killed (the Windows plan, B3).
+            - Doctor keeps at most 64 KiB of each stream; a render or log past that fails as too long. It waits at most 1 s more for a pipe held from outside the group.
+        - **Codex's shells, on POSIX:** the session's shell, derived as Codex derives it, and `$SHELL` for `-lc` (`/bin/sh` when unset; an empty `SHELL` is no shell). Three questions, apart:
             - **Can it read the agent-hook sh launcher?** Only zsh, bash, sh, dash, and ksh can. Any other type is an INFO before Codex is wired and a WARN after: a pwsh login shell gives PowerShell, and fish can be `$SHELL`. Today's script form reads right in both.
             - **Does it start cleanly?** It runs a probe that prints a token unique to the run, with Codex's arguments for that type, every type included. A pass needs exactly the token and exit 0, so a startup file that exits 0 before the command fails too.
+            - **Does the hook get its input?** The probe writes its token as a line on stdin, and an sh-family shell or PowerShell prints the token only after reading that line. A startup file that reads stdin, which would take each hook's input, fails too. Other types (fish) cannot parse that `if`, so they get the token alone.
             - A failure is a WARN whenever Codex has a guard registered, scripts included, and an INFO otherwise.
             - On this Mac (2026-11-06), both paths are zsh and start cleanly.
-    - **The recipe `just agent-hooks-build`** takes positional arguments, so a path with a space, `'`, or `$` reaches hookrelease as one argument. Before, a `'` broke the shell line. On native Windows it gets no arguments (see the Windows plan).
+    - **The recipe `just agent-hooks-build`** takes positional arguments on Unix, so a path with a space, `'`, or `$` reaches hookrelease as one argument. Before, a `'` broke the shell line. Native Windows keeps the old form as a `[windows]` recipe of the same name, since its `windows-shell` hands a recipe no positional arguments: `id` and a plain `check` path pass through there, and CI's `windows-jev` job tests it (the Windows plan, B5).
     - **For 3d**, from these facts:
         - Codex is wired only if both shell paths pass (a launcher-readable type, and a clean start).
         - `codex_hooks_trust.py`'s selection, and `ai_tools_check`'s `_claude_rtk_hook` (which reads script names), change with the wiring.
@@ -473,7 +481,12 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
         - Codex agreed to a checker of its own, run by doctor only.
     - Round 2 (REVISE, 3): a startup file's silent `exit 0` passed (reproduced with `BASH_ENV`), hence the token probe; every shell type must be probed, since today's guards run in each; the helper's working directory and Go had to be set.
     - Round 3: APPROVE.
-- PR 3b's design (Codex, three rounds; APPROVE). Each finding was checked first:
+- PR 3c code reviews: Codex, in the design's session (Codex wrote the Python checker in another), and an independent review (a Claude subagent). Each finding was adopted:
+    - Round 1 (Codex REVISE, 4; the independent review REVISE, 2 P1):
+        - Both: a timeout killed only the direct child, so a shell's or Go's descendants ran on.
+        - Codex: the positional-argument recipe turned `id` and `check` into `build` on native Windows; an empty `SHELL` was taken for unset; the Windows plan expected exit 0 with malformed output to block.
+        - The independent review: a failing `mise which go` read as a stale release; output had no bound (`yes` reached 1.48 GB); check's exit 1 meant both another ID and other bytes under the same ID; a missing binary gave three WARNs; a startup file that reads stdin passed the probe; Codex lines printed with no Codex home; seven one-sided mutations survived.
+        - Found on the way (Claude, on the fixes): the group kill could come after the reap, which frees the group's ID; a pipe held from outside the group kept doctor waiting with no bound; the stdin probe's `if` made fish fail; `just --list` described the recipe with its Windows note.
     - Round 1 (REVISE, 5):
         - Adopted: PowerShell's `&` resolves `*?[]` as wildcards (reproduced with pwsh 7.6.9), so both sides refuse them; Codex ignores `args` and its `commandWindows` changes what runs, so ownership became per harness and per member set; render and ownership differed on the suffix, so both now take it by OS and refuse control characters.
         - Answered from Codex's source: cmd's `/C` quote stripping takes the extra pair Codex adds, so the cmd form is intact. The launch test with a space, `&`, and parentheses goes to the Windows PR.
