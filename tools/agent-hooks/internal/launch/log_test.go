@@ -284,17 +284,19 @@ func TestWithASaltTheProjectIsHashedAndACallsPreAndPostShareATrace(t *testing.T)
 
 // faultSink checks the answer before failing in one chosen method.
 type faultSink struct {
-	stdout      *bytes.Buffer
-	want        string
-	stage       string
-	fault       string
-	answerSeen  chan bool
-	writeCalled chan struct{}
-	release     chan struct{}
+	stdout, stderr         *bytes.Buffer
+	wantStdout, wantStderr string
+	stage                  string
+	fault                  string
+	answerSeen             chan bool
+	writeCalled            chan struct{}
+	release                chan struct{}
 }
 
 func (s *faultSink) Salt() ([]byte, bool) {
-	s.answerSeen <- s.stdout.String() == s.want
+	// The answer is written before the logging goroutine starts, so reading
+	// the buffers here is no race.
+	s.answerSeen <- s.stdout.String() == s.wantStdout && s.stderr.String() == s.wantStderr
 	if s.stage == "salt" {
 		if err := s.fail(); err != nil {
 			return nil, false
@@ -324,57 +326,75 @@ func (s *faultSink) fail() error {
 }
 
 func TestASinkThatFailsPanicsOrHangsChangesNoAnswer(t *testing.T) {
-	payload := claudeBash(t, func(p map[string]any) {
-		p["tool_input"] = map[string]any{"command": "npm ci"}
-	})
-	args := []string{"claude", "pre", "--hook", "command-guard"}
-	var stdout, stderr bytes.Buffer
-	exit := launch.Run(args, strings.NewReader(payload), &stdout, &stderr, &fake.Machine{}, &fake.LogSink{})
-	want := result{exit, stdout.String(), stderr.String()}
-	for _, fault := range []struct{ stage, kind string }{
-		{"salt", "fail"},
-		{"salt", "panic"},
-		{"salt", "hang"},
-		{"write", "fail"},
-		{"write", "panic"},
-		{"write", "hang"},
-	} {
-		t.Run(fault.stage+"_"+fault.kind, func(t *testing.T) {
-			// given a sink that fails, panics, or never returns
-			var stdout, stderr bytes.Buffer
-			sink := &faultSink{
-				stdout: &stdout, want: want.stdout, stage: fault.stage, fault: fault.kind,
-				answerSeen: make(chan bool, 1), writeCalled: make(chan struct{}, 1), release: make(chan struct{}),
-			}
-			t.Cleanup(func() { close(sink.release) })
-			began := time.Now()
-			// when the binary runs and logs to it
-			exit := launch.Run(args, strings.NewReader(payload), &stdout, &stderr, &fake.Machine{}, sink)
-			took := time.Since(began)
-			// then the answer, the exit code, and stderr are as with a working
-			// sink, and the run ends within the logging deadline
-			if got := (result{exit, stdout.String(), stderr.String()}); got != want {
-				t.Errorf("got %+v, want %+v", got, want)
-			}
-			if took >= 750*time.Millisecond {
-				t.Errorf("the run took %v; the logging deadline is 250ms", took)
-			}
-			select {
-			case seen := <-sink.answerSeen:
-				if !seen {
-					t.Error("the sink was called before stdout held the whole answer")
+	// Claude's block answers on stderr, Pi's pass on stdout, so the check
+	// that the answer comes first covers both streams.
+	runs := []struct {
+		name    string
+		payload string
+		args    []string
+	}{
+		{"claude-block", claudeBash(t, func(p map[string]any) {
+			p["tool_input"] = map[string]any{"command": "npm ci"}
+		}), []string{"claude", "pre", "--hook", "command-guard"}},
+		{"pi-pass", piRequest("pre", "bash", `{"command":"ls"}`), []string{"pi", "pre", "--hook", "command-guard"}},
+	}
+	for _, r := range runs {
+		var stdout, stderr bytes.Buffer
+		exit := launch.Run(r.args, strings.NewReader(r.payload), &stdout, &stderr, &fake.Machine{}, &fake.LogSink{})
+		want := result{exit, stdout.String(), stderr.String()}
+		if r.name == "claude-block" && (want.stderr == "" || want.exit != 2) {
+			t.Fatalf("%s: the working run answered %+v; want a block on stderr", r.name, want)
+		}
+		if r.name == "pi-pass" && want.stdout == "" {
+			t.Fatalf("%s: the working run answered %+v; want the pass on stdout", r.name, want)
+		}
+		for _, fault := range []struct{ stage, kind string }{
+			{"salt", "fail"},
+			{"salt", "panic"},
+			{"salt", "hang"},
+			{"write", "fail"},
+			{"write", "panic"},
+			{"write", "hang"},
+		} {
+			t.Run(r.name+"/"+fault.stage+"_"+fault.kind, func(t *testing.T) {
+				// given a sink that fails, panics, or never returns
+				var stdout, stderr bytes.Buffer
+				sink := &faultSink{
+					stdout: &stdout, stderr: &stderr, wantStdout: want.stdout, wantStderr: want.stderr,
+					stage: fault.stage, fault: fault.kind,
+					answerSeen: make(chan bool, 1), writeCalled: make(chan struct{}, 1), release: make(chan struct{}),
 				}
-			default:
-				t.Error("the sink never checked stdout")
-			}
-			if fault.stage == "write" {
+				t.Cleanup(func() { close(sink.release) })
+				began := time.Now()
+				// when the binary runs and logs to it
+				exit := launch.Run(r.args, strings.NewReader(r.payload), &stdout, &stderr, &fake.Machine{}, sink)
+				took := time.Since(began)
+				// then the answer, the exit code, and stderr are as with a
+				// working sink, and the run ends within the logging deadline
+				if got := (result{exit, stdout.String(), stderr.String()}); got != want {
+					t.Errorf("got %+v, want %+v", got, want)
+				}
+				if took >= 750*time.Millisecond {
+					t.Errorf("the run took %v; the logging deadline is 250ms", took)
+				}
+				// and the whole answer was written before logging began
 				select {
-				case <-sink.writeCalled:
+				case seen := <-sink.answerSeen:
+					if !seen {
+						t.Error("the sink was called before stdout and stderr held the whole answer")
+					}
 				default:
-					t.Error("the test never reached Write")
+					t.Error("the sink never checked the answer")
 				}
-			}
-		})
+				if fault.stage == "write" {
+					select {
+					case <-sink.writeCalled:
+					default:
+						t.Error("the test never reached Write")
+					}
+				}
+			})
+		}
 	}
 }
 

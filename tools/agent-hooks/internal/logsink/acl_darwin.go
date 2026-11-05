@@ -17,13 +17,15 @@ import (
 // directories and files it checks, through their open handles, and then reads
 // that none is left. The standard library has no call for ACLs, so these are
 // the raw fstat_extended(2) and fchmod_extended(2).
+//
+// The mode and the ACL change in one fchmod_extended call: a deny entry may
+// be all that guards a loose mode, and removing it before the mode narrowed
+// would open the file in between.
 
 const (
 	// kauthNone is KAUTH_UID_NONE (and KAUTH_GID_NONE): fchmod_extended
 	// leaves the owner and the group as they are.
 	kauthNone = 1<<32 - 1 - 100
-	// keepMode is fchmod_extended's mode -1: the mode bits stay.
-	keepMode = ^uintptr(0)
 	// removeACL is _FILESEC_REMOVE_ACL.
 	removeACL = 1
 	// filesecHeader is the size of a kauth_filesec with no ACL entry: the
@@ -40,19 +42,28 @@ var (
 	errFilesecShape = errors.New("the file's security is not in the form expected")
 )
 
-// clearACL removes any ACL from the open file, then checks that none is left.
-// A file without one is left as it is.
-func clearACL(file *os.File) error {
+// restrict leaves the open file to its owner: when group or others have any
+// permission (mode is its mode now), its mode becomes private; and any ACL
+// goes. Both happen in one call, and then the sink reads that no ACL is left.
+// A file that needs neither is left as it is.
+func restrict(file *os.File, mode, private os.FileMode) error {
 	has, err := hasACL(file)
-	if err != nil || !has {
+	if err != nil {
 		return err
 	}
+	target := mode.Perm()
+	if target&0o077 != 0 {
+		target = private
+	}
+	if !has && target == mode.Perm() {
+		return nil
+	}
 	err = control(file, func(fd uintptr) syscall.Errno {
-		_, _, errno := syscall.Syscall6(syscall.SYS_FCHMOD_EXTENDED, fd, kauthNone, kauthNone, keepMode, removeACL, 0)
+		_, _, errno := syscall.Syscall6(syscall.SYS_FCHMOD_EXTENDED, fd, kauthNone, kauthNone, uintptr(target), removeACL, 0)
 		return errno
 	})
 	if err != nil {
-		return fmt.Errorf("remove the ACL: %w", err)
+		return fmt.Errorf("narrow the mode and remove the ACL: %w", err)
 	}
 	if has, err = hasACL(file); err != nil || has {
 		return errors.Join(errACLStays, err)

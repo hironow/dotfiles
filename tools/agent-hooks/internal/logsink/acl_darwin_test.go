@@ -3,10 +3,12 @@
 package logsink
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -39,31 +41,45 @@ func aclOf(t *testing.T, path string) []string {
 	return entries
 }
 
-func TestClearACLRemovesEveryEntryAndLeavesAFileWithoutOneAlone(t *testing.T) {
+func TestRestrictLeavesAFileToItsOwnerInOneStep(t *testing.T) {
 	dir := t.TempDir()
-	for _, entry := range []string{"everyone allow read", "everyone deny write"} {
-		path := filepath.Join(dir, strings.ReplaceAll(entry, " ", "-"))
-		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+	cases := []struct {
+		entry string
+		mode  os.FileMode
+	}{
+		{"everyone allow read", 0o600},
+		{"everyone deny write", 0o600},
+		// A loose mode guarded by a deny entry for another user (an entry
+		// for everyone would deny the owner too): the mode and the ACL change
+		// in the same call, so the file is never open in between.
+		{"user:nobody deny read", 0o644},
+	}
+	for _, c := range cases {
+		path := filepath.Join(dir, strings.NewReplacer(" ", "-", ":", "-").Replace(c.entry))
+		if err := os.WriteFile(path, []byte("x"), c.mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, c.mode); err != nil {
 			t.Fatal(err)
 		}
 		// given a file with an ACL entry, opened as the sink opens it
-		grant(t, path, entry)
+		grant(t, path, c.entry)
 		file, err := os.Open(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// when the sink clears its ACL through the handle
-		err = clearACL(file)
+		// when the sink restricts it through the handle
+		err = restrict(file, c.mode, 0o600)
 		_ = file.Close()
-		// then no entry is left, and the mode bits are as they were
+		// then no entry is left, and the mode is the owner's only
 		if err != nil {
-			t.Fatalf("%s: clearACL: %v", entry, err)
+			t.Fatalf("%s: restrict: %v", c.entry, err)
 		}
 		if got := aclOf(t, path); len(got) != 0 {
-			t.Errorf("%s: the ACL still holds %q", entry, got)
+			t.Errorf("%s: the ACL still holds %q", c.entry, got)
 		}
 		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
-			t.Errorf("%s: mode %v (%v), want 0600", entry, info.Mode().Perm(), err)
+			t.Errorf("%s: mode %v (%v), want 0600", c.entry, info.Mode().Perm(), err)
 		}
 	}
 	// A file without an ACL is left as it is.
@@ -79,8 +95,20 @@ func TestClearACLRemovesEveryEntryAndLeavesAFileWithoutOneAlone(t *testing.T) {
 	if has, err := hasACL(file); err != nil || has {
 		t.Fatalf("hasACL on a plain file = %v, %v; want false", has, err)
 	}
-	if err := clearACL(file); err != nil {
-		t.Fatalf("clearACL on a plain file: %v", err)
+	before, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restrict(file, 0o600, 0o600); err != nil {
+		t.Fatalf("restrict on a plain file: %v", err)
+	}
+	// Nothing was written: its change time is the same.
+	after, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, a := before.Sys().(*syscall.Stat_t), after.Sys().(*syscall.Stat_t); b.Ctimespec != a.Ctimespec {
+		t.Errorf("restrict changed a file that needed nothing (ctime %v to %v)", b.Ctimespec, a.Ctimespec)
 	}
 }
 
@@ -95,6 +123,20 @@ func TestTheFileSinkRemovesACLsItFindsOrInherits(t *testing.T) {
 	if err := os.MkdirAll(logs, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// and agent-hooks and a salt left open by their modes, guarded only by
+	// deny entries for another user
+	if err := os.Chmod(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	grant(t, hooks, "user:nobody deny list,search")
+	salt := filepath.Join(hooks, "salt")
+	if err := os.WriteFile(salt, bytes.Repeat([]byte{9}, SaltSize), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(salt, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	grant(t, salt, "user:nobody deny read")
 	now := time.Date(2026, 11, 5, 4, 0, 0, 0, time.UTC)
 	day := filepath.Join(logs, "2026-11-05.jsonl")
 	if err := os.WriteFile(day, nil, 0o600); err != nil {
@@ -110,16 +152,20 @@ func TestTheFileSinkRemovesACLsItFindsOrInherits(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sink.Close()
-	if _, ok := sink.Salt(); !ok {
-		t.Fatal("Salt() = false")
+	if got, ok := sink.Salt(); !ok || !bytes.Equal(got, bytes.Repeat([]byte{9}, SaltSize)) {
+		t.Fatalf("Salt() = %x, %v; want the salt that was there", got, ok)
 	}
 	if err := sink.Write(now, []byte("{}\n")); err != nil {
 		t.Fatal(err)
 	}
-	// then none of its directories and files keeps an ACL
-	for _, path := range []string{hooks, logs, day, filepath.Join(hooks, "salt"), filepath.Join(hooks, "salt.lock")} {
+	// then none of its directories and files keeps an ACL, and each is its
+	// owner's alone
+	for path, mode := range map[string]os.FileMode{hooks: 0o700, logs: 0o700, day: 0o600, salt: 0o600} {
 		if got := aclOf(t, path); len(got) != 0 {
 			t.Errorf("%s keeps the ACL %q", path, got)
+		}
+		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != mode {
+			t.Errorf("%s has mode %v (%v), want %v", path, info.Mode().Perm(), err, mode)
 		}
 	}
 	if data, err := os.ReadFile(day); err != nil || string(data) != "{}\n" {
