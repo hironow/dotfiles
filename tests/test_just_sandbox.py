@@ -201,6 +201,9 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
     docker_args = [
         "docker",
         "run",
+        # Reap orphaned descendants, as the host's init does. A just/go PID 1
+        # leaves zombies that make the process-tree tests report live children.
+        "--init",
         "--rm",
         "-v",
         f"{mount_source}:/root/dotfiles",

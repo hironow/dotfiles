@@ -97,7 +97,10 @@ If you are unsure, write a test that pins down the requirement before you code.
   works. DRY: keep each piece of knowledge in one place, but do not merge code
   that only looks alike. SOLID: give each unit one reason to change, and depend
   on ports (purpose-named interfaces; see Design), not on concrete adapters.
-- **Scope file searches to the task.** Search the current project or named,
+- **Scope file searches to the task.** Prefer `rg` for content, `fd` for paths,
+  and `sd` for replacements. Read docs/agents/cli-tools.md when translating
+  `grep`, `find`, or `sed` commands; their arguments and defaults differ.
+  Search the current project or named,
   task-relevant directories. Ask for explicit approval before recursively
   scanning a filesystem root (`/` or a drive root), an entire home directory,
   or unrelated protected data, including through wrappers or scripts. Narrow
@@ -110,6 +113,24 @@ If you are unsure, write a test that pins down the requirement before you code.
   honestly, including failures. For a long or remote command, check that it
   finished and made what you meant (exit code, size, count), not only that it
   returned.
+
+### Hunk reviews
+
+Show the maintainer only the code worth reviewing: core data layouts and
+non-trivial algorithms. Leave out tests, constructors and `#[must_use]`
+accessors, conversions between crates, small helpers, and generated files such
+as `Cargo.lock`. Summarize the manifest changes you leave out in your reply
+instead: dependencies, and any lint, feature, target or workspace changes.
+Narrow to the files that matter with a pathspec (`hunk diff <range> -- <paths>`).
+When a file mixes both, review a curated patch with `hunk patch <file>`.
+Diff a copy of the file with the chosen items removed against the file itself
+(`git diff --no-index`), and name both sides after the real path. Only those
+items then show as changes, at their real line numbers.
+
+Annotate it as a guided tour. Leave one note per stop and prefix each summary
+with its place in the reading order, `3/22: …`: data layouts first, then the
+flow through the algorithms. Hunk's next-comment key follows file order, so
+the numbers carry the path; list each number's file and line in your reply.
 
 ## Design (functional core, imperative shell, ports and adapters)
 

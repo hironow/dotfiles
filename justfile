@@ -166,6 +166,19 @@ install:
     # Install tools via mise (versions are managed in config/mise/config.toml)
     mise install
 
+# Install and verify the shared review/search tools from this checkout.
+# Select only these tools; leave the live global config and other tools alone.
+# Ordinary recipe lines use windows-shell's Git Bash PATH correction on Windows.
+CLI_TOOLS_MISE := "env MISE_GLOBAL_CONFIG_FILE=" + quote(justfile_directory() / "config/mise/config.toml") + " mise -C /"
+
+[group('Setup')]
+cli-tools-install:
+    {{CLI_TOOLS_MISE}} install hunk ripgrep fd sd
+    {{CLI_TOOLS_MISE}} exec hunk -- hunk --version
+    {{CLI_TOOLS_MISE}} exec ripgrep -- rg --version
+    {{CLI_TOOLS_MISE}} exec fd -- fd --version
+    {{CLI_TOOLS_MISE}} exec sd -- sd --version
+
 # Harden: write machine-local supply-chain guards (npm min-release-age, uv
 # exclude-newer, go proxy). Idempotent; not tracked.
 [group('Setup')]
