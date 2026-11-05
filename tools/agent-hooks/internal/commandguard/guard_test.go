@@ -2,6 +2,7 @@ package commandguard_test
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/commandguard"
@@ -23,6 +24,10 @@ func TestCheckAgreesWithThePythonGuardOnTheCorpus(t *testing.T) {
 			}
 			if outcome.Action != ir.Block || outcome.Reason != *entry.Reason {
 				t.Fatalf("Check(%q) = %v %q; Python blocked: %q", entry.Input, outcome.Action, outcome.Reason, *entry.Reason)
+			}
+			// and the block names a rule the guard lists, for the log
+			if !slices.Contains(commandguard.Rules(), outcome.Rule) {
+				t.Fatalf("Check(%q) blocked by rule %q, which Rules() does not list", entry.Input, outcome.Rule)
 			}
 		})
 	}

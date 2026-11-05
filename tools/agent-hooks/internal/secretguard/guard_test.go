@@ -2,6 +2,7 @@ package secretguard_test
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,7 +31,7 @@ func TestCheckAgreesWithTheShellGuardOnTheCorpus(t *testing.T) {
 				}
 				return
 			}
-			if outcome.Action != ir.Block || outcome.Reason != *entry.Reason || outcome.Rule != secretguard.RuleCredential {
+			if outcome.Action != ir.Block || outcome.Reason != *entry.Reason || !slices.Contains(secretguard.Rules(), outcome.Rule) {
 				t.Fatalf("Check(%q) = %v %s %q; the shell guard blocked: %q",
 					content, outcome.Action, outcome.Rule, outcome.Reason, *entry.Reason)
 			}

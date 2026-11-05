@@ -9,6 +9,11 @@ const (
 	FieldNotebookPath = "notebookPath"
 	FieldContent      = "content" // the text a write, edit, or notebook edit puts in
 	FieldCwd          = "cwd"     // the tool call's working directory, as the harness gave it
+	// FieldSessionID and FieldCallID are the session's id and the tool call's
+	// id, as the harness gave them. No hook reads them; the log hashes them
+	// into a trace id that a call's pre and post lines share.
+	FieldSessionID = "sessionId"
+	FieldCallID    = "callId"
 )
 
 // The IR list fields a harness definition maps: a pointer with a "*" in its

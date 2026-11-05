@@ -111,7 +111,7 @@ func manifest() ([]hookSpec, error) {
 // guard can read it, so none runs, and the call is blocked.
 var unreadable = ir.Outcome{
 	Action: ir.Block,
-	Rule:   "input.unreadable",
+	Rule:   ir.RuleInputUnreadable,
 	Reason: "agent-hook could not read the hook input as one JSON value, so no guard ran.",
 }
 
@@ -237,7 +237,7 @@ func brokenExchange(spec hookSpec) ir.Outcome {
 	}
 	return ir.Outcome{
 		Action: ir.Block,
-		Rule:   "shim.broken",
+		Rule:   ir.RuleShimBroken,
 		Reason: "agent-hook could not read the shim's request, so no hook ran: the shim and the binary are out of step.",
 	}
 }
@@ -292,7 +292,7 @@ func failedOutcome(spec hookSpec) ir.Outcome {
 	}
 	return ir.Outcome{
 		Action: ir.Block,
-		Rule:   "hook.failed",
+		Rule:   ir.RuleHookFailed,
 		Reason: "agent-hook's " + spec.ID + " hook failed, so it could not check the call.",
 	}
 }
