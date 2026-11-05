@@ -46,6 +46,8 @@ const (
 	RuleShimBroken = "shim.broken"
 	// RuleHookFailed blocks a call whose guard failed (panicked).
 	RuleHookFailed = "hook.failed"
+	// RuleHookTimeout blocks a call whose guard did not finish in time.
+	RuleHookTimeout = "hook.timeout"
 )
 
 // Outcome is what one hook decided about one tool call. The zero Outcome is

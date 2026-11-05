@@ -4,10 +4,12 @@
 //
 // It reads the harness's hook payload from stdin and answers as that harness
 // reads an answer (exit code, stdout, stderr). Each run then logs one line of
-// fixed values to the file log under the state directory. `agent-hook log`
-// prints the recent lines:
+// fixed values to the file log under the state directory. The binary's own
+// commands:
 //
-//	agent-hook log [--days N]
+//	agent-hook log [--days N]   the recent log lines
+//	agent-hook version          the release ID and the Go version
+//	agent-hook selftest         the binary's own cases (internal/selftest)
 package main
 
 import (
@@ -18,8 +20,15 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "log" {
-		os.Exit(printLog(os.Args[2:], os.Stdout, os.Stderr, os.LookupEnv, time.Now()))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "log":
+			os.Exit(printLog(os.Args[2:], os.Stdout, os.Stderr, os.LookupEnv, time.Now()))
+		case "version":
+			os.Exit(printVersion(os.Args[2:], os.Stdout, os.Stderr))
+		case "selftest":
+			os.Exit(runSelftest(os.Args[2:], os.Stdout, os.Stderr))
+		}
 	}
 	os.Exit(launch.Run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, launch.ExecMachine{}, &fileLog{}))
 }

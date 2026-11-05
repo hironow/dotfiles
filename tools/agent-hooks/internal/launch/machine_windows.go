@@ -3,12 +3,51 @@
 package launch
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/process"
 )
+
+// Run stops the direct child at the earlier command or stage deadline.
+func (ExecMachine) Run(command process.Command) (process.Result, error) {
+	ctx, cancel := commandContext(command)
+	defer cancel()
+	// Audited: hooks run the programs found on PATH or returned by mise,
+	// with the same arguments as the scripts they replace. Payloads reach
+	// arguments or stdin, never the executable path. No shell is invoked here.
+	// nosemgrep: dangerous-exec-command, go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+	cmd := exec.CommandContext(ctx, command.Path) //nolint:gosec // G204: audited above
+	cmd.Args = command.Args
+	cmd.Dir = command.Dir
+	cmd.WaitDelay = waitDelay
+	if command.Stdin != nil {
+		cmd.Stdin = bytes.NewReader(command.Stdin)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if command.Combined {
+		cmd.Stderr = &stdout
+	}
+	err := cmd.Run()
+	if ctx.Err() != nil {
+		return process.Result{}, ctx.Err()
+	}
+	result := process.Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return result, nil
+	case errors.As(err, &exitErr):
+		result.Exit = exitErr.ExitCode()
+		result.Signaled = signaled(exitErr)
+		return result, nil
+	default:
+		return process.Result{}, err
+	}
+}
 
 // LookPath is Go's exec.LookPath on Windows, which knows PATHEXT. A program
 // found relative to the current directory is not found: the binary never

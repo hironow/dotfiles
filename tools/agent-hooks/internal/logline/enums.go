@@ -19,7 +19,7 @@ var (
 	harnessTools = readHarnessTools()
 	hooks        = readHooks()
 	rules        = readRules()
-	errorCodes   = wordSet(ErrInputUnreadable + " " + ErrShimBroken + " " + ErrHookFailed + " " +
+	errorCodes   = wordSet(ErrInputUnreadable + " " + ErrShimBroken + " " + ErrHookFailed + " " + ErrHookTimeout + " " +
 		ErrRewriteDropped + " " + ErrToolFailed + " " + ErrAnswerFailed + " " + ErrUsage)
 	mismatches = wordSet(MismatchEnvelope + " " + MismatchInput + " " + MismatchMapping + " " + MismatchUnchecked)
 )
@@ -63,7 +63,7 @@ func readHooks() map[string]bool {
 }
 
 func readRules() map[string]bool {
-	set := wordSet(ir.RuleInputUnreadable + " " + ir.RuleShimBroken + " " + ir.RuleHookFailed)
+	set := wordSet(ir.RuleInputUnreadable + " " + ir.RuleShimBroken + " " + ir.RuleHookFailed + " " + ir.RuleHookTimeout)
 	for _, list := range [][]string{commandguard.Rules(), fileguard.Rules(), secretguard.Rules()} {
 		for _, rule := range list {
 			set[rule] = true
