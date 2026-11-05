@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"debug/buildinfo"
 	"errors"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func mustRead(t *testing.T, path string) []byte {
@@ -122,6 +124,18 @@ func exerciseReleaseBuild(t *testing.T, module, path, releases string) {
 			t.Fatalf("conflicting release replaced or accepted: exit %d: %s", code, stderr)
 		}
 	})
+	t.Run("interrupted publish left an empty ID", func(t *testing.T) {
+		testIncompleteReleaseRecovery(t, path, releases, original, "")
+	})
+	t.Run("incomplete release has no binary", func(t *testing.T) {
+		testIncompleteReleaseRecovery(t, path, releases, original, "interrupted")
+	})
+	t.Run("stale temporary builds are removed", func(t *testing.T) {
+		testStaleBuildCleanup(t, releases)
+	})
+	t.Run("check uses a disposable cache", func(t *testing.T) {
+		testCheckCache(t, path, releases)
+	})
 	t.Run("checkout mismatch reports both IDs", func(t *testing.T) {
 		file := filepath.Join(module, "go.sum")
 		before := mustRead(t, file)
@@ -137,15 +151,6 @@ func exerciseReleaseBuild(t *testing.T, module, path, releases string) {
 			t.Fatalf("missing binary exit %d, want 2: %s", code, stderr)
 		}
 	})
-	t.Run("foreign target", func(t *testing.T) {
-		testForeignTarget(t, releases, id)
-	})
-	t.Run("ARM level", func(t *testing.T) {
-		code, _, stderr := releaseCommand(t, "build", "--into", releases, "--goos", "linux", "--goarch", "arm")
-		if code != 0 {
-			t.Fatalf("ARM build exit %d: %s", code, stderr)
-		}
-	})
 	t.Run("refusals and cleanup", func(t *testing.T) {
 		testReleaseRefusals(t, module)
 	})
@@ -157,6 +162,60 @@ func exerciseReleaseBuild(t *testing.T, module, path, releases string) {
 		if !entry.IsDir() {
 			t.Fatalf("temporary build file left behind: %s", entry.Name())
 		}
+	}
+}
+
+func testIncompleteReleaseRecovery(t *testing.T, path, releases string, original []byte, leftover string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if leftover != "" {
+		mustWrite(t, filepath.Join(filepath.Dir(path), leftover), []byte("unfinished publish"))
+	}
+	if got := builtRelease(t, releases); got != path || !bytes.Equal(original, mustRead(t, path)) {
+		t.Fatalf("incomplete release was not recovered: %q", got)
+	}
+}
+
+func testStaleBuildCleanup(t *testing.T, releases string) {
+	t.Helper()
+	stale := filepath.Join(releases, ".tmp-stale")
+	recent := filepath.Join(releases, ".tmp-recent")
+	for dir, age := range map[string]time.Duration{stale: 2 * time.Hour, recent: 30 * time.Minute} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mustWrite(t, filepath.Join(dir, "agent-hook"), []byte("interrupted"))
+		when := time.Now().Add(-age)
+		if err := os.Chtimes(dir, when, when); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(dir) })
+	}
+	builtRelease(t, releases)
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale temporary build remains: %v", err)
+	}
+	if _, err := os.Stat(recent); err != nil {
+		t.Fatalf("recent temporary build was removed: %v", err)
+	}
+}
+
+func testCheckCache(t *testing.T, path, releases string) {
+	t.Helper()
+	log := filepath.Join(t.TempDir(), "build-caches")
+	installGoWrapper(t, "if [ \"$1\" = build ]; then printf '%s\\n' \"$GOCACHE\" >> "+shellLiteral(log)+"; fi")
+	builtRelease(t, releases)
+	if code, _, stderr := releaseCommand(t, "check", path); code != 0 {
+		t.Fatalf("check exit %d: %s", code, stderr)
+	}
+	caches := strings.Split(strings.TrimSpace(string(mustRead(t, log))), "\n")
+	if len(caches) != 2 || caches[0] != os.Getenv("GOCACHE") || caches[1] == caches[0] {
+		t.Fatalf("build/check caches = %q, want user cache then fresh cache", caches)
+	}
+	if _, err := os.Stat(caches[1]); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("check cache remains: %v", err)
 	}
 }
 
@@ -203,20 +262,32 @@ func testCheckoutCopy(t *testing.T, module, id string, original []byte) {
 	}
 }
 
-func testForeignTarget(t *testing.T, releases, hostID string) {
-	t.Helper()
-	otherOS := "windows"
-	if runtime.GOOS == otherOS {
-		otherOS = "linux"
+func TestCheckForeignReleaseAndARMLevel(t *testing.T) {
+	isolatedModule(t)
+	plan, err := prepareRelease(buildTarget{OS: "linux", Arch: "arm"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	code, other, stderr := releaseCommand(t, "build", "--into", releases, "--goos", otherOS, "--goarch", "amd64")
-	if code != 0 || !strings.Contains(stderr, "skipping version and selftest") {
-		t.Fatalf("cross build exit %d: %s", code, stderr)
+	dir := filepath.Join(t.TempDir(), plan.id)
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if filepath.Base(filepath.Dir(other)) == hostID || (otherOS == "windows" && filepath.Ext(other) != ".exe") {
-		t.Fatalf("cross build release path = %q", other)
+	path := filepath.Join(dir, "agent-hook")
+	if _, err := plan.run(false, "build", "-trimpath", "-buildvcs=false", "-pgo=off", "-ldflags="+linkFlags(plan.module, plan.id), "-o", path, "./cmd/agent-hook"); err != nil {
+		t.Fatal(err)
 	}
-	if code, _, stderr := releaseCommand(t, "check", other); code != 0 {
+	metadata, err := buildinfo.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := make(map[string]string)
+	for _, setting := range metadata.Settings {
+		settings[setting.Key] = setting.Value
+	}
+	if settings["GOOS"] != "linux" || settings["GOARCH"] != "arm" || settings["GOARM"] != "7" {
+		t.Fatalf("ARM build settings = %v", settings)
+	}
+	if code, _, stderr := releaseCommand(t, "check", path); code != 0 || stderr != "" {
 		t.Fatalf("cross build check exit %d: %s", code, stderr)
 	}
 }

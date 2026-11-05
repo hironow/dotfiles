@@ -17,6 +17,15 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "id" {
+		id, err := idCommand(args[1:])
+		if err != nil {
+			fmt.Fprintln(stderr, "hookrelease id:", err)
+			return 2
+		}
+		fmt.Fprintln(stdout, id)
+		return 0
+	}
 	if len(args) > 0 && args[0] == "check" {
 		return checkCommand(args[1:], stderr)
 	}
@@ -29,7 +38,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, previous)
 		return 0
 	}
-	path, err := buildCommand(args, stderr)
+	path, err := buildCommand(args)
 	if err != nil {
 		fmt.Fprintln(stderr, "hookrelease:", err)
 		return 2
@@ -38,20 +47,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func buildCommand(args []string, stderr io.Writer) (string, error) {
+func buildCommand(args []string) (string, error) {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		args = append([]string{"build"}, args...)
 	}
 	if args[0] != "build" {
-		return "", errors.New("usage: hookrelease build [--into DIR] [--goos OS --goarch ARCH]")
+		return "", errors.New("usage: hookrelease build [--into DIR]")
 	}
 	flags := flag.NewFlagSet("build", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var into string
 	target := buildTarget{OS: runtime.GOOS, Arch: runtime.GOARCH}
 	flags.StringVar(&into, "into", "", "releases directory")
-	flags.StringVar(&target.OS, "goos", target.OS, "target operating system")
-	flags.StringVar(&target.Arch, "goarch", target.Arch, "target architecture")
 	if err := flags.Parse(args[1:]); err != nil {
 		return "", err
 	}
@@ -69,5 +76,24 @@ func buildCommand(args []string, stderr io.Writer) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return plan.build(into, stderr)
+	return plan.build(into)
+}
+
+func idCommand(args []string) (string, error) {
+	flags := flag.NewFlagSet("id", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	target := buildTarget{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	flags.StringVar(&target.OS, "goos", target.OS, "target operating system")
+	flags.StringVar(&target.Arch, "goarch", target.Arch, "target architecture")
+	if err := flags.Parse(args); err != nil {
+		return "", err
+	}
+	if flags.NArg() != 0 {
+		return "", errors.New("usage: hookrelease id [--goos OS --goarch ARCH]")
+	}
+	plan, err := prepareRelease(target)
+	if err != nil {
+		return "", err
+	}
+	return plan.id, nil
 }

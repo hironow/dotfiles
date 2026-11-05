@@ -18,14 +18,18 @@ func release(t *testing.T, root, id string) string {
 	if err := os.WriteFile(path, []byte("release"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return path
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
 }
 
 func TestSwitchKeepsHomesIndependent(t *testing.T) {
 	root := t.TempDir()
 	one, two := release(t, root, "0123456789abcdef"), release(t, root, "fedcba9876543210")
 	if runtime.GOOS == "windows" {
-		if code, _, _ := releaseCommand(t, "switch", "--into", root, "--home", "claude", one); code != 2 {
+		if code, _, _ := releaseCommand(t, "switch", "--root", root, "--home", "claude", one); code != 2 {
 			t.Fatalf("Windows switch exit = %d, want 2", code)
 		}
 		return
@@ -33,7 +37,7 @@ func TestSwitchKeepsHomesIndependent(t *testing.T) {
 	for _, tc := range []struct{ home, path, previous string }{
 		{"claude", one, ""}, {"codex", one, ""}, {"claude", two, one},
 	} {
-		code, previous, stderr := releaseCommand(t, "switch", "--into", root, "--home", tc.home, tc.path)
+		code, previous, stderr := releaseCommand(t, "switch", "--root", root, "--home", tc.home, tc.path)
 		if code != 0 || previous != tc.previous {
 			t.Fatalf("switch %s: exit %d, previous %q, want %q: %s", tc.home, code, previous, tc.previous, stderr)
 		}
@@ -49,7 +53,7 @@ func TestSwitchKeepsHomesIndependent(t *testing.T) {
 		}
 	}
 	for _, key := range []string{"", "../escape", "Upper", "has_space", "日本語", "x/y"} {
-		if code, _, stderr := releaseCommand(t, "switch", "--into", root, "--home", key, one); code != 2 {
+		if code, _, stderr := releaseCommand(t, "switch", "--root", root, "--home", key, one); code != 2 {
 			t.Fatalf("invalid key %q exit %d, want 2: %s", key, code, stderr)
 		}
 	}
@@ -71,7 +75,7 @@ func TestSwitchPointsOnlyAtAReleaseOfItsOwnRoot(t *testing.T) {
 	// given paths that are not one of this root's releases
 	for _, path := range []string{stray, other, short, upper, filepath.Join(filepath.Dir(good), "other-name")} {
 		// when a home is switched to one, then it is refused, and no link is made
-		if code, _, _ := releaseCommand(t, "switch", "--into", root, "--home", "claude", path); code != 2 {
+		if code, _, _ := releaseCommand(t, "switch", "--root", root, "--home", "claude", path); code != 2 {
 			t.Errorf("switch to %s: exit %d, want 2", path, code)
 		}
 	}
@@ -79,7 +83,43 @@ func TestSwitchPointsOnlyAtAReleaseOfItsOwnRoot(t *testing.T) {
 		t.Error("a refused switch made the link")
 	}
 	// the control: this root's release
-	if code, _, stderr := releaseCommand(t, "switch", "--into", root, "--home", "claude", good); code != 0 {
+	if code, _, stderr := releaseCommand(t, "switch", "--root", root, "--home", "claude", good); code != 0 {
 		t.Fatalf("switch to a release: exit %d: %s", code, stderr)
+	}
+}
+
+func TestSwitchRefusesEscapingReleaseSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("switch is not wired on Windows")
+	}
+	root := t.TempDir()
+	good := release(t, root, "0123456789abcdef")
+	if code, _, stderr := releaseCommand(t, "switch", "--root", root, "--home", "claude", good); code != 0 {
+		t.Fatalf("initial switch exit %d: %s", code, stderr)
+	}
+	outside := release(t, t.TempDir(), "fedcba9876543210")
+	escape := filepath.Join(root, "releases", "fedcba9876543210")
+	if err := os.Symlink(filepath.Dir(outside), escape); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := releaseCommand(t, "switch", "--root", root, "--home", "claude", filepath.Join(escape, "agent-hook")); code != 2 {
+		t.Fatalf("escaping switch exit %d, want 2: %s", code, stderr)
+	}
+	if got, err := os.Readlink(filepath.Join(root, "current", "claude", "agent-hook")); err != nil || got != good {
+		t.Fatalf("refused switch changed link to %q (%v), want %q", got, err, good)
+	}
+}
+
+func TestSwitchUsesRootFlag(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("switch is not wired on Windows")
+	}
+	root := t.TempDir()
+	path := release(t, root, "0123456789abcdef")
+	if code, _, stderr := releaseCommand(t, "switch", "--root", root, "--home", "claude", path); code != 0 {
+		t.Fatalf("switch --root exit %d: %s", code, stderr)
+	}
+	if code, _, _ := releaseCommand(t, "switch", "--into", root, "--home", "claude", path); code != 2 {
+		t.Fatalf("obsolete --into exit %d, want 2", code)
 	}
 }

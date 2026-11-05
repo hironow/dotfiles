@@ -919,7 +919,7 @@ agent-hooks-latency *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hooklatency {{args}}
 
 # Build the agent-hook binary as a release, reproducibly, into the data directory.
-# Build an agent-hook release (prints its path); also: check PATH, switch --home KEY PATH.
+# Build a host release; also: id [--goos OS --goarch ARCH], check PATH, switch --home KEY [--root DIR] PATH.
 [group('Agents')]
 agent-hooks-build *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease {{ if args == "" { "build" } else { args } }}

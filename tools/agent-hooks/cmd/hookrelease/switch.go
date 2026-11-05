@@ -24,13 +24,13 @@ func switchCommand(args []string) (string, error) {
 	flags := flag.NewFlagSet("switch", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var root, home string
-	flags.StringVar(&root, "into", "", "agent-hooks data root")
+	flags.StringVar(&root, "root", "", "agent-hooks data root")
 	flags.StringVar(&home, "home", "", "home key")
 	if err := flags.Parse(args); err != nil {
 		return "", err
 	}
 	if flags.NArg() != 1 || !homeKey.MatchString(home) {
-		return "", errors.New("usage: hookrelease switch --home KEY [--into DIR] PATH; KEY uses lowercase ASCII letters, digits, and -")
+		return "", errors.New("usage: hookrelease switch --home KEY [--root DIR] PATH; KEY uses lowercase ASCII letters, digits, and -")
 	}
 	if root == "" {
 		var err error
@@ -44,6 +44,10 @@ func switchCommand(args []string) (string, error) {
 		return "", err
 	}
 	target, err := filepath.Abs(flags.Arg(0))
+	if err != nil {
+		return "", err
+	}
+	target, err = filepath.EvalSymlinks(target)
 	if err != nil {
 		return "", err
 	}
@@ -85,15 +89,12 @@ func isRelease(root, target string) error {
 	if !releaseDir.MatchString(filepath.Base(dir)) {
 		return fmt.Errorf("not in a release directory: %s", target)
 	}
-	releases, err := filepath.EvalSymlinks(filepath.Join(root, "releases"))
+	resolvedRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return err
 	}
-	parent, err := filepath.EvalSymlinks(filepath.Dir(dir))
-	if err != nil {
-		return err
-	}
-	if parent != releases {
+	releases := filepath.Join(resolvedRoot, "releases")
+	if filepath.Dir(dir) != releases {
 		return fmt.Errorf("not one of %s's releases: %s", releases, target)
 	}
 	return nil

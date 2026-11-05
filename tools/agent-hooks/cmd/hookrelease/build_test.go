@@ -18,6 +18,34 @@ func releaseCommand(t *testing.T, args ...string) (int, string, string) {
 	return code, strings.TrimSpace(stdout.String()), stderr.String()
 }
 
+func TestCheckHelpExplainsFreshCache(t *testing.T) {
+	code, _, stderr := releaseCommand(t, "check", "--help")
+	if code != 0 || !strings.Contains(stderr, "slower") || !strings.Contains(stderr, "temporary GOCACHE") {
+		t.Fatalf("check help exit %d: %s", code, stderr)
+	}
+}
+
+func shellLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func installGoWrapper(t *testing.T, commands string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("test go wrapper requires a POSIX shell")
+	}
+	realGo, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	script := "#!/bin/sh\nreal_go=" + shellLiteral(realGo) + "\n" + commands + "\nexec \"$real_go\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "go"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 func isolatedModule(t *testing.T) string {
 	t.Helper()
 	source, err := filepath.Abs("../..")
@@ -81,7 +109,15 @@ func TestReleaseBuild(t *testing.T) {
 		}
 	}
 	t.Run("check", func(t *testing.T) {
-		if code, _, stderr := releaseCommand(t, "check", path); code != 0 {
+		checkPath := path
+		if runtime.GOOS != "windows" {
+			root := filepath.Dir(releases)
+			if code, _, stderr := releaseCommand(t, "switch", "--root", root, "--home", "claude", path); code != 0 {
+				t.Fatalf("switch exit %d: %s", code, stderr)
+			}
+			checkPath = filepath.Join(root, "current", "claude", "agent-hook")
+		}
+		if code, _, stderr := releaseCommand(t, "check", checkPath); code != 0 {
 			t.Fatalf("check exit %d: %s", code, stderr)
 		}
 		original, err := os.ReadFile(path)
@@ -94,7 +130,7 @@ func TestReleaseBuild(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer os.WriteFile(path, original, 0o755)
-		if code, _, stderr := releaseCommand(t, "check", path); code != 1 {
+		if code, _, stderr := releaseCommand(t, "check", checkPath); code != 1 {
 			t.Fatalf("changed binary check exit %d, want 1: %s", code, stderr)
 		}
 	})

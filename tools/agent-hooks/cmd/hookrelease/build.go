@@ -6,13 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"go/build"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-json/jsontext"
 	json "github.com/goccy/go-json/v2"
@@ -48,6 +48,10 @@ type releasePlan struct {
 }
 
 func prepareRelease(target buildTarget) (releasePlan, error) {
+	return prepareReleaseInCache(target, "")
+}
+
+func prepareReleaseInCache(target buildTarget, cache string) (releasePlan, error) {
 	plan := releasePlan{target: target}
 	dir, err := os.Getwd()
 	if err != nil {
@@ -57,7 +61,10 @@ func prepareRelease(target buildTarget) (releasePlan, error) {
 	if err != nil {
 		return plan, err
 	}
-	plan.goTool = goTool{dir: dir, env: normalizedEnvironment(userCacheEnvironment(dir), target)}
+	plan.goTool = goTool{dir: dir, env: normalizedEnvironment(userCacheEnvironment(dir), target, runtime.GOOS)}
+	if cache != "" {
+		plan.env = append(plan.env, "GOCACHE="+cache)
+	}
 	out, err := plan.run(false, "env", "-json", "GOVERSION", "GOCACHE", "GOMODCACHE", "GOPATH")
 	if err != nil {
 		return plan, err
@@ -133,17 +140,18 @@ func (p *releasePlan) readModule() error {
 }
 
 type listedPackage struct {
-	Dir                                            string
-	Module                                         *struct{ Main bool }
-	GoFiles, SFiles, HFiles, SysoFiles, EmbedFiles []string
+	Dir                                                                 string
+	Module                                                              *struct{ Main bool }
+	GoFiles, SFiles, HFiles, SysoFiles, EmbedFiles                      []string
+	CgoFiles, CFiles, CXXFiles, MFiles, FFiles, SwigFiles, SwigCXXFiles []string
 }
 
-func (p releasePlan) inputs() ([]fileDigest, error) {
-	out, err := p.run(false, "list", "-deps", "-json", "./cmd/agent-hook")
+func (g goTool) packages() ([]listedPackage, error) {
+	out, err := g.run(false, "list", "-deps", "-json", "./cmd/agent-hook")
 	if err != nil {
 		return nil, err
 	}
-	paths := map[string]bool{"go.mod": true, "go.sum": true}
+	var packages []listedPackage
 	decoder := jsontext.NewDecoder(bytes.NewReader(out))
 	for {
 		var pkg listedPackage
@@ -152,12 +160,23 @@ func (p releasePlan) inputs() ([]fileDigest, error) {
 		} else if err != nil {
 			return nil, fmt.Errorf("decode go list: %w", err)
 		}
-		if pkg.Module == nil || !pkg.Module.Main {
-			continue
+		if pkg.Module != nil && pkg.Module.Main {
+			packages = append(packages, pkg)
 		}
-		if err := refuseForeignInputs(pkg.Dir, p.target); err != nil {
-			return nil, err
-		}
+	}
+	return packages, nil
+}
+
+func (p releasePlan) inputs() ([]fileDigest, error) {
+	if err := p.refuseForeignInputs(); err != nil {
+		return nil, err
+	}
+	packages, err := p.packages()
+	if err != nil {
+		return nil, err
+	}
+	paths := map[string]bool{"go.mod": true, "go.sum": true}
+	for _, pkg := range packages {
 		for _, files := range [][]string{pkg.GoFiles, pkg.SFiles, pkg.HFiles, pkg.SysoFiles, pkg.EmbedFiles} {
 			for _, file := range files {
 				rel, err := filepath.Rel(p.dir, filepath.Join(pkg.Dir, file))
@@ -179,19 +198,20 @@ func (p releasePlan) inputs() ([]fileDigest, error) {
 	return files, nil
 }
 
-func refuseForeignInputs(dir string, target buildTarget) error {
+func (p releasePlan) refuseForeignInputs() error {
 	// go list drops C and Swig files when cgo is off. Inspect the same
-	// package with cgo enabled to refuse those files, without compiling them.
-	context := build.Default
-	context.GOOS, context.GOARCH, context.CgoEnabled = target.OS, target.Arch, true
-	context.BuildTags = nil
-	pkg, err := context.ImportDir(dir, 0)
+	// dependencies with cgo enabled under the normalized target's tool tags.
+	probe := p.goTool
+	probe.env = append(append([]string{}, p.env...), "CGO_ENABLED=1")
+	packages, err := probe.packages()
 	if err != nil {
-		return fmt.Errorf("inspect release inputs: %w", err)
+		return err
 	}
-	for _, files := range [][]string{pkg.CgoFiles, pkg.CFiles, pkg.CXXFiles, pkg.MFiles, pkg.FFiles, pkg.SwigFiles, pkg.SwigCXXFiles} {
-		if len(files) != 0 {
-			return fmt.Errorf("unsupported C source files or related inputs in %s: %v", dir, files)
+	for _, pkg := range packages {
+		for _, files := range [][]string{pkg.CgoFiles, pkg.CFiles, pkg.CXXFiles, pkg.MFiles, pkg.FFiles, pkg.SwigFiles, pkg.SwigCXXFiles} {
+			if len(files) != 0 {
+				return fmt.Errorf("unsupported C source files or related inputs in %s: %v", pkg.Dir, files)
+			}
 		}
 	}
 	return nil
@@ -210,7 +230,15 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func (p releasePlan) build(releases string, stderr io.Writer) (string, error) {
+func (p releasePlan) compile(path string) error {
+	_, err := p.run(false, "build", "-trimpath", "-buildvcs=false", "-pgo=off", "-ldflags="+linkFlags(p.module, p.id), "-o", path, "./cmd/agent-hook")
+	return err
+}
+
+func (p releasePlan) build(releases string) (string, error) {
+	if p.target.OS != runtime.GOOS || p.target.Arch != runtime.GOARCH {
+		return "", errors.New("build publishes only the host's release")
+	}
 	releases, err := filepath.Abs(releases)
 	if err != nil {
 		return "", err
@@ -220,41 +248,63 @@ func (p releasePlan) build(releases string, stderr io.Writer) (string, error) {
 		return "", err
 	}
 	defer removeEmptyDirectories(created)
-	pattern := ".agent-hook-*"
-	if p.target.OS == "windows" {
-		pattern += ".exe"
+	if err := removeStaleBuilds(releases, time.Now()); err != nil {
+		return "", err
 	}
-	tmp, err := os.CreateTemp(releases, pattern)
+	tmp, err := os.MkdirTemp(releases, ".tmp-*")
 	if err != nil {
 		return "", err
 	}
-	defer os.Remove(tmp.Name())
-	if err := tmp.Close(); err != nil {
+	defer os.RemoveAll(tmp)
+	if err := os.Chmod(tmp, 0o755); err != nil {
 		return "", err
 	}
-	if _, err := p.run(false, "build", "-trimpath", "-buildvcs=false", "-pgo=off", "-ldflags="+linkFlags(p.module, p.id), "-o", tmp.Name(), "./cmd/agent-hook"); err != nil {
+	name := "agent-hook"
+	if p.target.OS == "windows" {
+		name += ".exe"
+	}
+	path := filepath.Join(tmp, name)
+	if err := p.compile(path); err != nil {
 		return "", err
 	}
-	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
+	if err := os.Chmod(path, 0o755); err != nil {
 		return "", err
 	}
-	if err := verifyBuild(tmp.Name(), p.version, p.target); err != nil {
+	if err := verifyBuild(path, p.version, p.target); err != nil {
 		return "", err
 	}
-	if p.target.OS == runtime.GOOS && p.target.Arch == runtime.GOARCH {
-		if err := p.ownChecks(tmp.Name()); err != nil {
-			return "", err
-		}
-	} else {
-		fmt.Fprintf(stderr, "hookrelease: %s/%s is not the host; skipping version and selftest\n", p.target.OS, p.target.Arch)
+	if err := p.ownChecks(path); err != nil {
+		return "", err
 	}
-	return p.publish(tmp.Name(), releases)
+	return p.publish(tmp, releases)
 }
 
 func removeEmptyDirectories(paths []string) {
 	for _, path := range paths {
 		_ = os.Remove(path)
 	}
+}
+
+func removeStaleBuilds(releases string, now time.Time) error {
+	entries, err := os.ReadDir(releases)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".tmp-") {
+			continue
+		}
+		stat, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if now.Sub(stat.ModTime()) > time.Hour {
+			if err := os.RemoveAll(filepath.Join(releases, entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // makeReleaseParents records only directories this build created.
@@ -307,28 +357,62 @@ func (p releasePlan) publish(tmp, releases string) (string, error) {
 		name += ".exe"
 	}
 	path := filepath.Join(dir, name)
-	if err := os.Mkdir(dir, 0o755); errors.Is(err, os.ErrExist) {
+	if _, err := os.Lstat(dir); err == nil {
 		old, err := fileSHA256(path)
-		if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// An ID without its binary is an incomplete publish, not a release.
+			if err := os.RemoveAll(dir); err != nil {
+				return "", err
+			}
+		} else if err != nil {
 			return "", err
+		} else {
+			fresh, err := fileSHA256(filepath.Join(tmp, name))
+			if err != nil {
+				return "", err
+			}
+			if old != fresh {
+				return "", fmt.Errorf("release %s is not reproducible; existing binary kept", p.id)
+			}
+			return path, nil
 		}
-		fresh, err := fileSHA256(tmp)
-		if err != nil {
-			return "", err
-		}
-		if old != fresh {
-			return "", fmt.Errorf("release %s is not reproducible; existing binary kept", p.id)
-		}
-		return path, nil
-	} else if err != nil {
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	defer os.Remove(dir) // Remove only an empty directory on failure.
-	if err := os.Chmod(dir, 0o755); err != nil {
+	root, err := os.OpenRoot(tmp)
+	if err != nil {
 		return "", err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	defer root.Close()
+	binary, err := root.OpenFile(name, os.O_RDWR, 0)
+	if err != nil {
+		return "", err
+	}
+	err = binary.Sync()
+	closeErr := binary.Close()
+	if err != nil || closeErr != nil {
+		return "", errors.Join(err, closeErr)
+	}
+	if err := syncDirectory(tmp); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp, dir); err != nil {
+		return "", err
+	}
+	if err := syncDirectory(releases); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+func syncDirectory(path string) error {
+	if runtime.GOOS == "windows" {
+		return nil // Windows does not support Sync on a directory handle.
+	}
+	dir, err := os.OpenInRoot(path, ".")
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }

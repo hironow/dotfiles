@@ -35,8 +35,12 @@ func TestDefaultReleaseDirectory(t *testing.T) {
 					t.Fatalf("default switch exit %d: %s", code, stderr)
 				}
 				link := filepath.Join(root, "dotfiles", "agent-hooks", "current", "claude", "agent-hook")
-				if got, err := os.Readlink(link); err != nil || got != path {
-					t.Fatalf("default switch = %q (%v), want %q", got, err, path)
+				resolved, err := filepath.EvalSymlinks(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got, err := os.Readlink(link); err != nil || got != resolved {
+					t.Fatalf("default switch = %q (%v), want %q", got, err, resolved)
 				}
 			}
 		})

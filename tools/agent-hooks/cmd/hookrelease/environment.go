@@ -2,16 +2,23 @@ package main
 
 import "strings"
 
-// normalizedEnvironment carries only the user's executable path and caches.
-func normalizedEnvironment(user []string, target buildTarget) []string {
+// normalizedEnvironment carries executable paths, caches, and Windows' required host directories.
+func normalizedEnvironment(user []string, target buildTarget, hostOS string) []string {
 	values := make(map[string]string)
 	for _, entry := range user {
 		key, value, _ := strings.Cut(entry, "=")
+		if hostOS == "windows" {
+			key = strings.ToUpper(key)
+		}
 		values[key] = value
 	}
 	var env []string
-	for _, key := range []string{"PATH", "HOME", "GOCACHE", "GOMODCACHE", "GOPATH"} {
-		if value := values[key]; value != "" {
+	keys := []string{"PATH", "HOME", "GOCACHE", "GOMODCACHE", "GOPATH"}
+	if hostOS == "windows" {
+		keys = append(keys, "TMP", "TEMP", "USERPROFILE", "LOCALAPPDATA", "SystemRoot")
+	}
+	for _, key := range keys {
+		if value := values[strings.ToUpper(key)]; value != "" {
 			env = append(env, key+"="+value)
 		}
 	}

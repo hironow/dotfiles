@@ -11,18 +11,26 @@ import (
 )
 
 func checkCommand(args []string, stderr io.Writer) int {
-	code, err := checkRelease(args, stderr)
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Fprintln(stderr, "usage: hookrelease check PATH\nRebuild and compare bytes; slower because it uses a fresh temporary GOCACHE.")
+		return 0
+	}
+	code, err := checkRelease(args)
 	if err != nil {
 		fmt.Fprintln(stderr, "hookrelease check:", err)
 	}
 	return code
 }
 
-func checkRelease(args []string, stderr io.Writer) (int, error) {
+func checkRelease(args []string) (int, error) {
 	if len(args) != 1 {
 		return 2, errors.New("usage: hookrelease check PATH")
 	}
 	path, err := filepath.Abs(args[0])
+	if err != nil {
+		return 2, err
+	}
+	path, err = filepath.EvalSymlinks(path)
 	if err != nil {
 		return 2, err
 	}
@@ -42,7 +50,12 @@ func checkRelease(args []string, stderr io.Writer) (int, error) {
 			}
 		}
 	}
-	plan, err := prepareRelease(target)
+	tmp, err := os.MkdirTemp("", "hookrelease-check-*")
+	if err != nil {
+		return 2, err
+	}
+	defer os.RemoveAll(tmp)
+	plan, err := prepareReleaseInCache(target, filepath.Join(tmp, "cache"))
 	if err != nil {
 		return 2, err
 	}
@@ -50,13 +63,11 @@ func checkRelease(args []string, stderr io.Writer) (int, error) {
 	if id != plan.id {
 		return 1, fmt.Errorf("release ID %s differs from checkout ID %s", id, plan.id)
 	}
-	tmp, err := os.MkdirTemp("", "hookrelease-check-*")
-	if err != nil {
-		return 2, err
+	rebuilt := filepath.Join(tmp, "agent-hook")
+	if target.OS == "windows" {
+		rebuilt += ".exe"
 	}
-	defer os.RemoveAll(tmp)
-	rebuilt, err := plan.build(tmp, stderr)
-	if err != nil {
+	if err := plan.compile(rebuilt); err != nil {
 		return 2, err
 	}
 	fresh, err := fileSHA256(rebuilt)
