@@ -44,7 +44,9 @@ Windows では名前が `.exe` で終わり、POSIX では終わらない。
 数えるのは、render がその harness に描く形で、絶対パスのその実行ファイルをプログラムとして実行する handler だけである（`_runs_agent_hook_release`）。
 形は、Claude では exec 形式（`args` があり、`command` がパスそのもの）だけ。
 Codex では sh の `'...'`（`'` は `'\''`）、PowerShell の `& '...'`（`'` は `''`）、cmd の `"..."` の 3 つだけ。
-render が書かない member を持つ handler は数えない（Claude は `type`・`command`・`args`・`timeout`・`onFailure`、Codex は `type`・`command`・`timeout` だけを書く。Codex の `commandWindows` は Windows で実行するものを変える）。
+プログラムは command の先頭に置き、その後は ASCII の空白 1 つか command の終わりである（render が書くとおり。sh は空白・タブ・改行でしか語を分けないので、NBSP などはプログラム名の一部になる）。
+プログラムより後ろは比べない（雛形を変えても、前の雛形で描いた handler を所有し続け、revert しても重複しない）。
+render が書かない member を持つ handler は、command が `<agent>/hooks/` を指していても数えない（Claude は `type`・`command`・`args`・`timeout`・`onFailure`、Codex は `type`・`command`・`timeout` だけを書く。Codex の `commandWindows` は Windows で実行するものを変える）。
 harness がパス以外として読む文字を含むパスは数えない。
 
 - cmd の `%` と `!`。

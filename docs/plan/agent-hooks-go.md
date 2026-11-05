@@ -327,17 +327,23 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
         - the blocks in today's order: `Write|Edit|NotebookEdit` → files and secrets guards, `Bash` → command guard, `Bash` → rtk, then `PostToolUse` `Write|Edit` → formatter;
         - per OS and shell, a launcher with a `closed` entry (the guards) and an `open` one (rtk, the formatter), chosen by the manifest's `failure`. Each entry is a JSON value whose strings are templates, with `sh`, `powershell`, and `cmd` quoting.
         - Claude: the exec form with `timeout` 30, and `onFailure: "block"` for the guards. Codex: the launcher table's forms, with `timeout` 30.
-        - The loader checks every manifest hook appears once, the templates, the entries' shape, and one launcher per (OS, shell).
-    - **Support per OS:** a cell may carry a `degraded` override for one OS. Codex's command guard is degraded on Windows (PowerShell text read with bash grammar, PR 2e.4).
+        - The loader checks every manifest hook appears once, no block is empty, the templates, the entries' shape, and one launcher per (OS, shell). A closed hook must run before the tool: the fallbacks block a call.
+    - **Support per OS:** a `supported` cell may carry a `degraded` override for one OS. Codex's command guard is degraded on Windows (PowerShell text read with bash grammar, PR 2e.4).
         - The conformance suite lists these cells (`osGaps`) and adds no scenario: the binary reads the same text the same way on every OS, so the base cell's scenarios pin its behavior, and the gap's own inputs would slip past the guard (2e.4's held work).
     - **`agent-hook render --harness claude|codex --os darwin|linux|windows [--shell sh|powershell|cmd] --binary PATH`:**
         - stdout: the fragment sync merges, `{"hooks":{...}}`;
-        - stderr: the loss report, one JSON object per cell not supported on that OS;
-        - exit 64 for usage, 2 for a refused shell or path.
+        - stderr: the loss report, one JSON object per cell not supported on that OS, written before the fragment;
+        - exit 64 for usage, 2 for a refused shell or path, and 70 when a write fails (then no fragment follows a lost report).
         - The shell comes from the data: an OS's only launcher is the default, and an exec launcher takes no `--shell`.
         - A path is refused unless it is absolute for its OS, holds no control character, holds nothing its form reads as other than the path (exec `${`; cmd `%`, `!`, `"`; PowerShell `‘ ’ ‚ ‛` and `* ? [ ]`), and matches the layout sync owns (`releases/<12+ hex>` or `current/<home>`, `.exe` on Windows only).
-    - **Sync owns exactly what render writes** (`_runs_agent_hook_release`): the stable link as well as a release; Claude's exec form only, and Codex's sh, PowerShell, and cmd forms only; and no handler holding a member render never writes (Codex's `commandWindows`, `async`, and `args` among them).
-    - **One corpus, two sides:** `just agent-hooks-render-corpus` writes `internal/rendercorpus/render.jsonl`, every form for a stable and a release path (plain, and with `'`, `$`, a space, a backtick, and `日本`) and every refusal.
+    - **Sync owns a handler whose program is the binary, placed and quoted as render writes it** (`_runs_agent_hook_release`):
+        - the stable link as well as a release;
+        - Claude's exec form only, and Codex's sh, PowerShell, and cmd forms only;
+        - the program at the start of the command, then one ASCII space or the end (sh splits words on space, tab, and newline only, so an NBSP would join the next word to the program's name);
+        - and no handler holding a member render never writes (Codex's `commandWindows`, `async`, and `args` among them), whatever its command points at, scripts included.
+        - What follows the program is not compared, so a changed template's older handlers are still owned and a revert leaves no duplicate.
+        - Against this Mac's homes, a sync preview with the new rule plans exactly what the old one did.
+    - **One corpus, two sides:** `just agent-hooks-render-corpus` writes `internal/rendercorpus/render.jsonl`, every form for a stable and a release path (plain, and with `'`, `$`, a space, a backtick, and `日本`), each OS's reading of `\` (a separator beside `/` on Windows, with a drive letter of either case; part of a name on POSIX), and every refusal.
         - Go checks that the binary gives every recorded answer, and that each case's exit is the one it intends.
         - `tests/unit/test_agent_hook_render.py` checks that sync owns every rendered handler for its harness only, and no refused path written by hand into its form.
         - It also checks that the rendered blocks run today's hooks, on the same events and matchers, in the same order, as `.claude/settings.hooks.json`.

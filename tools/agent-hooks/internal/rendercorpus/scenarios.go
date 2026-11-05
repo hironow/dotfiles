@@ -63,9 +63,27 @@ func scenarios() []scenario {
 				}
 			}
 		}
+		cases = append(cases, separatorCases(f)...)
 		cases = append(cases, pathRefusals(f)...)
 	}
 	return append(cases, argumentRefusals()...)
+}
+
+// separatorCases pin how each OS reads `\`. On Windows it is a separator,
+// beside `/`, after a drive letter of either case. On POSIX it is a filename
+// character: it may be part of a directory's name, but never splits one.
+func separatorCases(f form) []scenario {
+	name := "render/" + f.name() + "/stable/"
+	if f.os == "windows" {
+		return []scenario{
+			{name + "lowercase-drive", f.args(`c:\state\dotfiles\agent-hooks\current\` + f.harness + `\agent-hook.exe`), 0},
+			{name + "mixed-separators", f.args(`C:\state/dotfiles\agent-hooks/current\` + f.harness + `/agent-hook.exe`), 0},
+		}
+	}
+	return []scenario{
+		{name + "backslash-in-a-name", f.args(f.binary(`/a\b`, "current/"+f.harness)), 0},
+		{"refuse/" + f.name() + "/backslash-separators", f.args(`/state\dotfiles\agent-hooks\current\` + f.harness + `\agent-hook`), 2},
+	}
 }
 
 func pathRefusals(f form) []scenario {

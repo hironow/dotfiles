@@ -36,6 +36,8 @@ func TestLoadChecksRegistration(t *testing.T) {
 		{"duplicate hook", `"command-guard",`, `"command-guard","command-guard",`, "hook"},
 		{"unknown event", `"event":"pre"`, `"event":"absent"`, "event"},
 		{"empty matcher", `"matcher":"Bash"`, `"matcher":""`, "matcher"},
+		// sync owns only a block with hooks, so an empty one would pile up.
+		{"empty block", `{"event":"post","matcher":"Write","hooks":["formatter"]}`, `{"event":"post","matcher":"Write","hooks":["formatter"]},{"event":"post","matcher":"Edit","hooks":[]}`, "no hooks"},
 		{"broken template", `{{.Binary}}`, `{{`, "template"},
 		{"unknown function", `{{.Binary}}`, `{{unknown .Binary}}`, "template"},
 		{"unknown value", `{{.Binary}}`, `{{.Absent}}`, "template"},
@@ -103,6 +105,15 @@ func TestLoadChecksSupportOnOS(t *testing.T) {
 	}
 	if got := def.Registered("command-guard"); len(got) != 1 || got[0] != "Bash" {
 		t.Fatalf("OS override changed registration: %v", got)
+	}
+	// An override marks a gap on one OS of a cell that is supported elsewhere.
+	for _, base := range []string{`"level":"degraded","reason":"everywhere"`, `"level":"unsupported","reason":"not registered"`} {
+		fsys := registrationFS(t, registrationControl, override)
+		file := fsys["h/harness.json"]
+		file.Data = []byte(strings.Replace(string(file.Data), `"command-guard":{"Bash":{"level":"supported"`, `"command-guard":{"Bash":{`+base, 1))
+		if _, err := definition.Load(fsys, "h"); err == nil || !strings.Contains(err.Error(), "supported") {
+			t.Errorf("override on a %s cell: %v", base, err)
+		}
 	}
 }
 

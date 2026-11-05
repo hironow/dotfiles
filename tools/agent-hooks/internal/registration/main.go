@@ -69,7 +69,17 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		report = append(report, line...)
 		report = append(report, '\n')
 	}
-	_, _ = stderr.Write(report)
-	_, _ = stdout.Write(fragment)
+	// The loss report goes first: a fragment without it would hide a gap.
+	if _, err := stderr.Write(report); err != nil {
+		return exitSoftware
+	}
+	if _, err := stdout.Write(fragment); err != nil {
+		_, _ = fmt.Fprintf(stderr, "agent-hook render: %v\n", err)
+		return exitSoftware
+	}
 	return 0
 }
+
+// exitSoftware is the binary's exit when an answer cannot be written, as in
+// internal/launch.
+const exitSoftware = 70
