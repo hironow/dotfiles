@@ -89,6 +89,13 @@ Each hook has a level per harness version and tool: `supported`, `degraded` (rea
 | rtk | supported (strip) | supported (forward) | unsupported (sandbox exec, permission rules) | supported (`bash`) | supported (`shell`) | unsupported (frozen input) |
 | formatter | supported | supported | supported | supported | supported | supported |
 
+A known gap beside the matrix (owner, 2026-11-06, chat): the command guard reads a command with bash grammar on every harness, as the old Python guard did.
+
+- The agent's command runs in the user's shell: Codex uses the session's shell (zsh on this Mac, checked in Codex's source). Claude Code's Bash tool is believed to use the user's shell too, which is not checked here.
+- So zsh-only syntax is read as bash would read it.
+- This is the same kind of gap as 2e.3 (bash constructs the guard does not read) and is held with it. The binary keeps today's decisions, so it neither opens nor closes this gap.
+- The launcher is not affected: it uses only syntax bash and zsh read alike, and Claude's exec form uses no shell.
+
 ### Launchers and the failure matrix
 
 The binary validates its own answer against the harness's answer template before writing it, and an in-process watchdog writes the stage's failure answer and exits when the stage deadline passes (guards 10 s, rtk 10 s, formatter 20 s; registration timeout 30 s). Launchers add what the harness itself does not do.
@@ -357,6 +364,32 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
         - Mutations that drop the stable path, accept `.exe` on POSIX, or drop PowerShell's wildcards each fail the round trip.
     - **Not yet:** doctor (3c), the wiring (3d), and Windows.
 
+- How PR 3c does it: doctor checks agent-hook, and says today, on every machine, that it is not wired.
+    - **`agent-hook log [--days N] --summary`** prints one JSON object: the lines read, the lines it skipped as unreadable, and counts by error code and by mismatch.
+        - A log file is read as untrusted: a value outside the fixed sets counts as `other`, and an empty one is not counted.
+        - With no log (or on Windows), it gives zero counts and creates nothing.
+    - **A checker of its own, `scripts/agent_hook_doctor.py`, run by `just doctor` only.** The contract named `ai_tools_check`, but `just status` runs that too, and freshness rebuilds a release. It is a pure `report(facts)` and a `gather()`.
+        - **Homes:** Claude's and Codex's managed blocks, by sync's own `_is_managed_hook_block`. One INFO line names every home that runs today's scripts; a home with no managed block is an INFO; a mix of scripts and binaries, or two binary paths, is a WARN.
+        - **For a wired home:**
+            - the registered binary must exist and resolve to a release;
+            - its render must equal the managed blocks (WARN with the first difference);
+            - each loss line is an INFO.
+        - **Freshness:** doctor builds `cmd/hookrelease` once, in `tools/agent-hooks`, with mise's Go first on PATH, and runs it on each release. It does not use the recipe, since `go run` turns a child's exit 2 into 1. Exit 0 is OK, 1 is a WARN (not what this checkout builds), and 2 or no Go is an INFO.
+        - **The log:** `log --summary`, from the first wired binary that answers. `shim.broken`, `hook.failed`, `hook.timeout`, `answer.failed`, or any mismatch is a WARN; other counts are INFO.
+        - **A call that fails** (missing, an exit, a timeout, output that does not parse) is a WARN `agent-hook-inspect` with its reason, and never zero counts. Each call has a limit (render and log 30 s, a shell 10 s, check 300 s).
+        - **Codex's shells, on POSIX:** the session's shell, derived as Codex derives it, and `$SHELL` for `-lc` (`/bin/sh` when unset). Two questions, apart:
+            - **Can it read the agent-hook sh launcher?** Only zsh, bash, sh, dash, and ksh can. Any other type is an INFO before Codex is wired and a WARN after: a pwsh login shell gives PowerShell, and fish can be `$SHELL`. Today's script form reads right in both.
+            - **Does it start cleanly?** It runs a probe that prints a token unique to the run, with Codex's arguments for that type, every type included. A pass needs exactly the token and exit 0, so a startup file that exits 0 before the command fails too.
+            - A failure is a WARN whenever Codex has a guard registered, scripts included, and an INFO otherwise.
+            - On this Mac (2026-11-06), both paths are zsh and start cleanly.
+    - **The recipe `just agent-hooks-build`** takes positional arguments, so a path with a space, `'`, or `$` reaches hookrelease as one argument. Before, a `'` broke the shell line. On native Windows it gets no arguments (see the Windows plan).
+    - **For 3d**, from these facts:
+        - Codex is wired only if both shell paths pass (a launcher-readable type, and a clean start).
+        - `codex_hooks_trust.py`'s selection, and `ai_tools_check`'s `_claude_rtk_hook` (which reads script names), change with the wiring.
+    - **Tests:** every rule of `report()`; Codex's shell derivation as a pure function; `gather()` against a temporary home with fake binaries, a `hookrelease` stand-in for each exit (checking its working directory and Go), and fake shells for each startup case; one check with the real `hookrelease` on a real release; the summary's normalization; and drift guards that pin the doctor's code sets to Go's constants and its homes to sync's.
+    - **The Windows host's plan:** [agent-hooks-windows.md](agent-hooks-windows.md).
+    - **Not yet:** the wiring (3d), and Windows.
+
 ### Bugs of the old scripts that the binary fixes
 
 The owner decided (2026-11-04 19:30, chat) that where an old script has a bug, the binary fixes it, and the tests keep each fix apart from the faithful port.
@@ -396,7 +429,7 @@ The owner decided (2026-11-04 19:30, chat) that where an old script has a bug, t
     - 2f. Pi: its definition and fixtures, the shim protocol, Pi's paths, and its guards and formatter. The port of Pi's path resolution (`internal/pipath`, checked against Pi 1.4.0 itself, `just pi-paths-corpus`) lands first, in its own PR, with nothing calling it yet; only the order changes.
     - 2g. The rewrite codec and Pi's rtk (`rtk rewrite`, bash only), with parity against the vendored `rtk.ts`, run under node with Pi's own `execCommand`. The record of what `rtk.ts` does (`just pi-rtk-corpus`) lands first, in its own PR, with nothing using it yet; only the order changes.
     - 2h. `LogSink`/`FileSink` and the latency measurement, in two PRs: 2h.1 logs every run, and 2h.2 then measures the binary with logging on. Only the order changes.
-3. Releases, launchers, Claude and Codex wired, in four PRs so that each stays reviewable (only the order changes): 3a releases (the build recipe and release ID, `version`, `selftest`, the stage watchdog), 3b rendering (registration templates as data, `agent-hook render`, the stable paths in the ownership rule, the round-trip test), 3c doctor, and 3d the wiring, with Codex trust, per-home uninstall (in sync, owner 2026-11-05: the ownership rule is sync's), and gc. Native Windows keeps the scripts until its own PR, which comes before PR 5. The plan's text for PR 3 as a whole: doctor (per harness: registered as rendered, enabled, release fresh by rebuild, runtime deps, loss report); Codex trust. Live: old tests against the installed binary; Claude and Codex sessions block `npm --version` and a `.yml` write, rewrite `git status`, log one line per firing; launcher failure cases per OS. A round-trip test renders every launcher form (each harness, OS, and shell) and checks that sync's `_runs_agent_hook_release` accepts each one, including paths with an apostrophe, `$`, or a space, while the negative corpus in `tests/unit/test_codex_hooks.py` is still rejected, so the renderer and the ownership rule cannot drift apart.
+3. Releases, launchers, Claude and Codex wired, in four PRs so that each stays reviewable (only the order changes): 3a releases (the build recipe and release ID, `version`, `selftest`, the stage watchdog), 3b rendering (registration templates as data, `agent-hook render`, the stable paths in the ownership rule, the round-trip test), 3c doctor, and 3d the wiring, with Codex trust, per-home uninstall (in sync, owner 2026-11-05: the ownership rule is sync's), and gc. Native Windows keeps the scripts until its own PR, which comes before PR 5. That PR's plan, written to hand to the Windows host (owner, 2026-11-06), is [agent-hooks-windows.md](agent-hooks-windows.md): what to confirm on the machine, what to build, and when it is done. The plan's text for PR 3 as a whole: doctor (per harness: registered as rendered, enabled, release fresh by rebuild, runtime deps, loss report); Codex trust. Live: old tests against the installed binary; Claude and Codex sessions block `npm --version` and a `.yml` write, rewrite `git status`, log one line per firing; launcher failure cases per OS. A round-trip test renders every launcher form (each harness, OS, and shell) and checks that sync's `_runs_agent_hook_release` accepts each one, including paths with an apostrophe, `$`, or a space, while the negative corpus in `tests/unit/test_codex_hooks.py` is still rejected, so the renderer and the ownership rule cannot drift apart.
 4. agy plugin (guards + formatter) and the Pi shim (guards + formatter + rtk; the vendored `rtk.ts` retired in the same PR). The installer and doctor compare the installed Pi version with `harnesses/pi/harness.json`'s `versions`: the path port and its corpus are Pi 1.4.0's, so on a version the definition does not cover the installer does not place the shim, and doctor says why. Pi follows `latest` in mise, so a `mise upgrade` can change Pi under a placed shim: the shim also compares Pi's own package version with the definition's when it loads, and on a mismatch blocks every call (fails closed). Live in scratch: blocks for `npm --version`, `x.yml`, a synthetic AWS-style key in a write and in a later edit element; an allowed write is formatted; agy compared with no plugin in auto and accept-edits modes and an owner-run interactive check; Pi rewrites `git status`; a live check that blocks and rewrites take effect. The installer places the Pi shim and counts it as a current extension: since PR 0 it removes any `// dotfiles-managed: <name>` extension it has no source for.
 5. Remove the old scripts and their name-based handling, and move what still reads the Python guard: doctor's rtk-guard check (`scripts/ai_tools_check.py` reads its `RTK_RUN_SUBCOMMANDS` and `RTK_FILTER_SUBCOMMANDS`) and `just command-guard-corpus` with its test (the corpus stays as the Go tests' data, and the word table as the port's); final docs (`docs/agent-sync.md`, enforcement and rtk guides, repo `CLAUDE.md`).
 
@@ -430,6 +463,16 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
     - Round 3 (REVISE, 3): a group kill after the reap can reach a reused group ID; the journal needs the new state and the stage; the merge must keep Codex's positions for others' hooks.
     - Rounds 4 and 5 (REVISE, 1 each): waiting for the exit before reading the pipes deadlocks; `Combined`'s one pipe must stay.
     - Rounds 6 and 7: APPROVE.
+- PR 3c's design (Codex, three rounds; APPROVE). Each finding was checked first and adopted:
+    - Round 1 (REVISE, 5):
+        - freshness through the recipe could not tell exit 1 from 2, and split a path (confirmed: `go run` turns a child's 2 into 1);
+        - a shell passing on an empty stdout alone; the session's shell is not always POSIX (a pwsh login shell);
+        - startup output breaks today's script guards too, so it is a WARN whenever a Codex guard is registered;
+        - failed inspections had no rule;
+        - the summary trusted the log's values.
+        - Codex agreed to a checker of its own, run by doctor only.
+    - Round 2 (REVISE, 3): a startup file's silent `exit 0` passed (reproduced with `BASH_ENV`), hence the token probe; every shell type must be probed, since today's guards run in each; the helper's working directory and Go had to be set.
+    - Round 3: APPROVE.
 - PR 3b's design (Codex, three rounds; APPROVE). Each finding was checked first:
     - Round 1 (REVISE, 5):
         - Adopted: PowerShell's `&` resolves `*?[]` as wildcards (reproduced with pwsh 7.6.9), so both sides refuse them; Codex ignores `args` and its `commandWindows` changes what runs, so ownership became per harness and per member set; render and ownership differed on the suffix, so both now take it by OS and refuse control characters.
