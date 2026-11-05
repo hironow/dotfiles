@@ -24,6 +24,9 @@ type recordingCommands struct {
 	// written is what each side writes to file (false: today's script,
 	// true: the binary); a side not in it leaves file as it is.
 	written map[bool]string
+	// laterOld, when set, is what today's script writes after its warm-up.
+	laterOld string
+	oldRuns  int
 	// reply is what each side answers.
 	reply map[bool]answer
 }
@@ -42,7 +45,14 @@ func (r *recordingCommands) Run(command string, _ []byte) (answer, time.Duration
 		if string(content) != r.initial {
 			return answer{}, 0, errors.New("formatter file was not reset")
 		}
-		if text, ok := r.written[binary]; ok {
+		if !binary {
+			r.oldRuns++
+		}
+		text, ok := r.written[binary]
+		if !binary && r.oldRuns > 1 && r.laterOld != "" {
+			text, ok = r.laterOld, true
+		}
+		if ok {
 			if err := os.WriteFile(r.file, []byte(text), 0o600); err != nil {
 				return answer{}, 0, err
 			}
@@ -151,20 +161,23 @@ func TestMeasurementRejectsAFormatterThatDoesNotFormat(t *testing.T) {
 		Name: "claude/post/formatter/go", Harness: "claude", Event: "post", Hook: "formatter",
 		Script: "format-after-edit.sh", FileName: "x.go", Content: "hello\n", Reset: true, Changes: true,
 	}
+	same := map[bool]string{false: "formatted\n", true: "formatted\n"}
 	for _, test := range []struct {
-		name    string
-		written map[bool]string
-		want    string
+		name     string
+		written  map[bool]string
+		laterOld string
+		want     string
 	}{
 		// gofmt missing on PATH: both sides skip the file, fast, and alike.
-		{"neither side formats", map[bool]string{}, "left x.go as it was"},
-		{"the binary formats differently", map[bool]string{false: "formatted\n", true: "other\n"}, "the binary left x.go"},
-		{"today's script formats differently later", map[bool]string{false: "formatted\n", true: "formatted\n"}, ""},
+		{"neither side formats", map[bool]string{}, "", "left x.go as it was"},
+		{"the binary formats differently", map[bool]string{false: "formatted\n", true: "other\n"}, "", "the binary left x.go"},
+		{"today's script formats differently later", same, "drifted\n", "today's script left x.go"},
+		{"both sides format alike every time", same, "", ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m, runner := trial(t)
 			runner.file = filepath.Join(m.files, "x.go")
-			runner.written = test.written
+			runner.written, runner.laterOld = test.written, test.laterOld
 			_, err := m.run([]latency.Case{goCase})
 			if test.want == "" {
 				if err != nil {
