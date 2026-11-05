@@ -394,7 +394,7 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **For 3d**, from these facts:
         - Codex is wired only if both shell paths pass (a launcher-readable type, and a clean start).
         - `codex_hooks_trust.py`'s selection, and `ai_tools_check`'s `_claude_rtk_hook` (which reads script names), change with the wiring.
-    - **Tests:** every rule of `report()`; Codex's shell derivation as a pure function; `gather()` against a temporary home with fake binaries, a `hookrelease` stand-in for each exit (checking its working directory and Go), and fake shells for each startup case; one check with the real `hookrelease` on a real release; the summary's normalization; and drift guards that pin the doctor's code sets to Go's constants and its homes to sync's.
+    - **Tests:** every rule of `report()`; Codex's shell derivation as a pure function; `gather()` against a temporary home with fake binaries, a `hookrelease` stand-in for each exit (checking its working directory and Go), and fake shells for each startup case; one check with the real `hookrelease` on a real release (it needs the Go that `go.mod` asks for, so CI's unit job runs it in a step of its own with that Go, where a skip fails); the summary's normalization; and drift guards that pin the doctor's code sets to Go's constants and its homes to sync's.
     - **The Windows host's plan:** [agent-hooks-windows.md](agent-hooks-windows.md).
     - **Not yet:** the wiring (3d), and Windows.
 

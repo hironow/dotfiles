@@ -7,6 +7,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +21,48 @@ import agent_hook_doctor as check
 ROOT = Path(__file__).resolve().parents[2]
 REAL_GO = shutil.which("go")
 REAL_BASH = shutil.which("bash")
+
+
+def _why_go_cannot_build_the_module() -> str:
+    """Why PATH's Go cannot build tools/agent-hooks ("" when it can).
+
+    The real-hookrelease test builds with GOTOOLCHAIN=local, as hookrelease
+    does, so a Go older than go.mod's `go` line refuses the module. CI's
+    unit-test runner has such a system Go.
+    """
+    if REAL_GO is None:
+        return "Go is missing"
+    go_mod = (ROOT / "tools" / "agent-hooks" / "go.mod").read_text(encoding="utf-8")
+    wanted = re.search(r"(?m)^go (\d+(?:\.\d+)*)\s*$", go_mod)
+    found = subprocess.run(
+        [REAL_GO, "env", "GOVERSION"],
+        cwd=tempfile.gettempdir(),
+        env={**os.environ, "GOTOOLCHAIN": "local"},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+        check=False,
+    )
+    have = re.match(r"go(\d+(?:\.\d+)*)", found.stdout.strip())
+    if wanted is None or have is None:
+        return (
+            f"cannot tell Go's version: {found.stdout.strip() or found.stderr.strip()}"
+        )
+
+    def parts(version: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in version.split("."))
+
+    if parts(have[1]) < parts(wanted[1]):
+        return f"Go {have[1]} on PATH is older than go.mod's {wanted[1]}"
+    return ""
+
+
+GO_CANNOT_BUILD = _why_go_cannot_build_the_module()
+# CI's unit job sets this in a step with the module's Go, where a skip
+# would hide that the real checker never ran.
+STRICT_GO = os.environ.get("AGENT_HOOK_DOCTOR_STRICT_GO") == "1"
 PROGRAM = "/state/dotfiles/agent-hooks/releases/abcdef012345/agent-hook"
 FRAGMENT = {
     "hooks": {
@@ -1237,10 +1280,13 @@ def test_bad_registration_is_an_inspection_failure_and_does_not_stop_gather(
     assert _lines(facts, "inspect")[0][0] == "WARN"
 
 
-@pytest.mark.skipif(REAL_GO is None, reason="Go is missing")
+@pytest.mark.skipif(
+    bool(GO_CANNOT_BUILD) and not STRICT_GO, reason=GO_CANNOT_BUILD or "-"
+)
 def test_real_hookrelease_rebuilds_a_real_temporary_release(
     isolated: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    assert not GO_CANNOT_BUILD, GO_CANNOT_BUILD
     assert REAL_GO is not None
     bin_dir = Path(os.environ["PATH"])
     (bin_dir / "go").symlink_to(REAL_GO)
