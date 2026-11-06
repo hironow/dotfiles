@@ -1,4 +1,4 @@
-# Search and replacement tools
+# Search, structured queries, and process diagnosis
 
 Use `rg` for file contents, `fd` for paths, and `sd` for text replacements.
 Keep every search inside the current project or a named, task-relevant directory.
@@ -65,8 +65,68 @@ Version 1.1 processes one line at a time by default; `--across` reads the full
 input for multiline matches. `sd` handles substitution, not `sed` line-address
 printing or deletion; choose a tool that implements the required operation.
 
+## Structured queries: `jq`, `yq`, `fq`, and `mq`
+
+Choose by input format and select the fields needed before returning output to
+model context. Keep `jq` for JSON; the other tools complement it, not replace it.
+Use local, task-relevant files and stdout. Inspect before opting into file writes.
+
+| Input / task | Read-only command |
+| --- | --- |
+| JSON names | `jq -r '.items[] \| select(.active) \| .name' input.json` |
+| YAML service names | `yq eval '.services \| keys' compose.yaml` |
+| YAML services as JSON | `yq eval -o=json '.services' compose.yaml` |
+| PNG dimensions | `fq -d png '.chunks[] \| select(.type == "IHDR") \| {width, height}' image.png` |
+| Markdown headings | `mq '.h' README.md` |
+| Markdown code blocks | `mq '.code' README.md` |
+
+`yq` here is **mikefarah/yq**, not the Python wrapper. Its expression language
+is jq-like, not fully jq-compatible. `eval` reads by default; `-i` edits in place.
+`fq` uses jq expressions over decoded binary structures; field names depend on
+the format. Give an explicit query rather than opening its REPL or dumping the
+whole structural hex view. `mq` has its own Markdown-oriented query language,
+not jq syntax. Keep its default sandbox: local extraction needs no network,
+`--allow-*` permissions, or remote document upload. On Intel macOS, mq has no
+prebuilt binary; use the available file-reading tools instead of building it.
+
+## Process ancestry: `witr`
+
+Start with a specific PID or port and compact output; request JSON only for
+fields needed for the investigation. Bare `witr` opens an interactive TUI.
+
+```shell
+witr --pid 12345 --short
+witr --port 3000 --short
+witr --pid 12345 --short --json
+```
+
+Replace example targets with the actual task's PID or port. Ancestry describes
+what the tool can observe, not necessarily the original launcher's intent.
+Command lines can contain secrets: redact them before sharing. Leave environment
+output (`--env`) off. Permission failures call for reporting the limitation and
+asking the owner, not automatic elevation or stopping/restarting processes.
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | Process found, no warnings |
+| 1 | Process found with warnings; inspect them |
+| 2 | Target not found |
+| 3 | Permission denied |
+| 4 | Invalid or ambiguous input |
+| 5 | Internal error |
+| 6 | Process found, launch cause unknown (not used on Windows) |
+
+Capture the status before interpreting the output. Warnings or unknown cause
+are partial evidence, not a clean diagnosis. Preserve errors rather than
+blanket `|| true`; select a single target so mixed-result severity does not hide
+which process failed.
+
 ## References
 
 - [ripgrep guide](https://github.com/BurntSushi/ripgrep/blob/15.2.0/GUIDE.md)
 - [fd usage](https://github.com/sharkdp/fd/tree/v10.5.0#how-to-use)
 - [sd usage](https://github.com/chmln/sd/tree/v1.1.0#quick-guide)
+- [mikefarah/yq](https://github.com/mikefarah/yq/tree/v4.54.1)
+- [fq manual](https://github.com/wader/fq/blob/v0.18.0/doc/fq.1.adoc)
+- [mq usage](https://github.com/harehare/mq/tree/v0.10.0#usage)
+- [witr agent usage and exits](https://github.com/pranshuparmar/witr/tree/v0.3.4#readme)

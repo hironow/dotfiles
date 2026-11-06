@@ -106,6 +106,21 @@ hunk = "0.24.1"
 ripgrep = "15.2.0"
 fd = "10.5.0"
 sd = "1.1.0"
+# Read-only structured queries and targeted process diagnosis.
+# Explicit aqua backends identify upstream jq/mikefarah yq and resolve fq
+# even without a bare registry shorthand.
+# yq 4.54.2 (2026-11-06) is still inside the 7-day cooldown.
+witr = "0.3.4"
+"aqua:jqlang/jq" = "1.8.2"
+"aqua:mikefarah/yq" = "4.54.1"
+"aqua:wader/fq" = "0.18.0"
+# mq: only the main raw CLI, not helper binaries or deb/rpm. Skip Intel macOS
+# (no upstream asset), even in unrestricted `mise install`. Per-platform SHA256
+# pins are checked BEFORE execution: API + checksums.txt agree on integrity,
+# not publisher provenance. Keep inline for tools/mise-versions' TOML subset.
+# Explicit platform assets also avoid host-expanded os()/arch() templates
+# incorrectly resolving every cross-platform lock entry to the host binary.
+"github:harehare/mq" = { version = "0.10.0", os = ["macos/arm64", "linux/x64", "linux/arm64", "windows/x64", "windows/arm64"], rename_exe = "mq", platforms = { macos-arm64 = { asset_pattern = "mq-aarch64-apple-darwin", checksum = "sha256:47ddad7ff5860ea40fdcef43fd2c6fe674390bcc57fa30f3971f608223739649" }, linux-x64 = { asset_pattern = "mq-x86_64-unknown-linux-gnu", checksum = "sha256:9e94373ca20142b1da3bfa4f89a4b10a8d6feefb61301df6e240fd68794632d3" }, linux-arm64 = { asset_pattern = "mq-aarch64-unknown-linux-gnu", checksum = "sha256:46a6022e7cd6e0e79a3478956833f52b531919416765c3652361c4f2b8f01ff0" }, windows-x64 = { asset_pattern = "mq-x86_64-pc-windows-msvc.exe", checksum = "sha256:e5f28d6e0763d3ae00f476d2277e90e19c6e1efe5a61c748bf77126cf3136223" }, windows-arm64 = { asset_pattern = "mq-aarch64-pc-windows-msvc.exe", checksum = "sha256:d99c4a7ed5e03fd1da1955b69c05e624ce269b3d4e7ab76a738ece9dbeba5ff7" } } }
 
 # rtk + headroom — base tooling every agent session goes through (ADR 0047):
 # rtk compresses command output (dotfiles owns its Claude hook; never run

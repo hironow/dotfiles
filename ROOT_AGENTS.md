@@ -99,7 +99,8 @@ If you are unsure, write a test that pins down the requirement before you code.
   on ports (purpose-named interfaces; see Design), not on concrete adapters.
 - **Scope file searches to the task.** Prefer `rg` for content, `fd` for paths,
   and `sd` for replacements. Read docs/agents/cli-tools.md when translating
-  `grep`, `find`, or `sed` commands; their arguments and defaults differ.
+  `grep`, `find`, or `sed`, querying JSON (`jq`), YAML (`yq`), binary formats
+  (`fq`), Markdown (`mq`), or process ancestry (`witr`); their defaults differ.
   Search the current project or named,
   task-relevant directories. Ask for explicit approval before recursively
   scanning a filesystem root (`/` or a drive root), an entire home directory,
