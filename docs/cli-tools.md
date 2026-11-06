@@ -8,6 +8,68 @@ MacのHomebrew復元対象からjqを外し、miseへ揃える。
 導入済みのHomebrew版を除去する場合は、mise版が通常のシェルから動くことを先に確認する。
 Windowsのmise導入前に使うbootstrap用jqと、既存のaliasは変更しない。
 
+## AWS CLI v2の管理
+
+AWS CLIは `http:aws` の公式配布物をmiseで管理する。
+固定版は2.39.6で、2026-11-07の調査時点の公式 `v2/version.txt` と配布物を確認した。
+PyPIのAWS CLI v1やHomebrew版への自動フォールバックは行わない。
+
+```shell
+env MISE_GLOBAL_CONFIG_FILE="$PWD/config/mise/config.toml" \
+  mise -C / install http:aws@2.39.6
+just aws-list
+```
+
+Mac arm64とx64は同じUniversalパッケージ、Linux/WSLのx64とarm64はglibc用ZIPを選ぶ。
+Windowsはこのbackendの対象外とし、既存のstandalone版を使う。
+muslや他のCPU、WindowsのMSIについて、この設定での動作確認はしていない。
+`aws-list` はPOSIXではcheckoutのmise版を明示して、古いPATHのAWSを実行しない。
+Windowsの呼出しは従来どおりである。
+いずれもローカルのprofile一覧であり、リモートの権限確認やログインは行わない。
+
+配布物ごとのSHA256をmiseが展開前に照合する。
+MacではさらにAppleの信頼検証とDeveloper IDのTeam `94KV3E626L` を確認し、完全なbundled runtimeをmiseの専用ディレクトリへ展開する。
+書込み先は環境変数だけで信用せず、実行中のmiseが認可する導入先と物理パスを比較する。
+パッケージのinstallerやroot権限は使わず、既存の `/usr/local/aws-cli` と `~/.aws` は変更しない。
+mise自体は標準の導入先（`~/.local/bin` など）にあるものを使い、取得したpayload内のプログラムで導入先を調べない。
+
+更新では、版、各URL、全checksum、Mac hook内の版とdigestを一緒に更新する。
+MacのApple署名とLinuxのAWS CLI Team署名（fingerprint `FB5DB77FD5C118B80511ADA8A6310ACC4672475C`）を検証してからhashを採用する。
+実行前に署名済みpayloadと導入先の全パス、型、内容、実行権限、link先を比較する。
+checksum不一致、導入先のすり替え、署名失敗が未完了の導入として拒否され、再試行できることも確認する。
+2.39.6のMac payloadにはsymlinkがないため、hookは新たなlinkを拒否する。
+配布構造が変わった場合は、単に検査を緩めず構造を再確認する。
+
+このMacでは全8,706エントリの一致とARM64起動を確認した。
+Linuxは署名とELFのCPU種別を確認したが、LinuxやIntel Macでの実行を確認したという意味ではない。
+miseをactivateする前から動いているプロセスのPATHは自動では変わらない。
+新しいmise環境か明示したrecipeを使い、旧root所有のAWSは別途許可なく削除しない。
+
+参照：[AWSの導入手順](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)、[公式の現在版](https://awscli.amazonaws.com/v2/version.txt)、[mise HTTP backend](https://mise.jdx.dev/dev-tools/backends/http.html)。
+
+## 常設CLIと7日の待機
+
+待機の例外は、dotfilesで常設する主CLIと、そのCLI専用の導入環境内の依存パッケージに限定する。
+方針の正本は [`ROOT_AGENTS_docs_agents_dependency-policy.md`](../ROOT_AGENTS_docs_agents_dependency-policy.md) である。
+固定版やLTS、betaの選択は維持し、この変更で既存CLIをまとめて更新しない。
+
+| 導入対象 | 現在の設定と境界 |
+| --- | --- |
+| hostのmise管理CLI、just、uv | `minimum_release_age = "0d"`。mise自体のbootstrapにも7日判定を追加しない |
+| 常設npm CLI | 13宣言の `bun_args = "--minimum-release-age=0"`。各CLIの専用環境の依存も対象 |
+| headroom | 専用uv tool環境の `--exclude-newer 0d`。Python 3.13、extras、固定版は維持 |
+| Homebrew、Scoop、検証付きbootstrap | このrepoの7日判定はない。配布元のcatalog更新時期や固定版とは別の話 |
+| npmとuvの機体設定 | 既存の `min-release-age=7` と `exclude-newer = "7 days"` を維持 |
+| repoのPython依存 | 各projectの7日を維持。ruff/tyの既存例外はそのまま |
+| LSP/MCP、単発uvx/bunx、CI専用、marketplace/plugin | 現状維持。新しい例外は個別判断 |
+| devcontainerの凍結世代 | 既存の版と生成器を維持。この変更で再生成や一括更新を行わない |
+
+npm設定があるだけでBunの待機が働くとは判断しない。
+Bun 1.4.4の隔離したglobal導入試験では、npmrcの7日指定だけでは新しい依存を拒否しなかった。
+明示したBunの7日引数とuvの7日設定では新しい依存を拒否し、CLI専用の0日指定では本体と依存を導入できた。
+本体だけの例外、0日指定の除去、依存の公開日時だけを古くする対照も試験する。
+全体のnpm/uv設定を0日にしたり、repo依存の判断をこのCLI例外で置き換えたりしない。
+
 ## このcheckoutから導入する
 
 次のrecipeは、このcheckoutの9つの道具を選択して導入し、それぞれの版を確認する。

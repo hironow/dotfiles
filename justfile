@@ -1705,10 +1705,13 @@ gcp-cost-audit project *args:
 azure-list:
     az account list --output table
 
-# List: AWS profiles
+# Local AWS profiles: select this checkout's verified provider, even in stale shells.
+# Windows retains its standalone AWS installation (the HTTP backend excludes it).
+AWS_CLI := if os() == "windows" { "aws" } else { CLI_TOOLS_MISE + " exec http:aws -- aws" }
+
 [group('Cloud')]
 aws-list:
-    aws configure list-profiles
+    {{AWS_CLI}} configure list-profiles
 
 # List: Alibaba Cloud profiles (local configuration only)
 [group('Cloud')]

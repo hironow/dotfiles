@@ -50,6 +50,26 @@ does more damage through the supply chain.
   v0.x; docs/agents/go-tooling.md). Keep the cooldown, and treat every v0.x
   minor release as a major: read its changelog before you merge it.
 
+## Permanent main CLI exception
+
+Dotfiles-managed **permanent main CLIs**, including mise, just and uv, are
+exempt from the seven-day cooldown. The exception includes dependencies inside
+that CLI's dedicated installation environment, not dependencies of a repository
+where the CLI happens to run. Use tool-scoped installer arguments; keep global
+npm/uv and repository dependency defaults intact.
+
+Keep exact pins and existing stable/LTS/beta choices until a separate update is
+reviewed. Exemption permits immediate adoption; it does not authorize a bulk
+upgrade, entering a new release channel, weakening artifact/script trust, or
+installing a banned package.
+
+Auxiliary LSP/MCP tools, temporary uvx/bunx executions, CI-only tools and
+marketplace/plugin content retain their existing settings pending individual
+owner decisions. A permanent CLI also used in CI is not a CI-only tool.
+Repository dependencies still follow the classes above, including existing
+package-specific exceptions. For current installation routes, see
+`docs/cli-tools.md` in dotfiles.
+
 ## Cadence and security alerts
 
 - Turn security **alerts** ON and **automatic** security-fix PRs OFF. Adopt
