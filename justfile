@@ -35,8 +35,10 @@ UV_RUN := "mise exec -- uv run --frozen"
 # positive number instead of -1 (https://github.com/semgrep/semgrep/issues/11979).
 # Without the pin, uvx picks the newest Python (3.15) after a uv upgrade.
 SEMGREP := "uvx --python 3.14 semgrep"
-# Script mode, for scripts/ files with a PEP 723 `# /// script` block (today:
-# sync_agents.py). uv runs those in their own isolated environment and never
+# Script mode, for scripts/ files with a PEP 723 `# /// script` block (none
+# today: a script that imports the modules beside it cannot be one, since ty
+# resolves a script's imports in the script's own environment). uv runs those
+# in their own isolated environment and never
 # touches uv.lock, so --frozen is pointless there -- and rejected: it demands a
 # *script* lockfile that does not exist. tests/unit/test_justfile_uv_run_modes.py
 # keeps every invocation on the right runner.
@@ -345,7 +347,7 @@ headroom-dashboard:
 # Sync (apply, no prompts): dotfiles → agent homes; preview first to inspect
 [group('Agents')]
 sync-agents *args:
-    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --yes {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
 
 # Scaffold: copy the agent-baseline template (per-repo enforcement: just check
 # gate, .githooks/pre-commit, quality-gate CI, agentcore semgrep rules) into a
@@ -365,12 +367,12 @@ scaffold-agent-baseline dir:
 # Sync (preview): show what would be synced without making changes
 [group('Agents')]
 sync-agents-preview *args:
-    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --preview {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --preview {{ args }}
 
 # Sync (override): full replace — dotfiles wins, orphans removed, no prompts
 [group('Agents')]
 sync-agents-override *args:
-    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --override {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --override {{ args }}
 
 # Verify deployed agent-home instruction files have no dead file references
 # (run after sync-agents; environment-dependent, so not part of `ci`)
@@ -386,12 +388,12 @@ check-agent-refs *homes:
 #   just import-agents all          -> from every defined agent
 [group('Agents')]
 import-agents *args:
-    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --import-only {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --import-only {{ args }}
 
 # Import only (preview): show what would be imported without writing
 [group('Agents')]
 import-agents-preview *args:
-    @{{UV_RUN_SCRIPT}} scripts/sync_agents.py --import-only --preview {{ args }}
+    @{{UV_RUN}} scripts/sync_agents.py --import-only --preview {{ args }}
 
 # Sync the canonical check-scope hook (plugins/_shared/check-scope.sh) into
 # each auto-loop plugin. The per-plugin copies are what the marketplace
@@ -953,6 +955,27 @@ agent-hooks-build *args:
 [windows]
 agent-hooks-build *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease {{ if args == "" { "build" } else { args } }}
+
+# Wire named Claude homes to the checked release.
+[group('Agents')]
+[positional-arguments]
+[unix]
+agent-hooks-install *targets:
+    {{UV_RUN}} scripts/agent_hook_sync.py install "$@"
+
+# Restore the scripts and keep each home's link for running sessions.
+[group('Agents')]
+[positional-arguments]
+[unix]
+agent-hooks-uninstall *targets:
+    {{UV_RUN}} scripts/agent_hook_sync.py uninstall "$@"
+
+# List unreferenced releases; delete only with --delete.
+[group('Agents')]
+[positional-arguments]
+[unix]
+agent-hooks-gc *args:
+    {{UV_RUN}} scripts/agent_hook_sync.py gc "$@"
 
 # Run agent-hook's process tests (cmd/agent-hook) against the release a home's
 # link names, after `hookrelease check` passes on it. KEY is sync's target key.

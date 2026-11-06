@@ -398,6 +398,36 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Tests:** every rule of `report()`; Codex's shell derivation as a pure function; `gather()` against a temporary home with fake binaries, a `hookrelease` stand-in for each exit (checking its working directory and Go), and fake shells for each startup case; one check with the real `hookrelease` on a real release (it needs the Go that `go.mod` asks for, so CI's unit job runs it in a step of its own with that Go, where a skip fails); the summary's normalization; and drift guards that pin the doctor's code sets to Go's constants and its homes to sync's.
     - **The Windows host's plan:** [agent-hooks-windows.md](agent-hooks-windows.md).
     - **Not yet:** the wiring (3d), and Windows.
+- How PR 3d.1 does it: sync wires the five Claude homes to the binary, through each home's stable link. Codex keeps today's scripts until 3d.2. The detailed design had five Codex reviews (APPROVE in round 5); the owner decided its contract changes (2026-11-06).
+    - **The split:** 3d.1 brings the switch machinery and Claude's wiring; 3d.2 brings Codex (the position-keeping merge, trust as journaled stages, and the shell precondition), with its own design and review.
+    - **Ownership:** in a Claude home, sync owns, and render writes, only the stable link `current/<home>/agent-hook` (the harness data's `registration.layouts`). Sync has never written a release path. A Claude block that names a release directly is its user's. Codex keeps owning release paths until 3d.2, since narrowing them under today's merge would move a kept block and lose its trust.
+    - **One entry** for sync, install, uninstall, and gc (`scripts/agent_hook_sync.py`), in this order:
+        1. it takes `<state>/dotfiles/agent-hooks/switch.lock`;
+        2. it recovers every journal;
+        3. it refuses a settings layer that holds `hooks`;
+        4. it builds and checks the release;
+        5. it plans each home from fresh reads;
+        6. it applies with checked writes.
+        - `hookrelease switch` takes the same lock, and refuses while a journal is pending.
+    - **The plan** (`scripts/agent_hook_plan.py`, pure) follows three tables, sync's, install's, and uninstall's. The actions are `nothing`, `link`, `register`, `install`, `unregister`, `keep`, `scripts`, `uninstalled`, and `stop`.
+        - It computes the final `settings.json` once, as a value: the hook part, then the shared merge, with the state file written first.
+        - Invariants hold the hook part to what the action makes, and keep the shared merge off `hooks`.
+    - **A registration change** (register, install, unregister) is one journaled change of the link, the file, and the uninstall mark (`scripts/agent_hook_wiring.py`).
+        - Every file goes in whole (temporary file, fsync, rename, fsync the directory).
+        - A change's scope is the hook registration, the link, and the mark: a restore puts back the old `hooks` value only, and another program's other keys stay.
+        - A crash at any point ends, at the next run, at the old state or the new one.
+        - No link is ever removed: a Claude session that missed a restore still finds its link.
+    - **A write without a journal** reads the file again first. On a difference it plans that home once more; on a second, that home stops, the other homes go on, and the run exits 1.
+    - **Uninstall** (`just agent-hooks-uninstall <home>`) brings back the scripts' registration and writes the home's mark, which sync honors. `just agent-hooks-install <home>` wires it again; it needs a release.
+    - **gc** (`just agent-hooks-gc [--delete]`) lists the releases nothing references:
+        - every home's link;
+        - a release path in any Claude or Codex registration;
+        - any release a journal names.
+        - It deletes only with `--delete`, and refuses while Codex runs, until 3d.2.
+    - **Doctor and the AI tools check** read the marks and the journals, and agent-hook's rtk hook.
+    - **`just agent-hooks-test-installed [KEY]`** runs cmd/agent-hook's process tests against the release a home's link names, after `hookrelease check`.
+    - **`scripts/sync_agents.py`** is a project-mode script now (no PEP 723 block): it imports the agent-hook modules beside it, which ty cannot resolve from a script's own environment.
+    - **Not yet:** Codex (3d.2), and Windows.
 
 ### Bugs of the old scripts that the binary fixes
 

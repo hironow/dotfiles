@@ -858,16 +858,18 @@ def apply_change(
             change = _stage(change, stage, disk, steps)
             journal = change.journal
             if stage == "link" and journal.link:
-                switch_link(
-                    disk, change.roots.data, journal.home, Path(journal.link.new)
-                )
+                if _read_link(disk, journal.link.path) != journal.link.new:
+                    switch_link(
+                        disk, change.roots.data, journal.home, Path(journal.link.new)
+                    )
             elif stage == "file":
                 if _read_file(disk, journal.file.path) != journal.file.old:
                     change = Change(change.roots, replace(journal, stage="abandon"))
                     return _restore(
                         change, disk, steps, "settings changed before the file step"
                     )
-                write_whole(disk, journal.file.path, journal.file.new)
+                if journal.file.new != journal.file.old:
+                    write_whole(disk, journal.file.path, journal.file.new)
             elif stage == "mark" and journal.mark:
                 _set_mark(disk, journal.mark, journal.mark.new)
             elif stage == "verify":
