@@ -954,6 +954,34 @@ agent-hooks-build *args:
 agent-hooks-build *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease {{ if args == "" { "build" } else { args } }}
 
+# Run agent-hook's process tests (cmd/agent-hook) against the release a home's
+# link names, after `hookrelease check` passes on it. KEY is sync's target key.
+# Run agent-hook's own process tests against the release a home's link names (KEY: claude, work-a, ...).
+[group('Agents')]
+[positional-arguments]
+[unix]
+agent-hooks-test-installed key="claude":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    key="${1:-claude}"
+    [[ "$key" =~ ^[a-z0-9-]+$ ]] || { echo "agent-hooks-test-installed: KEY is lowercase letters, digits, and -" >&2; exit 64; }
+    case "${XDG_DATA_HOME:-}" in /*) data="$XDG_DATA_HOME" ;; *) data="$HOME/.local/share" ;; esac
+    link="$data/dotfiles/agent-hooks/current/$key/agent-hook"
+    release="$(realpath "$link")"
+    id="$(basename "$(dirname "$release")")"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    (cd tools/agent-hooks && mise x -- go build -o "$work/hookrelease" ./cmd/hookrelease)
+    (cd tools/agent-hooks && "$work/hookrelease" check "$link")
+    "{{ just_executable() }}" --justfile "{{ justfile() }}" _agent-hooks-test-binary "$link" "$id"
+
+# Run cmd/agent-hook's tests against BINARY, which must say it is release ID
+# (AGENT_HOOK_UNDER_TEST, AGENT_HOOK_EXPECT_RELEASE). -count=1: no cached result.
+[positional-arguments]
+[unix]
+_agent-hooks-test-binary binary id go="mise x -- go" *args:
+    cd tools/agent-hooks && AGENT_HOOK_UNDER_TEST="$1" AGENT_HOOK_EXPECT_RELEASE="$2" {{go}} test -count=1 ./cmd/agent-hook/ "${@:4}"
+
 [group('Lint')]
 go-lint:
     #!/usr/bin/env bash

@@ -13,63 +13,17 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import agent_hook_doctor as check
 import agent_hook_release as release
+from _agent_hooks_go import STRICT_GO, why_go_cannot_build_the_module
 
 ROOT = Path(__file__).resolve().parents[2]
 REAL_GO = shutil.which("go")
 REAL_BASH = shutil.which("bash")
 
 
-def _why_go_cannot_build_the_module(go: str | None, home: Path) -> str:
-    """Why this Go cannot build tools/agent-hooks ("" when it can).
-
-    The real-hookrelease test builds with GOTOOLCHAIN=local, as hookrelease
-    does, so a Go older than go.mod's `go` line refuses the module. CI's
-    unit-test runner has such a system Go. Go can open its telemetry
-    counters under the user's config directory even for `go env`, so it runs
-    with the given temporary home, outside the module.
-    """
-    if go is None:
-        return "Go is missing"
-    go_mod = (ROOT / "tools" / "agent-hooks" / "go.mod").read_text(encoding="utf-8")
-    wanted = re.search(r"(?m)^go (\d+(?:\.\d+)*)\s*$", go_mod)
-    found = subprocess.run(
-        [go, "env", "GOVERSION"],
-        cwd=home,
-        env={
-            **os.environ,
-            "HOME": str(home),
-            "XDG_CONFIG_HOME": str(home / ".config"),
-            "XDG_CACHE_HOME": str(home / ".cache"),
-            "GOCACHE": str(home / ".cache" / "go-build"),
-            "GOTOOLCHAIN": "local",
-        },
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=60,
-        check=False,
-    )
-    have = re.match(r"go(\d+(?:\.\d+)*)", found.stdout.strip())
-    if wanted is None or have is None:
-        return (
-            f"cannot tell Go's version: {found.stdout.strip() or found.stderr.strip()}"
-        )
-
-    def parts(version: str) -> tuple[int, ...]:
-        return tuple(int(part) for part in version.split("."))
-
-    if parts(have[1]) < parts(wanted[1]):
-        return f"Go {have[1]} on PATH is older than go.mod's {wanted[1]}"
-    return ""
-
-
-# CI's unit job sets this in a step with the module's Go, where a skip
-# would hide that the real checker never ran.
-STRICT_GO = os.environ.get("AGENT_HOOK_DOCTOR_STRICT_GO") == "1"
 PROGRAM = "/state/dotfiles/agent-hooks/releases/abcdef0123456789/agent-hook"
 FRAGMENT = {
     "hooks": {
@@ -1170,7 +1124,7 @@ def test_the_go_version_probe_runs_in_the_temporary_home(
         f"open({str(seen)!r}, 'w', encoding='utf-8')); "
         "print('go1.999.0')",
     )
-    assert _why_go_cannot_build_the_module(str(fake), isolated) == ""
+    assert why_go_cannot_build_the_module(str(fake), isolated) == ""
     env = json.loads(seen.read_text(encoding="utf-8"))
     assert env.pop("GOTOOLCHAIN") == "local"
     assert all(value and value.startswith(str(isolated)) for value in env.values()), env
@@ -1179,7 +1133,7 @@ def test_the_go_version_probe_runs_in_the_temporary_home(
 def test_real_hookrelease_rebuilds_a_real_temporary_release(
     isolated: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    why = _why_go_cannot_build_the_module(REAL_GO, isolated)
+    why = why_go_cannot_build_the_module(REAL_GO, isolated)
     if why:
         if STRICT_GO:
             pytest.fail(why)
