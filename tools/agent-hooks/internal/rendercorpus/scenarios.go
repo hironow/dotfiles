@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/hironow/dotfiles/tools/agent-hooks/harnesses"
+	"github.com/hironow/dotfiles/tools/agent-hooks/internal/definition"
 )
 
 type scenario struct {
@@ -50,16 +53,34 @@ func (f form) binary(prefix, layout string) string {
 	return path
 }
 
+// layouts are the binary layouts a harness's registration may name, from
+// its definition: a path in another layout is a refusal.
+func layouts(harness string) []string {
+	def, err := definition.Load(harnesses.FS, harness)
+	if err != nil || def.Registration == nil {
+		panic(fmt.Sprintf("harness %s: no registration: %v", harness, err))
+	}
+	return def.Registration.Layouts
+}
+
 func scenarios() []scenario {
 	var cases []scenario
 	for _, f := range forms {
+		allowed := layouts(f.harness)
 		for _, layout := range []struct{ name, path string }{{"stable", "current/" + f.harness}, {"release", "releases/abcdef0123456789"}} {
 			for _, prefix := range []struct{ name, path string }{{"plain", "/state"}, {"quoted", "/a'$ `日本"}} {
 				path := f.binary(prefix.path, layout.path)
-				name := "render/" + f.name() + "/" + layout.name + "/" + prefix.name
-				cases = append(cases, scenario{name, f.args(path), 0})
+				name, exit := "render/"+f.name()+"/"+layout.name+"/"+prefix.name, 0
+				if !slices.Contains(allowed, layout.name) {
+					name, exit = "refuse/"+f.name()+"/"+layout.name+"-"+prefix.name, 2
+				}
+				cases = append(cases, scenario{name, f.args(path), exit})
 				if f.os == "windows" {
-					cases = append(cases, scenario{name + "/backslashes", f.args(strings.ReplaceAll(path, "/", `\`)), 0})
+					sep := "/"
+					if exit != 0 {
+						sep = "-"
+					}
+					cases = append(cases, scenario{name + sep + "backslashes", f.args(strings.ReplaceAll(path, "/", `\`)), exit})
 				}
 			}
 		}

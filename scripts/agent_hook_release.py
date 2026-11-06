@@ -6,6 +6,7 @@ build_hookrelease() and check_release() build and run cmd/hookrelease there.
 """
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -22,6 +23,13 @@ PROGRAM_TIMEOUT = 30
 CHECK_TIMEOUT = 300
 OUTPUT_LIMIT = 65536
 PIPE_GRACE = 1
+# A release file, as hookrelease makes it: <data>/dotfiles/agent-hooks/
+# releases/<16 lowercase hex>/agent-hook, on POSIX. Doctor and gc match a
+# resolved path with it, apart from sync's ownership rule, which names what a
+# registration may hold.
+RELEASE_FILE = re.compile(
+    r"/(?:[^/]+/)*dotfiles/agent-hooks/releases/[0-9a-f]{16}/agent-hook"
+)
 
 
 @dataclass(frozen=True)

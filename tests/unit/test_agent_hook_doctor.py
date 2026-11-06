@@ -70,7 +70,7 @@ def _why_go_cannot_build_the_module(go: str | None, home: Path) -> str:
 # CI's unit job sets this in a step with the module's Go, where a skip
 # would hide that the real checker never ran.
 STRICT_GO = os.environ.get("AGENT_HOOK_DOCTOR_STRICT_GO") == "1"
-PROGRAM = "/state/dotfiles/agent-hooks/releases/abcdef012345/agent-hook"
+PROGRAM = "/state/dotfiles/agent-hooks/releases/abcdef0123456789/agent-hook"
 FRAGMENT = {
     "hooks": {
         "PreToolUse": [
@@ -651,8 +651,32 @@ def _fragment(binary: Path, harness: str) -> dict:
     return json.loads(text)
 
 
+STABLE = re.compile(r".*/dotfiles/agent-hooks/current/[a-z0-9-]+/agent-hook")
+# A path no test uses, which the fake agent-hook replaces with its --binary.
+MARK = "/mark/dotfiles/agent-hooks/current/mark/agent-hook"
+
+
+def _registered(home: Path, harness: str) -> Path:
+    """The stable link _register writes into home's registration."""
+    key = "codex" if harness == "codex" else home.name.removeprefix(".claude-")
+    return (
+        home.parent
+        / "data/dotfiles/agent-hooks/current"
+        / key.strip(".")
+        / "agent-hook"
+    )
+
+
 def _register(home: Path, harness: str, binary: Path) -> dict:
+    """Register binary in home as sync wires it: through the home's stable
+    link, current/<key>/agent-hook, unless binary is such a link already."""
     home.mkdir(parents=True, exist_ok=True)
+    if not STABLE.fullmatch(str(binary)):
+        link = _registered(home, harness)
+        link.parent.mkdir(parents=True, exist_ok=True)
+        if not link.is_symlink():
+            link.symlink_to(binary)
+        binary = link
     doc = _fragment(binary, harness)
     (home / ("hooks.json" if harness == "codex" else "settings.json")).write_text(
         json.dumps(doc), encoding="utf-8"
@@ -661,12 +685,16 @@ def _register(home: Path, harness: str, binary: Path) -> dict:
 
 
 def _fake_agent(
-    home: Path, *, render: str = "ok", log: str = "ok", name: str = "abcdef012345"
+    home: Path, *, render: str = "ok", log: str = "ok", name: str = "abcdef0123456789"
 ) -> Path:
     binary = (
         home.parent / "a b'$" / "dotfiles/agent-hooks/releases" / name / "agent-hook"
     )
-    fragments = {harness: _fragment(binary, harness) for harness in ("claude", "codex")}
+    # Like agent-hook render, it writes the --binary it is given, quoted for
+    # the harness's form.
+    fragments = {
+        harness: _fragment(Path(MARK), harness) for harness in ("claude", "codex")
+    }
     return _executable(
         binary,
         f"""import json, os, sys, time
@@ -679,7 +707,11 @@ if mode == 'bad': print('not json'); sys.exit(0)
 if mode == 'shape': print('{{}}'); sys.exit(0)
 if mode == 'oversized': print('x' * 65537); sys.exit(0)
 if sys.argv[1] == 'render':
-    print(json.dumps({fragments!r}[sys.argv[sys.argv.index('--harness') + 1]]))
+    harness = sys.argv[sys.argv.index('--harness') + 1]
+    given = sys.argv[sys.argv.index('--binary') + 1]
+    quoted = given.replace("'", "'\\''") if harness == 'codex' else given
+    text = json.dumps({fragments!r}[harness], ensure_ascii=False)
+    print(text.replace({MARK!r}, json.dumps(quoted, ensure_ascii=False)[1:-1]))
 else:
     print(json.dumps({{'days': 1, 'lines': 8, 'unreadable': 1, 'errors': {{'hook.failed': 2}}, 'mismatches': {{}}}}))
 """,
@@ -783,7 +815,7 @@ def test_gather_renders_each_home_but_builds_and_checks_each_release_once(
         "--os",
         sys.platform,
         "--binary",
-        str(binary),
+        str(_registered(isolated / ".claude", "claude")),
     ]
     assert calls[1] == [
         "render",
@@ -794,7 +826,7 @@ def test_gather_renders_each_home_but_builds_and_checks_each_release_once(
         "--shell",
         "sh",
         "--binary",
-        str(binary),
+        str(_registered(Path(os.environ["CODEX_HOME"]), "codex")),
     ]
     assert calls[2] == ["log", "--summary", "--days", "1"]
 
@@ -827,12 +859,13 @@ def test_unwired_gather_never_builds_or_reads_a_log(isolated: Path) -> None:
 
 def test_gather_stops_after_the_first_binary_answers_the_log(isolated: Path) -> None:
     first = _fake_agent(isolated)
-    other = _fake_agent(isolated, name="fedcba012345", log="exit")
+    other = _fake_agent(isolated, name="fedcba9876543210", log="exit")
     _register(isolated / ".claude", "claude", first)
     _register(isolated / ".claude-work-a", "claude", other)
     facts = check.gather(isolated)
     assert len(facts.logs) == 1
-    assert facts.logs[0].binary == str(first) and facts.logs[0].outcome.ok
+    assert facts.logs[0].binary == str(_registered(isolated / ".claude", "claude"))
+    assert facts.logs[0].outcome.ok
     calls = [
         json.loads(line)
         for line in (isolated / "calls.jsonl").read_text(encoding="utf-8").splitlines()
@@ -920,7 +953,7 @@ def test_failed_render_and_log_leave_other_homes_inspectable(
 ) -> None:
     binary = _fake_agent(isolated, render=mode, log=mode)
     _register(isolated / ".claude", "claude", binary)
-    other = _fake_agent(isolated, name="fedcba012345")
+    other = _fake_agent(isolated, name="fedcba9876543210")
     _register(isolated / ".claude-work-a", "claude", other)
     _fake_go(isolated, 0)
     monkeypatch.setattr(check, "PROGRAM_TIMEOUT", 1)
@@ -939,15 +972,16 @@ def test_unresolved_binary_has_one_warning_and_no_render_or_log(
     isolated: Path,
     kind: str,
 ) -> None:
-    binary = isolated / "dotfiles/agent-hooks/releases/abcdef012345/agent-hook"
+    binary = isolated / "dotfiles/agent-hooks/releases/abcdef0123456789/agent-hook"
     if kind == "directory":
         binary.mkdir(parents=True)
     elif kind == "symlink-loop":
         binary.parent.mkdir(parents=True)
         binary.symlink_to(binary)
     _register(isolated / ".claude", "claude", binary)
+    link = _registered(isolated / ".claude", "claude")
     facts = check.gather(isolated)
-    binary_lines = [line for line in check.report(facts) if str(binary) in line[2]]
+    binary_lines = [line for line in check.report(facts) if str(link) in line[2]]
     assert len(binary_lines) == 1 and binary_lines[0][:2] == (
         "WARN",
         "agent-hook-binary",
@@ -1304,6 +1338,19 @@ def test_two_stable_links_to_one_release_are_checked_once(isolated: Path) -> Non
     assert len(facts.releases) == 1
     assert facts.releases[0].path == str(binary.resolve())
     assert len({home.binaries[0].path for home in facts.homes}) == 2
+
+
+@pytest.mark.parametrize("name", ["abcdef012345", "ABCDEF0123456789"])
+def test_a_link_to_a_directory_hookrelease_never_makes_is_not_a_release(
+    isolated: Path, name: str
+) -> None:
+    # given a link to releases/<name>/agent-hook, where hookrelease names
+    # each release by 16 lowercase hex digits
+    _register(isolated / ".claude", "claude", _fake_agent(isolated, name=name))
+    # when doctor gathers, then the binary is no release
+    facts = check.gather(isolated)
+    assert "no release" in _lines(facts, "binary")[0][1]
+    assert not facts.releases
 
 
 def test_a_current_path_resolving_outside_releases_is_not_a_release(

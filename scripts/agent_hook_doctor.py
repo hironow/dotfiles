@@ -22,6 +22,7 @@ import sync_agents
 from agent_hook_release import (
     OUTPUT_LIMIT,
     PROGRAM_TIMEOUT,
+    RELEASE_FILE,
     Outcome,
     build_hookrelease,
     check_release,
@@ -550,10 +551,7 @@ def _binary(path: str, harness: str, system: str) -> Binary:
         resolved = Path(path).resolve(strict=True)
         if not resolved.is_file():
             return Binary(path, None, problem="no release: not a file")
-        elif (
-            not sync_agents.POSIX_RELEASE.fullmatch(resolved.as_posix())
-            or resolved.parent.parent.name != "releases"
-        ):
+        elif not RELEASE_FILE.fullmatch(resolved.as_posix()):
             problem = "no release: path does not resolve to releases/<id>/agent-hook"
         else:
             release = str(resolved)
