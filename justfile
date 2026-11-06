@@ -1703,6 +1703,16 @@ azure-list:
 aws-list:
     aws configure list-profiles
 
+# List: Alibaba Cloud profiles (local configuration only)
+[group('Cloud')]
+alibaba-list:
+    aliyun configure list
+
+# List: Akamai Cloud (Linode) users (local configuration only)
+[group('Cloud')]
+akamai-list:
+    linode-cli show-users
+
 # List: Dataform (BigQuery) tables, ELT (Extract, Load, Transform) not ETL (Extract, Transform, Load)
 [group('Cloud')]
 elt-list:
