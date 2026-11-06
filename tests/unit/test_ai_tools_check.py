@@ -241,6 +241,43 @@ def test_a_claude_home_without_the_rtk_hook_warns() -> None:
     assert _levels(_facts(claude_homes=homes))["claude-rtk-hook"] == "WARN"
 
 
+# A home wired to agent-hook (PR 3d.1) runs rtk through the binary, in
+# Claude's exec form, through the home's stable link.
+WIRED_RTK = {
+    "type": "command",
+    "command": "/home/u/.local/share/dotfiles/agent-hooks/current/claude/agent-hook",
+    "args": ["claude", "pre", "--hook", "rtk"],
+    "timeout": 30,
+}
+
+
+def test_a_home_wired_to_agent_hook_has_the_rtk_hook() -> None:
+    homes = {
+        ".claude": {
+            "env": TELEMETRY,
+            "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [WIRED_RTK]}]},
+        }
+    }
+    assert _levels(_facts(claude_homes=homes))["claude-rtk-hook"] == "OK"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["claude", "pre", "--hook", "command-guard"],
+        ["claude", "post", "--hook", "rtk"],
+        ["codex", "pre", "--hook", "rtk"],
+        "claude pre --hook rtk",
+    ],
+)
+def test_another_agent_hook_handler_is_not_the_rtk_hook(args: object) -> None:
+    hook = {**WIRED_RTK, "args": args}
+    homes = {
+        ".claude": {"env": TELEMETRY, "hooks": {"PreToolUse": [{"hooks": [hook]}]}}
+    }
+    assert _levels(_facts(claude_homes=homes))["claude-rtk-hook"] == "WARN"
+
+
 def test_missing_pi_extensions_warn() -> None:
     facts = _facts(pi_extensions={"jev-sonnet-fallback.ts": True, "rtk.ts": False})
     assert _levels(facts)["pi-extensions"] == "WARN"

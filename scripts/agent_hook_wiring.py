@@ -7,7 +7,6 @@ checkout. A restore changes only hooks, and never removes a home's link.
 import base64
 import binascii
 import errno
-import fcntl
 import json
 import os
 import re
@@ -260,6 +259,9 @@ def switch_lock(
     """Hold the lock shared with Go. Closing on exit or death releases it."""
     if wait_limit < 0:
         raise ValueError("wait limit must not be negative")
+    # POSIX only, imported here so that doctor can read the roots on Windows.
+    import fcntl
+
     disk = RealDisk()
     ensure_directories(disk, roots.state, mode=STATE_MODE)
     descriptor = open_descriptor(roots.lock, os.O_RDWR | os.O_CREAT, 0o600)

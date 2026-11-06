@@ -298,12 +298,25 @@ def _telemetry(facts: Facts) -> Line:
     return ("OK", "telemetry", f"off switches set in {where}")
 
 
+# The rtk hook, as agent-hook runs it in a wired Claude home (PR 3d.1): the
+# exec form, with these arguments, through the home's stable link.
+AGENT_HOOK_RTK_ARGS = ["claude", "pre", "--hook", "rtk"]
+
+
+def _runs_rtk(hook: dict) -> bool:
+    """Today's script, or agent-hook's rtk hook."""
+    command = hook.get("command", "")
+    return "rtk-hook-claude" in command or (
+        hook.get("args") == AGENT_HOOK_RTK_ARGS and command.endswith("/agent-hook")
+    )
+
+
 def _claude_rtk_hook(facts: Facts) -> Line:
     unhooked = [
         home
         for home, settings in facts.claude_homes.items()
         if not any(
-            "rtk-hook-claude" in hook.get("command", "")
+            _runs_rtk(hook)
             for blocks in settings.get("hooks", {}).values()
             for block in blocks
             for hook in block.get("hooks", [])

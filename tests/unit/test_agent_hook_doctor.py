@@ -932,7 +932,7 @@ def test_existing_codex_home_without_hooks_keeps_wiring_and_shell_facts(
     codex = Path(os.environ.get("CODEX_HOME", isolated / ".codex"))
     codex.mkdir()
     facts = check.gather(isolated)
-    assert facts.homes == (check.Home("Codex", "codex"),)
+    assert facts.homes == (check.Home("Codex", "codex", key="codex"),)
     assert len(facts.shells) == 2
     assert _lines(facts, "wiring") == [
         ("INFO", "no dotfiles hook registered in Codex (not new with agent-hook)")
@@ -1444,3 +1444,68 @@ def test_every_claude_home_doctor_reads_is_one_sync_knows() -> None:
 
     agents = {a.directory.name for a in sync_agents.AGENTS if a.receives_hooks}
     assert set(claude_homes.NAMES) <= agents
+
+
+# ---- PR 3d.1: the uninstall mark and unfinished changes ----
+
+
+def test_an_uninstalled_home_says_how_to_wire_it_again() -> None:
+    # given a home uninstalled with just agent-hooks-uninstall, running the scripts
+    home = check.Home(".claude-work-a", "claude", scripts=True, key="work-a")
+    facts = check.Facts(homes=(home,), marks=frozenset({"work-a"}))
+    # then one INFO line says so, and the home is not among the unwired ones
+    assert _lines(facts, "wiring") == [
+        (
+            "INFO",
+            (
+                "agent-hook uninstalled in work-a: today's scripts run; "
+                "just agent-hooks-install work-a wires it again"
+            ),
+        )
+    ]
+
+
+def test_a_mark_beside_a_wired_registration_is_a_warning() -> None:
+    # given an uninstall mark, yet the home's managed blocks run the binary
+    facts = check.Facts(
+        homes=(replace(_wired(), key="claude"),), marks=frozenset({"claude"})
+    )
+    # then it is a WARN naming both ways out
+    assert _lines(facts, "wiring") == [
+        (
+            "WARN",
+            (
+                "claude: uninstalled, yet wired; run just agent-hooks-uninstall claude "
+                "or just agent-hooks-install claude"
+            ),
+        )
+    ]
+
+
+def test_an_unfinished_change_is_a_warning() -> None:
+    facts = check.Facts(journals=("switch-work-b.json",))
+    assert _lines(facts, "wiring") == [
+        (
+            "WARN",
+            (
+                "a registration change is unfinished (switch-work-b.json); "
+                "run just sync-agents to finish or restore it"
+            ),
+        )
+    ]
+
+
+def test_gather_reads_the_marks_and_journals_sync_writes(isolated: Path) -> None:
+    import agent_hook_wiring as wiring
+
+    # given a mark and a journal where sync writes them
+    roots = wiring.Roots.from_env(dict(os.environ))
+    roots.mark("work-a").parent.mkdir(parents=True)
+    roots.mark("work-a").write_bytes(b"")
+    roots.journal("claude").write_text("{}", encoding="utf-8")
+    (isolated / ".claude-work-a").mkdir()
+    # when doctor gathers, then it has both, and each home its key
+    facts = check.gather(isolated)
+    assert facts.marks == frozenset({"work-a"})
+    assert facts.journals == ("switch-claude.json",)
+    assert [home.key for home in facts.homes if home.harness == "claude"] == ["work-a"]

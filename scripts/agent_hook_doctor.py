@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+import agent_hook_wiring
 import claude_homes
 import doctor_lines
 import sync_agents
@@ -63,6 +64,7 @@ class Home:
     binaries: tuple[Binary, ...] = ()
     guard: bool = False
     problem: str | None = None
+    key: str = ""  # sync's target key: claude, work-a, ..., codex
 
 
 @dataclass(frozen=True)
@@ -116,6 +118,10 @@ class Facts:
     tools: frozenset[str] = frozenset({"uv", "gofmt"})
     shells: tuple[Shell, ...] = ()
     system: str = "linux"
+    # The homes `just agent-hooks-uninstall` marked, by key, and the
+    # registration changes sync left unfinished, by journal name.
+    marks: frozenset[str] = frozenset()
+    journals: tuple[str, ...] = ()
 
 
 SHELL_FALLBACKS = {
@@ -401,7 +407,9 @@ def _log_lines(log: Log, homes: tuple[str, ...]) -> list[Line]:
 
 
 def report(facts: Facts) -> list[Line]:
-    if not (facts.homes or facts.releases or facts.logs or facts.shells):
+    if not (
+        facts.homes or facts.releases or facts.logs or facts.shells or facts.journals
+    ):
         # No fact at all, which gather() finds only with no agent home.
         # doctor.sh reads exit 0 with no line as a run that failed.
         return [
@@ -411,8 +419,47 @@ def report(facts: Facts) -> list[Line]:
                 "no Claude or Codex home found; nothing to check",
             )
         ]
-    lines: list[Line] = []
-    scripts = [home.name for home in facts.homes if home.scripts and not home.binaries]
+    lines: list[Line] = [
+        (
+            "WARN",
+            "agent-hook-wiring",
+            (
+                f"a registration change is unfinished ({journal}); "
+                "run just sync-agents to finish or restore it"
+            ),
+        )
+        for journal in facts.journals
+    ]
+    for home in facts.homes:
+        if home.key not in facts.marks:
+            continue
+        if home.binaries:
+            lines.append(
+                (
+                    "WARN",
+                    "agent-hook-wiring",
+                    (
+                        f"{home.key}: uninstalled, yet wired; run just agent-hooks-uninstall "
+                        f"{home.key} or just agent-hooks-install {home.key}"
+                    ),
+                )
+            )
+        else:
+            lines.append(
+                (
+                    "INFO",
+                    "agent-hook-wiring",
+                    (
+                        f"agent-hook uninstalled in {home.key}: today's scripts run; "
+                        f"just agent-hooks-install {home.key} wires it again"
+                    ),
+                )
+            )
+    scripts = [
+        home.name
+        for home in facts.homes
+        if home.scripts and not home.binaries and home.key not in facts.marks
+    ]
     if scripts:
         names = (
             " and ".join(scripts)
@@ -608,9 +655,11 @@ def _home(path: Path, agent: sync_agents.AgentTarget, system: str) -> Home:
             raise TypeError("expected a registration object")
         hooks = _blocks(doc) if "hooks" in doc else {}
     except FileNotFoundError:
-        return Home(name, harness)
+        return Home(name, harness, key=agent.key)
     except (OSError, ValueError, TypeError) as exc:
-        return Home(name, harness, problem=f"cannot read {registration}: {exc}")
+        return Home(
+            name, harness, problem=f"cannot read {registration}: {exc}", key=agent.key
+        )
     target = replace(agent, directory=path)
     managed = {
         event: owned
@@ -641,6 +690,7 @@ def _home(path: Path, agent: sync_agents.AgentTarget, system: str) -> Home:
         managed,
         tuple(_binary(binary, harness, system) for binary in paths),
         guard,
+        key=agent.key,
     )
 
 
@@ -815,6 +865,7 @@ def gather(home: Path) -> Facts:
         logs.append(log)
         if log.outcome.ok:
             break
+    marks, journals = _marks_and_journals(env, homes)
     return Facts(
         tuple(homes),
         checked,
@@ -822,7 +873,27 @@ def gather(home: Path) -> Facts:
         frozenset(tool for tool in ("uv", "gofmt") if shutil.which(tool)),
         gather_shells(system, env) if codex_home.is_dir() else (),
         system,
+        marks,
+        journals,
     )
+
+
+def _marks_and_journals(
+    env: Mapping[str, str], homes: list[Home]
+) -> tuple[frozenset[str], tuple[str, ...]]:
+    """The uninstall marks of these homes, and the pending journals, where
+    sync keeps them (agent_hook_wiring.Roots); none without a usable root."""
+    try:
+        roots = agent_hook_wiring.Roots.from_env(env)
+    except ValueError:
+        return frozenset(), ()
+    marks = frozenset(
+        home.key
+        for home in homes
+        if home.harness == "claude" and roots.mark(home.key).is_file()
+    )
+    journals = tuple(sorted(path.name for path in roots.state.glob("switch-*.json")))
+    return marks, journals
 
 
 def main() -> int:
