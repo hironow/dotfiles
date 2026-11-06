@@ -33,6 +33,7 @@ import re
 import shutil
 import subprocess
 import sys
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -922,6 +923,37 @@ def hook_fragment(dotfiles_dir: Path, agent: AgentTarget) -> dict | None:
     )
 
 
+def merge_hook_values(
+    target: dict,
+    desired: dict[str, list[dict]],
+    managed: dict[str, set[int]],
+) -> tuple[dict, bool]:
+    """Compute a hook merge from values, including prior ownership decisions."""
+    target = deepcopy(target)
+    hooks = target.get("hooks", {})
+    changed = False
+    for event in set(hooks) | set(desired):
+        existing = hooks.get(event, [])
+        kept = [
+            block
+            for index, block in enumerate(existing)
+            if index not in managed.get(event, set())
+            and not _is_retired_hook_block(block)
+        ]
+        new_list = kept + deepcopy(desired.get(event, []))
+        if new_list != existing:
+            changed = True
+        if new_list:
+            hooks[event] = new_list
+        else:
+            hooks.pop(event, None)
+    if hooks:
+        target["hooks"] = hooks
+    else:
+        target.pop("hooks", None)
+    return target, changed
+
+
 def _merge_hook_settings(
     dotfiles_dir: Path,
     agent: AgentTarget,
@@ -975,29 +1007,15 @@ def _merge_hook_settings(
         for event, blocks in fragment.get("hooks", {}).items()
     }
 
-    hooks: dict[str, list[dict]] = target.get("hooks", {})
-    changed = False
-    for event in set(hooks) | set(desired):
-        existing = hooks.get(event, [])
-        # keep user (unmanaged) blocks; replace managed ones with the current
-        # set; drop retired third-party blocks dotfiles has replaced
-        kept = [
-            b
-            for b in existing
-            if not _is_managed_hook_block(b, agent) and not _is_retired_hook_block(b)
-        ]
-        new_list = kept + desired.get(event, [])
-        if new_list != existing:
-            changed = True
-        if new_list:
-            hooks[event] = new_list
-        else:
-            hooks.pop(event, None)
-
-    if hooks:
-        target["hooks"] = hooks
-    else:
-        target.pop("hooks", None)
+    managed = {
+        event: {
+            index
+            for index, block in enumerate(blocks)
+            if _is_managed_hook_block(block, agent)
+        }
+        for event, blocks in target.get("hooks", {}).items()
+    }
+    target, changed = merge_hook_values(target, desired, managed)
 
     if changed and not dry_run:
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1082,6 +1100,24 @@ def _retire_settings(fragment: dict, target: dict, applied: set[str]) -> list[st
     return evaluated
 
 
+def merge_settings_values(
+    target: dict, fragment: dict, state: dict
+) -> tuple[dict, dict, bool, bool]:
+    """Compute shared settings and retirement state without reading or writing."""
+    target, fragment, state = deepcopy((target, fragment, state))
+    before = json.dumps(target, sort_keys=True, ensure_ascii=False)
+    if "env" in fragment:
+        target["env"] = fragment["env"]
+    for key, value in fragment.get("settings", {}).items():
+        target[key] = value
+    applied = set(state.get("retired", []))
+    evaluated = _retire_settings(fragment, target, applied)
+    if evaluated:
+        state["retired"] = sorted(applied | set(evaluated))
+    changed = json.dumps(target, sort_keys=True, ensure_ascii=False) != before
+    return target, state, changed, bool(evaluated)
+
+
 def _merge_settings_fragment(
     dotfiles_dir: Path,
     agent: AgentTarget,
@@ -1114,29 +1150,20 @@ def _merge_settings_fragment(
         else {}
     )
 
-    before = json.dumps(target, sort_keys=True, ensure_ascii=False)
-
-    if "env" in fragment:
-        target["env"] = fragment["env"]
-    for key, value in fragment.get("settings", {}).items():
-        target[key] = value
     state_path = agent.directory / SETTINGS_STATE_FILE
     state = (
         json.loads(state_path.read_text(encoding="utf-8"))
         if state_path.exists()
         else {}
     )
-    applied = set(state.get("retired", []))
-    evaluated = _retire_settings(fragment, target, applied)
-
-    changed = json.dumps(target, sort_keys=True, ensure_ascii=False) != before
+    target, state, changed, state_changed = merge_settings_values(
+        target, fragment, state
+    )
 
     if dry_run:
         return changed
-    if evaluated:
-        _write_settings(
-            state_path, {**state, "retired": sorted(applied | set(evaluated))}
-        )
+    if state_changed:
+        _write_settings(state_path, state)
     if changed:
         _write_settings(target_path, target)
     return changed
