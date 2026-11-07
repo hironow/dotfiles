@@ -1,7 +1,7 @@
 # 0001. Migrate dev container to debian-12 + features (single SoT)
 
 **Date:** 2026-05-02
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0067](0067-use-podman-for-managed-containers.md) (bookworm・Docker feature・devcontainers/ci の指定のみ。単一設定、Microsoft/local feature の信頼境界、root ユーザーは維持)
 
 ## Context
 
