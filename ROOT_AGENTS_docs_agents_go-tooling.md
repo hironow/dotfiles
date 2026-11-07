@@ -126,3 +126,22 @@ docs/agents/performance.md. The Go tools:
   fine). Add complexity for speed (shared memory, lock-free queues, more
   goroutines, a database or cache for speed) only when a measurement shows the
   simple version is the bottleneck.
+
+## Database selection
+
+Only when a database is needed, consider [cberner/redb](https://github.com/cberner/redb),
+including for in-memory database needs. Prefer redb only when matching evidence
+demonstrates an advantage for the required version, workload, API, storage backend,
+durability and concurrency. Otherwise compare SQLite case by case.
+
+Keep Go-first: do not introduce Rust or FFI solely to obtain redb. The plain
+in-memory data structures above, port fakes and real-database e2e rules still apply.
+Database selection is not a reason to replace them.
+
+The checked redb 4.5.0 `InMemoryBackend` is process-local, not shared memory across
+processes. Its file-backed multiprocess modes allow one write transaction at a time.
+A warm, file-backed or threaded benchmark does not establish general in-memory or
+multiprocess superiority. Check backend and locking support for the chosen version.
+
+Read the [2026-11 comparison and its applicability limits](https://github.com/hironow/dotfiles/blob/1213b9322642065faca918cbf403f0ad88ffc38a/docs/research/2026-11-redb-sqlite.md)
+before ranking redb against SQLite; published timings are workload-specific.
