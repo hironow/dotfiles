@@ -1,10 +1,8 @@
-"""While the dev container job is paused, CI still runs the Go tests.
+"""Sandbox CI runs on ready PRs and main; standalone Go checks remain.
 
-The owner paused the sandbox job on 2026-11-04: it is long, and outside the
-work at hand. A repository variable turns it back on
-(`gh variable set RUN_SANDBOX_TESTS --body true`). Meanwhile the Go tests it
-ran through `just check` run in a job of their own, through the same recipe
-as a local run.
+Sandbox uses the same draft guard as the other CI jobs, without an
+additional repository-variable pause. Standalone Go jobs retain fast,
+independent feedback through the same recipe as a local run.
 """
 
 import re
@@ -36,12 +34,23 @@ def _condition(job: str) -> str:
     return condition
 
 
-def test_the_sandbox_job_runs_only_when_switched_on() -> None:
-    # Exactly: without the parentheses, && binds first, and a push to main
-    # would run the job whatever the variable says.
-    assert _condition(_job(SANDBOX, "test")) == (
-        f"({DRAFT_GUARD}) && vars.RUN_SANDBOX_TESTS == 'true'"
-    )
+def test_the_sandbox_job_uses_only_the_draft_guard() -> None:
+    assert _condition(_job(SANDBOX, "test")) == DRAFT_GUARD
+    assert "RUN_SANDBOX_TESTS" not in SANDBOX
+
+
+def test_the_sandbox_workflow_keeps_main_and_ready_pr_triggers() -> None:
+    assert re.search(r"\n  push:\n    branches: \[main\]\n", SANDBOX)
+    assert re.search(r"\n  pull_request:\n    branches: \[main\]\n", SANDBOX)
+    assert "types: [opened, synchronize, reopened, ready_for_review]" in SANDBOX
+
+
+def test_the_sandbox_job_runs_the_disposable_container_suite() -> None:
+    job = _job(SANDBOX, "test")
+    assert re.search(r"\n    runs-on: ubuntu-latest\n", job)
+    assert re.search(r"uses: devcontainers/ci@[0-9a-f]{40}", job)
+    assert re.search(r"\n          runCmd: just test\n", job)
+    assert "DOTFILES_SANDBOX_DISPOSABLE_CHECKOUT=1" in job
 
 
 def test_the_go_tests_run_in_a_job_of_their_own() -> None:
