@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestTLSProbeDoesNotConfuseHTTPFailureAndCertificateFailure(t *testing.T) {
@@ -53,6 +59,181 @@ func TestGoProbeIPv4DialsOnlyIPv4(t *testing.T) {
 	}
 	if got := (GoProbe{IPv4: true}).Probe(context.Background(), ipv6.URL); got != Unknown {
 		t.Fatalf("IPv4 probe to an IPv6 server = %s", got)
+	}
+}
+
+func TestNodeProbeSNIAndCertificateIdentity(t *testing.T) {
+	command, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	observed := make(chan string, 4)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) }))
+	server.TLS = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			observed <- hello.ServerName
+			return nil, nil
+		},
+	}
+	server.StartTLS()
+	defer server.Close()
+	bundle := filepath.Join(t.TempDir(), "test ca.pem")
+	cert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.TLS.Certificates[0].Certificate[0]})
+	if err := os.WriteFile(bundle, cert, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NODE_TLS_REJECT_UNAUTHORIZED", "1")
+	probe := ExternalProbe{Path: command, Kind: "node", Commands: OSCommands{}, IPv4: true}
+	for _, tc := range []struct {
+		name, bundle, url, sni string
+		want                   Outcome
+	}{
+		{"trusted IP", bundle, server.URL, "", Accepted},
+		{"untrusted IP", "", server.URL, "", CertRejected},
+		{"trusted CA wrong DNS name", bundle, strings.Replace(server.URL, "127.0.0.1", "localhost", 1), "localhost", CertRejected},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("NODE_EXTRA_CA_CERTS", tc.bundle)
+			if got := probe.Probe(context.Background(), tc.url); got != tc.want {
+				t.Fatalf("outcome %s, want %s", got, tc.want)
+			}
+			select {
+			case got := <-observed:
+				if got != tc.sni {
+					t.Fatalf("SNI %q, want %q", got, tc.sni)
+				}
+			default:
+				t.Fatal("server did not observe a TLS ClientHello")
+			}
+		})
+	}
+}
+
+func TestNodeProbeRejectsTrustedIPIdentityMismatch(t *testing.T) {
+	command, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		NotBefore:    time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+		DNSNames: []string{"localhost"}, IsCA: true, BasicConstraintsValid: true,
+		KeyUsage:    x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificate, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(certificate)
+	if _, err := certificate.Verify(x509.VerifyOptions{Roots: roots, DNSName: "localhost"}); err != nil {
+		t.Fatalf("fixture must be trusted and valid for localhost: %v", err)
+	}
+	for _, ip := range []string{"127.0.0.1", "::1"} {
+		if err := certificate.VerifyHostname(ip); err == nil {
+			t.Fatalf("fixture unexpectedly matches %s", ip)
+		}
+	}
+	bundle := filepath.Join(t.TempDir(), "DNS-only test ca.pem")
+	if err := os.WriteFile(bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NODE_TLS_REJECT_UNAUTHORIZED", "1")
+	t.Setenv("NODE_EXTRA_CA_CERTS", bundle)
+	for _, family := range []struct{ network, address string }{
+		{"tcp4", "127.0.0.1:0"}, {"tcp6", "[::1]:0"},
+	} {
+		t.Run(family.network, func(t *testing.T) {
+			listener, err := net.Listen(family.network, family.address)
+			if err != nil {
+				if family.network == "tcp6" {
+					t.Skip("no IPv6 loopback")
+				}
+				t.Fatal(err)
+			}
+			observed := make(chan string, 4)
+			server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) }))
+			_ = server.Listener.Close()
+			server.Listener = listener
+			server.TLS = &tls.Config{
+				MinVersion:   tls.VersionTLS12,
+				Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}},
+				GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+					observed <- hello.ServerName
+					return nil, nil
+				},
+			}
+			server.StartTLS()
+			defer server.Close()
+			for _, ipv4 := range []bool{false, true} {
+				if ipv4 && family.network == "tcp6" {
+					continue
+				}
+				probe := ExternalProbe{Path: command, Kind: "node", Commands: OSCommands{}, IPv4: ipv4}
+				if got := probe.Probe(context.Background(), server.URL); got != CertRejected {
+					t.Fatalf("trusted mismatching IP (IPv4=%v) = %s, want certificate-rejected", ipv4, got)
+				}
+				select {
+				case got := <-observed:
+					if got != "" {
+						t.Fatalf("literal IP sent SNI %q", got)
+					}
+				default:
+					t.Fatal("server did not observe a TLS ClientHello")
+				}
+			}
+			if family.network == "tcp4" {
+				probe := ExternalProbe{Path: command, Kind: "node", Commands: OSCommands{}, IPv4: true}
+				url := strings.Replace(server.URL, "127.0.0.1", "localhost", 1)
+				if got := probe.Probe(context.Background(), url); got != Accepted {
+					t.Fatalf("same certificate must be accepted for matching DNS: %s", got)
+				}
+				select {
+				case got := <-observed:
+					if got != "localhost" {
+						t.Fatalf("matching DNS SNI %q, want localhost", got)
+					}
+				default:
+					t.Fatal("matching DNS did not send ClientHello")
+				}
+			}
+		})
+	}
+}
+
+func TestNodeProbeIPv6Literal(t *testing.T) {
+	command, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	listener, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skip("no IPv6 loopback")
+	}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) }))
+	_ = server.Listener.Close()
+	server.Listener = listener
+	server.StartTLS()
+	defer server.Close()
+	bundle := filepath.Join(t.TempDir(), "test ca.pem")
+	cert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.TLS.Certificates[0].Certificate[0]})
+	if err := os.WriteFile(bundle, cert, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NODE_TLS_REJECT_UNAUTHORIZED", "1")
+	t.Setenv("NODE_EXTRA_CA_CERTS", bundle)
+	if got := (ExternalProbe{Path: command, Kind: "node", Commands: OSCommands{}}).Probe(context.Background(), server.URL); got != Accepted {
+		t.Fatalf("IPv6 literal = %s, want accepted", got)
 	}
 }
 
