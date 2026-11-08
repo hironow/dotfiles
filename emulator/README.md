@@ -58,7 +58,6 @@ example `POSTGRES_PORT`).
 | --- | --- | --- | --- |
 | Firebase UI / Auth / Firestore | `firebase-emulator` | lite | 4000 / 9099 / 8080 |
 | Firebase Storage / Pub/Sub | `firebase-emulator` | lite | 9199 / 9399 |
-| Firebase Eventarc / Tasks | `firebase-emulator` | lite | 9299 / 9499 |
 | Spanner | `spanner-emulator` | lite | 9010 (gRPC), 9020 (REST) |
 | pgAdapter (Spanner, PostgreSQL protocol) | `pgadapter` | lite | 55432 |
 | PostgreSQL 18 | `postgres` | lite | 5433 |
@@ -69,6 +68,14 @@ example `POSTGRES_PORT`).
 | MLflow | `mlflow` | `ml` | 5252 |
 | A2A Inspector / MCP Inspector | `a2a-inspector`, `mcp-inspector` | `inspect` | 8081 / 6274 (UI), 6277 (proxy) |
 | PostgreSQL exporter | `postgres-exporter` | `exporters` | 9187 |
+
+The stack does not provide the Firebase Functions, Eventarc, or Tasks
+emulators. firebase-tools starts them only when Functions or Extensions are
+configured, and [`firebase/firebase.json`](firebase/firebase.json) configures
+neither; its `eventarc` and `tasks` entries only set ports. So ports 9299 and
+9499 are published, but nothing answers on them.
+[`tests/test_firebase_emulators_running.py`](tests/test_firebase_emulators_running.py)
+asks the running emulator which emulators it started.
 
 The `full` group holds every service above. The `cli` group holds the
 interactive CLIs (see below).
@@ -312,8 +319,7 @@ just emu-test-e2e    # e2e only
 
 Firestore runs with fully open security rules
 ([`firebase/firestore.rules`](firebase/firestore.rules)) so the tests stay
-simple. Never use them in production. Cloud Tasks discovery accepts HTTP 200/404;
-other statuses fail diagnostically in required mode. Optional local probes may skip.
+simple. Never use them in production. Optional local probes may skip.
 
 CI runs [`.github/workflows/test-emulators.yaml`](../.github/workflows/test-emulators.yaml)
 when files under `emulator/` change (Markdown excluded). `just ci-emu` runs a

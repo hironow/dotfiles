@@ -401,74 +401,6 @@ def test_database_public_probes_reach_only_their_loopback_allocation(
     assert calls == [("127.0.0.1", allocated)]
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("discovery", [200, 404])
-async def test_required_tasks_supported_discovery_executes_existing_write_path(
-    monkeypatch, discovery
-):
-    module = importlib.import_module("tests.test_tasks_functional")
-    monkeypatch.setenv("DOTFILES_E2E_REQUIRED", "1")
-    queue = {}
-    calls = []
-
-    class Response:
-        def __init__(self, status):
-            self.status = status
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_):
-            return None
-
-        async def text(self):
-            return "fixture response"
-
-        async def json(self):
-            return {"queues": [queue]}
-
-    def get(*args, **kwargs):
-        status = discovery if not calls else 200
-        calls.append("get")
-        return Response(status)
-
-    def post(*args, **kwargs):
-        calls.append("post")
-        queue.update(kwargs["json"]["queue"])
-        return Response(200)
-
-    await module.test_tasks_create_queue_and_list(
-        "q-default", "fixture-project", SimpleNamespace(get=get, post=post)
-    )
-    assert calls == ["get", "post", "get"]
-
-
-@pytest.mark.asyncio
-async def test_optional_tasks_discovery_preserves_skip_without_writes(monkeypatch):
-    module = importlib.import_module("tests.test_tasks_functional")
-    monkeypatch.delenv("DOTFILES_E2E_REQUIRED", raising=False)
-    calls = []
-
-    class Response:
-        async def __aenter__(self):
-            calls.append("get")
-            return SimpleNamespace(status=503)
-
-        async def __aexit__(self, *_):
-            return None
-
-    with pytest.raises(pytest.skip.Exception):
-        await module.test_tasks_create_queue_and_list(
-            "q-default",
-            "fixture",
-            SimpleNamespace(
-                get=lambda *args, **kwargs: Response(),
-                post=lambda *args, **kwargs: calls.append("post"),
-            ),
-        )
-    assert calls == ["get"]
-
-
 def test_cleanup_process_boundary_uses_exact_manifest_endpoint_and_two_arguments(
     image_run, monkeypatch
 ):
@@ -750,36 +682,6 @@ def test_many_concurrent_helper_additions_survive_discovery(image_run):
     assert len(json.loads(path.read_text(encoding="utf-8"))["images"]) == 18
     isolation.cleanup_run(images.client(), stale)
     assert images.tags == {}
-
-
-@pytest.mark.parametrize("status", [500, 503, 401])
-@pytest.mark.asyncio
-async def test_required_tasks_public_consumer_fails_unexpected_discovery_without_write(
-    monkeypatch, status
-):
-    module = importlib.import_module("tests.test_tasks_functional")
-    monkeypatch.setenv("DOTFILES_E2E_REQUIRED", "1")
-    calls = []
-
-    class Response:
-        async def __aenter__(self):
-            return SimpleNamespace(status=status)
-
-        async def __aexit__(self, *_):
-            return None
-
-    def get(*args, **kwargs):
-        calls.append("get")
-        return Response()
-
-    client = SimpleNamespace(get=get, post=lambda *args, **kwargs: calls.append("post"))
-    with pytest.raises(BaseException) as outcome:
-        await module.test_tasks_create_queue_and_list(
-            "q-default", "test-project", client
-        )
-    assert isinstance(outcome.value, pytest.fail.Exception)
-    assert str(status) in str(outcome.value)
-    assert calls == ["get"]
 
 
 @pytest.mark.asyncio
