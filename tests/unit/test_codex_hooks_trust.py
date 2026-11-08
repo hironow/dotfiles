@@ -259,11 +259,16 @@ def test_main_warns_and_exits_1_when_the_app_server_fails(
 
 
 @pytest.mark.skipif(os.name == "nt", reason="the fake codex is a sh script")
+@pytest.mark.parametrize(
+    "body",
+    ["exec sleep 60\n", "sleep 5 &\nexec sleep 60\n"],
+    ids=["alone", "a child keeps its stdout"],
+)
 def test_a_real_app_server_that_never_answers_is_killed_and_reaped(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str
 ) -> None:
     codex = tmp_path / "codex"
-    codex.write_text("#!/bin/sh\nexec sleep 60\n", encoding="utf-8")
+    codex.write_text("#!/bin/sh\n" + body, encoding="utf-8")
     codex.chmod(0o755)
     started: list[subprocess.Popen] = []
     popen = subprocess.Popen
@@ -281,8 +286,9 @@ def test_a_real_app_server_that_never_answers_is_killed_and_reaped(
         trust.app_server(str(codex)),
     ):
         pass
-    # the server was killed, not waited for, and reaped
-    assert time.monotonic() - begun < 5
+    # the server was killed, not waited for, and reaped, even while a child it
+    # left still holds its stdout
+    assert time.monotonic() - begun < 3
     [process] = started
     assert process.returncode == -signal.SIGKILL
 

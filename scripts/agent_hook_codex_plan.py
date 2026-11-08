@@ -119,10 +119,11 @@ def _reconcile(
 ) -> None:
     """Make one event's groups of a family hold `desired`. A group whose
     declaration equals a desired one stays where it is, so Codex keeps
-    trusting it; every other group of the family is emptied in place; each
-    desired group left over fills the first empty group with its matcher, or
-    goes past the end. Order does not matter to Codex: it runs every matching
-    handler."""
+    trusting it; every other group of the family is emptied in place. Each
+    desired group left over fills, with its matcher, a group of the family it
+    just emptied, else any empty group (another family's after an uninstall),
+    else goes past the end. Order does not matter to Codex: it runs every
+    matching handler."""
     members = [index for index, group in enumerate(groups) if is_member(group)]
     kept: set[int] = set()
     leftover: list[dict] = []
@@ -134,18 +135,20 @@ def _reconcile(
             leftover.append(wanted)
         else:
             kept.add(index)
-    for index in members:
-        if index not in kept:
-            groups[index] = _emptied(groups[index])
+    freed = [index for index in members if index not in kept]
+    for index in freed:
+        groups[index] = _emptied(groups[index])
     for wanted in leftover:
+
+        def fits(index: int, wanted: dict = wanted) -> bool:
+            group = groups[index]
+            return not _handlers(group) and group.get("matcher") == wanted.get(
+                "matcher"
+            )
+
         slot = next(
-            (
-                index
-                for index, group in enumerate(groups)
-                if not _handlers(group)
-                and group.get("matcher") == wanted.get("matcher")
-            ),
-            None,
+            (i for i in freed if fits(i)),
+            next((i for i in range(len(groups)) if fits(i)), None),
         )
         if slot is None:
             groups.append(deepcopy(wanted))

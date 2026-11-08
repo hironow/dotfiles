@@ -388,9 +388,6 @@ def app_server(codex: str) -> Generator[AppServerClient]:
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
-        # the reader thread ends at EOF, or on the closed file (AppServerClient._read)
-        with contextlib.suppress(OSError, ValueError):
-            proc.stdout.close()
 
 
 def list_hooks(client: AppServerClient, cwd: Path) -> list[dict]:

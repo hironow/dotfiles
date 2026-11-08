@@ -459,7 +459,7 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **G** is the render's groups whose every handler runs files-guard, secrets-guard, or command-guard (`codex_guards`). rtk and the formatter run once, from the scripts, until PR 5: two hooks would compete to rewrite one call, or to format one file. A render whose G does not run each of the three guards once counts as no release, so a wired home keeps its G and an install stops.
     - **The merge** (`scripts/agent_hook_codex_plan.py`, pure):
         - a retired group (rtk's own hook) is emptied in place;
-        - for each family, the scripts and then agent-hook's, a group whose declaration equals a desired one stays where it is, so Codex keeps trusting it; every other group of the family is emptied in place; each desired group left over fills the first empty group of its event with the same matcher, or goes past the end;
+        - for each family, the scripts and then agent-hook's, a group whose declaration equals a desired one stays where it is, so Codex keeps trusting it; every other group of the family is emptied in place; each desired group left over fills, with the same matcher, a group of the family it just emptied, else any empty group of its event, else goes past the end;
         - the order of a family's groups does not matter, since Codex runs every matching handler, so doctor compares G in any order;
         - no group is removed, and every other key of the file stays.
         - A check refuses a result that moves or changes a user group, changes a family the merge did not name, or removes a group. The home then stops (`placement`).

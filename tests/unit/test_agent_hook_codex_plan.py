@@ -253,20 +253,25 @@ def test_a_changed_first_group_moves_no_other_script_group() -> None:
     assert changed.hooks["PreToolUse"][-1] == f2["PreToolUse"][0]
 
 
-def test_a_script_group_past_g_keeps_its_place_through_uninstall_and_updates() -> None:
+@pytest.mark.parametrize("changed", [0, 3], ids=["the first group", "the group past G"])
+def test_a_script_group_past_g_keeps_its_place_through_uninstall_and_updates(
+    changed: int,
+) -> None:
     # given a script group sync appended after G, and then an uninstall
     wired = codex.merge(this_mac(), F, G, CLASSES).hooks
     f2 = deepcopy(F)
     f2["PreToolUse"].append(script("another.sh"))
     grown = codex.merge(wired, f2, G, CLASSES).hooks
     uninstalled = codex.merge(grown, f2, {}, CLASSES).hooks
-    # when another scripts update changes only the first group
+    # when a scripts update changes one script group
     f3 = deepcopy(f2)
-    f3["PreToolUse"][0]["hooks"][0]["timeout"] = 45
+    f3["PreToolUse"][changed]["hooks"][0]["timeout"] = 45
     updated = codex.merge(uninstalled, f3, {}, CLASSES)
-    # then the appended group stays where it was, and G's empty groups stay free
+    # then every other script group stays, the changed one takes back its own
+    # group, and G's empty groups stay free
     assert _kept(uninstalled, updated.hooks, f3, CLASSES.is_script) == []
     assert updated.hooks["PreToolUse"][3:5] == [empty(FILES), empty()]
+    assert updated.hooks["PreToolUse"][5] == f3["PreToolUse"][3]
     # and an install puts G back at its own keys
     reinstalled = codex.merge(updated.hooks, f3, G, CLASSES).hooks
     assert reinstalled["PreToolUse"][3:5] == G["PreToolUse"]
