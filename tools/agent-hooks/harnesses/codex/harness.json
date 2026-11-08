@@ -44,7 +44,7 @@
     }
   },
   "registration": {
-    "layouts": ["stable", "release"],
+    "layouts": ["stable"],
     "events": {"pre": "PreToolUse", "post": "PostToolUse"},
     "blocks": [
       {"event": "pre", "matcher": "Write|Edit|NotebookEdit", "hooks": ["files-guard", "secrets-guard"]},

@@ -15,8 +15,8 @@ import (
 // Registration lists blocks in their native order and the launchers for them.
 // Layouts names the binary paths a registration may hold: "stable", a home's
 // link (current/<home>/agent-hook), and "release", a release itself
-// (releases/<id>/agent-hook). Sync writes only the stable link; Codex keeps
-// owning release paths until PR 3d.2 brings its position-keeping merge.
+// (releases/<id>/agent-hook). Sync writes only the stable link, so Claude and
+// Codex both list "stable" only (PR 3d.1 and PR 3d.2).
 type Registration struct {
 	Layouts   []string            `json:"layouts"`
 	Events    map[string]string   `json:"events"`

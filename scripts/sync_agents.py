@@ -66,24 +66,16 @@ RETIRED_HOOK_COMMAND = re.compile(
 )
 # An agent-hook binary, by its absolute path: a home's stable link,
 # <data dir>/dotfiles/agent-hooks/current/<home>/agent-hook, where <home> is
-# lowercase ASCII letters, digits, and `-`, or (for Codex, until PR 3d.2) a
-# release, <data dir>/dotfiles/agent-hooks/releases/<release-id>/agent-hook,
-# where the release ID is lowercase hex of at least 12 characters. Sync writes
-# only the stable link; a Claude handler that names a release is its user's.
+# lowercase ASCII letters, digits, and `-`. Sync writes only the stable link,
+# so a handler that names a release directly is its user's, in every harness.
 # On Windows the name ends in `.exe`, and nowhere else. A Windows path is
 # matched after `\` -> `/`; on POSIX `\` is a filename character, so a POSIX
 # path is matched as written. The renderer (`agent-hook render`) accepts
 # exactly these paths, per harness (its `registration.layouts`); the corpus
 # tools/agent-hooks/internal/rendercorpus/render.jsonl holds both sides to it.
 _STABLE_PATH = r"/(?:[^/]+/)*dotfiles/agent-hooks/current/[a-z0-9-]+/agent-hook"
-_AGENT_HOOK_PATH = (
-    r"/(?:[^/]+/)*dotfiles/agent-hooks/"
-    r"(?:releases/[0-9a-f]{12,}|current/[a-z0-9-]+)/agent-hook"
-)
 POSIX_STABLE = re.compile(_STABLE_PATH)
 WINDOWS_STABLE = re.compile(r"[A-Za-z]:" + _STABLE_PATH + r"\.exe")
-POSIX_RELEASE = re.compile(_AGENT_HOOK_PATH)
-WINDOWS_RELEASE = re.compile(r"[A-Za-z]:" + _AGENT_HOOK_PATH + r"\.exe")
 # The members of a hook handler the renderer writes, per harness. A handler
 # with any other member is not one it wrote, and stays its author's: Codex's
 # `commandWindows` changes what runs on Windows, `async` changes when it runs,
@@ -763,20 +755,18 @@ def _is_third_party_hook(path: Path) -> bool:
     return any(line.strip() in THIRD_PARTY_HOOK_HEADERS for line in head)
 
 
-def _is_release_path(
-    path: str, *, windows: bool, expanded: tuple[str, ...], stable_only: bool
+def _is_stable_link_path(
+    path: str, *, windows: bool, expanded: tuple[str, ...]
 ) -> bool:
-    """Is this program path, as its harness runs it, an agent-hook binary: a
-    home's stable link, or (unless stable_only) a release?"""
+    """Is this program path, as its harness runs it, a home's stable link to
+    an agent-hook release?"""
     if any(token in path for token in expanded):
         return False
     if any(ord(char) < 0x20 or ord(char) == 0x7F for char in path):
         return False  # the renderer never writes a control character
     if windows:
-        layout = WINDOWS_STABLE if stable_only else WINDOWS_RELEASE
-        return layout.fullmatch(path.replace("\\", "/")) is not None
-    layout = POSIX_STABLE if stable_only else POSIX_RELEASE
-    return layout.fullmatch(path) is not None
+        return WINDOWS_STABLE.fullmatch(path.replace("\\", "/")) is not None
+    return POSIX_STABLE.fullmatch(path) is not None
 
 
 def _has_only_rendered_members(hook: dict, *, codex: bool) -> bool:
@@ -787,8 +777,8 @@ def _has_only_rendered_members(hook: dict, *, codex: bool) -> bool:
 
 
 def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
-    """Does this hook run an agent-hook binary (a release, or a home's stable
-    link to one) as its program, placed and quoted as sync renders it for this
+    """Does this hook run an agent-hook binary through a home's stable link
+    as its program, placed and quoted as sync renders it for this
     harness (Claude's exec form; Codex's AGENT_HOOK_LAUNCHERS), with no member
     the renderer never writes? What follows the program is not compared, so a
     changed template's older handlers are still owned."""
@@ -801,8 +791,8 @@ def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
         if not isinstance(hook.get("args"), list):  # exec form: the path itself
             return False
         windows = re.match(r"[A-Za-z]:[\\/]", command) is not None
-        return _is_release_path(
-            command, windows=windows, expanded=_CLAUDE_EXEC_EXPANDED, stable_only=True
+        return _is_stable_link_path(
+            command, windows=windows, expanded=_CLAUDE_EXEC_EXPANDED
         )
     for launcher in AGENT_HOOK_LAUNCHERS:
         match = launcher.start.match(command)  # the renderer writes no padding
@@ -811,11 +801,8 @@ def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
         path = match[1]
         if launcher.escaped_quote is not None:
             path = path.replace(launcher.escaped_quote, "'")
-        return _is_release_path(
-            path,
-            windows=launcher.windows,
-            expanded=launcher.expanded,
-            stable_only=False,
+        return _is_stable_link_path(
+            path, windows=launcher.windows, expanded=launcher.expanded
         )
     return False
 

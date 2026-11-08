@@ -40,9 +40,8 @@ settings.json は利用者のキーを壊さないよう、その場で併合す
 
 sync が所有する hook の block は、すべての command が `<agent>/hooks/` を指すか、agent-hook（`docs/plan/agent-hooks-go.md`）の実行ファイルを実行するものだけである。
 実行ファイルは、home ごとの安定パス `.../dotfiles/agent-hooks/current/<home>/agent-hook`（版への symlink）である。
-Codex では、版の `.../dotfiles/agent-hooks/releases/<版 ID>/agent-hook` も、位置を保つ併合が入る PR 3d.2 までは所有する。
-Claude の handler が版を直接指していたら、それは利用者のものとして残す（sync は安定パスしか書かない）。
-render が受け付けるパスも同じで、harness の `registration.layouts`（`stable` と `release`）が決める。
+Claude でも Codex でも、handler が版を直接指していたら、それは利用者のものとして残す（sync は安定パスしか書かない）。
+render が受け付けるパスも同じで、harness の `registration.layouts`（両方とも `stable` だけ）が決める。
 Windows では名前が `.exe` で終わり、POSIX では終わらない。
 数えるのは、render がその harness に描く形で、絶対パスのその実行ファイルをプログラムとして実行する handler だけである（`_runs_agent_hook_release`）。
 形は、Claude では exec 形式（`args` があり、`command` がパスそのもの）だけ。

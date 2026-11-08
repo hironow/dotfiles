@@ -52,7 +52,7 @@ func TestLoadChecksRegistration(t *testing.T) {
 		{"exec null argument", `"args":["{{.Harness}}","{{.Event}}","{{.Hook}}"]`, `"args":[null]`, "args"},
 		{"exec no args", `,"args":["{{.Harness}}","{{.Event}}","{{.Hook}}"]`, ``, "args"},
 		// layouts name the binary paths a registration may hold: the home's
-		// stable link, and (Codex, until PR 3d.2) a release.
+		// stable link, or a release (no harness lists it since PR 3d.2).
 		{"no layouts", `"layouts":["stable"],`, ``, "layouts"},
 		{"empty layouts", `"layouts":["stable"]`, `"layouts":[]`, "layouts"},
 		{"unknown layout", `"layouts":["stable"]`, `"layouts":["stable","elsewhere"]`, "layouts"},
