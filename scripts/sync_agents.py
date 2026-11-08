@@ -30,13 +30,14 @@ import os
 import platform
 import re
 import shutil
-import subprocess
 import sys
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+
+import agent_hook_release as release_tools
 
 if os.name != "nt":
     import agent_hook_sync as hook_sync
@@ -2115,7 +2116,9 @@ def _sync_mode_files(
 
 # Steps for ~/.codex after its files are synced: (script, what failed, what to
 # run by hand). Each runs as a separate process: the steps import this module,
-# so importing them here would create an import cycle.
+# so importing them here would create an import cycle. A step past
+# CODEX_STEP_TIMEOUT is killed with its process group (its app-server too).
+CODEX_STEP_TIMEOUT = 120
 CODEX_STEPS = (
     (
         "codex_hooks_trust.py",
@@ -2142,20 +2145,14 @@ def _run_codex_steps(agent: AgentTarget) -> None:
     if agent.directory != Path.home() / ".codex":
         return  # the steps read CODEX_HOME / ~/.codex only
     for script, failure, fallback in CODEX_STEPS:
-        try:
-            result = subprocess.run(
-                [sys.executable, str(Path(__file__).with_name(script))],
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=120,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError) as error:
-            print(f"  ⚠️  {failure} ({error}); run: {fallback}")
-            continue
-        for line in (result.stdout + result.stderr).splitlines():
+        outcome = release_tools.run(
+            [sys.executable, str(Path(__file__).parent / script)],
+            timeout=CODEX_STEP_TIMEOUT,
+        )
+        for line in (outcome.stdout + outcome.stderr).splitlines():
             print(f"  {line}")
+        if outcome.exit_code is None:  # it did not start, or ran out of time
+            print(f"  ⚠️  {failure} ({outcome.reason}); run: {fallback}")
 
 
 def orphans_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) -> None:

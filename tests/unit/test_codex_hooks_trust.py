@@ -9,8 +9,13 @@ file sync placed is byte-identical to its source. The report also flags a
 disabled or async hook, which Codex would not let block or rewrite.
 """
 
+import contextlib
 import json
+import os
+import queue
 import sys
+import time
+from collections.abc import Generator, Iterator
 from pathlib import Path
 
 import pytest
@@ -157,28 +162,29 @@ def test_a_missing_hook_is_reported(tmp_path: Path) -> None:
 
 
 class FakeServer:
-    """stdin/stdout of a `codex app-server`, answering by method."""
+    """stdin/stdout of a `codex app-server`, answering by method. A method
+    with no answer is never answered; close() ends its output."""
 
     def __init__(self, answers: dict[str, dict]) -> None:
-        self.answers, self.sent, self._out = answers, [], []
+        self.answers, self.sent = answers, []
+        self._out: queue.Queue[str | None] = queue.Queue()
 
     def write(self, line: str) -> None:
         message = json.loads(line)
         self.sent.append(message)
-        if "id" in message:
-            self._out.append(
-                json.dumps(
-                    {"id": message["id"], "result": self.answers[message["method"]]}
-                )
-                + "\n"
-            )
+        if "id" in message and message["method"] in self.answers:
+            answer = {"id": message["id"], "result": self.answers[message["method"]]}
+            self._out.put(json.dumps(answer) + "\n")
 
     def flush(self) -> None:
         pass
 
-    def __iter__(self):
-        while self._out:
-            yield self._out.pop(0)
+    def close(self) -> None:
+        self._out.put(None)
+
+    def __iter__(self) -> Iterator[str]:
+        while (line := self._out.get()) is not None:
+            yield line
 
 
 def test_the_client_initializes_before_its_requests() -> None:
@@ -190,6 +196,147 @@ def test_the_client_initializes_before_its_requests() -> None:
         "initialized",
         "hooks/list",
     ]
+
+
+def test_a_server_that_never_answers_fails_within_the_deadline() -> None:
+    server = FakeServer({})
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="initialize: no answer within 0.2 s"):
+        trust.AppServerClient(server, server, timeout=0.2)
+    assert time.monotonic() - started < 5
+
+
+def test_a_server_that_closes_without_answering_fails() -> None:
+    server = FakeServer({"initialize": {}})
+    client = trust.AppServerClient(server, server, timeout=5)
+    server.close()
+    with pytest.raises(RuntimeError, match="hooks/list: closed without answering"):
+        client.request("hooks/list", {"cwds": ["/h"]})
+
+
+class ClosedServer(FakeServer):
+    """A server that exited: writing to it fails as a closed pipe does."""
+
+    def write(self, line: str) -> None:
+        raise BrokenPipeError(32, "Broken pipe")
+
+
+@pytest.mark.parametrize(
+    ("server", "printed"),
+    [
+        (FakeServer({}), "initialize: no answer within 0.2 s"),
+        (ClosedServer({}), "[Errno 32] Broken pipe"),
+    ],
+    ids=["silent", "closed"],
+)
+def test_main_warns_and_exits_1_when_the_app_server_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    server: FakeServer,
+    printed: str,
+) -> None:
+    home = _home(tmp_path)
+    (home / "hooks.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    monkeypatch.setattr(trust.shutil, "which", lambda name: "/bin/codex")
+
+    @contextlib.contextmanager
+    def failing(codex: str) -> Generator[trust.AppServerClient]:
+        yield trust.AppServerClient(server, server, timeout=0.2)
+
+    monkeypatch.setattr(trust, "app_server", failing)
+    started = time.monotonic()
+    assert trust.main([]) == 1
+    assert time.monotonic() - started < 5
+    assert (
+        capsys.readouterr().out == f"WARN codex-hooks - codex app-server: {printed}\n"
+    )
+
+
+# A guard as agent-hook's render writes it for Codex (sh, through the home's
+# stable link).
+BINARY: trust.Hook = (
+    "preToolUse",
+    "Bash",
+    (
+        "'/s/dotfiles/agent-hooks/current/codex/agent-hook' codex pre --hook "
+        "command-guard || { printf '%s\\n' 'agent-hook failed' >&2; exit 2; }"
+    ),
+)
+
+
+def test_a_binary_command_is_named_by_its_hook_id(tmp_path: Path) -> None:
+    assert trust.problems([], {BINARY}, _home(tmp_path)) == [
+        "preToolUse Bash command-guard: missing from hooks.json (run just sync-agents x)"
+    ]
+
+
+def test_a_project_hook_repeats_a_binary_one_only_by_its_whole_command() -> None:
+    event, matcher, command = BINARY
+
+    def project(command: str) -> dict:
+        return {
+            "eventName": event,
+            "matcher": matcher,
+            "command": command,
+            "source": "project",
+            "sourcePath": "/repo/.codex/hooks.json",
+        }
+
+    # a project command that runs no script is not a copy of every binary one
+    assert trust.project_duplicates([project("echo checked")], {BINARY}) == []
+    assert trust.project_duplicates([project(command)], {BINARY}) == [
+        (
+            "preToolUse Bash command-guard: also registered by /repo/.codex/hooks.json,"
+            " so it runs twice there (delete that file)"
+        )
+    ]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a process group is POSIX's")
+def test_a_codex_step_past_its_timeout_is_killed_with_its_children(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    import sync_agents
+
+    pid_file = tmp_path / "child.pid"
+    step = tmp_path / "slow_step.py"
+    step.write_text(
+        "import pathlib, subprocess, time\n"
+        "child = subprocess.Popen(['sleep', '60'])\n"
+        f"pathlib.Path({str(pid_file)!r}).write_text(str(child.pid), encoding='utf-8')\n"
+        "print('started', flush=True)\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(
+        sync_agents, "CODEX_STEPS", ((str(step), "slow step failed", "run it"),)
+    )
+    monkeypatch.setattr(sync_agents, "CODEX_STEP_TIMEOUT", 1)
+    codex = sync_agents.AgentTarget(
+        directory=tmp_path / ".codex",
+        name="Codex",
+        key="codex",
+        receives_codex_hooks=True,
+    )
+    started = time.monotonic()
+    sync_agents._run_codex_steps(codex)
+    assert time.monotonic() - started < 10
+    out = capsys.readouterr().out
+    assert "  started\n" in out
+    assert "slow step failed (timed out after 1 s); run: run it" in out
+    # the step's child was in its process group, so it is gone too
+    child = int(pid_file.read_text(encoding="utf-8"))
+    for _ in range(50):
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        pytest.fail("the step's child outlived the timeout")
 
 
 @pytest.mark.parametrize(

@@ -18,11 +18,15 @@ Prints doctor-style OK/WARN lines; exit 1 when a hook would not run.
 import contextlib
 import json
 import os
+import queue
+import re
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Generator, Iterable, Sequence
 from pathlib import Path
+from threading import Thread
 from typing import Protocol
 
 from doctor_lines import Line, failed, fmt
@@ -36,6 +40,11 @@ from sync_agents import (
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "codex-hooks"
 TRUSTABLE = {"untrusted", "modified"}
+# How long one app-server request may take. A run makes at most six, so it
+# ends well inside sync's 120 s for the step (sync_agents.CODEX_STEP_TIMEOUT).
+REQUEST_TIMEOUT = 15
+# The hook an agent-hook command runs, as its render writes it.
+HOOK_ID = re.compile(r"--hook ([a-z0-9-]+)")
 
 Hook = tuple[str, str | None, str]  # (eventName, matcher, command) as hooks/list shows
 
@@ -130,8 +139,7 @@ def problems(
     for event, matcher, command in sorted(
         expected, key=lambda hook: (hook[0], hook[2])
     ):
-        name = command.rsplit("/", 1)[-1].rstrip('"')
-        label = f"{event} {matcher} {name}"
+        label = f"{event} {matcher} {_name(command)}"
         matches = [
             e
             for e in entries
@@ -150,11 +158,25 @@ def problems(
     return found
 
 
+def _name(command: str) -> str:
+    """What a report calls a command: an agent-hook command by its hook id,
+    a script's by the end of its path."""
+    hook = HOOK_ID.search(command)
+    return hook.group(1) if hook else command.rsplit("/", 1)[-1].rstrip('"')
+
+
 def _script(command: str) -> str:
     """The hook script a command runs: the last word ending in `.sh`."""
     words = [word.strip("\"'") for word in command.split()]
     scripts = [word.rsplit("/", 1)[-1] for word in words if word.endswith(".sh")]
     return scripts[-1] if scripts else ""
+
+
+def _runs(command: str) -> tuple[str, str]:
+    """What a command repeats when a project registers it too: the script it
+    runs, or, for a command that runs none (agent-hook's), the whole command."""
+    script = _script(command)
+    return ("script", script) if script else ("command", command)
 
 
 def project_duplicates(entries: Iterable[dict], expected: set[Hook]) -> list[str]:
@@ -164,16 +186,16 @@ def project_duplicates(entries: Iterable[dict], expected: set[Hook]) -> list[str
     entry there that runs one of our scripts on the same event and matcher
     makes that hook run twice inside the project.
     """
-    ours = {(event, matcher, _script(command)) for event, matcher, command in expected}
+    ours = {(event, matcher, _runs(command)) for event, matcher, command in expected}
     found = []
     for entry in entries:
         if entry.get("source") != "project":
             continue
         event, matcher, command = _ident(entry)
-        script = _script(command)
-        if (event, matcher, script) in ours:
+        if (event, matcher, _runs(command)) in ours:
+            name = _script(command) or _name(command)
             found.append(
-                f"{event} {matcher} {script}: also registered by "
+                f"{event} {matcher} {name}: also registered by "
                 f"{entry.get('sourcePath')}, so it runs twice there (delete that file)"
             )
     return found
@@ -196,10 +218,20 @@ def batch_write_params(entries: Iterable[dict]) -> dict:
 
 
 class AppServerClient:
-    """JSON-RPC over a `codex app-server`'s stdio (one JSON message per line)."""
+    """JSON-RPC over a `codex app-server`'s stdio (one JSON message per line).
 
-    def __init__(self, writer: Writer, reader: Iterable[str]) -> None:
-        self._writer, self._reader, self._next = writer, reader, 1
+    A thread reads the server's lines into a queue, so a request waits at
+    most `timeout` seconds for its answer, and raises RuntimeError when none
+    comes or the server closes first.
+    """
+
+    def __init__(
+        self, writer: Writer, reader: Iterable[str], timeout: float = REQUEST_TIMEOUT
+    ) -> None:
+        self._writer, self._next, self._timeout = writer, 1, timeout
+        self._lines: queue.Queue[str | None] = queue.Queue()
+        # A daemon: a server that never closes must not keep this process.
+        Thread(target=self._read, args=(reader,), daemon=True).start()
         self.request(
             "initialize",
             {"clientInfo": {"name": "dotfiles-codex-hooks-trust", "version": "1"}},
@@ -210,10 +242,28 @@ class AppServerClient:
         self._writer.write(json.dumps(message) + "\n")
         self._writer.flush()
 
+    def _read(self, reader: Iterable[str]) -> None:
+        try:
+            for line in reader:
+                self._lines.put(line)
+        except (OSError, ValueError):
+            pass  # a closed pipe ends the output as EOF does
+        self._lines.put(None)
+
     def request(self, method: str, params: dict) -> dict:
         request_id, self._next = self._next, self._next + 1
         self._send({"id": request_id, "method": method, "params": params})
-        for line in self._reader:
+        deadline = time.monotonic() + self._timeout
+        while True:
+            try:
+                line = self._lines.get(timeout=max(0, deadline - time.monotonic()))
+            except queue.Empty:
+                raise RuntimeError(
+                    f"{method}: no answer within {self._timeout:g} s"
+                ) from None
+            if line is None:
+                self._lines.put(None)  # later requests see the end too
+                raise RuntimeError(f"{method}: closed without answering")
             try:
                 message = json.loads(line)
             except ValueError:
@@ -222,7 +272,6 @@ class AppServerClient:
                 if "error" in message:
                     raise RuntimeError(f"{method}: {message['error']}")
                 return message.get("result") or {}
-        raise RuntimeError(f"{method}: codex app-server closed without answering")
 
 
 @contextlib.contextmanager
@@ -238,12 +287,17 @@ def app_server(codex: str) -> Generator[AppServerClient]:
     assert proc.stdin is not None and proc.stdout is not None
     try:
         yield AppServerClient(proc.stdin, proc.stdout)
+    except BaseException:
+        proc.kill()  # a server that failed a request is not waited for
+        raise
     finally:
-        proc.stdin.close()
+        with contextlib.suppress(OSError):
+            proc.stdin.close()
         try:
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait()
 
 
 def list_hooks(client: AppServerClient, cwd: Path) -> list[dict]:
@@ -287,16 +341,20 @@ def main(argv: Sequence[str]) -> int:
         print(fmt(("WARN", NAME, detail)))
         return 1
     expected = expected_hooks(ROOT, codex_home)
-    with app_server(codex) as client:
-        entries = list_hooks(client, Path.home())
-        chosen = [] if check else select(entries, expected, codex_home)
-        if chosen:
-            client.request("config/batchWrite", batch_write_params(chosen))
+    try:
+        with app_server(codex) as client:
             entries = list_hooks(client, Path.home())
-        found = problems(entries, expected, codex_home)
-        # The dotfiles checkout is a trusted Codex project: anything it ships as
-        # project hooks would run on top of the global ones there.
-        found += project_duplicates(list_hooks(client, ROOT), expected)
+            chosen = [] if check else select(entries, expected, codex_home)
+            if chosen:
+                client.request("config/batchWrite", batch_write_params(chosen))
+                entries = list_hooks(client, Path.home())
+            found = problems(entries, expected, codex_home)
+            # The dotfiles checkout is a trusted Codex project: anything it
+            # ships as project hooks would run on top of the global ones there.
+            found += project_duplicates(list_hooks(client, ROOT), expected)
+    except (RuntimeError, OSError) as error:  # no answer, or a closed pipe
+        print(fmt(("WARN", NAME, f"codex app-server: {error}")))
+        return 1
     lines = trust_lines(len(chosen), found, len(expected))
     for line in lines:
         print(fmt(line))

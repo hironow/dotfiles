@@ -175,6 +175,8 @@ Codex は、hash を信頼済みとして記録した hook だけを実行する
 sync は `~/.codex` に配ったあと `scripts/codex_hooks_trust.py` を実行し、Codex の app-server（`hooks/list` と `config/batchWrite`）を通して、断片から作った hook だけを信頼済みにする。
 配った hook のファイルが正本と 1 byte でも違うときは信頼しない。
 `just codex-hooks-trust --check` は書き込まずに状態を表示する。
+app-server への問い合わせは 1 回 15 秒まで待ち、答えがなければ WARN を出して exit 1 で終わる。
+sync はこれらの手順を 1 つ 120 秒まで待ち、過ぎたら手順のプロセスグループごと（app-server も）止める。
 Windows では、続けて `scripts/codex_sandbox_tools.py` を実行し、Codex の sandbox が mise の道具（rtk など）を実行できるようにする（`docs/runbook/windows-host.md`）。
 `just doctor` と `just status` も同じ検査を含む。
 
