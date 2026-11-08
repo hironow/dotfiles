@@ -1557,6 +1557,7 @@ def test_sync_without_go_keeps_todays_scripts_and_says_why(docker_image):
     result = _run_in_container(
         docker_image,
         """
+    set -euo pipefail
     cd /root/dotfiles && just sync-agents
     grep -q '/root/.claude/hooks/block-prohibited-commands.sh' /root/.claude/settings.json && echo "scripts-registered"
     [ -e /root/.local/share/dotfiles/agent-hooks/current/claude/agent-hook ] || echo "no-link"
@@ -1582,6 +1583,7 @@ def test_sync_wires_claude_with_a_real_release(docker_image):
     _run_in_container(
         docker_image,
         f"""
+    set -euo pipefail
     {keep}
     cd /root/dotfiles/tools/agent-hooks && GOFLAGS=-modcacherw go mod download
     cd /root/dotfiles && uv sync --frozen
@@ -1592,6 +1594,7 @@ def test_sync_wires_claude_with_a_real_release(docker_image):
     result = _run_in_container(
         docker_image,
         f"""
+    set -euo pipefail
     {keep}
     cd /root/dotfiles && just sync-agents
     echo "--- settings"

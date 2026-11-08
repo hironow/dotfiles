@@ -88,6 +88,25 @@ class Disk(Protocol):
     def journals(self, state: Path) -> list[Path]: ...
 
 
+def flush(descriptor: int) -> None:
+    """Flush what was written all the way to the disk.
+
+    On macOS, fsync(2) stops at the drive's cache, which may reorder writes
+    (man 2 fsync), so this asks for F_FULLFSYNC, as Go's File.Sync does, and
+    falls back to fsync where the file system does not support it.
+    """
+    if sys.platform == "darwin":
+        import fcntl
+
+        try:
+            fcntl.fcntl(descriptor, getattr(fcntl, "F_FULLFSYNC", 51))
+            return
+        except OSError as exc:
+            if exc.errno not in (errno.ENOTSUP, errno.EOPNOTSUPP):
+                raise
+    os.fsync(descriptor)
+
+
 class RealDisk:
     """POSIX filesystem adapter. No environment or user-home discovery."""
 
@@ -112,12 +131,12 @@ class RealDisk:
 
     def fsync_file(self, path: Path) -> None:
         with path.open("rb") as stream:
-            os.fsync(stream.fileno())
+            flush(stream.fileno())
 
     def fsync_directory(self, path: Path) -> None:
         descriptor = open_descriptor(path, os.O_RDONLY | os.O_DIRECTORY)
         try:
-            os.fsync(descriptor)
+            flush(descriptor)
         finally:
             os.close(descriptor)
 
@@ -295,7 +314,7 @@ def switch_lock(
         with os.fdopen(os.dup(descriptor), "wb") as stream:
             stream.write(holder_bytes)
             stream.flush()
-            os.fsync(stream.fileno())
+            flush(stream.fileno())
         disk.fsync_directory(roots.state)
         yield
     finally:
@@ -677,7 +696,8 @@ def _delete_journal(change: Change, disk: Disk) -> None:
         raise
 
 
-def _set_mark(disk: Disk, mark: MarkChange, present: bool) -> None:
+def set_mark(disk: Disk, mark: MarkChange, present: bool) -> None:
+    """Create (empty) or remove the uninstall mark, durably."""
     if disk.exists(mark.path) == present:
         return
     if present:
@@ -692,9 +712,9 @@ def _restore_file(disk: Disk, file: FileChange) -> None:
     old_hooks = _hooks(file.old)
     if _equal_hooks(hooks, old_hooks):
         return
-    if file.old is None and current == file.new:
-        _delete_file(disk, file.path)
-        return
+    # A change's scope is the hooks value: even a file the change created
+    # stays, with every other key as it is now (the shared settings sync
+    # wrote with it, and any key another program wrote since).
     settings = _settings(current)
     if old_hooks is _MissingHooks.ABSENT:
         settings.pop("hooks", None)
@@ -809,7 +829,7 @@ def _restore(change: Change, disk: Disk, steps: Steps, error: str) -> ChangeResu
                 _guard_components(change.journal, disk)
             journal = change.journal
             if stage == "restore-mark" and journal.mark:
-                _set_mark(disk, journal.mark, journal.mark.old)
+                set_mark(disk, journal.mark, journal.mark.old)
             elif stage == "restore-file":
                 _restore_file(disk, journal.file)
             elif stage == "restore-link" and journal.link:
@@ -871,7 +891,7 @@ def apply_change(
                 if journal.file.new != journal.file.old:
                     write_whole(disk, journal.file.path, journal.file.new)
             elif stage == "mark" and journal.mark:
-                _set_mark(disk, journal.mark, journal.mark.new)
+                set_mark(disk, journal.mark, journal.mark.new)
             elif stage == "verify":
                 _verify(change, disk, verifier)
         _delete_journal(change, disk)

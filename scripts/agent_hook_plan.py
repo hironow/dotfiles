@@ -44,6 +44,9 @@ class HomeFacts:
     shared_merge: Callable[[dict, dict], tuple[dict, dict]]
     managed_from: Callable[[dict], dict]
     reason: str = ""
+    # S holds a retired block (rtk's own hook, which agent-hook's replaces):
+    # the hook merge drops it, so an equal registration still registers.
+    retired: bool = False
 
 
 @dataclass(frozen=True)
@@ -107,7 +110,7 @@ def _decision(operation: str, facts: HomeFacts) -> tuple[str, str]:
         return "uninstalled", ""
     if available:
         assert facts.rendered is not None and facts.release is not None
-        if facts.managed == facts.rendered.get("hooks", {}):
+        if facts.managed == facts.rendered.get("hooks", {}) and not facts.retired:
             return (
                 ("nothing", "")
                 if facts.target == str(facts.release.path)

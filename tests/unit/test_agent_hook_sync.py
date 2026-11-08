@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -21,6 +22,16 @@ import agent_hook_plan as plan
 import agent_hook_release as release
 import agent_hook_sync as hooks
 import agent_hook_wiring as wiring
+
+
+@pytest.fixture(autouse=True)
+def plain_fsync(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A full flush (F_FULLFSYNC) takes milliseconds on macOS; these tests pin
+    what is written and in which order, not the flush (test_agent_hook_wiring
+    tests it)."""
+    monkeypatch.setattr(wiring, "flush", os.fsync)
+
+
 import sync_agents as sync
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -874,7 +885,9 @@ def test_crashed_change_is_recovered_before_preparing_a_release_and_the_sessions
         assert (
             source.calls[0] == "prepare"
         )  # No selftest is needed while restoring stage=file.
-    assert not settings.exists()
+    # The file the change created stays, without hooks: a restore puts back
+    # the old hooks value (none) and keeps the rest.
+    assert "hooks" not in json.loads(settings.read_bytes())
     command = session_command.read_text(encoding="utf-8")
     assert release.run(
         [command, "claude", "pre", "--hook", "rtk"], env=dict(os.environ), timeout=2
@@ -1098,3 +1111,314 @@ def test_a_home_that_stops_lets_the_others_sync_then_the_run_fails(
     assert (work.directory / "settings.json").read_bytes() == wired.replace(
         b"/current/claude/", b"/current/work-a/"
     )
+
+
+class FailingClaudeSelftest(FakeSource):
+    """A release whose selftest fails through claude's link only."""
+
+    def selftest(self, link: Path) -> release.Outcome:
+        if link == self.roots.link("claude"):
+            self.calls.append("selftest")
+            return release.Outcome(1, reason="selftest failed")
+        return super().selftest(link)
+
+
+class EditBeforeTheFileStep:
+    """Another program writes claude's settings.json just before the file step."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def before(self, key: str, stage: str) -> None:
+        if key == "claude" and stage == "file":
+            settings = json.loads(self.path.read_bytes())
+            settings["editorMode"] = "vim"
+            self.path.write_text(json.dumps(settings), encoding="utf-8")
+
+
+@pytest.mark.parametrize("failure", ["verify fails", "settings edited"])
+def test_a_home_whose_change_did_not_commit_keeps_the_scripts_it_registers(
+    workspace: tuple,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    failure: str,
+) -> None:
+    dotfiles, agent, roots, _ = workspace
+    work = sync.AgentTarget(
+        tmp_path / "home/.claude-work-a",
+        "Claude work-a",
+        key="work-a",
+        receives_hooks=True,
+        main_file="AGENTS.md",
+    )
+    # given claude running today's script, placed by a first sync with no release
+    (dotfiles / "ROOT_AGENTS_hooks_check.sh").write_text(
+        "#!/bin/sh\nexit 0\n", encoding="utf-8"
+    )
+    offline = FakeSource(roots, available=False)
+    sync.sync_mode(
+        dotfiles,
+        auto_yes=True,
+        agents=[agent],
+        hook_source=offline,
+        env=dict(os.environ),
+        system="Darwin",
+    )
+    settings = agent.directory / "settings.json"
+    registered = json.loads(settings.read_bytes())["hooks"]
+    assert "/hooks/check.sh" in json.dumps(registered)
+    assert (agent.directory / "hooks/check.sh").is_file()
+    # and the source renaming that script, so the placed one is an orphan
+    (dotfiles / "ROOT_AGENTS_hooks_check.sh").rename(
+        dotfiles / "ROOT_AGENTS_hooks_check2.sh"
+    )
+    fragment = dotfiles / sync.HOOK_SETTINGS_FRAGMENT
+    fragment.write_text(
+        fragment.read_text(encoding="utf-8").replace("check.sh", "check2.sh"),
+        encoding="utf-8",
+    )
+    # when sync wires claude and work-a, and claude's change does not commit
+    source = FailingClaudeSelftest(roots)
+    steps = EditBeforeTheFileStep(settings) if failure == "settings edited" else None
+    with pytest.raises(SystemExit) as exit_info:
+        sync.sync_mode(
+            dotfiles,
+            auto_yes=True,
+            agents=[agent, work],
+            hook_source=source if failure == "verify fails" else FakeSource(roots),
+            env=dict(os.environ),
+            system="Darwin",
+            hook_steps=steps,
+        )
+    # then claude keeps today's registration and the script it names, work-a
+    # is wired, and the run fails
+    out = capsys.readouterr().out
+    assert exit_info.value.code == 1
+    assert json.loads(settings.read_bytes())["hooks"] == registered
+    assert (agent.directory / "hooks/check.sh").is_file(), out
+    assert "agent-hook: work-a wired (1111111111111111)" in out
+    if failure == "verify fails":
+        assert "agent-hook: claude restored: " in out
+    else:
+        assert json.loads(settings.read_bytes())["editorMode"] == "vim"
+        assert "agent-hook: claude stopped: " in out
+
+
+# ---- review round 1 (PR 3d.1): the independent review's findings ----
+
+
+def _work_a(tmp_path: Path) -> sync.AgentTarget:
+    return sync.AgentTarget(
+        tmp_path / "home/.claude-work-a",
+        "Claude work-a",
+        key="work-a",
+        receives_hooks=True,
+        main_file="AGENTS.md",
+    )
+
+
+@pytest.mark.parametrize("broken", ["settings JSON", "a file at the link"])
+def test_a_home_whose_state_cannot_be_read_stops_alone(
+    workspace: tuple,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    broken: str,
+) -> None:
+    dotfiles, agent, roots, source = workspace
+    work = _work_a(tmp_path)
+    # given work-a's state unreadable, listed before claude
+    work.directory.mkdir(parents=True)
+    if broken == "settings JSON":
+        (work.directory / "settings.json").write_text("{not json", encoding="utf-8")
+    else:
+        roots.link("work-a").parent.mkdir(parents=True)
+        roots.link("work-a").write_bytes(b"not a link")
+    # when sync runs both, then work-a stops, claude is wired, and the run fails
+    with pytest.raises(SystemExit) as exit_info:
+        sync.sync_mode(
+            dotfiles,
+            auto_yes=True,
+            agents=[work, agent],
+            hook_source=source,
+            env=dict(os.environ),
+            system="Darwin",
+        )
+    out = capsys.readouterr().out
+    assert exit_info.value.code == 1
+    assert "agent-hook: work-a stopped: " in out
+    assert "agent-hook: claude wired (1111111111111111)" in out
+
+
+def test_a_retired_block_in_a_wired_home_is_dropped(workspace: tuple) -> None:
+    _, agent, _, _ = workspace
+    with open_session(workspace) as session:
+        assert session.apply_home("claude").status == "committed"
+    path = agent.directory / "settings.json"
+    settings = json.loads(path.read_bytes())
+    wired = deepcopy(settings["hooks"])
+    # given rtk's own hook added back, which agent-hook's rtk hook replaces
+    rtk = {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": "rtk hook claude"}],
+    }
+    settings["hooks"]["PreToolUse"].append(rtk)
+    path.write_text(json.dumps(settings), encoding="utf-8")
+    # when sync runs, then it drops that block, so rtk does not run twice
+    with open_session(workspace) as session:
+        assert session.plans["claude"].plan.action == "register"
+        assert session.apply_home("claude").status == "committed"
+    assert json.loads(path.read_bytes())["hooks"] == wired
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        '"$HOME/.local/share/dotfiles/agent-hooks/releases/{id}/agent-hook" claude pre',
+        "~/.local/share/dotfiles/agent-hooks/releases/{id}/agent-hook claude pre",
+        "'dotfiles/agent-hooks/releases/{id}/agent-hook' claude pre",
+        "cd ~ && .local/share/dotfiles/agent-hooks/releases/{id}/agent-hook post",
+    ],
+)
+def test_gc_keeps_a_release_a_block_names_through_the_shell(
+    workspace: tuple, command: str
+) -> None:
+    _, agent, _, source = workspace
+    # given a user's block that names a release with $HOME, ~, or a relative path
+    named = source.evidence()
+    agent.directory.mkdir(parents=True)
+    block = {"type": "command", "command": command.format(id=named.id)}
+    (agent.directory / "settings.json").write_text(
+        json.dumps({"hooks": {"PreToolUse": [{"hooks": [block]}]}}), encoding="utf-8"
+    )
+    # when gc deletes, then that release stays: the shell reaches it
+    assert hooks.run_command(configuration(workspace), "gc", [], delete=True) == 0
+    assert named.path.is_file()
+
+
+def test_a_recovery_is_printed_and_is_no_nothing_to_do(
+    workspace: tuple, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dotfiles, agent, roots, source = workspace
+    agent.directory.mkdir(parents=True)
+    (agent.directory / "AGENTS.md").write_text("base\n", encoding="utf-8")
+
+    class CrashAtVerify:
+        def before(self, key: str, stage: str) -> None:
+            if stage == "verify":
+                os._exit(0)
+
+    # given a change that crashed at verify, with every file already in place
+    sync._merge_hook_settings(dotfiles, agent)
+    child = os.fork()
+    if child == 0:
+        try:
+            with open_session(workspace, steps=CrashAtVerify()) as session:
+                session.apply_home("claude")
+        finally:
+            os._exit(91)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 0
+    assert roots.journal("claude").is_file()
+    capsys.readouterr()
+    # when sync runs, then it says what recovery did, and does not claim that
+    # nothing was to do
+    sync.sync_mode(
+        dotfiles,
+        auto_yes=True,
+        agents=[agent],
+        hook_source=source,
+        env=dict(os.environ),
+        system="Darwin",
+    )
+    out = capsys.readouterr().out
+    assert "agent-hook: claude recovered: committed" in out
+    assert "already in sync" not in out
+    assert not roots.journal("claude").exists()
+
+
+def test_gc_stops_when_codex_starts_before_a_deletion(workspace: tuple) -> None:
+    class StartsLater:
+        def __init__(self) -> None:
+            self.answers = [False, True]
+
+        def running(self) -> bool:
+            return self.answers.pop(0) if self.answers else True
+
+    # given an unreferenced release, and Codex starting after gc's first check
+    unused = workspace[3].evidence()
+    config = replace(configuration(workspace), processes=StartsLater())
+    # when gc deletes, then it stops before the deletion
+    assert hooks.run_command(config, "gc", [], delete=True) == 1
+    assert unused.path.is_file()
+
+
+@pytest.mark.parametrize("changed", ["mark", "state"])
+def test_a_mark_or_state_changed_after_planning_is_planned_again(
+    workspace: tuple, changed: str
+) -> None:
+    _, agent, roots, source = workspace
+    with open_session(workspace) as session:
+        assert session.apply_home("claude").status == "committed"
+    first = roots.link("claude").resolve()
+    # given a plan to move the link to a new release
+    source.id = "2222222222222222"
+    with open_session(workspace) as session:
+        assert session.plans["claude"].plan.action == "link"
+        planned = []
+        read_plan = session.read_plan
+
+        def counting(home: hooks.HookHome) -> hooks.PlannedHome:
+            planned.append(home.key)
+            return read_plan(home)
+
+        session.read_plan = counting  # type: ignore[method-assign]
+        # when another program changes the mark or the state file before the write
+        if changed == "mark":
+            roots.mark("claude").parent.mkdir(parents=True, exist_ok=True)
+            roots.mark("claude").write_bytes(b"")
+        else:
+            (agent.directory / "settings.sync-state.json").write_text(
+                '{"retired": ["someone-else"]}', encoding="utf-8"
+            )
+        result = session.apply_home("claude")
+    # then the home is planned again from what is there now
+    assert planned == ["claude"]
+    if changed == "mark":
+        # uninstalled, yet wired: it stops, and the link stays where it was
+        assert result.status == "stopped"
+        assert roots.link("claude").resolve() == first
+    else:
+        assert result.status == "committed"
+
+
+def test_a_register_journals_no_mark(workspace: tuple) -> None:
+    _, _, roots, _ = workspace
+
+    class CrashAtFile:
+        def before(self, key: str, stage: str) -> None:
+            if stage == "file":
+                os._exit(0)
+
+    child = os.fork()
+    if child == 0:
+        try:
+            with open_session(workspace, steps=CrashAtFile()) as session:
+                session.apply_home("claude")
+        finally:
+            os._exit(91)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 0
+    # the mark does not change in a register, so its journal names none
+    journal = wiring.read_journal(RecordingDisk(), roots.journal("claude"))
+    assert journal.kind == "register" and journal.mark is None
+
+
+def test_uninstall_of_a_home_with_no_settings_makes_no_file(workspace: tuple) -> None:
+    dotfiles, agent, roots, _ = workspace
+    # given no hooks fragment in the checkout, and a home with no settings.json
+    (dotfiles / sync.HOOK_SETTINGS_FRAGMENT).unlink()
+    agent.directory.mkdir(parents=True)
+    # when it is uninstalled, then only the mark is written
+    assert hooks.run_command(configuration(workspace), "uninstall", ["p"]) == 0
+    assert roots.mark("claude").is_file()
+    assert not (agent.directory / "settings.json").exists()

@@ -93,6 +93,7 @@ def facts(
     available: bool = True,
     equal: bool = False,
     linked: bool = True,
+    retired: bool = False,
 ) -> plan.HomeFacts:
     release = plan.ReleaseEvidence(
         Path("/data/dotfiles/agent-hooks/releases/0123456789abcdef/agent-hook"),
@@ -118,6 +119,7 @@ def facts(
         shared_merge=lambda s, y: (deepcopy(s), deepcopy(y)),
         managed_from=managed,
         reason="no Go",
+        retired=retired,
     )
 
 
@@ -192,3 +194,19 @@ def test_state_only_change_is_not_nothing_to_do() -> None:
     assert observed.settings is plan.UNCHANGED
     assert isinstance(observed.state, bytes)
     assert json.loads(observed.state) == {"retired": ["migration"]}
+
+
+def test_a_retired_block_turns_an_equal_registration_into_register() -> None:
+    # given a home wired as the release renders it, with rtk's own hook back
+    observed = plan.plan_home("sync", facts(equal=True, retired=True))
+    # then sync registers again, and its merge drops that block
+    assert observed.action == "register"
+
+
+def test_keep_without_a_link_says_every_hook_blocks() -> None:
+    observed = plan.plan_home("sync", facts(wired=True, available=False, linked=False))
+    assert observed.action == "keep"
+    assert (
+        "every hook of claude blocks until a release is ready or the home is uninstalled"
+        in observed.reason
+    )

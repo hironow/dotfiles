@@ -978,12 +978,13 @@ agent-hooks-gc *args:
     {{UV_RUN}} scripts/agent_hook_sync.py gc "$@"
 
 # Run agent-hook's process tests (cmd/agent-hook) against the release a home's
-# link names, after `hookrelease check` passes on it. KEY is sync's target key.
+# link names, after `hookrelease check` passes on it. KEY is sync's target key;
+# GO runs Go (tests/unit/test_agent_hooks_test_installed.py passes the module's).
 # Run agent-hook's own process tests against the release a home's link names (KEY: claude, work-a, ...).
 [group('Agents')]
 [positional-arguments]
 [unix]
-agent-hooks-test-installed key="claude":
+agent-hooks-test-installed key="claude" go="mise x -- go":
     #!/usr/bin/env bash
     set -euo pipefail
     key="${1:-claude}"
@@ -994,9 +995,9 @@ agent-hooks-test-installed key="claude":
     id="$(basename "$(dirname "$release")")"
     work="$(mktemp -d)"
     trap 'rm -rf "$work"' EXIT
-    (cd tools/agent-hooks && mise x -- go build -o "$work/hookrelease" ./cmd/hookrelease)
+    (cd tools/agent-hooks && {{go}} build -o "$work/hookrelease" ./cmd/hookrelease)
     (cd tools/agent-hooks && "$work/hookrelease" check "$link")
-    "{{ just_executable() }}" --justfile "{{ justfile() }}" _agent-hooks-test-binary "$link" "$id"
+    "{{ just_executable() }}" --justfile "{{ justfile() }}" _agent-hooks-test-binary "$link" "$id" "{{go}}"
 
 # Run cmd/agent-hook's tests against BINARY, which must say it is release ID
 # (AGENT_HOOK_UNDER_TEST, AGENT_HOOK_EXPECT_RELEASE). -count=1: no cached result.

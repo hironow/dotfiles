@@ -22,6 +22,7 @@ from typing import Protocol
 import agent_hook_release as release_tools
 import agent_hook_wiring as wiring
 from agent_hook_plan import (
+    UNCHANGED,
     HomeFacts,
     HomePlan,
     ReleaseEvidence,
@@ -160,6 +161,7 @@ class HomeRules:
     shared_merge: Callable[[dict, dict], tuple[dict, dict]]
     managed_from: Callable[[dict], dict]
     wired_from: Callable[[dict], bool]
+    retired_from: Callable[[dict], bool] = lambda _: False
 
 
 @dataclass(frozen=True)
@@ -172,7 +174,7 @@ class HookHome:
 @dataclass(frozen=True)
 class PlannedHome:
     home: HookHome
-    facts: HomeFacts
+    facts: HomeFacts | None  # None: the home's state could not be read
     plan: HomePlan
 
 
@@ -186,6 +188,16 @@ class HomeResult:
 
     @property
     def message(self) -> str:
+        if self.status == "restored":
+            return (
+                f"agent-hook: {self.key} restored: {self.reason}; "
+                "its registration is as it was"
+            )
+        if self.status == "abandoned":
+            return (
+                f"agent-hook: {self.key} stopped: {self.reason}; "
+                "nothing of the change remains; run sync again"
+            )
         if self.status != "committed" or self.action == "stop":
             return f"agent-hook: {self.key} stopped: {self.reason}"
         detail = {
@@ -298,7 +310,7 @@ class SyncSession:
         self.operation, self.roots, self.source = operation, roots, source
         self.offer, self.disk, self.steps, self.system = offer, disk, steps, system
         self.recovered = recovered
-        self.plans = {home.key: self.read_plan(home) for home in homes}
+        self.plans = {home.key: self.plan_or_stop(home) for home in homes}
 
     @property
     def changed(self) -> bool:
@@ -306,6 +318,28 @@ class SyncSession:
             home.plan.changed or home.plan.action == "stop"
             for home in self.plans.values()
         )
+
+    def plan_or_stop(self, home: HookHome) -> PlannedHome:
+        """The home's plan, or a stop that names what could not be read: one
+        unreadable home stops alone, and the others are still planned."""
+        try:
+            return self.read_plan(home)
+        except (OSError, ValueError) as exc:
+            return PlannedHome(
+                home,
+                None,
+                HomePlan(
+                    "stop",
+                    UNCHANGED,
+                    UNCHANGED,
+                    UNCHANGED,
+                    None,
+                    None,
+                    False,
+                    False,
+                    f"cannot read the home's state: {exc}",
+                ),
+            )
 
     def read_plan(self, home: HookHome) -> PlannedHome:
         rules = home.read_rules()
@@ -347,11 +381,13 @@ class SyncSession:
             rules.shared_merge,
             rules.managed_from,
             reason,
+            retired=rules.retired_from(value),
         )
         return PlannedHome(home, facts, plan_home(self.operation, facts))
 
     def _check_facts(self, prepared: PlannedHome) -> None:
         home, facts = prepared.home, prepared.facts
+        assert facts is not None
         for component, found, expected in (
             (
                 "settings.json",
@@ -375,6 +411,8 @@ class SyncSession:
         prepared = self.plans[key]
         for attempt in range(2):
             home, facts, plan = prepared.home, prepared.facts, prepared.plan
+            if facts is None:
+                return HomeResult(key, plan.action, "stopped", plan.reason)
             evidence = facts.release
             release_id = "" if evidence is None else evidence.id
             try:
@@ -399,8 +437,19 @@ class SyncSession:
                     new_bytes = (
                         plan.settings
                         if isinstance(plan.settings, bytes)
-                        else facts.settings or b"{}\n"
+                        else facts.settings
                     )
+                    if new_bytes is None:
+                        # No settings.json, and nothing to write into one:
+                        # an unregister of such a home is its mark alone.
+                        wiring.set_mark(
+                            self.disk,
+                            wiring.MarkChange(
+                                self.roots.mark(key), plan.old_mark, plan.new_mark
+                            ),
+                            plan.new_mark,
+                        )
+                        return HomeResult(key, kind, "committed", "", release_id)
                     journal = wiring.Journal(
                         home=key,
                         kind=kind,
@@ -418,7 +467,10 @@ class SyncSession:
                         file=wiring.FileChange(
                             home.directory / "settings.json", facts.settings, new_bytes
                         ),
-                        mark=wiring.MarkChange(
+                        # null when the mark does not change (a register)
+                        mark=None
+                        if plan.old_mark == plan.new_mark
+                        else wiring.MarkChange(
                             self.roots.mark(key), plan.old_mark, plan.new_mark
                         ),
                     )
@@ -453,7 +505,7 @@ class SyncSession:
             except wiring.ChangedSinceRead as exc:
                 if attempt:
                     return HomeResult(key, plan.action, "stopped", str(exc))
-                prepared = self.read_plan(home)
+                prepared = self.plan_or_stop(home)
                 self.plans[key] = prepared
             except (OSError, ValueError) as exc:
                 return HomeResult(key, plan.action, "stopped", str(exc))
@@ -477,6 +529,15 @@ def open_session(
     steps = wiring.NoSteps() if steps is None else steps
     with wiring.switch_lock(roots, wait_limit=wait_limit):
         outcomes = wiring.recover(roots, disk, steps, source)
+        for outcome in outcomes:
+            print(
+                f"agent-hook: {outcome.home} recovered: {outcome.status}"
+                + (
+                    f" ({outcome.error})"
+                    if outcome.error and outcome.status != "committed"
+                    else ""
+                )
+            )
         if any(result.status == "stopped" for result in outcomes):
             stopped = outcomes[-1]
             raise SyncStopped(
@@ -536,6 +597,12 @@ def _hook_strings(value: object) -> Generator[str]:
                 yield from _hook_strings(element)
 
 
+# A release named by its ID, with either separator.
+NAMED_RELEASE = re.compile(
+    r"dotfiles[\\/]agent-hooks[\\/]releases[\\/]([0-9a-f]{16})[\\/]agent-hook"
+)
+
+
 def release_references(
     roots: wiring.Roots, disk: ReleaseDisk, registrations: Sequence[Path]
 ) -> set[Path]:
@@ -566,6 +633,10 @@ def release_references(
             references.add(resolved)
 
     def add_text(text: str) -> None:
+        # Any mention of a release by its ID keeps it, whatever comes before
+        # (a shell reaches $HOME/..., ~/..., and relative paths too).
+        for match in NAMED_RELEASE.finditer(text):
+            references.add(resolved_root / "releases" / match[1] / "agent-hook")
         texts = [text]
         try:
             texts.extend(shlex.split(text))

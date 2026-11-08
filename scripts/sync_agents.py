@@ -1143,8 +1143,15 @@ def hook_home(
                 for h in block["hooks"]
             )
 
+        def retired_from(settings: dict) -> bool:
+            return any(
+                isinstance(block, dict) and _is_retired_hook_block(block)
+                for blocks in settings.get("hooks", {}).values()
+                for block in blocks
+            )
+
         return hook_sync.HomeRules(
-            scripts, hook_merge, shared_merge, managed_from, wired_from
+            scripts, hook_merge, shared_merge, managed_from, wired_from, retired_from
         )
 
     return hook_sync.HookHome(agent.key, agent.directory, read_rules)
@@ -2051,7 +2058,10 @@ def _sync_mode_files(
             result = hook_session.apply_home(plan.agent.key)
             print(f"  {result.message}")
             if result.status != "committed":
+                # Nothing more of that home is written: its deletions could
+                # take a script the registration it kept still runs.
                 stopped.append(result.message)
+                continue
         elif (
             plan.agent.receives_hooks or plan.agent.receives_codex_hooks
         ) and _merge_hook_settings(dotfiles_dir, plan.agent, system=system):

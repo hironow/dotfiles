@@ -21,6 +21,18 @@ if os.name == "nt":
 
 import agent_hook_wiring as wiring
 
+# The real flush, for the tests of the flush itself.
+REAL_FLUSH = wiring.flush
+
+
+@pytest.fixture(autouse=True)
+def plain_fsync(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A full flush (F_FULLFSYNC) takes milliseconds on macOS, and these tests
+    flush thousands of times. What they pin is the order of the Disk port's
+    calls and faults injected at them, which a plain fsync keeps; the flush's
+    own tests put REAL_FLUSH back."""
+    monkeypatch.setattr(wiring, "flush", os.fsync)
+
 
 @pytest.fixture(autouse=True)
 def isolated_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -603,7 +615,12 @@ def assert_registration(
     current = change.journal.file.path
     before = change.journal.file.old
     if not committed and before is None:
-        assert not current.exists()
+        # A change's scope is the hooks value: the file stays, with every
+        # other key the new bytes held (the shared settings sync wrote).
+        restored = json.loads(current.read_bytes())
+        written = json.loads(change.journal.file.new)
+        assert "hooks" not in restored
+        assert restored == {k: v for k, v in written.items() if k != "hooks"}
     else:
         expected_bytes = change.journal.file.new if committed else before
         assert expected_bytes is not None
@@ -939,7 +956,7 @@ def test_fault_at_every_disk_call_then_recovery_never_leaves_a_mix(
 
 
 @pytest.mark.parametrize("kind", ["register", "install", "unregister"])
-def test_restore_of_initially_missing_file_removes_only_our_file(
+def test_restore_of_initially_missing_file_keeps_its_other_keys(
     tmp_path: Path, kind: str
 ) -> None:
     change = prepared_change(tmp_path, kind, old_file=False)
@@ -1319,3 +1336,133 @@ def test_journal_homes_are_the_claude_homes_sync_wires() -> None:
     assert wiring.HOMES == {
         agent.key for agent in sync_agents.AGENTS if agent.receives_hooks
     }
+
+
+# ---- review round 1 (PR 3d.1): the independent review's findings ----
+
+
+def test_recovery_stops_at_the_first_journal_it_cannot_resolve(tmp_path: Path) -> None:
+    # given claude's change crashed at its file step, then its link moved by
+    # another program, and work-a's change pending after it in name order
+    change = prepared_change(tmp_path)
+
+    def crash(stage: str) -> None:
+        if stage == "file":
+            os._exit(0)
+
+    fork_apply(change, StageVisits(crash))
+    elsewhere = change.roots.data / "releases/3333333333333333/agent-hook"
+    elsewhere.parent.mkdir(parents=True)
+    elsewhere.write_bytes(b"3")
+    wiring.switch_link(FaultDisk(), change.roots.data, "claude", elsewhere)
+    mark = change.roots.mark("work-a")
+    work_a = wiring.Journal(
+        home="work-a",
+        kind="unregister",
+        stage="mark",
+        release=None,
+        link=None,
+        file=wiring.FileChange(
+            tmp_path / "work-a/settings.json", b'{"hooks":{}}', b'{"hooks":{}}'
+        ),
+        mark=wiring.MarkChange(mark, False, True),
+    )
+    wiring.write_journal(FaultDisk(), change.roots.journal("work-a"), work_a)
+    # when recovery runs, then it stops at claude, and leaves work-a's journal
+    outcomes = wiring.recover(change.roots, FaultDisk(), StageVisits(), FakeVerifier())
+    assert [(outcome.home, outcome.status) for outcome in outcomes] == [
+        ("claude", "stopped")
+    ]
+    assert change.roots.journal("work-a").is_file()
+
+
+def test_a_restore_stops_when_a_restored_file_changes_again(tmp_path: Path) -> None:
+    change = prepared_change(tmp_path)
+    path = change.journal.file.path
+
+    def act(stage: str) -> None:
+        if stage == "verify":
+            raise OSError("force restore")
+        if stage == "restore-link":
+            # another program writes the new hooks back after restore-file
+            path.write_bytes(change.journal.file.new)
+
+    outcome = wiring.apply_change(change, FaultDisk(), StageVisits(act), FakeVerifier())
+    assert outcome.status == "stopped" and outcome.component == "file.hooks"
+    assert change.roots.journal("claude").is_file()
+    # and nothing more changed: the link was not restored after the file moved
+    assert change.journal.link is not None
+    assert str(change.journal.link.path.readlink()) == change.journal.link.new
+
+
+@pytest.mark.parametrize("kind", ["file", "directory"])
+def test_a_flush_on_macos_reaches_the_disk_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    monkeypatch.setattr(wiring, "flush", REAL_FLUSH)
+    import fcntl
+
+    # given macOS, where fsync stops at the drive's cache
+    calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(wiring.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        fcntl, "fcntl", lambda fd, op, *a: calls.append(("fcntl", op)) or 0
+    )
+    monkeypatch.setattr(wiring.os, "fsync", lambda fd: calls.append(("fsync", 0)))
+    target = tmp_path / "f"
+    target.write_bytes(b"x")
+    # when a file or a directory is flushed
+    disk = wiring.RealDisk()
+    if kind == "file":
+        disk.fsync_file(target)
+    else:
+        disk.fsync_directory(tmp_path)
+    # then it asks for a full flush (F_FULLFSYNC, 51 on macOS), not fsync
+    assert calls == [("fcntl", 51)]
+
+
+def test_a_flush_falls_back_to_fsync_where_a_full_flush_is_not_supported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(wiring, "flush", REAL_FLUSH)
+    import errno
+    import fcntl
+
+    calls: list[str] = []
+
+    def unsupported(fd: int, op: int, *args: object) -> int:
+        calls.append("fcntl")
+        raise OSError(errno.ENOTSUP, "not supported")
+
+    monkeypatch.setattr(wiring.sys, "platform", "darwin")
+    monkeypatch.setattr(fcntl, "fcntl", unsupported)
+    monkeypatch.setattr(wiring.os, "fsync", lambda fd: calls.append("fsync"))
+    target = tmp_path / "f"
+    target.write_bytes(b"x")
+    wiring.RealDisk().fsync_file(target)
+    assert calls == ["fcntl", "fsync"]
+
+
+def test_a_flush_elsewhere_is_fsync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(wiring, "flush", REAL_FLUSH)
+    calls: list[str] = []
+    monkeypatch.setattr(wiring.sys, "platform", "linux")
+    monkeypatch.setattr(wiring.os, "fsync", lambda fd: calls.append("fsync"))
+    target = tmp_path / "f"
+    target.write_bytes(b"x")
+    wiring.RealDisk().fsync_file(target)
+    assert calls == ["fsync"]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="F_FULLFSYNC is macOS's")
+def test_a_full_flush_works_on_this_machine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a read-only file and a directory, as RealDisk opens them
+    monkeypatch.setattr(wiring, "flush", REAL_FLUSH)
+    target = tmp_path / "f"
+    target.write_bytes(b"x")
+    wiring.RealDisk().fsync_file(target)
+    wiring.RealDisk().fsync_directory(tmp_path)

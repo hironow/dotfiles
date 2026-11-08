@@ -142,3 +142,114 @@ def test_the_dev_build_passes(go_env: dict[str, str], link: Path) -> None:
     # then the blocking cases pass
     out = _test_binary(link, "dev", go_env)
     assert out.startswith("exit 0"), out
+
+
+# ---- the public recipe, end to end ----
+
+
+def _public_recipe(key: str, env: dict[str, str]) -> str:
+    assert REAL_GO is not None
+    done = subprocess.run(
+        [
+            "just",
+            "--justfile",
+            str(ROOT / "justfile"),
+            "agent-hooks-test-installed",
+            key,
+            REAL_GO,
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=900,
+        check=False,
+    )
+    return f"exit {done.returncode}\n{done.stdout}\n{done.stderr}"
+
+
+@pytest.fixture(scope="module")
+def scratch_release(
+    go_env: dict[str, str], tmp_path_factory: pytest.TempPathFactory
+) -> tuple[dict[str, str], Path]:
+    """A real release this checkout builds, in a scratch data directory, and
+    the environment that names that directory."""
+    assert REAL_GO is not None
+    data = tmp_path_factory.mktemp("installed") / "data"
+    env = {**go_env, "XDG_DATA_HOME": str(data)}
+    tools = tmp_path_factory.mktemp("tools")
+    module = ROOT / "tools/agent-hooks"
+    for args in (
+        [REAL_GO, "build", "-o", str(tools / "hookrelease"), "./cmd/hookrelease"],
+        [
+            str(tools / "hookrelease"),
+            "build",
+            "--into",
+            str(data / "dotfiles/agent-hooks/releases"),
+        ],
+    ):
+        done = subprocess.run(
+            args,
+            cwd=module,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=900,
+            check=False,
+        )
+        assert done.returncode == 0, done.stderr
+    return env, Path(done.stdout.strip())
+
+
+def _link(env: dict[str, str], key: str, target: Path) -> None:
+    link = (
+        Path(env["XDG_DATA_HOME"]) / "dotfiles/agent-hooks/current" / key / "agent-hook"
+    )
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.unlink(missing_ok=True)
+    link.symlink_to(target)
+
+
+def test_the_recipe_tests_the_release_the_named_homes_link_names(
+    scratch_release: tuple[dict[str, str], Path],
+) -> None:
+    # given work-a's link to a real release, and no link for claude
+    env, built = scratch_release
+    _link(env, "work-a", built)
+    # when the recipe tests work-a, then the release passes agent-hook's tests
+    out = _public_recipe("work-a", env)
+    assert out.startswith("exit 0"), out
+    assert (
+        "ok  \tgithub.com/hironow/dotfiles/tools/agent-hooks/cmd/agent-hook" in out
+    ), out
+
+
+def test_the_recipe_refuses_a_release_this_checkout_does_not_build(
+    scratch_release: tuple[dict[str, str], Path],
+) -> None:
+    # given work-b's link to a program under another release's ID
+    env, built = scratch_release
+    other = built.parent.parent / "fedcba9876543210" / "agent-hook"
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_bytes(built.read_bytes())
+    other.chmod(0o755)
+    _link(env, "work-b", other)
+    # when the recipe tests work-b, then hookrelease check refuses it, and no
+    # test runs
+    out = _public_recipe("work-b", env)
+    assert not out.startswith("exit 0"), out
+    assert "differs from checkout ID" in out, out
+    assert "--- FAIL" not in out and "ok  \t" not in out, out
+
+
+def test_the_recipe_refuses_a_home_with_no_link(
+    scratch_release: tuple[dict[str, str], Path],
+) -> None:
+    env, _ = scratch_release
+    out = _public_recipe("work-c", env)
+    assert not out.startswith("exit 0"), out
+    assert "ok  \t" not in out, out
