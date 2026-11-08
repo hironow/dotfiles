@@ -44,8 +44,8 @@ func TestStripPythonRemovesOnlyPythonSpaces(t *testing.T) {
 		"\tE O F \n":     "E O F",
 	}
 	for in, want := range cases {
-		if got := stripPython(in); got != want {
-			t.Errorf("stripPython(%q) = %q; want %q", in, got, want)
+		if got := StripPython(in); got != want {
+			t.Errorf("StripPython(%q) = %q; want %q", in, got, want)
 		}
 	}
 }

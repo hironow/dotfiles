@@ -30,6 +30,14 @@ const (
 	RuleGcloudInfra    = "command.gcloud-infra"
 )
 
+// Rules lists every rule a block of the guard names.
+func Rules() []string {
+	return []string{
+		RulePythonPackages, RuleNodePackages, RuleMake, RuleForcePush,
+		RuleYMLFile, RuleRootDeletion, RuleGcloudIAM, RuleGcloudInfra,
+	}
+}
+
 // The reasons, word for word the Python guard's.
 const (
 	msgPythonPackages = "Python package management is 'uv' only (uv add / uv sync / uv run). " +

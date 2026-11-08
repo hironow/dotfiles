@@ -1,6 +1,7 @@
 package pyshlex_test
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -31,6 +32,35 @@ func TestSplitAgreesWithPythonShlexOnTheCorpus(t *testing.T) {
 				t.Fatalf("Split(%q) = %q, %v; Python gave %q", entry.Input, words, err, entry.Tokens)
 			}
 		})
+	}
+}
+
+func TestSplitWithoutCommentsReadsAHashAsAWordCharacter(t *testing.T) {
+	// Python's shlex with commenters="" (the rtk hook's veto): `#` starts no
+	// comment, and nothing else changes. The words are Python 3.14's.
+	cases := []struct {
+		input string
+		words []string
+	}{
+		{"npm#x make", []string{"npm#x", "make"}},
+		{"ls #npm i\nmake", []string{"ls", "#npm", "i", "make"}},
+		{"#", []string{"#"}},
+		{"a;#b", []string{"a", ";", "#b"}},
+		{`"#" '#'`, []string{"#", "#"}},
+		{"ls |& npm", []string{"ls", "|&", "npm"}},
+		{"a\\\nb", []string{"a\nb"}},
+		{"''", []string{""}},
+	}
+	for _, c := range cases {
+		words, err := pyshlex.SplitWithoutComments(c.input)
+		if err != nil || !slices.Equal(words, c.words) {
+			t.Errorf("SplitWithoutComments(%q) = %q, %v; want %q", c.input, words, err, c.words)
+		}
+	}
+	for input, want := range map[string]error{`"#`: pyshlex.ErrNoClosingQuotation, `#\`: pyshlex.ErrNoEscapedCharacter} {
+		if _, err := pyshlex.SplitWithoutComments(input); !errors.Is(err, want) {
+			t.Errorf("SplitWithoutComments(%q) error = %v, want %v", input, err, want)
+		}
 	}
 }
 

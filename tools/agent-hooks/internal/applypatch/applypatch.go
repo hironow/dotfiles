@@ -68,3 +68,25 @@ func AddedLines(text string) string {
 	}
 	return strings.Join(added, "\n")
 }
+
+// FormattedPaths is the formatter's reading (its sed): the path after every
+// "*** Add File: ", "*** Update File: ", and "*** Move to: " line, in order.
+// Unlike FilePaths, a moved file is named twice (the old path no longer
+// exists, so nothing formats it), and a Move to with no path is an empty
+// path.
+func FormattedPaths(text string) []string {
+	text = strings.ReplaceAll(text, "\x00", "")
+	if !strings.Contains(text, beginPatch) {
+		return nil
+	}
+	var paths []string
+	for line := range strings.SplitSeq(text, "\n") {
+		for _, prefix := range []string{addFile, updateFile, moveTo} {
+			if path, ok := strings.CutPrefix(line, prefix); ok {
+				paths = append(paths, path)
+				break
+			}
+		}
+	}
+	return paths
+}
