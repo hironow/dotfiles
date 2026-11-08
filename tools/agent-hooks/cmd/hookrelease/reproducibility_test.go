@@ -1,0 +1,505 @@
+package main
+
+import (
+	"bytes"
+	"debug/buildinfo"
+	"errors"
+	"io"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"reflect"
+	"runtime"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return content
+}
+
+func mustWrite(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func builtRelease(t *testing.T, releases string) string {
+	t.Helper()
+	code, path, stderr := releaseCommand(t, "build", "--into", releases)
+	if code != 0 {
+		t.Fatalf("build exit %d: %s", code, stderr)
+	}
+	return path
+}
+
+func exerciseReleaseBuild(t *testing.T, module, path, releases string) {
+	t.Helper()
+	original := mustRead(t, path)
+	id := filepath.Base(filepath.Dir(path))
+	t.Run("different checkout and Git state", func(t *testing.T) {
+		testCheckoutCopy(t, module, id, original)
+	})
+	t.Run("polluted environment", func(t *testing.T) {
+		goenv := filepath.Join(t.TempDir(), "goenv")
+		mustWrite(t, goenv, []byte("GOFLAGS=-tags=x\nCGO_ENABLED=1\n"))
+		t.Setenv("GOENV", goenv)
+		t.Setenv("GOFLAGS", "-tags=x")
+		t.Setenv("GOEXPERIMENT", "not-a-real-experiment")
+		t.Setenv("GOTOOLCHAIN", "not-a-real-toolchain")
+		for file, content := range map[string]string{
+			filepath.Join(filepath.Dir(module), "go.work"):             "go 1.27.3\nuse ./does-not-exist\n",
+			filepath.Join(module, "cmd", "agent-hook", "default.pgo"):  "invalid PGO profile",
+			filepath.Join(module, "cmd", "agent-hook", "pollution.go"): "//go:build x\n\npackage main\nfunc init() { panic(\"ambient GOFLAGS leaked\") }\n",
+		} {
+			mustWrite(t, file, []byte(content))
+			t.Cleanup(func() { os.Remove(file) })
+		}
+		other := builtRelease(t, t.TempDir())
+		if filepath.Base(filepath.Dir(other)) != id || !bytes.Equal(original, mustRead(t, other)) {
+			t.Fatal("ambient settings, workspace, or PGO changed the release")
+		}
+	})
+	t.Run("user cache locations from go env", func(t *testing.T) {
+		testUserCacheLocations(t, id, original)
+	})
+	t.Run("compiled inputs change ID", func(t *testing.T) {
+		for _, relative := range []string{"harnesses/claude/harness.json", "cmd/agent-hook/own.go", "go.sum"} {
+			t.Run(relative, func(t *testing.T) {
+				file := filepath.Join(module, filepath.FromSlash(relative))
+				before := mustRead(t, file)
+				mustWrite(t, file, append(bytes.Clone(before), '\n'))
+				defer os.WriteFile(file, before, 0o600)
+				other := builtRelease(t, releases)
+				if filepath.Base(filepath.Dir(other)) == id {
+					t.Fatalf("changing %s did not change ID", relative)
+				}
+			})
+		}
+	})
+	t.Run("excluded inputs change neither ID nor bytes", func(t *testing.T) {
+		otherOS := "windows"
+		if runtime.GOOS == otherOS {
+			otherOS = "linux"
+		}
+		for file, content := range map[string]string{
+			"README.md":                                  "not a build input\n",
+			"cmd/agent-hook/release_test.go":             "package main\n// Not a build input.\n",
+			"cmd/agent-hook/excluded_" + otherOS + ".go": "package main\nfunc init() { panic(\"wrong target\") }\n",
+		} {
+			name := filepath.Join(module, filepath.FromSlash(file))
+			mustWrite(t, name, []byte(content))
+			t.Cleanup(func() { os.Remove(name) })
+		}
+		other := builtRelease(t, t.TempDir())
+		if filepath.Base(filepath.Dir(other)) != id || !bytes.Equal(original, mustRead(t, other)) {
+			t.Fatal("test, README, or other-target file changed ID or bytes")
+		}
+	})
+	t.Run("existing release stays immutable", func(t *testing.T) {
+		before, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := builtRelease(t, releases); got != path {
+			t.Fatalf("repeat build path = %q, want %q", got, path)
+		}
+		after, err := os.Stat(path)
+		if err != nil || !before.ModTime().Equal(after.ModTime()) {
+			t.Fatalf("repeat build rewrote the existing release: %v", err)
+		}
+		changed := bytes.Clone(original)
+		changed[len(changed)/2] ^= 1
+		if err := os.WriteFile(path, changed, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		defer os.WriteFile(path, original, 0o755)
+		code, _, stderr := releaseCommand(t, "build", "--into", releases)
+		if code == 0 || !strings.Contains(stderr, "not reproducible") || !bytes.Equal(changed, mustRead(t, path)) {
+			t.Fatalf("conflicting release replaced or accepted: exit %d: %s", code, stderr)
+		}
+	})
+	t.Run("interrupted publish left an empty ID", func(t *testing.T) {
+		testIncompleteReleaseRecovery(t, path, releases, original, "")
+	})
+	t.Run("incomplete release has no binary", func(t *testing.T) {
+		testIncompleteReleaseRecovery(t, path, releases, original, "interrupted")
+	})
+	t.Run("a dead build's directory is removed", func(t *testing.T) {
+		testDeadBuildCleanup(t, releases)
+	})
+	t.Run("a build waits for the one that holds the lock", func(t *testing.T) {
+		testBuildWaitsForLock(t, path, releases, original)
+	})
+	t.Run("a build that waited on a removed directory starts again", func(t *testing.T) {
+		testBuildAfterRemovedDirectory(t, path, original)
+	})
+	t.Run("check uses a disposable cache", func(t *testing.T) {
+		testCheckCache(t, path, releases)
+	})
+	t.Run("checkout mismatch reports both IDs", func(t *testing.T) {
+		file := filepath.Join(module, "go.sum")
+		before := mustRead(t, file)
+		mustWrite(t, file, append(bytes.Clone(before), '\n'))
+		defer os.WriteFile(file, before, 0o600)
+		other := builtRelease(t, releases)
+		otherID := filepath.Base(filepath.Dir(other))
+		code, _, stderr := releaseCommand(t, "check", path)
+		if code != 1 || !strings.Contains(stderr, id) || !strings.Contains(stderr, otherID) {
+			t.Fatalf("checkout mismatch exit %d: %s", code, stderr)
+		}
+		if code, _, stderr := releaseCommand(t, "check", filepath.Join(t.TempDir(), "missing")); code != 2 {
+			t.Fatalf("missing binary exit %d, want 2: %s", code, stderr)
+		}
+	})
+	t.Run("refusals and cleanup", func(t *testing.T) {
+		testReleaseRefusals(t, module)
+	})
+	entries, err := os.ReadDir(releases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			t.Fatalf("temporary build file left behind: %s", entry.Name())
+		}
+	}
+}
+
+func testIncompleteReleaseRecovery(t *testing.T, path, releases string, original []byte, leftover string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if leftover != "" {
+		mustWrite(t, filepath.Join(filepath.Dir(path), leftover), []byte("unfinished publish"))
+	}
+	if got := builtRelease(t, releases); got != path || !bytes.Equal(original, mustRead(t, path)) {
+		t.Fatalf("incomplete release was not recovered: %q", got)
+	}
+}
+
+// testDeadBuildCleanup: a build holds the lock until it ends, so a build
+// directory found under the lock is a killed build's, whatever its age.
+// Only the names a build makes are removed.
+func testDeadBuildCleanup(t *testing.T, releases string) {
+	t.Helper()
+	dead := map[string]time.Duration{".tmp-agent-hook-1": 0, ".tmp-agent-hook-22": 2 * time.Hour}
+	kept := []string{".tmp-1", ".tmp-agent-hook-notes"}
+	for _, name := range append(slices.Collect(maps.Keys(dead)), kept...) {
+		dir := filepath.Join(releases, name)
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mustWrite(t, filepath.Join(dir, "agent-hook"), []byte("interrupted"))
+		if age := dead[name]; age != 0 {
+			when := time.Now().Add(-age)
+			if err := os.Chtimes(dir, when, when); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Cleanup(func() { os.RemoveAll(dir) })
+	}
+	builtRelease(t, releases)
+	for name := range dead {
+		if _, err := os.Stat(filepath.Join(releases, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("dead build %s remains: %v", name, err)
+		}
+	}
+	for _, name := range kept {
+		if _, err := os.Stat(filepath.Join(releases, name)); err != nil {
+			t.Fatalf("%s, which no build made, was removed: %v", name, err)
+		}
+	}
+}
+
+// testBuildWaitsForLock: while another build holds the lock, a build touches
+// nothing; once the lock is free, it sees what that build left.
+func testBuildWaitsForLock(t *testing.T, path, releases string, original []byte) {
+	t.Helper()
+	// given another build that holds the lock, has its temporary directory,
+	// and is publishing the same ID, whose binary is not there yet
+	other, err := lockReleases(releases, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	running := filepath.Join(releases, ".tmp-agent-hook-7")
+	if err := os.Mkdir(running, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(running, "agent-hook"), []byte("building"))
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	before := entryNames(t, releases)
+	// when a build starts, then it waits for the lock and changes nothing
+	build := startBuild(releases)
+	if !build.waitsForLock() {
+		other.release()
+		t.Fatalf("a build ran while another held the lock: %+v", build.result())
+	}
+	if after := entryNames(t, releases); !reflect.DeepEqual(after, before) {
+		other.release()
+		t.Fatalf("a waiting build changed the releases: %q, want %q", after, before)
+	}
+	// when the other build publishes the binary and dies without cleaning up
+	if err := os.WriteFile(path, original, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	other.release()
+	// then the waiting build keeps that release and removes the dead build's directory
+	if r := build.result(); r.code != 0 || r.path != path || !bytes.Equal(original, mustRead(t, path)) {
+		t.Fatalf("build after the lock: %+v", r)
+	}
+	if _, err := os.Stat(running); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the dead build's directory remains: %v", err)
+	}
+}
+
+// testBuildAfterRemovedDirectory: a first build that fails removes the
+// directories it made, while another build waits on one of them; that
+// build starts again on a new directory.
+func testBuildAfterRemovedDirectory(t *testing.T, path string, original []byte) {
+	t.Helper()
+	releases := filepath.Join(t.TempDir(), "new", "releases")
+	first, err := lockReleases(releases, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := startBuild(releases)
+	if !build.waitsForLock() {
+		first.release()
+		t.Fatalf("a build ran while another held the lock: %+v", build.result())
+	}
+	first.release()
+	want := filepath.Join(releases, filepath.Base(filepath.Dir(path)), filepath.Base(path))
+	if r := build.result(); r.code != 0 || r.path != want || !bytes.Equal(original, mustRead(t, want)) {
+		t.Fatalf("build after the removed directory: %+v, want %s", r, want)
+	}
+}
+
+type buildResult struct {
+	code         int
+	path, stderr string
+}
+
+// backgroundBuild is a build run on its own goroutine, with its stderr
+// watched for the line that says it waits for the lock.
+type backgroundBuild struct {
+	stderr  *lockedBuffer
+	waiting chan struct{}
+	done    chan buildResult
+}
+
+func startBuild(releases string) *backgroundBuild {
+	b := &backgroundBuild{waiting: make(chan struct{}), done: make(chan buildResult, 1)}
+	b.stderr = &lockedBuffer{watch: "waiting for another build", seen: b.waiting}
+	go func() {
+		var stdout bytes.Buffer
+		code := run([]string{"build", "--into", releases}, &stdout, b.stderr)
+		b.done <- buildResult{code, strings.TrimSpace(stdout.String()), b.stderr.String()}
+	}()
+	return b
+}
+
+// waitsForLock reports whether the build says it waits before it ends.
+func (b *backgroundBuild) waitsForLock() bool {
+	select {
+	case <-b.waiting:
+		return true
+	case r := <-b.done:
+		b.done <- r
+		return false
+	case <-time.After(3 * time.Minute):
+		return false
+	}
+}
+
+func (b *backgroundBuild) result() buildResult {
+	select {
+	case r := <-b.done:
+		b.done <- r
+		return r
+	case <-time.After(3 * time.Minute):
+		return buildResult{code: -1, stderr: "the build did not end: " + b.stderr.String()}
+	}
+}
+
+// lockedBuffer is a buffer safe for one writer and other readers, which
+// closes seen once watch has been written.
+type lockedBuffer struct {
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	watch string
+	seen  chan struct{}
+	once  sync.Once
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n, err := l.buf.Write(p)
+	if strings.Contains(l.buf.String(), l.watch) {
+		l.once.Do(func() { close(l.seen) })
+	}
+	return n, err
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+func entryNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names
+}
+
+func testCheckCache(t *testing.T, path, releases string) {
+	t.Helper()
+	log := filepath.Join(t.TempDir(), "build-caches")
+	installGoWrapper(t, "if [ \"$1\" = build ]; then printf '%s\\n' \"$GOCACHE\" >> "+shellLiteral(log)+"; fi")
+	builtRelease(t, releases)
+	if code, _, stderr := releaseCommand(t, "check", path); code != 0 {
+		t.Fatalf("check exit %d: %s", code, stderr)
+	}
+	caches := strings.Split(strings.TrimSpace(string(mustRead(t, log))), "\n")
+	if len(caches) != 2 || caches[0] != os.Getenv("GOCACHE") || caches[1] == caches[0] {
+		t.Fatalf("build/check caches = %q, want user cache then fresh cache", caches)
+	}
+	if _, err := os.Stat(caches[1]); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("check cache remains: %v", err)
+	}
+}
+
+func testUserCacheLocations(t *testing.T, id string, original []byte) {
+	t.Helper()
+	var settings strings.Builder
+	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOPATH"} {
+		settings.WriteString(key + "=" + os.Getenv(key) + "\n")
+		t.Setenv(key, "")
+	}
+	settings.WriteString("GOFLAGS=-tags=x\n")
+	file := filepath.Join(t.TempDir(), "goenv")
+	mustWrite(t, file, []byte(settings.String()))
+	t.Setenv("GOENV", file)
+	// The fallback GOPATH cannot be created. Only the user's cache locations
+	// from go env can make this build pass.
+	mustWrite(t, filepath.Join(os.Getenv("HOME"), "go"), []byte("not a directory"))
+	other := builtRelease(t, t.TempDir())
+	if filepath.Base(filepath.Dir(other)) != id || !bytes.Equal(original, mustRead(t, other)) {
+		t.Fatal("user cache locations changed the release")
+	}
+}
+
+func testCheckoutCopy(t *testing.T, module, id string, original []byte) {
+	t.Helper()
+	copyDir := filepath.Join(t.TempDir(), "git checkout")
+	if err := os.CopyFS(copyDir, os.DirFS(module)); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init", "-q", copyDir},
+		{"-C", copyDir, "add", "."},
+		{"-C", copyDir, "-c", "user.name=Release Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "fixture"},
+		{"-C", copyDir, "-c", "user.name=Release Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "extra commit"},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	t.Chdir(copyDir)
+	other := builtRelease(t, t.TempDir())
+	if filepath.Base(filepath.Dir(other)) != id || !bytes.Equal(original, mustRead(t, other)) {
+		t.Fatal("checkout location or Git history changed the release ID or bytes")
+	}
+}
+
+func TestCheckForeignReleaseAndARMLevel(t *testing.T) {
+	isolatedModule(t)
+	plan, err := prepareRelease(buildTarget{OS: "linux", Arch: "arm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), plan.id)
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "agent-hook")
+	if _, err := plan.run(false, "build", "-trimpath", "-buildvcs=false", "-pgo=off", "-ldflags="+linkFlags(plan.module, plan.id), "-o", path, "./cmd/agent-hook"); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := buildinfo.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := make(map[string]string)
+	for _, setting := range metadata.Settings {
+		settings[setting.Key] = setting.Value
+	}
+	if settings["GOOS"] != "linux" || settings["GOARCH"] != "arm" || settings["GOARM"] != "7" {
+		t.Fatalf("ARM build settings = %v", settings)
+	}
+	if code, _, stderr := releaseCommand(t, "check", path); code != 0 || stderr != "" {
+		t.Fatalf("cross build check exit %d: %s", code, stderr)
+	}
+}
+
+func testReleaseRefusals(t *testing.T, module string) {
+	t.Helper()
+	for _, tc := range []struct{ name, file, text, reason string }{
+		{"replace", "go.mod", "\nreplace example.invalid/unused => ../elsewhere\n", "replace"},
+		{"C source", "cmd/agent-hook/unsupported.c", "void unsupported(void) {}\n", "C source files"},
+		{"failed selftest", "internal/selftest/answers.go", "", "selftest"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file := filepath.Join(module, filepath.FromSlash(tc.file))
+			before, readErr := os.ReadFile(file)
+			if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+				t.Fatal(readErr)
+			}
+			t.Cleanup(func() {
+				if readErr == nil {
+					os.WriteFile(file, before, 0o600)
+				} else {
+					os.Remove(file)
+				}
+			})
+			changed := append(bytes.Clone(before), tc.text...)
+			if tc.name == "failed selftest" {
+				changed = []byte(strings.Replace(string(before), `exit: 0, stdout: "", stderr: ""`, `exit: 0, stdout: "wrong answer", stderr: ""`, 1))
+				if bytes.Equal(before, changed) {
+					t.Fatal("selftest answer fixture was not changed")
+				}
+			}
+			mustWrite(t, file, changed)
+			releases := filepath.Join(t.TempDir(), "releases")
+			code, _, stderr := releaseCommand(t, "build", "--into", releases)
+			if code == 0 || !strings.Contains(stderr, tc.reason) {
+				t.Fatalf("refusal exit %d, want %s: %s", code, tc.reason, stderr)
+			}
+			if _, err := os.Stat(releases); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("failed build left its release directory: %v", err)
+			}
+		})
+	}
+}

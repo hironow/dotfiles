@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent-hook shim protocol v1: the response",
+  "description": "What the agent-hook binary writes on stdout for a shim request, with exit 0: one JSON object and a newline. A post hook's notice goes on stderr; the shim decides how to show it. The binary checks its answer templates against this schema when it loads a shim harness.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "action"
+  ],
+  "properties": {
+    "v": {
+      "description": "The protocol version.",
+      "const": 1
+    },
+    "action": {
+      "description": "pass: the call goes on as it is; block: the call is stopped, with the reason; rewrite: the call goes on with the input fields in set.",
+      "enum": [
+        "pass",
+        "block",
+        "rewrite"
+      ]
+    },
+    "reason": {
+      "description": "Why the call is blocked, as the model is told. Not blank.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "set": {
+      "description": "rewrite only: the new value of each input field the binary rewrites. Only command, today.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "block"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "rewrite"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "set"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "set"
+          ]
+        }
+      }
+    }
+  ]
+}

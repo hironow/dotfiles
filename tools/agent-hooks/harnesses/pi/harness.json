@@ -1,0 +1,98 @@
+{
+  "name": "pi",
+  "versions": [
+    "1.4.0"
+  ],
+  "transport": "shim",
+  "pathResolution": "pi",
+  "tools": {
+    "bash": "shell",
+    "write": "write",
+    "edit": "edit"
+  },
+  "pending": [
+    "powershell"
+  ],
+  "hookCwd": "session",
+  "support": {
+    "command-guard": {
+      "bash": {
+        "level": "supported"
+      }
+    },
+    "files-guard": {
+      "write": {
+        "level": "supported"
+      },
+      "edit": {
+        "level": "supported"
+      }
+    },
+    "secrets-guard": {
+      "write": {
+        "level": "supported"
+      },
+      "edit": {
+        "level": "supported"
+      }
+    },
+    "rtk": {
+      "bash": {
+        "level": "supported"
+      }
+    },
+    "formatter": {
+      "write": {
+        "level": "supported"
+      },
+      "edit": {
+        "level": "supported"
+      }
+    }
+  },
+  "events": {
+    "pre": {
+      "schema": "pre.schema.json",
+      "answers": {
+        "pass": {
+          "exit": 0,
+          "stdoutJSON": {
+            "v": 1,
+            "action": "pass"
+          }
+        },
+        "block": {
+          "exit": 0,
+          "stdoutJSON": {
+            "v": 1,
+            "action": "block",
+            "reason": "{{.Message}}"
+          }
+        },
+        "rewrite": {
+          "exit": 0,
+          "stdoutJSON": {
+            "v": 1,
+            "action": "rewrite",
+            "set": {
+              "command": "{{.Set.command}}"
+            }
+          }
+        }
+      }
+    },
+    "post": {
+      "schema": "post.schema.json",
+      "answers": {
+        "pass": {
+          "exit": 0,
+          "stdoutJSON": {
+            "v": 1,
+            "action": "pass"
+          },
+          "stderr": "{{.Notice}}"
+        }
+      }
+    }
+  }
+}

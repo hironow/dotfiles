@@ -17,6 +17,11 @@ import (
 // RuleCredential is the rule a block names, for the log.
 const RuleCredential = "secret.credential"
 
+// Rules lists every rule a block of the guard names.
+func Rules() []string {
+	return []string{RuleCredential}
+}
+
 const reason = "content looks like a live secret (API key / token / private key). " +
 	"Do not commit secrets; use a secret manager and reference via env var."
 

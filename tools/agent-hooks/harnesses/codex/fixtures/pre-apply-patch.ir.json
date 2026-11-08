@@ -1,0 +1,18 @@
+{
+  "tool": "apply_patch",
+  "kind": "patch",
+  "fields": {
+    "command": {
+      "string": "*** Begin Patch\n*** Add File: note.md\n+hello\n*** End Patch\n"
+    },
+    "cwd": {
+      "string": "/home/user/project"
+    },
+    "sessionId": {
+      "string": "00000000-0000-4000-8000-000000000001"
+    },
+    "callId": {
+      "string": "call_FIXTUREAPPLYPATCH"
+    }
+  }
+}

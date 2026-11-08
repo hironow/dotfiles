@@ -1,0 +1,19 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "/home/user/.claude/projects/-home-user-project/00000000-0000-4000-8000-000000000001.jsonl",
+  "cwd": "/home/user/project",
+  "prompt_id": "00000000-0000-4000-8000-000000000002",
+  "permission_mode": "acceptEdits",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "NotebookEdit",
+  "tool_input": {
+    "notebook_path": "/home/user/project/note.ipynb",
+    "cell_id": "cell-one",
+    "new_source": "print(2)",
+    "edit_mode": "replace"
+  },
+  "tool_use_id": "toolu_01FIXTURENOTEBOOKEDIT"
+}

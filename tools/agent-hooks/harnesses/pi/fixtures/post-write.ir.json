@@ -1,0 +1,15 @@
+{
+  "tool": "write",
+  "kind": "write",
+  "fields": {
+    "cwd": {
+      "string": "/home/user/project"
+    },
+    "filePath": {
+      "string": "note.md"
+    },
+    "content": {
+      "string": "hello"
+    }
+  }
+}

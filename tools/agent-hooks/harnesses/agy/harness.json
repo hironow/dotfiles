@@ -1,0 +1,86 @@
+{
+  "name": "agy",
+  "versions": [
+    "1.5.0"
+  ],
+  "tools": {
+    "run_command": "shell",
+    "write_file": "write",
+    "edit_file": "edit"
+  },
+  "pending": [
+    "write_to_file",
+    "replace_file_content",
+    "multi_replace_file_content"
+  ],
+  "transport": "command",
+  "pathResolution": "as-given",
+  "hookCwd": "registration",
+  "support": {
+    "command-guard": {
+      "run_command": {
+        "level": "supported"
+      }
+    },
+    "files-guard": {
+      "write_file": {
+        "level": "supported"
+      },
+      "edit_file": {
+        "level": "supported"
+      }
+    },
+    "secrets-guard": {
+      "write_file": {
+        "level": "supported"
+      },
+      "edit_file": {
+        "level": "supported"
+      }
+    },
+    "rtk": {
+      "run_command": {
+        "level": "unsupported",
+        "reason": "agy's terminal sandbox cannot run rtk, and agy checks its permission rules against the rewritten command (docs/plan/agent-hooks-go-contracts.md, agy)."
+      }
+    },
+    "formatter": {
+      "write_file": {
+        "level": "supported"
+      },
+      "edit_file": {
+        "level": "supported"
+      }
+    }
+  },
+  "events": {
+    "pre": {
+      "schema": "pre.schema.json",
+      "answers": {
+        "pass": {
+          "exit": 0,
+          "stdoutJSON": {
+            "decision": "ask"
+          }
+        },
+        "block": {
+          "exit": 0,
+          "stdoutJSON": {
+            "decision": "deny",
+            "reason": "{{.Message}}"
+          }
+        }
+      }
+    },
+    "post": {
+      "schema": "post.schema.json",
+      "answers": {
+        "pass": {
+          "exit": 0,
+          "stdoutJSON": {},
+          "stderr": "{{.Notice}}"
+        }
+      }
+    }
+  }
+}

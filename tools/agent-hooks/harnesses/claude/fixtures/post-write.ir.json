@@ -1,0 +1,21 @@
+{
+  "tool": "Write",
+  "kind": "write",
+  "fields": {
+    "filePath": {
+      "string": "/home/user/project/note.md"
+    },
+    "cwd": {
+      "string": "/home/user/project"
+    },
+    "content": {
+      "string": "hello\n"
+    },
+    "sessionId": {
+      "string": "00000000-0000-4000-8000-000000000001"
+    },
+    "callId": {
+      "string": "toolu_01FIXTUREWRITE"
+    }
+  }
+}

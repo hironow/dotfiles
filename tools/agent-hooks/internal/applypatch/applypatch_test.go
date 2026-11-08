@@ -56,3 +56,29 @@ func TestAddedLinesReadsThePatchAsTheSecretsGuardDoes(t *testing.T) {
 		})
 	}
 }
+
+// The formatter's reading (its sed), spelled out: every header line's path,
+// with no Update/Move bookkeeping.
+func TestFormattedPathsReadsThePatchAsTheFormatterDoes(t *testing.T) {
+	cases := []struct {
+		name  string
+		patch string
+		paths []string
+	}{
+		{"added and updated files", patch("*** Add File: a.py\n+x\n*** Update File: b.go\n@@\n-x\n+y\n"), []string{"a.py", "b.go"}},
+		{"a move names both the old and the new path", patch("*** Update File: old.py\n*** Move to: new.py\n"), []string{"old.py", "new.py"}},
+		{"a move to nothing is an empty path", patch("*** Update File: a.py\n*** Move to: \n"), []string{"a.py", ""}},
+		{"a deleted file is not formatted", patch("*** Delete File: a.py\n"), nil},
+		{"only exact headers count", patch("***  Add File: a.py\n*** add file: b.py\n*** Add File:c.py\n"), nil},
+		{"an added line is content, not a header", patch("*** Add File: a\n+*** Add File: b.py\n"), []string{"a"}},
+		{"a carriage return stays in the path", patch("*** Add File: a.py\r\n"), []string{"a.py\r"}},
+		{"NUL bytes are dropped first", patch("*** Add File: a.\x00py\n"), []string{"a.py"}},
+		{"a header without a newline at the end", "*** Begin Patch\n*** Add File: a.py", []string{"a.py"}},
+		{"text without Begin Patch is not a patch", "*** Add File: a.py\n", nil},
+	}
+	for _, c := range cases {
+		if got := applypatch.FormattedPaths(c.patch); !slices.Equal(got, c.paths) {
+			t.Errorf("%s: FormattedPaths = %q, want %q", c.name, got, c.paths)
+		}
+	}
+}
