@@ -141,6 +141,20 @@ def _engine_info(
     )
 
 
+# Each tool's executable as its real install lays it out: uv's archive keeps
+# it in a nested directory and just's at the install root, so `mise where`
+# plus /bin does not find them; `mise bin-paths` names these directories.
+TOOL_LAYOUT = (
+    ("bun/bin", "bun"),
+    ("uv/uv-x86_64-unknown-linux-gnu", "uv"),
+    ("node/bin", "node"),
+    ("node/extra", "corepack"),
+    ("just", "just"),
+    ("devcontainers-cli/bin", "devcontainer"),
+    ("podman-compose/bin", "podman-compose"),
+)
+
+
 def _bootstrap_checksum_attempt(tmp_path, names, *, corrupt=False, engine=None):
     """Run the public bootstrap with real checks and owned external boundaries.
 
@@ -175,10 +189,39 @@ def _bootstrap_checksum_attempt(tmp_path, names, *, corrupt=False, engine=None):
             content = b"""#!/bin/sh
 set -eu
 printf 'mise %s\\n' "$*" >> "$FIXTURE_TRACE"
+root() {
+  case "$1" in
+    npm:@devcontainers/cli) printf '%s\\n' "$FIXTURE_TOOLS/devcontainers-cli" ;;
+    pypi:podman-compose) printf '%s\\n' "$FIXTURE_TOOLS/podman-compose" ;;
+    *) printf '%s\\n' "$FIXTURE_TOOLS/$1" ;;
+  esac
+}
 case "$*" in
-  'install bun uv node just'|'install npm:@devcontainers/cli pypi:podman-compose') ;;
+  'install bun uv node just') ;;
+  'install npm:@devcontainers/cli pypi:podman-compose')
+    # the npm and pypi backends run bun, node, and uv from PATH
+    for command in uv bun node; do
+      found=$(command -v "$command") || { echo "SECOND_PHASE_MISSING $command" >&2; exit 96; }
+      case "$found" in "$FIXTURE_TOOLS"/*) ;; *) echo "SECOND_PHASE_WRONG $found" >&2; exit 96 ;; esac
+    done ;;
   'where bun'|'where uv'|'where node'|'where just'|'where npm:@devcontainers/cli'|'where pypi:podman-compose')
-    printf '%s\\n' "$FIXTURE_TOOLS" ;;
+    root "$2" ;;
+  'bin-paths bun'|'bin-paths uv'|'bin-paths node'|'bin-paths just'|'bin-paths npm:@devcontainers/cli'|'bin-paths pypi:podman-compose')
+    case "${FIXTURE_BIN_PATHS_BREAK:-}" in
+      # a failure that still prints a real directory: only the exit status says so
+      "$2:fail") printf '%s/bin\\n' "$FIXTURE_TOOLS/bun"; exit 1 ;;
+      "$2:empty") exit 0 ;;
+      "$2:missing") printf '%s\\n' "$FIXTURE_TOOLS/no-such-directory"; exit 0 ;;
+      "$2:second-missing")
+        printf '%s/bin\\n%s\\n' "$(root "$2")" "$FIXTURE_TOOLS/no-such-directory"; exit 0 ;;
+    esac
+    case "$2" in
+      uv) printf '%s\\n' "$FIXTURE_TOOLS/uv/uv-x86_64-unknown-linux-gnu" ;;
+      just) root just ;;
+      # more than one directory for one tool: each is published
+      node) printf '%s/bin\\n%s/extra\\n' "$(root node)" "$(root node)" ;;
+      *) printf '%s/bin\\n' "$(root "$2")" ;;
+    esac ;;
   *) exit 97 ;;
 esac
 """
@@ -277,7 +320,15 @@ esac""",
     }
     if engine is not None:
         tools = tmp_path / "tools"
-        (tools / "bin").mkdir(parents=True)
+        for directory, command in TOOL_LAYOUT:
+            executable = tools / directory / command
+            executable.parent.mkdir(parents=True, exist_ok=True)
+            executable.write_text(
+                f"#!/bin/sh\necho FIXTURE_TOOL {command}\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            executable.chmod(0o755)
         for name, value in (
             ("initial-info", engine.get("initial_info", _engine_info())),
             ("helper-info", engine.get("helper_info", _engine_info())),
@@ -300,6 +351,7 @@ esac""",
             FIXTURE_CLIENT_RC=str(engine.get("client_rc", 0)),
             FIXTURE_INITIAL_RC=str(engine.get("initial_rc", 0)),
             FIXTURE_HELPER_RC=str(engine.get("helper_rc", 0)),
+            FIXTURE_BIN_PATHS_BREAK=engine.get("bin_paths_break", ""),
         )
         commands.update(
             jq=f'exec {real_utility("jq")} "$@"',
@@ -439,9 +491,9 @@ def test_ci_bootstrap_accepts_native_and_remote_version_shapes_after_engine_vali
         in environment
     )
     paths = (tmp_path / "github-path").read_text(encoding="utf-8").splitlines()
-    assert paths == [bash_path(tmp_path / "tools/bin")] * 6 + [
-        bash_path(tmp_path / "runner/dotfiles-podman-bootstrap/bin")
-    ]
+    assert paths == [
+        bash_path(tmp_path / "tools" / directory) for directory, _ in TOOL_LAYOUT
+    ] + [bash_path(tmp_path / "runner/dotfiles-podman-bootstrap/bin")]
 
 
 @pytest.mark.parametrize(
@@ -555,3 +607,60 @@ def test_ci_bootstrap_fixture_exposes_working_external_gzip(tmp_path):
         check=False,
     )
     assert checked.returncode == 0, checked.stdout + checked.stderr
+
+
+def test_a_later_step_finds_every_tool_through_github_path_alone(tmp_path):
+    """The next workflow step sees only GITHUB_PATH and GITHUB_ENV: each tool
+    must resolve to the bootstrap's own executable, wherever it is laid out."""
+    result = _bootstrap_checksum_attempt(tmp_path, ["./{artifact}"], engine={})
+    assert result.returncode == 0, result.stdout + result.stderr
+    published = (tmp_path / "github-path").read_text(encoding="utf-8").splitlines()
+    commands = " ".join(command for _, command in TOOL_LAYOUT)
+    step = tmp_path / "later-step.sh"
+    # LF only: bash does not read `done\r` as a keyword
+    step.write_text(
+        f'for c in {commands}; do command -v "$c" || exit 9; "$c"; done\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    later = run_bash(
+        step,
+        cwd=tmp_path,
+        env={
+            "PATH": ":".join(reversed(published)),
+            "SystemRoot": os.environ.get("SystemRoot", ""),
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=20,
+        check=False,
+    )
+    assert later.returncode == 0, later.stdout + later.stderr
+    for directory, command in TOOL_LAYOUT:
+        assert bash_path(tmp_path / "tools" / directory / command) in later.stdout
+        assert f"FIXTURE_TOOL {command}" in later.stdout
+
+
+@pytest.mark.parametrize("tool", ["uv", "node", "just", "pypi:podman-compose"])
+@pytest.mark.parametrize(
+    "breakage, message",
+    [
+        ("fail", "ci-bootstrap: mise bin-paths {tool} failed"),
+        ("empty", "ci-bootstrap: mise bin-paths {tool} printed nothing"),
+        ("missing", "ci-bootstrap: {tool}'s bin path"),
+        ("second-missing", "ci-bootstrap: {tool}'s bin path"),
+    ],
+)
+def test_bootstrap_stops_when_a_tool_has_no_bin_path(tmp_path, tool, breakage, message):
+    result = _bootstrap_checksum_attempt(
+        tmp_path, ["./{artifact}"], engine={"bin_paths_break": f"{tool}:{breakage}"}
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert message.format(tool=tool) in result.stderr, result.stderr
+    # it stops before anything reaches the later steps' environment
+    github_env = tmp_path / "github-env"
+    assert not github_env.exists() or "DOTFILES_PODMAN_ENGINE_SOCKET=" not in (
+        github_env.read_text(encoding="utf-8")
+    )

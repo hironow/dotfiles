@@ -59,18 +59,37 @@ export MISE_GLOBAL_CONFIG_FILE="$bootstrap/config.toml"
 export MISE_DATA_DIR="$bootstrap/data"
 export MISE_TRUSTED_CONFIG_PATHS="$bootstrap/config.toml"
 cd "$bootstrap"
+# Put each tool's directories on PATH, for this script and (GITHUB_PATH) for
+# the later steps: the ones mise itself uses (`mise bin-paths`). An
+# executable is not always in <install>/bin; uv's archive keeps it in a
+# nested directory. No directory, or one that does not exist, stops here.
+publish_bin_paths() {
+  local tool="$1" paths dir
+  if ! paths="$(mise bin-paths "$tool")"; then
+    echo "ci-bootstrap: mise bin-paths $tool failed" >&2
+    exit 1
+  fi
+  if [[ -z "$paths" ]]; then
+    echo "ci-bootstrap: mise bin-paths $tool printed nothing" >&2
+    exit 1
+  fi
+  while IFS= read -r dir; do
+    if [[ ! -d "$dir" ]]; then
+      echo "ci-bootstrap: $tool's bin path $dir is not a directory" >&2
+      exit 1
+    fi
+    export PATH="$dir:$PATH"
+    printf '%s\n' "$dir" >> "$GITHUB_PATH"
+  done <<< "$paths"
+}
 mise install bun uv node just
 for tool in bun uv node just; do
-  tool_bin="$(mise where "$tool")/bin"
-  export PATH="$tool_bin:$PATH"
-  printf '%s\n' "$tool_bin" >> "$GITHUB_PATH"
+  publish_bin_paths "$tool"
 done
 # uv is now available to the pypi backend; bun/node precede npm tools.
 mise install npm:@devcontainers/cli pypi:podman-compose
 for tool in npm:@devcontainers/cli pypi:podman-compose; do
-  tool_bin="$(mise where "$tool")/bin"
-  export PATH="$tool_bin:$PATH"
-  printf '%s\n' "$tool_bin" >> "$GITHUB_PATH"
+  publish_bin_paths "$tool"
 done
 printf '%s\n' "$bootstrap/bin" >> "$GITHUB_PATH"
 {
