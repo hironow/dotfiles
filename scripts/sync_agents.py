@@ -1086,6 +1086,17 @@ def validate_hook_layers(
                 raise ValueError(f"{path}: hooks in a settings layer are not allowed")
 
 
+def _third_party_hooks(agent: AgentTarget) -> frozenset[str]:
+    """The hook files in the agent's hooks dir that a third-party installer
+    owns (_is_third_party_hook), relative to that dir."""
+    hooks_dir = agent.directory / "hooks"
+    return frozenset(
+        path.relative_to(hooks_dir).as_posix()
+        for path in hooks_dir.rglob("*")
+        if _is_third_party_hook(path)
+    )
+
+
 def hook_home(
     dotfiles_dir: Path, agent: AgentTarget, roots: hook_wiring.Roots, system: str
 ) -> hook_sync.HookHome:
@@ -1100,12 +1111,7 @@ def hook_home(
             else render_hook_values(script_fragment, agent, system)
         )
         shared = _compose_settings_fragments(dotfiles_dir, agent, system)
-        hooks_dir = agent.directory / "hooks"
-        third_party = frozenset(
-            path.relative_to(hooks_dir).as_posix()
-            for path in hooks_dir.rglob("*")
-            if _is_third_party_hook(path)
-        )
+        third_party = _third_party_hooks(agent)
 
         def owned(block: dict) -> bool:
             if (
