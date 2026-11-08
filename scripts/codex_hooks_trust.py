@@ -8,8 +8,10 @@ discovery.rs). The TUI's /hooks review records it with two app-server calls,
 the same, for exactly the entries sync renders from the one source,
 .claude/settings.hooks.json (event, matcher, full command), in <codex
 home>/hooks.json, and only while every hook file sync placed there is
-byte-identical to its source. Nothing else is trusted. It also reports a project
-hook in the dotfiles checkout that runs one of those scripts again.
+byte-identical to its source. While hooks.json holds an agent-hook group, it
+also trusts agent-hook's three guards exactly as agent-hook renders them
+through the home's stable link (G, PR 3d.2). Nothing else is trusted. It also
+reports a project hook in the dotfiles checkout that runs one of those again.
 
 Usage: codex_hooks_trust.py [--check]   (--check reports without writing)
 Prints doctor-style OK/WARN lines; exit 1 when a hook would not run.
@@ -18,20 +20,25 @@ Prints doctor-style OK/WARN lines; exit 1 when a hook would not run.
 import contextlib
 import json
 import os
+import platform
 import queue
 import re
 import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Generator, Iterable, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from pathlib import Path
 from threading import Thread
 from typing import Protocol
 
+import agent_hook_release as release_tools
+from agent_hook_codex_plan import codex_guards
+from agent_hook_wiring import Roots
 from doctor_lines import Line, failed, fmt
 from sync_agents import (
     AgentTarget,
+    _is_agent_hook_group,
     _render_hook_command,
     _wants_hook,
     hook_fragment,
@@ -47,6 +54,8 @@ REQUEST_TIMEOUT = 15
 HOOK_ID = re.compile(r"--hook ([a-z0-9-]+)")
 
 Hook = tuple[str, str | None, str]  # (eventName, matcher, command) as hooks/list shows
+Hooks = dict[str, list[dict]]  # a hooks.json `hooks` value: event to groups
+Render = Callable[[Path, str], tuple[Hooks | None, str]]
 
 
 class Writer(Protocol):
@@ -66,11 +75,16 @@ def _event_key(event: str) -> str:
 
 
 def expected_hooks(
-    dotfiles_dir: Path, codex_home: Path, system: str | None = None
+    dotfiles_dir: Path,
+    codex_home: Path,
+    system: str | None = None,
+    binary: Mapping[str, Sequence[dict]] | None = None,
 ) -> set[Hook]:
+    """The hooks to trust: the fragment's scripts as sync renders them, and
+    `binary`'s (G, guards_to_trust) as agent-hook rendered them."""
     agent = _codex(codex_home)
     fragment = hook_fragment(dotfiles_dir, agent) or {}
-    return {
+    scripts = {
         (
             _event_key(event),
             block.get("matcher"),
@@ -80,6 +94,81 @@ def expected_hooks(
         for block in blocks
         for hook in block.get("hooks", [])
     }
+    return scripts | {
+        (_event_key(event), group.get("matcher"), hook["command"])
+        for event, groups in (binary or {}).items()
+        for group in groups
+        for hook in group.get("hooks", [])
+    }
+
+
+def render_codex(link: Path, system: str) -> tuple[Hooks | None, str]:
+    """R: agent-hook's render for Codex through the home's stable link, in
+    the sh form sync writes; or None and why not."""
+    os_name = {"Darwin": "darwin", "Linux": "linux"}.get(system, system.lower())
+    outcome = release_tools.run(
+        [
+            str(link),
+            "render",
+            "--harness",
+            "codex",
+            "--os",
+            os_name,
+            "--shell",
+            "sh",
+            "--binary",
+            str(link),
+        ],
+        timeout=release_tools.PROGRAM_TIMEOUT,
+    )
+    if not outcome.ok:
+        return None, str(outcome.reason)
+    try:
+        hooks = json.loads(outcome.stdout)["hooks"]
+    except (ValueError, KeyError, TypeError) as error:
+        return None, f"output does not parse: {error}"
+    if not isinstance(hooks, dict):
+        return None, "output does not parse: hooks is not an object"
+    return hooks, ""
+
+
+def guards_to_trust(
+    codex_home: Path,
+    env: Mapping[str, str],
+    system: str,
+    render: Render = render_codex,
+) -> tuple[Hooks, Line | None]:
+    """G, agent-hook's guards to trust beside the scripts: none while
+    hooks.json holds no agent-hook group, else codex_guards of the render
+    through the stable link. When there is no render, none, and a WARN line
+    that says why."""
+    try:
+        value = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}, None  # Codex reports what it cannot read
+    hooks = value.get("hooks") if isinstance(value, dict) else None
+    if not isinstance(hooks, dict) or not any(
+        _is_agent_hook_group(group, codex=True)
+        for groups in hooks.values()
+        if isinstance(groups, list)
+        for group in groups
+    ):
+        return {}, None
+
+    def unchecked(why: str) -> tuple[Hooks, Line]:
+        detail = f"agent-hook's guards in hooks.json not checked: {why}"
+        return {}, ("WARN", NAME, f"{detail}; the scripts still run")
+
+    try:
+        link = Roots.from_env(env).link("codex")
+    except ValueError as error:
+        return unchecked(str(error))
+    if not link.is_file():
+        return unchecked(f"no {link} (run just sync-agents x)")
+    rendered, reason = render(link, system)
+    if rendered is None:
+        return unchecked(f"render: {reason}")
+    return codex_guards(rendered), None
 
 
 def changed_files(dotfiles_dir: Path, codex_home: Path) -> list[str]:
@@ -340,7 +429,8 @@ def main(argv: Sequence[str]) -> int:
         )
         print(fmt(("WARN", NAME, detail)))
         return 1
-    expected = expected_hooks(ROOT, codex_home)
+    binary, warning = guards_to_trust(codex_home, os.environ, platform.system())
+    expected = expected_hooks(ROOT, codex_home, binary=binary)
     try:
         with app_server(codex) as client:
             entries = list_hooks(client, Path.home())
@@ -355,7 +445,8 @@ def main(argv: Sequence[str]) -> int:
     except (RuntimeError, OSError) as error:  # no answer, or a closed pipe
         print(fmt(("WARN", NAME, f"codex app-server: {error}")))
         return 1
-    lines = trust_lines(len(chosen), found, len(expected))
+    lines = [warning] if warning else []
+    lines += trust_lines(len(chosen), found, len(expected))
     for line in lines:
         print(fmt(line))
     return 1 if failed(lines) else 0

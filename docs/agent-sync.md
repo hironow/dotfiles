@@ -174,6 +174,8 @@ guard の側は Claude の exit code の約束のまま変えない。
 Codex は、hash を信頼済みとして記録した hook だけを実行する（`~/.codex/config.toml` の `hooks.state`）。
 sync は `~/.codex` に配ったあと `scripts/codex_hooks_trust.py` を実行し、Codex の app-server（`hooks/list` と `config/batchWrite`）を通して、断片から作った hook だけを信頼済みにする。
 配った hook のファイルが正本と 1 byte でも違うときは信頼しない。
+`hooks.json` に agent-hook の group があるときは、agent-hook の 3 つの guard（files-guard、secrets-guard、command-guard）も、安定パスの agent-hook が `render --harness codex --shell sh` で出すとおりの command だけを信頼する。
+安定パスが無いか render が失敗したときは、guard を信頼せずに WARN を出す（スクリプトはそのまま動く）。
 `just codex-hooks-trust --check` は書き込まずに状態を表示する。
 app-server への問い合わせは 1 回 15 秒まで待ち、答えがなければ WARN を出して exit 1 で終わる。
 sync はこれらの手順を 1 つ 120 秒まで待ち、過ぎたら手順のプロセスグループごと（app-server も）止める。

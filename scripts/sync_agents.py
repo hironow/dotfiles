@@ -808,6 +808,21 @@ def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
     return False
 
 
+def _is_agent_hook_group(group: object, *, codex: bool) -> bool:
+    """A hook group of agent-hook's: at least one handler, and every one runs
+    agent-hook as sync renders it (_runs_agent_hook_release). A group that
+    mixes it with another command is its user's."""
+    handlers = group.get("hooks") if isinstance(group, dict) else None
+    return (
+        isinstance(handlers, list)
+        and bool(handlers)
+        and all(
+            isinstance(handler, dict) and _runs_agent_hook_release(handler, codex=codex)
+            for handler in handlers
+        )
+    )
+
+
 def _is_managed_hook_block(
     block: dict, agent: AgentTarget, *, third_party: frozenset[str] | None = None
 ) -> bool:

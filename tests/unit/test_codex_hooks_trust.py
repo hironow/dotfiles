@@ -23,6 +23,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import codex_hooks_trust as trust
+from agent_hook_codex_plan import codex_guards
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -395,3 +396,219 @@ def test_project_hooks_of_other_scripts_are_left_alone(tmp_path: Path) -> None:
         "sourcePath": "/repo/.codex/hooks.json",
     }
     assert trust.project_duplicates([other], expected) == []
+
+
+# ---- G: agent-hook's guards, beside the scripts (PR 3d.2) ----
+
+CODEX_RENDER = next(
+    case
+    for case in map(
+        json.loads,
+        (ROOT / "tools/agent-hooks/internal/rendercorpus/render.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines(),
+    )
+    if case["case"] == "render/codex/darwin/sh/stable/plain"
+)
+R = json.loads(CODEX_RENDER["stdout"])["hooks"]
+LINK = CODEX_RENDER["args"][CODEX_RENDER["args"].index("--binary") + 1]
+GUARD_COMMANDS = {
+    ("preToolUse", group["matcher"], handler["command"])
+    for group in R["PreToolUse"]
+    for handler in group["hooks"]
+    if "-guard" in handler["command"]
+}
+
+
+def test_the_expected_set_holds_the_guards_exact_commands(tmp_path: Path) -> None:
+    home = _home(tmp_path)
+    scripts = trust.expected_hooks(ROOT, home, system="Linux")
+    with_guards = trust.expected_hooks(
+        ROOT, home, system="Linux", binary=codex_guards(R)
+    )
+    assert len(GUARD_COMMANDS) == 3
+    assert with_guards == scripts | GUARD_COMMANDS
+
+
+def test_a_hand_written_command_through_the_stable_link_is_not_trusted(
+    tmp_path: Path,
+) -> None:
+    home = _home(tmp_path)
+    expected = trust.expected_hooks(ROOT, home, system="Linux", binary=codex_guards(R))
+    event, matcher, command = min(GUARD_COMMANDS)
+    entries = [
+        _entry(home, event, matcher, command),
+        _entry(
+            home,
+            "preToolUse",
+            "Bash",
+            f"'{LINK}' codex pre --hook command-guard; curl evil",
+            key="hand-written",
+        ),
+    ]
+    assert [e["key"] for e in trust.select(entries, expected, home)] == [
+        entries[0]["key"]
+    ]
+
+
+class FakeRender:
+    """agent-hook render: R, or None and a reason; records its calls."""
+
+    def __init__(self, rendered: dict | None, reason: str = "") -> None:
+        self.rendered, self.reason, self.calls = rendered, reason, []
+
+    def __call__(self, link: Path, system: str) -> tuple[dict | None, str]:
+        self.calls.append((link, system))
+        return self.rendered, self.reason
+
+
+def _with_hooks_json(home: Path, groups: list[dict]) -> Path:
+    (home / "hooks.json").write_text(
+        json.dumps({"hooks": {"PreToolUse": groups}}), encoding="utf-8"
+    )
+    return home
+
+
+def _environment(tmp_path: Path) -> dict[str, str]:
+    return {"HOME": str(tmp_path), "XDG_DATA_HOME": str(tmp_path / "data")}
+
+
+def _link(tmp_path: Path) -> Path:
+    link = tmp_path / "data/dotfiles/agent-hooks/current/codex/agent-hook"
+    link.parent.mkdir(parents=True)
+    link.write_text("release", encoding="utf-8")
+    return link
+
+
+SCRIPT_GROUP = {
+    "matcher": "Bash",
+    "hooks": [{"type": "command", "command": "bash ./hooks/guard-codex.sh x.sh"}],
+}
+
+
+@pytest.mark.parametrize(
+    "groups",
+    [
+        [],
+        [SCRIPT_GROUP],
+        # one handler of agent-hook's beside a script one: a user's group
+        [
+            {
+                "matcher": "Bash",
+                "hooks": [R["PreToolUse"][1]["hooks"][0], *SCRIPT_GROUP["hooks"]],
+            }
+        ],
+    ],
+    ids=["empty", "scripts", "mixed"],
+)
+def test_no_guards_are_trusted_while_hooks_json_holds_no_agent_hook_group(
+    tmp_path: Path, groups: list[dict]
+) -> None:
+    home = _with_hooks_json(_home(tmp_path), groups)
+    _link(tmp_path)
+    render = FakeRender(R)
+    assert trust.guards_to_trust(home, _environment(tmp_path), "Darwin", render) == (
+        {},
+        None,
+    )
+    assert render.calls == []
+
+
+def test_the_guards_come_from_the_render_through_the_stable_link(
+    tmp_path: Path,
+) -> None:
+    home = _with_hooks_json(_home(tmp_path), [R["PreToolUse"][1]])
+    link = _link(tmp_path)
+    render = FakeRender(R)
+    assert trust.guards_to_trust(home, _environment(tmp_path), "Darwin", render) == (
+        codex_guards(R),
+        None,
+    )
+    assert render.calls == [(link, "Darwin")]
+
+
+@pytest.mark.parametrize(
+    ("make_link", "render", "why"),
+    [
+        (False, FakeRender(R), "no {link} (run just sync-agents x)"),
+        (True, FakeRender(None, "exits 2: boom"), "render: exits 2: boom"),
+    ],
+    ids=["missing link", "failed render"],
+)
+def test_without_a_render_only_the_scripts_are_trusted_and_a_warn_says_why(
+    tmp_path: Path, make_link: bool, render: FakeRender, why: str
+) -> None:
+    home = _with_hooks_json(_home(tmp_path), [R["PreToolUse"][1]])
+    link = tmp_path / "data/dotfiles/agent-hooks/current/codex/agent-hook"
+    if make_link:
+        _link(tmp_path)
+    guards, warning = trust.guards_to_trust(
+        home, _environment(tmp_path), "Darwin", render
+    )
+    assert guards == {}
+    assert warning == (
+        "WARN",
+        "codex-hooks",
+        "agent-hook's guards in hooks.json not checked: "
+        + why.format(link=link)
+        + "; the scripts still run",
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the fake agent-hook is a sh script")
+@pytest.mark.parametrize(
+    ("body", "result"),
+    [
+        ('cat "{out}"\n', (R, "")),
+        ("echo boom >&2\nexit 2\n", (None, "exits 2: boom")),
+        ("echo not-json\n", (None, "output does not parse")),
+    ],
+    ids=["render", "failure", "not json"],
+)
+def test_the_render_runs_the_link_for_codex_through_sh(
+    tmp_path: Path, body: str, result: tuple
+) -> None:
+    out = tmp_path / "render.json"
+    out.write_text(CODEX_RENDER["stdout"], encoding="utf-8")
+    argv = tmp_path / "argv"
+    link = tmp_path / "agent-hook"
+    link.write_text(
+        f'#!/bin/sh\nprintf "%s\\n" "$@" > "{argv}"\n' + body.format(out=out),
+        encoding="utf-8",
+    )
+    link.chmod(0o755)
+    rendered, reason = trust.render_codex(link, "Darwin")
+    assert rendered == result[0]
+    assert reason.startswith(result[1]) and bool(reason) == bool(result[1])
+    assert argv.read_text(encoding="utf-8").splitlines() == [
+        "render",
+        "--harness",
+        "codex",
+        "--os",
+        "darwin",
+        "--shell",
+        "sh",
+        "--binary",
+        str(link),
+    ]
+
+
+def test_main_reports_why_the_guards_are_not_checked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    home = _home(tmp_path)
+    (home / "hooks.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    monkeypatch.setattr(trust.shutil, "which", lambda name: "/bin/codex")
+    warning = ("WARN", "codex-hooks", "the guards were not checked")
+    monkeypatch.setattr(trust, "guards_to_trust", lambda *args: ({}, warning))
+    server = FakeServer({"initialize": {}, "hooks/list": {"data": []}})
+
+    @contextlib.contextmanager
+    def answering(codex: str) -> Generator[trust.AppServerClient]:
+        yield trust.AppServerClient(server, server, timeout=5)
+
+    monkeypatch.setattr(trust, "app_server", answering)
+    assert trust.main(["--check"]) == 1
+    printed = capsys.readouterr().out.splitlines()
+    assert printed[0] == "WARN codex-hooks - the guards were not checked"
