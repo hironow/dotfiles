@@ -6,6 +6,7 @@ arbitrary-precision oracle. Failed assertions include the seed and full trace.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
@@ -13,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from _bash_hook import bash_path, resolve_bash, run_bash
@@ -286,8 +288,17 @@ def replay_powershell(
     busy=False,
     prefix="keep/",
     retention="2h",
+    diagnostic_mode=None,
 ):
     """Whole script, with only process/clock I/O overridden; never selectors."""
+    # TEMP PR565 Stage A: ordinary replays do not query or change JSON defaults.
+    if diagnostic_mode not in (None, "Default", "String"):
+        raise ValueError("invalid diagnostic mode")
+    if (
+        diagnostic_mode == "String"
+        and not powershell_diagnostic_metadata()["date_kind_supported"]
+    ):
+        raise ValueError("INCONCLUSIVE: ConvertFrom-Json DateKind unsupported")
     assert PWSH is not None
     tmp_path.mkdir(parents=True, exist_ok=True)
     state_path = tmp_path / "state.json"
@@ -300,9 +311,32 @@ def replay_powershell(
     switches = "-DryRun" if dry else ""
     if legacy_skip:
         switches += " -SkipDocker"
+    diagnostic_setting = ""
+    diagnostic_probe = ""
+    if diagnostic_mode is not None:
+        if diagnostic_mode == "String":
+            diagnostic_setting = (
+                "$PSDefaultParameterValues['ConvertFrom-Json:DateKind']='String'\n"
+            )
+        # A child scope avoids leaking probe variables/Matches into the script.
+        # No fake parser, explicit DateKind argument, or caller preference changes.
+        diagnostic_probe = f"""# TEMP PR565-GC-DIAG: observe actual decoding in this wrapper.
+& {{
+    $wire = '{OLD}'
+    $decoded = (ConvertFrom-Json -InputObject '{{"Created":"{OLD}"}}' -ErrorAction Stop).Created
+    $kind = $null
+    $value = $decoded
+    if ($decoded -is [DateTime]) {{
+        $kind = $decoded.Kind.ToString()
+        $value = $decoded.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    }}
+    $observation = @{{ wire_value = $wire; type = $decoded.GetType().FullName; value = $value; kind = $kind }}
+    [IO.File]::WriteAllText('{quote(tmp_path / "diagnostic-probe.json")}', ($observation | ConvertTo-Json -Compress))
+}}
+"""
     wrapper.write_text(
         f"""$ErrorActionPreference = 'Stop'
-function Get-Date {{
+{diagnostic_setting}function Get-Date {{
     param($Format)
     if ($Format) {{ return 'simulated' }}
     {"throw 'clock query failed'" if state.get("clock_error") else ""}
@@ -328,7 +362,7 @@ function Start-Process {{
     $process | Add-Member ScriptMethod Dispose {{ }}
     return $process
 }}
-& '{quote(ROOT / "scripts/runner_gc_win.ps1")}' -PodmanOnly -PodmanTimeoutSec 1 {switches}
+{diagnostic_probe}& '{quote(ROOT / "scripts/runner_gc_win.ps1")}' -PodmanOnly -PodmanTimeoutSec 1 {switches}
 """,
         encoding="utf-8",
     )
@@ -355,7 +389,123 @@ function Start-Process {{
     assert proc.returncode == 0 and not proc.stderr, (proc.stdout, proc.stderr, final)
     assert final["violations"] == [], final
     assert final["unsafe"] == [], final
+    if diagnostic_mode is not None:
+        probe = json.loads(
+            (tmp_path / "diagnostic-probe.json").read_text(encoding="utf-8")
+        )
+        final["diagnostic_probe"] = probe
+        final["diagnostic_effective"] = (
+            probe["type"] == "System.String"
+            and probe["value"] == probe["wire_value"] == OLD
+            if diagnostic_mode == "String"
+            else None
+        )
     return final
+
+
+# TEMP PR565 Stage A diagnostics: remove together with the failure-only CI step
+# after an independently approved, supported production repair is verified.
+def powershell_diagnostic_metadata():
+    """Real cmdlet metadata in a separate process, outside mocked Get-Command."""
+    assert PWSH is not None
+    command = r"""$ErrorActionPreference = 'Stop'
+$cmdlet = Get-Command Microsoft.PowerShell.Utility\ConvertFrom-Json -CommandType Cmdlet
+@{ executable = (Get-Process -Id $PID).Path; version = $PSVersionTable.PSVersion.ToString();
+   edition = $PSVersionTable.PSEdition; date_kind_supported = $cmdlet.Parameters.ContainsKey('DateKind') } | ConvertTo-Json -Compress
+"""
+    proc = subprocess.run(
+        [PWSH, "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+        check=False,
+    )
+    assert proc.returncode == 0 and not proc.stderr, (proc.stdout, proc.stderr)
+    metadata = json.loads(proc.stdout)
+    assert isinstance(metadata["date_kind_supported"], bool), metadata
+    return metadata
+
+
+def run_gc_ci_diagnostic(tmp_path):
+    """Bounded real-script observations; safety failures still raise, never pass."""
+
+    def emit(record):
+        print("[PR565-GC-DIAG] " + json.dumps(record, sort_keys=True), flush=True)
+
+    if PWSH is None:
+        emit({"comparison": "INCONCLUSIVE", "error": "PowerShell runtime absent"})
+        return []
+    try:
+        metadata = powershell_diagnostic_metadata()
+    except Exception as error:
+        emit({"error": str(error), "comparison": "INCONCLUSIVE"})
+        raise
+    emit({"metadata": metadata})
+    records = []
+    for scenario in ("old-image", "exited-old-container"):
+        default: dict[str, Any] | None = None
+        for mode in ("Default", "String"):
+            if mode == "String" and not metadata["date_kind_supported"]:
+                emit(
+                    {
+                        "scenario": scenario,
+                        "mode": mode,
+                        "comparison": "INCONCLUSIVE",
+                        "error": "ConvertFrom-Json DateKind unsupported",
+                    }
+                )
+                continue
+            state = (
+                inventory()
+                if scenario == "old-image"
+                else inventory(containers={"def": container(status="exited")})
+            )
+            fixture = tmp_path / scenario / mode
+            try:
+                final = replay_powershell(fixture, state, diagnostic_mode=mode)
+            except Exception as error:
+                # Replay assertions retain the full fake-engine trace/witnesses.
+                emit({"scenario": scenario, "mode": mode, "error": str(error)})
+                raise
+            collected = final["removed"] == [IMAGE] and final["removed_containers"] == (
+                ["def"] if scenario == "exited-old-container" else []
+            )
+            record: dict[str, Any] = {
+                "scenario": scenario,
+                "mode": mode,
+                "metadata": metadata,
+                "effective": final["diagnostic_effective"],
+                "probe": final["diagnostic_probe"],
+                "removed": final["removed"],
+                "removed_containers": final["removed_containers"],
+                "collected": collected,
+                "trace": final["trace"][:64],
+                "trace_count": len(final["trace"]),
+                "trace_truncated": len(final["trace"]) > 64,
+                "error": None,
+                "comparison": "default-observation",
+            }
+            if mode == "Default":
+                default = record
+            elif not record["effective"]:
+                record["comparison"] = "INCONCLUSIVE"
+            elif not collected:
+                # Does NOT exclude a DateTime contribution to other false guards.
+                record["comparison"] = "insufficient-to-restore"
+            elif (
+                default is not None
+                and not default["collected"]
+                and default["removed"] == default["removed_containers"] == []
+                and default["probe"]["type"] == "System.DateTime"
+            ):
+                record["comparison"] = "supports-DateTime-hypothesis-not-causal-proof"
+            else:
+                record["comparison"] = "INCONCLUSIVE"
+            emit(record)
+            records.append(record)
+    return records
 
 
 def run_platform(platform, tmp_path, state, **kwargs):
@@ -867,3 +1017,314 @@ def test_seeded_real_script_replay(tmp_path, platform):
         assert final["removed"] == (
             [] if keep or fresh or fault != "none" else [IMAGE]
         ), {"seed": seed, "trace": final["trace"], "state": final}
+
+
+# TEMP PR565 Stage A construction/static controls; no PowerShell runtime proof.
+def _diagnostic_subprocess_boundary(
+    monkeypatch, *, supported=True, probe=None, fault=None, string_collection=False
+):
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        assert kwargs["timeout"] == 15
+        assert kwargs["encoding"] == "utf-8" and kwargs["errors"] == "replace"
+        if "-Command" in argv:
+            assert "function Get-Command" not in argv[-1]
+            assert "Microsoft.PowerShell.Utility\\ConvertFrom-Json" in argv[-1]
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                json.dumps(
+                    {
+                        "executable": "/construction-only/pwsh",
+                        "version": "construction-only",
+                        "edition": "construction-only",
+                        "date_kind_supported": supported,
+                    }
+                ),
+                "",
+            )
+        wrapper = Path(argv[-1])
+        text = wrapper.read_text(encoding="utf-8")
+        state_path = Path(kwargs["env"]["GC_STATE"])
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        if fault:
+            state[fault].append("construction-only injected safety failure")
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+        if "PR565-GC-DIAG" in text:
+            string_mode = "['ConvertFrom-Json:DateKind']='String'" in text
+            if string_mode and string_collection:
+                # Synthetic subprocess response tests report classification ONLY.
+                state["removed"] = [IMAGE]
+                state["removed_containers"] = list(state["containers"])
+                state_path.write_text(json.dumps(state), encoding="utf-8")
+            value = (
+                probe
+                if probe is not None
+                else {
+                    "wire_value": OLD,
+                    "type": "System.String" if string_mode else "System.DateTime",
+                    "value": OLD,
+                    "kind": None if string_mode else "Utc",
+                }
+            )
+            (wrapper.parent / "diagnostic-probe.json").write_text(
+                json.dumps(value), encoding="utf-8"
+            )
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(sys.modules[__name__], "PWSH", "/construction-only/pwsh")
+    monkeypatch.setattr(subprocess, "run", run)
+    return calls
+
+
+def test_gc_diagnostic_default_replay_construction_unchanged(tmp_path, monkeypatch):
+    calls = _diagnostic_subprocess_boundary(monkeypatch)
+    final = replay_powershell(tmp_path, inventory())
+    assert len(calls) == 1 and "-File" in calls[0]
+    wrapper = (tmp_path / "replay.ps1").read_text(encoding="utf-8")
+    assert "PR565-GC-DIAG" not in wrapper
+    assert "PSDefaultParameterValues" not in wrapper
+    assert "diagnostic_probe" not in final
+    assert not (tmp_path / "diagnostic-probe.json").exists()
+
+
+@pytest.mark.parametrize("mode", ["String; exit", "", True, "default", "Default; exit"])
+def test_gc_diagnostic_mode_validation_before_io(tmp_path, monkeypatch, mode):
+    calls = _diagnostic_subprocess_boundary(monkeypatch)
+    with pytest.raises(ValueError, match="diagnostic mode"):
+        replay_powershell(tmp_path, inventory(), diagnostic_mode=mode)
+    assert calls == [] and list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("mode", ["Default", "String"])
+def test_gc_diagnostic_same_child_probe_construction(tmp_path, monkeypatch, mode):
+    calls = _diagnostic_subprocess_boundary(monkeypatch)
+    final = replay_powershell(tmp_path, inventory(), diagnostic_mode=mode)
+    wrapper = (tmp_path / "replay.ps1").read_text(encoding="utf-8")
+    probe = wrapper.index("# TEMP PR565-GC-DIAG")
+    production = wrapper.index("& '" + str(ROOT / "scripts/runner_gc_win.ps1"))
+    assert probe < production
+    assert "ConvertFrom-Json -InputObject" in wrapper[probe:production]
+    assert "-ErrorAction Stop" in wrapper[probe:production]
+    assert "$Matches" not in wrapper[probe:production]
+    assert (
+        "'System.String'" not in wrapper[probe:production]
+    )  # Observe, never prescribe type.
+    setting = "$PSDefaultParameterValues['ConvertFrom-Json:DateKind']='String'"
+    assert wrapper.count(setting) == (1 if mode == "String" else 0)
+    if mode == "String":
+        assert wrapper.index(setting) < probe
+        assert "-Command" in calls[0] and "-File" in calls[1]
+        assert final["diagnostic_effective"] is True
+    else:
+        assert len(calls) == 1 and final["diagnostic_effective"] is None
+    assert final["diagnostic_probe"]["wire_value"] == OLD
+
+
+@pytest.mark.parametrize(
+    "probe",
+    [
+        {"wire_value": OLD, "type": "System.DateTime", "value": OLD, "kind": "Utc"},
+        {"wire_value": OLD, "type": "System.String", "value": NOW, "kind": None},
+    ],
+)
+def test_gc_diagnostic_ineffective_string_construction(tmp_path, monkeypatch, probe):
+    _diagnostic_subprocess_boundary(monkeypatch, probe=probe)
+    assert (
+        replay_powershell(tmp_path, inventory(), diagnostic_mode="String")[
+            "diagnostic_effective"
+        ]
+        is False
+    )
+
+
+def test_gc_diagnostic_unsupported_string_construction(tmp_path, monkeypatch):
+    calls = _diagnostic_subprocess_boundary(monkeypatch, supported=False)
+    with pytest.raises(ValueError, match="INCONCLUSIVE"):
+        replay_powershell(tmp_path, inventory(), diagnostic_mode="String")
+    assert len(calls) == 1 and "-Command" in calls[0]
+    assert not (tmp_path / "replay.ps1").exists()
+
+
+@pytest.mark.parametrize("fault", ["unsafe", "violations"])
+def test_gc_diagnostic_preserves_safety_assertions_construction(
+    tmp_path, monkeypatch, fault
+):
+    _diagnostic_subprocess_boundary(monkeypatch, fault=fault)
+    with pytest.raises(
+        AssertionError, match="construction-only injected safety failure"
+    ):
+        run_gc_ci_diagnostic(tmp_path)
+
+
+def test_gc_diagnostic_comparison_construction_not_runtime(
+    tmp_path, monkeypatch, capsys
+):
+    calls = _diagnostic_subprocess_boundary(monkeypatch)
+    records = run_gc_ci_diagnostic(tmp_path)
+    assert len([call for call in calls if "-File" in call]) == 4
+    assert len({call[-1] for call in calls if "-File" in call}) == 4
+    assert [record["mode"] for record in records] == [
+        "Default",
+        "String",
+        "Default",
+        "String",
+    ]
+    assert all(
+        record["comparison"] == "insufficient-to-restore"
+        for record in records
+        if record["mode"] == "String"
+    )
+    assert all(record["trace"] == [] for record in records)
+    assert "[PR565-GC-DIAG]" in capsys.readouterr().out
+
+
+def test_gc_diagnostic_missing_runtime_is_inconclusive(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(sys.modules[__name__], "PWSH", None)
+    assert run_gc_ci_diagnostic(tmp_path) == []
+    assert "INCONCLUSIVE" in capsys.readouterr().out
+
+
+# The entire pre-diagnostic workflow must stay byte-identical, not just pytest.
+# This also locks draft guards, pins, all other jobs and the full unfiltered gate.
+_TEMP_GC_STEP = """
+      # TEMP PR565 Stage A: observation only; original unit failure stays red.
+      - name: TEMP PR565 GC JSON diagnostics
+        if: ${{ failure() && steps.unit_tests.outcome == 'failure' }}
+        run: |
+          uvx --from pytest python - <<'PY'
+          import sys
+          import tempfile
+          from pathlib import Path
+          sys.path.insert(0, str(Path('tests/unit').resolve()))
+          from test_podman_gc_simulation import run_gc_ci_diagnostic
+          with tempfile.TemporaryDirectory(prefix='pr565-gc-diag-') as fixture:
+              run_gc_ci_diagnostic(Path(fixture))
+          PY
+      # END TEMP PR565 Stage A diagnostics
+"""
+
+
+def _assert_gc_diagnostic_workflow(body):
+    unit = "      - name: Run unit tests\n        id: unit_tests\n        run: uvx pytest -q -ra tests/unit/\n"
+    assert body.count(unit + _TEMP_GC_STEP) == 1
+    original = body.replace(_TEMP_GC_STEP, "", 1).replace(
+        "        id: unit_tests\n", "", 1
+    )
+    assert (
+        hashlib.sha256(original.encode("utf-8")).hexdigest()
+        == "cf641323be13f21ec896b462bc36c8261ee85d3b1e167ac8cb0c8bf0c54a8e7f"
+    )
+
+
+def test_gc_diagnostic_failure_only_workflow_preserves_original_gate():
+    _assert_gc_diagnostic_workflow(
+        (ROOT / ".github/workflows/unit-test.yaml").read_text(encoding="utf-8")
+    )
+
+
+@pytest.mark.parametrize(
+    "before,after",
+    [
+        ("id: unit_tests", "id: unit_tests\n        continue-on-error: true"),
+        ("id: unit_tests", "id: unit_tests\n        if: false"),
+        (
+            "runs-on: ubuntu-latest",
+            "continue-on-error: true\n    runs-on: ubuntu-latest",
+        ),
+        ("uvx pytest -q -ra tests/unit/", "uvx pytest -q -ra tests/unit/ || true"),
+        (
+            "uvx pytest -q -ra tests/unit/",
+            'uvx pytest -q -ra tests/unit/ -k "not powershell"',
+        ),
+        ("failure() && steps.unit_tests.outcome == 'failure'", "always()"),
+        ("failure() && steps.unit_tests.outcome == 'failure'", "failure()"),
+        (
+            "run: |\n          uvx --from pytest",
+            "continue-on-error: true\n        run: |\n          uvx --from pytest",
+        ),
+        ("github.event.pull_request.draft == false", "true"),
+    ],
+)
+def test_gc_diagnostic_workflow_rejects_gate_mutations(before, after):
+    body = (ROOT / ".github/workflows/unit-test.yaml").read_text(encoding="utf-8")
+    assert before in body
+    with pytest.raises(AssertionError):
+        _assert_gc_diagnostic_workflow(body.replace(before, after, 1))
+
+
+@pytest.mark.parametrize("fault", ["none", "keep", "young", "huge-retention", "force"])
+def test_gc_diagnostic_existing_real_witness_oracle(tmp_path, fault):
+    """Real Python I/O oracle control, NOT a PowerShell/parser/selector test."""
+    state = inventory()
+    if fault == "keep":
+        state["images"][IMAGE]["RepoTags"] = ["localhost/keep/model:latest"]
+    if fault == "young":
+        state["images"][IMAGE]["Created"] = NOW
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    engine = tmp_path / "engine.py"
+    engine.write_text(FAKE, encoding="utf-8")
+    env = dict(
+        os.environ,
+        GC_STATE=str(state_path),
+        RUNNER_GC_KEEP_TAG_PREFIX="keep/",
+        RUNNER_GC_RETENTION="9" * 100 + "h" if fault == "huge-retention" else "2h",
+    )
+    for command in (
+        ["image", "inspect", IMAGE],
+        ["image", "inspect", IMAGE],
+        ["rmi", "--force" if fault == "force" else "--no-prune", IMAGE],
+    ):
+        subprocess.run(
+            [sys.executable, str(engine), *command],
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+    final = json.loads(state_path.read_text(encoding="utf-8"))
+    assert bool(final["unsafe"]) == (fault == "force"), final
+    assert bool(final["violations"]) == (
+        fault in {"keep", "young", "huge-retention"}
+    ), final
+    assert final["removed"] == ([] if fault == "force" else [IMAGE]), final
+
+
+def test_gc_diagnostic_unsupported_comparison_construction(
+    tmp_path, monkeypatch, capsys
+):
+    calls = _diagnostic_subprocess_boundary(monkeypatch, supported=False)
+    records = run_gc_ci_diagnostic(tmp_path)
+    assert len(records) == 2 and all(record["mode"] == "Default" for record in records)
+    assert len([call for call in calls if "-File" in call]) == 2
+    assert capsys.readouterr().out.count('"comparison": "INCONCLUSIVE"') == 2
+
+
+@pytest.mark.parametrize("effective", [False, True])
+def test_gc_diagnostic_report_classification_construction_only(
+    tmp_path, monkeypatch, effective
+):
+    # Artificial subprocess payloads exercise wording, not DateKind or GC success.
+    probe = (
+        None
+        if effective
+        else {"wire_value": OLD, "type": "System.DateTime", "value": OLD, "kind": "Utc"}
+    )
+    _diagnostic_subprocess_boundary(monkeypatch, probe=probe, string_collection=True)
+    records = run_gc_ci_diagnostic(tmp_path)
+    assert all(
+        record["comparison"]
+        == (
+            "supports-DateTime-hypothesis-not-causal-proof"
+            if effective
+            else "INCONCLUSIVE"
+        )
+        for record in records
+        if record["mode"] == "String"
+    )
