@@ -1,11 +1,11 @@
-import os
-
-import docker
 import pytest
+
+from tests.utils.helpers import podman_client, service_address
 
 
 def test_postgres18_container_starts() -> None:
-    client = docker.from_env()
+    host, port = service_address("postgres-18", 5433, "POSTGRES_PORT")
+    client = podman_client()
 
     from tests.utils.helpers import get_container, wait_for_tcp
     from tests.utils.result import Error, Ok
@@ -20,8 +20,7 @@ def test_postgres18_container_starts() -> None:
             pytest.fail(msg)
 
     # Check if PostgreSQL port is accessible
-    port = int(os.getenv("POSTGRES_PORT", "5433"))
-    match wait_for_tcp("localhost", port):
+    match wait_for_tcp(host, port):
         case Ok(_):
             pass
         case Error(msg):

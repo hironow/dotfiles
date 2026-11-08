@@ -44,7 +44,7 @@ $baseline = @(
 $probed = @(
     "$env:ProgramFiles\PowerShell\7"
     "$env:ProgramFiles\LLVM\bin"
-    "$env:ProgramFiles\Docker\Docker\resources\bin"
+    "$env:ProgramFiles\RedHat\Podman"
     "$env:ProgramFiles\dotnet"
     "${env:ProgramFiles(x86)}\NVIDIA Corporation\PhysX\Common"
     # Per-user shim dirs that the self-hosted runner service (LocalSystem)

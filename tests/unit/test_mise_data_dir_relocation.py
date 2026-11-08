@@ -117,15 +117,45 @@ def _load_devcontainer_json() -> dict:
     """devcontainer.json is JSON-with-comments. Strip them before
     json.loads."""
     text = DEVCONTAINER_JSON.read_text(encoding="utf-8")
-    # Strip /* ... */ block comments and // line comments. Keep
-    # // inside strings — but the codebase doesn't use protocol
-    # URLs in this file so a simple regex is safe.
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-    text = re.sub(r"^\s*//.*$", "", text, flags=re.MULTILINE)
-    text = re.sub(r"//[^\n]*$", "", text, flags=re.MULTILINE)
-    # Strip trailing commas before } or ].
-    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    # Match quoted strings first: URI slashes, escaped quotes and comment
+    # tokens inside strings are data, not JSONC syntax.
+    quoted = r'"(?:\\.|[^"\\])*"'
+    text = re.sub(
+        quoted + r"|//[^\n]*|/\*.*?\*/",
+        lambda match: match[0] if match[0].startswith('"') else " ",
+        text,
+        flags=re.DOTALL,
+    )
+    # Likewise, only remove trailing commas outside quoted strings.
+    text = re.sub(
+        f"({quoted})" + r"|,(\s*[}\]])",
+        lambda match: match[1] if match[1] is not None else match[2],
+        text,
+    )
     return json.loads(text)
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["unix:///run/dotfiles-podman/podman.sock", "https://example.invalid/path"],
+)
+def test_config_loader_preserves_protocols_and_comment_tokens_in_strings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    probe = tmp_path / "devcontainer.json"
+    literal = 'quoted " /* literal */ // literal , }'
+    probe.write_text(
+        "// leading comment\n{\n"
+        '  /* block comment */ "containerEnv": {\n'
+        f'    "CONTAINER_HOST": {json.dumps(endpoint)}, // inline comment\n'
+        f'    "LITERAL": {json.dumps(literal)},\n'
+        "  },\n}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(globals(), "DEVCONTAINER_JSON", probe)
+    assert _load_devcontainer_json() == {
+        "containerEnv": {"CONTAINER_HOST": endpoint, "LITERAL": literal}
+    }
 
 
 @pytest.fixture(scope="module")
@@ -137,8 +167,8 @@ def test_devcontainer_containerenv_has_mise_data_dir(
     devcontainer_config: dict,
 ) -> None:
     """containerEnv must expose MISE_DATA_DIR=/opt/mise so processes
-    spawned by the dev container (incl. pytest sub-containers via
-    docker-outside-of-docker) inherit the relocation."""
+    spawned by the dev container (including Podman test containers)
+    inherit the relocation."""
     container_env = devcontainer_config.get("containerEnv", {})
     assert container_env.get("MISE_DATA_DIR") == "/opt/mise", (
         f"devcontainer.json containerEnv must set MISE_DATA_DIR=/opt/mise. "

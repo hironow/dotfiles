@@ -1,4 +1,4 @@
-FROM golang:1.27.2-bookworm AS builder
+FROM docker.io/library/golang:1.27.2-bookworm AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY . .
 ENV CGO_ENABLED=0
 RUN go build -o bigtable-cli .
 
-FROM alpine:latest
+FROM docker.io/library/alpine:latest
 RUN apk --no-cache add ca-certificates \
     && adduser -D -H -u 10001 appuser
 WORKDIR /app

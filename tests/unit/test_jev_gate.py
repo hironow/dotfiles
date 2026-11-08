@@ -11,22 +11,45 @@ JUSTFILE = (ROOT / "justfile").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / ".github/workflows/unit-test.yaml").read_text(encoding="utf-8")
 
 
+def _recipe_body(text: str, name: str) -> str:
+    bodies = re.findall(
+        rf"^{re.escape(name)}:\n((?:[ \t]+[^\n]*(?:\n|$)|\n)*)", text, re.MULTILINE
+    )
+    assert len(bodies) == 1, f"missing or ambiguous recipe: {name}"
+    return bodies[0]
+
+
 def test_pi_extension_is_excluded_from_inapplicable_vp_and_built_with_bun() -> None:
     assert "':!config/pi/extensions/**'" in JUSTFILE
     assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in JUSTFILE
-    assert (
-        "just pi-jev-test" in JUSTFILE.split("check:\n", 1)[1].split("\n[group(", 1)[0]
-    )
-    fmt = JUSTFILE.split("fmt:\n", 1)[1].split("\n[group(", 1)[0]
+    assert "just pi-jev-test" in _recipe_body(JUSTFILE, "check")
+    fmt = _recipe_body(JUSTFILE, "fmt")
     assert "':!config/pi/extensions/**'" in fmt
     assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in fmt
-    lint = JUSTFILE.split("lint:\n", 1)[1].split("\n[group(", 1)[0]
+    lint = _recipe_body(JUSTFILE, "lint")
     assert "':!config/pi/extensions/**'" in lint
     assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in lint
     assert "just pi-jev-test" in lint
     assert "bun build config/pi/extensions/jev-sonnet-fallback.ts" in JUSTFILE
     assert "bun test tests/unit/jev_sonnet_fallback.test.ts" in JUSTFILE
     assert WORKFLOW.count("bun test tests/unit/jev_sonnet_fallback.test.ts") == 2
+
+
+@pytest.mark.parametrize(
+    ("name", "earlier"),
+    [("check", "spec-check"), ("fmt", "pre-fmt"), ("lint", "pre-lint")],
+)
+def test_recipe_selection_uses_full_header(name: str, earlier: str) -> None:
+    text = f"{earlier}:\n    wrong\n\n{name}:\n    expected\n"
+    assert _recipe_body(text, name) == "    expected\n"
+
+
+@pytest.mark.parametrize(
+    "text", ["", "spec-check:\n    wrong\n", "check:\n    one\ncheck:\n    two\n"]
+)
+def test_recipe_selection_rejects_missing_or_duplicate_headers(text: str) -> None:
+    with pytest.raises(AssertionError, match="missing or ambiguous recipe"):
+        _recipe_body(text, "check")
 
 
 def test_the_claude_live_verification_is_one_command() -> None:

@@ -52,8 +52,8 @@ does more damage through the supply chain.
 
 ## Permanent main CLI exception
 
-Dotfiles-managed **permanent main CLIs**, including mise, just and uv, are
-exempt from the seven-day cooldown. The exception includes dependencies inside
+Dotfiles-managed **permanent main CLIs**, including mise, just, uv, Podman
+and podman-compose, are exempt from the seven-day cooldown. The exception includes dependencies inside
 that CLI's dedicated installation environment, not dependencies of a repository
 where the CLI happens to run. Use tool-scoped installer arguments; keep global
 npm/uv and repository dependency defaults intact.

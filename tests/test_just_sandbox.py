@@ -1,10 +1,16 @@
+import json
 import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import textwrap
+import uuid
 from collections.abc import Mapping
+from contextlib import contextmanager
+from os import open as open_file_descriptor
 from pathlib import Path
 from typing import Literal
 
@@ -12,7 +18,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
-IMAGE = "dotfiles-just-sandbox:latest"
+RUN_LABEL = "io.hironow.dotfiles.sandbox-run"
+RUN_NONCE_ENV = "DOTFILES_SANDBOX_RUN_ID"
+BUILD_STATES = {"not-started", "running", "succeeded", "interrupted"}
+OPERATION_STATES = {"not-started", "pending", "unknown", "completed"}
 
 # CI sets this (the `env:` block of .github/workflows/test-just.yaml) to state
 # that the checkout at LOCAL_WORKSPACE_FOLDER is a runner checkout thrown away
@@ -54,15 +63,11 @@ def _mount_mode(env: Mapping[str, str]) -> Literal["bind", "snapshot"]:
 
 
 def _host_workspace_path() -> str:
-    """Resolve the path that the outer docker daemon will mount.
+    """Resolve the explicit engine-side workspace for nested one-shot binds.
 
-    When tests run inside the dev container under docker-outside-of-
-    docker, `-v <src>:<dst>` is interpreted by the host daemon, so
-    <src> must be a HOST path. devcontainer.json exports the host
-    path as LOCAL_WORKSPACE_FOLDER for exactly this case.
-
-    When tests run on the host directly (no dev container), ROOT
-    already is a host path.
+    The outside Podman engine resolves bind sources in its own namespace.
+    LOCAL_WORKSPACE_FOLDER supplies that mapping; it does not prove the
+    checkout disposable. `_mount_mode` independently enforces that fence.
     """
     return os.environ.get("LOCAL_WORKSPACE_FOLDER", str(ROOT))
 
@@ -84,102 +89,843 @@ def _run(
 
 
 def _docker_available() -> bool:
-    r = _run(["docker", "info"])
-    return r.returncode == 0
+    """Compatibility name for the required Podman client/server check."""
+    try:
+        result = _run(["podman", "version", "--format", "json"])
+    except FileNotFoundError:
+        return False
+    if result.returncode:
+        return False
+    versions = json.loads(result.stdout)
+    return all(
+        int(versions[key]["Version"].split(".")[0]) >= 5 for key in ("Client", "Server")
+    )
 
 
-def _devcontainer_cli_available() -> bool:
-    r = _run(["devcontainer", "--version"])
-    return r.returncode == 0
+def _checked(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    result = _run(cmd, **kwargs)
+    if result.returncode:
+        raise RuntimeError(
+            f"{cmd!r} failed ({result.returncode})\n{result.stdout}\n{result.stderr}"
+        )
+    return result
+
+
+def _json_output(result: subprocess.CompletedProcess) -> dict:
+    # devcontainer may emit progress before its final JSON receipt.
+    for line in reversed(result.stdout.splitlines()):
+        if line.startswith("{"):
+            return json.loads(line)
+    raise RuntimeError(f"missing devcontainer JSON receipt: {result.stdout}")
+
+
+def _selected_engine_identity() -> dict:
+    info = json.loads(_checked(["podman", "info", "--format", "json"]).stdout)
+    host = info["host"]
+    socket = host["remoteSocket"]["path"]
+    hostname = host["hostname"]
+    graph_root = info["store"]["graphRoot"]
+    if not all(
+        isinstance(value, str) and value for value in (socket, hostname, graph_root)
+    ):
+        raise RuntimeError("selected engine identity unavailable")
+    endpoint = os.environ.get("CONTAINER_HOST")
+    if not endpoint and host.get("serviceIsRemote"):
+        connections = json.loads(
+            _checked(
+                ["podman", "system", "connection", "list", "--format", "json"]
+            ).stdout
+        )
+        selected_name = os.environ.get("CONTAINER_CONNECTION")
+        selected = (
+            [
+                connection
+                for connection in connections
+                if connection.get("Name") == selected_name
+            ]
+            if selected_name
+            else [
+                connection
+                for connection in connections
+                if connection.get("Default") is True
+            ]
+        )
+        if len(selected) != 1 or not selected[0].get("URI"):
+            raise RuntimeError("selected remote connection is missing/ambiguous")
+        endpoint = selected[0]["URI"]
+    return {
+        "hostname": hostname,
+        "graph_root": graph_root,
+        "socket": socket,
+        "endpoint": endpoint or "native-local",
+    }
+
+
+def _validate_run_record(record: dict) -> None:
+    required = {
+        "run_id",
+        "tag",
+        "tag_was_absent",
+        "image_id",
+        "container_ids",
+        "engine",
+        "complete",
+        "build_state",
+        "snapshot_path",
+        "up_state",
+        "exec_state",
+        "create_state",
+    }
+    if not isinstance(record, dict) or set(record) != required:
+        raise RuntimeError("partial/invalid devcontainer record; retaining resources")
+    if not isinstance(record["run_id"], str) or not re.fullmatch(
+        r"[0-9a-f]{32}", record["run_id"]
+    ):
+        raise RuntimeError("invalid devcontainer run identity; retaining resources")
+    if (
+        not isinstance(record["build_state"], str)
+        or record["build_state"] not in BUILD_STATES
+    ):
+        raise RuntimeError("invalid build completion state")
+    for operation in ("up", "exec", "create"):
+        value = record[f"{operation}_state"]
+        if not isinstance(value, str) or value not in OPERATION_STATES:
+            raise RuntimeError("invalid resource-operation completion state")
+    if (
+        (
+            record["tag"] is None
+            and any(record[f"{op}_state"] != "not-started" for op in ("up", "exec"))
+        )
+        or (record["tag"] is not None and record["create_state"] != "not-started")
+        or (
+            record["up_state"] != "not-started" and record["build_state"] != "succeeded"
+        )
+        or (record["exec_state"] != "not-started" and record["up_state"] != "completed")
+        or (
+            any(record[f"{op}_state"] == "completed" for op in ("up", "create"))
+            and not record["container_ids"]
+        )
+    ):
+        raise RuntimeError("inconsistent resource-operation accounting record")
+    # Diagnostic metadata only: recovery must never use this as deletion authority.
+    snapshot_path = record["snapshot_path"]
+    if snapshot_path is not None and (
+        not isinstance(snapshot_path, str)
+        or not snapshot_path
+        or "\x00" in snapshot_path
+    ):
+        raise RuntimeError("invalid snapshot diagnostic path")
+    if record["build_state"] != "not-started" and snapshot_path is None:
+        raise RuntimeError("missing build snapshot diagnostic path")
+    if record["tag"] is None:
+        if (
+            record["tag_was_absent"] is not False
+            or record["image_id"] is not None
+            or record["build_state"] != "not-started"
+        ):
+            raise RuntimeError("invalid container-only ownership record")
+    elif (
+        record["tag"] != f"localhost/dotfiles-sandbox:{record['run_id']}"
+        or record["tag_was_absent"] is not True
+    ):
+        raise RuntimeError("invalid fresh image ownership record")
+    if not isinstance(record["container_ids"], list) or not all(
+        isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+        for value in record["container_ids"]
+    ):
+        raise RuntimeError("invalid immutable container record")
+    if len(record["container_ids"]) != len(set(record["container_ids"])):
+        raise RuntimeError("duplicate immutable container record")
+    if record["tag"] is not None and (
+        (
+            record["build_state"] == "not-started"
+            and (record["image_id"] is not None or record["container_ids"])
+        )
+        or (record["container_ids"] and record["image_id"] is None)
+        or (
+            record["build_state"] == "succeeded"
+            and record["complete"]
+            and record["image_id"] is None
+        )
+    ):
+        raise RuntimeError("inconsistent build/image accounting record")
+    identity = record.get("engine")
+    if (
+        not isinstance(identity, dict)
+        or set(identity) != {"hostname", "graph_root", "socket", "endpoint"}
+        or not all(isinstance(value, str) and value for value in identity.values())
+    ):
+        raise RuntimeError("invalid selected engine identity record")
+    if type(record.get("complete")) is not bool or (
+        record["complete"]
+        and (
+            record["build_state"] in {"running", "interrupted"}
+            or any(
+                record[f"{op}_state"] in {"pending", "unknown"}
+                for op in ("up", "exec", "create")
+            )
+            or (record["tag"] is None and record["create_state"] != "completed")
+        )
+    ):
+        raise RuntimeError("invalid cleanup state")
+    image_id = record.get("image_id")
+    if image_id is not None and (
+        not isinstance(image_id, str)
+        or not re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", image_id)
+    ):
+        raise RuntimeError("invalid immutable image record")
+
+
+def _validate_run_journal(journal: object) -> None:
+    if not isinstance(journal, dict) or set(journal) != {"version", "runs"}:
+        raise RuntimeError("invalid devcontainer journal envelope")
+    if (
+        type(journal["version"]) is not int
+        or journal["version"] != 4
+        or not isinstance(journal["runs"], list)
+    ):
+        raise RuntimeError("invalid devcontainer journal version/runs")
+    run_ids = set()
+    container_ids = set()
+    for entry in journal["runs"]:
+        _validate_run_record(entry)
+        if entry["run_id"] in run_ids:
+            raise RuntimeError("duplicate run identity in devcontainer journal")
+        run_ids.add(entry["run_id"])
+        if container_ids.intersection(entry["container_ids"]):
+            raise RuntimeError("duplicate container identity in devcontainer journal")
+        container_ids.update(entry["container_ids"])
+
+
+def _journal_record(record: dict, path: Path | None = None) -> None:
+    _validate_run_record(record)
+    if path is None:
+        filename = os.environ.get("DOTFILES_DEVCONTAINER_MANIFEST")
+        if filename:
+            path = Path(filename)
+        else:
+            path = ROOT / ".pi/tasks" / f"devcontainer-{record['run_id']}.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        print(f"Devcontainer recovery journal: {path}", file=sys.stderr)
+    journal: dict = (
+        json.loads(path.read_text(encoding="utf-8"))
+        if path.exists()
+        else {"version": 4, "runs": []}
+    )
+    _validate_run_journal(journal)
+    journal["runs"] = [
+        entry for entry in journal["runs"] if entry["run_id"] != record["run_id"]
+    ] + [record]
+    _validate_run_journal(journal)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(journal, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def _assert_selected_engine(engine: dict) -> None:
+    if _selected_engine_identity() != engine:
+        raise RuntimeError("selected engine changed; retaining run resources")
+
+
+def _owned_image_id(tag: str, run_id: str) -> str:
+    image = json.loads(_checked(["podman", "image", "inspect", tag]).stdout)
+    if not isinstance(image, list) or len(image) != 1 or not isinstance(image[0], dict):
+        raise RuntimeError("ambiguous run image metadata; retaining image")
+    image = image[0]
+    image_id = image.get("Id")
+    try:
+        metadata = json.loads(image["Config"]["Labels"]["devcontainer.metadata"])
+        if not isinstance(metadata, list) or not all(
+            isinstance(item, dict) for item in metadata
+        ):
+            raise ValueError("invalid metadata")
+        nonces = [
+            item["containerEnv"][RUN_NONCE_ENV]
+            for item in metadata
+            if isinstance(item.get("containerEnv"), dict)
+            and RUN_NONCE_ENV in item["containerEnv"]
+        ]
+    except (KeyError, TypeError, ValueError) as error:
+        raise RuntimeError(
+            "run image metadata/nonce unavailable; retaining image"
+        ) from error
+    if (
+        not isinstance(image_id, str)
+        or not re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", image_id)
+        or not nonces
+        or any(nonce != run_id for nonce in nonces)
+        or not isinstance(image.get("RepoTags"), list)
+        or tag not in image["RepoTags"]
+    ):
+        raise RuntimeError("run image identity/nonce unverified; retaining image")
+    return image_id
+
+
+def _cleanup_run_record(record: dict, path: Path | None = None) -> None:
+    _validate_run_record(record)
+    _assert_selected_engine(record["engine"])
+    if record["tag"] and record["image_id"] is None:
+        exists = _run(["podman", "image", "exists", record["tag"]])
+        if exists.returncode == 0:
+            if record["build_state"] == "not-started":
+                raise RuntimeError(
+                    "unexpected tag for never-started build; retaining image"
+                )
+            record["image_id"] = _owned_image_id(record["tag"], record["run_id"])
+            _journal_record(record, path)  # persist recovered ownership BEFORE cleanup
+        elif exists.returncode != 1:
+            raise RuntimeError(
+                "run tag lookup failed; retaining incomplete recovery state"
+            )
+        elif record["build_state"] == "succeeded":
+            raise RuntimeError(
+                "successful build image unaccounted for; retaining incomplete recovery state"
+            )
+    if record["build_state"] in {"running", "interrupted"}:
+        raise RuntimeError(
+            "build completion unknown/interrupted; retaining resources and incomplete journal; "
+            "review checkpoint required to establish terminal build accounting; "
+            "--cleanup-manifest remains retryable but cannot automatically adopt unknown completion"
+        )
+    if any(
+        record[f"{op}_state"] in {"pending", "unknown"}
+        for op in ("up", "exec", "create")
+    ) or (record["tag"] is None and record["create_state"] != "completed"):
+        raise RuntimeError(
+            "resource-operation completion unknown; retaining resources and incomplete journal; "
+            "review checkpoint required for terminal accounting"
+        )
+    _cleanup_run_containers(
+        record["run_id"], record["container_ids"], record["image_id"], record["engine"]
+    )
+    if record["image_id"]:
+        _untag_run_image(record["tag"], record["image_id"], record["engine"])
+    record["complete"] = True
+    try:
+        _journal_record(record, path)
+    except BaseException:
+        record["complete"] = False
+        raise
+
+
+def cleanup_devcontainer_manifest(path: Path) -> None:
+    journal = json.loads(path.read_text(encoding="utf-8"))
+    # Validate the ENTIRE journal before performing any cleanup.
+    _validate_run_journal(journal)
+    for record in journal["runs"]:
+        if not record["complete"]:
+            _cleanup_run_record(record, path)
+
+
+def _cleanup_run_containers(
+    run_id: str,
+    recorded_ids: tuple | list = (),
+    image_id: str | None = None,
+    engine: dict | None = None,
+) -> None:
+    # Discovery cannot prove recorded IDs absent: labels may have changed.
+    discovered = _checked(
+        ["podman", "ps", "-aq", "--no-trunc", "--filter", f"label={RUN_LABEL}={run_id}"]
+    ).stdout.split()
+    owned = []
+    for container_id in dict.fromkeys([*recorded_ids, *discovered]):
+        if not re.fullmatch(r"[0-9a-f]{64}", container_id):
+            raise RuntimeError("invalid discovered immutable container identity")
+        exists = _run(["podman", "container", "exists", container_id])
+        if exists.returncode == 1:
+            continue  # actual NotFound, not merely absent from label discovery
+        if exists.returncode != 0:
+            raise RuntimeError("container existence query failed; retaining resources")
+        inspected = _run(["podman", "container", "inspect", container_id])
+        if inspected.returncode:
+            if _run(["podman", "container", "exists", container_id]).returncode == 1:
+                continue
+            raise RuntimeError("container inspect failed; retaining resources")
+        infos = json.loads(inspected.stdout)
+        if (
+            not isinstance(infos, list)
+            or len(infos) != 1
+            or not isinstance(infos[0], dict)
+        ):
+            raise RuntimeError("invalid container inspect; retaining resources")
+        info = infos[0]
+        if (
+            info.get("Id") != container_id
+            or info.get("Config", {}).get("Labels", {}).get(RUN_LABEL) != run_id
+            or (
+                image_id is not None
+                and info.get("Image", "").removeprefix("sha256:")
+                != image_id.removeprefix("sha256:")
+            )
+        ):
+            raise RuntimeError(f"refusing cleanup of unowned container {container_id}")
+        owned.append(container_id)
+    for container_id in owned:
+        if engine is not None:
+            _assert_selected_engine(engine)
+        removed = _run(["podman", "rm", "-f", container_id])
+        if (
+            removed.returncode
+            and _run(["podman", "container", "exists", container_id]).returncode != 1
+        ):
+            raise RuntimeError(
+                "exact-ID removal unacknowledged; retaining incomplete journal"
+            )
+
+
+def _inspect_owned_container(container_id: object, record: dict) -> str:
+    if not isinstance(container_id, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", container_id
+    ):
+        raise RuntimeError("missing/invalid immutable container receipt")
+    infos = json.loads(
+        _checked(["podman", "container", "inspect", container_id]).stdout
+    )
+    if not isinstance(infos, list) or len(infos) != 1 or not isinstance(infos[0], dict):
+        raise RuntimeError("invalid container ownership receipt")
+    info = infos[0]
+    if (
+        info.get("Id") != container_id
+        or info.get("Config", {}).get("Labels", {}).get(RUN_LABEL) != record["run_id"]
+        or (
+            record["image_id"] is not None
+            and info.get("Image", "").removeprefix("sha256:")
+            != record["image_id"].removeprefix("sha256:")
+        )
+    ):
+        raise RuntimeError("unowned container receipt")
+    return container_id
+
+
+def _create_start_owned(
+    record: dict, command: list[str]
+) -> subprocess.CompletedProcess:
+    if record["create_state"] != "not-started" or command[:2] != ["podman", "create"]:
+        raise RuntimeError("one checked create is required per owned run")
+    record["create_state"] = "pending"
+    _journal_record(record)
+    try:
+        container_id = _checked(command).stdout.strip()
+        _inspect_owned_container(container_id, record)
+        record["container_ids"].append(container_id)
+        _journal_record(record)  # persist checked ownership BEFORE completing creation
+        record["create_state"] = "completed"
+        _journal_record(record)
+    except BaseException:
+        record["create_state"] = "unknown"
+        _journal_record(record)
+        raise
+    # A failed attached start may be an intentional application status. Creation
+    # is already known; cleanup must acknowledge exact-ID removal or NotFound.
+    return _run(["podman", "start", "--attach", container_id])
+
+
+@contextmanager
+def owned_container_run(run_id: str, *, snapshot_path: str | None = None):
+    record = {
+        "run_id": run_id,
+        "tag": None,
+        "tag_was_absent": False,
+        "image_id": None,
+        "container_ids": [],
+        "engine": _selected_engine_identity(),
+        "complete": False,
+        "build_state": "not-started",
+        "snapshot_path": snapshot_path,
+        "up_state": "not-started",
+        "exec_state": "not-started",
+        "create_state": "not-started",
+    }
+    _journal_record(record)
+
+    def create_start(command: list[str]) -> subprocess.CompletedProcess:
+        return _create_start_owned(record, command)
+
+    try:
+        yield create_start
+    finally:
+        _cleanup_run_record(record)
+
+
+def run_saved_image(
+    image: str, script: str, *, offline: bool = False
+) -> subprocess.CompletedProcess:
+    """Saved-image checks only; uniquely label even one-shot containers."""
+    run_id = uuid.uuid4().hex
+    command = ["podman", "create", "--rm", "--label", f"{RUN_LABEL}={run_id}"]
+    if offline:
+        command += ["--network", "none"]
+    with owned_container_run(run_id) as create_start:
+        return create_start([*command, image, "bash", "-lc", script])
+
+
+def _untag_run_image(tag: str, image_id: str, engine: dict | None = None) -> None:
+    # An ID can predate the run or acquire another alias/reference. Only untag
+    # our fresh random tag; retain ALL image/cache IDs (never rmi/prune).
+    if engine is not None:
+        _assert_selected_engine(engine)
+    exists = _run(["podman", "image", "exists", tag])
+    if exists.returncode == 1:
+        return  # already untagged before an interrupted journal update
+    if exists.returncode != 0:
+        raise RuntimeError("run tag lookup failed; retaining image")
+    info = json.loads(_checked(["podman", "image", "inspect", tag]).stdout)[0]
+    if info["Id"] != image_id:
+        raise RuntimeError(f"run image tag changed: {tag}")
+    if engine is not None:
+        _assert_selected_engine(engine)
+    _checked(["podman", "untag", image_id, tag])
+
+
+def _assert_snapshot_has_no_git_ancestry(snapshot: Path) -> None:
+    for ancestor in (snapshot.resolve(), *snapshot.resolve().parents):
+        marker = ancestor / ".git"
+        if marker.exists() or marker.is_symlink():
+            raise RuntimeError(
+                f"refusing snapshot inside an enclosing Git worktree: {ancestor}"
+            )
+
+
+def _engine_snapshot_path(snapshot: Path) -> str:
+    if _mount_mode(os.environ) == "bind":
+        return str(Path(_host_workspace_path()) / snapshot.relative_to(ROOT))
+    return str(snapshot)
+
+
+@contextmanager
+def devcontainer_session():
+    """Required fresh build -> actual up -> exec, on a tracked-only snapshot."""
+    if not _docker_available():
+        pytest.fail(
+            "Podman >=5 client AND selected server are required; activate the selected engine separately"
+        )
+    for executable in ("devcontainer", "podman-compose"):
+        if not shutil.which(executable):
+            pytest.fail(
+                f"required executable missing: {executable}; install canonical mise tools"
+            )
+    _mount_mode(os.environ)  # refuse nested real-checkout paths before any writes
+    if os.environ.get("LOCAL_WORKSPACE_FOLDER"):
+        raise RuntimeError(
+            "run required devcontainer build/up/exec from the host: nested workspace mapping does not authorize a sibling snapshot outside the real Git ancestry"
+        )
+    launcher_bash = shutil.which("bash")
+    if os.name == "nt":
+        # System32/bash.exe is WSL, not Git Bash (windows-host runbook).
+        git_sh = shutil.which("sh")
+        launcher_bash = str(Path(git_sh).with_name("bash.exe")) if git_sh else None
+    if not launcher_bash:
+        pytest.fail("launcher requires Bash (Git Bash on native Windows)")
+    _checked([launcher_bash, ".devcontainer/require-podman-socket.sh"], cwd=ROOT)
+    run_id = uuid.uuid4().hex
+    tag = f"localhost/dotfiles-sandbox:{run_id}"
+    exists = _run(["podman", "image", "exists", tag])
+    if exists.returncode != 1:
+        raise RuntimeError(
+            f"run tag must be absent (lookup rc={exists.returncode}): {tag}"
+        )
+    image_id = None
+    record = {
+        "run_id": run_id,
+        "tag": tag,
+        "tag_was_absent": True,
+        "image_id": None,
+        "container_ids": [],
+        "engine": _selected_engine_identity(),
+        "complete": False,
+        "build_state": "not-started",
+        "snapshot_path": None,
+        "up_state": "not-started",
+        "exec_state": "not-started",
+        "create_state": "not-started",
+    }
+    _journal_record(record)  # atomically BEFORE any build/up creates resources
+    env = dict(os.environ, PODMAN_COMPOSE_PROVIDER="podman-compose")
+    env.pop("DOCKER_HOST", None)
+    for variable in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"):
+        env.pop(variable, None)
+    snapshot = Path(_snapshot_tracked_worktree(str(ROOT)))
+    try:
+        record["snapshot_path"] = str(snapshot)
+        _journal_record(record)  # retain diagnostic context BEFORE invoking a builder
+        _assert_snapshot_has_no_git_ancestry(snapshot)
+        config_path = snapshot / ".devcontainer/devcontainer.json"
+        raw = config_path.read_text(encoding="utf-8")
+        config = json.loads(re.sub(r"^\s*//.*$", "", raw, flags=re.MULTILINE))
+        engine_path = _engine_snapshot_path(snapshot)
+        config["workspaceMount"] = (
+            f"source={engine_path},target=/root/dotfiles,type=bind"
+        )
+        config["containerEnv"]["LOCAL_WORKSPACE_FOLDER"] = engine_path
+        config["containerEnv"][DISPOSABLE_CHECKOUT_ENV] = "1"
+        config["containerEnv"][RUN_NONCE_ENV] = run_id
+        config.setdefault("runArgs", []).append(f"--label={RUN_LABEL}={run_id}")
+        config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        common = [
+            "--workspace-folder",
+            str(snapshot),
+            "--config",
+            str(config_path),
+            "--docker-path",
+            "podman",
+            "--docker-compose-path",
+            "podman-compose",
+        ]
+        record["build_state"] = "running"
+        _journal_record(record)
+        try:
+            build = _run(
+                [
+                    "devcontainer",
+                    "build",
+                    *common,
+                    "--buildkit",
+                    "never",
+                    "--image-name",
+                    tag,
+                ],
+                cwd=snapshot,
+                env=env,
+            )
+            if build.returncode:
+                raise RuntimeError(
+                    f"devcontainer build failed ({build.returncode})\n{build.stdout}\n{build.stderr}"
+                )
+        except BaseException:
+            # No nonzero/exceptional client receipt proves server termination.
+            # Raise the original diagnostic before journal/cleanup can fail too.
+            record["build_state"] = "interrupted"
+            _journal_record(record)
+            raise
+        record["build_state"] = "succeeded"
+        _journal_record(record)
+        image_id = _owned_image_id(tag, run_id)
+        record["image_id"] = image_id
+        _journal_record(record)
+        record["up_state"] = "pending"
+        _journal_record(record)
+        try:
+            receipt = _json_output(
+                _checked(
+                    [
+                        "devcontainer",
+                        "up",
+                        *common,
+                        "--mount-workspace-git-root=false",
+                        "--mount-git-worktree-common-dir=false",
+                        "--buildkit",
+                        "never",
+                        "--id-label",
+                        f"{RUN_LABEL}={run_id}",
+                    ],
+                    cwd=snapshot,
+                    env=env,
+                )
+            )
+            container_id = _inspect_owned_container(receipt.get("containerId"), record)
+            record["container_ids"].append(container_id)
+            _journal_record(record)
+            record["up_state"] = "completed"
+            _journal_record(record)
+        except BaseException:
+            record["up_state"] = "unknown"
+            _journal_record(record)
+            raise
+        exec_marker = f"DOTFILES_SANDBOX_EXEC_COMPLETE={run_id}"
+        script = (
+            "set -eu; test ! -e /root/dotfiles/.git; "
+            'test "$CONTAINER_HOST" = unix:///run/dotfiles-podman/podman.sock; '
+            "podman version --format json | python3 -c 'import json,sys; "
+            'v=json.load(sys.stdin); assert all(int(v[k]["Version"].split(".")[0]) >= 5 '
+            'for k in ("Client", "Server"))\'; '
+            f"test \"$(podman inspect --format '{{{{.Id}}}}' {container_id})\" = {container_id}; "
+            f"podman run --rm --network none --label {RUN_LABEL}={run_id} "
+            f"--entrypoint /bin/true {image_id}; "
+            f"printf '\\n{exec_marker}\\n'"
+        )
+        record["exec_state"] = "pending"
+        _journal_record(record)
+        try:
+            executed = _checked(
+                [
+                    "devcontainer",
+                    "exec",
+                    *common,
+                    "--mount-workspace-git-root=false",
+                    "--mount-git-worktree-common-dir=false",
+                    "--container-id",
+                    container_id,
+                    "bash",
+                    "-lc",
+                    script,
+                ],
+                cwd=snapshot,
+                env=env,
+            )
+            if executed.stdout.splitlines().count(exec_marker) != 1:
+                raise RuntimeError("missing/invalid controlled exec completion receipt")
+            record["exec_state"] = "completed"
+            _journal_record(record)
+        except BaseException:
+            record["exec_state"] = "unknown"
+            _journal_record(record)
+            raise
+        yield {
+            "image_id": image_id,
+            "container_id": container_id,
+            "run_id": run_id,
+            "snapshot": snapshot,
+        }
+    finally:
+        _cleanup_run_record(record)
+        # Only this process's snapshot, after cleanup RETURNS with persisted
+        # completion; even complete=True in memory is insufficient on write failure.
+        if record["complete"]:
+            shutil.rmtree(snapshot)
 
 
 @pytest.fixture(scope="session")
 def docker_image():
-    # given: docker daemon and devcontainer.json availability
-    if not _docker_available():
-        pytest.skip("Docker is not available on host; skipping sandbox tests.")
+    """Legacy fixture spelling; always a fresh immutable Podman image, no latest."""
+    with devcontainer_session() as runtime:
+        yield runtime["image_id"]
 
-    if not DEVCONTAINER_JSON.exists():
-        pytest.skip("devcontainer.json missing; skipping.")
 
-    # In CI, the dev container image is prebuilt by the
-    # `devcontainers/ci` action with imageName=dotfiles-just-sandbox.
-    # We reuse it instead of rebuilding so that a build failure surfaces
-    # as a CI step error (not as a silent pytest.skip that lets the
-    # workflow report green).
-    if _image_exists(IMAGE):
-        yield IMAGE
-        return
+def _tracked_file_stat(root: Path, parts: tuple[str, ...]) -> os.stat_result | None:
+    """Non-following validation; absent tracked files are intentionally omitted."""
+    current = root
+    for index, part in enumerate(parts):
+        current /= part
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            return None
+        if stat.S_ISLNK(metadata.st_mode) or current.is_junction():
+            raise RuntimeError(f"refusing tracked symlink/junction: {current}")
+        expected = stat.S_ISREG if index == len(parts) - 1 else stat.S_ISDIR
+        if not expected(metadata.st_mode):
+            raise RuntimeError(f"refusing nonregular tracked path: {current}")
+    resolved = current.resolve()
+    if not resolved.is_relative_to(root.resolve()) or any(
+        part.casefold() == ".git" for part in resolved.relative_to(root.resolve()).parts
+    ):
+        raise RuntimeError(f"refusing tracked path escape: {current}")
+    return metadata
 
-    # Local fallback: build the dev container image via the devcontainer
-    # CLI. Requires `npm i -g @devcontainers/cli` on the host.
-    if not _devcontainer_cli_available():
-        pytest.skip(
-            "Image 'dotfiles-just-sandbox:latest' not present and the "
-            "@devcontainers/cli is not installed on the host. Either "
-            "  npm i -g @devcontainers/cli\n"
-            "or pull the prebuilt CI image (when ghcr publish is enabled). "
-            "CI uses devcontainers/ci action, so this branch is only for "
-            "local pytest invocations."
+
+@contextmanager
+def _open_tracked_file(root: Path, parts: tuple[str, ...], expected: os.stat_result):
+    # POSIX anchors each ancestor and refuses links at open time. Windows lacks
+    # dir_fd/O_NOFOLLOW: revalidate and compare fstat there. Neither branch claims
+    # protection from malicious concurrent replacement (the lane has one writer).
+    if open_file_descriptor in os.supports_dir_fd and hasattr(os, "O_NOFOLLOW"):
+        directory = open_file_descriptor(
+            root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         )
+        try:
+            for part in parts[:-1]:
+                child = open_file_descriptor(
+                    part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory
+                )
+                os.close(directory)
+                directory = child
+            descriptor = open_file_descriptor(
+                parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory
+            )
+        finally:
+            os.close(directory)
+        stream = os.fdopen(descriptor, "rb")
+    else:
+        if _tracked_file_stat(root, parts) != expected:
+            raise RuntimeError("tracked file changed before snapshot read")
+        stream = root.joinpath(*parts).open("rb")
+    with stream:
+        observed = os.fstat(stream.fileno())
+        if not stat.S_ISREG(observed.st_mode) or (
+            observed.st_dev,
+            observed.st_ino,
+            observed.st_size,
+            observed.st_mtime_ns,
+        ) != (expected.st_dev, expected.st_ino, expected.st_size, expected.st_mtime_ns):
+            raise RuntimeError("tracked file changed before snapshot read")
+        yield stream
 
-    build_cmd = [
-        "devcontainer",
-        "build",
-        "--workspace-folder",
-        str(ROOT),
-        "--image-name",
-        IMAGE,
-    ]
-    result = _run(build_cmd, cwd=ROOT)
-    if result.returncode != 0:
-        pytest.fail(
-            "Failed to build dev container image via devcontainer CLI.\n"
-            f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
-        )
 
-    # then: image is available
-    yield IMAGE
-
-
-def _image_exists(image: str) -> bool:
-    r = _run(["docker", "image", "inspect", image])
-    return r.returncode == 0
+def _copy_tracked_into(src: str, snapshot: str) -> None:
+    """Validate ALL tracked names before copying working-tree (not index) bytes."""
+    root = Path(src).absolute()
+    for ancestor in (root, *root.parents):
+        if (
+            ancestor.is_symlink()
+            or ancestor.is_junction()
+            or not stat.S_ISDIR(ancestor.lstat().st_mode)
+        ):
+            raise RuntimeError(
+                f"refusing symlink/non-directory snapshot root ancestor: {ancestor}"
+            )
+    tracked = subprocess.run(
+        ["git", "-C", src, "ls-files", "--stage", "-z"],
+        check=True,
+        stdout=subprocess.PIPE,
+        env={
+            key: value
+            for key, value in os.environ.items()
+            if key not in {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"}
+        },
+    ).stdout.decode("utf-8")
+    files = {}
+    for entry in tracked.split("\0"):
+        if not entry:
+            continue
+        header, rel = entry.split("\t", 1)
+        mode = header.split()[0]
+        parts = tuple(rel.split("/"))
+        if any(
+            part in {"", ".", ".."}
+            or part.casefold() == ".git"
+            or "\\" in part
+            or ":" in part
+            or part.endswith((".", " "))
+            for part in parts
+        ):
+            raise RuntimeError(f"refusing reserved/traversing tracked name: {rel!r}")
+        # Gitlinks are never copied, but a substituted link is still refused.
+        if mode == "160000":
+            for length in range(1, len(parts) + 1):
+                path = root.joinpath(*parts[:length])
+                if path.is_symlink() or path.is_junction():
+                    raise RuntimeError(f"refusing tracked symlink/junction: {path}")
+            continue
+        metadata = _tracked_file_stat(root, parts)
+        if metadata is not None:
+            files[parts] = metadata
+    for parts, metadata in files.items():
+        dest = Path(snapshot).joinpath(*parts)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with (
+            _open_tracked_file(root, parts, metadata) as source,
+            dest.open("wb") as target,
+        ):
+            shutil.copyfileobj(source, target)
+        dest.chmod(stat.S_IMODE(metadata.st_mode))
 
 
 def _snapshot_tracked_worktree(src: str) -> str:
-    """Copy only git-tracked files into a throwaway host tempdir.
-
-    The sandbox container must never see the real repo: its 3.6G `.git`
-    (history + credentials), untracked secrets (`private/`), and caches must
-    stay out, and any file a test writes (fmt, dump truncation, symlinks) must
-    land on a disposable copy — not the host working tree via a bind mount.
-    `git ls-files` yields exactly the first-party tracked set (submodule
-    gitlinks, `.git`, `.venv`, `node_modules`, caches are all excluded), so we
-    copy just those (~hundreds of files) with the stdlib (no rsync/tar dep).
-    """
-    snapshot = tempfile.mkdtemp(prefix="dotfiles-sandbox-")
-    tracked = subprocess.run(
-        ["git", "-C", src, "ls-files", "-z"],
-        check=True,
-        stdout=subprocess.PIPE,
-    ).stdout.decode()
-    for rel in tracked.split("\0"):
-        if not rel:
-            continue
-        source = Path(src) / rel
-        if not source.is_file():  # skip gitlinks / vanished paths
-            continue
-        dest = Path(snapshot) / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, dest, follow_symlinks=False)
-    return snapshot
+    snapshot = Path(tempfile.mkdtemp(prefix=".dotfiles-sandbox-", dir=ROOT.parent))
+    try:
+        _assert_snapshot_has_no_git_ancestry(snapshot)
+        _copy_tracked_into(src, str(snapshot))
+        return str(snapshot)
+    except BaseException:
+        shutil.rmtree(snapshot)
+        raise
 
 
 def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
     # The dev container image does NOT bake /root/dotfiles into its layers —
-    # that path is the workspace mount. A fresh `docker run` starts empty, so we
-    # recreate it. Under docker-outside-of-docker (CI) the mount source must be
+    # that path is the workspace mount. A fresh `podman run` starts empty, so we
+    # recreate it. Under outside Podman the mount source must be
     # a host path and the checkout is ephemeral, so we bind-mount it directly.
     # Locally we snapshot only git-tracked files into a host tempdir and mount
     # THAT, so the real repo (and its .git) never enters the throwaway container
@@ -198,18 +944,33 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
     else:
         snapshot_dir = _snapshot_tracked_worktree(src)
         mount_source = snapshot_dir
+    run_id = uuid.uuid4().hex
     docker_args = [
-        "docker",
-        "run",
+        "podman",
+        "create",
         # Reap orphaned descendants, as the host's init does. A just/go PID 1
         # leaves zombies that make the process-tree tests report live children.
         "--init",
         "--rm",
+        "--label",
+        f"{RUN_LABEL}={run_id}",
         "-v",
         f"{mount_source}:/root/dotfiles",
+        "--security-opt",
+        "label=disable",
+        "--mount",
+        f"type=bind,source={os.environ['DOTFILES_PODMAN_ENGINE_SOCKET']},destination=/run/dotfiles-podman/podman.sock",
+        "-e",
+        "CONTAINER_HOST=unix:///run/dotfiles-podman/podman.sock",
+        "-e",
+        "PODMAN_COMPOSE_PROVIDER=podman-compose",
+        "-e",
+        f"LOCAL_WORKSPACE_FOLDER={mount_source}",
+        "-e",
+        f"{DISPOSABLE_CHECKOUT_ENV}=1",
         "-w",
         "/root/dotfiles",
-        # devcontainers/ci action bakes the dev container's
+        # devcontainer CLI bakes the dev container's
         # containerEnv (including MISE_OFFLINE=1) into the saved
         # image as ENV layer. Inner test containers want a fresh
         # mise cache resolution, so override.
@@ -225,11 +986,12 @@ def run_in_sandbox(image: str, script: str) -> subprocess.CompletedProcess:
     if gh_token:
         docker_args.extend(["-e", f"GITHUB_TOKEN={gh_token}"])
     docker_args.extend([image, "bash", "-lc", full_script])
-    try:
-        return _run(docker_args)
-    finally:
-        if snapshot_dir is not None:
-            shutil.rmtree(snapshot_dir, ignore_errors=True)
+    with owned_container_run(run_id, snapshot_path=snapshot_dir) as create_start:
+        result = create_start(docker_args)
+    # Reaching here acknowledges persisted cleanup; never trust a journal path.
+    if snapshot_dir is not None:
+        shutil.rmtree(snapshot_dir)
+    return result
 
 
 def _sh_single_quote(s: str) -> str:
@@ -570,18 +1332,11 @@ def test_doctor_reports_just(docker_image):
             marks=pytest.mark.check,
         ),
         pytest.param(
-            "Check: docker ports guarded",
-            # docker-cli is installed in the dev container image (by the
-            # docker-outside-of-docker feature), but no dockerd runs inside
-            # the sandbox. Guard on actual daemon reachability so the
-            # CLI-without-daemon case is treated as 'no docker available'
-            # — which it effectively is for any operation that matters.
-            "if command -v docker >/dev/null 2>&1 && "
-            "docker info >/dev/null 2>&1; "
-            "then just check-dockerport; else echo skip-docker; fi",
+            "Check: selected Podman ports",
+            "just check-podmanport",
             0,
-            "skip-docker",
-            id="Check: docker ports guarded",
+            "",
+            id="Check: selected Podman ports",
             marks=pytest.mark.check,
         ),
         pytest.param(
@@ -1382,15 +2137,11 @@ def test_deploy_mise_install_is_global_scoped(docker_image):
 
 
 # ---------------------------------------------------------------------------
-# Dev container is now debian-12 (bookworm) with glibc native — the
-# alpine + musl + libc6-compat / gcompat shim era ended with the
-# Layer-1 base-image migration. Tests that asserted the shim's
-# presence (test_glibc_compat_packages_installed,
-# test_glibc_dynamic_loader_present, test_glibc_binary_actually_runs,
-# test_dev_container_has_docker_cli via apk) were dropped because the
-# debian image has glibc natively and provides docker-cli through the
-# devcontainer feature `docker-outside-of-docker`. The corresponding
-# regressions can no longer occur on this base.
+# The dev container uses Microsoft's official Debian 13 (trixie) base,
+# with native glibc and a Podman client. The old Alpine/musl compatibility
+# assertions were retired with the base-image migration. Current lifecycle
+# and configuration tests cover the Podman client/server requirements and
+# outside-engine transport; native glibc needs no compatibility shim.
 # ---------------------------------------------------------------------------
 
 
@@ -1486,11 +2237,28 @@ def test_snapshot_excludes_git_untracked_and_submodule_gitlinks(tmp_path):
         shutil.rmtree(snapshot, ignore_errors=True)
 
 
-def test_run_in_sandbox_local_mounts_snapshot_not_host(monkeypatch):
+def test_run_in_sandbox_local_mounts_snapshot_not_host(monkeypatch, tmp_path):
     """Locally (no LOCAL_WORKSPACE_FOLDER) the sandbox mounts a throwaway
     git-tracked snapshot, never the host repo, and removes it afterwards."""
     # given: not in CI; the snapshot helper returns a dir we can track
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    monkeypatch.setenv(
+        "DOTFILES_DEVCONTAINER_MANIFEST", str(tmp_path / "local-test-run.json")
+    )
     monkeypatch.delenv("LOCAL_WORKSPACE_FOLDER", raising=False)
+    monkeypatch.setenv(
+        "DOTFILES_PODMAN_ENGINE_SOCKET", "/run/user/123/podman/podman.sock"
+    )
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_selected_engine_identity",
+        lambda: {
+            "hostname": "test",
+            "graph_root": "/test",
+            "socket": "/run/test",
+            "endpoint": "native-local",
+        },
+    )
     fake_snapshot = tempfile.mkdtemp(prefix="dotfiles-sandbox-test-")
     monkeypatch.setattr(
         sys.modules[__name__],
@@ -1500,7 +2268,21 @@ def test_run_in_sandbox_local_mounts_snapshot_not_host(monkeypatch):
     captured = {}
 
     def _fake_run(cmd, **kwargs):
-        captured["cmd"] = cmd
+        if cmd[:2] == ["podman", "create"]:
+            captured["cmd"] = cmd
+            return subprocess.CompletedProcess(cmd, 0, "b" * 64, "")
+        if cmd[:3] == ["podman", "container", "inspect"]:
+            run_id = captured["cmd"][captured["cmd"].index("--label") + 1].split(
+                "=", 1
+            )[1]
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                json.dumps(
+                    [{"Id": "b" * 64, "Config": {"Labels": {RUN_LABEL: run_id}}}]
+                ),
+                "",
+            )
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(sys.modules[__name__], "_run", _fake_run)
@@ -1513,21 +2295,39 @@ def test_run_in_sandbox_local_mounts_snapshot_not_host(monkeypatch):
     # equals ROOT inside the dev container, so scanning the whole arg is wrong.
     cmd = captured["cmd"]
     mount_arg = cmd[cmd.index("-v") + 1]
-    mount_source = mount_arg.split(":", 1)[0]
+    mount_source = mount_arg.removesuffix(":/root/dotfiles")
     assert mount_source == fake_snapshot
     assert mount_source != str(ROOT)
     # ...and the snapshot is torn down once the run completes
     assert not Path(fake_snapshot).exists()
 
 
-def test_run_in_sandbox_ci_binds_host_path(monkeypatch):
+def test_run_in_sandbox_ci_binds_host_path(monkeypatch, tmp_path):
     """In CI (LOCAL_WORKSPACE_FOLDER set plus the disposable-checkout
     declaration) the sandbox binds the host path directly and must NOT take the
     local snapshot branch. Without the declaration it refuses instead — see
     tests/unit/test_sandbox_mount_fence.py."""
     # given: CI-style env points at a host workspace path it declares disposable
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    monkeypatch.setenv(
+        "DOTFILES_DEVCONTAINER_MANIFEST", str(tmp_path / "ci-test-run.json")
+    )
     monkeypatch.setenv("LOCAL_WORKSPACE_FOLDER", "/work/ci-checkout")
+    monkeypatch.setenv(
+        "DOTFILES_PODMAN_ENGINE_SOCKET", "/run/user/123/podman/podman.sock"
+    )
     monkeypatch.setenv(DISPOSABLE_CHECKOUT_ENV, "1")
+
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_selected_engine_identity",
+        lambda: {
+            "hostname": "test",
+            "graph_root": "/test",
+            "socket": "/run/test",
+            "endpoint": "native-local",
+        },
+    )
 
     def _boom(_src):
         raise AssertionError("must not snapshot in CI mode")
@@ -1536,7 +2336,21 @@ def test_run_in_sandbox_ci_binds_host_path(monkeypatch):
     captured = {}
 
     def _fake_run(cmd, **kwargs):
-        captured["cmd"] = cmd
+        if cmd[:2] == ["podman", "create"]:
+            captured["cmd"] = cmd
+            return subprocess.CompletedProcess(cmd, 0, "b" * 64, "")
+        if cmd[:3] == ["podman", "container", "inspect"]:
+            run_id = captured["cmd"][captured["cmd"].index("--label") + 1].split(
+                "=", 1
+            )[1]
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                json.dumps(
+                    [{"Id": "b" * 64, "Config": {"Labels": {RUN_LABEL: run_id}}}]
+                ),
+                "",
+            )
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(sys.modules[__name__], "_run", _fake_run)
@@ -1548,3 +2362,10 @@ def test_run_in_sandbox_ci_binds_host_path(monkeypatch):
     cmd = captured["cmd"]
     mount_arg = cmd[cmd.index("-v") + 1]
     assert mount_arg == "/work/ci-checkout:/root/dotfiles"
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3 or sys.argv[1] != "--cleanup-manifest":
+        raise SystemExit("usage: test_just_sandbox.py --cleanup-manifest PATH")
+    os.environ["DOTFILES_DEVCONTAINER_MANIFEST"] = sys.argv[2]
+    cleanup_devcontainer_manifest(Path(sys.argv[2]))

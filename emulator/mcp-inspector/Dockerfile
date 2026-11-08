@@ -9,14 +9,14 @@ ARG MCP_INSPECTOR_REPO=https://github.com/modelcontextprotocol/inspector.git
 ARG MCP_INSPECTOR_REF=1.0.1
 
 # Stage 0: fetch source
-FROM alpine/git AS source
+FROM docker.io/alpine/git AS source
 ARG MCP_INSPECTOR_REPO
 ARG MCP_INSPECTOR_REF
 WORKDIR /src
 RUN git clone --depth 1 --branch "${MCP_INSPECTOR_REF}" "${MCP_INSPECTOR_REPO}" repo
 
 # Stage 1: build
-FROM node:26-alpine AS builder
+FROM docker.io/library/node:26-alpine AS builder
 WORKDIR /app
 COPY --from=source /src/repo/package*.json ./
 COPY --from=source /src/repo/client/package*.json ./client/
@@ -27,7 +27,7 @@ COPY --from=source /src/repo/ ./
 RUN npm run build
 
 # Stage 2: runtime
-FROM node:26-slim
+FROM docker.io/library/node:26-slim
 WORKDIR /app
 
 # curl for healthcheck

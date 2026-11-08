@@ -1,4 +1,4 @@
-FROM golang:1.27.2-alpine AS builder
+FROM docker.io/library/golang:1.27.2-alpine AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ RUN go mod download
 COPY . .
 RUN go build -o postgres-cli .
 
-FROM alpine:latest
+FROM docker.io/library/alpine:latest
 
 RUN apk --no-cache add ca-certificates
 

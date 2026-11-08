@@ -120,9 +120,9 @@ RETIRED_RECIPES = (
     "exe-cdr-install",
     "_exe-encryption",
     "_exe_tailscale_targets",
-    # The new exe stack's recipes, plus the two gates that only ever had exe
-    # inputs: spec-check (exe/spec + the exe-reaper simulation) and the
-    # exe-specific name the tofu suite ran under.
+    # The new exe stack's recipes and the exe-specific tofu gate. The generic
+    # spec-check name is reused for the current runner-GC model; its retired
+    # exe inputs are forbidden separately below.
     "exe-platform",
     "exe-cluster",
     "exe-reaper",
@@ -138,9 +138,10 @@ RETIRED_RECIPES = (
     "exe-substrate-teardown",
     "exe-worker-images",
     "exe-spike-task-image",
-    "spec-check",
     "test-iac-exe",
 )
+
+RETIRED_GATE_INPUTS = ("exe/spec", "tools/exe-reaper")
 
 # --- check 3: operational files, named one by one ----------------------
 
@@ -154,8 +155,8 @@ RETIRED_IN_FILES = {
         "exe-cluster",
     ),
     # The two tool pins that existed only for the exe stack. quint and java are
-    # NOT listed: they are base tooling for a non-negotiable that other repos on
-    # this machine rely on, and they stay even though dotfiles has no model.
+    # NOT listed: they remain base tooling for the formal-methods policy,
+    # including dotfiles' current runner-GC model.
     "config/mise/config.toml": ("google/ax", "ko-build/ko"),
     ".github/dependabot.yaml": ("exe-reaper",),
     ".gitignore": ("exe-reaper",),
@@ -204,12 +205,35 @@ def test_the_retired_path_list_is_well_formed() -> None:
     assert len(set(RETIRED_PATHS)) == len(RETIRED_PATHS), "duplicate retired path"
 
 
+def _retired_justfile_references(text: str) -> list[str]:
+    return sorted(
+        name for name in RETIRED_RECIPES + RETIRED_GATE_INPUTS if name in text
+    )
+
+
 def test_no_recipe_of_the_old_coder_stack_survives() -> None:
     """A recipe pointing at a deleted directory fails in the operator's hands
     instead of in CI, which is the worse of the two."""
     text = (ROOT / "justfile").read_text(encoding="utf-8")
-    left = sorted(name for name in RETIRED_RECIPES if name in text)
+    left = _retired_justfile_references(text)
     assert left == [], f"the justfile still carries retired recipes: {left}"
+
+
+def test_spec_check_name_can_be_reused_for_current_gc_models() -> None:
+    text = "spec-check:\n    quint typecheck scripts/spec/podman_image_gc.qnt\n"
+    assert _retired_justfile_references(text) == []
+
+
+def test_reused_gate_still_rejects_retired_models_and_simulation() -> None:
+    for command, forbidden in (
+        ("quint typecheck exe/spec/lease.qnt", "exe/spec"),
+        ("cd exe/spec && quint test lease.qnt", "exe/spec"),
+        ("cd tools/exe-reaper && go test ./internal/lease/", "tools/exe-reaper"),
+        ("just exe-init", "exe-init"),
+    ):
+        assert forbidden in _retired_justfile_references(
+            f"spec-check:\n    {command}\n"
+        )
 
 
 def test_no_workflow_runs_the_old_coder_stack() -> None:
@@ -243,10 +267,9 @@ def test_what_survives_is_still_here() -> None:
     for kept in (
         "docs/adr",
         "tofu/tailnet",
-        # Kept although dotfiles no longer has a Quint model of its own: the
-        # non-negotiable it states applies to every repo this machine scaffolds,
-        # and deleting the guidance with the last local model is how a rule
-        # quietly stops being one.
+        # Kept independently of any one model: the formal-methods policy applies
+        # to every scaffolded repo and now also to the local runner-GC model.
+        # Retiring the exe models must not retire that shared guidance.
         "ROOT_AGENTS_docs_agents_formal-methods.md",
         # The docstring above has always named both generic spokes as kept, but
         # only formal-methods was asserted. This one arrived on main with #439,

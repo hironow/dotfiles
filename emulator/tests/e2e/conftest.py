@@ -1,210 +1,91 @@
-"""Common e2e test fixtures for Docker-based scenarios.
+"""Real Podman e2e fixtures. Selected mandatory failures must never skip."""
 
-- Provides a shared `docker_client` with ping/skip handling.
-- Ensures emulator Docker network and required services are present.
-- Helpers to build images and run CLI commands inside containers.
-"""
-
-import os
 import textwrap
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
+from tests.utils.helpers import (
+    RUN_LABEL,
+    build_test_image,
+    require_running,
+    run_manifest,
+    run_test_image,
+)
+from tests.utils.helpers import podman_client as create_podman_client
 
-# Automatically mark tests under tests/e2e/ as e2e (and only those)
+
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    from pathlib import Path
-
     e2e_root = Path(__file__).parent.resolve()
     for item in items:
-        path = Path(str(getattr(item, "path", ""))).resolve()
-        try:
-            # Python 3.9+: precise subtree check
-            if path.is_relative_to(e2e_root):
-                item.add_marker(pytest.mark.e2e)
-        except AttributeError:  # pragma: no cover
-            # Fallback for very old Python (not expected here)
-            if str(path).startswith(str(e2e_root)):
-                item.add_marker(pytest.mark.e2e)
+        if Path(str(item.path)).resolve().is_relative_to(e2e_root):
+            item.add_marker(pytest.mark.e2e)
 
 
 @pytest.fixture(scope="session")
 def e2e_network_name() -> str:
-    """Docker network name the emulators join.
-
-    Must match the compose `networks.default.name` (`shared-otel-net`, which
-    `scripts/start-services.sh` creates). The old default `emulator-network` was
-    stale and made `ensure_network` skip the whole e2e suite. Override with env
-    var `EMULATOR_NETWORK` if needed.
-    """
-    return os.environ.get("EMULATOR_NETWORK", "shared-otel-net")
+    manifest = run_manifest()
+    if not manifest:
+        raise RuntimeError("E2E requires an isolated run manifest; see README")
+    return manifest["network"]
 
 
 @pytest.fixture(scope="session")
-def docker_client():
-    """Shared Docker client or skip if unavailable."""
-    try:
-        import docker
-
-        client = docker.from_env()
-        client.ping()
-        return client
-    except Exception as e:  # pragma: no cover - env dependent
-        pytest.skip(f"docker not available: {e}")
+def podman_client():
+    client = create_podman_client()
+    yield client
+    client.close()
 
 
 @pytest.fixture
-def ensure_network(docker_client, e2e_network_name: str) -> Callable[[], None]:
-    """Return a callable that skips if the emulator network is missing."""
+def ensure_network(podman_client, e2e_network_name: str) -> Callable[[], None]:
+    def ensure() -> None:
+        network = podman_client.networks.get(e2e_network_name)
+        assert (
+            network.attrs.get("Labels", {}).get(RUN_LABEL) == run_manifest()["run_id"]
+        )
 
-    def _ensure() -> None:
-        nets = docker_client.networks.list(names=[e2e_network_name])
-        if not nets:
-            pytest.skip(
-                f"network '{e2e_network_name}' not found. Start emulators first (docker compose up -d)"
-            )
-
-    return _ensure
+    return ensure
 
 
 @pytest.fixture
-def require_services(docker_client) -> Callable[[list[str]], None]:
-    """Return a callable that ensures given containers are running, else skip."""
-
-    def _req(names: list[str]) -> None:
-        running = {c.name for c in docker_client.containers.list()}
-        missing = [n for n in names if n not in running]
-        if missing:
-            pytest.skip(
-                f"required emulator containers not running: {', '.join(missing)}"
-            )
-
-    return _req
+def require_services(podman_client) -> Callable[[list[str]], None]:
+    return lambda names: require_running(podman_client, names)
 
 
 @pytest.fixture
-def build_image(docker_client) -> Callable[[str, str], None]:
-    """Return a callable to build a local image from a directory path."""
-
-    def _build(path: str, tag: str) -> None:
-        try:
-            docker_client.images.build(path=path, tag=tag, rm=True)
-        except Exception as e:  # pragma: no cover - env dependent
-            pytest.skip(f"failed to build image {tag} from {path}: {e}")
-
-    return _build
+def built_images() -> dict[str, str]:
+    return {}
 
 
 @pytest.fixture
-def run_cli(
-    docker_client, e2e_network_name: str
-) -> Callable[[str, str, str, dict[str, str]], str]:
-    """Return a callable to run a CLI binary in a container via here-doc.
+def build_image(podman_client, built_images) -> Callable[[str, str], str]:
+    def build(path: str, tag: str) -> str:
+        image_id = build_test_image(podman_client, path)
+        built_images[tag] = image_id
+        return image_id
 
-    Usage: run_cli(image, binary, script, env) -> stdout/stderr text
-    """
+    return build
 
-    def _run(image: str, binary: str, script: str, env: dict[str, str]) -> str:
+
+@pytest.fixture
+def run_cli(podman_client, e2e_network_name, built_images):
+    def run(image: str, binary: str, script: str, env: dict[str, str]) -> str:
         script = textwrap.dedent(script).lstrip("\n")
-        heredoc = f"cat <<'EOF' | ./{binary}\n{script}\nEOF"
-        container = None
-        try:
-            # Run container in detached mode to enable timeout handling
-            container = docker_client.containers.run(
-                image=image,
-                command=["sh", "-lc", heredoc],
-                environment=env,
-                network=e2e_network_name,
-                detach=True,
-                stdout=True,
-                stderr=True,
-            )
+        return run_test_image(
+            podman_client,
+            built_images[image],
+            f"cat <<'EOF' | ./{binary}\n{script}\nEOF",
+            env,
+        )
 
-            # Wait for container to finish with 5-minute timeout
-            exit_code = container.wait(timeout=300)
-
-            # Get logs after completion
-            logs = container.logs(stdout=True, stderr=True)
-
-            # Clean up container
-            container.remove()
-
-            # Check exit code
-            if isinstance(exit_code, dict):
-                status_code = exit_code.get("StatusCode", 0)
-            else:
-                status_code = exit_code
-
-            if status_code != 0:
-                pytest.fail(
-                    f"Container exited with code {status_code}. Output:\n{logs.decode(errors='ignore')}"
-                )
-
-            return logs.decode(errors="ignore")
-        except Exception as e:  # pragma: no cover - env dependent
-            # Clean up container on error
-            if container:
-                try:
-                    container.remove(force=True)
-                except Exception:
-                    pass
-            pytest.skip(f"run {image} failed: {e}")
-
-    return _run
+    return run
 
 
 @pytest.fixture
-def run_shell(
-    docker_client, e2e_network_name: str
-) -> Callable[[str, str, dict[str, str]], str]:
-    """Return a callable to run an arbitrary shell command in a container.
+def run_shell(podman_client, e2e_network_name, built_images):
+    def run(image: str, command: str, env: dict[str, str]) -> str:
+        return run_test_image(podman_client, built_images[image], command, env)
 
-    Usage: run_shell(image, command, env) -> stdout/stderr text
-    """
-
-    def _run(image: str, command: str, env: dict[str, str]) -> str:
-        container = None
-        try:
-            # Run container in detached mode to enable timeout handling
-            container = docker_client.containers.run(
-                image=image,
-                command=["sh", "-lc", command],
-                environment=env,
-                network=e2e_network_name,
-                detach=True,
-                stdout=True,
-                stderr=True,
-            )
-
-            # Wait for container to finish with 5-minute timeout
-            exit_code = container.wait(timeout=300)
-
-            # Get logs after completion
-            logs = container.logs(stdout=True, stderr=True)
-
-            # Clean up container
-            container.remove()
-
-            # Check exit code
-            if isinstance(exit_code, dict):
-                status_code = exit_code.get("StatusCode", 0)
-            else:
-                status_code = exit_code
-
-            if status_code != 0:
-                pytest.fail(
-                    f"Container exited with code {status_code}. Output:\n{logs.decode(errors='ignore')}"
-                )
-
-            return logs.decode(errors="ignore")
-        except Exception as e:  # pragma: no cover - env dependent
-            # Clean up container on error
-            if container:
-                try:
-                    container.remove(force=True)
-                except Exception:
-                    pass
-            pytest.skip(f"run {image} failed: {e}")
-
-    return _run
+    return run

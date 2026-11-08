@@ -65,7 +65,7 @@ def test_merges_instead_of_clobbering() -> None:
 def test_detects_optional_dirs_instead_of_hardcoding_users() -> None:
     text = _text()
     assert "Test-Path" in text, (
-        "optional entries (PowerShell 7, LLVM, Docker, scoop/bun/mise shims) "
+        "optional entries (PowerShell 7, LLVM, Podman, scoop/bun/mise shims) "
         "must be probed with Test-Path so the script ports across machines"
     )
     assert "USERPROFILE" in text, (
@@ -75,6 +75,11 @@ def test_detects_optional_dirs_instead_of_hardcoding_users() -> None:
     assert not re.search(r"C:\\Users\\[A-Za-z]", text), (
         "no hardcoded user-profile paths"
     )
+
+
+def test_optional_container_path_uses_native_podman_not_docker_desktop() -> None:
+    assert r"$env:ProgramFiles\RedHat\Podman" in _code()
+    assert r"Docker\Docker\resources\bin" not in _code()
 
 
 def test_missing_comparison_expands_env_vars() -> None:

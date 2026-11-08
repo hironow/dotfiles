@@ -4,7 +4,7 @@ Interactive shell for the Elasticsearch REST API. Start Elasticsearch
 (`just emu-up-group search`), then run from `emulator/`:
 
 ```bash
-docker compose --profile cli run --rm elasticsearch-cli
+PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false --profile cli run --rm elasticsearch-cli
 ```
 
 Type a request as `METHOD /path [json body];`. The request runs when a line

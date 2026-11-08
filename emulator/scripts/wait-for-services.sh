@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${DOTFILES_E2E_REQUIRED:-}" == 1 && -z "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ]]; then
+  echo "Mandatory tests require DOTFILES_PODMAN_RUN_MANIFEST; refusing shared resources" >&2
+  exit 2
+fi
+
+if [[ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ]]; then
+  cd "$(dirname "${BASH_SOURCE[0]}")/.."
+  exec uv run --frozen python -m tests.utils.isolation wait --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+fi
 
 # Idempotent waiter for emulator services.
 # Usage: bash scripts/wait-for-services.sh [--default <sec>] [--a2a <sec>] [--mcp <sec>] [--postgres <sec>]
@@ -67,22 +76,22 @@ wait_postgres() {
   echo "- Waiting for ${name} at ${host}:${port}"
   for ((i=1; i<=max; i++)); do
     local status
-    status=$(docker inspect -f '{{.State.Status}}' postgres-18 2>/dev/null || echo "not-found")
+    status=$(podman inspect -f '{{.State.Status}}' postgres-18 2>/dev/null || echo "not-found")
     case "$status" in
       running)
-        docker exec postgres-18 pg_isready -U postgres >/dev/null 2>&1 && { echo "  ${name} is ready"; return 0; }
+        podman exec postgres-18 pg_isready -U postgres >/dev/null 2>&1 && { echo "  ${name} is ready"; return 0; }
         restart_count=0 ;;
       restarting)
-        ((++restart_count >= 5)) && { echo "  ERROR: ${name} in restart loop" >&2; docker logs postgres-18 --tail 30 >&2; return 1; } ;;
+        ((++restart_count >= 5)) && { echo "  ERROR: ${name} in restart loop" >&2; podman logs postgres-18 --tail 30 >&2; return 1; } ;;
       exited|dead)
-        echo "  ERROR: ${name} stopped (${status})" >&2; docker logs postgres-18 --tail 30 >&2; return 1 ;;
+        echo "  ERROR: ${name} stopped (${status})" >&2; podman logs postgres-18 --tail 30 >&2; return 1 ;;
       not-found)
         echo "  ERROR: postgres-18 container not found" >&2; return 1 ;;
     esac
     sleep 1
   done
   echo "  ERROR: ${name} not ready in time" >&2
-  docker logs postgres-18 --tail 30 >&2 || true
+  podman logs postgres-18 --tail 30 >&2 || true
   return 1
 }
 
@@ -112,7 +121,7 @@ wait_elasticsearch() {
 # from `set -e`; a genuine wait_* timeout on a RUNNING service still fails loud.
 is_running() {
   local c="$1" status
-  status=$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null || echo false)
+  status=$(podman inspect -f '{{.State.Running}}' "$c" 2>/dev/null || echo false)
   [[ "$status" == "true" ]]
 }
 

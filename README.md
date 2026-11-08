@@ -4,15 +4,15 @@ Zsh、mise、just、AI エージェントなどの設定と、それを macOS、
 
 ## 構成
 
-すべての環境が、このリポジトリの正本から同じバージョンの道具と設定を入れる。
-OS ごとに違うのは導入の経路だけである。
+mise 管理の道具は、このリポジトリの正本でバージョンと設定を揃える。
+Podman などの OS パッケージはネイティブな導入経路を使い、最低バージョンを検査する。
 
 | 正本 | 役割 |
 | --- | --- |
-| `install.sh` / `bootstrap.ps1` | OS を判定して初期導入する（ADR 0005、ADR 0039） |
+| `install.sh` / `bootstrap.ps1` | OS を判定して初期導入する（ADR 0005、ADR 0039、Podman の例外は ADR 0067） |
 | `config/mise/config.toml` | host に入れる道具（`just`、`uv`、`prek`、`vp`、`markdownlint-cli2`、`node`、5 つの AI CLI など）の版を 3 OS で揃える（ADR 0006） |
 | `config/mise/image-tools.toml` | Dev Container が bake する `/etc/mise/config.toml`、検証つき tarball、Linux bootstrap の版を 1 か所に持つ。`install.sh` の該当領域はここから生成し、`just lint` / `just check` が食い違いを検出する（ADR 0060） |
-| `.devcontainer/devcontainer.json` | CI と IDE が共有するサンドボックスの定義（ADR 0001、ADR 0002） |
+| `.devcontainer/devcontainer.json` | CI と IDE が共有する trixie / Podman サンドボックス（ADR 0001、ADR 0002、ADR 0067） |
 | `dump/<host>/` | OS ごとのパッケージ記録（Homebrew、Scoop、gcloud など。ADR 0030） |
 | `ROOT_*` / `dump/harness/` | エージェントの指示、hook、skill、Claude プラグインの正本（[`docs/agent-sync.md`](./docs/agent-sync.md)） |
 
@@ -44,12 +44,14 @@ INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./i
 ```
 
 `install.sh` は mise（固定版、SHA 検証つき、`~/.local/bin`）を入れ、道具を `mise install` し、設定を symlink する。
-sudo は要らない。`install.sh` 全体を sudo で実行しない。
-例外は WSL の `wl-clipboard`（Pi と Herdr のコピー用）で、root か非対話の `sudo -n` で入れる。パスワードが要るときは、導入コマンドを表示して先へ進む。
+Podman 5 以上も必須で、Mac は Homebrew、Linux は OS パッケージから導入する。
+Linux で不足する Podman パッケージを入れるときだけ、root または非対話の `sudo -n` が必要になる。
+権限がなければ停止する。`install.sh` 全体を sudo で実行しない。
+WSL の `wl-clipboard`（Pi と Herdr のコピー用）も root か `sudo -n` で入れるが、こちらは導入できなくても手順を表示して先へ進む。
 `just deploy` は `~/.zprofile` に `~/.local/bin` を足す（zsh のログインシェルは `~/.profile` を読まない）。
 
 WSL の素の Ubuntu では、続けて次を一度だけ実行する。
-`wsl-conf` と Docker を効かせるには、Windows 側で `wsl --shutdown` も要る。
+`wsl-conf` の systemd 設定を効かせるには、Windows 側で `wsl --shutdown` も要る。
 
 ```bash
 # install.sh が wl-clipboard を入れられなかった場合（WSLg が必要）
@@ -62,17 +64,30 @@ sheldon lock
 just harden-env   # 機体ごとの供給網対策（npm と uv の 7 日の隔離、GOPROXY）。追跡しない
 just wsl-conf     # /etc/wsl.conf の差分と sudo での編集手順を表示する（Windows の PATH を入れない、systemd を有効化）
 
-# WSL の中で Docker を動かす（just test と Dev Container のサンドボックス用）
-sudo apt-get update && sudo apt-get install -y docker.io
-sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER"   # 次の wsl --shutdown のあとで効く
+# wsl --shutdown 後に開き直した WSL で、一般ユーザーの Podman API を有効化する
+# OS パッケージの Podman が 5 未満なら導入は停止する
+just podman-install
+systemctl --user enable --now podman.socket
 
-just doctor       # 確認: zsh、PATH-windows（WSL のみ）、WSLg の clipboard、docker、道具一式
+just doctor       # 確認: zsh、PATH-windows（WSL のみ）、WSLg の clipboard、Podman、道具一式
 ```
 
 `just harden-env` は `~/.npmrc` と `~/.config/uv/uv.toml` に 7 日の隔離（`min-release-age=7`、`exclude-newer = "7 days"`）を書く。
 Pi の拡張とその依存は隔離から外す（`~/.pi/agent/npm/.npmrc` に `min-release-age=0` を置く）。
 コミットする lock の 7 日の隔離は、各 project の `pyproject.toml` が自分で宣言する。
+
+### コンテナ実行環境
+
+実行エンジンは Podman 5 以上、Compose provider（設定を解釈して実行する CLI）は mise 管理の `podman-compose` に統一する。
+Docker エンジンへの自動切り替えは行わない。
+`just podman-install` は Podman の導入だけを行い、clone、設定配布、エージェント home の同期は行わない。
+Windows では `RedHat.Podman` だけを winget で導入する例外を使う（ADR 0067）。
+Podman と専用の `podman-compose` / Dev Container CLI 導入環境には 7 日の待機を加えないが、プロジェクトの依存と lock の隔離は変えない。
+
+macOS と Windows の machine 初期化と起動は operator が別途行う。
+導入スクリプトやシェル起動は machine を操作せず、既存の Docker データも削除しない。
+サンドボックスでは、選択したエンジンのソケットを明示する必要がある。
+手順とソケットを渡す権限の範囲は [Dev Container の説明](./.devcontainer/README.md) を参照する。
 
 ### Windows（native）
 
@@ -83,7 +98,8 @@ Pi の拡張とその依存は隔離から外す（`~/.pi/agent/npm/.npmrc` に 
 irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex
 ```
 
-`bootstrap.ps1` は scoop、git、just、jq、mise、pwsh を入れ、HTTPS で `~\dotfiles` に clone する。
+`bootstrap.ps1` は最初に winget の `RedHat.Podman` で Podman 5 以上を確認または導入する。
+続けて scoop、git、just、jq、mise、pwsh を入れ、HTTPS で `~\dotfiles` に clone する。
 続けて `add-scoop`、`deploy`、`harden-env`、`sync-agents`、`restore-skills-lock`、`doctor` を実行する。
 何度実行しても安全であり、終わったら新しい pwsh を開く（`$PROFILE` はそこで効く）。
 
@@ -114,7 +130,7 @@ just dump                       # 導入済みのパッケージを dump/<host>/
 just add-brew                   # macOS: 記録から復元する
 just add-scoop                  # Windows: 記録から復元する（ADR 0032）
 
-just self-check                 # 軽い健全性検査（with_tests=1 で Docker のテストも）
+just self-check                 # 軽い健全性検査（with_tests=1 で Podman のテストも）
 just doctor                     # 道具、PATH、OS 固有の設定、AI の道具、CA、kernel を診断する（ERR があれば exit 1）
 just validate-path-duplicates   # PATH の重複を検査する
 
@@ -127,13 +143,13 @@ mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
 
 ### テストと CI ゲート
 
-| コマンド | 内容 | Docker |
+| コマンド | 内容 | Podman |
 | --- | --- | --- |
 | `just ci` | `just check`（Python・Go・shell・Markdown・JS/TS の lint、Pi 拡張・Go のテスト、Quint のモデル）、Claude 設定検査、unit テスト、semgrep 規則テスト、IaC テスト、指示量予算、skill 宣言、emulator の lint、禁止トークン | 不要 |
 | `just ci-all` | `ci` + Dev Container のサンドボックステスト + `install.sh` の検証（単独は `just test-install`） | 要る |
 | `just ci-emu` | emulator 群の lint、起動、高速テスト、e2e | 要る |
 | `just check-all` | prek の hook と `ci-all`（push 前の最終ゲート） | 要る |
-| `just test` | Dev Container 内のサンドボックステスト（`just test-mark marker=validate` のように `install`、`validate`、`versions`、`deploy`、`check` で絞れる） | 要る |
+| `just test` | Dev Container 内のサンドボックステスト（`just test-mark validate` のように `install`、`validate`、`versions`、`deploy`、`check` で絞れる） | 要る |
 
 `tests/unit/` は native Windows でも通る（POSIX 専用の検査は skip する）。
 
@@ -173,7 +189,7 @@ just skills-place
 
 `emulator/`（データストアとインスペクタ）と `telemetry/`（OTel、Grafana、Loki、Prometheus、Tempo）はこのリポジトリにある（ADR 0014）。
 API や SaaS の emulator は `vercel-labs/emulate` を `bunx` 経由で動かす（ADR 0016、ADR 0055）。
-Docker の VM（OrbStack か podman machine）のメモリに収めるため、重いサービスと amd64 のサービスは既定では起動しない。
+macOS と Windows では Podman machine のメモリに収めるため、重いサービスと amd64 のサービスは既定では起動しない。
 
 ```shell
 just emu-up                          # 既定は GCP の中核だけ（firebase、spanner、pgadapter、postgres。別名 emu-up-lite）
@@ -226,7 +242,7 @@ claude mcp add google-dev-knowledge -s user -t http https://developerknowledge.g
 # AWS: https://awslabs.github.io/mcp/servers/aws-knowledge-mcp-server/
 claude mcp add -s user -t http aws-knowledge-mcp-server https://knowledge-mcp.global.api.aws
 # k6: https://grafana.com/docs/k6/latest/release-notes/v1.6.0/#introducing-mcp-k6-ai-assisted-k6-script-writing-mcp-k6
-claude mcp add --scope=user --transport=stdio k6 -- docker run --rm -i grafana/mcp-k6
+claude mcp add --scope=user --transport=stdio k6 -- podman run --rm -i docker.io/grafana/mcp-k6
 
 # プロジェクトごと（他のエージェントの設定ディレクトリにも写す）
 claude mcp add -s project -t http jaeger http://localhost:16687/mcp

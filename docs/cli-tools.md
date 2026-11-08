@@ -56,13 +56,16 @@ miseをactivateする前から動いているプロセスのPATHは自動では�
 | 導入対象 | 現在の設定と境界 |
 | --- | --- |
 | hostのmise管理CLI、just、uv | `minimum_release_age = "0d"`。mise自体のbootstrapにも7日判定を追加しない |
-| 常設npm CLI | 13宣言の `bun_args = "--minimum-release-age=0"`。各CLIの専用環境の依存も対象 |
+| 常設npm CLI | 各宣言の `bun_args = "--minimum-release-age=0"`。各CLIの専用環境の依存も対象 |
 | headroom | 専用uv tool環境の `--exclude-newer 0d`。Python 3.13、extras、固定版は維持 |
+| Podman 5+ | 必須の常設CLI。Homebrew／Linux OSパッケージ／Podman専用のwinget経路に7日判定を追加しない |
+| podman-compose | hostと画像で1.6.0に固定。専用uv tool環境の `--python 3.13 --exclude-newer 0d` で依存も対象 |
+| devcontainer CLI | hostと画像で既存の0.89.0を固定し、CIも同じ正本を使う。専用npm環境の依存も0日 |
 | Homebrew、Scoop、検証付きbootstrap | このrepoの7日判定はない。配布元のcatalog更新時期や固定版とは別の話 |
 | npmとuvの機体設定 | 既存の `min-release-age=7` と `exclude-newer = "7 days"` を維持 |
 | repoのPython依存 | 各projectの7日を維持。ruff/tyの既存例外はそのまま |
 | LSP/MCP、単発uvx/bunx、CI専用、marketplace/plugin | 現状維持。新しい例外は個別判断 |
-| devcontainerの凍結世代 | 既存の版と生成器を維持。この変更で再生成や一括更新を行わない |
+| devcontainerの凍結世代 | 既存の版と唯一の生成器を維持。providerとdevcontainer CLIの宣言だけを追加し、一括更新しない |
 
 npm設定があるだけでBunの待機が働くとは判断しない。
 Bun 1.4.4の隔離したglobal導入試験では、npmrcの7日指定だけでは新しい依存を拒否しなかった。

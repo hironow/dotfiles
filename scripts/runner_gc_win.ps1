@@ -3,11 +3,12 @@
     Disk GC for the Windows-native self-hosted GitHub Actions runner (ADR 0035).
 
 .DESCRIPTION
-    The Windows counterpart of scripts/runner_gc.sh. Same time budget: keep
-    anything used within -Retention, drop everything older.
+    The Windows counterpart of scripts/runner_gc.sh. Young containers/images
+    survive based on Created, not last-use time.
+    Build/mount cache is deliberately retained (ADR 0067).
 
     Collects:
-      - Docker Desktop containers / images / build cache (when the daemon is up)
+      - Podman stopped containers and individually selected aged images
       - runner _diag logs, which nothing rotates
       - runner _work/_temp scratch left behind by cancelled jobs
       - runner _work/<repo> workspaces idle past -Retention
@@ -17,8 +18,8 @@
     job-completed hook and an hourly Scheduled Task.
 
 .NOTES
-    Never prunes while a job is executing: an in-flight docker build can hold
-    cache the age filter would consider cold. The hourly task retries.
+    Backs off for foreign jobs, excluding its own worker ancestry. This is a
+    point-in-time check, not a global lock against third-party operations.
 
     Workspaces are aged on a marker file, never on the directory timestamp:
     Windows does not bump a directory's LastWriteTime when a nested file
@@ -26,26 +27,30 @@
 #>
 [CmdletBinding()]
 param(
-    # Docker age filter; also the budget for workspace and _temp trimming.
+    # Podman creation-age budget; also used for workspace retention.
     [string]$Retention = $(if ($env:RUNNER_GC_RETENTION) { $env:RUNNER_GC_RETENTION } else { '2h' }),
     # Keep runner diagnostic logs this many days (they are the only forensic
-    # trail for a failed job, so they outlive the docker budget).
+    # trail for a failed job, so they outlive the podman budget).
     [int]$DiagRetentionDays = 7,
     # Sweep this install only instead of probing the usual locations. The tests
     # point it at a synthetic runner root.
     [string]$RunnerRoot,
-    # Leave the Docker daemon alone; the native runner's growth is on disk.
-    [switch]$SkipDocker,
+    # Leave the Podman daemon alone; the native runner's growth is on disk.
+    [Alias("SkipDocker")]
+    [switch]$SkipPodman,
+    # Run only the engine leg; never expand this into filesystem janitors.
+    [switch]$PodmanOnly,
+    [string]$KeepTagPrefix = $(if ($env:RUNNER_GC_KEEP_TAG_PREFIX) { $env:RUNNER_GC_KEEP_TAG_PREFIX } else { 'keep/' }),
     # Report what would be collected and delete nothing. Sweeping workspaces is
     # the one irreversible thing this script does, so it earns a rehearsal.
     [switch]$DryRun,
     # Run even when a job is in flight. Only for manual use.
     [switch]$Force,
-    # Watchdog budget per docker call. A half-dead Docker Desktop (engine VM
-    # stopped, CLI still connected) answers `docker info` and then hangs the
-    # prunes FOREVER (seen live 2026-08-23); without this the hourly S4U task
-    # burns its whole 30-minute ExecutionTimeLimit every hour.
-    [int]$DockerTimeoutSec = 300
+    # Watchdog budget for every CLI call, including reads. Retains the bounded
+    # termination guard from the previous engine; no availability assumption.
+    [Alias("DockerTimeoutSec")]
+    [ValidateRange(1, 1800)]
+    [int]$PodmanTimeoutSec = 300
 )
 
 Set-StrictMode -Version Latest
@@ -56,33 +61,167 @@ function Write-GcLog {
     Write-Host ("[runner-gc-win] {0} {1}" -f (Get-Date -Format 'o'), $Message)
 }
 
-function Invoke-DockerGuarded {
-    <# Run one docker command under a kill-on-timeout watchdog. Returns the
-       exit code, or $null on a timeout/spawn failure. Never throws: the
-       zombie daemon this guards against passes `docker info` and hangs one
-       call later, so every invocation gets the same treatment. #>
-    param(
-        [string[]]$DockerArgs,
-        [int]$TimeoutSec
-    )
+function Invoke-PodmanGuarded {
+    <# Every engine call is bounded, including enumeration and inspection.
+       Output is data, never mixed with watchdog logs. #>
+    param([string[]]$PodmanArgs, [int]$TimeoutSec)
+    $stdout = [IO.Path]::GetTempFileName()
+    $stderr = [IO.Path]::GetTempFileName()
+    $proc = $null
     try {
-        $proc = Start-Process -FilePath 'docker' -ArgumentList $DockerArgs `
-            -NoNewWindow -PassThru `
-            -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) `
-            -RedirectStandardError ([System.IO.Path]::GetTempFileName())
+        $proc = Start-Process -FilePath 'podman' -ArgumentList $PodmanArgs `
+            -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+        if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+            Write-GcLog ("podman: {0} timed out after {1}s; killing it" -f ($PodmanArgs -join ' '), $TimeoutSec)
+            & taskkill /PID $proc.Id /T /F *>$null
+            return $null
+        }
+        # Refresh avoids a stale/null ExitCode from Start-Process on Windows.
+        $proc.Refresh()
+        return @{ ExitCode = $proc.ExitCode; Output = [IO.File]::ReadAllText($stdout) }
     }
-    catch {
-        return $null
+    catch { return $null }
+    finally {
+        if ($proc) { $proc.Dispose() }
+        Remove-Item -LiteralPath $stdout, $stderr -Force -ErrorAction SilentlyContinue
     }
-    if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
-        Write-GcLog ("docker: {0} timed out after {1}s (half-dead daemon?); killing it" -f ($DockerArgs -join ' '), $TimeoutSec)
-        # /T: the whole tree. Killing only the top process leaves children
-        # holding inherited handles (and a half-dead docker spawns helpers),
-        # which keeps the caller's pipes open long after we "killed" it.
-        & taskkill /PID $proc.Id /T /F *>$null
-        return $null
+}
+
+function Get-PodmanJson {
+    param([string[]]$PodmanArgs, [switch]$Inspection)
+    $result = Invoke-PodmanGuarded -PodmanArgs $PodmanArgs -TimeoutSec $PodmanTimeoutSec
+    if ($null -eq $result -or $result.ExitCode -ne 0) { throw 'Podman query failed' }
+    # ConvertFrom-Json 5.1 unwraps arrays on the pipeline. Check the wire shape
+    # before that loses the distinction between [one object] and one object.
+    if ($Inspection -and -not $result.Output.TrimStart().StartsWith('[')) { throw 'Inspection array required' }
+    return ConvertFrom-Json -InputObject $result.Output -ErrorAction Stop
+}
+
+function ConvertTo-PodmanImageId {
+    param([object]$Value)
+    if ($Value -isnot [string] -or $Value -cnotmatch '\A(?:sha256:)?([a-f0-9]{64})\z') {
+        throw 'Invalid full image ID'
     }
-    return $proc.ExitCode
+    return $Matches[1]
+}
+
+function Get-PodmanCutoff {
+    # Decimal strings are bounded before integral conversion/multiplication.
+    # AddSeconds already failed closed on range exceptions; no PS overflow
+    # deletion was demonstrated. This also rejects retention before Unix epoch.
+    if ($Retention -cnotmatch '\A([0-9]+)([smhd]?)\z') { throw 'Invalid Podman retention' }
+    $digits = $Matches[1].TrimStart('0')
+    if (-not $digits) { $digits = '0' }
+    $multiplier = switch ($Matches[2]) {
+        'm' { 60 }; 'h' { 3600 }; 'd' { 86400 }; default { 1 }
+    }
+    $now = [DateTimeOffset](Get-Date -ErrorAction Stop)
+    $epoch = $now.ToUnixTimeSeconds()
+    if ($epoch -lt 0) { throw 'Invalid Podman clock before Unix epoch' }
+    $bound = ([Math]::Floor($epoch / [decimal]$multiplier)).ToString([Globalization.CultureInfo]::InvariantCulture)
+    if ($digits.Length -gt $bound.Length -or
+        ($digits.Length -eq $bound.Length -and [String]::CompareOrdinal($digits, $bound) -gt 0)) {
+        throw 'Excessive Podman retention; retained inventories'
+    }
+    $seconds = [long]$digits * $multiplier
+    return $now.AddSeconds(-$seconds)
+}
+
+function Test-PodmanImageEligible {
+    param([string]$ImageId, [DateTimeOffset]$Cutoff)
+    try {
+        $items = @(Get-PodmanJson -PodmanArgs @('image', 'inspect', $ImageId) -Inspection)
+        if ($items.Count -ne 1) { return $false }
+        $image = $items[0]
+        if ((ConvertTo-PodmanImageId $image.Id) -cne $ImageId -or $image.Created -isnot [string] -or
+            $null -eq $image.RepoTags -or $image.RepoTags -isnot [Array]) { return $false }
+        if ($image.Created -notmatch '^\d{4}-\d{2}-\d{2}T') { return $false }
+        $created = [DateTimeOffset]::Parse($image.Created, [Globalization.CultureInfo]::InvariantCulture)
+        if ($created -ge $Cutoff) { return $false }
+        $prefix = $KeepTagPrefix -creplace '^localhost/', ''
+        if (-not $prefix) { return $false }
+        foreach ($tag in $image.RepoTags) {
+            if ($tag -isnot [string] -or $tag -cnotmatch '^[a-z0-9][a-z0-9._:/@-]*$') { return $false }
+            $normalized = $tag -creplace '^localhost/', ''
+            if ($normalized.StartsWith($prefix, [StringComparison]::Ordinal)) {
+                Write-GcLog ("podman: keep {0} ({1})" -f $ImageId, $tag)
+                return $false
+            }
+        }
+        return $true
+    }
+    catch { return $false }
+}
+
+function Get-PodmanContainers {
+    param([DateTimeOffset]$Cutoff, [switch]$Collect)
+    $result = Invoke-PodmanGuarded -PodmanArgs @('ps', '--all', '--quiet', '--no-trunc') -TimeoutSec $PodmanTimeoutSec
+    if ($null -eq $result -or $result.ExitCode -ne 0) { throw 'Container enumeration failed' }
+    $references = @()
+    foreach ($containerId in @($result.Output -split '\s+' | Where-Object { $_ })) {
+        if ($containerId -cnotmatch '^[a-f0-9]+$') { throw 'Invalid container ID' }
+        $items = @(Get-PodmanJson -PodmanArgs @('container', 'inspect', $containerId) -Inspection)
+        if ($items.Count -ne 1) { throw 'Invalid container inspection' }
+        $container = $items[0]
+        if ($container.Id -cne $containerId -or $container.Image -isnot [string] -or
+            $container.Created -isnot [string] -or
+            $container.State.Status -cnotmatch '^(created|initialized|running|stopped|paused|exited|removing|stopping)$') {
+            throw 'Invalid container metadata'
+        }
+        $references += ConvertTo-PodmanImageId $container.Image
+        if (-not $Collect -or $container.State.Status -cnotmatch '^(exited|stopped|created)$') { continue }
+        try {
+            if ($container.Created -notmatch '^\d{4}-\d{2}-\d{2}T') { continue }
+            $created = [DateTimeOffset]::Parse($container.Created, [Globalization.CultureInfo]::InvariantCulture)
+        }
+        catch { continue }
+        if ($created -ge $Cutoff) { continue }
+        if ($DryRun) { Write-GcLog ("DRY-RUN: would remove podman container {0}" -f $containerId) }
+        elseif ($Force -or -not (Test-ForeignWorker)) {
+            $removed = Invoke-PodmanGuarded -PodmanArgs @('rm', $containerId) -TimeoutSec $PodmanTimeoutSec
+            if ($null -eq $removed -or $removed.ExitCode -ne 0) {
+                Write-GcLog ("podman: retained container {0} (removal refused)" -f $containerId)
+            }
+        }
+    }
+    return $references
+}
+
+function Invoke-PodmanGc {
+    if ($SkipPodman) { Write-GcLog 'podman: -SkipPodman requested; skipping'; return }
+    if (-not (Get-Command podman -ErrorAction SilentlyContinue)) {
+        Write-GcLog 'podman: not installed; retained inventories'; return
+    }
+    try {
+        $cli = Invoke-PodmanGuarded -PodmanArgs @('--version') -TimeoutSec ([Math]::Min(60, $PodmanTimeoutSec))
+        if ($null -eq $cli -or $cli.ExitCode -ne 0 -or
+            $cli.Output -notmatch '^podman version ([0-9]+)\.' -or [int]$Matches[1] -lt 5) { throw 'CLI >=5 required' }
+        $info = Get-PodmanJson -PodmanArgs @('info', '--format', 'json')
+        if ($info.host.serviceIsRemote -isnot [bool] -or
+            $info.version.APIVersion -isnot [string] -or $info.version.APIVersion -notmatch '^[0-9]+\.' -or
+            $info.version.Version -isnot [string] -or
+            $info.version.Version -notmatch '^([0-9]+)\.' -or [int]$Matches[1] -lt 5) { throw 'Podman engine metadata and version >=5 required' }
+        $cutoff = Get-PodmanCutoff
+        $null = Get-PodmanContainers -Cutoff $cutoff -Collect
+        $images = Invoke-PodmanGuarded -PodmanArgs @('images', '--quiet', '--no-trunc') -TimeoutSec $PodmanTimeoutSec
+        if ($null -eq $images -or $images.ExitCode -ne 0) { throw 'Image enumeration failed' }
+        foreach ($wireId in @($images.Output -split '\s+' | Where-Object { $_ } | Sort-Object -Unique)) {
+            try { $imageId = ConvertTo-PodmanImageId $wireId }
+            catch { continue }
+            if (-not (Test-PodmanImageEligible -ImageId $imageId -Cutoff $cutoff)) { continue }
+            $references = @(Get-PodmanContainers -Cutoff $cutoff)
+            if ($references -ccontains $imageId) { continue }
+            if (-not $Force -and (Test-ForeignWorker)) { continue }
+            # Final metadata observation. Arbitrary later retags are not fenced.
+            if (-not (Test-PodmanImageEligible -ImageId $imageId -Cutoff $cutoff)) { continue }
+            if ($DryRun) { Write-GcLog ("DRY-RUN: would remove podman image {0}" -f $imageId); continue }
+            $removed = Invoke-PodmanGuarded -PodmanArgs @('rmi', '--no-prune', $imageId) -TimeoutSec $PodmanTimeoutSec
+            if ($null -eq $removed -or $removed.ExitCode -ne 0) {
+                Write-GcLog ("podman: retained image {0} (removal refused)" -f $imageId)
+            }
+        }
+    }
+    catch { Write-GcLog ("podman: {0}; retained remaining inventories" -f $_) }
 }
 
 # Stamped into a workspace whenever a job finishes there. See .NOTES.
@@ -94,7 +233,7 @@ $Marker = '.runner-gc-last-used'
 $RunnerManaged = @('_actions', '_diag', '_PipelineMapping', '_temp', '_tool', '_update')
 
 function ConvertTo-Hours {
-    <# Read docker's own age syntax (2h, 90m, 7d) as a number of hours. #>
+    <# Read podman's own age syntax (2h, 90m, 7d) as a number of hours. #>
     param([string]$Duration)
     if ($Duration -match '^\s*([0-9]+(?:\.[0-9]+)?)([smhd])\s*$') {
         $value = [double]$Matches[1]
@@ -175,58 +314,27 @@ function Get-AncestorProcessId {
     return $ids
 }
 
-if (-not $Force) {
+function Test-ForeignWorker {
     $ancestors = Get-AncestorProcessId
-    # @() so a single match does not unroll to a bare object under StrictMode.
     $foreign = @(
         Get-Process -Name 'Runner.Worker' -ErrorAction SilentlyContinue |
             Where-Object { $ancestors -notcontains $_.Id }
     )
-    if ($foreign.Count -gt 0) {
-        Write-GcLog 'SKIP: another runner job is executing (Runner.Worker alive)'
-        exit 0
-    }
+    return ($foreign.Count -gt 0)
 }
+
+if (-not $Force -and (Test-ForeignWorker)) {
+    Write-GcLog 'SKIP: another runner job is executing (Runner.Worker alive)'
+    exit 0
+}
+
+if ($PodmanOnly) { Invoke-PodmanGc; exit 0 }
 
 $free = (Get-PSDrive C).Free / 1GB
 Write-GcLog ("start (retention={0}) - C: {1:N1} GB free" -f $Retention, $free)
 
-# --- Docker Desktop ---------------------------------------------------------
-# Docker Desktop is frequently stopped on a dev box; a missing daemon is a
-# normal state, not an error.
-$docker = if ($SkipDocker) { $null } else { Get-Command docker -ErrorAction SilentlyContinue }
-if ($docker) {
-    # info gets a short leash: it either answers in seconds or the daemon is
-    # gone. The prunes get the full budget - a large prune legitimately takes
-    # minutes, an infinite one is the zombie this watchdog exists for.
-    $infoBudget = [Math]::Min(60, $DockerTimeoutSec)
-    $infoRc = Invoke-DockerGuarded -DockerArgs @('info') -TimeoutSec $infoBudget
-    if ($infoRc -eq 0) {
-        foreach ($step in @(
-                @('container', @('container', 'prune', '-f', "--filter=until=$Retention")),
-                @('image', @('image', 'prune', '-af', "--filter=until=$Retention")),
-                @('build cache', @('builder', 'prune', '-af', "--filter=until=$Retention"))
-            )) {
-            if ($DryRun) {
-                Write-GcLog ("DRY-RUN: would prune docker {0} older than {1}" -f $step[0], $Retention)
-                continue
-            }
-            $rc = Invoke-DockerGuarded -DockerArgs $step[1] -TimeoutSec $DockerTimeoutSec
-            if ($null -ne $rc) {
-                Write-GcLog ("docker: pruned {0} older than {1}" -f $step[0], $Retention)
-            }
-        }
-    }
-    else {
-        Write-GcLog 'docker: daemon not reachable; skipping'
-    }
-}
-elseif ($SkipDocker) {
-    Write-GcLog 'docker: -SkipDocker requested; skipping'
-}
-else {
-    Write-GcLog 'docker: not installed; skipping'
-}
+# --- Podman (no automatic build/mount-cache reclamation, ADR 0067) ------------
+Invoke-PodmanGc
 
 # --- Runner working directories --------------------------------------------
 $runnerRoots = @(

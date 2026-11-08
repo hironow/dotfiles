@@ -50,22 +50,9 @@ ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 # See docs/adr/0017-retire-pnpm-global-for-corepack.md.
 export PNPM_HOME="$HOME/Library/pnpm"
 
-# Prefer OrbStack Docker if present
-path_prepend "$HOME/.orbstack/bin"
-
-# Docker engine fallback: when OrbStack's socket is gone (machine migrated to
-# podman) point the docker CLI / devcontainer CLI at the podman machine's
-# docker-compatible API socket. The inspect call only runs when OrbStack is
-# absent and podman is installed, so OrbStack machines pay nothing.
-if [[ -z "${DOCKER_HOST:-}" && ! -S "$HOME/.orbstack/run/docker.sock" ]] \
-    && _cmd_exists podman; then
-    _podman_sock=$(podman machine inspect \
-        --format '{{.ConnectionInfo.PodmanSocket.Path}}' 2>/dev/null)
-    if [[ -n "$_podman_sock" && -S "$_podman_sock" ]]; then
-        export DOCKER_HOST="unix://$_podman_sock"
-    fi
-    unset _podman_sock
-fi
+# Always use the declared Compose provider. Engine selection belongs to the
+# operator's Podman connection; shell startup never probes or rewrites sockets.
+export PODMAN_COMPOSE_PROVIDER=podman-compose
 
 # Editor
 export EDITOR=vim
@@ -215,7 +202,6 @@ setopt HIST_EXPIRE_DUPS_FIRST
 
 
 # Completion system (optimized - only regenerate cache once per day)
-fpath=($HOME/.docker/completions $fpath)
 autoload -Uz compinit
 _comp_files=(${ZDOTDIR:-$HOME}/.zcompdump(Nm-20))
 if (( $#_comp_files )); then

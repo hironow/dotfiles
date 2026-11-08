@@ -5,10 +5,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.utils.helpers import mlflow_endpoint, owned_container
+
 
 @pytest.mark.asyncio
 async def test_mlflow_e2e_logging_and_persistence(
-    http_client, docker_client, ensure_network, require_services
+    http_client, podman_client, ensure_network, require_services
 ):
     """
     End-to-end check:
@@ -17,6 +19,7 @@ async def test_mlflow_e2e_logging_and_persistence(
     - Persist: restart container and verify data remains; file exists on host
     """
 
+    endpoint = mlflow_endpoint()
     ensure_network()
     require_services(["mlflow-server"])
 
@@ -24,16 +27,13 @@ async def test_mlflow_e2e_logging_and_persistence(
         import mlflow
         from mlflow.tracking import MlflowClient
     except Exception as e:  # pragma: no cover - optional dep
-        pytest.skip(f"mlflow client not available: {e}")
+        pytest.fail(f"mlflow client not available: {e}")
 
     # Point client at local tracking server
-    port = os.environ.get("MLFLOW_PORT", "5252")
-    os.environ["MLFLOW_TRACKING_URI"] = os.environ.get(
-        "MLFLOW_TRACKING_URI", f"http://localhost:{port}"
-    )
+    os.environ["MLFLOW_TRACKING_URI"] = endpoint
 
     # Wait for UI to be reachable (server ready)
-    base = f"http://localhost:{port}/"
+    base = endpoint + "/"
     for _ in range(60):
         try:
             async with http_client.get(base) as resp:
@@ -43,7 +43,7 @@ async def test_mlflow_e2e_logging_and_persistence(
             pass
         await asyncio.sleep(1)
     else:
-        pytest.skip(f"MLflow UI not reachable at {base}")
+        pytest.fail(f"MLflow UI not reachable at {base}")
 
     # --- Step 1: Write ---
     # Use an experiment that is created under proxied artifact storage
@@ -97,7 +97,7 @@ async def test_mlflow_e2e_logging_and_persistence(
 
     # --- Step 3: Persistence (API-based) ---
     # Restart only the mlflow container and re-verify the run is accessible
-    container = docker_client.containers.get("mlflow-server")
+    container = owned_container(podman_client, "mlflow-server")
     container.restart()
 
     # Wait again for readiness

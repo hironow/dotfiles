@@ -1,6 +1,6 @@
 # OpenTelemetry Visualization Suite
 
-A local Docker stack that collects OpenTelemetry traces, metrics and logs and
+A local Podman stack that collects OpenTelemetry traces, metrics and logs and
 shows them in Grafana. It also scrapes metrics from the `emulator` stack.
 [`examples/`](examples/README.md) holds a FastAPI app that sends sample data.
 
@@ -9,8 +9,8 @@ shows them in Grafana. It also scrapes metrics from the `emulator` stack.
 From the repo root:
 
 ```bash
-just tel-up      # create the shared-otel-net network if missing, then docker compose up -d
-just tel-check   # docker compose ps
+just tel-up      # create the shared-otel-net network if missing, then PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false up -d
+just tel-check   # PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false ps
 just tel-logs    # follow logs (optionally: just tel-logs grafana)
 just tel-down
 ```
@@ -80,9 +80,25 @@ start script create `shared-otel-net` when it is missing. To run the stacks
 without `just`, create the network first:
 
 ```bash
-docker network create shared-otel-net
-(cd telemetry && docker compose up -d)
+podman network create shared-otel-net
+(cd telemetry && PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false up -d)
 ```
+
+## Isolated verification
+
+Use the [emulator test lifecycle](../emulator/README.md#isolated-required-tests)
+with `--telemetry`. It renders both canonical Compose files into one tracked-only
+disposable snapshot. Both stacks share a unique owned network; container names,
+volumes, loopback host ports and bind sources are isolated. The same run manifest
+drives startup, wait, SDK lookups and host endpoints. `wait` checks every selected
+container's network membership. Normal `shared-otel-net` and existing telemetry
+data are not touched.
+
+The forced provider is `PODMAN_COMPOSE_PROVIDER=podman-compose`, with
+`--in-pod=false`; no extra Pod inventory is created. CI always invokes cleanup
+with the same manifest after success, failure or cancellation. Cleanup rechecks
+run labels and exact IDs, never port-based deletion or shared-stack teardown.
+This is a verification path, not a migration of existing data.
 
 ## No data in Grafana
 

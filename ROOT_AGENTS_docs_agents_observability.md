@@ -44,7 +44,8 @@ plus the `opentelemetry-instrumentation-*` package for each framework you use
 
 ## Local telemetry
 
-With either option below, apps set
+Both options below use Podman with the declared `podman-compose` provider.
+Apps set
 `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` and
 `OTEL_SERVICE_NAME=<module>`.
 
@@ -56,14 +57,13 @@ Grafana; `just tel-down` stops it. Grafana is at `http://localhost:3010`
 You need no telemetry services in each repo. Point apps at the shared
 collector.
 
-**Fallback: a Jaeger per project (from the agent-baseline `justfile`)**, for
-fully isolated work. `just trace-up` runs Jaeger all-in-one
-(`jaegertracing/all-in-one`, `COLLECTOR_OTLP_ENABLED=true`; UI `:16686`,
+**Alternative: project-local Jaeger (from the agent-baseline `justfile`)**. `just trace-up` runs Jaeger all-in-one
+(`docker.io/jaegertracing/all-in-one`, `COLLECTOR_OTLP_ENABLED=true`; UI `:16686`,
 OTLP `:4317`/`:4318`) from the repo's `compose.yaml`. `just trace-down` stops
 it. `just trace-view` opens the UI.
 
 Never run both at once. They bind the same OTLP host ports (`4317`/`4318`), and
-that kind of collision has crashed the local Docker VM before. Prefer the
+that kind of collision has crashed the local container VM before. Prefer the
 shared stack.
 
 ## Production

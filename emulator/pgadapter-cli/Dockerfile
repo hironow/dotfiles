@@ -1,4 +1,4 @@
-FROM golang:1.27.2-alpine AS builder
+FROM docker.io/library/golang:1.27.2-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum* ./
@@ -6,7 +6,7 @@ RUN go mod download
 COPY . .
 RUN go build -o pgadapter-cli .
 
-FROM alpine:latest
+FROM docker.io/library/alpine:latest
 RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 COPY --from=builder /app/pgadapter-cli .

@@ -43,7 +43,14 @@ echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-dotfiles-retries
 echo "[dotfiles-tools] installing apt prerequisites"
 apt-get update -y
 apt-get install -y --no-install-recommends \
-  apt-transport-https ca-certificates gnupg curl shellcheck jq
+  apt-transport-https ca-certificates gnupg curl shellcheck jq podman uidmap
+
+# Native trixie packages only; never start a local engine in this outside client.
+podman_version="$(podman --version)"
+if [[ ! "$podman_version" =~ ([0-9]+)\.[0-9]+ || "${BASH_REMATCH[1]}" -lt 5 ]]; then
+  echo "[dotfiles-tools] Podman >=5 is required: $podman_version" >&2
+  exit 1
+fi
 
 # Helper: import an apt-repo GPG key only after verifying its
 # fingerprint. Without this, a TOFU fetch from the same TLS
@@ -116,8 +123,8 @@ curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o "/tmp/${UV_FILE}.sha2
 # checks the SLSA provenance attestation, closing the SHA-sidecar
 # TOFU window when an auth token is available.
 #
-# Build-time (`devcontainer build` / devcontainers/ci action under
-# docker buildx) does NOT inherit the host's GITHUB_TOKEN, so gh is
+# Image builds (`devcontainer build` through Podman) do NOT inherit
+# the host's GITHUB_TOKEN, so gh is
 # unauthenticated and `attestation verify` cannot reach the API.
 # Skip in that case rather than fail the build — the SHA pin above
 # is still in force as primary integrity. Local devcontainer builds
@@ -180,9 +187,9 @@ printf '#!/bin/sh\necho "Cuda compilation tools, release 12.3, V12.3.52"\n' \
 chmod 0755 /usr/local/bin/nvcc
 
 # ---- mise env via login profile -------------------------------------
-# Inner one-shot containers spawned by the test fixture (`docker run
-# --rm dotfiles-just-sandbox bash -lc ...`) do NOT inherit the dev
-# container's containerEnv. Bake the mise env into /etc/profile.d so
+# Inner one-shot containers spawned by the fixture's checked Podman
+# create/start path do NOT inherit the dev container's containerEnv.
+# Bake the mise env into /etc/profile.d so
 # every login shell (and its child processes, including git hooks)
 # picks it up.
 echo "[dotfiles-tools] writing /etc/profile.d/dotfiles-mise.sh"
@@ -248,7 +255,7 @@ git config --system --add safe.directory /root/sandbox/dotfiles-fresh
 # The config is also written to /etc/mise/config.toml (mise's
 # system-wide global config) so that shims resolve to the pinned
 # versions even when no project mise.toml is in CWD (e.g., during
-# test_image_provides_tool which docker-runs the bare image with
+# test_image_provides_tool which runs the bare image through Podman with
 # no workspace mount). A repo-local config/mise/config.toml is not a mise
 # project config, so that baked file is what this image resolves; the drift
 # check keeps it in step with the host wherever the two must agree.
@@ -269,6 +276,8 @@ just = "1.59.0"
 markdownlint-cli2 = "0.23.3"
 prek = "0.5.6"
 uv = "0.13.5"
+"pypi:podman-compose" = { version = "1.6.0", uvx_args = "--python 3.13 --exclude-newer 0d" }
+"npm:@devcontainers/cli" = { version = "0.89.0", bun_args = "--minimum-release-age=0" }
 vp = "1.3.0"
 node = "24.22.1"
 go = "1.27.3"

@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" || "${DOTFILES_E2E_REQUIRED:-}" == 1 ]]; then
+  echo "Use manifest-aware tests/test_postgres18_features.py for isolated database verification" >&2
+  exit 2
+fi
+export PODMAN_COMPOSE_PROVIDER=podman-compose
 
 # Verify basic PostgreSQL 18 features using psql inside the container.
 # - Confirms server version
@@ -13,19 +18,19 @@ DB=postgres
 USER=postgres
 
 # ─── Dependency checks ───
-command -v docker >/dev/null 2>&1 || { echo "❌ docker not found" >&2; exit 127; }
-docker compose version >/dev/null 2>&1 || { echo "❌ docker compose not available" >&2; exit 127; }
+command -v podman >/dev/null 2>&1 || { echo "❌ podman not found" >&2; exit 127; }
+podman compose --in-pod=false version >/dev/null 2>&1 || { echo "❌ podman compose --in-pod=false not available" >&2; exit 127; }
 
 echo "🔎 Verifying PostgreSQL 18 features (service: ${SERVICE})"
 
 # Ensure service is running
-docker compose ps --quiet "$SERVICE" 2>/dev/null | grep -q . || {
+podman compose --in-pod=false ps --quiet "$SERVICE" 2>/dev/null | grep -q . || {
   echo "❌ Service '${SERVICE}' is not running. Start with: just emu-up or just emu-start" >&2
   exit 2
 }
 
 psql_cmd() {
-  docker compose exec -T "$SERVICE" psql -U "$USER" -d "$DB" -Atqc "$1"
+  podman compose --in-pod=false exec -T "$SERVICE" psql -U "$USER" -d "$DB" -Atqc "$1"
 }
 
 # Version check
@@ -55,15 +60,15 @@ fi
 # Generated column test (try virtual, fallback to stored)
 echo "• Generated column test"
 psql_cmd "drop table if exists pg18_gen_test;" >/dev/null || true
-if docker compose exec -T "$SERVICE" psql -U "$USER" -d "$DB" -v ON_ERROR_STOP=1 \
+if podman compose --in-pod=false exec -T "$SERVICE" psql -U "$USER" -d "$DB" -v ON_ERROR_STOP=1 \
     -c "create table pg18_gen_test(x int, y int generated always as (x*2) virtual);" >/dev/null 2>&1; then
   echo "  ✅ Virtual generated column supported"
 else
-  docker compose exec -T "$SERVICE" psql -U "$USER" -d "$DB" -v ON_ERROR_STOP=1 \
+  podman compose --in-pod=false exec -T "$SERVICE" psql -U "$USER" -d "$DB" -v ON_ERROR_STOP=1 \
     -c "create table pg18_gen_test(x int, y int generated always as (x*2) stored);" >/dev/null
   echo "  ⚠️  Virtual not available; created STORED generated column"
 fi
-docker compose exec -T "$SERVICE" psql -U "$USER" -d "$DB" -v ON_ERROR_STOP=1 \
+podman compose --in-pod=false exec -T "$SERVICE" psql -U "$USER" -d "$DB" -v ON_ERROR_STOP=1 \
   -c "insert into pg18_gen_test(x) values (5);" >/dev/null
 pair=$(psql_cmd "select x||'->'||y from pg18_gen_test limit 1;")
 echo "  ▶︎ sample row: ${pair}"

@@ -1,7 +1,10 @@
-import docker
 import pytest
 
-from tests.utils.helpers import skip_unless_container_running
+from tests.utils.helpers import (
+    host_endpoint,
+    podman_client,
+    skip_unless_container_running,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -12,7 +15,7 @@ def _require_a2a_inspector():
 @pytest.mark.asyncio
 async def test_a2a_inspector_container_starts(http_client):
     """Test that the A2A Inspector container starts and is healthy."""
-    client = docker.from_env()
+    client = podman_client()
 
     # Check if a2a-inspector container exists and is running
     from tests.utils.helpers import get_container, wait_for_http
@@ -27,7 +30,7 @@ async def test_a2a_inspector_container_starts(http_client):
             pytest.fail(msg)
 
     # Check if A2A Inspector HTTP endpoint is accessible
-    match await wait_for_http(http_client, "http://localhost:8081"):
+    match await wait_for_http(http_client, host_endpoint("http://localhost:8081")):
         case Ok(_):
             pass
         case Error(msg):

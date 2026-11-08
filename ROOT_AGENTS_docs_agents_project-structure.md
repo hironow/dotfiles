@@ -26,9 +26,9 @@ repos) are exempt.
 | --------------- | ------------------------------------------------------------- |
 | `justfile`      | task runner config (required, exactly one, at root)           |
 | `pyproject.toml`| Python project config incl. ruff settings                     |
-| `compose.yaml`  | Docker Compose file (when Docker is used)                     |
+| `compose.yaml`  | Compose specification for Podman (`podman-compose`)           |
 
-## Docker layout
+## Container image layout
 
 - **One** Dockerfile: keep it at the repo root as `Dockerfile`.
 - **Two or more**: create `docker/` at the root and put them all there

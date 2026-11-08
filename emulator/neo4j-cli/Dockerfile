@@ -1,4 +1,4 @@
-FROM golang:1.27.2-alpine AS builder
+FROM docker.io/library/golang:1.27.2-alpine AS builder
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ COPY . .
 RUN go build -o neo4j-cli .
 
 # Final stage
-FROM alpine:latest
+FROM docker.io/library/alpine:latest
 
 RUN apk --no-cache add ca-certificates
 

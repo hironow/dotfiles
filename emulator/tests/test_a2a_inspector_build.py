@@ -3,7 +3,7 @@ from pathlib import Path
 
 # Match the runtime base on Python 3.12, allowing an optional patch pin
 # (`python:3.12-slim` or `python:3.12.13-slim`); the Dockerfile pins the patch.
-_PY312_SLIM = re.compile(r"^FROM python:3\.12(\.\d+)?-slim\b")
+_PY312_SLIM = re.compile(r"^FROM docker\.io/library/python:3\.12(\.\d+)?-slim\b")
 
 
 def test_a2a_inspector_dockerfile_uses_python_312() -> None:

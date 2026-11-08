@@ -4,7 +4,7 @@ discoverable instead of tribal knowledge.
 
 WSL machine provisioning needs `appendWindowsPath=false` (keep the Windows
 PATH from shadowing WSL-native tools — see `just validate-path-windows`) and
-`systemd=true` (native docker / service manager). `/etc/wsl.conf` is root-
+`systemd=true` (native Podman / service manager). `/etc/wsl.conf` is root-
 owned and its reload needs a Windows-side `wsl --shutdown`, so the recipe is
 an advisor (preview + sudo steps), not a self-applying mutation.
 
@@ -28,7 +28,7 @@ def test_template_exists_and_hardens() -> None:
         "wsl.conf template must set appendWindowsPath=false (no Windows PATH leak)."
     )
     assert re.search(r"^\s*systemd\s*=\s*true", text, re.MULTILINE), (
-        "wsl.conf template must set systemd=true (native docker / service manager)."
+        "wsl.conf template must set systemd=true (native Podman / service manager)."
     )
 
 

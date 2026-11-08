@@ -1,6 +1,6 @@
 """E2E smoke for the PostgreSQL 18 CLI.
 
-Verifies the CLI starts, connects over the Docker network, responds to help,
+Verifies the CLI starts, connects over the Podman network, responds to help,
 and can run simple SQL including uuidv7() and a generated column.
 """
 

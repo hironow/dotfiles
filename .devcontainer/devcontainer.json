@@ -2,7 +2,7 @@
 //
 // Single source of truth shared by two consumers:
 //   1. local IDE   — VS Code / Cursor / JetBrains "Reopen in Container"
-//   2. CI sandbox  — `devcontainers/ci` action in test-just.yaml
+//   2. CI sandbox  — host devcontainer CLI in test-just.yaml
 //
 // Trust policy (see ADR 0001):
 //   - features: ONLY Microsoft-curated `ghcr.io/devcontainers/features/*`
@@ -11,7 +11,7 @@
 //     community features in the dependency graph.
 {
   "name": "dotfiles",
-  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "image": "mcr.microsoft.com/devcontainers/base:trixie",
 
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
@@ -23,7 +23,6 @@
       "gid": "automatic"
     },
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
     "ghcr.io/devcontainers/features/python:1": {
       "installTools": false
     },
@@ -32,10 +31,19 @@
     },
     // Local feature: in-repo install script that runs at BUILD time so
     // gcloud / mise / uv / just / sheldon end up in the saved image
-    // (devcontainers/ci does not commit lifecycle command output).
+    // (runtime lifecycle command output is not part of the built image).
     // Source: .devcontainer/features/dotfiles-tools/{devcontainer-feature.json,install.sh}
     "./features/dotfiles-tools": {}
   },
+
+  "initializeCommand": "bash .devcontainer/require-podman-socket.sh",
+  "mounts": [
+    "source=${localEnv:DOTFILES_PODMAN_ENGINE_SOCKET},target=/run/dotfiles-podman/podman.sock,type=bind"
+  ],
+
+  // Only this outside-engine container: SELinux must permit its socket bind.
+  // Never relabel the host socket or disable SELinux on the host.
+  "securityOpt": ["label=disable"],
 
   "remoteUser": "root",
   "containerUser": "root",
@@ -58,6 +66,9 @@
 
   "containerEnv": {
     "MISE_OFFLINE": "1",
+    "CONTAINER_HOST": "unix:///run/dotfiles-podman/podman.sock",
+    "DOTFILES_PODMAN_ENGINE_SOCKET": "${localEnv:DOTFILES_PODMAN_ENGINE_SOCKET}",
+    "PODMAN_COMPOSE_PROVIDER": "podman-compose",
     // mise data dir is relocated to /opt/mise per ADR 0006. The
     // retired Coder workspace mounted a volume over `/root`, which
     // masked the build-time-baked installs under $HOME; /opt is
@@ -66,7 +77,7 @@
     // alongside.
     "MISE_DATA_DIR": "/opt/mise",
     // quint's Rust evaluator is baked under /opt/quint (built from source
-    // for bookworm's glibc by features/dotfiles-tools/install.sh); outside
+    // for the image's glibc by features/dotfiles-tools/install.sh); outside
     // $HOME for the same reason as MISE_DATA_DIR.
     "QUINT_HOME": "/opt/quint",
     // pnpm is provided per-repo by corepack (the package-manager shim
@@ -78,11 +89,11 @@
     // Surfaces the HOST workspace path to processes inside the
     // container. The pytest fixture reads this to bind-mount the
     // workspace into one-shot sub-containers it spins up via
-    // docker-outside-of-docker (the outer daemon resolves -v
+    // outside Podman (the outer engine resolves -v
     // sources against the host filesystem, not the container's).
     "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}",
     // mise trust state lives under ~/.local/state/mise/trusted-configs
-    // and does not survive across `docker run --rm` test invocations.
+    // and does not survive across `podman run --rm` test invocations.
     // Pre-trust ONLY the specific paths the dev container needs;
     // a broader value like "/root" exposes too much under
     // GHSA-436v-8fw5-4mj8 / CVE-2026-35533.

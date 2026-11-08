@@ -11,7 +11,9 @@ import urllib.parse
 import pytest
 from aiohttp import ClientTimeout
 
-BASE = "http://localhost:9199"
+from tests.utils.helpers import host_endpoint
+
+BASE = host_endpoint("http://localhost:9199")
 
 
 async def _ensure_bucket(http_client, project_id: str, bucket: str) -> None:

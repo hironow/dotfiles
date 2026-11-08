@@ -27,7 +27,7 @@ graph LR
 ## Port Mapping Summary
 
 ```
-Host Machine                    Docker Network
+Host Machine                    Podman Network
 ============                    ==============
                                
 FastAPI (:8000) ──┐            

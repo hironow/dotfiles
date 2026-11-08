@@ -6,10 +6,13 @@ Why this may be skipped:
   the functional test instead of failing the suite.
 """
 
+import os
 import uuid
 
 import pytest
 from aiohttp import ClientTimeout
+
+from tests.utils.helpers import host_endpoint
 
 
 async def _tasks_rest_supported(http_client, base_url: str, project_id: str) -> bool:
@@ -18,12 +21,20 @@ async def _tasks_rest_supported(http_client, base_url: str, project_id: str) -> 
             f"{base_url}/projects/{project_id}/locations/{LOCATION}/queues",
             timeout=ClientTimeout(total=3.0),
         ) as res:
-            return res.status in (200, 404)
+            if res.status in (200, 404):
+                return True
+            if os.environ.get("DOTFILES_E2E_REQUIRED") == "1":
+                pytest.fail(
+                    f"Cloud Tasks discovery returned unexpected HTTP {res.status}"
+                )
+            return False
     except Exception:
+        if os.environ.get("DOTFILES_E2E_REQUIRED") == "1":
+            raise
         return False
 
 
-BASE = "http://localhost:9499/v2"
+BASE = host_endpoint("http://localhost:9499/v2")
 LOCATION = "us-central1"
 
 

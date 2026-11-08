@@ -136,6 +136,10 @@ witr = "0.3.4"
 # checks the contracts dotfiles relies on (rtk-guard, *-telemetry, headroom-cli).
 rtk = "latest"
 "pypi:headroom-ai" = { version = "0.41.0", extras = "proxy,code", uvx_args = "--python 3.13 --exclude-newer 0d" }
+# Required Podman Compose provider; only its dedicated CLI environment is age-exempt.
+"pypi:podman-compose" = { version = "1.6.0", uvx_args = "--python 3.13 --exclude-newer 0d" }
+# Shared IDE/CI CLI: freeze the already validated local version.
+"npm:@devcontainers/cli" = { version = "0.89.0", bun_args = "--minimum-release-age=0" }
 
 # quint — the Quint model checker, i.e. the formal-methods gate: a Quint model
 # plus a seeded simulation is mandatory for autonomous stop/delete logic in any

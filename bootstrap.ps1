@@ -5,7 +5,8 @@
 # Pick the scoop manifest host (default: windows):
 #   $env:DOTFILES_HOST = 'windows'; irm ... | iex
 #
-# Scope: zero -> scoop/git/just/jq/mise/pwsh -> HTTPS clone -> the existing
+# Scope: native Podman (ADR 0067 winget exception) -> scoop/git/just/jq/mise/pwsh
+# -> HTTPS clone -> the existing
 # just chain (add-scoop, deploy, harden-env, sync-agents, restore-skills-lock,
 # doctor). Submodules and the SSH remote are operator steps AFTER bootstrap
 # (all but one submodule use git@github.com URLs; a bare machine has no keys).
@@ -18,11 +19,12 @@ param(
     # Which dump/<host>/scoop.json to restore. irm|iex cannot bind parameters,
     # so $env:DOTFILES_HOST (dump_host.sh's primary interface) is the
     # one-liner's knob; the parameter serves -File invocations.
-    [string]$SourceHost = $(if ($env:DOTFILES_HOST) { $env:DOTFILES_HOST } else { 'windows' })
+    [string]$SourceHost = $(if ($env:DOTFILES_HOST) { $env:DOTFILES_HOST } else { 'windows' }),
+    # Provision only Podman, without policy changes, clone, deploy or machine startup.
+    [switch]$PodmanOnly
 )
 
 $ErrorActionPreference = 'Stop'
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 $RepoUrl = 'https://github.com/hironow/dotfiles.git'
 $RepoDir = Join-Path $HOME 'dotfiles'
@@ -45,6 +47,50 @@ function Update-PathFromRegistry {
     $registry = [Environment]::ExpandEnvironmentVariables("$machine;$user")
     $env:Path = "$env:Path;$registry"
 }
+
+function Get-NativePodmanVersion {
+    $versionText = podman --version
+    if ($LASTEXITCODE -ne 0 -or $versionText -notmatch '^podman(?:\.exe)?\s+version\s+([0-9]+\.[0-9]+\.[0-9]+)') {
+        throw 'Cannot read Podman CLI version; check the native installation and PATH.'
+    }
+    return [version]$Matches[1]
+}
+
+function Install-NativePodman {
+    $action = 'install'
+    if (Get-Command podman -ErrorAction SilentlyContinue) {
+        $version = Get-NativePodmanVersion
+        if ($version.Major -ge 5) {
+            Write-Step "Podman $version CLI already installed (machine setup is separate)."
+            return
+        }
+        $action = 'upgrade'
+    }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        throw 'winget is required for RedHat.Podman; install or update Windows App Installer, then retry.'
+    }
+    Write-Step "Podman CLI native $action via winget (no machine setup)."
+    winget $action --id RedHat.Podman --exact --source winget --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --custom 'WSLCheckbox=0'
+    if ($LASTEXITCODE -ne 0) {
+        throw "winget failed to $action RedHat.Podman (exit $LASTEXITCODE); check installation permissions and App Installer."
+    }
+    Update-PathFromRegistry
+    if (-not (Get-Command podman -ErrorAction SilentlyContinue)) {
+        throw 'Podman is still missing from PATH after installation; open a new shell or correct the native Podman PATH.'
+    }
+    $version = Get-NativePodmanVersion
+    if ($version.Major -lt 5) {
+        throw "Podman 5+ is required; native packages or PATH still provide $version."
+    }
+    Write-Step "Podman $version CLI available (machine setup is a separate operator step)."
+}
+
+Install-NativePodman
+if ($PodmanOnly) {
+    return
+}
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 # --- 0. Execution policy (scoop's installer aborts under Restricted) --------
 $policy = Get-ExecutionPolicy -Scope CurrentUser

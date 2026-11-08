@@ -15,7 +15,7 @@ Two new steps close that, without disturbing the container flow (both are
   release binary to ~/.local/bin, SHA256-verified (same posture as the
   existing `step_just_bootstrap`; no `curl | bash`, per the repo guardrail).
 - `step_mise_install`: `mise trust && mise install` to materialize the
-  mise.toml toolset. Gated by INSTALL_SKIP_ADD_UPDATE so the Docker
+  mise.toml toolset. Gated by INSTALL_SKIP_ADD_UPDATE so the Podman
   install-verification (which sets it) stays fast.
 
 These are regex assertions on install.sh source, host-side (tests/unit/,
@@ -80,7 +80,7 @@ def test_mise_bootstrap_downloads_verified_binary() -> None:
 
 def test_mise_install_is_skippable() -> None:
     """mise install (heavy: node + AI CLIs) must honour INSTALL_SKIP_ADD_UPDATE
-    so the Docker install-verification stays fast (it sets that var)."""
+    so the Podman install-verification stays fast (it sets that var)."""
     m = re.search(
         r"^step_mise_install\s*\(\s*\)\s*\{([\s\S]*?)^\}", _text(), re.MULTILINE
     )
