@@ -168,18 +168,25 @@ install:
     # Install tools via mise (versions are managed in config/mise/config.toml)
     mise install
 
-# Install and verify the shared review/search tools from this checkout.
+# Install and verify shared review/search/query/process tools from this checkout.
 # Select only these tools; leave the live global config and other tools alone.
 # Ordinary recipe lines use windows-shell's Git Bash PATH correction on Windows.
 CLI_TOOLS_MISE := "env MISE_GLOBAL_CONFIG_FILE=" + quote(justfile_directory() / "config/mise/config.toml") + " mise -C /"
+# mq publishes no Intel macOS binary; keep the other tools installable there.
+CLI_TOOLS_MQ := if os() + "-" + arch() == "macos-x86_64" { "" } else { "github:harehare/mq" }
 
 [group('Setup')]
 cli-tools-install:
-    {{CLI_TOOLS_MISE}} install hunk ripgrep fd sd
+    {{CLI_TOOLS_MISE}} install hunk ripgrep fd sd {{CLI_TOOLS_MQ}} witr aqua:jqlang/jq aqua:mikefarah/yq aqua:wader/fq
     {{CLI_TOOLS_MISE}} exec hunk -- hunk --version
     {{CLI_TOOLS_MISE}} exec ripgrep -- rg --version
     {{CLI_TOOLS_MISE}} exec fd -- fd --version
     {{CLI_TOOLS_MISE}} exec sd -- sd --version
+    if [ -n "{{CLI_TOOLS_MQ}}" ]; then {{CLI_TOOLS_MISE}} exec {{CLI_TOOLS_MQ}} -- mq --version; else echo 'mq unavailable: no Intel macOS prebuilt binary; other tools remain installed.'; fi
+    {{CLI_TOOLS_MISE}} exec witr -- witr --version
+    {{CLI_TOOLS_MISE}} exec aqua:jqlang/jq -- jq --version
+    {{CLI_TOOLS_MISE}} exec aqua:mikefarah/yq -- yq --version
+    {{CLI_TOOLS_MISE}} exec aqua:wader/fq -- fq --version
 
 # Harden: write machine-local supply-chain guards (npm min-release-age, uv
 # exclude-newer, go proxy). Idempotent; not tracked.
@@ -1750,10 +1757,23 @@ gcp-cost-audit project *args:
 azure-list:
     az account list --output table
 
-# List: AWS profiles
+# Local AWS profiles: select this checkout's verified provider, even in stale shells.
+# Windows retains its standalone AWS installation (the HTTP backend excludes it).
+AWS_CLI := if os() == "windows" { "aws" } else { CLI_TOOLS_MISE + " exec http:aws -- aws" }
+
 [group('Cloud')]
 aws-list:
-    aws configure list-profiles
+    {{AWS_CLI}} configure list-profiles
+
+# List: Alibaba Cloud profiles (local configuration only)
+[group('Cloud')]
+alibaba-list:
+    aliyun configure list
+
+# List: Akamai Cloud (Linode) users (local configuration only)
+[group('Cloud')]
+akamai-list:
+    linode-cli show-users
 
 # List: Dataform (BigQuery) tables, ELT (Extract, Load, Transform) not ETL (Extract, Transform, Load)
 [group('Cloud')]
