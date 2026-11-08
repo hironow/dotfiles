@@ -51,7 +51,7 @@ url="https://github.com/jdx/mise/releases/download/v${version}"
 # Same pinned official artifact + SHA256 verification as install.sh bootstrap.
 curl --proto '=https' --tlsv1.2 -fsSL -o "$bootstrap/$artifact" "$url/$artifact"
 curl --proto '=https' --tlsv1.2 -fsSL -o "$bootstrap/SHASUMS256.txt" "$url/SHASUMS256.txt"
-(cd "$bootstrap"; grep -E "[ *]${artifact//./\\.}$" SHASUMS256.txt > selected.sha256; test "$(wc -l < selected.sha256)" -eq 1; sha256sum -c selected.sha256)
+(cd "$bootstrap"; grep -E "[ *](\\./)?${artifact//./\\.}$" SHASUMS256.txt > selected.sha256; test "$(wc -l < selected.sha256)" -eq 1; sha256sum -c selected.sha256)
 tar -xzf "$bootstrap/$artifact" -C "$bootstrap"
 install -m 0755 "$bootstrap/mise/bin/mise" "$bootstrap/bin/mise"
 export PATH="$bootstrap/bin:$PATH"
