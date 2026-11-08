@@ -43,23 +43,7 @@ jobs:
           "$HOME/.local/bin/uv" tool install rust-just
 
       - name: Run unit tests
-        id: unit_tests
         run: uvx pytest -q -ra tests/unit/
-
-      # TEMP PR565 Stage A: observation only; original unit failure stays red.
-      - name: TEMP PR565 GC JSON diagnostics
-        if: ${{ failure() && steps.unit_tests.outcome == 'failure' }}
-        run: |
-          uvx --from pytest python - <<'PY'
-          import sys
-          import tempfile
-          from pathlib import Path
-          sys.path.insert(0, str(Path('tests/unit').resolve()))
-          from test_podman_gc_simulation import run_gc_ci_diagnostic
-          with tempfile.TemporaryDirectory(prefix='pr565-gc-diag-') as fixture:
-              run_gc_ci_diagnostic(Path(fixture))
-          PY
-      # END TEMP PR565 Stage A diagnostics
 
       # The command guard corpus, its word table, and the agent-hook payload
       # and tool-hooks corpora follow Python 3.14 (Unicode 16.0). The system
