@@ -43,7 +43,13 @@ class ReleaseOffer:
 class ReleaseSource(Protocol):
     def prepare(self, roots: wiring.Roots) -> ReleaseOffer: ...
     def preview(self, roots: wiring.Roots) -> ReleaseOffer: ...
-    def render(self, evidence: ReleaseEvidence, link: Path, system: str) -> Outcome: ...
+    def render(
+        self,
+        evidence: ReleaseEvidence,
+        link: Path,
+        system: str,
+        harness: str = "claude",
+    ) -> Outcome: ...
     def selftest(self, link: Path) -> Outcome: ...
 
 
@@ -127,15 +133,25 @@ class GoReleaseSource:
     def preview(self, roots: wiring.Roots) -> ReleaseOffer:
         return self._release(roots, preview=True)
 
-    def render(self, evidence: ReleaseEvidence, link: Path, system: str) -> Outcome:
+    def render(
+        self,
+        evidence: ReleaseEvidence,
+        link: Path,
+        system: str,
+        harness: str = "claude",
+    ) -> Outcome:
+        # Codex reads its launcher through a shell: the sh form, as doctor
+        # renders it (scripts/agent_hook_doctor.py, _render).
+        shell = ["--shell", "sh"] if harness == "codex" else []
         return release_tools.run(
             [
                 str(evidence.path),
                 "render",
                 "--harness",
-                "claude",
+                harness,
                 "--os",
                 {"Darwin": "darwin", "Linux": "linux"}.get(system, system.lower()),
+                *shell,
                 "--binary",
                 str(link),
             ],
@@ -168,6 +184,12 @@ class HookHome:
     key: str
     directory: Path
     read_rules: Callable[[], HomeRules]
+    # The harness this home registers for, the registration file in its
+    # directory, and the state file the shared merge keeps (None: no shared
+    # merge). Claude's values are the defaults.
+    harness: str = "claude"
+    registration: str = "settings.json"
+    state_file: str | None = "settings.sync-state.json"
 
 
 @dataclass(frozen=True)
@@ -295,7 +317,13 @@ class HomeStateUnreadable(ValueError):
     merges cannot read: that home stops, alone."""
 
 
-def check_shapes(settings: dict, state: dict) -> None:
+def check_shapes(
+    settings: dict,
+    state: dict,
+    *,
+    registration: str = "settings.json",
+    state_file: str | None = "settings.sync-state.json",
+) -> None:
     """Refuse what the merges cannot read, as a ValueError, so that home
     stops alone: hooks an object of event lists of block objects, each
     block's hooks a list of handler objects, a handler's command a string
@@ -303,13 +331,13 @@ def check_shapes(settings: dict, state: dict) -> None:
     state's retired a list of migration names."""
     hooks = settings.get("hooks", {})
     if not isinstance(hooks, dict):
-        raise HomeStateUnreadable("settings.json: hooks must be an object")
+        raise HomeStateUnreadable(f"{registration}: hooks must be an object")
     for event, blocks in hooks.items():
         if not isinstance(blocks, list) or not all(
             isinstance(block, dict) for block in blocks
         ):
             raise HomeStateUnreadable(
-                f"settings.json: hooks.{event} must be a list of objects"
+                f"{registration}: hooks.{event} must be a list of objects"
             )
         for block in blocks:
             handlers = block.get("hooks", [])
@@ -317,25 +345,23 @@ def check_shapes(settings: dict, state: dict) -> None:
                 isinstance(handler, dict) for handler in handlers
             ):
                 raise HomeStateUnreadable(
-                    f"settings.json: each block of hooks.{event} must hold a list of objects"
+                    f"{registration}: each block of hooks.{event} must hold a list of objects"
                 )
             for handler in handlers:
                 if not isinstance(handler.get("command", ""), str):
                     raise HomeStateUnreadable(
-                        f"settings.json: a command in hooks.{event} must be a string"
+                        f"{registration}: a command in hooks.{event} must be a string"
                     )
                 args = handler.get("args", [])
                 if not isinstance(args, list) or not all(
                     isinstance(arg, str) for arg in args
                 ):
                     raise HomeStateUnreadable(
-                        f"settings.json: args in hooks.{event} must be a list of strings"
+                        f"{registration}: args in hooks.{event} must be a list of strings"
                     )
     retired = state.get("retired", [])
     if not isinstance(retired, list) or not all(isinstance(r, str) for r in retired):
-        raise HomeStateUnreadable(
-            "settings.sync-state.json: retired must be a list of names"
-        )
+        raise HomeStateUnreadable(f"{state_file}: retired must be a list of names")
 
 
 class SyncSession:
@@ -390,15 +416,24 @@ class SyncSession:
 
     def read_plan(self, home: HookHome) -> PlannedHome:
         rules = home.read_rules()
-        settings = _read_optional(self.disk, home.directory / "settings.json")
-        state = _read_optional(self.disk, home.directory / "settings.sync-state.json")
+        settings = _read_optional(self.disk, home.directory / home.registration)
+        state = (
+            None
+            if home.state_file is None
+            else _read_optional(self.disk, home.directory / home.state_file)
+        )
         value = settings_value(settings)
-        check_shapes(value, settings_value(state))
+        check_shapes(
+            value,
+            settings_value(state),
+            registration=home.registration,
+            state_file=home.state_file,
+        )
         evidence, reason = self.offer.release, self.offer.reason
         rendered = None
         if evidence is not None and self.operation != "uninstall":
             rendered_call = self.source.render(
-                evidence, self.roots.link(home.key), self.system
+                evidence, self.roots.link(home.key), self.system, harness=home.harness
             )
             try:
                 if not rendered_call.ok:
@@ -436,17 +471,23 @@ class SyncSession:
     def _check_facts(self, prepared: PlannedHome) -> None:
         home, facts = prepared.home, prepared.facts
         assert facts is not None
-        for component, found, expected in (
+        files = [
             (
-                "settings.json",
-                _read_optional(self.disk, home.directory / "settings.json"),
+                home.registration,
+                _read_optional(self.disk, home.directory / home.registration),
                 facts.settings,
-            ),
-            (
-                "settings.sync-state.json",
-                _read_optional(self.disk, home.directory / "settings.sync-state.json"),
-                facts.state,
-            ),
+            )
+        ]
+        if home.state_file is not None:
+            files.append(
+                (
+                    home.state_file,
+                    _read_optional(self.disk, home.directory / home.state_file),
+                    facts.state,
+                )
+            )
+        for component, found, expected in (
+            *files,
             ("link", _read_target(self.disk, self.roots.link(home.key)), facts.target),
             ("mark", self.disk.exists(self.roots.mark(home.key)), facts.marked),
         ):
@@ -472,9 +513,10 @@ class SyncSession:
                         self.disk, home.directory, mode=wiring.STATE_MODE
                     )
                 if isinstance(plan.state, bytes):
+                    assert home.state_file is not None
                     wiring.write_if_unchanged(
                         self.disk,
-                        home.directory / "settings.sync-state.json",
+                        home.directory / home.state_file,
                         facts.state,
                         plan.state,
                     )
@@ -513,7 +555,9 @@ class SyncSession:
                             self.roots.link(key), plan.old_target, str(plan.new_target)
                         ),
                         file=wiring.FileChange(
-                            home.directory / "settings.json", facts.settings, new_bytes
+                            home.directory / home.registration,
+                            facts.settings,
+                            new_bytes,
                         ),
                         # named even when it does not change (a register),
                         # so every step checks it
@@ -538,7 +582,7 @@ class SyncSession:
                 if isinstance(plan.settings, bytes):
                     wiring.write_if_unchanged(
                         self.disk,
-                        home.directory / "settings.json",
+                        home.directory / home.registration,
                         facts.settings,
                         plan.settings,
                     )

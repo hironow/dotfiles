@@ -64,6 +64,7 @@ class FakeSource:
         self.available = available
         self.id = "1111111111111111"
         self.calls: list[str] = []
+        self.harnesses: list[str] = []
         self.selftest_ok = True
         self.template_version = 1
         self.render_owned = True
@@ -98,9 +99,14 @@ class FakeSource:
         return hooks.ReleaseOffer(None, "unknown: release is not built")
 
     def render(
-        self, evidence: plan.ReleaseEvidence, link: Path, system: str
+        self,
+        evidence: plan.ReleaseEvidence,
+        link: Path,
+        system: str,
+        harness: str = "claude",
     ) -> release.Outcome:
         self.calls.append("render")
+        self.harnesses.append(harness)
         fragment = json.loads(CLAUDE_RENDER["stdout"])
         for blocks in fragment["hooks"].values():
             for block in blocks:
@@ -1659,3 +1665,55 @@ def test_gc_refuses_a_releases_directory_that_is_a_link(
     # when gc deletes, then it refuses that layout, and deletes nothing
     assert hooks.run_command(configuration(workspace), "gc", [], delete=True) == 1
     assert (moved / named.id / "agent-hook").is_file()
+
+
+# ---- PR 3d.2, commit 2: the session seam ----
+
+
+def test_go_release_source_renders_for_the_home_harness(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str], **_: object) -> release.Outcome:
+        calls.append(list(args))
+        return release.Outcome(stdout="{}")
+
+    monkeypatch.setattr(hooks.release_tools, "run", run)
+    source = hooks.GoReleaseSource({})
+    evidence = plan.ReleaseEvidence(tmp_path / "agent-hook", "1" * 16, "0" * 64)
+    link = tmp_path / "link"
+    source.render(evidence, link, "Darwin")
+    source.render(evidence, link, "Darwin", harness="codex")
+    claude, codex = calls
+    assert claude[claude.index("--harness") + 1] == "claude"
+    assert "--shell" not in claude
+    assert codex[codex.index("--harness") + 1] == "codex"
+    assert codex[codex.index("--shell") + 1] == "sh"
+    assert codex[-2:] == ["--binary", str(link)]
+
+
+def test_a_home_names_the_files_the_session_reads(workspace: tuple) -> None:
+    dotfiles, agent, roots, source = workspace
+    agent.directory.mkdir(parents=True)
+    (agent.directory / "settings.json").write_text('{"x": 1}\n', encoding="utf-8")
+    (agent.directory / "other.json").write_text('{"y": 2}\n', encoding="utf-8")
+    home = replace(
+        sync.hook_home(dotfiles, agent, roots, "Darwin"),
+        registration="other.json",
+        state_file=None,
+    )
+    with hooks.open_session(
+        "sync",
+        [home],
+        roots,
+        source,
+        disk=RecordingDisk(),
+        steps=wiring.NoSteps(),
+        system="Darwin",
+    ) as session:
+        facts = session.plans["claude"].facts
+        assert facts is not None
+        assert facts.settings == b'{"y": 2}\n'
+        assert facts.state is None
+    assert source.harnesses == ["claude"]
