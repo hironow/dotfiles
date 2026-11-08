@@ -28,6 +28,8 @@ from agent_hook_plan import (
 Hooks = dict[str, list[dict]]
 
 _GUARD = re.compile(r"--hook (files-guard|secrets-guard|command-guard)(\s|$)")
+# G is whole when it runs each of these once (PR 5 removes the scripts on it)
+GUARDS = ("files-guard", "secrets-guard", "command-guard")
 SCRIPT, BINARY = "script", "binary"
 
 
@@ -88,6 +90,16 @@ def codex_guards(rendered: Mapping[str, Sequence[dict]]) -> Hooks:
             ):
                 guards.setdefault(event, []).append(deepcopy(group))
     return guards
+
+
+def _guard_ids(guards: Mapping[str, Sequence[dict]]) -> list[str]:
+    return [
+        found[1]
+        for groups in guards.values()
+        for group in groups
+        for handler in _handlers(group)
+        if (found := _GUARD.search(str(handler.get("command", ""))))
+    ]
 
 
 def family_groups(
@@ -243,28 +255,34 @@ def plan_codex(operation: str, facts: CodexFacts) -> HomePlan:
         raise ValueError(f"unknown operation: {operation}")
     if facts.scripts is None:
         return _stop(facts, "missing scripts fragment")
-    available = facts.release is not None and facts.rendered is not None
-    why = (
-        facts.shells_reason
-        if available
-        else facts.reason
-        if facts.reason.startswith("no release")
-        else f"no release: {facts.reason}"
-    )
+    guards = {} if facts.rendered is None else codex_guards(facts.rendered)
+    ids = _guard_ids(guards)
+    if facts.release is None or facts.rendered is None:
+        missing = facts.reason  # why there is no release, or no render
+    elif sorted(ids) != sorted(GUARDS):
+        missing = (
+            f"render: agent-hook's guards are {', '.join(ids) or 'none'}, "
+            f"not {', '.join(GUARDS)}"
+        )
+    else:
+        missing = ""
+    available = not missing
     if operation == "install" and not (available and facts.shells_ok):
-        return _stop(facts, why if not available else facts.shells_reason)
+        if available:
+            return _stop(facts, facts.shells_reason)
+        return _stop(
+            facts,
+            missing if missing.startswith("no release") else f"no release: {missing}",
+        )
     value = settings_value(facts.settings)
     hooks = value.get("hooks", {})
     classes = facts.classes
     if operation == "uninstall" or (facts.marked and operation != "install"):
         action, binary, mark, target = "unregister", {}, True, facts.target
     elif available and facts.shells_ok:
-        assert facts.release is not None and facts.rendered is not None
+        assert facts.release is not None
         action = "install" if operation == "install" else "register"
-        binary, mark = (
-            codex_guards(facts.rendered),
-            False if operation == "install" else facts.marked,
-        )
+        binary, mark = guards, False if operation == "install" else facts.marked
         target = str(facts.release.path)
     elif family_groups(hooks, classes, BINARY):
         action, binary, mark, target = (
@@ -286,14 +304,15 @@ def plan_codex(operation: str, facts: CodexFacts) -> HomePlan:
     settings = _settings_bytes(facts.settings, new_value)
     if action == "unregister" and settings is UNCHANGED and facts.marked:
         action = "uninstalled"
-    if action == "register" and settings is UNCHANGED:
+    # nothing to journal when hooks.json and the mark stay (an install too)
+    if (
+        action in {"register", "install"}
+        and settings is UNCHANGED
+        and mark == facts.marked
+    ):
         action = "link" if facts.target != target else "nothing"
     # keep and scripts name the reason as 3d.1 does: the source's own words
-    reason = (
-        (facts.reason if not available else facts.shells_reason)
-        if action in {"keep", "scripts"}
-        else ""
-    )
+    reason = (missing or facts.shells_reason) if action in {"keep", "scripts"} else ""
     return HomePlan(
         action,
         merged.hooks if settings is not UNCHANGED else UNCHANGED,

@@ -164,6 +164,7 @@ Codex は hook の信頼を `hooks.json` の中の位置（event、group、handl
 - 宣言が今も望むとおりの group は、その場から動かさない。Codex はそれを信頼し続ける。
 - 変わった group だけをその場で空にし、新しい group は同じ matcher の空の group に入れる。無ければ最後に足す。スクリプトの断片が変わったときも、agent-hook の雛形が変わったときも同じである。
 - agent-hook の 3 つの guard（files-guard、secrets-guard、command-guard）を、スクリプトの横に足す。rtk と formatter は PR 5 まで足さない。
+- render の guard がこの 3 つを 1 つずつ持たなければ、release が無いときと同じに扱う（配線済みなら今の guard を残し、install は止まる）。
 - 利用者の group は、位置も中身も変えない。group は消さない。
 - 計画がこの約束を破るなら、その home は止まる（`stopped: placement: ...`）。
 

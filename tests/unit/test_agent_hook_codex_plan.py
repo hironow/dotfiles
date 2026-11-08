@@ -506,6 +506,66 @@ def test_row3_install_clears_the_mark() -> None:
     assert (result.old_mark, result.new_mark) == (True, False)
 
 
+def test_row3_install_on_a_wired_home_changes_only_what_differs() -> None:
+    # an install that changes neither hooks.json nor the mark is a link move,
+    # or nothing, as a sync's register is: no journal for no change
+    wired = codex.merge(this_mac(), F, G, CLASSES).hooks
+    facts = _facts(
+        settings=(json.dumps({"hooks": wired}, indent=2) + "\n").encode(),
+        target="/d/releases/0000000000000000/agent-hook",
+    )
+    assert codex.plan_codex("install", facts).action == "link"
+    current = replace(facts, target="/d/releases/1111111111111111/agent-hook")
+    assert codex.plan_codex("install", current).action == "nothing"
+    # and a marked one still installs, to clear the mark
+    assert (
+        codex.plan_codex("install", replace(current, marked=True)).action == "install"
+    )
+
+
+# A render whose guards are not files-guard, secrets-guard, and command-guard,
+# each once: here command-guard shares its group with rtk, so codex_guards
+# leaves it out.
+PARTIAL = {
+    "PreToolUse": [
+        binary("files-guard", "secrets-guard", matcher=FILES),
+        binary("command-guard", "rtk"),
+    ]
+}
+PARTIAL_REASON = (
+    "render: agent-hook's guards are files-guard, secrets-guard, "
+    "not files-guard, secrets-guard, command-guard"
+)
+
+
+def test_a_render_without_the_three_guards_is_no_release() -> None:
+    result = codex.plan_codex("sync", _facts(rendered=PARTIAL))
+    assert (result.action, result.reason) == ("scripts", PARTIAL_REASON)
+    assert result.settings is plan.UNCHANGED
+    wired = codex.merge(this_mac(), F, G, CLASSES).hooks
+    kept = codex.plan_codex(
+        "sync",
+        _facts(
+            rendered=PARTIAL,
+            settings=(json.dumps({"hooks": wired}, indent=2) + "\n").encode(),
+        ),
+    )
+    assert (kept.action, kept.reason) == ("keep", PARTIAL_REASON)
+    installed = codex.plan_codex("install", _facts(rendered=PARTIAL))
+    assert (installed.action, installed.reason) == (
+        "stop",
+        f"no release: {PARTIAL_REASON}",
+    )
+
+
+def test_a_render_with_a_guard_twice_is_no_release() -> None:
+    twice = deepcopy(R)
+    twice["PreToolUse"].append(binary("command-guard", matcher="Write"))
+    result = codex.plan_codex("sync", _facts(rendered=twice))
+    assert result.action == "scripts"
+    assert result.reason.startswith("render: agent-hook's guards are ")
+
+
 def test_row4_a_wired_home_without_a_release_keeps_g() -> None:
     wired = codex.merge(this_mac(), F, G, CLASSES).hooks
     facts = _facts(
