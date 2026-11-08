@@ -431,6 +431,28 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Doctor and the AI tools check** read the marks and the journals, and agent-hook's rtk hook.
     - **`just agent-hooks-test-installed [KEY]`** runs cmd/agent-hook's process tests against the release a home's link names, after `hookrelease check`.
     - **`scripts/sync_agents.py`** is a project-mode script now (no PEP 723 block): it imports the agent-hook modules beside it, which ty cannot resolve from a script's own environment.
+    - **On this Mac (2026-11-08, release `7c8a6fcff524c408`), with the owner's go-ahead:** the first switch, then the live checks of the PR 3d design's section 8. Each one passed.
+        - **The switch:** `just sync-agents p a b c d` exited 0 and wired the five homes.
+            - The five links name the one release, and no journal remains.
+            - Each `settings.json` holds the five exec blocks, the same in every home but for its key. `~/.claude`'s own SessionStart block stayed.
+            - `just doctor` gives no wiring, registration, or binary WARN, says the release is fresh, and names only Codex as not wired. It does not name the wired homes: a healthy home gives no line.
+            - The session that ran the switch had started days before. It ran the release on its next call, 12 s after the switch ended.
+        - **The installed release under its own tests:** `just agent-hooks-test-installed claude` passed (29 s).
+        - **Live, isolated.** A scratch `CLAUDE_CONFIG_DIR` has no login on macOS, since Claude keeps its OAuth credentials per config directory, in the Keychain. So the sessions ran in an empty scratch project with `--setting-sources project`, the rendered registration for a scratch link as `--settings`, and `XDG_STATE_HOME` in scratch. A session with no hooks logged no line, so no user hook ran. Only Claude's two built-in plugins loaded, and no MCP server.
+            - `npm ci` was denied with the command guard's reason (`command.node`).
+            - A `.yml` write was denied with the files guard's reason (`file.yml`), and no file was made.
+            - `git status` was rewritten by rtk (`forward`).
+            - Each log line names the hook and the release, and a block's line also its rule.
+            - A link-only change while a session runs, with a second release built from `0327890c` (`d36de22cfb03f55a`): the call after the change ran the new release.
+        - **Live, the real homes:**
+            - A new session in a scratch project tried `pip --version`, since `~/.claude` has a deny rule for npm. The command guard denied it with its own reason, through the stable link, and the real log gained the line (`command.pip`).
+            - The Semgrep plugin's guardian blocks the first tool call of each session once, to show a notice of its own (a Node.js advisory). When two hooks deny, Claude shows one reason only, so the first try showed the notice. The check makes a warm-up call first.
+            - Uninstall, then install, of `claude`, with the switching session open. Uninstall (1 s) put back the scripts' `hooks` value, the same value as before the switch, wrote the mark, and kept the link. 14 s later the session no longer called the release, and a deny then named the script guard, `block-prohibited-commands.sh`. Install (19 s) wired the home again and removed the mark, and 9 s later the session ran the release.
+        - **The failure cases of the exec form**, in the isolated setup. The only hook was a test binary, with the guards' `timeout` (30 s) and `onFailure: "block"`:
+            - the binary missing, exit 1, `{not json}`, two schema failures (`continue` as a string, an unknown `permissionDecision`), and a hang past the timeout each blocked, and Claude named `onFailure`;
+            - exit 2, and a block answer 12 s in (past the guards' 10 s stage deadline, as the watchdog answers), blocked as answers;
+            - a hook that passed let the call run. No finding.
+        - **Latency:** `just agent-hooks-latency --binary <the claude link>` (N = 200, Go 1.27.3). Every case is within budget. The installed release's p95 is 11.0 to 134.4 ms below the scripts'. Its p95 is 12.9 to 14.5 ms for the guards, 33.7 ms (Claude) and 70.4 ms (Codex) for rtk, and 99.3 and 107.0 ms for the formatter on `.py`. Both sides still start through `/bin/sh -c`, so for Claude's exec form, which starts the binary without a shell, these are upper bounds.
     - **Not yet:** Codex (3d.2), and Windows.
 
 ### Bugs of the old scripts that the binary fixes
