@@ -20,6 +20,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import file_guards_corpus
+import old_script_fixes
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32"
@@ -54,6 +55,12 @@ def test_the_corpora_are_what_the_shell_guards_say_now() -> None:
                 f"files-guard.jsonl: stale {flavor} result for {_input(now)!r}: "
                 "run `just file-guards-corpus`"
             )
+        # and the fixed guard's answer, which no flavor changes, so every
+        # machine checks it whatever flavors it has
+        assert written["fixed"] == now["fixed"], (
+            f"files-guard.jsonl: stale fixed result for {_input(now)!r}: "
+            "run `just file-guards-corpus`"
+        )
     # and the secrets corpus is what the secrets guard says
     committed_secrets = _entries(file_guards_corpus.SECRETS_CORPUS)
     for written, now in zip(committed_secrets, secrets, strict=False):
@@ -106,3 +113,64 @@ def test_the_corpora_hold_every_kind_of_result() -> None:
     assert any(e["bsd"] != e["gnu"] for e in files)
     assert any(e["reason"] for e in secrets)
     assert {e["exit"] for e in secrets} >= {0, 2}
+
+
+def test_a_reason_that_holds_blocked_is_kept_whole() -> None:
+    # The reason names the file, so it can hold "BLOCKED: " itself; it is read
+    # from the first one, after any known diagnostic, and kept whole.
+    result = file_guards_corpus.run_guard(
+        file_guards_corpus.FILES_GUARD, "filePath", "BLOCKED: x.yml"
+    )
+    assert result == {
+        "exit": 2,
+        "reason": "'BLOCKED: x.yml' uses '.yml'. This project uses '.yaml' exclusively. "
+        "Rename to 'BLOCKED: x.yaml'.",
+    }
+
+
+def test_the_files_corpus_records_the_old_guards_bugs_and_their_fixes() -> None:
+    # A line that starts with "-" stopped the old guard under both flavors;
+    # fixed, the line after it, or the line itself, blocks.
+    entries = {_input(e): e for e in _entries(file_guards_corpus.FILES_CORPUS)}
+    for kind, text in [
+        ("filePath", "ok\n--bogus\nbad.yml"),
+        ("filePath", "--x.yml"),
+        ("patch", file_guards_corpus.patch("*** Add File: --x.yml\n+a: 1\n")),
+    ]:
+        entry = entries[(kind, text)]
+        assert entry["fixed"]["exit"] == 2, entry
+        for flavor in ("bsd", "gnu"):
+            assert entry[flavor]["exit"] == 1, (flavor, entry)
+            assert entry[flavor]["difference"] == "fixed-dash-line", (flavor, entry)
+
+
+def test_every_difference_names_fixes_of_the_files_guard() -> None:
+    # An entry holds the fixed guard's answer exactly when some flavor's old
+    # answer differs from it, and each difference names fixes of this guard.
+    names = {
+        f"fixed-{name}"
+        for name, fix in old_script_fixes.FIXES.items()
+        if fix.script == old_script_fixes.FILES_GUARD
+    }
+    for entry in _entries(file_guards_corpus.FILES_CORPUS):
+        fixed = file_guards_corpus.answer(entry["fixed"])
+        for flavor in ("bsd", "gnu"):
+            difference = entry[flavor].get("difference", "")
+            # a flavor names fixes exactly when its old answer is not the fixed one
+            assert bool(difference) == (
+                file_guards_corpus.answer(entry[flavor]) != fixed
+            ), (flavor, entry)
+            if difference:
+                assert set(difference.split("+")) <= names, difference
+
+
+def test_one_flavor_alone_checks_the_fixed_answers() -> None:
+    # CI on Linux has GNU's basename only. The fixed guard needs none, so its
+    # answers, rendered with one flavor, are the committed ones.
+    flavors = file_guards_corpus.basename_flavors()
+    if "gnu" not in flavors:
+        pytest.skip("no GNU basename here")
+    files, _ = file_guards_corpus.render({"gnu": flavors["gnu"]})
+    committed = _entries(file_guards_corpus.FILES_CORPUS)
+    for written, now in zip(committed, files, strict=True):
+        assert written["fixed"] == now["fixed"], _input(now)

@@ -50,11 +50,15 @@ func Entries(tb testing.TB) []Entry {
 type ShellGuardResult struct {
 	Exit   int     `json:"exit"`   // 0 passes, 2 blocks; 1 fails, which no harness blocks on
 	Reason *string `json:"reason"` // why it blocks; nil unless Exit is 2
+	// Difference names the fixes of the old guard's bugs that change this
+	// answer (scripts/old_script_fixes.py), as "fixed-<name>" joined by "+";
+	// empty when the port answers as the old guard did.
+	Difference string `json:"difference"`
 }
 
 // FilesGuardEntry is what the files guard did with one input, handed over as
 // Claude Code does (FilePath) or as Codex does (Patch), under BSD's and under
-// GNU's basename(1).
+// GNU's basename(1), and what the guard with its bugs fixed does (Fixed).
 type FilesGuardEntry struct {
 	Line         int              `json:"-"`            // its line in files-guard.jsonl
 	FilePath     *string          `json:"filePath"`     // tool_input.file_path
@@ -63,6 +67,33 @@ type FilesGuardEntry struct {
 	PatchRuns    []Run            `json:"patchRuns"`    // a long Patch, as stored
 	BSD          ShellGuardResult `json:"bsd"`
 	GNU          ShellGuardResult `json:"gnu"`
+	// Fixed is the fixed guard's answer, the port's. It needs no
+	// basename(1), so one answer serves both flavors.
+	Fixed *ShellGuardResult `json:"fixed"`
+}
+
+// Frame is the frame a test puts the entry in: "parity" when the port
+// answers as the old guard did under both flavors, else the fixes it needs.
+func (e FilesGuardEntry) Frame() string {
+	switch {
+	case e.BSD.Difference == "" && e.GNU.Difference == "":
+		return "parity"
+	case e.BSD.Difference == "" || e.BSD.Difference == e.GNU.Difference:
+		return e.GNU.Difference
+	case e.GNU.Difference == "":
+		return e.BSD.Difference
+	default:
+		return e.BSD.Difference + "+" + e.GNU.Difference
+	}
+}
+
+// Expected is the port's answer: the fixed guard's.
+func (e FilesGuardEntry) Expected(tb testing.TB) ShellGuardResult {
+	tb.Helper()
+	if e.Fixed == nil {
+		tb.Fatalf("files-guard.jsonl:%d: no fixed answer: run `just file-guards-corpus`", e.Line)
+	}
+	return *e.Fixed
 }
 
 // SecretsGuardEntry is what the secrets guard did with one input, handed over

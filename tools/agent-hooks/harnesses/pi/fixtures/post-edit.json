@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "harness": "pi",
+  "event": "post",
+  "tool": "edit",
+  "input": {
+    "path": "note.md",
+    "edits": [
+      {
+        "oldText": "hello",
+        "newText": "bye"
+      }
+    ]
+  },
+  "cwd": "/home/user/project",
+  "ok": true
+}

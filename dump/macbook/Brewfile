@@ -292,8 +292,6 @@ brew "ios-deploy"
 brew "jadx"
 # Enhanced version of john, a UNIX password cracker
 brew "john-jumbo"
-# Lightweight and flexible command-line JSON processor
-brew "jq"
 # Handy way to save and run project-specific commands
 brew "just"
 # Modern load testing tool, using Go and JavaScript

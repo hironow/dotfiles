@@ -35,7 +35,9 @@ def recipe_body(name: str) -> str:
     # `check-agent-refs *homes:`.
     header = re.compile(rf"^{re.escape(name)}(?:\s+[^:]*)?:(?!=)")
     start = next(i for i, line in enumerate(lines) if header.match(line))
-    body = []
+    # The header too: a parameter's default runs when `just check` calls the
+    # recipe with no argument (`go-test go="mise x -- go":`).
+    body = [lines[start]]
     for line in lines[start + 1 :]:
         if line and not line[0].isspace():
             break
@@ -96,6 +98,16 @@ def test_every_tool_just_check_runs_is_in_the_sandbox_image() -> None:
     )
 
 
+def version_pin(spec: object) -> str:
+    """Compare versions, not host-only installer options in an inline spec."""
+    if isinstance(spec, dict):
+        spec = spec.get("version")
+    assert isinstance(spec, str) and re.fullmatch(
+        r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?", spec
+    )
+    return spec
+
+
 def test_quint_is_baked_at_the_same_pin_as_the_workstation() -> None:
     # A checker under a mandatory gate changes its verdicts only deliberately:
     # the sandbox runs the version the workstation does (ADR 0006 parity).
@@ -103,7 +115,7 @@ def test_quint_is_baked_at_the_same_pin_as_the_workstation() -> None:
     workstation = tomllib.loads(GLOBAL_MISE.read_text(encoding="utf-8"))["tools"]
     key = "npm:@informalsystems/quint"
     assert key in workstation
-    assert baked.get(key) == workstation[key]
+    assert version_pin(baked.get(key)) == version_pin(workstation[key])
 
 
 def assignment(name: str) -> str:

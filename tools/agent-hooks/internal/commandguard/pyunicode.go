@@ -32,8 +32,8 @@ func isPythonWord(r rune) bool {
 	return unicode.Is(pythonWordTable, r)
 }
 
-// stripPython is Python's str.strip(): it removes Python spaces at both ends.
-func stripPython(s string) string {
+// StripPython is Python's str.strip(): it removes Python spaces at both ends.
+func StripPython(s string) string {
 	return strings.TrimFunc(s, isPythonSpace)
 }
 

@@ -19,7 +19,18 @@ var (
 
 // Split returns the words of text, or the error Python's shlex raises for it.
 func Split(text string) ([]string, error) {
-	l := lexer{input: []rune(text), state: stateSpace}
+	return split(text, true)
+}
+
+// SplitWithoutComments is Split with Python's commenters set to "": `#` is a
+// word character, and nothing else changes. The rtk hook's worktree veto
+// splits a rewrite this way.
+func SplitWithoutComments(text string) ([]string, error) {
+	return split(text, false)
+}
+
+func split(text string, comments bool) ([]string, error) {
+	l := lexer{input: []rune(text), state: stateSpace, comments: comments}
 	var words []string
 	for {
 		word, ok, err := l.readToken()
@@ -52,6 +63,7 @@ type lexer struct {
 	pos      int
 	pushback []rune // Python's _pushback_chars: read back from the end
 	state    state
+	comments bool // `#` starts a comment (Python's commenters = "#")
 }
 
 // token is the word being read: the locals of Python's read_token.
@@ -126,7 +138,7 @@ func (l *lexer) betweenWords(t *token, c rune, ok bool) bool {
 		return true
 	case isWhitespace(c):
 		return t.complete()
-	case c == '#':
+	case c == '#' && l.comments:
 		l.skipLine()
 	case c == '\\':
 		t.escapedFrom = stateWord
@@ -188,7 +200,7 @@ func (l *lexer) inWord(t *token, c rune, ok bool) bool {
 	case isWhitespace(c):
 		l.state = stateSpace
 		return t.complete()
-	case c == '#':
+	case c == '#' && l.comments:
 		l.skipLine()
 		l.state = stateSpace
 		return t.complete()

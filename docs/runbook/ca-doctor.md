@@ -157,6 +157,16 @@ MacのPython 3.9.6／LibreSSL 2.8.3でこの挙動を実測したため、変数
 その場合は、修正済みの管理下Pythonを使うか、アプリが提供するCA指定を使う。
 Pythonの標準sslを使うアプリなら `ssl.create_default_context(cafile="更新済みCA束の絶対パス")` を明示して検証できるが、他のHTTPライブラリへ自動適用されるものではない。
 システムPythonを使い続けて接続受理が残る場合は、`ERR` を残す。
+
+Apple付属のPythonなどLibreSSLのクライアントが読むのは、OSのPEM束 `/private/etc/ssl/cert.pem` である（2026-11-09にもPython 3.9.6／LibreSSL 2.8.3で確かめた）。
+事故別ルールの `untrustedRoots` をこの束から外すには、次の2段で行う。
+
+1. `just ca-os-bundle-candidate`（rootは不要）: `output/ca-os-bundle/cert.pem` に候補を書き、入力と候補のSHA-256、外すルート、残る証明書の数を出す。候補と元の束の差分を確かめる。
+2. `just ca-os-bundle-apply <入力のSHA-256> <候補のSHA-256>`（sudo）: 入力も、作り直した候補も、手順1と同じハッシュのときだけ置き換える。元の束は先に `/private/etc/ssl/cert.pem.dotfiles-backup-<日時>` へ書いて同期する。
+
+戻すときは `sudo cp -p <退避先> /private/etc/ssl/cert.pem` を実行する。
+macOSの更新で束が元に戻ると、`ERR ca-live-*-system-python` が再び出るので、手順1からやり直す。
+Keychainを使うクライアント（Safariなど）は、この操作では変わらない。
 診断コードを変えてその接続だけ別のCA束に切り替えたり、警告を消すために `sitecustomize.py` を追加したりしない。
 OS管理ファイルやKeychainの修復は、ユーザー環境変数の変更と分け、管理者の承認を得て行う。
 
@@ -187,6 +197,7 @@ EOLの系列には修正が出ない。
 正本は `tools/ca-doctor/incidents/*.json` である。
 実行時に外部から判定ルールを取得しない。
 JSONにはID、検査種別、根拠URL、確認日、見直し期限、正常系URL、事故のテストホスト、ツール別の修正版下限、未修正ツール、確認上の注意を記録する。
+必要なら、事故のテストチェーンがつながるルート（修正済みのCA束には無いもの）を `untrustedRoots` に、DERのSHA-256（小文字の16進64文字）とsubjectで16件まで記録する。`ca-doctor os-bundle` がこれをOSのCA束から外す（[Macでユーザー領域のCA束を選ぶ](#macでユーザー領域のca束を選ぶ)）。
 
 現在の検査種別は `tls-endpoint-and-version` だけであり、対象ホストへの接続受理と既知の修正版下限を検査する。
 それ以外の種類の事故にはコードとテストの追加が必要で、JSONだけで任意の診断やコマンドを実行できるものではない。

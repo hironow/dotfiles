@@ -9,7 +9,9 @@ File naming convention:
     ROOT_AGENTS_hooks_formatter.py      -> <agent>/hooks/formatter.py
 """
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -157,7 +159,12 @@ def docker_image():
 
 
 def _run_in_container(
-    docker_image: str, cmd: str, check: bool = True
+    docker_image: str,
+    cmd: str,
+    check: bool = True,
+    *,
+    go: bool = False,
+    network: bool = True,
 ) -> subprocess.CompletedProcess:
     """Run a command inside a Docker container.
 
@@ -165,6 +172,10 @@ def _run_in_container(
         docker_image: Docker image name
         cmd: Command to run inside container
         check: If True, raise error on non-zero exit code
+        go: If False (the default), Go is out of mise's reach, so sync builds
+            no agent-hook release and registers today's scripts, which this
+            suite pins. test_sync_wires_claude_with_a_real_release sets it.
+        network: If False, the container has no network.
 
     Returns:
         CompletedProcess with stdout/stderr
@@ -187,6 +198,10 @@ def _run_in_container(
     gh_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if gh_token:
         docker_cmd.extend(["-e", f"GITHUB_TOKEN={gh_token}"])
+    if not go:
+        docker_cmd.extend(["-e", "MISE_DISABLE_TOOLS=go"])
+    if not network:
+        docker_cmd.extend(["--network", "none"])
     docker_cmd.extend([docker_image, "bash", "-c", cmd])
     result = _run(docker_cmd)
 
@@ -1008,7 +1023,7 @@ def test_sync_agents_orphans_shows_target_only_items(docker_image):
     echo "# Orphan" > /root/.claude-work-a/agents/orphan-test-skill/SKILL.md
 
     # Run orphans detection
-    cd /root/dotfiles && uv run scripts/sync_agents.py --orphans all
+    cd /root/dotfiles && uv run --frozen scripts/sync_agents.py --orphans all
     """
     result = _run_in_container(docker_image, cmd)
 
@@ -1032,7 +1047,7 @@ def test_sync_agents_orphans_clean_when_no_orphans(docker_image):
     cd /root/dotfiles && just sync-agents all
 
     # Run orphans detection (should be clean)
-    cd /root/dotfiles && uv run scripts/sync_agents.py --orphans all
+    cd /root/dotfiles && uv run --frozen scripts/sync_agents.py --orphans all
     """
     result = _run_in_container(docker_image, cmd)
 
@@ -1067,7 +1082,7 @@ def test_sync_agents_override_removes_orphans(docker_image):
     [ -d /root/.claude-work-a/agents/orphan-beta ] && echo "orphan-beta exists before"
 
     # Run override
-    cd /root/dotfiles && uv run scripts/sync_agents.py --override all
+    cd /root/dotfiles && uv run --frozen scripts/sync_agents.py --override all
 
     # Verify orphans are gone
     if [ -d /root/.claude-work-a/agents/orphan-alpha ]; then
@@ -1115,7 +1130,7 @@ def test_sync_agents_override_preserves_source_items(docker_image):
     echo "# Orphan" > /root/.claude-work-a/agents/orphan-only/SKILL.md
 
     # Run override
-    cd /root/dotfiles && uv run scripts/sync_agents.py --override all
+    cd /root/dotfiles && uv run --frozen scripts/sync_agents.py --override all
 
     # Verify: real skill preserved, orphan removed
     [ -d /root/.claude-work-a/agents/my-real-skill ] && echo "real skill preserved"
@@ -1153,7 +1168,7 @@ def test_sync_agents_preview_shows_orphans(docker_image):
     echo "# Preview" > /root/.claude-work-a/agents/preview-orphan/SKILL.md
 
     # Run preview
-    cd /root/dotfiles && uv run scripts/sync_agents.py --preview all
+    cd /root/dotfiles && uv run --frozen scripts/sync_agents.py --preview all
     """
     result = _run_in_container(docker_image, cmd)
 
@@ -1383,6 +1398,8 @@ def test_hub_and_spoke_codex_gets_codex_hooks_gemini_base_only(docker_image):
     ):
         assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
     assert "ERR-" not in result.stdout, result.stdout
+    # with no Go, the Codex home keeps today's scripts and says why (PR 3d.2)
+    assert "agent-hook: codex scripts: mise which go" in result.stdout, result.stdout
 
 
 def test_hub_and_spoke_settings_merge_idempotent_preserves_user_keys(docker_image):
@@ -1511,7 +1528,7 @@ EOF
     ln -s ../../.agents/skills/linked /root/.claude/skills/linked
 
     cd /root/dotfiles && just sync-agents all
-    cd /root/dotfiles && uv run scripts/sync_agents.py --override all
+    cd /root/dotfiles && uv run --frozen scripts/sync_agents.py --override all
 
     grep -q SENTINEL /root/.claude/skills/cli-managed/SKILL.md && echo "real-dir-untouched"
     [ -L /root/.claude/skills/linked ] && echo "symlink-untouched"
@@ -1529,3 +1546,137 @@ EOF
     ):
         assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
     assert "ERR-manifest-still-lists-skills" not in result.stdout, result.stdout
+
+
+# =============================================================================
+# agent-hook wiring (PR 3d.1)
+# =============================================================================
+
+
+def test_sync_without_go_keeps_todays_scripts_and_says_why(docker_image):
+    """Given no Go within mise's reach (the suite's default), sync registers
+    today's scripts and says why it built no release."""
+    result = _run_in_container(
+        docker_image,
+        """
+    set -euo pipefail
+    cd /root/dotfiles && just sync-agents
+    grep -q '/root/.claude/hooks/block-prohibited-commands.sh' /root/.claude/settings.json && echo "scripts-registered"
+    [ -e /root/.local/share/dotfiles/agent-hooks/current/claude/agent-hook ] || echo "no-link"
+    """,
+    )
+    assert "agent-hook: claude scripts: mise which go" in result.stdout, result.stdout
+    assert "scripts-registered" in result.stdout
+    assert "no-link" in result.stdout
+
+
+def test_sync_wires_claude_with_a_real_release(docker_image):
+    """Given Go and the module cache, and no network, sync builds a release,
+    checks it, and wires ~/.claude to it through the home's stable link; a
+    fallback to the scripts fails this test."""
+    # given the Go modules, the Python uv picks, and the project environment,
+    # fetched with the network into the snapshot, which outlives a container
+    # (the image has only Debian's Python 3.11, and the project needs 3.12+)
+    keep = (
+        "export GOMODCACHE=/root/dotfiles/.e2e-cache/go-mod"
+        " UV_PYTHON_INSTALL_DIR=/root/dotfiles/.e2e-cache/uv-python"
+        " UV_CACHE_DIR=/root/dotfiles/.e2e-cache/uv"
+    )
+    _run_in_container(
+        docker_image,
+        f"""
+    set -euo pipefail
+    {keep}
+    cd /root/dotfiles/tools/agent-hooks && GOFLAGS=-modcacherw go mod download
+    cd /root/dotfiles && uv sync --frozen
+    """,
+        go=True,
+    )
+    # when sync runs with no network
+    result = _run_in_container(
+        docker_image,
+        f"""
+    set -euo pipefail
+    {keep}
+    cd /root/dotfiles && just sync-agents
+    echo "--- settings"
+    cat /root/.claude/settings.json
+    echo "--- link"
+    readlink -f /root/.local/share/dotfiles/agent-hooks/current/claude/agent-hook
+    """,
+        go=True,
+        network=False,
+    )
+    # then ~/.claude runs the release through its link
+    out = result.stdout
+    assert "agent-hook: claude wired (" in out, out
+    settings = json.loads(out.split("--- settings\n", 1)[1].split("--- link\n", 1)[0])
+    link = "/root/.local/share/dotfiles/agent-hooks/current/claude/agent-hook"
+    commands = [
+        hook["command"]
+        for blocks in settings["hooks"].values()
+        for block in blocks
+        for hook in block["hooks"]
+    ]
+    assert commands and all(command == link for command in commands), commands
+    target = out.split("--- link\n", 1)[1].strip()
+    assert re.fullmatch(
+        r"/root/.local/share/dotfiles/agent-hooks/releases/[0-9a-f]{16}/agent-hook",
+        target,
+    ), target
+
+
+def test_sync_adds_the_codex_guards_beside_the_scripts_with_a_real_release(
+    docker_image,
+):
+    """Given Go and the module cache, and no network, `just sync-agents x`
+    keeps Codex's script groups and adds agent-hook's three guards (G)
+    beside them, through the home's stable link (PR 3d.2); then the trust
+    step, through the image's codex app-server, trusts every handler of
+    hooks.json, G included."""
+    keep = (
+        "export GOMODCACHE=/root/dotfiles/.e2e-cache/go-mod"
+        " UV_PYTHON_INSTALL_DIR=/root/dotfiles/.e2e-cache/uv-python"
+        " UV_CACHE_DIR=/root/dotfiles/.e2e-cache/uv"
+    )
+    _run_in_container(
+        docker_image,
+        f"""
+    set -euo pipefail
+    {keep}
+    cd /root/dotfiles/tools/agent-hooks && GOFLAGS=-modcacherw go mod download
+    cd /root/dotfiles && uv sync --frozen
+    """,
+        go=True,
+    )
+    result = _run_in_container(
+        docker_image,
+        f"""
+    set -euo pipefail
+    {keep}
+    cd /root/dotfiles && just sync-agents x
+    echo "--- hooks"
+    cat /root/.codex/hooks.json
+    """,
+        go=True,
+        network=False,
+    )
+    out = result.stdout
+    assert "agent-hook: codex wired (" in out, out
+    hooks = json.loads(out.split("--- hooks\n", 1)[1])["hooks"]
+    commands = [
+        hook["command"]
+        for groups in hooks.values()
+        for group in groups
+        for hook in group["hooks"]
+    ]
+    link = "/root/.local/share/dotfiles/agent-hooks/current/codex/agent-hook"
+    guards = [command for command in commands if command.startswith(f"'{link}' ")]
+    assert [command.split(" --hook ", 1)[1].split()[0] for command in guards] == [
+        "files-guard",
+        "secrets-guard",
+        "command-guard",
+    ], commands
+    assert any("/root/.codex/hooks/guard-codex.sh" in c for c in commands), commands
+    trusted = re.search(r"codex-hooks - (\d+) dotfiles hooks trusted and enabled", out)
+    assert trusted and int(trusted[1]) == len(commands), out

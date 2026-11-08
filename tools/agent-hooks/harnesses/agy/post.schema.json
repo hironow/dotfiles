@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Antigravity CLI (agy) PostToolUse hook input",
+  "description": "Written from agy's hooks docs and from payloads captured from agy 1.5.0. Unknown members are allowed: agy documents no schema, and adds fields between versions. error is the tool's error: empty on success.",
+  "type": "object",
+  "required": [
+    "artifactDirectoryPath",
+    "conversationId",
+    "modelName",
+    "stepIdx",
+    "toolCall",
+    "transcriptPath",
+    "workspacePaths"
+  ],
+  "properties": {
+    "artifactDirectoryPath": {
+      "type": "string"
+    },
+    "conversationId": {
+      "type": "string"
+    },
+    "error": {
+      "type": "string"
+    },
+    "lastUserInput": {
+      "type": "string"
+    },
+    "modelName": {
+      "type": "string"
+    },
+    "stepIdx": {
+      "type": "integer"
+    },
+    "toolCall": {
+      "type": "object",
+      "required": [
+        "name",
+        "args"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "args": {
+          "type": "object"
+        }
+      }
+    },
+    "transcriptPath": {
+      "type": "string"
+    },
+    "workspacePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "toolCall": {
+            "properties": {
+              "name": {
+                "const": "run_command"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "toolCall"
+        ]
+      },
+      "then": {
+        "properties": {
+          "toolCall": {
+            "properties": {
+              "args": {
+                "$ref": "#/$defs/run_command"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "toolCall": {
+            "properties": {
+              "name": {
+                "const": "write_file"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "toolCall"
+        ]
+      },
+      "then": {
+        "properties": {
+          "toolCall": {
+            "properties": {
+              "args": {
+                "$ref": "#/$defs/write_file"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "toolCall": {
+            "properties": {
+              "name": {
+                "const": "edit_file"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "toolCall"
+        ]
+      },
+      "then": {
+        "properties": {
+          "toolCall": {
+            "properties": {
+              "args": {
+                "$ref": "#/$defs/edit_file"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "run_command": {
+      "type": "object",
+      "required": [
+        "CommandLine"
+      ],
+      "properties": {
+        "CommandLine": {
+          "type": "string"
+        },
+        "WaitMsBeforeAsync": {
+          "type": "integer"
+        },
+        "toolSummary": {
+          "type": "string"
+        }
+      }
+    },
+    "write_file": {
+      "type": "object",
+      "required": [
+        "Path",
+        "Content"
+      ],
+      "properties": {
+        "Path": {
+          "type": "string"
+        },
+        "Content": {
+          "type": "string"
+        }
+      }
+    },
+    "edit_file": {
+      "type": "object",
+      "required": [
+        "Path",
+        "Target",
+        "Replacement"
+      ],
+      "properties": {
+        "Path": {
+          "type": "string"
+        },
+        "Target": {
+          "type": "string"
+        },
+        "Replacement": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "x-success": {
+    "description": "The tool call succeeded when error is empty or omitted: agy's docs make it optional, set on failure.",
+    "pointer": "/error",
+    "values": [
+      ""
+    ],
+    "absent": true
+  },
+  "x-ir-tool": "/toolCall/name",
+  "x-ir": {
+    "command": [
+      "/toolCall/args/CommandLine"
+    ],
+    "filePath": [
+      "/toolCall/args/Path"
+    ],
+    "content": [
+      "/toolCall/args/Content",
+      "/toolCall/args/Replacement"
+    ],
+    "workspaces": [
+      "/workspacePaths/*"
+    ],
+    "sessionId": [
+      "/conversationId"
+    ],
+    "callId": [
+      "/stepIdx"
+    ]
+  }
+}

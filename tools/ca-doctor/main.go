@@ -36,6 +36,9 @@ func Report(out io.Writer, findings []Finding) int {
 }
 
 func RunCLI(parent context.Context, args []string, out io.Writer) int {
+	if len(args) > 0 && args[0] == "os-bundle" {
+		return runOSBundle(args[1:], out)
+	}
 	flags := flag.NewFlagSet("ca-doctor", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	source := flags.String("source", "tools/ca-doctor", "source directory for build freshness verification")
