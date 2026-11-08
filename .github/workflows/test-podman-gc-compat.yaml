@@ -1,0 +1,103 @@
+name: Podman GC PowerShell compatibility
+
+# scripts/runner_gc_win.ps1 runs on Windows PowerShell 5.1 in production
+# (scripts/runner_gc.sh calls powershell.exe); the unit job replays it on the
+# runner's pwsh 7. windows-powershell-51 runs its JSON reader on the real 5.1.
+# linux-powershell-74-observation only observes PowerShell 7.4, whose
+# ConvertFrom-Json has no -DateKind: a Created it reads as a date becomes
+# DateTime, and the GC keeps that item (it fails closed). That is recorded,
+# not supported, and the job is not a required check.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/runner_gc_win.ps1'
+      - 'tests/powershell/get_podman_json_51.ps1'
+      - 'tests/unit/test_podman_gc_simulation.py'
+      - '.github/workflows/test-podman-gc-compat.yaml'
+  pull_request:
+    branches: [main]
+    # ready_for_review is not in the default event set; without it a draft
+    # marked ready would not get a run until its next push.
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'scripts/runner_gc_win.ps1'
+      - 'tests/powershell/get_podman_json_51.ps1'
+      - 'tests/unit/test_podman_gc_simulation.py'
+      - '.github/workflows/test-podman-gc-compat.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-powershell-51:
+    name: Get-PodmanJson on Windows PowerShell 5.1
+    # Draft pull requests do not run CI; runs start when the PR is marked
+    # ready for review.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Read Podman JSON as production does
+        shell: cmd
+        run: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tests\powershell\get_podman_json_51.ps1
+
+  linux-powershell-74-observation:
+    name: GC replays on PowerShell 7.4 (observation only)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PWSH_TARBALL_URL: https://github.com/PowerShell/PowerShell/releases/download/v7.4.22/powershell-7.4.22-linux-x64.tar.gz
+      # From the release's hashes.sha256; its API asset digest is the same.
+      PWSH_TARBALL_SHA256: 9de443bef974f219c98a33b0f4096aace7f30b42188f37a1b14c5da7e82c8a6a
+      PODMAN_GC_REQUIRE_PWSH: '1'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Download PowerShell 7.4.22 and check it before use
+        shell: bash
+        run: |
+          download="$RUNNER_TEMP/powershell-download"
+          install="$RUNNER_TEMP/powershell-7.4.22"
+          mkdir "$RUNNER_TEMP/powershell-download"
+          mkdir "$RUNNER_TEMP/powershell-7.4.22"
+          tarball="$download/powershell-7.4.22-linux-x64.tar.gz"
+          curl --fail --silent --show-error --location --proto '=https' --output "$tarball" "$PWSH_TARBALL_URL"
+          # the hash is checked before anything is extracted
+          printf '%s  %s\n' "$PWSH_TARBALL_SHA256" "$tarball" | sha256sum --check --strict
+          tar -xzf "$tarball" -C "$install"
+          chmod +x "$install/pwsh"
+          identity="$("$install/pwsh" -NoProfile -NonInteractive -Command "'{0} {1}' -f \$PSVersionTable.PSVersion, \$PSVersionTable.PSEdition")"
+          if [[ "$identity" != "7.4.22 Core" ]]; then
+            echo "::error::PowerShell 7.4.22 Core expected, got '$identity'"
+            exit 1
+          fi
+          echo "PODMAN_GC_TEST_PWSH=$RUNNER_TEMP/powershell-7.4.22/pwsh" >> "$GITHUB_ENV"
+      # Expected: positive-collection cases whose Created 7.4 reads as a date
+      # fail (the GC keeps those items). A Created it does not read as a date,
+      # such as nanoseconds, stays a string and may still collect. Anything
+      # else - a safety oracle failure, an error, a skip - is not expected.
+      - name: Run the PowerShell GC replays on 7.4.22
+        shell: bash
+        run: |
+          uvx pytest -q -rA --tb=line tests/unit/test_podman_gc_simulation.py -k powershell 2>&1 | tee "$RUNNER_TEMP/gc-powershell-74.txt"
+      - name: Record each case's outcome
+        if: always()
+        shell: bash
+        run: |
+          report="$RUNNER_TEMP/gc-powershell-74.txt"
+          {
+            echo '## GC replays on PowerShell 7.4.22 (observation only)'
+            echo
+            echo 'Expected: only positive-collection cases fail whose Created 7.4 reads as a date (it becomes DateTime and the GC keeps the item). A Created it does not read as a date, such as nanoseconds, stays a string and may collect. Any other failure, error, or skip is not expected.'
+            echo
+            echo '```text'
+            if [[ -f "$report" ]]; then cat "$report"; else echo 'no report: the replays did not run'; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

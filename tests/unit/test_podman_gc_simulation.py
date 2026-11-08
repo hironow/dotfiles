@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -21,7 +22,24 @@ from _bash_hook import bash_path, resolve_bash, run_bash
 
 ROOT = Path(__file__).resolve().parents[2]
 JQ = shutil.which("jq")
-PWSH = shutil.which("pwsh")
+
+
+def resolve_pwsh(environ, which=shutil.which):
+    """The PowerShell the replays run: PODMAN_GC_TEST_PWSH, else pwsh on PATH.
+
+    An override that is not an executable stops the run; it never turns the
+    PowerShell cases into skips.
+    """
+    override = environ.get("PODMAN_GC_TEST_PWSH")
+    if override is None:
+        return which("pwsh")
+    found = which(override)
+    if found is None:
+        raise RuntimeError(f"PODMAN_GC_TEST_PWSH={override!r} is not an executable")
+    return found
+
+
+PWSH = resolve_pwsh(os.environ)
 IMAGE = "a" * 64
 PARENT = "b" * 64
 NOW = "2030-01-01T00:00:00Z"
@@ -506,6 +524,41 @@ def run_gc_ci_diagnostic(tmp_path):
             emit(record)
             records.append(record)
     return records
+
+
+def powershell_identity(pwsh):
+    """Version and edition, from the runtime itself."""
+    proc = subprocess.run(
+        [
+            pwsh,
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "'{0} {1}' -f $PSVersionTable.PSVersion, $PSVersionTable.PSEdition",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 0 and not proc.stderr, (pwsh, proc.stdout, proc.stderr)
+    return proc.stdout.strip()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def report_powershell_runtime(request):
+    reporter = request.config.pluginmanager.get_plugin("terminalreporter")
+    line = (
+        "PowerShell GC replays: none (no PODMAN_GC_TEST_PWSH, no pwsh on PATH)"
+        if PWSH is None
+        else f"PowerShell GC replays: {PWSH} {powershell_identity(PWSH)}"
+    )
+    if reporter is not None:
+        reporter.write_line(line)
+    else:
+        print(line)
 
 
 def run_platform(platform, tmp_path, state, **kwargs):
@@ -1328,3 +1381,77 @@ def test_gc_diagnostic_report_classification_construction_only(
         for record in records
         if record["mode"] == "String"
     )
+
+
+def test_powershell_override_must_name_an_executable(tmp_path):
+    for override in (str(tmp_path / "missing"), str(tmp_path), ""):
+        with pytest.raises(RuntimeError, match="PODMAN_GC_TEST_PWSH"):
+            resolve_pwsh({"PODMAN_GC_TEST_PWSH": override})
+
+
+def test_powershell_override_replaces_path_discovery():
+    chosen = resolve_pwsh({"PODMAN_GC_TEST_PWSH": sys.executable})
+    assert chosen is not None and Path(chosen).samefile(sys.executable)
+    assert resolve_pwsh({}, which=lambda name: f"/found/{name}") == "/found/pwsh"
+
+
+# Podman writes Created as Go's RFC 3339 time: nanoseconds, and Z or the
+# engine's own offset. The age check must see that string, offset included.
+@pytest.mark.parametrize(
+    "created,deleted",
+    [
+        ("2020-01-01T09:00:00+09:00", True),
+        ("2020-01-01T00:00:00.123456789Z", True),
+        ("2029-12-31T23:59:59+02:00", True),  # 21:59:59Z
+        ("2029-12-31T21:59:59-01:00", False),  # 22:59:59Z: not two hours old
+    ],
+)
+def test_powershell_ages_created_as_the_wire_string(tmp_path, created, deleted):
+    state = inventory(containers={"def": container(created=created, status="exited")})
+    state["images"][IMAGE]["Created"] = created
+    final = run_platform("powershell", tmp_path, state)
+    assert final["removed"] == ([IMAGE] if deleted else []), final
+    assert final["removed_containers"] == (["def"] if deleted else []), final
+
+
+@pytest.mark.parametrize("platform", ["shell", "powershell"])
+@pytest.mark.parametrize("created", [1577836800, None, {"Time": OLD}])
+def test_non_string_created_is_kept(tmp_path, platform, created):
+    state = inventory()
+    state["images"][IMAGE]["Created"] = created
+    assert run_platform(platform, tmp_path / "image", state)["removed"] == []
+    state = inventory(containers={"def": container(created=created, status="exited")})
+    final = run_platform(platform, tmp_path / "container", state)
+    assert final["removed"] == [] and final["removed_containers"] == [], final
+
+
+def _function_body(script, name):
+    match = re.search(
+        rf"^function {re.escape(name)} {{\n(.*?)^}}\n", script, re.MULTILINE | re.DOTALL
+    )
+    assert match is not None, name
+    return match.group(1)
+
+
+def test_get_podman_json_asks_the_real_cmdlet_for_date_kind():
+    """PowerShell 7.5+ reads JSON date strings as strings, like 5.1 does; older
+    ConvertFrom-Json has no DateKind and is called exactly as before."""
+    script = (ROOT / "scripts/runner_gc_win.ps1").read_text(encoding="utf-8")
+    body = _function_body(script, "Get-PodmanJson")
+    # module-qualified: a function named Get-Command (the replay wrapper's)
+    # cannot answer for the cmdlet
+    assert (
+        "$cmdlet = Microsoft.PowerShell.Core\\Get-Command -Name ConvertFrom-Json"
+        " -CommandType Cmdlet -ErrorAction Stop\n" in body
+    )
+    assert (
+        "if ($cmdlet.Parameters.ContainsKey('DateKind')) { $convert.DateKind = 'String' }"
+        in body
+    )
+    assert "return Microsoft.PowerShell.Utility\\ConvertFrom-Json @convert" in body
+    code = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
+    # DateKind: only the capability test and the one use above
+    assert sum(line.count("DateKind") for line in code) == 2
+    assert "PSDefaultParameterValues" not in script
+    calls = [line for line in code if "ConvertFrom-Json" in line]
+    assert calls and all(line.strip() in body for line in calls), calls

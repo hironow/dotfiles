@@ -7,6 +7,7 @@
 | --- | --- | --- |
 | [`unit/`](./unit/) | コンテナ不要の関数・ファイル・プロセス境界検査 | `just test-unit`（`just ci` に含まれる） |
 | `test_just_sandbox.py` など | 毎回専用 image を作り、実際の Dev Container up → exec と保存 image を検査 | `just test` |
+| [`powershell/`](./powershell/) | Windows PowerShell 5.1 で動かす検査（Podman GC の JSON の読み方） | CI の `test-podman-gc-compat.yaml` だけ（5.1 は Windows にしか無い） |
 | `test_install.py` / [`docker/`](./docker/) | 追跡ファイルだけの context と `InstallTest.Dockerfile` で通常セットアップを 2 回検査 | `just test-install` |
 
 コンテナ不要の静的検査は `unit/` に置く。

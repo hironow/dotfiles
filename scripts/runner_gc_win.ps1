@@ -94,7 +94,16 @@ function Get-PodmanJson {
     # ConvertFrom-Json 5.1 unwraps arrays on the pipeline. Check the wire shape
     # before that loses the distinction between [one object] and one object.
     if ($Inspection -and -not $result.Output.TrimStart().StartsWith('[')) { throw 'Inspection array required' }
-    return ConvertFrom-Json -InputObject $result.Output -ErrorAction Stop
+    # Windows PowerShell 5.1, which runs this GC, keeps JSON date strings as
+    # strings. PowerShell 7 turns the ones it reads as dates into DateTime,
+    # which the Created checks reject, so the item is kept. 7.5+ keeps them as
+    # strings with -DateKind String; 7.0-7.4 has no such switch and is not
+    # supported. The cmdlet is asked module-qualified, so that a function
+    # named Get-Command cannot answer for it.
+    $convert = @{ InputObject = $result.Output; ErrorAction = 'Stop' }
+    $cmdlet = Microsoft.PowerShell.Core\Get-Command -Name ConvertFrom-Json -CommandType Cmdlet -ErrorAction Stop
+    if ($cmdlet.Parameters.ContainsKey('DateKind')) { $convert.DateKind = 'String' }
+    return Microsoft.PowerShell.Utility\ConvertFrom-Json @convert
 }
 
 function ConvertTo-PodmanImageId {
