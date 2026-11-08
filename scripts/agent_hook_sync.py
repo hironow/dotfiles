@@ -414,6 +414,34 @@ class SyncSession:
                 ),
             )
 
+    def _render(
+        self, home: HookHome, owns: Callable[[dict], bool]
+    ) -> tuple[ReleaseEvidence | None, dict | None, str]:
+        """The offered release and R, its render for this home (None for an
+        uninstall); or no release, and why, when the render fails or holds a
+        handler the home does not own."""
+        evidence, reason = self.offer.release, self.offer.reason
+        if evidence is None or self.operation == "uninstall":
+            return evidence, None, reason
+        call = self.source.render(
+            evidence, self.roots.link(home.key), self.system, harness=home.harness
+        )
+        try:
+            if not call.ok:
+                raise ValueError(call.reason or "render failed")
+            rendered = json.loads(call.stdout)
+            if (
+                not isinstance(rendered, dict)
+                or not isinstance(rendered.get("hooks"), dict)
+                or not rendered["hooks"]
+            ):
+                raise ValueError("render did not provide hook blocks")
+            if not owns(rendered):
+                raise ValueError("render contains handlers not owned by this home")
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            return None, None, f"render: {exc}"
+        return evidence, rendered, reason
+
     def read_plan(self, home: HookHome) -> PlannedHome:
         rules = home.read_rules()
         settings = _read_optional(self.disk, home.directory / home.registration)
@@ -429,26 +457,9 @@ class SyncSession:
             registration=home.registration,
             state_file=home.state_file,
         )
-        evidence, reason = self.offer.release, self.offer.reason
-        rendered = None
-        if evidence is not None and self.operation != "uninstall":
-            rendered_call = self.source.render(
-                evidence, self.roots.link(home.key), self.system, harness=home.harness
-            )
-            try:
-                if not rendered_call.ok:
-                    raise ValueError(rendered_call.reason or "render failed")
-                rendered = json.loads(rendered_call.stdout)
-                if (
-                    not isinstance(rendered, dict)
-                    or not isinstance(rendered.get("hooks"), dict)
-                    or not rendered["hooks"]
-                ):
-                    raise ValueError("render did not provide hook blocks")
-                if rules.managed_from(rendered) != rendered["hooks"]:
-                    raise ValueError("render contains handlers not owned by this home")
-            except (ValueError, TypeError, KeyError, AttributeError) as exc:
-                evidence, rendered, reason = None, None, f"render: {exc}"
+        evidence, rendered, reason = self._render(
+            home, lambda value: rules.managed_from(value) == value["hooks"]
+        )
         facts = HomeFacts(
             home.key,
             settings,
