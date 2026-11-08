@@ -10,7 +10,7 @@ This module holds no doctor or sync logic, so both can import it.
 import os
 import secrets
 import shutil
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -156,6 +156,25 @@ def probe_argv(choice: ShellChoice, token: str) -> tuple[str, ...]:
     else:
         flags = ("-c",)
     return choice.executable, *flags, command
+
+
+def unready_reason(shells: Sequence[Shell]) -> str:
+    """Why Codex's two shells cannot run agent-hook's sh launcher cleanly, or
+    "" when both are POSIX shells that do. Doctor says more about each."""
+    if not shells:
+        return "no POSIX shell to check"
+    for shell in shells:
+        choice = shell.choice
+        if choice.executable is None:
+            return f"{choice.route}: no shell found"
+        if choice.kind not in POSIX_SHELLS:
+            return f"{choice.route} {choice.executable} is {choice.kind}, not a POSIX shell"
+        if not shell.clean:
+            return (
+                f"{choice.route} {choice.executable} does not run a command "
+                "cleanly (run just doctor)"
+            )
+    return ""
 
 
 def _login_shell() -> str | None:

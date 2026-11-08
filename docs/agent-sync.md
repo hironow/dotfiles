@@ -115,7 +115,7 @@ echo '{"tool_input":{"file_path":"config.yml"}}' | bash ~/.claude/hooks/block-pr
 macOS、Linux、WSL では、`just sync-agents` が Claude の home（`claude`、`work-a`〜`work-d`）を agent-hook の binary に配線する。
 登録は home ごとの安定パス `~/.local/share/dotfiles/agent-hooks/current/<home>/agent-hook`（release への symlink）を exec 形式で指す。
 native Windows はまだ配線せず、今のスクリプトを登録したまま、そう 1 行出す。
-Codex（`hooks.json`）は PR 3d.2 まで今のままである。
+Codex（`hooks.json`）の配線は次の節に書く。
 
 1 回の sync は、次の順に進む（`scripts/agent_hook_sync.py`）。
 
@@ -153,6 +153,25 @@ macOS では、書いたものを `F_FULLFSYNC` でディスクまで届ける�
 
 Claude の home では、sync が所有するのは安定パスの登録だけである。release を直接指す block は、利用者のものとして残す。
 `scripts/sync_agents.py` は uv の project の環境で走る（PEP 723 の script ではない）。
+
+## agent-hook の配線（Codex）
+
+macOS、Linux、WSL では、`just sync-agents x` が Codex の home（`~/.codex`）にも agent-hook の guard を足す。
+手順（ロック、変更の記録の片付け、release、計画、記録しながらの変更）は Claude の home と同じで、計画は `scripts/agent_hook_codex_plan.py` が立てる。
+Codex は hook の信頼を `hooks.json` の中の位置（event、group、handler の番号）で記録する。
+そのため Claude と違い、登録を置き換えない。
+
+- 今のスクリプトの group は動かさず、書き換えない（スクリプトの断片が変わったときだけ書き換えるのは今と同じ）。
+- agent-hook の 3 つの guard（files-guard、secrets-guard、command-guard）を、スクリプトの横に足す。同じ matcher の空の group があればそこに入れ、無ければ最後に足す。rtk と formatter は PR 5 まで足さない。
+- 利用者の group は、位置も中身も変えない。group は消さない。
+- 計画がこの約束を破るなら、その home は止まる（`stopped: placement: ...`）。
+
+guard を足すのは、Codex の 2 つのシェル（session のシェルと `$SHELL -lc`）がどちらも POSIX のシェルで、agent-hook の sh の起動を余計な出力なしに通すときだけである。
+そうでなければ、release が無いときと同じく `scripts` か `keep` になり、install は止まる。シェルの詳しい状態は `just doctor` が出す。
+`just agent-hooks-uninstall x` は guard の group をその場で空にし（位置は残る）、印を付ける。
+`just agent-hooks-install x` は同じ位置へ guard を戻すので、Codex の信頼の記録も同じ位置のまま使える。
+install と uninstall のあとは、sync と同じく trust の手順（`scripts/codex_hooks_trust.py`）を実行する。
+Codex は信頼した hash の hook だけを実行するので、guard を信頼する前の thread では今のスクリプトが動き続ける。スクリプトを外すのは PR 5 である。
 
 ## Codex の hooks
 

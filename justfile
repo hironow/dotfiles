@@ -963,7 +963,7 @@ agent-hooks-build *args:
 agent-hooks-build *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease {{ if args == "" { "build" } else { args } }}
 
-# Wire named Claude homes to the checked release.
+# Wire named Claude homes, or Codex (x), to the checked release.
 [group('Agents')]
 [positional-arguments]
 [unix]

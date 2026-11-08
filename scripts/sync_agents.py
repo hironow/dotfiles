@@ -37,7 +37,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+import agent_hook_codex_plan as codex_plan
 import agent_hook_release as release_tools
+import codex_shells
 
 if os.name != "nt":
     import agent_hook_sync as hook_sync
@@ -1166,6 +1168,98 @@ def hook_home(
     return hook_sync.HookHome(agent.key, agent.directory, read_rules)
 
 
+def check_codex_shells(system: str, env: Mapping[str, str]) -> tuple[bool, str]:
+    """Do both of Codex's shells run agent-hook's sh launcher cleanly? (and,
+    when not, why). It runs the shells, so a home asks once."""
+    reason = codex_shells.unready_reason(
+        codex_shells.gather_shells(system.lower(), env)
+    )
+    return not reason, reason
+
+
+def codex_classes(
+    agent: AgentTarget, third_party: frozenset[str]
+) -> codex_plan.Classes:
+    """How sync's ownership rule reads a Codex group (agent_hook_codex_plan):
+    agent-hook's, the scripts', or rtk's retired one."""
+
+    def is_script(group: dict) -> bool:
+        handlers = group.get("hooks") if isinstance(group, dict) else None
+        return (
+            isinstance(handlers, list)
+            and bool(handlers)
+            and all(isinstance(handler, dict) for handler in handlers)
+            and _is_managed_hook_block(group, agent, third_party=third_party)
+            and not any(
+                _runs_agent_hook_release(handler, codex=True) for handler in handlers
+            )
+        )
+
+    return codex_plan.Classes(
+        is_script=is_script,
+        is_binary=lambda group: _is_agent_hook_group(group, codex=True),
+        is_retired=lambda group: (
+            isinstance(group, dict) and _is_retired_hook_block(group)
+        ),
+    )
+
+
+def codex_home(
+    dotfiles_dir: Path,
+    agent: AgentTarget,
+    roots: hook_wiring.Roots,
+    system: str,
+    env: Mapping[str, str] | None = None,
+) -> hook_sync.HookHome:
+    """The Codex home (PR 3d.2): F and the ownership classes, read once per
+    fresh plan under the lock, and the shells' check, run once per home (a
+    session builds its homes anew)."""
+    shells: list[tuple[bool, str]] = []
+
+    def read_rules() -> hook_sync.CodexRules:
+        fragment = hook_fragment(dotfiles_dir, agent)
+        scripts = (
+            None
+            if fragment is None
+            else render_hook_values(fragment, agent, system)["hooks"]
+        )
+        if not shells:
+            shells.append(
+                check_codex_shells(system, os.environ if env is None else env)
+            )
+        ok, reason = shells[0]
+        return hook_sync.CodexRules(
+            scripts, codex_classes(agent, _third_party_hooks(agent)), ok, reason
+        )
+
+    return hook_sync.HookHome(
+        agent.key,
+        agent.directory,
+        read_rules,
+        harness="codex",
+        registration="hooks.json",
+        state_file=None,
+    )
+
+
+def session_home(
+    dotfiles_dir: Path,
+    agent: AgentTarget,
+    roots: hook_wiring.Roots,
+    system: str,
+    env: Mapping[str, str] | None = None,
+) -> hook_sync.HookHome:
+    """The home sync wires for this agent: a Claude home, or the Codex one."""
+    if agent.receives_codex_hooks:
+        return codex_home(dotfiles_dir, agent, roots, system, env)
+    return hook_home(dotfiles_dir, agent, roots, system)
+
+
+def _wired(agents: list[AgentTarget]) -> list[AgentTarget]:
+    """The agents sync wires to agent-hook: the Claude homes and Codex."""
+    return [a for a in agents if a.receives_hooks or a.receives_codex_hooks]
+
+
 def hook_configuration(
     dotfiles_dir: Path | None = None,
     *,
@@ -1181,12 +1275,17 @@ def hook_configuration(
     agents = AGENTS if all_agents is None else all_agents
     system = system or platform.system()
     roots = hook_wiring.Roots.from_env(env)
+
+    def codex_steps() -> None:
+        for agent in agents:
+            if agent.receives_codex_hooks:
+                _run_codex_steps(agent)
+
     return hook_sync.HookConfiguration(
         roots=roots,
         homes=tuple(
-            hook_home(dotfiles_dir, agent, roots, system)
-            for agent in agents
-            if agent.receives_hooks
+            session_home(dotfiles_dir, agent, roots, system, env)
+            for agent in _wired(agents)
         ),
         registrations=tuple(
             agent.directory
@@ -1201,6 +1300,7 @@ def hook_configuration(
             dotfiles_dir, [agent for agent in agents if agent.key in keys], system
         ),
         system=system,
+        codex_steps=codex_steps,
     )
 
 
@@ -1504,11 +1604,11 @@ def _print_plan(
             elif verbose:
                 print(f"  ✅ {icon} {action.relative_path} [SYNCED]")
 
-        if plan.agent.receives_hooks and hook_session is not None:
-            hook_plan = hook_session.plans[plan.agent.key].plan
+        if hook_session is not None and plan.agent.key in hook_session.plans:
+            planned = hook_session.plans[plan.agent.key]
             print(
-                f"  📄 settings.json [agent-hook: {hook_plan.action}]"
-                + (f" {hook_plan.reason}" if hook_plan.reason else "")
+                f"  📄 {planned.home.registration} [agent-hook: {planned.plan.action}]"
+                + (f" {planned.plan.reason}" if planned.plan.reason else "")
             )
         elif (
             plan.agent.receives_hooks or plan.agent.receives_codex_hooks
@@ -1801,9 +1901,9 @@ def preview_mode(
     """Preview existing releases and fresh settings; never take switch.lock."""
     agents = _select_agents(list(_DEFAULT_TARGETS)) if agents is None else agents
     system = system or platform.system()
-    claude = [agent for agent in agents if agent.receives_hooks]
-    if not claude or system == "Windows":
-        if claude:
+    wired = _wired(agents)
+    if not wired or system == "Windows":
+        if wired:
             print(
                 "agent-hook: native Windows keeps today's scripts; binary wiring is not available"
             )
@@ -1812,14 +1912,17 @@ def preview_mode(
     try:
         selected_env = dict(os.environ if env is None else env)
         roots = hook_wiring.Roots.from_env(selected_env)
-        validate_hook_layers(dotfiles_dir, claude, system)
+        validate_hook_layers(dotfiles_dir, wired, system)
         source = (
             hook_source
             if hook_source is not None
             else hook_sync.GoReleaseSource(selected_env)
         )
         prepared = hook_sync.preview_plans(
-            [hook_home(dotfiles_dir, agent, roots, system) for agent in claude],
+            [
+                session_home(dotfiles_dir, agent, roots, system, selected_env)
+                for agent in wired
+            ],
             roots,
             source,
             disk=hook_disk,
@@ -1908,17 +2011,17 @@ def sync_mode(
     """Hold the common lock from recovery through the manifest and Codex steps."""
     agents = _select_agents(list(_DEFAULT_TARGETS)) if agents is None else agents
     system = system or platform.system()
-    claude = [agent for agent in agents if agent.receives_hooks]
+    wired = _wired(agents)
     if not (dotfiles_dir / BASE_FILE).exists():
         print(f"❌ Error: Base file not found: {dotfiles_dir / BASE_FILE}")
         sys.exit(1)
-    if not claude or system == "Windows":
+    if not wired or system == "Windows":
         try:
-            validate_hook_layers(dotfiles_dir, claude, system)
+            validate_hook_layers(dotfiles_dir, wired, system)
         except ValueError as exc:
             print(f"❌ Error: {exc}")
             sys.exit(1)
-        if claude:
+        if wired:
             print(
                 "agent-hook: native Windows keeps today's scripts; binary wiring is not available"
             )
@@ -1932,7 +2035,10 @@ def sync_mode(
             if hook_source is not None
             else hook_sync.GoReleaseSource(selected_env)
         )
-        homes = [hook_home(dotfiles_dir, agent, roots, system) for agent in claude]
+        homes = [
+            session_home(dotfiles_dir, agent, roots, system, selected_env)
+            for agent in wired
+        ]
         with hook_sync.open_session(
             "sync",
             homes,
@@ -1941,7 +2047,7 @@ def sync_mode(
             disk=hook_disk,
             steps=hook_steps,
             system=system,
-            validate=lambda: validate_hook_layers(dotfiles_dir, claude, system),
+            validate=lambda: validate_hook_layers(dotfiles_dir, wired, system),
         ) as session:
             _sync_mode_files(
                 dotfiles_dir, auto_yes, agents, hook_session=session, system=system
@@ -2059,9 +2165,10 @@ def _sync_mode_files(
                 else:
                     print(f"  ⏭️  {icon} {action.relative_path}: Skipped")
 
-        # Merge the Claude hook fragment into the agent's settings.json
-        # (claude-family only; idempotent, manifest-independent).
-        if plan.agent.receives_hooks and hook_session is not None:
+        # Register the hooks: the session for a home it plans (the Claude
+        # homes, and Codex since PR 3d.2), else the scripts' merge (native
+        # Windows). Idempotent and manifest-independent.
+        if hook_session is not None and plan.agent.key in hook_session.plans:
             # A home that stops keeps its state; the other homes go on, and
             # the run exits 1 after the manifest and the Codex steps.
             result = hook_session.apply_home(plan.agent.key)

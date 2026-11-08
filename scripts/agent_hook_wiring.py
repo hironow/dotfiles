@@ -321,7 +321,7 @@ def switch_lock(
         os.close(descriptor)
 
 
-HOMES = frozenset({"claude", "work-a", "work-b", "work-c", "work-d"})
+HOMES = frozenset({"claude", "work-a", "work-b", "work-c", "work-d", "codex"})
 FORWARD = {
     "register": ("link", "file", "verify"),
     "install": ("link", "file", "mark", "verify"),

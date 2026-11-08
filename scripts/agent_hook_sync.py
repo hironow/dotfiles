@@ -20,6 +20,7 @@ from typing import Protocol
 
 import agent_hook_release as release_tools
 import agent_hook_wiring as wiring
+from agent_hook_codex_plan import Classes, CodexFacts, plan_codex
 from agent_hook_plan import (
     UNCHANGED,
     HomeFacts,
@@ -180,10 +181,20 @@ class HomeRules:
 
 
 @dataclass(frozen=True)
+class CodexRules:
+    """What the Codex home's plan reads besides its files (PR 3d.2)."""
+
+    scripts: dict | None  # F's hooks value; None: no scripts fragment
+    classes: Classes
+    shells_ok: bool  # both of Codex's shells run the sh launcher cleanly
+    shells_reason: str
+
+
+@dataclass(frozen=True)
 class HookHome:
     key: str
     directory: Path
-    read_rules: Callable[[], HomeRules]
+    read_rules: Callable[[], HomeRules | CodexRules]
     # The harness this home registers for, the registration file in its
     # directory, and the state file the shared merge keeps (None: no shared
     # merge). Claude's values are the defaults.
@@ -195,7 +206,7 @@ class HookHome:
 @dataclass(frozen=True)
 class PlannedHome:
     home: HookHome
-    facts: HomeFacts | None  # None: the home's state could not be read
+    facts: HomeFacts | CodexFacts | None  # None: the home's state could not be read
     plan: HomePlan
 
 
@@ -296,6 +307,9 @@ class HookConfiguration:
     resolve: Callable[[list[str]], list[str]]
     validate: Callable[[list[str]], None]
     system: str
+    # Codex's trust and sandbox steps, run after an install or an uninstall
+    # that names the Codex home, as sync runs them.
+    codex_steps: Callable[[], None] = lambda: None
 
 
 def _read_optional(disk: wiring.Disk, path: Path) -> bytes | None:
@@ -443,7 +457,10 @@ class SyncSession:
         return evidence, rendered, reason
 
     def read_plan(self, home: HookHome) -> PlannedHome:
+        if home.harness == "codex":
+            return self._read_codex_plan(home)
         rules = home.read_rules()
+        assert isinstance(rules, HomeRules)
         settings = _read_optional(self.disk, home.directory / home.registration)
         state = (
             None
@@ -478,6 +495,43 @@ class SyncSession:
             retired=rules.retired_from(value),
         )
         return PlannedHome(home, facts, plan_home(self.operation, facts))
+
+    def _read_codex_plan(self, home: HookHome) -> PlannedHome:
+        """The Codex home's plan (agent_hook_codex_plan): hooks.json, with no
+        state file, and R checked to hold only agent-hook groups."""
+        rules = home.read_rules()
+        assert isinstance(rules, CodexRules)
+        settings = _read_optional(self.disk, home.directory / home.registration)
+        check_shapes(
+            settings_value(settings),
+            {},
+            registration=home.registration,
+            state_file=home.state_file,
+        )
+        classes = rules.classes
+        evidence, rendered, reason = self._render(
+            home,
+            lambda value: all(
+                classes.is_binary(group)
+                for groups in value["hooks"].values()
+                for group in groups
+            ),
+        )
+        facts = CodexFacts(
+            home.key,
+            settings,
+            None,
+            _read_target(self.disk, self.roots.link(home.key)),
+            self.disk.exists(self.roots.mark(home.key)),
+            evidence,
+            None if rendered is None else rendered["hooks"],
+            reason,
+            rules.scripts,
+            rules.shells_ok,
+            rules.shells_reason,
+            rules.classes,
+        )
+        return PlannedHome(home, facts, plan_codex(self.operation, facts))
 
     def _check_facts(self, prepared: PlannedHome) -> None:
         home, facts = prepared.home, prepared.facts
@@ -846,10 +900,8 @@ def run_command(
             keys = config.resolve(list(targets))
             homes = {home.key: home for home in config.homes}
             for key in keys:
-                if key == "codex":
-                    raise ValueError("codex is refused until PR 3d.2")
                 if key not in homes:
-                    raise ValueError(f"{key} is not a Claude home")
+                    raise ValueError(f"{key} is not a Claude or Codex home")
             selected = [home for home in config.homes if home.key in keys]
         with open_session(
             operation,
@@ -869,6 +921,9 @@ def run_command(
                 print(result.message)
                 if result.status != "committed":
                     return 1
+            if any(home.harness == "codex" for home in selected):
+                # Codex runs G only once its hash is trusted (as sync does)
+                config.codex_steps()
         return 0
     except (OSError, ValueError, SyncStopped, wiring.LockBusy) as exc:
         print(f"agent-hook: stopped: {exc}")
@@ -881,7 +936,7 @@ def main(
     configure: Callable[[Path | None], HookConfiguration],
 ) -> int:
     parser = argparse.ArgumentParser(
-        description="Install/uninstall Claude hook wiring, or collect unreferenced releases"
+        description="Install/uninstall Claude and Codex hook wiring, or collect unreferenced releases"
     )
     parser.add_argument("operation", choices=["install", "uninstall", "gc"])
     parser.add_argument("targets", nargs="*")
@@ -894,4 +949,8 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(configure=cli_sync.hook_configuration))
+    # sync_agents imported this file again as agent_hook_sync, and its homes
+    # and errors are that module's: run that copy, so one class is one class.
+    import agent_hook_sync
+
+    raise SystemExit(agent_hook_sync.main(configure=cli_sync.hook_configuration))

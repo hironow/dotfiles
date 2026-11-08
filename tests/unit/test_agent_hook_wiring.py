@@ -1332,12 +1332,15 @@ def test_the_lock_makes_a_private_state_root(tmp_path: Path) -> None:
     assert roots.state.stat().st_mode & 0o777 == 0o700
 
 
-def test_journal_homes_are_the_claude_homes_sync_wires() -> None:
+def test_journal_homes_are_the_homes_sync_wires() -> None:
     import sync_agents
 
     assert wiring.HOMES == {
-        agent.key for agent in sync_agents.AGENTS if agent.receives_hooks
+        agent.key
+        for agent in sync_agents.AGENTS
+        if agent.receives_hooks or agent.receives_codex_hooks
     }
+    assert "codex" in wiring.HOMES
 
 
 # ---- review round 1 (PR 3d.1): the independent review's findings ----
