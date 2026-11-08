@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
@@ -17,7 +18,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // `ca-doctor os-bundle` removes an incident's untrusted roots from an OS PEM
@@ -147,107 +147,58 @@ func certificateDER(block []byte) ([]byte, error) {
 	return decoded.Bytes, nil
 }
 
-// certificateStructure checks der against RFC 5280's Certificate, field by
-// field, with every structure used up exactly. It does not use Go's x509
-// parser, which refuses roots that macOS's bundle still holds (EC-ACC has a
-// negative serial number), and it checks no signature.
+// certificateStructure checks der with Go's x509 parser, which reads every
+// field (names and extensions included) but checks no signature. The parser
+// refuses a negative serial number, which a root in macOS's bundle still
+// has (EC-ACC); such a certificate is checked again as a copy whose serial
+// is 1, so it passes only when everything else parses.
 func certificateStructure(der []byte) error {
-	certificate, err := sequence(der)
-	if err != nil {
-		return err
-	}
-	if len(certificate) != 3 || !bitString(certificate[2], "") {
+	// The parser does not refuse an element after the signature.
+	if certificate, err := sequence(der); err != nil || len(certificate) != 3 {
 		return errors.New("not tbsCertificate, signatureAlgorithm, signatureValue")
 	}
-	if err := algorithmIdentifier(certificate[1]); err != nil {
+	_, err := x509.ParseCertificate(der)
+	if err == nil {
+		return nil
+	}
+	positive, ok := withPositiveSerial(der)
+	if !ok {
 		return err
 	}
-	return tbsCertificate(certificate[0])
+	_, err = x509.ParseCertificate(positive)
+	return err
 }
 
-// tbsCertificate checks RFC 5280's TBSCertificate.
-func tbsCertificate(value asn1.RawValue) error {
-	tbs, err := sequence(value.FullBytes)
+// withPositiveSerial is der with its serial number replaced by 1, when der is
+// a certificate whose serial is negative.
+func withPositiveSerial(der []byte) ([]byte, bool) {
+	certificate, err := sequence(der)
+	if err != nil || len(certificate) != 3 {
+		return nil, false
+	}
+	tbs, err := sequence(certificate[0].FullBytes)
 	if err != nil {
-		return err
+		return nil, false
 	}
 	field := 0
 	if len(tbs) > 0 && tbs[0].Class == asn1.ClassContextSpecific && tbs[0].Tag == 0 {
-		if !version(tbs[0]) {
-			return errors.New("version is not [0] EXPLICIT INTEGER 0, 1, or 2")
-		}
-		field++
+		field++ // version
 	}
-	if len(tbs) < field+6 || !serialNumber(tbs[field]) {
-		return errors.New("tbsCertificate lacks a serial number and its fields")
+	if len(tbs) <= field {
+		return nil, false
 	}
-	if err := algorithmIdentifier(tbs[field+1]); err != nil {
-		return err
-	}
-	for _, name := range []asn1.RawValue{tbs[field+2], tbs[field+4]} {
-		if !universal(name, asn1.TagSequence, true) {
-			return errors.New("an issuer or subject is not a name")
-		}
-	}
-	validity, err := sequence(tbs[field+3].FullBytes)
-	if err != nil || len(validity) != 2 || !timeValue(validity[0]) || !timeValue(validity[1]) {
-		return errors.New("validity is not two times")
-	}
-	key, err := sequence(tbs[field+5].FullBytes)
-	if err != nil || len(key) != 2 || !bitString(key[1], "") {
-		return errors.New("subjectPublicKeyInfo is not an algorithm and a key")
-	}
-	if err := algorithmIdentifier(key[0]); err != nil {
-		return err
-	}
-	return optionalTBSFields(tbs[field+6:])
-}
-
-// optionalTBSFields checks what may follow the key: issuerUniqueID [1] and
-// subjectUniqueID [2] (IMPLICIT BIT STRING), then extensions [3] (EXPLICIT
-// SEQUENCE), each at most once, in that order.
-func optionalTBSFields(fields []asn1.RawValue) error {
-	previous := 0
-	for _, optional := range fields {
-		if optional.Class != asn1.ClassContextSpecific || optional.Tag <= previous || optional.Tag > 3 {
-			return errors.New("tbsCertificate has an unknown field")
-		}
-		if optional.Tag < 3 && !bitString(optional, fmt.Sprintf("tag:%d", optional.Tag)) {
-			return errors.New("a unique ID is not a BIT STRING")
-		}
-		if optional.Tag == 3 {
-			if _, err := sequence(optional.Bytes); err != nil || !optional.IsCompound {
-				return errors.New("extensions are not [3] EXPLICIT SEQUENCE")
-			}
-		}
-		previous = optional.Tag
-	}
-	return nil
-}
-
-// bitString decodes value as a BIT STRING (with params, such as an implicit
-// tag), which checks its unused-bit count and padding.
-func bitString(value asn1.RawValue, params string) bool {
-	var bits asn1.BitString
-	rest, err := asn1.UnmarshalWithParams(value.FullBytes, &bits, params)
-	return err == nil && len(rest) == 0
-}
-
-// version decodes [0] EXPLICIT INTEGER, which must be 0, 1, or 2.
-func version(value asn1.RawValue) bool {
-	if !value.IsCompound {
-		return false
-	}
-	var number int
-	rest, err := asn1.Unmarshal(value.Bytes, &number)
-	return err == nil && len(rest) == 0 && number >= 0 && number <= 2
-}
-
-// serialNumber decodes a minimally encoded INTEGER of either sign.
-func serialNumber(value asn1.RawValue) bool {
 	var serial *big.Int
-	rest, err := asn1.Unmarshal(value.FullBytes, &serial)
-	return err == nil && len(rest) == 0 && universal(value, asn1.TagInteger, false)
+	if rest, err := asn1.Unmarshal(tbs[field].FullBytes, &serial); err != nil || len(rest) != 0 || serial.Sign() >= 0 {
+		return nil, false
+	}
+	tbs[field] = asn1.RawValue{FullBytes: []byte{0x02, 0x01, 0x01}}
+	rebuiltTBS, err := encodeSequence(tbs)
+	if err != nil {
+		return nil, false
+	}
+	certificate[0] = asn1.RawValue{FullBytes: rebuiltTBS}
+	rebuilt, err := encodeSequence(certificate)
+	return rebuilt, err == nil
 }
 
 // sequence is the elements of the DER SEQUENCE der, which must be all of der.
@@ -257,7 +208,7 @@ func sequence(der []byte) ([]asn1.RawValue, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(rest) != 0 || !universal(outer, asn1.TagSequence, true) {
+	if len(rest) != 0 || outer.Class != asn1.ClassUniversal || outer.Tag != asn1.TagSequence || !outer.IsCompound {
 		return nil, errors.New("not one SEQUENCE")
 	}
 	var elements []asn1.RawValue
@@ -271,37 +222,12 @@ func sequence(der []byte) ([]asn1.RawValue, error) {
 	return elements, nil
 }
 
-func universal(value asn1.RawValue, tag int, compound bool) bool {
-	return value.Class == asn1.ClassUniversal && value.Tag == tag && value.IsCompound == compound
-}
-
-// timeValue decodes a UTCTime or a GeneralizedTime.
-func timeValue(value asn1.RawValue) bool {
-	params := "utc"
-	switch {
-	case universal(value, asn1.TagUTCTime, false):
-	case universal(value, asn1.TagGeneralizedTime, false):
-		params = "generalized"
-	default:
-		return false
+func encodeSequence(elements []asn1.RawValue) ([]byte, error) {
+	var content []byte
+	for _, element := range elements {
+		content = append(content, element.FullBytes...)
 	}
-	var when time.Time
-	rest, err := asn1.UnmarshalWithParams(value.FullBytes, &when, params)
-	return err == nil && len(rest) == 0
-}
-
-// algorithmIdentifier checks an AlgorithmIdentifier: an OID, then at most
-// one parameter.
-func algorithmIdentifier(value asn1.RawValue) error {
-	parts, err := sequence(value.FullBytes)
-	if err != nil || len(parts) == 0 || len(parts) > 2 {
-		return errors.New("not an AlgorithmIdentifier")
-	}
-	var algorithm asn1.ObjectIdentifier
-	if rest, err := asn1.Unmarshal(parts[0].FullBytes, &algorithm); err != nil || len(rest) != 0 {
-		return errors.New("an AlgorithmIdentifier's algorithm is not an OID")
-	}
-	return nil
+	return asn1.Marshal(asn1.RawValue{Class: asn1.ClassUniversal, Tag: asn1.TagSequence, IsCompound: true, Bytes: content})
 }
 
 func blank(line []byte) bool { return lineText(line) == "" }

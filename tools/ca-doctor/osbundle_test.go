@@ -217,6 +217,28 @@ func badSignaturePadding(der []byte) []byte {
 	return der
 }
 
+// issuerRDNAsSequence turns the issuer's first RelativeDistinguishedName,
+// a SET, into a SEQUENCE: the tag four bytes before the commonName OID.
+func issuerRDNAsSequence(der []byte) []byte {
+	at := bytes.Index(der, []byte{0x06, 0x03, 0x55, 0x04, 0x03})
+	if at < 4 || der[at-4] != 0x31 {
+		panic("issuer RDN not found")
+	}
+	der[at-4] = 0x30
+	return der
+}
+
+// extensionOIDAsInteger turns the first extension's OID (2.5.29.x) into an
+// INTEGER.
+func extensionOIDAsInteger(der []byte) []byte {
+	at := bytes.Index(der, []byte{0x06, 0x03, 0x55, 0x1d})
+	if at < 0 {
+		panic("no extension")
+	}
+	der[at] = 0x02
+	return der
+}
+
 // primitiveVersion turns the [0] EXPLICIT version into a primitive [0].
 func primitiveVersion(der []byte) []byte {
 	return bytes.Replace(der, []byte{0xa0, 0x03, 0x02, 0x01, 0x02}, []byte{0x80, 0x03, 0x02, 0x01, 0x02}, 1)
@@ -226,6 +248,7 @@ func TestPruneBundleRefusesWhatItCannotReadExactly(t *testing.T) {
 	a, b := newTestCertificate(t, "a"), newTestCertificate(t, "b")
 	request, extra := certificateRequestPEM(t), withExtraElement(t, a)
 	padding, version := altered(t, a, badSignaturePadding), altered(t, a, primitiveVersion)
+	rdn, extension := altered(t, a, issuerRDNAsSequence), altered(t, a, extensionOIDAsInteger)
 	for _, tc := range []struct {
 		name, bundle string
 		roots        []UntrustedRoot
@@ -241,6 +264,8 @@ func TestPruneBundleRefusesWhatItCannotReadExactly(t *testing.T) {
 		{"an extra element in a certificate", extra + b.pem, []UntrustedRoot{b.root}, "not a certificate"},
 		{"a signature with 8 unused bits", padding + b.pem, []UntrustedRoot{b.root}, "not a certificate"},
 		{"a primitive version", version + b.pem, []UntrustedRoot{b.root}, "not a certificate"},
+		{"an issuer RDN that is no SET", rdn + b.pem, []UntrustedRoot{b.root}, "not a certificate"},
+		{"an extension whose OID is an INTEGER", extension + b.pem, []UntrustedRoot{b.root}, "not a certificate"},
 		// a space after END would otherwise make one block of two, and drop both
 		{"a space after END", strings.Replace(a.pem, pemEnd, pemEnd+" ", 1) + b.pem, []UntrustedRoot{a.root}, "PEM boundary"},
 		{"a space after BEGIN", strings.Replace(a.pem, pemBegin, pemBegin+" ", 1) + b.pem, []UntrustedRoot{b.root}, "PEM boundary"},
