@@ -1398,6 +1398,8 @@ def test_hub_and_spoke_codex_gets_codex_hooks_gemini_base_only(docker_image):
     ):
         assert marker in result.stdout, f"missing {marker}\n{result.stdout}"
     assert "ERR-" not in result.stdout, result.stdout
+    # with no Go, the Codex home keeps today's scripts and says why (PR 3d.2)
+    assert "agent-hook: codex scripts: mise which go" in result.stdout, result.stdout
 
 
 def test_hub_and_spoke_settings_merge_idempotent_preserves_user_keys(docker_image):
@@ -1622,3 +1624,59 @@ def test_sync_wires_claude_with_a_real_release(docker_image):
         r"/root/.local/share/dotfiles/agent-hooks/releases/[0-9a-f]{16}/agent-hook",
         target,
     ), target
+
+
+def test_sync_adds_the_codex_guards_beside_the_scripts_with_a_real_release(
+    docker_image,
+):
+    """Given Go and the module cache, and no network, `just sync-agents x`
+    keeps Codex's script groups and adds agent-hook's three guards (G)
+    beside them, through the home's stable link (PR 3d.2); then the trust
+    step, through the image's codex app-server, trusts every handler of
+    hooks.json, G included."""
+    keep = (
+        "export GOMODCACHE=/root/dotfiles/.e2e-cache/go-mod"
+        " UV_PYTHON_INSTALL_DIR=/root/dotfiles/.e2e-cache/uv-python"
+        " UV_CACHE_DIR=/root/dotfiles/.e2e-cache/uv"
+    )
+    _run_in_container(
+        docker_image,
+        f"""
+    set -euo pipefail
+    {keep}
+    cd /root/dotfiles/tools/agent-hooks && GOFLAGS=-modcacherw go mod download
+    cd /root/dotfiles && uv sync --frozen
+    """,
+        go=True,
+    )
+    result = _run_in_container(
+        docker_image,
+        f"""
+    set -euo pipefail
+    {keep}
+    cd /root/dotfiles && just sync-agents x
+    echo "--- hooks"
+    cat /root/.codex/hooks.json
+    """,
+        go=True,
+        network=False,
+    )
+    out = result.stdout
+    assert "agent-hook: codex wired (" in out, out
+    hooks = json.loads(out.split("--- hooks\n", 1)[1])["hooks"]
+    commands = [
+        hook["command"]
+        for groups in hooks.values()
+        for group in groups
+        for hook in group["hooks"]
+    ]
+    link = "/root/.local/share/dotfiles/agent-hooks/current/codex/agent-hook"
+    guards = [command for command in commands if command.startswith(f"'{link}' ")]
+    assert [command.split(" --hook ", 1)[1].split()[0] for command in guards] == [
+        "files-guard",
+        "secrets-guard",
+        "command-guard",
+    ], commands
+    assert any("/root/.codex/hooks/guard-codex.sh" in c for c in commands), commands
+    trusted = re.search(r"codex-hooks - (\d+) dotfiles hooks trusted and enabled", out)
+    assert trusted and int(trusted[1]) == len(commands), out

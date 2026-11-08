@@ -30,13 +30,16 @@ import os
 import platform
 import re
 import shutil
-import subprocess
 import sys
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+
+import agent_hook_codex_plan as codex_plan
+import agent_hook_release as release_tools
+import codex_shells
 
 if os.name != "nt":
     import agent_hook_sync as hook_sync
@@ -66,24 +69,16 @@ RETIRED_HOOK_COMMAND = re.compile(
 )
 # An agent-hook binary, by its absolute path: a home's stable link,
 # <data dir>/dotfiles/agent-hooks/current/<home>/agent-hook, where <home> is
-# lowercase ASCII letters, digits, and `-`, or (for Codex, until PR 3d.2) a
-# release, <data dir>/dotfiles/agent-hooks/releases/<release-id>/agent-hook,
-# where the release ID is lowercase hex of at least 12 characters. Sync writes
-# only the stable link; a Claude handler that names a release is its user's.
+# lowercase ASCII letters, digits, and `-`. Sync writes only the stable link,
+# so a handler that names a release directly is its user's, in every harness.
 # On Windows the name ends in `.exe`, and nowhere else. A Windows path is
 # matched after `\` -> `/`; on POSIX `\` is a filename character, so a POSIX
 # path is matched as written. The renderer (`agent-hook render`) accepts
 # exactly these paths, per harness (its `registration.layouts`); the corpus
 # tools/agent-hooks/internal/rendercorpus/render.jsonl holds both sides to it.
 _STABLE_PATH = r"/(?:[^/]+/)*dotfiles/agent-hooks/current/[a-z0-9-]+/agent-hook"
-_AGENT_HOOK_PATH = (
-    r"/(?:[^/]+/)*dotfiles/agent-hooks/"
-    r"(?:releases/[0-9a-f]{12,}|current/[a-z0-9-]+)/agent-hook"
-)
 POSIX_STABLE = re.compile(_STABLE_PATH)
 WINDOWS_STABLE = re.compile(r"[A-Za-z]:" + _STABLE_PATH + r"\.exe")
-POSIX_RELEASE = re.compile(_AGENT_HOOK_PATH)
-WINDOWS_RELEASE = re.compile(r"[A-Za-z]:" + _AGENT_HOOK_PATH + r"\.exe")
 # The members of a hook handler the renderer writes, per harness. A handler
 # with any other member is not one it wrote, and stays its author's: Codex's
 # `commandWindows` changes what runs on Windows, `async` changes when it runs,
@@ -763,20 +758,18 @@ def _is_third_party_hook(path: Path) -> bool:
     return any(line.strip() in THIRD_PARTY_HOOK_HEADERS for line in head)
 
 
-def _is_release_path(
-    path: str, *, windows: bool, expanded: tuple[str, ...], stable_only: bool
+def _is_stable_link_path(
+    path: str, *, windows: bool, expanded: tuple[str, ...]
 ) -> bool:
-    """Is this program path, as its harness runs it, an agent-hook binary: a
-    home's stable link, or (unless stable_only) a release?"""
+    """Is this program path, as its harness runs it, a home's stable link to
+    an agent-hook release?"""
     if any(token in path for token in expanded):
         return False
     if any(ord(char) < 0x20 or ord(char) == 0x7F for char in path):
         return False  # the renderer never writes a control character
     if windows:
-        layout = WINDOWS_STABLE if stable_only else WINDOWS_RELEASE
-        return layout.fullmatch(path.replace("\\", "/")) is not None
-    layout = POSIX_STABLE if stable_only else POSIX_RELEASE
-    return layout.fullmatch(path) is not None
+        return WINDOWS_STABLE.fullmatch(path.replace("\\", "/")) is not None
+    return POSIX_STABLE.fullmatch(path) is not None
 
 
 def _has_only_rendered_members(hook: dict, *, codex: bool) -> bool:
@@ -787,8 +780,8 @@ def _has_only_rendered_members(hook: dict, *, codex: bool) -> bool:
 
 
 def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
-    """Does this hook run an agent-hook binary (a release, or a home's stable
-    link to one) as its program, placed and quoted as sync renders it for this
+    """Does this hook run an agent-hook binary through a home's stable link
+    as its program, placed and quoted as sync renders it for this
     harness (Claude's exec form; Codex's AGENT_HOOK_LAUNCHERS), with no member
     the renderer never writes? What follows the program is not compared, so a
     changed template's older handlers are still owned."""
@@ -801,8 +794,8 @@ def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
         if not isinstance(hook.get("args"), list):  # exec form: the path itself
             return False
         windows = re.match(r"[A-Za-z]:[\\/]", command) is not None
-        return _is_release_path(
-            command, windows=windows, expanded=_CLAUDE_EXEC_EXPANDED, stable_only=True
+        return _is_stable_link_path(
+            command, windows=windows, expanded=_CLAUDE_EXEC_EXPANDED
         )
     for launcher in AGENT_HOOK_LAUNCHERS:
         match = launcher.start.match(command)  # the renderer writes no padding
@@ -811,13 +804,25 @@ def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
         path = match[1]
         if launcher.escaped_quote is not None:
             path = path.replace(launcher.escaped_quote, "'")
-        return _is_release_path(
-            path,
-            windows=launcher.windows,
-            expanded=launcher.expanded,
-            stable_only=False,
+        return _is_stable_link_path(
+            path, windows=launcher.windows, expanded=launcher.expanded
         )
     return False
+
+
+def _is_agent_hook_group(group: object, *, codex: bool) -> bool:
+    """A hook group of agent-hook's: at least one handler, and every one runs
+    agent-hook as sync renders it (_runs_agent_hook_release). A group that
+    mixes it with another command is its user's."""
+    handlers = group.get("hooks") if isinstance(group, dict) else None
+    return (
+        isinstance(handlers, list)
+        and bool(handlers)
+        and all(
+            isinstance(handler, dict) and _runs_agent_hook_release(handler, codex=codex)
+            for handler in handlers
+        )
+    )
 
 
 def _is_managed_hook_block(
@@ -1083,6 +1088,17 @@ def validate_hook_layers(
                 raise ValueError(f"{path}: hooks in a settings layer are not allowed")
 
 
+def _third_party_hooks(agent: AgentTarget) -> frozenset[str]:
+    """The hook files in the agent's hooks dir that a third-party installer
+    owns (_is_third_party_hook), relative to that dir."""
+    hooks_dir = agent.directory / "hooks"
+    return frozenset(
+        path.relative_to(hooks_dir).as_posix()
+        for path in hooks_dir.rglob("*")
+        if _is_third_party_hook(path)
+    )
+
+
 def hook_home(
     dotfiles_dir: Path, agent: AgentTarget, roots: hook_wiring.Roots, system: str
 ) -> hook_sync.HookHome:
@@ -1097,12 +1113,7 @@ def hook_home(
             else render_hook_values(script_fragment, agent, system)
         )
         shared = _compose_settings_fragments(dotfiles_dir, agent, system)
-        hooks_dir = agent.directory / "hooks"
-        third_party = frozenset(
-            path.relative_to(hooks_dir).as_posix()
-            for path in hooks_dir.rglob("*")
-            if _is_third_party_hook(path)
-        )
+        third_party = _third_party_hooks(agent)
 
         def owned(block: dict) -> bool:
             if (
@@ -1157,6 +1168,98 @@ def hook_home(
     return hook_sync.HookHome(agent.key, agent.directory, read_rules)
 
 
+def check_codex_shells(system: str, env: Mapping[str, str]) -> tuple[bool, str]:
+    """Do both of Codex's shells run agent-hook's sh launcher cleanly? (and,
+    when not, why). It runs the shells, so a home asks once."""
+    reason = codex_shells.unready_reason(
+        codex_shells.gather_shells(system.lower(), env)
+    )
+    return not reason, reason
+
+
+def codex_classes(
+    agent: AgentTarget, third_party: frozenset[str]
+) -> codex_plan.Classes:
+    """How sync's ownership rule reads a Codex group (agent_hook_codex_plan):
+    agent-hook's, the scripts', or rtk's retired one."""
+
+    def is_script(group: dict) -> bool:
+        handlers = group.get("hooks") if isinstance(group, dict) else None
+        return (
+            isinstance(handlers, list)
+            and bool(handlers)
+            and all(isinstance(handler, dict) for handler in handlers)
+            and _is_managed_hook_block(group, agent, third_party=third_party)
+            and not any(
+                _runs_agent_hook_release(handler, codex=True) for handler in handlers
+            )
+        )
+
+    return codex_plan.Classes(
+        is_script=is_script,
+        is_binary=lambda group: _is_agent_hook_group(group, codex=True),
+        is_retired=lambda group: (
+            isinstance(group, dict) and _is_retired_hook_block(group)
+        ),
+    )
+
+
+def codex_home(
+    dotfiles_dir: Path,
+    agent: AgentTarget,
+    roots: hook_wiring.Roots,
+    system: str,
+    env: Mapping[str, str] | None = None,
+) -> hook_sync.HookHome:
+    """The Codex home (PR 3d.2): F and the ownership classes, read once per
+    fresh plan under the lock, and the shells' check, run once per home (a
+    session builds its homes anew)."""
+    shells: list[tuple[bool, str]] = []
+
+    def read_rules() -> hook_sync.CodexRules:
+        fragment = hook_fragment(dotfiles_dir, agent)
+        scripts = (
+            None
+            if fragment is None
+            else render_hook_values(fragment, agent, system)["hooks"]
+        )
+        if not shells:
+            shells.append(
+                check_codex_shells(system, os.environ if env is None else env)
+            )
+        ok, reason = shells[0]
+        return hook_sync.CodexRules(
+            scripts, codex_classes(agent, _third_party_hooks(agent)), ok, reason
+        )
+
+    return hook_sync.HookHome(
+        agent.key,
+        agent.directory,
+        read_rules,
+        harness="codex",
+        registration="hooks.json",
+        state_file=None,
+    )
+
+
+def session_home(
+    dotfiles_dir: Path,
+    agent: AgentTarget,
+    roots: hook_wiring.Roots,
+    system: str,
+    env: Mapping[str, str] | None = None,
+) -> hook_sync.HookHome:
+    """The home sync wires for this agent: a Claude home, or the Codex one."""
+    if agent.receives_codex_hooks:
+        return codex_home(dotfiles_dir, agent, roots, system, env)
+    return hook_home(dotfiles_dir, agent, roots, system)
+
+
+def _wired(agents: list[AgentTarget]) -> list[AgentTarget]:
+    """The agents sync wires to agent-hook: the Claude homes and Codex."""
+    return [a for a in agents if a.receives_hooks or a.receives_codex_hooks]
+
+
 def hook_configuration(
     dotfiles_dir: Path | None = None,
     *,
@@ -1164,7 +1267,6 @@ def hook_configuration(
     source: hook_sync.ReleaseSource | None = None,
     all_agents: list[AgentTarget] | None = None,
     system: str | None = None,
-    processes: hook_sync.CodexProcesses | None = None,
 ) -> hook_sync.HookConfiguration:
     """Connect the hook commands to the same targets, aliases, and value merges."""
     dotfiles_dir = DOTFILES_DIR if dotfiles_dir is None else dotfiles_dir
@@ -1172,12 +1274,17 @@ def hook_configuration(
     agents = AGENTS if all_agents is None else all_agents
     system = system or platform.system()
     roots = hook_wiring.Roots.from_env(env)
+
+    def codex_steps() -> None:
+        for agent in agents:
+            if agent.receives_codex_hooks:
+                _run_codex_steps(agent)
+
     return hook_sync.HookConfiguration(
         roots=roots,
         homes=tuple(
-            hook_home(dotfiles_dir, agent, roots, system)
-            for agent in agents
-            if agent.receives_hooks
+            session_home(dotfiles_dir, agent, roots, system, env)
+            for agent in _wired(agents)
         ),
         registrations=tuple(
             agent.directory
@@ -1186,12 +1293,12 @@ def hook_configuration(
             if agent.receives_hooks or agent.receives_codex_hooks
         ),
         source=hook_sync.GoReleaseSource(env) if source is None else source,
-        processes=hook_sync.PgrepCodex(env) if processes is None else processes,
         resolve=_resolve_targets,
         validate=lambda keys: validate_hook_layers(
             dotfiles_dir, [agent for agent in agents if agent.key in keys], system
         ),
         system=system,
+        codex_steps=codex_steps,
     )
 
 
@@ -1495,11 +1602,11 @@ def _print_plan(
             elif verbose:
                 print(f"  ✅ {icon} {action.relative_path} [SYNCED]")
 
-        if plan.agent.receives_hooks and hook_session is not None:
-            hook_plan = hook_session.plans[plan.agent.key].plan
+        if hook_session is not None and plan.agent.key in hook_session.plans:
+            planned = hook_session.plans[plan.agent.key]
             print(
-                f"  📄 settings.json [agent-hook: {hook_plan.action}]"
-                + (f" {hook_plan.reason}" if hook_plan.reason else "")
+                f"  📄 {planned.home.registration} [agent-hook: {planned.plan.action}]"
+                + (f" {planned.plan.reason}" if planned.plan.reason else "")
             )
         elif (
             plan.agent.receives_hooks or plan.agent.receives_codex_hooks
@@ -1792,9 +1899,9 @@ def preview_mode(
     """Preview existing releases and fresh settings; never take switch.lock."""
     agents = _select_agents(list(_DEFAULT_TARGETS)) if agents is None else agents
     system = system or platform.system()
-    claude = [agent for agent in agents if agent.receives_hooks]
-    if not claude or system == "Windows":
-        if claude:
+    wired = _wired(agents)
+    if not wired or system == "Windows":
+        if wired:
             print(
                 "agent-hook: native Windows keeps today's scripts; binary wiring is not available"
             )
@@ -1803,14 +1910,17 @@ def preview_mode(
     try:
         selected_env = dict(os.environ if env is None else env)
         roots = hook_wiring.Roots.from_env(selected_env)
-        validate_hook_layers(dotfiles_dir, claude, system)
+        validate_hook_layers(dotfiles_dir, wired, system)
         source = (
             hook_source
             if hook_source is not None
             else hook_sync.GoReleaseSource(selected_env)
         )
         prepared = hook_sync.preview_plans(
-            [hook_home(dotfiles_dir, agent, roots, system) for agent in claude],
+            [
+                session_home(dotfiles_dir, agent, roots, system, selected_env)
+                for agent in wired
+            ],
             roots,
             source,
             disk=hook_disk,
@@ -1899,17 +2009,17 @@ def sync_mode(
     """Hold the common lock from recovery through the manifest and Codex steps."""
     agents = _select_agents(list(_DEFAULT_TARGETS)) if agents is None else agents
     system = system or platform.system()
-    claude = [agent for agent in agents if agent.receives_hooks]
+    wired = _wired(agents)
     if not (dotfiles_dir / BASE_FILE).exists():
         print(f"❌ Error: Base file not found: {dotfiles_dir / BASE_FILE}")
         sys.exit(1)
-    if not claude or system == "Windows":
+    if not wired or system == "Windows":
         try:
-            validate_hook_layers(dotfiles_dir, claude, system)
+            validate_hook_layers(dotfiles_dir, wired, system)
         except ValueError as exc:
             print(f"❌ Error: {exc}")
             sys.exit(1)
-        if claude:
+        if wired:
             print(
                 "agent-hook: native Windows keeps today's scripts; binary wiring is not available"
             )
@@ -1923,7 +2033,10 @@ def sync_mode(
             if hook_source is not None
             else hook_sync.GoReleaseSource(selected_env)
         )
-        homes = [hook_home(dotfiles_dir, agent, roots, system) for agent in claude]
+        homes = [
+            session_home(dotfiles_dir, agent, roots, system, selected_env)
+            for agent in wired
+        ]
         with hook_sync.open_session(
             "sync",
             homes,
@@ -1932,7 +2045,7 @@ def sync_mode(
             disk=hook_disk,
             steps=hook_steps,
             system=system,
-            validate=lambda: validate_hook_layers(dotfiles_dir, claude, system),
+            validate=lambda: validate_hook_layers(dotfiles_dir, wired, system),
         ) as session:
             _sync_mode_files(
                 dotfiles_dir, auto_yes, agents, hook_session=session, system=system
@@ -2050,9 +2163,10 @@ def _sync_mode_files(
                 else:
                     print(f"  ⏭️  {icon} {action.relative_path}: Skipped")
 
-        # Merge the Claude hook fragment into the agent's settings.json
-        # (claude-family only; idempotent, manifest-independent).
-        if plan.agent.receives_hooks and hook_session is not None:
+        # Register the hooks: the session for a home it plans (the Claude
+        # homes, and Codex since PR 3d.2), else the scripts' merge (native
+        # Windows). Idempotent and manifest-independent.
+        if hook_session is not None and plan.agent.key in hook_session.plans:
             # A home that stops keeps its state; the other homes go on, and
             # the run exits 1 after the manifest and the Codex steps.
             result = hook_session.apply_home(plan.agent.key)
@@ -2128,7 +2242,9 @@ def _sync_mode_files(
 
 # Steps for ~/.codex after its files are synced: (script, what failed, what to
 # run by hand). Each runs as a separate process: the steps import this module,
-# so importing them here would create an import cycle.
+# so importing them here would create an import cycle. A step past
+# CODEX_STEP_TIMEOUT is killed with its process group (its app-server too).
+CODEX_STEP_TIMEOUT = 120
 CODEX_STEPS = (
     (
         "codex_hooks_trust.py",
@@ -2155,20 +2271,14 @@ def _run_codex_steps(agent: AgentTarget) -> None:
     if agent.directory != Path.home() / ".codex":
         return  # the steps read CODEX_HOME / ~/.codex only
     for script, failure, fallback in CODEX_STEPS:
-        try:
-            result = subprocess.run(
-                [sys.executable, str(Path(__file__).with_name(script))],
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=120,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError) as error:
-            print(f"  ⚠️  {failure} ({error}); run: {fallback}")
-            continue
-        for line in (result.stdout + result.stderr).splitlines():
+        outcome = release_tools.run(
+            [sys.executable, str(Path(__file__).parent / script)],
+            timeout=CODEX_STEP_TIMEOUT,
+        )
+        for line in (outcome.stdout + outcome.stderr).splitlines():
             print(f"  {line}")
+        if outcome.exit_code is None:  # it did not start, or ran out of time
+            print(f"  ⚠️  {failure} ({outcome.reason}); run: {fallback}")
 
 
 def orphans_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) -> None:

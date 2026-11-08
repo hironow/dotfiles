@@ -963,7 +963,7 @@ agent-hooks-build *args:
 agent-hooks-build *args:
     cd tools/agent-hooks && mise x -- go run ./cmd/hookrelease {{ if args == "" { "build" } else { args } }}
 
-# Wire named Claude homes to the checked release.
+# Wire named Claude homes, or Codex (x), to the checked release.
 [group('Agents')]
 [positional-arguments]
 [unix]
@@ -1876,7 +1876,8 @@ skills-update *args:
     @{{ UV_RUN }} scripts/skills_lock.py update {{ args }}
 
 # Codex runs a hook only once it is trusted. `just sync-agents x` already runs
-# this; it trusts exactly the hooks sync renders from .claude/settings.hooks.json.
+# this; it trusts exactly the hooks sync renders from .claude/settings.hooks.json,
+# and agent-hook's guards as the home's stable link renders them.
 # --check: report only.
 # Trust the Codex hooks dotfiles placed (through Codex's app-server)
 [group('Agents')]

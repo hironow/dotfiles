@@ -40,9 +40,8 @@ settings.json は利用者のキーを壊さないよう、その場で併合す
 
 sync が所有する hook の block は、すべての command が `<agent>/hooks/` を指すか、agent-hook（`docs/plan/agent-hooks-go.md`）の実行ファイルを実行するものだけである。
 実行ファイルは、home ごとの安定パス `.../dotfiles/agent-hooks/current/<home>/agent-hook`（版への symlink）である。
-Codex では、版の `.../dotfiles/agent-hooks/releases/<版 ID>/agent-hook` も、位置を保つ併合が入る PR 3d.2 までは所有する。
-Claude の handler が版を直接指していたら、それは利用者のものとして残す（sync は安定パスしか書かない）。
-render が受け付けるパスも同じで、harness の `registration.layouts`（`stable` と `release`）が決める。
+Claude でも Codex でも、handler が版を直接指していたら、それは利用者のものとして残す（sync は安定パスしか書かない）。
+render が受け付けるパスも同じで、harness の `registration.layouts`（両方とも `stable` だけ）が決める。
 Windows では名前が `.exe` で終わり、POSIX では終わらない。
 数えるのは、render がその harness に描く形で、絶対パスのその実行ファイルをプログラムとして実行する handler だけである（`_runs_agent_hook_release`）。
 形は、Claude では exec 形式（`args` があり、`command` がパスそのもの）だけ。
@@ -93,7 +92,7 @@ Pi は tool の path を書く前に解決するので、binary も同じに解�
 harness ごとの定義（payload の schema、答え、hook ごとの対応状況）は `tools/agent-hooks/harnesses/` にある（`README.md` が書き方を説明する）。
 同じ scenario を全 harness に通す conformance suite（`tools/agent-hooks/internal/conformance/`）が、定義の誤りを知らせる。
 binary は実行ごとに、決まった値だけの行を 1 行ずつ `$XDG_STATE_HOME/dotfiles/agent-hooks/logs/<UTC の日付>.jsonl`（既定は `~/.local/state/...`）に書く（path、command、内容は書かない。Windows ではまだ書かない）。`just agent-hooks-log` が直近の行を表で出す。
-`just agent-hooks-build` が、この機体向けの binary を再現できる release として `~/.local/share/dotfiles/agent-hooks/releases/<release ID>/agent-hook` に作る（`agent-hook selftest` を通ったものだけ。同じ場所への build は 1 つずつ走る。Windows ではまだ作らない）。`just agent-hooks-build check PATH` は作り直して bytes を比べる。Claude の home を release に配線する手順は、下の「agent-hook の配線（Claude）」にある。Codex はまだ配線しない（PR 3d.2）。
+`just agent-hooks-build` が、この機体向けの binary を再現できる release として `~/.local/share/dotfiles/agent-hooks/releases/<release ID>/agent-hook` に作る（`agent-hook selftest` を通ったものだけ。同じ場所への build は 1 つずつ走る。Windows ではまだ作らない）。`just agent-hooks-build check PATH` は作り直して bytes を比べる。Claude の home を release に配線する手順は、下の「agent-hook の配線（Claude）」に、Codex の手順は「agent-hook の配線（Codex）」にある。
 guard、rtk の hook、formatter かその test、または `guard-codex.sh` を変えたら corpus を書き直し、Go 側も同じ判定に直す。
 command guard は `just command-guard-corpus`、files guard と secrets guard は `just file-guards-corpus`、binary に通す payload は `just hook-payload-corpus`、rtk の hook と formatter は `just tool-hooks-corpus` で書き直す。
 `tests/unit/test_command_guard_corpus.py`、`tests/unit/test_file_guards_corpus.py`、`tests/unit/test_hook_payload_corpus.py`、`tests/unit/test_tool_hooks_corpus.py`、Go の test が、ずれを知らせる。
@@ -116,7 +115,7 @@ echo '{"tool_input":{"file_path":"config.yml"}}' | bash ~/.claude/hooks/block-pr
 macOS、Linux、WSL では、`just sync-agents` が Claude の home（`claude`、`work-a`〜`work-d`）を agent-hook の binary に配線する。
 登録は home ごとの安定パス `~/.local/share/dotfiles/agent-hooks/current/<home>/agent-hook`（release への symlink）を exec 形式で指す。
 native Windows はまだ配線せず、今のスクリプトを登録したまま、そう 1 行出す。
-Codex（`hooks.json`）は PR 3d.2 まで今のままである。
+Codex（`hooks.json`）の配線は次の節に書く。
 
 1 回の sync は、次の順に進む（`scripts/agent_hook_sync.py`）。
 
@@ -147,13 +146,34 @@ macOS では、書いたものを `F_FULLFSYNC` でディスクまで届ける�
 
 - `just agent-hooks-uninstall <home>...`：今のスクリプトの登録に戻し、home に印を付ける。印のある home は、sync してもスクリプトのままである。link と release は残す。release が無くても動く。
 - `just agent-hooks-install <home>...`：印を消して配線し直す。release が要る。
-- `just agent-hooks-gc [--delete]`：どこからも指されていない release を一覧する。指しているとみなすのは、各 home の link と、Claude と Codex の登録ファイルか変更の記録のどこかに ID がそのまま現れる release である（ファイルの bytes と、harness と同じに JSON を読んだ文字列の両方を探す。`$HOME`、`~`、`cd` のあとの相対パス、変数に入れた ID も含む。迷えば残す）。シェルが実行時に断片から組み立てる名前までは追えない。`releases` が link になっているなど hookrelease の作る配置でなければ、何も消さずに止まる。消すのは `--delete` のときだけで、消す直前にもう一度確かめる。PR 3d.2 までは、Codex が動いている間は `--delete` を断る（消すたびに確かめ直す）。
+- `just agent-hooks-gc [--delete]`：どこからも指されていない release を一覧する。指しているとみなすのは、各 home の link と、Claude と Codex の登録ファイルか変更の記録のどこかに ID がそのまま現れる release である（ファイルの bytes と、harness と同じに JSON を読んだ文字列の両方を探す。`$HOME`、`~`、`cd` のあとの相対パス、変数に入れた ID も含む。迷えば残す）。シェルが実行時に断片から組み立てる名前までは追えない。`releases` が link になっているなど hookrelease の作る配置でなければ、何も消さずに止まる。消すのは `--delete` のときだけで、消す直前にもう一度確かめる。Codex が動いていても消してよい（sync は release を名指す group を消さず、gc はそれが名指す release を残す）。
 - `just agent-hooks-test-installed [home]`：その home の link が指す release を `hookrelease check` で確かめてから、agent-hook のプロセステストを当てる。
 - `just sync-agents-preview`：ロックも書き込みもせず、release も作らない。今ある release で計画を見せ、作らないと分からないことは不明と出す。
 - doctor は、印のある home を INFO、残った記録を WARN で出す。
 
 Claude の home では、sync が所有するのは安定パスの登録だけである。release を直接指す block は、利用者のものとして残す。
 `scripts/sync_agents.py` は uv の project の環境で走る（PEP 723 の script ではない）。
+
+## agent-hook の配線（Codex）
+
+macOS、Linux、WSL では、`just sync-agents x` が Codex の home（`~/.codex`）にも agent-hook の guard を足す。
+手順（ロック、変更の記録の片付け、release、計画、記録しながらの変更）は Claude の home と同じで、計画は `scripts/agent_hook_codex_plan.py` が立てる。
+Codex は hook の信頼を `hooks.json` の中の位置（event、group、handler の番号）で記録する。
+そのため Claude と違い、登録を置き換えない。
+
+- 宣言が今も望むとおりの group は、その場から動かさない。Codex はそれを信頼し続ける。
+- 変わった group だけをその場で空にし、新しい group は同じ matcher の空の group に入れる（いま空にした同じ種類の group を先に使う）。無ければ最後に足す。スクリプトの断片が変わったときも、agent-hook の雛形が変わったときも同じである。
+- agent-hook の 3 つの guard（files-guard、secrets-guard、command-guard）を、スクリプトの横に足す。rtk と formatter は PR 5 まで足さない。
+- render の guard がこの 3 つを 1 つずつ持たなければ、release が無いときと同じに扱う（配線済みなら今の guard を残し、install は止まる）。
+- 利用者の group は、位置も中身も変えない。group は消さない。
+- 計画がこの約束を破るなら、その home は止まる（`stopped: placement: ...`）。
+
+guard を足すのは、Codex の 2 つのシェル（session のシェルと `$SHELL -lc`）がどちらも POSIX のシェルで、agent-hook の sh の起動を余計な出力なしに通すときだけである。
+そうでなければ、release が無いときと同じく `scripts` か `keep` になり、install は止まる。シェルの詳しい状態は `just doctor` が出す。
+`just agent-hooks-uninstall x` は guard の group をその場で空にし（位置は残る）、印を付ける。
+`just agent-hooks-install x` は同じ位置へ guard を戻すので、Codex の信頼の記録も同じ位置のまま使える。
+install と uninstall のあとは、sync と同じく trust の手順（`scripts/codex_hooks_trust.py`）を実行する。
+Codex は信頼した hash の hook だけを実行するので、guard を信頼する前の thread では今のスクリプトが動き続ける。スクリプトを外すのは PR 5 である。
 
 ## Codex の hooks
 
@@ -175,7 +195,11 @@ guard の側は Claude の exit code の約束のまま変えない。
 Codex は、hash を信頼済みとして記録した hook だけを実行する（`~/.codex/config.toml` の `hooks.state`）。
 sync は `~/.codex` に配ったあと `scripts/codex_hooks_trust.py` を実行し、Codex の app-server（`hooks/list` と `config/batchWrite`）を通して、断片から作った hook だけを信頼済みにする。
 配った hook のファイルが正本と 1 byte でも違うときは信頼しない。
+`hooks.json` に agent-hook の group があるときは、agent-hook の 3 つの guard（files-guard、secrets-guard、command-guard）も、安定パスの agent-hook が `render --harness codex --shell sh` で出すとおりの command だけを信頼する。
+安定パスが無いか render が失敗したときは、guard を信頼せずに WARN を出す（スクリプトはそのまま動く）。
 `just codex-hooks-trust --check` は書き込まずに状態を表示する。
+app-server への問い合わせは 1 回 15 秒まで待ち、答えがなければ WARN を出して exit 1 で終わる。
+sync はこれらの手順を 1 つ 120 秒まで待ち、過ぎたら手順のプロセスグループごと（app-server も）止める。
 Windows では、続けて `scripts/codex_sandbox_tools.py` を実行し、Codex の sandbox が mise の道具（rtk など）を実行できるようにする（`docs/runbook/windows-host.md`）。
 `just doctor` と `just status` も同じ検査を含む。
 

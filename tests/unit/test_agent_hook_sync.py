@@ -46,6 +46,10 @@ CLAUDE_RENDER = next(
     for case in CORPUS
     if case["case"] == "render/claude/darwin/default/stable/plain"
 )
+CODEX_RENDER = next(
+    case for case in CORPUS if case["case"] == "render/codex/darwin/sh/stable/plain"
+)
+CODEX_LINK = CODEX_RENDER["args"][CODEX_RENDER["args"].index("--binary") + 1]
 
 
 @pytest.fixture(autouse=True)
@@ -64,6 +68,7 @@ class FakeSource:
         self.available = available
         self.id = "1111111111111111"
         self.calls: list[str] = []
+        self.harnesses: list[str] = []
         self.selftest_ok = True
         self.template_version = 1
         self.render_owned = True
@@ -98,14 +103,25 @@ class FakeSource:
         return hooks.ReleaseOffer(None, "unknown: release is not built")
 
     def render(
-        self, evidence: plan.ReleaseEvidence, link: Path, system: str
+        self,
+        evidence: plan.ReleaseEvidence,
+        link: Path,
+        system: str,
+        harness: str = "claude",
     ) -> release.Outcome:
         self.calls.append("render")
-        fragment = json.loads(CLAUDE_RENDER["stdout"])
+        self.harnesses.append(harness)
+        if harness == "codex":
+            fragment = json.loads(CODEX_RENDER["stdout"].replace(CODEX_LINK, str(link)))
+        else:
+            fragment = json.loads(CLAUDE_RENDER["stdout"])
         for blocks in fragment["hooks"].values():
             for block in blocks:
                 for handler in block["hooks"]:
-                    handler["command"] = str(link) if self.render_owned else "unowned"
+                    if harness != "codex":
+                        handler["command"] = str(link)
+                    if not self.render_owned:
+                        handler["command"] = "unowned"
                     handler["timeout"] = 30 + self.template_version - 1
         return release.Outcome(stdout=json.dumps(fragment))
 
@@ -394,16 +410,6 @@ def test_a_second_edit_stops_without_writing_the_home(workspace: tuple) -> None:
     assert disk.renames == []
 
 
-class FakeProcesses:
-    def __init__(self, running: bool = False) -> None:
-        self.is_running = running
-        self.calls = 0
-
-    def running(self) -> bool:
-        self.calls += 1
-        return self.is_running
-
-
 def configuration(workspace: tuple) -> hooks.HookConfiguration:
     dotfiles, agent, _, source = workspace
     return sync.hook_configuration(
@@ -412,7 +418,6 @@ def configuration(workspace: tuple) -> hooks.HookConfiguration:
         source=source,
         all_agents=[agent],
         system="Darwin",
-        processes=FakeProcesses(),
     )
 
 
@@ -478,8 +483,8 @@ def test_uninstall_twice_sync_scripts_then_install_preserves_user_hooks(
     assert other not in after["hooks"]["PreToolUse"]
 
 
-@pytest.mark.parametrize("name", ["x", "codex", "g", "gemini", "no-such-target"])
-def test_cli_refuses_non_claude_targets_before_taking_the_lock(
+@pytest.mark.parametrize("name", ["g", "gemini", "no-such-target"])
+def test_cli_refuses_targets_without_hook_wiring_before_taking_the_lock(
     workspace: tuple, name: str
 ) -> None:
     config = configuration(workspace)
@@ -618,13 +623,6 @@ def test_gc_reads_every_release_named_by_a_journal(workspace: tuple) -> None:
     wiring.write_journal(RecordingDisk(), roots.journal("claude"), journal)
     found = hooks.release_references(roots, RecordingDisk(), [])
     assert found == {item.path for item in evidence}
-
-
-def test_gc_delete_refuses_a_running_codex(workspace: tuple) -> None:
-    config = replace(configuration(workspace), processes=FakeProcesses(True))
-    unused = workspace[3].evidence()
-    assert hooks.run_command(config, "gc", [], delete=True) == 1
-    assert unused.path.is_file()
 
 
 def test_install_with_equal_registration_moves_only_the_mark(workspace: tuple) -> None:
@@ -966,7 +964,6 @@ def test_gc_reads_codex_registrations_independently_of_ownership(
         source=source,
         all_agents=[agent, codex],
         system="Darwin",
-        processes=FakeProcesses(),
     )
     assert hooks.run_command(config, "gc", [], delete=True) == 0
     assert direct.path.is_file()
@@ -1018,33 +1015,6 @@ def test_cli_parser_passes_only_explicit_scratch_configuration(
     config = configuration(workspace)
     assert hooks.main(["uninstall", "p"], configure=lambda _: config) == 0
     assert config.roots.mark("claude").exists()
-
-
-@pytest.mark.parametrize(
-    "exit_code,expected", [(0, True), (1, False), (2, None), (None, None)]
-)
-def test_pgrep_port_distinguishes_no_process_from_a_failed_query(
-    workspace: tuple,
-    monkeypatch: pytest.MonkeyPatch,
-    exit_code: int | None,
-    expected: bool | None,
-) -> None:
-    calls = []
-
-    def fake_query(args, *, timeout, env):
-        calls.append((args, timeout, env["HOME"]))
-        return release.Outcome(
-            exit_code, reason="query failed" if exit_code is None else None
-        )
-
-    monkeypatch.setattr(release, "run", fake_query)
-    processes = hooks.PgrepCodex(dict(os.environ))
-    if expected is None:
-        with pytest.raises(hooks.SyncStopped):
-            processes.running()
-    else:
-        assert processes.running() is expected
-    assert calls == [(["pgrep", "-x", "codex"], 30, os.environ["HOME"])]
 
 
 def test_the_real_command_entry_uninstalls_only_in_explicit_scratch_homes(
@@ -1334,22 +1304,6 @@ def test_a_recovery_is_printed_and_is_no_nothing_to_do(
     assert "agent-hook: claude recovered: committed" in out
     assert "already in sync" not in out
     assert not roots.journal("claude").exists()
-
-
-def test_gc_stops_when_codex_starts_before_a_deletion(workspace: tuple) -> None:
-    class StartsLater:
-        def __init__(self) -> None:
-            self.answers = [False, True]
-
-        def running(self) -> bool:
-            return self.answers.pop(0) if self.answers else True
-
-    # given an unreferenced release, and Codex starting after gc's first check
-    unused = workspace[3].evidence()
-    config = replace(configuration(workspace), processes=StartsLater())
-    # when gc deletes, then it stops before the deletion
-    assert hooks.run_command(config, "gc", [], delete=True) == 1
-    assert unused.path.is_file()
 
 
 @pytest.mark.parametrize("changed", ["mark", "state"])
@@ -1659,3 +1613,375 @@ def test_gc_refuses_a_releases_directory_that_is_a_link(
     # when gc deletes, then it refuses that layout, and deletes nothing
     assert hooks.run_command(configuration(workspace), "gc", [], delete=True) == 1
     assert (moved / named.id / "agent-hook").is_file()
+
+
+# ---- PR 3d.2, commit 2: the session seam ----
+
+
+def test_go_release_source_renders_for_the_home_harness(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str], **_: object) -> release.Outcome:
+        calls.append(list(args))
+        return release.Outcome(stdout="{}")
+
+    monkeypatch.setattr(hooks.release_tools, "run", run)
+    source = hooks.GoReleaseSource({})
+    evidence = plan.ReleaseEvidence(tmp_path / "agent-hook", "1" * 16, "0" * 64)
+    link = tmp_path / "link"
+    source.render(evidence, link, "Darwin")
+    source.render(evidence, link, "Darwin", harness="codex")
+    claude, codex = calls
+    assert claude[claude.index("--harness") + 1] == "claude"
+    assert "--shell" not in claude
+    assert codex[codex.index("--harness") + 1] == "codex"
+    assert codex[codex.index("--shell") + 1] == "sh"
+    assert codex[-2:] == ["--binary", str(link)]
+
+
+def test_a_home_names_the_files_the_session_reads(workspace: tuple) -> None:
+    dotfiles, agent, roots, source = workspace
+    agent.directory.mkdir(parents=True)
+    (agent.directory / "settings.json").write_text('{"x": 1}\n', encoding="utf-8")
+    (agent.directory / "other.json").write_text('{"y": 2}\n', encoding="utf-8")
+    home = replace(
+        sync.hook_home(dotfiles, agent, roots, "Darwin"),
+        registration="other.json",
+        state_file=None,
+    )
+    with hooks.open_session(
+        "sync",
+        [home],
+        roots,
+        source,
+        disk=RecordingDisk(),
+        steps=wiring.NoSteps(),
+        system="Darwin",
+    ) as session:
+        facts = session.plans["claude"].facts
+        assert facts is not None
+        assert facts.settings == b'{"y": 2}\n'
+        assert facts.state is None
+    assert source.harnesses == ["claude"]
+
+
+# ---- the Codex home (PR 3d.2) ----
+
+
+@pytest.fixture(autouse=True)
+def codex_shells(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Codex's shells pass unless a test says otherwise: the real check runs
+    this machine's login shells."""
+    state = {"result": (True, "")}
+    monkeypatch.setattr(sync, "check_codex_shells", lambda system, env: state["result"])
+    return state
+
+
+@pytest.fixture(autouse=True)
+def codex_steps(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """The Codex steps (trust, sandbox) sync runs, recorded, not run."""
+    ran: list[Path] = []
+    monkeypatch.setattr(
+        sync, "_run_codex_steps", lambda agent: ran.append(agent.directory)
+    )
+    return ran
+
+
+@pytest.fixture
+def codex_workspace(
+    workspace: tuple,
+) -> tuple[Path, sync.AgentTarget, wiring.Roots, FakeSource]:
+    dotfiles, claude, roots, source = workspace
+    codex = sync.AgentTarget(
+        claude.directory.parent / ".codex",
+        "Codex",
+        key="codex",
+        receives_codex_hooks=True,
+    )
+    return dotfiles, codex, roots, source
+
+
+def open_codex_session(
+    codex_workspace: tuple,
+    *,
+    operation: str = "sync",
+    disk: hooks.PosixDisk | None = None,
+):
+    dotfiles, codex, roots, source = codex_workspace
+    return hooks.open_session(
+        operation,
+        [sync.codex_home(dotfiles, codex, roots, "Darwin")],
+        roots,
+        source,
+        disk=disk or RecordingDisk(),
+        steps=wiring.NoSteps(),
+    )
+
+
+def codex_configuration(codex_workspace: tuple) -> hooks.HookConfiguration:
+    dotfiles, codex, _, source = codex_workspace
+    return sync.hook_configuration(
+        dotfiles,
+        env=dict(os.environ),
+        source=source,
+        all_agents=[codex],
+        system="Darwin",
+    )
+
+
+def codex_groups(codex: sync.AgentTarget) -> list[dict]:
+    return json.loads((codex.directory / "hooks.json").read_bytes())["hooks"][
+        "PreToolUse"
+    ]
+
+
+def guard_ids(groups: list[dict]) -> list[str]:
+    return [
+        handler["command"].split(" --hook ", 1)[1].split()[0]
+        for group in groups
+        for handler in group["hooks"]
+    ]
+
+
+def test_a_codex_sync_adds_the_guards_beside_the_scripts(
+    codex_workspace: tuple,
+) -> None:
+    _, codex, roots, source = codex_workspace
+    with open_codex_session(codex_workspace) as session:
+        assert session.plans["codex"].plan.action == "register"
+        assert session.apply_home("codex").status == "committed"
+    groups = codex_groups(codex)
+    # the scripts first, then G (files-guard and secrets-guard, then
+    # command-guard), through the home's stable link; no rtk until PR 5
+    assert [group["matcher"] for group in groups] == [
+        "Bash",
+        "Write|Edit|NotebookEdit",
+        "Bash",
+    ]
+    assert f"{codex.directory.as_posix()}/hooks/" in groups[0]["hooks"][0]["command"]
+    assert guard_ids(groups[1:]) == ["files-guard", "secrets-guard", "command-guard"]
+    link = roots.link("codex")
+    assert all(
+        handler["command"].startswith(f"'{link}' codex pre ")
+        for group in groups[1:]
+        for handler in group["hooks"]
+    )
+    assert link.resolve() == source.evidence().path
+    assert source.harnesses == ["codex"]
+    # and a second sync changes nothing
+    before = (codex.directory / "hooks.json").read_bytes()
+    with open_codex_session(codex_workspace) as session:
+        assert session.plans["codex"].plan.action == "nothing"
+        assert session.apply_home("codex").status == "committed"
+    assert (codex.directory / "hooks.json").read_bytes() == before
+
+
+def test_a_codex_sync_without_a_release_keeps_the_scripts_and_says_why(
+    codex_workspace: tuple,
+) -> None:
+    _, codex, roots, source = codex_workspace
+    source.available = False
+    with open_codex_session(codex_workspace) as session:
+        result = session.apply_home("codex")
+    assert result.message == "agent-hook: codex scripts: missing Go"
+    groups = codex_groups(codex)
+    assert len(groups) == 1 and "/hooks/" in groups[0]["hooks"][0]["command"]
+    assert not roots.link("codex").exists()
+
+
+def test_codex_shells_that_cannot_run_the_launcher_keep_what_is_there(
+    codex_workspace: tuple, codex_shells: dict
+) -> None:
+    _, codex, _, _ = codex_workspace
+    codex_shells["result"] = (
+        False,
+        "session shell /bin/fish is fish, not a POSIX shell",
+    )
+    with open_codex_session(codex_workspace) as session:
+        result = session.apply_home("codex")
+    assert result.message == (
+        "agent-hook: codex scripts: session shell /bin/fish is fish, not a POSIX shell"
+    )
+    assert len(codex_groups(codex)) == 1
+    # once G is there, a sync whose shells fail keeps it
+    codex_shells["result"] = (True, "")
+    with open_codex_session(codex_workspace) as session:
+        assert session.apply_home("codex").status == "committed"
+    wired = codex_groups(codex)
+    codex_shells["result"] = (False, "noisy")
+    with open_codex_session(codex_workspace) as session:
+        assert session.apply_home("codex").message == "agent-hook: codex kept: noisy"
+    assert codex_groups(codex) == wired
+
+
+def test_codex_uninstall_empties_the_guards_in_place_and_install_puts_them_back(
+    codex_workspace: tuple, codex_steps: list[Path]
+) -> None:
+    _, codex, roots, _ = codex_workspace
+    config = codex_configuration(codex_workspace)
+    assert hooks.run_command(config, "install", ["x"]) == 0
+    installed = codex_groups(codex)
+    assert hooks.run_command(config, "uninstall", ["x"]) == 0
+    uninstalled = codex_groups(codex)
+    # each G group stays where it was, empty, so its key stays free for G
+    assert uninstalled[0] == installed[0]
+    assert [group["hooks"] for group in uninstalled[1:]] == [[], []]
+    assert [group["matcher"] for group in uninstalled] == [
+        group["matcher"] for group in installed
+    ]
+    assert roots.mark("codex").is_file()
+    # a sync while uninstalled keeps it so
+    with open_codex_session(codex_workspace) as session:
+        assert session.plans["codex"].plan.action == "uninstalled"
+    assert hooks.run_command(config, "install", ["codex"]) == 0
+    assert codex_groups(codex) == installed
+    assert not roots.mark("codex").exists()
+    # the trust step ran after each install and uninstall
+    assert codex_steps == [codex.directory] * 3
+
+
+def test_a_codex_install_with_unready_shells_stops(
+    codex_workspace: tuple, codex_shells: dict, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, codex, _, _ = codex_workspace
+    codex_shells["result"] = (False, "noisy")
+    assert (
+        hooks.run_command(codex_configuration(codex_workspace), "install", ["x"]) == 1
+    )
+    assert "agent-hook: codex stopped: noisy" in capsys.readouterr().out
+    assert not (codex.directory / "hooks.json").exists()
+
+
+def test_syncing_only_codex_opens_the_session(
+    codex_workspace: tuple, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dotfiles, codex, roots, source = codex_workspace
+    sync.sync_mode(
+        dotfiles,
+        auto_yes=True,
+        agents=[codex],
+        hook_source=source,
+        env=dict(os.environ),
+        system="Darwin",
+    )
+    assert "agent-hook: codex wired (1111111111111111)" in capsys.readouterr().out
+    assert roots.lock.exists()
+    assert guard_ids(codex_groups(codex)[1:]) == [
+        "files-guard",
+        "secrets-guard",
+        "command-guard",
+    ]
+
+
+def test_preview_prints_the_codex_plan_and_writes_nothing(
+    codex_workspace: tuple, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dotfiles, codex, roots, source = codex_workspace
+    source.evidence()
+    disk = RecordingDisk()
+    sync.preview_mode(
+        dotfiles,
+        agents=[codex],
+        hook_source=source,
+        env=dict(os.environ),
+        system="Darwin",
+        hook_disk=disk,
+    )
+    assert "📄 hooks.json [agent-hook: register]" in capsys.readouterr().out
+    assert disk.renames == []
+    assert not roots.lock.exists()
+    assert not codex.directory.exists()
+
+
+def test_a_codex_crash_after_the_file_write_is_restored(
+    codex_workspace: tuple,
+) -> None:
+    _, codex, roots, source = codex_workspace
+    source.available = False
+    with open_codex_session(codex_workspace) as session:
+        assert session.apply_home("codex").status == "committed"
+    scripts_only = (codex.directory / "hooks.json").read_bytes()
+    source.available = True
+    hooks_json = codex.directory / "hooks.json"
+
+    class CrashDisk(RecordingDisk):
+        def fsync_directory(self, path: Path) -> None:
+            super().fsync_directory(path)
+            if path == codex.directory and hooks_json.read_bytes() != scripts_only:
+                os._exit(0)
+
+    child = os.fork()
+    if child == 0:
+        try:
+            with open_codex_session(codex_workspace, disk=CrashDisk()) as session:
+                session.apply_home("codex")
+        finally:
+            os._exit(91)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 0
+    assert wiring.read_journal(RecordingDisk(), roots.journal("codex")).stage == "file"
+    source.available = False
+    with open_codex_session(codex_workspace) as session:
+        assert session.recovered
+    # the restore puts back the hooks value it replaced: the scripts, where
+    # they were
+    assert json.loads(hooks_json.read_bytes()) == json.loads(scripts_only)
+    assert not roots.journal("codex").exists()
+
+
+def test_gc_deletes_while_codex_runs(codex_workspace: tuple) -> None:
+    """Sync never removes a group that names a release, and gc keeps every
+    release a home's link or a registration names, so a running Codex needs
+    no refusal (PR 3d.2). gc asks for no process at all."""
+    _, _, roots, source = codex_workspace
+    config = codex_configuration(codex_workspace)
+    assert not hasattr(config, "processes")
+    # given Codex wired to one release, and an older one nothing names
+    source.id = "1111111111111111"
+    unused = source.evidence()
+    source.id = "2222222222222222"
+    assert hooks.run_command(config, "install", ["x"]) == 0
+    wired = roots.link("codex").resolve()
+    # when gc deletes, then only the unreferenced release goes
+    assert hooks.run_command(config, "gc", [], delete=True) == 0
+    assert not unused.path.exists()
+    assert wired.is_file()
+
+
+def test_a_codex_crash_before_the_file_write_leaves_hooks_json_as_it_was(
+    codex_workspace: tuple,
+) -> None:
+    _, codex, roots, source = codex_workspace
+    source.available = False
+    with open_codex_session(codex_workspace) as session:
+        assert session.apply_home("codex").status == "committed"
+    hooks_json = codex.directory / "hooks.json"
+    scripts_only = hooks_json.read_bytes()
+    source.available = True
+
+    class CrashDisk(RecordingDisk):
+        def rename(self, source: Path, target: Path) -> None:
+            super().rename(source, target)
+            if target == roots.link("codex"):
+                os._exit(0)  # the link moved; hooks.json not yet written
+
+    child = os.fork()
+    if child == 0:
+        try:
+            with open_codex_session(codex_workspace, disk=CrashDisk()) as session:
+                session.apply_home("codex")
+        finally:
+            os._exit(91)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 0
+    assert hooks_json.read_bytes() == scripts_only
+    assert roots.journal("codex").exists()
+    source.available = False
+    with open_codex_session(codex_workspace) as session:
+        assert session.recovered
+    # the recovery ends at the old state or the new one: hooks.json is the
+    # scripts as they were, and no journal is left
+    assert json.loads(hooks_json.read_bytes()) == json.loads(scripts_only)
+    assert not roots.journal("codex").exists()

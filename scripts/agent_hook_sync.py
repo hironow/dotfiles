@@ -20,6 +20,7 @@ from typing import Protocol
 
 import agent_hook_release as release_tools
 import agent_hook_wiring as wiring
+from agent_hook_codex_plan import Classes, CodexFacts, plan_codex
 from agent_hook_plan import (
     UNCHANGED,
     HomeFacts,
@@ -43,7 +44,13 @@ class ReleaseOffer:
 class ReleaseSource(Protocol):
     def prepare(self, roots: wiring.Roots) -> ReleaseOffer: ...
     def preview(self, roots: wiring.Roots) -> ReleaseOffer: ...
-    def render(self, evidence: ReleaseEvidence, link: Path, system: str) -> Outcome: ...
+    def render(
+        self,
+        evidence: ReleaseEvidence,
+        link: Path,
+        system: str,
+        harness: str = "claude",
+    ) -> Outcome: ...
     def selftest(self, link: Path) -> Outcome: ...
 
 
@@ -127,15 +134,25 @@ class GoReleaseSource:
     def preview(self, roots: wiring.Roots) -> ReleaseOffer:
         return self._release(roots, preview=True)
 
-    def render(self, evidence: ReleaseEvidence, link: Path, system: str) -> Outcome:
+    def render(
+        self,
+        evidence: ReleaseEvidence,
+        link: Path,
+        system: str,
+        harness: str = "claude",
+    ) -> Outcome:
+        # Codex reads its launcher through a shell: the sh form, as doctor
+        # renders it (scripts/agent_hook_doctor.py, _render).
+        shell = ["--shell", "sh"] if harness == "codex" else []
         return release_tools.run(
             [
                 str(evidence.path),
                 "render",
                 "--harness",
-                "claude",
+                harness,
                 "--os",
                 {"Darwin": "darwin", "Linux": "linux"}.get(system, system.lower()),
+                *shell,
                 "--binary",
                 str(link),
             ],
@@ -164,16 +181,32 @@ class HomeRules:
 
 
 @dataclass(frozen=True)
+class CodexRules:
+    """What the Codex home's plan reads besides its files (PR 3d.2)."""
+
+    scripts: dict | None  # F's hooks value; None: no scripts fragment
+    classes: Classes
+    shells_ok: bool  # both of Codex's shells run the sh launcher cleanly
+    shells_reason: str
+
+
+@dataclass(frozen=True)
 class HookHome:
     key: str
     directory: Path
-    read_rules: Callable[[], HomeRules]
+    read_rules: Callable[[], HomeRules | CodexRules]
+    # The harness this home registers for, the registration file in its
+    # directory, and the state file the shared merge keeps (None: no shared
+    # merge). Claude's values are the defaults.
+    harness: str = "claude"
+    registration: str = "settings.json"
+    state_file: str | None = "settings.sync-state.json"
 
 
 @dataclass(frozen=True)
 class PlannedHome:
     home: HookHome
-    facts: HomeFacts | None  # None: the home's state could not be read
+    facts: HomeFacts | CodexFacts | None  # None: the home's state could not be read
     plan: HomePlan
 
 
@@ -245,35 +278,18 @@ class ReleaseDisk(wiring.Disk, Protocol):
     def lock_releases(self, path: Path) -> AbstractContextManager[None]: ...
 
 
-class CodexProcesses(Protocol):
-    def running(self) -> bool: ...
-
-
-class PgrepCodex:
-    def __init__(self, env: Mapping[str, str]) -> None:
-        self.env = dict(env)
-
-    def running(self) -> bool:
-        outcome = release_tools.run(
-            ["pgrep", "-x", "codex"],
-            env=self.env,
-            timeout=release_tools.PROGRAM_TIMEOUT,
-        )
-        if outcome.exit_code not in {0, 1} or outcome.timed_out:
-            raise SyncStopped(f"cannot check running Codex processes: {outcome.reason}")
-        return outcome.exit_code == 0
-
-
 @dataclass(frozen=True)
 class HookConfiguration:
     roots: wiring.Roots
     homes: tuple[HookHome, ...]
     registrations: tuple[Path, ...]
     source: ReleaseSource
-    processes: CodexProcesses
     resolve: Callable[[list[str]], list[str]]
     validate: Callable[[list[str]], None]
     system: str
+    # Codex's trust and sandbox steps, run after an install or an uninstall
+    # that names the Codex home, as sync runs them.
+    codex_steps: Callable[[], None] = lambda: None
 
 
 def _read_optional(disk: wiring.Disk, path: Path) -> bytes | None:
@@ -295,7 +311,13 @@ class HomeStateUnreadable(ValueError):
     merges cannot read: that home stops, alone."""
 
 
-def check_shapes(settings: dict, state: dict) -> None:
+def check_shapes(
+    settings: dict,
+    state: dict,
+    *,
+    registration: str = "settings.json",
+    state_file: str | None = "settings.sync-state.json",
+) -> None:
     """Refuse what the merges cannot read, as a ValueError, so that home
     stops alone: hooks an object of event lists of block objects, each
     block's hooks a list of handler objects, a handler's command a string
@@ -303,13 +325,13 @@ def check_shapes(settings: dict, state: dict) -> None:
     state's retired a list of migration names."""
     hooks = settings.get("hooks", {})
     if not isinstance(hooks, dict):
-        raise HomeStateUnreadable("settings.json: hooks must be an object")
+        raise HomeStateUnreadable(f"{registration}: hooks must be an object")
     for event, blocks in hooks.items():
         if not isinstance(blocks, list) or not all(
             isinstance(block, dict) for block in blocks
         ):
             raise HomeStateUnreadable(
-                f"settings.json: hooks.{event} must be a list of objects"
+                f"{registration}: hooks.{event} must be a list of objects"
             )
         for block in blocks:
             handlers = block.get("hooks", [])
@@ -317,25 +339,23 @@ def check_shapes(settings: dict, state: dict) -> None:
                 isinstance(handler, dict) for handler in handlers
             ):
                 raise HomeStateUnreadable(
-                    f"settings.json: each block of hooks.{event} must hold a list of objects"
+                    f"{registration}: each block of hooks.{event} must hold a list of objects"
                 )
             for handler in handlers:
                 if not isinstance(handler.get("command", ""), str):
                     raise HomeStateUnreadable(
-                        f"settings.json: a command in hooks.{event} must be a string"
+                        f"{registration}: a command in hooks.{event} must be a string"
                     )
                 args = handler.get("args", [])
                 if not isinstance(args, list) or not all(
                     isinstance(arg, str) for arg in args
                 ):
                     raise HomeStateUnreadable(
-                        f"settings.json: args in hooks.{event} must be a list of strings"
+                        f"{registration}: args in hooks.{event} must be a list of strings"
                     )
     retired = state.get("retired", [])
     if not isinstance(retired, list) or not all(isinstance(r, str) for r in retired):
-        raise HomeStateUnreadable(
-            "settings.sync-state.json: retired must be a list of names"
-        )
+        raise HomeStateUnreadable(f"{state_file}: retired must be a list of names")
 
 
 class SyncSession:
@@ -388,32 +408,55 @@ class SyncSession:
                 ),
             )
 
-    def read_plan(self, home: HookHome) -> PlannedHome:
-        rules = home.read_rules()
-        settings = _read_optional(self.disk, home.directory / "settings.json")
-        state = _read_optional(self.disk, home.directory / "settings.sync-state.json")
-        value = settings_value(settings)
-        check_shapes(value, settings_value(state))
+    def _render(
+        self, home: HookHome, owns: Callable[[dict], bool]
+    ) -> tuple[ReleaseEvidence | None, dict | None, str]:
+        """The offered release and R, its render for this home (None for an
+        uninstall); or no release, and why, when the render fails or holds a
+        handler the home does not own."""
         evidence, reason = self.offer.release, self.offer.reason
-        rendered = None
-        if evidence is not None and self.operation != "uninstall":
-            rendered_call = self.source.render(
-                evidence, self.roots.link(home.key), self.system
-            )
-            try:
-                if not rendered_call.ok:
-                    raise ValueError(rendered_call.reason or "render failed")
-                rendered = json.loads(rendered_call.stdout)
-                if (
-                    not isinstance(rendered, dict)
-                    or not isinstance(rendered.get("hooks"), dict)
-                    or not rendered["hooks"]
-                ):
-                    raise ValueError("render did not provide hook blocks")
-                if rules.managed_from(rendered) != rendered["hooks"]:
-                    raise ValueError("render contains handlers not owned by this home")
-            except (ValueError, TypeError, KeyError, AttributeError) as exc:
-                evidence, rendered, reason = None, None, f"render: {exc}"
+        if evidence is None or self.operation == "uninstall":
+            return evidence, None, reason
+        call = self.source.render(
+            evidence, self.roots.link(home.key), self.system, harness=home.harness
+        )
+        try:
+            if not call.ok:
+                raise ValueError(call.reason or "render failed")
+            rendered = json.loads(call.stdout)
+            if (
+                not isinstance(rendered, dict)
+                or not isinstance(rendered.get("hooks"), dict)
+                or not rendered["hooks"]
+            ):
+                raise ValueError("render did not provide hook blocks")
+            if not owns(rendered):
+                raise ValueError("render contains handlers not owned by this home")
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            return None, None, f"render: {exc}"
+        return evidence, rendered, reason
+
+    def read_plan(self, home: HookHome) -> PlannedHome:
+        if home.harness == "codex":
+            return self._read_codex_plan(home)
+        rules = home.read_rules()
+        assert isinstance(rules, HomeRules)
+        settings = _read_optional(self.disk, home.directory / home.registration)
+        state = (
+            None
+            if home.state_file is None
+            else _read_optional(self.disk, home.directory / home.state_file)
+        )
+        value = settings_value(settings)
+        check_shapes(
+            value,
+            settings_value(state),
+            registration=home.registration,
+            state_file=home.state_file,
+        )
+        evidence, rendered, reason = self._render(
+            home, lambda value: rules.managed_from(value) == value["hooks"]
+        )
         facts = HomeFacts(
             home.key,
             settings,
@@ -433,20 +476,63 @@ class SyncSession:
         )
         return PlannedHome(home, facts, plan_home(self.operation, facts))
 
+    def _read_codex_plan(self, home: HookHome) -> PlannedHome:
+        """The Codex home's plan (agent_hook_codex_plan): hooks.json, with no
+        state file, and R checked to hold only agent-hook groups."""
+        rules = home.read_rules()
+        assert isinstance(rules, CodexRules)
+        settings = _read_optional(self.disk, home.directory / home.registration)
+        check_shapes(
+            settings_value(settings),
+            {},
+            registration=home.registration,
+            state_file=home.state_file,
+        )
+        classes = rules.classes
+        evidence, rendered, reason = self._render(
+            home,
+            lambda value: all(
+                classes.is_binary(group)
+                for groups in value["hooks"].values()
+                for group in groups
+            ),
+        )
+        facts = CodexFacts(
+            home.key,
+            settings,
+            None,
+            _read_target(self.disk, self.roots.link(home.key)),
+            self.disk.exists(self.roots.mark(home.key)),
+            evidence,
+            None if rendered is None else rendered["hooks"],
+            reason,
+            rules.scripts,
+            rules.shells_ok,
+            rules.shells_reason,
+            rules.classes,
+        )
+        return PlannedHome(home, facts, plan_codex(self.operation, facts))
+
     def _check_facts(self, prepared: PlannedHome) -> None:
         home, facts = prepared.home, prepared.facts
         assert facts is not None
-        for component, found, expected in (
+        files = [
             (
-                "settings.json",
-                _read_optional(self.disk, home.directory / "settings.json"),
+                home.registration,
+                _read_optional(self.disk, home.directory / home.registration),
                 facts.settings,
-            ),
-            (
-                "settings.sync-state.json",
-                _read_optional(self.disk, home.directory / "settings.sync-state.json"),
-                facts.state,
-            ),
+            )
+        ]
+        if home.state_file is not None:
+            files.append(
+                (
+                    home.state_file,
+                    _read_optional(self.disk, home.directory / home.state_file),
+                    facts.state,
+                )
+            )
+        for component, found, expected in (
+            *files,
             ("link", _read_target(self.disk, self.roots.link(home.key)), facts.target),
             ("mark", self.disk.exists(self.roots.mark(home.key)), facts.marked),
         ):
@@ -472,9 +558,10 @@ class SyncSession:
                         self.disk, home.directory, mode=wiring.STATE_MODE
                     )
                 if isinstance(plan.state, bytes):
+                    assert home.state_file is not None
                     wiring.write_if_unchanged(
                         self.disk,
-                        home.directory / "settings.sync-state.json",
+                        home.directory / home.state_file,
                         facts.state,
                         plan.state,
                     )
@@ -513,7 +600,9 @@ class SyncSession:
                             self.roots.link(key), plan.old_target, str(plan.new_target)
                         ),
                         file=wiring.FileChange(
-                            home.directory / "settings.json", facts.settings, new_bytes
+                            home.directory / home.registration,
+                            facts.settings,
+                            new_bytes,
                         ),
                         # named even when it does not change (a register),
                         # so every step checks it
@@ -538,7 +627,7 @@ class SyncSession:
                 if isinstance(plan.settings, bytes):
                     wiring.write_if_unchanged(
                         self.disk,
-                        home.directory / "settings.json",
+                        home.directory / home.registration,
                         facts.settings,
                         plan.settings,
                     )
@@ -721,8 +810,6 @@ def collect_releases(
         "agent-hook gc: after removing a direct release block, restart sessions that read it before deleting that release"
     )
     directory = config.roots.data / "releases"
-    if delete and config.processes.running():
-        raise SyncStopped("Codex is running; gc --delete is refused until PR 3d.2")
     if not disk.exists(directory):
         return
     # Only the layout hookrelease makes: a releases directory that is a link
@@ -751,10 +838,6 @@ def collect_releases(
                 continue
             print(f"agent-hook gc: unreferenced {path}")
             if delete:
-                if config.processes.running():
-                    raise SyncStopped(
-                        "Codex started; gc --delete is refused until PR 3d.2"
-                    )
                 if binary in release_references(
                     config.roots, disk, config.registrations
                 ):
@@ -791,10 +874,8 @@ def run_command(
             keys = config.resolve(list(targets))
             homes = {home.key: home for home in config.homes}
             for key in keys:
-                if key == "codex":
-                    raise ValueError("codex is refused until PR 3d.2")
                 if key not in homes:
-                    raise ValueError(f"{key} is not a Claude home")
+                    raise ValueError(f"{key} is not a Claude or Codex home")
             selected = [home for home in config.homes if home.key in keys]
         with open_session(
             operation,
@@ -814,6 +895,9 @@ def run_command(
                 print(result.message)
                 if result.status != "committed":
                     return 1
+            if any(home.harness == "codex" for home in selected):
+                # Codex runs G only once its hash is trusted (as sync does)
+                config.codex_steps()
         return 0
     except (OSError, ValueError, SyncStopped, wiring.LockBusy) as exc:
         print(f"agent-hook: stopped: {exc}")
@@ -826,7 +910,7 @@ def main(
     configure: Callable[[Path | None], HookConfiguration],
 ) -> int:
     parser = argparse.ArgumentParser(
-        description="Install/uninstall Claude hook wiring, or collect unreferenced releases"
+        description="Install/uninstall Claude and Codex hook wiring, or collect unreferenced releases"
     )
     parser.add_argument("operation", choices=["install", "uninstall", "gc"])
     parser.add_argument("targets", nargs="*")
@@ -839,4 +923,8 @@ def main(
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(configure=cli_sync.hook_configuration))
+    # sync_agents imported this file again as agent_hook_sync, and its homes
+    # and errors are that module's: run that copy, so one class is one class.
+    import agent_hook_sync
+
+    raise SystemExit(agent_hook_sync.main(configure=cli_sync.hook_configuration))

@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import agent_hook_doctor as check
 import agent_hook_release as release
+import codex_shells
 from _agent_hooks_go import STRICT_GO, why_go_cannot_build_the_module
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -562,7 +563,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for name in ("BASH_ENV", "ENV", "ZDOTDIR", "CLAUDE_CONFIG_DIR"):
         monkeypatch.delenv(name, raising=False)
     shell = _fake_shell(bin_dir / "zsh")
-    monkeypatch.setattr(check, "_login_shell", lambda: str(shell), raising=False)
+    monkeypatch.setattr(codex_shells, "_login_shell", lambda: str(shell), raising=False)
     return home
 
 
@@ -623,7 +624,10 @@ def _registered(home: Path, harness: str) -> Path:
 
 def _register(home: Path, harness: str, binary: Path) -> dict:
     """Register binary in home as sync wires it: through the home's stable
-    link, current/<key>/agent-hook, unless binary is such a link already."""
+    link, current/<key>/agent-hook, unless binary is such a link already.
+    For Codex that is agent-hook's guards only (G, PR 3d.2)."""
+    from agent_hook_codex_plan import codex_guards
+
     home.mkdir(parents=True, exist_ok=True)
     if not STABLE.fullmatch(str(binary)):
         link = _registered(home, harness)
@@ -632,6 +636,8 @@ def _register(home: Path, harness: str, binary: Path) -> dict:
             link.symlink_to(binary)
         binary = link
     doc = _fragment(binary, harness)
+    if harness == "codex":
+        doc = {"hooks": codex_guards(doc["hooks"])}
     (home / ("hooks.json" if harness == "codex" else "settings.json")).write_text(
         json.dumps(doc), encoding="utf-8"
     )
@@ -1037,7 +1043,7 @@ def test_gather_runs_both_shell_paths_with_unique_tokens(
 ) -> None:
     Path(os.environ["CODEX_HOME"]).mkdir()
     _fake_shell(Path(os.environ["SHELL"]), mode)
-    monkeypatch.setattr(check, "SHELL_TIMEOUT", 1)
+    monkeypatch.setattr(codex_shells, "SHELL_TIMEOUT", 1)
     facts = check.gather(isolated)
     assert len(facts.shells) == 2
     assert len({shell.token for shell in facts.shells}) == 2
@@ -1463,3 +1469,91 @@ def test_gather_reads_the_marks_and_journals_sync_writes(isolated: Path) -> None
     assert facts.marks == frozenset({"work-a"})
     assert facts.journals == ("switch-claude.json",)
     assert [home.key for home in facts.homes if home.harness == "claude"] == ["work-a"]
+
+
+# ---- PR 3d.2: the Codex home, its scripts beside agent-hook's guards ----
+
+_CODEX_CORPUS = next(
+    case
+    for case in map(
+        json.loads,
+        (ROOT / "tools/agent-hooks/internal/rendercorpus/render.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines(),
+    )
+    if case["case"] == "render/codex/darwin/sh/stable/plain"
+)
+CODEX_RENDER = json.loads(_CODEX_CORPUS["stdout"])
+CODEX_LINK = _CODEX_CORPUS["args"][_CODEX_CORPUS["args"].index("--binary") + 1]
+SCRIPT_GROUP = {
+    "matcher": "Bash",
+    "hooks": [
+        {
+            "type": "command",
+            "command": 'bash "/h/.codex/hooks/guard-codex.sh" block-prohibited-commands.sh',
+        }
+    ],
+}
+
+
+def _codex_wired(guards: list[dict]) -> check.Home:
+    """A Codex home as PR 3d.2 leaves it: a script group, then G."""
+    return check.Home(
+        "Codex",
+        "codex",
+        scripts=True,
+        managed={"PreToolUse": [SCRIPT_GROUP, *guards]},
+        binaries=(
+            check.Binary(
+                CODEX_LINK, PROGRAM, check.Render(check.Outcome(), CODEX_RENDER)
+            ),
+        ),
+        key="codex",
+    )
+
+
+def _guards() -> list[dict]:
+    pre = CODEX_RENDER["hooks"]["PreToolUse"]
+    return [pre[0], pre[1]]  # files-guard and secrets-guard, then command-guard
+
+
+def test_a_codex_home_with_scripts_beside_its_guards_is_not_mixed() -> None:
+    facts = check.Facts(homes=(_codex_wired(_guards()),))
+    assert _lines(facts, "wiring") == []
+    # and only G is compared with the render: its rtk and formatter groups
+    # wait for PR 5, and the scripts are sync's own
+    assert _lines(facts, "registered") == []
+
+
+def test_a_codex_guard_that_differs_from_the_render_is_a_warning() -> None:
+    first, second = _guards()
+    changed = {**second, "hooks": [{**second["hooks"][0], "timeout": 99}]}
+    facts = check.Facts(homes=(_codex_wired([first, changed]),))
+    lines = _lines(facts, "registered")
+    assert len(lines) == 1 and lines[0][0] == "WARN"
+    assert "Codex: managed blocks differ from render at PreToolUse[" in lines[0][1]
+    assert lines[0][1].endswith(".hooks[0].timeout; run just sync-agents")
+
+
+def test_the_order_of_codex_guard_groups_is_not_a_difference() -> None:
+    # Codex runs every matching handler, and keys trust by position, so sync
+    # leaves an unchanged group where it is, in whatever order that leaves G
+    first, second = _guards()
+    facts = check.Facts(homes=(_codex_wired([second, first]),))
+    assert _lines(facts, "registered") == []
+
+
+def test_a_claude_home_with_scripts_and_a_binary_is_still_mixed() -> None:
+    home = _wired(scripts=True)
+    assert _lines(check.Facts(homes=(home,)), "wiring")[0][0] == "WARN"
+
+
+def test_gather_reads_the_codex_mark(isolated: Path) -> None:
+    import agent_hook_wiring as wiring
+
+    roots = wiring.Roots.from_env(dict(os.environ))
+    roots.mark("codex").parent.mkdir(parents=True)
+    roots.mark("codex").write_bytes(b"")
+    (isolated / "custom-codex").mkdir()
+    facts = check.gather(isolated)
+    assert facts.marks == frozenset({"codex"})
