@@ -10,10 +10,13 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -72,10 +75,9 @@ func TestPruneBundleKeepsEveryOtherByteOfAnOpenBSDBundle(t *testing.T) {
 		roots []UntrustedRoot
 		want  string
 	}{
-		// a1 leaves a2 in its group, so the group's line stays; b1 was its
-		// group's only entry, so the group's line goes too
-		{"first of a group, and a whole group", []UntrustedRoot{a1.root, b1.root}, header + groupAWithoutA1 + "\n" + groupC},
-		{"the last entry of the file", []UntrustedRoot{c1.root}, header + groupA + "\n" + groupB},
+		// a `### group` line always stays, even with no entry left under it
+		{"first of a group, and a group's only entry", []UntrustedRoot{a1.root, b1.root}, header + groupAWithoutA1 + "\n### Group B\n\n" + groupC},
+		{"the last entry of the file", []UntrustedRoot{c1.root}, header + groupA + "\n" + groupB + "\n### Group C\n"},
 		{"the second of a group", []UntrustedRoot{a2.root}, header + "### Group A\n\n" + openBSDEntry(a1) + "\n" + groupB + "\n" + groupC},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -107,6 +109,36 @@ func TestPruneBundleRemovesOnlyTheBlockOfAPlainPEMFile(t *testing.T) {
 	}
 }
 
+// negativeSerial is a certificate whose serial number is -1: macOS's bundle
+// holds such a root (EC-ACC), which Go's x509 parser refuses. Its signature
+// no longer verifies, which PruneBundle does not check.
+func negativeSerial(t *testing.T) testCertificate {
+	t.Helper()
+	c := newTestCertificate(t, "negative")
+	block, _ := pem.Decode([]byte(c.pem))
+	// the version (v3) and then the serial, 1, as newTestCertificate writes them
+	positive := []byte{0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01, 0x01}
+	if bytes.Count(block.Bytes, positive) != 1 {
+		t.Fatal("serial not found")
+	}
+	der := bytes.Replace(block.Bytes, positive, []byte{0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01, 0xff}, 1)
+	if _, err := x509.ParseCertificate(der); err == nil {
+		t.Fatal("Go's parser now reads a negative serial; this test no longer pins anything")
+	}
+	return testCertificate{subject: c.subject, pem: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))}
+}
+
+func TestPruneBundleKeepsACertificateWithANegativeSerial(t *testing.T) {
+	negative, a := negativeSerial(t), newTestCertificate(t, "a")
+	got, err := PruneBundle([]byte(negative.pem+a.pem), []UntrustedRoot{a.root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got.Out) != negative.pem || got.Total != 2 {
+		t.Fatalf("total %d, pruned:\n%s", got.Total, got.Out)
+	}
+}
+
 func TestPruneBundleRefusesWhatItCannotReadExactly(t *testing.T) {
 	a, b := newTestCertificate(t, "a"), newTestCertificate(t, "b")
 	for _, tc := range []struct {
@@ -117,6 +149,13 @@ func TestPruneBundleRefusesWhatItCannotReadExactly(t *testing.T) {
 		{"a root not in the bundle", a.pem, []UntrustedRoot{b.root}, "not in the bundle"},
 		{"a root twice", a.pem + a.pem, []UntrustedRoot{a.root}, "more than once"},
 		{"a block that does not parse", "-----BEGIN CERTIFICATE-----\nnot base64!\n-----END CERTIFICATE-----\n" + a.pem, []UntrustedRoot{a.root}, "does not parse"},
+		{"valid base64 that is no certificate", "-----BEGIN CERTIFICATE-----\nAQID\n-----END CERTIFICATE-----\n" + a.pem, []UntrustedRoot{a.root}, "not a certificate"},
+		// a space after END would otherwise make one block of two, and drop both
+		{"a space after END", strings.Replace(a.pem, pemEnd, pemEnd+" ", 1) + b.pem, []UntrustedRoot{a.root}, "PEM boundary"},
+		{"a space after BEGIN", strings.Replace(a.pem, pemBegin, pemBegin+" ", 1) + b.pem, []UntrustedRoot{b.root}, "PEM boundary"},
+		// LibreSSL trusts this form too, so a root in it must not be skipped
+		{"a trusted certificate block", strings.ReplaceAll(a.pem, " CERTIFICATE-----", " TRUSTED CERTIFICATE-----") + b.pem, []UntrustedRoot{b.root}, "PEM boundary"},
+		{"a block with headers", strings.Replace(a.pem, pemBegin+"\n", pemBegin+"\nProc-Type: 4,ENCRYPTED\n\n", 1) + b.pem, []UntrustedRoot{b.root}, "does not parse"},
 		{"an unterminated block", a.pem + "-----BEGIN CERTIFICATE-----\nAAAA\n", []UntrustedRoot{a.root}, "unterminated"},
 		{"no root", a.pem, nil, "no root"},
 	} {
@@ -197,12 +236,20 @@ func TestApplyBundleWritesNothingUnlessBothHashesMatchAndTheBackupIsNew(t *testi
 		t.Run(tc.name, func(t *testing.T) {
 			f := newApplyFixture(t)
 			tc.edit(&f)
+			_, existed := os.Stat(f.backup)
 			err := ApplyBundle(f.in, f.backup, f.inHash, f.outHash, f.roots)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
 			if got, _ := os.ReadFile(f.in); !bytes.Equal(got, f.before) {
 				t.Fatal("the input was changed")
+			}
+			backup, readErr := os.ReadFile(f.backup)
+			if existed == nil && string(backup) != "older" {
+				t.Fatalf("the existing backup was changed: %q", backup)
+			}
+			if existed != nil && !os.IsNotExist(readErr) {
+				t.Fatal("a refused apply wrote a backup")
 			}
 		})
 	}
@@ -216,8 +263,10 @@ func rootsBundle(t *testing.T) (bundle, kept string) {
 	g3 := testCertificate{subject: "/CN=emSign ECC Root CA - G3", pem: emsignECCRootCAG3PEM}
 	aaa := testCertificate{subject: "/CN=AAA Certificate Services", pem: aaaCertificateServicesPEM}
 	header := "# $OpenBSD: cert.pem,v 1.0 $\n"
-	kept = header + "### Kept\n\n" + openBSDEntry(other)
-	bundle = kept + "\n### Comodo CA Limited\n\n" + openBSDEntry(aaa) + "\n### eMudhra Technologies Limited\n\n" + openBSDEntry(g3)
+	head := header + "### Kept\n\n" + openBSDEntry(other)
+	bundle = head + "\n### Comodo CA Limited\n\n" + openBSDEntry(aaa) + "\n### eMudhra Technologies Limited\n\n" + openBSDEntry(g3)
+	// both entries go; their `### group` lines stay
+	kept = head + "\n### Comodo CA Limited\n\n### eMudhra Technologies Limited\n"
 	return bundle, kept
 }
 
@@ -287,6 +336,216 @@ func TestOSBundleRefusesAStaleBinaryOrBadArgumentsBeforeWriting(t *testing.T) {
 			}
 			if got, _ := os.ReadFile(in); string(got) != bundle {
 				t.Fatal("the input was changed")
+			}
+		})
+	}
+}
+
+// recordingFiles is the OS file system, with each operation recorded and one
+// of them able to fail, so a test can check the order of the durable writes
+// and what each failure leaves.
+type recordingFiles struct {
+	osFiles
+	ops    []string
+	failAt string // the operation that fails, as recorded
+	root   bool
+}
+
+var errInjected = errors.New("injected failure")
+
+func (r *recordingFiles) record(op string) error {
+	r.ops = append(r.ops, op)
+	if op == r.failAt {
+		return errInjected
+	}
+	return nil
+}
+
+func (r *recordingFiles) label(path string) string {
+	if strings.HasPrefix(filepath.Base(path), ".ca-doctor-os-bundle-") {
+		return "temp"
+	}
+	return filepath.Base(path)
+}
+
+func (r *recordingFiles) CreateNew(path string, perm os.FileMode) (bundleFile, error) {
+	if err := r.record("create " + r.label(path)); err != nil {
+		return nil, err
+	}
+	file, err := r.osFiles.CreateNew(path, perm)
+	if err != nil {
+		return nil, err
+	}
+	return &recordingFile{file, r, r.label(path)}, nil
+}
+
+func (r *recordingFiles) CreateTemp(dir, pattern string) (bundleFile, error) {
+	if err := r.record("create temp"); err != nil {
+		return nil, err
+	}
+	file, err := r.osFiles.CreateTemp(dir, pattern)
+	if err != nil {
+		return nil, err
+	}
+	return &recordingFile{file, r, "temp"}, nil
+}
+
+func (r *recordingFiles) Rename(from, to string) error {
+	if err := r.record("rename " + r.label(from) + " " + r.label(to)); err != nil {
+		return err
+	}
+	return r.osFiles.Rename(from, to)
+}
+
+func (r *recordingFiles) SyncDir(dir string) error {
+	if err := r.record("sync dir"); err != nil {
+		return err
+	}
+	return r.osFiles.SyncDir(dir)
+}
+
+func (r *recordingFiles) Remove(path string) error {
+	r.ops = append(r.ops, "remove "+r.label(path))
+	return r.osFiles.Remove(path)
+}
+
+func (r *recordingFiles) IsRoot() bool { return r.root }
+
+type recordingFile struct {
+	bundleFile
+	files *recordingFiles
+	label string
+}
+
+func (f *recordingFile) Write(data []byte) (int, error) {
+	if err := f.files.record("write " + f.label); err != nil {
+		return 0, err
+	}
+	return f.bundleFile.Write(data)
+}
+
+func (f *recordingFile) Chmod(mode os.FileMode) error {
+	if err := f.files.record(fmt.Sprintf("chmod %s %o", f.label, mode)); err != nil {
+		return err
+	}
+	return f.bundleFile.Chmod(mode)
+}
+
+// Chown is recorded, not run: the tests do not run as root.
+func (f *recordingFile) Chown(uid, gid int) error {
+	return f.files.record(fmt.Sprintf("chown %s %d %d", f.label, uid, gid))
+}
+
+func (f *recordingFile) Sync() error {
+	if err := f.files.record("sync " + f.label); err != nil {
+		return err
+	}
+	return f.bundleFile.Sync()
+}
+
+func (f *recordingFile) Close() error {
+	err := f.files.record("close " + f.label)
+	if closeErr := f.bundleFile.Close(); err == nil {
+		err = closeErr
+	}
+	return err
+}
+
+func TestApplyBundleSyncsTheBackupBeforeTheBundleIsReplaced(t *testing.T) {
+	f := newApplyFixture(t)
+	files := &recordingFiles{}
+	if err := applyBundle(files, f.in, f.backup, f.inHash, f.outHash, f.roots); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"create cert.pem.backup", "write cert.pem.backup", "chmod cert.pem.backup 644", "sync cert.pem.backup", "close cert.pem.backup", "sync dir",
+		"create temp", "write temp", "chmod temp 644", "sync temp", "close temp", "rename temp cert.pem", "sync dir",
+	}
+	if strings.Join(files.ops, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("operations:\n%s", strings.Join(files.ops, "\n"))
+	}
+}
+
+func TestApplyBundleAsRootKeepsTheBundlesOwner(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no owner to keep")
+	}
+	f := newApplyFixture(t)
+	info, err := os.Lstat(f.in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uid, gid, ok := fileOwner(info)
+	if !ok {
+		t.Fatal("no owner")
+	}
+	files := &recordingFiles{root: true}
+	if err := applyBundle(files, f.in, f.backup, f.inHash, f.outHash, f.roots); err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range []string{"cert.pem.backup", "temp"} {
+		if !slices.Contains(files.ops, fmt.Sprintf("chown %s %d %d", label, uid, gid)) {
+			t.Fatalf("no chown of %s to %d:%d in\n%s", label, uid, gid, strings.Join(files.ops, "\n"))
+		}
+	}
+}
+
+func TestApplyBundleFailingAtAnyStepLeavesNoTempAndNoPartialBackup(t *testing.T) {
+	steps := []string{
+		"create cert.pem.backup", "write cert.pem.backup", "chmod cert.pem.backup 644", "sync cert.pem.backup", "close cert.pem.backup",
+		"create temp", "write temp", "chmod temp 644", "sync temp", "close temp", "rename temp cert.pem",
+	}
+	for _, step := range steps {
+		t.Run(step, func(t *testing.T) {
+			f := newApplyFixture(t)
+			files := &recordingFiles{failAt: step}
+			if err := applyBundle(files, f.in, f.backup, f.inHash, f.outHash, f.roots); !errors.Is(err, errInjected) {
+				t.Fatalf("err = %v", err)
+			}
+			// every step fails before the rename lands, so the bundle is as it was
+			if got, _ := os.ReadFile(f.in); !bytes.Equal(got, f.before) {
+				t.Fatal("the bundle was changed")
+			}
+			entries, _ := os.ReadDir(f.dir)
+			for _, entry := range entries {
+				if strings.HasPrefix(entry.Name(), ".ca-doctor-os-bundle-") {
+					t.Fatalf("a temporary file is left: %s", entry.Name())
+				}
+			}
+			// a backup is complete or absent, so a rollback never copies a partial one
+			if backup, err := os.ReadFile(f.backup); err == nil && !bytes.Equal(backup, f.before) {
+				t.Fatalf("a partial backup is left: %d bytes", len(backup))
+			}
+		})
+	}
+}
+
+func TestOSBundleCandidateNeverOverwritesAnExistingFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os-bundle edits a POSIX PEM bundle")
+	}
+	bundle, _ := rootsBundle(t)
+	dir := t.TempDir()
+	in := filepath.Join(dir, "cert.pem")
+	if err := os.WriteFile(in, []byte(bundle), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	symlink, hardlink := filepath.Join(dir, "symlink.pem"), filepath.Join(dir, "hardlink.pem")
+	if err := os.Symlink(in, symlink); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(in, hardlink); err != nil {
+		t.Fatal(err)
+	}
+	for _, out := range []string{in, symlink, hardlink} {
+		t.Run(filepath.Base(out), func(t *testing.T) {
+			var report bytes.Buffer
+			code := RunCLI(t.Context(), []string{"os-bundle", "--source", ".", "--incident", "emudhra-2026", "--in", in, "--out", out}, &report)
+			if code != 2 || !strings.Contains(report.String(), "exists") {
+				t.Fatalf("exit %d:\n%s", code, &report)
+			}
+			if got, _ := os.ReadFile(in); string(got) != bundle {
+				t.Fatal("the bundle was overwritten")
 			}
 		})
 	}

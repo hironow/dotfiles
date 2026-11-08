@@ -1626,6 +1626,7 @@ ca-doctor *args:
 [macos]
 ca-os-bundle-candidate incident="emudhra-2026": ca-doctor-build
     @mkdir -p output/ca-os-bundle
+    @rm -f output/ca-os-bundle/cert.pem
     output/ca-doctor/ca-doctor os-bundle --source tools/ca-doctor --incident {{incident}} --in /private/etc/ssl/cert.pem --out output/ca-os-bundle/cert.pem
 
 # macOS, sudo: replace /private/etc/ssl/cert.pem with the candidate, only if
