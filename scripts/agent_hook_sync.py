@@ -298,8 +298,9 @@ class HomeStateUnreadable(ValueError):
 def check_shapes(settings: dict, state: dict) -> None:
     """Refuse what the merges cannot read, as a ValueError, so that home
     stops alone: hooks an object of event lists of block objects, each
-    block's hooks a list of handler objects; the state's retired a list of
-    migration names."""
+    block's hooks a list of handler objects, a handler's command a string
+    and its args a list of strings (what the ownership rule reads); the
+    state's retired a list of migration names."""
     hooks = settings.get("hooks", {})
     if not isinstance(hooks, dict):
         raise HomeStateUnreadable("settings.json: hooks must be an object")
@@ -318,6 +319,18 @@ def check_shapes(settings: dict, state: dict) -> None:
                 raise HomeStateUnreadable(
                     f"settings.json: each block of hooks.{event} must hold a list of objects"
                 )
+            for handler in handlers:
+                if not isinstance(handler.get("command", ""), str):
+                    raise HomeStateUnreadable(
+                        f"settings.json: a command in hooks.{event} must be a string"
+                    )
+                args = handler.get("args", [])
+                if not isinstance(args, list) or not all(
+                    isinstance(arg, str) for arg in args
+                ):
+                    raise HomeStateUnreadable(
+                        f"settings.json: args in hooks.{event} must be a list of strings"
+                    )
     retired = state.get("retired", [])
     if not isinstance(retired, list) or not all(isinstance(r, str) for r in retired):
         raise HomeStateUnreadable(
@@ -631,6 +644,16 @@ def _hook_strings(value: object) -> Generator[str]:
                 yield from _hook_strings(element)
 
 
+def _decoded_json(raw: bytes) -> bytes:
+    """raw's JSON as a harness reads it, with every escape decoded (a \\u0061
+    is an a), or nothing when raw is no JSON."""
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return b""
+    return json.dumps(value, ensure_ascii=False).encode("utf-8")
+
+
 def release_references(
     roots: wiring.Roots, disk: ReleaseDisk, registrations: Sequence[Path]
 ) -> set[Path]:
@@ -658,7 +681,7 @@ def release_references(
         chunks.append(disk.read_bytes(path))
         journal = wiring.read_journal(disk, path)
         chunks.extend(raw for raw in (journal.file.old, journal.file.new) if raw)
-    mentions = b"\n".join(chunks)
+    mentions = b"\n".join([*chunks, *map(_decoded_json, chunks)])
     for entry in disk.entries(releases):
         if (
             re.fullmatch(r"[0-9a-f]{16}", entry.name)

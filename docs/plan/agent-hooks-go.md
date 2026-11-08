@@ -424,7 +424,7 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Uninstall** (`just agent-hooks-uninstall <home>`) brings back the scripts' registration and writes the home's mark, which sync honors. `just agent-hooks-install <home>` wires it again; it needs a release.
     - **gc** (`just agent-hooks-gc [--delete]`) lists the releases nothing references:
         - every home's link;
-        - a release whose ID appears anywhere in a Claude or Codex registration file, or in a journal (its text and its file bytes), however a path spells it: `$HOME`, `~`, a relative path after a `cd`, or a name built from a variable. Matching the ID errs on keeping;
+        - a release whose ID appears whole anywhere in a Claude or Codex registration file, or in a journal (its text and its file bytes), searched both as bytes and as the JSON a harness decodes (so a `\u` escape hides nothing), however a path spells it: `$HOME`, `~`, a relative path after a `cd`, or an ID held in a variable. Matching the ID errs on keeping; a name a shell assembles from pieces at run time is beyond it;
         - any release a journal names.
         - It deletes only with `--delete`, and refuses while Codex runs, until 3d.2.
     - **Doctor and the AI tools check** read the marks and the journals, and agent-hook's rtk hook.
@@ -520,6 +520,7 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
     - Round 2 (Codex REVISE, 3 P2, 2 P3; the independent review APPROVE, with P3s and four surviving mutants):
         - Codex: the public recipe's test passed a plain `go test` too (a recording Go now checks what the tests are told to run); gc still deleted a release a block calls by a short relative path after a `cd` (gc now keeps any release whose ID appears in a registration file or a journal); a null mark in a register's journal let a mark made mid-change pass, and let recovery commit a state the tables stop on (every journal names the mark again, and one without it is refused; this reverses round 1's P3-2); malformed `hooks` shapes still stopped every home (`check_shapes` now stops that home alone); a failed full flush was not pinned as an error.
         - The independent review: the same malformed shapes; `SyncSession.changed` had no caller (`_print_plan` now uses it); a retry that reads a home made unreadable meanwhile raised out of sync (it now stops that home). Not adopted: a test for `retired_from`'s guard against a non-object block, since `check_shapes` now refuses such a block first.
+    - Round 3 (Codex REVISE, 1 P2, 1 P3): gc searched bytes only, so an ID written with a JSON `\u` escape, which the harness decodes, went unseen (gc now also searches the decoded JSON of each registration and journal file); a handler's `command` or `args` of another type passed `check_shapes`, then broke the ownership rule for every home (`check_shapes` now types them).
 - PR 3c's design (Codex, three rounds; APPROVE). Each finding was checked first and adopted:
     - Round 1 (REVISE, 5):
         - freshness through the recipe could not tell exit 1 from 2, and split a path (confirmed: `go run` turns a child's 2 into 1);

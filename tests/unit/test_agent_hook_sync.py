@@ -1479,6 +1479,17 @@ def test_gc_keeps_a_release_named_in_a_member_sync_does_not_read(
         ('{"hooks": {"PreToolUse": ["not a block"]}}', None),
         ('{"hooks": {"PreToolUse": [{"hooks": "not a list"}]}}', None),
         ('{"hooks": {"PreToolUse": [{"hooks": [1]}]}}', None),
+        ('{"hooks": {"PreToolUse": [{"hooks": [{"command": null}]}]}}', None),
+        ('{"hooks": {"PreToolUse": [{"hooks": [{"command": 1}]}]}}', None),
+        ('{"hooks": {"PreToolUse": [{"hooks": [{"command": []}]}]}}', None),
+        (
+            '{"hooks": {"PreToolUse": [{"hooks": [{"command": "x", "args": "y"}]}]}}',
+            None,
+        ),
+        (
+            '{"hooks": {"PreToolUse": [{"hooks": [{"command": "x", "args": [1]}]}]}}',
+            None,
+        ),
         ("{}", '{"retired": 1}'),
         ("{}", '{"retired": [1]}'),
     ],
@@ -1531,3 +1542,60 @@ def test_a_home_made_unreadable_while_sync_runs_stops_alone(
     assert result.status == "stopped"
     assert "cannot read the home's state" in result.reason
     assert roots.link("claude").resolve().parent.name == "1111111111111111"
+
+
+def _escaped_first_digit(release_id: str) -> str:
+    """The ID with its first character as a JSON escape, which a JSON reader
+    (the harness) decodes back to the ID, and a byte search does not see."""
+    return f"\\u{ord(release_id[0]):04x}" + release_id[1:]
+
+
+def test_gc_keeps_a_release_a_registration_names_through_a_json_escape(
+    workspace: tuple,
+) -> None:
+    _, agent, _, source = workspace
+    source.id = "abcdef0123456789"  # \u0061, which ends in 1, not a
+    named = source.evidence()
+    agent.directory.mkdir(parents=True)
+    path = str(named.path).replace(named.id, _escaped_first_digit(named.id))
+    # written by hand, so the escape stays in the file
+    (agent.directory / "settings.json").write_text(
+        '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "'
+        + path
+        + '", "args": ["claude", "pre"]}]}]}}',
+        encoding="utf-8",
+    )
+    assert named.id not in (agent.directory / "settings.json").read_text(
+        encoding="utf-8"
+    )
+    assert hooks.run_command(configuration(workspace), "gc", [], delete=True) == 0
+    assert named.path.is_file()
+
+
+def test_gc_keeps_a_release_a_journal_names_through_a_json_escape(
+    workspace: tuple,
+) -> None:
+    _, agent, roots, source = workspace
+    source.id = "abcdef0123456789"  # \u0061, which ends in 1, not a
+    named = source.evidence()
+    agent.directory.mkdir(parents=True)
+    path = str(named.path).replace(named.id, _escaped_first_digit(named.id))
+    old = (
+        '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "'
+        + path
+        + '"}]}]}}'
+    ).encode()
+    source.id = "2222222222222222"
+    other = source.evidence()
+    journal = wiring.Journal(
+        "claude",
+        "register",
+        "file",
+        wiring.Release(other.path, other.id, other.sha256),
+        wiring.LinkChange(roots.link("claude"), None, str(other.path)),
+        wiring.FileChange(agent.directory / "settings.json", old, b"{}"),
+        wiring.MarkChange(roots.mark("claude"), False, False),
+    )
+    wiring.write_journal(RecordingDisk(), roots.journal("claude"), journal)
+    found = hooks.release_references(roots, RecordingDisk(), [])
+    assert named.path in found and other.path in found
