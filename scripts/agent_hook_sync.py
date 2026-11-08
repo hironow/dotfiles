@@ -8,7 +8,6 @@ import fcntl
 import json
 import os
 import re
-import shlex
 import shutil
 from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
@@ -291,6 +290,41 @@ def _read_target(disk: wiring.Disk, path: Path) -> str | None:
         return None
 
 
+class HomeStateUnreadable(ValueError):
+    """A home's settings.json or settings.sync-state.json has a shape the
+    merges cannot read: that home stops, alone."""
+
+
+def check_shapes(settings: dict, state: dict) -> None:
+    """Refuse what the merges cannot read, as a ValueError, so that home
+    stops alone: hooks an object of event lists of block objects, each
+    block's hooks a list of handler objects; the state's retired a list of
+    migration names."""
+    hooks = settings.get("hooks", {})
+    if not isinstance(hooks, dict):
+        raise HomeStateUnreadable("settings.json: hooks must be an object")
+    for event, blocks in hooks.items():
+        if not isinstance(blocks, list) or not all(
+            isinstance(block, dict) for block in blocks
+        ):
+            raise HomeStateUnreadable(
+                f"settings.json: hooks.{event} must be a list of objects"
+            )
+        for block in blocks:
+            handlers = block.get("hooks", [])
+            if not isinstance(handlers, list) or not all(
+                isinstance(handler, dict) for handler in handlers
+            ):
+                raise HomeStateUnreadable(
+                    f"settings.json: each block of hooks.{event} must hold a list of objects"
+                )
+    retired = state.get("retired", [])
+    if not isinstance(retired, list) or not all(isinstance(r, str) for r in retired):
+        raise HomeStateUnreadable(
+            "settings.sync-state.json: retired must be a list of names"
+        )
+
+
 class SyncSession:
     """A prepared release and per-home snapshots, used while switch.lock is held."""
 
@@ -346,6 +380,7 @@ class SyncSession:
         settings = _read_optional(self.disk, home.directory / "settings.json")
         state = _read_optional(self.disk, home.directory / "settings.sync-state.json")
         value = settings_value(settings)
+        check_shapes(value, settings_value(state))
         evidence, reason = self.offer.release, self.offer.reason
         rendered = None
         if evidence is not None and self.operation != "uninstall":
@@ -467,10 +502,9 @@ class SyncSession:
                         file=wiring.FileChange(
                             home.directory / "settings.json", facts.settings, new_bytes
                         ),
-                        # null when the mark does not change (a register)
-                        mark=None
-                        if plan.old_mark == plan.new_mark
-                        else wiring.MarkChange(
+                        # named even when it does not change (a register),
+                        # so every step checks it
+                        mark=wiring.MarkChange(
                             self.roots.mark(key), plan.old_mark, plan.new_mark
                         ),
                     )
@@ -597,25 +631,40 @@ def _hook_strings(value: object) -> Generator[str]:
                 yield from _hook_strings(element)
 
 
-# A release named by its ID, with either separator.
-NAMED_RELEASE = re.compile(
-    r"dotfiles[\\/]agent-hooks[\\/]releases[\\/]([0-9a-f]{16})[\\/]agent-hook"
-)
-
-
 def release_references(
     roots: wiring.Roots, disk: ReleaseDisk, registrations: Sequence[Path]
 ) -> set[Path]:
-    """Find references independently of registration ownership, including journals."""
+    """Every release something may still run, whoever owns the block.
+
+    That is each home's link target, and each release whose ID appears
+    anywhere in a registration file or a journal, however a path spells it:
+    a shell reaches $HOME/..., ~/..., a relative path after a cd, or a name
+    built from a variable. Matching the ID errs on keeping; a release is
+    kept by a mention that runs nothing, never deleted under one that does.
+    """
     references: set[Path] = set()
     if not disk.exists(roots.data):
         return references
     resolved_root = disk.resolve(roots.data)
-    prefixes = {str(roots.data), str(resolved_root)}
-    patterns = [
-        re.compile(re.escape(prefix) + r"/releases/[0-9a-f]{16}/agent-hook")
-        for prefix in prefixes
+    releases = resolved_root / "releases"
+    chunks = [
+        raw
+        for raw in (_read_optional(disk, path) for path in registrations)
+        if raw is not None
     ]
+    for path in disk.journals(roots.state):
+        # The journal names its release and links as text, and holds the
+        # file's bytes in base64, so both are read.
+        chunks.append(disk.read_bytes(path))
+        journal = wiring.read_journal(disk, path)
+        chunks.extend(raw for raw in (journal.file.old, journal.file.new) if raw)
+    mentions = b"\n".join(chunks)
+    for entry in disk.entries(releases):
+        if (
+            re.fullmatch(r"[0-9a-f]{16}", entry.name)
+            and entry.name.encode("ascii") in mentions
+        ):
+            references.add(releases / entry.name / "agent-hook")
 
     def add_path(path: Path) -> None:
         try:
@@ -632,26 +681,6 @@ def release_references(
         ):
             references.add(resolved)
 
-    def add_text(text: str) -> None:
-        # Any mention of a release by its ID keeps it, whatever comes before
-        # (a shell reaches $HOME/..., ~/..., and relative paths too).
-        for match in NAMED_RELEASE.finditer(text):
-            references.add(resolved_root / "releases" / match[1] / "agent-hook")
-        texts = [text]
-        try:
-            texts.extend(shlex.split(text))
-        except ValueError:
-            pass  # Still examine the literal command/args for release paths.
-        for candidate in texts:
-            for pattern in [release_tools.RELEASE_FILE, *patterns]:
-                for match in pattern.finditer(candidate):
-                    add_path(Path(match[0]))
-
-    def add_settings(raw: bytes | None) -> None:
-        if raw is not None:
-            for text in _hook_strings(settings_value(raw).get("hooks", {})):
-                add_text(text)
-
     for directory in disk.entries(roots.data / "current"):
         if not disk.is_directory(directory):
             continue
@@ -659,18 +688,6 @@ def release_references(
         target = _read_target(disk, link)
         if target is not None:
             add_path(link.parent / target)
-    for path in registrations:
-        add_settings(_read_optional(disk, path))
-    for path in disk.journals(roots.state):
-        journal = wiring.read_journal(disk, path)
-        if journal.release:
-            add_path(journal.release.path)
-        if journal.link:
-            for target in (journal.link.old, journal.link.new):
-                if target:
-                    add_path(journal.link.path.parent / target)
-        add_settings(journal.file.old)
-        add_settings(journal.file.new)
     return references
 
 

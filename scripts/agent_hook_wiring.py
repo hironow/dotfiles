@@ -498,14 +498,14 @@ def _parse_journal(value: object) -> Journal:
     new_bytes = _decode_bytes(record["new"], "file.new")
     assert new_bytes is not None
     file = FileChange(_path(record["path"], "file.path"), old, new_bytes)
-    mark = None
-    if document["mark"] is not None:
-        record = _fields(document["mark"], "path old new", "mark")
-        if type(record["old"]) is not bool or type(record["new"]) is not bool:
-            raise JournalUnreadable("mark.old and mark.new must be booleans")
-        mark = MarkChange(
-            _path(record["path"], "mark.path"), record["old"], record["new"]
-        )
+    # Every kind names the mark's state, so every step can check it (a
+    # register's is absent before and after).
+    if document["mark"] is None:
+        raise JournalUnreadable("mark: expected its old and new states")
+    record = _fields(document["mark"], "path old new", "mark")
+    if type(record["old"]) is not bool or type(record["new"]) is not bool:
+        raise JournalUnreadable("mark.old and mark.new must be booleans")
+    mark = MarkChange(_path(record["path"], "mark.path"), record["old"], record["new"])
     return Journal(home, kind, stage, release, link, file, mark)
 
 

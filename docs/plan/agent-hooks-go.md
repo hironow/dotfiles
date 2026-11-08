@@ -412,7 +412,7 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **The plan** (`scripts/agent_hook_plan.py`, pure) follows three tables, sync's, install's, and uninstall's. The actions are `nothing`, `link`, `register`, `install`, `unregister`, `keep`, `scripts`, `uninstalled`, and `stop`.
         - It computes the final `settings.json` once, as a value: the hook part, then the shared merge, with the state file written first.
         - Invariants hold the hook part to what the action makes, and keep the shared merge off `hooks`.
-    - **A registration change** (register, install, unregister) is one journaled change of the link, the file, and the uninstall mark (`scripts/agent_hook_wiring.py`).
+    - **A registration change** (register, install, unregister) is one journaled change of the link, the file, and the uninstall mark (`scripts/agent_hook_wiring.py`). Every journal names the mark's state, even a register's (absent before and after), so every step checks it; a journal without it is refused.
         - Every file goes in whole (temporary file, fsync, rename, fsync the directory).
         - A change's scope is the hook registration, the link, and the mark: a restore puts back the old `hooks` value only, and another program's other keys stay.
         - A crash at any point ends, at the next run, at the old state or the new one.
@@ -424,7 +424,7 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Uninstall** (`just agent-hooks-uninstall <home>`) brings back the scripts' registration and writes the home's mark, which sync honors. `just agent-hooks-install <home>` wires it again; it needs a release.
     - **gc** (`just agent-hooks-gc [--delete]`) lists the releases nothing references:
         - every home's link;
-        - a release named by its ID in any Claude or Codex registration, whatever comes before it (`$HOME`, `~`, or a relative path, which a shell reaches);
+        - a release whose ID appears anywhere in a Claude or Codex registration file, or in a journal (its text and its file bytes), however a path spells it: `$HOME`, `~`, a relative path after a `cd`, or a name built from a variable. Matching the ID errs on keeping;
         - any release a journal names.
         - It deletes only with `--delete`, and refuses while Codex runs, until 3d.2.
     - **Doctor and the AI tools check** read the marks and the journals, and agent-hook's rtk hook.
@@ -517,6 +517,9 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
         - The independent review: gc deleted a release a user block names through `$HOME`, `~`, or a relative path (gc now keeps any release named by its ID); a wired home kept rtk's own hook when it came back (it now registers again, and the merge drops it); Python's fsync is no full flush on macOS (`F_FULLFSYNC` now, as Go's `File.Sync`).
         - Its P3s: one unreadable home stopped every home (it now stops alone); a register journaled an unchanged mark; uninstall could leave a `settings.json` holding `{}`; recovery printed nothing; seven surviving mutants, each now killed by a test.
         - Found on the way (Claude, while integrating): one home's stop aborted the whole sync; the wiring kept another home's link block as a user's, so its hooks would run twice; `scripts/sync_agents.py` became a project-mode script, since ty resolves a PEP 723 script's imports in that script's own environment only.
+    - Round 2 (Codex REVISE, 3 P2, 2 P3; the independent review APPROVE, with P3s and four surviving mutants):
+        - Codex: the public recipe's test passed a plain `go test` too (a recording Go now checks what the tests are told to run); gc still deleted a release a block calls by a short relative path after a `cd` (gc now keeps any release whose ID appears in a registration file or a journal); a null mark in a register's journal let a mark made mid-change pass, and let recovery commit a state the tables stop on (every journal names the mark again, and one without it is refused; this reverses round 1's P3-2); malformed `hooks` shapes still stopped every home (`check_shapes` now stops that home alone); a failed full flush was not pinned as an error.
+        - The independent review: the same malformed shapes; `SyncSession.changed` had no caller (`_print_plan` now uses it); a retry that reads a home made unreadable meanwhile raised out of sync (it now stops that home). Not adopted: a test for `retired_from`'s guard against a non-object block, since `check_shapes` now refuses such a block first.
 - PR 3c's design (Codex, three rounds; APPROVE). Each finding was checked first and adopted:
     - Round 1 (REVISE, 5):
         - freshness through the recipe could not tell exit 1 from 2, and split a path (confirmed: `go run` turns a child's 2 into 1);

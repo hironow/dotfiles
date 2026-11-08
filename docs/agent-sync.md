@@ -124,7 +124,7 @@ Codex（`hooks.json`）は PR 3d.2 まで今のままである。
 2. 前の run が残した変更の記録（`switch-<home>.json`）をすべて片付け、記録ごとに何をしたかを 1 行出す（終わっていれば確かめて消し、途中なら元に戻す）。片付かない記録があれば、そこで run 全体が止まる。
 3. settings の断片（`settings.shared.json`、OS 版、profile、各 home の `settings.sync-local.json`）が `hooks` を持っていたら、何も書かずに止まる。
 4. release を作って確かめる（`hookrelease build` と `check`）。Go が無いか失敗したら、release なしで進む。
-5. home ごとに、読み直した状態から計画を立て、書く直前にもう一度読んで確かめる。状態を読めない home（壊れた `settings.json`、link の場所にあるただのファイル）は、その home だけが止まる。
+5. home ごとに、読み直した状態から計画を立て、書く直前にもう一度読んで確かめる。状態を読めない home（壊れた `settings.json`、`hooks` が配列でないなど形の違うもの、link の場所にあるただのファイル）は、その home だけが止まる。
 
 計画は次のどれかで、home ごとに 1 行出す（`scripts/agent_hook_plan.py`）。
 
@@ -136,7 +136,7 @@ Codex（`hooks.json`）は PR 3d.2 まで今のままである。
 - `uninstalled`：uninstall の印がある home は、今のスクリプトのまま。
 - `stop`：印があるのに配線されているなど、人が決める状態。その home の hook の登録は変えない（ファイルの配置と共有設定の併合はする）。ほかの home は進め、run は exit 1 で終わる。
 
-登録を書き換える変更（register、install、unregister）は、link、`settings.json`、uninstall の印を 1 つの変更として記録しながら進める（`scripts/agent_hook_wiring.py`）。
+登録を書き換える変更（register、install、unregister）は、link、`settings.json`、uninstall の印を 1 つの変更として記録しながら進める（`scripts/agent_hook_wiring.py`）。印は変わらない変更（register）でも記録し、どの段でも確かめる（途中で印が作られたら止まる）。
 途中で止まっても、次の run が元か新しい状態のどちらかにそろえる。
 戻すときは `settings.json` の `hooks` の値だけを戻し、ほかのキー（sync の共有設定や、他のプログラムが書いた値）は今のまま残す。変更の前に `settings.json` が無かった home でも、ファイルは消さず、`hooks` の無いファイルが残る。
 link は消さない。設定の再読み込みを取りこぼした Claude の session も、link をたどれる。
@@ -147,7 +147,7 @@ macOS では、書いたものを `F_FULLFSYNC` でディスクまで届ける�
 
 - `just agent-hooks-uninstall <home>...`：今のスクリプトの登録に戻し、home に印を付ける。印のある home は、sync してもスクリプトのままである。link と release は残す。release が無くても動く。
 - `just agent-hooks-install <home>...`：印を消して配線し直す。release が要る。
-- `just agent-hooks-gc [--delete]`：どこからも指されていない release を一覧する。指しているとみなすのは、各 home の link、Claude と Codex の登録が release を ID で名指すもの（`$HOME` や `~`、相対パスで書いたものも含む）、変更の記録である。消すのは `--delete` のときだけで、消す直前にもう一度確かめる。PR 3d.2 までは、Codex が動いている間は `--delete` を断る（消すたびに確かめ直す）。
+- `just agent-hooks-gc [--delete]`：どこからも指されていない release を一覧する。指しているとみなすのは、各 home の link と、Claude と Codex の登録ファイルか変更の記録のどこかに ID が現れる release である（`$HOME`、`~`、`cd` のあとの相対パス、変数で組み立てた名前で書いたものも含む。迷えば残す）。消すのは `--delete` のときだけで、消す直前にもう一度確かめる。PR 3d.2 までは、Codex が動いている間は `--delete` を断る（消すたびに確かめ直す）。
 - `just agent-hooks-test-installed [home]`：その home の link が指す release を `hookrelease check` で確かめてから、agent-hook のプロセステストを当てる。
 - `just sync-agents-preview`：ロックも書き込みもせず、release も作らない。今ある release で計画を見せ、作らないと分からないことは不明と出す。
 - doctor は、印のある home を INFO、残った記録を WARN で出す。

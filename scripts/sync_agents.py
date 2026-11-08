@@ -1465,7 +1465,8 @@ def _print_plan(
     system: str | None = None,
 ) -> bool:
     """Print sync plan. Returns True if there are changes to apply."""
-    has_changes = bool(hook_session and hook_session.recovered)
+    # A recovery, or any Claude home that changes or stops, is a change.
+    has_changes = bool(hook_session and hook_session.changed)
 
     print("📁 Source:", dotfiles_dir)
     print(f"   Base: {BASE_FILE}")
@@ -1500,7 +1501,6 @@ def _print_plan(
                 f"  📄 settings.json [agent-hook: {hook_plan.action}]"
                 + (f" {hook_plan.reason}" if hook_plan.reason else "")
             )
-            has_changes |= hook_plan.changed or hook_plan.action == "stop"
         elif (
             plan.agent.receives_hooks or plan.agent.receives_codex_hooks
         ) and _merge_hook_settings(

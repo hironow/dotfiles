@@ -342,7 +342,9 @@ def prepared_change(
             str(new_release.resolve()),
         ),
         file=wiring.FileChange(path, before, after),
-        mark=None if kind == "register" else mark,
+        # Every kind names the mark's state, so every step checks it: a
+        # register's mark is absent before and after.
+        mark=mark,
     )
     return wiring.Change(roots, journal)
 
@@ -1466,3 +1468,84 @@ def test_a_full_flush_works_on_this_machine(
     target.write_bytes(b"x")
     wiring.RealDisk().fsync_file(target)
     wiring.RealDisk().fsync_directory(tmp_path)
+
+
+# ---- review round 2 (PR 3d.1) ----
+
+
+def test_a_journal_must_name_the_marks_state(tmp_path: Path) -> None:
+    # given a journal written with no mark, as no sync writes one
+    change = prepared_change(tmp_path)
+    document = wiring._journal_document(change.journal)
+    document["mark"] = None
+    path = change.roots.journal("claude")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(document), encoding="utf-8")
+    # when it is read, then it is refused, and kept
+    with pytest.raises(wiring.JournalUnreadable, match="mark"):
+        wiring.read_journal(FaultDisk(), path)
+    assert path.is_file()
+
+
+def test_a_mark_made_during_a_register_stops_it(tmp_path: Path) -> None:
+    change = prepared_change(tmp_path)
+    mark = change.roots.mark("claude")
+
+    def act(stage: str) -> None:
+        if stage == "verify":
+            # someone marks the home uninstalled while it is being wired
+            mark.parent.mkdir(parents=True, exist_ok=True)
+            mark.write_bytes(b"")
+
+    outcome = wiring.apply_change(change, FaultDisk(), StageVisits(act), FakeVerifier())
+    assert outcome.status == "stopped" and outcome.component == "mark"
+    assert change.roots.journal("claude").is_file()
+
+
+def test_a_mark_made_before_recovery_of_a_register_stops_it(tmp_path: Path) -> None:
+    change = prepared_change(tmp_path)
+
+    def crash(stage: str) -> None:
+        if stage == "verify":
+            os._exit(0)
+
+    fork_apply(change, StageVisits(crash))
+    # given the home marked uninstalled after the crash, yet wired
+    mark = change.roots.mark("claude")
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_bytes(b"")
+    # when recovery runs, then it does not commit that state: it stops
+    outcomes = wiring.recover(change.roots, FaultDisk(), StageVisits(), FakeVerifier())
+    assert [(outcome.status, outcome.component) for outcome in outcomes] == [
+        ("stopped", "mark")
+    ]
+    assert change.roots.journal("claude").is_file()
+
+
+@pytest.mark.parametrize("kind", ["file", "directory"])
+def test_a_failed_full_flush_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    import errno
+    import fcntl
+
+    monkeypatch.setattr(wiring, "flush", REAL_FLUSH)
+    monkeypatch.setattr(wiring.sys, "platform", "darwin")
+
+    def io_error(fd: int, op: int, *args: object) -> int:
+        raise OSError(errno.EIO, "I/O error")
+
+    calls: list[str] = []
+    monkeypatch.setattr(fcntl, "fcntl", io_error)
+    monkeypatch.setattr(wiring.os, "fsync", lambda fd: calls.append("fsync"))
+    target = tmp_path / "f"
+    target.write_bytes(b"x")
+    # when the full flush fails for a reason other than no support, then the
+    # error goes up, and no weaker flush stands in for it
+    with pytest.raises(OSError) as raised:
+        if kind == "file":
+            wiring.RealDisk().fsync_file(target)
+        else:
+            wiring.RealDisk().fsync_directory(tmp_path)
+    assert raised.value.errno == errno.EIO
+    assert calls == []

@@ -613,7 +613,7 @@ def test_gc_reads_every_release_named_by_a_journal(workspace: tuple) -> None:
         wiring.FileChange(
             agent.directory / "settings.json", old_settings, new_settings
         ),
-        None,
+        wiring.MarkChange(roots.mark("claude"), False, False),
     )
     wiring.write_journal(RecordingDisk(), roots.journal("claude"), journal)
     found = hooks.release_references(roots, RecordingDisk(), [])
@@ -1391,7 +1391,7 @@ def test_a_mark_or_state_changed_after_planning_is_planned_again(
         assert result.status == "committed"
 
 
-def test_a_register_journals_no_mark(workspace: tuple) -> None:
+def test_a_register_journals_the_mark_as_absent(workspace: tuple) -> None:
     _, _, roots, _ = workspace
 
     class CrashAtFile:
@@ -1408,9 +1408,11 @@ def test_a_register_journals_no_mark(workspace: tuple) -> None:
             os._exit(91)
     _, status = os.waitpid(child, 0)
     assert os.waitstatus_to_exitcode(status) == 0
-    # the mark does not change in a register, so its journal names none
+    # the mark does not change in a register; its journal still names its
+    # state, absent before and after, so every step checks it
     journal = wiring.read_journal(RecordingDisk(), roots.journal("claude"))
-    assert journal.kind == "register" and journal.mark is None
+    assert journal.kind == "register"
+    assert journal.mark == wiring.MarkChange(roots.mark("claude"), False, False)
 
 
 def test_uninstall_of_a_home_with_no_settings_makes_no_file(workspace: tuple) -> None:
@@ -1422,3 +1424,110 @@ def test_uninstall_of_a_home_with_no_settings_makes_no_file(workspace: tuple) ->
     assert hooks.run_command(configuration(workspace), "uninstall", ["p"]) == 0
     assert roots.mark("claude").is_file()
     assert not (agent.directory / "settings.json").exists()
+
+
+# ---- review round 2 (PR 3d.1) ----
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'cd "$XDG_DATA_HOME/dotfiles/agent-hooks" && ./releases/{id}/agent-hook claude pre',
+        "cd ~/.local/share/dotfiles/agent-hooks/releases/{id} && ./agent-hook claude pre",
+        "R={id}; exec ~/.local/share/dotfiles/agent-hooks/releases/$R/agent-hook",
+    ],
+)
+def test_gc_keeps_a_release_whose_id_a_block_names_anywhere(
+    workspace: tuple, command: str
+) -> None:
+    _, agent, _, source = workspace
+    named = source.evidence()
+    agent.directory.mkdir(parents=True)
+    block = {"type": "command", "command": command.format(id=named.id)}
+    (agent.directory / "settings.json").write_text(
+        json.dumps({"hooks": {"PreToolUse": [{"hooks": [block]}]}}), encoding="utf-8"
+    )
+    assert hooks.run_command(configuration(workspace), "gc", [], delete=True) == 0
+    assert named.path.is_file()
+
+
+def test_gc_keeps_a_release_named_in_a_member_sync_does_not_read(
+    workspace: tuple,
+) -> None:
+    _, agent, _, source = workspace
+    named = source.evidence()
+    agent.directory.mkdir(parents=True)
+    block = {
+        "type": "command",
+        "command": "true",
+        "commandWindows": f"C:\\data\\dotfiles\\agent-hooks\\releases\\{named.id}\\agent-hook.exe",
+    }
+    (agent.directory / "settings.json").write_text(
+        json.dumps({"hooks": {"PreToolUse": [{"hooks": [block]}]}}), encoding="utf-8"
+    )
+    assert hooks.run_command(configuration(workspace), "gc", [], delete=True) == 0
+    assert named.path.is_file()
+
+
+@pytest.mark.parametrize(
+    "settings,state",
+    [
+        ('{"hooks": null}', None),
+        ('{"hooks": []}', None),
+        ('{"hooks": {"PreToolUse": {"a": 1}}}', None),
+        ('{"hooks": {"PreToolUse": null}}', None),
+        ('{"hooks": {"PreToolUse": ["not a block"]}}', None),
+        ('{"hooks": {"PreToolUse": [{"hooks": "not a list"}]}}', None),
+        ('{"hooks": {"PreToolUse": [{"hooks": [1]}]}}', None),
+        ("{}", '{"retired": 1}'),
+        ("{}", '{"retired": [1]}'),
+    ],
+)
+def test_a_home_whose_settings_have_another_shape_stops_alone(
+    workspace: tuple,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    settings: str,
+    state: str | None,
+) -> None:
+    dotfiles, agent, _, source = workspace
+    work = _work_a(tmp_path)
+    work.directory.mkdir(parents=True)
+    (work.directory / "settings.json").write_text(settings, encoding="utf-8")
+    if state is not None:
+        (work.directory / "settings.sync-state.json").write_text(
+            state, encoding="utf-8"
+        )
+    with pytest.raises(SystemExit) as exit_info:
+        sync.sync_mode(
+            dotfiles,
+            auto_yes=True,
+            agents=[work, agent],
+            hook_source=source,
+            env=dict(os.environ),
+            system="Darwin",
+        )
+    out = capsys.readouterr().out
+    assert exit_info.value.code == 1
+    assert "agent-hook: work-a stopped: cannot read the home's state" in out
+    assert "agent-hook: claude wired (1111111111111111)" in out
+    assert (work.directory / "settings.json").read_text(encoding="utf-8") == settings
+
+
+def test_a_home_made_unreadable_while_sync_runs_stops_alone(
+    workspace: tuple,
+) -> None:
+    _, agent, roots, source = workspace
+    with open_session(workspace) as session:
+        assert session.apply_home("claude").status == "committed"
+    # given a plan to move the link, and then the home's settings.json broken
+    # by another program before the write (the retry reads it again)
+    source.id = "2222222222222222"
+    with open_session(workspace) as session:
+        assert session.plans["claude"].plan.action == "link"
+        (agent.directory / "settings.json").write_text("{broken", encoding="utf-8")
+        result = session.apply_home("claude")
+    # then that home stops with the reason, and nothing raises out of sync
+    assert result.status == "stopped"
+    assert "cannot read the home's state" in result.reason
+    assert roots.link("claude").resolve().parent.name == "1111111111111111"

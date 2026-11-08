@@ -147,7 +147,7 @@ def test_the_dev_build_passes(go_env: dict[str, str], link: Path) -> None:
 # ---- the public recipe, end to end ----
 
 
-def _public_recipe(key: str, env: dict[str, str]) -> str:
+def _public_recipe(key: str, env: dict[str, str], go: str | None = None) -> str:
     assert REAL_GO is not None
     done = subprocess.run(
         [
@@ -156,7 +156,7 @@ def _public_recipe(key: str, env: dict[str, str]) -> str:
             str(ROOT / "justfile"),
             "agent-hooks-test-installed",
             key,
-            REAL_GO,
+            go or REAL_GO,
         ],
         cwd=ROOT,
         env=env,
@@ -215,14 +215,35 @@ def _link(env: dict[str, str], key: str, target: Path) -> None:
 
 
 def test_the_recipe_tests_the_release_the_named_homes_link_names(
-    scratch_release: tuple[dict[str, str], Path],
+    scratch_release: tuple[dict[str, str], Path], tmp_path: Path
 ) -> None:
-    # given work-a's link to a real release, and no link for claude
+    # given work-a's link to a real release, no link for claude, and a Go
+    # that records what `go test` is told to test, then runs the real Go
     env, built = scratch_release
     _link(env, "work-a", built)
+    record = tmp_path / "under-test.txt"
+    recording_go = tmp_path / "go"
+    recording_go.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = test ]; then\n'
+        '  printf "%s\\n%s\\n" "${AGENT_HOOK_UNDER_TEST-unset}" '
+        '"${AGENT_HOOK_EXPECT_RELEASE-unset}" > "$UNDER_TEST_RECORD"\n'
+        "fi\n"
+        'exec "$REAL_GO" "$@"\n',
+        encoding="utf-8",
+    )
+    recording_go.chmod(0o755)
+    assert REAL_GO is not None
+    env = {**env, "UNDER_TEST_RECORD": str(record), "REAL_GO": REAL_GO}
     # when the recipe tests work-a, then the release passes agent-hook's tests
-    out = _public_recipe("work-a", env)
+    out = _public_recipe("work-a", env, str(recording_go))
     assert out.startswith("exit 0"), out
+    # and the tests were told to run work-a's link, as the release it names
+    link = Path(env["XDG_DATA_HOME"]) / "dotfiles/agent-hooks/current/work-a/agent-hook"
+    assert record.read_text(encoding="utf-8").splitlines() == [
+        str(link),
+        built.parent.name,
+    ]
     assert (
         "ok  \tgithub.com/hironow/dotfiles/tools/agent-hooks/cmd/agent-hook" in out
     ), out
