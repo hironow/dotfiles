@@ -410,16 +410,6 @@ def test_a_second_edit_stops_without_writing_the_home(workspace: tuple) -> None:
     assert disk.renames == []
 
 
-class FakeProcesses:
-    def __init__(self, running: bool = False) -> None:
-        self.is_running = running
-        self.calls = 0
-
-    def running(self) -> bool:
-        self.calls += 1
-        return self.is_running
-
-
 def configuration(workspace: tuple) -> hooks.HookConfiguration:
     dotfiles, agent, _, source = workspace
     return sync.hook_configuration(
@@ -428,7 +418,6 @@ def configuration(workspace: tuple) -> hooks.HookConfiguration:
         source=source,
         all_agents=[agent],
         system="Darwin",
-        processes=FakeProcesses(),
     )
 
 
@@ -634,13 +623,6 @@ def test_gc_reads_every_release_named_by_a_journal(workspace: tuple) -> None:
     wiring.write_journal(RecordingDisk(), roots.journal("claude"), journal)
     found = hooks.release_references(roots, RecordingDisk(), [])
     assert found == {item.path for item in evidence}
-
-
-def test_gc_delete_refuses_a_running_codex(workspace: tuple) -> None:
-    config = replace(configuration(workspace), processes=FakeProcesses(True))
-    unused = workspace[3].evidence()
-    assert hooks.run_command(config, "gc", [], delete=True) == 1
-    assert unused.path.is_file()
 
 
 def test_install_with_equal_registration_moves_only_the_mark(workspace: tuple) -> None:
@@ -982,7 +964,6 @@ def test_gc_reads_codex_registrations_independently_of_ownership(
         source=source,
         all_agents=[agent, codex],
         system="Darwin",
-        processes=FakeProcesses(),
     )
     assert hooks.run_command(config, "gc", [], delete=True) == 0
     assert direct.path.is_file()
@@ -1034,33 +1015,6 @@ def test_cli_parser_passes_only_explicit_scratch_configuration(
     config = configuration(workspace)
     assert hooks.main(["uninstall", "p"], configure=lambda _: config) == 0
     assert config.roots.mark("claude").exists()
-
-
-@pytest.mark.parametrize(
-    "exit_code,expected", [(0, True), (1, False), (2, None), (None, None)]
-)
-def test_pgrep_port_distinguishes_no_process_from_a_failed_query(
-    workspace: tuple,
-    monkeypatch: pytest.MonkeyPatch,
-    exit_code: int | None,
-    expected: bool | None,
-) -> None:
-    calls = []
-
-    def fake_query(args, *, timeout, env):
-        calls.append((args, timeout, env["HOME"]))
-        return release.Outcome(
-            exit_code, reason="query failed" if exit_code is None else None
-        )
-
-    monkeypatch.setattr(release, "run", fake_query)
-    processes = hooks.PgrepCodex(dict(os.environ))
-    if expected is None:
-        with pytest.raises(hooks.SyncStopped):
-            processes.running()
-    else:
-        assert processes.running() is expected
-    assert calls == [(["pgrep", "-x", "codex"], 30, os.environ["HOME"])]
 
 
 def test_the_real_command_entry_uninstalls_only_in_explicit_scratch_homes(
@@ -1350,22 +1304,6 @@ def test_a_recovery_is_printed_and_is_no_nothing_to_do(
     assert "agent-hook: claude recovered: committed" in out
     assert "already in sync" not in out
     assert not roots.journal("claude").exists()
-
-
-def test_gc_stops_when_codex_starts_before_a_deletion(workspace: tuple) -> None:
-    class StartsLater:
-        def __init__(self) -> None:
-            self.answers = [False, True]
-
-        def running(self) -> bool:
-            return self.answers.pop(0) if self.answers else True
-
-    # given an unreferenced release, and Codex starting after gc's first check
-    unused = workspace[3].evidence()
-    config = replace(configuration(workspace), processes=StartsLater())
-    # when gc deletes, then it stops before the deletion
-    assert hooks.run_command(config, "gc", [], delete=True) == 1
-    assert unused.path.is_file()
 
 
 @pytest.mark.parametrize("changed", ["mark", "state"])
@@ -1790,7 +1728,6 @@ def codex_configuration(codex_workspace: tuple) -> hooks.HookConfiguration:
         source=source,
         all_agents=[codex],
         system="Darwin",
-        processes=FakeProcesses(),
     )
 
 
@@ -1992,3 +1929,22 @@ def test_a_codex_crash_after_the_file_write_is_restored(
     # they were
     assert json.loads(hooks_json.read_bytes()) == json.loads(scripts_only)
     assert not roots.journal("codex").exists()
+
+
+def test_gc_deletes_while_codex_runs(codex_workspace: tuple) -> None:
+    """Sync never removes a group that names a release, and gc keeps every
+    release a home's link or a registration names, so a running Codex needs
+    no refusal (PR 3d.2). gc asks for no process at all."""
+    _, _, roots, source = codex_workspace
+    config = codex_configuration(codex_workspace)
+    assert not hasattr(config, "processes")
+    # given Codex wired to one release, and an older one nothing names
+    source.id = "1111111111111111"
+    unused = source.evidence()
+    source.id = "2222222222222222"
+    assert hooks.run_command(config, "install", ["x"]) == 0
+    wired = roots.link("codex").resolve()
+    # when gc deletes, then only the unreferenced release goes
+    assert hooks.run_command(config, "gc", [], delete=True) == 0
+    assert not unused.path.exists()
+    assert wired.is_file()

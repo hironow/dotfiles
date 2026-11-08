@@ -278,32 +278,12 @@ class ReleaseDisk(wiring.Disk, Protocol):
     def lock_releases(self, path: Path) -> AbstractContextManager[None]: ...
 
 
-class CodexProcesses(Protocol):
-    def running(self) -> bool: ...
-
-
-class PgrepCodex:
-    def __init__(self, env: Mapping[str, str]) -> None:
-        self.env = dict(env)
-
-    def running(self) -> bool:
-        outcome = release_tools.run(
-            ["pgrep", "-x", "codex"],
-            env=self.env,
-            timeout=release_tools.PROGRAM_TIMEOUT,
-        )
-        if outcome.exit_code not in {0, 1} or outcome.timed_out:
-            raise SyncStopped(f"cannot check running Codex processes: {outcome.reason}")
-        return outcome.exit_code == 0
-
-
 @dataclass(frozen=True)
 class HookConfiguration:
     roots: wiring.Roots
     homes: tuple[HookHome, ...]
     registrations: tuple[Path, ...]
     source: ReleaseSource
-    processes: CodexProcesses
     resolve: Callable[[list[str]], list[str]]
     validate: Callable[[list[str]], None]
     system: str
@@ -830,8 +810,6 @@ def collect_releases(
         "agent-hook gc: after removing a direct release block, restart sessions that read it before deleting that release"
     )
     directory = config.roots.data / "releases"
-    if delete and config.processes.running():
-        raise SyncStopped("Codex is running; gc --delete is refused until PR 3d.2")
     if not disk.exists(directory):
         return
     # Only the layout hookrelease makes: a releases directory that is a link
@@ -860,10 +838,6 @@ def collect_releases(
                 continue
             print(f"agent-hook gc: unreferenced {path}")
             if delete:
-                if config.processes.running():
-                    raise SyncStopped(
-                        "Codex started; gc --delete is refused until PR 3d.2"
-                    )
                 if binary in release_references(
                     config.roots, disk, config.registrations
                 ):

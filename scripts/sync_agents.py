@@ -1267,7 +1267,6 @@ def hook_configuration(
     source: hook_sync.ReleaseSource | None = None,
     all_agents: list[AgentTarget] | None = None,
     system: str | None = None,
-    processes: hook_sync.CodexProcesses | None = None,
 ) -> hook_sync.HookConfiguration:
     """Connect the hook commands to the same targets, aliases, and value merges."""
     dotfiles_dir = DOTFILES_DIR if dotfiles_dir is None else dotfiles_dir
@@ -1294,7 +1293,6 @@ def hook_configuration(
             if agent.receives_hooks or agent.receives_codex_hooks
         ),
         source=hook_sync.GoReleaseSource(env) if source is None else source,
-        processes=hook_sync.PgrepCodex(env) if processes is None else processes,
         resolve=_resolve_targets,
         validate=lambda keys: validate_hook_layers(
             dotfiles_dir, [agent for agent in agents if agent.key in keys], system

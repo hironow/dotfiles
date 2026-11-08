@@ -146,7 +146,7 @@ macOS では、書いたものを `F_FULLFSYNC` でディスクまで届ける�
 
 - `just agent-hooks-uninstall <home>...`：今のスクリプトの登録に戻し、home に印を付ける。印のある home は、sync してもスクリプトのままである。link と release は残す。release が無くても動く。
 - `just agent-hooks-install <home>...`：印を消して配線し直す。release が要る。
-- `just agent-hooks-gc [--delete]`：どこからも指されていない release を一覧する。指しているとみなすのは、各 home の link と、Claude と Codex の登録ファイルか変更の記録のどこかに ID がそのまま現れる release である（ファイルの bytes と、harness と同じに JSON を読んだ文字列の両方を探す。`$HOME`、`~`、`cd` のあとの相対パス、変数に入れた ID も含む。迷えば残す）。シェルが実行時に断片から組み立てる名前までは追えない。`releases` が link になっているなど hookrelease の作る配置でなければ、何も消さずに止まる。消すのは `--delete` のときだけで、消す直前にもう一度確かめる。PR 3d.2 までは、Codex が動いている間は `--delete` を断る（消すたびに確かめ直す）。
+- `just agent-hooks-gc [--delete]`：どこからも指されていない release を一覧する。指しているとみなすのは、各 home の link と、Claude と Codex の登録ファイルか変更の記録のどこかに ID がそのまま現れる release である（ファイルの bytes と、harness と同じに JSON を読んだ文字列の両方を探す。`$HOME`、`~`、`cd` のあとの相対パス、変数に入れた ID も含む。迷えば残す）。シェルが実行時に断片から組み立てる名前までは追えない。`releases` が link になっているなど hookrelease の作る配置でなければ、何も消さずに止まる。消すのは `--delete` のときだけで、消す直前にもう一度確かめる。Codex が動いていても消してよい（sync は release を名指す group を消さず、gc はそれが名指す release を残す）。
 - `just agent-hooks-test-installed [home]`：その home の link が指す release を `hookrelease check` で確かめてから、agent-hook のプロセステストを当てる。
 - `just sync-agents-preview`：ロックも書き込みもせず、release も作らない。今ある release で計画を見せ、作らないと分からないことは不明と出す。
 - doctor は、印のある home を INFO、残った記録を WARN で出す。
