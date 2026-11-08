@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pi pre hook input, as the agent-hook shim sends it",
+  "description": "A shim protocol v1 request (tools/agent-hooks/shim) for a Pi call before the tool runs (Pi's tool_call). input is the tool's arguments as Pi hands them to its extensions: after the tool's prepareArguments, Pi's coercion, and its schema check (Pi 1.4.0 agent-loop.js prepareToolCall, agent-session.js _beforeToolCall). Written from Pi 1.4.0's tool schemas and events captured from it. Unknown members of input are allowed: Pi's TypeBox objects allow them.",
+  "type": "object",
+  "required": [
+    "v",
+    "harness",
+    "event",
+    "tool",
+    "input",
+    "cwd"
+  ],
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "harness": {
+      "const": "pi"
+    },
+    "event": {
+      "const": "pre"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "input": {
+      "type": "object"
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "context": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "tool": {
+            "const": "bash"
+          }
+        },
+        "required": [
+          "tool"
+        ]
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "$ref": "#/$defs/bash"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tool": {
+            "const": "write"
+          }
+        },
+        "required": [
+          "tool"
+        ]
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "$ref": "#/$defs/write"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tool": {
+            "const": "edit"
+          }
+        },
+        "required": [
+          "tool"
+        ]
+      },
+      "then": {
+        "properties": {
+          "input": {
+            "$ref": "#/$defs/edit"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "bash": {
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "number"
+        }
+      }
+    },
+    "write": {
+      "type": "object",
+      "required": [
+        "path",
+        "content"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "edit": {
+      "type": "object",
+      "required": [
+        "path",
+        "edits"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "oldText",
+              "newText"
+            ],
+            "properties": {
+              "oldText": {
+                "type": "string"
+              },
+              "newText": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-ir-tool": "/tool",
+  "x-ir": {
+    "command": [
+      "/input/command"
+    ],
+    "filePath": [
+      "/input/path"
+    ],
+    "content": [
+      "/input/content"
+    ],
+    "contents": [
+      "/input/edits/*/newText"
+    ],
+    "cwd": [
+      "/cwd"
+    ]
+  }
+}

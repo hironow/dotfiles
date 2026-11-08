@@ -52,8 +52,10 @@ kotlin = "latest"
 java = "latest"
 gradle = "latest"
 python = "latest"
-vp = "latest"
-markdownlint-cli2 = "latest"
+# Permanent main npm CLIs: override age only inside their dedicated installs.
+# Keep auxiliary LSP/MCP and temporary runners unchanged; dependency-policy spoke.
+vp = { version = "latest", bun_args = "--minimum-release-age=0" }
+markdownlint-cli2 = { version = "latest", bun_args = "--minimum-release-age=0" }
 # prek — pre-commit runner. Declared here so it resolves on the Mac
 # host outside the dotfiles dir (ADR 0023 is activate-only with no
 # shims PATH, so a repo-only tool is invisible elsewhere).
@@ -61,7 +63,7 @@ prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
-"npm:portless" = "0.15.9"
+"npm:portless" = { version = "0.15.9", bun_args = "--minimum-release-age=0" }
 # eza — modern ls replacement aliased unconditionally-now-guarded in
 # .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
 # it on PATH for every dir; without a config source the installed
@@ -96,6 +98,30 @@ starship = "1.27.0"
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
 fzf = "0.74.5"
 
+# Review, content search, path search, and replacement tools on every host.
+# Use upstream binaries through aqua, including native Windows (no Node
+# wrapper or Ubuntu's fdfind rename). Exact pins keep CLI syntax consistent.
+# hunk needs mise >= 2026.8.6 on Windows; its binaries support Windows x64
+# and macOS/Linux x64 or arm64 (Linux needs glibc). See docs/cli-tools.md.
+hunk = "0.24.1"
+ripgrep = "15.2.0"
+fd = "10.5.0"
+sd = "1.1.0"
+# Read-only structured queries and targeted process diagnosis.
+# Explicit aqua backends identify upstream jq/mikefarah yq and resolve fq
+# even without a bare registry shorthand.
+witr = "0.3.4"
+"aqua:jqlang/jq" = "1.8.2"
+"aqua:mikefarah/yq" = "4.54.1"
+"aqua:wader/fq" = "0.18.0"
+# mq: only the main raw CLI, not helper binaries or deb/rpm. Skip Intel macOS
+# (no upstream asset), even in unrestricted `mise install`. Per-platform SHA256
+# pins are checked BEFORE execution: API + checksums.txt agree on integrity,
+# not publisher provenance. Keep inline for tools/mise-versions' TOML subset.
+# Explicit platform assets also avoid host-expanded os()/arch() templates
+# incorrectly resolving every cross-platform lock entry to the host binary.
+"github:harehare/mq" = { version = "0.10.0", os = ["macos/arm64", "linux/x64", "linux/arm64", "windows/x64", "windows/arm64"], rename_exe = "mq", platforms = { macos-arm64 = { asset_pattern = "mq-aarch64-apple-darwin", checksum = "sha256:47ddad7ff5860ea40fdcef43fd2c6fe674390bcc57fa30f3971f608223739649" }, linux-x64 = { asset_pattern = "mq-x86_64-unknown-linux-gnu", checksum = "sha256:9e94373ca20142b1da3bfa4f89a4b10a8d6feefb61301df6e240fd68794632d3" }, linux-arm64 = { asset_pattern = "mq-aarch64-unknown-linux-gnu", checksum = "sha256:46a6022e7cd6e0e79a3478956833f52b531919416765c3652361c4f2b8f01ff0" }, windows-x64 = { asset_pattern = "mq-x86_64-pc-windows-msvc.exe", checksum = "sha256:e5f28d6e0763d3ae00f476d2277e90e19c6e1efe5a61c748bf77126cf3136223" }, windows-arm64 = { asset_pattern = "mq-aarch64-pc-windows-msvc.exe", checksum = "sha256:d99c4a7ed5e03fd1da1955b69c05e624ce269b3d4e7ab76a738ece9dbeba5ff7" } } }
+
 # rtk + headroom — base tooling every agent session goes through (ADR 0047):
 # rtk compresses command output (dotfiles owns its Claude hook; never run
 # `rtk init -g`), headroom compresses what reaches the model through its local
@@ -103,13 +129,13 @@ fzf = "0.74.5"
 # server `headroom proxy` / `wrap` run, `code` its AST-aware code compression
 # (`all` would add torch and more); Python 3.13 is the version its docs install
 # with (no CI leg covers 3.14). headroom is pinned so a move is a deliberate,
-# changelog-read step; headroom-ai itself is exempt from uv's 7-day
-# exclude-newer (ADR 0028, user decision 2026-10-01) so the pin can take the
-# newest release, while its dependencies stay quarantined. Their
+# changelog-read step. Its permanent dedicated tool environment (including
+# dependencies) is exempt from uv's seven-day wait; repository dependencies
+# keep their own policy. The command-scoped override does not reset uv globally. Their
 # telemetry is pinned off in [env] below. After either moves, `just doctor`
 # checks the contracts dotfiles relies on (rtk-guard, *-telemetry, headroom-cli).
 rtk = "latest"
-"pypi:headroom-ai" = { version = "0.41.0", extras = "proxy,code", uvx_args = "--python 3.13 --exclude-newer-package headroom-ai=false" }
+"pypi:headroom-ai" = { version = "0.41.0", extras = "proxy,code", uvx_args = "--python 3.13 --exclude-newer 0d" }
 
 # quint — the Quint model checker, i.e. the formal-methods gate: a Quint model
 # plus a seeded simulation is mandatory for autonomous stop/delete logic in any
@@ -123,7 +149,7 @@ rtk = "latest"
 # exactly (ADR 0006): a checker sitting under a mandatory gate must change its
 # verdicts deliberately. `quint verify` (apalache) needs a JVM, `quint run` /
 # `quint test` do not — `java` is already declared above either way.
-"npm:@informalsystems/quint" = "0.33.0"
+"npm:@informalsystems/quint" = { version = "0.33.0", bun_args = "--minimum-release-age=0" }
 
 # LSP servers for the shared Claude plugins (dump/harness/claude-plugins.json,
 # ADR 0057): gopls-lsp runs `gopls`, typescript-lsp runs
@@ -146,7 +172,7 @@ rtk = "latest"
 # tools update immediately (see [settings] below). Authenticate on first
 # use (`codex login`, `claude /login`, `copilot auth`, `pi auth`;
 # antigravity authenticates on first run).
-"npm:@openai/codex" = "latest"
+"npm:@openai/codex" = { version = "latest", bun_args = "--minimum-release-age=0" }
 # claude-code hardlinks its native binary in a postinstall (install.cjs).
 # Under the bun backend (settings.npm below) that script runs because the
 # package is on bun's default-trusted dependencies list — no per-tool config
@@ -154,9 +180,9 @@ rtk = "latest"
 # only reads npm_args under the npm backend (bun reads bun_args), so it was
 # inert, and its comment wrongly credited it for the working binary
 # (ADR 0040 corrects ADR 0036 on this point).
-"npm:@anthropic-ai/claude-code" = "latest"
-"npm:@github/copilot" = "latest"
-"npm:@earendil-works/pi-coding-agent" = "latest"
+"npm:@anthropic-ai/claude-code" = { version = "latest", bun_args = "--minimum-release-age=0" }
+"npm:@github/copilot" = { version = "latest", bun_args = "--minimum-release-age=0" }
+"npm:@earendil-works/pi-coding-agent" = { version = "latest", bun_args = "--minimum-release-age=0" }
 
 # playwright-cli (microsoft/playwright-cli) — the browser-automation CLI the
 # hironow/skills `playwright-cli` skill runs. The skill expects
@@ -168,7 +194,7 @@ rtk = "latest"
 # `--browser=chrome`, or `playwright-cli install-browser` on a host without
 # Chrome. Do NOT run `playwright-cli install --skills`: skills are hironow/skills'
 # and arrive via `just skills-place`.
-"npm:@playwright/cli" = "latest"
+"npm:@playwright/cli" = { version = "latest", bun_args = "--minimum-release-age=0" }
 
 # antigravity (Google's agentic CLI) — replaces gemini-cli (per Google's
 # "Transitioning Gemini CLI to Antigravity CLI"). GitHub-release binary
@@ -181,6 +207,15 @@ rtk = "latest"
 # bump on `just update-all` rounds together with the other pins here.
 "github:google-antigravity/antigravity-cli" = { version = "latest", rename_exe = "antigravity" }
 
+# AWS CLI v2: official bundled runtime, never the PyPI v1 package. Exact artifact
+# hashes precede all execution. Mac pkg: Apple notarized, Team 94KV3E626L;
+# Linux zips: AWS CLI Team signature FB5DB77FD5C118B80511ADA8A6310ACC4672475C.
+# The self-contained Mac hook expands only inside the engine-authorized version
+# directory: no installer/sudo, root-owned legacy replacement or credentials IO.
+# Keep inline for the frozen-version parser. String "false" is a native mise bool
+# option. Windows stays external; Linux requires glibc. See docs/cli-tools.md.
+"http:aws" = { version = "2.39.6", os = ["macos/x64", "macos/arm64", "linux/x64", "linux/arm64"], shared_extraction = "false", bin = "aws", postinstall = "set -eu\ncase \"$(/usr/bin/uname -s)\" in\n  Linux) exit 0 ;;\n  Darwin) ;;\n  *) printf '%s\\n' 'Unsupported AWS package host' >&2; exit 65 ;;\nesac\nfail() { printf 'AWS unpack refused: %s\\n' \"$1\" >&2; exit 65; }\n[ \"${MISE_TOOL_NAME-}\" = 'http:aws' ] || fail 'unexpected tool identity'\n[ \"${MISE_TOOL_VERSION-}\" = '2.39.6' ] || fail 'unexpected tool version'\nroot=${MISE_TOOL_INSTALL_PATH-}\ncase \"$root\" in /*) ;; *) fail 'install path must be absolute' ;; esac\n[ \"$root\" != / ] || fail 'root directory is not an install'\n[ -d \"$root\" ] && [ ! -L \"$root\" ] || fail 'install directory is missing or a symlink'\ntrusted_path=\"$HOME/.local/bin:$HOME/.local/share/mise/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin\"\nmanager=$(PATH=\"$trusted_path\" command -v mise) || fail 'trusted mise manager not found'\ncase \"$manager\" in /*) ;; *) fail 'mise manager must be an absolute path' ;; esac\n[ -f \"$manager\" ] && [ -x \"$manager\" ] || fail 'mise manager is not executable'\nexpected=$(PATH=\"$trusted_path\" \"$manager\" -C / where http:aws@2.39.6) || fail 'engine path query rejected current installation'\ncase \"$expected\" in /*) ;; *) fail 'engine path must be absolute' ;; esac\n[ \"$expected\" != / ] || fail 'root directory is not an install'\n[ -d \"$expected\" ] && [ ! -L \"$expected\" ] || fail 'engine directory is missing or a symlink'\nroot=$(CDPATH= cd \"$root\" && pwd -P)\nexpected=$(CDPATH= cd \"$expected\" && pwd -P)\n[ \"$root\" = \"$expected\" ] || fail 'install path differs from engine path'\npayload=\"$root/payload\"\n[ -d \"$payload\" ] && [ ! -L \"$payload\" ] || fail 'payload directory is missing or a symlink'\n[ \"$(CDPATH= cd \"$payload\" && pwd -P)\" = \"$root/payload\" ] || fail 'payload escaped install directory'\nraw=\"$payload/aws\"\n[ -f \"$raw\" ] && [ ! -L \"$raw\" ] || fail 'raw package must be a regular non-symlink file'\nfor entry in \"$payload\"/.[!.]* \"$payload\"/..?* \"$payload\"/*; do\n  if [ -e \"$entry\" ] || [ -L \"$entry\" ]; then\n    [ \"$entry\" = \"$raw\" ] || fail 'unexpected pre-existing payload entry'\n  fi\ndone\nsum=$(/usr/bin/shasum -a 256 \"$raw\")\n[ \"${sum%% *}\" = 'ec350e9e8e9ceb49ccd2cb7fcdc69f3b6a424f83dbae64f3dc6499157a5eca07' ] || fail 'raw package digest changed'\ntmp=$(/usr/bin/mktemp -d \"$root/.aws-pkg.XXXXXX\")\ntrap '/bin/rm -rf \"$tmp\"' 0\nLC_ALL=C /usr/sbin/pkgutil --check-signature \"$raw\" > \"$tmp/signature\"\n/usr/bin/grep -E 'Developer ID Installer: .*\\(94KV3E626L\\)' \"$tmp/signature\" >/dev/null || fail 'unexpected Apple developer Team ID'\n/usr/bin/grep -F 'Apple Root CA' \"$tmp/signature\" >/dev/null || fail 'missing Apple certificate chain'\n/usr/bin/grep -E 'trusted by (the Apple notary service|macOS)' \"$tmp/signature\" >/dev/null || fail 'package trust not confirmed'\n/usr/sbin/pkgutil --expand-full \"$raw\" \"$tmp/expanded\"\nsource=\"$tmp/expanded/aws-cli.pkg/Payload/aws-cli\"\n[ -d \"$source\" ] && [ ! -L \"$source\" ] || fail 'unexpected package layout'\n[ -f \"$source/aws\" ] && [ -x \"$source/aws\" ] && [ ! -L \"$source/aws\" ] || fail 'missing payload launcher'\n[ -f \"$source/aws_completer\" ] && [ -x \"$source/aws_completer\" ] && [ ! -L \"$source/aws_completer\" ] || fail 'missing payload completer'\n# The signature-verified 2.39.6 payload has no links; any new layout needs review.\n[ -z \"$(/usr/bin/find \"$source\" -type l -print)\" ] || fail 'unexpected payload links'\n/bin/rm -f \"$raw\"\n/bin/cp -pR \"$source/.\" \"$payload/\"\n[ -f \"$payload/aws\" ] && [ -x \"$payload/aws\" ] && [ ! -L \"$payload/aws\" ] || fail 'invalid installed launcher'\n[ -f \"$payload/aws_completer\" ] && [ -x \"$payload/aws_completer\" ] && [ ! -L \"$payload/aws_completer\" ] || fail 'invalid installed completer'\n/usr/bin/file -b \"$payload/aws\" | /usr/bin/grep -F 'arm64' >/dev/null || fail 'installed launcher lacks ARM64'\n", platforms = { macos-arm64 = { url = "https://awscli.amazonaws.com/AWSCLIV2-2.39.6.pkg", checksum = "sha256:ec350e9e8e9ceb49ccd2cb7fcdc69f3b6a424f83dbae64f3dc6499157a5eca07", format = "raw", bin_path = "payload" }, macos-x64 = { url = "https://awscli.amazonaws.com/AWSCLIV2-2.39.6.pkg", checksum = "sha256:ec350e9e8e9ceb49ccd2cb7fcdc69f3b6a424f83dbae64f3dc6499157a5eca07", format = "raw", bin_path = "payload" }, linux-x64 = { url = "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.39.6.zip", checksum = "sha256:7a121264f2637a3b90767aaf5bdd43ee88b8c925a931d0479fa2ce22b1a2fa76", format = "zip", bin_path = "aws/dist" }, linux-arm64 = { url = "https://awscli.amazonaws.com/awscli-exe-linux-aarch64-2.39.6.zip", checksum = "sha256:5763332bdcb432c19ee122545856fd350c3bb306753212deedcfccc76f4d20c3", format = "zip", bin_path = "aws/dist" } } }
+
 # Cloud-service dev CLIs (npm-distributed). Declared "latest" like the
 # AI CLIs above — tracks the true newest release. Concrete pins for the
 # devcontainer image live in config/mise/image-tools.toml. Explicit `npm:`
@@ -189,10 +224,10 @@ rtk = "latest"
 #   @dataform/cli -> Dataform (BigQuery ELT)
 # Keep cf on an explicit beta pin until 1.0.0. When bumping it, also update
 # config/mise/image-tools.toml and run `just mise-versions-sync` for host/image parity.
-"npm:cf" = "1.0.0-beta.20"
-"npm:resend-cli" = "latest"
-"npm:@stripe/cli" = "latest"
-"npm:@dataform/cli" = "latest"
+"npm:cf" = { version = "1.0.0-beta.20", bun_args = "--minimum-release-age=0" }
+"npm:resend-cli" = { version = "latest", bun_args = "--minimum-release-age=0" }
+"npm:@stripe/cli" = { version = "latest", bun_args = "--minimum-release-age=0" }
+"npm:@dataform/cli" = { version = "latest", bun_args = "--minimum-release-age=0" }
 
 [env]
 # Anonymous telemetry off for the base tools (ADR 0047): rtk only reports after
@@ -223,9 +258,10 @@ pin = true
 # release on `mise up` (the 7d wait cost current models/protocol fixes
 # in the LLM CLIs and was friction everywhere else). Use explicit "0d",
 # a valid zero-day duration — removing the key would fall back to mise's
-# built-in 24h default quarantine. Dependency installs remain
-# quarantined via the npmrc min_release_age / uv exclude-newer guards
-# written by `just harden-env` (ADR 0028). To restore temporarily:
+# built-in 24h default quarantine. Global npm/uv defaults from harden-env and
+# repository dependency policies stay intact (ADR 0053); permanent main CLIs
+# override age only in their own bun/uv tool installs above. Do not treat npmrc
+# alone as proof of Bun enforcement. To restore the mise-level wait temporarily:
 # minimum_release_age = "7d"
 minimum_release_age = "0d"
 

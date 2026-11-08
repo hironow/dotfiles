@@ -1,0 +1,25 @@
+{
+  "tool": "edit_file",
+  "kind": "edit",
+  "fields": {
+    "filePath": {
+      "string": "/home/user/project/note.md"
+    },
+    "content": {
+      "string": "bye"
+    },
+    "sessionId": {
+      "string": "00000000-0000-4000-8000-000000000001"
+    },
+    "callId": {
+      "json": "6"
+    }
+  },
+  "lists": {
+    "workspaces": [
+      {
+        "string": "/home/user/project"
+      }
+    ]
+  }
+}

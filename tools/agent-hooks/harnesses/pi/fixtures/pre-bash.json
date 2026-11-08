@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "harness": "pi",
+  "event": "pre",
+  "tool": "bash",
+  "input": {
+    "command": "echo capture-run"
+  },
+  "cwd": "/home/user/project"
+}

@@ -1,0 +1,22 @@
+{
+  "tool": "run_command",
+  "kind": "shell",
+  "fields": {
+    "command": {
+      "string": "echo capture-run"
+    },
+    "sessionId": {
+      "string": "00000000-0000-4000-8000-000000000001"
+    },
+    "callId": {
+      "json": "2"
+    }
+  },
+  "lists": {
+    "workspaces": [
+      {
+        "string": "/home/user/project"
+      }
+    ]
+  }
+}

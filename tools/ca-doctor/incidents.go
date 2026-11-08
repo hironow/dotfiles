@@ -28,12 +28,25 @@ type Incident struct {
 	Floors      map[string][]VersionFloor `json:"floors"`
 	Pending     []string                  `json:"pending"`
 	Advice      []string                  `json:"advice"`
+	// UntrustedRoots are the roots this incident's test chains end at, which
+	// a fixed CA bundle does not hold (ca-doctor os-bundle drops them).
+	UntrustedRoots []UntrustedRoot `json:"untrustedRoots"`
 }
+
+// UntrustedRoot names a root certificate by the SHA-256 of its DER, in
+// lowercase hex, with its subject for people to read.
+type UntrustedRoot struct {
+	SHA256  string `json:"sha256"`
+	Subject string `json:"subject"`
+}
+
+const maxUntrustedRoots = 16
 
 var (
 	incidentID               = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 	dnsHost                  = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
 	versionBranch            = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?$`)
+	sha256Hex                = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	incidents, incidentError = loadIncidents()
 )
 
@@ -86,12 +99,29 @@ func ParseIncident(data []byte) (Incident, error) {
 			seenBranches[floor.Branch] = true
 		}
 	}
+	if err := validateUntrustedRoots(incident.UntrustedRoots); err != nil {
+		return incident, err
+	}
 	for _, tool := range incident.Pending {
 		if !versionToolSupported(tool) && tool != "bun" {
 			return incident, errors.New("invalid pending tool")
 		}
 	}
 	return incident, nil
+}
+
+func validateUntrustedRoots(roots []UntrustedRoot) error {
+	if len(roots) > maxUntrustedRoots {
+		return errors.New("too many untrusted roots")
+	}
+	seen := map[string]bool{}
+	for _, root := range roots {
+		if !sha256Hex.MatchString(root.SHA256) || strings.TrimSpace(root.Subject) == "" || seen[root.SHA256] {
+			return errors.New("invalid/duplicate untrusted root")
+		}
+		seen[root.SHA256] = true
+	}
+	return nil
 }
 
 func versionToolSupported(tool string) bool {

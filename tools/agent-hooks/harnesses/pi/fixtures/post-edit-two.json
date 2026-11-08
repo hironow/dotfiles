@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "harness": "pi",
+  "event": "post",
+  "tool": "edit",
+  "input": {
+    "edits": [
+      {
+        "oldText": "alpha",
+        "newText": "one"
+      },
+      {
+        "oldText": "beta",
+        "newText": "two"
+      }
+    ],
+    "path": "notes.txt"
+  },
+  "cwd": "/home/user/project",
+  "ok": true
+}

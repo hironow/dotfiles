@@ -482,6 +482,27 @@ else
   log_warn 'ai-tools' 'uv missing: cannot check rtk / headroom'
 fi
 
+# Agent-hook: registration, release freshness, logs, and Codex shell startup.
+# Kept out of status: checking freshness rebuilds the wired releases.
+if has uv; then
+  agent_hook_rc=0
+  agent_hook_out="$(uv run --frozen "$(dirname "${BASH_SOURCE[0]}")/agent_hook_doctor.py" 2>&1)" || agent_hook_rc=$?
+  agent_hook_lines=0
+  while IFS= read -r line; do
+    case "$line" in
+      'OK   '*) ok=$((ok+1)); agent_hook_lines=$((agent_hook_lines+1)); printf '%s\n' "$line" ;;
+      'WARN '*) warn=$((warn+1)); agent_hook_lines=$((agent_hook_lines+1)); printf '%s\n' "$line" ;;
+      'ERR  '*) err=$((err+1)); agent_hook_lines=$((agent_hook_lines+1)); printf '%s\n' "$line" ;;
+      'INFO '*) info=$((info+1)); agent_hook_lines=$((agent_hook_lines+1)); printf '%s\n' "$line" ;;
+    esac
+  done <<<"$agent_hook_out"
+  if [ "$agent_hook_rc" -ne 0 ] || [ "$agent_hook_lines" -eq 0 ]; then
+    log_warn 'agent-hook' "check did not run (exit $agent_hook_rc): $(printf '%s\n' "$agent_hook_out" | tail -n 1)"
+  fi
+else
+  log_warn 'agent-hook' 'uv missing: cannot check agent-hook'
+fi
+
 # Canonical Ollama ownership and WSL transport. Read-only: no installer,
 # service startup, stopped-distro boot, uninstall, or network changes here.
 if has uv; then

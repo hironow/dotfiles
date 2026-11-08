@@ -18,7 +18,7 @@ func splitHeredocs(text string) (cleaned string, codeBodies []string) {
 	inBody, isCode := false, false
 	for line := range strings.SplitSeq(text, "\n") {
 		if inBody {
-			if stripPython(line) == delimiter {
+			if StripPython(line) == delimiter {
 				if isCode {
 					codeBodies = append(codeBodies, strings.Join(body, "\n"))
 				}

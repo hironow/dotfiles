@@ -18,7 +18,13 @@ jobs:
     name: Run just tests in dev container
     # Draft pull requests do not run CI (this job alone takes 6+ minutes);
     # runs start when the PR is marked ready for review.
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    #
+    # Paused (owner, 2026-11-04): the job is long, and outside the work at hand.
+    # It runs only when the repository variable RUN_SANDBOX_TESTS is "true":
+    # `gh variable set RUN_SANDBOX_TESTS --body true` turns it back on, with no
+    # code change. Meanwhile the Go tests it ran through `just check` run in
+    # unit-test.yaml's "Go tests" job.
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && vars.RUN_SANDBOX_TESTS == 'true'
     runs-on: ubuntu-latest
 
     steps:

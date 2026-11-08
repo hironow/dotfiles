@@ -1,0 +1,19 @@
+{
+  "artifactDirectoryPath": "/home/user/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000001",
+  "conversationId": "00000000-0000-4000-8000-000000000001",
+  "lastUserInput": "Fixture prompt: run a command, write a file, and edit it.",
+  "modelName": "gemini-3.8-flash-high",
+  "stepIdx": 2,
+  "toolCall": {
+    "args": {
+      "CommandLine": "echo capture-run",
+      "WaitMsBeforeAsync": 5000,
+      "toolSummary": "Echo capture run"
+    },
+    "name": "run_command"
+  },
+  "transcriptPath": "/home/user/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000001/.system_generated/logs/transcript_full.jsonl",
+  "workspacePaths": [
+    "/home/user/project"
+  ]
+}
