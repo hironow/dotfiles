@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "harness": "pi",
+  "event": "pre",
+  "tool": "write",
+  "input": {
+    "content": "hello",
+    "path": "note.md"
+  },
+  "cwd": "/home/user/project"
+}

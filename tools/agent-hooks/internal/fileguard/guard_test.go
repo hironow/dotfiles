@@ -2,6 +2,7 @@ package fileguard_test
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/applypatch"
@@ -12,7 +13,7 @@ import (
 
 func TestCheckAgreesWithTheShellGuardOnTheCorpus(t *testing.T) {
 	for _, entry := range guardcorpus.FilesGuardEntries(t) {
-		t.Run(fmt.Sprintf("line-%d", entry.Line), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/line-%d", entry.Frame(), entry.Line), func(t *testing.T) {
 			// given an input of the corpus, as Claude Code or Codex hands it over
 			var paths []string
 			if entry.FilePath != nil {
@@ -20,28 +21,24 @@ func TestCheckAgreesWithTheShellGuardOnTheCorpus(t *testing.T) {
 			} else {
 				paths = applypatch.FilePaths(*entry.Patch)
 			}
-			// when the guard checks its paths with BSD's and with GNU's basename
-			for _, c := range []struct {
-				name     string
-				basename fileguard.Basename
-				shell    guardcorpus.ShellGuardResult
-			}{
-				{"BSD", fileguard.BSDBasename, entry.BSD},
-				{"GNU", fileguard.GNUBasename, entry.GNU},
-			} {
-				outcome := fileguard.Check(paths, c.basename)
-				// then it blocks, with the same reason, exactly when the shell guard exited 2
-				if c.shell.Exit != 2 {
-					if outcome.Action != ir.Pass {
-						t.Fatalf("%s: Check(%q) blocked (%s); the shell guard exited %d",
-							c.name, paths, outcome.Reason, c.shell.Exit)
-					}
-					continue
+			// when the guard checks its paths, with no basename(1) to ask
+			outcome := fileguard.Check(paths)
+			// then it blocks, with the same reason, exactly when the shell
+			// guard (with its bugs fixed, where the entry says) exited 2
+			want := entry.Expected(t)
+			if want.Exit != 2 {
+				if outcome.Action != ir.Pass {
+					t.Fatalf("Check(%q) blocked (%s); the shell guard exited %d", paths, outcome.Reason, want.Exit)
 				}
-				if outcome.Action != ir.Block || outcome.Reason != *c.shell.Reason {
-					t.Fatalf("%s: Check(%q) = %v %q; the shell guard blocked: %q",
-						c.name, paths, outcome.Action, outcome.Reason, *c.shell.Reason)
-				}
+				return
+			}
+			if outcome.Action != ir.Block || outcome.Reason != *want.Reason {
+				t.Fatalf("Check(%q) = %v %q; the shell guard blocked: %q",
+					paths, outcome.Action, outcome.Reason, *want.Reason)
+			}
+			// and the block names a rule the guard lists, for the log
+			if !slices.Contains(fileguard.Rules(), outcome.Rule) {
+				t.Fatalf("Check(%q) blocked by rule %q, which Rules() does not list", paths, outcome.Rule)
 			}
 		})
 	}
@@ -57,7 +54,7 @@ func TestEveryBlockNamesItsRule(t *testing.T) {
 		{".github/workflows/ci.yml", fileguard.RuleYMLExtension},
 	}
 	for _, c := range cases {
-		outcome := fileguard.Check([]string{c.path}, fileguard.BSDBasename)
+		outcome := fileguard.Check([]string{c.path})
 		if outcome.Action != ir.Block || outcome.Rule != c.rule {
 			t.Errorf("Check(%q) = %v rule %q; want block by %q", c.path, outcome.Action, outcome.Rule, c.rule)
 		}
@@ -66,27 +63,22 @@ func TestEveryBlockNamesItsRule(t *testing.T) {
 
 // The shell guard's quirks, spelled out.
 func TestCheckKeepsTheShellGuardsQuirks(t *testing.T) {
+	// The guard's quirks the port keeps; its bugs, which it fixes, are in
+	// fixes_test.go.
 	cases := []struct {
-		name     string
-		paths    []string
-		basename fileguard.Basename
-		blocked  bool
+		name    string
+		paths   []string
+		blocked bool
 	}{
-		{"each line of a path is a path", []string{"a.yaml\nb.yml"}, fileguard.BSDBasename, true},
-		{"a leading - makes basename fail, which stops the guard", []string{"-x.yml", "a.yml"}, fileguard.BSDBasename, false},
-		{"a lone - is a name to basename", []string{"-", "a.yml"}, fileguard.BSDBasename, true},
-		{"BSD basename fails on --help too", []string{"--help", "a.yml"}, fileguard.BSDBasename, false},
-		{"GNU basename prints its help, and the guard reads on", []string{"--help", "a.yml"}, fileguard.GNUBasename, true},
-		{"GNU basename takes a prefix of --version", []string{"--vers", "a.yml"}, fileguard.GNUBasename, true},
-		{"GNU basename fails on other options", []string{"--hx", "a.yml"}, fileguard.GNUBasename, false},
-		{"the instruction files may name examples", []string{"/repo/docs/agents/x.yml"}, fileguard.BSDBasename, false},
-		{"only a docs/agents/ under a directory is exempt", []string{"docs/agents/x.yml"}, fileguard.BSDBasename, true},
-		{"trailing slashes are not part of the name", []string{"a.yml/"}, fileguard.BSDBasename, true},
-		{"bash drops NUL bytes", []string{"x\x00.yml"}, fileguard.BSDBasename, true},
+		{"each line of a path is a path", []string{"a.yaml\nb.yml"}, true},
+		{"a lone - is a name", []string{"-", "a.yml"}, true},
+		{"the instruction files may name examples", []string{"/repo/docs/agents/x.yml"}, false},
+		{"trailing slashes are not part of the name", []string{"a.yml/"}, true},
+		{"bash drops NUL bytes", []string{"x\x00.yml"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := fileguard.Check(c.paths, c.basename).Action == ir.Block; got != c.blocked {
+			if got := fileguard.Check(c.paths).Action == ir.Block; got != c.blocked {
 				t.Fatalf("Check(%q) blocked = %v; want %v", c.paths, got, c.blocked)
 			}
 		})

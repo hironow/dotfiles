@@ -1,0 +1,19 @@
+{
+  "tool": "edit",
+  "kind": "edit",
+  "fields": {
+    "cwd": {
+      "string": "/home/user/project"
+    },
+    "filePath": {
+      "string": "note.md"
+    }
+  },
+  "lists": {
+    "contents": [
+      {
+        "string": "bye"
+      }
+    ]
+  }
+}

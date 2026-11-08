@@ -1,0 +1,103 @@
+{
+  "name": "claude",
+  "versions": [
+    "2.1.316",
+    "2.1.317"
+  ],
+  "tools": {
+    "Bash": "shell",
+    "Write": "write",
+    "Edit": "edit",
+    "NotebookEdit": "notebook"
+  },
+  "transport": "command",
+  "pathResolution": "as-given",
+  "hookCwd": "session",
+  "support": {
+    "command-guard": {
+      "Bash": {
+        "level": "supported"
+      }
+    },
+    "files-guard": {
+      "Write": {
+        "level": "supported"
+      },
+      "Edit": {
+        "level": "supported"
+      },
+      "NotebookEdit": {
+        "level": "supported"
+      }
+    },
+    "secrets-guard": {
+      "Write": {
+        "level": "supported"
+      },
+      "Edit": {
+        "level": "supported"
+      },
+      "NotebookEdit": {
+        "level": "supported"
+      }
+    },
+    "rtk": {
+      "Bash": {
+        "level": "supported"
+      }
+    },
+    "formatter": {
+      "Write": {
+        "level": "supported"
+      },
+      "Edit": {
+        "level": "supported"
+      }
+    }
+  },
+  "registration": {
+    "layouts": ["stable"],
+    "events": {"pre": "PreToolUse", "post": "PostToolUse"},
+    "blocks": [
+      {"event": "pre", "matcher": "Write|Edit|NotebookEdit", "hooks": ["files-guard", "secrets-guard"]},
+      {"event": "pre", "matcher": "Bash", "hooks": ["command-guard"]},
+      {"event": "pre", "matcher": "Bash", "hooks": ["rtk"]},
+      {"event": "post", "matcher": "Write|Edit", "hooks": ["formatter"]}
+    ],
+    "launchers": [
+      {
+        "os": ["darwin", "linux", "windows"],
+        "shell": "exec",
+        "closed": {"type": "command", "command": "{{.Binary}}", "args": ["{{.Harness}}", "{{.Event}}", "--hook", "{{.Hook}}"], "timeout": 30, "onFailure": "block"},
+        "open": {"type": "command", "command": "{{.Binary}}", "args": ["{{.Harness}}", "{{.Event}}", "--hook", "{{.Hook}}"], "timeout": 30}
+      }
+    ]
+  },
+  "events": {
+    "pre": {
+      "schema": "pre.schema.json",
+      "answers": {
+        "pass": {
+          "exit": 0
+        },
+        "block": {
+          "exit": 2,
+          "stderr": "{{.Message}}\n"
+        },
+        "forward": {
+          "exit": 0,
+          "stdout": "{{.Native}}\n"
+        }
+      }
+    },
+    "post": {
+      "schema": "post.schema.json",
+      "answers": {
+        "pass": {
+          "exit": 0,
+          "stderr": "{{.Notice}}"
+        }
+      }
+    }
+  }
+}

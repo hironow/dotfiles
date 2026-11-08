@@ -19,6 +19,7 @@ OS ごとに違うのは導入の経路だけである。
 関連文書:
 
 - [`docs/agent-sync.md`](./docs/agent-sync.md): エージェント指示、hook、skill、プラグインの配布
+- [`docs/cli-tools.md`](./docs/cli-tools.md): Hunk、rg、fd、sd、mq、witr、jq、yq、fqの導入、対応環境、使い分け
 - [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md): `j-cc` / `j-pi`、rtk、headroom の手順
 - [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md): Windows と WSL の Ollama 共有と検査範囲
 - [`docs/runbook/windows-host.md`](./docs/runbook/windows-host.md): native Windows で動かすときの注意点
@@ -151,6 +152,8 @@ mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
 skill は自作（[hironow/skills](https://github.com/hironow/skills)）もサードパーティも `dump/harness/skill-lock.json` で宣言管理する（ADR 0038、ADR 0043、[`docs/agent-sync.md`](./docs/agent-sync.md)）。
 実体は skills CLI が `~/.agents/skills`（store）に置き、`skills-place` が各エージェントの home（`~/.claude*`、`~/.codex`、`~/.gemini`）へ相対 symlink を張る（張れない環境では追跡つきのコピー）。
 同名の skill は hironow/skills が優先される（`just ci` の `skills-lock-check` が検査する）。
+例外として、Codex の `hatch-pet` は [openai/skills の公式版](https://github.com/openai/skills/tree/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/hatch-pet)を `~/.codex/skills/hatch-pet` に直接置き、Codex 付属の `skill-installer` で更新する。
+`skills-place` はこの実ディレクトリを残し、store との差分 1 件として報告する（終了コード 1）。
 
 ```bash
 just restore-skills-lock  # 新しい機体: 宣言から store に復元し、home に配置する

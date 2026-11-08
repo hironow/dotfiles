@@ -61,11 +61,16 @@ type ExternalProbe struct {
 	IPv4 bool
 }
 
+// nodeProbe sends the host as the TLS server name only when it is a DNS name:
+// RFC 6066 forbids an IP literal there, and node 26 throws on one. The URL
+// keeps an IPv6 literal's brackets, which the connection must not.
 const nodeProbe = `const tls=require('node:tls');
+const net=require('node:net');
 const u=new URL(process.argv[1]);
+const host=u.hostname.replace(/^\[|\]$/g,'');
 let done=false; let s;
 function finish(x){if(done)return;done=true;console.log(x);if(s)s.destroy();}
-s=tls.connect({host:u.hostname,port:Number(u.port||443),servername:u.hostname,...(process.argv[2]==='4'?{family:4}:{})},()=>finish('accepted'));
+s=tls.connect({host,port:Number(u.port||443),...(net.isIP(host)?{}:{servername:host}),...(process.argv[2]==='4'?{family:4}:{})},()=>finish('accepted'));
 s.setTimeout(3000,()=>finish('unknown'));
 s.on('error',e=>finish(['UNABLE_TO_GET_ISSUER_CERT_LOCALLY','UNABLE_TO_VERIFY_LEAF_SIGNATURE','CERT_HAS_EXPIRED','CERT_REVOKED','ERR_TLS_CERT_ALTNAME_INVALID','DEPTH_ZERO_SELF_SIGNED_CERT','SELF_SIGNED_CERT_IN_CHAIN','CERT_SIGNATURE_FAILURE'].includes(e.code)?'certificate-rejected':'unknown'));
 `
