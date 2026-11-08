@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -132,39 +133,124 @@ func boundary(line []byte) string {
 	return ""
 }
 
-// certificateShape is an X.509 certificate's outer structure (RFC 5280):
-// enough to tell a certificate from other bytes without x509's checks, which
-// refuse roots that macOS's bundle still holds (EC-ACC has a negative serial).
-type certificateShape struct {
-	TBSCertificate     asn1.RawValue
-	SignatureAlgorithm asn1.RawValue
-	SignatureValue     asn1.BitString
-}
-
 // certificateDER is the DER of a block that holds exactly one certificate.
 func certificateDER(block []byte) ([]byte, error) {
 	decoded, rest := pem.Decode(block)
 	if decoded == nil || decoded.Type != "CERTIFICATE" || len(decoded.Headers) != 0 || len(bytes.TrimSpace(rest)) != 0 {
 		return nil, errors.New("does not parse as one PEM certificate")
 	}
-	var shape certificateShape
-	trailing, err := asn1.Unmarshal(decoded.Bytes, &shape)
-	if err == nil && (len(trailing) != 0 || shape.TBSCertificate.Tag != asn1.TagSequence || shape.SignatureAlgorithm.Tag != asn1.TagSequence) {
-		err = errors.New("not a certificate's structure")
-	}
-	if err != nil {
+	if err := certificateStructure(decoded.Bytes); err != nil {
 		return nil, fmt.Errorf("not a certificate: %w", err)
 	}
 	return decoded.Bytes, nil
 }
 
+// certificateStructure checks der against RFC 5280's Certificate, field by
+// field, with every structure used up exactly. It does not use Go's x509
+// parser, which refuses roots that macOS's bundle still holds (EC-ACC has a
+// negative serial number), and it checks no signature.
+func certificateStructure(der []byte) error {
+	certificate, err := sequence(der)
+	if err != nil {
+		return err
+	}
+	if len(certificate) != 3 || !universal(certificate[2], asn1.TagBitString, false) {
+		return errors.New("not tbsCertificate, signatureAlgorithm, signatureValue")
+	}
+	if err := algorithmIdentifier(certificate[1]); err != nil {
+		return err
+	}
+	tbs, err := sequence(certificate[0].FullBytes)
+	if err != nil {
+		return err
+	}
+	field := 0
+	if len(tbs) > 0 && tbs[0].Class == asn1.ClassContextSpecific && tbs[0].Tag == 0 {
+		field++ // version
+	}
+	if len(tbs) < field+6 || !universal(tbs[field], asn1.TagInteger, false) || len(tbs[field].Bytes) == 0 {
+		return errors.New("tbsCertificate lacks a serial number and its fields")
+	}
+	if err := algorithmIdentifier(tbs[field+1]); err != nil {
+		return err
+	}
+	for _, name := range []asn1.RawValue{tbs[field+2], tbs[field+4]} {
+		if !universal(name, asn1.TagSequence, true) {
+			return errors.New("an issuer or subject is not a name")
+		}
+	}
+	validity, err := sequence(tbs[field+3].FullBytes)
+	if err != nil || len(validity) != 2 || !timeValue(validity[0]) || !timeValue(validity[1]) {
+		return errors.New("validity is not two times")
+	}
+	key, err := sequence(tbs[field+5].FullBytes)
+	if err != nil || len(key) != 2 || !universal(key[1], asn1.TagBitString, false) {
+		return errors.New("subjectPublicKeyInfo is not an algorithm and a key")
+	}
+	if err := algorithmIdentifier(key[0]); err != nil {
+		return err
+	}
+	previous := 0
+	for _, optional := range tbs[field+6:] {
+		// issuerUniqueID [1], subjectUniqueID [2], extensions [3], in order
+		if optional.Class != asn1.ClassContextSpecific || optional.Tag <= previous || optional.Tag > 3 {
+			return errors.New("tbsCertificate has an unknown field")
+		}
+		previous = optional.Tag
+	}
+	return nil
+}
+
+// sequence is the elements of the DER SEQUENCE der, which must be all of der.
+func sequence(der []byte) ([]asn1.RawValue, error) {
+	var outer asn1.RawValue
+	rest, err := asn1.Unmarshal(der, &outer)
+	if err != nil {
+		return nil, err
+	}
+	if len(rest) != 0 || !universal(outer, asn1.TagSequence, true) {
+		return nil, errors.New("not one SEQUENCE")
+	}
+	var elements []asn1.RawValue
+	for content := outer.Bytes; len(content) > 0; {
+		var element asn1.RawValue
+		if content, err = asn1.Unmarshal(content, &element); err != nil {
+			return nil, err
+		}
+		elements = append(elements, element)
+	}
+	return elements, nil
+}
+
+func universal(value asn1.RawValue, tag int, compound bool) bool {
+	return value.Class == asn1.ClassUniversal && value.Tag == tag && value.IsCompound == compound
+}
+
+func timeValue(value asn1.RawValue) bool {
+	return universal(value, asn1.TagUTCTime, false) || universal(value, asn1.TagGeneralizedTime, false)
+}
+
+// algorithmIdentifier checks an AlgorithmIdentifier: an OID, then at most
+// one parameter.
+func algorithmIdentifier(value asn1.RawValue) error {
+	parts, err := sequence(value.FullBytes)
+	if err != nil || len(parts) == 0 || len(parts) > 2 || !universal(parts[0], asn1.TagOID, false) {
+		return errors.New("not an AlgorithmIdentifier")
+	}
+	return nil
+}
+
 func blank(line []byte) bool { return lineText(line) == "" }
 
 // entryStart is the first line that goes with the block starting at begin:
-// the block itself in a plain PEM file, or its OpenBSD entry (the `===` line
-// and the blank line before it).
+// its OpenBSD entry (the `===` line, the text dump, and the blank line before
+// `===`), or, in any other layout, the block alone. A `### group` line ends
+// the search, so it always stays.
 func entryStart(lines [][]byte, previousEnd, begin int) int {
 	for line := begin - 1; line >= previousEnd; line-- {
+		if strings.HasPrefix(lineText(lines[line]), "### ") {
+			return begin
+		}
 		if strings.HasPrefix(lineText(lines[line]), "=== ") {
 			if line-1 >= previousEnd && blank(lines[line-1]) {
 				return line - 1
@@ -185,8 +271,8 @@ func contentSHA256(data []byte) string {
 type bundleFiles interface {
 	Lstat(path string) (os.FileInfo, error)
 	ReadFile(path string) ([]byte, error)
-	CreateNew(path string, perm os.FileMode) (bundleFile, error)
 	CreateTemp(dir, pattern string) (bundleFile, error)
+	Link(from, to string) error
 	Rename(from, to string) error
 	SyncDir(dir string) error
 	Remove(path string) error
@@ -207,12 +293,9 @@ type osFiles struct{}
 func (osFiles) Lstat(path string) (os.FileInfo, error) { return os.Lstat(path) }
 func (osFiles) ReadFile(path string) ([]byte, error)   { return os.ReadFile(path) }
 func (osFiles) Rename(from, to string) error           { return os.Rename(from, to) }
+func (osFiles) Link(from, to string) error             { return os.Link(from, to) }
 func (osFiles) Remove(path string) error               { return os.Remove(path) }
 func (osFiles) IsRoot() bool                           { return os.Geteuid() == 0 }
-
-func (osFiles) CreateNew(path string, perm os.FileMode) (bundleFile, error) {
-	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
-}
 
 func (osFiles) CreateTemp(dir, pattern string) (bundleFile, error) {
 	return os.CreateTemp(dir, pattern)
@@ -232,9 +315,10 @@ func (osFiles) SyncDir(dir string) error {
 
 // ApplyBundle replaces in with its prune, but only when in's SHA-256 is
 // expectIn and the prune's is expectOut, the hashes a candidate run printed,
-// and backup does not exist yet. The backup is written and synced, with its
-// directory, before the new bundle is renamed over in; a backup that could
-// not be completed is removed, so a rollback never copies a partial one.
+// and backup does not exist yet. The backup is written under a temporary
+// name, synced, published by a hard link (which never replaces a file), and
+// its directory synced, before the new bundle is renamed over in; so the
+// backup's name only ever holds a complete copy.
 func ApplyBundle(in, backup, expectIn, expectOut string, roots []UntrustedRoot) error {
 	return applyBundle(osFiles{}, in, backup, expectIn, expectOut, roots)
 }
@@ -261,15 +345,12 @@ func applyBundle(files bundleFiles, in, backup, expectIn, expectOut string, root
 	if got := contentSHA256(prune.Out); got != expectOut {
 		return fmt.Errorf("the prune's sha256 is %s, not the candidate's %s; run the candidate again", got, expectOut)
 	}
-	saved, err := files.CreateNew(backup, info.Mode().Perm())
-	if err != nil {
+	if _, err := files.Lstat(backup); err == nil {
+		return fmt.Errorf("backup %s exists; choose a new path", backup)
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("backup %s: %w", backup, err)
 	}
-	if err := fill(files, saved, data, info); err != nil {
-		_ = files.Remove(backup)
-		return fmt.Errorf("backup %s: %w", backup, err)
-	}
-	if err := files.SyncDir(filepath.Dir(backup)); err != nil {
+	if err := publishBackup(files, backup, data, info); err != nil {
 		return err
 	}
 	temporary, err := files.CreateTemp(filepath.Dir(in), ".ca-doctor-os-bundle-*")
@@ -277,14 +358,43 @@ func applyBundle(files bundleFiles, in, backup, expectIn, expectOut string, root
 		return err
 	}
 	if err := fill(files, temporary, prune.Out, info); err != nil {
-		_ = files.Remove(temporary.Name())
-		return err
+		return errors.Join(err, removeTemporary(files, temporary.Name()))
 	}
 	if err := files.Rename(temporary.Name(), in); err != nil {
-		_ = files.Remove(temporary.Name())
-		return err
+		return errors.Join(err, removeTemporary(files, temporary.Name()))
 	}
-	return files.SyncDir(filepath.Dir(in))
+	if err := files.SyncDir(filepath.Dir(in)); err != nil {
+		return fmt.Errorf("%s was replaced, but syncing its directory failed, so a crash may undo it: %w", in, err)
+	}
+	return nil
+}
+
+// publishBackup writes data to backup's directory under a temporary name,
+// syncs it, links it to backup, removes the temporary name, and syncs the
+// directory.
+func publishBackup(files bundleFiles, backup string, data []byte, like os.FileInfo) error {
+	dir := filepath.Dir(backup)
+	temporary, err := files.CreateTemp(dir, ".ca-doctor-os-bundle-backup-*")
+	if err != nil {
+		return fmt.Errorf("backup %s: %w", backup, err)
+	}
+	if err := fill(files, temporary, data, like); err != nil {
+		return errors.Join(fmt.Errorf("backup %s: %w", backup, err), removeTemporary(files, temporary.Name()))
+	}
+	if err := files.Link(temporary.Name(), backup); err != nil {
+		return errors.Join(fmt.Errorf("backup %s: %w", backup, err), removeTemporary(files, temporary.Name()))
+	}
+	if err := files.Remove(temporary.Name()); err != nil {
+		return fmt.Errorf("backup %s is complete, but the temporary file %s is left: %w", backup, temporary.Name(), err)
+	}
+	return files.SyncDir(dir)
+}
+
+func removeTemporary(files bundleFiles, name string) error {
+	if err := files.Remove(name); err != nil {
+		return fmt.Errorf("the temporary file %s is left: %w", name, err)
+	}
+	return nil
 }
 
 // fill writes data to file with like's mode (and, as root, its owner),
