@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import json
 import os
 import re
 import shlex
@@ -126,15 +127,31 @@ def test_actionlint_exact_runner_extension_retains_unknown_label_rejection(
         assert "runner-label" in result.stdout + result.stderr
 
 
-def _bootstrap_checksum_attempt(tmp_path, names, *, corrupt=False):
-    """Run the public bootstrap, stopping at the external unpack boundary.
+def _engine_info(
+    *, version="5.7.0", rootless=True, socket="unix:///run/user/1000/podman/podman.sock"
+):
+    return json.dumps(
+        {
+            "host": {
+                "security": {"rootless": rootless},
+                "remoteSocket": {"path": socket},
+            },
+            "version": {"Version": version},
+        }
+    )
 
-    Installer/privilege/download/identity operations are inert fixtures.
-    The checksum checker is real; no tool install or service is reached.
+
+def _bootstrap_checksum_attempt(tmp_path, names, *, corrupt=False, engine=None):
+    """Run the public bootstrap with real checks and owned external boundaries.
+
+    By default stop at unpack89; engine fixtures instead unpack an inert mise
+    and execute the unchanged canonical socket helper with real jq. PATH has
+    only owned wrappers: host container engines cannot be discovered.
     """
     repo = tmp_path / "repo"
     for relative in (
         ".devcontainer/ci-bootstrap.sh",
+        ".devcontainer/require-podman-socket.sh",
         ".devcontainer/features/dotfiles-tools/install.sh",
         "config/mise/image-tools.toml",
     ):
@@ -152,7 +169,21 @@ def _bootstrap_checksum_attempt(tmp_path, names, *, corrupt=False):
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz", encoding="utf-8") as archive:
         content = b"harmless checksum fixture\n"
-        info = tarfile.TarInfo("fixture.txt")
+        member = "fixture.txt"
+        if engine is not None:
+            member = "mise/bin/mise"
+            content = b"""#!/bin/sh
+set -eu
+printf 'mise %s\\n' "$*" >> "$FIXTURE_TRACE"
+case "$*" in
+  'install bun uv node just'|'install npm:@devcontainers/cli pypi:podman-compose') ;;
+  'where bun'|'where uv'|'where node'|'where just'|'where npm:@devcontainers/cli'|'where pypi:podman-compose')
+    printf '%s\\n' "$FIXTURE_TOOLS" ;;
+  *) exit 97 ;;
+esac
+"""
+        info = tarfile.TarInfo(member)
+        info.mode = 0o755
         info.size = len(content)
         archive.addfile(info, io.BytesIO(content))
     raw = buffer.getvalue()
@@ -210,24 +241,29 @@ esac""",
     }
     for name in ("mise", "podman", "systemctl", "apt-get", "git", "brew", "install"):
         commands[name] = "echo FORBIDDEN_HOST_OPERATION >&2; exit 97"
-    for name, body in commands.items():
-        executable = bin_dir / name
-        executable.write_text("#!/bin/sh\nset -eu\n" + body + "\n", encoding="utf-8")
-        executable.chmod(0o755)
+
+    # Never expose a host utility directory through the fixture PATH, including
+    # Git Bash's bin directory (which may also contain a real Docker client).
+    def real_utility(name):
+        candidates = []
+        if os.name == "nt":
+            bash_dir = Path(resolve_bash()).parent
+            candidates = [
+                bash_dir / f"{name}.exe",
+                bash_dir.parent / "usr/bin" / f"{name}.exe",
+            ]
+        found = next((str(p) for p in candidates if p.is_file()), None)
+        found = found or shutil.which(name)
+        assert found is not None, f"real fixture utility required: {name}"
+        return shlex.quote(bash_path(Path(found)))
+
+    for name in ("cp", "dirname", "mkdir", "grep", "wc"):
+        commands[name] = f'exec {real_utility(name)} "$@"'
+    commands["bash"] = f'exec {shlex.quote(bash_path(Path(resolve_bash())))} "$@"'
     runner = tmp_path / "runner"
     runner.mkdir()
-    bash_dir = Path(resolve_bash()).parent
     env = {
-        "PATH": ":".join(
-            bash_path(entry)
-            for entry in (
-                bin_dir,
-                bash_dir,
-                bash_dir.parent / "usr/bin",
-                Path("/usr/bin"),
-                Path("/bin"),
-            )
-        ),
+        "PATH": bash_path(bin_dir),
         "HOME": bash_path(tmp_path),
         "GITHUB_ACTIONS": "true",
         "RUNNER_ENVIRONMENT": "github-hosted",
@@ -239,6 +275,79 @@ esac""",
         "FIXTURE_SUMS": bash_path(sums),
         "SystemRoot": os.environ.get("SystemRoot", ""),
     }
+    if engine is not None:
+        tools = tmp_path / "tools"
+        (tools / "bin").mkdir(parents=True)
+        for name, value in (
+            ("initial-info", engine.get("initial_info", _engine_info())),
+            ("helper-info", engine.get("helper_info", _engine_info())),
+            (
+                "version",
+                json.dumps(engine.get("version", {"Client": {"Version": "5.7.0"}})),
+            ),
+        ):
+            (tmp_path / name).write_text(value, encoding="utf-8")
+        env.update(
+            FIXTURE_TRACE=bash_path(tmp_path / "trace"),
+            FIXTURE_TOOLS=bash_path(tools),
+            FIXTURE_BIN=bash_path(bin_dir),
+            FIXTURE_BOOTSTRAP=bash_path(runner / "dotfiles-podman-bootstrap"),
+            FIXTURE_INITIAL_INFO=bash_path(tmp_path / "initial-info"),
+            FIXTURE_HELPER_INFO=bash_path(tmp_path / "helper-info"),
+            FIXTURE_VERSION=bash_path(tmp_path / "version"),
+            FIXTURE_INFO_SEEN=bash_path(tmp_path / "info-seen"),
+            FIXTURE_CLIENT=engine.get("client", "podman version 5.7.0"),
+            FIXTURE_CLIENT_RC=str(engine.get("client_rc", 0)),
+            FIXTURE_INITIAL_RC=str(engine.get("initial_rc", 0)),
+            FIXTURE_HELPER_RC=str(engine.get("helper_rc", 0)),
+        )
+        commands.update(
+            jq=f'exec {real_utility("jq")} "$@"',
+            gzip=f'exec {real_utility("gzip")} "$@"',
+            cat=f'exec {real_utility("cat")} "$@"',
+            tar="""[ "$#" = 4 ] && [ "$1" = -xzf ] &&
+[ "$2" = "$FIXTURE_BOOTSTRAP/$FIXTURE_ASSET" ] &&
+[ "$3" = -C ] && [ "$4" = "$FIXTURE_BOOTSTRAP" ] || exit 97
+"""
+            + f'exec {real_utility("tar")} "$@"',
+            install="""[ "$#" = 4 ] && [ "$1" = -m ] && [ "$2" = 0755 ] &&
+[ "$3" = "$FIXTURE_BOOTSTRAP/mise/bin/mise" ] &&
+[ "$4" = "$FIXTURE_BOOTSTRAP/bin/mise" ] || exit 97
+"""
+            + f'exec {real_utility("install")} "$@"',
+            systemctl='''[ "$*" = '--user start podman.socket' ] || exit 97
+printf 'systemctl %s\n' "$*" >> "$FIXTURE_TRACE"''',
+            podman="""printf 'podman %s\n' "$*" >> "$FIXTURE_TRACE"
+case "$*" in
+  --version) printf '%s\n' "$FIXTURE_CLIENT"; exit "$FIXTURE_CLIENT_RC" ;;
+  'version --format json') cat "$FIXTURE_VERSION" ;;
+  'info --format json')
+    if [ -f "$FIXTURE_INFO_SEEN" ]; then
+      cat "$FIXTURE_HELPER_INFO"; exit "$FIXTURE_HELPER_RC"
+    else
+      : > "$FIXTURE_INFO_SEEN"
+      cat "$FIXTURE_INITIAL_INFO"
+      if [ "$FIXTURE_INITIAL_RC" != 0 ]; then echo FIXTURE_INFO_FAILURE >&2; fi
+      exit "$FIXTURE_INITIAL_RC"
+    fi ;;
+  *) exit 97 ;;
+esac""",
+            docker="echo FORBIDDEN_HOST_OPERATION >&2; exit 97",
+            sudo="""case "$*" in
+  '-n apt-get update -y'|'-n apt-get install -y --no-install-recommends uidmap slirp4netns fuse-overlayfs curl ca-certificates') exit 0 ;;
+esac
+[ "$#" = 4 ] && [ "$1" = -n ] && [ "$2" = mv ] &&
+[ "$3" = "$FIXTURE_BIN/docker" ] &&
+[ "$4" = "$FIXTURE_BIN/docker.disabled-for-podman-ci" ] || exit 97
+printf 'DOCKER_REMOVAL\n' >> "$FIXTURE_TRACE"
+shift 2
+"""
+            + f'exec {real_utility("mv")} "$@"',
+        )
+    for name, body in commands.items():
+        executable = bin_dir / name
+        executable.write_text("#!/bin/sh\nset -eu\n" + body + "\n", encoding="utf-8")
+        executable.chmod(0o755)
     return run_bash(
         repo / ".devcontainer/ci-bootstrap.sh",
         cwd=repo,
@@ -294,3 +403,155 @@ def test_bootstrap_only_unpacks_one_exact_verified_artifact(
     assert result.returncode == (89 if verified else 1), result.stdout + result.stderr
     assert ("FIXTURE_UNPACK_BOUNDARY" in result.stdout) is verified
     assert "FORBIDDEN_HOST_OPERATION" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "version",
+    [
+        pytest.param({"Client": {"Version": "5.7.0"}}, id="native-client-only"),
+        pytest.param(
+            {"Client": {"Version": "5.7.0"}, "Server": {"Version": "5.7.0"}},
+            id="remote-client-and-server",
+        ),
+    ],
+)
+def test_ci_bootstrap_accepts_native_and_remote_version_shapes_after_engine_validation(
+    tmp_path,
+    version,
+):
+    result = _bootstrap_checksum_attempt(
+        tmp_path, ["./{artifact}"], engine={"version": version}
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "FORBIDDEN_HOST_OPERATION" not in result.stdout + result.stderr
+    trace = (tmp_path / "trace").read_text(encoding="utf-8")
+    assert "podman --version" in trace
+    assert trace.count("podman info --format json") == 2
+    # Native/remote version JSON is intentionally not an engine validation API.
+    assert "podman version --format json" not in trace
+    assert "DOCKER_REMOVAL" in trace
+    assert not (tmp_path / "bin/docker").exists()
+    assert (tmp_path / "bin/docker.disabled-for-podman-ci").is_file()
+    environment = (tmp_path / "github-env").read_text(encoding="utf-8")
+    assert "PODMAN_COMPOSE_PROVIDER=podman-compose\n" in environment
+    assert (
+        "DOTFILES_PODMAN_ENGINE_SOCKET=/run/user/1000/podman/podman.sock\n"
+        in environment
+    )
+    paths = (tmp_path / "github-path").read_text(encoding="utf-8").splitlines()
+    assert paths == [bash_path(tmp_path / "tools/bin")] * 6 + [
+        bash_path(tmp_path / "runner/dotfiles-podman-bootstrap/bin")
+    ]
+
+
+@pytest.mark.parametrize(
+    "engine, diagnostic",
+    [
+        pytest.param(
+            {"client": "podman version 4.9.0"},
+            "native Podman client >=5",
+            id="client4-engine5",
+        ),
+        pytest.param(
+            {
+                "initial_info": _engine_info(version="4.9.0"),
+                "helper_info": _engine_info(version="4.9.0"),
+            },
+            "selected Podman server >=5",
+            id="engine4-client5",
+        ),
+        pytest.param(
+            {"helper_info": _engine_info(version="five")},
+            "malformed selected Podman server version",
+            id="malformed-engine-version",
+        ),
+        pytest.param(
+            {"helper_info": _engine_info(version=5)},
+            "selected engine version missing/malformed",
+            id="nonstring-engine-version",
+        ),
+        pytest.param(
+            {"helper_info": _engine_info(version=None)},
+            "selected engine version missing/malformed",
+            id="null-engine-version",
+        ),
+        pytest.param(
+            {"helper_info": '{"version": {}}'},
+            "selected engine version missing/malformed",
+            id="missing-engine-version",
+        ),
+        pytest.param(
+            {"helper_info": "not json"},
+            "selected engine version missing/malformed",
+            id="invalid-helper-info-json",
+        ),
+        pytest.param(
+            {"helper_rc": 23},
+            "selected engine info query failed",
+            id="nonzero-helper-info",
+        ),
+        pytest.param(
+            {"helper_info": _engine_info(socket="/run/user/2000/podman/podman.sock")},
+            "does not exactly match",
+            id="selected-socket-mismatch",
+        ),
+        pytest.param(
+            {"initial_info": _engine_info(rootless=False)},
+            "CI must use rootless Podman",
+            id="rootful-engine",
+        ),
+        pytest.param(
+            {"initial_info": "not json"},
+            "JSONDecodeError",
+            id="invalid-initial-info-json",
+        ),
+        pytest.param(
+            {"initial_rc": 23}, "FIXTURE_INFO_FAILURE", id="nonzero-initial-info"
+        ),
+        pytest.param(
+            {"client_rc": 23},
+            "native client version query failed",
+            id="failed-helper-client-query",
+        ),
+    ],
+)
+def test_ci_bootstrap_rejects_invalid_engine_before_acceptance_effects(
+    tmp_path, engine, diagnostic
+):
+    result = _bootstrap_checksum_attempt(tmp_path, ["./{artifact}"], engine=engine)
+    assert result.returncode == engine.get("initial_rc", 1), (
+        result.stdout + result.stderr
+    )
+    assert diagnostic in result.stderr
+    assert "FORBIDDEN_HOST_OPERATION" not in result.stdout + result.stderr
+    trace = (tmp_path / "trace").read_text(encoding="utf-8")
+    assert "DOCKER_REMOVAL" not in trace
+    assert (tmp_path / "bin/docker").is_file()
+    assert not (tmp_path / "bin/docker.disabled-for-podman-ci").exists()
+    environment = (tmp_path / "github-env").read_text(encoding="utf-8")
+    assert "DOTFILES_PODMAN_ENGINE_SOCKET=" not in environment
+
+
+def test_ci_bootstrap_fixture_exposes_working_external_gzip(tmp_path):
+    """GNU tar needs gzip on its restricted child PATH, unlike macOS bsdtar."""
+    result = _bootstrap_checksum_attempt(tmp_path, ["./{artifact}"], engine={})
+    assert result.returncode == 0, result.stdout + result.stderr
+    compressor = tmp_path / "bin/gzip"
+    assert compressor.is_file(), "restricted tar child PATH must provide gzip"
+    archives = list((tmp_path / "runner/dotfiles-podman-bootstrap").glob("*.tar.gz"))
+    assert len(archives) == 1
+    checked = run_bash(
+        compressor,
+        "-t",
+        bash_path(archives[0]),
+        cwd=tmp_path,
+        env={
+            "PATH": bash_path(tmp_path / "bin"),
+            "SystemRoot": os.environ.get("SystemRoot", ""),
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert checked.returncode == 0, checked.stdout + checked.stderr

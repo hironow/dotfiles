@@ -82,8 +82,6 @@ systemctl --user start podman.socket
 socket="$(podman info --format json | python3 -c 'import json,sys; i=json.load(sys.stdin); assert i["host"]["security"]["rootless"] is True, "CI must use rootless Podman"; p=i["host"]["remoteSocket"]["path"]; print(p.removeprefix("unix://"))')"
 DOTFILES_PODMAN_ENGINE_SOCKET="$socket" bash "$repo/.devcontainer/require-podman-socket.sh"
 printf 'DOTFILES_PODMAN_ENGINE_SOCKET=%s\n' "$socket" >> "$GITHUB_ENV"
-# Never confuse the installed CLI version with the selected server version.
-podman version --format json | python3 -c 'import json,sys; v=json.load(sys.stdin); assert all(int(v[k]["Version"].split(".")[0]) >= 5 for k in ("Client", "Server")), v'
 # Required engine/SDK jobs must work with NO Docker executable on PATH.
 # Renaming is confined to the throwaway GitHub-hosted runner, never operator hosts.
 if command -v docker >/dev/null 2>&1; then
