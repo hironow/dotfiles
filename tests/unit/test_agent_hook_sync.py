@@ -1599,3 +1599,63 @@ def test_gc_keeps_a_release_a_journal_names_through_a_json_escape(
     wiring.write_journal(RecordingDisk(), roots.journal("claude"), journal)
     found = hooks.release_references(roots, RecordingDisk(), [])
     assert named.path in found and other.path in found
+
+
+# ---- the independent review's final check (PR 3d.1) ----
+
+
+def test_a_stop_with_nothing_else_to_change_still_fails_the_run(
+    workspace: tuple, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dotfiles, agent, roots, source = workspace
+    agent.directory.mkdir(parents=True)
+    (agent.directory / "AGENTS.md").write_text("base\n", encoding="utf-8")
+    sync.sync_mode(
+        dotfiles,
+        auto_yes=True,
+        agents=[agent],
+        hook_source=source,
+        env=dict(os.environ),
+        system="Darwin",
+    )
+    # given claude wired, every file in place, and then marked uninstalled by hand
+    roots.mark("claude").parent.mkdir(parents=True, exist_ok=True)
+    roots.mark("claude").write_bytes(b"")
+    capsys.readouterr()
+    # when sync runs, then it does not take "already in sync": it names the
+    # stop, and the run fails
+    with pytest.raises(SystemExit) as exit_info:
+        sync.sync_mode(
+            dotfiles,
+            auto_yes=True,
+            agents=[agent],
+            hook_source=source,
+            env=dict(os.environ),
+            system="Darwin",
+        )
+    out = capsys.readouterr().out
+    assert exit_info.value.code == 1
+    assert "agent-hook: claude stopped: uninstalled, yet wired" in out
+    assert "already in sync" not in out
+
+
+def test_gc_refuses_a_releases_directory_that_is_a_link(
+    workspace: tuple, tmp_path: Path
+) -> None:
+    _, agent, roots, source = workspace
+    # given the releases directory moved elsewhere and linked back, and a
+    # registration that names a release in it
+    named = source.evidence()
+    releases = roots.data / "releases"
+    moved = tmp_path / "elsewhere/releases"
+    moved.parent.mkdir(parents=True)
+    releases.rename(moved)
+    releases.symlink_to(moved)
+    agent.directory.mkdir(parents=True)
+    block = {"type": "command", "command": str(named.path), "args": ["claude", "pre"]}
+    (agent.directory / "settings.json").write_text(
+        json.dumps({"hooks": {"PreToolUse": [{"hooks": [block]}]}}), encoding="utf-8"
+    )
+    # when gc deletes, then it refuses that layout, and deletes nothing
+    assert hooks.run_command(configuration(workspace), "gc", [], delete=True) == 1
+    assert (moved / named.id / "agent-hook").is_file()

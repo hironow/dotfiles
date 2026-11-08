@@ -725,6 +725,13 @@ def collect_releases(
         raise SyncStopped("Codex is running; gc --delete is refused until PR 3d.2")
     if not disk.exists(directory):
         return
+    # Only the layout hookrelease makes: a releases directory that is a link
+    # (or lies below one) would make every reference miss, so gc stops.
+    if disk.resolve(directory) != disk.resolve(config.roots.data) / "releases":
+        raise SyncStopped(
+            f"{directory} is a link; gc works only on the releases directory "
+            "hookrelease makes"
+        )
     with disk.lock_releases(directory):
         references = release_references(config.roots, disk, config.registrations)
         for path in disk.entries(directory):
