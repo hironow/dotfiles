@@ -13,6 +13,14 @@ from tests.utils.image_inventory import IMAGE_ID
 from tests.utils.result import Error
 
 
+@pytest.fixture(autouse=True)
+def _without_the_jobs_run(monkeypatch):
+    """CI sets the run's manifest and required mode for every step; these
+    tests fake the engine, so a test that needs a manifest sets its own."""
+    monkeypatch.delenv("DOTFILES_PODMAN_RUN_MANIFEST", raising=False)
+    monkeypatch.delenv("DOTFILES_E2E_REQUIRED", raising=False)
+
+
 def test_get_container_uses_run_manifest(monkeypatch, tmp_path):
     manifest = tmp_path / "run.json"
     manifest.write_text(
