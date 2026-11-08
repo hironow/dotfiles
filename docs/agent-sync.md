@@ -161,8 +161,9 @@ macOS、Linux、WSL では、`just sync-agents x` が Codex の home（`~/.codex
 Codex は hook の信頼を `hooks.json` の中の位置（event、group、handler の番号）で記録する。
 そのため Claude と違い、登録を置き換えない。
 
-- 今のスクリプトの group は動かさず、書き換えない（スクリプトの断片が変わったときだけ書き換えるのは今と同じ）。
-- agent-hook の 3 つの guard（files-guard、secrets-guard、command-guard）を、スクリプトの横に足す。同じ matcher の空の group があればそこに入れ、無ければ最後に足す。rtk と formatter は PR 5 まで足さない。
+- 宣言が今も望むとおりの group は、その場から動かさない。Codex はそれを信頼し続ける。
+- 変わった group だけをその場で空にし、新しい group は同じ matcher の空の group に入れる。無ければ最後に足す。スクリプトの断片が変わったときも、agent-hook の雛形が変わったときも同じである。
+- agent-hook の 3 つの guard（files-guard、secrets-guard、command-guard）を、スクリプトの横に足す。rtk と formatter は PR 5 まで足さない。
 - 利用者の group は、位置も中身も変えない。group は消さない。
 - 計画がこの約束を破るなら、その home は止まる（`stopped: placement: ...`）。
 

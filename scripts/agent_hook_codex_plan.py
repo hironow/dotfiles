@@ -1,11 +1,11 @@
 """The Codex home's plan (PR 3d.2): pure values, no environment or file I/O.
 
 Codex runs a user hook only while the thread's config snapshot trusts it, and
-keys that trust by the hook's position in ~/.codex/hooks.json. So this PR
-never moves or rewrites a script group (except in a scripts update, as today),
-and adds agent-hook's guards (G) beside the scripts: in an empty group with
-the same matcher, or past the end of the list. A thread that does not trust G
-yet still runs the scripts. PR 5 removes the scripts later.
+keys that trust by the hook's position in ~/.codex/hooks.json and a hash of
+its declaration. So a group whose declaration is still wanted never moves,
+and agent-hook's guards (G) go beside the scripts: in an empty group with the
+same matcher, or past the end of the list. A thread that does not trust G yet
+still runs the scripts. PR 5 removes the scripts later.
 
 Every `hooks` value here is the `hooks` member of hooks.json: event name to
 a list of groups, each `{"matcher": ..., "hooks": [handlers]}`.
@@ -102,24 +102,43 @@ def family_groups(
     return found
 
 
-def _place(groups: list[dict], desired: Sequence[dict]) -> None:
-    """Fill empty groups with the same matcher, first fit, in order, each pick
-    after the previous one; if any desired group finds none, append them all."""
-    picks: list[int] = []
-    start = 0
+def _reconcile(
+    groups: list[dict], desired: Sequence[dict], is_member: Callable[[dict], bool]
+) -> None:
+    """Make one event's groups of a family hold `desired`. A group whose
+    declaration equals a desired one stays where it is, so Codex keeps
+    trusting it; every other group of the family is emptied in place; each
+    desired group left over fills the first empty group with its matcher, or
+    goes past the end. Order does not matter to Codex: it runs every matching
+    handler."""
+    members = [index for index, group in enumerate(groups) if is_member(group)]
+    kept: set[int] = set()
+    leftover: list[dict] = []
     for wanted in desired:
-        for index in range(start, len(groups)):
-            if not _handlers(groups[index]) and groups[index].get(
-                "matcher"
-            ) == wanted.get("matcher"):
-                picks.append(index)
-                start = index + 1
-                break
+        index = next(
+            (i for i in members if i not in kept and groups[i] == wanted), None
+        )
+        if index is None:
+            leftover.append(wanted)
         else:
-            groups.extend(deepcopy(group) for group in desired)
-            return
-    for index, wanted in zip(picks, desired, strict=True):
-        groups[index] = deepcopy(wanted)
+            kept.add(index)
+    for index in members:
+        if index not in kept:
+            groups[index] = _emptied(groups[index])
+    for wanted in leftover:
+        slot = next(
+            (
+                index
+                for index, group in enumerate(groups)
+                if not _handlers(group)
+                and group.get("matcher") == wanted.get("matcher")
+            ),
+            None,
+        )
+        if slot is None:
+            groups.append(deepcopy(wanted))
+        else:
+            groups[slot] = deepcopy(wanted)
 
 
 def merge(
@@ -129,8 +148,9 @@ def merge(
     classes: Classes,
 ) -> Merged:
     """The new hooks value: retired groups emptied in place, then each family
-    (the scripts, then agent-hook's) left alone when it already holds what is
-    desired, or else emptied in place and placed again. No group is removed."""
+    (the scripts, then agent-hook's) reconciled with what is desired, event by
+    event (_reconcile). An event the file lacks comes after its events. No
+    group is removed. `changed` names each family whose groups changed."""
     result: Hooks = {event: deepcopy(list(groups)) for event, groups in hooks.items()}
     for groups in result.values():
         for index, group in enumerate(groups):
@@ -138,16 +158,19 @@ def merge(
                 groups[index] = _emptied(group)
     changed: set[str] = set()
     for family, desired in ((SCRIPT, scripts), (BINARY, binary)):
-        wanted = {event: list(groups) for event, groups in desired.items() if groups}
-        if family_groups(result, classes, family) == wanted:
-            continue
-        changed.add(family)
-        for groups in result.values():
-            for index, group in enumerate(groups):
-                if classes.family(group) == family:
-                    groups[index] = _emptied(group)
-        for event, groups in wanted.items():
-            _place(result.setdefault(event, []), groups)
+        before = family_groups(result, classes, family)
+        events = [*result, *(event for event in desired if event not in result)]
+        for event in events:
+            wanted = list(desired.get(event, []))
+            if event not in result and not wanted:
+                continue
+            _reconcile(
+                result.setdefault(event, []),
+                wanted,
+                lambda group, family=family: classes.family(group) == family,
+            )
+        if family_groups(result, classes, family) != before:
+            changed.add(family)
     return Merged(result, frozenset(changed))
 
 

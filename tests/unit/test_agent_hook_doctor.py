@@ -1531,7 +1531,16 @@ def test_a_codex_guard_that_differs_from_the_render_is_a_warning() -> None:
     facts = check.Facts(homes=(_codex_wired([first, changed]),))
     lines = _lines(facts, "registered")
     assert len(lines) == 1 and lines[0][0] == "WARN"
-    assert "Codex: managed blocks differ from render at PreToolUse[1]" in lines[0][1]
+    assert "Codex: managed blocks differ from render at PreToolUse[" in lines[0][1]
+    assert lines[0][1].endswith(".hooks[0].timeout; run just sync-agents")
+
+
+def test_the_order_of_codex_guard_groups_is_not_a_difference() -> None:
+    # Codex runs every matching handler, and keys trust by position, so sync
+    # leaves an unchanged group where it is, in whatever order that leaves G
+    first, second = _guards()
+    facts = check.Facts(homes=(_codex_wired([second, first]),))
+    assert _lines(facts, "registered") == []
 
 
 def test_a_claude_home_with_scripts_and_a_binary_is_still_mixed() -> None:

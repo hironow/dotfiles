@@ -207,11 +207,78 @@ def test_scripts_that_grow_while_uninstalled_take_an_empty_group() -> None:
     grown = codex.merge(uninstalled, f2, {}, CLASSES)
     assert grown.hooks["PreToolUse"][4] == script("another.sh")
     codex.check(uninstalled, grown.hooks, CLASSES, grown.changed)
-    # G's Bash group finds no empty group after its first one, so both of G's
-    # groups go past the end, at new keys that the trust step trusts anew
+    # G's files group gets its own empty group back, at the key Codex trusts;
+    # its Bash group finds none left, so it goes past the end, at a new key
     reinstalled = codex.merge(grown.hooks, f2, G, CLASSES)
-    assert reinstalled.hooks["PreToolUse"][-2:] == G["PreToolUse"]
+    assert reinstalled.hooks["PreToolUse"][3] == G["PreToolUse"][0]
+    assert reinstalled.hooks["PreToolUse"][-1] == G["PreToolUse"][1]
     codex.check(grown.hooks, reinstalled.hooks, CLASSES, reinstalled.changed)
+
+
+def _kept(before: dict, after: dict, desired: dict, is_member) -> list:
+    """The groups of before, in the family, whose declaration is one of
+    desired's but which no longer sit at their index in after."""
+    return [
+        (event, index)
+        for event, groups in before.items()
+        for index, group in enumerate(groups)
+        if is_member(group)
+        and group in desired.get(event, [])
+        and after.get(event, [])[index : index + 1] != [group]
+    ]
+
+
+@pytest.mark.parametrize("with_g", [True, False], ids=["with G", "without G"])
+def test_scripts_that_grow_by_one_group_keep_every_other_group_in_place(
+    with_g: bool,
+) -> None:
+    wired = codex.merge(this_mac(), F, G if with_g else {}, CLASSES).hooks
+    f2 = deepcopy(F)
+    f2["PreToolUse"].append(script("another.sh"))
+    grown = codex.merge(wired, f2, G if with_g else {}, CLASSES)
+    assert _kept(wired, grown.hooks, f2, CLASSES.is_script) == []
+    assert grown.hooks["PreToolUse"][:3] == wired["PreToolUse"][:3]
+    assert grown.hooks["PreToolUse"][-1] == script("another.sh")
+    codex.check(wired, grown.hooks, CLASSES, grown.changed)
+
+
+def test_a_changed_first_group_moves_no_other_script_group() -> None:
+    wired = codex.merge(this_mac(), F, G, CLASSES).hooks
+    f2 = deepcopy(F)
+    f2["PreToolUse"][0]["matcher"] = "Write|Edit"
+    changed = codex.merge(wired, f2, G, CLASSES)
+    assert _kept(wired, changed.hooks, f2, CLASSES.is_script) == []
+    assert changed.hooks["PreToolUse"][1:3] == F["PreToolUse"][1:3]
+    assert changed.hooks["PreToolUse"][0] == empty(FILES)
+    assert changed.hooks["PreToolUse"][-1] == f2["PreToolUse"][0]
+
+
+def test_a_script_group_past_g_keeps_its_place_through_uninstall_and_updates() -> None:
+    # given a script group sync appended after G, and then an uninstall
+    wired = codex.merge(this_mac(), F, G, CLASSES).hooks
+    f2 = deepcopy(F)
+    f2["PreToolUse"].append(script("another.sh"))
+    grown = codex.merge(wired, f2, G, CLASSES).hooks
+    uninstalled = codex.merge(grown, f2, {}, CLASSES).hooks
+    # when another scripts update changes only the first group
+    f3 = deepcopy(f2)
+    f3["PreToolUse"][0]["hooks"][0]["timeout"] = 45
+    updated = codex.merge(uninstalled, f3, {}, CLASSES)
+    # then the appended group stays where it was, and G's empty groups stay free
+    assert _kept(uninstalled, updated.hooks, f3, CLASSES.is_script) == []
+    assert updated.hooks["PreToolUse"][3:5] == [empty(FILES), empty()]
+    # and an install puts G back at its own keys
+    reinstalled = codex.merge(updated.hooks, f3, G, CLASSES).hooks
+    assert reinstalled["PreToolUse"][3:5] == G["PreToolUse"]
+
+
+def test_a_template_change_of_one_guard_group_keeps_the_other_in_place() -> None:
+    wired = codex.merge(this_mac(), F, G, CLASSES).hooks
+    g2 = deepcopy(G)
+    g2["PreToolUse"][0]["hooks"][0]["timeout"] = 20
+    template = codex.merge(wired, F, g2, CLASSES)
+    assert template.hooks["PreToolUse"][4] == G["PreToolUse"][1]
+    assert template.hooks["PreToolUse"][3] == g2["PreToolUse"][0]
 
 
 def test_a_mixed_group_and_a_user_group_are_never_touched() -> None:
@@ -311,12 +378,27 @@ def test_script_groups_never_move_except_in_a_scripts_update(seed: int) -> None:
             )
         if step == "scripts":
             scripts = deepcopy(scripts)
-            scripts["PreToolUse"][rng.randrange(3)]["hooks"][0]["timeout"] = (
-                rng.randint(1, 60)
-            )
+            groups = scripts["PreToolUse"]
+            change = rng.choice(["timeout", "matcher", "grow", "shrink"])
+            if change == "timeout":
+                groups[rng.randrange(len(groups))]["hooks"][0]["timeout"] = rng.randint(
+                    1, 60
+                )
+            elif change == "matcher":
+                groups[rng.randrange(len(groups))]["matcher"] = rng.choice(
+                    ["Bash", FILES, "Write|Edit"]
+                )
+            elif change == "grow":
+                groups.append(script(f"n{rng.randrange(1000)}.sh"))
+            elif len(groups) > 1:
+                groups.pop()
         desired = {} if step == "uninstall" else g
         merged = codex.merge(hooks, scripts, desired, CLASSES)
         codex.check(before, merged.hooks, CLASSES, merged.changed)
+        # a group whose declaration is still desired never moves: Codex keeps
+        # trusting it, even in a scripts update or a template change
+        assert _kept(before, merged.hooks, scripts, CLASSES.is_script) == []
+        assert _kept(before, merged.hooks, desired, CLASSES.is_binary) == []
         if step != "scripts":
             assert [
                 (event, i, group)

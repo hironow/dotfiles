@@ -191,10 +191,18 @@ def _inspection(subject: str, call: str, outcome: Outcome) -> Line:
     return "WARN", "agent-hook-inspect", f"{subject}: {call}: {reason}"
 
 
+def _in_any_order(hooks: Mapping[str, list[dict]]) -> dict[str, list[dict]]:
+    return {
+        event: sorted(groups, key=lambda group: json.dumps(group, sort_keys=True))
+        for event, groups in hooks.items()
+    }
+
+
 def _compared(home: Home, fragment: dict) -> tuple[object, object]:
     """What doctor compares with the render: the home's managed blocks, or,
-    for Codex, only agent-hook's groups against G (codex_guards), since its
-    scripts stay beside them and rtk and the formatter wait for PR 5."""
+    for Codex, only agent-hook's groups against G (codex_guards), in any
+    order: its scripts stay beside them, rtk and the formatter wait for PR 5,
+    and sync leaves an unchanged group where it is."""
     rendered = fragment.get("hooks", {})
     if home.harness != "codex":
         return home.managed, rendered
@@ -209,7 +217,9 @@ def _compared(home: Home, fragment: dict) -> tuple[object, object]:
             ]
         )
     }
-    return binary, codex_guards(rendered) if isinstance(rendered, dict) else rendered
+    if not isinstance(rendered, dict):
+        return binary, rendered
+    return _in_any_order(binary), _in_any_order(codex_guards(rendered))
 
 
 def _home_lines(home: Home) -> list[Line]:
