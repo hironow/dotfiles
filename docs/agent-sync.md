@@ -92,7 +92,7 @@ Pi は tool の path を書く前に解決するので、binary も同じに解�
 harness ごとの定義（payload の schema、答え、hook ごとの対応状況）は `tools/agent-hooks/harnesses/` にある（`README.md` が書き方を説明する）。
 同じ scenario を全 harness に通す conformance suite（`tools/agent-hooks/internal/conformance/`）が、定義の誤りを知らせる。
 binary は実行ごとに、決まった値だけの行を 1 行ずつ `$XDG_STATE_HOME/dotfiles/agent-hooks/logs/<UTC の日付>.jsonl`（既定は `~/.local/state/...`）に書く（path、command、内容は書かない。Windows ではまだ書かない）。`just agent-hooks-log` が直近の行を表で出す。
-`just agent-hooks-build` が、この機体向けの binary を再現できる release として `~/.local/share/dotfiles/agent-hooks/releases/<release ID>/agent-hook` に作る（`agent-hook selftest` を通ったものだけ。同じ場所への build は 1 つずつ走る。Windows ではまだ作らない）。`just agent-hooks-build check PATH` は作り直して bytes を比べる。Claude の home を release に配線する手順は、下の「agent-hook の配線（Claude）」にある。Codex はまだ配線しない（PR 3d.2）。
+`just agent-hooks-build` が、この機体向けの binary を再現できる release として `~/.local/share/dotfiles/agent-hooks/releases/<release ID>/agent-hook` に作る（`agent-hook selftest` を通ったものだけ。同じ場所への build は 1 つずつ走る。Windows ではまだ作らない）。`just agent-hooks-build check PATH` は作り直して bytes を比べる。Claude の home を release に配線する手順は、下の「agent-hook の配線（Claude）」に、Codex の手順は「agent-hook の配線（Codex）」にある。
 guard、rtk の hook、formatter かその test、または `guard-codex.sh` を変えたら corpus を書き直し、Go 側も同じ判定に直す。
 command guard は `just command-guard-corpus`、files guard と secrets guard は `just file-guards-corpus`、binary に通す payload は `just hook-payload-corpus`、rtk の hook と formatter は `just tool-hooks-corpus` で書き直す。
 `tests/unit/test_command_guard_corpus.py`、`tests/unit/test_file_guards_corpus.py`、`tests/unit/test_hook_payload_corpus.py`、`tests/unit/test_tool_hooks_corpus.py`、Go の test が、ずれを知らせる。

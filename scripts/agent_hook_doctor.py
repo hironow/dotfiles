@@ -19,6 +19,7 @@ import agent_hook_wiring
 import claude_homes
 import doctor_lines
 import sync_agents
+from agent_hook_codex_plan import codex_guards
 from agent_hook_release import (
     OUTPUT_LIMIT,
     PROGRAM_TIMEOUT,
@@ -190,13 +191,36 @@ def _inspection(subject: str, call: str, outcome: Outcome) -> Line:
     return "WARN", "agent-hook-inspect", f"{subject}: {call}: {reason}"
 
 
+def _compared(home: Home, fragment: dict) -> tuple[object, object]:
+    """What doctor compares with the render: the home's managed blocks, or,
+    for Codex, only agent-hook's groups against G (codex_guards), since its
+    scripts stay beside them and rtk and the formatter wait for PR 5."""
+    rendered = fragment.get("hooks", {})
+    if home.harness != "codex":
+        return home.managed, rendered
+    binary = {
+        event: groups
+        for event, blocks in home.managed.items()
+        if (
+            groups := [
+                block
+                for block in blocks
+                if sync_agents._is_agent_hook_group(block, codex=True)
+            ]
+        )
+    }
+    return binary, codex_guards(rendered) if isinstance(rendered, dict) else rendered
+
+
 def _home_lines(home: Home) -> list[Line]:
     lines: list[Line] = []
     if home.problem:
         return [
             ("WARN", "agent-hook-inspect", f"{home.name}: registration: {home.problem}")
         ]
-    if (home.scripts and home.binaries) or len(home.binaries) > 1:
+    # Codex keeps its scripts beside agent-hook's guards until PR 5 (PR 3d.2)
+    mixed = home.scripts and home.binaries and home.harness != "codex"
+    if mixed or len(home.binaries) > 1:
         lines.append(
             (
                 "WARN",
@@ -229,7 +253,7 @@ def _home_lines(home: Home) -> list[Line]:
                 _inspection(home.name, f"{binary.path} render", rendered.outcome)
             )
             continue
-        difference = first_difference(home.managed, rendered.fragment.get("hooks", {}))
+        difference = first_difference(*_compared(home, rendered.fragment))
         if difference:
             lines.append(
                 (
@@ -714,9 +738,7 @@ def _marks_and_journals(
     except ValueError:
         return frozenset(), ()
     marks = frozenset(
-        home.key
-        for home in homes
-        if home.harness == "claude" and roots.mark(home.key).is_file()
+        home.key for home in homes if home.key and roots.mark(home.key).is_file()
     )
     journals = tuple(sorted(path.name for path in roots.state.glob("switch-*.json")))
     return marks, journals
