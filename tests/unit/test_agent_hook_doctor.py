@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import agent_hook_doctor as check
 import agent_hook_release as release
+import codex_shells
 from _agent_hooks_go import STRICT_GO, why_go_cannot_build_the_module
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -562,7 +563,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for name in ("BASH_ENV", "ENV", "ZDOTDIR", "CLAUDE_CONFIG_DIR"):
         monkeypatch.delenv(name, raising=False)
     shell = _fake_shell(bin_dir / "zsh")
-    monkeypatch.setattr(check, "_login_shell", lambda: str(shell), raising=False)
+    monkeypatch.setattr(codex_shells, "_login_shell", lambda: str(shell), raising=False)
     return home
 
 
@@ -1037,7 +1038,7 @@ def test_gather_runs_both_shell_paths_with_unique_tokens(
 ) -> None:
     Path(os.environ["CODEX_HOME"]).mkdir()
     _fake_shell(Path(os.environ["SHELL"]), mode)
-    monkeypatch.setattr(check, "SHELL_TIMEOUT", 1)
+    monkeypatch.setattr(codex_shells, "SHELL_TIMEOUT", 1)
     facts = check.gather(isolated)
     assert len(facts.shells) == 2
     assert len({shell.token for shell in facts.shells}) == 2

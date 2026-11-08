@@ -8,7 +8,6 @@ the doctor lines from plain values, without accessing homes or programs.
 import json
 import os
 import re
-import secrets
 import shutil
 import sys
 import tempfile
@@ -30,14 +29,19 @@ from agent_hook_release import (
     go_environment,
     run,
 )
+from codex_shells import (  # noqa: F401 (re-exported for doctor's callers and tests)
+    POSIX_SHELLS,
+    SHELL_FALLBACKS,
+    SHELL_TIMEOUT,
+    Shell,
+    ShellChoice,
+    derive_login_shell,
+    derive_session_shell,
+    gather_shells,
+    probe_argv,
+    shell_kind,
+)
 from doctor_lines import Line
-
-try:
-    import pwd
-except ImportError:  # Windows has no passwd database or shell probes.
-    pwd = None
-
-SHELL_TIMEOUT = 10
 
 
 @dataclass(frozen=True)
@@ -91,26 +95,6 @@ class Log:
 
 
 @dataclass(frozen=True)
-class ShellChoice:
-    route: str
-    executable: str | None
-    kind: str
-    reason: str
-
-
-@dataclass(frozen=True)
-class Shell:
-    choice: ShellChoice
-    argv: tuple[str, ...]
-    outcome: Outcome
-    token: str
-
-    @property
-    def clean(self) -> bool:
-        return self.outcome.ok and self.outcome.stdout == self.token
-
-
-@dataclass(frozen=True)
 class Facts:
     homes: tuple[Home, ...] = ()
     releases: tuple[Release, ...] = ()
@@ -122,120 +106,6 @@ class Facts:
     # registration changes sync left unfinished, by journal name.
     marks: frozenset[str] = frozenset()
     journals: tuple[str, ...] = ()
-
-
-SHELL_FALLBACKS = {
-    "zsh": ("/bin/zsh",),
-    "bash": ("/bin/bash", "/usr/bin/bash"),
-    "sh": ("/bin/sh",),
-    "pwsh": ("/usr/local/bin/pwsh",),
-    "powershell": (),
-    "cmd": (),
-}
-POSIX_SHELLS = {"zsh", "bash", "sh", "dash", "ksh"}
-
-
-def shell_kind(path: str) -> str:
-    name = Path(path).name
-    while name not in SHELL_FALLBACKS and Path(name).stem != name:
-        name = Path(name).stem
-    if name in {"pwsh", "powershell"}:
-        return "powershell"
-    return name if name in POSIX_SHELLS or name in {"cmd", "fish"} else "other"
-
-
-def derive_session_shell(
-    login_shell: str | None,
-    system: str,
-    executables: Mapping[str, str],
-    files: frozenset[str],
-) -> ShellChoice:
-    """Codex 0.166 shell_detect.rs, POSIX: passwd, PATH, fixed fallbacks.
-
-    All discovery is passed in. dash/ksh/fish are not recognised session
-    types, although dash and ksh can read the launcher's sh syntax.
-    """
-    login_kind = shell_kind(login_shell or "")
-    recognised = {"zsh", "bash", "sh", "powershell", "cmd"}
-
-    def find(kind: str) -> str | None:
-        if login_kind == kind and login_shell in files:
-            return login_shell
-        names = ("pwsh", "powershell") if kind == "powershell" else (kind,)
-        for name in names:
-            if name in executables:
-                return executables[name]
-            for path in SHELL_FALLBACKS[name]:
-                if path in files:
-                    return path
-        return None
-
-    if login_kind in recognised and (executable := find(login_kind)):
-        return ShellChoice(
-            "session",
-            executable,
-            login_kind,
-            f"login shell {Path(login_shell or '').name}",
-        )
-    fallback = ("zsh", "bash") if system == "darwin" else ("bash", "zsh")
-    if not login_shell:
-        reason = "login shell unavailable"
-    elif login_kind in recognised:
-        reason = f"login shell {Path(login_shell).name} not found"
-    else:
-        reason = f"login shell {Path(login_shell).name} is not one Codex runs"
-    for kind in fallback:
-        if executable := find(kind):
-            return ShellChoice(
-                "session", executable, kind, f"{reason}; it falls back to {kind}"
-            )
-    if "/bin/sh" in files:
-        return ShellChoice(
-            "session", "/bin/sh", "sh", f"{reason}; it falls back to fixed /bin/sh"
-        )
-    return ShellChoice(
-        "session", None, "none", f"{reason}; no shell found (fixed /bin/sh missing)"
-    )
-
-
-def derive_login_shell(
-    shell: str | None, executables: Mapping[str, str], files: frozenset[str]
-) -> ShellChoice:
-    if shell == "":
-        return ShellChoice("$SHELL -lc", None, "none", "SHELL is empty")
-    path = "/bin/sh" if shell is None else shell
-    executable = path if path in files else executables.get(path)
-    return ShellChoice(
-        "$SHELL -lc",
-        executable,
-        shell_kind(path) if executable else "none",
-        f"SHELL={path}" if shell is not None else "SHELL unset; /bin/sh -lc",
-    )
-
-
-def probe_argv(choice: ShellChoice, token: str) -> tuple[str, ...]:
-    if choice.executable is None:
-        return ()
-    if choice.kind == "powershell":
-        command = f"$l = [Console]::In.ReadLine(); if ($l -ceq '{token}') {{ [Console]::Out.Write('{token}') }} else {{ [Console]::Out.Write('{token}:stdin') }}"
-    elif choice.kind in POSIX_SHELLS:
-        command = f'IFS= read -r line; if [ "$line" = {token} ]; then printf %s {token}; else printf %s {token}:stdin; fi'
-    elif choice.kind == "fish":
-        # fish cannot parse sh's `if`, yet runs today's script hooks.
-        command = f'read -l line; if test "$line" = {token}; printf %s {token}; else; printf %s {token}:stdin; end'
-    else:
-        # A shell whose syntax doctor does not know: the token alone, with
-        # stdin unchecked (3d never wires Codex under it).
-        command = f"printf %s {token}"
-    if choice.route != "session":
-        flags = ("-lc",)
-    elif choice.kind == "powershell":
-        flags = ("-NoProfile", "-Command")
-    elif choice.kind == "cmd":
-        flags = ("/c",)
-    else:
-        flags = ("-c",)
-    return choice.executable, *flags, command
 
 
 def _shell_lines(shell: Shell, *, wired: bool, guard: bool) -> list[Line]:
@@ -781,50 +651,6 @@ def _log(path: str) -> Log:
     except (ValueError, TypeError) as exc:
         return Log(path, replace(outcome, reason=f"output does not parse: {exc}"))
     return Log(path, outcome, LogSummary(**doc))
-
-
-def _login_shell() -> str | None:
-    if pwd is None:
-        return None
-    try:
-        return pwd.getpwuid(os.getuid()).pw_shell
-    except (KeyError, OSError):
-        return None
-
-
-def gather_shells(system: str, env: Mapping[str, str]) -> tuple[Shell, ...]:
-    if system == "windows":
-        return ()
-    login = _login_shell()
-    names = {*SHELL_FALLBACKS, env.get("SHELL", "")}
-    executables = {
-        name: found
-        for name in names
-        if name and (found := shutil.which(name, path=env.get("PATH", "")))
-    }
-    candidates = {path for paths in SHELL_FALLBACKS.values() for path in paths}
-    candidates.update(path for path in (login, env.get("SHELL")) if path)
-    files = frozenset(path for path in candidates if Path(path).is_file())
-    choices = (
-        derive_session_shell(login, system, executables, files),
-        derive_login_shell(env.get("SHELL"), executables, files),
-    )
-    probes = []
-    for choice in choices:
-        token = "agent-hook-probe-" + secrets.token_hex(8)
-        argv = probe_argv(choice, token)
-        outcome = (
-            run(
-                argv,
-                env=env,
-                timeout=SHELL_TIMEOUT,
-                input=(token + "\n").encode("utf-8"),
-            )
-            if argv
-            else Outcome(None, reason="missing shell")
-        )
-        probes.append(Shell(choice, argv, outcome, token))
-    return tuple(probes)
 
 
 def gather(home: Path) -> Facts:
