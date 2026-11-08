@@ -164,3 +164,10 @@ or root execution. It uses the scoped native installer, canonical generated
 mise tool declarations, pinned/checksummed mise bootstrap, and this same
 non-root user's socket. Only ephemeral CI starts that service and removes the
 Docker executable from its PATH. The paused sandbox variable remains paused.
+Before the socket starts, `allow-podman-stop-pasta.sh` probes whether rootless
+Podman can stop pasta (`podman unshare --rootless-netns true`). On Ubuntu 26.04
+the passt package's AppArmor profile refuses podman's SIGTERM (Ubuntu
+LP #2154379). Only when the probe fails with exactly that denial does it add
+`signal (receive) set=(term) peer=podman,` to the runner's
+`/etc/apparmor.d/usr.bin.pasta`, reload it, and require the probe to pass. Any
+other probe failure stops the job. Operator hosts are not changed.

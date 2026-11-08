@@ -8,6 +8,7 @@ on:
       - '!emulator/**/*.md'
       - '!emulator/**/*.MD'
       - '.devcontainer/ci-bootstrap.sh'
+      - '.devcontainer/allow-podman-stop-pasta.sh'
       - '.github/workflows/test-emulators.yaml'
   pull_request:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - '!emulator/**/*.md'
       - '!emulator/**/*.MD'
       - '.devcontainer/ci-bootstrap.sh'
+      - '.devcontainer/allow-podman-stop-pasta.sh'
       - '.github/workflows/test-emulators.yaml'
     types: [opened, synchronize, reopened, ready_for_review]
 

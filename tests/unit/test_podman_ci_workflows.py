@@ -176,6 +176,14 @@ def _bootstrap_checksum_attempt(tmp_path, names, *, corrupt=False, engine=None):
         '#!/bin/sh\n[ "$#" = 1 ] && [ "$1" = --podman-only ]\n',
         encoding="utf-8",
     )
+    # The real guard has its own tests (test_allow_podman_stop_pasta.py);
+    # here it only records that, and with what, the bootstrap ran it.
+    (repo / ".devcontainer/allow-podman-stop-pasta.sh").write_text(
+        'printf \'pasta-guard %s\\n\' "$*" >> "${FIXTURE_TRACE:-/dev/null}"\n'
+        'exit "${FIXTURE_PASTA_GUARD_RC:-0}"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
     version = tomllib.loads(
         (repo / "config/mise/image-tools.toml").read_text(encoding="utf-8")
     )["bootstrap"]["mise"]
@@ -352,6 +360,7 @@ esac""",
             FIXTURE_INITIAL_RC=str(engine.get("initial_rc", 0)),
             FIXTURE_HELPER_RC=str(engine.get("helper_rc", 0)),
             FIXTURE_BIN_PATHS_BREAK=engine.get("bin_paths_break", ""),
+            FIXTURE_PASTA_GUARD_RC=str(engine.get("pasta_guard_rc", 0)),
         )
         commands.update(
             jq=f'exec {real_utility("jq")} "$@"',
@@ -664,3 +673,30 @@ def test_bootstrap_stops_when_a_tool_has_no_bin_path(tmp_path, tool, breakage, m
     assert not github_env.exists() or "DOTFILES_PODMAN_ENGINE_SOCKET=" not in (
         github_env.read_text(encoding="utf-8")
     )
+
+
+def test_bootstrap_runs_the_pasta_guard_before_the_podman_socket(tmp_path):
+    result = _bootstrap_checksum_attempt(tmp_path, ["./{artifact}"], engine={})
+    assert result.returncode == 0, result.stdout + result.stderr
+    trace = (tmp_path / "trace").read_text(encoding="utf-8").splitlines()
+    guard = "pasta-guard /etc/apparmor.d/usr.bin.pasta"
+    assert trace.count(guard) == 1, trace
+    assert trace.index(guard) < trace.index("systemctl --user start podman.socket")
+
+
+def test_bootstrap_stops_when_the_pasta_guard_fails(tmp_path):
+    result = _bootstrap_checksum_attempt(
+        tmp_path, ["./{artifact}"], engine={"pasta_guard_rc": 1}
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    trace = (tmp_path / "trace").read_text(encoding="utf-8")
+    assert "pasta-guard /etc/apparmor.d/usr.bin.pasta" in trace
+    assert "systemctl --user start podman.socket" not in trace
+    github_env = tmp_path / "github-env"
+    environment = github_env.read_text(encoding="utf-8") if github_env.exists() else ""
+    assert "DOTFILES_PODMAN_ENGINE_SOCKET=" not in environment
+
+
+def test_test_emulators_runs_when_the_pasta_guard_changes():
+    body = (ROOT / ".github/workflows/test-emulators.yaml").read_text(encoding="utf-8")
+    assert body.count("      - '.devcontainer/allow-podman-stop-pasta.sh'\n") == 2

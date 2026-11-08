@@ -11,6 +11,11 @@ bash "$repo/install.sh" --podman-only
 # Service/runtime dependencies only, from this Ubuntu release's native packages.
 sudo -n apt-get update -y
 sudo -n apt-get install -y --no-install-recommends uidmap slirp4netns fuse-overlayfs curl ca-certificates
+# Ubuntu 26.04's AppArmor profile for pasta refuses podman's SIGTERM, so
+# rootless Podman cannot tear down its network namespace. The guard probes
+# that, and adds the one rule GitHub's image fix adds only when the probe
+# fails with exactly that denial (see the script).
+bash "$repo/.devcontainer/allow-podman-stop-pasta.sh" /etc/apparmor.d/usr.bin.pasta
 
 bootstrap="$RUNNER_TEMP/dotfiles-podman-bootstrap"
 mkdir -p "$bootstrap/bin"
