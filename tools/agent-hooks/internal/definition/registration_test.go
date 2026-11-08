@@ -8,7 +8,7 @@ import (
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/definition"
 )
 
-const registrationControl = `{"events":{"pre":"PreToolUse","post":"PostToolUse"},"blocks":[
+const registrationControl = `{"layouts":["stable"],"events":{"pre":"PreToolUse","post":"PostToolUse"},"blocks":[
 {"event":"pre","matcher":"Bash","hooks":["command-guard","files-guard","secrets-guard","rtk"]},
 {"event":"post","matcher":"Write","hooks":["formatter"]}],"launchers":[
 {"os":["darwin","linux","windows"],"shell":"exec","closed":{"type":"command","command":"{{.Binary}}","args":["{{.Harness}}","{{.Event}}","{{.Hook}}"]},
@@ -51,6 +51,12 @@ func TestLoadChecksRegistration(t *testing.T) {
 		{"exec args not strings", `"args":["{{.Harness}}","{{.Event}}","{{.Hook}}"]`, `"args":[1]`, "args"},
 		{"exec null argument", `"args":["{{.Harness}}","{{.Event}}","{{.Hook}}"]`, `"args":[null]`, "args"},
 		{"exec no args", `,"args":["{{.Harness}}","{{.Event}}","{{.Hook}}"]`, ``, "args"},
+		// layouts name the binary paths a registration may hold: the home's
+		// stable link, and (Codex, until PR 3d.2) a release.
+		{"no layouts", `"layouts":["stable"],`, ``, "layouts"},
+		{"empty layouts", `"layouts":["stable"]`, `"layouts":[]`, "layouts"},
+		{"unknown layout", `"layouts":["stable"]`, `"layouts":["stable","elsewhere"]`, "layouts"},
+		{"repeated layout", `"layouts":["stable"]`, `"layouts":["stable","stable"]`, "layouts"},
 	}
 	prefix, _, found := strings.Cut(registrationControl, `"launchers":`)
 	if !found {

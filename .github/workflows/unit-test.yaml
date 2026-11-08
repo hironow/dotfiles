@@ -58,17 +58,21 @@ jobs:
           tests/unit/test_hook_payload_corpus.py
           tests/unit/test_tool_hooks_corpus.py
 
-      # Doctor's real-hookrelease test needs the Go that tools/agent-hooks/go.mod
-      # asks for. The runner's system Go is older, so the run above skips it;
-      # this step gives it that Go, and a skip fails instead.
+      # Doctor's real-hookrelease test and the installed-release recipe's test
+      # need the Go that tools/agent-hooks/go.mod asks for. The runner's system
+      # Go is older, so the run above skips them; this step gives them that Go,
+      # and a skip fails instead.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/agent-hooks/go.mod
           cache-dependency-path: tools/agent-hooks/go.sum
-      - name: Doctor's real hookrelease check, with the module's Go
+      - name: Agent-hook's real Go tests, with the module's Go
         env:
-          AGENT_HOOK_DOCTOR_STRICT_GO: "1"
-        run: uvx pytest -q -ra tests/unit/test_agent_hook_doctor.py -k real_hookrelease
+          AGENT_HOOKS_STRICT_GO: "1"
+        run: >-
+          uvx pytest -q -ra
+          tests/unit/test_agent_hook_doctor.py::test_real_hookrelease_rebuilds_a_real_temporary_release
+          tests/unit/test_agent_hooks_test_installed.py
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Check Pi provider failover

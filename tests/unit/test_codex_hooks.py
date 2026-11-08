@@ -375,17 +375,30 @@ def _claude(home: Path) -> AgentTarget:
 
 
 # What the renderer writes for Claude: the exec form, with no shell, so the
-# command is the program path itself.
+# command is the program path itself, and the path is the home's stable link.
 RENDERED_CLAUDE = {
+    "exec, stable link": _hook(
+        _stable("claude"), args=["claude", *ARGS], timeout=30, onFailure="block"
+    ),
+    "exec, stable link, apostrophe and $": _hook(
+        "/home/o'brien $x/.local/share/dotfiles/agent-hooks/current/claude/agent-hook",
+        args=["claude", *ARGS],
+    ),
+    "exec, windows stable link": _hook(
+        f"C:\\Users\\O'Brien $x\\{_windows_stable('claude')}", args=["claude", *ARGS]
+    ),
+}
+
+# A Claude handler that names a release directly. Sync writes the home's
+# stable link and has never written a release path, so such a handler is a
+# user's, kept as it is (PR 3d.1; the owner, 2026-11-06). Codex owns its
+# release paths until 3d.2 brings its position-keeping merge.
+CLAUDE_RELEASE_PATHS = {
     "exec, release": _hook(
         RELEASE, args=["claude", *ARGS], timeout=30, onFailure="block"
     ),
-    "exec, stable link": _hook(_stable("claude"), args=["claude", *ARGS], timeout=30),
-    "exec, windows": _hook(
+    "exec, windows release": _hook(
         f"C:\\Users\\O'Brien $x\\{WINDOWS_RELEASE}", args=["claude", *ARGS]
-    ),
-    "exec, windows stable link": _hook(
-        f"C:\\Users\\u\\{_windows_stable('claude')}", args=["claude", *ARGS]
     ),
 }
 
@@ -438,6 +451,21 @@ def test_a_codex_agent_hook_block_is_managed_for_codex_only(
     block = {"matcher": "Bash", "hooks": [hook]}
     assert sync_agents._is_managed_hook_block(block, _codex(tmp_path / "codex"))
     assert not sync_agents._is_managed_hook_block(block, _claude(tmp_path / "claude"))
+
+
+@pytest.mark.parametrize(
+    "hook", CLAUDE_RELEASE_PATHS.values(), ids=CLAUDE_RELEASE_PATHS.keys()
+)
+def test_a_claude_block_that_names_a_release_is_the_users(
+    tmp_path: Path, hook: dict
+) -> None:
+    claude = _claude(tmp_path / "claude")
+    block = {"matcher": "Bash", "hooks": [hook]}
+    # given a Claude block that runs a release directly, sync does not own it
+    assert not sync_agents._is_managed_hook_block(block, claude)
+    # and a sync keeps it as it is
+    merged = _merged_after_revert(claude, "settings.json", hook)
+    assert block in merged["hooks"]["PreToolUse"]
 
 
 def test_a_block_that_also_runs_a_user_command_is_not_managed(tmp_path: Path) -> None:

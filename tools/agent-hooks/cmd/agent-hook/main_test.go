@@ -32,11 +32,21 @@ func buildAndRun(m *testing.M) int {
 	}
 	defer os.RemoveAll(dir)
 	binary = filepath.Join(dir, "agent-hook")
-	build := exec.Command("go", "build", "-o", binary, ".")
-	build.Stdout, build.Stderr = os.Stderr, os.Stderr
-	if err := build.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "go build:", err)
-		return 1
+	if under := os.Getenv("AGENT_HOOK_UNDER_TEST"); under != "" {
+		// An installed release (just agent-hooks-test-installed): these tests
+		// run against it, once it says it is the release they were told of.
+		binary = under
+		if err := checkReleaseUnderTest(binary, os.Getenv("AGENT_HOOK_EXPECT_RELEASE"), dir); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+	} else {
+		build := exec.Command("go", "build", "-o", binary, ".")
+		build.Stdout, build.Stderr = os.Stderr, os.Stderr
+		if err := build.Run(); err != nil {
+			fmt.Fprintln(os.Stderr, "go build:", err)
+			return 1
+		}
 	}
 	if runtime.GOOS != "windows" {
 		faketool = filepath.Join(dir, "faketool")
@@ -60,6 +70,41 @@ func buildAndRun(m *testing.M) int {
 		}
 	}
 	return m.Run()
+}
+
+// checkReleaseUnderTest asks the binary its version, and wants want, the
+// release ID AGENT_HOOK_EXPECT_RELEASE names, so a test run cannot pass for
+// another binary than the one it was meant for.
+func checkReleaseUnderTest(binary, want, dir string) error {
+	if want == "" {
+		return errors.New("AGENT_HOOK_UNDER_TEST needs AGENT_HOOK_EXPECT_RELEASE, its release ID")
+	}
+	// Audited: binary is the release the operator named for these tests.
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+	version := exec.Command(binary, "version")
+	version.Dir = dir
+	version.Env = []string{"PATH=" + os.Getenv("PATH"), "XDG_STATE_HOME=" + filepath.Join(dir, "version-state")}
+	out, err := version.Output()
+	if err != nil {
+		return fmt.Errorf("%s version: %w", binary, err)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) < 2 || fields[0] != "agent-hook" {
+		return fmt.Errorf("%s version printed %q, not agent-hook <release ID>", binary, out)
+	}
+	if fields[1] != want {
+		return fmt.Errorf("%s is release %s, not %s", binary, fields[1], want)
+	}
+	return nil
+}
+
+// expectedRelease is the release ID of the binary under test: dev for the
+// one these tests build, else AGENT_HOOK_EXPECT_RELEASE's.
+func expectedRelease() string {
+	if os.Getenv("AGENT_HOOK_UNDER_TEST") == "" {
+		return "dev"
+	}
+	return os.Getenv("AGENT_HOOK_EXPECT_RELEASE")
 }
 
 // runBinary runs the built binary in an empty directory: it needs no

@@ -326,6 +326,7 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
         - Only the host's release is built, since only the host can run its checks. `id [--goos OS --goarch ARCH]` prints any target's ID without building. On Windows, `build` (like `switch`) waits for Windows' own PR, which brings a lock tested there; `id` and `check` work.
         - `check PATH` resolves links, so it takes `current/<home>/agent-hook` too. It rebuilds that release's target into a temporary file with a fresh temporary `GOCACHE` and compares SHA-256. It is slower than a build, but a damaged cache cannot repeat a wrong build.
         - `switch --home KEY [--root DIR] PATH` resolves the whole path and accepts only a regular `agent-hook` in `<root>/releases/<16 lowercase hex>/`. It points `current/<KEY>/agent-hook` at it by renaming a new symlink over the old one.
+            - Since PR 3d.1 it takes the lock sync, uninstall, install, and gc share (`<state>/dotfiles/agent-hooks/switch.lock`; it waits 30 s, then names the holder), refuses while a registration change is unfinished (a `switch-<home>.json` journal), and syncs the parent of each directory it makes and the link's directory after the rename. `testdata/link-cases.json` holds the rule for where a link may point, and sync's own link switch is tested against the same table.
     - **`agent-hook version`** prints the release ID and the Go version. **`agent-hook selftest`** answers 16 cases on the in-memory machine: on Claude and Codex, each guard on a pass and a block, rtk's forward, and the formatter's notice, byte for byte, with no program run and nothing logged. `version` and `selftest` cannot be harness names.
     - **The stage watchdog:** each hook has a deadline in `manifest.json` (the guards and rtk 10 s, the formatter 20 s).
         - A worker reads stdin, decodes, decides, and renders. The supervisor alone writes, once: the worker's answer, or at the deadline a guard's block with the rule `hook.timeout` (rtk and the formatter pass). The line logs `hook.timeout`. A panic in the worker answers as a failed hook: a guard blocks with `hook.failed`, and rtk and the formatter pass.
@@ -397,6 +398,40 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Tests:** every rule of `report()`; Codex's shell derivation as a pure function; `gather()` against a temporary home with fake binaries, a `hookrelease` stand-in for each exit (checking its working directory and Go), and fake shells for each startup case; one check with the real `hookrelease` on a real release (it needs the Go that `go.mod` asks for, so CI's unit job runs it in a step of its own with that Go, where a skip fails); the summary's normalization; and drift guards that pin the doctor's code sets to Go's constants and its homes to sync's.
     - **The Windows host's plan:** [agent-hooks-windows.md](agent-hooks-windows.md).
     - **Not yet:** the wiring (3d), and Windows.
+- How PR 3d.1 does it: sync wires the five Claude homes to the binary, through each home's stable link. Codex keeps today's scripts until 3d.2. The detailed design had five Codex reviews (APPROVE in round 5); the owner decided its contract changes (2026-11-06).
+    - **The split:** 3d.1 brings the switch machinery and Claude's wiring; 3d.2 brings Codex (the position-keeping merge, trust as journaled stages, and the shell precondition), with its own design and review.
+    - **Ownership:** in a Claude home, sync owns, and render writes, only the stable link `current/<home>/agent-hook` (the harness data's `registration.layouts`). Sync has never written a release path. A Claude block that names a release directly is its user's. Codex keeps owning release paths until 3d.2, since narrowing them under today's merge would move a kept block and lose its trust.
+    - **One entry** for sync, install, uninstall, and gc (`scripts/agent_hook_sync.py`), in this order:
+        1. it takes `<state>/dotfiles/agent-hooks/switch.lock`;
+        2. it recovers every journal;
+        3. it refuses a settings layer that holds `hooks`;
+        4. it builds and checks the release;
+        5. it plans each home from fresh reads;
+        6. it applies with checked writes.
+        - `hookrelease switch` takes the same lock, and refuses while a journal is pending.
+    - **The plan** (`scripts/agent_hook_plan.py`, pure) follows three tables, sync's, install's, and uninstall's. The actions are `nothing`, `link`, `register`, `install`, `unregister`, `keep`, `scripts`, `uninstalled`, and `stop`.
+        - It computes the final `settings.json` once, as a value: the hook part, then the shared merge, with the state file written first.
+        - Invariants hold the hook part to what the action makes, and keep the shared merge off `hooks`.
+    - **A registration change** (register, install, unregister) is one journaled change of the link, the file, and the uninstall mark (`scripts/agent_hook_wiring.py`). Every journal names the mark's state, even a register's (absent before and after), so every step checks it; a journal without it is refused.
+        - Every file goes in whole (temporary file, fsync, rename, fsync the directory).
+        - A change's scope is the hook registration, the link, and the mark: a restore puts back the old `hooks` value only, and another program's other keys stay.
+        - A crash at any point ends, at the next run, at the old state or the new one.
+        - No link is ever removed: a Claude session that missed a restore still finds its link.
+    - **A write without a journal** reads the file again first. On a difference it plans that home once more; on a second, that home stops, the other homes go on, and the run exits 1.
+    - **A home that stops** (its state unreadable, a plan that needs a person, or a change that was restored or abandoned) writes nothing more: in particular none of its deletions, which could take a script that its kept registration runs.
+    - **Retired blocks** (rtk's own `rtk hook claude`) in a wired home make sync register again, and the merge drops them; `keep` changes nothing in `hooks`.
+    - **Durability:** on macOS every flush is `F_FULLFSYNC` (with fsync where it is not supported), as Go's `File.Sync` does, since fsync stops at the drive's cache there. A restore of a file the change created keeps the file, without `hooks`.
+    - **Uninstall** (`just agent-hooks-uninstall <home>`) brings back the scripts' registration and writes the home's mark, which sync honors. `just agent-hooks-install <home>` wires it again; it needs a release.
+    - **gc** (`just agent-hooks-gc [--delete]`) lists the releases nothing references:
+        - every home's link;
+        - a release whose ID appears whole anywhere in a Claude or Codex registration file, or in a journal (its text and its file bytes), searched both as bytes and as the JSON a harness decodes (so a `\u` escape hides nothing), however a path spells it: `$HOME`, `~`, a relative path after a `cd`, or an ID held in a variable. Matching the ID errs on keeping; a name a shell assembles from pieces at run time is beyond it;
+        - any release a journal names.
+        - It deletes only with `--delete`, and refuses while Codex runs, until 3d.2.
+        - It refuses a releases directory that is a link (any layout but the one hookrelease makes), where references could not match.
+    - **Doctor and the AI tools check** read the marks and the journals, and agent-hook's rtk hook.
+    - **`just agent-hooks-test-installed [KEY]`** runs cmd/agent-hook's process tests against the release a home's link names, after `hookrelease check`.
+    - **`scripts/sync_agents.py`** is a project-mode script now (no PEP 723 block): it imports the agent-hook modules beside it, which ty cannot resolve from a script's own environment.
+    - **Not yet:** Codex (3d.2), and Windows.
 
 ### Bugs of the old scripts that the binary fixes
 
@@ -471,6 +506,23 @@ Each PR is one squash merge. Before reverting a wiring PR, run the per-harness u
     - Round 3 (REVISE, 3): a group kill after the reap can reach a reused group ID; the journal needs the new state and the stage; the merge must keep Codex's positions for others' hooks.
     - Rounds 4 and 5 (REVISE, 1 each): waiting for the exit before reading the pipes deadlocks; `Combined`'s one pipe must stay.
     - Rounds 6 and 7: APPROVE.
+- PR 3d's design (Codex, five rounds; APPROVE; the owner decided its contract changes, 2026-11-06: the 3d.1/3d.2 split, ownership of the stable paths only, a sticky uninstall mark with the link kept, and a change scoped to `hooks`, the link, and the mark). Each finding was adopted:
+    - Round 1 (REVISE, 5 P1, 7 P2): the shared merge rewrote `settings.json` after the journal was gone; the lock and recovery came too late; the mark was outside the transaction; uninstall removed a link running sessions use; new directories and the journal's deletion were not flushed; preview and apply did not share a plan; `keep` still reordered blocks; resume depended on the checkout; uninstall's restore order; Docker accepted a fallback; `check` and `selftest` stood in for the process tests; live blocks could come from elsewhere.
+    - Round 2 (REVISE, 3 P1, 3 P2): the shared merge could write `hooks`; writes with no journal had no check against another program; a restore removed a link and gc could take a release a session ran; the retirement state was outside the plan; install and uninstall had no tables; `AGENT_HOOK_UNDER_TEST` proved nothing alone.
+    - Round 3 (REVISE, 1 P1, 5 P2): the invariant rejected a normal uninstall; `hooks` in a fragment was both dropped and a stop; a hooks-only restore left the shared settings new; planning again after the journal, and an abandon a crash could lose; the retired list's times, and a Codex path that skipped it (the list was dropped for ownership of the stable paths only).
+    - Round 4 (REVISE, 1 P1, 2 P2): narrowing Codex's ownership under today's merge loses trust (it waits for 3d.2); an abandon's link restore; install and uninstall must not apply the shared merge.
+    - Round 5: APPROVE.
+- PR 3d.1 code reviews: Codex, in the design's session (Codex wrote the wiring and sync code in another), and an independent review (a Claude subagent). Each finding was adopted:
+    - Round 1 (Codex REVISE, 4 P2; the independent review REVISE, 3 P2):
+        - Codex: the public test-installed recipe was untested (now run end to end with a real release); the new Docker cases could pass a failing sync (`set -euo pipefail`); restoring a file the change created deleted it, shared settings included; a home whose change did not commit went on to its deletions, which could take a script its kept registration runs.
+        - The independent review: gc deleted a release a user block names through `$HOME`, `~`, or a relative path (gc now keeps any release named by its ID); a wired home kept rtk's own hook when it came back (it now registers again, and the merge drops it); Python's fsync is no full flush on macOS (`F_FULLFSYNC` now, as Go's `File.Sync`).
+        - Its P3s: one unreadable home stopped every home (it now stops alone); a register journaled an unchanged mark; uninstall could leave a `settings.json` holding `{}`; recovery printed nothing; seven surviving mutants, each now killed by a test.
+        - Found on the way (Claude, while integrating): one home's stop aborted the whole sync; the wiring kept another home's link block as a user's, so its hooks would run twice; `scripts/sync_agents.py` became a project-mode script, since ty resolves a PEP 723 script's imports in that script's own environment only.
+    - Round 2 (Codex REVISE, 3 P2, 2 P3; the independent review APPROVE, with P3s and four surviving mutants):
+        - Codex: the public recipe's test passed a plain `go test` too (a recording Go now checks what the tests are told to run); gc still deleted a release a block calls by a short relative path after a `cd` (gc now keeps any release whose ID appears in a registration file or a journal); a null mark in a register's journal let a mark made mid-change pass, and let recovery commit a state the tables stop on (every journal names the mark again, and one without it is refused; this reverses round 1's P3-2); malformed `hooks` shapes still stopped every home (`check_shapes` now stops that home alone); a failed full flush was not pinned as an error.
+        - The independent review: the same malformed shapes; `SyncSession.changed` had no caller (`_print_plan` now uses it); a retry that reads a home made unreadable meanwhile raised out of sync (it now stops that home). Not adopted: a test for `retired_from`'s guard against a non-object block, since `check_shapes` now refuses such a block first.
+    - Round 3 (Codex REVISE, 1 P2, 1 P3): gc searched bytes only, so an ID written with a JSON `\u` escape, which the harness decodes, went unseen (gc now also searches the decoded JSON of each registration and journal file); a handler's `command` or `args` of another type passed `check_shapes`, then broke the ownership rule for every home (`check_shapes` now types them).
+    - Round 4: Codex APPROVE. The independent review's final check of rounds 2 and 3: APPROVE, with two P3s, both adopted: no test pinned that a stop with nothing else to change still fails the run (a surviving mutant); gc with a releases directory that is a link matched no reference (it now refuses that layout).
 - PR 3c's design (Codex, three rounds; APPROVE). Each finding was checked first and adopted:
     - Round 1 (REVISE, 5):
         - freshness through the recipe could not tell exit 1 from 2, and split a path (confirmed: `go run` turns a child's 2 into 1);

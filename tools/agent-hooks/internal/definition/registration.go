@@ -13,7 +13,12 @@ import (
 )
 
 // Registration lists blocks in their native order and the launchers for them.
+// Layouts names the binary paths a registration may hold: "stable", a home's
+// link (current/<home>/agent-hook), and "release", a release itself
+// (releases/<id>/agent-hook). Sync writes only the stable link; Codex keeps
+// owning release paths until PR 3d.2 brings its position-keeping merge.
 type Registration struct {
+	Layouts   []string            `json:"layouts"`
 	Events    map[string]string   `json:"events"`
 	Blocks    []RegistrationBlock `json:"blocks"`
 	Launchers []Launcher          `json:"launchers"`
@@ -54,7 +59,10 @@ func (l Launcher) Render(closed bool, values RegistrationValues, funcs template.
 	return []byte(rendered), err
 }
 
-var registrationOSes = []string{"darwin", "linux", "windows"}
+var (
+	registrationOSes = []string{"darwin", "linux", "windows"}
+	binaryLayouts    = []string{"stable", "release"}
+)
 
 func checkRegistration(file harnessFile) error {
 	// The OS overrides first: their refusal names the cell, where a block's
@@ -63,12 +71,29 @@ func checkRegistration(file harnessFile) error {
 		return err
 	}
 	if file.Registration != nil {
+		if err := checkLayouts(file.Registration.Layouts); err != nil {
+			return fmt.Errorf("registration: %w", err)
+		}
 		if err := checkBlocks(file); err != nil {
 			return fmt.Errorf("registration: %w", err)
 		}
 		if err := checkLaunchers(file.Registration.Launchers); err != nil {
 			return fmt.Errorf("registration: %w", err)
 		}
+	}
+	return nil
+}
+
+func checkLayouts(layouts []string) error {
+	if len(layouts) == 0 {
+		return errors.New("layouts must name at least one of stable and release")
+	}
+	seen := map[string]bool{}
+	for _, layout := range layouts {
+		if !slices.Contains(binaryLayouts, layout) || seen[layout] {
+			return fmt.Errorf("layouts: %q is unknown or repeated", layout)
+		}
+		seen[layout] = true
 	}
 	return nil
 }

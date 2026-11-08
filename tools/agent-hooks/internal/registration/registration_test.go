@@ -120,6 +120,10 @@ func TestMainRefusesPathsAndShellsWithoutAFragment(t *testing.T) {
 		{"short release", "claude", "linux", "", "/dotfiles/agent-hooks/releases/abcdef01234/agent-hook"},
 		{"uppercase release", "claude", "linux", "", "/dotfiles/agent-hooks/releases/ABCDEF012345/agent-hook"},
 		{"exec placeholder", "claude", "linux", "", "/${root}" + stable},
+		// Claude's registrations name the home's stable link only: sync
+		// writes nothing else, and owns nothing else (PR 3d.1).
+		{"Claude release", "claude", "linux", "", "/state/dotfiles/agent-hooks/releases/abcdef0123456789/agent-hook"},
+		{"Claude Windows release", "claude", "windows", "", `C:\state\dotfiles\agent-hooks\releases\abcdef0123456789\agent-hook.exe`},
 	}
 	for _, form := range []struct{ shell, chars string }{{"cmd", "%!\""}, {"powershell", "*?[]‘’‚‛"}} {
 		for _, char := range form.chars {
