@@ -1948,3 +1948,40 @@ def test_gc_deletes_while_codex_runs(codex_workspace: tuple) -> None:
     assert hooks.run_command(config, "gc", [], delete=True) == 0
     assert not unused.path.exists()
     assert wired.is_file()
+
+
+def test_a_codex_crash_before_the_file_write_leaves_hooks_json_as_it_was(
+    codex_workspace: tuple,
+) -> None:
+    _, codex, roots, source = codex_workspace
+    source.available = False
+    with open_codex_session(codex_workspace) as session:
+        assert session.apply_home("codex").status == "committed"
+    hooks_json = codex.directory / "hooks.json"
+    scripts_only = hooks_json.read_bytes()
+    source.available = True
+
+    class CrashDisk(RecordingDisk):
+        def rename(self, source: Path, target: Path) -> None:
+            super().rename(source, target)
+            if target == roots.link("codex"):
+                os._exit(0)  # the link moved; hooks.json not yet written
+
+    child = os.fork()
+    if child == 0:
+        try:
+            with open_codex_session(codex_workspace, disk=CrashDisk()) as session:
+                session.apply_home("codex")
+        finally:
+            os._exit(91)
+    _, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 0
+    assert hooks_json.read_bytes() == scripts_only
+    assert roots.journal("codex").exists()
+    source.available = False
+    with open_codex_session(codex_workspace) as session:
+        assert session.recovered
+    # the recovery ends at the old state or the new one: hooks.json is the
+    # scripts as they were, and no journal is left
+    assert json.loads(hooks_json.read_bytes()) == json.loads(scripts_only)
+    assert not roots.journal("codex").exists()

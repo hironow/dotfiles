@@ -13,10 +13,13 @@ import contextlib
 import json
 import os
 import queue
+import signal
+import subprocess
 import sys
 import time
 from collections.abc import Generator, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -253,6 +256,35 @@ def test_main_warns_and_exits_1_when_the_app_server_fails(
     assert (
         capsys.readouterr().out == f"WARN codex-hooks - codex app-server: {printed}\n"
     )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the fake codex is a sh script")
+def test_a_real_app_server_that_never_answers_is_killed_and_reaped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    codex = tmp_path / "codex"
+    codex.write_text("#!/bin/sh\nexec sleep 60\n", encoding="utf-8")
+    codex.chmod(0o755)
+    started: list[subprocess.Popen] = []
+    popen = subprocess.Popen
+
+    def recording(command: list[str], **options: Any) -> subprocess.Popen:
+        process = popen(command, **options)
+        started.append(process)
+        return process
+
+    monkeypatch.setattr(trust.subprocess, "Popen", recording)
+    monkeypatch.setattr(trust, "REQUEST_TIMEOUT", 0.2)
+    begun = time.monotonic()
+    with (
+        pytest.raises(RuntimeError, match="initialize: no answer within 0.2 s"),
+        trust.app_server(str(codex)),
+    ):
+        pass
+    # the server was killed, not waited for, and reaped
+    assert time.monotonic() - begun < 5
+    [process] = started
+    assert process.returncode == -signal.SIGKILL
 
 
 # A guard as agent-hook's render writes it for Codex (sh, through the home's

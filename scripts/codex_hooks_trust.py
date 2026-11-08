@@ -47,8 +47,9 @@ from sync_agents import (
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "codex-hooks"
 TRUSTABLE = {"untrusted", "modified"}
-# How long one app-server request may take. A run makes at most six, so it
-# ends well inside sync's 120 s for the step (sync_agents.CODEX_STEP_TIMEOUT).
+# How long one app-server request may take. A run makes at most five (75 s),
+# plus a render (30 s), inside sync's 120 s for the step
+# (sync_agents.CODEX_STEP_TIMEOUT); a server that fails one is killed at once.
 REQUEST_TIMEOUT = 15
 # The hook an agent-hook command runs, as its render writes it.
 HOOK_ID = re.compile(r"--hook ([a-z0-9-]+)")
@@ -375,7 +376,7 @@ def app_server(codex: str) -> Generator[AppServerClient]:
     )
     assert proc.stdin is not None and proc.stdout is not None
     try:
-        yield AppServerClient(proc.stdin, proc.stdout)
+        yield AppServerClient(proc.stdin, proc.stdout, timeout=REQUEST_TIMEOUT)
     except BaseException:
         proc.kill()  # a server that failed a request is not waited for
         raise
@@ -387,6 +388,9 @@ def app_server(codex: str) -> Generator[AppServerClient]:
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
+        # the reader thread ends at EOF, or on the closed file (AppServerClient._read)
+        with contextlib.suppress(OSError, ValueError):
+            proc.stdout.close()
 
 
 def list_hooks(client: AppServerClient, cwd: Path) -> list[dict]:
