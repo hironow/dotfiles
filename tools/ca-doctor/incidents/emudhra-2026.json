@@ -32,6 +32,16 @@
     "bun": [{"branch": "1.4", "minimum": "1.4.4"}],
     "mise": [{"branch": "2026", "minimum": "2026.10.17"}]
   },
+  "untrustedRoots": [
+    {
+      "sha256": "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b",
+      "subject": "/C=IN/OU=emSign PKI/O=eMudhra Technologies Limited/CN=emSign ECC Root CA - G3"
+    },
+    {
+      "sha256": "d7a7a0fb5d7e2731d771e9484ebcdef71d5f0c3e0a2948782bc83ee0ea699ef4",
+      "subject": "/C=GB/ST=Greater Manchester/L=Salford/O=Comodo CA Limited/CN=AAA Certificate Services"
+    }
+  ],
   "pending": [],
   "advice": [
     "OS/browser revocation, PEM bundles and runtime CA stores are independent; update each consumer.",

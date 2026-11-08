@@ -1617,6 +1617,26 @@ ca-doctor-build:
 ca-doctor *args:
     @bash -c 'bin=output/ca-doctor/ca-doctor; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) bin="$bin.exe" ;; esac; if [ ! -x "$bin" ]; then echo "WARN ca-build - run just ca-doctor-build first"; exit 1; fi; exec "$bin" --source tools/ca-doctor "$@"' -- {{args}}
 
+# macOS: write a candidate of /private/etc/ssl/cert.pem (what Apple's LibreSSL
+# clients read) without the incident's untrustedRoots, into
+# output/ca-os-bundle/; no root needed. Review it, then run ca-os-bundle-apply
+# with the two hashes it prints (docs/runbook/ca-doctor.md).
+# Write a candidate OS CA bundle without an incident's untrusted roots
+[group('Setup')]
+[macos]
+ca-os-bundle-candidate incident="emudhra-2026": ca-doctor-build
+    @mkdir -p output/ca-os-bundle
+    @rm -f output/ca-os-bundle/cert.pem
+    output/ca-doctor/ca-doctor os-bundle --source tools/ca-doctor --incident {{incident}} --in /private/etc/ssl/cert.pem --out output/ca-os-bundle/cert.pem
+
+# macOS, sudo: replace /private/etc/ssl/cert.pem with the candidate, only if
+# both hashes are the candidate run's; the old bundle is kept beside it.
+# Install the candidate OS CA bundle after a backup
+[group('Setup')]
+[macos]
+ca-os-bundle-apply input_sha candidate_sha incident="emudhra-2026":
+    sudo output/ca-doctor/ca-doctor os-bundle --source tools/ca-doctor --incident {{incident}} --in /private/etc/ssl/cert.pem --apply --expect-sha256 {{input_sha}} --expect-out-sha256 {{candidate_sha}} --backup "/private/etc/ssl/cert.pem.dotfiles-backup-$(date +%Y%m%d-%H%M%S)"
+
 # Static native binaries for each supported OS/CPU; no C toolchain required.
 [group('Setup')]
 ca-doctor-build-all:
