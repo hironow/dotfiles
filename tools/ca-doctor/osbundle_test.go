@@ -184,9 +184,48 @@ func withExtraElement(t *testing.T, c testCertificate) string {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }
 
+// altered is c's certificate with its DER changed by change, which must
+// change it.
+func altered(t *testing.T, c testCertificate, change func([]byte) []byte) string {
+	t.Helper()
+	block, _ := pem.Decode([]byte(c.pem))
+	der := change(bytes.Clone(block.Bytes))
+	if bytes.Equal(der, block.Bytes) {
+		t.Fatal("the change changed nothing")
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
+
+// badSignaturePadding sets the signature BIT STRING's unused-bit count, the
+// first content byte of the certificate's last element, to 8.
+func badSignaturePadding(der []byte) []byte {
+	var outer asn1.RawValue
+	if _, err := asn1.Unmarshal(der, &outer); err != nil {
+		panic(err)
+	}
+	content := outer.Bytes
+	var last asn1.RawValue
+	for len(content) > 0 {
+		next, err := asn1.Unmarshal(content, &last)
+		if err != nil {
+			panic(err)
+		}
+		content = next
+	}
+	start := len(der) - len(last.FullBytes) + (len(last.FullBytes) - len(last.Bytes))
+	der[start] = 8
+	return der
+}
+
+// primitiveVersion turns the [0] EXPLICIT version into a primitive [0].
+func primitiveVersion(der []byte) []byte {
+	return bytes.Replace(der, []byte{0xa0, 0x03, 0x02, 0x01, 0x02}, []byte{0x80, 0x03, 0x02, 0x01, 0x02}, 1)
+}
+
 func TestPruneBundleRefusesWhatItCannotReadExactly(t *testing.T) {
 	a, b := newTestCertificate(t, "a"), newTestCertificate(t, "b")
 	request, extra := certificateRequestPEM(t), withExtraElement(t, a)
+	padding, version := altered(t, a, badSignaturePadding), altered(t, a, primitiveVersion)
 	for _, tc := range []struct {
 		name, bundle string
 		roots        []UntrustedRoot
@@ -200,6 +239,8 @@ func TestPruneBundleRefusesWhatItCannotReadExactly(t *testing.T) {
 		{"a certificate's outer shape only", "-----BEGIN CERTIFICATE-----\nMAcwADAAAwEA\n-----END CERTIFICATE-----\n" + a.pem, []UntrustedRoot{a.root}, "not a certificate"},
 		{"a certificate request", request + a.pem, []UntrustedRoot{a.root}, "not a certificate"},
 		{"an extra element in a certificate", extra + b.pem, []UntrustedRoot{b.root}, "not a certificate"},
+		{"a signature with 8 unused bits", padding + b.pem, []UntrustedRoot{b.root}, "not a certificate"},
+		{"a primitive version", version + b.pem, []UntrustedRoot{b.root}, "not a certificate"},
 		// a space after END would otherwise make one block of two, and drop both
 		{"a space after END", strings.Replace(a.pem, pemEnd, pemEnd+" ", 1) + b.pem, []UntrustedRoot{a.root}, "PEM boundary"},
 		{"a space after BEGIN", strings.Replace(a.pem, pemBegin, pemBegin+" ", 1) + b.pem, []UntrustedRoot{b.root}, "PEM boundary"},
