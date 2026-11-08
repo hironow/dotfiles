@@ -471,7 +471,23 @@ Tests per OS: binary missing, non-zero exit, exit 0 with malformed JSON, a hang 
     - **Doctor** reads the Codex mark. A Codex home with scripts and G is not mixed, and only G is compared with `codex_guards` of the render.
     - **The script entry** (`scripts/agent_hook_sync.py`) runs the module copy that `sync_agents` imported, so its classes and errors are one set.
     - **Tests:** every row of the plan; the merge on this Mac's layout and on random layouts; and, as a property over random runs of sync, install, uninstall, release changes, template changes, and scripts updates (a changed group, a changed matcher, a group added or removed), that a group whose declaration is still desired never moves, and that no script group changes except in a scripts update. The session runs against a fake source: register, nothing, scripts, keep, uninstall and install at the same keys, and a crash after the file write. The sandbox syncs with no Go (the scripts stay) and with a real release, where the image's `codex` trusts every handler of `hooks.json`, G included.
-    - **Not yet:** the switch of `~/.codex` on this Mac, which needs the owner's go-ahead, and Windows.
+    - **On this Mac (2026-11-08, release `01fe9097ba85e24d`), with the owner's go-ahead:** the switch of `~/.codex`, then the live checks of the PR 3d.2 design's section 9.
+        - **The switch:** `just sync-agents x` wired Codex in 21 s.
+            - `hooks.json` holds herdr's group and the four script groups at their old indices, byte for byte, and G at `PreToolUse` 3 and 4.
+            - The trust step trusted G's three handlers, and reports 8 hooks trusted and enabled. `config.toml` gained those three trust entries and nothing else.
+            - No journal remains, and `just doctor` gives no Codex WARN. Its one agent-hook WARN is that the Claude homes' release, `7c8a6fcff524c408`, is not what this checkout builds; a sync of those homes moves their links.
+        - **`codex exec` (0.166.0) in a scratch project:**
+            - `pip --version` was denied by both the script guard and agent-hook's, which logged `command.pip` with `harness: codex`;
+            - an `apply_patch` that adds `x.yml` was denied (`file.yml`), and no file was made;
+            - `git status` ran as `rtk git status`, rewritten once, by the scripts' rtk, while agent-hook's command-guard passed it.
+        - **Uninstall, then install, of `x`:** uninstall emptied G's two groups in place and wrote the mark. Install made `hooks.json` byte-identical to before, removed the mark, and wrote no trust entry.
+        - **A link-only change:** `hookrelease switch --home codex` to `7c8a6fcff524c408` changed neither `hooks.json` nor `config.toml`, and the next guarded call logged that release. `just sync-agents x` then moved the link back (`link`), again without changing either file.
+        - **The launcher's failure cases**, outside Codex, through `/bin/zsh -c` and `-lc`: a missing binary and one that exits 1 each made the launcher exit 2 with `agent-hook failed`. One that hangs kept the launcher running past 30 s, where Codex's timeout lets the call go on (the accepted risk).
+        - **`just agent-hooks-test-installed codex`** passed (29 s).
+        - **Latency** (`just agent-hooks-latency --binary <the codex link>`, N = 200): every Codex case is within budget. agent-hook's guards have a p95 of 14.2 to 15.6 ms, against the scripts' 54.8 to 70.6 ms. Until PR 5 both run on each call, so a call waits about as long as before.
+        - **Not checked:** a thread held open across the first switch. Three Codex processes ran through it. Their script groups kept their keys and hashes, so they kept their guards, but nothing observed them.
+        - Codex recorded the scratch project as trusted in `config.toml` during the checks; that entry was removed after.
+    - **Not yet:** Windows.
 
 ### Bugs of the old scripts that the binary fixes
 
