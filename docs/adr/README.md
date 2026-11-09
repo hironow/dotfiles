@@ -93,6 +93,7 @@ and what outlived it.
 | 0066 | [doctor の WARN は手を動かすべきことだけにし、注意書きは INFO で出し、OS に合わない行は出さない](./0066-doctor-warns-only-what-needs-action.md) | Proposed（決裁待ち） | 2026-11-01 | `scripts/doctor.sh`、`scripts/doctor_lines.py`、`scripts/ollama_host.py`、`tools/ca-doctor/`、`tools/kernel-doctor/`、`docs/runbook/ca-doctor.md`、`docs/runbook/kernel-doctor.md`、`docs/runbook/ollama-windows-wsl.md` |
 | 0067 | [コンテナの実行と導入を Podman に統一する](./0067-use-podman-for-managed-containers.md) | Accepted (PR #565); limited partial supersession of 0001/0005/0035 | 2026-11-08 | コンテナ実行経路、導入、devcontainer、CI、runner GC |
 | 0068 | [dev container の mise を、署名を確かめた tarball で凍結する](./0068-pin-the-dev-container-mise.md) | Accepted (PR #583); limited partial supersession of 0001/0060 | 2026-11-09 | `.devcontainer/features/dotfiles-tools/install.sh`、`tools/mise-versions/`、`config/mise/image-tools.toml` |
+| 0069 | [型検査と lint を、コードが動く OS ごとに回す（ty と golangci-lint）](./0069-type-check-and-lint-for-every-os.md) | Proposed（決裁待ち） | 2026-11-10 | `ROOT_AGENTS_docs_agents_python-tooling.md`、`ROOT_AGENTS_docs_agents_go-tooling.md`、`ROOT_AGENTS_docs_agents_commit-discipline.md`、`templates/agent-baseline/` |
 
 ## Reading order for newcomers
 
@@ -153,3 +154,4 @@ and what outlived it.
 - 2026-11-08: [ADR-0067](./0067-use-podman-for-managed-containers.md) を採択し、0001 の基底・engine・CI action、0005 の Podman だけの winget 例外、0035 のコンテナ実行系・画像削除・build-cache 自動回収を部分置換する。旧本文と残りの決定は維持し、0039 の Windows 導入境界は変えない。安全な保持期限を証明できない cache は自動回収せず、旧 cache 増大防止保証は継承しない。[PR #565 の本人裁定](https://github.com/hironow/dotfiles/pull/565)。
 - 2026-11-09: [ADR-0068](./0068-pin-the-dev-container-mise.md)を起票（Proposed、決裁待ち）。dev container の mise を apt の最新から、[bootstrap].mise の版の GitHub リリース tarball へ移し、ADR-0001 と同じ指紋の鍵で署名した SHASUMS256.asc で確かめる。0001 の mise の取得元と 0060 の Decision 1・2・4 の部分置換を、所有者が本セッションで承認。
 - 2026-11-10: [ADR-0068](./0068-pin-the-dev-container-mise.md) を採択し、0001 の mise の取得元と検証の対象、0060 の Decision 1・2・4 のうち画像の mise に関わる範囲を部分置換する。署名の状態はすべて GOODSIG を求め、失効と期限切れの鍵の署名は拒む。旧本文と残りの決定は維持する。[PR #583](https://github.com/hironow/dotfiles/pull/583) で所有者が本セッションで承認し、決定欄への代理記入を許可した。
+- 2026-11-10: [ADR-0069](./0069-type-check-and-lint-for-every-os.md)を起票（Proposed、決裁待ち）。global の規則（python-tooling と go-tooling の spoke）と雛形で、ty と golangci-lint をコードが動く OS ごとに回す。0044 の Decision 1 の雛形の `just lint` の記述を広げる部分置換を、所有者が本セッションで指示した。
