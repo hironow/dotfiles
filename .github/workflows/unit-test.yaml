@@ -188,7 +188,8 @@ jobs:
     name: Unit tests on Windows, and on Windows PowerShell 5.1
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: windows-latest
-    timeout-minutes: 40
+    # about twice the 9m47s it took on 2026-11-10
+    timeout-minutes: 20
     # GitHub runs bash with -eo pipefail, and Git's /usr/bin (gpg, sh,
     # cygpath) is on PATH, as in the Git Bash a Windows host tests from.
     defaults:
@@ -221,7 +222,8 @@ jobs:
     name: Go tests on Windows (tools/)
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: windows-latest
-    timeout-minutes: 30
+    # it took 1m42s to 2m32s on 2026-11-10; room for a cold module cache
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
