@@ -55,6 +55,12 @@ Only external I/O is replaced. Unix process discovery/clock/disk output are
 stubbed; engine commands reach a JSON-backed fake. PowerShell process discovery, clock
 and Start-Process are stubbed; the same fake supplies CLI responses and a fake
 process replays timeout/tree-kill behavior.
+The Unix replay checks that its fakes are loaded, and that `wsl.exe` and
+`powershell.exe` are not on its PATH, before it starts `runner_gc.sh`. On
+Windows the PowerShell replay runs in its temp directory and passes `PATHEXT`
+(without it, PowerShell opens the fake engine in a new window and reads no
+output), `SystemDrive`, temp and profile directories, and
+`-ExecutionPolicy Bypass`, as `runner_gc.sh` does.
 
 The fake checks deletion preconditions, foreign-job/age/metadata/observed-keep
 protection, reference preservation and a designated fresh parent after every
