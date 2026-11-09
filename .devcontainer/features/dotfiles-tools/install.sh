@@ -62,7 +62,10 @@ import_apt_key_with_fingerprint() {
   local url="$1" expected="$2" out="$3"
   local tmp_armored="/tmp/dotfiles-apt-key.armored"
   local tmp_keyring="/tmp/dotfiles-apt-key.gpg"
-  rm -f "$tmp_armored" "$tmp_keyring"
+  local tmp_export="/tmp/dotfiles-apt-key.export"
+  # gpg keeps a backup of the keyring it changes as "<keyring>~"
+  local tmp_files=("$tmp_armored" "$tmp_keyring" "${tmp_keyring}~" "$tmp_export")
+  rm -f "${tmp_files[@]}"
   curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o "$tmp_armored" "$url"
   gpg --no-default-keyring --keyring "$tmp_keyring" --import "$tmp_armored" 2>/dev/null
   local actual
@@ -72,11 +75,19 @@ import_apt_key_with_fingerprint() {
     echo "[dotfiles-tools] GPG fingerprint mismatch for $url" >&2
     echo "  expected: $expected" >&2
     echo "  actual:   $actual" >&2
-    rm -f "$tmp_armored" "$tmp_keyring"
+    rm -f "${tmp_files[@]}"
     exit 1
   fi
-  install -m 0644 "$tmp_keyring" "$out"
-  rm -f "$tmp_armored" "$tmp_keyring"
+  # The temporary keyring is a GnuPG keybox; trixie's apt verifies with sqv,
+  # which reads only OpenPGP keyrings. Export the imported keys as one.
+  if ! gpg --no-default-keyring --keyring "$tmp_keyring" --export > "$tmp_export" ||
+    [ ! -s "$tmp_export" ]; then
+    echo "[dotfiles-tools] GPG export produced no keyring for $url" >&2
+    rm -f "${tmp_files[@]}"
+    exit 1
+  fi
+  install -m 0644 "$tmp_export" "$out"
+  rm -f "${tmp_files[@]}"
 }
 
 # ---- Google Cloud SDK -----------------------------------------------

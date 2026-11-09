@@ -70,6 +70,8 @@ def runtime(tmp_path, monkeypatch):
                         "serviceIsRemote": False,
                     },
                     "store": {"graphRoot": "/selected/storage"},
+                    # the selected engine's version, as real `podman info` has it
+                    "version": {"Version": "5.6.2"},
                 }
             )
         elif cmd[:2] == ["podman", "version"]:

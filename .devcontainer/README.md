@@ -163,7 +163,8 @@ Both engine CI jobs call `ci-bootstrap.sh`, which refuses non-hosted/non-Linux
 or root execution. It uses the scoped native installer, canonical generated
 mise tool declarations, pinned/checksummed mise bootstrap, and this same
 non-root user's socket. Only ephemeral CI starts that service and removes the
-Docker executable from its PATH. The paused sandbox variable remains paused.
+Docker executable from its PATH. The dev container job runs on ready pull
+requests and main pushes; no repository variable switches it.
 Before the socket starts, `allow-podman-stop-pasta.sh` probes whether rootless
 Podman can stop pasta (`podman unshare --rootless-netns true`). On Ubuntu 26.04
 the passt package's AppArmor profile refuses podman's SIGTERM (Ubuntu

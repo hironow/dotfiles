@@ -1,10 +1,11 @@
-"""While the dev container job is paused, CI still runs the Go tests.
+"""The dev container job runs like every other job; the Go tests keep a job
+of their own.
 
-The owner paused the sandbox job on 2026-11-04: it is long, and outside the
-work at hand. A repository variable turns it back on
-(`gh variable set RUN_SANDBOX_TESTS --body true`). Meanwhile the Go tests it
-ran through `just check` run in a job of their own, through the same recipe
-as a local run.
+The sandbox job ("Required disposable Podman devcontainer build/up/exec")
+runs on ready pull requests and main pushes, with the same draft guard as the
+other jobs and no repository-variable switch. The Go tests it runs through
+`just check` also run in a job of their own, for fast, independent feedback,
+through the same recipe as a local run.
 """
 
 import re
@@ -36,12 +37,10 @@ def _condition(job: str) -> str:
     return condition
 
 
-def test_the_sandbox_job_runs_only_when_switched_on() -> None:
-    # Exactly: without the parentheses, && binds first, and a push to main
-    # would run the job whatever the variable says.
-    assert _condition(_job(SANDBOX, "test")) == (
-        f"({DRAFT_GUARD}) && vars.RUN_SANDBOX_TESTS == 'true'"
-    )
+def test_the_sandbox_job_uses_only_the_draft_guard() -> None:
+    assert _condition(_job(SANDBOX, "test")) == DRAFT_GUARD
+    # no repository variable switches it, anywhere in the workflow
+    assert "RUN_SANDBOX_TESTS" not in SANDBOX
 
 
 def test_the_go_tests_run_in_a_job_of_their_own() -> None:

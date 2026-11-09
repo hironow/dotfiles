@@ -89,17 +89,35 @@ def _run(
 
 
 def _docker_available() -> bool:
-    """Compatibility name for the required Podman client/server check."""
+    """Compatibility name for the required Podman client/server check.
+
+    The client from `podman version`, the selected engine from `podman info`
+    (as .devcontainer/require-podman-socket.sh reads it): native Podman, as on
+    the CI runner, prints only `Client` from `podman version`. Both must be 5
+    or newer; anything missing or malformed counts as not available."""
+
+    def major(text: str) -> int:
+        # the whole string, as require-podman-socket.sh matches it
+        match = re.fullmatch(r"([0-9]+)\.[0-9]+\.[0-9]+(?:[-.+][^\s]+)?", text)
+        if match is None:
+            raise ValueError(text)
+        return int(match.group(1))
+
     try:
-        result = _run(["podman", "version", "--format", "json"])
-    except FileNotFoundError:
+        version = _run(["podman", "version", "--format", "json"])
+        if version.returncode:
+            return False
+        client = json.loads(version.stdout)["Client"]["Version"]
+        info = _run(["podman", "info", "--format", "json"])
+        if info.returncode:
+            return False
+        engine = json.loads(info.stdout)["version"]["Version"]
+        if not isinstance(client, str) or not isinstance(engine, str):
+            return False
+        return major(client) >= 5 and major(engine) >= 5
+    except (FileNotFoundError, ValueError, KeyError, TypeError):
+        # json.JSONDecodeError is a ValueError
         return False
-    if result.returncode:
-        return False
-    versions = json.loads(result.stdout)
-    return all(
-        int(versions[key]["Version"].split(".")[0]) >= 5 for key in ("Client", "Server")
-    )
 
 
 def _checked(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
