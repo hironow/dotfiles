@@ -7,8 +7,9 @@
 # devcontainer CLI so the heavier `just test` / emulator paths also work.
 #
 # Tool provisioning mirrors the repo's own install paths:
-#   - mise via its official apt repo (GPG fingerprint verified), exactly like
-#     .devcontainer/features/dotfiles-tools/install.sh.
+#   - mise via its official apt repo (GPG fingerprint verified). The dev
+#     container image instead installs the pinned release tarball, checked
+#     against checksums signed by the same key (ADR 0068).
 #   - config/mise/config.toml linked to ~/.config/mise/config.toml as the
 #     single source of truth for pinned versions, exactly like `just deploy`.
 #   - the FULL pinned toolset is installed because the justfile wraps every

@@ -11,7 +11,8 @@
 #   - features in devcontainer.json: ONLY ghcr.io/devcontainers/features/* (Microsoft)
 #   - tools below: vendor-official artifacts only, NEVER `curl | bash`
 #       * gcloud:  Google apt repo (GPG signature + fingerprint pin)
-#       * mise:    jdx apt repo  (GPG signature + fingerprint pin)
+#       * mise:    jdx release tarball at [bootstrap].mise; SHASUMS256.asc
+#                  signed by the key the jdx apt repo used (fingerprint pin)
 #       * uv:      .sha256 sidecar + GitHub attestation (SLSA provenance, sigstore)
 #       * just:    SHA256SUMS bulk file (no upstream signature; SHA only)
 #       * sheldon: pinned SHA256 hardcoded per arch (no upstream signature)
@@ -90,6 +91,53 @@ import_apt_key_with_fingerprint() {
   rm -f "${tmp_files[@]}"
 }
 
+verify_artifact_with_signed_checksums() {
+  # args: <key-url> <expected-fingerprint> <signed-checksums> <artifact>
+  # The checksum list must carry a good signature whose primary key is the
+  # pinned fingerprint. Then exactly one of its lines must name the artifact
+  # (with or without "./") and hold its SHA-256.
+  local url="$1" expected="$2" signed="$3" artifact="$4"
+  local work name lines got
+  work="$(mktemp -d)"
+  name="$(basename "$artifact")"
+  # The work directory is the throwaway gpg homedir (mktemp -d makes it
+  # 0700): nothing reaches the image's keyrings.
+  if ! curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o "$work/key.asc" "$url" ||
+    ! gpg --homedir "$work" --batch --quiet --import "$work/key.asc" 2>/dev/null ||
+    ! gpg --homedir "$work" --batch --status-fd 3 --output "$work/checksums" \
+      --decrypt "$signed" 3>"$work/status" 2>/dev/null ||
+    ! awk -v want="$expected" '$1 == "[GNUPG:]" && $2 == "VALIDSIG" && $NF == want { ok = 1 }
+      END { exit !ok }' "$work/status"; then
+    echo "[dotfiles-tools] $signed has no good signature by $expected" >&2
+    gpgconf --homedir "$work" --kill all 2>/dev/null || true
+    rm -rf "$work"
+    exit 1
+  fi
+  gpgconf --homedir "$work" --kill all 2>/dev/null || true
+  lines="$(grep -E "^[0-9a-f]{64}  (\\./)?${name//./\\.}\$" "$work/checksums" || true)"
+  rm -rf "$work"
+  got="$(sha256sum "$artifact" | awk '{ print $1 }')"
+  if [ -z "$lines" ] || [ "$(printf '%s\n' "$lines" | wc -l)" -ne 1 ] ||
+    [ "${lines%% *}" != "$got" ]; then
+    echo "[dotfiles-tools] $name: the signed list needs exactly one line with its SHA-256" >&2
+    exit 1
+  fi
+}
+
+fetch_first() {
+  # args: <output> <url>... The first URL that downloads wins; none stops.
+  local out="$1" url
+  shift
+  for url in "$@"; do
+    if curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors -o "$out" "$url"; then
+      echo "[dotfiles-tools] $(basename "$out") from $url"
+      return 0
+    fi
+    echo "[dotfiles-tools] $url failed" >&2
+  done
+  return 1
+}
+
 # ---- Google Cloud SDK -----------------------------------------------
 # Fingerprint published by Google at
 # https://cloud.google.com/sdk/docs/install#deb (apt-key fingerprint).
@@ -103,18 +151,34 @@ echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.clou
 apt-get update -y
 apt-get install -y --no-install-recommends google-cloud-cli
 
-# ---- mise (rtx-style version manager) -------------------------------
-# Fingerprint from https://mise.jdx.dev/installing-mise.html#apt.
-echo "[dotfiles-tools] installing mise from apt repo"
-install -d -m 0755 /etc/apt/keyrings
-import_apt_key_with_fingerprint \
-  https://mise.jdx.dev/gpg-key.pub \
+# ---- mise (version manager) -----------------------------------------
+# The release tarball at [bootstrap].mise (config/mise/image-tools.toml,
+# written by tools/mise-versions; ADR 0068), the version install.sh and the
+# CI bootstrap use. jdx's apt repository lists only the latest release, so it
+# cannot pin one. Its key, pinned below as in ADR 0001, signs SHASUMS256.asc.
+# Each file has a second host (github.com's /releases/download/ failed for
+# 1.5 h on 2026-11-09, #580). Either may serve the bytes: the signature by
+# the pinned key decides. The checksums come from GitHub first, as mise's
+# docs ask, and the tarball from mise.jdx.dev first, as ci-bootstrap.sh does.
+MISE_VERSION="2026.10.17"
+case "$ARCH" in
+  x86_64)  MISE_TARGET="linux-x64-musl" ;;
+  aarch64) MISE_TARGET="linux-arm64-musl" ;;
+  *) echo "[dotfiles-tools] unsupported arch: $ARCH" >&2; exit 1 ;;
+esac
+MISE_FILE="mise-v${MISE_VERSION}-${MISE_TARGET}.tar.gz"
+MISE_BASE="https://github.com/jdx/mise/releases/download/v${MISE_VERSION}"
+MISE_HOST="https://mise.jdx.dev/v${MISE_VERSION}"
+MISE_TMP="$(mktemp -d)"
+echo "[dotfiles-tools] installing mise ${MISE_VERSION} (${MISE_TARGET})"
+fetch_first "${MISE_TMP}/${MISE_FILE}" "${MISE_HOST}/${MISE_FILE}" "${MISE_BASE}/${MISE_FILE}"
+fetch_first "${MISE_TMP}/SHASUMS256.asc" "${MISE_BASE}/SHASUMS256.asc" "${MISE_HOST}/SHASUMS256.asc"
+verify_artifact_with_signed_checksums https://mise.jdx.dev/gpg-key.pub \
   24853EC9F655CE80B48E6C3A8B81C9D17413A06D \
-  /etc/apt/keyrings/mise-archive-keyring.gpg
-echo "deb [signed-by=/etc/apt/keyrings/mise-archive-keyring.gpg arch=amd64,arm64] https://mise.jdx.dev/deb stable main" \
-  > /etc/apt/sources.list.d/mise.list
-apt-get update -y
-apt-get install -y --no-install-recommends mise
+  "${MISE_TMP}/SHASUMS256.asc" "${MISE_TMP}/${MISE_FILE}"
+tar -xz -f "${MISE_TMP}/${MISE_FILE}" -C "${MISE_TMP}"
+install -m 0755 "${MISE_TMP}/mise/bin/mise" /usr/local/bin/mise
+rm -rf "${MISE_TMP}"
 
 # ---- uv (Python package manager) ------------------------------------
 UV_VERSION="0.13.5"

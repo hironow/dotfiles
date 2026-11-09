@@ -226,13 +226,14 @@ step_gcloud_components() {
 
 step_mise_bootstrap() {
   # Ensure `mise` is on PATH before the steps that consume it (mise install,
-  # prek shim). Dev containers get mise from the devcontainer feature (apt),
+  # prek shim). Dev containers get mise from the devcontainer feature (the
+  # same pinned release, signature-checked; ADR 0068),
   # so the `command -v mise` guard early-returns there — a no-op
   # on any box that already has mise. On a bare Linux/WSL host, download the
   # pinned mise release binary to ~/.local/bin (user-local, no sudo), SHA256-
   # verified against the release SHASUMS — the same posture as
-  # step_just_bootstrap. No pipe-to-shell (repo guardrail). Keep _mise_ver in
-  # sync with the devcontainer feature's apt mise; the value below is generated
+  # step_just_bootstrap. No pipe-to-shell (repo guardrail). _mise_ver and the
+  # devcontainer feature's MISE_VERSION are one version, generated
   # from config/mise/image-tools.toml ([bootstrap].mise) — see
   # `just mise-versions-sync`.
   if command -v mise >/dev/null 2>&1; then
