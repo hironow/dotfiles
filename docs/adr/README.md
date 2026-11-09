@@ -92,6 +92,7 @@ and what outlived it.
 | 0065 | [Linux カーネルの CVE は dotfiles が直さず、報告と助言だけを行う](./0065-kernel-cve-is-evidence-only.md) | Proposed（決裁待ち） | 2026-10-29 | `tools/kernel-doctor/`、`justfile`、`scripts/doctor.sh`、`tests/unit/test_doctor_kernel.py`、`docs/runbook/kernel-doctor.md` |
 | 0066 | [doctor の WARN は手を動かすべきことだけにし、注意書きは INFO で出し、OS に合わない行は出さない](./0066-doctor-warns-only-what-needs-action.md) | Proposed（決裁待ち） | 2026-11-01 | `scripts/doctor.sh`、`scripts/doctor_lines.py`、`scripts/ollama_host.py`、`tools/ca-doctor/`、`tools/kernel-doctor/`、`docs/runbook/ca-doctor.md`、`docs/runbook/kernel-doctor.md`、`docs/runbook/ollama-windows-wsl.md` |
 | 0067 | [コンテナの実行と導入を Podman に統一する](./0067-use-podman-for-managed-containers.md) | Accepted (PR #565); limited partial supersession of 0001/0005/0035 | 2026-11-08 | コンテナ実行経路、導入、devcontainer、CI、runner GC |
+| 0068 | [dev container の mise を、署名を確かめた tarball で凍結する](./0068-pin-the-dev-container-mise.md) | Proposed（決裁待ち） | 2026-11-09 | `.devcontainer/features/dotfiles-tools/install.sh`、`tools/mise-versions/`、`config/mise/image-tools.toml` |
 
 ## Reading order for newcomers
 
@@ -150,3 +151,4 @@ and what outlived it.
 - 2026-10-29: [ADR-0065](./0065-kernel-cve-is-evidence-only.md)を起票（Proposed、決裁待ち）。CVE-2026-98432（Linux カーネル IPv4 TCP の use-after-free）を契機に、カーネルは dotfiles が直さないこと、版の比較はクリーンな上流形かつレビュー済み branch のときだけ行い未判定を修正済みと数えないこと、kernel-doctor の所見は doctor の `err` に入れないこと、WSL カーネルを管理しない方針（0058 / 0064）を維持することを定める。
 - 2026-11-01: [ADR-0066](./0066-doctor-warns-only-what-needs-action.md)を起票（Proposed、決裁待ち）。`just doctor` の WARN を、その機体で手を動かすべきことだけにする。範囲の注意書きと事実は INFO で出して警告に数えず、`ca-doctor --summary` でクライアントごとの 1 行にまとめ、その OS に合わない検査の行は出さない。ERR と終了コードの契約は変えない。
 - 2026-11-08: [ADR-0067](./0067-use-podman-for-managed-containers.md) を採択し、0001 の基底・engine・CI action、0005 の Podman だけの winget 例外、0035 のコンテナ実行系・画像削除・build-cache 自動回収を部分置換する。旧本文と残りの決定は維持し、0039 の Windows 導入境界は変えない。安全な保持期限を証明できない cache は自動回収せず、旧 cache 増大防止保証は継承しない。[PR #565 の本人裁定](https://github.com/hironow/dotfiles/pull/565)。
+- 2026-11-09: [ADR-0068](./0068-pin-the-dev-container-mise.md)を起票（Proposed、決裁待ち）。dev container の mise を apt の最新から、[bootstrap].mise の版の GitHub リリース tarball へ移し、ADR-0001 と同じ指紋の鍵で署名した SHASUMS256.asc で確かめる。0001 の mise の取得元と 0060 の Decision 1・2・4 の部分置換を、所有者が本セッションで承認。
