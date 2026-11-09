@@ -1199,10 +1199,26 @@ check-all: pre-commit ci-all
 # The stacks are discovered rather than listed: a new stack with a suite is
 # picked up without editing this recipe, and a stack that leaves cannot strand
 # a dead path here.
+#
+# Each stack gets a fresh TF_DATA_DIR, but providers come from a cache that
+# outlives the run (opentofu/plugin-cache under an absolute $XDG_CACHE_HOME,
+# else ~/.cache), so only the first run downloads them from github.com.
+# OpenTofu reuses a cached provider only when it matches the hashes in the
+# stack's .terraform.lock.hcl; the recipe unsets the one variable that would
+# let a cached package bypass them.
 [group('Check')]
 test-iac:
     #!/usr/bin/env bash
     set -euo pipefail
+    unset TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE
+    # The XDG spec ignores an XDG_CACHE_HOME that is not absolute; so does this
+    # recipe, since tofu reads the path after the loop cd's into each stack.
+    cache_root="$HOME/.cache"
+    if [[ "${XDG_CACHE_HOME:-}" == /* ]]; then
+      cache_root="$XDG_CACHE_HOME"
+    fi
+    export TF_PLUGIN_CACHE_DIR="$cache_root/opentofu/plugin-cache"
+    mkdir -p "$TF_PLUGIN_CACHE_DIR"
     for stack in $(git ls-files '*.tofutest.hcl' | xargs -r -n1 dirname | sed 's#/tests$##' | sort -u); do
       echo "🧪 tofu test $stack"
       (

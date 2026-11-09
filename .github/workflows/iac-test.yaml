@@ -57,6 +57,27 @@ jobs:
         with:
           tofu_version: 1.13.2
 
+      # The tailscale provider is published only as a github.com release
+      # asset, and that front door has returned 504s for hours. A provider
+      # cache that outlives the run means only a run after a lock file change
+      # downloads it. OpenTofu uses a cached provider only when it matches the
+      # hashes in the stack's .terraform.lock.hcl, so a bad cache entry fails
+      # the run instead of being used. `just test-iac` keeps its own cache in
+      # the same place under ~/.cache.
+      - name: Point OpenTofu at the provider cache
+        run: |
+          cache_dir="$HOME/.cache/opentofu/plugin-cache"
+          mkdir -p "$cache_dir"
+          echo "TF_PLUGIN_CACHE_DIR=$cache_dir" >> "$GITHUB_ENV"
+
+      # No restore-keys: a provider bump changes the lock file and the key,
+      # and an older cache would only hold versions no stack uses.
+      - name: Restore the provider cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: tofu-providers-${{ runner.os }}-${{ hashFiles('tofu/**/.terraform.lock.hcl') }}
+
       # Offline: mock providers, no backend, no tfvars and no credentials, so
       # the suite never reaches a real tailnet. Mirrors `just test-iac`, which
       # discovers its stacks from the tracked `*.tofutest.hcl` files rather

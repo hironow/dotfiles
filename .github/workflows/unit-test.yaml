@@ -159,7 +159,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           Remove-Item Env:HOME -ErrorAction SilentlyContinue
           just --summary
-          uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_jev_pi_verify.py tests/unit/test_jev_codex_exec.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py tests/unit/test_agent_hooks_build_recipe.py
+          uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_jev_pi_verify.py tests/unit/test_jev_codex_exec.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py tests/unit/test_agent_hooks_build_recipe.py tests/unit/test_iac_provider_cache.py
           bun test tests/unit/jev_sonnet_fallback.test.ts
 
   # The Ollama host checks run Windows PowerShell classifiers (the WSL
