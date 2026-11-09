@@ -42,10 +42,16 @@ def _function() -> str:
     return match.group(0)
 
 
+def _homedir(home: Path) -> str:
+    """home as gpg's --homedir. Git for Windows' gpg cannot start its agent
+    for a homedir in Windows form ("No agent running"); the /c/... form works."""
+    return bash_path(home) if os.name == "nt" else str(home)
+
+
 def _gpg(home: Path, *args: str) -> subprocess.CompletedProcess:
     assert GPG is not None
     return subprocess.run(
-        [GPG, "--homedir", str(home), "--batch", *args],
+        [GPG, "--homedir", _homedir(home), "--batch", *args],
         capture_output=True,
         check=False,
     )
@@ -82,7 +88,7 @@ def _gnupg_home():
         gpgconf = shutil.which("gpgconf")
         if gpgconf:  # stop the agent this homedir started
             subprocess.run(
-                [gpgconf, "--homedir", str(home), "--kill", "all"],
+                [gpgconf, "--homedir", _homedir(home), "--kill", "all"],
                 capture_output=True,
                 check=False,
             )
