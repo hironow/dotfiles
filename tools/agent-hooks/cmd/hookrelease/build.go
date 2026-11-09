@@ -375,8 +375,14 @@ func (systemDisk) SyncFile(path string) error {
 		return err
 	}
 	defer root.Close()
-	// Windows flushes only a handle open for writing.
-	file, err := root.OpenFile(filepath.Base(path), os.O_RDWR, 0)
+	// Windows flushes only a handle open for writing. Linux's fsync needs no
+	// write access, and there opening for writing a binary that is running,
+	// or that ran a moment ago (its own checks), fails with ETXTBSY.
+	flag := os.O_RDWR
+	if runtime.GOOS == "linux" {
+		flag = os.O_RDONLY
+	}
+	file, err := root.OpenFile(filepath.Base(path), flag, 0)
 	if err != nil {
 		return err
 	}
