@@ -29,7 +29,9 @@ OLLAMA_PACKAGE = "npm:@ollama/pi-web-search"
 # in `dependencies` instead of `peerDependencies`, so npm vendors old 0.79.10
 # copies into the Pi npm dir that extensions then resolve instead of the
 # host's (pi warns about exactly this; ADR 0059).
-RETIRED_PACKAGES = ("npm:pi-web-access", "npm:remote-pi")
+# pi-memory was retired by the owner on 2026-11-10. Retirement removes the
+# package only; its data (~/.pi/agent/memory/) is never touched.
+RETIRED_PACKAGES = ("npm:pi-web-access", "npm:remote-pi", "npm:pi-memory")
 # Pi's own metrics, off on every machine (ADR 0058): the anonymous
 # install/update report to pi.dev and the opt-in analytics share nothing.
 TELEMETRY_OFF = {"enableInstallTelemetry": False, "enableAnalytics": False}
