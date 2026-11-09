@@ -28,9 +28,6 @@ jobs:
         env:
           # mise and the bootstrap's own API calls; the anonymous limit is low.
           GITHUB_TOKEN: ${{ github.token }}
-          # temporary: request log for the PR's evidence
-          MISE_LOG_HTTP: '1'
-          MISE_VERBOSE: '1'
         run: bash .devcontainer/ci-bootstrap.sh
       - name: Run required disposable devcontainer acceptance and sandbox tests
         env:
