@@ -241,19 +241,42 @@ def test_a_tarball_listed_in_checksums_signed_by_the_pinned_key_passes(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+NO_GOOD_SIGNATURE = "has no good signature by"
+NOT_ONE_LINE = "the signed list needs exactly one line"
+
+
 @pytest.mark.parametrize(
-    "case", ["other fingerprint", "stranger signed", "tampered", "missing", "twice"]
+    "case, reason",
+    [
+        ("other fingerprint", NO_GOOD_SIGNATURE),
+        ("stranger signed", NO_GOOD_SIGNATURE),
+        ("tampered", NOT_ONE_LINE),
+        ("missing", NOT_ONE_LINE),
+        ("twice", NOT_ONE_LINE),
+        ("unsigned line", NOT_ONE_LINE),
+    ],
 )
-def test_anything_else_stops_the_build(tmp_path, signing_keys, case):
+def test_anything_else_stops_the_build(tmp_path, signing_keys, case, reason):
     home, key, (pinned, stranger) = signing_keys
     artifact = _artifact(tmp_path)
-    names = {"missing": [], "twice": [f"./{ARTIFACT}", ARTIFACT]}.get(
-        case, [f"./{ARTIFACT}"]
-    )
+    names = {
+        "missing": [],
+        "twice": [f"./{ARTIFACT}", ARTIFACT],
+        "unsigned line": [],
+    }.get(case, [f"./{ARTIFACT}"])
     signer = stranger if case == "stranger signed" else pinned
     signed = _signed(home, signer, _sums(artifact, *names), tmp_path / "s.asc")
     if case == "tampered":
         artifact.write_bytes(b"something else\n")
+    if case == "unsigned line":
+        # gpg checks only the armored part; one good line before it is not
+        # signed, and a check that read the raw file would accept it
+        line = _sums(artifact, f"./{ARTIFACT}").splitlines()[0] + "\n"
+        signed.write_text(
+            line + signed.read_text(encoding="utf-8"),
+            encoding="utf-8",
+            newline="\n",
+        )
     expected = stranger if case == "other fingerprint" else pinned
     if case == "other fingerprint":
         # the pinned key signed it, but the build pins the other one
@@ -262,6 +285,7 @@ def test_anything_else_stops_the_build(tmp_path, signing_keys, case):
         )
     result = _verify(tmp_path, key, expected, signed, artifact)
     assert result.returncode != 0, (case, result.stdout + result.stderr)
+    assert reason in result.stderr, (case, result.stderr)
 
 
 def test_the_check_needs_no_more_than_the_tools_the_image_has():
