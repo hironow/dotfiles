@@ -24,6 +24,15 @@ func TestMain(m *testing.M) {
 	os.Exit(buildAndRun(m))
 }
 
+// executableName returns name with .exe on Windows. `go build -o` writes
+// exactly the name it is given, and Windows runs a program only by its .exe.
+func executableName(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
 func buildAndRun(m *testing.M) int {
 	dir, err := os.MkdirTemp("", "agent-hook-test-")
 	if err != nil {
@@ -31,7 +40,7 @@ func buildAndRun(m *testing.M) int {
 		return 1
 	}
 	defer os.RemoveAll(dir)
-	binary = filepath.Join(dir, "agent-hook")
+	binary = filepath.Join(dir, executableName("agent-hook"))
 	if under := os.Getenv("AGENT_HOOK_UNDER_TEST"); under != "" {
 		// An installed release (just agent-hooks-test-installed): these tests
 		// run against it, once it says it is the release they were told of.
