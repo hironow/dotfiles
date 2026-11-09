@@ -2,9 +2,9 @@
 
 - **id**: ADR-0069
 - **title**: 型検査と lint を、コードが動く OS ごとに回す（ty と golangci-lint）
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-10
-- **decided-date**: —
+- **decided-date**: 2026-11-10
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session、Windows 機）
@@ -12,7 +12,7 @@
 - **supersedes**: ADR-0044 の Decision 1 のうち、雛形の `just lint` が ty を 1 回回すという記述（OS ごとに回す形へ拡張）
 - **superseded-by**: none
 - **related**: [0044](0044-python-toolchain-uv-ruff-ty.md)、[0050](0050-pin-go-sources-to-lf.md)、[0052](0052-renew-global-agent-instructions.md)、[0068](0068-pin-the-dev-container-mise.md)、PR [#576](https://github.com/hironow/dotfiles/pull/576)・[#583](https://github.com/hironow/dotfiles/pull/583)
-- **consultation-trace**: 2026-11-10 の本セッションでの所有者の指示（下の「相談の記録」）。同じ内容を公開 PR に残す
+- **consultation-trace**: 2026-11-10 の本セッションでの所有者の指示（下の「相談の記録」）。同じ内容を[公開 PR #586](https://github.com/hironow/dotfiles/pull/586) に残す
 
 ## やさしい説明
 
@@ -32,22 +32,20 @@
 
 ## Decision
 
-（Proposed。確定後に MUST 文で記述。）
+A 案の次の 4 項を、必須事項（MUST）として採択する。
 
-決定案:
-
-- D1: Python のプロジェクトの全体の gate（`just check`）は、コードが動く OS ごとに `ty check --python-platform <os>` を回す。開発者の機体で動く道具は win32 / linux / darwin の 3 つ、Linux にだけ置くサービスは linux だけ。行を消すのはその OS で決して動かないときだけで、誤りを隠すためには消さない。
-- D2: Go のプロジェクトの `go-lint` は、出荷する OS ごとに `GOOS=<os> golangci-lint run` を回す（`fmt --diff` は 1 回）。recipe は shebang と `set -euo pipefail` を持つ。
-- D3: python-tooling の spoke に、OS の分岐（`sys.platform` で書く）、OS 専用の import（自前のモジュールは `TYPE_CHECKING or sys.platform` の下、標準ライブラリのものは同じ関数の `sys.platform` の確認のあとでだけ使う）、OS で飛ばすテスト（本体で `pytest.skip`）、別の OS でしか入らない依存（止めて人に聞く）を書く。雛形の `lint` は spoke の例と同じ行にし、テストで一致を保つ。
-- D4: 型検査と lint は、その OS での動きを証明しない。その OS での動きはテストを回して確かめる、と spoke に書く。
+- D1: Python のプロジェクトの全体の gate（`just check`）は、コードが動く OS ごとに `ty check --python-platform <os>` を回さなければならない（MUST）。開発者の機体で動く道具は win32 / linux / darwin の 3 つ、Linux にだけ置くサービスは linux だけとする。行を消してよいのは、その OS で決して動かないときだけで、誤りを隠すために消してはならない。
+- D2: Go のプロジェクトの `go-lint` は、出荷する OS ごとに `GOOS=<os> golangci-lint run` を回さなければならない（MUST）。`fmt --diff` は 1 回でよい。recipe は shebang と `set -euo pipefail` を持ち、どの GOOS の失敗でも止まらなければならない。
+- D3: python-tooling の spoke は、OS の分岐（`sys.platform` で書く）、OS 専用の import（自前のモジュールは `TYPE_CHECKING or sys.platform` の下、標準ライブラリのものは同じ関数の `sys.platform` の確認のあとでだけ使う）、OS で飛ばすテスト（本体で `pytest.skip`）、別の OS でしか入らない依存（止めて人に聞く）の書き方を示さなければならない（MUST）。雛形の `lint` は spoke の例と同じ行でなければならず、テストがその一致を保つ。
+- D4: spoke は、型検査と lint がその OS での動きを証明しないこと、動きはその OS でテストを回して確かめることを示さなければならない（MUST）。
 
 ## Options Considered
 
-| 案 | 利点 | コスト・リスク |
-| --- | --- | --- |
-| A) global の規則と雛形で、OS ごとに回す（本案） | どの repo でも、Windows・macOS だけの誤りを、その OS の機体なしで止められる | 全体の gate で ty が 2 回、golangci が GOOS の数だけ増える。別の OS でしか入らない依存があると、人の判断が要る |
-| B) dotfiles だけで回し、global の規則は変えない（#583 の状態） | 変更が最小 | 雛形から作った repo と他の repo では、同じ見逃しが続く |
-| C) A に加え、Rust の clippy も target ごとに回す | 3 つの言語がそろう | 所有者の指示は ty と golangci が対象。Rust は target の追加（`rustup target add`）や C を build する crate の扱いが別に要る |
+| 案 | 利点 | コスト・リスク | 裁定 |
+| --- | --- | --- | --- |
+| A) global の規則と雛形で、OS ごとに回す（本案） | どの repo でも、Windows・macOS だけの誤りを、その OS の機体なしで止められる | 全体の gate で ty が 2 回、golangci が GOOS の数だけ増える。別の OS でしか入らない依存があると、人の判断が要る | 所有者が採択 |
+| B) dotfiles だけで回し、global の規則は変えない（#583 の状態） | 変更が最小 | 雛形から作った repo と他の repo では、同じ見逃しが続く | 他の repo で見逃しが続くため却下 |
+| C) A に加え、Rust の clippy も target ごとに回す | 3 つの言語がそろう | 所有者の指示は ty と golangci が対象。Rust は target の追加（`rustup target add`）や C を build する crate の扱いが別に要る | 今回は採らない。Rust は別に提案する |
 
 ## Consequences
 
@@ -73,13 +71,17 @@
 ## 相談の記録
 
 - 2026-11-10、本セッションで所有者（@hironow、0044・0052 の決定者）が、「OS ごとの ty と golangci の検査を、global の規則と新しい repo 用の雛形にも入れますか」に「YES」と答えた。
+- 2026-11-10、所有者が A を選んだ（「Aで」）。決定欄への記入は、0068 と同じく代理で行った。
 - 計画は独立サブエージェントが 2 回レビューした（Codex はクレジット切れ）。範囲を「コードが動く OS ごと」にすること、Rust を対象外にして ADR の題を ty と golangci に限ることは、そのレビューの指摘を採った。
 
-## 決定（記入待ち）
+## 決定（2026-11-10）
 
-- [ ] A を Accepted（D1〜D4 を MUST 文で確定し、0044 の Status 行、索引、変更ログ、queue を更新する）
+- [x] A を Accepted（D1〜D4 を MUST 文で確定し、0044 の Status 行、索引、変更ログ、queue を更新する）
 - [ ] B を Accepted（spoke と雛形の変更を戻し、queue に理由を残す）
 - [ ] C を Accepted（Rust の rust-tooling の spoke も同じ PR で変える）
 - [ ] Rejected / Deferred（変更を戻し、queue に理由を残す）
 
-決定者: ＿＿＿　決定日: ＿＿＿
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-10（所有者の選択により代理記入）
+
+- B 案は他の repo で見逃しが続くため却下する。C 案（Rust）は今回の範囲に入れず、別に提案する。
+- 実装は [PR #586](https://github.com/hironow/dotfiles/pull/586)。採択時に 0044 の Status 行、索引、変更ログ、queue の決定済みログを同時に更新し、0044 の本文を変えていないことを確かめた。

@@ -1,7 +1,7 @@
 # 0044. The Python toolchain is uv + ruff + ty; mypy and pyright are retired
 
 **Date:** 2026-09-08
-**Status:** Accepted (operator directive, 2026-09-08). Extends the "`uv` only" non-negotiable of the agent hub (`ROOT_AGENTS.md`) to the full toolchain.
+**Status:** Accepted (operator directive, 2026-09-08). Extends the "`uv` only" non-negotiable of the agent hub (`ROOT_AGENTS.md`) to the full toolchain. Partly superseded by [0069](0069-type-check-and-lint-for-every-os.md) (Decision 1 の雛形の `just lint` の記述のみ。ty はコードが動く OS ごとに回す。uv・ruff・ty の 3 つ、mise での宣言、版の固定は維持).
 
 ## Context
 
