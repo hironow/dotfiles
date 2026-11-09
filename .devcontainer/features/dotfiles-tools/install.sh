@@ -96,6 +96,9 @@ verify_artifact_with_signed_checksums() {
   # The checksum list must carry a good signature whose primary key is the
   # pinned fingerprint. Then exactly one of its lines must name the artifact
   # (with or without "./") and hold its SHA-256.
+  # gpg exits 0 and prints VALIDSIG even when the key is revoked or expired;
+  # only GOODSIG turns into REVKEYSIG or EXPKEYSIG. So every signature must be
+  # GOODSIG, as apt requires.
   local url="$1" expected="$2" signed="$3" artifact="$4"
   local work name lines got
   work="$(mktemp -d)"
@@ -106,8 +109,10 @@ verify_artifact_with_signed_checksums() {
     ! gpg --homedir "$work" --batch --quiet --import "$work/key.asc" 2>/dev/null ||
     ! gpg --homedir "$work" --batch --status-fd 3 --output "$work/checksums" \
       --decrypt "$signed" 3>"$work/status" 2>/dev/null ||
-    ! awk -v want="$expected" '$1 == "[GNUPG:]" && $2 == "VALIDSIG" && $NF == want { ok = 1 }
-      END { exit !ok }' "$work/status"; then
+    ! awk -v want="$expected" '$1 != "[GNUPG:]" { next }
+      $2 ~ /^(GOODSIG|BADSIG|EXPSIG|EXPKEYSIG|REVKEYSIG|ERRSIG)$/ { sigs++; if ($2 == "GOODSIG") good++ }
+      $2 == "VALIDSIG" && $NF == want { valid = 1 }
+      END { exit !(sigs > 0 && good == sigs && valid) }' "$work/status"; then
     echo "[dotfiles-tools] $signed has no good signature by $expected" >&2
     gpgconf --homedir "$work" --kill all 2>/dev/null || true
     rm -rf "$work"

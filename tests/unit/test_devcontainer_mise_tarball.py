@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import tomllib
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -163,11 +164,11 @@ def signing_keys(tmp_path_factory):
         yield home, key, fingerprints
 
 
-def _signed(home: Path, signer: str, text: str, out: Path) -> Path:
+def _signed(home: Path, signer: str, text: str, out: Path, *extra: str) -> Path:
     plain = out.with_suffix(".txt")
     plain.write_text(text, encoding="utf-8", newline="\n")
     signed = _gpg(
-        home, "--passphrase", "", "--pinentry-mode", "loopback",
+        home, *extra, "--passphrase", "", "--pinentry-mode", "loopback",
         "--local-user", signer, "--output", str(out), "--clearsign", str(plain),
     )  # fmt: skip
     assert signed.returncode == 0, signed.stderr
@@ -286,6 +287,46 @@ def test_anything_else_stops_the_build(tmp_path, signing_keys, case, reason):
     result = _verify(tmp_path, key, expected, signed, artifact)
     assert result.returncode != 0, (case, result.stdout + result.stderr)
     assert reason in result.stderr, (case, result.stderr)
+
+
+@pytest.mark.parametrize("case", ["revoked", "expired"])
+def test_a_signature_by_a_revoked_or_expired_key_stops_the_build(tmp_path, case):
+    # gpg still exits 0 and prints VALIDSIG for such a signature; only GOODSIG
+    # gives way to REVKEYSIG or EXPKEYSIG. apt refuses both, and so must we.
+    if GPG is None:
+        pytest.skip("needs gpg to sign checksums")
+    then = []
+    if case == "expired":
+        # made two days ago, for one day
+        past = datetime.now(UTC) - timedelta(days=2)
+        then = ["--faked-system-time", past.strftime("%Y%m%dT%H%M%S")]
+    with _gnupg_home() as home:  # its own: the revocation must not leak out
+        made = _gpg(
+            home, *then, "--passphrase", "", "--quick-gen-key",
+            "Fixture Release <release@example.invalid>", "ed25519", "sign", "1d",
+        )  # fmt: skip
+        assert made.returncode == 0, made.stderr
+        key = tmp_path / "key.asc"
+        key.write_bytes(_gpg(home, "--armor", "--export").stdout)
+        (fingerprint,) = _primary_fingerprints(home, key)
+        artifact = _artifact(tmp_path)
+        sums = _sums(artifact, f"./{ARTIFACT}")
+        signed = _signed(home, fingerprint, sums, tmp_path / "s.asc", *then)
+        if case == "revoked":
+            # gpg writes the certificate with ':' before its armor line, so
+            # that nobody imports it by accident
+            cert = home / "openpgp-revocs.d" / f"{fingerprint}.rev"
+            text = cert.read_text(encoding="utf-8")
+            revocation = tmp_path / "revocation.asc"
+            revocation.write_text(
+                text.replace(":-----BEGIN", "-----BEGIN", 1), encoding="utf-8"
+            )
+            imported = _gpg(home, "--import", str(revocation))
+            assert imported.returncode == 0, imported.stderr
+            key.write_bytes(_gpg(home, "--armor", "--export").stdout)
+        result = _verify(tmp_path, key, fingerprint, signed, artifact)
+    assert result.returncode != 0, (case, result.stdout + result.stderr)
+    assert NO_GOOD_SIGNATURE in result.stderr, (case, result.stderr)
 
 
 def test_the_check_needs_no_more_than_the_tools_the_image_has():
