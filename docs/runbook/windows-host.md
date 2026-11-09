@@ -95,3 +95,30 @@ Claude Code や Pi と stdin と stdout でやり取りするスクリプトは�
 
 bash に渡す `PATH` に `C:\` のパスを `:` でつなぐと、ドライブ名のコロンで分割されて壊れる。
 テストでは `tests/unit/_bash_hook.py` の `bash_path()` で `/c/...` の形に直す。
+
+## Windows でも通る書き方と、それを確かめる検査
+
+Windows だけで落ちる書き方は、ほかの OS の検査では見えない。
+次の検査が、Windows の機体がなくても、それを止める。
+
+| 検査 | 回る場所 | 止めるもの |
+| --- | --- | --- |
+| `just check-ty`（ty を `--python-platform` win32、linux、darwin で） | `just check`（`just ci`、`just check-all`、CI の dev container ジョブ） | ほかの OS の分岐にある型の誤り |
+| `just go-lint`（`golangci-lint run` を GOOS windows、linux、darwin で） | `just check` | build tag の付いたファイルの誤りと、そこからしか呼ばれない関数（ほかの OS では unused） |
+| `just test-unit`（CI の `windows-unit`） | Unit Tests の workflow。checkout は Git for Windows の既定の改行（CRLF） | 改行、MSYS のパス変換、Git の gpg、pwsh 7 で落ちるテスト |
+| `just test-windows-powershell` | CI の `windows-unit` と、手元の Windows | Windows PowerShell 5.1 でだけ違う動き（GC、`bootstrap.ps1`、Podman の導入） |
+| `just go-test go`（CI の `windows-go`） | Unit Tests の workflow | Windows での Go のテスト |
+| `tests/unit/test_cross_platform_gates.py` | `just test-unit` | 上の検査が外れること、複数のコマンドを並べた pwsh の step（前のコマンドの失敗を隠す） |
+
+書くときは次を守る。
+
+- Python で OS ごとに分けるときは `sys.platform == "win32"` と書く。ty は `os.name` では分岐を絞り込まない。
+- POSIX だけで動くモジュールの import は `if TYPE_CHECKING or os.name != "nt":` の下に置く（例: `scripts/sync_agents.py`）。どの OS の型検査でも中身が検査される。
+- テストを OS で飛ばすときは、`skipif` でなく本体の先頭で `if sys.platform == "win32": pytest.skip(...)` とする。ty はそこで絞り込むので、後ろの POSIX の API が Windows の型検査で誤りにならない。
+- PowerShell の子プロセスの環境変数は `os.environ` を写してから変える。手で組むと PATHEXT、SystemRoot、SystemDrive が抜け、`python.exe` が新しい窓で開いて出力が取れない。
+- PowerShell のテストは `tests/unit/_pwsh.py` の `resolve_pwsh(os.environ)` で PowerShell を選び（`DOTFILES_TEST_PWSH=powershell.exe` で 5.1 になる）、本番と同じ引数で起動する（`-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`。`-ExecutionPolicy Bypass` がないと 5.1 は既定の設定でスクリプトを拒む）。
+- Git for Windows の gpg の `--homedir` は `/c/...` の形で渡す。`C:\...` の形では agent が起動しない。
+- テストが書く偽物のスクリプトは `newline="\n"` で書く。Git Bash は CR を命令の一部として読む。
+- MSYS に引数のパスを変換させないときは、`MSYS_NO_PATHCONV=1` と `MSYS2_ARG_CONV_EXCL='*'` を付ける。
+- Go のテストで作る実行ファイルには、Windows では `.exe` を付ける。
+- バイト単位で比べる生成物（記録した corpus、ハッシュを記録したファイル）は、`.gitattributes` で `text eol=lf` に固定する（`tests/unit/test_gitattributes_eol.py` が検査する）。
