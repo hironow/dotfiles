@@ -120,5 +120,7 @@ Windows だけで落ちる書き方は、ほかの OS の検査では見えな�
 - Git for Windows の gpg の `--homedir` は `/c/...` の形で渡す。`C:\...` の形では agent が起動しない。
 - テストが書く偽物のスクリプトは `newline="\n"` で書く。Git Bash は CR を命令の一部として読む。
 - MSYS に引数のパスを変換させないときは、`MSYS_NO_PATHCONV=1` と `MSYS2_ARG_CONV_EXCL='*'` を付ける。
+- リポジトリと一時ディレクトリは別のドライブにあることがある（windows-latest の runner は checkout が `D:`、一時ディレクトリが `C:`）。`os.path.relpath` は別のドライブの間で `ValueError` を出す。手元で確かめるときは pytest の `--basetemp` を別のドライブに置く。
+- Git Bash の `$OSTYPE` は Git for Windows の版で `msys` と `cygwin` に分かれる。WSL かどうかは `linux-gnu` でないことで見分ける。
 - Go のテストで作る実行ファイルには、Windows では `.exe` を付ける。
 - バイト単位で比べる生成物（記録した corpus、ハッシュを記録したファイル）は、`.gitattributes` で `text eol=lf` に固定する（`tests/unit/test_gitattributes_eol.py` が検査する）。
