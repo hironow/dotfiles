@@ -26,9 +26,14 @@ PLATFORMS = {"win32", "linux", "darwin"}
 GOOSES = {"windows", "linux", "darwin"}
 
 
-def _recipe(name: str) -> str:
-    """A recipe's body: the indented lines under `<name>:` or `<name> args:`."""
-    lines = JUSTFILE.read_text(encoding="utf-8").splitlines()
+def _recipe(name: str, source: str | None = None) -> str:
+    """A recipe's body: the indented lines under `<name>:` or `<name> args:`.
+
+    `source` is justfile text (the repo's justfile when omitted).
+    """
+    if source is None:
+        source = JUSTFILE.read_text(encoding="utf-8")
+    lines = source.splitlines()
     for start, line in enumerate(lines):
         if re.match(rf"^{re.escape(name)}(?:\s[^:]*)?:(?:\s|$)", line):
             break
