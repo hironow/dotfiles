@@ -75,6 +75,7 @@ settings の断片は、hook の併合の直後に 4 つの層を合成して 1 
 - `settings` の中は、キーごとに後の層が勝つ。両方が dict のときだけ、1 段だけ深く併合する（shared の `permissions.deny` を残したまま、プロファイルが `permissions` の別のキーを足せる）。
 - settings.json には、トップレベルのキーを追加か更新だけする（`enabledPlugins` など、断片にないキーは残す）。
 - 断片から外したトップレベルのキーは、その断片の `retired` に書く（例：`.claude/settings.profiles/work-c.json`）。`retired` は移行 ID ごとに、キーと、断片がそれまでに書いた値をすべて並べる。sync は各 home で移行を 1 回だけ評価し、キーがまだそのどれかの値なら消す。評価した ID は、settings.json より先に home の `settings.sync-state.json`（sync が所有する）へ記録する。そのため、あとで利用者が同じ値を設定し直しても消さない。初回の評価の時点で利用者が同じ値を選んでいた場合は区別できないので、残したい値は 4 に書く。
+- `skillOverrides` は shared で `{}` にしてあり、どの skill も Claude Code の既定の `"on"`（名前と説明を一覧に載せる）になる。キーを消すのではなく `{}` を置くのは、消すと各 home の古い値が残るため。ある機体だけで skill を隠したいときは、その home の `settings.sync-local.json` の `settings.skillOverrides` に書く。
 - `env` の正本は断片である。repo の `.claude/settings.json` は `env` を持たず、global から受け継ぐ。
 
 ## hook を変えるとき
