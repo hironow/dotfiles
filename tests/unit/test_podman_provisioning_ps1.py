@@ -10,19 +10,33 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
 import pytest
+from _pwsh import powershell_identity, resolve_pwsh
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE = os.environ.get("DOTFILES_TEST_PWSH_IMAGE")
-PWSH = shutil.which("pwsh") or shutil.which("powershell")
+PWSH = resolve_pwsh(os.environ) or shutil.which("powershell")
 RUN_LABEL = "io.hironow.dotfiles.provisioning-test"
 pytestmark = pytest.mark.skipif(
     not IMAGE and not PWSH,
     reason="PowerShell unavailable; select an isolated runtime to require these tests",
 )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def report_powershell_runtime(request):
+    reporter = request.config.pluginmanager.get_plugin("terminalreporter")
+    line = (
+        f"PowerShell provisioning: image {IMAGE}"
+        if IMAGE
+        else f"PowerShell provisioning: {PWSH} {powershell_identity(PWSH)}"
+    )
+    if reporter is not None:
+        reporter.write_line(line)
 
 
 def _run(
@@ -117,6 +131,8 @@ try {
     args = [
         "-NoProfile",
         "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
         "-Command",
         "& ([scriptblock]::Create([Console]::In.ReadToEnd()))",
     ]
@@ -216,6 +232,24 @@ try {
                     check=True,
                     timeout=15,
                 )
+
+
+def test_bootstrap_runs_under_bypass_like_just_podman_install(tmp_path, monkeypatch):
+    # `just podman-install` starts bootstrap.ps1 with -ExecutionPolicy Bypass;
+    # a machine policy such as AllSigned must not decide the test either.
+    seen = {}
+
+    def record(command, **kwargs):
+        seen["command"] = command
+        raise RuntimeError("recorded")
+
+    monkeypatch.setattr(sys.modules[__name__], "IMAGE", None)
+    monkeypatch.setattr(sys.modules[__name__], "PWSH", "pwsh-under-test")
+    monkeypatch.setattr(subprocess, "run", record)
+    with pytest.raises(RuntimeError, match="recorded"):
+        _run(tmp_path)
+    command = seen["command"]
+    assert command[command.index("-ExecutionPolicy") + 1] == "Bypass"
 
 
 def _calls(result: subprocess.CompletedProcess[str]) -> list[str]:

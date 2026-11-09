@@ -7,18 +7,23 @@ import subprocess
 
 
 def resolve_pwsh(environ, which=shutil.which):
-    """The PowerShell the replays run: PODMAN_GC_TEST_PWSH, else pwsh on PATH.
+    """The PowerShell the tests run: an override, else pwsh on PATH.
 
-    An override that is not an executable stops the run; it never turns the
-    PowerShell cases into skips.
+    DOTFILES_TEST_PWSH is the override; PODMAN_GC_TEST_PWSH, which the GC
+    compatibility workflow sets, is its older name. Set DOTFILES_TEST_PWSH to
+    powershell.exe to test Windows PowerShell 5.1, which runs the GC and
+    `just podman-install`. An override that is not an executable stops the
+    run; it never turns the PowerShell cases into skips.
     """
-    override = environ.get("PODMAN_GC_TEST_PWSH")
-    if override is None:
-        return which("pwsh")
-    found = which(override)
-    if found is None:
-        raise RuntimeError(f"PODMAN_GC_TEST_PWSH={override!r} is not an executable")
-    return found
+    for name in ("DOTFILES_TEST_PWSH", "PODMAN_GC_TEST_PWSH"):
+        override = environ.get(name)
+        if override is None:
+            continue
+        found = which(override)
+        if found is None:
+            raise RuntimeError(f"{name}={override!r} is not an executable")
+        return found
+    return which("pwsh")
 
 
 def powershell_identity(pwsh):

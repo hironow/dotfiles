@@ -439,7 +439,7 @@ function Start-Process {{
 def report_powershell_runtime(request):
     reporter = request.config.pluginmanager.get_plugin("terminalreporter")
     line = (
-        "PowerShell GC replays: none (no PODMAN_GC_TEST_PWSH, no pwsh on PATH)"
+        "PowerShell GC replays: none (no DOTFILES_TEST_PWSH, no pwsh on PATH)"
         if PWSH is None
         else f"PowerShell GC replays: {PWSH} {powershell_identity(PWSH)}"
     )

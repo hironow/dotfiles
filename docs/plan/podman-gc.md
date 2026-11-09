@@ -47,10 +47,11 @@ verification or proof of arbitrary real-engine behavior.
 
 The Python harness launches the complete `runner_gc.sh` using its public
 engine-only entrypoint, and launches the complete `runner_gc_win.ps1` with
-`-PodmanOnly` when `pwsh` is available. `PODMAN_GC_TEST_PWSH` picks another
-PowerShell; one that is not an executable fails the run instead of skipping.
-Each run prints the PowerShell version and edition it used. It does not copy
-or extract selectors.
+`-PodmanOnly` when `pwsh` is available. `DOTFILES_TEST_PWSH` (older name:
+`PODMAN_GC_TEST_PWSH`) picks another PowerShell, such as `powershell.exe` for
+Windows PowerShell 5.1, which runs the GC in production; one that is not an
+executable fails the run instead of skipping. Each run prints the PowerShell
+version and edition it used. It does not copy or extract selectors.
 Only external I/O is replaced. Unix process discovery/clock/disk output are
 stubbed; engine commands reach a JSON-backed fake. PowerShell process discovery, clock
 and Start-Process are stubbed; the same fake supplies CLI responses and a fake
@@ -97,8 +98,8 @@ uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py
 PODMAN_GC_SEED=23 uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k seeded
 # Required Windows/isolated PowerShell acceptance: absent pwsh fails explicitly.
 PODMAN_GC_REQUIRE_PWSH=1 uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k powershell
-# The same cases on a chosen PowerShell.
-PODMAN_GC_TEST_PWSH=/path/to/pwsh uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k powershell
+# The same cases on a chosen PowerShell (powershell.exe = Windows PowerShell 5.1).
+DOTFILES_TEST_PWSH=/path/to/pwsh uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k powershell
 ```
 
 Default coverage is 32 Unix seeds and 32 PowerShell seeds. Missing `jq` fails the
