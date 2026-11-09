@@ -18,10 +18,15 @@ test:
 # Lint + type-check (ruff + ty: the uv/ruff/ty trio, no mypy/pyright).
 # ruff only parses source, so it runs with the lint group alone; ty resolves
 # imports, so it also gets the default groups (python-tooling spoke).
+# ty runs once per OS the code runs on: it narrows sys.platform, so a branch
+# for another OS is checked only for that OS. Remove a line only for an OS the
+# code never runs on, never to hide a finding.
 lint:
     uv run --locked --only-group lint ruff check .
     uv run --locked --only-group lint ruff format --check .
-    uv run --locked --group lint ty check
+    uv run --locked --group lint ty check --python-platform win32
+    uv run --locked --group lint ty check --python-platform linux
+    uv run --locked --group lint ty check --python-platform darwin
 
 # Format code
 fmt:

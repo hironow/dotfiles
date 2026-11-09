@@ -5,7 +5,8 @@ Read this before you write a commit message. AGENTS.md has the short version.
 ## Before you commit, all of these must hold
 
 - All tests pass.
-- ruff reports zero violations and ty reports zero diagnostics.
+- ruff reports zero violations and ty reports zero diagnostics for every OS
+  the code runs on.
 - semgrep reports zero findings under `.semgrep/` (when it exists).
 - The change is one logical unit of work.
 - The message follows Conventional Commits v1.0.0.

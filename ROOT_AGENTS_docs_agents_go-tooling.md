@@ -87,9 +87,25 @@ Lint and format with **golangci-lint v2**: one tool, one config.
 - Copy the dotfiles `.golangci.yaml` to the module root and change only build
   tags, `gofumpt.module-path`, and per-path exclusions. Change the linter set in
   one place, not in each repo.
-- Wire it into the root `justfile`: `go-lint` (`golangci-lint run ./...` and
-  `golangci-lint fmt --diff ./...`, called from `just check`) and `go-fmt`
-  (`golangci-lint fmt ./...`).
+- Wire it into the root `justfile`: `go-lint` (below, called from
+  `just check`) and `go-fmt` (`golangci-lint fmt ./...`).
+- `go-lint` runs `golangci-lint run` once per OS you ship to (the targets in
+  "Ship binaries for every device"). golangci-lint builds for one GOOS, so a
+  file behind a build tag, and code only that file calls, is checked only for
+  its GOOS; on the others it shows as unused. `fmt --diff` does not depend on
+  the GOOS and runs once. Keep the shebang and `set -euo pipefail`: in just's
+  default `sh -cu`, a loop returns only the last GOOS's exit code.
+
+```just
+go-lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for goos in windows linux darwin; do GOOS="$goos" golangci-lint run ./...; done
+    golangci-lint fmt --diff ./...
+```
+
+- Lint and type checks find errors in code. Only running the tests on an OS
+  shows how the code behaves there.
 - Run tests with `go test ./...`. Use deterministic clocks instead of wall-clock
   sleeps. HTTP tests use `httptest` or bind `:0`. CI pins golangci-lint and
   installs the Go version that the module's `go` / `toolchain` directive requires.

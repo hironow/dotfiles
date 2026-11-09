@@ -112,8 +112,10 @@ Windows だけで落ちる書き方は、ほかの OS の検査では見えな�
 
 書くときは次を守る。
 
-- Python で OS ごとに分けるときは `sys.platform == "win32"` と書く。ty は `os.name` では分岐を絞り込まない。
-- POSIX だけで動くモジュールの import は `if TYPE_CHECKING or os.name != "nt":` の下に置く（例: `scripts/sync_agents.py`）。どの OS の型検査でも中身が検査される。
+- Python で OS ごとに分けるときは `sys.platform == "win32"` と書く。ty は `sys.platform` と `os.name` の両方で分岐を絞り込むが、`sys.platform` は Linux と macOS を区別でき、typeshed も OS 専用の API をそれで分けている。
+- OS の条件の下で import した名前は、別の OS の型検査では存在しない。注釈に使うと誤りになり、本体で使った所は検査されない（ty 0.0.91 で確かめた）。
+- POSIX だけで動く自前のモジュールの import は `if TYPE_CHECKING or os.name != "nt":` の下に置く（例: `scripts/sync_agents.py`）。どの OS の型検査でも中身が検査される。
+- 標準ライブラリの OS 専用モジュール（`fcntl`、`pwd`、`grp`、`winreg`、`msvcrt`）は、`TYPE_CHECKING` の下でも、別の OS の型検査では中身が無い。同じ関数の中の `sys.platform` の確認のあとでだけ使い、どの OS も読む関数の型の注釈には書かない。
 - テストを OS で飛ばすときは、`skipif` でなく本体の先頭で `if sys.platform == "win32": pytest.skip(...)` とする。ty はそこで絞り込むので、後ろの POSIX の API が Windows の型検査で誤りにならない。
 - PowerShell の子プロセスの環境変数は `os.environ` を写してから変える。手で組むと PATHEXT、SystemRoot、SystemDrive が抜け、`python.exe` が新しい窓で開いて出力が取れない。`PSModuleAnalysisCachePath` が抜けると、windows-latest の runner の Windows PowerShell 5.1 は起動のたびに導入済みのモジュールをすべて解析し直す（0.3 秒が 18〜32 秒になる）。
 - PowerShell のテストは `tests/unit/_pwsh.py` の `resolve_pwsh(os.environ)` で PowerShell を選び（`DOTFILES_TEST_PWSH=powershell.exe` で 5.1 になる）、本番と同じ引数で起動する（`-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`。`-ExecutionPolicy Bypass` がないと 5.1 は既定の設定でスクリプトを拒む）。

@@ -44,7 +44,9 @@ fmt:
 lint:
     uv run --locked --only-group lint ruff check .
     uv run --locked --only-group lint ruff format --check .
-    uv run --locked --group lint ty check
+    uv run --locked --group lint ty check --python-platform win32
+    uv run --locked --group lint ty check --python-platform linux
+    uv run --locked --group lint ty check --python-platform darwin
 ```
 
 Never "fix" ty's `unresolved-import` by silencing the rule. It means ty cannot
@@ -52,6 +54,35 @@ see the project's dependencies and is checking nothing. Give ty the dependencies
 instead (`--group lint`, not `--only-group`). Keep one ruff and ty config shape
 per *project* (`ruff.toml` / `ty.toml`, or the `pyproject.toml` tables below);
 change only the project's own path and exclude blocks.
+
+### One ty run per OS
+
+The full gate (`just check`, which CI and the pre-commit hook run) runs ty
+once per OS the code runs on. ty narrows `sys.platform` and `os.name` to the
+`--python-platform` it checks for, so a branch for another OS is checked only
+when ty checks for that OS. Tooling that runs on developer machines runs on all
+three; a service deployed only to Linux needs only `linux`. Remove a line only
+for an OS the code never runs on, never to hide a finding.
+
+- Write an OS branch as a `sys.platform` comparison. It tells Linux from
+  macOS, and typeshed keys OS-only APIs on it.
+- A name imported under an OS condition does not exist when ty checks for
+  another OS. There, an annotation that names it is an error, and code that
+  uses it is not checked at all.
+- Import a module of your own that runs only on some OSes under
+  `if TYPE_CHECKING or sys.platform != "win32":`, so every OS's check reads
+  its types. Inside it, guard each OS-only call the same way as below.
+- A standard-library module that exists only on some OSes (`fcntl`, `pwd`,
+  `grp`, `winreg`, `msvcrt`) has no members when ty checks for another OS,
+  even under `TYPE_CHECKING`. Use its names only after a `sys.platform` check
+  in the same function, and keep its types out of signatures every OS reads.
+- When a test body calls an API another OS lacks, skip in the body
+  (`if sys.platform == "win32": pytest.skip(...)`), not with `skipif`: ty
+  does not narrow on a marker.
+- If ty cannot resolve an import that only another OS installs, stop and ask
+  the human. Do not remove that OS's line or silence the rule.
+- These checks find type errors. Only running the tests on an OS shows how
+  the code behaves there.
 
 ## ruff configuration (canonical — in `pyproject.toml`)
 
@@ -92,7 +123,8 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
 - All code has type annotations. ruff's `ANN` rules above enforce this,
   because ty has no `--strict`: `[tool.ty.terminal] error-on-warning = true`
   only raises severity; it adds no checks.
-- `uv run ty check` must pass with zero diagnostics before you commit.
+- `uv run ty check` must pass with zero diagnostics for every OS the code runs on
+  before you commit (see "One ty run per OS").
 - Configure ty under `[tool.ty]` in `pyproject.toml`. Raise rule levels; never
   lower them to silence a finding.
 - Avoid `# ty: ignore[rule]`. If you cannot avoid it, add a one-line comment
