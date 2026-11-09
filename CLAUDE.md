@@ -67,6 +67,10 @@ just sync-agents-preview …  # dry-run
   emulator の `[dependency-groups].lint` と uv.lock が正で、mise の pin は手元で使う版にすぎない
   (`just bump-tool` で RTTM を含む 4 か所をまとめて動かせる)。justfile は
   `uv run --frozen --only-group lint ruff` で呼ぶ。
+- ty を OS ごとに回すのは global 規約どおり (ADR 0069) だが、回す場所は分けている。repo root の
+  ty は `just check` の `check-ty` が win32 / linux / darwin で回し、pre-commit (prek) の `just lint` は
+  commit を遅くしないよう 1 回だけ回す。`emulator/` と RTTM の ty も 1 回 (emulator は Linux の
+  コンテナで動く)。Windows だけで落ちる書き方と、それを止める検査は `docs/runbook/windows-host.md`。
 
 ## テストモデル (重要)
 
