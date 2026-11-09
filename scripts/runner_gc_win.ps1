@@ -91,8 +91,8 @@ function Get-PodmanJson {
     param([string[]]$PodmanArgs, [switch]$Inspection)
     $result = Invoke-PodmanGuarded -PodmanArgs $PodmanArgs -TimeoutSec $PodmanTimeoutSec
     if ($null -eq $result -or $result.ExitCode -ne 0) { throw 'Podman query failed' }
-    # ConvertFrom-Json 5.1 unwraps arrays on the pipeline. Check the wire shape
-    # before that loses the distinction between [one object] and one object.
+    # The parsed output below no longer tells [one object] from one object, so
+    # check the wire shape first.
     if ($Inspection -and -not $result.Output.TrimStart().StartsWith('[')) { throw 'Inspection array required' }
     # Windows PowerShell 5.1, which runs this GC, keeps JSON date strings as
     # strings. PowerShell 7 turns the ones it reads as dates into DateTime,
@@ -103,7 +103,11 @@ function Get-PodmanJson {
     $convert = @{ InputObject = $result.Output; ErrorAction = 'Stop' }
     $cmdlet = Microsoft.PowerShell.Core\Get-Command -Name ConvertFrom-Json -CommandType Cmdlet -ErrorAction Stop
     if ($cmdlet.Parameters.ContainsKey('DateKind')) { $convert.DateKind = 'String' }
-    return Microsoft.PowerShell.Utility\ConvertFrom-Json @convert
+    # Windows PowerShell 5.1 writes a top-level JSON array as one Object[];
+    # PowerShell 7 writes its elements. Returning the stored value writes the
+    # elements on both, so callers index the inspected item itself.
+    $parsed = Microsoft.PowerShell.Utility\ConvertFrom-Json @convert
+    return $parsed
 }
 
 function ConvertTo-PodmanImageId {

@@ -952,7 +952,9 @@ def test_get_podman_json_asks_the_real_cmdlet_for_date_kind():
         "if ($cmdlet.Parameters.ContainsKey('DateKind')) { $convert.DateKind = 'String' }"
         in body
     )
-    assert "return Microsoft.PowerShell.Utility\\ConvertFrom-Json @convert" in body
+    # stored, then returned: 5.1 writes a JSON array as one Object[]
+    assert "$parsed = Microsoft.PowerShell.Utility\\ConvertFrom-Json @convert" in body
+    assert "    return $parsed\n" in body
     code = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
     # DateKind: only the capability test and the one use above
     assert sum(line.count("DateKind") for line in code) == 2
