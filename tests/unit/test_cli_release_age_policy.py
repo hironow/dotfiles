@@ -203,6 +203,21 @@ def test_podman_compose_has_a_dedicated_zero_age_cli_environment() -> None:
     ]
 
 
+def test_colab_cli_has_a_dedicated_zero_age_environment_and_skips_windows() -> None:
+    # The owner exempts the Colab CLI like headroom and podman-compose: only its
+    # dedicated uv tool environment. Upstream supports Linux and macOS only.
+    spec = config()["tools"].get("pypi:google-colab-cli")
+    assert isinstance(spec, dict), "the Colab CLI needs a dedicated mise tool"
+    assert spec["version"] == "0.7.5"
+    assert shlex.split(spec["uvx_args"]) == [
+        "--python",
+        "3.13",
+        "--exclude-newer",
+        "0d",
+    ]
+    assert spec["os"] == ["linux", "macos"]
+
+
 def test_headroom_whole_dedicated_environment_not_only_top_package_is_exempt() -> None:
     spec = config()["tools"]["pypi:headroom-ai"]
     assert spec["version"] == "0.41.0"

@@ -233,6 +233,14 @@ rtk = "latest"
 "npm:@stripe/cli" = { version = "latest", bun_args = "--minimum-release-age=0" }
 "npm:@dataform/cli" = { version = "latest", bun_args = "--minimum-release-age=0" }
 
+# Google Colab CLI (`colab`): Colab CPU/GPU/TPU runtimes from the terminal.
+# PyPI google-colab-cli (googlecolab/google-colab-cli, Apache-2.0), through
+# uvx like the other Python CLIs. The owner exempts it from the seven-day wait
+# (2026-11-10), like headroom and podman-compose: only its dedicated tool
+# environment, through --exclude-newer 0d. Upstream supports Linux and macOS
+# only: mise skips it on Windows. Pinned; bump deliberately. See docs/cli-tools.md.
+"pypi:google-colab-cli" = { version = "0.7.5", uvx_args = "--python 3.13 --exclude-newer 0d", os = ["linux", "macos"] }
+
 [env]
 # Anonymous telemetry off for the base tools (ADR 0047): rtk only reports after
 # an opt-in, headroom's beacon is on by default. The same values sit in
