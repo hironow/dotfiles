@@ -57,6 +57,7 @@ import time
 from pathlib import Path
 
 import pytest
+from _pwsh import resolve_pwsh
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
@@ -68,7 +69,7 @@ GC_WIN = SCRIPTS / "runner_gc_win.ps1"
 INSTALL_WIN = SCRIPTS / "install_runner_gc_win.ps1"
 DISK = SCRIPTS / "disk_gc.sh"
 BASH = shutil.which("bash") or "/bin/bash"
-PWSH = shutil.which("pwsh")
+PWSH = resolve_pwsh(os.environ)
 
 # Every script that shells out to wsl.exe from a possible Git Bash host.
 DISPATCHERS = (GC, INSTALL, COMPACT, DISK)
