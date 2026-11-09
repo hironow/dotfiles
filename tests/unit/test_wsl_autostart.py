@@ -51,11 +51,11 @@ so the stub can be injected) whenever pwsh is available.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from _pwsh import resolve_pwsh
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
@@ -63,7 +63,7 @@ AUTOSTART = SCRIPTS / "wsl_autostart.ps1"
 INSTALL_WIN = SCRIPTS / "install_runner_gc_win.ps1"
 INSTALL = SCRIPTS / "install_runner_gc.sh"
 STATUS = SCRIPTS / "gc_status.sh"
-PWSH = shutil.which("pwsh")
+PWSH = resolve_pwsh(os.environ)
 
 pwshonly = pytest.mark.skipif(PWSH is None, reason="needs pwsh to run the payload")
 

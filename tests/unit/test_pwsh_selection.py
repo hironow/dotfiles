@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -27,3 +28,20 @@ def test_dotfiles_test_pwsh_wins_over_the_gc_alias(tmp_path):
     }
     chosen = resolve_pwsh(environ)
     assert chosen is not None and Path(chosen).samefile(sys.executable)
+
+
+def test_every_powershell_test_takes_the_override():
+    # A test that looks pwsh up itself ignores DOTFILES_TEST_PWSH, so a run
+    # on Windows PowerShell 5.1 would quietly test pwsh 7 instead.
+    tests = Path(__file__).resolve().parents[1]
+    lookup = re.compile(r"""\bwhich\(\s*["']pwsh(?:\.exe)?["']""")
+    found = [
+        f"{path.relative_to(tests)}:{number}"
+        for path in sorted(tests.rglob("*.py"))
+        if path.name != "_pwsh.py"
+        for number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        )
+        if lookup.search(line)
+    ]
+    assert not found, f"use _pwsh.resolve_pwsh(os.environ) instead: {found}"

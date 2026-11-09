@@ -675,6 +675,24 @@ test-unit:
     uvx pytest -q -ra tests/unit/
     @echo '✅ Unit tests finished.'
 
+# Test (Windows PowerShell 5.1): the GC (runner_gc.sh calls powershell.exe)
+# and bootstrap.ps1 on a new machine run on 5.1, which reads some input
+# differently from the pwsh 7 that test-unit uses. Run their tests on 5.1.
+[windows]
+[group('Test')]
+test-windows-powershell:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    identity="$(powershell.exe -NoProfile -NonInteractive -Command "'{0} {1}' -f \$PSVersionTable.PSVersion, \$PSVersionTable.PSEdition")"
+    identity="${identity%$'\r'}"
+    case "$identity" in
+      "5.1."*" Desktop") echo "🧪 Windows PowerShell $identity" ;;
+      *) echo "expected Windows PowerShell 5.1 Desktop, got '$identity'" >&2; exit 1 ;;
+    esac
+    export DOTFILES_TEST_PWSH=powershell.exe PODMAN_GC_REQUIRE_PWSH=1
+    uvx pytest -q -ra tests/unit/test_podman_gc_simulation.py -k powershell
+    uvx pytest -q -ra tests/unit/test_runner_gc.py tests/unit/test_bootstrap_ps1.py tests/unit/test_podman_provisioning_ps1.py
+
 # Test (install): mandatory owned-image build from a tracked-only context.
 [group('Test')]
 test-install:
@@ -805,19 +823,19 @@ spec-check:
     done
     {{UV_RUN}} --group dev pytest -q tests/unit/test_podman_gc_simulation.py
 
-# check: strict gate, never writes. Used by pre-push hook and CI.
+# check: strict gate, never writes. `just ci`, `just check-all`, and CI's dev
+# container job run it. The Go legs run last: golangci for three GOOS is the
+# slowest leg, so a cheaper leg that fails ends the run before it.
 [group('Lint')]
 check:
     @echo '🔎 Python (ruff format --check)...'
     {{UV_RUN}} --only-group lint ruff format --check .
     @echo '🔎 Python (ruff check, no --fix)...'
     {{UV_RUN}} --only-group lint ruff check .
-    @echo '🔎 Python (ty check, ADR 0044)...'
-    @{{UV_RUN}} --group lint ty check
+    @echo '🔎 Python (ty check per platform, ADR 0044)...'
+    @just check-ty
     @just rttm-check
     @just spec-check
-    @echo '🔎 Go (golangci-lint)...'
-    just go-lint
     @echo '🔎 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
@@ -836,6 +854,8 @@ check:
     @just mise-versions-check
     @echo '🔎 storage bounds (every tofu sink declares its cap)...'
     @{{UV_RUN}} scripts/check_storage_bounds.py
+    @echo '🔎 Go (golangci-lint per GOOS)...'
+    just go-lint
     @echo '🔎 Go tests (tools/ modules)...'
     just go-test
     @echo '✅ All checks passed.'
@@ -847,9 +867,13 @@ check:
 # ADR 0044: type-check the root tooling (scripts/, tests/) with ty, pinned in
 # [dependency-groups].lint ([tool.ty] in pyproject.toml scopes and configures it).
 # --group lint (not --only-group): ty resolves project imports.
+# Once per platform the tooling runs on: ty narrows `sys.platform`, so a
+# branch for another OS is checked only when ty checks for that OS.
 [group('Lint')]
 check-ty:
-    @{{UV_RUN}} --group lint ty check
+    @{{UV_RUN}} --group lint ty check --python-platform win32
+    @{{UV_RUN}} --group lint ty check --python-platform linux
+    @{{UV_RUN}} --group lint ty check --python-platform darwin
 
 # RTTM is a separate uv project; its ty scope and dependencies must be local.
 [group('Lint')]
@@ -1057,8 +1081,12 @@ go-lint:
     config="$PWD/.golangci.yaml"
     git ls-files -z '*go.mod' | while IFS= read -r -d '' mod; do
       dir="$(dirname "$mod")"
-      echo "🔎 golangci-lint run $dir"
-      (cd "$dir" && mise exec aqua:golangci/golangci-lint -- golangci-lint run --config "$config" ./...)
+      # Once per OS the binaries ship to: a file behind a build tag, and code
+      # only it calls, is checked only for the GOOS it builds for.
+      for goos in windows linux darwin; do
+        echo "🔎 golangci-lint run $dir (GOOS=$goos)"
+        (cd "$dir" && GOOS="$goos" mise exec aqua:golangci/golangci-lint -- golangci-lint run --config "$config" ./...)
+      done
       echo "🔎 golangci-lint fmt --diff $dir"
       (cd "$dir" && mise exec aqua:golangci/golangci-lint -- golangci-lint fmt --config "$config" --diff ./...)
     done

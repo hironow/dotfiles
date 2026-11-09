@@ -407,6 +407,12 @@ function Start-Process {{
         "RUNNER_GC_KEEP_TAG_PREFIX": prefix,
         "RUNNER_GC_RETENTION": retention,
     }
+    # Where a machine keeps a prebuilt module analysis cache (the
+    # windows-latest runner does), use it: without it Windows PowerShell 5.1
+    # analyses every installed module at each start.
+    cache = os.environ.get("PSModuleAnalysisCachePath")
+    if cache:
+        env["PSModuleAnalysisCachePath"] = cache
     proc = subprocess.run(
         # As runner_gc.sh starts it: a machine policy (AllSigned) must not
         # decide whether the replay runs.
@@ -1063,12 +1069,17 @@ def test_powershell_replay_runs_inside_its_temp_dir_like_production(
     monkeypatch.setattr(module, "PWSH", "pwsh-under-test")
     monkeypatch.setattr(module.subprocess, "run", record)
     monkeypatch.setenv("PATHEXT", ".COM;.EXE")
+    monkeypatch.setenv("PSModuleAnalysisCachePath", r"C:\cache\ModuleAnalysisCache")
     with pytest.raises(RuntimeError, match="recorded"):
         replay_powershell(tmp_path, inventory())
     command, env = seen["command"], seen["env"]
     # Without PATHEXT, Windows PowerShell does not treat python.exe as a
     # program: it opens the fake engine in a new window and gets no output.
     assert env["PATHEXT"] == ".COM;.EXE"
+    # The windows-latest runner points this at a prebuilt module analysis
+    # cache. Without it, Windows PowerShell 5.1 analyses every installed
+    # module (Az among them) at each start: 18-32 s instead of 0.3 s.
+    assert env["PSModuleAnalysisCachePath"] == r"C:\cache\ModuleAnalysisCache"
     # runner_gc.sh starts the GC with -ExecutionPolicy Bypass; a machine
     # policy such as AllSigned must not decide the replay either.
     assert command[command.index("-ExecutionPolicy") + 1] == "Bypass"

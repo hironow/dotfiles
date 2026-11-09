@@ -8,6 +8,8 @@ replays on one pinned, hash-checked PowerShell 7.4 build.
 import re
 from pathlib import Path
 
+from _workflow import jobs as _jobs
+
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/test-podman-gc-compat.yaml"
 POWERSHELL_51 = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -18,13 +20,6 @@ TARBALL_URL = (
 # the official release's hashes.sha256 and its API asset digest agree on it
 TARBALL_SHA256 = "9de443bef974f219c98a33b0f4096aace7f30b42188f37a1b14c5da7e82c8a6a"
 JOBS = ("windows-powershell-51", "linux-powershell-74-observation")
-
-
-def _jobs(body):
-    """Each job's text, keyed by its id (two-space indent under `jobs:`)."""
-    section = body.split("\njobs:\n", 1)[1]
-    parts = re.split(r"^  ([a-z0-9-]+):\n", section, flags=re.MULTILINE)
-    return dict(zip(parts[1::2], parts[2::2], strict=True))
 
 
 def test_workflow_runs_like_the_others_and_pins_every_action():

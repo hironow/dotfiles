@@ -2,8 +2,9 @@
 // scripts that carry it.
 //
 // config/mise/image-tools.toml is the single source for the versions the
-// devcontainer bakes into /etc/mise/config.toml, fetches as verified tarballs,
-// and that install.sh uses on a bare Linux host before mise exists. This tool
+// devcontainer bakes into /etc/mise/config.toml, fetches as verified tarballs
+// (mise itself among them, ADR 0068), and that install.sh uses on a bare Linux
+// host before mise exists. This tool
 // is the single writer: `sync` renders those versions into the generated
 // regions, `check` reports drift (the gate wired into `just lint` and
 // `just check`).
@@ -14,13 +15,15 @@
 //	    the body of `cat > /etc/mise/config.toml <<'EOF' ... EOF`
 //	    UV_VERSION / JUST_VERSION   (verified tarballs; versions from [tools])
 //	    SHELDON_VERSION             (tarball-only tool; version from [fetch])
+//	    MISE_VERSION                (mise itself; version from [bootstrap].mise)
 //	install.sh
 //	    _mise_ver ([bootstrap].mise) / _just_ver ([tools].just)
 //
 // The same run keeps the source honest: every [tools] and [fetch] tool has to
 // exist in config/mise/config.toml, and wherever the host pins an exact version
 // the two must agree. [bootstrap].mise is compared with install.sh's _mise_ver
-// only — mise is not a mise tool, so the host config carries no entry for it.
+// and the feature's MISE_VERSION only — mise is not a mise tool, so the host
+// config carries no entry for it.
 // Nothing here touches the network.
 //
 // This is the second implementation; it replaced scripts/mise_versions.py
@@ -941,6 +944,7 @@ func renderFeatureInstall(text string, doc *table) (string, error) {
 		"UV_VERSION":      {"tools", "uv"},
 		"JUST_VERSION":    {"tools", "just"},
 		"SHELDON_VERSION": {"fetch", "aqua:rossmacarthur/sheldon"},
+		"MISE_VERSION":    {"bootstrap", "mise"},
 	} {
 		version, err := concrete(doc, keys...)
 		if err != nil {

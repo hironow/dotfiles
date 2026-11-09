@@ -22,8 +22,9 @@ Three groups of tests:
    `tomllib` does, and writes nothing when it fails,
 3. the invariants that make "one place" true: no version written twice, every
    `[tools]` / `[fetch]` tool declared on the host with equal exact pins, and
-   `[bootstrap].mise` compared with `install.sh`'s `_mise_ver` only (mise is
-   not a mise tool, so the host config has no entry for it).
+   `[bootstrap].mise` compared with `install.sh`'s `_mise_ver` and the
+   feature's `MISE_VERSION` only (mise is not a mise tool, so the host config
+   has no entry for it; ADR 0068).
 """
 
 from __future__ import annotations
@@ -197,6 +198,16 @@ def test_a_mutated_bootstrap_constant_is_reported(tool: Path, tmp_path: Path) ->
     result = check(tool, root)
     assert result.returncode != 0
     assert "_mise_ver" in result.stdout
+
+
+def test_a_mutated_feature_mise_constant_is_reported(
+    tool: Path, tmp_path: Path
+) -> None:
+    root = tree(tmp_path)
+    mutate(root, REL_FEATURE, 'MISE_VERSION="2026.10.17"', 'MISE_VERSION="2026.8.0"')
+    result = check(tool, root)
+    assert result.returncode != 0
+    assert "mise-versions-sync" in result.stderr
 
 
 def test_a_partial_or_empty_version_is_rejected(tool: Path, tmp_path: Path) -> None:
@@ -399,6 +410,7 @@ def test_the_generated_constants_come_from_the_single_source() -> None:
         ("UV_VERSION", source["tools"]["uv"]),
         ("JUST_VERSION", source["tools"]["just"]),
         ("SHELDON_VERSION", source["fetch"]["aqua:rossmacarthur/sheldon"]),
+        ("MISE_VERSION", source["bootstrap"]["mise"]),
     ):
         assert re.search(rf'^{name}="{re.escape(expected)}"$', feature, re.MULTILINE), (
             name

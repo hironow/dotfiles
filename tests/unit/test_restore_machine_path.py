@@ -9,12 +9,14 @@ ps1 checks).
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from _pwsh import resolve_pwsh
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "restore_machine_path.ps1"
@@ -119,7 +121,7 @@ def test_requires_apply_switch_and_self_elevates() -> None:
 
 
 def test_parses_as_valid_powershell() -> None:
-    pwsh = shutil.which("pwsh") or shutil.which("powershell")
+    pwsh = resolve_pwsh(os.environ) or shutil.which("powershell")
     if pwsh is None:
         pytest.skip("no PowerShell available to parse-check")
     check = (

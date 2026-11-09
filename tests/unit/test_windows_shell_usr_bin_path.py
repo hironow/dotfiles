@@ -143,4 +143,6 @@ def test_real_msys_sh_resolves_git_bash_from_system32_first_path() -> None:
     )
     assert res.returncode == 0, res.stderr
     assert res.stdout.splitlines()[0] == "/usr/bin/bash"
-    assert "msys" in res.stdout.splitlines()[1]
+    # Git Bash says "msys" in Git for Windows 2.42 and "cygwin" in 2.56 (the
+    # windows-latest runner, 2026-11). WSL's bash would say "linux-gnu".
+    assert res.stdout.splitlines()[1] in ("msys", "cygwin")

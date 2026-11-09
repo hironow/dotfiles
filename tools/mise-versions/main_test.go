@@ -374,10 +374,11 @@ func TestCheckAcceptsTheCommittedTree(t *testing.T) {
 
 func TestCheckReportsEveryOneSidedEdit(t *testing.T) {
 	for name, tc := range map[string]struct{ rel, old, new string }{
-		"source only":      {sourceRel, `"aqua:rossmacarthur/sheldon" = "0.8.5"`, `"aqua:rossmacarthur/sheldon" = "0.9.0"`},
-		"host only":        {hostRel, `"aqua:rossmacarthur/sheldon" = { version = "0.8.5"`, `"aqua:rossmacarthur/sheldon" = { version = "0.9.0"`},
-		"generated region": {featureRel, `bun = "1.4.4"`, `bun = "1.4.5"`},
-		"bootstrap const":  {bootstrapRel, `_mise_ver="2026.10.17"`, `_mise_ver="2026.8.0"`},
+		"source only":        {sourceRel, `"aqua:rossmacarthur/sheldon" = "0.8.5"`, `"aqua:rossmacarthur/sheldon" = "0.9.0"`},
+		"host only":          {hostRel, `"aqua:rossmacarthur/sheldon" = { version = "0.8.5"`, `"aqua:rossmacarthur/sheldon" = { version = "0.9.0"`},
+		"generated region":   {featureRel, `bun = "1.4.4"`, `bun = "1.4.5"`},
+		"bootstrap const":    {bootstrapRel, `_mise_ver="2026.10.17"`, `_mise_ver="2026.8.0"`},
+		"feature mise const": {featureRel, `MISE_VERSION="2026.10.17"`, `MISE_VERSION="2026.8.0"`},
 	} {
 		root := tree(t)
 		mutate(t, root, tc.rel, tc.old, tc.new)

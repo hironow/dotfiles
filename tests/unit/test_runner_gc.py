@@ -57,6 +57,7 @@ import time
 from pathlib import Path
 
 import pytest
+from _pwsh import resolve_pwsh
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
@@ -68,7 +69,10 @@ GC_WIN = SCRIPTS / "runner_gc_win.ps1"
 INSTALL_WIN = SCRIPTS / "install_runner_gc_win.ps1"
 DISK = SCRIPTS / "disk_gc.sh"
 BASH = shutil.which("bash") or "/bin/bash"
-PWSH = shutil.which("pwsh")
+PWSH = resolve_pwsh(os.environ)
+# How runner_gc.sh starts runner_gc_win.ps1. Without -ExecutionPolicy Bypass,
+# Windows PowerShell 5.1 refuses a script under its default policy.
+GC_START = ("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File")
 
 # Every script that shells out to wsl.exe from a possible Git Bash host.
 DISPATCHERS = (GC, INSTALL, COMPACT, DISK)
@@ -586,8 +590,7 @@ def _run_gc(root: Path, *extra: str, env: dict[str, str] | None = None):
     return subprocess.run(
         [
             PWSH,
-            "-NoProfile",
-            "-File",
+            *GC_START,
             str(GC_WIN),
             "-RunnerRoot",
             str(root),
@@ -605,6 +608,11 @@ def _run_gc(root: Path, *extra: str, env: dict[str, str] | None = None):
 
 
 pwshonly = pytest.mark.skipif(PWSH is None, reason="needs pwsh to run the GC")
+
+
+def test_the_tests_start_the_windows_gc_as_runner_gc_sh_does() -> None:
+    words = " ".join(GC.read_text(encoding="utf-8").replace("\\\n", " ").split())
+    assert "powershell.exe " + " ".join(GC_START) in words
 
 
 @pwshonly
@@ -1265,8 +1273,7 @@ def test_windows_gc_survives_a_hanging_podman(tmp_path: Path) -> None:
     proc = subprocess.run(
         [
             PWSH,
-            "-NoProfile",
-            "-File",
+            *GC_START,
             str(GC_WIN),
             "-RunnerRoot",
             str(root),

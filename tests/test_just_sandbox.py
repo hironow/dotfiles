@@ -1130,14 +1130,15 @@ SCRIPT_INSTALL_RERUN = textwrap.dedent(
 # inside the throwaway container. The wrapper logs argv to
 # /tmp/mise-calls.log so a test can assert the HOME-independent
 # `-C / install` wiring, and delegates every non-install call
-# (e.g. `mise x -- sheldon lock`) to the real mise at /usr/bin/mise.
+# (e.g. `mise x -- sheldon lock`) to the real mise at /usr/local/bin/mise
+# (the feature installs it there; ADR 0068).
 _MISE_RECORD_STUB = (
     "mkdir -p /tmp/stubs && "
     "printf '%s\\n' "
     "'#!/bin/sh' "
     "'echo \"$@\" >> /tmp/mise-calls.log' "
     '\'for a in "$@"; do [ "$a" = install ] && exit 0; done\' '
-    "'exec /usr/bin/mise \"$@\"' "
+    "'exec /usr/local/bin/mise \"$@\"' "
     "> /tmp/stubs/mise && chmod +x /tmp/stubs/mise && "
     "export PATH=/tmp/stubs:$PATH && "
 )
@@ -1618,7 +1619,7 @@ def test_dump_host_rejects_unsafe_host(docker_image):
 # via brew/asdf), so we override `mise x -- prettier ...` with a no-op shim.
 # We do this by injecting a wrapper named `mise` earlier on PATH that:
 #   - intercepts the literal pattern `x -- prettier ...` and exits 0,
-#   - delegates everything else to the real mise (apt-installed at /usr/bin/mise).
+#   - delegates everything else to the real mise (/usr/local/bin/mise; ADR 0068).
 
 # mise's tools (incl. shellcheck) are pre-installed in the sandbox image
 # (Dockerfile runs `mise trust && mise install` at build time). We only need
@@ -1639,7 +1640,7 @@ _MISE_PRETTIER_STUB = (
     "printf '%s\\n' "
     "'#!/bin/sh' "
     '\'if [ "$1" = x ] && [ "$2" = -- ] && [ "$3" = prettier ]; then exit 0; fi\' '
-    "'exec /usr/bin/mise \"$@\"' "
+    "'exec /usr/local/bin/mise \"$@\"' "
     "> /tmp/stubs/mise && chmod +x /tmp/stubs/mise && "
     "export PATH=/tmp/stubs:$PATH && "
 )

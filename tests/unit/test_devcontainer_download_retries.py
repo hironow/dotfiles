@@ -41,13 +41,20 @@ def commands() -> list[str]:
 
 
 def curls() -> list[str]:
-    return [c for c in commands() if re.match(r"curl\s", c)]
+    """Commands that run curl: at the start, or after `if`, `!`, `;`, `&&`,
+    a pipe, or `(`. A package named curl in an apt-get line does not count."""
+    run = r"(?:^|[;&|(!]|\b(?:if|then|do|else|elif|while|until)\b)\s*curl\s"
+    return [c for c in commands() if re.search(run, c)]
 
 
-def test_the_scan_finds_the_downloads() -> None:
-    # uv, its checksum, just, its SHA256SUMS, sheldon, rustup-init, and the
-    # apt-key helper's fetch.
-    assert len(curls()) >= 7
+def test_the_scan_finds_every_download() -> None:
+    # uv, its checksum, just, its SHA256SUMS, sheldon, rustup-init, the apt-key
+    # helper's fetch, the signed-checksums key, and fetch_first. A curl after
+    # `if` or `!` counts too: each line that runs `curl -` is one download.
+    text = INSTALL.read_text(encoding="utf-8")
+    lines = re.findall(r"(?m)^(?!\s*#).*\bcurl -", text)
+    assert len(lines) >= 9
+    assert len(curls()) == len(lines)
 
 
 def test_every_curl_retries_and_still_fails_on_http_errors() -> None:

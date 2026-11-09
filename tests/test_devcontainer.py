@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -290,6 +291,24 @@ def test_image_provides_tool(saved_image: str, tool: str, flag: str) -> None:
         f"{tool} not found or not runnable inside saved image.\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
+
+
+def test_image_mise_is_the_pinned_release(saved_image: str) -> None:
+    """ADR 0068: mise is the release tarball at image-tools.toml
+    [bootstrap].mise in /usr/local/bin, not jdx's apt package."""
+    image_tools = ROOT / "config" / "mise" / "image-tools.toml"
+    pinned = tomllib.loads(image_tools.read_text(encoding="utf-8"))["bootstrap"]["mise"]
+    result = _run_in_image(
+        saved_image,
+        "command -v mise; mise --version; "
+        "test ! -e /etc/apt/sources.list.d/mise.list && echo no-apt-source; "
+        "dpkg -s mise >/dev/null 2>&1 || echo no-apt-package",
+    )
+    lines = result.stdout.splitlines()
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert lines[0] == "/usr/local/bin/mise", lines
+    assert lines[1].startswith(pinned + " "), lines
+    assert lines[2:] == ["no-apt-source", "no-apt-package"], lines
 
 
 def test_image_runs_a_quint_simulation_offline(saved_image: str) -> None:

@@ -9,6 +9,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from _pwsh import resolve_pwsh
 
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
@@ -29,7 +30,7 @@ def test_powershell_launchers_are_in_native_deploy() -> None:
 
 
 def test_powershell_function_syntax() -> None:
-    pwsh = shutil.which("pwsh")
+    pwsh = resolve_pwsh(os.environ)
     if not pwsh:
         pytest.skip("PowerShell unavailable; Windows CI runs this")
     functions = DEPLOY.split("cat <<'POWERSHELL'\n", 1)[1].split("\nPOWERSHELL", 1)[0]
@@ -80,7 +81,7 @@ def test_powershell_function_syntax() -> None:
 def test_powershell_forwards_the_resume_flags(call: str, forwarded: list[str]) -> None:
     # A function without a param block leaves -r / --continue in $args, so
     # they reach jev_launch.py as the hosts would read them
-    pwsh = shutil.which("pwsh")
+    pwsh = resolve_pwsh(os.environ)
     if not pwsh:
         pytest.skip("PowerShell unavailable; Windows CI runs this")
     env = os.environ.copy()
@@ -171,7 +172,7 @@ def test_the_native_deploy_refreshes_the_block_instead_of_skipping_it() -> None:
 
 @pytest.mark.parametrize("fail_at", ["just", "uvx", ""])
 def test_windows_ci_cannot_mask_a_native_failure(tmp_path: Path, fail_at: str) -> None:
-    pwsh = shutil.which("pwsh")
+    pwsh = resolve_pwsh(os.environ)
     if not pwsh:
         pytest.skip("PowerShell unavailable; Windows CI runs this")
     workflow = (ROOT / ".github/workflows/unit-test.yaml").read_text(encoding="utf-8")

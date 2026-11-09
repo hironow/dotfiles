@@ -241,10 +241,13 @@ def test_never_invokes_forbidden_package_managers() -> None:
 
 
 def test_parses_as_valid_powershell() -> None:
+    import os
     import shutil
     import subprocess
 
-    pwsh = shutil.which("pwsh") or shutil.which("powershell")
+    from _pwsh import resolve_pwsh
+
+    pwsh = resolve_pwsh(os.environ) or shutil.which("powershell")
     if pwsh is None:
         import pytest
 
