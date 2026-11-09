@@ -1,0 +1,16 @@
+{
+  "about": "Where a home's link, current/<home>/agent-hook, may point. hookrelease switch (Go) and sync's link switch (scripts/agent_hook_wiring.py) both read this table in their tests, so the two keep one rule. Paths are relative to the agent-hooks data root, <data>/dotfiles/agent-hooks. Each entry of make is built first: a file, a directory, or a symlink whose text is to. want is the resolved release, relative to the resolved root, or null for a refusal.",
+  "cases": [
+    {"name": "a release", "make": [{"file": "releases/0123456789abcdef/agent-hook"}], "target": "releases/0123456789abcdef/agent-hook", "want": "releases/0123456789abcdef/agent-hook"},
+    {"name": "a link to a release, resolved", "make": [{"file": "releases/0123456789abcdef/agent-hook"}, {"symlink": "elsewhere/agent-hook", "to": "../releases/0123456789abcdef/agent-hook"}], "target": "elsewhere/agent-hook", "want": "releases/0123456789abcdef/agent-hook"},
+    {"name": "twelve hex digits", "make": [{"file": "releases/0123456789ab/agent-hook"}], "target": "releases/0123456789ab/agent-hook", "want": null},
+    {"name": "uppercase hex", "make": [{"file": "releases/0123456789ABCDEF/agent-hook"}], "target": "releases/0123456789ABCDEF/agent-hook", "want": null},
+    {"name": "another file name", "make": [{"file": "releases/0123456789abcdef/agent-hook.old"}], "target": "releases/0123456789abcdef/agent-hook.old", "want": null},
+    {"name": "a directory named agent-hook", "make": [{"dir": "releases/0123456789abcdef/agent-hook"}], "target": "releases/0123456789abcdef/agent-hook", "want": null},
+    {"name": "missing", "make": [], "target": "releases/0123456789abcdef/agent-hook", "want": null},
+    {"name": "outside releases", "make": [{"file": "elsewhere/0123456789abcdef/agent-hook"}], "target": "elsewhere/0123456789abcdef/agent-hook", "want": null},
+    {"name": "a level below releases", "make": [{"file": "releases/nested/0123456789abcdef/agent-hook"}], "target": "releases/nested/0123456789abcdef/agent-hook", "want": null},
+    {"name": "another root's release", "make": [{"file": "../other/releases/0123456789abcdef/agent-hook"}], "target": "../other/releases/0123456789abcdef/agent-hook", "want": null},
+    {"name": "a release directory that links out", "make": [{"file": "elsewhere/0123456789abcdef/agent-hook"}, {"symlink": "releases/0123456789abcdef", "to": "../elsewhere/0123456789abcdef"}], "target": "releases/0123456789abcdef/agent-hook", "want": null}
+  ]
+}

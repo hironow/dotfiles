@@ -24,12 +24,12 @@ func TestMainRendersClaudeExec(t *testing.T) {
 }
 
 func TestShellFormsAndLosses(t *testing.T) {
-	const posix = "/a'$ `日本/dotfiles/agent-hooks/releases/abcdef012345/agent-hook"
+	const posix = "/a'$ `日本/dotfiles/agent-hooks/current/codex/agent-hook"
 	const windows = "C:\\a'$ `日本\\dotfiles\\agent-hooks\\current\\codex\\agent-hook.exe"
 	const deny = `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"agent-hook failed"}}`
 	for _, test := range []struct{ os, shell, path, closed, open string }{
-		{"darwin", "sh", posix, "'/a'\\''$ `日本/dotfiles/agent-hooks/releases/abcdef012345/agent-hook' codex pre --hook command-guard || { printf '%s\\n' 'agent-hook failed' >&2; exit 2; }", "'/a'\\''$ `日本/dotfiles/agent-hooks/releases/abcdef012345/agent-hook' codex pre --hook rtk"},
-		{"linux", "", posix, "'/a'\\''$ `日本/dotfiles/agent-hooks/releases/abcdef012345/agent-hook' codex pre --hook command-guard || { printf '%s\\n' 'agent-hook failed' >&2; exit 2; }", "'/a'\\''$ `日本/dotfiles/agent-hooks/releases/abcdef012345/agent-hook' codex pre --hook rtk"},
+		{"darwin", "sh", posix, "'/a'\\''$ `日本/dotfiles/agent-hooks/current/codex/agent-hook' codex pre --hook command-guard || { printf '%s\\n' 'agent-hook failed' >&2; exit 2; }", "'/a'\\''$ `日本/dotfiles/agent-hooks/current/codex/agent-hook' codex pre --hook rtk"},
+		{"linux", "", posix, "'/a'\\''$ `日本/dotfiles/agent-hooks/current/codex/agent-hook' codex pre --hook command-guard || { printf '%s\\n' 'agent-hook failed' >&2; exit 2; }", "'/a'\\''$ `日本/dotfiles/agent-hooks/current/codex/agent-hook' codex pre --hook rtk"},
 		{"windows", "powershell", windows, "& 'C:\\a''$ `日本\\dotfiles\\agent-hooks\\current\\codex\\agent-hook.exe' codex pre --hook command-guard; if ($LASTEXITCODE -ne 0) { '" + deny + "' }", "& 'C:\\a''$ `日本\\dotfiles\\agent-hooks\\current\\codex\\agent-hook.exe' codex pre --hook rtk"},
 		{"windows", "cmd", windows, `"` + windows + `" codex pre --hook command-guard || echo ` + deny, `"` + windows + `" codex pre --hook rtk`},
 	} {
@@ -120,6 +120,12 @@ func TestMainRefusesPathsAndShellsWithoutAFragment(t *testing.T) {
 		{"short release", "claude", "linux", "", "/dotfiles/agent-hooks/releases/abcdef01234/agent-hook"},
 		{"uppercase release", "claude", "linux", "", "/dotfiles/agent-hooks/releases/ABCDEF012345/agent-hook"},
 		{"exec placeholder", "claude", "linux", "", "/${root}" + stable},
+		// Registrations name the home's stable link only: sync writes
+		// nothing else, and owns nothing else (Claude PR 3d.1, Codex PR 3d.2).
+		{"Claude release", "claude", "linux", "", "/state/dotfiles/agent-hooks/releases/abcdef0123456789/agent-hook"},
+		{"Claude Windows release", "claude", "windows", "", `C:\state\dotfiles\agent-hooks\releases\abcdef0123456789\agent-hook.exe`},
+		{"Codex release", "codex", "linux", "sh", "/state/dotfiles/agent-hooks/releases/abcdef0123456789/agent-hook"},
+		{"Codex Windows release", "codex", "windows", "cmd", `C:\state\dotfiles\agent-hooks\releases\abcdef0123456789\agent-hook.exe`},
 	}
 	for _, form := range []struct{ shell, chars string }{{"cmd", "%!\""}, {"powershell", "*?[]‘’‚‛"}} {
 		for _, char := range form.chars {

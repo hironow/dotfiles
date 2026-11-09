@@ -375,28 +375,44 @@ def _claude(home: Path) -> AgentTarget:
 
 
 # What the renderer writes for Claude: the exec form, with no shell, so the
-# command is the program path itself.
+# command is the program path itself, and the path is the home's stable link.
 RENDERED_CLAUDE = {
+    "exec, stable link": _hook(
+        _stable("claude"), args=["claude", *ARGS], timeout=30, onFailure="block"
+    ),
+    "exec, stable link, apostrophe and $": _hook(
+        "/home/o'brien $x/.local/share/dotfiles/agent-hooks/current/claude/agent-hook",
+        args=["claude", *ARGS],
+    ),
+    "exec, windows stable link": _hook(
+        f"C:\\Users\\O'Brien $x\\{_windows_stable('claude')}", args=["claude", *ARGS]
+    ),
+}
+
+# A Claude handler that names a release directly. Sync writes the home's
+# stable link and has never written a release path, so such a handler is a
+# user's, kept as it is (PR 3d.1; the owner, 2026-11-06). Codex's are too
+# (PR 3d.2, CODEX_RELEASE_PATHS).
+CLAUDE_RELEASE_PATHS = {
     "exec, release": _hook(
         RELEASE, args=["claude", *ARGS], timeout=30, onFailure="block"
     ),
-    "exec, stable link": _hook(_stable("claude"), args=["claude", *ARGS], timeout=30),
-    "exec, windows": _hook(
+    "exec, windows release": _hook(
         f"C:\\Users\\O'Brien $x\\{WINDOWS_RELEASE}", args=["claude", *ARGS]
     ),
-    "exec, windows stable link": _hook(
-        f"C:\\Users\\u\\{_windows_stable('claude')}", args=["claude", *ARGS]
-    ),
 }
+
+STABLE = _stable("codex")
+WINDOWS_STABLE_LINK = _windows_stable("codex")
 
 # What it writes for Codex: sh on POSIX, PowerShell or cmd on Windows.
 RENDERED_CODEX = {
     # sh: single quotes, with ' written as '\''.
-    "sh, release": _hook(f"'{RELEASE}'{CLOSED_SH}", timeout=30),
+    "sh, closed": _hook(f"'{_stable('codex')}'{CLOSED_SH}", timeout=30),
     "sh, stable link": _hook(f"'{_stable('codex')}' codex pre --hook rtk", timeout=30),
     # On POSIX, `\` is a filename character, not a separator.
     "sh, backslash in a name": _hook(
-        f"'/home/a\\b/.local/share/dotfiles/agent-hooks/releases/{HEX}/agent-hook' codex"
+        "'/home/a\\b/.local/share/dotfiles/agent-hooks/current/codex/agent-hook' codex"
     ),
     "sh, apostrophe": _hook(
         "'/home/o'\\''brien/.local/share/dotfiles/agent-hooks/current/codex/"
@@ -405,7 +421,7 @@ RENDERED_CODEX = {
     # PowerShell: & and single quotes, with ' written as ''. Nothing inside
     # single quotes expands.
     "powershell": _hook(
-        f"& 'C:\\Users\\O''Brien $x %y% !z!\\{WINDOWS_RELEASE}' codex pre --hook files-guard;"
+        f"& 'C:\\Users\\O''Brien $x %y% !z!\\{WINDOWS_STABLE_LINK}' codex pre --hook files-guard;"
         " if ($LASTEXITCODE -ne 0) { '{}' }"
     ),
     "powershell, stable link": _hook(
@@ -413,7 +429,7 @@ RENDERED_CODEX = {
     ),
     # cmd: double quotes, content literal ($ and spaces included).
     "cmd": _hook(
-        f'"C:\\Users\\build$\\A B\\{WINDOWS_RELEASE}" codex pre --hook files-guard'
+        f'"C:\\Users\\build$\\A B\\{WINDOWS_STABLE_LINK}" codex pre --hook files-guard'
         ' || echo {"decision":"block"}'
     ),
     "cmd, stable link": _hook(
@@ -440,109 +456,160 @@ def test_a_codex_agent_hook_block_is_managed_for_codex_only(
     assert not sync_agents._is_managed_hook_block(block, _claude(tmp_path / "claude"))
 
 
+@pytest.mark.parametrize(
+    "hook", CLAUDE_RELEASE_PATHS.values(), ids=CLAUDE_RELEASE_PATHS.keys()
+)
+def test_a_claude_block_that_names_a_release_is_the_users(
+    tmp_path: Path, hook: dict
+) -> None:
+    claude = _claude(tmp_path / "claude")
+    block = {"matcher": "Bash", "hooks": [hook]}
+    # given a Claude block that runs a release directly, sync does not own it
+    assert not sync_agents._is_managed_hook_block(block, claude)
+    # and a sync keeps it as it is
+    merged = _merged_after_revert(claude, "settings.json", hook)
+    assert block in merged["hooks"]["PreToolUse"]
+
+
+# The same rule for Codex (PR 3d.2): sync writes only the stable link.
+CODEX_RELEASE_PATHS = {
+    "sh, release": _hook(f"'{RELEASE}'{CLOSED_SH}", timeout=30),
+    "sh, backslash in a name": _hook(
+        f"'/home/a\\b/.local/share/dotfiles/agent-hooks/releases/{HEX}/agent-hook' codex"
+    ),
+    "powershell, release": _hook(
+        f"& 'C:\\Users\\O''Brien $x\\{WINDOWS_RELEASE}' codex pre --hook files-guard;"
+        " if ($LASTEXITCODE -ne 0) { '{}' }"
+    ),
+    "cmd, release": _hook(
+        f'"C:\\Users\\build$\\A B\\{WINDOWS_RELEASE}" codex pre --hook files-guard'
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "hook", CODEX_RELEASE_PATHS.values(), ids=CODEX_RELEASE_PATHS.keys()
+)
+def test_a_codex_block_that_names_a_release_is_the_users(
+    tmp_path: Path, hook: dict
+) -> None:
+    codex = _codex(tmp_path / "codex")
+    block = {"matcher": "Bash", "hooks": [hook]}
+    # given a Codex block that runs a release directly, sync does not own it
+    assert not sync_agents._is_managed_hook_block(block, codex)
+    # and a sync keeps it as it is
+    merged = _merged_after_revert(codex, "hooks.json", hook)
+    assert block in merged["hooks"]["PreToolUse"]
+
+
 def test_a_block_that_also_runs_a_user_command_is_not_managed(tmp_path: Path) -> None:
     agent = _codex(tmp_path / "codex")
     block = {
         "matcher": "Bash",
-        "hooks": [RENDERED_CODEX["sh, release"], _hook("./scripts/mine.sh")],
+        "hooks": [RENDERED_CODEX["sh, closed"], _hook("./scripts/mine.sh")],
     }
     assert not sync_agents._is_managed_hook_block(block, agent)
 
 
-# Hooks whose program is not a release binary or a stable link in a form the
-# renderer writes: mentioning the path, a form it does not write, another
-# program, or a handler with a member it never writes.
+# Hooks whose program is not a home's stable link in a form the renderer
+# writes: mentioning the path, a form it does not write, another program, or a
+# handler with a member it never writes. Each names the stable link, which
+# sync owns, so only its form keeps it the user's.
 NOT_RUNNING_A_RELEASE = {
     "not a release id": _hook(
         "'/opt/dotfiles/agent-hooks/releases/latest/agent-hook' codex"
     ),
-    "longer name": _hook(f"'{RELEASE}-extra' codex"),
-    "echo": _hook(f'echo "{RELEASE}"'),
-    "argument": _hook(f"sha256sum {RELEASE}"),
-    "unbalanced quotes": _hook(f"'{RELEASE}\" codex pre"),
-    "assignment": _hook(f"AGENT_HOOK={RELEASE} printf ok"),
-    "redirection": _hook(f"sha256sum<{RELEASE}"),
-    "redirection after a path": _hook(f"/bin/cat<{RELEASE}"),
-    "relative": _hook(f"'dotfiles/agent-hooks/releases/{HEX}/agent-hook' codex"),
-    "unquoted shell form": _hook(f"{RELEASE} codex pre"),
-    "double-quoted posix path": _hook(f'"{RELEASE}" codex pre'),
-    "single-quoted windows path": _hook(f"'C:\\Users\\u\\{WINDOWS_RELEASE}' codex"),
-    "powershell with a posix path": _hook(f"& '{RELEASE}' codex"),
-    "text after the quote": _hook(f"'{RELEASE}'x codex"),
+    "longer name": _hook(f"'{STABLE}-extra' codex"),
+    "echo": _hook(f'echo "{STABLE}"'),
+    "argument": _hook(f"sha256sum {STABLE}"),
+    "unbalanced quotes": _hook(f"'{STABLE}\" codex pre"),
+    "assignment": _hook(f"AGENT_HOOK={STABLE} printf ok"),
+    "redirection": _hook(f"sha256sum<{STABLE}"),
+    "redirection after a path": _hook(f"/bin/cat<{STABLE}"),
+    "relative": _hook("'dotfiles/agent-hooks/current/codex/agent-hook' codex"),
+    "unquoted shell form": _hook(f"{STABLE} codex pre"),
+    "double-quoted posix path": _hook(f'"{STABLE}" codex pre'),
+    "single-quoted windows path": _hook(f"'C:\\Users\\u\\{WINDOWS_STABLE_LINK}' codex"),
+    "powershell with a posix path": _hook(f"& '{STABLE}' codex"),
+    "text after the quote": _hook(f"'{STABLE}'x codex"),
     "exec form, relative": _hook("agent-hook", args=ARGS),
     # On POSIX these name one file whose name holds backslashes.
     "posix backslashes, sh": _hook(
-        f"'/tmp/user\\dotfiles\\agent-hooks\\releases\\{HEX}\\agent-hook' codex"
+        "'/tmp/user\\dotfiles\\agent-hooks\\current\\codex\\agent-hook' codex"
     ),
     "posix backslashes, exec form": _hook(
-        f"/tmp/user\\dotfiles\\agent-hooks\\releases\\{HEX}\\agent-hook", args=ARGS
+        "/tmp/user\\dotfiles\\agent-hooks\\current\\codex\\agent-hook", args=ARGS
     ),
     # The harness still expands these, so the path does not name itself: cmd's
     # %VAR% and !VAR! inside double quotes, Claude's ${...} placeholders.
     "cmd, %": _hook(
-        f'"C:\\data\\%TEMP%\\dotfiles\\agent-hooks\\releases\\{HEX}\\agent-hook.exe" codex'
+        '"C:\\data\\%TEMP%\\dotfiles\\agent-hooks\\current\\codex\\agent-hook.exe" codex'
     ),
     "cmd, !": _hook(
-        f'"C:\\data\\!X!\\dotfiles\\agent-hooks\\releases\\{HEX}\\agent-hook.exe" codex'
+        '"C:\\data\\!X!\\dotfiles\\agent-hooks\\current\\codex\\agent-hook.exe" codex'
     ),
     "exec form, placeholder": _hook(
-        f"/home/${{CLAUDE_PROJECT_DIR}}/dotfiles/agent-hooks/releases/{HEX}/agent-hook",
+        "/home/${CLAUDE_PROJECT_DIR}/dotfiles/agent-hooks/current/codex/agent-hook",
         args=ARGS,
     ),
-    "exec form, another program": _hook("/usr/bin/env", args=[RELEASE]),
+    "exec form, another program": _hook("/usr/bin/env", args=[STABLE]),
     # PowerShell reads ‘ ’ ‚ ‛ as single quotes, and `&` resolves * ? [ ] as
     # wildcards when the literal path is missing (pwsh 7.6.9: '[ab]' ran 'a').
     "powershell, smart quote": _hook(
-        f"& 'C:\\Users\\O\u2019Brien\\{WINDOWS_RELEASE}' codex"
+        f"& 'C:\\Users\\O\u2019Brien\\{WINDOWS_STABLE_LINK}' codex"
     ),
-    "powershell, bracket": _hook(f"& 'C:\\Users\\[ab]\\{WINDOWS_RELEASE}' codex"),
-    "powershell, star": _hook(f"& 'C:\\Users\\a*\\{WINDOWS_RELEASE}' codex"),
-    "powershell, question mark": _hook(f"& 'C:\\Users\\a?\\{WINDOWS_RELEASE}' codex"),
+    "powershell, bracket": _hook(f"& 'C:\\Users\\[ab]\\{WINDOWS_STABLE_LINK}' codex"),
+    "powershell, star": _hook(f"& 'C:\\Users\\a*\\{WINDOWS_STABLE_LINK}' codex"),
+    "powershell, question mark": _hook(
+        f"& 'C:\\Users\\a?\\{WINDOWS_STABLE_LINK}' codex"
+    ),
     # The stable link's home is lowercase letters, digits, and `-`, one name.
     "stable link, upper case home": _hook(f"'{DATA}/current/Upper/agent-hook' codex"),
     "stable link, empty home": _hook(f"'{DATA}/current//agent-hook' codex"),
     "stable link, nested home": _hook(f"'{DATA}/current/a/b/agent-hook' codex"),
     "stable link, longer name": _hook(f"'{_stable('claude')}-x' codex"),
     # The suffix follows the OS: none on POSIX, `.exe` on Windows.
-    "posix .exe, sh": _hook(f"'{RELEASE}.exe' codex"),
-    "posix .exe, exec form": _hook(f"{RELEASE}.exe", args=ARGS),
+    "posix .exe, sh": _hook(f"'{STABLE}.exe' codex"),
+    "posix .exe, exec form": _hook(f"{STABLE}.exe", args=ARGS),
     "windows without .exe, cmd": _hook(
-        f'"C:\\Users\\u\\{WINDOWS_RELEASE.removesuffix(".exe")}" codex'
+        f'"C:\\Users\\u\\{WINDOWS_STABLE_LINK.removesuffix(".exe")}" codex'
     ),
     "windows without .exe, exec form": _hook(
-        f"C:\\Users\\u\\{WINDOWS_RELEASE.removesuffix('.exe')}", args=ARGS
+        f"C:\\Users\\u\\{WINDOWS_STABLE_LINK.removesuffix('.exe')}", args=ARGS
     ),
     # A control character is never part of a path the renderer writes.
     "a tab, sh": _hook(
-        f"'/home/a\tb/.local/share/dotfiles/agent-hooks/releases/{HEX}/agent-hook' codex"
+        "'/home/a\tb/.local/share/dotfiles/agent-hooks/current/codex/agent-hook' codex"
     ),
     "a tab, exec form": _hook(
-        f"/home/a\tb/.local/share/dotfiles/agent-hooks/releases/{HEX}/agent-hook",
+        "/home/a\tb/.local/share/dotfiles/agent-hooks/current/codex/agent-hook",
         args=ARGS,
     ),
     # Members the renderer never writes. Codex ignores args, and commandWindows
     # changes what runs on Windows.
     "codex form with commandWindows": _hook(
-        f"'{RELEASE}'{CLOSED_SH}", commandWindows="mine.cmd"
+        f"'{STABLE}'{CLOSED_SH}", commandWindows="mine.cmd"
     ),
-    "codex form with async": _hook(f"'{RELEASE}'{CLOSED_SH}", **{"async": True}),
-    "codex form with args": _hook(f"'{RELEASE}'{CLOSED_SH}", args=[]),
-    "exec form with statusMessage": _hook(RELEASE, args=ARGS, statusMessage="checking"),
-    "another type": {"type": "prompt", "command": RELEASE, "args": ARGS},
+    "codex form with async": _hook(f"'{STABLE}'{CLOSED_SH}", **{"async": True}),
+    "codex form with args": _hook(f"'{STABLE}'{CLOSED_SH}", args=[]),
+    "exec form with statusMessage": _hook(STABLE, args=ARGS, statusMessage="checking"),
+    "another type": {"type": "prompt", "command": STABLE, "args": ARGS},
     # The renderer writes one ASCII space after the program and nothing
     # before it. sh, bash, and zsh split words on space, tab, and newline
     # only, so another separator joins the next word to the program's name.
-    "nbsp after the path": _hook(f"'{RELEASE}'\u00a0codex pre"),
-    "ideographic space after the path": _hook(f"'{RELEASE}'\u3000codex pre"),
-    "unit separator after the path": _hook(f"'{RELEASE}'\x1fcodex pre"),
-    "tab after the path": _hook(f"'{RELEASE}'\tcodex pre"),
-    "a line after the path": _hook(f"'{RELEASE}'\nmine"),
-    "leading space": _hook(f" '{RELEASE}' codex pre"),
-    "leading nbsp": _hook(f"\u00a0'{RELEASE}' codex pre"),
+    "nbsp after the path": _hook(f"'{STABLE}'\u00a0codex pre"),
+    "ideographic space after the path": _hook(f"'{STABLE}'\u3000codex pre"),
+    "unit separator after the path": _hook(f"'{STABLE}'\x1fcodex pre"),
+    "tab after the path": _hook(f"'{STABLE}'\tcodex pre"),
+    "a line after the path": _hook(f"'{STABLE}'\nmine"),
+    "leading space": _hook(f" '{STABLE}' codex pre"),
+    "leading nbsp": _hook(f"\u00a0'{STABLE}' codex pre"),
     "powershell, two spaces after &": _hook(
-        f"&  'C:\\Users\\u\\{WINDOWS_RELEASE}' codex"
+        f"&  'C:\\Users\\u\\{WINDOWS_STABLE_LINK}' codex"
     ),
-    "cmd, nbsp after the path": _hook(f'"C:\\Users\\u\\{WINDOWS_RELEASE}"\u00a0codex'),
+    "cmd, nbsp after the path": _hook(
+        f'"C:\\Users\\u\\{WINDOWS_STABLE_LINK}"\u00a0codex'
+    ),
 }
 
 

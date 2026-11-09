@@ -1,8 +1,4 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.12"
-# dependencies = []
-# ///
+#!/usr/bin/env python3
 """Bidirectional merge sync for agent instruction directories.
 
 Manifest-based sync algorithm:
@@ -25,17 +21,29 @@ Public API:
     - sync_mode(): Apply sync with optional auto-confirm
 """
 
+from __future__ import annotations
+
 import argparse
 import filecmp
 import json
+import os
 import platform
 import re
 import shutil
-import subprocess
 import sys
+from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+
+import agent_hook_codex_plan as codex_plan
+import agent_hook_release as release_tools
+import codex_shells
+
+if os.name != "nt":
+    import agent_hook_sync as hook_sync
+    import agent_hook_wiring as hook_wiring
 
 # --- Configuration ---
 
@@ -59,21 +67,18 @@ HOOK_SETTINGS_FRAGMENT = ".claude/settings.hooks.json"
 RETIRED_HOOK_COMMAND = re.compile(
     r'^(?:"[^"]*[/\\])?rtk(?:\.exe)?"?\s+hook\s+(?:claude|codex)(?:\s|$)'
 )
-# An agent-hook binary, by its absolute path: a release,
-# <data dir>/dotfiles/agent-hooks/releases/<release-id>/agent-hook, where the
-# release ID is lowercase hex of at least 12 characters, or a home's stable
-# link to one, <data dir>/dotfiles/agent-hooks/current/<home>/agent-hook, where
-# <home> is lowercase ASCII letters, digits, and `-`. On Windows the name ends
-# in `.exe`, and nowhere else. A Windows path is matched after `\` -> `/`; on
-# POSIX `\` is a filename character, so a POSIX path is matched as written.
-# The renderer (`agent-hook render`) writes exactly these paths; the corpus
+# An agent-hook binary, by its absolute path: a home's stable link,
+# <data dir>/dotfiles/agent-hooks/current/<home>/agent-hook, where <home> is
+# lowercase ASCII letters, digits, and `-`. Sync writes only the stable link,
+# so a handler that names a release directly is its user's, in every harness.
+# On Windows the name ends in `.exe`, and nowhere else. A Windows path is
+# matched after `\` -> `/`; on POSIX `\` is a filename character, so a POSIX
+# path is matched as written. The renderer (`agent-hook render`) accepts
+# exactly these paths, per harness (its `registration.layouts`); the corpus
 # tools/agent-hooks/internal/rendercorpus/render.jsonl holds both sides to it.
-_AGENT_HOOK_PATH = (
-    r"/(?:[^/]+/)*dotfiles/agent-hooks/"
-    r"(?:releases/[0-9a-f]{12,}|current/[a-z0-9-]+)/agent-hook"
-)
-POSIX_RELEASE = re.compile(_AGENT_HOOK_PATH)
-WINDOWS_RELEASE = re.compile(r"[A-Za-z]:" + _AGENT_HOOK_PATH + r"\.exe")
+_STABLE_PATH = r"/(?:[^/]+/)*dotfiles/agent-hooks/current/[a-z0-9-]+/agent-hook"
+POSIX_STABLE = re.compile(_STABLE_PATH)
+WINDOWS_STABLE = re.compile(r"[A-Za-z]:" + _STABLE_PATH + r"\.exe")
 # The members of a hook handler the renderer writes, per harness. A handler
 # with any other member is not one it wrote, and stays its author's: Codex's
 # `commandWindows` changes what runs on Windows, `async` changes when it runs,
@@ -753,16 +758,18 @@ def _is_third_party_hook(path: Path) -> bool:
     return any(line.strip() in THIRD_PARTY_HOOK_HEADERS for line in head)
 
 
-def _is_release_path(path: str, *, windows: bool, expanded: tuple[str, ...]) -> bool:
-    """Is this program path, as its harness runs it, an agent-hook binary: a
-    release, or a home's stable link to one?"""
+def _is_stable_link_path(
+    path: str, *, windows: bool, expanded: tuple[str, ...]
+) -> bool:
+    """Is this program path, as its harness runs it, a home's stable link to
+    an agent-hook release?"""
     if any(token in path for token in expanded):
         return False
     if any(ord(char) < 0x20 or ord(char) == 0x7F for char in path):
         return False  # the renderer never writes a control character
     if windows:
-        return WINDOWS_RELEASE.fullmatch(path.replace("\\", "/")) is not None
-    return POSIX_RELEASE.fullmatch(path) is not None
+        return WINDOWS_STABLE.fullmatch(path.replace("\\", "/")) is not None
+    return POSIX_STABLE.fullmatch(path) is not None
 
 
 def _has_only_rendered_members(hook: dict, *, codex: bool) -> bool:
@@ -773,8 +780,8 @@ def _has_only_rendered_members(hook: dict, *, codex: bool) -> bool:
 
 
 def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
-    """Does this hook run an agent-hook binary (a release, or a home's stable
-    link to one) as its program, placed and quoted as sync renders it for this
+    """Does this hook run an agent-hook binary through a home's stable link
+    as its program, placed and quoted as sync renders it for this
     harness (Claude's exec form; Codex's AGENT_HOOK_LAUNCHERS), with no member
     the renderer never writes? What follows the program is not compared, so a
     changed template's older handlers are still owned."""
@@ -787,7 +794,7 @@ def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
         if not isinstance(hook.get("args"), list):  # exec form: the path itself
             return False
         windows = re.match(r"[A-Za-z]:[\\/]", command) is not None
-        return _is_release_path(
+        return _is_stable_link_path(
             command, windows=windows, expanded=_CLAUDE_EXEC_EXPANDED
         )
     for launcher in AGENT_HOOK_LAUNCHERS:
@@ -797,13 +804,30 @@ def _runs_agent_hook_release(hook: dict, *, codex: bool) -> bool:
         path = match[1]
         if launcher.escaped_quote is not None:
             path = path.replace(launcher.escaped_quote, "'")
-        return _is_release_path(
+        return _is_stable_link_path(
             path, windows=launcher.windows, expanded=launcher.expanded
         )
     return False
 
 
-def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
+def _is_agent_hook_group(group: object, *, codex: bool) -> bool:
+    """A hook group of agent-hook's: at least one handler, and every one runs
+    agent-hook as sync renders it (_runs_agent_hook_release). A group that
+    mixes it with another command is its user's."""
+    handlers = group.get("hooks") if isinstance(group, dict) else None
+    return (
+        isinstance(handlers, list)
+        and bool(handlers)
+        and all(
+            isinstance(handler, dict) and _runs_agent_hook_release(handler, codex=codex)
+            for handler in handlers
+        )
+    )
+
+
+def _is_managed_hook_block(
+    block: dict, agent: AgentTarget, *, third_party: frozenset[str] | None = None
+) -> bool:
     """A hook block sync owns: every command points at the agent's hooks dir
     or runs an agent-hook binary in the form sync renders for this harness
     (_runs_agent_hook_release).
@@ -833,7 +857,14 @@ def _is_managed_hook_block(block: dict, agent: AgentTarget) -> bool:
         else:
             match = re.match(r'[^"\s]+', suffix)
             name = match[0] if match else ""
-        return not (name and _is_third_party_hook(agent.directory / "hooks" / name))
+        return not (
+            name
+            and (
+                name in third_party
+                if third_party is not None
+                else _is_third_party_hook(agent.directory / "hooks" / name)
+            )
+        )
 
     return bool(inner) and all(managed(h) for h in inner)
 
@@ -910,6 +941,61 @@ def hook_fragment(dotfiles_dir: Path, agent: AgentTarget) -> dict | None:
     )
 
 
+def merge_hook_values(
+    target: dict,
+    desired: dict[str, list[dict]],
+    managed: dict[str, set[int]],
+) -> tuple[dict, bool]:
+    """Compute a hook merge from values, including prior ownership decisions."""
+    target = deepcopy(target)
+    hooks = target.get("hooks", {})
+    changed = False
+    for event in set(hooks) | set(desired):
+        existing = hooks.get(event, [])
+        kept = [
+            block
+            for index, block in enumerate(existing)
+            if index not in managed.get(event, set())
+            and not _is_retired_hook_block(block)
+        ]
+        new_list = kept + deepcopy(desired.get(event, []))
+        if new_list != existing:
+            changed = True
+        if new_list:
+            hooks[event] = new_list
+        else:
+            hooks.pop(event, None)
+    if hooks:
+        target["hooks"] = hooks
+    else:
+        target.pop("hooks", None)
+    return target, changed
+
+
+def render_hook_values(fragment: dict, agent: AgentTarget, system: str) -> dict:
+    """Render the scripts' fragment from values, with the OS passed explicitly."""
+    return {
+        "hooks": {
+            event: [
+                {
+                    "matcher": block.get("matcher"),
+                    "hooks": [
+                        {
+                            **handler,
+                            "command": _render_hook_command(
+                                handler["command"], agent, system=system
+                            ),
+                        }
+                        for handler in block.get("hooks", [])
+                    ],
+                }
+                for block in blocks
+            ]
+            for event, blocks in fragment.get("hooks", {}).items()
+        }
+    }
+
+
 def _merge_hook_settings(
     dotfiles_dir: Path,
     agent: AgentTarget,
@@ -944,48 +1030,17 @@ def _merge_hook_settings(
     )
 
     # Desired managed blocks per event, rendered to the agent's absolute hooks path.
-    desired: dict[str, list[dict]] = {
-        event: [
-            {
-                "matcher": block.get("matcher"),
-                "hooks": [
-                    {
-                        **h,
-                        "command": _render_hook_command(
-                            h["command"], agent, system=system
-                        ),
-                    }
-                    for h in block.get("hooks", [])
-                ],
-            }
-            for block in blocks
-        ]
-        for event, blocks in fragment.get("hooks", {}).items()
+    desired = render_hook_values(fragment, agent, system or platform.system())["hooks"]
+
+    managed = {
+        event: {
+            index
+            for index, block in enumerate(blocks)
+            if _is_managed_hook_block(block, agent)
+        }
+        for event, blocks in target.get("hooks", {}).items()
     }
-
-    hooks: dict[str, list[dict]] = target.get("hooks", {})
-    changed = False
-    for event in set(hooks) | set(desired):
-        existing = hooks.get(event, [])
-        # keep user (unmanaged) blocks; replace managed ones with the current
-        # set; drop retired third-party blocks dotfiles has replaced
-        kept = [
-            b
-            for b in existing
-            if not _is_managed_hook_block(b, agent) and not _is_retired_hook_block(b)
-        ]
-        new_list = kept + desired.get(event, [])
-        if new_list != existing:
-            changed = True
-        if new_list:
-            hooks[event] = new_list
-        else:
-            hooks.pop(event, None)
-
-    if hooks:
-        target["hooks"] = hooks
-    else:
-        target.pop("hooks", None)
+    target, changed = merge_hook_values(target, desired, managed)
 
     if changed and not dry_run:
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -994,6 +1049,257 @@ def _merge_hook_settings(
             encoding="utf-8",
         )
     return changed
+
+
+def _settings_layer_paths(
+    dotfiles_dir: Path, agent: AgentTarget, system: str
+) -> list[Path]:
+    os_name = OS_SETTINGS_OVERLAYS.get(system)
+    return [
+        dotfiles_dir / SHARED_SETTINGS_FRAGMENT,
+        *(
+            [dotfiles_dir / f".claude/settings.shared.{os_name}.json"]
+            if os_name
+            else []
+        ),
+        *(
+            [dotfiles_dir / PROFILE_SETTINGS_DIR / f"{agent.key}.json"]
+            if agent.key
+            else []
+        ),
+        agent.directory / MACHINE_LOCAL_SETTINGS,
+    ]
+
+
+def validate_hook_layers(
+    dotfiles_dir: Path, agents: list[AgentTarget], system: str
+) -> None:
+    """Refuse hooks in every settings layer before sync writes anything."""
+    for agent in agents:
+        if not agent.receives_hooks:
+            continue
+        for path in _settings_layer_paths(dotfiles_dir, agent, system):
+            if not path.exists():
+                continue
+            layer = json.loads(path.read_text(encoding="utf-8"))
+            if "hooks" in layer.get("settings", {}) or any(
+                "hooks" in keys for keys in layer.get("retired", {}).values()
+            ):
+                raise ValueError(f"{path}: hooks in a settings layer are not allowed")
+
+
+def _third_party_hooks(agent: AgentTarget) -> frozenset[str]:
+    """The hook files in the agent's hooks dir that a third-party installer
+    owns (_is_third_party_hook), relative to that dir."""
+    hooks_dir = agent.directory / "hooks"
+    return frozenset(
+        path.relative_to(hooks_dir).as_posix()
+        for path in hooks_dir.rglob("*")
+        if _is_third_party_hook(path)
+    )
+
+
+def hook_home(
+    dotfiles_dir: Path, agent: AgentTarget, roots: hook_wiring.Roots, system: str
+) -> hook_sync.HookHome:
+    """Read fragments and ownership once per fresh home plan, under the lock."""
+
+    def read_rules() -> hook_sync.HomeRules:
+        validate_hook_layers(dotfiles_dir, [agent], system)
+        script_fragment = hook_fragment(dotfiles_dir, agent)
+        scripts = (
+            None
+            if script_fragment is None
+            else render_hook_values(script_fragment, agent, system)
+        )
+        shared = _compose_settings_fragments(dotfiles_dir, agent, system)
+        third_party = _third_party_hooks(agent)
+
+        def owned(block: dict) -> bool:
+            if (
+                not isinstance(block, dict)
+                or not isinstance(block.get("hooks"), list)
+                or not all(isinstance(h, dict) for h in block["hooks"])
+            ):
+                return False
+            # Sync's own rule, as doctor reads it: a block that runs any
+            # home's stable link is sync's, and gives way to this home's.
+            return _is_managed_hook_block(block, agent, third_party=third_party)
+
+        def managed_from(settings: dict) -> dict:
+            return {
+                event: kept
+                for event, blocks in settings.get("hooks", {}).items()
+                if (kept := [block for block in blocks if owned(block)])
+            }
+
+        def hook_merge(settings: dict, desired: dict) -> dict:
+            managed = {
+                event: {i for i, b in enumerate(blocks) if owned(b)}
+                for event, blocks in settings.get("hooks", {}).items()
+            }
+            return merge_hook_values(settings, desired.get("hooks", {}), managed)[0]
+
+        def shared_merge(settings: dict, state: dict) -> tuple[dict, dict]:
+            if shared is None:
+                return deepcopy(settings), deepcopy(state)
+            merged, next_state, _, _ = merge_settings_values(settings, shared, state)
+            return merged, next_state
+
+        def wired_from(settings: dict) -> bool:
+            return any(
+                _runs_agent_hook_release(h, codex=False)
+                for blocks in managed_from(settings).values()
+                for block in blocks
+                for h in block["hooks"]
+            )
+
+        def retired_from(settings: dict) -> bool:
+            return any(
+                isinstance(block, dict) and _is_retired_hook_block(block)
+                for blocks in settings.get("hooks", {}).values()
+                for block in blocks
+            )
+
+        return hook_sync.HomeRules(
+            scripts, hook_merge, shared_merge, managed_from, wired_from, retired_from
+        )
+
+    return hook_sync.HookHome(agent.key, agent.directory, read_rules)
+
+
+def check_codex_shells(system: str, env: Mapping[str, str]) -> tuple[bool, str]:
+    """Do both of Codex's shells run agent-hook's sh launcher cleanly? (and,
+    when not, why). It runs the shells, so a home asks once."""
+    reason = codex_shells.unready_reason(
+        codex_shells.gather_shells(system.lower(), env)
+    )
+    return not reason, reason
+
+
+def codex_classes(
+    agent: AgentTarget, third_party: frozenset[str]
+) -> codex_plan.Classes:
+    """How sync's ownership rule reads a Codex group (agent_hook_codex_plan):
+    agent-hook's, the scripts', or rtk's retired one."""
+
+    def is_script(group: dict) -> bool:
+        handlers = group.get("hooks") if isinstance(group, dict) else None
+        return (
+            isinstance(handlers, list)
+            and bool(handlers)
+            and all(isinstance(handler, dict) for handler in handlers)
+            and _is_managed_hook_block(group, agent, third_party=third_party)
+            and not any(
+                _runs_agent_hook_release(handler, codex=True) for handler in handlers
+            )
+        )
+
+    return codex_plan.Classes(
+        is_script=is_script,
+        is_binary=lambda group: _is_agent_hook_group(group, codex=True),
+        is_retired=lambda group: (
+            isinstance(group, dict) and _is_retired_hook_block(group)
+        ),
+    )
+
+
+def codex_home(
+    dotfiles_dir: Path,
+    agent: AgentTarget,
+    roots: hook_wiring.Roots,
+    system: str,
+    env: Mapping[str, str] | None = None,
+) -> hook_sync.HookHome:
+    """The Codex home (PR 3d.2): F and the ownership classes, read once per
+    fresh plan under the lock, and the shells' check, run once per home (a
+    session builds its homes anew)."""
+    shells: list[tuple[bool, str]] = []
+
+    def read_rules() -> hook_sync.CodexRules:
+        fragment = hook_fragment(dotfiles_dir, agent)
+        scripts = (
+            None
+            if fragment is None
+            else render_hook_values(fragment, agent, system)["hooks"]
+        )
+        if not shells:
+            shells.append(
+                check_codex_shells(system, os.environ if env is None else env)
+            )
+        ok, reason = shells[0]
+        return hook_sync.CodexRules(
+            scripts, codex_classes(agent, _third_party_hooks(agent)), ok, reason
+        )
+
+    return hook_sync.HookHome(
+        agent.key,
+        agent.directory,
+        read_rules,
+        harness="codex",
+        registration="hooks.json",
+        state_file=None,
+    )
+
+
+def session_home(
+    dotfiles_dir: Path,
+    agent: AgentTarget,
+    roots: hook_wiring.Roots,
+    system: str,
+    env: Mapping[str, str] | None = None,
+) -> hook_sync.HookHome:
+    """The home sync wires for this agent: a Claude home, or the Codex one."""
+    if agent.receives_codex_hooks:
+        return codex_home(dotfiles_dir, agent, roots, system, env)
+    return hook_home(dotfiles_dir, agent, roots, system)
+
+
+def _wired(agents: list[AgentTarget]) -> list[AgentTarget]:
+    """The agents sync wires to agent-hook: the Claude homes and Codex."""
+    return [a for a in agents if a.receives_hooks or a.receives_codex_hooks]
+
+
+def hook_configuration(
+    dotfiles_dir: Path | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+    source: hook_sync.ReleaseSource | None = None,
+    all_agents: list[AgentTarget] | None = None,
+    system: str | None = None,
+) -> hook_sync.HookConfiguration:
+    """Connect the hook commands to the same targets, aliases, and value merges."""
+    dotfiles_dir = DOTFILES_DIR if dotfiles_dir is None else dotfiles_dir
+    env = dict(os.environ if env is None else env)
+    agents = AGENTS if all_agents is None else all_agents
+    system = system or platform.system()
+    roots = hook_wiring.Roots.from_env(env)
+
+    def codex_steps() -> None:
+        for agent in agents:
+            if agent.receives_codex_hooks:
+                _run_codex_steps(agent)
+
+    return hook_sync.HookConfiguration(
+        roots=roots,
+        homes=tuple(
+            session_home(dotfiles_dir, agent, roots, system, env)
+            for agent in _wired(agents)
+        ),
+        registrations=tuple(
+            agent.directory
+            / ("hooks.json" if agent.receives_codex_hooks else "settings.json")
+            for agent in agents
+            if agent.receives_hooks or agent.receives_codex_hooks
+        ),
+        source=hook_sync.GoReleaseSource(env) if source is None else source,
+        resolve=_resolve_targets,
+        validate=lambda keys: validate_hook_layers(
+            dotfiles_dir, [agent for agent in agents if agent.key in keys], system
+        ),
+        system=system,
+        codex_steps=codex_steps,
+    )
 
 
 def _compose_settings_fragments(
@@ -1015,15 +1321,9 @@ def _compose_settings_fragments(
     tests. Returns the composed ``{"env": ..., "settings": ..., "retired": ...}``
     dict, or None when no fragment layer exists (merge is then a no-op).
     """
-    os_name = OS_SETTINGS_OVERLAYS.get(system or platform.system())
-    layer_paths = [
-        dotfiles_dir / SHARED_SETTINGS_FRAGMENT,
-        (dotfiles_dir / f".claude/settings.shared.{os_name}.json") if os_name else None,
-        (dotfiles_dir / PROFILE_SETTINGS_DIR / f"{agent.key}.json")
-        if agent.key
-        else None,
-        agent.directory / MACHINE_LOCAL_SETTINGS,
-    ]
+    layer_paths = _settings_layer_paths(
+        dotfiles_dir, agent, system or platform.system()
+    )
     layers = [
         json.loads(path.read_text(encoding="utf-8"))
         for path in layer_paths
@@ -1070,6 +1370,24 @@ def _retire_settings(fragment: dict, target: dict, applied: set[str]) -> list[st
     return evaluated
 
 
+def merge_settings_values(
+    target: dict, fragment: dict, state: dict
+) -> tuple[dict, dict, bool, bool]:
+    """Compute shared settings and retirement state without reading or writing."""
+    target, fragment, state = deepcopy((target, fragment, state))
+    before = json.dumps(target, sort_keys=True, ensure_ascii=False)
+    if "env" in fragment:
+        target["env"] = fragment["env"]
+    for key, value in fragment.get("settings", {}).items():
+        target[key] = value
+    applied = set(state.get("retired", []))
+    evaluated = _retire_settings(fragment, target, applied)
+    if evaluated:
+        state["retired"] = sorted(applied | set(evaluated))
+    changed = json.dumps(target, sort_keys=True, ensure_ascii=False) != before
+    return target, state, changed, bool(evaluated)
+
+
 def _merge_settings_fragment(
     dotfiles_dir: Path,
     agent: AgentTarget,
@@ -1102,29 +1420,20 @@ def _merge_settings_fragment(
         else {}
     )
 
-    before = json.dumps(target, sort_keys=True, ensure_ascii=False)
-
-    if "env" in fragment:
-        target["env"] = fragment["env"]
-    for key, value in fragment.get("settings", {}).items():
-        target[key] = value
     state_path = agent.directory / SETTINGS_STATE_FILE
     state = (
         json.loads(state_path.read_text(encoding="utf-8"))
         if state_path.exists()
         else {}
     )
-    applied = set(state.get("retired", []))
-    evaluated = _retire_settings(fragment, target, applied)
-
-    changed = json.dumps(target, sort_keys=True, ensure_ascii=False) != before
+    target, state, changed, state_changed = merge_settings_values(
+        target, fragment, state
+    )
 
     if dry_run:
         return changed
-    if evaluated:
-        _write_settings(
-            state_path, {**state, "retired": sorted(applied | set(evaluated))}
-        )
+    if state_changed:
+        _write_settings(state_path, state)
     if changed:
         _write_settings(target_path, target)
     return changed
@@ -1259,9 +1568,12 @@ def _print_plan(
     plans: list[_SyncPlan],
     dotfiles_dir: Path,
     verbose: bool = False,
+    hook_session: hook_sync.SyncSession | None = None,
+    system: str | None = None,
 ) -> bool:
     """Print sync plan. Returns True if there are changes to apply."""
-    has_changes = False
+    # A recovery, or any Claude home that changes or stops, is a change.
+    has_changes = bool(hook_session and hook_session.changed)
 
     print("📁 Source:", dotfiles_dir)
     print(f"   Base: {BASE_FILE}")
@@ -1290,17 +1602,29 @@ def _print_plan(
             elif verbose:
                 print(f"  ✅ {icon} {action.relative_path} [SYNCED]")
 
-        if (
+        if hook_session is not None and plan.agent.key in hook_session.plans:
+            planned = hook_session.plans[plan.agent.key]
+            print(
+                f"  📄 {planned.home.registration} [agent-hook: {planned.plan.action}]"
+                + (f" {planned.plan.reason}" if planned.plan.reason else "")
+            )
+        elif (
             plan.agent.receives_hooks or plan.agent.receives_codex_hooks
-        ) and _merge_hook_settings(dotfiles_dir, plan.agent, dry_run=True):
+        ) and _merge_hook_settings(
+            dotfiles_dir, plan.agent, dry_run=True, system=system
+        ):
             hooks_file = (
                 "hooks.json" if plan.agent.receives_codex_hooks else "settings.json"
             )
             print(f"  📝 📄 {hooks_file} [HOOKS MERGE]")
             has_changes = True
 
-        if plan.agent.receives_hooks and _merge_settings_fragment(
-            dotfiles_dir, plan.agent, dry_run=True
+        if (
+            plan.agent.receives_hooks
+            and hook_session is None
+            and _merge_settings_fragment(
+                dotfiles_dir, plan.agent, dry_run=True, system=system
+            )
         ):
             print("  📝 📄 settings.json [SHARED MERGE]")
             has_changes = True
@@ -1566,6 +1890,58 @@ def import_only_mode(
 def preview_mode(
     dotfiles_dir: Path,
     agents: list[AgentTarget] | None = None,
+    *,
+    hook_source: hook_sync.ReleaseSource | None = None,
+    env: Mapping[str, str] | None = None,
+    system: str | None = None,
+    hook_disk: hook_wiring.Disk | None = None,
+) -> None:
+    """Preview existing releases and fresh settings; never take switch.lock."""
+    agents = _select_agents(list(_DEFAULT_TARGETS)) if agents is None else agents
+    system = system or platform.system()
+    wired = _wired(agents)
+    if not wired or system == "Windows":
+        if wired:
+            print(
+                "agent-hook: native Windows keeps today's scripts; binary wiring is not available"
+            )
+        _preview_files(dotfiles_dir, agents, system=system)
+        return
+    try:
+        selected_env = dict(os.environ if env is None else env)
+        roots = hook_wiring.Roots.from_env(selected_env)
+        validate_hook_layers(dotfiles_dir, wired, system)
+        source = (
+            hook_source
+            if hook_source is not None
+            else hook_sync.GoReleaseSource(selected_env)
+        )
+        prepared = hook_sync.preview_plans(
+            [
+                session_home(dotfiles_dir, agent, roots, system, selected_env)
+                for agent in wired
+            ],
+            roots,
+            source,
+            disk=hook_disk,
+            system=system,
+        )
+        print(
+            "agent-hook preview: "
+            + (prepared.offer.reason or "verification unknown until sync")
+        )
+        _preview_files(dotfiles_dir, agents, hook_session=prepared, system=system)
+    except (ValueError, OSError) as exc:
+        print(f"❌ Error: {exc}")
+        sys.exit(1)
+
+
+def _preview_files(
+    dotfiles_dir: Path,
+    agents: list[AgentTarget] | None = None,
+    *,
+    hook_session: hook_sync.SyncSession | None = None,
+    system: str | None = None,
 ) -> None:
     """Preview mode: show what would be synced without applying changes.
 
@@ -1609,7 +1985,9 @@ def preview_mode(
         sync_plan.deletions.extend(_detect_managed_dir_orphans(agent, additional))
         plans.append(sync_plan)
 
-    has_changes = _print_plan(plans, dotfiles_dir, verbose=True)
+    has_changes = _print_plan(
+        plans, dotfiles_dir, verbose=True, hook_session=hook_session, system=system
+    )
 
     if has_imports or has_changes:
         print("\n💡 Run without --preview to apply changes")
@@ -1621,6 +1999,69 @@ def sync_mode(
     dotfiles_dir: Path,
     auto_yes: bool = False,
     agents: list[AgentTarget] | None = None,
+    *,
+    hook_source: hook_sync.ReleaseSource | None = None,
+    env: Mapping[str, str] | None = None,
+    system: str | None = None,
+    hook_disk: hook_wiring.Disk | None = None,
+    hook_steps: hook_wiring.Steps | None = None,
+) -> None:
+    """Hold the common lock from recovery through the manifest and Codex steps."""
+    agents = _select_agents(list(_DEFAULT_TARGETS)) if agents is None else agents
+    system = system or platform.system()
+    wired = _wired(agents)
+    if not (dotfiles_dir / BASE_FILE).exists():
+        print(f"❌ Error: Base file not found: {dotfiles_dir / BASE_FILE}")
+        sys.exit(1)
+    if not wired or system == "Windows":
+        try:
+            validate_hook_layers(dotfiles_dir, wired, system)
+        except ValueError as exc:
+            print(f"❌ Error: {exc}")
+            sys.exit(1)
+        if wired:
+            print(
+                "agent-hook: native Windows keeps today's scripts; binary wiring is not available"
+            )
+        _sync_mode_files(dotfiles_dir, auto_yes, agents, system=system)
+        return
+    selected_env = dict(os.environ if env is None else env)
+    try:
+        roots = hook_wiring.Roots.from_env(selected_env)
+        source = (
+            hook_source
+            if hook_source is not None
+            else hook_sync.GoReleaseSource(selected_env)
+        )
+        homes = [
+            session_home(dotfiles_dir, agent, roots, system, selected_env)
+            for agent in wired
+        ]
+        with hook_sync.open_session(
+            "sync",
+            homes,
+            roots,
+            source,
+            disk=hook_disk,
+            steps=hook_steps,
+            system=system,
+            validate=lambda: validate_hook_layers(dotfiles_dir, wired, system),
+        ) as session:
+            _sync_mode_files(
+                dotfiles_dir, auto_yes, agents, hook_session=session, system=system
+            )
+    except (hook_sync.SyncStopped, hook_wiring.LockBusy, ValueError, OSError) as exc:
+        print(f"❌ Error: {exc}")
+        sys.exit(1)
+
+
+def _sync_mode_files(
+    dotfiles_dir: Path,
+    auto_yes: bool = False,
+    agents: list[AgentTarget] | None = None,
+    *,
+    hook_session: hook_sync.SyncSession | None = None,
+    system: str | None = None,
 ) -> None:
     """Sync mode: apply sync to selected agent directories.
 
@@ -1686,7 +2127,9 @@ def sync_mode(
         sync_plan.deletions.extend(_detect_managed_dir_orphans(agent, additional))
         plans.append(sync_plan)
 
-    has_changes = _print_plan(plans, dotfiles_dir, verbose=False)
+    has_changes = _print_plan(
+        plans, dotfiles_dir, verbose=False, hook_session=hook_session, system=system
+    )
 
     if not has_changes:
         print("\n✅ All files are already in sync!")
@@ -1697,6 +2140,7 @@ def sync_mode(
 
     print()
 
+    stopped: list[str] = []
     for plan in plans:
         print(f"\n📋 Processing {plan.agent.name}...")
 
@@ -1719,11 +2163,22 @@ def sync_mode(
                 else:
                     print(f"  ⏭️  {icon} {action.relative_path}: Skipped")
 
-        # Merge the Claude hook fragment into the agent's settings.json
-        # (claude-family only; idempotent, manifest-independent).
-        if (
+        # Register the hooks: the session for a home it plans (the Claude
+        # homes, and Codex since PR 3d.2), else the scripts' merge (native
+        # Windows). Idempotent and manifest-independent.
+        if hook_session is not None and plan.agent.key in hook_session.plans:
+            # A home that stops keeps its state; the other homes go on, and
+            # the run exits 1 after the manifest and the Codex steps.
+            result = hook_session.apply_home(plan.agent.key)
+            print(f"  {result.message}")
+            if result.status != "committed":
+                # Nothing more of that home is written: its deletions could
+                # take a script the registration it kept still runs.
+                stopped.append(result.message)
+                continue
+        elif (
             plan.agent.receives_hooks or plan.agent.receives_codex_hooks
-        ) and _merge_hook_settings(dotfiles_dir, plan.agent):
+        ) and _merge_hook_settings(dotfiles_dir, plan.agent, system=system):
             hooks_file = (
                 "hooks.json" if plan.agent.receives_codex_hooks else "settings.json"
             )
@@ -1732,8 +2187,10 @@ def sync_mode(
         # Merge the shared settings fragment (env owned wholesale + curated
         # top-level keys; claude-family only). Sequential after the hook merge so
         # each reads the freshly written settings.json -- no lost update.
-        if plan.agent.receives_hooks and _merge_settings_fragment(
-            dotfiles_dir, plan.agent
+        if (
+            plan.agent.receives_hooks
+            and hook_session is None
+            and _merge_settings_fragment(dotfiles_dir, plan.agent, system=system)
         ):
             print("  ✅ 📄 settings.json: shared settings merged")
 
@@ -1777,13 +2234,17 @@ def sync_mode(
     # Codex runs a hook only once it is trusted: trust the ones just synced
     # (exactly the fragment's, through Codex's app-server; best effort).
     _run_codex_steps_for(plans)
+    if stopped:
+        raise hook_sync.SyncStopped("; ".join(stopped))
 
     print("\n✨ Sync completed!")
 
 
 # Steps for ~/.codex after its files are synced: (script, what failed, what to
 # run by hand). Each runs as a separate process: the steps import this module,
-# so importing them here would create an import cycle.
+# so importing them here would create an import cycle. A step past
+# CODEX_STEP_TIMEOUT is killed with its process group (its app-server too).
+CODEX_STEP_TIMEOUT = 120
 CODEX_STEPS = (
     (
         "codex_hooks_trust.py",
@@ -1810,20 +2271,14 @@ def _run_codex_steps(agent: AgentTarget) -> None:
     if agent.directory != Path.home() / ".codex":
         return  # the steps read CODEX_HOME / ~/.codex only
     for script, failure, fallback in CODEX_STEPS:
-        try:
-            result = subprocess.run(
-                [sys.executable, str(Path(__file__).with_name(script))],
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=120,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError) as error:
-            print(f"  ⚠️  {failure} ({error}); run: {fallback}")
-            continue
-        for line in (result.stdout + result.stderr).splitlines():
+        outcome = release_tools.run(
+            [sys.executable, str(Path(__file__).parent / script)],
+            timeout=CODEX_STEP_TIMEOUT,
+        )
+        for line in (outcome.stdout + outcome.stderr).splitlines():
             print(f"  {line}")
+        if outcome.exit_code is None:  # it did not start, or ran out of time
+            print(f"  ⚠️  {failure} ({outcome.reason}); run: {fallback}")
 
 
 def orphans_mode(dotfiles_dir: Path, agents: list[AgentTarget] | None = None) -> None:

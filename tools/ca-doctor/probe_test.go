@@ -238,8 +238,23 @@ func TestNodeProbeIPv6Literal(t *testing.T) {
 }
 
 func TestExternalProbeAdaptersAgainstLocalTLS(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) })
+	server := httptest.NewTLSServer(handler)
 	defer server.Close()
+	// The same server on IPv6 loopback, whose URL host is the literal [::1]:
+	// a probe must not send an IP literal as the TLS server name (node 26
+	// refuses it), and must strip the brackets. Go's test certificate names
+	// both 127.0.0.1 and ::1.
+	var ipv6 *httptest.Server
+	if listener, err := net.Listen("tcp6", "[::1]:0"); err == nil {
+		ipv6 = httptest.NewUnstartedServer(handler)
+		_ = ipv6.Listener.Close()
+		ipv6.Listener = listener
+		ipv6.StartTLS()
+		defer ipv6.Close()
+	} else {
+		t.Log("no IPv6 loopback; the IPv6 literal cases are skipped")
+	}
 	cert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.TLS.Certificates[0].Certificate[0]})
 	if _, err := x509.ParseCertificate(server.TLS.Certificates[0].Certificate[0]); err != nil {
 		t.Fatal(err)
@@ -274,6 +289,11 @@ func TestExternalProbeAdaptersAgainstLocalTLS(t *testing.T) {
 			}
 			if got := probe.Probe(context.Background(), "https://127.0.0.1:1/"); got != Unknown {
 				t.Fatalf("network failure = %s", got)
+			}
+			if ipv6 != nil {
+				if got := probe.Probe(context.Background(), ipv6.URL); got != Accepted {
+					t.Fatalf("trusted TLS on an IPv6 literal must be accepted, got %s", got)
+				}
 			}
 			probe.IPv4 = true
 			if tc.kind == "bun" {

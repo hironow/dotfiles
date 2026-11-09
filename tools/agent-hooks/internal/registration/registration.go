@@ -53,7 +53,7 @@ func Render(def definition.Definition, hooks []Hook, os, shell, binary string) (
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := checkPath(binary, os, launcher.Shell); err != nil {
+	if err := checkPath(binary, os, launcher.Shell, def.Registration.Layouts); err != nil {
 		return nil, nil, &renderError{2, err.Error()}
 	}
 	fragment, err := renderFragment(def, hooks, launcher, binary)

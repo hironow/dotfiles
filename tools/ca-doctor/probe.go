@@ -61,6 +61,9 @@ type ExternalProbe struct {
 	IPv4 bool
 }
 
+// nodeProbe sends the host as the TLS server name only when it is a DNS name:
+// RFC 6066 forbids an IP literal there, and node 26 throws on one. The URL
+// keeps an IPv6 literal's brackets, which the connection must not.
 const nodeProbe = `const tls=require('node:tls');
 const net=require('node:net');
 const u=new URL(process.argv[1]);

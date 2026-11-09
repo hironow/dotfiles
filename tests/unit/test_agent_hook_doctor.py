@@ -4,7 +4,6 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import time
@@ -14,63 +13,19 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import agent_hook_doctor as check
+import agent_hook_release as release
+import codex_shells
+from _agent_hooks_go import STRICT_GO, why_go_cannot_build_the_module
 
 ROOT = Path(__file__).resolve().parents[2]
 REAL_GO = shutil.which("go")
 REAL_BASH = shutil.which("bash")
 
 
-def _why_go_cannot_build_the_module(go: str | None, home: Path) -> str:
-    """Why this Go cannot build tools/agent-hooks ("" when it can).
-
-    The real-hookrelease test builds with GOTOOLCHAIN=local, as hookrelease
-    does, so a Go older than go.mod's `go` line refuses the module. CI's
-    unit-test runner has such a system Go. Go can open its telemetry
-    counters under the user's config directory even for `go env`, so it runs
-    with the given temporary home, outside the module.
-    """
-    if go is None:
-        return "Go is missing"
-    go_mod = (ROOT / "tools" / "agent-hooks" / "go.mod").read_text(encoding="utf-8")
-    wanted = re.search(r"(?m)^go (\d+(?:\.\d+)*)\s*$", go_mod)
-    found = subprocess.run(
-        [go, "env", "GOVERSION"],
-        cwd=home,
-        env={
-            **os.environ,
-            "HOME": str(home),
-            "XDG_CONFIG_HOME": str(home / ".config"),
-            "XDG_CACHE_HOME": str(home / ".cache"),
-            "GOCACHE": str(home / ".cache" / "go-build"),
-            "GOTOOLCHAIN": "local",
-        },
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=60,
-        check=False,
-    )
-    have = re.match(r"go(\d+(?:\.\d+)*)", found.stdout.strip())
-    if wanted is None or have is None:
-        return (
-            f"cannot tell Go's version: {found.stdout.strip() or found.stderr.strip()}"
-        )
-
-    def parts(version: str) -> tuple[int, ...]:
-        return tuple(int(part) for part in version.split("."))
-
-    if parts(have[1]) < parts(wanted[1]):
-        return f"Go {have[1]} on PATH is older than go.mod's {wanted[1]}"
-    return ""
-
-
-# CI's unit job sets this in a step with the module's Go, where a skip
-# would hide that the real checker never ran.
-STRICT_GO = os.environ.get("AGENT_HOOK_DOCTOR_STRICT_GO") == "1"
-PROGRAM = "/state/dotfiles/agent-hooks/releases/abcdef012345/agent-hook"
+PROGRAM = "/state/dotfiles/agent-hooks/releases/abcdef0123456789/agent-hook"
 FRAGMENT = {
     "hooks": {
         "PreToolUse": [
@@ -425,7 +380,7 @@ def test_real_fish_shows_a_config_that_reads_stdin(
     }
     choice = check.ShellChoice("$SHELL -lc", fish, "fish", f"SHELL={fish}")
     token = "agent-hook-probe-0123456789abcdef"
-    outcome = check._run(
+    outcome = release.run(
         check.probe_argv(choice, token),
         env=env,
         timeout=10,
@@ -567,137 +522,6 @@ def _executable(path: Path, body: str) -> Path:
     return path
 
 
-@pytest.mark.skipif(os.name == "nt", reason="Windows host B3 covers job objects")
-def test_timeout_kills_grandchildren_before_they_can_write(tmp_path: Path) -> None:
-    written = tmp_path / "grandchild-wrote"
-    grandchild = (
-        "import time; from pathlib import Path; "
-        "print('ready', flush=True); time.sleep(1); "
-        f"Path({str(written)!r}).write_text('late', encoding='utf-8')"
-    )
-    child = (
-        "import subprocess, sys, time; "
-        f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); time.sleep(10)"
-    )
-    outcome = check._run([sys.executable, "-c", child], timeout=0.5)
-    assert outcome.timed_out and "ready" in outcome.stdout
-    time.sleep(1.2)
-    assert not written.exists()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="process groups are POSIX")
-def test_the_group_is_killed_before_its_leader_is_reaped(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # given a call that exits at once, leaving a grandchild in its group that
-    # keeps stdout open and would write a file later
-    written = tmp_path / "grandchild-wrote"
-    grandchild = (
-        "import time; from pathlib import Path; time.sleep(2); "
-        f"Path({str(written)!r}).write_text('late', encoding='utf-8')"
-    )
-    child = (
-        "import subprocess, sys; "
-        f"subprocess.Popen([sys.executable, '-c', {grandchild!r}])"
-    )
-    # The leader's pid is the group's ID, and reaping the leader frees it for
-    # another process: record the order of the group kill and the reap.
-    events: list[str] = []
-    real_killpg, real_waitpid = os.killpg, os.waitpid
-
-    def killpg(group: int, number: int) -> None:
-        events.append("kill")
-        real_killpg(group, number)
-
-    def waitpid(pid: int, options: int) -> tuple[int, int]:
-        reaped = real_waitpid(pid, options)
-        if reaped[0] != 0:
-            events.append("reap")
-        return reaped
-
-    monkeypatch.setattr(check.os, "killpg", killpg)
-    monkeypatch.setattr(check.os, "waitpid", waitpid)
-    # when the grandchild holds the pipe past the deadline
-    outcome = check._run([sys.executable, "-c", child], timeout=0.5)
-    # then the group is killed before its leader is reaped, grandchild included
-    assert outcome.timed_out
-    assert events == ["kill", "reap"]
-    time.sleep(2.2)
-    assert not written.exists()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="setsid is POSIX")
-def test_a_pipe_held_from_outside_the_group_does_not_hold_doctor(
-    tmp_path: Path,
-) -> None:
-    # given a call that prints a line, and whose grandchild leaves the group
-    # (setsid) and keeps both pipes open for 30 s, where no group kill
-    # reaches it
-    pid_file = tmp_path / "escaped.pid"
-    child = (
-        "import subprocess, sys, time; "
-        "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], "
-        "start_new_session=True); "
-        f"open({str(pid_file)!r}, 'w', encoding='utf-8').write(str(p.pid)); "
-        "print('ready', flush=True); time.sleep(30)"
-    )
-    # A grace of 2 s keeps one grace shared by both pipes (2.5 s in all) far
-    # from one grace per pipe (4.5 s), even on a loaded machine.
-    parent = (
-        f"import json, sys, time; sys.path.insert(0, {str(ROOT / 'scripts')!r}); "
-        "import agent_hook_doctor as check; check.PIPE_GRACE = 2; "
-        "started = time.monotonic(); "
-        f"result = check._run([sys.executable, '-c', {child!r}], timeout=0.5); "
-        "print(json.dumps([result.timed_out, time.monotonic() - started, "
-        "result.stdout]), end='')"
-    )
-    started = time.monotonic()
-    try:
-        # when doctor's call times out
-        done = subprocess.run(
-            [sys.executable, "-c", parent], capture_output=True, timeout=15, check=False
-        )
-    except subprocess.TimeoutExpired:
-        pytest.fail("doctor waited for the escaped process to let go of the pipe")
-    finally:
-        if pid_file.exists():
-            os.kill(int(pid_file.read_text(encoding="utf-8")), signal.SIGKILL)
-    # then the call returns after its limit plus one grace, with the line it
-    # printed, and doctor exits long before the escaped process lets go
-    assert done.returncode == 0, done
-    timed_out, took, stdout = json.loads(done.stdout)
-    assert timed_out and stdout == "ready\n", (timed_out, stdout)
-    assert took < 0.5 + 2 + 1.0, took
-    assert time.monotonic() - started < 10
-
-
-def test_run_drains_both_streams_but_keeps_only_the_first_65536_bytes() -> None:
-    command = """import sys, threading
-writers = [threading.Thread(target=stream.write, args=(byte * 1048576,))
-           for stream, byte in ((sys.stdout.buffer, b'a'), (sys.stderr.buffer, b'b'))]
-for writer in writers: writer.start()
-for writer in writers: writer.join()
-"""
-    outcome = check._run([sys.executable, "-c", command], timeout=5)
-    assert outcome.ok
-    assert outcome.stdout == "a" * 65536
-    assert outcome.stderr == "b" * 65536
-    assert outcome.stdout_bytes == 1048576
-
-
-def test_endless_output_still_times_out_with_bounded_capture() -> None:
-    command = """import sys, time
-while True:
-    sys.stdout.buffer.write(b'x' * 8192)
-    sys.stdout.buffer.flush()
-    time.sleep(0.001)
-"""
-    outcome = check._run([sys.executable, "-c", command], timeout=0.3)
-    assert outcome.timed_out
-    assert len(outcome.stdout.encode("utf-8")) <= 65536
-    assert outcome.stdout_bytes > 65536
-
-
 def _fake_shell(path: Path, mode: str = "clean") -> Path:
     return _executable(
         path,
@@ -739,7 +563,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for name in ("BASH_ENV", "ENV", "ZDOTDIR", "CLAUDE_CONFIG_DIR"):
         monkeypatch.delenv(name, raising=False)
     shell = _fake_shell(bin_dir / "zsh")
-    monkeypatch.setattr(check, "_login_shell", lambda: str(shell), raising=False)
+    monkeypatch.setattr(codex_shells, "_login_shell", lambda: str(shell), raising=False)
     return home
 
 
@@ -765,40 +589,6 @@ def test_probe_detects_startup_consuming_hook_stdin(
     )
 
 
-def test_run_accepts_input_bytes() -> None:
-    outcome = check._run(
-        [
-            sys.executable,
-            "-c",
-            "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())",
-        ],
-        input=b"hook-input\n",
-        timeout=5,
-    )
-    assert outcome.ok and outcome.stdout == "hook-input\n"
-
-
-def test_run_without_input_gives_eof_instead_of_inheriting_stdin() -> None:
-    child = (
-        "import sys; print('inherited' if sys.stdin.buffer.read() else 'eof', end='')"
-    )
-    parent = (
-        f"import sys; sys.path.insert(0, {str(ROOT / 'scripts')!r}); "
-        "import agent_hook_doctor as check; "
-        f"result = check._run([sys.executable, '-c', {child!r}], timeout=1); "
-        "assert result.ok, result; print(result.stdout, end='')"
-    )
-    done = subprocess.run(
-        [sys.executable, "-c", parent],
-        input=b"must not reach the child\n",
-        capture_output=True,
-        timeout=5,
-        check=False,
-    )
-    assert done.returncode == 0, done.stderr
-    assert done.stdout == b"eof"
-
-
 def _fragment(binary: Path, harness: str) -> dict:
     # Exercise the real render shape, including Codex's quoting and fallback.
     corpus = ROOT / "tools/agent-hooks/internal/rendercorpus/render.jsonl"
@@ -816,9 +606,38 @@ def _fragment(binary: Path, harness: str) -> dict:
     return json.loads(text)
 
 
+STABLE = re.compile(r".*/dotfiles/agent-hooks/current/[a-z0-9-]+/agent-hook")
+# A path no test uses, which the fake agent-hook replaces with its --binary.
+MARK = "/mark/dotfiles/agent-hooks/current/mark/agent-hook"
+
+
+def _registered(home: Path, harness: str) -> Path:
+    """The stable link _register writes into home's registration."""
+    key = "codex" if harness == "codex" else home.name.removeprefix(".claude-")
+    return (
+        home.parent
+        / "data/dotfiles/agent-hooks/current"
+        / key.strip(".")
+        / "agent-hook"
+    )
+
+
 def _register(home: Path, harness: str, binary: Path) -> dict:
+    """Register binary in home as sync wires it: through the home's stable
+    link, current/<key>/agent-hook, unless binary is such a link already.
+    For Codex that is agent-hook's guards only (G, PR 3d.2)."""
+    from agent_hook_codex_plan import codex_guards
+
     home.mkdir(parents=True, exist_ok=True)
+    if not STABLE.fullmatch(str(binary)):
+        link = _registered(home, harness)
+        link.parent.mkdir(parents=True, exist_ok=True)
+        if not link.is_symlink():
+            link.symlink_to(binary)
+        binary = link
     doc = _fragment(binary, harness)
+    if harness == "codex":
+        doc = {"hooks": codex_guards(doc["hooks"])}
     (home / ("hooks.json" if harness == "codex" else "settings.json")).write_text(
         json.dumps(doc), encoding="utf-8"
     )
@@ -826,12 +645,16 @@ def _register(home: Path, harness: str, binary: Path) -> dict:
 
 
 def _fake_agent(
-    home: Path, *, render: str = "ok", log: str = "ok", name: str = "abcdef012345"
+    home: Path, *, render: str = "ok", log: str = "ok", name: str = "abcdef0123456789"
 ) -> Path:
     binary = (
         home.parent / "a b'$" / "dotfiles/agent-hooks/releases" / name / "agent-hook"
     )
-    fragments = {harness: _fragment(binary, harness) for harness in ("claude", "codex")}
+    # Like agent-hook render, it writes the --binary it is given, quoted for
+    # the harness's form.
+    fragments = {
+        harness: _fragment(Path(MARK), harness) for harness in ("claude", "codex")
+    }
     return _executable(
         binary,
         f"""import json, os, sys, time
@@ -844,7 +667,11 @@ if mode == 'bad': print('not json'); sys.exit(0)
 if mode == 'shape': print('{{}}'); sys.exit(0)
 if mode == 'oversized': print('x' * 65537); sys.exit(0)
 if sys.argv[1] == 'render':
-    print(json.dumps({fragments!r}[sys.argv[sys.argv.index('--harness') + 1]]))
+    harness = sys.argv[sys.argv.index('--harness') + 1]
+    given = sys.argv[sys.argv.index('--binary') + 1]
+    quoted = given.replace("'", "'\\''") if harness == 'codex' else given
+    text = json.dumps({fragments!r}[harness], ensure_ascii=False)
+    print(text.replace({MARK!r}, json.dumps(quoted, ensure_ascii=False)[1:-1]))
 else:
     print(json.dumps({{'days': 1, 'lines': 8, 'unreadable': 1, 'errors': {{'hook.failed': 2}}, 'mismatches': {{}}}}))
 """,
@@ -948,7 +775,7 @@ def test_gather_renders_each_home_but_builds_and_checks_each_release_once(
         "--os",
         sys.platform,
         "--binary",
-        str(binary),
+        str(_registered(isolated / ".claude", "claude")),
     ]
     assert calls[1] == [
         "render",
@@ -959,7 +786,7 @@ def test_gather_renders_each_home_but_builds_and_checks_each_release_once(
         "--shell",
         "sh",
         "--binary",
-        str(binary),
+        str(_registered(Path(os.environ["CODEX_HOME"]), "codex")),
     ]
     assert calls[2] == ["log", "--summary", "--days", "1"]
 
@@ -992,12 +819,13 @@ def test_unwired_gather_never_builds_or_reads_a_log(isolated: Path) -> None:
 
 def test_gather_stops_after_the_first_binary_answers_the_log(isolated: Path) -> None:
     first = _fake_agent(isolated)
-    other = _fake_agent(isolated, name="fedcba012345", log="exit")
+    other = _fake_agent(isolated, name="fedcba9876543210", log="exit")
     _register(isolated / ".claude", "claude", first)
     _register(isolated / ".claude-work-a", "claude", other)
     facts = check.gather(isolated)
     assert len(facts.logs) == 1
-    assert facts.logs[0].binary == str(first) and facts.logs[0].outcome.ok
+    assert facts.logs[0].binary == str(_registered(isolated / ".claude", "claude"))
+    assert facts.logs[0].outcome.ok
     calls = [
         json.loads(line)
         for line in (isolated / "calls.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1064,7 +892,7 @@ def test_existing_codex_home_without_hooks_keeps_wiring_and_shell_facts(
     codex = Path(os.environ.get("CODEX_HOME", isolated / ".codex"))
     codex.mkdir()
     facts = check.gather(isolated)
-    assert facts.homes == (check.Home("Codex", "codex"),)
+    assert facts.homes == (check.Home("Codex", "codex", key="codex"),)
     assert len(facts.shells) == 2
     assert _lines(facts, "wiring") == [
         ("INFO", "no dotfiles hook registered in Codex (not new with agent-hook)")
@@ -1085,7 +913,7 @@ def test_failed_render_and_log_leave_other_homes_inspectable(
 ) -> None:
     binary = _fake_agent(isolated, render=mode, log=mode)
     _register(isolated / ".claude", "claude", binary)
-    other = _fake_agent(isolated, name="fedcba012345")
+    other = _fake_agent(isolated, name="fedcba9876543210")
     _register(isolated / ".claude-work-a", "claude", other)
     _fake_go(isolated, 0)
     monkeypatch.setattr(check, "PROGRAM_TIMEOUT", 1)
@@ -1104,15 +932,16 @@ def test_unresolved_binary_has_one_warning_and_no_render_or_log(
     isolated: Path,
     kind: str,
 ) -> None:
-    binary = isolated / "dotfiles/agent-hooks/releases/abcdef012345/agent-hook"
+    binary = isolated / "dotfiles/agent-hooks/releases/abcdef0123456789/agent-hook"
     if kind == "directory":
         binary.mkdir(parents=True)
     elif kind == "symlink-loop":
         binary.parent.mkdir(parents=True)
         binary.symlink_to(binary)
     _register(isolated / ".claude", "claude", binary)
+    link = _registered(isolated / ".claude", "claude")
     facts = check.gather(isolated)
-    binary_lines = [line for line in check.report(facts) if str(binary) in line[2]]
+    binary_lines = [line for line in check.report(facts) if str(link) in line[2]]
     assert len(binary_lines) == 1 and binary_lines[0][:2] == (
         "WARN",
         "agent-hook-binary",
@@ -1214,7 +1043,7 @@ def test_gather_runs_both_shell_paths_with_unique_tokens(
 ) -> None:
     Path(os.environ["CODEX_HOME"]).mkdir()
     _fake_shell(Path(os.environ["SHELL"]), mode)
-    monkeypatch.setattr(check, "SHELL_TIMEOUT", 1)
+    monkeypatch.setattr(codex_shells, "SHELL_TIMEOUT", 1)
     facts = check.gather(isolated)
     assert len(facts.shells) == 2
     assert len({shell.token for shell in facts.shells}) == 2
@@ -1301,7 +1130,7 @@ def test_the_go_version_probe_runs_in_the_temporary_home(
         f"open({str(seen)!r}, 'w', encoding='utf-8')); "
         "print('go1.999.0')",
     )
-    assert _why_go_cannot_build_the_module(str(fake), isolated) == ""
+    assert why_go_cannot_build_the_module(str(fake), isolated) == ""
     env = json.loads(seen.read_text(encoding="utf-8"))
     assert env.pop("GOTOOLCHAIN") == "local"
     assert all(value and value.startswith(str(isolated)) for value in env.values()), env
@@ -1310,7 +1139,7 @@ def test_the_go_version_probe_runs_in_the_temporary_home(
 def test_real_hookrelease_rebuilds_a_real_temporary_release(
     isolated: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    why = _why_go_cannot_build_the_module(REAL_GO, isolated)
+    why = why_go_cannot_build_the_module(REAL_GO, isolated)
     if why:
         if STRICT_GO:
             pytest.fail(why)
@@ -1445,7 +1274,7 @@ time.sleep(5)
 """,
     )
     started = time.monotonic()
-    outcome = check._run([str(program)], timeout=0.5)
+    outcome = release.run([str(program)], timeout=0.5)
     assert outcome.timed_out
     assert time.monotonic() - started < 3, (
         "descendant held the output pipe past the timeout"
@@ -1469,6 +1298,19 @@ def test_two_stable_links_to_one_release_are_checked_once(isolated: Path) -> Non
     assert len(facts.releases) == 1
     assert facts.releases[0].path == str(binary.resolve())
     assert len({home.binaries[0].path for home in facts.homes}) == 2
+
+
+@pytest.mark.parametrize("name", ["abcdef012345", "ABCDEF0123456789"])
+def test_a_link_to_a_directory_hookrelease_never_makes_is_not_a_release(
+    isolated: Path, name: str
+) -> None:
+    # given a link to releases/<name>/agent-hook, where hookrelease names
+    # each release by 16 lowercase hex digits
+    _register(isolated / ".claude", "claude", _fake_agent(isolated, name=name))
+    # when doctor gathers, then the binary is no release
+    facts = check.gather(isolated)
+    assert "no release" in _lines(facts, "binary")[0][1]
+    assert not facts.releases
 
 
 def test_a_current_path_resolving_outside_releases_is_not_a_release(
@@ -1562,3 +1404,156 @@ def test_every_claude_home_doctor_reads_is_one_sync_knows() -> None:
 
     agents = {a.directory.name for a in sync_agents.AGENTS if a.receives_hooks}
     assert set(claude_homes.NAMES) <= agents
+
+
+# ---- PR 3d.1: the uninstall mark and unfinished changes ----
+
+
+def test_an_uninstalled_home_says_how_to_wire_it_again() -> None:
+    # given a home uninstalled with just agent-hooks-uninstall, running the scripts
+    home = check.Home(".claude-work-a", "claude", scripts=True, key="work-a")
+    facts = check.Facts(homes=(home,), marks=frozenset({"work-a"}))
+    # then one INFO line says so, and the home is not among the unwired ones
+    assert _lines(facts, "wiring") == [
+        (
+            "INFO",
+            (
+                "agent-hook uninstalled in work-a: today's scripts run; "
+                "just agent-hooks-install work-a wires it again"
+            ),
+        )
+    ]
+
+
+def test_a_mark_beside_a_wired_registration_is_a_warning() -> None:
+    # given an uninstall mark, yet the home's managed blocks run the binary
+    facts = check.Facts(
+        homes=(replace(_wired(), key="claude"),), marks=frozenset({"claude"})
+    )
+    # then it is a WARN naming both ways out
+    assert _lines(facts, "wiring") == [
+        (
+            "WARN",
+            (
+                "claude: uninstalled, yet wired; run just agent-hooks-uninstall claude "
+                "or just agent-hooks-install claude"
+            ),
+        )
+    ]
+
+
+def test_an_unfinished_change_is_a_warning() -> None:
+    facts = check.Facts(journals=("switch-work-b.json",))
+    assert _lines(facts, "wiring") == [
+        (
+            "WARN",
+            (
+                "a registration change is unfinished (switch-work-b.json); "
+                "run just sync-agents to finish or restore it"
+            ),
+        )
+    ]
+
+
+def test_gather_reads_the_marks_and_journals_sync_writes(isolated: Path) -> None:
+    import agent_hook_wiring as wiring
+
+    # given a mark and a journal where sync writes them
+    roots = wiring.Roots.from_env(dict(os.environ))
+    roots.mark("work-a").parent.mkdir(parents=True)
+    roots.mark("work-a").write_bytes(b"")
+    roots.journal("claude").write_text("{}", encoding="utf-8")
+    (isolated / ".claude-work-a").mkdir()
+    # when doctor gathers, then it has both, and each home its key
+    facts = check.gather(isolated)
+    assert facts.marks == frozenset({"work-a"})
+    assert facts.journals == ("switch-claude.json",)
+    assert [home.key for home in facts.homes if home.harness == "claude"] == ["work-a"]
+
+
+# ---- PR 3d.2: the Codex home, its scripts beside agent-hook's guards ----
+
+_CODEX_CORPUS = next(
+    case
+    for case in map(
+        json.loads,
+        (ROOT / "tools/agent-hooks/internal/rendercorpus/render.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines(),
+    )
+    if case["case"] == "render/codex/darwin/sh/stable/plain"
+)
+CODEX_RENDER = json.loads(_CODEX_CORPUS["stdout"])
+CODEX_LINK = _CODEX_CORPUS["args"][_CODEX_CORPUS["args"].index("--binary") + 1]
+SCRIPT_GROUP = {
+    "matcher": "Bash",
+    "hooks": [
+        {
+            "type": "command",
+            "command": 'bash "/h/.codex/hooks/guard-codex.sh" block-prohibited-commands.sh',
+        }
+    ],
+}
+
+
+def _codex_wired(guards: list[dict]) -> check.Home:
+    """A Codex home as PR 3d.2 leaves it: a script group, then G."""
+    return check.Home(
+        "Codex",
+        "codex",
+        scripts=True,
+        managed={"PreToolUse": [SCRIPT_GROUP, *guards]},
+        binaries=(
+            check.Binary(
+                CODEX_LINK, PROGRAM, check.Render(check.Outcome(), CODEX_RENDER)
+            ),
+        ),
+        key="codex",
+    )
+
+
+def _guards() -> list[dict]:
+    pre = CODEX_RENDER["hooks"]["PreToolUse"]
+    return [pre[0], pre[1]]  # files-guard and secrets-guard, then command-guard
+
+
+def test_a_codex_home_with_scripts_beside_its_guards_is_not_mixed() -> None:
+    facts = check.Facts(homes=(_codex_wired(_guards()),))
+    assert _lines(facts, "wiring") == []
+    # and only G is compared with the render: its rtk and formatter groups
+    # wait for PR 5, and the scripts are sync's own
+    assert _lines(facts, "registered") == []
+
+
+def test_a_codex_guard_that_differs_from_the_render_is_a_warning() -> None:
+    first, second = _guards()
+    changed = {**second, "hooks": [{**second["hooks"][0], "timeout": 99}]}
+    facts = check.Facts(homes=(_codex_wired([first, changed]),))
+    lines = _lines(facts, "registered")
+    assert len(lines) == 1 and lines[0][0] == "WARN"
+    assert "Codex: managed blocks differ from render at PreToolUse[" in lines[0][1]
+    assert lines[0][1].endswith(".hooks[0].timeout; run just sync-agents")
+
+
+def test_the_order_of_codex_guard_groups_is_not_a_difference() -> None:
+    # Codex runs every matching handler, and keys trust by position, so sync
+    # leaves an unchanged group where it is, in whatever order that leaves G
+    first, second = _guards()
+    facts = check.Facts(homes=(_codex_wired([second, first]),))
+    assert _lines(facts, "registered") == []
+
+
+def test_a_claude_home_with_scripts_and_a_binary_is_still_mixed() -> None:
+    home = _wired(scripts=True)
+    assert _lines(check.Facts(homes=(home,)), "wiring")[0][0] == "WARN"
+
+
+def test_gather_reads_the_codex_mark(isolated: Path) -> None:
+    import agent_hook_wiring as wiring
+
+    roots = wiring.Roots.from_env(dict(os.environ))
+    roots.mark("codex").parent.mkdir(parents=True)
+    roots.mark("codex").write_bytes(b"")
+    (isolated / "custom-codex").mkdir()
+    facts = check.gather(isolated)
+    assert facts.marks == frozenset({"codex"})

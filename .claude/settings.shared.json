@@ -35,12 +35,10 @@
     "skillOverrides": {
       "caveman": "name-only",
       "cloudflare-deploy": "name-only",
-      "create-mcp-app": "on",
       "develop-web-game": "name-only",
       "hatch-pet": "name-only",
       "imagegen": "name-only",
       "jupyter-notebook": "on",
-      "migrate-oai-app": "on",
       "modern-web-guidance:chrome-extensions": "name-only",
       "screenshot": "name-only",
       "vercel-optimize": "name-only",

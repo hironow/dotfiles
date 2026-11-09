@@ -10,8 +10,9 @@ import (
 )
 
 func TestVersionPrintsTheReleaseAndTheGoVersion(t *testing.T) {
-	// given the binary these tests built (no release ID: "dev"), and one
-	// built with a release ID, as the release build sets it
+	// given the binary under test (the one these tests built, with no
+	// release ID: "dev"; or an installed release), and one built with a
+	// release ID, as the release build sets it
 	release := filepath.Join(t.TempDir(), "agent-hook")
 	// Audited: go builds this package into the test's own directory.
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
@@ -20,7 +21,7 @@ func TestVersionPrintsTheReleaseAndTheGoVersion(t *testing.T) {
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
-	for bin, id := range map[string]string{binary: "dev", release: "0123456789abcdef"} {
+	for bin, id := range map[string]string{binary: expectedRelease(), release: "0123456789abcdef"} {
 		// when each is asked its version
 		exit, stdout, stderr := runBinaryIn(t, bin, t.TempDir(), nil, "version")
 		// then it prints its release ID and the Go version it was built with
