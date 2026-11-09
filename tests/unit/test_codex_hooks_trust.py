@@ -258,7 +258,6 @@ def test_main_warns_and_exits_1_when_the_app_server_fails(
     )
 
 
-@pytest.mark.skipif(os.name == "nt", reason="the fake codex is a sh script")
 @pytest.mark.parametrize(
     "body",
     ["exec sleep 60\n", "sleep 5 &\nexec sleep 60\n"],
@@ -267,6 +266,9 @@ def test_main_warns_and_exits_1_when_the_app_server_fails(
 def test_a_real_app_server_that_never_answers_is_killed_and_reaped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str
 ) -> None:
+    # A skip in the body, not skipif: the type checker narrows on it.
+    if sys.platform == "win32":
+        pytest.skip("the fake codex is a sh script")
     codex = tmp_path / "codex"
     codex.write_text("#!/bin/sh\n" + body, encoding="utf-8")
     codex.chmod(0o755)

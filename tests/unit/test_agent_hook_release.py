@@ -35,10 +35,12 @@ def test_timeout_kills_grandchildren_before_they_can_write(tmp_path: Path) -> No
     assert not written.exists()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="process groups are POSIX")
 def test_the_group_is_killed_before_its_leader_is_reaped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # A skip in the body, not skipif: the type checker narrows on it.
+    if sys.platform == "win32":
+        pytest.skip("process groups are POSIX")
     # given a call that exits at once, leaving a grandchild in its group that
     # keeps stdout open and would write a file later
     written = tmp_path / "grandchild-wrote"
@@ -76,10 +78,11 @@ def test_the_group_is_killed_before_its_leader_is_reaped(
     assert not written.exists()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="setsid is POSIX")
 def test_a_pipe_held_from_outside_the_group_does_not_hold_doctor(
     tmp_path: Path,
 ) -> None:
+    if sys.platform == "win32":
+        pytest.skip("setsid is POSIX")
     # given a call that prints a line, and whose grandchild leaves the group
     # (setsid) and keeps both pipes open for 30 s, where no group kill
     # reaches it
