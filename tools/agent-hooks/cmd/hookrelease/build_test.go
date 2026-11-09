@@ -154,10 +154,8 @@ func TestReleaseBuild(t *testing.T) {
 		}
 		changed := bytes.Clone(original)
 		changed[len(changed)/2] ^= 1
-		if err := os.WriteFile(path, changed, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		defer os.WriteFile(path, original, 0o755)
+		replaceFile(t, path, changed)
+		defer replaceFile(t, path, original)
 		// a release whose bytes differ from what its ID names exits 3, not 1:
 		// sync can replace another ID's release, but never this one in place
 		if code, _, stderr := releaseCommand(t, "check", checkPath); code != 3 || !strings.Contains(stderr, id) || !strings.Contains(stderr, "SHA-256") {
@@ -165,4 +163,17 @@ func TestReleaseBuild(t *testing.T) {
 		}
 	})
 	exerciseReleaseBuild(t, module, path, releases)
+}
+
+// replaceFile puts data at path by renaming a new file over it. Writing in
+// place a binary that ran a moment ago can fail on Linux with ETXTBSY.
+func replaceFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+	next := path + ".next"
+	if err := os.WriteFile(next, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(next, path); err != nil {
+		t.Fatal(err)
+	}
 }
