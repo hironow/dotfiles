@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"syscall"
 )
@@ -96,4 +97,35 @@ func flock(file *os.File, how int) error {
 func (l releasesLock) release() {
 	removeEmptyDirectories(l.created)
 	l.dir.Close()
+}
+
+func removeEmptyDirectories(paths []string) {
+	for _, path := range paths {
+		_ = os.Remove(path)
+	}
+}
+
+// makeReleaseParents records only directories this build created.
+func makeReleaseParents(dir string) ([]string, error) {
+	err := os.Mkdir(dir, 0o755)
+	if err == nil {
+		return []string{dir}, nil
+	}
+	if errors.Is(err, os.ErrExist) {
+		return nil, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	parents, err := makeReleaseParents(filepath.Dir(dir))
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Mkdir(dir, 0o755); err == nil {
+		return append([]string{dir}, parents...), nil
+	} else if !errors.Is(err, os.ErrExist) {
+		removeEmptyDirectories(parents)
+		return nil, err
+	}
+	return parents, nil
 }

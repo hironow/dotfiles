@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/hironow/dotfiles/tools/agent-hooks/internal/logsink"
 )
@@ -20,9 +19,6 @@ var (
 	homeKey    = regexp.MustCompile(`^[a-z0-9-]+$`)
 	releaseDir = regexp.MustCompile(`^[0-9a-f]{16}$`)
 )
-
-// switchLockWait is how long a switch waits for another run's lock.
-var switchLockWait = 30 * time.Second
 
 func switchCommand(args []string) (string, error) {
 	if runtime.GOOS == "windows" {
