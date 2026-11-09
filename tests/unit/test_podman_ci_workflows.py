@@ -205,7 +205,8 @@ root() {
   esac
 }
 case "$*" in
-  'install bun uv node just') ;;
+  'install bun uv node just')
+    printf '%s\\n' "${MISE_URL_REPLACEMENTS-UNSET}" > "$FIXTURE_TRACE.url-replacements" ;;
   'install npm:@devcontainers/cli pypi:podman-compose')
     # the npm and pypi backends run bun, node, and uv from PATH
     for command in uv bun node; do
@@ -240,6 +241,21 @@ esac
     raw = buffer.getvalue()
     fixture = tmp_path / "fixture.tar.gz"
     fixture.write_bytes(raw + b"corrupted" if corrupt else raw)
+    # The mise release as GitHub's API describes it: SHASUMS256.txt's asset id.
+    release = tmp_path / "release.json"
+    release.write_text(
+        json.dumps(
+            {
+                "tag_name": f"v{version}",
+                "assets": [
+                    {"name": artifact, "id": 4241},
+                    {"name": "SHASUMS256.txt", "id": 4242},
+                    {"name": "SHASUMS256.txt.minisig", "id": 4243},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     sums = tmp_path / "SHASUMS256.txt"
     sums.write_text(
         "".join(
@@ -270,13 +286,29 @@ esac
         "id": '[ "$1" = -u ] || exit 97; echo 1000',
         "sudo": '[ "$1" = -n ] && [ "$2" = apt-get ] || exit 97; exit 0',
         "python3": f'exec {shlex.quote(bash_path(Path(sys.executable)))} -I "$@"',
-        "curl": """output=; url=
+        # Records each request (URL, argv, a header read from stdin) and
+        # fails the URLs that start with a FIXTURE_CURL_FAIL prefix.
+        "curl": """output=; url=; header=
+printf 'ARGV %s\\n' "$*" >> "$FIXTURE_CURL_LOG"
 while [ "$#" -gt 0 ]; do
-  case "$1" in -o) output="$2"; shift ;; https://*) url="$1" ;; esac
+  case "$1" in
+    -o) output="$2"; shift ;;
+    -H) [ "$2" = @- ] && header="$(cat)"; shift ;;
+    https://*) url="$1" ;;
+  esac
   shift
 done
+printf 'URL %s\\n' "$url" >> "$FIXTURE_CURL_LOG"
+[ -z "$header" ] || printf 'STDIN-HEADER %s\\n' "$header" >> "$FIXTURE_CURL_LOG"
 [ -n "$output" ] || exit 97
+for prefix in ${FIXTURE_CURL_FAIL:-}; do
+  case "$url" in "$prefix"*) echo "FIXTURE_CURL_FAILURE $url" >&2; exit 22 ;; esac
+done
 case "$url" in
+  https://api.github.com/repos/jdx/mise/releases/tags/v"$FIXTURE_MISE_VERSION")
+    cp "$FIXTURE_RELEASE" "$output" ;;
+  https://api.github.com/repos/jdx/mise/releases/assets/"$FIXTURE_SUMS_ID")
+    cp "$FIXTURE_SUMS" "$output" ;;
   */SHASUMS256.txt) cp "$FIXTURE_SUMS" "$output" ;;
   */"$FIXTURE_ASSET")
     cp "$FIXTURE_ARCHIVE" "$output"
@@ -308,7 +340,7 @@ esac""",
         assert found is not None, f"real fixture utility required: {name}"
         return shlex.quote(bash_path(Path(found)))
 
-    for name in ("cp", "dirname", "mkdir", "grep", "wc"):
+    for name in ("cat", "cp", "dirname", "mkdir", "grep", "wc"):
         commands[name] = f'exec {real_utility(name)} "$@"'
     commands["bash"] = f'exec {shlex.quote(bash_path(Path(resolve_bash())))} "$@"'
     runner = tmp_path / "runner"
@@ -324,6 +356,10 @@ esac""",
         "FIXTURE_ASSET": artifact,
         "FIXTURE_ARCHIVE": bash_path(fixture),
         "FIXTURE_SUMS": bash_path(sums),
+        "FIXTURE_SUMS_ID": "4242",
+        "FIXTURE_RELEASE": bash_path(release),
+        "FIXTURE_MISE_VERSION": version,
+        "FIXTURE_CURL_LOG": bash_path(tmp_path / "curl-log"),
         "SystemRoot": os.environ.get("SystemRoot", ""),
     }
     if engine is not None:
