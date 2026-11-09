@@ -812,8 +812,8 @@ check:
     {{UV_RUN}} --only-group lint ruff format --check .
     @echo '🔎 Python (ruff check, no --fix)...'
     {{UV_RUN}} --only-group lint ruff check .
-    @echo '🔎 Python (ty check, ADR 0044)...'
-    @{{UV_RUN}} --group lint ty check
+    @echo '🔎 Python (ty check per platform, ADR 0044)...'
+    @just check-ty
     @just rttm-check
     @just spec-check
     @echo '🔎 Go (golangci-lint)...'
@@ -847,9 +847,13 @@ check:
 # ADR 0044: type-check the root tooling (scripts/, tests/) with ty, pinned in
 # [dependency-groups].lint ([tool.ty] in pyproject.toml scopes and configures it).
 # --group lint (not --only-group): ty resolves project imports.
+# Once per platform the tooling runs on: ty narrows `sys.platform`, so a
+# branch for another OS is checked only when ty checks for that OS.
 [group('Lint')]
 check-ty:
-    @{{UV_RUN}} --group lint ty check
+    @{{UV_RUN}} --group lint ty check --python-platform win32
+    @{{UV_RUN}} --group lint ty check --python-platform linux
+    @{{UV_RUN}} --group lint ty check --python-platform darwin
 
 # RTTM is a separate uv project; its ty scope and dependencies must be local.
 [group('Lint')]
@@ -1057,8 +1061,12 @@ go-lint:
     config="$PWD/.golangci.yaml"
     git ls-files -z '*go.mod' | while IFS= read -r -d '' mod; do
       dir="$(dirname "$mod")"
-      echo "🔎 golangci-lint run $dir"
-      (cd "$dir" && mise exec aqua:golangci/golangci-lint -- golangci-lint run --config "$config" ./...)
+      # Once per OS the binaries ship to: a file behind a build tag, and code
+      # only it calls, is checked only for the GOOS it builds for.
+      for goos in windows linux darwin; do
+        echo "🔎 golangci-lint run $dir (GOOS=$goos)"
+        (cd "$dir" && GOOS="$goos" mise exec aqua:golangci/golangci-lint -- golangci-lint run --config "$config" ./...)
+      done
       echo "🔎 golangci-lint fmt --diff $dir"
       (cd "$dir" && mise exec aqua:golangci/golangci-lint -- golangci-lint fmt --config "$config" --diff ./...)
     done
