@@ -115,7 +115,7 @@ Windows だけで落ちる書き方は、ほかの OS の検査では見えな�
 - Python で OS ごとに分けるときは `sys.platform == "win32"` と書く。ty は `os.name` では分岐を絞り込まない。
 - POSIX だけで動くモジュールの import は `if TYPE_CHECKING or os.name != "nt":` の下に置く（例: `scripts/sync_agents.py`）。どの OS の型検査でも中身が検査される。
 - テストを OS で飛ばすときは、`skipif` でなく本体の先頭で `if sys.platform == "win32": pytest.skip(...)` とする。ty はそこで絞り込むので、後ろの POSIX の API が Windows の型検査で誤りにならない。
-- PowerShell の子プロセスの環境変数は `os.environ` を写してから変える。手で組むと PATHEXT、SystemRoot、SystemDrive が抜け、`python.exe` が新しい窓で開いて出力が取れない。
+- PowerShell の子プロセスの環境変数は `os.environ` を写してから変える。手で組むと PATHEXT、SystemRoot、SystemDrive が抜け、`python.exe` が新しい窓で開いて出力が取れない。`PSModuleAnalysisCachePath` が抜けると、windows-latest の runner の Windows PowerShell 5.1 は起動のたびに導入済みのモジュールをすべて解析し直す（0.3 秒が 18〜32 秒になる）。
 - PowerShell のテストは `tests/unit/_pwsh.py` の `resolve_pwsh(os.environ)` で PowerShell を選び（`DOTFILES_TEST_PWSH=powershell.exe` で 5.1 になる）、本番と同じ引数で起動する（`-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`。`-ExecutionPolicy Bypass` がないと 5.1 は既定の設定でスクリプトを拒む）。
 - Git for Windows の gpg の `--homedir` は `/c/...` の形で渡す。`C:\...` の形では agent が起動しない。
 - テストが書く偽物のスクリプトは `newline="\n"` で書く。Git Bash は CR を命令の一部として読む。
