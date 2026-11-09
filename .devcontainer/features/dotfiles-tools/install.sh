@@ -318,9 +318,9 @@ git config --system --add safe.directory /root/sandbox/dotfiles-fresh
 # Bake the pinned tool versions into the saved image so test
 # containers don't re-download every run. The image's version record is
 # `config/mise/image-tools.toml`: the `/etc/mise/config.toml` heredoc below and
-# the UV_VERSION / JUST_VERSION / SHELDON_VERSION constants are GENERATED from
-# it by `tools/mise-versions/main.go` (`just mise-versions-sync`). Edit that
-# source, not this file — `just lint` and `just check` fail on drift.
+# the MISE_VERSION / UV_VERSION / JUST_VERSION / SHELDON_VERSION constants are
+# GENERATED from it by `tools/mise-versions/main.go` (`just mise-versions-sync`).
+# Edit that source, not this file — `just lint` and `just check` fail on drift.
 #
 # Per ADR 0006 the data dir is /opt/mise, NOT $HOME/.local/share/mise.
 # The retired Coder workspace's /home/<user>:/root volume mount would
@@ -459,7 +459,7 @@ rm -rf /tmp/rustup-init /tmp/quint-rustup /tmp/quint-cargo /tmp/quint-src
 # optionalDependency (@anthropic-ai/claude-code-linux-x64) — it links only a
 # stub that errors "native binary not installed" at runtime. So we install the
 # real binary from Anthropic's official signed apt repository (same fingerprint-
-# verified pattern as gcloud/mise above; the file-header trust policy forbids
+# verified pattern as gcloud above; the file-header trust policy forbids
 # `curl | bash`) and point the mise shim — first on PATH — at it. The stable
 # channel serves a ~1-week-old, regression-skipping build and does not
 # auto-update in the image.
