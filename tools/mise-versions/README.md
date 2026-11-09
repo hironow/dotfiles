@@ -24,8 +24,8 @@ working directory does not matter.
 ## What it writes
 
 - `.devcontainer/features/dotfiles-tools/install.sh`: the body of the
-  `/etc/mise/config.toml` heredoc, plus `UV_VERSION`, `JUST_VERSION`, and
-  `SHELDON_VERSION`.
+  `/etc/mise/config.toml` heredoc, plus `UV_VERSION`, `JUST_VERSION`,
+  `SHELDON_VERSION`, and `MISE_VERSION` (from `[bootstrap].mise`, ADR 0068).
 - `install.sh`: `_mise_ver` and `_just_ver`.
 
 Everything else in both files is hand-written.

@@ -19,15 +19,16 @@
 #                         コピーは「生成で一致」させ、食い違いを残さない）
 #   [fetch]            -> tarball だけで入れる道具（sheldon）と、[tools] から
 #                         版を借りる道具の名前
-#   [bootstrap]        -> install.sh が mise の無い Linux 機体で使う版
-#                         （mise 自身は mise 道具ではないので [tools] に無い）
+#   [bootstrap]        -> install.sh が mise の無い Linux 機体で使う版と、画像が
+#                         署名つき tarball で入れる mise の版（ADR 0068。mise 自身は
+#                         mise 道具ではないので [tools] に無い）
 #
 # `just mise-versions-sync` が生成領域を書き、`just lint`（pre-commit の gate）と
 # `just check` / `just ci` が「再生成して差分なし」を検査する。検査は host との
 # 整合も見る: [tools] と [fetch] の道具は `config/mise/config.toml` に存在し、
 # host が exact pin の道具は値も一致すること（今日は quint / golangci-lint /
 # cf / sheldon がこの規則で守られている）。[bootstrap].mise は host に無いので、
-# 比較先は root `install.sh` の `_mise_ver` だけ。
+# 比較先は root `install.sh` の `_mise_ver` と、feature の `MISE_VERSION` だけ。
 
 [settings.npm]
 # Install npm: tools with bun instead of mise's embedded `aube` (parity with
@@ -88,6 +89,7 @@ mise_tools = ["uv", "just"]
 "aqua:rossmacarthur/sheldon" = "0.8.5"
 
 [bootstrap]
-# install.sh の bare Linux 経路（mise がまだ無い機体）が使う版。just は
-# [tools].just をそのまま使う（生成器が対応付ける）。
+# install.sh の bare Linux 経路（mise がまだ無い機体）と CI の bootstrap、画像の
+# mise（feature の MISE_VERSION、ADR 0068）が使う版。just は [tools].just を
+# そのまま使う（生成器が対応付ける）。
 mise = "2026.10.17"
