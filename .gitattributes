@@ -27,3 +27,7 @@ tools/ca-doctor/go.mod text eol=lf
 tools/ca-doctor/incidents/*.json text eol=lf
 tools/kernel-doctor/go.mod text eol=lf
 tools/kernel-doctor/incidents/*.json text eol=lf
+# agent-hooks' tests render each recorded corpus again and compare bytes, and
+# the pirtk corpus records rtk.ts's SHA-256; a CRLF checkout calls them stale.
+tools/agent-hooks/**/*.jsonl text eol=lf
+config/pi/extensions/rtk.ts text eol=lf

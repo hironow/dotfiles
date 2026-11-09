@@ -135,3 +135,20 @@ def test_embedded_data_files_are_lf_pinned() -> None:
             )
             checked += len(files)
     assert checked > 0
+
+
+def test_recorded_corpora_and_the_hashed_extension_are_lf_pinned() -> None:
+    """Files a Go test compares byte for byte must be LF on every OS.
+
+    agent-hooks' tests render each recorded corpus (`*.jsonl`) again and
+    compare it with the file, and the pirtk corpus records the SHA-256 of the
+    vendored config/pi/extensions/rtk.ts. A CRLF checkout fails them with
+    "stale; run just ..." for a commit that changed nothing.
+    """
+    corpora = _tracked("tools/agent-hooks/*.jsonl")
+    assert corpora, "expected recorded corpora under tools/agent-hooks"
+    files = [*corpora, "config/pi/extensions/rtk.ts"]
+    offenders = [line for line in _eol_attr_lines(files) if not line.endswith(": lf")]
+    assert not offenders, (
+        f"pin these `text eol=lf` in .gitattributes: {offenders[:5]!r}"
+    )
