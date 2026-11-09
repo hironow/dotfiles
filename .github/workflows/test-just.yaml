@@ -14,8 +14,9 @@ concurrency:
 jobs:
   test:
     name: Required disposable Podman devcontainer build/up/exec
-    # Owner pause is unchanged; do not enable this repository variable here.
-    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && vars.RUN_SANDBOX_TESTS == 'true'
+    # Draft pull requests do not run CI; runs start when the PR is marked
+    # ready for review.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:

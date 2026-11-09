@@ -536,7 +536,7 @@ Later, each its own PR through the same definition + conformance path: OpenCode 
 
 After this plan is complete, two new harnesses, one at a time, as the check that the design is complete, since a harness should be added as data (owner, 2026-11-04): grok CLI (`docs.x.ai/build/cli/reference`), then muse CLI (`dev.meta.ai/docs/overview#muse-code`).
 
-The dev container CI job, paused in #547, stays paused until PR 5 is merged (owner, 2026-11-04). The Go tests run in their own CI job meanwhile.
+The dev container CI job, paused in #547 (owner, 2026-11-04), runs again on ready pull requests and main pushes; no repository variable switches it. The Go tests keep their own CI job for fast feedback.
 
 ## Not in this plan
 

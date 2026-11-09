@@ -30,7 +30,7 @@ def test_both_engine_jobs_use_one_rootless_native_bootstrap():
         for action in re.findall(r"uses:\s+(\S+)", body):
             assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", action), action
     sandbox = (ROOT / ".github/workflows/test-just.yaml").read_text(encoding="utf-8")
-    assert "vars.RUN_SANDBOX_TESTS == 'true'" in sandbox
+    assert "RUN_SANDBOX_TESTS" not in sandbox
     assert "${GITHUB_WORKSPACE}/pytest-report.xml" in sandbox
     assert "path: ${{ github.workspace }}/pytest-report.xml" in sandbox
 

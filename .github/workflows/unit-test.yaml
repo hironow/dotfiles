@@ -88,8 +88,9 @@ jobs:
   go:
     name: Go tests (tools/)
     # The Go modules under tools/, the agent-hook binary's parity and
-    # conformance tests among them. The dev container job ran them through
-    # `just check`; it is paused (test-just.yaml), so they run here.
+    # conformance tests among them. The dev container job also runs them
+    # through `just check` (test-just.yaml); this job gives fast, independent
+    # feedback.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
