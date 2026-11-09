@@ -10,6 +10,7 @@ This module holds no doctor or sync logic, so both can import it.
 import os
 import secrets
 import shutil
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -178,7 +179,9 @@ def unready_reason(shells: Sequence[Shell]) -> str:
 
 
 def _login_shell() -> str | None:
-    if pwd is None:
+    # sys.platform lets the type checker see that pwd and os.getuid are
+    # POSIX's; at run time pwd is already None on Windows.
+    if sys.platform == "win32" or pwd is None:
         return None
     try:
         return pwd.getpwuid(os.getuid()).pw_shell

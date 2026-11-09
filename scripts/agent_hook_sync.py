@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, replace
@@ -264,6 +265,8 @@ class PosixDisk(wiring.RealDisk):
 
     @contextmanager
     def lock_releases(self, path: Path) -> Generator[None]:
+        if sys.platform == "win32":  # for the type checker: fcntl is POSIX's
+            raise NotImplementedError("release locks are POSIX only")
         descriptor = open_descriptor(path, os.O_RDONLY | os.O_DIRECTORY)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX)

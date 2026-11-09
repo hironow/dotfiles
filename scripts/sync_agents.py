@@ -35,13 +35,15 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import agent_hook_codex_plan as codex_plan
 import agent_hook_release as release_tools
 import codex_shells
 
-if os.name != "nt":
+# POSIX only at run time. The type checker reads them on every platform,
+# so the hook code stays checked when it checks for Windows.
+if TYPE_CHECKING or os.name != "nt":
     import agent_hook_sync as hook_sync
     import agent_hook_wiring as hook_wiring
 
