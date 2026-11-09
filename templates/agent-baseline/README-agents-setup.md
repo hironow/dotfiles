@@ -52,6 +52,10 @@ just install-hooks                          # sets core.hooksPath=.githooks and 
 config (dotfiles ADR 0044). The gate and CI run the lint-group pins above, so
 those are the ones the lock must hold.
 
+`just lint` runs ty once per OS the code runs on (Windows, Linux, macOS by
+default; dotfiles ADR 0069). Delete a line only for an OS this code never
+runs on, never to hide a finding.
+
 Claude Code hooks need no setup per repo. Check that they load with `/hooks`
 inside Claude Code. Put personal experiments in `.claude/settings.local.json`
 (Git ignores it).

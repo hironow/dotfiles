@@ -4,7 +4,9 @@ Code that runs on Windows, Linux, and macOS hides some of its errors on the
 OS that checks it: ty narrows `sys.platform` and golangci-lint builds for
 one GOOS, so a branch for another OS goes unchecked. On 2026-11-09 a Linux
 `just check` was green while Windows had 32 ty findings and 3 unused Go
-functions (#576). `just check` runs both for each OS.
+functions (#576). `just check` runs both for each OS, and the global rules
+(the python-tooling and go-tooling spokes) and the agent-baseline template ask
+every repo to do the same (ADR 0069).
 """
 
 from __future__ import annotations
@@ -22,8 +24,13 @@ DRAFT_GATE = (
     "    if: github.event_name != 'pull_request' || "
     "github.event.pull_request.draft == false\n"
 )
+PYTHON_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_python-tooling.md"
+GO_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_go-tooling.md"
+COMMIT_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_commit-discipline.md"
+TEMPLATE_JUSTFILE = ROOT / "templates/agent-baseline/justfile"
 PLATFORMS = {"win32", "linux", "darwin"}
 GOOSES = {"windows", "linux", "darwin"}
+EVERY_OS = "for every OS the code runs on"
 
 
 def _recipe(name: str, source: str | None = None) -> str:
@@ -159,3 +166,46 @@ def test_go_lint_runs_golangci_once_per_goos():
     assert re.search(r'GOOS="\$goos" [^\n]*golangci-lint run ', body)
     # the formatter does not depend on GOOS: once per module is enough
     assert len(re.findall(r"golangci-lint fmt ", body)) == 1
+
+
+def _just_blocks(markdown: Path) -> str:
+    """Every fenced just block of a spoke, joined."""
+    text = markdown.read_text(encoding="utf-8")
+    blocks = re.findall(r"^```just\n(.*?)^```$", text, re.MULTILINE | re.DOTALL)
+    assert blocks, f"no just block in {markdown.name}"
+    return "\n".join(blocks)
+
+
+def test_the_python_spoke_and_the_template_type_check_every_os():
+    # One gate shape: the spoke's example is what the template runs, and both
+    # run ty once per OS, as this repo's check-ty does.
+    spoke = _recipe("lint", _just_blocks(PYTHON_SPOKE))
+    template = _recipe("lint", TEMPLATE_JUSTFILE.read_text(encoding="utf-8"))
+    assert spoke.splitlines() == template.splitlines()
+    platforms = re.findall(r"ty check --python-platform (\S+)", spoke)
+    assert sorted(platforms) == sorted(PLATFORMS)
+    assert not re.search(r"ty check(?! --python-platform)", spoke)
+    assert EVERY_OS in " ".join(PYTHON_SPOKE.read_text(encoding="utf-8").split())
+
+
+def test_the_go_spoke_lints_for_every_os_it_ships_to():
+    block = _recipe("go-lint", _just_blocks(GO_SPOKE))
+    # a shebang recipe with errexit: a loop in just's default `sh -cu` would
+    # return only the last GOOS's exit code
+    assert block.lstrip().startswith("#!/usr/bin/env bash")
+    assert "set -euo pipefail" in block
+    loop = re.search(r"for goos in ([^;\n]+); do", block)
+    assert loop and set(loop.group(1).split()) == GOOSES
+    assert re.search(r'GOOS="\$goos" golangci-lint run ', block)
+    assert len(re.findall(r"golangci-lint fmt ", block)) == 1
+    # the OSes the spoke ships binaries for
+    text = GO_SPOKE.read_text(encoding="utf-8")
+    ship = text.split("\n## Ship binaries", 1)[1].split("\n## ", 1)[0]
+    assert (
+        set(re.findall(r"\b(linux|darwin|windows)/(?:amd64|arm64)\b", ship)) == GOOSES
+    )
+
+
+def test_commit_discipline_asks_for_ty_on_every_os():
+    words = " ".join(COMMIT_SPOKE.read_text(encoding="utf-8").split())
+    assert f"ty reports zero diagnostics {EVERY_OS}" in words
