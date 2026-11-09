@@ -85,15 +85,18 @@ func stopProcessTree(t *testing.T, dir string) {
 }
 
 func TestExecMachineLeavesNoDescendant(t *testing.T) {
+	// One script for every case, written before the parallel cases start.
+	// Written by a case, it could be open for writing in a sibling's fork
+	// when this case runs it: "text file busy" (golang/go#22315).
+	path := filepath.Join(t.TempDir(), "agent-hook-test")
+	if err := os.WriteFile(path, []byte(processTreeScript), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	for _, mode := range []string{"closed", "late", "held", "deadline", "post-exit-deadline", "large", "ordered"} {
 		for _, combined := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/combined=%v", mode, combined), func(t *testing.T) {
 				t.Parallel()
 				dir := t.TempDir()
-				path := filepath.Join(dir, "agent-hook-test")
-				if err := os.WriteFile(path, []byte(processTreeScript), 0o700); err != nil {
-					t.Fatal(err)
-				}
 				t.Cleanup(func() { stopProcessTree(t, dir) })
 				limit := 5 * time.Second
 				if mode == "deadline" || mode == "post-exit-deadline" {

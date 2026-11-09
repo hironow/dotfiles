@@ -93,6 +93,14 @@ Lint and format with **golangci-lint v2**: one tool, one config.
 - Run tests with `go test ./...`. Use deterministic clocks instead of wall-clock
   sleeps. HTTP tests use `httptest` or bind `:0`. CI pins golangci-lint and
   installs the Go version that the module's `go` / `toolchain` directive requires.
+- On Linux, a file that is open for writing cannot run ("text file busy",
+  ETXTBSY), and a fork keeps the parent's open files until it execs
+  (golang/go#22315). So a test that writes a program that it or a child runs
+  writes it before any parallel test starts (in `TestMain`, or in the parent
+  test before its cases call `t.Parallel`), or holds `syscall.ForkLock.RLock()`
+  while the file is open. To change a program that ran a moment ago, write a
+  new file and rename it over the old one. On Linux, fsync it through a
+  read-only handle (Windows needs a write handle).
 
 ## Ship binaries for every device
 
