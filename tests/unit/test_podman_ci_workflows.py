@@ -769,6 +769,9 @@ def test_bootstrap_fetches_mise_from_jdx_dev_first(tmp_path):
     artifact = f"mise-v{version}-linux-x64-musl.tar.gz"
     assert urls[0] == f"https://mise.jdx.dev/v{version}/{artifact}"
     assert not any(url.startswith(MISE_RELEASE_DOWNLOAD) for url in urls), urls
+    # the job log names the route each file took
+    assert f"ci-bootstrap: {artifact} from mise.jdx.dev\n" in result.stdout
+    assert "ci-bootstrap: SHASUMS256.txt from the GitHub API\n" in result.stdout
 
 
 def test_bootstrap_never_takes_mise_checksums_from_jdx_dev(tmp_path):
@@ -793,6 +796,8 @@ def test_bootstrap_falls_back_to_github_when_jdx_dev_fails(tmp_path):
         "https://mise.jdx.dev/"
     )
     assert urls[-1] == MISE_API + "assets/4242"
+    assert "ci-bootstrap: mise.jdx.dev failed; downloading" in result.stderr
+    assert " from mise.jdx.dev\n" not in result.stdout
 
 
 def test_bootstrap_falls_back_to_release_download_for_checksums_when_api_fails(
@@ -803,6 +808,8 @@ def test_bootstrap_falls_back_to_release_download_for_checksums_when_api_fails(
     urls = _curl_urls(tmp_path)
     version = urls[0].split("/")[3]
     assert urls[-1] == f"{MISE_RELEASE_DOWNLOAD}{version}/SHASUMS256.txt"
+    assert "ci-bootstrap: the GitHub API failed;" in result.stderr
+    assert "SHASUMS256.txt from the GitHub API\n" not in result.stdout
     assert not any(url.startswith(MISE_API + "assets/") for url in urls), urls
 
 

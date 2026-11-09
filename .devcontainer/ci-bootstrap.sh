@@ -78,11 +78,15 @@ fetch_mise_checksums_from_api() {
 # GitHub's release download if that fails. The host is only a route: the
 # bytes must match GitHub's SHASUMS256.txt, which never comes from
 # mise.jdx.dev (mise's docs: "Checksums never come from mise.jdx.dev").
-if ! fetch -o "$bootstrap/$artifact" "https://mise.jdx.dev/v${version}/${artifact}"; then
+if fetch -o "$bootstrap/$artifact" "https://mise.jdx.dev/v${version}/${artifact}"; then
+  echo "ci-bootstrap: $artifact from mise.jdx.dev"
+else
   echo "ci-bootstrap: mise.jdx.dev failed; downloading $artifact from GitHub" >&2
   fetch -o "$bootstrap/$artifact" "$release/$artifact"
 fi
-if ! fetch_mise_checksums_from_api; then
+if fetch_mise_checksums_from_api; then
+  echo 'ci-bootstrap: SHASUMS256.txt from the GitHub API'
+else
   echo 'ci-bootstrap: the GitHub API failed; downloading SHASUMS256.txt from the release' >&2
   fetch -o "$bootstrap/SHASUMS256.txt" "$release/SHASUMS256.txt"
 fi
