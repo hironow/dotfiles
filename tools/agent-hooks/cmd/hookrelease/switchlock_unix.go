@@ -15,6 +15,9 @@ import (
 	json "github.com/goccy/go-json/v2"
 )
 
+// switchLockWait is how long a switch waits for another run's lock.
+var switchLockWait = 30 * time.Second
+
 // switchLock is the exclusive lock on <state>/dotfiles/agent-hooks/
 // switch.lock that sync, uninstall, install, gc, and switch share. The
 // system drops it when the process ends, killed or not.

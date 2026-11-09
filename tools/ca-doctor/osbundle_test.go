@@ -311,6 +311,9 @@ func newApplyFixture(t *testing.T) applyFixture {
 }
 
 func TestApplyBundleReplacesTheFileAfterADurableBackup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os-bundle edits a POSIX PEM bundle")
+	}
 	f := newApplyFixture(t)
 	if err := ApplyBundle(f.in, f.backup, f.inHash, f.outHash, f.roots); err != nil {
 		t.Fatal(err)
@@ -321,11 +324,9 @@ func TestApplyBundleReplacesTheFileAfterADurableBackup(t *testing.T) {
 	if got, _ := os.ReadFile(f.backup); !bytes.Equal(got, f.before) {
 		t.Fatalf("backup:\n%s", got)
 	}
-	if runtime.GOOS != "windows" {
-		for _, path := range []string{f.in, f.backup} {
-			if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o644 {
-				t.Fatalf("%s mode = %v, %v", path, info.Mode().Perm(), err)
-			}
+	for _, path := range []string{f.in, f.backup} {
+		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o644 {
+			t.Fatalf("%s mode = %v, %v", path, info.Mode().Perm(), err)
 		}
 	}
 	// no temporary file is left beside it
@@ -431,20 +432,26 @@ func TestOSBundleRefusesAStaleBinaryOrBadArgumentsBeforeWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		name string
-		args []string
-		want string
-		code int
+		name   string
+		args   []string
+		want   string
+		code   int
+		parsed bool // the arguments are valid, so the checks after them run
 	}{
-		{"stale source", []string{"os-bundle", "--source", t.TempDir(), "--incident", "emudhra-2026", "--in", in, "--out", candidate}, "WARN ca-build", 1},
-		{"unknown incident", []string{"os-bundle", "--source", ".", "--incident", "nope", "--in", in, "--out", candidate}, "ERR", 2},
-		{"no mode", []string{"os-bundle", "--source", ".", "--incident", "emudhra-2026", "--in", in}, "ca-arguments", 2},
-		{"both modes", []string{"os-bundle", "--source", ".", "--incident", "emudhra-2026", "--in", in, "--out", candidate, "--apply"}, "ca-arguments", 2},
-		{"apply without hashes", []string{"os-bundle", "--source", ".", "--incident", "emudhra-2026", "--in", in, "--apply", "--backup", candidate}, "ca-arguments", 2},
+		{"stale source", []string{"os-bundle", "--source", t.TempDir(), "--incident", "emudhra-2026", "--in", in, "--out", candidate}, "WARN ca-build", 1, true},
+		{"unknown incident", []string{"os-bundle", "--source", ".", "--incident", "nope", "--in", in, "--out", candidate}, `incident "nope" lists no untrusted roots`, 2, true},
+		{"no mode", []string{"os-bundle", "--source", ".", "--incident", "emudhra-2026", "--in", in}, "ca-arguments", 2, false},
+		{"both modes", []string{"os-bundle", "--source", ".", "--incident", "emudhra-2026", "--in", in, "--out", candidate, "--apply"}, "ca-arguments", 2, false},
+		{"apply without hashes", []string{"os-bundle", "--source", ".", "--incident", "emudhra-2026", "--in", in, "--apply", "--backup", candidate}, "ca-arguments", 2, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			want, wantCode := tc.want, tc.code
+			if tc.parsed && runtime.GOOS == "windows" {
+				// Windows refuses os-bundle as soon as the arguments parse.
+				want, wantCode = "Windows keeps its roots in its own store", 2
+			}
 			var out bytes.Buffer
-			if code := RunCLI(t.Context(), tc.args, &out); code != tc.code || !strings.Contains(out.String(), tc.want) {
+			if code := RunCLI(t.Context(), tc.args, &out); code != wantCode || !strings.Contains(out.String(), want) {
 				t.Fatalf("exit %d, output:\n%s", code, &out)
 			}
 			if _, err := os.Stat(candidate); err == nil {
@@ -593,6 +600,9 @@ var applySteps = []string{
 }
 
 func TestApplyBundleSyncsTheBackupBeforeTheBundleIsReplaced(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os-bundle edits a POSIX PEM bundle")
+	}
 	f := newApplyFixture(t)
 	files := failing()
 	if err := applyBundle(files, f.in, f.backup, f.inHash, f.outHash, f.roots); err != nil {
@@ -652,6 +662,9 @@ func TestApplyBundleAsRealRootKeepsAnotherUsersOwnership(t *testing.T) {
 }
 
 func TestApplyBundleFailingBeforeTheRenameLeavesTheBundleAndNoPartialBackup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os-bundle edits a POSIX PEM bundle")
+	}
 	// every step but the last directory sync, which comes after the rename
 	for _, step := range applySteps[:len(applySteps)-1] {
 		t.Run(step, func(t *testing.T) {
@@ -682,6 +695,9 @@ func TestApplyBundleFailingBeforeTheRenameLeavesTheBundleAndNoPartialBackup(t *t
 }
 
 func TestApplyBundleReportsATemporaryFileItCouldNotRemove(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os-bundle edits a POSIX PEM bundle")
+	}
 	f := newApplyFixture(t)
 	err := applyBundle(failing("write temp", "remove temp"), f.in, f.backup, f.inHash, f.outHash, f.roots)
 	if !errors.Is(err, errInjected) || !strings.Contains(err.Error(), "is left") {
@@ -693,6 +709,9 @@ func TestApplyBundleReportsATemporaryFileItCouldNotRemove(t *testing.T) {
 }
 
 func TestApplyBundleSaysWhenTheBundleIsReplacedButNotSynced(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os-bundle edits a POSIX PEM bundle")
+	}
 	f := newApplyFixture(t)
 	err := applyBundle(failing("sync dir 2"), f.in, f.backup, f.inHash, f.outHash, f.roots)
 	if !errors.Is(err, errInjected) || !strings.Contains(err.Error(), "was replaced") {

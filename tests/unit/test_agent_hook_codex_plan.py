@@ -22,6 +22,10 @@ import agent_hook_plan as plan
 
 HOME = "/h/.codex/hooks/"
 LINK = "/d/current/codex/agent-hook"
+# The plan compares link targets in the form str(Path) and readlink give on
+# this OS (agent_hook_codex_plan.py), so build the expected ones the same way.
+RELEASE = Path("/d/releases/1111111111111111/agent-hook")
+OLD_RELEASE = Path("/d/releases/0000000000000000/agent-hook")
 
 
 def script(*names: str, matcher: str | None = "Bash") -> dict:
@@ -423,9 +427,7 @@ def test_script_groups_never_move_except_in_a_scripts_update(seed: int) -> None:
 
 
 def _facts(**overrides: object) -> codex.CodexFacts:
-    release = plan.ReleaseEvidence(
-        Path("/d/releases/1111111111111111/agent-hook"), "1" * 16, "0" * 64
-    )
+    release = plan.ReleaseEvidence(RELEASE, "1" * 16, "0" * 64)
     base = codex.CodexFacts(
         key="codex",
         settings=(json.dumps({"hooks": this_mac()}, indent=2) + "\n").encode(),
@@ -491,17 +493,17 @@ def test_row3_sync_wires_and_points_the_link_at_the_release() -> None:
     result = codex.plan_codex("sync", _facts())
     assert result.action == "register"
     assert _hooks_of(result)["PreToolUse"][3:] == G["PreToolUse"]
-    assert result.new_target == "/d/releases/1111111111111111/agent-hook"
+    assert result.new_target == str(RELEASE)
 
 
 def test_row3_a_new_release_only_moves_the_link() -> None:
     wired = codex.merge(this_mac(), F, G, CLASSES).hooks
     facts = _facts(
         settings=(json.dumps({"hooks": wired}, indent=2) + "\n").encode(),
-        target="/d/releases/0000000000000000/agent-hook",
+        target=str(OLD_RELEASE),
     )
     assert codex.plan_codex("sync", facts).action == "link"
-    current = replace(facts, target="/d/releases/1111111111111111/agent-hook")
+    current = replace(facts, target=str(RELEASE))
     assert codex.plan_codex("sync", current).action == "nothing"
 
 
@@ -517,10 +519,10 @@ def test_row3_install_on_a_wired_home_changes_only_what_differs() -> None:
     wired = codex.merge(this_mac(), F, G, CLASSES).hooks
     facts = _facts(
         settings=(json.dumps({"hooks": wired}, indent=2) + "\n").encode(),
-        target="/d/releases/0000000000000000/agent-hook",
+        target=str(OLD_RELEASE),
     )
     assert codex.plan_codex("install", facts).action == "link"
-    current = replace(facts, target="/d/releases/1111111111111111/agent-hook")
+    current = replace(facts, target=str(RELEASE))
     assert codex.plan_codex("install", current).action == "nothing"
     # and a marked one still installs, to clear the mark
     assert (

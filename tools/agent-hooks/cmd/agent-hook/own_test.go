@@ -13,7 +13,7 @@ func TestVersionPrintsTheReleaseAndTheGoVersion(t *testing.T) {
 	// given the binary under test (the one these tests built, with no
 	// release ID: "dev"; or an installed release), and one built with a
 	// release ID, as the release build sets it
-	release := filepath.Join(t.TempDir(), "agent-hook")
+	release := filepath.Join(t.TempDir(), executableName("agent-hook"))
 	// Audited: go builds this package into the test's own directory.
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	build := exec.Command("go", "build", "-ldflags=-X github.com/hironow/dotfiles/tools/agent-hooks/internal/logline.Release=0123456789abcdef",

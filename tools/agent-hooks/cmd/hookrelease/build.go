@@ -291,12 +291,6 @@ func (p releasePlan) build(releases string, stderr io.Writer) (string, error) {
 	return p.publish(systemDisk{}, tmp, releases)
 }
 
-func removeEmptyDirectories(paths []string) {
-	for _, path := range paths {
-		_ = os.Remove(path)
-	}
-}
-
 // removeDeadBuilds removes every build directory in releases. The caller
 // holds the lock, and a build holds it until it ends, so each one is what a
 // killed build left, whatever its age.
@@ -313,31 +307,6 @@ func removeDeadBuilds(releases string) error {
 		}
 	}
 	return nil
-}
-
-// makeReleaseParents records only directories this build created.
-func makeReleaseParents(dir string) ([]string, error) {
-	err := os.Mkdir(dir, 0o755)
-	if err == nil {
-		return []string{dir}, nil
-	}
-	if errors.Is(err, os.ErrExist) {
-		return nil, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	parents, err := makeReleaseParents(filepath.Dir(dir))
-	if err != nil {
-		return nil, err
-	}
-	if err := os.Mkdir(dir, 0o755); err == nil {
-		return append([]string{dir}, parents...), nil
-	} else if !errors.Is(err, os.ErrExist) {
-		removeEmptyDirectories(parents)
-		return nil, err
-	}
-	return parents, nil
 }
 
 func (p releasePlan) ownChecks(path string) error {

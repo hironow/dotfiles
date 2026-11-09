@@ -145,8 +145,11 @@ func TestStageRejectsInstantAnswersAfterItsDeadline(t *testing.T) {
 			for attempt := range 50 {
 				var stdout, stderr bytes.Buffer
 				sink := &fake.LogSink{}
+				// A deadline already behind the start, as in the test below.
+				// A 1 ns one can still be ahead when the clock moves in coarse
+				// steps (Windows: one tick is 0.5 to 15.6 ms).
 				exit := run([]string{"claude", event, "--hook", id}, strings.NewReader(`{}`),
-					&stdout, &stderr, &fake.Machine{}, sink, instant, time.Nanosecond)
+					&stdout, &stderr, &fake.Machine{}, sink, instant, -time.Nanosecond)
 				entries := sink.Lines()
 				if len(entries) != 1 {
 					t.Fatalf("attempt %d: %d log lines, want one", attempt, len(entries))
