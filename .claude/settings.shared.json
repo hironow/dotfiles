@@ -32,19 +32,6 @@
       ]
     },
     "skipAutoPermissionPrompt": true,
-    "skillOverrides": {
-      "caveman": "name-only",
-      "cloudflare-deploy": "name-only",
-      "develop-web-game": "name-only",
-      "hatch-pet": "name-only",
-      "imagegen": "name-only",
-      "jupyter-notebook": "on",
-      "modern-web-guidance:chrome-extensions": "name-only",
-      "screenshot": "name-only",
-      "vercel-optimize": "name-only",
-      "vercel-react-best-practices": "name-only",
-      "xcodebuildmcp-cli": "on",
-      "yeet": "name-only"
-    }
+    "skillOverrides": {}
   }
 }

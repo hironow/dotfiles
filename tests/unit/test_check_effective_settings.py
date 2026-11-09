@@ -42,7 +42,7 @@ def test_effective_settings_reflect_layering(tmp_path: Path) -> None:
     assert work_c_mac["permissions"]["defaultMode"] == "auto"
     assert "Bash(npm:*)" in work_c_mac["permissions"]["deny"]
     assert work_c_mac["preferredNotifChannel"] == "ghostty"
-    assert work_c_mac["skillOverrides"]["yeet"] == "name-only"
+    assert work_c_mac["skillOverrides"] == {}
     assert work_c_mac["env"]["CLAUDE_CODE_SUBAGENT_MODEL"] == "claude-opus-5"
     # env is the original git-managed fragment set only -- per-home tuning
     # values were never promoted into shared (user decision on PR #281)

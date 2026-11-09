@@ -44,6 +44,17 @@ def test_every_bare_skill_override_is_declared() -> None:
     )
 
 
-def test_the_check_sees_the_shared_overrides() -> None:
-    # Guard the guard: the shared layer carries overrides today
-    assert _override_keys()[".claude/settings.shared.json"]
+def test_the_shared_layer_clears_skill_overrides() -> None:
+    # Every skill is Claude Code's default "on". The shared layer keeps an
+    # explicit {}: removing the key would leave each home's old map in place
+    # (sync only adds or updates top-level keys).
+    shared = json.loads(
+        (DOTFILES / ".claude/settings.shared.json").read_text(encoding="utf-8")
+    )
+    assert shared["settings"]["skillOverrides"] == {}
+    others = {
+        fragment: names
+        for fragment, names in _override_keys().items()
+        if fragment != ".claude/settings.shared.json" and names
+    }
+    assert not others, "no other layer adds skillOverrides entries"

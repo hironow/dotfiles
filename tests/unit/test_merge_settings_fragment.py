@@ -422,6 +422,28 @@ def test_settings_dict_values_deep_merged_one_level(workspace: dict[str, Path]) 
     }
 
 
+def test_empty_dict_value_clears_the_home_value(workspace: dict[str, Path]) -> None:
+    """An empty dict in the fragment empties the home's value (skillOverrides)."""
+    # given (no machine-local layer, so nothing composes back in)
+    _write_shared_fragment(
+        workspace["dotfiles"],
+        {"settings": {"skillOverrides": {}}},
+    )
+    _write_target(
+        workspace["target"],
+        {"skillOverrides": {"yeet": "name-only"}, "theme": "dark"},
+    )
+    agent = _make_agent(workspace["target"])
+
+    # when
+    _merge_settings_fragment(workspace["dotfiles"], agent, system="Linux")
+
+    # then
+    result = _read_target(workspace["target"])
+    assert result["skillOverrides"] == {}
+    assert result["theme"] == "dark"
+
+
 def test_machine_local_layer_wins_and_survives_sync(workspace: dict[str, Path]) -> None:
     """Machine-local env/permissions.allow survive repeated syncs."""
     # given
