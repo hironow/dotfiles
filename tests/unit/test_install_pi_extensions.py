@@ -50,7 +50,7 @@ def test_deploy_keeps_existing_packages_and_places_extension(
     assert json.loads((agent / "settings.json").read_text(encoding="utf-8")) == (
         settings | installer.TELEMETRY_OFF
     )
-    assert install.call_count == 10  # Nine missing declarations + npm reconciliation.
+    assert install.call_count == 9  # Eight missing declarations + npm reconciliation.
     assert all(call.args[0][0] == "pi" for call in install.call_args_list)
     extension = agent / "extensions/jev-sonnet-fallback.ts"
     assert extension.read_text(encoding="utf-8") == installer.EXTENSION.read_text(
@@ -401,7 +401,7 @@ def test_placement_decides_from_what_is_there(
     assert installer.placement(SOURCE, placed, symlinks=symlinks) == action
 
 
-# The retired web extension and remote-pi (ADR 0058, ADR 0059): still
+# The retired web extension, remote-pi (ADR 0058, ADR 0059) and pi-memory: still
 # configured entries go, personal declarations and other pins stay.
 
 
@@ -410,6 +410,7 @@ def test_placement_decides_from_what_is_there(
     [
         ("npm:pi-web-access@0.37.0", "npm:pi-web-access"),
         ("npm:remote-pi@0.7.0", "npm:remote-pi"),
+        ("npm:pi-memory@0.4.2", "npm:pi-memory"),
     ],
 )
 def test_a_still_configured_retired_package_is_removed_once(
@@ -443,6 +444,9 @@ def test_a_still_configured_retired_package_is_removed_once(
         ([{"source": "npm:pi-web-access@1.0.0"}], ["npm:pi-web-access"]),
         (["npm:remote-pi"], ["npm:remote-pi"]),
         (["npm:remote-pi@0.7.0"], ["npm:remote-pi"]),
+        (["npm:pi-memory"], ["npm:pi-memory"]),
+        # A name that only starts with a retired one is not retired.
+        (["npm:pi-observational-memory"], []),
         (
             ["npm:pi-web-access@0.37.0", "npm:remote-pi@0.7.0", "npm:pi-goal-x"],
             ["npm:pi-web-access", "npm:remote-pi"],
@@ -453,6 +457,12 @@ def test_retirement_matches_bare_names_pins_and_object_forms(
     packages: list, retired: list[str]
 ) -> None:
     assert installer.retired_configured(packages) == retired
+
+
+def test_no_retired_package_is_declared() -> None:
+    # A declared retired package would be removed and reinstalled on every run.
+    declared = json.loads(installer.MANIFEST.read_text(encoding="utf-8"))
+    assert installer.retired_configured(declared) == []
 
 
 # Pi's own metrics, off in settings.json on every machine (ADR 0058).
