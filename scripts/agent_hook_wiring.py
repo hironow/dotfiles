@@ -117,6 +117,8 @@ class RealDisk:
         return str(path.readlink())
 
     def create(self, path: Path, mode: int) -> None:
+        if sys.platform == "win32":
+            raise NotImplementedError("RealDisk is POSIX only")
         descriptor = open_descriptor(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
         try:
             os.fchmod(descriptor, mode)
@@ -134,6 +136,8 @@ class RealDisk:
             flush(stream.fileno())
 
     def fsync_directory(self, path: Path) -> None:
+        if sys.platform == "win32":
+            raise NotImplementedError("RealDisk is POSIX only")
         descriptor = open_descriptor(path, os.O_RDONLY | os.O_DIRECTORY)
         try:
             flush(descriptor)
@@ -276,6 +280,8 @@ def switch_lock(
     roots: Roots, *, wait_limit: float = 30, argv: Sequence[str] | None = None
 ) -> Generator[None]:
     """Hold the lock shared with Go. Closing on exit or death releases it."""
+    if sys.platform == "win32":
+        raise NotImplementedError("the switch lock is POSIX only (flock)")
     if wait_limit < 0:
         raise ValueError("wait limit must not be negative")
     # POSIX only, imported here so that doctor can read the roots on Windows.
