@@ -63,6 +63,83 @@ _skip_windows() {
   echo "[install] $1: skip (windows; $2)"
 }
 
+_podman_major() {
+  local version
+  version="$(podman --version)" || {
+    echo "[install] cannot read Podman CLI version; check the native installation and PATH." >&2
+    return 1
+  }
+  if [[ ! "$version" =~ ^podman[[:space:]]version[[:space:]]([0-9]+)\.[0-9]+\.[0-9]+ ]]; then
+    echo "[install] cannot parse Podman CLI version: $version" >&2
+    return 1
+  fi
+  printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
+# Provision only the native CLI; never start or initialize a machine.
+step_podman() {
+  local major action=install
+  if command -v podman >/dev/null 2>&1; then
+    major="$(_podman_major)" || return 1
+    if [ "$major" -ge 5 ]; then
+      echo "[install] Podman $major CLI already installed (machine setup is separate)"
+      return 0
+    fi
+    action=upgrade
+  fi
+  case "$DOTFILES_OS" in
+    mac)
+      if ! command -v brew >/dev/null 2>&1; then
+        echo "[install] Homebrew is required to install Podman: https://brew.sh" >&2
+        return 1
+      fi
+      brew "$action" podman || return 1
+      ;;
+    linux)
+      local -a elevate=()
+      if [ "$(id -u)" != 0 ]; then
+        if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+          echo "[install] native Podman packages require root or noninteractive sudo; never run the full installer as root." >&2
+          return 1
+        fi
+        elevate=(sudo -n)
+      fi
+      if command -v apt-get >/dev/null 2>&1; then
+        "${elevate[@]}" apt-get update || return 1
+        "${elevate[@]}" apt-get install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs || return 1
+      elif command -v dnf >/dev/null 2>&1; then
+        "${elevate[@]}" dnf install -y podman netavark aardvark-dns passt shadow-utils fuse-overlayfs || return 1
+      elif command -v pacman >/dev/null 2>&1; then
+        "${elevate[@]}" pacman -S --needed --noconfirm podman netavark aardvark-dns passt shadow fuse-overlayfs || return 1
+      else
+        echo "[install] no supported native package manager; install Podman 5+ and its DNS/rootless runtime dependencies." >&2
+        return 1
+      fi
+      ;;
+    windows)
+      echo "[install] use PowerShell: ./bootstrap.ps1 -PodmanOnly (Windows provisioning stays outside install.sh)." >&2
+      return 1
+      ;;
+  esac
+  major="$(_podman_major)" || return 1
+  if [ "$major" -lt 5 ]; then
+    echo "[install] native packages provide Podman $major; Podman 5+ is required." >&2
+    return 1
+  fi
+  echo "[install] Podman $major CLI installed (machine setup is a separate operator step)"
+}
+
+# A scoped setup operation must return before clone/stash/deploy/sync actions.
+if [ "${1:-}" = --podman-only ]; then
+  shift
+  if [ "$#" -ne 0 ]; then
+    echo "[install] usage: bash install.sh --podman-only" >&2
+    exit 2
+  fi
+  step_podman
+  exit 0
+fi
+
 # ---- Repository bootstrap ------------------------------------------
 
 DOTPATH=${DOTPATH:-$HOME/dotfiles}
@@ -203,7 +280,7 @@ step_mise_install() {
   # Materialize the config/mise/config.toml toolset (just, uv, node, prek, markdownlint, vp,
   # and the AI CLIs). Dev containers pre-install these at build time; on a bare
   # host this is what turns a fresh mise into a working toolchain. Heavy, so it
-  # honours INSTALL_SKIP_ADD_UPDATE (the Docker install-verification sets it to
+  # honours INSTALL_SKIP_ADD_UPDATE (the Podman install-verification sets it to
   # keep the build fast). Idempotent: mise skips already-installed tools.
   if [ -n "${INSTALL_SKIP_ADD_UPDATE:-}" ]; then
     echo "[install] step_mise_install: skip (INSTALL_SKIP_ADD_UPDATE=1)"
@@ -512,6 +589,11 @@ step_prek_shim() {
 # ---- Drive ----------------------------------------------------------
 
 step_homebrew
+if [ "$DOTFILES_OS" = windows ]; then
+  _skip_windows "step_podman" "native Podman provisioning belongs to bootstrap.ps1 -PodmanOnly (ADR 0039/0067)"
+else
+  step_podman
+fi
 step_gcloud_components
 step_mise_bootstrap
 step_mise_install

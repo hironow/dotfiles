@@ -1,9 +1,9 @@
 """Global pytest configuration for non‑E2E tests.
 
 Intentional separation:
-- Docker-dependent fixtures and the auto e2e marker live under
+- Podman-dependent fixtures and the auto e2e marker live under
   `tests/e2e/conftest.py` on purpose to keep unit/integration runs lightweight
-  and free from Docker imports.
+  and free from engine provisioning.
 - Do not move that file here unless you also change its path-based scoping.
 
 Shared, fast fixtures for unit/integration tests live here.
@@ -24,6 +24,8 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
     Load order: `.env.local` then `.env` at repository root.
     """
+    if os.environ.get("DOTFILES_PODMAN_RUN_MANIFEST"):
+        return
     root = Path(__file__).resolve().parent.parent
     for name in (".env.local", ".env"):
         env_path = root / name

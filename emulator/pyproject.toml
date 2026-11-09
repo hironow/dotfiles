@@ -72,7 +72,7 @@ extend-ignore = ["E501", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 markers = [
-    "e2e: end-to-end tests that require Docker and running emulators",
+    "e2e: end-to-end tests that require Podman and running isolated emulators",
 ]
 # Default timeout for all tests (can be overridden per test)
 timeout = 180

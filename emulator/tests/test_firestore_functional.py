@@ -3,7 +3,11 @@ import uuid
 import pytest
 from aiohttp import ClientTimeout
 
-BASE_TPL = "http://localhost:8080/v1/projects/{project_id}/databases/(default)"
+from tests.utils.helpers import host_endpoint
+
+BASE_TPL = host_endpoint(
+    "http://localhost:8080/v1/projects/{project_id}/databases/(default)"
+)
 
 
 def _to_fs_fields(obj):

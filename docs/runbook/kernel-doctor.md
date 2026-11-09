@@ -116,7 +116,7 @@ IPv6 側にも同型の問題がある（`tcp_v6_reqsk_destructor()` の `ipv6_o
 | --- | --- | --- |
 | WSL2 と self-hosted runner | Microsoft | **Windows 側で** `wsl --update` |
 | ベンダーのカーネル（Debian / Ubuntu / RHEL / SUSE / Amazon） | ベンダー | ベンダーの勧告とパッケージ更新（`apt` / `dnf`）+ **ホストの再起動** |
-| devcontainer / emulator / telemetry のコンテナ | ホスト VM / WSL2 | OrbStack・Docker Desktop・WSL2 のカーネルを更新。**イメージ更新では変わらない** |
+| devcontainer / emulator / telemetry のコンテナ | 実行ホストの Linux | Podman machine / WSL2 / ネイティブ Linux のカーネルを利用者が更新。**イメージ更新では変わらない** |
 | macOS ホスト | Apple | 対象外 |
 
 WSL の手順は次に固定する。**再起動の単位はカーネルであり、プロセスやコンテナの再起動では効かない。**

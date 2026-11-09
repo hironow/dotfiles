@@ -1,7 +1,7 @@
 # 0005. Rationalise install paths across Mac host and Coder workspace (Linux)
 
 **Date:** 2026-05-02
-**Status:** Accepted (2026-05-02)
+**Status:** Accepted (2026-05-02); partly superseded by [0067](0067-use-podman-for-managed-containers.md) (Windows の Podman 導入だけ winget の例外。他の Scoop 運用と ADR-0039 の Windows bootstrap／POSIX installer 分離は維持)
 **Blocked by:** ADR 0006 (mise pinning) — accepted in same wave
 
 ## Context

@@ -21,10 +21,36 @@ has(){ command -v "$1" >/dev/null 2>&1; }
 if has bash; then log_ok 'bash' "$(bash --version | head -n1)"; else log_err 'bash' 'missing'; fi
 if has git; then log_ok 'git' "$(git --version 2>/dev/null || true)"; else log_err 'git' 'missing'; fi
 
+# Required container CLIs; diagnose the selected engine without starting it.
+if has podman; then
+  if ! _podman_cli=$(podman --version 2>/dev/null); then
+    log_err 'podman' 'cannot read CLI version; check native installation and PATH'
+  elif [[ ! $_podman_cli =~ ^podman(\.exe)?[[:space:]]+version[[:space:]]+([0-9]+)\. ]]; then
+    log_err 'podman' 'unrecognized CLI version; Podman 5+ is required'
+  elif [ "${BASH_REMATCH[2]}" -lt 5 ]; then
+    log_err 'podman' "$_podman_cli; native Podman 5+ is required"
+  elif _podman_engine=$(podman info --format '{{.Version.Version}}' 2>/dev/null); then
+    if [[ ! $_podman_engine =~ ^([0-9]+)\. ]]; then
+      log_err 'podman' 'selected engine version is unreadable'
+    elif [ "${BASH_REMATCH[1]}" -lt 5 ]; then
+      log_err 'podman' "selected engine $_podman_engine; Podman 5+ is required"
+    else
+      log_ok 'podman' "$_podman_cli; selected engine $_podman_engine reachable"
+    fi
+  else
+    log_warn 'podman' 'CLI 5+ present, selected engine unavailable; operator activation is separate'
+  fi
+else log_err 'podman' 'missing; run just podman-install'; fi
+if has podman-compose; then
+  if _podman_provider=$(podman-compose --version 2>&1); then
+    log_ok 'podman-compose' "$_podman_provider"
+  else
+    log_err 'podman-compose' 'provider cannot run; check its mise-managed environment'
+  fi
+else log_err 'podman-compose' 'missing; install the declared mise tool'; fi
+unset _podman_cli _podman_engine _podman_provider
+
 # Optional tools
-if has docker; then
-  if docker info >/dev/null 2>&1; then log_ok 'docker' 'daemon reachable'; else log_warn 'docker' 'cli present, daemon unreachable'; fi
-else log_warn 'docker' 'missing'; fi
 if has just; then log_ok 'just' "$(just --version 2>/dev/null || true)"; else log_warn 'just' 'missing'; fi
 if has uv; then log_ok 'uv' "$(uv --version 2>/dev/null || true)"; else log_warn 'uv' 'missing'; fi
 if has mise; then log_ok 'mise' "$(mise --version 2>/dev/null || true)"; else log_warn 'mise' 'missing'; fi

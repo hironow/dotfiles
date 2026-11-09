@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${DOTFILES_E2E_REQUIRED:-}" == 1 && -z "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ]]; then
+  echo "Mandatory tests require DOTFILES_PODMAN_RUN_MANIFEST; refusing shared resources" >&2
+  exit 2
+fi
+
+if [[ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ]]; then
+  cd "$(dirname "${BASH_SOURCE[0]}")/.."
+  exec uv run --frozen python -m tests.utils.isolation status --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+fi
+export PODMAN_COMPOSE_PROVIDER=podman-compose
 
 # Show the current status of emulator containers and their host endpoints.
 # Idempotent, read-only.
@@ -23,14 +33,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
 # ─── Dependency checks ───
-command -v docker >/dev/null 2>&1 || { echo "❌ docker not found" >&2; exit 127; }
-docker compose version >/dev/null 2>&1 || { echo "❌ docker compose not available" >&2; exit 127; }
+command -v podman >/dev/null 2>&1 || { echo "❌ podman not found" >&2; exit 127; }
+podman compose --in-pod=false version >/dev/null 2>&1 || { echo "❌ podman compose --in-pod=false not available" >&2; exit 127; }
 command -v curl >/dev/null 2>&1 || { echo "❌ curl not found" >&2; exit 127; }
 
 # ─── Helper functions ───
 container_status() {
   local out
-  out=$(docker ps -a --filter name="^/${1}$" --format '{{.Status}}' 2>/dev/null || true)
+  out=$(podman ps -a --filter name="^/${1}$" --format '{{.Status}}' 2>/dev/null || true)
   echo "${out:-not found}"
 }
 
@@ -66,8 +76,8 @@ report() {
 }
 
 # ─── Output ───
-echo "📦 Docker Compose services"
-docker compose ps || true
+echo "📦 Podman Compose services"
+podman compose --in-pod=false ps || true
 echo
 echo "🔎 Emulator endpoints"
 printf "%-18s | %-28s | %s\n" "Service" "Container status" "Endpoint check"

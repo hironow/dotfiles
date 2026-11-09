@@ -11,7 +11,7 @@ password change on first login.
 
 | File | What it sets up |
 | --- | --- |
-| [`provisioning/datasources/datasources.yaml`](provisioning/datasources/datasources.yaml) | Prometheus (default), Tempo and Loki, by service name on the Docker network |
+| [`provisioning/datasources/datasources.yaml`](provisioning/datasources/datasources.yaml) | Prometheus (default), Tempo and Loki, by service name on the Podman network |
 | [`provisioning/dashboards/dashboards.yaml`](provisioning/dashboards/dashboards.yaml) | Loads every JSON file in `dashboards/`, re-read every 10 seconds |
 | [`dashboards/opentelemetry-overview.json`](dashboards/opentelemetry-overview.json) | **OpenTelemetry Overview**: request rate and duration, active requests, recent traces, and logs of `fastapi-example` |
 | [`dashboards/emulator-metrics.json`](dashboards/emulator-metrics.json) | **Emulator Metrics**: Qdrant, Elasticsearch and PostgreSQL panels |

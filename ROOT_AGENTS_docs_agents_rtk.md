@@ -15,6 +15,11 @@ Each agent reaches it in one of these ways:
   `just rtk-pi-refresh`).
 - **Other agents**: call `rtk` explicitly.
 
+If RTK has no native `podman` handler, run `podman` directly;
+never substitute `rtk docker` for Podman. Output compression must not select
+another engine. Existing Docker rewrite guards protect legacy commands; they
+are not a fallback for repository-managed container execution.
+
 ## Hook and permission rules
 
 - **Never run `rtk init -g` or add `"command": "rtk hook claude"` /
@@ -38,8 +43,8 @@ real check is the `claude-rtk-hook` line of `just doctor`.
 ## Worktree-isolated agents: git and compound commands
 
 Inside a Claude Code isolation worktree (`*/.claude/worktrees/*`), the wrapper
-drops rtk's git rewrite so plain `git` runs, while other commands (`ls`, `grep`,
-`rg`, `docker`, …) keep rtk's compression.
+drops rtk's git rewrite so plain `git` runs, while other supported commands (`ls`, `grep`,
+`rg`, …) keep rtk's compression.
 
 If the Claude Code harness itself still refuses a command inside a worktree with
 "too complex to verify" (for example `git` matched inside a word like

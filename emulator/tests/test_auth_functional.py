@@ -3,7 +3,9 @@ import uuid
 import pytest
 from aiohttp import ClientTimeout
 
-BASE = "http://localhost:9099/identitytoolkit.googleapis.com/v1"
+from tests.utils.helpers import host_endpoint
+
+BASE = host_endpoint("http://localhost:9099/identitytoolkit.googleapis.com/v1")
 
 
 @pytest.mark.parametrize(

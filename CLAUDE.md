@@ -44,9 +44,9 @@ just sync-agents-preview …  # dry-run
 | recipe | 内容 |
 |---|---|
 | `just` / `just help` | recipe 一覧 |
-| `just ci` | fast non-Docker gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) + `check-forbidden-tokens-branch`。`check` 自体に Go / JS・TS / Pi 拡張 / Quint の leg も入る |
+| `just ci` | fast コンテナ不要 gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) + `check-forbidden-tokens-branch`。`check` 自体に Go / JS・TS / Pi 拡張 / Quint の leg も入る |
 | `just lint-claude` | 公式 `claude plugin validate --strict` (claude CLI 不在時は skip) + stdlib の effective-settings 検証 (ADR 0037/0041)。サードパーティ claudelint は**退役済み** (ADR 0041、trust 判断)。CI gate は `Claude Config Lint` workflow が pinned `bunx @anthropic-ai/claude-code` で公式 validate を回す (CI は `just ci` 非実行) |
-| `just ci-all` | `ci` + `test` + `test-install` (Docker サンドボックス込み) |
+| `just ci-all` | `ci` + `test` + `test-install` (Podman サンドボックス込み) |
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |
 | `just test` | devcontainer サンドボックステスト (下記) |
 | `just semgrep-test` | `.semgrep/rules/**` を co-located fixture で `semgrep --test` |
@@ -70,12 +70,13 @@ just sync-agents-preview …  # dry-run
 
 ## テストモデル (重要)
 
-- `just test` は **@devcontainers/cli で sandbox image をビルドし pytest を image 内
-  で実行**する。サンドボックスは **git-tracked ファイルだけ** を throwaway tempdir に
-  snapshot し、host repo / `.git` を **マウントしない** (host 汚染が構造的に不可能)。
-  Docker + devcontainer CLI が必要。
+- `just test` は **Podman 5+ と @devcontainers/cli で毎回専用 image をビルドし、disposable snapshot で実際の up → exec を検査**する。
+  snapshot は git-tracked の作業ファイルだけで、実 host repo / `.git` はマウントしない。
+  起動前に選択中 engine の socket を明示し、podman-compose を固定して使う。
+  socket は engine 操作権限を与えるため、host から完全隔離された security sandbox とは扱わない。
+  必須 tool・接続・build・runtime の失敗は検査失敗にする。
 - `tests/*.py` は sandbox / image 検査 (`test_just_sandbox.py` / `test_devcontainer.py` 等、
-  `just test` が列挙して回す)。Docker 不要の静的検査は `tests/unit/` に置く (`just ci` の
+  `just test` が列挙して回す)。コンテナ不要の静的検査は `tests/unit/` に置く (`just ci` の
   `test-unit` が拾う。root に置くとどの gate にも乗らない)。recipe 追加・改名後は `just ci` でなく
   **full `just test`** を回す。sandbox assert は
   環境非依存 (mount source 側) に保つ (memory `feedback_just_test_ci_vs_local`)。
@@ -94,7 +95,8 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
       inspect/exporters/full)
     - `just emu-up-full` — 全データサービス。`emu-start`/`emu-start-full` は clean+prebuild+up+wait
     - **teardown は profile を全有効化**: `emu-stop`/`emu-clean` は内部で
-      `COMPOSE_PROFILES=full,cli docker compose down --remove-orphans`。compose profiles は
+      `COMPOSE_PROFILES=full,cli PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false down --remove-orphans`。
+      compose profiles は
       `down` も profile-gate するため、無指定だと lite しか落とせず profiled heavy が残る。
 - **telemetry** (`telemetry/compose.yaml`): `just tel-up` (otel-collector :4317 →
   Tempo/Grafana) / `tel-down`。`shared-otel-net` を emulator と共有。
@@ -103,7 +105,9 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   **HTTP(S) UI のみ** — Pub/Sub(9399) / Firestore(8080) / OTLP gRPC(4317) 等の wire protocol は
   不可で `localhost:PORT` のまま。port や `just emu-api` の service 順を変えたら、その一覧も直す。
 - **emu-api** (`just emu-api`): vercel-labs/emulate を host bunx で (4100-4108)。`emu-api-stop`。
-- emulator の `restart: unless-stopped` のコンテナは Docker の VM の起動時に自動復活する (telemetry は復活しない)。
+- Podman machine / service の起動は operator が管理する。
+  `restart: unless-stopped` だけを根拠に host / VM 起動後の自動復旧を前提にしない。
+  隔離検証は `tests.utils.isolation` の同一 manifest を通し、共有 stack 用 recipe で回収しない。
 
 ## このリポ特有の罠 (memory 参照)
 
@@ -141,7 +145,7 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   叩く必要がある。justfile の shell 設定、`scripts/*.sh`、mise 設定、Windows で動く Python を
   触る前に `docs/runbook/windows-host.md` を読む (shell 選択、cygpath、`%APPDATA%\uv`、
   npm backend の stub、runner の Machine PATH、cp932)。
-- **self-hosted runner のディスク GC (ADR 0035)**: WSL の vhdx が docker と開発キャッシュで
+- **self-hosted runner のディスク GC (ADR 0035 / 0067)**: WSL の vhdx がコンテナと開発キャッシュで
   膨らみ、C: が尽きると WSL 自体が起動しなくなる。`just runner-gc-install` が GC を仕掛け、
   `just status` が状態と hook の受理を出す。`scripts/runner_gc*` や `just runner-gc*` /
   `disk-gc` / `wsl-compact` を触る前に `docs/runbook/runner-disk-gc.md` を読む。
@@ -161,4 +165,4 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   `ready_for_review` で起動)。作業中は `gh pr create --draft`、検証したくなったら `gh pr ready`。
   hironow/skills の `ci.yaml` も同じ扱い。
 - Conventional Commits (type が structural/behavioral を encode)。詳細は `ROOT_AGENTS.md`。
-- YAML は `.yaml` (not `.yml`)、Docker Compose は `compose.yaml`。
+- YAML は `.yaml` (not `.yml`)、Compose ファイルは `compose.yaml`。

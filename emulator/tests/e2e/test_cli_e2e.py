@@ -10,7 +10,7 @@ import pytest
 
 @pytest.mark.e2e
 def test_pgadapter_cli_help_and_exit(
-    docker_client,
+    podman_client,
     ensure_network,
     require_services,
     build_image,

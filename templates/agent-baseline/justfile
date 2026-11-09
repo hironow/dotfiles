@@ -60,11 +60,11 @@ install-hooks:
 
 # Start local observability stack (Jaeger)
 trace-up:
-    docker compose -f compose.yaml up -d jaeger
+    PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false -f compose.yaml up -d jaeger
 
 # Stop local observability stack
 trace-down:
-    docker compose -f compose.yaml stop jaeger
+    PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false -f compose.yaml stop jaeger
 
 # Open Jaeger UI in browser
 trace-view:

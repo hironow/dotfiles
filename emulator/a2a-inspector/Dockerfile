@@ -8,7 +8,7 @@ ARG A2A_INSPECTOR_REPO=https://github.com/a2aproject/a2a-inspector.git
 ARG A2A_INSPECTOR_REF=8aa064639af106ff771d60428ef6d460f5454743
 
 # Stage 0: fetch source once and reuse from later stages
-FROM alpine/git AS source
+FROM docker.io/alpine/git AS source
 ARG A2A_INSPECTOR_REPO
 ARG A2A_INSPECTOR_REF
 WORKDIR /src
@@ -19,7 +19,7 @@ RUN git init -q repo && \
     git -C repo -c advice.detachedHead=false checkout -q FETCH_HEAD
 
 # Stage 1: build frontend assets
-FROM node:26-alpine AS frontend-builder
+FROM docker.io/library/node:26-alpine AS frontend-builder
 WORKDIR /app
 
 COPY --from=source /src/repo/frontend/package*.json ./
@@ -37,7 +37,7 @@ RUN npm run build
 # pydantic-core / asyncpg build from sdist and die with "gcc: No such file".
 # Dependabot is told to ignore python minor/major bumps here (see dependabot
 # .yaml); revisit when upstream publishes 3.14 wheels.
-FROM python:3.12.15-slim
+FROM docker.io/library/python:3.12.15-slim
 WORKDIR /app
 
 # Install uv (no pip required)

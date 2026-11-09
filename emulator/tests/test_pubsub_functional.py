@@ -12,7 +12,9 @@ import uuid
 
 import pytest
 
-BASE = "http://localhost:9399/v1"
+from tests.utils.helpers import host_endpoint
+
+BASE = host_endpoint("http://localhost:9399/v1")
 
 
 async def _put_until_ready(client, url, *, json=None, retries: int = 30) -> None:

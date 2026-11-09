@@ -10,6 +10,8 @@ import time
 
 import pytest
 
+from tests.utils.helpers import RUN_LABEL, run_manifest
+
 
 def _env_pg() -> dict[str, str]:
     return {
@@ -23,11 +25,11 @@ def _env_pg() -> dict[str, str]:
 
 @pytest.mark.e2e
 def test_pgadapter_concurrent_update_conflict_or_skip(
-    docker_client, ensure_network, require_services, build_image, e2e_network_name
+    podman_client, ensure_network, require_services, build_image, e2e_network_name
 ):
     ensure_network()
     require_services(["pgadapter-emulator", "spanner-emulator"])
-    build_image(path="pgadapter-cli", tag="pgadapter-cli:local")
+    image = build_image(path="pgadapter-cli", tag="pgadapter-cli:local")
 
     env = _env_pg()
 
@@ -40,8 +42,9 @@ def test_pgadapter_concurrent_update_conflict_or_skip(
         exit
         """
     ).lstrip("\n")
-    docker_client.containers.run(
-        image="pgadapter-cli:local",
+    podman_client.containers.run(
+        image=image,
+        labels={RUN_LABEL: run_manifest()["run_id"]},
         command=["sh", "-lc", f"cat <<'EOF' | ./pgadapter-cli\n{prep}\nEOF"],
         environment=env,
         network=e2e_network_name,
@@ -62,8 +65,9 @@ def test_pgadapter_concurrent_update_conflict_or_skip(
     ).lstrip("\n")
     heredoc_a = f"cat <<'EOF' | ./pgadapter-cli\n{script_a}\nEOF"
     try:
-        cont_a = docker_client.containers.run(
-            image="pgadapter-cli:local",
+        cont_a = podman_client.containers.run(
+            image=image,
+            labels={RUN_LABEL: run_manifest()["run_id"]},
             command=["sh", "-lc", heredoc_a],
             environment=env,
             network=e2e_network_name,
@@ -72,7 +76,7 @@ def test_pgadapter_concurrent_update_conflict_or_skip(
             stderr=True,
         )
     except Exception:
-        pytest.skip("pg_sleep() likely not available; skipping concurrency test")
+        pytest.fail("Failed to start concurrency test container")
 
     # Allow A to enter sleep window
     time.sleep(1)
@@ -86,8 +90,9 @@ def test_pgadapter_concurrent_update_conflict_or_skip(
         exit
         """
     ).lstrip("\n")
-    docker_client.containers.run(
-        image="pgadapter-cli:local",
+    podman_client.containers.run(
+        image=image,
+        labels={RUN_LABEL: run_manifest()["run_id"]},
         command=["sh", "-lc", f"cat <<'EOF' | ./pgadapter-cli\n{script_b}\nEOF"],
         environment=env,
         network=e2e_network_name,
@@ -112,8 +117,9 @@ def test_pgadapter_concurrent_update_conflict_or_skip(
             """
         ).lstrip("\n")
         out = (
-            docker_client.containers.run(
-                image="pgadapter-cli:local",
+            podman_client.containers.run(
+                image=image,
+                labels={RUN_LABEL: run_manifest()["run_id"]},
                 command=["sh", "-lc", f"cat <<'EOF' | ./pgadapter-cli\n{verify}\nEOF"],
                 environment=env,
                 network=e2e_network_name,

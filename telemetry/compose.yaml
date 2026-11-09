@@ -1,10 +1,10 @@
 services:
   # OpenTelemetry Collector
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.155.0
+    image: docker.io/otel/opentelemetry-collector-contrib:0.155.0
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ./config/otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ./config/otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     ports:
       - "127.0.0.1:4317:4317"   # OTLP gRPC receiver
       - "127.0.0.1:4318:4318"   # OTLP HTTP receiver
@@ -21,12 +21,12 @@ services:
   # 10001, so the previous `tempo-init` chown sidecar is both impossible
   # and unnecessary — removed. Migration note: a root-owned `tempo-data`
   # volume left over from Tempo 2.x must be recreated
-  # (`docker volume rm telemetry_tempo-data`) before the first 3.0 start.
+  # (`podman volume rm telemetry_tempo-data`) before the first 3.0 start.
   tempo:
-    image: grafana/tempo:3.0.2
+    image: docker.io/grafana/tempo:3.0.2
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
-      - ./config/tempo/tempo-config.yaml:/etc/tempo.yaml
+      - ./config/tempo/tempo-config.yaml:/etc/tempo.yaml:ro
       - tempo-data:/var/tempo
     ports:
       - "127.0.0.1:3200:3200"   # tempo
@@ -34,7 +34,7 @@ services:
 
   # Prometheus for metrics
   prometheus:
-    image: prom/prometheus:v3.13.0
+    image: docker.io/prom/prometheus:v3.13.0
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -43,30 +43,30 @@ services:
       - '--web.enable-lifecycle'
       - '--web.enable-remote-write-receiver'
     volumes:
-      - ./config/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - ./config/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
       - "127.0.0.1:9091:9090"
 
   # Loki for logs (uses /tmp/loki internally, no external volume needed)
   loki:
-    image: grafana/loki:3.7.3
+    image: docker.io/grafana/loki:3.7.3
     command: -config.file=/etc/loki/loki-config.yaml
     volumes:
-      - ./config/loki/loki-config.yaml:/etc/loki/loki-config.yaml
+      - ./config/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
     ports:
       - "127.0.0.1:3100:3100"
 
   # Grafana
   grafana:
-    image: grafana/grafana:13.1.0
+    image: docker.io/grafana/grafana:13.1.0
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "127.0.0.1:3010:3000"

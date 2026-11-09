@@ -1,7 +1,7 @@
 # 0035. Time-based disk GC for the self-hosted runners (2h retention)
 
 **Date:** 2026-07-31
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0067](0067-use-podman-for-managed-containers.md) (コンテナ実行系・画像削除と build-cache 自動回収の部分。安全な保持期限が未証明の cache は自動回収せず、従来の cache 増大防止保証は非継承。2h 設定・keep 保護・実行中 job 保護・所有者別実行・watchdog は維持)
 
 ## Context
 

@@ -56,7 +56,8 @@ hironow/skills の `playwright-cli` skill は `playwright-cli` が PATH にあ�
     - `"npm:@playwright/cli" = "latest"` で `mise install` し、**解決された実バージョン**（`installs/npm-playwright-cli/` の dir 名）を記録する（F11）。
     - インストール直後と、`--version` / `open --browser=chrome` → `close` の後で、`PLAYWRIGHT_BROWSERS_PATH` が空であること。既定の `~/Library/Caches/ms-playwright` にもブラウザ実体が増えていないこと（CLI 自身のメタデータは書かれる。F4）。
 - merge 後の main: `mise -C / install` → `just deploy` → `just doctor`（ok / warn / err の数を記録）→ mise activate 済みのシェルで `playwright-cli --version`。
-- devcontainer 無影響: F7 の確認と、`just test`（Docker がある機体で）。
+- devcontainer の確認: F7 の静的確認に加え、Podman 5 以降と指定した provider、CLI、socket を用意して `just test` を実行する。
+  静的確認だけで実行時の成功を主張しない。
 
 ## 対象外（今回やらない）
 

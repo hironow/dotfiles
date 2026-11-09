@@ -2,21 +2,23 @@ name: Test Emulators
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'emulator/**'
       - '!emulator/**/*.md'
       - '!emulator/**/*.MD'
+      - '.devcontainer/ci-bootstrap.sh'
+      - '.devcontainer/allow-podman-stop-pasta.sh'
       - '.github/workflows/test-emulators.yaml'
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'emulator/**'
       - '!emulator/**/*.md'
       - '!emulator/**/*.MD'
+      - '.devcontainer/ci-bootstrap.sh'
+      - '.devcontainer/allow-podman-stop-pasta.sh'
       - '.github/workflows/test-emulators.yaml'
-    # ready_for_review is not in the default event set; without it a draft
-    # marked ready would not get a run until its next push.
     types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
@@ -25,123 +27,73 @@ concurrency:
 
 jobs:
   unit-integration-e2e:
-    # Draft pull requests do not run CI; runs start when the PR is marked
-    # ready for review.
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     defaults:
       run:
         working-directory: emulator
-
+    env:
+      PODMAN_COMPOSE_PROVIDER: podman-compose
+      DOTFILES_E2E_REQUIRED: '1'
+      DOTFILES_PODMAN_RUN_MANIFEST: ${{ github.workspace }}/podman-run.json
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-    - name: Set up Python
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-      with:
-        python-version: '3.14'
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-
-    - name: Install dependencies (uv sync --frozen)
-      run: |
-        uv sync --all-extras --frozen --group lint
-
-    # Same gate as `just emu-lint` (ruff canonical rules + ty, ADR 0044), before
-    # spending minutes on containers. `--only-group lint` for ruff (parse-only);
-    # `--group lint` for ty so project imports resolve.
-    - name: Lint + type-check (ruff + ty)
-      run: |
-        uv run --frozen --only-group lint ruff format --check .
-        uv run --frozen --only-group lint ruff check .
-        uv run --frozen --group lint ty check
-
-    - name: Clean up any existing Docker resources
-      run: |
-        echo "=== Cleaning up Docker resources ==="
-        # Stop and remove all containers from this compose project
-        docker compose down -v --remove-orphans 2>/dev/null || true
-
-        # Kill any containers that might be using our ports
-        for port in 55432 9200 7474 7687 6333 9020 9010 8085 9000 4000; do
-          container_id=$(docker ps -q --filter "publish=$port" 2>/dev/null || true)
-          if [[ -n "$container_id" ]]; then
-            echo "Stopping container using port $port: $container_id"
-            docker stop "$container_id" 2>/dev/null || true
-            docker rm -f "$container_id" 2>/dev/null || true
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Bootstrap same-user native Podman and canonical frozen CLI tools
+        working-directory: ${{ github.workspace }}
+        run: bash .devcontainer/ci-bootstrap.sh
+      - name: Install dependencies from the committed lock
+        run: uv sync --all-extras --frozen --group lint
+      - name: Lint and type-check
+        run: |
+          uv run --frozen --only-group lint ruff format --check .
+          uv run --frozen --only-group lint ruff check .
+          uv run --frozen --group lint ty check
+      - name: Prepare owned tracked-only emulator and telemetry snapshot
+        run: |
+          uv run --frozen python -m tests.utils.isolation prepare \
+            --source "$GITHUB_WORKSPACE" --manifest "$DOTFILES_PODMAN_RUN_MANIFEST" \
+            --services firebase-emulator,spanner-emulator,pgadapter,postgres --telemetry
+      - name: Start only this run's isolated services
+        run: uv run --frozen python -m tests.utils.isolation start --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+      - name: Wait using the same run manifest
+        run: uv run --frozen python -m tests.utils.isolation wait --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+      - name: Run unit and integration tests
+        timeout-minutes: 5
+        run: uv run --frozen pytest tests/ -v -m 'not e2e'
+      - name: Run required selected-service e2e tests without Docker executable
+        timeout-minutes: 20
+        run: |
+          set -o pipefail
+          if command -v docker >/dev/null 2>&1; then
+            echo 'Docker executable unexpectedly present on PATH' >&2
+            exit 1
           fi
-        done
-
-        # Also check for any processes using key ports (fallback)
-        for port in 55432 9200; do
-          if sudo lsof -i ":$port" -t >/dev/null 2>&1; then
-            echo "Warning: Port $port still in use by non-Docker process"
-            sudo lsof -i ":$port" || true
+          export PYTEST_ADDOPTS="--junitxml=${GITHUB_WORKSPACE}/pytest-report.xml"
+          uv run --frozen pytest tests/e2e -v -m e2e -ra | tee e2e.log
+      - name: Run actual Postgres 18 feature and database tests
+        run: |
+          uv run --frozen pytest tests/test_postgres18_features.py tests/test_postgres18_emulator.py \
+            -v --junitxml="${GITHUB_WORKSPACE}/pytest-postgres-report.xml"
+      - name: Show owned-run status on failure
+        if: failure()
+        run: |
+          if [ -f "$DOTFILES_PODMAN_RUN_MANIFEST" ]; then
+            uv run --frozen python -m tests.utils.isolation status --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
           fi
-        done
-
-        echo "Cleanup complete."
-
-    - name: Pre-build selected images (incl. Postgres 18)
-      run: bash scripts/prebuild-images.sh a2a-inspector firebase-emulator mcp-inspector postgres
-
-    - name: Start Docker Compose services
-      run: bash scripts/start-services.sh --no-build
-
-    - name: Wait for services to be ready
-      run: bash scripts/wait-for-services.sh --default 90 --a2a 180 --postgres 150
-
-    # Elasticsearch is behind the `search` capability profile (ADR 0016 / PR #120)
-    # and is not started by the default lite stack, so the standalone ES check is
-    # redundant here -- tests/test_elasticsearch_emulator.py covers it and skips
-    # when the container is absent. scripts/test-elasticsearch.sh stays for manual
-    # use when the search profile is brought up locally.
-
-    - name: Run unit/integration tests (non-e2e)
-      timeout-minutes: 5
-      run: bash scripts/run-tests-fast.sh
-
-    - name: Run e2e tests
-      timeout-minutes: 20
-      run: |
-        set -o pipefail
-        bash scripts/run-tests-e2e.sh | tee e2e.log
-
-    - name: Summarize skipped e2e tests
-      if: always()
-      shell: bash
-      run: |
-        if [[ ! -f e2e.log ]]; then
-          summary=$'### E2E Skipped Tests\nNo e2e.log found.'
-          printf '%s\n' "$summary"
-          if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-            printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
+      - name: Always clean only manifest-owned IDs and labels
+        if: always()
+        run: |
+          if [ -f "$DOTFILES_PODMAN_RUN_MANIFEST" ]; then
+            uv run --frozen python -m tests.utils.isolation cleanup --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
           fi
-          exit 0
-        fi
-
-        tmp_summary="$(mktemp)"
-        {
-          echo "### E2E Skipped Tests"
-          SKIPS=$(awk 'BEGIN{p=0} /^=+ short test summary info =+$/ {p=1; next} /^=+/ {if(p==1) p=0} p==1 {print}' e2e.log | grep '^SKIPPED' || true)
-          if [[ -n "$SKIPS" ]]; then
-            echo "$SKIPS" | sed 's/^/- /'
-          else
-            ALT=$(grep -E " SKIPPED \(" e2e.log || true)
-            if [[ -n "$ALT" ]]; then
-              echo "$ALT" | sed 's/^/- /'
-            else
-              echo "No skipped e2e tests."
-            fi
-          fi
-        } | tee "$tmp_summary"
-
-        if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-          cat "$tmp_summary" >> "$GITHUB_STEP_SUMMARY"
-        fi
-
-    - name: Show Docker logs on failure
-      if: failure()
-      run: docker compose logs
+      - name: Upload host test reports and run receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: emulator-podman-reports
+          path: |
+            ${{ github.workspace }}/pytest-report.xml
+            ${{ github.workspace }}/pytest-postgres-report.xml
+            ${{ github.workspace }}/podman-run.json
+            ${{ github.workspace }}/emulator/e2e.log

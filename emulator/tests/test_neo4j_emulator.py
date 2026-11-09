@@ -1,7 +1,10 @@
-import docker
 import pytest
 
-from tests.utils.helpers import skip_unless_container_running
+from tests.utils.helpers import (
+    host_endpoint,
+    podman_client,
+    skip_unless_container_running,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -12,7 +15,7 @@ def _require_neo4j():
 @pytest.mark.asyncio
 async def test_neo4j_container_starts(http_client):
     """Test that the Neo4j container starts and is healthy."""
-    client = docker.from_env()
+    client = podman_client()
 
     from tests.utils.helpers import get_container, wait_for_http
     from tests.utils.result import Error, Ok
@@ -27,7 +30,7 @@ async def test_neo4j_container_starts(http_client):
             pytest.fail(msg)
 
     # Check if Neo4j HTTP endpoint is accessible
-    match await wait_for_http(http_client, "http://localhost:7474"):
+    match await wait_for_http(http_client, host_endpoint("http://localhost:7474")):
         case Ok(_):
             pass
         case Error(msg):

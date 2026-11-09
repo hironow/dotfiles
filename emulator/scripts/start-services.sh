@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${DOTFILES_E2E_REQUIRED:-}" == 1 && -z "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ]]; then
+  echo "Mandatory tests require DOTFILES_PODMAN_RUN_MANIFEST; refusing shared resources" >&2
+  exit 2
+fi
+
+if [[ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ]]; then
+  cd "$(dirname "${BASH_SOURCE[0]}")/.."
+  exec uv run --frozen python -m tests.utils.isolation start --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+fi
+export PODMAN_COMPOSE_PROVIDER=podman-compose
 
 # Start compose services. Idempotent.
 #
@@ -28,21 +38,21 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ─── Dependency checks ───
-command -v docker >/dev/null 2>&1 || { echo "docker not found" >&2; exit 127; }
-docker compose version >/dev/null 2>&1 || { echo "docker compose not available" >&2; exit 127; }
+command -v podman >/dev/null 2>&1 || { echo "podman not found" >&2; exit 127; }
+podman compose --in-pod=false version >/dev/null 2>&1 || { echo "podman compose --in-pod=false not available" >&2; exit 127; }
 
 # Create shared network if needed (for telemetry integration)
-docker network inspect shared-otel-net >/dev/null 2>&1 || {
+podman network inspect shared-otel-net >/dev/null 2>&1 || {
   echo "Creating shared-otel-net network..."
-  docker network create shared-otel-net
+  podman network create shared-otel-net
 }
 
 # "${SERVICES[@]+...}" guards against an empty array tripping `set -u` on
 # bash 3.2 (stock macOS); on an empty array it expands to nothing.
 if $NO_BUILD; then
-  docker compose up -d --no-build ${SERVICES[@]+"${SERVICES[@]}"}
+  podman compose --in-pod=false up -d --no-build ${SERVICES[@]+"${SERVICES[@]}"}
 else
-  docker compose up -d ${SERVICES[@]+"${SERVICES[@]}"}
+  podman compose --in-pod=false up -d ${SERVICES[@]+"${SERVICES[@]}"}
 fi
 
 if [[ ${#SERVICES[@]} -gt 0 ]]; then

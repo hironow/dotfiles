@@ -22,8 +22,9 @@ _TOOL = r"(?:npm|npx|pnpm|yarn)"
 # `mise x --`, `sudo`, `env A=1`, `time`).
 _IN_COMMAND_POSITION = re.compile(
     rf"(?:^|[;&|({{`]\s*"
+    rf"|\bmise\s+(?:x|exec)\s+(?:[^\s;&|]+\s+)*?--\s+"
     rf"|\b(?:then|do|exec|command -v|x|sudo|env|time|nice)\s+(?:--\s+)?(?:\w+=\S+\s+)*"
-    rf"|\bxargs\s+(?:-\S+\s+)*){_TOOL}(?![\w-])"
+    rf"|\bxargs\s+(?:-\S+\s+)*){_TOOL}(?![\w:-])"
 )
 # A hint that tells the operator to run one, e.g. "npm i -g x" / "pnpm dlx x".
 _RUN_HINT = re.compile(
@@ -45,6 +46,27 @@ def _invocations() -> list[str]:
 
 def test_justfile_runs_node_tooling_through_bun_only() -> None:
     assert _invocations() == []
+
+
+def test_qualified_mise_backend_is_not_a_package_manager_command() -> None:
+    for selector in (
+        "mise x npm:@informalsystems/quint@0.33.0 -- quint",
+        "mise exec npm:@scope/tool@1.0.0 -- tool",
+        "mise x 'npm:@scope/tool@1.0.0' -- tool",
+    ):
+        assert not _IN_COMMAND_POSITION.search(selector), selector
+        assert not _RUN_HINT.search(selector), selector
+
+
+def test_actual_command_after_a_qualified_mise_backend_remains_forbidden() -> None:
+    for command in (
+        "mise x npm:@scope/tool@1.0.0 -- npm root -g",
+        "mise exec 'npm:@scope/tool@1.0.0' -- npm root -g",
+        "mise x node@26 npm:@scope/tool@1.0.0 -- npx tool",
+        "mise exec npm:@scope/tool@1.0.0 -- pnpm store path",
+        "mise x npm:@scope/tool@1.0.0 -- yarn cache dir",
+    ):
+        assert _IN_COMMAND_POSITION.search(command), command
 
 
 def test_guard_sees_an_invocation_and_ignores_a_mention() -> None:

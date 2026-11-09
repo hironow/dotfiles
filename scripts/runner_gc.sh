@@ -4,22 +4,19 @@
 # Disk GC for the WSL self-hosted GitHub Actions runner (ADR 0035)
 # ------------------------------------------------------------------------------
 # Runs INSIDE the Linux side (WSL distro that hosts the runner). Reclaims the
-# three artifacts that ratchet upward forever because nothing prunes them by
-# default:
-#   - stopped containers      (each devcontainer job leaves one behind)
-#   - unreferenced images     (every job builds a fresh tag)
-#   - BuildKit build cache    (the dominant one — no GC policy out of the box)
-# plus apt lists/archives and the systemd journal when invoked as root.
+# aged stopped containers and unreferenced images. Build/mount cache is NOT
+# collected (ADR 0067): the previous cache-growth guarantee no longer holds.
+# Also collects runner files, apt archives and the journal as described below.
 #
-# Retention is TIME-based: anything last used within $RUNNER_GC_RETENTION is
-# kept so back-to-back jobs still hit warm cache; everything older is dropped.
+# Podman age is Created, not last-use time. Young resources and images with
+# protected aliases survive. Unknown metadata and engine refusals retain them.
 #
 # Images that must SURVIVE idle periods (lived 2026-09-03: the h-nn LLM stack's
 # 14.7 GB ghcr image, stopped by `just llm down`, was swept two hours later and
 # had to be pulled again) are protected by a TAG, not a list: any image ID that
 # also carries a tag under $RUNNER_GC_KEEP_TAG_PREFIX (default `keep/`) is
 # skipped by the image sweep. Protecting a new image is one command —
-#   docker tag <image> keep/<name>
+#   podman tag <image> keep/<name>
 # — and needs no change here (the .gpus box scripts re-apply it after every pull).
 #
 # Invoked from two places (both installed by scripts/install_runner_gc.sh):
@@ -37,9 +34,14 @@ DIAG_DAYS="${RUNNER_GC_DIAG_DAYS:-7}"
 # Must exceed the number of series the workflows on this runner pin between
 # them; see the toolcache section below for why series, not versions.
 TOOLCACHE_KEEP="${RUNNER_GC_TOOLCACHE_KEEP:-5}"
-# Set by the root->runner-user re-entry below: do the docker leg only, so the
+# Set by the root->runner-user re-entry below: do the podman leg only, so the
 # child neither recurses nor repeats the root-only apt/journal/_diag work.
-DOCKER_ONLY="${RUNNER_GC_DOCKER_ONLY:-0}"
+PODMAN_ONLY="${RUNNER_GC_PODMAN_ONLY:-0}"
+# Deprecated restrictive alias, not an engine fallback. Either ONLY flag wins.
+[ "${RUNNER_GC_DOCKER_ONLY:-0}" != "1" ] || PODMAN_ONLY=1
+DRY_RUN="${RUNNER_GC_DRY_RUN:-0}"
+# Unix dry-run is deliberately restricted to the Podman leg.
+[ "$DRY_RUN" != "1" ] || PODMAN_ONLY=1
 
 log() { printf '[runner-gc] %s %s\n' "$(date -Is)" "$*"; }
 
@@ -67,15 +69,20 @@ case "$(uname -s)" in
     wsl.exe -d "$_distro" -u root -e env \
       "RUNNER_GC_RETENTION=${RETENTION}" \
       "RUNNER_GC_FORCE=${FORCE}" \
+      "RUNNER_GC_KEEP_TAG_PREFIX=${KEEP_TAG_PREFIX}" \
+      "RUNNER_GC_PODMAN_ONLY=${PODMAN_ONLY}" \
+      "RUNNER_GC_DRY_RUN=${DRY_RUN}" \
       sh -c "if [ -x /usr/local/bin/runner-gc.sh ]; then exec /usr/local/bin/runner-gc.sh; else echo '[runner-gc] not installed; running from the checkout (run: just runner-gc-install)'; exec bash '${_wsl_self}'; fi" || _rc=$?
 
     log "collecting the native Windows runner"
     _ps1="${_here}/runner_gc_win.ps1"
     if [ -f "$_ps1" ]; then
-      _force_flag=""
-      [ "$FORCE" = "1" ] && _force_flag="-Force"
+      _ps_flags=()
+      [ "$FORCE" != "1" ] || _ps_flags+=(-Force)
+      [ "$PODMAN_ONLY" != "1" ] || _ps_flags+=(-PodmanOnly)
+      [ "$DRY_RUN" != "1" ] || _ps_flags+=(-DryRun)
       powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass \
-        -File "$(cygpath -w "$_ps1")" -Retention "$RETENTION" $_force_flag || _rc=$?
+        -File "$(cygpath -w "$_ps1")" -Retention "$RETENTION" -KeepTagPrefix "$KEEP_TAG_PREFIX" "${_ps_flags[@]}" || _rc=$?
     else
       log "windows: ${_ps1} missing; skipping"
     fi
@@ -85,8 +92,8 @@ case "$(uname -s)" in
 esac
 
 # --- Job safety -------------------------------------------------------------
-# Never prune while a job is executing: an in-flight `docker build` can be
-# holding cache that the age filter would otherwise consider cold.
+# Back off for a foreign job. This is a point-in-time process observation,
+# not an atomic exclusion lock against arbitrary third-party operations.
 #
 # Use `pgrep -x` (matches the executable NAME only). `pgrep -f Runner.Worker`
 # matches this script's own command line as well and so reports a running job
@@ -146,106 +153,193 @@ _each_runner_dir() {
   done
 }
 
-# --- Docker -----------------------------------------------------------------
-# "2h" / "30m" / "1d" -> seconds (the shapes `docker prune --filter until=` takes).
-_retention_secs() {
-  case "$1" in
-    *h) echo $(( ${1%h} * 3600 )) ;;
-    *m) echo $(( ${1%m} * 60 )) ;;
-    *d) echo $(( ${1%d} * 86400 )) ;;
-    *s) echo "${1%s}" ;;
-    *)  echo "$1" ;;
-  esac
+# --- Podman -----------------------------------------------------------------
+# Normalize decimal DATA before Bash arithmetic (no octal or variable lookup).
+_decimal() {
+  [[ "$1" =~ ^[0-9]+$ ]] || return 1
+  local digits="$1"
+  while [[ "$digits" == 0* ]] && [ "${#digits}" -gt 1 ]; do digits="${digits#0}"; done
+  printf '%s' "$digits"
 }
 
-# The image sweep used to be a blanket prune (`-a`, `--filter until=`): every
-# image no container references, older than the retention. Same rule, minus
-# the images that carry a $KEEP_TAG_PREFIX tag (see the header). Age is the
-# image's Created time, exactly what `until=` compared.
-_docker_image_gc() {
-  local cutoff used id refs created
-  cutoff=$(( $(date +%s) - $(_retention_secs "$RETENTION") ))
-  used="$(docker ps -aq 2>/dev/null | xargs -r docker inspect --format '{{.Image}}' 2>/dev/null | sort -u)"
-  docker images -q --no-trunc 2>/dev/null | sort -u | while read -r id; do
-    [ -n "$id" ] || continue
-    printf '%s\n' "$used" | grep -qx "$id" && continue
-    refs="$(docker image inspect --format '{{join .RepoTags " "}}' "$id" 2>/dev/null || true)"
-    case " $refs " in
-      *" ${KEEP_TAG_PREFIX}"*) log "docker: keep ${refs} (${KEEP_TAG_PREFIX} tag)"; continue ;;
+_decimal_le() { # Both operands are already normalized, nonnegative decimals.
+  local LC_ALL=C
+  if [ "${#1}" -ne "${#2}" ]; then [ "${#1}" -lt "${#2}" ]; return; fi
+  [[ "$1" == "$2" || "$1" < "$2" ]]
+}
+
+_retention_secs() { # $2 is a validated signed-range current epoch.
+  local count="$1" multiplier=1 bound
+  [[ "$count" =~ ^[0-9]+[smhd]?$ ]] || return 1
+  case "$count" in
+    *h) multiplier=3600; count="${count%h}" ;;
+    *m) multiplier=60; count="${count%m}" ;;
+    *d) multiplier=86400; count="${count%d}" ;;
+    *s) count="${count%s}" ;;
+  esac
+  count="$(_decimal "$count")" || return 1
+  bound=$(( $2 / multiplier ))
+  # Compare strings BEFORE conversion/multiplication, even for huge inputs.
+  _decimal_le "$count" "$bound" || return 1
+  printf '%s' "$(( count * multiplier ))"
+}
+
+_normalize_image_id() {
+  [[ "$1" =~ ^(sha256:)?([a-f0-9]{64})$ ]] || return 1
+  printf '%s' "${BASH_REMATCH[2]}"
+}
+
+# Podman expands unqualified local tags to localhost/<name>:latest. Strip
+# only that local qualifier, never a remote registry or the repository path.
+_normalize_keep_name() { printf '%s' "${1#localhost/}"; }
+
+_podman_image_eligible() {
+  local id="$1" metadata inspected_id created tag tags prefix
+  metadata="$(podman image inspect "$id" 2>/dev/null)" || return 1
+  # Bash cannot represent NUL; reject it in JSON before decoding image IDs.
+  metadata="$(printf '%s' "$metadata" | jq -ce '
+    select(type == "array" and length == 1) | .[0] |
+    select((.Id | type == "string") and (.Id | contains("\u0000") | not) and
+      (.Created | type == "string") and
+      (.RepoTags | type == "array") and
+      all(.RepoTags[]; type == "string" and test("^[a-z0-9][a-z0-9._:/@-]*$")))
+  ')" || return 1
+  # Preserve trailing newlines in malformed JSON IDs; substitution strips them
+  # without a sentinel. jq -j adds no delimiter, so only our sentinel is removed.
+  inspected_id="$(
+    printf '%s' "$metadata" | jq -je '.Id' || exit 1
+    printf '.'
+  )" || return 1
+  inspected_id="${inspected_id%.}"
+  inspected_id="$(_normalize_image_id "$inspected_id")" || return 1
+  [ "$inspected_id" = "$id" ] || return 1
+  created="$(printf '%s' "$metadata" | jq -er '.Created | select(test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T"))')" || return 1
+  created="$(date -u -d "$created" +%s 2>/dev/null)" || return 1
+  if ! [[ "$created" =~ ^[0-9]+$ ]] || [ "$created" -ge "$PODMAN_CUTOFF" ]; then return 1; fi
+  prefix="$(_normalize_keep_name "$KEEP_TAG_PREFIX")"
+  [ -n "$prefix" ] || return 1
+  # Capture explicitly: process substitution would hide a failed tag decoder.
+  tags="$(printf '%s' "$metadata" | jq -r '.RepoTags[]')" || return 1
+  while IFS= read -r tag; do
+    tag="$(_normalize_keep_name "$tag")"
+    case "$tag" in
+      "$prefix"*) log "podman: keep $id ($tag)"; return 1 ;;
     esac
-    created="$(docker image inspect --format '{{.Created}}' "$id" 2>/dev/null | cut -c1-19)"
-    [ -n "$created" ] || continue
-    if [ "$(date -u -d "$created" +%s 2>/dev/null || echo 0)" -lt "$cutoff" ]; then
-      docker rmi -f "$id" >/dev/null 2>&1 || true
+  done <<< "$tags"
+}
+
+# A failed reference enumeration/inspection invalidates the entire snapshot.
+# Container inspect JSON supplies both reference and stopped/age guards.
+_podman_containers() {
+  local ids id metadata created status reference
+  ids="$(podman ps --all --quiet --no-trunc 2>/dev/null)" || return 1
+  PODMAN_USED=""
+  for id in $ids; do
+    [[ "$id" =~ ^[a-f0-9]+$ ]] || return 1
+    metadata="$(podman container inspect "$id" 2>/dev/null)" || return 1
+    metadata="$(printf '%s' "$metadata" | jq -ce --arg id "$id" '
+      select(type == "array" and length == 1) | .[0] |
+      select(.Id == $id and (.Image | type == "string") and
+        (.Image | contains("\u0000") | not) and
+        (.State.Status | IN("created", "initialized", "running", "stopped", "paused", "exited", "removing", "stopping")) and
+        (.Created | type == "string"))
+    ')" || return 1
+    reference="$(
+      printf '%s' "$metadata" | jq -je '.Image' || exit 1
+      printf '.'
+    )" || return 1
+    reference="${reference%.}"
+    reference="$(_normalize_image_id "$reference")" || return 1
+    PODMAN_USED="$PODMAN_USED $reference"
+    [ "$1" = "remove" ] || continue
+    status="$(printf '%s' "$metadata" | jq -er '.State.Status')" || return 1
+    case "$status" in exited | stopped | created) ;; *) continue ;; esac
+    created="$(printf '%s' "$metadata" | jq -er '.Created | select(test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T"))')" || continue
+    created="$(date -u -d "$created" +%s 2>/dev/null)" || continue
+    if ! [[ "$created" =~ ^[0-9]+$ ]] || [ "$created" -ge "$PODMAN_CUTOFF" ]; then continue; fi
+    if [ "$DRY_RUN" = "1" ]; then
+      log "DRY-RUN: would remove podman container $id"
+    elif [ "$FORCE" = "1" ] || ! _foreign_worker; then
+      # Non-forced rm refuses a container that started after inspection.
+      podman rm "$id" >/dev/null 2>&1 || log "podman: retained container $id (removal refused)"
     fi
   done
-  # Dangling layers left by the removals above.
-  docker image prune -f --filter "until=${RETENTION}" >/dev/null 2>&1 || true
 }
 
-_docker_gc() {
-  if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
-    log "docker: not available; skipping"
+_podman_gc() {
+  local cli info server ids id
+  if ! command -v podman >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+    log "podman: podman and jq required; retained inventories"
     return 0
   fi
-  log "docker: before — $(docker system df --format '{{.Type}}={{.Size}}' | tr '\n' ' ')"
-
-  # Order matters: containers first so the images they pin become prunable.
-  docker container prune -f --filter "until=${RETENTION}" >/dev/null 2>&1 || true
-  _docker_image_gc
-  docker builder prune -af --filter "until=${RETENTION}" >/dev/null 2>&1 || true
-
-  # buildx `docker-container` builders keep their cache inside their own
-  # container, which the daemon-level `builder prune` above does NOT reach.
-  docker buildx ls --format '{{.Name}}' 2>/dev/null | awk 'NF' | while read -r _b; do
-    [ "$_b" = "default" ] && continue
-    docker buildx prune -af --filter "until=${RETENTION}" --builder "$_b" >/dev/null 2>&1 || true
+  cli="$(podman --version 2>/dev/null)" || return 0
+  if ! [[ "$cli" =~ ^podman\ version\ ([0-9]+)\. ]] || [ "${BASH_REMATCH[1]}" -lt 5 ]; then
+    log "podman: CLI >=5 required; retained inventories"; return 0
+  fi
+  info="$(podman info --format json 2>/dev/null)" || { log "podman: engine unavailable; retained inventories"; return 0; }
+  server="$(printf '%s' "$info" | jq -er '
+    select((.host.serviceIsRemote | type == "boolean") and
+      (.version.APIVersion | type == "string" and test("^[0-9]+\\."))) |
+    .version.Version | select(type == "string")
+  ')" || { log "podman: invalid engine identity/version metadata; retained inventories"; return 0; }
+  if ! [[ "$server" =~ ^([0-9]+)\. ]] || [ "${BASH_REMATCH[1]}" -lt 5 ]; then
+    log "podman: engine >=5 required; retained inventories"; return 0
+  fi
+  local PODMAN_CUTOFF PODMAN_USED now seconds
+  now="$(date +%s)" || { log "podman: clock query failed; retained inventories"; return 0; }
+  now="$(_decimal "$now")" || { log "podman: invalid clock; retained inventories"; return 0; }
+  _decimal_le "$now" 9223372036854775807 || { log "podman: clock outside signed range; retained inventories"; return 0; }
+  seconds="$(_retention_secs "$RETENTION" "$now")" || { log "podman: invalid or excessive retention; retained inventories"; return 0; }
+  PODMAN_CUTOFF=$(( now - seconds ))
+  _podman_containers remove || { log "podman: container metadata unavailable; retained images"; return 0; }
+  ids="$(podman images --quiet --no-trunc 2>/dev/null)" || { log "podman: image enumeration failed; retained images"; return 0; }
+  # No image prune, builder/buildx/system prune or persistent mount-cache GC.
+  for id in $(printf '%s\n' "$ids" | sort -u); do
+    id="$(_normalize_image_id "$id")" || continue
+    _podman_image_eligible "$id" || continue
+    _podman_containers references || { log "podman: reference metadata unavailable; retained images"; return 0; }
+    case " $PODMAN_USED " in *" $id "*) continue ;; esac
+    [ "$FORCE" = "1" ] || ! _foreign_worker || continue
+    # Final observation: keep aliases, age and metadata are rechecked here.
+    _podman_image_eligible "$id" || continue
+    if [ "$DRY_RUN" = "1" ]; then
+      log "DRY-RUN: would remove podman image $id"
+    else
+      # No force: a newly acquired reference is refused by the engine.
+      # No-prune: a young/unobserved dangling parent must survive.
+      podman rmi --no-prune "$id" >/dev/null 2>&1 || log "podman: retained image $id (removal refused)"
+    fi
   done
-
-  log "docker: after  — $(docker system df --format '{{.Type}}={{.Size}}' | tr '\n' ' ')"
 }
 
-# The docker-only re-entry (see below) stops here: everything past this point
-# is either root-only or would be repeated once per runner user.
-if [ "$DOCKER_ONLY" = "1" ]; then
-  _docker_gc
-  log "done (docker-only) — / : $(_df_root)"
+# Legacy restrictive alias remains valid; never expand an old ONLY request.
+if [ "$PODMAN_ONLY" = "1" ]; then
+  _podman_gc
+  log "done (podman-only) - / : $(_df_root)"
   exit 0
 fi
 
-_docker_gc
+_podman_gc
 
-# --- Reach the runner's own daemon ------------------------------------------
-# The hourly timer runs as root, and root's docker context is NOT the runner's.
-# Where the runner drives ROOTLESS docker, root resolves to /var/run/docker.sock
-# — a different daemon, usually empty — so every prune above "succeeds" against
-# nothing while the real hoard at /run/user/<uid>/docker.sock keeps growing.
-# `docker info` succeeds against that empty daemon too, so nothing surfaces the
-# miss: the sweep exits 0 having reclaimed zero.
-#
-# So re-enter the docker leg as each runner's owning user, whose context points
-# at the daemon its jobs actually dirty. Root's own leg above is kept, which is
-# what a rootful-only host needs — neither topology regresses.
+# Rootful and rootless inventories belong to different engine owners. Re-enter
+# in the runner owner's context; never guess a socket or start an engine.
 if _is_root && command -v runuser >/dev/null 2>&1; then
   _each_runner_dir | while read -r _rdir; do
     _ruser="$(stat -c '%U' "$_rdir" 2>/dev/null || true)"
     _ruid="$(stat -c '%u' "$_rdir" 2>/dev/null || true)"
-    if [ -z "$_ruser" ] || [ "$_ruser" = "root" ] || [ -z "$_ruid" ]; then
-      continue
-    fi
+    if [ -z "$_ruser" ] || [ "$_ruser" = "root" ] || [ -z "$_ruid" ]; then continue; fi
     _rhome="$(getent passwd "$_ruser" | cut -d: -f6)"
     [ -n "$_rhome" ] || continue
-    log "docker: re-entering as ${_ruser} (uid ${_ruid}) for its own daemon"
-    runuser -u "$_ruser" -- env \
-      HOME="$_rhome" \
-      XDG_RUNTIME_DIR="/run/user/${_ruid}" \
-      RUNNER_GC_DOCKER_ONLY=1 \
-      RUNNER_GC_RETENTION="$RETENTION" \
+    log "podman: re-entering as ${_ruser} (uid ${_ruid}) for its own engine"
+    runuser -u "$_ruser" -- env -u CONTAINER_HOST -u CONTAINER_CONNECTION \
+      HOME="$_rhome" XDG_RUNTIME_DIR="/run/user/${_ruid}" \
+      RUNNER_GC_PODMAN_ONLY=1 RUNNER_GC_RETENTION="$RETENTION" \
+      RUNNER_GC_KEEP_TAG_PREFIX="$KEEP_TAG_PREFIX" RUNNER_GC_DRY_RUN="$DRY_RUN" \
       RUNNER_GC_FORCE="$FORCE" \
-      "$0" || log "docker: re-entry as ${_ruser} failed (non-fatal)"
+      "$0" || log "podman: re-entry as ${_ruser} failed (non-fatal)"
   done
 elif _is_root; then
-  log "docker: runuser missing; cannot reach a rootless runner daemon"
+  log "podman: runuser missing; cannot reach a rootless runner engine"
 fi
 
 # --- Runner _diag logs ------------------------------------------------------
@@ -347,7 +441,7 @@ fi
 # build rewrote something three levels down, so a hot workspace can read cold.
 _marker='.runner-gc-last-used'
 
-# Retention is docker's syntax (2h, 90m, 7d); find wants minutes.
+# Retention accepts durations (2h, 90m, 7d); find wants minutes.
 _retention_minutes() {
   case "$RETENTION" in
     *m) printf '%s' "${RETENTION%m}" ;;

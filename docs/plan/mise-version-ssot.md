@@ -137,7 +137,9 @@ decision-queue の「決裁待ち」行（ADR 0051 の形式: ID / 何を決め�
 - 意味の等価: 生成後の heredoc を今日のものと比較し、**道具の集合と値が同じ**であることを記録する（変わるのは uv / just の 2 値と、コメント・markers）。
   併せて `tests/unit/test_sandbox_check_tools.py`・`test_go_tooling.py`・`test_devcontainer_download_retries.py`・`test_install_mise_bootstrap.py`・`test_mise_data_dir_relocation.py` が緑（`just ci` 内）。
 - 負例: 正本の値を 1 つ変えて `just mise-versions-check` が落ちること、install.sh の定数を 1 つ変えても落ちることを記録する。加えて **pre-commit 段で止まること**を実測する: 生成領域を 1 文字変えた状態で `just lint`（pre-commit が呼ぶ実体）と `just check` の両方が非ゼロになることを記録する。
-- 画像の実検証: 生成された tarball 定数（uv 0.13.1 / just 1.59.0）は画像ビルドで初めて実際に取得される。CI の `Run just tests in dev container` leg が唯一の実証なので、**PR の CI で緑を確認する**（ローカルに Docker があれば `just test`）。
+- 画像の実検証: `config/mise/image-tools.toml` から生成した tarball 定数は、画像ビルドで実際に取得する。
+  Podman 5 以降と指定した Compose provider、devcontainer CLI、選択先の socket を用意し、ローカルの `just test` で fresh build → up → exec を確認する。
+  CI の sandbox leg は既存の opt-in 条件を満たす場合に確認し、skip を成功の証拠に数えない。
 - merge 後: host 側の設定は変わらないので `mise -C / install` は不要（宣言の集合も値も同じ）。必要なら `just doctor`。
 
 ## 対象外（今回やらない）

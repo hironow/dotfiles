@@ -81,21 +81,20 @@ services:
 
   # Spanner Emulator
   spanner-emulator:
-    # Pinned (2026-09-06): the floating `latest` drifted to a build that accepts
-    # a PG-dialect CREATE TABLE without a PRIMARY KEY, which turned an e2e red
-    # (dotfiles #348/#349). compose `image:` tags are hand-managed (Dependabot
-    # covers Dockerfiles only); bump deliberately after checking the tag list:
-    #   curl -s -H "Authorization: Bearer $(curl -s 'https://gcr.io/v2/token?scope=repository:cloud-spanner-emulator/emulator:pull' | jq -r .token)" \
-    #     https://gcr.io/v2/cloud-spanner-emulator/emulator/tags/list | jq .tags
-    image: "gcr.io/cloud-spanner-emulator/emulator:1.5.57"
-    pull_policy: always
+    # healthcheck/Dockerfile retains the 1.5.57 PK-correctness pin (#348/#349).
+    image: "localhost/emulator-health-spanner:local"
+    pull_policy: build
+    build:
+      context: ./healthcheck
+      dockerfile: Dockerfile
+      target: spanner
     container_name: spanner-emulator
     ports:
       - "127.0.0.1:${SPANNER_GRPC_PORT:-9010}:9010"  # gRPC endpoint
       - "127.0.0.1:${SPANNER_REST_PORT:-9020}:9020"  # REST endpoint
-    # Health check using built-in TCP check
+    # Image-local TCP check only; SQL readiness still needs the DB tests.
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 9010 || exit 1"]
+      test: ["CMD", "/usr/local/bin/tcp-healthcheck", "127.0.0.1:9010"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -106,8 +105,12 @@ services:
   pgadapter:
     depends_on:
       - spanner-emulator
-    image: "gcr.io/cloud-spanner-pg-adapter/pgadapter"
-    pull_policy: always
+    image: "localhost/emulator-health-pgadapter:local"
+    pull_policy: build
+    build:
+      context: ./healthcheck
+      dockerfile: Dockerfile
+      target: pgadapter
     container_name: pgadapter-emulator
     command:
       - "-p test-project"
@@ -150,7 +153,7 @@ services:
   # Neo4j Graph Database
   # Note: Prometheus metrics require Enterprise Edition
   neo4j:
-    image: neo4j:2025-community
+    image: docker.io/library/neo4j:2025-community
     container_name: neo4j-emulator
     profiles:
       - graph
@@ -238,7 +241,7 @@ services:
     # <page host>:6277, so both ports are published. With a non-default
     # MCP_INSPECTOR_PROXY_PORT, add &MCP_PROXY_PORT=<port> to the UI URL.
     # The proxy accepts only the origins below and needs the session token
-    # the container prints (docker logs mcp-inspector).
+    # the container prints (podman logs mcp-inspector).
     ports:
       - "127.0.0.1:${MCP_INSPECTOR_PORT:-6274}:6274"  # Client UI
       - "127.0.0.1:${MCP_INSPECTOR_PROXY_PORT:-6277}:6277"  # Proxy
@@ -276,7 +279,7 @@ services:
 
   # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:latest
+    image: docker.io/qdrant/qdrant:latest
     container_name: qdrant-emulator
     profiles:
       - vector
@@ -359,7 +362,7 @@ services:
       - cli  # Only run when explicitly requested
   # Elasticsearch
   elasticsearch:
-    image: elasticsearch:9.4.3
+    image: docker.io/library/elasticsearch:9.4.3
     container_name: elasticsearch-emulator
     profiles:
       - search
@@ -425,7 +428,7 @@ services:
 
   # PostgreSQL Exporter (Prometheus metrics)
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: docker.io/prometheuscommunity/postgres-exporter:latest
     container_name: postgres-exporter
     profiles:
       - exporters

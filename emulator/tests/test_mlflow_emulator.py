@@ -1,7 +1,10 @@
-import docker
 import pytest
 
-from tests.utils.helpers import skip_unless_container_running
+from tests.utils.helpers import (
+    mlflow_endpoint,
+    podman_client,
+    skip_unless_container_running,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -12,7 +15,8 @@ def _require_mlflow():
 @pytest.mark.asyncio
 async def test_mlflow_container_starts(http_client):
     """MLflow container should be running and UI reachable."""
-    client = docker.from_env()
+    base = mlflow_endpoint() + "/"
+    client = podman_client()
 
     from tests.utils.helpers import get_container, wait_for_http
     from tests.utils.result import Error, Ok
@@ -27,10 +31,6 @@ async def test_mlflow_container_starts(http_client):
             pytest.fail(msg)
 
     # Check if MLflow UI is accessible
-    import os
-
-    port = os.environ.get("MLFLOW_PORT", "5252")
-    base = f"http://localhost:{port}/"
     match await wait_for_http(http_client, base):
         case Ok(_):
             pass

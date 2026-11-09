@@ -1,19 +1,9 @@
-"""Structural assertions on .devcontainer/devcontainer.json.
+"""Shared IDE/host-CLI config, required lifecycle, and saved-image checks.
 
-The devcontainer.json file is the *single source of truth* shared by
-two consumers:
-  1. local IDE  (VS Code / Cursor / JetBrains "Reopen in Container")
-  2. CI test    (devcontainers/ci action in .github/workflows/test-just.yaml)
-
-Migrating it once moves both together. These tests pin the
-*structure* — base image and required features — so accidental edits
-that drop, say, google-cloud-cli, surface as a unit-test failure long
-before the CI sandbox stops building.
-
-The trailing `@pytest.mark.devcontainer_up` block adds runtime
-smoke tests that exercise the actual `devcontainer up` lifecycle
-against a built image — closing the prod-equivalence gap that the
-plain `docker run` fixture in test_just_sandbox.py cannot cover.
+The shared fixture builds a fresh tracked-only snapshot and completes actual
+Podman devcontainer up -> exec -> nested container roundtrip. Missing tools or
+build/runtime failures are errors. Separately named saved-image checks inspect
+baked tools/trust/offline state; they do not claim lifecycle coverage.
 """
 
 from __future__ import annotations
@@ -24,10 +14,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from test_just_sandbox import docker_image as sandbox_image_fixture
+from test_just_sandbox import run_saved_image
 
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
-IMAGE = "dotfiles-just-sandbox:latest"
+docker_image = sandbox_image_fixture
 
 
 def _load_devcontainer() -> dict:
@@ -53,7 +45,7 @@ def devcontainer() -> dict:
 def test_devcontainer_uses_image_not_build(devcontainer: dict) -> None:
     """We migrated away from `build.dockerfile: ../tests/docker/...`
     to a declarative `image:` reference. This forces all consumers
-    (devcontainer CLI, envbuilder, devcontainers/ci action) to derive
+    (IDE and host devcontainer CLI) to derive
     the same image graph from the same base."""
     assert "image" in devcontainer, (
         "devcontainer.json must declare `image:` (image-only form). "
@@ -65,24 +57,22 @@ def test_devcontainer_uses_image_not_build(devcontainer: dict) -> None:
     )
 
 
-def test_devcontainer_image_is_debian_bookworm(devcontainer: dict) -> None:
-    """Base image is the Microsoft-published debian-12 (bookworm)
-    devcontainer base. glibc-native, no compat shim required."""
-    assert devcontainer["image"] == "mcr.microsoft.com/devcontainers/base:bookworm", (
+def test_devcontainer_image_is_debian_trixie(devcontainer: dict) -> None:
+    """Microsoft-published trixie base; native glibc and Podman >=5 packages."""
+    assert devcontainer["image"] == "mcr.microsoft.com/devcontainers/base:trixie", (
         f"Unexpected base image: {devcontainer['image']!r}. "
-        "Expected mcr.microsoft.com/devcontainers/base:bookworm."
+        "Expected mcr.microsoft.com/devcontainers/base:trixie."
     )
 
 
 REQUIRED_FEATURES = {
     "ghcr.io/devcontainers/features/common-utils:2",
     "ghcr.io/devcontainers/features/github-cli:1",
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1",
     "ghcr.io/devcontainers/features/python:1",
     "ghcr.io/devcontainers/features/node:1",
     # Local feature: build-time installer for gcloud/mise/uv/just/sheldon.
     # Required because lifecycle commands (onCreate/postCreate) under
-    # devcontainers/ci do NOT commit back to the saved image, so
+    # a running container do NOT commit back to the saved image, so
     # build-time installation is the only way to ensure these tools
     # appear in the test sandbox image.
     "./features/dotfiles-tools",
@@ -233,76 +223,24 @@ def test_mise_trusted_paths_are_scoped(devcontainer: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Runtime smoke tests on the saved image. These verify that what the
-# structural assertions above SAY is in devcontainer.json actually
-# materialised as expected baked-in state. They cover three gaps the
-# raw `docker run` fixture in test_just_sandbox.py does not:
-#   A) the `devcontainer up` lifecycle path actually completes
-#      (the same path the local IDE and CI both use)
-#   B) trust-boundary scoping is in effect at runtime — not just in
-#      the JSON file (a future revert to `/root` or `*` would be
-#      caught even if the JSON is otherwise updated)
-#   C) every tool the local feature claims to install is on PATH and
-#      version-responds (a single source of truth for "feature
-#      install.sh actually worked")
-# All gated by image presence: skipped when the saved image is not
-# available locally.
+# Required lifecycle fixture, followed by separately named saved-image checks.
+# No presence-based skips or fallback to stale tags.
 # ---------------------------------------------------------------------------
 
 
-def _docker_available() -> bool:
-    return (
-        subprocess.run(
-            ["docker", "info"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        ).returncode
-        == 0
-    )
-
-
-def _image_exists(image: str) -> bool:
-    return (
-        subprocess.run(
-            ["docker", "image", "inspect", image],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        ).returncode
-        == 0
-    )
-
-
-def _run_in_image(script: str) -> subprocess.CompletedProcess:
-    """One-shot `docker run` against the saved image. Mirrors
-    test_just_sandbox.run_in_sandbox but without the bind mount —
-    these tests only inspect baked-in image state."""
-    return subprocess.run(
-        ["docker", "run", "--rm", IMAGE, "bash", "-lc", script],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-
-
 @pytest.fixture(scope="module")
-def saved_image() -> str:
-    if not _docker_available():
-        pytest.skip("Docker is not available; skipping runtime smoke tests.")
-    if not _image_exists(IMAGE):
-        pytest.skip(
-            f"Image {IMAGE!r} is not present. Build it first with "
-            "`devcontainer build --workspace-folder . --image-name "
-            f"{IMAGE}` or run via the devcontainers/ci CI step."
-        )
-    return IMAGE
+def saved_image(docker_image: str) -> str:
+    return docker_image
+
+
+def _run_in_image(image: str, script: str) -> subprocess.CompletedProcess:
+    """Offline/trust/tool checks only; no workspace or engine socket mount."""
+    return run_saved_image(image, script)
+
+
+def test_devcontainer_actual_up_exec_roundtrip(docker_image: str) -> None:
+    """The shared fixture completed actual up -> exec -> nested Podman run."""
+    assert re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", docker_image)
 
 
 REQUIRED_TOOLS = (
@@ -315,6 +253,8 @@ REQUIRED_TOOLS = (
     ("sheldon", "--version"),
     ("shellcheck", "--version"),
     ("jq", "--version"),
+    ("podman", "--version"),
+    ("podman-compose", "--version"),
     # quint: the formal-methods gate's checker, base tooling for any repo
     # opened in this image (dotfiles itself no longer carries a model).
     ("quint", "--version"),
@@ -345,7 +285,7 @@ def test_image_provides_tool(saved_image: str, tool: str, flag: str) -> None:
     must be on PATH and version-respond inside the saved image.
     A single source of truth: if the install.sh silently failed for
     one tool, this assertion catches it before any downstream test."""
-    result = _run_in_image(f"command -v {tool} && {tool} {flag}")
+    result = _run_in_image(saved_image, f"command -v {tool} && {tool} {flag}")
     assert result.returncode == 0, (
         f"{tool} not found or not runnable inside saved image.\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -370,14 +310,7 @@ def test_image_runs_a_quint_simulation_offline(saved_image: str) -> None:
         'printf "QUINT_HOME=%s\\n" "$QUINT_HOME"\n'
         "quint run /tmp/t.qnt --max-steps=3 --max-samples=10\n"
     )
-    result = subprocess.run(
-        ["docker", "run", "--rm", "--network", "none", IMAGE, "bash", "-lc", script],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    result = run_saved_image(saved_image, script, offline=True)
     assert result.returncode == 0, (
         "quint could not simulate offline inside the saved image.\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
@@ -390,7 +323,9 @@ def test_image_git_safe_directory_is_scoped(saved_image: str) -> None:
     """`/etc/gitconfig` must list ONLY the specific paths the dev
     container needs, NOT '*'. Catches a future revert that
     re-introduces the CWE-bypass scope hole."""
-    result = _run_in_image("git config --system --get-all safe.directory || true")
+    result = _run_in_image(
+        saved_image, "git config --system --get-all safe.directory || true"
+    )
     assert result.returncode == 0, (
         f"failed to read system gitconfig:\nstderr:\n{result.stderr}"
     )
@@ -417,8 +352,9 @@ def test_image_profile_d_mise_env_is_scoped(saved_image: str) -> None:
     # variable. Greping the file body would false-match comments
     # that mention earlier revisions of the value.
     result = _run_in_image(
+        saved_image,
         ". /etc/profile.d/dotfiles-mise.sh && "
-        'printf "%s\\n" "$MISE_TRUSTED_CONFIG_PATHS"'
+        'printf "%s\\n" "$MISE_TRUSTED_CONFIG_PATHS"',
     )
     assert result.returncode == 0, (
         f"failed to source profile.d:\nstderr:\n{result.stderr}"
@@ -448,19 +384,14 @@ def test_image_profile_d_mise_env_is_scoped(saved_image: str) -> None:
 
 
 def test_image_devcontainer_metadata_smoke(saved_image: str) -> None:
-    """Smoke-check: the saved image embeds a label that
-    devcontainers/ci writes during build. Without this, the
-    `imageName: dotfiles-just-sandbox` step did not actually run a
-    devcontainer build (someone might have built a plain Dockerfile
-    image with the same tag), and the rest of the suite is testing
-    a different image than prod."""
+    """The actual fresh immutable image must carry CLI devcontainer metadata."""
     result = subprocess.run(
         [
-            "docker",
+            "podman",
             "image",
             "inspect",
             "--format={{json .Config.Labels}}",
-            IMAGE,
+            saved_image,
         ],
         capture_output=True,
         text=True,
@@ -470,11 +401,10 @@ def test_image_devcontainer_metadata_smoke(saved_image: str) -> None:
     )
     assert result.returncode == 0, f"failed to inspect image:\nstderr:\n{result.stderr}"
     labels_json = result.stdout.strip()
-    # devcontainers/ci writes labels under the
-    # `devcontainer.metadata` key; bare `docker build` omits this.
+    # The devcontainer CLI writes `devcontainer.metadata`; a bare build omits it.
     assert "devcontainer.metadata" in labels_json, (
         "saved image lacks the devcontainer.metadata label that "
-        "devcontainers/ci writes; the runtime smoke tests above were "
+        "the devcontainer CLI writes; the saved-image checks were "
         "exercising an image NOT built through the dev container "
         "pipeline.\n"
         f"labels: {labels_json}"
@@ -495,11 +425,12 @@ def test_image_mise_data_dir_is_opt_mise(saved_image: str) -> None:
     /home/<user>:/root volume mount contract: the cache disappears
     on first workspace boot."""
     result = _run_in_image(
+        saved_image,
         ". /etc/profile.d/dotfiles-mise.sh && "
         'printf "MISE_DATA_DIR=%s\\n" "$MISE_DATA_DIR" && '
         "test -d /opt/mise/installs && "
         "test -d /opt/mise/shims && "
-        'echo "installs+shims present"'
+        'echo "installs+shims present"',
     )
     assert result.returncode == 0, (
         f"runtime check for /opt/mise failed.\n"

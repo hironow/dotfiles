@@ -1,0 +1,7 @@
+# Exact hosted label missing from the installed actionlint catalog.
+# Official inventory: https://github.com/actions/runner-images/blob/fad015e47059f40cf0786dcb4593384f6a0720d3/README.md
+# Ubuntu 26.04 image: Podman 5.7.0, image 20261101.186.1 (native packages).
+# actionlint's extension key adds vocabulary only; jobs remain GitHub-hosted.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

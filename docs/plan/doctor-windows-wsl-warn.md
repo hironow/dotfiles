@@ -139,7 +139,9 @@ ADR との関係:
 ## 6. 範囲外
 
 - trade 機の `ollama-owner`、`ollama-health`、`ERR ollama-bridge`: 本当の構成の問題。operator がその機体で Windows の Ollama を起動し、`ollama_host.py --setup` を実行する（runbook どおり）。
-- `python-retired`、`rtk-pi-extension`、Windows の `docker - daemon unreachable`: その機体で手を動かせば消える本物の WARN。
+- `python-retired`、`rtk-pi-extension`: その機体で手を動かせば消える本物の WARN。
+- Windows の `docker - daemon unreachable` は当時の観測ログであり、Docker の導入を求める現行手順ではない。
+  管理する実行系の現在の要件は ADR 0067 の Podman 5 以降で確認する。
 - `kernel-version-*` の `unverified-vendor` の WARN: ADR-0065 Decision 3 どおり（ベンダーのカーネルは判定しない）。
 - 停止中の利用者の WSL distro の `ollama-inspection` WARN: Ollama の runbook が WARN と定めている。
 - Linux で package の版が取れない場合の `ca-os-bundle` WARN。

@@ -26,11 +26,11 @@ and what outlived it.
 
 | #    | Title                                                                                       | Status                                       | Date       | Affects                          |
 | ---- | ------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------- | -------------------------------- |
-| 0001 | [Migrate dev container to debian-12 + features (single SoT)](./0001-devcontainer-debian-features.md) | Accepted                                     | 2026-05-02 | `.devcontainer/`                 |
+| 0001 | [Migrate dev container to debian-12 + features (single SoT)](./0001-devcontainer-debian-features.md) | Accepted; partly superseded by [0067](./0067-use-podman-for-managed-containers.md) (base・engine・CI action) | 2026-05-02 | `.devcontainer/`                 |
 | 0002 | [Coder workspace template uses a prebuilt dev container image](./0002-coder-prebuilt-image.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-02 | removed: `exe/coder/templates/` |
 | 0003 | [Pin GitHub Actions to commit SHAs and add Dependabot updates](./0003-actions-pin-sha.md)            | Accepted (PR #48)                            | 2026-05-02 | `.github/workflows/`             |
 | 0004 | [Workspace VMs reach the Coder control plane over the tailnet (B-plan)](./0004-workspace-tailnet-routing.md) | Accepted (PR #47); superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-02 | removed: `exe/coder/templates/`, `exe/tailscale/acl.hujson` (the ACL now lives in `tofu/tailnet/`) |
-| 0005 | [Rationalise install paths across Mac host and Coder workspace (Linux)](./0005-install-path-rationalization.md) | Accepted (the Linux consumer is now the dev container) | 2026-05-02 | `install.sh`, `dump/<host>/Brewfile` |
+| 0005 | [Rationalise install paths across Mac host and Coder workspace (Linux)](./0005-install-path-rationalization.md) | Accepted; partly superseded by [0067](./0067-use-podman-for-managed-containers.md) (Podman-only winget exception) | 2026-05-02 | `install.sh`, `dump/<host>/Brewfile` |
 | 0006 | [mise tool version pinning strategy](./0006-mise-version-pinning.md) | Accepted; partly superseded by [0060](./0060-frozen-image-generation-has-one-source.md) | 2026-05-02 | `config/mise/config.toml` |
 | 0007 | [Coder server install hardening on the control-plane VM](./0007-coder-server-install-hardening.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-02 | removed: `tofu/exe/coder.tf`, `tofu/exe/variables.tf` |
 | 0008 | [Event-driven Coder workspace runner (GHA-style without GHA)](./0008-event-driven-workspace-runner.md) | Superseded by [0009](./0009-retract-cron-trigger-from-adr-0008.md) (partial — trigger source 2 retracted), then in full by [0045](./0045-coder-control-plane-retired.md) | 2026-05-03 | removed: `exe/coder/templates/dotfiles-job/`, `exe/scripts/` |
@@ -60,7 +60,7 @@ and what outlived it.
 | 0032 | [Windows scoop restore: add `add-scoop` (supersede ADR 0019's record-only)](./0032-windows-scoop-restore-add-scoop.md) | Accepted; supersedes [0019](./0019-windows-scoop-dump-record-only.md) (record-only stance) | 2026-07-05 | `justfile` (`add-scoop`), `dump/<host>/scoop.json` |
 | 0033 | [Windows `just deploy` installs the global mise toolset](./0033-windows-deploy-global-mise-install.md) | Accepted | 2026-07-05 | `justfile` (deploy/clean), `~/.gitconfig` |
 | 0034 | [exe stack mothball mode (`stack_mode`) + AR retention bound](./0034-exe-stack-mothball-mode.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-07-20 | removed: `tofu/exe/`, `exe/docs/` |
-| 0035 | [Time-based disk GC for the self-hosted runners (2h retention)](./0035-runner-disk-gc.md) | Accepted | 2026-07-31 | `scripts/runner_gc*.{sh,ps1}`, `scripts/disk_gc.sh`, `scripts/gc_status.sh`, `justfile` (Disk) |
+| 0035 | [Time-based disk GC for the self-hosted runners (2h retention)](./0035-runner-disk-gc.md) | Accepted; partly superseded by [0067](./0067-use-podman-for-managed-containers.md) (engine・image removal・automatic build-cache reclamation) | 2026-07-31 | `scripts/runner_gc*.{sh,ps1}`, `scripts/disk_gc.sh`, `scripts/gc_status.sh`, `justfile` (Disk) |
 | 0036 | [Install mise `npm:` tools with bun, not the embedded aube](./0036-mise-npm-backend-bun.md) | Accepted; amended by [0040](./0040-npm-args-inert-under-bun.md) (npm_args rationale) | 2026-07-31 | `config/mise/config.toml` |
 | 0037 | [Layered Claude settings fragments (shared / OS / profile / machine-local)](./0037-layered-claude-settings-fragments.md) | Accepted | 2026-08-05 | `scripts/sync_agents.py`, `.claude/settings.shared*.json`, `.claude/settings.profiles/` |
 | 0038 | [Declarative third-party skills (skill-lock dump, no re-vendoring)](./0038-declarative-third-party-skills.md) | Accepted | 2026-08-14 | `dump/harness/skill-lock.json`, `scripts/skills_lock.py`, `justfile` |
@@ -91,11 +91,13 @@ and what outlived it.
 | 0064 | [mirrored の WSL にはブリッジを置かず、共有の loopback で Windows の Ollama を使う](./0064-mirrored-wsl-uses-the-shared-loopback.md) | Accepted | 2026-10-25 | `scripts/ollama_host.py`、`tests/unit/test_ollama_host.py`、`docs/runbook/ollama-windows-wsl.md` |
 | 0065 | [Linux カーネルの CVE は dotfiles が直さず、報告と助言だけを行う](./0065-kernel-cve-is-evidence-only.md) | Proposed（決裁待ち） | 2026-10-29 | `tools/kernel-doctor/`、`justfile`、`scripts/doctor.sh`、`tests/unit/test_doctor_kernel.py`、`docs/runbook/kernel-doctor.md` |
 | 0066 | [doctor の WARN は手を動かすべきことだけにし、注意書きは INFO で出し、OS に合わない行は出さない](./0066-doctor-warns-only-what-needs-action.md) | Proposed（決裁待ち） | 2026-11-01 | `scripts/doctor.sh`、`scripts/doctor_lines.py`、`scripts/ollama_host.py`、`tools/ca-doctor/`、`tools/kernel-doctor/`、`docs/runbook/ca-doctor.md`、`docs/runbook/kernel-doctor.md`、`docs/runbook/ollama-windows-wsl.md` |
+| 0067 | [コンテナの実行と導入を Podman に統一する](./0067-use-podman-for-managed-containers.md) | Accepted (PR #565); limited partial supersession of 0001/0005/0035 | 2026-11-08 | コンテナ実行経路、導入、devcontainer、CI、runner GC |
 
 ## Reading order for newcomers
 
-1. [`0001`](./0001-devcontainer-debian-features.md) — why debian-12
-   with devcontainer features instead of an Alpine or Ubuntu base.
+1. [`0001`](./0001-devcontainer-debian-features.md) — why the original Debian
+   feature graph replaced Alpine; [`0067`](./0067-use-podman-for-managed-containers.md)
+   records the later trixie and Podman decision.
 2. [`0005`](./0005-install-path-rationalization.md) — why `install.sh`
    is one entry point with a per-OS dispatch.
 3. [`0006`](./0006-mise-version-pinning.md) — how tool versions are
@@ -147,3 +149,4 @@ and what outlived it.
 - 2026-10-25: [ADR-0064](./0064-mirrored-wsl-uses-the-shared-loopback.md)を採択。mirrored の WSL にはブリッジを置かず、共有の loopback で Windows の Ollama を使い、doctor が接続の前に持ち主を確かめる。
 - 2026-10-29: [ADR-0065](./0065-kernel-cve-is-evidence-only.md)を起票（Proposed、決裁待ち）。CVE-2026-98432（Linux カーネル IPv4 TCP の use-after-free）を契機に、カーネルは dotfiles が直さないこと、版の比較はクリーンな上流形かつレビュー済み branch のときだけ行い未判定を修正済みと数えないこと、kernel-doctor の所見は doctor の `err` に入れないこと、WSL カーネルを管理しない方針（0058 / 0064）を維持することを定める。
 - 2026-11-01: [ADR-0066](./0066-doctor-warns-only-what-needs-action.md)を起票（Proposed、決裁待ち）。`just doctor` の WARN を、その機体で手を動かすべきことだけにする。範囲の注意書きと事実は INFO で出して警告に数えず、`ca-doctor --summary` でクライアントごとの 1 行にまとめ、その OS に合わない検査の行は出さない。ERR と終了コードの契約は変えない。
+- 2026-11-08: [ADR-0067](./0067-use-podman-for-managed-containers.md) を採択し、0001 の基底・engine・CI action、0005 の Podman だけの winget 例外、0035 のコンテナ実行系・画像削除・build-cache 自動回収を部分置換する。旧本文と残りの決定は維持し、0039 の Windows 導入境界は変えない。安全な保持期限を証明できない cache は自動回収せず、旧 cache 増大防止保証は継承しない。[PR #565 の本人裁定](https://github.com/hironow/dotfiles/pull/565)。

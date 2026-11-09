@@ -1,17 +1,36 @@
-FROM ubuntu:26.04
+FROM docker.io/library/ubuntu:26.04
 
-# Install minimal dependencies
-RUN apt-get update && apt-get install -y \
+# Provision native CLI/network/storage packages as root, never a Podman machine.
+# The ordinary installer below must succeed without sudo authorization.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ca-certificates \
     sudo \
+    podman \
+    netavark \
+    aardvark-dns \
+    passt \
+    uidmap \
+    fuse-overlayfs \
+    && podman --version \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
 RUN useradd -m -s /bin/bash testuser
 USER testuser
+ENV HOME=/home/testuser
 WORKDIR /home/testuser
+
+# Tripwire: both normal setup runs may probe the real CLI version only.
+# Any machine/service/container operation fails the acceptance image build.
+RUN mkdir -p "$HOME/test-bin" && \
+    printf '%s\n' '#!/bin/sh' \
+      '[ "$#" -eq 1 ] && [ "$1" = --version ] || { echo "Unexpected Podman operation" >&2; exit 91; }' \
+      'printf "%s\n" "$*" >> "$HOME/podman-provisioning-calls"' \
+      'exec /usr/bin/podman "$@"' > "$HOME/test-bin/podman" && \
+    chmod +x "$HOME/test-bin/podman"
+ENV PATH="/home/testuser/test-bin:/home/testuser/.local/bin:$PATH"
 
 # Prepare "remote" repo
 RUN mkdir -p /tmp/dotfiles-repo
@@ -22,6 +41,7 @@ RUN cd /tmp/dotfiles-repo && \
     git init -b main && \
     git config user.email "test@example.com" && \
     git config user.name "Test User" && \
+    git config commit.gpgsign false && \
     git add . && \
     git commit -m "Initial commit"
 
@@ -31,9 +51,12 @@ ENV INSTALL_SKIP_GCLOUD=1
 ENV INSTALL_SKIP_ADD_UPDATE=1
 ENV DOTFILES_REPO=/tmp/dotfiles-repo
 
-# Run install.sh from the "remote" source
-# This should clone from DOTFILES_REPO to $HOME/dotfiles and run setup
-RUN bash /tmp/dotfiles-repo/install.sh
+# Fresh acceptance nonce invalidates setup layers, not earlier package layers.
+ARG DOTFILES_INSTALL_ACCEPTANCE_RUN
+# Run install.sh from the "remote" source, then emit current-run evidence.
+RUN test -n "$DOTFILES_INSTALL_ACCEPTANCE_RUN" && \
+    bash /tmp/dotfiles-repo/install.sh && \
+    printf 'DOTFILES_INSTALL_PASS1:%s\n' "$DOTFILES_INSTALL_ACCEPTANCE_RUN"
 
 # Add .local/bin to PATH for subsequent commands
 ENV PATH="/home/testuser/.local/bin:$PATH"
@@ -49,7 +72,13 @@ RUN mkdir -p ~/.zgen && \
     git init && \
     git config user.email "test@example.com" && \
     git config user.name "Test User" && \
+    git config commit.gpgsign false && \
     git commit --allow-empty -m "Initial zgen"
 
-# Run install.sh again to test update paths
-RUN bash /tmp/dotfiles-repo/install.sh
+# Run install.sh again to test update paths. Synthetic fixture commits above
+# never require the operator's private signing keys or host git configuration.
+RUN bash /tmp/dotfiles-repo/install.sh && \
+    printf 'DOTFILES_INSTALL_PASS2:%s\n' "$DOTFILES_INSTALL_ACCEPTANCE_RUN"
+RUN test "$(wc -l < "$HOME/podman-provisioning-calls")" -eq 2 && \
+    test "$(sort -u "$HOME/podman-provisioning-calls")" = --version && \
+    printf 'DOTFILES_INSTALL_TRIPWIRE:%s\n' "$DOTFILES_INSTALL_ACCEPTANCE_RUN"

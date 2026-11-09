@@ -1,5 +1,7 @@
 """The disk-GC mechanism for both self-hosted runners must not silently
-stop collecting (ADR 0035).
+stop collecting within its authorized scope (ADR 0035/0067).
+Build/mount-cache reclamation is deliberately omitted by ADR 0067; these tests
+do not preserve the old cache-growth guarantee.
 
 Why this exists
 ---------------
@@ -19,11 +21,9 @@ start:
 - **Mojibake logs.** `powershell.exe` (5.1) reads a BOM-less UTF-8 script as
   ANSI, so the Windows scripts must stay ASCII-only to remain readable in the
   Scheduled Task's log — the only trace an unattended run leaves.
-- **Wrong daemon.** The hourly timer runs as root. On a host where the runner
-  drives *rootless* Docker, root's `docker` resolves to `/var/run/docker.sock`
-  — a different, usually empty daemon — so `docker info` succeeds, both
-  `system df` lines read ~0B and the sweep exits 0 having reclaimed nothing,
-  while the runner's real hoard grows untouched.
+- **Wrong owner.** The hourly timer runs as root. Rootful and rootless Podman
+  have different inventories. A successful query in root's context does not
+  prove that the runner owner's inventory was reached.
 - **Unbounded `_diag`.** The runner never rotates its own diagnostic logs, so
   they accumulate for the life of the box.
 - **Toolcache generations.** `actions/setup-*` stacks a new
@@ -116,37 +116,68 @@ def test_retention_is_time_based_and_overridable() -> None:
         "runner_gc.sh must default to a 2h retention overridable by "
         "RUNNER_GC_RETENTION."
     )
-    # All three docker prunes must be age-filtered, never unconditional.
-    for cmd in ("container prune", "image prune", "builder prune"):
-        pattern = rf"docker {cmd}[^\n]*--filter \"until=\$\{{RETENTION\}}\""
-        assert re.search(pattern, text), (
-            f"`docker {cmd}` must carry the --filter until=$RETENTION guard."
-        )
+    assert '_retention_secs "$RETENTION"' in text
+    assert '"$created" -ge "$PODMAN_CUTOFF"' in text
+
+
+def test_podman_clock_and_duration_are_checked_before_collection() -> None:
+    text = GC.read_text(encoding="utf-8")
+    assert '_decimal_le "$now" 9223372036854775807' in text
+    assert text.index('seconds="$(_retention_secs') < text.index(
+        "_podman_containers remove ||"
+    )
+    assert text.index('_decimal_le "$count" "$bound"') < text.index(
+        "count * multiplier"
+    )
+    assert 'now="$(date +%s)" ||' in text
+    ps = GC_WIN.read_text(encoding="utf-8")
+    assert ps.index("$cutoff = Get-PodmanCutoff") < ps.index(
+        "$null = Get-PodmanContainers"
+    )
+    assert "[String]::CompareOrdinal($digits, $bound)" in ps
+    assert r"\A([0-9]+)([smhd]?)\z" in ps
+
+
+def test_image_identity_is_strict_and_separate_from_container_identity() -> None:
+    shell = GC.read_text(encoding="utf-8")
+    ps = GC_WIN.read_text(encoding="utf-8")
+    assert "^(sha256:)?([a-f0-9]{64})$" in shell
+    assert r"\A(?:sha256:)?([a-f0-9]{64})\z" in ps
+    assert (
+        "select(.Id == $id" in shell
+    )  # Container identity is not image normalization.
+    assert "$container.Id -cne $containerId" in ps
+    assert 'reference="$(_normalize_image_id "$reference")"' in shell
+    assert "$references += ConvertTo-PodmanImageId $container.Image" in ps
 
 
 def test_image_sweep_spares_keep_tagged_images() -> None:
-    """Lived 2026-09-03: `docker image prune -af` swept the h-nn LLM stack's
+    """Lived 2026-09-03: the old Docker image prune swept the h-nn LLM stack's
     14.7 GB image two hours after `just llm down`. Protection is a TAG under
     RUNNER_GC_KEEP_TAG_PREFIX (default keep/), so guarding a new image is one
-    `docker tag` and never a list edit here."""
+    `podman tag` and never a list edit here."""
     text = GC.read_text(encoding="utf-8")
     assert 'KEEP_TAG_PREFIX="${RUNNER_GC_KEEP_TAG_PREFIX:-keep/}"' in text
-    assert "_docker_image_gc" in text and "docker rmi -f" in text
-    assert not re.search(r"docker image prune -af", text), (
+    assert "_podman_image_eligible" in text and "podman rmi --no-prune" in text
+    assert not re.search(r"podman image prune -af", text), (
         "the blanket `image prune -af` is gone: it cannot exempt anything."
     )
-    assert "${KEEP_TAG_PREFIX}" in text and "docker: keep" in text, (
+    assert '"$KEEP_TAG_PREFIX"' in text and "podman: keep" in text, (
         "keep-tagged images are skipped and the skip is logged."
     )
 
 
-def test_gc_prunes_docker_container_buildx_builders() -> None:
-    """`docker builder prune` does not reach docker-container builders."""
-    text = GC.read_text(encoding="utf-8")
-    assert "docker buildx prune" in text and "--builder" in text, (
-        "runner_gc.sh must also prune non-default buildx builders, whose "
-        "cache lives inside their own container."
-    )
+def test_gc_never_reclaims_unfiltered_persistent_cache() -> None:
+    """ADR0067: aggressive image prune also clears unfiltered mount cache."""
+    for script in (GC, GC_WIN):
+        active = "\n".join(
+            line
+            for line in script.read_text(encoding="utf-8").splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        assert not re.search(r"podman (?:image|system|builder|buildx) prune", active)
+        assert "'prune'" not in active
+        assert not re.search(r"podman rmi .*-(?:f|-force)", active)
 
 
 def test_installer_upserts_hook_without_duplicating() -> None:
@@ -207,27 +238,24 @@ def test_windows_gc_skips_while_a_job_runs() -> None:
     assert "Get-Process -Name 'Runner.Worker'" in text, (
         "runner_gc_win.ps1 must check for an in-flight job before pruning."
     )
-    assert "--filter=until=$Retention" in text, (
-        "Windows docker prunes must carry the same age filter as the WSL leg."
-    )
+    assert "$created -ge $Cutoff" in text
+    assert "Test-ForeignWorker" in text
 
 
-def test_windows_gc_docker_calls_carry_a_watchdog() -> None:
-    """A half-dead Docker Desktop answers `docker info` and then hangs the
-    prunes FOREVER (seen live 2026-08-23: engine VM stopped, CLI connected,
-    `container prune` never returned — the hourly S4U task would burn its
-    whole 30-minute ExecutionTimeLimit every hour). Every docker invocation
-    must go through a kill-on-timeout wrapper, `docker info` included: the
-    zombie state passes info and dies one call later."""
+def test_windows_gc_podman_calls_carry_a_watchdog() -> None:
+    """Preserve the watchdog introduced after a Docker Desktop hang in 2026.
+    That incident is not evidence of Podman runtime behavior. Every Podman
+    invocation, including reads, must retain the same bounded-call guard.
+    """
     text = GC_WIN.read_text(encoding="utf-8")
-    assert "Invoke-DockerGuarded" in text, (
-        "runner_gc_win.ps1 must route docker through a watchdog wrapper."
+    assert "Invoke-PodmanGuarded" in text, (
+        "runner_gc_win.ps1 must route podman through a watchdog wrapper."
     )
     bare = [
-        line for line in text.splitlines() if re.search(r"^\s*[^#]*&\s+docker\b", line)
+        line for line in text.splitlines() if re.search(r"^\s*[^#]*&\s+podman\b", line)
     ]
     assert not bare, (
-        f"bare `& docker` invocations can hang forever on a half-dead "
+        f"bare `& podman` invocations can hang forever on a half-dead "
         f"daemon; route them through the watchdog: {bare}"
     )
     assert "timed out" in text, (
@@ -267,28 +295,23 @@ def test_windows_entrypoint_drives_both_runners() -> None:
         )
 
 
-def test_docker_leg_also_runs_as_each_runner_owner() -> None:
-    """Root's own docker context cannot reach a rootless daemon.
+def test_podman_leg_also_runs_as_each_runner_owner() -> None:
+    """Root's inventory is not the runner owner's rootless inventory.
 
-    The timer runs as root. Where the runner drives rootless Docker, root's
-    `docker` talks to `/var/run/docker.sock` — a *different* daemon that is
-    typically empty — so every prune succeeds against nothing and the sweep
-    reports success. Root must therefore also re-enter the docker leg as each
-    runner's owning user, whose context points at the daemon the jobs actually
-    dirty. Keeping root's own leg as well means a rootful-only host is
-    unaffected, so the fix cannot regress either topology.
+    Reenter as each owner with its own HOME/runtime context, without inheriting
+    root's explicitly selected remote connection. Keep root's own leg as well.
     """
     text = GC.read_text(encoding="utf-8")
     assert re.search(r"runuser\s+-u", text), (
-        "runner_gc.sh must drop to the runner's owning user for the docker "
+        "runner_gc.sh must drop to the runner's owning user for the podman "
         "leg; as root it would prune the wrong (often empty) daemon."
     )
     assert "XDG_RUNTIME_DIR" in text, (
-        "the re-entry must set XDG_RUNTIME_DIR so the rootless context "
-        "resolves to /run/user/<uid>/docker.sock."
+        "the re-entry must set XDG_RUNTIME_DIR for the runner owner's "
+        "rootless runtime context, without guessing a socket path."
     )
-    assert "RUNNER_GC_DOCKER_ONLY" in text, (
-        "the re-entry needs a docker-only mode so it neither recurses nor "
+    assert "RUNNER_GC_PODMAN_ONLY" in text, (
+        "the re-entry needs a podman-only mode so it neither recurses nor "
         "repeats the root-only apt/journal work."
     )
 
@@ -366,7 +389,7 @@ def test_toolcache_reaping_never_races_a_running_job() -> None:
     """Deleting an in-use `<version>/` breaks the job outright.
 
     Losing build cache to a prune only costs time, so `RUNNER_GC_FORCE=1`
-    may bypass the job guard for Docker. Removing a toolcache directory that a
+    may bypass the job guard for Podman. Removing a toolcache directory that a
     running job resolved earlier makes its next step fail with ENOENT, so this
     leg must re-check for a live job regardless of FORCE.
     """
@@ -381,7 +404,7 @@ def test_toolcache_reaping_never_races_a_running_job() -> None:
     # Toolcache guard: separate, and FORCE must not reach it.
     assert re.search(r"^if _foreign_worker; then$", text, re.MULTILINE), (
         "the toolcache leg needs its own `_foreign_worker` guard with no FORCE "
-        "escape, separate from the top-level docker guard."
+        "escape, separate from the top-level podman guard."
     )
 
 
@@ -473,16 +496,16 @@ def test_counted_collections_are_wrapped_for_powershell_51() -> None:
     )
 
 
-def test_dry_run_covers_the_docker_prunes() -> None:
+def test_dry_run_covers_the_podman_prunes() -> None:
     """A rehearsal must not prune the daemon either.
 
-    Not reachable from the end-to-end tests: they all pass -SkipDocker, since
-    a test that really pruned the developer's Docker Desktop would be worse
+    Not reachable from the end-to-end tests: they all pass -SkipPodman, since
+    a test that really pruned the developer's Podman Desktop would be worse
     than the bug.
     """
     text = GC_WIN.read_text(encoding="utf-8")
-    assert "DRY-RUN: would prune docker" in text, (
-        "-DryRun must report the docker prunes rather than executing them."
+    assert "DRY-RUN: would remove podman" in text, (
+        "-DryRun must report the podman prunes rather than executing them."
     )
 
 
@@ -555,6 +578,9 @@ def _run_gc(root: Path, *extra: str, env: dict[str, str] | None = None):
     # A real job's variables must not leak in from the developer's shell.
     for key in ("RUNNER_WORKSPACE", "GITHUB_WORKSPACE", "GITHUB_REPOSITORY"):
         overrides.pop(key, None)
+    profile = root.parent / "disposable-profile"
+    profile.mkdir(exist_ok=True)
+    overrides.update({"USERPROFILE": str(profile), "HOME": str(profile)})
     overrides.update(env or {})
     assert PWSH is not None, "pwsh-only helper"
     return subprocess.run(
@@ -565,7 +591,7 @@ def _run_gc(root: Path, *extra: str, env: dict[str, str] | None = None):
             str(GC_WIN),
             "-RunnerRoot",
             str(root),
-            "-SkipDocker",
+            "-SkipPodman",
             "-Force",
             *extra,
         ],
@@ -1220,14 +1246,17 @@ def test_windows_hook_path_is_dotenv_parseable() -> None:
     )
 
 
-@pwshonly
-def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
-    """Behavioral: a docker that never returns must not hang the sweep."""
+@pytest.mark.skipif(
+    PWSH is None or sys.platform != "win32",
+    reason="requires native Windows pwsh and batch fake",
+)
+def test_windows_gc_survives_a_hanging_podman(tmp_path: Path) -> None:
+    """Behavioral: a podman that never returns must not hang the sweep."""
     stub_dir = tmp_path / "bin"
     stub_dir.mkdir()
-    # Found via Get-Command 'docker' on PATH; sleeps far longer than the
+    # Found via Get-Command 'podman' on PATH; sleeps far longer than the
     # watchdog budget on every invocation (info and prunes alike).
-    (stub_dir / "docker.bat").write_text(
+    (stub_dir / "podman.bat").write_text(
         "@echo off\nping -n 121 127.0.0.1 >nul\n", encoding="ascii"
     )
     root = _make_runner_root(tmp_path)
@@ -1242,8 +1271,9 @@ def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
             "-RunnerRoot",
             str(root),
             "-Force",
-            "-DockerTimeoutSec",
+            "-PodmanTimeoutSec",
             "3",
+            "-PodmanOnly",
         ],
         capture_output=True,
         text=True,
@@ -1259,7 +1289,7 @@ def test_windows_gc_survives_a_hanging_docker(tmp_path: Path) -> None:
     elapsed = time.monotonic() - start
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert elapsed < 60, (
-        f"a hanging docker held the sweep for {elapsed:.0f}s; the watchdog "
+        f"a hanging podman held the sweep for {elapsed:.0f}s; the watchdog "
         "must kill it within its budget."
     )
     assert "timed out" in proc.stdout, (

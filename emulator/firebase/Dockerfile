@@ -1,4 +1,4 @@
-FROM node:26-trixie-slim
+FROM docker.io/library/node:26-trixie-slim
 
 # Install Java and other dependencies (required for Firebase emulators).
 # firebase-tools >=14 requires a JDK >= 21. node:26-trixie-slim is Debian
@@ -34,7 +34,7 @@ EXPOSE 9099 8080 9399 9199 9299 9499 4000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:4000 || exit 1
 
-# Default command (can be overridden by docker-compose). firebase-tools
+# Default command (can be overridden by podman-compose). firebase-tools
 # 15 removed the `--host` flag; the emulator host binding (0.0.0.0) now
 # comes from firebase.json's per-emulator `host` fields.
 CMD ["firebase", "emulators:start"]

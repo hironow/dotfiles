@@ -29,6 +29,8 @@ UV := "mise exec -- uv"
 # (or machine uv config differs), instead of failing. The lock changes only via
 # an explicit `uv lock`.
 UV_RUN := "mise exec -- uv run --frozen"
+QUINT := "mise x npm:@informalsystems/quint@0.33.0 -- quint"
+PODMAN_COMPOSE := "PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false"
 # semgrep's CLI wrapper. The interpreter is pinned to 3.14: on Python 3.15
 # semgrep-core dies at startup on Linux, because semgrep derives its stack soft
 # limit from an unlimited RLIMIT_STACK and 3.15 started reporting that as a huge
@@ -462,8 +464,9 @@ disk-report:
 disk-gc:
     bash scripts/disk_gc.sh clean
 
-# Disk: collect the WSL self-hosted runner now (docker images/containers/build
-# cache older than 2h, apt, journal). Skips itself while a job is executing.
+# Disk: collect individually eligible Podman images/containers older than 2h,
+# plus apt/journal data. Build/mount-cache reclamation is intentionally omitted.
+# Skips itself while a job is executing.
 # On Windows this dispatches into the WSL distro; needs `runner-gc-install`.
 [group('Disk'), windows, linux, doc('Collect the self-hosted runner disks now (2h retention, job-safe)')]
 runner-gc:
@@ -630,6 +633,17 @@ dump:
     mv "$listing" "./dump/$host/gcloud"
     echo "==> Dump complete for host '$host' (dump/$host/{Brewfile,gcloud} + shared dump/gitignore-global)"
 
+# Provision only the native Podman 5+ CLI; never initialize or start a machine.
+[unix]
+[group('Setup')]
+podman-install:
+    bash install.sh --podman-only
+
+[windows]
+[group('Setup')]
+podman-install:
+    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File bootstrap.ps1 -PodmanOnly
+
 # Setup: record this machine's dump host alias in dump/.host (untracked, ADR 0030).
 [group('Setup')]
 set-host alias:
@@ -640,38 +654,31 @@ set-host alias:
 # Tests
 # ------------------------------
 
-# Test: build dev container (if available) and run pytest (verbose).
-# Uses the @devcontainers/cli to produce dotfiles-just-sandbox:latest
-# from .devcontainer/devcontainer.json — same image CI builds via the
-# devcontainers/ci action.
+# Test: require a selected Podman engine; fixtures build the shared JSON graph
+# freshly, then exercise actual devcontainer up/exec in a disposable snapshot.
 [group('Test')]
 test:
-    @echo '🧪 Preparing dev container image (if devcontainer CLI is available)...'
-    @if command -v docker >/dev/null 2>&1 && command -v devcontainer >/dev/null 2>&1; then \
-    	echo '→ devcontainer CLI detected; building image'; \
-    	devcontainer build --workspace-folder . --image-name dotfiles-just-sandbox:latest || echo '⚠️ devcontainer build failed (tests may skip)'; \
-    else \
-    	echo '⚠️ docker or @devcontainers/cli not found; tests may skip'; \
-    	echo '   Hint: mise use -g npm:@devcontainers/cli'; \
-    fi
-    @echo '🧪 Running pytest (verbose with skip reasons)...'
-    uvx pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_sync_agents.py
-    @echo '✅ Tests finished.'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PODMAN_COMPOSE_PROVIDER=podman-compose
+    info="$(podman info --format json)"
+    socket="$(printf '%s' "$info" | {{UV_RUN}} python -c 'import json,sys; print(json.load(sys.stdin)["host"]["remoteSocket"]["path"].removeprefix("unix://"))')"
+    export DOTFILES_PODMAN_ENGINE_SOCKET="$socket"
+    bash .devcontainer/require-podman-socket.sh
+    {{UV_RUN}} --group dev pytest -v -ra tests/test_just_sandbox.py tests/test_devcontainer.py tests/test_sync_agents.py
 
-# Test (unit): fast host-side unit tests — no Docker. Covers sync_agents
+# Test (unit): fast host-side unit tests — no containers. Covers sync_agents
 # helpers and the agent hook scripts (tests/unit/). Runs as part of `ci`.
 [group('Test')]
 test-unit:
-    @echo '🧪 Running unit tests (host, no Docker)...'
+    @echo '🧪 Running unit tests (host, no containers)...'
     uvx pytest -q -ra tests/unit/
     @echo '✅ Unit tests finished.'
 
-# Test (install): run install.sh verification in Docker
+# Test (install): mandatory owned-image build from a tracked-only context.
 [group('Test')]
 test-install:
-    @echo '🧪 Running install.sh verification in Docker...'
-    docker build -f tests/docker/InstallTest.Dockerfile .
-    @echo '✅ Verification passed.'
+    {{UV_RUN}} --group dev pytest -q tests/test_install.py
 
 # Self-check: quick, safe health checks with summary
 [group('Setup')]
@@ -705,14 +712,10 @@ self-check with_tests="":
       *) printf '%s\n' "$dup_out"; step_warn 'path duplicates: validator error' ;;
     esac
 
-    # Optional: run quick validate tests inside Docker if requested
-    if [ -n "{{ with_tests }}" ]; then
-      if command -v docker >/dev/null 2>&1; then
-        echo '🧪 Running sandbox validate tests...'
-        if just test-mark marker=validate; then step_ok 'tests: validate'; else step_err 'tests: validate failed'; fi
-      else
-        step_warn 'docker missing: skip tests'
-      fi
+    # Once requested, the Podman validation is required, never skipped.
+    if [ -n {{quote(with_tests)}} ]; then
+      echo '🧪 Running sandbox validate tests...'
+      if just test-mark validate; then step_ok 'tests: validate'; else step_err 'tests: validate failed'; fi
     fi
 
     echo "Self-check summary: ok=$ok warn=$warn err=$err"
@@ -722,13 +725,18 @@ self-check with_tests="":
 # Test (by marker): run tests filtered by -m MARKER
 [group('Test')]
 test-mark marker="":
-    @echo '🧪 Running pytest with marker:' '{{ marker }}'
-    @if [ -n "{{ marker }}" ]; then \
-    	uvx pytest -v -ra -m '{{ marker }}' tests/test_just_sandbox.py tests/test_devcontainer.py; \
-    else \
-    	echo 'Marker is empty. Usage: just test-mark marker=install'; \
-    	exit 2; \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z {{quote(marker)}} ]; then
+      echo 'Marker is empty. Usage: just test-mark install' >&2
+      exit 2
     fi
+    export PODMAN_COMPOSE_PROVIDER=podman-compose
+    info="$(podman info --format json)"
+    socket="$(printf '%s' "$info" | {{UV_RUN}} python -c 'import json,sys; print(json.load(sys.stdin)["host"]["remoteSocket"]["path"].removeprefix("unix://"))')"
+    export DOTFILES_PODMAN_ENGINE_SOCKET="$socket"
+    bash .devcontainer/require-podman-socket.sh
+    {{UV_RUN}} --group dev pytest -v -ra -m {{quote(marker)}} tests/test_just_sandbox.py tests/test_devcontainer.py
 
 # ------------------------------
 # Formatting
@@ -784,6 +792,19 @@ lint:
     @just mise-versions-check
     @echo '✅ lint done.'
 
+# Formal GC safety: bounded seeded model traces plus real-script fake-I/O replay.
+[group('Lint')]
+spec-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for spec in scripts/spec/*.qnt; do
+      [ -f "$spec" ] || { echo 'No safety models found in scripts/spec' >&2; exit 1; }
+      {{QUINT}} typecheck "$spec"
+      {{QUINT}} test "$spec" --backend typescript --max-samples 100
+      {{QUINT}} run "$spec" --backend typescript --invariant Safety --max-samples 1000 --max-steps 12 --seed 565 --verbosity 1
+    done
+    {{UV_RUN}} --group dev pytest -q tests/unit/test_podman_gc_simulation.py
+
 # check: strict gate, never writes. Used by pre-push hook and CI.
 [group('Lint')]
 check:
@@ -794,6 +815,7 @@ check:
     @echo '🔎 Python (ty check, ADR 0044)...'
     @{{UV_RUN}} --group lint ty check
     @just rttm-check
+    @just spec-check
     @echo '🔎 Go (golangci-lint)...'
     just go-lint
     @echo '🔎 Shell (shellcheck)...'
@@ -853,11 +875,11 @@ rttm-check: rttm-lint rttm-typecheck
 # Go quality gate (docs/agents/go-tooling.md): golangci-lint v2, one root
 # config, gofumpt-only formatters. Per module because this repo has several
 # go.mod files (emulator CLIs + tools/simple-server).
-# go-test: unit tests for the Go modules under tools/.
+# go-test: unit tests for tools/ and the stdlib-only emulator/healthcheck probe.
 #
 # Scope is deliberate. The emulator/*-cli modules need running emulators and a
 # populated module cache, which is what `just ci-emu` is for; putting them in the
-# fast gate would make `just check` depend on Docker. tools/ modules run in
+# fast gate would make `just check` depend on a running Podman engine. tools/ modules run in
 # seconds and need no service (tools/agent-hooks has one dependency, go-json,
 # which go fetches into the module cache on first use), so `-short` costs
 # nothing here and keeps the contract for any module that later adds a long
@@ -872,10 +894,25 @@ rttm-check: rttm-lint rttm-typecheck
 go-test go="mise x -- go":
     #!/usr/bin/env bash
     set -euo pipefail
-    git ls-files -z 'tools/**/go.mod' | while IFS= read -r -d '' mod; do
+    git ls-files -z 'tools/**/go.mod' 'emulator/healthcheck/go.mod' | while IFS= read -r -d '' mod; do
       dir="$(dirname "$mod")"
       echo "🧪 go test -short $dir"
       (cd "$dir" && {{go}} test -short ./...)
+    done
+
+# Compile the image-local TCP probe for each supported device (not runtime proof).
+[group('Test')]
+healthcheck-build go="mise x -- go":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd emulator/healthcheck
+    mkdir -p dist
+    for target in linux/amd64 linux/arm64 darwin/arm64 windows/amd64; do
+      os="${target%/*}"
+      arch="${target#*/}"
+      suffix=""
+      [ "$os" != windows ] || suffix=".exe"
+      CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" {{go}} build -trimpath -o "dist/tcp-healthcheck-$os-$arch$suffix" .
     done
 
 # tools/agent-hooks/internal/guardcorpus/command-guard.jsonl is what the Go command guard is
@@ -1161,29 +1198,69 @@ check-forbidden-tokens-tree *args:
 check-pr-body file:
     python3 scripts/check_forbidden_tokens.py file {{ file }}
 
-# Fast gate (no Docker / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
+# Fast gate (no live container engine / no heavy uv): lint+format+semgrep, rule self-tests, IaC tests
 [group('CI')]
 ci: check lint-claude test-unit semgrep-test test-iac instruction-budget skills-lock-check emu-lint check-forbidden-tokens-branch check-forbidden-tokens-tree
     @echo "✅ ci (fast gate) passed"
 
-# Full non-emulator matrix: fast gate + Docker sandbox tests + install verification
+# Full non-emulator matrix: fast gate + fresh Podman lifecycle + install verification
 [group('CI')]
 ci-all: ci test test-install
     @echo "✅ ci-all passed"
 
-# Emulator suite (mirrors .github/workflows/test-emulators.yaml): lint + bring up + fast + e2e.
-# Elasticsearch is not in the lite stack, so its standalone check stays manual
-# (emulator/scripts/test-elasticsearch.sh after `just emu-up-group search`), as in CI.
-# Heavy: needs Docker + emulator uv env. Leaves emulators up (stop with `just emu-stop`).
+# Isolated emulator workflow parity: lint, four services + telemetry, all three test selections.
+# Needs existing Podman + podman-compose and emulator uv dependencies; no host bootstrap.
+# Retains .pi/tasks/ci-emu.*/run.json for serial recovery after interruption (tests/README.md).
 [group('CI')]
 ci-emu:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ]; then
+      echo 'ci-emu refuses an inherited run manifest' >&2
+      exit 1
+    fi
+    repo="{{justfile_directory()}}"
+    interrupted=0
+    cleanup() {
+      result=$?
+      trap - EXIT
+      if [ "$interrupted" = 0 ] && [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] && [ -f "$DOTFILES_PODMAN_RUN_MANIFEST" ]; then
+        cleanup_result=0
+        (
+          cd "$repo/emulator" || exit
+          {{UV_RUN}} --group dev python -m tests.utils.isolation cleanup --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+        ) || cleanup_result=$?
+        if [ "$cleanup_result" != 0 ]; then
+          echo "Cleanup failed; retained recovery manifest: $DOTFILES_PODMAN_RUN_MANIFEST" >&2
+          if [ "$result" = 0 ]; then result=$cleanup_result; fi
+        fi
+      fi
+      exit "$result"
+    }
+    interrupt() {
+      interrupted=1
+      echo "Interrupted; wait for the creator to stop before serial recovery: ${DOTFILES_PODMAN_RUN_MANIFEST:-no manifest yet}" >&2
+      exit "$1"
+    }
+    trap cleanup EXIT
+    trap 'interrupt 130' INT
+    trap 'interrupt 143' TERM
+    cd "$repo"
     just emu-lint
-    just emu-start
-    just emu-test-fast
-    just emu-test-e2e
-    echo '✅ ci-emu passed'
+    mkdir -p "$repo/.pi/tasks"
+    run_dir="$(mktemp -d "$repo/.pi/tasks/ci-emu.XXXXXXXX")"
+    export DOTFILES_PODMAN_RUN_MANIFEST="$run_dir/run.json"
+    export TMPDIR="$run_dir/tmp"
+    mkdir "$TMPDIR"
+    export DOTFILES_E2E_REQUIRED=1
+    export PODMAN_COMPOSE_PROVIDER=podman-compose
+    cd "$repo/emulator"
+    {{UV_RUN}} --group dev python -m tests.utils.isolation prepare --source "$repo" --manifest "$DOTFILES_PODMAN_RUN_MANIFEST" --services firebase-emulator,spanner-emulator,pgadapter,postgres --telemetry
+    {{UV_RUN}} --group dev python -m tests.utils.isolation start --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+    {{UV_RUN}} --group dev python -m tests.utils.isolation wait --manifest "$DOTFILES_PODMAN_RUN_MANIFEST"
+    {{UV_RUN}} --group dev pytest tests/ -v -m 'not e2e'
+    {{UV_RUN}} --group dev pytest tests/e2e -v -m e2e -ra
+    {{UV_RUN}} --group dev pytest tests/test_postgres18_features.py tests/test_postgres18_emulator.py -v
 
 # CI-equivalent gate: prek hooks plus the full non-emulator suite (= pre-commit + ci-all)
 [group('CI')]
@@ -1412,16 +1489,19 @@ check-myip:
     # Check my ip address
     @ifconfig | sed -En "s/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p"
 
-# Check: list Docker containers' ports
+# Check: list the selected Podman engine's container ports
 [group('Check')]
-check-dockerport:
-    # Check docker port
-    @ids=$(docker ps -q); \
+check-podmanport:
+    @ids=$(podman ps -q); \
     if [ -z "$ids" ]; then \
       echo '[]' | jq '.'; \
     else \
-      echo "$ids" | xargs docker inspect | jq '.[] | {name: .Name, ports: .NetworkSettings.Ports}'; \
+      echo "$ids" | xargs podman inspect | jq '.[] | {name: .Name, ports: .NetworkSettings.Ports}'; \
     fi
+
+# Deprecated compatibility API; this alias never invokes a Docker engine.
+[private]
+alias check-dockerport := check-podmanport
 
 # Check: list installed Homebrew packages
 [group('Check')]
@@ -2079,7 +2159,7 @@ tailnet-apply:
 
 # ------------------------------
 # Emulator (emulator/) — vendored local emulator stack
-# scripts use bare `docker compose`; recipes cd into emulator/ for auto-discovery
+# Scripts select Podman/provider explicitly; recipes cd into emulator/.
 # ------------------------------
 
 # nobuild=yes skips image build. More: emu-up-group/-only/-full. COMPOSE_PROFILES
@@ -2116,11 +2196,12 @@ emu-up-full nobuild='no':
 emu-start:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation start for isolated runs; refusing shared resources' >&2; exit 2; fi
     cd emulator
     echo '🧹 Cleaning old volumes...'
     # `down` is profile-gated: without all profiles enabled it only tears down
     # the default (lite) services, orphaning any profiled heavy containers.
-    COMPOSE_PROFILES=full,cli docker compose down -v --remove-orphans || true
+    COMPOSE_PROFILES=full,cli {{PODMAN_COMPOSE}} down -v --remove-orphans
     bash scripts/prebuild-images.sh firebase-emulator postgres
     COMPOSE_PROFILES= bash scripts/start-services.sh
     bash scripts/wait-for-services.sh --default 30 --postgres 60
@@ -2130,10 +2211,11 @@ emu-start:
 emu-start-full:
     #!/usr/bin/env bash
     set -euo pipefail
+    if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation start for isolated runs; refusing shared resources' >&2; exit 2; fi
     cd emulator
     echo '🧹 Cleaning old volumes...'
     # `down` is profile-gated; enable all profiles so every service is removed.
-    COMPOSE_PROFILES=full,cli docker compose down -v --remove-orphans || true
+    COMPOSE_PROFILES=full,cli {{PODMAN_COMPOSE}} down -v --remove-orphans
     bash scripts/prebuild-images.sh a2a-inspector firebase-emulator mcp-inspector postgres
     COMPOSE_PROFILES=full bash scripts/start-services.sh
     bash scripts/wait-for-services.sh --default 30 --a2a 60 --mcp 60 --postgres 60
@@ -2156,6 +2238,7 @@ emu-wait default='30' a2a='60' mcp='60' postgres='60':
 # Pre-build selected emulator images
 [group('Emulator')]
 emu-prebuild images='a2a-inspector firebase-emulator mcp-inspector postgres':
+    @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation start for isolated builds; refusing shared resources' >&2; exit 2; fi
     cd emulator && bash scripts/prebuild-images.sh {{images}}
 
 # Clean up emulator volumes (deletes all data)
@@ -2163,7 +2246,8 @@ emu-prebuild images='a2a-inspector firebase-emulator mcp-inspector postgres':
 # (lite + heavy + cli), not just the default-profile ones.
 [group('Emulator')]
 emu-clean:
-    cd emulator && COMPOSE_PROFILES=full,cli docker compose down -v --remove-orphans || true
+    @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation cleanup for isolated runs; refusing shared resources' >&2; exit 2; fi
+    cd emulator && COMPOSE_PROFILES=full,cli {{PODMAN_COMPOSE}} down -v --remove-orphans
 
 # Check emulator port usage before starting
 [group('Emulator')]
@@ -2255,7 +2339,7 @@ emu-api services='github,google,slack,apple,microsoft,stripe,clerk,okta,resend':
     bunx emulate@0.8.0 --service '{{services}}' --port 4100 --seed emulate.config.yaml
 
 # Stop the emulate API emulators started by `just emu-api` (the host bunx/emulate process; no
-# Docker container is involved, unlike emu-stop / tel-down)
+# Podman container is involved, unlike emu-stop / tel-down)
 [group('Emulator')]
 emu-api-stop:
     #!/usr/bin/env bash
@@ -2278,20 +2362,24 @@ emu-api-stop:
 # (shared with the emulator stack; telemetry compose references it as external).
 [group('Telemetry')]
 tel-up:
-    @docker network inspect shared-otel-net >/dev/null 2>&1 || docker network create shared-otel-net
-    cd telemetry && docker compose up -d
+    @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
+    @podman network inspect shared-otel-net >/dev/null 2>&1 || podman network create shared-otel-net
+    cd telemetry && {{PODMAN_COMPOSE}} up -d
 
 # Stop telemetry stack
 [group('Telemetry')]
 tel-down:
-    cd telemetry && docker compose down
+    @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
+    cd telemetry && {{PODMAN_COMPOSE}} down
 
 # Show telemetry stack status
 [group('Telemetry')]
 tel-check:
-    cd telemetry && docker compose ps
+    @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
+    cd telemetry && {{PODMAN_COMPOSE}} ps
 
 # Tail telemetry logs (optional service name)
 [group('Telemetry')]
 tel-logs svc='':
-    cd telemetry && docker compose logs -f {{svc}}
+    @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
+    cd telemetry && if [ -n {{quote(svc)}} ]; then {{PODMAN_COMPOSE}} logs -f {{quote(svc)}}; else {{PODMAN_COMPOSE}} logs -f; fi

@@ -5,8 +5,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    # ready_for_review is not in the default event set; without it a draft
-    # marked ready would not get a run until its next push.
     types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
@@ -15,61 +13,36 @@ concurrency:
 
 jobs:
   test:
-    name: Run just tests in dev container
-    # Draft pull requests do not run CI (this job alone takes 6+ minutes);
-    # runs start when the PR is marked ready for review.
-    #
-    # Paused (owner, 2026-11-04): the job is long, and outside the work at hand.
-    # It runs only when the repository variable RUN_SANDBOX_TESTS is "true":
-    # `gh variable set RUN_SANDBOX_TESTS --body true` turns it back on, with no
-    # code change. Meanwhile the Go tests it ran through `just check` run in
-    # unit-test.yaml's "Go tests" job.
+    name: Required disposable Podman devcontainer build/up/exec
+    # Owner pause is unchanged; do not enable this repository variable here.
     if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && vars.RUN_SANDBOX_TESTS == 'true'
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      DOTFILES_DEVCONTAINER_MANIFEST: ${{ github.workspace }}/devcontainer-run.json
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      # Build the dev container declared by .devcontainer/devcontainer.json
-      # (debian-12 + features) and run `just test` inside it. The action
-      # handles BuildKit, GHA cache wiring, and feature resolution so the
-      # local IDE and CI both consume the same image graph.
-      #
-      # imageName=dotfiles-just-sandbox tags the resulting image so the
-      # pytest fixture in tests/test_just_sandbox.py finds it via
-      # `docker image inspect` (no rebuild).
-      - name: Run just test inside dev container
-        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
-        with:
-          imageName: dotfiles-just-sandbox
-          imageTag: latest
-          push: never
-          # cacheFrom is intentionally omitted until we wire up a
-          # publish step to ghcr.io. Adding a non-existent cacheFrom
-          # produced a 403 noise-warning at every run.
-          runCmd: just test
-          # Surface GITHUB_TOKEN inside the dev container so mise's
-          # `latest` resolution and any other GitHub-API caller hit
-          # the authenticated 5000/hr quota instead of the anonymous
-          # 60/hr limit. The pytest fixture passes it on to inner
-          # one-shot containers via `docker run -e GITHUB_TOKEN`.
-          #
-          # DOTFILES_SANDBOX_DISPOSABLE_CHECKOUT states that this
-          # checkout dies with the job, which lets the sandbox
-          # bind-mount it and run `git init` / `git add -A` in it.
-          # devcontainer.json exports LOCAL_WORKSPACE_FOLDER inside
-          # every dev container, CI or not, so it alone is not proof;
-          # without this line the sandbox refuses to bind a checkout
-          # (tests/test_just_sandbox.py `_mount_mode`).
-          env: |
-            PYTEST_ADDOPTS=--junitxml=/root/dotfiles/pytest-report.xml
-            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-            DOTFILES_SANDBOX_DISPOSABLE_CHECKOUT=1
-
+      - name: Bootstrap native Podman and canonical frozen CLI tools
+        run: bash .devcontainer/ci-bootstrap.sh
+      - name: Run required disposable devcontainer acceptance and sandbox tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The tests make tracked-only snapshots, not a real repository bind.
+          # DOTFILES_SANDBOX_DISPOSABLE_CHECKOUT=1 is set ONLY inside that snapshot.
+          export PYTEST_ADDOPTS="--junitxml=${GITHUB_WORKSPACE}/pytest-report.xml"
+          just test
+      - name: Always clean only journal-owned devcontainer resources
+        if: always()
+        run: |
+          if [ -f "$DOTFILES_DEVCONTAINER_MANIFEST" ]; then
+            uv run --frozen --group dev python tests/test_just_sandbox.py \
+              --cleanup-manifest "$DOTFILES_DEVCONTAINER_MANIFEST"
+          fi
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pytest-report
-          path: pytest-report.xml
+          path: ${{ github.workspace }}/pytest-report.xml

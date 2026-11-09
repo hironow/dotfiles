@@ -124,4 +124,4 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
-        description: Build the Docker sandbox image and run the sandbox test suite.
+        description: Build a fresh Podman devcontainer image and run the required sandbox lifecycle tests.

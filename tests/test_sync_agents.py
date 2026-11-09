@@ -1,6 +1,6 @@
 """E2E tests for sync-agents just command.
 
-These tests run in Docker containers to avoid polluting the host environment.
+These tests run in disposable Podman containers, never agent homes on the host.
 The sync-agents command syncs ROOT_AGENTS files to agent instruction directories.
 
 File naming convention:
@@ -15,13 +15,17 @@ import re
 import shutil
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 
 import pytest
+from test_just_sandbox import RUN_LABEL, _mount_mode, owned_container_run
+from test_just_sandbox import _copy_tracked_into as _hardened_copy_tracked_into
+from test_just_sandbox import docker_image as sandbox_image_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
 DEVCONTAINER_JSON = ROOT / ".devcontainer" / "devcontainer.json"
-IMAGE = "dotfiles-just-sandbox:latest"
+docker_image = sandbox_image_fixture
 
 
 def _copy_tracked_into(src: str, snapshot: str) -> None:
@@ -34,25 +38,14 @@ def _copy_tracked_into(src: str, snapshot: str) -> None:
     commands). Every test gets its own disposable snapshot via the
     autouse fixture below.
     """
-    tracked = subprocess.run(
-        ["git", "-C", src, "ls-files", "-z"],
-        check=True,
-        stdout=subprocess.PIPE,
-    ).stdout.decode()
-    for rel in tracked.split("\0"):
-        if not rel:
-            continue
-        source = Path(src) / rel
-        if not source.is_file():  # skip gitlinks / vanished paths
-            continue
-        dest = Path(snapshot) / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, dest, follow_symlinks=False)
+    _hardened_copy_tracked_into(src, snapshot)
 
 
 # Mount source for the current test's containers (set by the autouse
 # fixture; None only outside tests).
 _SANDBOX_REPO: str | None = None
+_SANDBOX_SNAPSHOT: str | None = None
+_SANDBOX_PENDING_RUNS: set[str] = set()
 
 
 @pytest.fixture(autouse=True)
@@ -62,29 +55,33 @@ def sandbox_repo():
     one) is not enough: tests mutate /root/dotfiles, so a shared mount
     cross-contaminates the suite (observed as 44 CI failures).
 
-    Under docker-outside-of-docker (CI; LOCAL_WORKSPACE_FOLDER set) mount
+    Under outside Podman (LOCAL_WORKSPACE_FOLDER set) mount
     sources must be HOST paths, so the snapshot is created inside the
     workspace itself and its host path derived via LOCAL_WORKSPACE_FOLDER."""
-    global _SANDBOX_REPO
+    global _SANDBOX_REPO, _SANDBOX_SNAPSHOT, _SANDBOX_PENDING_RUNS
+    _mount_mode(os.environ)
     lwf = os.environ.get("LOCAL_WORKSPACE_FOLDER")
     if lwf:
         snapshots_root = ROOT / ".e2e-snapshots"
         snapshots_root.mkdir(exist_ok=True)
         snapshot = tempfile.mkdtemp(prefix="snap-", dir=str(snapshots_root))
+    else:
+        snapshot = tempfile.mkdtemp(prefix=".dotfiles-syncagents-", dir=ROOT)
+    pending_runs: set[str] = set()
+    _SANDBOX_PENDING_RUNS = pending_runs
+    _SANDBOX_SNAPSHOT = snapshot
+    try:
         _copy_tracked_into(str(ROOT), snapshot)
-        # The snapshot sits under ROOT. `uvx pytest` runs on the image's
-        # Python 3.11, which has no relative_to(walk_up=...)
-        _SANDBOX_REPO = str(Path(lwf) / Path(snapshot).relative_to(ROOT))
+        _SANDBOX_REPO = (
+            str(Path(lwf) / Path(snapshot).relative_to(ROOT)) if lwf else snapshot
+        )
         yield
+    finally:
         _SANDBOX_REPO = None
-        shutil.rmtree(snapshot, ignore_errors=True)
-        return
-    snapshot = tempfile.mkdtemp(prefix="dotfiles-syncagents-")
-    _copy_tracked_into(str(ROOT), snapshot)
-    _SANDBOX_REPO = snapshot
-    yield
-    _SANDBOX_REPO = None
-    shutil.rmtree(snapshot, ignore_errors=True)
+        _SANDBOX_SNAPSHOT = None
+        # Only creator-captured context, after EVERY run's durable cleanup ACK.
+        if not pending_runs:
+            shutil.rmtree(snapshot)
 
 
 def _run(
@@ -104,60 +101,6 @@ def _run(
     )
 
 
-def _docker_available() -> bool:
-    """Check if Docker is available."""
-    r = _run(["docker", "info"])
-    return r.returncode == 0
-
-
-def _devcontainer_cli_available() -> bool:
-    r = _run(["devcontainer", "--version"])
-    return r.returncode == 0
-
-
-def _image_exists(image: str) -> bool:
-    return _run(["docker", "image", "inspect", image]).returncode == 0
-
-
-@pytest.fixture(scope="module")
-def docker_image():
-    """Provide the dotfiles dev container image, mirroring
-    test_just_sandbox.py: reuse the CI-prebuilt image when present,
-    fall back to a local devcontainer build."""
-    if not _docker_available():
-        pytest.skip("Docker is not available; skipping e2e tests.")
-
-    if not DEVCONTAINER_JSON.exists():
-        pytest.skip("devcontainer.json missing; skipping e2e tests.")
-
-    if _image_exists(IMAGE):
-        yield IMAGE
-        return
-
-    if not _devcontainer_cli_available():
-        pytest.skip(
-            "Image 'dotfiles-just-sandbox:latest' not present and the "
-            "@devcontainers/cli is not installed. Run "
-            "`npm i -g @devcontainers/cli` or rely on CI."
-        )
-
-    build_cmd = [
-        "devcontainer",
-        "build",
-        "--workspace-folder",
-        str(ROOT),
-        "--image-name",
-        IMAGE,
-    ]
-    result = _run(build_cmd, cwd=ROOT)
-    if result.returncode != 0:
-        pytest.fail(f"devcontainer build failed: {result.stderr}")
-
-    yield IMAGE
-
-    # cleanup: image remains for session reuse
-
-
 def _run_in_container(
     docker_image: str,
     cmd: str,
@@ -166,10 +109,10 @@ def _run_in_container(
     go: bool = False,
     network: bool = True,
 ) -> subprocess.CompletedProcess:
-    """Run a command inside a Docker container.
+    """Run a command inside a uniquely labelled Podman container.
 
     Args:
-        docker_image: Docker image name
+        docker_image: legacy fixture spelling for this run's immutable image ID
         cmd: Command to run inside container
         check: If True, raise error on non-zero exit code
         go: If False (the default), Go is out of mise's reach, so sync builds
@@ -186,10 +129,13 @@ def _run_in_container(
     # snapshot (sandbox_repo fixture), never the host working tree.
     # Forward GITHUB_TOKEN for the same reason as in test_just_sandbox.py.
     assert _SANDBOX_REPO is not None, "sandbox_repo fixture not active"
+    run_id = uuid.uuid4().hex
     docker_cmd = [
-        "docker",
-        "run",
+        "podman",
+        "create",
         "--rm",
+        "--label",
+        f"{RUN_LABEL}={run_id}",
         "-v",
         f"{_SANDBOX_REPO}:/root/dotfiles",
         "-w",
@@ -203,7 +149,10 @@ def _run_in_container(
     if not network:
         docker_cmd.extend(["--network", "none"])
     docker_cmd.extend([docker_image, "bash", "-c", cmd])
-    result = _run(docker_cmd)
+    _SANDBOX_PENDING_RUNS.add(run_id)
+    with owned_container_run(run_id, snapshot_path=_SANDBOX_SNAPSHOT) as create_start:
+        result = create_start(docker_cmd)
+    _SANDBOX_PENDING_RUNS.remove(run_id)
 
     if check and result.returncode != 0:
         pytest.fail(

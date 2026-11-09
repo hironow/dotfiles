@@ -57,6 +57,11 @@ its reason so you can apply it to cases a check does not list.
 - **`just` is the only task runner.** Keep exactly one `justfile`, at the repo
   root. No `justfile` in subdirectories, and no `make`. One entry point means
   one place to look.
+- **Use Podman 5+ with podman-compose for containers.** Both are
+  required installed permanent CLIs and exempt from the seven-day cooldown.
+  Never fall back to a Docker engine. Set
+  `PODMAN_COMPOSE_PROVIDER=podman-compose` to select the provider explicitly.
+  Keep compatible names and formats such as Dockerfile, Compose and docker.io.
 - **Use `.yaml`, never `.yml`.** Name Compose files `compose.yaml` (Compose
   Spec v2+). `docker-compose.y{a,}ml` is the old v1 name. One spelling stops
   tools from missing files and stops review churn.
@@ -188,6 +193,7 @@ Open the matching file as soon as its trigger applies:
 | writing or changing Python                     | docs/agents/python-tooling.md       |
 | writing or changing Go or a service            | docs/agents/go-tooling.md           |
 | choosing between Go and Rust, or writing or changing Rust | docs/agents/rust-tooling.md |
+| choosing an embedded or in-memory database | docs/agents/go-tooling.md#database-selection |
 | measuring or changing code for speed, in any language | docs/agents/performance.md |
 | modeling distributed state / Quint            | docs/agents/formal-methods.md       |
 | adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |

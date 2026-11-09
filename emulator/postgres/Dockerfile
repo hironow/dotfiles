@@ -1,4 +1,4 @@
-FROM postgres:18
+FROM docker.io/library/postgres:18
 
 USER root
 

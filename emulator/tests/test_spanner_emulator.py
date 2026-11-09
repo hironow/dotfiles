@@ -1,10 +1,11 @@
-import docker
 import pytest
+
+from tests.utils.helpers import podman_client
 
 
 def test_spanner_container_starts():
     """Test that the Spanner container starts and is healthy."""
-    client = docker.from_env()
+    client = podman_client()
 
     from tests.utils.helpers import get_container, wait_for_tcp
     from tests.utils.result import Error, Ok

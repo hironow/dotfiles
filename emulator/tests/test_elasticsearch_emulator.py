@@ -1,7 +1,10 @@
-import docker
 import pytest
 
-from tests.utils.helpers import skip_unless_container_running
+from tests.utils.helpers import (
+    host_endpoint,
+    podman_client,
+    skip_unless_container_running,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -12,7 +15,7 @@ def _require_elasticsearch():
 @pytest.mark.asyncio
 async def test_elasticsearch_container_starts(http_client):
     """Test that the Elasticsearch container starts and is healthy."""
-    client = docker.from_env()
+    client = podman_client()
 
     from tests.utils.helpers import get_container, wait_for_http
     from tests.utils.result import Error, Ok
@@ -27,14 +30,18 @@ async def test_elasticsearch_container_starts(http_client):
             pytest.fail(msg)
 
     # Check if Elasticsearch REST API is accessible
-    match await wait_for_http(http_client, "http://localhost:9200/_cluster/health"):
+    match await wait_for_http(
+        http_client, host_endpoint("http://localhost:9200/_cluster/health")
+    ):
         case Ok(_):
             pass
         case Error(msg):
             pytest.fail(msg)
 
     # Verify Elasticsearch is ready
-    async with http_client.get("http://localhost:9200/_cluster/health") as response:
+    async with http_client.get(
+        host_endpoint("http://localhost:9200/_cluster/health")
+    ) as response:
         assert response.status == 200, (
             f"Elasticsearch is not ready, status: {response.status}"
         )
