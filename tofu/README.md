@@ -23,5 +23,12 @@ rule behind it.
 - Every storage sink declares an explicit bound.
   `scripts/check_storage_bounds.py` enforces this in `just check`.
 - `just test-iac` runs every stack's offline `tofu test` suite (part of
-  `just ci`).
+  `just ci`). Providers come from a cache, `opentofu/plugin-cache` under an
+  absolute `$XDG_CACHE_HOME`, else under `~/.cache`; the IaC CI workflow keeps
+  the same cache with `actions/cache`, keyed on the lock files. Only a run
+  with an empty cache downloads a provider (the tailscale one comes from
+  github.com release assets). OpenTofu uses a cached provider only when it
+  matches the stack's `.terraform.lock.hcl`. If `tofu init` reports that a
+  cached package "does not match the content of the downloaded package",
+  delete that cache directory and run again.
 - Run `tofu fmt -recursive` before you commit.
