@@ -2,9 +2,9 @@
 
 - **id**: ADR-0068
 - **title**: dev container の mise を、署名を確かめた tarball で凍結する
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-09
-- **decided-date**: —
+- **decided-date**: 2026-11-10
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session、Windows 機）
@@ -12,7 +12,7 @@
 - **supersedes**: ADR-0001 の表の mise の行のうち取得元と検証方法、ADR-0060 の Decision 1・2・4 のうち画像の mise に関わる範囲
 - **superseded-by**: none
 - **related**: [0001](0001-devcontainer-debian-features.md)、[0005](0005-install-path-rationalization.md)、[0006](0006-mise-version-pinning.md)、[0053](0053-stop-using-flatt-mirrors.md)、[0060](0060-frozen-image-generation-has-one-source.md)、[0061](0061-version-generator-in-go.md)、[0067](0067-use-podman-for-managed-containers.md)
-- **consultation-trace**: 2026-11-09 の本セッションでの所有者の選択と裁定（下の「相談の記録」）。公開 PR にも同じ文面を残す
+- **consultation-trace**: 2026-11-09 と 2026-11-10 の本セッションでの所有者の選択と裁定（下の「相談の記録」）。同じ内容を[公開 PR #583](https://github.com/hironow/dotfiles/pull/583) に残す
 
 ## やさしい説明
 
@@ -36,23 +36,21 @@
 
 ## Decision
 
-（Proposed。確定後に MUST 文で記述。）
+A′ 案の次の 4 項を、必須事項（MUST）として採択する。
 
-決定案（A′）:
-
-- D1: 画像は、mise を jdx が配る tarball で入れる。版は `image-tools.toml` の `[bootstrap].mise`。tarball は mise.jdx.dev から、取れなければ GitHub リリースから取る。`SHASUMS256.asc` は GitHub リリースから、取れなければ mise.jdx.dev から取る。どちらのホストから取ったものも、D2 の確認を通ったものだけを使う。
-- D2: tarball は、同じリリースの `SHASUMS256.asc` で確かめてから展開する。署名は、ADR-0001 が固定した指紋の鍵によるものでなければならない。GnuPG の状態行で、署名がすべて `GOODSIG` であり、`VALIDSIG` の主鍵の指紋が固定のものであることで判定する。失効した鍵と期限切れの鍵の署名は、apt と同じく拒む。そのうえで、署名済みの本文（gpg が確かめた出力）のうち、その tarball の行がちょうど 1 行あり、ハッシュが一致することを確かめる。
-- D3: 画像は mise の apt リポジトリと、その鍵の apt 用の登録を使わない。Google Cloud と Claude Code の apt と、指紋を固定する仕組みは変えない。
-- D4: feature の install.sh の `MISE_VERSION` は、生成器 `tools/mise-versions` が `[bootstrap].mise` から書く。`just mise-versions-check` が食い違いを検出する。
+- D1: 画像は mise を、jdx が配る tarball で入れなければならない（MUST）。版は `config/mise/image-tools.toml` の `[bootstrap].mise` でなければならない。tarball は mise.jdx.dev から取り、取れなければ GitHub リリースから取る。`SHASUMS256.asc` は GitHub リリースから取り、取れなければ mise.jdx.dev から取る。どちらのホストから取ったものも、D2 の確認を通るまで使ってはならない。
+- D2: tarball は、同じリリースの `SHASUMS256.asc` で確かめてから展開しなければならない（MUST）。署名は、ADR-0001 が固定した指紋 `24853EC9F655CE80B48E6C3A8B81C9D17413A06D` の鍵によるものでなければならない。判定は GnuPG の状態行で行い、署名の状態がすべて `GOODSIG` であり、かつ `VALIDSIG` の主鍵の指紋が固定のものであることを求める。失効した鍵と期限切れの鍵の署名は拒まなければならない。そのうえで、gpg が確かめた本文に、その tarball の行がちょうど 1 行あり、ハッシュが一致しなければならない。どれかを満たさなければ、画像のビルドを止める。
+- D3: 画像は mise の apt リポジトリと、その鍵の apt 用の登録を使ってはならない（MUST NOT）。Google Cloud と Claude Code の apt と、指紋を固定する仕組みは変えない。
+- D4: feature の install.sh の `MISE_VERSION` は、生成器 `tools/mise-versions` が `[bootstrap].mise` から書かなければならない（MUST）。人が直接書き換えてはならず、`just mise-versions-check` が食い違いを止める。
 
 ## Options Considered
 
-| 案 | 利点 | コスト・リスク |
-| --- | --- | --- |
-| A′) tarball + 署名付き SHASUMS256.asc（同じ指紋） | 版が固定され、手元と CI と画像が同じ版になる。信頼の根拠は今と同じ「固定した指紋の GPG 署名」 | 署名の検証を feature に書く必要がある。arm64 はリリースにあるが、CI は x64 だけで確かめる |
-| A) tarball + SHASUMS256.txt の照合だけ（手元の bootstrap と同じ） | 実装が最小 | GPG 署名の確認を失う。ADR-0001 の指紋固定と、ADR-0006 が後退と呼んだ形になる |
-| B) apt の最新のまま、意図した例外として記録する | 変更が最小 | 版が日によって変わり、ADR-0006・0060 の凍結の方針と食い違ったまま |
-| C) 保留 | 何もしない | B と同じ食い違いが残る |
+| 案 | 利点 | コスト・リスク | 裁定 |
+| --- | --- | --- | --- |
+| A′) tarball + 署名付き SHASUMS256.asc（同じ指紋） | 版が固定され、手元と CI と画像が同じ版になる。信頼の根拠は今と同じ「固定した指紋の GPG 署名」 | 署名の検証を feature に書く必要がある。arm64 はリリースにあるが、CI は x64 だけで確かめる | 所有者が採択 |
+| A) tarball + SHASUMS256.txt の照合だけ（手元の bootstrap と同じ） | 実装が最小 | GPG 署名の確認を失う。ADR-0001 の指紋固定と、ADR-0006 が後退と呼んだ形になる | 信頼の水準を下げるため却下 |
+| B) apt の最新のまま、意図した例外として記録する | 変更が最小 | 版が日によって変わり、ADR-0006・0060 の凍結の方針と食い違ったまま | 凍結の方針と食い違ったままになるため却下 |
+| C) 保留 | 何もしない | B と同じ食い違いが残る | B と同じ理由で却下 |
 
 ## Consequences
 
@@ -68,7 +66,8 @@
 
 ## 他の DR との照合
 
-全 67 件の ADR の題名・状態・置換関係を走査し、画像・mise・版の固定・導入経路・apt と GPG の信頼・取得元に触れる記録の全文を読んだ（0001、0005、0006、0018、0023、0025、0028、0036、0040、0053、0060、0061、0067 ほか）。PDR はない。
+0001〜0067 の 66 件（0046 は欠番）の題名・状態・置換関係を走査し、画像・mise・版の固定・導入経路・apt と GPG の信頼・取得元に触れる記録の全文を読んだ（0001、0005、0006、0018、0023、0025、0028、0036、0040、0053、0060、0061、0067 ほか）。PDR はない。
+採択の前（2026-11-10）に、起票のあと main に ADR の追加も 0001・0060 の変更もないことを確かめた（d631417 から fdd7619 の差分）。
 
 - **矛盾**: 0001（mise の取得元）と 0060（Decision 1・2・4）。所有者が 2026-11-09 に、この範囲だけの部分置換を承認した（下の「相談の記録」）。A 案は 0001 と 0006 の GPG の水準を下げるため、A′ を選んで矛盾を避けた。
 - **重複**: 番号 0068 は未使用。同じ決定の記録はない。
@@ -82,12 +81,17 @@
     - mise の固定の方法: 「tarball で固定する」（apt の最新のまま・保留ではなく）。
     - 検証: 「A′ 署名付き SHASUMS」（A の SHA-256 だけではなく）。
     - 0001 に加えて 0060 の Decision 1・2・4 の部分置換: 「部分置換を承認」。
+- 2026-11-10、本セッションで所有者が、D2 に失効と期限切れの鍵を拒むことと鍵の期限（2028-01-02）を加えた本文を見たうえで、「許諾します（印はつけておいてええ）」と A′ を承認し、決定欄への代理記入を認めた。
 
-## 決定（記入待ち）
+## 決定（2026-11-10）
 
-- [ ] A′ を Accepted（D1〜D4 を MUST 文で確定し、0001・0060 の Status 行、索引、変更ログ、queue を更新する）
+- [x] A′ を Accepted（D1〜D4 を MUST 文で確定し、0001・0060 の Status 行、索引、変更ログ、queue を更新する）
 - [ ] A を Accepted（D2 を SHA-256 の照合だけにし、0006 の後退として記録する）
 - [ ] B を Accepted（apt の最新を意図した例外として `image-tools.toml` に記録し、実装を戻す）
 - [ ] Rejected / Deferred（実装を戻し、queue に理由を残す）
 
-決定者: ＿＿＿　決定日: ＿＿＿
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-10（所有者の許可により代理記入）
+
+- A 案は信頼の水準を下げるため、B 案と C 案は凍結の方針と食い違ったままになるため却下する。
+- 実装と検証は [PR #583](https://github.com/hironow/dotfiles/pull/583)。CI の dev container ジョブで、画像の mise が `/usr/local/bin/mise` の 2026.10.17 で、apt の mise が無いことを確かめた（`test_image_mise_is_the_pinned_release`）。
+- 採択時に 0001・0060 の Status 行、索引、変更ログ、queue の決定済みログを同時に更新し、旧本文を変えていないことを確かめた。

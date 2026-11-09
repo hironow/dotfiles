@@ -1,7 +1,7 @@
 # 0001. Migrate dev container to debian-12 + features (single SoT)
 
 **Date:** 2026-05-02
-**Status:** Accepted; partly superseded by [0067](0067-use-podman-for-managed-containers.md) (bookworm・Docker feature・devcontainers/ci の指定のみ。単一設定、Microsoft/local feature の信頼境界、root ユーザーは維持)
+**Status:** Accepted; partly superseded by [0067](0067-use-podman-for-managed-containers.md) (bookworm・Docker feature・devcontainers/ci の指定のみ。単一設定、Microsoft/local feature の信頼境界、root ユーザーは維持); partly superseded by [0068](0068-pin-the-dev-container-mise.md) (mise の取得元と検証の対象のみ。apt の mise を、指紋を固定した鍵で署名した SHASUMS256.asc で確かめる GitHub リリースの tarball に替える。指紋固定の仕組み、gcloud の apt、uv・just・sheldon は維持)
 
 ## Context
 
