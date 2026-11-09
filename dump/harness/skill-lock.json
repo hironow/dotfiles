@@ -848,6 +848,15 @@
       "resolved_by": "installed"
     },
     {
+      "installed_dir": "h3-prompt-writing",
+      "upstream_name": "h3-prompt-writing",
+      "lock_key": "h3-prompt-writing",
+      "source": "MiniMax-AI/MiniMax-H3",
+      "skill_path": "skills/h3-prompt-writing/SKILL.md",
+      "skill_folder_hash": "06a519cf5b6aa211a7222acd19abd25b8cad2895",
+      "resolved_by": "installed"
+    },
+    {
       "installed_dir": "hatch-pet",
       "upstream_name": "hatch-pet",
       "lock_key": "hatch-pet",
