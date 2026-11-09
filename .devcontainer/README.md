@@ -165,6 +165,19 @@ mise tool declarations, pinned/checksummed mise bootstrap, and this same
 non-root user's socket. Only ephemeral CI starts that service and removes the
 Docker executable from its PATH. The dev container job runs on ready pull
 requests and main pushes; no repository variable switches it.
+The bootstrap avoids github.com's `/releases/download/` where a vendor
+host exists, because that path can fail while the rest of GitHub works. The
+mise artifact comes from `mise.jdx.dev` (GitHub's release download if that
+fails). Its checksum never comes from there: `SHASUMS256.txt` comes from the
+GitHub release's API asset path, else its release download, and
+`sha256sum -c` must pass before `tar`. uv's assets come from Astral's mirror
+`releases.astral.sh` through one anchored `MISE_URL_REPLACEMENTS` rule, set
+for the bootstrap only. mise still takes the sha256 from GitHub's release
+metadata and rejects other bytes, and still checks GitHub's attestation. That
+route has no fallback. bun and just still come from GitHub's release
+downloads. The bootstrap step gets `GITHUB_TOKEN` against the anonymous API
+rate limit: the script's own `curl` sends it only to `api.github.com`, and
+mise uses it for its GitHub API calls.
 Before the socket starts, `allow-podman-stop-pasta.sh` probes whether rootless
 Podman can stop pasta (`podman unshare --rootless-netns true`). On Ubuntu 26.04
 the passt package's AppArmor profile refuses podman's SIGTERM (Ubuntu

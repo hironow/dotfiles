@@ -41,6 +41,12 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Bootstrap same-user native Podman and canonical frozen CLI tools
         working-directory: ${{ github.workspace }}
+        env:
+          # mise and the bootstrap's own API calls; the anonymous limit is low.
+          GITHUB_TOKEN: ${{ github.token }}
+          # temporary: request log for the PR's evidence
+          MISE_LOG_HTTP: '1'
+          MISE_VERBOSE: '1'
         run: bash .devcontainer/ci-bootstrap.sh
       - name: Install dependencies from the committed lock
         run: uv sync --all-extras --frozen --group lint

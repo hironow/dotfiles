@@ -155,7 +155,9 @@ TOOL_LAYOUT = (
 )
 
 
-def _bootstrap_checksum_attempt(tmp_path, names, *, corrupt=False, engine=None):
+def _bootstrap_checksum_attempt(
+    tmp_path, names, *, corrupt=False, engine=None, extra_env=None
+):
     """Run the public bootstrap with real checks and owned external boundaries.
 
     By default stop at unpack89; engine fixtures instead unpack an inert mise
@@ -361,6 +363,7 @@ esac""",
         "FIXTURE_MISE_VERSION": version,
         "FIXTURE_CURL_LOG": bash_path(tmp_path / "curl-log"),
         "SystemRoot": os.environ.get("SystemRoot", ""),
+        **(extra_env or {}),
     }
     if engine is not None:
         tools = tmp_path / "tools"
@@ -736,3 +739,141 @@ def test_bootstrap_stops_when_the_pasta_guard_fails(tmp_path):
 def test_test_emulators_runs_when_the_pasta_guard_changes():
     body = (ROOT / ".github/workflows/test-emulators.yaml").read_text(encoding="utf-8")
     assert body.count("      - '.devcontainer/allow-podman-stop-pasta.sh'\n") == 2
+
+
+MISE_RELEASE_DOWNLOAD = "https://github.com/jdx/mise/releases/download/"
+MISE_API = "https://api.github.com/repos/jdx/mise/releases/"
+
+
+def _curl_urls(tmp_path):
+    log = (tmp_path / "curl-log").read_text(encoding="utf-8").splitlines()
+    return [line.removeprefix("URL ") for line in log if line.startswith("URL ")]
+
+
+def _bootstrap_attempt(tmp_path, *, fail=(), token=None, engine=None):
+    extra_env = {"FIXTURE_CURL_FAIL": " ".join(fail)}
+    if token is not None:
+        extra_env["GITHUB_TOKEN"] = token
+    return _bootstrap_checksum_attempt(
+        tmp_path, ["./{artifact}"], engine=engine, extra_env=extra_env
+    )
+
+
+def test_bootstrap_fetches_mise_from_jdx_dev_first(tmp_path):
+    result = _bootstrap_attempt(tmp_path)
+    assert result.returncode == 89, result.stdout + result.stderr
+    urls = _curl_urls(tmp_path)
+    version = tomllib.loads(
+        (ROOT / "config/mise/image-tools.toml").read_text(encoding="utf-8")
+    )["bootstrap"]["mise"]
+    artifact = f"mise-v{version}-linux-x64-musl.tar.gz"
+    assert urls[0] == f"https://mise.jdx.dev/v{version}/{artifact}"
+    assert not any(url.startswith(MISE_RELEASE_DOWNLOAD) for url in urls), urls
+
+
+def test_bootstrap_never_takes_mise_checksums_from_jdx_dev(tmp_path):
+    result = _bootstrap_attempt(tmp_path)
+    assert result.returncode == 89, result.stdout + result.stderr
+    urls = _curl_urls(tmp_path)
+    assert [url for url in urls if url.startswith("https://mise.jdx.dev/")] == [urls[0]]
+    assert not urls[0].endswith("SHASUMS256.txt")
+    # the checksum file is the release's SHASUMS256.txt asset, by its API id
+    assert urls[1:] == [
+        MISE_API + "tags/v" + urls[0].split("/")[3][1:],
+        MISE_API + "assets/4242",
+    ]
+
+
+def test_bootstrap_falls_back_to_github_when_jdx_dev_fails(tmp_path):
+    result = _bootstrap_attempt(tmp_path, fail=["https://mise.jdx.dev/"])
+    assert result.returncode == 89, result.stdout + result.stderr
+    urls = _curl_urls(tmp_path)
+    assert urls[0].startswith("https://mise.jdx.dev/")
+    assert urls[1] == MISE_RELEASE_DOWNLOAD + urls[0].removeprefix(
+        "https://mise.jdx.dev/"
+    )
+    assert urls[-1] == MISE_API + "assets/4242"
+
+
+def test_bootstrap_falls_back_to_release_download_for_checksums_when_api_fails(
+    tmp_path,
+):
+    result = _bootstrap_attempt(tmp_path, fail=[MISE_API])
+    assert result.returncode == 89, result.stdout + result.stderr
+    urls = _curl_urls(tmp_path)
+    version = urls[0].split("/")[3]
+    assert urls[-1] == f"{MISE_RELEASE_DOWNLOAD}{version}/SHASUMS256.txt"
+    assert not any(url.startswith(MISE_API + "assets/") for url in urls), urls
+
+
+def test_bootstrap_stops_when_every_checksum_route_fails(tmp_path):
+    result = _bootstrap_attempt(tmp_path, fail=[MISE_API, MISE_RELEASE_DOWNLOAD])
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "FIXTURE_UNPACK_BOUNDARY" not in result.stdout
+
+
+def test_bootstrap_still_rejects_a_corrupt_artifact_from_jdx_dev(tmp_path):
+    result = _bootstrap_checksum_attempt(tmp_path, ["./{artifact}"], corrupt=True)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "FIXTURE_UNPACK_BOUNDARY" not in result.stdout
+    assert _curl_urls(tmp_path)[0].startswith("https://mise.jdx.dev/")
+
+
+def test_bootstrap_sends_the_github_token_only_to_the_api(tmp_path):
+    token = "fixture-token-not-a-secret"
+    result = _bootstrap_attempt(tmp_path, token=token)
+    assert result.returncode == 89, result.stdout + result.stderr
+    log = (tmp_path / "curl-log").read_text(encoding="utf-8").splitlines()
+    # never on a command line, where other processes can read it
+    assert not [line for line in log if line.startswith("ARGV ") and token in line]
+    requests = [line.removeprefix("URL ") for line in log if line.startswith("URL ")]
+    for index, url in enumerate(requests):
+        start = log.index(f"URL {url}")
+        sent = log[start + 1] if start + 1 < len(log) else ""
+        has_token = sent == f"STDIN-HEADER Authorization: Bearer {token}"
+        assert has_token is url.startswith(MISE_API), (index, url, sent)
+
+
+def test_bootstrap_curl_retries_and_stays_on_https(tmp_path):
+    result = _bootstrap_attempt(tmp_path, fail=["https://mise.jdx.dev/"])
+    assert result.returncode == 89, result.stdout + result.stderr
+    log = (tmp_path / "curl-log").read_text(encoding="utf-8").splitlines()
+    calls = [line for line in log if line.startswith("ARGV ")]
+    assert len(calls) == 4, calls
+    for call in calls:
+        assert call.startswith(
+            "ARGV --proto =https --tlsv1.2 -fsSL --retry 3 --retry-all-errors"
+            " --max-time 120 "
+        ), call
+
+
+def test_bootstrap_reroutes_only_uv_downloads(tmp_path):
+    result = _bootstrap_attempt(tmp_path, engine={})
+    assert result.returncode == 0, result.stdout + result.stderr
+    recorded = (tmp_path / "trace.url-replacements").read_text(encoding="utf-8")
+    assert json.loads(recorded) == {
+        "regex:^https://github\\.com/astral-sh/uv/releases/download/": (
+            "https://releases.astral.sh/github/uv/releases/download/"
+        )
+    }
+    environment = (tmp_path / "github-env").read_text(encoding="utf-8")
+    assert "MISE_URL_REPLACEMENTS" not in environment
+
+
+def _workflow_step(workflow, run):
+    """The text of the one step whose `run:` is exactly `run`."""
+    body = (ROOT / ".github/workflows" / workflow).read_text(encoding="utf-8")
+    steps = re.split(r"(?m)^      - ", body.split("\n    steps:\n", 1)[1])
+    matches = [
+        step for step in steps if re.search(rf"(?m)^\s+run: {re.escape(run)}$", step)
+    ]
+    assert len(matches) == 1, (workflow, matches)
+    return matches[0]
+
+
+@pytest.mark.parametrize("workflow", ["test-just.yaml", "test-emulators.yaml"])
+def test_bootstrap_step_itself_gets_the_github_token(workflow):
+    step = _workflow_step(workflow, "bash .devcontainer/ci-bootstrap.sh")
+    env = step.split("\n        env:\n", 1)
+    assert len(env) == 2, step
+    assert "          GITHUB_TOKEN: ${{ github.token }}\n" in env[1], step

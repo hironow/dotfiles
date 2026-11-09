@@ -52,10 +52,41 @@ case "$(uname -m)" in
   *) echo 'unsupported mise bootstrap architecture' >&2; exit 1 ;;
 esac
 artifact="mise-v${version}-${arch}.tar.gz"
-url="https://github.com/jdx/mise/releases/download/v${version}"
-# Same pinned official artifact + SHA256 verification as install.sh bootstrap.
-curl --proto '=https' --tlsv1.2 -fsSL -o "$bootstrap/$artifact" "$url/$artifact"
-curl --proto '=https' --tlsv1.2 -fsSL -o "$bootstrap/SHASUMS256.txt" "$url/SHASUMS256.txt"
+release="https://github.com/jdx/mise/releases/download/v${version}"
+api="https://api.github.com/repos/jdx/mise/releases"
+# github.com's /releases/download/ returned 504 for 1.5 h on 2026-11-09 while
+# the API asset path stayed up. Each fetch retries before it falls back.
+fetch() {
+  curl --proto '=https' --tlsv1.2 -fsSL --retry 3 --retry-all-errors --max-time 120 "$@"
+}
+# The token goes only to the API, and through stdin, not the command line.
+fetch_github_api() {
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    printf 'Authorization: Bearer %s\n' "$GITHUB_TOKEN" | fetch -H @- "$@"
+  else
+    fetch "$@"
+  fi
+}
+# SHASUMS256.txt as the release's API asset, found by name in the release JSON.
+fetch_mise_checksums_from_api() {
+  local id
+  fetch_github_api -H 'Accept: application/vnd.github+json' -o "$bootstrap/mise-release.json" "$api/tags/v${version}" || return 1
+  id="$(python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1],encoding="utf-8")); m=[a["id"] for a in r["assets"] if a["name"]=="SHASUMS256.txt"]; assert len(m)==1 and type(m[0]) is int; print(m[0])' "$bootstrap/mise-release.json")" || return 1
+  fetch_github_api -H 'Accept: application/octet-stream' -o "$bootstrap/SHASUMS256.txt" "$api/assets/$id"
+}
+# The pinned artifact from mise's own host, as its official installer does;
+# GitHub's release download if that fails. The host is only a route: the
+# bytes must match GitHub's SHASUMS256.txt, which never comes from
+# mise.jdx.dev (mise's docs: "Checksums never come from mise.jdx.dev").
+if ! fetch -o "$bootstrap/$artifact" "https://mise.jdx.dev/v${version}/${artifact}"; then
+  echo "ci-bootstrap: mise.jdx.dev failed; downloading $artifact from GitHub" >&2
+  fetch -o "$bootstrap/$artifact" "$release/$artifact"
+fi
+if ! fetch_mise_checksums_from_api; then
+  echo 'ci-bootstrap: the GitHub API failed; downloading SHASUMS256.txt from the release' >&2
+  fetch -o "$bootstrap/SHASUMS256.txt" "$release/SHASUMS256.txt"
+fi
+# Same SHA256 verification as install.sh bootstrap: one exact line, then check.
 (cd "$bootstrap"; grep -E "[ *](\\./)?${artifact//./\\.}$" SHASUMS256.txt > selected.sha256; test "$(wc -l < selected.sha256)" -eq 1; sha256sum -c selected.sha256)
 tar -xzf "$bootstrap/$artifact" -C "$bootstrap"
 install -m 0755 "$bootstrap/mise/bin/mise" "$bootstrap/bin/mise"
@@ -87,6 +118,13 @@ publish_bin_paths() {
     printf '%s\n' "$dir" >> "$GITHUB_PATH"
   done <<< "$paths"
 }
+# uv's release assets from Astral's own mirror (docs.astral.sh/uv/reference/
+# environment/, UV_ASTRAL_MIRROR_URL), byte-identical to GitHub's. Only the
+# download moves: mise still takes the asset's sha256 from GitHub's release
+# metadata and rejects other bytes, and checks GitHub's attestation. One
+# tool, anchored, so nothing else is rerouted. A replacement has no
+# fallback; not written to GITHUB_ENV, as later steps install nothing.
+export MISE_URL_REPLACEMENTS='{"regex:^https://github\\.com/astral-sh/uv/releases/download/":"https://releases.astral.sh/github/uv/releases/download/"}'
 mise install bun uv node just
 for tool in bun uv node just; do
   publish_bin_paths "$tool"
