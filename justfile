@@ -675,6 +675,24 @@ test-unit:
     uvx pytest -q -ra tests/unit/
     @echo '✅ Unit tests finished.'
 
+# Test (Windows PowerShell 5.1): the GC (runner_gc.sh calls powershell.exe)
+# and bootstrap.ps1 on a new machine run on 5.1, which reads some input
+# differently from the pwsh 7 that test-unit uses. Run their tests on 5.1.
+[windows]
+[group('Test')]
+test-windows-powershell:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    identity="$(powershell.exe -NoProfile -NonInteractive -Command "'{0} {1}' -f \$PSVersionTable.PSVersion, \$PSVersionTable.PSEdition")"
+    identity="${identity%$'\r'}"
+    case "$identity" in
+      "5.1."*" Desktop") echo "🧪 Windows PowerShell $identity" ;;
+      *) echo "expected Windows PowerShell 5.1 Desktop, got '$identity'" >&2; exit 1 ;;
+    esac
+    export DOTFILES_TEST_PWSH=powershell.exe PODMAN_GC_REQUIRE_PWSH=1
+    uvx pytest -q -ra tests/unit/test_podman_gc_simulation.py -k powershell
+    uvx pytest -q -ra tests/unit/test_runner_gc.py tests/unit/test_bootstrap_ps1.py tests/unit/test_podman_provisioning_ps1.py
+
 # Test (install): mandatory owned-image build from a tracked-only context.
 [group('Test')]
 test-install:

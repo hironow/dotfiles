@@ -179,3 +179,66 @@ jobs:
       - name: Run the Ollama host tests
         shell: pwsh
         run: uvx pytest -q -ra tests/unit/test_ollama_host.py
+
+  # tests/unit/ must pass on native Windows. The jobs above run parts of it
+  # there; this one runs all of it, on a checkout made with Git for Windows'
+  # defaults (core.autocrlf=true, as on a new machine), and then the tests of
+  # the scripts that run on Windows PowerShell 5.1 in production.
+  windows-unit:
+    name: Unit tests on Windows, and on Windows PowerShell 5.1
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: windows-latest
+    timeout-minutes: 40
+    # GitHub runs bash with -eo pipefail, and Git's /usr/bin (gpg, sh,
+    # cygpath) is on PATH, as in the Git Bash a Windows host tests from.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Show the checkout's line endings
+        run: |
+          git config --show-origin --get-all core.autocrlf || true
+          echo "CRLF files in the working tree: $(git ls-files --eol | grep -c 'w/crlf' || true)"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install just
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          uv tool install rust-just
+          (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Unit tests
+        run: just test-unit
+      - name: PowerShell tests on Windows PowerShell 5.1
+        run: just test-windows-powershell
+
+  # The Go modules' tests on Windows: agent-hook and the doctors have code of
+  # their own there, and the go job above runs on Linux.
+  windows-go:
+    name: Go tests on Windows (tools/)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/agent-hooks/go.mod
+          cache-dependency-path: tools/*/go.sum
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install just
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          uv tool install rust-just
+          (uv tool dir --bin) | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Go tests
+        # Git Bash: go-test is a shebang recipe, which needs Git's cygpath.
+        # setup-go writes GOTOOLCHAIN=local for the steps after it; auto lets
+        # a module that asks for a newer Go fetch it.
+        shell: bash
+        env:
+          GOTOOLCHAIN: auto
+        run: just go-test go
