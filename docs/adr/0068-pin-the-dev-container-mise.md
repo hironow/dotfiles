@@ -29,6 +29,8 @@
 - 手元の導入（`install.sh` の `_mise_ver`）と CI の bootstrap（`.devcontainer/ci-bootstrap.sh`）は、`config/mise/image-tools.toml` の `[bootstrap].mise = "2026.10.17"` を使う。画像の mise だけが、同じ固定から外れている。
 - ADR-0006 は画像の版を凍結し、ADR-0060・0061 は画像の凍結世代の正本を `image-tools.toml` 1 か所、書き手を生成器 `tools/mise-versions` 1 つにした。ADR-0001 は mise を apt から指紋固定で入れると決めた。
 - jdx の GitHub リリースには、同じ鍵で署名した `SHASUMS256.asc` がある。v2026.10.17 で、上の指紋の鍵による署名が正しいこと（GnuPG の `VALIDSIG 24853EC9F655CE80B48E6C3A8B81C9D17413A06D`）を 2026-11-09 に確かめた。
+- GnuPG は、失効した鍵や期限切れの鍵による正しい署名でも、終了コード 0 と `VALIDSIG` を出す。変わるのは `GOODSIG` が `REVKEYSIG` か `EXPKEYSIG` になることだけ（2026-11-10、GnuPG 2.2.41 で失効を、期限切れはテストで確かめた）。apt はどちらの署名も拒む。
+- jdx の鍵（主鍵と副鍵）は 2024-01-02 に作られ、2028-01-02 に期限が切れる（2026-11-10 に `https://mise.jdx.dev/gpg-key.pub` で確かめた）。
 - 同じ tarball と `SHASUMS256.asc` は `https://mise.jdx.dev/v<版>/` にもある。2026-11-09 に github.com の `/releases/download/` が約 1.5 時間 504 を返し、#580 は CI の bootstrap の mise を「mise.jdx.dev を先に、GitHub を後に」取るように変えた。ハッシュの一覧は mise の文書（「Checksums never come from mise.jdx.dev」）に従い GitHub から取っている。
 - 画像にはほかにも版を固定していない道具がある（gcloud と claude-code の apt、node feature の `lts`）。ADR-0060 は mise が持つ道具だけを対象にしたので、本 ADR もそれらを扱わない。
 
@@ -39,7 +41,7 @@
 決定案（A′）:
 
 - D1: 画像は、mise を jdx が配る tarball で入れる。版は `image-tools.toml` の `[bootstrap].mise`。tarball は mise.jdx.dev から、取れなければ GitHub リリースから取る。`SHASUMS256.asc` は GitHub リリースから、取れなければ mise.jdx.dev から取る。どちらのホストから取ったものも、D2 の確認を通ったものだけを使う。
-- D2: tarball は、同じリリースの `SHASUMS256.asc` で確かめてから展開する。署名は、ADR-0001 が固定した指紋の鍵によるものでなければならない（GnuPG の `VALIDSIG` の主鍵の指紋で判定）。そのうえで、署名済みの一覧のうち、その tarball の行がちょうど 1 行あり、ハッシュが一致することを確かめる。
+- D2: tarball は、同じリリースの `SHASUMS256.asc` で確かめてから展開する。署名は、ADR-0001 が固定した指紋の鍵によるものでなければならない。GnuPG の状態行で、署名がすべて `GOODSIG` であり、`VALIDSIG` の主鍵の指紋が固定のものであることで判定する。失効した鍵と期限切れの鍵の署名は、apt と同じく拒む。そのうえで、署名済みの本文（gpg が確かめた出力）のうち、その tarball の行がちょうど 1 行あり、ハッシュが一致することを確かめる。
 - D3: 画像は mise の apt リポジトリと、その鍵の apt 用の登録を使わない。Google Cloud と Claude Code の apt と、指紋を固定する仕組みは変えない。
 - D4: feature の install.sh の `MISE_VERSION` は、生成器 `tools/mise-versions` が `[bootstrap].mise` から書く。`just mise-versions-check` が食い違いを検出する。
 
@@ -54,8 +56,8 @@
 
 ## Consequences
 
-- **Positive**: 画像の mise が、手元と CI の bootstrap と同じ版になる。ビルドの日によって mise が変わらない。apt と同じ指紋の署名を確かめるので、信頼の水準は下がらない。どちらか一方のホストが止まっても画像を作れる。署名で確かめるので、ハッシュの一覧が mise.jdx.dev から来ても偽物は止まる。
-- **Negative**: 画像の mise は 2026.11.5 から 2026.10.17 に戻る。画像に焼いた mise の設定がこの版で入るかは、CI の dev container ジョブでしか確かめられない。mise の更新は `[bootstrap].mise` を上げる作業になる。tarball 版の mise は self-update を持つが、画像では呼ばない。arm64 の画像は CI で確かめていない。
+- **Positive**: 画像の mise が、手元と CI の bootstrap と同じ版になる。ビルドの日によって mise が変わらない。apt と同じ指紋の署名を確かめ、失効と期限切れも apt と同じく拒むので、信頼の水準は下がらない。どちらか一方のホストが止まっても画像を作れる。署名で確かめるので、ハッシュの一覧が mise.jdx.dev から来ても偽物は止まる。
+- **Negative**: 画像の mise は 2026.11.5 から 2026.10.17 に戻る。画像に焼いた mise の設定がこの版で入るかは、CI の dev container ジョブでしか確かめられない。mise の更新は `[bootstrap].mise` を上げる作業になる。tarball 版の mise は self-update を持つが、画像では呼ばない。arm64 の画像は CI で確かめていない。鍵の期限（今は 2028-01-02）が切れると、版を変えなくても画像のビルドが止まる。ビルドは毎回鍵を `https://mise.jdx.dev/gpg-key.pub` から取るので、jdx が期限を延ばせばそのまま直る。延ばされず鍵が替わるなら、指紋の固定を新しい記録で替える。
 - **Neutral**: 画像の mise の場所は `/usr/bin/mise`（apt）から `/usr/local/bin/mise` に変わる。`/opt/mise` のデータの場所と shim の PATH は変えない。`.cursor/install.sh` は今までどおり apt の mise を入れる（本 ADR の対象外）。
 
 ## 反転記録 (Reversal)
