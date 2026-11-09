@@ -95,7 +95,10 @@ def run_bash(
     check = kwargs.pop("check", False)
     cwd_p = Path(os.fspath(cwd))
     script_p = Path(os.fspath(script))
-    rel = os.path.relpath(script_p, cwd_p)
+    try:
+        rel = os.path.relpath(script_p, cwd_p)
+    except ValueError:  # another drive (Windows): not under cwd either
+        rel = os.pardir
     if not rel.startswith(".."):
         # Script already descends from cwd — MSYS bash can open it directly.
         return subprocess.run(
