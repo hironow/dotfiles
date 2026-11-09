@@ -60,6 +60,23 @@ foreach ($created in $wireForms) {
     }
 }
 
+# 5.1's ConvertFrom-Json writes a top-level JSON array as one Object[]. The
+# callers index the inspected item and check RepoTags is an array, so each
+# element must come back as itself. Member enumeration on a one-element
+# Object[] still yields Created, so the loop above cannot see this.
+$json = '[{{"Id":"sha256:{0}","Created":"2020-01-01T00:00:00Z","RepoTags":["ordinary:latest"]}}]' -f ('a' * 64)
+$script:reply = @{ ExitCode = 0; Output = $json }
+$items = @(Get-PodmanJson -PodmanArgs @('image', 'inspect', 'abc') -Inspection)
+if ($items.Count -ne 1 -or $items[0] -isnot [System.Management.Automation.PSCustomObject]) {
+    throw ("image inspection: expected one object, got {0} x {1}" -f $items.Count, $items[0].GetType().FullName)
+}
+if ($items[0].RepoTags -isnot [Array]) {
+    throw ("image inspection: RepoTags came back as {0}" -f $items[0].RepoTags.GetType().FullName)
+}
+$script:reply = @{ ExitCode = 0; Output = '[{"Id":"a"},{"Id":"b"}]' }
+$items = @(Get-PodmanJson -PodmanArgs @('image', 'inspect', 'abc') -Inspection)
+if ($items.Count -ne 2) { throw ("two inspections: expected 2 items, got {0}" -f $items.Count) }
+
 $script:reply = @{ ExitCode = 0; Output = '{"Id":"abc","Created":"2020-01-01T00:00:00Z"}' }
 Assert-Throws 'object inspection' { Get-PodmanJson -PodmanArgs @('container', 'inspect', 'abc') -Inspection } 'Inspection array required'
 $script:reply = @{ ExitCode = 0; Output = '[{"Id":"abc","Created":' }

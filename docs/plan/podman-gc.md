@@ -47,14 +47,21 @@ verification or proof of arbitrary real-engine behavior.
 
 The Python harness launches the complete `runner_gc.sh` using its public
 engine-only entrypoint, and launches the complete `runner_gc_win.ps1` with
-`-PodmanOnly` when `pwsh` is available. `PODMAN_GC_TEST_PWSH` picks another
-PowerShell; one that is not an executable fails the run instead of skipping.
-Each run prints the PowerShell version and edition it used. It does not copy
-or extract selectors.
+`-PodmanOnly` when `pwsh` is available. `DOTFILES_TEST_PWSH` (older name:
+`PODMAN_GC_TEST_PWSH`) picks another PowerShell, such as `powershell.exe` for
+Windows PowerShell 5.1, which runs the GC in production; one that is not an
+executable fails the run instead of skipping. Each run prints the PowerShell
+version and edition it used. It does not copy or extract selectors.
 Only external I/O is replaced. Unix process discovery/clock/disk output are
 stubbed; engine commands reach a JSON-backed fake. PowerShell process discovery, clock
 and Start-Process are stubbed; the same fake supplies CLI responses and a fake
 process replays timeout/tree-kill behavior.
+The Unix replay checks that its fakes are loaded, and that `wsl.exe` and
+`powershell.exe` are not on its PATH, before it starts `runner_gc.sh`. On
+Windows the PowerShell replay runs in its temp directory and passes `PATHEXT`
+(without it, PowerShell opens the fake engine in a new window and reads no
+output), `SystemDrive`, temp and profile directories, and
+`-ExecutionPolicy Bypass`, as `runner_gc.sh` does.
 
 The fake checks deletion preconditions, foreign-job/age/metadata/observed-keep
 protection, reference preservation and a designated fresh parent after every
@@ -91,8 +98,8 @@ uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py
 PODMAN_GC_SEED=23 uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k seeded
 # Required Windows/isolated PowerShell acceptance: absent pwsh fails explicitly.
 PODMAN_GC_REQUIRE_PWSH=1 uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k powershell
-# The same cases on a chosen PowerShell.
-PODMAN_GC_TEST_PWSH=/path/to/pwsh uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k powershell
+# The same cases on a chosen PowerShell (powershell.exe = Windows PowerShell 5.1).
+DOTFILES_TEST_PWSH=/path/to/pwsh uv run --frozen --group dev pytest -q tests/unit/test_podman_gc_simulation.py -k powershell
 ```
 
 Default coverage is 32 Unix seeds and 32 PowerShell seeds. Missing `jq` fails the
@@ -103,9 +110,12 @@ runtime availability.
 
 `test-podman-gc-compat.yaml` runs `Get-PodmanJson` on native Windows PowerShell
 5.1 (`tests/powershell/get_podman_json_51.ps1`): `Created` in UTC, with an
-offset, and with nanoseconds stays the wire string, and a bad reply throws. The
-rest of the script on native 5.1, and the real watchdog and engine, remain
-platform acceptance work. The same workflow runs the PowerShell replays on
+offset, and with nanoseconds stays the wire string; a one-element inspection
+comes back as the object itself, with `RepoTags` still an array (5.1's
+`ConvertFrom-Json` writes a top-level JSON array as one `Object[]`); and a bad
+reply throws. The full replays run on native 5.1 with
+`DOTFILES_TEST_PWSH=powershell.exe`, outside CI. The real watchdog and engine
+remain platform acceptance work. The same workflow runs the PowerShell replays on
 PowerShell 7.4.22 as an observation only; 7.4 is not supported. Its
 `ConvertFrom-Json` has no `-DateKind`: a `Created` it reads as a date becomes
 `DateTime`, and that item is kept. A form it does not read as a date, such as

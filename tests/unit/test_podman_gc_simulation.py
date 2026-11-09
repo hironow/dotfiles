@@ -17,24 +17,10 @@ from pathlib import Path
 
 import pytest
 from _bash_hook import bash_path, resolve_bash, run_bash
+from _pwsh import powershell_identity, resolve_pwsh
 
 ROOT = Path(__file__).resolve().parents[2]
 JQ = shutil.which("jq")
-
-
-def resolve_pwsh(environ, which=shutil.which):
-    """The PowerShell the replays run: PODMAN_GC_TEST_PWSH, else pwsh on PATH.
-
-    An override that is not an executable stops the run; it never turns the
-    PowerShell cases into skips.
-    """
-    override = environ.get("PODMAN_GC_TEST_PWSH")
-    if override is None:
-        return which("pwsh")
-    found = which(override)
-    if found is None:
-        raise RuntimeError(f"PODMAN_GC_TEST_PWSH={override!r} is not an executable")
-    return found
 
 
 PWSH = resolve_pwsh(os.environ)
@@ -46,6 +32,7 @@ OLD = "2020-01-01T00:00:00Z"
 FAKE = r"""
 import datetime, json, os, re, sys
 from pathlib import Path
+sys.stdout.reconfigure(newline='\n')  # Podman writes LF, also on Windows
 p = Path(os.environ['GC_STATE'])
 s = json.loads(p.read_text(encoding='utf-8'))
 a = sys.argv[1:]
@@ -196,6 +183,48 @@ def container(*, reference="sha256:" + IMAGE, created=OLD, status="running"):
     }
 
 
+# Every command io.sh fakes for the shell replay, and the two host launchers
+# runner_gc.sh's Windows branch starts. pwsh is not one of them, and GitHub's
+# Ubuntu runners ship /usr/bin/pwsh next to bash.
+BASH_FAKES = (
+    "podman", "docker", "jq", "uname", "id", "stat", "getent", "df", "pgrep",
+    "ps", "date", "rm", "runuser", "apt-get", "journalctl", "fstrim",
+)  # fmt: skip
+HOST_LAUNCHERS = ("wsl.exe", "powershell.exe")
+
+
+def require_bash_fakes(cwd, env):
+    """Stop before the public script runs unless the fakes are in force.
+
+    bash ignores a BASH_ENV file it cannot read. The real uname would then
+    report MINGW on Windows, and runner_gc.sh would start the real WSL and
+    PowerShell GC.
+    """
+    probe = Path(cwd) / "fake-preflight.sh"
+    probe.write_text(
+        f"type -t {' '.join(BASH_FAKES)}\n"
+        f'for launcher in {" ".join(HOST_LAUNCHERS)}; do type -P "$launcher"; done\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    proc = run_bash(
+        probe,
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+    )
+    lines = proc.stdout.split()
+    kinds, launchers = lines[: len(BASH_FAKES)], lines[len(BASH_FAKES) :]
+    if proc.returncode != 0 or kinds != ["function"] * len(BASH_FAKES):
+        raise RuntimeError(f"fake layer not loaded: {proc.stdout!r} {proc.stderr!r}")
+    if launchers:
+        raise RuntimeError(f"replay PATH reaches a host launcher: {launchers}")
+
+
 def replay(
     tmp_path,
     state,
@@ -217,7 +246,9 @@ def replay(
     fake.write_text(FAKE, encoding="utf-8")
     env_file = tmp_path / "io.sh"
     env_file.write_text(
-        f'''podman() {{ "{bash_path(Path(sys.executable))}" "{bash_path(fake)}" "$@"; }}
+        # The engine path is an argument to python, which needs the native
+        # form: the replay turns MSYS argument conversion off.
+        f'''podman() {{ "{bash_path(Path(sys.executable))}" "{fake}" "$@"; }}
 docker() {{ echo FORBIDDEN-docker >&2; exit 91; }}
 jq() {{
   if [ "${{JQ_FAIL:-0}}" = "1" ] && [ "$*" = '-r .RepoTags[]' ]; then return 1; fi
@@ -268,6 +299,10 @@ fstrim() {{ {"return 1" if owner else "exit 91"}; }}
         "RUNNER_GC_DRY_RUN": "1" if dry else "0",
         "JQ_FAIL": "1" if jq_fail else "0",
         "RUNNER_GC_RETENTION": retention,
+        # Git Bash rewrites arguments that look like POSIX paths
+        # (HOME=/disposable/runner) before the fake engine sees them.
+        "MSYS_NO_PATHCONV": "1",
+        "MSYS2_ARG_CONV_EXCL": "*",
         "RUNNER_GC_DOCKER_ONLY" if legacy else "RUNNER_GC_PODMAN_ONLY": "1",
     }
     if legacy:
@@ -277,6 +312,7 @@ fstrim() {{ {"return 1" if owner else "exit 91"}; }}
         runner = tmp_path / "synthetic-runner"
         runner.mkdir()
         env["RUNNER_GC_ROOT"] = str(runner)
+    require_bash_fakes(tmp_path, env)
     proc = run_bash(
         ROOT / "scripts/runner_gc.sh",
         cwd=tmp_path,
@@ -350,17 +386,40 @@ function Start-Process {{
 """,
         encoding="utf-8",
     )
+    # Windows writes caches under %SystemDrive% and the profile folders; give
+    # it every one of them inside tmp_path, or they land in the cwd.
+    scratch = tmp_path / "windows-profile"
+    scratch.mkdir(exist_ok=True)
     env = {
         "PATH": os.defpath,
         "GC_STATE": str(state_path),
         "HOME": str(tmp_path),
         "USERPROFILE": str(tmp_path),
         "SystemRoot": os.environ.get("SystemRoot", ""),
+        "SystemDrive": os.environ.get("SystemDrive", ""),
+        # Without PATHEXT, PowerShell on Windows does not run python.exe as a
+        # program: it opens it in a new window, and the replay gets no output.
+        "PATHEXT": os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD"),
+        "TEMP": str(scratch),
+        "TMP": str(scratch),
+        "LOCALAPPDATA": str(scratch),
+        "APPDATA": str(scratch),
         "RUNNER_GC_KEEP_TAG_PREFIX": prefix,
         "RUNNER_GC_RETENTION": retention,
     }
     proc = subprocess.run(
-        [PWSH, "-NoProfile", "-NonInteractive", "-File", str(wrapper)],
+        # As runner_gc.sh starts it: a machine policy (AllSigned) must not
+        # decide whether the replay runs.
+        [
+            PWSH,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(wrapper),
+        ],
+        cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,
@@ -376,32 +435,11 @@ function Start-Process {{
     return final
 
 
-def powershell_identity(pwsh):
-    """Version and edition, from the runtime itself."""
-    proc = subprocess.run(
-        [
-            pwsh,
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "'{0} {1}' -f $PSVersionTable.PSVersion, $PSVersionTable.PSEdition",
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=60,
-        check=False,
-    )
-    assert proc.returncode == 0 and not proc.stderr, (pwsh, proc.stdout, proc.stderr)
-    return proc.stdout.strip()
-
-
 @pytest.fixture(scope="module", autouse=True)
 def report_powershell_runtime(request):
     reporter = request.config.pluginmanager.get_plugin("terminalreporter")
     line = (
-        "PowerShell GC replays: none (no PODMAN_GC_TEST_PWSH, no pwsh on PATH)"
+        "PowerShell GC replays: none (no DOTFILES_TEST_PWSH, no pwsh on PATH)"
         if PWSH is None
         else f"PowerShell GC replays: {PWSH} {powershell_identity(PWSH)}"
     )
@@ -922,6 +960,126 @@ def test_seeded_real_script_replay(tmp_path, platform):
         ), {"seed": seed, "trace": final["trace"], "state": final}
 
 
+def test_fake_engine_writes_lf_like_podman(tmp_path):
+    # Podman writes LF. Python on Windows would write CRLF, and bash keeps the
+    # CR on every line but the last, so a second listed image ID is rejected.
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(inventory()), encoding="utf-8")
+    engine = tmp_path / "engine.py"
+    engine.write_text(FAKE, encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(engine), "images"],
+        env={**os.environ, "GC_STATE": str(state_path)},
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == f"sha256:{IMAGE}\n".encode()
+
+
+def _preflight_env(tmp_path, fake_layer):
+    return {
+        "PATH": bash_path(Path(resolve_bash()).parent),
+        "BASH_ENV": bash_path(fake_layer),
+    }
+
+
+def test_bash_preflight_refuses_an_unloaded_fake_layer(tmp_path):
+    # BASH_ENV names a file that does not exist, as when bash cannot read it.
+    env = _preflight_env(tmp_path, tmp_path / "missing-io.sh")
+    with pytest.raises(RuntimeError, match="fake layer"):
+        require_bash_fakes(tmp_path, env)
+
+
+def test_bash_preflight_accepts_a_loaded_fake_layer(tmp_path):
+    fake_layer = tmp_path / "io.sh"
+    fake_layer.write_text(
+        "".join(f"{name}() {{ return 91; }}\n" for name in BASH_FAKES),
+        encoding="utf-8",
+    )
+    require_bash_fakes(tmp_path, _preflight_env(tmp_path, fake_layer))
+
+
+def test_bash_preflight_refuses_a_path_that_reaches_a_host_launcher(tmp_path):
+    fake_layer = tmp_path / "io.sh"
+    fake_layer.write_text(
+        "".join(f"{name}() {{ return 91; }}\n" for name in BASH_FAKES),
+        encoding="utf-8",
+    )
+    launcher = tmp_path / "launchers"
+    launcher.mkdir()
+    (launcher / "wsl.exe").write_text("#!/bin/sh\nexit 91\n", encoding="utf-8")
+    (launcher / "wsl.exe").chmod(0o755)
+    env = _preflight_env(tmp_path, fake_layer)
+    env["PATH"] = bash_path(launcher) + ":" + env["PATH"]
+    with pytest.raises(RuntimeError, match="host launcher"):
+        require_bash_fakes(tmp_path, env)
+
+
+def test_bash_preflight_allows_a_pwsh_that_runner_gc_never_calls(tmp_path):
+    # GitHub's Ubuntu runners ship /usr/bin/pwsh next to bash. runner_gc.sh
+    # starts only wsl.exe and powershell.exe, so pwsh must not stop the replay.
+    fake_layer = tmp_path / "io.sh"
+    fake_layer.write_text(
+        "".join(f"{name}() {{ return 91; }}\n" for name in BASH_FAKES),
+        encoding="utf-8",
+    )
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "pwsh").write_text("#!/bin/sh\nexit 91\n", encoding="utf-8")
+    (tools / "pwsh").chmod(0o755)
+    env = _preflight_env(tmp_path, fake_layer)
+    env["PATH"] = bash_path(tools) + ":" + env["PATH"]
+    require_bash_fakes(tmp_path, env)
+
+
+def test_replay_checks_its_fakes_before_starting_the_public_script(
+    tmp_path, monkeypatch
+):
+    started = []
+
+    def refuse(cwd, env):
+        raise RuntimeError("fake layer not loaded")
+
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "require_bash_fakes", refuse)
+    monkeypatch.setattr(module, "run_bash", lambda *a, **k: started.append(a))
+    with pytest.raises(RuntimeError, match="fake layer not loaded"):
+        replay(tmp_path, inventory())
+    assert started == []
+
+
+def test_powershell_replay_runs_inside_its_temp_dir_like_production(
+    tmp_path, monkeypatch
+):
+    seen = {}
+
+    def record(command, **kwargs):
+        seen.update(command=command, **kwargs)
+        raise RuntimeError("recorded")
+
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "PWSH", "pwsh-under-test")
+    monkeypatch.setattr(module.subprocess, "run", record)
+    monkeypatch.setenv("PATHEXT", ".COM;.EXE")
+    with pytest.raises(RuntimeError, match="recorded"):
+        replay_powershell(tmp_path, inventory())
+    command, env = seen["command"], seen["env"]
+    # Without PATHEXT, Windows PowerShell does not treat python.exe as a
+    # program: it opens the fake engine in a new window and gets no output.
+    assert env["PATHEXT"] == ".COM;.EXE"
+    # runner_gc.sh starts the GC with -ExecutionPolicy Bypass; a machine
+    # policy such as AllSigned must not decide the replay either.
+    assert command[command.index("-ExecutionPolicy") + 1] == "Bypass"
+    # Windows writes caches under %SystemDrive% and %LOCALAPPDATA%; without
+    # them, and with no cwd, they landed in the checkout.
+    assert Path(seen["cwd"]) == tmp_path
+    assert env["SystemDrive"] == os.environ.get("SystemDrive", "")
+    for name in ("TEMP", "TMP", "LOCALAPPDATA", "APPDATA"):
+        assert Path(env[name]).is_relative_to(tmp_path), name
+
+
 def test_powershell_override_must_name_an_executable(tmp_path):
     for override in (str(tmp_path / "missing"), str(tmp_path), ""):
         with pytest.raises(RuntimeError, match="PODMAN_GC_TEST_PWSH"):
@@ -987,7 +1145,9 @@ def test_get_podman_json_asks_the_real_cmdlet_for_date_kind():
         "if ($cmdlet.Parameters.ContainsKey('DateKind')) { $convert.DateKind = 'String' }"
         in body
     )
-    assert "return Microsoft.PowerShell.Utility\\ConvertFrom-Json @convert" in body
+    # stored, then returned: 5.1 writes a JSON array as one Object[]
+    assert "$parsed = Microsoft.PowerShell.Utility\\ConvertFrom-Json @convert" in body
+    assert "    return $parsed\n" in body
     code = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
     # DateKind: only the capability test and the one use above
     assert sum(line.count("DateKind") for line in code) == 2

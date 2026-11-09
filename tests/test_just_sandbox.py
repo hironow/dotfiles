@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Mapping
 from contextlib import contextmanager
 from os import open as open_file_descriptor
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import pytest
@@ -589,7 +589,9 @@ def _assert_snapshot_has_no_git_ancestry(snapshot: Path) -> None:
 
 def _engine_snapshot_path(snapshot: Path) -> str:
     if _mount_mode(os.environ) == "bind":
-        return str(Path(_host_workspace_path()) / snapshot.relative_to(ROOT))
+        # A path in the engine's (Linux) namespace, whatever OS builds it.
+        relative = snapshot.relative_to(ROOT).as_posix()
+        return str(PurePosixPath(_host_workspace_path()) / relative)
     return str(snapshot)
 
 

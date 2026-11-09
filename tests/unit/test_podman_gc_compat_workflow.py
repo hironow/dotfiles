@@ -36,6 +36,7 @@ def test_workflow_runs_like_the_others_and_pins_every_action():
         "scripts/runner_gc_win.ps1",
         "tests/powershell/get_podman_json_51.ps1",
         "tests/unit/test_podman_gc_simulation.py",
+        "tests/unit/_pwsh.py",
         ".github/workflows/test-podman-gc-compat.yaml",
     ):
         assert body.count(f"      - '{path}'\n") == 2, path
