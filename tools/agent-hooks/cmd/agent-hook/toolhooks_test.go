@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	json "github.com/goccy/go-json/v2"
@@ -108,7 +109,7 @@ func build(t *testing.T, root string, env toolhookcorpus.Environment, sub func(s
 		mustDo(t, err)
 		script := filepath.Join(root, label)
 		mustDo(t, os.MkdirAll(filepath.Dir(script), 0o755))
-		mustDo(t, os.WriteFile(script, []byte("#!"+faketool+"\n"+string(config)+"\n"), 0o755))
+		writeExecutable(t, script, []byte("#!"+faketool+"\n"+string(config)+"\n"))
 		rules[label] = withRoot(rule, sub)
 	}
 	data, err := json.Marshal(rules)
@@ -185,6 +186,17 @@ func deref(s *string) string {
 		return "<unset>"
 	}
 	return *s
+}
+
+// writeExecutable writes a program that a child of a parallel case runs.
+// It holds ForkLock while the file is open for writing, so no sibling case
+// forks then: its child would keep the file open until exec, and running the
+// program would fail with "text file busy" (golang/go#22315).
+func writeExecutable(t *testing.T, path string, data []byte) {
+	t.Helper()
+	syscall.ForkLock.RLock()
+	defer syscall.ForkLock.RUnlock()
+	mustDo(t, os.WriteFile(path, data, 0o755))
 }
 
 func mustDo(t *testing.T, err error) {
