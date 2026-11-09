@@ -823,7 +823,9 @@ spec-check:
     done
     {{UV_RUN}} --group dev pytest -q tests/unit/test_podman_gc_simulation.py
 
-# check: strict gate, never writes. Used by pre-push hook and CI.
+# check: strict gate, never writes. `just ci`, `just check-all`, and CI's dev
+# container job run it. The Go legs run last: golangci for three GOOS is the
+# slowest leg, so a cheaper leg that fails ends the run before it.
 [group('Lint')]
 check:
     @echo '🔎 Python (ruff format --check)...'
@@ -834,8 +836,6 @@ check:
     @just check-ty
     @just rttm-check
     @just spec-check
-    @echo '🔎 Go (golangci-lint)...'
-    just go-lint
     @echo '🔎 Shell (shellcheck)...'
     git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
@@ -854,6 +854,8 @@ check:
     @just mise-versions-check
     @echo '🔎 storage bounds (every tofu sink declares its cap)...'
     @{{UV_RUN}} scripts/check_storage_bounds.py
+    @echo '🔎 Go (golangci-lint per GOOS)...'
+    just go-lint
     @echo '🔎 Go tests (tools/ modules)...'
     just go-test
     @echo '✅ All checks passed.'
