@@ -25,6 +25,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Bootstrap native Podman and canonical frozen CLI tools
+        env:
+          # mise and the bootstrap's own API calls; the anonymous limit is low.
+          GITHUB_TOKEN: ${{ github.token }}
         run: bash .devcontainer/ci-bootstrap.sh
       - name: Run required disposable devcontainer acceptance and sandbox tests
         env:
