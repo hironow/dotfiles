@@ -38,33 +38,43 @@
 # NOTE: filename uses `.yaml` per this repo's YAML convention (CLAUDE.md),
 # unlike the sibling repos' `.yml` -- Dependabot accepts both. Reviewer: hironow.
 version: 2
-updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
+
+# One Dependabot pull request per week for the whole repo (owner ruling
+# 2026-09-14): every ecosystem below joins the `weekly` group, whose schedule is
+# this repo's slot on a weeknight JST (hub `just dependabot-slot <repo>`) — one CI
+# run on the runner pool per repo per week instead of one per ecosystem, and no
+# org-wide Monday burst. The per-ecosystem cooldown and labels are unchanged;
+# commit-message and open-pull-requests-limit live on the group (Dependabot
+# refuses them on the entries).
+multi-ecosystem-groups:
+  weekly:
     schedule:
       interval: "weekly"
+      day: "wednesday"
+      time: "15:39"
+      timezone: "Etc/UTC"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+updates:
+  - package-ecosystem: "github-actions"
+    patterns: ["*"]
+    multi-ecosystem-group: "weekly"
+    directory: "/"
     cooldown:
       default-days: 7
     labels: ["dependencies", "github-actions"]
-    commit-message:
-      prefix: "ci"
-    groups:
-      github-actions:
-        patterns: ["*"]
-
   # Root: pytest in the dev group + ruff/ty pins in the lint group. Both tools
   # are pinned == (docs/agents/python-tooling.md); a Dependabot bump of either
   # is a deliberate pin edit to review.
   - package-ecosystem: "uv"
+    patterns: ["*"]
+    multi-ecosystem-group: "weekly"
     directory: "/"
-    schedule:
-      interval: "weekly"
     cooldown:
       default-days: 7
     labels: ["dependencies", "python", "root"]
-    commit-message:
-      prefix: "chore"
-      include: "scope"
     ignore:
       # ruff and ty are pinned == in four places (root/emulator/RTTM lint
       # groups, mise) and bumped together by `just bump-tool`, so a one-place
@@ -77,97 +87,66 @@ updates:
   # Version updates skip transitive packages unless `allow` says "all", so
   # these entries allow all and group them into one weekly PR each.
   - package-ecosystem: "uv"
+    patterns: ["*"]
+    multi-ecosystem-group: "weekly"
     directory: "/tools/rttm"
-    schedule:
-      interval: "weekly"
     cooldown:
       default-days: 7
     labels: ["dependencies", "python", "rttm"]
-    commit-message:
-      prefix: "chore"
-      include: "scope"
     allow:
       - dependency-type: "all"
     ignore:
       # Same synchronized pin-update path as root and emulator.
       - dependency-name: "ruff"
       - dependency-name: "ty"
-    groups:
-      rttm-python:
-        patterns: ["*"]
-
   # emulator/ is a vendored, self-contained uv project (ADR 0014/0016) with real
   # runtime deps (aiohttp, mlflow, ...); grouped to one weekly PR.
   - package-ecosystem: "uv"
+    patterns: ["*"]
+    multi-ecosystem-group: "weekly"
     directory: "/emulator"
-    schedule:
-      interval: "weekly"
     cooldown:
       default-days: 7
     labels: ["dependencies", "python", "emulator"]
-    commit-message:
-      prefix: "chore"
-      include: "scope"
     allow:
       - dependency-type: "all"
     ignore:
       # same reason as the root entry: bumped via `just bump-tool`.
       - dependency-name: "ruff"
       - dependency-name: "ty"
-    groups:
-      emulator-python:
-        patterns: ["*"]
-
   - package-ecosystem: "uv"
+    patterns: ["*"]
+    multi-ecosystem-group: "weekly"
     directory: "/telemetry/examples"
-    schedule:
-      interval: "weekly"
     cooldown:
       default-days: 7
     labels: ["dependencies", "python", "telemetry"]
-    commit-message:
-      prefix: "chore"
-      include: "scope"
     allow:
       - dependency-type: "all"
-    groups:
-      telemetry-examples-python:
-        patterns: ["*"]
-
   # emulator/*-cli and tools/simple-server are small vendored Go modules
   # (one go.mod each); grouped to one weekly PR so transitive golang.org/x/*
   # bumps don't rot unwatched. Those modules are `// indirect` in go.mod, and
   # Dependabot's Go updater skips indirect modules unless `allow` says "all".
   - package-ecosystem: "gomod"
+    patterns: ["*"]
+    multi-ecosystem-group: "weekly"
     directories:
       - "/emulator/*"
       - "/tools/simple-server"
-    schedule:
-      interval: "weekly"
     allow:
       - dependency-type: "all"
     cooldown:
       default-days: 7
     labels: ["dependencies", "go", "emulator"]
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-    groups:
-      emulator-go:
-        patterns: ["*"]
-
   - package-ecosystem: "docker"
+    patterns: ["*"]
+    multi-ecosystem-group: "weekly"
     directories:
       - "/tests/docker"
       - "/emulator/*"
-    schedule:
-      interval: "weekly"
     cooldown:
       default-days: 7
     labels: ["dependencies", "docker"]
-    commit-message:
-      prefix: "chore"
-      include: "scope"
     ignore:
       # Compiled-dep services (e.g. emulator/a2a-inspector: cffi / pydantic-core
       # / asyncpg) lack cp314 wheels, so `uv sync` builds from sdist -> needs gcc,
@@ -178,24 +157,14 @@ updates:
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
-    groups:
-      docker:
-        patterns: ["*"]
-
   # tofu/tailnet's OpenTofu providers. The only stack left here after the exe
   # stacks moved out; its state is the tailnet ACL, so a provider bump is the
   # only dependency it has.
   - package-ecosystem: "opentofu"
+    patterns: ["*"]
+    multi-ecosystem-group: "weekly"
     directories:
       - "/tofu/tailnet"
-    schedule:
-      interval: "weekly"
     cooldown:
       default-days: 7
     labels: ["dependencies", "opentofu"]
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-    groups:
-      tofu-opentofu:
-        patterns: ["*"]
