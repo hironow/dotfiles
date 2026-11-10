@@ -65,7 +65,12 @@ elif [[ $brew_os != MINGW* && $brew_os != MSYS* && $brew_os != CYGWIN* ]]; then
   if has brew; then log_ok 'brew' "$(brew --version | head -n1 2>/dev/null || true)"; else log_warn 'brew' 'missing'; fi
 fi
 if has gcloud; then log_ok 'gcloud' "$(gcloud --version 2>/dev/null | head -n1 || true)"; else log_warn 'gcloud' 'missing'; fi
-if has pnpm; then log_ok 'pnpm' "$(pnpm --version 2>/dev/null || true)"; else log_warn 'pnpm' 'missing'; fi
+# pnpm comes per repo from corepack.
+if has pnpm; then
+  log_ok 'pnpm' "$(pnpm --version 2>/dev/null || true)"
+else
+  log_warn 'pnpm' 'missing'
+fi
 if has npm; then log_ok 'npm' "$(npm --version 2>/dev/null || true)"; else log_warn 'npm' 'missing'; fi
 if has rustc; then log_ok 'rustc' "$(rustc --version 2>/dev/null || true)"; else log_warn 'rustc' 'missing'; fi
 
