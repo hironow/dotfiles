@@ -50,6 +50,7 @@ Linux で不足する Podman パッケージを入れるときだけ、root ま�
 apt の Podman の候補が 5 未満なら、何も入れずにその場で停止する（Ubuntu 24.04 は 4.9 を配るので、`install.sh` 全体もここで止まる。配布を上げるまで WSL では Podman を使わない）。
 WSL の `wl-clipboard`（Pi と Herdr のコピー用）も root か `sudo -n` で入れるが、こちらは導入できなくても手順を表示して先へ進む。
 `just deploy` は `~/.zprofile` に `~/.local/bin` を足す（zsh のログインシェルは `~/.profile` を読まない）。
+WSL の zsh（`.zshrc` を読む対話の shell）の mise は、Windows の home の mise の設定（`/mnt/c/Users/<user>/.config/mise`）を読まない。`/mnt/c` の下の repo の `mise.toml` は読む。`.zshrc` を読まない `zsh -lc` や `bash -lc` は対象外。
 
 WSL の素の Ubuntu では、続けて次を一度だけ実行する。
 `wsl-conf` の systemd 設定を効かせるには、Windows 側で `wsl --shutdown` も要る。

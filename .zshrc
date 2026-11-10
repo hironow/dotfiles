@@ -276,6 +276,17 @@ path_prepend "$HOME/.local/bin"
 # use activate only; cron/IDE/non-shell consumers should use
 # `mise exec --` or shims in ~/.zshenv). See ADR 0023.
 if _cmd_exists mise; then
+    # WSL started from Windows begins under /mnt/c/Users/<user>, and mise's
+    # ancestor walk would read the Windows home's mise config (deployed there
+    # by this repo) as a local one: it warns that credential_command is
+    # ignored and resolves tools from the Windows copy. Ignore only the
+    # Windows homes, so a project under /mnt/c keeps its mise.toml. The
+    # variable matches by prefix and takes no glob; overwrite it so a nested
+    # shell does not grow it. [settings] ignored_config_paths does not help:
+    # the config is found before file settings load (mise 2026.11.4).
+    _win_mise=(/mnt/c/Users/*/.config/mise(N/))
+    (( ${#_win_mise} )) && export MISE_IGNORED_CONFIG_PATHS="${(j.:.)_win_mise}"
+    unset _win_mise
     eval "$(mise activate zsh)"
 fi
 
