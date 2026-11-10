@@ -199,6 +199,21 @@ OpenRouter は従量課金なので最後にする。
 「quota exceeded」のような曖昧な文章や、認証エラーやサーバーエラーと矛盾するステータスでは切り替えず、元のエラーを表示する。
 切り替え先の認証済みの提供元がなければ、元のエラーを表示する。
 
+## Pi の圧縮と記憶（pi-blackhole）
+
+Pi の会話の圧縮と記憶づくりは、拡張 `pi-blackhole` が受け持つ。
+Pi の `/compact` を置き換え、裏で worker（observer、reflector、dropper）が記憶を作る。
+`pi-observational-memory` と `pi-vcc` があると衝突して読み込まれないので、installer は `pi-observational-memory` を外す。
+
+worker のモデルは、機体ごとに `~/.pi/agent/pi-blackhole/pi-blackhole-config.json` で決める。
+認証済みの提供元が機体ごとに違うので、dotfiles は配らない。
+worker のモデルを決めず、`sessionFallback` も既定の `false` のままだと、記憶づくりは何も言わずに飛ばされる（圧縮は動く）。
+session と同じモデルで動かすなら `"sessionFallback": true` にする。
+その分、記憶づくりにもメインのモデルの token を使い、その prompt cache が崩れやすくなる。
+安いモデルに任せるなら、`observerModel`、`reflectorModel`、`dropperModel` に提供元とモデルを書く（上流の README の「Quick start config」）。
+
+確かめるには、Pi を起動し直し、15000 token ほど会話してから `/blackhole-memory view` で記憶が入っているかを見る。
+
 ## headroom（j-cc と Codex の worker）
 
 `j-cc` は、起動する Claude とその worker のリクエストを headroom の proxy に通し、モデルに届く内容を圧縮する。
