@@ -2,9 +2,9 @@
 
 - **id**: ADR-0071
 - **title**: Rust の clippy を、出荷する target ごとに回す
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-11
-- **decided-date**: —
+- **decided-date**: 2026-11-11
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session、Windows 機）
@@ -33,21 +33,19 @@ Rust の lint（clippy）は、確かめる対象の OS と CPU（target）の�
 
 ## Decision
 
-（Proposed。確定後に MUST 文で記述。）
+A 案の次の 4 項を、必須事項（MUST）として採択する。
 
-決定案:
-
-- D1: rust-tooling の spoke の `rust-lint` は、出荷する target ごとに `cargo clippy --all-targets --all-features --target <triple> -- -D warnings` を回す。target の一覧は justfile の `rust_targets` に 1 か所だけ置き、release の build も同じ一覧を使う。recipe は shebang と `set -euo pipefail` を持ち、`rustup target add` を自分で行う（`rust-toolchain.toml` の targets に頼らない）。
-- D2: 出荷するどの target の clippy も、merge を止める gate のどこかで回る。target 向けに C を build する依存があって手元で回せない target は、その OS の CI のジョブで `just rust-lint <triple>` を回し、どのジョブがどの target を見るかを justfile に書く。target を黙って外さない。
-- D3: `-D warnings` で、別の target でだけ使われない helper は、同じ `#[cfg(...)]` を付けるか `if cfg!(...)` で書く。`#[allow(dead_code)]` で隠さない。
-- D4: lint はその OS での動きを証明しない。動きはその OS でテストを回して確かめる、と spoke に書く。
+- D1: rust-tooling の spoke の `rust-lint` は、出荷する target ごとに `cargo clippy --all-targets --all-features --target <triple> -- -D warnings` を回さなければならない（MUST）。target の一覧は justfile の `rust_targets` に 1 か所だけ置き、release の build も同じ一覧を使う。recipe は shebang と `set -euo pipefail` を持ち、`rustup target add` を自分で行う（`rust-toolchain.toml` の targets に頼ってはならない）。
+- D2: 出荷するどの target の clippy も、merge を止める gate のどこかで回らなければならない（MUST）。target 向けに C を build する依存があって手元で回せない target は、その OS の CI のジョブで `just rust-lint <triple>` を回し、どのジョブがどの target を見るかを justfile に書く。target を黙って外してはならない。
+- D3: `-D warnings` で、別の target でだけ使われない helper は、同じ `#[cfg(...)]` を付けるか `if cfg!(...)` で書かなければならない。`#[allow(dead_code)]` で隠してはならない。
+- D4: spoke は、lint がその OS での動きを証明しないこと、動きはその OS でテストを回して確かめることを示さなければならない（MUST）。
 
 ## Options Considered
 
-| 案 | 利点 | コスト・リスク |
-| --- | --- | --- |
-| A) 出荷する target ごとに clippy を回す（本案） | Windows・macOS だけの lint の誤りを、その OS の機体なしで止められる（C を build しない crate） | Rust の repo の `just check` が target の数だけ長くなる。C を build する依存がある crate は、その OS の CI が要る |
-| B) 今のまま手元の target だけ | 変更が無い | ADR-0069 で Go と Python から外した見逃しが、Rust にだけ残る |
+| 案 | 利点 | コスト・リスク | 裁定 |
+| --- | --- | --- | --- |
+| A) 出荷する target ごとに clippy を回す（本案） | Windows・macOS だけの lint の誤りを、その OS の機体なしで止められる（C を build しない crate） | Rust の repo の `just check` が target の数だけ長くなる。C を build する依存がある crate は、その OS の CI が要る | 所有者が採択 |
+| B) 今のまま手元の target だけ | 変更が無い | ADR-0069 で Go と Python から外した見逃しが、Rust にだけ残る | 見逃しが Rust にだけ残るため却下 |
 
 ## Consequences
 
@@ -71,13 +69,16 @@ Rust の lint（clippy）は、確かめる対象の OS と CPU（target）の�
 
 ## 相談の記録
 
-- 2026-11-11、本セッションで所有者（@hironow、0052・0069 の決定者）が、上の実測を見たうえで A を選んだ。
+- 2026-11-11、本セッションで所有者（@hironow、0052・0069 の決定者）が、上の実測を見たうえで A を選び、決定欄への代理記入を認めた。
 - 計画は独立サブエージェントがレビューした（Codex はクレジット切れ）。`rust-toolchain.toml` の targets が読まれないこと、C を build する crate の扱い、実測の不足、recipe を just で確かめること、cfg の付いたコードの直し方を、その指摘から採った。
 
-## 決定（記入待ち）
+## 決定（2026-11-11）
 
-- [ ] A を Accepted（D1〜D4 を MUST 文で確定し、索引、変更ログ、queue を更新する）
+- [x] A を Accepted（D1〜D4 を MUST 文で確定し、索引、変更ログ、queue を更新する）
 - [ ] B を Accepted（spoke の変更を戻し、「Rust は手元の target だけ」と記録する）
 - [ ] Rejected / Deferred（変更を戻し、queue に理由を残す）
 
-決定者: ＿＿＿　決定日: ＿＿＿
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-11（所有者の選択により代理記入）
+
+- B 案は見逃しが Rust にだけ残るため却下する。
+- 採択時に索引、変更ログ、queue の決定済みログを同時に更新した。ADR-0069 は変えていない。
