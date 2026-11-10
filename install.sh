@@ -109,6 +109,26 @@ _apt_podman_candidate_major() {
   _podman_candidate_is_new_enough apt "$candidate" "(Ubuntu 24.04 ships 4.9)"
 }
 
+# dnf's candidate. args: the elevation prefix (empty, or sudo -n). It reads
+# with the same privilege that installs, so both see the same metadata cache
+# (dnf5 as a normal user is unmeasured). The version is data, not a
+# translated label, so no C locale is needed. dnf4 adds a blank line, and
+# prints nothing for a package it does not know.
+_dnf_podman_candidate() {
+  local out candidate=""
+  out="$("$@" dnf -q repoquery --latest-limit 1 --queryformat '%{version}\n' podman)" || {
+    echo "[install] cannot read dnf's Podman candidate (dnf repoquery failed)." >&2
+    return 1
+  }
+  if [[ "$out" =~ ^[[:space:]]*([^[:space:]]+)[[:space:]]*$ ]]; then
+    candidate="${BASH_REMATCH[1]}"
+  elif [[ ! "$out" =~ ^[[:space:]]*$ ]]; then
+    echo "[install] cannot read dnf's Podman candidate: ${out//$'\n'/ }" >&2
+    return 1
+  fi
+  _podman_candidate_is_new_enough dnf "$candidate" "(the RHEL 8 family ships 4.9)"
+}
+
 # Provision only the native CLI; never start or initialize a machine.
 step_podman() {
   local major action=install
@@ -144,6 +164,8 @@ step_podman() {
         _apt_podman_candidate_major || return 1
         "${elevate[@]}" apt-get install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs || return 1
       elif command -v dnf >/dev/null 2>&1; then
+        # Same check before installing (the RHEL 8 family offers Podman 4.9).
+        _dnf_podman_candidate "${elevate[@]}" || return 1
         "${elevate[@]}" dnf install -y podman netavark aardvark-dns passt shadow-utils fuse-overlayfs || return 1
       elif command -v pacman >/dev/null 2>&1; then
         "${elevate[@]}" pacman -S --needed --noconfirm podman netavark aardvark-dns passt shadow fuse-overlayfs || return 1
