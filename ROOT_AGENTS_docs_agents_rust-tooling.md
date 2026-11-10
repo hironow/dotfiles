@@ -46,11 +46,47 @@ Write the reason in the PR, or in an ADR when it starts a new codebase.
 
 Add three recipes to the root `justfile`, and call them from `just check`:
 
-- `rust-lint`: `cargo fmt --all --check` and
-  `cargo clippy --all-targets --all-features -- -D warnings`
+- `rust-lint` (below): `cargo fmt --all --check`, and clippy once per target
+  you ship.
 - `rust-fmt`: `cargo fmt --all`
 - `rust-test`: `cargo test --all-targets --all-features`
 
+clippy checks one target, so code under `#[cfg(windows)]` or
+`#[cfg(target_os = "macos")]` is linted only when you check that target. List
+the targets once, in `rust_targets`, and use that list for the release builds
+too (see "Ship binaries"). The recipe adds each target to the toolchain
+itself: do not rely on `rust-toolchain.toml` to install them. Keep the
+shebang and `set -euo pipefail`: in just's default `sh -cu`, a loop returns
+only the last target's exit code.
+
+```just
+rust_targets := "x86_64-unknown-linux-musl aarch64-unknown-linux-musl aarch64-apple-darwin x86_64-pc-windows-msvc"
+
+rust-lint *targets=rust_targets:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo fmt --all --check
+    for target in {{targets}}; do
+      rustup target add "$target"
+      cargo clippy --all-targets --all-features --target "$target" -- -D warnings
+    done
+```
+
+- Pure Rust can be checked for every target from any machine: clippy does not
+  link the target's code. Build scripts and proc-macros are built for the
+  machine you run on, so they need its linker.
+- A dependency whose build script compiles C for the target (for example
+  `ring`, `aws-lc-sys`, `openssl-sys`, bundled `libsqlite3-sys`) is checked
+  only on that target's OS. Then pass `just check` the targets this machine
+  can check, and run `just rust-lint <triple>` for the others in that OS's CI
+  job, next to its release build. Write in the `justfile` which job checks
+  which target. Never drop a target silently.
+- With `-D warnings`, a helper that only `#[cfg(windows)]` code calls is
+  unused on the other targets. Give it the same `#[cfg(...)]`, or write the
+  branch with `if cfg!(windows)` so every target type-checks it. Do not hide
+  it with `#[allow(dead_code)]`.
+- Lint finds errors in code. Only running the tests on an OS shows how the
+  code behaves there.
 - Fix clippy findings. Do not add `#[allow(...)]` to hide one; if you must,
   write the reason on the line above.
 - Use `unsafe` only when there is no safe way. Put a `// SAFETY:` comment
@@ -60,8 +96,9 @@ Add three recipes to the root `justfile`, and call them from `just check`:
 
 ## Ship binaries
 
-Ship one executable per supported OS and CPU. List each target and the linker
-or SDK it needs in the root `justfile`, for example
+Ship one executable per supported OS and CPU. List each target in
+`rust_targets` (the same list `rust-lint` checks), and the linker or SDK it
+needs, in the root `justfile`, for example
 `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`,
 `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Build with
 `cargo build --release --target <triple>`. Do not assume the result is fully
