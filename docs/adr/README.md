@@ -95,6 +95,7 @@ and what outlived it.
 | 0068 | [dev container の mise を、署名を確かめた tarball で凍結する](./0068-pin-the-dev-container-mise.md) | Accepted (PR #583); limited partial supersession of 0001/0060 | 2026-11-09 | `.devcontainer/features/dotfiles-tools/install.sh`、`tools/mise-versions/`、`config/mise/image-tools.toml` |
 | 0069 | [型検査と lint を、コードが動く OS ごとに回す（ty と golangci-lint）](./0069-type-check-and-lint-for-every-os.md) | Accepted (PR #586); limited partial supersession of 0044 | 2026-11-10 | `ROOT_AGENTS_docs_agents_python-tooling.md`、`ROOT_AGENTS_docs_agents_go-tooling.md`、`ROOT_AGENTS_docs_agents_commit-discipline.md`、`templates/agent-baseline/` |
 | 0070 | [native Windows では pnpm を用意しない](./0070-no-pnpm-on-native-windows.md) | Accepted; limited partial supersession of 0017/0018 | 2026-11-10 | `install.sh`（`step_corepack`）、`scripts/doctor.sh`、`bootstrap.ps1` |
+| 0071 | [Rust の clippy を、出荷する target ごとに回す](./0071-rust-clippy-for-every-target.md) | Proposed（決裁待ち） | 2026-11-11 | `ROOT_AGENTS_docs_agents_rust-tooling.md`、`tests/unit/test_cross_platform_gates.py` |
 
 ## Reading order for newcomers
 
@@ -159,3 +160,4 @@ and what outlived it.
 - 2026-11-10: [ADR-0069](./0069-type-check-and-lint-for-every-os.md) を採択し、0044 の Decision 1 の雛形の `just lint` の記述（ty 1 回）を、コードが動く OS ごとに回す形へ部分置換する。golangci-lint は出荷する GOOS ごとに回す。Rust の clippy は決めていない。[PR #586](https://github.com/hironow/dotfiles/pull/586) で所有者が本セッションで A を選び、決定欄への代理記入を許可した。
 - 2026-11-10: [ADR-0070](./0070-no-pnpm-on-native-windows.md)を起票（Proposed、決裁待ち）。native Windows では pnpm を用意せず、doctor も確かめない。0017 と 0018 の Windows の分の部分置換を、所有者が本セッションで指示した。
 - 2026-11-10: [ADR-0070](./0070-no-pnpm-on-native-windows.md) を採択し、0017 の corepack による pnpm の供給と、0018 の Windows の `step_corepack` を、native Windows の分だけ部分置換する。macOS・Linux・WSL・dev container は変えない。所有者が本セッションで A を選び、決定欄への代理記入を許可した。
+- 2026-11-11: [ADR-0071](./0071-rust-clippy-for-every-target.md)を起票（Proposed、決裁待ち）。Rust の clippy を出荷する target ごとに回し、C を build する依存で手元で見られない target はその OS の CI で見る。0069 が決めていなかった Rust の分を決める。
