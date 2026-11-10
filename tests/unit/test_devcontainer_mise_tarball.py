@@ -29,6 +29,8 @@ IMAGE_TOOLS = ROOT / "config/mise/image-tools.toml"
 MISE_FINGERPRINT = "24853EC9F655CE80B48E6C3A8B81C9D17413A06D"
 FUNCTION = "verify_artifact_with_signed_checksums"
 GPG = shutil.which("gpg")
+# macOS ships it in /sbin, outside the restricted PATH the function runs with.
+SHA256SUM = shutil.which("sha256sum")
 
 
 def _feature() -> str:
@@ -176,6 +178,8 @@ def _signed(home: Path, signer: str, text: str, out: Path, *extra: str) -> Path:
 
 
 def _verify(tmp_path, key: Path, expected: str, signed: Path, artifact: Path):
+    if SHA256SUM is None:
+        pytest.skip("needs sha256sum to check the tarball")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     curl = bin_dir / "curl"
@@ -199,7 +203,10 @@ def _verify(tmp_path, key: Path, expected: str, signed: Path, artifact: Path):
     assert GPG is not None
     bash_dir = Path(resolve_bash()).parent
     path = ":".join(
-        [bash_path(p) for p in (bin_dir, Path(GPG).parent, bash_dir)]
+        [
+            bash_path(p)
+            for p in (bin_dir, Path(GPG).parent, Path(SHA256SUM).parent, bash_dir)
+        ]
         + ["/usr/bin", "/bin"]
     )
     return run_bash(
