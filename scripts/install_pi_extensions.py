@@ -31,7 +31,14 @@ OLLAMA_PACKAGE = "npm:@ollama/pi-web-search"
 # host's (pi warns about exactly this; ADR 0059).
 # pi-memory was retired by the owner on 2026-11-10. Retirement removes the
 # package only; its data (~/.pi/agent/memory/) is never touched.
-RETIRED_PACKAGES = ("npm:pi-web-access", "npm:remote-pi", "npm:pi-memory")
+# pi-observational-memory was retired on 2026-11-10: npm:pi-blackhole includes
+# observational memory and refuses to load next to it (its README).
+RETIRED_PACKAGES = (
+    "npm:pi-web-access",
+    "npm:remote-pi",
+    "npm:pi-memory",
+    "npm:pi-observational-memory",
+)
 # Pi's own metrics, off on every machine (ADR 0058): the anonymous
 # install/update report to pi.dev and the opt-in analytics share nothing.
 TELEMETRY_OFF = {"enableInstallTelemetry": False, "enableAnalytics": False}

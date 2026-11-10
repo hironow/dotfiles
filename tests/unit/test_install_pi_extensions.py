@@ -50,7 +50,7 @@ def test_deploy_keeps_existing_packages_and_places_extension(
     assert json.loads((agent / "settings.json").read_text(encoding="utf-8")) == (
         settings | installer.TELEMETRY_OFF
     )
-    assert install.call_count == 9  # Eight missing declarations + npm reconciliation.
+    assert install.call_count == 10  # Nine missing declarations + npm reconciliation.
     assert all(call.args[0][0] == "pi" for call in install.call_args_list)
     extension = agent / "extensions/jev-sonnet-fallback.ts"
     assert extension.read_text(encoding="utf-8") == installer.EXTENSION.read_text(
@@ -401,7 +401,8 @@ def test_placement_decides_from_what_is_there(
     assert installer.placement(SOURCE, placed, symlinks=symlinks) == action
 
 
-# The retired web extension, remote-pi (ADR 0058, ADR 0059) and pi-memory: still
+# The retired web extension, remote-pi (ADR 0058, ADR 0059), pi-memory and
+# pi-observational-memory: still
 # configured entries go, personal declarations and other pins stay.
 
 
@@ -411,6 +412,7 @@ def test_placement_decides_from_what_is_there(
         ("npm:pi-web-access@0.37.0", "npm:pi-web-access"),
         ("npm:remote-pi@0.7.0", "npm:remote-pi"),
         ("npm:pi-memory@0.4.2", "npm:pi-memory"),
+        ("npm:pi-observational-memory@3.1.4", "npm:pi-observational-memory"),
     ],
 )
 def test_a_still_configured_retired_package_is_removed_once(
@@ -445,8 +447,9 @@ def test_a_still_configured_retired_package_is_removed_once(
         (["npm:remote-pi"], ["npm:remote-pi"]),
         (["npm:remote-pi@0.7.0"], ["npm:remote-pi"]),
         (["npm:pi-memory"], ["npm:pi-memory"]),
+        (["npm:pi-observational-memory"], ["npm:pi-observational-memory"]),
         # A name that only starts with a retired one is not retired.
-        (["npm:pi-observational-memory"], []),
+        (["npm:pi-memory-extra"], []),
         (
             ["npm:pi-web-access@0.37.0", "npm:remote-pi@0.7.0", "npm:pi-goal-x"],
             ["npm:pi-web-access", "npm:remote-pi"],
