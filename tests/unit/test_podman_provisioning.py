@@ -32,7 +32,16 @@ def sandbox(tmp_path: Path) -> Iterator[Path]:
         '[ "$*" = --version ] || exit 97; echo "podman version 6.1.4"',
     )
     _stub(bin_dir, "uname", "echo Darwin")
-    for name in ("git", "just", "brew", "sudo", "apt-get", "dnf", "pacman"):
+    for name in (
+        "git",
+        "just",
+        "brew",
+        "sudo",
+        "apt-get",
+        "apt-cache",
+        "dnf",
+        "pacman",
+    ):
         _stub(bin_dir, name, f'echo "{name} $*" >> "$HOME/unexpected.log"; exit 98')
     executable = shutil.which("cp")
     assert executable is not None, "fixture needs cp on PATH"
@@ -43,6 +52,29 @@ def sandbox(tmp_path: Path) -> Iterator[Path]:
         assert all(
             line == "--version" for line in log.read_text(encoding="utf-8").splitlines()
         ), "installer must never initialize, start, upgrade or probe a machine"
+
+
+def _apt_cache(sandbox: Path, answer: str) -> None:
+    """A fake `apt-cache policy podman` that prints `answer` in the C locale.
+
+    Outside the C locale it answers in Japanese, as apt does under ja_JP
+    ("候補:" for "Candidate:"), so the installer must ask for the C locale.
+    """
+    # the sandbox PATH holds only its own stubs, so use the shell's printf
+    _stub(
+        sandbox / "bin",
+        "apt-cache",
+        '[ "$*" = "policy podman" ] || exit 97\n'
+        'if [ "${LC_ALL:-}" != C ]; then\n'
+        "  printf '%s\\n' 'podman:' '  候補:               6.1.4-1'\n"
+        "  exit 0\n"
+        "fi\n"
+        f"printf '%s' {shlex.quote(answer)}",
+    )
+
+
+def _candidate(version: str) -> str:
+    return f"podman:\n  Installed: (none)\n  Candidate: {version}\n"
 
 
 def _run(sandbox: Path, *args: str, scoped: bool = True):
@@ -140,12 +172,67 @@ def test_old_native_packages_do_not_bypass_minimum_or_fall_back(
     _stub(
         sandbox / "bin",
         "apt-get",
+        'echo "$*" >> "$HOME/package.log"; '
         'if [ "$1" = install ]; then cp "$HOME/package/podman" "$HOME/bin/podman"; fi',
     )
+    # Ubuntu 24.04 offers 4.9.3: stop before installing anything, so no old
+    # Podman and no runtime packages are left behind.
+    _apt_cache(sandbox, _candidate("4.3.1+ds1-1ubuntu0.2"))
     result = _run(sandbox)
     assert result.returncode != 0
     assert "Podman 5+ is required" in result.stderr
+    assert "apt offers 4.3.1+ds1-1ubuntu0.2" in result.stderr
+    assert (sandbox / "package.log").read_text(encoding="utf-8").splitlines() == [
+        "update"
+    ]
     assert not (sandbox / "unexpected.log").exists()
+
+
+@pytest.mark.parametrize(
+    ("answer", "reason"),
+    [
+        (_candidate("(none)"), "apt offers no Podman"),
+        ("", "apt offers no Podman"),
+        (_candidate("garbage"), "cannot read apt's Podman candidate"),
+        (None, "cannot read apt's Podman candidate"),
+    ],
+)
+def test_an_unreadable_or_missing_apt_candidate_installs_nothing(
+    sandbox: Path, answer: str | None, reason: str
+) -> None:
+    _stub(sandbox / "bin", "uname", "echo Linux")
+    _stub(sandbox / "bin", "id", "echo 0")
+    _stub(sandbox / "bin", "apt-get", 'echo "$*" >> "$HOME/package.log"')
+    if answer is None:
+        _stub(sandbox / "bin", "apt-cache", "exit 100")
+    else:
+        _apt_cache(sandbox, answer)
+    result = _run(sandbox)
+    assert result.returncode != 0
+    assert reason in result.stderr
+    assert (sandbox / "package.log").read_text(encoding="utf-8").splitlines() == [
+        "update"
+    ]
+    assert not (sandbox / "unexpected.log").exists()
+
+
+def test_an_apt_candidate_with_an_epoch_is_read_by_its_upstream_version(
+    sandbox: Path,
+) -> None:
+    _stub(sandbox / "bin", "uname", "echo Linux")
+    _stub(sandbox / "bin", "id", "echo 0")
+    _stub(
+        sandbox / "bin",
+        "apt-get",
+        'echo "$*" >> "$HOME/package.log"; '
+        'if [ "$1" = install ]; then cp "$HOME/package/podman" "$HOME/bin/podman"; fi',
+    )
+    _apt_cache(sandbox, _candidate("1:5.4.2+ds1-1"))
+    result = _run(sandbox)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (sandbox / "package.log").read_text(encoding="utf-8").splitlines()[-1] == (
+        "install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs"
+    )
 
 
 @pytest.mark.parametrize("behavior", ["failure", "no_cli", "old_cli"])
@@ -249,6 +336,8 @@ def test_linux_elevates_only_package_commands_without_a_prompt(sandbox: Path) ->
         'if [ "$1" = install ]; then '
         'cp "$HOME/package/podman" "$HOME/bin/podman"; fi',
     )
+    # reading the candidate needs no root, so it does not go through sudo
+    _apt_cache(sandbox, _candidate("6.1.4+ds1-1"))
     result = _run(sandbox)
     assert result.returncode == 0, result.stdout + result.stderr
     assert (sandbox / "sudo.log").read_text(encoding="utf-8").splitlines() == [
@@ -306,6 +395,7 @@ def test_missing_linux_podman_installs_runtime_and_dns_packages(sandbox: Path) -
         'if [ "$1" = install ]; then '
         'cp "$HOME/package/podman" "$HOME/bin/podman"; fi',
     )
+    _apt_cache(sandbox, _candidate("6.1.4+ds1-1"))
     result = _run(sandbox)
     assert result.returncode == 0, result.stdout + result.stderr
     assert (sandbox / "package.log").read_text(encoding="utf-8").splitlines() == [

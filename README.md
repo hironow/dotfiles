@@ -47,6 +47,7 @@ INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./i
 Podman 5 以上も必須で、Mac は Homebrew、Linux は OS パッケージから導入する。
 Linux で不足する Podman パッケージを入れるときだけ、root または非対話の `sudo -n` が必要になる。
 権限がなければ停止する。`install.sh` 全体を sudo で実行しない。
+apt の Podman の候補が 5 未満なら、何も入れずにその場で停止する（Ubuntu 24.04 は 4.9 を配るので、`install.sh` 全体もここで止まる。配布を上げるまで WSL では Podman を使わない）。
 WSL の `wl-clipboard`（Pi と Herdr のコピー用）も root か `sudo -n` で入れるが、こちらは導入できなくても手順を表示して先へ進む。
 `just deploy` は `~/.zprofile` に `~/.local/bin` を足す（zsh のログインシェルは `~/.profile` を読まない）。
 
@@ -65,7 +66,7 @@ just harden-env   # 機体ごとの供給網対策（npm と uv の 7 日の隔�
 just wsl-conf     # /etc/wsl.conf の差分と sudo での編集手順を表示する（Windows の PATH を入れない、systemd を有効化）
 
 # wsl --shutdown 後に開き直した WSL で、一般ユーザーの Podman API を有効化する
-# OS パッケージの Podman が 5 未満なら導入は停止する
+# apt の Podman の候補が 5 未満なら、何も入れずに停止する（Ubuntu 24.04 は 4.9）
 just podman-install
 systemctl --user enable --now podman.socket
 
