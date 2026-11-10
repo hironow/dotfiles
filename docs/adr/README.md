@@ -42,8 +42,8 @@ and what outlived it.
 | 0014 | [Vendor emulator and telemetry from submodules into dotfiles](./0014-vendor-emulator-telemetry-from-submodules.md) | Accepted | 2026-05-30 | `emulator/`, `telemetry/` |
 | 0015 | [Adopt portless for stable .localhost URLs of local HTTP UIs](./0015-adopt-portless-for-local-dev-urls.md) | Accepted; partly superseded by [0054](./0054-run-portless-directly.md) | 2026-05-30 | `config/portless-aliases.yaml`, `docs/portless-urls.md` |
 | 0016 | [Integrate vercel-labs/emulate API emulators via npx wrapper](./0016-integrate-emulate-api-emulators-via-npx.md) | Partly superseded by [0055](./0055-run-emulate-with-bunx.md) | 2026-05-30 | `emulator/emulate/`, `justfile` (`emu-api`) |
-| 0017 | [Retire the pnpm-global subsystem in favor of corepack + mise npm](./0017-retire-pnpm-global-for-corepack.md) | Accepted; partial supersede by [0027](./0027-bun-only-retire-per-repo-pnpm-carveout.md) | 2026-06-02 | `mise.toml`, `install.sh`, `dump/npm-global` |
-| 0018 | [Windows native: minimum-viable deploy with explicit-skip step_*](./0018-windows-native-mvp.md) | Accepted; partial supersede by [0039](./0039-windows-bootstrap-ps1.md) (bootstrap scope) | 2026-06-02 | `install.sh`, `justfile` (Windows deploy) |
+| 0017 | [Retire the pnpm-global subsystem in favor of corepack + mise npm](./0017-retire-pnpm-global-for-corepack.md) | Accepted; partial supersede by [0027](./0027-bun-only-retire-per-repo-pnpm-carveout.md), [0070](./0070-no-pnpm-on-native-windows.md) (native Windows) | 2026-06-02 | `mise.toml`, `install.sh`, `dump/npm-global` |
+| 0018 | [Windows native: minimum-viable deploy with explicit-skip step_*](./0018-windows-native-mvp.md) | Accepted; partial supersede by [0039](./0039-windows-bootstrap-ps1.md) (bootstrap scope), [0070](./0070-no-pnpm-on-native-windows.md) (Windows step_corepack) | 2026-06-02 | `install.sh`, `justfile` (Windows deploy) |
 | 0019 | [Windows scoop manifest in `dump/` — record-only](./0019-windows-scoop-dump-record-only.md) | Accepted; partial supersede by [0030](./0030-per-host-dump-layout.md) (path) + [0032](./0032-windows-scoop-restore-add-scoop.md) (record-only) | 2026-06-02 | `dump/<host>/scoop.json`, `justfile` |
 | 0020 | [Normalize shell-script line endings via `.gitattributes`](./0020-normalize-shell-script-line-endings.md) | Accepted | 2026-06-02 | `.gitattributes` |
 | 0021 | [Split git config via `[include]` so dotfiles owns aliases + shared settings](./0021-git-config-include-split.md) | Accepted | 2026-06-02 | `~/.gitconfig`, `config/git/` |
@@ -94,7 +94,7 @@ and what outlived it.
 | 0067 | [コンテナの実行と導入を Podman に統一する](./0067-use-podman-for-managed-containers.md) | Accepted (PR #565); limited partial supersession of 0001/0005/0035 | 2026-11-08 | コンテナ実行経路、導入、devcontainer、CI、runner GC |
 | 0068 | [dev container の mise を、署名を確かめた tarball で凍結する](./0068-pin-the-dev-container-mise.md) | Accepted (PR #583); limited partial supersession of 0001/0060 | 2026-11-09 | `.devcontainer/features/dotfiles-tools/install.sh`、`tools/mise-versions/`、`config/mise/image-tools.toml` |
 | 0069 | [型検査と lint を、コードが動く OS ごとに回す（ty と golangci-lint）](./0069-type-check-and-lint-for-every-os.md) | Accepted (PR #586); limited partial supersession of 0044 | 2026-11-10 | `ROOT_AGENTS_docs_agents_python-tooling.md`、`ROOT_AGENTS_docs_agents_go-tooling.md`、`ROOT_AGENTS_docs_agents_commit-discipline.md`、`templates/agent-baseline/` |
-| 0070 | [native Windows では pnpm を用意しない](./0070-no-pnpm-on-native-windows.md) | Proposed（決裁待ち） | 2026-11-10 | `install.sh`（`step_corepack`）、`scripts/doctor.sh`、`bootstrap.ps1` |
+| 0070 | [native Windows では pnpm を用意しない](./0070-no-pnpm-on-native-windows.md) | Accepted; limited partial supersession of 0017/0018 | 2026-11-10 | `install.sh`（`step_corepack`）、`scripts/doctor.sh`、`bootstrap.ps1` |
 
 ## Reading order for newcomers
 
@@ -158,3 +158,4 @@ and what outlived it.
 - 2026-11-10: [ADR-0069](./0069-type-check-and-lint-for-every-os.md)を起票（Proposed、決裁待ち）。global の規則（python-tooling と go-tooling の spoke）と雛形で、ty と golangci-lint をコードが動く OS ごとに回す。0044 の Decision 1 の雛形の `just lint` の記述を広げる部分置換を、所有者が本セッションで指示した。
 - 2026-11-10: [ADR-0069](./0069-type-check-and-lint-for-every-os.md) を採択し、0044 の Decision 1 の雛形の `just lint` の記述（ty 1 回）を、コードが動く OS ごとに回す形へ部分置換する。golangci-lint は出荷する GOOS ごとに回す。Rust の clippy は決めていない。[PR #586](https://github.com/hironow/dotfiles/pull/586) で所有者が本セッションで A を選び、決定欄への代理記入を許可した。
 - 2026-11-10: [ADR-0070](./0070-no-pnpm-on-native-windows.md)を起票（Proposed、決裁待ち）。native Windows では pnpm を用意せず、doctor も確かめない。0017 と 0018 の Windows の分の部分置換を、所有者が本セッションで指示した。
+- 2026-11-10: [ADR-0070](./0070-no-pnpm-on-native-windows.md) を採択し、0017 の corepack による pnpm の供給と、0018 の Windows の `step_corepack` を、native Windows の分だけ部分置換する。macOS・Linux・WSL・dev container は変えない。所有者が本セッションで A を選び、決定欄への代理記入を許可した。

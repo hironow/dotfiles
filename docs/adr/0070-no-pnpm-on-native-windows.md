@@ -2,9 +2,9 @@
 
 - **id**: ADR-0070
 - **title**: native Windows では pnpm を用意しない
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-10
-- **decided-date**: —
+- **decided-date**: 2026-11-10
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session、Windows 機）
@@ -31,21 +31,19 @@ Windows では用意せず、警告もしないようにする。macOS と Linux
 
 ## Decision
 
-（Proposed。確定後に MUST 文で記述。）
+A 案の次の 4 項を、必須事項（MUST）として採択する。
 
-決定案:
-
-- D1: native Windows では pnpm を用意しない。`install.sh` の `step_corepack` の Windows 枝は、理由を付けて飛ばす（`_skip_windows`）。
-- D2: `just doctor` は native Windows では pnpm の行を出さない。macOS・Linux・WSL では今までどおり確かめる。
-- D3: `bootstrap.ps1` は npm・yarn・pnpm・corepack を呼ばない（テストで止める）。
+- D1: native Windows では pnpm を用意してはならない（MUST NOT）。`install.sh` の `step_corepack` の Windows 枝は、理由を付けて飛ばさなければならない（`_skip_windows`）。
+- D2: `just doctor` は native Windows では pnpm の行を出してはならない。macOS・Linux・WSL では今までどおり確かめなければならない（MUST）。
+- D3: `bootstrap.ps1` は npm・yarn・pnpm・corepack を呼んではならない（MUST NOT）。テストがこれを止める。
 - D4: macOS・Linux・WSL・dev container の corepack による供給、`PNPM_HOME`、global CLI を mise の npm: で入れること（ADR-0017）は変えない。
 
 ## Options Considered
 
-| 案 | 利点 | コスト・リスク |
-| --- | --- | --- |
-| A) doctor と install.sh の両方で、native Windows の pnpm をやめる（本案） | 警告が消え、Windows の install.sh が corepack で止まらなくなる | Windows で pnpm を使う repo を手で扱う場合は、各自で用意する |
-| B) doctor の警告だけ消す | 変更が最小 | install.sh は Windows でも corepack enable を試み続け、node 26 では失敗して止まる |
+| 案 | 利点 | コスト・リスク | 裁定 |
+| --- | --- | --- | --- |
+| A) doctor と install.sh の両方で、native Windows の pnpm をやめる（本案） | 警告が消え、Windows の install.sh が corepack で止まらなくなる | Windows で pnpm を使う repo を手で扱う場合は、各自で用意する | 所有者が採択 |
+| B) doctor の警告だけ消す | 変更が最小 | install.sh は Windows でも corepack enable を試み続け、node 26 では失敗して止まる | install.sh が止まる問題が残るため却下 |
 
 ## Consequences
 
@@ -82,12 +80,15 @@ native Windows の入口:
 ## 相談の記録
 
 - 2026-11-10、本セッションで所有者（@hironow、0017・0018・0027・0031 の決定者）が「Windows では pnpm が不要」と指示した。
-- 計画の独立レビュー（Claude サブエージェント、Codex はクレジット切れ）が、doctor だけでは足りず install.sh が Windows で corepack enable を実行していることを見つけた。所有者は範囲として A（doctor と install.sh）を選んだ。
+- 計画の独立レビュー（Claude サブエージェント、Codex はクレジット切れ）が、doctor だけでは足りず install.sh が Windows で corepack enable を実行していることを見つけた。所有者は範囲として A（doctor と install.sh）を選び、決定欄への代理記入を認めた。
 
-## 決定（記入待ち）
+## 決定（2026-11-10）
 
-- [ ] A を Accepted（D1〜D4 を MUST 文で確定し、0017・0018 の Status 行、索引、変更ログ、queue を更新する）
+- [x] A を Accepted（D1〜D4 を MUST 文で確定し、0017・0018 の Status 行、索引、変更ログ、queue を更新する）
 - [ ] B を Accepted（install.sh の変更を戻し、doctor だけにする）
 - [ ] Rejected / Deferred（変更を戻し、queue に理由を残す）
 
-決定者: ＿＿＿　決定日: ＿＿＿
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-10（所有者の選択により代理記入）
+
+- B 案は install.sh が node 26 の Windows で止まる問題が残るため却下する。
+- 採択時に 0017・0018 の Status 行、索引、変更ログ、queue の決定済みログを同時に更新し、旧本文を変えていないことを確かめた。
