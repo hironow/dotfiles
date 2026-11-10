@@ -1,7 +1,7 @@
 # 0018. Windows native: minimum-viable deploy with explicit-skip step_*
 
 **Date:** 2026-06-02
-**Status:** Accepted (2026-06-02). Superseded by [0039](./0039-windows-bootstrap-ps1.md) (partial — the "full scoop-based bootstrap out of scope" stance is retired by `bootstrap.ps1`; the explicit-skip `step_*` design in `install.sh` and the deploy subset are unchanged and in force).
+**Status:** Accepted (2026-06-02). Superseded by [0039](./0039-windows-bootstrap-ps1.md) (partial — the "full scoop-based bootstrap out of scope" stance is retired by `bootstrap.ps1`; the explicit-skip `step_*` design in `install.sh` and the deploy subset are unchanged and in force). Partly superseded by [0070](./0070-no-pnpm-on-native-windows.md) (the Windows branch of `step_corepack` only: it skips with `_skip_windows` instead of running `corepack enable`; the explicit-skip design and the deploy subset are unchanged).
 
 ## Context
 

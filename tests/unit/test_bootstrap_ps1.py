@@ -233,10 +233,11 @@ def test_reads_dotfiles_host_env() -> None:
 
 def test_never_invokes_forbidden_package_managers() -> None:
     text = _text()
-    for tool in ("npm", "yarn", "pnpm"):
+    for tool in ("npm", "yarn", "pnpm", "corepack"):
         assert not re.search(rf"\b{tool}\b", text), (
-            f"bootstrap.ps1 must not invoke {tool}: Node is bun-only and "
-            "global CLIs come from mise (ADR 0027/0036)."
+            f"bootstrap.ps1 must not invoke {tool}: Node is bun-only, global "
+            "CLIs come from mise, and native Windows uses no pnpm "
+            "(ADR 0027/0036/0070)."
         )
 
 

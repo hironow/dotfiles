@@ -296,10 +296,11 @@ def test_install_sh_no_todo_windows_stub_remains(install_sh_text: str) -> None:
     )
 
 
-def test_install_sh_windows_step_corepack_implemented(install_sh_text: str) -> None:
-    """ADR 0018 implements `step_corepack` on Windows native (corepack
-    ships with node and works cross-platform). The windows) branch must
-    invoke `corepack enable` — not a `_skip_windows` call."""
+def test_install_sh_windows_step_corepack_is_skipped(install_sh_text: str) -> None:
+    """Native Windows does not use pnpm (ADR 0070, which partly supersedes
+    ADR 0018 here). The windows) branch of `step_corepack` must skip with a
+    reason and never run `corepack enable`, which writes the pnpm shims; node
+    26 ships no corepack, so running it would also stop the installer."""
     # Isolate the step_corepack function body, then check the windows branch.
     m = re.search(
         r"^step_corepack\s*\(\s*\)\s*\{([\s\S]*?)^\}",
@@ -311,13 +312,12 @@ def test_install_sh_windows_step_corepack_implemented(install_sh_text: str) -> N
     win_m = re.search(r"windows\)([\s\S]*?);;", body)
     assert win_m is not None, "step_corepack has no windows) branch"
     win_branch = win_m.group(1)
-    assert "corepack enable" in win_branch, (
-        "step_corepack windows) branch must invoke `corepack enable` "
-        "(ADR 0018: corepack is cross-platform and supplies pnpm on Windows too)."
+    assert re.search(r'_skip_windows "step_corepack" "[^"]+"', win_branch), (
+        "step_corepack windows) branch must skip with a reason (ADR 0070)."
     )
-    assert "_skip_windows" not in win_branch, (
-        "step_corepack windows) branch must implement, not skip "
-        "(ADR 0018 decision: corepack is the one cross-platform-meaningful step)."
+    assert "corepack enable" not in win_branch, (
+        "step_corepack windows) branch must not run `corepack enable`: native "
+        "Windows does not use pnpm (ADR 0070)."
     )
 
 

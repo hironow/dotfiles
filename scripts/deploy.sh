@@ -177,7 +177,7 @@ POWERSHELL
       } >> "$gitconfig"
       echo "==> ~/.gitconfig updated with git-aliases include block"
     fi
-    echo "==> Deploy complete (windows subset per ADR 0018/0022/0024/0031/0033; corepack carve-out per ADR 0017/0027; Unix-only artifacts skipped)"
+    echo "==> Deploy complete (windows subset per ADR 0018/0022/0024/0031/0033; no pnpm per ADR 0070; Unix-only artifacts skipped)"
     exit 0
     ;;
 esac

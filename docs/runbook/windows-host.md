@@ -28,6 +28,8 @@ native Windows の uv は `~/.config/uv/uv.toml` ではなく `%APPDATA%\uv\uv.t
 
 ## mise の npm backend
 
+native Windows は pnpm を使わない（ADR 0070）。`install.sh` は corepack を用意せず、`just doctor` は pnpm の行を出さない。
+
 mise の npm backend のパッケージマネージャーは `bun` にする（ADR 0036）。
 既定の `auto` は mise 内蔵の aube を使い、その配置では claude-code の postinstall が動かない。
 すると native binary（約 263MB）が展開されず、`bin/claude.exe` が 500 バイトの stub のまま残り、`node claude.exe` の実行で `ERR_UNKNOWN_FILE_EXTENSION` になる。
