@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
 	"net/http"
@@ -84,7 +85,8 @@ func TestNodeProbeSNIAndCertificateIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("NODE_TLS_REJECT_UNAUTHORIZED", "1")
-	probe := ExternalProbe{Path: command, Kind: "node", Commands: OSCommands{}, IPv4: true}
+	commands := &observedCommands{inner: OSCommands{}}
+	probe := ExternalProbe{Path: command, Kind: "node", Commands: commands, IPv4: true}
 	for _, tc := range []struct {
 		name, bundle, url, sni string
 		want                   Outcome
@@ -96,7 +98,7 @@ func TestNodeProbeSNIAndCertificateIdentity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("NODE_EXTRA_CA_CERTS", tc.bundle)
 			if got := probe.Probe(context.Background(), tc.url); got != tc.want {
-				t.Fatalf("outcome %s, want %s", got, tc.want)
+				t.Fatalf("outcome %s, want %s; %s", got, tc.want, commands)
 			}
 			select {
 			case got := <-observed:
@@ -353,6 +355,28 @@ func TestCurlOutcomeReadsSchannelCertificateRejections(t *testing.T) {
 			}
 		})
 	}
+}
+
+// observedCommands runs real commands and keeps the last result and how long
+// it took, so a failed probe says which limit stopped it: OSCommands' own
+// limit (exit code not 0, empty output) or the probe script's (exit 0 and
+// "unknown").
+type observedCommands struct {
+	inner   Commands
+	last    CommandResult
+	elapsed time.Duration
+}
+
+func (c *observedCommands) Run(ctx context.Context, path string, args ...string) CommandResult {
+	start := time.Now()
+	c.last = c.inner.Run(ctx, path, args...)
+	c.elapsed = time.Since(start)
+	return c.last
+}
+
+func (c *observedCommands) String() string {
+	return fmt.Sprintf("last command: code %d after %s, stdout %q, stderr %q",
+		c.last.Code, c.elapsed.Round(time.Millisecond), c.last.Stdout, c.last.Stderr)
 }
 
 // recordedCommands keeps the arguments of the last command instead of running it.
