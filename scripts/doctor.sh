@@ -65,8 +65,13 @@ elif [[ $brew_os != MINGW* && $brew_os != MSYS* && $brew_os != CYGWIN* ]]; then
   if has brew; then log_ok 'brew' "$(brew --version | head -n1 2>/dev/null || true)"; else log_warn 'brew' 'missing'; fi
 fi
 if has gcloud; then log_ok 'gcloud' "$(gcloud --version 2>/dev/null | head -n1 || true)"; else log_warn 'gcloud' 'missing'; fi
-# pnpm comes per repo from corepack.
-if has pnpm; then
+# pnpm comes per repo from corepack (ADR 0017), except on native Windows,
+# which uses no pnpm (ADR 0070) and gets no row. (An if on its own uname, not
+# a case: the first `case "$(uname -s)"` below is the Windows-only section.)
+pnpm_os="$(uname -s)"
+if [[ $pnpm_os == MINGW* || $pnpm_os == MSYS* || $pnpm_os == CYGWIN* ]]; then
+  :
+elif has pnpm; then
   log_ok 'pnpm' "$(pnpm --version 2>/dev/null || true)"
 else
   log_warn 'pnpm' 'missing'

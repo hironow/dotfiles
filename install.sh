@@ -461,17 +461,7 @@ step_corepack() {
       fi
       ;;
     windows)
-      # corepack ships with node. On Windows native the Program Files
-      # node install is typically read-only for the operator account
-      # (corepack enable EPERMs writing pnpm shims there), so prefer
-      # the mise-managed node when available.
-      if command -v mise >/dev/null 2>&1; then
-        mise exec -- corepack enable
-      elif command -v corepack >/dev/null 2>&1; then
-        corepack enable
-      else
-        echo "[install] step_corepack: corepack not on PATH; skipping (install node via mise/scoop first)"
-      fi
+      _skip_windows "step_corepack" "native Windows uses no pnpm (ADR 0070); Node is bun-only (ADR 0027)"
       ;;
   esac
 }

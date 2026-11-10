@@ -142,7 +142,8 @@ ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
   `corepack pnpm`/`pnpm@ver`/`corepack --cwd … pnpm` 含む。**ADR 0027** が ADR 0017 の
   per-repo pnpm carve-out を partial supersede)。corepack のマシン供給自体は **ADR 0017**
   のまま温存 (node 同梱シム + `PNPM_HOME` は store アンカーのみ、`pnpm add -g` は依然
-  abort、global CLI は mise npm: のみ)。`corepack enable`/`prepare`/`use` は素通り。
+  abort、global CLI は mise npm: のみ)。ただし native Windows は pnpm を使わず、corepack も
+  用意しない (**ADR 0070**)。`corepack enable`/`prepare`/`use` は素通り。
 - **mise の npm backend は `bun` 必須 (ADR 0036)、bun backend は `npm_args` を読まない
   (ADR 0040)**。`auto` (aube) だと claude-code が 500 バイトの stub のまま「成功」する。
 - **native Windows** では bare `bash` が System32 の WSL に落ち、shebang レシピは Git Bash から

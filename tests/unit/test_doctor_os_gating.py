@@ -131,6 +131,39 @@ def test_an_applicable_host_is_read_as_before(
     assert ("WARN ollama-inspection" in out) is unavailable
 
 
+PNPM = r"(?ms)^# pnpm comes per repo from corepack.*?^fi$"
+WITH_PNPM = "pnpm(){ echo '10.20.0'; }\n"
+WITHOUT_PNPM = (
+    'has(){ [ "$1" = pnpm ] && return 1; command -v "$1" >/dev/null 2>&1; }\n'
+)
+
+
+@pytest.mark.parametrize(
+    ("host", "fake", "line", "counts"),
+    [
+        (("Darwin", "25.2.0"), WITH_PNPM, "OK   pnpm - 10.20.0", "1 0 0 0"),
+        (("Darwin", "25.2.0"), WITHOUT_PNPM, "WARN pnpm - missing", "0 1 0 0"),
+        (("Linux", "6.8.0-45-generic"), WITH_PNPM, "OK   pnpm", "1 0 0 0"),
+        (("Linux", "6.8.0-45-generic"), WITHOUT_PNPM, "WARN pnpm - missing", "0 1 0 0"),
+        (WSL, WITH_PNPM, "OK   pnpm", "1 0 0 0"),
+        (WSL, WITHOUT_PNPM, "WARN pnpm - missing", "0 1 0 0"),
+        (("MINGW64_NT-10.0-26100", "3.6.4"), WITH_PNPM, None, "0 0 0 0"),
+        (("MINGW64_NT-10.0-26100", "3.6.4"), WITHOUT_PNPM, None, "0 0 0 0"),
+    ],
+)
+def test_pnpm_is_checked_only_off_native_windows(
+    tmp_path: Path, host: tuple[str, str], fake: str, line: str | None, counts: str
+) -> None:
+    """Native Windows does not use pnpm (ADR 0070); elsewhere corepack still
+    supplies it per repo (ADR 0017), so a missing pnpm stays a WARN."""
+    out = _harness(tmp_path, PNPM, _uname(*host) + fake)
+    if line is None:
+        assert "pnpm" not in out
+    else:
+        assert line in out
+    assert "counts " + counts in out
+
+
 BREW = r"(?ms)^# Homebrew is used on macOS.*?^fi$"
 WITH_BREW = "brew(){ echo 'Homebrew 9.9.9'; }\n"
 WITHOUT_BREW = (
