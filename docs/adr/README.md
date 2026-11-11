@@ -39,7 +39,7 @@ and what outlived it.
 | 0011 | [exe-coder workspace VM multi-project systemd env delivery](./0011-exe-multi-project-systemd-env.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-07 | removed: `exe/coder/templates/`, `exe/scripts/` |
 | 0012 | [exe-coder workspace VM RUNOPS_ACTOR_TYPE env injection (per caller path)](./0012-exe-actor-type-env-injection.md) | Accepted; superseded by [0045](./0045-coder-control-plane-retired.md) | 2026-05-09 | removed: `exe/coder/templates/`, `exe/scripts/` |
 | 0013 | [Project lifecycle severity classification (= cdr-project / runops project)](./0013-project-lifecycle-severity-classification.md) | Withdrawn — never decided; see [0045](./0045-coder-control-plane-retired.md) | 2026-05-09 | would have affected the removed `exe/` project lifecycle |
-| 0014 | [Vendor emulator and telemetry from submodules into dotfiles](./0014-vendor-emulator-telemetry-from-submodules.md) | Accepted | 2026-05-30 | `emulator/`, `telemetry/` |
+| 0014 | [Vendor emulator and telemetry from submodules into dotfiles](./0014-vendor-emulator-telemetry-from-submodules.md) | Accepted; partly superseded by [0072](./0072-telemetry-is-upstream-otel-lgtm.md) (telemetry/ contents and its lint exclusion) | 2026-05-30 | `emulator/`, `telemetry/` |
 | 0015 | [Adopt portless for stable .localhost URLs of local HTTP UIs](./0015-adopt-portless-for-local-dev-urls.md) | Accepted; partly superseded by [0054](./0054-run-portless-directly.md) | 2026-05-30 | `config/portless-aliases.yaml`, `docs/portless-urls.md` |
 | 0016 | [Integrate vercel-labs/emulate API emulators via npx wrapper](./0016-integrate-emulate-api-emulators-via-npx.md) | Partly superseded by [0055](./0055-run-emulate-with-bunx.md) | 2026-05-30 | `emulator/emulate/`, `justfile` (`emu-api`) |
 | 0017 | [Retire the pnpm-global subsystem in favor of corepack + mise npm](./0017-retire-pnpm-global-for-corepack.md) | Accepted; partial supersede by [0027](./0027-bun-only-retire-per-repo-pnpm-carveout.md), [0070](./0070-no-pnpm-on-native-windows.md) (native Windows) | 2026-06-02 | `mise.toml`, `install.sh`, `dump/npm-global` |
@@ -96,7 +96,7 @@ and what outlived it.
 | 0069 | [型検査と lint を、コードが動く OS ごとに回す（ty と golangci-lint）](./0069-type-check-and-lint-for-every-os.md) | Accepted (PR #586); limited partial supersession of 0044 | 2026-11-10 | `ROOT_AGENTS_docs_agents_python-tooling.md`、`ROOT_AGENTS_docs_agents_go-tooling.md`、`ROOT_AGENTS_docs_agents_commit-discipline.md`、`templates/agent-baseline/` |
 | 0070 | [native Windows では pnpm を用意しない](./0070-no-pnpm-on-native-windows.md) | Accepted; limited partial supersession of 0017/0018 | 2026-11-10 | `install.sh`（`step_corepack`）、`scripts/doctor.sh`、`bootstrap.ps1` |
 | 0071 | [Rust の clippy を、出荷する target ごとに回す](./0071-rust-clippy-for-every-target.md) | Accepted; extends 0069 (Rust) | 2026-11-11 | `ROOT_AGENTS_docs_agents_rust-tooling.md`、`tests/unit/test_cross_platform_gates.py` |
-| 0072 | [ローカルの telemetry は上流の grafana/otel-lgtm 1 つにする](./0072-telemetry-is-upstream-otel-lgtm.md) | Proposed; partial supersession of 0014 (telemetry only) | 2026-11-11 | `telemetry/`、`emulator/compose.yaml`（exporter）、`justfile`（`tel-*`、lint の pathspec）、`.github/dependabot.yaml` |
+| 0072 | [ローカルの telemetry は上流の grafana/otel-lgtm 1 つにする](./0072-telemetry-is-upstream-otel-lgtm.md) | Accepted; partial supersession of 0014 (telemetry only) | 2026-11-11 | `telemetry/`、`emulator/compose.yaml`（exporter）、`justfile`（`tel-*`、lint の pathspec）、`.github/dependabot.yaml` |
 
 ## Reading order for newcomers
 
@@ -164,3 +164,4 @@ and what outlived it.
 - 2026-11-11: [ADR-0071](./0071-rust-clippy-for-every-target.md)を起票（Proposed、決裁待ち）。Rust の clippy を出荷する target ごとに回し、C を build する依存で手元で見られない target はその OS の CI で見る。0069 が決めていなかった Rust の分を決める。
 - 2026-11-11: [ADR-0071](./0071-rust-clippy-for-every-target.md) を採択。Rust の clippy を出荷する target ごとに回し、C を build する依存で手元で見られない target はその OS の CI で見る。0069 は変えない。所有者が本セッションで A を選び、決定欄への代理記入を許可した。
 - 2026-11-11: [ADR-0072](./0072-telemetry-is-upstream-otel-lgtm.md)を起票（Proposed、決裁待ち）。ローカルの telemetry を上流の grafana/otel-lgtm 1 つにし、独自の設定・dashboard・例と emulator の exporter をやめる。0014 の telemetry の分の部分置換を、所有者が本セッションで指示した。
+- 2026-11-11: [ADR-0072](./0072-telemetry-is-upstream-otel-lgtm.md) を採択し、[ADR-0014](./0014-vendor-emulator-telemetry-from-submodules.md) の telemetry の分（vendored な sub-project としての中身と lint の除外）を部分置換する。ローカルの telemetry は上流の grafana/otel-lgtm 1 つにし、emulator の exporter も外す。emulator の vendoring は変えない。所有者が本セッションで選び、決定欄への代理記入を許可した。

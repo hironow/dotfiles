@@ -2,9 +2,9 @@
 
 - **id**: ADR-0072
 - **title**: ローカルの telemetry は上流の grafana/otel-lgtm 1 つにする
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-11
-- **decided-date**: —
+- **decided-date**: 2026-11-11
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session、Windows 機）
@@ -82,10 +82,13 @@ emulator の metrics を集める仕組みと、そのための exporter もや�
 - 2026-11-11、本セッションで所有者（@hironow、0014・0054・0067 の決定者）が指示し、次を選んだ: emulator の metrics の scrape と Emulator Metrics の dashboard は「やめる」、`telemetry/examples` は「消す」、host の port は「lgtm の既定に合わせる」、exporter は「今回いっしょに消す」。
 - 計画は独立サブエージェントがレビューした（Codex はクレジット切れ）。lint の pathspec の除外、`tel-down` の orphan、healthcheck と e2e、`.env` の無視、cooldown、Test Emulators の paths、依存の洗い出しの方法を、その指摘から採った。
 
-## 決定（記入待ち）
+## 決定（2026-11-11）
 
-- [ ] A を Accepted（D1〜D9 を MUST 文で確定し、索引、変更ログ、queue を更新する）
+- [x] A を Accepted（D1〜D9 を MUST 文で確定し、索引、変更ログ、queue を更新する）
 - [ ] B を Accepted（emulator の scrape と dashboard を mount で残す）
 - [ ] Rejected / Deferred（変更を戻し、queue に理由を残す）
 
-決定者: Hiroto N.（@hironow）　決定日: —
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-11（所有者の選択により代理記入）
+
+- B 案は所有者が emulator の metrics を「やめる」と選んだため、C 案は所有者の指示を満たさないため却下する。
+- 採択時に索引、変更ログ、queue の決定済みログを同時に更新し、ADR-0014 は Status 行だけを変えた。
