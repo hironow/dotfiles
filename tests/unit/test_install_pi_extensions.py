@@ -768,3 +768,119 @@ def test_an_egm_only_install_retires_nothing(
 )
 def test_retirement_decides_from_what_is_there(placed: object, retired: bool) -> None:
     assert installer.retired_extension(placed, "gone") is retired
+
+
+@pytest.mark.parametrize(
+    ("source", "name"),
+    [
+        ("npm:pi-goal-x", "pi-goal-x"),
+        ("npm:pi-goal-x@1.2.3", "pi-goal-x"),
+        ("npm:@ollama/pi-web-search", "@ollama/pi-web-search"),
+        ("npm:@ollama/pi-web-search@0.4.0", "@ollama/pi-web-search"),
+        ("git:github.com/google/elephant-goldfish-model@v0.1.0", None),
+    ],
+)
+def test_npm_name_drops_the_pin_and_keeps_the_scope(
+    source: str, name: str | None
+) -> None:
+    assert installer.npm_name(source) == name
+
+
+def test_a_pinned_web_search_package_still_needs_ollama() -> None:
+    pinned = [f"{installer.OLLAMA_PACKAGE}@0.4.0"]
+    assert installer.ollama_missing(pinned, None, reachable=False)
+
+
+@pytest.mark.parametrize(
+    ("configured", "declared"),
+    [
+        ("npm:pi-goal-x", "npm:pi-goal-x@1.2.3"),  # pin
+        ("npm:pi-goal-x@1.2.3", "npm:pi-goal-x@1.3.0"),  # move the pin
+        ("npm:pi-goal-x@1.2.3", "npm:pi-goal-x"),  # unpin
+        ("npm:@scope/pkg", "npm:@scope/pkg@2.0.0"),
+    ],
+)
+def test_a_changed_pin_replaces_the_configured_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, configured: str, declared: str
+) -> None:
+    agent = tmp_path / "agent"
+    agent.mkdir()
+    (agent / "settings.json").write_text(
+        json.dumps({"packages": [configured]}), encoding="utf-8"
+    )
+    manifest = tmp_path / "pi-packages.json"
+    manifest.write_text(json.dumps([declared]), encoding="utf-8")
+    monkeypatch.setattr(installer, "MANIFEST", manifest)
+    _no_ollama_bootstrap(monkeypatch)
+    run = Mock()
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    installer.install(agent, symlinks=False)
+    calls = [call.args[0] for call in run.call_args_list]
+    assert calls[:2] == [["pi", "remove", configured], ["pi", "install", declared]]
+
+
+def test_installed_pinned_packages_are_not_reported_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    (agent / "npm/node_modules/@scope/pkg").mkdir(parents=True)
+    (agent / "settings.json").write_text(
+        json.dumps({"packages": ["npm:@scope/pkg@2.0.0"]}), encoding="utf-8"
+    )
+    manifest = tmp_path / "pi-packages.json"
+    manifest.write_text(json.dumps(["npm:@scope/pkg@2.0.0"]), encoding="utf-8")
+    monkeypatch.setattr(installer, "MANIFEST", manifest)
+    _no_ollama_bootstrap(monkeypatch)
+    run = Mock()
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    installer.install(agent, symlinks=False)
+    assert run.call_count == 0  # no reinstall and no `pi update --extensions`
+
+
+def test_a_new_egm_tag_replaces_a_clean_old_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    (agent / installer.EGM_RELATIVE).mkdir(parents=True)
+    old = "git:github.com/google/elephant-goldfish-model@v0.0.9"
+    (agent / "settings.json").write_text(
+        json.dumps({"packages": [old]}), encoding="utf-8"
+    )
+    clean: list[Path] = []
+    monkeypatch.setattr(installer, "egm_clean", clean.append)
+    run = Mock()
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    installer.install(agent, egm_only=True)
+    assert clean == [agent / installer.EGM_RELATIVE]
+    assert [call.args[0] for call in run.call_args_list] == [
+        ["pi", "remove", old],
+        ["pi", "install", installer.EGM_SOURCE],
+    ]
+
+
+def test_a_dirty_old_egm_bundle_stops_the_migration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = tmp_path / "agent"
+    (agent / installer.EGM_RELATIVE).mkdir(parents=True)
+    old = "git:github.com/google/elephant-goldfish-model@v0.0.9"
+    (agent / "settings.json").write_text(
+        json.dumps({"packages": [old]}), encoding="utf-8"
+    )
+
+    def dirty(_root: Path) -> None:
+        raise RuntimeError("EGM checkout has local changes")
+
+    monkeypatch.setattr(installer, "egm_clean", dirty)
+    run = Mock()
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    with pytest.raises(RuntimeError, match="local changes"):
+        installer.install(agent, egm_only=True)
+    assert run.call_count == 0
+
+
+def test_egm_required_paths_are_what_verify_checks() -> None:
+    paths = installer.egm_required_paths()
+    assert ".claude-plugin/plugin.json" in paths
+    assert "skills/egm_review/SKILL.md" in paths
+    assert len(paths) == len(set(paths))
