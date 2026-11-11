@@ -2019,7 +2019,8 @@ restore-skills-lock *args:
 skills-place *args:
     @{{ UV_RUN }} scripts/skills_lock.py place {{ args }}
 
-# Run after a hironow/skills merge or any upstream change.
+# Run after a hironow/skills merge or any upstream change. `--only <name>` moves
+# one declared skill and records its new hash (`just agent-bump` uses it).
 # Refresh the CLI store (pinned `skills update -g -y`), then re-place the homes
 [group('Agents')]
 skills-update *args:
