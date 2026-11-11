@@ -5,13 +5,13 @@ Elephant-Goldfish Model（EGM）は、設計書を作成し、会話履歴を持
 
 ## 固定版と配置
 
-導入版は `google/elephant-goldfish-model` の `v0.1.0`、commit `b3a35956759bf7f024af2ff061b2e0b44b438e4c`。
+導入版は `google/elephant-goldfish-model` の release tag で固定する。tag は `dump/harness/claude-plugins.json` の `egm`、commit は `scripts/install_pi_extensions.py` の `EGM_COMMIT` が正本で、ほかの pin はそれに合わせる。
 skillだけをコピーすると、実行時に読むpersonaやstandardが欠けるため、一式を導入する。
 
 | 環境 | 配置の所有者 | 宣言 |
 | --- | --- | --- |
 | Claude Code | ネイティブのplugin CLI。既存の各Claude homeを対象とする | `dump/harness/claude-plugins.json` |
-| Codex | ネイティブのmarketplaceとplugin CLI。`--ref v0.1.0`で固定する | `just egm-install` |
+| Codex | ネイティブのmarketplaceとplugin CLI。`--ref <tag>`で固定する | `just egm-install` |
 | Antigravity | `agy plugin install`。検証済みのローカルbundleを渡す | `just egm-install` |
 | Pi | ネイティブのgit package。7つのskillをbundle内から発見する | `dump/harness/pi-packages.json` |
 
@@ -107,5 +107,5 @@ EGMとは成果物や手順が異なるためである。
 宣言とpin、限定installerの副作用、cloneの拒否条件、contextの保存、profileの静的制約を検査する。
 
 導入と7コマンドの発見、固定版とのファイル一致は、対話的な設計フローやレビュー分離の動作証明とは別である。
-上流のv0.1.0 releaseも、配布ZIPそのものの全host動作を保証していない。
+上流のreleaseも、配布ZIPそのものの全host動作を保証していない。
 PRのCI、実機での質問と承認、native childの分離は、それぞれ実施した範囲だけを報告する。
