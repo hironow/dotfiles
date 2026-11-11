@@ -2,9 +2,9 @@
 
 - **id**: ADR-0074
 - **title**: 宣言済みの agent の plugin の版は、待機を待たずに 1 つのコマンドで上げ下げする
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-12
-- **decided-date**: —
+- **decided-date**: 2026-11-12
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session、Windows 機）
@@ -82,11 +82,16 @@ agent の plugin や skill の版を、`just agent-bump <名前> [版]` の 1 �
 
 - 2026-11-12、本セッションで所有者（@hironow、0048・0056・0073 の決定者）が依頼し、対象（4 種すべて）、待機の例外（宣言済みの版上げ・版下げだけ）、範囲（この機体に入れるまで）を選んだ。
 - 計画は独立サブエージェントが 2 回レビューした（Codex はクレジット切れ）。EGM の形の変化、版なしの Pi package の更新、戻すときに home も戻すこと、種類ごとの確かめ方、ADR を tag の pin に限ること、一括更新の入口を作らないこと、skill は戻せないこと、基準の検査を、その指摘から採った。
+- 2026-11-12、所有者が「EGM だけの特別コマンドはなくしてもいい。ただし EGM 自体を agent に入れるのは必要」とし、Codex と Antigravity も `just deploy` に含めることを選んだ。その計画も独立サブエージェントがレビューし、Codex を Pi の失敗から切り離す別の deploy の手順、justfile の pin の削除、Codex の導入済みの判定、Codex の無い機体での確認の扱いを、その指摘から採った。
+- 実地: worktree から試した bump は、基準の検査が赤（hironow-plugins の登録先が worktree と違う）で何も書かずに止まった。これを受けて、worktree からの bump は最初に断るようにした。
 
-## 決定（記入待ち）
+## 決定（2026-11-12）
 
-- [ ] A を Accepted（D1〜D6 を MUST 文で確定し、索引、変更ログ、queue を更新する）
+- [x] A を Accepted（D1〜D6 を MUST 文で確定し、索引、変更ログ、queue を更新する）
 - [ ] B を Accepted（今のままにする）
 - [ ] Rejected / Deferred（変更を戻し、queue に理由を残す）
 
-決定者: Hiroto N.（@hironow）　決定日: —
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-12（所有者の選択により代理記入）
+
+- B 案は版を変えるたびに依頼と ADR が要り所有者の依頼に合わないため、C 案は所有者が「新しく足すものは今までどおり」を選んだため却下する。
+- 採択時に索引、変更ログ、queue の決定済みログを同時に更新し、ADR-0056 と ADR-0073 は Status 行だけを変えた。
