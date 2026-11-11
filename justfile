@@ -264,6 +264,15 @@ deploy:
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
+# Without arguments: every declared Claude plugin marketplace, EGM, Pi package
+# and skill with its newest version. With a name: move that one (newest, or the
+# given version) and install it here. Declared items skip the 7-day wait; new
+# ones are added by hand. Commit and PR stay manual (ADR 0074).
+# Show or move the versions of declared agent plugins and skills
+[group('Agents')]
+agent-bump *args:
+    @mise exec -- go -C tools/agent-bump run . --root "{{ justfile_directory() }}" {{ args }}
+
 # Install the Claude Code plugins every Claude home shares
 # (dump/harness/claude-plugins.json; ADR 0048, ADR 0056).
 # `just deploy` already runs this. --check: report only.
@@ -278,12 +287,14 @@ egm-install:
     @just sync-agents all
     @just egm-install-native
 
-# The native EGM installers only (Pi, Claude, Codex, Antigravity), without the
-# sync that egm-install runs first.
+# Without the sync that egm-install runs first; `just agent-bump egm` calls it.
+# Codex keeps a marketplace at its first ref, so a moved tag needs remove, then add.
+# Install EGM with the native installers only (Pi, Claude, Codex, Antigravity)
 [group('Agents')]
 egm-install-native:
     @{{ UV_RUN }} scripts/install_pi_extensions.py --egm-only
     @{{ UV_RUN }} scripts/claude_plugins.py --egm-only
+    @if codex plugin marketplace list --json | grep -q '"name": *"egm"'; then codex plugin marketplace remove egm --json; fi
     codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.0 --json
     codex plugin add egm@egm --json
     @{{ UV_RUN }} scripts/install_pi_extensions.py --verify-egm

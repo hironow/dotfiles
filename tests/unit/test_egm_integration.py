@@ -210,3 +210,31 @@ def test_wrong_or_extra_bundle_content_fails_without_cleanup(
         installer.verify_egm(bundle)
     assert _git(bundle, "rev-parse", "HEAD") == head
     assert (target.read_bytes() if target.exists() else None) == before
+
+
+def test_every_egm_pin_names_the_same_tag() -> None:
+    # `just agent-bump egm` rewrites all of them together; one left behind
+    # would install two EGM versions side by side.
+    tag = _egm_tag()
+    assert installer.EGM_SOURCE == f"{installer.EGM_PACKAGE}@{tag}"
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    assert justfile.count("--ref ") == justfile.count(f"--ref {tag} ")
+
+
+def test_egm_install_native_replaces_a_codex_marketplace_at_another_tag() -> None:
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    recipe = justfile.split("egm-install-native:\n", 1)[1].split("\n\n", 1)[0]
+    remove = recipe.index("codex plugin marketplace remove egm")
+    assert remove < recipe.index("codex plugin marketplace add")
+    # Only when it is there: a first install has nothing to remove.
+    assert (
+        "codex plugin marketplace list --json"
+        in recipe.splitlines()[recipe[:remove].count("\n")]
+    )
+
+
+def test_agent_bump_runs_the_go_tool_against_this_checkout() -> None:
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    recipe = justfile.split("agent-bump *args:\n", 1)[1].split("\n\n", 1)[0]
+    assert "go -C tools/agent-bump run . --root" in recipe
+    assert "{{ args }}" in recipe
