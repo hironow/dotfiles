@@ -80,8 +80,13 @@ def test_detects_optional_dirs_instead_of_hardcoding_users() -> None:
 
 
 def test_optional_container_path_uses_native_podman_not_docker_desktop() -> None:
-    assert r"$env:ProgramFiles\RedHat\Podman" in _code()
-    assert r"Docker\Docker\resources\bin" not in _code()
+    code = _code()
+    # Podman.CLI (the upstream MSI) lives in ProgramFiles\Podman; a machine
+    # not yet moved off the Red Hat installer still has RedHat\Podman. The
+    # current one comes first, so it wins where both exist.
+    current = code.index('"$env:ProgramFiles\\Podman"')
+    assert current < code.index(r"$env:ProgramFiles\RedHat\Podman")
+    assert r"Docker\Docker\resources\bin" not in code
 
 
 def test_missing_comparison_expands_env_vars() -> None:

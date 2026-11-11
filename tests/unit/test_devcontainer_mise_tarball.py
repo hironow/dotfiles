@@ -302,14 +302,19 @@ def test_a_signature_by_a_revoked_or_expired_key_stops_the_build(tmp_path, case)
     # gives way to REVKEYSIG or EXPKEYSIG. apt refuses both, and so must we.
     if GPG is None:
         pytest.skip("needs gpg to sign checksums")
-    then = []
+    made_at, signed_at = [], []
     if case == "expired":
-        # made two days ago, for one day
+        # made two days ago, for one day, and used an hour later. gpg's faked
+        # clock keeps running from the given time, so signing at the same
+        # given time could land before the key was made ("created 1 second in
+        # the future") when making the key took a second.
         past = datetime.now(UTC) - timedelta(days=2)
-        then = ["--faked-system-time", past.strftime("%Y%m%dT%H%M%S")]
+        made_at = ["--faked-system-time", past.strftime("%Y%m%dT%H%M%S")]
+        later = past + timedelta(hours=1)
+        signed_at = ["--faked-system-time", later.strftime("%Y%m%dT%H%M%S")]
     with _gnupg_home() as home:  # its own: the revocation must not leak out
         made = _gpg(
-            home, *then, "--passphrase", "", "--quick-gen-key",
+            home, *made_at, "--passphrase", "", "--quick-gen-key",
             "Fixture Release <release@example.invalid>", "ed25519", "sign", "1d",
         )  # fmt: skip
         assert made.returncode == 0, made.stderr
@@ -318,7 +323,7 @@ def test_a_signature_by_a_revoked_or_expired_key_stops_the_build(tmp_path, case)
         (fingerprint,) = _primary_fingerprints(home, key)
         artifact = _artifact(tmp_path)
         sums = _sums(artifact, f"./{ARTIFACT}")
-        signed = _signed(home, fingerprint, sums, tmp_path / "s.asc", *then)
+        signed = _signed(home, fingerprint, sums, tmp_path / "s.asc", *signed_at)
         if case == "revoked":
             # gpg writes the certificate with ':' before its armor line, so
             # that nobody imports it by accident

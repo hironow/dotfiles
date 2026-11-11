@@ -12,9 +12,12 @@ every repo to do the same (ADR 0069).
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import _workflow
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
@@ -27,6 +30,7 @@ DRAFT_GATE = (
 PYTHON_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_python-tooling.md"
 GO_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_go-tooling.md"
 COMMIT_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_commit-discipline.md"
+RUST_SPOKE = ROOT / "ROOT_AGENTS_docs_agents_rust-tooling.md"
 TEMPLATE_JUSTFILE = ROOT / "templates/agent-baseline/justfile"
 PLATFORMS = {"win32", "linux", "darwin"}
 GOOSES = {"windows", "linux", "darwin"}
@@ -209,3 +213,58 @@ def test_the_go_spoke_lints_for_every_os_it_ships_to():
 def test_commit_discipline_asks_for_ty_on_every_os():
     words = " ".join(COMMIT_SPOKE.read_text(encoding="utf-8").split())
     assert f"ty reports zero diagnostics {EVERY_OS}" in words
+
+
+TRIPLE = r"\b(?:x86_64|aarch64)-[a-z0-9_]+-[a-z0-9_]+(?:-[a-z0-9_]+)?\b"
+
+
+def test_the_rust_spoke_lints_for_every_target_it_ships_to():
+    # clippy checks one target; code under #[cfg(target_os = ...)] is linted
+    # only for that target (measured 2026-11-10: a macOS-only error showed up
+    # only with --target aarch64-apple-darwin, from every host) (ADR 0071).
+    blocks = _just_blocks(RUST_SPOKE)
+    listed = re.search(r'^rust_targets := "([^"]+)"$', blocks, re.MULTILINE)
+    assert listed, "the rust block must list the shipped targets once"
+    targets = set(listed.group(1).split())
+    body = _recipe("rust-lint", blocks)
+    assert body.lstrip().startswith("#!/usr/bin/env bash")
+    assert "set -euo pipefail" in body
+    assert re.search(r"for target in \{\{targets\}\}; do", body)
+    assert 'rustup target add "$target"' in body
+    assert re.search(
+        r'cargo clippy --all-targets --all-features --target "\$target" -- -D warnings',
+        body,
+    )
+    assert len(re.findall(r"cargo fmt ", body)) == 1
+    # the recipe defaults to that list, and the release build uses it too
+    assert re.search(r"^rust-lint \*targets=rust_targets:", blocks, re.MULTILINE)
+    text = RUST_SPOKE.read_text(encoding="utf-8")
+    ship = text.split("\n## Ship binaries", 1)[1]
+    assert set(re.findall(TRIPLE, ship)) == targets
+
+
+def test_the_rust_recipe_parses_and_expands_its_targets(tmp_path):
+    just = shutil.which("just")
+    if just is None:
+        pytest.skip("needs just to parse the recipe")
+    justfile = tmp_path / "justfile"
+    justfile.write_text(_just_blocks(RUST_SPOKE), encoding="utf-8", newline="\n")
+    shown = subprocess.run(
+        [just, "--justfile", str(justfile), "--evaluate", "rust_targets"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert shown.returncode == 0, shown.stderr
+    listed = subprocess.run(
+        [just, "--justfile", str(justfile), "--show", "rust-lint"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert listed.returncode == 0, listed.stderr
+    assert "rust-lint *targets=rust_targets:" in listed.stdout
