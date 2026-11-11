@@ -97,6 +97,7 @@ and what outlived it.
 | 0070 | [native Windows では pnpm を用意しない](./0070-no-pnpm-on-native-windows.md) | Accepted; limited partial supersession of 0017/0018 | 2026-11-10 | `install.sh`（`step_corepack`）、`scripts/doctor.sh`、`bootstrap.ps1` |
 | 0071 | [Rust の clippy を、出荷する target ごとに回す](./0071-rust-clippy-for-every-target.md) | Accepted; extends 0069 (Rust) | 2026-11-11 | `ROOT_AGENTS_docs_agents_rust-tooling.md`、`tests/unit/test_cross_platform_gates.py` |
 | 0072 | [ローカルの telemetry は上流の grafana/otel-lgtm 1 つにする](./0072-telemetry-is-upstream-otel-lgtm.md) | Accepted; partial supersession of 0014 (telemetry only) | 2026-11-11 | `telemetry/`、`emulator/compose.yaml`（exporter）、`justfile`（`tel-*`、lint の pathspec）、`.github/dependabot.yaml` |
+| 0073 | [Modern Web Guidance の v1.0.0 は、7 日の待機を待たずに pin する](./0073-mwg-v1-before-the-plugin-cooldown.md) | Proposed; partial supersession of 0056 (Decision 4, googlechrome v1.0.0 only) | 2026-11-12 | `dump/harness/claude-plugins.json` |
 
 ## Reading order for newcomers
 
@@ -165,3 +166,4 @@ and what outlived it.
 - 2026-11-11: [ADR-0071](./0071-rust-clippy-for-every-target.md) を採択。Rust の clippy を出荷する target ごとに回し、C を build する依存で手元で見られない target はその OS の CI で見る。0069 は変えない。所有者が本セッションで A を選び、決定欄への代理記入を許可した。
 - 2026-11-11: [ADR-0072](./0072-telemetry-is-upstream-otel-lgtm.md)を起票（Proposed、決裁待ち）。ローカルの telemetry を上流の grafana/otel-lgtm 1 つにし、独自の設定・dashboard・例と emulator の exporter をやめる。0014 の telemetry の分の部分置換を、所有者が本セッションで指示した。
 - 2026-11-11: [ADR-0072](./0072-telemetry-is-upstream-otel-lgtm.md) を採択し、[ADR-0014](./0014-vendor-emulator-telemetry-from-submodules.md) の telemetry の分（vendored な sub-project としての中身と lint の除外）を部分置換する。ローカルの telemetry は上流の grafana/otel-lgtm 1 つにし、emulator の exporter も外す。emulator の vendoring は変えない。所有者が本セッションで選び、決定欄への代理記入を許可した。
+- 2026-11-12: [ADR-0073](./0073-mwg-v1-before-the-plugin-cooldown.md)を起票（Proposed、決裁待ち）。Modern Web Guidance の marketplace を、公開 2 日目の v1.0.0 に pin する。0056 の Decision 4（7 日以上たった版）の、この版だけの部分置換を、所有者が本セッションで指示した。
