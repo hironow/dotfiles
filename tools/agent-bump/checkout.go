@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +25,22 @@ func (c checkout) Write(p, content string) error {
 		return err
 	}
 	return os.WriteFile(c.abs(p), []byte(content), info.Mode().Perm())
+}
+
+// LinkedWorktree reports whether the root is a linked worktree rather than
+// the main checkout: there git keeps its own dir apart from the common one.
+func (c checkout) LinkedWorktree() (bool, error) {
+	// G204: the root is the --root the just recipe passes, as one argv entry.
+	out, err := exec.CommandContext(context.Background(), "git", "-C", c.root, //nolint:gosec // G204: audited above
+		"rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir").Output()
+	if err != nil {
+		return false, err
+	}
+	dirs := strings.Fields(string(out))
+	if len(dirs) != 2 {
+		return false, fmt.Errorf("git rev-parse printed %q", out)
+	}
+	return filepath.Clean(dirs[0]) != filepath.Clean(dirs[1]), nil
 }
 
 func (c checkout) Dirty(paths []string) ([]string, error) {

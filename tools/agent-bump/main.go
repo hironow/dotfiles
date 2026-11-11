@@ -51,6 +51,17 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		printTable(stdout, rows)
 		return 0
 	}
+	// The installers resolve repo paths from the checkout they run in; from a
+	// linked worktree they would point every agent home at it.
+	linked, err := (checkout{root: *root}).LinkedWorktree()
+	if err != nil {
+		fmt.Fprintln(stderr, "agent-bump: cannot tell whether the root is a worktree:", err)
+		return 1
+	}
+	if linked {
+		fmt.Fprintln(stderr, "agent-bump: run a bump from the main checkout, not a linked worktree")
+		return 2
+	}
 	version := ""
 	if flags.NArg() == 2 {
 		version = flags.Arg(1)
