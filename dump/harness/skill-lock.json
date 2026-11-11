@@ -1100,6 +1100,15 @@
       "resolved_by": "installed"
     },
     {
+      "installed_dir": "security-audit",
+      "upstream_name": "security-audit",
+      "lock_key": "security-audit",
+      "source": "cloudflare/security-audit-skill",
+      "skill_path": "skills/security-audit/SKILL.md",
+      "skill_folder_hash": "ccbc33ed119b28c3ef7b44a7e2081ab191ad63af",
+      "resolved_by": "installed"
+    },
+    {
       "installed_dir": "security-best-practices",
       "upstream_name": "security-best-practices",
       "lock_key": "security-best-practices",
