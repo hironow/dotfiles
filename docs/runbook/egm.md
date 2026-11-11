@@ -11,8 +11,8 @@ skillだけをコピーすると、実行時に読むpersonaやstandardが欠け
 | 環境 | 配置の所有者 | 宣言 |
 | --- | --- | --- |
 | Claude Code | ネイティブのplugin CLI。既存の各Claude homeを対象とする | `dump/harness/claude-plugins.json` |
-| Codex | ネイティブのmarketplaceとplugin CLI。`--ref <tag>`で固定する | `just egm-install` |
-| Antigravity | `agy plugin install`。検証済みのローカルbundleを渡す | `just egm-install` |
+| Codex | ネイティブのmarketplaceとplugin CLI。Piのpinと同じ`--ref <tag>`で固定する | `scripts/codex_agy_plugins.py`（`just deploy`） |
+| Antigravity | `agy plugin install`。検証済みのPiのbundleを渡す | `scripts/codex_agy_plugins.py`（`just deploy`） |
 | Pi | ネイティブのgit package。7つのskillをbundle内から発見する | `dump/harness/pi-packages.json` |
 
 Piのbundleは `<PI_CODING_AGENT_DIR>/git/github.com/google/elephant-goldfish-model` にある。
@@ -24,19 +24,17 @@ sparse checkout、skip-worktree、assume-unchangedなど、変更や欠損を隠
 
 ## 導入
 
-先に指示配布の差分を確認する。
-`egm-install`の最初の処理は既存の`sync-agents all`であり、EGMの補足だけでなく、通常の共通指示、hooks、settingsも配布する。
-
-```sh
-just sync-agents-preview all
-just egm-install
-```
-
-続いてPiとClaudeのEGM限定installer、Codex、Antigravityの順に実行する。
-EGM限定installerは、他のpackageやpluginを更新せず、Ollamaなどのシステムソフトウェアも導入しない。
-通常の`just deploy`とは異なる、明示的な導入手順である。
-失敗した場合はその場で止まり、完了していない環境を成功扱いしない。
+EGM専用の導入コマンドは無い。
+`just deploy`が、Pi（`install_pi_extensions.py`）、CodexとAntigravity（`codex_agy_plugins.py`）、Claude Code（`claude_plugins.py`）の順に、ほかのpluginと同じ手順で入れる。
+CodexとAntigravityはPiのpinに従い、CLIが入っていない機体では飛ばす。
+CodexはPiのpinと同じcommitとversionなら何もせず、tagが動いたときはmarketplaceを外してから入れ直す（Codexはmarketplaceを最初のrefのまま持つため）。
+Antigravityは確かめる手段が無いので、deployのたびに検証済みのbundleを入れ直す。
+1つの手順の失敗はWARNになり、残りの手順は続く。完了していない環境を成功扱いしない。
 各CLIを再起動してから使う。
+
+版を変えるときは`just agent-bump egm [tag]`を使う（ADR 0074）。
+新しいtagで必須ファイルが欠けていれば、何も書き換えずに止まる。
+その場合は`scripts/install_pi_extensions.py`の必須ファイルの一覧を先に直す。
 
 Piの補足は `docs/agents/egm.md` と `egm-reviewer` profileを既存installerが置く。
 Piの優先順位に従って選んだglobal context fileには、EGM用のマーカーで囲んだ参照だけを追加する。
@@ -98,7 +96,7 @@ EGMとは成果物や手順が異なるためである。
 4. merge後のmainから、各Claude homeでネイティブの`claude plugin update grilling@hironow-plugins`を行い、0.3.0と`grit-grill`の存在、古いhandover入口の不在を確認する。
 5. consumerに古いコピーやdangling linkが残っていないか確認する。利用者が編集したコピーは自動削除せず報告する。
 
-`egm-install`はこの退役を自動実行しない。
+`just deploy`と`just agent-bump`はこの退役を自動実行しない。
 また、宣言更新のためにliveのlock全体をdumpして、無関係なhash driftを取り込まない。
 
 ## 検証範囲

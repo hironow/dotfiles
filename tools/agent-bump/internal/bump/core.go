@@ -19,7 +19,7 @@ type Kind string
 
 const (
 	Marketplace Kind = "marketplace" // a Claude plugin marketplace pinned to a tag
-	EGM         Kind = "egm"         // the EGM bundle, pinned in five places
+	EGM         Kind = "egm"         // the EGM bundle, pinned in four places
 	PiPackage   Kind = "pi"          // an npm package Pi installs
 	Skill       Kind = "skill"       // a skill in the bunx skills store
 )
@@ -30,11 +30,10 @@ const (
 	PiPackages    = "dump/harness/pi-packages.json"
 	SkillLock     = "dump/harness/skill-lock.json"
 	PiInstaller   = "scripts/install_pi_extensions.py"
-	Justfile      = "justfile"
 )
 
 // The files Parse reads.
-var DeclarationFiles = []string{ClaudePlugins, PiPackages, SkillLock, PiInstaller, Justfile}
+var DeclarationFiles = []string{ClaudePlugins, PiPackages, SkillLock, PiInstaller}
 
 const (
 	egmMarketplace = "egm"
@@ -251,7 +250,6 @@ func Edits(it Item, t Target) ([]Edit, error) {
 			{PiPackages, quote(egmPiPackage + "@" + it.Current), quote(egmPiPackage + "@" + t.Version)},
 			{PiInstaller, "EGM_SOURCE = " + quote(egmPiPackage+"@"+it.Current), "EGM_SOURCE = " + quote(egmPiPackage+"@"+t.Version)},
 			{PiInstaller, "EGM_COMMIT = " + quote(it.Commit), "EGM_COMMIT = " + quote(t.Commit)},
-			{Justfile, egmRepo + " --ref " + it.Current + " ", egmRepo + " --ref " + t.Version + " "},
 		}, nil
 	case PiPackage:
 		next := "npm:" + it.Name

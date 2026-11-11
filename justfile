@@ -279,26 +279,14 @@ agent-bump *args:
 claude-plugins-install *args:
     @{{ UV_RUN }} scripts/claude_plugins.py {{ args }}
 
-# Complete EGM bundle + local compatibility policy. Explicitly opt in after
-# reviewing sync-agents-preview all: sync also applies the existing settings/hooks.
-# No unrelated package/plugin installers, machine bootstrap, or skill retirement.
+# Codex and Antigravity have no declaration of their own: this follows the Pi
+# pin of EGM (Codex's marketplace at the same tag, Antigravity from the verified
+# Pi bundle) and skips a CLI that is not installed. `just deploy` runs it after
+# the Pi step. --check: report what Codex lacks.
+# Install the plugins dotfiles gives Codex and Antigravity (EGM)
 [group('Agents')]
-egm-install:
-    @just sync-agents all
-    @just egm-install-native
-
-# Without the sync that egm-install runs first; `just agent-bump egm` calls it.
-# Codex keeps a marketplace at its first ref, so a moved tag needs remove, then add.
-# Install EGM with the native installers only (Pi, Claude, Codex, Antigravity)
-[group('Agents')]
-egm-install-native:
-    @{{ UV_RUN }} scripts/install_pi_extensions.py --egm-only
-    @{{ UV_RUN }} scripts/claude_plugins.py --egm-only
-    @if codex plugin marketplace list --json | grep -q '"name": *"egm"'; then codex plugin marketplace remove egm --json; fi
-    codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.0 --json
-    codex plugin add egm@egm --json
-    @{{ UV_RUN }} scripts/install_pi_extensions.py --verify-egm
-    agy plugin install "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/google/elephant-goldfish-model"
+codex-agy-plugins-install *args:
+    @{{ UV_RUN }} scripts/codex_agy_plugins.py {{ args }}
 
 # Register headroom's MCP server (headroom_compress / _retrieve / _stats) in
 # every Claude home, with its egress switches pinned on the server itself.

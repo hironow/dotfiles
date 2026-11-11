@@ -54,10 +54,7 @@ func (h host) Baseline(ctx context.Context, it bump.Item) error {
 	case bump.Marketplace:
 		return h.just(ctx, "claude-plugins-install", "--check")
 	case bump.EGM:
-		return errors.Join(
-			h.just(ctx, "claude-plugins-install", "--check"),
-			h.uv(ctx, bump.PiInstaller, "--verify-egm"),
-		)
+		return h.egmChecks(ctx)
 	case bump.PiPackage:
 		return piInstalled(it.Source, it.Name, it.Current)
 	case bump.Skill:
@@ -70,7 +67,13 @@ func (h host) Install(ctx context.Context, it bump.Item, t bump.Target) error {
 	case bump.Marketplace:
 		return h.just(ctx, "claude-plugins-install")
 	case bump.EGM:
-		return h.just(ctx, "egm-install-native")
+		// The same installers `just deploy` runs, in its order: Pi (the
+		// bundle), Codex and Antigravity (they follow the Pi pin), Claude.
+		return errors.Join(
+			h.uv(ctx, bump.PiInstaller),
+			h.uv(ctx, codexAgyStep),
+			h.just(ctx, "claude-plugins-install"),
+		)
 	case bump.PiPackage:
 		// The installer swaps a changed pin; `pi update` moves an unpinned
 		// package to the newest version, which the installer never does.
@@ -91,11 +94,7 @@ func (h host) Verify(ctx context.Context, it bump.Item, t bump.Target) error {
 	case bump.Marketplace:
 		return h.just(ctx, "claude-plugins-install", "--check")
 	case bump.EGM:
-		return errors.Join(
-			h.just(ctx, "claude-plugins-install", "--check"),
-			h.uv(ctx, bump.PiInstaller, "--verify-egm"),
-			codexEGMAt(ctx, t.Commit),
-		)
+		return h.egmChecks(ctx)
 	case bump.PiPackage:
 		source := "npm:" + it.Name
 		if t.Version != "" {
@@ -169,34 +168,15 @@ func piInstalled(source, name, version string) error {
 	return nil
 }
 
-// codexEGMAt checks Codex's EGM marketplace checkout is at the commit.
-func codexEGMAt(ctx context.Context, commit string) error {
-	out, err := exec.CommandContext(ctx, "codex", "plugin", "marketplace", "list", "--json").Output()
-	if err != nil {
-		return fmt.Errorf("codex plugin marketplace list: %w", err)
-	}
-	var list struct {
-		Marketplaces []struct {
-			Name string `json:"name"`
-			Root string `json:"root"`
-		} `json:"marketplaces"`
-	}
-	if err := json.Unmarshal(out, &list); err != nil {
-		return fmt.Errorf("codex plugin marketplace list: %w", err)
-	}
-	for _, m := range list.Marketplaces {
-		if m.Name != "egm" {
-			continue
-		}
-		// G204: the root is the checkout Codex itself reported, passed as one argv entry.
-		head, err := exec.CommandContext(ctx, "git", "-C", m.Root, "rev-parse", "HEAD").Output() //nolint:gosec // G204: audited above
-		if err != nil {
-			return fmt.Errorf("codex egm checkout: %w", err)
-		}
-		if got := strings.TrimSpace(string(head)); got != commit {
-			return fmt.Errorf("codex egm is at %s, want %s", got, commit)
-		}
-		return nil
-	}
-	return errors.New("codex has no egm marketplace")
+// codexAgyStep is the deploy step that gives Codex and Antigravity EGM.
+const codexAgyStep = "scripts/codex_agy_plugins.py"
+
+// egmChecks are the EGM checks of every agent that can report: Claude,
+// the Pi bundle, and Codex (skipped where Codex is not installed).
+func (h host) egmChecks(ctx context.Context) error {
+	return errors.Join(
+		h.just(ctx, "claude-plugins-install", "--check"),
+		h.uv(ctx, bump.PiInstaller, "--verify-egm"),
+		h.uv(ctx, codexAgyStep, "--check"),
+	)
 }

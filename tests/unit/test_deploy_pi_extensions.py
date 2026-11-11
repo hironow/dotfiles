@@ -1,5 +1,6 @@
-"""deploy runs the agent steps (Pi extensions, Claude plugins, headroom's MCP
-server) on every OS, once mise has installed the tools.
+"""deploy runs the agent steps (Pi extensions, the Codex and Antigravity
+plugins, Claude plugins, headroom's MCP server) on every OS, once mise has
+installed the tools.
 
 The steps are one list (AGENT_STEPS) run by run_agent_steps in both the native
 Windows branch, which exits early, and the shared Unix tail: a step written in
@@ -35,6 +36,7 @@ def test_the_steps_are_the_agent_scripts_and_their_recipes() -> None:
     steps = _steps()
     assert [script for script, _ in steps] == [
         "install_pi_extensions.py",
+        "codex_agy_plugins.py",
         "claude_plugins.py",
         "headroom_mcp.py",
     ]
@@ -85,9 +87,10 @@ def test_each_step_runs_through_mise_and_a_failure_only_warns(tmp_path: Path) ->
     )
     assert done.returncode == 0, done.stderr
     calls = log.read_text(encoding="utf-8").splitlines()
-    assert [call.split()[0] for call in calls] == ["0", "0", "0"]
+    assert [call.split()[0] for call in calls] == ["0", "0", "0", "0"]
     assert [call.rsplit("/", 1)[-1] for call in calls] == [
         "install_pi_extensions.py",
+        "codex_agy_plugins.py",
         "claude_plugins.py",
         "headroom_mcp.py",
     ]
@@ -103,5 +106,9 @@ def test_without_mise_every_skipped_step_is_named() -> None:
     # dropped the reminders in that branch)
     tail = UNIX[UNIX.index("    run_agent_steps\n") :]
     fallback = tail[: tail.index("\nfi\n")]
-    for recipe in ("claude-plugins-install", "headroom-mcp-register"):
+    for recipe in (
+        "codex-agy-plugins-install",
+        "claude-plugins-install",
+        "headroom-mcp-register",
+    ):
         assert fallback.count(f"just {recipe}") == 2, recipe

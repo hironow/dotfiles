@@ -53,17 +53,12 @@ EGM_SOURCE = "git:github.com/google/elephant-goldfish-model@v0.1.0"
 EGM_COMMIT = "b3a35956759bf7f024af2ff061b2e0b44b438e4c"
 `
 
-const justfileText = `egm-install-native:
-    codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.0 --json
-`
-
 func files() map[string]string {
 	return map[string]string{
 		ClaudePlugins: claudeJSON,
 		PiPackages:    piJSON,
 		SkillLock:     skillJSON,
 		PiInstaller:   installerPy,
-		Justfile:      justfileText,
 	}
 }
 
@@ -187,7 +182,6 @@ func TestEGMEditsEveryPinTogether(t *testing.T) {
 		ClaudePlugins: `"google/elephant-goldfish-model#v0.1.2"`,
 		PiPackages:    `"git:github.com/google/elephant-goldfish-model@v0.1.2"`,
 		PiInstaller:   `EGM_COMMIT = "` + sha + `"`,
-		Justfile:      "google/elephant-goldfish-model --ref v0.1.2 ",
 	} {
 		if !strings.Contains(out[path], want) || strings.Contains(out[path], "v0.1.0") {
 			t.Errorf("%s:\n%s", path, out[path])

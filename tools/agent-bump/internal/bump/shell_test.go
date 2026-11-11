@@ -54,7 +54,6 @@ func newWorld() world {
 		bump.PiInstaller: `EGM_SOURCE = "git:github.com/google/elephant-goldfish-model@v0.1.0"
 EGM_COMMIT = "` + egmOld + `"
 `,
-		bump.Justfile: "    codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.0 --json\n",
 	}}
 	rel := &releases.Fake{Repos: map[string]releases.Repo{
 		"openai/codex-plugin-cc": {Latest: "v1.0.6", Tags: map[string]releases.Tag{
@@ -165,7 +164,7 @@ EGM_COMMIT = "`+egmOld+`"
 	if _, err := w.app.Bump(context.Background(), "egm", "v0.1.2"); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{bump.ClaudePlugins, bump.PiPackages, bump.PiInstaller, bump.Justfile} {
+	for _, path := range []string{bump.ClaudePlugins, bump.PiPackages, bump.PiInstaller} {
 		if strings.Contains(w.repo.Files[path], "v0.1.0") {
 			t.Errorf("%s still pins v0.1.0:\n%s", path, w.repo.Files[path])
 		}

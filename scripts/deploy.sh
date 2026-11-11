@@ -32,6 +32,7 @@ ensure_zprofile_login_path() {
 # both paths: the native Windows branch exits early, and a step written only in
 # the shared tail never reached it (headroom's MCP server, once).
 AGENT_STEPS='install_pi_extensions.py pi-extensions-install Installing Pi extensions
+codex_agy_plugins.py codex-agy-plugins-install Installing the Codex and Antigravity plugins
 claude_plugins.py claude-plugins-install Installing Claude Code plugins
 headroom_mcp.py headroom-mcp-register Registering headroom'"'"'s MCP server'
 
@@ -220,8 +221,8 @@ if command -v mise >/dev/null 2>&1; then
     run_agent_steps
 elif command -v pi >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     python3 ~/dotfiles/scripts/install_pi_extensions.py || echo "==> WARN: Pi extension installation failed; run 'just pi-extensions-install' after resolving the error"
-    echo "==> mise not on PATH; run 'just claude-plugins-install' and 'just headroom-mcp-register' after provisioning"
+    echo "==> mise not on PATH; run 'just codex-agy-plugins-install', 'just claude-plugins-install' and 'just headroom-mcp-register' after provisioning"
 else
-    echo "==> mise not on PATH; run 'just pi-extensions-install', 'just claude-plugins-install' and 'just headroom-mcp-register' after provisioning"
+    echo "==> mise not on PATH; run 'just pi-extensions-install', 'just codex-agy-plugins-install', 'just claude-plugins-install' and 'just headroom-mcp-register' after provisioning"
 fi
 echo "==> Deploy complete!"

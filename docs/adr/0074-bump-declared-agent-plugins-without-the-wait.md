@@ -25,7 +25,8 @@ agent の plugin や skill の版を、`just agent-bump <名前> [版]` の 1 �
 - 所有者は 2026-11-12 に「このリポジトリで管理している agent 系の skill の update をするコマンドを作りたい。複数入れていて、版を上げ下げするたびに頼むより、コマンドだけで上げられるのが理想。特に、すでに入っている skill は 7 日の待機の例外として扱いたい」と依頼した。
 - 版が書かれている場所:
     - Claude の plugin の marketplace は、`dump/harness/claude-plugins.json` で tag に固定する（ADR-0048、0056）。ADR-0056 の Decision 4 は「tag は公開から 7 日以上（MUST）」、ADR-0073 の D2 は「7 日未満の tag には marketplace と tag を名指しした DR が要る」とした。
-    - EGM の版は 5 か所にある。claude-plugins.json、pi-packages.json、`scripts/install_pi_extensions.py` の `EGM_SOURCE` と `EGM_COMMIT`、justfile の `egm-install-native` の `--ref`。
+    - EGM の版は 5 か所にあった。claude-plugins.json、pi-packages.json、`scripts/install_pi_extensions.py` の `EGM_SOURCE` と `EGM_COMMIT`、justfile の `egm-install` の Codex の `--ref`。Codex と Antigravity には `egm-install` だけが入れていた（`just deploy` は入れない）。
+    - 2026-11-12 に所有者が「EGM だけの特別コマンドはなくしてもいい。ただし EGM 自体を agent に入れるのは必要」とし、Codex と Antigravity も `just deploy` で入れることを選んだ。
     - Pi の package は npm の名前を版なしで並べ、Pi の npm は `min-release-age=0` で待機なし（ADR-0058）。
     - store の skill は宣言に版を持たず、`just skills-update` が上流の最新を取る（ADR-0043、待機の規則なし）。skills CLI 1.5.22 は ref や版を指定できない。
 - 2026-11-12 に確かめた上流の状態: EGM の最新 v0.1.1（2026-11-06）は skill の dir 名を `egm_review` から `egm-review` に変えた（7 つすべて）。今の `verify_egm` は v0.1.0 の名前を固定で持つので、v0.1.1 へは版の文字列を変えるだけでは上がらない。
@@ -55,7 +56,7 @@ agent の plugin や skill の版を、`just agent-bump <名前> [版]` の 1 �
 
 ## Consequences
 
-- **Positive**: 宣言済みの plugin・EGM・Pi package・skill の版を、1 つのコマンドで上げ下げできる。EGM の 5 か所は、コマンドがまとめて書き換え、テストが一致を確かめる。
+- **Positive**: 宣言済みの plugin・EGM・Pi package・skill の版を、1 つのコマンドで上げ下げできる。EGM の pin は 4 か所（claude-plugins.json、pi-packages.json、`EGM_SOURCE`、`EGM_COMMIT`）になり、コマンドがまとめて書き換え、テストが一致を確かめる。EGM 専用の導入コマンドは無くなり、4 つの agent すべてに `just deploy` が入れる（Codex と Antigravity は `scripts/codex_agy_plugins.py` が Pi の pin に合わせ、CLI の無い機体では飛ばす）。
 - **Negative**:
     - 宣言済みの marketplace は、出たばかりの版が先に入る。上流が版を取り下げても、先に入っている。
     - EGM の形が変わる版（v0.1.1 など）は、installer を人が直すまで上げられない。コマンドは pre-flight でそう言って止まる。

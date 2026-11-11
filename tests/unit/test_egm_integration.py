@@ -62,26 +62,18 @@ def test_only_the_approved_duplicate_entry_points_are_retired() -> None:
     assert entry["version"] == manifest["version"] == "0.3.0"
 
 
-def test_egm_install_orders_policy_and_targeted_native_installers() -> None:
+def test_egm_reaches_every_agent_through_deploy_not_a_special_recipe() -> None:
+    # Claude Code and Pi read EGM from their declarations; Codex and
+    # Antigravity get it from the deploy step that follows the Pi pin.
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    recipe = justfile.split("egm-install:\n", 1)[1].split("\n\n", 1)[0]
-    assert recipe.splitlines() == [
-        "    @just sync-agents all",
-        "    @just egm-install-native",
-    ]
-    recipe = justfile.split("egm-install-native:\n", 1)[1].split("\n\n", 1)[0]
-    steps = [
-        "install_pi_extensions.py --egm-only",
-        "claude_plugins.py --egm-only",
-        f"codex plugin marketplace add google/elephant-goldfish-model --ref {_egm_tag()}",
-        "codex plugin add egm@egm",
-        "install_pi_extensions.py --verify-egm",
-        "agy plugin install",
-    ]
-    positions = [recipe.index(step) for step in steps]
-    assert positions == sorted(positions)
-    assert "pi-extensions-install" not in recipe
-    assert "claude-plugins-install" not in recipe
+    assert "egm-install" not in justfile
+    deploy = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
+    for step in (
+        "install_pi_extensions.py",
+        "codex_agy_plugins.py",
+        "claude_plugins.py",
+    ):
+        assert step in deploy
     assert "docs/agents/egm.md" in (ROOT / "ROOT_AGENTS.md").read_text(encoding="utf-8")
 
 
@@ -213,24 +205,9 @@ def test_wrong_or_extra_bundle_content_fails_without_cleanup(
 
 
 def test_every_egm_pin_names_the_same_tag() -> None:
-    # `just agent-bump egm` rewrites all of them together; one left behind
-    # would install two EGM versions side by side.
-    tag = _egm_tag()
-    assert installer.EGM_SOURCE == f"{installer.EGM_PACKAGE}@{tag}"
-    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    assert justfile.count("--ref ") == justfile.count(f"--ref {tag} ")
-
-
-def test_egm_install_native_replaces_a_codex_marketplace_at_another_tag() -> None:
-    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    recipe = justfile.split("egm-install-native:\n", 1)[1].split("\n\n", 1)[0]
-    remove = recipe.index("codex plugin marketplace remove egm")
-    assert remove < recipe.index("codex plugin marketplace add")
-    # Only when it is there: a first install has nothing to remove.
-    assert (
-        "codex plugin marketplace list --json"
-        in recipe.splitlines()[recipe[:remove].count("\n")]
-    )
+    # `just agent-bump egm` rewrites the pins together, and Codex takes its
+    # ref from EGM_SOURCE; one left behind would split the agents.
+    assert installer.EGM_SOURCE == f"{installer.EGM_PACKAGE}@{_egm_tag()}"
 
 
 def test_agent_bump_runs_the_go_tool_against_this_checkout() -> None:

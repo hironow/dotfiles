@@ -98,7 +98,7 @@ and what outlived it.
 | 0071 | [Rust の clippy を、出荷する target ごとに回す](./0071-rust-clippy-for-every-target.md) | Accepted; extends 0069 (Rust) | 2026-11-11 | `ROOT_AGENTS_docs_agents_rust-tooling.md`、`tests/unit/test_cross_platform_gates.py` |
 | 0072 | [ローカルの telemetry は上流の grafana/otel-lgtm 1 つにする](./0072-telemetry-is-upstream-otel-lgtm.md) | Accepted; partial supersession of 0014 (telemetry only) | 2026-11-11 | `telemetry/`、`emulator/compose.yaml`（exporter）、`justfile`（`tel-*`、lint の pathspec）、`.github/dependabot.yaml` |
 | 0073 | [Modern Web Guidance の v1.0.0 は、7 日の待機を待たずに pin する](./0073-mwg-v1-before-the-plugin-cooldown.md) | Accepted; partial supersession of 0056 (Decision 4, googlechrome v1.0.0 only) | 2026-11-12 | `dump/harness/claude-plugins.json` |
-| 0074 | [宣言済みの agent の plugin の版は、待機を待たずに 1 つのコマンドで上げ下げする](./0074-bump-declared-agent-plugins-without-the-wait.md) | Proposed; partial supersession of 0056 (Decision 4) and 0073 (D2), declared marketplaces only | 2026-11-12 | `tools/agent-bump/`、`justfile`（`agent-bump`、`egm-install-native`）、`dump/harness/` |
+| 0074 | [宣言済みの agent の plugin の版は、待機を待たずに 1 つのコマンドで上げ下げする](./0074-bump-declared-agent-plugins-without-the-wait.md) | Proposed; partial supersession of 0056 (Decision 4) and 0073 (D2), declared marketplaces only | 2026-11-12 | `tools/agent-bump/`、`justfile`（`agent-bump`、`codex-agy-plugins-install`）、`scripts/codex_agy_plugins.py`、`scripts/deploy.sh`、`dump/harness/` |
 
 ## Reading order for newcomers
 
