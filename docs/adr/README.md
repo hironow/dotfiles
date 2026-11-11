@@ -96,6 +96,7 @@ and what outlived it.
 | 0069 | [型検査と lint を、コードが動く OS ごとに回す（ty と golangci-lint）](./0069-type-check-and-lint-for-every-os.md) | Accepted (PR #586); limited partial supersession of 0044 | 2026-11-10 | `ROOT_AGENTS_docs_agents_python-tooling.md`、`ROOT_AGENTS_docs_agents_go-tooling.md`、`ROOT_AGENTS_docs_agents_commit-discipline.md`、`templates/agent-baseline/` |
 | 0070 | [native Windows では pnpm を用意しない](./0070-no-pnpm-on-native-windows.md) | Accepted; limited partial supersession of 0017/0018 | 2026-11-10 | `install.sh`（`step_corepack`）、`scripts/doctor.sh`、`bootstrap.ps1` |
 | 0071 | [Rust の clippy を、出荷する target ごとに回す](./0071-rust-clippy-for-every-target.md) | Accepted; extends 0069 (Rust) | 2026-11-11 | `ROOT_AGENTS_docs_agents_rust-tooling.md`、`tests/unit/test_cross_platform_gates.py` |
+| 0072 | [ローカルの telemetry は上流の grafana/otel-lgtm 1 つにする](./0072-telemetry-is-upstream-otel-lgtm.md) | Proposed; partial supersession of 0014 (telemetry only) | 2026-11-11 | `telemetry/`、`emulator/compose.yaml`（exporter）、`justfile`（`tel-*`、lint の pathspec）、`.github/dependabot.yaml` |
 
 ## Reading order for newcomers
 
@@ -162,3 +163,4 @@ and what outlived it.
 - 2026-11-10: [ADR-0070](./0070-no-pnpm-on-native-windows.md) を採択し、0017 の corepack による pnpm の供給と、0018 の Windows の `step_corepack` を、native Windows の分だけ部分置換する。macOS・Linux・WSL・dev container は変えない。所有者が本セッションで A を選び、決定欄への代理記入を許可した。
 - 2026-11-11: [ADR-0071](./0071-rust-clippy-for-every-target.md)を起票（Proposed、決裁待ち）。Rust の clippy を出荷する target ごとに回し、C を build する依存で手元で見られない target はその OS の CI で見る。0069 が決めていなかった Rust の分を決める。
 - 2026-11-11: [ADR-0071](./0071-rust-clippy-for-every-target.md) を採択。Rust の clippy を出荷する target ごとに回し、C を build する依存で手元で見られない target はその OS の CI で見る。0069 は変えない。所有者が本セッションで A を選び、決定欄への代理記入を許可した。
+- 2026-11-11: [ADR-0072](./0072-telemetry-is-upstream-otel-lgtm.md)を起票（Proposed、決裁待ち）。ローカルの telemetry を上流の grafana/otel-lgtm 1 つにし、独自の設定・dashboard・例と emulator の exporter をやめる。0014 の telemetry の分の部分置換を、所有者が本セッションで指示した。
