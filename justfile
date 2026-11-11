@@ -276,6 +276,12 @@ claude-plugins-install *args:
 [group('Agents')]
 egm-install:
     @just sync-agents all
+    @just egm-install-native
+
+# The native EGM installers only (Pi, Claude, Codex, Antigravity), without the
+# sync that egm-install runs first.
+[group('Agents')]
+egm-install-native:
     @{{ UV_RUN }} scripts/install_pi_extensions.py --egm-only
     @{{ UV_RUN }} scripts/claude_plugins.py --egm-only
     codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.0 --json

@@ -13,16 +13,26 @@ import install_pi_extensions as installer
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _egm_tag() -> str:
+    """The EGM tag the Claude declaration pins; every other pin follows it."""
+    claude = json.loads(
+        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
+    )
+    repo, _, tag = claude["marketplaces"]["egm"].partition("#")
+    assert repo == "google/elephant-goldfish-model"
+    assert tag
+    return tag
+
+
 def test_egm_is_declared_as_a_complete_pinned_bundle() -> None:
     claude = json.loads(
         (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
     )
-    assert claude["marketplaces"]["egm"] == "google/elephant-goldfish-model#v0.1.0"
     assert "egm@egm" in claude["plugins"]
     pi = json.loads(
         (ROOT / "dump/harness/pi-packages.json").read_text(encoding="utf-8")
     )
-    assert "git:github.com/google/elephant-goldfish-model@v0.1.0" in pi
+    assert f"git:github.com/google/elephant-goldfish-model@{_egm_tag()}" in pi
     skills = json.loads(
         (ROOT / "dump/harness/skill-lock.json").read_text(encoding="utf-8")
     )["skills"]
@@ -55,11 +65,15 @@ def test_only_the_approved_duplicate_entry_points_are_retired() -> None:
 def test_egm_install_orders_policy_and_targeted_native_installers() -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     recipe = justfile.split("egm-install:\n", 1)[1].split("\n\n", 1)[0]
+    assert recipe.splitlines() == [
+        "    @just sync-agents all",
+        "    @just egm-install-native",
+    ]
+    recipe = justfile.split("egm-install-native:\n", 1)[1].split("\n\n", 1)[0]
     steps = [
-        "just sync-agents all",
         "install_pi_extensions.py --egm-only",
         "claude_plugins.py --egm-only",
-        "codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.0",
+        f"codex plugin marketplace add google/elephant-goldfish-model --ref {_egm_tag()}",
         "codex plugin add egm@egm",
         "install_pi_extensions.py --verify-egm",
         "agy plugin install",

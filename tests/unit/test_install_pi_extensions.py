@@ -76,7 +76,7 @@ def test_egm_only_install_is_scoped_and_preserves_the_selected_home(
     )
     installer.install(agent, symlinks=False, egm_only=True)
     assert [call.args[0] for call in run.call_args_list] == [
-        ["pi", "install", "git:github.com/google/elephant-goldfish-model@v0.1.0"]
+        ["pi", "install", installer.EGM_SOURCE]
     ]
     assert run.call_args.kwargs["env"]["PI_CODING_AGENT_DIR"] == str(agent.resolve())
     assert (
