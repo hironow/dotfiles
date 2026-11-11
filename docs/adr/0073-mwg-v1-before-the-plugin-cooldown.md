@@ -2,9 +2,9 @@
 
 - **id**: ADR-0073
 - **title**: Modern Web Guidance の v1.0.0 は、7 日の待機を待たずに pin する
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-12
-- **decided-date**: —
+- **decided-date**: 2026-11-12
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session、Windows 機）
@@ -76,10 +76,13 @@ Claude Code の plugin「Modern Web Guidance」（Web の書き方の最新の�
 - 計画は独立サブエージェントがレビューした（Codex はクレジット切れ）。ADR-0056 の Decision 4 との食い違いと、npm の待機で `legacy-scan` が動かないことは、その指摘から見つかった。待機で選ばれる版はレジストリの公開日時から、`legacy-scan` が無いことは 0.0.197 の CLI のソースから確かめた（npx は実行していない）。
 - 2026-11-12、本セッションで所有者が上の 2 点を聞いたうえで「今上げ、ADR で例外にする」を選んだ。
 
-## 決定（記入待ち）
+## 決定（2026-11-12）
 
-- [ ] B を Accepted（D1〜D3 を MUST 文で確定し、索引、変更ログ、queue を更新する）
+- [x] B を Accepted（D1〜D3 を MUST 文で確定し、索引、変更ログ、queue を更新する）
 - [ ] A を Accepted（2026-11-17 まで v0.0.193 のままにする）
 - [ ] Rejected / Deferred（宣言の変更を戻し、queue に理由を残す）
 
-決定者: Hiroto N.（@hironow）　決定日: —
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-12（所有者の選択により代理記入）
+
+- A 案は所有者が今上げることを選んだため、C 案は所有者が npx に触れないと選んだ範囲を超えるため却下する。
+- 採択時に索引、変更ログ、queue の決定済みログを同時に更新し、ADR-0056 は Status 行だけを変えた。
