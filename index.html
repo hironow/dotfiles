@@ -239,10 +239,10 @@
           <thead><tr><th scope="col">stack</th><th scope="col" class="hide-narrow">services</th><th scope="col">what comes up</th></tr></thead>
           <tbody>
             <tr><td class="k">emulator</td><td class="num hide-narrow">4</td><td>the GCP core by default: Firebase, Spanner with pgAdapter, Postgres</td></tr>
-            <tr><td class="k">emu-up-full</td><td class="num hide-narrow">13</td><td>plus Bigtable, Neo4j, Qdrant, Elasticsearch, MLflow, and the A2A and MCP inspectors</td></tr>
-            <tr><td class="k">telemetry</td><td class="num hide-narrow">5</td><td>otel-collector into Tempo, Loki, Prometheus, and Grafana</td></tr>
+            <tr><td class="k">emu-up-full</td><td class="num hide-narrow">11</td><td>plus Bigtable, Neo4j, Qdrant, Elasticsearch, MLflow, and the A2A and MCP inspectors</td></tr>
+            <tr><td class="k">telemetry</td><td class="num hide-narrow">1</td><td>upstream grafana/otel-lgtm: the OTel Collector into Tempo, Loki, Prometheus, Pyroscope, and Grafana</td></tr>
             <tr><td class="k">emulate</td><td class="num hide-narrow">9</td><td>GitHub, Google, Slack, Apple, Microsoft, Stripe, Clerk, Okta, Resend on <span class="mut">:4100 to :4108</span></td></tr>
-            <tr><td class="k">portless</td><td class="num hide-narrow">20</td><td>every HTTP UI at <span class="k">https://&lt;name&gt;.localhost</span> behind a trusted local CA</td></tr>
+            <tr><td class="k">portless</td><td class="num hide-narrow">19</td><td>every HTTP UI at <span class="k">https://&lt;name&gt;.localhost</span> behind a trusted local CA</td></tr>
           </tbody>
         </table>
         <p class="comment"># everything is vendored and version-pinned; the dev container and CI run the same stack</p>

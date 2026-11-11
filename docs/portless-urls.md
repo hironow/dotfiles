@@ -24,10 +24,10 @@ portless alias mlflow 5252 --force          # MLflow UI
 portless alias qdrant 6333 --force          # Qdrant REST and dashboard
 portless alias elasticsearch 9200 --force   # Elasticsearch REST
 # telemetry (telemetry/compose.yaml)
-portless alias grafana 3010 --force         # Grafana
-portless alias prometheus 9091 --force      # Prometheus
+portless alias grafana 3000 --force         # Grafana
+portless alias prometheus 9090 --force      # Prometheus
 portless alias tempo 3200 --force           # Tempo HTTP API
-portless alias loki 3100 --force            # Loki HTTP API
+portless alias pyroscope 4040 --force       # Pyroscope
 # emulate API emulators (`just emu-api`, base port 4100)
 portless alias github 4100 --force
 portless alias google 4101 --force

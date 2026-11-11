@@ -107,7 +107,13 @@ def test_all_canonical_declarations_and_shared_network_are_isolated(prepared):
     assert manifest["network"] != "shared-otel-net"
     assert "spanner-emulator" in manifest["selected_containers"]
     assert "postgres-18" in manifest["selected_containers"]
-    assert "grafana" in manifest["selected_containers"]
+    telemetry = yaml.safe_load(
+        (snapshot / "telemetry/compose.yaml").read_text(encoding="utf-8")
+    )
+    assert {
+        service.get("container_name", name)
+        for name, service in telemetry["services"].items()
+    } <= set(manifest["selected_containers"])
     assert not (snapshot / ".git").exists()
     assert not (snapshot / "emulator/firebase/data/firestore_export").exists()
 

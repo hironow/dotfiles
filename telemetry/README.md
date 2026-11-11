@@ -1,87 +1,79 @@
-# OpenTelemetry Visualization Suite
+# Local telemetry (grafana/otel-lgtm)
 
-A local Podman stack that collects OpenTelemetry traces, metrics and logs and
-shows them in Grafana. It also scrapes metrics from the `emulator` stack.
-[`examples/`](examples/README.md) holds a FastAPI app that sends sample data.
+One container, [grafana/otel-lgtm](https://github.com/grafana/docker-otel-lgtm),
+collects OpenTelemetry traces, metrics, logs and profiles and shows them in
+Grafana. It bundles the OpenTelemetry Collector, Prometheus, Tempo, Loki,
+Pyroscope and Grafana with upstream defaults. dotfiles keeps no config,
+dashboards or example app of its own (ADR 0072). Upstream says the image is for
+development, demos and tests, not production.
 
 ## Quick start
 
 From the repo root:
 
 ```bash
-just tel-up      # create the shared-otel-net network if missing, then PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false up -d
-just tel-check   # PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false ps
-just tel-logs    # follow logs (optionally: just tel-logs grafana)
-just tel-down
+just tel-up      # create shared-otel-net if missing, then start lgtm
+just tel-check   # show the container
+just tel-logs    # follow logs
+just tel-down    # stop it (also removes containers an older stack left)
 ```
 
-Open Grafana at <http://localhost:3010> (admin/admin). To send sample data, run
-the example app: see [`examples/README.md`](examples/README.md).
+Open Grafana at <http://localhost:3000> and log in as `admin` / `admin`.
 
-## Components and host ports
+## Host ports
 
-[`compose.yaml`](compose.yaml) is the source for images and ports. Every port is
-bound to `127.0.0.1`.
+[`compose.yaml`](compose.yaml) is the source for the image and the ports. Every
+port is bound to `127.0.0.1` and uses lgtm's own number.
 
-| Service | Host port | Purpose |
-| --- | --- | --- |
-| Grafana | 3010 | Web UI (container port 3000) |
-| Prometheus | 9091 | Metrics store (container port 9090) |
-| Tempo | 3200, 14268 | Trace store HTTP API, Jaeger ingest |
-| Loki | 3100 | Log store |
-| OTel Collector | 4317, 4318 | OTLP gRPC, OTLP HTTP |
-| OTel Collector | 8888, 8889 | Collector's own metrics, Prometheus exporter |
-| OTel Collector | 13133, 55679 | `health_check`, `zpages` |
+| Port | Service |
+| --- | --- |
+| 3000 | Grafana |
+| 3200 | Tempo HTTP API |
+| 4040 | Pyroscope |
+| 4317 | OTLP gRPC |
+| 4318 | OTLP HTTP |
+| 9090 | Prometheus |
 
 For `https://<name>.localhost` aliases of the HTTP UIs, see
 [`../docs/portless-urls.md`](../docs/portless-urls.md).
 
-## Data flow
+## Send telemetry
 
-```txt
-app            --OTLP-------->  OTel Collector
-OTel Collector --scrape------>  emulator exporters
-OTel Collector --traces------>  Tempo (tempo:4317)
-OTel Collector --logs-------->  Loki (http://loki:3100/otlp)
-OTel Collector --metrics----->  :8889  <--scrape--  Prometheus
-Tempo          --span metrics->  Prometheus (remote write)
-Grafana        --queries----->  Prometheus, Tempo, Loki
-```
+- From the host: `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` (gRPC) or
+  `http://localhost:4318` (HTTP).
+- From a container on the `shared-otel-net` network: `http://lgtm:4317` or
+  `http://lgtm:4318`. The emulator stack joins that network too.
 
-Each step has one config file:
+## Data and settings
 
-| Step | File |
-| --- | --- |
-| Collector receivers, exporters, emulator scrapes | [`config/otel/otel-collector-config.yaml`](config/otel/otel-collector-config.yaml) |
-| Prometheus scrapes (collector `:8888` and `:8889`, every 15s) | [`config/prometheus/prometheus.yaml`](config/prometheus/prometheus.yaml) |
-| Tempo storage and span-metrics generator | [`config/tempo/tempo-config.yaml`](config/tempo/tempo-config.yaml) |
-| Loki storage | [`config/loki/loki-config.yaml`](config/loki/loki-config.yaml) |
-| Grafana data sources and dashboards | [`grafana/`](grafana/README.md) |
+Data lives in the `lgtm-data` named volume (`/data` in the container), so it
+survives `just tel-down`. Remove the volume to start empty.
 
-Services reach each other by service name on the `shared-otel-net` network. Only
-the ports above are open to the host. [`docs/architecture-diagram.md`](docs/architecture-diagram.md)
-has a Mermaid version of the diagram.
+Upstream documents environment variables that change the bundled services
+(for example `PROMETHEUS_EXTRA_ARGS` or `ENABLE_LOGS_ALL`); see its README. Keep
+the upstream config files: do not mount config files of our own (ADR 0072).
+`.env` next to `compose.yaml` is git-ignored, so local values stay untracked.
 
-## Emulator metrics
+## Upgrade the image
 
-The collector scrapes three `emulator` services every 30s over
-`shared-otel-net` and passes the metrics to Prometheus. The **Emulator Metrics**
-dashboard shows them.
-
-| Service | Target | Started by |
-| --- | --- | --- |
-| Qdrant | `qdrant-emulator:6333` | `just emu-up-group vector` |
-| Elasticsearch | `elasticsearch-exporter:9114` | `just emu-up-group search` |
-| PostgreSQL | `postgres-exporter:9187` | `just emu-up-group exporters` |
-
-`just emu-up-full` starts all three. The default `just emu-up` (lite) starts
-none of them, so the dashboard stays empty. Both `just tel-up` and the emulator
-start script create `shared-otel-net` when it is missing. To run the stacks
-without `just`, create the network first:
+Dependabot proposes a new tag 7 days after its release
+(`.github/dependabot.yaml`). Before merging, check the image's attestation:
 
 ```bash
-podman network create shared-otel-net
-(cd telemetry && PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false up -d)
+gh attestation verify --repo grafana/docker-otel-lgtm \
+  oci://docker.io/grafana/otel-lgtm:<version> \
+  --signer-workflow grafana/shared-workflows/.github/workflows/sign-and-attest.yml
+```
+
+## Move from the old five-container stack
+
+The old stack ran otel-collector, Tempo, Prometheus, Loki and Grafana. After you
+pull this change, run `just tel-down` once: `--remove-orphans` stops the old
+containers that still hold ports 4317 and 4318. Then `just tel-up`. The old
+volumes stay; remove them when you no longer need their data:
+
+```bash
+podman volume rm telemetry_grafana-data telemetry_prometheus-data telemetry_tempo-data
 ```
 
 ## Isolated verification
@@ -89,19 +81,20 @@ podman network create shared-otel-net
 Use the [emulator test lifecycle](../emulator/README.md#isolated-required-tests)
 with `--telemetry`. It renders both canonical Compose files into one tracked-only
 disposable snapshot. Both stacks share a unique owned network; container names,
-volumes, loopback host ports and bind sources are isolated. The same run manifest
-drives startup, wait, SDK lookups and host endpoints. `wait` checks every selected
-container's network membership. Normal `shared-otel-net` and existing telemetry
-data are not touched.
+volumes and loopback host ports are isolated. The same run manifest drives
+startup, wait, SDK lookups and host endpoints. `wait` checks every selected
+container's health and network membership, and
+`emulator/tests/e2e/test_telemetry_lgtm_e2e.py` sends one span over OTLP and
+reads it back from Tempo. Normal `shared-otel-net` and existing telemetry data
+are not touched.
 
 The forced provider is `PODMAN_COMPOSE_PROVIDER=podman-compose`, with
 `--in-pod=false`; no extra Pod inventory is created. CI always invokes cleanup
 with the same manifest after success, failure or cancellation. Cleanup rechecks
 run labels and exact IDs, never port-based deletion or shared-stack teardown.
-This is a verification path, not a migration of existing data.
 
 ## No data in Grafana
 
-1. Run `just tel-check` and check that every container is up.
+1. Run `just tel-check` and check that the container is healthy.
 2. Check that the app sends to `localhost:4317` (`OTEL_EXPORTER_OTLP_ENDPOINT`).
 3. Wait a few seconds: the collector sends in batches.

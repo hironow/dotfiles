@@ -89,23 +89,24 @@ just sync-agents-preview …  # dry-run
 - **semgrep**: `.semgrep/rules/**` を `semgrep --test` で検証 (`just semgrep-test`, `ci` 組込み)。
   `.semgrep` は intentional-violation fixture を含むため `pyproject.toml` で ruff 除外。
 
-## ローカル開発スタック (emulator / telemetry / portless — vendored)
+## ローカル開発スタック (emulator / telemetry / portless)
 
-ADR 0014 (vendoring) / 0015 (portless) / 0016 (emulate)。
+ADR 0014 (emulator の vendoring) / 0015 (portless) / 0016 (emulate) / 0072 (telemetry は otel-lgtm)。
 
 - **emulator** (`emulator/compose.yaml`): `just emu-up` = **lite 既定** (firebase +
   spanner + pgadapter + postgres = GCP コア)。重量級/amd64 サービスは opt-in:
     - `just emu-up-only <service...>` — 名指し起動 (profile gate を bypass。外部 repo が
       `firebase-emulator` だけ間借りする時に使う)
     - `just emu-up-group <cap>` — lite + capability (bigtable/search/graph/vector/ml/
-      inspect/exporters/full)
+      inspect/full)
     - `just emu-up-full` — 全データサービス。`emu-start`/`emu-start-full` は clean+prebuild+up+wait
     - **teardown は profile を全有効化**: `emu-stop`/`emu-clean` は内部で
       `COMPOSE_PROFILES=full,cli PODMAN_COMPOSE_PROVIDER=podman-compose podman compose --in-pod=false down --remove-orphans`。
       compose profiles は
       `down` も profile-gate するため、無指定だと lite しか落とせず profiled heavy が残る。
-- **telemetry** (`telemetry/compose.yaml`): `just tel-up` (otel-collector :4317 →
-  Tempo/Grafana) / `tel-down`。`shared-otel-net` を emulator と共有。
+- **telemetry** (`telemetry/compose.yaml`): 上流の `grafana/otel-lgtm` 1 つ (ADR 0072。独自の
+  設定・dashboard は持たない)。`just tel-up` (OTLP :4317/:4318、Grafana :3000) / `tel-down`。
+  `shared-otel-net` を emulator と共有し、network 内の宛先は `lgtm:4317`。
 - **portless**: just の recipe は無い。`portless` を直接使い、別名は `docs/portless-urls.md` の
   `portless alias <name> <port> --force` 一覧で登録して HTTP UI を `https://<name>.localhost` に。
   **HTTP(S) UI のみ** — Pub/Sub(9399) / Firestore(8080) / OTLP gRPC(4317) 等の wire protocol は

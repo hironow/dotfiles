@@ -3,7 +3,7 @@
 Read this when you add a new service or binary, or any telemetry.
 
 Every service sends telemetry through OpenTelemetry. For local development, use
-the shared dotfiles telemetry stack (otel-collector → Tempo/Grafana). A Jaeger
+the shared dotfiles telemetry stack (one `grafana/otel-lgtm` container). A Jaeger
 per project is the fallback when you need isolation. Each project picks its
 production backend in an ADR.
 
@@ -50,9 +50,11 @@ Apps set
 `OTEL_SERVICE_NAME=<module>`.
 
 **First choice: the shared stack (run it from the dotfiles repo).** `just tel-up`
-starts an otel-collector (OTLP `:4317` gRPC / `:4318` HTTP) that feeds Tempo and
-Grafana; `just tel-down` stops it. Grafana is at `http://localhost:3010`
-(`https://grafana.localhost` through portless).
+starts `grafana/otel-lgtm`: an OpenTelemetry Collector (OTLP `:4317` gRPC /
+`:4318` HTTP) that feeds Tempo, Prometheus, Loki, and Pyroscope, with Grafana at
+`http://localhost:3000` (`https://grafana.localhost` through portless).
+`just tel-down` stops it. A container on the `shared-otel-net` network sends to
+`http://lgtm:4317` instead of localhost.
 
 You need no telemetry services in each repo. Point apps at the shared
 collector.

@@ -24,7 +24,6 @@ extend-exclude = [
     # read while designing against its runner contract). Upstream Python there
     # is not ours to format -- same exemption as every other vendored dir above.
     "submodules",
-    "telemetry",
     # templates/agent-baseline/.semgrep/tests/* are intentional-violation
     # fixtures (os.path.join / MagicMock) for the scaffold's own semgrep rules.
     # Only those fixtures: tools/ and the rest of templates/ are our own code.

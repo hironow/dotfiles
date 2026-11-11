@@ -1,7 +1,7 @@
 # 0014. Vendor emulator and telemetry from submodules into dotfiles
 
 **Date:** 2026-05-30
-**Status:** Accepted
+**Status:** Accepted. Partly superseded by [0072](./0072-telemetry-is-upstream-otel-lgtm.md) (telemetry only: `telemetry/` no longer holds a vendored sub-project, and the root lint no longer excludes it; the emulator vendoring is unchanged and in force).
 
 ## Context
 

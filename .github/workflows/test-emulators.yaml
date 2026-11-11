@@ -7,6 +7,9 @@ on:
       - 'emulator/**'
       - '!emulator/**/*.md'
       - '!emulator/**/*.MD'
+      # The isolated run also starts telemetry/compose.yaml (`--telemetry`).
+      - 'telemetry/**'
+      - '!telemetry/**/*.md'
       - '.devcontainer/ci-bootstrap.sh'
       - '.devcontainer/allow-podman-stop-pasta.sh'
       - '.github/workflows/test-emulators.yaml'
@@ -16,6 +19,9 @@ on:
       - 'emulator/**'
       - '!emulator/**/*.md'
       - '!emulator/**/*.MD'
+      # The isolated run also starts telemetry/compose.yaml (`--telemetry`).
+      - 'telemetry/**'
+      - '!telemetry/**/*.md'
       - '.devcontainer/ci-bootstrap.sh'
       - '.devcontainer/allow-podman-stop-pasta.sh'
       - '.github/workflows/test-emulators.yaml'

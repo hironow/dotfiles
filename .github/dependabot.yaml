@@ -24,16 +24,15 @@
 #   github-actions -> .github/workflows/*.yaml (SHA-pinned actions)
 #   uv             -> / (root: pytest in dev, ruff/ty in lint -- ADR 0044)
 #                     + tools/rttm (rttm CLI) + emulator (vendored dev stack)
-#                     + telemetry/examples (FastAPI + OpenTelemetry example)
 #   docker         -> tests/docker test images + emulator/* service Dockerfiles
+#   docker-compose -> telemetry/compose.yaml (the grafana/otel-lgtm tag, ADR 0072)
 #   gomod          -> emulator/*-cli Go helper CLIs + tools/simple-server
 #                     (emulator CLIs added 2026-07-10 after 14 x/crypto &
 #                     x/net alerts rotted unwatched in bigtable-cli)
 #   opentofu       -> tofu/tailnet provider pins
 #
 # Out of scope: gitsubmodules (synced via scripts/sync_agents.py), compose.yaml
-# `image:` tags in telemetry/ + emulator/
-# (hand-managed; Dependabot's docker ecosystem covers Dockerfiles only).
+# `image:` tags in emulator/ (hand-managed; many float on `latest`).
 #
 # NOTE: filename uses `.yaml` per this repo's YAML convention (CLAUDE.md),
 # unlike the sibling repos' `.yml` -- Dependabot accepts both. Reviewer: hironow.
@@ -82,7 +81,7 @@ updates:
       - dependency-name: "ruff"
       - dependency-name: "ty"
 
-  # rttm, emulator and telemetry/examples get their vulnerable packages
+  # rttm and emulator get their vulnerable packages
   # transitively (pillow via matplotlib, certifi and urllib3 via requests).
   # Version updates skip transitive packages unless `allow` says "all", so
   # these entries allow all and group them into one weekly PR each.
@@ -114,15 +113,15 @@ updates:
       # same reason as the root entry: bumped via `just bump-tool`.
       - dependency-name: "ruff"
       - dependency-name: "ty"
-  - package-ecosystem: "uv"
+  # telemetry/ is one upstream grafana/otel-lgtm image (ADR 0072). It is a
+  # v0.x image from a single repo, so it keeps the 7-day cooldown.
+  - package-ecosystem: "docker-compose"
     patterns: ["*"]
     multi-ecosystem-group: "weekly"
-    directory: "/telemetry/examples"
+    directory: "/telemetry"
     cooldown:
       default-days: 7
-    labels: ["dependencies", "python", "telemetry"]
-    allow:
-      - dependency-type: "all"
+    labels: ["dependencies", "docker", "telemetry"]
   # emulator/*-cli and tools/simple-server are small vendored Go modules
   # (one go.mod each); grouped to one weekly PR so transitive golang.org/x/*
   # bumps don't rot unwatched. Those modules are `// indirect` in go.mod, and
