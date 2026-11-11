@@ -560,6 +560,19 @@ def _configure_output() -> None:
             reconfigure(encoding="utf-8", errors="replace")
 
 
+def _write_dump(dump_path: Path, records: list[SkillRecord]) -> None:
+    dump_path.write_text(
+        json.dumps(
+            {"version": 1, "skills": [asdict(r) for r in records]},
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",  # tracked file: LF on every OS (.gitattributes pins it too)
+    )
+
+
 def _cmd_dump(dotfiles_dir: Path, *, allow_self_drop: bool) -> int:
     raw = json.loads(machine_lock().read_text(encoding="utf-8"))["skills"]
     records = normalize_lock(raw, _list_dirs(agents_store()))
@@ -590,16 +603,7 @@ def _cmd_dump(dotfiles_dir: Path, *, allow_self_drop: bool) -> int:
             f"{', '.join(r.installed_dir for r in withheld)}",
             file=sys.stderr,
         )
-    dump_path.write_text(
-        json.dumps(
-            {"version": 1, "skills": [asdict(r) for r in records]},
-            indent=2,
-            ensure_ascii=False,
-        )
-        + "\n",
-        encoding="utf-8",
-        newline="\n",  # tracked file: LF on every OS (.gitattributes pins it too)
-    )
+    _write_dump(dump_path, records)
     ours = sum(1 for r in records if r.source == SELF_SOURCE)
     print(f"✅ dumped {len(records)} skills ({ours} from {SELF_SOURCE}) -> {dump_path}")
     collisions = check_collisions(records)
