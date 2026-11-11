@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 
@@ -168,6 +169,7 @@ func (a App) target(ctx context.Context, it Item, version string) (Target, Upstr
 		Plugins []struct {
 			Name    string `json:"name"`
 			Version string `json:"version"`
+			Source  any    `json:"source"` // a path, or an object for a remote source
 		} `json:"plugins"`
 	}
 	if err := json.Unmarshal(manifest, &m); err != nil {
@@ -175,7 +177,15 @@ func (a App) target(ctx context.Context, it Item, version string) (Target, Upstr
 	}
 	up.PluginVersions = map[string]string{}
 	for _, p := range m.Plugins {
-		up.PluginVersions[p.Name] = p.Version
+		version := p.Version
+		// Without a version in the marketplace entry, a plugin in this repo
+		// carries it in its own plugin.json (EGM does).
+		if dir, local := p.Source.(string); version == "" && local {
+			if version, err = a.pluginVersion(ctx, it.Repo, t.Version, dir); err != nil {
+				return t, up, err
+			}
+		}
+		up.PluginVersions[p.Name] = version
 	}
 	if it.Kind == EGM {
 		if up.RequiredPaths, err = a.Machine.EGMRequiredPaths(ctx); err != nil {
@@ -192,6 +202,21 @@ func (a App) target(ctx context.Context, it Item, version string) (Target, Upstr
 		}
 	}
 	return t, up, nil
+}
+
+func (a App) pluginVersion(ctx context.Context, repo, ref, dir string) (string, error) {
+	file := path.Join(dir, ".claude-plugin", "plugin.json")
+	raw, err := a.Releases.File(ctx, repo, ref, file)
+	if err != nil {
+		return "", err
+	}
+	var p struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return "", fmt.Errorf("%s@%s %s: %w", repo, ref, file, err)
+	}
+	return p.Version, nil
 }
 
 // Table lists every declared item with its newest version. One item that

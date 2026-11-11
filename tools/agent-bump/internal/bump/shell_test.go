@@ -24,6 +24,12 @@ func marketplaceJSON(plugin, version string) string {
 	return `{"plugins": [{"name": "` + plugin + `", "version": "` + version + `"}]}`
 }
 
+// EGM's marketplace names the plugin with a relative source and no version;
+// the version lives in the plugin's own plugin.json (checked on v0.1.0/v0.1.1).
+const egmMarketplace = `{"plugins": [{"name": "egm", "source": "./"}]}`
+
+func egmPluginJSON(version string) string { return `{"name": "egm", "version": "` + version + `"}` }
+
 type world struct {
 	app      bump.App
 	repo     *repo.Fake
@@ -57,12 +63,14 @@ EGM_COMMIT = "` + egmOld + `"
 		}},
 		"google/elephant-goldfish-model": {Latest: "v0.1.1", Tags: map[string]releases.Tag{
 			"v0.1.1": {Commit: strings.Repeat("2", 40), Files: map[string]string{
-				".claude-plugin/marketplace.json": marketplaceJSON("egm", "0.1.1"),
+				".claude-plugin/marketplace.json": egmMarketplace,
+				".claude-plugin/plugin.json":      egmPluginJSON("0.1.1"),
 				"LICENSE":                         "",
 				"skills/egm-review/SKILL.md":      "",
 			}},
 			"v0.1.2": {Commit: egmNew, Files: map[string]string{
-				".claude-plugin/marketplace.json": marketplaceJSON("egm", "0.1.2"),
+				".claude-plugin/marketplace.json": egmMarketplace,
+				".claude-plugin/plugin.json":      egmPluginJSON("0.1.2"),
 				"LICENSE":                         "",
 				"skills/egm_review/SKILL.md":      "",
 			}},
