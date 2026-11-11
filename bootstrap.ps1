@@ -56,36 +56,121 @@ function Get-NativePodmanVersion {
     return [version]$Matches[1]
 }
 
-function Install-NativePodman {
-    $action = 'install'
-    if (Get-Command podman -ErrorAction SilentlyContinue) {
-        $version = Get-NativePodmanVersion
-        if ($version.Major -ge 5) {
-            Write-Step "Podman $version CLI already installed (machine setup is separate)."
-            return
-        }
-        $action = 'upgrade'
+# Native Podman is winget's Podman.CLI: the upstream MSI, newest release. It
+# installs for all users (ALLUSERS=1) under $env:ProgramFiles\Podman, so the
+# runner service sees it too. Its MSI refuses to install while the older Red
+# Hat installer (RedHat.Podman) is present, which it detects by the registry
+# value below; that installer is removed first (containers, images and
+# machines are kept, per the MSI's own message).
+$PodmanPackage = 'Podman.CLI'
+$LegacyPodmanPackage = 'RedHat.Podman'
+$LegacyPodmanKey = 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Red Hat\Podman'
+$MachineEnvironmentKey = 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
+# winget exit codes, measured with winget 1.29.380 on Windows 11 (2026-11-11).
+$WingetNoUpgrade = -1978335189       # 0x8A15002B: no newer version
+$WingetInstallerFailed = -1978335159 # 0x8A150049: the MSI refused to install
+$WingetFlags = @('--exact', '--source', 'winget', '--disable-interactivity', '--accept-source-agreements')
+$WingetInstallFlags = $WingetFlags + @('--silent', '--accept-package-agreements', '--custom', 'ALLUSERS=1')
+
+function Invoke-Winget([string[]]$Arguments) {
+    # Only the exit code decides; winget's own text is for the operator. Its
+    # nonzero exit codes are answers here, not errors to raise.
+    $PSNativeCommandUseErrorActionPreference = $false
+    winget @Arguments | Out-Host
+    return $LASTEXITCODE
+}
+
+function Test-LegacyPodman {
+    return [bool](Get-ItemProperty -LiteralPath $LegacyPodmanKey -Name InstallDir -ErrorAction SilentlyContinue)
+}
+
+function Test-SameDirectory([string]$a, [string]$b) {
+    return [string]::Equals($a.TrimEnd('\', '/'), $b.TrimEnd('\', '/'), [StringComparison]::OrdinalIgnoreCase)
+}
+
+# The directory a new shell or the runner service takes podman.exe from: the
+# first Machine PATH entry that holds one.
+function Get-MachinePathPodmanDir {
+    $machine = (Get-ItemProperty -LiteralPath $MachineEnvironmentKey -Name Path).Path
+    foreach ($entry in ([Environment]::ExpandEnvironmentVariables($machine) -split ';')) {
+        if ($entry -and (Test-Path -LiteralPath (Join-Path $entry 'podman.exe'))) { return $entry }
     }
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        throw 'winget is required for RedHat.Podman; install or update Windows App Installer, then retry.'
-    }
-    Write-Step "Podman CLI native $action via winget (no machine setup)."
-    winget $action --id RedHat.Podman --exact --source winget --silent --disable-interactivity --accept-package-agreements --accept-source-agreements --custom 'WSLCheckbox=0'
-    if ($LASTEXITCODE -ne 0) {
-        throw "winget failed to $action RedHat.Podman (exit $LASTEXITCODE); check installation permissions and App Installer."
-    }
+    return $null
+}
+
+function Assert-NativePodman {
+    $expected = Join-Path $env:ProgramFiles 'Podman'
+    $legacyDir = Join-Path (Join-Path $env:ProgramFiles 'RedHat') 'Podman'
+    $env:Path = (($env:Path -split ';') | Where-Object { $_ -and -not (Test-SameDirectory $_ $legacyDir) }) -join ';'
     Update-PathFromRegistry
-    if (-not (Get-Command podman -ErrorAction SilentlyContinue)) {
-        throw 'Podman is still missing from PATH after installation; open a new shell or correct the native Podman PATH.'
+    $command = Get-Command podman -ErrorAction SilentlyContinue
+    if (-not $command -or -not (Test-SameDirectory (Split-Path -Parent $command.Source) $expected)) {
+        throw "podman does not resolve to $expected after installation; open a new shell or correct the native Podman PATH."
+    }
+    $machineDir = Get-MachinePathPodmanDir
+    if (-not $machineDir -or -not (Test-SameDirectory $machineDir $expected)) {
+        throw "New shells and the runner service take podman from '$machineDir', not $expected; fix the Machine PATH order (scripts/restore_machine_path.ps1)."
+    }
+    if (Test-Path -LiteralPath (Join-Path $legacyDir 'podman.exe')) {
+        throw "The Red Hat Podman is still in $legacyDir; remove it with Add or Remove Programs."
     }
     $version = Get-NativePodmanVersion
     if ($version.Major -lt 5) {
-        throw "Podman 5+ is required; native packages or PATH still provide $version."
+        throw "Podman 5+ is required; $PodmanPackage provides $version."
     }
-    Write-Step "Podman $version CLI available (machine setup is a separate operator step)."
+    Write-Step "Podman $version CLI available in $expected (machine setup is a separate operator step)."
 }
 
-Install-NativePodman
+function Install-NativePodman([switch]$Latest) {
+    # The bootstrap leaves an installed Podman 5+ alone; `just podman-install`
+    # (-PodmanOnly) brings it to the newest Podman.CLI.
+    if (-not $Latest -and (Get-Command podman -ErrorAction SilentlyContinue)) {
+        $version = Get-NativePodmanVersion
+        if ($version.Major -ge 5) {
+            Write-Step "Podman $version CLI already installed (just podman-install updates it; machine setup is separate)."
+            return
+        }
+    }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        throw "winget is required for $PodmanPackage; install or update Windows App Installer, then retry."
+    }
+    # Before anything is removed: the package must be reachable.
+    $code = Invoke-Winget (@('show', '--id', $PodmanPackage) + $WingetFlags)
+    if ($code -ne 0) {
+        throw "winget cannot find $PodmanPackage (exit $code); check the network and the winget source, then retry. Nothing was changed."
+    }
+    if (Test-LegacyPodman) {
+        if (Get-Process -Name gvproxy, win-sshproxy -ErrorAction SilentlyContinue) {
+            throw 'A Podman machine is running; run podman machine stop, then rerun just podman-install. Nothing was changed.'
+        }
+        Write-Step "Removing ${LegacyPodmanPackage}: $PodmanPackage refuses to install beside it (containers, images and machines are kept)."
+        $code = Invoke-Winget (@('uninstall', '--id', $LegacyPodmanPackage) + $WingetFlags + @('--silent'))
+        # The registry value decides, not the exit code: a pending restart can
+        # report 3010 for a removal that is done.
+        if (Test-LegacyPodman) {
+            throw "winget uninstall $LegacyPodmanPackage (exit $code) left it installed; remove Podman with Add or Remove Programs, then rerun just podman-install."
+        }
+    }
+    if ((Invoke-Winget (@('list', '--id', $PodmanPackage) + $WingetFlags)) -eq 0) {
+        Write-Step "$PodmanPackage native upgrade via winget (no machine setup)."
+        $code = Invoke-Winget (@('upgrade', '--id', $PodmanPackage) + $WingetInstallFlags)
+        if ($code -ne 0 -and $code -ne $WingetNoUpgrade) {
+            throw "winget failed to upgrade $PodmanPackage (exit $code); check installation permissions and App Installer."
+        }
+    } else {
+        Write-Step "$PodmanPackage native install via winget (no machine setup)."
+        $code = Invoke-Winget (@('install', '--id', $PodmanPackage) + $WingetInstallFlags)
+        if ($code -eq $WingetInstallerFailed) {
+            throw "The $PodmanPackage installer refused (exit $code); an older Podman may still be installed. Remove it with Add or Remove Programs, then rerun just podman-install."
+        }
+        if ($code -ne 0) {
+            throw "winget failed to install $PodmanPackage (exit $code); rerun just podman-install (Podman may be missing until it succeeds)."
+        }
+    }
+    Assert-NativePodman
+}
+
+Install-NativePodman -Latest:$PodmanOnly
 if ($PodmanOnly) {
     return
 }

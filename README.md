@@ -83,7 +83,8 @@ Pi の拡張とその依存は隔離から外す（`~/.pi/agent/npm/.npmrc` に 
 実行エンジンは Podman 5 以上、Compose provider（設定を解釈して実行する CLI）は mise 管理の `podman-compose` に統一する。
 Docker エンジンへの自動切り替えは行わない。
 `just podman-install` は Podman の導入だけを行い、clone、設定配布、エージェント home の同期は行わない。
-Windows では `RedHat.Podman` だけを winget で導入する例外を使う（ADR 0067）。
+Windows では Podman だけを winget で導入する例外を使う（ADR 0067）。package は上流の MSI の `Podman.CLI` で、全利用者向けに `C:\Program Files\Podman` へ入る。
+Windows の `just podman-install` は実行のたびに最新の `Podman.CLI` にそろえる。旧 `RedHat.Podman` が入っていれば先に外す（新しい MSI は旧版があると入らない。コンテナ・画像・machine のデータは残る）。machine が動いているときは外さずに止まる。UAC の確認が出る。
 Podman と専用の `podman-compose` / Dev Container CLI 導入環境には 7 日の待機を加えないが、プロジェクトの依存と lock の隔離は変えない。
 
 macOS と Windows の machine 初期化と起動は operator が別途行う。
@@ -100,7 +101,7 @@ macOS と Windows の machine 初期化と起動は operator が別途行う。
 irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex
 ```
 
-`bootstrap.ps1` は最初に winget の `RedHat.Podman` で Podman 5 以上を確認または導入する。
+`bootstrap.ps1` は最初に Podman 5 以上を確認し、無ければ winget の `Podman.CLI` で導入する（入っていれば変えない。最新にするのは `just podman-install`）。
 続けて scoop、git、just、jq、mise、pwsh を入れ、HTTPS で `~\dotfiles` に clone する。
 続けて `add-scoop`、`deploy`、`harden-env`、`sync-agents`、`restore-skills-lock`、`doctor` を実行する。
 何度実行しても安全であり、終わったら新しい pwsh を開く（`$PROFILE` はそこで効く）。
