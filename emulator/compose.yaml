@@ -404,49 +404,6 @@ services:
     profiles:
       - cli  # Only run when explicitly requested
 
-  # Elasticsearch Exporter (Prometheus metrics)
-  elasticsearch-exporter:
-    image: quay.io/prometheuscommunity/elasticsearch-exporter:latest
-    container_name: elasticsearch-exporter
-    profiles:
-      - search
-      - full
-    command:
-      - '--es.uri=http://elasticsearch:9200'
-      - '--es.all'
-    ports:
-      - "127.0.0.1:${ELASTICSEARCH_EXPORTER_PORT:-9114}:9114"
-    depends_on:
-      - elasticsearch
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9114/metrics"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-
-  # PostgreSQL Exporter (Prometheus metrics)
-  postgres-exporter:
-    image: docker.io/prometheuscommunity/postgres-exporter:latest
-    container_name: postgres-exporter
-    profiles:
-      - exporters
-      - full
-    environment:
-      - DATA_SOURCE_NAME=postgresql://postgres:password@postgres:5432/postgres?sslmode=disable
-    ports:
-      - "127.0.0.1:${POSTGRES_EXPORTER_PORT:-9187}:9187"
-    depends_on:
-      - postgres
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9187/metrics"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-
 volumes:
   neo4j_data:
   neo4j_logs:

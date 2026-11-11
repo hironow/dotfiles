@@ -1,84 +1,30 @@
+# Local telemetry: one upstream grafana/otel-lgtm container (ADR 0072).
+# It bundles the OpenTelemetry Collector, Prometheus, Tempo, Loki, Pyroscope
+# and Grafana with upstream defaults; dotfiles keeps no config of its own.
+# Dependabot bumps the tag after a 7-day cooldown (.github/dependabot.yaml).
 services:
-  # OpenTelemetry Collector
-  otel-collector:
-    image: docker.io/otel/opentelemetry-collector-contrib:0.155.0
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./config/otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+  lgtm:
+    image: docker.io/grafana/otel-lgtm:0.39.0
     ports:
-      - "127.0.0.1:4317:4317"   # OTLP gRPC receiver
-      - "127.0.0.1:4318:4318"   # OTLP HTTP receiver
-      - "127.0.0.1:8888:8888"   # Prometheus metrics exposed by the collector
-      - "127.0.0.1:8889:8889"   # Prometheus exporter metrics
-      - "127.0.0.1:13133:13133" # health_check extension
-      - "127.0.0.1:55679:55679" # zpages extension
-    depends_on:
-      - tempo
-      - prometheus
-
-  # Tempo for traces. Tempo 3.0's image is distroless (no shell/chown),
-  # and 3.0 provisions its own data dir on a fresh named volume as uid
-  # 10001, so the previous `tempo-init` chown sidecar is both impossible
-  # and unnecessary — removed. Migration note: a root-owned `tempo-data`
-  # volume left over from Tempo 2.x must be recreated
-  # (`podman volume rm telemetry_tempo-data`) before the first 3.0 start.
-  tempo:
-    image: docker.io/grafana/tempo:3.0.2
-    command: [ "-config.file=/etc/tempo.yaml" ]
+      - "127.0.0.1:3000:3000"   # Grafana
+      - "127.0.0.1:3200:3200"   # Tempo HTTP API
+      - "127.0.0.1:4040:4040"   # Pyroscope
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
+      - "127.0.0.1:9090:9090"   # Prometheus
     volumes:
-      - ./config/tempo/tempo-config.yaml:/etc/tempo.yaml:ro
-      - tempo-data:/var/tempo
-    ports:
-      - "127.0.0.1:3200:3200"   # tempo
-      - "127.0.0.1:14268:14268" # jaeger ingest
-
-  # Prometheus for metrics
-  prometheus:
-    image: docker.io/prom/prometheus:v3.13.0
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
-      - '--web.enable-remote-write-receiver'
-    volumes:
-      - ./config/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    ports:
-      - "127.0.0.1:9091:9090"
-
-  # Loki for logs (uses /tmp/loki internally, no external volume needed)
-  loki:
-    image: docker.io/grafana/loki:3.7.3
-    command: -config.file=/etc/loki/loki-config.yaml
-    volumes:
-      - ./config/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
-    ports:
-      - "127.0.0.1:3100:3100"
-
-  # Grafana
-  grafana:
-    image: docker.io/grafana/grafana:13.1.0
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafana-data:/var/lib/grafana
-    ports:
-      - "127.0.0.1:3010:3000"
-    depends_on:
-      - prometheus
-      - tempo
-      - loki
+      - lgtm-data:/data
+    # The image's own HEALTHCHECK, restated: Podman can drop it from the image,
+    # and the isolated test run waits for "healthy".
+    healthcheck:
+      test: ["CMD", "/otel-lgtm/docker/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
 volumes:
-  grafana-data:
-  prometheus-data:
-  tempo-data:
+  lgtm-data:
 
 networks:
   default:

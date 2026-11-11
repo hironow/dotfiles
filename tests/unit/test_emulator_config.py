@@ -312,3 +312,41 @@ def test_ci_emu_contract_rejects_missing_invocations(local: bool, command: str) 
     mutated = "\n".join(line for line in lines if needle not in line)
     with pytest.raises(AssertionError):
         _isolation_contract(mutated, local=local)
+
+
+def _compose_groups() -> set[str]:
+    """The `emu-up-group` names: every Compose profile except the `cli` tools."""
+    text = (EMULATOR / "compose.yaml").read_text(encoding="utf-8")
+    blocks = re.findall(r"^    profiles:\n((?:      - .*\n)+)", text, re.MULTILINE)
+    profiles = {
+        p for b in blocks for p in re.findall(r"^      - (\S+)$", b, re.MULTILINE)
+    }
+    return profiles - {"cli"}
+
+
+def test_emulator_runs_no_prometheus_exporters() -> None:
+    # ADR 0072: nothing scrapes them since telemetry is upstream otel-lgtm.
+    text = (EMULATOR / "compose.yaml").read_text(encoding="utf-8")
+    assert not re.findall(r"^  ([\w-]+-exporter):$", text, re.MULTILINE)
+    assert "exporters" not in _compose_groups()
+
+
+@pytest.mark.parametrize(
+    ("path", "pattern", "separator"),
+    [
+        ("justfile", r"^# Groups: ([a-z ]+)\.$", " "),
+        ("README.md", r"\(([a-z ]+)\)$", " "),
+        ("AGENTS.md", r"capability \(([a-z/\n ]+)\)", "/"),
+    ],
+)
+def test_documented_emulator_groups_match_compose_profiles(
+    path: str, pattern: str, separator: str
+) -> None:
+    text = (ROOT / path).read_text(encoding="utf-8")
+    if path == "README.md":
+        text = next(line for line in text.splitlines() if "emu-up-group" in line)
+        text = text.replace("（", "(").replace("）", ")")
+    found = re.search(pattern, text, re.MULTILINE)
+    assert found, f"{path} no longer lists the emu-up-group names"
+    names = {n.strip() for n in found[1].replace("\n", " ").split(separator)}
+    assert names - {""} == _compose_groups()

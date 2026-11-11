@@ -777,9 +777,9 @@ fmt:
     {{UV_RUN}} --only-group lint ruff format .
     @just rttm-fmt
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
-    git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
+    git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp fmt
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp fmt
     @echo '✅ fmt done.'
 
 # lint: report violations (auto-fixes where possible). Tool per language:
@@ -795,15 +795,15 @@ lint:
     @{{UV_RUN}} --group lint ty check
     @just rttm-lint rttm-typecheck
     @echo '🔍 Shell (shellcheck)...'
-    git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
+    git ls-files -z '*.sh' ':!emulator' | xargs -0 -r mise x -- shellcheck
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
-    git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2 --fix
+    git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔍 JS/TS (vp lint)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp lint
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp lint
     @echo '🔍 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
-    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
     @echo '🔍 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '🔍 Frozen image tool generation (one source, no drift; ADR 0060)...'
@@ -837,17 +837,17 @@ check:
     @just rttm-check
     @just spec-check
     @echo '🔎 Shell (shellcheck)...'
-    git ls-files -z '*.sh' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- shellcheck
+    git ls-files -z '*.sh' ':!emulator' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
-    git ls-files -z '*.md' ':!emulator' ':!telemetry' | xargs -0 -r mise x -- markdownlint-cli2
+    git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2
     @echo '🔎 JS/TS (vp check)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!telemetry' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp check
+    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp check
     @echo '🔎 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
     {{SEMGREP}} --config .semgrep/rules/meta/ --error .
     @echo '🔎 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
-    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
     @echo '🔎 MCP node runner (bun-only, ADR 0027)...'
     @{{UV_RUN}} scripts/check_mcp_node_runner.py
     @echo '🔎 Frozen image tool generation (one source, no drift; ADR 0060)...'
@@ -1103,7 +1103,7 @@ go-fmt:
 
 [group('Lint')]
 check-uv-exclude-newer:
-    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml telemetry/examples/pyproject.toml
+    @{{UV_RUN}} scripts/check_uv_exclude_newer.py pyproject.toml emulator/pyproject.toml tools/rttm/pyproject.toml
 
 # ADR 0027: assert no MCP client config launches Node tooling via a banned
 # runner (npm/npx/pnpm/yarn). MCP servers start outside the Bash tool, so the
@@ -2207,7 +2207,7 @@ alias emu-up-lite := emu-up
 emu-up-only +services:
     cd emulator && COMPOSE_PROFILES= bash scripts/start-services.sh {{services}}
 
-# Groups: bigtable search graph vector ml inspect exporters full.
+# Groups: bigtable search graph vector ml inspect full.
 # e.g. `just emu-up-group search` = lite + Elasticsearch.
 # Start lite + a capability group
 [group('Emulator')]
@@ -2383,7 +2383,7 @@ emu-api-stop:
     echo '✅ emulate API stopped.'
 
 # ------------------------------
-# Telemetry (telemetry/) — OTel + Grafana + Loki + Prometheus + Tempo
+# Telemetry (telemetry/) — one grafana/otel-lgtm container (ADR 0072)
 # ------------------------------
 
 # Start telemetry stack (detached). Ensures the shared-otel-net network exists
@@ -2394,11 +2394,12 @@ tel-up:
     @podman network inspect shared-otel-net >/dev/null 2>&1 || podman network create shared-otel-net
     cd telemetry && {{PODMAN_COMPOSE}} up -d
 
-# Stop telemetry stack
+# Stop telemetry stack. --remove-orphans also stops containers of an older
+# telemetry/compose.yaml (the five-container stack before ADR 0072).
 [group('Telemetry')]
 tel-down:
     @if [ -n "${DOTFILES_PODMAN_RUN_MANIFEST:-}" ] || [ "${DOTFILES_E2E_REQUIRED:-}" = 1 ]; then echo 'Use tests.utils.isolation for isolated telemetry; refusing shared resources' >&2; exit 2; fi
-    cd telemetry && {{PODMAN_COMPOSE}} down
+    cd telemetry && {{PODMAN_COMPOSE}} down --remove-orphans
 
 # Show telemetry stack status
 [group('Telemetry')]

@@ -2,6 +2,7 @@
 
 import re
 import shlex
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -247,15 +248,29 @@ def test_native_mise_just_uv_and_deferred_lsp_settings_are_preserved() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "pyproject.toml",
-        "emulator/pyproject.toml",
-        "tools/rttm/pyproject.toml",
-        "telemetry/examples/pyproject.toml",
-    ],
-)
+def _tracked_uv_projects() -> list[str]:
+    return sorted(
+        subprocess.run(
+            ["git", "ls-files", "*pyproject.toml"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        ).stdout.split()
+    )
+
+
+def test_every_exclude_newer_check_lists_each_tracked_uv_project() -> None:
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    calls = re.findall(r"check_uv_exclude_newer\.py ([^\n]+)", justfile)
+    assert calls
+    for call in calls:
+        assert sorted(call.split()) == _tracked_uv_projects()
+
+
+@pytest.mark.parametrize("path", _tracked_uv_projects())
 def test_repository_dependency_quarantine_stays_local_and_seven_days(path: str) -> None:
     uv = tomllib.loads((ROOT / path).read_text(encoding="utf-8"))["tool"]["uv"]
     assert uv["exclude-newer"] == "7 days"

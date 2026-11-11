@@ -419,7 +419,7 @@ def telemetry_project(sandbox: Path) -> Path:
     ("recipe", "args", "operation"),
     [
         ("tel-up", (), "up -d"),
-        ("tel-down", (), "down"),
+        ("tel-down", (), "down --remove-orphans"),
         ("tel-check", (), "ps"),
         ("tel-logs", ("fixture",), "logs -f fixture"),
     ],

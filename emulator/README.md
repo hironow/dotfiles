@@ -62,12 +62,11 @@ example `POSTGRES_PORT`).
 | pgAdapter (Spanner, PostgreSQL protocol) | `pgadapter` | lite | 55432 |
 | PostgreSQL 18 | `postgres` | lite | 5433 |
 | Bigtable | `bigtable-emulator` | `bigtable` | 8086 (gRPC) |
-| Elasticsearch + exporter | `elasticsearch`, `elasticsearch-exporter` | `search` | 9200, 9300 / 9114 |
+| Elasticsearch | `elasticsearch` | `search` | 9200, 9300 |
 | Neo4j | `neo4j` | `graph` | 7474 (HTTP), 7687 (Bolt) |
 | Qdrant | `qdrant` | `vector` | 6333 (REST), 6334 (gRPC) |
 | MLflow | `mlflow` | `ml` | 5252 |
 | A2A Inspector / MCP Inspector | `a2a-inspector`, `mcp-inspector` | `inspect` | 8081 / 6274 (UI), 6277 (proxy) |
-| PostgreSQL exporter | `postgres-exporter` | `exporters` | 9187 |
 
 The stack does not provide the Firebase Functions, Eventarc, or Tasks
 emulators. firebase-tools starts them only when Functions or Extensions are
@@ -94,7 +93,8 @@ Logins:
   `shared-otel-net` (`scripts/start-services.sh` creates it; the telemetry
   stack shares it). Use the compose service name and the container port, for
   example `firebase-emulator:8080`, `spanner-emulator:9010`, `pgadapter:5432`,
-  `postgres:5432`, `mlflow:5000`.
+  `postgres:5432`, `mlflow:5000`. To send OpenTelemetry data, use
+  `http://lgtm:4317` (see [`../telemetry/README.md`](../telemetry/README.md)).
 - In the A2A or MCP Inspector UI, `localhost` means the inspector container.
   Use `host.containers.internal` to reach a server on the host.
 - Open the MCP Inspector with its session token: read it from
@@ -128,14 +128,6 @@ Logins:
   [`postgres/docker-entrypoint-initdb.d/01-extensions.sql`](postgres/docker-entrypoint-initdb.d/01-extensions.sql)
   enables them only when the volume is first created. On an older volume, run
   `CREATE EXTENSION` yourself or delete the volume with `just emu-clean`.
-
-## Metrics
-
-The telemetry stack's OTel Collector scrapes `elasticsearch-exporter:9114`,
-`postgres-exporter:9187`, and Qdrant's own `/metrics` on 6333 (see
-[`../telemetry/config/otel/otel-collector-config.yaml`](../telemetry/config/otel/otel-collector-config.yaml)).
-Grafana shows them on the "Emulator Metrics" dashboard. Neo4j Community
-Edition has no Prometheus metrics.
 
 ## Interactive CLIs
 

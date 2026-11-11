@@ -192,19 +192,19 @@ just skills-place
 
 ## ローカル開発スタック
 
-`emulator/`（データストアとインスペクタ）と `telemetry/`（OTel、Grafana、Loki、Prometheus、Tempo）はこのリポジトリにある（ADR 0014）。
+`emulator/`（データストアとインスペクタ）はこのリポジトリにある（ADR 0014）。`telemetry/` は上流の `grafana/otel-lgtm` を 1 つ動かすだけで、独自の設定を持たない（ADR 0072）。
 API や SaaS の emulator は `vercel-labs/emulate` を `bunx` 経由で動かす（ADR 0016、ADR 0055）。
 macOS と Windows では Podman machine のメモリに収めるため、重いサービスと amd64 のサービスは既定では起動しない。
 
 ```shell
 just emu-up                          # 既定は GCP の中核だけ（firebase、spanner、pgadapter、postgres。別名 emu-up-lite）
 just emu-up-only firebase-emulator   # 名指しで起動する
-just emu-up-group search             # 中核に機能群を足す（bigtable search graph vector ml inspect exporters full）
+just emu-up-group search             # 中核に機能群を足す（bigtable search graph vector ml inspect full）
 just emu-up-full                     # 重いものも含む全データサービス（対話用の *-cli は除く）
 just emu-check                       # 状態と接続先
 just emu-stop                        # firebase のデータを書き出して止める
 
-just tel-up                          # telemetry を起動する（停止は just tel-down）
+just tel-up                          # telemetry を起動する（Grafana は :3000、停止は just tel-down）
 just emu-api                         # API emulator を 4100-4108 で前面に起動する（emulator/emulate/README.md）
 ```
 

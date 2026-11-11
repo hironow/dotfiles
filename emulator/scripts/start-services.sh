@@ -41,7 +41,7 @@ done
 command -v podman >/dev/null 2>&1 || { echo "podman not found" >&2; exit 127; }
 podman compose --in-pod=false version >/dev/null 2>&1 || { echo "podman compose --in-pod=false not available" >&2; exit 127; }
 
-# Create shared network if needed (for telemetry integration)
+# Create shared network if needed (the telemetry stack joins it; apps send to lgtm:4317)
 podman network inspect shared-otel-net >/dev/null 2>&1 || {
   echo "Creating shared-otel-net network..."
   podman network create shared-otel-net

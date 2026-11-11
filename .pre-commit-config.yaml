@@ -23,7 +23,6 @@ exclude: |
     knowledge-work-plugins/|
     protocols/|
     skills/|
-    telemetry/|
     /private/|
     output/|
     node_modules/|
