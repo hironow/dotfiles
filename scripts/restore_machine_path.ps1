@@ -44,6 +44,9 @@ $baseline = @(
 $probed = @(
     "$env:ProgramFiles\PowerShell\7"
     "$env:ProgramFiles\LLVM\bin"
+    # Podman.CLI (just podman-install) first; RedHat\Podman is the older
+    # installer on a machine not yet moved off it.
+    "$env:ProgramFiles\Podman"
     "$env:ProgramFiles\RedHat\Podman"
     "$env:ProgramFiles\dotnet"
     "${env:ProgramFiles(x86)}\NVIDIA Corporation\PhysX\Common"

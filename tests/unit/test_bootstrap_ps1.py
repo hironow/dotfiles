@@ -231,6 +231,21 @@ def test_reads_dotfiles_host_env() -> None:
     )
 
 
+def test_winget_exit_codes_are_answers_not_errors() -> None:
+    # irm|iex runs in the caller's pwsh, which may set
+    # $PSNativeCommandUseErrorActionPreference; then winget's "not installed"
+    # (0x8A150014) would throw before the script reads $LASTEXITCODE. The test
+    # fakes are functions, so only this text check covers it.
+    body = re.search(
+        r"^function Invoke-Winget\b.*?^\}", _text(), re.MULTILINE | re.DOTALL
+    )
+    assert body, "bootstrap.ps1 runs winget through Invoke-Winget"
+    assert "$PSNativeCommandUseErrorActionPreference = $false" in body.group(0)
+    assert "| Out-Host" in body.group(0)
+    calls = re.findall(r"^\s*winget\b", _text(), re.MULTILINE)
+    assert len(calls) == 1, "every winget call goes through Invoke-Winget"
+
+
 def test_never_invokes_forbidden_package_managers() -> None:
     text = _text()
     for tool in ("npm", "yarn", "pnpm", "corepack"):
