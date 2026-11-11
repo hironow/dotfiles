@@ -367,20 +367,99 @@ def test_pacman_is_used_when_apt_and_dnf_are_unavailable(sandbox: Path) -> None:
     assert not (sandbox / "unexpected.log").exists()
 
 
-def test_dnf_is_used_when_apt_is_unavailable(sandbox: Path) -> None:
-    _stub(sandbox / "bin", "uname", "echo Linux")
-    _stub(sandbox / "bin", "id", "echo 0")
-    (sandbox / "bin" / "apt-get").unlink()
+DNF_INSTALL = (
+    "install -y podman netavark aardvark-dns passt shadow-utils fuse-overlayfs"
+)
+REPOQUERY = "-q repoquery --latest-limit 1 --queryformat %{version}\\n podman"
+
+
+def _dnf(sandbox: Path, answer: str | None) -> None:
+    """A fake dnf. `repoquery` must come with exactly the expected arguments
+    and prints `answer` (None: it fails); `install` puts the package's
+    podman on PATH. Each call is logged by name."""
+    repoquery = "exit 1" if answer is None else f"printf '%s' {shlex.quote(answer)}"
     _stub(
         sandbox / "bin",
         "dnf",
-        'echo "$*" >> "$HOME/package.log"; '
-        'cp "$HOME/package/podman" "$HOME/bin/podman"',
+        f'if [ "$*" = {shlex.quote(REPOQUERY)} ]; then\n'
+        '  echo repoquery >> "$HOME/package.log"\n'
+        f"  {repoquery}\n"
+        f'elif [ "$*" = {shlex.quote(DNF_INSTALL)} ]; then\n'
+        '  echo install >> "$HOME/package.log"\n'
+        '  cp "$HOME/package/podman" "$HOME/bin/podman"\n'
+        "else\n"
+        '  printf "%s\\n" "$*" >> "$HOME/unexpected.log"; exit 97\n'
+        "fi",
     )
+
+
+def _dnf_host(sandbox: Path, answer: str | None) -> None:
+    _stub(sandbox / "bin", "uname", "echo Linux")
+    _stub(sandbox / "bin", "id", "echo 0")
+    (sandbox / "bin" / "apt-get").unlink()
+    _dnf(sandbox, answer)
+
+
+# Measured on 2026-11-10: Fedora 45 (dnf5) prints "6.1.3\n", Rocky Linux 9.3
+# "5.8.2\n\n", Rocky Linux 8.9 "4.9.4\n\n"; a package dnf does not know
+# prints nothing.
+@pytest.mark.parametrize("answer", ["6.1.3\n", "5.8.2\n\n", "\n5.8.2\n"])
+def test_dnf_is_used_when_apt_is_unavailable(sandbox: Path, answer: str) -> None:
+    _dnf_host(sandbox, answer)
     result = _run(sandbox)
     assert result.returncode == 0, result.stdout + result.stderr
     assert (sandbox / "package.log").read_text(encoding="utf-8").splitlines() == [
-        "install -y podman netavark aardvark-dns passt shadow-utils fuse-overlayfs"
+        "repoquery",
+        "install",
+    ]
+    assert not (sandbox / "unexpected.log").exists()
+
+
+@pytest.mark.parametrize(
+    ("answer", "reason"),
+    [
+        ("4.9.4\n\n", "dnf offers 4.9.4; Podman 5+ is required"),
+        ("", "dnf offers no Podman package"),
+        ("\n\n", "dnf offers no Podman package"),
+        ("5.8.2\n6.1.3\n", "cannot read dnf's Podman candidate: 5.8.2"),
+        ("garbage\n", "cannot read dnf's Podman candidate: garbage"),
+        (None, "cannot read dnf's Podman candidate (dnf repoquery failed)"),
+    ],
+)
+def test_an_old_missing_or_unreadable_dnf_candidate_installs_nothing(
+    sandbox: Path, answer: str | None, reason: str
+) -> None:
+    # The RHEL 8 family offers Podman 4.9: stop before installing anything.
+    _dnf_host(sandbox, answer)
+    result = _run(sandbox)
+    assert result.returncode != 0
+    assert reason in result.stderr
+    assert (sandbox / "package.log").read_text(encoding="utf-8").splitlines() == [
+        "repoquery"
+    ]
+    assert not (sandbox / "unexpected.log").exists()
+
+
+def test_dnf_reads_its_candidate_with_the_same_privilege_that_installs(
+    sandbox: Path,
+) -> None:
+    _stub(sandbox / "bin", "uname", "echo Linux")
+    _stub(sandbox / "bin", "id", "echo 1000")
+    (sandbox / "bin" / "apt-get").unlink()
+    _stub(
+        sandbox / "bin",
+        "sudo",
+        'printf "%s\\n" "$*" >> "$HOME/sudo.log"; '
+        '[ "$1" = -n ] || exit 97; shift; "$@"',
+    )
+    _stub(sandbox / "bin", "true", "exit 0")
+    _dnf(sandbox, "6.1.3\n")
+    result = _run(sandbox)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (sandbox / "sudo.log").read_text(encoding="utf-8").splitlines() == [
+        "-n true",
+        "-n dnf " + REPOQUERY,
+        "-n dnf " + DNF_INSTALL,
     ]
     assert not (sandbox / "unexpected.log").exists()
 

@@ -47,7 +47,7 @@ INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./i
 Podman 5 以上も必須で、Mac は Homebrew、Linux は OS パッケージから導入する。
 Linux で不足する Podman パッケージを入れるときだけ、root または非対話の `sudo -n` が必要になる。
 権限がなければ停止する。`install.sh` 全体を sudo で実行しない。
-apt の Podman の候補が 5 未満なら、何も入れずにその場で停止する（Ubuntu 24.04 は 4.9 を配るので、`install.sh` 全体もここで止まる。配布を上げるまで WSL では Podman を使わない）。
+apt と dnf の Podman の候補が 5 未満なら、何も入れずにその場で停止する（Ubuntu 24.04 と RHEL 8 系は 4.9 を配るので、`install.sh` 全体もここで止まる。配布を上げるまで WSL では Podman を使わない）。
 WSL の `wl-clipboard`（Pi と Herdr のコピー用）も root か `sudo -n` で入れるが、こちらは導入できなくても手順を表示して先へ進む。
 `just deploy` は `~/.zprofile` に `~/.local/bin` を足す（zsh のログインシェルは `~/.profile` を読まない）。
 WSL の zsh（`.zshrc` を読む対話の shell）の mise は、Windows の home の mise の設定（`/mnt/c/Users/<user>/.config/mise`）を読まない。`/mnt/c` の下の repo の `mise.toml` は読む。`.zshrc` を読まない `zsh -lc` や `bash -lc` は対象外。

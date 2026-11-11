@@ -76,28 +76,57 @@ _podman_major() {
   printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
-# The major version of the Podman that apt would install. The C locale keeps
-# apt's "Candidate:" label untranslated; the epoch ("1:") is not part of it.
+# Whether the Podman a package manager would install is new enough, before
+# anything is installed. args: <manager> <candidate, empty if none> <hint>.
+# The epoch ("1:") is not part of the major version.
+_podman_candidate_is_new_enough() {
+  local manager="$1" candidate="$2" hint="$3"
+  if [ -z "$candidate" ]; then
+    echo "[install] $manager offers no Podman package; Podman 5+ is required." >&2
+    return 1
+  fi
+  if [[ ! "$candidate" =~ ^([0-9]+:)?([0-9]+)\. ]]; then
+    echo "[install] cannot read $manager's Podman candidate: $candidate" >&2
+    return 1
+  fi
+  if [ "${BASH_REMATCH[2]}" -lt 5 ]; then
+    echo "[install] $manager offers $candidate; Podman 5+ is required. Nothing was installed; upgrade the distribution $hint." >&2
+    return 1
+  fi
+}
+
+# apt's candidate. The C locale keeps apt's "Candidate:" label untranslated.
 _apt_podman_candidate_major() {
-  local policy candidate
+  local policy candidate=""
   policy="$(LC_ALL=C apt-cache policy podman)" || {
     echo "[install] cannot read apt's Podman candidate (apt-cache policy podman failed)." >&2
     return 1
   }
-  if [[ ! "$policy" =~ (^|$'\n')[[:space:]]*Candidate:[[:space:]]*([^[:space:]]+) ]] ||
-    [ "${BASH_REMATCH[2]}" = "(none)" ]; then
-    echo "[install] apt offers no Podman package; Podman 5+ is required." >&2
+  if [[ "$policy" =~ (^|$'\n')[[:space:]]*Candidate:[[:space:]]*([^[:space:]]+) ]] &&
+    [ "${BASH_REMATCH[2]}" != "(none)" ]; then
+    candidate="${BASH_REMATCH[2]}"
+  fi
+  _podman_candidate_is_new_enough apt "$candidate" "(Ubuntu 24.04 ships 4.9)"
+}
+
+# dnf's candidate. args: the elevation prefix (empty, or sudo -n). It reads
+# with the same privilege that installs, so both see the same metadata cache
+# (dnf5 as a normal user is unmeasured). The version is data, not a
+# translated label, so no C locale is needed. dnf4 adds a blank line, and
+# prints nothing for a package it does not know.
+_dnf_podman_candidate() {
+  local out candidate=""
+  out="$("$@" dnf -q repoquery --latest-limit 1 --queryformat '%{version}\n' podman)" || {
+    echo "[install] cannot read dnf's Podman candidate (dnf repoquery failed)." >&2
+    return 1
+  }
+  if [[ "$out" =~ ^[[:space:]]*([^[:space:]]+)[[:space:]]*$ ]]; then
+    candidate="${BASH_REMATCH[1]}"
+  elif [[ ! "$out" =~ ^[[:space:]]*$ ]]; then
+    echo "[install] cannot read dnf's Podman candidate: ${out//$'\n'/ }" >&2
     return 1
   fi
-  candidate="${BASH_REMATCH[2]}"
-  if [[ ! "$candidate" =~ ^([0-9]+:)?([0-9]+)\. ]]; then
-    echo "[install] cannot read apt's Podman candidate: $candidate" >&2
-    return 1
-  fi
-  if [ "${BASH_REMATCH[2]}" -lt 5 ]; then
-    echo "[install] apt offers $candidate; Podman 5+ is required. Nothing was installed; upgrade the distribution (Ubuntu 24.04 ships 4.9)." >&2
-    return 1
-  fi
+  _podman_candidate_is_new_enough dnf "$candidate" "(the RHEL 8 family ships 4.9)"
 }
 
 # Provision only the native CLI; never start or initialize a machine.
@@ -135,6 +164,8 @@ step_podman() {
         _apt_podman_candidate_major || return 1
         "${elevate[@]}" apt-get install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs || return 1
       elif command -v dnf >/dev/null 2>&1; then
+        # Same check before installing (the RHEL 8 family offers Podman 4.9).
+        _dnf_podman_candidate "${elevate[@]}" || return 1
         "${elevate[@]}" dnf install -y podman netavark aardvark-dns passt shadow-utils fuse-overlayfs || return 1
       elif command -v pacman >/dev/null 2>&1; then
         "${elevate[@]}" pacman -S --needed --noconfirm podman netavark aardvark-dns passt shadow fuse-overlayfs || return 1
