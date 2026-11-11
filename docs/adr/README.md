@@ -98,6 +98,7 @@ and what outlived it.
 | 0071 | [Rust の clippy を、出荷する target ごとに回す](./0071-rust-clippy-for-every-target.md) | Accepted; extends 0069 (Rust) | 2026-11-11 | `ROOT_AGENTS_docs_agents_rust-tooling.md`、`tests/unit/test_cross_platform_gates.py` |
 | 0072 | [ローカルの telemetry は上流の grafana/otel-lgtm 1 つにする](./0072-telemetry-is-upstream-otel-lgtm.md) | Accepted; partial supersession of 0014 (telemetry only) | 2026-11-11 | `telemetry/`、`emulator/compose.yaml`（exporter）、`justfile`（`tel-*`、lint の pathspec）、`.github/dependabot.yaml` |
 | 0073 | [Modern Web Guidance の v1.0.0 は、7 日の待機を待たずに pin する](./0073-mwg-v1-before-the-plugin-cooldown.md) | Accepted; partial supersession of 0056 (Decision 4, googlechrome v1.0.0 only) | 2026-11-12 | `dump/harness/claude-plugins.json` |
+| 0074 | [宣言済みの agent の plugin の版は、待機を待たずに 1 つのコマンドで上げ下げする](./0074-bump-declared-agent-plugins-without-the-wait.md) | Proposed; partial supersession of 0056 (Decision 4) and 0073 (D2), declared marketplaces only | 2026-11-12 | `tools/agent-bump/`、`justfile`（`agent-bump`、`egm-install-native`）、`dump/harness/` |
 
 ## Reading order for newcomers
 
@@ -168,3 +169,4 @@ and what outlived it.
 - 2026-11-11: [ADR-0072](./0072-telemetry-is-upstream-otel-lgtm.md) を採択し、[ADR-0014](./0014-vendor-emulator-telemetry-from-submodules.md) の telemetry の分（vendored な sub-project としての中身と lint の除外）を部分置換する。ローカルの telemetry は上流の grafana/otel-lgtm 1 つにし、emulator の exporter も外す。emulator の vendoring は変えない。所有者が本セッションで選び、決定欄への代理記入を許可した。
 - 2026-11-12: [ADR-0073](./0073-mwg-v1-before-the-plugin-cooldown.md)を起票（Proposed、決裁待ち）。Modern Web Guidance の marketplace を、公開 2 日目の v1.0.0 に pin する。0056 の Decision 4（7 日以上たった版）の、この版だけの部分置換を、所有者が本セッションで指示した。
 - 2026-11-12: [ADR-0073](./0073-mwg-v1-before-the-plugin-cooldown.md) を採択し、[ADR-0056](./0056-common-claude-plugin-set.md) の Decision 4（7 日以上たった版）を、googlechrome の `v1.0.0` についてだけ部分置換する。これからの例外には、marketplace と tag を名指しした所有者の裁定を DR に残す。所有者が本セッションで選び、決定欄は選択に基づき代理記入した。
+- 2026-11-12: [ADR-0074](./0074-bump-declared-agent-plugins-without-the-wait.md)を起票（Proposed、決裁待ち）。宣言済みの Claude の marketplace の tag・EGM・Pi の package・store の skill の版を `just agent-bump` で上げ下げし、宣言済みの marketplace は 7 日の待機を待たない。0056 の Decision 4 と 0073 の D2 の、宣言済みの marketplace についての部分置換を、所有者が本セッションで指示した。
