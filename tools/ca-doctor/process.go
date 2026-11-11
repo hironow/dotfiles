@@ -24,7 +24,22 @@ type Commands interface {
 	Run(context.Context, string, ...string) CommandResult
 }
 
-type OSCommands struct{}
+// defaultCommandTimeout bounds each external command, so one slow client
+// cannot hold up `just doctor`.
+const defaultCommandTimeout = 4 * time.Second
+
+// OSCommands runs real commands. Timeout, when above zero, replaces the
+// default bound; the doctor keeps the default.
+type OSCommands struct {
+	Timeout time.Duration
+}
+
+func (c OSCommands) limit() time.Duration {
+	if c.Timeout <= 0 {
+		return defaultCommandTimeout
+	}
+	return c.Timeout
+}
 
 // Batch wrappers are not executables and cannot safely be interpolated into a
 // shell command. Missing native executables remain unverified on Windows.
@@ -56,11 +71,11 @@ func (b *cappedOutput) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (OSCommands) Run(ctx context.Context, path string, args ...string) CommandResult {
+func (c OSCommands) Run(ctx context.Context, path string, args ...string) CommandResult {
 	if !ExecutableSupported(path, runtime.GOOS) {
 		return CommandResult{Code: -1}
 	}
-	bounded, cancel := context.WithTimeout(ctx, 4*time.Second)
+	bounded, cancel := context.WithTimeout(ctx, c.limit())
 	defer cancel()
 	// Paths come from explicit discovery; arguments are never shell-expanded.
 	cmd := exec.CommandContext(bounded, path, args...)

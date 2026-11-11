@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
 	"net/http"
@@ -21,6 +22,13 @@ import (
 	"testing"
 	"time"
 )
+
+// probeCommands runs the real clients (node, curl, python3, bun) in tests.
+// These tests check the TLS verdict, not the machine's speed: on fresh
+// windows-latest runners, 5 of 20 runs had node killed by the doctor's 4 s
+// bound before it printed anything (2026-11-11). The doctor keeps 4 s. Up to
+// 26 real probes run here, so 15 s stays inside go test's 10 minutes.
+var probeCommands = OSCommands{Timeout: 15 * time.Second}
 
 func TestTLSProbeDoesNotConfuseHTTPFailureAndCertificateFailure(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
@@ -84,7 +92,8 @@ func TestNodeProbeSNIAndCertificateIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("NODE_TLS_REJECT_UNAUTHORIZED", "1")
-	probe := ExternalProbe{Path: command, Kind: "node", Commands: OSCommands{}, IPv4: true}
+	commands := &observedCommands{inner: probeCommands}
+	probe := ExternalProbe{Path: command, Kind: "node", Commands: commands, IPv4: true}
 	for _, tc := range []struct {
 		name, bundle, url, sni string
 		want                   Outcome
@@ -96,7 +105,7 @@ func TestNodeProbeSNIAndCertificateIdentity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("NODE_EXTRA_CA_CERTS", tc.bundle)
 			if got := probe.Probe(context.Background(), tc.url); got != tc.want {
-				t.Fatalf("outcome %s, want %s", got, tc.want)
+				t.Fatalf("outcome %s, want %s; %s", got, tc.want, commands)
 			}
 			select {
 			case got := <-observed:
@@ -179,7 +188,7 @@ func TestNodeProbeRejectsTrustedIPIdentityMismatch(t *testing.T) {
 				if ipv4 && family.network == "tcp6" {
 					continue
 				}
-				probe := ExternalProbe{Path: command, Kind: "node", Commands: OSCommands{}, IPv4: ipv4}
+				probe := ExternalProbe{Path: command, Kind: "node", Commands: probeCommands, IPv4: ipv4}
 				if got := probe.Probe(context.Background(), server.URL); got != CertRejected {
 					t.Fatalf("trusted mismatching IP (IPv4=%v) = %s, want certificate-rejected", ipv4, got)
 				}
@@ -193,7 +202,7 @@ func TestNodeProbeRejectsTrustedIPIdentityMismatch(t *testing.T) {
 				}
 			}
 			if family.network == "tcp4" {
-				probe := ExternalProbe{Path: command, Kind: "node", Commands: OSCommands{}, IPv4: true}
+				probe := ExternalProbe{Path: command, Kind: "node", Commands: probeCommands, IPv4: true}
 				url := strings.Replace(server.URL, "127.0.0.1", "localhost", 1)
 				if got := probe.Probe(context.Background(), url); got != Accepted {
 					t.Fatalf("same certificate must be accepted for matching DNS: %s", got)
@@ -232,7 +241,7 @@ func TestNodeProbeIPv6Literal(t *testing.T) {
 	}
 	t.Setenv("NODE_TLS_REJECT_UNAUTHORIZED", "1")
 	t.Setenv("NODE_EXTRA_CA_CERTS", bundle)
-	if got := (ExternalProbe{Path: command, Kind: "node", Commands: OSCommands{}}).Probe(context.Background(), server.URL); got != Accepted {
+	if got := (ExternalProbe{Path: command, Kind: "node", Commands: probeCommands}).Probe(context.Background(), server.URL); got != Accepted {
 		t.Fatalf("IPv6 literal = %s, want accepted", got)
 	}
 }
@@ -282,7 +291,7 @@ func TestExternalProbeAdaptersAgainstLocalTLS(t *testing.T) {
 			t.Setenv("ALL_PROXY", "")
 			t.Setenv("all_proxy", "")
 			t.Setenv("NODE_TLS_REJECT_UNAUTHORIZED", "1")
-			probe := ExternalProbe{Path: command, Kind: tc.kind, Commands: OSCommands{}}
+			probe := ExternalProbe{Path: command, Kind: tc.kind, Commands: probeCommands}
 			t.Setenv(tc.env, bundle)
 			if got := probe.Probe(context.Background(), server.URL); got != Accepted {
 				t.Fatalf("trusted TLS plus HTTP 500 must be accepted, got %s", got)
@@ -353,6 +362,28 @@ func TestCurlOutcomeReadsSchannelCertificateRejections(t *testing.T) {
 			}
 		})
 	}
+}
+
+// observedCommands runs real commands and keeps the last result and how long
+// it took, so a failed probe says which limit stopped it: OSCommands' own
+// limit (exit code not 0, empty output) or the probe script's (exit 0 and
+// "unknown").
+type observedCommands struct {
+	inner   Commands
+	last    CommandResult
+	elapsed time.Duration
+}
+
+func (c *observedCommands) Run(ctx context.Context, path string, args ...string) CommandResult {
+	start := time.Now()
+	c.last = c.inner.Run(ctx, path, args...)
+	c.elapsed = time.Since(start)
+	return c.last
+}
+
+func (c *observedCommands) String() string {
+	return fmt.Sprintf("last command: code %d after %s, stdout %q, stderr %q",
+		c.last.Code, c.elapsed.Round(time.Millisecond), c.last.Stdout, c.last.Stderr)
 }
 
 // recordedCommands keeps the arguments of the last command instead of running it.

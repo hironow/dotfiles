@@ -29,6 +29,36 @@ func TestProcessCaptureBoundAndCancellation(t *testing.T) {
 	}
 }
 
+func TestCommandLimitDefaultsToTheDoctorBound(t *testing.T) {
+	for _, tc := range []struct {
+		set, want time.Duration
+	}{
+		{0, defaultCommandTimeout},
+		{-time.Second, defaultCommandTimeout},
+		{15 * time.Second, 15 * time.Second},
+	} {
+		if got := (OSCommands{Timeout: tc.set}).limit(); got != tc.want {
+			t.Fatalf("limit of %s = %s, want %s", tc.set, got, tc.want)
+		}
+	}
+}
+
+func TestCommandLimitStopsTheProcess(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CA_DOCTOR_PROCESS_TEST", "1")
+	start := time.Now()
+	result := (OSCommands{Timeout: 100 * time.Millisecond}).Run(context.Background(), exe, "-test.run=^TestProcessChild$", "--", "wait")
+	if result.Code == 0 {
+		t.Fatal("a process past its limit succeeded")
+	}
+	if elapsed := time.Since(start); elapsed >= defaultCommandTimeout {
+		t.Fatalf("stopped after %s, not by its own limit", elapsed)
+	}
+}
+
 func TestVersionProbesDisableKnownAutoInstallMechanisms(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {
