@@ -88,35 +88,60 @@ func (a App) Bump(ctx context.Context, name, version string) (Result, error) {
 	if err := a.Machine.Baseline(ctx, it); err != nil {
 		return Result{}, fmt.Errorf("the check is red before any change, so a bump could not be verified: %w", err)
 	}
+	var written []string
 	for _, p := range res.Changed {
 		if err := a.Repo.Write(p, out[p]); err != nil {
-			return Result{}, errors.Join(err, a.restore(ctx, it, files, res.Changed))
+			return Result{}, errors.Join(err, a.restore(ctx, it, files, out, written))
 		}
+		written = append(written, p)
 	}
 	err = a.Machine.Install(ctx, it, t)
 	if err == nil {
 		err = a.Machine.Verify(ctx, it, t)
 	}
 	if err != nil {
-		return Result{}, errors.Join(err, a.restore(ctx, it, files, res.Changed))
+		return Result{}, errors.Join(err, a.restore(ctx, it, files, out, written))
 	}
 	return res, nil
 }
 
-// restore writes the original declarations back and reinstalls them, so the
-// machine follows the declarations again (ADR 0074 D5).
-func (a App) restore(ctx context.Context, it Item, files map[string]string, paths []string) error {
+// restore writes back what the bump read, then reinstalls it, so the machine
+// follows the declarations again (ADR 0074 D5). A file that no longer holds
+// exactly what the bump wrote was edited while the installers ran: it is kept,
+// and nothing is reinstalled from a declaration that was not restored (ADR 0075).
+func (a App) restore(ctx context.Context, it Item, files, out map[string]string, written []string) error {
+	var restored, kept []string
 	var errs []error
-	for _, p := range paths {
-		errs = append(errs, a.Repo.Write(p, files[p]))
+	for _, p := range written {
+		now, err := a.Repo.Read(p)
+		switch {
+		case err != nil:
+			errs = append(errs, err)
+		case now != out[p]:
+			kept = append(kept, p)
+		default:
+			errs = append(errs, a.Repo.Write(p, files[p]))
+			restored = append(restored, p)
+		}
 	}
 	if err := errors.Join(errs...); err != nil {
-		return fmt.Errorf("could not restore %s: %w", strings.Join(paths, ", "), err)
+		return fmt.Errorf("could not restore %s: %w", strings.Join(written, ", "), err)
+	}
+	if len(kept) > 0 {
+		back := "nothing else"
+		if len(restored) > 0 {
+			back = strings.Join(restored, ", ")
+		}
+		return fmt.Errorf("kept %s: it changed while the bump ran; restored %s; nothing reinstalled, so check the declarations and run the installer",
+			strings.Join(kept, ", "), back)
+	}
+	if len(restored) == 0 {
+		return nil // nothing was written, so nothing changed
 	}
 	if err := a.Machine.Install(ctx, it, Target{Version: it.Current, Commit: it.Commit}); err != nil {
-		return fmt.Errorf("restored %s, but reinstalling %s failed: %w", strings.Join(paths, ", "), shown(it.Current), err)
+		return fmt.Errorf("restored %s, but reinstalling %s failed: %w", strings.Join(restored, ", "), shown(it.Current), err)
 	}
-	return fmt.Errorf("restored %s and reinstalled %s", strings.Join(paths, ", "), shown(it.Current))
+	return fmt.Errorf("restored %s and reinstalled %s", strings.Join(restored, ", "), shown(it.Current))
 }
 
 func (a App) bumpSkill(ctx context.Context, it Item, version string) (Result, error) {

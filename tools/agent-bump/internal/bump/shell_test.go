@@ -273,3 +273,47 @@ func TestTableShowsCurrentAndNewestForEveryItem(t *testing.T) {
 		t.Errorf("newer flags: %+v", got)
 	}
 }
+
+// A hand edit saved while the installers run must survive a failed bump:
+// restore puts back only a file that still holds exactly what the bump wrote,
+// and then does not reinstall from a declaration it did not restore.
+func TestAFailedBumpKeepsAnEditSavedWhileItRan(t *testing.T) {
+	w := newWorld()
+	var saved string
+	w.machine.AfterInstall = func(bump.Item) {
+		if saved == "" {
+			saved = w.repo.Files[bump.ClaudePlugins] + "\n"
+			w.repo.Files[bump.ClaudePlugins] = saved
+		}
+	}
+	w.machine.FailInstall = map[string]string{"openai-codex": "v1.0.5"}
+	_, err := w.app.Bump(context.Background(), "openai-codex", "v1.0.5")
+	if err == nil || !strings.Contains(err.Error(), "changed while the bump ran") {
+		t.Fatalf("got %v", err)
+	}
+	if w.repo.Files[bump.ClaudePlugins] != saved {
+		t.Fatal("restore overwrote an edit saved during the bump")
+	}
+	if w.machine.Installed["openai-codex"] != "v1.0.6" {
+		t.Fatalf("reinstalled from a declaration it did not restore: %q", w.machine.Installed["openai-codex"])
+	}
+}
+
+// A write that fails part way restores only the files already written.
+func TestAFailedWriteRestoresOnlyWhatWasWritten(t *testing.T) {
+	w := newWorld()
+	w.repo.FailWrite = map[string]bool{bump.PiInstaller: true}
+	before := map[string]string{}
+	for k, v := range w.repo.Files {
+		before[k] = v
+	}
+	_, err := w.app.Bump(context.Background(), "egm", "v0.1.2")
+	if err == nil || strings.Contains(err.Error(), "changed while the bump ran") {
+		t.Fatalf("got %v", err)
+	}
+	for path, content := range before {
+		if w.repo.Files[path] != content {
+			t.Errorf("%s was not restored", path)
+		}
+	}
+}

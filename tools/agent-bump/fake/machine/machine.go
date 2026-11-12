@@ -28,13 +28,15 @@ func (f *Fake) Baseline(_ context.Context, it bump.Item) error {
 }
 
 func (f *Fake) Install(_ context.Context, it bump.Item, t bump.Target) error {
+	// The hook stands for what happens while the installer runs, so it runs
+	// whether or not the install then fails.
+	if f.AfterInstall != nil {
+		f.AfterInstall(it)
+	}
 	if v, ok := f.FailInstall[it.Name]; ok && v == t.Version {
 		return fmt.Errorf("%s: install of %q failed", it.Name, t.Version)
 	}
 	f.Installed[it.Name] = t.Version
-	if f.AfterInstall != nil {
-		f.AfterInstall(it)
-	}
 	return nil
 }
 

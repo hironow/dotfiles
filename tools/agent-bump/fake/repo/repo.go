@@ -5,7 +5,8 @@ import "fmt"
 
 // Fake holds file contents by repo-relative path.
 type Fake struct {
-	Files map[string]string
+	Files     map[string]string
+	FailWrite map[string]bool // path -> its write fails
 }
 
 func (f *Fake) Read(path string) (string, error) {
@@ -20,6 +21,9 @@ func (f *Fake) Read(path string) (string, error) {
 func (f *Fake) Write(path, content string) error {
 	if _, ok := f.Files[path]; !ok {
 		return fmt.Errorf("%s: no such file", path)
+	}
+	if f.FailWrite[path] {
+		return fmt.Errorf("%s: write failed", path)
 	}
 	f.Files[path] = content
 	return nil
