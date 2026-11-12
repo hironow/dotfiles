@@ -15,6 +15,9 @@ type Fake struct {
 	RedBaseline map[string]bool   // item name -> its check is already failing
 	FailInstall map[string]string // item name -> the version whose install fails
 	Required    []string          // what the Pi installer requires of an EGM bundle
+	// AfterInstall stands in for an installer that writes a declaration
+	// itself, as skills_lock.py writes a skill's new hash.
+	AfterInstall func(bump.Item)
 }
 
 func (f *Fake) Baseline(_ context.Context, it bump.Item) error {
@@ -29,6 +32,9 @@ func (f *Fake) Install(_ context.Context, it bump.Item, t bump.Target) error {
 		return fmt.Errorf("%s: install of %q failed", it.Name, t.Version)
 	}
 	f.Installed[it.Name] = t.Version
+	if f.AfterInstall != nil {
+		f.AfterInstall(it)
+	}
 	return nil
 }
 

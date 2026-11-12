@@ -208,6 +208,34 @@ func TestASkillMovesOnlyToItsUpstreamHead(t *testing.T) {
 	}
 }
 
+func TestASkillAlreadyAtHeadReportsNoChange(t *testing.T) {
+	w := newWorld()
+	res, err := w.app.Bump(context.Background(), "security-audit", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Changed) != 0 || res.From != res.To {
+		t.Fatalf("nothing moved, but the result says %+v", res)
+	}
+}
+
+func TestAMovedSkillReportsItsNewHash(t *testing.T) {
+	w := newWorld()
+	const next = "dddddddddddddddddddddddddddddddddddddddd"
+	// skills_lock.py writes the new hash into the declaration.
+	w.machine.AfterInstall = func(bump.Item) {
+		w.repo.Files[bump.SkillLock] = strings.Replace(
+			w.repo.Files[bump.SkillLock], "ccbc33ed119b28c3ef7b44a7e2081ab191ad63af", next, 1)
+	}
+	res, err := w.app.Bump(context.Background(), "security-audit", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.From != "ccbc33ed119b" || res.To != "dddddddddddd" || len(res.Changed) != 1 || res.Changed[0] != bump.SkillLock {
+		t.Fatalf("got %+v", res)
+	}
+}
+
 func TestAnUndeclaredNameIsRefused(t *testing.T) {
 	w := newWorld()
 	if _, err := w.app.Bump(context.Background(), "brand-new", ""); !errors.Is(err, bump.ErrUndeclared) {
