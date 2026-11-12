@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/hironow/dotfiles/tools/agent-bump/fake/registry"
 	"github.com/hironow/dotfiles/tools/agent-bump/fake/releases"
+	"github.com/hironow/dotfiles/tools/agent-bump/fake/repo"
 	"github.com/hironow/dotfiles/tools/agent-bump/internal/bump"
 )
 
@@ -98,4 +101,38 @@ func TestRealRegistryContract(t *testing.T) {
 		t.Skip("needs the network")
 	}
 	registryContract(t, newNpmRegistry())
+}
+
+// repoContract holds the fake checkout to what the real one does: the fake
+// once let a write to a missing file through and never marked a written file
+// as changed, so the shell tests passed while the live bump stopped.
+func repoContract(t *testing.T, r bump.Repo) {
+	t.Helper()
+	if _, err := r.Read("no/such/file.json"); err == nil {
+		t.Fatal("Read of a missing file must fail")
+	}
+	if err := r.Write("no/such/file.json", "{}"); err == nil {
+		t.Fatal("Write must not create a file the declarations do not have")
+	}
+	if err := r.Write(bump.PiPackages, "[\"npm:x\"]\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := r.Read(bump.PiPackages); err != nil || got != "[\"npm:x\"]\n" {
+		t.Fatalf("Read after Write = %q, %v", got, err)
+	}
+}
+
+func TestFakeRepoContract(t *testing.T) {
+	repoContract(t, &repo.Fake{Files: map[string]string{bump.PiPackages: "[]\n"}})
+}
+
+func TestRealRepoContract(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "dump", "harness"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(bump.PiPackages)), []byte("[]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repoContract(t, checkout{root: root})
 }

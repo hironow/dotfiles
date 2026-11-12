@@ -21,7 +21,11 @@ func (f *Fake) Read(path string) (string, error) {
 	return content, nil
 }
 
+// Write only replaces a file that exists, like the real checkout.
 func (f *Fake) Write(path, content string) error {
+	if _, ok := f.Files[path]; !ok {
+		return fmt.Errorf("%s: no such file", path)
+	}
 	f.Files[path] = content
 	return nil
 }
