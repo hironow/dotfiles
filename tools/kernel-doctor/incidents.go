@@ -50,13 +50,32 @@ type Incident struct {
 	Sysctls         []Sysctl       `json:"sysctls"`
 	Observations    []Observation  `json:"observations"`
 	Advice          []string       `json:"advice"`
+	VendorBuilds    []VendorBuild  `json:"vendorBuilds"`
+}
+
+// VendorBuild is one vendor kernel build reviewed against this CVE: the fix
+// commit the CVE record names (the same SHA) is an ancestor of the commit the
+// vendor's release tag points at, and the fixed lines are present there.
+// Evidence pins that tag commit, because a tag can move (ADR-0065 Decision 3).
+// Only the exact release string matches; a near miss stays unverified.
+type VendorBuild struct {
+	Release    string `json:"release"`
+	Vendor     string `json:"vendor"`
+	FixCommit  string `json:"fixCommit"`
+	Source     string `json:"source"`
+	Evidence   string `json:"evidence"`
+	ReviewedAt string `json:"reviewedAt"`
 }
 
 var (
-	incidentID               = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
-	cveForm                  = regexp.MustCompile(`^CVE-[0-9]{4}-[0-9]{4,}$`)
-	dnsHost                  = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
-	sysctlPath               = regexp.MustCompile(`^[a-z0-9_]+(?:\.[a-z0-9_]+)+$`)
+	incidentID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+	cveForm    = regexp.MustCompile(`^CVE-[0-9]{4}-[0-9]{4,}$`)
+	dnsHost    = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
+	sysctlPath = regexp.MustCompile(`^[a-z0-9_]+(?:\.[a-z0-9_]+)+$`)
+	commitSHA  = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	// vendorRelease narrows vendorSuffix to printable release characters, so
+	// a recorded release cannot carry a space or a control character.
+	vendorRelease            = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?-[A-Za-z0-9._-]+$`)
 	incidents, incidentError = loadIncidents()
 )
 
@@ -108,7 +127,52 @@ func ParseIncident(data []byte) (Incident, error) {
 	if err := validateDetail(incident); err != nil {
 		return incident, err
 	}
+	if err := validateVendorBuilds(incident); err != nil {
+		return incident, err
+	}
 	return incident, nil
+}
+
+// validateVendorBuilds accepts only a vendor-shaped release on a reviewed
+// branch: an upstream x.y.z release is compared against the floors instead,
+// and a prerelease is not a vendor build.
+func validateVendorBuilds(i Incident) error {
+	if len(i.VendorBuilds) > 32 {
+		return errors.New("incident allows at most 32 vendor builds")
+	}
+	seen := map[string]bool{}
+	for _, build := range i.VendorBuilds {
+		outcome, _ := incomparableReason(build.Release)
+		if outcome != UnverifiedVendor || !vendorRelease.MatchString(build.Release) || seen[build.Release] {
+			return errors.New("invalid/duplicate vendor build release")
+		}
+		// vendorRelease guarantees at least two dots before the first '-'.
+		major, rest, _ := strings.Cut(build.Release, ".")
+		minor, _, _ := strings.Cut(rest, ".")
+		if _, reviewed := i.floorFor(major + "." + minor); !reviewed {
+			return errors.New("vendor build must be on a reviewed branch")
+		}
+		vendor := strings.TrimSpace(build.Vendor)
+		if vendor == "" || len(vendor) > 100 || !commitSHA.MatchString(build.FixCommit) ||
+			!publicHTTPS(build.Source) || !publicHTTPS(build.Evidence) {
+			return errors.New("invalid vendor build")
+		}
+		if _, err := time.Parse(time.DateOnly, build.ReviewedAt); err != nil {
+			return errors.New("vendor build needs a review date")
+		}
+		seen[build.Release] = true
+	}
+	return nil
+}
+
+// vendorBuild returns the reviewed build whose release is exactly s.
+func (i Incident) vendorBuild(s string) (VendorBuild, bool) {
+	for _, build := range i.VendorBuilds {
+		if build.Release == s {
+			return build, true
+		}
+	}
+	return VendorBuild{}, false
 }
 
 func validateMeta(i Incident) error {

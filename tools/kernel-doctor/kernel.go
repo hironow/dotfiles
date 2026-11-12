@@ -25,14 +25,19 @@ const (
 	UnverifiedVendor = "unverified-vendor"
 	// UnverifiedBranch: clean upstream form, but that branch was not reviewed.
 	UnverifiedBranch = "unverified-branch"
+	// ReviewedVendorBuild: the whole string is a vendor build recorded under
+	// vendorBuilds, whose release tag carries the CVE's fix commit.
+	ReviewedVendorBuild = "reviewed-vendor-build"
 )
 
-// A kernel version string cannot attest either of these.
+// A kernel version string cannot attest the running patch state, so
+// PatchStatus is always unverified; keeping it explicit is what stops a
+// comparison from being read as a clearance (cf. brotli-doctor's
+// RuntimeReview). BackportState is unverified too, except for a recorded
+// vendor build, where it names exactly what was reviewed.
 const (
-	unverified = "unverified"
-	// The fields below are always unverified; keeping them explicit is what
-	// stops a comparison from being read as a clearance (cf. brotli-doctor's
-	// RuntimeReview).
+	unverified           = "unverified"
+	fixCommitInVendorTag = "fix-commit-in-vendor-tag"
 )
 
 var (
@@ -57,7 +62,8 @@ type Assessment struct {
 	Branch   string `json:"branch,omitempty"`
 	FixFloor string `json:"fixed_floor,omitempty"`
 	Reason   string `json:"reason"`
-	// Always unverified, deliberately.
+	// PatchStatus is always unverified, deliberately; BackportState is only
+	// set for a recorded vendor build.
 	PatchStatus   string `json:"patch_status"`
 	BackportState string `json:"backport_state"`
 }
@@ -66,6 +72,8 @@ type Assessment struct {
 //
 // It only compares when the whole string is a clean upstream release AND its
 // major.minor is a reviewed branch (or at/above the reviewed mainline fix).
+// A vendor build is never compared by number; only a release recorded under
+// vendorBuilds, matched as the whole string, is reported as carrying the fix.
 // Everything else is reported as unverified with a reason. Refusing to compare
 // is the safe failure: an unverified result is never counted as fixed.
 func Assess(raw string, inc Incident) Assessment {
@@ -75,6 +83,13 @@ func Assess(raw string, inc Incident) Assessment {
 	if trimmed == "" {
 		a.Outcome = UnverifiedFormat
 		a.Reason = "no kernel version available; nothing compared"
+		return a
+	}
+	if build, found := inc.vendorBuild(trimmed); found {
+		a.Outcome, a.BackportState = ReviewedVendorBuild, fixCommitInVendorTag
+		a.Reason = build.Vendor + " build " + build.Release + " carries this CVE's fix commit " +
+			build.FixCommit[:12] + " in its release tag (" + build.Evidence + ", reviewed " + build.ReviewedAt +
+			"); a custom kernel built with the same release string is not told apart, and the running patch state stays unverified"
 		return a
 	}
 	if !cleanRelease.MatchString(trimmed) {
