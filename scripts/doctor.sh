@@ -64,6 +64,29 @@ if [ "$brew_os" = Linux ]; then
 elif [[ $brew_os != MINGW* && $brew_os != MSYS* && $brew_os != CYGWIN* ]]; then
   if has brew; then log_ok 'brew' "$(brew --version | head -n1 2>/dev/null || true)"; else log_warn 'brew' 'missing'; fi
 fi
+# Homebrew must hold no Docker package on macOS: `just dump` records whatever
+# Homebrew has, and the Brewfile policy test (ADR 0067: Podman only) then fails
+# on main. The list is the one that test forbids (a unit test keeps them equal).
+# Every step is an if or a plain assignment: doctor runs under set -euo pipefail.
+_brew_docker='docker docker-buildx docker-compose docker-credential-helper docker-desktop orbstack'
+if [ "$(uname -s)" = Darwin ] && has brew; then
+  if _brew_formulae="$(brew list --formula -1 2>/dev/null)" && _brew_casks="$(brew list --cask -1 2>/dev/null)"; then
+    _brew_has=''
+    while IFS= read -r _pkg; do
+      for _bad in $_brew_docker; do
+        if [ "$_pkg" = "$_bad" ]; then _brew_has="$_brew_has $_pkg"; fi
+      done
+    done <<<"$_brew_formulae"$'\n'"$_brew_casks"
+    _brew_has="${_brew_has# }"
+    if [ -n "$_brew_has" ]; then
+      log_warn 'brew-docker' "Homebrew has $_brew_has (ADR 0067: Podman only); the next just dump records them and fails the Brewfile policy test: brew uninstall $_brew_has"
+    else
+      log_ok 'brew-docker' 'no Docker packages in Homebrew'
+    fi
+  else
+    log_warn 'brew-docker' 'cannot list Homebrew packages; Docker packages are unchecked'
+  fi
+fi
 if has gcloud; then log_ok 'gcloud' "$(gcloud --version 2>/dev/null | head -n1 || true)"; else log_warn 'gcloud' 'missing'; fi
 # pnpm comes per repo from corepack (ADR 0017), except on native Windows,
 # which uses no pnpm (ADR 0070) and gets no row. (An if on its own uname, not
