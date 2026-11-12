@@ -54,9 +54,9 @@ func (h host) Baseline(ctx context.Context, it bump.Item) error {
 	case bump.Marketplace:
 		return h.just(ctx, "claude-plugins-install", "--check")
 	case bump.EGM:
-		return h.egmChecks(ctx)
+		return errors.Join(h.egmChecks(ctx), h.piDeclarationInstalled())
 	case bump.PiPackage:
-		return piInstalled(it.Source, it.Name, it.Current)
+		return h.piDeclarationInstalled()
 	case bump.Skill:
 	}
 	return nil
@@ -100,7 +100,7 @@ func (h host) Verify(ctx context.Context, it bump.Item, t bump.Target) error {
 		if t.Version != "" {
 			source += "@" + t.Version
 		}
-		return piInstalled(source, it.Name, t.Version)
+		return piInstalled(source)
 	case bump.Skill:
 	}
 	return nil
@@ -124,46 +124,103 @@ func piAgentDir() string {
 	return filepath.Join(home, ".pi", "agent")
 }
 
-// piInstalled checks Pi's settings name the source and, for a pin, that the
-// installed package.json carries that version.
-func piInstalled(source, name, version string) error {
+// piProblems lists what this machine lacks of the declared Pi npm sources:
+// a source Pi's settings do not name, a package with no files, or a pinned
+// version that differs. Git sources (EGM) are checked by --verify-egm.
+func piProblems(declared, configured []string, installed map[string]string) []string {
+	var problems []string
+	for _, source := range declared {
+		name, pin, isNpm := bump.NpmName(source)
+		if !isNpm {
+			continue
+		}
+		version, has := installed[name]
+		switch {
+		case !slices.Contains(configured, source):
+			problems = append(problems, "pi settings.json does not name "+source)
+		case !has:
+			problems = append(problems, "pi has no files for "+name)
+		case pin != "" && version != pin:
+			problems = append(problems, fmt.Sprintf("pi has %s %s, want %s", name, version, pin))
+		}
+	}
+	return problems
+}
+
+// piState reads Pi's configured sources and the installed version of each
+// named package (a package without files is absent from the map).
+func piState(names []string) ([]string, map[string]string, error) {
 	dir := piAgentDir()
 	raw, err := os.ReadFile(filepath.Join(dir, "settings.json"))
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	var settings struct {
 		Packages []any `json:"packages"`
 	}
 	if err := json.Unmarshal(raw, &settings); err != nil {
-		return fmt.Errorf("pi settings.json: %w", err)
+		return nil, nil, fmt.Errorf("pi settings.json: %w", err)
 	}
-	var sources []string
+	var configured []string
 	for _, p := range settings.Packages {
 		switch v := p.(type) {
 		case string:
-			sources = append(sources, v)
+			configured = append(configured, v)
 		case map[string]any:
 			if s, ok := v["source"].(string); ok {
-				sources = append(sources, s)
+				configured = append(configured, s)
 			}
 		}
 	}
-	if !slices.Contains(sources, source) {
-		return fmt.Errorf("pi settings.json does not name %s", source)
+	installed := map[string]string{}
+	for _, name := range names {
+		manifest, err := os.ReadFile(filepath.Join(dir, "npm", "node_modules", filepath.FromSlash(name), "package.json"))
+		if err != nil {
+			continue
+		}
+		var pkg struct {
+			Version string `json:"version"`
+		}
+		if err := json.Unmarshal(manifest, &pkg); err != nil {
+			return nil, nil, fmt.Errorf("%s package.json: %w", name, err)
+		}
+		installed[name] = pkg.Version
 	}
-	manifest, err := os.ReadFile(filepath.Join(dir, "npm", "node_modules", filepath.FromSlash(name), "package.json"))
+	return configured, installed, nil
+}
+
+// piInstalled checks this machine has the given Pi sources.
+func piInstalled(sources ...string) error {
+	var names []string
+	for _, s := range sources {
+		if name, _, ok := bump.NpmName(s); ok {
+			names = append(names, name)
+		}
+	}
+	configured, installed, err := piState(names)
 	if err != nil {
-		return fmt.Errorf("pi has no files for %s: %w", name, err)
+		return err
 	}
-	var pkg struct {
-		Version string `json:"version"`
+	if problems := piProblems(sources, configured, installed); len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
 	}
-	if err := json.Unmarshal(manifest, &pkg); err != nil {
-		return fmt.Errorf("%s package.json: %w", name, err)
+	return nil
+}
+
+// piDeclarationInstalled checks every npm source in pi-packages.json, not
+// just the one a bump moves: the Pi installer installs every declared
+// source, so an uncommitted, not yet installed hand edit would ride along.
+func (h host) piDeclarationInstalled() error {
+	raw, err := os.ReadFile(filepath.Join(h.root, filepath.FromSlash(bump.PiPackages)))
+	if err != nil {
+		return err
 	}
-	if version != "" && pkg.Version != version {
-		return fmt.Errorf("pi has %s %s, want %s", name, pkg.Version, version)
+	var declared []string
+	if err := json.Unmarshal(raw, &declared); err != nil {
+		return fmt.Errorf("%s: %w", bump.PiPackages, err)
+	}
+	if err := piInstalled(declared...); err != nil {
+		return fmt.Errorf("%w (an edit in %s that is not installed yet would also be installed; install or revert it first)", err, bump.PiPackages)
 	}
 	return nil
 }
