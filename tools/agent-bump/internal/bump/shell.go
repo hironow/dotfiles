@@ -85,9 +85,6 @@ func (a App) Bump(ctx context.Context, name, version string) (Result, error) {
 			res.Changed = append(res.Changed, e.Path)
 		}
 	}
-	if dirty, err := a.Repo.Dirty(res.Changed); err != nil || len(dirty) > 0 {
-		return Result{}, errors.Join(err, fmt.Errorf("commit or revert these first: %s", strings.Join(dirty, ", ")))
-	}
 	if err := a.Machine.Baseline(ctx, it); err != nil {
 		return Result{}, fmt.Errorf("the check is red before any change, so a bump could not be verified: %w", err)
 	}
@@ -125,9 +122,6 @@ func (a App) restore(ctx context.Context, it Item, files map[string]string, path
 func (a App) bumpSkill(ctx context.Context, it Item, version string) (Result, error) {
 	if version != "" {
 		return Result{}, ErrSkillVersion
-	}
-	if dirty, err := a.Repo.Dirty([]string{SkillLock}); err != nil || len(dirty) > 0 {
-		return Result{}, errors.Join(err, fmt.Errorf("commit or revert %s first", SkillLock))
 	}
 	// skills_lock.py writes the record's new hash; the CLI cannot move a
 	// skill back, so nothing here is restored on failure.

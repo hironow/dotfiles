@@ -114,15 +114,20 @@ func TestBumpingAMarketplaceDownAndBackChangesTheDeclarationAndTheMachine(t *tes
 	}
 }
 
-func TestAnUncommittedPinFileStopsTheBumpBeforeAnyChange(t *testing.T) {
+// An uncommitted hand edit in a declaration does not stop a bump, and a
+// failed bump writes back what it read, so the edit survives (ADR 0075).
+func TestAFailedBumpKeepsAnUncommittedHandEdit(t *testing.T) {
 	w := newWorld()
-	w.repo.DirtyPaths = []string{bump.ClaudePlugins}
-	before := w.repo.Files[bump.ClaudePlugins]
-	if _, err := w.app.Bump(context.Background(), "openai-codex", "v1.0.5"); err == nil {
-		t.Fatal("want a refusal")
+	edited := strings.Replace(w.repo.Files[bump.ClaudePlugins], `"plugins"`, `"note": "hand edit",
+  "plugins"`, 1)
+	w.repo.Files[bump.ClaudePlugins] = edited
+	w.machine.FailInstall = map[string]string{"openai-codex": "v1.0.5"}
+	_, err := w.app.Bump(context.Background(), "openai-codex", "v1.0.5")
+	if err == nil || !strings.Contains(err.Error(), "restored") {
+		t.Fatalf("got %v", err)
 	}
-	if w.repo.Files[bump.ClaudePlugins] != before || w.machine.Installed["openai-codex"] != "v1.0.6" {
-		t.Fatal("a refused bump changed something")
+	if w.repo.Files[bump.ClaudePlugins] != edited {
+		t.Fatalf("the hand edit is gone:\n%s", w.repo.Files[bump.ClaudePlugins])
 	}
 }
 
