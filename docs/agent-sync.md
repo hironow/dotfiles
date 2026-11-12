@@ -214,10 +214,11 @@ CLI には `-a universal` で store だけを書かせ、home には触らせな
 
 - `just dump-skills-lock`：store から宣言を作り直す（hironow/skills の記録が消える変更は拒む）
 - `just restore-skills-lock`：新しい機体で、宣言から store を復元して配置する
-- `just skills-update`：hironow/skills の merge 後などに、store を更新して配置する
+- `just skills-update`：hironow/skills の merge 後などに、store を更新して配置する（`--only <name>` で 1 つだけ）
+- `just agent-bump`：宣言済みの Claude の plugin の marketplace・EGM・Pi の package・skill の、今の版と最新の版を出す。`just agent-bump <name> [version]` で 1 つを上げ下げし、この機体に入れる（ADR 0074）。宣言済みのものは 7 日の待機を待たない。main の checkout から実行する（worktree からは断る）。ほかの機体は merge のあとで各 installer を回す
 
 **EGM**：通常のstore管理skillではなく、参照先を含む完全なplugin/packageとして配る。
-`just egm-install` は `sync-agents all` でこの補足を各homeへ先に配り、EGMだけをネイティブCLIで導入する。
+補足は `sync-agents` が各homeへ配り、EGM本体は `just deploy` がほかのpluginと同じ手順で入れる（Claude Code と Pi は宣言から、Codex と Antigravity は `scripts/codex_agy_plugins.py` が Pi の pin に合わせて）。EGM専用の導入コマンドは無い。
 このsyncには既存の共通settingsとhooksの配布も含まれるので、先に `just sync-agents-preview all` を確認する。
 Piは固定したgit packageを使い、既存installerが同じ補足とread-only reviewerを置く。
 Piのglobal context fileでは、EGM用のマーカー内だけを管理して他の本文を残す。

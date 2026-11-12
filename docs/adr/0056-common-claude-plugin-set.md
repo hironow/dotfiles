@@ -1,7 +1,7 @@
 # 0056. 5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする
 
 **Date:** 2026-10-16
-**Status:** Accepted. Superseded by [0057](./0057-shared-plugins-need-no-per-home-settings.md) (partial — Decision 1 の 40 個と除外、Decision 5 の pyright-lsp の扱い)。Partly superseded by [0073](./0073-mwg-v1-before-the-plugin-cooldown.md) (Decision 4 の 7 日の待機を、googlechrome の `v1.0.0` についてだけ外す)
+**Status:** Accepted. Superseded by [0057](./0057-shared-plugins-need-no-per-home-settings.md) (partial — Decision 1 の 40 個と除外、Decision 5 の pyright-lsp の扱い)。Partly superseded by [0073](./0073-mwg-v1-before-the-plugin-cooldown.md) (Decision 4 の 7 日の待機を、googlechrome の `v1.0.0` についてだけ外す)。Partly superseded by [0074](./0074-bump-declared-agent-plugins-without-the-wait.md) (Decision 4 の 7 日の待機を、宣言済みの marketplace の tag を動かすときは外す。新しく足す marketplace には残る)
 **ID:** ADR-0056
 **Title:** 5 つの Claude home で使っている plugin の和集合を、全 home 共通の宣言にする
 **Decided-date:** 2026-10-16

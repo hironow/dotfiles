@@ -51,7 +51,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 # Pinned like every bunx-run CLI here: an unpinned CLI would make restore
@@ -260,6 +260,32 @@ def build_restore_command(record: SkillRecord) -> list[str]:
 def build_update_command() -> list[str]:
     """Refresh every skill in the store from its source with the pinned CLI."""
     return ["bunx", f"skills@{SKILLS_CLI_VERSION}", "update", "-g", "-y"]
+
+
+def build_update_one_command(record: SkillRecord) -> list[str]:
+    """Refresh one skill to its upstream HEAD. The CLI names a skill by the
+    lock key it recorded, as in build_restore_command; it takes no ref, so a
+    skill can only move forward."""
+    cli = f"skills@{SKILLS_CLI_VERSION}"
+    return ["bunx", cli, "update", record.lock_key, "-g", "-y"]
+
+
+def machine_hash(home: Path, record: SkillRecord) -> str | None:
+    """The folder hash the machine lock holds for this declared skill."""
+    lock = machine_lock(home)
+    if not lock.is_file():
+        return None
+    raw = json.loads(lock.read_text(encoding="utf-8"))["skills"]
+    entry = raw.get(record.lock_key) or next(
+        (
+            e
+            for e in raw.values()
+            if e.get("source") == record.source
+            and e.get("skillPath") == record.skill_path
+        ),
+        None,
+    )
+    return entry.get("skillFolderHash") if entry else None
 
 
 # --- place: consumer homes mirror the store ---
@@ -560,6 +586,19 @@ def _configure_output() -> None:
             reconfigure(encoding="utf-8", errors="replace")
 
 
+def _write_dump(dump_path: Path, records: list[SkillRecord]) -> None:
+    dump_path.write_text(
+        json.dumps(
+            {"version": 1, "skills": [asdict(r) for r in records]},
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",  # tracked file: LF on every OS (.gitattributes pins it too)
+    )
+
+
 def _cmd_dump(dotfiles_dir: Path, *, allow_self_drop: bool) -> int:
     raw = json.loads(machine_lock().read_text(encoding="utf-8"))["skills"]
     records = normalize_lock(raw, _list_dirs(agents_store()))
@@ -590,16 +629,7 @@ def _cmd_dump(dotfiles_dir: Path, *, allow_self_drop: bool) -> int:
             f"{', '.join(r.installed_dir for r in withheld)}",
             file=sys.stderr,
         )
-    dump_path.write_text(
-        json.dumps(
-            {"version": 1, "skills": [asdict(r) for r in records]},
-            indent=2,
-            ensure_ascii=False,
-        )
-        + "\n",
-        encoding="utf-8",
-        newline="\n",  # tracked file: LF on every OS (.gitattributes pins it too)
-    )
+    _write_dump(dump_path, records)
     ours = sum(1 for r in records if r.source == SELF_SOURCE)
     print(f"✅ dumped {len(records)} skills ({ours} from {SELF_SOURCE}) -> {dump_path}")
     collisions = check_collisions(records)
@@ -673,6 +703,47 @@ def _cmd_update(dotfiles_dir: Path, *, force: bool, copy: bool) -> int:
     return 1 if failed or placed.unresolved else 0
 
 
+def _cmd_update_one(dotfiles_dir: Path, name: str, *, force: bool, copy: bool) -> int:
+    """Move one declared skill to its upstream HEAD, record its new hash, and
+    place only it. Skills missing from this store are not this command's
+    business, so they do not fail it. The CLI cannot move a skill back, so a
+    failed place keeps the new hash and reports it (ADR 0074 D5)."""
+    records = _load_dump(dotfiles_dir)
+    target = next((r for r in records if r.installed_dir == name), None)
+    if target is None:
+        print(f"❌ {name} is not a declared skill", file=sys.stderr)
+        return 1
+    home = home_dir()
+    if name not in _list_dirs(agents_store(home)):
+        print(
+            f"❌ {name} is not in this store; run `just restore-skills-lock` first",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"🔄 updating {name} from {target.source} with the pinned skills CLI")
+    result = subprocess.run(
+        build_update_one_command(target), check=False, env=cli_env()
+    )
+    new_hash = machine_hash(home, target) if result.returncode == 0 else None
+    if not new_hash:
+        print(f"❌ skills update failed for {name}", file=sys.stderr)
+        return 1
+    if new_hash == target.skill_folder_hash:
+        print(f"✅ {name} is already at its upstream HEAD ({new_hash[:12]})")
+    else:
+        _write_dump(
+            dotfiles_dir / DUMP_RELATIVE,
+            [
+                replace(r, skill_folder_hash=new_hash) if r == target else r
+                for r in records
+            ],
+        )
+        print(f"✅ {name}: {target.skill_folder_hash[:12]} -> {new_hash[:12]}")
+    placed = place([target], home, force=force, link=not copy)
+    _report_place(placed)
+    return 1 if placed.unresolved else 0
+
+
 def _cmd_check(dotfiles_dir: Path) -> int:
     collisions = check_collisions(_load_dump(dotfiles_dir))
     if collisions:
@@ -707,8 +778,19 @@ def main() -> int:
         action="store_true",
         help="dump: accept that a declared hironow/skills record disappeared",
     )
+    parser.add_argument(
+        "--only",
+        metavar="NAME",
+        help="update: move only this declared skill and record its new hash",
+    )
     args = parser.parse_args()
     dotfiles_dir = Path(__file__).resolve().parent.parent
+    if args.only is not None and args.command != "update":
+        parser.error("--only works with update only")
+    if args.only is not None:
+        return _cmd_update_one(
+            dotfiles_dir, args.only, force=args.force, copy=args.copy
+        )
     if args.command == "dump":
         return _cmd_dump(dotfiles_dir, allow_self_drop=args.allow_self_drop)
     if args.command == "restore":

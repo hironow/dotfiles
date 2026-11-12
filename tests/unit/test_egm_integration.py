@@ -13,16 +13,26 @@ import install_pi_extensions as installer
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _egm_tag() -> str:
+    """The EGM tag the Claude declaration pins; every other pin follows it."""
+    claude = json.loads(
+        (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
+    )
+    repo, _, tag = claude["marketplaces"]["egm"].partition("#")
+    assert repo == "google/elephant-goldfish-model"
+    assert tag
+    return tag
+
+
 def test_egm_is_declared_as_a_complete_pinned_bundle() -> None:
     claude = json.loads(
         (ROOT / "dump/harness/claude-plugins.json").read_text(encoding="utf-8")
     )
-    assert claude["marketplaces"]["egm"] == "google/elephant-goldfish-model#v0.1.0"
     assert "egm@egm" in claude["plugins"]
     pi = json.loads(
         (ROOT / "dump/harness/pi-packages.json").read_text(encoding="utf-8")
     )
-    assert "git:github.com/google/elephant-goldfish-model@v0.1.0" in pi
+    assert f"git:github.com/google/elephant-goldfish-model@{_egm_tag()}" in pi
     skills = json.loads(
         (ROOT / "dump/harness/skill-lock.json").read_text(encoding="utf-8")
     )["skills"]
@@ -52,22 +62,18 @@ def test_only_the_approved_duplicate_entry_points_are_retired() -> None:
     assert entry["version"] == manifest["version"] == "0.3.0"
 
 
-def test_egm_install_orders_policy_and_targeted_native_installers() -> None:
+def test_egm_reaches_every_agent_through_deploy_not_a_special_recipe() -> None:
+    # Claude Code and Pi read EGM from their declarations; Codex and
+    # Antigravity get it from the deploy step that follows the Pi pin.
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
-    recipe = justfile.split("egm-install:\n", 1)[1].split("\n\n", 1)[0]
-    steps = [
-        "just sync-agents all",
-        "install_pi_extensions.py --egm-only",
-        "claude_plugins.py --egm-only",
-        "codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.0",
-        "codex plugin add egm@egm",
-        "install_pi_extensions.py --verify-egm",
-        "agy plugin install",
-    ]
-    positions = [recipe.index(step) for step in steps]
-    assert positions == sorted(positions)
-    assert "pi-extensions-install" not in recipe
-    assert "claude-plugins-install" not in recipe
+    assert "egm-install" not in justfile
+    deploy = (ROOT / "scripts/deploy.sh").read_text(encoding="utf-8")
+    for step in (
+        "install_pi_extensions.py",
+        "codex_agy_plugins.py",
+        "claude_plugins.py",
+    ):
+        assert step in deploy
     assert "docs/agents/egm.md" in (ROOT / "ROOT_AGENTS.md").read_text(encoding="utf-8")
 
 
@@ -196,3 +202,16 @@ def test_wrong_or_extra_bundle_content_fails_without_cleanup(
         installer.verify_egm(bundle)
     assert _git(bundle, "rev-parse", "HEAD") == head
     assert (target.read_bytes() if target.exists() else None) == before
+
+
+def test_every_egm_pin_names_the_same_tag() -> None:
+    # `just agent-bump egm` rewrites the pins together, and Codex takes its
+    # ref from EGM_SOURCE; one left behind would split the agents.
+    assert installer.EGM_SOURCE == f"{installer.EGM_PACKAGE}@{_egm_tag()}"
+
+
+def test_agent_bump_runs_the_go_tool_against_this_checkout() -> None:
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    recipe = justfile.split("agent-bump *args:\n", 1)[1].split("\n\n", 1)[0]
+    assert "go -C tools/agent-bump run . --root" in recipe
+    assert "{{ args }}" in recipe

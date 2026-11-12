@@ -10,7 +10,7 @@
 - **author**: Claude Code（owner session、Windows 機）
 - **author-contact**: @hironow
 - **supersedes**: [ADR-0056](0056-common-claude-plugin-set.md) の一部（Decision 4「タグは公開から 7 日以上たった版」を、googlechrome の `v1.0.0` についてだけ外す。他の marketplace と、googlechrome のこれからの版には Decision 4 がそのまま効く）
-- **superseded-by**: none
+- **superseded-by**: [ADR-0074](0074-bump-declared-agent-plugins-without-the-wait.md) の一部（D2 の名指しの DR を、宣言済みの marketplace については要らないとした）
 - **related**: [0048](0048-required-claude-plugins.md)、[0053](0053-stop-using-flatt-mirrors.md)、[0057](0057-shared-plugins-need-no-per-home-settings.md)
 - **consultation-trace**: 2026-11-11〜12 の本セッションでの所有者の指示と選択（下の「相談の記録」）。同じ内容を公開 PR に残す
 

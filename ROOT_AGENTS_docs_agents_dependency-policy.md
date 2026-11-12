@@ -65,7 +65,11 @@ installing a banned package.
 
 Auxiliary LSP/MCP tools, temporary uvx/bunx executions, CI-only tools and
 marketplace/plugin content retain their existing settings pending individual
-owner decisions. A permanent CLI also used in CI is not a CI-only tool.
+owner decisions. One decision is made: an agent plugin marketplace (EGM
+included), Pi package, or skill that dotfiles already declares may move to
+any released version without the cooldown, through `just agent-bump <name>
+[version]` in the dotfiles repo (dotfiles ADR 0074). Adding a new one keeps
+its existing rule. A permanent CLI also used in CI is not a CI-only tool.
 Repository dependencies still follow the classes above, including existing
 package-specific exceptions. For current installation routes, see
 `docs/cli-tools.md` in dotfiles.

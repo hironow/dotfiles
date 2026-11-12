@@ -52,6 +52,8 @@ VENDORED_SENTINEL = "// --- upstream rtk.ts follows, unmodified ---\n"
 AGENTS_DIR = ROOT / "config/pi/agents"
 AGENT_MARKER = "<!-- dotfiles-managed: jev-codex-agent -->"
 EGM_AGENT_MARKER = "<!-- dotfiles-managed: egm-reviewer -->"
+EGM_PACKAGE = "git:github.com/google/elephant-goldfish-model"
+# `just agent-bump egm` rewrites both lines (and every other EGM pin) together.
 EGM_SOURCE = "git:github.com/google/elephant-goldfish-model@v0.1.0"
 EGM_COMMIT = "b3a35956759bf7f024af2ff061b2e0b44b438e4c"
 EGM_RELATIVE = Path("git/github.com/google/elephant-goldfish-model")
@@ -108,23 +110,35 @@ def install(
         sources = [EGM_SOURCE]
     env = os.environ | {"PI_CODING_AGENT_DIR": str(agent_dir.resolve())}
     bundle = agent_dir / EGM_RELATIVE
-    if EGM_SOURCE in sources and (bundle.exists() or bundle.is_symlink()):
+    # Another tag of the same package: `just agent-bump egm` moved the pin.
+    old_egm = sorted(
+        source
+        for source in configured
+        if source.startswith(EGM_PACKAGE + "@") and source != EGM_SOURCE
+    )
+    if EGM_SOURCE in sources and old_egm and (bundle.exists() or bundle.is_symlink()):
+        egm_clean(bundle)  # never replace a bundle that holds local edits
+    elif EGM_SOURCE in sources and (bundle.exists() or bundle.is_symlink()):
         verify_egm(bundle)
     for retired in [] if egm_only else retired_configured(settings.get("packages", [])):
         # Bare name: also retires a pin such as npm:pi-web-access@0.37.0.
         subprocess.run(["pi", "remove", retired], check=True, env=env)
     for source in sources:
-        if source not in configured or (source == EGM_SOURCE and not bundle.is_dir()):
-            subprocess.run(["pi", "install", source], check=True, env=env)
+        if source in configured and not (source == EGM_SOURCE and not bundle.is_dir()):
+            continue
+        # A changed pin (added, moved, or dropped) replaces the configured one.
+        for replaced in replaced_sources(source, configured, old_egm):
+            subprocess.run(["pi", "remove", replaced], check=True, env=env)
+        subprocess.run(["pi", "install", source], check=True, env=env)
     if EGM_SOURCE in sources:
         verify_egm(bundle)
     # Reconcile a settings entry whose installed files were lost; do not update
     # healthy unpinned packages just because `just deploy` ran again.
     npm = agent_dir / "npm/node_modules"
     if any(
-        not (npm / source.removeprefix("npm:")).is_dir()
-        for source in sources
-        if source.startswith("npm:")
+        not (npm / name).is_dir()
+        for name in (npm_name(source) for source in sources)
+        if name is not None
     ):
         subprocess.run(["pi", "update", "--extensions"], check=True, env=env)
         if EGM_SOURCE in sources:
@@ -161,9 +175,38 @@ def install(
         raise RuntimeError("; ".join(refused))
 
 
-def verify_egm(root: Path) -> None:
-    """Accept only the approved complete checkout; never repair over local edits."""
-    required = [
+def npm_name(source: str) -> str | None:
+    """The npm package a Pi source names, without its pin; None for non-npm.
+
+    `npm:@scope/name@1.2.3` -> `@scope/name`: the version follows the `@`
+    after the scope, so splitting on the first `@` would break scoped names.
+    """
+    if not source.startswith("npm:"):
+        return None
+    spec = source.removeprefix("npm:")
+    scope = "@" if spec.startswith("@") else ""
+    return scope + spec.removeprefix("@").partition("@")[0]
+
+
+def replaced_sources(
+    source: str, configured: set[str], old_egm: list[str]
+) -> list[str]:
+    """Configured sources a newly declared source replaces: the same npm
+    package under another pin, or another tag of the EGM package."""
+    if source == EGM_SOURCE:
+        return old_egm
+    name = npm_name(source)
+    if name is None:
+        return []
+    return sorted(
+        other for other in configured if other != source and npm_name(other) == name
+    )
+
+
+def egm_required_paths() -> list[str]:
+    """The files an EGM bundle must hold. `just agent-bump egm` checks a new
+    tag's tree against this list before it changes any pin."""
+    return [
         "LICENSE",
         "docs/harnesses.md",
         "docs/claude.md",
@@ -175,29 +218,44 @@ def verify_egm(root: Path) -> None:
         *(f"agents/{name}.md" for name in EGM_PERSONAS),
         *(f"resources/document_standards/{name}-standard.md" for name in EGM_STANDARDS),
     ]
+
+
+def _git_out(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    ).stdout.strip()
+
+
+def egm_clean(root: Path) -> None:
+    """Refuse a checkout that is not ours or holds local edits."""
     if root.is_symlink() or not (root / ".git").is_dir():
         raise RuntimeError(f"EGM is not a managed git checkout: {root}")
-    for path in required:
+    # Include ignored files: an ignored extra skill can still be discovered.
+    if _git_out(root, "status", "--porcelain=v1", "--untracked-files=all", "--ignored"):
+        raise RuntimeError(
+            f"EGM checkout has local changes: {root}; "
+            "preserve your changes and resolve it before installing (no reset applied)"
+        )
+
+
+def verify_egm(root: Path) -> None:
+    """Accept only the approved complete checkout; never repair over local edits."""
+    if root.is_symlink() or not (root / ".git").is_dir():
+        raise RuntimeError(f"EGM is not a managed git checkout: {root}")
+    for path in egm_required_paths():
         if not (root / path).is_file():
             raise RuntimeError(f"EGM bundle is incomplete: {root / path}")
-    for args, expected in (
-        (["rev-parse", "HEAD"], EGM_COMMIT),
-        # Include ignored files: an ignored extra skill can still be discovered.
-        (["status", "--porcelain=v1", "--untracked-files=all", "--ignored"], ""),
-    ):
-        done = subprocess.run(
-            ["git", "-C", str(root), *args],
-            check=True,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+    egm_clean(root)
+    if _git_out(root, "rev-parse", "HEAD") != EGM_COMMIT:
+        raise RuntimeError(
+            f"EGM checkout has the wrong revision: {root}; "
+            "preserve your changes and resolve it before installing (no reset applied)"
         )
-        if done.stdout.strip() != expected:
-            raise RuntimeError(
-                f"EGM checkout has the wrong revision or local changes: {root}; "
-                "preserve your changes and resolve it before installing (no reset applied)"
-            )
     flags = subprocess.run(
         ["git", "-C", str(root), "ls-files", "-v", "-z"],
         check=True,
@@ -284,10 +342,16 @@ def telemetry_edits(settings: dict) -> dict:
     }
 
 
+def _declares_ollama(sources: list) -> bool:
+    """The web-search package is declared, bare or pinned to a version."""
+    wanted = npm_name(OLLAMA_PACKAGE)
+    return any(npm_name(source) == wanted for source in sources)
+
+
 def ollama_missing(sources: list, ollama_on_path: str | None, reachable: bool) -> bool:
     """The Ollama web-search package is declared and no reachable Ollama serves
     localhost:11434 — as a binary on this PATH or over the loopback."""
-    return OLLAMA_PACKAGE in sources and ollama_on_path is None and not reachable
+    return _declares_ollama(sources) and ollama_on_path is None and not reachable
 
 
 def ollama_command(platform: str) -> list[str] | None:
@@ -315,7 +379,7 @@ def _ensure_ollama(sources: list) -> None:
     Never fatal: one missing server must not hold back the extension placement,
     the same way one refused extension does not hold back the others.
     """
-    if OLLAMA_PACKAGE not in sources:
+    if not _declares_ollama(sources):
         return
     # Ownership precedes PATH/HTTP shortcuts: a wrong healthy backend must not
     # legitimize a second install. WSL NEVER falls back to the Linux installer;
@@ -526,7 +590,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--verify-egm", action="store_true", help="verify the installed bundle only"
     )
+    parser.add_argument(
+        "--egm-required-paths",
+        action="store_true",
+        help="print the files an EGM bundle must hold, one per line",
+    )
     args = parser.parse_args()
+    if args.egm_required_paths:
+        print("\n".join(egm_required_paths()))
+        raise SystemExit(0)
     agent_dir = Path(
         os.environ.get("PI_CODING_AGENT_DIR", str(Path.home() / ".pi/agent"))
     )

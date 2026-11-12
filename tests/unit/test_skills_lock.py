@@ -593,3 +593,100 @@ def test_dump_writes_nothing_when_a_source_cannot_be_confirmed(
     )
     assert skills_lock._cmd_dump(tmp_path, allow_self_drop=False) == 1
     assert declaration.read_text(encoding="utf-8") == before
+
+
+# --- update --only: one declared skill to the upstream HEAD (just agent-bump) ---
+
+
+def _one_update_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A dotfiles dir declaring two skills; only `review` is in the store."""
+    import json
+
+    import skills_lock
+
+    dotfiles = tmp_path / "dotfiles"
+    (dotfiles / "dump" / "harness").mkdir(parents=True)
+    records = [_rec("absent"), _rec("review", source=SELF_SOURCE)]
+    (dotfiles / "dump" / "harness" / "skill-lock.json").write_text(
+        json_dumps_records(records), encoding="utf-8"
+    )
+    home = tmp_path / "home"
+    _store_skill(home, "review")
+    (home / ".claude").mkdir()
+    monkeypatch.setenv("SKILLS_LOCK_HOME", str(home))
+
+    def write_machine_hash(value: str) -> None:
+        entry = _entry(SELF_SOURCE, "skills/review/SKILL.md")
+        entry["skillFolderHash"] = value
+        (home / ".agents" / ".skill-lock.json").write_text(
+            json.dumps({"skills": {"review": entry}}), encoding="utf-8"
+        )
+
+    return skills_lock, dotfiles, home, write_machine_hash
+
+
+def _declared(dotfiles: Path) -> dict[str, str]:
+    import json
+
+    data = json.loads(
+        (dotfiles / "dump" / "harness" / "skill-lock.json").read_text(encoding="utf-8")
+    )
+    return {r["installed_dir"]: r["skill_folder_hash"] for r in data["skills"]}
+
+
+def test_update_one_records_the_new_hash_of_that_skill_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    skills_lock, dotfiles, home, write_machine_hash = _one_update_setup(
+        tmp_path, monkeypatch
+    )
+    ran: list[list[str]] = []
+
+    def cli(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        ran.append(args)
+        write_machine_hash("c0ffee")  # the CLI moved the store to upstream HEAD
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(skills_lock.subprocess, "run", cli)
+    rc = skills_lock._cmd_update_one(dotfiles, "review", force=False, copy=True)
+    # The skill missing from the store does not fail this one update.
+    assert rc == 0
+    assert ran == [
+        ["bunx", f"skills@{SKILLS_CLI_VERSION}", "update", "review", "-g", "-y"]
+    ]
+    assert _declared(dotfiles) == {"absent": "deadbeef", "review": "c0ffee"}
+    assert (home / ".claude" / "skills" / "review" / "SKILL.md").exists()
+    assert not (home / ".claude" / "skills" / "absent").exists()
+
+
+@pytest.mark.parametrize("name", ["unknown", "absent"])
+def test_update_one_refuses_an_undeclared_or_unstored_skill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    skills_lock, dotfiles, _home, _write = _one_update_setup(tmp_path, monkeypatch)
+    before = _declared(dotfiles)
+    monkeypatch.setattr(
+        skills_lock.subprocess,
+        "run",
+        lambda *_a, **_k: pytest.fail("the CLI must not run"),
+    )
+    assert skills_lock._cmd_update_one(dotfiles, name, force=False, copy=True) == 1
+    assert _declared(dotfiles) == before
+
+
+def test_update_one_keeps_the_declaration_when_the_cli_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    skills_lock, dotfiles, _home, _write = _one_update_setup(tmp_path, monkeypatch)
+    before = _declared(dotfiles)
+    monkeypatch.setattr(
+        skills_lock.subprocess,
+        "run",
+        lambda args, **_k: subprocess.CompletedProcess(args, 1),
+    )
+    assert skills_lock._cmd_update_one(dotfiles, "review", force=False, copy=True) == 1
+    assert _declared(dotfiles) == before

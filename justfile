@@ -264,24 +264,29 @@ deploy:
 pi-extensions-install:
     @python3 scripts/install_pi_extensions.py
 
+# Without arguments: every declared Claude plugin marketplace, EGM, Pi package
+# and skill with its newest version. With a name: move that one (newest, or the
+# given version) and install it here. Declared items skip the 7-day wait; new
+# ones are added by hand. Commit and PR stay manual (ADR 0074).
+# Show or move the versions of declared agent plugins and skills
+[group('Agents')]
+agent-bump *args:
+    @mise exec -- go -C tools/agent-bump run . --root "{{ justfile_directory() }}" {{ args }}
+
 # Install the Claude Code plugins every Claude home shares
 # (dump/harness/claude-plugins.json; ADR 0048, ADR 0056).
 # `just deploy` already runs this. --check: report only.
 claude-plugins-install *args:
     @{{ UV_RUN }} scripts/claude_plugins.py {{ args }}
 
-# Complete EGM bundle + local compatibility policy. Explicitly opt in after
-# reviewing sync-agents-preview all: sync also applies the existing settings/hooks.
-# No unrelated package/plugin installers, machine bootstrap, or skill retirement.
+# Codex and Antigravity have no declaration of their own: this follows the Pi
+# pin of EGM (Codex's marketplace at the same tag, Antigravity from the verified
+# Pi bundle) and skips a CLI that is not installed. `just deploy` runs it after
+# the Pi step. --check: report what Codex lacks.
+# Install the plugins dotfiles gives Codex and Antigravity (EGM)
 [group('Agents')]
-egm-install:
-    @just sync-agents all
-    @{{ UV_RUN }} scripts/install_pi_extensions.py --egm-only
-    @{{ UV_RUN }} scripts/claude_plugins.py --egm-only
-    codex plugin marketplace add google/elephant-goldfish-model --ref v0.1.0 --json
-    codex plugin add egm@egm --json
-    @{{ UV_RUN }} scripts/install_pi_extensions.py --verify-egm
-    agy plugin install "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/git/github.com/google/elephant-goldfish-model"
+codex-agy-plugins-install *args:
+    @{{ UV_RUN }} scripts/codex_agy_plugins.py {{ args }}
 
 # Register headroom's MCP server (headroom_compress / _retrieve / _stats) in
 # every Claude home, with its egress switches pinned on the server itself.
@@ -2013,7 +2018,8 @@ restore-skills-lock *args:
 skills-place *args:
     @{{ UV_RUN }} scripts/skills_lock.py place {{ args }}
 
-# Run after a hironow/skills merge or any upstream change.
+# Run after a hironow/skills merge or any upstream change. `--only <name>` moves
+# one declared skill and records its new hash (`just agent-bump` uses it).
 # Refresh the CLI store (pinned `skills update -g -y`), then re-place the homes
 [group('Agents')]
 skills-update *args:
