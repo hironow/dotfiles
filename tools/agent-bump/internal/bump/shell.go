@@ -134,7 +134,20 @@ func (a App) bumpSkill(ctx context.Context, it Item, version string) (Result, er
 	if err := a.Machine.Install(ctx, it, Target{}); err != nil {
 		return Result{}, err
 	}
-	return Result{Item: it, From: short(it.Current), To: "upstream HEAD", Changed: []string{SkillLock}}, nil
+	// Report what the declaration says now, not what was hoped for.
+	_, d, err := a.load()
+	if err != nil {
+		return Result{}, err
+	}
+	now, err := Resolve(d, it.Name)
+	if err != nil {
+		return Result{}, err
+	}
+	res := Result{Item: it, From: short(it.Current), To: short(now.Current)}
+	if now.Current != it.Current {
+		res.Changed = []string{SkillLock}
+	}
+	return res, nil
 }
 
 // target resolves the version argument and gathers the upstream facts.
