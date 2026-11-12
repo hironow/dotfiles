@@ -82,10 +82,13 @@ def test_egm_only_never_reconciles_other_plugins_or_probes_lsp(
 ) -> None:
     home = tmp_path / ".claude"
     home.mkdir()
+    # The declared EGM pin, so the test follows `just agent-bump egm`.
+    source = json.loads(plugins.DECLARATION.read_text(encoding="utf-8"))[
+        "marketplaces"
+    ]["egm"]
+    version = source.rpartition("#v")[2]
     personal = {"id": "personal@elsewhere", "scope": "user", "enabled": True}
-    fake = FakeClaude(
-        [], [personal.copy()], names={"google/elephant-goldfish-model#v0.1.0": "egm"}
-    )
+    fake = FakeClaude([], [personal.copy()], names={source: "egm"})
     cache = {"personal@elsewhere": {"key": "local", "needed": []}}
     (home / plugins.STATE_FILE).write_text(
         json.dumps({"retired": ["previous-migration"], "schemas": cache}),
@@ -95,7 +98,7 @@ def test_egm_only_never_reconciles_other_plugins_or_probes_lsp(
     def cli(args: list[str]) -> str | None:
         result = fake(args)
         if args[:3] == ["plugin", "install", "egm@egm"]:
-            fake.installed[-1]["version"] = "0.1.0"
+            fake.installed[-1]["version"] = version
         return result
 
     monkeypatch.setattr(plugins.Path, "home", lambda: tmp_path)
@@ -110,7 +113,7 @@ def test_egm_only_never_reconciles_other_plugins_or_probes_lsp(
             "plugin",
             "marketplace",
             "add",
-            "google/elephant-goldfish-model#v0.1.0",
+            source,
             "--scope",
             "user",
         ],

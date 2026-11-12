@@ -3,7 +3,7 @@
     "openai-codex": "openai/codex-plugin-cc#v1.0.6",
     "claude-plugins-official": "anthropics/claude-plugins-official",
     "googlechrome": "GoogleChrome/modern-web-guidance#v1.0.0",
-    "egm": "google/elephant-goldfish-model#v0.1.0",
+    "egm": "google/elephant-goldfish-model#v0.1.1",
     "hironow-plugins": "./.claude-plugin/marketplace.json"
   },
   "plugins": [

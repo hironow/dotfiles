@@ -33,8 +33,12 @@ Antigravityは確かめる手段が無いので、deployのたびに検証済み
 各CLIを再起動してから使う。
 
 版を変えるときは`just agent-bump egm [tag]`を使う（ADR 0074）。
-新しいtagで必須ファイルが欠けていれば、何も書き換えずに止まる。
-その場合は`scripts/install_pi_extensions.py`の必須ファイルの一覧を先に直す。
+新しいtagで必須ファイルが欠けていれば（上流がファイルの形を変えた版）、何も書き換えずに止まる。
+その版は`just agent-bump`では上げられない。
+`scripts/install_pi_extensions.py`の必須ファイルの一覧を先にだけ直すと、今入っているbundleが事前の検査で落ちるためである。
+1つのPRで、必須ファイルの一覧と4か所のpin（`dump/harness/claude-plugins.json`、`dump/harness/pi-packages.json`、`EGM_SOURCE`、`EGM_COMMIT`）を一緒に変える。
+mergeのあと、mainのcheckoutから`just deploy`と同じ順にinstallerを回す（Pi、CodexとAntigravity、Claude Code）。
+戻すときは、そのPRを`git revert`してから、同じinstallerを回す。
 
 Piの補足は `docs/agents/egm.md` と `egm-reviewer` profileを既存installerが置く。
 Piの優先順位に従って選んだglobal context fileには、EGM用のマーカーで囲んだ参照だけを追加する。
@@ -56,7 +60,6 @@ symlinkのcontext fileも編集せず、所有者に解決を求める。
 Claudeでは `/egm:egm-brainstorm` のように呼ぶ。
 Codexでは導入済みskillを選び、Antigravityでは `/egm-brainstorm` のように呼ぶ。
 Piでは `/skill:egm-brainstorm` のように呼ぶ。
-上流のディレクトリ名にunderscoreがあっても、Piが発見するskill名はhyphenである。
 
 補足の正本は [`ROOT_AGENTS_docs_agents_egm.md`](../../ROOT_AGENTS_docs_agents_egm.md)。
 既存の質問UI、承認、指定された出力言語、ローカルの実行前ゲートを優先する。

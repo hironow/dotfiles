@@ -226,7 +226,7 @@ func Check(it Item, t Target, up Upstream) error {
 				}
 			}
 			if len(missing) > 0 {
-				return fmt.Errorf("egm %s changed its layout (missing %s); update scripts/install_pi_extensions.py by hand first",
+				return fmt.Errorf("egm %s changed its layout (missing %s); agent-bump cannot move it: change the required files in scripts/install_pi_extensions.py and the four EGM pins together in one PR, then run the deploy installers (docs/runbook/egm.md)",
 					t.Version, strings.Join(missing, ", "))
 			}
 		}

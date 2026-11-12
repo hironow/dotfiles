@@ -54,21 +54,23 @@ AGENT_MARKER = "<!-- dotfiles-managed: jev-codex-agent -->"
 EGM_AGENT_MARKER = "<!-- dotfiles-managed: egm-reviewer -->"
 EGM_PACKAGE = "git:github.com/google/elephant-goldfish-model"
 # `just agent-bump egm` rewrites both lines (and every other EGM pin) together.
-EGM_SOURCE = "git:github.com/google/elephant-goldfish-model@v0.1.0"
-EGM_COMMIT = "b3a35956759bf7f024af2ff061b2e0b44b438e4c"
+EGM_SOURCE = "git:github.com/google/elephant-goldfish-model@v0.1.1"
+EGM_COMMIT = "dea7761de06ce5b51c177ebb9bba0469f24af5a4"
 EGM_RELATIVE = Path("git/github.com/google/elephant-goldfish-model")
 EGM_GUIDE = ROOT / "ROOT_AGENTS_docs_agents_egm.md"
 EGM_GUIDE_MARKER = "<!-- dotfiles-managed: egm-guide -->\n"
 EGM_START = "<!-- dotfiles-managed: egm:start -->"
 EGM_END = "<!-- dotfiles-managed: egm:end -->"
+# Skill directories are skills/egm-<name> since v0.1.1 (v0.1.0: egm_<name>);
+# the names the agents call (egm-review, ...) did not change.
 EGM_SKILLS = (
     "bootstrap",
     "brainstorm",
     "draft",
-    "drift_report",
+    "drift-report",
     "resolve",
     "review",
-    "review_loop",
+    "review-loop",
 )
 EGM_PERSONAS = (
     "bootstrap_orchestrator",
@@ -76,6 +78,7 @@ EGM_PERSONAS = (
     "comprehension",
     "design_critic",
     "implementation_readiness",
+    "inventive_catalyst",
     "structural",
     "style",
     "synthesizer",
@@ -214,7 +217,7 @@ def egm_required_paths() -> list[str]:
         "resources/execution_instructions.md",
         ".claude-plugin/plugin.json",
         ".agents/plugins/marketplace.json",
-        *(f"skills/egm_{name}/SKILL.md" for name in EGM_SKILLS),
+        *(f"skills/egm-{name}/SKILL.md" for name in EGM_SKILLS),
         *(f"agents/{name}.md" for name in EGM_PERSONAS),
         *(f"resources/document_standards/{name}-standard.md" for name in EGM_STANDARDS),
     ]
