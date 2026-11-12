@@ -55,7 +55,10 @@ Claude requires version **2.1.271 or later** for `omitClaudeMd`. Stop Goldfish
 dispatch on older or unknown versions. Use the plugin's read-only adapters, not
 its unguarded shared personas as registered agent definitions. Codex explicitly
 uses `fork_context: false` or `fork_turns: "none"`, as its actual schema allows.
-Antigravity must expose native fresh-context delegation. If a host cannot
+Those options cover parent conversation turns only: treat the exclusion of
+host instruction files (`AGENTS.md`) as unverified until a probe shows it
+(EGM v0.1.1 `docs/codex.md`). Antigravity must expose native fresh-context
+delegation. If a host cannot
 establish the required isolation, stop and report the missing capability.
 
 ### Pi mapping
