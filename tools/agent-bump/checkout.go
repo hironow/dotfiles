@@ -42,21 +42,3 @@ func (c checkout) LinkedWorktree() (bool, error) {
 	}
 	return filepath.Clean(dirs[0]) != filepath.Clean(dirs[1]), nil
 }
-
-func (c checkout) Dirty(paths []string) ([]string, error) {
-	if len(paths) == 0 {
-		return nil, nil
-	}
-	args := append([]string{"-C", c.root, "status", "--porcelain=v1", "--"}, paths...)
-	out, err := exec.CommandContext(context.Background(), "git", args...).Output()
-	if err != nil {
-		return nil, err
-	}
-	var dirty []string
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-		if len(line) > 3 {
-			dirty = append(dirty, line[3:])
-		}
-	}
-	return dirty, nil
-}

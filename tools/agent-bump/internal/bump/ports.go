@@ -31,8 +31,6 @@ type Registry interface {
 type Repo interface {
 	Read(path string) (string, error)
 	Write(path, content string) error
-	// Dirty lists the paths with uncommitted changes.
-	Dirty(paths []string) ([]string, error)
 }
 
 // Machine installs and checks the declarations on this machine.
