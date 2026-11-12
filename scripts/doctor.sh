@@ -87,7 +87,30 @@ if [ "$(uname -s)" = Darwin ] && has brew; then
     log_warn 'brew-docker' 'cannot list Homebrew packages; Docker packages are unchecked'
   fi
 fi
-if has gcloud; then log_ok 'gcloud' "$(gcloud --version 2>/dev/null | head -n1 || true)"; else log_warn 'gcloud' 'missing'; fi
+# gcloud lives on Windows when the host is WSL (owner, 2026-11-13: one copy
+# per machine), so WSL reports the Windows Cloud SDK as a fact, not a WARN
+# (ADR 0066 D2). Only the installer's per-user and all-users places are
+# looked at, on the /mnt/<drive>/ mounts. Elsewhere a missing gcloud WARNs.
+if has gcloud; then
+  log_ok 'gcloud' "$(gcloud --version 2>/dev/null | head -n1 || true)"
+else
+  _gcloud_windows=''
+  if [ "$(uname -s)" = Linux ] && [[ $(uname -r) == *[Mm]icrosoft* ]]; then
+    for _gcloud_cmd in /mnt/[a-zA-Z]/Users/*/"AppData/Local/Google/Cloud SDK/google-cloud-sdk/bin/gcloud.cmd" \
+      /mnt/[a-zA-Z]/"Program Files"*/"Google/Cloud SDK/google-cloud-sdk/bin/gcloud.cmd"; do
+      if [ -f "$_gcloud_cmd" ]; then
+        _gcloud_windows="$_gcloud_cmd"
+        break
+      fi
+    done
+  fi
+  if [ -n "$_gcloud_windows" ]; then
+    log_info 'gcloud' "not in WSL; Windows has $_gcloud_windows (gcloud is used from Windows)"
+  else
+    log_warn 'gcloud' 'missing'
+  fi
+  unset _gcloud_windows _gcloud_cmd
+fi
 # pnpm comes per repo from corepack (ADR 0017), except on native Windows,
 # which uses no pnpm (ADR 0070) and gets no row. (An if on its own uname, not
 # a case: the first `case "$(uname -s)"` below is the Windows-only section.)

@@ -57,7 +57,7 @@
 2. **INFO。** 検査の範囲の注意書きと、機体についての事実は `INFO` の行で出さなければならない（MUST）。kernel の第三者の数値と、事故の記録にある助言の文もこれにあたる。`INFO` は表示し、`Doctor summary` の `info=` に数えるが、OK にも WARN にも数えず、終了コードを変えてはならない（MUST NOT）。未確認のものを OK にしてはならない（MUST NOT）。
 3. **全部拒否したクライアント。** 正常系が通り、事故のテストホストの証明書をすべて拒否したクライアントは `INFO` とし、「拒否の理由が CA の不信頼化だとは証明できない」と文に残さなければならない（MUST）。1 つでも受け入れたら ERR、不明が混じれば WARN とする（今と同じ）。
 4. **要約。** `just doctor` は `ca-doctor --summary` を使い、テストホストごとの行を省いてクライアントごとの 1 行にしなければならない（MUST）。ERR の行は受け入れたホストの名前を並べる。ホストごとの全行は `just ca-doctor` で出す。
-5. **OS に合わない行。** その OS に意味の無い検査は、行そのものを出してはならない（MUST NOT）。WSL の `/mnt` 漏れの検査は WSL でだけ出す。Ollama の方針の検査は、`host_policy()` が対象外とした機体では出力なしの exit 3 で終わり、doctor はそれを黙って通す。kernel の coverage の注意書きは、カーネルの版を調べた機体でだけ INFO で出す。Homebrew が無いことは macOS でだけ WARN とし、任意の Linux では INFO、使わない native Windows では行を出さない。Windows の OS の CA ストアは package でなく Windows Update が更新するので INFO で出す。
+5. **OS に合わない行。** その OS に意味の無い検査は、行そのものを出してはならない（MUST NOT）。WSL の `/mnt` 漏れの検査は WSL でだけ出す。Ollama の方針の検査は、`host_policy()` が対象外とした機体では出力なしの exit 3 で終わり、doctor はそれを黙って通す。kernel の coverage の注意書きは、カーネルの版を調べた機体でだけ INFO で出す。Homebrew が無いことは macOS でだけ WARN とし、任意の Linux では INFO、使わない native Windows では行を出さない。Windows の OS の CA ストアは package でなく Windows Update が更新するので INFO で出す。gcloud は WSL の機体では Windows に置く（所有者、2026-11-13）ので、WSL に無く Windows の Cloud SDK（公式インストーラーの置き場所）があれば INFO で出し、どちらにも無ければ WARN とする。
 6. **ERR と終了コードは変えない。** ERR の判定、`err` の数え方、ERR があれば exit 1 という契約は変えない（ADR-0065 Decision 4 の「kernel は WARN 止まり」もそのまま）。
 
 ## Options Considered
