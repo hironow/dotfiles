@@ -2,7 +2,7 @@
 
 - **id**: ADR-0074
 - **title**: 宣言済みの agent の plugin の版は、待機を待たずに 1 つのコマンドで上げ下げする
-- **status**: Accepted
+- **status**: Accepted（D4 の 1 つ目と D5 の一部は [ADR-0075](0075-agent-bump-runs-on-uncommitted-declarations.md) が置き換えた）
 - **date**: 2026-11-12
 - **decided-date**: 2026-11-12
 - **decision-maker**: Hiroto N.
@@ -10,7 +10,7 @@
 - **author**: Claude Code（owner session、Windows 機）
 - **author-contact**: @hironow
 - **supersedes**: [ADR-0056](0056-common-claude-plugin-set.md) の一部（Decision 4 の 7 日の待機を、宣言済みの marketplace の tag を動かすときだけ外す。新しく足す marketplace には残る）、[ADR-0073](0073-mwg-v1-before-the-plugin-cooldown.md) の一部（D2 の「7 日未満の tag には名指しの DR が要る」を、宣言済みの marketplace について外す）
-- **superseded-by**: none
+- **superseded-by**: [ADR-0075](0075-agent-bump-runs-on-uncommitted-declarations.md) の一部（D4 の 1 つ目と、bump の途中で編集されたファイルについての D5）
 - **related**: [0043](0043-self-authored-skills-through-the-skills-cli.md)、[0048](0048-required-claude-plugins.md)、[0057](0057-shared-plugins-need-no-per-home-settings.md)、[0058](0058-pi-web-search-ollama.md)
 - **consultation-trace**: 2026-11-12 の本セッションでの所有者の依頼と選択（下の「相談の記録」）。同じ内容を公開 PR に残す
 

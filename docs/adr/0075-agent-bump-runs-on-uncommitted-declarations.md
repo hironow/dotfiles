@@ -2,9 +2,9 @@
 
 - **id**: ADR-0075
 - **title**: `just agent-bump` は、未 commit の宣言があっても止まらない
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-12
-- **decided-date**: —
+- **decided-date**: 2026-11-12
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session、Windows 機）
@@ -75,10 +75,13 @@
 - 2026-11-12、本セッションで所有者（@hironow、0074 の決定者）が、実地で止まった件の説明を聞き、「この検査を外す」を選んだ。説明は「失敗して戻すときは実行前の中身を書き戻すので、手の変更は消えない。D4 を部分置換する ADR を書く」。
 - 計画は独立サブエージェントが 2 回レビューした（Codex はクレジット切れ）。宣言の全体を見る Pi の基準の検査、途中の編集を上書きしない戻し方と D5 との関係、書いたファイルだけを戻すこと、fake と本物の契約テスト、Tidy First の commit の分け方を、その指摘から採った。
 
-## 決定（記入待ち）
+## 決定（2026-11-12）
 
-- [ ] A を Accepted（D1〜D3 を MUST 文で確定し、索引、変更ログ、queue を更新する）
+- [x] A を Accepted（D1〜D3 を MUST 文で確定し、索引、変更ログ、queue を更新する）
 - [ ] B を Accepted（今のまま）
 - [ ] Rejected / Deferred（変更を戻し、queue に理由を残す）
 
-決定者: Hiroto N.（@hironow）　決定日: —
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-12（所有者の選択により代理記入）
+
+- B 案は所有者が検査を外すことを選んだため却下し、C 案は D2 で書きかけが止まり通知が余るため採らない。
+- 採択時に索引、変更ログ、queue の決定済みログを同時に更新し、ADR-0074 は Status 行と superseded-by だけを変えた。
