@@ -882,5 +882,5 @@ def test_a_dirty_old_egm_bundle_stops_the_migration(
 def test_egm_required_paths_are_what_verify_checks() -> None:
     paths = installer.egm_required_paths()
     assert ".claude-plugin/plugin.json" in paths
-    assert "skills/egm_review/SKILL.md" in paths
+    assert "skills/egm-review/SKILL.md" in paths
     assert len(paths) == len(set(paths))

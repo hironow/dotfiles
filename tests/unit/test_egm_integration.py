@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import install_pi_extensions as installer
 
 ROOT = Path(__file__).resolve().parents[2]
+# v0.1.1 names skill directories egm-<name> (v0.1.0 used egm_<name>).
+DESIGN_DOC = "skills/egm-draft/references/design_doc.md"
 
 
 def _egm_tag() -> str:
@@ -116,22 +118,9 @@ def _git(root: Path, *args: str) -> str:
 def bundle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "bundle"
     root.mkdir()
-    paths = [
-        "LICENSE",
-        "docs/harnesses.md",
-        "docs/claude.md",
-        "docs/codex.md",
-        "resources/execution_instructions.md",
-        "skills/egm_draft/references/design_doc.md",
-        ".claude-plugin/plugin.json",
-        ".agents/plugins/marketplace.json",
-        *(f"skills/egm_{name}/SKILL.md" for name in installer.EGM_SKILLS),
-        *(f"agents/{name}.md" for name in installer.EGM_PERSONAS),
-        *(
-            f"resources/document_standards/{name}-standard.md"
-            for name in installer.EGM_STANDARDS
-        ),
-    ]
+    # Every file verify_egm requires, plus one file it does not require but a
+    # skill reads at run time (the index-flag test hides it).
+    paths = [*installer.egm_required_paths(), DESIGN_DOC]
     for path in paths:
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -159,7 +148,7 @@ def bundle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_index_flags_cannot_hide_changed_or_missing_runtime_files(
     bundle: Path, flag: str
 ) -> None:
-    relative = "skills/egm_draft/references/design_doc.md"
+    relative = DESIGN_DOC
     target = bundle / relative
     _git(bundle, "update-index", flag, relative)
     if flag == "--assume-unchanged":
@@ -182,7 +171,7 @@ def test_wrong_or_extra_bundle_content_fails_without_cleanup(
     bundle: Path, monkeypatch: pytest.MonkeyPatch, damage: str
 ) -> None:
     head = _git(bundle, "rev-parse", "HEAD")
-    target = bundle / "skills/egm_draft/SKILL.md"
+    target = bundle / "skills/egm-draft/SKILL.md"
     if damage == "wrong-ref":
         monkeypatch.setattr(installer, "EGM_COMMIT", "0" * 40)
     elif damage == "modified":
@@ -215,3 +204,20 @@ def test_agent_bump_runs_the_go_tool_against_this_checkout() -> None:
     recipe = justfile.split("agent-bump *args:\n", 1)[1].split("\n\n", 1)[0]
     assert "go -C tools/agent-bump run . --root" in recipe
     assert "{{ args }}" in recipe
+
+
+def test_the_required_layout_is_the_one_v0_1_1_ships() -> None:
+    # Recorded from the v0.1.1 tree (commit dea7761) on 2026-11-12: the skill
+    # directories use hyphens, and the TRIZ reviewer persona is new.
+    paths = installer.egm_required_paths()
+    skills = sorted(p for p in paths if p.startswith("skills/"))
+    assert skills == [
+        "skills/egm-bootstrap/SKILL.md",
+        "skills/egm-brainstorm/SKILL.md",
+        "skills/egm-draft/SKILL.md",
+        "skills/egm-drift-report/SKILL.md",
+        "skills/egm-resolve/SKILL.md",
+        "skills/egm-review-loop/SKILL.md",
+        "skills/egm-review/SKILL.md",
+    ]
+    assert "agents/inventive_catalyst.md" in paths
