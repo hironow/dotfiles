@@ -96,16 +96,63 @@ def test_a_machine_without_codex_or_agy_is_skipped(tmp_path: Path) -> None:
     assert plugins.missing(tmp_path, which=_which(set()), run=run) == []
 
 
-def test_agy_installs_the_verified_pi_bundle(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+class FakeAntigravity:
+    """Antigravity as far as this step sees it: `plugin list --json` prints an
+    array of plugins (shape recorded from antigravity 1.5.5 on 2026-11-12),
+    and `plugin install <bundle>` replaces the egm entry."""
+
+    def __init__(self, egm: dict | None) -> None:
+        self.egm, self.ran = egm, []
+
+    def run(self, args: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        if args[1:] == ["plugin", "list", "--json"]:
+            listed = [] if self.egm is None else [{"name": "egm", **self.egm}]
+            return subprocess.CompletedProcess(args, 0, stdout=json.dumps(listed))
+        self.ran.append(args)
+        if args[1:3] == ["plugin", "install"]:
+            self.egm = {"version": VERSION, "enabled": True}
+        return subprocess.CompletedProcess(args, 0, stdout="")
+
+
+@pytest.mark.parametrize(
+    ("egm", "installs"),
+    [
+        (None, True),  # first install
+        ({"version": "0.1.0", "enabled": True}, True),  # a moved tag
+        ({"version": VERSION, "enabled": True}, False),  # already there
+    ],
+)
+def test_antigravity_gets_the_verified_pi_bundle_only_when_it_lacks_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, egm: dict | None, installs: bool
 ) -> None:
     verified: list[Path] = []
     monkeypatch.setattr(plugins, "verify_egm", verified.append)
-    cli = FakeCli(COMMIT, _installed())
-    plugins.install(tmp_path, which=_which({"agy"}), run=cli.run)
+    cli = FakeAntigravity(egm)
+    # mise names the executable `antigravity` (config/mise/config.toml).
+    plugins.install(tmp_path, which=_which({"antigravity"}), run=cli.run)
     bundle = tmp_path / installer.EGM_RELATIVE
-    assert verified == [bundle]
-    assert cli.ran == [["/bin/agy", "plugin", "install", str(bundle)]]
+    want = [["/bin/antigravity", "plugin", "install", str(bundle)]] if installs else []
+    assert cli.ran == want
+    assert verified == ([bundle] if installs else [])
+    assert plugins.missing(tmp_path, which=_which({"antigravity"}), run=cli.run) == []
+
+
+def test_the_agy_name_still_works(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(plugins, "verify_egm", lambda _bundle: None)
+    cli = FakeAntigravity(None)
+    plugins.install(tmp_path, which=_which({"agy"}), run=cli.run)
+    assert cli.ran == [
+        ["/bin/agy", "plugin", "install", str(tmp_path / installer.EGM_RELATIVE)]
+    ]
+
+
+def test_check_reports_what_antigravity_lacks(tmp_path: Path) -> None:
+    cli = FakeAntigravity({"version": "0.1.0", "enabled": True})
+    needed = plugins.missing(tmp_path, which=_which({"antigravity"}), run=cli.run)
+    assert needed == [f"antigravity plugin install {tmp_path / installer.EGM_RELATIVE}"]
+    assert cli.ran == []  # --check changes nothing
 
 
 def test_deploy_runs_this_step_after_pi() -> None:
@@ -116,3 +163,54 @@ def test_deploy_runs_this_step_after_pi() -> None:
     assert steps.index("install_pi_extensions.py") < steps.index(
         "codex_agy_plugins.py codex-agy-plugins-install"
     )
+
+
+def test_a_current_but_disabled_egm_is_enabled_not_reinstalled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        plugins, "verify_egm", lambda _bundle: pytest.fail("no install")
+    )
+    cli = FakeAntigravity({"version": VERSION, "enabled": False})
+    plugins.install(tmp_path, which=_which({"antigravity"}), run=cli.run)
+    assert cli.ran == [["/bin/antigravity", "plugin", "enable", "egm"]]
+
+
+def test_an_unreadable_antigravity_list_reinstalls_and_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        if args[1:] == ["plugin", "list", "--json"]:
+            return subprocess.CompletedProcess(args, 1, stdout="")
+        ran.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="")
+
+    ran: list[list[str]] = []
+    monkeypatch.setattr(plugins, "verify_egm", lambda _bundle: None)
+    plugins.install(tmp_path, which=_which({"antigravity"}), run=broken)
+    assert ran == [
+        [
+            "/bin/antigravity",
+            "plugin",
+            "install",
+            str(tmp_path / installer.EGM_RELATIVE),
+        ]
+    ]
+    needed = plugins.missing(tmp_path, which=_which({"antigravity"}), run=broken)
+    assert needed == [
+        "antigravity plugin list --json (could not read the installed plugins)"
+    ]
+
+
+def test_the_names_searched_follow_the_mise_executable_name() -> None:
+    # #604 looked only for `agy` while mise names the executable `antigravity`,
+    # so deploy skipped Antigravity on every machine without saying it was wrong.
+    import tomllib
+
+    config = tomllib.loads(
+        (Path(plugins.__file__).parents[1] / "config/mise/config.toml").read_text(
+            encoding="utf-8"
+        )
+    )
+    entry = config["tools"]["github:google-antigravity/antigravity-cli"]
+    assert plugins.ANTIGRAVITY_NAMES[0] == entry["rename_exe"]

@@ -25,7 +25,7 @@
 | hooks | Claude 系（`~/.claude*`）と Codex（`~/.codex`） |
 | settings | Claude 系だけ |
 
-`~/.gemini/GEMINI.md` は、Gemini CLI と Antigravity CLI（`agy`）が共有する global な指示である（google-gemini/gemini-cli#16058）。
+`~/.gemini/GEMINI.md` は、Gemini CLI と Antigravity CLI（mise は実行ファイルを `antigravity` と名付ける。古い名前は `agy`）が共有する global な指示である（google-gemini/gemini-cli#16058）。
 既存の gemini への配布が、そのまま Antigravity を兼ねる。
 
 base の中の `docs/agents/` への参照は、配布のときにその home の絶対パスへ書き換える。
@@ -233,7 +233,7 @@ LSP の plugin は起動コマンドの名前しか持たないので、コマ�
 宣言の `disabled` は毎回、`retired` は移行 ID ごとに home で 1 回だけ無効にし、済んだ移行と schema の読み取り結果を home の `claude-plugins.sync-state.json` に記録する（install のときだけ書く）。
 sync はこの 2 つのキーを書き換えない。
 
-**Antigravity CLI（`agy`）の skill、settings、MCP**：Antigravity は、skill を `agy plugin`（`~/.gemini/antigravity-cli/plugins/<name>/skills/`）で、settings と MCP を `agy import`（`~/.gemini/antigravity-cli/settings.json` と `mcp/`）で自分で管理する（ADR 0026）。
+**Antigravity CLI（`agy`）の skill、settings、MCP**：Antigravity は、skill を `antigravity plugin`（plugin の置き場所は、1.5.5 では `~/.gemini/config/plugins/<name>`）で、settings と MCP を `agy import`（`~/.gemini/antigravity-cli/settings.json` と `mcp/`）で自分で管理する（ADR 0026）。
 これらを直接配ると、その自己管理を迂回して上書きしてしまうので、dotfiles は触らない。
 共有するのは指示の層（`~/.gemini/GEMINI.md`）だけである。
 `~/.gemini/skills/` は `skills-place` の配置先だが、Antigravity は `plugins/` から読むので使われない（害もない）。

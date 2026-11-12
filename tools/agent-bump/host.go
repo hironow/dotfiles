@@ -228,8 +228,8 @@ func (h host) piDeclarationInstalled() error {
 // codexAgyStep is the deploy step that gives Codex and Antigravity EGM.
 const codexAgyStep = "scripts/codex_agy_plugins.py"
 
-// egmChecks are the EGM checks of every agent that can report: Claude,
-// the Pi bundle, and Codex (skipped where Codex is not installed).
+// egmChecks are the EGM checks of every agent: Claude, the Pi bundle, and
+// Codex and Antigravity (each skipped where its CLI is not installed).
 func (h host) egmChecks(ctx context.Context) error {
 	return errors.Join(
 		h.just(ctx, "claude-plugins-install", "--check"),

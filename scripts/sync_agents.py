@@ -245,7 +245,8 @@ AGENTS: list[AgentTarget] = [
         key="gemini",
         main_file="GEMINI.md",
         # ~/.gemini/GEMINI.md is shared: read by Gemini CLI (sunset 2026-06-18)
-        # AND Antigravity CLI (agy), so this base sync already serves both.
+        # AND Antigravity CLI (`antigravity`; older builds: `agy`), so this base
+        # sync already serves both.
         # Antigravity skills/settings/mcp live under ~/.gemini/antigravity-cli/
         # and are agy-managed (plugin / import), NOT synced here -- same rationale
         # as deferring skill installs to the bunx skills CLI. See ADR 0026.
