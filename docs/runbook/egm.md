@@ -12,7 +12,7 @@ skillだけをコピーすると、実行時に読むpersonaやstandardが欠け
 | --- | --- | --- |
 | Claude Code | ネイティブのplugin CLI。既存の各Claude homeを対象とする | `dump/harness/claude-plugins.json` |
 | Codex | ネイティブのmarketplaceとplugin CLI。Piのpinと同じ`--ref <tag>`で固定する | `scripts/codex_agy_plugins.py`（`just deploy`） |
-| Antigravity | `agy plugin install`。検証済みのPiのbundleを渡す | `scripts/codex_agy_plugins.py`（`just deploy`） |
+| Antigravity | `antigravity plugin install`（古い名前は`agy`）。検証済みのPiのbundleを渡す | `scripts/codex_agy_plugins.py`（`just deploy`） |
 | Pi | ネイティブのgit package。7つのskillをbundle内から発見する | `dump/harness/pi-packages.json` |
 
 Piのbundleは `<PI_CODING_AGENT_DIR>/git/github.com/google/elephant-goldfish-model` にある。
@@ -28,7 +28,7 @@ EGM専用の導入コマンドは無い。
 `just deploy`が、Pi（`install_pi_extensions.py`）、CodexとAntigravity（`codex_agy_plugins.py`）、Claude Code（`claude_plugins.py`）の順に、ほかのpluginと同じ手順で入れる。
 CodexとAntigravityはPiのpinに従い、CLIが入っていない機体では飛ばす。
 CodexはPiのpinと同じcommitとversionなら何もせず、tagが動いたときはmarketplaceを外してから入れ直す（Codexはmarketplaceを最初のrefのまま持つため）。
-Antigravityは確かめる手段が無いので、deployのたびに検証済みのbundleを入れ直す。
+Antigravityは`antigravity plugin list --json`でegmの版を見て、違うときだけ検証済みのbundleを入れる（入っているものは置き換わる）。版が同じで無効なら有効にする。listを読めなければ入れ直す。
 1つの手順の失敗はWARNになり、残りの手順は続く。完了していない環境を成功扱いしない。
 各CLIを再起動してから使う。
 
