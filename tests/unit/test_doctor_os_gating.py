@@ -18,15 +18,26 @@ ROOT = Path(__file__).resolve().parents[2]
 WSL = ("Linux", "6.6.87.2-microsoft-standard-WSL2")
 
 
-def _harness(tmp_path: Path, block_re: str, fakes: str) -> str:
+def _harness(
+    tmp_path: Path,
+    block_re: str,
+    fakes: str,
+    rewrite: tuple[str, str] | None = None,
+) -> str:
+    """``rewrite`` replaces a literal in the block (e.g. a host path with one
+    under ``tmp_path``) and fails if the block no longer contains it."""
     text = (ROOT / "scripts" / "doctor.sh").read_text(encoding="utf-8")
     helpers = re.search(r"(?ms)^log_ok\(\).*?^has\(\).*?$", text)
-    block = re.search(block_re, text)
+    found = re.search(block_re, text)
     # doctor runs under its own `set` line; a block that only works without it
     # would end the real doctor at that line.
     options = re.search(r"^set -[a-z]+(?: -o [a-z]+)*$", text, re.MULTILINE)
-    assert helpers and block, f"doctor.sh no longer has the block {block_re!r}"
+    assert helpers and found, f"doctor.sh no longer has the block {block_re!r}"
     assert options, "doctor.sh lost its set line"
+    block = found[0]
+    if rewrite:
+        assert rewrite[0] in block, f"the block no longer has {rewrite[0]!r}"
+        block = block.replace(*rewrite)
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     harness = scripts / "doctor.sh"
@@ -37,7 +48,7 @@ def _harness(tmp_path: Path, block_re: str, fakes: str) -> str:
         + "\nok=0; warn=0; err=0; info=0\n"
         + fakes
         + "\n"
-        + block[0]
+        + block
         + '\necho "counts $ok $warn $err $info"\n',
         encoding="utf-8",
         newline="\n",
@@ -284,3 +295,73 @@ def test_doctor_and_the_brewfile_test_forbid_the_same_packages() -> None:
     )
     block = policy.split("assert not packages & {", 1)[1].split("}", 1)[0]
     assert set(found[1].split()) == set(re.findall(r'"([^"]+)"', block))
+
+
+# gcloud lives on Windows when the host is WSL (owner, 2026-11-13): WSL shows
+# the Windows copy as a fact (INFO), and every other host still WARNs when
+# gcloud is missing. The Windows drives are mounted under /mnt; the test
+# plants them under tmp_path instead.
+GCLOUD = r"(?ms)^# gcloud lives on Windows.*?^fi$"
+TO_TMP = ("/mnt/", "./mnt/")
+WITHOUT_GCLOUD = (
+    'has(){ [ "$1" = gcloud ] && return 1; command -v "$1" >/dev/null 2>&1; }\n'
+)
+CLOUD_SDK = "Google/Cloud SDK/google-cloud-sdk/bin/gcloud.cmd"
+PER_USER = "mnt/c/Users/someone/AppData/Local/" + CLOUD_SDK
+ALL_USERS = "mnt/c/Program Files (x86)/" + CLOUD_SDK
+
+
+def _plant(tmp_path: Path, *paths: str) -> None:
+    for path in paths:
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text("", encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("planted", "line"),
+    [
+        ((PER_USER,), "INFO gcloud - not in WSL; Windows has ./" + PER_USER),
+        ((ALL_USERS,), "INFO gcloud - not in WSL; Windows has ./" + ALL_USERS),
+        # The per-user copy is the one named when both exist.
+        ((ALL_USERS, PER_USER), "INFO gcloud - not in WSL; Windows has ./" + PER_USER),
+    ],
+)
+def test_wsl_shows_the_windows_gcloud_as_a_fact(
+    tmp_path: Path, planted: tuple[str, ...], line: str
+) -> None:
+    _plant(tmp_path, *planted)
+    out = _harness(tmp_path, GCLOUD, _uname(*WSL) + WITHOUT_GCLOUD, TO_TMP)
+    assert line + " (gcloud is used from Windows)" in out
+    assert "counts 0 0 0 1" in out
+
+
+def test_wsl_without_any_gcloud_still_warns(tmp_path: Path) -> None:
+    (tmp_path / "mnt" / "c" / "Users" / "someone").mkdir(parents=True)
+    out = _harness(tmp_path, GCLOUD, _uname(*WSL) + WITHOUT_GCLOUD, TO_TMP)
+    assert "WARN gcloud - missing" in out
+    assert "counts 0 1 0 0" in out
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        ("Linux", "6.8.0-45-generic"),
+        ("Darwin", "25.2.0"),
+        ("MINGW64_NT-10.0-26100", "3.6.4"),
+    ],
+)
+def test_only_wsl_looks_for_a_windows_gcloud(
+    tmp_path: Path, host: tuple[str, str]
+) -> None:
+    _plant(tmp_path, PER_USER)
+    out = _harness(tmp_path, GCLOUD, _uname(*host) + WITHOUT_GCLOUD, TO_TMP)
+    assert "WARN gcloud - missing" in out
+    assert "counts 0 1 0 0" in out
+
+
+def test_a_gcloud_on_path_is_ok_everywhere(tmp_path: Path) -> None:
+    _plant(tmp_path, PER_USER)
+    fake = "has(){ return 0; }\ngcloud(){ echo 'Google Cloud SDK 999.0.0'; }\n"
+    out = _harness(tmp_path, GCLOUD, _uname(*WSL) + fake, TO_TMP)
+    assert "OK   gcloud - Google Cloud SDK 999.0.0" in out
+    assert "counts 1 0 0 0" in out
