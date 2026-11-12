@@ -199,3 +199,67 @@ def test_brew_is_required_only_on_macos(
     else:
         assert line in out
     assert "counts " + counts in out
+
+
+# The macOS check that Homebrew holds no Docker package: `just dump` records
+# whatever Homebrew has, and the Brewfile policy test (ADR 0067) then fails
+# on main. doctor names the packages and the command that removes them.
+BREW_DOCKER = r"(?ms)^# Homebrew must hold no Docker package.*?^fi$"
+
+
+def _brew_lists(formulae: str, casks: str) -> str:
+    return (
+        'brew(){ case "$*" in '
+        f"'list --formula -1') printf '{formulae}' ;; "
+        f"'list --cask -1') printf '{casks}' ;; "
+        "esac; }\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("host", "fake", "line", "counts"),
+    [
+        (
+            ("Darwin", "25.2.0"),
+            _brew_lists("jq\ndocker\ndocker-compose\n", "orbstack\nghostty\n"),
+            "WARN brew-docker - Homebrew has docker docker-compose orbstack",
+            "0 1 0 0",
+        ),
+        (
+            ("Darwin", "25.2.0"),
+            _brew_lists("jq\npodman\n", "ghostty\n"),
+            "OK   brew-docker - no Docker packages in Homebrew",
+            "1 0 0 0",
+        ),
+        (("Darwin", "25.2.0"), WITHOUT_BREW, None, "0 0 0 0"),
+        (("Linux", "6.8.0-45-generic"), _brew_lists("docker\n", ""), None, "0 0 0 0"),
+        (
+            ("MINGW64_NT-10.0-26100", "3.6.4"),
+            _brew_lists("docker\n", ""),
+            None,
+            "0 0 0 0",
+        ),
+    ],
+)
+def test_macos_doctor_names_docker_packages_homebrew_still_holds(
+    tmp_path: Path, host: tuple[str, str], fake: str, line: str | None, counts: str
+) -> None:
+    out = _harness(tmp_path, BREW_DOCKER, _uname(*host) + fake)
+    if line is None:
+        assert "brew-docker" not in out
+    else:
+        assert line in out
+    if line and line.startswith("WARN"):
+        assert "brew uninstall docker docker-compose orbstack" in out
+    assert "counts " + counts in out
+
+
+def test_doctor_and_the_brewfile_test_forbid_the_same_packages() -> None:
+    doctor = (ROOT / "scripts" / "doctor.sh").read_text(encoding="utf-8")
+    found = re.search(r"^_brew_docker='([^']+)'$", doctor, re.MULTILINE)
+    assert found, "doctor.sh lost its Docker package list"
+    policy = (ROOT / "tests/unit/test_cli_release_age_policy.py").read_text(
+        encoding="utf-8"
+    )
+    block = policy.split("assert not packages & {", 1)[1].split("}", 1)[0]
+    assert set(found[1].split()) == set(re.findall(r'"([^"]+)"', block))
