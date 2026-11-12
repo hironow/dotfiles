@@ -22,12 +22,18 @@ def _harness(tmp_path: Path, block_re: str, fakes: str) -> str:
     text = (ROOT / "scripts" / "doctor.sh").read_text(encoding="utf-8")
     helpers = re.search(r"(?ms)^log_ok\(\).*?^has\(\).*?$", text)
     block = re.search(block_re, text)
+    # doctor runs under its own `set` line; a block that only works without it
+    # would end the real doctor at that line.
+    options = re.search(r"^set -[a-z]+(?: -o [a-z]+)*$", text, re.MULTILINE)
     assert helpers and block, f"doctor.sh no longer has the block {block_re!r}"
+    assert options, "doctor.sh lost its set line"
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     harness = scripts / "doctor.sh"
     harness.write_text(
-        helpers[0]
+        options[0]
+        + "\n"
+        + helpers[0]
         + "\nok=0; warn=0; err=0; info=0\n"
         + fakes
         + "\n"
@@ -231,6 +237,19 @@ def _brew_lists(formulae: str, casks: str) -> str:
             "OK   brew-docker - no Docker packages in Homebrew",
             "1 0 0 0",
         ),
+        (
+            ("Darwin", "25.2.0"),
+            _brew_lists("jq\n", "docker-desktop\n"),
+            "WARN brew-docker - Homebrew has docker-desktop",
+            "0 1 0 0",
+        ),
+        (
+            # An unchecked list must not read as clean (ADR 0066 Decision 2).
+            ("Darwin", "25.2.0"),
+            "brew(){ return 1; }\n",
+            "WARN brew-docker - cannot list Homebrew packages",
+            "0 1 0 0",
+        ),
         (("Darwin", "25.2.0"), WITHOUT_BREW, None, "0 0 0 0"),
         (("Linux", "6.8.0-45-generic"), _brew_lists("docker\n", ""), None, "0 0 0 0"),
         (
@@ -249,8 +268,10 @@ def test_macos_doctor_names_docker_packages_homebrew_still_holds(
         assert "brew-docker" not in out
     else:
         assert line in out
-    if line and line.startswith("WARN"):
-        assert "brew uninstall docker docker-compose orbstack" in out
+    if line and line.startswith("WARN brew-docker - Homebrew has "):
+        # The advice removes exactly the packages the line names.
+        names = line.removeprefix("WARN brew-docker - Homebrew has ")
+        assert f"brew uninstall {names}\n" in out
     assert "counts " + counts in out
 
 
