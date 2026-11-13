@@ -3,13 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="dotfiles — a reproducible developer environment (Zsh, mise, just, uv) that also runs a solo operator's agent fleet: one hub-and-spoke instruction set for five agent CLIs, 141 declared skills, and a complete local-dev stack with emulators, OpenTelemetry, and https://*.localhost routing." />
+  <meta name="description" content="dotfiles — a reproducible developer environment (Zsh, mise, just, uv) that also runs a solo operator's agent fleet: one hub-and-spoke instruction set for five agent CLIs, one declared skill set for every agent home, and a complete local-dev stack with emulators, OpenTelemetry, and https://*.localhost routing." />
   <meta name="author" content="hironow" />
-  <meta name="date" content="2026-09-07" />
+  <meta name="date" content="2026-11-13" />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#0a0d12" />
   <title>~/dotfiles by hironow</title>
+  <!-- ui-sdk (vercel-labs/ui), npm's bytes vendored and hash-checked: docs/agents/web-ui.md -->
+  <link rel="stylesheet" href="site/vendor/ui-sdk/0.1.0-beta.1/web.css" />
+  <script type="module" src="site/vendor/ui-sdk/0.1.0-beta.1/web.js"></script>
+  <script type="module" src="site/copy.js"></script>
   <style>
+    @layer ui-sdk;
+
     /* ── ANSI terminal palette (the page is a recorded session) ─────── */
     :root {
       --bg:     #0a0d12;
@@ -24,6 +30,21 @@
       --amber:  #e6b25f;   /* numbers, flags */
       --sel:    rgba(94, 240, 143, 0.22);
       --mono: "JetBrains Mono", "Cascadia Code", "SF Mono", ui-monospace, "Fira Code", Menlo, Consolas, monospace;
+      color-scheme: dark;
+      /* ui-sdk's web.css follows the same palette */
+      --ui-background: var(--frame);
+      --ui-foreground: var(--fg);
+      --ui-muted: var(--line2);
+      --ui-muted-foreground: var(--dim);
+      --ui-border: var(--line);
+      --ui-input: var(--dim);   /* control edges: 3:1 on the frame */
+      --ui-primary: var(--green);
+      --ui-primary-foreground: #06140c;
+      --ui-ring: var(--green);
+      --ui-ring-border: var(--green);
+      --ui-radius: 4px;
+      --ui-font-sans: var(--mono);
+      --ui-font-mono: var(--mono);
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -120,14 +141,21 @@
     td.ok { color: var(--green); }
     .grit td.jp { color: var(--dim); }
 
+    /* ui-button: the copy buttons. Hidden until ui-sdk defines it, so a page
+       whose script did not load shows no dead buttons, only the commands. */
+    ui-button:not(:defined) { display: none; }
     .copy {
-      font-family: var(--mono); font-size: 12px; color: var(--dim);
-      background: transparent; border: 1px solid var(--line); border-radius: 4px;
+      display: inline-block; height: auto; line-height: inherit;
+      font-family: var(--mono); font-size: 12px; font-weight: 400; color: var(--dim);
+      background: transparent; border: 1px solid var(--dim); border-radius: 4px;
       padding: 1px 8px; margin-left: 8px; cursor: pointer; vertical-align: 1px;
       transition: color .15s, border-color .15s;
     }
     .copy:hover, .copy:focus-visible { color: var(--green); border-color: var(--green); }
-    .copy.ok { color: #06140c; background: var(--green); border-color: var(--green); }
+    .copy[data-copied] { color: #06140c; background: var(--green); border-color: var(--green); }
+    .copy[data-pending] { cursor: progress; }
+    .copy:not([data-copied]) [data-show="copied"], .copy[data-copied] [data-show="idle"] { display: none; }
+    .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
     .blink {
       display: inline-block; width: 0.6ch; height: 1.05em; transform: translateY(0.16em);
@@ -196,19 +224,19 @@
         <p class="lede">
           A reproducible developer environment built on <span class="em">Zsh, mise, just, and uv</span>
           that also runs a solo operator's agent fleet: one hub-and-spoke instruction set for
-          <span class="em">five agent CLIs</span>, <span class="em">141 declared skills</span>, and a complete
+          <span class="em">five agent CLIs</span>, <span class="em">one declared skill set</span>, and a complete
           <span class="em">local-dev stack</span> with datastore and SaaS emulators, OpenTelemetry, and
           stable <span class="k">https://*.localhost</span> routing. Agents build, gates verify, a human approves.
         </p>
-        <p class="comment"># runs on macOS, Linux, WSL, and native Windows. MIT. revised 2026-09-07 by hironow</p>
+        <p class="comment"># runs on macOS, Linux, WSL, and native Windows. MIT. revised 2026-11-13 by hironow</p>
       </div>
 
       <!-- install -->
-      <p class="ln ps" id="install"><span class="u">hironow</span><span class="at">@</span><span class="h">mac</span> <span class="p">~/dotfiles</span> <span class="g">❯</span> <span class="cmd" id="cmd-bash">bash -c "<span class="str">$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)</span>"</span><button class="copy" type="button" data-copy="cmd-bash" aria-label="Copy the install command for macOS, Linux, and WSL">copy</button></p>
+      <p class="ln ps" id="install"><span class="u">hironow</span><span class="at">@</span><span class="h">mac</span> <span class="p">~/dotfiles</span> <span class="g">❯</span> <span class="cmd" id="cmd-bash">bash -c "<span class="str">$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)</span>"</span><ui-button data-copy="cmd-bash" pending-announcement="Copying"><button class="copy" type="button"><span data-show="idle">copy</span><span data-show="copied">copied</span><span class="vh"> the install command for macOS, Linux, and WSL</span></button></ui-button></p>
       <div class="out">
         <p class="comment"># macOS, Linux, WSL: Homebrew or apt, then mise pins every tool. Already cloned? <span class="em">just install</span>, or <span class="em">just deploy</span> to relink this host.</p>
       </div>
-      <p class="ln ps"><span class="pw">PS C:\&gt;</span> <span class="cmd" id="cmd-pwsh">irm <span class="str">https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1</span> | iex</span><button class="copy" type="button" data-copy="cmd-pwsh" aria-label="Copy the install command for Windows">copy</button></p>
+      <p class="ln ps"><span class="pw">PS C:\&gt;</span> <span class="cmd" id="cmd-pwsh">irm <span class="str">https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1</span> | iex</span><ui-button data-copy="cmd-pwsh" pending-announcement="Copying"><button class="copy" type="button"><span data-show="idle">copy</span><span data-show="copied">copied</span><span class="vh"> the install command for Windows</span></button></ui-button></p>
       <div class="out">
         <p class="comment"># native Windows: scoop, git, just, mise, then the same deploy. Idempotent; safe to run again.</p>
       </div>
@@ -221,8 +249,8 @@
           <tbody>
             <tr><td class="k">zsh</td><td class="mut hide-narrow">shell</td><td>Sheldon plugins, Starship prompt</td></tr>
             <tr><td class="k">mise</td><td class="mut hide-narrow">runtime</td><td>one <span class="k">config.toml</span> pins the same versions on every machine</td></tr>
-            <tr><td class="k">just</td><td class="mut hide-narrow">runner</td><td>the only entrypoint: <span class="num">141</span> recipes in <span class="num">20</span> groups</td></tr>
-            <tr><td class="k">uv</td><td class="mut hide-narrow">python</td><td>packages and venvs, resolved through a malware-scanning mirror</td></tr>
+            <tr><td class="k">just</td><td class="mut hide-narrow">runner</td><td>the only entrypoint: every task is a recipe in one root justfile</td></tr>
+            <tr><td class="k">uv</td><td class="mut hide-narrow">python</td><td>packages and venvs; a new release waits seven days before it resolves</td></tr>
             <tr><td class="k">bun</td><td class="mut hide-narrow">node</td><td>the only Node package manager; npm, yarn, and pnpm are blocked by a hook</td></tr>
             <tr><td class="k">prek</td><td class="mut hide-narrow">git hook</td><td>format, lint, and semgrep gates before every commit</td></tr>
             <tr><td class="k">ruff, semgrep</td><td class="mut hide-narrow">lint</td><td>guardrail rules with co-located fixtures, self-tested in CI</td></tr>
@@ -253,11 +281,12 @@
       <div class="out">
         <table>
           <tbody>
-            <tr><td class="k">instructions</td><td>one base, one Claude overlay, <span class="num">14</span> on-demand spokes, <span class="num">4</span> hooks, distributed to <span class="num">7</span> agent homes</td></tr>
-            <tr><td class="k">skills</td><td><span class="num">141</span> declared in one lock file; <span class="num">44</span> self-authored in <a href="https://github.com/hironow/skills" rel="noopener noreferrer">hironow/skills</a>, each with its provenance and upstream credit; homes link into one store</td></tr>
-            <tr><td class="k">plugins</td><td>autodesign, autoresearch, autoreview, grilling</td></tr>
-            <tr><td class="k">doctrine</td><td>TDD (red, green, refactor), Tidy First, Conventional Commits, semgrep guardrails, <span class="num">43</span> ADRs</td></tr>
+            <tr><td class="k">instructions</td><td>one base, one Claude overlay, on-demand spokes, and hooks, distributed to every agent home</td></tr>
+            <tr><td class="k">skills</td><td>declared in one lock file; the self-authored ones live in <a href="https://github.com/hironow/skills" rel="noopener noreferrer">hironow/skills</a>, each with its provenance and upstream credit; homes link into one store</td></tr>
+            <tr><td class="k">plugins</td><td>this repo's own autodesign, autoresearch, autoreview, and grilling, plus a shared set every Claude home gets</td></tr>
+            <tr><td class="k">doctrine</td><td>TDD (red, green, refactor), Tidy First, Conventional Commits, semgrep guardrails, decision records for every rule</td></tr>
             <tr><td class="k">gates</td><td>Claude Code hooks, prek, and CI hold the rules whatever an agent decides</td></tr>
+            <tr><td class="k">web ui</td><td>the platform first, then <a href="https://github.com/vercel-labs/ui" rel="noopener noreferrer">ui-sdk</a> web components; this page loads them from a hash-checked copy</td></tr>
           </tbody>
         </table>
         <p class="ln ps" style="margin-top:18px"><span class="u">hironow</span><span class="at">@</span><span class="h">mac</span> <span class="p">~/dotfiles</span> <span class="g">❯</span> <span class="cmd">grep GRIT ROOT_AGENTS.md</span></p>
@@ -292,7 +321,7 @@
       <p class="ln ps"><span class="u">hironow</span><span class="at">@</span><span class="h">mac</span> <span class="p">~/dotfiles</span> <span class="g">❯</span> <span class="cmd">just ci <span class="fl">&amp;&amp;</span> just test</span></p>
       <div class="out">
         <p class="ln"><span class="ok">✅</span> ci (fast gate) passed</p>
-        <p class="ln"><span class="ok">✅</span> <span class="num">141</span> passed in the dev container sandbox</p>
+        <p class="ln"><span class="ok">✅</span> passed in the dev container sandbox</p>
       </div>
 
       <!-- live prompt -->
@@ -305,7 +334,7 @@
       <span class="seg">[dotfiles]</span>
       <span class="seg">0:zsh*</span>
       <span class="seg">~/dotfiles</span>
-      <span class="right">hironow@mac  2026-09-07</span>
+      <span class="right">hironow@mac  2026-11-13</span>
     </div>
   </main>
 
@@ -314,27 +343,5 @@
     <a href="https://github.com/hironow/dotfiles" rel="noopener noreferrer">github.com/hironow/dotfiles</a>
   </p>
 
-  <script>
-    document.querySelectorAll('.copy').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        // textContent strips the styling spans, leaving the raw command
-        var text = document.getElementById(btn.dataset.copy).textContent.trim();
-        var done = function () {
-          btn.textContent = 'copied'; btn.classList.add('ok');
-          setTimeout(function () { btn.textContent = 'copy'; btn.classList.remove('ok'); }, 1800);
-        };
-        var fallback = function () {
-          var ta = document.createElement('textarea');
-          ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;';
-          document.body.appendChild(ta); ta.select();
-          try { document.execCommand('copy'); } catch (e) {}
-          document.body.removeChild(ta); done();
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done).catch(fallback);
-        } else { fallback(); }
-      });
-    });
-  </script>
 </body>
 </html>

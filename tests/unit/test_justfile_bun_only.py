@@ -84,3 +84,41 @@ def test_guard_sees_an_invocation_and_ignores_a_mention() -> None:
         assert _IN_COMMAND_POSITION.search(missed), missed
     assert not _IN_COMMAND_POSITION.search("check-npm-g:")
     assert not _RUN_HINT.search("echo 'on npm ETARGET run just harden-env'")
+
+
+# The agent instructions are read and followed by every agent, so a run hint
+# there ("npx foo", "npm install foo") is an order to break the bun-only rule.
+# A line may still name a blocked command when it says it is blocked.
+INSTRUCTION_SOURCES = sorted(
+    [*JUSTFILE.parent.glob("ROOT_AGENTS*.md"), JUSTFILE.parent / "ROOT_CLAUDE.md"]
+)
+_BLOCKED_MENTIONS = frozenset({"`rtk pnpm install` is blocked like `pnpm install`."})
+
+
+def _instruction_run_hints() -> list[str]:
+    found = []
+    for source in INSTRUCTION_SOURCES:
+        for number, raw in enumerate(
+            source.read_text(encoding="utf-8").splitlines(), 1
+        ):
+            line = raw.strip()
+            if _RUN_HINT.search(line) and line not in _BLOCKED_MENTIONS:
+                found.append(f"{source.name}:{number}: {line[:110]}")
+    return found
+
+
+def test_agent_instructions_tell_agents_to_run_bun_only() -> None:
+    assert INSTRUCTION_SOURCES, "expected the ROOT_* instruction sources"
+    assert _instruction_run_hints() == []
+
+
+def test_instruction_guard_sees_a_run_hint_and_allows_only_the_blocked_mention() -> (
+    None
+):
+    for hint in (
+        "Run `npx skills add x`.",
+        "npm install @ui-sdk/web",
+        "npx tsc --noEmit",
+    ):
+        assert _RUN_HINT.search(hint) and hint not in _BLOCKED_MENTIONS, hint
+    assert "`rtk pnpm install` is blocked like `pnpm install`." in _BLOCKED_MENTIONS

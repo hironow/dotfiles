@@ -257,6 +257,22 @@ def build_restore_command(record: SkillRecord) -> list[str]:
     ]
 
 
+def build_restore_fallback(record: SkillRecord) -> list[str] | None:
+    """The retry for a skill the CLI cannot find from the repo root.
+
+    Given only `owner/repo`, the CLI lists one skill folder and stops; a repo
+    that keeps other skills there (vercel-labs/ui: .agents/skills) hides the one
+    it publishes elsewhere (packages/core/skills/ui-sdk). `owner/repo/<folder>`
+    points the CLI at the folder that holds the skill, and the machine lock
+    still records the plain source. None for a skill at the repo root."""
+    folder = Path(record.skill_path).parent.parent.as_posix()
+    if folder == ".":
+        return None
+    command = build_restore_command(record)
+    command[command.index(record.source)] = f"{record.source}/{folder}"
+    return command
+
+
 def build_update_command() -> list[str]:
     """Refresh every skill in the store from its source with the pinned CLI."""
     return ["bunx", f"skills@{SKILLS_CLI_VERSION}", "update", "-g", "-y"]
@@ -678,6 +694,10 @@ def _cmd_restore(dotfiles_dir: Path, *, force: bool, copy: bool) -> int:
         cmd = build_restore_command(rec)
         print(f"⬇️  {rec.installed_dir} <- {rec.source}")
         result = subprocess.run(cmd, check=False, env=cli_env())
+        fallback = build_restore_fallback(rec)
+        if result.returncode != 0 and fallback is not None:
+            print(f"↪️  {rec.installed_dir}: retrying from {fallback[3]}")
+            result = subprocess.run(fallback, check=False, env=cli_env())
         if result.returncode != 0:
             failures += 1
             print(f"❌ restore failed: {rec.installed_dir}", file=sys.stderr)

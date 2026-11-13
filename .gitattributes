@@ -31,3 +31,7 @@ tools/kernel-doctor/incidents/*.json text eol=lf
 # the pirtk corpus records rtk.ts's SHA-256; a CRLF checkout calls them stale.
 tools/agent-hooks/**/*.jsonl text eol=lf
 config/pi/extensions/rtk.ts text eol=lf
+# The site's copy of ui-sdk is npm's bytes, checked by SHA-256
+# (tests/unit/test_site_vendor.py): no line-ending conversion on any OS.
+# Not `binary`: the forbidden-token scan refuses blobs git calls binary.
+site/vendor/** -text linguist-vendored
