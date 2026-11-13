@@ -34,7 +34,7 @@
       "lock_key": "agent-browser",
       "source": "vercel-labs/agent-browser",
       "skill_path": "skills/agent-browser/SKILL.md",
-      "skill_folder_hash": "82def67855a0d2aad7794207951820fa5422fdb0",
+      "skill_folder_hash": "cd4185523189fb04c1d24bea0100b6aa2ce7421e",
       "resolved_by": "installed"
     },
     {
@@ -79,7 +79,7 @@
       "lock_key": "better-accessibility",
       "source": "jakubkrehel/skills",
       "skill_path": "skills/better-accessibility/SKILL.md",
-      "skill_folder_hash": "fab04847b6c09bf54e981098cfb03faca0e1a752",
+      "skill_folder_hash": "512ac26c549e5ddf93acf89a79dc3d103bb3e3dc",
       "resolved_by": "installed"
     },
     {
@@ -88,7 +88,7 @@
       "lock_key": "better-colors",
       "source": "jakubkrehel/skills",
       "skill_path": "skills/better-colors/SKILL.md",
-      "skill_folder_hash": "5851236fb32cabcb93e2a6aa424305fe38a1894b",
+      "skill_folder_hash": "f283bca341357defa9560bf32dc5e14ec09a8be5",
       "resolved_by": "installed"
     },
     {
@@ -106,7 +106,7 @@
       "lock_key": "better-layout",
       "source": "jakubkrehel/skills",
       "skill_path": "skills/better-layout/SKILL.md",
-      "skill_folder_hash": "4c3a6e2e53026e171e79b17b0d86c8d4d8639f49",
+      "skill_folder_hash": "7d8d640717114397de0054eac877793fa2d79742",
       "resolved_by": "installed"
     },
     {
@@ -115,7 +115,7 @@
       "lock_key": "better-typography",
       "source": "jakubkrehel/skills",
       "skill_path": "skills/better-typography/SKILL.md",
-      "skill_folder_hash": "aead1cd1526b13690c48513115030728cfbd4c2f",
+      "skill_folder_hash": "1299803082a5821139b0fd9355e9cdd61da5760a",
       "resolved_by": "installed"
     },
     {
@@ -124,7 +124,7 @@
       "lock_key": "better-ui",
       "source": "jakubkrehel/skills",
       "skill_path": "skills/better-ui/SKILL.md",
-      "skill_folder_hash": "6067ef3ae11c7f467cf32016741dd2591a6325f5",
+      "skill_folder_hash": "41277f622e45af4c7487e9f4a4e25dc8f361962b",
       "resolved_by": "installed"
     },
     {
@@ -151,7 +151,7 @@
       "lock_key": "bigquery-observability",
       "source": "google/skills",
       "skill_path": "skills/cloud/bigquery-observability/SKILL.md",
-      "skill_folder_hash": "a3a5b818b610802f954386a01f564ab9570df610",
+      "skill_folder_hash": "89e781ba5e5e1602d4acd1d3a0b910b918fb262a",
       "resolved_by": "installed"
     },
     {
@@ -268,7 +268,7 @@
       "lock_key": "cloud-sql-basics",
       "source": "google/skills",
       "skill_path": "skills/cloud/cloud-sql-basics/SKILL.md",
-      "skill_folder_hash": "3a8cefbb70599a75a720bc581fd3bcaf9f7bdbc4",
+      "skill_folder_hash": "3572f334a85e573fbdac2c2b7c614139a9a8276f",
       "resolved_by": "installed"
     },
     {
@@ -286,7 +286,7 @@
       "lock_key": "codebase-design",
       "source": "mattpocock/skills",
       "skill_path": "skills/engineering/codebase-design/SKILL.md",
-      "skill_folder_hash": "07ba1cd60efc12d0d3a083005c1d9651cf15e39a",
+      "skill_folder_hash": "4cbe1c131e1ea54109cb1e4e5f3c505810db6606",
       "resolved_by": "installed"
     },
     {
@@ -322,7 +322,7 @@
       "lock_key": "deploy-to-vercel",
       "source": "vercel-labs/agent-skills",
       "skill_path": "skills/deploy-to-vercel/SKILL.md",
-      "skill_folder_hash": "1378aa506439f26c809dbcfc61515cbd70f93d69",
+      "skill_folder_hash": "772d5a08126c09869c642416c824cfdeeb4104b3",
       "resolved_by": "installed"
     },
     {
@@ -367,7 +367,7 @@
       "lock_key": "docx",
       "source": "anthropics/skills",
       "skill_path": "skills/docx/SKILL.md",
-      "skill_folder_hash": "6e6f5b95c1de6e803cc07b214f5059b074d64e0c",
+      "skill_folder_hash": "306eb29b24d14e7636470305a88826c01a4f872c",
       "resolved_by": "installed"
     },
     {
@@ -403,7 +403,7 @@
       "lock_key": "explain-interface",
       "source": "jakubkrehel/skills",
       "skill_path": "skills/explain-interface/SKILL.md",
-      "skill_folder_hash": "23885e8a5cf9e1a3b9b4959afaecc88f3e2b385e",
+      "skill_folder_hash": "b1cefdaf2e8e4f91ffedeb31816fedd2a56d0961",
       "resolved_by": "installed"
     },
     {
@@ -430,7 +430,7 @@
       "lock_key": "firebase-basics",
       "source": "google/skills",
       "skill_path": "skills/cloud/firebase-basics/SKILL.md",
-      "skill_folder_hash": "3b8e91dd3f24b511c92a23246bad949bbfe6fcae",
+      "skill_folder_hash": "ebe6a03411d41d7aff8251a1e1c56885fd8e7f4c",
       "resolved_by": "installed"
     },
     {
@@ -466,7 +466,7 @@
       "lock_key": "gemini-api",
       "source": "google/skills",
       "skill_path": "skills/cloud/gemini-api/SKILL.md",
-      "skill_folder_hash": "8225b0d46103cfdc3e1b80862bba5314338b9631",
+      "skill_folder_hash": "e4c2aa07a2ba1940f9d19a7ec1071bae6103f364",
       "resolved_by": "installed"
     },
     {
@@ -475,7 +475,7 @@
       "lock_key": "gemini-api-dev",
       "source": "google-gemini/gemini-skills",
       "skill_path": "skills/gemini-api-dev/SKILL.md",
-      "skill_folder_hash": "904a7b9bd28c6a3454752f5558910aca3b2d8e0a",
+      "skill_folder_hash": "3407e88d0d21f4e39a163baead430436e4bb1ad3",
       "resolved_by": "installed"
     },
     {
@@ -484,7 +484,7 @@
       "lock_key": "gemini-live-api-dev",
       "source": "google-gemini/gemini-skills",
       "skill_path": "skills/gemini-live-api-dev/SKILL.md",
-      "skill_folder_hash": "59144a52413713971bd07327b27c38da2e8b082a",
+      "skill_folder_hash": "6cce6c510866c2c58ba4db64b2074e702112f2a9",
       "resolved_by": "installed"
     },
     {
@@ -493,7 +493,7 @@
       "lock_key": "gemini-omni-flash-api",
       "source": "google-gemini/gemini-skills",
       "skill_path": "skills/gemini-omni-flash-api/SKILL.md",
-      "skill_folder_hash": "890c2c5be7db675a0ff80f875199cebf1fe5bdbd",
+      "skill_folder_hash": "4e4d1e47f40425aae3f1ab1611975f05ba91c424",
       "resolved_by": "installed"
     },
     {
@@ -583,7 +583,7 @@
       "lock_key": "gke-workload-security",
       "source": "google/skills",
       "skill_path": "skills/cloud/gke-workload-security/SKILL.md",
-      "skill_folder_hash": "83d814206e3999d7e83128a935de7fa674c126e6",
+      "skill_folder_hash": "d184dda13d0d1b1e1739cd5003b8c079a9b7b999",
       "resolved_by": "installed"
     },
     {
@@ -592,7 +592,7 @@
       "lock_key": "google-agents-cli-adk-code",
       "source": "google/agents-cli",
       "skill_path": "skills/google-agents-cli-adk-code/SKILL.md",
-      "skill_folder_hash": "876b67f46f0846d8b5c03c1d4571732b76372a84",
+      "skill_folder_hash": "9f7c7f11bd62bc5ab96b396dd3ec6930159d0bfe",
       "resolved_by": "installed"
     },
     {
@@ -601,7 +601,7 @@
       "lock_key": "google-agents-cli-deploy",
       "source": "google/agents-cli",
       "skill_path": "skills/google-agents-cli-deploy/SKILL.md",
-      "skill_folder_hash": "3fd1102372ce46d7ccbcb1119e9ce054b3d83855",
+      "skill_folder_hash": "ad2fc5ba384695cdce53dbc0766faf2fbb7cbb84",
       "resolved_by": "installed"
     },
     {
@@ -610,7 +610,7 @@
       "lock_key": "google-agents-cli-eval",
       "source": "google/agents-cli",
       "skill_path": "skills/google-agents-cli-eval/SKILL.md",
-      "skill_folder_hash": "0f73966161bfc70808b9c91c99a25d06dc997842",
+      "skill_folder_hash": "37ed40f6df890d3763b83eb9f071ebd37a6770ca",
       "resolved_by": "installed"
     },
     {
@@ -619,7 +619,7 @@
       "lock_key": "google-agents-cli-observability",
       "source": "google/agents-cli",
       "skill_path": "skills/google-agents-cli-observability/SKILL.md",
-      "skill_folder_hash": "1575823978d86983b4c2e740190a6193d7209837",
+      "skill_folder_hash": "6155a896654745bc71421c3a3a8f1ae310f1d28d",
       "resolved_by": "installed"
     },
     {
@@ -628,7 +628,7 @@
       "lock_key": "google-agents-cli-publish",
       "source": "google/agents-cli",
       "skill_path": "skills/google-agents-cli-publish/SKILL.md",
-      "skill_folder_hash": "1f0af76b2448744a7c84976e3465cb7313c3de91",
+      "skill_folder_hash": "7bfdb8790d19f72fecc3418d5bac4a3e5958c6a4",
       "resolved_by": "installed"
     },
     {
@@ -637,7 +637,7 @@
       "lock_key": "google-agents-cli-scaffold",
       "source": "google/agents-cli",
       "skill_path": "skills/google-agents-cli-scaffold/SKILL.md",
-      "skill_folder_hash": "ccb2058b7481295121378af31e40e454fd430244",
+      "skill_folder_hash": "be4ef94adc1ecdbff18fdba438756e33ac680cfb",
       "resolved_by": "installed"
     },
     {
@@ -646,7 +646,7 @@
       "lock_key": "google-agents-cli-workflow",
       "source": "google/agents-cli",
       "skill_path": "skills/google-agents-cli-workflow/SKILL.md",
-      "skill_folder_hash": "ee9e6b5b54c7d8f080e5bd903cf9d4d2097f727e",
+      "skill_folder_hash": "ad3c8a475dcd6ad756d9c585e48eef9f521b19b4",
       "resolved_by": "installed"
     },
     {
@@ -655,7 +655,7 @@
       "lock_key": "google-cloud-networking-observability",
       "source": "google/skills",
       "skill_path": "skills/cloud/google-cloud-networking-observability/SKILL.md",
-      "skill_folder_hash": "6b2c3f39ce8fe0686d1423081e8fe2050e536b14",
+      "skill_folder_hash": "4669d68cd15f63cc4056eb549b4457421e3c9ca6",
       "resolved_by": "installed"
     },
     {
@@ -727,7 +727,7 @@
       "lock_key": "google-cloud-waf-security",
       "source": "google/skills",
       "skill_path": "skills/cloud/google-cloud-waf-security/SKILL.md",
-      "skill_folder_hash": "e154a69c8ccd69564af1245d88bc77ac12311b22",
+      "skill_folder_hash": "8b3bcdd1c459a07f23d6cb2b24bbe63470ec5a16",
       "resolved_by": "installed"
     },
     {
@@ -754,7 +754,7 @@
       "lock_key": "grilling",
       "source": "mattpocock/skills",
       "skill_path": "skills/productivity/grilling/SKILL.md",
-      "skill_folder_hash": "28aceb4c9567b985cb47f7db88cf23c9f33af8b8",
+      "skill_folder_hash": "f551b6e0d219fdda0b6abf277f8f915b3127d1e9",
       "resolved_by": "installed"
     },
     {
@@ -889,7 +889,7 @@
       "lock_key": "improve-codebase-architecture",
       "source": "mattpocock/skills",
       "skill_path": "skills/engineering/improve-codebase-architecture/SKILL.md",
-      "skill_folder_hash": "39bd9cc130f7dfcc4e3ea0b3613f6ebed0d0ad2b",
+      "skill_folder_hash": "587147dd230da299cc5e84971cb0a33f6676f8a6",
       "resolved_by": "installed"
     },
     {
@@ -961,7 +961,7 @@
       "lock_key": "mcp-builder",
       "source": "anthropics/skills",
       "skill_path": "skills/mcp-builder/SKILL.md",
-      "skill_folder_hash": "b866bcfb57b780c10b587c7b543e871a91661ce0",
+      "skill_folder_hash": "ea6e4d7bc108b44b3009129688049e23d801f0f3",
       "resolved_by": "installed"
     },
     {
@@ -997,7 +997,7 @@
       "lock_key": "pdf",
       "source": "anthropics/skills",
       "skill_path": "skills/pdf/SKILL.md",
-      "skill_folder_hash": "6369f4649de69bd6857c9bc3b058a77206009238",
+      "skill_folder_hash": "4b1916c1b9362c466332fbd36108fab908801268",
       "resolved_by": "installed"
     },
     {
@@ -1015,7 +1015,7 @@
       "lock_key": "pptx",
       "source": "anthropics/skills",
       "skill_path": "skills/pptx/SKILL.md",
-      "skill_folder_hash": "64529c8b3f35fe632b7256bd2f6d46e4b40160ce",
+      "skill_folder_hash": "a24a49b228a479cc45a875ff000648e6bcdd5bb0",
       "resolved_by": "installed"
     },
     {
@@ -1034,6 +1034,15 @@
       "source": "mattpocock/skills",
       "skill_path": "skills/engineering/prototype/SKILL.md",
       "skill_folder_hash": "e41d92e171f074a2b6887d8f6faca4a15c83d1ca",
+      "resolved_by": "installed"
+    },
+    {
+      "installed_dir": "provable-glossary",
+      "upstream_name": "provable-glossary",
+      "lock_key": "provable-glossary",
+      "source": "hironow/skills",
+      "skill_path": "provable-glossary/SKILL.md",
+      "skill_folder_hash": "d6afebbda27a7688f616a5df61ba971b38553996",
       "resolved_by": "installed"
     },
     {
@@ -1069,7 +1078,7 @@
       "lock_key": "research",
       "source": "mattpocock/skills",
       "skill_path": "skills/engineering/research/SKILL.md",
-      "skill_folder_hash": "0a6796c5667e95ed2301ba7381c123b4acb2ae1a",
+      "skill_folder_hash": "2f8f36af48796faed5c687c75bb650071631a984",
       "resolved_by": "installed"
     },
     {
@@ -1186,7 +1195,7 @@
       "lock_key": "state-machine",
       "source": "jakubkrehel/skills",
       "skill_path": "skills/state-machine/SKILL.md",
-      "skill_folder_hash": "a42be90374a5744b823a84336aa9a550b79f1e96",
+      "skill_folder_hash": "1c8188521cc48138f426e84f2598ecdfae2aead5",
       "resolved_by": "installed"
     },
     {
@@ -1357,7 +1366,7 @@
       "lock_key": "vercel-react-view-transitions",
       "source": "vercel-labs/agent-skills",
       "skill_path": "skills/react-view-transitions/SKILL.md",
-      "skill_folder_hash": "13063dbbfc1b085cbc11b9bd5d4324aa2f41bb3a",
+      "skill_folder_hash": "b490379f71eee822cf207605ce4fceaff6e10330",
       "resolved_by": "installed"
     },
     {
@@ -1375,7 +1384,7 @@
       "lock_key": "vite",
       "source": "antfu/skills",
       "skill_path": "skills/vite/SKILL.md",
-      "skill_folder_hash": "9007774626884249324c5acce3537355a51e937d",
+      "skill_folder_hash": "f2d5f1becc102792babc2d4cc986ab2194c1d654",
       "resolved_by": "installed"
     },
     {
@@ -1411,7 +1420,7 @@
       "lock_key": "wayfinder",
       "source": "mattpocock/skills",
       "skill_path": "skills/engineering/wayfinder/SKILL.md",
-      "skill_folder_hash": "32b0ce970b1394ede47116e1d3e07f9ccc87591f",
+      "skill_folder_hash": "25da74eadc3e388b2f2a2cc716f3d44b2fb9dfe0",
       "resolved_by": "installed"
     },
     {
@@ -1420,7 +1429,7 @@
       "lock_key": "weave-instrument",
       "source": "wandb/skills",
       "skill_path": "skills/weave-instrument/SKILL.md",
-      "skill_folder_hash": "eda77d8dae1b2b3d8642f6f8cd7e9342b1d7d447",
+      "skill_folder_hash": "c6d664e6fca222315cff221f6959e30c83695cc2",
       "resolved_by": "installed"
     },
     {
@@ -1519,7 +1528,7 @@
       "lock_key": "xlsx",
       "source": "anthropics/skills",
       "skill_path": "skills/xlsx/SKILL.md",
-      "skill_folder_hash": "fe6471cc9b5b97aae0b576ccb92ffd9b0207589d",
+      "skill_folder_hash": "6d3b017b2ec669669409de726a04ab37637d11fe",
       "resolved_by": "installed"
     },
     {
