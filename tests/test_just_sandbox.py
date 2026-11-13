@@ -1029,8 +1029,6 @@ GIT_STUB_SIMPLE = textwrap.dedent(
     if [ "$1" = "clone" ]; then
       repo="$2"; dest="$3";
       case "$repo" in
-        *tarjoilija/zgen*)
-          mkdir -p "$dest"; exit 0 ;;
         *hironow/dotfiles*)
           mkdir -p "$(dirname "$dest")"; cp -a /root/dotfiles "$dest"; exit 0 ;;
       esac
@@ -1048,8 +1046,6 @@ GIT_STUB_RERUN = textwrap.dedent(
     if [ "$1" = "clone" ]; then
       repo="$2"; dest="$3";
       case "$repo" in
-        *tarjoilija/zgen*)
-          mkdir -p "$dest"; exit 0 ;;
         *hironow/dotfiles*)
           mkdir -p "$(dirname "$dest")"; cp -a /root/dotfiles "$dest"; exit 0 ;;
       esac
@@ -1070,7 +1066,7 @@ SCRIPT_INSTALL_SUCCESS = textwrap.dedent(
     for c in brew gcloud pnpm mise gh tldr code; do
       printf '#!/bin/sh\nexit 0\n' > "$STUBS/$c" && chmod +x "$STUBS/$c";
     done;
-    # git: pass-through except clone of zgen/dotfiles and ignore; use skip flags for heavy steps
+    # git: pass-through except clone of dotfiles and ignore; use skip flags for heavy steps
     printf %s {_sh_single_quote(GIT_STUB_SIMPLE)} > "$STUBS/git"; chmod +x "$STUBS/git";
     export PATH="$STUBS:$PATH";
     export DOTPATH=/root/sandbox/dotfiles-fresh;

@@ -204,13 +204,9 @@ DOTPATH=${DOTPATH:-$HOME/dotfiles}
 DOTFILES_REPO=${DOTFILES_REPO:-https://github.com/hironow/dotfiles.git}
 
 if [ ! -d "$DOTPATH" ]; then
-  git clone https://github.com/tarjoilija/zgen.git "${HOME}/.zgen"
   git clone "$DOTFILES_REPO" "$DOTPATH"
 else
   echo "$DOTPATH already downloaded. Updating..."
-  if [ -d "${HOME}/.zgen" ]; then
-    (cd "${HOME}/.zgen" && git pull)
-  fi
   cd "$DOTPATH"
   git stash
   git checkout main
