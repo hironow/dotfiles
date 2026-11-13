@@ -1289,6 +1289,15 @@
       "resolved_by": "installed"
     },
     {
+      "installed_dir": "ui-sdk",
+      "upstream_name": "ui-sdk",
+      "lock_key": "ui-sdk",
+      "source": "vercel-labs/ui",
+      "skill_path": "packages/core/skills/ui-sdk/SKILL.md",
+      "skill_folder_hash": "63bf0a21953be8a2a6f73f2cce4e0867ed9516c2",
+      "resolved_by": "installed"
+    },
+    {
       "installed_dir": "update-submodule-changelog",
       "upstream_name": "update-submodule-changelog",
       "lock_key": "update-submodule-changelog",
