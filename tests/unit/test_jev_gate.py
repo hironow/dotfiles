@@ -31,8 +31,8 @@ def test_pi_extension_is_excluded_from_inapplicable_vp_and_built_with_bun() -> N
     assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in lint
     assert "just pi-jev-test" in lint
     assert "bun build config/pi/extensions/jev-sonnet-fallback.ts" in JUSTFILE
-    assert "bun test tests/unit/jev_sonnet_fallback.test.ts" in JUSTFILE
-    assert WORKFLOW.count("bun test tests/unit/jev_sonnet_fallback.test.ts") == 2
+    assert "bun test ./tests/unit/jev_sonnet_fallback.test.ts" in JUSTFILE
+    assert WORKFLOW.count("bun test ./tests/unit/jev_sonnet_fallback.test.ts") == 2
 
 
 @pytest.mark.parametrize(
