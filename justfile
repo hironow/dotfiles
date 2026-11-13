@@ -46,9 +46,10 @@ SEMGREP := "uvx --python 3.14 semgrep"
 # keeps every invocation on the right runner.
 UV_RUN_SCRIPT := "mise exec -- uv run"
 # The JS/TS files vp formats, lints, and checks (`fmt`, `lint`, `check`): one
-# list, so the three gates agree on which files are ours.
+# list, so the three gates agree on which files are ours. site/vendor holds
+# third-party bytes that tests/unit/test_site_vendor.py checks instead.
 # tests/unit/test_justfile_js_files.py keeps it the only copy.
-JS_FILES := "'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts'"
+JS_FILES := "'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' ':!site/vendor/**'"
 # The gcloud components installed here, one id per line, as `dump` records them
 # and `add-gcloud` compares against. A component with an update waiting is
 # installed too ("Update Available"). Exact matches: `state.name:` matches
@@ -1949,6 +1950,61 @@ check-version-nvcc expected:
 check-version-torch expected:
     # Usage: just check-version-torch <EXPECTED_TORCH_VERSION>
     version=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || true); if [ -z "${version}" ]; then echo "ERROR: PyTorch is not installed"; exit 1; elif [ "${version}" != "{{ expected }}" ]; then echo "ERROR: Expected PyTorch version {{ expected }}, but found ${version}"; exit 1; fi
+
+# ------------------------------
+# Pages site (index.html + site/, ADR-0076)
+# ------------------------------
+
+# Site: copy the browser build of @ui-sdk/web into site/vendor/ui-sdk/<version>/.
+# bun installs it in a temp folder and checks the registry's integrity; min_age
+# is the seven-day wait (docs/agents/web-ui.md). Writes a SHA-256 for every file
+# and PROVENANCE.json, which tests/unit/test_site_vendor.py checks.
+[group('Site')]
+[unix]
+site-vendor-ui-sdk version min_age="7d":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version={{ quote(version) }}
+    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "not an exact version: $version" >&2; exit 2; }
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    printf '{"private":true}\n' > "$tmp/package.json"
+    (cd "$tmp" && bun add --no-env-file --exact --ignore-scripts --minimum-release-age {{ quote(min_age) }} "@ui-sdk/web@$version")
+    pkg="$tmp/node_modules/@ui-sdk/web"
+    [ "$(jq -r .version "$pkg/package.json")" = "$version" ] || { echo "bun installed another version" >&2; exit 1; }
+    integrity="$(cd "$tmp" && bun info --no-env-file "@ui-sdk/web@$version" --json | jq -r .dist.integrity)"
+    published="$(cd "$tmp" && bun info --no-env-file @ui-sdk/web time --json | jq -r --arg v "$version" '.[$v]')"
+    dest="site/vendor/ui-sdk/$version"
+    rm -rf site/vendor/ui-sdk
+    mkdir -p "$dest"
+    cp -R "$pkg/browser/." "$dest/"
+    cp "$pkg/LICENSE" "$dest/LICENSE"
+    jq -n --arg v "$version" --arg i "$integrity" --arg p "$published" --arg a {{ quote(min_age) }} \
+      '{package: "@ui-sdk/web", version: $v, integrity: $i, published: $p, min_release_age: $a}' > "$dest/PROVENANCE.json"
+    (cd "$dest" && find . -type f ! -name SHA256SUMS | LC_ALL=C sort | xargs shasum -a 256 > SHA256SUMS)
+    echo "vendored @ui-sdk/web@$version into $dest"
+
+# Site: compare the vendored copy with the registry. Installs the recorded
+# version again in a temp folder (no wait: it is already adopted) and diffs it.
+[group('Site')]
+[unix]
+site-vendor-ui-sdk-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    folders=(site/vendor/ui-sdk/*/)
+    [ "${#folders[@]}" -eq 1 ] || { echo "expected one vendored version" >&2; exit 1; }
+    dest="${folders[0]%/}"
+    version="$(jq -r .version "$dest/PROVENANCE.json")"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    printf '{"private":true}\n' > "$tmp/package.json"
+    (cd "$tmp" && bun add --no-env-file --exact --ignore-scripts --minimum-release-age 0 "@ui-sdk/web@$version" >/dev/null)
+    pkg="$tmp/node_modules/@ui-sdk/web"
+    diff -r --exclude=LICENSE --exclude=PROVENANCE.json --exclude=SHA256SUMS "$pkg/browser" "$dest"
+    cmp "$pkg/LICENSE" "$dest/LICENSE"
+    registry="$(cd "$tmp" && bun info --no-env-file "@ui-sdk/web@$version" --json | jq -r .dist.integrity)"
+    [ "$registry" = "$(jq -r .integrity "$dest/PROVENANCE.json")" ] || { echo "integrity differs from the registry" >&2; exit 1; }
+    echo "OK site/vendor/ui-sdk/$version equals @ui-sdk/web@$version on the registry ($registry)"
 
 # ------------------------------
 # TLS checks
