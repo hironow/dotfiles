@@ -76,7 +76,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Check Pi provider failover
-        run: bun test tests/unit/jev_sonnet_fallback.test.ts
+        run: bun test ./tests/unit/jev_sonnet_fallback.test.ts
 
       # Keep --max in sync with the `instruction-budget` recipe in the
       # justfile (the recipe is not callable here because the justfile
@@ -161,7 +161,7 @@ jobs:
           Remove-Item Env:HOME -ErrorAction SilentlyContinue
           just --summary
           uvx pytest -q tests/unit/test_jev_launch.py tests/unit/test_jev_core.py tests/unit/test_jev_claude_hook.py tests/unit/test_jev_claude_verify.py tests/unit/test_jev_pi_verify.py tests/unit/test_jev_codex_exec.py tests/unit/test_install_pi_extensions.py tests/unit/test_justfile_home.py tests/unit/test_jev_powershell.py tests/unit/test_agent_hooks_build_recipe.py tests/unit/test_iac_provider_cache.py
-          bun test tests/unit/jev_sonnet_fallback.test.ts
+          bun test ./tests/unit/jev_sonnet_fallback.test.ts
 
   # The Ollama host checks run Windows PowerShell classifiers (the WSL
   # forwarder, the declared tailnet forward) that only a Windows runner can
