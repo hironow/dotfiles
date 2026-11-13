@@ -94,6 +94,10 @@ __pycache__/
 
 .antigravitycli/
 
+# Playwright MCP writes page snapshots and console logs here whenever a
+# session drives a browser from this directory. They are scratch output.
+.playwright-mcp/
+
 # Go build output. `go build` inside a module drops a binary named after the
 # module next to its sources, and Go binaries carry no extension -- so nothing
 # above catches it. Pinned by exact path rather than a bare `simple-server`
