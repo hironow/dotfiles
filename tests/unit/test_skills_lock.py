@@ -690,3 +690,84 @@ def test_update_one_keeps_the_declaration_when_the_cli_fails(
     )
     assert skills_lock._cmd_update_one(dotfiles, "review", force=False, copy=True) == 1
     assert _declared(dotfiles) == before
+
+
+# --- restore falls back to the skill's folder when the repo root hides it ---
+# vercel-labs/ui keeps its contributor skills in .agents/skills and publishes
+# ui-sdk from packages/core/skills. Given only the repo, the pinned CLI finds
+# the four contributor skills and fails with "No matching skills found for:
+# ui-sdk"; given `vercel-labs/ui/packages/core/skills` it installs ui-sdk and
+# records the plain source, so the declaration still matches.
+
+
+def test_a_nested_skill_gets_a_folder_scoped_retry() -> None:
+    from skills_lock import build_restore_fallback
+
+    record = SkillRecord(
+        installed_dir="ui-sdk",
+        upstream_name="ui-sdk",
+        lock_key="ui-sdk",
+        source="vercel-labs/ui",
+        skill_path="packages/core/skills/ui-sdk/SKILL.md",
+        skill_folder_hash="deadbeef",
+        resolved_by="installed",
+    )
+    fallback = build_restore_fallback(record)
+    assert fallback is not None
+    assert fallback[2:] == [
+        "add",
+        "vercel-labs/ui/packages/core/skills",
+        "-g",
+        "-s",
+        "ui-sdk",
+        "-y",
+        "-a",
+        "universal",
+    ]
+    assert fallback[:2] == build_restore_command(record)[:2]
+
+
+def test_a_skill_at_the_repo_root_has_no_retry() -> None:
+    from skills_lock import build_restore_fallback
+
+    root_level = SkillRecord(
+        installed_dir="zoom-out",
+        upstream_name="zoom-out",
+        lock_key="zoom-out",
+        source=SELF_SOURCE,
+        skill_path="zoom-out/SKILL.md",
+        skill_folder_hash="deadbeef",
+        resolved_by="installed",
+    )
+    assert build_restore_fallback(root_level) is None
+
+
+def test_restore_retries_a_failed_install_in_the_skill_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess
+
+    import skills_lock
+
+    (tmp_path / "dump" / "harness").mkdir(parents=True)
+    (tmp_path / "dump" / "harness" / "skill-lock.json").write_text(
+        json_dumps_records([_rec("review")]), encoding="utf-8"
+    )
+    home = tmp_path / "home"
+    (home / ".agents" / "skills").mkdir(parents=True)
+    monkeypatch.setenv("SKILLS_LOCK_HOME", str(home))
+    calls: list[list[str]] = []
+
+    def cli(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        calls.append(cmd)
+        if len(calls) == 1:  # the repo root hides the skill
+            return subprocess.CompletedProcess(cmd, 1)
+        _store_skill(home, "review")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(skills_lock.subprocess, "run", cli)
+    assert skills_lock._cmd_restore(tmp_path, force=False, copy=True) == 0
+    assert [cmd[3] for cmd in calls] == [
+        "mattpocock/skills",
+        "mattpocock/skills/skills",
+    ]
