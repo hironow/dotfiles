@@ -20,15 +20,15 @@ def _recipe_body(text: str, name: str) -> str:
 
 
 def test_pi_extension_is_excluded_from_inapplicable_vp_and_built_with_bun() -> None:
-    assert "':!config/pi/extensions/**'" in JUSTFILE
-    assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in JUSTFILE
+    # vp's file list lives in JS_FILES (test_justfile_js_files.py); every vp
+    # gate reads it, so the exclusions hold wherever vp runs.
+    (js_files,) = re.findall(r"^JS_FILES := (.+)$", JUSTFILE, re.MULTILINE)
+    assert "':!config/pi/extensions/**'" in js_files
+    assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in js_files
     assert "just pi-jev-test" in _recipe_body(JUSTFILE, "check")
-    fmt = _recipe_body(JUSTFILE, "fmt")
-    assert "':!config/pi/extensions/**'" in fmt
-    assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in fmt
+    assert "{{ JS_FILES }}" in _recipe_body(JUSTFILE, "fmt")
     lint = _recipe_body(JUSTFILE, "lint")
-    assert "':!config/pi/extensions/**'" in lint
-    assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in lint
+    assert "{{ JS_FILES }}" in lint
     assert "just pi-jev-test" in lint
     assert "bun build config/pi/extensions/jev-sonnet-fallback.ts" in JUSTFILE
     assert "bun test tests/unit/jev_sonnet_fallback.test.ts" in JUSTFILE

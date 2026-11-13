@@ -45,6 +45,10 @@ SEMGREP := "uvx --python 3.14 semgrep"
 # *script* lockfile that does not exist. tests/unit/test_justfile_uv_run_modes.py
 # keeps every invocation on the right runner.
 UV_RUN_SCRIPT := "mise exec -- uv run"
+# The JS/TS files vp formats, lints, and checks (`fmt`, `lint`, `check`): one
+# list, so the three gates agree on which files are ours.
+# tests/unit/test_justfile_js_files.py keeps it the only copy.
+JS_FILES := "'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts'"
 # The gcloud components installed here, one id per line, as `dump` records them
 # and `add-gcloud` compares against. A component with an update waiting is
 # installed too ("Update Available"). Exact matches: `state.name:` matches
@@ -769,7 +773,7 @@ test-mark marker="":
 #   - Python  : `uv run --frozen --only-group lint ruff format .`
 #     (excludes live in pyproject.toml; version is the lint-group pin + lock)
 #   - Markdown: `markdownlint-cli2 --fix`
-#   - JS/TS   : `vp fmt` (only when a package.json is present at the root)
+#   - JS/TS   : `vp fmt` on the tracked files in JS_FILES
 # Notes:
 #   - Don't pass `--exclude` to ruff: CLI replaces built-in defaults
 #     (.venv, __pycache__, dist, build, ...). Excludes belong in pyproject.toml.
@@ -784,7 +788,7 @@ fmt:
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp fmt
+    git ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp fmt
     @echo '✅ fmt done.'
 
 # lint: report violations (auto-fixes where possible). Tool per language:
@@ -804,7 +808,7 @@ lint:
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔍 JS/TS (vp lint)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp lint
+    git ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp lint
     @echo '🔍 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
@@ -846,7 +850,7 @@ check:
     @echo '🔎 Markdown (markdownlint-cli2)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2
     @echo '🔎 JS/TS (vp check)...'
-    git ls-files -z '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' | xargs -0 -r mise x -- vp check
+    git ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp check
     @echo '🔎 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
