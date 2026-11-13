@@ -29,12 +29,21 @@
       "resolved_by": "installed"
     },
     {
+      "installed_dir": "afk",
+      "upstream_name": "afk",
+      "lock_key": "afk",
+      "source": "jakubkrehel/skills",
+      "skill_path": "skills/afk/SKILL.md",
+      "skill_folder_hash": "637ec04344431e0301b1d167fb52931000013fd0",
+      "resolved_by": "installed"
+    },
+    {
       "installed_dir": "agent-browser",
       "upstream_name": "agent-browser",
       "lock_key": "agent-browser",
       "source": "vercel-labs/agent-browser",
       "skill_path": "skills/agent-browser/SKILL.md",
-      "skill_folder_hash": "cd4185523189fb04c1d24bea0100b6aa2ce7421e",
+      "skill_folder_hash": "d75a393c9a371295c6d6be46c34938e76ef21184",
       "resolved_by": "installed"
     },
     {
@@ -1042,7 +1051,7 @@
       "lock_key": "provable-glossary",
       "source": "hironow/skills",
       "skill_path": "provable-glossary/SKILL.md",
-      "skill_folder_hash": "d6afebbda27a7688f616a5df61ba971b38553996",
+      "skill_folder_hash": "184aab38965ee265981bf9276298d08945bc1819",
       "resolved_by": "installed"
     },
     {
@@ -1214,15 +1223,6 @@
       "source": "mattpocock/skills",
       "skill_path": "skills/productivity/teach/SKILL.md",
       "skill_folder_hash": "3fd617b610e59acbb99644de1ef37e394ff53cd1",
-      "resolved_by": "installed"
-    },
-    {
-      "installed_dir": "teardown",
-      "upstream_name": "teardown",
-      "lock_key": "teardown",
-      "source": "jakubkrehel/skills",
-      "skill_path": "skills/teardown/SKILL.md",
-      "skill_folder_hash": "91d64102b1eed1bba2cff8455ce4a0b0185f174b",
       "resolved_by": "installed"
     },
     {
