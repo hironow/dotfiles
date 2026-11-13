@@ -101,8 +101,9 @@ backport されていることがあり、逆もある。
 release の頁で、形は `https://<host>/<owner>/<repo>/releases/tag/<tag>`。`evidence` は 3 の compare の URL で、
 `https://<host>/<owner>/<repo>/compare/<1>...<2>` と全体が一致しなければならない（host と owner/repo は
 `source` と同じ。tag の名前、別の repo、余分な path、符号化した文字、`?` や `#` は通らない。
-ParseIncident が確かめる）。ビルドの branch は、incident の `branches` にあるものに限る。記録を変えたら
-`just kernel-doctor-build` で作り直す。
+ParseIncident が確かめる）。この 2 つは GitHub の release と compare の URL の形で、tag の名前に `/` を
+含むものや別の forge のビルドは、コードを変えないと記録できない。ビルドの branch は、incident の
+`branches` にあるものに限る。記録を変えたら `just kernel-doctor-build` で作り直す。
 
 ## CVE-2026-98432 について
 
