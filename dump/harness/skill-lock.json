@@ -34,7 +34,7 @@
       "lock_key": "agent-browser",
       "source": "vercel-labs/agent-browser",
       "skill_path": "skills/agent-browser/SKILL.md",
-      "skill_folder_hash": "cd4185523189fb04c1d24bea0100b6aa2ce7421e",
+      "skill_folder_hash": "d75a393c9a371295c6d6be46c34938e76ef21184",
       "resolved_by": "installed"
     },
     {
@@ -1042,7 +1042,7 @@
       "lock_key": "provable-glossary",
       "source": "hironow/skills",
       "skill_path": "provable-glossary/SKILL.md",
-      "skill_folder_hash": "d6afebbda27a7688f616a5df61ba971b38553996",
+      "skill_folder_hash": "184aab38965ee265981bf9276298d08945bc1819",
       "resolved_by": "installed"
     },
     {
