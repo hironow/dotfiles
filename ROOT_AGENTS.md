@@ -41,7 +41,9 @@ its reason so you can apply it to cases a check does not list.
   is the minimum; use the newest stable Go the module compiles with. Use Rust
   only for no-GC, tight-memory, or WASM targets, or an existing Rust codebase.
   Wanting more speed is not a reason by itself: measure first
-  (docs/agents/rust-tooling.md).
+  (docs/agents/rust-tooling.md). Code that runs in the browser page (HTML,
+  CSS, and its JavaScript or TypeScript) is outside this rule; see
+  docs/agents/web-ui.md. The server behind it stays Go.
 - **Use few dependencies; use the standard library first.** In every language,
   use the official standard library before a third-party package, and use its
   newest features and methods. A third-party package needs a reason the
@@ -195,6 +197,7 @@ Open the matching file as soon as its trigger applies:
 | choosing between Go and Rust, or writing or changing Rust | docs/agents/rust-tooling.md |
 | choosing an embedded or in-memory database | docs/agents/go-tooling.md#database-selection |
 | measuring or changing code for speed, in any language | docs/agents/performance.md |
+| building or changing an interface in a browser page | docs/agents/web-ui.md |
 | modeling distributed state / Quint            | docs/agents/formal-methods.md       |
 | adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |
 | writing a `pull_request` workflow              | docs/agents/draft-ci.md             |
