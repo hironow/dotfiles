@@ -139,6 +139,9 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 		{"vendor build source has a query", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["source"] = b["source"].(string) + "?x" })
 		}},
+		{"vendor build source has a fragment", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["source"] = b["source"].(string) + "#x" })
+		}},
 		{"vendor build evidence is not https", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["evidence"] = "http://github.com/x" })
 		}},
