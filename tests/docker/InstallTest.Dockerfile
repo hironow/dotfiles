@@ -49,7 +49,9 @@ RUN cd /tmp/dotfiles-repo && \
 ENV INSTALL_SKIP_HOMEBREW=1
 ENV INSTALL_SKIP_GCLOUD=1
 ENV INSTALL_SKIP_ADD_UPDATE=1
-ENV DOTFILES_REPO=/tmp/dotfiles-repo
+# A file:// URL makes git clone through its transport instead of hardlinking
+# objects; hardlinks across image layers fail with "hardlink different from source".
+ENV DOTFILES_REPO=file:///tmp/dotfiles-repo
 
 # Fresh acceptance nonce invalidates setup layers, not earlier package layers.
 ARG DOTFILES_INSTALL_ACCEPTANCE_RUN
@@ -65,19 +67,18 @@ ENV PATH="/home/testuser/.local/bin:$PATH"
 RUN test -x ~/.local/bin/just && \
     just --version
 
-# Verify zgen update logic (second run)
-# Create a dummy zgen dir to test update
-RUN mkdir -p ~/.zgen && \
-    cd ~/.zgen && \
-    git init && \
-    git config user.email "test@example.com" && \
-    git config user.name "Test User" && \
-    git config commit.gpgsign false && \
-    git commit --allow-empty -m "Initial zgen"
+# A fresh install fetches no zsh plugin manager; sheldon loads the plugins.
+RUN test ! -e "$HOME/.zgen"
+
+# Machines set up while .zshrc still loaded zgen can keep a ~/.zgen that is
+# not a git checkout (only an old plugin cache). The update run must leave it alone.
+RUN mkdir -p ~/.zgen/robbyrussell && \
+    touch ~/.zgen/robbyrussell/keep
 
 # Run install.sh again to test update paths. Synthetic fixture commits above
 # never require the operator's private signing keys or host git configuration.
 RUN bash /tmp/dotfiles-repo/install.sh && \
+    test -f ~/.zgen/robbyrussell/keep && \
     printf 'DOTFILES_INSTALL_PASS2:%s\n' "$DOTFILES_INSTALL_ACCEPTANCE_RUN"
 RUN test "$(wc -l < "$HOME/podman-provisioning-calls")" -eq 2 && \
     test "$(sort -u "$HOME/podman-provisioning-calls")" = --version && \
