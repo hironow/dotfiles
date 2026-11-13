@@ -10,6 +10,8 @@ refs/
 
 # node lockfiles (not tracked in dotfiles)
 package.json
+# except the Pages site's package: vp needs one to check site/*.js (ADR-0076)
+!site/package.json
 package-lock.json
 bun.lock
 

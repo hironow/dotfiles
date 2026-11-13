@@ -46,10 +46,13 @@ SEMGREP := "uvx --python 3.14 semgrep"
 # keeps every invocation on the right runner.
 UV_RUN_SCRIPT := "mise exec -- uv run"
 # The JS/TS files vp formats, lints, and checks (`fmt`, `lint`, `check`): one
-# list, so the three gates agree on which files are ours. site/vendor holds
-# third-party bytes that tests/unit/test_site_vendor.py checks instead.
-# tests/unit/test_justfile_js_files.py keeps it the only copy.
-JS_FILES := "'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!emulator' ':!config/pi/extensions/**' ':!tests/unit/jev_sonnet_fallback.test.ts' ':!site/vendor/**'"
+# list, so the three gates agree on which files are ours. vp needs a package, so
+# it runs in site/, the repo's one JS package (site/package.json); the list is
+# relative to it (--work-tree=.. keeps it so inside a git hook, where GIT_DIR
+# is set). site/vendor holds third-party bytes that
+# tests/unit/test_site_vendor.py checks instead. The other tracked JS/TS has its
+# own gate (tests/unit/test_justfile_js_files.py names them).
+JS_FILES := "'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!vendor/**'"
 # The gcloud components installed here, one id per line, as `dump` records them
 # and `add-gcloud` compares against. A component with an update waiting is
 # installed too ("Update Available"). Exact matches: `state.name:` matches
@@ -774,7 +777,7 @@ test-mark marker="":
 #   - Python  : `uv run --frozen --only-group lint ruff format .`
 #     (excludes live in pyproject.toml; version is the lint-group pin + lock)
 #   - Markdown: `markdownlint-cli2 --fix`
-#   - JS/TS   : `vp fmt` on the tracked files in JS_FILES
+#   - JS/TS   : `vp fmt` in site/ on the files in JS_FILES
 # Notes:
 #   - Don't pass `--exclude` to ruff: CLI replaces built-in defaults
 #     (.venv, __pycache__, dist, build, ...). Excludes belong in pyproject.toml.
@@ -789,7 +792,7 @@ fmt:
     @echo '🔧 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔧 JS/TS (vp fmt)...'
-    git ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp fmt
+    git -C site --work-tree=.. ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp -C site fmt
     @echo '✅ fmt done.'
 
 # lint: report violations (auto-fixes where possible). Tool per language:
@@ -809,7 +812,7 @@ lint:
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2 --fix
     @echo '🔍 JS/TS (vp lint)...'
-    git ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp lint
+    git -C site --work-tree=.. ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp -C site lint
     @echo '🔍 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
@@ -851,7 +854,7 @@ check:
     @echo '🔎 Markdown (markdownlint-cli2)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2
     @echo '🔎 JS/TS (vp check)...'
-    git ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp check
+    git -C site --work-tree=.. ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp -C site check
     @echo '🔎 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
@@ -2005,6 +2008,20 @@ site-vendor-ui-sdk-check:
     registry="$(cd "$tmp" && bun info --no-env-file "@ui-sdk/web@$version" --json | jq -r .dist.integrity)"
     [ "$registry" = "$(jq -r .integrity "$dest/PROVENANCE.json")" ] || { echo "integrity differs from the registry" >&2; exit 1; }
     echo "OK site/vendor/ui-sdk/$version equals @ui-sdk/web@$version on the registry ($registry)"
+
+# Site: serve the page on http://127.0.0.1:<port>/ to look at it. Copies only
+# index.html and site/ into a temp folder, because the checkout also holds
+# private/ (keys and certificates). Port 4173: 8080 is the Firestore emulator.
+[group('Site')]
+[unix]
+site-serve port="4173":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    git ls-files -z --cached --others --exclude-standard -- index.html site | tar --null -T - -cf - | tar -xf - -C "$tmp"
+    echo "serving http://127.0.0.1:{{ port }}/ (Ctrl-C stops it)"
+    cd tools/simple-server && mise exec -- go run . -host 127.0.0.1 -port {{ port }} -dir "$tmp"
 
 # ------------------------------
 # TLS checks

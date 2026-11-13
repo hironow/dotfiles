@@ -114,5 +114,6 @@ def test_only_the_rewriting_hooks_skip_the_vendored_folder() -> None:
 def test_vp_skips_the_vendored_folder_but_reads_the_site() -> None:
     justfile = (ROOT / "justfile").read_text(encoding="utf-8")
     (js_files,) = re.findall(r"^JS_FILES := (.+)$", justfile, re.MULTILINE)
-    assert "':!site/vendor/**'" in js_files
+    # JS_FILES is relative to site/, where vp runs
+    assert "':!vendor/**'" in js_files
     assert "'*.js'" in js_files
