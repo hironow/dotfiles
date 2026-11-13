@@ -478,7 +478,8 @@ func dump(found []Finding) string {
 // Third-party figures and the advice text in the incident record are the same
 // on every run and describe nothing about this host, so they are INFO
 // (ADR-0066 Decision 2). The version line stays the one warning per CVE: a
-// vendor kernel is never judged (ADR-0065 Decision 3).
+// vendor kernel that is not recorded under vendorBuilds is never judged
+// (ADR-0065 Decision 3).
 func TestFiguresAndAdviceAreInfoAndTheVersionStaysAWarning(t *testing.T) {
 	reviewed := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	wsl := linuxProbe("6.18.54.1-microsoft-standard-WSL2", "0", true)

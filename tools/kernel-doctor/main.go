@@ -20,8 +20,9 @@ const (
 	notice = "Evidence only, NOT a security clearance. A version string never shows whether a running kernel carries the fix, and a vendor build counts as carrying it only when it is recorded with its fix commit. Unverified is never counted as fixed."
 	help   = `usage: kernel-doctor [--json] [--osrelease=<version>] [--source=<dir>]
 Compares the kernel version a host reports against reviewed, source-cited CVE
-fix floors. Never a vulnerability verdict; vendor backports, the running patch
-state and exploitability stay unverified.
+fix floors. Never a vulnerability verdict; vendor backports (except a vendor
+build recorded with its fix commit), the running patch state and
+exploitability stay unverified.
 With --osrelease, only that reported version is assessed and the local /proc
 and /etc/os-release are not read (use it to assess another host, e.g. from a
 Windows host: wsl.exe -e uname -r).
