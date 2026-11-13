@@ -111,7 +111,12 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["release"] = "6.18.58.1-microsoft\tWSL2" })
 		}},
 		{"vendor build on a branch nobody reviewed", func(m map[string]any) {
-			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["release"] = "6.17.9.1-microsoft-standard-WSL2" })
+			// an unreviewed branch has no fixCommit, so an empty one must not
+			// pass as equal to it
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["release"] = "6.17.9.1-microsoft-standard-WSL2"
+				pairCommits(b, "", wslTagCommit)
+			})
 		}},
 		{"vendor build fix commit is short", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { pairCommits(b, "a47406c769f7", wslTagCommit) })
@@ -127,13 +132,21 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 			})
 		}},
 		{"vendor build source is not https", func(m map[string]any) {
-			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["source"] = "http://github.com/x" })
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["source"] = "http://github.com/microsoft/WSL2-Linux-Kernel/releases/tag/linux-msft-wsl-6.18.58.1"
+			})
+		}},
+		{"vendor build source has a query", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["source"] = b["source"].(string) + "?x" })
 		}},
 		{"vendor build evidence is not https", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["evidence"] = "http://github.com/x" })
 		}},
 		{"vendor build without a vendor", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["vendor"] = "  " })
+		}},
+		{"vendor build vendor name is too long", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["vendor"] = strings.Repeat("v", 101) })
 		}},
 		{"vendor build review date not a date", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["reviewedAt"] = "13/11/2026" })
@@ -173,6 +186,31 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 		{"vendor build source is another page of the repository", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
 				b["source"] = "https://github.com/microsoft/WSL2-Linux-Kernel/tree/linux-msft-wsl-6.18.58.1/net"
+			})
+		}},
+		{"vendor build source has a segment after the tag", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["source"] = b["source"].(string) + "/x" })
+		}},
+		{"vendor build source has no tag name", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["source"] = "https://github.com/microsoft/WSL2-Linux-Kernel/releases/tag/"
+			})
+		}},
+		{"vendor build source is not under releases", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["source"] = "https://github.com/microsoft/WSL2-Linux-Kernel/x/tag/linux-msft-wsl-6.18.58.1"
+			})
+		}},
+		{"vendor build source is a release download, not a tag page", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["source"] = "https://github.com/microsoft/WSL2-Linux-Kernel/releases/download/linux-msft-wsl-6.18.58.1"
+			})
+		}},
+		{"vendor build source has a dot-dot repository", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				// net/url keeps dot segments, so this path still has six parts
+				b["source"] = "https://github.com/microsoft/../releases/tag/linux-msft-wsl-6.18.58.1"
+				b["evidence"] = "https://github.com/microsoft/../compare/" + wslFixCommit + "..." + wslTagCommit
 			})
 		}},
 		{"vendor build source has a dot-dot owner", func(m map[string]any) {

@@ -187,3 +187,17 @@ func TestARecordNeverOverridesANumericComparison(t *testing.T) {
 		t.Errorf("Assess(6.6.150).Outcome = %q, want %q", got.Outcome, BelowFloor)
 	}
 }
+
+// A prerelease is not a clean release either, but it is not a vendor build:
+// only a vendor-shaped string may match a record, so a planted prerelease
+// record stays unverified.
+func TestARecordNeverMatchesAPrerelease(t *testing.T) {
+	incident := mustIncident(t)
+	incident.VendorBuilds = append(incident.VendorBuilds, VendorBuild{
+		Release: "7.3.0-rc1", Vendor: "planted", FixCommit: incident.VendorBuilds[0].FixCommit,
+		TagCommit: incident.VendorBuilds[0].TagCommit, Evidence: incident.VendorBuilds[0].Evidence,
+	})
+	if got := Assess("7.3.0-rc1", incident); got.Outcome != UnverifiedFormat {
+		t.Errorf("Assess(7.3.0-rc1).Outcome = %q, want %q", got.Outcome, UnverifiedFormat)
+	}
+}
