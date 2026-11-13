@@ -29,6 +29,15 @@
       "resolved_by": "installed"
     },
     {
+      "installed_dir": "afk",
+      "upstream_name": "afk",
+      "lock_key": "afk",
+      "source": "jakubkrehel/skills",
+      "skill_path": "skills/afk/SKILL.md",
+      "skill_folder_hash": "637ec04344431e0301b1d167fb52931000013fd0",
+      "resolved_by": "installed"
+    },
+    {
       "installed_dir": "agent-browser",
       "upstream_name": "agent-browser",
       "lock_key": "agent-browser",
