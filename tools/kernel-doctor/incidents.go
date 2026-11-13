@@ -200,7 +200,8 @@ func compareURL(source, fixCommit, tagCommit string) (string, bool) {
 		return "", false
 	}
 	parts := strings.Split(u.Path, "/")
-	if len(parts) != 6 || parts[0] != "" || !repoSegment.MatchString(parts[1]) ||
+	// parts[0] is the empty string before the path's leading "/".
+	if len(parts) != 6 || !repoSegment.MatchString(parts[1]) ||
 		!repoSegment.MatchString(parts[2]) || parts[3] != "releases" || parts[4] != "tag" || parts[5] == "" {
 		return "", false
 	}
