@@ -5,7 +5,9 @@
 
 **このリポジトリは Linux カーネルを同梱・ビルド・固定しない。** だからこの道具は
 カーネルを直さないし、直せない。パッチを当てず、更新せず、インストールしない。
-「修正済み」とも「脆弱」とも言わない。
+「脆弱」とは言わない。「修正済み」に近いことを言うのは、記録したベンダーのビルド
+（`vendorBuilds`）と文字列の全体が一致したときの `reviewed-vendor-build` だけで、
+それも修正 commit がそのビルドの tag にあることまでで、実行中のパッチ状態は確かめない。
 
 証明書は [ca-doctor](ca-doctor.md)、バイナリ内包物は [brotli-doctor](brotli-doctor.md) を使う。
 WSL のホスト側の設定は [windows-host](windows-host.md) と [ollama-windows-wsl](ollama-windows-wsl.md)。
@@ -44,12 +46,14 @@ sysctl の行である。
 
 ## 出力の読み方
 
-版の比較結果は 5 つ。`patch_status` と `backport_state` は**常に `unverified`**。
+版の比較結果は 6 つ。`patch_status` は**常に `unverified`**。`backport_state` も `unverified` で、
+`reviewed-vendor-build` のときだけ `fix-commit-in-vendor-tag`（修正 commit がベンダーの release の tag にある）になる。
 
 | 結果 | 意味 |
 | --- | --- |
 | `below-reviewed-fix-floor` | クリーンな上流リリース形で、レビュー済み branch の修正床より下 |
 | `at-or-above-reviewed-fix-floor` | 同じく、修正床以上。**ベンダーの backport や実行中のパッチ状態は依然として未確認** |
+| `reviewed-vendor-build` | 記録（`vendorBuilds`）に載せたベンダーのビルドと、文字列の全体が一致した。修正 commit がその tag にある。**同じ文字列の独自ビルドは区別できず、実行中のパッチ状態は未確認** |
 | `unverified-vendor` | ベンダー／ディストロのカーネル。数値が上流の patch level ではないので比較しない |
 | `unverified-branch` | クリーンな形だが、その branch はレビューしていない |
 | `unverified-version` | クリーンな上流の `x.y.z` ではない。比較しない |
@@ -73,9 +77,33 @@ backport されていることがあり、逆もある。
 それ以外は `unverified` とし、レビュー済み修正床の一覧を出す。
 **未判定を「修正済み」として数えない。** 保守側に倒れるのは意図した設計である。
 
-レビュー済み branch の**あいだ**にある branch（例: 6.13〜6.18）は
+レビュー済み branch の**あいだ**にある branch（例: 6.13〜6.17）は
 `unverified-branch` になる。これは意図した挙動で、修正床の一覧と
 その branch 自身の stable tree かベンダーの勧告を読む。
+
+### ベンダーのビルドを記録する
+
+数値で比べない代わりに、確かめたビルドだけを incident の `vendorBuilds` に 1 件ずつ載せられる
+（ADR 0065 Decision 3）。載せる前に、次をすべて確かめる。
+
+1. incident の `source`（CVE の一次情報）が、そのビルドの branch の修正として挙げる commit の SHA。
+   記録の `branches` の、その branch の `fixCommit` と同じでなければならない（ParseIncident が確かめる）。
+2. ベンダーの release の tag が指す commit の SHA（tag は動かせるので、SHA で固定する）。
+   例: `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`。
+3. 1 の commit が 2 の祖先であること: `gh api repos/<owner>/<repo>/compare/<1>...<2>` が
+   `behind_by=0`。
+4. 2 の commit で、修正の行が残っていること（revert されていない）。修正が触ったファイルを
+   2 の commit で**必ず読み**、修正の行があることを確かめる。`commits?sha=<2>&path=<file>` で
+   revert が無いことを見るのは補助にとどめる（revert でない変更でも行は消えうる）。
+5. `uname -r` の文字列の全体（例: `6.18.58.1-microsoft-standard-WSL2`）。
+
+`release` は 5、`fixCommit` は 1、`tagCommit` は 2、`reviewedAt` は確かめた日。`source` はベンダーの
+release の頁で、形は `https://<host>/<owner>/<repo>/releases/tag/<tag>`。`evidence` は 3 の compare の URL で、
+`https://<host>/<owner>/<repo>/compare/<1>...<2>` と全体が一致しなければならない（host と owner/repo は
+`source` と同じ。tag の名前、別の repo、余分な path、符号化した文字、`?` や `#` は通らない。
+ParseIncident が確かめる）。この 2 つは GitHub の release と compare の URL の形で、tag の名前に `/` を
+含むものや別の forge のビルドは、コードを変えないと記録できない。ビルドの branch は、incident の
+`branches` にあるものに限る。記録を変えたら `just kernel-doctor-build` で作り直す。
 
 ## CVE-2026-98432 について
 
@@ -139,7 +167,8 @@ wsl.exe -d <distro> -- uname -r
 ## 限界
 
 - 版の比較は「報告された文字列」と「レビュー済みの上流修正床」の比較である。
-  ベンダーの backport も、実行中のカーネルのパッチ状態も見えない。
+  ベンダーの backport は、記録したビルドの完全一致を除いて見えない。実行中のカーネルの
+  パッチ状態は見えない。
 - コンテナの中で実行すると `/proc/sys/kernel/osrelease` は**ホストの**カーネルを返す。
   これは露出の正しい答えだが、ホストとコンテナを区別しない。
 - 経路 1（IP options 付きソケット）と BPF による migration は調べていない。

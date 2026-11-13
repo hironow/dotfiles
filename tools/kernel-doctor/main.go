@@ -17,11 +17,12 @@ import (
 )
 
 const (
-	notice = "Evidence only, NOT a security clearance. A version string shows neither whether a vendor backported the fix nor whether a running kernel carries it. Unverified is never counted as fixed."
+	notice = "Evidence only, NOT a security clearance. A version string never shows whether a running kernel carries the fix, and a vendor build counts as carrying it only when it is recorded with its fix commit. Unverified is never counted as fixed."
 	help   = `usage: kernel-doctor [--json] [--osrelease=<version>] [--source=<dir>]
 Compares the kernel version a host reports against reviewed, source-cited CVE
-fix floors. Never a vulnerability verdict; vendor backports, the running patch
-state and exploitability stay unverified.
+fix floors. Never a vulnerability verdict; vendor backports (except a vendor
+build recorded with its fix commit), the running patch state and
+exploitability stay unverified.
 With --osrelease, only that reported version is assessed and the local /proc
 and /etc/os-release are not read (use it to assess another host, e.g. from a
 Windows host: wsl.exe -e uname -r).
@@ -188,7 +189,7 @@ func assessmentFindings(probe Probe, incident Incident) []Finding {
 	} else {
 		a := Assess(probe.version(), incident)
 		level := "WARN"
-		if a.Outcome == AtOrAboveFloor {
+		if a.Outcome == AtOrAboveFloor || a.Outcome == ReviewedVendorBuild {
 			level = "OK"
 		}
 		detail := fmt.Sprintf("%s %s; %s; patch_status=%s backport_state=%s; %s",
@@ -265,7 +266,7 @@ func coverageFinding() Finding {
 	return Finding{
 		"INFO", "kernel-coverage",
 		"not a kernel attestation: a kernel update takes effect only when the host or VM boots the new kernel (restarting processes or containers is not enough); " +
-			"a vendor backport is invisible to this comparison; " +
+			"a vendor backport is invisible to this comparison unless that exact build is recorded with its fix commit; " +
 			"the first trigger path of this CVE (sockets carrying IP options) and any BPF reuseport migration are not inspected; " +
 			"see docs/runbook/kernel-doctor.md",
 	}

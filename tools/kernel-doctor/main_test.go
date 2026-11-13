@@ -263,6 +263,7 @@ func TestNoFindingIsEverAnError(t *testing.T) {
 		linuxProbe("6.6.150", "1", true),
 		linuxProbe("6.6.159", "0", false),
 		linuxProbe("6.6.87.2-microsoft-standard-WSL2", "0", true),
+		linuxProbe(recordedWSL+"\n", "0", true),
 		linuxProbe("garbage", "0", true),
 		Override("darwin", "6.6.150"),
 		Override("linux", "6.6.159"),
@@ -477,7 +478,8 @@ func dump(found []Finding) string {
 // Third-party figures and the advice text in the incident record are the same
 // on every run and describe nothing about this host, so they are INFO
 // (ADR-0066 Decision 2). The version line stays the one warning per CVE: a
-// vendor kernel is never judged (ADR-0065 Decision 3).
+// vendor kernel that is not recorded under vendorBuilds is never judged
+// (ADR-0065 Decision 3).
 func TestFiguresAndAdviceAreInfoAndTheVersionStaysAWarning(t *testing.T) {
 	reviewed := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	wsl := linuxProbe("6.18.54.1-microsoft-standard-WSL2", "0", true)
@@ -510,5 +512,58 @@ func TestFiguresAndAdviceAreInfoAndTheVersionStaysAWarning(t *testing.T) {
 		if f.Level == "WARN" || f.Level == "ERR" {
 			t.Errorf("a kernel at the floor still warns: %v", f)
 		}
+	}
+}
+
+// The recorded WSL build, read from this host, is the one vendor kernel whose
+// version line is OK. With the sysctl at 0 and the record fresh, nothing is
+// left to warn about, so the run exits 0.
+func TestARecordedVendorBuildOnThisHostRaisesNoWarning(t *testing.T) {
+	fresh := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+	found := findingsOf(linuxProbe(recordedWSL+"\n", "0", true), ".", fresh)
+	version := false
+	for _, f := range found {
+		if f.Name == "kernel-version-cve-2026-98432" {
+			version = true
+			if f.Level != "OK" || !strings.Contains(f.Detail, ReviewedVendorBuild) {
+				t.Errorf("the recorded build's version line = %s", f)
+			}
+		}
+	}
+	if !version {
+		t.Fatal("no kernel-version line")
+	}
+	var out bytes.Buffer
+	if code := Report(&out, found); code != 0 {
+		t.Errorf("Report = %d, want 0:\n%s", code, out.String())
+	}
+}
+
+// --osrelease with the recorded string still assesses a version only: the
+// target host's scope and sysctl stay unverified, so the run still warns.
+func TestARecordedVendorBuildGivenByOverrideStillWarns(t *testing.T) {
+	fresh := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+	found := findingsOf(Override("linux", recordedWSL), ".", fresh)
+	var out bytes.Buffer
+	if code := Report(&out, found); code != 1 {
+		t.Errorf("Report = %d, want 1:\n%s", code, out.String())
+	}
+}
+
+// The --json assessment carries the new outcome and backport state.
+func TestJSONCarriesTheRecordedVendorBuild(t *testing.T) {
+	fake := &fakeCollector{probe: linuxProbe(recordedWSL+"\n", "0", true)}
+	var out bytes.Buffer
+	_ = run([]string{"--source", ".", "--json"}, &out, "linux", fake.collect)
+	var report JSONReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("--json output must decode: %v", err)
+	}
+	if len(report.Assessments) != 1 {
+		t.Fatalf("expected one assessment: %+v", report.Assessments)
+	}
+	got := report.Assessments[0]
+	if got.Outcome != ReviewedVendorBuild || got.BackportState != fixCommitInVendorTag || got.PatchStatus != unverified {
+		t.Errorf("unexpected assessment: %+v", got)
 	}
 }
