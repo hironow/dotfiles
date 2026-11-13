@@ -49,7 +49,9 @@ RUN cd /tmp/dotfiles-repo && \
 ENV INSTALL_SKIP_HOMEBREW=1
 ENV INSTALL_SKIP_GCLOUD=1
 ENV INSTALL_SKIP_ADD_UPDATE=1
-ENV DOTFILES_REPO=/tmp/dotfiles-repo
+# A file:// URL makes git clone through its transport instead of hardlinking
+# objects; hardlinks across image layers fail with "hardlink different from source".
+ENV DOTFILES_REPO=file:///tmp/dotfiles-repo
 
 # Fresh acceptance nonce invalidates setup layers, not earlier package layers.
 ARG DOTFILES_INSTALL_ACCEPTANCE_RUN
