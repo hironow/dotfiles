@@ -1217,15 +1217,6 @@
       "resolved_by": "installed"
     },
     {
-      "installed_dir": "teardown",
-      "upstream_name": "teardown",
-      "lock_key": "teardown",
-      "source": "jakubkrehel/skills",
-      "skill_path": "skills/teardown/SKILL.md",
-      "skill_folder_hash": "91d64102b1eed1bba2cff8455ce4a0b0185f174b",
-      "resolved_by": "installed"
-    },
-    {
       "installed_dir": "terraform-skill",
       "upstream_name": "terraform-skill",
       "lock_key": "terraform-skill",
