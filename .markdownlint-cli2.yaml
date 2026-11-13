@@ -1,4 +1,10 @@
-gitignore: true
+# Off on purpose. With `gitignore: true` the linter walks the whole tree for
+# .gitignore files and follows symlinks while doing so; a link to a directory
+# outside the repository (one under the gitignored private/ was enough) sends
+# it through the home directory and the commit hook never returns. `just fmt`
+# and `just lint` pass the file list from `git ls-files`, so git's ignore rules
+# already apply, and `ignores` below covers a run with a glob.
+gitignore: false
 # Skip files that are intentionally outside the markdown lint scope:
 #   - ROOT_AGENTS.md (base), ROOT_CLAUDE.md (overlay), and ROOT_AGENTS_*.md
 #     (docs/agents spokes) are agent-instruction *sources*, synced verbatim to
