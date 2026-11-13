@@ -71,8 +71,12 @@ repos:
   # Rust-native builtin hooks (fast, no external repo clone needed)
   - repo: builtin
     hooks:
+      # site/vendor holds npm's bytes as published; rewriting them breaks the
+      # SHA-256 check in tests/unit/test_site_vendor.py (ADR-0076).
       - id: trailing-whitespace
+        exclude: '^site/vendor/'
       - id: end-of-file-fixer
+        exclude: '^site/vendor/'
       - id: check-yaml
       - id: check-toml
       - id: check-json

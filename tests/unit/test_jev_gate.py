@@ -20,19 +20,16 @@ def _recipe_body(text: str, name: str) -> str:
 
 
 def test_pi_extension_is_excluded_from_inapplicable_vp_and_built_with_bun() -> None:
-    assert "':!config/pi/extensions/**'" in JUSTFILE
-    assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in JUSTFILE
+    # vp runs only in site/, the Pages site's package (test_justfile_js_files.py),
+    # so it never reaches the Pi extension or its bun test; bun gates those.
     assert "just pi-jev-test" in _recipe_body(JUSTFILE, "check")
-    fmt = _recipe_body(JUSTFILE, "fmt")
-    assert "':!config/pi/extensions/**'" in fmt
-    assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in fmt
+    assert "vp -C site fmt" in _recipe_body(JUSTFILE, "fmt")
     lint = _recipe_body(JUSTFILE, "lint")
-    assert "':!config/pi/extensions/**'" in lint
-    assert "':!tests/unit/jev_sonnet_fallback.test.ts'" in lint
+    assert "vp -C site lint" in lint
     assert "just pi-jev-test" in lint
     assert "bun build config/pi/extensions/jev-sonnet-fallback.ts" in JUSTFILE
-    assert "bun test tests/unit/jev_sonnet_fallback.test.ts" in JUSTFILE
-    assert WORKFLOW.count("bun test tests/unit/jev_sonnet_fallback.test.ts") == 2
+    assert "bun test ./tests/unit/jev_sonnet_fallback.test.ts" in JUSTFILE
+    assert WORKFLOW.count("bun test ./tests/unit/jev_sonnet_fallback.test.ts") == 2
 
 
 @pytest.mark.parametrize(
