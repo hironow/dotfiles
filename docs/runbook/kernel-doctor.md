@@ -97,9 +97,12 @@ backport されていることがあり、逆もある。
    revert が無いことを見るのは補助にとどめる（revert でない変更でも行は消えうる）。
 5. `uname -r` の文字列の全体（例: `6.18.58.1-microsoft-standard-WSL2`）。
 
-`release` は 5、`fixCommit` は 1、`tagCommit` は 2、`source` はベンダーの release の頁、`evidence` は
-3 の compare の URL（`…/compare/<1>...<2>`。tag の名前では書けない）、`reviewedAt` は確かめた日。ビルドの branch は、incident の `branches` に
-あるものに限る。記録を変えたら `just kernel-doctor-build` で作り直す。
+`release` は 5、`fixCommit` は 1、`tagCommit` は 2、`reviewedAt` は確かめた日。`source` はベンダーの
+release の頁で、形は `https://<host>/<owner>/<repo>/releases/tag/<tag>`。`evidence` は 3 の compare の URL で、
+`https://<host>/<owner>/<repo>/compare/<1>...<2>` と全体が一致しなければならない（host と owner/repo は
+`source` と同じ。tag の名前、別の repo、余分な path、符号化した文字、`?` や `#` は通らない。
+ParseIncident が確かめる）。ビルドの branch は、incident の `branches` にあるものに限る。記録を変えたら
+`just kernel-doctor-build` で作り直す。
 
 ## CVE-2026-98432 について
 
