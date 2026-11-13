@@ -65,19 +65,16 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 		{"review date not a date", func(m map[string]any) { m["reviewedAt"] = "29/10/2026" }},
 		{"no branches", func(m map[string]any) { m["branches"] = []any{} }},
 		{"duplicate branch", func(m map[string]any) {
-			m["branches"] = []any{
-				map[string]any{"branch": "6.6", "fixed": "6.6.159"},
-				map[string]any{"branch": "6.6", "fixed": "6.6.160"},
-			}
+			onlyBranches(m, branch("6.6", "6.6.159"), branch("6.6", "6.6.160"))
 		}},
 		{"floor on the wrong branch", func(m map[string]any) {
-			m["branches"] = []any{map[string]any{"branch": "6.6", "fixed": "6.12.113"}}
+			onlyBranches(m, branch("6.6", "6.12.113"))
 		}},
 		{"floor is not a release", func(m map[string]any) {
-			m["branches"] = []any{map[string]any{"branch": "6.6", "fixed": "6.6"}}
+			onlyBranches(m, branch("6.6", "6.6"))
 		}},
 		{"branch is not major.minor", func(m map[string]any) {
-			m["branches"] = []any{map[string]any{"branch": "6", "fixed": "6.1.190"}}
+			onlyBranches(m, branch("6", "6.1.190"))
 		}},
 		{"mainline is not a release", func(m map[string]any) { m["fixedInMainline"] = "7.3" }},
 		{"no advice", func(m map[string]any) { m["advice"] = []any{} }},
@@ -117,13 +114,17 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["release"] = "6.17.9.1-microsoft-standard-WSL2" })
 		}},
 		{"vendor build fix commit is short", func(m map[string]any) {
-			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["fixCommit"] = "a47406c769f7" })
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { pairCommits(b, "a47406c769f7", wslTagCommit) })
 		}},
 		{"vendor build fix commit is upper case", func(m map[string]any) {
-			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["fixCommit"] = "A47406C769F72C070386985488F1C4D057DF86B2" })
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				pairCommits(b, "A47406C769F72C070386985488F1C4D057DF86B2", wslTagCommit)
+			})
 		}},
 		{"vendor build fix commit is not hex", func(m map[string]any) {
-			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["fixCommit"] = "z47406c769f72c070386985488f1c4d057df86b2" })
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				pairCommits(b, "z47406c769f72c070386985488f1c4d057df86b2", wslTagCommit)
+			})
 		}},
 		{"vendor build source is not https", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["source"] = "http://github.com/x" })
@@ -147,16 +148,76 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 		}},
 		{"vendor build fix commit is not the one the CVE names for its branch", func(m map[string]any) {
 			// a real SHA, but the 6.12 one: "the same SHA" is checked, not trusted
-			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["fixCommit"] = "11a03ce3c4a62d84c10ccdfe47f8075006498568" })
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				pairCommits(b, "11a03ce3c4a62d84c10ccdfe47f8075006498568", wslTagCommit)
+			})
 		}},
 		{"vendor build tag commit is missing", func(m map[string]any) {
-			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { delete(b, "tagCommit") })
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				pairCommits(b, wslFixCommit, "")
+				delete(b, "tagCommit")
+			})
 		}},
 		{"vendor build tag commit is short", func(m map[string]any) {
-			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["tagCommit"] = "a989171929be" })
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { pairCommits(b, wslFixCommit, "a989171929be") })
+		}},
+		{"vendor build tag commit is a tag name", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { pairCommits(b, wslFixCommit, "linux-msft-wsl-6.18.58.1") })
 		}},
 		{"vendor build tag commit is the fix commit", func(m map[string]any) {
-			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["tagCommit"] = b["fixCommit"] })
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { pairCommits(b, wslFixCommit, wslFixCommit) })
+		}},
+		{"vendor build source is not a release tag page", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["source"] = "https://github.com/microsoft/WSL2-Linux-Kernel" })
+		}},
+		{"vendor build source is another page of the repository", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["source"] = "https://github.com/microsoft/WSL2-Linux-Kernel/tree/linux-msft-wsl-6.18.58.1/net"
+			})
+		}},
+		{"vendor build source has a dot-dot owner", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				// the evidence follows the source, so only the owner is wrong
+				b["source"] = "https://github.com/../WSL2-Linux-Kernel/releases/tag/linux-msft-wsl-6.18.58.1"
+				b["evidence"] = "https://github.com/../WSL2-Linux-Kernel/compare/" + wslFixCommit + "..." + wslTagCommit
+			})
+		}},
+		{"vendor build source has an encoded path", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				// decodes to the right repository, so only the encoding is wrong
+				b["source"] = "https://github.com/microsoft%2FWSL2-Linux-Kernel/releases/tag/linux-msft-wsl-6.18.58.1"
+			})
+		}},
+		{"evidence is on another repository", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["evidence"] = "https://github.com/someone/WSL2-Linux-Kernel/compare/" + wslFixCommit + "..." + wslTagCommit
+			})
+		}},
+		{"evidence is on another host", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["evidence"] = "https://example.com/microsoft/WSL2-Linux-Kernel/compare/" + wslFixCommit + "..." + wslTagCommit
+			})
+		}},
+		{"evidence has an extra path segment", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["evidence"] = "https://github.com/microsoft/WSL2-Linux-Kernel/x/compare/" + wslFixCommit + "..." + wslTagCommit
+			})
+		}},
+		{"evidence has an encoded slash", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["evidence"] = "https://github.com/microsoft%2FWSL2-Linux-Kernel/compare/" + wslFixCommit + "..." + wslTagCommit
+			})
+		}},
+		{"evidence has encoded dots", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["evidence"] = "https://github.com/microsoft/WSL2-Linux-Kernel/compare/" + wslFixCommit + "%2E%2E%2E" + wslTagCommit
+			})
+		}},
+		{"evidence has an empty query", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["evidence"] = b["evidence"].(string) + "?" })
+		}},
+		{"evidence has an empty fragment", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["evidence"] = b["evidence"].(string) + "#" })
 		}},
 		{"evidence compares against a tag name", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
@@ -205,19 +266,46 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 	}
 }
 
+const (
+	wslFixCommit = "a47406c769f72c070386985488f1c4d057df86b2"
+	wslTagCommit = "a989171929bed4ea681be8d77333845ce1c1732a"
+)
+
 // vendorBuild returns a one-entry vendorBuilds list, changed by mutate.
 func vendorBuild(mutate func(map[string]any)) []any {
 	build := map[string]any{
 		"release":    "6.18.58.1-microsoft-standard-WSL2",
 		"vendor":     "Microsoft WSL2 kernel",
-		"fixCommit":  "a47406c769f72c070386985488f1c4d057df86b2",
-		"tagCommit":  "a989171929bed4ea681be8d77333845ce1c1732a",
+		"fixCommit":  wslFixCommit,
+		"tagCommit":  wslTagCommit,
 		"source":     "https://github.com/microsoft/WSL2-Linux-Kernel/releases/tag/linux-msft-wsl-6.18.58.1",
-		"evidence":   "https://github.com/microsoft/WSL2-Linux-Kernel/compare/a47406c769f72c070386985488f1c4d057df86b2...a989171929bed4ea681be8d77333845ce1c1732a",
+		"evidence":   "https://github.com/microsoft/WSL2-Linux-Kernel/compare/" + wslFixCommit + "..." + wslTagCommit,
 		"reviewedAt": "2026-11-13",
 	}
 	mutate(build)
 	return []any{build}
+}
+
+// pairCommits sets both commits and the evidence that compares them, so a case
+// that changes one commit fails on that commit's check, not first on a stale
+// evidence URL.
+func pairCommits(build map[string]any, fixCommit, tagCommit string) {
+	build["fixCommit"] = fixCommit
+	build["tagCommit"] = tagCommit
+	build["evidence"] = "https://github.com/microsoft/WSL2-Linux-Kernel/compare/" + fixCommit + "..." + tagCommit
+}
+
+// branch returns a branches entry that carries the 6.6 fix commit, so a case
+// fails on its floor or name, not first on a missing fixCommit.
+func branch(name, fixed string) map[string]any {
+	return map[string]any{"branch": name, "fixed": fixed, "fixCommit": "742f73df544e03744f2981c467d6542fe8172a2a"}
+}
+
+// onlyBranches replaces the branches and drops the vendor builds, which would
+// otherwise fail first because their 6.18 branch is no longer reviewed.
+func onlyBranches(record map[string]any, entries ...any) {
+	record["branches"] = entries
+	delete(record, "vendorBuilds")
 }
 
 // The shipped record carries the reviewed WSL build, tied to the fix commit
@@ -250,17 +338,17 @@ func TestIncidentFloorLookup(t *testing.T) {
 	}
 }
 
-// The rejection table only means something if its baseline is accepted: a
-// helper default that turned invalid would let every vendor case pass without
-// testing anything.
-func TestParseIncidentAcceptsTheVendorBuildBaselines(t *testing.T) {
-	accept := func(name string, builds []any) {
+// The rejection table only means something if its baselines are accepted: a
+// helper whose output turned invalid would let every case built on it pass
+// without testing anything.
+func TestParseIncidentAcceptsTheRejectionBaselines(t *testing.T) {
+	accept := func(name string, mutate func(map[string]any)) {
 		t.Helper()
 		var record map[string]any
 		if err := json.Unmarshal(recordBytes(t), &record); err != nil {
 			t.Fatalf("baseline record must decode: %v", err)
 		}
-		record["vendorBuilds"] = builds
+		mutate(record)
 		data, err := json.Marshal(record)
 		if err != nil {
 			t.Fatalf("re-encode: %v", err)
@@ -269,14 +357,24 @@ func TestParseIncidentAcceptsTheVendorBuildBaselines(t *testing.T) {
 			t.Errorf("%s: ParseIncident rejected a valid record: %v", name, err)
 		}
 	}
-	accept("the helper's default build", vendorBuild(func(map[string]any) {}))
-	var limit []any
-	for n := range 32 {
-		limit = append(limit, vendorBuild(func(b map[string]any) {
-			b["release"] = fmt.Sprintf("6.18.58.%d-microsoft-standard-WSL2", n)
-		})...)
-	}
-	accept("exactly 32 distinct builds", limit)
+	accept("the helper's default build", func(m map[string]any) {
+		m["vendorBuilds"] = vendorBuild(func(map[string]any) {})
+	})
+	accept("pairCommits with the reviewed commits", func(m map[string]any) {
+		m["vendorBuilds"] = vendorBuild(func(b map[string]any) { pairCommits(b, wslFixCommit, wslTagCommit) })
+	})
+	accept("exactly 32 distinct builds", func(m map[string]any) {
+		var limit []any
+		for n := range 32 {
+			limit = append(limit, vendorBuild(func(b map[string]any) {
+				b["release"] = fmt.Sprintf("6.18.58.%d-microsoft-standard-WSL2", n)
+			})...)
+		}
+		m["vendorBuilds"] = limit
+	})
+	accept("one valid branch and no vendor builds", func(m map[string]any) {
+		onlyBranches(m, branch("6.6", "6.6.159"))
+	})
 }
 
 // Each reviewed branch records the fix commit the CVE record names for it

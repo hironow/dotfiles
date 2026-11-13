@@ -78,6 +78,9 @@ var (
 	dnsHost    = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
 	sysctlPath = regexp.MustCompile(`^[a-z0-9_]+(?:\.[a-z0-9_]+)+$`)
 	commitSHA  = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	// repoSegment is one owner or repository name; it starts with a letter or
+	// digit, so "." and ".." cannot be one.
+	repoSegment = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	// vendorRelease narrows vendorSuffix to printable release characters, so
 	// a recorded release cannot carry a space or a control character.
 	vendorRelease            = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?-[A-Za-z0-9._-]+$`)
@@ -171,9 +174,12 @@ func validateVendorBuilds(i Incident) error {
 		}
 		vendor := strings.TrimSpace(build.Vendor)
 		if vendor == "" || len(vendor) > 100 || !commitSHA.MatchString(build.TagCommit) ||
-			build.TagCommit == build.FixCommit || !publicHTTPS(build.Source) ||
-			!comparesCommits(build.Evidence, build.FixCommit, build.TagCommit) {
+			build.TagCommit == build.FixCommit {
 			return errors.New("invalid vendor build")
+		}
+		evidence, ok := compareURL(build.Source, build.FixCommit, build.TagCommit)
+		if !ok || build.Evidence != evidence {
+			return errors.New("vendor build evidence must be the compare of fixCommit...tagCommit on its source's repository")
 		}
 		if _, err := time.Parse(time.DateOnly, build.ReviewedAt); err != nil {
 			return errors.New("vendor build needs a review date")
@@ -183,12 +189,22 @@ func validateVendorBuilds(i Incident) error {
 	return nil
 }
 
-// comparesCommits reports whether evidence is an https compare of exactly the
-// fix commit and the tag commit, so a movable tag name can never stand in.
-func comparesCommits(evidence, fixCommit, tagCommit string) bool {
-	u, err := url.Parse(evidence)
-	return err == nil && publicHTTPS(evidence) &&
-		strings.HasSuffix(u.Path, "/compare/"+fixCommit+"..."+tagCommit)
+// compareURL returns the only evidence a vendor build may carry: the compare
+// of exactly fixCommit...tagCommit, on the repository whose release tag page is
+// source (https://<host>/<owner>/<repo>/releases/tag/<tag>). The evidence must
+// equal it byte for byte, so a movable tag name, another repository, an extra
+// path segment or an encoded character can never stand in.
+func compareURL(source, fixCommit, tagCommit string) (string, bool) {
+	u, err := url.Parse(source)
+	if err != nil || !publicHTTPS(source) || u.RawPath != "" {
+		return "", false
+	}
+	parts := strings.Split(u.Path, "/")
+	if len(parts) != 6 || parts[0] != "" || !repoSegment.MatchString(parts[1]) ||
+		!repoSegment.MatchString(parts[2]) || parts[3] != "releases" || parts[4] != "tag" || parts[5] == "" {
+		return "", false
+	}
+	return "https://" + u.Host + "/" + parts[1] + "/" + parts[2] + "/compare/" + fixCommit + "..." + tagCommit, true
 }
 
 // vendorBuild returns the reviewed build whose release is exactly s.
