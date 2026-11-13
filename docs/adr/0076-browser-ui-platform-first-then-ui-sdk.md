@@ -2,9 +2,9 @@
 
 - **id**: ADR-0076
 - **title**: ブラウザの UI はプラットフォームを先に使い、足りない振る舞いは ui-sdk で作る
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-13
-- **decided-date**: —
+- **decided-date**: 2026-11-13
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session）
@@ -12,7 +12,7 @@
 - **supersedes**: none（[ADR-0052](0052-renew-global-agent-instructions.md) の Decision 1 の範囲を明確にする。0052 の本文と決定は変えない）
 - **superseded-by**: none
 - **related**: [0014](0014-vendor-emulator-telemetry-from-submodules.md)、[0027](0027-bun-only-retire-per-repo-pnpm-carveout.md)、[0043](0043-self-authored-skills-through-the-skills-cli.md)、[0051](0051-adopt-decision-queue-for-new-records.md)、[0052](0052-renew-global-agent-instructions.md)、[0053](0053-stop-using-flatt-mirrors.md)、[0073](0073-mwg-v1-before-the-plugin-cooldown.md)、[0074](0074-bump-declared-agent-plugins-without-the-wait.md)
-- **consultation-trace**: 2026-11-13 の本セッションでの所有者の指示と裁定（下の「相談の記録」）。同じ内容を draft PR の本文に残し、所有者の確認をその PR で受ける
+- **consultation-trace**: 2026-11-13 の本セッションでの所有者の指示と裁定（下の「相談の記録」）。[公開 PR #614 の所有者の裁定](https://github.com/hironow/dotfiles/pull/614#issuecomment-6847609739)
 
 ## やさしい説明
 
@@ -32,7 +32,7 @@
 
 ## Decision
 
-所有者の指示と裁定を、次の必須事項（MUST）として提案する。
+所有者の指示と裁定を、次の必須事項（MUST）として採択する。
 
 - D1: ブラウザの UI について、全エージェントに ui-sdk を勧める。利用者の指定や既存の依存の制約が無ければ HTML と ui-sdk の web components（build なし）、ある程度の制約があれば ui-sdk の web components と Vite を使う。
 - D2: Pages のサイトは D1 の指示に従う。
@@ -41,7 +41,7 @@
 
 ## Claude が常設の指示（2026-11-08）のもとで選んだこと
 
-所有者は、許可を求めずに推奨案を選んで記録し、報告するよう常設で指示している。次の点は Claude が選んだ。所有者はこの PR で覆せる。
+所有者は、許可を求めずに推奨案を選んで記録し、報告するよう常設で指示している。次の点は Claude が選び、所有者は 2026-11-13 にこの節を含む PR の内容のまま採択した。
 
 - 指示の最初の規則は「プラットフォームを先に使う」。hub の「標準ライブラリを先に」と Modern Web Guidance に合わせ、ui-sdk に回すのは、キーボード操作、focus、menu や combobox などの ARIA の pattern、popup の位置、処理中の状態と読み上げとする。
 - 「ある程度の制約」を、TypeScript、npm の package、束ねる複数のファイル、既存の bundler のどれかがあること、と具体化する。利用者が指定したフレームワークや、既存の依存が決めているフレームワークには、そのフレームワークの ui-sdk の package を使う。
@@ -58,9 +58,9 @@
 
 | 案 | 利点 | コスト・リスク | 扱い |
 | --- | --- | --- | --- |
-| A) プラットフォームを先に、足りない振る舞いは ui-sdk（本案） | hub の標準ライブラリ優先と MWG に合う。ARIA の手書きと UI ライブラリの乱立を防ぐ | ui-sdk はまだ beta で、API が変わりうる | 提案 |
-| B) UI はすべて ui-sdk から始める（上流の手順のまま） | 指示が短い | native の `<button>` で足りる場面でも部品を足す。hub の規則と MWG に反する | 提案しない |
-| C) サイトは CDN の版付き URL を読む | 置くファイルが無い | install のコマンドを配るページに、検証していない第三者の JS が入る。`integrity` は部品の module を覆わない | 提案しない |
+| A) プラットフォームを先に、足りない振る舞いは ui-sdk（本案） | hub の標準ライブラリ優先と MWG に合う。ARIA の手書きと UI ライブラリの乱立を防ぐ | ui-sdk はまだ beta で、API が変わりうる | 採択 |
+| B) UI はすべて ui-sdk から始める（上流の手順のまま） | 指示が短い | native の `<button>` で足りる場面でも部品を足す。hub の規則と MWG に反する | 却下: hub の標準ライブラリ優先と MWG に反する |
+| C) サイトは CDN の版付き URL を読む | 置くファイルが無い | install のコマンドを配るページに、検証していない第三者の JS が入る。`integrity` は部品の module を覆わない | 却下: 配るコマンドが外のバイトに左右される |
 
 ## Consequences
 
@@ -92,14 +92,15 @@
 - その後 Claude は所有者に次を伝えた: ui-sdk は `0.1.0-beta.1` だけで公開は 2026-11-12、Class 2 なので 7 日待つ。指示と skill は先に、サイトは待機明けに分ける案。bare の `web.js` は使わず正確な版を pin する。npm の CLI は bun に読み替える。
 - 2026-11-13 05:08 JST、所有者は「そうだね。PR内は7日ルールなしでいいが draft PR として出してください」と答えた（D3、D4）。
 - 計画は独立サブエージェントが 3 回レビューした（Codex はクレジット切れ）。1 回目と 2 回目は REVISE で、指摘はすべて取り込んだ。3 回目は APPROVE。
+- 2026-11-13 17:07 JST、所有者は draft PR #614 の内容を見たうえで「CIが全てpassしたら、マージしましょう」と答えた。この PR の内容のまま採択とし、PR に記録した（[裁定](https://github.com/hironow/dotfiles/pull/614#issuecomment-6847609739)）。
 
-## 決定（記入待ち）
+## 決定（2026-11-13）
 
-- [ ] D1〜D4 と上の選択のとおり Accepted
+- [x] D1〜D4 と上の選択のとおり Accepted
 - [ ] 修正して Accepted（修正点: ____）
 - [ ] Rejected / Deferred（理由: ____）
 
-決定者: 　決定日:
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-13（所有者の裁定により代理記入）
 
 - Accepted のとき: Decision を確定し、索引、変更ログ、queue の決定済みログを同じ PR で更新してから merge する。
 - 修正のとき: 指摘の点を直し、同じ PR で確定する。
