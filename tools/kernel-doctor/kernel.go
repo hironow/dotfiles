@@ -62,8 +62,8 @@ type Assessment struct {
 	Branch   string `json:"branch,omitempty"`
 	FixFloor string `json:"fixed_floor,omitempty"`
 	Reason   string `json:"reason"`
-	// PatchStatus is always unverified, deliberately; BackportState is only
-	// set for a recorded vendor build.
+	// PatchStatus is always unverified, deliberately; BackportState is
+	// unverified too, except for a recorded vendor build.
 	PatchStatus   string `json:"patch_status"`
 	BackportState string `json:"backport_state"`
 }
@@ -85,15 +85,17 @@ func Assess(raw string, inc Incident) Assessment {
 		a.Reason = "no kernel version available; nothing compared"
 		return a
 	}
-	if build, found := inc.vendorBuild(trimmed); found {
-		a.Outcome, a.BackportState = ReviewedVendorBuild, fixCommitInVendorTag
-		a.Reason = build.Vendor + " build " + build.Release + " carries this CVE's fix commit " +
-			build.FixCommit[:12] + " in its release tag (" + build.Evidence + ", reviewed " + build.ReviewedAt +
-			"); a custom kernel built with the same release string is not told apart, and the running patch state stays unverified"
-		return a
-	}
 	if !cleanRelease.MatchString(trimmed) {
 		a.Outcome, a.Reason = incomparableReason(trimmed)
+		// Only a vendor-shaped string may match a record, so a record can never
+		// override a numeric comparison.
+		if build, found := inc.vendorBuild(trimmed); found && a.Outcome == UnverifiedVendor {
+			a.Outcome, a.BackportState = ReviewedVendorBuild, fixCommitInVendorTag
+			a.Reason = build.Vendor + " build " + build.Release + " carries this CVE's fix commit " +
+				build.FixCommit[:12] + " in the commit its release tag pointed at, " + build.TagCommit[:12] +
+				" (" + build.Evidence + ", reviewed " + build.ReviewedAt +
+				"); a custom kernel built with the same release string is not told apart, and the running patch state stays unverified"
+		}
 		return a
 	}
 	parts, ok := versionParts(trimmed)

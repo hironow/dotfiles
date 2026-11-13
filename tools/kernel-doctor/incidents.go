@@ -13,10 +13,12 @@ import (
 
 // VersionFloor is one reviewed upstream branch and its fix floor. The shape
 // follows ca-doctor's VersionFloor: a branch name plus the minimum version
-// that carries the fix.
+// that carries the fix, and the fix commit the CVE record names for that
+// branch ("fixed in <fixed> with commit <fixCommit>").
 type VersionFloor struct {
-	Branch string `json:"branch"`
-	Fixed  string `json:"fixed"`
+	Branch    string `json:"branch"`
+	Fixed     string `json:"fixed"`
+	FixCommit string `json:"fixCommit"`
 }
 
 // Sysctl is a kernel setting worth reporting as reachability evidence.
@@ -54,14 +56,17 @@ type Incident struct {
 }
 
 // VendorBuild is one vendor kernel build reviewed against this CVE: the fix
-// commit the CVE record names (the same SHA) is an ancestor of the commit the
-// vendor's release tag points at, and the fixed lines are present there.
-// Evidence pins that tag commit, because a tag can move (ADR-0065 Decision 3).
-// Only the exact release string matches; a near miss stays unverified.
+// commit the CVE record names for the build's branch (the same SHA, checked
+// against the branch's fixCommit) is an ancestor of TagCommit, the commit the
+// vendor's release tag pointed at, and the fixed lines are present there.
+// Evidence is the compare of those two commits, never a tag, because a tag can
+// move (ADR-0065 Decision 3). Only the exact release string matches; a near
+// miss stays unverified.
 type VendorBuild struct {
 	Release    string `json:"release"`
 	Vendor     string `json:"vendor"`
 	FixCommit  string `json:"fixCommit"`
+	TagCommit  string `json:"tagCommit"`
 	Source     string `json:"source"`
 	Evidence   string `json:"evidence"`
 	ReviewedAt string `json:"reviewedAt"`
@@ -81,12 +86,18 @@ var (
 
 // floorFor returns the reviewed fix floor for a major.minor branch.
 func (i Incident) floorFor(branch string) (string, bool) {
+	floor, found := i.branchFloor(branch)
+	return floor.Fixed, found
+}
+
+// branchFloor returns the reviewed entry for a major.minor branch.
+func (i Incident) branchFloor(branch string) (VersionFloor, bool) {
 	for _, candidate := range i.Branches {
 		if candidate.Branch == branch {
-			return candidate.Fixed, true
+			return candidate, true
 		}
 	}
-	return "", false
+	return VersionFloor{}, false
 }
 
 // atOrAboveMainline reports whether a version is on a branch at or above the
@@ -149,12 +160,19 @@ func validateVendorBuilds(i Incident) error {
 		// vendorRelease guarantees at least two dots before the first '-'.
 		major, rest, _ := strings.Cut(build.Release, ".")
 		minor, _, _ := strings.Cut(rest, ".")
-		if _, reviewed := i.floorFor(major + "." + minor); !reviewed {
+		floor, reviewed := i.branchFloor(major + "." + minor)
+		if !reviewed {
 			return errors.New("vendor build must be on a reviewed branch")
 		}
+		// "The same SHA" is a check, not a promise: the fix commit must be the
+		// one the CVE record names for this branch.
+		if build.FixCommit != floor.FixCommit {
+			return errors.New("vendor build fixCommit must be its branch's fixCommit")
+		}
 		vendor := strings.TrimSpace(build.Vendor)
-		if vendor == "" || len(vendor) > 100 || !commitSHA.MatchString(build.FixCommit) ||
-			!publicHTTPS(build.Source) || !publicHTTPS(build.Evidence) {
+		if vendor == "" || len(vendor) > 100 || !commitSHA.MatchString(build.TagCommit) ||
+			build.TagCommit == build.FixCommit || !publicHTTPS(build.Source) ||
+			!comparesCommits(build.Evidence, build.FixCommit, build.TagCommit) {
 			return errors.New("invalid vendor build")
 		}
 		if _, err := time.Parse(time.DateOnly, build.ReviewedAt); err != nil {
@@ -163,6 +181,14 @@ func validateVendorBuilds(i Incident) error {
 		seen[build.Release] = true
 	}
 	return nil
+}
+
+// comparesCommits reports whether evidence is an https compare of exactly the
+// fix commit and the tag commit, so a movable tag name can never stand in.
+func comparesCommits(evidence, fixCommit, tagCommit string) bool {
+	u, err := url.Parse(evidence)
+	return err == nil && publicHTTPS(evidence) &&
+		strings.HasSuffix(u.Path, "/compare/"+fixCommit+"..."+tagCommit)
 }
 
 // vendorBuild returns the reviewed build whose release is exactly s.
@@ -204,6 +230,9 @@ func validateBranches(i Incident) error {
 		fixed, valid := versionParts(floor.Fixed)
 		if !valid || branchOf(fixed) != floor.Branch {
 			return errors.New("fix floor must be an x.y.z release on its own branch")
+		}
+		if !commitSHA.MatchString(floor.FixCommit) {
+			return errors.New("branch needs the fix commit its CVE record names")
 		}
 		seen[floor.Branch] = true
 	}

@@ -173,3 +173,17 @@ func TestBranchHelpers(t *testing.T) {
 		t.Error("6.6 is not a three-component release")
 	}
 }
+
+// A record never overrides a numeric comparison: Assess itself only consults
+// vendorBuilds for a vendor-shaped string, whatever a record holds. ParseIncident
+// rejects such a record too; this pins the rule where the lookup happens.
+func TestARecordNeverOverridesANumericComparison(t *testing.T) {
+	incident := mustIncident(t)
+	incident.VendorBuilds = append(incident.VendorBuilds, VendorBuild{
+		Release: "6.6.150", Vendor: "planted", FixCommit: incident.VendorBuilds[0].FixCommit,
+		TagCommit: incident.VendorBuilds[0].TagCommit, Evidence: incident.VendorBuilds[0].Evidence,
+	})
+	if got := Assess("6.6.150", incident); got.Outcome != BelowFloor {
+		t.Errorf("Assess(6.6.150).Outcome = %q, want %q", got.Outcome, BelowFloor)
+	}
+}

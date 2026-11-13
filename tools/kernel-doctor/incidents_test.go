@@ -137,6 +137,42 @@ func TestParseIncidentRejectsMalformedRecords(t *testing.T) {
 		{"vendor build review date not a date", func(m map[string]any) {
 			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["reviewedAt"] = "13/11/2026" })
 		}},
+		{"branch fix commit is missing", func(m map[string]any) {
+			branches := m["branches"].([]any)
+			delete(branches[0].(map[string]any), "fixCommit")
+		}},
+		{"branch fix commit is short", func(m map[string]any) {
+			branches := m["branches"].([]any)
+			branches[0].(map[string]any)["fixCommit"] = "b3b027ef0cd3"
+		}},
+		{"vendor build fix commit is not the one the CVE names for its branch", func(m map[string]any) {
+			// a real SHA, but the 6.12 one: "the same SHA" is checked, not trusted
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["fixCommit"] = "11a03ce3c4a62d84c10ccdfe47f8075006498568" })
+		}},
+		{"vendor build tag commit is missing", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { delete(b, "tagCommit") })
+		}},
+		{"vendor build tag commit is short", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["tagCommit"] = "a989171929be" })
+		}},
+		{"vendor build tag commit is the fix commit", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) { b["tagCommit"] = b["fixCommit"] })
+		}},
+		{"evidence compares against a tag name", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["evidence"] = "https://github.com/microsoft/WSL2-Linux-Kernel/compare/a47406c769f72c070386985488f1c4d057df86b2...linux-msft-wsl-6.18.58.1"
+			})
+		}},
+		{"evidence does not name the fix commit", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["evidence"] = "https://github.com/microsoft/WSL2-Linux-Kernel/compare/v6.18.56...a989171929bed4ea681be8d77333845ce1c1732a"
+			})
+		}},
+		{"evidence is not a compare of the two commits", func(m map[string]any) {
+			m["vendorBuilds"] = vendorBuild(func(b map[string]any) {
+				b["evidence"] = "https://github.com/microsoft/WSL2-Linux-Kernel/commit/a989171929bed4ea681be8d77333845ce1c1732a"
+			})
+		}},
 		{"duplicate vendor build", func(m map[string]any) {
 			list := vendorBuild(func(map[string]any) {})
 			m["vendorBuilds"] = append(list, vendorBuild(func(map[string]any) {})...)
@@ -175,6 +211,7 @@ func vendorBuild(mutate func(map[string]any)) []any {
 		"release":    "6.18.58.1-microsoft-standard-WSL2",
 		"vendor":     "Microsoft WSL2 kernel",
 		"fixCommit":  "a47406c769f72c070386985488f1c4d057df86b2",
+		"tagCommit":  "a989171929bed4ea681be8d77333845ce1c1732a",
 		"source":     "https://github.com/microsoft/WSL2-Linux-Kernel/releases/tag/linux-msft-wsl-6.18.58.1",
 		"evidence":   "https://github.com/microsoft/WSL2-Linux-Kernel/compare/a47406c769f72c070386985488f1c4d057df86b2...a989171929bed4ea681be8d77333845ce1c1732a",
 		"reviewedAt": "2026-11-13",
@@ -195,6 +232,9 @@ func TestTheShippedRecordCarriesTheReviewedWSLBuild(t *testing.T) {
 		build.FixCommit != "a47406c769f72c070386985488f1c4d057df86b2" {
 		t.Errorf("unexpected build: %+v", build)
 	}
+	if build.TagCommit != "a989171929bed4ea681be8d77333845ce1c1732a" {
+		t.Errorf("tagCommit = %q, want the commit the tag pointed at when reviewed", build.TagCommit)
+	}
 	if !strings.Contains(build.Evidence, "/compare/"+build.FixCommit+"...a989171929bed4ea681be8d77333845ce1c1732a") {
 		t.Errorf("evidence must compare the fix commit with the tag's commit: %s", build.Evidence)
 	}
@@ -207,5 +247,55 @@ func TestIncidentFloorLookup(t *testing.T) {
 	}
 	if _, ok := incident.floorFor("6.17"); ok {
 		t.Error("floorFor(6.17) must not find a reviewed floor")
+	}
+}
+
+// The rejection table only means something if its baseline is accepted: a
+// helper default that turned invalid would let every vendor case pass without
+// testing anything.
+func TestParseIncidentAcceptsTheVendorBuildBaselines(t *testing.T) {
+	accept := func(name string, builds []any) {
+		t.Helper()
+		var record map[string]any
+		if err := json.Unmarshal(recordBytes(t), &record); err != nil {
+			t.Fatalf("baseline record must decode: %v", err)
+		}
+		record["vendorBuilds"] = builds
+		data, err := json.Marshal(record)
+		if err != nil {
+			t.Fatalf("re-encode: %v", err)
+		}
+		if _, err := ParseIncident(data); err != nil {
+			t.Errorf("%s: ParseIncident rejected a valid record: %v", name, err)
+		}
+	}
+	accept("the helper's default build", vendorBuild(func(map[string]any) {}))
+	var limit []any
+	for n := range 32 {
+		limit = append(limit, vendorBuild(func(b map[string]any) {
+			b["release"] = fmt.Sprintf("6.18.58.%d-microsoft-standard-WSL2", n)
+		})...)
+	}
+	accept("exactly 32 distinct builds", limit)
+}
+
+// Each reviewed branch records the fix commit the CVE record names for it
+// (CVE-2026-98432.mbox, "fixed in <floor> with commit <sha>"), which is what a
+// vendor build's fixCommit must equal.
+func TestEveryReviewedBranchRecordsItsFixCommit(t *testing.T) {
+	want := map[string]string{
+		"5.10": "b3b027ef0cd322bfa839b9aaf5b27551eea54cf6",
+		"5.15": "95a8c8fa9f27dce64c40c41c062de7728bf34ab5",
+		"6.1":  "89b5b1eb7d633c33832b7ff2c02e19a144705036",
+		"6.6":  "742f73df544e03744f2981c467d6542fe8172a2a",
+		"6.12": "11a03ce3c4a62d84c10ccdfe47f8075006498568",
+		"6.18": "a47406c769f72c070386985488f1c4d057df86b2",
+		"7.2":  "26d4c36d318cffbbd160884a0e4cec0da4da4936",
+	}
+	incident := mustIncident(t)
+	for _, floor := range incident.Branches {
+		if floor.FixCommit != want[floor.Branch] {
+			t.Errorf("branch %s fixCommit = %q, want %q", floor.Branch, floor.FixCommit, want[floor.Branch])
+		}
 	}
 }
