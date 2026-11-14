@@ -1,10 +1,10 @@
 # 0066. doctor の WARN は手を動かすべきことだけにし、注意書きは INFO で出し、OS に合わない行は出さない
 
 **Date:** 2026-11-01
-**Status:** Proposed（決裁待ち。[decision-queue](../decision-queue.md) で追跡する）
+**Status:** Accepted
 **ID:** ADR-0066
 **Title:** doctor の WARN は手を動かすべきことだけにし、注意書きは INFO で出し、OS に合わない行は出さない
-**Decided-date:** （未決）
+**Decided-date:** 2026-11-13
 **Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Claude Code（owner session 6f9f9d8e）
@@ -12,7 +12,7 @@
 **Supersedes:** none
 **Superseded-by:** none
 **Related:** [ADR-0065](0065-kernel-cve-is-evidence-only.md)（Proposed。kernel の所見は WARN 止まり）、[ADR-0062](0062-one-windows-ollama-for-wsl.md)（Decision 4: Ollama の判定は `ollama_host.py --check`）、[ADR-0064](0064-mirrored-wsl-uses-the-shared-loopback.md)、計画 [doctor-os-aware-warn](../plan/doctor-os-aware-warn.md)、計画 [kernel-cve-evidence](../plan/kernel-cve-evidence.md)（D3）、計画 [doctor-windows-wsl-warn](../plan/doctor-windows-wsl-warn.md)（Windows と WSL の実測からの追補）、計画 [ca-control-ipv4](../plan/ca-control-ipv4.md)（D3 の再試行の 2 回目を IPv4 にする）、[CA runbook](../runbook/ca-doctor.md)、[Ollama runbook](../runbook/ollama-windows-wsl.md)
-**Consultation-trace:** 2026-11-01 17:07 の本セッションで所有者が計画を承認した（D1 = テストホストを全部拒否したクライアントは INFO、D2 = 本 ADR を起票）。決裁は PR で記録する。2026-11-01 19:32 に所有者が Windows と WSL の実測からの追補計画を承認した（D1 = kernel の数値と助言は INFO、D2 = docker-desktop は INFO、D3 = control の再試行を入れる）。2026-11-01 21:46 に所有者が、再試行の 2 回目を IPv4 にする計画を承認した（trade 機のセッション、[#529](https://github.com/hironow/dotfiles/pull/529)）
+**Consultation-trace:** 2026-11-01 17:07 の本セッションで所有者が計画を承認した（D1 = テストホストを全部拒否したクライアントは INFO、D2 = 本 ADR を起票）。決裁は PR で記録する。2026-11-01 19:32 に所有者が Windows と WSL の実測からの追補計画を承認した（D1 = kernel の数値と助言は INFO、D2 = docker-desktop は INFO、D3 = control の再試行を入れる）。2026-11-01 21:46 に所有者が、再試行の 2 回目を IPv4 にする計画を承認した（trade 機のセッション、[#529](https://github.com/hironow/dotfiles/pull/529)）。2026-11-13 23:22 JST に、GPU の Windows 機のセッションで所有者が「Accepted にする」を選んだ（下の「決定」）
 
 ## やさしい説明
 
@@ -50,8 +50,6 @@
   Docker Desktop の `docker-desktop` distro を、Ollama のクライアントでないのに「未検査」の WARN にする。
 
 ## Decision
-
-（Proposed。所有者が承認した計画の内容を、確定したときの MUST の形で書く。）
 
 1. **WARN の意味。** `just doctor` とその下の検査（ca-doctor、kernel-doctor、`scripts/doctor_lines.py` を使う checker、`ollama_host.py --check`）は、WARN を「その機体で operator が見るか、手を動かすべきこと」にだけ使わなければならない（MUST）。
 2. **INFO。** 検査の範囲の注意書きと、機体についての事実は `INFO` の行で出さなければならない（MUST）。kernel の第三者の数値と、事故の記録にある助言の文もこれにあたる。`INFO` は表示し、`Doctor summary` の `info=` に数えるが、OK にも WARN にも数えず、終了コードを変えてはならない（MUST NOT）。未確認のものを OK にしてはならない（MUST NOT）。
@@ -94,12 +92,14 @@
 
 none
 
-## 決定（記入待ち）
+## 決定（2026-11-13）
 
-- [ ] A 案で Accept / [ ] E 案で Accept / [ ] 修正のうえ Accept（修正点: ____） / [ ] Reject（理由: ____） / [ ] Deferred
-- 決定者・日付:
-- A 案 Accept 時のアクション: 追加の実装は無い（#526、[doctor-windows-wsl-warn](../plan/doctor-windows-wsl-warn.md) の #527、[ca-control-ipv4](../plan/ca-control-ipv4.md) の #529 で main に入っている）。status、decision-queue、README の索引を更新する。
-- E 案 Accept 時のアクション: `ProbeEvidenceFor` と `ChainEvidence` の全部拒否を WARN に戻し、runbook の表を直す。
-- 修正 Accept 時のアクション: 修正点を計画と実装に反映し、テストを直す。
-- Reject 時のアクション: #526 と doctor-windows-wsl-warn の PR の振る舞いの変更を戻し、INFO の無い WARN の扱いに戻す。
-- Deferred 時のアクション: 実装は main に残したまま、doctor-windows-wsl-warn の変更後の Windows と WSL の再確認がそろってから再検討する。
+- [x] A 案で Accept / [ ] E 案で Accept / [ ] 修正のうえ Accept / [ ] Reject / [ ] Deferred
+- 決定者: Hiroto N.（@hironow）。決定日: 2026-11-13（23:22 JST、GPU の Windows 機のセッション。所有者の選択により代理記入）。
+- 経緯: 所有者は「ADR-0066 はまだ Proposed。止めて残す distro と、machine の無い Windows の Podman CLI を INFO にするのは、この ADR に乗る。決裁しますか」という問いに、「Accepted にする」を選んだ。Decision の 1〜6 は Proposed のときのまま変えていない。
+- 却下した案:
+    - B（今のまま）: 本当の警告が埋もれ、所有者の依頼に応えない。
+    - C（注意書きを出さない）: 調べていない範囲が見えなくなり、未確認を隠す。
+    - D（注意書きを OK にする）: 合格でないものを合格と数え、「未確認を合格にしない」に反する。
+    - E（全部拒否したクライアントも WARN のまま）: 毎回同じ結果で対処の無い WARN が残る。
+- 実施: 追加の実装は無い（#526、[doctor-windows-wsl-warn](../plan/doctor-windows-wsl-warn.md) の #527、[ca-control-ipv4](../plan/ca-control-ipv4.md) の #529 で main に入っている）。status、decision-queue、README の索引と決定変更ログを、この決定と同じ PR で更新した。

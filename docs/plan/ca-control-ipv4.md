@@ -3,7 +3,7 @@
 **Date:** 2026-11-01
 **Status:** done(→[CA runbook](../runbook/ca-doctor.md) の「通信と実行の制限」)。Approved（2026-11-01 21:46、所有者。Windows と WSL の両方で worktree を使うことも承認）。[#529](https://github.com/hironow/dotfiles/pull/529) で merge（main `a3dbd5c7`）。結果は §12
 **Branch:** `fix/ca-doctor-control-ipv4`（worktree はホームの下の `dotfiles-ca-control-ipv4`）
-**Related:** [Windows と WSL の追補計画](doctor-windows-wsl-warn.md)（§2.2 で control の再試行を入れ、原因の切り分けを残した）、[ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md)（Proposed、D3 = control の再試行を入れる）、[CA runbook](../runbook/ca-doctor.md) 56-61 行
+**Related:** [Windows と WSL の追補計画](doctor-windows-wsl-warn.md)（§2.2 で control の再試行を入れ、原因の切り分けを残した）、[ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md)（Accepted、D3 = control の再試行を入れる）、[CA runbook](../runbook/ca-doctor.md) 56-61 行
 **Blocking decisions:** なし（D1 は独立レビューの指摘で (b) に決まった。§10）
 
 依頼: operator（2026-11-01 20:54）「直す PR をあなたがつくって出しましょうか」。#527 を trade 機の Windows で確かめたところ、control の再試行を入れても `ca-live` の WARN が実行のたびに出たり消えたりする。
