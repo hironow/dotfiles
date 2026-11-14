@@ -68,11 +68,14 @@ def sandbox(tmp_path: Path) -> dict:
     calls = tmp_path / "calls"
     for name in ("gcloud", "sudo"):
         stub = stubs / name
-        # GCLOUD_OUT is what gcloud prints, GCLOUD_RC how it exits
+        # Listing and installation can fail independently; never run real sudo.
         stub.write_text(
             "#!/bin/sh\n"
             f'echo "{name} $*" >> "{calls}"\n'
             + (
+                'if [ "$1 $2" = "components install" ]; then\n'
+                '  exit "${GCLOUD_INSTALL_RC:-0}"\n'
+                "fi\n"
                 '[ -n "$GCLOUD_OUT" ] && printf "%b" "$GCLOUD_OUT"\n'
                 'exit "${GCLOUD_RC:-0}"\n'
                 if name == "gcloud"
@@ -140,14 +143,42 @@ def test_restore_installs_nothing_when_updates_are_only_waiting(sandbox: dict) -
     done = _run(sandbox, "add-gcloud", GCLOUD_OUT="alpha\\nkubectl\\n")
     assert done.returncode == 0, done.stderr
     assert "sudo" not in _calls(sandbox)
+    assert "components install" not in _calls(sandbox)
 
 
-def test_restore_stops_when_gcloud_fails(sandbox: dict) -> None:
-    # never read a failed listing as "nothing installed" and install it all
+@pytest.mark.parametrize(
+    "gcloud",
+    [{"GCLOUD_RC": "1", "GCLOUD_OUT": "alpha\\n"}, {"GCLOUD_OUT": ""}],
+    ids=["failed", "empty"],
+)
+def test_restore_stops_when_gcloud_cannot_list(sandbox: dict, gcloud: dict) -> None:
+    # never read a failed or empty listing as "nothing installed" and install it all
     _record(sandbox).write_text("alpha\nkubectl\n", encoding="utf-8")
-    done = _run(sandbox, "add-gcloud", GCLOUD_RC="1")
+    done = _run(sandbox, "add-gcloud", **gcloud)
     assert done.returncode != 0
     assert "sudo" not in _calls(sandbox)
+    assert "components install" not in _calls(sandbox)
+
+
+@pytest.mark.parametrize("install_rc", ["0", "7"], ids=["success", "failed-install"])
+def test_restore_installs_only_missing_components_without_sudo(
+    sandbox: dict, install_rc: str
+) -> None:
+    _record(sandbox).write_text("kubectl\nbeta\nalpha\nbeta\ncore\n", encoding="utf-8")
+    done = _run(
+        sandbox,
+        "add-gcloud",
+        GCLOUD_OUT="kubectl\\ncore\\n",
+        GCLOUD_INSTALL_RC=install_rc,
+    )
+    assert _calls(sandbox).splitlines() == [
+        f"gcloud components list --filter={INSTALLED} --format=value(id)",
+        "gcloud components install --quiet alpha beta",
+    ]
+    if install_rc == "0":
+        assert done.returncode == 0, done.stderr
+    else:
+        assert done.returncode != 0
 
 
 def test_a_dump_that_cannot_write_keeps_the_previous_record(sandbox: dict) -> None:
