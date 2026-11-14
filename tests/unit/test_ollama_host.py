@@ -23,6 +23,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import ollama_host as host
 
+_DECLARED_PATH = host.RETAINED_DISTROS
+
+
+@pytest.fixture(autouse=True)
+def _no_retained_distros(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The host's own declaration (ADR-0077) must not change any test."""
+    monkeypatch.setattr(host, "RETAINED_DISTROS", tmp_path / "absent")
+
 
 def _windows() -> dict:
     root = r"C:\Users\dev\scoop\apps\ollama-full\0.40.10"
@@ -1691,6 +1699,119 @@ def test_the_platform_managed_distro_is_shown_as_info(
     assert [row[0] for row in stopped] == ["WARN"]
     assert "uninspected" in stopped[0][2]
     assert not any("docker-desktop" in command for command in calls if "-d" in command)
+
+
+def _distro_inventory(
+    monkeypatch: pytest.MonkeyPatch, listed: str, running: str
+) -> list[list[str]]:
+    monkeypatch.setattr(host, "host_policy", lambda: "windows-full")
+    monkeypatch.setattr(host, "windows_snapshot", _windows)
+    calls: list[list[str]] = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        names = running if "--running" in command else listed
+        return subprocess.CompletedProcess(command, 0, names.encode("utf-16-le"), b"")
+
+    def run_text(command, **kwargs):
+        calls.append(command)
+        output = "/mapped/checker.py" if "wslpath" in command else json.dumps(_wsl())
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    monkeypatch.setattr(host.subprocess, "run", run)
+    monkeypatch.setattr(host, "_run", run_text)
+    return calls
+
+
+def test_a_declared_retained_distro_that_is_stopped_is_shown_as_info(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """ADR-0077: a distro the operator keeps stopped on purpose (a rollback
+    copy) is not an action item. Only the names in the declaration change;
+    another stopped distro stays a WARN, and nothing is started."""
+    declaration = tmp_path / "wsl-retained-distros"
+    declaration.write_text(
+        "# kept stopped as a rollback\n\nOld\n", encoding="utf-8", newline="\n"
+    )
+    monkeypatch.setattr(host, "RETAINED_DISTROS", declaration)
+    calls = _distro_inventory(monkeypatch, "New\nOld\nStopped\n", "New\n")
+    rows = host.check()
+    old = [row for row in rows if "WSL Old" in row[2]]
+    stopped = [row for row in rows if "WSL Stopped" in row[2]]
+    assert [row[0] for row in old] == ["INFO"]
+    assert "declared retained" in old[0][2] and "not inspected" in old[0][2]
+    assert [row[0] for row in stopped] == ["WARN"]
+    assert not any("Old" in command or "Stopped" in command for command in calls)
+
+
+def test_a_declared_retained_distro_that_is_running_is_inspected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The declaration covers only the stopped state: a running distro can
+    serve or call Ollama, so it gets the full inspection."""
+    declaration = tmp_path / "wsl-retained-distros"
+    declaration.write_text("Old\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(host, "RETAINED_DISTROS", declaration)
+    calls = _distro_inventory(monkeypatch, "New\nOld\n", "New\nOld\n")
+    rows = host.check()
+    assert not any("declared retained" in row[2] for row in rows)
+    assert any(command[:3] == ["wsl.exe", "-d", "Old"] for command in calls)
+
+
+@pytest.mark.parametrize("content", ["\ufeffOld\r\n", "New\r\n  Old  \r\n"])
+def test_a_declaration_written_by_windows_tools_counts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str
+) -> None:
+    """Notepad and Windows PowerShell 5.1 write a BOM and CRLF."""
+    declaration = tmp_path / "wsl-retained-distros"
+    declaration.write_bytes(content.encode("utf-8"))
+    monkeypatch.setattr(host, "RETAINED_DISTROS", declaration)
+    _distro_inventory(monkeypatch, "New\nOld\n", "New\n")
+    rows = host.check()
+    assert [row[0] for row in rows if "WSL Old" in row[2]] == ["INFO"]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Old\r\n".encode("utf-16"),  # Windows PowerShell 5.1 `>` and Out-File
+        "# 戻し先\r\nOld\r\n".encode("cp932"),  # 5.1 Add-Content on a Japanese host
+    ],
+)
+def test_an_undecodable_declaration_declares_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, raw: bytes
+) -> None:
+    """A declaration that is not UTF-8 must not stop the inspection of the
+    running distros (their ERRs would be lost); it only declares nothing."""
+    declaration = tmp_path / "wsl-retained-distros"
+    declaration.write_bytes(raw)
+    monkeypatch.setattr(host, "RETAINED_DISTROS", declaration)
+    calls = _distro_inventory(monkeypatch, "New\nOld\n", "New\n")
+    rows = host.check()
+    assert [row[0] for row in rows if "WSL Old" in row[2]] == ["WARN"]
+    assert any(command[:3] == ["wsl.exe", "-d", "New"] for command in calls)
+
+
+def test_the_declaration_lives_in_the_documented_place() -> None:
+    assert (
+        _DECLARED_PATH == Path.home() / ".config" / "dotfiles" / "wsl-retained-distros"
+    )
+
+
+@pytest.mark.parametrize("content", [None, "", "old\n", " Old2\n", "# Old\n"])
+def test_only_an_exact_name_in_the_declaration_counts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str | None
+) -> None:
+    """No file, an empty file, another case, or another name keeps the WARN."""
+    declaration = tmp_path / "wsl-retained-distros"
+    if content is not None:
+        declaration.write_text(content, encoding="utf-8", newline="\n")
+    monkeypatch.setattr(host, "RETAINED_DISTROS", declaration)
+    _distro_inventory(monkeypatch, "New\nOld\n", "New\n")
+    rows = host.check()
+    old = [row for row in rows if "WSL Old" in row[2]]
+    assert [row[0] for row in old] == ["WARN"]
+    assert "uninspected" in old[0][2]
 
 
 def test_windows_ci_runs_these_tests_on_windows() -> None:
