@@ -231,7 +231,7 @@ def test_an_apt_candidate_with_an_epoch_is_read_by_its_upstream_version(
     result = _run(sandbox)
     assert result.returncode == 0, result.stdout + result.stderr
     assert (sandbox / "package.log").read_text(encoding="utf-8").splitlines()[-1] == (
-        "install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs"
+        "install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs nftables catatonit"
     )
 
 
@@ -343,7 +343,7 @@ def test_linux_elevates_only_package_commands_without_a_prompt(sandbox: Path) ->
     assert (sandbox / "sudo.log").read_text(encoding="utf-8").splitlines() == [
         "-n true",
         "-n apt-get update",
-        "-n apt-get install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs",
+        "-n apt-get install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs nftables catatonit",
     ]
     assert not (sandbox / "unexpected.log").exists()
 
@@ -479,7 +479,7 @@ def test_missing_linux_podman_installs_runtime_and_dns_packages(sandbox: Path) -
     assert result.returncode == 0, result.stdout + result.stderr
     assert (sandbox / "package.log").read_text(encoding="utf-8").splitlines() == [
         "update",
-        "install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs",
+        "install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs nftables catatonit",
     ]
     assert not (sandbox / "unexpected.log").exists()
 

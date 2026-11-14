@@ -162,7 +162,10 @@ step_podman() {
         # Check the version before installing: an old candidate would leave
         # Podman 4 and its runtime packages behind before the check below.
         _apt_podman_candidate_major || return 1
-        "${elevate[@]}" apt-get install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs || return 1
+        # --no-install-recommends drops two runtime needs, so name them:
+        # nftables (netavark runs nft for every compose network) and catatonit
+        # (the --init binary; buildx's docker-container driver needs it).
+        "${elevate[@]}" apt-get install -y --no-install-recommends podman netavark aardvark-dns passt uidmap fuse-overlayfs nftables catatonit || return 1
       elif command -v dnf >/dev/null 2>&1; then
         # Same check before installing (the RHEL 8 family offers Podman 4.9).
         _dnf_podman_candidate "${elevate[@]}" || return 1
