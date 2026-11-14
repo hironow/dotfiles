@@ -1396,7 +1396,9 @@ add-gcloud host="":
     fi
     echo "📦 installing missing gcloud components:"
     echo "$missing" | sed 's/^/  - /'
-    sudo gcloud components install --quiet $missing
+    # Keep the user-managed SDK and Python venv user-owned, as update-gcloud does.
+    # Existing root-owned venv recovery: docs/runbook/gcloud.md.
+    gcloud components install --quiet $missing
 
 # Add: restore scoop apps from dump/<host>/scoop.json (Windows native; idempotent).
 # Symmetry with add-brew: host defaults to DOTFILES_HOST / dump/.host / lone host
