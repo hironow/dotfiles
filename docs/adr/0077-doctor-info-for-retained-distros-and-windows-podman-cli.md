@@ -1,10 +1,10 @@
 # 0077. 止めて残すと宣言した WSL の distro と、machine の無い native Windows の Podman CLI は、doctor で INFO にする
 
 **Date:** 2026-11-14
-**Status:** Proposed（決裁待ち。[decision-queue](../decision-queue.md) で追跡する）
+**Status:** Accepted
 **ID:** ADR-0077
 **Title:** 止めて残すと宣言した WSL の distro と、machine の無い native Windows の Podman CLI は、doctor で INFO にする
-**Decided-date:** （未決）
+**Decided-date:** 2026-11-15
 **Decision-maker:** Hiroto N.
 **Decision-maker-contact:** @hironow
 **Author:** Claude Code（owner session、GPU の Windows 機）
@@ -12,7 +12,7 @@
 **Supersedes:** none
 **Superseded-by:** none
 **Related:** [ADR-0066](0066-doctor-warns-only-what-needs-action.md)（Decision 1 と 2: WARN は手を動かすべきことだけ、事実は INFO）、[ADR-0062](0062-one-windows-ollama-for-wsl.md)（Decision 4: Ollama の判定は `ollama_host.py --check`）、[ADR-0063](0063-declared-tailnet-forward-of-ollama.md)（機体ごとの宣言ファイルの先例）、[ADR-0067](0067-use-podman-for-managed-containers.md)（Decision 1: CLI とエンジンの版、Decision 3: machine を自動で起こさない）、[Ollama runbook](../runbook/ollama-windows-wsl.md)
-**Consultation-trace:** 2026-11-13 23:22 JST、GPU の Windows 機のセッションで、所有者が別の repo の移行計画を承認した。その計画は、WSL の作業環境を新しい distro に移し、古い distro を戻し先として止めて残す。宣言の場所と形はこの ADR で決めるとした。同じ日に所有者は、Windows の Podman CLI を machine なしで残し、その行を INFO にする案を選んだ。2026-11-14 に所有者が「はい、進めてください。」と答え、この段に入った。実装は独立レビュー（サブエージェント）が REVISE とし、P1 1 件（UTF-8 で読めない宣言が、動いている distro の検査を止める）、P2 1 件、P3 6 件をすべて反映した（machine の有無を見る A 案への修正を含む）。決裁は PR で記録する
+**Consultation-trace:** 2026-11-13 23:22 JST、GPU の Windows 機のセッションで、所有者が別の repo の移行計画を承認した。その計画は、WSL の作業環境を新しい distro に移し、古い distro を戻し先として止めて残す。宣言の場所と形はこの ADR で決めるとした。同じ日に所有者は、Windows の Podman CLI を machine なしで残し、その行を INFO にする案を選んだ。2026-11-14 に所有者が「はい、進めてください。」と答え、この段に入った。実装は独立レビュー（サブエージェント）が REVISE とし、P1 1 件（UTF-8 で読めない宣言が、動いている distro の検査を止める）、P2 1 件、P3 6 件をすべて反映した（machine の有無を見る A 案への修正を含む）。2026-11-15 00:24 JST に、所有者が PR #626 を見て「A 案で Accept」を選んだ（下の「決定」）
 
 ## やさしい説明
 
@@ -31,8 +31,6 @@
 - 機体ごとの宣言ファイルには先例がある。ADR-0063 の `%USERPROFILE%\.config\dotfiles\ollama-tailnet-forward` である。
 
 ## Decision
-
-（Proposed。所有者が承認した計画の内容を、確定したときの MUST の形で書く。）
 
 1. **宣言の場所と形。** 止めて残す distro は、`%USERPROFILE%\.config\dotfiles\wsl-retained-distros` に宣言しなければならない（MUST）。UTF-8（BOM は可）で、1 行に 1 つ、`wsl -l -q` が出すのと同じ名前（大文字と小文字も同じ）を書く。行の前後の空白、空行、`#` で始まる行は読まない。ファイルが無いとき、読めないとき、UTF-8 として読めないときは、何も宣言していないとする。宣言を読めないことで、動いている distro の検査を止めてはならない（MUST NOT）。
 2. **止まっている宣言済みの distro。** `ollama_host.py --check` は、宣言した distro が止まっていれば、起動も検査もせず、`INFO ollama-inspection "WSL <名前>: declared retained and stopped; not inspected"` を出さなければならない（MUST）。OK にしてはならない（MUST NOT）。
@@ -85,14 +83,16 @@ none
 - **偽の関連**: 0063 は宣言ファイルの置き場の先例であり、Tailscale の転送の判定には関係しない。0035 と 0042 の runner、0058 の Pi、0064 の網の形、0065 の kernel の判定は変えない。
 - **関係誤認**: どの記録も置き換えない。0066 を前提にする（同じ時期に Accepted にした）。
 
-## 決定（記入待ち）
+## 決定（2026-11-15）
 
-- [ ] A 案で Accept / [ ] A' 案で Accept / [ ] C 案で Accept / [ ] E 案で Accept / [ ] 修正のうえ Accept（修正点: ____） / [ ] Reject（理由: ____） / [ ] Deferred
-- 決定者・日付:
-- A 案 Accept 時のアクション: 実装は同じ PR に入っている。status、decision-queue、README の索引と決定変更ログを更新する。移行の後、Windows で古い distro を宣言し、`just doctor` で INFO になることを確かめる。
-- A' 案 Accept 時のアクション: doctor.sh から `podman machine list` の条件を外し、テストと README を直す。
-- C 案 Accept 時のアクション: 宣言の読み取りを外し、止まった distro をすべて INFO にし、テストと runbook を直す。
-- E 案 Accept 時のアクション: Podman の INFO を宣言ファイルの有無で切り替え、テストと README を直す。
-- 修正 Accept 時のアクション: 修正点を実装とテストと runbook に反映する。
-- Reject 時のアクション: 実装を戻し、両方の行を WARN に戻す。移行計画の完了の条件を見直す。
-- Deferred 時のアクション: PR を merge せずに残し、移行の前に決め直す。
+- [x] A 案で Accept / [ ] A' 案で Accept / [ ] C 案で Accept / [ ] E 案で Accept / [ ] 修正のうえ Accept / [ ] Reject / [ ] Deferred
+- 決定者: Hiroto N.（@hironow）。決定日: 2026-11-15（00:24 JST、GPU の Windows 機のセッション。所有者の選択により代理記入）。
+- 経緯: 所有者は、CI 11 件が通った PR #626 について「ADR-0077 を決裁しますか。決裁すれば、同じ PR で Accepted にして merge します」という問いに、「A 案で Accept」を選んだ。Decision の 1〜5 は Proposed のときのまま変えていない。
+- 却下した案:
+    - A'（machine の有無を見ない）: machine を作った operator が、止まった machine に WARN で気づけない。
+    - B（今のまま）: することの無い WARN が毎回 2 種残り、ADR-0066 の Decision 1 に合わない。
+    - C（止まった distro はすべて INFO）: 起こし忘れた distro や知らない distro の WARN が消える。
+    - D（止めて残す distro を消す）: 戻し先と重みの 2 枚目の写しを失う。消すかどうかは所有者が後で別に決める。
+    - E（Podman の INFO も宣言で切り替える）: machine の有無は読めるので宣言が要らず、宣言を忘れた機体で WARN が残る。
+    - F（Windows から Podman の CLI を外す）: ERR になり、ADR-0067 の Decision 3 に合わない。
+- 実施: 実装は同じ PR に入っている。status、decision-queue、README の索引と決定変更ログを、この決定と同じ PR で更新した。移行で古い distro を止めたあと、Windows で宣言し、`just doctor` で INFO になることを確かめる。
