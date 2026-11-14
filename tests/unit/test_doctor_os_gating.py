@@ -181,6 +181,70 @@ def test_pnpm_is_checked_only_off_native_windows(
     assert "counts " + counts in out
 
 
+PODMAN = r"(?ms)^# Required container CLIs.*?(?=^if has podman-compose)"
+NATIVE_WINDOWS = ("MINGW64_NT-10.0-26100", "3.6.4")
+NO_MACHINE = "INFO podman - CLI 5+ present; no Podman machine on native Windows"
+UNREACHABLE = "WARN podman - CLI 5+ present, selected engine unavailable"
+
+
+def _podman(engine: str, machines: str = "") -> str:
+    """A podman CLI 5.7.0 whose `podman info` prints ``engine`` (empty = the
+    selected engine is unreachable) and whose `podman machine list` prints
+    ``machines`` (``FAIL`` = the list cannot be read)."""
+    info = f"echo '{engine}'" if engine else "return 125"
+    listing = "return 125" if machines == "FAIL" else f"printf '{machines}'"
+    return (
+        'podman(){ case "$1" in --version) echo "podman.exe version 5.7.0" ;;'
+        f" info) {info} ;; machine) {listing} ;; esac; }}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("host", "line", "counts"),
+    [
+        (NATIVE_WINDOWS, NO_MACHINE, "0 0 0 1"),
+        (("MSYS_NT-10.0-26100", "3.6.4"), NO_MACHINE, "0 0 0 1"),
+        (("CYGWIN_NT-10.0-26100", "3.6.4"), NO_MACHINE, "0 0 0 1"),
+        (("Darwin", "25.2.0"), UNREACHABLE, "0 1 0 0"),
+        (("Linux", "6.8.0-45-generic"), UNREACHABLE, "0 1 0 0"),
+        (WSL, UNREACHABLE, "0 1 0 0"),
+    ],
+)
+def test_an_unreachable_engine_is_a_fact_only_on_native_windows(
+    tmp_path: Path, host: tuple[str, str], line: str, counts: str
+) -> None:
+    """ADR-0077: native Windows can keep the Podman CLI with no machine (ADR-0067
+    D3 never creates one), so no engine there is a fact. Elsewhere the engine
+    is what runs the managed containers, so it stays a WARN."""
+    out = _harness(tmp_path, PODMAN, _uname(*host) + _podman(""))
+    assert line in out
+    assert "counts " + counts in out
+
+
+@pytest.mark.parametrize("machines", ["podman-machine-default\n", "FAIL"])
+def test_a_defined_or_unknown_machine_on_native_windows_stays_a_warn(
+    tmp_path: Path, machines: str
+) -> None:
+    """A machine the operator created but cannot reach is something to act on;
+    so is a machine list that cannot be read."""
+    out = _harness(tmp_path, PODMAN, _uname(*NATIVE_WINDOWS) + _podman("", machines))
+    assert UNREACHABLE in out
+    assert "counts 0 1 0 0" in out
+
+
+@pytest.mark.parametrize("engine", ["5.7.0", "4.9.3"])
+def test_a_reachable_engine_on_native_windows_is_still_checked(
+    tmp_path: Path, engine: str
+) -> None:
+    """The INFO covers only the absent engine; a reachable one is still held
+    to Podman 5+ (ADR-0067 D1)."""
+    out = _harness(tmp_path, PODMAN, _uname(*NATIVE_WINDOWS) + _podman(engine))
+    if engine == "5.7.0":
+        assert "OK   podman - podman.exe version 5.7.0; selected engine 5.7.0" in out
+    else:
+        assert "ERR  podman - selected engine 4.9.3; Podman 5+ is required" in out
+
+
 BREW = r"(?ms)^# Homebrew is used on macOS.*?^fi$"
 WITH_BREW = "brew(){ echo 'Homebrew 9.9.9'; }\n"
 WITHOUT_BREW = (

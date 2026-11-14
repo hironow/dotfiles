@@ -38,7 +38,19 @@ if has podman; then
       log_ok 'podman' "$_podman_cli; selected engine $_podman_engine reachable"
     fi
   else
-    log_warn 'podman' 'CLI 5+ present, selected engine unavailable; operator activation is separate'
+    # Native Windows can keep the CLI with no machine and run the managed
+    # containers in WSL; then no engine is a fact (ADR-0077). A machine that
+    # exists but is unreachable, or a list that cannot be read, stays a WARN.
+    # `machine list` only reads. (An if, not a case: the first
+    # `case "$(uname -s)"` below is the Windows-only section.)
+    _podman_os="$(uname -s)"
+    if [[ $_podman_os == MINGW* || $_podman_os == MSYS* || $_podman_os == CYGWIN* ]] &&
+      _podman_machines=$(podman machine list --format '{{.Name}}' 2>/dev/null) &&
+      [ -z "$_podman_machines" ]; then
+      log_info 'podman' 'CLI 5+ present; no Podman machine on native Windows (a machine is set up separately)'
+    else
+      log_warn 'podman' 'CLI 5+ present, selected engine unavailable; operator activation is separate'
+    fi
   fi
 else log_err 'podman' 'missing; run just podman-install'; fi
 if has podman-compose; then
@@ -48,7 +60,7 @@ if has podman-compose; then
     log_err 'podman-compose' 'provider cannot run; check its mise-managed environment'
   fi
 else log_err 'podman-compose' 'missing; install the declared mise tool'; fi
-unset _podman_cli _podman_engine _podman_provider
+unset _podman_cli _podman_engine _podman_provider _podman_os _podman_machines
 
 # Optional tools
 if has just; then log_ok 'just' "$(just --version 2>/dev/null || true)"; else log_warn 'just' 'missing'; fi

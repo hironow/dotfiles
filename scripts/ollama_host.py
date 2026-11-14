@@ -37,6 +37,10 @@ CLI_MARKER = "# dotfiles-managed: Windows Ollama CLI client v1"
 DURABLE_PYTHON = "/usr/bin/python3"
 LOOPBACK = "http://127.0.0.1:11434/api/version"
 MAX_CONNECTIONS = 8
+# ADR-0077: WSL distros the operator keeps stopped on purpose, one exact name
+# (as `wsl -l -q` prints it) per line; a line starting with `#` is a comment.
+# Read on the Windows side only.
+RETAINED_DISTROS = Path.home() / ".config" / "dotfiles" / "wsl-retained-distros"
 
 # Fixed code, not interpolated shell arguments. Never emit command lines or keys.
 WINDOWS_FORWARDER_CLASSIFIER = r"""
@@ -1476,6 +1480,20 @@ def setup() -> None:
         subprocess.run(args, check=True, timeout=30)
 
 
+def retained_distros() -> set[str]:
+    """Names declared in RETAINED_DISTROS. No file, or one that cannot be read,
+    declares nothing, so every stopped distro stays a WARN."""
+    try:
+        # utf-8-sig: Notepad and Windows PowerShell 5.1 write a BOM. A file in
+        # another encoding (5.1's `>` writes UTF-16) declares nothing; it must
+        # not stop the inspection of the running distros.
+        text = RETAINED_DISTROS.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        return set()
+    names = (line.strip() for line in text.splitlines())
+    return {name for name in names if name and not name.startswith("#")}
+
+
 def _decode_wsl(raw: bytes) -> list[str]:
     text = raw.decode("utf-16-le" if b"\x00" in raw else "utf-8", errors="replace")
     return [line.strip().lstrip("\ufeff") for line in text.splitlines() if line.strip()]
@@ -1527,6 +1545,7 @@ def check() -> list[tuple[str, str, str]]:
             if all_result.returncode or running_result.returncode:
                 raise RuntimeError("WSL distribution inventory unavailable")
             running = _decode_wsl(running_result.stdout)
+            retained = retained_distros()
             for distro in _decode_wsl(all_result.stdout):
                 if distro == "docker-desktop":
                     # Docker Desktop's own distro is never an Ollama client
@@ -1536,6 +1555,17 @@ def check() -> list[tuple[str, str, str]]:
                             "INFO",
                             "ollama-inspection",
                             f"WSL {distro}: platform-managed, not an Ollama client; not inspected",
+                        )
+                    )
+                    continue
+                if distro not in running and distro in retained:
+                    # Kept stopped on purpose (ADR-0077). A stopped distro runs
+                    # nothing; once started, it gets the full inspection below.
+                    rows.append(
+                        (
+                            "INFO",
+                            "ollama-inspection",
+                            f"WSL {distro}: declared retained and stopped; not inspected",
                         )
                     )
                     continue

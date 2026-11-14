@@ -157,8 +157,16 @@ Windows の調べのスクリプトは、Windows のコマンド行の長さの�
 - WSL の native binary、package、process、system/user service、モデル配置を調べる。
 - NAT の WSL では、ブリッジの管理対象 unit、実行ファイル、PID、待受 socket、転送後の version 応答を照合する。mirrored の WSL では、上の順で共有の loopback を確かめる。網の形が分からない WSL は WARN にする。
 - 停止中や接続不能の WSL は起動せず、未検査の WARN とする。プラットフォーム管理の distro（`docker-desktop`）は Ollama のクライアントにならないので、検査せず、未検査であることを INFO で表示する。
+- 戻し先などとして止めて残す distro は、`%USERPROFILE%\.config\dotfiles\wsl-retained-distros` に 1 行 1 つ、`wsl -l -q` が出すのと同じ名前で書く（`#` で始まる行は注釈）。書いた distro は、止まっている間は検査せず INFO で表示する。起動すれば普通に検査する。ファイルは UTF-8（BOM は可）で書く。UTF-8 で読めないファイルは何も宣言していないとみなし、WARN のままになる。宣言は distro を消してよいという意味ではない（ADR-0077）。宣言の書き方は下にある。
 - Windows が届かないだけで unit や socket が正しく管理されているブリッジは、構成違反ではなく通常の停止として WARN にする。identity や version の不一致は ERR のままである。
 - WSL2 のカーネルを共有する Docker / Podman コンテナは Windows との相互運用を持たないため、この方針の適用外（該当なし）と判定する。
+
+止めて残す distro（例: `Ubuntu`）は、Windows の PowerShell で次のように宣言する。
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\dotfiles" | Out-Null
+Add-Content -Encoding utf8 "$env:USERPROFILE\.config\dotfiles\wsl-retained-distros" 'Ubuntu'
+```
 
 既知の配置や実行中のプロセスから外れた休眠コピーまで、存在しないと保証する検査ではない。
 構成違反は ERR、検査不能や停止中の正規 backend は WARN とし、HTTP 応答だけで正しい所有者とは判定しない。

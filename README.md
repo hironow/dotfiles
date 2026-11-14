@@ -89,6 +89,10 @@ Podman と専用の `podman-compose` / Dev Container CLI 導入環境には 7 �
 
 macOS と Windows の machine 初期化と起動は operator が別途行う。
 導入スクリプトやシェル起動は machine を操作せず、既存の Docker データも削除しない。
+native Windows では、machine を置かずに CLI だけを持ち、コンテナは WSL の Podman で動かす構成をとれる。
+そのため `just doctor` は、CLI が 5 以上で実行エンジンに届かないとき、native Windows で machine が 1 つも無ければ INFO を出す（ADR-0077）。
+machine があるのに届かないとき、machine の一覧を読めないとき、それ以外の OS では WARN である。
+届いたエンジンが 5 未満なら、どの OS でも ERR である。
 サンドボックスでは、選択したエンジンのソケットを明示する必要がある。
 手順とソケットを渡す権限の範囲は [Dev Container の説明](./.devcontainer/README.md) を参照する。
 
