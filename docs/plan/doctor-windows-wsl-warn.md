@@ -3,7 +3,7 @@
 **Date:** 2026-11-01
 **Status:** Approved（2026-11-01 19:32、所有者。D1・D2・D3 とも推奨どおり）。実装済み、Windows と WSL の再確認待ち（§9）
 **Branch:** `fix/doctor-windows-wsl-warn`
-**Related:** [ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md)（Proposed、本計画の基準）、[ADR-0065](../adr/0065-kernel-cve-is-evidence-only.md)（Proposed、kernel は WARN 止まり）、[ADR-0062](../adr/0062-one-windows-ollama-for-wsl.md)（Ollama の判定は runbook が正）、前の計画 [doctor-os-aware-warn](doctor-os-aware-warn.md)（§10 で、Windows・WSL・Linux 固有の WARN は各機体の結果を見てから別の計画にするとした）
+**Related:** [ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md)（Accepted、本計画の基準）、[ADR-0065](../adr/0065-kernel-cve-is-evidence-only.md)（Proposed、kernel は WARN 止まり）、[ADR-0062](../adr/0062-one-windows-ollama-for-wsl.md)（Ollama の判定は runbook が正）、前の計画 [doctor-os-aware-warn](doctor-os-aware-warn.md)（§10 で、Windows・WSL・Linux 固有の WARN は各機体の結果を見てから別の計画にするとした）
 **Blocking decisions:** なし（D1〜D3 は所有者が裁定済み）
 **Graduates to:** [ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md)（Context と Decision 2・5 に反映）
 
