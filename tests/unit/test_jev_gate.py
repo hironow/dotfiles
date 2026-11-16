@@ -9,6 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = (ROOT / "justfile").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / ".github/workflows/unit-test.yaml").read_text(encoding="utf-8")
+FRONTEND = (ROOT / ".github/workflows/frontend-ci.yaml").read_text(encoding="utf-8")
 
 
 def _recipe_body(text: str, name: str) -> str:
@@ -19,17 +20,19 @@ def _recipe_body(text: str, name: str) -> str:
     return bodies[0]
 
 
-def test_pi_extension_is_excluded_from_inapplicable_vp_and_built_with_bun() -> None:
-    # vp runs only in site/, the Pages site's package (test_justfile_js_files.py),
-    # so it never reaches the Pi extension or its bun test; bun gates those.
+def test_pi_extension_is_built_and_tested_with_bun() -> None:
+    # vp only formats, and only in site/ (test_justfile_js_files.py). oxlint and
+    # bun check read the Pi extension (test_frontend_ci_conformance.py); bun
+    # builds and tests it.
     assert "just pi-jev-test" in _recipe_body(JUSTFILE, "check")
     assert "vp -C site fmt" in _recipe_body(JUSTFILE, "fmt")
-    lint = _recipe_body(JUSTFILE, "lint")
-    assert "vp -C site lint" in lint
-    assert "just pi-jev-test" in lint
-    assert "bun build config/pi/extensions/jev-sonnet-fallback.ts" in JUSTFILE
-    assert "bun test ./tests/unit/jev_sonnet_fallback.test.ts" in JUSTFILE
-    assert WORKFLOW.count("bun test ./tests/unit/jev_sonnet_fallback.test.ts") == 2
+    assert "just pi-jev-test" in _recipe_body(JUSTFILE, "lint")
+    assert "build config/pi/extensions/jev-sonnet-fallback.ts" in JUSTFILE
+    assert "test ./tests/unit/" in JUSTFILE
+    # Ubuntu runs the suite in frontend-ci.yaml's `test` job. This workflow
+    # keeps the one run on Windows.
+    assert WORKFLOW.count("bun test ./tests/unit/jev_sonnet_fallback.test.ts") == 1
+    assert "just js-test" in FRONTEND
 
 
 @pytest.mark.parametrize(

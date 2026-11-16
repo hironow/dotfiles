@@ -80,8 +80,10 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-json
-        # devcontainer.json is JSONC (comments allowed); strict JSON parse fails.
-        exclude: '^\.devcontainer/devcontainer\.json$'
+        # devcontainer.json and .oxlintrc.json are JSONC (comments allowed);
+        # strict JSON parse fails. oxlint parses its own config: `just js-lint`
+        # fails on a malformed one.
+        exclude: '^(\.devcontainer/devcontainer\.json|\.oxlintrc\.json)$'
       - id: check-added-large-files
         args: ["--maxkb=1024"]
       - id: check-merge-conflict

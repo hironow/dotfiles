@@ -1,0 +1,5 @@
+# The JS gate's dev dependencies (docs/agents/frontend-ci.md, ADR-0079).
+# ~/.npmrc's min-release-age does not reach bun, so the wait is set here.
+[install]
+minimumReleaseAge = "7d"
+exact = true

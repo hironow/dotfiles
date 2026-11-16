@@ -1,13 +1,13 @@
-"""`fmt`, `lint`, and `check` hand vp the same JS/TS files, and no JS/TS goes unchecked.
+"""`fmt` and `check` hand vp the same JS/TS files to format, and no JS/TS goes unchecked.
 
-The three recipes used to spell the pathspec out on their own, so an exclusion
-added to one could be missed in another and the gates would disagree about
-which files are ours. One justfile variable holds the list.
+The recipes used to spell the pathspec out on their own, so an exclusion added
+to one could be missed in another and the gates would disagree about which
+files are ours. One justfile variable holds the list.
 
-vp needs a package to run in. The repo has one JS package, site/ (the Pages
-site, ADR-0076), so vp runs there with `-C site` and the list is relative to it.
-A JS/TS file anywhere else would be checked by nothing, so the rest of the
-tracked JS/TS must be files another gate covers.
+vp only formats (ADR-0079: oxlint lints and bun check type checks, see
+test_frontend_ci_conformance.py). It needs a package to run in, so it runs in
+site/, the Pages site's package (ADR-0076), with `-C site`, and the list is
+relative to it. A JS/TS file anywhere else must be one another gate covers.
 """
 
 from __future__ import annotations
@@ -25,13 +25,13 @@ ROOT = Path(__file__).resolve().parents[2]
 JUSTFILE = ROOT / "justfile"
 
 _VP_LINE = re.compile(
-    r"^\s+git -C site --work-tree=\.\. ls-files -z (.+?) \| xargs -0 -r mise x -- vp -C site (\w+)\s*$"
+    r"^\s+git -C site --work-tree=\.\. ls-files -z (.+?) \| xargs -0 -r mise x -- vp -C site (fmt(?: --check)?)\s*$"
 )
 _JS_PATTERNS = ("*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*.mts", "*.cts")
 # Tracked JS/TS outside vp's package, and the gate that covers each.
 _OTHER_GATES = {
-    "config/pi/extensions/": "just pi-jev-test (bun build)",
-    "tests/unit/jev_sonnet_fallback.test.ts": "just pi-jev-test (bun test)",
+    "config/pi/extensions/": "just js-lint, js-typecheck, js-build",
+    "tests/unit/jev_sonnet_fallback.test.ts": "just js-lint, js-typecheck, js-test",
     "site/vendor/": "tests/unit/test_site_vendor.py (SHA-256 of npm's bytes)",
 }
 
@@ -47,9 +47,11 @@ def _vp_lines() -> dict[str, str]:
 
 def test_every_vp_gate_reads_the_one_file_list() -> None:
     lines = _vp_lines()
-    assert set(lines) == {"fmt", "lint", "check"}, lines
+    assert set(lines) == {"fmt", "fmt --check"}, lines
     assert all(spec == "{{ JS_FILES }}" for spec in lines.values()), lines
-    assert " vp fmt" not in JUSTFILE.read_text(encoding="utf-8"), "vp outside site/"
+    text = JUSTFILE.read_text(encoding="utf-8")
+    assert " vp fmt" not in text, "vp outside site/"
+    assert text.count(" vp -C site ") == len(lines), "a vp line the list does not feed"
 
 
 def test_the_file_list_is_declared_once() -> None:

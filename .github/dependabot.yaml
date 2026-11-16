@@ -137,6 +137,15 @@ updates:
     cooldown:
       default-days: 7
     labels: ["dependencies", "go", "emulator"]
+  # The JS gate's dev dependencies (oxlint and the types bun check reads;
+  # ADR-0079). bunfig.toml holds the same 7-day wait for local installs.
+  - package-ecosystem: "bun"
+    patterns: ["*"]
+    multi-ecosystem-group: "weekly"
+    directory: "/"
+    cooldown:
+      default-days: 7
+    labels: ["dependencies", "javascript"]
   - package-ecosystem: "docker"
     patterns: ["*"]
     multi-ecosystem-group: "weekly"

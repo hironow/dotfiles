@@ -14,6 +14,10 @@ package.json
 !site/package.json
 package-lock.json
 bun.lock
+# except the root package of the JS gate: its pinned dev dependencies are
+# oxlint and the types `bun check` reads (ADR-0079)
+!/package.json
+!/bun.lock
 
 # autodesign
 design-results.tsv

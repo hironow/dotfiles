@@ -1,0 +1,106 @@
+name: Frontend CI
+
+# The JS gate (docs/agents/frontend-ci.md, ADR-0079). lint, typecheck, build,
+# and test are separate jobs that do not wait for each other, so the slowest
+# one sets the time. Each runs one root `just` recipe, the same command a
+# machine runs. The last job is the one to register as the required check: it
+# fails unless every other job passed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    # ready_for_review is not in the default event set; without it a draft
+    # marked ready would not get a run until its next push.
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: oxlint
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DOTFILES_BUN: bun
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install just
+        run: uv tool install rust-just
+      - run: just js-lint
+
+  typecheck:
+    name: bun check
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DOTFILES_BUN: bun
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install just
+        run: uv tool install rust-just
+      - run: just js-typecheck
+
+  build:
+    name: Pi extension build
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DOTFILES_BUN: bun
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install just
+        run: uv tool install rust-just
+      - run: just js-build
+
+  test:
+    name: bun test
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DOTFILES_BUN: bun
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Install just
+        run: uv tool install rust-just
+      - run: just js-test
+
+  # A job with `needs` alone is skipped when a needed job fails, and GitHub
+  # counts a skipped required check as passed. always() makes this job run,
+  # and it then fails unless every result is success.
+  frontend:
+    name: Frontend CI
+    needs: [lint, typecheck, build, test]
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: >-
+            lint=${{ needs.lint.result }}
+            typecheck=${{ needs.typecheck.result }}
+            build=${{ needs.build.result }}
+            test=${{ needs.test.result }}
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do
+            [ "${result#*=}" = success ] || { echo "::error::$result"; exit 1; }
+          done
