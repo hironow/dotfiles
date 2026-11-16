@@ -2,17 +2,17 @@
 
 - **id**: ADR-0079
 - **title**: dotfiles 自身の JS/TS の gate を、フロントエンドの CI の指示に合わせる
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-16
-- **decided-date**: —
-- **decision-maker**: TBD（所有者）
+- **decided-date**: 2026-11-16
+- **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session）
 - **author-contact**: @hironow
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0027](0027-bun-only-retire-per-repo-pnpm-carveout.md)、[0051](0051-adopt-decision-queue-for-new-records.md)、[0059](0059-retire-remote-pi.md)、[0076](0076-browser-ui-platform-first-then-ui-sdk.md)、[0078](0078-frontend-ci-under-two-minutes.md)
-- **consultation-trace**: 2026-11-16 の本セッションでの所有者の指示（下の「相談の記録」）。決裁はこの ADR を載せた公開 PR で受ける
+- **consultation-trace**: 2026-11-16 の本セッションでの所有者の指示（下の「相談の記録」）。[公開 PR #630 の所有者の裁定](https://github.com/hironow/dotfiles/pull/630#issuecomment-6918836492)
 
 ## やさしい説明
 
@@ -34,9 +34,7 @@
 
 ## Decision
 
-（Proposed。確定後に、次の案を MUST として記述する。）
-
-提案する決定（A 案）:
+A 案の次の 9 項を、必須事項（MUST）として採択する。
 
 - D1: repo 直下に `package.json`（private、dev 依存だけ）、`bun.lock`、`bunfig.toml`、`tsconfig.json`、`.oxlintrc.json` を置く。dev 依存は `oxlint`、`oxlint-tsgolint`、`@types/bun`、`@earendil-works/pi-coding-agent` の 4 つで、正確な版に固定する。`.gitignore` は直下の `package.json` と `bun.lock` だけを例外にする。
 - D2: 依存は `bun install --frozen-lockfile --ignore-scripts` で入れる。新しい版は 7 日たってから採る（`bunfig.toml` の `minimumReleaseAge` と Dependabot の cooldown）。
@@ -46,7 +44,7 @@
 - D6: gate は root の recipe `js-lint`、`js-typecheck`、`js-build`、`js-test` の 4 つとする。`just lint` と `just check` はこれらを呼び、`vp` は整形（`fmt` と `fmt --check`）だけに使う。
 - D7: CI は `frontend-ci.yaml` で 4 つを互いに待たない job として走らせ、最後の job「Frontend CI」は 4 つの結果がすべて `success` のときだけ通る。Ubuntu での `bun test` は `unit` job から外し、Windows での実行は残す。
 - D8: テストは 1 つの shard で、常にすべて走らせる（`--changed` は使わない）。
-- D9: 「Frontend CI」を必須の check に登録するのは所有者が行う。登録が済むまで、この repo は指示の規則 5 に準拠していない。
+- D9: 「Frontend CI」を、main を守る ruleset の必須の check に登録する。登録は、この変更を merge したあとに行う（所有者の指示で Claude Code が代行する）。登録が済むまで、この repo は指示の規則 5 に準拠していない。
 
 ## 外した規則
 
@@ -65,12 +63,12 @@ code の中で 1 行だけ外した所は 4 つで、それぞれ理由を書い
 
 ## Options Considered
 
-| 案 | 利点 | コスト・リスク | 扱い（提案） |
+| 案 | 利点 | コスト・リスク | 裁定 |
 | --- | --- | --- | --- |
-| A) root の package に道具と型を入れ、3 ファイルを指示どおりに検査する（本案） | 指示を配る repo が、自分でも指示を守る。型の誤りを初めて検査できる | `node_modules` が 128 package、196 MB。commit のたびに `bun install` が走る。直下に `package.json` を置かない方針を変える | 推奨 |
-| B) Pi の型を手書きの `.d.ts` で代用し、root の package を置かない | 依存が増えない | 手書きの型は本物とずれ、検査が何も証明しなくなる | 非推奨: 型検査の意味が無くなる |
-| C) `vp lint` と `vp check` のまま、`site/` だけを検査する | 変更が無い | Pi の拡張とテストに lint も型検査も無いまま。oxlint の版が固定されない。指示の規則 1 と 2 に反する | 非推奨: 所有者の指示に反する |
-| D) `tools/js-gate/` に package を置き、`paths` で型を引く | 直下が増えない | 設定が増えるだけで、入るバイトは同じ | 非推奨: 複雑になるだけ |
+| A) root の package に道具と型を入れ、3 ファイルを指示どおりに検査する（本案） | 指示を配る repo が、自分でも指示を守る。型の誤りを初めて検査できる | `node_modules` が 128 package、196 MB。commit のたびに `bun install` が走る。直下に `package.json` を置かない方針を変える | 所有者が採択 |
+| B) Pi の型を手書きの `.d.ts` で代用し、root の package を置かない | 依存が増えない | 手書きの型は本物とずれ、検査が何も証明しなくなる | 却下: 型検査の意味が無くなる |
+| C) `vp lint` と `vp check` のまま、`site/` だけを検査する | 変更が無い | Pi の拡張とテストに lint も型検査も無いまま。oxlint の版が固定されない。指示の規則 1 と 2 に反する | 却下: 所有者の指示に反する |
+| D) `tools/js-gate/` に package を置き、`paths` で型を引く | 直下が増えない | 設定が増えるだけで、入るバイトは同じ | 却下: 複雑になるだけ |
 
 ## Consequences
 
@@ -102,12 +100,16 @@ none
 - 2026-11-16 20:04 JST、本セッションで所有者（@hironow）が指示した（上の Context）。
 - 計画は Codex が独立にレビューした。1 回目は REVISE（4 件）、2 回目は REVISE（3 件）、3 回目は APPROVE。7 件はすべて実物で確かめて取り込んだ: 必須の check の登録、`--ignore-scripts`、`.gitignore` の例外、JSONC の hook、`copy.js` の型検査、外す規則の理由の誤り、Pi の型が実行時に入らない根拠。
 - 外す規則は、計画の時点では 30 ほどを見込んでいた。1 つずつ option と code の修正を試し、9 つになった。
+- 2026-11-16 23:12 JST、所有者は PR #630 の「決めてほしいこと」の 2 点（この ADR の採否と、「Frontend CI」の必須の check への登録）に「1. OK」「2. OK」と答え、続けて「あなたが私の代わりに進めてください」と指示した。1 を A 案の採択とし、PR に記録した（[裁定](https://github.com/hironow/dotfiles/pull/630#issuecomment-6918836492)）。
 
-## 決定（記入待ち）
+## 決定（2026-11-16）
 
-- [ ] A 案で Accept / [ ] 修正のうえ Accept（修正点: ____） / [ ] Reject（理由: ____） / [ ] Deferred
-- 決定者・日付:
-- A 案 Accept 時のアクション: Decision を MUST で確定し、索引、変更ログ、queue の決定済みログを同じ PR で更新して merge する。そのあと所有者が「Frontend CI」を必須の check に登録する。
-- 修正 Accept 時のアクション: 指摘の点を設定、code、Decision に反映し、同じ PR で確定する。
-- Reject 時のアクション: PR を閉じ、queue に理由を残す。gate は `vp` のまま変えない。
-- Deferred 時のアクション: PR を閉じ、再検討の条件と期限を queue に残す。
+- [x] A 案で Accepted（D1〜D9 のとおり）
+- [ ] 修正のうえ Accepted（修正点: ____）
+- [ ] Rejected / Deferred（理由: ____）
+
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-16（所有者の裁定により代理記入）
+
+- Accepted のとき: Decision を確定し、索引、変更ログ、queue の決定済みログを同じ PR で更新して merge する。そのあと「Frontend CI」を必須の check に登録する。
+- 修正のとき: 指摘の点を設定、code、Decision に反映し、同じ PR で確定する。
+- Rejected / Deferred のとき: PR を閉じ、queue に理由を残す。
