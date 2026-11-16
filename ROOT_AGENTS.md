@@ -198,6 +198,7 @@ Open the matching file as soon as its trigger applies:
 | choosing an embedded or in-memory database | docs/agents/go-tooling.md#database-selection |
 | measuring or changing code for speed, in any language | docs/agents/performance.md |
 | building or changing an interface in a browser page | docs/agents/web-ui.md |
+| writing or changing CI for TypeScript or browser-page code | docs/agents/frontend-ci.md |
 | modeling distributed state / Quint            | docs/agents/formal-methods.md       |
 | adding, bumping, or triaging a dependency      | docs/agents/dependency-policy.md    |
 | writing a `pull_request` workflow              | docs/agents/draft-ci.md             |
