@@ -1,5 +1,15 @@
 # 計画 (改訂 2): `just wsl-compact` の sparse 判定を直し、vhdx の広すぎる ACL を警告する
 
+## 再レビュー (APPROVE WITH CHANGES) の扱い
+
+実装では次のとおり反映した。
+
+- SID を名前に変換しない (`S-1-15-3-…` の変換が例外になることをレビュアーが実測)。facts は `allow <SID>` だけにし、WARN は SID を並べ、名前は `icacls` で見るよう案内する。
+- ACL の結果は、slack が小さいときの早い exit より前に出す。テストに「slack が小さい + 信頼外の SID」を足した。
+- 偽の fsutil は英語の "This file is NOT set as sparse" を返し、呼ばれたら印のファイルを作る。旧実装はこれで yes を出す (Red で確認)。
+- 表示する文に版の番号を書かず、「この機体の WSL (3.0.5) の `wsl --help` にある」とする。
+- 共有の helper (`tests/unit/_bash_fakes.py`) は、レビュアーの言う「#635 で main に入った」ではなく、この PR の最初の構造の commit で入れた (レビュー中の worktree の未 commit のファイルを見たための誤認)。
+
 ## なぜ
 
 2026-11-17、WSL の distro を `wsl --manage --move` で D: へ移すと、vhdx の sparse が外れた
