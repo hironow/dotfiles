@@ -93,3 +93,6 @@ for (const wrapper of document.querySelectorAll("ui-button[data-copy]")) {
     wire(wrapper);
   }
 }
+
+var probeVar = 1;
+if (probeVar == 2) debugger;
