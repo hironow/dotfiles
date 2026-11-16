@@ -1,7 +1,7 @@
 # Dependabot の clone で private の submodule を飛ばす
 
 **Date:** 2026-11-17
-**Status:** 実装済み（Codex のレビュー 3 回で指摘なし）。merge 後の Dependabot の実行で確かめる
+**Status:** #633 で merge したが、merge 後の Dependabot は `protocols/UTCP` の壊れた入れ子で全 job が止まった。`docs/plan/dependabot-skip-all-submodules.md`（すべての submodule を飛ばす）で置き換えた
 **Scope:** dotfiles のみ。worktree `../dotfiles-dependabot-submodule`、branch `fix/dependabot-private-submodule`。
 
 ## 所有者の依頼

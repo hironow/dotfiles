@@ -1,16 +1,23 @@
-"""Dependabot's clone must not break on the private submodule.
+"""Dependabot's clone must not stop on any submodule.
 
-Dependabot clones with ``--recurse-submodules`` and cannot read the private
-``hironow/knowledge-work-plugins``. Git then stops checking out the other
-submodules, they show as modified, and Dependabot's ``git commit`` for its
-second update fails, so the weekly pull request never opens. ``update = none``
-in ``.gitmodules`` makes the clone skip that submodule. The owner's checkouts
-still fetch and update it through ``--checkout`` in the README step and in
+Dependabot always clones with ``--recurse-submodules`` and stops the job on any
+submodule error it does not expect. Two submodules stopped it:
+
+- the private ``knowledge-work-plugins``, which it cannot read: the failed
+  clone left the other submodules empty and dirty, and its ``git commit``
+  failed;
+- ``protocols/UTCP``, whose pinned commit has a gitlink with no ``.gitmodules``
+  entry (``temp/openapi-directory``): ``No url found for submodule path``
+  stopped every job.
+
+Dependabot reads no file inside a submodule, so ``.gitmodules`` marks every
+submodule ``update = none`` and the clone skips them all. The owner's checkouts
+still fetch and update them through ``--checkout`` in the README step and in
 ``just update-all-submodules``.
 
 The tests rebuild that clone from local ``file://`` repositories in tmp_path.
-They copy the real ``.gitmodules`` setting and run the real README and recipe
-commands, but only against throwaway checkouts under tmp_path.
+Each fixture submodule copies the setting of a real submodule in the same role,
+and the README and recipe commands run only against throwaway checkouts.
 """
 
 from __future__ import annotations
@@ -19,12 +26,21 @@ import os
 import re
 import shlex
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-PRIVATE = "knowledge-work-plugins"
+
+# Fixture role -> the real submodule whose .gitmodules setting it copies.
+REAL_SUBMODULE = {
+    "public": "protocols/A2A",
+    "private": "knowledge-work-plugins",
+    "broken": "protocols/UTCP",
+}
+# The gitlink inside the broken role that .gitmodules does not list.
+BROKEN_NESTED = "temp/x"
 
 # Isolate git from the owner's config: no signing, no global hooks or URL
 # rewrites, and file:// submodules allowed for the local fixture repositories.
@@ -78,17 +94,23 @@ def _ok(*args: str | Path, cwd: Path | None = None) -> str:
     return result.stdout
 
 
-def _real_setting(name: str, key: str) -> str | None:
-    """Value of ``key`` in the ``[submodule "name"]`` section of .gitmodules."""
+def _gitmodules_sections() -> dict[str, str]:
+    """Body of each ``[submodule "name"]`` section of .gitmodules, by name."""
     text = (ROOT / ".gitmodules").read_text(encoding="utf-8")
-    section = re.search(
-        rf'^\[submodule "{re.escape(name)}"\]\n((?:[ \t].*\n?)*)', text, re.MULTILINE
+    return dict(
+        re.findall(r'^\[submodule "([^"]+)"\]\n((?:[ \t].*\n?)*)', text, re.MULTILINE)
     )
-    assert section, f'.gitmodules has no [submodule "{name}"] section'
-    value = re.search(
-        rf"^\s*{re.escape(key)}\s*=\s*(\S+)\s*$", section[1], re.MULTILINE
-    )
+
+
+def _setting(body: str, key: str) -> str | None:
+    value = re.search(rf"^\s*{re.escape(key)}\s*=\s*(\S+)\s*$", body, re.MULTILINE)
     return value[1] if value else None
+
+
+def _real_update(name: str) -> str | None:
+    sections = _gitmodules_sections()
+    assert name in sections, f'.gitmodules has no [submodule "{name}"] section'
+    return _setting(sections[name], "update")
 
 
 def _submodule_args(line: str) -> list[str]:
@@ -141,65 +163,122 @@ def _repo(path: Path) -> str:
     return path.as_uri()
 
 
-def _superproject(tmp_path: Path, private_update: str | None) -> str:
-    """public1, private, public2 as submodules (in .gitmodules order)."""
-    urls = {name: _repo(tmp_path / name) for name in ("public1", "private", "public2")}
+def _broken_repo(path: Path) -> str:
+    """A repository with a gitlink that its .gitmodules does not list."""
+    url = _repo(path)
+    head = _ok("-C", path, "rev-parse", "HEAD").strip()
+    _ok(
+        "-C",
+        path,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{head},{BROKEN_NESTED}",
+    )
+    _ok("-C", path, "commit", "-qm", "gitlink without a .gitmodules entry")
+    return url
+
+
+def _superproject(tmp_path: Path, updates: Mapping[str, str | None]) -> str:
+    """public, private, broken as submodules, each with its ``update`` value."""
+    urls = {
+        "public": _repo(tmp_path / "public"),
+        "private": _repo(tmp_path / "private"),
+        "broken": _broken_repo(tmp_path / "broken"),
+    }
     sup = tmp_path / "super"
     sup.mkdir()
     _ok("init", "-q", sup)
-    for name, url in urls.items():
-        _ok("-C", sup, "submodule", "add", "-q", url, name)
-    if private_update is not None:
-        _ok(
-            "-C",
-            sup,
-            "config",
-            "-f",
-            ".gitmodules",
-            "submodule.private.update",
-            private_update,
-        )
+    for role, url in urls.items():
+        _ok("-C", sup, "submodule", "add", "-q", url, role)
+        update = updates.get(role)
+        if update is not None:
+            _ok(
+                "-C",
+                sup,
+                "config",
+                "-f",
+                ".gitmodules",
+                f"submodule.{role}.update",
+                update,
+            )
     _ok("-C", sup, "add", ".gitmodules")
     _ok("-C", sup, "commit", "-qm", "submodules")
     return sup.as_uri()
 
 
+def _real_updates() -> dict[str, str | None]:
+    return {role: _real_update(name) for role, name in REAL_SUBMODULE.items()}
+
+
 def _dependabot_clone(
-    tmp_path: Path, super_url: str
+    tmp_path: Path, super_url: str, *, private_reachable: bool = False
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
-    (tmp_path / "private").rename(tmp_path / "private-unreachable")
+    if not private_reachable:
+        (tmp_path / "private").rename(tmp_path / "private-unreachable")
     dest = tmp_path / "dependabot"
     return _git(*DEPENDABOT_CLONE, super_url, dest), dest
 
 
-def test_fixture_reproduces_the_dependabot_failure(tmp_path: Path) -> None:
-    """Without the setting, the clone fails and leaves the tree dirty."""
-    result, dest = _dependabot_clone(
-        tmp_path, _superproject(tmp_path, private_update=None)
+def test_every_submodule_is_skipped_by_default() -> None:
+    sections = _gitmodules_sections()
+    assert sections, ".gitmodules lists no submodule"
+    missing = [
+        name for name, body in sections.items() if _setting(body, "update") != "none"
+    ]
+    assert not missing, (
+        "Dependabot clones every submodule it is not told to skip, and any "
+        f"submodule error stops it; add `update = none` to {missing} in .gitmodules"
     )
+
+
+def test_fixture_reproduces_the_private_submodule_failure(tmp_path: Path) -> None:
+    """Without settings, the unreachable private repo fails the clone, dirty."""
+    result, dest = _dependabot_clone(tmp_path, _superproject(tmp_path, {}))
     assert result.returncode != 0
+    assert re.search(r"fatal: clone of '.*private' into submodule path", result.stderr)
     assert _ok("-C", dest, "status", "--short", ".").strip()
 
 
-def test_dependabot_clone_skips_the_private_submodule(tmp_path: Path) -> None:
-    super_url = _superproject(tmp_path, private_update=_real_setting(PRIVATE, "update"))
-    result, dest = _dependabot_clone(tmp_path, super_url)
+def test_fixture_reproduces_the_broken_nested_gitlink_failure(tmp_path: Path) -> None:
+    """Without settings, the broken nested gitlink fails the clone by itself."""
+    super_url = _superproject(tmp_path, {})
+    result, _ = _dependabot_clone(tmp_path, super_url, private_reachable=True)
+    assert result.returncode != 0
+    assert f"No url found for submodule path 'broken/{BROKEN_NESTED}'" in result.stderr
+
+
+def test_skipping_only_the_private_submodule_still_fails(tmp_path: Path) -> None:
+    """The state after #633: the private repo skipped, the broken one still fails."""
+    result, _ = _dependabot_clone(
+        tmp_path, _superproject(tmp_path, {"private": "none"})
+    )
+    assert result.returncode != 0
+    assert f"No url found for submodule path 'broken/{BROKEN_NESTED}'" in result.stderr
+
+
+def test_dependabot_clone_skips_every_submodule(tmp_path: Path) -> None:
+    result, dest = _dependabot_clone(tmp_path, _superproject(tmp_path, _real_updates()))
     assert result.returncode == 0, result.stderr
     assert _ok("-C", dest, "status", "--short", ".").strip() == ""
-    assert (dest / "public1" / "a.txt").is_file()
-    assert (dest / "public2" / "a.txt").is_file()
+    status = _ok("-C", dest, "submodule", "status").splitlines()
+    assert len(status) == len(REAL_SUBMODULE)
+    assert all(line.startswith("-") for line in status), status
 
 
-def test_readme_step_fetches_a_skipped_submodule(tmp_path: Path) -> None:
+def test_readme_step_fetches_skipped_submodules(tmp_path: Path) -> None:
     checkout = tmp_path / "machine"
-    _ok("clone", "-q", _superproject(tmp_path, private_update="none"), checkout)
+    all_none = dict.fromkeys(REAL_SUBMODULE, "none")
+    _ok("clone", "-q", _superproject(tmp_path, all_none), checkout)
     _run_in(checkout, tmp_path, _readme_fetch_args())
-    assert (checkout / "private" / "a.txt").is_file()
+    for role in REAL_SUBMODULE:
+        assert (checkout / role / "a.txt").is_file(), role
 
 
 def test_update_recipe_advances_a_skipped_submodule(tmp_path: Path) -> None:
     checkout = tmp_path / "machine"
-    _ok("clone", "-q", _superproject(tmp_path, private_update="none"), checkout)
+    all_none = dict.fromkeys(REAL_SUBMODULE, "none")
+    _ok("clone", "-q", _superproject(tmp_path, all_none), checkout)
     # Initialized after the change, so init copied `none` into the local config.
     _ok("-C", checkout, "submodule", "update", "--init", "--checkout", "-q")
     assert _ok("-C", checkout, "config", "submodule.private.update").strip() == "none"
