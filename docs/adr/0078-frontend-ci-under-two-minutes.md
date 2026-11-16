@@ -2,17 +2,17 @@
 
 - **id**: ADR-0078
 - **title**: フロントエンドの CI を 2 分未満に保つ規則を、全エージェント共通の指示に足す
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-16
-- **decided-date**: —
-- **decision-maker**: TBD（所有者）
+- **decided-date**: 2026-11-16
+- **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session）
 - **author-contact**: @hironow
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0027](0027-bun-only-retire-per-repo-pnpm-carveout.md)、[0051](0051-adopt-decision-queue-for-new-records.md)、[0052](0052-renew-global-agent-instructions.md)、[0069](0069-type-check-and-lint-for-every-os.md)、[0076](0076-browser-ui-platform-first-then-ui-sdk.md)
-- **consultation-trace**: 2026-11-16 の本セッションでの所有者の指示（下の「相談の記録」）。決裁はこの ADR を載せた公開 PR で受ける
+- **consultation-trace**: 2026-11-16 の本セッションでの所有者の指示（下の「相談の記録」）。[公開 PR #629 の所有者の裁定](https://github.com/hironow/dotfiles/pull/629#issuecomment-6914709771)
 
 ## やさしい説明
 
@@ -39,9 +39,7 @@
 
 ## Decision
 
-（Proposed。確定後に、次の案を MUST として記述する。）
-
-提案する決定（A 案）:
+A 案の次の 8 項を、必須事項（MUST）として採択する。
 
 - D1: フロントエンド（TypeScript と、ブラウザのページで動くコード）の CI は、PR の結果が 2 分未満で出ることを目標にしなければならない。変更の前後で実行時間を測り、PR に書く。
 - D2: 型検査は `tsc --noEmit` ではなく `bun check --no-script` で行わなければならない。`tsc` は、使われる出力（`.d.ts`、JavaScript など）を書く所にだけ残す。
@@ -54,12 +52,12 @@
 
 ## Options Considered
 
-| 案 | 利点 | コスト・リスク | 扱い（提案） |
+| 案 | 利点 | コスト・リスク | 裁定 |
 | --- | --- | --- | --- |
-| A) 5 点を、検査が抜ける所の歯止めと一緒に spoke に書く（本案） | 所有者の 5 点がそのまま入る。`check` script、import の届かない fixture、skip された必須 check で、検査をせずに通る道をふさぐ | spoke が 1 つ増える。歯止めの分、文が長い | 推奨 |
-| B) 5 点を、そのまま hub に 5 行で足す | 短い。常に読まれる | hub の箇条書きが 37 個になり、上限 40 に近づく。フロントエンドを触らない作業でも読まれる。歯止めが無いので、実測した 2 つの抜け（D2、D5）がそのまま起きる | 非推奨: 検査をせずに通る道が残る |
-| C) lint を oxlint ではなく `bun lint` にする | 入れる package が無い。oxlint の設定も読める | 所有者は oxlint を名指しした | 非推奨: 所有者の指示と違う |
-| D) 指示を足さず、repo ごとに決める | 変更が無い | repo ごとに同じ調査と同じ抜けを繰り返す | 非推奨: 所有者の指示に反する |
+| A) 5 点を、検査が抜ける所の歯止めと一緒に spoke に書く（本案） | 所有者の 5 点がそのまま入る。`check` script、import の届かない fixture、skip された必須 check で、検査をせずに通る道をふさぐ | spoke が 1 つ増える。歯止めの分、文が長い | 所有者が採択 |
+| B) 5 点を、そのまま hub に 5 行で足す | 短い。常に読まれる | hub の箇条書きが 37 個になり、上限 40 に近づく。フロントエンドを触らない作業でも読まれる。歯止めが無いので、実測した 2 つの抜け（D2、D5）がそのまま起きる | 却下: 検査をせずに通る道が残る |
+| C) lint を oxlint ではなく `bun lint` にする | 入れる package が無い。oxlint の設定も読める | 所有者は oxlint を名指しした | 却下: 所有者の指示と違う |
+| D) 指示を足さず、repo ごとに決める | 変更が無い | repo ごとに同じ調査と同じ抜けを繰り返す | 却下: 所有者の指示に反する |
 
 ## Consequences
 
@@ -89,13 +87,18 @@ none
 
 - 2026-11-16 18:52 JST、本セッションで所有者（@hironow）が 5 点を指示した（上の Context）。
 - 計画は Codex が独立にレビューした。1 回目は REVISE で、6 件（P1 5 件、P2 1 件）をすべて実物で確かめて取り込んだ: 最後の job が skip されて通る、import の届かないファイルで 0 件のまま通る、`check` script が型検査を隠す、shard が違う記録を読む、`tsc -b` の出力が消える、`bun:test` 以外の suite が落ちる。2 回目も REVISE で、3 件（P1 1 件、P2 2 件）を取り込んだ: 最後の job だけを必須にすると別の workflow の check が外れる、`--update-timings` は最初の `--timings` に書く、絞ってよい条件をテストが保っていない。
-- 歯止め（D2 の `--no-script`、D5 の条件、D6 の最後の job、D7）は、所有者の 5 点には無く、Claude がレビューと実測から足した。決裁でこの点を確かめる。
+- 歯止め（D2 の `--no-script`、D5 の条件、D6 の最後の job、D7）は、所有者の 5 点には無く、Claude がレビューと実測から足した。Claude は PR #629 と本セッションで、この歯止めを表にして所有者に示した。
+- 2026-11-16 20:04 JST、所有者はその表を見たうえで「OK, dotfilesリポもこの変更に準拠しましょうか」と答えた。Claude はこれを採択とは扱わず、採択かどうかを尋ねた。
+- 2026-11-16 22:29 JST、所有者は「0078 okで」と答えた。これを A 案の採択とし、PR に記録した（[裁定](https://github.com/hironow/dotfiles/pull/629#issuecomment-6914709771)）。dotfiles 自身の準拠は別の PR（ADR-0079）で行う。
 
-## 決定（記入待ち）
+## 決定（2026-11-16）
 
-- [ ] A 案で Accept / [ ] 修正のうえ Accept（修正点: ____） / [ ] Reject（理由: ____） / [ ] Deferred
-- 決定者・日付:
-- A 案 Accept 時のアクション: Decision を MUST で確定し、索引、変更ログ、queue の決定済みログを同じ PR で更新して merge する。merge のあと main の checkout で `just sync-agents all` を実行する。
-- 修正 Accept 時のアクション: 指摘の点を spoke、テスト、Decision に反映し、同じ PR で確定する。
-- Reject 時のアクション: PR を閉じ、queue に理由を残す。指示は変えない。
-- Deferred 時のアクション: PR を閉じ、再検討の条件と期限を queue に残す。
+- [x] A 案で Accepted（D1〜D8 のとおり）
+- [ ] 修正のうえ Accepted（修正点: ____）
+- [ ] Rejected / Deferred（理由: ____）
+
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-16（所有者の裁定により代理記入）
+
+- Accepted のとき: Decision を確定し、索引、変更ログ、queue の決定済みログを同じ PR で更新して merge する。merge のあと main の checkout で `just sync-agents all` を実行する。
+- 修正のとき: 指摘の点を spoke、テスト、Decision に反映し、同じ PR で確定する。
+- Rejected / Deferred のとき: PR を閉じ、queue に理由を残す。

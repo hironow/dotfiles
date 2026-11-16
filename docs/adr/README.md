@@ -102,7 +102,7 @@ and what outlived it.
 | 0075 | [`just agent-bump` は、未 commit の宣言があっても止まらない](./0075-agent-bump-runs-on-uncommitted-declarations.md) | Accepted; partial supersession of 0074 (D4 first item, D5 for files edited mid-bump) | 2026-11-12 | `tools/agent-bump/` |
 | 0076 | [ブラウザの UI はプラットフォームを先に使い、足りない振る舞いは ui-sdk で作る](./0076-browser-ui-platform-first-then-ui-sdk.md) | Accepted (PR #614) | 2026-11-13 | `ROOT_AGENTS.md`、`ROOT_AGENTS_docs_agents_web-ui.md`、`ROOT_AGENTS_docs_agents_dependency-policy.md`、`dump/harness/skill-lock.json`、`index.html`、`site/` |
 | 0077 | [止めて残すと宣言した WSL の distro と、machine の無い native Windows の Podman CLI は、doctor で INFO にする](./0077-doctor-info-for-retained-distros-and-windows-podman-cli.md) | Accepted (PR #626) | 2026-11-14 | `scripts/ollama_host.py`、`scripts/doctor.sh`、`docs/runbook/ollama-windows-wsl.md`、`README.md` |
-| 0078 | [フロントエンドの CI を 2 分未満に保つ規則を、全エージェント共通の指示に足す](./0078-frontend-ci-under-two-minutes.md) | Proposed | 2026-11-16 | `ROOT_AGENTS.md`、`ROOT_AGENTS_docs_agents_frontend-ci.md`、`ROOT_AGENTS_docs_agents_testing.md`、`tests/unit/test_frontend_ci_guidance.py` |
+| 0078 | [フロントエンドの CI を 2 分未満に保つ規則を、全エージェント共通の指示に足す](./0078-frontend-ci-under-two-minutes.md) | Accepted (PR #629) | 2026-11-16 | `ROOT_AGENTS.md`、`ROOT_AGENTS_docs_agents_frontend-ci.md`、`ROOT_AGENTS_docs_agents_testing.md`、`tests/unit/test_frontend_ci_guidance.py` |
 
 ## Reading order for newcomers
 
@@ -183,3 +183,4 @@ and what outlived it.
 - 2026-11-14: [ADR-0077](./0077-doctor-info-for-retained-distros-and-windows-podman-cli.md)を起票（Proposed、決裁待ち）。`%USERPROFILE%\.config\dotfiles\wsl-retained-distros` に宣言した WSL の distro は、止まっている間は検査せず INFO で出し、動いていれば普通に検査する。native Windows で Podman の CLI が 5 以上で、machine が 1 つも無く、エンジンに届かないときも INFO にする。ADR-0066 の Decision 1 と 2 を当てはめるもので、置き換える記録は無い。所有者が承認した移行計画で、ADR で決めるとした。
 - 2026-11-15: [ADR-0077](./0077-doctor-info-for-retained-distros-and-windows-podman-cli.md) を採択する（A 案、置換はなし）。宣言した止まっている WSL の distro と、machine の無い native Windows で届かない Podman のエンジンを、doctor で INFO にする。所有者が PR #626 を見て選び、決定欄は選択に基づき代理記入した。
 - 2026-11-16: [ADR-0078](./0078-frontend-ci-under-two-minutes.md)を起票（Proposed、決裁待ち）。フロントエンドの CI を 2 分未満に保つ 5 つの規則（`tsc` を `bun check` に、oxlint の規則をすべて、記録した時間で shard、PR は diff が届くテストだけ、job を並列）を、検査が抜けないための条件と一緒に spoke に足す。所有者が本セッションで指示した。
+- 2026-11-16: [ADR-0078](./0078-frontend-ci-under-two-minutes.md) を採択する（A 案、置換はなし）。フロントエンドの CI を 2 分未満に保つ 5 つの規則を、検査が抜けないための条件と一緒に spoke に足す。所有者が PR #629 の表を見て「0078 okで」と答え、決定欄はその裁定に基づき代理記入した（[裁定](https://github.com/hironow/dotfiles/pull/629#issuecomment-6914709771)）。
