@@ -46,8 +46,8 @@ you install:
 
 - With a package:
   `bun add --exact --minimum-release-age 7d @ui-sdk/web@<version> @ui-sdk/core@<version>`
-  (the same version for both), or `[install] minimumReleaseAge = "7d"` in the
-  repo's `bunfig.toml`.
+  (the same version for both), or `[install] minimumReleaseAge = 604800` (seven
+  days in seconds) in the repo's `bunfig.toml`.
 - With no build step: check the release date with `bun info @ui-sdk/web time`
   before you pin a version.
 

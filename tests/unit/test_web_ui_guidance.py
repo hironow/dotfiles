@@ -84,7 +84,7 @@ def test_the_wait_is_set_where_bun_installs() -> None:
     assert "seven" in _block_with(SPOKE, "Class 2 dependency")
     assert "~/.npmrc" in wait
     assert "--minimum-release-age 7d" in _block_with(SPOKE, "With a package:")
-    assert 'minimumReleaseAge = "7d"' in _block_with(SPOKE, "With a package:")
+    assert "minimumReleaseAge = 604800" in _block_with(SPOKE, "With a package:")
 
 
 def test_pages_host_the_files_and_integrity_is_not_oversold() -> None:
@@ -112,3 +112,7 @@ def test_the_dependency_policy_says_how_bun_waits() -> None:
     rule = _block_with(POLICY, "minimumReleaseAge")
     assert "--minimum-release-age" in rule
     assert "does not apply to bun" in rule
+    # Dependabot's bun reads the bunfig wait only as a number of seconds.
+    assert "`604800`" in rule
+    assert "seconds" in rule
+    assert "Dependabot" in rule

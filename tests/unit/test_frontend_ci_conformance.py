@@ -175,7 +175,8 @@ def test_oxlint_is_pinned_and_installed_without_scripts() -> None:
     assert "--frozen-lockfile" in install
     assert "--ignore-scripts" in install
     bunfig = tomllib.loads((ROOT / "bunfig.toml").read_text(encoding="utf-8"))
-    assert bunfig["install"]["minimumReleaseAge"] == "7d"
+    # Seven days in seconds: Dependabot's bun (1.4.2) rejects "7d".
+    assert bunfig["install"]["minimumReleaseAge"] == 604800
     assert bunfig["install"]["exact"] is True
 
 
