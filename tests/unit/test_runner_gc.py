@@ -208,8 +208,13 @@ def test_compaction_stays_advisory() -> None:
         "take the self-hosted runner offline without asking."
     )
     assert not re.search(r"^\s*[^#]*--allow-unsafe", text, re.MULTILINE), (
-        "sparse VHD is disabled by Microsoft over data corruption (ADR 0035); "
+        "sparse VHD is experimental with a data-corruption history (ADR 0035); "
         "never force it on a CI host."
+    )
+    # From WSL 3.0.2 `--set-sparse true` needs no --allow-unsafe, so guarding
+    # only that flag no longer stops the operation itself.
+    assert not re.search(r"^\s*[^#]*--set-sparse\s+(true|1)\b", text, re.MULTILINE), (
+        "wsl_compact.sh must never turn sparse on (ADR 0035)."
     )
 
 

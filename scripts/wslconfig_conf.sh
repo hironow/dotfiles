@@ -48,9 +48,11 @@ if [ -f "${conf}" ]; then
     missing=1
   fi
   if grep -qE '^[[:space:]]*sparseVhd[[:space:]]*=' "${conf}"; then
-    echo "⚠️  sparseVhd is a dead key: Microsoft gated sparse conversion behind"
-    echo "    --allow-unsafe (data-corruption risk), so this line does nothing —"
-    echo "    remove it and check the real state with: just wsl-compact"
+    echo "⚠️  sparseVhd is set: WSL 3.0.2+ (microsoft/WSL#41726) makes every NEW distro"
+    echo "    vhdx sparse with it, still labelled experimental; earlier builds ignore"
+    echo "    it (new disks are forced non-sparse). This repo does not turn"
+    echo "    sparse on (ADR 0035) — remove it, and check a disk's real state with:"
+    echo "    just wsl-compact"
     missing=1
   fi
 fi

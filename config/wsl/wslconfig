@@ -6,11 +6,14 @@
 # the live file and prints the apply steps.
 #
 # Deliberately absent (do NOT re-add):
-# - sparseVhd=true — Microsoft disabled sparse conversion over
-#   data-corruption risk (`wsl --manage --set-sparse` demands
-#   --allow-unsafe). A vhdx that is already sparse keeps working and
-#   `fstrim` returns space without this key; shipping it here would spread
-#   the risk to every new machine.
+# - sparseVhd=true — this repo does not turn sparse on (ADR 0035). What the
+#   key does depends on the WSL build: up to 3.0.1 it is ignored (new disks
+#   are forced non-sparse while data corruption is debugged); from 3.0.2
+#   (microsoft/WSL#41726) it
+#   makes every NEW distro vhdx sparse, still labelled experimental, and
+#   `--set-sparse` no longer needs --allow-unsafe. A vhdx that is already
+#   sparse keeps working and `fstrim` returns space without this key;
+#   shipping it here would spread the experiment to every new machine.
 # - vmIdleTimeout — tested live (2026-08-20): it governs the utility VM,
 #   not distro lifetime. What keeps the runner distro alive is the
 #   keepalive client task (scripts/wsl_autostart.ps1).

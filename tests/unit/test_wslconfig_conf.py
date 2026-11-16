@@ -6,11 +6,11 @@ What belongs in the template is shaped by live findings on the trade box
 (2026-08-20):
 
 - `autoMemoryReclaim=gradual` is safe to share.
-- `sparseVhd=true` is deliberately ABSENT: Microsoft disabled sparse
-  conversion over data-corruption risk (`wsl --manage --set-sparse` demands
-  `--allow-unsafe`). A vhdx that is already sparse keeps working and fstrim
-  returns space without this key — shipping it would spread the risk to
-  every new machine.
+- `sparseVhd=true` is deliberately ABSENT (ADR 0035): up to WSL 3.0.1 the
+  key is forced off over data corruption; from 3.0.2 (microsoft/WSL#41726)
+  it makes every new vhdx sparse, still experimental. A vhdx that is already
+  sparse keeps working and fstrim returns space without this key — shipping
+  it would spread the experiment to every new machine.
 - `vmIdleTimeout` is deliberately ABSENT: tested live, it does not govern
   distro lifetime (the keepalive task in wsl_autostart.ps1 does).
 - Machine limits (`[wsl2] memory=`, `processors=`) stay local.
@@ -24,8 +24,12 @@ Static assertions, host-side (tests/unit/), so they run in `just ci`.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 from pathlib import Path
+
+from _bash_hook import bash_path, run_bash
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = ROOT / "config" / "wsl" / "wslconfig"
@@ -44,9 +48,8 @@ def test_template_exists_with_the_safe_subset() -> None:
 def test_template_does_not_spread_risky_or_rejected_keys() -> None:
     text = TEMPLATE.read_text(encoding="utf-8")
     assert not re.search(r"^\s*sparseVhd\s*=", text, re.MULTILINE), (
-        "sparseVhd must not ship in the template: Microsoft disabled sparse "
-        "conversion over data-corruption risk; an already-sparse vhdx works "
-        "without it."
+        "sparseVhd must not ship in the template: this repo does not turn "
+        "sparse on (ADR 0035); an already-sparse vhdx works without it."
     )
     assert "sparseVhd" in text, (
         "the template must explain WHY sparseVhd is absent, or the next "
@@ -108,8 +111,8 @@ def test_advisor_flags_live_misconfigurations() -> None:
 
     - localhostForwarding=true under networkingMode=mirrored is ignored and
       makes every wsl.exe invocation print a warning.
-    - sparseVhd=true is a dead key (Microsoft gated sparse conversion behind
-      --allow-unsafe); carrying it implies a protection that is not there.
+    - sparseVhd=true turns sparse on for new disks in WSL 3.0.2+, which this
+      repo does not do (ADR 0035).
     """
     text = SCRIPT.read_text(encoding="utf-8")
     assert "localhostForwarding" in text and "mirrored" in text, (
@@ -117,5 +120,41 @@ def test_advisor_flags_live_misconfigurations() -> None:
         "networkingMode=mirrored (the combination is ignored + noisy)."
     )
     assert "sparseVhd" in text, (
-        "the advisor must warn when the live file carries the dead sparseVhd key."
+        "the advisor must warn when the live file carries the sparseVhd key."
     )
+
+
+def test_sparsevhd_warning_states_what_the_key_does_per_wsl_version(
+    tmp_path: Path,
+) -> None:
+    """The key is not dead: WSL 3.0.2+ (microsoft/WSL#41726) makes every NEW
+    distro vhdx sparse when it is set; earlier builds forced sparse off while
+    data corruption was debugged. The warning must say that, not "does nothing"."""
+    (tmp_path / "config" / "wsl").mkdir(parents=True)
+    shutil.copy(TEMPLATE, tmp_path / "config" / "wsl" / "wslconfig")
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / ".wslconfig").write_text(
+        "[experimental]\nautoMemoryReclaim=gradual\nsparseVhd=true\n", encoding="utf-8"
+    )
+    fakes = tmp_path / "fakes.sh"
+    fakes.write_text(
+        "uname() { echo MINGW64_NT-10.0-26300; }\ncygpath() { echo home; }\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    env = {**os.environ, "BASH_ENV": bash_path(fakes), "USERPROFILE": "unused"}
+    proc = run_bash(
+        SCRIPT,
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+    out = proc.stdout
+    assert "sparseVhd" in out, out
+    assert "dead key" not in out and "does nothing" not in out, out
+    assert "3.0.2" in out and "41726" in out, out
+    assert "ADR 0035" in out, out
