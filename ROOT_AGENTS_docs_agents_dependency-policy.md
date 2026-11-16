@@ -48,7 +48,8 @@ does more damage through the supply chain.
 - **If you are unsure which class a dependency belongs to, treat it as Class 2.**
 - With bun, set the cooldown with `--minimum-release-age` or the bunfig key
   `[install] minimumReleaseAge`. The `min-release-age` in `~/.npmrc` does not
-  apply to bun.
+  apply to bun. In `bunfig.toml`, write the wait in seconds (`604800` for seven
+  days): Dependabot's bun reads only seconds there and fails on `"7d"`.
 - `github.com/goccy/go-json` is a required Class 2 dependency (one maintainer,
   v0.x; docs/agents/go-tooling.md). Keep the cooldown, and treat every v0.x
   minor release as a major: read its changelog before you merge it.
