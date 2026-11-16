@@ -34,8 +34,8 @@ DISTRO="${RUNNER_GC_WSL_DISTRO:-Ubuntu}"
 . "$(dirname "${BASH_SOURCE[0]}")/wsl_vhdx_lib.sh"
 _vhdx="$(wsl_vhdx_path "$DISTRO" || true)"
 if [ -z "$_vhdx" ] || [ ! -f "$_vhdx" ]; then
-  echo "⚠️  No ext4.vhdx found for distro '${DISTRO}' via the Lxss registry."
-  echo "    Locate it with:  wsl --manage ${DISTRO} --get-location"
+  echo "⚠️  No vhdx found for distro '${DISTRO}' via the Lxss registry."
+  wsl_vhdx_locate_hint
   exit 1
 fi
 _vhdx_w="$(cygpath -w "$_vhdx")"

@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _bash_fakes import require_bash_fakes as require_shared_bash_fakes
 from _bash_hook import bash_path, resolve_bash, run_bash
 from _pwsh import powershell_identity, resolve_pwsh
 
@@ -196,33 +197,10 @@ HOST_LAUNCHERS = ("wsl.exe", "powershell.exe")
 def require_bash_fakes(cwd, env):
     """Stop before the public script runs unless the fakes are in force.
 
-    bash ignores a BASH_ENV file it cannot read. The real uname would then
-    report MINGW on Windows, and runner_gc.sh would start the real WSL and
-    PowerShell GC.
+    The real uname would report MINGW on Windows, and runner_gc.sh would start
+    the real WSL and PowerShell GC.
     """
-    probe = Path(cwd) / "fake-preflight.sh"
-    probe.write_text(
-        f"type -t {' '.join(BASH_FAKES)}\n"
-        f'for launcher in {" ".join(HOST_LAUNCHERS)}; do type -P "$launcher"; done\n'
-        "exit 0\n",
-        encoding="utf-8",
-    )
-    proc = run_bash(
-        probe,
-        cwd=cwd,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=15,
-    )
-    lines = proc.stdout.split()
-    kinds, launchers = lines[: len(BASH_FAKES)], lines[len(BASH_FAKES) :]
-    if proc.returncode != 0 or kinds != ["function"] * len(BASH_FAKES):
-        raise RuntimeError(f"fake layer not loaded: {proc.stdout!r} {proc.stderr!r}")
-    if launchers:
-        raise RuntimeError(f"replay PATH reaches a host launcher: {launchers}")
+    require_shared_bash_fakes(cwd, env, BASH_FAKES, HOST_LAUNCHERS)
 
 
 def replay(

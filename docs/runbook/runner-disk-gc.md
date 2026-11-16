@@ -105,17 +105,30 @@ reparse point を先に再帰なしで外し、読み取り専用を解除し、
 
 WSL の中で消しても、C: の空きは増えない。
 vhdx は解放済みの ext4 のブロックを Windows 側で抱えたままなので、返却するのは `fstrim` である。
-WSL の vhdx は通常 sparse なので、`fstrim /` で穴をあければ、止めずに管理者権限なしで返せる。
+vhdx が sparse なら、`fstrim /` で穴をあければ、止めずに管理者権限なしで返せる。
 GC は root での回収の最後に `fstrim` を実行する。
 
-vhdx が sparse でない機体では、`fstrim` は C: に何も返さない（実例は memory `project_this_host_vhdx_non_sparse`）。
+vhdx は常に sparse とは限らない。`wsl --manage --move` で別のボリュームへ移すと、sparse が外れることがある（2026-11-17 に D: へ移した実例）。
+sparse でない vhdx では、`fstrim` はボリュームに何も返さない（実例は memory `project_this_host_vhdx_non_sparse`）。
 その場合の返却には、管理者権限と `wsl --shutdown`（runner の停止）が要るので、`just wsl-compact` は計測と手順の表示にとどめる。
-`wsl --manage --set-sparse` は自分では有効にしない（Microsoft がデータ破損の危険から無効にしており、`--allow-unsafe` が要る）。
+sparse な vhdx には diskpart の手順を出さない。diskpart と Optimize-VHD は sparse な vhdx を "must not be sparse" で拒否する。
+この機体の WSL（3.0.5）の `wsl --help` にある `wsl --manage <distro> --compact` は、ここでは検証していない。
+`wsl --manage --set-sparse` は自分では有効にしない（ADR 0035）。WSL 3.0.5 では `--allow-unsafe` は要らず、実験的な機能だという警告が出るだけである。
 すでに sparse な vhdx で `fstrim` を使うのは別の話で、こちらは安全である。
 
 余り（slack）は実際の占有量（`du -B1`）で測る。
 `stat -c %s` は論理サイズ（最高水位で、減らない）なので、「論理サイズ - 使用量」はすでに返した分まで余りに数えてしまう。
-`just wsl-compact` は sparse の状態（`fsutil sparse queryflag`）も表示する。
+`just wsl-compact` は sparse の状態も表示する。
+判定はファイルの属性で行う（`fsutil sparse queryflag` の文は言語で変わり、英語の "This file is NOT set as sparse" にも "sparse" が含まれる）。
+
+`just wsl-compact` は、vhdx を開ける利用者も確かめる。vhdx は distro 全体で、runner の認証情報を含む。
+許すのは、この利用者、SYSTEM、Administrators と、WSL 自身が付ける SID（`S-1-5-83-*`、`S-1-15-*`）だけである。
+それ以外があれば WARN を出す。`--move` は移動先のボリュームの ACL を継承するので、D:\ の既定の `Authenticated Users:(M)` などが付く。
+直すのはファイルではなく vhdx のフォルダーである（`icacls <フォルダー> /inheritance:r /grant:r ...`。ファイルだけを直すと、次に作られる vhdx で元に戻る）。
+`wsl --manage --move` の後は、`just wsl-compact` で sparse と ACL を確かめる。
+
+PowerShell の `Get-Acl` は、Git Bash から呼ぶと pwsh 7 の `PSModulePath` を引き継いで読み込めない。
+shell script から ACL を読むときは .NET（`[IO.File]::GetAccessControl`）を使い、`PSModulePath` を `$PSHOME\Modules` に戻す。
 
 ## 開発用キャッシュ
 
