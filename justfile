@@ -311,9 +311,16 @@ headroom-mcp-register *args:
 rtk-pi-refresh:
     @{{UV_RUN}} scripts/rtk_pi_refresh.py
 
+# Build the Pi extensions the way Pi loads them (output is thrown away).
+js-build:
+    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent'
+
 # Exercise the Pi usage-limit failover logic without consuming model tokens.
-pi-jev-test:
-    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && mise x -- bun test ./tests/unit/jev_sonnet_fallback.test.ts
+js-test:
+    mise x -- bun test ./tests/unit/jev_sonnet_fallback.test.ts
+
+# The Pi extension gate: build, then test.
+pi-jev-test: js-build js-test
 
 # Live check of the Claude worker hook. Run after the Claude usage limit resets.
 # Exit 0 pass, 1 fail (defect), 2 blocked (usage limit or not logged in),
