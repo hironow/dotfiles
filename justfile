@@ -323,10 +323,16 @@ BUN := env("DOTFILES_BUN", "mise x -- bun")
 js-install:
     @{{ BUN }} install --frozen-lockfile --ignore-scripts
 
+# Every tracked JS/TS file, for oxlint. With no paths oxlint walks the disk, and
+# a checkout with a submodule checked out, or an untracked folder, then fails
+# on files that are not ours. git lists a submodule as one entry.
+# The same extensions as JS_FILES, without its site/-only exclusion.
+JS_TRACKED := replace(JS_FILES, " ':!vendor/**'", "")
+
 # Lint every tracked JS/TS file that is ours with oxlint: all seven categories
 # are errors (.oxlintrc.json names what it ignores and why).
 js-lint: js-install
-    {{ BUN }}x --no-install oxlint
+    git ls-files -z -- {{ JS_TRACKED }} | xargs -0 -r {{ BUN }}x --no-install oxlint
 
 # Type check the files tsconfig.json includes. --no-script: a package.json
 # `check` script would otherwise run instead of the type checker.

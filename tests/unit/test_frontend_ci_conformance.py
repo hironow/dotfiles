@@ -139,12 +139,28 @@ def test_only_vendored_bytes_are_ignored() -> None:
 def test_every_tracked_js_file_is_linted_or_vendored() -> None:
     tracked = _tracked_js()
     own = sorted(path for path in tracked if not _is_vendored(path))
-    # .oxlintrc.json has no "include": oxlint reads every JS/TS file it is not
-    # told to ignore, so a new file is linted without anyone listing it.
     assert own == sorted(OWN_FILES), own
-    assert "bunx --no-install oxlint" in _recipe("js-lint").replace(
-        "{{ BUN }}x", "bunx"
-    )
+
+
+def test_oxlint_is_handed_the_tracked_files_only() -> None:
+    # With no paths, oxlint walks the disk. A checkout that has a submodule
+    # checked out (gcloud/knowledge-catalog), or any untracked folder, then
+    # fails on files that are not ours, while CI and a fresh worktree pass.
+    # `git ls-files` lists a submodule as one entry, never the files inside it.
+    lint = _recipe("js-lint").replace("{{ BUN }}x", "bunx")
+    assert re.search(
+        r"git ls-files -z -- \{\{ JS_TRACKED \}\} \| xargs -0 -r bunx --no-install oxlint\s*$",
+        lint,
+    ), lint
+    # One list of extensions: JS_TRACKED is JS_FILES without the exclusion that
+    # only makes sense inside site/.
+    assert """JS_TRACKED := replace(JS_FILES, " ':!vendor/**'", "")""" in JUSTFILE
+    (js_files,) = re.findall(r'^JS_FILES := "(.+)"$', JUSTFILE, re.MULTILINE)
+    extensions = ("ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts")
+    assert js_files.split() == [
+        *(f"'*.{extension}'" for extension in extensions),
+        "':!vendor/**'",
+    ]
 
 
 def test_oxlint_is_pinned_and_installed_without_scripts() -> None:
