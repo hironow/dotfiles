@@ -46,7 +46,7 @@ just sync-agents-preview …  # dry-run
 | recipe | 内容 |
 |---|---|
 | `just` / `just help` | recipe 一覧 |
-| `just ci` | fast コンテナ不要 gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) + `check-forbidden-tokens-branch`。`check` 自体に Go / JS・TS / Pi 拡張 / Quint の leg も入る |
+| `just ci` | fast コンテナ不要 gate: ruff / shellcheck / markdownlint / meta-semgrep + `lint-claude` + unit tests (`tests/unit/`) + `semgrep --test` + `tofu test` + `instruction-budget` + `skills-lock-check` + `emu-lint` (emulator の `ruff format --check` + ruff canonical + ty + markdownlint。semgrep leg は `.semgrepignore` で現状 target 0) + `check-forbidden-tokens-branch`。`check` 自体に Go / JS・TS (`js-lint` = oxlint、`js-typecheck` = `bun check --no-script`、`vp fmt --check`) / Pi 拡張 / Quint の leg も入る。JS・TS の leg は root の `package.json` の dev 依存を `bun install --frozen-lockfile --ignore-scripts` で入れてから走る (ADR-0079) |
 | `just lint-claude` | 公式 `claude plugin validate --strict` (claude CLI 不在時は skip) + stdlib の effective-settings 検証 (ADR 0037/0041)。サードパーティ claudelint は**退役済み** (ADR 0041、trust 判断)。CI gate は `Claude Config Lint` workflow が pinned `bunx @anthropic-ai/claude-code` で公式 validate を回す (CI は `just ci` 非実行) |
 | `just ci-all` | `ci` + `test` + `test-install` (Podman サンドボックス込み) |
 | `just check-all` | prek hooks + `ci-all` (push 前の最終 gate) |

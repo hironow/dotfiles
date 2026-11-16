@@ -1,0 +1,61 @@
+{
+  // The JS gate's lint rules (docs/agents/frontend-ci.md, ADR-0079).
+  // Every category is an error. A rule is turned off by name, with the reason
+  // on the line above it; tests/unit/test_frontend_ci_conformance.py checks that.
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "promise", "node"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "pedantic": "error",
+    "perf": "error",
+    "style": "error",
+    "restriction": "error",
+    "nursery": "error"
+  },
+  "options": { "typeAware": true },
+  "env": { "builtin": true, "es2026": true, "node": true, "shared-node-browser": true },
+  // Third-party bytes we must not edit. site/vendor is checked byte for byte by
+  // tests/unit/test_site_vendor.py; rtk.ts is vendored from rtk, unmodified.
+  "ignorePatterns": ["site/vendor/**", "config/pi/extensions/rtk.ts"],
+  "rules": {
+    "capitalized-comments": ["error", "always", { "ignoreConsecutiveComments": true, "ignorePattern": "dotfiles-managed" }],
+    "func-style": ["error", "declaration", { "allowArrowFunctions": true }],
+    "max-lines": ["error", { "max": 300, "skipBlankLines": true, "skipComments": true }],
+    "no-magic-numbers": ["error", { "ignore": [0, 1] }],
+    "one-var": ["error", "never"],
+    "node/no-process-env": ["error", { "allowedVariables": ["JEV_ROUTED_SESSION", "JEV_KEY_HANDOFF", "JEV_CODEX_AGENTS"] }],
+    // The two rules ban each other's only alternative. Pi loads an extension by its default export, and the tests import the named helpers.
+    "import/no-default-export": "off",
+    "import/no-named-export": "off",
+    // These ban syntax itself (async/await, ?.), which Bun and every browser the page supports run natively.
+    "oxc/no-async-await": "off",
+    "oxc/no-optional-chaining": "off",
+    // It rejects a bare `return;` in a function typed `T | undefined`, and unicorn/no-useless-undefined rejects `return undefined;`: no code passes both.
+    "typescript/consistent-return": "off",
+    // Pi's own types (ExtensionAPI, ExtensionContext, its events) are mutable, and a tool_call handler changes event.input on purpose.
+    "typescript/prefer-readonly-parameter-types": "off"
+  },
+  "overrides": [
+    {
+      "files": ["site/**"],
+      "env": { "browser": true, "node": false },
+      "rules": {
+        "no-void": ["error", { "allowAsStatement": true }]
+      }
+    },
+    {
+      "files": ["tests/**"],
+      "rules": {
+        "max-lines": ["error", { "max": 400, "skipBlankLines": true, "skipComments": true }],
+        "max-statements": ["error", 15],
+        "unicorn/filename-case": ["error", { "cases": { "kebabCase": true, "snakeCase": true } }],
+        // A test lives in tests/unit/ and has to import the code it tests from config/.
+        "import/no-relative-parent-imports": "off",
+        // A fake of an async API returns a promise with nothing to await, and typescript/promise-function-async requires it to be `async`.
+        "require-await": "off",
+        "typescript/require-await": "off"
+      }
+    }
+  ]
+}

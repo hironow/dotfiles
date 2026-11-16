@@ -74,10 +74,6 @@ jobs:
           tests/unit/test_agent_hook_doctor.py::test_real_hookrelease_rebuilds_a_real_temporary_release
           tests/unit/test_agent_hooks_test_installed.py
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-      - name: Check Pi provider failover
-        run: bun test ./tests/unit/jev_sonnet_fallback.test.ts
-
       # Keep --max in sync with the `instruction-budget` recipe in the
       # justfile (the recipe is not callable here because the justfile
       # wraps tools with `mise exec`).

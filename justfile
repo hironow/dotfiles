@@ -45,13 +45,13 @@ SEMGREP := "uvx --python 3.14 semgrep"
 # *script* lockfile that does not exist. tests/unit/test_justfile_uv_run_modes.py
 # keeps every invocation on the right runner.
 UV_RUN_SCRIPT := "mise exec -- uv run"
-# The JS/TS files vp formats, lints, and checks (`fmt`, `lint`, `check`): one
-# list, so the three gates agree on which files are ours. vp needs a package, so
+# The JS/TS files vp formats (`fmt`, and `fmt --check` in `check`): one list,
+# so both agree on which files are ours. vp needs a package, so
 # it runs in site/, the repo's one JS package (site/package.json); the list is
 # relative to it (--work-tree=.. keeps it so inside a git hook, where GIT_DIR
 # is set). site/vendor holds third-party bytes that
-# tests/unit/test_site_vendor.py checks instead. The other tracked JS/TS has its
-# own gate (tests/unit/test_justfile_js_files.py names them).
+# tests/unit/test_site_vendor.py checks instead. oxlint and bun check read
+# every tracked JS/TS file that is ours (the js-* recipes below).
 JS_FILES := "'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' ':!vendor/**'"
 # The gcloud components installed here, one id per line, as `dump` records them
 # and `add-gcloud` compares against. A component with an update waiting is
@@ -311,13 +311,38 @@ headroom-mcp-register *args:
 rtk-pi-refresh:
     @{{UV_RUN}} scripts/rtk_pi_refresh.py
 
-# Build the Pi extensions the way Pi loads them (output is thrown away).
-js-build:
-    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; mise x -- bun build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent'
+# The JS gate (docs/agents/frontend-ci.md, ADR-0079): lint, typecheck, build,
+# and test are four recipes, so CI runs them as four parallel jobs and a
+# machine runs the same commands. tests/unit/test_frontend_ci_conformance.py
+# keeps the recipes, the workflow, and the configs in step.
+# CI has no mise: its jobs set DOTFILES_BUN=bun.
+BUN := env("DOTFILES_BUN", "mise x -- bun")
 
-# Exercise the Pi usage-limit failover logic without consuming model tokens.
-js-test:
-    mise x -- bun test ./tests/unit/jev_sonnet_fallback.test.ts
+# Install the gate's pinned dev dependencies (oxlint, and the types bun check
+# reads). The lockfile decides every version; no package script runs.
+js-install:
+    @{{ BUN }} install --frozen-lockfile --ignore-scripts
+
+# Lint every tracked JS/TS file that is ours with oxlint: all seven categories
+# are errors (.oxlintrc.json names what it ignores and why).
+js-lint: js-install
+    {{ BUN }}x --no-install oxlint
+
+# Type check the files tsconfig.json includes. --no-script: a package.json
+# `check` script would otherwise run instead of the type checker.
+js-typecheck: js-install
+    {{ BUN }} check --no-script
+
+# Build the Pi extensions the way Pi loads them (output is thrown away). The
+# output must not name Pi's package: an extension imports it for types only.
+js-build:
+    @tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; {{ BUN }} build config/pi/extensions/jev-sonnet-fallback.ts config/pi/extensions/rtk.ts --target=bun --outdir="$tmp" --external '@earendil-works/pi-coding-agent' && if grep -rq '@earendil-works/' "$tmp"; then echo 'js-build: the build output imports @earendil-works/ at run time' >&2; exit 1; fi
+
+# Run every bun:test suite. One shard and no --changed: the suite takes under a
+# second. Add shards (bun test --shard, --timings) when it no longer fits the
+# two-minute target.
+js-test: js-install
+    {{ BUN }} test ./tests/unit/
 
 # The Pi extension gate: build, then test.
 pi-jev-test: js-build js-test
@@ -818,8 +843,9 @@ lint:
     git ls-files -z '*.sh' ':!emulator' | xargs -0 -r mise x -- shellcheck
     @echo '🔍 Markdown (markdownlint-cli2 --fix)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2 --fix
-    @echo '🔍 JS/TS (vp lint)...'
-    git -C site --work-tree=.. ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp -C site lint
+    @echo '🔍 JS/TS (oxlint, bun check)...'
+    just js-lint
+    just js-typecheck
     @echo '🔍 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔍 uv exclude-newer-package overrides (ADR 0028 quarantine)...'
@@ -860,8 +886,10 @@ check:
     git ls-files -z '*.sh' ':!emulator' | xargs -0 -r mise x -- shellcheck
     @echo '🔎 Markdown (markdownlint-cli2)...'
     git ls-files -z '*.md' ':!emulator' | xargs -0 -r mise x -- markdownlint-cli2
-    @echo '🔎 JS/TS (vp check)...'
-    git -C site --work-tree=.. ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp -C site check
+    @echo '🔎 JS/TS (vp fmt --check, oxlint, bun check)...'
+    git -C site --work-tree=.. ls-files -z {{ JS_FILES }} | xargs -0 -r mise x -- vp -C site fmt --check
+    just js-lint
+    just js-typecheck
     @echo '🔎 Pi extension (Bun build + tests; vp has no root JS workspace)...'
     just pi-jev-test
     @echo '🔎 Meta-semgrep rules against rule files...'
