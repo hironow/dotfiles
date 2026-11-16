@@ -116,10 +116,11 @@ irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex
 - **Ollama**: Windows と WSL が共存する機体では、Windows の Scoop `extras/ollama-full` に一本化する。WSL は loopback のブリッジまたは共有 loopback を使い、Linux 版の本体やモデルは持たない。構成違反は `just doctor` が検出する（詳細: [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md)）。
 
 SSH 鍵を設定したら、remote を SSH に替えて submodule を取得する。
+private の `knowledge-work-plugins` は、Dependabot の clone が止まらないように `.gitmodules` で `update = none` にしてあるので、`--checkout` を付けて取得する。
 
 ```powershell
 git -C ~/dotfiles remote set-url origin git@github.com:hironow/dotfiles.git
-git -C ~/dotfiles submodule update --init
+git -C ~/dotfiles submodule update --init --checkout
 ```
 
 ## 日常の操作
