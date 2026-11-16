@@ -567,7 +567,8 @@ fi
 # them claimed from Windows until something discards them, which is why a big
 # prune can leave C: unchanged and make the GC look useless.
 #
-# On a sparse vhdx — what WSL creates by default — `fstrim` punches those holes
+# On a sparse vhdx (not guaranteed: `wsl --manage --move` drops the flag, and
+# WSL only creates sparse disks when told to) `fstrim` punches those holes
 # straight back out: no downtime, no elevation, the runner stays online. On this
 # host one call returned 43.5 GB to C: immediately. A non-sparse vhdx simply
 # ignores the discard, so this is unconditional; compaction (`just wsl-compact`)
