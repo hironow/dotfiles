@@ -34,6 +34,13 @@
 # Out of scope: gitsubmodules (synced via scripts/sync_agents.py), compose.yaml
 # `image:` tags in emulator/ (hand-managed; many float on `latest`).
 #
+# Private submodule: Dependabot clones with --recurse-submodules and cannot read
+# hironow/knowledge-work-plugins (a personal account cannot grant it access).
+# The failed clone left the other submodules empty and dirty, the
+# github-actions run then failed at `git commit` (every run from 2026-07-28),
+# and the weekly PR never opened. `.gitmodules` marks it `update = none` so the clone skips it; the
+# README step and `just update-all-submodules` pass --checkout to still fetch it.
+#
 # NOTE: filename uses `.yaml` per this repo's YAML convention (CLAUDE.md),
 # unlike the sibling repos' `.yml` -- Dependabot accepts both. Reviewer: hironow.
 version: 2

@@ -1477,12 +1477,14 @@ add-scoop host="":
 #                            (portable to git 2.43, the fresh-WSL baseline;
 #                            --no-recurse-submodules is not), then re-pin them
 #                            to each parent's SHA
+# --checkout also updates the private submodule that .gitmodules marks
+# `update = none` so Dependabot's clone skips it.
 [doc('Update all submodules to upstream tips, cleanly (no garbage diff)')]
 [group('Update')]
 update-all-submodules:
     @echo "◆ Updating ALL submodules to upstream tips (clean)..."
     git submodule foreach --quiet 'git fetch --tags --force origin 2>/dev/null || true'
-    git -c submodule.recurse=false submodule update --remote --force
+    git -c submodule.recurse=false submodule update --remote --force --checkout
     git submodule foreach --quiet 'git submodule update --init --recursive --checkout 2>/dev/null || true'
     @echo "✅ Submodules updated. Working tree status (empty = clean):"
     @git status --short
