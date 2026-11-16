@@ -105,6 +105,9 @@ never a hand-rolled harness. Web and mobile end-to-end suites are the
 exception: they use `e2e` (above). To convert an existing hand-rolled harness
 to `bun:test`, follow docs/agents/bun-test-migration.md.
 
+How CI runs a `bun:test` suite (shards, and the tests a diff can reach):
+docs/agents/frontend-ci.md.
+
 ## runn scenario tests
 
 `runn` is a scenario runner for API and CLI testing, driven by YAML.
