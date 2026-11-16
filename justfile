@@ -504,8 +504,9 @@ disk-report:
     bash scripts/disk_gc.sh report
 
 # Disk: reclaim regenerable host caches (mise stale versions, bun/uv/cargo,
-# npm). Toolchains and project data are out of scope — safe to run unattended.
-[group('Disk'), doc('Reclaim regenerable host caches (mise/bun/uv/cargo/npm) — safe unattended')]
+# npm). Toolchains and project data are out of scope. Each leg stops before
+# any deletion while its runner has a job (the caches are shared with CI).
+[group('Disk'), doc('Reclaim regenerable host caches (mise/bun/uv/cargo/npm) — skips while a runner job is executing')]
 disk-gc:
     bash scripts/disk_gc.sh clean
 

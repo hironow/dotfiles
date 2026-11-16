@@ -15,13 +15,20 @@
 #   disk_gc.sh clean    — reclaim the caches above
 #
 # Every cache here is regenerated on demand: cleaning costs re-download time,
-# never correctness. Toolchains, SDKs and project data are deliberately out of
-# scope — this script must stay safe to run unattended.
+# never correctness - but only while no runner job is building from it, so
+# `clean` stops before each deletion step while this leg's runner has a job
+# (see the runner job guard below). Toolchains, SDKs and project data are
+# deliberately out of scope.
 # ==============================================================================
 
 set -eu
 
 MODE="${1:-report}"
+
+# Overrides the runner-job guard below. Normalised to 0/1 here because the
+# value is embedded in the WSL leg's command line.
+_allow_busy=0
+[ "${DISK_GC_ALLOW_BUSY:-0}" != "1" ] || _allow_busy=1
 
 _win=0
 case "$(uname -s)" in
@@ -45,7 +52,7 @@ if [ "$_win" -eq 1 ] && [ "${DISK_GC_NO_WSL:-0}" != "1" ] && command -v wsl.exe 
   # wsl.exe -e starts a fresh environment (WSLENV unset here), so the opt-in
   # knob must ride inside the command line or the WSL leg never sees it.
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
-    wsl.exe -d "$_distro" -e bash -lc "DISK_GC_HUGGINGFACE=${DISK_GC_HUGGINGFACE:-0} bash '${_self}' ${MODE}" || \
+    wsl.exe -d "$_distro" -e bash -lc "DISK_GC_HUGGINGFACE=${DISK_GC_HUGGINGFACE:-0} DISK_GC_ALLOW_BUSY=${_allow_busy} bash '${_self}' ${MODE}" || \
     echo "  (WSL leg failed; continuing with the Windows profile)"
   echo
 fi
@@ -60,6 +67,68 @@ _winpath() {
 _size() { # -> human size of $1, or "-" when absent
   [ -d "$1" ] || { printf -- '-'; return 0; }
   du -shx "$1" 2>/dev/null | awk '{print $1}' || printf -- '?'
+}
+
+# --- Runner job guard -------------------------------------------------------
+# These caches are shared with this leg's self-hosted runner, and a cache that
+# is regenerated on demand is still in use while a job builds from it: deleting
+# ~/.cargo/registry/src under a running cargo killed rustc mid-compile (its cwd
+# is the crate's unpacked source; a CI job on the WSL runner, 2026-11-16).
+# Each leg checks its own runner: the WSL leg runs this script inside the
+# distro, where _win=0.
+#
+# Returns 0 = a job is running, 1 = idle, 2 = cannot tell. Callers treat 2 as
+# busy: a detection that fails open deletes under a job on a quieter day.
+_runner_job_state() {
+  if [ "$_win" -eq 1 ]; then
+    # tasklist is a native exe, so Git Bash would rewrite /FI into a Windows
+    # path and tasklist would error out. The no-match message is localised;
+    # the image name in the CSV is not.
+    _tl="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' tasklist /FI "IMAGENAME eq Runner.Worker.exe" /FO CSV /NH 2>/dev/null)" || return 2
+    case "$_tl" in *'"Runner.Worker.exe"'*) return 0 ;; esac
+    return 1
+  fi
+  # -x, not -f: -f would match this script's own command line.
+  _rc=0
+  pgrep -x Runner.Worker >/dev/null 2>&1 || _rc=$?
+  case "$_rc" in
+    0) return 0 ;;
+    1) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+_runner_job_word() {
+  _st=0
+  _runner_job_state || _st=$?
+  case "$_st" in
+    0) printf 'busy' ;;
+    1) printf 'idle' ;;
+    *) printf 'unknown' ;;
+  esac
+}
+
+# Runs before EVERY deletion step, not once up front: the sweep takes minutes
+# (an 11 GB read-only Go module cache, tens of GB of uv), and a job can start
+# in between. It is an observation, not a lock - a job that starts between this
+# check and the delete it guards is not stopped.
+_guard() { # $1: what is about to be deleted
+  [ "$_allow_busy" -ne 1 ] || return 0
+  _st=0
+  _runner_job_state || _st=$?
+  case "$_st" in
+    1) return 0 ;;
+    0)
+      echo "  SKIP: a runner job is executing (Runner.Worker alive); rerun when idle"
+      echo "  (stopped before: $1)"
+      exit 0
+      ;;
+    *)
+      echo "  SKIP: cannot tell whether a runner job is executing; nothing more deleted"
+      echo "  (stopped before: $1)"
+      exit 2
+      ;;
+  esac
 }
 
 # --- candidate caches -------------------------------------------------------
@@ -122,6 +191,8 @@ else
   printf '  %s\n' "$(df -h "$HOME" | awk 'NR==2 {print $4" avail on "$6}')"
 fi
 
+printf '  runner job: %s (clean deletes only while idle)\n' "$(_runner_job_word)"
+
 if [ "$MODE" != "clean" ]; then
   echo "--- (report only; run with 'clean' to reclaim) ---"
   exit 0
@@ -137,6 +208,7 @@ echo "--- 🧹 reclaiming ---"
 # mise: drop tool versions no tracked config references. `prune` is the
 # supported entry point; it never touches versions still pinned by a config.
 if command -v mise >/dev/null 2>&1; then
+  _guard "mise prune"
   if mise prune --yes >/dev/null 2>&1; then
     echo "  mise: pruned unreferenced versions"
   else
@@ -149,22 +221,28 @@ fi
 # it. Spelled as if/else rather than `A && B || C`, which shellcheck rightly
 # rejects (SC2015): C also runs when A succeeded but B failed.
 if command -v go >/dev/null 2>&1; then
+  _guard "go module cache"
   if go clean -modcache >/dev/null 2>&1; then
     echo "  go: module cache cleaned"
   else
     echo "  go: modcache clean failed (non-fatal)"
   fi
+  _guard "go build cache"
   if go clean -cache >/dev/null 2>&1; then
     echo "  go: build cache cleaned"
   fi
 fi
 
-printf '%b' "$_caches" | awk 'NF' | while read -r _c; do
+# A here-string, not a pipe: _guard's exit must end the script, and inside a
+# `... | while` loop it would only end the pipeline's subshell.
+while read -r _c; do
+  [ -n "$_c" ] || continue
+  _guard "$_c"
   if rm -rf "$_c" 2>/dev/null; then
     echo "  removed: $_c"
   else
     echo "  skipped (in use): $_c"
   fi
-done
+done <<< "$(printf '%b' "$_caches" | awk 'NF')"
 
 echo "--- ✅ host caches reclaimed ---"

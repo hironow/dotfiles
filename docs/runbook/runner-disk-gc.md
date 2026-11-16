@@ -33,6 +33,11 @@ runner は hook のパスを検証し、拡張子が `.sh`、`.ps1`、`.js` で�
 hook は `Runner.Worker` の内側から呼ばれるので、単純に検出すると、自分を起動したジョブを理由に毎回スキップしてしまう。
 プロセスの祖先と突き合わせ、祖先でない worker（同時に走る別のジョブ）がいるときだけ退避する。
 
+runner のジョブと共有する path を消す処理は、どれも削除の各段の直前でジョブを判定する。
+「再生成できる」は「使用中に消してよい」ではない。
+cargo は registry の crate を、その展開先を cwd にして rustc で compile するので、`~/.cargo/registry/src` を消すと compile 中の rustc が落ちる。
+判定できないときは、ジョブが実行中として扱う（判定が失敗した日に、黙って消し始めないため）。
+
 ## Podman の回収
 
 GC は Podman CLI と選択先の実行系を別々に調べ、両方が 5 以降であることを求める。Unix は `jq` も必要である。利用不可・版や情報の不明な場合は Podman の在庫を残してログに記録する。Docker への切替、socket の推測、machine の初期化・起動・更新はしない。`podman info --format json` の `version.Version` は選択先の版であり、CLI の版ではない。`host.serviceIsRemote=false` のローカル実行も有効である。
@@ -117,6 +122,17 @@ vhdx が sparse でない機体では、`fstrim` は C: に何も返さない（
 コンテナ以外にも大きく育つのは開発用のキャッシュである（`~/.cache/uv` だけで数十 GB になる）。
 `just disk-gc` は、WSL の runner ユーザの HOME まで掃除する（`DISK_GC_NO_WSL=1` で止める）。
 対話作業と共有する場所なので、hourly timer には載せない。
+
+これらのキャッシュは、同じ leg の runner のジョブも使う。
+そのため `clean` は leg ごとに、削除の各段（`mise prune`、`go clean`、キャッシュ 1 つずつの削除）の直前でジョブを判定する。
+
+- WSL の leg は distro の中で `pgrep -x Runner.Worker`、Windows の leg は `tasklist /FI "IMAGENAME eq Runner.Worker.exe" /FO CSV /NH`（Git Bash のパス変換を切って呼ぶ）で判定する。
+- ジョブが実行中なら `SKIP: a runner job is executing` を出し、残りを消さずに exit 0 で終わる。
+- 判定できなければ `SKIP: cannot tell` を出し、exit 2 で終わる。
+- 一方の leg が止まっても、もう一方の leg は続ける。
+- `just disk-report` は各 leg の `runner job: busy|idle|unknown` を表示する。本物の判定を、何も消さずに確かめられる。
+- 判定はその時点の観測であり、lock ではない。判定と削除の間に始まったジョブは防げない。
+- 実行中のジョブを承知で消すには `DISK_GC_ALLOW_BUSY=1` を付ける（WSL の leg にも渡る）。消したキャッシュを使っていたジョブは落ちる。
 `~/.cache/huggingface` は既定では対象外である（`DISK_GC_HUGGINGFACE=1` で含める。1 つのモデルで数十 GB あり、取り直しの重さが wheel とは違う）。
 
 ## Windows から WSL へのコマンドの渡し方
