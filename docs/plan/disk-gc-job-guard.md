@@ -61,17 +61,17 @@ Windows の profile の cache (`~/.cargo`、uv、bun) も、Windows ネイティ
 ## TDD
 
 - **[Red]** `tests/unit/test_disk_gc_job_guard.py` を新しく作る。偽の `uname` で Linux と Windows の両分岐をパラメータ化する。
-  - 偽の HOME と LOCALAPPDATA に cache を作る。偽の `pgrep`、`tasklist`、`mise`、`go` を置く。偽の検出は、argv が想定どおりでなければ exit 2 を返す。
-  - env は白紙から組む。実行前に、偽の bin が使われていることと、`wsl.exe`、`powershell.exe`、`tasklist.exe` に届かないことを確かめる。
-    さらに同じ env で `report` を実行し、候補の path がすべて tmp の下にあることを確かめる。
-  - ケースは次の 5 つ。
-    - idle (対照): cache が消え、`mise` と `go` が呼ばれる。guard が常に SKIP する、黙った故障を防ぐ。
-    - 最初から実行中: 何も消えず、`SKIP` が出て、exit 0。
-    - 判定不能 (偽が exit 3 / exit 1): 何も消えず、exit 2。
-    - 途中から実行中 (最初の cache が消えた後に実行中と答える偽): 後ろの cache が残る。
-    - `DISK_GC_ALLOW_BUSY=1`: 実行中でも消える。
-  - report に `runner job:` の行が出ること。
-  - 静的な検査: tasklist を呼ぶ論理行に `MSYS_NO_PATHCONV=1` と `MSYS2_ARG_CONV_EXCL` があること。WSL leg の dispatch 行に `DISK_GC_ALLOW_BUSY` があること。
+    - 偽の HOME と LOCALAPPDATA に cache を作る。偽の `pgrep`、`tasklist`、`mise`、`go` を置く。偽の検出は、argv が想定どおりでなければ exit 2 を返す。
+    - env は白紙から組む。実行前に、偽の bin が使われていることと、`wsl.exe`、`powershell.exe`、`tasklist.exe` に届かないことを確かめる。
+      さらに同じ env で `report` を実行し、候補の path がすべて tmp の下にあることを確かめる。
+    - ケースは次の 5 つ。
+        - idle (対照): cache が消え、`mise` と `go` が呼ばれる。guard が常に SKIP する、黙った故障を防ぐ。
+        - 最初から実行中: 何も消えず、`SKIP` が出て、exit 0。
+        - 判定不能 (偽が exit 3 / exit 1): 何も消えず、exit 2。
+        - 途中から実行中 (最初の cache が消えた後に実行中と答える偽): 後ろの cache が残る。
+        - `DISK_GC_ALLOW_BUSY=1`: 実行中でも消える。
+    - report に `runner job:` の行が出ること。
+    - 静的な検査: tasklist を呼ぶ論理行に `MSYS_NO_PATHCONV=1` と `MSYS2_ARG_CONV_EXCL` があること。WSL leg の dispatch 行に `DISK_GC_ALLOW_BUSY` があること。
 - **[Green]** 上の「変えること」の 1〜5 を実装する。
 - **[Refactor]** 6 (説明文と runbook)。
 
