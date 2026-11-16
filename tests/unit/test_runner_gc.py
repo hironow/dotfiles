@@ -951,10 +951,8 @@ def test_compaction_measures_allocated_not_logical_size() -> None:
         "wsl_compact.sh must measure the allocated size (du -B1); stat -c %s "
         "reports the logical high-water mark."
     )
-    assert "fsutil sparse queryflag" in text, (
-        "wsl_compact.sh must report whether the vhdx is sparse: it decides "
-        "whether compaction is needed at all."
-    )
+    # How the sparse flag is read is pinned by behaviour in test_wsl_compact.py;
+    # a string check here let a localised-grep verdict through.
 
 
 def test_compaction_resolves_vhdx_for_the_target_distro() -> None:
