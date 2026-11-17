@@ -54,7 +54,7 @@ node = "24.22.1"
 # sandbox has no project mise.toml, so /etc/mise must already pin both
 # (golangci typechecks with Go; recipes invoke
 # `mise exec aqua:golangci/golangci-lint -- golangci-lint`).
-go = "1.27.3"
+go = "1.27.4"
 "aqua:golangci/golangci-lint" = "2.15.0"
 # quint: the formal-methods gate's checker (`mise x -- quint`), mandatory for
 # autonomous stop/delete logic in any repo opened in this image. Same pin as
