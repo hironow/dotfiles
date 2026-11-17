@@ -20,7 +20,8 @@ time, and act on it. Write for a busy reader who reads once.
   recommended that `just check` be run."
 - **Use common words.** Write "use", not "utilize"; "start", not "initiate";
   "about", not "approximately". Explain a technical term the first time, or
-  link to its definition.
+  link to its definition. Use the established term, not one of our own
+  (docs/agents/naming.md).
 - **Use one term for one thing.** Do not switch between synonyms for variety.
   The reader will think they are different things.
 - **Use lists for steps and options, and tables for comparisons.** Number the
@@ -41,8 +42,10 @@ The same rules apply. In addition:
 - Write one sentence per line in Markdown sources.
 - End sentences clearly (〜する。〜しない。). Avoid vague endings such as
   「〜と思われる」 or 「〜の可能性も考えられなくはない」.
-- Prefer plain words over kango and katakana where a plain word exists
-  (「行う」 → the specific verb; 「〜を実施する」 → 「〜する」).
+- For ordinary words, prefer plain words over kango and katakana where a
+  plain word exists (「行う」 → the specific verb; 「〜を実施する」 →
+  「〜する」). A technical term is different: when you are unsure, write it in
+  English, not as a katakana or coined Japanese word (docs/agents/naming.md).
 - The `japanese-tech-writing` skill has the full rules for technical books and
   long documents.
 
