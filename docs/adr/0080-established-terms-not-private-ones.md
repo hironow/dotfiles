@@ -2,17 +2,17 @@
 
 - **id**: ADR-0080
 - **title**: 用語は業界と open source の確立したものを使い、独自の用語は作らない
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-18
-- **decided-date**: —
-- **decision-maker**: TBD（所有者）
+- **decided-date**: 2026-11-18
+- **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session）
 - **author-contact**: @hironow
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0043](0043-self-authored-skills-through-the-skills-cli.md)、[0051](0051-adopt-decision-queue-for-new-records.md)、[0052](0052-renew-global-agent-instructions.md)
-- **consultation-trace**: 2026-11-18 の本セッションでの所有者の指示（下の「相談の記録」）。決裁はこの ADR を載せた公開 PR で受ける
+- **consultation-trace**: 2026-11-18 の本セッションでの所有者の指示（下の「相談の記録」）。[公開 PR #641 の所有者の裁定](https://github.com/hironow/dotfiles/pull/641#issuecomment-6958036546)
 
 ## やさしい説明
 
@@ -38,9 +38,7 @@ agent が、自分たちにしか通じない言葉を作らないようにす�
 
 ## Decision
 
-（Proposed。確定後に、次の案を MUST として記述する。）
-
-提案する決定（A 案）:
+A 案の次の 7 項を、必須事項（MUST）として採択する。
 
 - D1: agent は、独自の用語（この team、この repo、この session だけが使う語や、語の新しい意味）を作ってはならない。
 - D2: 概念を表す用語は、業界か open source ですでに使われているものから取らなければならない。探す先は、標準や RFC、言語・framework・protocol の文書、広く使われている open source の project とする。
@@ -52,12 +50,12 @@ agent が、自分たちにしか通じない言葉を作らないようにす�
 
 ## Options Considered
 
-| 案 | 利点 | コスト・リスク | 扱い（提案） |
+| 案 | 利点 | コスト・リスク | 裁定 |
 | --- | --- | --- | --- |
-| A) `naming.md` に節を足し、hub の既存の項目に文を足す（本案） | 名前と用語の規則が 1 か所にまとまる。hub の箇条書きが増えない。名前を付けない作業（文書、計画）でも、hub の文で規則が届く | hub の 1 項目が長くなる | 推奨 |
-| B) 新しい spoke `terminology.md` を作る | 節が独立する | `naming.md` の「領域の言葉で名付ける」「同じ概念に同じ名前」と内容が重なり、2 か所を読むことになる | 非推奨: 同じ知識が 2 か所に分かれる |
-| C) hub に 4 つの箇条書きを足す | 常に読まれる | 箇条書きが 36 個になり、上限 40 に近づく。例と手順を書く場所が無い | 非推奨: hub が長くなる |
-| D) spoke にだけ書き、hub は変えない | hub が変わらない | spoke は「名前を付けるとき」にしか開かれない。文書や回答の中で用語を作るときに、規則が読まれない | 非推奨: 規則が届かない場面がある |
+| A) `naming.md` に節を足し、hub の既存の項目に文を足す（本案） | 名前と用語の規則が 1 か所にまとまる。hub の箇条書きが増えない。名前を付けない作業（文書、計画）でも、hub の文で規則が届く | hub の 1 項目が長くなる | 所有者が採択 |
+| B) 新しい spoke `terminology.md` を作る | 節が独立する | `naming.md` の「領域の言葉で名付ける」「同じ概念に同じ名前」と内容が重なり、2 か所を読むことになる | 却下: 同じ知識が 2 か所に分かれる |
+| C) hub に 4 つの箇条書きを足す | 常に読まれる | 箇条書きが 36 個になり、上限 40 に近づく。例と手順を書く場所が無い | 却下: hub が長くなる |
+| D) spoke にだけ書き、hub は変えない | hub が変わらない | spoke は「名前を付けるとき」にしか開かれない。文書や回答の中で用語を作るときに、規則が読まれない | 却下: 規則が届かない場面がある |
 
 ## Consequences
 
@@ -86,18 +84,23 @@ none
 
 - 2026-11-18 03:18 JST と 03:21 JST、本セッションで所有者（@hironow）が 4 点を指示した（上の Context）。
 - 変更は Codex が独立にレビューした。1 回目は REVISE で、指摘は 1 件（P2、D6 の例外が広すぎる）。確かめて取り込んだ。所有者の 4 点の反映、既存の指示との矛盾、例に挙げた 6 つの用語が実在することは、指摘なしだった。悪い例の 1 つ（replay token）は別の概念の用語として実在したので、差し替えた。
-- 次は所有者の 4 点には無く、Claude が足した。決裁でこの点を確かめる。
+- 次は所有者の 4 点には無く、Claude が足した。Claude は PR #641 と本セッションで、この点を表にして所有者に示した。
     - D3 の、相談のときに示す 3 つ（概念、確かめた用語、提案する用語）。
     - D4 で名指しする 4 つの skill。
     - D5 の「その分野が自分で使っていて迷わない日本語の用語はそのまま」（例: 型、関数）。所有者の「迷った場合は」を、迷わない用語には当てない、と読んだ。
     - D6 の、既存の用語の扱い。最初の案は「repo がすでに定義している用語には従う」だった。独立レビュー（Codex）が、未承認の独自の用語でも code にあれば広めてよいと読め、所有者の 1 点目を弱めると指摘したので、確立した用語か承認済みの用語だけに限った。
     - 規則を置く場所（D7）。
+- 2026-11-18 04:06 JST、所有者は、足した点を含めて採択するかという問いに「マージしていいです」と答えた。これを A 案の採択とし、PR に記録した（[裁定](https://github.com/hironow/dotfiles/pull/641#issuecomment-6958036546)）。
+- 所有者は、その答えの前の 04:02 JST に PR #641 を自分で merge していた。そのため、この決定欄の記入は #641 に入らず、あとの PR で入れた。指示の文（hub と spoke）は #641 のまま変えていない。
 
-## 決定（記入待ち）
+## 決定（2026-11-18）
 
-- [ ] A 案で Accept / [ ] 修正のうえ Accept（修正点: ____） / [ ] Reject（理由: ____） / [ ] Deferred
-- 決定者・日付:
-- A 案 Accept 時のアクション: Decision を MUST で確定し、索引、変更ログ、queue の決定済みログを同じ PR で更新して merge する。merge のあと main の checkout で `just sync-agents all` を実行する。
-- 修正 Accept 時のアクション: 指摘の点を spoke、hub、テスト、Decision に反映し、同じ PR で確定する。
-- Reject 時のアクション: PR を閉じ、queue に理由を残す。指示は変えない。
-- Deferred 時のアクション: PR を閉じ、再検討の条件と期限を queue に残す。
+- [x] A 案で Accepted（D1〜D7 のとおり）
+- [ ] 修正のうえ Accepted（修正点: ____）
+- [ ] Rejected / Deferred（理由: ____）
+
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-18（所有者の裁定により代理記入）
+
+- Accepted のとき: Decision を確定し、索引、変更ログ、queue の決定済みログを更新する。main の checkout で `just sync-agents all` を実行する。
+- 修正のとき: 指摘の点を spoke、hub、テスト、Decision に反映し、同じ PR で確定する。
+- Rejected / Deferred のとき: PR を閉じ、queue に理由を残す。
