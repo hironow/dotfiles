@@ -84,6 +84,21 @@ def test_health_dockerfile_preserves_runtime_bases_and_configuration() -> None:
     )
 
 
+def test_every_emulator_go_builder_uses_the_image_go_version() -> None:
+    version = tomllib.loads(
+        (ROOT / "config/mise/image-tools.toml").read_text(encoding="utf-8")
+    )["tools"]["go"]
+    builders = {}
+    for dockerfile in sorted((ROOT / "emulator").glob("*/Dockerfile")):
+        source = dockerfile.read_text(encoding="utf-8")
+        for match in re.finditer(
+            r"(?m)^FROM docker\.io/library/golang:(\S+?)-", source
+        ):
+            builders[dockerfile.parent.name] = match.group(1)
+    assert builders, "the emulator has Go builder images"
+    assert {name: found for name, found in builders.items() if found != version} == {}
+
+
 def test_health_build_context_only_allows_production_sources() -> None:
     ignore = HEALTH / ".dockerignore"
     assert ignore.is_file(), "build context must fail closed on secrets and dist"
