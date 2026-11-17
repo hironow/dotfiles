@@ -114,9 +114,12 @@ If you are unsure, write a test that pins down the requirement before you code.
   or unrelated protected data, including through wrappers or scripts. Narrow
   the search instead of granting extra OS permissions: broad scans can trigger
   permission prompts attributed to the terminal app.
-- **Name things specifically.** Choose the name that says what the thing does
-  in this domain. Do not use generic words such as `Manager`, `Helper`, or
-  `Util`.
+- **Name things specifically, in established terms.** Choose the name that
+  says what the thing does in this domain. Do not use generic words such as
+  `Manager`, `Helper`, or `Util`. Do not coin a private term: use the term the
+  industry or open source already uses, and ask the human before you define a
+  new one. In Japanese text, write a term in English when you are unsure
+  (docs/agents/naming.md).
 - **Check before you say it is done.** Run `just check`. Report the results
   honestly, including failures. For a long or remote command, check that it
   finished and made what you meant (exit code, size, count), not only that it
@@ -204,7 +207,7 @@ Open the matching file as soon as its trigger applies:
 | writing a `pull_request` workflow              | docs/agents/draft-ci.md             |
 | in the Red/Green/Refactor loop                 | docs/agents/tdd-workflow.md         |
 | writing a commit message                       | docs/agents/commit-discipline.md    |
-| naming a package, file, type, function, or variable | docs/agents/naming.md          |
+| naming a package, file, type, function, or variable, or choosing a term for a concept | docs/agents/naming.md |
 | writing or placing tests / asking "mock?"      | docs/agents/testing.md              |
 | converting a hand-rolled TypeScript test harness to `bun:test` | docs/agents/bun-test-migration.md |
 | splitting code, calling anything outside the process, or adding a fake | docs/agents/core-shell-ports.md |
