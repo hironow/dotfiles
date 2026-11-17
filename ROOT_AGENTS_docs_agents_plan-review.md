@@ -32,16 +32,25 @@ make the list longer; they do not move the plan forward.
 
 # Review a new plan for the first time:
 codex exec --skip-git-repo-check \
-  "このプランを批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})"
+  "このプランを批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})。just check・just ci・just test のような全体の gate は実行しない。確かめるなら、指摘に関わるテストとチェックだけを最小で回して。"
 
 # Review an updated plan (`resume --last` keeps the earlier context):
 codex exec resume --skip-git-repo-check --last \
-  "プランを更新したから批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})"
+  "プランを更新したから批判的にレビューして。各指摘は具体的な修正・解決策とセットの actionable なものに絞って（直せない感想や瑣末な点で件数を増やさない）、致命的な点から優先して挙げて: {plan_full_path} (ref: {AGENTS.md full_path})。just check・just ci・just test のような全体の gate は実行しない。確かめるなら、指摘に関わるテストとチェックだけを最小で回して。"
 ```
 
 The reviewer model's knowledge can be out of date. To correct for that,
 collect current docs and URLs into a temp file and pass its path in the
 prompt.
+
+A reviewer never runs the whole gate. Do not let it run `just check`,
+`just ci`, `just test`, or any other command that runs all of CI at once: the
+gate is slow, and in the reviewer's sandbox it can fail for reasons that say
+nothing about the change. A reviewer may run the smallest test or check that
+covers a finding, such as one test file or a lint of one changed file. Say so
+in every prompt, as the commands above do. Write the command names in the
+prompt without backticks: inside the double quotes the shell would run them.
+You run the full gate yourself.
 
 ## Fallback: independent subagent (when Codex is unavailable)
 
@@ -57,7 +66,7 @@ independence the review is for.
 2. Put these in its prompt, word for word: the plan's full path, the
    AGENTS.md full path as the ruleset reference, the three lenses above, and
    the same instruction you give Codex ("actionable findings only, paired with
-   concrete fixes, ordered by severity").
+   concrete fixes, ordered by severity"), with the limit on what it may run.
 3. Treat its findings exactly like Codex's: check each one (trust nothing)
    before you act on it.
 
