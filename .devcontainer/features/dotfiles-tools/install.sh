@@ -360,7 +360,7 @@ uv = "0.13.5"
 "npm:@devcontainers/cli" = { version = "0.89.0", bun_args = "--minimum-release-age=0" }
 vp = "1.3.0"
 node = "24.22.1"
-go = "1.27.3"
+go = "1.27.4"
 "aqua:golangci/golangci-lint" = "2.15.0"
 "npm:@informalsystems/quint" = "0.33.0"
 "npm:@openai/codex" = "0.163.0"

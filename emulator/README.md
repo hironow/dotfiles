@@ -37,7 +37,7 @@ readiness on `127.0.0.1:9010`, not a gRPC or SQL check. pgAdapter keeps its
 upstream image reference and installs the real upstream `pg_isready` through
 `postgresql-client --no-install-recommends`; package installation or executable
 verification failure stops the image build. Both targets inherit the upstream
-runtime configuration. The Go builder uses `1.27.3`; the floating pgAdapter
+runtime configuration. The Go builder uses `1.27.4`; the floating pgAdapter
 reference and OS packages are not reproducibility pins.
 
 Compose uses local output tags and `pull_policy: build`. With podman-compose

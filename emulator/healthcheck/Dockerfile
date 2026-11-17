@@ -1,4 +1,4 @@
-FROM docker.io/library/golang:1.27.3-alpine AS builder
+FROM docker.io/library/golang:1.27.4-alpine AS builder
 WORKDIR /src
 COPY go.mod main.go ./
 RUN CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off \
