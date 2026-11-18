@@ -2,9 +2,9 @@
 
 - **id**: ADR-0081
 - **title**: dotfiles の Windows の scheduled task は run-hidden を通して起こす
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-18
-- **decided-date**: —
+- **decided-date**: 2026-11-18
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code（owner session）
@@ -12,7 +12,7 @@
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0035](0035-runner-disk-gc.md)、[0042](0042-interactive-runner-watchdog.md)、[0066](0066-doctor-warns-only-what-needs-action.md)
-- **consultation-trace**: 2026-11-18 の本セッションでの所有者の依頼と承認（下の「相談の記録」）。計画は `docs/plan/windows-headless-tasks.md`
+- **consultation-trace**: 2026-11-18 の本セッションでの所有者の依頼と承認（下の「相談の記録」）。計画は `docs/plan/windows-headless-tasks.md`。[公開 PR #644 の所有者の裁定](https://github.com/hironow/dotfiles/pull/644#issuecomment-6977468442)
 
 ## やさしい説明
 
@@ -36,6 +36,8 @@ launcher は `powershell.exe` の終わり方（exit code）をそのまま返�
     - Windows の GUI subsystem で build した Go の launcher を、本物の scheduled task（Interactive）から起こした。子は session 1 で窓を持たずに 15 秒動き、子の `exit 7` が task の結果に `7` と出た。
 
 ## Decision
+
+A 案の次の 6 項を、必須事項（MUST）として採択する。
 
 - D1: dotfiles が登録する Windows の scheduled task は、console の program を直に起こしてはならない。task の action は `run-hidden.exe` を起こし、その引数の先頭に program の path、続けて元の引数を置かなければならない。対象は今は `dotfiles-runner-watchdog`、`dotfiles-wsl-autostart`、`dotfiles-runner-gc` の 3 つである。`dotfiles-runner-interactive`（runner の本体の `run.cmd`）は対象の外とする。CI の job の子が、その窓の console を受け継ぐためである。
 - D2: `run-hidden`（`tools/run-hidden`、Go の標準ライブラリだけ）は、Windows の GUI subsystem で build し（`-ldflags=-H=windowsgui`）、子を `CREATE_NO_WINDOW` で起こし、子の exit code をそのまま自分の exit code にしなければならない。引数が無い時と Windows 以外では 2、子を起こせない時は 1 で終わる。
@@ -82,14 +84,16 @@ none
 - 2026-11-18、本セッションで所有者（@hironow）が、Windows で一瞬出るターミナルの点検を依頼した。所有者の別の repo で、窓の扱いに苦労したことを参考にするよう指示した。
 - Claude が点検の結果（窓を出す task 3 つと、直し方の案 4 つ）を示し、「1 から順に、計画・独立レビュー・PR で進めてよいか」と尋ねた。所有者は「はい進めてください」と答えた。
 - 計画は Codex が独立に 4 回レビューした。1〜3 回目は REVISE（P1 が 2 件、3 件、1 件）で、全件を確かめて取り込んだ。conhost の案から run-hidden の案に変えたのは、1 回目の指摘（exit code が消える）を実験で確かめた結果である。4 回目は APPROVE。記録は計画の「レビューの記録」にある。
+- 実装は PR #644 で main に入った（6355482）。2026-11-18 19:09 に、所有者の承認（UAC）で、この機の 3 つの task を昇格して登録し直した。keepalive は `run-hidden → powershell → wsl` の鎖でつながり、watchdog は 5 分ごとに結果 0 だった。
+- 2026-11-18、所有者は、採択するかという問いに「A 案で Accepted」を選んだ。これを A 案の採択とし、PR に記録した（[裁定](https://github.com/hironow/dotfiles/pull/644#issuecomment-6977468442)）。
 
-## 決定（記入待ち）
+## 決定（2026-11-18）
 
-- [ ] A 案で Accepted（D1〜D6 のとおり）
+- [x] A 案で Accepted（D1〜D6 のとおり）
 - [ ] 修正のうえ Accepted（修正点: ____）
 - [ ] Rejected / Deferred（理由: ____）
 
-決定者: ____　決定日: ____
+決定者: Hiroto N.（@hironow）　決定日: 2026-11-18（所有者の裁定により代理記入）
 
 - Accepted のとき: Decision を確定し、索引、変更ログ、queue の決定済みログを更新する。merge の後、所有者の承認で、runbook の手順で 3 つの task を登録し直す。
 - 修正のとき: 指摘の点を Decision、コード、テストに反映し、同じ PR で確定する。
