@@ -77,6 +77,20 @@ if ($Install) {
         exit 1
     }
 
+    # [0/4] the launcher, before anything is removed. Task Scheduler starting
+    # powershell.exe directly in this session opened a console window every
+    # tick (lived 2026-11-18); run-hidden starts it with none and hands its
+    # exit code back. A failed copy must stop here, with the old task intact.
+    . (Join-Path $PSScriptRoot 'run_hidden_win.ps1')
+    try {
+        $runHidden = Install-RunHidden -Source (Join-Path $PSScriptRoot '..\output\run-hidden\run-hidden.exe')
+    } catch {
+        Write-Host "ERROR: $_"
+        exit 1
+    }
+    $powershell = (Get-Command powershell.exe).Source
+    Write-Host "[0/4] launcher: $runHidden"
+
     # [1/4] a copy outside the working tree. The task must not depend on which
     # branch the repo happens to be on (see header: two silent ticks, 2026-09-03).
     New-Item -ItemType Directory -Path $installDir -Force | Out-Null
@@ -100,8 +114,8 @@ if ($Install) {
         Write-Host "[2/4] watchdog task: $watchTask exists but cannot be replaced unelevated; keeping it as-is"
     } else {
         $action = New-ScheduledTaskAction `
-            -Execute (Get-Command powershell.exe).Source `
-            -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -RunnerRoot "{1}"' -f $installed, $RunnerRoot)
+            -Execute $runHidden `
+            -Argument ('"{0}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{1}" -RunnerRoot "{2}"' -f $powershell, $installed, $RunnerRoot)
         $every = New-TimeSpan -Minutes $IntervalMinutes
         $triggers = @(
             (New-ScheduledTaskTrigger -AtLogOn -User $me),

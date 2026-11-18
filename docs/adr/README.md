@@ -105,6 +105,7 @@ and what outlived it.
 | 0078 | [フロントエンドの CI を 2 分未満に保つ規則を、全エージェント共通の指示に足す](./0078-frontend-ci-under-two-minutes.md) | Accepted (PR #629) | 2026-11-16 | `ROOT_AGENTS.md`、`ROOT_AGENTS_docs_agents_frontend-ci.md`、`ROOT_AGENTS_docs_agents_testing.md`、`tests/unit/test_frontend_ci_guidance.py` |
 | 0079 | [dotfiles 自身の JS/TS の gate を、フロントエンドの CI の指示に合わせる](./0079-dotfiles-follows-the-frontend-ci-guide.md) | Accepted (PR #630) | 2026-11-16 | `package.json`、`bun.lock`、`bunfig.toml`、`tsconfig.json`、`.oxlintrc.json`、`justfile`、`.github/workflows/frontend-ci.yaml`、`tests/unit/test_frontend_ci_conformance.py` |
 | 0080 | [用語は業界と open source の確立したものを使い、独自の用語は作らない](./0080-established-terms-not-private-ones.md) | Accepted (PR #641、決定欄の記入は次の PR) | 2026-11-18 | `ROOT_AGENTS.md`、`ROOT_AGENTS_docs_agents_naming.md`、`ROOT_AGENTS_docs_agents_plain-language.md`、`tests/unit/test_established_terms_guidance.py` |
+| 0081 | [dotfiles の Windows の scheduled task は run-hidden を通して起こす](./0081-scheduled-tasks-start-through-run-hidden.md) | Proposed | 2026-11-18 | `tools/run-hidden/`、`scripts/run_hidden_win.ps1`、`scripts/runner_watchdog_win.ps1`、`scripts/install_runner_gc_win.ps1`、`scripts/wsl_autostart.ps1`、`scripts/gc_status.sh`、`justfile`、`docs/runbook/windows-host.md` |
 
 ## Reading order for newcomers
 
@@ -190,3 +191,4 @@ and what outlived it.
 - 2026-11-16: [ADR-0079](./0079-dotfiles-follows-the-frontend-ci-guide.md) を採択する（A 案、置換はなし）。dotfiles 自身の JS/TS を oxlint と `bun check --no-script` で検査し、4 つの job を並列に走らせる。repo 直下に `package.json` と `bun.lock` を置く。所有者が PR #630 の 2 点に「OK」と答え、決定欄はその裁定に基づき代理記入した（[裁定](https://github.com/hironow/dotfiles/pull/630#issuecomment-6918836492)）。
 - 2026-11-18: [ADR-0080](./0080-established-terms-not-private-ones.md)を起票（Proposed、決裁待ち）。agent は独自の用語を作らず、業界と open source の確立した用語を使う。合う用語が無ければその場で人に相談し、用語が多いときや独自の領域では用語集の skill を先に使う。日本語の文で迷う用語は英語で書く。所有者が本セッションで指示した。
 - 2026-11-18: [ADR-0080](./0080-established-terms-not-private-ones.md) を採択する（A 案、置換はなし）。agent は独自の用語を作らず、業界と open source の確立した用語を使い、合う用語が無ければその場で人に相談する。日本語の文で迷う用語は英語で書く。所有者が PR #641 の内容を示されて「マージしていいです」と答え、決定欄はその裁定に基づき代理記入した（[裁定](https://github.com/hironow/dotfiles/pull/641#issuecomment-6958036546)）。
+- 2026-11-18: [ADR-0081](./0081-scheduled-tasks-start-through-run-hidden.md)を起票（Proposed、決裁待ち）。dotfiles の Windows の scheduled task は、console の program を直に起こさず、窓を持たない launcher の `run-hidden` を通して起こす。launcher は子の exit code をそのまま返すので、task の結果による判定は変わらない。所有者が本セッションで点検を依頼し、直し方の案を「はい進めてください」で承認した。

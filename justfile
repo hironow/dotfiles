@@ -531,8 +531,17 @@ runner-gc:
 # scripts/runner_gc.sh to re-copy the payload. Root-owned, so it runs via
 # `wsl -u root` on Windows.
 [group('Disk'), windows, linux, doc('Install runner GC (timer + job hook) and the WSL logon autostart')]
-runner-gc-install:
+runner-gc-install: run-hidden-build
     bash scripts/install_runner_gc.sh
+
+# Runner: build run-hidden, the launcher dotfiles' Windows scheduled tasks
+# start: the task's program runs with no console window, and its exit code
+# reaches the task's last result. -H=windowsgui, because a console-subsystem
+# launcher would open the very window it avoids. Elsewhere there is nothing
+# to build. docs/runbook/windows-host.md.
+[group('Disk'), doc('Build run-hidden (Windows: the windowless launcher the scheduled tasks start)')]
+run-hidden-build:
+    @if [ "{{ os() }}" = windows ]; then cd tools/run-hidden && CGO_ENABLED=0 GOTOOLCHAIN=local mise exec -- go build -trimpath -ldflags=-H=windowsgui -o ../../output/run-hidden/run-hidden.exe . ; fi
 
 # Runner: install/repair the native Windows runner SERVICE (LocalSystem,
 # delayed-auto, failure recovery, Machine PATH onion check). Idempotent;
@@ -548,7 +557,7 @@ runner-svc-install:
 # a LocalSystem service runs in Session 0 where WebView2 cannot draw.
 # Stops + Disables the service; UAC self-elevating; refuses mid-job.
 [group('Disk'), windows, doc('Run the native runner interactively at logon (GUI-capable; disables the service)')]
-runner-mode-interactive:
+runner-mode-interactive: run-hidden-build
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_mode_win.ps1 -Mode interactive
 
 # Runner: switch back to SERVICE mode (delayed-auto; headless boxes only -
@@ -562,7 +571,7 @@ runner-mode-service:
 # (lived 2026-09-03: listener died silently, box offline until the next
 # logon). Unelevated; `runner-mode-interactive` installs it too. ADR 0042.
 [group('Disk'), windows, doc('Install the interactive-runner watchdog task (re-fires the logon task when the listener dies)')]
-runner-watchdog-install:
+runner-watchdog-install: run-hidden-build
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/runner_watchdog_win.ps1 -Install
 
 # Runner: restart the native Windows runner service (self-elevates via UAC;

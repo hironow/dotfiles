@@ -38,6 +38,21 @@ $payload = Join-Path $here 'runner_gc_win.ps1'
 if (-not (Test-Path $payload)) {
     throw "payload not found: $payload"
 }
+$autoPayload = Join-Path $here 'wsl_autostart.ps1'
+if (-not (Test-Path $autoPayload)) {
+    throw "payload not found: $autoPayload"
+}
+
+# 0. The launcher, before any task is removed ---------------------------------
+# Task Scheduler starting powershell.exe directly in the owner's session opens
+# a console window every run (lived 2026-11-18). Both tasks start the
+# run-hidden copy instead: no window, and the payload's exit code still
+# reaches the task's last result (`just status` reads it). A failed copy stops
+# here, with the old tasks intact.
+. (Join-Path $here 'run_hidden_win.ps1')
+$runHidden = Install-RunHidden -Source (Join-Path $here '..\output\run-hidden\run-hidden.exe')
+$powershell = (Get-Command powershell.exe).Source
+Write-Host "[0/3] launcher: $runHidden"
 
 # NOTE: keep this file ASCII-only. Windows PowerShell 5.1 reads a BOM-less
 # UTF-8 script as ANSI, so any emoji here arrives mojibake in the logs.
@@ -61,8 +76,8 @@ if ($existing) {
 }
 
 $action = New-ScheduledTaskAction `
-    -Execute (Get-Command powershell.exe).Source `
-    -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Retention {1}' -f $payload, $Retention)
+    -Execute $runHidden `
+    -Argument ('"{0}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{1}" -Retention {2}' -f $powershell, $payload, $Retention)
 
 # RepetitionInterval on a once-trigger is the portable way to say "hourly
 # forever" across Windows builds.
@@ -138,12 +153,8 @@ if (-not $keepGcTask) {
 # the WSL VM wants a user session anyway. The distro name is baked into the
 # command line - a Scheduled Task does not inherit this shell's environment,
 # so an env-var default would silently fall back to 'Ubuntu' at logon while
-# every interactive run of this installer works.
-$autoPayload = Join-Path $here 'wsl_autostart.ps1'
-if (-not (Test-Path $autoPayload)) {
-    throw "payload not found: $autoPayload"
-}
-
+# every interactive run of this installer works. ($autoPayload is checked at
+# the top, before any task is removed.)
 $keepAutoTask = $false
 $existingAuto = Get-ScheduledTask -TaskName $AutostartTaskName -ErrorAction SilentlyContinue
 if ($existingAuto) {
@@ -157,8 +168,8 @@ if ($existingAuto) {
 }
 
 $autoAction = New-ScheduledTaskAction `
-    -Execute (Get-Command powershell.exe).Source `
-    -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -Distro {1}' -f $autoPayload, $Distro)
+    -Execute $runHidden `
+    -Argument ('"{0}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{1}" -Distro {2}' -f $powershell, $autoPayload, $Distro)
 $autoTrigger = New-ScheduledTaskTrigger -AtLogOn -User $me
 # IgnoreNew: overlapping firings collapse to one (duplicate-start valve).
 # ExecutionTimeLimit 0 (= no limit): the payload ends by BLOCKING as the
