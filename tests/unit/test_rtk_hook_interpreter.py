@@ -25,10 +25,13 @@ def _fake(directory: Path, name: str, body: str) -> None:
 
 
 def _run(tmp_path: Path, dirs: list[Path]) -> subprocess.CompletedProcess[str]:
-    # bash's own view of each dir: a C:/ path would split PATH at the colon.
-    # /usr/bin last, for dirname: Git Bash's has no Python, Linux's may, so
-    # the fake dirs come first.
-    path = ":".join([*(f"$(cd '{d.as_posix()}' && pwd)" for d in dirs), "/usr/bin"])
+    # The shim needs dirname, but /usr/bin cannot go on PATH: Linux keeps a
+    # real python3 there, which would be picked instead of the fakes. So only
+    # dirname comes along, through a wrapper.
+    tools = tmp_path / "tools"
+    _fake(tools, "dirname", 'exec /usr/bin/dirname "$@"')
+    # bash's own view of each dir: a C:/ path would split PATH at the colon
+    path = ":".join(f"$(cd '{d.as_posix()}' && pwd)" for d in [*dirs, tools])
     return subprocess.run(
         [resolve_bash(), "-c", f'PATH="{path}"; . "{SHIM.as_posix()}"'],
         input='{"tool_input":{"command":"ls"}}',
