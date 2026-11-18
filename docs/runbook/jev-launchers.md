@@ -74,8 +74,12 @@ j-pi -r                                   # 一覧から選ぶ
 
 Claude Code の `-r` は直後の 1 語をセッションの ID か名前（一覧の検索語）として読むので、`j-cc -r` も同じに読む。
 Pi の `-r` は値を取らないので、`j-pi -r` に続く語は依頼文になる。
-再開したセッションにも、新しいセッションと同じモデル、システムプロンプトの規則、worker の設定（`j-cc` の worker のフック、`j-pi` のキーの受け渡し）、headroom の proxy を付ける。
-素の `claude -c` や `pi -c` で再開すると、これらは付かない。
+再開したセッションにも、新しいセッションと同じモデル、システムプロンプトの規則、headroom の proxy を付ける。`j-pi` は worker のキーの受け渡しも付ける。
+`j-cc` で再開したセッションには、worker の定義とフック（下の「Claude Code」）を付けない。
+Claude Code は、再開したセッションで `--agents` の定義を読まず、`--settings` のフックだけを読む（2026-11-18 にこの機で確かめた）。
+フックだけが残ると、worker の起動がすべて、存在しない `worker-<effort>` に書き換えられて失敗する。
+そのため、再開したセッションの subagent は Claude Code の既定の定義で起動し、worker の effort と `codex:codex-rescue` の model と effort は Jev が選ばない。
+素の `claude -c` や `pi -c` で再開すると、モデル、規則、proxy も付かない。
 
 思考レベルは、依頼文があれば新しいセッションと同じく Jev が選ぶ。
 依頼文がなければ Jev には問い合わせず、`medium` で再開する。
@@ -125,7 +129,7 @@ bash ツールと worker の子セッションには、キーが渡らない。
 ### Claude Code
 
 Claude Code の Agent ツールには effort の引数がなく、サブエージェントの effort は定義ごとに固定される。
-そこで `j-cc` は、次の 2 つをそのセッションにだけ注入する（`--settings` と `--agents`。グローバル設定は変えない）。
+そこで `j-cc` は、新しいセッションにだけ、次の 2 つを注入する（`--settings` と `--agents`。グローバル設定は変えない。再開したセッションには付けない理由は上の「以前のセッションを再開する」）。
 
 - `worker-medium` と `worker-high`：effort だけが違う worker の定義
 - `PreToolUse` フック（`scripts/jev_claude_hook.py`）：既定の worker の起動を、Jev が選んだほうの定義に差し替える
