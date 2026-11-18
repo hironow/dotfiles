@@ -14,15 +14,32 @@
 # is block-prohibited-commands.sh, and it runs independently of this one.
 set -uo pipefail
 
-command -v python3 >/dev/null 2>&1 || exit 0
-
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 0
+companion=""
 for candidate in \
   "$dir/rtk-hook-claude.py" \
   "$dir/ROOT_AGENTS_hooks_rtk-hook-claude.py"; do
   if [ -f "$candidate" ]; then
-    exec python3 "$candidate"
+    companion="$candidate"
+    break
   fi
 done
+[ -n "$companion" ] || exit 0
 
-exit 0
+# A real interpreter, as the command guard finds one: on Windows `python3` can
+# be the Microsoft Store stub, which runs nothing. Collected into a string (no
+# read loop: stdin carries the payload; no array: macOS's bash 3.2 runs this).
+interpreters="$(type -aP python3 python 2>/dev/null || true)"
+set -f
+IFS='
+'
+python=""
+for interpreter in $interpreters; do
+  case "$interpreter" in
+    */WindowsApps/*) continue ;;
+  esac
+  python="$interpreter"
+  break
+done
+[ -n "$python" ] || exit 0
+exec "$python" "$companion"
