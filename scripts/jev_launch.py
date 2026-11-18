@@ -276,7 +276,11 @@ def main() -> None:
     if host == "pi":
         model = pi_route()
         print(f"Pi route: {model}", file=sys.stderr)
-    extra = claude_session_args(hook_command()) if host == "claude" else []
+    # A resumed Claude Code session reads no --agents but keeps the --settings
+    # hook, which would then move every Agent launch onto a worker type that
+    # does not exist. So a resumed session gets neither.
+    worker_wiring = host == "claude" and not launch.resume
+    extra = claude_session_args(hook_command()) if worker_wiring else []
     command = build_command(
         host, launch.prompt, effort, model, extra, resume=launch.resume
     )

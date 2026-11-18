@@ -330,9 +330,14 @@ def test_claude_gets_the_worker_hook_and_agents_but_pi_does_not(
     assert "--settings" not in argv and "--agents" not in argv
 
 
-def test_a_resumed_j_cc_session_keeps_the_jev_wiring(
+def test_a_resumed_j_cc_session_keeps_the_jev_wiring_but_not_the_worker_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Lived 2026-11-18: Claude Code reads no --agents when it resumes, but it
+    keeps the --settings hook, which then moved every Agent launch onto a
+    worker-<effort> type that did not exist ("Agent type 'worker-high' not
+    found"). A resumed session gets neither; its subagents start as Claude
+    Code defines them."""
     asked: list[str] = []
 
     def choose(task: str, _key: str | None) -> str:
@@ -342,9 +347,12 @@ def test_a_resumed_j_cc_session_keeps_the_jev_wiring(
     argv, _ = _launch(monkeypatch, "claude", ("-r", "abc", "do", "more"), choose)
     assert asked == ["do more"]  # Jev judges the new prompt, as for a new task
     assert argv[1:5] == ["--model", launcher.SONNET, "--effort", "high"]
-    assert "--settings" in argv and "--agents" in argv
+    assert "--settings" not in argv and "--agents" not in argv
     assert "--append-system-prompt" in argv
     assert argv[-3:] == ["--resume", "abc", "do more"]
+    argv, _ = _launch(monkeypatch, "claude", ("-c",), choose)
+    assert "--settings" not in argv and "--agents" not in argv
+    assert argv[-1] == "--continue"
 
 
 def test_a_resumed_j_pi_session_without_a_prompt_skips_jev(
