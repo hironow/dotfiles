@@ -88,6 +88,37 @@ Git を scoop で入れた機体では、最初の `git` が scoop の shim（`~
 `just harden-env` は、Claude Code が自分では Git Bash を見つけられない機体でだけ、見つけた Git Bash を `CLAUDE_CODE_GIT_BASH_PATH` として User の環境変数に書く（値は機体ごとに違うので、追跡する断片には置かない）。
 User の環境変数に値がすでにあれば、壊れていても書き換えない（`claude-git-bash` が知らせるので、人が直す）。
 
+## 対話セッションで動く scheduled task
+
+Task Scheduler が所有者の logon session で console の program（`powershell.exe` など）を直に起こすと、起こすたびに console の窓が出る。
+`dotfiles-runner-watchdog` は 5 分ごとに動くので、窓が 5 分ごとに一瞬出ていた（2026-11-18）。
+dotfiles が登録する task（`dotfiles-runner-watchdog`、`dotfiles-wsl-autostart`、`dotfiles-runner-gc`）は、`run-hidden.exe` を起こし、その後ろに `powershell.exe` と元の引数を置く（ADR 0081）。
+
+- `run-hidden`（`tools/run-hidden`）は Windows の GUI subsystem で build する（`just run-hidden-build`、`-ldflags=-H=windowsgui`）。自分は console を持たない。
+- 子は `CREATE_NO_WINDOW` で起こす。子は console を持つが、その窓は無い。子から `wsl.exe` も普通に動く。
+- 子の exit code を、そのまま自分の exit code にする。そのため、task の結果（`LastTaskResult`）は今までどおり payload の結果で、`just status` の判定は変わらない。
+- installer は、`output/run-hidden/run-hidden.exe` を `%LOCALAPPDATA%\dotfiles\run-hidden\<SHA-256 の先頭 16 桁>\` に写し、task はその写しを起こす。
+    - WSL の keepalive の task は終わらないので、その launcher の exe は使用中のままになり、上書きできない。
+    - 置き場所を中身で決めるので、同じ中身は写し直さず、中身が変われば別の dir に写す。古い dir は消さない（どの task も使っていないことを確かめてから人が消す）。
+- 窓が無いので、payload の記録は log で読む：`%TEMP%\runner-watchdog-win.log` と `%TEMP%\wsl-autostart.log`。
+- `just status` は、`run-hidden.exe` を起こしていない task に WARN を出す。
+
+使わない形と、その理由：
+
+- `-WindowStyle Hidden`：console ができてから隠すので、窓が一瞬出る。
+- `conhost.exe --headless`：子の exit code を返さない（子が 7 で終わっても 0。2026-11-18 にこの機で確かめた）。task の結果が、いつも成功になる。
+- shell からの `conhost.exe --headless`：stdin が閉じたパイプだと、子を起こす前に終わる。
+
+task を登録し直すには、昇格した terminal が要る。
+この機の task は昇格した context で登録されているので、unelevated の installer は消せず「keeping it as-is」で残す（GC の UAC の経路にも進まない）。
+
+走っている WSL autostart の task（keepalive）を新しい action に切り替える手順（戻すときも同じ）。installer は走っている task を止めない。止めた後に登録が失敗すると、distro が最後の client を失って止まり、runner の job を巻き込むためである。
+
+1. 別の terminal で一時の client を起こし、distro を保つ：`wsl.exe -d Ubuntu-26.04 -e sleep 900`。
+2. `Stop-ScheduledTask dotfiles-wsl-autostart`。`Get-CimInstance Win32_Process` で、`dotfiles-wsl-keepalive` を command line に含む `wsl.exe` と、その親の powershell が無いことを確かめる（一時の client は command line が違う）。
+3. 昇格した terminal で `just runner-gc-install`。登録の後に installer が autostart を起こし、新しい keepalive がつながる。watchdog は `just runner-watchdog-install`（数秒で終わる task なので止める手順は要らない）。
+4. `just status` で keepalive が OK、task が Running、WARN が無いことを確かめ、一時の client を終える。失敗したときは一時の client を残したまま直す（15 分で終わるので、長くかかるなら起こし直す）。
+
 ## Python のファイルと文字コード
 
 日本語版の Windows では、locale の文字コードが cp932 である。

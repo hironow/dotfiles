@@ -250,6 +250,16 @@ _windows_status() {
         }
       }
     }
+    # A task that starts a console program directly opens a console window in
+    # the owner's session every run (the watchdog: every 5 min, lived
+    # 2026-11-18). dotfiles' tasks start through run-hidden; one registered
+    # before that stays until it is re-installed from an elevated terminal.
+    foreach (\$n in @('$TASK', '$AUTOTASK', 'dotfiles-runner-watchdog')) {
+      \$x = Get-ScheduledTask -TaskName \$n -ErrorAction SilentlyContinue
+      if (\$x -and (\$x.Actions[0].Execute -notlike '*\\run-hidden.exe')) {
+        'WARN|' + \$n + ': starts ' + \$x.Actions[0].Execute + ' directly - a console window opens each run (re-install it from an elevated terminal: docs/runbook/windows-host.md)'
+      }
+    }
     \$roots = @(\"\$env:USERPROFILE\actions-runner-win\", \"\$env:USERPROFILE\actions-runner\", 'C:\actions-runner') |
       Where-Object { Test-Path (Join-Path \$_ 'config.cmd') }
     if (-not \$roots) { 'INFO|no native Windows runner installed' }

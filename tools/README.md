@@ -6,6 +6,7 @@
 - [ca-doctor](../docs/runbook/ca-doctor.md)：CA設定の健全性とレビュー済みのCA事故を診断するGoツール
 - [kernel-doctor](../docs/runbook/kernel-doctor.md)：実行中または報告されたLinuxカーネル版を、レビュー済みのCVE修正床と突き合わせるGoツール（判定ではない）
 - [mise-versions](./mise-versions/README.md)：`config/mise/image-tools.toml` の版を2つの `install.sh` に書き込み、ずれを検査するGoツール
+- [run-hidden](../docs/runbook/windows-host.md)：Windows の scheduled task が起こす、窓を持たない launcher。console の program を窓無しで起こし、その exit code を返す Go のツール（ADR 0081）
 - [rttm](./rttm/README.md)：RTTM ファイルを ELAN（EAF）形式に変換し、可視化する Python のツール
 - [simple-server](./simple-server/README.md)：localhost の https を確かめる Go の簡易サーバー
 - [tmux](./tmux/CHEATSHEET.md)：tmux のキー操作の早見表

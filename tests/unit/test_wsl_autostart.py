@@ -51,6 +51,7 @@ so the stub can be injected) whenever pwsh is available.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -91,10 +92,69 @@ def test_installer_bakes_distro_into_the_task_command_line() -> None:
     """A task does not inherit the installer's env, so an env-var default
     silently starts the wrong distro at logon."""
     text = INSTALL_WIN.read_text(encoding="utf-8")
-    assert "-Distro {1}" in text, (
+    assert re.search(r"-Distro \{\d\}'[^\n]*\$Distro\)", text), (
         "the distro name must be baked into the task's -Argument string, "
         "not left to a runtime default."
     )
+
+
+def test_installer_starts_both_tasks_through_run_hidden() -> None:
+    """A console program that Task Scheduler starts in the owner's session
+    opens a console window every run (lived 2026-11-18: the user saw a
+    terminal flash). Both tasks start the copy Install-RunHidden returns,
+    with powershell.exe and its unchanged arguments behind it."""
+    text = INSTALL_WIN.read_text(encoding="utf-8")
+    gc = re.search(
+        r"\$action = New-ScheduledTaskAction `\s+-Execute \$runHidden `\s+"
+        r"-Argument \('\"\{0\}\" -NoProfile -NonInteractive -ExecutionPolicy Bypass "
+        r"-File \"\{1\}\" -Retention \{2\}' -f \$powershell, \$payload, \$Retention\)",
+        text,
+    )
+    assert gc, "the GC task must start powershell.exe through run-hidden"
+    auto = re.search(
+        r"\$autoAction = New-ScheduledTaskAction `\s+-Execute \$runHidden `\s+"
+        r"-Argument \('\"\{0\}\" -NoProfile -NonInteractive -ExecutionPolicy Bypass "
+        r"-File \"\{1\}\" -Distro \{2\}' -f \$powershell, \$autoPayload, \$Distro\)",
+        text,
+    )
+    assert auto, "the autostart task must start powershell.exe through run-hidden"
+    assert "-Execute (Get-Command powershell.exe).Source" not in text, (
+        "no task may start powershell.exe directly any more."
+    )
+
+
+def test_installer_copies_the_launcher_before_it_removes_any_task() -> None:
+    """The GC installer unregisters first; a copy that fails after that would
+    leave the box with no GC task at all."""
+    text = INSTALL_WIN.read_text(encoding="utf-8")
+    copy = text.find("Install-RunHidden")
+    remove = text.find("Unregister-ScheduledTask")
+    assert copy != -1, "the installer must copy run-hidden (Install-RunHidden)"
+    assert copy < remove, (
+        "Install-RunHidden must run before the first Unregister-ScheduledTask."
+    )
+
+
+def test_installers_never_stop_a_running_task() -> None:
+    """Stopping the keepalive and then failing to register would cost the
+    distro its last client. The switch to a new action is the runbook's
+    procedure (a temporary client holds the distro), never the installer's."""
+    for script in (INSTALL_WIN, SCRIPTS / "runner_watchdog_win.ps1"):
+        assert "Stop-ScheduledTask" not in script.read_text(encoding="utf-8"), (
+            f"{script.name} must not stop a running task."
+        )
+
+
+def test_status_warns_about_a_task_that_starts_a_console_program_directly() -> None:
+    """Re-registration needs an elevated terminal, so a box can keep an old
+    task that flashes a window. status names it until it is re-installed."""
+    text = STATUS.read_text(encoding="utf-8")
+    block = re.search(r"foreach \(\\\$n in @\((.*?)\)\)", text)
+    assert block, "status must loop over dotfiles' tasks"
+    names = block.group(1)
+    for name in ("$TASK", "$AUTOTASK", "dotfiles-runner-watchdog"):
+        assert name in names, f"status must check {name}"
+    assert "run-hidden.exe" in text and "WARN|" in text
 
 
 def test_installer_does_not_claim_the_smoke_fire_proves_recovery() -> None:
@@ -286,6 +346,8 @@ def _run_payload(
     overrides = dict(os.environ)
     overrides.update(env)
     overrides["STUB_LOG"] = str(log)
+    # The payload logs to %TEMP%; a test must never write the real one.
+    overrides["TEMP"] = overrides["TMP"] = str(tmp_path)
     proc = subprocess.run(
         [
             str(PWSH),
@@ -352,6 +414,21 @@ def test_existing_keepalive_short_circuits_even_with_nul_padding(
         "the keepalive valve must short-circuit without attaching a second "
         "keepalive client."
     )
+
+
+@pwshonly
+def test_payload_keeps_its_lines_in_a_log_file(tmp_path: Path) -> None:
+    """The task starts through run-hidden, so it has no window to print to:
+    every line Write-Log prints must also land in %TEMP%\\wsl-autostart.log,
+    or the keepalive's last words ("keepalive exited ...") reach no one."""
+    proc, _ = _run_payload(
+        tmp_path, {"STUB_RUNNING_NAMES": "Ubuntu", "STUB_KEEPALIVE": "1"}
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    log = tmp_path / "wsl-autostart.log"
+    assert log.is_file(), "Write-Log must append to %TEMP%\\wsl-autostart.log"
+    text = log.read_text(encoding="ascii")
+    assert "already running" in text and "nothing to do" in text, text
 
 
 @pwshonly

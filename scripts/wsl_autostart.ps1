@@ -58,8 +58,16 @@ $env:WSL_UTF8 = '1'
 
 # NOTE: keep this file ASCII-only. powershell.exe 5.1 reads a BOM-less UTF-8
 # script as ANSI, so any emoji here arrives mojibake in the task log.
+# The task starts through run-hidden, so it has no window: each line also goes
+# to %TEMP%\wsl-autostart.log, kept small like the watchdog's heartbeat log.
+$autostartLog = Join-Path $env:TEMP 'wsl-autostart.log'
 function Write-Log([string]$Message) {
-    Write-Host ('[wsl-autostart] {0} {1}' -f (Get-Date -Format 'yyyy-MM-ddTHH:mm:ssK'), $Message)
+    $line = '[wsl-autostart] {0} {1}' -f (Get-Date -Format 'yyyy-MM-ddTHH:mm:ssK'), $Message
+    Write-Host $line
+    if ((Test-Path -LiteralPath $autostartLog) -and ((Get-Item -LiteralPath $autostartLog).Length -gt 1MB)) {
+        Get-Content -LiteralPath $autostartLog -Tail 200 | Set-Content -LiteralPath $autostartLog -Encoding ascii
+    }
+    Add-Content -LiteralPath $autostartLog -Value $line -Encoding ascii
 }
 
 function Get-CleanLines($Raw) {

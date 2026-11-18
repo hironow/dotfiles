@@ -14,7 +14,9 @@ runner を載せた WSL の `ext4.vhdx` には、コンテナの画像、停止�
 - **job-completed hook**：ジョブの終了ごと
 - **hourly timer**：1 時間ごと（root で動く）
 - **journald の上限**：ログの肥大を止める（`RUNNER_GC_JOURNAL_MAX`、既定 `200M`）
-- **`dotfiles-wsl-autostart`**（Windows のログオン時のタスク）：再起動のあと、distro の systemd（runner と GC の timer）を起こし直す
+- **`dotfiles-wsl-autostart`**（Windows のログオン時のタスク）：再起動のあと、distro の systemd（runner と GC の timer）を起こし直す。記録は `%TEMP%\wsl-autostart.log`
+
+Windows の 2 つのタスクは `run-hidden.exe` を通して起こし、所有者の画面に窓を出さない（[Windows の機体](windows-host.md)の「対話セッションで動く scheduled task」、ADR 0081）。
 
 状態は `just status` で確かめる。
 Windows と WSL の両方について、timer、タスク、hook を一度に表示し、hook が runner に受理される形式か、直近のジョブで拒否されていないかまで見る。

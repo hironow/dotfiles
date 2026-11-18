@@ -223,10 +223,57 @@ def test_watchdog_task_runs_a_copy_outside_the_working_tree() -> None:
     assert "LOCALAPPDATA" in text and "Copy-Item" in text, (
         r"-Install copies the script to %LOCALAPPDATA%\dotfiles; the task runs the copy."
     )
-    assert re.search(r'-File "\{0\}"[^\n]*-f \$installed', text), (
+    assert re.search(r'-File "\{1\}"[^\n]*-f \$powershell, \$installed', text), (
         "the task action's -File is the installed copy, never $PSCommandPath."
     )
     assert "-f $PSCommandPath" not in text
+
+
+def test_watchdog_task_starts_through_run_hidden() -> None:
+    """Lived 2026-11-18: the watchdog task started powershell.exe directly in
+    the owner's session, so a console window flashed every 5 minutes. The
+    action starts the run-hidden copy (no window, the exit code handed back to
+    Task Scheduler), with powershell.exe and its unchanged arguments behind it."""
+    text = _watchdog()
+    assert re.search(
+        r"-Execute \$runHidden `\s+-Argument \('\"\{0\}\" -NoProfile -NonInteractive "
+        r"-ExecutionPolicy Bypass -File \"\{1\}\" -RunnerRoot \"\{2\}\"' -f "
+        r"\$powershell, \$installed, \$RunnerRoot\)",
+        text,
+    ), "the watchdog task must start powershell.exe through run-hidden"
+    assert "-Execute (Get-Command powershell.exe).Source" not in text
+    install = text[text.index("if ($Install) {") :]
+    copy = install.find("Install-RunHidden")
+    remove = install.find("Unregister-ScheduledTask -TaskName $watchTask")
+    assert copy != -1 and copy < remove, (
+        "copy run-hidden before the task is removed: a failed copy must not "
+        "leave the box without its watchdog."
+    )
+
+
+def test_run_hidden_is_built_for_the_windows_gui_subsystem() -> None:
+    """A console-subsystem launcher would open the very window it exists to
+    avoid; -H=windowsgui gives it none."""
+    text = JUSTFILE.read_text(encoding="utf-8")
+    m = re.search(r"(?ms)^run-hidden-build:\n(.*?)(?=^\S|\Z)", text)
+    assert m, "the justfile needs a run-hidden-build recipe"
+    body = m.group(1)
+    assert "tools/run-hidden" in body and "-H=windowsgui" in body, body
+    assert "output/run-hidden/run-hidden.exe" in body, body
+
+
+def test_task_installers_build_run_hidden_first() -> None:
+    """Each installer copies output/run-hidden/run-hidden.exe; its recipe
+    builds it first, so a fresh clone installs in one command."""
+    text = JUSTFILE.read_text(encoding="utf-8")
+    for recipe in (
+        "runner-watchdog-install",
+        "runner-mode-interactive",
+        "runner-gc-install",
+    ):
+        assert re.search(rf"(?m)^{recipe}:[^\n]*\brun-hidden-build\b", text), (
+            f"{recipe} must depend on run-hidden-build"
+        )
 
 
 def test_mode_switch_wires_the_watchdog_and_removes_the_legacy_lnk() -> None:
