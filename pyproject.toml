@@ -57,7 +57,7 @@ markers = [
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
 ]
 # ruff + ty only: `uv run --frozen --only-group lint ruff` (just fmt/lint/check,
 # format-after-edit). ty uses `--group lint` so it still sees project imports.

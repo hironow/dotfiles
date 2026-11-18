@@ -37,7 +37,7 @@ RUN npm run build
 # pydantic-core / asyncpg build from sdist and die with "gcc: No such file".
 # Dependabot is told to ignore python minor/major bumps here (see dependabot
 # .yaml); revisit when upstream publishes 3.14 wheels.
-FROM docker.io/library/python:3.12.15-slim
+FROM docker.io/library/python:3.15.2-slim
 WORKDIR /app
 
 # Install uv (no pip required)
