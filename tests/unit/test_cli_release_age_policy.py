@@ -12,14 +12,14 @@ ROOT = Path(__file__).resolve().parents[2]
 NPM_CLIS = {
     "vp": "latest",
     "markdownlint-cli2": "latest",
-    "npm:portless": "0.15.9",
+    "npm:portless": "0.17.0",
     "npm:@informalsystems/quint": "0.33.0",
     "npm:@openai/codex": "latest",
     "npm:@anthropic-ai/claude-code": "latest",
     "npm:@github/copilot": "latest",
     "npm:@earendil-works/pi-coding-agent": "latest",
     "npm:@playwright/cli": "latest",
-    "npm:cf": "1.0.0-beta.20",
+    "npm:cf": "1.0.0-beta.30",
     "npm:resend-cli": "latest",
     "npm:@stripe/cli": "latest",
     "npm:@dataform/cli": "latest",
@@ -132,7 +132,7 @@ def test_mac_package_manifest_provisions_podman_without_docker_providers() -> No
 
 
 def test_devcontainer_cli_has_one_frozen_age_exempt_host_image_pin() -> None:
-    expected = {"version": "0.89.0", "bun_args": "--minimum-release-age=0"}
+    expected = {"version": "0.90.0", "bun_args": "--minimum-release-age=0"}
     assert config()["tools"].get("npm:@devcontainers/cli") == expected
     image = tomllib.loads(
         (ROOT / "config/mise/image-tools.toml").read_text(encoding="utf-8")
@@ -209,7 +209,7 @@ def test_colab_cli_has_a_dedicated_zero_age_environment_and_skips_windows() -> N
     # dedicated uv tool environment. Upstream supports Linux and macOS only.
     spec = config()["tools"].get("pypi:google-colab-cli")
     assert isinstance(spec, dict), "the Colab CLI needs a dedicated mise tool"
-    assert spec["version"] == "0.7.5"
+    assert spec["version"] == "0.8.0"
     assert shlex.split(spec["uvx_args"]) == [
         "--python",
         "3.13",

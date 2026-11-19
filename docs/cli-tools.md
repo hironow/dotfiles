@@ -50,7 +50,7 @@ References: [AWS installation guide](https://docs.aws.amazon.com/cli/latest/user
 ## Google Colab CLI
 
 `colab` is a CLI for using Google Colab CPU, GPU, and TPU runtimes from the terminal ([googlecolab/google-colab-cli](https://github.com/googlecolab/google-colab-cli)).
-Install it via mise as `pypi:google-colab-cli` and pin it to 0.7.5. Read the changelog before bumping the version.
+Install it via mise as `pypi:google-colab-cli` and pin it to 0.8.0. Read the changelog before bumping the version.
 Because upstream supports only Linux and macOS, mise does not install it on Windows.
 Authentication to the Colab API uses Application Default Credentials (`--auth adc`) by default. You can also use `--auth oauth2` with an OAuth client config file (default `~/.colab-cli-oauth-config.json`, per upstream README).
 
@@ -67,8 +67,8 @@ Keep pinned versions, LTS, and beta selections as they are, and do not bulk-upda
 | headroom | `--exclude-newer 0d` in its dedicated uv tool environment. Keep Python 3.13, extras, and pinned version |
 | Podman 5+ | Required permanent CLI. Do not add a 7-day check to Homebrew, Linux OS packages, or Podman's dedicated winget path |
 | podman-compose | Pinned to 1.6.0 on host and in images. Dedicated uv tool environment uses `--python 3.13 --exclude-newer 0d`, covering dependencies |
-| Google Colab CLI | Pinned to 0.7.5 on host only. Dedicated uv tool environment uses `--python 3.13 --exclude-newer 0d`, covering dependencies. Linux and macOS only |
-| devcontainer CLI | Keep existing pin at 0.89.0 on host and in images; CI uses the same source of truth. Dedicated npm environment dependencies also use 0 days |
+| Google Colab CLI | Pinned to 0.8.0 on host only. Dedicated uv tool environment uses `--python 3.13 --exclude-newer 0d`, covering dependencies. Linux and macOS only |
+| devcontainer CLI | Keep existing pin at 0.90.0 on host and in images; CI uses the same source of truth. Dedicated npm environment dependencies also use 0 days |
 | Homebrew, Scoop, verified bootstrap | No 7-day check in this repo. Separate from upstream catalog update timing or pinned versions |
 | Machine-level npm and uv settings | Keep existing `min-release-age=7` and `exclude-newer = "7 days"` |
 | Repo Python dependencies | Keep 7-day cooldown per project. Keep existing exceptions for ruff/ty |
@@ -139,4 +139,4 @@ The source of truth for agents is `ROOT_AGENTS.md` and this spoke; do not edit d
 Deploy per [`docs/agent-sync.md`](agent-sync.md), checking target home diffs with `just sync-agents-preview` first.
 Do not alias over existing `grep`, `find`, or `sed`, and verify behavior per call site when migrating scripts.
 
-References: [Hunk install requirements](https://github.com/modem-dev/hunk/tree/v0.24.1#install), [mise GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html), [mise registry](https://mise.jdx.dev/registry.html).
+References: [Hunk install requirements](https://github.com/modem-dev/hunk/tree/v0.25.0#install), [mise GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html), [mise registry](https://mise.jdx.dev/registry.html).
