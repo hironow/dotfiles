@@ -186,7 +186,7 @@ install -m 0755 "${MISE_TMP}/mise/bin/mise" /usr/local/bin/mise
 rm -rf "${MISE_TMP}"
 
 # ---- uv (Python package manager) ------------------------------------
-UV_VERSION="0.13.5"
+UV_VERSION="0.13.9"
 case "$ARCH" in
   x86_64)  UV_TARGET="x86_64-unknown-linux-gnu" ;;
   aarch64) UV_TARGET="aarch64-unknown-linux-gnu" ;;
@@ -353,24 +353,24 @@ package_manager = "bun"
 [tools]
 bun = "1.4.4"
 just = "1.59.0"
-markdownlint-cli2 = "0.23.3"
-prek = "0.5.6"
-uv = "0.13.5"
+markdownlint-cli2 = "0.24.1"
+prek = "0.5.10"
+uv = "0.13.9"
 "pypi:podman-compose" = { version = "1.6.0", uvx_args = "--python 3.13 --exclude-newer 0d" }
-"npm:@devcontainers/cli" = { version = "0.89.0", bun_args = "--minimum-release-age=0" }
-vp = "1.3.0"
-node = "24.22.1"
+"npm:@devcontainers/cli" = { version = "0.90.0", bun_args = "--minimum-release-age=0" }
+vp = "1.6.0"
+node = "24.22.3"
 go = "1.27.4"
 "aqua:golangci/golangci-lint" = "2.15.0"
 "npm:@informalsystems/quint" = "0.33.0"
-"npm:@openai/codex" = "0.163.0"
-"npm:@anthropic-ai/claude-code" = "2.1.303"
-"npm:@github/copilot" = "1.0.98"
-"npm:@earendil-works/pi-coding-agent" = "1.3.0"
-"github:google-antigravity/antigravity-cli" = { version = "1.4.2", rename_exe = "antigravity" }
-"npm:cf" = "1.0.0-beta.20"
-"npm:resend-cli" = "2.26.0"
-"npm:@stripe/cli" = "1.54.0"
+"npm:@openai/codex" = "0.167.2"
+"npm:@anthropic-ai/claude-code" = "2.1.322"
+"npm:@github/copilot" = "1.0.109"
+"npm:@earendil-works/pi-coding-agent" = "1.5.2"
+"github:google-antigravity/antigravity-cli" = { version = "1.5.7", rename_exe = "antigravity" }
+"npm:cf" = "1.0.0-beta.30"
+"npm:resend-cli" = "2.28.1"
+"npm:@stripe/cli" = "1.55.11"
 
 EOF
 echo "[dotfiles-tools] pre-installing mise tools at build time (MISE_DATA_DIR=/opt/mise, system config /etc/mise/config.toml)"

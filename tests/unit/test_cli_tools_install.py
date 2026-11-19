@@ -27,10 +27,10 @@ TOOLS = [
 @pytest.mark.parametrize(
     ("tool", "version"),
     [
-        ("github:harehare/mq", "0.10.0"),
+        ("github:harehare/mq", "0.10.1"),
         ("witr", "0.3.4"),
         ("aqua:jqlang/jq", "1.8.2"),
-        ("aqua:mikefarah/yq", "4.54.1"),
+        ("aqua:mikefarah/yq", "4.54.3"),
         ("aqua:wader/fq", "0.18.0"),
     ],
 )

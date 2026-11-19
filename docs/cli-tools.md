@@ -50,7 +50,7 @@ miseをactivateする前から動いているプロセスのPATHは自動では�
 ## Google Colab CLI
 
 `colab` は、Google Colab のCPU、GPU、TPUのruntimeを端末から使うCLIである（[googlecolab/google-colab-cli](https://github.com/googlecolab/google-colab-cli)）。
-miseの `pypi:google-colab-cli` で入れ、0.7.5に固定する。上げるときは変更履歴を読んでから版を書き換える。
+miseの `pypi:google-colab-cli` で入れ、0.8.0に固定する。上げるときは変更履歴を読んでから版を書き換える。
 上流はLinuxとmacOSだけに対応するので、miseはWindowsでは入れない。
 Colab APIの認証は、既定でApplication Default Credentials（`--auth adc`）を使う。`--auth oauth2` と、OAuth clientの設定ファイル（既定は `~/.colab-cli-oauth-config.json`）も選べる（上流のREADME）。
 
@@ -67,8 +67,8 @@ Colab APIの認証は、既定でApplication Default Credentials（`--auth adc`�
 | headroom | 専用uv tool環境の `--exclude-newer 0d`。Python 3.13、extras、固定版は維持 |
 | Podman 5+ | 必須の常設CLI。Homebrew／Linux OSパッケージ／Podman専用のwinget経路に7日判定を追加しない |
 | podman-compose | hostと画像で1.6.0に固定。専用uv tool環境の `--python 3.13 --exclude-newer 0d` で依存も対象 |
-| Google Colab CLI | hostだけで0.7.5に固定。専用uv tool環境の `--python 3.13 --exclude-newer 0d` で依存も対象。LinuxとmacOSだけ |
-| devcontainer CLI | hostと画像で既存の0.89.0を固定し、CIも同じ正本を使う。専用npm環境の依存も0日 |
+| Google Colab CLI | hostだけで0.8.0に固定。専用uv tool環境の `--python 3.13 --exclude-newer 0d` で依存も対象。LinuxとmacOSだけ |
+| devcontainer CLI | hostと画像で既存の0.90.0を固定し、CIも同じ正本を使う。専用npm環境の依存も0日 |
 | Homebrew、Scoop、検証付きbootstrap | このrepoの7日判定はない。配布元のcatalog更新時期や固定版とは別の話 |
 | npmとuvの機体設定 | 既存の `min-release-age=7` と `exclude-newer = "7 days"` を維持 |
 | repoのPython依存 | 各projectの7日を維持。ruff/tyの既存例外はそのまま |
@@ -139,4 +139,4 @@ JSONは `jq`、YAMLは `yq`、バイナリ構造は `fq`、Markdownは `mq`、�
 配布は [`docs/agent-sync.md`](agent-sync.md) に従い、`just sync-agents-preview` で対象homeの差分を確認してから行う。
 既存の `grep`、`find`、`sed` を同名のaliasで上書きせず、スクリプトの移行は必要な箇所ごとに動作を確かめる。
 
-参照: [Hunkの導入条件](https://github.com/modem-dev/hunk/tree/v0.24.1#install)、[mise GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html)、[mise registry](https://mise.jdx.dev/registry.html)。
+参照: [Hunkの導入条件](https://github.com/modem-dev/hunk/tree/v0.25.0#install)、[mise GitHub backend](https://mise.jdx.dev/dev-tools/backends/github.html)、[mise registry](https://mise.jdx.dev/registry.html)。
