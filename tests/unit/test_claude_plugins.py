@@ -36,6 +36,17 @@ def test_the_repo_declares_the_codex_plugin_pinned_to_a_tag() -> None:
     assert ref is not None and ref.startswith("v")
 
 
+def test_the_repo_declares_the_antigravity_plugin_pinned_to_a_tag() -> None:
+    # ADR 0082: the plugin Claude Code delegates to agy through
+    declared = plugins.load(ROOT / "dump/harness/claude-plugins.json")
+    assert "antigravity@antigravity-for-claude-code" in declared.plugins
+    repo, ref = plugins.parse_source(
+        declared.marketplaces["antigravity-for-claude-code"]
+    )
+    assert repo == "yuting0624/antigravity-for-claude-code"
+    assert ref is not None and ref.startswith("v")
+
+
 # ADR 0056: official has no tags and the CLI clones `--branch <ref>`, so it
 # cannot take a commit SHA; a `./` source is this repo's own tracked content
 UNPINNED = {"claude-plugins-official"}
