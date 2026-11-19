@@ -1,156 +1,156 @@
-# self-hosted runner のディスク GC
+# Self-hosted runner disk GC
 
-self-hosted runner を載せた機体（native Windows と WSL）のディスクを回収する仕組みと、その変更時に踏みやすい罠をまとめる（ADR 0035）。
-`scripts/runner_gc*`、`just runner-gc*`、`just status`、`just disk-gc`、`just wsl-compact` を変える前に読む。
+This runbook covers disk reclamation for machines hosting self-hosted runners (native Windows and WSL) and pitfalls to avoid when modifying it (ADR 0035).
+Read it before changing `scripts/runner_gc*`, `just runner-gc*`, `just status`, `just disk-gc`, or `just wsl-compact`.
 
-## なぜ回収が要るのか
+## Why reclamation is needed
 
-runner を載せた WSL の `ext4.vhdx` には、コンテナの画像、停止したコンテナ、ビルドキャッシュが積み上がる。管理する実行系は Podman 5 以降に限定する（ADR 0067）。既存 Docker の在庫は操作しない。
-放置すると C: が尽き、空きがないと vhdx を広げられず WSL 自体が起動しなくなる（`I/O error @util.cpp` から systemd の起動失敗）。
-この状態は、容量を空けるための WSL が起動しないので自力では抜けられない。
+Container images, stopped containers, and build caches accumulate in the runner's WSL `ext4.vhdx`. Managed runtimes are limited to Podman 5 and newer (ADR 0067); existing Docker inventory is left untouched.
+Left unchecked, C: fills up; with no free space, the vhdx cannot expand and WSL itself fails to boot (`I/O error @util.cpp` followed by systemd startup failure).
+You cannot recover from that state on your own because WSL will not start to free space.
 
-`just runner-gc-install` は、`RUNNER_GC_RETENTION`（既定 2 時間）を保持期間とする GC を、次のとおり仕掛ける。コンテナと画像は作成時刻、workspace は後述の利用記録で判定する。ビルド・mount キャッシュは自動回収しない。従来のキャッシュ増大防止保証は継承しないので、容量監視は引き続き必要である。
+`just runner-gc-install` configures GC with `RUNNER_GC_RETENTION` (default 2 hours). Containers and images are judged by creation time, and workspaces by the usage stamp described below. Build and mount caches are not automatically reclaimed; the earlier cache-growth cap guarantee is not carried forward, so disk space monitoring remains necessary:
 
-- **job-completed hook**：ジョブの終了ごと
-- **hourly timer**：1 時間ごと（root で動く）
-- **journald の上限**：ログの肥大を止める（`RUNNER_GC_JOURNAL_MAX`、既定 `200M`）
-- **`dotfiles-wsl-autostart`**（Windows のログオン時のタスク）：再起動のあと、distro の systemd（runner と GC の timer）を起こし直す。記録は `%TEMP%\wsl-autostart.log`
+- **job-completed hook**: after every job
+- **hourly timer**: every hour (runs as root)
+- **journald cap**: bounds log growth (`RUNNER_GC_JOURNAL_MAX`, default `200M`)
+- **`dotfiles-wsl-autostart`** (Windows logon task): restarts the distro's systemd (runner and GC timers) after reboot; logs to `%TEMP%\wsl-autostart.log`
 
-Windows の 2 つのタスクは `run-hidden.exe` を通して起こし、所有者の画面に窓を出さない（[Windows の機体](windows-host.md)の「対話セッションで動く scheduled task」、ADR 0081）。
+The two Windows tasks launch through `run-hidden.exe` so no window appears on the owner's desktop (see "Scheduled tasks running in interactive sessions" in [Windows hosts](windows-host.md), ADR 0081).
 
-状態は `just status` で確かめる。
-Windows と WSL の両方について、timer、タスク、hook を一度に表示し、hook が runner に受理される形式か、直近のジョブで拒否されていないかまで見る。
+Check status with `just status`.
+It displays timers, tasks, and hooks for both Windows and WSL, and checks that the hook format is accepted by the runner and was not rejected on the most recent job.
 
-## hook の登録
+## Hook registration
 
-runner は hook のパスを検証し、拡張子が `.sh`、`.ps1`、`.js` でないものを `ArgumentException: ... is not a valid path to a script` で拒否する。
-値はパスでなければならず、`powershell.exe -File <script>` のようなコマンド行も同じ検証で落ちる。
-拒否はジョブ自身の Worker ログにしか残らず、journal にもタスクの履歴にも出ないので、`just status` の受理確認に頼る。
+The runner validates hook paths and rejects anything without a `.sh`, `.ps1`, or `.js` extension with `ArgumentException: ... is not a valid path to a script`.
+The value must be a path; command lines such as `powershell.exe -File <script>` fail the same check.
+Rejections appear only in the job's own Worker log—not in journal or task history—so rely on `just status` to confirm acceptance.
 
-## 実行中のジョブの検出
+## Detecting running jobs
 
-ジョブの検出には `pgrep -x Runner.Worker` を使う。
-`pgrep -f` は GC 自身のコマンド行にも一致し、「常にジョブが実行中」と判定して GC を黙って止め続ける。
+Job detection uses `pgrep -x Runner.Worker`.
+`pgrep -f` matches GC's own command line, causing it to think a job is always running and silently skip GC forever.
 
-hook は `Runner.Worker` の内側から呼ばれるので、単純に検出すると、自分を起動したジョブを理由に毎回スキップしてしまう。
-プロセスの祖先と突き合わせ、祖先でない worker（同時に走る別のジョブ）がいるときだけ退避する。
+Because the hook is invoked from inside `Runner.Worker`, naive detection would always skip due to the job that launched it.
+It checks process ancestors and backs off only when a non-ancestor worker (another concurrent job) exists.
 
-runner のジョブと共有する path を消す処理は、どれも削除の各段の直前でジョブを判定する。
-「再生成できる」は「使用中に消してよい」ではない。
-cargo は registry の crate を、その展開先を cwd にして rustc で compile するので、`~/.cargo/registry/src` を消すと compile 中の rustc が落ちる。
-判定できないときは、ジョブが実行中として扱う（判定が失敗した日に、黙って消し始めないため）。
+Every step deleting paths shared with runner jobs checks for running jobs right before deleting.
+"Can be regenerated" does not mean "safe to delete while in use".
+Because cargo compiles registry crates with rustc using their extracted directory as cwd, deleting `~/.cargo/registry/src` breaks an in-flight rustc build.
+If detection cannot tell, it treats a job as running so a broken check never silently starts deleting.
 
-## Podman の回収
+## Podman reclamation
 
-GC は Podman CLI と選択先の実行系を別々に調べ、両方が 5 以降であることを求める。Unix は `jq` も必要である。利用不可・版や情報の不明な場合は Podman の在庫を残してログに記録する。Docker への切替、socket の推測、machine の初期化・起動・更新はしない。`podman info --format json` の `version.Version` は選択先の版であり、CLI の版ではない。`host.serviceIsRemote=false` のローカル実行も有効である。
+GC checks both the Podman CLI and target runtime separately and requires both to be version 5 or newer. Unix also requires `jq`. If unavailable or version/info is unknown, it keeps Podman inventory and logs a diagnostic. It never falls back to Docker, guesses sockets, or initializes, starts, or updates machines. `version.Version` in `podman info --format json` is the target runtime version, not the CLI version. Local execution (`host.serviceIsRemote=false`) is also valid.
 
-rootful と rootless の在庫は所有者ごとに異なる。root の timer は root の回収に加え、runner ディレクトリの所有ユーザーとして回収し直す（`runuser`、`HOME`、`XDG_RUNTIME_DIR`）。親からの `CONTAINER_HOST` と `CONTAINER_CONNECTION` は引き継がず、そのユーザーの接続設定を使う。rootless の再実行は Podman 部分だけで、workspace や apt の回収を繰り返さない。
+Rootful and rootless inventories differ by owner. The root timer runs root reclamation and then re-runs reclamation as the runner directory owner (`runuser`, `HOME`, `XDG_RUNTIME_DIR`). It clears inherited `CONTAINER_HOST` and `CONTAINER_CONNECTION` so that user's connection config applies. The rootless pass covers only Podman and does not repeat workspace or apt cleanup.
 
-### 削除条件
+### Deletion criteria
 
-保持期間は非負の十進整数と `s`／`m`／`h`／`d`（省略時は秒）を受け付ける。先頭のゼロは八進数にせず、`08h` も有効である。明示的な `0` は従来どおり保持時間ゼロを指定する。時計の取得失敗・不正値・Unix の符号付き整数範囲外、または Unix epoch より前まで遡る過大な保持期間では、コンテナと画像をどちらも残して診断を出す。Unix の `invalid or excessive retention`／`invalid clock`／`clock query failed`／`clock outside signed range` が出たら設定と時計を確認する。積を計算する前に上限を調べ、桁あふれで保持時間を短くしない。この検証は Podman 部分のもので、workspace 等の既存方針は変えない。
+Retention accepts a non-negative decimal integer with `s`, `m`, `h`, or `d` (default seconds). Leading zeros are not treated as octal, so `08h` is valid. Explicit `0` still specifies zero retention. If clock lookup fails, is invalid, is outside signed Unix integer range, or retention would reach before the Unix epoch, both containers and images are kept and a diagnostic is printed. If Unix prints `invalid or excessive retention`, `invalid clock`, `clock query failed`, or `clock outside signed range`, check config and system clock. Bounds are checked before multiplication so overflow never shortens retention. This validation applies to the Podman phase; existing policies for workspaces and other targets remain unchanged.
 
-画像 ID は小文字の完全な 64 桁の十六進数か、`sha256:` をその前に付けた形だけを受け付ける。列挙結果・画像の検査結果・コンテナの画像参照を同じ形に正規化して比べる。短縮 ID や不明な形式は削除に使わない。コンテナ自身の ID は別に一致を確認する。
+Image IDs accept only a full 64-character lowercase hex string or the same prefixed with `sha256:`. Listing results, image inspections, and container image references are normalized to that form for comparison. Short IDs and unknown formats are never used for deletion. Container IDs are matched separately.
 
-- コンテナと画像は別々に列挙する。列挙失敗では該当する回収を中止する。コンテナの参照情報が欠けた場合も画像を残す。
-- コンテナは停止状態かつ作成時刻が保持期間より古いものだけを、強制せず `podman rm <ID>` で削除する。確認後に起動したコンテナは実行系が削除を拒む。volume は削除しない。
-- 画像は作成時刻、全 `RepoTags`、コンテナ参照を調べる。情報の取得・解析に失敗した画像は残す。削除直前に画像の情報をもう一度読む。
-- 作成時刻 `Created` は Podman が書いた文字列のまま読む。文字列でない値は年齢不明として残す。Windows で GC を動かすのは Windows PowerShell 5.1 で、5.1 は JSON の日付を文字列のまま返す。PowerShell 7.5 以降でも `ConvertFrom-Json -DateKind String` で同じく文字列として読む。7.0〜7.4 は対象外である。日付と読めた `Created` を `DateTime` に変えるので、その項目は残す（安全側に倒れる）。日付と読めない形（ナノ秒付きなど）は文字列のまま通常の検査を通る。
-- `RUNNER_GC_KEEP_TAG_PREFIX`（既定 `keep/`）に一致する別名が一つでもあれば、画像全体を残す。`keep/model:latest` と `localhost/keep/model:latest` は同じ保護対象になる。任意の prefix と、レジストリを含む名前も指定できる。
-- 削除は個別の `podman rmi --no-prune <ID>` だけで行う。強制削除も親画像への連鎖削除もしない。新しいコンテナ参照や複数タグを理由に削除を拒まれた画像は、そのまま残す。
+- Containers and images are listed separately. If listing fails, that cleanup phase aborts. If container reference info is incomplete, images are kept.
+- Only stopped containers created earlier than the retention window are removed without force via `podman rm <ID>`. If a container starts after the check, the runtime refuses removal. Volumes are never deleted.
+- Images are checked for creation time, all `RepoTags`, and container references. Images whose info fails to fetch or parse are kept. Image info is re-read right before deletion.
+- Creation time `Created` is read as the raw string written by Podman; non-string values are kept as unknown age. Windows GC runs on Windows PowerShell 5.1, which leaves JSON dates as strings; PowerShell 7.5+ also reads them as strings via `ConvertFrom-Json -DateKind String` (7.0-7.4 are unsupported). If a `Created` value parses as a `DateTime`, that item is kept (failing safe); unparseable formats such as nanosecond timestamps pass normal inspection as strings.
+- If any alias matches `RUNNER_GC_KEEP_TAG_PREFIX` (default `keep/`), the entire image is kept. `keep/model:latest` and `localhost/keep/model:latest` match the same protection; arbitrary prefixes and registry-qualified names work.
+- Deletion uses only individual `podman rmi --no-prune <ID>` calls—no forced removal and no cascading parent-image removal. Images rejected due to new container references or multiple tags are left alone.
 
-保護用のタグは `podman tag <image> keep/<name>` で付ける。最後の確認後に第三者がタグを付け替える競合を、原子的に防ぐ保証はない。新しいコンテナ参照を非強制削除が拒むことと、タグの競合は別の保証である。ジョブ検出も観測時点の判定であり、全プロセスを排他する lock ではない。
+Add protection tags with `podman tag <image> keep/<name>`. There is no atomic guarantee against a third party re-tagging after the final check. Non-forced removal rejecting new container references is a separate guarantee from tag races. Job detection is also a point-in-time observation, not a lock across all processes.
 
-`system`／`builder`／`buildx` の prune、画像の一括 prune、mount キャッシュの掃除は呼び出さない。確認した Podman 6.1.4 では `image prune --all` または `--build-cache` が画像の期限とは別に永続キャッシュを削除するため、安全な期限付き回収に置き換えたとは言わない。
+`system`, `builder`, and `buildx` prunes, bulk image prunes, and mount-cache cleanups are never called. In tested Podman 6.1.4, `image prune --all` or `--build-cache` deletes persistent caches regardless of image age, so they do not substitute for safe age-bounded reclamation.
 
-### 制限付き実行と検証
+### Scoped runs and verification
 
-Unix の `RUNNER_GC_PODMAN_ONLY=1` は Podman 部分だけを実行する。`RUNNER_GC_DRY_RUN=1` はこの制限を有効にし、削除せず候補を表示する。他の janitor の dry-run ではない。Windows は `-PodmanOnly`、`-SkipPodman`、`-DryRun`、`-PodmanTimeoutSec`（既定 300 秒）を使う。全 CLI 呼出しに watchdog を適用し、期限切れではプロセスツリーを終了させる。
+On Unix, `RUNNER_GC_PODMAN_ONLY=1` runs only the Podman phase, and `RUNNER_GC_DRY_RUN=1` enables that limit and prints candidates without deleting (it is not a dry-run for other janitors). Windows uses `-PodmanOnly`, `-SkipPodman`, `-DryRun`, and `-PodmanTimeoutSec` (default 300s). Every CLI call has a watchdog that terminates the process tree on timeout.
 
-旧名 `RUNNER_GC_DOCKER_ONLY=1`、`-SkipDocker`、`-DockerTimeoutSec` は、削除範囲を広げない互換指定として残す。Docker を使う指定ではない。旧 ONLY と新 ONLY のどちらかが `1` なら制限を維持する。
+Legacy names `RUNNER_GC_DOCKER_ONLY=1`, `-SkipDocker`, and `-DockerTimeoutSec` remain as compatible options that do not widen deletion scope; they do not select Docker. If either the old or new `ONLY` variable is `1`, the Podman-only limit stays active.
 
-モデル、実装との対応、偽 I/O による seed 再生は [Podman GC の検証範囲](../plan/podman-gc.md) を参照する。テストは本物のエンジンや在庫に接続しない。
+For the model, implementation mapping, and seed replay with fake I/O, see [Podman GC verification scope](../plan/podman-gc.md). Tests never connect to real engines or inventories.
 
-## toolcache の回収
+## toolcache reclamation
 
-workflow は `go-version: 1.25.x`、`node-version: 22.x`、`python-version: 3.13` のように系列を固定し、`setup-*` は系列の中の最新の patch を使う。
-そのため「新しい順に N 世代を残す」回収は、matrix が使う版を消してしまう（1 台の runner で Python の 3 系列が現役ということもある）。
-GC は `major.minor` の系列ごとに最新の patch を残し、系列の数を `RUNNER_GC_TOOLCACHE_KEEP`（既定 5）で抑える。
+Workflows pin series like `go-version: 1.25.x`, `node-version: 22.x`, and `python-version: 3.13`, and `setup-*` uses the latest patch in each series.
+So keeping the newest N versions overall would delete patches needed by a matrix (one runner may keep three active Python series).
+GC keeps the latest patch per `major.minor` series and caps the number of series with `RUNNER_GC_TOOLCACHE_KEEP` (default 5).
 
-- 並べ替えは `sort -V` で行う。辞書順では `1.25.8` が `1.25.11` より後に来て、最新版を消す。
-- 削除は `<version>/` のディレクトリごと行う。内側に `<version>/<arch>.complete` の目印があるので、部分的に消すと「キャッシュ済みなのに実体がない」状態になる。
-- 最後に使った時刻は取れないので、時間ではなく系列で判定する（`relatime` のもとでは、`_tool` をたどる処理が atime を書き換え、mtime は導入時刻にすぎない）。
-- この回収だけは、`RUNNER_GC_FORCE=1` でもジョブの実行中は行わない（使用中の toolcache を消すとジョブが即座に失敗する）。
+- Sort with `sort -V`; lexicographic sorting puts `1.25.8` after `1.25.11` and deletes the newest version.
+- Delete whole `<version>/` directories. Because `<version>/<arch>.complete` sits inside, partial deletion leaves a "cached yet missing its files" state.
+- Because last-used time is unavailable, judge by series rather than timestamp (under `relatime`, traversing `_tool` updates atime and mtime is only install time).
+- This step never runs while a job is executing, even with `RUNNER_GC_FORCE=1` (deleting an active toolcache breaks the job immediately).
 
-## workspace の回収
+## workspace reclamation
 
-`_work/<repo>` の checkout は、Windows でも WSL でも toolcache より大きく育つので、両方で回収する。
-期限は、GC 自身が押す `.runner-gc-last-used` の目印で判定する。
-ディレクトリの mtime は、深い階層での再ビルドを反映しない（Linux は直下の増減しか追わず、Windows は入れ子のファイル更新で親の `LastWriteTime` を更新しない）ので使わない。
+`_work/<repo>` checkouts grow larger than toolcache on both Windows and WSL, so both reclaim them.
+Age is judged by the `.runner-gc-last-used` stamp updated by GC itself.
+Directory mtime is not used because it misses nested rebuilds (Linux tracks only direct children, and Windows does not update parent `LastWriteTime` on nested file writes).
 
-- runner が所有するディレクトリは名前で列挙して除外する（`_` で始まるかで判定すると、`_foo` という名前の実リポジトリを永久に残してしまう）。
-- `RUNNER_WORKSPACE` と `GITHUB_WORKSPACE` が指す checkout は、無条件に残す（hook がステップの間に動いても、実行中のジョブを消さない）。
-- `RUNNER_GC_ROOT` で 1 つの install だけを対象にできる（忙しい runner は空き時間が来ないので、破壊的な経路を合成した root で検証するため）。
-- ジョブの実行中に走らせるには、`RUNNER_GC_ROOT` と `RUNNER_GC_ALLOW_BUSY=1` の両方が要る（`RUNNER_GC_FORCE` では代わらない）。root の指定は「どの install か」の宣言であって、「触ってよい」の保証ではない。手動実行には `RUNNER_WORKSPACE` がなく、実行中のジョブがいま書いている checkout を見分けられないからである。
+- Runner-owned directories are excluded by explicit name list (matching a leading `_` would permanently keep a real repo named `_foo`).
+- Checkouts pointed to by `RUNNER_WORKSPACE` and `GITHUB_WORKSPACE` are always kept (so a hook running between steps never deletes the active job's checkout).
+- `RUNNER_GC_ROOT` targets a single install (so destructive paths can be tested against a synthetic root since busy runners rarely sit idle).
+- Running while a job executes requires both `RUNNER_GC_ROOT` and `RUNNER_GC_ALLOW_BUSY=1` (`RUNNER_GC_FORCE` does not substitute). Setting root only declares which install to target, not that it is safe to touch: manual runs lack `RUNNER_WORKSPACE` and cannot tell which checkout a running job is writing to.
 
-native Windows で workspace を消すには、素の `Remove-Item` では足りない。
-junction（PowerShell 5.1 の `-Recurse` はリンクをたどってリンク先まで消す）、読み取り専用の `.git/objects`、MAX_PATH を超えるパス（`node_modules`）があるためである。
-reparse point を先に再帰なしで外し、読み取り専用を解除し、残りを `robocopy /MIR /XJ` で消す、という順に行う。
+On native Windows, plain `Remove-Item` is not enough.
+There are junctions (PowerShell 5.1's `-Recurse` follows links and deletes targets), read-only `.git/objects`, and paths exceeding MAX_PATH (`node_modules`).
+It removes reparse points non-recursively first, clears read-only attributes, and removes the rest with `robocopy /MIR /XJ`.
 
-## runner の自己更新の残骸
+## Runner self-update leftovers
 
-`_work/_update` と、古い `bin.*`、`externals.*` は、24 時間の別枠で回収する（2 時間では進行中の自己更新を巻き込む）。
-古い版を消すのは、`bin` と `externals` が symlink として解決できるときだけである。
-通常の install では `bin.*` が runner の本体なので、消すと壊れる。
+`_work/_update` and old `bin.*` and `externals.*` directories are reclaimed on a separate 24-hour window (2 hours would catch an active self-update).
+Old versions are deleted only when `bin` and `externals` resolve as symlinks.
+In standard installs, `bin.*` is the runner itself and deleting it breaks the runner.
 
-## vhdx から C: への返却
+## Reclaiming vhdx space back to C
 
-WSL の中で消しても、C: の空きは増えない。
-vhdx は解放済みの ext4 のブロックを Windows 側で抱えたままなので、返却するのは `fstrim` である。
-vhdx が sparse なら、`fstrim /` で穴をあければ、止めずに管理者権限なしで返せる。
-GC は root での回収の最後に `fstrim` を実行する。
+Deleting files inside WSL does not increase free space on C:.
+Because the vhdx still holds freed ext4 blocks on Windows, `fstrim` is what returns them.
+If the vhdx is sparse, punching holes with `fstrim /` reclaims space online without administrator privileges.
+GC runs `fstrim` at the end of root reclamation.
 
-vhdx は常に sparse とは限らない。`wsl --manage --move` で別のボリュームへ移すと、sparse が外れることがある（2026-11-17 に D: へ移した実例）。
-sparse でない vhdx では、`fstrim` はボリュームに何も返さない（実例は memory `project_this_host_vhdx_non_sparse`）。
-その場合の返却には、管理者権限と `wsl --shutdown`（runner の停止）が要るので、`just wsl-compact` は計測と手順の表示にとどめる。
-sparse な vhdx には diskpart の手順を出さない。diskpart と Optimize-VHD は sparse な vhdx を "must not be sparse" で拒否する。
-この機体の WSL（3.0.5）の `wsl --help` にある `wsl --manage <distro> --compact` は、ここでは検証していない。
-`wsl --manage --set-sparse` は自分では有効にしない（ADR 0035）。WSL 3.0.5 では `--allow-unsafe` は要らず、実験的な機能だという警告が出るだけである。
-すでに sparse な vhdx で `fstrim` を使うのは別の話で、こちらは安全である。
+A vhdx is not always sparse. Moving it to another volume with `wsl --manage --move` can clear the sparse attribute (observed on 2026-11-17 when moving to D:).
+On a non-sparse vhdx, `fstrim` returns nothing to the volume (example in memory `project_this_host_vhdx_non_sparse`).
+Reclaiming space then requires administrator privileges and `wsl --shutdown` (stopping the runner), so `just wsl-compact` only measures and prints instructions.
+It omits diskpart steps for sparse vhdx files; diskpart and Optimize-VHD reject sparse vhdx files with "must not be sparse".
+`wsl --manage <distro> --compact` listed in `wsl --help` on this host's WSL (3.0.5) has not been verified here.
+We do not enable `wsl --manage --set-sparse` automatically (ADR 0035). On WSL 3.0.5 it does not require `--allow-unsafe` and only warns that it is experimental.
+Running `fstrim` on an already-sparse vhdx is separate and safe.
 
-余り（slack）は実際の占有量（`du -B1`）で測る。
-`stat -c %s` は論理サイズ（最高水位で、減らない）なので、「論理サイズ - 使用量」はすでに返した分まで余りに数えてしまう。
-`just wsl-compact` は sparse の状態も表示する。
-判定はファイルの属性で行う（`fsutil sparse queryflag` の文は言語で変わり、英語の "This file is NOT set as sparse" にも "sparse" が含まれる）。
+Slack space is measured using actual allocation (`du -B1`).
+`stat -c %s` gives logical size (the high-water mark, which never shrinks), so "logical size - used space" double-counts space already returned.
+`just wsl-compact` also shows sparse status.
+It checks the file attribute directly (`fsutil sparse queryflag` text varies by locale, and even English "This file is NOT set as sparse" contains "sparse").
 
-`just wsl-compact` は、vhdx を開ける利用者も確かめる。vhdx は distro 全体で、runner の認証情報を含む。
-許すのは、この利用者、SYSTEM、Administrators と、WSL 自身が付ける SID（`S-1-5-83-*`、`S-1-15-*`）だけである。
-それ以外があれば WARN を出す。`--move` は移動先のボリュームの ACL を継承するので、D:\ の既定の `Authenticated Users:(M)` などが付く。
-直すのはファイルではなく vhdx のフォルダーである（`icacls <フォルダー> /inheritance:r /grant:r ...`。ファイルだけを直すと、次に作られる vhdx で元に戻る）。
-`wsl --manage --move` の後は、`just wsl-compact` で sparse と ACL を確かめる。
+`just wsl-compact` also checks who can open the vhdx. The vhdx holds the whole distro, including runner credentials.
+Only the current user, SYSTEM, Administrators, and WSL's own SIDs (`S-1-5-83-*`, `S-1-15-*`) are allowed.
+Anything else triggers a WARN. `--move` inherits the destination volume's ACL, pulling in D:\ defaults such as `Authenticated Users:(M)`.
+Fix the vhdx parent folder rather than the file (`icacls <folder> /inheritance:r /grant:r ...`; fixing only the file reverts on the next vhdx created).
+After `wsl --manage --move`, check sparse status and ACLs with `just wsl-compact`.
 
-PowerShell の `Get-Acl` は、Git Bash から呼ぶと pwsh 7 の `PSModulePath` を引き継いで読み込めない。
-shell script から ACL を読むときは .NET（`[IO.File]::GetAccessControl`）を使い、`PSModulePath` を `$PSHOME\Modules` に戻す。
+PowerShell's `Get-Acl` fails to load when called from Git Bash because it inherits pwsh 7's `PSModulePath`.
+When reading ACLs from a shell script, use .NET (`[IO.File]::GetAccessControl`) and reset `PSModulePath` to `$PSHOME\Modules`.
 
-## 開発用キャッシュ
+## Development caches
 
-コンテナ以外にも大きく育つのは開発用のキャッシュである（`~/.cache/uv` だけで数十 GB になる）。
-`just disk-gc` は、WSL の runner ユーザの HOME まで掃除する（`DISK_GC_NO_WSL=1` で止める）。
-対話作業と共有する場所なので、hourly timer には載せない。
+Besides containers, development caches grow large (`~/.cache/uv` alone reaches tens of GB).
+`just disk-gc` also cleans the WSL runner user's HOME (skip with `DISK_GC_NO_WSL=1`).
+Because this area is shared with interactive work, it is not on the hourly timer.
 
-これらのキャッシュは、同じ leg の runner のジョブも使う。
-そのため `clean` は leg ごとに、削除の各段（`mise prune`、`go clean`、キャッシュ 1 つずつの削除）の直前でジョブを判定する。
+These caches are also used by runner jobs on the same leg.
+So `clean` checks each leg for running jobs right before every deletion stage (`mise prune`, `go clean`, and each individual cache removal):
 
-- WSL の leg は distro の中で `pgrep -x Runner.Worker`、Windows の leg は `tasklist /FI "IMAGENAME eq Runner.Worker.exe" /FO CSV /NH`（Git Bash のパス変換を切って呼ぶ）で判定する。
-- ジョブが実行中なら `SKIP: a runner job is executing` を出し、残りを消さずに exit 0 で終わる。
-- 判定できなければ `SKIP: cannot tell` を出し、exit 2 で終わる。
-- 一方の leg が止まっても、もう一方の leg は続ける。
-- `just disk-report` は各 leg の `runner job: busy|idle|unknown` を表示する。本物の判定を、何も消さずに確かめられる。
-- 判定はその時点の観測であり、lock ではない。判定と削除の間に始まったジョブは防げない。
-- 実行中のジョブを承知で消すには `DISK_GC_ALLOW_BUSY=1` を付ける（WSL の leg にも渡る）。消したキャッシュを使っていたジョブは落ちる。
-`~/.cache/huggingface` は既定では対象外である（`DISK_GC_HUGGINGFACE=1` で含める。1 つのモデルで数十 GB あり、取り直しの重さが wheel とは違う）。
+- The WSL leg checks `pgrep -x Runner.Worker` inside the distro; the Windows leg checks `tasklist /FI "IMAGENAME eq Runner.Worker.exe" /FO CSV /NH` (with Git Bash path conversion disabled).
+- If a job is running, it prints `SKIP: a runner job is executing` and exits 0 without deleting the rest.
+- If detection fails, it prints `SKIP: cannot tell` and exits 2.
+- One leg stopping does not stop the other leg.
+- `just disk-report` displays `runner job: busy|idle|unknown` for each leg, letting you verify live detection without deleting anything.
+- Detection is a point-in-time check, not a lock; it cannot prevent a job starting between detection and deletion.
+- To force deletion despite a running job, set `DISK_GC_ALLOW_BUSY=1` (also passed to the WSL leg). Any job using the deleted cache will fail.
+`~/.cache/huggingface` is excluded by default (include with `DISK_GC_HUGGINGFACE=1`; a single model is tens of GB and much heavier to re-download than wheels).
 
-## Windows から WSL へのコマンドの渡し方
+## Passing commands from Windows to WSL
 
-Windows から WSL の GC を呼ぶときは、`MSYS_NO_PATHCONV=1` と `MSYS2_ARG_CONV_EXCL='*'` を付ける（対象の distro は `RUNNER_GC_WSL_DISTRO`、既定 `Ubuntu`）。
-付けないと、Git Bash が `/usr/local/bin/...`、`/mnt/c/...`、素の `/` まで Windows のパスに書き換えてから `wsl.exe` に渡す。
+When invoking WSL GC from Windows, set `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` (target distro is `RUNNER_GC_WSL_DISTRO`, default `Ubuntu`).
+Without them, Git Bash rewrites `/usr/local/bin/...`, `/mnt/c/...`, and even bare `/` into Windows paths before passing them to `wsl.exe`.

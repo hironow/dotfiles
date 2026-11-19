@@ -1,164 +1,167 @@
-# 計画: Windows と WSL の実機で見つかった doctor の誤った WARN を直す
+# Plan: Fix false doctor WARNs found on physical Windows and WSL machines
 
 **Date:** 2026-11-01
-**Status:** Approved（2026-11-01 19:32、所有者。D1・D2・D3 とも推奨どおり）。実装済み、Windows と WSL の再確認待ち（§9）
+**Status:** Approved (2026-11-01 19:32, owner: D1, D2, and D3 all as recommended). Implemented; awaiting Windows and WSL re-verification (§9)
 **Branch:** `fix/doctor-windows-wsl-warn`
-**Related:** [ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md)（Accepted、本計画の基準）、[ADR-0065](../adr/0065-kernel-cve-is-evidence-only.md)（Proposed、kernel は WARN 止まり）、[ADR-0062](../adr/0062-one-windows-ollama-for-wsl.md)（Ollama の判定は runbook が正）、前の計画 [doctor-os-aware-warn](doctor-os-aware-warn.md)（§10 で、Windows・WSL・Linux 固有の WARN は各機体の結果を見てから別の計画にするとした）
-**Blocking decisions:** なし（D1〜D3 は所有者が裁定済み）
-**Graduates to:** [ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md)（Context と Decision 2・5 に反映）
+**Related:** [ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md) (Accepted, baseline for this plan), [ADR-0065](../adr/0065-kernel-cve-is-evidence-only.md) (Proposed, kernel capped at WARN), [ADR-0062](../adr/0062-one-windows-ollama-for-wsl.md) (runbook is the source of truth for Ollama judgment), preceding plan [doctor-os-aware-warn](doctor-os-aware-warn.md) (§10 stated Windows/WSL/Linux-specific WARNs would be planned separately after seeing per-host outputs)
+**Blocking decisions:** none (D1–D3 decided by owner)
+**Graduates to:** [ADR-0066](../adr/0066-doctor-warns-only-what-needs-action.md) (reflected in Context and Decisions 2 and 5)
 
-入力: #526 のコメント（2026-11-01 19:17 JST）。trade 機の native Windows と WSL（Ubuntu 24.04、カーネル `6.18.54.1-microsoft-standard-WSL2`）で、main `f582147` の `just doctor` を実行した結果。
+Input: comment on #526 (2026-11-01 19:17 JST). Output of `just doctor` on main `f582147` run on the trade machine's native Windows and WSL (Ubuntu 24.04, kernel `6.18.54.1-microsoft-standard-WSL2`).
 
-## 1. 目的と完了の条件
+## 1. Purpose and completion criteria
 
-ADR-0066 Decision 1 の基準（WARN は「その機体で operator が見るか、手を動かすべきこと」だけ）に、Windows と WSL の実機で外れていた行を合わせる。ERR の判定と exit code の契約は変えない（ADR-0066 Decision 6）。
+Align lines that misfired on physical Windows and WSL machines with ADR-0066 Decision 1 (WARN only for "what the operator should inspect or act on on this machine"). Keep ERR rules and exit code contracts unchanged (ADR-0066 Decision 6).
 
-完了の条件:
+Completion criteria:
 
-- 下の 2.1〜2.7 の各項目に、先に失敗するテストを書いてから実装し、`just ci` が exit 0。
-- PR の CI が全 pass。
-- この Mac で、merge 後の main で `just ca-doctor-build` → `just kernel-doctor-build` → `just doctor` を実行し、WARN と ERR が今（`warn=1 err=1`）より増えず、exit code が変わらない（1、system python の ERR）。ca-doctor と kernel-doctor は source が変わると古い binary を `WARN ca-build` / `WARN kernel-build` で止めるので（`tools/ca-doctor/main.go:46`、`tools/kernel-doctor/main.go:121`）、作り直さない確認は数えない。`just ci` の go-test は doctor が使う binary を作り直さない。
-- Windows と WSL の実機確認は、trade 機の operator に依頼する（この Mac からは測れない）。依頼には merge 後の SHA を書く。結果（その SHA で作り直した binary の `just doctor`）が PR に届き、§7 の期待どおりに行が変わったこと、残すべき WARN / ERR と exit code が残っていることを確かめた時点で完了とする。届くまでは「実装済み・実機確認待ち」として handover の Windows と WSL の節に残す。
+- For each item 2.1-2.7 below, write a failing test first, implement it, and pass `just ci` with exit 0.
+- All PR CI checks pass.
+- On this Mac, after merging to main, run `just ca-doctor-build` → `just kernel-doctor-build` → `just doctor` and verify WARN and ERR do not exceed current counts (`warn=1 err=1`) and exit code stays unchanged (1, system python ERR). Because ca-doctor and kernel-doctor block stale binaries with `WARN ca-build` / `WARN kernel-build` when sources change (`tools/ca-doctor/main.go:46`, `tools/kernel-doctor/main.go:121`), verification without rebuilding does not count. `just ci` go-test does not rebuild the binaries doctor uses.
+- Ask the trade machine's operator for physical Windows and WSL verification (unmeasurable from this Mac). Include the post-merge SHA in the request. Consider complete once results (from `just doctor` with rebuilt binaries at that SHA) arrive on the PR confirming lines changed as expected in §7 and expected WARNs / ERRs and exit codes remain. Until then, keep it in handover's Windows and WSL section as "implemented; awaiting physical verification".
 
-## 2. 変更
+## 2. Changes
 
-### 2.1 Windows の curl（Schannel）が証明書を拒否したとき exit 35 になる（報告 1）
+### 2.1 Windows curl (Schannel) exits 35 when rejecting a certificate (Report 1)
 
-事実（上流の curl `lib/vtls/schannel.c`、`lib/strerror.c` を 2026-11-01 に読んだ）:
+Facts (read upstream curl `lib/vtls/schannel.c` and `lib/strerror.c` on 2026-11-01):
 
-- Schannel の handshake の失敗のうち、exit 60（`CURLE_PEER_FAILED_VERIFICATION`）になるのは `SEC_E_WRONG_PRINCIPAL` と `SEC_E_UNTRUSTED_ROOT` だけ。それ以外はすべて exit 35（`CURLE_SSL_CONNECT_ERROR`）で、stderr に `schannel: next InitializeSecurityContext failed: <名前> (0x........) - <説明>` を出す。
-- `Curl_sspi_strerror` が名前を出す証明書関係の値は、`CRYPT_E_REVOKED`、`CRYPT_E_NO_REVOCATION_CHECK`、`CRYPT_E_REVOCATION_OFFLINE`、`CRYPT_E_NOT_IN_REVOCATION_DATABASE`、`CRYPT_E_NO_REVOCATION_DLL`、`SEC_E_CERT_EXPIRED`、`SEC_E_CERT_UNKNOWN`、`SEC_E_CERT_WRONG_USAGE` など。
+- Among Schannel handshake failures, only `SEC_E_WRONG_PRINCIPAL` and `SEC_E_UNTRUSTED_ROOT` produce exit 60 (`CURLE_PEER_FAILED_VERIFICATION`). All others exit 35 (`CURLE_SSL_CONNECT_ERROR`) with `schannel: next InitializeSecurityContext failed: <name> (0x........) - <description>` on stderr.
+- Certificate-related names emitted by `Curl_sspi_strerror` include `CRYPT_E_REVOKED`, `CRYPT_E_NO_REVOCATION_CHECK`, `CRYPT_E_REVOCATION_OFFLINE`, `CRYPT_E_NOT_IN_REVOCATION_DATABASE`, `CRYPT_E_NO_REVOCATION_DLL`, `SEC_E_CERT_EXPIRED`, `SEC_E_CERT_UNKNOWN`, and `SEC_E_CERT_WRONG_USAGE`.
 
-変更（`tools/ca-doctor/probe.go` の `CurlOutcome`）:
+Change (`CurlOutcome` in `tools/ca-doctor/probe.go`):
 
-- exit 35 で、stderr に `schannel:` と、次のいずれかの名前の直後に空白と `(0x` が続く文字列があれば `CertRejected` とする: `CRYPT_E_REVOKED`、`SEC_E_CERT_EXPIRED`、`SEC_E_CERT_WRONG_USAGE`。
-- 失効の確認ができなかったことを示す名前（`CRYPT_E_NO_REVOCATION_CHECK`、`CRYPT_E_REVOCATION_OFFLINE` など）と、意味の広い `SEC_E_CERT_UNKNOWN` は `Unknown` のまま（証明書を判定した結果ではないため）。
-- stderr の文字列は今までどおり出力しない（判定に使うだけ）。
+- On exit 35, return `CertRejected` if stderr contains `schannel:` and any of the following names followed immediately by a space and `(0x`: `CRYPT_E_REVOKED`, `SEC_E_CERT_EXPIRED`, `SEC_E_CERT_WRONG_USAGE`.
+- Keep names indicating revocation could not be checked (`CRYPT_E_NO_REVOCATION_CHECK`, `CRYPT_E_REVOCATION_OFFLINE`, etc.) and the broad `SEC_E_CERT_UNKNOWN` as `Unknown` (not a certificate rejection verdict).
+- Continue suppressing stderr text from output (used only for classification).
 
-テスト（Red を先に）: `probe_test.go` に `CurlOutcome` の表を足す。exit 35 + `CRYPT_E_REVOKED` → `CertRejected`、exit 35 + `CRYPT_E_REVOCATION_OFFLINE` → `Unknown`、exit 35 で `schannel:` が無い（OpenSSL の handshake 失敗）→ `Unknown`、exit 60 → 今までどおり `CertRejected`、truncated → `Unknown`。
+Tests (Red first): add a `CurlOutcome` table to `probe_test.go`: exit 35 + `CRYPT_E_REVOKED` → `CertRejected`, exit 35 + `CRYPT_E_REVOCATION_OFFLINE` → `Unknown`, exit 35 without `schannel:` (OpenSSL handshake failure) → `Unknown`, exit 60 → `CertRejected` as before, truncated → `Unknown`.
 
-効果: Windows の `ca-live-emudhra-2026-curl` が `unverified=14/14` の WARN から、全部拒否の INFO（ADR-0066 Decision 3）になる。受け入れたホストがあれば ERR のまま。
+Effect: Windows `ca-live-emudhra-2026-curl` moves from WARN `unverified=14/14` to all-rejected INFO (ADR-0066 Decision 3). Remains ERR if any host is accepted.
 
-### 2.2 Windows で control の接続が時々リセットされる（報告 2、原因は IPv6）
+### 2.2 Windows control connection resets intermittently (Report 2; root cause is IPv6)
 
-事実: trade 機の Windows から control URL へ 10 回中 3 回 `Connection was reset`（curl と python）。WSL からは 10 回とも成功。テストホスト 14 本はリセットされていない（`certificate-rejected=14 unverified=0`）。原因はまだ確かめていない。
+Facts: from Windows on the trade machine to the control URL, 3 of 10 attempts hit `Connection was reset` (curl and python); from WSL, 10 of 10 succeeded. All 14 test hosts did not reset (`certificate-rejected=14 unverified=0`). Cause not yet verified.
 
-変更（`ProbeClient`）: control URL の結果が `Unknown` のときだけ、同じ client で最大 2 回まで再試行する（合計 3 回）。`Accepted` と `CertRejected` は再試行しない。テストホストは再試行しない（報告ではリセットされておらず、到達できないホストの timeout が 3 倍になるのを避ける）。再試行も global の同時実行数の枠を使う。
+Change (`ProbeClient`): only when control URL returns `Unknown`, retry up to 2 times with the same client (3 attempts total). Do not retry `Accepted` or `CertRejected`. Do not retry test hosts (no resets reported, and avoids tripling timeouts for unreachable hosts). Retries share the global concurrency budget.
 
-理由: control は「この client がそもそも TLS でつなげるか」を確かめるためのもので、1 回のリセットではその答えにならない。3 回とも `Unknown` なら今までどおり WARN。未確認を OK にはしない。
+Reason: control tests "can this client establish TLS at all?", which a single reset does not answer. If all 3 return `Unknown`, keep WARN as before. Never mark unverified as OK.
 
-テスト: fake の `TLSProber`（control だけ 1 回目 `Unknown`、2 回目 `Accepted`）で INFO になること、3 回とも `Unknown` なら WARN で、control の試行が 3 回で止まること、`CertRejected` の control は 1 回しか試さないこと。
+Tests: using a fake `TLSProber` (control returns `Unknown` first, `Accepted` second) gives INFO; 3 `Unknown`s give WARN and stop at 3 control attempts; `CertRejected` control is tried only once.
 
-原因は IPv6 だった（2026-11-01、trade 機。[ca-control-ipv4](ca-control-ipv4.md) §1）。control URL は IPv4 と IPv6 の両方のアドレスを持ち、Windows は IPv6 を先に使う。その IPv6 の接続の約半数がリセットされた（curl `-6` は 30 回中 19 回、`-4` は 0 回）。テストホストは IPv4 のアドレスしか持たない。上の 3 回の再試行だけでは揺れが残ったので（8 回中 4 回で WARN）、[#529](https://github.com/hironow/dotfiles/pull/529) で 2 回目を IPv4 に限った（Bun を除く）。どこでリセットされるかは確かめていない。
+Root cause was IPv6 (2026-11-01, trade machine; [ca-control-ipv4](ca-control-ipv4.md) §1). The control URL has both IPv4 and IPv6 addresses, and Windows prefers IPv6. Roughly half of IPv6 connections reset (curl `-6`: 19 of 30; `-4`: 0 of 30). Test hosts have only IPv4 addresses. Because 3 retries alone remained flaky (WARN in 4 of 8 runs), [#529](https://github.com/hironow/dotfiles/pull/529) restricted the 2nd attempt to IPv4 (except Bun). Where the reset happens has not been traced.
 
-### 2.3 版の要素が 2 つ（pip `24.0`）だと「解析できない」になる（報告 3）
+### 2.3 Two-component version (pip `24.0`) reports "unparseable" (Report 3)
 
-事実: `stableVersion`（`tools/ca-doctor/policy.go:177`）は `x.y.z` だけを受け付ける。Ubuntu の system pip は `24.0`。pip が修正版として `26.3` のような 2 要素の版を出すと、修正済みでも WARN になる。
+Facts: `stableVersion` (`tools/ca-doctor/policy.go:177`) accepts only `x.y.z`. Ubuntu system pip is `24.0`. If pip releases a two-component fix like `26.3`, it would still emit WARN even when patched.
 
-変更: 観測した版（ツールが出した版）に限り、`x.y` を `x.y.0` として比べる。PEP 440 と Go の版の付け方（`1.27` = `1.27.0`）のどちらでも、足りない要素は 0 である。事故ルールの修正床（`incidents/*.json` の `minimum`）は今までどおり 3 要素だけを受け付ける（`incidents.go:78` の検証は変えない）。kernel-doctor は変えない（ADR-0065 Decision 3: 文字列全体が `x.y.z` のときだけ比べる）。
+Change: for observed tool versions only, compare `x.y` as `x.y.0`. In both PEP 440 and Go versioning (`1.27` = `1.27.0`), an omitted trailing component is 0. Incident fix floors (`minimum` in `incidents/*.json`) still accept only 3 components (keep `incidents.go:78` validation unchanged). Leave kernel-doctor unchanged (ADR-0065 Decision 3: compare only full `x.y.z` strings).
 
-テスト（`VersionEvidenceFor`）: pip `24.0` → WARN `24.0 is outside the reviewed fix branches (26)`、`26.3` → OK、`26.2` → ERR（`26.2.0 < 26.2.2`）、`26` → WARN unparseable、`26.3rc1` → WARN unparseable。修正床の `26.2` は検証で拒否されたまま。
+Tests (`VersionEvidenceFor`): pip `24.0` → WARN `24.0 is outside the reviewed fix branches (26)`, `26.3` → OK, `26.2` → ERR (`26.2.0 < 26.2.2`), `26` → WARN unparseable, `26.3rc1` → WARN unparseable. Fix floor `26.2` still fails validation.
 
-効果: system pip `24.0` の WARN は残る（系列外は ADR-0066 の前計画 §4.3 どおり WARN）が、文言が正しくなる。2 要素の修正版が誤って WARN になることが無くなる。
+Effect: system pip `24.0` still warns (out-of-branch warns per ADR-0066's previous plan §4.3), with accurate wording. Two-component patched versions no longer trigger false WARNs.
 
-### 2.4 `brew - missing` を OS で出し分ける（報告 4 の前半）
+### 2.4 Branch `brew - missing` by OS (first half of Report 4)
 
-事実: justfile は「Linux では brew は任意（WSL と mise 管理の機体には Homebrew が無い）」（`justfile` の dump の recipe）、「native Windows には brew が無い」（`update-brew`）としている。`scripts/doctor.sh:30` は OS を見ずに `WARN brew - missing` を出す。
+Facts: justfile states "brew is optional on Linux (WSL and mise-managed machines lack Homebrew)" (`justfile` dump recipe) and "native Windows has no brew" (`update-brew`). `scripts/doctor.sh:30` emits `WARN brew - missing` without checking OS.
 
-変更（`scripts/doctor.sh`）:
+Change (`scripts/doctor.sh`):
 
-- macOS: 今までどおり（有れば OK、無ければ WARN）。
-- Linux（WSL を含む）: 有れば OK、無ければ `INFO brew - not installed (optional on Linux; Brewfile steps are skipped)`。
-- native Windows（`MINGW*|MSYS*|CYGWIN*`）: 行を出さない（ADR-0066 Decision 5）。
-- `log_info` の helper を `log_err` の次に足す（`info` を数える）。今は INFO を数える helper が無く、子の検査の INFO を各 block で数えている。
+- macOS: unchanged (OK if present, WARN if missing).
+- Linux (including WSL): OK if present, else `INFO brew - not installed (optional on Linux; Brewfile steps are skipped)`.
+- native Windows (`MINGW*|MSYS*|CYGWIN*`): emit no line (ADR-0066 Decision 5).
+- Add a `log_info` helper right after `log_err` (increments `info`). Currently no helper counts INFO; only child-check blocks count their INFOs.
 
-テスト: `tests/unit/test_doctor_os_gating.py` に、Darwin / Linux / WSL / MINGW の 4 形と brew の有無で表を足す（`has` と `uname` を shell 関数で偽装）。
+Tests: add an OS × brew matrix in `tests/unit/test_doctor_os_gating.py` covering Darwin / Linux / WSL / MINGW (mocking `has` and `uname` with shell functions).
 
-### 2.5 Windows の `ca-os-bundle` が常に WARN（報告 4 の後半）
+### 2.5 Windows `ca-os-bundle` always emits WARN (second half of Report 4)
 
-事実: `storeInventory`（`tools/ca-doctor/main.go:250`）は `dpkg-query`、`rpm`、`apk`、（macOS では）`brew` を探す。Windows にはどれも無いので、毎回 `WARN ca-os-bundle - OS CA bundle/revocation update state not established` になる。Windows の信頼ストアと拒否リスト（CTL）は Windows Update が更新するもので、package の版は無い（CA runbook の「native Windows」の行）。
+Facts: `storeInventory` (`tools/ca-doctor/main.go:250`) looks for `dpkg-query`, `rpm`, `apk`, and (on macOS) `brew`. None exist on Windows, so it always reports `WARN ca-os-bundle - OS CA bundle/revocation update state not established`. Windows root store and CTL (disallowed list) are updated via Windows Update, not packages (CA runbook "native Windows" row).
 
-変更:
+Change:
 
-- [Tidy First の構造の commit] `storeInventory(ctx)` を `storeInventory(ctx, goos string)` にし、呼び出し側は `runtime.GOOS` を渡す（振る舞いは変えない）。
-- [振る舞い] `goos == "windows"` のとき `INFO ca-os-bundle - Windows root store and disallowed list are updated by Windows Update, not by a package; not inventoried here; check Windows Update and organisational certificate distribution (docs/runbook/ca-doctor.md)` を返す。Linux で package の版が取れないとき（未知のディストリビューション）は今までどおり WARN。
+- [Tidy First structural commit] change `storeInventory(ctx)` to `storeInventory(ctx, goos string)`, passing `runtime.GOOS` at the call site (no behavior change).
+- [Behavioral] when `goos == "windows"`, return `INFO ca-os-bundle - Windows root store and disallowed list are updated by Windows Update, not by a package; not inventoried here; check Windows Update and organisational certificate distribution (docs/runbook/ca-doctor.md)`. On Linux when no package version can be read (unknown distro), keep WARN as before.
 
-テスト: `storeInventory(ctx, "windows")` が INFO の 1 行を返し、PATH 上の package コマンドを実行しないこと（PATH を空の dir にする）。既存の dpkg-query の fake のテストは `"linux"` を渡す。
+Tests: `storeInventory(ctx, "windows")` returns 1 INFO line without executing any package command on PATH (empty dir PATH). Existing fake `dpkg-query` test passes `"linux"`.
 
-### 2.6 kernel の第三者の数値と助言の行を INFO にする（報告 5、判断 D1）
+### 2.6 Downgrade kernel third-party figures and advice lines to INFO (Report 5, Decision D1)
 
-事実: WSL では CVE 1 件につき、`kernel-version-*`（`unverified-vendor`）1 行、`kernel-observed-*`（NVD などの数値）1 行、`kernel-advice-*`（記録に固定された助言の文）5 行の、計 7 行が WARN になる（`tools/kernel-doctor/main.go:201-207`）。observed と advice は毎回同じ文で、機体ごとの状態を表さない。
+Facts: on WSL, each CVE emits 7 WARN lines: 1 `kernel-version-*` (`unverified-vendor`), 1 `kernel-observed-*` (NVD figures, etc.), and 5 `kernel-advice-*` (fixed advice text from the record) (`tools/kernel-doctor/main.go:201-207`). Observed and advice text never vary by machine state.
 
-変更（推奨）: `kernel-observed-*` と `kernel-advice-*` を INFO にする。`kernel-version-*`（修正床に届かない、またはベンダーのカーネルで未判定）と `kernel-sysctl-*` は今の level のまま。これで WSL の kernel の WARN は CVE 1 件につき 1 行（`kernel-version-*`）になる。
+Change (recommended): make `kernel-observed-*` and `kernel-advice-*` INFO. Keep `kernel-version-*` (below fix floor or unverified vendor kernel) and `kernel-sysctl-*` at their current levels. On WSL, kernel WARNs drop to 1 line per CVE (`kernel-version-*`).
 
-ADR との関係:
+Relation to ADRs:
 
-- ADR-0065 Decision 4（kernel の所見は WARN 止まりで `err` に入れない）は上限の決まりで、INFO はその下にある。Decision 2（`just doctor` が advisory として表示する）も、INFO は表示されるので満たす。
-- ADR-0066 Decision 1 と 2 は kernel-doctor を対象に含み、第三者の数値（事実）と固定の助言（注意書き）は INFO と定めている。PR #526 は macOS でしか確かめず、この 2 種の行を見落とした。本変更は実装を ADR-0066 に合わせるもので、決定を変えない。
-- それでも報告者が所有者の判断を求めたので、D1 として確認する。
+- ADR-0065 Decision 4 (kernel findings cap at WARN, never `err`) sets an upper bound; INFO sits below it. Decision 2 (`just doctor` prints as advisory) is also satisfied since INFO is displayed.
+- ADR-0066 Decisions 1 and 2 cover kernel-doctor and classify third-party figures (facts) and static advice (disclaimers) as INFO. PR #526 verified only on macOS and missed those two line kinds. This aligns implementation with ADR-0066 without changing decisions.
+- Because the reporter asked for an owner ruling, confirm as D1.
 
-テスト: kernel-doctor の `assessmentFindings` で observed と advice の level が INFO、version は WARN のまま、`Report` と `--json` の exit code が WARN の version 行だけで決まること。`tests/unit/test_doctor_kernel.py` は INFO を数えることを既に確かめているので、件数の期待値だけ直す。runbook `kernel-doctor.md` に「数値と助言は INFO」を 1 文足す。
+Tests: in kernel-doctor `assessmentFindings`, verify observed and advice are INFO, version stays WARN, and exit codes in `Report` and `--json` depend only on WARN version lines. `tests/unit/test_doctor_kernel.py` already verifies INFO counting, so update only expected counts. Add one sentence to `kernel-doctor.md` noting "figures and advice are INFO".
 
-### 2.7 Ollama の docker-desktop の未検査を INFO にする（報告の Windows の WARN 一覧から、判断 D2）
+### 2.7 Make Ollama `docker-desktop` uninspected status INFO (from reported Windows WARN list, Decision D2)
 
-事実: `ollama_host.py`（`scripts/ollama_host.py:1531`）は「停止中の distro」と「docker-desktop（プラットフォーム管理）」を同じ `WARN ollama-inspection - ... stopped/platform-managed, uninspected` にまとめている。Ollama の runbook（ADR-0062 Decision 4 が判定の正本とする、`docs/runbook/ollama-windows-wsl.md:159`）は「停止中や接続不能の WSL は … 未検査の WARN とする。プラットフォーム管理の distro も未検査と表示する」と書き、プラットフォーム管理の distro を WARN とは定めていない。docker-desktop は ADR-0062 の Ollama のクライアントになりえない（Docker Desktop の内部の distro）。
+Facts: `ollama_host.py` (`scripts/ollama_host.py:1531`) groups "stopped distros" and "`docker-desktop` (platform-managed)" under the same `WARN ollama-inspection - ... stopped/platform-managed, uninspected`. The Ollama runbook (the judgment source of truth per ADR-0062 Decision 4, `docs/runbook/ollama-windows-wsl.md:159`) says "stopped or unreachable WSL distros emit uninspected WARN; platform-managed distros also report uninspected", and does not specify WARN for platform-managed distros. `docker-desktop` cannot be an ADR-0062 Ollama client (Docker Desktop's internal distro).
 
-変更（推奨）: docker-desktop は `INFO ollama-inspection - WSL docker-desktop: platform-managed, not an Ollama client; not inspected` とする。停止中の利用者の distro は runbook どおり WARN のまま。runbook の 159 行目に「プラットフォーム管理の distro は INFO で表示する」と明記する。
+Change (recommended): emit `INFO ollama-inspection - WSL docker-desktop: platform-managed, not an Ollama client; not inspected` for `docker-desktop`. Keep stopped user distros at WARN per the runbook. State explicitly on runbook line 159: "platform-managed distros report as INFO".
 
-テスト: `tests/unit/test_ollama_host.py` の既存のテスト（1633 行付近、`Ubuntu` 停止 + `docker-desktop`）を、停止中の `Ubuntu` は WARN、`docker-desktop` は INFO、どちらも起動しない、に分ける。
+Tests: split the existing test in `tests/unit/test_ollama_host.py` (around line 1633, stopped `Ubuntu` + `docker-desktop`) so stopped `Ubuntu` is WARN, `docker-desktop` is INFO, and neither is started.
 
-## 3. ADR-0066 の更新（Proposed のうちに直す）
+## 3. Update ADR-0066 (while still Proposed)
 
-- Context に、2026-11-01 の Windows と WSL の実測（`ok=61 warn=11 err=1 info=20` / `ok=54 warn=12 err=1 info=26`）と、本計画で直した行を足す。
-- Decision 5 の例に「Homebrew の行は macOS だけで WARN、Linux では INFO、native Windows では出さない」「Windows の OS の CA ストアの行は INFO」を足す。Decision 2 の例に「kernel の第三者の数値と固定の助言」を足す。
-- Consequences の「Windows と WSL の実機での確認が別に要る」を、確認済みの事実と残り（本計画の変更後の再確認）に直す。
-- 「決定（記入待ち）」の A 案のアクション（「`feat/doctor-os-aware-warn` の PR を merge し …」）は既に済んでいるので、今の状態に直す。
-- 決定変更ログには何も足さない（Proposed のままなので）。decision-queue の行の「次の一手」を直す。
-- 起票時の cross-DR の確認をやり直す（ADR-0062、ADR-0065 との関係）。矛盾が出たら止めて所有者に相談する。
+- Add the 2026-11-01 Windows and WSL measurements (`ok=61 warn=11 err=1 info=20` / `ok=54 warn=12 err=1 info=26`) and the lines fixed by this plan to Context.
+- Add to Decision 5 examples: "Homebrew line is WARN only on macOS, INFO on Linux, omitted on native Windows" and "Windows OS CA store line is INFO". Add to Decision 2 examples: "kernel third-party figures and static advice".
+- Update Consequences "physical Windows and WSL verification still required" to list verified facts and remaining work (re-verification after this plan's changes).
+- Update the Option A action under "Decision (pending)" ("merge the `feat/doctor-os-aware-warn` PR …", already done) to the current state.
+- Add nothing to the decision change log (still Proposed). Update the "Next step" column in decision-queue.
+- Re-run the cross-DR check from proposal time (relations to ADR-0062 and ADR-0065); stop and consult the owner if any conflict appears.
 
-## 4. 順序（commit の単位）
+## 4. Order (commit units)
 
-1. `refactor(ca-doctor): pass the OS to the CA store inventory`（2.5 の構造の変更だけ）
-2. `fix(ca-doctor): count Schannel certificate rejections from curl`（2.1）
-3. `fix(ca-doctor): retry an unknown control probe before calling it unknown`（2.2）
-4. `fix(ca-doctor): compare two-part tool versions as x.y.0`（2.3）
-5. `feat(ca-doctor): report the Windows root store as INFO`（2.5 の振る舞い）
-6. `feat(doctor): show brew only where it is used`（2.4）
-7. `feat(kernel-doctor): show third-party figures and advice as INFO`（2.6、D1 が承認されたときだけ）
-8. `feat(ollama): show the platform-managed distro as INFO`（2.7、D2 が承認されたときだけ）
-9. `docs(adr): record the Windows and WSL measurement in ADR-0066`（3）
+1. `refactor(ca-doctor): pass the OS to the CA store inventory` (2.5 structural change only)
+2. `fix(ca-doctor): count Schannel certificate rejections from curl` (2.1)
+3. `fix(ca-doctor): retry an unknown control probe before calling it unknown` (2.2)
+4. `fix(ca-doctor): compare two-part tool versions as x.y.0` (2.3)
+5. `feat(ca-doctor): report the Windows root store as INFO` (2.5 behavioral)
+6. `feat(doctor): show brew only where it is used` (2.4)
+7. `feat(kernel-doctor): show third-party figures and advice as INFO` (2.6, only if D1 approved)
+8. `feat(ollama): show the platform-managed distro as INFO` (2.7, only if D2 approved)
+9. `docs(adr): record the Windows and WSL measurement in ADR-0066` (3)
 
-各 commit は Red → Green の順。commit 後に `git show --name-only` で中身を確かめる。worktree で作業し、`/Users/nino/dotfiles` は main のまま。draft PR → `just ci` → worktree で `just ca-doctor-build` → `just kernel-doctor-build` → `just doctor`（変更の効果を Mac で見る）→ ready → CI 全 pass → squash merge（`--watch`、`--auto` は使わない）→ main で同じ 3 つを実行して §1 の Mac の条件を確かめる → PR に merge 後の SHA と §7 の依頼をコメントする → handover を更新する。
+Each commit follows Red → Green. Check contents after each commit with `git show --name-only`.
+Work in a worktree while keeping `/Users/nino/dotfiles` on main.
+Draft PR → `just ci` → rebuild `just ca-doctor-build` → `just kernel-doctor-build` → `just doctor` in worktree (inspect effect on Mac) → ready → all CI pass → squash merge (`--watch`, no `--auto`) → run the same 3 commands on main to confirm §1 Mac criteria → comment on the PR with post-merge SHA and §7 request → update handover.
 
-## 5. 所有者の判断
+## 5. Owner decisions
 
-- D1（承認）: kernel の observed と advice の行を INFO にするか（推奨: する。ADR-0066 Decision 1・2 の適用で、ADR-0065 Decision 4 の上限の内側）。
-- D2（承認）: Ollama の docker-desktop の行を INFO にするか（推奨: する。runbook の文言どおり。停止中の利用者の distro は WARN のまま）。
-- D3（承認）: control の再試行（2.2）を入れるか、原因が分かるまで WARN のままにするか（推奨: 入れる。最大 3 回、control だけ。原因の調査は handover に残す）。
+- D1 (approve): make kernel observed and advice lines INFO? (Recommended: yes; applies ADR-0066 Decisions 1 and 2 within ADR-0065 Decision 4's upper bound.)
+- D2 (approve): make Ollama `docker-desktop` line INFO? (Recommended: yes; matches runbook wording; stopped user distros stay WARN.)
+- D3 (approve): add control retries (2.2) or keep WARN until root cause is found? (Recommended: add; max 3 attempts, control only; keep root-cause investigation in handover.)
 
-## 6. 範囲外
+## 6. Out of scope
 
-- trade 機の `ollama-owner`、`ollama-health`、`ERR ollama-bridge`: 本当の構成の問題。operator がその機体で Windows の Ollama を起動し、`ollama_host.py --setup` を実行する（runbook どおり）。
-- `python-retired`、`rtk-pi-extension`: その機体で手を動かせば消える本物の WARN。
-- Windows の `docker - daemon unreachable` は当時の観測ログであり、Docker の導入を求める現行手順ではない。
-  管理する実行系の現在の要件は ADR 0067 の Podman 5 以降で確認する。
-- `kernel-version-*` の `unverified-vendor` の WARN: ADR-0065 Decision 3 どおり（ベンダーのカーネルは判定しない）。
-- 停止中の利用者の WSL distro の `ollama-inspection` WARN: Ollama の runbook が WARN と定めている。
-- Linux で package の版が取れない場合の `ca-os-bundle` WARN。
+- `ollama-owner`, `ollama-health`, `ERR ollama-bridge` on trade machine: genuine configuration issues; operator starts Windows Ollama on that machine and runs `ollama_host.py --setup` (per runbook).
+- `python-retired`, `rtk-pi-extension`: genuine WARNs cleared by operator action on that machine.
+- Windows `docker - daemon unreachable` was an observation log from that time, not a current procedure requesting Docker installation.
+  Check current managed-runtime requirements under Podman 5+ in ADR 0067.
+- `kernel-version-*` `unverified-vendor` WARN: per ADR-0065 Decision 3 (do not judge vendor kernels).
+- `ollama-inspection` WARN for stopped user WSL distros: required as WARN by Ollama runbook.
+- `ca-os-bundle` WARN on Linux when package version cannot be retrieved.
 
-## 7. Windows と WSL での再確認の依頼（PR に書く）
+## 7. Request for Windows and WSL re-verification (posted on PR)
 
-trade 機で `git pull`（merge 後の SHA であることを `git rev-parse --short HEAD` で確かめる）→ `just ca-doctor-build` → `just kernel-doctor-build` → `just doctor`。期待: Windows は `ca-live-*-curl` が INFO（control が通れば）、`brew` と `ca-os-bundle` の WARN が消え、docker-desktop の行が INFO。WSL は `brew` が INFO、kernel の WARN が 1 行。結果を PR にコメントする。
+On the trade machine, run `git pull` (verify post-merge SHA with `git rev-parse --short HEAD`) → `just ca-doctor-build` → `just kernel-doctor-build` → `just doctor`.
+Expected: on Windows, `ca-live-*-curl` is INFO (if control succeeds), `brew` and `ca-os-bundle` WARNs disappear, and `docker-desktop` is INFO; on WSL, `brew` is INFO and kernel has 1 WARN line. Comment results on the PR.
 
-## 8. レビューの記録
+## 8. Review record
 
-- Codex 1 回目（2026-11-01）: REVISE、指摘 1 件。
-    - [P2] 変更後の binary を作り直した確認と、対象 OS での確認が完了の条件に無い → **採用**。`tools/ca-doctor/main.go:46` と `tools/kernel-doctor/main.go:121` で、source が変わると古い binary が `WARN ca-build` / `WARN kernel-build` で止まることを確かめた。§1 の完了条件、§4 の順序、§7 の依頼に、作り直しと SHA の確認を足した。
-- Codex 2 回目（2026-11-01、`resume --last`）: APPROVE、新しい指摘なし。前回の P2 は §1 と §4 で解消と判定。
+- Codex round 1 (2026-11-01): REVISE, 1 finding.
+    - [P2] Completion criteria omit verifying rebuilt binaries after changes and verifying on target OSes → **Adopted**. Confirmed in `tools/ca-doctor/main.go:46` and `tools/kernel-doctor/main.go:121` that old binaries stop with `WARN ca-build` / `WARN kernel-build` when source changes. Added rebuilds and SHA confirmation to §1 completion criteria, §4 sequence, and §7 request.
+- Codex round 2 (2026-11-01, `resume --last`): APPROVE, no new findings. Previous P2 judged resolved in §1 and §4.
 
-## 9. 実装の結果（2026-11-01、この Mac）
+## 9. Implementation results (2026-11-01, this Mac)
 
-- `just ci` は exit 0（unit 1995 passed。golangci-lint と `go test` は ca-doctor と kernel-doctor の両方で通った）。
-- worktree で binary を作り直して `just doctor`: `ok=52 warn=6 err=1 info=31` で、前の計画の §11 と同じ。WARN 6 件のうち 5 件は worktree から実行したための `claude-plugins`、1 件は system pip 21.2.4（系列外）。ERR は system python の `ca-live` の 1 行。本計画の変更は Windows と WSL で効くもので、この Mac の行は変わらない。
-- 実装中に計画から変えた点: 2.4 の brew の行は `case "$(uname -s)" in` でなく `if` で書いた。既存のテスト 3 本（`test_doctor_windows.py`、`test_doctor_npm_rogue.py`、`test_retired_python_tools.py`）が「最初の `case "$(uname -s)" in` が Windows 専用の節」として位置を確かめており、最初の `just ci` でそれを壊したため。
-- Windows と WSL の再確認は、merge 後に #526 へ依頼した（2026-11-01 20:09、[コメント](https://github.com/hironow/dotfiles/pull/526#issuecomment-6557133995)、§7）。`ca-live` の行は [#529](https://github.com/hironow/dotfiles/pull/529) の確認で Windows と WSL の両方で INFO になった。`just doctor` 全体の結果はまだ届いていないので、本計画は「実装済み・実機確認待ち」。
+- `just ci` exited 0 (unit 1995 passed; golangci-lint and `go test` passed on both ca-doctor and kernel-doctor).
+- Rebuilt binaries in worktree and ran `just doctor`: `ok=52 warn=6 err=1 info=31`, matching §11 of the previous plan. Of the 6 WARNs, 5 are `claude-plugins` from running in a worktree and 1 is system pip 21.2.4 (out of branch). ERR is the 1 system python `ca-live` line. Changes in this plan target Windows and WSL, so this Mac's output is unchanged.
+- Plan adjustment during implementation: wrote 2.4's brew logic using `if` rather than `case "$(uname -s)" in`. Three existing tests (`test_doctor_windows.py`, `test_doctor_npm_rogue.py`, `test_retired_python_tools.py`) locate the Windows-only section as the first `case "$(uname -s)" in` and broke during the first `just ci`.
+- Requested Windows and WSL re-verification on #526 after merge (2026-11-01 20:09, [comment](https://github.com/hironow/dotfiles/pull/526#issuecomment-6557133995), §7). The `ca-live` line became INFO on both Windows and WSL during [#529](https://github.com/hironow/dotfiles/pull/529) verification. Because full `just doctor` output has not yet arrived, this plan remains "implemented; awaiting physical verification".

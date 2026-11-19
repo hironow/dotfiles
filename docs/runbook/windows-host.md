@@ -1,161 +1,161 @@
-# native Windows の機体で動かす
+# Running on native Windows hosts
 
-native Windows（WSL の外）で、このリポジトリの recipe、スクリプト、テストを動かすときに踏みやすい罠をまとめる。
-justfile の shell 設定、`scripts/*.sh`、mise の設定、Windows で動く Python を変える前に読む。
+This runbook covers common pitfalls when running this repository's recipes, scripts, and tests on native Windows (outside WSL).
+Read it before changing justfile shell settings, `scripts/*.sh`, mise configuration, or Python code that runs on Windows.
 
-## just の recipe を動かす shell
+## Shell for running just recipes
 
-Windows は、裸の `bash` を PATH より先に `C:\Windows\System32\bash.exe`（WSL の入口）で解決する。
-そのため、bash を使う recipe が WSL に落ちることがある（WSL を入れていない機体では起きない）。
-影響は recipe の書き方で 2 通りに分かれる。
+Windows resolves bare `bash` to `C:\Windows\System32\bash.exe` (the WSL entry point) ahead of PATH.
+As a result, recipes using `bash` can fall into WSL (this does not happen on machines without WSL).
+The impact splits in two depending on how the recipe is written:
 
-- **普通の recipe**（`doctor`、`harden-env`、`deploy`、`clean` など、`bash scripts/*.sh` を呼ぶもの）：justfile の `set windows-shell := ["sh", …]` と前置き処理で解決済みで、PowerShell から直接実行できる。System32 に `sh.exe` はないので `sh` は Git Bash になり、前置き処理が `/usr/bin` を PATH の先頭に足してから内側の `/usr/bin/sh` を起動する。素の msys の `sh` は呼び出し元の PATH の順序をそのまま使うので、この前置きがないと内側の `bash` が WSL に落ちる。前置きは recipe の shell の中だけの変更である（`tests/unit/test_windows_shell_usr_bin_path.py` と `test_deploy_clean_linewise.py` が守る）。
-- **shebang の recipe**（`dump`、`scaffold-agent-baseline` など、`#!/usr/bin/env bash` で始まるもの）：`set shell` の影響を受けず、`env` が PATH の順序で `bash` を探す。素の PowerShell では System32 が先なので失敗する。Git Bash から実行する（`/usr/bin` が先頭にあるので Git Bash の `bash` になる）。
+- **Normal recipes** (`doctor`, `harden-env`, `deploy`, `clean`, and others calling `bash scripts/*.sh`): fixed by justfile's `set windows-shell := ["sh", …]` and wrapper preamble, so they run directly from PowerShell. Because System32 has no `sh.exe`, `sh` resolves to Git Bash, and the preamble prepends `/usr/bin` to PATH before starting the inner `/usr/bin/sh`. Plain MSYS `sh` keeps the caller's PATH order, so without this preamble the inner `bash` falls into WSL. The preamble applies only inside the recipe shell (guarded by `tests/unit/test_windows_shell_usr_bin_path.py` and `test_deploy_clean_linewise.py`).
+- **Shebang recipes** (`dump`, `scaffold-agent-baseline`, and others starting with `#!/usr/bin/env bash`): ignore `set shell`, and `env` searches PATH for `bash`. Plain PowerShell fails because System32 comes first. Run these from Git Bash (where `/usr/bin` is first, so `bash` resolves to Git Bash).
 
-Git の `usr\bin` を PATH の先頭に恒久的に足せば PowerShell からも動くが、`find` や `sort` などの Windows 版のコマンドを覆い隠すので勧めない。
-PowerShell から shebang の recipe を実行すると、登録済みの PATH に Git の `usr\bin` がなければ `could not find cygpath` で全部失敗する。
-`just harden-env` は、User の PATH に Git の `usr\bin` と `cmd` を足す。
-`just doctor` の Windows の節が cygpath の不足を検出し、直し方を表示する（経緯は memory `project_windows_shell_msys_sh_path_order`）。
+Permanently prepending Git's `usr\bin` to PATH makes PowerShell work too, but shadows Windows commands like `find` and `sort` and is not recommended.
+Running a shebang recipe from PowerShell without Git's `usr\bin` on PATH fails across the board with `could not find cygpath`.
+`just harden-env` appends Git's `usr\bin` and `cmd` to User PATH.
+`just doctor`'s Windows section detects missing `cygpath` and prints how to fix it (background in memory `project_windows_shell_msys_sh_path_order`).
 
-ネイティブのプロセス（Python など）から bash を起動するときも、裸の `bash` ではなく Git Bash の実体を指定する（テストでは `tests/unit/_bash_hook.py` の `resolve_bash()`）。
-Claude Code は hook を Git Bash で実行するので、hook のコマンドに `C:\` のパスを書くとバックスラッシュが失われる（`/` 区切りで書く）。
+When launching `bash` from a native process (such as Python), specify the actual Git Bash executable rather than bare `bash` (`resolve_bash()` in `tests/unit/_bash_hook.py` for tests).
+Because Claude Code runs hooks in Git Bash, hook commands with `C:\` paths lose backslashes (write them with `/` separators).
 
-## uv の設定ファイル
+## uv config file
 
-native Windows の uv は `~/.config/uv/uv.toml` ではなく `%APPDATA%\uv\uv.toml` を読む。
-これがないと供給網の隔離が効かず、`uv run` がコミット済みの `uv.lock` を書き換え、pre-commit の lint で commit が止まる。
-`just harden-env` が両方に書き、`just doctor` が不足を検出する（memory `project_windows_uv_appdata_config`）。
+Native Windows uv reads `%APPDATA%\uv\uv.toml`, not `~/.config/uv/uv.toml`.
+Without it, supply-chain quarantine does not apply, `uv run` rewrites the committed `uv.lock`, and pre-commit lint blocks commits.
+`just harden-env` writes both, and `just doctor` detects when it is missing (memory `project_windows_uv_appdata_config`).
 
-## mise の npm backend
+## mise npm backend
 
-native Windows は pnpm を使わない（ADR 0070）。`install.sh` は corepack を用意せず、`just doctor` は pnpm の行を出さない。
+Native Windows does not use pnpm (ADR 0070). `install.sh` does not set up corepack, and `just doctor` omits the pnpm line.
 
-mise の npm backend のパッケージマネージャーは `bun` にする（ADR 0036）。
-既定の `auto` は mise 内蔵の aube を使い、その配置では claude-code の postinstall が動かない。
-すると native binary（約 263MB）が展開されず、`bin/claude.exe` が 500 バイトの stub のまま残り、`node claude.exe` の実行で `ERR_UNKNOWN_FILE_EXTENSION` になる。
-install は成功として終わり、何も報告しない。
-npm-global の野良のコピーが PATH で mise の版を隠していると動き続けて見えるので、その野良を消す `just prune-rogue-npm-globals` が `claude` を壊したように見える。
+Set mise's npm backend package manager to `bun` (ADR 0036).
+The default `auto` uses mise's built-in aube, which skips `claude-code`'s postinstall.
+Then the native binary (about 263MB) is never extracted, leaving `bin/claude.exe` as a 500-byte stub, and running `node claude.exe` fails with `ERR_UNKNOWN_FILE_EXTENSION`.
+The install reports success without any warning.
+If a rogue npm-global copy shadows mise's version on PATH, `claude` appears to work until `just prune-rogue-npm-globals` removes the rogue copy and seems to break it.
 
-- backend を変えても、導入済みのものは直らない。`mise uninstall` と `mise install` で入れ直すまで stub のままである。
-- bun は shim を `node_modules/.bin` ではなく `<install>/bin/` に置く。mise activate の前に開いたシェルは古い `.bin` を PATH に持ったままなので、シェルを開き直す（`mise env` は正しい `bin/` を返す）。
-- Windows では、削除済みの exe でもプロセスは動き続ける。消したあとも今のセッションは動くが、次の起動ではそのパスがない（実体のパスは `ps -W` で確かめる）。
-- WinGet の版は、野良のコピーが PATH で勝っているあいだは見えず、野良を消すと現れる。mise の版より古いことがあり、`just doctor` の `winget-shadow` が検出する。
+- Changing the backend does not fix already-installed tools; they stay stubs until reinstalled with `mise uninstall` and `mise install`.
+- bun puts shims in `<install>/bin/` instead of `node_modules/.bin`. Shells opened before `mise activate` still hold the old `.bin` on PATH, so reopen the shell (`mise env` returns the right `bin/`).
+- On Windows, a running process continues even after its `.exe` is deleted. The current session keeps working after removal, then fails on the next launch (verify the real binary path with `ps -W`).
+- A WinGet install stays hidden while a rogue copy wins on PATH, then surfaces once the rogue copy is removed. It may be older than mise's version and is flagged by `just doctor`'s `winget-shadow`.
 
-bun backend では `npm_args` は読まれない（ADR 0040。bun は `bun_args` だけを読む）。
-claude-code の native binary が動くのは、bun の既定の信頼リストに載っていて postinstall が走るからである。
-postinstall が必要で信頼リストにない npm の道具を足すときは、`bun_args` か trustedDependencies を検討する（memory `project_mise_npm_ignore_scripts`）。
+The bun backend ignores `npm_args` (ADR 0040; bun reads only `bun_args`).
+`claude-code`'s native binary works because it is on bun's default trust list so postinstall runs.
+When adding an npm tool that needs postinstall and is not on the trust list, consider `bun_args` or trustedDependencies (memory `project_mise_npm_ignore_scripts`).
 
-## self-hosted runner の PATH
+## self-hosted runner PATH
 
-runner のジョブは mise activate を通らないので、Machine の PATH に scoop の shims、`.bun\bin`、mise の shims を入れている（`install_runner_svc_win.ps1` と `restore_machine_path.ps1`）。
-mise activate を通らないプロセス（ジョブや IDE）では、PATH で先に来る scoop や bun のコピーが使われ、mise の版と少しずれることがある。
-runner のサービスを止めて対話セッションで動かしていても、User の PATH に mise の shims はないので、Machine の PATH の shims は外さない。
+Because runner jobs skip `mise activate`, scoop shims, `.bun\bin`, and mise shims are added to Machine PATH (`install_runner_svc_win.ps1` and `restore_machine_path.ps1`).
+Processes that skip `mise activate` (jobs and IDEs) pick earlier scoop or bun copies on PATH, which may differ slightly from mise versions.
+Even when stopping the runner service to work interactively, User PATH lacks mise shims, so do not remove the shims from Machine PATH.
 
-## Codex の sandbox と mise の道具
+## Codex sandbox and mise tools
 
-Codex の Windows の sandbox は、コマンドを別のユーザー（`CodexSandboxUsers` の一員）として実行する。
-Codex は profile の上位のディレクトリに、継承する読み取りの権限（`CodexSandboxUsers:(OI)(CI)(RX)`）を付けて、そのユーザーに読ませる。
-継承を切ったディレクトリにはこの権限が届かない。
-`%LOCALAPPDATA%\mise` の継承が切れていた機体では、mise の道具（rtk、bun、just など）が sandbox の中ですべて「アクセス拒否」になり、rtk の hook が `rtk ...` に書き換えたコマンドも失敗した。
-`just codex-sandbox-tools` が、mise のディレクトリに `CodexSandboxUsers` の読み取りと実行の権限だけを付ける（`just sync-agents x` も実行し、`just doctor` の `codex-sandbox` が検出する）。
-sandbox が用意されているかは、`CodexSandboxUsers` のグループがあるか（`net localgroup CodexSandboxUsers`）で判定する。
-Codex が読み取りの権限を付ける場所は機体によって違い（profile 自体に付く機体と、`~/.codex` などの直下の項目にだけ付く機体がある）、ACL からは判定できないからである。
-継承を戻すと、親の継承する権限（`MISE_DATA_DIR` を移した先の親が持つ `Users` の変更権限など）まで取り込むので、そうはしない。
-`icacls <dir> /remove:g CodexSandboxUsers` で元の状態に戻せる。
+Codex's Windows sandbox runs commands as another user (a member of `CodexSandboxUsers`).
+Codex grants inherited read permissions (`CodexSandboxUsers:(OI)(CI)(RX)`) on directories above your profile so that user can read them.
+Directories with inheritance disabled do not receive this permission.
+On machines where `%LOCALAPPDATA%\mise` had inheritance disabled, all mise tools (rtk, bun, just, etc.) failed inside the sandbox with "Access is denied", and commands rewritten to `rtk ...` by the rtk hook also failed.
+`just codex-sandbox-tools` grants `CodexSandboxUsers` read and execute permissions only on mise directories (it also runs `just sync-agents x`, and `just doctor`'s `codex-sandbox` detects missing permissions).
+Whether the sandbox is provisioned is checked by whether the `CodexSandboxUsers` group exists (`net localgroup CodexSandboxUsers`).
+Where Codex applies read permissions varies by machine (some apply it to the profile itself, others only to direct entries like `~/.codex`), so ACLs alone cannot tell.
+Re-enabling inheritance is avoided because it pulls in parent inherited permissions (such as `Users` modify permissions on a relocated `MISE_DATA_DIR` parent).
+Revert with `icacls <dir> /remove:g CodexSandboxUsers`.
 
-同じ権限は profile の直下のファイルにも届くので、`~/.env` に置いた秘密は sandbox から読める。
-Codex は sandbox を用意するたびに権限を付け直すので、`icacls` で外しても長続きしない。
-Codex は `~/.config` を読ませないので、秘密はその下に移す（Jev のキーは `~/.config/jev/env` に置く）。
-`just doctor` の `codex-sandbox-secrets` が、sandbox から読める `~/.env` を検出する。
+The same permission reaches files directly under your profile, making secrets in `~/.env` readable from the sandbox.
+Because Codex reapplies permissions every time it prepares the sandbox, removing them with `icacls` does not stick.
+Because Codex blocks access to `~/.config`, move secrets under it (put Jev's key in `~/.config/jev/env`).
+`just doctor`'s `codex-sandbox-secrets` detects `~/.env` readable from the sandbox.
 
-sandbox のユーザーは repository の所有者と違うので、git は所有者の検査（`safe.directory`）で止まる。
-rtk とは関係がなく、素の `git status` でも同じように止まる。
-dotfiles は `safe.directory` を変えない。
-緩めると、sandbox の中のコードが仕込んだ `.git/config`（`core.fsmonitor` など）を、sandbox の外で動く自分の git が実行してしまうからである。
-sandbox の中で git が要る repository は、そのリスクを受け入れるときだけ手で `safe.directory` に足すか、Codex を sandbox なしで動かす（`just doctor` の `codex-sandbox-git` が同じことを表示する）。
+Because the sandbox user differs from the repository owner, git stops on its ownership check (`safe.directory`).
+This is unrelated to rtk; plain `git status` stops the same way.
+dotfiles never alters `safe.directory`.
+Relaxing it would let your own git outside the sandbox execute `.git/config` settings (such as `core.fsmonitor`) planted by code inside the sandbox.
+For repositories that need git inside the sandbox, add `safe.directory` manually only when you accept that risk, or run Codex without the sandbox (`just doctor`'s `codex-sandbox-git` prints the same guidance).
 
-## Claude Code の Git Bash
+## Claude Code Git Bash
 
-native Windows の Claude Code は、Bash の tool に Git Bash を使い、次の順で探す（2.1.285 の実装）。
+Native Windows Claude Code uses Git Bash for its Bash tool and searches in this order (2.1.285 implementation):
 
-1. `CLAUDE_CODE_GIT_BASH_PATH`（名前が bash か sh で、実在するファイル）
-2. `C:\Program Files\Git\bin\bash.exe` と `C:\Program Files (x86)\Git\bin\bash.exe`
-3. PATH で最初に見つかる `git` から見た `..\..\bin\bash.exe`
+1. `CLAUDE_CODE_GIT_BASH_PATH` (an existing file named `bash` or `sh`)
+2. `C:\Program Files\Git\bin\bash.exe` and `C:\Program Files (x86)\Git\bin\bash.exe`
+3. `..\..\bin\bash.exe` relative to the first `git` found on PATH
 
-Git を scoop で入れた機体では、最初の `git` が scoop の shim（`~\scoop\shims\git.exe`）になり、3 も外れる。
-見つからないと Bash の tool が使えなくなり、`j-cc` も `just jev-claude-verify` も失敗する。
-`just doctor` の `claude-git-bash` が検出し、指定すべき Git Bash の場所を表示する。
-`just harden-env` は、Claude Code が自分では Git Bash を見つけられない機体でだけ、見つけた Git Bash を `CLAUDE_CODE_GIT_BASH_PATH` として User の環境変数に書く（値は機体ごとに違うので、追跡する断片には置かない）。
-User の環境変数に値がすでにあれば、壊れていても書き換えない（`claude-git-bash` が知らせるので、人が直す）。
+On machines where Git was installed with scoop, the first `git` is the scoop shim (`~\scoop\shims\git.exe`), so step 3 also misses.
+If missing, the Bash tool breaks, and both `j-cc` and `just jev-claude-verify` fail.
+`just doctor`'s `claude-git-bash` detects this and prints the Git Bash path to set.
+`just harden-env` sets the User variable `CLAUDE_CODE_GIT_BASH_PATH` only when Claude Code cannot find Git Bash on its own (this varies per machine, so tracked fragments omit it).
+If the User environment variable already has a value, even a broken one, it is not overwritten (`claude-git-bash` warns so a human can fix it).
 
-## 対話セッションで動く scheduled task
+## Scheduled tasks running in interactive sessions
 
-Task Scheduler が所有者の logon session で console の program（`powershell.exe` など）を直に起こすと、起こすたびに console の窓が出る。
-`dotfiles-runner-watchdog` は 5 分ごとに動くので、窓が 5 分ごとに一瞬出ていた（2026-11-18）。
-dotfiles が登録する task（`dotfiles-runner-watchdog`、`dotfiles-wsl-autostart`、`dotfiles-runner-gc`）は、`run-hidden.exe` を起こし、その後ろに `powershell.exe` と元の引数を置く（ADR 0081）。
+When Task Scheduler launches a console program (such as `powershell.exe`) directly in the owner's logon session, a console window flashes on every launch.
+Because `dotfiles-runner-watchdog` runs every 5 minutes, a window flashed every 5 minutes (2026-11-18).
+Tasks registered by dotfiles (`dotfiles-runner-watchdog`, `dotfiles-wsl-autostart`, `dotfiles-runner-gc`) launch `run-hidden.exe` followed by `powershell.exe` and the original arguments (ADR 0081).
 
-- `run-hidden`（`tools/run-hidden`）は Windows の GUI subsystem で build する（`just run-hidden-build`、`-ldflags=-H=windowsgui`）。自分は console を持たない。
-- 子は `CREATE_NO_WINDOW` で起こす。子は console を持つが、その窓は無い。子から `wsl.exe` も普通に動く。
-- 子の exit code を、そのまま自分の exit code にする。そのため、task の結果（`LastTaskResult`）は今までどおり payload の結果で、`just status` の判定は変わらない。
-- installer は、`output/run-hidden/run-hidden.exe` を `%LOCALAPPDATA%\dotfiles\run-hidden\<SHA-256 の先頭 16 桁>\` に写し、task はその写しを起こす。
-    - WSL の keepalive の task は終わらないので、その launcher の exe は使用中のままになり、上書きできない。
-    - 置き場所を中身で決めるので、同じ中身は写し直さず、中身が変われば別の dir に写す。古い dir は消さない（どの task も使っていないことを確かめてから人が消す）。
-- 窓が無いので、payload の記録は log で読む：`%TEMP%\runner-watchdog-win.log` と `%TEMP%\wsl-autostart.log`。
-- `just status` は、`run-hidden.exe` を起こしていない task に WARN を出す。
+- `run-hidden` (`tools/run-hidden`) builds with the Windows GUI subsystem (`just run-hidden-build`, `-ldflags=-H=windowsgui`) and has no console of its own.
+- It spawns the child with `CREATE_NO_WINDOW`. The child has a console without a visible window, and `wsl.exe` works normally from it.
+- It exits with the child's exit code. So task results (`LastTaskResult`) still reflect the payload, and `just status` checks stay the same.
+- The installer copies `output/run-hidden/run-hidden.exe` to `%LOCALAPPDATA%\dotfiles\run-hidden\<first 16 hex digits of the SHA-256>\`, and tasks launch that copy.
+    - Because the WSL keepalive task never exits, its launcher `.exe` stays locked in use and cannot be overwritten.
+    - Content-addressed directories avoid recopying unchanged binaries and write a new directory when the binary changes. Old directories are left alone (a human deletes them after confirming no task uses them).
+- With no window, inspect payload output in the logs: `%TEMP%\runner-watchdog-win.log` and `%TEMP%\wsl-autostart.log`.
+- `just status` emits a WARN for any task not launched via `run-hidden.exe`.
 
-使わない形と、その理由：
+Forms we do not use and why:
 
-- `-WindowStyle Hidden`：console ができてから隠すので、窓が一瞬出る。
-- `conhost.exe --headless`：子の exit code を返さない（子が 7 で終わっても 0。2026-11-18 にこの機で確かめた）。task の結果が、いつも成功になる。
-- shell からの `conhost.exe --headless`：stdin が閉じたパイプだと、子を起こす前に終わる。
+- `-WindowStyle Hidden`: creates a console first and hides it afterward, so a window flashes briefly.
+- `conhost.exe --headless`: discards the child's exit code (returns 0 even when the child exits 7; verified on this machine on 2026-11-18), making task results always look successful.
+- `conhost.exe --headless` from a shell: exits before starting the child when stdin is a closed pipe.
 
-task を登録し直すには、昇格した terminal が要る。
-この機の task は昇格した context で登録されているので、unelevated の installer は消せず「keeping it as-is」で残す（GC の UAC の経路にも進まない）。
+Re-registering tasks requires an elevated terminal.
+Because tasks on this machine were registered in an elevated context, an unelevated installer cannot delete them and leaves them "keeping it as-is" (and does not take the UAC path for GC either).
 
-走っている WSL autostart の task（keepalive）を新しい action に切り替える手順（戻すときも同じ）。installer は走っている task を止めない。止めた後に登録が失敗すると、distro が最後の client を失って止まり、runner の job を巻き込むためである。
+Procedure to switch a running WSL autostart task (keepalive) to a new action (same steps to revert). The installer does not stop a running task: if registration fails afterward, the distro loses its last client and stops, killing running runner jobs.
 
-1. 別の terminal で一時の client を起こし、distro を保つ：`wsl.exe -d Ubuntu-26.04 -e sleep 900`。
-2. `Stop-ScheduledTask dotfiles-wsl-autostart`。`Get-CimInstance Win32_Process` で、`dotfiles-wsl-keepalive` を command line に含む `wsl.exe` と、その親の powershell が無いことを確かめる（一時の client は command line が違う）。
-3. 昇格した terminal で `just runner-gc-install`。登録の後に installer が autostart を起こし、新しい keepalive がつながる。watchdog は `just runner-watchdog-install`（数秒で終わる task なので止める手順は要らない）。
-4. `just status` で keepalive が OK、task が Running、WARN が無いことを確かめ、一時の client を終える。失敗したときは一時の client を残したまま直す（15 分で終わるので、長くかかるなら起こし直す）。
+1. Start a temporary client in another terminal to keep the distro alive: `wsl.exe -d Ubuntu-26.04 -e sleep 900`.
+2. Run `Stop-ScheduledTask dotfiles-wsl-autostart`. Use `Get-CimInstance Win32_Process` to confirm neither `wsl.exe` with `dotfiles-wsl-keepalive` on its command line nor its parent powershell exists (the temporary client has a different command line).
+3. In an elevated terminal, run `just runner-gc-install`. After registration, the installer starts autostart and the new keepalive connects. For watchdog, run `just runner-watchdog-install` (it finishes in seconds, so no stop step is needed).
+4. Run `just status` to confirm keepalive is OK, tasks are Running, and there are no WARNs, then stop the temporary client. On failure, keep the temporary client running while fixing (it expires after 15 minutes, so restart it if needed).
 
-## Python のファイルと文字コード
+## Python files and character encodings
 
-日本語版の Windows では、locale の文字コードが cp932 である。
-`Path.read_text()`、`write_text()`、`open()`、subprocess の `text=True` は、`encoding=` を省くと cp932 で読み書きする。
-このリポジトリの Python は、テキストの読み書きに必ず `encoding="utf-8"` を渡し、subprocess の出力は `encoding="utf-8", errors="replace"` で読む（`tests/unit/test_text_io_encoding.py` が検査する）。
-Claude Code や Pi と stdin と stdout でやり取りするスクリプトは、読む前に `jev_launch.use_utf8_stdio()` を呼ぶ。
+On Japanese-edition Windows, the locale encoding is cp932.
+Without `encoding=`, `Path.read_text()`, `write_text()`, `open()`, and `subprocess` with `text=True` read and write cp932.
+Python code in this repository must always pass `encoding="utf-8"` for text I/O and `encoding="utf-8", errors="replace"` for subprocess output (enforced by `tests/unit/test_text_io_encoding.py`).
+Scripts exchanging stdin/stdout with Claude Code or Pi call `jev_launch.use_utf8_stdio()` before reading.
 
-bash に渡す `PATH` に `C:\` のパスを `:` でつなぐと、ドライブ名のコロンで分割されて壊れる。
-テストでは `tests/unit/_bash_hook.py` の `bash_path()` で `/c/...` の形に直す。
+Joining `C:\` paths with `:` in `PATH` passed to bash breaks on the drive colon.
+Tests convert them to `/c/...` using `bash_path()` in `tests/unit/_bash_hook.py`.
 
-## Windows でも通る書き方と、それを確かめる検査
+## Writing Windows-compatible code and the checks that verify it
 
-Windows だけで落ちる書き方は、ほかの OS の検査では見えない。
-次の検査が、Windows の機体がなくても、それを止める。
+Bugs that fail only on Windows are invisible to checks on other OSes.
+The following checks catch them even without a Windows host:
 
-| 検査 | 回る場所 | 止めるもの |
+| Check | Where it runs | What it catches |
 | --- | --- | --- |
-| `just check-ty`（ty を `--python-platform` win32、linux、darwin で） | `just check`（`just ci`、`just check-all`、CI の dev container ジョブ） | ほかの OS の分岐にある型の誤り |
-| `just go-lint`（`golangci-lint run` を GOOS windows、linux、darwin で） | `just check` | build tag の付いたファイルの誤りと、そこからしか呼ばれない関数（ほかの OS では unused） |
-| `just test-unit`（CI の `windows-unit`） | Unit Tests の workflow。checkout は Git for Windows の既定の改行（CRLF） | 改行、MSYS のパス変換、Git の gpg、pwsh 7 で落ちるテスト |
-| `just test-windows-powershell` | CI の `windows-unit` と、手元の Windows | Windows PowerShell 5.1 でだけ違う動き（GC、`bootstrap.ps1`、Podman の導入） |
-| `just go-test go`（CI の `windows-go`） | Unit Tests の workflow | Windows での Go のテスト |
-| `tests/unit/test_cross_platform_gates.py` | `just test-unit` | 上の検査が外れること、複数のコマンドを並べた pwsh の step（前のコマンドの失敗を隠す） |
+| `just check-ty` (ty with `--python-platform` win32, linux, darwin) | `just check` (`just ci`, `just check-all`, CI dev container job) | Type errors in branches for other OSes |
+| `just go-lint` (`golangci-lint run` for GOOS windows, linux, darwin) | `just check` | Errors in build-tagged files and functions called only from them (unused on other OSes) |
+| `just test-unit` (CI `windows-unit`) | Unit Tests workflow; checkout uses Git for Windows default line endings (CRLF) | Tests failing on line endings, MSYS path conversion, Git gpg, or pwsh 7 |
+| `just test-windows-powershell` | CI `windows-unit` and local Windows | Behavior differing only in Windows PowerShell 5.1 (GC, `bootstrap.ps1`, Podman install) |
+| `just go-test go` (CI `windows-go`) | Unit Tests workflow | Go tests on Windows |
+| `tests/unit/test_cross_platform_gates.py` | `just test-unit` | Removal of the above checks, or multi-command pwsh steps (which hide earlier command failures) |
 
-書くときは次を守る。
+Follow these rules when writing code:
 
-- Python で OS ごとに分けるときは `sys.platform == "win32"` と書く。ty は `sys.platform` と `os.name` の両方で分岐を絞り込むが、`sys.platform` は Linux と macOS を区別でき、typeshed も OS 専用の API をそれで分けている。
-- OS の条件の下で import した名前は、別の OS の型検査では存在しない。注釈に使うと誤りになり、本体で使った所は検査されない（ty 0.0.91 で確かめた）。
-- POSIX だけで動く自前のモジュールの import は `if TYPE_CHECKING or os.name != "nt":` の下に置く（例: `scripts/sync_agents.py`）。どの OS の型検査でも中身が検査される。
-- 標準ライブラリの OS 専用モジュール（`fcntl`、`pwd`、`grp`、`winreg`、`msvcrt`）は、`TYPE_CHECKING` の下でも、別の OS の型検査では中身が無い。同じ関数の中の `sys.platform` の確認のあとでだけ使い、どの OS も読む関数の型の注釈には書かない。
-- テストを OS で飛ばすときは、`skipif` でなく本体の先頭で `if sys.platform == "win32": pytest.skip(...)` とする。ty はそこで絞り込むので、後ろの POSIX の API が Windows の型検査で誤りにならない。
-- PowerShell の子プロセスの環境変数は `os.environ` を写してから変える。手で組むと PATHEXT、SystemRoot、SystemDrive が抜け、`python.exe` が新しい窓で開いて出力が取れない。`PSModuleAnalysisCachePath` が抜けると、windows-latest の runner の Windows PowerShell 5.1 は起動のたびに導入済みのモジュールをすべて解析し直す（0.3 秒が 18〜32 秒になる）。
-- PowerShell のテストは `tests/unit/_pwsh.py` の `resolve_pwsh(os.environ)` で PowerShell を選び（`DOTFILES_TEST_PWSH=powershell.exe` で 5.1 になる）、本番と同じ引数で起動する（`-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`。`-ExecutionPolicy Bypass` がないと 5.1 は既定の設定でスクリプトを拒む）。
-- Git for Windows の gpg の `--homedir` は `/c/...` の形で渡す。`C:\...` の形では agent が起動しない。
-- テストが書く偽物のスクリプトは `newline="\n"` で書く。Git Bash は CR を命令の一部として読む。
-- MSYS に引数のパスを変換させないときは、`MSYS_NO_PATHCONV=1` と `MSYS2_ARG_CONV_EXCL='*'` を付ける。
-- リポジトリと一時ディレクトリは別のドライブにあることがある（windows-latest の runner は checkout が `D:`、一時ディレクトリが `C:`）。`os.path.relpath` は別のドライブの間で `ValueError` を出す。手元で確かめるときは pytest の `--basetemp` を別のドライブに置く。
-- Git Bash の `$OSTYPE` は Git for Windows の版で `msys` と `cygwin` に分かれる。WSL かどうかは `linux-gnu` でないことで見分ける。
-- Go のテストで作る実行ファイルには、Windows では `.exe` を付ける。
-- バイト単位で比べる生成物（記録した corpus、ハッシュを記録したファイル）は、`.gitattributes` で `text eol=lf` に固定する（`tests/unit/test_gitattributes_eol.py` が検査する）。
+- Branch on OS in Python using `sys.platform == "win32"`. ty narrows on both `sys.platform` and `os.name`, but `sys.platform` also distinguishes Linux from macOS, and typeshed uses it to gate OS-specific APIs.
+- Names imported under an OS condition do not exist during type checking for other OSes; using them in annotations fails, and usage inside the body goes unchecked (verified with ty 0.0.91).
+- Place imports of POSIX-only repository modules under `if TYPE_CHECKING or os.name != "nt":` (e.g., `scripts/sync_agents.py`) so their internals are checked on every OS.
+- OS-specific standard library modules (`fcntl`, `pwd`, `grp`, `winreg`, `msvcrt`) are empty during type checking for other OSes even under `TYPE_CHECKING`. Use them only after a `sys.platform` check inside the same function, and never in annotations of functions read on all OSes.
+- When skipping a test by OS, put `if sys.platform == "win32": pytest.skip(...)` at the top of the test body instead of `skipif`. ty narrows there, so subsequent POSIX APIs do not error during Windows type checking.
+- Copy `os.environ` before modifying environment variables for PowerShell child processes. Building one by hand drops PATHEXT, SystemRoot, and SystemDrive, causing `python.exe` to open a new window whose output cannot be captured. Dropping `PSModuleAnalysisCachePath` forces Windows PowerShell 5.1 on windows-latest runners to re-analyze all installed modules on every start (turning 0.3s into 18-32s).
+- PowerShell tests select PowerShell via `resolve_pwsh(os.environ)` in `tests/unit/_pwsh.py` (`DOTFILES_TEST_PWSH=powershell.exe` picks 5.1) and launch with production flags (`-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`; without `-ExecutionPolicy Bypass`, 5.1 rejects scripts by default).
+- Pass Git for Windows gpg `--homedir` in `/c/...` form; `C:\...` prevents the agent from starting.
+- Write fake scripts generated by tests with `newline="\n"`; Git Bash treats CR as part of the command.
+- Pass `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` to stop MSYS from converting path arguments.
+- The repository and temp directory may sit on different drives (windows-latest runners check out to `D:` and keep temp on `C:`). `os.path.relpath` raises `ValueError` across drives; test locally with pytest `--basetemp` on another drive.
+- Git Bash's `$OSTYPE` is either `msys` or `cygwin` depending on the Git for Windows version. Identify WSL by checking that it is not `linux-gnu`.
+- Add `.exe` to binaries built in Go tests on Windows.
+- Pin byte-compared artifacts (recorded corpora, hash-recorded files) to `text eol=lf` in `.gitattributes` (enforced by `tests/unit/test_gitattributes_eol.py`).

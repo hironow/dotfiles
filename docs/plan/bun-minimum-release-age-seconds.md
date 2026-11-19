@@ -1,68 +1,68 @@
-# bunfig の minimumReleaseAge を秒で書く
+# Write minimumReleaseAge in bunfig in seconds
 
 **Date:** 2026-11-17
-**Status:** 実装済み（Codex のレビュー 2 回で指摘なし）。merge の後に `just sync-agents all` と Dependabot の再実行で確かめる
-**Scope:** dotfiles のみ。worktree `../dotfiles-bun-release-age`、branch `fix/bun-minimum-release-age-seconds`。
-グローバルの spoke（`ROOT_AGENTS_docs_agents_web-ui.md`、`ROOT_AGENTS_docs_agents_dependency-policy.md`）も変えるので、merge の後に `just sync-agents` で配る。
+**Status:** Implemented (2 Codex reviews with no findings). Verify after merge with `just sync-agents all` and a Dependabot re-run
+**Scope:** dotfiles only. Worktree `../dotfiles-bun-release-age`, branch `fix/bun-minimum-release-age-seconds`.
+Also updates global spokes (`ROOT_AGENTS_docs_agents_web-ui.md`, `ROOT_AGENTS_docs_agents_dependency-policy.md`), so distribute after merge with `just sync-agents`.
 
-## 所有者の依頼
+## Owner request
 
-所有者は「使う版は常に最新にしてほしい」と言い、書き方だけを秒に変える案（案 1）を選んだ（2026-11-17 02:15、「ok」）。
-dependabot-core への issue は外部への投稿なので出さない。
+The owner said, "I want the version used to always be the latest" (translated), and chose Option 1 (changing only the syntax to seconds) (2026-11-17 02:15, "ok").
+Do not file an issue on dependabot-core since that posts externally.
 
-## 何が起きているか（確認済みの事実）
+## What is happening (confirmed facts)
 
-- Dependabot の `bun` の job は、`bunfig.toml` の `minimumReleaseAge = "7d"` を読めずに失敗する（2026-11-16 14:36 UTC の job 1709041923。`Error: Expected number of seconds for minimumReleaseAge`）。
-  `bun` は weekly の multi-ecosystem group に入っているので、この失敗でも週 1 の PR が出ない。
-- Dependabot の bun は 1.4.2（dependabot-core `bun/Dockerfile` の `ARG BUN_VERSION=1.4.2`。最後の変更は 2026-10-06）。
-- 期間の書き方（`90m`、`3d`、`2 weeks` など）は bun の PR #44968（2026-10-14 merge）で入った。`bun-v1.4.3` には入っておらず、`bun-v1.4.4`（2026-10-22、今の最新）に入っている（GitHub の compare で確認）。
-- 手元で試した結果（`is-number@7.0.0` を入れるだけの一時の project）:
+- Dependabot's `bun` job fails because it cannot parse `minimumReleaseAge = "7d"` in `bunfig.toml` (2026-11-16 14:36 UTC, job 1709041923, `Error: Expected number of seconds for minimumReleaseAge`).
+  Because `bun` belongs to the weekly multi-ecosystem group, this failure also prevents the weekly PR from opening.
+- Dependabot runs bun 1.4.2 (`ARG BUN_VERSION=1.4.2` in dependabot-core `bun/Dockerfile`, last updated 2026-10-06).
+- Duration syntax (`90m`, `3d`, `2 weeks`, etc.) landed in bun PR #44968 (merged 2026-10-14); it is not in `bun-v1.4.3`, and landed in `bun-v1.4.4` (2026-10-22, current latest) (verified via GitHub compare).
+- Tested locally (temporary project installing only `is-number@7.0.0`):
 
   | bun | `minimumReleaseAge = 604800` | `minimumReleaseAge = "7d"` |
   |---|---|---|
-  | 1.4.4（手元、最新） | 成功 | 成功 |
-  | 1.4.2（GitHub の公式リリースの zip。`SHASUMS256.txt` で照合） | 成功 | `Invalid Bunfig: failed to load bunfig`、exit 1 |
+  | 1.4.4 (local, latest) | Succeeded | Succeeded |
+  | 1.4.2 (official GitHub release zip, verified against `SHASUMS256.txt`) | Succeeded | `Invalid Bunfig: failed to load bunfig`, exit 1 |
 
-- 使う bun の版は変えない。手元と CI は最新の bun のまま。変えるのは `bunfig.toml` の書き方だけ。
-- `"7d"` の書き方を決めているのは次の 3 か所。
-    - `bunfig.toml`（ADR-0079 で入った。ADR-0079 の D2 は「7 日待つ」とだけ書き、書き方は決めていないので ADR は変えない）
-    - グローバルの spoke `ROOT_AGENTS_docs_agents_web-ui.md` の「With a package:」の例
-    - テスト `tests/unit/test_frontend_ci_conformance.py`（`== "7d"`）と `tests/unit/test_web_ui_guidance.py`（`'minimumReleaseAge = "7d"' in ...`）
-- `.gpus` と shorts-factory には `bunfig.toml` の `minimumReleaseAge` も Dependabot の `bun` もない。
+- Keep the bun version unchanged: local and CI stay on latest bun. Change only the syntax in `bunfig.toml`.
+- Three places specify `"7d"` syntax:
+    - `bunfig.toml` (added in ADR-0079; ADR-0079 D2 only states "wait 7 days" without prescribing syntax, so leave the ADR unchanged)
+    - Global spoke `ROOT_AGENTS_docs_agents_web-ui.md` example under "With a package:"
+    - Tests `tests/unit/test_frontend_ci_conformance.py` (`== "7d"`) and `tests/unit/test_web_ui_guidance.py` (`'minimumReleaseAge = "7d"' in ...`)
+- `.gpus` and shorts-factory have neither `minimumReleaseAge` in `bunfig.toml` nor Dependabot `bun`.
 
-## 変更
+## Changes
 
-1. **[Red]** テストを先に直す。
-   - `test_frontend_ci_conformance.py`: `bunfig["install"]["minimumReleaseAge"] == 604800`。
-   - `test_web_ui_guidance.py` の `test_the_wait_is_set_where_bun_installs`: 「With a package:」の段落に `minimumReleaseAge = 604800` がある。CLI の `--minimum-release-age 7d` の検査はそのまま（CLI は手元の最新の bun が読むので、期間の書き方でよい）。
-   - `test_web_ui_guidance.py` の `test_the_dependency_policy_says_how_bun_waits`: dependency-policy の段落に `604800` と、Dependabot が秒しか読まないことの説明（`seconds`）がある。
+1. **[Red]** Update tests first:
+   - `test_frontend_ci_conformance.py`: `bunfig["install"]["minimumReleaseAge"] == 604800`.
+   - `test_web_ui_guidance.py` `test_the_wait_is_set_where_bun_installs`: the "With a package:" paragraph has `minimumReleaseAge = 604800`. Keep the CLI `--minimum-release-age 7d` check unchanged (the CLI is read by local latest bun, where duration syntax works).
+   - `test_web_ui_guidance.py` `test_the_dependency_policy_says_how_bun_waits`: the dependency-policy paragraph includes `604800` and explains that Dependabot accepts only `seconds`.
 2. **[Green]**
-   - `bunfig.toml`: `minimumReleaseAge = 604800`。上のコメントに「7 日を秒で書く。Dependabot の bun（1.4.2）は `"7d"` を読めない」と書く。
-   - `ROOT_AGENTS_docs_agents_web-ui.md`: 例を `[install] minimumReleaseAge = 604800`（7 日を秒で）にする。
-   - `ROOT_AGENTS_docs_agents_dependency-policy.md`: bun の段落に「`bunfig.toml` では秒で書く（7 日は `604800`）。Dependabot の bun は `"7d"` のような期間を読めない」を足す。規則の本体はここに置き、web-ui の spoke は例だけにする（DRY）。
+   - `bunfig.toml`: `minimumReleaseAge = 604800`, with a comment above explaining "7 days in seconds; Dependabot's bun (1.4.2) cannot parse `"7d"`".
+   - `ROOT_AGENTS_docs_agents_web-ui.md`: update example to `[install] minimumReleaseAge = 604800` (7 days in seconds).
+   - `ROOT_AGENTS_docs_agents_dependency-policy.md`: add to the bun paragraph: "In `bunfig.toml`, write it in seconds (7 days = `604800`); Dependabot's bun cannot parse durations like `"7d"`." Keep the normative rule here and only an example in the web-ui spoke (DRY).
 
-commit は 1 つ（`fix(bun): write minimumReleaseAge in seconds so Dependabot's bun can read it`）。構造の変更はない。
+Single commit (`fix(bun): write minimumReleaseAge in seconds so Dependabot's bun can read it`); no structural changes.
 
-## 確認（完了の定義）
+## Verification (definition of done)
 
-- `just ci` が完走して成功する（時間制限を付けずに回す）。`instruction-budget` の leg も含む。
-- merge の前に、PR の branch の `bunfig.toml` を bun 1.4.2 と 1.4.4 の両方で読ませて、両方とも install が通ることを確かめる（上の表と同じ一時の project に、branch の `bunfig.toml` をそのまま置く）。
-- PR の CI が green。所有者の常設の許可に従って squash merge する。
-- merge の後:
-    - 手元の main を pull し、`just sync-agents-preview all` で配る先と差分を確かめてから `just sync-agents all` で全エージェントに配る。配った各 home の `docs/agents/dependency-policy.md` と `docs/agents/web-ui.md` に `604800` が入ったことを確かめる。`~/.claude` だけに配ると、Codex や Gemini には古い `"7d"` の例が残る。
-    - この変更の完了の条件は、Dependabot の再実行で `bun` の job から `Expected number of seconds for minimumReleaseAge` が消え、job が完走すること。週 1 の PR は、更新するものがあるときだけ開く（いまは oxlint 1.93.0 などがあるので開く見込み）。
-- 失敗したとき: 原因を切り分ける。この変更が原因の失敗（bunfig を読めない、7 日の待ちが効かない）だと確かめたときだけ、squash commit を revert して `just sync-agents all` で配り直す。別のエコシステムの失敗や通信の失敗では revert しない（revert すると `"7d"` の読めない失敗が戻る）。再実行するか、別に直す。
+- `just ci` completes and passes (run without a timeout cap), including the `instruction-budget` leg.
+- Before merge, test the PR branch's `bunfig.toml` with both bun 1.4.2 and 1.4.4 to confirm install succeeds in both (drop the branch's `bunfig.toml` verbatim into the same temporary project as the table above).
+- PR CI green. Squash merge under the owner's standing permission.
+- Post-merge:
+    - Pull local main, inspect targets and diffs with `just sync-agents-preview all`, then distribute to all agents with `just sync-agents all`. Verify `604800` appears in `docs/agents/dependency-policy.md` and `docs/agents/web-ui.md` in every target home (running `just sync-agents` without arguments updates only `~/.claude`, leaving stale `"7d"` examples in Codex and Gemini).
+    - Completion criterion for this change: on Dependabot's re-run, `Expected number of seconds for minimumReleaseAge` disappears from the `bun` job and the job finishes. A weekly PR opens only if updates exist (currently oxlint 1.93.0 etc. exist, so one should open).
+- On failure: isolate the cause. Revert the squash commit and re-run `just sync-agents all` only if this change itself caused the failure (unable to parse bunfig, or 7-day wait failing to apply). Do not revert on failures in other ecosystems or network errors (reverting brings back the `"7d"` parse failure); re-run or fix separately.
 
-## 範囲外
+## Out of scope
 
-- dependabot-core への issue（外部への投稿。所有者が求めたときだけ）。
-- CLI の `--minimum-release-age 7d`（手元の最新の bun が読む。Dependabot は読まない）。
+- Filing an issue on dependabot-core (external posting; only if requested by owner).
+- CLI `--minimum-release-age 7d` (read by local latest bun, not Dependabot).
 
-## レビューの記録
+## Review record
 
-### Codex 1 回目（2026-11-17）
+### Codex round 1 (2026-11-17)
 
-| # | 指摘 | 判断 | 確認したこと |
+| # | Finding | Decision | Verified |
 |---|---|---|---|
-| 1 | 「全 job が成功し週 1 の PR が開く」は完了の条件として広すぎ、無関係な失敗でも revert すると `"7d"` の失敗が戻る | 採用 | 完了の条件を bun の job の構文エラーが消えて完走することに絞り、revert はこの変更が原因と確かめたときだけにした |
-| 2 | 引数なしの `just sync-agents` は `~/.claude` だけに配る。ほかのエージェントに古い例が残る | 採用 | `just sync-agents-preview all` で確かめてから `just sync-agents all` で配る手順にした |
+| 1 | "All jobs pass and weekly PR opens" is too broad as a completion criterion; unrelated failures would cause reverting and bring back `"7d"` failures | Adopted | Narrowed completion criterion to the bun job clearing its syntax error and finishing; revert only when proven caused by this change |
+| 2 | `just sync-agents` without arguments distributes only to `~/.claude`, leaving stale examples in other agents | Adopted | Added `just sync-agents-preview all` check followed by `just sync-agents all` |

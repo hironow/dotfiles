@@ -1,70 +1,70 @@
-# zsh の使い方
+# Using zsh
 
-Sheldon と Starship を使った、fish に近い操作感の zsh の設定（Mac、Linux、WSL）。
+A fish-like zsh setup using Sheldon and Starship (Mac, Linux, and WSL).
 
-## 準備
+## Setup
 
-Linux と WSL では、先に zsh を入れてログインシェルにする（macOS は最初から zsh）。
-`install.sh` は sudo を使わないので、zsh がなければ入れ方を表示するだけである（`just doctor` も同じく知らせる）。
-
-```bash
-sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"   # Linux と WSL だけ
-```
-
-新しいターミナルを開いてから、次を実行する（sheldon は mise が入れる）。
+On Linux and WSL, install zsh first and set it as your login shell (macOS uses zsh by default).
+Because `install.sh` never uses sudo, it only prints install instructions if zsh is missing (`just doctor` reports this as well).
 
 ```bash
-just deploy   # 設定を配置する
-sheldon lock  # 初回だけ: plugin を入れる
+sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"   # Linux and WSL only
 ```
 
-## キー操作
+Open a new terminal, then run the following (mise installs sheldon):
 
-| キー | 動作 |
+```bash
+just deploy   # Deploy configuration
+sheldon lock  # First time only: install plugins
+```
+
+## Keybindings
+
+| Key | Action |
 | --- | --- |
-| `Ctrl+R` | 履歴をあいまい検索する（fzf） |
-| `Tab` | プレビューつきであいまい補完する（fzf-tab） |
-| `<` / `>` | fzf-tab の補完グループを切り替える |
-| `Ctrl+Enter` | 改行する（送信はしない。Ghostty / iTerm2 で、tmux の中でも効く） |
-| `Option+←` / `Option+→` | 1 単語戻る / 進む |
-| `Ctrl+←` / `Ctrl+→` | 1 単語戻る / 進む（Windows Terminal が Alt+矢印を使うので Windows と WSL はこちら） |
+| `Ctrl+R` | Fuzzy-search command history (fzf) |
+| `Tab` | Fuzzy-complete with preview (fzf-tab) |
+| `<` / `>` | Switch fzf-tab completion groups |
+| `Ctrl+Enter` | Insert a newline without submitting (works in Ghostty and iTerm2, including inside tmux) |
+| `Option+←` / `Option+→` | Move backward / forward one word |
+| `Ctrl+←` / `Ctrl+→` | Move backward / forward one word (for Windows and WSL, since Windows Terminal uses Alt+arrow keys) |
 
-`Ctrl+Enter` を tmux の中で効かせるには tmux 3.2a 以降が要る（確認は `tmux -V`。未満だと警告が出るだけで他は動く）。単語の区切りと止まる位置は zsh 既定のままで、Windows の PowerShell は PSReadLine 既定のため `Ctrl+→` の着地点が少し違う。
+`Ctrl+Enter` inside tmux requires tmux 3.2a or later (check with `tmux -V`; older versions only print a warning and everything else works). Word boundaries and stop positions keep zsh defaults; Windows PowerShell uses PSReadLine defaults, so `Ctrl+→` lands slightly differently.
 
-端末ごとの設定:
+Per-terminal settings:
 
-- Ghostty: 設定は要らない（`tools/ghostty-config` が `Option+←` / `Option+→` を単語移動に固定する）。
-- Terminal.app: `Option+←` / `Option+→` は設定なしで単語移動になる。拡張キーを送れないので、`Ctrl+Enter` の改行は効かない。
-- iTerm2: Profiles → Keys で `⌥←` / `⌥→` に "Send Escape Sequence" の `b` / `f` を割り当てる。`Ctrl+Enter` を改行にするには、`^⏎` に "Send Hex Code" で `0x1b 0x5b 0x32 0x37 0x3b 0x35 0x3b 0x31 0x33 0x7e`（`^[[27;5;13~`）を割り当てる。
-- Windows Terminal（PowerShell と WSL）: 設定は要らない。`Alt+←` / `Alt+→` は Windows Terminal がペインの移動に使うので、`Ctrl+←` / `Ctrl+→` を使う。
+- Ghostty: No configuration needed (`tools/ghostty-config` binds `Option+←` / `Option+→` to word movement).
+- Terminal.app: `Option+←` / `Option+→` move by word out of the box. It cannot send extended keys, so `Ctrl+Enter` newline does not work.
+- iTerm2: In Profiles → Keys, bind `⌥←` / `⌥→` to "Send Escape Sequence" `b` / `f`. To make `Ctrl+Enter` insert a newline, bind `^⏎` to "Send Hex Code" `0x1b 0x5b 0x32 0x37 0x3b 0x35 0x3b 0x31 0x33 0x7e` (`^[[27;5;13~`).
+- Windows Terminal (PowerShell and WSL): No configuration needed. Windows Terminal uses `Alt+←` / `Alt+→` to switch panes, so use `Ctrl+←` / `Ctrl+→` instead.
 
-## alias と関数
+## Aliases and functions
 
-| 名前 | 実体 |
+| Name | Expands to |
 | --- | --- |
 | `k` | `kubectl` |
 | `j` | `just` |
 | `mx` | `mise exec --` |
 | `mr` | `mise run` |
 | `cc` | `RUNOPS_ACTOR_TYPE=ai-agent claude` |
-| `j-cc` / `j-pi` | Jev で思考レベルを選んで Claude Code / Pi を起動する（[手順](docs/runbook/jev-launchers.md)） |
+| `j-cc` / `j-pi` | Choose a thinking level with Jev and launch Claude Code / Pi ([guide](docs/runbook/jev-launchers.md)) |
 
-## キャッシュ
+## Caches
 
-起動を速くするため、次のキャッシュを作る。
-道具を更新したら `just clean-cache` で消し、`sheldon lock` を実行し直す（`just clean-all` は配置した設定も消す）。
+These caches speed up startup.
+After updating tools, clear them with `just clean-cache` and re-run `sheldon lock` (`just clean-all` also removes deployed configs).
 
-| キャッシュ | 用途 |
+| Cache | Purpose |
 | --- | --- |
-| `~/.cache/zsh/kubectl_completion.zsh` | kubectl の補完 |
-| `~/.cache/zsh/fzf_init.zsh` | fzf のキー操作と補完 |
-| `~/.zcompdump*` | zsh の補完 |
-| `~/.local/share/sheldon/` | Sheldon の plugin |
+| `~/.cache/zsh/kubectl_completion.zsh` | kubectl completions |
+| `~/.cache/zsh/fzf_init.zsh` | fzf keybindings and completions |
+| `~/.zcompdump*` | zsh completions |
+| `~/.local/share/sheldon/` | Sheldon plugins |
 | `~/.local/share/fzf-tab/` | fzf-tab |
 
-## 起動時間
+## Startup time
 
-目標は 300ms 未満である。
+Target is under 300ms.
 
 ```bash
 time zsh -i -c exit

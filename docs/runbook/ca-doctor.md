@@ -1,212 +1,212 @@
-# CAの健全性とインシデントの診断
+# CA health and incident diagnostics
 
-`just doctor` のCA診断は、日常のCA設定の検査と、レビュー済みの事故別ルールによる検査を行う。
-確認済みの根拠と未確認の範囲を分け、端末全体が安全だとは判定しない。
-証明書、パッケージ、OS設定を変更せず、管理者権限も使わない。
+`just doctor`'s CA diagnostics run routine CA configuration checks and reviewed incident-specific rules.
+They separate verified evidence from unverified scope and never declare an entire host safe.
+They do not modify certificates, packages, or OS settings, and do not use administrator privileges.
 
-## 実行
+## Running
 
-初回と診断ソースの変更後は明示的にビルドする。
-Go 1.27.4以上のローカルコンパイラとmiseが必要で、コンパイラを自動取得しない。
-ビルド後の診断自体はGoを必要としない。
+Build explicitly on first use and after changing diagnostic sources.
+This requires a local Go 1.27.4 or newer compiler and mise; it never downloads a compiler automatically.
+Running the built diagnostic binary does not require Go.
 
 ```sh
 just ca-doctor-build
 just doctor
 ```
 
-CA診断だけを実行する場合は `just ca-doctor` を使う。
-`just doctor` は `--summary` を付けて実行し、事故のテストホストごとの `ca-chain-*` 行を省いて、クライアントごとの `ca-live-*` 1 行にまとめる。
-ホストごとの全行は `just ca-doctor` で見る。
-通信を行わない場合は `just ca-doctor --offline` を使う。
-`CA_DOCTOR_OFFLINE=1 just doctor` でもCA検査の通信だけを省ける。
-PowerShellでは先に `$env:CA_DOCTOR_OFFLINE='1'` を設定する。
-通信を省いた結果は `WARN` になる。
+To run only CA diagnostics, use `just ca-doctor`.
+`just doctor` passes `--summary`, omitting per-test-host `ca-chain-*` lines and summarizing one `ca-live-*` line per client.
+Use `just ca-doctor` to see every host line.
+To run without network access, use `just ca-doctor --offline`.
+`CA_DOCTOR_OFFLINE=1 just doctor` also skips only network calls for CA checks.
+On PowerShell, set `$env:CA_DOCTOR_OFFLINE='1'` first.
+Checks skipped due to offline mode report `WARN`.
 
-バイナリがない場合、`doctor` は `WARN ca-build` とビルド手順を表示する。
-`--summary` を知らない古いバイナリ（`ERR ca-arguments` と終了コード2だけを返す）も、検査結果としては受理せず、同じ `WARN ca-build` で再ビルドを求める。
-Goソース、テスト、事故別JSON、`go.mod` をバイナリに埋め込み、現在のcheckoutのファイル集合とバイト列を照合する。
-不一致なら検査結果を受理せず、再ビルドを求める。
-この照合は更新漏れを検出するもので、悪意ある実行ファイルの真正性を証明するものではない。
+If the binary is missing, `doctor` prints `WARN ca-build` and build instructions.
+An older binary that does not recognize `--summary` (returning only `ERR ca-arguments` and exit code 2) is also rejected as invalid output and triggers the same `WARN ca-build` rebuild prompt.
+Go sources, tests, incident JSONs, and `go.mod` are embedded in the binary and compared byte-for-byte against the current checkout's file set.
+If they mismatch, `doctor` rejects the output and asks for a rebuild.
+This check detects stale builds, not malicious binary tampering.
 
-`just ca-doctor-build-all` はLinux、macOS、Windowsの各amd64とarm64向けバイナリを `output/ca-doctor/` に作る。
-別の端末へ配る場合は、同じcheckoutと対応するバイナリを使い、`ca-doctor` （Windowsは `ca-doctor.exe`）として同ディレクトリに置く。
-WindowsのrecipeはPowerShellからGit Bashを経由して起動する。
-`.cmd` と `.bat` のラッパーしか見つからないツールは実行せず、未確認と表示する。
-クロスビルドの成功は、各OSでの実行確認とは区別する。
+`just ca-doctor-build-all` builds binaries for Linux, macOS, and Windows (both amd64 and arm64) in `output/ca-doctor/`.
+To distribute to another machine, use the matching checkout and binary and place it in that directory as `ca-doctor` (`ca-doctor.exe` on Windows).
+Windows recipes run from PowerShell through Git Bash.
+Tools found only as `.cmd` or `.bat` wrappers are not executed and are reported as unverified.
+A passing cross-build does not substitute for runtime verification on each OS.
 
-## 共通のCA健全性チェック
+## Common CA health checks
 
-- TLS検証を無効にする環境変数と、現在の設定コンテキストのGit `http.sslVerify` を確認する。`GIT_SSL_NO_VERIFY` は値が `0`、`false`、空文字でも、定義されていれば検証を無効にするため `ERR` にする。Gitの確認対象URLは正常系の `https://example.com/` であり、他repoやURLの設定は保証しない。
-- 明示指定されたCAファイルの存在、読み取り、PEMとX509の解析、ローカル時計に対する有効期間を確認する。各ファイルの上限は1MiBで、証明書の内容やsubject、設定値は表示しない。
-- CAディレクトリは開けることだけを確認し、中身やバックエンドでの有効性は保証しない。Unixの `SSL_CERT_DIR` と `GIT_SSL_CAPATH` はコロン区切り、Windowsはセミコロン区切りとして扱う。空の要素は未確認にする。
-- 各TLSクライアントで正常系へのHTTPS接続を試す。curl、Node.jsのTLS API、Pythonの標準ssl、Bunのfetch、診断バイナリ自身のGo HTTPクライアントを別々に観測する。
-- 現在のPATHで選ばれるGit、Go、uv、rustup、rustcを含め、ツールとCAパッケージの情報を収集する。macOSではPATHのものと異なる `/usr/bin/curl` と `/usr/bin/python3` も調べる。
+- Checks environment variables that disable TLS verification and Git's `http.sslVerify` in the current config context. Defining `GIT_SSL_NO_VERIFY`—even as `0`, `false`, or empty—disables verification and triggers `ERR`. Git is checked against the baseline URL `https://example.com/`; settings for other repos or URLs are not guaranteed.
+- Checks that explicitly configured CA files exist, are readable, parse as PEM and X509, and are valid against the local clock. Each file is capped at 1MiB, and certificate contents, subjects, and config values are never printed.
+- Checks only that CA directories can be opened; contents and backend effectiveness are not guaranteed. `SSL_CERT_DIR` and `GIT_SSL_CAPATH` are treated as colon-separated on Unix and semicolon-separated on Windows. Empty segments are marked unverified.
+- Tests an HTTPS baseline connection separately with each TLS client: curl, Node.js TLS API, Python standard ssl, Bun fetch, and the Go HTTP client inside the diagnostic binary itself.
+- Collects tool and CA package info, including Git, Go, uv, rustup, and rustc selected on the current PATH. On macOS, it also inspects `/usr/bin/curl` and `/usr/bin/python3` when they differ from PATH.
 
-CAファイルの対象は `SSL_CERT_FILE`、`CURL_CA_BUNDLE`、`REQUESTS_CA_BUNDLE`、`PIP_CERT`、`GIT_SSL_CAINFO`、`NODE_EXTRA_CA_CERTS` である。
-`REQUESTS_CA_BUNDLE` はディレクトリ指定も認める。
-Windowsの環境変数名は大文字小文字を区別せず、Unixでは区別する。
-CA束を解析できても、その内容が信頼に値することや失効確認の実施までは立証できない。
-ルート証明書の期限切れの扱いもTLS実装に依存するため、期限だけで一律に不信頼化しない。
+Checked CA file variables are `SSL_CERT_FILE`, `CURL_CA_BUNDLE`, `REQUESTS_CA_BUNDLE`, `PIP_CERT`, `GIT_SSL_CAINFO`, and `NODE_EXTRA_CA_CERTS`.
+`REQUESTS_CA_BUNDLE` may also point to a directory.
+Environment variable names are case-insensitive on Windows and case-sensitive on Unix.
+Parsing a CA bundle does not prove its contents are trustworthy or that revocation checks run.
+Expired root certificate handling also depends on the TLS implementation, so expiry alone does not mark one untrusted.
 
-## 通信と実行の制限
+## Network and execution limits
 
-リダイレクト先を追わず、curlの設定ファイルも読み込まない。
-TLSを無効化するオプションは追加しない。
-Node.js、Python、Goは直接接続し、curlとBunはそれぞれのプロキシ設定の影響を受け得る。
-Node.jsは接続先がDNS名の場合だけSNI（Server Name Indication）を送り、IPアドレスの場合も接続先と証明書の一致を検証する。
-正常系の成功は、別のホストへの到達性を保証しない。
-正常系への接続の結果が `unknown` のときだけ、同じクライアントで合計3回まで試す。
-2回目はIPv4だけで接続し、3回目は既定の接続に戻る。
-3回とも `unknown` なら `unknown` のままにする。
-事故のテストホストは既定の接続で1回だけ試す。
-1回の失敗では「このクライアントがTLSでつなげるか」に答えられないためである。
-2回目をIPv4にするのは、事故のテストホストがIPv4のアドレスしか持たず、正常系（GitHub Pages）はIPv6のアドレスも持つからである。
-Windowsでは正常系へのIPv6の接続の約半数がリセットされた（2026-11-01、リセットされる場所は未確認）。IPv4では起きなかった。
-3回目を既定に戻すのは、IPv6だけの網でも2回目の機会を残すためである。
-BunのfetchはIPv4に限る指定を持たないので、Bunは既定の接続で3回試す。
-Bunの `node:tls` はIPv4に限れるが、プロキシの設定を使わない直接接続で、テストホストへの `fetch` とは経路が違うため使わない。
+Diagnostics do not follow redirects or read curl config files.
+They never add flags that disable TLS verification.
+Node.js, Python, and Go connect directly, while curl and Bun may follow their respective proxy settings.
+Node.js sends SNI (Server Name Indication) only when the target is a DNS name, and still verifies the certificate against the IP address when connecting by IP.
+Baseline success does not guarantee reachability to other hosts.
+Only when a baseline connection returns `unknown` does the same client retry up to 3 times total.
+Attempt 2 uses IPv4 only, and attempt 3 returns to default networking.
+If all 3 attempts return `unknown`, it stays `unknown`.
+Incident test hosts are tried once with default networking.
+One failure cannot answer whether that client can establish a TLS connection.
+Attempt 2 uses IPv4 because the incident test hosts have only IPv4 addresses while the baseline (GitHub Pages) also has IPv6.
+On Windows, roughly half of IPv6 connections to the baseline reset (2026-11-01, reset point unconfirmed); IPv4 did not reset.
+Attempt 3 returns to default so IPv6-only networks still get a second chance.
+Because Bun's fetch has no IPv4-only option, Bun retries 3 times with default networking.
+Bun's `node:tls` can restrict to IPv4, but we do not use it because it connects directly without proxy settings and takes a different path from `fetch` against test hosts.
 
-診断処理のコンテキストは全体30秒、外部コマンドは各4秒を上限とする。
-同時接続数は全クライアント合計12本までに制限する。
-標準出力と標準エラーは各4096バイトまで保持し、超過は未確認にする。
-外部コマンドには `GOTOOLCHAIN=local`、`MISE_AUTO_INSTALL=false`、`RUSTUP_AUTO_INSTALL=0` を渡し、Go、mise、rustupのツールチェーン自動取得を抑止する。
-必要なツールがなければ、診断のために導入せず未確認とする。
-コマンドのキャンセル時には子プロセスの終了も試み、出力パイプ待ちにも期限を設ける。
-Windowsの子孫プロセス終了はSystem32のtaskkillによるbest effortであり、権限やshimの構成に依存する。
-taskkillの場所はWindowsのAPIが返すsystemディレクトリから決め、環境変数`SystemRoot`には頼らない。
-PATH検索やファイル読み取りなど、OSのI/O全般を厳密な実時間で制限するものではない。
+The diagnostic context times out at 30 seconds overall and 4 seconds per external command.
+Concurrent connections are capped at 12 total across all clients.
+Stdout and stderr are truncated at 4096 bytes each; exceeding this marks the check unverified.
+External commands receive `GOTOOLCHAIN=local`, `MISE_AUTO_INSTALL=false`, and `RUSTUP_AUTO_INSTALL=0` to prevent Go, mise, and rustup from auto-downloading toolchains.
+Missing tools are marked unverified rather than installed for diagnostics.
+On command cancellation, child processes are terminated best-effort and output pipe waits are bounded.
+On Windows, descendant termination uses System32's taskkill best-effort and depends on permissions and shim layout.
+taskkill is located from the system directory returned by the Windows API, not from `SystemRoot`.
+General OS I/O such as PATH lookups or file reads is not strictly wall-clock bounded.
 
-## 結果と限界
+## Results and limitations
 
-`WARN` は、この端末で操作者が確認するか手を動かすべきことにだけ使う。
-検査の範囲の注意書きと、端末についての事実は `INFO` で出す。
-`INFO` は合格でも問題でもなく、`doctor` の `info=` に数え、終了コードを変えない。
+`WARN` marks items to check or act on for this host.
+Scope caveats and host facts are emitted as `INFO`.
+`INFO` is neither a pass nor a problem; it counts toward `doctor`'s `info=` total and does not change the exit code.
 
-| 表示 | 意味 |
+| Output | Meaning |
 | --- | --- |
-| `OK ca-file-*` | 指定ファイルを解析できた。信頼性や失効状態の保証ではない |
-| `OK ca-https-*` | 当該クライアントが正常系へのTLS接続を受け入れた。その接続だけの観測 |
-| `OK ca-version-*` | 事故別の修正版下限を満たす。実効CA束まで安全だという意味ではない |
-| `ERR ca-version-*` | 既知の対象系列で修正版より古い |
-| `ERR ca-live-*` / `ERR ca-chain-*` | 事故のテストホストへのTLS接続を受け入れた。`ca-live-*` は受け入れたホスト名を並べる。CA束とTLS中継の有無を調べる |
-| `INFO ca-live-*` / `INFO ca-chain-*` と `certificate-rejected` | 正常系は通り、テストホストの証明書をすべて拒否した。当該CAの不信頼化が理由とは立証できないので合格にはしない |
-| `WARN` と `unknown` | 通信、実行、解析などに失敗した。安全とは判定しない |
-| `WARN ca-version-*`（`outside the reviewed fix branches`） | 入っている版が、修正版を確認した系列の外にある。ツールが `24.0` のように2要素で出した版は `24.0.0` として比べる（事故別ルールの修正版下限は3要素で書く） |
-| `INFO ca-version-*`（`not installed`） | そのPythonにcertifiやpipが入っていない。比べる対象がない |
-| `INFO ca-tool-*` / `ca-env`（CAファイルの変数） / `ca-git-verify`（上書きなし） | 調べた実行ファイル、設定済みのCAファイル変数、Gitの既定の検証が上書きされていないこと。どれも事実で、対処はない |
-| `INFO ca-platform` / `ca-remediation` / `ca-advice-*` / `ca-rust` / `ca-os-bundle` / `ca-coverage` | 確認範囲の限界と、OS別の確認先 |
-| `WARN ca-env`（プロキシ、`NODE_OPTIONS`、`GODEBUG`、`PYTHONHTTPSVERIFY`、`NODE_TLS_REJECT_UNAUTHORIZED`） | TLSの挙動を変えうる設定がある |
-| `WARN ca-policy-*` | レビュー期限を過ぎた。公開元の告知に照らしてルールを見直す |
+| `OK ca-file-*` | Specified file parsed cleanly. Does not guarantee trust or revocation status |
+| `OK ca-https-*` | That client accepted a TLS connection to the baseline. Observation applies only to that connection |
+| `OK ca-version-*` | Meets the incident fix floor. Does not mean the effective CA bundle is safe |
+| `ERR ca-version-*` | Older than the fixed version in a known affected branch |
+| `ERR ca-live-*` / `ERR ca-chain-*` | Accepted a TLS connection to an incident test host. `ca-live-*` lists the accepted hostnames. Check the CA bundle and any TLS interception |
+| `INFO ca-live-*` / `INFO ca-chain-*` with `certificate-rejected` | Baseline succeeded and all test host certificates were rejected. Does not pass because distrust of that CA cannot be proved as the cause |
+| `WARN` and `unknown` | Network, execution, or parsing failed. Not judged safe |
+| `WARN ca-version-*` (`outside the reviewed fix branches`) | Installed version is outside the branches with verified fixes. Two-part versions such as `24.0` are compared as `24.0.0` (incident rule fix floors use three parts) |
+| `INFO ca-version-*` (`not installed`) | That Python has no certifi or pip installed. Nothing to compare |
+| `INFO ca-tool-*` / `ca-env` (CA file vars) / `ca-git-verify` (no override) | Checked binaries, configured CA file variables, and unoverridden Git verification. Factual only; no action needed |
+| `INFO ca-platform` / `ca-remediation` / `ca-advice-*` / `ca-rust` / `ca-os-bundle` / `ca-coverage` | Scope limits and OS-specific check targets |
+| `WARN ca-env` (proxy, `NODE_OPTIONS`, `GODEBUG`, `PYTHONHTTPSVERIFY`, `NODE_TLS_REJECT_UNAUTHORIZED`) | Settings present that can alter TLS behavior |
+| `WARN ca-policy-*` | Past review deadline. Review the rule against the publisher's advisories |
 
-HTTP 4xx、5xx、リダイレクトでもTLS接続を受け入れた事実は変わらない。
-反対に、証明書エラーだけでは事故への対策済みとしない。
-期限切れ、ホスト名不一致、プロキシ証明書の異常でも同じ種類のエラーになるためである。
-TLS中継がある場合、接続成功だけで漏洩した証明書自体を受け入れたと断定しない。
+HTTP 4xx, 5xx, and redirects still mean a TLS connection was accepted.
+Conversely, a certificate error alone does not prove incident mitigation.
+Expired certificates, hostname mismatches, and bad proxy certificates produce the same class of errors.
+When TLS interception is present, a successful connection alone does not prove the leaked certificate itself was accepted.
 
-curlの証明書の拒否は、終了コード60で判定する。
-ただしWindowsのcurl（Schannel）は、60にするのは信頼できないルートとホスト名の不一致だけで、失効や期限切れの証明書は終了コード35で返す。
-そのため、35のときはエラー出力にある名前（`CRYPT_E_REVOKED`、`SEC_E_CERT_EXPIRED`、`SEC_E_CERT_WRONG_USAGE`）で証明書の拒否と数える。
-失効を確認できなかったこと（`CRYPT_E_REVOCATION_OFFLINE` など）は拒否と数えず、`unknown` のままにする。
-エラー出力の文は表示しない。
+curl certificate rejection is detected by exit code 60.
+However, Windows curl (Schannel) returns 60 only for untrusted roots and hostname mismatches, and returns exit code 35 for revoked or expired certificates.
+So on exit code 35, stderr names (`CRYPT_E_REVOKED`, `SEC_E_CERT_EXPIRED`, `SEC_E_CERT_WRONG_USAGE`) are counted as certificate rejections.
+Failures to check revocation (such as `CRYPT_E_REVOCATION_OFFLINE`) are not counted as rejections and stay `unknown`.
+Stderr text is never printed.
 
-単体コマンドの終了コードは、`0` が警告なし、`1` が未確認を含む、`2` が `ERR` を含む。
-`doctor` は結果と終了コードの整合性を確かめて集計し、`ERR` があれば既存仕様どおり終了コード1を返す。
-確認範囲の限界は、毎回 `INFO ca-coverage` として残る。
-警告を減らすために未確認項目を合格にしない。`INFO` にするのは、対処のない注意書きと事実だけである。
+Standalone command exit codes are `0` for no warnings, `1` if unverified items exist, and `2` if `ERR` exists.
+`doctor` verifies consistency between results and exit codes, aggregates them, and returns exit code 1 on `ERR` as previously specified.
+Scope limits are always recorded as `INFO ca-coverage`.
+Unverified items are never promoted to pass to reduce warnings; `INFO` is only for actionable-free caveats and facts.
 
-WSLではLinux側だけを調べる。
-Windows本体での実行はWSL内を保証しない。
-macOSのKeychainの失効情報とPEM束も別物である。
-ブラウザやOSの失効リスト配信状態、他のPATH上のコピー、別の仮想環境、pip内部のvendored CA束、Electron、コンテナ、既存の静的Go/Rustバイナリは保証しない。
-OSのパッケージ情報は収集するが、異なるディストリビューションの版を単純比較しない。
+Under WSL, only the Linux side is checked.
+Running on native Windows does not verify inside WSL.
+macOS Keychain revocation data and PEM bundles are separate.
+Browser or OS revocation list delivery, other copies on PATH, separate virtualenvs, vendored CA bundles inside pip, Electron, containers, and existing static Go/Rust binaries are not covered.
+OS package metadata is collected, but versions across different distributions are not compared directly.
 
-## OS別の確認と修復
+## OS-specific checks and remediation
 
-同じOSでも、PATHで選ぶ実行ファイル、仮想環境、明示されたCAファイルによって結果は変わる。
-まず `ca-tool-*` の実行ファイルと `ca-env` を確認し、正常系が成功したかと、事故テスト先ごとの結果を記録する。
-`unknown` が残る検査は完了扱いにしない。
-`ca-remediation` はOS別の確認先を案内するだけで、更新や信頼ストアの変更を行わない。
-社内CAやTLS中継を使う端末では、CA束を置き換える前に管理者と確認する。
+Even on the same OS, results vary by the binary chosen on PATH, virtualenvs, and explicit CA files.
+First check the `ca-tool-*` binaries and `ca-env`, and record whether the baseline succeeded and the result for each incident test host.
+Do not treat a check with remaining `unknown` items as complete.
+`ca-remediation` only points to OS-specific check targets; it does not update or modify trust stores.
+On machines using corporate CAs or TLS interception, check with your administrator before replacing CA bundles.
 
-| 環境 | 確認と修復 | 別途確認する範囲 |
+| Environment | Check and remediation | Additional scope to verify |
 | --- | --- | --- |
-| macOS | OS更新に加え、Homebrewの `ca-certificates` と実際に使うPEM束を確認する | Keychain、`/etc/ssl/cert.pem`、Pythonの既定CAは同一ではない |
-| native Windows | Windows Updateと組織の証明書配信状態を確認する | Schannelは、OSストアとMicrosoftの拒否リスト（CTL）を使う。CPythonの標準sslは、OSストアのルートだけを使う（[WindowsのPython](#windowsのpython)）。Node.jsなどの独立したPEM束は別々に更新する |
-| WSL | 各ディストリビューションの `ca-certificates` をその環境内で更新する | Windows本体の更新や別のWSLディストリビューションには反映されない |
-| Linux | ディストリビューションの公式パッケージ更新でCA束を更新する | コンテナ、仮想環境、静的バイナリ、独立したCA束は別々に確認する |
+| macOS | Update OS, and check Homebrew `ca-certificates` and the actual PEM bundle in use | Keychain, `/etc/ssl/cert.pem`, and Python's default CA are not the same |
+| native Windows | Check Windows Update and organizational certificate deployment | Schannel uses the OS store and Microsoft's blocklist (CTL). CPython's standard ssl uses only roots in the OS store ([Python on Windows](#python-on-windows)). Standalone PEM bundles such as Node.js must be updated separately |
+| WSL | Update `ca-certificates` inside each distribution | Changes do not carry over from Windows host updates or other WSL distributions |
+| Linux | Update the CA bundle via official distribution package updates | Containers, virtualenvs, static binaries, and standalone CA bundles must be checked separately |
 
-LinuxとWSLでは、端末の管理方針に従い、Debian/Ubuntuなら `apt`、Fedora系なら `dnf`、Alpineなら `apk` でCAパッケージを更新する。
-バックポートがあるため、異なるディストリビューションの版番号を単純比較しない。
-Windowsの診断はWSL経由で代用せず、Windows本体でビルドしたバイナリをPowerShellから `just ca-doctor` で実行する（recipeはGit Bashを経由する）。
-ツールの更新後は、新しいプロセスから同じ診断を実行する。
-Windows、WSL、Linuxの実行結果は、それぞれの実機で確認する必要がある。
-Macでの成功やクロスビルドの成功を、他OSでの修復確認とはしない。
+On Linux and WSL, follow host policy and update CA packages with `apt` (Debian/Ubuntu), `dnf` (Fedora family), or `apk` (Alpine).
+Because of backports, never compare version numbers across different distributions directly.
+Do not substitute WSL for Windows diagnostics; run the Windows-built binary from PowerShell via `just ca-doctor` (the recipe runs through Git Bash).
+After updating tools, re-run the same diagnostic from a new process.
+Windows, WSL, and Linux results must each be verified on their actual host.
+Success on Mac or a passing cross-build does not count as verification on other OSes.
 
-### Macでユーザー領域のCA束を選ぶ
+### Selecting a user-space CA bundle on Mac
 
-HomebrewのCAパッケージを更新したうえで、実ファイルと実接続を確認する。
-Apple Siliconでは通常 `/opt/homebrew/etc/ca-certificates/cert.pem`、Intel Macでは通常 `/usr/local/etc/ca-certificates/cert.pem` だが、配置は端末ごとに確認する。
-既存のCA環境変数がある場合は、追加の変数で優先順位を変えず、その設定の管理者と調整する。
+Update Homebrew's CA package, then verify both the file on disk and live connections.
+It is usually `/opt/homebrew/etc/ca-certificates/cert.pem` on Apple Silicon and `/usr/local/etc/ca-certificates/cert.pem` on Intel Macs, though you should check the path per machine.
+If existing CA environment variables are set, coordinate with their owner instead of changing precedence with extra variables.
 
-既存のCA指定がない端末では、更新済みCA束を `SSL_CERT_FILE`（対応するPythonの標準ssl）、`CURL_CA_BUNDLE`（curl）、`REQUESTS_CA_BUNDLE`（Requests）、`PIP_CERT`（pip）としてユーザーのシェル設定で指定する方法がある。
-これは各クライアント向けの指定であり、OSの信頼ストアを修復する操作ではない。
-環境変数を設定したシェルから新しく起動するプロセスにだけ反映され、起動済みのエディタ、GUI、サービスには遡って反映されない。
+On machines without existing CA overrides, you can set the updated CA bundle in your shell config as `SSL_CERT_FILE` (for supported Python standard ssl), `CURL_CA_BUNDLE` (curl), `REQUESTS_CA_BUNDLE` (Requests), and `PIP_CERT` (pip).
+This configures individual clients rather than fixing the OS trust store.
+It applies only to new processes started from that shell and not retroactively to already running editors, GUIs, or services.
 
-Apple付属のPython/LibreSSLでは、`SSL_CERT_FILE` が表示上の既定パスに反映されても、TLSの既定CA読み込みに使われない場合がある。
-MacのPython 3.9.6／LibreSSL 2.8.3でこの挙動を実測したため、変数の表示だけで修復済みと判断しない。
-その場合は、修正済みの管理下Pythonを使うか、アプリが提供するCA指定を使う。
-Pythonの標準sslを使うアプリなら `ssl.create_default_context(cafile="更新済みCA束の絶対パス")` を明示して検証できるが、他のHTTPライブラリへ自動適用されるものではない。
-システムPythonを使い続けて接続受理が残る場合は、`ERR` を残す。
+In Apple-bundled Python/LibreSSL, `SSL_CERT_FILE` may appear as the displayed default path without actually being used for default TLS CA loading.
+We observed this behavior on Mac Python 3.9.6 / LibreSSL 2.8.3, so do not judge remediation by the printed variable alone.
+In that case, use a fixed managed Python or an application-provided CA setting.
+Apps using Python's standard ssl can explicitly pass `ssl.create_default_context(cafile="<absolute path of the updated CA bundle>")`, though this does not automatically apply to other HTTP libraries.
+If you continue using system Python and connections are still accepted, keep the `ERR`.
 
-Apple付属のPythonなどLibreSSLのクライアントが読むのは、OSのPEM束 `/private/etc/ssl/cert.pem` である（2026-11-09にもPython 3.9.6／LibreSSL 2.8.3で確かめた）。
-事故別ルールの `untrustedRoots` をこの束から外すには、次の2段で行う。
+LibreSSL clients such as Apple-bundled Python read the OS PEM bundle `/private/etc/ssl/cert.pem` (verified again on 2026-11-09 with Python 3.9.6 / LibreSSL 2.8.3).
+To remove incident `untrustedRoots` from this bundle, run two steps:
 
-1. `just ca-os-bundle-candidate`（rootは不要）: `output/ca-os-bundle/cert.pem` に候補を書き、入力と候補のSHA-256、外すルート、残る証明書の数を出す。候補と元の束の差分を確かめる。
-2. `just ca-os-bundle-apply <入力のSHA-256> <候補のSHA-256>`（sudo）: 入力も、作り直した候補も、手順1と同じハッシュのときだけ置き換える。元の束は先に `/private/etc/ssl/cert.pem.dotfiles-backup-<日時>` へ書いて同期する。
+1. `just ca-os-bundle-candidate` (no root required): writes a candidate to `output/ca-os-bundle/cert.pem` and prints the input and candidate SHA-256, removed roots, and remaining certificate count. Inspect the diff between the candidate and the original bundle.
+2. `just ca-os-bundle-apply <input SHA-256> <candidate SHA-256>` (sudo): replaces the bundle only if both the input and the regenerated candidate match the hashes from step 1. The original bundle is backed up and synced to `/private/etc/ssl/cert.pem.dotfiles-backup-<timestamp>` first.
 
-戻すときは `sudo cp -p <退避先> /private/etc/ssl/cert.pem` を実行する。
-macOSの更新で束が元に戻ると、`ERR ca-live-*-system-python` が再び出るので、手順1からやり直す。
-Keychainを使うクライアント（Safariなど）は、この操作では変わらない。
-診断コードを変えてその接続だけ別のCA束に切り替えたり、警告を消すために `sitecustomize.py` を追加したりしない。
-OS管理ファイルやKeychainの修復は、ユーザー環境変数の変更と分け、管理者の承認を得て行う。
+To revert, run `sudo cp -p <backup path> /private/etc/ssl/cert.pem`.
+If a macOS update restores the bundle, `ERR ca-live-*-system-python` returns, so repeat from step 1.
+Clients using Keychain (such as Safari) are unaffected by this operation.
+Never alter diagnostic code to swap CA bundles just for that connection, or add `sitecustomize.py` to silence warnings.
+Separate OS-managed file or Keychain remediation from user environment variable changes, and obtain administrator approval.
 
-### WindowsのPython
+### Python on Windows
 
-WindowsのCPythonの標準sslは、WindowsのROOTストアとCAストアにある証明書を、信頼の起点として読み込む。
-Microsoftが自動更新で配る拒否リスト（CTL）とDisallowedストアは見ない。
-そのため、Windowsが拒否する中間CAでも、ROOTストアのルートまで辿れれば、Pythonは接続を受け入れる。
-eMudhraの事故では、AAA Certificate Servicesが署名した中間CA（`-aaa-` の7本）がこれに当たる。
-Windows自身はこの7本を拒否するので、Windowsの検証器を使うGoなどの結果から、Pythonの結果を推測しない。
+Windows CPython's standard ssl loads certificates from the Windows ROOT and CA stores as trust anchors.
+It ignores Microsoft's auto-updated blocklist (CTL) and the Disallowed store.
+Therefore, even if Windows rejects an intermediate CA, Python accepts the connection as long as it chains to a root in the ROOT store.
+In the eMudhra incident, the seven intermediate CAs signed by AAA Certificate Services (`-aaa-`) fall into this category.
+Windows itself rejects these seven, so do not infer Python's result from Go or other tools that use the Windows verifier.
 
-CPythonの修正（gh-160040、CVE-2026-115557）は、漏れた鍵を含むチェーンを拒否する。
-修正版が出たら、PATHのPythonと、uvなどが管理する各Pythonを更新し、`just ca-doctor` を実行し直す。
-EOLの系列には修正が出ない。
+CPython's fix (gh-160040, CVE-2026-115557) rejects chains containing the leaked keys.
+Once a fixed release ships, update Python on PATH and any Pythons managed by uv or other tools, then re-run `just ca-doctor`.
+EOL branches receive no fix.
 
-修正版が出るまで、OSストアのAAA Certificate Servicesの用途（EKUの属性）を変える方法は使わない。
-2026-10-26の実測では、次の2つが起きた。
+Until a fix ships, do not modify the intended purpose (EKU properties) of AAA Certificate Services in the OS store.
+On 2026-10-26, we observed two issues when doing so:
 
-- Windowsのルートの自動更新が、約30分で属性を元に戻した。
-- 変えている間、AAAが相互証明書を出している別のルート（SSL.comなど）のチェーンが、Windowsの検証器でもPythonでも失敗した。このルート本体がOSストアに無い端末では、`https://example.com/` も失敗した。
+- Windows root auto-update reverted the properties within about 30 minutes.
+- While changed, chains for other roots cross-signed by AAA (such as SSL.com) failed in both the Windows verifier and Python; on machines lacking that root itself in the OS store, `https://example.com/` also failed.
 
-自動更新を止めると、拒否リストの配布も止まるので、これもしない。
-診断のPythonだけを別のCA束に切り替えたり、`sitecustomize.py` で警告を消したりはしない。
-修正版が出るまで、`ERR` は残す。
+Do not disable auto-update either, because that stops blocklist distribution.
+Do not point only the diagnostic Python to another CA bundle or suppress warnings with `sitecustomize.py`.
+Leave the `ERR` until a fixed release is available.
 
-## 事故別ルールの追加と更新
+## Adding and updating incident rules
 
-正本は `tools/ca-doctor/incidents/*.json` である。
-実行時に外部から判定ルールを取得しない。
-JSONにはID、検査種別、根拠URL、確認日、見直し期限、正常系URL、事故のテストホスト、ツール別の修正版下限、未修正ツール、確認上の注意を記録する。
-必要なら、事故のテストチェーンがつながるルート（修正済みのCA束には無いもの）を `untrustedRoots` に、DERのSHA-256（小文字の16進64文字）とsubjectで16件まで記録する。`ca-doctor os-bundle` がこれをOSのCA束から外す（[Macでユーザー領域のCA束を選ぶ](#macでユーザー領域のca束を選ぶ)）。
+The source of truth is `tools/ca-doctor/incidents/*.json`.
+Rules are never fetched externally at runtime.
+Each JSON records the ID, check type, evidence URLs, verification date, review deadline, baseline URL, incident test hosts, per-tool fix floors, unfixed tools, and verification caveats.
+If needed, list up to 16 roots that test chains chain to (and that are absent from fixed CA bundles) under `untrustedRoots` by lowercase 64-hex-char DER SHA-256 and subject; `ca-doctor os-bundle` removes them from the OS CA bundle ([Selecting a user-space CA bundle on Mac](#selecting-a-user-space-ca-bundle-on-mac)).
 
-現在の検査種別は `tls-endpoint-and-version` だけであり、対象ホストへの接続受理と既知の修正版下限を検査する。
-それ以外の種類の事故にはコードとテストの追加が必要で、JSONだけで任意の診断やコマンドを実行できるものではない。
-バージョンを収集できないツールの下限を追加すると、manifest検証で拒否する。
-未登録のリリース系列、開発版、解釈できない版は `WARN` にする。
+Currently the only check type is `tls-endpoint-and-version`, which checks connection acceptance to target hosts and known fix floors.
+Other incident types require code and test additions; JSON alone cannot run arbitrary diagnostics or commands.
+Adding a floor for a tool whose version cannot be collected fails manifest validation.
+Unlisted release branches, development builds, and unparseable versions report `WARN`.
 
-ルールを変更するときは公開元の修正告知と根拠URLを確かめ、テストと事故別の説明を更新してレビューする。
-見直し期限切れは警告し、古いルールを使って機械全体を安全とは判定しない。
-追加、削除、変更のいずれも再ビルドが必要になる。
+When changing rules, verify the publisher's fix advisories and evidence URLs, and update tests and incident docs for review.
+Expired review deadlines emit warnings, and outdated rules never mark a machine safe.
+Any addition, removal, or change requires a rebuild.
 
-収録済みの事故は [eMudhra中間CA漏洩](emudhra.md) を参照する。
+For recorded incidents, see [eMudhra intermediate CA compromise](emudhra.md).

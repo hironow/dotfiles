@@ -1,50 +1,51 @@
-# Pub/Sub Bigtable Subscriptions（Preview）
+# Pub/Sub Bigtable Subscriptions (Preview)
 
-Pub/Sub のメッセージを、**subscriber クライアントを書かずにそのまま Bigtable テーブルへ
-書き込む** export subscription。記事の「カスタム ETL 不要」「サブミリ秒サービング向け」は
-これを指す。
+An export subscription that **writes Pub/Sub messages directly into a Bigtable table without
+writing a subscriber client**. This is what the article refers to as "no custom ETL needed" (translated)
+and "for sub-millisecond serving" (translated).
 
-- Launch stage: **Preview**（Pre-GA。`gcloud beta` 系コマンド）
-- 概要: <https://docs.cloud.google.com/pubsub/docs/bigtable-subscriptions>
-- 作成手順: <https://docs.cloud.google.com/pubsub/docs/create-bigtable-subscription>
+- Launch stage: **Preview** (Pre-GA; `gcloud beta` commands)
+- Overview: <https://docs.cloud.google.com/pubsub/docs/bigtable-subscriptions>
+- Creation steps: <https://docs.cloud.google.com/pubsub/docs/create-bigtable-subscription>
 
-## ファクトチェック
+## Fact-check
 
-- 記事の「Pub/Sub から Bigtable への直接書き込み」「カスタム ETL 不要」「リアルタイム
-  サービング向け」は **公式と一致**。
-- **Preview 表記は正しい**（公式ページに Pre-GA バナーあり）。
-- 「サブミリ秒レイテンシ」は **Bigtable の読み取り** の特性を指す。書き込み経路は
-  at-least-once で、重複排除はしない（後述）。
+- The article's claims of "direct writes from Pub/Sub to Bigtable" (translated), "no custom ETL needed" (translated),
+  and "for real-time serving" (translated) **match official docs**.
+- **The Preview label is accurate** (the official page has a Pre-GA banner).
+- "Sub-millisecond latency" (translated) describes **Bigtable read performance**. The write path is
+  at-least-once and performs no deduplication (details below).
 
-## 位置づけ（いつ使うか）
+## Positioning (when to use)
 
-- メッセージを **追加処理なし or 軽い SMT 変換だけ** で Bigtable に入れたい → **Bigtable
-  subscription**。
-- 複雑な変換が必要 → **Dataflow + pull subscription** を推奨（公式が明記）。
+- Want to write messages to Bigtable **with no extra processing or only lightweight SMT transforms** ->
+  **Bigtable subscription**.
+- Need complex transformations -> **Dataflow + pull subscription** is recommended (explicitly stated in official docs).
 
-> **用語注意**: 元記事のアーキ図にある「Bigtable のマテリアライズドビュー」は、Bigtable
-> Subscriptions とは **別の機能**。こちらは raw メッセージを直接書き込む。あちらは
-> [Bigtable continuous materialized views](https://docs.cloud.google.com/bigtable/docs/continuous-materialized-views)
-> という **SQL 定義の背景集約ビュー**（着信データを増分集約し、update / delete も伝播、
-> eventually consistent）。
+> **Terminology note**: "Bigtable materialized views" (translated) in the original article's
+> architecture diagram is a **separate feature** from Bigtable Subscriptions. Subscriptions write
+> raw messages directly. The other feature is
+> [Bigtable continuous materialized views](https://docs.cloud.google.com/bigtable/docs/continuous-materialized-views),
+> which are **SQL-defined background aggregation views** (incrementally aggregating incoming data,
+> propagating updates and deletes, eventually consistent).
 
-## 前提条件
+## Prerequisites
 
-- 書き込み先 Bigtable テーブルが **既に存在** すること。
-- テーブルに **`data` という column family が必須**。
-- メタデータも書くなら **`pubsub_metadata` column family** も用意（任意）。
+- The destination Bigtable table must **already exist**.
+- The table must **have a `data` column family**.
+- Also create a **`pubsub_metadata` column family** if writing metadata (optional).
 
-## 実装：エンドツーエンド例（gcloud）
+## Implementation: end-to-end example (gcloud)
 
-> この手順は挙動を学ぶための例である。使い捨ての検証用プロジェクトで試す。
-> 本番の GCP は OpenTofu と PR でだけ変える（IaC 方針）。
+> These steps are an example to learn the behavior. Test them in a disposable verification project.
+> Change production GCP only via OpenTofu and PRs (IaC policy).
 
 ```bash
-# 1. Bigtable インスタンス
+# 1. Bigtable instance
 gcloud bigtable instances create my-instance --display-name="My instance" \
   --cluster-config=id=my-cluster-1,zone=ZONE,nodes=1
 
-# 2. data column family つきテーブル
+# 2. Table with the data column family
 gcloud bigtable instances tables create table-1 \
   --instance=my-instance \
   --column-families=data
@@ -52,7 +53,7 @@ gcloud bigtable instances tables create table-1 \
 # 3. topic
 gcloud pubsub topics create topic-1
 
-# 4. Bigtable subscription（Preview = beta）
+# 4. Bigtable subscription (Preview = beta)
 gcloud beta pubsub subscriptions create bigtable-sub \
   --topic=topic-1 \
   --bigtable-table=projects/PROJECT_ID/instances/my-instance/tables/table-1
@@ -61,28 +62,27 @@ gcloud beta pubsub subscriptions create bigtable-sub \
 gcloud pubsub topics publish topic-1 --message='{"name":"Alice"}'
 ```
 
-Bigtable Studio の query editor で確認:
+Verify in the Bigtable Studio query editor:
 
 ```sql
 SELECT _key, JSON_VALUE(CAST(data[''] AS STRING), '$.name') AS name FROM table-1;
 ```
 
-### 主なフラグ
+### Key flags
 
-- `--bigtable-write-metadata`: メッセージメタデータを `pubsub_metadata` family に書く。
-- `--bigtable-app-profile-id=APP_PROFILE`: 使用する app profile。**single-cluster routing
-  必須**。未指定ならデフォルト app profile。
-- `--bigtable-service-account-email`: 書き込み用 SA。未指定なら Pub/Sub service agent。
+- `--bigtable-write-metadata`: Writes message metadata to the `pubsub_metadata` family.
+- `--bigtable-app-profile-id=APP_PROFILE`: App profile to use. **Requires single-cluster routing.**
+  Uses the default app profile if omitted.
+- `--bigtable-service-account-email`: Service account used for writing. Defaults to the Pub/Sub service agent if omitted.
 
-## 書き込みレイアウト
+## Write layout
 
-- **メッセージ data**: `data` family の **空文字列（`""`）column qualifier** に **`BYTES`
-  型** で 1 セル。cell timestamp = メッセージの **publish time**。
-- **row key**: `projects/PROJECT_NUMBER/subscriptions/SUBSCRIPTION_ID#SALT_PREFIX#MESSAGE_ID`
-  （subscription ID + salt prefix + message ID の連結）。salt prefix がホットスポットを散らす。
-- **メタデータ**（`--bigtable-write-metadata` 時、`pubsub_metadata` family）: String 型の
-  `subscription_name`（subscription 名）/ `message_id`（メッセージ ID）/ `attributes`
-  （メッセージ属性の JSON）。
+- **Message data**: Written as a single cell of **`BYTES` type** under the **empty string (`""`)
+  column qualifier** in the `data` family. Cell timestamp = the message's **publish time**.
+- **Row key**: `projects/PROJECT_NUMBER/subscriptions/SUBSCRIPTION_ID#SALT_PREFIX#MESSAGE_ID`
+  (concatenation of subscription ID, salt prefix, and message ID). The salt prefix spreads hotspots.
+- **Metadata** (when `--bigtable-write-metadata` is set; `pubsub_metadata` family): String-typed
+  `subscription_name`, `message_id`, and `attributes` (JSON).
 
 ```text
 Bigtable table : 1 message = 1 row
@@ -97,62 +97,62 @@ Bigtable table : 1 message = 1 row
  (always written)                        (only with --bigtable-write-metadata)
 ```
 
-Legend / 凡例:
+Legend:
 
-- row key: 行キー（subscription ID + salt prefix + message ID の連結。salt がホットスポット分散）
-- column family "data": メッセージ本体を入れる必須ファミリ
-- qualifier "": 空文字列のカラム修飾子（ここに本体 1 セル）
-- message BYTES: 本体は BYTES 型で格納
-- cell ts: セルのタイムスタンプ（= メッセージの publish time）
-- column family "pubsub_metadata": メタデータ用ファミリ（`--bigtable-write-metadata` 指定時のみ）
+- row key: Row key (concatenation of subscription ID, salt prefix, and message ID; salt spreads hotspots)
+- column family "data": Required family storing the message body
+- qualifier "": Empty-string column qualifier (holds the single body cell)
+- message BYTES: Body stored as BYTES
+- cell ts: Cell timestamp (= message publish time)
+- column family "pubsub_metadata": Metadata family (written only when `--bigtable-write-metadata` is specified)
 
-## SMT との併用
+## Combining with SMT
 
-Bigtable subscription は **SMT と組み合わせ可能**。軽い整形（PII マスク、フィールド削除、AI
-Inference によるラベル付与など）を SMT で済ませてから Bigtable に materialize できる。記事の
-「ベクトル埋め込みを Bigtable に取得してセマンティック検索」は、AI Inference SMT（embedding
-モデル）→ Bigtable subscription の組み合わせで実現できる構図。
+Bigtable subscriptions **can be combined with SMTs**. You can run lightweight formatting (PII
+masking, field removal, labeling via AI Inference, etc.) in an SMT before materializing to
+Bigtable. The article's pattern of "storing vector embeddings in Bigtable for semantic search" (translated)
+can be built by chaining an AI Inference SMT (embedding model) into a Bigtable subscription.
 
-## 配信セマンティクスと失敗処理
+## Delivery semantics and failure handling
 
-- **at-least-once**。厳密な重複排除が要るなら、Bigtable 側で downstream 重複処理を入れるか、
-  Dataflow の exactly-once 処理を使う。
-- 書き込み失敗時はメッセージを nack → 再送。一定回数失敗かつ **dead-letter topic** 設定済みなら
-  そこへ転送。DLT メッセージには失敗理由が属性
-  `CloudPubSubDeadLetterSourceDeliveryErrorMessage` で付く。
-- Pub/Sub が Bigtable に書けない間は push backoff 類似のバックオフがかかる。
+- **At-least-once**. If you need strict deduplication, deduplicate downstream in Bigtable or use
+  Dataflow's exactly-once processing.
+- On write failure, the message is nacked and retried. After repeated failures, if a **dead-letter
+  topic** is configured, the message is forwarded there. DLT messages carry the failure reason in the
+  `CloudPubSubDeadLetterSourceDeliveryErrorMessage` attribute.
+- While Pub/Sub cannot write to Bigtable, it applies backoff similar to push backoff.
 
 ## IAM
 
-- Pub/Sub service agent（`service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com`）に
-  **Bigtable User（`roles/bigtable.user`）** を付与（プロジェクト or インスタンス単位）。
-- よりきめ細かくするなら user-managed SA を指定（`--bigtable-service-account-email`）。その SA に
-  Bigtable User、Pub/Sub service account に `iam.serviceAccounts.getAccessToken`、作成者に
-  `iam.serviceAccounts.actAs` が必要。
+- Grant **Bigtable User (`roles/bigtable.user`)** to the Pub/Sub service agent
+  (`service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com`) at the project or instance level.
+- For finer control, specify a user-managed SA (`--bigtable-service-account-email`). That SA needs
+  Bigtable User, the Pub/Sub service account needs `iam.serviceAccounts.getAccessToken`, and the
+  creator needs `iam.serviceAccounts.actAs`.
 
-## 制約・落とし穴
+## Constraints and pitfalls
 
-- テーブルと `data` family は subscription が作らない（[前提条件](#前提条件)）。
-- リージョン / quota: Bigtable subscriber スループットにリージョン単位の quota あり。
-- 厳密な順序保証・重複排除はない（at-least-once）。
-- トラブルシュート:
+- The subscription does not create the table or the `data` family ([Prerequisites](#prerequisites)).
+- Region / quota: Per-region quotas apply to Bigtable subscriber throughput.
+- No strict ordering or deduplication (at-least-once).
+- Troubleshooting:
   <https://docs.cloud.google.com/pubsub/docs/troubleshoot-bigtable-subscriptions>
 
-## サンプル実装（2026-06 確認）
+## Sample implementations (verified 2026-06)
 
-Bigtable subscription は subscriber コードを書かない（gcloud / Console で完結する）。
-専用のアプリ実装サンプルはなく、上の実装例の出典である公式の
-[作成手順](https://docs.cloud.google.com/pubsub/docs/create-bigtable-subscription) がサンプルになる。
-publish 側や周辺操作の Python サンプルは以下。
+Bigtable subscriptions require no subscriber code (everything is done in gcloud or the Console).
+There is no dedicated app sample; the official
+[creation steps](https://docs.cloud.google.com/pubsub/docs/create-bigtable-subscription) used above
+serve as the example. Python samples for publishing and related operations are below.
 
-- Pub/Sub Python サンプル群:
-  [`GoogleCloudPlatform/python-docs-samples` → `pubsub/cloud-client`](https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/pubsub/cloud-client)
+- Pub/Sub Python samples:
+  [`GoogleCloudPlatform/python-docs-samples` -> `pubsub/cloud-client`](https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/pubsub/cloud-client)
   / [`GoogleCloudPlatform/cloud-pubsub-samples-python`](https://github.com/GoogleCloudPlatform/cloud-pubsub-samples-python)
-- 参考（**コミュニティ・非公式**。Cloud Functions 経由の Pub/Sub→Bigtable。subscription
-  機能登場前の手法）:
+- Reference (**community / unofficial**; Pub/Sub-to-Bigtable via Cloud Functions, predating the
+  subscription feature):
   [`krapes/pubsub_bigtable`](https://github.com/krapes/pubsub_bigtable)
 
-## 関連リンク
+## Related links
 
-- subscription タイプの選び方: <https://docs.cloud.google.com/pubsub/docs/subscriber>
-- Bigtable 概要: <https://docs.cloud.google.com/bigtable/docs/overview>
+- Choosing a subscription type: <https://docs.cloud.google.com/pubsub/docs/subscriber>
+- Bigtable overview: <https://docs.cloud.google.com/bigtable/docs/overview>

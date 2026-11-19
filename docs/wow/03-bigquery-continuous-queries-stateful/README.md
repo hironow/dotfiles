@@ -1,31 +1,33 @@
-# BigQuery Continuous Queries — Stateful Data Processing（Preview）
+# BigQuery Continuous Queries — Stateful Data Processing (Preview)
 
-**常駐し続ける SQL** が、BigQuery に着信したデータをリアルタイム処理し、結果を BigQuery
-テーブル / Pub/Sub / Bigtable / Spanner に書き出す。記事の目玉は、**stateful 処理
-（JOIN・集約・タンブリングウィンドウ）が Preview で使える** 点。
+**Always-running SQL** processes data arriving in BigQuery in real time and writes results to
+BigQuery tables, Pub/Sub, Bigtable, or Spanner. The highlight in the article is that **stateful
+processing (JOINs, aggregations, and tumbling windows) is available in Preview**.
 
-- Continuous queries 自体: 既存機能
-- **Stateful operations（JOIN / aggregations / windowing）: Preview**
-- 概要: <https://docs.cloud.google.com/bigquery/docs/continuous-queries-introduction>
-- 実装例: <https://docs.cloud.google.com/bigquery/docs/continuous-queries>
+- Continuous queries themselves: existing feature
+- **Stateful operations (JOIN / aggregations / windowing): Preview**
+- Overview: <https://docs.cloud.google.com/bigquery/docs/continuous-queries-introduction>
+- Examples: <https://docs.cloud.google.com/bigquery/docs/continuous-queries>
 
-## ファクトチェック
+## Fact-check
 
-- 記事の「集約関数・タンブリングウィンドウ・JOIN 処理対応」「30 分平均の計算」「異なる
-  ストリーム間のイベント相関」「AI.GENERATE_TEXT 等の生成 AI 直接統合」「Bigtable / Spanner /
-  Pub/Sub へのリバース ETL」は **すべて公式と一致**。
-- **Preview 表記は正しい**（stateful operations セクションに Pre-GA バナーあり。
-  フィードバック窓口 `bq-continuous-queries-feedback@google.com`）。
+- The article's claims — "support for aggregate functions, tumbling windows, and JOIN processing" (translated),
+  "computing 30-minute averages" (translated), "correlating events across different streams" (translated),
+  "direct generative AI integration such as AI.GENERATE_TEXT" (translated), and "reverse ETL to Bigtable,
+  Spanner, and Pub/Sub" (translated) — **all match official docs**.
+- **The Preview label is accurate** (the stateful operations section carries a Pre-GA banner;
+  feedback address `bq-continuous-queries-feedback@google.com`).
 
-## 何が "stateful" なのか
+## What makes it "stateful"
 
-- **stateless 関数**: 各行を独立処理（変換・JSON 操作・生成 AI 呼び出しなど）。
-- **stateful 操作**: 複数行 / 時間区間にまたがる状態を保持して正確な結果を出す。Preview で
-  使えるのは以下:
+- **Stateless functions**: Process each row independently (transformations, JSON manipulation,
+  generative AI calls, etc.).
+- **Stateful operations**: Maintain state across multiple rows or time intervals to compute accurate
+  results. Available in Preview:
     - [JOINs](https://docs.cloud.google.com/bigquery/docs/continuous-query-joins)
-      — 異なるストリームのイベントを相関
+      — correlate events across different streams
     - [Aggregations / windowing](https://docs.cloud.google.com/bigquery/docs/window-aggregations)
-      — `TUMBLE`（タンブリングウィンドウ）で「5 分ごと」「30 分平均」等を算出
+      — use `TUMBLE` (tumbling windows) to compute values such as "every 5 minutes" or "30-minute averages"
 
 ```text
 stateless : 1 row in -> 1 row out (no memory across rows)
@@ -43,30 +45,30 @@ stateful : TUMBLE keeps state per fixed, non-overlapping window
              agg(w1)       agg(w2)       agg(w3)       agg(w4)       COUNT / AVG / JOIN
 ```
 
-Legend / 凡例:
+Legend:
 
-- stateless: 各行を独立処理（行をまたぐ状態を持たない）
-- stateful: 行 / 時間区間にまたがる状態を保持する処理
-- time: 時間軸
-- e1..e8: 着信イベント（行）
-- window N: タンブリングウィンドウ（固定長・非重複の区間）
-- TUMBLE(5 min): 5 分ごとに区切る関数
-- agg(wN): そのウィンドウの集約結果（COUNT / AVG / JOIN など）
+- stateless: Processes each row independently (no state carried across rows)
+- stateful: Maintains state across rows or time intervals
+- time: Time axis
+- e1..e8: Incoming events (rows)
+- window N: Tumbling window (fixed-length, non-overlapping interval)
+- TUMBLE(5 min): Function that partitions data into 5-minute intervals
+- agg(wN): Aggregation result for that window (COUNT, AVG, JOIN, etc.)
 
-## 入力データソース
+## Input data sources
 
-continuous query が処理できるのは標準 BigQuery テーブルへの着信（Storage Write API /
-`tabledata.insertAll` / batch load / `INSERT` DML / Pub/Sub BigQuery subscription /
-Dataflow → BigQuery / Datastream append-only など）。
+Continuous queries process incoming data written to standard BigQuery tables (via Storage Write API,
+`tabledata.insertAll`, batch loads, `INSERT` DML, Pub/Sub BigQuery subscriptions, Dataflow -> BigQuery,
+Datastream append-only, etc.).
 
-時間起点の制御には変更履歴 TVF を使う:
+Use change-history TVFs to control the starting timestamp:
 
-- `APPENDS(TABLE ..., start_timestamp)` — 指定時刻以降の追加行を処理
-- `CHANGES(...)` — 追加 + 変更を処理（Pub/Sub export 時のみ。**stateful 操作とは併用不可**）
+- `APPENDS(TABLE ..., start_timestamp)` — processes rows appended at or after the specified timestamp
+- `CHANGES(...)` — processes inserts and updates (Pub/Sub export only; **cannot be combined with stateful operations**)
 
-## 実装例
+## Implementation examples
 
-### 例 1: フィルタ + 変換して別テーブルへ（stateless）
+### Example 1: Filter and transform into another table (stateless)
 
 ```sql
 INSERT INTO `myproject.real_time_taxi_streaming.transformed_taxirides`
@@ -82,7 +84,7 @@ FROM APPENDS(
 WHERE ride_status = 'dropoff';
 ```
 
-### 例 2: 生成 AI を呼んで Pub/Sub へ export（リアルタイム生成）
+### Example 2: Call generative AI and export to Pub/Sub (real-time generation)
 
 ```sql
 EXPORT DATA OPTIONS (
@@ -105,7 +107,7 @@ EXPORT DATA OPTIONS (
 );
 ```
 
-### 例 3: JOIN + タンブリングウィンドウ集計（stateful、Preview の目玉）
+### Example 3: JOIN and tumbling-window aggregation (stateful, Preview highlight)
 
 ```sql
 INSERT INTO `real_time_taxi_streaming.neighborhood_taxi_health`
@@ -136,81 +138,80 @@ FROM TUMBLE(TABLE potential_matches, "bq_changed_ts", INTERVAL 5 MINUTE)
 GROUP BY window_end, geohash;
 ```
 
-## 使える AI / ML 関数
+## Available AI and ML functions
 
-- 生成 AI: `AI.GENERATE` / `AI.GENERATE_TEXT`（BigQuery ML remote model 経由で Agent
-  Platform モデルを呼ぶ）
-- AI API: `ML.UNDERSTAND_TEXT` / `ML.TRANSLATE`（Cloud AI API の remote model）
-- 前処理: `ML.NORMALIZER`
-- remote model 作成:
+- Generative AI: `AI.GENERATE` / `AI.GENERATE_TEXT` (calls Agent Platform models via BigQuery ML
+  remote models)
+- AI APIs: `ML.UNDERSTAND_TEXT` / `ML.TRANSLATE` (Cloud AI API remote models)
+- Preprocessing: `ML.NORMALIZER`
+- Creating a remote model:
   <https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-create-remote-model>
 
-## 出力先（リバース ETL）
+## Destinations (reverse ETL)
 
-`EXPORT DATA` で **Pub/Sub / Bigtable / Spanner** に書き出せる（それ以外の宛先は不可）。分析
-結果を低レイテンシのサービング系（Bigtable / Spanner）へ書き戻す reverse ETL が代表用途。
+`EXPORT DATA` writes to **Pub/Sub, Bigtable, or Spanner** (no other destinations are supported).
+A typical use case is reverse ETL, writing analytical results back to low-latency serving systems
+(Bigtable or Spanner).
 
-- [Pub/Sub へ export](https://docs.cloud.google.com/bigquery/docs/export-to-pubsub)
-- [Bigtable へ export](https://docs.cloud.google.com/bigquery/docs/export-to-bigtable)
-- [Spanner へ export](https://docs.cloud.google.com/bigquery/docs/export-to-spanner)
+- [Export to Pub/Sub](https://docs.cloud.google.com/bigquery/docs/export-to-pubsub)
+- [Export to Bigtable](https://docs.cloud.google.com/bigquery/docs/export-to-bigtable)
+- [Export to Spanner](https://docs.cloud.google.com/bigquery/docs/export-to-spanner)
 
-## 制約・落とし穴（重要）
+## Constraints and pitfalls (important)
 
-- **実行時間上限**: ユーザーアカウント実行は **最大 2 日**、サービスアカウント実行は **最大
-  150 日**。到達するとジョブは失敗・停止する → 本番は SA 実行が前提。
-- **watermark lag 48 時間** を超えると **ジョブ失敗**。`APPENDS` / `CHANGES` で停止時点から
-  再開する設計にしておく。
-- **実行中の SQL 変更不可**（止めて作り直す）。data canvas からは実行不可。
-- stateful はサポート対象の JOIN / 集約 / windowing のみ。`PIVOT` / `UNPIVOT` /
-  `TABLESAMPLE` / set 演算 / `SELECT DISTINCT` / `EXISTS` 子問い合わせ / 再帰 CTE / UDF /
-  window function call / DDL / `INSERT` 以外の DML などは **不可**。
-- データソース非対応: external table / information schema / Iceberg managed table /
-  wildcard table / CDC upsert / materialized view / 一部 view。
-- column-level / row-level security 非対応。
-- リージョン: Bigtable / Spanner / Pub/Sub locational endpoint への export は、クエリ元
-  BigQuery dataset と **同一リージョン境界** 内のリソースのみ（Pub/Sub global endpoint は例外）。
-- `CHANGES` は stateful 操作と併用不可（[入力データソース](#入力データソース)）。
+- **Max execution time**: **Up to 2 days** when run by a user account, and **up to 150 days** when
+  run by a service account. Once reached, the job fails and stops — use a service account in production.
+- Exceeding a **48-hour watermark lag** causes the **job to fail**. Design `APPENDS` / `CHANGES` to
+  resume from where the job stopped.
+- **SQL cannot be modified while running** (stop and recreate the job). Cannot be run from Data Canvas.
+- Stateful queries allow only supported JOINs, aggregations, and windowing. `PIVOT`, `UNPIVOT`,
+  `TABLESAMPLE`, set operations, `SELECT DISTINCT`, `EXISTS` subqueries, recursive CTEs, UDFs,
+  window function calls, DDL, and DML other than `INSERT` are **unsupported**.
+- Unsupported data sources: external tables, information schema, Iceberg managed tables,
+  wildcard tables, CDC upserts, materialized views, and some views.
+- Column-level and row-level security are unsupported.
+- Region: Exports to Bigtable, Spanner, or Pub/Sub locational endpoints must target resources within
+  the **same region boundary** as the source BigQuery dataset (Pub/Sub global endpoints are an exception).
+- `CHANGES` cannot be used with stateful operations ([Input data sources](#input-data-sources)).
 
-## エージェント連携（記事の "考えるデータ" の核）
+## Agent integration (core of "thinking data" (translated) in the article)
 
-- **autonomous agent triggering**: live stream の複雑イベントを検知して agentic pipeline を
-  トリガー。
-- **autonomous agent monitoring**: ADK の
-  [BigQuery agent analytics plugin](https://adk.dev/integrations/bigquery-agent-analytics/)
-  でエージェントの trace / tool 使用 / ログを BigQuery にストリームして可観測性を確保。
+- **Autonomous agent triggering**: Detects complex events in live streams to trigger agentic pipelines.
+- **Autonomous agent monitoring**: Streams agent traces, tool usage, and logs to BigQuery for
+  observability using ADK's
+  [BigQuery agent analytics plugin](https://adk.dev/integrations/bigquery-agent-analytics/).
 
-## 公式サンプル実装 / codelab
+## Official sample implementations and codelabs
 
-2026-06-08 に実在を確認した。
+Verified to exist on 2026-06-08.
 
-### 目玉: イベント駆動データエージェント（CQ stateful + Pub/Sub SMT + ADK の E2E）
+### Highlight: Event-driven data agent (E2E across stateful CQ, Pub/Sub SMT, and ADK)
 
-「Impossible Travel」異常を stateful continuous query で検知 → Pub/Sub（SMT で payload 整形）
-→ Vertex AI Agent Engine 上の ADK エージェント（Gemini 2.5 Flash + `BigQueryToolset` +
-`google_search`）が `FALSE_POSITIVE` / `ESCALATION_NEEDED` を判定、という **3 機能横断の
-完成デモ**。所要 60 分・想定コスト $2 未満。
+Detects "Impossible Travel" anomalies with a stateful continuous query -> Pub/Sub (payload formatted
+via SMT) -> an ADK agent on Vertex AI Agent Engine (Gemini 2.5 Flash + `BigQueryToolset` +
+`google_search`) classifies `FALSE_POSITIVE` or `ESCALATION_NEEDED`. This **complete demo spans all
+three features**. Takes ~60 minutes and costs under $2.
 
-- 公式 codelab（Next '26）:
+- Official codelab (Next '26):
   <https://codelabs.developers.google.com/next26/bigquery-adk-event-driven-agents>
-- 公式ブログ:
+- Official blog:
   [Building Event-Driven Data Agents with BigQuery, Pub/Sub, and ADK](https://cloud.google.com/blog/topics/developers-practitioners/building-event-driven-data-agents-with-bigquery-pubsub-and-adk)
-- GitHub: [`GoogleCloudPlatform/devrel-demos` → `data-analytics/event_driven_agents_demo`](https://github.com/GoogleCloudPlatform/devrel-demos/tree/main/data-analytics/event_driven_agents_demo)
-  の主なファイル:
-    - `setup/continuous_query.sql` — stateful CQ 定義（取引 × 顧客プロファイルの JOIN）
-    - `setup/transform.yaml` + `setup/pubsub_to_adk_transform.js` — Pub/Sub SMT（JavaScript
-      UDF）。BigQuery export の payload を unwrap・normalize して Agent Engine の envelope へ整形
-    - `setup/setup_env.sh` / `load_historical_data.py` / `customer_profiles.csv` — 環境構築・履歴データ
-    - `agent/adk_agent_app/agent.py` + `tools.py` — ADK エージェント（`gemini-2.5-flash` 既定 +
-      `BigQueryToolset` + `google_search`）。`agent_runner.py` / `deploy_agent_script.py` で Agent Engine へ
-    - `simulator/generate_events.py` — 合成トランザクション生成
+- Key files in GitHub [`GoogleCloudPlatform/devrel-demos` -> `data-analytics/event_driven_agents_demo`](https://github.com/GoogleCloudPlatform/devrel-demos/tree/main/data-analytics/event_driven_agents_demo):
+    - `setup/continuous_query.sql` — stateful CQ definition (JOIN between transactions and customer profiles)
+    - `setup/transform.yaml` + `setup/pubsub_to_adk_transform.js` — Pub/Sub SMT (JavaScript UDF)
+      that unwraps and normalizes the BigQuery export payload into the Agent Engine envelope
+    - `setup/setup_env.sh` / `load_historical_data.py` / `customer_profiles.csv` — environment setup and historical data
+    - `agent/adk_agent_app/agent.py` + `tools.py` — ADK agent (`gemini-2.5-flash` default +
+      `BigQueryToolset` + `google_search`); deployed to Agent Engine with `agent_runner.py` / `deploy_agent_script.py`
+    - `simulator/generate_events.py` — synthetic transaction generator
 
-### ADK × BigQuery のツール / 評価 / 可観測性
+### ADK and BigQuery tools, evaluation, and observability
 
-- ADK の BigQuery ツール: <https://google.github.io/adk-docs/tools/google-cloud/bigquery/>
-- codelab（ADK + GenAI Eval で BigQuery エージェントを構築・評価）:
+- ADK BigQuery tools: <https://google.github.io/adk-docs/tools/google-cloud/bigquery/>
+- Codelab (build and evaluate a BigQuery agent with ADK + GenAI Eval):
   <https://codelabs.developers.google.com/bigquery-adk-eval>
 - BigQuery Agent Analytics:
-  [公式ブログ](https://cloud.google.com/blog/products/data-analytics/introducing-bigquery-agent-analytics)
+  [official blog](https://cloud.google.com/blog/products/data-analytics/introducing-bigquery-agent-analytics)
   / [codelab](https://codelabs.developers.google.com/adk-bigquery-agent-analytics-plugin)
-- 参考（コミュニティ / 非公式・stateful CQ + ADK の Telco 監視事例）:
+- Reference (community / unofficial; Telco monitoring case using stateful CQ + ADK):
   [Stream processing with BigQuery STATEFUL continuous queries and ADK agents](https://medium.com/google-cloud/stream-processing-with-bigquery-stateful-continuous-queries-and-adk-agents-for-telco-network-97a3e6973c8e)

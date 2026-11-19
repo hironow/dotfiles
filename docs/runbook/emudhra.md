@@ -1,21 +1,21 @@
-# eMudhra中間CA漏洩の診断
+# eMudhra intermediate CA compromise diagnostics
 
-CA doctorの事故別ルール `emudhra-2026` は、[公開診断サイト](https://emudhra.we-have-a-problem.com/)の2026-10-23時点の情報を固定して検査する。
-ビルド方法、共通のCA健全性チェック、結果の読み方と限界は [CA doctor](ca-doctor.md) にある。
+CA doctor's incident rule `emudhra-2026` tests against fixed data from the [public diagnostic site](https://emudhra.we-have-a-problem.com/) as of 2026-10-23.
+Build instructions, common CA health checks, output interpretation, and limitations are in [CA doctor](ca-doctor.md).
 
-## チェーンの実接続検査
+## Live chain connection checks
 
-公開診断サイトを正常系とし、同サイトが掲示する全14ホストを検査する。
-DV、OV、EVそれぞれのG3B/G3Cについて、直接チェーンとAAAクロス署名チェーンの12本を区別する。
-これに、Certificate Transparency（CT）に記録されていない証明書を提示する `dv-g3b-noct` と `dv-g3b-aaa-noct` の2ホストを加える（ドメインの後半は `-emudhra.we-have-a-problem.com`）。
-CTを強制するクライアントは、CAを信頼したままでも未記録の証明書を拒否し得るため、通常の12本とは区別する。
-14本はチェーンの提示方法の数であり、漏洩した秘密鍵の数ではない。
-タイムアウトやDNS失敗は未確認であり、安全とは判定しない。
-証明書を拒否した場合も、不信頼化されたCAが原因だと立証できないため `WARN` にする。
+Using the public diagnostic site as the baseline, it checks all 14 hosts listed there.
+For DV, OV, and EV across G3B and G3C, it separates the 12 hosts covering direct chains and AAA cross-signed chains.
+To these it adds `dv-g3b-noct` and `dv-g3b-aaa-noct`, which serve certificates not logged to Certificate Transparency (CT) (rest of domain: `-emudhra.we-have-a-problem.com`).
+Because CT-enforcing clients can reject unlogged certificates even while still trusting the CA, these 2 are separated from the standard 12.
+14 is the number of chain presentations, not the number of compromised private keys.
+Timeouts and DNS failures are unverified and never judged safe.
+Rejecting certificates still reports `WARN`, because distrust of that CA cannot be proved as the cause.
 
-## 修正版の下限
+## Fix version floors
 
-| 対象 | 修正版の下限 |
+| Target | Fix version floor |
 | --- | --- |
 | Go | 1.27.3 / 1.26.10 |
 | Node.js | 22.23.4 / 24.22.1 / 26.12.1 |
@@ -24,34 +24,34 @@ CTを強制するクライアントは、CAを信頼したままでも未記録�
 | certifi | 2026.10.19 |
 | pip | 26.2.2 |
 | rustup | 1.29.2 |
-| Bun | 1.4.4（1.4系列） |
+| Bun | 1.4.4 (1.4 branch) |
 
-正本は `tools/ca-doctor/incidents/emudhra-2026.json` で、見直し期限も同ファイルに記録する。
-GoとNode.jsは表に示す系列だけを比較する。
-他のツールの対象系列もJSONの `branch` に明示し、未登録の系列を版番号の大小だけで合格にしない。
-Bunのcanary版も安定版の下限からは判定しない。
+The source of truth is `tools/ca-doctor/incidents/emudhra-2026.json`, which also records the review deadline.
+Go and Node.js compare only the branches shown in the table.
+Target branches for other tools are also explicit in `branch` in the JSON; unlisted branches never pass by version comparison alone.
+Bun canary builds are not judged against stable floors either.
 
-## SSOTの固定版
+## Pinned versions in SSOT
 
-画像用の固定版は `config/mise/image-tools.toml` で管理し、`just mise-versions-sync` で導入スクリプトへ反映する。
-Go、Node.js、uv、Bunと、Linux初期導入用miseの版は、事故ルールの下限以上にする。
-画像内の一時ビルドに使うrustupはfeatureの手書き領域にあり、版とCPU別の検証済みSHA-256を一緒に更新する。
-数値の修正版下限は事故別JSONだけに置き、`tests/unit/test_ca_version_pins.py` がSSOTと手書き導入版を照合する（`just test-unit` と `just ci` の対象）。
-必要な宣言や下限が欠けた場合、未登録の系列やプレリリースを固定した場合も検査を失敗させる。
+Pinned image versions live in `config/mise/image-tools.toml` and sync into install scripts via `just mise-versions-sync`.
+Versions for Go, Node.js, uv, Bun, and initial Linux bootstrap mise must be at or above the incident rule floors.
+rustup used for temporary builds inside images lives in a manually maintained feature block; update its version and per-CPU verified SHA-256 together.
+Numeric fix floors live only in the incident JSON, and `tests/unit/test_ca_version_pins.py` checks SSOT and manual install pins against them (run by `just test-unit` and `just ci`).
+Missing declarations or floors, unlisted branches, and pinned prereleases also fail the test.
 
-ホスト用 `config/mise/config.toml` の `latest` と `lts` は、固定版や最低版の指定ではない。
-これらは維持し、既存端末の導入済みツールは更新後に `just ca-doctor` で別途確認する。
-SSOTの更新だけでは、起動中のプロセスや既存画像は更新されない。
+`latest` and `lts` in host `config/mise/config.toml` are not pinned or minimum versions.
+Keep them as-is, and verify installed tools on existing machines separately with `just ca-doctor` after updating.
+Updating SSOT alone does not update running processes or existing images.
 
-## OSごとの修復
+## OS-specific remediation
 
-Mac、native Windows、WSL、Linuxでは、OSの信頼ストアと各ランタイムのCA束を別々に確認する。
-[CA doctorのOS別手順](ca-doctor.md#os別の確認と修復)に従い、同じ端末と起動環境で診断を再実行する。
-native WindowsのCPythonは、Windowsが拒否するAAA経由の7本を受け入れる。CPythonの修正版が出るまでの扱いは[WindowsのPython](ca-doctor.md#windowsのpython)にある。
-[公式のrustup 1.29.2告知](https://blog.rust-lang.org/2026/10/20/Rustup-1.29.2/)は `rustup self update` を案内しているが、古い更新クライアント自身の取得経路も確認する。
-CA環境変数を設定しただけで、静的に組み込まれたrustlsの信頼設定まで変わるとは判断しない。
+On Mac, native Windows, WSL, and Linux, check OS trust stores and each runtime's CA bundle separately.
+Follow [CA doctor's OS-specific steps](ca-doctor.md#os-specific-checks-and-remediation) and re-run diagnostics on the same machine and launch environment.
+Native Windows CPython accepts the 7 AAA-signed chains that Windows rejects; see [Python on Windows](ca-doctor.md#python-on-windows) for handling until a fixed CPython ships.
+The [official rustup 1.29.2 announcement](https://blog.rust-lang.org/2026/10/20/Rustup-1.29.2/) recommends `rustup self update`, but also check the fetch path of the old updater itself.
+Setting CA environment variables does not change statically compiled rustls trust settings.
 
-Rustコンパイラの更新だけでは、アプリのrustls/webpki依存は更新されない。
-各アプリのCargo.lockで、rustls-webpki 0.103.16、webpki-rootsとwebpki-root-certs 1.0.10の修正や適切なバックポートを別途確認する。
-macOSのOS側の失効情報だけで `/etc/ssl/cert.pem` などのPEM束まで修正済みとは判定しない。
-この診断は対策の自動適用や、全アプリの対策完了の保証を行わない。
+Updating the Rust compiler alone does not update rustls/webpki dependencies in applications.
+Check each app's Cargo.lock separately for rustls-webpki 0.103.16 and webpki-roots/webpki-root-certs 1.0.10 fixes or appropriate backports.
+macOS OS revocation status alone does not mean PEM bundles such as `/etc/ssl/cert.pem` are fixed.
+This diagnostic does not auto-apply fixes or guarantee every app is remediated.

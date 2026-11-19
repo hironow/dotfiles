@@ -1,251 +1,251 @@
 # dotfiles
 
-Zsh、mise、just、AI エージェントなどの設定と、それを macOS、Linux、Windows、Dev Container に配る仕組みをまとめたリポジトリ。
+Repository of configurations for Zsh, mise, just, AI agents, and more, plus scripts to deploy them to macOS, Linux, Windows, and Dev Containers.
 
-## 構成
+## Structure
 
-mise 管理の道具は、このリポジトリの正本でバージョンと設定を揃える。
-Podman などの OS パッケージはネイティブな導入経路を使い、最低バージョンを検査する。
+Tools managed by mise use the sources of truth in this repository to keep versions and configurations consistent.
+OS packages such as Podman use native installation paths and check the minimum version.
 
-| 正本 | 役割 |
+| Source | Role |
 | --- | --- |
-| `install.sh` / `bootstrap.ps1` | OS を判定して初期導入する（ADR 0005、ADR 0039、Podman の例外は ADR 0067） |
-| `config/mise/config.toml` | host に入れる道具（`just`、`uv`、`prek`、`vp`、`markdownlint-cli2`、`node`、5 つの AI CLI など）の版を 3 OS で揃える（ADR 0006） |
-| `config/mise/image-tools.toml` | Dev Container が bake する `/etc/mise/config.toml`、検証つき tarball、Linux bootstrap の版を 1 か所に持つ。`install.sh` の該当領域はここから生成し、`just lint` / `just check` が食い違いを検出する（ADR 0060） |
-| `.devcontainer/devcontainer.json` | CI と IDE が共有する trixie / Podman サンドボックス（ADR 0001、ADR 0002、ADR 0067） |
-| `dump/<host>/` | OS ごとのパッケージ記録（Homebrew、Scoop、gcloud など。ADR 0030） |
-| `ROOT_*` / `dump/harness/` | エージェントの指示、hook、skill、Claude プラグインの正本（[`docs/agent-sync.md`](./docs/agent-sync.md)） |
+| `install.sh` / `bootstrap.ps1` | Detect the OS and run initial setup (ADR 0005, ADR 0039; Podman exception in ADR 0067) |
+| `config/mise/config.toml` | Pin versions of host tools (`just`, `uv`, `prek`, `vp`, `markdownlint-cli2`, `node`, five AI CLIs, etc.) across all three OSes (ADR 0006) |
+| `config/mise/image-tools.toml` | Hold the single source for `/etc/mise/config.toml` baked into the Dev Container, verified tarballs, and Linux bootstrap versions. The matching section in `install.sh` is generated from this file, and `just lint` / `just check` detect drift (ADR 0060) |
+| `.devcontainer/devcontainer.json` | Trixie / Podman sandbox shared by CI and IDEs (ADR 0001, ADR 0002, ADR 0067) |
+| `dump/<host>/` | Per-OS package lists (Homebrew, Scoop, gcloud, etc.; ADR 0030) |
+| `ROOT_*` / `dump/harness/` | Sources of truth for agent instructions, hooks, skills, and Claude plugins ([`docs/agent-sync.md`](./docs/agent-sync.md)) |
 
-関連文書:
+Related docs:
 
-- [`docs/agent-sync.md`](./docs/agent-sync.md): エージェント指示、hook、skill、プラグインの配布
-- [`docs/cli-tools.md`](./docs/cli-tools.md): Hunk、rg、fd、sd、mq、witr、jq、yq、fqの導入、対応環境、使い分け
-- [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md): `j-cc` / `j-pi`、rtk、headroom の手順
-- [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md): Windows と WSL の Ollama 共有と検査範囲
-- [`docs/runbook/windows-host.md`](./docs/runbook/windows-host.md): native Windows で動かすときの注意点
-- [`docs/runbook/ca-doctor.md`](./docs/runbook/ca-doctor.md) / [`docs/runbook/kernel-doctor.md`](./docs/runbook/kernel-doctor.md): `just doctor` の CA と kernel の行の読み方
-- [`docs/portless-urls.md`](./docs/portless-urls.md): ローカル UI の `https://<name>.localhost` 別名一覧
-- [`docs/adr/`](./docs/adr/): 設計判断の記録（ADR）
-- [`tools/README.md`](./tools/README.md): RTTM 変換などの補助ツール
-- `docs/intent.md`: いま取り組んでいる作業の意図（operator だけが書く。git では追跡しない）
+- [`docs/agent-sync.md`](./docs/agent-sync.md): Distributing agent instructions, hooks, skills, and plugins
+- [`docs/cli-tools.md`](./docs/cli-tools.md): Installing, supported platforms for, and choosing between Hunk, rg, fd, sd, mq, witr, jq, yq, and fq
+- [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md): Procedures for `j-cc` / `j-pi`, rtk, and headroom
+- [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md): Sharing Ollama between Windows and WSL and what checks cover
+- [`docs/runbook/windows-host.md`](./docs/runbook/windows-host.md): Notes for running on native Windows
+- [`docs/runbook/ca-doctor.md`](./docs/runbook/ca-doctor.md) / [`docs/runbook/kernel-doctor.md`](./docs/runbook/kernel-doctor.md): How to read the CA and kernel lines in `just doctor`
+- [`docs/portless-urls.md`](./docs/portless-urls.md): List of `https://<name>.localhost` aliases for local UIs
+- [`docs/adr/`](./docs/adr/): Architecture Decision Records (ADRs)
+- [`tools/README.md`](./tools/README.md): Helper tools such as RTTM conversion
+- `docs/intent.md`: Intent of current work (written only by the operator; not tracked in git)
 
-## 導入
+## Setup
 
-### Mac、Linux、WSL
+### Mac, Linux, and WSL
 
-`curl` と `git` があればよい。
-Mac は Homebrew を先に入れておく。
+You only need `curl` and `git`.
+On Mac, install Homebrew first.
 
 ```shell
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/hironow/dotfiles/main/install.sh)"
 
-# 重い道具を省く場合
+# To skip heavy tools
 INSTALL_SKIP_HOMEBREW=1 INSTALL_SKIP_GCLOUD=1 INSTALL_SKIP_ADD_UPDATE=1 bash ./install.sh
 ```
 
-`install.sh` は mise（固定版、SHA 検証つき、`~/.local/bin`）を入れ、道具を `mise install` し、設定を symlink する。
-Podman 5 以上も必須で、Mac は Homebrew、Linux は OS パッケージから導入する。
-Linux で不足する Podman パッケージを入れるときだけ、root または非対話の `sudo -n` が必要になる。
-権限がなければ停止する。`install.sh` 全体を sudo で実行しない。
-apt と dnf の Podman の候補が 5 未満なら、何も入れずにその場で停止する（Ubuntu 24.04 と RHEL 8 系は 4.9 を配るので、`install.sh` 全体もここで止まる。配布を上げるまで WSL では Podman を使わない）。
-WSL の `wl-clipboard`（Pi と Herdr のコピー用）も root か `sudo -n` で入れるが、こちらは導入できなくても手順を表示して先へ進む。
-`just deploy` は `~/.zprofile` に `~/.local/bin` を足す（zsh のログインシェルは `~/.profile` を読まない）。
-WSL の zsh（`.zshrc` を読む対話の shell）の mise は、Windows の home の mise の設定（`/mnt/c/Users/<user>/.config/mise`）を読まない。`/mnt/c` の下の repo の `mise.toml` は読む。`.zshrc` を読まない `zsh -lc` や `bash -lc` は対象外。
+`install.sh` installs mise (pinned version, SHA-verified, in `~/.local/bin`), runs `mise install` for tools, and symlinks configurations.
+Podman 5 or later is also required, installed via Homebrew on Mac and OS packages on Linux.
+Root or non-interactive `sudo -n` is required only when installing missing Podman packages on Linux.
+If permissions are missing, it stops. Do not run all of `install.sh` with sudo.
+If the apt or dnf Podman candidate is below 5, it stops immediately without installing anything (Ubuntu 24.04 and RHEL 8 ship 4.9, so `install.sh` also stops here; do not use Podman on WSL until upgrading the distribution).
+On WSL, `wl-clipboard` (for copying in Pi and Herdr) is also installed with root or `sudo -n`, but if that fails, it prints instructions and continues.
+`just deploy` adds `~/.local/bin` to `~/.zprofile` (zsh login shells do not read `~/.profile`).
+In WSL zsh (an interactive shell that reads `.zshrc`), mise does not read the Windows home mise config (`/mnt/c/Users/<user>/.config/mise`). It reads `mise.toml` in repos under `/mnt/c`. `zsh -lc` and `bash -lc`, which do not read `.zshrc`, are out of scope.
 
-WSL の素の Ubuntu では、続けて次を一度だけ実行する。
-`wsl-conf` の systemd 設定を効かせるには、Windows 側で `wsl --shutdown` も要る。
+On a fresh Ubuntu installation in WSL, run the following once afterward.
+To apply the `wsl-conf` systemd setting, you also need `wsl --shutdown` on Windows.
 
 ```bash
-# install.sh が wl-clipboard を入れられなかった場合（WSLg が必要）
+# If install.sh could not install wl-clipboard (requires WSLg)
 sudo apt-get update && sudo apt-get install -y wl-clipboard
-# zsh を入れてログインシェルにする（.zshrc と j-cc / j-pi は zsh 前提）
+# Install zsh and make it the login shell (.zshrc and j-cc / j-pi require zsh)
 sudo apt-get install -y zsh && chsh -s "$(command -v zsh)"
-# 新しいターミナルを開いてから（sheldon は install.sh が mise で導入済み）
+# After opening a new terminal (install.sh already installed sheldon via mise)
 sheldon lock
 
-just harden-env   # 機体ごとの供給網対策（npm と uv の 7 日の隔離、GOPROXY）。追跡しない
-just wsl-conf     # /etc/wsl.conf の差分と sudo での編集手順を表示する（Windows の PATH を入れない、systemd を有効化）
+just harden-env   # Per-machine supply-chain protections (7-day quarantine for npm and uv, GOPROXY). Untracked
+just wsl-conf     # Show the /etc/wsl.conf diff and sudo edit steps (exclude Windows PATH, enable systemd)
 
-# wsl --shutdown 後に開き直した WSL で、一般ユーザーの Podman API を有効化する
-# apt の Podman の候補が 5 未満なら、何も入れずに停止する（Ubuntu 24.04 は 4.9）
+# After reopening WSL following wsl --shutdown, enable the unprivileged Podman API
+# Stops without installing if the apt Podman candidate is below 5 (Ubuntu 24.04 has 4.9)
 just podman-install
 systemctl --user enable --now podman.socket
 
-just doctor       # 確認: zsh、PATH-windows（WSL のみ）、WSLg の clipboard、Podman、道具一式
+just doctor       # Verify: zsh, PATH-windows (WSL only), WSLg clipboard, Podman, and toolset
 ```
 
-`just harden-env` は `~/.npmrc` と `~/.config/uv/uv.toml` に 7 日の隔離（`min-release-age=7`、`exclude-newer = "7 days"`）を書く。
-Pi の拡張とその依存は隔離から外す（`~/.pi/agent/npm/.npmrc` に `min-release-age=0` を置く）。
-コミットする lock の 7 日の隔離は、各 project の `pyproject.toml` が自分で宣言する。
+`just harden-env` writes a 7-day quarantine (`min-release-age=7`, `exclude-newer = "7 days"`) to `~/.npmrc` and `~/.config/uv/uv.toml`.
+It exempts Pi extensions and their dependencies from the quarantine (putting `min-release-age=0` in `~/.pi/agent/npm/.npmrc`).
+Each project's `pyproject.toml` declares its own 7-day quarantine for committed lockfiles.
 
-### コンテナ実行環境
+### Container runtime
 
-実行エンジンは Podman 5 以上、Compose provider（設定を解釈して実行する CLI）は mise 管理の `podman-compose` に統一する。
-Docker エンジンへの自動切り替えは行わない。
-`just podman-install` は Podman の導入だけを行い、clone、設定配布、エージェント home の同期は行わない。
-Windows では Podman だけを winget で導入する例外を使う（ADR 0067）。package は上流の MSI の `Podman.CLI` で、全利用者向けに `C:\Program Files\Podman` へ入る。
-Windows の `just podman-install` は実行のたびに最新の `Podman.CLI` にそろえる。旧 `RedHat.Podman` が入っていれば先に外す（新しい MSI は旧版があると入らない。コンテナ・画像・machine のデータは残る）。machine が動いているときは外さずに止まる。UAC の確認が出る。
-Podman と専用の `podman-compose` / Dev Container CLI 導入環境には 7 日の待機を加えないが、プロジェクトの依存と lock の隔離は変えない。
+Standardize on Podman 5 or later as the runtime engine and mise-managed `podman-compose` as the Compose provider (the CLI that interprets and runs the configuration).
+Do not fall back automatically to a Docker engine.
+`just podman-install` only installs Podman and does not clone, deploy configs, or sync agent homes.
+On Windows, use an exception that installs only Podman via winget (ADR 0067). The package is the upstream MSI `Podman.CLI`, installed for all users into `C:\Program Files\Podman`.
+On Windows, `just podman-install` aligns with the latest `Podman.CLI` on every run. If the old `RedHat.Podman` is installed, it removes it first (the new MSI will not install while the old version is present; container, image, and machine data remain). If a machine is running, it stops without removing it. A UAC prompt appears.
+Do not add a 7-day wait to Podman or the dedicated `podman-compose` / Dev Container CLI install environments, while keeping the quarantine for project dependencies and lockfiles unchanged.
 
-macOS と Windows の machine 初期化と起動は operator が別途行う。
-導入スクリプトやシェル起動は machine を操作せず、既存の Docker データも削除しない。
-native Windows では、machine を置かずに CLI だけを持ち、コンテナは WSL の Podman で動かす構成をとれる。
-そのため `just doctor` は、CLI が 5 以上で実行エンジンに届かないとき、native Windows で machine が 1 つも無ければ INFO を出す（ADR-0077）。
-machine があるのに届かないとき、machine の一覧を読めないとき、それ以外の OS では WARN である。
-届いたエンジンが 5 未満なら、どの OS でも ERR である。
-サンドボックスでは、選択したエンジンのソケットを明示する必要がある。
-手順とソケットを渡す権限の範囲は [Dev Container の説明](./.devcontainer/README.md) を参照する。
+The operator initializes and starts machines on macOS and Windows separately.
+Install scripts and shell startup do not touch machines and do not delete existing Docker data.
+On native Windows, you can run without a machine by keeping only the CLI and running containers with Podman on WSL.
+Therefore, when the CLI is 5 or later and cannot reach the runtime engine, `just doctor` outputs INFO if native Windows has no machines (ADR-0077).
+It outputs WARN when a machine exists but is unreachable, when the machine list cannot be read, or on any other OS.
+If the reachable engine is below 5, it outputs ERR on any OS.
+In a sandbox, you must pass the socket for the selected engine explicitly.
+See [Dev Container guide](./.devcontainer/README.md) for steps and the permission scope of passing the socket.
 
-### Windows（native）
+### Windows (native)
 
-まっさらな機体に PowerShell の 1 行で導入する（ADR 0039）。
+Install on a clean machine with one line of PowerShell (ADR 0039).
 
 ```powershell
-# scoop の manifest を別の host のものにする場合は先に: $env:DOTFILES_HOST = '<host>'
+# To use another host's scoop manifest, set first: $env:DOTFILES_HOST = '<host>'
 irm https://raw.githubusercontent.com/hironow/dotfiles/main/bootstrap.ps1 | iex
 ```
 
-`bootstrap.ps1` は最初に Podman 5 以上を確認し、無ければ winget の `Podman.CLI` で導入する（入っていれば変えない。最新にするのは `just podman-install`）。
-続けて scoop、git、just、jq、mise、pwsh を入れ、HTTPS で `~\dotfiles` に clone する。
-続けて `add-scoop`、`deploy`、`harden-env`、`sync-agents`、`restore-skills-lock`、`doctor` を実行する。
-何度実行しても安全であり、終わったら新しい pwsh を開く（`$PROFILE` はそこで効く）。
+`bootstrap.ps1` checks for Podman 5 or later first and installs `Podman.CLI` via winget if missing (if already installed, it leaves it as is; use `just podman-install` to update to latest).
+Next, it installs scoop, git, just, jq, mise, and pwsh, and clones to `~\dotfiles` over HTTPS.
+Then it runs `add-scoop`, `deploy`, `harden-env`, `sync-agents`, `restore-skills-lock`, and `doctor`.
+It is safe to run repeatedly; when done, open a new pwsh (where `$PROFILE` takes effect).
 
-- **`just deploy`（Windows）**: `starship.toml`、`gitignore-global`、`config/mise/config.toml` をコピーし、pwsh の `$PROFILE`（mise activate、starship init、`MISE_NODE_COREPACK=0`、`j-cc` / `j-pi`）を書き、mise の道具と Pi の拡張を入れ、`aliases.gitconfig` を `[include]` で読み込ませる。
-- **`just harden-env`（Windows）**: `%APPDATA%\uv\uv.toml`、User PATH の Git `usr\bin` と `cmd`、telemetry 無効化の環境変数、必要に応じた `CLAUDE_CODE_GIT_BASH_PATH` も設定する（詳細: [`docs/runbook/windows-host.md`](./docs/runbook/windows-host.md)）。
-- **Scoop**: `dump/<host>/scoop.json` に記録し、`just add-scoop` で復元する。
-- **Ollama**: Windows と WSL が共存する機体では、Windows の Scoop `extras/ollama-full` に一本化する。WSL は loopback のブリッジまたは共有 loopback を使い、Linux 版の本体やモデルは持たない。構成違反は `just doctor` が検出する（詳細: [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md)）。
+- **`just deploy` (Windows)**: Copies `starship.toml`, `gitignore-global`, and `config/mise/config.toml`, writes pwsh `$PROFILE` (`mise activate`, `starship init`, `MISE_NODE_COREPACK=0`, `j-cc` / `j-pi`), installs mise tools and Pi extensions, and loads `aliases.gitconfig` via `[include]`.
+- **`just harden-env` (Windows)**: Also configures `%APPDATA%\uv\uv.toml`, Git `usr\bin` and `cmd` in User PATH, telemetry-disabling environment variables, and `CLAUDE_CODE_GIT_BASH_PATH` when needed (details: [`docs/runbook/windows-host.md`](./docs/runbook/windows-host.md)).
+- **Scoop**: Records packages in `dump/<host>/scoop.json` and restores them with `just add-scoop`.
+- **Ollama**: On machines with both Windows and WSL, standardize on Windows Scoop `extras/ollama-full`. WSL uses a loopback bridge or shared loopback and does not keep a Linux binary or models. `just doctor` detects configuration violations (details: [`docs/runbook/ollama-windows-wsl.md`](./docs/runbook/ollama-windows-wsl.md)).
 
-SSH 鍵を設定したら、remote を SSH に替えて submodule を取得する。
-Dependabot の clone が submodule で止まらないように、`.gitmodules` ですべての submodule を `update = none` にしてあるので、`--checkout` を付けて取得する。
+After setting up SSH keys, switch the remote to SSH and fetch submodules.
+Because `.gitmodules` sets `update = none` on all submodules so Dependabot clones do not stall on them, pass `--checkout` when fetching.
 
 ```powershell
 git -C ~/dotfiles remote set-url origin git@github.com:hironow/dotfiles.git
 git -C ~/dotfiles submodule update --init --checkout
 ```
 
-## 日常の操作
+## Daily operations
 
 ```shell
-just help                       # recipe の一覧
+just help                       # List recipes
 
-just sync-agents-preview        # エージェント指示の配布を試す（書き込まない）
-just sync-agents                # ~/.claude などへ配る（all で全エージェント）
-just claude-plugins-install     # 各 Claude の home に必須プラグインを入れる（deploy も実行する）
-just lint-claude                # 配る Claude 設定の検査（ADR 0029）
+just sync-agents-preview        # Preview agent instruction sync (dry-run)
+just sync-agents                # Sync to ~/.claude, etc. (all for every agent)
+just claude-plugins-install     # Install required plugins into each Claude home (also runs deploy)
+just lint-claude                # Validate Claude configs to distribute (ADR 0029)
 
-just update-all                 # 道具を更新する（mise、gh、Pi の拡張など）
-just dump                       # 導入済みのパッケージを dump/<host>/ に記録する
-just add-brew                   # macOS: 記録から復元する
-just add-scoop                  # Windows: 記録から復元する（ADR 0032）
+just update-all                 # Update tools (mise, gh, Pi extensions, etc.)
+just dump                       # Record installed packages in dump/<host>/
+just add-brew                   # macOS: restore from record
+just add-scoop                  # Windows: restore from record (ADR 0032)
 
-just self-check                 # 軽い健全性検査（with_tests=1 で Podman のテストも）
-just doctor                     # 道具、PATH、OS 固有の設定、AI の道具、CA、kernel を診断する（ERR があれば exit 1）
-just validate-path-duplicates   # PATH の重複を検査する
+just self-check                 # Light sanity check (with_tests=1 includes Podman tests)
+just doctor                     # Diagnose tools, PATH, OS-specific settings, AI tools, CA, and kernel (exit 1 on ERR)
+just validate-path-duplicates   # Check for duplicate PATH entries
 
-mx uv sync                      # mx は `mise exec --` の zsh alias
-mx dotenvx run -- mise set      # 暗号化した .env を mise の環境に読む
-gh do -- mise set               # GitHub の認証情報つきで同じことをする
-mx dotenvx set HELLO World      # 暗号化して .env に書く
-mx mise set WORLD=hello         # 暗号化せずに mise の環境に書く
+mx uv sync                      # mx is a zsh alias for `mise exec --`
+mx dotenvx run -- mise set      # Load encrypted .env into mise environment
+gh do -- mise set               # Do the same with GitHub credentials
+mx dotenvx set HELLO World      # Encrypt and write to .env
+mx mise set WORLD=hello         # Write to mise environment without encryption
 ```
 
-### テストと CI ゲート
+### Tests and CI gates
 
-| コマンド | 内容 | Podman |
+| Command | Description | Podman |
 | --- | --- | --- |
-| `just ci` | `just check`（Python・Go・shell・Markdown・JS/TS の lint、Pi 拡張・Go のテスト、Quint のモデル）、Claude 設定検査、unit テスト、semgrep 規則テスト、IaC テスト、指示量予算、skill 宣言、emulator の lint、禁止トークン | 不要 |
-| `just ci-all` | `ci` + Dev Container のサンドボックステスト + `install.sh` の検証（単独は `just test-install`） | 要る |
-| `just ci-emu` | emulator 群の lint、起動、高速テスト、e2e | 要る |
-| `just check-all` | prek の hook と `ci-all`（push 前の最終ゲート） | 要る |
-| `just test` | Dev Container 内のサンドボックステスト（`just test-mark validate` のように `install`、`validate`、`versions`、`deploy`、`check` で絞れる） | 要る |
+| `just ci` | `just check` (Python, Go, shell, Markdown, and JS/TS lint; Pi extension and Go tests; Quint models), Claude config check, unit tests, semgrep rule tests, IaC tests, instruction budget, skill declarations, emulator lint, and forbidden tokens | No |
+| `just ci-all` | `ci` + Dev Container sandbox tests + `install.sh` check (`just test-install` standalone) | Yes |
+| `just ci-emu` | Emulator lint, startup, fast tests, and e2e | Yes |
+| `just check-all` | prek hooks + `ci-all` (final gate before push) | Yes |
+| `just test` | Sandbox tests inside Dev Container (filter with `install`, `validate`, `versions`, `deploy`, or `check`, e.g., `just test-mark validate`) | Yes |
 
-`tests/unit/` は native Windows でも通る（POSIX 専用の検査は skip する）。
+`tests/unit/` passes on native Windows too (POSIX-only checks are skipped).
 
-`just doctor` の行は `OK`、`WARN`、`ERR`、`INFO` のどれかで始まる。
-`WARN` はその機体で手を動かすべきこと、`INFO` は検査の範囲と事実で、`INFO` は終了コードを変えない（ADR 0066）。
+Lines from `just doctor` start with `OK`, `WARN`, `ERR`, or `INFO`.
+`WARN` means something to act on on that machine, `INFO` is check scope and facts, and `INFO` does not change the exit code (ADR 0066).
 
-## Jev でのコーディングセッション
+## Coding sessions with Jev
 
-作業リポジトリで `j-cc '依頼文'` または `j-pi '依頼文'` を実行すると、依頼に応じて Claude Code・Pi の思考レベルと Codex worker のモデルを選んで起動する。
-`-c`（直近のセッションを続ける）と `-r`（選んで再開する）もそのまま使える。
-`j-cc` のセッションは rtk（コマンド出力の圧縮）と headroom の proxy（モデルへの送信内容の圧縮）の両方を通る。
-初回準備、キーの置き場所、動作確認（`just jev-headroom-verify rtk`）は [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md) にある。
+Running `j-cc 'your request'` or `j-pi 'your request'` in a working repository selects the thinking level for Claude Code or Pi and the model for the Codex worker based on the request, and starts the session.
+`-c` (resume the most recent session) and `-r` (choose a session to resume) also work as usual.
+`j-cc` sessions go through both rtk (command output compression) and the headroom proxy (compressing payloads sent to the model).
+Initial setup, key locations, and verification (`just jev-headroom-verify rtk`) are in [`docs/runbook/jev-launchers.md`](./docs/runbook/jev-launchers.md).
 
 ## skill
 
-skill は自作（[hironow/skills](https://github.com/hironow/skills)）もサードパーティも `dump/harness/skill-lock.json` で宣言管理する（ADR 0038、ADR 0043、[`docs/agent-sync.md`](./docs/agent-sync.md)）。
-実体は skills CLI が `~/.agents/skills`（store）に置き、`skills-place` が各エージェントの home（`~/.claude*`、`~/.codex`、`~/.gemini`）へ相対 symlink を張る（張れない環境では追跡つきのコピー）。
-同名の skill は hironow/skills が優先される（`just ci` の `skills-lock-check` が検査する）。
-例外として、Codex の `hatch-pet` は [openai/skills の公式版](https://github.com/openai/skills/tree/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/hatch-pet)を `~/.codex/skills/hatch-pet` に直接置き、Codex 付属の `skill-installer` で更新する。
-`skills-place` はこの実ディレクトリを残し、store との差分 1 件として報告する（終了コード 1）。
+Both custom ([hironow/skills](https://github.com/hironow/skills)) and third-party skills are declared in `dump/harness/skill-lock.json` (ADR 0038, ADR 0043, [`docs/agent-sync.md`](./docs/agent-sync.md)).
+The skills CLI places the actual files in `~/.agents/skills` (the store), and `skills-place` creates relative symlinks to each agent home (`~/.claude*`, `~/.codex`, `~/.gemini`), or tracked copies where symlinks are unsupported.
+For same-named skills, hironow/skills takes precedence (checked by `skills-lock-check` in `just ci`).
+As an exception, Codex's `hatch-pet` places the [official openai/skills version](https://github.com/openai/skills/tree/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/hatch-pet) directly at `~/.codex/skills/hatch-pet` and updates it with Codex's bundled `skill-installer`.
+`skills-place` leaves this directory in place and reports it as 1 diff against the store (exit code 1).
 
 ```bash
-just restore-skills-lock  # 新しい機体: 宣言から store に復元し、home に配置する
-just skills-place         # home の symlink を張り直す（冪等）
-just skills-update        # hironow/skills の merge 後など: store を更新して配置する
+just restore-skills-lock  # New machine: restore from declaration into store and place in homes
+just skills-place         # Recreate home symlinks (idempotent)
+just skills-update        # After merging hironow/skills, etc.: update store and place
 
-# 追加: CLI には store だけを書かせ（-a universal）、宣言を更新してから配置する
+# Adding a skill: let the CLI write only to the store (-a universal), update the declaration, then place
 bunx skills add <repo> -g -s <name> -y -a universal
 just dump-skills-lock
 just skills-place
 ```
 
-`just dump-skills-lock` はその機体の store 全体から宣言を作り直すため、差分を確認してからコミットする。
-サードパーティは必要な skill だけを宣言する（例: `googleworkspace/cli` は `gws-shared` と主要 9 サービスに絞り、`persona-*` と `recipe-*` は入れない）。
-`just env=a skills ls -g` のように `just skills` で home ごとの一覧を参照できる（`env=p` は `~/.claude`、`a`〜`d` は `~/.claude-work-a`〜`-d`）。
-`just skills` は参照だけに使い、追加には使わない。
+`just dump-skills-lock` rebuilds the declaration from the entire store on that machine, so review the diff before committing.
+For third-party skills, declare only the needed skills (for example, narrow `googleworkspace/cli` to `gws-shared` and the 9 main services, excluding `persona-*` and `recipe-*`).
+You can list each home with `just skills`, as in `just env=a skills ls -g` (`env=p` is `~/.claude`, `a` through `d` are `~/.claude-work-a` through `-d`).
+Use `just skills` only for inspection, not for adding skills.
 
-## ローカル開発スタック
+## Local development stack
 
-`emulator/`（データストアとインスペクタ）はこのリポジトリにある（ADR 0014）。`telemetry/` は上流の `grafana/otel-lgtm` を 1 つ動かすだけで、独自の設定を持たない（ADR 0072）。
-API や SaaS の emulator は `vercel-labs/emulate` を `bunx` 経由で動かす（ADR 0016、ADR 0055）。
-macOS と Windows では Podman machine のメモリに収めるため、重いサービスと amd64 のサービスは既定では起動しない。
+`emulator/` (datastores and inspectors) lives in this repository (ADR 0014). `telemetry/` simply runs one upstream `grafana/otel-lgtm` container with no custom config (ADR 0072).
+API and SaaS emulators run `vercel-labs/emulate` via `bunx` (ADR 0016, ADR 0055).
+On macOS and Windows, heavy and amd64 services do not start by default so everything fits in the Podman machine memory.
 
 ```shell
-just emu-up                          # 既定は GCP の中核だけ（firebase、spanner、pgadapter、postgres。別名 emu-up-lite）
-just emu-up-only firebase-emulator   # 名指しで起動する
-just emu-up-group search             # 中核に機能群を足す（bigtable search graph vector ml inspect full）
-just emu-up-full                     # 重いものも含む全データサービス（対話用の *-cli は除く）
-just emu-check                       # 状態と接続先
-just emu-stop                        # firebase のデータを書き出して止める
+just emu-up                          # Default is GCP core only (firebase, spanner, pgadapter, postgres; alias emu-up-lite)
+just emu-up-only firebase-emulator   # Start a named service
+just emu-up-group search             # Add a capability group to core (bigtable search graph vector ml inspect full)
+just emu-up-full                     # All data services including heavy ones (excludes interactive *-cli services)
+just emu-check                       # Status and endpoints
+just emu-stop                        # Export firebase data and stop
 
-just tel-up                          # telemetry を起動する（Grafana は :3000、停止は just tel-down）
-just emu-api                         # API emulator を 4100-4108 で前面に起動する（emulator/emulate/README.md）
+just tel-up                          # Start telemetry (Grafana on :3000; stop with just tel-down)
+just emu-api                         # Start API emulators in foreground on 4100-4108 (emulator/emulate/README.md)
 ```
 
-HTTP の UI には [portless](https://github.com/vercel-labs/portless) で `https://<name>.localhost` の固定 URL を付ける（ADR 0015、ADR 0054）。
-初回に `portless trust`（必要なら `portless service install`）を実行し、`portless proxy start` のあとで別名を登録する。
-別名の一覧と対象外の TCP ポートは [`docs/portless-urls.md`](./docs/portless-urls.md) にある。
+HTTP UIs get fixed `https://<name>.localhost` URLs via [portless](https://github.com/vercel-labs/portless) (ADR 0015, ADR 0054).
+Run `portless trust` (and `portless service install` if needed) on first setup, then register aliases after `portless proxy start`.
+The list of aliases and excluded TCP ports is in [`docs/portless-urls.md`](./docs/portless-urls.md).
 
 ## Dev Container
 
-`.devcontainer/devcontainer.json`（Debian 12、Microsoft 公式 feature、ローカルの `dotfiles-tools` feature）が [Dev Container](https://containers.dev/) と CI（`devcontainers/ci`）の共通環境を定義する（ADR 0002）。
-中には `just`、`mise`、`prek`、`ruff`、`shellcheck`、`markdownlint-cli2`、Node.js（LTS）、5 つの AI CLI（`codex`、`antigravity`、`claude`、`copilot`、`pi`）が入る。
-CLI の認証はコンテナごとに operator が一度行う。
-clone に `.git` があれば、`postCreateCommand` が `just install-hooks` で prek の hook を入れる。
+`.devcontainer/devcontainer.json` (Debian 12, official Microsoft features, and the local `dotfiles-tools` feature) defines the shared environment for [Dev Container](https://containers.dev/) and CI (`devcontainers/ci`) (ADR 0002).
+It includes `just`, `mise`, `prek`, `ruff`, `shellcheck`, `markdownlint-cli2`, Node.js (LTS), and five AI CLIs (`codex`, `antigravity`, `claude`, `copilot`, `pi`).
+The operator authenticates each CLI once per container.
+If the clone has `.git`, `postCreateCommand` installs prek hooks via `just install-hooks`.
 
 - Claude Code: `/devcontainer`
-- VS Code / Cursor: Dev Containers 拡張で `Reopen in Container`
+- VS Code / Cursor: `Reopen in Container` via the Dev Containers extension
 - JetBrains: `File > Remote Development > Dev Containers`
 
 ## MCP
 
-Chrome DevTools の MCP は必須プラグイン（`dump/harness/claude-plugins.json`）が入れるので、ここには書かない。
+Chrome DevTools MCP is installed by a required plugin (`dump/harness/claude-plugins.json`), so it is omitted here.
 
 ```bash
 claude mcp add -s user -t http deepwiki https://mcp.deepwiki.com/mcp
 
-# ドキュメント系（user スコープ）
+# Documentation servers (user scope)
 claude mcp add -s user -t http bun https://bun.com/docs/mcp
 claude mcp add -s user -t http cloudflare https://docs.mcp.cloudflare.com/mcp
 claude mcp add -s user -t http vercel https://mcp.vercel.com
 claude mcp add -s user -t http livekit-docs https://docs.livekit.io/mcp
 claude mcp add -s user -t http openai https://developers.openai.com/mcp
 # Google Cloud: https://developers.google.com/knowledge/mcp#gcloud-cli
-# 手元の MCP 接続の設定で、一度だけ行う。tofu が管理する本番のリソースには使わない
+# Local MCP connection setup, run once. Do not use for production resources managed by tofu
 YOUR_PROJECT_ID=<your-project-id>
 gcloud beta services mcp enable developerknowledge.googleapis.com --project=$YOUR_PROJECT_ID
-# 認証が要る: gcloud auth login / gcloud auth application-default login
+# Requires auth: gcloud auth login / gcloud auth application-default login
 gcloud services api-keys create --project=$YOUR_PROJECT_ID --display-name="DK API Key"
 YOUR_API_KEY=<your-keyString>
 claude mcp add google-dev-knowledge -s user -t http https://developerknowledge.googleapis.com/mcp --header "X-Goog-Api-Key: $YOUR_API_KEY"
@@ -254,52 +254,52 @@ claude mcp add -s user -t http aws-knowledge-mcp-server https://knowledge-mcp.gl
 # k6: https://grafana.com/docs/k6/latest/release-notes/v1.6.0/#introducing-mcp-k6-ai-assisted-k6-script-writing-mcp-k6
 claude mcp add --scope=user --transport=stdio k6 -- podman run --rm -i docker.io/grafana/mcp-k6
 
-# プロジェクトごと（他のエージェントの設定ディレクトリにも写す）
+# Per-project (also copy to other agent config directories)
 claude mcp add -s project -t http jaeger http://localhost:16687/mcp
 ```
 
-## その他の設定
+## Other settings
 
-### localhost の https
+### HTTPS for localhost
 
 ```shell
-dig localhost.hironow.dev   # A レコードが 127.0.0.1 を指すこと
+dig localhost.hironow.dev   # Ensure the A record points to 127.0.0.1
 sudo certbot certonly --manual --preferred-challenges dns -d localhost.hironow.dev --config-dir ~/dotfiles/private/certificates
-cd tools/simple-server && sudo mise x -- go run main.go   # https で応答するか確かめる
+cd tools/simple-server && sudo mise x -- go run main.go   # Verify HTTPS response
 ```
 
 ### git
 
 ```bash
-git config --global pull.rebase true   # pull で merge commit を作らない
+git config --global pull.rebase true   # Avoid merge commits on pull
 ```
 
-### WSL の VS Code トンネル
+### VS Code tunnel on WSL
 
 ```bash
 curl -Lk 'https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64' -o vscode_cli.tar.gz
 tar -xzf vscode_cli.tar.gz && mv code ~/.local/bin/code-cli
 ~/.local/bin/code-cli tunnel user login
-code-cli tunnel --accept-server-license-terms --name test-my-wsl   # 初回の確認
+code-cli tunnel --accept-server-license-terms --name test-my-wsl   # Initial check
 code-cli tunnel service install && code-cli tunnel status
 ```
 
-### dotenvx の鍵を sudo なしで読ませない
+### Preventing reads of dotenvx keys without sudo
 
-エージェントの deny 設定に頼らず、`.env.keys` を sudo なしでは読めないようにする（実験的）。
+Without relying on agent deny settings, block reading `.env.keys` without sudo (experimental).
 
 ```bash
 dotenvx set HELLO "WORLD"
 sudo chmod 600 .env.keys
 dotenvx decrypt --stdout        # EACCES: permission denied, open '.env.keys'
-sudo dotenvx decrypt --stdout   # 読める
+sudo dotenvx decrypt --stdout   # Readable
 ```
 
-## 参考リンク
+## References
 
-- [mise](https://github.com/jdx/mise)、[uv](https://github.com/astral-sh/uv)、[gh do](https://github.com/k1LoW/gh-do)、[dotenvx](https://dotenvx.com/)
-- [localhost の https](https://blog.jxck.io/entries/2020-06-29/https-for-localhost.html)
-- [browser toolbox](https://toolbox.googleapps.com/)、[smarthome webrtc tool](https://smarthome-webrtc-validator.withgoogle.com/)、[trickle ice checker](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
-- MCP の一覧: <https://hub.docker.com/u/mcp>、<https://mcpmarket.com/en/categories/official>
-- skill の一覧: <https://skills.sh/>
-- Markdown: [YAML frontmatter](https://docs.github.com/en/contributing/writing-for-github-docs/using-yaml-frontmatter)、[MDX](https://github.com/mdx-js/mdx)
+- [mise](https://github.com/jdx/mise), [uv](https://github.com/astral-sh/uv), [gh do](https://github.com/k1LoW/gh-do), [dotenvx](https://dotenvx.com/)
+- [HTTPS for localhost](https://blog.jxck.io/entries/2020-06-29/https-for-localhost.html)
+- [browser toolbox](https://toolbox.googleapps.com/), [smarthome webrtc tool](https://smarthome-webrtc-validator.withgoogle.com/), [trickle ice checker](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
+- MCP list: <https://hub.docker.com/u/mcp>, <https://mcpmarket.com/en/categories/official>
+- Skill list: <https://skills.sh/>
+- Markdown: [YAML frontmatter](https://docs.github.com/en/contributing/writing-for-github-docs/using-yaml-frontmatter), [MDX](https://github.com/mdx-js/mdx)
