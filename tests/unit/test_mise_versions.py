@@ -214,7 +214,7 @@ def test_a_partial_or_empty_version_is_rejected(tool: Path, tmp_path: Path) -> N
     """mise resolves `24` / `prefix:24` / `""` to a moving target, not a pin."""
     for spec in ('"24"', '"prefix:24"', '""'):
         root = tree(tmp_path)
-        mutate(root, REL_SOURCE, 'node = "24.22.1"', f"node = {spec}")
+        mutate(root, REL_SOURCE, 'node = "24.22.3"', f"node = {spec}")
         result = check(tool, root)
         assert result.returncode != 0, spec
         assert "node" in result.stderr, spec
@@ -228,8 +228,8 @@ def test_a_partial_or_empty_version_is_rejected(tool: Path, tmp_path: Path) -> N
         ('rename_exe = "antigravity"', 'rename_exe = "anti\\qgravity"'),
         ('mise_tools = ["uv", "just"]', 'mise_tools = ["uv",,"just"]'),
         ('mise_tools = ["uv", "just"]', 'mise_tools = [,"uv", "just"]'),
-        ('uv = "0.13.5"', 'uv = { version = "0.13.5", }'),
-        ('uv = "0.13.5"', 'uv = { version = "0.13.5",, os = ["linux"] }'),
+        ('uv = "0.13.9"', 'uv = { version = "0.13.9", }'),
+        ('uv = "0.13.9"', 'uv = { version = "0.13.9",, os = ["linux"] }'),
         ('rename_exe = "antigravity"', 'rename_exe = "anti\x01gravity"'),
         ('rename_exe = "antigravity"', 'rename_exe = "anti\x7fgravity"'),
     ],
@@ -272,7 +272,7 @@ def test_non_toml_whitespace_is_not_normalized(
     tool: Path, tmp_path: Path, space: str
 ) -> None:
     root = tree(tmp_path)
-    mutate(root, REL_SOURCE, 'node = "24.22.1"', f'node{space}= "24.22.1"')
+    mutate(root, REL_SOURCE, 'node = "24.22.3"', f'node{space}= "24.22.3"')
     assert_parse_rejected_without_writes(tool, root, REL_SOURCE)
 
 
@@ -291,7 +291,7 @@ def test_host_non_tools_headers_are_outside_the_subset(
 
 def test_inline_table_cannot_be_redeclared(tool: Path, tmp_path: Path) -> None:
     root = tree(tmp_path)
-    mutate(root, REL_SOURCE, 'uv = "0.13.5"', 'uv = { version = "0.13.5" }')
+    mutate(root, REL_SOURCE, 'uv = "0.13.9"', 'uv = { version = "0.13.9" }')
     path = root / REL_SOURCE
     path.write_text(
         path.read_text(encoding="utf-8") + "\n[tools.uv]\n",
@@ -328,7 +328,7 @@ def test_invalid_utf8_is_rejected_without_writes(tool: Path, tmp_path: Path) -> 
 def test_a_failed_sync_writes_neither_file(tool: Path, tmp_path: Path) -> None:
     root = tree(tmp_path)
     before = (root / REL_FEATURE).read_bytes() + (root / REL_BOOTSTRAP).read_bytes()
-    mutate(root, REL_SOURCE, 'node = "24.22.1"', 'node = "24"')
+    mutate(root, REL_SOURCE, 'node = "24.22.3"', 'node = "24"')
     assert cli(tool, "sync", "--root", str(root)).returncode != 0
     after = (root / REL_FEATURE).read_bytes() + (root / REL_BOOTSTRAP).read_bytes()
     assert before == after, "a failed sync wrote to disk"
@@ -396,10 +396,10 @@ def test_an_inline_table_entry_yields_a_version_constant(
 ) -> None:
     """An inline version table must write a string constant, not a dict."""
     root = tree(tmp_path)
-    mutate(root, REL_SOURCE, 'uv = "0.13.5"', 'uv = { version = "0.13.5" }')
+    mutate(root, REL_SOURCE, 'uv = "0.13.9"', 'uv = { version = "0.13.9" }')
     assert cli(tool, "sync", "--root", str(root)).returncode == 0
     feature = (root / REL_FEATURE).read_text(encoding="utf-8")
-    assert re.search(r'^UV_VERSION="0\.13\.5"$', feature, re.MULTILINE)
+    assert re.search(r'^UV_VERSION="0\.13\.9"$', feature, re.MULTILINE)
 
 
 def test_the_generated_constants_come_from_the_single_source() -> None:

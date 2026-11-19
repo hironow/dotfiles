@@ -23,7 +23,7 @@ rust = { version = "1.99.1", components = ["rust-analyzer"] }
 # so `mise x -- tofu` resolves from the non-mise-activated bash
 # sub-shell that `just` spawns under ADR 0023 (mise-activate-only,
 # no shims PATH). Pinned for repeatable IaC test runs across machines.
-opentofu = "1.13.2"
+opentofu = "1.13.9"
 # Python toolchain = the astral trio, always: uv (packages/runner), ruff
 # (lint + format), ty (type checking; https://github.com/astral-sh/ty).
 # mypy / pyright are retired (2026-09-08) — do not reintroduce them. Declared
@@ -42,8 +42,8 @@ opentofu = "1.13.2"
 # hook run `uv run --frozen --only-group lint ruff`, i.e. that repo's own
 # lint-group pin, never these.
 uv = "latest"
-ruff = "0.17.2"
-ty = "0.0.91"
+ruff = "0.17.4"
+ty = "0.0.101"
 # golangci-lint v2: the Go quality gate (`just go-lint` / `just check`).
 # Aqua backend. Bare `mise exec -- golangci-lint` can still resolve Go's
 # GOBIN copy, so justfile recipes pin `aqua:golangci/golangci-lint`.
@@ -63,7 +63,7 @@ prek = "latest"
 # portless (local-dev HTTPS proxy). De-orphaned from the retired
 # pnpm-global subsystem (ADR 0017): declare it here so `mise ls` shows
 # a config source instead of an untracked orphan.
-"npm:portless" = { version = "0.15.9", bun_args = "--minimum-release-age=0" }
+"npm:portless" = { version = "0.17.0", bun_args = "--minimum-release-age=0" }
 # eza — modern ls replacement aliased unconditionally-now-guarded in
 # .zshrc (`alias ls='eza ...'`). Declared here so `mise activate` puts
 # it on PATH for every dir; without a config source the installed
@@ -96,23 +96,23 @@ starship = "1.27.0"
 # Declared here so WSL (no Homebrew) gets it; on a Mac brew also provides it.
 # Pinned for cross-machine reproducibility. (opentofu, the other
 # WSL-orphaned alias `t`, is already declared earlier in this file.)
-fzf = "0.74.5"
+fzf = "0.75.0"
 
 # Review, content search, path search, and replacement tools on every host.
 # Use upstream binaries through aqua, including native Windows (no Node
 # wrapper or Ubuntu's fdfind rename). Exact pins keep CLI syntax consistent.
 # hunk needs mise >= 2026.8.6 on Windows; its binaries support Windows x64
 # and macOS/Linux x64 or arm64 (Linux needs glibc). See docs/cli-tools.md.
-hunk = "0.24.1"
+hunk = "0.25.0"
 ripgrep = "15.2.0"
-fd = "10.5.0"
+fd = "10.5.2"
 sd = "1.1.0"
 # Read-only structured queries and targeted process diagnosis.
 # Explicit aqua backends identify upstream jq/mikefarah yq and resolve fq
 # even without a bare registry shorthand.
 witr = "0.3.4"
 "aqua:jqlang/jq" = "1.8.2"
-"aqua:mikefarah/yq" = "4.54.1"
+"aqua:mikefarah/yq" = "4.54.3"
 "aqua:wader/fq" = "0.18.0"
 # mq: only the main raw CLI, not helper binaries or deb/rpm. Skip Intel macOS
 # (no upstream asset), even in unrestricted `mise install`. Per-platform SHA256
@@ -120,7 +120,7 @@ witr = "0.3.4"
 # not publisher provenance. Keep inline for tools/mise-versions' TOML subset.
 # Explicit platform assets also avoid host-expanded os()/arch() templates
 # incorrectly resolving every cross-platform lock entry to the host binary.
-"github:harehare/mq" = { version = "0.10.0", os = ["macos/arm64", "linux/x64", "linux/arm64", "windows/x64", "windows/arm64"], rename_exe = "mq", platforms = { macos-arm64 = { asset_pattern = "mq-aarch64-apple-darwin", checksum = "sha256:47ddad7ff5860ea40fdcef43fd2c6fe674390bcc57fa30f3971f608223739649" }, linux-x64 = { asset_pattern = "mq-x86_64-unknown-linux-gnu", checksum = "sha256:9e94373ca20142b1da3bfa4f89a4b10a8d6feefb61301df6e240fd68794632d3" }, linux-arm64 = { asset_pattern = "mq-aarch64-unknown-linux-gnu", checksum = "sha256:46a6022e7cd6e0e79a3478956833f52b531919416765c3652361c4f2b8f01ff0" }, windows-x64 = { asset_pattern = "mq-x86_64-pc-windows-msvc.exe", checksum = "sha256:e5f28d6e0763d3ae00f476d2277e90e19c6e1efe5a61c748bf77126cf3136223" }, windows-arm64 = { asset_pattern = "mq-aarch64-pc-windows-msvc.exe", checksum = "sha256:d99c4a7ed5e03fd1da1955b69c05e624ce269b3d4e7ab76a738ece9dbeba5ff7" } } }
+"github:harehare/mq" = { version = "0.10.1", os = ["macos/arm64", "linux/x64", "linux/arm64", "windows/x64", "windows/arm64"], rename_exe = "mq", platforms = { macos-arm64 = { asset_pattern = "mq-aarch64-apple-darwin", checksum = "sha256:223516efdc8f3c14f7934b3bc0791c86cc3f2c84bfa1159bb164dee3cccde083" }, linux-x64 = { asset_pattern = "mq-x86_64-unknown-linux-gnu", checksum = "sha256:1c08db356c9c4231df449d634f25802799b5f6ca92a7a3ef1c5c7fc682306464" }, linux-arm64 = { asset_pattern = "mq-aarch64-unknown-linux-gnu", checksum = "sha256:8a42a4898fd982b10f17e5bf40991a706d33117f2cf7e8fb66a94da18a5e4023" }, windows-x64 = { asset_pattern = "mq-x86_64-pc-windows-msvc.exe", checksum = "sha256:3c2a1ea8bc27af55178045a4d5e1a987a380c2972477456303ac0a9a5d51801f" }, windows-arm64 = { asset_pattern = "mq-aarch64-pc-windows-msvc.exe", checksum = "sha256:493f106633a7929b4700b426550c87cb9dc36bf387dcea95fb17e0a217d4fc1e" } } }
 
 # rtk + headroom — base tooling every agent session goes through (ADR 0047):
 # rtk compresses command output (dotfiles owns its Claude hook; never run
@@ -139,7 +139,7 @@ rtk = "latest"
 # Required Podman Compose provider; only its dedicated CLI environment is age-exempt.
 "pypi:podman-compose" = { version = "1.6.0", uvx_args = "--python 3.13 --exclude-newer 0d" }
 # Shared IDE/CI CLI: freeze the already validated local version.
-"npm:@devcontainers/cli" = { version = "0.89.0", bun_args = "--minimum-release-age=0" }
+"npm:@devcontainers/cli" = { version = "0.90.0", bun_args = "--minimum-release-age=0" }
 
 # quint — the Quint model checker, i.e. the formal-methods gate: a Quint model
 # plus a seeded simulation is mandatory for autonomous stop/delete logic in any
@@ -228,7 +228,7 @@ rtk = "latest"
 #   @dataform/cli -> Dataform (BigQuery ELT)
 # Keep cf on an explicit beta pin until 1.0.0. When bumping it, also update
 # config/mise/image-tools.toml and run `just mise-versions-sync` for host/image parity.
-"npm:cf" = { version = "1.0.0-beta.20", bun_args = "--minimum-release-age=0" }
+"npm:cf" = { version = "1.0.0-beta.30", bun_args = "--minimum-release-age=0" }
 "npm:resend-cli" = { version = "latest", bun_args = "--minimum-release-age=0" }
 "npm:@stripe/cli" = { version = "latest", bun_args = "--minimum-release-age=0" }
 "npm:@dataform/cli" = { version = "latest", bun_args = "--minimum-release-age=0" }
@@ -239,7 +239,7 @@ rtk = "latest"
 # (2026-11-10), like headroom and podman-compose: only its dedicated tool
 # environment, through --exclude-newer 0d. Upstream supports Linux and macOS
 # only: mise skips it on Windows. Pinned; bump deliberately. See docs/cli-tools.md.
-"pypi:google-colab-cli" = { version = "0.7.5", uvx_args = "--python 3.13 --exclude-newer 0d", os = ["linux", "macos"] }
+"pypi:google-colab-cli" = { version = "0.8.0", uvx_args = "--python 3.13 --exclude-newer 0d", os = ["linux", "macos"] }
 
 [env]
 # Anonymous telemetry off for the base tools (ADR 0047): rtk only reports after
