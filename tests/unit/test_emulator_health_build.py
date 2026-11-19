@@ -63,7 +63,7 @@ def test_health_dockerfile_preserves_runtime_bases_and_configuration() -> None:
     assert f"FROM docker.io/library/golang:{version}-alpine AS builder" in source
     assert "CGO_ENABLED=0" in source
     assert "go build -mod=readonly -trimpath -o /tcp-healthcheck ." in source
-    assert "FROM gcr.io/cloud-spanner-emulator/emulator:1.5.57 AS spanner" in source
+    assert "FROM gcr.io/cloud-spanner-emulator/emulator:1.5.59 AS spanner" in source
     assert "FROM gcr.io/cloud-spanner-pg-adapter/pgadapter AS pgadapter" in source
     spanner = source.split(" AS spanner\n", 1)[1].split("FROM ", 1)[0]
     assert (
