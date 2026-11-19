@@ -62,4 +62,11 @@ log/
 # --- marimo notebooks ---
 __marimo__/
 
+# --- git-lfs hooks written to dev/null/ on native Windows ---
+# A tool that runs git with -c core.hooksPath=/dev/null (Claude Code's
+# background git, anthropics/claude-code#106536) makes git-lfs treat /dev/null
+# as a folder under the worktree root (git-lfs/git-lfs#6297). This keeps the
+# folder out of git status and ordinary staging; it is still made.
+/dev/null/
+
 **/.claude/settings.local.json
