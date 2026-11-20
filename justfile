@@ -410,8 +410,8 @@ sync-agents *args:
     @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
 
 # Scaffold: copy the agent-baseline template (per-repo enforcement: just check
-# gate, .githooks/pre-commit, quality-gate CI, agentcore semgrep rules) into a
-# target repo, then enable its git hooks. NOT applied to this repo (dotfiles
+# gate, check-only prek hooks, quality-gate CI, agentcore semgrep rules) into a
+# target repo, then enable its git hooks (`just install-hooks` there). NOT applied to this repo (dotfiles
 # uses prek + its own CI/.semgrep). See templates/agent-baseline/README-agents-setup.md.
 [group('Agents')]
 scaffold-agent-baseline dir:
