@@ -10,7 +10,7 @@ import os
 import shutil
 import subprocess
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from doctor_lines import Line, failed, fmt
@@ -51,10 +51,18 @@ def call_timeout(deadline: float | None, now: float) -> float | None:
 def runner(claude: str, home: Path, deadline: float | None) -> Run:
     """`claude <args>` against one home: CLAUDE_CONFIG_DIR set to its native
     path in a copied environment, run from the home (no project or local scope
-    of another directory applies) with stdin closed, within what is left of
-    `deadline`."""
+    of another directory applies)."""
     home = home.absolute()  # the call moves into it: a relative path would nest
     env = {**os.environ, "CLAUDE_CONFIG_DIR": str(home)}
+    return cli_runner(claude, home, env, deadline)
+
+
+def cli_runner(
+    executable: str, cwd: Path, env: Mapping[str, str], deadline: float | None
+) -> Run:
+    """`<executable> <args>` from `cwd` with exactly `env`, stdin closed,
+    within what is left of `deadline`."""
+    env = dict(env)
 
     def run(args: list[str]) -> str | None:
         timeout = call_timeout(deadline, time.monotonic())
@@ -62,8 +70,8 @@ def runner(claude: str, home: Path, deadline: float | None) -> Run:
             return None
         try:
             done = subprocess.run(
-                [claude, *args],
-                cwd=home,
+                [executable, *args],
+                cwd=cwd,
                 env=env,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,

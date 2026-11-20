@@ -36,7 +36,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 import sys
 import time
 import tomllib
@@ -51,17 +50,18 @@ from doctor_lines import Line, failed, fmt
 NAME = "agent-mcp"
 RECIPE = "just agent-mcp-install"
 DECLARATION = Path(__file__).resolve().parents[1] / "dump/harness/mcp-servers.json"
-AGENTS = ("claude", "codex", "pi", "antigravity")
 EXECUTABLES: dict[str, tuple[str, ...]] = {
     "claude": ("claude",),
     "codex": ("codex",),
     "pi": ("pi",),
     "antigravity": ANTIGRAVITY_NAMES,
 }
+AGENTS = tuple(EXECUTABLES)
 
 Registry = dict[str, str | None]  # server name -> its URL; None for a stdio server
 Read = Callable[[], Registry | None]  # None when the registry cannot be read
 Cli = Callable[[list[str]], bool]  # argv after the executable -> did it succeed
+Which = Callable[[str], str | None]
 
 
 @dataclass(frozen=True)
@@ -332,53 +332,40 @@ class Target:
     cli: Cli
 
 
-def _runner(argv0: list[str], cwd: Path, env: Mapping[str, str], deadline) -> Cli:
-    def run(args: list[str]) -> bool:
-        timeout = claude_homes.call_timeout(deadline, time.monotonic())
-        if timeout is None:
-            return False
-        try:
-            done = subprocess.run(
-                [*argv0, *args],
-                cwd=cwd,
-                env=dict(env),
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        return done.returncode == 0
-
-    return run
+def _succeeds(run: claude_homes.Run) -> Cli:
+    # success is the exit status: an empty stdout still counts
+    return lambda args: run(args) is not None
 
 
-def _executable(kind: str) -> str | None:
-    return next(
-        (path for name in EXECUTABLES[kind] if (path := shutil.which(name))), None
-    )
+def without_config_dir(env: Mapping[str, str]) -> dict[str, str]:
+    """The environment a plain `claude` runs in: no CLAUDE_CONFIG_DIR, so it
+    reads and writes ~/.claude.json, whatever home started this run."""
+    return {k: v for k, v in env.items() if k != "CLAUDE_CONFIG_DIR"}
 
 
-def _targets(deadline: float | None, skipped: list[Line]) -> Iterator[Target]:
-    home = Path.home()
-    claude = _executable("claude")
+def _executable(kind: str, which: Which) -> str | None:
+    return next((path for name in EXECUTABLES[kind] if (path := which(name))), None)
+
+
+def _targets(
+    home: Path,
+    env: Mapping[str, str],
+    which: Which,
+    deadline: float | None,
+    skipped: list[Line],
+) -> Iterator[Target]:
+    claude = _executable("claude", which)
     if claude is None:
         skipped.append(("INFO", NAME, "claude not on PATH; skipped"))
     else:
-        # A plain `claude` (no CLAUDE_CONFIG_DIR) keeps its registry in
-        # ~/.claude.json, apart from every home's; visited only once it exists
+        # A plain `claude` keeps its registry in ~/.claude.json, apart from
+        # every home's; visited only once that file exists
         if (home / ".claude.json").is_file():
-            plain_env = {
-                k: v for k, v in os.environ.items() if k != "CLAUDE_CONFIG_DIR"
-            }
+            run = claude_homes.cli_runner(
+                claude, home, without_config_dir(env), deadline
+            )
             yield Target(
-                "claude ~",
-                "claude",
-                lambda: read_claude(home),
-                _runner([claude], home, plain_env, deadline),
+                "claude ~", "claude", lambda: read_claude(home), _succeeds(run)
             )
         for claude_home in claude_homes.existing(home):
             run = claude_homes.runner(claude, claude_home, deadline)
@@ -386,18 +373,18 @@ def _targets(deadline: float | None, skipped: list[Line]) -> Iterator[Target]:
                 f"claude ~/{claude_home.name}",
                 "claude",
                 lambda h=claude_home: read_claude(h),
-                lambda args, run=run: run(args) is not None,
+                _succeeds(run),
             )
     dirs = {
-        "codex": (Path(os.environ.get("CODEX_HOME", home / ".codex")), read_codex),
+        "codex": (Path(env.get("CODEX_HOME", home / ".codex")), read_codex),
         "pi": (
-            Path(os.environ.get("PI_CODING_AGENT_DIR", home / ".pi/agent")),
+            Path(env.get("PI_CODING_AGENT_DIR", home / ".pi/agent")),
             read_pi,
         ),
         "antigravity": (home / ".gemini/config", read_antigravity),
     }
     for kind, (directory, reader) in dirs.items():
-        path = _executable(kind)
+        path = _executable(kind, which)
         if path is None:
             names = " / ".join(EXECUTABLES[kind])
             skipped.append(("INFO", NAME, f"{names} not on PATH; skipped"))
@@ -406,7 +393,7 @@ def _targets(deadline: float | None, skipped: list[Line]) -> Iterator[Target]:
             kind,
             kind,
             lambda d=directory, r=reader: r(d),
-            _runner([path], home, os.environ, deadline),
+            _succeeds(claude_homes.cli_runner(path, home, env, deadline)),
         )
 
 
@@ -419,7 +406,7 @@ def main(argv: Sequence[str]) -> int:
     lines: list[Line] = []
     registries: dict[str, Registry] = {}
     visited = 0
-    for target in _targets(deadline, skipped):
+    for target in _targets(Path.home(), os.environ, shutil.which, deadline, skipped):
         visited += 1
         fixed, problem = reconcile(
             target.read,
