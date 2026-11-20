@@ -385,25 +385,20 @@ PS_MISE_MARKER_BEGIN = "# >>> dotfiles managed block: mise activate >>>"
 def test_deploy_windows_writes_powershell_mise_activate(
     justfile_text: str,
 ) -> None:
-    """ADR 0024: deploy Windows branch must wire mise into PowerShell 7's
-    $PROFILE so the mise-managed node/just/etc resolve correctly on
-    Windows. Without this, PATH resolution falls back to whatever Program
-    Files / scoop installed (per the ADR 0024 context)."""
+    """ADR 0024, ADR 0086: deploy's Windows branch wires mise into PowerShell
+    7's $PROFILE through the library's block, which activates mise (guarded
+    by Get-Command) except inside a GitHub Actions job."""
     body = _extract_recipe_body(justfile_text, "deploy")
     win = _extract_windows_branch(body)
     assert PS_MISE_MARKER_BEGIN in win, (
-        "deploy windows branch must include the mise-activate begin marker "
+        "deploy windows branch must name the mise-activate begin marker "
         "so the block can be detected for idempotency and removed by clean"
     )
-    assert "Invoke-Expression (&mise activate pwsh | Out-String)" in win, (
-        "deploy windows branch must emit the canonical mise activate line "
-        "for PowerShell"
-    )
-    assert "Get-Command mise -ErrorAction SilentlyContinue" in win, (
-        "deploy windows branch must guard with Get-Command so PowerShell "
-        "does not error on hosts where mise is not yet installed "
-        "(parity with .zshrc's _cmd_exists mise guard)"
-    )
+    assert "ps_profile_mise_block" in win
+    lib = (ROOT / "scripts" / "ps_profile_lib.sh").read_text(encoding="utf-8")
+    assert "Invoke-Expression (&mise activate pwsh | Out-String)" in lib
+    assert "Get-Command mise -ErrorAction SilentlyContinue" in lib
+    assert "$env:GITHUB_ACTIONS -ne 'true'" in lib
 
 
 def test_deploy_windows_mise_activate_is_idempotent(
