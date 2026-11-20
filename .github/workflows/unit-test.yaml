@@ -42,7 +42,27 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/uv" tool install rust-just
 
+      # prek runs the repo template's hooks in tests/unit/test_template_prek_hooks.py
+      # (ADR 0084). The version is config/mise/image-tools.toml's pin; the
+      # archive is checked against the sha256 its release publishes.
+      - name: Install prek
+        env:
+          PREK_VERSION: 0.5.10
+          PREK_SHA256: 5c832a9ccd0855b7c054320d8921d90165a37459d3ac175923bdf121ff1aa9b1
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          curl -fsSL --retry 3 -o "$tmp/prek.tar.gz" \
+            "https://github.com/j178/prek/releases/download/v${PREK_VERSION}/prek-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${PREK_SHA256}  $tmp/prek.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/prek.tar.gz" -C "$tmp"
+          install -m 0755 "$tmp/prek-x86_64-unknown-linux-gnu/prek" "$HOME/.local/bin/prek"
+          "$HOME/.local/bin/prek" --version
+
       - name: Run unit tests
+        env:
+          # The prek runtime tests fail here instead of skipping.
+          DOTFILES_REQUIRE_PREK: "1"
         run: uvx pytest -q -ra tests/unit/
 
       # The command guard corpus, its word table, and the agent-hook payload
