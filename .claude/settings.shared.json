@@ -11,7 +11,8 @@
     "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5",
     "RTK_TELEMETRY_DISABLED": "1",
     "HEADROOM_BEACON": "off",
-    "DO_NOT_TRACK": "1"
+    "DO_NOT_TRACK": "1",
+    "VERCEL_PLUGIN_TELEMETRY": "off"
   },
   "settings": {
     "includeGitInstructions": false,

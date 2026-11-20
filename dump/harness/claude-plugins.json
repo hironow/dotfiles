@@ -47,7 +47,8 @@
     "semgrep@claude-plugins-official",
     "skill-creator@claude-plugins-official",
     "typescript-lsp@claude-plugins-official",
-    "unreal-engine-skills-for-claude-code@claude-plugins-official"
+    "unreal-engine-skills-for-claude-code@claude-plugins-official",
+    "vercel@claude-plugins-official"
   ],
   "disabled": [
     "pyright-lsp@claude-plugins-official"

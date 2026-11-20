@@ -234,6 +234,7 @@ sync does not modify these two keys.
 
 **Antigravity CLI (`agy`) skills, settings, and MCP**: Antigravity manages skills itself via `antigravity plugin` (stored at `~/.gemini/config/plugins/<name>` in 1.5.5) and settings and MCP via `agy import` (`~/.gemini/antigravity-cli/settings.json` and `mcp/`) (ADR 0026).
 Distributing these directly would bypass and overwrite its self-management, so dotfiles does not touch them.
+The one exception is the MCP servers declared in `dump/harness/mcp-servers.json`: `just deploy` asks `antigravity mcp add` for each one, as it does every other agent's CLI, and leaves other entries alone (ADR 0087).
 Only the instruction layer (`~/.gemini/GEMINI.md`) is shared.
 `~/.gemini/skills/` is a target for `skills-place`, but Antigravity reads from `plugins/`, so it is unused (and harmless).
 

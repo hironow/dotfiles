@@ -1,6 +1,6 @@
 """deploy runs the agent steps (Pi extensions, the Codex and Antigravity
-plugins, Claude plugins, headroom's MCP server) on every OS, once mise has
-installed the tools.
+plugins, Claude plugins, headroom's MCP server, the declared MCP servers) on
+every OS, once mise has installed the tools.
 
 The steps are one list (AGENT_STEPS) run by run_agent_steps in both the native
 Windows branch, which exits early, and the shared Unix tail: a step written in
@@ -8,6 +8,7 @@ the tail alone never reached Windows (headroom's MCP server, on a second host).
 """
 
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -25,7 +26,10 @@ STEPS_BLOCK = DEPLOY[
 
 
 def _steps() -> list[tuple[str, str]]:
-    body = STEPS_BLOCK.split("'", 2)[1].replace("'\"'\"'", "'")
+    # read the assignment as the shell does: a step's text may hold '"'"'
+    assignment = STEPS_BLOCK[: STEPS_BLOCK.index("\nrun_agent_steps()")]
+    (token,) = shlex.split(assignment)
+    body = token.removeprefix("AGENT_STEPS=")
     return [
         (script, recipe)
         for script, recipe, *_what in (line.split() for line in body.splitlines())
@@ -39,6 +43,7 @@ def test_the_steps_are_the_agent_scripts_and_their_recipes() -> None:
         "codex_agy_plugins.py",
         "claude_plugins.py",
         "headroom_mcp.py",
+        "agent_mcp.py",
     ]
     for script, recipe in steps:
         assert (ROOT / "scripts" / script).is_file()
@@ -87,12 +92,13 @@ def test_each_step_runs_through_mise_and_a_failure_only_warns(tmp_path: Path) ->
     )
     assert done.returncode == 0, done.stderr
     calls = log.read_text(encoding="utf-8").splitlines()
-    assert [call.split()[0] for call in calls] == ["0", "0", "0", "0"]
+    assert [call.split()[0] for call in calls] == ["0", "0", "0", "0", "0"]
     assert [call.rsplit("/", 1)[-1] for call in calls] == [
         "install_pi_extensions.py",
         "codex_agy_plugins.py",
         "claude_plugins.py",
         "headroom_mcp.py",
+        "agent_mcp.py",
     ]
     assert "WARN: claude_plugins.py failed; run 'just claude-plugins-install'" in (
         done.stdout
@@ -110,5 +116,6 @@ def test_without_mise_every_skipped_step_is_named() -> None:
         "codex-agy-plugins-install",
         "claude-plugins-install",
         "headroom-mcp-register",
+        "agent-mcp-install",
     ):
         assert fallback.count(f"just {recipe}") == 2, recipe

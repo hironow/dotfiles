@@ -1,0 +1,36 @@
+{
+  "servers": {
+    "deepwiki": {"url": "https://mcp.deepwiki.com/mcp"},
+    "bun": {"url": "https://bun.com/docs/mcp"},
+    "cloudflare-docs": {"url": "https://docs.mcp.cloudflare.com/mcp"},
+    "livekit-docs": {"url": "https://docs.livekit.io/mcp/"},
+    "openaiDeveloperDocs": {"url": "https://developers.openai.com/mcp"},
+    "aws-knowledge-mcp-server": {"url": "https://knowledge-mcp.global.api.aws"},
+    "context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "claude_plugin": "context7@claude-plugins-official"
+    },
+    "cloudflare": {
+      "url": "https://mcp.cloudflare.com/mcp",
+      "claude_plugin": "cloudflare@claude-plugins-official",
+      "sign_in": true
+    },
+    "vercel": {
+      "url": "https://mcp.vercel.com",
+      "claude_plugin": "vercel@claude-plugins-official",
+      "sign_in": true
+    }
+  },
+  "guided": {
+    "google-dev-knowledge": {
+      "url": "https://developerknowledge.googleapis.com/mcp",
+      "header": "X-Goog-Api-Key",
+      "env": "GOOGLE_DEV_KNOWLEDGE_API_KEY",
+      "setup": "https://developers.google.com/knowledge/mcp#gcloud-cli",
+      "steps": [
+        "gcloud beta services mcp enable developerknowledge.googleapis.com --project=<project-id>",
+        "gcloud services api-keys create --project=<project-id> --display-name=\"DK API Key\""
+      ]
+    }
+  }
+}

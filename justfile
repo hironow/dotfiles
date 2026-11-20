@@ -304,6 +304,15 @@ codex-agy-plugins-install *args:
 headroom-mcp-register *args:
     @{{ UV_RUN }} scripts/headroom_mcp.py {{ args }}
 
+# dump/harness/mcp-servers.json, through each agent's own `mcp add` (ADR 0087).
+# Prints how to set up what a run cannot: a server that needs an API key, and
+# in Codex one that needs a sign-in. `just deploy` already runs this.
+# --check: report only.
+# Register the declared MCP servers with Claude, Codex, Pi and Antigravity
+[group('Agents')]
+agent-mcp-install *args:
+    @{{ UV_RUN }} scripts/agent_mcp.py {{ args }}
+
 # After an rtk upgrade (doctor's rtk-pi-extension WARN): re-vendor rtk's own
 # Pi extension into config/pi/extensions/rtk.ts, header kept, body verbatim.
 # Re-vendor config/pi/extensions/rtk.ts from the installed rtk
