@@ -25,6 +25,10 @@ import ollama_host as host
 
 _DECLARED_PATH = host.RETAINED_DISTROS
 
+# The batched PowerShell classifier tests (_powershell_cases) share one worker
+# under pytest-xdist (--dist loadgroup), so each module-scoped batch runs once.
+powershell_batch = pytest.mark.xdist_group("ollama-powershell-classifiers")
+
 
 @pytest.fixture(autouse=True)
 def _no_retained_distros(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -186,29 +190,8 @@ def test_canonical_scoop_shim_launcher_is_not_a_second_backend() -> None:
     assert not host.backend_owned(data)
 
 
-@pytest.mark.skipif(
-    sys.platform != "win32",
-    reason="exercise the Windows classifier, not a Python reimplementation",
-)
-@pytest.mark.parametrize(
-    "mode,expected",
-    [
-        ("valid", True),
-        ("unsigned", False),
-        ("wrong-signer", False),
-        ("wrong-path", False),
-        ("wrong-port", False),
-        ("wildcard", False),
-        ("ipv4", False),
-        ("link-file", False),
-        ("link-parent", False),
-        ("inspection-error", False),
-        ("signature-error", False),
-    ],
-)
-def test_powershell_forwarder_classifier_is_narrow(mode: str, expected: bool) -> None:
-    fixture = r"""
-$ErrorActionPreference='Stop'
+# Stand-ins for the file and signature reads; $script:mode picks the fault.
+FORWARDER_STUBS = r"""
 function Get-Item {
  param([string]$LiteralPath,[string]$ErrorAction)
  if($script:mode -eq 'inspection-error'){throw 'uninspectable'}
@@ -223,35 +206,53 @@ function Get-AuthenticodeSignature {
  $subject=if($script:mode -eq 'wrong-signer'){'CN=Unrelated, O=Other'}else{'CN=Microsoft Corporation, O=Microsoft Corporation, C=US'}
  [pscustomobject]@{Status=$status;SignerCertificate=[pscustomobject]@{Subject=$subject}}
 }
-$path=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'WSL\wslrelay.exe'
+"""
+FORWARDER_CASES = [
+    ("valid", True),
+    ("unsigned", False),
+    ("wrong-signer", False),
+    ("wrong-path", False),
+    ("wrong-port", False),
+    ("wildcard", False),
+    ("ipv4", False),
+    ("link-file", False),
+    ("link-parent", False),
+    ("inspection-error", False),
+    ("signature-error", False),
+]
+
+
+def _forwarder_case(mode: str) -> str:
+    return (
+        f"$script:mode='{mode}'\n"
+        + r"""$path=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'WSL\wslrelay.exe'
 if($script:mode -eq 'wrong-path'){$path=Join-Path $env:TEMP 'wslrelay.exe'}
 $address=if($script:mode -eq 'wildcard'){'::'}elseif($script:mode -eq 'ipv4'){'127.0.0.1'}else{'::1'}
 $port=if($script:mode -eq 'wrong-port'){11435}else{11434}
-Test-DotfilesWslForwarder $path $address $port | ConvertTo-Json -Compress
-"""
-    script = (
+Test-DotfilesWslForwarder $path $address $port"""
+    )
+
+
+@pytest.fixture(scope="module")
+def forwarder_results() -> dict[str, Any]:
+    return _powershell_cases(
         "$env:PSModulePath='C:/nonexistent-powershell7-modules'\n"
         + host.WINDOWS_FORWARDER_CLASSIFIER
-        + f"\n$script:mode='{mode}'\n"
-        + fixture
+        + FORWARDER_STUBS,
+        [_forwarder_case(mode) for mode, _ in FORWARDER_CASES],
     )
-    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-    result = subprocess.run(
-        [
-            host.powershell(),
-            "-NoProfile",
-            "-NonInteractive",
-            "-EncodedCommand",
-            encoded,
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=15,
-        check=True,
-    )
-    assert json.loads(result.stdout) is expected
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="exercise the Windows classifier, not a Python reimplementation",
+)
+@powershell_batch
+@pytest.mark.parametrize("mode,expected", FORWARDER_CASES)
+def test_powershell_forwarder_classifier_is_narrow(
+    forwarder_results: dict[str, Any], mode: str, expected: bool
+) -> None:
+    assert forwarder_results[_forwarder_case(mode)] is expected
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows builtin module isolation")
@@ -310,6 +311,28 @@ def _powershell(script: str) -> str:
     return result.stdout
 
 
+def _powershell_cases(prelude: str, bodies: list[str]) -> dict[str, Any]:
+    """Runs every case body in one Windows PowerShell 5.1; returns each one's value.
+
+    Starting PowerShell costs about half a second, and the classifiers are
+    pure, so one process serves a whole parametrized test. The prelude (the
+    classifier and any stubs) is defined once. Each body runs in a child scope
+    of its own (`& { }`), so what one case sets or changes, such as $facts, is
+    gone before the next starts; and under try/catch with errors stopping, so a
+    case that throws gets "ERROR: <message>" and fails only its own assertion.
+    """
+    keys = {body: str(index) for index, body in enumerate(dict.fromkeys(bodies))}
+    lines = ["$ErrorActionPreference='Stop'", prelude, "$results=[ordered]@{}"]
+    for body, key in keys.items():
+        lines.append(
+            f"try {{ $results['{key}'] = & {{\n{body}\n}} }}"
+            f" catch {{ $results['{key}'] = 'ERROR: ' + $_.Exception.Message }}"
+        )
+    lines.append("$results | ConvertTo-Json -Compress -Depth 4")
+    values = json.loads(_powershell("\n".join(lines)).lstrip("﻿"))
+    return {body: values[key] for body, key in keys.items()}
+
+
 # A generic serve configuration with the shapes a GPU box carries: an HTTPS
 # web proxy on 443, unrelated TCP forwards, and the declared 11434 forward.
 SERVE: dict[str, Any] = {
@@ -341,165 +364,144 @@ def _serve(**changes: Any) -> dict[str, Any]:
     return config
 
 
+SERVE_CASES = [
+    pytest.param(_serve(), False, True, id="the-declared-shape"),
+    pytest.param(
+        _serve(forward={"TCPForward": "127.0.0.1:11434"}),
+        True,
+        True,
+        id="ipv4-target",
+    ),
+    pytest.param(_serve(), True, False, id="localhost-with-a-v6-listener"),
+    pytest.param(
+        _serve(AllowFunnel={"node.example.ts.net:443": True}),
+        False,
+        False,
+        id="funnel-on-443",
+    ),
+    pytest.param(
+        _serve(AllowFunnel={"node.example.ts.net:443": False}),
+        False,
+        True,
+        id="funnel-off",
+    ),
+    pytest.param(
+        _serve(Foreground={"s": {"AllowFunnel": {"node.example.ts.net:8443": True}}}),
+        False,
+        False,
+        id="funnel-in-a-foreground-session",
+    ),
+    pytest.param(
+        _serve(Foreground={"s": {"TCP": {"11434": {"TCPForward": "localhost:9999"}}}}),
+        False,
+        False,
+        id="foreground-takes-11434",
+    ),
+    pytest.param(
+        _serve(forward={"TCPForward": "localhost:8080"}),
+        False,
+        False,
+        id="other-target",
+    ),
+    pytest.param(
+        _serve(forward={"TCPForward": "0.0.0.0:11434"}),
+        False,
+        False,
+        id="wildcard-target",
+    ),
+    pytest.param(_serve(forward={"HTTPS": True}), False, False, id="web-not-tcp"),
+    pytest.param(
+        _serve(forward={"TCPForward": "localhost:11434", "TerminateTLS": "n.example"}),
+        False,
+        False,
+        id="tls-terminated",
+    ),
+    pytest.param(
+        _serve(forward={"TCPForward": "localhost:11434", "ProxyProtocol": 1}),
+        False,
+        False,
+        id="proxy-protocol",
+    ),
+    pytest.param(
+        _serve(tcp={"18000": {"TCPForward": "localhost:11434"}}),
+        False,
+        False,
+        id="second-forward-to-11434",
+    ),
+    pytest.param(
+        _serve(
+            web={
+                "n.example.ts.net:8443": {
+                    "Handlers": {"/": {"Proxy": "http://127.0.0.1:11434"}}
+                }
+            }
+        ),
+        False,
+        False,
+        id="web-proxy-to-11434",
+    ),
+    pytest.param(
+        _serve(web={"n.example.ts.net:8443": {"Handlers": {"/": {"Proxy": "11434"}}}}),
+        False,
+        False,
+        id="bare-port-proxy-to-11434",
+    ),
+    pytest.param(
+        _serve(web={"n.example.ts.net:11434": {"Handlers": {"/": {"Text": "hi"}}}}),
+        False,
+        False,
+        id="web-site-on-11434",
+    ),
+    pytest.param(
+        _serve(
+            Services={"svc:x": {"TCP": {"11434": {"TCPForward": "localhost:11434"}}}}
+        ),
+        False,
+        False,
+        id="service-takes-11434",
+    ),
+    pytest.param(
+        _serve(Services={"svc:x": {"Tun": True}}), False, False, id="tun-service"
+    ),
+    pytest.param(
+        {"TCP": {"8775": {"TCPForward": "localhost:8775"}}},
+        False,
+        False,
+        id="no-forward",
+    ),
+]
+
+
 @windows_only
-@pytest.mark.parametrize(
-    "config,v6_taken,accepted",
-    [
-        pytest.param(_serve(), False, True, id="the-declared-shape"),
-        pytest.param(
-            _serve(forward={"TCPForward": "127.0.0.1:11434"}),
-            True,
-            True,
-            id="ipv4-target",
-        ),
-        pytest.param(_serve(), True, False, id="localhost-with-a-v6-listener"),
-        pytest.param(
-            _serve(AllowFunnel={"node.example.ts.net:443": True}),
-            False,
-            False,
-            id="funnel-on-443",
-        ),
-        pytest.param(
-            _serve(AllowFunnel={"node.example.ts.net:443": False}),
-            False,
-            True,
-            id="funnel-off",
-        ),
-        pytest.param(
-            _serve(
-                Foreground={"s": {"AllowFunnel": {"node.example.ts.net:8443": True}}}
-            ),
-            False,
-            False,
-            id="funnel-in-a-foreground-session",
-        ),
-        pytest.param(
-            _serve(
-                Foreground={"s": {"TCP": {"11434": {"TCPForward": "localhost:9999"}}}}
-            ),
-            False,
-            False,
-            id="foreground-takes-11434",
-        ),
-        pytest.param(
-            _serve(forward={"TCPForward": "localhost:8080"}),
-            False,
-            False,
-            id="other-target",
-        ),
-        pytest.param(
-            _serve(forward={"TCPForward": "0.0.0.0:11434"}),
-            False,
-            False,
-            id="wildcard-target",
-        ),
-        pytest.param(_serve(forward={"HTTPS": True}), False, False, id="web-not-tcp"),
-        pytest.param(
-            _serve(
-                forward={"TCPForward": "localhost:11434", "TerminateTLS": "n.example"}
-            ),
-            False,
-            False,
-            id="tls-terminated",
-        ),
-        pytest.param(
-            _serve(forward={"TCPForward": "localhost:11434", "ProxyProtocol": 1}),
-            False,
-            False,
-            id="proxy-protocol",
-        ),
-        pytest.param(
-            _serve(tcp={"18000": {"TCPForward": "localhost:11434"}}),
-            False,
-            False,
-            id="second-forward-to-11434",
-        ),
-        pytest.param(
-            _serve(
-                web={
-                    "n.example.ts.net:8443": {
-                        "Handlers": {"/": {"Proxy": "http://127.0.0.1:11434"}}
-                    }
-                }
-            ),
-            False,
-            False,
-            id="web-proxy-to-11434",
-        ),
-        pytest.param(
-            _serve(
-                web={"n.example.ts.net:8443": {"Handlers": {"/": {"Proxy": "11434"}}}}
-            ),
-            False,
-            False,
-            id="bare-port-proxy-to-11434",
-        ),
-        pytest.param(
-            _serve(web={"n.example.ts.net:11434": {"Handlers": {"/": {"Text": "hi"}}}}),
-            False,
-            False,
-            id="web-site-on-11434",
-        ),
-        pytest.param(
-            _serve(
-                Services={
-                    "svc:x": {"TCP": {"11434": {"TCPForward": "localhost:11434"}}}
-                }
-            ),
-            False,
-            False,
-            id="service-takes-11434",
-        ),
-        pytest.param(
-            _serve(Services={"svc:x": {"Tun": True}}), False, False, id="tun-service"
-        ),
-        pytest.param(
-            {"TCP": {"8775": {"TCPForward": "localhost:8775"}}},
-            False,
-            False,
-            id="no-forward",
-        ),
-    ],
-)
+@powershell_batch
+@pytest.mark.parametrize("config,v6_taken,accepted", SERVE_CASES)
 def test_powershell_serve_config_rules(
-    config: dict, v6_taken: bool, accepted: bool
+    tailnet_results: dict[str, Any], config: dict, v6_taken: bool, accepted: bool
 ) -> None:
-    script = (
-        host.WINDOWS_FORWARDER_CLASSIFIER
-        + host.WINDOWS_TAILNET_CLASSIFIER
-        + "\n$config=@'\n"
-        + json.dumps(config)
-        + "\n'@|ConvertFrom-Json\n"
-        + f"@{{reason=[string](Test-DotfilesServeConfig $config ${str(v6_taken).lower()})}}|ConvertTo-Json -Compress"
-    )
-    reason = json.loads(_powershell(script))["reason"]
+    reason = tailnet_results[_serve_case(config, v6_taken)]
     assert (reason == "") is accepted, reason
 
 
+ADDRESS_CASES = [
+    ("100.64.12.34", ["100.64.12.34", "fd7a:115c:a1e0::5678"], True),
+    ("fd7a:115c:a1e0::5678", ["100.64.12.34", "fd7a:115c:a1e0::5678"], True),
+    ("fd7a:115c:a1e0:0:0:0:0:5678", ["fd7a:115c:a1e0::5678"], True),
+    ("100.64.12.35", ["100.64.12.34"], False),
+    ("192.168.1.20", ["192.168.1.20"], False),
+    ("100.128.0.1", ["100.128.0.1"], False),
+    ("fd7a:115c:a1e1::1", ["fd7a:115c:a1e1::1"], False),
+    ("0.0.0.0", ["0.0.0.0"], False),
+    ("not-an-address", ["100.64.12.34"], False),
+]
+
+
 @windows_only
-@pytest.mark.parametrize(
-    "address,nodes,accepted",
-    [
-        ("100.64.12.34", ["100.64.12.34", "fd7a:115c:a1e0::5678"], True),
-        ("fd7a:115c:a1e0::5678", ["100.64.12.34", "fd7a:115c:a1e0::5678"], True),
-        ("fd7a:115c:a1e0:0:0:0:0:5678", ["fd7a:115c:a1e0::5678"], True),
-        ("100.64.12.35", ["100.64.12.34"], False),
-        ("192.168.1.20", ["192.168.1.20"], False),
-        ("100.128.0.1", ["100.128.0.1"], False),
-        ("fd7a:115c:a1e1::1", ["fd7a:115c:a1e1::1"], False),
-        ("0.0.0.0", ["0.0.0.0"], False),
-        ("not-an-address", ["100.64.12.34"], False),
-    ],
-)
+@powershell_batch
+@pytest.mark.parametrize("address,nodes,accepted", ADDRESS_CASES)
 def test_powershell_tailnet_address_rules(
-    address: str, nodes: list[str], accepted: bool
+    tailnet_results: dict[str, Any], address: str, nodes: list[str], accepted: bool
 ) -> None:
-    script = (
-        host.WINDOWS_FORWARDER_CLASSIFIER
-        + host.WINDOWS_TAILNET_CLASSIFIER
-        + f"\nTest-DotfilesTailnetAddress '{address}' @({','.join(repr(n) for n in nodes)})|ConvertTo-Json"
-    )
-    assert json.loads(_powershell(script)) is accepted
+    assert tailnet_results[_address_case(address, nodes)] is accepted
 
 
 # The service process (pid 70) and its tailscaled child (pid 100), as
@@ -515,63 +517,90 @@ $facts=@{
 """
 
 
+LINEAGE_CASES = [
+    ("", 100, True),
+    ("", 70, True),
+    ("$facts.Service.State='Stopped'", 100, False),
+    ("$facts.Service.ProcessId=0", 0, False),
+    ("$facts.Processes[100].ParentProcessId=71", 100, False),
+    ("$facts.Processes[100].Name='other.exe'", 100, False),
+    ("$facts.Processes[70].CreationDate=[datetime]'2026-01-02'", 100, False),
+    ("$facts.Processes[100].CreationDate=$null", 100, False),
+    ("", 999, False),
+]
+
+
 @windows_only
-@pytest.mark.parametrize(
-    "change,owner,accepted",
-    [
-        ("", 100, True),
-        ("", 70, True),
-        ("$facts.Service.State='Stopped'", 100, False),
-        ("$facts.Service.ProcessId=0", 0, False),
-        ("$facts.Processes[100].ParentProcessId=71", 100, False),
-        ("$facts.Processes[100].Name='other.exe'", 100, False),
-        ("$facts.Processes[70].CreationDate=[datetime]'2026-01-02'", 100, False),
-        ("$facts.Processes[100].CreationDate=$null", 100, False),
-        ("", 999, False),
-    ],
-)
+@powershell_batch
+@pytest.mark.parametrize("change,owner,accepted", LINEAGE_CASES)
 def test_powershell_tailnet_lineage_rules(
-    change: str, owner: int, accepted: bool
+    tailnet_results: dict[str, Any], change: str, owner: int, accepted: bool
 ) -> None:
-    script = (
-        host.WINDOWS_FORWARDER_CLASSIFIER
-        + host.WINDOWS_TAILNET_CLASSIFIER
-        + LINEAGE
-        + change
-        + f"\nTest-DotfilesTailnetLineage $facts {owner}|ConvertTo-Json"
+    assert tailnet_results[_lineage_case(change, owner)] is accepted
+
+
+FORWARD_CASES = [
+    ("", 11434, True),
+    ("$facts.Declared=$false", 11434, False),
+    ("$facts.Error='could not inspect'", 11434, False),
+    ("", 11435, False),
+    ("$facts.ServiceBinaryTrusted=$false", 11434, False),
+    ("$facts.NodeAddresses=@('100.64.99.99')", 11434, False),
+    ("$facts.Serve=$null", 11434, False),
+]
+
+
+def _serve_case(config: dict, v6_taken: bool) -> str:
+    return (
+        "$config=@'\n"
+        + json.dumps(config)
+        + "\n'@|ConvertFrom-Json\n"
+        + f"[string](Test-DotfilesServeConfig $config ${str(v6_taken).lower()})"
     )
-    assert json.loads(_powershell(script)) is accepted
 
 
-@windows_only
-@pytest.mark.parametrize(
-    "change,port,accepted",
-    [
-        ("", 11434, True),
-        ("$facts.Declared=$false", 11434, False),
-        ("$facts.Error='could not inspect'", 11434, False),
-        ("", 11435, False),
-        ("$facts.ServiceBinaryTrusted=$false", 11434, False),
-        ("$facts.NodeAddresses=@('100.64.99.99')", 11434, False),
-        ("$facts.Serve=$null", 11434, False),
-    ],
-)
-def test_powershell_tailnet_forward_needs_every_condition(
-    change: str, port: int, accepted: bool
-) -> None:
-    script = (
-        host.WINDOWS_FORWARDER_CLASSIFIER
-        + host.WINDOWS_TAILNET_CLASSIFIER
-        + LINEAGE
+def _address_case(address: str, nodes: list[str]) -> str:
+    return (
+        f"Test-DotfilesTailnetAddress '{address}' @({','.join(repr(n) for n in nodes)})"
+    )
+
+
+def _lineage_case(change: str, owner: int) -> str:
+    return LINEAGE + change + f"\nTest-DotfilesTailnetLineage $facts {owner}"
+
+
+def _forward_case(change: str, port: int) -> str:
+    return (
+        LINEAGE
         + "\n$facts.Declared=$true;$facts.Error='';$facts.ServiceBinaryTrusted=$true"
         + "\n$facts.NodeAddresses=@('100.64.12.34');$facts.LoopbackV6Taken=$false"
         + "\n$facts.Serve=@'\n"
         + json.dumps(SERVE)
         + "\n'@|ConvertFrom-Json\n"
         + change
-        + f"\n@{{reason=[string](Test-DotfilesTailnetForward $facts '100.64.12.34' {port} 100)}}|ConvertTo-Json -Compress"
+        + f"\n[string](Test-DotfilesTailnetForward $facts '100.64.12.34' {port} 100)"
     )
-    reason = json.loads(_powershell(script))["reason"]
+
+
+@pytest.fixture(scope="module")
+def tailnet_results() -> dict[str, Any]:
+    """Every case of the four tailnet classifier tests, in one PowerShell."""
+    bodies = [_serve_case(c, v6) for c, v6, _ in (p.values for p in SERVE_CASES)]
+    bodies += [_address_case(a, n) for a, n, _ in ADDRESS_CASES]
+    bodies += [_lineage_case(c, o) for c, o, _ in LINEAGE_CASES]
+    bodies += [_forward_case(c, p) for c, p, _ in FORWARD_CASES]
+    return _powershell_cases(
+        host.WINDOWS_FORWARDER_CLASSIFIER + host.WINDOWS_TAILNET_CLASSIFIER, bodies
+    )
+
+
+@windows_only
+@powershell_batch
+@pytest.mark.parametrize("change,port,accepted", FORWARD_CASES)
+def test_powershell_tailnet_forward_needs_every_condition(
+    tailnet_results: dict[str, Any], change: str, port: int, accepted: bool
+) -> None:
+    reason = tailnet_results[_forward_case(change, port)]
     assert (reason == "") is accepted, reason
 
 
