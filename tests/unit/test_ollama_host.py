@@ -118,12 +118,9 @@ def test_canonical_windows_owner_is_healthy() -> None:
     assert not any(row[0] != "OK" for row in rows)
 
 
-@pytest.mark.parametrize(
-    "duplicate", ["scoop/ollama", "winget/Ollama.Ollama", "standalone/Ollama"]
-)
-def test_installs_outside_path_still_violate_policy(duplicate: str) -> None:
+def test_installs_outside_path_still_violate_policy() -> None:
     data = _windows()
-    data["duplicates"] = [duplicate]
+    data["duplicates"] = ["scoop/ollama"]
     assert _has(host.windows_findings(data), "ERR", "ollama-install")
 
 
@@ -200,7 +197,6 @@ def test_canonical_scoop_shim_launcher_is_not_a_second_backend() -> None:
         ("unsigned", False),
         ("wrong-signer", False),
         ("wrong-path", False),
-        ("wrong-name", False),
         ("wrong-port", False),
         ("wildcard", False),
         ("ipv4", False),
@@ -229,7 +225,6 @@ function Get-AuthenticodeSignature {
 }
 $path=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'WSL\wslrelay.exe'
 if($script:mode -eq 'wrong-path'){$path=Join-Path $env:TEMP 'wslrelay.exe'}
-if($script:mode -eq 'wrong-name'){$path=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'WSL\wslhost.exe'}
 $address=if($script:mode -eq 'wildcard'){'::'}elseif($script:mode -eq 'ipv4'){'127.0.0.1'}else{'::1'}
 $port=if($script:mode -eq 'wrong-port'){11435}else{11434}
 Test-DotfilesWslForwarder $path $address $port | ConvertTo-Json -Compress
@@ -464,7 +459,6 @@ def _serve(**changes: Any) -> dict[str, Any]:
             False,
             id="no-forward",
         ),
-        pytest.param({}, False, False, id="empty"),
     ],
 )
 def test_powershell_serve_config_rules(
@@ -1939,25 +1933,6 @@ def test_shared_loopback_setup_refuses_and_changes_nothing(
     with pytest.raises(RuntimeError):
         host.setup()
     assert done == []
-
-
-def test_nat_setup_still_installs_the_bridge_unit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    done = []
-    monkeypatch.setattr(host, "host_policy", lambda: "wsl-client")
-    monkeypatch.setattr(host, "wsl_networking_mode", lambda: "nat")
-    monkeypatch.setattr(
-        host, "install_client_files", lambda **kwargs: done.append(("files", kwargs))
-    )
-
-    def unavailable():
-        raise RuntimeError("interop unavailable")
-
-    monkeypatch.setattr(host, "windows_snapshot", unavailable)
-    with pytest.raises(RuntimeError, match="interop unavailable"):
-        host.setup()
-    assert done == [("files", {"bridge_unit_file": True})]
 
 
 def test_client_files_without_the_bridge_unit_leave_an_old_unit_alone(

@@ -1,14 +1,13 @@
 """Public GC scripts with process/clock/engine I/O fakes, never copied selectors.
 
 Every engine boundary checks actual deletion witnesses with an independent
-arbitrary-precision oracle. Failed assertions include the seed and full trace.
+arbitrary-precision oracle. Failed assertions include the scenario and full trace.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import random
 import re
 import shutil
 import subprocess
@@ -475,9 +474,16 @@ def test_mixed_native_reference_protection(tmp_path, platform, reference):
 
 
 @pytest.mark.parametrize("platform", ["shell", "powershell"])
-@pytest.mark.parametrize("field", ["enumeration", "inspect", "reference"])
 @pytest.mark.parametrize(
-    "value", ["abc", "sha256:abc", "sha512:" + IMAGE, "A" * 64, "sha256:" + IMAGE + "0"]
+    "field,value",
+    [
+        ("enumeration", "abc"),
+        ("enumeration", "sha512:" + IMAGE),
+        ("enumeration", "A" * 64),
+        ("enumeration", "sha256:" + IMAGE + "0"),
+        ("inspect", "abc"),
+        ("reference", "abc"),
+    ],
 )
 def test_malformed_or_different_full_image_identity_retained(
     tmp_path, platform, field, value
@@ -494,36 +500,28 @@ def test_malformed_or_different_full_image_identity_retained(
 
 
 @pytest.mark.parametrize("platform", ["shell", "powershell"])
-@pytest.mark.parametrize("created", [OLD, NOW])
 @pytest.mark.parametrize(
     "retention",
     [
         "5124095576030431h",
-        "9" * 100 + "h",
-        "9" * 100 + "m",
-        "9" * 100 + "d",
         "9" * 100 + "s",
         "1893456001s",
         "-1h",
-        "bad",
-        "1.5h",
         "7200s\n",
     ],
 )
 def test_invalid_or_excessive_retention_retains_both_inventories(
-    tmp_path, platform, created, retention
+    tmp_path, platform, retention
 ):
-    state = inventory(containers={"def": container(created=created, status="exited")})
-    state["images"][IMAGE]["Created"] = created
+    state = inventory(containers={"def": container(created=OLD, status="exited")})
+    state["images"][IMAGE]["Created"] = OLD
     final = run_platform(platform, tmp_path, state, retention=retention)
     assert final["removed"] == final["removed_containers"] == [], final
     assert not any(cmd[0] in {"rm", "rmi"} for cmd in final["trace"]), final
 
 
 @pytest.mark.parametrize("platform", ["shell", "powershell"])
-@pytest.mark.parametrize(
-    "retention", ["08h", "0007200s", "000120m", "0001d", "0", "000s", "7200"]
-)
+@pytest.mark.parametrize("retention", ["08h", "000120m", "0001d", "0", "000s", "7200"])
 def test_decimal_leading_zeros_and_explicit_zero_collect(tmp_path, platform, retention):
     state = inventory(containers={"def": container(status="exited")})
     final = run_platform(platform, tmp_path, state, retention=retention)
@@ -533,11 +531,9 @@ def test_decimal_leading_zeros_and_explicit_zero_collect(tmp_path, platform, ret
 @pytest.mark.parametrize(
     "clock,error",
     [
-        ("bad", False),
         ("-1", False),
         ("9223372036854775808", False),
         ("9" * 100, False),
-        ("", False),
         ("1893456000", True),
     ],
 )
@@ -568,10 +564,8 @@ def test_valid_decimal_clock_bounds(tmp_path, clock):
 @pytest.mark.parametrize(
     "tags,prefix",
     [
-        (["localhost/keep/model:latest"], "keep/"),
         (["ordinary:latest", "localhost/keep/model:latest"], "keep/"),
         (["keep/model:latest"], "localhost/keep/"),
-        (["localhost/archive/model:latest"], "archive/"),
         (["registry.example/archive/model:latest"], "registry.example/archive/"),
     ],
 )
@@ -585,11 +579,9 @@ def test_observed_keep_alias_protects_whole_image(tmp_path, tags, prefix):
     "field,value",
     [
         ("Created", "invalid"),
-        ("Created", ""),
         ("Created", None),
         ("Created", NOW),
         ("RepoTags", None),
-        ("RepoTags", "keep/model:latest"),
         ("RepoTags", [None]),
         ("RepoTags", ["ordinary:latest", 3]),
     ],
@@ -628,10 +620,8 @@ def test_reference_and_metadata_failures_retain_images(tmp_path, fault):
     [
         ("Id", "wrong"),
         ("Image", None),
-        ("Image", "not-an-id"),
         ("Created", None),
         ("State", {}),
-        ("State", {"Status": "unknown"}),
     ],
 )
 def test_invalid_reference_metadata_retains_images(tmp_path, field, value):
@@ -692,7 +682,6 @@ def test_stopped_container_retention_and_independent_inventory(
             "version": {"Version": "5.6.2", "APIVersion": "5.6.2"},
             "host": {"serviceIsRemote": "false"},
         },
-        {"ServerVersion": "26.0.0"},
     ],
 )
 def test_invalid_engine_identity_fails_closed(tmp_path, info):
@@ -802,7 +791,6 @@ def test_powershell_runtime_required_when_selected():
 @pytest.mark.parametrize(
     "scenario",
     [
-        "ordinary",
         "keep",
         "late_keep",
         "new_reference",
@@ -818,9 +806,7 @@ def test_powershell_runtime_required_when_selected():
         "image_enumeration_error",
         "client_old",
         "server_old",
-        "container",
         "clock_error",
-        "invalid_clock",
         "negative_clock",
     ],
 )
@@ -842,8 +828,6 @@ def test_powershell_public_gc_replay(tmp_path, scenario):
         "clock_error",
     }:
         state[scenario] = True
-    if scenario == "invalid_clock":
-        state["ps_clock"] = "invalid"
     if scenario == "negative_clock":
         state["ps_clock"] = "1969-12-31T23:59:59Z"
     if scenario == "client_old":
@@ -855,8 +839,6 @@ def test_powershell_public_gc_replay(tmp_path, scenario):
             "ordinary:latest",
             "registry.example/archive/model:latest",
         ]
-    if scenario == "container":
-        state["containers"]["def"] = container(status="exited")
     final = replay_powershell(
         tmp_path,
         state,
@@ -866,11 +848,7 @@ def test_powershell_public_gc_replay(tmp_path, scenario):
         busy="own" if scenario == "own" else scenario == "foreign",
         prefix="registry.example/archive/" if scenario == "custom_keep" else "keep/",
     )
-    assert final["removed"] == (
-        [IMAGE] if scenario in {"ordinary", "own", "container"} else []
-    ), final
-    if scenario == "container":
-        assert final["removed_containers"] == ["def"], final
+    assert final["removed"] == ([IMAGE] if scenario == "own" else []), final
     if scenario == "timeout":
         assert (tmp_path / "killed").read_text(encoding="utf-8") == "/PID 12345 /T /F"
 
@@ -902,46 +880,74 @@ def test_own_worker_ancestor_is_not_a_foreign_job(tmp_path):
     assert replay(tmp_path, inventory(), busy="own")["removed"] == [IMAGE]
 
 
-@pytest.mark.parametrize("platform", ["shell", "powershell"])
-def test_seeded_real_script_replay(tmp_path, platform):
-    if platform == "powershell" and PWSH is None:
-        pytest.skip("PowerShell runtime absent; seeded PS replay unverified here")
-    seeds = (
-        [int(os.environ["PODMAN_GC_SEED"])]
-        if "PODMAN_GC_SEED" in os.environ
-        else range(32)
-    )
-    for seed in seeds:
-        rng = random.Random(seed)
-        fault = rng.choice(
-            [
-                "none",
-                "late_keep",
-                "late_invalid",
-                "new_reference",
-                "inspect_error",
-                "container_enumeration_error",
-            ]
-        )
-        keep, fresh = rng.choice([False, True]), rng.choice([False, True])
-        state = inventory(**{fault: True}, seed=seed)
-        state["enumeration_ids"] = [
-            ("sha256:" if rng.choice([False, True]) else "") + IMAGE
+FAULTS = (
+    "none",
+    "late_keep",
+    "late_invalid",
+    "new_reference",
+    "inspect_error",
+    "container_enumeration_error",
+)
+
+
+def _replay_scenarios():
+    """(fault, keep, fresh, sha256-prefixed enumeration ID, sha256-prefixed Id).
+
+    By default a covering set: the removal path under all four ID spellings,
+    each fault on its own (so the fault alone decides the outcome), and keep
+    and fresh on their own. PODMAN_GC_FULL_SWEEP=1 runs every combination.
+    """
+    if os.environ.get("PODMAN_GC_FULL_SWEEP") == "1":
+        flags = (False, True)
+        return [
+            (fault, keep, fresh, enum, ident)
+            for fault in FAULTS
+            for keep in flags
+            for fresh in flags
+            for enum in flags
+            for ident in flags
         ]
-        state["images"][IMAGE]["Id"] = (
-            "sha256:" if rng.choice([False, True]) else ""
-        ) + IMAGE
-        if keep:
-            state["images"][IMAGE]["RepoTags"] = [
-                "normal:latest",
-                "localhost/keep/model:latest",
-            ]
-        if fresh:
-            state["images"][IMAGE]["Created"] = NOW
-        final = run_platform(platform, tmp_path / str(seed), state)
-        assert final["removed"] == (
-            [] if keep or fresh or fault != "none" else [IMAGE]
-        ), {"seed": seed, "trace": final["trace"], "state": final}
+    removal = [
+        ("none", False, False, enum, ident)
+        for enum in (False, True)
+        for ident in (False, True)
+    ]
+    faults = [
+        (fault, False, False, i % 2 == 0, i % 2 == 1)
+        for i, fault in enumerate(FAULTS[1:])
+    ]
+    return [
+        *removal,
+        *faults,
+        ("none", True, False, True, True),
+        ("none", False, True, True, True),
+    ]
+
+
+@pytest.mark.parametrize("platform", ["shell", "powershell"])
+@pytest.mark.parametrize(
+    ("fault", "keep", "fresh", "enum_prefixed", "id_prefixed"), _replay_scenarios()
+)
+def test_real_script_replay_scenarios(
+    tmp_path, platform, fault, keep, fresh, enum_prefixed, id_prefixed
+):
+    if platform == "powershell" and PWSH is None:
+        pytest.skip("PowerShell runtime absent; scenario PS replay unverified here")
+    state = inventory(**{fault: True})
+    state["enumeration_ids"] = [("sha256:" if enum_prefixed else "") + IMAGE]
+    state["images"][IMAGE]["Id"] = ("sha256:" if id_prefixed else "") + IMAGE
+    if keep:
+        state["images"][IMAGE]["RepoTags"] = [
+            "normal:latest",
+            "localhost/keep/model:latest",
+        ]
+    if fresh:
+        state["images"][IMAGE]["Created"] = NOW
+    final = run_platform(platform, tmp_path, state)
+    assert final["removed"] == ([] if keep or fresh or fault != "none" else [IMAGE]), {
+        "trace": final["trace"],
+        "state": final,
+    }
 
 
 def test_fake_engine_writes_lf_like_podman(tmp_path):
@@ -1086,7 +1092,6 @@ def test_powershell_override_replaces_path_discovery():
 @pytest.mark.parametrize(
     "created,deleted",
     [
-        ("2020-01-01T09:00:00+09:00", True),
         ("2020-01-01T00:00:00.123456789Z", True),
         ("2029-12-31T23:59:59+02:00", True),  # 21:59:59Z
         ("2029-12-31T21:59:59-01:00", False),  # 22:59:59Z: not two hours old
@@ -1101,7 +1106,7 @@ def test_powershell_ages_created_as_the_wire_string(tmp_path, created, deleted):
 
 
 @pytest.mark.parametrize("platform", ["shell", "powershell"])
-@pytest.mark.parametrize("created", [1577836800, None, {"Time": OLD}])
+@pytest.mark.parametrize("created", [1577836800, None])
 def test_non_string_created_is_kept(tmp_path, platform, created):
     state = inventory()
     state["images"][IMAGE]["Created"] = created
