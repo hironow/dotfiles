@@ -17,7 +17,7 @@ are read when needed, and rules that must hold every time live in hooks and CI.
 | file | what it does |
 | --- | --- |
 | `justfile` | the only task runner; `just check` is the full gate |
-| `.githooks/pre-commit` | runs `just pre-commit` (ruff only) before every commit |
+| `.pre-commit-config.yaml` | prek git hooks that only check (never write) the staged files before every commit |
 | `.github/workflows/quality-gate.yaml` | runs `just check` in CI, plus a `tofu plan` drift check when `tofu/` exists; skips draft PRs |
 | `.semgrep/` | project rules and their test fixtures (see `.semgrep/README.md`) |
 | `.semgrepignore` | keeps `tests/` in Semgrep's scope and leaves out the rule fixtures |
@@ -34,9 +34,13 @@ rule does not apply. These gates do not depend on that decision:
    writes them to `~/.claude/settings.json` and `~/.claude/hooks/`, so they
    are not files in this repo. A hook blocks with `exit 2`; `exit 1` is a
    non-blocking error, and the action goes ahead.
-2. **Git pre-commit** (`.githooks/pre-commit`) runs `just pre-commit` for
-   every commit, by a human or any tool: ruff only, so a commit does not wait.
-   It never runs the whole gate (dotfiles ADR 0083).
+2. **Git hooks** (prek, `.pre-commit-config.yaml`) check every commit, by a
+   human or any tool: whitespace and final newlines, YAML/TOML/JSON syntax,
+   large files, merge markers, private keys, and ruff on the staged Python
+   files. They only report; fix with `just fmt` or by hand. prek stashes
+   unstaged changes while they run, so they see what will be committed
+   (untracked files are not stashed). No hook runs the whole gate or at
+   pre-push (dotfiles ADR 0083).
 3. **CI** (`quality-gate.yaml`) runs `just check` (ty per OS, Semgrep, all
    tests) on every pull request that is ready for review, and is the merge
    gate once it is a required check. Run `just check` before you commit.
@@ -47,8 +51,8 @@ an agent applies it to cases a hook does not match.
 ## Set up a clone once
 
 ```sh
-uv add --group lint --bounds exact ruff ty  # exact per-repo pins in the group that `just fmt`, `just lint` and `just pre-commit` run
-just install-hooks                          # sets core.hooksPath=.githooks and makes the hooks executable
+uv add --group lint --bounds exact ruff ty  # exact per-repo pins in the group that `just fmt`, `just lint` and the ruff hooks run
+just install-hooks                          # installs the prek hooks (needs prek 0.5.4 or newer on PATH)
 ```
 
 `uv`, and the interactive copies of `ruff` and `ty`, come from the global mise
