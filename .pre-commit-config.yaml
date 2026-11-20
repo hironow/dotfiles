@@ -79,20 +79,27 @@ repos:
   - repo: builtin
     hooks:
       - id: check-yaml
+        stages: [pre-commit]
       - id: check-toml
+        stages: [pre-commit]
       - id: check-json
         # devcontainer.json and .oxlintrc.json are JSONC (comments allowed);
         # strict JSON parse fails. oxlint parses its own config: `just js-lint`
         # fails on a malformed one.
         exclude: '^(\.devcontainer/devcontainer\.json|\.oxlintrc\.json)$'
+        stages: [pre-commit]
       - id: check-added-large-files
         args: ["--maxkb=1024"]
+        stages: [pre-commit]
       - id: check-merge-conflict
+        stages: [pre-commit]
       - id: detect-private-key
+        stages: [pre-commit]
 
   # ADR 0060's commit-time drift check stays as a designed fast subset,
-  # explicitly retained by ADR 0083. Always run: changes to either input,
-  # either generated install script, or the generator itself are covered.
+  # explicitly retained by ADR 0083. ADR 0084 D1(d): it runs only when one of
+  # its named files is staged -- either input, either generated install
+  # script, or the generator.
   - repo: local
     hooks:
       - id: mise-versions-check
@@ -100,7 +107,7 @@ repos:
         entry: just mise-versions-check
         language: system
         pass_filenames: false
-        always_run: true
+        files: '^(config/mise/(image-tools|config)\.toml|\.devcontainer/features/dotfiles-tools/install\.sh|install\.sh|tools/mise-versions/.*)$'
         stages: [pre-commit]
         description: Check the frozen version source and generated files without rewriting them.
 

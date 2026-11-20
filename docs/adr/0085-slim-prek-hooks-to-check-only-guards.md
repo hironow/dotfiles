@@ -43,7 +43,8 @@ Pending owner approval in the PR. The following requirements are proposed, not y
 ### Proposed requirements
 
 - D1: Keep exactly nine read-only hooks: `forbidden-tokens-staged`, `forbidden-tokens-commit-msg`, `check-yaml`, `check-toml`, `check-json`, `check-added-large-files`, `check-merge-conflict`, `detect-private-key`, and `mise-versions-check`.
-  The last MUST run only the existing `just mise-versions-check`, with no filenames, on every commit.
+  The last MUST run only the existing `just mise-versions-check`, with no filenames, and only when one of its named files is staged: `config/mise/image-tools.toml`, `config/mise/config.toml`, `.devcontainer/features/dotfiles-tools/install.sh`, `install.sh`, or a file under `tools/mise-versions/` (ADR-0084 D1(d)).
+  Every hook names its own stage: `commit-msg` for the commit-message guard, `pre-commit` for the rest (ADR-0084 D2).
   Keep both the pre-commit and commit-message installation types; add no push hook.
 - D2: Remove `trailing-whitespace`, `end-of-file-fixer`, `just-fmt`, `just-lint`, `just-check`, and `just-test` from automatic hooks.
   Keep their recipes available explicitly.
