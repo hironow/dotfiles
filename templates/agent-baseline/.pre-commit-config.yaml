@@ -1,0 +1,58 @@
+# prek (https://github.com/j178/prek) git hooks. Install once per clone:
+# `just install-hooks`.
+#
+# Every hook only checks: it reports and never writes a file, and none runs
+# the whole gate (dotfiles ADR 0083, ADR 0084). `just check` is the whole gate: run it
+# before you commit; CI runs it on every pull request that is ready for
+# review. prek stashes unstaged changes while the hooks run, so they see what
+# will be committed (untracked files are not stashed). Fix what a hook reports
+# with `just fmt` or by hand.
+# 0.5.4 is the first prek with the builtins' --check mode.
+minimum_prek_version: "0.5.4"
+default_install_hook_types: [pre-commit]
+# A hook's own manifest can name more stages (prek's builtins name pre-push
+# too), so each hook below also sets `stages: [pre-commit]`.
+default_stages: [pre-commit]
+
+repos:
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+        stages: [pre-commit]
+        args: [--check]
+      - id: end-of-file-fixer
+        stages: [pre-commit]
+        args: [--check]
+      - id: check-yaml
+        stages: [pre-commit]
+      - id: check-toml
+        stages: [pre-commit]
+      - id: check-json
+        stages: [pre-commit]
+      - id: check-added-large-files
+        stages: [pre-commit]
+      - id: check-merge-conflict
+        stages: [pre-commit]
+      - id: detect-private-key
+        stages: [pre-commit]
+
+  # ruff on the staged Python files, in check mode. --no-fix --no-fix-only
+  # override a `fix = true` in the config; --force-exclude keeps the config's
+  # excludes for files passed by name; the trailing `--` keeps a file name that
+  # starts with `-` from being read as an option.
+  - repo: local
+    hooks:
+      - id: ruff-format-check
+        stages: [pre-commit]
+        name: ruff format --check (staged Python)
+        entry: uv run --locked --only-group lint ruff format --check --force-exclude --
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-check
+        stages: [pre-commit]
+        name: ruff check, no fixes (staged Python)
+        entry: uv run --locked --only-group lint ruff check --no-fix --no-fix-only --force-exclude --
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

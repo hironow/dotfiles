@@ -2,7 +2,7 @@
 
 - **id**: ADR-0083
 - **title**: Git hooks run no whole-repository check
-- **status**: Accepted
+- **status**: Accepted; partly superseded by [ADR-0084](0084-git-hooks-only-check.md) (D2, D4)
 - **date**: 2026-11-20
 - **decided-date**: 2026-11-20
 - **decision-maker**: Hiroto N.
@@ -10,7 +10,7 @@
 - **author**: Claude Code (owner session, Mac)
 - **author-contact**: @hironow
 - **supersedes**: none
-- **superseded-by**: none
+- **superseded-by**: [ADR-0084](0084-git-hooks-only-check.md) (D2, D4 only)
 - **related**: [0003](0003-actions-pin-sha.md), [0019](0019-windows-scoop-dump-record-only.md), [0020](0020-normalize-shell-script-line-endings.md), [0044](0044-python-toolchain-uv-ruff-ty.md), [0051](0051-adopt-decision-queue-for-new-records.md), [0060](0060-frozen-image-generation-has-one-source.md), [0069](0069-type-check-and-lint-for-every-os.md)
 - **consultation-trace**: the owner's instructions and choice in a Claude Code session on 2026-11-20 (see "Consultation"); the ruling is transcribed on the public PR ([PR #659 decision](https://github.com/hironow/dotfiles/pull/659#issuecomment-7031072308))
 

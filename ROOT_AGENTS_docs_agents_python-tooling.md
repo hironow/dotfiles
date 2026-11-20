@@ -42,7 +42,7 @@ fmt:
     uv run --locked --only-group lint ruff format .
 
 lint:
-    uv run --locked --only-group lint ruff check .
+    uv run --locked --only-group lint ruff check --no-fix --no-fix-only .
     uv run --locked --only-group lint ruff format --check .
     uv run --locked --group lint ty check --python-platform win32
     uv run --locked --group lint ty check --python-platform linux

@@ -6,7 +6,7 @@ from a CDN: `just site-vendor-ui-sdk` copies the browser build of
 site/vendor/ui-sdk/<version>/, with a SHA-256 for every file and a record of
 where the bytes came from. The formatters and Go text-hygiene gate leave
 this folder alone, so these byte checks stand in for them: any edit, a
-formatter run, or a CRLF checkout on Windows fails here (ADRs 0076/0084).
+formatter run, or a CRLF checkout on Windows fails here (ADRs 0076/0085).
 `just site-vendor-ui-sdk-check` compares the copy with the registry again.
 """
 

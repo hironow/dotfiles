@@ -1,6 +1,6 @@
-# ADR 0084 — dotfiles hooks are read-only guards
+# ADR 0085 — dotfiles hooks are read-only guards
 
-- **id**: ADR-0084
+- **id**: ADR-0085
 - **title**: dotfiles hooks are read-only guards
 - **status**: Proposed
 - **date**: 2026-11-20
@@ -11,7 +11,7 @@
 - **author-contact**: @hironow
 - **supersedes**: proposed partial exception to [0052](0052-renew-global-agent-instructions.md) Decision 1's platform-binary distribution requirement, for `tools/text-hygiene/` only
 - **superseded-by**: none
-- **related**: [0019](0019-windows-scoop-dump-record-only.md), [0020](0020-normalize-shell-script-line-endings.md), [0025](0025-justfile-mise-tool-wrap.md), [0051](0051-adopt-decision-queue-for-new-records.md), [0060](0060-frozen-image-generation-has-one-source.md), [0061](0061-version-generator-in-go.md), [0069](0069-type-check-and-lint-for-every-os.md), [0076](0076-browser-ui-platform-first-then-ui-sdk.md), [0083](0083-git-hooks-run-no-whole-repository-check.md)
+- **related**: [0019](0019-windows-scoop-dump-record-only.md), [0020](0020-normalize-shell-script-line-endings.md), [0025](0025-justfile-mise-tool-wrap.md), [0051](0051-adopt-decision-queue-for-new-records.md), [0060](0060-frozen-image-generation-has-one-source.md), [0061](0061-version-generator-in-go.md), [0069](0069-type-check-and-lint-for-every-os.md), [0076](0076-browser-ui-platform-first-then-ui-sdk.md), [0083](0083-git-hooks-run-no-whole-repository-check.md), [0084](0084-git-hooks-only-check.md)
 - **consultation-trace**: owner choices on 2026-11-20, recorded in the [PR #662 consultation](https://github.com/hironow/dotfiles/pull/662); see Consultation
 
 ## Plain summary
@@ -105,7 +105,7 @@ The independent plan review included 0019, 0020, 0025, 0052, 0060, 0061, 0069, 0
 This is not a claim that every ADR body was read in full.
 
 - **Contradiction**: The eight-hook patch lost 0060/0083's commit-time version check. The owner chose nine. The remaining proposed contradiction is only 0052's distribution requirement, explicitly scoped in D4 and put to its author and decision-maker, @hironow.
-- **Duplication**: 0083 records the global rule; 0084 records this repository's follow-up. The append-only number 0084 was unused when filing began.
+- **Duplication**: 0083 and 0084 record the global rules; 0085 records this repository's follow-up. The append-only number 0084 was unused when filing began.
 - **Misreading**: 0020 governs `.gitattributes`, not trailing-whitespace fixers. Its attributes stay unchanged. Historical hook descriptions in 0019/0020 are not mandates to keep `just lint` as a hook.
 - **False relation**: 0061 is a precedent, not permission for this gate's exception. 0025's mise invocation rule is preserved.
 - **Mistaken relationship**: 0069's normative platform checks remain. 0076's vendored bytes remain excluded and hash-checked. Neither record is superseded.

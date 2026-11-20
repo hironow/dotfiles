@@ -4,7 +4,7 @@
 # Manual push gate (not a git hook):
 #          just check-all      (== prek run --all-files + just ci-all)
 #
-# ADRs 0083/0084: nine read-only guards; no whole-project or rewriting hooks.
+# ADRs 0083/0084/0085: nine read-only guards; no whole-project or rewriting hooks.
 # Run fmt/lint explicitly and review their diff before staging. CI retains
 # fmt/lint/check/test coverage through the disposable sandbox tests. The fast
 # version-consistency recipe is the only recipe retained at commit time.
@@ -74,7 +74,7 @@ repos:
         description: Refuse a commit message that leaks a private identifier.
 
   # Rust-native builtin hooks (fast and read-only). Whitespace/EOF detection
-  # moves to the Go hygiene leg of `just check` (ADR 0084), which preserves
+  # moves to the Go hygiene leg of `just check` (ADR 0085), which preserves
   # site/vendor's byte exclusion and SHA-256 checks (ADR 0076).
   - repo: builtin
     hooks:
@@ -104,5 +104,5 @@ repos:
         stages: [pre-commit]
         description: Check the frozen version source and generated files without rewriting them.
 
-  # No rewriting hooks, whole-project recipes or pre-push hooks (ADR 0084).
+  # No rewriting hooks, whole-project recipes or pre-push hooks (ADRs 0084/0085).
   # fmt/lint/check/test remain explicit commands; check-all is the manual gate.

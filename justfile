@@ -410,8 +410,8 @@ sync-agents *args:
     @{{UV_RUN}} scripts/sync_agents.py --yes {{ args }}
 
 # Scaffold: copy the agent-baseline template (per-repo enforcement: just check
-# gate, .githooks/pre-commit, quality-gate CI, agentcore semgrep rules) into a
-# target repo, then enable its git hooks. NOT applied to this repo (dotfiles
+# gate, check-only prek hooks, quality-gate CI, agentcore semgrep rules) into a
+# target repo, then enable its git hooks (`just install-hooks` there). NOT applied to this repo (dotfiles
 # uses prek + its own CI/.semgrep). See templates/agent-baseline/README-agents-setup.md.
 [group('Agents')]
 scaffold-agent-baseline dir:
@@ -918,7 +918,7 @@ check:
     @just mise-versions-check
     @echo '🔎 storage bounds (every tofu sink declares its cap)...'
     @{{UV_RUN}} scripts/check_storage_bounds.py
-    @echo '🔎 Text hygiene (trailing whitespace, final newline; ADR 0084)...'
+    @echo '🔎 Text hygiene (trailing whitespace, final newline; ADR 0085)...'
     @mise exec -- go run tools/text-hygiene/main.go
     @echo '🔎 Go (golangci-lint per GOOS)...'
     just go-lint
@@ -1184,7 +1184,7 @@ check-mcp-node-runner:
 # verified-tarball versions, the bare-Linux bootstrap pins), and refuses a
 # source whose tools are not declared on the host or whose exact pins disagree.
 # ADR 0006 §3 promised this check; ADR 0060/0061 record the layout. Wired into
-# `lint` and `check`, plus the dedicated read-only commit hook (ADR 0084).
+# `lint` and `check`, plus the dedicated read-only commit hook (ADR 0085).
 [group('Lint')]
 mise-versions-check:
     @mise exec -- go run tools/mise-versions/main.go check

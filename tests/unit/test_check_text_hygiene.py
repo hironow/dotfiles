@@ -1,4 +1,4 @@
-"""Drive the read-only Go hygiene gate through its CLI (ADR 0084).
+"""Drive the read-only Go hygiene gate through its CLI (ADR 0085).
 
 Every scanned tree is a disposable Git repository, never the live checkout.
 The binary is built once, as with the mise-versions CLI oracle.

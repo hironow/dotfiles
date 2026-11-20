@@ -1,4 +1,4 @@
-// text-hygiene checks repository text without rewriting it (ADR 0084).
+// text-hygiene checks repository text without rewriting it (ADR 0085).
 package main
 
 import (
@@ -70,7 +70,7 @@ func run(args []string, stderr io.Writer) int {
 		}
 	}
 	if failed {
-		fmt.Fprintln(stderr, "text hygiene: fix the reported files explicitly; this gate never rewrites source files or the Git index (ADR 0084)")
+		fmt.Fprintln(stderr, "text hygiene: fix the reported files explicitly; this gate never rewrites source files or the Git index (ADR 0085)")
 		return 1
 	}
 	return 0

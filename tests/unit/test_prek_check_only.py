@@ -1,4 +1,4 @@
-"""Configuration seam: nine read-only hooks, no whole-project hooks (0084)."""
+"""Configuration seam: nine read-only hooks, no whole-project hooks (0085)."""
 
 from __future__ import annotations
 
