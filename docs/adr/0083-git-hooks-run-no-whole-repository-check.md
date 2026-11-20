@@ -2,9 +2,9 @@
 
 - **id**: ADR-0083
 - **title**: Git hooks run no whole-repository check
-- **status**: Proposed
+- **status**: Accepted
 - **date**: 2026-11-20
-- **decided-date**: —
+- **decided-date**: 2026-11-20
 - **decision-maker**: Hiroto N.
 - **decision-maker-contact**: @hironow
 - **author**: Claude Code (owner session, Mac)
@@ -12,7 +12,7 @@
 - **supersedes**: none
 - **superseded-by**: none
 - **related**: [0003](0003-actions-pin-sha.md), [0019](0019-windows-scoop-dump-record-only.md), [0020](0020-normalize-shell-script-line-endings.md), [0044](0044-python-toolchain-uv-ruff-ty.md), [0051](0051-adopt-decision-queue-for-new-records.md), [0060](0060-frozen-image-generation-has-one-source.md), [0069](0069-type-check-and-lint-for-every-os.md)
-- **consultation-trace**: the owner's instructions and choice in a Claude Code session on 2026-11-20 (see "Consultation"); the same record goes in the public PR that adds this ADR
+- **consultation-trace**: the owner's instructions and choice in a Claude Code session on 2026-11-20 (see "Consultation"); the ruling is transcribed on the public PR ([PR #659 decision](https://github.com/hironow/dotfiles/pull/659#issuecomment-7031072308))
 
 ## Plain summary
 
@@ -41,9 +41,7 @@ The rules every agent reads, and the template for new repositories, say so.
 
 ## Decision
 
-(Proposed. Once decided: MUST statements if Accepted, the reason if Rejected, the revisit condition if Deferred.)
-
-The proposed content (option B):
+Option B is adopted as these requirements:
 
 - D1: A Git hook that runs on its own (prek or `.githooks/`, any stage but `manual`) MUST NOT run:
     - the full gate (`just check`, `just ci`, `just check-all` and the like);
@@ -57,11 +55,11 @@ The proposed content (option B):
 
 ## Options Considered
 
-| Option | What it does | Benefit | Cost |
-| --- | --- | --- | --- |
-| A: only the org's repositories | The public guides set no rule; they only stop saying the hook runs the whole check. The rule lives in the org's own records | Personal repositories keep their hooks | A public guide cannot name the org, so a rule with the same reason cannot be written in the global rules. Commits in personal repositories keep waiting |
-| B: every repository (recommended) | D1 to D5, written out in full in the public rules | The reason (a commit waits minutes for what CI runs) does not depend on who owns the repository. Agents read one rule | dotfiles' own hooks need a separate PR, with an inventory, before they follow the rule |
-| C: no change | Nothing changes | No effort | Goes against the owner's instruction. Every repository made from the template waits for the whole check on every commit |
+| Option | What it does | Benefit | Cost | Result |
+| --- | --- | --- | --- | --- |
+| A: only the org's repositories | The public guides set no rule; they only stop saying the hook runs the whole check. The rule lives in the org's own records | Personal repositories keep their hooks | A public guide cannot name the org, so a rule with the same reason cannot be written in the global rules. Commits in personal repositories keep waiting | Rejected: the reason applies to every repository, and the owner chose B |
+| B: every repository (recommended) | D1 to D5, written out in full in the public rules | The reason (a commit waits minutes for what CI runs) does not depend on who owns the repository. Agents read one rule | dotfiles' own hooks need a separate PR, with an inventory, before they follow the rule | Chosen |
+| C: no change | Nothing changes | No effort | Goes against the owner's instruction. Every repository made from the template waits for the whole check on every commit | Rejected: it keeps the wait the owner asked to remove |
 
 ## Consequences
 
@@ -88,14 +86,11 @@ All ADRs 0001 to 0082 were searched for `pre-commit`, `pre-push`, `prek`, `githo
 
 - 2026-11-20 (Claude Code session): the owner gave the instructions in Context and chose to record the rule for the org.
 - 2026-11-20 (AskUserQuestion): asked the scope of the dotfiles rule; the owner chose "B: every repository".
+- 2026-11-20 14:09 JST (AskUserQuestion): asked whether to accept option B and merge, with the consistency findings named; the owner chose "accept option B and merge" ([PR #659 decision](https://github.com/hironow/dotfiles/pull/659#issuecomment-7031072308)).
 - The plan passed independent reviews: Codex APPROVE after 3 rounds, Gemini (Neon) APPROVE after 4.
 
-## Decision (to be filled in)
+## Decision (2026-11-20)
 
-- [ ] Accept option B / [ ] Accept option A / [ ] Accept with changes (changes: ____) / [ ] Reject (reason: ____) / [ ] Defer
-- Decision-maker and date:
-- If B is accepted: merge this PR. With the owner's yes, run `just sync-agents-preview all`, then `just sync-agents all`. Open the PR for dotfiles' own hooks (per D3, first confirm that each check in `lint` runs in CI).
-- If A is accepted: drop D1 to D3, change the spokes to say only what is true of the template, and merge.
-- If accepted with changes: apply the changes to D1 to D5 and the spokes, and merge.
-- If rejected: close this PR; the spokes and the template stay as they are.
-- If deferred: write the revisit condition and date here, and keep the PR open.
+- [x] Accept option B / [ ] Accept option A / [ ] Accept with changes / [ ] Reject / [ ] Defer
+- Decision-maker and date: Hiroto N. (@hironow), 2026-11-20 14:09 JST. Asked in a Claude Code session (AskUserQuestion) whether to accept option B and merge, with the consistency findings on 0069, 0019 and 0020 named; the owner chose "accept option B and merge" (translated). Filled in on the owner's behalf from that ruling ([PR #659 decision](https://github.com/hironow/dotfiles/pull/659#issuecomment-7031072308)).
+- Action: merge PR #659. With the owner's yes, run `just sync-agents-preview all`, then `just sync-agents all`. Open the follow-up PR for dotfiles' own hooks: per D3, first confirm that each check in `lint` runs in CI, then move ty, the RTTM and JS type checks and the Pi tests out of the commit hook, keeping ADR 0060's `mise-versions-check`.
