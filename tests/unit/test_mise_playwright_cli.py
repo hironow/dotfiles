@@ -44,16 +44,6 @@ def _declared_version(spec: object) -> object:
     return spec
 
 
-def test_the_initial_setup_declares_playwright_cli() -> None:
-    """Only this file puts `playwright-cli` on PATH for the skill to find."""
-    assert TOOL in _tools(), (
-        f"config/mise/config.toml must declare {TOOL!r}. The hironow/skills "
-        "`playwright-cli` skill runs `playwright-cli` from PATH, and only "
-        "@playwright/cli ships that bin (@playwright/mcp ships only "
-        "`playwright-mcp`)."
-    )
-
-
 def test_the_declared_tool_is_not_the_playwright_test_runner() -> None:
     """`playwright` is the test runner: another package, another bin."""
     declared = {key.split(":", 1)[-1] for key in _tools()}

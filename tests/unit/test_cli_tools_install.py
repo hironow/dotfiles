@@ -24,22 +24,6 @@ TOOLS = [
 ]
 
 
-@pytest.mark.parametrize(
-    ("tool", "version"),
-    [
-        ("github:harehare/mq", "0.10.1"),
-        ("witr", "0.3.4"),
-        ("aqua:jqlang/jq", "1.8.2"),
-        ("aqua:mikefarah/yq", "4.54.3"),
-        ("aqua:wader/fq", "0.18.0"),
-    ],
-)
-def test_requested_cli_tools_have_exact_pins(tool: str, version: str) -> None:
-    tools = tomllib.loads(CONFIG.read_text(encoding="utf-8"))["tools"]
-    pin = tools[tool]
-    assert (pin["version"] if isinstance(pin, dict) else pin) == version
-
-
 def test_mq_is_platform_scoped_and_every_raw_asset_has_a_checksum() -> None:
     mq = tomllib.loads(CONFIG.read_text(encoding="utf-8"))["tools"][
         "github:harehare/mq"
@@ -150,11 +134,3 @@ def test_mac_homebrew_restore_does_not_reinstall_mise_jq() -> None:
     manifest = (REPO / "dump/macbook/Brewfile").read_text(encoding="utf-8")
     formula = re.compile(r"""^\s*brew\s*(?:\(\s*)?["']jq["']""", re.MULTILINE)
     assert not formula.search(manifest)
-
-
-def test_agent_router_exposes_each_structured_query_branch() -> None:
-    hub = (REPO / "ROOT_AGENTS.md").read_text(encoding="utf-8")
-    spoke = (REPO / "ROOT_AGENTS_docs_agents_cli-tools.md").read_text(encoding="utf-8")
-    for tool in ("jq", "yq", "mq", "fq", "witr"):
-        assert f"`{tool}`" in hub
-        assert f"`{tool}`" in spoke

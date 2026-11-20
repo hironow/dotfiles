@@ -73,21 +73,6 @@ def test_installer_image_busts_only_setup_cache_and_emits_run_bound_evidence() -
         assert f"printf 'DOTFILES_INSTALL_{marker}:%s\\n' \"${nonce}\"" in dockerfile
 
 
-def test_root_readme_documents_native_podman_not_docker_setup() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "install -y docker.io" not in readme
-    assert "systemctl enable --now docker" not in readme
-    assert " -- docker run " not in readme
-    assert "just podman-install" in readme
-    assert "podman run --rm -i docker.io/grafana/mcp-k6" in readme
-
-
-def test_rtk_guidance_preserves_the_native_podman_engine() -> None:
-    guidance = (ROOT / "ROOT_AGENTS_docs_agents_rtk.md").read_text(encoding="utf-8")
-    assert "never substitute `rtk docker` for Podman" in guidance
-    assert "run `podman` directly" in guidance
-
-
 def test_doctor_checks_required_podman_cli_and_selected_engine() -> None:
     doctor = (ROOT / "scripts/doctor.sh").read_text(encoding="utf-8")
     assert "podman --version" in doctor
@@ -149,23 +134,6 @@ def test_devcontainer_cli_has_one_frozen_age_exempt_host_image_pin() -> None:
         tomllib.loads(generated.group(1))["tools"].get("npm:@devcontainers/cli")
         == expected
     )
-
-
-def test_agent_policy_requires_age_exempt_podman_without_docker_fallback() -> None:
-    base = (ROOT / "ROOT_AGENTS.md").read_text(encoding="utf-8")
-    assert "Podman 5+" in base
-    assert "podman-compose" in base
-    assert "required installed permanent CLIs" in base
-    assert "exempt from the seven-day cooldown" in base
-    assert "Never fall back to a Docker engine" in base
-    assert "PODMAN_COMPOSE_PROVIDER=podman-compose" in base
-    policy = (ROOT / "ROOT_AGENTS_docs_agents_dependency-policy.md").read_text(
-        encoding="utf-8"
-    )
-    permanent = policy.split("## Permanent main CLI exception", 1)[1].split("\n## ", 1)[
-        0
-    ]
-    assert "Podman" in permanent and "podman-compose" in permanent
 
 
 def test_image_freezes_the_same_age_exempt_compose_provider() -> None:

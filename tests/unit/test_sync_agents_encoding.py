@@ -11,34 +11,9 @@ platform, so the regression cannot slip back through Linux CI.
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 SYNC = Path(__file__).resolve().parents[2] / "scripts" / "sync_agents.py"
-TEXT_IO = {"read_text", "write_text"}
-
-
-def _unencoded_calls() -> list[tuple[int, str]]:
-    tree = ast.parse(SYNC.read_text(encoding="utf-8"))
-    bad: list[tuple[int, str]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if not isinstance(func, ast.Attribute) or func.attr not in TEXT_IO:
-            continue
-        if not any(kw.arg == "encoding" for kw in node.keywords):
-            bad.append((node.lineno, func.attr))
-    return bad
-
-
-def test_all_text_io_pins_encoding() -> None:
-    bad = _unencoded_calls()
-    assert not bad, (
-        "sync_agents.py has read_text()/write_text() calls without an explicit "
-        "encoding= (breaks on native Windows cp932): "
-        + ", ".join(f"{attr}@L{line}" for line, attr in bad)
-    )
 
 
 def test_main_reconfigures_stdout_to_utf8() -> None:

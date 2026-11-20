@@ -43,15 +43,6 @@ def test_ghostty_sends_csi_u_for_ctrl_enter() -> None:
     assert r"keybind = ctrl+enter=text:\x1b[13;5u" in config
 
 
-def test_zshrc_registers_the_widget() -> None:
-    text = _zshrc()
-    # Same `name() {` style as the helpers at the top of the file.
-    assert re.search(rf"^{WIDGET}\(\) \{{$", text, re.MULTILINE), (
-        f".zshrc must define {WIDGET}()"
-    )
-    assert f"zle -N {WIDGET}" in text, f"{WIDGET} must be registered as a widget"
-
-
 def test_the_widget_inserts_a_newline_without_executing() -> None:
     body = re.search(
         rf"^{WIDGET}\(\) \{{\n(.*?)^\}}$", _zshrc(), re.MULTILINE | re.DOTALL

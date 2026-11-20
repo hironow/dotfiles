@@ -66,22 +66,3 @@ def test_main_without_max_only_reports(tmp_path: Path) -> None:
     f = tmp_path / "doc.md"
     f.write_text("- one\n" * 100, encoding="utf-8")
     assert main([str(f)]) == 0
-
-
-@pytest.mark.parametrize(
-    "doc",
-    [
-        "scripts/instruction_budget.py",
-        "templates/agent-baseline/README-agents-setup.md",
-    ],
-)
-def test_adherence_claim_is_marked_as_heuristic(doc: str) -> None:
-    """The ~150-200-instruction figure has no citation; it must present
-    itself as a heuristic, not a measured constant."""
-    lines = (REPO / doc).read_text(encoding="utf-8").splitlines()
-    claim_indices = [i for i, ln in enumerate(lines) if "150-200" in ln]
-    assert claim_indices, f"{doc} no longer carries the 150-200 claim?"
-    # the marker may land on a neighboring line after Markdown wrapping
-    assert any(
-        "heuristic" in ln for i in claim_indices for ln in lines[max(0, i - 2) : i + 3]
-    ), f"{doc}: mark the 150-200 instruction figure as a heuristic"

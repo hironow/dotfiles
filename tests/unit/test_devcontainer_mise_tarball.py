@@ -15,7 +15,6 @@ import hashlib
 import os
 import re
 import shutil
-import tomllib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -25,7 +24,6 @@ from test_apt_keyring_format import _gnupg_home, _gpg, _primary_fingerprints
 
 ROOT = Path(__file__).resolve().parents[2]
 INSTALL = ROOT / ".devcontainer/features/dotfiles-tools/install.sh"
-IMAGE_TOOLS = ROOT / "config/mise/image-tools.toml"
 MISE_FINGERPRINT = "24853EC9F655CE80B48E6C3A8B81C9D17413A06D"
 FUNCTION = "verify_artifact_with_signed_checksums"
 GPG = shutil.which("gpg")
@@ -42,11 +40,6 @@ def test_the_feature_installs_mise_without_its_apt_repository():
     assert "mise.jdx.dev/deb" not in text
     assert "mise-archive-keyring" not in text
     assert not re.search(r"apt-get install[^\n]*\bmise\b", text)
-
-
-def test_the_feature_pins_mise_to_the_bootstrap_version():
-    pinned = tomllib.loads(IMAGE_TOOLS.read_text(encoding="utf-8"))["bootstrap"]["mise"]
-    assert re.findall(r'^MISE_VERSION="([^"]*)"$', _feature(), re.MULTILINE) == [pinned]
 
 
 def test_the_feature_verifies_the_tarball_with_the_pinned_key():

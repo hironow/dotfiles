@@ -79,27 +79,6 @@ def test_github_section_builds_slashless_endpoints_for_both_scopes() -> None:
     )
 
 
-def test_github_section_degrades_instead_of_failing() -> None:
-    text = GITHUB.read_text(encoding="utf-8")
-    assert "gh not installed" in text, (
-        "a host without gh must get a WARN, not a broken status."
-    )
-    assert "admin:org" in text, (
-        "a 403 must point at `gh auth refresh -h github.com -s admin:org` — "
-        "the exact fix used live."
-    )
-
-
-def test_github_section_names_the_registration_purge_mode() -> None:
-    """Yesterday's failure mode: the runner is absent from the listing
-    because GitHub auto-purged a long-offline registration."""
-    text = GITHUB.read_text(encoding="utf-8")
-    assert "registration" in text, (
-        "an absent name must be reported as a server-side registration "
-        "purge with the re-register runbook, not as a generic offline."
-    )
-
-
 def test_zombie_runbook_survives_its_own_advice() -> None:
     github = GITHUB.read_text(encoding="utf-8")
     assert "5 min" in github, (

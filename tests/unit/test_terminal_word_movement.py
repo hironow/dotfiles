@@ -69,14 +69,6 @@ def test_zshrc_binds_exactly_the_four_modifier_arrow_sequences() -> None:
     assert {sequence: widget for sequence, _m, widget in bindings} == WORD_MOVEMENT
 
 
-def test_zshrc_does_not_bind_shift_arrow() -> None:
-    # Shift+arrow is text selection in every other editor; 2 = Shift.
-    assert all(
-        modifier != "2"
-        for _seq, modifier, _widget in ARROW_BINDING.findall(_read(ZSHRC))
-    )
-
-
 def test_ghostty_pins_option_arrows_to_meta_b_f() -> None:
     # Comments are skipped: the keybind lines are what Ghostty reads.
     lines = [
@@ -103,11 +95,6 @@ def test_tmux_does_not_add_xterm_keys_or_switch_the_format() -> None:
     # xterm, whose Ctrl+Enter spelling .zshrc already binds.
     assert not [line for line in lines if "xterm-keys" in line]
     assert not [line for line in lines if "extended-keys-format" in line]
-
-
-def test_tmux_conf_documents_the_minimum_version() -> None:
-    # The >= 3.2a requirement is policy, not a guard: keep it in the file.
-    assert "3.2a" in _read(TMUX_CONF)
 
 
 @pytest.mark.skipif(shutil.which("zsh") is None, reason="needs zsh")

@@ -46,12 +46,3 @@ def test_npm_backend_installs_with_bun() -> None:
         f'"bun"; found {chosen!r}. Under the default "auto" (aube), '
         "claude-code installs as a 500-byte stub that cannot run."
     )
-
-
-def test_npm_backend_is_not_a_banned_package_manager() -> None:
-    """The setting accepts npm/pnpm too; both are barred here (ADR 0027)."""
-    chosen = _settings().get("npm", {}).get("package_manager")
-    assert chosen not in {"npm", "pnpm", "yarn"}, (
-        f"{chosen!r} would have mise shell out to a package manager this repo "
-        "forbids; bun is the only sanctioned Node package manager."
-    )

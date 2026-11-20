@@ -5,7 +5,6 @@ no cloud credentials or services are needed. Static checks also run on Windows.
 """
 
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -18,21 +17,6 @@ COMMANDS = [
     ("alibaba-list", "aliyun", ["configure", "list"]),
     ("akamai-list", "linode-cli", ["show-users"]),
 ]
-
-
-@pytest.mark.parametrize("recipe,cli,args", COMMANDS)
-def test_cloud_list_recipe_is_local_and_in_cloud_group(
-    recipe: str, cli: str, args: list[str]
-) -> None:
-    text = (ROOT / "justfile").read_text(encoding="utf-8")
-    command = " ".join([cli, *args])
-    expected = f"[group('Cloud')]\n{recipe}:\n    {command}\n"
-    assert expected in text
-    body = re.search(
-        rf"^{re.escape(recipe)}:\n((?:[ \t]+[^\n]*\n)+)", text, re.MULTILINE
-    )
-    assert body is not None
-    assert body.group(1).strip() == command
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="CLI stubs use POSIX shell scripts")

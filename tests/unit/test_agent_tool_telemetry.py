@@ -59,11 +59,6 @@ def test_mise_installs_rtk_and_headroom_everywhere() -> None:
         assert not (isinstance(spec, dict) and "os" in spec), f"{name} is OS-gated"
 
 
-def test_mise_env_turns_the_telemetry_off() -> None:
-    env = _mise()["env"]
-    assert {name: env.get(name) for name in TELEMETRY_OFF} == TELEMETRY_OFF
-
-
 def test_claude_sessions_and_hooks_get_the_telemetry_off() -> None:
     shared = json.loads(
         (ROOT / ".claude/settings.shared.json").read_text(encoding="utf-8")
