@@ -64,7 +64,7 @@ jobs:
           # The prek runtime tests fail here instead of skipping.
           DOTFILES_REQUIRE_PREK: "1"
         # The same parallel run as `just test-unit` (pytest-xdist, loadgroup).
-        run: uvx --with pytest-xdist==3.8.0 pytest -q -ra -n auto --dist loadgroup tests/unit/
+        run: uvx --with pytest-xdist==3.8.0 pytest -q -ra -n auto --dist loadgroup -p no:cacheprovider tests/unit/
 
       # The command guard corpus, its word table, and the agent-hook payload
       # and tool-hooks corpora follow Python 3.14 (Unicode 16.0). The system
