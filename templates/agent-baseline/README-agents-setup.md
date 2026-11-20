@@ -17,7 +17,7 @@ are read when needed, and rules that must hold every time live in hooks and CI.
 | file | what it does |
 | --- | --- |
 | `justfile` | the only task runner; `just check` is the full gate |
-| `.githooks/pre-commit` | runs `just check` before every commit |
+| `.githooks/pre-commit` | runs `just pre-commit` (ruff only) before every commit |
 | `.github/workflows/quality-gate.yaml` | runs `just check` in CI, plus a `tofu plan` drift check when `tofu/` exists; skips draft PRs |
 | `.semgrep/` | project rules and their test fixtures (see `.semgrep/README.md`) |
 | `.semgrepignore` | keeps `tests/` in Semgrep's scope and leaves out the rule fixtures |
@@ -34,9 +34,12 @@ rule does not apply. These gates do not depend on that decision:
    writes them to `~/.claude/settings.json` and `~/.claude/hooks/`, so they
    are not files in this repo. A hook blocks with `exit 2`; `exit 1` is a
    non-blocking error, and the action goes ahead.
-2. **Git pre-commit** (`.githooks/pre-commit`) runs `just check` for every
-   commit, by a human or any tool.
-3. **CI** (`quality-gate.yaml`) is the merge gate.
+2. **Git pre-commit** (`.githooks/pre-commit`) runs `just pre-commit` for
+   every commit, by a human or any tool: ruff only, so a commit does not wait.
+   It never runs the whole gate (dotfiles ADR 0083).
+3. **CI** (`quality-gate.yaml`) runs `just check` (ty per OS, Semgrep, all
+   tests) on every pull request that is ready for review, and is the merge
+   gate once it is a required check. Run `just check` before you commit.
 
 The instructions still matter: they give the reason for each rule, which is how
 an agent applies it to cases a hook does not match.
@@ -44,7 +47,7 @@ an agent applies it to cases a hook does not match.
 ## Set up a clone once
 
 ```sh
-uv add --group lint --bounds exact ruff ty  # exact per-repo pins in the group that `just fmt` / `just lint` run
+uv add --group lint --bounds exact ruff ty  # exact per-repo pins in the group that `just fmt`, `just lint` and `just pre-commit` run
 just install-hooks                          # sets core.hooksPath=.githooks and makes the hooks executable
 ```
 

@@ -11,8 +11,10 @@ Read this before you write a commit message. AGENTS.md has the short version.
 - The change is one logical unit of work.
 - The message follows Conventional Commits v1.0.0.
 
-`just check` runs the whole gate. The git pre-commit hook runs it too, so you
-cannot commit a red tree (see docs/agents/enforcement.md).
+`just check` runs the whole gate. Run it before you commit. CI runs it on
+every pull request that is ready for review, and blocks the merge where it is a
+required check. A commit hook runs only fast checks, so a passing hook does not
+mean the tree is green (see docs/agents/enforcement.md).
 
 ## Message format
 

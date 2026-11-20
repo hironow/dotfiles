@@ -11,10 +11,15 @@ every time are enforced at three points:
 1. **Claude Code and Codex hooks** run before and after tool calls. The
    dotfiles repo distributes them with `just sync-agents`, from one source
    (`.claude/settings.hooks.json`); Codex's registration is rendered from it.
-2. **Git pre-commit** (`.githooks/pre-commit` → `just check`) is the gate for
-   humans and any tool that runs `git commit` (`just install-hooks` per clone).
-3. **CI** (`.github/workflows/quality-gate.yaml`) is the merge gate:
-   `just check` plus a `tofu plan` drift check.
+2. **Git hooks** (prek, or `.githooks/`; `just install-hooks` per clone) run
+   fast checks for humans and any tool that runs `git commit`: staged files,
+   the commit message, secret scans, formatters and light linters. A hook that
+   runs on its own (any stage but `manual`) never runs the whole gate, a test
+   suite, or a whole-repository type check or heavy analysis (ADR 0083 in the
+   dotfiles repo).
+3. **CI** (`.github/workflows/quality-gate.yaml`) runs `just check` plus a
+   `tofu plan` drift check on every pull request that is ready for review; it
+   blocks the merge where it is a required check.
 
 Hooks cover the common cases; written rules carry the *why* and cover the long
 tail.

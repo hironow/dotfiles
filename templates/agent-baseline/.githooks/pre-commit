@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # .githooks/pre-commit
-# Deterministic commit gate for HUMANS (and any tool that runs git commit).
-# Mirrors the Claude Code hooks so the same rules apply whoever commits.
+# Fast commit check for HUMANS (and any tool that runs git commit): ruff only.
+# The whole gate (`just check`: ty per OS, Semgrep, all tests) runs in CI, and
+# you run it before you commit; a hook never runs it (dotfiles ADR 0083).
 # Enable once per clone:  just install-hooks   (sets core.hooksPath=.githooks)
 set -euo pipefail
 
@@ -10,5 +11,5 @@ if ! command -v just >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "pre-commit: running 'just check' (fmt + lint + types + semgrep + test)…"
-just check
+echo "pre-commit: running 'just pre-commit' (ruff format --check, ruff check)…"
+just pre-commit

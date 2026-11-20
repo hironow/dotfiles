@@ -57,8 +57,8 @@ change only the project's own path and exclude blocks.
 
 ### One ty run per OS
 
-The full gate (`just check`, which CI and the pre-commit hook run) runs ty
-once per OS the code runs on. ty narrows `sys.platform` and `os.name` to the
+The full gate (`just check`, which CI runs) runs ty once per OS the code
+runs on. ty narrows `sys.platform` and `os.name` to the
 `--python-platform` it checks for, so a branch for another OS is checked only
 when ty checks for that OS. Tooling that runs on developer machines runs on all
 three; a service deployed only to Linux needs only `linux`. Remove a line only
