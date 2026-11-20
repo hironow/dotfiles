@@ -29,6 +29,8 @@ BLOCKING = "TestTheBinaryAnswersAsThePayloadCorpusExpects"
 pytestmark = [
     pytest.mark.skipif(sys.platform == "win32", reason="the recipe is [unix]"),
     pytest.mark.skipif(shutil.which("just") is None, reason="just is not installed"),
+    # One worker under pytest-xdist, so the module-scoped Go setup runs once.
+    pytest.mark.xdist_group("agent-hooks-test-installed"),
 ]
 
 

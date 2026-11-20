@@ -24,6 +24,12 @@ just test-install                      # normal setup twice plus invocation trip
 uv run --frozen --group dev pytest tests/unit/test_<name>.py  # single file
 ```
 
+`just test-unit` runs the unit tests in parallel on every CPU (pytest-xdist, `--dist loadgroup`).
+A test must be safe to run beside any other: write only under `tmp_path`, change the environment only through `monkeypatch`, and bind no fixed port.
+Tests that share a module-scoped fixture they should build once carry the same `@pytest.mark.xdist_group(...)`.
+The checkout guard in `unit/conftest.py` runs only in the controlling process.
+To debug a test serially, run it with `-n 0` (or run the single file as above).
+
 ## Isolated emulator CI-equivalent tests
 
 After linting, `just ci-emu` runs prepare -> start -> wait on Firebase, Spanner, pgadapter, Postgres, and
